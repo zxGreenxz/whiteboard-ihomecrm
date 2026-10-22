@@ -13,7 +13,8 @@
 // effective outstanding of both lanes 20261021185540, built on the
 // 20261021170452 v2 body, the Thu chi page write RPC expense.create/expense.note
 // 20261022024834, its Mốc 3 virtual-building name directory/resolution _v2
-// 20261022044120 and expense scope = guard ∩ the web writer's own check 20261022044123);
+// 20261022044120, expense scope = guard ∩ the web writer's own check 20261022044123 and its Mốc 4
+// edit/cancel + manual-voucher check 20261022075102);
 // source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
@@ -111,16 +112,17 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_action_probe_step_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"e6471981e7e3c7f122d41a48c0efa0a47597b16f94d5c0ffd6a3a8bc73ae92c9","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_action_probe_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"87df58c7f3bdfc05ae5ab7d9ebe05b3a719a5aaff0378b5df2f0b6d36153d705","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_expense_reason_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"0ee4db61c217067454a72c3a8dba54299560eb57960944afcd163bd65f433290","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
-  {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"f547ef46d57b0ba9c163e16450c8b67fd74e04aec92709efc046dff1726f14ca","args":"p_org uuid,p_params jsonb,p_resolved jsonb,p_key_prefix text"},
   {"name":"app_private.hermes_vnd_text_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"f3d53abc220bf885264299cfd2c3c150e2bb790e65c50437dc84984d1373a5ee","args":"p_amount numeric"},
   {"name":"app_private.hermes_vn_date_text_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"e2dbda633f3385f4bf6d36386282fd8d12019be0d32802a8cf249041453ca044","args":"p_date date,p_today date"},
   {"name":"public.hermes_building_directory_v2","sourcePath":"supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql","sha256":"31b6d7c781738d090724e19396e3ccabbf782bb47c4079ef2408d6ed8f27a249","args":"p_organization_id uuid,p_building_ids uuid[],p_include_virtual boolean"},
   {"name":"app_private.hermes_write_name_resolve_core_v2","sourcePath":"supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql","sha256":"c8539c8d51add238b56f2d52206ad47f83b4c191b19055b787a5732707d77639","args":"p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_member_ids uuid[], p_caller_member boolean,p_include_virtual boolean"},
   {"name":"public.hermes_write_name_resolve_v2","sourcePath":"supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql","sha256":"1ae3a9fce47b72d0309e72ea1056ef0a9e3325b1b8239385226a75ae772a605d","args":"p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_include_virtual boolean"},
   {"name":"app_private.hermes_expense_scope_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"2896218ae26a6fab6866cc53285830e5712c4dba89c0dec9ab386c78ffabcd6e","args":"p_binding jsonb,p_action text"},
-  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"0a72aed46ce2a160b7c94dce73e2317bc28d2b8f49eed82eced4860f99163ef4","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
-  {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"b9e125b87869c09dbbdbd6cc91f279749b57647032858ec38ef39cc1e621fa19","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
-  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
+  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
+  {"name":"app_private.hermes_expense_manual_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"414b9ebd3efb30852f5c9619cc55fce9ea17b3eb0b14fd8eefb49eecf7ab9728","args":"p_voucher uuid"},
+  {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"b61b3e5251eb67b3bc4853a45cb765f622aee00e84bb3e1a0c16f69ec1a269ce","args":"p_org uuid,p_params jsonb,p_resolved jsonb,p_key_prefix text"},
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"5d8cbf8934b663bb28688df1cc8226fff49c168d093b58942970a383fa6d53c3","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"46564252a20d5e9454a3a0782d0abecedb0be8549191d47e3de42cf7c99d9c7f","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.
@@ -148,7 +150,10 @@ export const FORWARD_SUPERSEDED = [
   {"name":"public.hermes_domain_read_v2","sourcePath":"supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql","sha256":"b6e8a732b9cef18553df40e5e83cc7c59712c0c0077f676a1b5906e781e3225d"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"c3516708db4d212bd0a6b18ca6f2747a842675079bbc97cc1cdf7d9da6afa27f"},
   {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"e077e9d4616a756e3093e4fd27fcf06c62ec895f043ff9a7adf051ddd06a6dab"},
-  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"ea938fbc1876c3116d30cf321d9e56a7cedbe404bd2375597732ddbc241a44f0"}
+  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"ea938fbc1876c3116d30cf321d9e56a7cedbe404bd2375597732ddbc241a44f0"},
+  {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"f547ef46d57b0ba9c163e16450c8b67fd74e04aec92709efc046dff1726f14ca"},
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"0a72aed46ce2a160b7c94dce73e2317bc28d2b8f49eed82eced4860f99163ef4"},
+  {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"b9e125b87869c09dbbdbd6cc91f279749b57647032858ec38ef39cc1e621fa19"}
 ];
 
 export const INHERITED_CRM_ACL = [

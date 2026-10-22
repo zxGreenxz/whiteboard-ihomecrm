@@ -112,11 +112,16 @@ export class BrokerError extends Error {
   }
 }
 
-/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
-export function actionRejected(code) {
+/** Số thứ tự khoản trong lô (1–20) mà SQL báo kèm lý do; câu tới mô hình = "Khoản N: " + câu tĩnh của lý do. */
+export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && value <= 20;
+export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. item = khoản số mấy của lô. */
+export function actionRejected(code, item) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
-  error.detail = ACTION_REASONS[error.reason].text;
+  if (actionItem(item)) error.item = item;
+  error.detail = itemDetail(error.item, ACTION_REASONS[error.reason].text);
   return error;
 }
 

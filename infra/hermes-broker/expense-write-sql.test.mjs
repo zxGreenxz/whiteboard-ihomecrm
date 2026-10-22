@@ -14,6 +14,8 @@ const RESOLVE = file('hermes_write_name_resolve_v1'), FOUNDATION = file('hermes_
 const RULES = file('ie_quick_entry_shared_rules_v1'), WRITE = file('hermes_expense_write_v1');
 // Mốc 3: giải tên nhận toà ảo (v2) + phạm vi = guard ∩ hàm kiểm quyền của hàm ghi web, ghi chú chạy thử.
 const RESOLVE2 = file('hermes_name_directory_virtual_v1'), SCOPE_FIX = file('hermes_expense_scope_v1');
+// Mốc 4: sửa / huỷ (khoá income_expenses.edit/.cancel seed TẮT ở 20261021134531), cờ TC5, khoản số mấy, hạng mục dòng tiền.
+const KEYS = file('hermes_action_keys_seed_v1'), EDIT = file('hermes_expense_edit_cancel_v1');
 const VIRTUAL = '00000000-0000-4000-8000-000000000688';
 const rid = n => `00000000-0000-4000-8000-${String(700 + n).padStart(12, '0')}`;
 const code = expected => error => error.code === expected;
@@ -143,6 +145,109 @@ const WEB = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT EXISTS ke
     ('${PCCC}','${ORG}','expense','PCCC','pccc',ARRAY['pccc'],NULL,false,20),('${WATER}','${ORG}','expense','Đóng tiền nước','nuoc',ARRAY['tiền nước'],'nuoc',true,30);
   INSERT INTO public.income_expense_types(id,organization_id,type,name,system_only) VALUES('${SYSTEM}','${ORG}','expense','Hoa hồng môi giới',true);
   INSERT INTO public.accounts VALUES('${CB2}','${ORG}','${USER}','Tiền mặt toà A','',false,null,'${BUILDING}',false);`;
+// Mốc 4: hàm ghi web sửa / huỷ / allow-list "lập tay" — BẢN PORT (cùng chữ ký, cùng câu lỗi chính; CAS phiên bản; lý do khi đổi trục tiền;
+// người lập hoặc quyền sửa/huỷ ở toà (fixture_acl); huỷ phiếu đã vào sổ ⇒ bút toán đảo). fixture_writer.reject_name 'revise' / 'cancel'
+// giả lập lỗi của hàm web. Hàm thật đo ở tầng 2 trên TEST.
+const WEB4 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS approval_version bigint NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS posting_version bigint NOT NULL DEFAULT 1,ADD COLUMN IF NOT EXISTS repeat_parent_id uuid,
+    ADD COLUMN IF NOT EXISTS repeat_cycle text NOT NULL DEFAULT 'NONE';
+  ALTER TABLE public.income_expense_items ADD COLUMN IF NOT EXISTS description text,ADD COLUMN IF NOT EXISTS quantity numeric NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS unit_price numeric,ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+  CREATE FUNCTION public.fixture_item_price() RETURNS trigger LANGUAGE plpgsql AS $f$
+    BEGIN NEW.unit_price:=COALESCE(NEW.unit_price,NEW.amount); NEW.amount:=COALESCE(NEW.amount,NEW.quantity*NEW.unit_price); RETURN NEW; END $f$;
+  CREATE TRIGGER fixture_item_price BEFORE INSERT ON public.income_expense_items FOR EACH ROW EXECUTE FUNCTION public.fixture_item_price();
+  CREATE TABLE public.fixture_revisions(voucher_id uuid,revision_no int,actor uuid,reason text,changed text[],idempotency_key text);
+  CREATE TABLE public.fixture_postings(voucher_id uuid,kind text,amount numeric);
+  CREATE TABLE public.fixture_cancellations(voucher_id uuid PRIMARY KEY,kind text,reason text);
+  CREATE FUNCTION app_private.assert_manual_voucher_v1(p_voucher uuid,p_action text DEFAULT 'huỷ') RETURNS void LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path=pg_catalog,public AS $f$
+    DECLARE v public.income_expenses;
+    BEGIN
+      SELECT * INTO v FROM public.income_expenses WHERE id=p_voucher;
+      IF NOT FOUND THEN RAISE EXCEPTION 'Phiếu không tồn tại' USING ERRCODE='P0002'; END IF;
+      IF v.salary_staff_id IS NOT NULL THEN RAISE EXCEPTION '[NOT_MANUAL] Phiếu gắn lương nhân sự — sửa ở màn hình lương.' USING ERRCODE='42501'; END IF;
+      IF v.system_source IS NOT NULL THEN RAISE EXCEPTION '[NOT_MANUAL] Phiếu do hệ thống sinh (%) — xử lý ở luồng nguồn.',v.system_source USING ERRCODE='42501'; END IF;
+    END $f$;
+  CREATE FUNCTION public.revise_pending_income_expense_v1(p_voucher uuid,p_expected_approval_version bigint,p_patch jsonb,p_items jsonb DEFAULT NULL,
+    p_reason text DEFAULT NULL,p_idempotency_key text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v public.income_expenses; w public.fixture_writer; v_reason text:=NULLIF(btrim(COALESCE(p_reason,'')),''); v_changed text[]:='{}';
+      v_old jsonb; v_new jsonb; v_no int;
+    BEGIN
+      SELECT * INTO v FROM public.income_expenses WHERE id=p_voucher FOR UPDATE;
+      IF NOT FOUND OR v.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'Phiếu không tồn tại' USING ERRCODE='P0002'; END IF;
+      IF EXISTS(SELECT 1 FROM public.fixture_revisions r WHERE r.voucher_id=p_voucher AND r.actor=auth.uid() AND r.idempotency_key=p_idempotency_key) THEN
+        RETURN jsonb_build_object('id',p_voucher,'changed',true,'replayed',true); END IF;
+      IF v.approval_status<>'UNAPPROVED' THEN
+        RAISE EXCEPTION 'Chỉ sửa được phiếu Chờ duyệt — phiếu này đang ở trạng thái %',v.approval_status USING ERRCODE='55000'; END IF;
+      IF v.approval_version IS DISTINCT FROM p_expected_approval_version THEN
+        RAISE EXCEPTION 'Phiếu vừa được người khác sửa — tải lại để xem thay đổi.' USING ERRCODE='PT409'; END IF;
+      IF v.system_source IS NOT NULL AND v.system_source NOT IN ('contract.commission','termination.refund') THEN
+        RAISE EXCEPTION 'Phiếu do hệ thống sinh (%) — sửa ở luồng gốc',v.system_source USING ERRCODE='42501'; END IF;
+      IF v.user_id IS DISTINCT FROM auth.uid() AND NOT EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='income_expenses.edit' AND a.allowed
+          AND v.building_id=ANY(a.building_ids)) THEN
+        RAISE EXCEPTION 'Chỉ người lập phiếu hoặc người có quyền sửa thu chi ở toà này mới sửa được' USING ERRCODE='42501'; END IF;
+      IF p_patch ? 'account_id' AND (p_patch->>'account_id')::uuid IS DISTINCT FROM v.account_id AND NOT EXISTS(SELECT 1 FROM public.accounts a
+          WHERE a.id=(p_patch->>'account_id')::uuid AND a.user_id=auth.uid()) THEN RAISE EXCEPTION 'Không có quyền sử dụng sổ quỹ này' USING ERRCODE='42501'; END IF;
+      SELECT * INTO w FROM public.fixture_writer;
+      IF w.rejected_message IS NOT NULL AND w.reject_name='revise' THEN RAISE EXCEPTION '%',w.rejected_message USING ERRCODE=COALESCE(w.reject_state,'P0001'); END IF;
+      IF p_patch ? 'name' AND p_patch->>'name' IS DISTINCT FROM v.name THEN v_changed:=v_changed||'name'::text; END IF;
+      IF p_patch ? 'payer_name' AND p_patch->>'payer_name' IS DISTINCT FROM v.payer_name THEN v_changed:=v_changed||'payer_name'::text; END IF;
+      IF p_patch ? 'voucher_date' AND (p_patch->>'voucher_date')::date IS DISTINCT FROM v.voucher_date THEN v_changed:=v_changed||'voucher_date'::text; END IF;
+      IF p_patch ? 'account_id' AND (p_patch->>'account_id')::uuid IS DISTINCT FROM v.account_id THEN v_changed:=v_changed||'account_id'::text; END IF;
+      IF p_patch ? 'building_id' AND (p_patch->>'building_id')::uuid IS DISTINCT FROM v.building_id THEN v_changed:=v_changed||'building_id'::text; END IF;
+      IF p_patch ? 'room_id' AND (p_patch->>'room_id')::uuid IS DISTINCT FROM v.room_id THEN v_changed:=v_changed||'room_id'::text; END IF;
+      SELECT jsonb_agg(jsonb_build_array(it.income_expense_type_id,it.quantity*it.unit_price,it.start_date,it.end_date) ORDER BY it.created_at,it.id) INTO v_old
+        FROM public.income_expense_items it WHERE it.income_expense_id=p_voucher;
+      IF p_items IS NOT NULL THEN
+        SELECT jsonb_agg(jsonb_build_array((i->>'income_expense_type_id')::uuid,(i->>'quantity')::numeric*(i->>'unit_price')::numeric,(i->>'start_date')::date,
+          (i->>'end_date')::date)) INTO v_new FROM jsonb_array_elements(p_items) i;
+        IF v_new IS DISTINCT FROM v_old THEN v_changed:=v_changed||'items'::text; END IF;
+      END IF;
+      IF cardinality(v_changed)=0 THEN RETURN jsonb_build_object('id',p_voucher,'changed',false); END IF;
+      IF (v_changed && ARRAY['building_id','items'] OR ('account_id'=ANY(v_changed) AND v.account_id IS NOT NULL)) AND (v_reason IS NULL OR char_length(v_reason)<8) THEN
+        RAISE EXCEPTION 'Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự).' USING ERRCODE='22023'; END IF;
+      UPDATE public.income_expenses SET name=COALESCE(p_patch->>'name',name),payer_name=CASE WHEN p_patch ? 'payer_name' THEN p_patch->>'payer_name' ELSE payer_name END,
+        voucher_date=COALESCE((p_patch->>'voucher_date')::date,voucher_date),account_id=CASE WHEN p_patch ? 'account_id' THEN (p_patch->>'account_id')::uuid ELSE account_id END,
+        building_id=COALESCE((p_patch->>'building_id')::uuid,building_id),room_id=CASE WHEN p_patch ? 'room_id' THEN (p_patch->>'room_id')::uuid ELSE room_id END,
+        approval_version=approval_version+1 WHERE id=p_voucher;
+      IF 'items'=ANY(v_changed) THEN
+        DELETE FROM public.income_expense_items WHERE income_expense_id=p_voucher;
+        INSERT INTO public.income_expense_items(income_expense_id,income_expense_type_id,description,quantity,unit_price,start_date,end_date)
+          SELECT p_voucher,(i->>'income_expense_type_id')::uuid,i->>'description',(i->>'quantity')::numeric,(i->>'unit_price')::numeric,
+            (i->>'start_date')::date,(i->>'end_date')::date FROM jsonb_array_elements(p_items) i;
+        UPDATE public.income_expenses SET total_amount=(SELECT sum(quantity*unit_price) FROM public.income_expense_items WHERE income_expense_id=p_voucher) WHERE id=p_voucher;
+      END IF;
+      SELECT COALESCE(max(revision_no),0)+1 INTO v_no FROM public.fixture_revisions WHERE voucher_id=p_voucher;
+      INSERT INTO public.fixture_revisions VALUES(p_voucher,v_no,auth.uid(),v_reason,v_changed,p_idempotency_key);
+      RETURN jsonb_build_object('id',p_voucher,'changed',true,'revision_no',v_no,'approval_version',v.approval_version+1,'changed_fields',to_jsonb(v_changed));
+    END $f$;
+  CREATE FUNCTION public.cancel_income_expense_flex_v1(p_voucher uuid,p_reason text,p_expected_approval_version bigint DEFAULT NULL,
+    p_expected_posting_version bigint DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v public.income_expenses; w public.fixture_writer; v_kind text:='CANCELLED_UNPOSTED';
+    BEGIN
+      IF char_length(btrim(COALESCE(p_reason,'')))<8 THEN
+        RAISE EXCEPTION 'Phải ghi lý do huỷ (ít nhất 8 ký tự) để còn đối soát về sau.' USING ERRCODE='22023'; END IF;
+      SELECT * INTO v FROM public.income_expenses WHERE id=p_voucher AND deleted_at IS NULL FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'Phiếu không tồn tại' USING ERRCODE='P0002'; END IF;
+      IF v.approval_status='CANCELLED' THEN RETURN jsonb_build_object('id',p_voucher,'changed',false,'reason','đã huỷ trước đó'); END IF;
+      SELECT * INTO w FROM public.fixture_writer;
+      IF w.rejected_message IS NOT NULL AND w.reject_name='cancel' THEN RAISE EXCEPTION '%',w.rejected_message USING ERRCODE=COALESCE(w.reject_state,'P0001'); END IF;
+      PERFORM app_private.assert_manual_voucher_v1(p_voucher,'huỷ');
+      IF v.user_id IS DISTINCT FROM auth.uid() AND NOT EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='income_expenses.cancel' AND a.allowed
+          AND v.building_id=ANY(a.building_ids)) THEN RAISE EXCEPTION 'Không có quyền huỷ phiếu thu chi trên toà này' USING ERRCODE='42501'; END IF;
+      IF p_expected_approval_version IS NOT NULL AND v.approval_version<>p_expected_approval_version THEN
+        RAISE EXCEPTION 'Phiếu vừa được người khác thay đổi — hãy tải lại' USING ERRCODE='40001'; END IF;
+      IF p_expected_posting_version IS NOT NULL AND v.posting_version<>p_expected_posting_version THEN
+        RAISE EXCEPTION 'Phiếu vừa được người khác ghi sổ — hãy tải lại' USING ERRCODE='40001'; END IF;
+      IF COALESCE(v.posting_status,'UNPOSTED')='POSTED' THEN
+        INSERT INTO public.fixture_postings VALUES(p_voucher,'REVERSAL',v.total_amount); v_kind:='CANCELLED_AFTER_POSTING'; END IF;
+      UPDATE public.income_expenses SET approval_status='CANCELLED',posting_status=CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 'REVERSED' ELSE posting_status END,
+        approval_version=approval_version+1,posting_version=posting_version+CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 1 ELSE 0 END WHERE id=p_voucher;
+      INSERT INTO public.fixture_cancellations VALUES(p_voucher,v_kind,p_reason);
+      RETURN jsonb_build_object('id',p_voucher,'changed',true,'cancellation_kind',v_kind);
+    END $f$;
+  INSERT INTO public.income_expense_types(id,organization_id,type,name,rule_key,keywords,sort_order) VALUES
+    ('00000000-0000-4000-8000-000000000605','${ORG}','expense','Trả lại tiền thừa cho khách','tra_tien_thua_khach',ARRAY['thối tiền','khách đóng dư'],40);`;
 
 test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, lý do, phạm vi, ghi chú', { timeout: 240000 }, async t => {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}` });
@@ -150,6 +255,11 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
   await db.exec(FOUNDATION); await db.exec(WEB);
   await db.exec(RULES); await db.exec(RULES); await db.exec(WRITE); await db.exec(WRITE); // Idempotent.
   await db.exec(RESOLVE2); await db.exec(RESOLVE2); await db.exec(SCOPE_FIX); await db.exec(SCOPE_FIX);
+  // Mốc 4 áp lên thân Mốc 3 (= production): $requires$ ghim md5 thân đang chạy; lần hai nhận thân của chính file.
+  await db.exec(KEYS); await db.exec(WEB4); await db.exec(EDIT); await db.exec(EDIT);
+  await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel')");
+  for (const table of ['hermes_org_policies', 'hermes_connections'])
+    await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel']`);
   await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('buildings.view',$1) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true", [[BUILDING, OTHER_BUILDING]]);
   const run = (action, phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_expense_write_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
@@ -211,8 +321,8 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     await db.query("UPDATE public.fixture_writer SET rejected_message='[PROFIT_LOCKED] tháng đã chốt',reject_name='khoản hai'");
     assert.deepEqual(await applyWith(rid(4), params, fresh), { kind: 'rejected', reason: 'state_changed' });
     assert.deepEqual(await trace(), before);
-    // Xem trước lại thấy đúng lý do từ chối (chạy thử bắt sớm).
-    assert.deepEqual(await run('expense.create', 'preview', rid(5), params), { kind: 'rejected', reason: 'period_locked' });
+    // Xem trước lại thấy đúng lý do từ chối (chạy thử bắt sớm) — và khoản số mấy (Mốc 4, review).
+    assert.deepEqual(await run('expense.create', 'preview', rid(5), params), { kind: 'rejected', reason: 'period_locked', item: 2 });
     await db.query("UPDATE public.fixture_writer SET rejected_message=NULL,reject_name=NULL,reject_state=NULL");
   });
 
@@ -369,11 +479,185 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     });
   });
 
+  // ---- Mốc 4: sửa / huỷ phiếu CHI lập tay, cờ TC5, khoản số mấy, hạng mục dòng tiền. Mỗi ca chạy trong BEGIN … ROLLBACK.
+  const TODAY = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10), vn = iso => iso.split('-').reverse().join('/');
+  const MONEY_FLOW = '00000000-0000-4000-8000-000000000605';
+  const voucher = async (code, extra = {}) => {
+    const v = { type: 'EXPENSE', name: 'mua bóng đèn', amount: 400000, status: 'UNAPPROVED', posting: 'UNPOSTED', account: CASHBOOK, user: USER, date: TODAY, ...extra };
+    const id = (await db.query(`INSERT INTO public.income_expenses(organization_id,user_id,code,type,name,building_id,room_id,account_id,voucher_date,total_amount,
+        approval_status,posting_status,payer_name,system_source,salary_staff_id,repeat_parent_id,repeat_cycle)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`, [ORG, v.user, code, v.type, v.name, v.building ?? BUILDING, v.room ?? null,
+      v.account, v.date, v.amount, v.status, v.posting, v.payee ?? null, v.system ?? null, v.salary ?? null, v.parent ?? null, v.cycle ?? 'NONE'])).rows[0].id;
+    for (const amount of v.lines ?? [v.amount])
+      await db.query('INSERT INTO public.income_expense_items(income_expense_id,income_expense_type_id,amount,start_date,end_date) VALUES($1,$2,$3,$4,$4)', [id, v.typeId ?? CATEGORY, amount, v.date]);
+    return id;
+  };
+  const row = async id => (await db.query(`SELECT ie.name,ie.payer_name,ie.voucher_date::text,ie.account_id,ie.room_id,ie.total_amount::bigint::text total,ie.approval_status,
+    ie.posting_status,ie.approval_version::int,(SELECT jsonb_agg(jsonb_build_array(it.income_expense_type_id,it.unit_price::bigint::text,it.start_date::text) ORDER BY it.created_at)
+      FROM public.income_expense_items it WHERE it.income_expense_id=ie.id) items FROM public.income_expenses ie WHERE ie.id=$1`, [id])).rows[0];
+  const trace4 = async () => (await db.query(`SELECT (SELECT count(*)::int FROM public.fixture_revisions) revisions,(SELECT count(*)::int FROM public.fixture_postings) postings,
+    (SELECT count(*)::int FROM public.fixture_cancellations) cancellations,(SELECT count(*)::int FROM app_private.hermes_action_receipts) receipts,
+    (SELECT count(*)::int FROM public.income_expense_items) items,(SELECT md5(string_agg(ie::text,'|' ORDER BY ie.id)) FROM public.income_expenses ie) vouchers`)).rows[0];
+  const step = (action, requestId, params, preview) => run(action, 'apply', requestId, params, { resolved: preview.resolved, basis: preview.basis });
+
+  await t.test('Mốc 4 expense.edit: chạy thử revise rồi lùi; đổi tiền phải có lý do; trước → sau; lượt 2 ghi + phát lại; lệch phiên bản ⇒ state_changed', async () => {
+    await f.rollbackCase(async () => {
+      const id = await voucher('PC2610501', { amount: 1200000 });
+      const before = await trace4();
+      assert.deepEqual(await run('expense.edit', 'preview', rid(60), { voucherCode: 'pc2610501', amount: 1150000 }), { kind: 'rejected', reason: 'reason_required' });
+      const params = { voucherCode: 'pc2610501', amount: 1150000, payee: 'cửa hàng điện', reason: 'ghi nhầm số tiền' };
+      const preview = await run('expense.edit', 'preview', rid(61), params);
+      assert.deepEqual([preview.kind, preview.confirm, preview.preview.summary, preview.preview.willBe], ['preview', 'required',
+        'Sửa phiếu PC2610501 (chờ duyệt): số tiền 1.200.000đ → 1.150.000đ; người nhận (trống) → cửa hàng điện. Lý do: ghi nhầm số tiền.',
+        'Sau khi sửa phiếu vẫn CHỜ DUYỆT; lần sửa ghi vào lịch sử phiếu']);
+      assert.ok(!JSON.stringify(preview.preview).match(/[0-9a-f]{8}-[0-9a-f]{4}-/), 'bản xem trước không có UUID');
+      assert.deepEqual(await trace4(), before, 'chạy thử không để lại lần sửa, không đổi phiếu, không biên nhận');
+      const applied = await step('expense.edit', rid(61), params, preview);
+      assert.deepEqual([applied.kind, applied.result.code, applied.result.statusText, applied.link], ['applied', 'PC2610501', 'Đã sửa; phiếu vẫn chờ duyệt', `/income-expense/voucher/${id}`]);
+      const after = await row(id);
+      assert.deepEqual([after.total, after.payer_name, after.approval_status, after.approval_version, after.items[0][1]], ['1150000', 'cửa hàng điện', 'UNAPPROVED', 2, '1150000']);
+      assert.deepEqual((await db.query('SELECT reason,changed FROM public.fixture_revisions WHERE voucher_id=$1', [id])).rows, [{ reason: 'ghi nhầm số tiền', changed: ['payer_name', 'items'] }]);
+      assert.deepEqual(await step('expense.edit', rid(61), params, preview), applied, 'phát lại y nguyên');
+      assert.equal((await trace4()).revisions, before.revisions + 1);
+      // Phiếu bị sửa sau bản xem trước (phiên bản tăng) ⇒ state_changed: không biên nhận, không sửa.
+      const next = { voucherCode: 'PC2610501', content: 'mua bóng đèn LED' };
+      const stale = await run('expense.edit', 'preview', rid(62), next);
+      await db.query('UPDATE public.income_expenses SET approval_version=approval_version+1 WHERE id=$1', [id]);
+      const frozen = await trace4();
+      assert.deepEqual(await step('expense.edit', rid(62), next, stale), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await trace4(), frozen);
+      // Hàm web từ chối ở lượt 2 (kỳ vừa chốt) ⇒ state_changed, không chốt biên nhận; xem trước lại thấy đúng lý do.
+      const fresh = await run('expense.edit', 'preview', rid(63), next);
+      await db.query("UPDATE public.fixture_writer SET rejected_message='[PROFIT_LOCKED] tháng đã chốt',reject_name='revise'");
+      assert.deepEqual(await step('expense.edit', rid(63), next, fresh), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await trace4(), frozen);
+      assert.deepEqual(await run('expense.edit', 'preview', rid(64), next), { kind: 'rejected', reason: 'period_locked' });
+    });
+  });
+
+  await t.test('Mốc 4 expense.edit: hạng mục, sổ, ngày (kỳ một ngày đi theo), phòng; không đổi gì ⇒ hỏi lại; đã duyệt ⇒ not_pending; nhiều dòng ⇒ web; bản đã giải giả ⇒ not_allowed', async () => {
+    await f.rollbackCase(async () => {
+      const id = await voucher('PC2610502', { date: '2026-10-20' });
+      const params = { voucherCode: 'PC2610502', category: 'pccc', cashbook: 'tiền mặt', voucherDate: TODAY, roomName: 'p101', reason: 'đổi hạng mục và sổ' };
+      const preview = await run('expense.edit', 'preview', rid(65), params);
+      assert.deepEqual(preview.preview.changes, [{ field: 'hạng mục', before: 'Sửa chữa', after: 'PCCC' },
+        { field: 'ngày phiếu', before: '20/10/2026', after: vn(TODAY) }, { field: 'sổ quỹ', before: 'Quỹ VCB 0123456789', after: 'Tiền mặt toà A' },
+        { field: 'phòng', before: '(không)', after: 'P101' }]);
+      const applied = await step('expense.edit', rid(65), params, preview);
+      assert.equal(applied.kind, 'applied');
+      const after = await row(id);
+      assert.deepEqual([after.voucher_date, after.account_id, after.room_id, after.items], [TODAY, CB2, ROOM, [[PCCC, '400000', TODAY]]],
+        'kỳ một ngày trùng ngày phiếu cũ đi theo ngày mới');
+      // Không có trường đổi / giá trị như cũ ⇒ hỏi lại (invalid_params); toà ngoài phạm vi khoá ⇒ hỏi lại.
+      assert.deepEqual(await run('expense.edit', 'preview', rid(66), { voucherCode: 'PC2610502', reason: 'không đổi gì cả' }), { kind: 'rejected', reason: 'invalid_params' });
+      assert.deepEqual(await run('expense.edit', 'preview', rid(67), { voucherCode: 'PC2610502', content: 'mua bóng đèn' }), { kind: 'rejected', reason: 'invalid_params' });
+      assert.equal((await run('expense.edit', 'preview', rid(68), { voucherCode: 'PC2610502', buildingName: 'Toà B', reason: 'nhầm toà rồi' })).why, 'outside_scope');
+      // Phiếu đã duyệt ⇒ hàm web từ chối khi chạy thử ⇒ not_pending; phiếu nhiều dòng hạng mục ⇒ đổi tiền làm trên web, đổi nội dung vẫn được.
+      await voucher('PC2610503', { status: 'APPROVED', posting: 'POSTED' });
+      assert.deepEqual(await run('expense.edit', 'preview', rid(69), { voucherCode: 'PC2610503', content: 'x y z' }), { kind: 'rejected', reason: 'not_pending' });
+      await voucher('PC2610504', { amount: 500000, lines: [300000, 200000] });
+      assert.deepEqual(await run('expense.edit', 'preview', rid(70), { voucherCode: 'PC2610504', amount: 450000, reason: 'ghi nhầm số tiền' }), { kind: 'rejected', reason: 'web_only' });
+      assert.equal((await run('expense.edit', 'preview', rid(71), { voucherCode: 'PC2610504', content: 'hai món' })).kind, 'preview');
+      // Lượt 2 đưa bản đã giải giả (toà ngoài phạm vi, phòng toà khác, hạng mục hệ thống, sổ người khác) ⇒ từ chối trước biên nhận.
+      const p = await run('expense.edit', 'preview', rid(72), { voucherCode: 'PC2610504', content: 'hai món' });
+      const elsewhere = await voucher('PC2610505', { building: OTHER_BUILDING });
+      const frozen = await trace4();
+      for (const [forged, reason] of [[{ voucherId: elsewhere }, 'not_allowed'], [{ newBuildingId: OTHER_BUILDING, newBuildingName: 'Toà B' }, 'not_allowed'], [{ roomId: OTHER_ROOM }, 'not_allowed'],
+        [{ typeId: SYSTEM, typeName: 'x' }, 'not_allowed'], [{ cashbookId: FOREIGN_CASHBOOK, cashbookName: 'x' }, 'cashbook_not_held']])
+        assert.deepEqual(await run('expense.edit', 'apply', rid(72), { voucherCode: 'PC2610504', content: 'hai món' }, { resolved: { ...p.resolved, ...forged }, basis: p.basis }),
+          { kind: 'rejected', reason }, JSON.stringify(forged));
+      assert.deepEqual(await trace4(), frozen);
+    });
+  });
+
+  await t.test('Mốc 4 expense.cancel: đã vào sổ ⇒ "bút toán đảo, KHÔNG khôi phục được"; chưa vào sổ; lượt 2 + phát lại; đã huỷ ⇒ not_pending; người khác cần quyền huỷ; lệch ⇒ state_changed', async () => {
+    await f.rollbackCase(async () => {
+      const posted = await voucher('PC2610511', { amount: 350000, status: 'APPROVED', posting: 'POSTED', account: CB2 });
+      const before = await trace4();
+      const params = { voucherCode: 'PC2610511', reason: 'lập trùng phiếu' };
+      const preview = await run('expense.cancel', 'preview', rid(75), params);
+      assert.deepEqual([preview.kind, preview.confirm, preview.preview.summary, preview.preview.willBe], ['preview', 'required',
+        `Huỷ phiếu PC2610511 — 350.000đ, Sửa chữa, Toà A, ngày ${vn(TODAY)}.`,
+        'ĐÃ VÀO SỔ Tiền mặt toà A ⇒ huỷ sẽ tạo bút toán đảo (cộng lại 350.000đ vào sổ), KHÔNG khôi phục được']);
+      assert.deepEqual(await trace4(), before, 'chạy thử không để lại bút toán, dòng huỷ, biên nhận');
+      const applied = await step('expense.cancel', rid(75), params, preview);
+      assert.deepEqual([applied.kind, applied.result.cancellationKind, applied.result.statusText, applied.result.amountText],
+        ['applied', 'CANCELLED_AFTER_POSTING', 'Đã huỷ; đã tạo bút toán đảo vào sổ Tiền mặt toà A', '350.000đ']);
+      assert.deepEqual((await row(posted)).approval_status, 'CANCELLED');
+      assert.deepEqual((await db.query('SELECT kind,amount::bigint::text amount FROM public.fixture_postings WHERE voucher_id=$1', [posted])).rows, [{ kind: 'REVERSAL', amount: '350000' }]);
+      assert.deepEqual(await step('expense.cancel', rid(75), params, preview), applied, 'phát lại y nguyên');
+      assert.deepEqual(await run('expense.cancel', 'preview', rid(76), params), { kind: 'rejected', reason: 'not_pending' }, 'đã huỷ');
+      // Chưa vào sổ ⇒ câu khác; phiếu cha lặp lại ⇒ cảnh báo các kỳ sau không tự lập.
+      await voucher('PC2610512', { cycle: 'MONTH' });
+      const unposted = await run('expense.cancel', 'preview', rid(77), { voucherCode: 'PC2610512', reason: 'không mua nữa' });
+      assert.deepEqual([unposted.preview.willBe, unposted.warnings], ['CHƯA VÀO SỔ ⇒ phiếu chuyển sang Đã huỷ, sổ quỹ không đổi',
+        ['Phiếu lặp lại theo chu kỳ: huỷ thì các kỳ sau KHÔNG tự lập nữa']]);
+      // Phiếu của người khác: hàm web đòi quyền huỷ ở toà ⇒ not_allowed ngay bản xem trước; có quyền ⇒ xem trước được.
+      await voucher('PC2610513', { user: STRANGER });
+      assert.deepEqual(await run('expense.cancel', 'preview', rid(78), { voucherCode: 'PC2610513', reason: 'lập trùng phiếu' }), { kind: 'rejected', reason: 'not_allowed' });
+      await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('income_expenses.cancel',$1)", [[BUILDING]]);
+      assert.equal((await run('expense.cancel', 'preview', rid(79), { voucherCode: 'PC2610513', reason: 'lập trùng phiếu' })).kind, 'preview');
+      // Ghi sổ xen giữa hai lượt (phiên bản sổ tăng) ⇒ state_changed, không huỷ.
+      const p = await run('expense.cancel', 'preview', rid(80), { voucherCode: 'PC2610512', reason: 'không mua nữa' });
+      await db.query("UPDATE public.income_expenses SET posting_version=posting_version+1 WHERE code='PC2610512'");
+      const frozen = await trace4();
+      assert.deepEqual(await step('expense.cancel', rid(80), { voucherCode: 'PC2610512', reason: 'không mua nữa' }, p), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await trace4(), frozen);
+    });
+  });
+
+  await t.test('Mốc 4: chỉ phiếu CHI lập tay — THU ⇒ web_only, phiếu hệ thống (kể cả hoa hồng web cho sửa) ⇒ system_voucher, phiếu con định kỳ theo cờ TC5', async () => {
+    await f.rollbackCase(async () => {
+      await voucher('PT2610001', { type: 'INCOME' });
+      await voucher('PC2610521', { system: 'contract.commission' });
+      await voucher('PC2610522', { salary: STRANGER });
+      const parent = await voucher('PC2610523', { status: 'APPROVED', posting: 'POSTED', cycle: 'MONTH' });
+      await voucher('PC2610524', { parent });
+      for (const [code, reason] of [['PT2610001', 'web_only'], ['PC2610521', 'system_voucher'], ['PC2610522', 'system_voucher'], ['PC2610524', 'system_voucher']]) {
+        assert.deepEqual(await run('expense.edit', 'preview', rid(85), { voucherCode: code, content: 'đổi nội dung' }), { kind: 'rejected', reason }, `edit ${code}`);
+        assert.deepEqual(await run('expense.cancel', 'preview', rid(86), { voucherCode: code, reason: 'lập trùng phiếu' }), { kind: 'rejected', reason }, `cancel ${code}`);
+      }
+      // TC5 / câu 55: đổi cờ bằng dữ liệu (không sửa mã) ⇒ phiếu con định kỳ thành phiếu lập tay cho bot.
+      assert.deepEqual((await db.query("SELECT enabled FROM app_private.hermes_action_flags WHERE flag='expense.recurring_child_manual'")).rows, [{ enabled: false }]);
+      await db.query("UPDATE app_private.hermes_action_flags SET enabled=true WHERE flag='expense.recurring_child_manual'");
+      const child = await run('expense.edit', 'preview', rid(87), { voucherCode: 'PC2610524', content: 'đổi nội dung' });
+      assert.equal(child.kind, 'preview');
+      await db.query("UPDATE app_private.hermes_action_flags SET enabled=false WHERE flag='expense.recurring_child_manual'");
+      // Lượt 2 với bản xem trước cũ sau khi cờ tắt lại ⇒ bước ghi kiểm lại, từ chối trước biên nhận.
+      const frozen = await trace4();
+      assert.deepEqual(await step('expense.edit', rid(87), { voucherCode: 'PC2610524', content: 'đổi nội dung' }, child), { kind: 'rejected', reason: 'system_voucher' });
+      assert.deepEqual(await trace4(), frozen);
+    });
+  });
+
+  await t.test('Mốc 4 (review): lô nói khoản số mấy; gợi ý hạng mục khoá cứng vào hạng mục dòng tiền không tự nhận', async () => {
+    await f.rollbackCase(async () => {
+      const two = { items: [item({ content: 'khoản một' }), item({ content: 'khoản hai' })] };
+      await db.query("UPDATE public.fixture_writer SET rejected_message='Sổ quỹ đã khoá tại ngày phiếu',reject_name='khoản hai'");
+      assert.deepEqual(await run('expense.create', 'preview', rid(90), two), { kind: 'rejected', reason: 'period_locked', item: 2 });
+      await db.query("UPDATE public.fixture_writer SET reject_name='khoản một'");
+      assert.deepEqual(await run('expense.create', 'preview', rid(91), { items: [item({ content: 'khoản một' })] }), { kind: 'rejected', reason: 'period_locked' }, 'một khoản: không cần số');
+      await db.query("UPDATE public.fixture_writer SET rejected_message=NULL,reject_name=NULL");
+      assert.deepEqual(await run('expense.create', 'preview', rid(92), { items: [item(), item({ cashbook: 'quỹ người khác' })] }), { kind: 'rejected', reason: 'cashbook_not_held', item: 2 });
+      // "tiền phòng 5 ngày": luật khoá cứng vào "Trả lại tiền thừa cho khách" (dòng tiền) ⇒ hỏi lại, gợi ý đứng đầu; nêu tên thì nhận.
+      const suggested = (await db.query("SELECT public.ie_category_suggest_v1($1,'[{\"text\":\"tiền phòng 5 ngày\"}]'::jsonb,'expense',false)->0 s", [ORG])).rows[0].s;
+      assert.deepEqual([suggested.typeId, suggested.reason], [MONEY_FLOW, 'rule'], 'luật web khoá cứng');
+      const asked = await run('expense.create', 'preview', rid(93), { items: [item({ category: undefined, content: 'tiền phòng 5 ngày' })] });
+      assert.deepEqual([asked.kind, asked.field, asked.candidates[0]?.name], ['needs_input', 'category', 'Trả lại tiền thừa cho khách']);
+      const named = await run('expense.create', 'preview', rid(94), { items: [item({ category: 'trả lại tiền thừa', content: 'tiền phòng 5 ngày' })] });
+      assert.equal(named.preview.items[0].category, 'Trả lại tiền thừa cho khách');
+    });
+    // Danh sách dòng tiền của Hermes = c_money_flow của ie_category_suggest_v1 (hai file khác nhau, test khoá bằng nhau).
+    const list = sql => /c_money_flow CONSTANT text\[\]:=ARRAY\[([^\]]+)\]/.exec(sql)?.[1];
+    assert.ok(list(RULES) && list(RULES) === list(EDIT), `${list(RULES)} ≠ ${list(EDIT)}`);
+  });
+
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.create'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run('expense.create', phase, rid(30), { items: [item()] }), code('22023'));
     await assert.rejects(run(null, 'preview', rid(31), { items: [item()] }), code('42501'));
-    await assert.rejects(run('expense.edit', 'preview', rid(32), { voucherCode: 'PC2610001' }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
+    await assert.rejects(run('expense.approve', 'preview', rid(32), { voucherCodes: ['PC2610001'] }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
+    await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action IN ('expense.edit','expense.cancel')"), code('23514'));
     // Khoá tắt (trạng thái production, Q4) ⇒ guard từ chối trước khi giải tên.
     await f.rollbackCase(async () => {
       await db.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='income_expenses.create'");
@@ -383,7 +667,8 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       has_function_privilege('anon',p.oid,'EXECUTE') anon FROM pg_proc p WHERE p.proname LIKE 'hermes_expense_%' AND p.proname NOT IN ('hermes_expense_action_v1','hermes_expense_capabilities_v1',
       'hermes_expense_category_ok_v1','hermes_expense_cashbook_ok_v1') ORDER BY 1`)).rows;
     assert.deepEqual(acl.map(r => [r.fn.replace(/\(.*/, ''), r.prosecdef, r.standard, r.auth, r.anon]), [
-      ['app_private.hermes_expense_create_run_v1', true, false, false, false], ['app_private.hermes_expense_reason_v1', false, false, false, false],
+      ['app_private.hermes_expense_create_run_v1', true, false, false, false], ['app_private.hermes_expense_manual_v1', true, false, false, false],
+      ['app_private.hermes_expense_reason_v1', false, false, false, false],
       ['app_private.hermes_expense_resolve_core_v1', false, false, true, false], ['app_private.hermes_expense_scope_v1', true, false, true, false],
       ['app_private.hermes_expense_write_step_v1', true, false, true, false], ['hermes_expense_write_v1', false, true, true, false]]);
   });

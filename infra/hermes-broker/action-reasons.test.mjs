@@ -52,6 +52,13 @@ test('broker: action_rejected (400) và action_outcome_unknown (503, kèm reques
   }
   // Mã dạng needs_input hay mã lạ không bao giờ đi đường lỗi với chính nó.
   for (const code of [...ACTION_INPUT_REASONS, 'nope', undefined]) assert.equal(actionRejected(code).reason, 'crm_refused', String(code));
+  // Thu chi Mốc 4: khoản số mấy của lô (1–20) ⇒ item + "Khoản N: " trước câu tĩnh; giá trị khác bị bỏ.
+  const batch = actionRejected('period_locked', 2);
+  assert.deepEqual([batch.reason, batch.item, batch.detail], ['period_locked', 2, `Khoản 2: ${ACTION_REASONS.period_locked.text}`]);
+  for (const item of [0, 21, 2.5, '2', null, -1]) {
+    const error = actionRejected('period_locked', item);
+    assert.deepEqual([Object.hasOwn(error, 'item'), error.detail], [false, ACTION_REASONS.period_locked.text], String(item));
+  }
 });
 
 test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ, dạng needs_input hay detail khác đều bị bỏ', async t => {
@@ -75,6 +82,14 @@ test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ
     ['nope', ACTION_REASONS.crm_refused.text], [null, null], ['period_locked', { text: ACTION_REASONS.period_locked.text }]]) {
     problem = forged(reason, detail);
     assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(reason));
+  }
+  // Khoản số mấy của lô: item + câu "Khoản N: …" đi cùng; item giả hay câu không khớp item ⇒ bỏ hết.
+  problem = actionRejected('cashbook_not_held', 3);
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cashbook_not_held', detail: `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`, item: 3 });
+  for (const [item, detail] of [[3, ACTION_REASONS.cashbook_not_held.text], [99, `Khoản 99: ${ACTION_REASONS.cashbook_not_held.text}`],
+    ['3', `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`], [undefined, `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`]]) {
+    problem = Object.assign(forged('cashbook_not_held', detail), item === undefined ? {} : { item });
+    assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(item));
   }
   // Câu tĩnh của action_rejected không đi theo mã khác.
   problem = Object.assign(new BrokerError('forbidden'), { reason: 'not_allowed', detail: ACTION_REASONS.not_allowed.text });

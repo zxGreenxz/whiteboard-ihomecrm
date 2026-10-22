@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
+import { BrokerError, REQUEST_RECEIPT_UNKNOWN, actionItem, itemDetail } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
 import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
@@ -129,8 +129,10 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail }
           // Đợt 1 nền chung: lỗi thật của thao tác ghi mang MỘT lý do dạng rejected của danh sách đóng action-reasons.mjs
           // cùng đúng câu tĩnh của nó; reason/detail nào khác (kể cả gán nhầm) không tới mô hình.
-          : safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) && safe.detail === ACTION_REASONS[safe.reason].text
-            ? { reason: safe.reason, detail: safe.detail } : {};
+          // Thu chi Mốc 4: lỗi của một khoản trong lô kèm item (1–20) và câu "Khoản N: " + đúng câu tĩnh đó.
+          : safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) && (safe.item === undefined || actionItem(safe.item)) &&
+            safe.detail === itemDetail(safe.item, ACTION_REASONS[safe.reason].text)
+            ? { reason: safe.reason, detail: safe.detail, ...(safe.item === undefined ? {} : { item: safe.item }) } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });
