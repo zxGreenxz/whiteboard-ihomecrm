@@ -57,13 +57,14 @@ export const cameraEventSchema = z.object({
 export const cameraEventsSchema = z.object({ items: z.array(cameraEventSchema), hasMore: z.boolean() });
 
 export type CameraRecorder = z.infer<typeof cameraRecorderSchema>;
+export type CameraBuilding = z.infer<typeof cameraBuildingSchema>;
 export type CameraSnapshot = z.infer<typeof cameraSnapshotSchema>;
 export type CameraEvent = z.infer<typeof cameraEventSchema>;
 export type CameraEventPage = z.infer<typeof cameraEventsSchema>;
 export interface CameraScope { organizationId: string; buildingId: string }
 export interface CameraEventCursor { observedAt: string; id: string }
 export interface CameraRepository {
-  getBuilding(scope: CameraScope): Promise<{ recorders: CameraRecorder[] }>;
+  getBuilding(scope: CameraScope): Promise<CameraBuilding>;
   listEvents(scope: CameraScope, cursor?: CameraEventCursor): Promise<CameraEventPage>;
 }
 

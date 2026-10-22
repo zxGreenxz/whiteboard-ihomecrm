@@ -1,14 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   cameraBuildingSchema, cameraEventsSchema,
-  type CameraEventCursor, type CameraRepository, type CameraScope,
+  type CameraEventCursor, type CameraRecorder, type CameraRepository, type CameraScope,
 } from "./cameraContracts";
 import { NetworkCenterRepositoryError, type NetworkCenterRpcCall } from "./supabaseRepository";
 
 const rpc: NetworkCenterRpcCall = (name, args) =>
   (supabase.rpc as unknown as NetworkCenterRpcCall)(name, args);
 
-function checkScope(scope: CameraScope, rows: Array<{ organization_id: string; building_id: string }>) {
+function checkScope(scope: CameraScope, rows: Array<Pick<CameraRecorder, "organization_id" | "building_id">>) {
   if (rows.some((row) => row.organization_id !== scope.organizationId || row.building_id !== scope.buildingId)) {
     throw new NetworkCenterRepositoryError("Dữ liệu camera không khớp tòa nhà đang chọn.", { code: "CAMERA_SCOPE_MISMATCH" });
   }
