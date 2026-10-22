@@ -46,6 +46,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
   statementSha256:'cb4774dc01070a244241028a4c3977c33222da25f654b817a0a9b860f800ff0b',
  },
+ // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp).
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
+  statementSha256:'3b1893b51c051fcb73a22ec6fbcc6de8da521a58954e526e0cda31d17f0f879f',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

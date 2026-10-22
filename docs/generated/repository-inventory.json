@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1578,
   "soFileDocBangFs": 413,
-  "tongLoiGoi": 1013,
-  "khongPhanLoaiDuoc": 449,
+  "tongLoiGoi": 1014,
+  "khongPhanLoaiDuoc": 450,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -252,6 +252,12 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/wave2-d.test.mjs",
+      "soGoi": 7,
+      "loai": {},
+      "khongPhanLoaiDuoc": 7
+    },
+    {
       "file": "infra/hermes-zalo-native/operator.test.mjs",
       "soGoi": 7,
       "loai": {
@@ -312,12 +318,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 4
-    },
-    {
-      "file": "infra/hermes-broker/wave2-d.test.mjs",
-      "soGoi": 6,
-      "loai": {},
-      "khongPhanLoaiDuoc": 6
     },
     {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",

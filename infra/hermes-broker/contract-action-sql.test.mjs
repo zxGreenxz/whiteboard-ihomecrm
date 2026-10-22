@@ -16,6 +16,8 @@ const RENEWAL_DATE = file('contract_renewal_end_date_v1');
 const RENEWAL_VECTORS = JSON.parse(readFileSync('infra/hermes-broker/contract-renewal-vectors.json', 'utf8')).cases;
 // Mốc 4: file MỚI thay hai hàm của trang (ghi nhận trả phòng); md5 thân của file trang ghim ở $requires$.
 const RETURN_SQL = file('hermes_contract_return_v1');
+// Mốc 5: file MỚI — hàm tra khách INVOKER, vỏ dựng lại, bước ghi dựng từ thân 061813 (md5 ghim ở $requires$).
+const PARTY_SQL = file('hermes_contract_party_draft_v1');
 const plain = sql => sql.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
 const u = n => `00000000-0000-4000-8000-${String(500 + n).padStart(12, '0')}`;
 const CONTRACT = u(1), CUSTOMER = u(2), EMPTY_ROOM = u(3), RETURNED_ROOM = u(4), OLD_CONTRACT = u(5), OTHER_USER = u(6);
@@ -440,7 +442,7 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
 // Review #270 mục 1–2: khoá tổ chức (giao thức ghi chung của hàm web) đứng sau guard, TRƯỚC lần kiểm biên nhận và mọi khoá dòng;
 // lượt preview không khoá dòng. PGlite một kết nối không tái hiện được hai phiên song song ⇒ kiểm thứ tự trong thân bước ghi.
 test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng', () => {
-  for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL]) stepLockOrder(sql);
+  for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL, PARTY_SQL]) stepLockOrder(sql);
 });
 function stepLockOrder(sql) {
   const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(sql)[0];
@@ -621,6 +623,213 @@ test('trang Hợp đồng — Mốc 4: ghi nhận khách trả phòng, quyết t
       await db.exec(original); await db.exec(lookup);
       await db.exec(plain(RETURN_SQL));
       assert.match((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc, /contract\.return/);
+    });
+  });
+});
+
+// Mốc 5 — fixture bổ sung: cột khách/thành viên HĐ, bảng nháp, bản port tối giản của reconcile_contract_customers_v1 (giữ chữ ký,
+// khuôn p_expected, PT409 khi danh sách đổi, quyền contracts.edit theo toà; như web: KHÔNG chặn bỏ người đại diện) và của
+// save_contract_draft (allowlist payload, request_id + draft_id bắt buộc, quyền contracts.create theo toà). bad: 'party_rep' hạ cờ
+// đại diện, 'party_extra' thêm người lạ, 'draft_contract' sinh HĐ, 'draft_room' đổi trạng thái phòng (để thử hậu điều kiện).
+const PARTY_SUPPORT = `ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS id_number text, ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+  ALTER TABLE public.contract_customers ADD COLUMN IF NOT EXISTS notes text;
+  CREATE TABLE IF NOT EXISTS public.contract_drafts(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,room_id uuid,payload jsonb,template_id uuid,
+    revision integer NOT NULL DEFAULT 1,status text NOT NULL DEFAULT 'EDITABLE',created_by uuid,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp());
+  CREATE OR REPLACE FUNCTION public.reconcile_contract_customers_v1(p_organization_id uuid,p_contract_id uuid,p_expected jsonb,p_customers jsonb)
+    RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public AS $w$
+    DECLARE c public.contracts; b uuid; actual jsonb; expected jsonb; desired jsonb; v_bad text:=(SELECT bad FROM public.fixture_contract_writer);
+    BEGIN
+      SELECT * INTO c FROM public.contracts WHERE id=p_contract_id FOR UPDATE;
+      SELECT building_id INTO b FROM public.rooms WHERE id=c.room_id;
+      IF c.id IS NULL OR c.organization_id IS DISTINCT FROM p_organization_id OR NOT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='contracts.edit'
+        AND allowed AND (org_wide OR b=ANY(building_ids))) THEN RAISE EXCEPTION 'Không có quyền sửa khách hợp đồng' USING ERRCODE='42501'; END IF;
+      IF (SELECT raise_state FROM public.fixture_contract_writer) IS NOT NULL THEN
+        RAISE EXCEPTION 'fixture writer refused' USING ERRCODE=(SELECT raise_state FROM public.fixture_contract_writer); END IF;
+      IF c.status NOT IN ('ACTIVE','EXTENDED','EXPIRED','DRAFT') THEN RAISE EXCEPTION 'Hợp đồng đã đóng' USING ERRCODE='55000'; END IF;
+      IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_customers) j LEFT JOIN public.customers cu ON cu.id=(j->>'customer_id')::uuid
+        WHERE cu.id IS NULL OR cu.organization_id IS DISTINCT FROM p_organization_id) THEN
+        RAISE EXCEPTION 'Customer organization mismatch' USING ERRCODE='42501'; END IF;
+      SELECT COALESCE(jsonb_agg(jsonb_build_object('customer_id',customer_id,'is_representative',is_representative,'notes',notes) ORDER BY customer_id),'[]')
+        INTO actual FROM public.contract_customers WHERE contract_id=p_contract_id;
+      SELECT COALESCE(jsonb_agg(jsonb_build_object('customer_id',j->>'customer_id','is_representative',(j->>'is_representative')::boolean,'notes',j->>'notes')
+        ORDER BY j->>'customer_id'),'[]') INTO expected FROM jsonb_array_elements(p_expected) j;
+      SELECT COALESCE(jsonb_agg(jsonb_build_object('customer_id',j->>'customer_id','is_representative',(j->>'is_representative')::boolean,'notes',j->>'notes')
+        ORDER BY j->>'customer_id'),'[]') INTO desired FROM jsonb_array_elements(p_customers) j;
+      IF actual=desired THEN RETURN actual; END IF;
+      IF actual IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Danh sách khách đã thay đổi; tải lại để đối chiếu' USING ERRCODE='PT409'; END IF;
+      DELETE FROM public.contract_customers WHERE contract_id=p_contract_id AND customer_id NOT IN (SELECT (j->>'customer_id')::uuid FROM jsonb_array_elements(desired) j);
+      INSERT INTO public.contract_customers(contract_id,customer_id,is_representative,notes) SELECT p_contract_id,(j->>'customer_id')::uuid,
+        (j->>'is_representative')::boolean,j->>'notes' FROM jsonb_array_elements(desired) j WHERE NOT EXISTS(SELECT 1 FROM public.contract_customers cc
+        WHERE cc.contract_id=p_contract_id AND cc.customer_id=(j->>'customer_id')::uuid);
+      IF v_bad='party_rep' THEN UPDATE public.contract_customers SET is_representative=false WHERE contract_id=p_contract_id; END IF;
+      IF v_bad='party_extra' THEN INSERT INTO public.contract_customers(contract_id,customer_id,is_representative)
+        SELECT p_contract_id,cu.id,false FROM public.customers cu WHERE cu.organization_id=p_organization_id AND NOT EXISTS(SELECT 1 FROM public.contract_customers cc
+          WHERE cc.contract_id=p_contract_id AND cc.customer_id=cu.id) ORDER BY cu.id LIMIT 1; END IF;
+      RETURN desired;
+    END $w$;
+  CREATE OR REPLACE FUNCTION public.save_contract_draft(p_organization_id uuid,p_building_id uuid,p_room_id uuid,p_payload jsonb,p_template_id uuid DEFAULT NULL,
+    p_draft_id uuid DEFAULT NULL,p_expected_revision integer DEFAULT NULL,p_request_id uuid DEFAULT NULL) RETURNS jsonb
+    LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public AS $w$
+    DECLARE d public.contract_drafts; f jsonb:=p_payload->'form'; v_bad text:=(SELECT bad FROM public.fixture_contract_writer);
+    BEGIN
+      IF p_request_id IS NULL THEN RAISE EXCEPTION 'Thiếu định danh lần lưu nháp' USING ERRCODE='22023'; END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='contracts.create' AND allowed AND (org_wide OR p_building_id=ANY(building_ids)))
+        THEN RAISE EXCEPTION 'Không có quyền lưu bản nháp' USING ERRCODE='42501'; END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.rooms r WHERE r.id=p_room_id AND r.building_id=p_building_id AND r.organization_id=p_organization_id) THEN
+        RAISE EXCEPTION 'Phòng không thuộc phạm vi bản nháp' USING ERRCODE='42501'; END IF;
+      IF jsonb_typeof(p_payload)<>'object' OR NOT (p_payload ?& ARRAY['form','customers','services','use_custom_services'])
+        OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_payload) k WHERE k NOT IN ('form','customers','services','use_custom_services','owner','editor_state'))
+        OR (SELECT count(*) FROM jsonb_object_keys(f))<>12 OR NOT (f ?& ARRAY['room_id','signed_date','start_date','end_date','rent_price','total_deposit',
+          'payment_cycle','start_billing_date','end_billing_date','notes','discount_months','discount_amount_per_month'])
+        OR f->>'room_id' IS DISTINCT FROM p_room_id::text OR f->>'payment_cycle' NOT IN ('MONTHLY','QUARTERLY','SEMI_ANNUAL','ANNUAL')
+        OR EXISTS(SELECT 1 FROM unnest(ARRAY['rent_price','total_deposit','discount_months','discount_amount_per_month']) k WHERE jsonb_typeof(f->k)<>'number')
+        OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_payload->'customers') j WHERE (SELECT count(*) FROM jsonb_object_keys(j))<>6
+          OR jsonb_typeof(j->'full_name')<>'string' OR jsonb_typeof(j->'phone')<>'string' OR jsonb_typeof(j->'is_representative')<>'boolean') THEN
+        RAISE EXCEPTION 'Trường nháp không hợp lệ' USING ERRCODE='22023'; END IF;
+      IF p_draft_id IS NULL THEN RAISE EXCEPTION 'Thiếu định danh bản nháp' USING ERRCODE='22023'; END IF;
+      IF EXISTS(SELECT 1 FROM public.contract_drafts WHERE id=p_draft_id) THEN RAISE EXCEPTION 'Bản nháp đã tồn tại' USING ERRCODE='40001'; END IF;
+      INSERT INTO public.contract_drafts(id,organization_id,building_id,room_id,payload,template_id,created_by)
+        VALUES(p_draft_id,p_organization_id,p_building_id,p_room_id,p_payload,p_template_id,auth.uid()) RETURNING * INTO d;
+      IF v_bad='draft_contract' THEN INSERT INTO public.contracts(id,organization_id,room_id,status,contract_number)
+        VALUES(gen_random_uuid(),p_organization_id,p_room_id,'ACTIVE','HĐ-LẠ'); END IF;
+      IF v_bad='draft_room' THEN UPDATE public.rooms SET status='RESERVED' WHERE id=p_room_id; END IF;
+      RETURN to_jsonb(d);
+    END $w$;`;
+
+test('trang Hợp đồng — Mốc 5: thêm / bớt người ở + soạn nháp HĐ (20261022074815)', { timeout: 240000 }, async t => {
+  const { f, db, call, run, receipts } = await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`, migrations: [RETURN_SQL, PARTY_SQL] });
+  const more = ['contracts.edit', 'contracts.create'];
+  await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1) AND mode='action'", [more]);
+  for (const permission of more)
+    await db.query('INSERT INTO public.fixture_acl(permission,building_ids) VALUES($1,$2) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true',
+      [permission, [BUILDING, OTHER_BUILDING]]);
+  await db.query('UPDATE app_private.hermes_org_policies SET action_capabilities=action_capabilities||$1::text[]', [more]);
+  await db.query('UPDATE app_private.hermes_connections SET action_capabilities=action_capabilities||$1::text[]', [more]);
+  const c = n => `00000000-0000-4000-8000-${String(950 + n).padStart(12, '0')}`;
+  await db.query(`INSERT INTO public.customers(id,organization_id,full_name,phone,id_number) VALUES
+    ($1,$5,'Nguyễn Văn Hai','0912.345.678','079000000002'),($2,$5,'Trần Thị Ba','+84 913 000 003',null),($3,$5,'Nguyễn Văn Hai','0914000004',null),
+    ($4,'00000000-0000-4000-8000-0000000000ff','Khách Công Ty Khác','0915000005',null)`, [c(1), c(2), c(3), c(4), ORG]);
+  const members = async () => (await db.query('SELECT customer_id::text id,is_representative r FROM public.contract_customers WHERE contract_id=$1 ORDER BY customer_id',
+    [CONTRACT])).rows;
+  const drafts = async () => (await db.query('SELECT id,room_id,status,payload FROM public.contract_drafts ORDER BY created_at,id')).rows;
+
+  await t.test('chính sách: người ở theo contracts.edit, nháp theo contracts.create, đều ghi thẳng', async () => {
+    const caps = await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG]);
+    for (const [action, capability] of [['contract.occupant_add', 'contracts.edit'], ['contract.occupant_remove', 'contracts.edit'], ['contract.draft', 'contracts.create']])
+      assert.deepEqual(caps.actions[action], { capability, actionClass: 'reversible', confirm: 'never', privateOnly: true }, action);
+  });
+
+  await t.test('tìm khách dưới RLS: SĐT có dấu / +84 khớp đúng; tên trùng ⇒ hỏi lại có ứng viên; không thấy / không quyền xem khách ⇒ hỏi lại', async () => {
+    await f.rollbackCase(async () => {
+      const added = await run('contract.occupant_add', 'auto', rid(300), { ...P101, customerPhone: '0912 345 678' });
+      assert.equal(added.kind, 'applied', JSON.stringify(added));
+      assert.equal(added.result.text, 'Đã thêm người ở Nguyễn Văn Hai vào phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử) (không phải người đại diện). HĐ có 2 người ở.');
+      assert.deepEqual(await members(), [{ id: CUSTOMER, r: true }, { id: c(1), r: false }].sort((a, b) => a.id.localeCompare(b.id)));
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(300)).map(row => row.state), ['applied']);
+      const again = await run('contract.occupant_add', 'auto', rid(301), { ...P101, customerPhone: '0912345678' });
+      assert.deepEqual([again.kind, again.result.changed, again.result.text], ['applied', false, 'Nguyễn Văn Hai đã ở trong phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử); không đổi. HĐ có 2 người ở.']);
+      assert.equal((await run('contract.occupant_add', 'auto', rid(302), { ...P101, customerPhone: '84913000003' })).kind, 'applied', '+84 ⇒ 0');
+      const ambiguous = await run('contract.occupant_add', 'auto', rid(303), { ...P101, customerName: 'nguyen van hai' });
+      assert.deepEqual([ambiguous.kind, ambiguous.reason, ambiguous.field, ambiguous.why], ['needs_input', 'name_unresolved', 'customer', 'ambiguous']);
+      assert.deepEqual(ambiguous.candidates, [{ name: 'Nguyễn Văn Hai · …678' }, { name: 'Nguyễn Văn Hai · …004' }]);
+      assert.equal(JSON.stringify(ambiguous).includes('0912'), false, 'không lộ đủ SĐT');
+      const missing = await run('contract.occupant_add', 'auto', rid(304), { ...P101, customerPhone: '0915000005' });
+      assert.deepEqual([missing.reason, missing.why, missing.candidates], ['name_unresolved', 'not_visible', []], 'khách công ty khác');
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(305), P101), { kind: 'needs_input', reason: 'invalid_params' }, 'không nêu khách');
+      await db.query("UPDATE public.fixture_acl SET allowed=false WHERE permission='customers.view'");
+      assert.equal((await run('contract.occupant_add', 'auto', rid(306), { ...P101, customerPhone: '0914000004' })).why, 'not_visible', 'RLS customers');
+    });
+  });
+
+  await t.test('bớt người ở: chỉ người trong HĐ; không bỏ người đại diện; phòng trống ⇒ không có HĐ', async () => {
+    await f.rollbackCase(async () => {
+      await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative,notes) VALUES($1,$2,false,$3)', [CONTRACT, c(1), 'ở ghép']);
+      await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,false)', [CONTRACT, c(2)]);
+      const removed = await run('contract.occupant_remove', 'auto', rid(310), { ...P101, customerName: 'Trần Thị Ba' });
+      assert.equal(removed.result.text, 'Đã bớt người ở Trần Thị Ba khỏi phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử). HĐ có 2 người ở.');
+      assert.deepEqual((await db.query('SELECT notes FROM public.contract_customers WHERE contract_id=$1 AND customer_id=$2', [CONTRACT, c(1)])).rows[0].notes, 'ở ghép',
+        'ghi chú của người còn lại giữ nguyên');
+      assert.deepEqual(await run('contract.occupant_remove', 'auto', rid(311), { ...P101, customerPhone: '0900000001' }),
+        { kind: 'rejected', reason: 'cannot_remove_representative' });
+      assert.deepEqual(await run('contract.occupant_remove', 'auto', rid(312), { ...P101, customerPhone: '0914000004' }),
+        { kind: 'needs_input', reason: 'occupant_not_on_contract' }, 'khách có trong CRM nhưng không ở HĐ này');
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(313), { buildingName: 'toa a', roomName: 'P102', customerPhone: '0912345678' }),
+        { kind: 'needs_input', reason: 'room_has_no_active_contract' });
+      assert.ok((await members()).some(row => row.id === CUSTOMER && row.r), 'người đại diện còn nguyên');
+    });
+  });
+
+  await t.test('hậu điều kiện người ở: hàm ghi hạ cờ đại diện / thêm người lạ ⇒ lùi, crm_refused', async () => {
+    for (const [index, bad] of ['party_rep', 'party_extra'].entries()) await f.rollbackCase(async () => {
+      await db.query('UPDATE public.fixture_contract_writer SET bad=$1', [bad]);
+      const before = await members();
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(320 + index), { ...P101, customerPhone: '0912345678' }),
+        { kind: 'rejected', reason: 'crm_refused' }, bad);
+      assert.deepEqual(await members(), before, bad);
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(320 + index)).map(row => row.state), ['rejected'], bad);
+    });
+  });
+
+  await t.test('nháp: phòng trống ⇒ ghi thẳng đúng allowlist; trùng 24 giờ / phòng còn HĐ ⇒ máy chủ đòi xác nhận; ngày/giá sai', async () => {
+    await f.rollbackCase(async () => {
+      const P102 = { buildingName: 'toa a', roomName: 'P102' };
+      const base = { ...P102, startDate: '2026-11-01', endDate: '2027-10-31', rentPrice: 3200000, deposit: 3200000, customerPhone: '0912345678', note: 'Khách hẹn ký 30/10' };
+      const made = await run('contract.draft', 'auto', rid(330), base);
+      assert.equal(made.kind, 'applied', JSON.stringify(made)); assert.equal(made.link, '/contracts');
+      assert.equal(made.result.text, 'Đã soạn NHÁP HĐ mới phòng P102 toà Toà A: bắt đầu Chủ nhật 01/11/2026 (còn 10 ngày), kết thúc 31/10/2027, giá thuê 3.200.000đ/tháng, ' +
+        'cọc 3.200.000đ, kỳ thanh toán hằng tháng; khách: Nguyễn Văn Hai. Nháp KHÔNG giữ phòng, không tạo tiền; dịch vụ theo mặc định của toà khi ký. ' +
+        'Mở nháp trên web (Hợp đồng → tab Nháp) để kiểm, xuất và ký.');
+      const [draft] = await drafts();
+      assert.equal(made.result.draftId, draft.id);
+      assert.deepEqual(draft.payload, { form: { room_id: EMPTY_ROOM, signed_date: TODAY, start_date: '2026-11-01', end_date: '2027-10-31', rent_price: 3200000,
+        total_deposit: 3200000, payment_cycle: 'MONTHLY', start_billing_date: '', end_billing_date: '', notes: 'Khách hẹn ký 30/10', discount_months: 0,
+        discount_amount_per_month: 0 }, customers: [{ id: c(1), full_name: 'Nguyễn Văn Hai', phone: '0912.345.678', id_number: '079000000002',
+        is_representative: true, notes: null }], services: [], use_custom_services: false });
+      assert.deepEqual(await run('contract.draft', 'auto', rid(330), base), made, 'phát lại cùng requestId');
+      // Trùng nháp 24 giờ ⇒ xem trước + xác nhận (dù chính sách ghi thẳng), rồi apply ghi nháp thứ hai.
+      const dup = await run('contract.draft', 'auto', rid(331), { ...base, customerPhone: undefined });
+      assert.deepEqual([dup.kind, dup.confirm], ['preview', 'required']);
+      assert.ok(dup.warnings.some(text => /^Phòng đã có nháp HĐ soạn lúc .* \(chưa ký\); kiểm lại để không soạn trùng\.$/.test(text)), JSON.stringify(dup.warnings));
+      assert.match(dup.preview.text, /khách: chưa có \(thêm trên web\)\./);
+      const second = await run('contract.draft', 'apply', rid(331), { ...base, customerPhone: undefined }, dup);
+      assert.equal(second.kind, 'applied'); assert.equal((await drafts()).length, 2);
+      assert.deepEqual((await drafts())[1].payload.customers, [], 'không nêu khách ⇒ nháp chưa có khách');
+    });
+    await f.rollbackCase(async () => {
+      const busy = await run('contract.draft', 'auto', rid(332), { ...P101, startDate: '2026-11-01', endDate: '2027-10-31', rentPrice: 4500000, deposit: 4500000 });
+      assert.deepEqual([busy.kind, busy.confirm], ['preview', 'required'], 'phòng còn HĐ tới sau ngày bắt đầu');
+      assert.ok(busy.warnings.some(text => text === 'Phòng đang có HĐ HĐ-THU-001 tới 28/02/2027, mà nháp bắt đầu 01/11/2026: kiểm lại trước khi ký.'));
+      assert.deepEqual(await drafts(), [], 'chưa ghi');
+      const P102 = { buildingName: 'toa a', roomName: 'P102', rentPrice: 3000000, deposit: 0 };
+      assert.deepEqual(await run('contract.draft', 'auto', rid(333), { ...P102, startDate: '2026-11-01', endDate: '2026-11-01' }), { kind: 'needs_input', reason: 'date_out_of_range' });
+      assert.deepEqual(await run('contract.draft', 'auto', rid(334), { ...P102, startDate: '01/11/2026', endDate: '2027-10-31' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.draft', 'auto', rid(335), { ...P102, rentPrice: 0, startDate: '2026-11-01', endDate: '2027-10-31' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.draft', 'auto', rid(336), { ...P102, startDate: '2026-11-01', endDate: '2027-10-31', customerName: 'nguyen van hai' }).then(value => value.why),
+        'ambiguous');
+    });
+  });
+
+  await t.test('hậu điều kiện nháp: hàm ghi sinh HĐ / đổi trạng thái phòng ⇒ lùi, crm_refused', async () => {
+    for (const [index, bad] of ['draft_contract', 'draft_room'].entries()) await f.rollbackCase(async () => {
+      await db.query('UPDATE public.fixture_contract_writer SET bad=$1', [bad]);
+      assert.deepEqual(await run('contract.draft', 'auto', rid(340 + index), { buildingName: 'toa a', roomName: 'P102', startDate: '2026-11-01', endDate: '2027-10-31',
+        rentPrice: 3000000, deposit: 0 }), { kind: 'rejected', reason: 'crm_refused' }, bad);
+      assert.deepEqual(await drafts(), [], bad);
+      assert.equal((await db.query("SELECT status FROM public.rooms WHERE id=$1", [EMPTY_ROOM])).rows[0].status, 'AVAILABLE', bad);
+    });
+  });
+
+  await t.test('$requires$: thân bước ghi đang chạy khác thân 20261022061813 ⇒ dừng; đúng thân ⇒ nhận (md5 ghim khớp Postgres)', async () => {
+    const original = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?END \$fn\$;/.exec(RETURN_SQL)[0];
+    await f.rollbackCase(async () => {
+      await db.exec(original.replace('-- Lượt preview chỉ đọc', '-- Lượt preview (thân lạ) chỉ đọc'));
+      await assert.rejects(db.exec(plain(PARTY_SQL)), /hermes_contract_party_base_changed/);
+    });
+    await f.rollbackCase(async () => {
+      await db.exec(original);
+      await db.exec(plain(PARTY_SQL));
+      assert.match((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc, /contract\.occupant_add/);
     });
   });
 });

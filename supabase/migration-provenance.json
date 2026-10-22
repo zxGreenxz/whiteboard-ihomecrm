@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T06:35:23.894Z",
+  "generatedAt": "2026-10-22T08:16:35.471Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 805,
-    "unknown": 84,
-    "catalog-proven": 207,
+    "unknown": 81,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12724,14 +12724,10 @@
       "name": "hermes_contract_action_v1",
       "scheme": "timestamp14",
       "sha256": "495e55c855e2feb2d85f62a044c98f6fbf40ae64026afb074f3ef784a9fca817",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_contract_date_label_v1",
-        "function:app_private.hermes_contract_reason_v1",
-        "function:public.hermes_contract_action_lookup_v1",
-        "function:app_private.hermes_contract_action_step_v1",
-        "function:public.hermes_contract_action_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_contract_date_label_v1",
+        "catalog:function:app_private.hermes_contract_reason_v1"
       ]
     },
     {
@@ -12740,11 +12736,10 @@
       "name": "hermes_w2d_contract_shared_v1",
       "scheme": "timestamp14",
       "sha256": "cc6b2364e4285d6416764ed9a93687e5b78b63b6adfb21f0d678f873b9a0e02e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.real_estate_contracts_ending_v1",
-        "function:public.contract_move_out_notices_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.real_estate_contracts_ending_v1",
+        "catalog:function:public.contract_move_out_notices_v1"
       ]
     },
     {
@@ -12753,10 +12748,9 @@
       "name": "contract_renewal_end_date_v1",
       "scheme": "timestamp14",
       "sha256": "023e38a21a42a969ec3fc2e31bbcbca484b7916cc6659bac285f2c6a8a33efde",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.contract_renewal_end_date_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.contract_renewal_end_date_v1"
       ]
     },
     {
@@ -12788,11 +12782,34 @@
       "name": "hermes_contract_return_v1",
       "scheme": "timestamp14",
       "sha256": "d7d498180ca2488a30f3af4702ea54ab213536801fb8da3b110d143eff9817b4",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_contract_action_lookup_v1",
+        "catalog:function:app_private.hermes_contract_action_step_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql",
+      "version": "20261022074815",
+      "name": "hermes_contract_party_draft_v1",
+      "scheme": "timestamp14",
+      "sha256": "9d36f170a7dfd5c7fc364c1e86ea71cb620edba74c46f62345a990b495e3787c",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "function:public.hermes_contract_action_lookup_v1",
-        "function:app_private.hermes_contract_action_step_v1"
+        "function:public.hermes_contract_party_lookup_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022075119_hermes_w2d_contract_drafts_v1.sql",
+      "version": "20261022075119",
+      "name": "hermes_w2d_contract_drafts_v1",
+      "scheme": "timestamp14",
+      "sha256": "f948bb548a87b37dbb317e013d9a5efd7b9816bbc7a93f603e3ccc4e8d7f2d07",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2d_catalog_v1",
+        "catalog:function:app_private.hermes_w2d_read_v1"
       ]
     },
     {

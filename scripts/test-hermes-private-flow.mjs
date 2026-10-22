@@ -523,6 +523,11 @@ for (const spec of [
   { name: 'public.hermes_contract_action_lookup_v1',
     sourcePath: 'supabase/migrations/20261022061813_hermes_contract_return_v1.sql',
     statementSha256: '49a183d7254c6579d68004d51a0bc99008e2efe79c3d8381618eed88199275a6' },
+  // Occupants + drafts (20261022074815): INVOKER customer lookup under the caller's RLS (phone first, else exact folded name; candidates
+  // carry only a name and the last three phone digits); schema-qualified public/auth objects only.
+  { name: 'public.hermes_contract_party_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
+    statementSha256: '80e91a2ae916923c78cd64f244d50c6b391b5c4dbe106fc97cd67f98979c7f6c' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

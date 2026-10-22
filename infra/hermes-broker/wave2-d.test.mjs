@@ -24,6 +24,8 @@ const READER_SQL = readFileSync(`supabase/migrations/${FILES[3]}`, 'utf8');
 // Đợt 2 trang Hợp đồng: file hàm dùng chung mới (không chữ hermes_) rồi bản cuối của bảng báo cáo và hàm đọc (ba báo cáo đọc bù).
 const CONTRACT_SHARED_SQL = readFileSync(`supabase/migrations/${FILES[4]}`, 'utf8');
 const CONTRACT_READS_SQL = readFileSync(`supabase/migrations/${FILES[5]}`, 'utf8');
+// Mốc 5: bản cuối của bảng báo cáo + hàm đọc (thêm báo cáo nháp HĐ chưa ký), dựng từ thân 043617.
+const CONTRACT_DRAFTS_SQL = readFileSync(`supabase/migrations/${FILES[6]}`, 'utf8');
 const stripComments = sql => sql.replace(/--[^\n]*/g, '');
 let shared;
 before(async () => { shared = await sharedW2d(); });
@@ -62,9 +64,10 @@ test('cấu trúc: ba file dải D; hàng rào gói; hàm dùng chung INVOKER se
   assert.deepEqual(FILES, ['20261018040000_hermes_w2d_catalog_read_v1.sql', '20261018040100_hermes_w2d_reader_v1.sql',
     '20261018040200_hermes_w2d_shared_fixes_v1.sql', '20261018040300_hermes_w2d_reader_fixes_v1.sql',
     // Đợt 2 trang Hợp đồng (sau công tắc, tên giờ thực): hai hàm dùng chung mới, rồi bảng báo cáo + hàm đọc (ba báo cáo đọc bù).
-    '20261022032205_hermes_w2d_contract_shared_v1.sql', '20261022043617_hermes_w2d_contract_reads_v1.sql']);
+    '20261022032205_hermes_w2d_contract_shared_v1.sql', '20261022043617_hermes_w2d_contract_reads_v1.sql',
+    '20261022075119_hermes_w2d_contract_drafts_v1.sql']);
   assert.deepEqual(w2FenceViolations(w2AllMigrations()), [], 'hàng rào gói của nền (P2-4)');
-  for (const sql of [SHARED_SQL, CATALOG_SQL, SHARED_FIX_SQL, READER_SQL, CONTRACT_SHARED_SQL, CONTRACT_READS_SQL]) {
+  for (const sql of [SHARED_SQL, CATALOG_SQL, SHARED_FIX_SQL, READER_SQL, CONTRACT_SHARED_SQL, CONTRACT_READS_SQL, CONTRACT_DRAFTS_SQL]) {
     assert.doesNotMatch(stripComments(sql), /copilot/i);
     assert.doesNotMatch(stripComments(sql), /\bDROP\b|ALTER TABLE|\bINSERT\s+INTO\b|\bUPDATE\s+[a-z_]+\.|\bDELETE\s+FROM\b|CREATE TEMP|check_function_bodies|\bGRANT\b[^;]*hermes_w2d|\bREVOKE\b[^;]*hermes_w2d_read/i);
   }
@@ -80,7 +83,8 @@ test('cấu trúc: ba file dải D; hàng rào gói; hàm dùng chung INVOKER se
   for (const [report, spec] of Object.entries(W2D_REPORTS)) {
     const source = spec.source.replace(/^crm\./, 'public.');
     // RPC web gọi thẳng: dòng tiền phòng; hàng đợi trả phòng (bảng contract_exit_cases không cấp SELECT cho authenticated).
-    assert.ok(pub.includes(source) || ['public.get_room_cash_lifecycle_v1', 'public.list_contract_exit_cases_v1'].includes(source), `${report}: ${spec.source}`);
+    assert.ok(pub.includes(source) || ['public.get_room_cash_lifecycle_v1', 'public.list_contract_exit_cases_v1', 'public.list_contract_drafts'].includes(source),
+      `${report}: ${spec.source}`);
     assert.ok(W2_READ_KEY_LIST.includes(spec.permission) || ['assets.view', 'services.view', 'rooms.view', 'contracts.view'].includes(spec.permission), spec.permission);
   }
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.prosrc src,
@@ -130,7 +134,7 @@ test('hàm dùng chung: chỉ authenticated có khoá web; p_building_ids NULL =
   await assert.rejects(env.call('SELECT public.report_text_v1($1,5) result', ['x'], { role: 'postgres' }), code('42501'), 'report_text_v1: chỉ authenticated (review P3)');
 }));
 
-test('đầu–cuối qua cổng: cả 26 báo cáo qua rào đầu ra của nền và khuôn JS của broker (fence, toà ∈ phạm vi)', () => inCase(async env => {
+test('đầu–cuối qua cổng: cả 27 báo cáo qua rào đầu ra của nền và khuôn JS của broker (fence, toà ∈ phạm vi)', () => inCase(async env => {
   await env.grant([...KEYS, 'suppliers.view', 'categories.view', 'tasks.view']);
   await orgWide(env, KEYS);
   // RLS areas (giả lập) chỉ cho quản trị: không có quản trị thì báo cáo khu rỗng đúng như web (review P1).
@@ -216,6 +220,29 @@ test('Hợp đồng — kết thúc trong khoảng (mặc định tháng này, g
   await db.query("DELETE FROM public.contract_exit_cases WHERE contract_number LIKE 'HD-X%'");
   await db.query("UPDATE public.contract_exit_cases SET state='FINALIZED' WHERE id=$1", [D.EXIT_A]);
   assert.deepEqual((await run(env, 're_exit_cases_pending')).summary, { total: 0, oldestDays: null });
+}));
+
+// Mốc 5: nháp HĐ chưa ký qua RPC web list_contract_drafts; chỉ EDITABLE; không dữ liệu khách của nháp (payload có tên/SĐT/CCCD).
+test('Hợp đồng — nháp chưa ký (contract_drafts): chỉ nháp còn sửa được trong phạm vi, không dữ liệu khách; khoá contracts.view', () => inCase(async env => {
+  const { db } = env;
+  await env.grant(['contracts.view']);
+  const today = (await db.query('SELECT public.org_today_v1()::text d')).rows[0].d;
+  const days = created => Math.round((Date.parse(today) - Date.parse(created)) / 86_400_000);
+  const rows = value => value.items.map(row => [row.draftId, row.roomName, row.startDate, row.endDate, row.rentPrice, row.customerCount,
+    row.hasRepresentative, row.documentCount, row.daysOpen]);
+  const A = [D.DRAFT_A, 'P102', '2026-11-01', '2027-10-31', '3200000.00', 1, true, 1, days('2026-10-12')];
+  let value = await run(env, 'contract_drafts');
+  assert.deepEqual(rows(value), [A], 'chỉ toà trong phạm vi; đã ký / đã xoá không có');
+  assert.deepEqual(value.summary, { total: 1, exported: 1, withoutCustomer: 0, oldestDays: days('2026-10-12') });
+  const text = JSON.stringify(value);
+  for (const secret of ['Khách Nháp', '0900000999', '079000000001']) assert.ok(!text.includes(secret), `không lộ ${secret}`);
+  await orgWide(env, ['contracts.view']);
+  value = await run(env, 'contract_drafts');
+  assert.deepEqual(rows(value), [[D.DRAFT_B, 'P202', null, null, '2500000.00', 0, false, 0, days('2026-10-15')], A], 'mới sửa trước; ngày rỗng ⇒ null');
+  assert.deepEqual(value.summary, { total: 2, exported: 1, withoutCustomer: 1, oldestDays: days('2026-10-12') });
+  assert.deepEqual((await run(env, 'contract_drafts', { buildingId: BUILDING })).items.map(row => row.draftId), [D.DRAFT_A], 'lọc toà');
+  await db.query("UPDATE public.contract_drafts SET status='SIGNED' WHERE id=$1", [D.DRAFT_B]);
+  assert.equal((await run(env, 'contract_drafts')).summary.total, 1, 'ký rồi thì không còn chờ');
 }));
 
 // Mốc 3 (vai quản lý): đếm phòng theo toà bằng khoá xem phòng, khớp từng số với báo cáo rooms (cùng rooms_list_v1, cùng phạm vi).
