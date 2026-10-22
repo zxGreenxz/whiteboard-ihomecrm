@@ -1,4 +1,4 @@
-// Frozen contracts for twenty-four forward migrations (eight of 20261019, the B2
+// Frozen contracts for twenty-five forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -16,7 +16,8 @@
 // 20261022044120 and expense scope = guard ∩ the web writer's own check 20261022044123,
 // and the invoice page reads of W2 package A 20261022051620 — its reader and catalog
 // rebuilt from the live 20261019040948 / 20261018185413 bodies plus seven report
-// branches); source review covers each pin.
+// branches), and the invoice page write RPC invoice.collect 20261022075230 — scope =
+// guard ∩ the web writer's own thu_tien.collect check); source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -123,7 +124,12 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_expense_scope_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"2896218ae26a6fab6866cc53285830e5712c4dba89c0dec9ab386c78ffabcd6e","args":"p_binding jsonb,p_action text"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"0a72aed46ce2a160b7c94dce73e2317bc28d2b8f49eed82eced4860f99163ef4","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"b9e125b87869c09dbbdbd6cc91f279749b57647032858ec38ef39cc1e621fa19","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
-  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
+  {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
+  {"name":"app_private.hermes_invoice_reason_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"1a5d37a10230a1b652ec466b460abdb79ac47d5be8a6001c5cde48be0b6c2f99","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
+  {"name":"app_private.hermes_invoice_scope_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"cbe61d5f7714abc4e989818c058a628402f12fa6e7db163470b5d5f44e1ffe9d","args":"p_binding jsonb,p_action text"},
+  {"name":"app_private.hermes_invoice_lookup_core_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"7b3d45dde1ec48a4fb9ef67ad8b1b79f63a46bd6fab5e2b09b3aabf505e69449","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_invoice_action_step_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"5334c793e469cfe1d1cc1b39ffba15b2ebcd4aa55d15da1bc17da5fc5e8d2e6c","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"276b5c852f85d6187e04db85dade0887c017c53a551ec90aa73624c0af96e17e","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.

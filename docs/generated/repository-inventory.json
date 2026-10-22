@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1577,
-  "soFileDocBangFs": 415,
-  "tongLoiGoi": 1024,
-  "khongPhanLoaiDuoc": 449,
+  "tongSoFileTest": 1581,
+  "soFileDocBangFs": 417,
+  "tongLoiGoi": 1028,
+  "khongPhanLoaiDuoc": 451,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 57,
+      "soFile": 58,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 167,
+      "soFile": 168,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1055,6 +1055,21 @@
     },
     {
       "file": "infra/hermes-broker/expense-write-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/invoice-write-sql.test.mjs",
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2

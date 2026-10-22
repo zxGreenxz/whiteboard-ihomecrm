@@ -1,6 +1,6 @@
 # Thao tác ghi của Hermes — trang HOÁ ĐƠN (Đợt 3: thiết kế ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hoá đơn vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)), theo cùng khuôn với trang Hợp đồng (PR #270) và Thu chi (PR #271). Phiên chính đã duyệt Mốc 1 và chốt HDN1–HDN10 (22/10; HDN6, HDN7 khác mặc định, xem mục 13). Tiến độ ở mục 15. Migration chỉ là file, chưa áp; production chưa đổi.
+Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hoá đơn vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)), theo cùng khuôn với trang Hợp đồng (PR #270) và Thu chi (PR #271). Phiên chính đã duyệt Mốc 1 và chốt HDN1–HDN10 (22/10; HDN6, HDN7 khác mặc định, xem mục 13). Tiến độ ở mục 15. Hai migration đọc Mốc 2 đã áp production 22/10; migration Mốc 3 (thu tiền) chỉ là file, chưa áp.
 
 Căn cứ, theo thứ tự ưu tiên:
 1. Đáp án 40 câu chủ chốt ngày 21/10: Q2, Q3, Q7, Q13–Q19. Khi đáp án và plan mâu thuẫn, đáp án thắng.
@@ -110,7 +110,22 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 - Mục không thu được vì trạng thái (đã thu đủ, đã huỷ, nợ đã kéo) ⇒ **loại khỏi lô và nêu trong bản xem trước** ("305: đã thu đủ ngày 05/10 — bỏ"). Đồng ý = ghi đúng tập mục còn lại; `basis` gồm tập đó. Còn 0 mục ⇒ từ chối với lý do của mục đầu.
 - Lượt 2 **cả tập hoặc không gì** (như TC3 của Thu chi): một mục lỗi hay lệch ⇒ `RAISE`, lùi cả lô và biên nhận, trả `state_changed`; bản xem trước mới chỉ ra mục có vấn đề.
 
-**Xem trước (ví dụ).** "Sẽ ghi THU 3.650.000đ chuyển khoản ngày thứ Tư 22/10/2026 (hôm nay) vào sổ «MB ***» cho hoá đơn INV-2026-01234 — phòng 201 toà 44TL, kỳ 10/2026, khách «tên đại diện». Còn nợ 3.650.000đ → 0đ: ĐÃ THANH TOÁN ĐỦ. Không kèm ảnh biên nhận." Lô: bảng một dòng mỗi phòng + tổng.
+**Xem trước (ví dụ).** "Sẽ ghi THU 3.650.000đ chuyển khoản ngày 22/10/2026 (thứ Năm, hôm nay) vào sổ «MB ***» cho hoá đơn INV-2026-01234." + mỗi hoá đơn một dòng "Phòng 201 toà 44TL, kỳ 10/2026 (INV-…): thu 3.650.000đ; còn nợ 3.650.000đ → 0đ: ĐÃ THANH TOÁN ĐỦ." + "Không kèm ảnh biên nhận". Lô: một dòng mỗi phòng + mục bị loại.
+
+**Đã làm ở Mốc 3 (22/10), khác thiết kế ở các điểm sau (có lý do):**
+- Nhãn ngày dùng `app_private.hermes_vn_date_text_v1` của Thu chi (đã áp production), không chờ hàm nhãn của #270.
+- Bản xem trước KHÔNG nêu tên khách: bớt dữ liệu cá nhân, câu đủ rõ bằng toà + phòng + kỳ + số hoá đơn. Thêm sau nếu ca thử cần.
+- Kỳ trống: ứng viên "còn nợ" bỏ hoá đơn có nợ đã kéo sang kỳ sau (#267 tính nợ ở hoá đơn gốc, thu ở hoá đơn gánh). Vì vậy "phòng 201 CK đủ" chọn đúng hoá đơn gánh, không hỏi lại. Nêu đích danh kỳ cũ ⇒ `debt_carried`.
+- Không làm tròn được thì xem trước lại KHÔNG làm tròn, nói rõ trong cảnh báo (hoá đơn còn nợ phần thiếu). Có hai trường hợp:
+  - v5 chặn vì phần thiếu là cọc/NON_PNL;
+  - công ty chưa có sổ ảo "Làm tròn tiền thiếu".
+
+  Cả hai không thành lý do từ chối riêng. Quyết định ghi vào `resolved.noRounding` để lượt 2 tính cùng kế hoạch.
+- Phạm vi lấy khoá dòng công ty `lock_org_for_decision_v1` TRƯỚC `authorize_tenant_action_v3`, như v5. Nếu lấy share rồi để v5 nâng khoá thì hai lượt cùng công ty có thể deadlock 40P01.
+- Migration Mốc 3 chỉ thêm dòng chính sách `invoice.collect`. Năm thao tác còn lại thêm dòng ở mốc của chúng: mỗi mốc là migration mới vì file đã áp không được sửa.
+- Hàm kế hoạch tách làm hai:
+  - lõi THUẦN `invoice_collection_plan_core_v1`: vector parity chạy trên chính nó;
+  - `invoice_collection_plan_v1`: đọc dữ kiện, chấp nhận vai gọi `authenticated` và chủ hàm `postgres`. Bước ghi DEFINER gọi lại sau khi tự đối chiếu id; `auth.uid()` vẫn là người hỏi.
 
 **Trùng lặp.** (1) biên nhận Hermes theo requestId; (2) khoá idempotency v5 + băm nội dung (lớp thứ hai); (3) `p_expected_paid_amount` = số đã thu lúc xem trước (người khác vừa thu ⇒ PT409 ⇒ `state_changed`); (4) cảnh báo `possible_duplicate` của kế hoạch: đã có lần thu ACTIVE cùng hoá đơn, cùng số tiền trong 30 phút (luật `duplicateCollection.ts`), bản xem trước nêu giờ và người thu.
 
@@ -192,7 +207,9 @@ Khối "Hoá đơn" riêng trong `action-reasons.mjs`; mã dạng `rejected` và
 | `cancel_overdue_web_only` | rejected | Hoá đơn quá hạn huỷ trên web | `status='OVERDUE'` |
 | `restore_conflict` | rejected | Kỳ này đã có hoá đơn khác đang hiệu lực; không khôi phục được | tra cứu; 23505 ràng buộc (HĐ, kỳ) |
 
-Dùng lại mã chung: `period_locked` (`[PROFIT_LOCKED]`, `[CASHBOOK_CLOSED]`, `[HANDOVER_LOCKED]`), `cashbook_not_held` (`Bạn không được giao sổ quỹ này…`), `not_allowed` (42501 còn lại), `state_changed` (PT409 `Số đã thu vừa thay đổi…`, `Hóa đơn vừa thay đổi…`, `Hóa đơn đã có phiên bản mới…`), `date_out_of_range`, `reason_required`, `web_only` (rào hỗ trợ tiền phòng `REVENUE_CAP_REVIEW`, `SETTLEMENT`, writer đóng băng 55000), `duplicate_request` (chỉ đúng ràng buộc idempotency). 23505 "idempotency_key đã dùng với nội dung khác" của hàm ghi web **không** là `duplicate_request` (khoá do requestId cấp, trùng nghĩa là lệch đầu vào) ⇒ `crm_refused`. Tổng: 23 mã mới, 14 dạng `rejected`. Mã vào file chung theo mốc của thao tác dùng chúng (Mốc 2 chỉ đọc nên chưa thêm mã nào).
+Dùng lại mã chung: `period_locked` (`[PROFIT_LOCKED]`, `[CASHBOOK_CLOSED]`, `[HANDOVER_LOCKED]`), `cashbook_not_held` (`Bạn không được giao sổ quỹ này…`), `not_allowed` (42501 còn lại), `state_changed` (PT409 `Số đã thu vừa thay đổi…`, `Hóa đơn vừa thay đổi…`, `Hóa đơn đã có phiên bản mới…`), `date_out_of_range`, `reason_required`, `web_only` (rào hỗ trợ tiền phòng `REVENUE_CAP_REVIEW`, `SETTLEMENT`, writer đóng băng 55000), `duplicate_request` (chỉ đúng ràng buộc idempotency). 23505 "idempotency_key đã dùng với nội dung khác" của hàm ghi web **không** là `duplicate_request` (khoá do requestId cấp, trùng nghĩa là lệch đầu vào) ⇒ `crm_refused`. Tổng: 23 mã mới, 14 dạng `rejected`. Mã vào file chung theo mốc của thao tác dùng chúng (Mốc 2 chỉ đọc nên chưa thêm mã nào). Mốc 3 đã thêm 8 mã của thu tiền:
+- dạng `rejected` (cũng vào `host-ownership.mjs`): `cash_collection_web_only`, `invoice_not_collectible`, `credit_requires_contract`, `receiving_book_missing`, `reconciliation_required`;
+- dạng `needs_input`: `nothing_to_collect`, `debt_carried`, `overpay_needs_choice`.
 
 ## 6. Hàm dùng chung mới (luật 17/10)
 
@@ -279,8 +296,8 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng; chỉ
 | --- | --- | --- | --- |
 | 2 ✓ | `20261022051118_hermes_w2a_invoice_shared_v1` | 6 hàm đọc dùng chung (mục 7); tên trong dải gói A, nội dung không có hàm trợ lý | #267 (gọi lúc chạy) |
 | 2 ✓ | `20261022051620_hermes_w2a_invoice_reads_v1` | catalog + reader gói A dựng từ thân đang chạy (md5 ghim ở `$requires$`), 7 báo cáo | dòng trên |
-| 3 | `invoice_collection_plan_v1` | hàm kế hoạch thu | #267 |
-| 3 | `hermes_invoice_action_v1` | seed khoá `thu_tien.collect_transfer` TẮT; 6 dòng `hermes_action_policies`; ánh xạ lý do; tra cứu, bước ghi, vỏ (nhánh `collect`) | M1, M2, M5, #267, #270 (nhãn ngày), dòng trên |
+| 3 ✓ | `20261022075219_invoice_collection_plan_v1` | lõi thuần + hàm kế hoạch thu (file không chứa hàm trợ lý) | #267 |
+| 3 ✓ | `20261022075230_hermes_invoice_action_v1` | seed khoá `thu_tien.collect_transfer` TẮT; dòng chính sách `invoice.collect`; ánh xạ lý do; phạm vi, tra cứu, bước ghi, vỏ | M1, M5, #267, Mốc 2 (`invoice_room_invoices_v1`), Thu chi (nhãn tiền/ngày), dòng trên |
 | 4 | `meter_readings_v2` | `meter_readings_plan_v1` + `record_meter_readings_v2` (`gen:types`) | — |
 | 4 | (nối vào migration trang) | nhánh `meter_record` | dòng trên |
 | 5 | `invoice_adjustment_build_v1` + (nối vào migration trang) | hàm dựng dòng; nhánh `adjust`, `adjustment_check`, `cancel`, `restore` | — |
@@ -349,7 +366,15 @@ Byte `tools/list`: không đổi (họ thao tác 1 959 B đã tính; báo cáo W
 ## 14. Việc phiên chính phải làm
 
 1. ~~Duyệt thiết kế và HDN1–HDN10~~ (22/10). **Mốc 2:** áp `20261022051118` rồi `20261022051620` qua lane (TEST rồi production, sau #267 đã áp) trước khi gộp; sau áp: provenance, gỡ hồ sơ `migration-unknown-review.json`, `gen:types` (6 hàm public mới), `rpc-surface`. Connector cần phát hành để mục lục có 7 báo cáo (SQL trước, connector sau đều an toàn).
-2. Thứ tự phụ thuộc: áp #267 (TEST + production) trước Mốc 2; gộp TC8 (#271) và áp + gộp #270 (`actionPages`, hàm nhãn ngày) trước Mốc 3.
+2. Thứ tự phụ thuộc: áp #267 (TEST + production) trước Mốc 2 (✓). **Mốc 3:**
+   - áp `20261022075219` rồi `20261022075230` qua lane (TEST rồi production), sau Mốc 2 đã áp, trước khi gộp PR Mốc 3;
+   - khoá seed TẮT nên không đổi quyền của ai;
+   - sau áp: provenance, gỡ hai hồ sơ unknown-review, `gen:types` (2 hàm public kế hoạch + vỏ trang), `rpc-surface`;
+   - phát hành connector có `invoice-actions-contract.mjs`;
+   - promote web có khoá + nhãn TRƯỚC khi bật khoá;
+   - bật khoá bằng migration riêng sau nghiệm thu tầng 3.
+
+   Không cần #270: nhãn ngày dùng hàm của Thu chi; `actionPages` không có trên main — danh mục nạp ở `server.mjs`.
 3. Trước khi bật khoá cho Quản Lý Tòa (Q7): loại trừ khoá tiền ở kết nối của họ hoặc làm O2.
 4. Trên TEST, khi tới tầng 3: bật `thu_tien.collect_transfer`, `meter_readings.create`, `invoices.edit`, `invoices.approve`, `invoices.cancel` bằng script TEST (không bằng migration production); `actionPages` thêm `invoice` ở connector 8741.
 5. SOUL: đoạn mục 12.
@@ -362,7 +387,7 @@ Byte `tools/list`: không đổi (họ thao tác 1 959 B đã tính; báo cáo W
 | 1 ✓ | Tài liệu này + 20 ca phát triển | — |
 | 2 ✓ | Đọc bù: 6 hàm đọc dùng chung + 7 báo cáo W2 gói A; tầng 1 + PGlite + tầng 2 (kết quả bên dưới) | 2–3 |
 | 2b ✓ | Sửa theo review độc lập Mốc 2 (4 bắt buộc + tuỳ chọn) | 0,5 |
-| 3 | `invoice.collect` (đơn + lô) + `invoice_collection_plan_v1` + seed khoá + nhãn | 4–5 |
+| 3 ✓ | `invoice.collect` (đơn + lô) + `invoice_collection_plan_v1` + seed khoá + nhãn (kết quả bên dưới) | 4–5 |
 | 3b | (nếu duyệt) web Thu tiền chuyển sang kế hoạch SQL, bỏ `changeAccounts.ts` | 1,5–2 |
 | 4 | `invoice.meter_record` + `record_meter_readings_v2` + form web | 3–4 |
 | 5 | `invoice.adjust`, `invoice.adjustment_check`, `invoice.cancel`, `invoice.restore` + `invoice_adjustment_build_v1` | 3–4 |
@@ -387,6 +412,44 @@ Kiểm:
 - Gói W2 khác + nền 186/186; fixture W2 chung có bản thế chỗ đóng an toàn cho hai hàm web khi thiếu.
 - `hermes-durable-schema` 98/98.
 - Tầng 2 (4 kết nối ACTIVE): 0 lỗi ngoài rào phạm vi. `days=31` cho 23 phòng / 44 hoá đơn, tổng nợ thực khớp truy vấn độc lập không RLS. Các số khớp đo nền ở Mốc 2 giữ nguyên.
+
+**Kết quả Mốc 3 (22/10/2026, chưa áp migration; nhánh xếp chồng trên #273, đã gộp #271):**
+- **Vector parity** (33 ca: tiền, phần dư, làm tròn, cọc, sổ, sổ thối, thu trùng, khuôn `p_tenders` của v5):
+  - SQL `invoice_collection_plan_core_v1` 33/33;
+  - TS (`planCollect` + `collectionSettlement` + `findRecentDuplicateCollection` + `findOwnChangeAccount`) 28/28 ca có phía TS;
+  - 5 ca chỉ SQL: SQL chặt hơn có chủ ý, hoặc khuôn sổ/dòng v5.
+- **HDN3, đo production (chỉ đọc):**
+  - luật "sổ …Thối người thu giữ/biết" chọn đúng sổ của cả hai người thu có thối trong 120 ngày, khớp map cứng của `changeAccounts.ts`;
+  - chủ giữ cả hai sổ ⇒ chọn sổ đầu theo thứ tự.
+- **PGlite RPC trang** (`invoice-write-sql.test.mjs`) 11/11 ca. Bản port v5 cùng chữ ký, cùng câu lỗi. Các ca:
+  - tiền mặt bị chặn trước mọi tra cứu;
+  - chạy thử không để lại lần thu / khoá idempotency / biên nhận / tiền;
+  - phát lại;
+  - nợ kéo #267;
+  - trả dư hỏi lại, keep / return;
+  - làm tròn, v5 chặn làm tròn ⇒ xem trước lại;
+  - lô loại mục đã thu và cả-hoặc-không;
+  - basis;
+  - tên / kỳ mơ hồ;
+  - phạm vi = guard ∩ quyền thu của v5;
+  - bảng câu lỗi;
+  - ACL.
+- **Connector:**
+  - `invoice-actions.test.mjs` 5/5;
+  - lý do / audit / ngân sách byte / server xanh;
+  - `crm_action_list` của trang ≤ 8 KB;
+  - `tools/list` không đổi byte.
+- **Tầng 2 trên TEST** (ROLLBACK, v5 thật, 4 kết nối Hermes ACTIVE):
+  - p2, p3 (TK) và p4 (TT): xem trước → ghi → phát lại khớp. Số đã thu tăng đúng số còn nợ, ĐÃ THANH TOÁN, lần thu khoá `hermes-inv:<requestId>`, biên nhận `applied`;
+  - tiền mặt ⇒ `cash_collection_web_only`;
+  - thu lại cùng hoá đơn ⇒ `nothing_to_collect`;
+  - trả dư chưa chọn ⇒ bản xem trước hỏi;
+  - lô 9 phòng: xem trước 2,0 s, ghi 1,8 s (một mẫu);
+  - một phòng: xem trước 0,5–0,7 s (lần đầu 2,9 s), ghi 1,0–1,4 s;
+  - p1 (chủ) không giữ/biết sổ TK nào trên TEST và không có hoá đơn còn nợ ở toà có sổ TT ⇒ chưa có ca ghi.
+- **Dấu vết chạy thử trên TEST:**
+  - 0 lần thu, 0 khoá idempotency;
+  - hai SEQUENCE id nội bộ nhảy (`finance_v2_backfill_change_log_sequence_id_seq` +10, `income_expense_change_log_id_seq` +3). SEQUENCE không lùi theo giao dịch; đây là id nhật ký nội bộ, không phải mã phiếu người dùng thấy.
 
 ## 16. Chưa xác minh
 

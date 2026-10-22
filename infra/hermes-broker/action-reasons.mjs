@@ -36,6 +36,15 @@ export const ACTION_REASONS = Object.freeze({
   // Thu chi (Đợt 2, docs/plans/hermes-crm/THU-CHI-THAO-TAC-GHI.md mục 2.3).
   system_voucher: reason('rejected', 'never', 'Phiếu thuộc luồng hệ thống (thu tiền hoá đơn, cọc, thanh lý, hoa hồng, bàn giao, lương); sửa/huỷ/duyệt ở màn gốc trên web.'),
   evidence_required: reason('rejected', 'never', 'Phiếu chưa có chứng từ nên chưa chi được; thêm ảnh trên web hoặc chỉ duyệt.'),
+  // Hoá đơn (Đợt 3 Mốc 3, docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 5) — thu tiền.
+  cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc vào sổ HKD.'),
+  nothing_to_collect: reason('needs_input', 'fix', 'Hoá đơn này không còn số phải thu; hỏi lại người dùng phòng hoặc kỳ.'),
+  debt_carried: reason('needs_input', 'fix', 'Nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau (hỏi lại kỳ).'),
+  overpay_needs_choice: reason('needs_input', 'fix', 'Khách trả dư; hỏi người dùng giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return).'),
+  invoice_not_collectible: reason('rejected', 'never', 'Hoá đơn nháp hoặc đã huỷ, không thu tiền được.'),
+  credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
+  receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
+  reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

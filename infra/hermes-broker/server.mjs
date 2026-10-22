@@ -42,6 +42,7 @@ import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -155,7 +156,9 @@ export function createHermesBackend(configuration = {}) {
     // chưa áp (PGRST202) ⇒ action_disabled. hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm
     // khi host bật actionProbe (connector TEST). Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của
     // createActionCatalog): thao tác nào khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
+    // Đợt 3 Hoá đơn (Mốc 3): invoice.collect, khoá riêng thu_tien.collect_transfer seed TẮT ⇒ không hiện tới khi bật khoá.
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...INVOICE_ACTIONS,
+      ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });

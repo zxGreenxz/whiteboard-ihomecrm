@@ -459,7 +459,11 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   // Thu chi Mốc 3: name resolution _v2 (virtual buildings; wrapper binds the core OID) and the expense scope step the wrapper binds
   // (guard ∩ the web writer's own authorize_income_expense_on_building, 20261022044120 / 20261022044123).
   'app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)', 'public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)',
-  'app_private.hermes_expense_scope_v1(jsonb,text)'];
+  'app_private.hermes_expense_scope_v1(jsonb,text)',
+  // Đợt 3 Hoá đơn Mốc 3 (20261022075230): vỏ invoice.* gắn OID phạm vi (guard ∩ quyền thu của v5, DEFINER), tra cứu (INVOKER) và bước ghi
+  // (DEFINER); ánh xạ lý do chỉ bước ghi gọi (owner-only).
+  'app_private.hermes_invoice_scope_v1(jsonb,text)', 'app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb)',
+  'app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)', 'public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -912,7 +916,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-four reviewed forward migrations and their 88 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all twenty-five reviewed forward migrations and their 93 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -924,9 +928,9 @@ test('all twenty-four reviewed forward migrations and their 88 latest definition
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 24);
-  assert.equal(FORWARD_FUNCTIONS.length, 88);
-  assert.equal(FORWARD_BY_NAME.size, 88, 'one live definition per reviewed name');
+  assert.equal(paths.length, 25);
+  assert.equal(FORWARD_FUNCTIONS.length, 93);
+  assert.equal(FORWARD_BY_NAME.size, 93, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
