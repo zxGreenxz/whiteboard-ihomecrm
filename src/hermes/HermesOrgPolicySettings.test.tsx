@@ -120,7 +120,7 @@ describe('shared permission picker for explicit company action ceiling',()=>{
   value.choices.read.push('assistant.memory.supervise');value.choices.action=['income_expenses.create','income_expenses.approve'];render(view());await open();
   const supervise=screen.getByRole('checkbox',{name:/Hermes tổng: tra ghi nhớ công việc được chia sẻ/});expect((supervise as HTMLInputElement).checked).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:/Thu chi/}));
-  expect(screen.getByText(/Hermes: ghi phiếu CHI nhanh/)).toBeTruthy();expect(screen.getByText(/không có công cụ duyệt/)).toBeTruthy();
+  expect(screen.getByText(/Hermes: lập phiếu CHI lập tay/)).toBeTruthy();expect(screen.getByText(/không công cụ nào dùng khoá này/)).toBeTruthy();
   const create=screen.getByRole('checkbox',{name:/Tạo phiếu thu chi/});expect(create.getAttribute('data-state')).toBe('unchecked');
   fireEvent.click(supervise);fireEvent.click(create);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
   expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','assistant.memory.supervise'],p_action:['income_expenses.create']});

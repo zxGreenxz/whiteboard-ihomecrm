@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1570,
-  "soFileDocBangFs": 408,
-  "tongLoiGoi": 991,
-  "khongPhanLoaiDuoc": 442,
+  "tongSoFileTest": 1572,
+  "soFileDocBangFs": 410,
+  "tongLoiGoi": 998,
+  "khongPhanLoaiDuoc": 444,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 60,
+      "soFile": 61,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 55,
+      "soFile": 57,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 160,
+      "soFile": 162,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -85,6 +85,7 @@
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
+    "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
     "src/lib/quickEntry/__tests__/models.test.ts",
     "src/pages/phong-trong/__tests__/exportRoomListImage.test.ts",
     "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx"
@@ -684,6 +685,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/name-directory-sql.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -958,6 +968,16 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 1,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1000,6 +1020,12 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/expense-write-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/metadata-read-sql.test.mjs",
@@ -1725,12 +1751,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/expense-action.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/external-group-composition.test.mjs",

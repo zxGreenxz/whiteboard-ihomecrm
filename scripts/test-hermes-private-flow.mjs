@@ -513,6 +513,11 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
     statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
+  // Đợt 2 Thu chi (20261022024834): lõi giải tên plpgsql INVOKER của expense.* — chỉ tên public đủ schema; vỏ SQL-standard ghim ở
+  // hermes-task-function-contract.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+    statementSha256: '2555857f637fe17ea488547ca6c0bd34318f2b1d2f50964cb3dd5683c5deea7a' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

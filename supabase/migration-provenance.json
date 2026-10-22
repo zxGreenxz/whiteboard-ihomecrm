@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T01:12:06.341Z",
+  "generatedAt": "2026-10-22T03:28:06.906Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 796,
     "unknown": 83,
-    "catalog-proven": 205,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12570,13 +12570,10 @@
       "name": "hermes_write_name_resolve_v1",
       "scheme": "timestamp14",
       "sha256": "b4a83ad70210df1c286234367adc6dfce511033584c3f42882f32ce147987c82",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_name_fold_v1",
-        "function:public.hermes_room_key_v1",
-        "function:app_private.hermes_write_name_resolve_core_v1",
-        "function:public.hermes_write_name_resolve_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_name_fold_v1",
+        "catalog:function:public.hermes_room_key_v1"
       ]
     },
     {
@@ -12585,14 +12582,13 @@
       "name": "hermes_action_foundation_v1",
       "scheme": "timestamp14",
       "sha256": "67061794749877d78f58f99c5325ce83cd51f0924c0437ae8df0487b3846933f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_action_policies",
-        "table:app_private.hermes_action_receipts",
-        "function:app_private.hermes_action_reason_v1",
-        "function:app_private.hermes_action_binding_v1",
-        "function:app_private.hermes_action_guard_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_action_policies",
+        "catalog:table:app_private.hermes_action_receipts",
+        "catalog:function:app_private.hermes_action_reason_v1",
+        "catalog:function:app_private.hermes_action_binding_v1",
+        "catalog:trigger:app_private.hermes_action_receipts.hermes_action_receipt_settled"
       ]
     },
     {
@@ -12660,6 +12656,36 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022024045_ie_quick_entry_shared_rules_v1.sql",
+      "version": "20261022024045",
+      "name": "ie_quick_entry_shared_rules_v1",
+      "scheme": "timestamp14",
+      "sha256": "30b90e5f101ac4983ef2b0d7bbe35c1807d61a3bbdb7c396d9c89c860c6e8af7",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.ie_quick_text_v1",
+        "function:public.ie_category_suggest_v1",
+        "function:public.ie_default_cashbook_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022024834_hermes_expense_write_v1.sql",
+      "version": "20261022024834",
+      "name": "hermes_expense_write_v1",
+      "scheme": "timestamp14",
+      "sha256": "2848437861b21ec47c98d938f3895d5f187bc279f65e5c25d04889147912578f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_expense_reason_v1",
+        "function:app_private.hermes_expense_resolve_core_v1",
+        "function:app_private.hermes_expense_create_run_v1",
+        "function:app_private.hermes_vnd_text_v1",
+        "function:app_private.hermes_vn_date_text_v1"
       ]
     },
     {

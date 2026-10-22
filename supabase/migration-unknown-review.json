@@ -918,6 +918,50 @@
       ],
       "raSoatBoi": "Claude Code — Hermes nền chung thao tác ghi 22/10/2026",
       "sha256": "67061794749877d78f58f99c5325ce83cd51f0924c0437ae8df0487b3846933f"
+    },
+    "supabase/migrations/20261022024045_ie_quick_entry_shared_rules_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022024045_ie_quick_entry_shared_rules_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.ie_quick_text_v1 / public.ie_category_suggest_v1 / public.ie_default_cashbook_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 hàm trên — sinh 22/10/2026 trên nhánh Thu chi Mốc 2"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 2: hai công thức Báo chi nhanh thành hàm SQL dùng chung web + Hermes — gợi ý hạng mục, sổ mặc định), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite/PG17 + tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 22/10: ba persona — chủ, Quản Lý Tòa, Super Admin; chạy thử không để lại phiếu/mã/quyết định/hàng đợi pg_net/NOTIFY, khoá tư vấn nhả; lượt 2 ghi đúng, phát lại giống hệt, ghi chú ghi được); PostgreSQL 17 locale Unicode: hàm == bộ vector vàng do TypeScript sinh (src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-vang.json), lọc công ty/hạn chế, sổ mặc định; đột biến luật bị bắt. Áp qua npm run migrate:forward (TEST trước, rồi production) TRƯỚC 20261022024834; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.ie_quick_text_v1",
+        "function:public.ie_category_suggest_v1",
+        "function:public.ie_default_cashbook_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 2, 22/10/2026",
+      "sha256": "30b90e5f101ac4983ef2b0d7bbe35c1807d61a3bbdb7c396d9c89c860c6e8af7"
+    },
+    "supabase/migrations/20261022024834_hermes_expense_write_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022024834_hermes_expense_write_v1.sql",
+          "trich_doan": "INSERT INTO app_private.hermes_action_policies (expense.create, expense.note); CREATE OR REPLACE FUNCTION app_private.hermes_expense_reason_v1 / hermes_expense_resolve_core_v1 / hermes_expense_create_run_v1 / hermes_vnd_text_v1 / hermes_vn_date_text_v1 / hermes_expense_write_step_v1 / public.hermes_expense_write_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 hàm trên — sinh 22/10/2026 trên nhánh Thu chi Mốc 2"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 2: RPC trang expense.create/expense.note trên khung crm_action_*), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite/PG17 + tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 22/10: ba persona — chủ, Quản Lý Tòa, Super Admin; chạy thử không để lại phiếu/mã/quyết định/hàng đợi pg_net/NOTIFY, khoá tư vấn nhả; lượt 2 ghi đúng, phát lại giống hệt, ghi chú ghi được); PGlite với fixture Hermes của thu chi (expense-write-sql: chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, lý do, phạm vi, ghi chú; đã thu hồi USAGE app_private như production); 19/19 đột biến bị bắt; hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. Áp qua npm run migrate:forward (TEST trước, rồi production) SAU 20261022024045; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_expense_reason_v1",
+        "function:app_private.hermes_expense_resolve_core_v1",
+        "function:app_private.hermes_expense_create_run_v1",
+        "function:app_private.hermes_vnd_text_v1",
+        "function:app_private.hermes_vn_date_text_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 2, 22/10/2026",
+      "sha256": "2848437861b21ec47c98d938f3895d5f187bc279f65e5c25d04889147912578f"
     }
   }
 }

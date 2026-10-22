@@ -1,7 +1,7 @@
-# Thao tác ghi Hermes — trang THU CHI (Đợt 2, Mốc 1: THIẾT KẾ, chờ duyệt)
+# Thao tác ghi Hermes — trang THU CHI (Đợt 2: thiết kế đã duyệt; Mốc 2 xong)
 
 Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-thu-chi-ghi-20261022`, gốc `origin/main` `2d0a0099a`.
-Mốc này chỉ có tài liệu: chưa có migration, chưa sửa connector hay web, chưa đổi TEST hay production.
+Phiên chính duyệt thiết kế 22/10: TC1–TC10 theo mặc định, riêng TC5 đổi thành cờ chính sách (mục 12). Mốc 2 đã làm xong, kết quả ở mục 16. Migration mới chỉ là file: chưa áp TEST hay production.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12. Khung đã gộp `main` (#253) và đã áp production (#269).
@@ -467,7 +467,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 | TC2 | Xem trước bằng cách nào | **Chạy thử hàm ghi thật trong savepoint.** Phương án khác: tách `ie_birth_decision_v1` và thay thân hàm ghi |
 | TC3 | Lô 5 khoản ở lượt 2 | **Cả lô hoặc không gì; khoản nào lỗi ⇒ xem trước lại cả lô.** Phương án khác: ghi từng khoản |
 | TC4 | Duyệt khi phiếu không ảnh hoặc người duyệt không giữ sổ | **Tự hạ xuống "chỉ duyệt" và nói rõ trong bản xem trước** (Q8). Phương án khác: từ chối phiếu đó |
-| TC5 | Phiếu con của phiếu lặp có được bot duyệt | **Không** (Q8: chỉ phiếu lập tay) |
+| TC5 | Phiếu con của phiếu lặp có được bot duyệt | **Đã chốt khác mặc định:** làm thành cờ chính sách trong DB, không viết cứng trong mã. Mặc định tạm là "không" cho tới khi chủ trả lời câu 55; đổi cờ không cần sửa mã. Làm ở Mốc 4 |
 | TC6 | Quyền CRM giao vào cho sửa / huỷ | **`income_expenses.create`**, giống web: người lập sửa/huỷ phiếu của mình; hàm ghi kiểm phần còn lại. Phương án khác: `income_expenses.edit` / `.cancel` (Quản Lý Tòa thiếu hai quyền này sẽ không tự sửa/huỷ được phiếu mình lập qua bot) |
 | TC7 | Q8 "cần kết nối mới" | **Coi là đạt khi chủ tạo lại kết nối "NG TÂM" một lần (Q27) trước khi bật `approve_vouchers`.** Kết nối của Quản Lý Tòa loại trừ khoá này |
 | TC8 | Kiểu `list` / `record` trong danh mục chung | **Thu chi viết ở Mốc 2; Hợp đồng dùng lại.** Ai gộp sau thì rebase |
@@ -503,8 +503,50 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 ## 15. Chưa xác minh
 
 - `spend_decisions` có được chèn cho mọi phiếu do `create_income_expense_v1` lập không, hay chỉ khi bộ máy chi ở chế độ bóng (`zz_spend_shadow_birth`). Nếu không, câu "vì …" dựng từ dữ kiện (mục 5).
-- Khoá tư vấn và thời gian chạy thử (tầng 2).
-- Nguồn ánh xạ hạng mục → `fee_category` của cam kết (Mốc 3).
+- ~~Khoá tư vấn và thời gian chạy thử (tầng 2).~~ Đã đo ở Mốc 2 (mục 16).
+- ~~Nguồn ánh xạ hạng mục → `fee_category` của cam kết.~~ Dùng cột `income_expense_types.fee_category` (mỗi khoản phí là duy nhất trong mỗi công ty từ 26/09).
 - Cột nhận diện phiếu con định kỳ (Mốc 4).
 - `w2Report` nhận `income_expenses.view` (Mốc 5).
-- Hàm ghi gọi từ bước DEFINER của Hermes chạy giống như khi web gọi. Họ cũ cùng khuôn chưa từng chạy với hàm ghi thật (0 biên nhận), nên tầng 2 là lần đầu.
+- ~~Hàm ghi gọi từ bước DEFINER của Hermes chạy giống như khi web gọi.~~ Đã thấy trên TEST ở Mốc 2: hàm ghi web nhận đúng người dùng của JWT.
+
+## 16. Tiến độ Mốc 2 (22/10/2026)
+
+**Đã làm:**
+- Kiểu `list`/`record` trong `HB/action-catalog.mjs` (TC8). Phiên Hợp đồng dùng lại cho gia hạn lô.
+- Thêm `category`, `cashbook` vào `NAME_FIELDS`.
+- Hai mã lý do `system_voucher`, `evidence_required` vào `action-reasons.mjs` và `host-ownership.mjs`.
+- Danh mục `HB/expense-actions-contract.mjs` gồm `expense.create` và `expense.note`; `server.mjs` nạp danh mục này ở production.
+- Gỡ họ `crm_expense_*` khỏi connector (TC1). SQL cũ giữ nguyên.
+- Đổi nhãn `income_expenses.create` / `.approve`.
+- Hai migration, chỉ là file:
+  - `20261022024045_ie_quick_entry_shared_rules_v1`: `ie_category_suggest_v1` (port đủ bốn đường của `suggestCategory`), `ie_default_cashbook_v1`, `ie_quick_text_v1`;
+  - `20261022024834_hermes_expense_write_v1`: RPC trang, chạy thử để xem trước, lượt 2 cả lô hoặc không gì.
+
+**Kiểm:**
+- Offline: danh mục, `list`/`record`, lõi chạy với dịch vụ giả, byte `tools/list` (họ thao tác không đổi; họ cũ đã gỡ).
+- PG17: `ie_category_suggest_v1` khớp 610/610 câu của bộ vector vàng do TypeScript sinh (`src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-vang.json`).
+- PGlite: bước ghi với bản port hàm ghi, 9/9.
+- Kiểm đột biến 19/19 bị bắt.
+- Hợp đồng duyệt hàm Hermes: ghim băm vỏ, ghim định nghĩa forward, danh sách được cấp EXECUTE, `search_path=''`.
+
+**Tầng 2 trên TEST** (`test-env:thu-sql`, một giao dịch ROLLBACK, không `--ghi`; bật khoá, gia hạn token và cấp giữ sổ chỉ tồn tại trong giao dịch). Ba kết nối Hermes thật:
+
+| Persona | Bản xem trước | Lượt 2 | Độ trễ (xem trước 1 khoản / lô 5 / ghi) |
+| --- | --- | --- | --- |
+| Quản Lý Tòa, 1.200.000đ | "CHỜ DUYỆT: từ ngưỡng tự duyệt 600.000đ trở lên…" | UNAPPROVED, mã liền số | 1,36 s / 0,91 s / 0,59 s |
+| Super Admin, 1.000đ | "VÀO SỔ NGAY khi ghi (dưới ngưỡng tự duyệt 600.000đ) — trừ sổ …" | APPROVED + POSTED, một bút toán sổ | 0,48 s / 0,65 s / 0,63 s |
+| Chủ (tài khoản TEST) | `not_allowed` | — | 0,80 s |
+
+- **Đo TC2.** Sau các lần chạy thử, các bảng sau đều đếm bằng trước:
+  - phiếu, dòng, bộ đếm mã phiếu;
+  - quyết định chi, sổ tiêu cam kết, sổ thao tác canonical, bút toán;
+  - chứng từ, audit, thông báo;
+  - `net.http_request_queue`;
+  - `pg_notification_queue_usage()` = 0.
+
+  Khoá tư vấn của phiên vẫn bằng 0 sau xem trước; lượt ghi thật giữ một khoá tới hết giao dịch, như hàm ghi web vẫn làm. Lượt 2 lấy đúng mã kế tiếp, nghĩa là chạy thử không làm nhảy số. Phát lại cùng `requestId` cho kết quả giống hệt. Ghi chú ghi được.
+- **Dấu vết duy nhất:** SEQUENCE `app_private.income_expense_change_log_id_seq`. Mỗi lần chạy thử 1 khoản tốn vài id, lô 5 khoản khoảng 24 id. SEQUENCE không lùi theo savepoint, kể cả theo ROLLBACK của `thu-sql`. Đó chỉ là khe trong id nhật ký thay đổi, không phải dữ liệu nghiệp vụ.
+- **Phát hiện 1.** Với tài khoản "chủ" của TEST, guard Hermes cho toà 102LVT vào phạm vi khoá `income_expenses.create`. Nhưng chính `create_income_expense_v1` từ chối: "Không có quyền tạo phiếu thu/chi cho toà này". Bot vì vậy báo `not_allowed` ngay ở bản xem trước, tức là đóng an toàn và không ghi gì. Phạm vi guard (`authorized_scope_v3` ∩ overlay ∩ `buildings.view`) và kiểm quyền của hàm ghi lệch nhau với tài khoản này; cần phiên chính xem lại vai của tài khoản đó.
+- **Phát hiện 2.** Trên TEST, bộ máy chi không chèn `spend_decisions` cho các phiếu thử. Câu "vì …" khi đó dựng từ dữ kiện (ngưỡng, hạng mục bắt buộc duyệt); trạng thái vẫn lấy từ hàm ghi.
+
+**Cờ TC5** (phiếu con định kỳ có tính là lập tay không) làm cùng thao tác duyệt ở Mốc 4.
