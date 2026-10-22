@@ -1,8 +1,8 @@
 {
   "note": "SECURITY DEFINER functions anon-executable — allowlist baseline (Sprint 6 CI gate). Regenerate intentionally when adding a genuine public endpoint.",
   "denylistNote": "Hàm ĐÃ CỐ Ý đóng với anon. Gate fail nếu chúng anon-executable trở lại, KỂ CẢ khi nằm trong signatures. Án lệ 07/08/2026: bản vá 20260530000003 bị 20260601000000_remove_tax_fields.sql chép đè một dòng GRANT, lỗ mở lại hơn hai tháng mà gate im lặng vì hàm nằm sẵn trong allowlist. CẬP NHẬT 02/09/2026: thêm approve_meter_reading(uuid), bulk_approve_meter_readings(uuid[]), salary_work_ledger(date,uuid) — REVOKE anon qua migration 20260902082002 (PMETER-C01, FR009-C04 bước 1); ba hàm này từng bị allowlist che (re-anchor bảo mật 02/09 §0c). CẬP NHẬT 11/10/2026: chuyển monthly_building_profit(date,date,uuid) từ allowlist sang denylist — anon gọi bằng publishable key nhận lãi lỗ 17 toà (đo trên TEST); REVOKE PUBLIC/anon/authenticated qua migration 20261011030054.",
-  "generated": "2026-08-23",
-  "count": 42,
+  "generated": "2026-10-22",
+  "count": 41,
   "denylist": [
     "get_public_latest_invoice_by_contract(uuid)",
     "building_of_invoice(uuid)",
@@ -32,7 +32,6 @@
     "get_change_breakdown_v2(uuid,uuid,invoice_status,date,date,text,text,uuid[])",
     "get_deposit_breakdown_v2(uuid,uuid,date,date,text,uuid[])",
     "get_meters_without_readings_v2(uuid,uuid,text,text)",
-    "get_my_assignments()",
     "get_my_context()",
     "get_my_permissions()",
     "get_public_available_rooms(text)",
@@ -43,6 +42,7 @@
     "is_staff_of(uuid)",
     "is_super_admin()",
     "is_tenant_admin(uuid)",
+    "landlord_settlement_public_v1(text,date)",
     "log_income_expense_action(uuid,text,text)",
     "log_public_room_events(text,jsonb)",
     "lucky_checkin_v1(text)",
@@ -52,7 +52,6 @@
     "lucky_save_payout_v1(text,jsonb)",
     "same_team(uuid)",
     "sandbox_org_ids()",
-    "soft_delete_customer(uuid)",
     "staff_building_scope(uuid)",
     "staff_can(text,text,uuid)",
     "staff_in_building(uuid,uuid)"
