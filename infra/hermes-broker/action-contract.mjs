@@ -136,7 +136,8 @@ export function confirmationRequired({ action, requestId, preview, warnings, con
 }
 
 export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook']);
-export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visible']);
+// unspecified (trang Công việc, Đợt 2b): người dùng chưa nêu trường này (wanted rỗng); candidates là gợi ý để hỏi lại một câu (Q31).
+export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visible', 'unspecified']);
 const LABELS = Object.freeze({ building: 'toà', room: 'phòng', jobType: 'loại việc', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn',
   category: 'hạng mục', cashbook: 'sổ quỹ' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/gu;
@@ -150,6 +151,7 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
   const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
   const kind = why ?? (candidates.length ? 'ambiguous' : 'not_visible');
+  if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
   if (kind === 'ambiguous' && names.length) return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng nêu rõ.`;
