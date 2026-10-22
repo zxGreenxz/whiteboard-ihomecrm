@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 // external-group-mount nạp broker.mjs ngược lại: nạp trước (như tool-argument-shape.test.mjs).
 import './external-group-mount.mjs';
-import { ACTION_INPUT_REASONS, ACTION_REASON_CODES, ACTION_REASON_FORMS, ACTION_REASON_RETRIES, ACTION_REASONS, ACTION_REJECT_REASONS,
-  actionReason, actionReasonText } from './action-reasons.mjs';
+import { ACTION_INPUT_REASONS, ACTION_PAGE_REASON_BLOCKS, ACTION_REASON_CODES, ACTION_REASON_FORMS, ACTION_REASON_RETRIES, ACTION_REASONS,
+  ACTION_REJECT_REASONS, actionReason, actionReasonText } from './action-reasons.mjs';
 import { BrokerError, ERROR_STATUS, REQUEST_RECEIPT_UNKNOWN, actionRejected, createBroker } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { createMcpHttpServer } from './mcp-http.mjs';
@@ -12,12 +12,22 @@ import { createMcpHttpServer } from './mcp-http.mjs';
 // hình; thiếu/mơ hồ đầu vào là kết quả needs_input (không phải lỗi — rào 3 lần bị từ chối của Hermes, ca thử 21/10).
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 
-test('danh sách đóng: 20 mã, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {
+test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {
   assert.ok(Object.isFrozen(ACTION_REASONS) && ACTION_REASON_CODES.every(code => Object.isFrozen(ACTION_REASONS[code])));
-  assert.equal(ACTION_REASON_CODES.length, 20);
-  assert.deepEqual([...ACTION_INPUT_REASONS], ['unknown_action', 'invalid_params', 'name_unresolved', 'reason_required', 'amount_out_of_range',
-    'date_out_of_range', 'not_found']);
-  assert.equal(ACTION_REJECT_REASONS.length, 13);
+  // Mã của trang chỉ vào qua khối của trang (ACTION_PAGE_REASON_BLOCKS), nối sau 20 mã chung, không trùng nhau.
+  const pages = Object.values(ACTION_PAGE_REASON_BLOCKS).flat();
+  assert.equal(new Set(pages).size, pages.length, 'mã trang không trùng');
+  assert.deepEqual(ACTION_REASON_CODES.slice(20), pages);
+  const shared = ACTION_REASON_CODES.slice(0, 20), page = new Set(pages);
+  assert.deepEqual(ACTION_INPUT_REASONS.filter(code => !page.has(code)), ['unknown_action', 'invalid_params', 'name_unresolved', 'reason_required',
+    'amount_out_of_range', 'date_out_of_range', 'not_found']);
+  assert.equal(ACTION_REJECT_REASONS.filter(code => !page.has(code)).length, 13);
+  assert.ok(shared.every(code => !page.has(code)));
+  // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 5 mã needs_input + 7 mã rejected.
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'needs_input'),
+    ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract']);
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'rejected'),
+    ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative']);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

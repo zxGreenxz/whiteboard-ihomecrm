@@ -42,6 +42,10 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+
+// Thao tác ghi của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng).
+const ACTION_PAGE_CATALOGS = Object.freeze({ contract: CONTRACT_ACTIONS });
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -111,7 +115,7 @@ function backendLimits(value) {
  * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -125,6 +129,11 @@ export function createHermesBackend(configuration = {}) {
       // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
       // crm_action_* không hiện, không gọi RPC nào của họ này.
       (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
+      // Đợt 2: trang có thao tác ghi thật được nạp vào danh mục (vd ['contract']). Vắng/[] = danh mục production rỗng như Đợt 1:
+      // không gọi hermes_action_capabilities_v1, tools/list không đổi. Phiên chính bật sau khi migration của trang đã áp.
+      (Object.hasOwn(configuration, 'actionPages') && (!Array.isArray(configuration.actionPages) ||
+        configuration.actionPages.some(page => typeof page !== 'string' || !Object.hasOwn(ACTION_PAGE_CATALOGS, page)) ||
+        new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -151,12 +160,13 @@ export function createHermesBackend(configuration = {}) {
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    // Thao tác ghi dùng chung (crm_action_*): danh mục production Đợt 1 RỖNG (thao tác của từng trang đăng ký sau); lớp quyền
-    // với danh mục rỗng chuyển thẳng xuống lớp gốc, không gọi RPC. hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào.
+    // Thao tác ghi dùng chung (crm_action_*): danh mục = thao tác thử (actionProbe, chỉ TEST) + thao tác của các trang host bật
+    // (actionPages). Mặc định rỗng: lớp quyền chuyển thẳng xuống lớp gốc, không gọi RPC. Trang đã bật mà khoá còn TẮT trong
+    // registry ⇒ không kết nối nào giữ khoá ⇒ ba tool ẩn; hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào.
     // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
     // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
-    const actionCatalog = configuration.actionProbe === true
-      ? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM]) : createActionCatalog([]);
+    const actionCatalog = createActionCatalog([...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
+      ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });

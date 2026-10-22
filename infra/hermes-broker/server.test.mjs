@@ -81,7 +81,9 @@ function fakeBackend() {
     if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
       '/rest/v1/rpc/hermes_organization_name_v1', '/rest/v1/rpc/hermes_building_directory_v1',
       // R2c part 2 (c): the asker's own display name is optional the same way.
-      '/rest/v1/rpc/hermes_user_display_name_v1'].includes(endpoint.pathname))
+      '/rest/v1/rpc/hermes_user_display_name_v1',
+      // Đợt 2: capabilities của thao tác ghi dùng chung (chỉ gọi khi host bật actionPages); vắng ⇒ không cấp khoá nào.
+      '/rest/v1/rpc/hermes_action_capabilities_v1'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -523,6 +525,22 @@ test('server auth chain consults customer/expense capability RPCs; absent RPCs k
     assert.equal(JSON.parse(response.body.result.content[0].text).error, 'tool_not_available', name);
   }
   assert(!f.calls.some(call => /hermes_(customer_create|expense)_action_v1$/.test(call.path)), 'no action RPC without capability');
+});
+
+test('actionPages: host opt-in per page; default never calls the shared action capabilities RPC; absent RPC keeps crm_action_* hidden', async t => {
+  const f = fakeBackend();
+  for (const actionPages of ['contract', ['nope'], ['contract', 'contract'], [1], {}])
+    assert.throws(() => createHermesBackend({ ...f.configuration, actionPages }), error => error.message === 'invalid_backend_config', JSON.stringify(actionPages));
+  const off = fakeBackend(), plain = await listening(t, off.configuration), offToken = (await plain.connect()).body.token;
+  off.grantRooms();
+  assert(!(await plain.mcp(offToken)).body.result.tools.some(tool => tool.name.startsWith('crm_action_')));
+  assert(!off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'mặc định không gọi capabilities của thao tác');
+  const on = fakeBackend(), http = await listening(t, { ...on.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  on.grantRooms();
+  const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
+  assert(on.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`));
+  assert(!listed.some(name => name.startsWith('crm_action_')), 'RPC vắng ⇒ không khoá nào ⇒ họ thao tác ẩn');
+  assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
 });
 
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {

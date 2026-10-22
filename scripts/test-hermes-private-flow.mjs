@@ -513,6 +513,11 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
     statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
+  // Contract page write RPC (20261022022951): the plpgsql INVOKER lookup under the caller's RLS names only schema-qualified
+  // public/auth objects; its SQL-standard wrapper is pinned in hermes-task-function-contract.
+  { name: 'public.hermes_contract_action_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
+    statementSha256: '4ddf5730093afb09b04c566c774e9b10e27643d7a0ae65bea2d5e66d26f4e301' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

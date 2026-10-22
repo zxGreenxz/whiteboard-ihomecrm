@@ -918,6 +918,29 @@
       ],
       "raSoatBoi": "Claude Code — Hermes nền chung thao tác ghi 22/10/2026",
       "sha256": "67061794749877d78f58f99c5325ce83cd51f0924c0437ae8df0487b3846933f"
+    },
+    "supabase/migrations/20261022022951_hermes_contract_action_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022022951_hermes_contract_action_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_contract_date_label_v1 / app_private.hermes_contract_reason_v1 / public.hermes_contract_action_lookup_v1 / app_private.hermes_contract_action_step_v1 / vỏ public SQL-standard của trang Hợp đồng"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 hàm trên — sinh 22/10/2026 trên nhánh Hợp đồng Đợt 2 Mốc 2"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2: báo trả / dời / huỷ báo trả, khoá tạm / gỡ khoá tạm qua khung crm_action_*), chưa đi qua lane apply — 5 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Chưa chạy trên TEST bằng --ghi. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql 11/11, đã thu hồi USAGE app_private như production), buildTransaction của lane nhận file, hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. D-HĐ10: Mốc 3–4 nối tiếp vào chính file này trước khi gộp (băm và hồ sơ cập nhật theo). Sẽ áp qua npm run migrate:forward (TEST trước, rồi production; người dùng chạy, có backup) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_contract_date_label_v1",
+        "function:app_private.hermes_contract_reason_v1",
+        "function:public.hermes_contract_action_lookup_v1",
+        "function:app_private.hermes_contract_action_step_v1",
+        "function:public.hermes_contract_action_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
+      "sha256": "3ed73f06addfb4816ee6fdd0917c91d573bbd5a5ea345af48c49ba2651708f5b"
     }
   }
 }

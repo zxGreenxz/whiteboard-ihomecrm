@@ -40,6 +40,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
   statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
  },
+ // Trang Hợp đồng (Đợt 2): vỏ INVOKER gắn OID guard / giải tên / tra cứu / bước ghi DEFINER lúc tạo.
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
+  statementSha256:'cb4774dc01070a244241028a4c3977c33222da25f654b817a0a9b860f800ff0b',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
