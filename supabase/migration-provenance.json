@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T03:43:08.256Z",
+  "generatedAt": "2026-10-22T04:52:28.117Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 799,
-    "unknown": 82,
-    "catalog-proven": 206,
+    "unknown": 83,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12657,7 +12657,7 @@
       "version": "20261022022951",
       "name": "hermes_contract_action_v1",
       "scheme": "timestamp14",
-      "sha256": "3ed73f06addfb4816ee6fdd0917c91d573bbd5a5ea345af48c49ba2651708f5b",
+      "sha256": "f048a931be726045c6cda747b5cf8f6c1c1c5ea940b547741cee984857c9c385",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12673,7 +12673,7 @@
       "version": "20261022032205",
       "name": "hermes_w2d_contract_shared_v1",
       "scheme": "timestamp14",
-      "sha256": "0c079ed4d1c8c76cdb4f98f0b390037175b11468ac350e831822ef5af3a7c65e",
+      "sha256": "494ae0204285d75d3d6c36b99624969db7b101faed0ae7de1408bf4f5935fa7a",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12682,11 +12682,34 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022032214_hermes_w2d_contract_reads_v1.sql",
-      "version": "20261022032214",
+      "path": "supabase/migrations/20261022042822_contract_renewal_end_date_v1.sql",
+      "version": "20261022042822",
+      "name": "contract_renewal_end_date_v1",
+      "scheme": "timestamp14",
+      "sha256": "023e38a21a42a969ec3fc2e31bbcbca484b7916cc6659bac285f2c6a8a33efde",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.contract_renewal_end_date_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022043540_hermes_w2_contracts_view_reused_v1.sql",
+      "version": "20261022043540",
+      "name": "hermes_w2_contracts_view_reused_v1",
+      "scheme": "timestamp14",
+      "sha256": "900acfbcc355c8f854860383c8059b75abcc6b10ad1c1d09db139abd7456bdc3",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2_reused_keys_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022043617_hermes_w2d_contract_reads_v1.sql",
+      "version": "20261022043617",
       "name": "hermes_w2d_contract_reads_v1",
       "scheme": "timestamp14",
-      "sha256": "3e162752d0cc6384f70c7c65f1c49841b729e838d5bea997bc45b87280ac6b62",
+      "sha256": "e5a0310c5a09efdd14a2e15027ec0906beb3b21ae899992ca6e19b0a149d19f8",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_w2d_catalog_v1",

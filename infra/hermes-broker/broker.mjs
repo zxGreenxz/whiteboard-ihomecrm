@@ -41,7 +41,7 @@ const ROOM_TOOL = Object.freeze({
   // Câu đầu ≤ 60 ký tự vì danh sách tool_search của Hermes chỉ hiện câu đầu cắt còn 60 ký tự; "price" giữ chữ tiếng Anh mà
   // chỉ mục BM25 (token ASCII) của bản cũ có cho truy vấn "available rooms … price". Bù byte cho các mô tả định tuyến mới
   // (tools/list ≤ 64 000 B, đo ở tool-argument-shape.test.mjs).
-  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; không phải trạng thái CRM. Phòng trống thật: crm_read_occupancy (số), crm_read_report re_vacant_rooms (danh sách); sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
+  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; ≠ trạng thái CRM. Phòng trống thật (số/danh sách): crm_read_occupancy, crm_read_report re_vacant_rooms; không quyền BĐS: crm_read_report rooms_occupancy/rooms; sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },

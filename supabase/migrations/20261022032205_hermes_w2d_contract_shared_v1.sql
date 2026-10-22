@@ -1,5 +1,5 @@
 -- Đợt 2 trang HỢP ĐỒNG — hai hàm dùng chung MỚI của miền (RPC web gọi được; INVOKER + RLS người hỏi, search_path rỗng,
--- tự kiểm khoá web của màn Sắp hết hạn). File riêng, không chứa hàm của trợ lý (như file hàm dùng chung của gói D).
+-- tự kiểm khoá web của trang Hợp đồng). File riêng, không chứa hàm của trợ lý (như file hàm dùng chung của gói D).
 -- Dùng cho hai báo cáo đọc bù của trang Hợp đồng ở file kế tiếp; web dùng lại về sau. Không DROP, không ghi dữ liệu.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -15,8 +15,8 @@ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE v_today date; v_from date; v_to date;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'w2d_authenticated_only' USING ERRCODE='42501'; END IF;
-  -- Khoá web của màn Sắp hết hạn (RequirePermission reports_real_estate action=expiring) khi web gọi thẳng; Hermes đã qua cổng.
-  IF NOT COALESCE(public.can_access_org_entity('reports_real_estate','expiring'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
+  -- Khoá web của trang Hợp đồng (RequirePermission module=contracts, xem) khi web gọi thẳng; RLS contracts lọc theo toà.
+  IF NOT COALESCE(public.can_access_org_entity('contracts','view'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
   v_today:=COALESCE(p_as_of,public.org_today_v1(p_organization_id));
   v_from:=COALESCE(p_from,date_trunc('month',v_today)::date);
   v_to:=COALESCE(p_to,(date_trunc('month',v_today)+interval '1 month - 1 day')::date);
@@ -41,7 +41,7 @@ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE v_today date;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'w2d_authenticated_only' USING ERRCODE='42501'; END IF;
-  IF NOT COALESCE(public.can_access_org_entity('reports_real_estate','expiring'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
+  IF NOT COALESCE(public.can_access_org_entity('contracts','view'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
   v_today:=COALESCE(p_as_of,public.org_today_v1(p_organization_id));
   RETURN QUERY
   SELECT c.id,c.contract_number,c.status::text,c.end_date,c.expected_move_out_date,(c.expected_move_out_date-v_today)::integer,c.rent_price,

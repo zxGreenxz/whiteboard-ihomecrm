@@ -11,6 +11,9 @@ const file = slug => { const found = readdirSync('supabase/migrations').filter(n
   return readFileSync(`supabase/migrations/${found[0]}`, 'utf8').replaceAll('\r\n', '\n'); };
 const CONTRACT_ACTION_SQL = file('hermes_contract_action_v1');
 const RESOLVE = file('hermes_write_name_resolve_v1'), FOUNDATION = file('hermes_action_foundation_v1'), KEYS = file('hermes_action_keys_seed_v1');
+// Hàm dùng chung tính ngày gia hạn (Mốc 3; web cùng gọi) + bộ vector dùng chung.
+const RENEWAL_DATE = file('contract_renewal_end_date_v1');
+const RENEWAL_VECTORS = JSON.parse(readFileSync('infra/hermes-broker/contract-renewal-vectors.json', 'utf8')).cases;
 const u = n => `00000000-0000-4000-8000-${String(500 + n).padStart(12, '0')}`;
 const CONTRACT = u(1), CUSTOMER = u(2), EMPTY_ROOM = u(3), RETURNED_ROOM = u(4), OLD_CONTRACT = u(5), OTHER_USER = u(6);
 const rid = n => `00000000-0000-4000-8000-${String(700 + n).padStart(12, '0')}`;
@@ -23,16 +26,21 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
   ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS code text;
   ALTER TABLE public.contracts ADD COLUMN IF NOT EXISTS contract_number text, ADD COLUMN IF NOT EXISTS start_date date, ADD COLUMN IF NOT EXISTS end_date date,
     ADD COLUMN IF NOT EXISTS expected_move_out_date date, ADD COLUMN IF NOT EXISTS actual_end_date date,
-    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT clock_timestamp();
+    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT clock_timestamp(), ADD COLUMN IF NOT EXISTS rent_price numeric,
+    ADD COLUMN IF NOT EXISTS notes text;
+  ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS contract_id uuid;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS contract_id uuid;
+  CREATE TABLE IF NOT EXISTS public.contract_extensions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid,old_end_date date,new_end_date date,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp());
   CREATE TABLE IF NOT EXISTS public.customers(id uuid PRIMARY KEY,organization_id uuid,full_name text,phone text);
   CREATE TABLE IF NOT EXISTS public.contract_customers(contract_id uuid,customer_id uuid,is_representative boolean);
   CREATE TABLE IF NOT EXISTS public.contract_exit_cases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,contract_id uuid,state text);
   CREATE TABLE IF NOT EXISTS public.room_sale_locks(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,building_id uuid,room_id uuid,hours integer,
     note text,locked_by uuid,locked_at timestamptz DEFAULT clock_timestamp(),expires_at timestamptz,released_at timestamptz,released_by uuid,release_reason text);
   CREATE TABLE IF NOT EXISTS public.fixture_today(d date);
-  CREATE TABLE IF NOT EXISTS public.fixture_contract_writer(raise_state text);
+  CREATE TABLE IF NOT EXISTS public.fixture_contract_writer(raise_state text,bad text);
   DELETE FROM public.fixture_today; DELETE FROM public.fixture_contract_writer;
-  INSERT INTO public.fixture_today VALUES('${TODAY}'); INSERT INTO public.fixture_contract_writer VALUES(null);
+  INSERT INTO public.fixture_today VALUES('${TODAY}'); INSERT INTO public.fixture_contract_writer(raise_state) VALUES(null);
   ALTER TABLE public.contracts ENABLE ROW LEVEL SECURITY; ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
   DROP POLICY IF EXISTS fixture_contracts ON public.contracts; DROP POLICY IF EXISTS fixture_customers ON public.customers;
   CREATE POLICY fixture_contracts ON public.contracts FOR SELECT TO authenticated USING (EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='contracts.view' AND a.allowed));
@@ -79,6 +87,36 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
       RETURN jsonb_build_object('contract_id',c.id,'organization_id',c.organization_id,'expected_move_out_date',c.expected_move_out_date,
         'updated_at',c.updated_at,'today',public.org_today_v1(p_organization_id),'status',c.status);
     END $w$;
+  -- Port gia hạn (renew_contract_with_notice_v1): quyền theo toà như rào câu 26 (contracts.renew); khoá lạc quan; lý do ≥ 8 như
+  -- trigger hoa hồng z98; ngày mới phải sau ngày cũ; CANCEL gỡ báo trả; giá/cọc NULL = giữ. bad: giả lập hàm ghi sai — 'price' đổi giá,
+  -- 'notice' chọn CANCEL mà không gỡ báo trả, 'invoice' phát sinh hoá đơn (để thử hậu điều kiện của bước ghi).
+  CREATE OR REPLACE FUNCTION public.renew_contract_with_notice_v1(p_organization_id uuid,p_contract_id uuid,p_expected_updated_at timestamptz,
+    p_new_end_date date,p_notice_choice text,p_request_id uuid,p_new_rent_price numeric DEFAULT NULL,p_new_deposit numeric DEFAULT NULL,
+    p_notes text DEFAULT NULL,p_notice_reason text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $w$
+    DECLARE c public.contracts; v_room public.rooms;
+    BEGIN
+      IF (SELECT raise_state FROM public.fixture_contract_writer) IS NOT NULL THEN
+        RAISE EXCEPTION 'fixture writer refused' USING ERRCODE=(SELECT raise_state FROM public.fixture_contract_writer); END IF;
+      IF p_notice_choice IS NULL OR p_notice_choice NOT IN ('KEEP','CANCEL') OR p_request_id IS NULL THEN
+        RAISE EXCEPTION 'Cần chọn giữ hoặc hủy báo dọn và mã yêu cầu hợp lệ' USING ERRCODE='22023'; END IF;
+      SELECT * INTO c FROM public.contracts WHERE id=p_contract_id AND organization_id=p_organization_id FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'Không tìm thấy hợp đồng trong tổ chức này' USING ERRCODE='42501'; END IF;
+      SELECT * INTO v_room FROM public.rooms WHERE id=c.room_id;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='contracts.renew' AND allowed AND (org_wide OR v_room.building_id=ANY(building_ids)))
+        THEN RAISE EXCEPTION '[THIEU_QUYEN:contracts.renew] Bạn không có quyền gia hạn hợp đồng ở toà nhà này.' USING ERRCODE='42501'; END IF;
+      IF c.updated_at IS DISTINCT FROM p_expected_updated_at THEN RAISE EXCEPTION 'Hợp đồng đã thay đổi; vui lòng tải lại trước khi tiếp tục' USING ERRCODE='PT409'; END IF;
+      IF char_length(btrim(COALESCE(p_notes,'')))<8 THEN RAISE EXCEPTION 'Cần ghi rõ lý do thay đổi hoa hồng (từ 8 đến 2000 ký tự).' USING ERRCODE='22023'; END IF;
+      IF p_new_end_date<=c.end_date THEN RAISE EXCEPTION 'Ngày kết thúc mới phải sau ngày kết thúc hiện tại (%)',c.end_date; END IF;
+      IF p_notice_choice='CANCEL' AND (SELECT bad FROM public.fixture_contract_writer) IS DISTINCT FROM 'notice' THEN
+        UPDATE public.contracts SET expected_move_out_date=NULL WHERE id=c.id; END IF;
+      IF (SELECT bad FROM public.fixture_contract_writer)='invoice' THEN
+        INSERT INTO public.invoices(id,organization_id,contract_id,total_amount) VALUES(gen_random_uuid(),c.organization_id,c.id,1); END IF;
+      INSERT INTO public.contract_extensions(contract_id,old_end_date,new_end_date) VALUES(c.id,c.end_date,p_new_end_date);
+      UPDATE public.contracts SET end_date=p_new_end_date,
+        rent_price=COALESCE(p_new_rent_price,rent_price)+CASE WHEN (SELECT bad FROM public.fixture_contract_writer)='price' THEN 1 ELSE 0 END,
+        total_deposit=COALESCE(p_new_deposit,total_deposit),notes=COALESCE(notes,'')||E'\n[Gia hạn] '||p_notes,updated_at=clock_timestamp() WHERE id=c.id;
+      RETURN c.id;
+    END $w$;
   -- Port khoá tạm: 6/12/24 giờ; phòng phải còn trên danh sách bán; một khoá mở mỗi phòng; cùng người/giờ/ghi chú trong 2 phút ⇒ trả lại khoá cũ.
   CREATE OR REPLACE FUNCTION public.lock_room_for_sale_v1(p_organization_id uuid,p_room_id uuid,p_hours integer,p_note text DEFAULT NULL)
     RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $w$
@@ -115,13 +153,13 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
     END $w$;`;
 
 test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / huỷ, khoá tạm / gỡ khoá', { timeout: 240000 }, async t => {
-  const f = await setup(t, { action: `${SUPPORT}\n${RESOLVE}` });
+  const f = await setup(t, { action: `${SUPPORT}\n${RESOLVE}\n${RENEWAL_DATE.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '')}` });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(KEYS);
   await db.exec(CONTRACT_ACTION_SQL); await db.exec(CONTRACT_ACTION_SQL); // Idempotent re-apply.
-  const keys = ['contracts.terminate', 'sale_phong.lock_room'];
+  const keys = ['contracts.terminate', 'sale_phong.lock_room', 'contracts.renew'];
   assert.deepEqual((await db.query('SELECT capability,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1) ORDER BY 1', [keys])).rows,
-    keys.map(capability => ({ capability, enabled: false })), 'khoá seed TẮT');
+    [...keys].sort().map(capability => ({ capability, enabled: false })), 'khoá seed TẮT');
   // Bật như script TEST: registry, quyền CRM giao vào, trần công ty, khoá của kết nối.
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [keys]);
   for (const permission of ['buildings.view', 'contracts.view', 'customers.view', ...keys])
@@ -148,6 +186,7 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
     for (const key of keys) assert.deepEqual(caps.permissions[key], { allowed: true, companyEnabled: true, buildingIds: [BUILDING, OTHER_BUILDING].sort() }, key);
     for (const [action, capability] of [['contract.notice_set', keys[0]], ['contract.notice_cancel', keys[0]], ['contract.room_lock', keys[1]], ['contract.room_unlock', keys[1]]])
       assert.deepEqual(caps.actions[action], { capability, actionClass: 'reversible', confirm: 'never', privateOnly: true }, action);
+    assert.deepEqual(caps.actions['contract.renew'], { capability: 'contracts.renew', actionClass: 'irreversible', confirm: 'always', privateOnly: true });
   });
 
   await t.test('báo trả: ghi thẳng ở auto, câu kết quả nêu cũ → mới + thứ + số ngày; phát lại; xung đột; không đổi ngày', async () => {
@@ -277,6 +316,82 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
     const released = await run('contract.room_unlock', 'auto', rid(75), { buildingName: 'Toà A', roomName: 'P102' });
     assert.equal(released.kind, 'applied'); assert.match(released.result.text, /^Đã gỡ khoá tạm phòng P102 toà Toà A \(khoá tới /);
     assert.deepEqual(await run('contract.room_unlock', 'auto', rid(76), { buildingName: 'Toà A', roomName: 'P102' }), { kind: 'rejected', reason: 'no_open_lock' });
+  });
+
+  await t.test('hàm ngày gia hạn dùng chung: mọi vector (cuối tháng giữ cuối tháng, còn lại giữ số ngày, kẹp cuối tháng)', async () => {
+    for (const { endDate, months, expected, note } of RENEWAL_VECTORS) {
+      const got = (await db.query('SELECT public.contract_renewal_end_date_v1($1::date,$2)::text d', [endDate, months])).rows[0].d;
+      assert.equal(got, expected, note);
+    }
+  });
+
+  await t.test('gia hạn giữ giá: luôn xem trước (cả lượt auto); lý do / câu cố định; ngày; giá khác ⇒ chỉ đường web; báo trả giữ/huỷ; ghi đúng; trùng 24 giờ; hậu điều kiện', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.contracts SET expected_move_out_date=NULL,rent_price=4500000,total_deposit=4500000,end_date='2027-02-28' WHERE id=$1", [CONTRACT]);
+      const base = { ...P101, months: 6, reason: 'Khách xin ở tiếp' };
+      const preview = await run('contract.renew', 'auto', rid(90), base);
+      assert.equal(preview.kind, 'preview', 'irreversible: lượt auto vẫn chỉ xem trước'); assert.equal(preview.confirm, 'required');
+      assert.match(preview.preview.text, /^Sẽ gia hạn phòng P101 toà Toà A \(HĐ HĐ-THU-001, khách Khách Thử\): ngày kết thúc 28\/02\/2027 → (thứ|Chủ nhật)[^(]* 31\/08\/2027 \(còn \d+ ngày\) \(\+6 tháng\)\. Giá thuê giữ 4\.500\.000đ\/tháng, cọc giữ 4\.500\.000đ\. Báo trả: không có\. Lý do ghi vào HĐ: "Khách xin ở tiếp"\. Không phát sinh hoá đơn hay phiếu\.$/);
+      assert.deepEqual([preview.preview.endDate, preview.preview.rentPrice, preview.preview.moveOutNotice], [{ from: '2027-02-28', to: '2027-08-31' }, '4500000', 'none']);
+      assert.equal((await receipts()).some(row => row.request_id === rid(90)), false, 'xem trước không mở biên nhận');
+      assert.deepEqual(await run('contract.renew', 'preview', rid(91), { ...P101, months: 6 }), { kind: 'needs_input', reason: 'renew_reason_ask' });
+      const fixed = await run('contract.renew', 'preview', rid(92), { ...P101, months: 6, noReason: true });
+      assert.match(fixed.preview.text, /Lý do ghi vào HĐ: "Gia hạn theo yêu cầu qua Hermes, không nêu lý do\."/);
+      assert.deepEqual(await run('contract.renew', 'preview', rid(93), { ...P101, months: 6, reason: 'ngắn' }), { kind: 'needs_input', reason: 'reason_required' });
+      assert.deepEqual(await run('contract.renew', 'preview', rid(94), { ...P101, reason: 'Khách xin ở tiếp' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.renew', 'preview', rid(95), { ...base, newEndDate: '2027-12-31' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.renew', 'preview', rid(96), { ...P101, newEndDate: '2027-02-28', reason: 'Khách xin ở tiếp' }), { kind: 'needs_input', reason: 'date_out_of_range' });
+      assert.deepEqual(await run('contract.renew', 'preview', rid(102), { ...P101, newEndDate: '2037-12-31', reason: 'Khách xin ở tiếp' }), { kind: 'needs_input', reason: 'date_out_of_range' }, 'quá 3 660 ngày');
+      assert.equal((await run('contract.renew', 'preview', rid(97), { ...P101, newEndDate: '2027-12-31', reason: 'Khách xin ở tiếp' })).preview.endDate.to, '2027-12-31');
+      assert.deepEqual(await run('contract.renew', 'preview', rid(98), { ...base, newRentPrice: 4800000 }), { kind: 'rejected', reason: 'renew_price_change_web_only' });
+      assert.deepEqual(await run('contract.renew', 'preview', rid(99), { ...base, newDeposit: 5000000 }), { kind: 'rejected', reason: 'renew_price_change_web_only' });
+      assert.equal((await run('contract.renew', 'preview', rid(100), { ...base, newRentPrice: 4500000, newDeposit: 4500000 })).kind, 'preview', 'nhắc lại đúng giá/cọc hiện tại thì nhận');
+      // Ghi bằng bản đã giải + basis của lượt xem trước: đúng ngày mới, giá/cọc giữ, 1 dòng gia hạn, biên nhận + audit.
+      const applied = await run('contract.renew', 'apply', rid(90), base, preview);
+      assert.equal(applied.kind, 'applied'); assert.equal(applied.link, `/contracts/${CONTRACT}`);
+      assert.deepEqual([applied.result.endDate, applied.result.months, applied.result.rentPrice, applied.result.moveOutNotice], [{ from: '2027-02-28', to: '2027-08-31' }, 6, '4500000', 'none']);
+      assert.match(applied.result.text, /^Đã gia hạn phòng P101 toà Toà A .*Lý do ghi vào HĐ: "Khách xin ở tiếp"\.$/);
+      const row = (await db.query('SELECT end_date::text e,rent_price::text r,total_deposit::text d FROM public.contracts WHERE id=$1', [CONTRACT])).rows[0];
+      assert.deepEqual(row, { e: '2027-08-31', r: '4500000', d: '4500000' });
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.contract_extensions WHERE contract_id=$1', [CONTRACT])).rows[0].n, 1);
+      assert.deepEqual((await receipts()).filter(item => item.request_id === rid(90)).map(item => item.state), ['applied']);
+      assert.deepEqual(await run('contract.renew', 'apply', rid(90), base, preview), applied, 'phát lại cùng requestId: không gia hạn lần hai');
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.contract_extensions WHERE contract_id=$1', [CONTRACT])).rows[0].n, 1);
+      // Trùng: xem trước mới trong 24 giờ có cảnh báo "vừa được gia hạn".
+      const again = await run('contract.renew', 'preview', rid(101), { ...P101, months: 6, reason: 'Khách xin ở tiếp' });
+      assert.ok(again.warnings.some(text => /^HĐ vừa được gia hạn lúc .*28\/02\/2027 → 31\/08\/2027.*gia hạn chồng/.test(text)), JSON.stringify(again.warnings));
+      // HĐ đổi giữa hai lượt (vd đổi giá trên web) ⇒ state_changed, không ghi.
+      await db.query('UPDATE public.contracts SET rent_price=4600000 WHERE id=$1', [CONTRACT]);
+      assert.deepEqual(await run('contract.renew', 'apply', rid(101), { ...P101, months: 6, reason: 'Khách xin ở tiếp' }, again), { kind: 'rejected', reason: 'state_changed' });
+    });
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.contracts SET expected_move_out_date='2027-01-15',rent_price=4500000,total_deposit=4500000,end_date='2027-02-28' WHERE id=$1", [CONTRACT]);
+      const base = { ...P101, months: 12, reason: 'Khách xin ở tiếp' };
+      assert.deepEqual(await run('contract.renew', 'preview', rid(110), base), { kind: 'needs_input', reason: 'notice_choice_required' });
+      const keep = await run('contract.renew', 'preview', rid(111), { ...base, keepMoveOutNotice: true });
+      assert.match(keep.preview.text, /Báo trả: GIỮ ngày 15\/01\/2027\./); assert.equal(keep.preview.moveOutNotice, 'keep');
+      assert.ok(keep.warnings.some(text => /^Báo trả 15\/01\/2027 vẫn GIỮ/.test(text)));
+      const cancel = await run('contract.renew', 'preview', rid(112), { ...base, keepMoveOutNotice: false });
+      assert.match(cancel.preview.text, /Báo trả: HUỶ \(trước đó dọn đi 15\/01\/2027\)\./);
+      const done = await run('contract.renew', 'apply', rid(112), { ...base, keepMoveOutNotice: false }, cancel);
+      assert.equal(done.result.moveOutNotice, 'cancelled');
+      assert.deepEqual((await db.query('SELECT end_date::text e,expected_move_out_date d FROM public.contracts WHERE id=$1', [CONTRACT])).rows[0], { e: '2028-02-29', d: null });
+    });
+    // Hậu điều kiện: hàm ghi (giả lập) đổi giá / không gỡ báo trả khi chọn huỷ / phát sinh hoá đơn ⇒ lùi về savepoint, chốt
+    // crm_refused, HĐ không đổi.
+    for (const [index, bad] of ['price', 'notice', 'invoice'].entries()) await f.rollbackCase(async () => {
+      await db.query("UPDATE public.contracts SET expected_move_out_date=$2,rent_price=4500000,total_deposit=4500000,end_date='2027-02-28' WHERE id=$1",
+        [CONTRACT, bad === 'notice' ? '2027-01-15' : null]);
+      await db.query('UPDATE public.fixture_contract_writer SET bad=$1', [bad]);
+      const base = { ...P101, months: 6, reason: 'Khách xin ở tiếp', ...(bad === 'notice' ? { keepMoveOutNotice: false } : {}) };
+      const preview = await run('contract.renew', 'preview', rid(120 + index), base);
+      assert.deepEqual(await run('contract.renew', 'apply', rid(120 + index), base, preview), { kind: 'rejected', reason: 'crm_refused' }, bad);
+      assert.deepEqual((await db.query('SELECT end_date::text e,rent_price::text r,expected_move_out_date::text d FROM public.contracts WHERE id=$1', [CONTRACT])).rows[0],
+        { e: '2027-02-28', r: '4500000', d: bad === 'notice' ? '2027-01-15' : null }, bad);
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.contract_extensions WHERE contract_id=$1', [CONTRACT])).rows[0].n, 0, bad);
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.invoices WHERE contract_id=$1', [CONTRACT])).rows[0].n, 0, bad);
+      assert.deepEqual((await receipts()).filter(item => item.request_id === rid(120 + index)).map(item => item.state), ['rejected'], bad);
+    });
   });
 
   await t.test('rào khung: registry tắt ⇒ 42501; tham số NULL ⇒ 22023; anon không gọi được; lookup ngoài vai authenticated ⇒ 42501', async () => {

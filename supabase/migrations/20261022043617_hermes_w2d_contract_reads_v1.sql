@@ -4,6 +4,9 @@
 --   re_move_out_notices   (đọc bù b) ngày khách báo dọn đi (KHÁC ngày hết hạn); mặc định mọi báo trả còn hiệu lực.
 --   re_exit_cases_pending (mục 1)   hồ sơ trả phòng chờ quyết toán, qua đúng RPC web list_contract_exit_cases_v1 (bảng không cấp
 --                                   SELECT cho authenticated); không tên khách.
+--   Ba báo cáo trên dùng khoá contracts.view (Quản lý toà có, theo toà) — cần nền 20261022043540 (thêm khoá vào tập dùng lại), tên
+--   file đó đứng trước file này.
+--   rooms_occupancy (Mốc 3, vai quản lý) số phòng theo toà như trang Phòng (đang cho thuê/trống/giữ chỗ/bảo trì), khoá rooms.view.
 -- Nguồn: hai hàm dùng chung MỚI ở file ngay trước (không chứa hàm của trợ lý) + RPC web list_contract_exit_cases_v1.
 -- Hàm đọc + bảng báo cáo của gói dựng từ thân ĐANG CHẠY (production = TEST = repo, đọc 22/10: md5(prosrc) ghim ở $requires$; lượt
 -- chạy lại nhận thân đã có nhánh re_contracts_ending). Phần còn lại của hai thân giữ nguyên từng chữ.
@@ -43,11 +46,13 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog
     'params',jsonb_build_array('buildingId','fromDate','toDate'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys',jsonb_build_array('customers.view')),
   're_terminations',jsonb_build_object('permission','reports_real_estate.terminations','source','crm.real_estate_terminations_v1','scope','rows',
     'params',jsonb_build_array('buildingId','fromDate','toDate'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys',jsonb_build_array('customers.view')),
-  're_contracts_ending',jsonb_build_object('permission','reports_real_estate.expiring','source','crm.real_estate_contracts_ending_v1','scope','rows',
+  're_contracts_ending',jsonb_build_object('permission','contracts.view','source','crm.real_estate_contracts_ending_v1','scope','rows',
     'params',jsonb_build_array('buildingId','fromDate','toDate'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys','[]'::jsonb),
-  're_move_out_notices',jsonb_build_object('permission','reports_real_estate.expiring','source','crm.contract_move_out_notices_v1','scope','rows',
+  're_move_out_notices',jsonb_build_object('permission','contracts.view','source','crm.contract_move_out_notices_v1','scope','rows',
     'params',jsonb_build_array('buildingId','fromDate','toDate'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys','[]'::jsonb),
-  're_exit_cases_pending',jsonb_build_object('permission','reports_real_estate.terminations','source','crm.list_contract_exit_cases_v1','scope','rows',
+  're_exit_cases_pending',jsonb_build_object('permission','contracts.view','source','crm.list_contract_exit_cases_v1','scope','rows',
+    'params',jsonb_build_array('buildingId'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys','[]'::jsonb),
+  'rooms_occupancy',jsonb_build_object('permission','rooms.view','source','crm.rooms_list_v1','scope','rows',
     'params',jsonb_build_array('buildingId'),'required','[]'::jsonb,'statuses',NULL,'kinds',NULL,'scopeKeys','[]'::jsonb),
   're_expense_ratio',jsonb_build_object('permission','reports_real_estate.expense_ratio','source','crm.real_estate_expense_ratio_v1','scope','rows',
     'params',jsonb_build_array('buildingId','fromDate','toDate','query','kind'),'required','[]'::jsonb,'statuses',NULL,
@@ -293,6 +298,23 @@ BEGIN
           'kind',i->>'current_kind','settlementMode',i->>'settlement_mode','daysWaiting',v_today-(i->>'actual_move_out_on')::date) item
         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_exit->'items')='array' THEN v_exit->'items' ELSE '[]'::jsonb END) i
         WHERE i->>'organization_id'=v_org::text AND i->>'state'='PENDING' AND (i->>'building_id')::uuid=ANY(v_buildings)) x;
+  ELSIF p_report='rooms_occupancy' THEN
+    -- Đợt 2 Hợp đồng (vai quản lý): số phòng theo toà đúng trạng thái hiển thị của trang Phòng (rooms_list_v1: có HĐ hiệu lực ⇒
+    -- OCCUPIED / EXPIRING_SOON = đang cho thuê; không HĐ ⇒ theo trạng thái phòng). Khoá xem phòng như trang Phòng của web.
+    SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord),'[]'::jsonb),false,
+      jsonb_build_object('buildings',count(*),'total',COALESCE(sum(x.total),0)::bigint,'rented',COALESCE(sum(x.rented),0)::bigint,
+        'expiringSoon',COALESCE(sum(x.expiring),0)::bigint,'available',COALESCE(sum(x.available),0)::bigint,
+        'reserved',COALESCE(sum(x.reserved),0)::bigint,'maintenance',COALESCE(sum(x.maintenance),0)::bigint)
+      INTO v_rows,v_capped,v_summary
+      FROM (SELECT row_number() OVER (ORDER BY g.building_name,g.building_id) ord,g.total,g.rented,g.expiring,g.available,g.reserved,g.maintenance,
+        jsonb_build_object('organizationId',g.organization_id,'buildingId',g.building_id,'buildingName',public.report_text_v1(g.building_name,200),
+          'total',g.total,'rented',g.rented,'expiringSoon',g.expiring,'available',g.available,'reserved',g.reserved,'maintenance',g.maintenance) item
+        FROM (SELECT r.organization_id,r.building_id,r.building_name,count(*) total,
+            count(*) FILTER (WHERE r.display_status IN ('OCCUPIED','EXPIRING_SOON')) rented,
+            count(*) FILTER (WHERE r.display_status='EXPIRING_SOON') expiring,count(*) FILTER (WHERE r.display_status='AVAILABLE') available,
+            count(*) FILTER (WHERE r.display_status='RESERVED') reserved,count(*) FILTER (WHERE r.display_status='MAINTENANCE') maintenance
+          FROM public.rooms_list_v1(v_org,v_buildings,v_today) r WHERE r.building_id=ANY(v_buildings)
+          GROUP BY r.organization_id,r.building_id,r.building_name) g) x;
   ELSIF p_report='re_expense_ratio' THEN
     -- Kỳ theo tháng như web (realEstateReports.ts:531-538): mặc định 6 tháng tới tháng hiện tại.
     v_to_m:=date_trunc('month',COALESCE(v_to,v_today))::date;

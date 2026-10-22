@@ -886,7 +886,7 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2: báo trả / dời / huỷ báo trả, khoá tạm / gỡ khoá tạm qua khung crm_action_*), chưa đi qua lane apply — 5 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql 11/11, đã thu hồi USAGE app_private như production; 13/13 đột biến bị bắt), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 4 kết nối Hermes ACTIVE thật, hàm ghi web thật), buildTransaction của lane nhận file, hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. D-HĐ10: Mốc 3–4 nối tiếp vào chính file này trước khi gộp (băm và hồ sơ cập nhật theo). Sẽ áp qua npm run migrate:forward (TEST trước, rồi production; người dùng chạy, có backup) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2: báo trả / dời / huỷ báo trả, khoá tạm / gỡ khoá tạm qua khung crm_action_*; Mốc 3 nối thêm gia hạn giữ nguyên giá/cọc contract.renew gọi renew_contract_with_notice_v1 + phát lại biên nhận sớm), chưa đi qua lane apply — 5 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql 13/13, đã thu hồi USAGE app_private như production; 23/23 đột biến bị bắt), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 4 kết nối Hermes ACTIVE thật, hàm ghi web thật), buildTransaction của lane nhận file, hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. D-HĐ10: Mốc 4 nối tiếp vào chính file này trước khi gộp (băm và hồ sơ cập nhật theo); gia hạn theo số tháng gọi 20261022042822_contract_renewal_end_date_v1 lúc chạy (plpgsql, tên xếp SAU file này; $check$ không gọi) ⇒ chỉ bật khoá contracts.renew khi cả hai đã áp. Sẽ áp qua npm run migrate:forward (TEST trước, rồi production; người dùng chạy, có backup) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.hermes_contract_date_label_v1",
         "function:app_private.hermes_contract_reason_v1",
@@ -895,7 +895,7 @@
         "function:public.hermes_contract_action_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
-      "sha256": "3ed73f06addfb4816ee6fdd0917c91d573bbd5a5ea345af48c49ba2651708f5b"
+      "sha256": "f048a931be726045c6cda747b5cf8f6c1c1c5ea940b547741cee984857c9c385"
     },
     "supabase/migrations/20261022032205_hermes_w2d_contract_shared_v1.sql": {
       "bangChung": [
@@ -909,13 +909,32 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2 đọc bù: hai hàm dùng chung cho báo cáo W2 re_contracts_ending / re_move_out_notices), chưa đi qua lane apply — 2 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite gói D (wave2-d gồm ngữ nghĩa ba báo cáo mới, cấu trúc INVOKER/search_path rỗng/chỉ authenticated/tự kiểm khoá web), tầng 2 trên TEST trong ROLLBACK (số khớp đối chiếu), buildTransaction của lane nhận file. Áp qua npm run migrate:forward (TEST trước, rồi production) CÙNG file kế tiếp 20261022032214_hermes_w2d_contract_reads_v1 (bảng báo cáo + hàm đọc gói D) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2 đọc bù: hai hàm dùng chung cho báo cáo W2 re_contracts_ending / re_move_out_notices; Mốc 3 đổi cổng sang quyền xem hợp đồng contracts.view cho Quản lý toà), chưa đi qua lane apply — 2 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite gói D (wave2-d gồm ngữ nghĩa ba báo cáo mới, cấu trúc INVOKER/search_path rỗng/chỉ authenticated/tự kiểm khoá web), tầng 2 trên TEST trong ROLLBACK (số khớp đối chiếu), buildTransaction của lane nhận file. Áp qua npm run migrate:forward (TEST trước, rồi production) CÙNG 20261022043540_hermes_w2_contracts_view_reused_v1 (khoá dùng lại) và 20261022043617_hermes_w2d_contract_reads_v1 (bảng báo cáo + hàm đọc gói D) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:public.real_estate_contracts_ending_v1",
         "function:public.contract_move_out_notices_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
-      "sha256": "0c079ed4d1c8c76cdb4f98f0b390037175b11468ac350e831822ef5af3a7c65e"
+      "sha256": "494ae0204285d75d3d6c36b99624969db7b101faed0ae7de1408bf4f5935fa7a"
+    },
+    "supabase/migrations/20261022042822_contract_renewal_end_date_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022042822_contract_renewal_end_date_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.contract_renewal_end_date_v1 (hàm dùng chung MỚI, IMMUTABLE, INVOKER, search_path rỗng, chỉ authenticated)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 1 hàm trên — sinh 22/10/2026 trên nhánh Hợp đồng Đợt 2 Mốc 3"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 3: ngày kết thúc khi gia hạn thêm N tháng — web hộp Gia hạn nút +6/+12 tháng và thao tác Hermes contract.renew cùng gọi một hàm), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: 14 vector dùng chung (infra/hermes-broker/contract-renewal-vectors.json) chạy trên PGlite và trong $check$ của file, test web (vitest) cho service + hộp Gia hạn, buildTransaction của lane nhận file. Áp qua npm run migrate:forward (TEST trước, rồi production) CÙNG đợt với 20261022022951_hermes_contract_action_v1 (lane xếp theo tên nên file đó vào trước; hàm trang chỉ gọi hàm này lúc chạy) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.contract_renewal_end_date_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
+      "sha256": "023e38a21a42a969ec3fc2e31bbcbca484b7916cc6659bac285f2c6a8a33efde"
     }
   }
 }

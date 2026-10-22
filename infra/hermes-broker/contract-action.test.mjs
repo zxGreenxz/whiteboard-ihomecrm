@@ -10,14 +10,14 @@ import { ACTION_PAGE_REASON_BLOCKS, ACTION_REASONS } from './action-reasons.mjs'
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { probeCatalog, PROBE_KEY } from './action-probe-contract.mjs';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
-import { CONTRACT_ACTIONS, CONTRACT_NOTICE_CANCEL, CONTRACT_NOTICE_SET, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK } from './contract-action-contract.mjs';
+import { CONTRACT_ACTIONS, CONTRACT_NOTICE_CANCEL, CONTRACT_NOTICE_SET, CONTRACT_RENEW, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK } from './contract-action-contract.mjs';
 
 // Danh mục thao tác trang HỢP ĐỒNG (HOP-DONG-THAO-TAC-GHI.md mục 3–5) qua khung chung: khuôn tham số, lớp ghi thẳng (Q2 = a,
 // D-HĐ1), mã lý do riêng trang tới mô hình đúng dạng (needs_input là kết quả thường, rejected là action_rejected + câu tĩnh),
 // và 0 byte tools/list so với danh mục thử.
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const TOKEN = `hc_${'A'.repeat(43)}`;
-const KEYS = ['contracts.terminate', 'sale_phong.lock_room'];
+const KEYS = ['contracts.terminate', 'sale_phong.lock_room', 'contracts.renew'];
 
 function setup(t, { action = KEYS, respond } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
@@ -38,20 +38,21 @@ function setup(t, { action = KEYS, respond } = {}) {
   return { broker, requests, call };
 }
 
-test('danh mục: bốn thao tác Mốc 2, khoá ⊆ hợp đồng khoá Action, một RPC trang, lý do ∈ khối Hợp đồng', () => {
+test('danh mục: bốn thao tác Mốc 2 + gia hạn Mốc 3, khoá ⊆ hợp đồng khoá Action, một RPC trang, lý do ∈ khối Hợp đồng', () => {
   const catalog = createActionCatalog([...CONTRACT_ACTIONS]);
-  assert.deepEqual(catalog.ids, ['contract.notice_set', 'contract.notice_cancel', 'contract.room_lock', 'contract.room_unlock']);
+  assert.deepEqual(catalog.ids, ['contract.notice_set', 'contract.notice_cancel', 'contract.room_lock', 'contract.room_unlock', 'contract.renew']);
   assert.deepEqual(catalog.rpcs, ['hermes_contract_action_v1']);
   assert.deepEqual(catalog.keys, [...KEYS].sort());
   assert.ok(catalog.keys.every(key => HERMES_ACTION_CAPABILITIES.includes(key)));
   for (const action of CONTRACT_ACTIONS) {
-    assert.equal(action.class, 'reversible', `${action.id}: Q2 = a, ghi thẳng`);
+    // Q2 = a: báo trả / khoá tạm ghi thẳng; gia hạn không lùi được ⇒ luôn xem trước (sàn trong mã).
+    assert.equal(action.class, action.id === 'contract.renew' ? 'irreversible' : 'reversible', action.id);
     assert.ok(action.reasons.every(code => ACTION_PAGE_REASON_BLOCKS.contract.includes(code)), action.id);
     assert.deepEqual(Object.keys(action.params).slice(0, 2), ['buildingName', 'roomName'], `${action.id}: toà + phòng`);
     assert.ok(!action.params.buildingName.optional && !action.params.roomName.optional, `${action.id}: toà và phòng bắt buộc`);
   }
   // Danh mục chung (probe + trang) nạp được: không trùng mã, cùng khung.
-  assert.equal(createActionCatalog([...probeCatalog().ids.map(idValue => probeCatalog().get(idValue)), ...CONTRACT_ACTIONS]).ids.length, 6);
+  assert.equal(createActionCatalog([...probeCatalog().ids.map(idValue => probeCatalog().get(idValue)), ...CONTRACT_ACTIONS]).ids.length, 7);
 });
 
 test('kiểm tham số: ngày YYYY-MM-DD, lý do huỷ ≥ 8 ký tự, giờ khoá là số nguyên; gợi ý tĩnh không nhắc giá trị đã gửi', () => {
@@ -65,6 +66,11 @@ test('kiểm tham số: ngày YYYY-MM-DD, lý do huỷ ≥ 8 ký tự, giờ kho
   assert.equal(validateActionParams(CONTRACT_ROOM_UNLOCK, { buildingName: 'Toà A' }).ok, false, 'thiếu phòng');
   assert.equal(validateActionParams(CONTRACT_NOTICE_SET, { buildingName: 'Toà A', roomName: '302', date: '2026-10-31', contractId: id('1') }).ok, false,
     'không nhận id HĐ từ mô hình');
+  // Gia hạn: months 1–60, ngày YYYY-MM-DD, lý do ≥ 8, giá/cọc là số VND; ĐÚNG MỘT trong months/newEndDate do SQL kiểm.
+  assert.deepEqual(validateActionParams(CONTRACT_RENEW, { buildingName: 'Toà A', roomName: '302', months: '6', noReason: true }).value,
+    { buildingName: 'Toà A', roomName: '302', months: 6, noReason: true });
+  for (const bad of [{ months: 0 }, { months: 61 }, { newEndDate: '31/08/2027' }, { months: 6, reason: 'ngắn' }, { months: 6, newRentPrice: -1 }])
+    assert.equal(validateActionParams(CONTRACT_RENEW, { buildingName: 'Toà A', roomName: '302', ...bad }).ok, false, JSON.stringify(bad));
 });
 
 test('vòng đời: ghi thẳng ở lượt 1 (auto, không confirmToken); mã trang needs_input là kết quả thường; rejected mang câu tĩnh', async t => {
@@ -86,7 +92,28 @@ test('vòng đời: ghi thẳng ở lượt 1 (auto, không confirmToken); mã t
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'contract.notice_set', params: { ...place, date: '2026-12-31' } }),
     error => error.code === 'action_rejected' && error.reason === 'already_returned');
   const listing = await env.call('crm_action_list', { page: 'contract' });
-  assert.deepEqual(listing.items.map(item => [item.action, item.confirm]), CONTRACT_ACTIONS.map(action => [action.id, 'if_required']));
+  assert.deepEqual(listing.items.map(item => [item.action, item.confirm]),
+    CONTRACT_ACTIONS.map(action => [action.id, action.class === 'reversible' ? 'if_required' : 'always']));
+});
+
+test('gia hạn: lượt 1 luôn xem trước (phase preview) dù không có confirmToken; đồng ý ⇒ apply mang resolved + basis của bản xem trước', async t => {
+  const env = setup(t, { respond: request => request.params.newRentPrice !== undefined ? { kind: 'rejected', reason: 'renew_price_change_web_only' }
+    : request.phase === 'preview' ? (request.params.months === 6 ? { kind: 'preview', preview: { text: 'Sẽ gia hạn phòng 302 toà A …' }, basis: 'b'.repeat(32), resolved: { contractId: id('9') },
+      confirm: 'required', warnings: ['HĐ vừa được gia hạn lúc …'] } : { kind: 'needs_input', reason: 'renew_reason_ask' })
+    : request.phase === 'apply' ? { kind: 'applied', result: { text: 'Đã gia hạn phòng 302 toà A' }, link: '/contracts/x' } : { kind: 'rejected', reason: 'crm_refused' } });
+  const place = { buildingName: 'Toà A', roomName: '302' };
+  const ask = await env.call('crm_action_run', { action: 'contract.renew', params: { ...place, months: 12 } });
+  assert.deepEqual([ask.outcome, ask.reason], ['needs_input', 'renew_reason_ask']);
+  const first = await env.call('crm_action_run', { action: 'contract.renew', params: { ...place, months: 6, noReason: true } });
+  assert.equal(env.requests.at(-1).phase, 'preview', 'irreversible: không bao giờ auto');
+  assert.equal(first.outcome, 'confirmation_required'); assert.deepEqual(first.warnings, ['HĐ vừa được gia hạn lúc …']);
+  const done = await env.call('crm_action_run', { action: 'contract.renew', params: { ...place, months: 6, noReason: true },
+    requestId: first.requestId, confirmToken: first.confirmToken });
+  assert.equal(done.outcome, 'applied');
+  assert.deepEqual([env.requests.at(-1).phase, env.requests.at(-1).requestId, env.requests.at(-1).resolved, env.requests.at(-1).basis],
+    ['apply', first.requestId, { contractId: id('9') }, 'b'.repeat(32)]);
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'contract.renew', params: { ...place, months: 6, newRentPrice: 5000000, noReason: true } }),
+    error => error.code === 'action_rejected' && error.reason === 'renew_price_change_web_only');
 });
 
 test('kết nối chỉ giữ khoá khoá tạm ⇒ chỉ hai thao tác khoá; báo trả ⇒ action_disabled', async t => {

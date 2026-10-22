@@ -26,5 +26,15 @@ export const CONTRACT_ROOM_UNLOCK = defineAction({ id: 'contract.room_unlock', p
   title: 'Gỡ khoá tạm (bỏ giữ) phòng; ghi thẳng',
   params: place(), reasons: ['no_open_lock'] });
 
+// Mốc 3: gia hạn giữ nguyên giá (Q21). irreversible ⇒ luôn xem trước. Đúng MỘT trong months (máy chủ cộng tháng bằng hàm dùng
+// chung với web) hoặc newEndDate. Không lý do ⇒ SQL hỏi một câu (renew_reason_ask); người dùng nói không có ⇒ noReason=true.
+// newRentPrice/newDeposit chỉ để máy chủ đối chiếu: khác giá/cọc hiện tại ⇒ renew_price_change_web_only.
+export const CONTRACT_RENEW = defineAction({ id: 'contract.renew', page: 'contract', key: 'contracts.renew', class: 'irreversible', rpc: RPC,
+  title: 'Gia hạn HĐ giữ nguyên giá/cọc (months hoặc newEndDate); thiếu lý do hỏi 1 câu, không có ⇒ noReason=true',
+  params: { ...place(), months: param.int(1, 60, { optional: true }), newEndDate: param.date({ optional: true }), reason: param.text(8, 1000, { optional: true }),
+    noReason: param.bool({ optional: true }), keepMoveOutNotice: param.bool({ optional: true }), newRentPrice: param.vnd({ min: 0, optional: true }),
+    newDeposit: param.vnd({ min: 0, optional: true }) },
+  reasons: ['room_has_no_active_contract', 'already_returned', 'renew_reason_ask', 'notice_choice_required', 'renew_price_change_web_only'] });
+
 /** Danh mục production của trang (server.mjs nạp cùng các trang khác). */
-export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK]);
+export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK, CONTRACT_RENEW]);

@@ -1,6 +1,6 @@
 # Thao tác ghi của Hermes — trang HỢP ĐỒNG (Đợt 2: thiết kế ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế và chốt D-HĐ1–D-HĐ10 theo mặc định (22/10). Tiến độ ở mục 15. Migration chỉ là file, chưa áp; production chưa đổi.
+Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế, chốt D-HĐ1–D-HĐ10 theo mặc định và chốt D-HĐ11 (22/10). Tiến độ ở mục 15 (Mốc 2 và Mốc 3 xong). Migration chỉ là file, chưa áp; production chưa đổi.
 
 Căn cứ, theo thứ tự ưu tiên:
 1. Đáp án 40 câu chủ chốt ngày 21/10: Q2, Q3, Q7, Q20–Q23, Q26. Khi đáp án và plan mâu thuẫn, đáp án thắng.
@@ -22,10 +22,11 @@ Căn cứ, theo thứ tự ưu tiên:
 4. **Ngày gia hạn do máy chủ tính bằng hàm dùng chung mới `public.contract_renewal_end_date_v1(end_date, months)`.** Hiện máy chủ không tính ngày, còn web để người dùng tự chọn ngày. Luật "ngày cuối tháng thì giữ cuối tháng, còn lại giữ số ngày" khớp 82/112 lần gia hạn thật. Phép cộng tháng thuần của Postgres chỉ khớp 49/112. Web cũng dùng hàm này qua nút "+N tháng" trong hộp Gia hạn (luật 17/10).
 5. **Đọc bù (a)–(e) không thêm byte.** Phần đọc đi qua sổ W2 và một trường kết quả mới:
    - thêm 3 báo cáo: HĐ kết thúc trong khoảng ngày, báo trả theo khoảng ngày, hồ sơ trả phòng chờ quyết toán;
-   - sửa 2 báo cáo: `re_terminations` có thêm đếm bỏ cọc, `held_deposits` có thêm lọc "còn thiếu";
-   - thêm `publicLink` vào chi tiết HĐ.
+   - sửa tiêu đề 2 báo cáo: `re_terminations` (kỳ đúng tháng, đếm bỏ cọc), `held_deposits` ("chưa thu đủ cọc" = `SHORT` + `FIRST_INVOICE`, không có status `OWING`);
+   - Mốc 3: báo cáo `rooms_occupancy` (số phòng theo toà, khoá `rooms.view`) và ba báo cáo hợp đồng chuyển sang khoá `contracts.view`, để Quản lý toà hỏi được;
+   - `publicLink` của chi tiết HĐ: chưa làm (mục 6).
 
-   Nguyên nhân của (d) và (e) đã đo được (mục 6). Đáp án "2 HĐ thiếu cọc" của ma trận đúng với TEST: `SHORT` 1 + `FIRST_INVOICE` 1, đo ở tầng 2 ngày 22/10. Production lúc đo có 17 HĐ ACTIVE chưa thu đồng cọc nào, cộng 1 HĐ ở chế độ `FIRST_INVOICE`; chênh lệch là dữ liệu production khác bản chép TEST, không phải đáp án sai.
+   Nguyên nhân của (d) và (e) đã đo được (mục 6). Đáp án "2 HĐ thiếu cọc" của ma trận đúng với TEST: `SHORT` 1 + `FIRST_INVOICE` 1, đo ở tầng 2 ngày 22/10. Production lúc đo có 17 HĐ ACTIVE chưa thu đồng cọc nào, cộng 1 HĐ ở chế độ `FIRST_INVOICE`; chênh lệch là dữ liệu production khác bản chép TEST, không phải đáp án sai. Đo lại trên TEST ở Mốc 3 (D-HĐ11): tổ chức chính có 282 HĐ hiệu lực, đúng 2 HĐ còn thiếu ≥ 10.000đ (= `SHORT` ∪ `FIRST_INVOICE`), 0 HĐ thiếu trong khoảng 0–10.000đ, 9 HĐ cọc 0; 16 HĐ "chưa thu đồng nào" khác thuộc tổ chức thử thứ hai.
 6. **Rào bất biến nằm trong bước ghi.**
    - Trả phòng DEFERRED: trong giao dịch không được có phiếu thu/chi hay hoá đơn mới của HĐ. Có thì lùi về savepoint.
    - Migration của trang đòi P0a đã áp, kiểm bằng dấu `[TERMINATION_CONTRACT_CLOSED]` trong thân `approve_contract_termination_v1`.
@@ -127,6 +128,8 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
 - **Xem trước.** "Gia hạn HĐ … phòng 302 toà A (khách …): ngày kết thúc 28/02/2027 → thứ Ba 31/08/2027 (+6 tháng). Giá thuê giữ 4.500.000đ/tháng, cọc giữ 4.500.000đ. Báo trả 15/02/2027: GIỮ / HUỶ (hoặc: không có báo trả). Lý do ghi vào HĐ: '…'. Không phát sinh hoá đơn hay phiếu."
 - **Cảnh báo trùng.** HĐ có `contract_extensions` trong 24 giờ qua ⇒ cảnh báo "HĐ vừa được gia hạn lúc … (… → …)". Lý do: mô hình gửi lại với requestId mới sẽ gia hạn chồng thêm N tháng; cảnh báo này và bước xác nhận là rào chính.
 - **Hậu điều kiện.** `end_date` = ngày mới, `status='ACTIVE'`, giá và cọc không đổi, báo trả đúng lựa chọn, không có phiếu hay hoá đơn mới. Lệch thì `RAISE` trong khối, lùi về savepoint, chốt `crm_refused`.
+- **Đã làm (Mốc 3).** `months` 1–60; ngày mới phải > `end_date` và ≤ `end_date` + 3 660 ngày. HĐ không có báo trả ⇒ gửi `KEEP` như web; chọn GIỮ ⇒ cảnh báo "khách vẫn dọn đi ngày đó". Kết quả có `endDate {from,to}`, `months`, `rentPrice`, `totalDeposit`, `moveOutNotice` (`none` / `kept` / `cancelled`).
+- **Phát lại sớm (sửa khi viết Mốc 3).** Biên nhận đã chốt cùng requestId được trả lại TRƯỚC khi tính lại basis. Lần ghi trước đã đổi HĐ nên basis tính lại sẽ lệch: không phát lại sớm thì lần gọi lại nhận `state_changed`, mô hình xem trước lại và có thể gia hạn chồng. Khác thao tác hoặc khác params ⇒ `request_conflict`. Áp cho mọi thao tác của trang.
 
 ### 4.4 Ghi nhận trả phòng, quyết toán sau (Mốc 4)
 - **Rào trước khi áp.** Migration đòi P0a đã áp (`$requires$` đọc dấu `[TERMINATION_CONTRACT_CLOSED]`).
@@ -210,7 +213,9 @@ Mọi thay đổi đọc đều 0 byte `tools/list`: báo cáo W2 nằm trong k�
 | (c) | Cọc của MỘT phòng | Dữ liệu đã có: `crm_read_contract_detail` trả `totalDeposit`, `depositPaid`, `depositRemaining`. Bot dùng nhầm tổng theo toà | SOUL (mục 13). Không đổi mã |
 | (d) | HĐ thiếu cọc nhỏ bị sót | Đo: HĐ đó ở chế độ `FIRST_INVOICE` (thu ở hoá đơn đầu), nên nằm ngoài lọc `SHORT`. TEST có `SHORT` 1 + `FIRST_INVOICE` 1, khớp đáp án | **Đã làm (Mốc 2):** chỉ sửa tiêu đề báo cáo, theo cách 0 SQL: "HĐ chưa thu đủ cọc" = `SHORT` + `FIRST_INVOICE`; gọi mỗi status một lần, số = `shortCount` + `firstInvoiceCount`. Bỏ `status=OWING`, vì phải dựng lại reader gói A (vùng của phiên Thu chi), trong khi summary đã đủ số |
 | (e) | "Tháng trước bao nhiêu phòng trả phòng": bot ra ít hơn web | Đo: tiêu chí của `re_terminations` (HĐ `TERMINATED/EXPIRED` có `COALESCE(actual_end_date, end_date)` trong kỳ) cho tháng 9 ra đúng số của web, gồm cả bỏ cọc; tầng 2 trên TEST ra 28. Reader tự đặt kỳ "đầu tháng này → hôm nay" khi thiếu ngày, nên bot quên truyền kỳ, hoặc đếm bằng trang `contract_search`, sẽ ra sai | **Đã làm (Mốc 2):** chỉ sửa tiêu đề, theo cách 0 SQL: "tháng trước" ⇒ truyền `fromDate`/`toDate` đúng tháng; số phòng trả = `summary.total`, bỏ cọc = các dòng `terminationType FORFEIT`. Không đổi khuôn summary, vì khuôn bị kiểm khít: connector lên trước migration sẽ làm vỡ báo cáo. Cộng SOUL |
-| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Dời sang Mốc 3.** Việc này phải dựng lại hàm nền `hermes_domain_read_v3` (~1 000 dòng, ghim md5 thân production) và thêm cấu hình host `publicWebOrigin` (D-HĐ9). `crm_read_contract_detail` sẽ thêm `publicLink`, chỉ cho HĐ ACTIVE |
+| (f) | Quản lý toà: "toà X còn phòng trống?", "đang cho thuê bao nhiêu phòng?" (ma trận lượt 2) | `re_vacant_rooms` cần khoá báo cáo BĐS ⇒ `forbidden`; `crm_read_occupancy` cần `reports_real_estate.occupancy`, kết nối quản lý không có tool này, mà mô tả `crm_available_rooms` lại chỉ sang nó. Web: Quản lý toà xem trang Phòng bằng `rooms.view` theo toà | **Đã làm (Mốc 3):** báo cáo W2D `rooms_occupancy` (`rooms.view`, nguồn `crm.rooms_list_v1` như trang Phòng): mỗi toà một dòng tổng / đang cho thuê (OCCUPIED + EXPIRING_SOON) / sắp hết hạn / trống / giữ chỗ / bảo trì. Danh sách phòng trống = báo cáo `rooms` có sẵn (`displayStatus AVAILABLE`). Mô tả `crm_available_rooms` chỉ thêm đường "không quyền BĐS: `rooms_occupancy` / `rooms`" (+48 B `tools/list`) |
+| (g) | "Tháng 2 năm sau toà 80 có mấy HĐ hết hạn?" (quản lý; bot ra 13, đúng 11) | Bot tự lọc tay danh sách; `re_contracts_ending` dùng khoá báo cáo BĐS nên quản lý không gọi được | **Đã làm (Mốc 3):** ba báo cáo hợp đồng (`re_contracts_ending`, `re_move_out_notices`, `re_exit_cases_pending`) chuyển sang khoá `contracts.view`, thêm vào tập khoá dùng lại của W2. `re_contracts_ending` vốn nhận tháng tương lai + `buildingId`; tầng 2 ra đúng 11 |
+| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Chưa làm.** Mốc 3 do phiên chính giao chỉ gồm gia hạn + đọc của vai quản lý. Việc này phải dựng lại hàm nền `hermes_domain_read_v3` (~1 000 dòng, ghim md5 thân production) và thêm cấu hình host `publicWebOrigin` (D-HĐ9). `crm_read_contract_detail` sẽ thêm `publicLink`, chỉ cho HĐ ACTIVE. Chờ phiên chính xếp mốc |
 
 **Đã làm ở Mốc 2.**
 - Hai hàm INVOKER dùng chung mới: `public.real_estate_contracts_ending_v1` và `public.contract_move_out_notices_v1`.
@@ -222,8 +227,12 @@ Mọi thay đổi đọc đều 0 byte `tools/list`: báo cáo W2 nằm trong k�
   - `re_contracts_ending`, `re_move_out_notices`: khoá `reports_real_estate.expiring`;
   - `re_exit_cases_pending`: khoá `reports_real_estate.terminations`.
 
-  Không dùng `contracts.view`, vì khoá đó không thuộc tập khoá W2. Muốn thêm thì phải sửa nền W2.
-- **Giới hạn đo ở tầng 2:** quản lý toà không có quyền báo cáo BĐS bị cổng W2 từ chối cả ba báo cáo. Nếu muốn quản lý hỏi được "phòng nào báo trả / hồ sơ nào chờ quyết toán", cần thêm `contracts.view` vào tập khoá dùng lại của W2. Việc này sửa nền W2 và cần phiên chính chốt.
+  Mốc 3 đổi cả ba sang `contracts.view` (xem dưới).
+
+**Đã làm ở Mốc 3.**
+- `contracts.view` vào tập khoá dùng lại của W2 (`20261022043540`, dựng từ thân đang chạy, ghim `md5(prosrc)`): loại khoá `company`, phạm vi = quyền CRM theo toà ∩ overlay kết nối ∩ tập toà web, như các khoá dùng lại khác. Hai hàm dùng chung đổi cổng web sang `can_access_org_entity('contracts','view')`.
+- Báo cáo `rooms_occupancy` (mục (f)). Tiêu đề `re_vacant_rooms` nói rõ cần quyền báo cáo BĐS, không có thì dùng `rooms_occupancy` / `rooms`.
+- File bảng báo cáo gói D đổi tên `20261022032214` → `20261022043617`, để xếp SAU file khoá dùng lại. Ba file đọc (`032205`, `043540`, `043617`) **không** phụ thuộc file trang `20261022022951`, nên phát hành sớm cùng connector được.
 
 ## 7. Hàm dùng chung tính ngày gia hạn
 
@@ -248,9 +257,11 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 | --- | --- | --- |
 | 2 ✓ | `20261022022951_hermes_contract_action_v1` | Seed `hermes_action_policies` cho bốn thao tác Mốc 2. Vỏ, tra cứu, bước ghi (nhánh báo trả + khoá tạm). `$requires$` đòi M1, M2, giải tên, P0a. Mốc 3–4 nối tiếp vào file này (D-HĐ10) |
 | 2 ✓ | `20261022032205_hermes_w2d_contract_shared_v1` | Hai hàm dùng chung mới (file không chứa hàm của trợ lý) |
-| 2 ✓ | `20261022032214_hermes_w2d_contract_reads_v1` | Bảng báo cáo + reader gói D dựng từ thân đang chạy. `md5(prosrc)` = production = TEST = repo, ghim ở `$requires$`. Ba báo cáo mới |
-| 3 | `hermes_contract_detail_public_link_v1` (tạm) | Nhánh `contract_detail` của `hermes_domain_read_v3` thêm `publicLink` (dời từ Mốc 2) |
-| 3 | `contract_renewal_end_date_v1` | Hàm dùng chung; bước ghi thêm nhánh gia hạn (CREATE OR REPLACE) |
+| 2–3 ✓ | `20261022043617_hermes_w2d_contract_reads_v1` (tên cũ `20261022032214`) | Bảng báo cáo + reader gói D dựng từ thân đang chạy. `md5(prosrc)` = production = TEST = repo, ghim ở `$requires$`. Ba báo cáo hợp đồng (khoá `contracts.view` từ Mốc 3) + `rooms_occupancy` |
+| 3 ✓ | `20261022042822_contract_renewal_end_date_v1` | Hàm dùng chung tính ngày gia hạn (web + Hermes). Lane xếp SAU file trang; hàm trang chỉ gọi nó lúc chạy |
+| 3 ✓ | `20261022043540_hermes_w2_contracts_view_reused_v1` | `contracts.view` vào tập khoá dùng lại của W2. Phải áp TRƯỚC `043617` (thứ tự tên đảm bảo) |
+| 3 ✓ | (nối vào `20261022022951`) | Nhánh gia hạn + phát lại biên nhận sớm; policy `contract.renew` (irreversible / always) |
+| — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6) |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
 Nếu phát hành Mốc 2–4 cùng một lần thì gộp thành một migration trang (D-HĐ10). Migration đã merge là bất biến, nên mốc sau phải dùng migration mới.
@@ -352,7 +363,7 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 | D-HĐ8 | Báo trả ngày đã qua: từ chối và hướng sang ghi nhận trả phòng | **Có** |
 | D-HĐ9 | `publicLink` tuyệt đối: origin web lấy ở đâu (cấu hình host connector hay hằng số trong SQL)? | Cấu hình host connector `publicWebOrigin`; SQL trả `/c/<code>` |
 | D-HĐ10 | Phát hành: Mốc 2–4 một lần, Mốc 5–6 lần sau | **Có**; bật `contracts.terminate`, `contracts.renew`, `sale_phong.lock_room` cùng lúc sau Mốc 4 |
-| D-HĐ11 | Đáp án ma trận "HĐ chưa thu đủ cọc" (mục 6 (d)) | Phiên chính đối chiếu lại với trang Quản lý cọc |
+| D-HĐ11 | Đáp án ma trận "HĐ chưa thu đủ cọc" (mục 6 (d)) | **Chốt 22/10:** như trang Quản lý cọc — còn thiếu = COALESCE(`deposit_remaining`, cọc − đã thu) ≥ 10.000đ trên HĐ ACTIVE, trạng thái `SHORT` hoặc `FIRST_INVOICE`; nêu cả hai. Tầng 2 Mốc 3: khớp |
 
 ## 12. Từ chối có chỉ đường web (câu tĩnh, đưa vào SOUL)
 
@@ -365,10 +376,13 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 
 1. "Hết hạn trong tháng X" ⇒ `re_contracts_ending` với `fromDate`/`toDate` của tháng X. Không dùng EXPIRING/EXPIRED. Đếm theo toà từ summary.
 2. "Báo trả / báo dọn đi / sắp chuyển đi" là **ngày báo trả**, khác ngày hết hạn ⇒ `re_move_out_notices`.
-3. Cọc của một phòng ⇒ `crm_read_contract_search`, rồi `crm_read_contract_detail`; nêu cọc phải đóng / đã đóng / còn thiếu. "HĐ nào chưa thu đủ cọc" ⇒ `held_deposits status=OWING`.
+3. Cọc của một phòng ⇒ `crm_read_contract_search`, rồi `crm_read_contract_detail`; nêu cọc phải đóng / đã đóng / còn thiếu. "HĐ nào chưa thu đủ cọc" ⇒ `held_deposits` gọi `status=SHORT` rồi `status=FIRST_INVOICE` (không có status `OWING`); nêu CẢ HAI nhóm, nhóm sau nói "thu vào hoá đơn đầu".
 4. "Tháng trước / tháng X bao nhiêu phòng trả phòng" ⇒ `re_terminations` với kỳ đúng tháng; số = `summary.total`, nêu thêm số bỏ cọc.
 5. Trước khi ghi nhận trả phòng, nếu người dùng nói ngày đã qua lâu, đọc trạng thái phòng/HĐ trước. Ca đo nền HD-X11: HĐ cũ đã trả, phòng đã có khách mới.
 6. Lệnh ghi Hợp đồng chỉ nhận trong chat riêng. Câu hỏi ("302 báo trả chưa?") không phải lệnh. Thao tác xem trước thì đọc `preview.text` nguyên văn và chờ "đồng ý"; `needs_input` thì hỏi đúng một câu theo `detail`.
+7. Gia hạn ⇒ `contract.renew` với `months` (hoặc `newEndDate` nếu người dùng nói ngày). Không có lý do ⇒ hỏi MỘT câu; người dùng nói không có ⇒ `noReason=true`. HĐ có báo trả ⇒ hỏi giữ hay huỷ (`keepMoveOutNotice`). Đổi giá/cọc ⇒ chỉ đường web. Luôn đọc `preview.text` nguyên văn và chờ "đồng ý"; có cảnh báo "HĐ vừa được gia hạn" thì nói rõ trước khi hỏi.
+8. Quản lý toà (không có `crm_read_occupancy` / `re_vacant_rooms`): "toà X còn phòng trống?" ⇒ `crm_read_report rooms` với `buildingName`, lấy phòng `displayStatus AVAILABLE`; "đang cho thuê bao nhiêu phòng" ⇒ `rooms_occupancy`, số = `rented` (từng toà) hoặc `summary.rented` (cả phạm vi). Không lấy trang Sale (`crm_available_rooms`) làm trạng thái phòng.
+9. "Tháng X (năm sau) toà Y có mấy HĐ hết hạn" ⇒ `re_contracts_ending` với `buildingName` + `fromDate`/`toDate` đúng tháng; số = `summary.total`, không tự lọc tay danh sách.
 
 ## 14. Việc phiên chính phải làm
 
@@ -376,7 +390,8 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 2. Sau mỗi mốc:
    - áp migration lên TEST rồi production qua lane;
    - chạy `gen:types` (có hàm public mới);
-   - promote web khi Mốc 3 đổi `RenewDialog`.
+   - promote web khi Mốc 3 đổi `RenewDialog` (nút "+6 / +12 tháng" chỉ chạy khi `contract_renewal_end_date_v1` đã áp; chưa áp thì nút báo "Chưa tính được ngày mới, hãy chọn ngày bằng tay.");
+   - sau `gen:types` có `contract_renewal_end_date_v1` thì bỏ bộ gọi hẹp trong `src/lib/contractRenewalEndDate.ts`.
 3. Phát hành connector có danh mục Hợp đồng **trước** khi bật khoá. Connector chịu được thiếu hàm: PGRST202 ⇒ `action_disabled`.
 4. Bật khoá trên TEST bằng script TEST; bật trên production bằng migration riêng sau nghiệm thu: `contracts.terminate`, `contracts.renew`, `sale_phong.lock_room`, rồi `contracts.edit`, `contracts.create`. Không bật `contracts.transfer`.
 5. Chạy ma trận ≥ 60 câu trên TEST; xếp ca trả phòng cuối, rồi `test-env:sync`.
@@ -405,6 +420,25 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
   - không phát sinh phiếu hay hoá đơn;
   - báo cáo đọc khớp số đối chiếu (2 / 1 / 1; tháng 9 = 28).
 
+
+**Mốc 3, 22/10.** Một commit.
+
+*Gia hạn giữ nguyên giá/cọc (mục 4.3).*
+- `contract.renew` (khoá `contracts.renew`, irreversible / always) gọi `renew_contract_with_notice_v1` với giá, cọc = NULL.
+- Hàm dùng chung `contract_renewal_end_date_v1` + 14 vector dùng chung; web: nút "+6 tháng" / "+12 tháng" trong hộp Gia hạn qua service `src/lib/contractRenewalEndDate.ts`.
+- Phát lại biên nhận sớm cho mọi thao tác của trang (lỗi thật tìm thấy khi viết test phát lại).
+
+*Đọc cho vai quản lý (mục 6 (f), (g)).*
+- `rooms_occupancy`; ba báo cáo hợp đồng sang `contracts.view`; mô tả `crm_available_rooms` thêm đường cho người không có quyền báo cáo BĐS.
+
+*Kiểm.*
+- PGlite trang: 13/13; đột biến 23/23 (thêm 10 đột biến gia hạn / phát lại); đột biến phụ 4/4 (hàm ngày, `rooms_occupancy`).
+- W2: 296/296; broker + mô tả tool: 62/62 (`tools/list` 63 849 B, trần 64 000 B); hợp đồng duyệt hàm Hermes: 241/241; web: 5/5.
+- Tầng 2 trên TEST, ROLLBACK, 4 kết nối thật:
+  - gia hạn trên hàm ghi web thật (3 kết nối có quyền): lượt auto vẫn chỉ xem trước; ghi đúng ngày theo luật dùng chung (30/08 → 28/02, 29/02 năm nhuận; cuối tháng → cuối tháng), giá/cọc giữ, 1 dòng `contract_extensions`, biên nhận + audit; phát lại cùng requestId không gia hạn lần hai; đổi giá ⇒ `renew_price_change_web_only`; có báo trả ⇒ `notice_choice_required`; chọn huỷ ⇒ báo trả được gỡ, có cảnh báo gia hạn chồng 24 giờ; không phát sinh phiếu/hoá đơn;
+  - đọc vai quản lý: joey (tài khoản thử `testquanly`) cho thuê 102 phòng (8 toà), 111PVC trống L04; kết nối quản lý thứ hai: 15KV cho thuê 8; 80DS3 hết hạn 02/2027 = 11 (đếm thẳng = 11);
+  - `held_deposits`: `SHORT` 331PHI/303 4.400.000 + `FIRST_INVOICE` 102LVT/505 74.000 (D-HĐ11).
+
 ## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.
@@ -412,4 +446,5 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 - Cách form web dựng dịch vụ và ngày tính tiền mặc định cho HĐ mới; đường dẫn web của nháp. Mốc 5 tra.
 - `statement_timeout` thật của `authenticated` qua PostgREST, và thời gian lô 20 HĐ. Mốc 6 đo.
 - Cột liên kết HĐ chính xác của `invoices` / `payments` cho hậu điều kiện tiền. Mốc 4 xác minh; `income_expenses.contract_id` đã thấy trong baseline.
-- Câu "HĐ thiếu cọc" trên web đếm theo tiêu chí nào (17 + 1 so với đáp án 2).
+- Playwright hộp Gia hạn trên TEST: chưa chạy được đường có ngày, vì `contract_renewal_end_date_v1` chưa áp lên TEST (đường lỗi + bố cục kiểm bằng test component).
+- `rooms_occupancy` so với Báo cáo lấp đầy của web khi công tắc "Hoạt động" ghi đè trạng thái phòng (phòng có HĐ mà `AVAILABLE`): báo cáo theo `displayStatus` như trang Phòng, có thể lệch Báo cáo lấp đầy ở các phòng đó.
