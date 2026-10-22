@@ -80,8 +80,8 @@ Bốn gói làm song song trong worktree riêng; file chung chỉ một gói s�
 |---|---|---|
 | C1 | Kênh notif nghe `*` (filter user_id), gom 300 ms/trần 1 s; UPDATE chỉ invalidate khi status/subject/content đổi; bắt kịp qua A1 | `src/hooks/useNotifications.ts` (ngoài vùng parity) |
 | C2 | `refetchOnWindowFocus` cho đếm + recent | như trên |
-| C3 | `public/sw.js`: click ⇒ postMessage `notification-click` cho tab sẵn có (focus) hoặc `openWindow(url?notif=<ids>&org=<id>)`; url chuẩn hoá cùng origin; `pushsubscriptionchange` subscribe lại + báo app; `push-received` giữ | `public/sw.js` |
-| C4 | Cầu nối SW↔app mount ở AppProviders: `push-received` ⇒ invalidate; `notification-click`/query `notif` ⇒ đánh dấu đã đọc, chuyển công ty nếu khác (`selectOrganization`), điều hướng SPA qua `resolveNotificationUrl` | `src/lib/push/serviceWorkerBridge.tsx`, `AppProviders.tsx` |
+| C3 | `public/sw.js`: click ⇒ postMessage `notification-click` cho tab sẵn có (focus) hoặc `openWindow(url?__pn=<ids>&__porg=<id>)` (tham số riêng — không đụng `?org=` của trang báo cáo, review NOTIF-CLIENT-1); url chuẩn hoá cùng origin; `pushsubscriptionchange` subscribe lại + báo app; `push-received` giữ | `public/sw.js` |
+| C4 | Cầu nối SW↔app (mount cạnh cây route vì cần router): `push-received` ⇒ invalidate; `notification-click`/query `__pn`+`__porg` ⇒ đánh dấu đã đọc, chuyển công ty nếu khác (`selectOrganization`), điều hướng SPA qua `resolveNotificationUrl` | `src/lib/push/serviceWorkerBridge.tsx`, `src/app/routes/index.tsx` |
 | C5 | Đọc trong app ⇒ đóng thông báo hệ điều hành (tag `crm-<id>`; chưa đọc = 0 ⇒ đóng hết); app badge = số chưa đọc (feature-detect) | `useNotifications.ts`, bridge |
 | C6 | HomeLauncher hiện số/ẩn khi 0/ẩn khi thiếu quyền; MainLayout chỉ mount một chuông; mount `<RealtimeSyncBanner />` | `HomeLauncher.tsx`, `MainLayout.tsx`, `Header.tsx` |
 | C7 | Đăng xuất gỡ đăng ký push (best-effort ≤3 s, trước signOut); khởi động đối chiếu đăng ký (thiếu dòng ⇒ lưu; dòng inactive ⇒ unsubscribe+subscribe+lưu) | `src/lib/push.ts`, `src/hooks/useAuth.ts`, `src/main.tsx` |
@@ -96,7 +96,7 @@ Route `/account/notifications` (ProtectedRoute, mọi thành viên), desktop + m
 | Mục | Nội dung |
 |---|---|
 | D2 Thiết bị này | Bật/tắt push, gửi thử (đọc `outcome`), chẩn đoán: hỗ trợ trình duyệt, quyền, service worker, đăng ký máy chủ khớp, 5 lần gửi gần nhất (`get_my_push_log_v1`); Safari iPhone chưa thêm MH chính ⇒ hướng dẫn 3 bước; quyền bị chặn ⇒ cách mở lại |
-| D3 Thiết bị đã đăng ký | Danh sách `push_subscriptions` của tôi (trình duyệt/HĐH từ UA, ngày bật, trạng thái, "máy này"), gỡ từng máy |
+| D3 Thiết bị đã đăng ký | Danh sách `push_subscriptions` của tôi (trình duyệt/HĐH từ UA, ngày bật, trạng thái, "máy này"), gỡ từng máy = `is_active=false, revoked_at=now()` (không xoá dòng; máy đó không tự đăng ký lại) |
 | D4 Loại thông báo | Ma trận họ × (Trong app / Đẩy về máy): E1–E6, LIFECYCLE, BILLING, CONTRACT_EXPIRY, DEPOSIT; "Đẩy" khoá khi "Trong app" tắt; chỉ gửi khoá vừa đổi |
 | D5 Giờ yên của tôi | Bật/tắt, từ–đến (giờ công ty); giải thích push được hoãn, chuông vẫn ghi |
 | D6 Nhắc trên thiết bị | Liên kết cài đặt nhắc "Việc của tôi" (cục bộ) |

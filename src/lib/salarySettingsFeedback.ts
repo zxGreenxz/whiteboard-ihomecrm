@@ -36,8 +36,10 @@ export function salaryJobFeedback(value:unknown):{kind:'info'|'warning'|'success
   if(row.job==='push_drain'){
    if(!Number.isInteger(row.batches)||!Number.isInteger(row.settled)||Number(row.batches)<0||Number(row.settled)<0||Number(row.settled)>Number(row.batches))throw new TypeError('Unconfirmed push batch result');
    if(Number(row.settled)<Number(row.batches))failed=true;
-   const outcomes=record(row.outcomes);if(Object.entries(outcomes).some(([key,count])=>!['SENT','DUPLICATE'].includes(key)&&Number(count)>0))failed=true;
-   details.push(`Hàng đợi thông báo: đã xử lý trạng thái ${row.settled}/${row.batches} nhóm gửi; chưa xác nhận thiết bị hiển thị.`);if(Number(row.batches)>0)completed++;continue;
+   // NO_DEVICE = người nhận chưa bật thiết bị (không phải lỗi lượt chạy); DEFERRED = hết ngân sách thời gian, giữ hàng cho lượt 15' sau.
+   const outcomes=record(row.outcomes);if(Object.entries(outcomes).some(([key,count])=>!['SENT','DUPLICATE','NO_DEVICE','DEFERRED'].includes(key)&&Number(count)>0))failed=true;
+   const hoan=Number(outcomes.DEFERRED)||0;
+   details.push(`Hàng đợi thông báo: đã xử lý trạng thái ${row.settled}/${row.batches} nhóm gửi${hoan>0?`, ${hoan} nhóm hoãn sang lượt sau`:''}; chưa xác nhận thiết bị hiển thị.`);if(Number(row.batches)>0)completed++;continue;
   }
   const keys:Record<string,string>={tier:'expired_sessions',score:'mission_rows',close_period:'staff_processed'};const key=keys[String(row.job)];
   if(!key)throw new TypeError('Unconfirmed salary job step');
