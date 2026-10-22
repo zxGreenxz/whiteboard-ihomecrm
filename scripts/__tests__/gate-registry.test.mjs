@@ -28,6 +28,15 @@ describe('command registry boundaries', () => {
     expect(() => getGate('suite:e2e-fleet', { suiteSelections: [{ id: 'e2e-fleet', files: ['.e2e-fleet/specs/personal-finance-demo.spec.ts'] }] })).toThrow('approved offline');
     expect(getGate('suite:e2e-personal-finance-demo', { suiteSelections: [{ id: 'e2e-personal-finance-demo', files: ['.e2e-fleet/specs/personal-finance-demo.spec.ts'] }] }).job).toBe('quality-gates');
   });
+  it('bounds nested native test fanout locally without dropping selections or changing CI', () => {
+    const files = ['infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/sale-action.test.mjs'];
+    const suiteSelections = [{ id: 'node-native', files, mode: 'all' }];
+    const local = getGate('suite:node-native', { environment: 'local', suiteSelections });
+    const ci = getGate('suite:node-native', { environment: 'ci', suiteSelections });
+    expect(local.args).toEqual(['--test', '--test-concurrency=2', ...files]);
+    expect(ci.args).toEqual(['--test', ...files]);
+    expect(GATE_REGISTRY['suite:node-native'].args).toEqual(['--test']);
+  });
   it('preserves build lifecycle, normalizer mode and generated ownership', () => {
     expect(getGate('app-build', {})).toMatchObject({ command: 'npm', args: ['run', 'build'] });
     expect(getGate('normalize-supabase-types', {}).args).toContain('--check');

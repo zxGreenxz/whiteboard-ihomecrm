@@ -380,14 +380,14 @@ test('HTTP connect forwards implemented read capabilities and rejects unsupporte
  f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}};};
  assert.equal((await f.send('connect',{value:input})).status,200);
  assert.deepEqual(f.calls.at(-1).restrictions,input.restrictions);
- assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action:['rooms.edit']}}})).status,400);
+ assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action:['rooms.delete']}}})).status,400);
 });
 
 test('HTTP forwards exactly the fixed requested action and rejects unknown/duplicate additions',async t=>{
  const f=await fixture(t),input={...body('connect'),restrictions:{read:['assistant.context.read'],action:['chat_zalo.send']}};
  f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}}};
  assert.equal((await f.send('connect',{value:input})).status,200);assert.deepEqual(f.calls.at(-1).restrictions.action,['chat_zalo.send']);
- for(const action of [['rooms.edit'],['chat_zalo.send','chat_zalo.send'],['chat_zalo.send','future.write']])assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action}}})).status,400);
+ for(const action of [['rooms.delete'],['chat_zalo.send','chat_zalo.send'],['chat_zalo.send','future.write']])assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action}}})).status,400);
  f.controlPlane.connect=async()=>result('connect');assert.equal((await f.send('connect',{value:input})).status,503);
 });
 

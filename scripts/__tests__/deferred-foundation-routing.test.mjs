@@ -78,7 +78,7 @@ function assertP2Rule(source, ruleId, expected, testMatrix = matrix, files = tes
   expect(native.files).toEqual(expect.arrayContaining(expected));
   const app = plan.suiteSelections.find(s => s.id === 'app-unit')?.files ?? [];
   for (const file of p2NativeTests) expect(app).not.toContain(file);
-  expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
+  expect(getGate('suite:node-native', plan).args).toEqual(['--test', '--test-concurrency=2', ...native.files]);
   for (const runner of ['scripts/test-hermes-refresh-auth.mjs', 'scripts/test-hermes-durable-store.mjs']) {
     expect(getGate('suite:node-native', plan).args).not.toContain(runner);
   }
@@ -204,7 +204,7 @@ describe('P0 shared CRM foundation routing', () => {
     });
     const native = plan.suiteSelections.find(s => s.id === 'node-native');
     expect(native.files).toEqual([...verifierTests, 'scripts/__tests__/generate-hermes-crm-inventory.test.mjs'].sort());
-    expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
+    expect(getGate('suite:node-native', plan).args).toEqual(['--test', '--test-concurrency=2', ...native.files]);
     expect(getGate('suite:app-unit', plan).args[0]).toBe('scripts/run-selected-vitest.mjs');
     for (const id of staticGates) {
       expect(isDeferredGate(id)).toBe(false);
@@ -338,7 +338,7 @@ describe('P0 shared CRM foundation routing', () => {
       expect(selected.files).toContain(testFile);
       expect(selected.files).toContain(cdeTest);
       expect(selected.files).not.toContain(runner);
-      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...selected.files]);
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', '--test-concurrency=2', ...selected.files]);
       expect(plan.suiteSelections.find(item => item.id === 'app-unit')?.files ?? []).not.toContain(testFile);
       expect(plan.suiteSelections.find(item => item.id === 'app-unit')?.files ?? []).not.toContain(cdeTest);
       expect(getGate('suite:node-native', plan).args).not.toContain('--run');
@@ -366,7 +366,7 @@ describe('P0 shared CRM foundation routing', () => {
       const selected = plan.suiteSelections.find(item => item.id === 'node-native');
       expect(selected.reason.split(', ')).toContain('hermes-room-pass-actions');
       expect(selected.files).toEqual(expect.arrayContaining(nativeFiles));
-      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...selected.files]);
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', '--test-concurrency=2', ...selected.files]);
       return plan;
     };
     assertMapped('infra/hermes-broker/room-pass-adapter.mjs');
@@ -393,7 +393,7 @@ describe('P0 shared CRM foundation routing', () => {
       const plan = planFor(path), native = plan.suiteSelections.find(selection => selection.id === 'node-native');
       expect(plan.fullFallback).toBe(false); expect(plan.crossReview).toBe(true);
       expect(native.files).toEqual(expect.arrayContaining(nativeFiles));
-      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', '--test-concurrency=2', ...native.files]);
       expect(plan.suiteSelections.find(selection => selection.id === 'app-unit').files).toEqual(expect.arrayContaining(appFiles));
       expect(getGate('suite:node-native', plan).args).not.toContain(migration);
     }

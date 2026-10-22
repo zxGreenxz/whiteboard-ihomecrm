@@ -2187,7 +2187,7 @@
         {
           "path": "src/hooks/useDeposits.ts",
           "region": "deposit-reservation-vouchers",
-          "sha256": "4ad20eaea4a6d21a603a2c080ac1d18f1650d5e7ae68d31111d6e731d0f46e61"
+          "sha256": "0b8bb35d25a0764f42cb20ef9e7de41f32309f6ead795266ad26dd25a8c182c1"
         },
         {
           "path": "src/hooks/useReservationHoldDeadlines.ts",
@@ -2528,7 +2528,7 @@
       "sql": [
         {
           "function": "public.get_public_available_rooms",
-          "sha256": "9b58252b5dea0ffd02288325bc8b791b5ef483fc5a48e877dd18516b980f182c"
+          "sha256": "55795120cf012c02c483e7420001026d13577f8623a49b7f8150b61005f04ca4"
         }
       ],
       "hermes": [
@@ -2536,7 +2536,8 @@
           "sql": "public.hermes_available_rooms_page_v1",
           "calls": [
             "room_sale_workflow_fact_v1",
-            "hermes_room_page_admission_v1"
+            "hermes_room_page_admission_v1",
+            "room_sale_policy_active_text_v1"
           ],
           "note": "trang phòng đã lọc; không gọi get_public_available_rooms"
         },
@@ -2553,7 +2554,7 @@
           "contains": "hermes_available_rooms_page_v1"
         }
       ],
-      "notes": "Bản chép thứ tư của trang Sale (R1 thiết kế B3); hướng sạch dài hạn là trích lõi dùng chung và đổi get_public_available_rooms thành wrapper (PR riêng). Khối admission so với FAST và các vị từ chép từ get_public_available_rooms ở infra/hermes-broker/available-rooms-page-parity.test.mjs; parity với oracle thật trên PG17 ở infra/hermes-broker/available-rooms-page-sql.test.mjs. LỆCH ĐÃ BIẾT (R7): tìm tên tòa SQL dùng lower() theo lc_ctype của database, connector legacy dùng toLowerCase() Unicode; chưa đo trên production."
+      "notes": "Bản chép thứ tư của trang Sale (R1 thiết kế B3); hướng sạch dài hạn là trích lõi dùng chung và đổi get_public_available_rooms thành wrapper (PR riêng). Khối admission so với FAST và các vị từ chép từ get_public_available_rooms ở infra/hermes-broker/available-rooms-page-parity.test.mjs; parity với oracle thật trên PG17 ở infra/hermes-broker/available-rooms-page-sql.test.mjs. LỆCH ĐÃ BIẾT (R7): tìm tên tòa SQL dùng lower() theo lc_ctype của database, connector legacy dùng toLowerCase() Unicode; chưa đo trên production. Timed policy 21/10: forward migration 20261021072345 chỉ đổi sale_note bằng canonical active text [start,end), giữ bound 241; admission/filter/sort/page giữ nguyên từng byte. Actual local PG so public/legacy/page và production JS projection ACTIVE/SCHEDULED/EXPIRED/CANCELLED, long text, scope/revoke: scripts/test-hermes-sale-policy-parity-local.mjs. Display vẫn rút gọn 240 ký tự, không hứa đầy đủ toàn văn."
     },
     {
       "id": "receivables-fast-read",

@@ -117,7 +117,7 @@ function priceTr(p: number): string {
 }
 
 export function OverviewView({
-  buildings, showRented, bandTest, onOpen, onQuickDeposit,
+  buildings, showRented, bandTest, onOpen, onQuickDeposit, canQuickDeposit,
 }: {
   buildings: Building[];
   showRented: boolean;
@@ -125,6 +125,7 @@ export function OverviewView({
   onOpen: (r: Room) => void;
   /** Có quyền tạo cọc nhanh → click ô xanh (phòng trống) mở modal tạo cọc. */
   onQuickDeposit?: (r: Room) => void;
+  canQuickDeposit?: (r: Room) => boolean;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -189,7 +190,7 @@ export function OverviewView({
               </div>
               <div className="ov-quick">
                 {rooms.slice(0, QUICK).map((r) => {
-                  const depositable = !!onQuickDeposit && r.status === "free";
+                  const depositable = !!onQuickDeposit && r.status === "free" && (canQuickDeposit?.(r) ?? true);
                   return (
                     <span
                       className={"ovq" + (depositable ? " ovq-dep" : "")}

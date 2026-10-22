@@ -18,7 +18,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Form,FormControl,FormField,FormItem,FormLabel,FormMessage } from '@/components/ui/form';
 import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from '@/components/ui/select';
 
-export interface RoomTurnoverPanelProps {roomId:string;sourceContractId?:string|null;canEdit?:boolean;}
+export interface RoomTurnoverPanelProps {
+  roomId:string;sourceContractId?:string|null;canEdit?:boolean;
+  onSaved?:()=>void;onBusyChange?:(busy:boolean)=>void;onEditingChange?:(editing:boolean)=>void;
+}
 
 function TurnoverHistory({history}:{history:RoomTurnoverSnapshot['history']}) {
   const staff=useStaffUsers();
@@ -41,8 +44,9 @@ function TurnoverHistory({history}:{history:RoomTurnoverSnapshot['history']}) {
   </details>;
 }
 
-function TurnoverEditor({roomId,sourceContractId,snapshot,startNewCycle,onClose,onReload}:{
+function TurnoverEditor({roomId,sourceContractId,snapshot,startNewCycle,onClose,onReload,onSaved,onBusyChange}:{
   roomId:string;sourceContractId:string|null;snapshot:RoomTurnoverSnapshot;startNewCycle:boolean;onClose:()=>void;onReload:()=>void;
+  onSaved?:()=>void;onBusyChange?:(busy:boolean)=>void;
 }) {
   const save=useSaveRoomTurnover();
   const staff=useStaffUsers();
@@ -53,12 +57,14 @@ function TurnoverEditor({roomId,sourceContractId,snapshot,startNewCycle,onClose,
     defaultValues:{status:state?.status??'PENDING',expectedReadyOn:state?.expected_ready_on??'',responsibleUserId:state?.responsible_user_id??'',reason:''},
   });
   const stale=classifyDbError(error)==='conflict';
+  useEffect(()=>{onBusyChange?.(save.isPending);return ()=>onBusyChange?.(false);},[save.isPending,onBusyChange]);
   const onSubmit=async(data:RoomTurnoverFormData)=>{
     setError(null);
     try{
       await save.mutateAsync({roomId,expectedVersion:snapshot.turnover?.version??0,status:data.status,
         expectedReadyOn:data.expectedReadyOn||null,responsibleUserId:data.responsibleUserId||null,
         sourceContractId:state?state.source_contract_id:sourceContractId,reason:data.reason,startNewCycle});
+      onSaved?.();
       onClose();
     }catch(saveError){setError(saveError);}
   };
@@ -89,7 +95,7 @@ function TurnoverEditor({roomId,sourceContractId,snapshot,startNewCycle,onClose,
   </form></Form>;
 }
 
-export function RoomTurnoverPanel({roomId,sourceContractId=null,canEdit}:RoomTurnoverPanelProps) {
+export function RoomTurnoverPanel({roomId,sourceContractId=null,canEdit,onSaved,onBusyChange,onEditingChange}:RoomTurnoverPanelProps) {
   const query=useRoomTurnover(roomId);
   const {data:permissions}=useMyPermissions();
   const allowed=canEdit??canUse(permissions,'rooms','edit');
@@ -97,6 +103,7 @@ export function RoomTurnoverPanel({roomId,sourceContractId=null,canEdit}:RoomTur
   const [opening,setOpening]=useState(false);
   const [error,setError]=useState<unknown>(null);
   const sequence=useRef(0);
+  useEffect(()=>{onEditingChange?.(!!editor||opening);return ()=>onEditingChange?.(false);},[editor,opening,onEditingChange]);
   useEffect(()=>{
     const current=++sequence.current;setEditor(null);setError(null);setOpening(false);
     return ()=>{sequence.current=current+1;};
@@ -135,7 +142,7 @@ export function RoomTurnoverPanel({roomId,sourceContractId=null,canEdit}:RoomTur
     {/* Đọc bản mới trước khi mở form: chỗ form là khối xám, nút mở vẫn khoá theo `opening`. */}
     {opening&&<LoadingState label="dữ liệu mới để cập nhật" variant="detail" rows={4} />}
     {!!error&&<p role="alert" className="text-sm text-destructive">{turnoverErrorMessage(error)}</p>}
-    {editor?.roomId===roomId&&<TurnoverEditor key={`${roomId}:${editor.snapshot.turnover?.version??0}:${editor.startNewCycle}`} roomId={roomId} sourceContractId={sourceContractId} snapshot={editor.snapshot} startNewCycle={editor.startNewCycle} onClose={()=>setEditor(null)} onReload={()=>void openEditor(editor.startNewCycle)} />}
+    {editor?.roomId===roomId&&<TurnoverEditor key={`${roomId}:${editor.snapshot.turnover?.version??0}:${editor.startNewCycle}`} roomId={roomId} sourceContractId={sourceContractId} snapshot={editor.snapshot} startNewCycle={editor.startNewCycle} onClose={()=>setEditor(null)} onReload={()=>void openEditor(editor.startNewCycle)} onSaved={onSaved} onBusyChange={onBusyChange} />}
     {snapshot.history.length>0&&<TurnoverHistory history={snapshot.history} />}
   </section>;
 }

@@ -1,0 +1,52 @@
+{
+  "kind": "audit-reproduction-not-product-pass",
+  "recordedAt": "2026-10-20T17:49:24.103Z",
+  "syntheticOnly": true,
+  "networkOrDatabaseCalls": false,
+  "sources": [
+    {
+      "path": "worker/lib/automation.js",
+      "sha256": "0345da63ed01c28b87c5b0d93d62b05d97853f77c6ca945da78cce76e3f7105e"
+    },
+    {
+      "path": "worker/lib/room-list-table.js",
+      "sha256": "433bd35af7459cb57955cd36cf187eb2cd2a8dfd7518016bdf9465404da5c317"
+    },
+    {
+      "path": "worker/lib/automation-config.js",
+      "sha256": "6b4e2a9fd44d7793d0cbe0fe16c8a2d7f1202657121ae08cbc537296d617da03"
+    }
+  ],
+  "observations": [
+    {
+      "case": "pass-policy-fallback-mismatch",
+      "input": {
+        "id": "synthetic-room",
+        "code": "P101",
+        "no": 101,
+        "floor": 1,
+        "status": "pass",
+        "price": 3.5,
+        "area": 20,
+        "type": "Studio",
+        "amenities": [],
+        "description": null,
+        "availDate": null,
+        "saleNote": "",
+        "passSalePolicy": "Dữ liệu giả: miễn phí gửi một xe trong tháng đầu",
+        "buildingName": "Tòa giả lập",
+        "buildingAddr": "1 Đường giả lập"
+      },
+      "template": "Khuyến mãi: {khuyen_mai}",
+      "tablePolicy": "Dữ liệu giả: miễn phí gửi một xe trong tháng đầu",
+      "detailText": "Khuyến mãi:",
+      "defaultDetailText": "PHÒNG P101 — 1 Đường giả lập\nGiá 3.500.000đ/tháng · 20m² · Studio\nNội thất: \nTình trạng: Khách pass phòng\nXem phòng liên hệ:",
+      "findingReproduced": true
+    },
+    {
+      "case": "explicit-sale-note-control",
+      "tablePolicy": "Dữ liệu giả: giảm giá tháng đầu theo ghi chú phòng",
+      "detailText": "Khuyến mãi: Dữ liệu giả: giảm giá tháng đầu theo ghi chú phòng"
+    }
+  ]
+}

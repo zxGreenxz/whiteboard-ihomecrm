@@ -14,14 +14,14 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{
 vi.mock('@/hooks/useBuildings',()=>({useBuildings:()=>({data:io.buildings}),useUpdateBuilding:()=>({mutate:vi.fn(),isPending:false})}));
 vi.mock('@/hooks/useRooms',()=>({useRooms:()=>({data:io.rooms})}));
 vi.mock('@/components/ui/searchable-select',()=>({SearchableSelect:({value,onValueChange,options,placeholder,disabled}:{value:string;onValueChange:(value:string)=>void;options:Array<{value:string;label:string}>;placeholder:string;disabled?:boolean})=><select aria-label={placeholder} value={value} onChange={event=>onValueChange(event.target.value)} disabled={disabled}><option value="">{placeholder}</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>}));
-const imageEditor=({value,onChange}:{value:string[];onChange:(value:string[])=>void})=><input aria-label="Ảnh test" value={value.join(',')} onChange={event=>onChange(event.target.value?[event.target.value]:[])}/>;
+const imageEditor=({value,onChange,onUploadingChange}:{value:string[];onChange:(value:string[])=>void;onUploadingChange?:(busy:boolean)=>void})=><div><input aria-label="Ảnh test" value={value.join(',')} onChange={event=>onChange(event.target.value?[event.target.value]:[])}/><button type="button" onClick={()=>onUploadingChange?.(true)}>Bắt đầu upload test</button><button type="button" onClick={()=>onUploadingChange?.(false)}>Xong upload test</button></div>;
 vi.mock('../SaleImageManager',()=>({default:(props:Parameters<typeof imageEditor>[0])=>imageEditor(props)}));
 vi.mock('../mobile/MobileImageGrid',()=>({default:(props:Parameters<typeof imageEditor>[0])=>imageEditor(props)}));
 vi.mock('sonner',()=>({toast:{success:io.success,error:io.error}}));
 import SaleImagesTab from '../SaleImagesTab';
 import MobileSaleInfo from '../mobile/MobileSaleInfo';
 beforeEach(()=>{vi.clearAllMocks();io.rooms=[{id:'room-a',name:'Phòng A',code:'A',floor:1,images:[],amenities:['Giường']},{id:'room-b',name:'Phòng B',code:'B',floor:1,images:[],amenities:[]}];io.reply.mockImplementation(({patch,ids}:{patch:Record<string,unknown>;ids:string[]})=>Promise.resolve({data:ids.map(id=>({id,...patch})),error:null}));});
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
 async function setup(mobile:boolean,similar=true){
  const client=new QueryClient();const node=<QueryClientProvider client={client}>{mobile?<MobileSaleInfo/>:<SaleImagesTab/>}</QueryClientProvider>;
  const view=render(node);
@@ -87,4 +87,71 @@ it.each([false,true])('positive receipts announce the actual primary name and ve
  expect(JSON.stringify(io.success.mock.calls)).toContain('Phòng A');
  expect(JSON.stringify(io.success.mock.calls)).toContain('2 phòng');
  expect(io.error).not.toHaveBeenCalled();
+ expect(state.image).toHaveProperty('value','new.jpg');
+});
+
+it.each([false,true])('W4 — Sale Admin: refetch khác phiên bản phải giữ ảnh nháp, chặn lưu và chỉ bỏ nháp khi chọn đọc lại, mobile=%s',async mobile=>{
+ const state=await setup(mobile,false);
+ io.rooms=io.rooms.map(room=>({...room,images:room.id==='room-a'?['server.jpg']:[]}));
+ state.view.rerender(<QueryClientProvider client={new QueryClient()}>{mobile?<MobileSaleInfo/>:<SaleImagesTab/>}</QueryClientProvider>);
+ expect(screen.getAllByLabelText('Ảnh test').at(-1)).toHaveProperty('value','new.jpg');
+ expect(screen.getByRole('button',{name:'Lưu thông tin phòng'})).toHaveProperty('disabled',true);
+ expect(io.reply).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Đọc bản mới, bỏ nháp phòng'}));
+ expect(screen.getAllByLabelText('Ảnh test').at(-1)).toHaveProperty('value','server.jpg');
+});
+
+it.each([false,true])('W4 — Quản lý: không chấp nhận bỏ nháp thì chuyển phòng vẫn giữ phòng và ảnh đang sửa, mobile=%s',async mobile=>{
+ const state=await setup(mobile,false);
+ const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+ if(mobile){
+  fireEvent.click(screen.getByRole('button',{name:/Phòng Phòng A/}));
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button',{name:/Phòng B/}));
+ }else fireEvent.change(screen.getByLabelText('Chọn phòng'),{target:{value:'room-b'}});
+ expect(confirm).toHaveBeenCalledTimes(1);
+ expect(state.image).toHaveProperty('value','new.jpg');
+ if(!mobile)expect(screen.getByLabelText('Chọn phòng')).toHaveProperty('value','room-a');
+ expect(io.reply).not.toHaveBeenCalled();
+});
+
+it.each([false,true])('W4 — Sale Admin: upload đang chạy phải khóa lưu, đổi phòng/toà và báo busy cho trang cha, mobile=%s',async mobile=>{
+ const state=await setup(mobile,false);
+ const busy=vi.fn();
+ state.view.rerender(<QueryClientProvider client={new QueryClient()}>{mobile?<MobileSaleInfo onBusyChange={busy}/>:<SaleImagesTab onBusyChange={busy}/>}</QueryClientProvider>);
+ fireEvent.click(screen.getAllByRole('button',{name:'Bắt đầu upload test'}).at(-1)!);
+ expect(screen.getByRole('button',{name:'Lưu thông tin phòng'})).toHaveProperty('disabled',true);
+ if(mobile){
+  expect(screen.getByRole('button',{name:/Phòng Phòng A/})).toHaveProperty('disabled',true);
+  expect(screen.getByRole('button',{name:/Toà nhà Toà A/})).toHaveProperty('disabled',true);
+ }else{
+  expect(screen.getByLabelText('Chọn phòng')).toHaveProperty('disabled',true);
+  expect(screen.getByLabelText('Chọn toà nhà')).toHaveProperty('disabled',true);
+ }
+ expect(busy).toHaveBeenLastCalledWith(true);
+ expect(io.reply).not.toHaveBeenCalled();
+});
+
+it.each([false,true])('W4 — Quản lý: upload không tạo ảnh phải nhận bản mới sau khi hết busy, mobile=%s',async mobile=>{
+ const state=await setup(mobile,false);
+ // No local edit remains: an upload may fail without producing a new image.
+ fireEvent.change(screen.getAllByLabelText('Ảnh test').at(-1)!,{target:{value:''}});
+ fireEvent.click(screen.getAllByRole('button',{name:'Bắt đầu upload test'}).at(-1)!);
+ io.rooms=io.rooms.map(room=>({...room,images:room.id==='room-a'?['server.jpg']:[]}));
+ state.view.rerender(<QueryClientProvider client={new QueryClient()}>{mobile?<MobileSaleInfo/>:<SaleImagesTab/>}</QueryClientProvider>);
+ expect(screen.getAllByLabelText('Ảnh test').at(-1)).toHaveProperty('value','');
+ fireEvent.click(screen.getAllByRole('button',{name:'Xong upload test'}).at(-1)!);
+ await waitFor(()=>expect(screen.getAllByLabelText('Ảnh test').at(-1)).toHaveProperty('value','server.jpg'));
+ state.save();
+ await waitFor(()=>expect(io.reply).toHaveBeenCalledTimes(1));
+ expect(io.reply.mock.calls[0][0].patch.images).toEqual(['server.jpg']);
+});
+
+it.each([false,true])('W4 — Quản lý: hoàn tác nháp phải nhận bản mới đã hoãn, mobile=%s',async mobile=>{
+ const state=await setup(mobile,false);
+ io.rooms=io.rooms.map(room=>({...room,images:room.id==='room-a'?['server.jpg']:[]}));
+ state.view.rerender(<QueryClientProvider client={new QueryClient()}>{mobile?<MobileSaleInfo/>:<SaleImagesTab/>}</QueryClientProvider>);
+ expect(screen.getByRole('button',{name:'Lưu thông tin phòng'})).toHaveProperty('disabled',true);
+ fireEvent.change(screen.getAllByLabelText('Ảnh test').at(-1)!,{target:{value:''}});
+ await waitFor(()=>expect(screen.getAllByLabelText('Ảnh test').at(-1)).toHaveProperty('value','server.jpg'));
+ expect(io.reply).not.toHaveBeenCalled();
 });

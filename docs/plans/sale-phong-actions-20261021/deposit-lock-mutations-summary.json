@@ -1,0 +1,59 @@
+{
+  "source": "supabase/migrations/20261020183008_sale_reservation_deadline_received_scope_v1.sql",
+  "sha256Before": "b62067f3839aa07f301817476564bb014aede7564c5db1ded84e5f06874d36a0",
+  "sha256After": "b62067f3839aa07f301817476564bb014aede7564c5db1ded84e5f06874d36a0",
+  "sourceUnchanged": true,
+  "results": [
+    {
+      "variant": "pass_source",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity pass update checks original listing scope; same-room updates and implicit upsert remain valid"
+      ]
+    },
+    {
+      "variant": "deadline_auth",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity denies deadline edits without deposits.edit, including unlinked legacy vouchers and foreign actors"
+      ]
+    },
+    {
+      "variant": "terms_sync",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity create, replay, topup, update and old terms writer keep every projection atomic and revisioned",
+        "sale reservation forward integrity old deadline-only RPC preserves canonical topup/target instead of stale legacy projection",
+        "sale reservation forward integrity a linked late topup keeps overdue canonical terms; unlinked voucher date validation remains strict",
+        "sale reservation forward integrity keeps a reservation with no money deadline; target zero projects as null; failed projection rolls back create"
+      ]
+    },
+    {
+      "variant": "received_truth",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity only counts an actual matching unreversed real-account posting, never approval or draft alone"
+      ]
+    },
+    {
+      "variant": "parent_rls",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity reader preserves nonbypass parent RLS, fund-member visibility, org/auth and max200 cap"
+      ]
+    },
+    {
+      "variant": "bypass_owner",
+      "exitCode": 1,
+      "killed": true,
+      "failedTests": [
+        "sale reservation forward integrity reader preserves nonbypass parent RLS, fund-member visibility, org/auth and max200 cap"
+      ]
+    }
+  ]
+}

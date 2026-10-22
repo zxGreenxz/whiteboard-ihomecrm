@@ -2,6 +2,13 @@
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({tokens:{} as Record<string,unknown>,settings:{} as Record<string,unknown>,hotlines:{} as Record<string,unknown>,create:vi.fn(),label:vi.fn(),revoke:vi.fn(),remove:vi.fn(),save:vi.fn(),retry:vi.fn(),rooms:{} as Record<string,unknown>,sheetSave:vi.fn()}));
+vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
+vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: 'actor-a' } } }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true }, isError: false }) }));
+vi.mock('@/hooks/useSaleRoomInventory', async () => {
+  const { sheetInventoryFixture } = await import('./sheetInventoryFixture');
+  return { useSaleRoomInventory: () => ({ ...m.rooms, data: m.rooms.data === undefined ? undefined : sheetInventoryFixture(m.rooms.data as import('@/pages/phong-trong/sampleData').Building[]) }) };
+});
 vi.mock('@/hooks/usePublicRoomTokens',()=>{const mutation=(fn:typeof m.create)=>({mutateAsync:fn,mutate:(value:unknown,options?:{onSuccess?:(value:unknown)=>unknown;onError?:(error:unknown)=>unknown})=>{void fn(value).then(options?.onSuccess,options?.onError??(()=>{}));},isPending:false});return {usePublicRoomTokens:()=>m.tokens,useCreatePublicRoomToken:()=>(mutation(m.create)),useUpdateTokenLabel:()=>(mutation(m.label)),useSetTokenRevoked:()=>(mutation(m.revoke)),useDeletePublicRoomToken:()=>(mutation(m.remove))};});
 vi.mock('@/hooks/usePublicRoomSettings',()=>({usePublicRoomSettings:()=>m.settings,useUpsertPublicRoomSettings:()=>({mutateAsync:m.save,mutate:(value:unknown)=>{void m.save(value).catch(()=>{});},isPending:false}),PUBLIC_ROOM_SETTINGS_DEFAULTS:{soon_days:30,show_rented:true,hotline_id:null,sale_policy:null}}));
 vi.mock('@/hooks/useHotlines',()=>({useHotlines:()=>m.hotlines,useCreateHotline:()=>({mutateAsync:vi.fn(),isPending:false}),useUpdateHotline:()=>({mutateAsync:vi.fn(),isPending:false})}));
@@ -18,7 +25,7 @@ import MobileShareTokens from '../mobile/MobileShareTokens';
 const token={token:'room-a',owner_id:'actor-a',organization_id:null,label:'Sale A',revoked:false,created_at:'2026-09-30T00:00:00Z'};
 const query=(data:unknown)=>({data,status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:m.retry,dataUpdatedAt:Date.now()});
 const failure=(data:unknown)=>({...query(data),status:'error',isError:true,error:{code:'42501',message:'SQL_PRIVATE_DIAGNOSTIC'}});
-beforeEach(()=>{vi.clearAllMocks();m.tokens=query([token]);m.settings=query({soon_days:30,show_rented:true,hotline_id:null});m.hotlines=query([]);m.rooms=query([]);m.save.mockResolvedValue({});const unknown=new FinancialWorkflowError('Chưa xác nhận được yêu cầu; kiểm tra link room-a trước khi thực hiện tiếp.','unknown',[]);m.create.mockRejectedValue(unknown);m.remove.mockRejectedValue(unknown);m.label.mockRejectedValue(unknown);m.revoke.mockRejectedValue(unknown);});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks(); sessionStorage.clear();m.tokens=query([token]);m.settings=query({soon_days:30,show_rented:true,hotline_id:null});m.hotlines=query([]);m.rooms=query([]);m.save.mockResolvedValue({});const unknown=new FinancialWorkflowError('Chưa xác nhận được yêu cầu; kiểm tra link room-a trước khi thực hiện tiếp.','unknown',[]);m.create.mockRejectedValue(unknown);m.remove.mockRejectedValue(unknown);m.label.mockRejectedValue(unknown);m.revoke.mockRejectedValue(unknown);});afterEach(cleanup);
 // Mobile: số ngày/hotline/chính sách chung nằm trong sheet sau nút bánh răng trên app-bar.
 let gear:{onClick:()=>void}|null=null;
 const settings=(mobile:boolean)=><MemoryRouter>{mobile?<MobileDisplaySettings onHeaderAction={value=>{gear=value;}}/>:<DisplaySettingsTab/>}</MemoryRouter>;

@@ -58,7 +58,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 6,
+      "version": 7,
       "verifyJwt": true,
       "callers": []
     },
@@ -98,7 +98,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 29,
+      "version": 30,
       "verifyJwt": false,
       "callers": []
     },

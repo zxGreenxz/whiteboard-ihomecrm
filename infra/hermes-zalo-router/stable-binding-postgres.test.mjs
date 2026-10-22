@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join,resolve,sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
+import { EventEmitter } from 'node:events';
 import pg from 'pg';
 import { splitHermesFunctionStatements } from '../../scripts/hermes-task-function-contract.mjs';
 import { candidateLocalPostgresBins,assertSupportedLocalPostgresVersion } from '../../scripts/network-center-disposable-db.mjs';
@@ -14,6 +15,32 @@ import { readNativeConfig } from '../../worker/lib/hermes-native-config.js';
 import { mkdirSync } from 'node:fs';
 import { fixture,id,ORG,USER,ASSISTANT,SESSION,CONNECTION,BINDING,ACCOUNT,INSTANCE,GENERATION } from './private-command-fixture.mjs';
 const sql=readFileSync(new URL('../../supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql',import.meta.url),'utf8');
+function trackPoolDrain(pool) {
+  // pg-pool resolves end() after removing clients from its list, before their
+  // sockets necessarily close. Stopping the cluster then can emit a late 57P01.
+  const clientEnds=[];
+  pool.on('connect',client=>{
+    clientEnds.push(new Promise(resolve=>client.once('end',resolve)));
+  });
+  return async()=>{await pool.end();await Promise.all(clientEnds);};
+}
+
+test('disposable PostgreSQL stop waits for physical clients after pool.end resolves',async()=>{
+  const pool=new EventEmitter(),first=new EventEmitter(),second=new EventEmitter();
+  const sequence=[];
+  pool.end=async()=>{sequence.push('pool ended');};
+  const drain=trackPoolDrain(pool);
+  pool.emit('connect',first);pool.emit('connect',second);
+  const cleanup=drain().then(()=>{sequence.push('stop PostgreSQL');});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(sequence,['pool ended']);
+  first.emit('end');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(sequence,['pool ended'],'every physical client must finish');
+  second.emit('end');await cleanup;
+  assert.deepEqual(sequence,['pool ended','stop PostgreSQL']);
+});
+
 function run(binary, args, options = {}) {
   const result = spawnSync(binary, args, { encoding: 'utf8', timeout: 30000, windowsHide: true, ...options });
   assert.equal(result.status, 0, `${binary}: ${result.error?.message ?? result.stderr}`);
@@ -45,13 +72,13 @@ async function localCluster(t) {
     started = true;
     const pool = new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
       connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' });
-    return { pool, cleanup, port };
+    return { pool, drain:trackPoolDrain(pool), cleanup, port };
   } catch (error) { cleanup(); throw error; }
 }
 
 
 test('TG4 stable binding uses real PostgreSQL role fences and serializes settings/credential selection without relinking',{timeout:90000},async t=>{
-  const {pool,cleanup,port}=await localCluster(t);
+  const {pool,drain,cleanup,port}=await localCluster(t);
   const client=await pool.connect();
   const db={exec:text=>client.query(text),query:(...args)=>client.query(...args),close:async()=>{}};
   try {
@@ -169,6 +196,7 @@ test('TG4 stable binding uses real PostgreSQL role fences and serializes setting
       await t.test('trusted real SQL transport provisions the existing native operator without exposing credentials',async()=>{
         await client.query('CREATE ROLE hermes_store_binding_fixture LOGIN; GRANT hermes_store_executor TO hermes_store_binding_fixture');
         const privatePool=new pg.Pool({host:'127.0.0.1',port,user:'hermes_store_binding_fixture',database:'postgres',max:2});
+        const drainPrivatePool=trackPoolDrain(privatePool);
         const transport=createStoreTransport({pool:privatePool,expectedRole:'hermes_store_binding_fixture'});
         const root=mkdtempSync(join(tmpdir(),'hermes-binding-native-')),stateRoot=join(root,'state');
         mkdirSync(stateRoot,{mode:0o700});
@@ -181,7 +209,7 @@ test('TG4 stable binding uses real PostgreSQL role fences and serializes setting
           assert.equal(readNativeConfig(options.configFile).channels[0].pairedUid,'456');
           assert(!JSON.stringify(result).includes(readNativeConfig(options.configFile).channels[0].token));
           assert.equal(result.operator.activation,'pending_controlled_worker_restart');
-        } finally {await privatePool.end();const target=resolve(root);assert(target.startsWith(resolve(tmpdir())+sep)&&target.includes('hermes-binding-native-'));rmSync(target,{recursive:true});}
+        } finally {await drainPrivatePool();const target=resolve(root);assert(target.startsWith(resolve(tmpdir())+sep)&&target.includes('hermes-binding-native-'));rmSync(target,{recursive:true});}
       });
       await t.test('canonical audited action and settings/restrict/revoke serialize on org row before audit/session locks',async()=>{
         const waitForLock=async connection=>{
@@ -281,5 +309,5 @@ test('TG4 stable binding uses real PostgreSQL role fences and serializes setting
         await b.query('ROLLBACK');
       });
     } finally {await a.query('ROLLBACK');await b.query('ROLLBACK');a.release();b.release();}
-  } finally {client.release();await pool.end();cleanup();}
+  } finally {client.release();await drain();cleanup();}
 });

@@ -320,7 +320,7 @@ test('fixed reads adapter uses exactly three public RPCs, pins bearer/body and a
   assert.deepEqual(Object.keys(adapter), ['listConnections', 'connectionOptions', 'connectionContext']);
   await adapter.listConnections({ accessToken: 'browser.token', organizationId: ids.org }, { signal: controller.signal });
   await adapter.connectionContext({ accessToken: 'browser.token', connectionId: ids.connection }, { signal: controller.signal });
-  assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_my_connections_v1', origin + '/rest/v1/rpc/hermes_connection_context_v7']);
+  assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_my_connections_v1', origin + '/rest/v1/rpc/hermes_connection_context_v9']);
   assert.deepEqual(calls.map(c => JSON.parse(c.body)), [{ p_org: ids.org }, { p_connection_id: ids.connection }]);
   for (const call of calls) { assert.equal(call.headers.authorization, 'Bearer browser.token'); assert.equal(call.headers['content-profile'], 'public');
     assert.equal(call.headers['accept-profile'], 'public'); assert.equal(call.redirect, 'error'); assert.equal(call.method, 'POST'); }
@@ -514,7 +514,7 @@ test('fixed options read uses selected organization and never a caller-selected 
  const api=createSupabaseConnectionManagementReads({url:'https://project.example',publishableKey:'sb_publishable_test',fetch:async(url,init)=>{
  calls.push({url,init});return new Response(JSON.stringify(grantOptions()),{headers:{'content-type':'application/json'}});}});
  await api.connectionOptions({accessToken:'browser.jwt.token',organizationId:ids.org},{signal:controller.signal});
- assert.equal(calls[0].url,'https://project.example/rest/v1/rpc/hermes_connection_options_v7');
+ assert.equal(calls[0].url,'https://project.example/rest/v1/rpc/hermes_connection_options_v9');
  assert.deepEqual(JSON.parse(calls[0].init.body),{p_org:ids.org});assert.equal(calls[0].init.headers.authorization,'Bearer browser.jwt.token');
  await assert.rejects(api.connectionOptions({accessToken:'browser.jwt.token',organizationId:ids.org,rpc:'admin_catalog'},{signal:controller.signal}),code('invalid_request'));
  assert.equal(calls.length,1);
@@ -535,7 +535,7 @@ test('the next options request reflects action revocation from canonical SQL',as
  assert.deepEqual((await f.create().options(request('options'),f.options)).options.action,[]);assert.equal(f.writes.length,0);
 });
 
-test('missing v7 read schema keeps v6 action metadata with the same caller', async () => {
+test('missing v9 sale schema keeps v8 action metadata with the same caller', async () => {
   for (const [operation, input, base] of [
     ['connectionOptions', { accessToken: 'browser.token', organizationId: ids.org }, 'hermes_connection_options'],
     ['connectionContext', { accessToken: 'browser.token', connectionId: ids.connection }, 'hermes_connection_context'],
@@ -549,14 +549,14 @@ test('missing v7 read schema keeps v6 action metadata with the same caller', asy
       } });
     const result = await adapter[operation](input, { signal: new AbortController().signal });
     assert.deepEqual(result.effective.action, []);
-    assert.deepEqual(calls.map(call => call.url), [`${origin}/rest/v1/rpc/${base}_v7`, `${origin}/rest/v1/rpc/${base}_v6`]);
+    assert.deepEqual(calls.map(call => call.url), [`${origin}/rest/v1/rpc/${base}_v9`, `${origin}/rest/v1/rpc/${base}_v8`]);
     assert.equal(calls[0].init.body, calls[1].init.body);
     assert.equal(calls[0].init.headers.authorization, calls[1].init.headers.authorization);
     assert.equal(calls[0].init.signal, calls[1].init.signal);
   }
 });
 
-test('a denied, unknown or malformed v7 reply cannot negotiate legacy authority', async () => {
+test('a denied, unknown or malformed v9 reply cannot negotiate legacy authority', async () => {
   for (const [status, body] of [[403, { code: '42501' }], [503, { code: 'PGRST202', message: 'absent', details: null, hint: null }],
     [404, { code: 'PGRST202' }], [404, { code: 'OTHER', message: 'absent', details: null, hint: null }]]) {
     let calls = 0;
@@ -568,18 +568,18 @@ test('a denied, unknown or malformed v7 reply cannot negotiate legacy authority'
   }
 });
 
-test('v1 compatibility is retained after exact missing v7, v6, v5, v4, v3 and v2, with no downgrade on malformed v6', async () => {
+test('v1 compatibility is retained after exact missing v9 through v2, with no downgrade on malformed v8', async () => {
   for (const malformed of [false, true]) {
     const calls = [];
     const adapter = createSupabaseConnectionManagementReads({ url: origin, publishableKey: key, fetch: async (url, init) => {
       calls.push({ url, init });
-      if (calls.length === 1 || calls.length <= 6 && !malformed) return Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 });
+      if (calls.length === 1 || calls.length <= 8 && !malformed) return Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 });
       if (malformed) return Response.json({ code: 'PGRST202' }, { status: 404 });
       return Response.json({ effective: { read: [], action: [] } });
     } });
     const result = adapter.connectionOptions({ accessToken: 'browser.token', organizationId: ids.org }, { signal: new AbortController().signal });
     if (malformed) { await assert.rejects(result); assert.equal(calls.length, 2); }
-    else { await result; assert.deepEqual(calls.map(call => call.url), [7, 6, 5, 4, 3, 2, 1].map(v => `${origin}/rest/v1/rpc/hermes_connection_options_v${v}`)); }
+    else { await result; assert.deepEqual(calls.map(call => call.url), [9, 8, 7, 6, 5, 4, 3, 2, 1].map(v => `${origin}/rest/v1/rpc/hermes_connection_options_v${v}`)); }
     assert.equal(new Set(calls.map(call => call.init.body)).size, 1);
   }
 });

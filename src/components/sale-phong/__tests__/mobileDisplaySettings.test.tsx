@@ -9,6 +9,13 @@ const m = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>, hotlines: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
   save: vi.fn(), sheetSave: vi.fn(), retry: vi.fn(),
 }));
+vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
+vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: 'actor-a' } } }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true }, isError: false }) }));
+vi.mock('@/hooks/useSaleRoomInventory', async () => {
+  const { sheetInventoryFixture } = await import('./sheetInventoryFixture');
+  return { useSaleRoomInventory: () => ({ ...m.rooms, data: m.rooms.data === undefined ? undefined : sheetInventoryFixture(m.rooms.data as import('@/pages/phong-trong/sampleData').Building[]) }) };
+});
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/contexts/OrganizationContext", () => ({ useOrganization: () => ({ selectedOrganizationId: "org-1" }) }));
 vi.mock("@/hooks/usePublicRoomSettings", () => ({
@@ -60,7 +67,7 @@ const footerSave = () => screen.getAllByRole("button", { name: "Lưu cài đặt
 
 describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks(); sessionStorage.clear();
     header = null;
     m.settings = query({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null });
     m.hotlines = query(hotlines);
@@ -98,7 +105,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Lưu số này" }));
     expect(screen.getByRole("button", { name: /^SĐT riêng của nhà 102\/30/ }).textContent).toContain("0901 234 567");
     fireEvent.click(footerSave());
-    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [{ id: "b1", phone: "0901 234 567" }], rooms: [] }));
+    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ buildings: [{ id: "b1", phone: "0901 234 567", originalPhone: null }], rooms: [] })));
   });
 
   it("giá sửa bằng chạm 2 lần; tab Tình trạng gợi ý chữ tự tính; Lưu ghi thẳng vào phòng", async () => {
@@ -124,7 +131,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
 
     fireEvent.click(footerSave());
     await waitFor(() => expect(m.sheetSave).toHaveBeenCalledOnce());
-    expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [], rooms: [{ id: "r1", rentPrice: 4800000, roomType: "Gác", saleStatusNote: "Trống từ 5/11", saleStatusKey: "fact-key" }] });
+    expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ buildings: [], rooms: [expect.objectContaining({ input: { roomId: 'r1', requestId: expect.any(String), expectedRevision: 'a'.repeat(32), patch: { rent_price: 4800000, room_type: 'Gác', sale_status_note: 'Trống từ 5/11', sale_status_note_key: 'fact-key' } } })] }));
   });
 
   it("sao chép chính sách sang phòng khác: mặc định bổ sung xuống dòng, bật Thay thế thì ghi đè", async () => {
@@ -137,9 +144,10 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
     expect(screen.getByRole("status").textContent).toContain("Đã bổ sung chính sách cho 1 phòng");
 
     fireEvent.click(footerSave());
-    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith({
-      buildings: [], rooms: [{ id: "r2", saleNote: "Ký 1 năm giảm 200k\nGiảm 300k tháng đầu" }],
-    }));
+    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({
+      buildings: [], rooms: [expect.objectContaining({ input: expect.objectContaining({ roomId: 'r2', patch: { sale_note: 'Ký 1 năm giảm 200k\nGiảm 300k tháng đầu' } }) })],
+    })));
+    await waitFor(() => expect(footerSave()).toHaveProperty('disabled', false));
 
     fireEvent.click(screen.getByRole("button", { name: "Sao chép chính sách phòng 502 sang phòng khác" }));
     dialog = screen.getByRole("dialog");
@@ -147,7 +155,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Thay thế chính sách cũ/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Sao chép cho 1 phòng" }));
     fireEvent.click(footerSave());
-    await waitFor(() => expect(m.sheetSave).toHaveBeenLastCalledWith({ buildings: [], rooms: [{ id: "r2", saleNote: "Giảm 300k tháng đầu" }] }));
+    await waitFor(() => expect(m.sheetSave).toHaveBeenLastCalledWith(expect.objectContaining({ buildings: [], rooms: [expect.objectContaining({ input: expect.objectContaining({ roomId: 'r2', patch: { sale_note: 'Giảm 300k tháng đầu' } }) })] })));
   });
 
   it("sao chép: phòng nhận có câu dài hơn chứa chữ nguồn vẫn được bổ sung; đã có đúng dòng thì bỏ qua", async () => {
@@ -163,7 +171,7 @@ describe("MobileDisplaySettings — bảng phòng trống trên mobile", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Sao chép cho 2 phòng" }));
     expect(screen.getByRole("status").textContent).toBe("Đã bổ sung chính sách cho 1 phòng · 1 phòng đã có · chưa lưu");
     fireEvent.click(footerSave());
-    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [], rooms: [{ id: "r2", saleNote: "Giảm 300k cho HĐ 1 năm\nGiảm 300k" }] }));
+    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ buildings: [], rooms: [expect.objectContaining({ input: expect.objectContaining({ roomId: 'r2', patch: { sale_note: 'Giảm 300k cho HĐ 1 năm\nGiảm 300k' } }) })] })));
   });
 
   it("ô sai → mở đúng nhà đang gập và báo tại ô, không ghi gì", async () => {

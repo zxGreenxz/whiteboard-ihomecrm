@@ -28,6 +28,8 @@ interface ImageUploadZoneProps {
    * sẽ ghi đè nhau vì cùng đọc một `imgs` cũ.
    */
   onAddMany?: (urls: string[]) => void;
+  disabled?: boolean;
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 export default function ImageUploadZone({
@@ -40,6 +42,8 @@ export default function ImageUploadZone({
   imagePolicy,
   multiple = false,
   onAddMany,
+  disabled = false,
+  onUploadingChange,
 }: ImageUploadZoneProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -67,12 +71,12 @@ export default function ImageUploadZone({
 
   const handleUpload = useCallback(
     async (files: File[]) => {
-      if(busy.current || blocked)return;
+      if(busy.current || blocked || disabled)return;
       const picked=multiple?files:files.slice(0,1);if(!picked.length)return;
       const valid:File[]=[];const failed:File[]=[];const messages:string[]=[];
       for(const file of picked){const problem=validateFile(file);if(problem){failed.push(file);messages.push(`${file.name}: ${problem}`);}else valid.push(file);}
       if(!valid.length){setFailedFiles(failed);setError(messages.join(' '));zoneRef.current?.focus();return;}
-      busy.current=true;setIsUploading(true);setUploadingCount(valid.length);setError(null);
+      busy.current=true;setIsUploading(true);onUploadingChange?.(true);setUploadingCount(valid.length);setError(null);
       const urls:string[]=[];
       try {
         for(let i=0;i<valid.length;i++){
@@ -99,10 +103,10 @@ export default function ImageUploadZone({
         setFailedFiles(failed);
         setError(messages.length?`Đã nhận đường dẫn ${urls.length}/${picked.length} ảnh. ${messages.join(' ')}`:null);
         if(messages.length)zoneRef.current?.focus();
-      }finally{busy.current=false;setIsUploading(false);setUploadingCount(0);}
+      }finally{busy.current=false;setIsUploading(false);onUploadingChange?.(false);setUploadingCount(0);}
 
     },
-    [bucket, label, imagePolicy, multiple, onAddMany, onChange, validateFile, blocked]
+    [bucket, label, imagePolicy, multiple, onAddMany, onChange, validateFile, blocked, disabled, onUploadingChange]
   );
 
   const handleDrop = useCallback(
@@ -132,13 +136,13 @@ export default function ImageUploadZone({
   );
 
   const handleRemove = useCallback(() => {
-    if(busy.current || blocked)return;
+    if(busy.current || blocked || disabled)return;
     onChange('');
-  }, [onChange]);
+  }, [onChange, blocked, disabled]);
 
   const { onMouseEnter: onPasteMouseEnter, onMouseLeave: onPasteMouseLeave } = useClipboardImagePaste({
     onFiles: (files) => handleUpload(files),
-    enabled: !value && !isUploading && !blocked,
+    enabled: !value && !isUploading && !blocked && !disabled,
     multiple,
   });
   const handleClipboardMouseEnter = useCallback(() => {
@@ -162,6 +166,7 @@ export default function ImageUploadZone({
           />
           <button
             type="button"
+            disabled={disabled || isUploading}
             onClick={handleRemove}
             className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
           >
@@ -175,14 +180,14 @@ export default function ImageUploadZone({
           tabIndex={0}
           aria-label={label}
           aria-invalid={Boolean(error)}
-          aria-disabled={isUploading || blocked}
-          onKeyDown={event=>{if((event.key==='Enter'||event.key===' ')&&!busy.current&&!blocked){event.preventDefault();inputRef.current?.click();}}}
+          aria-disabled={isUploading || blocked || disabled}
+          onKeyDown={event=>{if((event.key==='Enter'||event.key===' ')&&!busy.current&&!blocked&&!disabled){event.preventDefault();inputRef.current?.click();}}}
           data-clipboard-image-paste-target="upload"
           data-clipboard-image-paste-active={isClipboardHover && !isUploading ? 'true' : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => {if(!busy.current&&!blocked)inputRef.current?.click();}}
+          onClick={() => {if(!busy.current&&!blocked&&!disabled)inputRef.current?.click();}}
           onMouseEnter={handleClipboardMouseEnter}
           onMouseLeave={handleClipboardMouseLeave}
           className={cn(
@@ -190,7 +195,7 @@ export default function ImageUploadZone({
             isDragOver
               ? 'border-primary bg-primary/5'
               : 'border-gray-300 hover:border-gray-400 bg-gray-50',
-            (isUploading || blocked) && 'pointer-events-none opacity-60'
+            (isUploading || blocked || disabled) && 'pointer-events-none opacity-60'
           )}
         >
           {isUploading ? (
@@ -216,14 +221,14 @@ export default function ImageUploadZone({
         ref={inputRef}
         type="file"
         aria-label={`Chọn ${label}`}
-        disabled={isUploading || blocked}
+        disabled={isUploading || blocked || disabled}
         accept={accept}
         multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
-      {failedFiles.length>0&&!blocked&&<button type="button" disabled={isUploading} onClick={()=>{void handleUpload(failedFiles);}} className="text-sm underline">Thử lại ảnh chưa tải</button>}
+      {failedFiles.length>0&&!blocked&&<button type="button" disabled={isUploading || disabled} onClick={()=>{void handleUpload(failedFiles);}} className="text-sm underline">Thử lại ảnh chưa tải</button>}
     </div>
   );
 }

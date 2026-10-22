@@ -50,6 +50,11 @@ function taskHeadline(task: DepositTask): string {
 
 /** Dòng phụ: ai, và bối cảnh tiền/thời gian riêng của từng loại. */
 function taskSubline(task: DepositTask): string {
+  if (task.receivedFactStatus === "UNKNOWN") {
+    return task.paidAmount === null
+      ? `${task.personName} · chưa xác nhận tiền thực nhận`
+      : `${task.personName} · đã xác nhận ${formatMoneyShort(task.paidAmount)} · còn phiếu chưa đối chiếu`;
+  }
   if (task.paidAmount !== null && task.expectedAmount !== null) {
     return `${task.personName} · đã thu ${formatMoneyShort(task.paidAmount)} / ${formatMoneyShort(
       task.expectedAmount,
@@ -76,7 +81,7 @@ function taskDeadlineText(task: DepositTask): string {
   // Ba loại mốc, ba tên khác nhau. Gọi mốc bổ sung cọc là "hạn làm HĐ" thì
   // người đọc sẽ tưởng còn thời gian tới ngày ký, trong khi cái sắp mất là CỌC.
   const label =
-    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY"
+    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY" || task.kind === "PENDING_RECEIPT"
       ? "hạn làm HĐ"
       : task.kind === "RESV_TOPUP_OVERDUE" || task.kind === "RESV_TOPUP_DUE_SOON"
         ? "hạn bổ sung"
@@ -94,6 +99,7 @@ export interface WorkQueueActions {
   /** Mở hộp thoại đặt/gia hạn "hạn phải làm hợp đồng". */
   onEditDeadline: (task: DepositTask) => void;
   canCreateContract: boolean;
+  canEditDeadline: (task: DepositTask) => boolean;
   canApprove: boolean;
   approvingId: string | null;
 }
@@ -153,6 +159,11 @@ function TaskCard({ task, tone, actions }: {
       </div>
 
       <div className="ml-auto flex shrink-0 gap-2">
+        {task.voucherId && (
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/income-expense/voucher/${task.voucherId}`}>Mở phiếu</Link>
+          </Button>
+        )}
         {task.contractId && (
           <Button asChild size="sm" variant="outline">
             <Link to={`/contracts/${task.contractId}`}>Mở hợp đồng</Link>
@@ -167,7 +178,7 @@ function TaskCard({ task, tone, actions }: {
             {actions.approvingId === task.voucherId ? "Đang duyệt..." : "Duyệt"}
           </Button>
         )}
-        {isHold && (
+        {task.voucherId && task.kind !== "PENDING_APPROVAL" && actions.canEditDeadline(task) && (
           <Button size="sm" variant="outline" onClick={() => actions.onEditDeadline(task)}>
             {task.dueDate ? "Sửa kỳ hạn" : "Đặt kỳ hạn"}
           </Button>

@@ -33,12 +33,11 @@ export interface SheetEdits {
 }
 
 export const EMPTY_SHEET_EDITS: SheetEdits = { phones: {}, policies: {}, prices: {}, types: {}, amenities: {}, statuses: {} };
-export const ROOM_POLICY_MAX = 300;
-export const ROOM_TYPE_MAX = 120;
-export const ROOM_AMENITIES_MAX = 300;
+export const ROOM_POLICY_MAX = 2000;
+export const ROOM_TYPE_MAX = 200;
+export const ROOM_AMENITIES_MAX = 10048;
 /** Khớp CHECK rooms_sale_status_note_len. */
 export const ROOM_STATUS_MAX = 120;
-const PRICE_DIGITS_MAX = 10;
 
 const FIELD_EDITS: Record<RoomField, Exclude<keyof SheetEdits, "phones" | "policies">> = {
   price: "prices", type: "types", amenities: "amenities", status: "statuses",
@@ -97,12 +96,13 @@ const digits = (s: string) => s.replace(/\D/g, "");
 
 /** Ô giá khi gõ: chỉ giữ chữ số, chấm nghìn kiểu Việt ("4500000" → "4.500.000"). */
 export function formatPriceInput(raw: string): string {
-  const d = digits(raw).replace(/^0+(?=\d)/, "").slice(0, PRICE_DIGITS_MAX);
-  return d ? Number(d).toLocaleString("vi-VN") : "";
+  const d = digits(raw).replace(/^0+(?=\d)/, "");
+  // Keep every typed digit: validation must reject an oversized price, never truncate it.
+  return d.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 // Đúng khuôn ảnh in: "Phòng 20m²" / "phòng 20,5 m2". Số m² đứng riêng ("Gác 6m2") là chữ của loại phòng.
-const AREA_RE = /phòng\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*m(?:²|2)(?![\p{L}\d])/iu;
+const AREA_RE = /phòng\s*(\d{1,7}(?:[.,]\d{1,2})?)\s*m(?:²|2)(?![\p{L}\d])/iu;
 
 /** Ô LOẠI PHÒNG → diện tích (khi có "Phòng Nm²", không có thì null = giữ nguyên) + loại phòng (phần còn lại). */
 export function parseTypeCell(text: string): { area: number | null; roomType: string } {
@@ -110,7 +110,7 @@ export function parseTypeCell(text: string): { area: number | null; roomType: st
   const rest = m ? `${text.slice(0, m.index)},${text.slice(m.index + m[0].length)}` : text;
   const roomType = rest.split(/[,;\n]/).map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean).join(", ");
   const area = m?.[1] ? Number(m[1].replace(",", ".")) : NaN;
-  return { area: area > 0 ? area : null, roomType };
+  return { area: Number.isFinite(area) && area >= 0 ? area : null, roomType };
 }
 
 /** Ô NỘI THẤT → danh sách tiện nghi (phân cách phẩy/chấm phẩy/xuống dòng). */
@@ -165,7 +165,7 @@ export interface RoomChange {
   rentPrice?: number | null;
   area?: number;
   roomType?: string | null;
-  amenities?: string[] | null;
+  amenities?: string[];
   saleStatusNote?: string | null;
   /** Khoá tình trạng tự tính lúc gõ (sale_fact_key); luôn đi cùng saleStatusNote. */
   saleStatusKey?: string | null;
@@ -202,7 +202,7 @@ export function sheetChanges(buildings: Building[], edits: SheetEdits): SheetCha
       const amen = edits.amenities[r.id];
       if (amen !== undefined) {
         const list = parseAmenities(amen);
-        if (list.join(", ") !== savedRoomCell(r, "amenities")) change.amenities = list.length ? list : null;
+        if (list.join(", ") !== savedRoomCell(r, "amenities")) change.amenities = list;
       }
 
       const status = edits.statuses[r.id];
@@ -232,9 +232,10 @@ export function sheetErrors(changes: SheetChanges): Record<string, string> {
   }
   for (const r of changes.rooms) {
     if (r.saleNote && r.saleNote.length > ROOM_POLICY_MAX) errors[`policy:${r.id}`] = `Tối đa ${ROOM_POLICY_MAX} ký tự.`;
-    if (r.rentPrice !== undefined && !(r.rentPrice && r.rentPrice > 0)) errors[`price:${r.id}`] = "Nhập giá phòng (VND).";
+    if (r.rentPrice !== undefined && (r.rentPrice === null || !Number.isSafeInteger(r.rentPrice) || r.rentPrice < 0 || r.rentPrice > 9_999_999_999_999)) errors[`price:${r.id}`] = "Nhập giá nguyên từ 0 đến 9.999.999.999.999 đồng.";
+    if (r.area !== undefined && (r.area < 0 || r.area > 1_000_000)) errors[`type:${r.id}`] = "Diện tích từ 0 đến 1.000.000 m².";
     if (r.roomType && r.roomType.length > ROOM_TYPE_MAX) errors[`type:${r.id}`] = `Tối đa ${ROOM_TYPE_MAX} ký tự.`;
-    if (r.amenities && r.amenities.join(", ").length > ROOM_AMENITIES_MAX) errors[`amenities:${r.id}`] = `Tối đa ${ROOM_AMENITIES_MAX} ký tự.`;
+    if (r.amenities && (r.amenities.length > 50 || r.amenities.some(item => item.length > 200))) errors[`amenities:${r.id}`] = "Tối đa 50 nội thất, mỗi mục không quá 200 ký tự.";
     if (r.saleStatusNote && r.saleStatusNote.length > ROOM_STATUS_MAX) errors[`status:${r.id}`] = `Tối đa ${ROOM_STATUS_MAX} ký tự.`;
   }
   return errors;

@@ -8,6 +8,13 @@ const m = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>, hotlines: {} as Record<string, unknown>, rooms: {} as Record<string, unknown>,
   save: vi.fn(), sheetSave: vi.fn(), retry: vi.fn(), createHotline: vi.fn(), updateHotline: vi.fn(),
 }));
+vi.mock('@tanstack/react-query', async original => ({ ...(await original<typeof import('@tanstack/react-query')>()), useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }) }));
+vi.mock('@/hooks/useAuth', () => ({ useSession: () => ({ data: { user: { id: 'actor-a' } } }) }));
+vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { __superadmin: true }, isError: false }) }));
+vi.mock('@/hooks/useSaleRoomInventory', async () => {
+  const { sheetInventoryFixture } = await import('./sheetInventoryFixture');
+  return { useSaleRoomInventory: () => ({ ...m.rooms, data: m.rooms.data === undefined ? undefined : sheetInventoryFixture(m.rooms.data as import('@/pages/phong-trong/sampleData').Building[]) }) };
+});
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/contexts/OrganizationContext", () => ({ useOrganization: () => ({ selectedOrganizationId: "org-1" }) }));
 vi.mock("@/hooks/usePublicRoomSettings", () => ({
@@ -155,7 +162,7 @@ describe("roomListSheetDraft (thuần)", () => {
 
 describe("DisplaySettingsTab — bảng phòng trống", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks(); sessionStorage.clear();
     m.settings = query({ soon_days: 30, show_rented: true, hotline_id: null, sale_policy: null });
     m.hotlines = query(hotlines);
     m.rooms = query(data());
@@ -189,9 +196,9 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     fireEvent.change(input, { target: { value: "0909 000 111" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(m.save).toHaveBeenCalledOnce());
-    expect(m.createHotline).toHaveBeenCalledWith({ name: "Hotline chung", phone_number: "0909 000 111", is_active: true, organization_id: "org-1" });
+    expect(m.createHotline).toHaveBeenCalledWith({ name: "Hotline chung", phone_number: "0909 000 111", is_active: true });
     expect(m.updateHotline).not.toHaveBeenCalled();
-    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ hotline_id: null }));
+    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ hotline_id: 'h-new' }));
     expect(m.createHotline.mock.invocationCallOrder[0]).toBeLessThan(m.save.mock.invocationCallOrder[0]);
   });
 
@@ -238,12 +245,13 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     await waitFor(() => expect(m.sheetSave).toHaveBeenCalledOnce());
     expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ sale_policy: "Nước 100k/người\nXe free", hotline_id: null }));
     expect(m.save.mock.invocationCallOrder[0]).toBeLessThan(m.sheetSave.mock.invocationCallOrder[0]);
-    expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [{ id: "b1", phone: "0901 234 567" }], rooms: [{ id: "r1", saleNote: "Giảm 300k" }] });
+    expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-1', actorId: 'actor-a', buildings: [{ id: "b1", phone: "0901 234 567", originalPhone: null }], rooms: [expect.objectContaining({ input: { roomId: 'r1', expectedRevision: 'a'.repeat(32), requestId: expect.any(String), patch: { sale_note: 'Giảm 300k' } } })] }));
   });
 
   it("cài đặt lưu hỏng → không ghi ô nào của bảng", async () => {
     m.save.mockRejectedValue({ code: "42501", message: "SQL_PRIVATE" });
     view();
+    fireEvent.change(screen.getByLabelText('Chính sách sale chung'), { target: { value: 'Chính sách chung mới' } });
     fireEvent.change(screen.getByRole("textbox", { name: "Chính sách sale phòng 502" }), { target: { value: "Giảm 300k" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(m.save).toHaveBeenCalledOnce());
@@ -280,9 +288,9 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     fireEvent.change(status, { target: { value: "Trống từ 5/11" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(m.sheetSave).toHaveBeenCalledOnce());
-    expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [], rooms: [
-      { id: "r1", rentPrice: 4800000, area: 25, roomType: "Gác", amenities: ["Máy lạnh", "tủ lạnh"], saleStatusNote: "Trống từ 5/11", saleStatusKey: "fact-key" },
-    ] });
+    expect(m.sheetSave).toHaveBeenCalledWith(expect.objectContaining({ buildings: [], rooms: [
+      expect.objectContaining({ input: { roomId: 'r1', requestId: expect.any(String), expectedRevision: 'a'.repeat(32), patch: { rent_price: 4800000, area: 25, room_type: 'Gác', amenities: ['Máy lạnh', 'tủ lạnh'], sale_status_note: 'Trống từ 5/11', sale_status_note_key: 'fact-key' } } }),
+    ] }));
   });
 
   it("xoá trống giá → báo tại ô, không ghi; phòng khách pass không có ô giá", async () => {

@@ -22,7 +22,7 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   // chiếu bằng *_status; broker nuốt lỗi audit cho riêng các mã này nên thiếu ở đây không đóng broker, nhưng sổ audit sẽ
   // không có dòng cho lượt ghi bất định. Mọi mã ERROR_STATUS của broker phải có mặt (audit-codes.test.mjs).
   'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown',
-  'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown',
+  'customer_outcome_unknown', 'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown',
   // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật mang reason (dưới) và mã bất định của ghi.
   'action_rejected', 'action_outcome_unknown']);
 /** Bản sao chỉ đọc của giao thức mã lỗi sổ audit chấp nhận; audit-codes.test.mjs khoá nó bằng ERROR_STATUS của broker. */

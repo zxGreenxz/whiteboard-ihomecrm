@@ -378,7 +378,7 @@ describe('self-owned grant choices and implemented room enrollment', () => {
     expect(fetch).toHaveBeenCalledWith('/api/hermes/connections/options', expect.objectContaining({ body: JSON.stringify({ organizationId: ORG }) }));
   });
   it.each([
-    { userId: OTHER }, { organizationId: OTHER }, { read: ['future.unsupported_read'] }, { action: ['rooms.edit'] },
+    { userId: OTHER }, { organizationId: OTHER }, { read: ['future.unsupported_read'] }, { action: ['fixtures.unsupported_action'] },
     { token: OPAQUE }, { scopes: [] }, { policyVersion: -1 },
   ])('rejects malformed or foreign choices %j', async delta => {
     const { client, fetch } = setup(); fetch.mockResolvedValue(json({ options: { ...options(), ...delta } }));
@@ -395,14 +395,27 @@ describe('self-owned grant choices and implemented room enrollment', () => {
     fetch.mockResolvedValue(json({ options: value }));await expect(client.options()).resolves.toEqual({ options: value });
     fetch.mockResolvedValue(json({ options: { ...value, scopes: [] } }));await expect(client.options()).rejects.toBeInstanceOf(HermesConnectionClientError);
   });
-  it('can enroll rooms read in selected scope but retains no ability to submit action grants', async () => {
+  it('preserves explicit read-only room enrollment and rejects unsupported action keys before dispatch', async () => {
     const { client, fetch } = setup(), restrictions = { read: ['assistant.context.read', 'rooms.view'], action: [] };
     const result = { ...newConnection(), connection: { ...metadata(), restrictions } };
     fetch.mockResolvedValue(json(result));
     await expect(client.connect({ ...connectInput(), restrictions })).resolves.toEqual(result);
     expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).toMatchObject({ restrictions, scopeIds: [SCOPE] });
-    await expect(client.connect({ ...connectInput(), restrictions: { ...restrictions, action: ['rooms.edit'] } })).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(client.connect({ ...connectInput(), restrictions: { ...restrictions, action: ['fixtures.unsupported_action'] } })).rejects.toMatchObject({ code: 'invalid_request', outcome: 'not_dispatched' });
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('accepts implemented room edit only when explicitly requested and acknowledged for the selected scope', async () => {
+    const { client, fetch } = setup();
+    const offered = { ...options(), action: ['rooms.edit'] };
+    fetch.mockResolvedValueOnce(json({ options: offered }));
+    await expect(client.options()).resolves.toEqual({ options: offered });
+    const restrictions = { read: ['rooms.view'], action: ['rooms.edit'] };
+    const connected = { ...newConnection(), connection: { ...metadata(), restrictions } };
+    fetch.mockResolvedValueOnce(json(connected));
+    await expect(client.connect({ ...connectInput(), restrictions })).resolves.toEqual(connected);
+    expect(JSON.parse(fetch.mock.calls[1][1]!.body as string)).toMatchObject({ restrictions, scopeIds: [SCOPE] });
+    fetch.mockResolvedValueOnce(json(newConnection()));
+    await expect(client.connect({ ...connectInput(), restrictions })).rejects.toMatchObject({ code: 'operation_outcome_unknown', outcomeUnknown: true });
   });
 });
 
@@ -421,7 +434,7 @@ describe('fixed group action enrollment',()=>{
   fetch.mockResolvedValueOnce(json({options}));expect((await client.options()).options.action).toEqual(['chat_zalo.send']);
   const input=connectInput();input.restrictions.action=['chat_zalo.send'];const connected=newConnection();connected.connection.restrictions.action=['chat_zalo.send'];fetch.mockResolvedValueOnce(json(connected));await expect(client.connect(input)).resolves.toEqual(connected);expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).restrictions.action).toEqual(['chat_zalo.send']);
  });
- it.each([['rooms.edit'],['chat_zalo.send','chat_zalo.send']])('rejects invalid/duplicate action %j before dispatch',async(...action)=>{
+ it.each([['fixtures.unsupported_action'],['chat_zalo.send','chat_zalo.send']])('rejects invalid/duplicate action %j before dispatch',async(...action)=>{
   const {client,fetch}=setup(),input=connectInput();input.restrictions.action=action;await expect(client.connect(input)).rejects.toMatchObject({code:'invalid_request'});expect(fetch).not.toHaveBeenCalled();
  });
  it('rejects action presented by a disabled options response',async()=>{

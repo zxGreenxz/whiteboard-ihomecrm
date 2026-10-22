@@ -23,9 +23,10 @@ const MobileDisplaySettings = lazy(() => import('@/components/sale-phong/mobile/
 const MobileSaleInfo = lazy(() => import('@/components/sale-phong/mobile/MobileSaleInfo'));
 const MobilePassListings = lazy(() => import('@/components/sale-phong/mobile/MobilePassListings'));
 const MobileAnalytics = lazy(() => import('@/components/sale-phong/mobile/MobileAnalytics'));
+const SaleRoomWorkspace = lazy(() => import('@/components/sale-phong/SaleRoomWorkspace'));
 
 type TabKey = 'tokens' | 'settings' | 'images' | 'pass' | 'floorplan' | 'analytics';
-type Mode = 'browse' | 'admin';
+type Mode = 'update' | 'browse' | 'admin';
 
 interface TabDef {
   key: TabKey;
@@ -48,22 +49,24 @@ const TAB_DEFS: TabDef[] = [
 /**
  * "Phòng trống" — màn app full-screen mobile (web-app), shell .cm-*. Redesign theo
  * handoff Claude Design "Quản lý phòng trống".
- *  - Phòng trống (mặc định): nhúng PhongTrongPage với data in-app (useMyAvailableRooms).
+ *  - Cập nhật (mặc định): toàn bộ phòng trong phạm vi được giao, kèm quyền từng thao tác.
+ *  - Phòng trống: nhúng PhongTrongPage với data in-app (useMyAvailableRooms).
  *  - Quản lý: 6 hàng tab quản trị (gate quyền). Chạm 1 hàng → mở màn tab full-screen,
  *    mỗi tab là component mobile-native riêng (bottom-sheet thay dialog desktop).
  */
 export default function SalePhongMobilePage() {
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
-  const { data: buildings, isLoading, isError, refetch } = useMyAvailableRooms();
+  const { data: buildings, isLoading, isError, refetch, readFresh } = useMyAvailableRooms();
   const tokenQuery=usePublicRoomTokens();
   const tokens=tokenQuery.data;
   const passQuery = usePassListings();
   const { data: passListings } = passQuery;
 
-  const [mode, setMode] = useState<Mode>('browse');
+  const [mode, setMode] = useState<Mode>('update');
   const [openTab, setOpenTab] = useState<TabKey | null>(null);
   const [headerAction, setHeaderAction] = useState<HeaderAction | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // Reset header action khi đổi/đóng tab.
   useEffect(() => { setHeaderAction(null); }, [openTab]);
@@ -86,14 +89,15 @@ export default function SalePhongMobilePage() {
     key === 'tokens' ? 'rgba(37,99,235,.09)' : 'rgba(217,119,6,.1)';
 
   const goBack = () => {
+    if (busy) return;
     if (openTab) setOpenTab(null);
     else navigate('/');
   };
 
-  const title = activeTabDef ? activeTabDef.label : 'Phòng trống';
+  const title = activeTabDef ? activeTabDef.label : 'Sale Phòng';
   const subtitle = activeTabDef
     ? 'Sale Phòng'
-    : mode === 'browse'
+    : mode === 'update' ? 'Cập nhật nhanh từng phòng' : mode === 'browse'
       ? 'Bảng phòng trống của bạn'
       : 'Quản lý Sale Phòng';
 
@@ -102,7 +106,7 @@ export default function SalePhongMobilePage() {
       <div className="cm-app">
         <div className="route route-anim">
           <div className="mtop">
-            <button className="mback" onClick={goBack} aria-label={openTab ? 'Quay lại' : 'Về trang chủ'}>
+            <button className="mback" disabled={busy} onClick={goBack} aria-label={openTab ? 'Quay lại' : 'Về trang chủ'}>
               <ArrowLeft />
             </button>
             <div className="mtitle">
@@ -128,8 +132,9 @@ export default function SalePhongMobilePage() {
           {!openTab && (
             <div className="sp-seg">
               <div className="sp-pillseg">
-                <button className={mode === 'browse' ? 'on' : ''} onClick={() => setMode('browse')}>Phòng trống</button>
-                <button className={mode === 'admin' ? 'on' : ''} onClick={() => setMode('admin')}>Quản lý</button>
+                <button disabled={busy} className={mode === 'update' ? 'on' : ''} onClick={() => setMode('update')}>Cập nhật</button>
+                <button disabled={busy} className={mode === 'browse' ? 'on' : ''} onClick={() => setMode('browse')}>Phòng trống</button>
+                <button disabled={busy} className={mode === 'admin' ? 'on' : ''} onClick={() => setMode('admin')}>Quản lý</button>
               </div>
             </div>
           )}
@@ -138,7 +143,13 @@ export default function SalePhongMobilePage() {
           {openTab ? (
             <div className="mbody" style={{ padding: 0 }}>
               <Suspense fallback={<div style={{ padding: "14px 16px" }}><LoadingState label="mục quản lý" variant="list" rows={4} /></div>}>
-                {renderTab(openTab, setHeaderAction)}
+                {renderTab(openTab, setHeaderAction, setBusy)}
+              </Suspense>
+            </div>
+          ) : mode === 'update' ? (
+            <div className="mbody">
+              <Suspense fallback={<LoadingState label="bảng cập nhật phòng" variant="list" rows={5} />}>
+                <SaleRoomWorkspace mobile onBusyChange={setBusy} />
               </Suspense>
             </div>
           ) : mode === 'browse' ? (
@@ -152,7 +163,7 @@ export default function SalePhongMobilePage() {
               </div></div>
             ) : (
               <div className="sp-embed">
-                <PhongTrongPage buildings={buildings ?? []} embedded />
+                <PhongTrongPage buildings={buildings ?? []} readFreshBuildings={readFresh} embedded />
               </div>
             )
           ) : (
@@ -201,14 +212,14 @@ export default function SalePhongMobilePage() {
   );
 }
 
-function renderTab(key: TabKey, setHeaderAction: (a: HeaderAction | null) => void) {
+function renderTab(key: TabKey, setHeaderAction: (a: HeaderAction | null) => void, setBusy: (busy: boolean) => void) {
   switch (key) {
     case 'tokens':
       return <MobileShareTokens onHeaderAction={setHeaderAction} />;
     case 'settings':
-      return <MobileDisplaySettings onHeaderAction={setHeaderAction} />;
+      return <MobileDisplaySettings onHeaderAction={setHeaderAction} onBusyChange={setBusy} />;
     case 'images':
-      return <MobileSaleInfo />;
+      return <MobileSaleInfo onBusyChange={setBusy} />;
     case 'pass':
       return <MobilePassListings onHeaderAction={setHeaderAction} />;
     case 'analytics':

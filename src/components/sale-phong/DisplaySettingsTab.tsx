@@ -7,48 +7,50 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import RoomListSheetEditor from "./RoomListSheetEditor";
 import { useRoomListSheetDraft } from "./useRoomListSheetDraft";
+import SheetDraftStatus from './SheetDraftStatus';
 
-export default function DisplaySettingsTab() {
-  const sheet = useRoomListSheetDraft();
+export default function DisplaySettingsTab({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
+  const sheet = useRoomListSheetDraft(onBusyChange);
   const { settings, hotlines: hotlineQuery, root, form, days, errors, writeError, canSave, set, changeDays, rooms } = sheet;
 
   return (
-    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={[settings,hotlineQuery]} skeleton="detail" rows={4}><Card>
+    <div ref={root}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings,hotlineQuery] : []} skeleton="detail" rows={4}><Card>
       <CardHeader>
-        <CardTitle>Cài đặt hiển thị trang "Phòng trống"</CardTitle>
+        <CardTitle>Bảng phòng trống — điền như Excel</CardTitle>
         <CardDescription>
-          Áp dụng chung cho mọi link chia sẻ của tài khoản và cho ảnh "Danh sách phòng trống" (nút Tải ảnh, tin gửi Zalo).
+          Cùng nguồn dữ liệu với bảng cập nhật nhanh. Chỉ sửa được phòng và cài đặt thuộc quyền được giao.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-4 lg:grid-cols-2">
+        {sheet.canManageSettings ? <div className="grid gap-4 lg:grid-cols-2">
           {/* soon_days */}
           <div className="space-y-1.5">
             <Label htmlFor="soon-days">Số ngày báo "sắp trống"</Label>
             <Input
               id="soon-days" name="soon_days" type="text" inputMode="numeric" className={"w-40"+(errors.soon_days?" border-destructive":"")} aria-invalid={!!errors.soon_days} aria-describedby={errors.soon_days?"soon-days-error":undefined}
               value={days}
+              disabled={sheet.busy}
               onChange={(e)=>changeDays(e.target.value)}
             />
             {errors.soon_days&&<p id="soon-days-error" role="alert" className="text-sm text-destructive">{errors.soon_days}</p>}
             <p className="text-xs text-muted-foreground">
-              Phòng có hợp đồng còn hiệu lực sẽ hết hạn trong vòng số ngày này sẽ được đánh dấu
-              "Sắp trống" trên trang công khai. Mặc định 30 ngày.
+              Khoảng ngày dùng để chào phòng đã có thông tin trả phòng hoặc ngày nhận khách phù hợp.
+              Hợp đồng sắp hết hạn không tự xác nhận phòng "Sắp trống". Mặc định 30 ngày.
             </p>
           </div>
 
           {/* show_rented */}
           <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
             <div className="space-y-0.5">
-              <Label htmlFor="show-rented">Hiển thị phòng đã thuê (trên sơ đồ)</Label>
+              <Label htmlFor="show-rented">Phòng đã thuê trên sơ đồ</Label>
               <p className="text-xs text-muted-foreground">
-                Lưu cấu hình này cho lần cập nhật sau. Hiện trang công khai luôn vẽ phòng đã thuê
-                (làm mờ) để giữ đầy đủ sơ đồ tầng.
+                Trang công khai luôn vẽ mờ phòng đã thuê để giữ đầy đủ sơ đồ tầng.
+                Tùy chọn thay đổi cách hiển thị này chưa được hỗ trợ.
               </p>
             </div>
-            <Switch id="show-rented" checked={form.show_rented} onCheckedChange={(v) => set("show_rented", v)} />
+            <Switch id="show-rented" checked disabled aria-label="Luôn vẽ mờ phòng đã thuê" />
           </div>
-        </div>
+        </div> : <p className="text-sm text-muted-foreground">Hotline và chính sách chung được hiển thị theo cấu hình đang áp dụng; tài khoản này không thay đổi cấu hình chủ tài khoản.</p>}
 
         <section className="space-y-2" aria-labelledby="room-list-sheet-title">
           <div>
@@ -57,8 +59,8 @@ export default function DisplaySettingsTab() {
               Ô trắng viền đứt là ô điền: <b>hotline chung cho tất cả nhà</b> (góc trên trái),{" "}
               <b>chính sách sale chung</b> (khối trên đầu), <b>SĐT riêng từng nhà</b> (trong ô địa chỉ — chỉ điền khi
               nhà đó dùng số khác hotline) và các ô của từng phòng: <b>giá, chính sách sale, loại phòng, nội thất,
-              tình trạng</b>. Lưu là sửa thẳng dữ liệu phòng; ô tình trạng để trống thì tự tính theo hợp đồng.
-              Ảnh tải về in đúng như bảng này.
+              chú thích tình trạng</b>. Ô chú thích để trống sẽ dùng tình trạng từ nghiệp vụ phòng.
+              Ảnh xem trước dùng nội dung đang nhập, kể cả bản nháp chưa lưu.
             </p>
           </div>
           <QueryRegion label="danh sách phòng trống" queries={[rooms]} skeleton="table" rows={6}>
@@ -70,7 +72,7 @@ export default function DisplaySettingsTab() {
               onHotlineChange={sheet.pickHotline}
               hotlinePhone={sheet.hotlinePhone}
               onHotlinePhoneChange={sheet.setHotlinePhone}
-              salePolicy={form.sale_policy ?? ""}
+              salePolicy={sheet.salePolicy}
               onSalePolicyChange={(value) => set("sale_policy", value)}
               edits={sheet.edits}
               onPhoneChange={sheet.setPhone}
@@ -78,9 +80,12 @@ export default function DisplaySettingsTab() {
               onRoomFieldChange={sheet.setRoomField}
               errors={{ ...sheet.cellErrors, hotline_id: errors.hotline_id ?? "", sale_policy: errors.sale_policy ?? "" }}
               disabled={sheet.busy}
+              roomWritable={sheet.roomWritable} phoneWritable={sheet.phoneWritable}
+              canManageSettings={sheet.canManageSettings} activePolicies={sheet.activePolicies}
             />
           </QueryRegion>
         </section>
+        <SheetDraftStatus sheet={sheet} />
 
         {writeError&&<p role="alert" className="text-sm text-destructive">{writeError}</p>}
         {sheet.sheetWriteError&&<p role="alert" className="text-sm text-destructive">{sheet.sheetWriteError}</p>}

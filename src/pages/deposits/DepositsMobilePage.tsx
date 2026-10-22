@@ -83,6 +83,11 @@ function headline(task: DepositTask): string {
 }
 
 function subline(task: DepositTask): string {
+  if (task.receivedFactStatus === "UNKNOWN") {
+    return task.paidAmount === null
+      ? `${task.personName} · chưa xác nhận tiền thực nhận`
+      : `${task.personName} · đã xác nhận ${formatMoneyShort(task.paidAmount)} · còn phiếu chưa đối chiếu`;
+  }
   if (task.paidAmount !== null && task.expectedAmount !== null) {
     return `${task.personName} · đã thu ${formatMoneyShort(task.paidAmount)} / ${formatMoneyShort(
       task.expectedAmount,
@@ -102,7 +107,7 @@ function deadlineText(task: DepositTask): string {
   }
   const day = formatISODayMonth(dueDate);
   const label =
-    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY"
+    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY" || task.kind === "PENDING_RECEIPT"
       ? "hạn HĐ"
       : task.kind === "RESV_TOPUP_OVERDUE" || task.kind === "RESV_TOPUP_DUE_SOON"
         ? "bổ sung"
@@ -512,19 +517,22 @@ export default function DepositsMobilePage() {
                 <div className="dp-sheet-facts">
                   {openTask.expectedAmount !== null && (
                     <div>
-                      <span>Cọc theo hợp đồng</span>
+                      <span>{openTask.voucherId ? "Cọc cần đủ" : "Cọc theo hợp đồng"}</span>
                       <b>{formatCurrency(openTask.expectedAmount)}</b>
                     </div>
                   )}
                   {openTask.paidAmount !== null && (
                     <div>
-                      <span>Đã thu</span>
+                      <span>Thực nhận đã xác nhận</span>
                       <b>{formatCurrency(openTask.paidAmount)}</b>
                     </div>
                   )}
+                  {openTask.receivedFactStatus === "UNKNOWN" && (
+                    <p role="status">Còn phiếu chưa đối chiếu được tiền thực nhận.</p>
+                  )}
                   <div>
                     <span>
-                      {openTask.kind === "HOLD_OVERDUE" || openTask.kind === "HOLD_READY"
+                      {openTask.kind === "HOLD_OVERDUE" || openTask.kind === "HOLD_READY" || openTask.kind === "PENDING_RECEIPT"
                         ? "Hạn phải làm hợp đồng"
                         : "Ngày hẹn"}
                     </span>
@@ -538,17 +546,22 @@ export default function DepositsMobilePage() {
                   )}
                 </div>
                 <div className="dp-sheet-acts">
-                  {openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" ? (
+                  {openTask.voucherId && (
+                    <Link to={`/income-expense/voucher/${openTask.voucherId}`}>Mở phiếu</Link>
+                  )}
+                  {openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" && canUse(perms, "deposits", "edit", openTask.buildingId) ? (
                     <button
                       type="button"
                       onClick={() => {
                         setDeadlineTarget({
                           voucherId: openTask.voucherId!,
+                          buildingId: openTask.buildingId,
                           label: `P.${openTask.roomName} · ${openTask.buildingName}`,
                           holdUntil: holdTerms[openTask.voucherId!]?.holdUntil ?? null,
                           topupDueDate: holdTerms[openTask.voucherId!]?.topupDueDate ?? null,
                           depositTarget: holdTerms[openTask.voucherId!]?.depositTarget ?? null,
-                          paidAmount: openTask.paidAmount ?? openTask.amount,
+                          paidAmount: openTask.paidAmount,
+                          receivedFactStatus: openTask.receivedFactStatus,
                         });
                         closeSheet();
                       }}
@@ -599,7 +612,7 @@ export default function DepositsMobilePage() {
       <CreateDepositDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
       <HoldDeadlineDialog
-        target={deadlineTarget}
+        target={deadlineTarget && canUse(perms, "deposits", "edit", deadlineTarget.buildingId) ? deadlineTarget : null}
         onOpenChange={(open) => !open && setDeadlineTarget(null)}
       />
       {prefill && (

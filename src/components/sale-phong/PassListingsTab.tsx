@@ -55,7 +55,18 @@ const emptyForm: FormState = {
   salePolicy: "", passPrice: "", availDate: "", active: true, contactManager: false,
 };
 
-export default function PassListingsTab() {
+const listingForm = (listing: PassListing): FormState => ({
+  id: listing.id, roomId: listing.room_id, contactName: listing.contact_name ?? "",
+  contactPhone: listing.contact_phone ?? "", salePolicy: listing.sale_policy ?? "",
+  passPrice: listing.pass_price != null ? String(listing.pass_price) : "", availDate: listing.avail_date ?? "",
+  active: listing.active, contactManager: listing.contact_manager ?? false,
+});
+
+export default function PassListingsTab({ focusRoomId, onFocusedClose, blockedReason }: {
+  focusRoomId?: string;
+  onFocusedClose?: () => void;
+  blockedReason?: string;
+} = {}) {
   const listingQuery = usePassListings();
   const { data: listings, isLoading } = listingQuery;
   const roomQuery = usePassListingFormRooms();
@@ -69,6 +80,7 @@ export default function PassListingsTab() {
   const priceInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<PassListing | null>(null);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const focusedOpened = useRef<string | null>(null);
 
   // Khách thuê của phòng đang chọn (để điền sẵn đại diện + cho chọn khách khác).
   const customerQuery = usePassListingRoomCustomers(open ? form.roomId : null);
@@ -84,7 +96,6 @@ export default function PassListingsTab() {
       const rep = roomCustomers.find((c) => c.is_representative) ?? roomCustomers[0];
       return { ...f, contactName: rep.full_name ?? "", contactPhone: rep.phone ?? "" };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCustomers, form.roomId, open, customerBlocked]);
 
   // Tra cứu tên phòng/tòa từ danh sách form (listings chỉ lưu id).
@@ -108,22 +119,23 @@ export default function PassListingsTab() {
 
   const openCreate = () => { setForm(emptyForm); setOpen(true); };
   const openEdit = (l: PassListing) => {
-    setForm({
-      id: l.id,
-      roomId: l.room_id,
-      contactName: l.contact_name ?? "",
-      contactPhone: l.contact_phone ?? "",
-      salePolicy: l.sale_policy ?? "",
-      passPrice: l.pass_price != null ? String(l.pass_price) : "",
-      availDate: l.avail_date ?? "",
-      active: l.active,
-      contactManager: l.contact_manager ?? false,
-    });
+    setForm(listingForm(l));
     setOpen(true);
   };
 
+  useEffect(() => {
+    if (!focusRoomId || sourceBlocked || focusedOpened.current === focusRoomId) return;
+    if (!formRooms?.some(row => row.room_id === focusRoomId)) return;
+    focusedOpened.current = focusRoomId;
+    const existing = listings?.find(row => row.room_id === focusRoomId && row.active);
+    setForm(existing ? listingForm(existing) : { ...emptyForm, roomId: focusRoomId, contactManager: true });
+    setOpen(true);
+  }, [focusRoomId, sourceBlocked, formRooms, listings]);
+
+  const closeForm = () => { setOpen(false); onFocusedClose?.(); };
+
   const doSave = () => {
-    if (!form.roomId || sourceBlocked || customerBlocked) return;
+    if (!form.roomId || sourceBlocked || customerBlocked || blockedReason) return;
     if (!validateInputDrafts(priceInput.current?.closest('[role="dialog"]'))) return;
     const price = form.passPrice.trim().replace(",", ".");
     upsertMut.mutate(
@@ -138,7 +150,7 @@ export default function PassListingsTab() {
         active: form.active,
         contactManager: form.contactManager,
       },
-      { onSuccess: () => setOpen(false) },
+      { onSuccess: closeForm },
     );
   };
 
@@ -158,8 +170,10 @@ export default function PassListingsTab() {
     );
   };
 
-  return (
+  return (<>
+    {focusRoomId && !open && <Button size="sm" variant="outline" onClick={onFocusedClose}>Đóng quản lý pass</Button>}
     <QueryRegion label="phòng khách nhờ sale" queries={[listingQuery, roomQuery]} skeleton="table" rows={4}><div className="space-y-4">
+      {!focusRoomId && <>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Phòng đang có khách thuê nhưng khách <b>nhờ sale / pass phòng</b>. Phòng sẽ hiện trên
@@ -237,9 +251,13 @@ export default function PassListingsTab() {
           )}
         </CardContent>
       </Card>
+      </>}
+      {focusRoomId && !sourceBlocked && !formRooms?.some(row => row.room_id === focusRoomId) && (
+        <p role="alert" className="text-sm text-destructive">Phòng không còn trong phạm vi được quản lý pass. Tải lại danh sách để đối chiếu.</p>
+      )}
 
       {/* Tạo / sửa listing */}
-      <Dialog open={open} onOpenChange={(value) => { if (!upsertMut.isPending) setOpen(value); }}>
+      <Dialog open={open} onOpenChange={(value) => { if (!upsertMut.isPending) { if (value) setOpen(true); else closeForm(); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{form.id ? "Sửa phòng khách nhờ sale" : "Thêm phòng khách nhờ sale"}</DialogTitle>
@@ -248,6 +266,7 @@ export default function PassListingsTab() {
             </DialogDescription>
           </DialogHeader>
           {form.roomId && <QueryRegion label="khách thuê phòng" queries={[customerQuery]} skeleton="none">{null}</QueryRegion>}
+          {blockedReason && <p role="alert" className="text-sm text-destructive">{blockedReason}</p>}
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
               <Label>Phòng</Label>
@@ -255,6 +274,7 @@ export default function PassListingsTab() {
                 value={form.roomId}
                 onValueChange={(v) => setForm((f) => ({ ...f, roomId: v, contactName: "", contactPhone: "" }))}
                 options={roomOpts}
+                disabled={!!focusRoomId || !!form.id}
                 placeholder="Chọn phòng (gõ để tìm tòa/mã phòng)"
                 emptyText="Không có phòng trong phạm vi"
               />
@@ -357,8 +377,8 @@ export default function PassListingsTab() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button onClick={doSave} disabled={!form.roomId || sourceBlocked || customerBlocked || upsertMut.isPending}>Lưu</Button>
+            <Button variant="outline" disabled={upsertMut.isPending} onClick={closeForm}>Hủy</Button>
+            <Button onClick={doSave} disabled={!form.roomId || sourceBlocked || customerBlocked || upsertMut.isPending || !!blockedReason}>Lưu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -381,6 +401,6 @@ export default function PassListingsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div></QueryRegion>
+    </div></QueryRegion></>
   );
 }

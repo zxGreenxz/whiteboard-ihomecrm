@@ -1,8 +1,8 @@
 {
   "note": "Sinh bằng máy. Giai đoạn LẤY TỪ việc quét docs/plans/PLAN-TACH-DU-LIEU-DA-CONG-TY-V2.md, miễn trừ LẤY TỪ app_private.org_boundary_exemptions. Đừng sửa tay.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-10-22T06:39:52.383Z",
-  "catalogFingerprint": "9de4d878b491b9d978e0c24d9f4d1dca62c6cc578ffa61fc7d825cb1dd8a0e69",
+  "capturedAt": "2026-10-22T15:07:18.588Z",
+  "catalogFingerprint": "a56951450721e32df80c8122235b70437bb3363800e17b38633942e5e446d58b",
   "counts": {
     "DA_CO_BOUNDARY": 263,
     "NO_ORG_COLUMN": 23,

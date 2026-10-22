@@ -42,6 +42,8 @@ export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }, { action
   const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits,
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'),
+    saleActions: port('prepareSaleAction', 'finalizeSaleAction'),
+    salePolicies: port('prepareSalePolicy', 'finalizeSalePolicy'), saleBulk: port('prepareSaleBulk', 'finalizeSaleBulk'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
     externalGroups: { authority, createService: () => ({}) },

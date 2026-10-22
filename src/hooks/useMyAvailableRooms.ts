@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  mapPayloadToBuildings,
-  parseRoomSalePayload,
-} from "@/pages/phong-trong/supabaseData";
 import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
+import { parseTimedRoomSaleRead } from '@/lib/publicSalePolicyExpiry';
+import { useTimedRoomSaleResult } from '@/hooks/useTimedRoomSaleResult';
 
 /**
  * Đọc phòng trống của owner hiện tại cho user ĐÃ ĐĂNG NHẬP (in-app, không cần token).
@@ -14,7 +12,7 @@ import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
  * mapPayloadToBuildings để tái dùng nguyên UI trang "Phòng trống".
  */
 export function useMyAvailableRooms() {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["my-available-rooms"],
     staleTime: 5_000,
     refetchOnWindowFocus: 'always',
@@ -23,9 +21,11 @@ export function useMyAvailableRooms() {
     retry: false,
     refetchInterval: (query) => roomSalePollingInterval(query.state.error ? query.state.errorUpdateCount : 0),
     queryFn: async () => {
+      const started = performance.now();
       const { data, error } = await supabase.rpc("get_my_available_rooms");
       if (error) throw error;
-      return mapPayloadToBuildings(parseRoomSalePayload(data), { includeInternal: true });
+      return parseTimedRoomSaleRead(data, true, started, performance.now());
     },
   });
+  return useTimedRoomSaleResult(query);
 }

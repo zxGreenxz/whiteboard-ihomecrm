@@ -2,7 +2,7 @@
 
 > Sinh bằng máy — `node scripts/build-org-boundary-inventory.mjs --write`. Đừng sửa tay.
 
-Chụp lúc 2026-10-22T06:39:52.383Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG_COLUMN=23
+Chụp lúc 2026-10-22T15:07:18.588Z · DA_CO_BOUNDARY=263 · EXEMPT=1 · NO_ORG_COLUMN=23
 
 | Bảng | Nhóm | Giai đoạn | Có cột org | Biên giới | authenticated đọc | Realtime | Dòng trong plan |
 |---|---|---|---|---|---|---|---|

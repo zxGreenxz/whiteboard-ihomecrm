@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { mapPayloadToBuildings, parseRoomSalePayload, PublicRoomLinkError } from "./supabaseData";
+import { PublicRoomLinkError } from "./supabaseData";
 import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
+import { parseTimedRoomSaleRead } from '@/lib/publicSalePolicyExpiry';
+import { useTimedRoomSaleResult } from '@/hooks/useTimedRoomSaleResult';
 
 /**
  * Đọc phòng trống công khai theo token chia sẻ (anon).
@@ -10,7 +12,7 @@ import { roomSalePollingInterval } from '@/lib/roomSaleFacts';
  * In-app dùng useMyAvailableRooms, không chạy truy vấn token song song.
  */
 export function usePhongTrong(token?: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["phong-trong", token],
     enabled: !!token,
     staleTime: 5_000,
@@ -21,6 +23,7 @@ export function usePhongTrong(token?: string) {
     refetchInterval: (query) => query.state.error instanceof PublicRoomLinkError ? false : roomSalePollingInterval(query.state.error ? query.state.errorUpdateCount : 0),
     queryFn: async () => {
       if (!token) throw new PublicRoomLinkError();
+      const started = performance.now();
       // hermes-parity:begin sale-listing — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("get_public_available_rooms", { p_token: token });
       // hermes-parity:end sale-listing
@@ -29,7 +32,8 @@ export function usePhongTrong(token?: string) {
       // vẫn có buildings/rooms. Không biến hai kết quả này thành cùng một []
       // rồi để UI thế bằng danh sách mẫu.
       if (data === null) throw new PublicRoomLinkError();
-      return mapPayloadToBuildings(parseRoomSalePayload(data));
+      return parseTimedRoomSaleRead(data, false, started, performance.now());
     },
   });
+  return useTimedRoomSaleResult(query);
 }

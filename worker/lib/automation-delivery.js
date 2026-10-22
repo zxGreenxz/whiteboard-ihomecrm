@@ -1,6 +1,7 @@
 import { sb } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import { gioVietNam, trongKhungGio } from './automation-scenario.js';
+import { validateSaleContent } from './automation-content-guard.js';
 
 // Lượt gửi MỘT LẦN còn hiệu lực cho tin đã xếp: đang chạy hoặc đã chốt (kể cả chốt lỗi một
 // phần). 'queued' chưa từng có tin; 'cancelled' là người dùng/dừng khẩn cấp đã huỷ.
@@ -73,5 +74,5 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
   const window = trongKhungGio(now, config.antiSpam);
   if (!window.trong) return reject(`EXPIRED_AUTOMATION: ${window.lyDo}`);
   if (scheduledAt > now) return reject('AUTOMATION_NOT_DUE: chưa tới giờ gửi');
-  return { ok: true };
+  return validateSaleContent(job, db, config.template);
 }

@@ -1,0 +1,416 @@
+{
+  "suite": "Hermes owner requests",
+  "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+  "resultFile": "hermes-acceptance-results.xml",
+  "cases": [
+    {
+      "id": "H01",
+      "role": "Chủ trọ",
+      "request": "Tìm phòng 101 thuộc tòa tôi được sửa.",
+      "operation": "options",
+      "input": {
+        "action": "rooms.edit",
+        "buildingId": null,
+        "query": "P101",
+        "limit": 20,
+        "cursor": null
+      },
+      "expected": "Một nhãn phòng đúng phạm vi",
+      "fullName": "Hermes owner requests > H01 | Chủ trọ | Tìm phòng 101 thuộc tòa tôi được sửa.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H02",
+      "role": "Sale",
+      "request": "Cho tôi sửa phòng ở tòa ngoài phạm vi được giao.",
+      "operation": "options",
+      "input": {
+        "action": "rooms.edit",
+        "buildingId": "88888888-8888-4888-8888-888888888888",
+        "query": "",
+        "limit": 20,
+        "cursor": null
+      },
+      "expected": "Từ chối phạm vi",
+      "fullName": "Hermes owner requests > H02 | Sale | Cho tôi sửa phòng ở tòa ngoài phạm vi được giao.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H03",
+      "role": "Quản lý",
+      "request": "Đổi giá phòng 101 thành 3.100.000 đồng theo bản vừa mở.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "rent_price": 3100000
+      },
+      "expected": "Ghi đúng canonical writer một lần",
+      "fullName": "Hermes owner requests > H03 | Quản lý | Đổi giá phòng 101 thành 3.100.000 đồng theo bản vừa mở.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H04",
+      "role": "Quản lý",
+      "request": "Lưu giá theo bản phòng đã cũ.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "rent_price": 3100000
+      },
+      "expected": "Từ chối revision cũ, không ghi",
+      "fullName": "Hermes owner requests > H04 | Quản lý | Lưu giá theo bản phòng đã cũ.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H05",
+      "role": "Chủ công ty",
+      "request": "Đăng chính sách mới: Wifi miễn phí.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sale_note": "Wifi miễn phí"
+      },
+      "expected": "Preview chữ công khai, chưa ghi",
+      "fullName": "Hermes owner requests > H05 | Chủ công ty | Đăng chính sách mới: Wifi miễn phí.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H06",
+      "role": "Chủ công ty",
+      "request": "Tôi đồng ý nguyên văn bản chính sách vừa xem.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sale_note": "Wifi miễn phí"
+      },
+      "expected": "Token đúng được ghi, token một lần",
+      "fullName": "Hermes owner requests > H06 | Chủ công ty | Tôi đồng ý nguyên văn bản chính sách vừa xem.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H07",
+      "role": "Sale Admin",
+      "request": "Dùng xác nhận cũ nhưng đổi chính sách thành miễn tiền điện.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sale_note": "Miễn tiền điện"
+      },
+      "expected": "Từ chối token không khớp nội dung",
+      "fullName": "Hermes owner requests > H07 | Sale Admin | Dùng xác nhận cũ nhưng đổi chính sách thành miễn tiền điện.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H08",
+      "role": "Sale Admin",
+      "request": "Ghi thưởng sale 500.000 đồng vào ghi chú nội bộ.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sale_bonus_note": "Thưởng sale 500.000 đồng"
+      },
+      "expected": "Ghi trường nội bộ khi có rooms.edit",
+      "fullName": "Hermes owner requests > H08 | Sale Admin | Ghi thưởng sale 500.000 đồng vào ghi chú nội bộ.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H09",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; thay ảnh phòng đã tải lên.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "images": [
+          "https://example.invalid/new.jpg"
+        ]
+      },
+      "expected": "Images-only được ghi trong scope",
+      "fullName": "Hermes owner requests > H09 | Sale | Tôi chỉ được quản lý ảnh; thay ảnh phòng đã tải lên.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H10",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; đổi thêm giá phòng.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "images": [],
+        "rent_price": 1
+      },
+      "expected": "Từ chối thêm trường vượt quyền",
+      "fullName": "Hermes owner requests > H10 | Sale | Tôi chỉ được quản lý ảnh; đổi thêm giá phòng.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H11",
+      "role": "Chủ trọ",
+      "request": "Lock tạm phòng 101 trong 6 giờ để khách đi xem.",
+      "operation": "lock",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "hours": 6,
+        "note": "Khách hẹn xem"
+      },
+      "expected": "Lock không phát sinh phiếu thu",
+      "fullName": "Hermes owner requests > H11 | Chủ trọ | Lock tạm phòng 101 trong 6 giờ để khách đi xem.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H12",
+      "role": "Sale",
+      "request": "Lock phòng 101 trong 48 giờ.",
+      "operation": "lock",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "hours": 48,
+        "note": null
+      },
+      "expected": "Từ chối thời lượng ngoài 6/12/24",
+      "fullName": "Hermes owner requests > H12 | Sale | Lock phòng 101 trong 48 giờ.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H13",
+      "role": "Quản lý",
+      "request": "Mạng lỗi lúc lock; gửi lại đúng mã yêu cầu cũ sau ba ngày.",
+      "operation": "lock",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "hours": 12,
+        "note": null
+      },
+      "expected": "Biên nhận cũ, không tạo lock lần hai",
+      "fullName": "Hermes owner requests > H13 | Quản lý | Mạng lỗi lúc lock; gửi lại đúng mã yêu cầu cũ sau ba ngày.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H14",
+      "role": "Sale Admin",
+      "request": "Giữ mã yêu cầu đã dùng nhưng đổi thời gian lock.",
+      "operation": "lock",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "hours": 24,
+        "note": null
+      },
+      "expected": "Từ chối đổi ý định trên cùng requestId",
+      "fullName": "Hermes owner requests > H14 | Sale Admin | Giữ mã yêu cầu đã dùng nhưng đổi thời gian lock.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H15",
+      "role": "Chủ trọ",
+      "request": "Kiểm tra mã yêu cầu này đã xử lý chưa.",
+      "operation": "status",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff"
+      },
+      "expected": "not_found rõ ràng; không tự tạo mã mới",
+      "fullName": "Hermes owner requests > H15 | Chủ trọ | Kiểm tra mã yêu cầu này đã xử lý chưa.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H16",
+      "role": "Chủ công ty",
+      "request": "Đã thu hồi quyền sửa của sale; thử tra lại biên nhận sửa cũ.",
+      "operation": "status",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff"
+      },
+      "expected": "Tái kiểm quyền và từ chối biên nhận ngoài quyền",
+      "fullName": "Hermes owner requests > H16 | Chủ công ty | Đã thu hồi quyền sửa của sale; thử tra lại biên nhận sửa cũ.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H17",
+      "role": "Sale Admin",
+      "request": "Báo cọc 2 triệu cho Khách An, mục tiêu cọc 3 triệu.",
+      "operation": "reservation_create",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "customerId": null,
+        "customerHint": "Khách An",
+        "intendedMoveInOn": null,
+        "topupDueOn": null,
+        "depositTarget": 3000000,
+        "notes": null,
+        "receipt": {
+          "amount": 2000000,
+          "accountId": null,
+          "voucherDate": "2026-10-21",
+          "name": null,
+          "description": null
+        }
+      },
+      "expected": "APPROVED vẫn received=false nếu chưa nhận; không lộ SĐT",
+      "fullName": "Hermes owner requests > H17 | Sale Admin | Báo cọc 2 triệu cho Khách An, mục tiêu cọc 3 triệu.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H18",
+      "role": "Chủ công ty",
+      "request": "Cho sale tạo cọc nhưng chưa cấp quyền duyệt qua Hermes.",
+      "operation": "reservation_create",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "customerId": null,
+        "customerHint": "Khách An",
+        "intendedMoveInOn": null,
+        "topupDueOn": null,
+        "depositTarget": 3000000,
+        "notes": null,
+        "receipt": {
+          "amount": 2000000,
+          "accountId": null,
+          "voucherDate": "2026-10-21",
+          "name": null,
+          "description": null
+        }
+      },
+      "expected": "Không dùng quyền duyệt CRM để vượt overlay Hermes",
+      "fullName": "Hermes owner requests > H18 | Chủ công ty | Cho sale tạo cọc nhưng chưa cấp quyền duyệt qua Hermes.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H19",
+      "role": "Quản lý",
+      "request": "Đổi hạn thu thêm và ghi chú cọc theo phiên bản 1.",
+      "operation": "reservation_update",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "reservationId": "99999999-9999-4999-8999-999999999999",
+        "expectedRevision": 1,
+        "changes": {
+          "topup_due_on": "2026-10-25",
+          "notes": "Hẹn thu thêm"
+        }
+      },
+      "expected": "Chuyển đúng UPDATE và expectedRevision tới canonical",
+      "fullName": "Hermes owner requests > H19 | Quản lý | Đổi hạn thu thêm và ghi chú cọc theo phiên bản 1.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H20",
+      "role": "Sale Admin",
+      "request": "Gắn khách danh bạ vào cọc tên gợi nhớ.",
+      "operation": "reservation_assign",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "reservationId": "99999999-9999-4999-8999-999999999999",
+        "expectedRevision": 1,
+        "customerId": "22222222-2222-4222-8222-222222222222"
+      },
+      "expected": "Chuyển đúng khách và revision tới canonical",
+      "fullName": "Hermes owner requests > H20 | Sale Admin | Gắn khách danh bạ vào cọc tên gợi nhớ.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H21",
+      "role": "Quản lý",
+      "request": "Gỡ lock của phòng vừa giữ cho khách xem.",
+      "operation": "release",
+      "input": {
+        "requestId": "88888888-8888-4888-8888-888888888888",
+        "lockId": "ffffffff-ffff-4fff-8fff-ffffffffffff"
+      },
+      "expected": "Gỡ đúng lock ID, trả trạng thái RELEASED",
+      "fullName": "Hermes owner requests > H21 | Quản lý | Gỡ lock của phòng vừa giữ cho khách xem.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H22",
+      "role": "Sale Admin",
+      "request": "Thu thêm 2 triệu vào cọc hiện tại.",
+      "operation": "reservation_topup",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "reservationId": "99999999-9999-4999-8999-999999999999",
+        "expectedRevision": 1,
+        "receipt": {
+          "amount": 2000000,
+          "accountId": null,
+          "voucherDate": "2026-10-21",
+          "name": null,
+          "description": null
+        }
+      },
+      "expected": "Dùng TOPUP; không suy diễn đã nhận từ APPROVED",
+      "fullName": "Hermes owner requests > H22 | Sale Admin | Thu thêm 2 triệu vào cọc hiện tại.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H23",
+      "role": "Sale",
+      "request": "Tôi chỉ có quyền đọc phòng; hãy sửa giá giúp tôi.",
+      "operation": "patch",
+      "input": {
+        "requestId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "rent_price": 3100000
+      },
+      "expected": "Quyền đọc không biến thành quyền ghi",
+      "fullName": "Hermes owner requests > H23 | Sale | Tôi chỉ có quyền đọc phòng; hãy sửa giá giúp tôi.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    },
+    {
+      "id": "H24",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; xem giá và thưởng nội bộ trước khi sửa ảnh.",
+      "operation": "observe",
+      "input": {
+        "roomId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      },
+      "expected": "Projection thao tác chỉ có ảnh; thiếu CRM view phải bị inventory chặn",
+      "fullName": "Hermes owner requests > H24 | Sale | Tôi chỉ được quản lý ảnh; xem giá và thưởng nội bộ trước khi sửa ảnh.",
+      "layer": "Deterministic resolved tool contract + synthetic PostgreSQL fixture; not a natural-language model test",
+      "status": "passed"
+    }
+  ]
+}

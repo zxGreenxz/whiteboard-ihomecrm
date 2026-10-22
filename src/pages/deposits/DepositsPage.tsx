@@ -558,19 +558,20 @@ const DepositsDesktop = () => {
 
   const handleEditDeadline = useCallback(
     (task: DepositTask) => {
-      if (!task.voucherId) return;
+      if (!task.voucherId || !canUse(perms, "deposits", "edit", task.buildingId)) return;
       const terms = holdTerms[task.voucherId];
       setDeadlineTarget({
         voucherId: task.voucherId,
+        buildingId: task.buildingId,
         label: `P.${task.roomName} · ${task.buildingName}${task.code ? ` · ${task.code}` : ""}`,
         holdUntil: terms?.holdUntil ?? null,
         topupDueDate: terms?.topupDueDate ?? null,
         depositTarget: terms?.depositTarget ?? null,
-        // `paidAmount` chỉ có ở thẻ thiếu cọc; thẻ khác in số cọc nên dùng amount.
-        paidAmount: task.paidAmount ?? task.amount,
+        paidAmount: task.paidAmount,
+        receivedFactStatus: task.receivedFactStatus,
       });
     },
-    [holdTerms],
+    [holdTerms, perms],
   );
 
   const handleCreateContractFromTask = useCallback((task: DepositTask) => {
@@ -710,6 +711,7 @@ const DepositsDesktop = () => {
                   onCreateContract: handleCreateContractFromTask,
                   onApprove: handleApproveTask,
                   onEditDeadline: handleEditDeadline,
+                  canEditDeadline: task => canUse(perms, "deposits", "edit", task.buildingId),
                   canCreateContract: canConvertDeposit,
                   canApprove: canApproveDeposit,
                   approvingId,
@@ -1033,7 +1035,7 @@ const DepositsDesktop = () => {
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
         <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
         <HoldDeadlineDialog
-          target={deadlineTarget}
+          target={deadlineTarget && canUse(perms, "deposits", "edit", deadlineTarget.buildingId) ? deadlineTarget : null}
           onOpenChange={(open) => !open && setDeadlineTarget(null)}
         />
         {resvPrefill && (

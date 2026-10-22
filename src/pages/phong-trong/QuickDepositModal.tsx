@@ -16,7 +16,7 @@ import {todayISO} from '@/lib/collect';
  * tiền là Lock tạm. Khách: chọn trong danh bạ HOẶC gõ tên gợi nhớ; tên gợi nhớ thành người nộp
  * và ghi chú của phiếu, phải gắn khách thật ở Quản lý cọc trước khi ký hợp đồng. Phiếu và giữ
  * chỗ ghi trong cùng một giao dịch máy chủ; phòng đang lock tạm thì lock tự gỡ. */
-export function QuickDepositModal({room,onClose,onDone}:{room:Room|null;onClose:()=>void;onDone:(msg:string)=>void}){
+export function QuickDepositModal({room,onClose,onDone,blockedReason}:{room:Room|null;onClose:()=>void;onDone:(msg:string)=>void;blockedReason?:string}){
  const create=useCreateRoomReservation({silent:true}),track=useTrack();const{data:accounts=[]}=useAccounts();
  const[amount,setAmount]=useState(0);const[holdUntil,setHoldUntil]=useState('');const[moveInDate,setMoveInDate]=useState('');const[topupDate,setTopupDate]=useState('');
  const[customer,setCustomer]=useState<CustomerBasic|null>(null);const[hint,setHint]=useState('');const[picker,setPicker]=useState(false);const[accountId,setAccountId]=useState('');const[myId,setMyId]=useState<string|null>(null);const[submitting,setSubmitting]=useState(false);const[error,setError]=useState('');
@@ -30,7 +30,7 @@ export function QuickDepositModal({room,onClose,onDone}:{room:Room|null;onClose:
  useEffect(()=>{setAmount(0);setHoldUntil('');setMoveInDate('');setTopupDate('');setCustomer(null);setHint('');setError('');setFieldErrors({});intent.current=null;},[room?.id]);
  if(!room)return null;const label=room.code||String(room.no);
  async function submit(){
-  if(submitting||!room)return;
+  if(submitting||!room||blockedReason)return;
   const money=amount,name=hint.trim();const errors:typeof fieldErrors={};
   if(!customer&&!name)errors.customer='Gõ tên khách gợi nhớ hoặc chọn khách trong danh bạ.';
   else if(!customer&&name.length>CUSTOMER_HINT_MAX)errors.customer=`Tên khách gợi nhớ tối đa ${CUSTOMER_HINT_MAX} ký tự.`;
@@ -62,7 +62,7 @@ export function QuickDepositModal({room,onClose,onDone}:{room:Room|null;onClose:
    <p className="qd-hint">Phiếu cọc theo trạng thái duyệt/nhận tiền hiện tại; chờ duyệt chưa tính là đã nhận.</p>
    <div className="qd-dates"><label className="qd-field"><span className="qd-field-lbl">Giữ chỗ đến (tùy chọn)</span><input className="qd-input" type="date" value={holdUntil} onChange={e=>setHoldUntil(e.target.value)} disabled={submitting}/></label><label className="qd-field"><span className="qd-field-lbl">Ngày dự kiến vào (tùy chọn)</span><input className="qd-input" type="date" value={moveInDate} onChange={e=>setMoveInDate(e.target.value)} disabled={submitting}/></label></div>
    <label className="qd-field"><span className="qd-field-lbl">Ngày bổ sung cọc (tùy chọn)</span><input className="qd-input" type="date" value={topupDate} onChange={e=>setTopupDate(e.target.value)} disabled={submitting}/></label>
-   <p className="qd-hint">Quá hạn chỉ nhắc xử lý, phòng vẫn giữ cho khách này đến khi hủy hoặc ký hợp đồng.</p>{error&&<p role="alert" className="qd-err">{error}</p>}
-  </div><div className="qd-actions"><button className="qd-btn qd-cancel" onClick={onClose} disabled={submitting}>Hủy</button><button className="qd-btn qd-submit" onClick={submit} disabled={submitting}>{submitting?'Đang lưu…':'Lưu cọc & giữ phòng'}</button></div>
+   <p className="qd-hint">Quá hạn chỉ nhắc xử lý, phòng vẫn giữ cho khách này đến khi hủy hoặc ký hợp đồng.</p>{error&&<p role="alert" className="qd-err">{error}</p>}{blockedReason&&<p role="alert" className="qd-err">{blockedReason}</p>}
+  </div><div className="qd-actions"><button className="qd-btn qd-cancel" onClick={onClose} disabled={submitting}>Hủy</button><button className="qd-btn qd-submit" onClick={submit} disabled={submitting||!!blockedReason}>{submitting?'Đang lưu…':'Lưu cọc & giữ phòng'}</button></div>
  </div><CustomerSelectionDialog open={picker} onOpenChange={setPicker} selectedCustomerIds={customer?[customer.id]:[]} onSelect={values=>{if(values.length!==1){setFieldErrors(current=>({...current,customer:'Chọn đúng một khách hàng.'}));return;}setCustomer(values[0]);setHint('');clearField('customer');setPicker(false);setError('');}}/></>;
 }

@@ -16,6 +16,9 @@ export { CONFIRM_TTL_MS };
 // chính sách sale in trên trang Sale phòng công khai; rào theo trường, không theo cờ active/contactManager.
 export const PUBLIC_TEXT_TOOLS = Object.freeze({
   crm_room_pass_upsert: Object.freeze({ object: 'roomId', fields: Object.freeze(['customerName', 'customerPhone', 'salePolicy']) }),
+  crm_sale_room_patch: Object.freeze({ object: 'roomId', fields: Object.freeze(['room_type', 'amenities', 'sale_note', 'description']), bindAllFields: true }),
+  crm_sale_bulk_patch: Object.freeze({ object: 'requestId', array: 'items', fields: Object.freeze(['room_type', 'amenities', 'sale_note', 'description']), bindAllFields: true }),
+  crm_sale_policy_save: Object.freeze({ object: 'roomId', fields: Object.freeze(['title', 'content']), bindAllFields: true }),
 });
 const GUIDANCE = 'CHƯA ghi. Chữ trong preview sẽ lên trang công khai nên cần người dùng duyệt: ' +
   'cho người dùng xem nguyên văn preview; chỉ khi họ đồng ý rõ ràng mới gọi lại đúng lệnh này (giữ requestId) kèm confirmToken. ' +
@@ -32,20 +35,25 @@ export function createPublicTextGuard({ clock }) {
   if (typeof clock !== 'function') throw new TypeError('invalid_public_text_clock');
   const store = createConfirmStore({ clock });
   const binding = (connectionId, name, spec, input) => confirmBinding([connectionId, name, input[spec.object],
-    spec.fields.map(field => Object.hasOwn(input, field) ? [input[field]] : [])]);
+    spec.bindAllFields ? Object.keys(input).sort().map(field => [field, input[field]]) :
+      spec.fields.map(field => Object.hasOwn(input, field) ? [input[field]] : [])]);
   return Object.freeze({
     // input = đầu vào ĐÃ chuẩn hoá của tool. Trả { allow } | { confirmation } | { refused }.
     review(connectionId, name, input, confirmToken) {
       const spec = Object.hasOwn(PUBLIC_TEXT_TOOLS, name) ? PUBLIC_TEXT_TOOLS[name] : null;
       if (spec === null) return { allow: true };
       // null = xoá, vắng = giữ: không có chữ mới nào ra công khai.
-      const text = spec.fields.filter(field => typeof input[field] === 'string' && input[field] !== '');
-      if (!text.length) return { allow: true };
+      const publicFields = value => spec.fields.filter(field => typeof value[field] === 'string' && value[field] !== '' ||
+        Array.isArray(value[field]) && value[field].some(item => typeof item === 'string' && item !== ''));
+      const rows = spec.array ? input[spec.array].map(item => ({ roomId: item.roomId,
+        ...Object.fromEntries(publicFields(item).map(field => [field, item[field]])) })).filter(item => Object.keys(item).length > 1) : null;
+      const text = spec.array ? [] : publicFields(input);
+      if (!(rows ? rows.length : text.length)) return { allow: true };
       const now = clock(), bound = binding(connectionId, name, spec, input);
       if (confirmToken !== undefined) return store.redeem(confirmToken, bound, now).ok ? { allow: true } : { refused: true };
       const issued = store.issue(bound, null, now);
       return { confirmation: { outcome: 'confirmation_required', applied: false, tool: name, [spec.object]: input[spec.object],
-        preview: Object.fromEntries(text.map(field => [field, input[field]])), confirmToken: issued.token,
+        preview: rows ? { items: rows } : Object.fromEntries(text.map(field => [field, input[field]])), confirmToken: issued.token,
         expiresAt: issued.expiresAt, huongDan: GUIDANCE } };
     },
   });

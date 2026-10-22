@@ -1,5 +1,6 @@
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
+import { readReservationReceivedFacts, type ReservationReceivedInvoker } from "@/lib/reservationDepositReceived";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -109,6 +110,10 @@ export interface ReservationDepositRow {
   name: string;
   payer_name: string | null;
   total_amount: number;
+  /** Additive facts; absence is unknown, never the voucher face value. */
+  received_amount?: number;
+  reservation_id?: string | null;
+  received_fact_status?: 'VERIFIED' | 'UNKNOWN';
   voucher_date: string;
   approval_status: ReservationStatus;
   /** Phiên bản duyệt — nút Duyệt gửi kèm để phiếu vừa bị sửa không bị duyệt nhầm. */
@@ -143,9 +148,12 @@ export interface ReservationDepositRow {
  * Phiếu có loại trừ quản lý chỉ ẩn tại đây; vẫn giữ nguyên dữ liệu và đường gắn HĐ.
  */
 export const useReservationDeposits = (buildingIds?: string[]) => {
+  const { selectedOrganizationId } = useOrganization();
   return useQuery({
-    queryKey: ['reservation-deposits', buildingIds ?? []],
+    queryKey: ['reservation-deposits', selectedOrganizationId, buildingIds ?? []],
+    enabled: !!selectedOrganizationId,
     queryFn: async (): Promise<ReservationDepositRow[]> => {
+      if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức để đọc cọc giữ chỗ.');
       // hermes-parity:begin deposit-reservation-vouchers — Hermes chép vùng này (public.deposit_reservation_vouchers_v1)
       // PAGED: phiếu cọc giữ chỗ tích luỹ mãi → phân trang (order voucher_date + id).
       const data = await fetchAllRows<any>(
@@ -161,6 +169,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
                ${RESERVATION_MANAGEMENT_EXCLUSION_EMBED},
                income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
             )
+            .eq('organization_id', selectedOrganizationId)
             .is('contract_id', null)
             .is('deleted_at', null)
             .is('management_exclusion', null)
@@ -229,7 +238,18 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
         });
       }
       // hermes-parity:end deposit-reservation-vouchers
-      return rows;
+      const received = await readReservationReceivedFacts(
+        (supabase.rpc as unknown as ReservationReceivedInvoker).bind(supabase),
+        selectedOrganizationId, rows.map(row => row.id),
+      );
+      return rows.map(row => {
+        const fact = received.get(row.id);
+        return {
+          ...row, reservation_id: fact?.reservation_id ?? null,
+          received_amount: fact?.received_amount ?? 0,
+          received_fact_status: fact ? 'VERIFIED' as const : 'UNKNOWN' as const,
+        };
+      });
     },
   });
 };

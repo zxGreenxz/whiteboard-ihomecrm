@@ -1,0 +1,41 @@
+▶ Quick writer mutations: guards must cause observable failures
+  ✔ Mutation killed: revision guard (128.3234ms)
+  ✔ Mutation killed: request content guard (95.0174ms)
+  ✔ Mutation killed: occupancy field whitelist (22.7686ms)
+  ✔ Mutation killed: internal bonus confidentiality (74.77ms)
+✔ Quick writer mutations: guards must cause observable failures (543.6737ms)
+▶ Sale quick operations / real PostgreSQL + real authorization functions
+  ✔ R01 Chủ trọ xem đủ phòng trống và phòng đã thuê (197.861ms)
+  ✔ R02 Chủ công ty xem hai tòa thuộc công ty, không thấy công ty khác (176.5666ms)
+  ✔ R03 Quản lý chỉ xem tòa được giao (181.2165ms)
+  ✔ R04 Sale Admin chỉ thấy quyền ảnh và báo cọc theo tòa (164.4325ms)
+  ✔ R05 Sale chỉ xem và giữ tạm; không thấy thưởng nội bộ (157.7773ms)
+  ✔ R06 Chủ trọ cập nhật giá, ưu đãi, diện tích trong một lần lưu (38.3736ms)
+  ✔ R07 Quản lý sửa đúng tòa được giao (17.5144ms)
+  ✔ R08 Quản lý không sửa tòa chưa được giao (2.5625ms)
+  ✔ R09 Sale không đổi giá qua gọi trực tiếp (3.9401ms)
+  ✔ R10 Sale Admin chỉ có quyền ảnh vẫn tải được ảnh (25.7865ms)
+  ✔ R11 Sale Admin không ghép thay đổi giá vào lần lưu ảnh (2.8745ms)
+  ✔ R12 Chủ công ty không ghi chéo công ty (2.2891ms)
+  ✔ R13 Không cho đổi trạng thái thuê qua sửa thông tin (1.0314ms)
+  ✔ R14 Giá âm hoặc lẻ đồng bị từ chối (3.4323ms)
+  ✔ R15 Ảnh tạm và đường dẫn vượt thư mục bị từ chối (3.8345ms)
+  ✔ R16 Hai quản lý mở cùng dữ liệu: lần lưu sau không ghi đè (25.6037ms)
+  ✔ R17 Mất phản hồi: gửi lại cùng yêu cầu chỉ ghi một lần (27.0172ms)
+  ✔ R18 Không tái sử dụng mã yêu cầu cho nội dung khác (24.016ms)
+  ✔ R19 Thu hồi quyền có hiệu lực cả với yêu cầu đã lưu (23.8512ms)
+  ✔ R20 Tài khoản chưa đăng nhập không đọc/ghi được (24.6215ms)
+  ✔ R21 Hai phiên lưu đồng thời cùng phiên bản: đúng một thành công (22.7894ms)
+  ✔ R22 Hai phiên gửi đồng thời cùng yêu cầu: cùng biên nhận (108.2445ms)
+  ✔ R23 Không công khai biên nhận và dữ liệu trước thay đổi (0.6976ms)
+  ✔ R24 Sale bị thu hồi quyền xem không còn thấy phòng (12.5432ms)
+  ✔ R25 Thay đổi bằng luồng khác không gán nhầm người vừa cập nhật (32.9588ms)
+✔ Sale quick operations / real PostgreSQL + real authorization functions (1460.9671ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1583.4815

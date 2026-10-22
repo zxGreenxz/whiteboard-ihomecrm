@@ -13,19 +13,20 @@ vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: nu
 vi.mock('@/hooks/usePublicRoomTokens', () => ({ usePublicRoomTokens: () => tokenQuery }));
 vi.mock('@/hooks/usePassListings', () => ({ usePassListings: () => passQuery }));
 vi.mock('@/pages/phong-trong/PhongTrongPage', () => ({ default: () => <div>Danh sách đã cache</div> }));
+vi.mock('@/components/sale-phong/QuickRoomBoard', () => ({ default: () => <div>Bảng cập nhật phòng</div> }));
 afterEach(() => { cleanup();Object.assign(query, { data: [{}], isLoading: false, isError: false });query.refetch.mockClear();Object.assign(tokenQuery,{data:[],status:'success',isError:false,error:null});tokenQuery.refetch.mockClear();Object.assign(passQuery,{data:[],status:'success',isError:false,error:null});passQuery.refetch.mockClear(); });
 const open = () => render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><SalePhongMobilePage /></MemoryRouter>);
 
 describe('authenticated sale error state', () => {
   it('does not advertise cached rooms after a refresh failure and provides retry', () => {
-    query.isError = true;open();
+    query.isError = true;open();fireEvent.click(screen.getByRole('button', { name: 'Phòng trống' }));
     expect(screen.queryByText('Danh sách đã cache')).toBeNull();
     expect(screen.getByText('Chưa tải được danh sách phòng. Thử lại để xem tình trạng hiện tại.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
     expect(query.refetch).toHaveBeenCalledTimes(1);
   });
   it('retains successful embedded lists including an empty result', () => {
-    query.data = [];open();
+    query.data = [];open();fireEvent.click(screen.getByRole('button', { name: 'Phòng trống' }));
     expect(screen.getByText('Danh sách đã cache')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
   });

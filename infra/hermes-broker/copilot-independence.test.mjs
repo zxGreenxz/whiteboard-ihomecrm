@@ -5,12 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
 import { splitHermesFunctionStatements } from '../../scripts/hermes-task-function-contract.mjs';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
+import { ordinaryReservationReceiptWriter, RESERVATION_RECEIPT_CALLER, COMPAT_RECEIPT_WRITER } from '../../scripts/hermes-reservation-writer-reachability.mjs';
 import ts from 'typescript';
 
 // Gate (chủ chốt 17/10/2026): Hermes không phụ thuộc lúc chạy vào Copilot.
 //  1. Bản định nghĩa CUỐI của mọi hàm hermes_* (public/app_private) trong migrations
-//     không nhắc tới Copilot, và mọi hàm chúng gọi tới (bắc cầu, qua bản cuối của hàm
-//     định nghĩa trong migrations) cũng vậy. Hạt giống còn gồm RPC mà connector gọi.
+//     không nhắc tới Copilot, và mọi đường gọi khả đạt (bắc cầu, qua bản cuối của hàm
+//     định nghĩa trong migrations) cũng vậy. Một call-site của writer dùng chung
+//     được chứng minh bằng pin toàn thân: payload cọc canonical không có marker
+//     nên nhánh Copilot không chạy; mọi nhánh thường vẫn được duyệt. Hạt giống còn
+//     gồm RPC mà connector gọi. Đây không phải claim writer chung không có Copilot.
 //  2. Mã nguồn infra/hermes-* (trừ test, fixture, tài liệu .md) không nhắc tới Copilot.
 // Không thay bằng catalog live: đây là kiểm tĩnh, chạy trước khi migration lên production.
 // Khoảng mù: hàm tạo ngoài migrations (sửa tay trên production) và SQL động (EXECUTE)
@@ -138,6 +142,30 @@ const byName = new Map();
 for (const key of finals.keys()) { const name = key.split('.')[1]; byName.set(name, [...byName.get(name) ?? [], key]); }
 const hermes = [...finals.keys()].filter(key => /^(?:public|app_private)\.\w*hermes_/.test(key));
 
+function reachableFunctions(registry, seeds) {
+  const from = new Map(seeds.map(key => [key, null])), statements = new Map();
+  const queue = [...from.keys()];
+  while (queue.length) {
+    const key = queue.shift(), statement = statements.get(key) ?? registry.get(key).statement;
+    statements.set(key, statement);
+    const body = statement.slice(statement.indexOf('(') + 1);
+    for (const call of body.matchAll(/\b([a-z_][a-z0-9_]*)\s*\(/gi)) {
+      for (const callee of byName.get(call[1].toLowerCase()) ?? []) {
+        let target = callee;
+        if (key === RESERVATION_RECEIPT_CALLER && callee === COMPAT_RECEIPT_WRITER) {
+          // Context has a distinct graph node: visiting this safe edge must not
+          // hide a direct/unbounded call to the same writer from another route.
+          target = `${callee} [canonical reservation input]`;
+          statements.set(target, ordinaryReservationReceiptWriter(statement, registry.get(callee).statement));
+        }
+        if (target !== key && !from.has(target)) { from.set(target, key); queue.push(target); }
+      }
+    }
+  }
+  const path = key => { const chain = []; for (let at = key; at; at = from.get(at)) chain.unshift(at); return chain.join(' -> '); };
+  return { from, statements, offenders: [...from.keys()].filter(key => COPILOT.test(statements.get(key)) || COPILOT.test(key)).map(path) };
+}
+
 test('the scan sees the Hermes SQL surface and the connector source (not an empty pass)', () => {
   assert(finals.size > 1000, `function definitions parsed: ${finals.size}`);
   assert(hermes.length > 200, `hermes_* final definitions: ${hermes.length}`);
@@ -166,21 +194,55 @@ test('nothing reachable from Hermes SQL or the connector RPCs references Copilot
   }
   for (const name of ['get_authorization_context_v1', 'get_my_organizations', 'hermes_scope_buildings_v1']) assert(rpcSeeds.has(name), `connector seed ${name}`);
   // Calls resolve by name to every schema's latest definition (search_path is not modelled).
-  const from = new Map([...hermes, ...[...rpcSeeds].flatMap(name => byName.get(name) ?? [])].map(key => [key, null]));
-  const queue = [...from.keys()];
-  while (queue.length) {
-    const key = queue.shift(), { statement } = finals.get(key);
-    const body = statement.slice(statement.indexOf('(') + 1);
-    for (const call of body.matchAll(/\b([a-z_][a-z0-9_]*)\s*\(/gi)) {
-      for (const callee of byName.get(call[1].toLowerCase()) ?? []) {
-        if (callee !== key && !from.has(callee)) { from.set(callee, key); queue.push(callee); }
-      }
-    }
-  }
-  const path = key => { const chain = []; for (let at = key; at; at = from.get(at)) chain.unshift(at); return chain.join(' -> '); };
-  const reached = [...from.keys()].filter(key => COPILOT.test(finals.get(key).statement) || COPILOT.test(key));
-  assert.deepEqual(reached.map(path), []);
+  const { from, offenders } = reachableFunctions(finals, [...hermes, ...[...rpcSeeds].flatMap(name => byName.get(name) ?? [])]);
+  assert.deepEqual(offenders, []);
   assert(from.has('app_private.authorized_scope_v3') && from.has('public.get_public_available_rooms'), 'shared resolver and sale page reader are reached');
+  assert(from.has('app_private.ie_compat_actor_v2'), 'ordinary writer dependencies remain scanned');
+});
+
+test('canonical receipt call-site proof rejects marker, merge, variable and writer-guard mutations', () => {
+  const caller = finals.get(RESERVATION_RECEIPT_CALLER).statement, writer = finals.get(COMPAT_RECEIPT_WRITER).statement;
+  const ordinary = ordinaryReservationReceiptWriter(caller, writer);
+  assert.doesNotMatch(ordinary, COPILOT);
+  assert.match(writer, /app_private\.copilot_ie_writer_context_v1/, 'shared writer really retains its conditional legacy path');
+  for (const [before, after] of [
+    ["jsonb_build_object('type','INCOME','name'", "jsonb_build_object('copilot_draft_marker','injected','type','INCOME','name'"],
+    ["'notes',voucher_notes),", "'notes',voucher_notes) || p_receipt,"],
+    ["public.ie_compat_insert_v2(jsonb_build_object", "public.ie_compat_insert_v2(p_receipt || jsonb_build_object"],
+    ["'description','attachments'", "'description','attachments','copilot_draft_marker'"],
+  ]) {
+    const changed = caller.replace(before, after); assert.notEqual(changed, caller);
+    assert.throws(() => ordinaryReservationReceiptWriter(changed, writer), /exact reservation receipt builder\/allowlist call-site proof/);
+  }
+  for (const [before, after] of [
+    ['IF v_draft_marker IS NOT NULL THEN', 'IF true THEN'],
+    ['boolean := false;', 'boolean := true;'],
+    ['IF v_copilot_draft THEN', 'IF true THEN'],
+    ['BEGIN', 'BEGIN PERFORM public.copilot_execute_income_expense_v1(NULL);'],
+  ]) {
+    const changed = writer.replace(before, after); assert.notEqual(changed, writer);
+    assert.throws(() => ordinaryReservationReceiptWriter(caller, changed), /exact shared receipt writer branch proof/);
+  }
+});
+
+test('a second unbounded route to the same compatibility writer remains red after the safe route', () => {
+  for (const payload of ["jsonb_build_object('copilot_draft_marker','injected')", 'p_input']) {
+    const registry = new Map(finals), key = 'public.hermes_sale_actions_v1', source = registry.get(key);
+    const statement = source.statement.replace('BEGIN', `BEGIN PERFORM public.ie_compat_insert_v2(${payload}, '[]'::jsonb);`);
+    assert.notEqual(statement, source.statement); registry.set(key, { ...source, statement });
+    // Seed the proven caller first: deduplication must not suppress the unsafe edge.
+    const result = reachableFunctions(registry, [RESERVATION_RECEIPT_CALLER, key]);
+    assert(result.from.has(`${COMPAT_RECEIPT_WRITER} [canonical reservation input]`));
+    assert(result.offenders.some(path => path.endsWith(` -> ${COMPAT_RECEIPT_WRITER}`)));
+  }
+});
+
+test('a Copilot dependency in the ordinary compatibility path is still detected', () => {
+  const registry = new Map(finals), key = 'app_private.ie_compat_actor_v2', source = registry.get(key);
+  const statement = source.statement.replace('SELECT', 'SELECT public.copilot_dependency(),');
+  assert.notEqual(statement, source.statement); registry.set(key, { ...source, statement });
+  const result = reachableFunctions(registry, [RESERVATION_RECEIPT_CALLER]);
+  assert(result.offenders.some(path => path.includes(`${COMPAT_RECEIPT_WRITER} [canonical reservation input]`) && path.endsWith(` -> ${key}`)));
 });
 
 test('comment stripping keeps code and literals, drops only comments', () => {

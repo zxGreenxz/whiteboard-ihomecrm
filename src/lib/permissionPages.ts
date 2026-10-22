@@ -172,7 +172,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Quản trị kênh công khai Phòng trống (/r/:token).",
         features: [
           f("sale_phong", "view", "Vào trang quản trị Sale Phòng", "view"),
-          f("sale_phong", "edit", "Sửa thông tin phòng đăng bán", "manage"),
+          f("sale_phong", "edit", "Cập nhật thông tin, hàng loạt và chính sách Sale Phòng", "manage"),
           f("sale_phong", "manage_tokens", "Quản lý link chia sẻ (tạo/thu hồi/xoá)", "manage"),
           f("sale_phong", "manage_settings", "Cài đặt hiển thị (soon days, hotline…)", "manage"),
           f("sale_phong", "manage_images", "Quản lý hình ảnh sale", "manage"),

@@ -1,0 +1,73 @@
+{
+  "layer": "Actual PostgreSQL canonical writers and application auth, synthetic platform claims, loopback only",
+  "results": [
+    {
+      "id": "HP01",
+      "request": "Quản lý đọc phiên bản phòng và sửa giá bằng writer CRM thật",
+      "status": "passed",
+      "detail": {
+        "outcome": "applied"
+      }
+    },
+    {
+      "id": "HP02",
+      "request": "Mất phản hồi sau ghi: đối soát và thử lại giữ đúng requestId",
+      "status": "passed"
+    },
+    {
+      "id": "HP03",
+      "request": "Giá cũ phải bị từ chối sau một cập nhật khác",
+      "status": "passed"
+    },
+    {
+      "id": "HP04",
+      "request": "Sale Admin chỉ sửa ảnh: không được xem thưởng nội bộ hay đổi giá",
+      "status": "passed"
+    },
+    {
+      "id": "HP05",
+      "request": "Sale lock tạm 6 giờ: một lock, không tạo phiếu thu",
+      "status": "passed"
+    },
+    {
+      "id": "HP06",
+      "request": "Sale gỡ chính lock của mình đúng ID",
+      "status": "passed"
+    },
+    {
+      "id": "HP07",
+      "request": "Sale báo cọc bằng tên gợi nhớ qua phiếu thu CRM thật",
+      "status": "passed",
+      "detail": {
+        "approvalStatus": "APPROVED",
+        "received": false,
+        "receivedAmount": 0
+      }
+    },
+    {
+      "id": "HP08",
+      "request": "Sale thu thêm vào đúng hồ sơ cọc qua TOPUP thật",
+      "status": "passed"
+    },
+    {
+      "id": "HP09",
+      "request": "Quản lý gắn khách danh bạ và sửa hạn cọc theo revision",
+      "status": "passed"
+    },
+    {
+      "id": "HP10",
+      "request": "Sale bị chặn phòng tòa ngoài scope và phòng công ty khác",
+      "status": "passed"
+    },
+    {
+      "id": "HP11",
+      "request": "Phiên binding sai không ghi được",
+      "status": "passed"
+    },
+    {
+      "id": "HP12",
+      "request": "Thu hồi action khỏi kết nối: biên nhận cũ không bỏ qua quyền",
+      "status": "passed"
+    }
+  ]
+}

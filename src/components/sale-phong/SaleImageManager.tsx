@@ -2,6 +2,7 @@ import { StorageImage } from "@/components/ui/storage-image";
 import { Button } from "@/components/ui/button";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
 import { X, ArrowLeft, ArrowRight, Star } from "lucide-react";
+import { useRef } from "react";
 
 /**
  * Editor mảng ảnh: hiển thị grid ảnh hiện có (xoá / sắp xếp / đặt ảnh bìa) + 1 ô
@@ -9,13 +10,17 @@ import { X, ArrowLeft, ArrowRight, Star } from "lucide-react";
  * Tái dùng cho cả phòng và toà nhà. Ảnh lưu dạng URL công khai (bucket room-sale-images).
  */
 export default function SaleImageManager({
-  value, onChange, bucket = "room-sale-images",
+  value, onChange, bucket = "room-sale-images", disabled = false, onUploadingChange,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   bucket?: string;
+  disabled?: boolean;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const imgs = value ?? [];
+  const latest = useRef(imgs);
+  latest.current = imgs;
 
   const removeAt = (i: number) => onChange(imgs.filter((_, idx) => idx !== i));
   const move = (i: number, dir: -1 | 1) => {
@@ -45,22 +50,22 @@ export default function SaleImageManager({
                   Ảnh bìa
                 </span>
               )}
-              <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-black/45 py-0.5 opacity-0 group-hover:opacity-100 transition">
+              <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-black/45 py-0.5 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition">
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-white hover:text-white hover:bg-white/20"
-                  title="Sang trái" onClick={() => move(i, -1)} disabled={i === 0}>
+                  title="Sang trái" onClick={() => move(i, -1)} disabled={disabled || i === 0}>
                   <ArrowLeft className="h-3.5 w-3.5" />
                 </Button>
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-white hover:text-white hover:bg-white/20"
-                  title="Đặt làm ảnh bìa" onClick={() => toFront(i)} disabled={i === 0}>
+                  title="Đặt làm ảnh bìa" onClick={() => toFront(i)} disabled={disabled || i === 0}>
                   <Star className="h-3.5 w-3.5" />
                 </Button>
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-white hover:text-white hover:bg-white/20"
-                  title="Sang phải" onClick={() => move(i, 1)} disabled={i === imgs.length - 1}>
+                  title="Sang phải" onClick={() => move(i, 1)} disabled={disabled || i === imgs.length - 1}>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <button type="button" onClick={() => removeAt(i)} title="Xoá ảnh"
-                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition">
+              <button type="button" disabled={disabled} onClick={() => removeAt(i)} title="Xoá ảnh"
+                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition">
                 <X className="h-3 w-3" />
               </button>
             </div>
@@ -71,8 +76,10 @@ export default function SaleImageManager({
         label="Thêm ảnh"
         value=""
         multiple
-        onChange={(url) => { if (url) onChange([...imgs, url]); }}
-        onAddMany={(urls) => { if (urls.length) onChange([...imgs, ...urls]); }}
+        onChange={(url) => { if (url) onChange([...latest.current, url]); }}
+        onAddMany={(urls) => { if (urls.length) onChange([...latest.current, ...urls]); }}
+        disabled={disabled}
+        onUploadingChange={onUploadingChange}
         bucket={bucket}
         accept="image/png,image/jpeg,image/jpg,image/webp"
         maxSizeMB={5}

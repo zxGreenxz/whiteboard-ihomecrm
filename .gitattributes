@@ -3,6 +3,9 @@
 *.ps1 text eol=lf
 infra/network-center-worker/deploy/*.conf text eol=lf
 *.sql text eol=lf
+# This frozen migration contains mixed line endings in Git; preserve its exact
+# historical bytes so a fresh Windows worktree does not report a false edit.
+supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql -text
 supabase/functions/** text eol=lf
 # Ảnh cell ghim từng byte đầu vào trong image-lock.json. Một lần checkout trên
 # Windows biến LF thành CRLF là kích thước và sha256 đổi hết, gate dựng ảnh đỏ

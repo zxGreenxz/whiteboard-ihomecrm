@@ -1,0 +1,2154 @@
+TAP version 13
+# Subtest: page SQL is a new migration after the tombstone fix and keeps the reviewed shape
+ok 1 - page SQL is a new migration after the tombstone fix and keeps the reviewed shape
+  ---
+  duration_ms: 0.9796
+  type: 'test'
+  ...
+# Subtest: G5: the final page function calls the shared sale fact exactly and never the public page reader or the base fact
+ok 2 - G5: the final page function calls the shared sale fact exactly and never the public page reader or the base fact
+  ---
+  duration_ms: 3.2201
+  type: 'test'
+  ...
+# Subtest: G2: the admission block is the FAST read admission verbatim (only the error names differ) and the scope predicate is identical
+ok 3 - G2: the admission block is the FAST read admission verbatim (only the error names differ) and the scope predicate is identical
+  ---
+  duration_ms: 1.8923
+  type: 'test'
+  ...
+# Subtest: page predicates mirror the final sale-page reader and listing wrapper text
+ok 4 - page predicates mirror the final sale-page reader and listing wrapper text
+  ---
+  duration_ms: 4.5405
+  type: 'test'
+  ...
+# Subtest: G1: web-parity pins the sale page as the mirrored source of the page function
+ok 5 - G1: web-parity pins the sale page as the mirrored source of the page function
+  ---
+  duration_ms: 11.1627
+  type: 'test'
+  ...
+# Subtest: B3: hermes_available_rooms_page_v1 equals the legacy sale-page read slice by slice on the real oracle (PG17)
+    # Subtest: P1/P5/P6: one owner-aware page equals the legacy projection; every sale state and the hidden pass contact behave as the page
+    ok 1 - P1/P5/P6: one owner-aware page equals the legacy projection; every sale state and the hidden pass contact behave as the page
+      ---
+      duration_ms: 31.7745
+      type: 'test'
+      ...
+    # Subtest: P7: pages of the same snapshot concatenate to the whole list; the page beyond the end is empty
+    ok 2 - P7: pages of the same snapshot concatenate to the whole list; the page beyond the end is empty
+      ---
+      duration_ms: 157.4192
+      type: 'test'
+      ...
+    # Subtest: P8: building-name filter is a case-insensitive substring (Vietnamese letters, % and _ literal, duplicate names)
+    ok 3 - P8: building-name filter is a case-insensitive substring (Vietnamese letters, % and _ literal, duplicate names)
+      ---
+      duration_ms: 217.0117
+      type: 'test'
+      ...
+    # Subtest: P9: the status filter is a pure subset of the same ordered list
+    ok 4 - P9: the status filter is a pure subset of the same ordered list
+      ---
+      duration_ms: 96.0302
+      type: 'test'
+      ...
+    # Subtest: P2: no live share link is no_sale_page with zero rooms, not an empty published list
+    ok 5 - P2: no live share link is no_sale_page with zero rooms, not an empty published list
+      ---
+      duration_ms: 23.3705
+      type: 'test'
+      ...
+    # Subtest: P4/P10: assistant scope BUILDING/AREA narrows like the legacy map; CASHBOOK-only grants no rooms; explicit narrowing is a subset
+    ok 6 - P4/P10: assistant scope BUILDING/AREA narrows like the legacy map; CASHBOOK-only grants no rooms; explicit narrowing is a subset
+      ---
+      duration_ms: 125.3386
+      type: 'test'
+      ...
+    # Subtest: S1–S8: foreign user, wrong/revoked/expired token, epoch/revision, session, excluded key, CRM DENY, policy off, org and ACL are refused before any room row
+    ok 7 - S1–S8: foreign user, wrong/revoked/expired token, epoch/revision, session, excluded key, CRM DENY, policy off, org and ACL are refused before any room row
+      ---
+      duration_ms: 91.1483
+      type: 'test'
+      ...
+    # Subtest: G4: each hand mutation of the candidate SQL changes an observation (owners, static building, pass owner, hidden contact, soon_days, base fact, status, narrowing, epoch, ILIKE)
+    ok 8 - G4: each hand mutation of the candidate SQL changes an observation (owners, static building, pass owner, hidden contact, soon_days, base fact, status, narrowing, epoch, ILIKE)
+      ---
+      duration_ms: 241.6437
+      type: 'test'
+      ...
+    1..8
+ok 6 - B3: hermes_available_rooms_page_v1 equals the legacy sale-page read slice by slice on the real oracle (PG17)
+  ---
+  duration_ms: 10712.2532
+  type: 'test'
+  ...
+# initdb (PostgreSQL) 17.10
+# Subtest: mỗi lần invoke đúng một record với tập khoá cố định: tools/list, tools/call và authenticate thành công
+ok 7 - mỗi lần invoke đúng một record với tập khoá cố định: tools/list, tools/call và authenticate thành công
+  ---
+  duration_ms: 7.2285
+  type: 'test'
+  ...
+# Subtest: lỗi: outcome/code đúng, pha chưa chạy là null, resultBytes 0; tên tool lạ không vào log; token sai không có connection
+ok 8 - lỗi: outcome/code đúng, pha chưa chạy là null, resultBytes 0; tên tool lạ không vào log; token sai không có connection
+  ---
+  duration_ms: 1.9891
+  type: 'test'
+  ...
+# Subtest: timeout giữa pha: pha đang treo ghi số ms đã trôi, pha sau là null, code timeout
+ok 9 - timeout giữa pha: pha đang treo ghi số ms đã trôi, pha sau là null, code timeout
+  ---
+  duration_ms: 29.4609
+  type: 'test'
+  ...
+# Subtest: record không chứa tham số, token, JWT, ID đầy đủ hay tên tool do client bịa
+ok 10 - record không chứa tham số, token, JWT, ID đầy đủ hay tên tool do client bịa
+  ---
+  duration_ms: 1.6057
+  type: 'test'
+  ...
+# Subtest: callLog ném lỗi không đổi kết quả hay mã lỗi; callLog không phải hàm bị từ chối
+ok 11 - callLog ném lỗi không đổi kết quả hay mã lỗi; callLog không phải hàm bị từ chối
+  ---
+  duration_ms: 1.2894
+  type: 'test'
+  ...
+# Subtest: đường room (crm_available_rooms) ghi path 'room', bỏ checkUnchanged (checkMs null) và có finalizeMs
+ok 12 - đường room (crm_available_rooms) ghi path 'room', bỏ checkUnchanged (checkMs null) và có finalizeMs
+  ---
+  duration_ms: 1.9031
+  type: 'test'
+  ...
+# Subtest: đường cached (B2-2): miền đọc ngoài đường nhanh ghi path 'cached', checkMs null, identity từ readAuthority; zalo_conversations và host tắt readFastPath giữ 'normal' có checkMs
+ok 13 - đường cached (B2-2): miền đọc ngoài đường nhanh ghi path 'cached', checkMs null, identity từ readAuthority; zalo_conversations và host tắt readFastPath giữ 'normal' có checkMs
+  ---
+  duration_ms: 4.3694
+  type: 'test'
+  ...
+# Subtest: A/B contexts bind identity, company and stable separate assistant; model args cannot override
+ok 14 - A/B contexts bind identity, company and stable separate assistant; model args cannot override
+  ---
+  duration_ms: 8.2722
+  type: 'test'
+  ...
+# Subtest: token store contains only digest; session secrets never appear in result or audit
+ok 15 - token store contains only digest; session secrets never appear in result or audit
+  ---
+  duration_ms: 1.0394
+  type: 'test'
+  ...
+# Subtest: read and action ceilings intersect independently and restriction cannot regrant
+ok 16 - read and action ceilings intersect independently and restriction cannot regrant
+  ---
+  duration_ms: 2.112
+  type: 'test'
+  ...
+# Subtest: fresh permissions revoke access despite discovery and unchanged authorization epoch
+ok 17 - fresh permissions revoke access despite discovery and unchanged authorization epoch
+  ---
+  duration_ms: 0.8039
+  type: 'test'
+  ...
+# Subtest: ordinary ambiguous companies and superadmin without selected membership are rejected
+ok 18 - ordinary ambiguous companies and superadmin without selected membership are rejected
+  ---
+  duration_ms: 0.6114
+  type: 'test'
+  ...
+# Subtest: membership revocation, future activation and expiry fail closed
+ok 19 - membership revocation, future activation and expiry fail closed
+  ---
+  duration_ms: 1.6354
+  type: 'test'
+  ...
+# Subtest: revoke during the post-read auth call withholds the prepared response
+ok 20 - revoke during the post-read auth call withholds the prepared response
+  ---
+  duration_ms: 0.6966
+  type: 'test'
+  ...
+# Subtest: mid-flight permission and epoch changes both withhold old context
+ok 21 - mid-flight permission and epoch changes both withhold old context
+  ---
+  duration_ms: 0.8908
+  type: 'test'
+  ...
+# Subtest: authority changed while async audit waits is rechecked before returning prepared data
+ok 22 - authority changed while async audit waits is rechecked before returning prepared data
+  ---
+  duration_ms: 2.0866
+  type: 'test'
+  ...
+# Subtest: contextVersion changes when current authority changes without losing identity
+ok 23 - contextVersion changes when current authority changes without losing identity
+  ---
+  duration_ms: 0.6065
+  type: 'test'
+  ...
+# Subtest: stale, foreign, revoked, and expired credentials are rejected
+ok 24 - stale, foreign, revoked, and expired credentials are rejected
+  ---
+  duration_ms: 0.6253
+  type: 'test'
+  ...
+# Subtest: rate limit and concurrent admission happen before any expensive auth call
+ok 25 - rate limit and concurrent admission happen before any expensive auth call
+  ---
+  duration_ms: 0.899
+  type: 'test'
+  ...
+# Subtest: rate windows slide: no burst at a minute boundary, tools/call has its own budget and a retry hint
+ok 26 - rate windows slide: no burst at a minute boundary, tools/call has its own budget and a retry hint
+  ---
+  duration_ms: 2.6787
+  type: 'test'
+  ...
+# Subtest: outcome observer gets connection, operation and fixed code only, and can never change the result
+ok 27 - outcome observer gets connection, operation and fixed code only, and can never change the result
+  ---
+  duration_ms: 0.8041
+  type: 'test'
+  ...
+# Subtest: timeout aborts work, frees admission, and audit records timeout
+ok 28 - timeout aborts work, frees admission, and audit records timeout
+  ---
+  duration_ms: 27.1498
+  type: 'test'
+  ...
+# Subtest: upstream errors and failed audit never return successful data or secret error text
+ok 29 - upstream errors and failed audit never return successful data or secret error text
+  ---
+  duration_ms: 0.9133
+  type: 'test'
+  ...
+# Subtest: result size and maximum token lifetime are bounded
+ok 30 - result size and maximum token lifetime are bounded
+  ---
+  duration_ms: 0.5195
+  type: 'test'
+  ...
+# Subtest: late storage completion after timeout cleans credentials and connection
+ok 31 - late storage completion after timeout cleans credentials and connection
+  ---
+  duration_ms: 29.6775
+  type: 'test'
+  ...
+# Subtest: injected authority reuses dispatcher and forwards branded receipt; P1 stores and controls are unused
+ok 32 - injected authority reuses dispatcher and forwards branded receipt; P1 stores and controls are unused
+  ---
+  duration_ms: 1.8372
+  type: 'test'
+  ...
+# Subtest: injected identity shape and scopes are checked before any handler prepares data
+ok 33 - injected identity shape and scopes are checked before any handler prepares data
+  ---
+  duration_ms: 3.0132
+  type: 'test'
+  ...
+# Subtest: resolved connection cannot switch away from the id whose quota was reserved
+ok 34 - resolved connection cannot switch away from the id whose quota was reserved
+  ---
+  duration_ms: 0.44
+  type: 'test'
+  ...
+# Subtest: injected quota reservation blocks expensive resolve before rate and concurrent overrun
+ok 35 - injected quota reservation blocks expensive resolve before rate and concurrent overrun
+  ---
+  duration_ms: 0.5561
+  type: 'test'
+  ...
+# Subtest: injected timeout aborts resolve, prevents late audit, and releases admission
+ok 36 - injected timeout aborts resolve, prevents late audit, and releases admission
+  ---
+  duration_ms: 25.7829
+  type: 'test'
+  ...
+# Subtest: injected postcheck cannot signal denial as a successful false result
+ok 37 - injected postcheck cannot signal denial as a successful false result
+  ---
+  duration_ms: 0.4861
+  type: 'test'
+  ...
+# Subtest: room discovery requires the explicit durable service, current read capability and both scope namespaces
+ok 38 - room discovery requires the explicit durable service, current read capability and both scope namespaces
+  ---
+  duration_ms: 1.9946
+  type: 'test'
+  ...
+# Subtest: direct room preparation and awaited audit precede receipt consumption without repeated authority checks
+ok 39 - direct room preparation and awaited audit precede receipt consumption without repeated authority checks
+  ---
+  duration_ms: 1.9809
+  type: 'test'
+  ...
+# Subtest: room arguments reject scope/RPC/field overrides and snapshot filters before admission awaits
+ok 40 - room arguments reject scope/RPC/field overrides and snapshot filters before admission awaits
+  ---
+  duration_ms: 3.9872
+  type: 'test'
+  ...
+# Subtest: direct rooms finish on initial admission after audit-time changes; failed audit still suppresses disclosure
+ok 41 - direct rooms finish on initial admission after audit-time changes; failed audit still suppresses disclosure
+  ---
+  duration_ms: 0.7606
+  type: 'test'
+  ...
+# Subtest: a receipt finalizer rejection still wins after successful audit
+ok 42 - a receipt finalizer rejection still wins after successful audit
+  ---
+  duration_ms: 0.6726
+  type: 'test'
+  ...
+# Subtest: room result rejects fields outside its protocol, foreign buildings and invalid pagination without leaking data
+ok 43 - room result rejects fields outside its protocol, foreign buildings and invalid pagination without leaking data
+  ---
+  duration_ms: 5.7134
+  type: 'test'
+  ...
+# Subtest: J5: the direct room tool accepts the B3 page source with an exact total above the legacy cap and the 2000 paging ceiling
+ok 44 - J5: the direct room tool accepts the B3 page source with an exact total above the legacy cap and the 2000 paging ceiling
+  ---
+  duration_ms: 2.4263
+  type: 'test'
+  ...
+# Subtest: a company without a live share link gets an explicit no_sale_page result, not an empty room list
+ok 45 - a company without a live share link gets an explicit no_sale_page result, not an empty room list
+  ---
+  duration_ms: 0.5041
+  type: 'test'
+  ...
+# Subtest: room calls share per-connection quota and byte limits with the context dispatcher
+ok 46 - room calls share per-connection quota and byte limits with the context dispatcher
+  ---
+  duration_ms: 1.5039
+  type: 'test'
+  ...
+# Subtest: timeout while preparing rooms aborts that work and does not later audit or finalize it
+ok 47 - timeout while preparing rooms aborts that work and does not later audit or finalize it
+  ---
+  duration_ms: 27.1538
+  type: 'test'
+  ...
+# Subtest: contract: the cached lane is every catalogued read outside the fast plan whose key the read catalog can grant; zalo_conversations stays on the full authority
+ok 48 - contract: the cached lane is every catalogued read outside the fast plan whose key the read catalog can grant; zalo_conversations stays on the full authority
+  ---
+  duration_ms: 1.258
+  type: 'test'
+  ...
+# Subtest: cachedBinding service: seven-key binding from the LIVE snapshot while the identity stays cached; no verifySession, no checkUnchanged; every other fence intact
+ok 49 - cachedBinding service: seven-key binding from the LIVE snapshot while the identity stays cached; no verifySession, no checkUnchanged; every other fence intact
+  ---
+  duration_ms: 8.8959
+  type: 'test'
+  ...
+# Subtest: domain mount under the host opt-in: fast plan, cached seven-key admission through the read catalog, full lane for zalo_conversations; SQL verdicts map; a changed snapshot re-resolves
+ok 50 - domain mount under the host opt-in: fast plan, cached seven-key admission through the read catalog, full lane for zalo_conversations; SQL verdicts map; a changed snapshot re-resolves
+  ---
+  duration_ms: 30.3254
+  type: 'test'
+  ...
+# Subtest: current ingress accepts forty digit UIDs and nullable login snapshots
+ok 51 - current ingress accepts forty digit UIDs and nullable login snapshots
+  ---
+  duration_ms: 16.3293
+  type: 'test'
+  ...
+# Subtest: current ingress still rejects oversized UIDs and missing login snapshots
+ok 52 - current ingress still rejects oversized UIDs and missing login snapshots
+  ---
+  duration_ms: 1.0648
+  type: 'test'
+  ...
+# Subtest: reuses actual finalized room projection and builds visible exact body/sender/recipients, no effect or consent
+ok 53 - reuses actual finalized room projection and builds visible exact body/sender/recipients, no effect or consent
+  ---
+  duration_ms: 0.8174
+  type: 'test'
+  ...
+# Subtest: input order cannot change digest; arrays represent selected sets
+ok 54 - input order cannot change digest; arrays represent selected sets
+  ---
+  duration_ms: 1.5807
+  type: 'test'
+  ...
+# Subtest: output is detached and deeply frozen after digest
+ok 55 - output is detached and deeply frozen after digest
+  ---
+  duration_ms: 0.5772
+  type: 'test'
+  ...
+# Subtest: rejects model identity injection
+ok 56 - rejects model identity injection
+  ---
+  duration_ms: 0.2188
+  type: 'test'
+  ...
+# Subtest: rejects model body injection
+ok 57 - rejects model body injection
+  ---
+  duration_ms: 0.185
+  type: 'test'
+  ...
+# Subtest: rejects empty rooms
+ok 58 - rejects empty rooms
+  ---
+  duration_ms: 0.1481
+  type: 'test'
+  ...
+# Subtest: rejects duplicate recipient
+ok 59 - rejects duplicate recipient
+  ---
+  duration_ms: 0.1903
+  type: 'test'
+  ...
+# Subtest: rejects more than existing eight plan steps
+ok 60 - rejects more than existing eight plan steps
+  ---
+  duration_ms: 0.2658
+  type: 'test'
+  ...
+# Subtest: rejects missing selected room
+ok 61 - rejects missing selected room
+  ---
+  duration_ms: 0.2285
+  type: 'test'
+  ...
+# Subtest: rejects missing selected recipient
+ok 62 - rejects missing selected recipient
+  ---
+  duration_ms: 0.2145
+  type: 'test'
+  ...
+# Subtest: rejects cross org room response
+ok 63 - rejects cross org room response
+  ---
+  duration_ms: 0.1359
+  type: 'test'
+  ...
+# Subtest: rejects cross context receiver response
+ok 64 - rejects cross context receiver response
+  ---
+  duration_ms: 0.122
+  type: 'test'
+  ...
+# Subtest: rejects read permission disabled
+ok 65 - rejects read permission disabled
+  ---
+  duration_ms: 0.1447
+  type: 'test'
+  ...
+# Subtest: rejects group read permission disabled
+ok 66 - rejects group read permission disabled
+  ---
+  duration_ms: 0.1186
+  type: 'test'
+  ...
+# Subtest: rejects building scope missing
+ok 67 - rejects building scope missing
+  ---
+  duration_ms: 0.1564
+  type: 'test'
+  ...
+# Subtest: rejects recipient not selected by policy
+ok 68 - rejects recipient not selected by policy
+  ---
+  duration_ms: 0.1476
+  type: 'test'
+  ...
+# Subtest: rejects recipient account changed
+ok 69 - rejects recipient account changed
+  ---
+  duration_ms: 0.1398
+  type: 'test'
+  ...
+# Subtest: rejects recipient org changed
+ok 70 - rejects recipient org changed
+  ---
+  duration_ms: 0.1633
+  type: 'test'
+  ...
+# Subtest: rejects private DM recipient
+ok 71 - rejects private DM recipient
+  ---
+  duration_ms: 0.1552
+  type: 'test'
+  ...
+# Subtest: rejects same provider group repeated
+ok 72 - rejects same provider group repeated
+  ---
+  duration_ms: 0.1659
+  type: 'test'
+  ...
+# Subtest: rejects capped source
+ok 73 - rejects capped source
+  ---
+  duration_ms: 0.215
+  type: 'test'
+  ...
+# Subtest: rejects stale room response
+ok 74 - rejects stale room response
+  ---
+  duration_ms: 0.192
+  type: 'test'
+  ...
+# Subtest: rejects future receiver response beyond the DB clock skew
+ok 75 - rejects future receiver response beyond the DB clock skew
+  ---
+  duration_ms: 0.187
+  type: 'test'
+  ...
+# Subtest: rejects future room read stamped by this host
+ok 76 - rejects future room read stamped by this host
+  ---
+  duration_ms: 0.1754
+  type: 'test'
+  ...
+# Subtest: rejects expired connection
+ok 77 - rejects expired connection
+  ---
+  duration_ms: 0.1713
+  type: 'test'
+  ...
+# Subtest: rejects room field newline injection
+ok 78 - rejects room field newline injection
+  ---
+  duration_ms: 0.132
+  type: 'test'
+  ...
+# Subtest: rejects group bidi control
+ok 79 - rejects group bidi control
+  ---
+  duration_ms: 0.1318
+  type: 'test'
+  ...
+# Subtest: rejects invalid date
+ok 80 - rejects invalid date
+  ---
+  duration_ms: 0.1415
+  type: 'test'
+  ...
+# Subtest: rejects negative listed price
+ok 81 - rejects negative listed price
+  ---
+  duration_ms: 0.1554
+  type: 'test'
+  ...
+# Subtest: rejects pass status with a non-pass fact
+ok 82 - rejects pass status with a non-pass fact
+  ---
+  duration_ms: 0.1225
+  type: 'test'
+  ...
+# Subtest: rejects pass fact on a vacant room
+ok 83 - rejects pass fact on a vacant room
+  ---
+  duration_ms: 0.115
+  type: 'test'
+  ...
+# Subtest: receiver read stamped by a DB clock 50 ms or 4 s ahead is current; 6 s ahead is rejected
+ok 84 - receiver read stamped by a DB clock 50 ms or 4 s ahead is current; 6 s ahead is rejected
+  ---
+  duration_ms: 0.9578
+  type: 'test'
+  ...
+# Subtest: customer-pass rooms listed on the sale page are selectable with listed price and the page contact text
+ok 85 - customer-pass rooms listed on the sale page are selectable with listed price and the page contact text
+  ---
+  duration_ms: 0.6057
+  type: 'test'
+  ...
+# Subtest: does not execute model accessors or array accessors
+ok 86 - does not execute model accessors or array accessors
+  ---
+  duration_ms: 0.3722
+  type: 'test'
+  ...
+# Subtest: digest binds exact body facts
+ok 87 - digest binds exact body facts
+  ---
+  duration_ms: 0.7904
+  type: 'test'
+  ...
+# Subtest: digest binds recipient
+ok 88 - digest binds recipient
+  ---
+  duration_ms: 0.6037
+  type: 'test'
+  ...
+# Subtest: digest binds provider thread
+ok 89 - digest binds provider thread
+  ---
+  duration_ms: 0.68
+  type: 'test'
+  ...
+# Subtest: digest binds sender login
+ok 90 - digest binds sender login
+  ---
+  duration_ms: 0.5705
+  type: 'test'
+  ...
+# Subtest: digest binds sender UID
+ok 91 - digest binds sender UID
+  ---
+  duration_ms: 0.5526
+  type: 'test'
+  ...
+# Subtest: digest binds bot revision
+ok 92 - digest binds bot revision
+  ---
+  duration_ms: 0.5198
+  type: 'test'
+  ...
+# Subtest: digest binds ingress generation
+ok 93 - digest binds ingress generation
+  ---
+  duration_ms: 0.5536
+  type: 'test'
+  ...
+# Subtest: digest binds user
+ok 94 - digest binds user
+  ---
+  duration_ms: 0.5439
+  type: 'test'
+  ...
+# Subtest: digest binds connection
+ok 95 - digest binds connection
+  ---
+  duration_ms: 0.5036
+  type: 'test'
+  ...
+# Subtest: digest binds policy revision
+ok 96 - digest binds policy revision
+  ---
+  duration_ms: 0.6006
+  type: 'test'
+  ...
+# Subtest: digest binds CRM authorization revision
+ok 97 - digest binds CRM authorization revision
+  ---
+  duration_ms: 0.625
+  type: 'test'
+  ...
+# Subtest: digest binds session revision
+ok 98 - digest binds session revision
+  ---
+  duration_ms: 0.4987
+  type: 'test'
+  ...
+# Subtest: digest binds expiry
+ok 99 - digest binds expiry
+  ---
+  duration_ms: 0.646
+  type: 'test'
+  ...
+# Subtest: private or future room fields cannot flow to output or change selected public payload
+ok 100 - private or future room fields cannot flow to output or change selected public payload
+  ---
+  duration_ms: 0.6144
+  type: 'test'
+  ...
+# Subtest: service requires a trusted backend and room service; no default or caller verified flag
+ok 101 - service requires a trusted backend and room service; no default or caller verified flag
+  ---
+  duration_ms: 0.4442
+  type: 'test'
+  ...
+# Subtest: prepare has no data; final decision follows caller audit and real projection before release
+ok 102 - prepare has no data; final decision follows caller audit and real projection before release
+  ---
+  duration_ms: 2.9016
+  type: 'test'
+  ...
+# Subtest: service rejects model userId before backend or room IO
+ok 103 - service rejects model userId before backend or room IO
+  ---
+  duration_ms: 0.2588
+  type: 'test'
+  ...
+# Subtest: service rejects model organizationId before backend or room IO
+ok 104 - service rejects model organizationId before backend or room IO
+  ---
+  duration_ms: 0.15
+  type: 'test'
+  ...
+# Subtest: service rejects model assistantId before backend or room IO
+ok 105 - service rejects model assistantId before backend or room IO
+  ---
+  duration_ms: 0.1296
+  type: 'test'
+  ...
+# Subtest: service rejects model connectionId before backend or room IO
+ok 106 - service rejects model connectionId before backend or room IO
+  ---
+  duration_ms: 0.1823
+  type: 'test'
+  ...
+# Subtest: service rejects model accountId before backend or room IO
+ok 107 - service rejects model accountId before backend or room IO
+  ---
+  duration_ms: 0.1412
+  type: 'test'
+  ...
+# Subtest: service rejects model body before backend or room IO
+ok 108 - service rejects model body before backend or room IO
+  ---
+  duration_ms: 0.1119
+  type: 'test'
+  ...
+# Subtest: service rejects model verified before backend or room IO
+ok 109 - service rejects model verified before backend or room IO
+  ---
+  duration_ms: 0.1851
+  type: 'test'
+  ...
+# Subtest: service rejects model authority before backend or room IO
+ok 110 - service rejects model authority before backend or room IO
+  ---
+  duration_ms: 0.1438
+  type: 'test'
+  ...
+# Subtest: service rejects model allowedBuildingIds before backend or room IO
+ok 111 - service rejects model allowedBuildingIds before backend or room IO
+  ---
+  duration_ms: 0.1523
+  type: 'test'
+  ...
+# Subtest: service rejects missing/forged/foreign instance receipts and wrong token consumes real receipt
+ok 112 - service rejects missing/forged/foreign instance receipts and wrong token consumes real receipt
+  ---
+  duration_ms: 0.3611
+  type: 'test'
+  ...
+# Subtest: intent is copied/frozen; post-prepare mutation cannot retarget rooms or groups
+ok 113 - intent is copied/frozen; post-prepare mutation cannot retarget rooms or groups
+  ---
+  duration_ms: 0.8918
+  type: 'test'
+  ...
+# Subtest: malformed token and missing signal are rejected with no backend IO
+ok 114 - malformed token and missing signal are rejected with no backend IO
+  ---
+  duration_ms: 0.2829
+  type: 'test'
+  ...
+# Subtest: action denial is preserved before room reads and unexpected errors do not leak text
+ok 115 - action denial is preserved before room reads and unexpected errors do not leak text
+  ---
+  duration_ms: 0.7866
+  type: 'test'
+  ...
+# Subtest: service rejects missing decision and does not retry
+ok 116 - service rejects missing decision and does not retry
+  ---
+  duration_ms: 0.5268
+  type: 'test'
+  ...
+# Subtest: service rejects verified flag alone and does not retry
+ok 117 - service rejects verified flag alone and does not retry
+  ---
+  duration_ms: 0.4188
+  type: 'test'
+  ...
+# Subtest: service rejects negative backend decision and does not retry
+ok 118 - service rejects negative backend decision and does not retry
+  ---
+  duration_ms: 0.337
+  type: 'test'
+  ...
+# Subtest: service rejects wrong decision kind and does not retry
+ok 119 - service rejects wrong decision kind and does not retry
+  ---
+  duration_ms: 0.5633
+  type: 'test'
+  ...
+# Subtest: service rejects wrong token and does not retry
+ok 120 - service rejects wrong token and does not retry
+  ---
+  duration_ms: 0.394
+  type: 'test'
+  ...
+# Subtest: service rejects wrong intent and does not retry
+ok 121 - service rejects wrong intent and does not retry
+  ---
+  duration_ms: 0.3274
+  type: 'test'
+  ...
+# Subtest: service rejects wrong room content and does not retry
+ok 122 - service rejects wrong room content and does not retry
+  ---
+  duration_ms: 0.3574
+  type: 'test'
+  ...
+# Subtest: service rejects changed authority context and does not retry
+ok 123 - service rejects changed authority context and does not retry
+  ---
+  duration_ms: 0.3198
+  type: 'test'
+  ...
+# Subtest: service rejects old decision beyond the DB clock skew and does not retry
+ok 124 - service rejects old decision beyond the DB clock skew and does not retry
+  ---
+  duration_ms: 0.2912
+  type: 'test'
+  ...
+# Subtest: service rejects future decision beyond the DB clock skew and does not retry
+ok 125 - service rejects future decision beyond the DB clock skew and does not retry
+  ---
+  duration_ms: 0.3203
+  type: 'test'
+  ...
+# Subtest: service rejects expired decision and does not retry
+ok 126 - service rejects expired decision and does not retry
+  ---
+  duration_ms: 0.311
+  type: 'test'
+  ...
+# Subtest: service rejects too-long decision and does not retry
+ok 127 - service rejects too-long decision and does not retry
+  ---
+  duration_ms: 0.2501
+  type: 'test'
+  ...
+# Subtest: service accepts a final decision checked by a DB clock 50 ms or 4 s ahead; 6 s ahead is a conflict
+ok 128 - service accepts a final decision checked by a DB clock 50 ms or 4 s ahead; 6 s ahead is a conflict
+  ---
+  duration_ms: 1.453
+  type: 'test'
+  ...
+# Subtest: service accepts a final decision checked by a DB clock 50 ms or 4 s behind prepare start; 6 s behind is a conflict
+ok 129 - service accepts a final decision checked by a DB clock 50 ms or 4 s behind prepare start; 6 s behind is a conflict
+  ---
+  duration_ms: 1.5067
+  type: 'test'
+  ...
+# Subtest: send accepts a queue expiry issued by a DB clock 50 ms or 4 s ahead; 6 s ahead stays an unknown outcome
+ok 130 - send accepts a queue expiry issued by a DB clock 50 ms or 4 s ahead; 6 s ahead stays an unknown outcome
+  ---
+  duration_ms: 2.0265
+  type: 'test'
+  ...
+# Subtest: source result cannot change during final await after its digest was bound
+ok 131 - source result cannot change during final await after its digest was bound
+  ---
+  duration_ms: 0.6214
+  type: 'test'
+  ...
+# Subtest: expired prepared receipt is consumed without final room or decision calls
+ok 132 - expired prepared receipt is consumed without final room or decision calls
+  ---
+  duration_ms: 0.2963
+  type: 'test'
+  ...
+# Subtest: abort while final decision hangs returns no preview and no automatic retry
+ok 133 - abort while final decision hangs returns no preview and no automatic retry
+  ---
+  duration_ms: 15.66
+  type: 'test'
+  ...
+# Subtest: service still validates final group read despite an allowed acknowledgement
+ok 134 - service still validates final group read despite an allowed acknowledgement
+  ---
+  duration_ms: 0.6383
+  type: 'test'
+  ...
+# Subtest: service still validates final group org despite an allowed acknowledgement
+ok 135 - service still validates final group org despite an allowed acknowledgement
+  ---
+  duration_ms: 0.513
+  type: 'test'
+  ...
+# Subtest: service still validates final sending account despite an allowed acknowledgement
+ok 136 - service still validates final sending account despite an allowed acknowledgement
+  ---
+  duration_ms: 0.4765
+  type: 'test'
+  ...
+# Subtest: final decision identity and lifetime participate in external digest
+ok 137 - final decision identity and lifetime participate in external digest
+  ---
+  duration_ms: 1.3091
+  type: 'test'
+  ...
+# Subtest: selection outside this one room page is rejected, never silently omitted or merged
+ok 138 - selection outside this one room page is rejected, never silently omitted or merged
+  ---
+  duration_ms: 0.5683
+  type: 'test'
+  ...
+# Subtest: recipient context change remains a conflict after final allowed decision
+ok 139 - recipient context change remains a conflict after final allowed decision
+  ---
+  duration_ms: 0.3979
+  type: 'test'
+  ...
+# Subtest: composes real room service, durable authority, crypto and projection with explicit fake backend IO
+ok 140 - composes real room service, durable authority, crypto and projection with explicit fake backend IO
+  ---
+  duration_ms: 8.3164
+  type: 'test'
+  ...
+# Subtest: group send composes the real broker with canonical SQL queue and status
+    # Subtest: real SQL ACK queues a server-rendered body and status reads that same dispatch
+    ok 1 - real SQL ACK queues a server-rendered body and status reads that same dispatch
+      ---
+      duration_ms: 223.9339
+      type: 'test'
+      ...
+    # Subtest: revocation immediately before real SQL write denies with zero queue and provenance rows
+    ok 2 - revocation immediately before real SQL write denies with zero queue and provenance rows
+      ---
+      duration_ms: 72.4783
+      type: 'test'
+      ...
+    # Subtest: lost real SQL reply stays unknown; status recovers the known ID without another write
+    ok 3 - lost real SQL reply stays unknown; status recovers the known ID without another write
+      ---
+      duration_ms: 106.2002
+      type: 'test'
+      ...
+    1..3
+ok 141 - group send composes the real broker with canonical SQL queue and status
+  ---
+  duration_ms: 2379.6665
+  type: 'test'
+  ...
+# Subtest: danh sách và schema: trường rào có trong schema; không còn trạng thái theo lịch sử đọc
+ok 142 - danh sách và schema: trường rào có trong schema; không còn trạng thái theo lịch sử đọc
+  ---
+  duration_ms: 2.7769
+  type: 'test'
+  ...
+# Subtest: lần đầu LUÔN confirmation_required + preview nguyên văn, không ghi — bất kể đã đọc gì hay bao lâu
+ok 143 - lần đầu LUÔN confirmation_required + preview nguyên văn, không ghi — bất kể đã đọc gì hay bao lâu
+  ---
+  duration_ms: 11.0296
+  type: 'test'
+  ...
+# Subtest: token đúng ⇒ ghi đúng đầu vào CRM (confirmToken không tới CRM)
+ok 144 - token đúng ⇒ ghi đúng đầu vào CRM (confirmToken không tới CRM)
+  ---
+  duration_ms: 2.3705
+  type: 'test'
+  ...
+# Subtest: chỉ đổi giá/ngày/cờ, chuỗi trống hoặc null ⇒ ghi thẳng, không cần xác nhận
+ok 145 - chỉ đổi giá/ngày/cờ, chuỗi trống hoặc null ⇒ ghi thẳng, không cần xác nhận
+  ---
+  duration_ms: 3.2275
+  type: 'test'
+  ...
+# Subtest: token sai, dùng lại, hết hạn, đổi nội dung, đổi phòng, khác kết nối ⇒ từ chối, không ghi
+ok 146 - token sai, dùng lại, hết hạn, đổi nội dung, đổi phòng, khác kết nối ⇒ từ chối, không ghi
+  ---
+  duration_ms: 11.4583
+  type: 'test'
+  ...
+# Subtest: read catalog is bounded to five minutes and still reads token/session/settings on every lookup
+ok 147 - read catalog is bounded to five minutes and still reads token/session/settings on every lookup
+  ---
+  duration_ms: 12.8388
+  type: 'test'
+  ...
+# Subtest: cached authority cannot cross tokens, actors, organizations, provider sessions or survive revocation/expiry
+ok 148 - cached authority cannot cross tokens, actors, organizations, provider sessions or survive revocation/expiry
+  ---
+  duration_ms: 8.7706
+  type: 'test'
+  ...
+# Subtest: business-statement output authority replaces stale discovery scope and validates exact actor/org/permission
+ok 149 - business-statement output authority replaces stale discovery scope and validates exact actor/org/permission
+  ---
+  duration_ms: 3.068
+  type: 'test'
+  ...
+# Subtest: negative control: skipping the binding fingerprint makes the settings/session invalidation probe red
+ok 150 - negative control: skipping the binding fingerprint makes the settings/session invalidation probe red
+  ---
+  duration_ms: 10.3551
+  type: 'test'
+  ...
+# Subtest: every requestId action points to crm_new_request_id; status tools reuse the original id; validation stays UUID
+ok 151 - every requestId action points to crm_new_request_id; status tools reuse the original id; validation stays UUID
+  ---
+  duration_ms: 2.0731
+  type: 'test'
+  ...
+# Subtest: crm_new_request_id lists and works exactly while an action that starts a request is granted
+ok 152 - crm_new_request_id lists and works exactly while an action that starts a request is granted
+  ---
+  duration_ms: 48.6122
+  type: 'test'
+  ...
+# Subtest: revoked or expired connections never receive an id, including a revoke during the call
+ok 153 - revoked or expired connections never receive an id, including a revoke during the call
+  ---
+  duration_ms: 5.0148
+  type: 'test'
+  ...
+# Subtest: crm_new_request_id counts against the shared per-connection tools/call quota
+ok 154 - crm_new_request_id counts against the shared per-connection tools/call quota
+  ---
+  duration_ms: 6.8472
+  type: 'test'
+  ...
+# Subtest: external MCP: tools/list, tools/call, quota as tool result and revoke as 401
+ok 155 - external MCP: tools/list, tools/call, quota as tool result and revoke as 401
+  ---
+  duration_ms: 68.3712
+  type: 'test'
+  ...
+# Subtest: external MCP → bound JWT → audited final caller SQL: room-pass action and unknown reconciliation
+ok 156 - external MCP → bound JWT → audited final caller SQL: room-pass action and unknown reconciliation
+  ---
+  duration_ms: 1988.961
+  type: 'test'
+  ...
+# Subtest: room-pass maps only the three fixed tool names
+ok 157 - room-pass maps only the three fixed tool names
+  ---
+  duration_ms: 0.6041
+  type: 'test'
+  ...
+# Subtest: room-pass typed operations reject actor/org/RPC and require independent Action overlay
+ok 158 - room-pass typed operations reject actor/org/RPC and require independent Action overlay
+  ---
+  duration_ms: 0.7442
+  type: 'test'
+  ...
+# Subtest: actual canonical setter is idempotent per request, rejects ABA/CAS and rechecks current binding/ACL
+ok 159 - actual canonical setter is idempotent per request, rejects ABA/CAS and rechecks current binding/ACL
+  ---
+  duration_ms: 1665.3096
+  type: 'test'
+  ...
+# Subtest: write transport dispatches once, marks confirmed rejection, and never retries after ACK loss
+ok 160 - write transport dispatches once, marks confirmed rejection, and never retries after ACK loss
+  ---
+  duration_ms: 16.2865
+  type: 'test'
+  ...
+# Subtest: v2 lookup: same rooms and authority as v1, representative phone in full only for the private reply
+ok 161 - v2 lookup: same rooms and authority as v1, representative phone in full only for the private reply
+  ---
+  duration_ms: 1795.9254
+  type: 'test'
+  ...
+# Subtest: v2 lookup: a room whose only contract ended shows no representative (never the former tenant)
+ok 162 - v2 lookup: a room whose only contract ended shows no representative (never the former tenant)
+  ---
+  duration_ms: 8.9429
+  type: 'test'
+  ...
+# Subtest: v2 upsert/status: contact phone in full; receipt, writer and replay are v1's
+ok 163 - v2 upsert/status: contact phone in full; receipt, writer and replay are v1's
+  ---
+  duration_ms: 45.0629
+  type: 'test'
+  ...
+# Subtest: contract: v2 contact accepted, legacy masked receipt still reconciles, malformed contact refused
+ok 164 - contract: v2 contact accepted, legacy masked receipt still reconciles, malformed contact refused
+  ---
+  duration_ms: 0.7265
+  type: 'test'
+  ...
+# Subtest: P2 lookup/upsert keep the v1 mask without customers.view (connection Read, CRM grant, registry or CRM building scope)
+ok 165 - P2 lookup/upsert keep the v1 mask without customers.view (connection Read, CRM grant, registry or CRM building scope)
+  ---
+  duration_ms: 39.8014
+  type: 'test'
+  ...
+# Subtest: P2 per building: the phone is unmasked only where the customers.view CRM scope ∩ overlay covers that building
+ok 166 - P2 per building: the phone is unmasked only where the customers.view CRM scope ∩ overlay covers that building
+  ---
+  duration_ms: 25.4574
+  type: 'test'
+  ...
+# Subtest: mutation is caught: v2 representative restricted to the active contract
+ok 167 - mutation is caught: v2 representative restricted to the active contract
+  ---
+  duration_ms: 16.4905
+  type: 'test'
+  ...
+# Subtest: mutation is caught: P2 lookup phone needs customers.view
+ok 168 - mutation is caught: P2 lookup phone needs customers.view
+  ---
+  duration_ms: 16.4422
+  type: 'test'
+  ...
+# Subtest: mutation is caught: P2 upsert contact needs customers.view
+ok 169 - mutation is caught: P2 upsert contact needs customers.view
+  ---
+  duration_ms: 13.8345
+  type: 'test'
+  ...
+# Subtest: P2-2 lookup: a representative whose owner is not an active member stays hidden like the web
+ok 170 - P2-2 lookup: a representative whose owner is not an active member stays hidden like the web
+  ---
+  duration_ms: 27.8031
+  type: 'test'
+  ...
+# Subtest: shared resource predicate requires scope for room-pass Action without adding a Read capability
+ok 171 - shared resource predicate requires scope for room-pass Action without adding a Read capability
+  ---
+  duration_ms: 0.6628
+  type: 'test'
+  ...
+# Subtest: forward v4 fixed helper merges current Action building scopes, preserves v3 and never enables defaults
+ok 172 - forward v4 fixed helper merges current Action building scopes, preserves v3 and never enables defaults
+  ---
+  duration_ms: 1767.3631
+  type: 'test'
+  ...
+# Subtest: MCP pass message flow: lookup → requestId → upsert through bound JWT SQL; ACK loss reconciles by status, never re-writes
+ok 173 - MCP pass message flow: lookup → requestId → upsert through bound JWT SQL; ACK loss reconciles by status, never re-writes
+  ---
+  duration_ms: 2442.2768
+  type: 'test'
+  ...
+# Subtest: connector before the full-read migration: lookup/upsert fail closed; status reads a v1 upsert receipt (masked contact) through v1
+ok 174 - connector before the full-read migration: lookup/upsert fail closed; status reads a v1 upsert receipt (masked contact) through v1
+  ---
+  duration_ms: 1841.218
+  type: 'test'
+  ...
+# Subtest: connector before migration: upsert/lookup fail closed, status falls back to the applied v1 receipt reader
+ok 175 - connector before migration: upsert/lookup fail closed, status falls back to the applied v1 receipt reader
+  ---
+  duration_ms: 1751.0142
+  type: 'test'
+  ...
+# Subtest: mutation is caught: auto-filled representative forces contactManager
+ok 176 - mutation is caught: auto-filled representative forces contactManager
+  ---
+  duration_ms: 3396.0035
+  type: 'test'
+  ...
+# Subtest: mutation is caught: auto-fill marks its contact source
+ok 177 - mutation is caught: auto-fill marks its contact source
+  ---
+  duration_ms: 3084.1534
+  type: 'test'
+  ...
+# Subtest: mutation is caught: saved connection overlay (scope)
+ok 178 - mutation is caught: saved connection overlay (scope)
+  ---
+  duration_ms: 2726.8604
+  type: 'test'
+  ...
+# Subtest: mutation is caught: CRM action decision per building
+ok 179 - mutation is caught: CRM action decision per building
+  ---
+  duration_ms: 2622.9353
+  type: 'test'
+  ...
+# Subtest: mutation is caught: authorization version of the decision
+ok 180 - mutation is caught: authorization version of the decision
+  ---
+  duration_ms: 2223.0974
+  type: 'test'
+  ...
+# Subtest: mutation is caught: expiring CRM grant (deadline)
+ok 181 - mutation is caught: expiring CRM grant (deadline)
+  ---
+  duration_ms: 2322.4971
+  type: 'test'
+  ...
+# Subtest: mutation is caught: authorized building scope
+ok 182 - mutation is caught: authorized building scope
+  ---
+  duration_ms: 2353.7297
+  type: 'test'
+  ...
+# Subtest: mutation is caught: canonical can_manage_pass_listing in lookup
+ok 183 - mutation is caught: canonical can_manage_pass_listing in lookup
+  ---
+  duration_ms: 2355.4007
+  type: 'test'
+  ...
+# Subtest: mutation is caught: form read scope in lookup
+ok 184 - mutation is caught: form read scope in lookup
+  ---
+  duration_ms: 2282.3601
+  type: 'test'
+  ...
+# Subtest: mutation is caught: CRM permission in the current context
+ok 185 - mutation is caught: CRM permission in the current context
+  ---
+  duration_ms: 2293.8721
+  type: 'test'
+  ...
+# Subtest: mutation is caught: connection Action overlay
+ok 186 - mutation is caught: connection Action overlay
+  ---
+  duration_ms: 2715.1669
+  type: 'test'
+  ...
+# Subtest: mutation is caught: deployment registry
+ok 187 - mutation is caught: deployment registry
+  ---
+  duration_ms: 2121.053
+  type: 'test'
+  ...
+# Subtest: mutation is caught: requestId intent pin
+ok 188 - mutation is caught: requestId intent pin
+  ---
+  duration_ms: 2233.815
+  type: 'test'
+  ...
+# Subtest: mutation is caught: masked representative phone
+ok 189 - mutation is caught: masked representative phone
+  ---
+  duration_ms: 2312.644
+  type: 'test'
+  ...
+# Subtest: broker validator is a second fence: a mutant lookup that leaks the full phone becomes backend_unavailable, not data
+ok 190 - broker validator is a second fence: a mutant lookup that leaks the full phone becomes backend_unavailable, not data
+  ---
+  duration_ms: 1139.817
+  type: 'test'
+  ...
+# Subtest: mutation is caught: blank text from the model is absent (keep), never a clear of the stored contact/policy
+ok 191 - mutation is caught: blank text from the model is absent (keep), never a clear of the stored contact/policy
+  ---
+  duration_ms: 2451.9323
+  type: 'test'
+  ...
+# Subtest: overlay mutant probe is not vacuous: the second building is CRM-allowed and only the saved overlay excludes it
+ok 192 - overlay mutant probe is not vacuous: the second building is CRM-allowed and only the saved overlay excludes it
+  ---
+  duration_ms: 1136.7617
+  type: 'test'
+  ...
+# Subtest: room-pass upsert/lookup tools map to fixed operations behind the same independent Action
+ok 193 - room-pass upsert/lookup tools map to fixed operations behind the same independent Action
+  ---
+  duration_ms: 1.2952
+  type: 'test'
+  ...
+# Subtest: upsert input is normalized like the form and rejects every malformed or extra field
+ok 194 - upsert input is normalized like the form and rejects every malformed or extra field
+  ---
+  duration_ms: 2.4423
+  type: 'test'
+  ...
+# Subtest: broker result validation refuses an unmasked phone or a write for another room
+ok 195 - broker result validation refuses an unmasked phone or a write for another room
+  ---
+  duration_ms: 0.9361
+  type: 'test'
+  ...
+# Subtest: lookup finds occupied rooms by building words without accents, masks the representative phone and stays inside CRM read, manage and overlay scope
+ok 196 - lookup finds occupied rooms by building words without accents, masks the representative phone and stays inside CRM read, manage and overlay scope
+  ---
+  duration_ms: 2121.8251
+  type: 'test'
+  ...
+# Subtest: lookup filters allowed buildings before the cap: 205 forbidden matches sorting first cannot hide the allowed rooms; truncated past 10
+ok 197 - lookup filters allowed buildings before the cap: 205 forbidden matches sorting first cannot hide the allowed rooms; truncated past 10
+  ---
+  duration_ms: 1305.7094
+  type: 'test'
+  ...
+# Subtest: upsert creates through the canonical writer, replays by requestId, edits only given fields and never touches contracts or customers
+ok 198 - upsert creates through the canonical writer, replays by requestId, edits only given fields and never touches contracts or customers
+  ---
+  duration_ms: 1566.7203
+  type: 'test'
+  ...
+# Subtest: upsert denies other company, room outside overlay or CRM scope, missing Action and malformed SQL input without leaving a receipt
+ok 199 - upsert denies other company, room outside overlay or CRM scope, missing Action and malformed SQL input without leaving a receipt
+  ---
+  duration_ms: 1456.0987
+  type: 'test'
+  ...
+# Subtest: status reconciles applied v1 set_active receipts as well and reports not_found without writing
+ok 200 - status reconciles applied v1 set_active receipts as well and reports not_found without writing
+  ---
+  duration_ms: 1210.2981
+  type: 'test'
+  ...
+# Subtest: registry enable migration flips exactly the room-pass Action, is idempotent and refuses a missing registry row or upsert RPC
+ok 201 - registry enable migration flips exactly the room-pass Action, is idempotent and refuses a missing registry row or upsert RPC
+  ---
+  duration_ms: 1149.352
+  type: 'test'
+  ...
+# Subtest: sale page list: vacant rooms and both customer-pass rooms, contact exactly as the public page prints it
+ok 202 - sale page list: vacant rooms and both customer-pass rooms, contact exactly as the public page prints it
+  ---
+  duration_ms: 3.6966
+  type: 'test'
+  ...
+# Subtest: assistant scope filters by building ID even when names match; media and internal fields never cross
+ok 203 - assistant scope filters by building ID even when names match; media and internal fields never cross
+  ---
+  duration_ms: 0.4868
+  type: 'test'
+  ...
+# Subtest: reuse CRM sale facts for ready, preparing, future notice and overdue notice
+ok 204 - reuse CRM sale facts for ready, preparing, future notice and overdue notice
+  ---
+  duration_ms: 0.3954
+  type: 'test'
+  ...
+# Subtest: money remains the backend value in VND; pass price falls back to rent; unknown values remain null
+ok 205 - money remains the backend value in VND; pass price falls back to rent; unknown values remain null
+  ---
+  duration_ms: 0.2149
+  type: 'test'
+  ...
+# Subtest: no scope, wildcard, names and malformed IDs never become org-wide reads
+ok 206 - no scope, wildcard, names and malformed IDs never become org-wide reads
+  ---
+  duration_ms: 0.4794
+  type: 'test'
+  ...
+# Subtest: no live share link is reported as no_sale_page, never as an empty published list
+ok 207 - no live share link is reported as no_sale_page, never as an empty published list
+  ---
+  duration_ms: 0.3643
+  type: 'test'
+  ...
+# Subtest: valid empty response is distinguished from malformed/error payload, old source shape and unknown status
+ok 208 - valid empty response is distinguished from malformed/error payload, old source shape and unknown status
+  ---
+  duration_ms: 0.3005
+  type: 'test'
+  ...
+# Subtest: reject missing relation, duplicate room or duplicate building instead of inventing a complete list
+ok 209 - reject missing relation, duplicate room or duplicate building instead of inventing a complete list
+  ---
+  duration_ms: 0.2038
+  type: 'test'
+  ...
+# Subtest: strict quantities, flags and dates fail closed; no coercion of missing/bad data to zero or today
+ok 210 - strict quantities, flags and dates fail closed; no coercion of missing/bad data to zero or today
+  ---
+  duration_ms: 0.4464
+  type: 'test'
+  ...
+# Subtest: over-long public text is clipped with "…" instead of failing the whole company list
+ok 211 - over-long public text is clipped with "…" instead of failing the whole company list
+  ---
+  duration_ms: 0.446
+  type: 'test'
+  ...
+# Subtest: pagination keeps the page order and reports the source cap without claiming all rooms were returned
+ok 212 - pagination keeps the page order and reports the source cap without claiming all rooms were returned
+  ---
+  duration_ms: 17.5758
+  type: 'test'
+  ...
+# Subtest: building-name filter cannot expand ID scope; request and response are independent objects
+ok 213 - building-name filter cannot expand ID scope; request and response are independent objects
+  ---
+  duration_ms: 0.2118
+  type: 'test'
+  ...
+# Subtest: caller cannot forward actor, org, RPC, URLs or an unbounded result request through options
+ok 214 - caller cannot forward actor, org, RPC, URLs or an unbounded result request through options
+  ---
+  duration_ms: 0.2372
+  type: 'test'
+  ...
+# Subtest: B3 page projection equals the legacy projection of the same canonical snapshot (states, contact, text, policies, paging)
+ok 215 - B3 page projection equals the legacy projection of the same canonical snapshot (states, contact, text, policies, paging)
+  ---
+  duration_ms: 2.528
+  type: 'test'
+  ...
+# Subtest: B3 page projection: exact total above the tool ceiling is source_capped, the window never re-slices and nextOffset stops at 2000
+ok 216 - B3 page projection: exact total above the tool ceiling is source_capped, the window never re-slices and nextOffset stops at 2000
+  ---
+  duration_ms: 0.4597
+  type: 'test'
+  ...
+# Subtest: B3 page projection fails closed on any shape drift of the SQL page instead of inventing rows
+ok 217 - B3 page projection fails closed on any shape drift of the SQL page instead of inventing rows
+  ---
+  duration_ms: 1.3334
+  type: 'test'
+  ...
+# Subtest: scope mapping distinguishes authorization-scope IDs from resource IDs and intersects only the supplied permission
+ok 218 - scope mapping distinguishes authorization-scope IDs from resource IDs and intersects only the supplied permission
+  ---
+  duration_ms: 2.1556
+  type: 'test'
+  ...
+# Subtest: CASHBOOK never grants rooms while a mixed legitimate building remains usable
+ok 219 - CASHBOOK never grants rooms while a mixed legitimate building remains usable
+  ---
+  duration_ms: 7.3729
+  type: 'test'
+  ...
+# Subtest: missing/truncated/ambiguous/foreign scope nodes and cross-org or unselected edges fail closed
+ok 220 - missing/truncated/ambiguous/foreign scope nodes and cross-org or unselected edges fail closed
+  ---
+  duration_ms: 0.8053
+  type: 'test'
+  ...
+# Subtest: real authority and crypto with fake backend return only the existing room projection after final recheck
+ok 221 - real authority and crypto with fake backend return only the existing room projection after final recheck
+  ---
+  duration_ms: 8.0577
+  type: 'test'
+  ...
+# Subtest: neutral policy read binds version zero through both room scope checks and rejects stale explicit proof
+ok 222 - neutral policy read binds version zero through both room scope checks and rejects stale explicit proof
+  ---
+  duration_ms: 3.3648
+  type: 'test'
+  ...
+# Subtest: caller cannot supply org, JWT, resource scopes, RPC, wildcard or arbitrary endpoint
+ok 223 - caller cannot supply org, JWT, resource scopes, RPC, wildcard or arbitrary endpoint
+  ---
+  duration_ms: 0.6439
+  type: 'test'
+  ...
+# Subtest: no rooms.view grant, empty assistant scopes or another permission namespace never reaches business reads
+ok 224 - no rooms.view grant, empty assistant scopes or another permission namespace never reaches business reads
+  ---
+  duration_ms: 5.1482
+  type: 'test'
+  ...
+# Subtest: assistant AREA intersections filter equal-name buildings and mapping changes during read discard the result
+ok 225 - assistant AREA intersections filter equal-name buildings and mapping changes during read discard the result
+  ---
+  duration_ms: 2.4368
+  type: 'test'
+  ...
+# Subtest: revocation or permission reduction while reading is detected by actual final authority, never returned as successful data
+ok 226 - revocation or permission reduction while reading is detected by actual final authority, never returned as successful data
+  ---
+  duration_ms: 4.4208
+  type: 'test'
+  ...
+# Subtest: foreign/dead joined credentials and a mismatched verified provider session are refused before RPC use
+ok 227 - foreign/dead joined credentials and a mismatched verified provider session are refused before RPC use
+  ---
+  duration_ms: 5.0461
+  type: 'test'
+  ...
+# Subtest: final authority must return void and payload failures cannot bypass that fence
+ok 228 - final authority must return void and payload failures cannot bypass that fence
+  ---
+  duration_ms: 3.132
+  type: 'test'
+  ...
+# Subtest: expiry, cancellation and deadline never release late data or continue to a subsequent dependency
+ok 229 - expiry, cancellation and deadline never release late data or continue to a subsequent dependency
+  ---
+  duration_ms: 20.2511
+  type: 'test'
+  ...
+# Subtest: caller filter mutation and scope reply ordering cannot widen the room result
+ok 230 - caller filter mutation and scope reply ordering cannot widen the room result
+  ---
+  duration_ms: 3.6526
+  type: 'test'
+  ...
+# Subtest: AREA changes during final authority await are rejected by the LAST bound scope decision
+ok 231 - AREA changes during final authority await are rejected by the LAST bound scope decision
+  ---
+  duration_ms: 1.5444
+  type: 'test'
+  ...
+# Subtest: final map must bind the current connection/policy/member/session and live CRM building set, not an unbound old map
+ok 232 - final map must bind the current connection/policy/member/session and live CRM building set, not an unbound old map
+  ---
+  duration_ms: 11.7806
+  type: 'test'
+  ...
+# Subtest: two-phase seam exposes no data before audit, consumes its branded receipt once and rejects foreign/expired/replayed receipts
+ok 233 - two-phase seam exposes no data before audit, consumes its branded receipt once and rejects foreign/expired/replayed receipts
+  ---
+  duration_ms: 3.1232
+  type: 'test'
+  ...
+# Subtest: direct-read finalization uses initial scope without authority/map I/O after audit-time revocation
+ok 234 - direct-read finalization uses initial scope without authority/map I/O after audit-time revocation
+  ---
+  duration_ms: 1.2819
+  type: 'test'
+  ...
+# Subtest: direct-read receipt retains token binding, expiry/deadline and abort checks
+ok 235 - direct-read receipt retains token binding, expiry/deadline and abort checks
+  ---
+  duration_ms: 4.1247
+  type: 'test'
+  ...
+# Subtest: HTTP adapter pins exactly two read RPCs, actual authenticated JWT and selected-org/scope arguments
+ok 236 - HTTP adapter pins exactly two read RPCs, actual authenticated JWT and selected-org/scope arguments
+  ---
+  duration_ms: 21.9384
+  type: 'test'
+  ...
+# Subtest: HTTP adapter rejects privileged tokens, arbitrary RPC and endpoint input before any network request
+ok 237 - HTTP adapter rejects privileged tokens, arbitrary RPC and endpoint input before any network request
+  ---
+  duration_ms: 0.7612
+  type: 'test'
+  ...
+# Subtest: HTTP reads fail safely on missing future RPC, denial, malformed/capped replies and never retry or fall back to admin catalog
+ok 238 - HTTP reads fail safely on missing future RPC, denial, malformed/capped replies and never retry or fall back to admin catalog
+  ---
+  duration_ms: 3.5714
+  type: 'test'
+  ...
+# Subtest: HTTP deadline aborts a hanging body, cleans listeners and ignores late responses
+ok 239 - HTTP deadline aborts a hanging body, cleans listeners and ignores late responses
+  ---
+  duration_ms: 25.7627
+  type: 'test'
+  ...
+# Subtest: J3: page mode reads one bound page RPC after the same admission; no scope map, no whole-page read, legacy stays the default
+ok 240 - J3: page mode reads one bound page RPC after the same admission; no scope map, no whole-page read, legacy stays the default
+  ---
+  duration_ms: 4.1303
+  type: 'test'
+  ...
+# Subtest: J4: a caller pins the source per call: group preview asks for legacy on a page-configured service; page needs a page reader
+ok 241 - J4: a caller pins the source per call: group preview asks for legacy on a page-configured service; page needs a page reader
+  ---
+  duration_ms: 3.9647
+  type: 'test'
+  ...
+# Subtest: J3: a page receipt is single-use, token-bound and only finalized by the direct read lane (initial admission)
+ok 242 - J3: a page receipt is single-use, token-bound and only finalized by the direct read lane (initial admission)
+  ---
+  duration_ms: 2.4473
+  type: 'test'
+  ...
+# Subtest: J3: page RPC denials and envelope drift map to broker errors; the SQL authority must name this connection inside the admitted view
+ok 243 - J3: page RPC denials and envelope drift map to broker errors; the SQL authority must name this connection inside the admitted view
+  ---
+  duration_ms: 15.7481
+  type: 'test'
+  ...
+# page mode admission reuses the legacy authority/store/crypto/Auth checks before the one bound RPC
+# Subtest: J3: HTTP adapter posts the seven named page arguments with the bound 4-field binding and maps PostgREST errors without fallback
+ok 244 - J3: HTTP adapter posts the seven named page arguments with the bound 4-field binding and maps PostgREST errors without fallback
+  ---
+  duration_ms: 2.7346
+  type: 'test'
+  ...
+# Subtest: Hermes sale listing SQL: the published sale page is the only room source for reads, group preview/send and schedules
+    # Subtest: read: exactly the published page rooms (vacant + both pass), never the unlisted owner, rented rooms or media
+    ok 1 - read: exactly the published page rooms (vacant + both pass), never the unlisted owner, rented rooms or media
+      ---
+      duration_ms: 14.4146
+      type: 'test'
+      ...
+    # Subtest: read: revoked link, link of another company, building moved out and no rooms.view scope each list nothing
+    ok 2 - read: revoked link, link of another company, building moved out and no rooms.view scope each list nothing
+      ---
+      duration_ms: 16.2203
+      type: 'test'
+      ...
+    # Subtest: ACL: only authenticated calls the wrapper; the page core and fact stay private
+    ok 3 - ACL: only authenticated calls the wrapper; the page core and fact stay private
+      ---
+      duration_ms: 7.1222
+      type: 'test'
+      ...
+    # Subtest: fact: pass room uses the pass price and prints the same contact text as the connector, hiding a managed contact
+    ok 4 - fact: pass room uses the pass price and prints the same contact text as the connector, hiding a managed contact
+      ---
+      duration_ms: 8.5689
+      type: 'test'
+      ...
+    # Subtest: group preview/send: a listed pass room is selectable and its queued text is the page text
+    ok 5 - group preview/send: a listed pass room is selectable and its queued text is the page text
+      ---
+      duration_ms: 61.2021
+      type: 'test'
+      ...
+    # Subtest: group preview: revoking the share link removes even a previously listed room
+    ok 6 - group preview: revoking the share link removes even a previously listed room
+      ---
+      duration_ms: 11.1799
+      type: 'test'
+      ...
+    # Subtest: schedule rooms_public_text_v1: bulletin lists the page rooms incl. pass, never rented or unlisted rooms
+    ok 7 - schedule rooms_public_text_v1: bulletin lists the page rooms incl. pass, never rented or unlisted rooms
+      ---
+      duration_ms: 54.5238
+      type: 'test'
+      ...
+    # Subtest: schedule: no live share link is blocked as no_sale_page (incident + owner notice), never "no rooms" or the whole company
+    ok 8 - schedule: no live share link is blocked as no_sale_page (incident + owner notice), never "no rooms" or the whole company
+      ---
+      duration_ms: 136.1097
+      type: 'test'
+      ...
+    # Subtest: schedule: a live page with no listed room in the schedule buildings is still plain no_rooms
+    ok 9 - schedule: a live page with no listed room in the schedule buildings is still plain no_rooms
+      ---
+      duration_ms: 32.524
+      type: 'test'
+      ...
+    # Subtest: mutation: dropping the no_sale_page stop or its classification is observed
+    ok 10 - mutation: dropping the no_sale_page stop or its classification is observed
+      ---
+      duration_ms: 93.2039
+      type: 'test'
+      ...
+    # Subtest: mutation: dropping the company filter, the listed-status filter or the rooms.view cut is observed
+    ok 11 - mutation: dropping the company filter, the listed-status filter or the rooms.view cut is observed
+      ---
+      duration_ms: 36.7473
+      type: 'test'
+      ...
+    # Subtest: mutation: printing a managed pass contact, refusing pass rooms or an unclipped contact is observed
+    ok 12 - mutation: printing a managed pass contact, refusing pass rooms or an unclipped contact is observed
+      ---
+      duration_ms: 11.3623
+      type: 'test'
+      ...
+    1..12
+ok 245 - Hermes sale listing SQL: the published sale page is the only room source for reads, group preview/send and schedules
+  ---
+  duration_ms: 2281.8185
+  type: 'test'
+  ...
+# Subtest: TG3b opt-in runtime: the fast plan (4 reads) and the cached admission (B2-2) both cut Auth/capability adapter requests >=70%; audit is followed only by the business RPC; flag off = legacy lane
+ok 246 - TG3b opt-in runtime: the fast plan (4 reads) and the cached admission (B2-2) both cut Auth/capability adapter requests >=70%; audit is followed only by the business RPC; flag off = legacy lane
+  ---
+  duration_ms: 176.3044
+  type: 'test'
+  ...
+# Auth/capability requests, same cold+warm set per lane: cached (3 reads) legacy=93, candidate=7; fast (4 reads, warm) legacy=124, candidate=0. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.
+# Subtest: construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact
+ok 247 - construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact
+  ---
+  duration_ms: 1.646
+  type: 'test'
+  ...
+# Subtest: host-owned retention uses only its fixed executor and backend close waits actual SQL drain
+ok 248 - host-owned retention uses only its fixed executor and backend close waits actual SQL drain
+  ---
+  duration_ms: 1.7798
+  type: 'test'
+  ...
+# Subtest: trusted host resolves live owner without exposing credentials, permissions or a public identity route
+ok 249 - trusted host resolves live owner without exposing credentials, permissions or a public identity route
+  ---
+  duration_ms: 21.3222
+  type: 'test'
+  ...
+# Subtest: trusted identity reads share bounded admission and close cancels late output
+ok 250 - trusted identity reads share bounded admission and close cancels late output
+  ---
+  duration_ms: 9.7204
+  type: 'test'
+  ...
+# Subtest: trusted resolver retains startup ownership and admission after transport abort until actual pool work drains
+ok 251 - trusted resolver retains startup ownership and admission after transport abort until actual pool work drains
+  ---
+  duration_ms: 8.7517
+  type: 'test'
+  ...
+# Subtest: real composed constructors serve connect, durable MCP authority and management over HTTP using one encrypted backend core
+ok 252 - real composed constructors serve connect, durable MCP authority and management over HTTP using one encrypted backend core
+  ---
+  duration_ms: 40.63
+  type: 'test'
+  ...
+# Subtest: trusted host renewal uses composed authority/store, is absent from public routes, and stops after revoke/close
+ok 253 - trusted host renewal uses composed authority/store, is absent from public routes, and stops after revoke/close
+  ---
+  duration_ms: 24.4329
+  type: 'test'
+  ...
+# Subtest: shared outer transport gate fences exact host ports, origins, encoding and auth namespaces on both endpoint families
+ok 254 - shared outer transport gate fences exact host ports, origins, encoding and auth namespaces on both endpoint families
+  ---
+  duration_ms: 30.86
+  type: 'test'
+  ...
+# Subtest: duplicate Host/Authorization cannot be normalized into either transport before the outer gate
+ok 255 - duplicate Host/Authorization cannot be normalized into either transport before the outer gate
+  ---
+  duration_ms: 3.6094
+  type: 'test'
+  ...
+# Subtest: private pool principal failure prevents SQL activation and returned HTTP error never exposes backend details
+ok 256 - private pool principal failure prevents SQL activation and returned HTTP error never exposes backend details
+  ---
+  duration_ms: 6.1727
+  type: 'test'
+  ...
+# Subtest: closing during browser sign-in aborts that pipeline, dispatches no later prepare/activation and does not end the caller pool
+ok 257 - closing during browser sign-in aborts that pipeline, dispatches no later prepare/activation and does not end the caller pool
+  ---
+  duration_ms: 6.0601
+  type: 'test'
+  ...
+# Subtest: closing MCP stops delivery but waits for bounded broker work rather than claiming caller cancellation
+ok 258 - closing MCP stops delivery but waits for bounded broker work rather than claiming caller cancellation
+  ---
+  duration_ms: 10.4281
+  type: 'test'
+  ...
+# Subtest: composed room tool uses the encrypted assistant JWT, initial scope/data RPCs and awaited audit
+ok 259 - composed room tool uses the encrypted assistant JWT, initial scope/data RPCs and awaited audit
+  ---
+  duration_ms: 26.9127
+  type: 'test'
+  ...
+# Subtest: roomRead=page: the direct room tool reads one bound page RPC (no scope map, no whole-page RPC), never falls back, and an unknown flag is refused
+ok 260 - roomRead=page: the direct room tool reads one bound page RPC (no scope map, no whole-page RPC), never falls back, and an unknown flag is refused
+  ---
+  duration_ms: 14.1254
+  type: 'test'
+  ...
+# Subtest: server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed
+ok 261 - server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed
+  ---
+  duration_ms: 24.4501
+  type: 'test'
+  ...
+# Subtest: composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected
+ok 262 - composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected
+  ---
+  duration_ms: 13.3917
+  type: 'test'
+  ...
+# Subtest: mounted Zalo routes use verified browser identity and cannot dispatch ingress or arbitrary operations
+ok 263 - mounted Zalo routes use verified browser identity and cannot dispatch ingress or arbitrary operations
+  ---
+  duration_ms: 10.8901
+  type: 'test'
+  ...
+# Subtest: bot administration reaches only caller-JWT SQL, preserves permission denial and rejects stale configuration
+ok 264 - bot administration reaches only caller-JWT SQL, preserves permission denial and rejects stale configuration
+  ---
+  duration_ms: 6.7913
+  type: 'test'
+  ...
+# Subtest: binding shutdown waits for the dispatched RPC and never returns late success after disconnect
+ok 265 - binding shutdown waits for the dispatched RPC and never returns late success after disconnect
+  ---
+  duration_ms: 3.6029
+  type: 'test'
+  ...
+# Subtest: trusted maintenance composes actual refresh, encrypted publish and same-token renewal without a public route
+ok 266 - trusted maintenance composes actual refresh, encrypted publish and same-token renewal without a public route
+  ---
+  duration_ms: 52.9424
+  type: 'test'
+  ...
+# Subtest: external connector parks only its token, drains an active MCP call and refreshes before admitting another call
+ok 267 - external connector parks only its token, drains an active MCP call and refreshes before admitting another call
+  ---
+  duration_ms: 48.7714
+  type: 'test'
+  ...
+# Subtest: cancelled external maintenance retains the MCP fence until old SQL drains and never dispatches renewal
+ok 268 - cancelled external maintenance retains the MCP fence until old SQL drains and never dispatches renewal
+  ---
+  duration_ms: 18.4054
+  type: 'test'
+  ...
+# Subtest: external MCP request waits for the maintenance fence and is admitted only after refresh and renewal drained
+ok 269 - external MCP request waits for the maintenance fence and is admitted only after refresh and renewal drained
+  ---
+  duration_ms: 98.0356
+  type: 'test'
+  ...
+# Subtest: backend close wakes a request waiting on the maintenance fence and never dispatches it
+ok 270 - backend close wakes a request waiting on the maintenance fence and never dispatches it
+  ---
+  duration_ms: 48.8915
+  type: 'test'
+  ...
+# Subtest: maintenance wait is bounded: a request still parked after the wait gets 503 without touching SQL
+ok 271 - maintenance wait is bounded: a request still parked after the wait gets 503 without touching SQL
+  ---
+  duration_ms: 110.6379
+  type: 'test'
+  ...
+# Subtest: connector status shows only the caller's own connections with last MCP activity and a fixed error code
+ok 272 - connector status shows only the caller's own connections with last MCP activity and a fixed error code
+  ---
+  duration_ms: 25.02
+  type: 'test'
+  ...
+# Subtest: management overview and revoke avoid the capability catalog in the composed HTTP backend
+ok 273 - management overview and revoke avoid the capability catalog in the composed HTTP backend
+  ---
+  duration_ms: 15.161
+  type: 'test'
+  ...
+# Subtest: backend close holds key and maintenance capacity until ignored-abort refresh fetch actually drains
+ok 274 - backend close holds key and maintenance capacity until ignored-abort refresh fetch actually drains
+  ---
+  duration_ms: 11.7952
+  type: 'test'
+  ...
+# Subtest: backend handoff persists before activation and returns the same opaque token through the existing browser route
+ok 275 - backend handoff persists before activation and returns the same opaque token through the existing browser route
+  ---
+  duration_ms: 7.9463
+  type: 'test'
+  ...
+# Subtest: backend close waits actual handoff filesystem work after client disconnect before destroying session keys
+ok 276 - backend close waits actual handoff filesystem work after client disconnect before destroying session keys
+  ---
+  duration_ms: 6.4192
+  type: 'test'
+  ...
+# Subtest: unknown host handoff is a sanitized 503 enrollment receipt and never activates
+ok 277 - unknown host handoff is a sanitized 503 enrollment receipt and never activates
+  ---
+  duration_ms: 5.8422
+  type: 'test'
+  ...
+# Subtest: backend options composes real Auth and management using the fixed self RPC with no new authority or writes
+ok 278 - backend options composes real Auth and management using the fixed self RPC with no new authority or writes
+  ---
+  duration_ms: 3.8849
+  type: 'test'
+  ...
+# Subtest: backend close drains ignored-abort options fetch and actual body cancellation before erasing keys
+ok 279 - backend close drains ignored-abort options fetch and actual body cancellation before erasing keys
+  ---
+  duration_ms: 4.4157
+  type: 'test'
+  ...
+# Subtest: options disconnect cannot release the global sixteen-request budget before underlying fetches drain
+ok 280 - options disconnect cannot release the global sixteen-request budget before underlying fetches drain
+  ---
+  duration_ms: 35.1654
+  type: 'test'
+  ...
+# Subtest: advertised schemas make required nullable fields omittable, read tools null-free, and leave every original unchanged
+ok 281 - advertised schemas make required nullable fields omittable, read tools null-free, and leave every original unchanged
+  ---
+  duration_ms: 5.7461
+  type: 'test'
+  ...
+# Subtest: 20/10: read tools advertise no null at the top level; the originals, normalization and validators are untouched
+ok 282 - 20/10: read tools advertise no null at the top level; the originals, normalization and validators are untouched
+  ---
+  duration_ms: 3.0138
+  type: 'test'
+  ...
+# Subtest: write tools keep their advertised shape: only required+nullable becomes omittable
+ok 283 - write tools keep their advertised shape: only required+nullable becomes omittable
+  ---
+  duration_ms: 0.6794
+  type: 'test'
+  ...
+# Subtest: required nullable fields: absent, blank and nil UUID become null; everything else is exact
+ok 284 - required nullable fields: absent, blank and nil UUID become null; everything else is exact
+  ---
+  duration_ms: 0.7928
+  type: 'test'
+  ...
+# Subtest: B1c: read tools alias snake_case to a schema camelCase key and clamp limit; no synonym, no write tool, no advertised change
+ok 285 - B1c: read tools alias snake_case to a schema camelCase key and clamp limit; no synonym, no write tool, no advertised change
+  ---
+  duration_ms: 4.1954
+  type: 'test'
+  ...
+# Subtest: B1c: the broker applies the read aliases before its validators; write tools and synonyms still fail as before
+ok 286 - B1c: the broker applies the read aliases before its validators; write tools and synonyms still fail as before
+  ---
+  duration_ms: 7.5819
+  type: 'test'
+  ...
+# Subtest: non-objects, unknown tools, prototypes, accessors and hostile proxies pass through
+ok 287 - non-objects, unknown tools, prototypes, accessors and hostile proxies pass through
+  ---
+  duration_ms: 0.3328
+  type: 'test'
+  ...
+# Subtest: optional nullable UUID fields (crm_read_*) map nil/blank to null and keep absence
+ok 288 - optional nullable UUID fields (crm_read_*) map nil/blank to null and keep absence
+  ---
+  duration_ms: 0.5313
+  type: 'test'
+  ...
+# Subtest: 16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final
+ok 289 - 16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final
+  ---
+  duration_ms: 0.8829
+  type: 'test'
+  ...
+# Subtest: tools/list of a connection holding every grantable key lists every family and stays inside the budget
+ok 290 - tools/list of a connection holding every grantable key lists every family and stays inside the budget
+  ---
+  duration_ms: 4.9866
+  type: 'test'
+  ...
+# tools/list 65 tools, 62619 bytes
+# Subtest: tools/list has its own 192 KiB cap; tools/call data keeps the result cap
+ok 291 - tools/list has its own 192 KiB cap; tools/call data keeps the result cap
+  ---
+  duration_ms: 24.776
+  type: 'test'
+  ...
+# Subtest: crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear
+ok 292 - crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear
+  ---
+  duration_ms: 0.8801
+  type: 'test'
+  ...
+# Subtest: broker tools/list advertises no required nullable field across mounted families
+ok 293 - broker tools/list advertises no required nullable field across mounted families
+  ---
+  duration_ms: 3.8578
+  type: 'test'
+  ...
+# Subtest: broker turns the 16/10 incident call into the null call before any validator
+ok 294 - broker turns the 16/10 incident call into the null call before any validator
+  ---
+  duration_ms: 5.1774
+  type: 'test'
+  ...
+# Subtest: tập web dưới RLS: phiếu vào sổ quỹ của mình ở toà không có buildings.view, không có phiếu sổ người khác ở toà đó
+ok 295 - tập web dưới RLS: phiếu vào sổ quỹ của mình ở toà không có buildings.view, không có phiếu sổ người khác ở toà đó
+  ---
+  duration_ms: 1962.6184
+  type: 'test'
+  ...
+# Subtest: hàm dùng chung gọi thẳng như web: đúng tập web (RLS quyết, không giao toà theo deposits.view); p_building_ids chỉ thu hẹp; thiếu khoá trang ⇒ rỗng
+ok 296 - hàm dùng chung gọi thẳng như web: đúng tập web (RLS quyết, không giao toà theo deposits.view); p_building_ids chỉ thu hẹp; thiếu khoá trang ⇒ rỗng
+  ---
+  duration_ms: 46.5526
+  type: 'test'
+  ...
+# Subtest: hàm đọc gói (ctx toà A+B): trả phiếu vào sổ của mình ở B như web; PII vẫn rào; tổng = RPC web trên cùng tập
+ok 297 - hàm đọc gói (ctx toà A+B): trả phiếu vào sổ của mình ở B như web; PII vẫn rào; tổng = RPC web trên cùng tập
+  ---
+  duration_ms: 142.8765
+  type: 'test'
+  ...
+# Subtest: ctx chỉ toà A (kết nối thu hẹp): không trả phiếu ở B dù web hiện; tổng chỉ trên toà A
+ok 298 - ctx chỉ toà A (kết nối thu hẹp): không trả phiếu ở B dù web hiện; tổng chỉ trên toà A
+  ---
+  duration_ms: 20.4475
+  type: 'test'
+  ...
+# Subtest: cổng thật: kết nối chỉ toà A ⇒ chỉ phiếu toà A (kết nối thu hẹp); Toàn tổ chức ⇒ đúng tập web kể cả phiếu sổ của mình ở toà KHÔNG có deposits.view
+ok 299 - cổng thật: kết nối chỉ toà A ⇒ chỉ phiếu toà A (kết nối thu hẹp); Toàn tổ chức ⇒ đúng tập web kể cả phiếu sổ của mình ở toà KHÔNG có deposits.view
+  ---
+  duration_ms: 132.3359
+  type: 'test'
+  ...
+# Subtest: cổng thật: không có deposits.view ở đâu (hoặc mất khoá) ⇒ 42501
+ok 300 - cổng thật: không có deposits.view ở đâu (hoặc mất khoá) ⇒ 42501
+  ---
+  duration_ms: 20.3978
+  type: 'test'
+  ...
+# Subtest: báo cáo khác KHÔNG đổi: chỉ reservation_vouchers khai rls_buildings; báo cáo rows giữ ctx.buildings = toà của khoá ∩ kết nối
+ok 301 - báo cáo khác KHÔNG đổi: chỉ reservation_vouchers khai rls_buildings; báo cáo rows giữ ctx.buildings = toà của khoá ∩ kết nối
+  ---
+  duration_ms: 144.5762
+  type: 'test'
+  ...
+# Subtest: cổng thật rls_buildings: hơn 256 toà trong phạm vi kết nối ⇒ 22023 hermes_domain_scope_too_large (trần toà của cổng)
+ok 302 - cổng thật rls_buildings: hơn 256 toà trong phạm vi kết nối ⇒ 22023 hermes_domain_scope_too_large (trần toà của cổng)
+  ---
+  duration_ms: 53.2132
+  type: 'test'
+  ...
+# Subtest: trần 2000 hàng: cắt ở 2000, sourceCapped; tổng trên toàn nguồn (RPC web)
+ok 303 - trần 2000 hàng: cắt ở 2000, sourceCapped; tổng trên toàn nguồn (RPC web)
+  ---
+  duration_ms: 5403.512
+  type: 'test'
+  ...
+# Subtest: mutation is caught: cổng: giao lại tập toà của khoá (bản 000700)
+ok 304 - mutation is caught: cổng: giao lại tập toà của khoá (bản 000700)
+  ---
+  duration_ms: 45.9062
+  type: 'test'
+  ...
+# Subtest: mutation is caught: cổng: bỏ đòi khoá ở ít nhất một toà
+ok 305 - mutation is caught: cổng: bỏ đòi khoá ở ít nhất một toà
+  ---
+  duration_ms: 57.751
+  type: 'test'
+  ...
+# Subtest: mutation is caught: cổng: bỏ trần 256 toà của rls_buildings
+ok 306 - mutation is caught: cổng: bỏ trần 256 toà của rls_buildings
+  ---
+  duration_ms: 47.5853
+  type: 'test'
+  ...
+# Subtest: mutation is caught: cổng: bỏ thu hẹp theo phạm vi kết nối
+ok 307 - mutation is caught: cổng: bỏ thu hẹp theo phạm vi kết nối
+  ---
+  duration_ms: 44.1377
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm đọc: giao lại toà buildings.view cho phiếu cọc giữ chỗ (bản Z)
+ok 308 - mutation is caught: hàm đọc: giao lại toà buildings.view cho phiếu cọc giữ chỗ (bản Z)
+  ---
+  duration_ms: 38.532
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm dùng chung: giao lại toà theo deposits.view (bản gói A)
+ok 309 - mutation is caught: hàm dùng chung: giao lại toà theo deposits.view (bản gói A)
+  ---
+  duration_ms: 23.6836
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm dùng chung: bỏ lọc công ty
+ok 310 - mutation is caught: hàm dùng chung: bỏ lọc công ty
+  ---
+  duration_ms: 27.0555
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm dùng chung: bỏ khoá trang
+ok 311 - mutation is caught: hàm dùng chung: bỏ khoá trang
+  ---
+  duration_ms: 12.1214
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm đọc: không thu hẹp theo ctx.buildings
+ok 312 - mutation is caught: hàm đọc: không thu hẹp theo ctx.buildings
+  ---
+  duration_ms: 40.5656
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm đọc: tổng trên tập khác ctx.buildings
+ok 313 - mutation is caught: hàm đọc: tổng trên tập khác ctx.buildings
+  ---
+  duration_ms: 39.7914
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm đọc: trả người nộp
+ok 314 - mutation is caught: hàm đọc: trả người nộp
+  ---
+  duration_ms: 44.8068
+  type: 'test'
+  ...
+# Subtest: mutation is caught: hàm đọc: trả tên phiếu
+ok 315 - mutation is caught: hàm đọc: trả tên phiếu
+  ---
+  duration_ms: 25.7916
+  type: 'test'
+  ...
+# Subtest: MCP: status → recipients by label → requestId → send; lost ACK reconciles by the same requestId, never a second run
+ok 316 - MCP: status → recipients by label → requestId → send; lost ACK reconciles by the same requestId, never a second run
+  ---
+  duration_ms: 2172.6726
+  type: 'test'
+  ...
+# Subtest: MCP update: version from status, only requested fields, stale version refused; overlay removal hides writes
+ok 317 - MCP update: version from status, only requested fields, stale version refused; overlay removal hides writes
+  ---
+  duration_ms: 1285.9733
+  type: 'test'
+  ...
+# Subtest: capability gate: Read for everything, manage for writes, send only for send; existing keys only
+ok 318 - capability gate: Read for everything, manage for writes, send only for send; existing keys only
+  ---
+  duration_ms: 1.2211
+  type: 'test'
+  ...
+# Subtest: input: canonical, idempotent, zone-required times; ids only, never names
+ok 319 - input: canonical, idempotent, zone-required times; ids only, never names
+  ---
+  duration_ms: 2.661
+  type: 'test'
+  ...
+# Subtest: result: strict shapes; refusals keep the CRM code/reason verbatim and add plain-Vietnamese guidance
+ok 320 - result: strict shapes; refusals keep the CRM code/reason verbatim and add plain-Vietnamese guidance
+  ---
+  duration_ms: 1.8907
+  type: 'test'
+  ...
+# Subtest: tool definitions: Vietnamese meaning, requestId on writes that start a command, no required nullable after shaping
+ok 321 - tool definitions: Vietnamese meaning, requestId on writes that start a command, no required nullable after shaping
+  ---
+  duration_ms: 0.5859
+  type: 'test'
+  ...
+# Subtest: broker: cutover hides crm_room_schedule_create/update, lists the broadcast tools, and tools/list stays under 64 KiB
+ok 322 - broker: cutover hides crm_room_schedule_create/update, lists the broadcast tools, and tools/list stays under 64 KiB
+  ---
+  duration_ms: 7.9604
+  type: 'test'
+  ...
+# tools/list 57 tools, 56115 bytes
+# Subtest: broker: gating per call, lost write ACK is zalo_broadcast_outcome_unknown with requestId and never retried
+ok 323 - broker: gating per call, lost write ACK is zalo_broadcast_outcome_unknown with requestId and never retried
+  ---
+  duration_ms: 3.8418
+  type: 'test'
+  ...
+# Subtest: SQL normaliser matches worker/lib/automation-config.js for time, days and recipients
+ok 324 - SQL normaliser matches worker/lib/automation-config.js for time, days and recipients
+  ---
+  duration_ms: 1604.9334
+  type: 'test'
+  ...
+# Subtest: status reads the CRM automation, normalised, with version, groups and one-shot runs
+ok 325 - status reads the CRM automation, normalised, with version, groups and one-shot runs
+  ---
+  duration_ms: 1173.5266
+  type: 'test'
+  ...
+# Subtest: recipients: only company sale groups; label names are per nick; group/label filters fold accents
+ok 326 - recipients: only company sale groups; label names are per nick; group/label filters fold accents
+  ---
+  duration_ms: 1231.1895
+  type: 'test'
+  ...
+# Subtest: send: default full, now or once later; CRM refusals come back coded; same requestId is reused, never duplicated
+ok 327 - send: default full, now or once later; CRM refusals come back coded; same requestId is reused, never duplicated
+  ---
+  duration_ms: 1185.6753
+  type: 'test'
+  ...
+# Subtest: cancel: only a pending run of this company; repeat is reused; a running one is refused
+ok 328 - cancel: only a pending run of this company; repeat is reused; a running one is refused
+  ---
+  duration_ms: 1161.2148
+  type: 'test'
+  ...
+# Subtest: update patches only the requested fields, keeps the rest, and refuses stale versions
+ok 329 - update patches only the requested fields, keeps the rest, and refuses stale versions
+  ---
+  duration_ms: 1270.8522
+  type: 'test'
+  ...
+# Subtest: update: set list, invalid recipients, no-op, emergency stop, legacy owner and warnings
+ok 330 - update: set list, invalid recipients, no-op, emergency stop, legacy owner and warnings
+  ---
+  duration_ms: 1209.2577
+  type: 'test'
+  ...
+# Subtest: authority: Read for every call, Action manage for writes, send for send; overlay, registry and binding are rechecked in SQL
+ok 331 - authority: Read for every call, Action manage for writes, send for send; overlay, registry and binding are rechecked in SQL
+  ---
+  duration_ms: 1145.1978
+  type: 'test'
+  ...
+# Subtest: review fixes (20261016140535): send Action gates turning sends on; writes need the Toàn tổ chức overlay; UUID case
+ok 332 - review fixes (20261016140535): send Action gates turning sends on; writes need the Toàn tổ chức overlay; UUID case
+  ---
+  duration_ms: 1053.2484
+  type: 'test'
+  ...
+# Subtest: review fixes (20261016140535): stop mark taken after the company lock; legacy text schedules cannot be created in SQL
+ok 333 - review fixes (20261016140535): stop mark taken after the company lock; legacy text schedules cannot be created in SQL
+  ---
+  duration_ms: 1096.7935
+  type: 'test'
+  ...
+1..333
+# tests 356
+# suites 0
+# pass 356
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 68357.0502

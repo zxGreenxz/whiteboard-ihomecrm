@@ -36,6 +36,8 @@ export type DepositTaskKind =
   | "TOPUP_DUE_SOON"
   /** Phiếu giữ chỗ đã duyệt, còn hạn — việc là làm hợp đồng. */
   | "HOLD_READY"
+  /** Đã duyệt nhưng chưa xác nhận tiền thực nhận, hoặc chưa đủ cọc. */
+  | "PENDING_RECEIPT"
   /** Phiếu giữ chỗ chờ duyệt. */
   | "PENDING_APPROVAL";
 
@@ -54,9 +56,11 @@ export interface DepositTask {
   personName: string;
   /** Số tiền in đậm trên thẻ: còn thiếu (nợ cọc) hoặc tiền cọc (giữ chỗ). */
   amount: number;
-  /** Đã thu / cần thu — chỉ có ở nhánh nợ cọc, null ở nhánh giữ chỗ. */
+  /** Tổng thực nhận đã xác nhận của đúng hồ sơ; không thay bằng mệnh giá phiếu. */
   paidAmount: number | null;
   expectedAmount: number | null;
+  /** UNKNOWN còn nguồn chưa đối chiếu; paidAmount chỉ là phần đã xác nhận. */
+  receivedFactStatus?: 'VERIFIED' | 'UNKNOWN';
   /** Mốc hạn ("YYYY-MM-DD") — hẹn bổ sung cọc, hoặc hạn phải làm hợp đồng. */
   dueDate: string | null;
   /** dueDate − today theo NGÀY. Âm = đã trễ. null khi không có mốc. */
@@ -84,6 +88,7 @@ const GROUP_META: Record<DepositTaskKind, { label: string; tone: DepositTaskTone
   RESV_TOPUP_DUE_SOON: { label: "SẮP HẾT HẠN BỔ SUNG CỌC", tone: "warn" },
   TOPUP_DUE_SOON: { label: "SẮP ĐẾN HẠN", tone: "warn" },
   HOLD_READY: { label: "GIỮ CHỖ SẴN SÀNG KÝ HĐ", tone: "ok" },
+  PENDING_RECEIPT: { label: "CHƯA XÁC NHẬN ĐỦ TIỀN CỌC", tone: "pending" },
   PENDING_APPROVAL: { label: "CHỜ DUYỆT", tone: "pending" },
 };
 
@@ -101,6 +106,7 @@ const GROUP_ORDER: DepositTaskKind[] = [
   "RESV_TOPUP_DUE_SOON",
   "TOPUP_DUE_SOON",
   "HOLD_READY",
+  "PENDING_RECEIPT",
   "PENDING_APPROVAL",
 ];
 
@@ -180,17 +186,33 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
 
   // ── Phiếu cọc giữ chỗ ────────────────────────────────────────────────────
   //
-  // "Đã thu bao nhiêu" phải cộng theo PHÒNG, không theo phiếu: khách bổ sung
-  // cọc bằng một PHIẾU THU MỚI trên cùng phòng, chứ không sửa phiếu cũ. Đọc mỗi
-  // phiếu riêng lẻ thì một phòng đã thu đủ 5tr qua hai lần vẫn bị coi là còn
-  // thiếu 3tr, và thẻ đỏ sẽ không bao giờ rời hàng đợi.
-  const paidByRoom = new Map<string, number>();
+  // Only confirmed receipt facts from the SAME reservation may be combined.
+  // Legacy vouchers have no reliable party identity and remain individual.
+  const identity = (v: ReservationDepositRow) => v.reservation_id
+    ? `reservation:${v.reservation_id}` : `voucher:${v.id}`;
+  const paidByReservation = new Map<string, number>();
+  const unknownReservations = new Set<string>();
+  const seenVouchers = new Set<string>();
   for (const v of reservations) {
-    if (v.settlement_status === "SETTLED" || v.approval_status === "CANCELLED" || !v.room_id) continue;
-    paidByRoom.set(v.room_id, (paidByRoom.get(v.room_id) ?? 0) + v.total_amount);
+    if (seenVouchers.has(v.id)) continue;
+    seenVouchers.add(v.id);
+    if (v.settlement_status === "SETTLED" || v.approval_status === "CANCELLED") continue;
+    const key = identity(v);
+    if (v.received_fact_status !== "VERIFIED" || !Number.isSafeInteger(v.received_amount)
+      || v.received_amount! < 0) {
+      unknownReservations.add(key);
+      continue;
+    }
+    if (v.approval_status !== "APPROVED") continue;
+    const next = (paidByReservation.get(key) ?? 0) + v.received_amount!;
+    if (!Number.isSafeInteger(next)) throw new TypeError("Số tiền cọc thực nhận vượt giới hạn.");
+    paidByReservation.set(key, next);
   }
 
+  seenVouchers.clear();
   for (const v of reservations) {
+    if (seenVouchers.has(v.id)) continue;
+    seenVouchers.add(v.id);
     if (v.settlement_status === "SETTLED" || v.approval_status === "CANCELLED") continue;
     const terms = holdTerms[v.id];
     const holdUntil = terms?.holdUntil ?? null;
@@ -200,7 +222,7 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
     const holdDays = holdUntil ? diffDaysISO(holdUntil, today) : null;
     const topupDays = topupDue ? diffDaysISO(topupDue, today) : null;
 
-    const paid = v.room_id ? (paidByRoom.get(v.room_id) ?? v.total_amount) : v.total_amount;
+    const paid = paidByReservation.get(identity(v)) ?? 0;
     const shortfall = target === null ? 0 : target - paid;
     const conThieu = shortfall >= DEPOSIT_ROUNDING_THRESHOLD;
 
@@ -225,6 +247,10 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       kind = "RESV_TOPUP_DUE_SOON";
       dueDate = topupDue;
       daysToDue = topupDays;
+    } else if (unknownReservations.has(identity(v)) || paid <= 0 || conThieu) {
+      kind = "PENDING_RECEIPT";
+      dueDate = holdUntil;
+      daysToDue = holdDays;
     } else {
       kind = "HOLD_READY";
       dueDate = holdUntil;
@@ -242,8 +268,9 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       personName: v.payer_name ?? "—",
       // Thẻ thiếu cọc in đậm SỐ CÒN THIẾU (việc phải làm), thẻ khác in số cọc.
       amount: laTopup ? Math.max(0, shortfall) : v.total_amount,
-      paidAmount: laTopup ? paid : null,
-      expectedAmount: laTopup ? target : null,
+      paidAmount: unknownReservations.has(identity(v)) && !paidByReservation.has(identity(v)) ? null : paid,
+      expectedAmount: target,
+      receivedFactStatus: unknownReservations.has(identity(v)) ? "UNKNOWN" : "VERIFIED",
       dueDate,
       daysToDue,
       heldDays: diffDaysISO(today, v.voucher_date),

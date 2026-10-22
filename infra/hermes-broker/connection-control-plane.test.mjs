@@ -79,7 +79,7 @@ test('one backend sign-in creates an independently verified session, then primar
 test('caller cannot submit existing session pairs, actor, endpoint, operation ids, unsupported actions or malformed credentials', async t => {
   for (const mutate of [input => { input.userId = ids.other; }, input => { input.password = ''; },
     input => { input.endpoint = 'https://foreign.invalid'; }, input => { input.operationId = ids.other; },
-    input => { input.restrictions.read.push('future.unsupported_read'); }, input => { input.restrictions.action.push('rooms.edit'); },
+    input => { input.restrictions.read.push('future.unsupported_read'); }, input => { input.restrictions.action.push('rooms.delete'); },
     input => { input.scopeIds = new Array(1); }, input => { input.scopeIds.push(ids.scope); },
     input => { input.assistantSession = { accessToken: 'OWNED_ACCESS', refreshToken: 'OWNED_REFRESH' }; },
     input => { input.refreshToken = 'OWNED_REFRESH'; }, input => { input.email = 'invalid'; },
@@ -505,6 +505,32 @@ test('rooms authority revoked during fresh assistant authentication prevents enr
 test('explicit fixed action is preserved through user-policy checks, prepare, activation and opaque result',async t=>{
  const f=fixture(t),input=request();input.restrictions.action=['chat_zalo.send'];f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];f.state.prepared.restrictions.action=['chat_zalo.send'];
  const result=await f.connect(input);assert.deepEqual(result.connection.restrictions.action,['chat_zalo.send']);assert.deepEqual(f.calls.find(c=>c.operation==='prepare').restrictions.action,['chat_zalo.send']);assert.equal(f.calls.filter(c=>c.operation==='activate').length,1);
+});
+
+test('sale actions remain opt-in and each requested action needs both current user rights and company permission', async t => {
+  const actions = ['rooms.edit', 'sale_phong.edit', 'sale_phong.manage_images', 'sale_phong.lock_room', 'deposits.create', 'deposits.edit'];
+  const unrequested = fixture(t);
+  unrequested.state.auth.permissions.action = [...actions];
+  unrequested.state.auth.companyCeilings.action = [...actions];
+  assert.deepEqual((await unrequested.connect()).connection.restrictions.action, []);
+  assert.deepEqual(unrequested.calls.find(call => call.operation === 'prepare').restrictions.action, []);
+  for (const action of actions) {
+    const accepted = fixture(t), input = request();
+    input.restrictions.action = [action];
+    accepted.state.auth.permissions.action = [...actions];
+    accepted.state.auth.companyCeilings.action = [...actions];
+    accepted.state.prepared.restrictions.action = [action];
+    assert.deepEqual((await accepted.connect(input)).connection.restrictions.action, [action]);
+    assert.deepEqual(accepted.calls.find(call => call.operation === 'prepare').restrictions.action, [action]);
+    for (const authority of ['permissions', 'companyCeilings']) {
+      const denied = fixture(t);
+      denied.state.auth.permissions.action = [...actions];
+      denied.state.auth.companyCeilings.action = [...actions];
+      denied.state.auth[authority].action = actions.filter(key => key !== action);
+      await assert.rejects(denied.connect(input), code('forbidden'));
+      assert(!denied.calls.some(call => ['signIn', 'prepare', 'activate'].includes(call.operation)));
+    }
+  }
 });
 
 test('group read can enroll with no rooms or send grant',async t=>{

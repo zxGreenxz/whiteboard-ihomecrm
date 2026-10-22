@@ -36,6 +36,9 @@ function resvRow(over: Partial<ReservationDepositRow> = {}): ReservationDepositR
     name: "Cọc giữ chỗ phòng 309",
     payer_name: "Nguyễn Thị Kim Chi",
     total_amount: 2_000_000,
+    received_amount: over.total_amount ?? 2_000_000,
+    received_fact_status: "VERIFIED",
+    reservation_id: "reservation-1",
     voucher_date: "2026-08-14",
     approval_status: "APPROVED",
     approval_version: 1,
@@ -257,7 +260,7 @@ describe("buildDepositWorkQueue — hạn BỔ SUNG CỌC của phiếu giữ ch
     expect(kinds(groups)).toEqual(["RESV_TOPUP_OVERDUE"]);
   });
 
-  it("bổ sung bằng PHIẾU THU MỚI cùng phòng thì thẻ rời hàng đợi", () => {
+  it("bổ sung thực nhận bằng PHIẾU THU MỚI cùng hồ sơ thì thẻ rời hàng đợi", () => {
     // Khách không sửa phiếu cũ — họ nộp thêm một phiếu nữa. Cộng theo PHÒNG.
     const groups = buildDepositWorkQueue({
       today: "2026-08-26",
@@ -365,6 +368,66 @@ describe("buildDepositWorkQueue — thứ tự và tổng", () => {
 
   it("hàng đợi rỗng khi không có gì gấp", () => {
     expect(countTasks(buildDepositWorkQueue({ today: TODAY, held: [], reservations: [] }))).toBe(0);
+  });
+});
+
+describe("buildDepositWorkQueue — tiền thực nhận đúng hồ sơ", () => {
+  const terms = { v1: { holdUntil: "2026-10-30", topupDueDate: "2026-10-10", depositTarget: 5_000_000 } };
+  const build = (extra: Partial<ReservationDepositRow>, base: Partial<ReservationDepositRow> = {}) =>
+    buildDepositWorkQueue({
+      today: "2026-10-21", held: [], holdTerms: terms,
+      reservations: [resvRow(base), resvRow({ id: "v2", total_amount: 3_000_000, ...extra })],
+    });
+  it.each([
+    { approval_status: "UNAPPROVED" as const },
+    { received_amount: 0 },
+    { received_fact_status: "UNKNOWN" as const },
+    { reservation_id: "other-reservation" },
+    { reservation_id: null },
+    { settlement_status: "SETTLED" as const },
+  ])("không cộng cọc khác hoặc chưa thực nhận: %j", extra => {
+    const task = build(extra).find(g => g.kind === "RESV_TOPUP_OVERDUE")?.tasks.find(t => t.voucherId === "v1");
+    expect(task).toMatchObject({ paidAmount: 2_000_000, amount: 3_000_000 });
+  });
+  it("legacy trên cùng phòng vẫn tách từng phiếu, không đoán cùng khách", () => {
+    const task = build({ reservation_id: null }, { reservation_id: null })[0].tasks[0];
+    expect(task).toMatchObject({ paidAmount: 2_000_000, amount: 3_000_000 });
+  });
+  it("tiền đã thu đủ qua hai phiếu cùng hồ sơ loại cảnh báo; bản lặp không cộng hai lần", () => {
+    expect(kinds(build({}))).not.toContain("RESV_TOPUP_OVERDUE");
+    const v = resvRow();
+    const tasks = buildDepositWorkQueue({ today: "2026-10-21", held: [], holdTerms: terms, reservations: [v, v] });
+    expect(countTasks(tasks)).toBe(1);
+    expect(tasks[0].tasks[0]).toMatchObject({ paidAmount: 2_000_000, amount: 3_000_000 });
+  });
+  it("phiếu đã duyệt nhưng chưa có cash fact không được hiện sẵn sàng ký", () => {
+    expect(kinds(buildDepositWorkQueue({
+      today: TODAY, held: [], reservations: [resvRow({ received_amount: undefined, received_fact_status: undefined })],
+    }))).toEqual(["PENDING_RECEIPT"]);
+  });
+  it.each([
+    { received_amount: 0, received_fact_status: "VERIFIED" as const, expectedPaid: 0 },
+    { received_amount: undefined, received_fact_status: "UNKNOWN" as const, expectedPaid: null },
+  ])("quá hạn giữ chỗ vẫn giữ thực nhận $expectedPaid, không dùng mệnh giá", ({ expectedPaid, ...facts }) => {
+    const groups = buildDepositWorkQueue({
+      today: TODAY, held: [], reservations: [resvRow(facts)],
+      holdTerms: { v1: { holdUntil: "2026-08-20", topupDueDate: null, depositTarget: 5_000_000 } },
+    });
+    expect(groups[0].tasks[0]).toMatchObject({
+      kind: "HOLD_OVERDUE", amount: 2_000_000, paidAmount: expectedPaid,
+      receivedFactStatus: facts.received_fact_status, expectedAmount: 5_000_000,
+    });
+  });
+  it("một nguồn cùng hồ sơ chưa đối chiếu giữ cả hồ sơ ở chờ nhận dù phần biết đã đủ mục tiêu", () => {
+    const groups = buildDepositWorkQueue({
+      today: TODAY, held: [], reservations: [
+        resvRow({ total_amount: 5_000_000 }),
+        resvRow({ id: "v2", received_amount: undefined, received_fact_status: "UNKNOWN" }),
+      ],
+      holdTerms: { v1: { holdUntil: null, topupDueDate: null, depositTarget: 5_000_000 } },
+    });
+    expect(kinds(groups)).toEqual(["PENDING_RECEIPT"]);
+    expect(groups[0].tasks.every(task => task.receivedFactStatus === "UNKNOWN" && task.paidAmount === 5_000_000)).toBe(true);
   });
 });
 

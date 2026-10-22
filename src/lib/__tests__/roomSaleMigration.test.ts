@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -10,6 +11,32 @@ const salePolicySql = readFileSync('supabase/migrations/20261010022101_public_ro
 const saleLockSql = readFileSync('supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql', 'utf8');
 // Reader trong app hiện hành: bản lock tạm + cột Tình trạng gõ tay (sale_status_note).
 const statusNoteSql = readFileSync('supabase/migrations/20261010160612_room_sale_status_note.sql', 'utf8');
+
+// Historical migrations below still build/replay their original schema. Reader
+// assertions run the latest exact function and its real policy dependencies.
+const migrationCorpus = readdirSync('supabase/migrations').filter(file => file.endsWith('.sql')).sort().reverse()
+  .map(file => ({ file, sql: readFileSync(join('supabase/migrations', file), 'utf8') }));
+function liveDefinitionOf(qualified: string): { file: string; sql: string } {
+  const pattern = new RegExp('CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+' + qualified.replace(/\./g, '\\.')
+    + '\\s*\\([\\s\\S]*?\\bAS\\s+(\\$[a-zA-Z_]*\\$)[\\s\\S]*?\\1\\s*;', 'i');
+  for (const migration of migrationCorpus) {
+    const match = migration.sql.match(pattern);
+    if (match) return { file: migration.file, sql: match[0].replace(/^CREATE FUNCTION/i, 'CREATE OR REPLACE FUNCTION') };
+  }
+  throw new Error('Missing live function: ' + qualified);
+}
+async function installLiveSaleReader() {
+  const tablePattern = /CREATE TABLE IF NOT EXISTS app_private\.room_sale_policies_v1\([\s\S]*?\n\);/;
+  const table = migrationCorpus.map(migration => migration.sql.match(tablePattern)?.[0]).find(Boolean);
+  if (!table) throw new Error('Missing live room policy table definition');
+  await db.exec(table);
+  for (const name of ['app_private.room_sale_policy_json_v1', 'app_private.room_sale_policy_current_v1',
+    'app_private.room_sale_policy_active_text_v1', 'app_private.room_sale_policy_overlay_v1',
+    'public.get_my_available_rooms']) {
+    await db.exec(liveDefinitionOf(name).sql);
+  }
+}
+
 const db = new PGlite();
 const owner = '00000000-0000-4000-8000-000000000010';
 const org = '00000000-0000-4000-8000-000000000001';
@@ -64,7 +91,7 @@ beforeAll(async () => {
     CREATE TABLE public.services(id uuid,unit text,unit_price numeric,type text,deleted_at timestamptz);
     CREATE TABLE public.hotlines(id uuid,user_id uuid,name text,phone_number text,is_active boolean,created_at timestamptz);
     -- Match existing authenticated reader ACL; replacement must retain it.
-    CREATE FUNCTION public.get_my_available_rooms() RETURNS jsonb LANGUAGE sql AS $$ SELECT NULL::jsonb $$;
+    ${liveDefinitionOf('public.get_my_available_rooms').sql}
     REVOKE ALL ON FUNCTION public.get_my_available_rooms() FROM PUBLIC,anon;
     GRANT EXECUTE ON FUNCTION public.get_my_available_rooms() TO authenticated;
     GRANT USAGE ON SCHEMA public,app_private,auth TO anon,authenticated;
@@ -100,6 +127,8 @@ beforeAll(async () => {
   await db.exec(saleLockSql);
   await db.exec(statusNoteSql);
   await db.exec(statusNoteSql);
+  await installLiveSaleReader();
+  await installLiveSaleReader();
   await db.exec('RESET check_function_bodies');
 }, 20000);
 beforeEach(async () => {
