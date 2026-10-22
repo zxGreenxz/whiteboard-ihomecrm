@@ -19,9 +19,9 @@ function LiveTile({ recorderId, channel, name }: { recorderId: string; channel: 
     void connection.start();
     return () => { active = false; connection.stop(); if (element) element.srcObject = null; };
   }, [recorderId, channel, attempt]);
-  return <article className="overflow-hidden border-2 border-black bg-black text-white" aria-label={`Trực tiếp ${name}`}>
+  return <article className="flex min-h-0 flex-col overflow-hidden border-2 border-black bg-black text-white" aria-label={`Trực tiếp ${name}`}>
     <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm"><strong>{name}</strong><span aria-live="polite">{state === "playing" ? "● Trực tiếp" : state === "connecting" ? "Đang kết nối" : "Chưa có hình"}</span></div>
-    <div className="relative aspect-video">
+    <div className="relative aspect-video group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 group-[:fullscreen]/live-wall:aspect-auto">
       <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${state === "playing" ? "" : "invisible"}`} aria-label={`Video ${name}`} />
       {state !== "playing" && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black p-3 text-center text-sm"><p>{message || "Đang kết nối camera…"}</p>{state === "error" && <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Xem lại</Button>}</div>}
     </div>
@@ -48,22 +48,22 @@ export default function CameraLiveWall({ recorder }: { recorder: CameraRecorder 
     finally { if (!abort.signal.aborted) setLoading(false); }
   };
   const displayed = channels.slice(page * count, (page + 1) * count);
-  return <section ref={container} className="nc-panel bg-white" aria-label={`Xem trực tiếp ${recorder.display_name}`}>
-    <div className="nc-panel-heading flex-wrap gap-3">
+  return <section ref={container} className="nc-panel group/live-wall bg-white [&:fullscreen]:flex [&:fullscreen]:h-screen [&:fullscreen]:flex-col [&:fullscreen]:overflow-hidden" aria-label={`Xem trực tiếp ${recorder.display_name}`}>
+    <div className="nc-panel-heading shrink-0 flex-wrap gap-3">
       <div><p className="nc-eyebrow">Hình ảnh trực tiếp</p><h3>{recorder.display_name}</h3></div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm">Số ô <select aria-label="Số camera cùng lúc" value={count} className="ml-2 border-2 border-black bg-white p-2" onChange={(event) => { setCount(Number(event.target.value)); setPage(0); }}>{[1, 4, 9, 16].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
         {!running ? <Button disabled={loading || !recorder.enabled} onClick={() => void start()}><Play className="mr-2 h-4 w-4" />{loading ? "Đang kiểm tra quyền…" : "Xem trực tiếp"}</Button>
           : <Button variant="outline" onClick={() => setRunning(false)}><Square className="mr-2 h-4 w-4" />Dừng xem</Button>}
-        {running && <Button variant="outline" onClick={() => { void container.current?.requestFullscreen().catch(() => setError("Trình duyệt chưa cho phép toàn màn hình.")); }}><Expand className="mr-2 h-4 w-4" />Toàn màn hình</Button>}
+        {running && <Button variant="outline" onClick={() => { const request = document.fullscreenElement === container.current ? document.exitFullscreen() : container.current?.requestFullscreen(); void request?.catch(() => setError("Trình duyệt chưa cho phép toàn màn hình.")); }}><Expand className="mr-2 h-4 w-4" /><span className="group-[:fullscreen]/live-wall:hidden">Toàn màn hình</span><span className="hidden group-[:fullscreen]/live-wall:inline">Thoát toàn màn hình</span></Button>}
       </div>
     </div>
     {error && <p role="alert" className="p-4 text-red-700">{error}</p>}
     {running ? <>
-      <div className={`grid gap-2 bg-neutral-900 p-2 ${count === 1 ? "grid-cols-1" : count === 4 ? "grid-cols-1 sm:grid-cols-2" : count === 9 ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"}`}>
+      <div className={`grid gap-2 bg-neutral-900 p-2 group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 ${count === 1 ? "grid-cols-1 group-[:fullscreen]/live-wall:grid-rows-1" : count === 4 ? "grid-cols-1 sm:grid-cols-2 group-[:fullscreen]/live-wall:grid-cols-2 group-[:fullscreen]/live-wall:grid-rows-2" : count === 9 ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 group-[:fullscreen]/live-wall:grid-cols-3 group-[:fullscreen]/live-wall:grid-rows-3" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 group-[:fullscreen]/live-wall:grid-cols-4 group-[:fullscreen]/live-wall:grid-rows-4"}`}>
         {displayed.map((channel) => <LiveTile key={channel} recorderId={recorder.id} channel={channel} name={recorder.snapshot?.channels.find((row) => row.channel === channel)?.name || `Kênh ${channel}`} />)}
       </div>
-      {channels.length > count && <div className="flex items-center justify-center gap-3 p-3"><Button variant="outline" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>Nhóm trước</Button><span>{page + 1} / {Math.ceil(channels.length / count)}</span><Button variant="outline" disabled={(page + 1) * count >= channels.length} onClick={() => setPage((value) => value + 1)}>Nhóm sau</Button></div>}
+      {channels.length > count && <div className="flex shrink-0 items-center justify-center gap-3 p-3"><Button variant="outline" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>Nhóm trước</Button><span>{page + 1} / {Math.ceil(channels.length / count)}</span><Button variant="outline" disabled={(page + 1) * count >= channels.length} onClick={() => setPage((value) => value + 1)}>Nhóm sau</Button></div>}
     </> : <p className="p-4 text-sm">Bấm xem để kết nối. Video không được lưu thêm tại CRM. Khả năng phát phụ thuộc định dạng camera và trình duyệt; đường truyền hạn chế có thể cần thử mạng khác.</p>}
   </section>;
 }
