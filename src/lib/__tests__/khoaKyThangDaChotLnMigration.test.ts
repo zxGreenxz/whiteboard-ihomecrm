@@ -23,6 +23,7 @@ import { profitPostLockSchema } from '@/lib/profitPostLock';
 const FILE = process.env.KHOA_KY_MIGRATION_FILE ?? 'supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql';
 const KHOA_NGAY = 'supabase/migrations/20260925073251_khoa_thang_loi_nhuan_tuyet_doi.sql';
 const PROD_MD5 = '877f88c3b7371acb6633ce5f091e85d4';
+const PROD_MD5_CUA_CHOT = 'a388bdb80d2ff6a213c4e2866f7e49fa';
 const MIG_DIR = join(process.cwd(), 'supabase', 'migrations');
 const KHOA_KY_FILE = '20261022172918_khoa_ky_thang_da_chot_ln.sql';
 
@@ -51,7 +52,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const [ORG_A, ORG_B, CHU_A, NV_A, CHU_B, SUPER, NGOAI] = [1, 2, 3, 4, 5, 6, 7].map(id);
 const [TOA_A, TOA_A2, TOA_B] = [11, 12, 13].map(id);
 const [LOAI_THU, LOAI_CHI, LOAI_COC] = [21, 22, 23].map(id);
-const [HD_T8, HD_T9] = [31, 32].map(id);
+const [HD_T8, HD_T9, HD_KHAC] = [31, 32, 33].map(id);
 const CHOT_T8 = '2025-09-03T03:00:00Z';
 
 const db = new PGlite();
@@ -135,6 +136,7 @@ async function phieu(p: {
 
 const P: Record<string, string> = {};
 let md5SauLuotMot = '';
+let md5CuaChotSauLuotMot = '';
 
 beforeAll(async () => {
   await chay(`
@@ -227,7 +229,8 @@ beforeAll(async () => {
     INSERT INTO public.income_expense_types(id, name, category, is_deposit) VALUES
       ('${LOAI_THU}','Tiền phòng','Phòng',false),('${LOAI_CHI}','Đóng tiền điện','Điện',false),
       ('${LOAI_COC}','Tiền cọc','Cọc',true);
-    INSERT INTO public.invoices VALUES ('${HD_T8}','2025-08','${TOA_A}',null),('${HD_T9}','2025-09','${TOA_A}',null);
+    INSERT INTO public.invoices VALUES ('${HD_T8}','2025-08','${TOA_A}',null),('${HD_T9}','2025-09','${TOA_A}',null),
+      ('${HD_KHAC}','2025-08','${TOA_A2}',null);
   `);
   for (const sql of [
     liveFunctionSql('public', 'add_cycle'),
@@ -238,6 +241,8 @@ beforeAll(async () => {
     liveFunctionSql('public', 'generate_recurring_vouchers'),
     // Thân trigger phiếu ĐANG CHẠY production (trước migration này).
     sliceFunction(KHOA_NGAY, 'CREATE OR REPLACE FUNCTION public.income_expenses_check_profit_lock()', '$function$;'),
+    // Cửa chặn chốt ĐANG CHẠY production (chỉ đếm phiếu chờ theo ngày phiếu).
+    sliceFunction(KHOA_NGAY, 'CREATE OR REPLACE FUNCTION app_private.guard_profit_month_lock_pending_v1()', '$function$;'),
   ]) await chay(sql);
   await chay(`
     CREATE TRIGGER a02_ie_profit_lock_ins BEFORE INSERT ON public.income_expenses
@@ -248,6 +253,9 @@ beforeAll(async () => {
       FOR EACH ROW EXECUTE FUNCTION public.income_expenses_check_profit_lock();
     CREATE TRIGGER a02_ie_items_profit_lock BEFORE INSERT OR UPDATE OR DELETE ON public.income_expense_items
       FOR EACH ROW EXECUTE FUNCTION public.income_expense_items_check_profit_lock();
+    CREATE TRIGGER a10_profit_month_lock_requires_no_pending
+      BEFORE INSERT OR UPDATE OF locked_at ON public.profit_monthly
+      FOR EACH ROW EXECUTE FUNCTION app_private.guard_profit_month_lock_pending_v1();
   `);
 
   // Dữ liệu dựng khi tháng còn MỞ / trước khi có khoá kỳ (như đời thật), rồi mới chốt T8/2025
@@ -263,6 +271,9 @@ beforeAll(async () => {
   P.hanChe = await phieu({ ngay: '2025-09-07', tao: '2025-09-07T03:00:00Z', hanChe: true, ma: 'PXHANCHE',
     dong: [{ tien: 2_000_000, tu: '2025-08-01', den: '2025-08-31' }] });
   P.thuHd = await phieu({ loai: 'INCOME', ngay: '2025-09-04', tao: '2025-09-04T03:00:00Z', hoaDon: HD_T8, dong: [{ tien: 3_000_000 }] });
+  // Thu tiền hoá đơn T8 TRƯỚC lúc chốt (ngày phiếu tháng 9 còn mở): số chốt T8 đã có nó.
+  P.thuHdTruoc = await phieu({ loai: 'INCOME', ngay: '2025-09-02', tao: '2025-09-02T01:00:00Z', hoaDon: HD_T8,
+    dong: [{ tien: 2_500_000 }] });
   P.cho = await phieu({ ngay: '2025-09-02', tao: '2025-09-02T03:00:00Z', trangThai: 'UNAPPROVED',
     dong: [{ tien: 250_000, tu: '2025-08-01', den: '2025-08-31' }] });
   P.coc = await phieu({ loai: 'INCOME', ngay: '2025-09-08', tao: '2025-09-08T03:00:00Z',
@@ -288,15 +299,21 @@ beforeAll(async () => {
   `);
 
   // Bản production phải tái lập đúng md5 trước khi áp.
-  const { rows } = await db.query<{ m: string }>(
-    "SELECT md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure)) AS m");
-  expect(rows[0].m).toBe(PROD_MD5);
+  const { rows } = await db.query<{ m: string; g: string }>(
+    `SELECT md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure)) AS m,
+            md5(pg_get_functiondef('app_private.guard_profit_month_lock_pending_v1()'::regprocedure)) AS g`);
+  expect(rows[0]).toEqual({ m: PROD_MD5, g: PROD_MD5_CUA_CHOT });
 
   const sql = readFileSync(FILE, 'utf8');
   await chay(sql);
-  const sau = await db.query<{ m: string }>(
-    "SELECT md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure)) AS m");
+  const sau = await db.query<{ m: string; g: string }>(
+    `SELECT md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure)) AS m,
+            md5(pg_get_functiondef('app_private.guard_profit_month_lock_pending_v1()'::regprocedure)) AS g`);
   md5SauLuotMot = sau.rows[0].m;
+  md5CuaChotSauLuotMot = sau.rows[0].g;
+  if (!sql.includes(md5SauLuotMot) || !sql.includes(md5CuaChotSauLuotMot)) {
+    throw new Error(`md5 lượt hai chưa ghim: trigger ${md5SauLuotMot}, cửa chặn chốt ${md5CuaChotSauLuotMot}`);
+  }
   await chay(sql);
 }, 120_000);
 afterAll(() => db.close());
@@ -319,6 +336,8 @@ describe('migration', () => {
     const sql = readFileSync(FILE, 'utf8');
     expect(md5SauLuotMot).toMatch(/^[0-9a-f]{32}$/);
     expect(sql).toContain(`'${PROD_MD5}', '${md5SauLuotMot}'`);
+    expect(md5CuaChotSauLuotMot).toMatch(/^[0-9a-f]{32}$/);
+    expect(sql).toContain(`'${PROD_MD5_CUA_CHOT}', '${md5CuaChotSauLuotMot}'`);
   });
 
   it('chặn chạy khi thân trigger phiếu lạ', async () => {
@@ -338,10 +357,10 @@ describe('migration', () => {
       '  v_ky_cu date;',
       '  v_ky_moi date;',
       "  IF TG_OP <> 'INSERT' THEN",
-      '    v_ky_cu := app_private.ie_profit_period_locked_month_v1(OLD, false);',
+      '    v_ky_cu := app_private.ie_profit_period_locked_month_v1(OLD, true);',
       '  END IF;',
       "  IF TG_OP <> 'DELETE' THEN",
-      '    v_ky_moi := app_private.ie_profit_period_locked_month_v1(NEW, true);',
+      '    v_ky_moi := app_private.ie_profit_period_locked_month_v1(NEW, false);',
       '  END IF;',
       '',
       '    OR v_ky_cu IS NOT NULL',
@@ -420,13 +439,23 @@ describe('khoá theo KỲ khi lập / sửa / duyệt', () => {
     });
   });
 
-  it('DUYỆT phiếu chờ có kỳ trong tháng đã chốt ⇒ chặn; sửa phiếu chờ đó ⇒ chặn; sửa kỳ dòng sang tháng mở rồi duyệt ⇒ qua', async () => {
+  it('DUYỆT phiếu chờ có kỳ trong tháng đã chốt ⇒ chặn; sửa đầu phiếu chờ đó ⇒ qua; sửa kỳ dòng sang tháng mở rồi duyệt ⇒ qua', async () => {
     await trongGiaoDich(async () => {
       await biChanKy("UPDATE public.income_expenses SET approval_status = 'APPROVED', approved_at = now() WHERE id = $1", [P.cho]);
-      await biChanKy("UPDATE public.income_expenses SET name = 'Đổi tên' WHERE id = $1", [P.cho]);
+      await qua("UPDATE public.income_expenses SET name = 'Đổi tên' WHERE id = $1", [P.cho]);
       await qua(
         "UPDATE public.income_expense_items SET start_date = '2025-09-01', end_date = '2025-09-30' WHERE income_expense_id = $1",
         [P.cho]);
+      await qua("UPDATE public.income_expenses SET approval_status = 'APPROVED', approved_at = now() WHERE id = $1", [P.cho]);
+    });
+  });
+
+  it('sửa phiếu chờ kẹt như revise_pending_income_expense_v1 (đầu phiếu trước, rồi thay hạng mục): dời kỳ ra tháng mở ⇒ qua; giữ kỳ khoá ⇒ chặn', async () => {
+    await trongGiaoDich(async () => {
+      await qua("UPDATE public.income_expenses SET notes = 'sửa', voucher_date = '2025-09-03', total_amount = 260000 WHERE id = $1", [P.cho]);
+      await qua('DELETE FROM public.income_expense_items WHERE income_expense_id = $1', [P.cho]);
+      await biChanKy(DONG, [P.cho, 260_000, LOAI_CHI, '2025-08-01', '2025-08-31']);
+      await qua(DONG, [P.cho, 260_000, LOAI_CHI, '2025-09-01', '2025-09-30']);
       await qua("UPDATE public.income_expenses SET approval_status = 'APPROVED', approved_at = now() WHERE id = $1", [P.cho]);
     });
   });
@@ -499,6 +528,7 @@ describe('khoá theo KỲ khi lập / sửa / duyệt', () => {
       // Phiếu lặp có kỳ T8 (dựng khi tháng mở) ⇒ chốt ⇒ tắt lặp qua writer STOP_RECURRING vẫn được.
       await db.query("UPDATE public.profit_monthly SET locked_at = NULL WHERE building_id = $1 AND period_month = '2025-08-01'", [TOA_A]);
       await db.query("UPDATE public.income_expenses SET repeat_cycle = 'MONTH', repeat_infinity = true WHERE id = $1", [P.sau]);
+      await db.query('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.cho]);
       await db.query("UPDATE public.profit_monthly SET locked_at = $2 WHERE building_id = $1 AND period_month = '2025-08-01'", [TOA_A, CHOT_T8]);
       await biChanKy("UPDATE public.income_expenses SET repeat_cycle = 'NONE', repeat_infinity = false WHERE id = $1", [P.sau]);
       await db.query(
@@ -529,6 +559,48 @@ describe('khoá theo KỲ khi lập / sửa / duyệt', () => {
       const by = new Map((r.after_lock as Json[]).map((v) => [v.voucher_id as string, v]));
       expect(by.get(thu)).toMatchObject({ income: 1_500_000, expense: 0, invoice_month: '2025-08' });
       expect(by.get(thoi)).toMatchObject({ income: 0, expense: 20_000, invoice_month: '2025-08' });
+    });
+  });
+
+  it('phiếu gắn hoá đơn của toà KHÁC không được ngoại lệ thu nợ cũ: lập đã duyệt / thêm dòng / duyệt ⇒ chặn', async () => {
+    await trongGiaoDich(async () => {
+      const [a, b] = [id(910), id(911)];
+      await biChanKy(DAU, [a, ORG_A, TOA_A, 'EXPENSE', '2025-09-20', 'APPROVED', null, HD_KHAC]);
+      await qua(DAU, [b, ORG_A, TOA_A, 'EXPENSE', '2025-09-20', 'UNAPPROVED', null, HD_KHAC]);
+      await biChanKy(DONG, [b, 40_000, LOAI_CHI, null, null]);
+      await biChanKy("UPDATE public.income_expenses SET approval_status = 'APPROVED', approved_at = now() WHERE id = $1", [b]);
+    });
+  });
+
+  it('khoản thu hoá đơn đã nằm trong số chốt: gỡ / huỷ duyệt / huỷ / sửa dòng / thêm dòng ⇒ chặn; bàn giao, đã kiểm ⇒ qua', async () => {
+    await trongGiaoDich(async () => {
+      await biChanKy('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.thuHdTruoc]);
+      await biChanKy("UPDATE public.income_expenses SET approval_status = 'UNAPPROVED', approved_at = NULL WHERE id = $1", [P.thuHdTruoc]);
+      await biChanKy("UPDATE public.income_expenses SET approval_status = 'CANCELLED' WHERE id = $1", [P.thuHdTruoc]);
+      await biChanKy('UPDATE public.income_expense_items SET amount = 1 WHERE income_expense_id = $1', [P.thuHdTruoc]);
+      await biChanKy('DELETE FROM public.income_expense_items WHERE income_expense_id = $1', [P.thuHdTruoc]);
+      await biChanKy(DONG, [P.thuHdTruoc, 1_000, LOAI_THU, null, null]);
+      await biChanKy('DELETE FROM public.income_expenses WHERE id = $1', [P.thuHdTruoc]);
+      await qua('UPDATE public.income_expenses SET handover_id = $2 WHERE id = $1', [P.thuHdTruoc, id(993)]);
+      await qua("UPDATE public.income_expenses SET verified_at = now(), verified_note = 'ok' WHERE id = $1", [P.thuHdTruoc]);
+    });
+  });
+
+  it('phiếu theo hoá đơn trước chốt chỉ có dòng cọc (ngoài KQKD) ⇒ không bị khoá kỳ', async () => {
+    await trongGiaoDich(async () => {
+      const coc = await phieu({ loai: 'INCOME', ngay: '2025-09-02', tao: '2025-09-02T01:00:00Z', hoaDon: HD_T8,
+        dong: [{ tien: 1_000_000, loaiHm: LOAI_COC }] });
+      await qua('UPDATE public.income_expense_items SET amount = 900000 WHERE income_expense_id = $1', [coc]);
+      await qua('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [coc]);
+    });
+  });
+
+  it('khoản thu hoá đơn lập SAU chốt (phát sinh sau chốt): sửa dòng / huỷ duyệt / duyệt lại / gỡ vẫn được', async () => {
+    await trongGiaoDich(async () => {
+      await qua('UPDATE public.income_expense_items SET amount = 2900000 WHERE income_expense_id = $1', [P.thuHd]);
+      await qua("UPDATE public.income_expenses SET approval_status = 'UNAPPROVED', approved_at = NULL WHERE id = $1", [P.thuHd]);
+      await qua("UPDATE public.income_expenses SET approval_status = 'APPROVED', approved_at = now() WHERE id = $1", [P.thuHd]);
+      await qua('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.thuHd]);
     });
   });
 
@@ -583,6 +655,53 @@ describe('khoá theo KỲ khi lập / sửa / duyệt', () => {
       const cha = await db.query<{ d: string | null }>(
         "SELECT to_char(repeat_next_date, 'YYYY-MM-DD') AS d FROM public.income_expenses WHERE id = $1", [P.cha]);
       expect(cha.rows[0].d).not.toBeNull();
+    });
+  });
+});
+
+describe('cửa chặn chốt: còn phiếu chờ duyệt', () => {
+  const chotLai = "UPDATE public.profit_monthly SET locked_at = '2025-10-01T00:00:00Z' WHERE building_id = $1 AND period_month = '2025-08-01'";
+  async function moKhoaT8() {
+    await db.query("UPDATE public.profit_monthly SET locked_at = NULL WHERE building_id = $1 AND period_month = '2025-08-01'", [TOA_A]);
+  }
+
+  it('phiếu chờ có NGÀY phiếu tháng 9 nhưng KỲ tháng 8 ⇒ không chốt được tháng 8; huỷ phiếu đó ⇒ chốt được', async () => {
+    await trongGiaoDich(async () => {
+      await moKhoaT8();
+      const err = await loiCua(chotLai, [TOA_A]);
+      expect(err?.code).toBe('55000');
+      expect(err?.message).toMatch(/^Còn 1 phiếu chờ duyệt trong tháng 08\/2025 của toà 44TA: PX\d+ — duyệt hoặc huỷ trước khi chốt\.$/);
+      await qua("UPDATE public.income_expenses SET approval_status = 'CANCELLED' WHERE id = $1", [P.cho]);
+      await qua(chotLai, [TOA_A]);
+    });
+  });
+
+  it('chỉ đếm dòng KQKD có kỳ phủ tháng chốt: dòng cọc, phiếu tắt KQKD, phiếu theo hoá đơn, kỳ tháng khác ⇒ không chặn', async () => {
+    await trongGiaoDich(async () => {
+      await moKhoaT8();
+      await db.query('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.cho]);
+      const [coc, tat, hd, khac, phu] = [id(920), id(921), id(922), id(923), id(924)];
+      await db.query(DAU, [coc, ORG_A, TOA_A, 'INCOME', '2025-09-20', 'UNAPPROVED', null, null]);
+      await db.query(DONG, [coc, 100_000, LOAI_COC, '2025-08-01', '2025-08-31']);
+      await db.query(DAU, [tat, ORG_A, TOA_A, 'EXPENSE', '2025-09-20', 'UNAPPROVED', false, null]);
+      await db.query(DONG, [tat, 100_000, LOAI_CHI, '2025-08-01', '2025-08-31']);
+      await db.query(DAU, [hd, ORG_A, TOA_A, 'INCOME', '2025-09-20', 'UNAPPROVED', null, HD_T8]);
+      await db.query(DONG, [hd, 100_000, LOAI_THU, '2025-08-01', '2025-08-31']);
+      await db.query(DAU, [khac, ORG_A, TOA_A, 'EXPENSE', '2025-09-20', 'UNAPPROVED', null, null]);
+      await db.query(DONG, [khac, 100_000, LOAI_CHI, '2025-09-01', '2025-10-31']);
+      await qua(chotLai, [TOA_A]);
+      // kỳ phủ nhiều tháng có tháng 8 ⇒ chặn
+      await moKhoaT8();
+      await db.query(DAU, [phu, ORG_A, TOA_A, 'EXPENSE', '2025-09-20', 'UNAPPROVED', null, null]);
+      await db.query(DONG, [phu, 100_000, LOAI_CHI, '2025-07-01', '2025-09-30']);
+      expect((await loiCua(chotLai, [TOA_A]))?.code).toBe('55000');
+    });
+  });
+
+  it('mở khoá và các lần ghi không đổi locked_at vẫn qua dù còn phiếu chờ', async () => {
+    await trongGiaoDich(async () => {
+      await qua("UPDATE public.profit_monthly SET status = 'LOCKED' WHERE building_id = $1 AND period_month = '2025-08-01'", [TOA_A]);
+      await qua("UPDATE public.profit_monthly SET locked_at = NULL WHERE building_id = $1 AND period_month = '2025-08-01'", [TOA_A]);
     });
   });
 });
@@ -643,7 +762,7 @@ describe('RPC phát sinh sau chốt', () => {
     // kỳ 2 tháng: phần T8 làm tròn như canonical (1.000.001 ⇒ 500.001 + 500.000)
     expect(by.get(P.haiThang)).toMatchObject({ expense: 500_001 });
     expect(by.get(P.thuHd)).toMatchObject({ income: 3_000_000, invoice_month: '2025-08', type: 'INCOME' });
-    expect(String(by.get(P.sau)?.locked_at)).toContain('2025-09-03');
+    expect(new Date(String(by.get(P.sau)?.locked_at)).toISOString()).toBe(new Date(CHOT_T8).toISOString());
   });
 
   it('khoảng T8–T9: phiếu kỳ hai tháng chỉ có phần T8 (T9 chưa chốt)', async () => {
@@ -661,6 +780,7 @@ describe('RPC phát sinh sau chốt', () => {
 
   it('chốt lại sau khi duyệt ⇒ không còn là phát sinh sau chốt; mở khoá ⇒ rỗng', async () => {
     await trongGiaoDich(async () => {
+      await db.query('UPDATE public.income_expenses SET deleted_at = now() WHERE id = $1', [P.cho]);
       await db.query(`UPDATE public.profit_monthly SET locked_at = '2025-09-30T00:00:00Z'
                        WHERE building_id = $1 AND period_month = '2025-08-01'`, [TOA_A]);
       const r = await rpc(CHU_A, '2025-08-01', '2025-08-01', [TOA_A]);
@@ -715,11 +835,12 @@ describe('RPC phát sinh sau chốt', () => {
   });
 
   it('ACL: anon không gọi được, authenticated gọi được; hàm nội bộ đóng', async () => {
-    const { rows } = await db.query<{ anon: boolean; auth: boolean; noi_bo: boolean; trg: boolean }>(`
+    const { rows } = await db.query<{ anon: boolean; auth: boolean; noi_bo: boolean; trg: boolean; hd: boolean }>(`
       SELECT has_function_privilege('anon', 'public.profit_post_lock_vouchers_v1(date,date,uuid[])', 'EXECUTE') AS anon,
              has_function_privilege('authenticated', 'public.profit_post_lock_vouchers_v1(date,date,uuid[])', 'EXECUTE') AS auth,
              has_function_privilege('authenticated', 'app_private.ie_profit_period_locked_month_v1(public.income_expenses,boolean)', 'EXECUTE') AS noi_bo,
-             has_function_privilege('authenticated', 'app_private.guard_ie_item_profit_period_v1()', 'EXECUTE') AS trg`);
-    expect(rows[0]).toEqual({ anon: false, auth: true, noi_bo: false, trg: false });
+             has_function_privilege('authenticated', 'app_private.guard_ie_item_profit_period_v1()', 'EXECUTE') AS trg,
+             has_function_privilege('authenticated', 'app_private.ie_invoice_locked_month_v1(public.income_expenses,date,boolean)', 'EXECUTE') AS hd`);
+    expect(rows[0]).toEqual({ anon: false, auth: true, noi_bo: false, trg: false, hd: false });
   });
 });

@@ -18,18 +18,20 @@
 --   1. Luật tháng phân bổ của MỘT dòng (app_private.profit_line_months_v1) chép từ
 --      fa_accrual_allocations (nhánh không hoá đơn); test PGlite so từng (phiếu, tháng) với
 --      định nghĩa SỐNG của fa_accrual_allocations.
---      app_private.ie_profit_period_locked_month_v1(phiếu, gồm_chờ_duyệt): tháng ĐÃ CHỐT sớm
---      nhất mà phiếu (bản cho trước + hạng mục đang có) đóng góp dòng KQKD theo kỳ.
+--      app_private.ie_profit_period_locked_month_v1(phiếu, gồm_khoản_đã_chốt): tháng ĐÃ CHỐT
+--      sớm nhất mà phiếu ĐÃ DUYỆT (bản cho trước + hạng mục đang có) đóng góp KQKD theo kỳ.
 --   2. Trigger phiếu public.income_expenses_check_profit_lock(): DỰNG TỪ THÂN ĐANG CHẠY
 --      production (md5 877f88c3…, đúng thân 20260925073251). Ngoài (toà, ngày phiếu) cũ/mới
---      còn xét tháng KQKD theo kỳ: bản CŨ khi đang tính LN (đã duyệt, chưa xoá), bản MỚI khi
---      đã duyệt hoặc chờ duyệt (chưa xoá). Rơi vào tháng đã chốt ⇒ khoá NHƯ khoá theo ngày
---      phiếu: lập, sửa, xoá, huỷ, DUYỆT, khôi phục đều bị chặn, với MỌI người (kể cả chủ công
---      ty, super admin, job không đăng nhập). Các ngoại lệ không đổi tiền (dời lịch phiếu lặp,
---      bàn giao, đã kiểm, cờ hạn chế, cột vòng đời NULL→giá trị, STOP_RECURRING,
---      LINK_CONTRACT) GIỮ NGUYÊN từng chữ — cùng một khối với khoá ngày phiếu.
---      Phiếu chờ duyệt có kỳ trong tháng đã chốt (dữ liệu trước bản này) vẫn HUỶ / XOÁ được
---      (bản cũ chờ duyệt không đếm, bản mới đã huỷ/xoá không đếm) — để gỡ phiếu kẹt.
+--      còn xét tháng KQKD theo kỳ của bản cũ / bản mới khi đang tính LN (đã duyệt, chưa xoá).
+--      Rơi vào tháng đã chốt ⇒ khoá NHƯ khoá theo ngày phiếu: sửa, xoá, huỷ, DUYỆT, khôi phục
+--      đều bị chặn, với MỌI người (kể cả chủ công ty, super admin, job không đăng nhập). Các
+--      ngoại lệ không đổi tiền (dời lịch phiếu lặp, bàn giao, đã kiểm, cờ hạn chế, cột vòng
+--      đời NULL→giá trị, STOP_RECURRING, LINK_CONTRACT) GIỮ NGUYÊN từng chữ — cùng một khối
+--      với khoá ngày phiếu.
+--      Phiếu CHỜ DUYỆT không bị cửa đầu phiếu xét (chưa tính LN; lúc duyệt mới xét): sửa phiếu
+--      chờ (revise_pending_income_expense_v1 ghi đầu phiếu TRƯỚC rồi mới thay hạng mục) dời kỳ
+--      ra tháng mở được, HUỶ / XOÁ được — để gỡ phiếu kẹt. Dòng kỳ khoá của phiếu chờ do cửa
+--      hạng mục (mục 3) chặn.
 --   3. Trigger MỚI trên hạng mục a02_ie_items_profit_period_lock (AFTER — lớp KQKD và số tiền
 --      của dòng mới do set_ie_item_accounting_class / trigger_auto_calc_item_amount, hai
 --      trigger BEFORE xếp sau a02 theo tên, điền): thêm / sửa / xoá dòng KQKD có kỳ rơi vào
@@ -37,11 +39,21 @@
 --      duyệt). Hạng mục là tiền — không ngoại lệ, như a02_ie_items_profit_lock.
 --   Câu lỗi: "[PROFIT_LOCKED] Tháng MM/YYYY của toà X đã chốt lợi nhuận — không ghi được
 --   phiếu có kỳ trong tháng này. Muốn ghi: mở khoá tháng ở tab Chốt LN."
---   NGOẠI LỆ "thu mới nợ cũ" GIỮ NGUYÊN: phiếu theo hoá đơn (invoice_id có tháng hoá đơn
---   hợp lệ — tháng KQKD là tháng hoá đơn) không bị cửa kỳ chặn: thu tiền hoá đơn tháng đã
---   chốt (kèm tiền thối / hoàn trả gắn hoá đơn) và DUYỆT khoản đó vẫn làm được; đó là khoản
---   "phát sinh sau chốt" phải báo lên. Sửa/huỷ phiếu đó vẫn đi
---   app_private.assert_period_open_for_edit_v1 như cũ.
+--   NGOẠI LỆ "thu mới nợ cũ" GIỮ NGUYÊN: phiếu theo hoá đơn CÙNG TOÀ (invoice_id có tháng
+--   hoá đơn hợp lệ — tháng KQKD là tháng hoá đơn) không bị cửa kỳ chặn khi THÊM vào tháng đã
+--   chốt: thu tiền hoá đơn tháng đã chốt (kèm tiền thối / hoàn trả gắn hoá đơn) và DUYỆT
+--   khoản đó vẫn làm được; đó là khoản "phát sinh sau chốt" phải báo lên, gỡ / sửa lại được.
+--   Hai giới hạn (app_private.ie_invoice_locked_month_v1):
+--     · hoá đơn của toà KHÁC ⇒ không phải thu nợ cũ của toà này ⇒ khoá như mọi phiếu;
+--     · khoản theo hoá đơn ĐÃ NẰM TRONG SỐ CHỐT (lập và duyệt trước lúc chốt — đúng tiêu chí
+--       after_lock của RPC mục 4) ⇒ không gỡ / huỷ duyệt / sửa dòng được, kể cả qua
+--       undo_invoice_payment_compat_v1 và unapprove_voucher (hai hàm không gọi
+--       app_private.assert_period_open_for_edit_v1).
+--   5. Cửa chặn chốt app_private.guard_profit_month_lock_pending_v1 (trigger
+--      a10_profit_month_lock_requires_no_pending, DỰNG TỪ THÂN production md5 a388bdb8…): ngoài
+--      phiếu chờ duyệt có NGÀY PHIẾU trong tháng đang chốt, đếm cả phiếu chờ duyệt (không theo
+--      hoá đơn) có dòng KQKD mà KỲ rơi vào tháng đó — sau chốt phiếu đó không duyệt được nữa.
+--      Câu báo giữ nguyên: "duyệt hoặc huỷ trước khi chốt".
 --   4. RPC CHỈ ĐỌC public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids): trong
 --      các toà×tháng ĐÃ CHỐT (profit_monthly LOCKED, có locked_at), trả
 --        · locked     — toà×tháng đã chốt (form phiếu báo lỗi trước khi lưu, tab Chốt LN);
@@ -58,7 +70,7 @@
 --   Không sửa dữ liệu cũ (phiếu đã có kỳ trong tháng đã chốt nằm yên, hiện ở after_lock).
 --   Không đổi hàm fa_*, hàm băm / dấu vân tay / hàm chốt LN, khoá theo ngày phiếu
 --   (profit_month_locked_v1, assert_profit_month_open_v2, a02_ie_items_profit_lock),
---   assert_period_open_for_edit_v1, trigger chặn chốt khi còn phiếu chờ duyệt.
+--   assert_period_open_for_edit_v1, phần đếm theo ngày phiếu của cửa chặn chốt.
 --   Job sinh phiếu định kỳ (generate_recurring_vouchers, 01:00): phiếu con có kỳ = tháng
 --   của ngày kỳ nên đã nằm dưới khoá ngày phiếu; mỗi phiếu con (đầu phiếu + hạng mục) trong
 --   khối EXCEPTION riêng ⇒ một phiếu con bị chặn không làm vỡ cả lượt (test PGlite).
@@ -66,11 +78,13 @@
 --   (đường ghi thật đi qua RPC definer, trigger chạy dưới quyền chủ bảng).
 --
 -- ĐƯỜNG LÙI
---   CREATE OR REPLACE public.income_expenses_check_profit_lock() bằng thân của migration
---   20260925073251 (md5 877f88c3…); DROP TRIGGER a02_ie_items_profit_period_lock ON
+--   CREATE OR REPLACE public.income_expenses_check_profit_lock() (md5 877f88c3…) và
+--   app_private.guard_profit_month_lock_pending_v1() (md5 a388bdb8…) bằng thân của migration
+--   20260925073251; DROP TRIGGER a02_ie_items_profit_period_lock ON
 --   public.income_expense_items; DROP FUNCTION public.profit_post_lock_vouchers_v1(date,date,uuid[]),
 --   app_private.guard_ie_item_profit_period_v1(), app_private.raise_profit_period_locked_v1(uuid,date),
 --   app_private.ie_profit_period_locked_month_v1(public.income_expenses,boolean),
+--   app_private.ie_invoice_locked_month_v1(public.income_expenses,date,boolean),
 --   app_private.ie_invoice_month_v1(uuid), app_private.profit_line_locked_month_v1(uuid,date,date,date),
 --   app_private.profit_line_months_v1(date,date,date).
 --
@@ -94,7 +108,8 @@ BEGIN
     'app_private.assert_profit_month_open_v2(uuid,date,text)',
     'public.can_access_building(uuid)',
     'public.can_view_restricted_ie()',
-    'public.income_expenses_check_profit_lock()'
+    'public.income_expenses_check_profit_lock()',
+    'app_private.guard_profit_month_lock_pending_v1()'
   ] LOOP
     IF to_regprocedure(v_sig) IS NULL THEN
       RAISE EXCEPTION 'Thiếu % — DỪNG.', v_sig USING ERRCODE = '55000';
@@ -102,9 +117,16 @@ BEGIN
   END LOOP;
   v_md5 := md5(pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure));
   -- 877f88c3…: thân 20260925073251 đang chạy production (đọc 22/10/2026).
-  -- e54e72ff…: thân của chính file này (lượt hai).
-  IF v_md5 <> ALL (ARRAY['877f88c3b7371acb6633ce5f091e85d4', 'e54e72ff45807c1024e9ec269bdaa6f9']) THEN
+  -- 6e016a8f…: thân của chính file này (lượt hai).
+  IF v_md5 <> ALL (ARRAY['877f88c3b7371acb6633ce5f091e85d4', '6e016a8f60e83129cfb6cf2ad2829fb5']) THEN
     RAISE EXCEPTION 'public.income_expenses_check_profit_lock() KHÁC bản đã rà (md5 %) — DỪNG, chụp lại pg_get_functiondef rồi rà lại.',
+      v_md5 USING ERRCODE = '55000';
+  END IF;
+  v_md5 := md5(pg_get_functiondef('app_private.guard_profit_month_lock_pending_v1()'::regprocedure));
+  -- a388bdb8…: thân 20260925073251 đang chạy production (đọc 23/10/2026).
+  -- c85c82a8…: thân của chính file này (lượt hai).
+  IF v_md5 <> ALL (ARRAY['a388bdb80d2ff6a213c4e2866f7e49fa', 'c85c82a8e05b21dacc8a7939dc4fefe7']) THEN
+    RAISE EXCEPTION 'app_private.guard_profit_month_lock_pending_v1() KHÁC bản đã rà (md5 %) — DỪNG, chụp lại pg_get_functiondef rồi rà lại.',
       v_md5 USING ERRCODE = '55000';
   END IF;
 END
@@ -171,13 +193,44 @@ AS $fn$
      AND inv.billing_month ~ '^\d{4}-\d{2}$'
 $fn$;
 
--- Tháng ĐÃ CHỐT sớm nhất mà PHIẾU (bản cho trước + các hạng mục đang có trong bảng) đóng
--- góp dòng KQKD theo kỳ. NULL khi: không có bản (OLD của INSERT), đã xoá, không ở trạng thái
--- tính (đã duyệt; thêm chờ duyệt khi p_include_pending), thiếu toà, tắt KQKD, toà chưa chốt
--- tháng nào, hoặc phiếu theo hoá đơn (thu mới nợ cũ — tháng KQKD là tháng hoá đơn).
+-- Phiếu theo hoá đơn (tháng KQKD = tháng hoá đơn p_inv_month): trả tháng hoá đơn khi tháng đó
+-- ĐÃ CHỐT ở toà của phiếu và
+--   · hoá đơn thuộc toà KHÁC (không phải thu nợ cũ của toà này) ⇒ khoá như mọi phiếu; hoặc
+--   · p_gom_da_chot và phiếu đã duyệt nằm trong số chốt (lập và duyệt trước lúc chốt — phủ định
+--     đúng tiêu chí after_lock của profit_post_lock_vouchers_v1) ⇒ không gỡ / đổi được.
+-- Còn lại (thu tiền hoá đơn cùng toà sau chốt) ⇒ NULL: ngoại lệ "thu mới nợ cũ".
+CREATE OR REPLACE FUNCTION app_private.ie_invoice_locked_month_v1(
+  p_row         public.income_expenses,
+  p_inv_month   date,
+  p_gom_da_chot boolean
+)
+RETURNS date
+LANGUAGE sql
+STABLE
+SET search_path TO ''
+AS $fn$
+  SELECT p_inv_month
+    FROM public.profit_monthly pm
+   WHERE pm.building_id = p_row.building_id
+     AND pm.period_month = p_inv_month
+     AND pm.locked_at IS NOT NULL
+     AND (NOT EXISTS (SELECT 1 FROM public.invoices inv
+                       WHERE inv.id = p_row.invoice_id
+                         AND inv.building_id = p_row.building_id)
+          OR (p_gom_da_chot IS TRUE
+              AND p_row.approval_status = 'APPROVED'
+              AND p_row.deleted_at IS NULL
+              AND NOT COALESCE(p_row.created_at > pm.locked_at OR p_row.approved_at > pm.locked_at, false)))
+$fn$;
+
+-- Tháng ĐÃ CHỐT sớm nhất mà PHIẾU ĐÃ DUYỆT (bản cho trước + các hạng mục đang có trong bảng)
+-- đóng góp KQKD theo kỳ. NULL khi: không có bản (OLD của INSERT), đã xoá, chưa duyệt / đã huỷ,
+-- thiếu toà, tắt KQKD, toà chưa chốt tháng nào, phiếu không có dòng KQKD. Phiếu theo hoá đơn:
+-- xem ie_invoice_locked_month_v1 (p_gom_da_chot: true cho bản CŨ — gỡ khoản đã chốt bị chặn;
+-- false cho bản MỚI — thu nợ cũ cùng toà vẫn thêm được).
 CREATE OR REPLACE FUNCTION app_private.ie_profit_period_locked_month_v1(
-  p_row             public.income_expenses,
-  p_include_pending boolean
+  p_row         public.income_expenses,
+  p_gom_da_chot boolean
 )
 RETURNS date
 LANGUAGE plpgsql
@@ -185,14 +238,14 @@ STABLE
 SET search_path TO ''
 AS $fn$
 DECLARE
-  v_m date;
+  v_m  date;
+  v_hd date;
 BEGIN
   IF p_row.id IS NULL
      OR p_row.deleted_at IS NOT NULL
      OR p_row.building_id IS NULL
      OR p_row.business_result_accounting IS FALSE
-     OR NOT (p_row.approval_status = 'APPROVED'
-             OR (p_include_pending IS TRUE AND p_row.approval_status = 'UNAPPROVED')) THEN
+     OR p_row.approval_status IS DISTINCT FROM 'APPROVED' THEN
     RETURN NULL;
   END IF;
   -- Đường nhanh: toà chưa chốt tháng nào.
@@ -203,8 +256,19 @@ BEGIN
   ) THEN
     RETURN NULL;
   END IF;
-  IF p_row.invoice_id IS NOT NULL AND app_private.ie_invoice_month_v1(p_row.invoice_id) IS NOT NULL THEN
-    RETURN NULL;
+  v_hd := app_private.ie_invoice_month_v1(p_row.invoice_id);
+  IF v_hd IS NOT NULL THEN
+    -- như invoice_items / invoice_no_item của fa_accrual_allocations: có dòng KQKD hoặc không dòng
+    IF EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = p_row.id)
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.income_expense_items i
+           JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+          WHERE i.income_expense_id = p_row.id
+            AND (p_row.business_result_accounting IS TRUE OR i.accounting_class = 'PNL')) THEN
+      RETURN NULL;
+    END IF;
+    RETURN app_private.ie_invoice_locked_month_v1(p_row, v_hd, p_gom_da_chot);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = p_row.id) THEN
     -- phiếu không dòng: cả tổng vào tháng của ngày phiếu
@@ -252,14 +316,14 @@ DECLARE
   v_ky_cu date;
   v_ky_moi date;
 BEGIN
-  -- 22/10/2026 (F06): ngoài NGÀY PHIẾU còn xét tháng KQKD theo KỲ (luật fa_accrual_allocations).
-  -- Bản cũ chỉ khi đang tính LN (đã duyệt); bản mới cả khi chờ duyệt. Phiếu theo hoá đơn
-  -- (thu mới nợ cũ) không bị cửa kỳ chặn.
+  -- 22/10/2026 (F06): ngoài NGÀY PHIẾU còn xét tháng KQKD theo KỲ (luật fa_accrual_allocations)
+  -- của bản cũ / bản mới khi đang tính LN (đã duyệt). Phiếu theo hoá đơn cùng toà (thu mới nợ
+  -- cũ) thêm vào tháng đã chốt được; khoản đã nằm trong số chốt thì không gỡ được.
   IF TG_OP <> 'INSERT' THEN
-    v_ky_cu := app_private.ie_profit_period_locked_month_v1(OLD, false);
+    v_ky_cu := app_private.ie_profit_period_locked_month_v1(OLD, true);
   END IF;
   IF TG_OP <> 'DELETE' THEN
-    v_ky_moi := app_private.ie_profit_period_locked_month_v1(NEW, true);
+    v_ky_moi := app_private.ie_profit_period_locked_month_v1(NEW, false);
   END IF;
 
   -- Đường nhanh: cả vị trí cũ lẫn mới đều ở tháng đang mở.
@@ -344,8 +408,9 @@ LANGUAGE plpgsql
 SET search_path TO ''
 AS $fn$
 DECLARE
-  v_p public.income_expenses%ROWTYPE;
-  v_m date;
+  v_p  public.income_expenses%ROWTYPE;
+  v_m  date;
+  v_hd date;
 BEGIN
   -- Dòng CŨ của phiếu đang tính LN (đã duyệt, chưa xoá) — sửa / xoá phần của tháng đã chốt.
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
@@ -355,16 +420,20 @@ BEGIN
        AND v_p.approval_status = 'APPROVED'
        AND v_p.business_result_accounting IS DISTINCT FROM false
        AND (v_p.business_result_accounting IS TRUE OR OLD.accounting_class = 'PNL')
-       AND app_private.ie_invoice_month_v1(v_p.invoice_id) IS NULL
        AND EXISTS (SELECT 1 FROM public.income_expense_types t WHERE t.id = OLD.income_expense_type_id) THEN
-      v_m := app_private.profit_line_locked_month_v1(v_p.building_id, v_p.voucher_date, OLD.start_date, OLD.end_date);
+      v_hd := app_private.ie_invoice_month_v1(v_p.invoice_id);
+      v_m := CASE WHEN v_hd IS NOT NULL
+                  THEN app_private.ie_invoice_locked_month_v1(v_p, v_hd, true)
+                  ELSE app_private.profit_line_locked_month_v1(v_p.building_id, v_p.voucher_date, OLD.start_date, OLD.end_date)
+             END;
       IF v_m IS NOT NULL THEN
         PERFORM app_private.raise_profit_period_locked_v1(v_p.building_id, v_m);
       END IF;
     END IF;
   END IF;
 
-  -- Dòng MỚI của phiếu đã duyệt hoặc chờ duyệt rơi vào tháng đã chốt.
+  -- Dòng MỚI của phiếu đã duyệt hoặc chờ duyệt rơi vào tháng đã chốt. Phiếu theo hoá đơn cùng
+  -- toà: chỉ chặn khi phiếu đã nằm trong số chốt (thêm / đổi dòng là đổi số chốt).
   IF TG_OP IN ('INSERT', 'UPDATE') THEN
     SELECT * INTO v_p FROM public.income_expenses ie WHERE ie.id = NEW.income_expense_id;
     IF FOUND
@@ -372,9 +441,12 @@ BEGIN
        AND v_p.approval_status IN ('APPROVED', 'UNAPPROVED')
        AND v_p.business_result_accounting IS DISTINCT FROM false
        AND (v_p.business_result_accounting IS TRUE OR NEW.accounting_class = 'PNL')
-       AND app_private.ie_invoice_month_v1(v_p.invoice_id) IS NULL
        AND EXISTS (SELECT 1 FROM public.income_expense_types t WHERE t.id = NEW.income_expense_type_id) THEN
-      v_m := app_private.profit_line_locked_month_v1(v_p.building_id, v_p.voucher_date, NEW.start_date, NEW.end_date);
+      v_hd := app_private.ie_invoice_month_v1(v_p.invoice_id);
+      v_m := CASE WHEN v_hd IS NOT NULL
+                  THEN app_private.ie_invoice_locked_month_v1(v_p, v_hd, true)
+                  ELSE app_private.profit_line_locked_month_v1(v_p.building_id, v_p.voucher_date, NEW.start_date, NEW.end_date)
+             END;
       IF v_m IS NOT NULL THEN
         PERFORM app_private.raise_profit_period_locked_v1(v_p.building_id, v_m);
       END IF;
@@ -396,11 +468,77 @@ REVOKE ALL ON FUNCTION app_private.profit_line_locked_month_v1(uuid, date, date,
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.ie_invoice_month_v1(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.ie_invoice_locked_month_v1(public.income_expenses, date, boolean)
+  FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.ie_profit_period_locked_month_v1(public.income_expenses, boolean)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.raise_profit_period_locked_v1(uuid, date)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.guard_ie_item_profit_period_v1()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3b. Cửa chặn chốt: thân production (20260925073251) + phiếu chờ duyệt có KỲ trong tháng đang
+--     chốt (sau chốt phiếu đó không duyệt được nữa — phải duyệt hoặc huỷ trước).
+CREATE OR REPLACE FUNCTION app_private.guard_profit_month_lock_pending_v1()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'app_private'
+AS $function$
+DECLARE
+  v_n integer;
+  v_list text;
+  v_name text;
+BEGIN
+  -- Chỉ xét lúc CHỐT: locked_at nhận giá trị mới. Mở khoá (về NULL) và các lần
+  -- ghi không đổi locked_at đi qua.
+  IF NEW.locked_at IS NULL
+     OR (TG_OP = 'UPDATE' AND OLD.locked_at IS NOT DISTINCT FROM NEW.locked_at) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT count(*),
+         string_agg(x.nhan, ', ' ORDER BY x.voucher_date, x.nhan) FILTER (WHERE x.rn <= 10)
+    INTO v_n, v_list
+    FROM (
+      SELECT COALESCE(NULLIF(ie.code, ''), 'phiếu chưa có mã') AS nhan,
+             ie.voucher_date,
+             row_number() OVER (ORDER BY ie.voucher_date, ie.code) AS rn
+        FROM public.income_expenses ie
+       WHERE ie.building_id = NEW.building_id
+         AND ((ie.voucher_date >= date_trunc('month', NEW.period_month)::date
+               AND ie.voucher_date < (date_trunc('month', NEW.period_month) + interval '1 month')::date)
+              -- 23/10/2026 (F06): dòng KQKD có KỲ rơi vào tháng đang chốt (luật fa_accrual_allocations,
+              -- phiếu không theo hoá đơn).
+              OR (ie.business_result_accounting IS DISTINCT FROM false
+                  AND app_private.ie_invoice_month_v1(ie.invoice_id) IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                      FROM public.income_expense_items i
+                      JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+                      CROSS JOIN LATERAL app_private.profit_line_months_v1(ie.voucher_date, i.start_date, i.end_date) AS m(m)
+                     WHERE i.income_expense_id = ie.id
+                       AND (ie.business_result_accounting IS TRUE OR i.accounting_class = 'PNL')
+                       AND m.m = date_trunc('month', NEW.period_month)::date)))
+         AND ie.approval_status = 'UNAPPROVED'
+         AND ie.deleted_at IS NULL
+    ) x;
+
+  IF v_n > 0 THEN
+    SELECT b.name INTO v_name FROM public.buildings b WHERE b.id = NEW.building_id;
+    RAISE EXCEPTION
+      'Còn % phiếu chờ duyệt trong tháng % của toà %: % — duyệt hoặc huỷ trước khi chốt.',
+      v_n, to_char(NEW.period_month, 'MM/YYYY'), COALESCE(v_name, '(không rõ tên)'),
+      v_list || CASE WHEN v_n > 10 THEN ', …' ELSE '' END
+      USING ERRCODE = '55000';
+  END IF;
+
+  RETURN NEW;
+END
+$function$;
+
+REVOKE ALL ON FUNCTION app_private.guard_profit_month_lock_pending_v1()
   FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
@@ -561,15 +699,33 @@ BEGIN
     RAISE EXCEPTION 'Sai số overload của profit_post_lock_vouchers_v1' USING ERRCODE = '55000';
   END IF;
   IF has_function_privilege('authenticated', 'app_private.ie_profit_period_locked_month_v1(public.income_expenses,boolean)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.ie_invoice_locked_month_v1(public.income_expenses,date,boolean)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.guard_ie_item_profit_period_v1()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'app_private.guard_profit_month_lock_pending_v1()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'app_private.raise_profit_period_locked_v1(uuid,date)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Hàm khoá kỳ nội bộ đang mở cho authenticated' USING ERRCODE = '55000';
   END IF;
 
   v_def := regexp_replace(
+    pg_get_functiondef('app_private.guard_profit_month_lock_pending_v1()'::regprocedure), '--[^\n]*', '', 'g');
+  IF position('app_private.profit_line_months_v1(ie.voucher_date, i.start_date, i.end_date)' IN v_def) = 0
+     OR position('duyệt hoặc huỷ trước khi chốt' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'guard_profit_month_lock_pending_v1 thiếu phần đếm phiếu chờ duyệt theo kỳ' USING ERRCODE = '55000';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+     WHERE t.tgrelid = 'public.profit_monthly'::regclass
+       AND t.tgname = 'a10_profit_month_lock_requires_no_pending'
+       AND t.tgenabled = 'O'
+       AND t.tgfoid = 'app_private.guard_profit_month_lock_pending_v1()'::regprocedure
+  ) THEN
+    RAISE EXCEPTION 'Cửa chặn chốt a10_profit_month_lock_requires_no_pending không còn' USING ERRCODE = '55000';
+  END IF;
+
+  v_def := regexp_replace(
     pg_get_functiondef('public.income_expenses_check_profit_lock()'::regprocedure), '--[^\n]*', '', 'g');
-  IF position('app_private.ie_profit_period_locked_month_v1(OLD, false)' IN v_def) = 0
-     OR position('app_private.ie_profit_period_locked_month_v1(NEW, true)' IN v_def) = 0
+  IF position('app_private.ie_profit_period_locked_month_v1(OLD, true)' IN v_def) = 0
+     OR position('app_private.ie_profit_period_locked_month_v1(NEW, false)' IN v_def) = 0
      OR position('app_private.raise_profit_period_locked_v1(' IN v_def) = 0
      OR position('app_private.assert_profit_month_open_v2(' IN v_def) = 0
      OR position('LINK_CONTRACT' IN v_def) = 0

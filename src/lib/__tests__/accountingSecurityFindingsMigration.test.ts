@@ -29,8 +29,9 @@ function liveFunctionBody(schema: string, fnName: string): string {
   if (!hit) throw new Error(`Không tìm thấy định nghĩa ${schema}.${fnName}`);
   const rest = hit.sql.slice(hit.start);
   const open = /\bAS\s+(\$[A-Za-z0-9_]*\$)/.exec(rest);
-  if (!open) throw new Error(`${schema}.${fnName}: không thấy thân hàm`);
-  return rest.slice(0, rest.indexOf(open[1], open.index + open[0].length) + open[1].length);
+  const tag = open?.[1];
+  if (!open || !tag) throw new Error(`${schema}.${fnName}: không thấy thân hàm`);
+  return rest.slice(0, rest.indexOf(tag, open.index + open[0].length) + tag.length);
 }
 
 const terminationSql = readNormalized(

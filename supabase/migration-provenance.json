@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T22:20:42.125Z",
+  "generatedAt": "2026-10-22T22:52:31.656Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13039,15 +13039,15 @@
       "version": "20261022172918",
       "name": "khoa_ky_thang_da_chot_ln",
       "scheme": "timestamp14",
-      "sha256": "774a0963ddc462507ab176d6af8a1f0b1a516db4578e4b7b112e419cb5185a02",
+      "sha256": "20f52c5c21b564bbc5c2e213a17e5012c0991db11d8142ffa69063c875bfe91c",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "function:app_private.profit_line_months_v1",
         "function:app_private.profit_line_locked_month_v1",
         "function:app_private.ie_invoice_month_v1",
-        "function:app_private.ie_profit_period_locked_month_v1",
-        "function:app_private.raise_profit_period_locked_v1"
+        "function:app_private.ie_invoice_locked_month_v1",
+        "function:app_private.ie_profit_period_locked_month_v1"
       ]
     },
     {
