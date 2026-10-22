@@ -33,12 +33,23 @@ export const ACTION_REASONS = Object.freeze({
   web_only: reason('rejected', 'never', 'Trường hợp này phải làm trên web.'),
   duplicate_request: reason('rejected', 'never', 'Lệnh này đã được ghi trước đó.'),
   crm_refused: reason('rejected', 'never', 'CRM từ chối, chưa phân loại được lý do; kiểm trên web.'),
+  // Thu chi (Đợt 2, docs/plans/hermes-crm/THU-CHI-THAO-TAC-GHI.md mục 2.3).
+  ...expenseReasons(),
   // Trang Hợp đồng (Đợt 2, HOP-DONG-THAO-TAC-GHI.md mục 5). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...contractReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 // Mã riêng từng trang, theo khối (test khoá: danh sách chung 20 mã + đúng các khối này, mỗi khối một trang).
-export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({ contract: Object.freeze(Object.keys(contractReasons())) });
+export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({
+  expense: Object.freeze(Object.keys(expenseReasons())),
+  contract: Object.freeze(Object.keys(contractReasons())),
+});
+function expenseReasons() {
+  return {
+    system_voucher: reason('rejected', 'never', 'Phiếu thuộc luồng hệ thống (thu tiền hoá đơn, cọc, thanh lý, hoa hồng, bàn giao, lương); sửa/huỷ/duyệt ở màn gốc trên web.'),
+    evidence_required: reason('rejected', 'never', 'Phiếu chưa có chứng từ nên chưa chi được; thêm ảnh trên web hoặc chỉ duyệt.'),
+  };
+}
 function contractReasons() {
   return {
     room_has_no_active_contract: reason('needs_input', 'fix', 'Phòng này không có hợp đồng đang hiệu lực (phòng trống hoặc đã trả); hỏi lại phòng/toà.'),

@@ -152,6 +152,8 @@ export const W2_PARAMS = Object.freeze({
   basis: Object.freeze({ type: 'basis', hint: 'accrual|cash' }),
   unreadOnly: Object.freeze({ type: 'bool', hint: 'true|false' }),
   lowStock: Object.freeze({ type: 'bool', hint: 'true|false' }),
+  // Thu chi Mốc 3 (22/10, 20261022044126_hermes_w2_min_amount_param_v1): ngưỡng tiền của báo cáo phiếu chi.
+  minAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0, vd 10000000' }),
   buildingId: uuidParam('ID toà (không phải ID công ty)'),
   areaId: uuidParam('ID khu'),
   roomId: uuidParam('ID phòng'),
@@ -176,6 +178,7 @@ const PARAM_CHECK = Object.freeze({
   floor: value => Number.isInteger(value) && value >= -5 && value <= 200,
   basis: value => value === 'accrual' || value === 'cash',
   bool,
+  money: value => Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000_000,
   uuid: id,
 });
 

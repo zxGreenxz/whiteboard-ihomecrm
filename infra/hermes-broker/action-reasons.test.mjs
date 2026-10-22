@@ -28,6 +28,14 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
     ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract', 'return_date_future']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'rejected'),
     ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative']);
+  // Thu chi (THU-CHI-THAO-TAC-GHI.md mục 2.3): 2 mã, đều là lỗi thật (dạng rejected).
+  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.expense], ['system_voucher', 'evidence_required']);
+  assert.ok(ACTION_PAGE_REASON_BLOCKS.expense.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Thu chi là lỗi thật (dạng rejected)');
+  // Đúng hai khối (Thu chi gộp trước, Hợp đồng sau); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng.
+  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract']);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

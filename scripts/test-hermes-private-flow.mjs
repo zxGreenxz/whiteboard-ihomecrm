@@ -498,7 +498,8 @@ const normalizeSearchPath = value => value.replace(/["\s]/g, '');
 // replaced reader is immutable, so its historical statement still verifies.
 const REVIEWED_EMPTY_SEARCH_PATH = new Map();
 for (const spec of [
-  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => ['app_private.hermes_domain_read_rows_fast_v1', 'public.hermes_write_name_resolve_v1'].includes(spec.name)),
+  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => ['app_private.hermes_domain_read_rows_fast_v1', 'public.hermes_write_name_resolve_v1',
+    'public.hermes_write_name_resolve_v2'].includes(spec.name)),
   { name: 'public.hermes_read_text_v1',
     sourcePath: 'supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql',
     statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105' },
@@ -523,6 +524,19 @@ for (const spec of [
   { name: 'public.hermes_contract_action_lookup_v1',
     sourcePath: 'supabase/migrations/20261022061813_hermes_contract_return_v1.sql',
     statementSha256: '49a183d7254c6579d68004d51a0bc99008e2efe79c3d8381618eed88199275a6' },
+  // Đợt 2 Thu chi (20261022024834): lõi giải tên plpgsql INVOKER của expense.* — chỉ tên public đủ schema; vỏ SQL-standard ghim ở
+  // hermes-task-function-contract.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+    statementSha256: '2555857f637fe17ea488547ca6c0bd34318f2b1d2f50964cb3dd5683c5deea7a' },
+  // Thu chi Mốc 3: lõi giải tên ghi _v2 nhận toà ảo (20261022044120: lõi plpgsql INVOKER = lõi v1 + p_include_virtual; vỏ SQL-standard ghim
+  // ở hermes-read-function-specs) và lõi giải tên expense.* thay thân để gọi _v2 (20261022044123). Chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v2',
+    sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
+    statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
+    statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

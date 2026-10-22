@@ -17,9 +17,10 @@
 //  - chốt sổ: chỉ sổ người hỏi nhìn thấy (web list_cashbook_closings_v1 trả chênh lệch MỌI sổ của
 //    công ty cho mọi thành viên); sổ quỹ theo phạm vi cashbooks của cổng (Toàn tổ chức hoặc sổ CRM cấp);
 //  - sổ quỹ chỉ của công ty kết nối (RPC web lọc my_org_ids() nên người nhiều công ty bị trộn).
-import { w2Report, id, nullable, longText, code, amount, bool, count, date, instant } from './wave2-kit.mjs';
+import { w2Report, id, nullable, longText, code, amount, bool, count, date, instant, shaped } from './wave2-kit.mjs';
 
 const name = nullable(longText(200));
+const listOf = (max, fields) => value => Array.isArray(value) && value.length <= max && value.every(entry => shaped(entry, fields));
 const money = amount;
 const side = value => value === 'INCOME' || value === 'EXPENSE';
 const year = value => Number.isInteger(value) && value >= 2000 && value <= 2100;
@@ -78,10 +79,25 @@ export const W2B_REPORTS = Object.freeze({
     fields: { billingMonth: longText(7), buildingId: id, buildingName: name, billed: money, collected: money, remaining: money, invoiceCount: count,
       draftCount: count, pendingCount: count, approvedCount: count, paidCount: count, partialCount: count, overdueCount: count } }),
   top_expenses: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_top_expenses_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
-    title: 'Phân tích tài chính — 10 khoản chi KQKD đã duyệt lớn nhất của tháng month: ngày, mã, tên phiếu, toà, hạng mục, số tiền.',
+    title: 'Phân tích tài chính — 10 khoản chi KQKD đã duyệt lớn nhất của tháng month: ngày, mã, tên phiếu, toà, hạng mục, số tiền. Khoảng ngày bất kỳ, ngưỡng tiền, mọi phiếu chi (kể cả chi phí chung): expense_vouchers.',
     params: ['month', 'buildingId'], required: ['month'],
     fields: { voucherId: id, voucherDate: date, code: nullable(longText(60)), name, buildingId: id, buildingName: name,
       itemTypes: nullable(longText(300)), totalAmount: money } }),
+  // Thu chi Mốc 3 (22/10, 20261022044130_hermes_w2b_expense_reports_v1): như trang Thu chi web (income_expenses dưới RLS, mặc định
+  // ALL_ACTIVE = đã duyệt + chờ duyệt), mọi toà của khoá KỂ CẢ toà ảo (chi phí chung); khoá income_expenses.view (đợt 1, đã bật).
+  expense_vouchers: w2Report({ permission: 'income_expenses.view', source: 'crm.income_expenses', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
+    title: 'Phiếu CHI lớn trước: fromDate..toDate (mặc định tháng này), minAmount, status (trống = đã duyệt + chờ duyệt), query (tên/mã/hạng mục), toà kể cả chi phí chung. Chờ duyệt lâu nhất/quá N ngày: status=UNAPPROVED kind=oldest (pendingDays). summary: count, totalAmount, maxAmount, byBuilding.',
+    params: ['fromDate', 'toDate', 'minAmount', 'status', 'kind', 'query', 'buildingId'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], kinds: ['largest', 'oldest'],
+    fields: { voucherId: id, code: nullable(longText(60)), voucherDate: date, name, buildingId: id, buildingName: name, roomName: nullable(longText(100)),
+      categories: nullable(longText(300)), totalAmount: money, approvalStatus: code, postingStatus: nullable(code), pendingDays: nullable(count) },
+    summary: { fromDate: date, toDate: date, count, totalAmount: money, maxAmount: nullable(money), restrictedIncluded: bool, buildings: count,
+      byBuilding: listOf(30, { buildingId: id, buildingName: name, count, totalAmount: money }) } }),
+  expense_categories: w2Report({ permission: 'income_expenses.view', source: 'crm.income_expense_items', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
+    title: 'Tổng CHI theo hạng mục (vd tiền nhà, điện, nước): fromDate..toDate (mặc định tháng này), status như expense_vouchers, toà kể cả chi phí chung. Hàng: hạng mục × toà; summary.categories: tổng cả phạm vi từng hạng mục (số phiếu, tiền), lớn trước.',
+    params: ['fromDate', 'toDate', 'status', 'buildingId'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'],
+    fields: { buildingId: id, buildingName: name, typeId: id, typeName: name, voucherCount: count, totalAmount: money },
+    summary: { fromDate: date, toDate: date, restrictedIncluded: bool, totalAmount: money,
+      categories: listOf(100, { typeId: id, typeName: name, voucherCount: count, totalAmount: money }) } }),
 
   // B8 — /reports/finance/business-performance (useBusinessPerformance.ts:897-1229; useBusinessPerformanceGatedData.ts).
   bp_pnl: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_pnl_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],

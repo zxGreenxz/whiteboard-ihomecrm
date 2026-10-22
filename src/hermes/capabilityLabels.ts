@@ -18,8 +18,9 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.delete': 'Hermes: huỷ công việc khi bạn yêu cầu rõ',
   'customers.create': 'Hermes: tạo khách cá nhân chưa gắn tòa; cần phạm vi Toàn tổ chức',
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
-  'income_expenses.create': 'Hermes: ghi phiếu CHI nhanh; thang duyệt CRM quyết trạng thái, Hermes không duyệt hay vào sổ',
-  'income_expenses.approve': 'Hermes: chỉ cho phiếu chi Hermes ghi được duyệt ngay bằng quyền duyệt của bạn; không có công cụ duyệt',
+  // Đợt 2 Thu chi: thang duyệt CRM quyết trạng thái như web; phiếu ra đời đã duyệt thì CRM vào sổ quỹ ngay.
+  'income_expenses.create': 'Hermes: lập phiếu CHI lập tay (luôn xem trước, dưới ngưỡng hoặc người lập có quyền duyệt thì vào sổ ngay) và ghi chú phiếu',
+  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt và chi phiếu chi người khác lập tay"',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
   'deposits.view': 'Hermes: chỉ tổng cọc đang giữ theo tòa, không có chi tiết khách',

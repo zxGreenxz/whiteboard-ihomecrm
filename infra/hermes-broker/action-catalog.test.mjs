@@ -74,6 +74,45 @@ test('validateActionParams: chuẩn hoá snake_case, số dạng chuỗi chữ s
     { m: '2026-10', k: 'EARLY', b: true, n: 6.5 }]) assert.equal(validateActionParams(kinds, raw).ok, false, JSON.stringify(raw));
 });
 
+test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ): khai sai ⇒ lỗi nạp; kiểm từng phần tử với đường dẫn tĩnh', () => {
+  const item = param.record({ buildingName: param.name('building'), amount: param.vnd(), note: param.text(1, 20, { optional: true }) });
+  const batch = defineAction({ ...base, id: 'probe.batch', params: { items: param.list(item, { max: 3 }), codes: param.list(param.name('voucher'), { max: 2, optional: true }) } });
+  // Khai sai: record đứng riêng, list lồng list/ảnh/record rỗng, phần tử tuỳ chọn, giới hạn ngoài 1–20, record > 12 trường.
+  for (const bad of [() => defineAction({ ...base, id: 'probe.rec', params: { r: item } }), () => param.list(param.list(param.bool(), { max: 2 }), { max: 2 }),
+    () => param.list(param.attachments(), { max: 2 }), () => param.record({}), () => param.list(param.bool({ optional: true }), { max: 2 }),
+    () => param.list(param.bool(), { max: 21 }), () => param.list(param.bool(), { min: 0, max: 2 }), () => param.list(param.bool(), { min: 3, max: 2 }),
+    () => param.record(Object.fromEntries(Array.from({ length: 13 }, (_, n) => [`f${n}`, param.bool()]))), () => param.record({ 'bad-name': param.bool() })])
+    assert.throws(bad, /invalid_action_catalog/);
+  assert.equal(param.name('category').hint, 'tên hạng mục như người dùng nói');
+  assert.equal(param.name('cashbook').hint, 'tên sổ quỹ như người dùng nói');
+  assert.deepEqual(validateActionParams(batch, { items: [{ building_name: ' A ', amount: '350000' }, { buildingName: 'B', amount: 1, note: '' }] }),
+    { ok: true, value: { items: [{ buildingName: 'A', amount: 350_000 }, { buildingName: 'B', amount: 1 }] } });
+  assert.deepEqual(validateActionParams(batch, { items: [{ buildingName: 'A', amount: 1 }], codes: [' PC2610001 '] }).value.codes, ['PC2610001']);
+  const canary = 'tok-PRIVATE-fake-q2';
+  const detail = raw => { const checked = validateActionParams(batch, raw); assert.equal(checked.ok, false); assert.doesNotMatch(checked.detail, /tok-PRIVATE-fake/); return checked.detail; };
+  assert.match(detail({ items: [{ buildingName: 'A', amount: 1 }, { buildingName: 'B', amount: '3tr5' }] }), /items#2\.amount \(số nguyên VND/);
+  assert.match(detail({ items: [{ buildingName: 'A' }] }), /items#1\.amount/);
+  assert.match(detail({ items: [] }), /items \(danh sách 1–3 mục\)/);
+  assert.match(detail({ items: [1, 2, 3, 4].map(() => ({ buildingName: 'A', amount: 1 })) }), /items \(danh sách 1–3 mục\)/);
+  assert.match(detail({ items: [{ buildingName: 'A', amount: 1, [canary]: 1 }] }), /items#1 \(có trường không nhận\)/);
+  assert.match(detail({ items: [{ buildingName: 'A', building_name: canary, amount: 1 }] }), /items#1\.buildingName \(gửi hai lần\)/);
+  assert.match(detail({ items: ['A'] }), /items#1 \(mỗi mục là object\)/);
+  assert.match(detail({ items: [{ buildingName: 'A', amount: 1 }], codes: [canary, 'b', 'c'] }), /codes \(danh sách 1–2 mục\)/);
+  assert.match(detail({ items: { 0: { buildingName: 'A', amount: 1 }, length: 1 } }), /items \(danh sách/);
+  // Mảng có lỗ, có khoá thêm hay có accessor ⇒ sai; accessor không bao giờ chạy.
+  const holey = [{ buildingName: 'A', amount: 1 }, , { buildingName: 'B', amount: 1 }]; // eslint-disable-line no-sparse-arrays
+  const extra = Object.assign([{ buildingName: 'A', amount: 1 }], { extra: true });
+  const getter = Object.defineProperty([], 0, { enumerable: true, get: () => { throw new Error('ran'); } });
+  for (const items of [holey, extra, getter]) assert.match(detail({ items }), /items \(danh sách/);
+  // Mục lục: khuôn phần tử và từng trường của record.
+  const listed = createActionCatalog([batch], { keys: [PROBE_KEY] }).listing({ action: [PROBE_KEY] })[0].params;
+  assert.deepEqual(listed.items.item.fields.amount, { type: 'vnd', required: true, hint: 'số nguyên VND (3tr5 = 3500000)' });
+  assert.deepEqual([listed.items.type, listed.items.min, listed.items.max, listed.items.required], ['list', 1, 3, true]);
+  assert.deepEqual([listed.codes.item.type, listed.codes.required], ['name', false]);
+  // Token gắn cả lô theo thứ tự phần tử.
+  assert.notEqual(canonicalJson({ items: [{ a: 1 }, { a: 2 }] }), canonicalJson({ items: [{ a: 2 }, { a: 1 }] }));
+});
+
 test('canonicalJson: cùng nội dung khác thứ tự khoá ⇒ cùng chuỗi; khác nội dung ⇒ khác', () => {
   assert.equal(canonicalJson({ b: 1, a: { d: [1, { y: 2, x: 1 }], c: null } }), canonicalJson({ a: { c: null, d: [1, { x: 1, y: 2 }] }, b: 1 }));
   assert.notEqual(canonicalJson({ amount: 1000 }), canonicalJson({ amount: 1001 }));
