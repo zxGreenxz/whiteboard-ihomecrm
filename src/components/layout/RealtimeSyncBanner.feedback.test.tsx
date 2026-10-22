@@ -47,28 +47,23 @@ describe('RealtimeSyncBanner', () => {
     expect(screen.getByRole('button', { name: 'Tải lại dữ liệu' })).toBeTruthy();
   });
 
-  it('dải NỔI (fixed), không chiếm luồng layout — không đẩy khối fullBleed khỏi viewport (RT-CLIENT-8)', () => {
+  it('dải là hàng TRONG LUỒNG (shrink-0), không nổi đè nút/hộp thoại (RT-CLIENT-8, re-review)', () => {
     const { container } = render(
-      <div>
+      <main className="flex h-[calc(100vh-4rem)] flex-col">
         <RealtimeSyncBanner />
-        <div data-testid="full-bleed" className="h-[calc(100vh-4rem)] lg:h-screen" />
-      </div>,
+        <div data-testid="full-bleed" className="min-h-0 flex-1" />
+      </main>,
     );
     act(() => reportChannelState('hub', 'interrupted'));
     act(() => { vi.advanceTimersByTime(NGUONG_HIEN_DAI_MS); });
 
     const lop = screen.getByTestId('realtime-sync-banner');
     const classes = lop.className.split(/\s+/);
-    // Lớp ngoài: fixed ở trên, trên header (z-50)/sidebar (z-40), không bắt con trỏ.
-    expect(classes).toEqual(expect.arrayContaining(['fixed', 'inset-x-0', 'z-[60]', 'pointer-events-none']));
-    // Mobile nằm dưới header 4rem, desktop sát mép trên; cả hai cộng safe-area.
-    expect(classes).toContain('top-[calc(env(safe-area-inset-top)+4.5rem)]');
-    expect(classes).toContain('lg:top-[calc(env(safe-area-inset-top)+0.75rem)]');
-    // Viên bên trong nhận bấm; gọn ở 375 px (rộng theo khung, có lề 16 px của lớp ngoài).
-    const vien = screen.getByRole('status');
-    expect(vien.className.split(/\s+/)).toEqual(expect.arrayContaining(['pointer-events-auto', 'w-full', 'max-w-xl']));
-    expect(classes).toContain('px-4');
-    // Khối nội dung vẫn là anh em đứng ngay sau, không bị bọc hay đổi chiều cao.
+    // Không fixed/absolute, không z-index: không thể che nút đầu khung Chat Zalo hay Sheet/Dialog (z-50).
+    expect(classes).toContain('shrink-0');
+    expect(lop.className).not.toMatch(/\b(fixed|absolute|sticky)\b|z-\[/);
+    expect(screen.getByRole('status').className).not.toMatch(/\b(fixed|absolute|sticky)\b|z-\[/);
+    // Khối nội dung là anh em ngay sau, nhận phần chiều cao còn lại.
     expect(lop.nextElementSibling).toBe(container.querySelector('[data-testid="full-bleed"]'));
   });
 

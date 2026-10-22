@@ -24,15 +24,12 @@ export const KHOA_NUT_SAU_BAM_MS = 2_000;
  *
  * Không props: gói C mount một bản ở MainLayout.
  *
- * NỔI, KHÔNG CHIẾM LUỒNG (RT-CLIENT-8, 22/10/2026): MainLayout đặt dải này ngay
- * trên khối fullBleed cao cố định (h-[calc(100vh-4rem)] / lg:h-screen — Chat
- * Zalo, chi tiết HĐ). Nằm trong luồng thì tổng chiều cao vượt viewport ~40 px và
- * ô soạn/nút gửi Zalo bị đẩy khỏi mép dưới đúng lúc người dùng đang gặp sự cố
- * mạng. Nên dải là một viên `fixed` ở trên: mobile nằm DƯỚI header 4rem (không
- * che nút menu/chuông), desktop sát mép trên (không có header); cộng
- * safe-area-inset-top (viewport-fit=cover); z-[60] trên header (z-50) và sidebar
- * (z-40), dưới toast (z-100). Lớp bọc ngoài trong suốt với con trỏ để không chặn
- * bấm vào nội dung hai bên viên.
+ * TRONG LUỒNG, KHÔNG NỔI (RT-CLIENT-8, re-review 22/10/2026): bản nổi `fixed`
+ * z-[60] che nút đầu khung Chat Zalo trên điện thoại (y 72–118) và đè lên
+ * Sheet/Dialog (z-50) — không tắt được nên khi gián đoạn kéo dài các nút đó bị khoá.
+ * Dải là một hàng `shrink-0` ngay đầu <main>; với trang fullBleed, MainLayout cho
+ * <main> cao cố định theo viewport và xếp cột (dải + khối nội dung flex-1 min-h-0),
+ * nên dải lấy chỗ của nội dung chứ không đẩy ô soạn/nút gửi khỏi mép dưới.
  */
 export default function RealtimeSyncBanner() {
   const { state, interruptedSince } = useRealtimeHealth();
@@ -65,14 +62,11 @@ export default function RealtimeSyncBanner() {
   };
 
   return (
-    <div
-      data-testid="realtime-sync-banner"
-      className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] flex justify-center px-4 lg:top-[calc(env(safe-area-inset-top)+0.75rem)]"
-    >
+    <div data-testid="realtime-sync-banner" className="shrink-0">
       <div
         role="status"
         aria-live="polite"
-        className="pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50/95 px-3 py-1.5 text-xs text-amber-900 shadow-md backdrop-blur-sm dark:border-amber-900/60 dark:bg-amber-950/90 dark:text-amber-100 sm:w-auto sm:px-4 sm:text-sm"
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/90 dark:text-amber-100 sm:text-sm lg:px-6"
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />

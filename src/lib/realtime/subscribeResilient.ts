@@ -135,7 +135,8 @@ export function subscribeResilient(options: ResilientChannelOptions): () => void
       if (trailing && trailingTimer === null) {
         trailingTimer = setTimeout(() => {
           trailingTimer = null;
-          resync(false);
+          // force: timer có thể chạy sớm 1 ms hoặc đồng hồ máy lùi — lượt bù này không được bị giãn cách vứt lần nữa.
+          resync(true);
         }, waitMs);
       }
       return;

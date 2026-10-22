@@ -119,13 +119,19 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
         </Sheet>
 
         {/* Main Content Area */}
-        <main className="min-w-0 flex-1 overflow-x-hidden">
-          {/* Dải cảnh báo khi cập nhật tự động gián đoạn (gói A, plan mục A6). */}
+        <main
+          className={
+            fullBleed
+              ? 'flex h-[calc(100vh-4rem)] min-w-0 flex-1 flex-col overflow-x-hidden lg:h-screen'
+              : 'min-w-0 flex-1 overflow-x-hidden'
+          }
+        >
+          {/* Dải cảnh báo khi cập nhật tự động gián đoạn (plan mục A6) — hàng trong luồng. */}
           <RealtimeSyncBanner />
           {fullBleed ? (
-            /* Full-height: không breadcrumbs/padding; cố định = viewport (desktop)
-               hoặc viewport - header mobile */
-            <div className="h-[calc(100vh-4rem)] overflow-hidden lg:h-screen">{children}</div>
+            /* Full-height: không breadcrumbs/padding. <main> cố định = viewport (desktop)
+               hoặc viewport - header mobile; khối này lấy phần còn lại sau dải cảnh báo. */
+            <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
           ) : (
             /* Page Content (breadcrumbs removed) */
             <div className={hideMobileHeader ? '' : 'p-4 lg:p-6'}>
