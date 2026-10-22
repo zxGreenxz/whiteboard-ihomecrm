@@ -4,15 +4,16 @@
 // thành viên (hoàn tiền); PATCH thẳng invoices.status sang CANCELLED chỉ cần invoices.edit (RLS).
 //
 // Chạy logic THẬT trên PGlite: thân production của 5 hàm (= thân trong migration bỏ đúng dòng mang
-// dấu [q26]; md5 phải khớp md5 production ghim ở tiền kiểm) + helper require_building_perm_v1 của
-// migration hợp đồng. Quyền giả lập bằng test.perms; đường REST = SET LOCAL ROLE authenticated;
-// writer SECURITY DEFINER chạy dưới chủ hàm như production. Credit/rent support/sổ là stub.
-import { readFileSync } from 'node:fs';
+// dấu [q26]; md5 phải khớp md5 production ghim ở tiền kiểm) + helper require_building_perm_v1 theo
+// định nghĩa SỐNG (câu 25 chuyển phép kiểm của nó sang has_building_perm_v1). Quyền giả lập bằng
+// test.perms; đường REST = SET LOCAL ROLE authenticated; writer SECURITY DEFINER chạy dưới chủ hàm
+// như production. Credit/rent support/sổ là stub.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const PATCH = 'supabase/migrations/20261021181209_invoice_cancel_refund_permission_guard_v1.sql';
-const HELPER_SOURCE = 'supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql';
 const MARK = '-- [q26] kiểm quyền máy chủ khớp web';
 
 const org = '00000000-0000-4000-8000-000000000001';
@@ -33,11 +34,21 @@ const PAYMENT = 'invoices.view,invoices.record_payment';
 
 const patchSql = readFileSync(PATCH, 'utf8');
 
-function sliceFunction(path: string, header: string, end: string): string {
-  const sql = readFileSync(path, 'utf8');
-  const start = sql.indexOf(header);
-  if (start < 0) throw new Error(`Không thấy ${header} trong ${path}`);
-  return sql.slice(start, sql.indexOf(end, start) + end.length);
+// Định nghĩa SỐNG = lần CREATE cuối theo timestamp migration (khuôn liveDefinitionOf ở
+// salaryCompletionDate.test.ts), cắt từ CREATE tới hết thân dollar-quoted. Đọc thư mục một lần.
+let migrationCorpus: string[] | null = null;
+function liveFunctionSql(schema: string, fnName: string): string {
+  migrationCorpus ??= readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort()
+    .map((f) => readFileSync(join('supabase/migrations', f), 'utf8').replace(/--[^\n]*/g, ''));
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`, 'gi');
+  let hit: string | null = null;
+  for (const sql of migrationCorpus) {
+    for (const m of sql.matchAll(re)) hit = sql.slice(m.index);
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của ${schema}.${fnName}`);
+  const tag = /\bAS\s+(\$[A-Za-z0-9_]*\$)/.exec(hit);
+  if (!tag) throw new Error(`Không thấy thân hàm ${schema}.${fnName}`);
+  return `${hit.slice(0, hit.indexOf(tag[1], tag.index + tag[0].length) + tag[1].length)};`;
 }
 
 /** Khối chép nguyên từ pg_get_functiondef (dòng 2 " RETURNS …", thân $function$) — đúng các hàm được vá. */
@@ -93,7 +104,8 @@ async function build(db: PGlite, { patch, helper = true }: { patch: boolean; hel
       UPDATE invoices SET status='CANCELLED' WHERE id=$1 $$;
   `);
   if (helper) {
-    await db.exec(sliceFunction(HELPER_SOURCE, 'CREATE OR REPLACE FUNCTION app_private.require_building_perm_v1', '$fn$;'));
+    await db.exec(liveFunctionSql('app_private', 'has_building_perm_v1'));
+    await db.exec(liveFunctionSql('app_private', 'require_building_perm_v1'));
   }
   for (const block of patchedBlocks()) await db.exec(prodBlock(block));
   await db.exec('RESET check_function_bodies');

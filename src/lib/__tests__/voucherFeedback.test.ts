@@ -42,6 +42,12 @@ it('hạng mục CHI hệ thống bị chặn lập tay: báo rõ phải lập t
  expect(voucherFailureMessage({code:'42501',message:'Không có quyền sử dụng sổ quỹ này'},'tạo phiếu')).toContain('Không có quyền sử dụng sổ quỹ này');
 });
 
+it('câu 25: nút Duyệt bị máy chủ chặn vì người lập tự duyệt phiếu chi vượt ngưỡng ⇒ báo đúng lý do',()=>{
+ const message=voucherFailureMessage({code:'42501',message:'Phiếu chi từ ngưỡng tự duyệt trở lên cần người có quyền duyệt thu chi duyệt — người lập phiếu không tự duyệt được.',hint:'ie_self_approve_over_threshold'},'duyệt phiếu');
+ expect(message).toBe('Cần người khác duyệt. Phiếu chi từ ngưỡng tự duyệt trở lên phải do người có quyền duyệt thu chi duyệt. Bạn là người lập phiếu nên không tự duyệt được — hãy nhờ người có quyền duyệt.');
+ expect(message).not.toContain('Không đủ quyền');
+});
+
 it.each(['partial','unknown'] as const)('keeps completed voucher IDs in %s feedback after losing the original cause',outcome=>{
  const error=new FinancialWorkflowError('Đã tạo phiếu, cần đối chiếu bước còn thiếu.',outcome,[{id:'voucher-1',label:'Đã tạo phiếu'}]);
  expect(voucherFailureMessage(error,'lập phiếu')).toContain('voucher-1');
