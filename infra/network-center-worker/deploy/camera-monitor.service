@@ -13,8 +13,9 @@ StateDirectoryMode=0700
 LoadCredential=worker-secret:/opt/ihome-camera-monitor/secrets/worker-secret
 LoadCredential=camera-credentials:/opt/ihome-camera-monitor/secrets/camera-credentials.json
 EnvironmentFile=/opt/ihome-camera-monitor/config/worker.env
-Environment=CAMERA_WORKER_SECRET_FILE=%d/worker-secret
-Environment=CAMERA_CREDENTIALS_FILE=%d/camera-credentials
+# %n works on Ubuntu 22.04's systemd 249; %d requires a newer systemd.
+Environment=CAMERA_WORKER_SECRET_FILE=/run/credentials/%n/worker-secret
+Environment=CAMERA_CREDENTIALS_FILE=/run/credentials/%n/camera-credentials
 Environment=CAMERA_STATE_DIRECTORY=/var/lib/ihome-camera-monitor
 Environment=NODE_OPTIONS=--max-old-space-size=192
 ExecStartPre=/bin/sh -c 'test "$(/usr/bin/node --version)" = "v22.23.2"'
