@@ -2,10 +2,20 @@ import { expect, test, type BrowserContext, type Page, type Route } from '@playw
 
 import { credentials, login, trackConsoleErrors } from './auth';
 
-const DEMO_MODE = process.env.FLEET_NETWORK_CENTER_MODE === 'demo';
-
 test.describe('Network Center deterministic frontend', () => {
-  test.skip(!DEMO_MODE, 'Local-only interaction coverage requires explicit demo mode');
+  // The full receipt runs both repositories. The DEMO server uses the same TEST
+  // backend for authentication and accessible buildings, with local mutations.
+  test.use({ baseURL: process.env.FLEET_NETWORK_DEMO_URL });
+  test.beforeEach(async ({ page, baseURL }) => {
+    expect(process.env.FLEET_NETWORK_DEMO_URL, 'Start a separate loopback DEMO server against Supabase TEST').toBeTruthy();
+    expect(baseURL).toBe(process.env.FLEET_NETWORK_DEMO_URL);
+    expect(new URL(baseURL!).hostname).toBe('127.0.0.1');
+    const response = await page.request.get(new URL('/src/integrations/supabase/client.ts', baseURL).href);
+    expect(response.ok()).toBe(true);
+    const publicConfig = await response.text();
+    expect(publicConfig).toContain('hzulujxgonszuleqticb.supabase.co');
+    expect(publicConfig).not.toContain('tryymsxyyckgbrmmvozx.supabase.co');
+  });
 
   test('renders fleet, preserves URL-backed tabs, and runs local-only interactions', async ({ page }) => {
     const consoleErrors = trackConsoleErrors(page);
@@ -38,12 +48,13 @@ test.describe('Network Center deterministic frontend', () => {
     await page.locator('.nc-building-link').first().click();
     await expect(page).toHaveURL(/\/network-center\/buildings\//);
     const tabList = page.getByRole('tablist', { name: 'Khu chức năng toà nhà' });
-    await expect(tabList.getByRole('tab')).toHaveCount(10);
+    await expect(tabList.getByRole('tab')).toHaveCount(11);
 
     const tabNames = [
       'Cổng giao tiếp',
       'Thiết bị kết nối',
       'Aruba & sơ đồ',
+      'Camera',
       'Sự cố & SLA',
       'Cấu hình',
       'Sao lưu & so sánh',
@@ -197,7 +208,6 @@ test.describe('Network Center deterministic frontend', () => {
 });
 
 test.describe('Network Center production repository', () => {
-  test.skip(DEMO_MODE, 'Production repository coverage is disabled in explicit demo mode');
 
   test('shows live unprovisioned state without silently falling back to demo', async ({ page }) => {
     const consoleErrors = trackConsoleErrors(page);
@@ -317,6 +327,8 @@ interface FixtureContext {
 type RpcHandler = (route: Route, body: Json, context: FixtureContext) => Promise<void>;
 
 interface NetworkCenterFixtureOptions {
+  /** Fully synthetic browser smoke; bypasses the existing live building read. */
+  localBuilding?: { id: string; name: string };
   /** Ghi đè `get_my_permissions` để dựng đúng ô ma trận quyền cần kiểm thử. */
   permissions?: Json;
   rolloutState?: 'OFF' | 'READ_ONLY' | 'EXECUTE';
@@ -610,7 +622,13 @@ function serverGrants(permissions: Json | null, action: 'view' | 'execute'): boo
   if (permissions.__superadmin === true) return true;
   const moduleMap = permissions.network_center;
   if (!moduleMap || typeof moduleMap !== 'object') return false;
-  return (moduleMap as Record<string, unknown>)[action] === true;
+  const value = (moduleMap as Record<string, unknown>)[action];
+  if (typeof value === 'boolean') return value;
+  if (!value || typeof value !== 'object') return false;
+  const scope = value as { org_wide?: unknown; building_ids?: unknown; cashbook_ids?: unknown };
+  return scope.org_wide === true
+    || (Array.isArray(scope.building_ids) && scope.building_ids.some((id) => typeof id === 'string' && id.length > 0))
+    || (Array.isArray(scope.cashbook_ids) && scope.cashbook_ids.some((id) => typeof id === 'string' && id.length > 0));
 }
 
 async function installNetworkCenterFixture(
@@ -638,11 +656,20 @@ async function installNetworkCenterFixture(
   // Tránh unhandled rejection khi test kết thúc trước lúc ai đó await promise này.
   buildingIdPromise.catch(() => undefined);
   const context: FixtureContext = { buildingId: '', buildingName: 'Toà nhà DEMO' };
+  if (options.localBuilding) {
+    context.buildingId = options.localBuilding.id;
+    context.buildingName = options.localBuilding.name;
+    resolveBuildingId(context.buildingId);
+  }
 
   // Đi xuyên qua danh sách toà nhà THẬT để lấy đúng một toà thuộc org DEMO. Vì
   // handler chỉ fulfill sau khi đã parse xong, fleet RPC (chỉ chạy khi
   // buildings đã resolve) luôn thấy id sẵn sàng.
   await page.route('**/rest/v1/buildings*', async (route) => {
+    if (options.localBuilding) {
+      await fulfillJson(route, [{ ...options.localBuilding, organization_id: DEMO_ORGANIZATION_ID, is_virtual: false, rooms: [{ count: 10 }], area_links: [] }]);
+      return;
+    }
     const response = await route.fetch();
     const body = await response.text();
     if (!context.buildingId) {
@@ -688,7 +715,7 @@ async function installNetworkCenterFixture(
     }
     calls.push({ name: rpcName, body });
 
-    if (rpcName === 'get_my_permissions') {
+    if (rpcName === 'get_my_permissions' || rpcName === 'get_my_permissions_v2') {
       if (options.permissions) {
         await fulfillJson(route, options.permissions);
         return;
@@ -697,8 +724,9 @@ async function installNetworkCenterFixture(
       return;
     }
 
-    if (!rpcName.startsWith('network_center_')) {
-      await route.continue();
+    if (!rpcName.startsWith('network_center_') && !rpcName.startsWith('camera_building_')) {
+      if (options.localBuilding) await route.fallback();
+      else await route.continue();
       return;
     }
 
@@ -755,7 +783,8 @@ async function installNetworkCenterFixture(
           await route.abort('failed');
           return;
         }
-        await route.continue();
+        if (options.localBuilding) await route.fallback();
+        else await route.continue();
     }
   });
 
@@ -885,8 +914,80 @@ async function openBuildingTab(
   return buildingId;
 }
 
+if (process.env.NETWORK_CAMERA_LOCAL_SMOKE === '1') test.describe('Network Center camera local smoke', () => {
+  test.use({ viewport: { width: 1440, height: 1080 }, storageState: { cookies: [], origins: [] } });
+  test('camera-local: displays recorder channels and event history without live services', async ({ page, baseURL }, testInfo) => {
+    expect(new URL(baseURL ?? '').hostname).toBe('127.0.0.1');
+    const buildingId = 'dddd2222-0000-4000-8000-000000000901';
+    const recorderId = 'dddd2222-0000-4000-8000-000000000902';
+    const errors = trackConsoleErrors(page);
+    page.on('pageerror', (error) => errors.push(error.message));
+    const escaped: string[] = [];
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.hostname === '127.0.0.1') { await route.continue(); return; }
+      if (url.hostname === 'fonts.googleapis.com') { await route.fulfill({ contentType: 'text/css', body: '' }); return; }
+      if (url.hostname !== 'camera-demo.supabase.co') { escaped.push(url.origin); await route.abort(); return; }
+      if (url.pathname.includes('/profiles')) {
+        await fulfillJson(route, { id: FIXTURE_ACTOR_ID, full_name: 'Người kiểm thử DEMO', ui_preferences: { selectedOrganizationId: DEMO_ORGANIZATION_ID } });
+      } else if (url.pathname.endsWith('/list_my_copilot_organizations_v1')) {
+        await fulfillJson(route, { organizations: [{ id: DEMO_ORGANIZATION_ID, name: 'Công ty DEMO', member_type: 'member' }] });
+      } else if (url.pathname.endsWith('/set_my_ui_preference')) {
+        await fulfillJson(route, { selectedOrganizationId: DEMO_ORGANIZATION_ID });
+      } else if (url.pathname.includes('/network_center_list_')) {
+        await fulfillJson(route, { items: [], nextCursor: null });
+      } else { await fulfillJson(route, []); }
+    });
+    await page.routeWebSocket('**/realtime/**', (socket) => { socket.onMessage(() => undefined); });
+    await page.addInitScript(({ actorId, orgId }) => {
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      const token = `${btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${btoa(JSON.stringify({ sub: actorId, role: 'authenticated', exp }))}.local-fixture`;
+      localStorage.setItem('sb-camera-demo-auth-token', JSON.stringify({ access_token: token, refresh_token: 'local-fixture', token_type: 'bearer', expires_in: 3600, expires_at: exp, user: { id: actorId, aud: 'authenticated', role: 'authenticated', email: 'camera@example.test', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01T00:00:00Z' } }));
+      localStorage.setItem(`ihomecrm.selectedOrganizationId:${actorId}`, JSON.stringify({ id: orgId, pending: false }));
+    }, { actorId: FIXTURE_ACTOR_ID, orgId: DEMO_ORGANIZATION_ID });
+    let state = 'ONLINE';
+    let old = false;
+    const makeEvent = (id: string, at: string) => ({ id, recorder_id: recorderId, organization_id: DEMO_ORGANIZATION_ID, building_id: buildingId, event_key: id, kind: 'RECORDER', channel: null, slot: null, previous_state: 'OFFLINE', state: 'ONLINE', code: null, action: null, observed_at: at, received_at: at });
+    const first = makeEvent('dddd2222-0000-4000-8000-000000000903', '2026-01-02T00:00:00Z');
+    const fixture = await installNetworkCenterFixture(page, {
+      localBuilding: { id: buildingId, name: 'Tòa camera DEMO' }, permissions: PERMISSIONS_VIEW_ONLY,
+      handlers: {
+        camera_building_snapshot_v1: async (route) => fulfillJson(route, { recorders: [{
+          id: recorderId, organization_id: DEMO_ORGANIZATION_ID, building_id: buildingId,
+          display_name: 'Đầu ghi DEMO 16 kênh', vendor: 'KBVISION', model: 'Mô phỏng', channel_count: 16, enabled: true, stale_after_seconds: 120,
+          snapshot: { recorder_id: recorderId, organization_id: DEMO_ORGANIZATION_ID, building_id: buildingId, status: state, checked_at: isoAgo(old ? 300_000 : 1000), received_at: isoAgo(1000),
+            channels: Array.from({ length: 16 }, (_, index) => ({ channel: index + 1, state: index === 15 ? 'EMPTY' : 'CONNECTED' })),
+            storage: [{ slot: 1, state: 'NORMAL', totalBytes: 1_000_000_000_000, usedBytes: 400_000_000_000 }], event_coverage: 'STATE_POLLING_ONLY', issues: [] },
+        }] }),
+        camera_building_events_v1: async (route, body) => fulfillJson(route, body.p_before_id ? { items: [makeEvent('dddd2222-0000-4000-8000-000000000904', '2026-01-01T00:00:00Z')], hasMore: false } : { items: [first], hasMore: true }),
+      },
+    });
+    try {
+      await openBuildingTab(page, fixture, 'cameras');
+      await expect(page.getByText('Đầu ghi kết nối', { exact: true })).toBeVisible();
+      await expect(page.getByText('Có kết nối', { exact: true })).toHaveCount(15);
+      await expect(page.getByText('Kênh chưa gắn camera', { exact: true })).toHaveCount(1);
+      await expect(page.getByText('Xem trực tiếp chưa được cấu hình.', { exact: true })).toBeVisible();
+      await expect(page.locator('video,iframe')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Xem sự kiện cũ hơn' }).click();
+      await expect(page.getByRole('button', { name: 'Xem sự kiện cũ hơn' })).toHaveCount(0);
+      expect(fixture.callsOf('camera_building_events_v1').some((body) => body.p_before_id === first.id)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('camera-desktop.png'), fullPage: true });
+      for (const [nextState, label] of [['OFFLINE', 'Mất kết nối đến đầu ghi'], ['AUTH_DENIED', 'Không đăng nhập được đầu ghi']]) {
+        state = nextState;
+        await page.getByRole('button', { name: 'Làm mới camera' }).click();
+        await expect(page.getByText(label, { exact: true })).toBeVisible();
+      }
+      state = 'ONLINE'; old = true;
+      await page.getByRole('button', { name: 'Làm mới camera' }).click();
+      await expect(page.getByText('Dữ liệu đã cũ', { exact: true })).toBeVisible();
+      expect(errors).toEqual([]);
+      expect(escaped).toEqual([]);
+    } finally { await fixture.dispose(); }
+  });
+});
+
 test.describe('Network Center production hardening', () => {
-  test.skip(DEMO_MODE, 'Bộ hardening chỉ chạy trên repository production');
 
   test('quyền: thiếu network_center.view thì bị chặn khỏi route', async ({ page }) => {
     const consoleErrors = trackConsoleErrors(page);
@@ -1634,7 +1735,7 @@ test.describe('Network Center production hardening', () => {
 
       await page.getByRole('tab', { name: 'Cài đặt', exact: true }).click();
       await page.getByRole('button', { name: /Lưu cài đặt/ }).click();
-      await expect(page.locator('.nc-form-error')).toHaveText('Dịch vụ Network Center từ chối yêu cầu');
+      await expect(page.locator('.nc-form-error')).toHaveText(/^Chưa lưu cài đặt mạng của .+\. Chưa thực hiện được lưu cài đặt mạng\. Kiểm tra trạng thái hiện tại trước khi thử lại\.$/);
       expect(updateBodies).toHaveLength(1);
       // Lỗi ghi không được biến thành trạng thái "đã lưu" giả.
       await expect(page.getByText('Dữ liệu mô phỏng', { exact: true })).toHaveCount(0);
@@ -1646,7 +1747,7 @@ test.describe('Network Center production hardening', () => {
     }
   });
 
-  test('cổng quyền UI khớp đúng quyền server cho cả ba vai demo', async ({ browser }) => {
+  test('cổng quyền UI khớp đúng quyền server cho cả ba vai demo', async ({ browser, baseURL }) => {
     const contexts: BrowserContext[] = [];
     try {
       for (const who of ['chunha', 'ketoan', 'quanly'] as const) {
@@ -1658,14 +1759,17 @@ test.describe('Network Center production hardening', () => {
           `vai ${who} phải dùng tài khoản DEMO`,
         ).toBe(true);
 
-        const context = await browser.newContext();
+        const context = await browser.newContext({ baseURL });
         contexts.push(context);
         const page = await context.newPage();
         const consoleErrors = trackConsoleErrors(page);
         const failures = trackNetworkFailures(page);
-        const captured: { permissions: Json | null } = { permissions: null };
-        await page.route('**/rest/v1/rpc/get_my_permissions', async (route) => {
+        const captured: { permissions: Json | null; rpcName: string | null; organizationId: unknown } = { permissions: null, rpcName: null, organizationId: null };
+        await page.route(/\/rest\/v1\/rpc\/get_my_permissions(?:_v2)?(?:\?|$)/, async (route) => {
+          captured.rpcName = new URL(route.request().url()).pathname.split('/').pop() ?? null;
+          captured.organizationId = (route.request().postDataJSON() as Json | null)?.p_org;
           const response = await route.fetch();
+          expect(response.ok()).toBe(true);
           const body = await response.text();
           try {
             const parsed: unknown = JSON.parse(body);
@@ -1682,10 +1786,12 @@ test.describe('Network Center production hardening', () => {
         await page.goto('/network-center');
         await expect
           .poll(() => captured.permissions !== null, {
-            message: `chưa nhận được get_my_permissions cho vai ${who}`,
+            message: `chưa nhận được get_my_permissions_v2 cho vai ${who}`,
             timeout: 30_000,
           })
           .toBe(true);
+        expect(captured.rpcName).toBe('get_my_permissions_v2');
+        expect(captured.organizationId).toBe(DEMO_ORGANIZATION_ID);
 
         if (serverGrants(captured.permissions, 'view')) {
           await expect(page).toHaveURL(/\/network-center/);

@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T14:08:22.553Z",
+  "generatedAt": "2026-10-22T15:06:37.001Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 819,
-    "unknown": 81,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12882,6 +12882,22 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql",
+      "version": "20261022145352",
+      "name": "network_center_camera_monitoring_v1",
+      "scheme": "timestamp14",
+      "sha256": "19358a71c8ba6894411382e68b6ec86feb5f74b4fef2dba50dba997a64eedc5f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.camera_recorders",
+        "table:app_private.camera_recorder_connections",
+        "table:public.camera_recorder_current",
+        "table:public.camera_events",
+        "function:public.network_center_admin_enroll_camera_v1"
       ]
     },
     {
