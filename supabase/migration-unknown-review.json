@@ -916,7 +916,7 @@
         "function:app_private.hermes_vn_date_text_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 2, 22/10/2026",
-      "sha256": "2848437861b21ec47c98d938f3895d5f187bc279f65e5c25d04889147912578f"
+      "sha256": "425c40afbea75fc730102d21610c6e9f41e62345dcae30ddba498d3a2b368a8f"
     },
     "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql": {
       "bangChung": [
@@ -959,7 +959,7 @@
         "function:public.hermes_expense_write_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 3, 22/10/2026",
-      "sha256": "e1d0ef4d4e0b77b7f76f82324ef05a02bdc809e7a7b41828563e6aa726185140"
+      "sha256": "589394bc34dbae8c45e6e6a8eda9a36420b3da030b86769ef8b2d2071220bacc"
     },
     "supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql": {
       "bangChung": [

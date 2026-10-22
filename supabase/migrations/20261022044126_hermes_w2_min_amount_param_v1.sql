@@ -8,6 +8,19 @@ BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
+-- Ghim thân đang chạy (review Mốc 2+3): file này dựng hai thân từ bản production; nếu lúc áp thân đang chạy KHÁC bản đó (một bản vá
+-- khác đã thay hàm) thì dừng thay vì đè mất vá. Cho phép: thân production + TEST đo 22/10/2026 bằng md5(replace(prosrc,chr(13),''))
+-- (npm run db:query, chỉ đọc; hai môi trường trùng nhau) hoặc chính thân của file này (chạy lại idempotent).
+DO $requires$
+BEGIN
+  IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure('app_private.hermes_w2_param_names_v1()')),'')
+      NOT IN ('6bcb532c153d7354c29f8ff5fefc409a','e150d3aa96b7c7b934ade89454f8b089') THEN
+    RAISE EXCEPTION 'hermes_w2_min_amount_param_body_drift: app_private.hermes_w2_param_names_v1'; END IF;
+  IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure('app_private.hermes_w2_params_v1(jsonb,jsonb)')),'')
+      NOT IN ('ea1e5fc60a077a1014f40fd432d6fe99','07e0083b0d1e02bf639eceb305b070bc') THEN
+    RAISE EXCEPTION 'hermes_w2_min_amount_param_body_drift: app_private.hermes_w2_params_v1'; END IF;
+END $requires$;
+
 CREATE OR REPLACE FUNCTION app_private.hermes_w2_param_names_v1()
 RETURNS text[] LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,app_private AS $fn$
  SELECT ARRAY['query','status','kind','month','year','fromDate','toDate','date','days','floor','basis','unreadOnly','lowStock','minAmount',

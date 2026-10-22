@@ -459,6 +459,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 | Thay dispatcher W2 gói B gỡ mất bản vá | Vừa | Ghim md5 thân đang chạy; gộp `main` trước khi áp |
 | Xung đột file dùng chung với Hợp đồng | Thấp | Khối riêng; phiên gộp sau rebase |
 | Chạy thử để lại khe số trong `app_private.income_expense_change_log_id_seq` | Thấp | **Chấp nhận** (phiên chính, 22/10): chỉ là khe số id nhật ký, không phải dữ liệu tiền; SEQUENCE vốn không theo giao dịch |
+| Hai requestId khác nhau, cùng nội dung, chạy song song ⇒ cả hai đều ghi | Thấp | Chấp nhận (review Mốc 2+3): chống trùng chỉ là cảnh báo ở bản xem trước ("đã có phiếu … CÙNG SỐ TIỀN"), giống web. Cùng một requestId thì phát lại đúng kết quả đã chốt |
 | Guard Hermes (role_bindings) và hàm ghi web (staff_assignments) cho hai tập toà khác nhau | Vừa | Mốc 3: phạm vi thao tác thu chi = guard ∩ `authorize_income_expense_on_building` gọi y như hàm ghi (mục 17). Tài khoản chỉ có role_bindings cũng không lập được phiếu trên web — việc của chủ/phiên chính |
 
 ## 12. Điểm cần chốt (mặc định đề xuất in đậm)
@@ -635,3 +636,31 @@ Danh bạ: v1 không có Kho; v2(true) có; v2(false) không có (cả bốn k�
 - phát hành connector rồi áp năm file theo thứ tự qua `migrate:forward`;
 - SOUL dùng tên báo cáo ở mục 14;
 - ma trận lại các câu đọc trên.
+
+## 18. Mốc 3b — sửa theo review độc lập Mốc 2+3 (22/10/2026)
+
+Kết luận review: APPROVE có điều kiện. Không có lỗi ghi sai, ghi trùng hay vượt quyền.
+
+1. **Ghim thân đang chạy (điều kiện).** Hai file thay thân hàm đã có trên production nay có ghim md5 trong `$requires$`:
+   - `20261022044126`: `hermes_w2_param_names_v1`, `hermes_w2_params_v1`;
+   - `20261022051032`: `hermes_w2b_catalog_v1`, `hermes_w2b_read_v1`.
+
+   Phép đo là `md5(replace(prosrc,chr(13),''))` của thân đang chạy (production và TEST trùng nhau, đo 22/10) hoặc của chính thân trong file (chạy lại). Lệch ⇒ dừng, không đè mất bản vá của phiên khác.
+
+   | Hàm | Đang chạy | Thân của file |
+   | --- | --- | --- |
+   | `app_private.hermes_w2_param_names_v1` | `6bcb532c153d7354c29f8ff5fefc409a` | `e150d3aa96b7c7b934ade89454f8b089` |
+   | `app_private.hermes_w2_params_v1` | `ea1e5fc60a077a1014f40fd432d6fe99` | `07e0083b0d1e02bf639eceb305b070bc` |
+   | `app_private.hermes_w2b_catalog_v1` | `80e6f676997d9330471e8c8dc603f304` | `73e2d106a40067dec256258c1da38ded` |
+   | `app_private.hermes_w2b_read_v1` | `4cdb4ef8a8914a34b0aec3e08ddc16e4` | `a4ea14ab90fa72323e24ae8b69e4398a` |
+
+2. **Phát lại trước kiểm.** Lượt 2 (`apply`) có biên nhận cho requestId này ⇒ trả kết quả đã chốt (hoặc `request_conflict` / outcome unknown) TRƯỚC các kiểm phạm vi, hạng mục, sổ. Trước đây, ghi xong rồi mất quyền sổ thì gọi lại cùng requestId ra `cashbook_not_held`. requestId mới vẫn qua đủ kiểm rồi mới mở biên nhận. Sửa ở `20261022024834` và bản sao `20261022044123`.
+3. Mô tả `expense_vouchers` dặn dùng `status=UNAPPROVED kind=oldest` cho câu "chờ duyệt lâu nhất / quá N ngày".
+4. Dòng rủi ro "hai requestId cùng nội dung chạy song song đều ghi" (mục 11).
+
+**Ghi nhận cho Mốc 4** (chưa làm):
+- lỗi lô ở lượt 1 nên nói khoản số mấy;
+- gợi ý hạng mục tự nhận khoá cứng `rule` cho `tra_tien_thua_khach` — xem có nên loại khỏi gợi ý tự động;
+- ngân sách byte: họ thao tác còn 41 B so với trần 2 000 B, `tools/list` còn 1 394 B so với 64 000 B ⇒ Mốc 4–5 không thêm tool hay khuôn tham số mới vào `tools/list`.
+
+**Thứ tự áp (theo tên, không đổi):** `20261022024045` → `20261022024834` → `20261022044120` → `20261022044123` → `20261022044126` → `20261022051029` → `20261022051032`.

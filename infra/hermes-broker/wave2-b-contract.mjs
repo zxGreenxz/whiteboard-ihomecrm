@@ -86,7 +86,7 @@ export const W2B_REPORTS = Object.freeze({
   // Thu chi Mốc 3 (22/10, 20261022044130_hermes_w2b_expense_reports_v1): như trang Thu chi web (income_expenses dưới RLS, mặc định
   // ALL_ACTIVE = đã duyệt + chờ duyệt), mọi toà của khoá KỂ CẢ toà ảo (chi phí chung); khoá income_expenses.view (đợt 1, đã bật).
   expense_vouchers: w2Report({ permission: 'income_expenses.view', source: 'crm.income_expenses', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
-    title: 'Phiếu CHI lớn trước (kind=oldest: lập sớm nhất trước, pendingDays = số ngày chờ duyệt): fromDate..toDate (mặc định tháng này), minAmount, status (trống = đã duyệt + chờ duyệt như web), query (tên/mã/hạng mục), toà kể cả chi phí chung. summary: count, totalAmount, maxAmount, byBuilding.',
+    title: 'Phiếu CHI lớn trước: fromDate..toDate (mặc định tháng này), minAmount, status (trống = đã duyệt + chờ duyệt), query (tên/mã/hạng mục), toà kể cả chi phí chung. Chờ duyệt lâu nhất/quá N ngày: status=UNAPPROVED kind=oldest (pendingDays). summary: count, totalAmount, maxAmount, byBuilding.',
     params: ['fromDate', 'toDate', 'minAmount', 'status', 'kind', 'query', 'buildingId'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], kinds: ['largest', 'oldest'],
     fields: { voucherId: id, code: nullable(longText(60)), voucherDate: date, name, buildingId: id, buildingName: name, roomName: nullable(longText(100)),
       categories: nullable(longText(300)), totalAmount: money, approvalStatus: code, postingStatus: nullable(code), pendingDays: nullable(count) },

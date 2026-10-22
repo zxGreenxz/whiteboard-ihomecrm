@@ -192,6 +192,15 @@ BEGIN
   ELSIF p_resolution->>'status'='resolved' THEN v_resolved:=p_resolution->'resolved';
   ELSE RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023';
   END IF;
+  -- Phát lại TRƯỚC mọi kiểm phạm vi/hạng mục/sổ (review Mốc 2+3): requestId đã có biên nhận ⇒ trả đúng kết quả đã chốt (hoặc
+  -- request_conflict / outcome_unknown), kể cả khi quyền sổ hay phạm vi đổi sau lần ghi. requestId mới vẫn qua đủ kiểm rồi mới mở biên nhận.
+  IF p_phase='apply' AND EXISTS(SELECT 1 FROM app_private.hermes_action_receipts r WHERE r.organization_id=v_org AND r.user_id=auth.uid()
+      AND r.request_id=p_request_id) THEN
+    v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v_resolved));
+    IF v_begin->>'state'='replay' THEN RETURN v_begin->'result'; END IF;
+    IF v_begin->>'state'='conflict' THEN RETURN jsonb_build_object('kind','rejected','reason','request_conflict'); END IF;
+    RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409';
+  END IF;
 
   IF p_action='expense.note' THEN
     -- Bản đã giải phải là phiếu của công ty, còn sống, ở toà trong phạm vi khoá.

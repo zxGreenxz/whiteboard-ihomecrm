@@ -353,6 +353,22 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     });
   });
 
+  await t.test('Mốc 3b (review): phát lại TRƯỚC kiểm phạm vi/hạng mục/sổ — ghi xong rồi mất quyền sổ và phân công, cùng requestId vẫn ra đúng kết quả đã chốt', async () => {
+    const params = { items: [item({ content: 'phát lại sau thu hồi' })] };
+    const preview = await run('expense.create', 'preview', rid(50), params);
+    const applied = await applyWith(rid(50), params, preview);
+    assert.equal(applied.kind, 'applied');
+    await f.rollbackCase(async () => {
+      await db.query('UPDATE public.accounts SET user_id=$1 WHERE id=$2', [STRANGER, preview.resolved.items[0].cashbookId]);
+      await db.query('DELETE FROM public.fixture_staff_assignments WHERE user_id=$1', [USER]);
+      assert.deepEqual(await applyWith(rid(50), params, preview), applied, 'phát lại = kết quả đã chốt, không phải cashbook_not_held / not_allowed');
+      const before = await trace();
+      assert.deepEqual(await applyWith(rid(51), params, preview), { kind: 'rejected', reason: 'not_allowed' }, 'requestId mới vẫn qua đủ kiểm');
+      assert.deepEqual(await trace(), before, 'requestId mới bị chặn không mở biên nhận');
+      assert.deepEqual(await applyWith(rid(50), { items: [item({ content: 'nội dung khác' })] }, preview), { kind: 'rejected', reason: 'request_conflict' });
+    });
+  });
+
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.create'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run('expense.create', phase, rid(30), { items: [item()] }), code('22023'));

@@ -23,6 +23,15 @@ BEGIN
     OR to_regprocedure('public.ie_expense_categories_v1(uuid,uuid[],date,date,text,boolean)') IS NULL
     OR NOT ('minAmount'=ANY(app_private.hermes_w2_param_names_v1())) THEN
     RAISE EXCEPTION 'hermes_w2b_expense_reports_dependency_invalid'; END IF;
+  -- Ghim thân đang chạy (review Mốc 2+3): hai thân dưới dựng từ bản production; thân đang chạy KHÁC bản đó (một bản vá khác đã thay
+  -- hàm) ⇒ dừng thay vì đè mất vá. Cho phép: thân production + TEST đo 22/10/2026 bằng md5(replace(prosrc,chr(13),'')) (npm run
+  -- db:query, chỉ đọc; hai môi trường trùng nhau) hoặc chính thân của file này (chạy lại idempotent).
+  IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure('app_private.hermes_w2b_catalog_v1()')),'')
+      NOT IN ('80e6f676997d9330471e8c8dc603f304','73e2d106a40067dec256258c1da38ded') THEN
+    RAISE EXCEPTION 'hermes_w2b_expense_reports_body_drift: app_private.hermes_w2b_catalog_v1'; END IF;
+  IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure('app_private.hermes_w2b_read_v1(text,jsonb,jsonb)')),'')
+      NOT IN ('4cdb4ef8a8914a34b0aec3e08ddc16e4','a4ea14ab90fa72323e24ae8b69e4398a') THEN
+    RAISE EXCEPTION 'hermes_w2b_expense_reports_body_drift: app_private.hermes_w2b_read_v1'; END IF;
 END $requires$;
 
 -- 1. Bảng báo cáo gói B (khớp W2B_REPORTS của infra/hermes-broker/wave2-b-contract.mjs; test so khớp): bản production + hai mục.

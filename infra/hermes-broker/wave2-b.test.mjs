@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2b, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
+import { sharedW2b, definitionOf, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
 import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ORG_SCOPE, USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
 import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
@@ -902,6 +902,38 @@ test('Thu chi Mốc 3 — cấu trúc: hai hàm dùng chung INVOKER search_path 
     const failed = await db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true); ${sql}`).then(() => null, error => error);
     await db.exec('ROLLBACK TO SAVEPOINT role_check; RELEASE SAVEPOINT role_check');
     assert.equal(failed?.code, '42501', sql);
+  }
+}));
+
+// Mốc 3b (review): hai file THAY THÂN hàm đã có trên production ghim md5 thân đang chạy trong $requires$ — lệch (một bản vá khác đã
+// thay hàm) ⇒ dừng, không đè mất vá; thân production hoặc chính thân của file (chạy lại) ⇒ qua.
+test('Mốc 3b — ghim thân đang chạy: $requires$ dừng khi thân lệch, qua khi là bản production hoặc chính thân của file', () => inCase(async ({ db }) => {
+  const requiresOf = path => { const found = readFileSync(path, 'utf8').match(/DO \$requires\$[\s\S]*?END \$requires\$;/); assert.ok(found, path); return found[0]; };
+  const PARAM = requiresOf('supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql');
+  const READS = requiresOf('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql');
+  await db.exec(PARAM); await db.exec(READS); // fixture đã áp hai file: thân của chính file ⇒ qua
+  const cases = [[PARAM, 'app_private.hermes_w2_param_names_v1()', 'hermes_w2_min_amount_param_body_drift'],
+    [PARAM, 'app_private.hermes_w2_params_v1(jsonb,jsonb)', 'hermes_w2_min_amount_param_body_drift'],
+    [READS, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_reports_body_drift'],
+    [READS, 'app_private.hermes_w2b_read_v1(text,jsonb,jsonb)', 'hermes_w2b_expense_reports_body_drift']];
+  for (const [guard, signature, message] of cases) {
+    await db.exec('SAVEPOINT drift');
+    const definition = (await db.query('SELECT pg_get_functiondef($1::regprocedure) d', [signature])).rows[0].d;
+    // "Bản vá khác": cùng thân thêm một dòng chú thích ⇒ md5 khác cả bản production lẫn bản của file.
+    await db.exec(definition.replace(/AS \$function\$\n/, 'AS $function$\n-- vá của phiên khác\n'));
+    const failed = await db.exec(guard).then(() => null, error => error);
+    await db.exec('ROLLBACK TO SAVEPOINT drift; RELEASE SAVEPOINT drift');
+    assert.match(failed?.message ?? '', new RegExp(message), signature);
+  }
+  // Bản production (thân trước mỗi file, = file gốc 20261018000000 / 020200 / 080200) cũng qua — từng file theo thứ tự áp (file báo cáo
+  // đòi minAmount mà file tham số thêm trước nó).
+  for (const [guard, pairs] of [[PARAM, [['20261018000000_hermes_w2_foundation_v1', 'app_private.hermes_w2_param_names_v1'],
+      ['20261018000000_hermes_w2_foundation_v1', 'app_private.hermes_w2_params_v1']]],
+    [READS, [['20261018020200_hermes_w2b_finance_read_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261018080200_hermes_w2z_finance_fail_closed_v1', 'app_private.hermes_w2b_read_v1']]]]) {
+    await db.exec('SAVEPOINT production');
+    for (const [file, name] of pairs) await db.exec(definitionOf(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'), name));
+    await db.exec(guard);
+    await db.exec('ROLLBACK TO SAVEPOINT production; RELEASE SAVEPOINT production');
   }
 }));
 
