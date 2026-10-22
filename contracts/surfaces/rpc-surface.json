@@ -3264,10 +3264,9 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
