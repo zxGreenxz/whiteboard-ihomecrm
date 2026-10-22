@@ -2,20 +2,26 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { apHaiLuot, docMigration, md5Than, trichHam } from './fixtures/notificationPipelineDb';
+
 /**
  * Migration 20261021171252_sua_producer_v5_thong_bao_v1 (gói B mục B11), chạy THẬT trên PGlite, hai lượt:
- *   - get_salary_v5_config: nhánh người gọi tin cậy (JWT service_role, hoặc không JWT + session postgres) CHỈ khi
- *     auth.uid() NULL và p_org tường minh; người dùng giữ nguyên cổng membership.
+ *   - get_salary_v5_config: nhánh người gọi tin cậy (JWT service_role, hoặc không JWT + session postgres) khi
+ *     auth.uid() NULL: p_org tường minh ⇒ bộ luật công ty đó, p_org NULL ⇒ NULL (như nhánh người dùng); người dùng giữ
+ *     nguyên cổng membership.
  *   - v5_route_candidates truyền công ty suy từ p_user (digest v5 chạy dưới service_role không còn 42501).
+ *   - v5_run_digest (thân THẬT trích từ 20260905082200 — md5 production) cô lập lỗi theo từng nhân viên.
  *   - v5_appeal / report_device_issue ghi organization_id, người nhận = chủ công ty; không suy được công ty thì thao
  *     tác vẫn thành công (trước đây autofill_org_strict ném 23502 và rollback cả kháng nghị).
  */
 const FILE = 'supabase/migrations/20261021171252_sua_producer_v5_thong_bao_v1.sql';
 const ROUTE_FILE = 'supabase/migrations/20260721140000_v5_route_planning_phase12.sql';
+const DIGEST_FILE = 'supabase/migrations/20260905082200_v5_digest_notification_organization_id_v1.sql';
 const ANCHOR = 'v_cfg JSONB := public.get_salary_v5_config();';
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG_A = u(1), ORG_B = u(2), STAFF = u(10), OWNER_A = u(11), OWNER_B = u(12), SUPER = u(13), SOLO = u(14), TOA = u(20);
+const STAFF_LOI = u(15);
 const db = new PGlite();
 
 async function maLoi(p: Promise<unknown>): Promise<string | null> {
@@ -89,10 +95,28 @@ beforeAll(async () => {
     END $fn$;
     GRANT EXECUTE ON FUNCTION public.get_salary_v5_config(uuid), public.v5_appeal(date, text), public.report_device_issue(uuid, text)
       TO anon, authenticated, service_role;
+
+    -- Phụ thuộc của v5_run_digest (thân thật): ngày VN cố định thứ Hai, phân công, nhiệm vụ trong ngày (giả).
+    CREATE FUNCTION public.vn_local_date(timestamptz) RETURNS date LANGUAGE sql AS $$ SELECT date '2026-10-19' $$;
+    CREATE TABLE public.staff_assignments(staff_id uuid, building_id uuid);
+    INSERT INTO public.staff_assignments VALUES ('${STAFF}', '${TOA}'), ('${STAFF_LOI}', '${TOA}');
+    CREATE TABLE test_missions(user_id uuid, color text, building_id uuid, building_name text, reason text);
+    INSERT INTO test_missions VALUES ('${STAFF}', 'red', '${TOA}', 'Toà B1', 'quá hạn ghé');
+    -- STAFF_LOI: như v5_salary_org_of_user_v1 ném P0001 khi ≥2 công ty đều có bộ luật v5.
+    CREATE FUNCTION public.v5_daily_missions(p_user uuid) RETURNS TABLE(color text, building_id uuid, building_name text, reason text)
+      LANGUAGE plpgsql AS $$
+    BEGIN
+      IF p_user = '${STAFF_LOI}'::uuid THEN RAISE EXCEPTION 'nhân viên thuộc nhiều công ty có v5' USING ERRCODE = 'P0001'; END IF;
+      RETURN QUERY SELECT m.color, m.building_id, m.building_name, m.reason FROM public.test_missions m WHERE m.user_id = p_user;
+    END $$;
   `);
-  const sql = readFileSync(FILE, 'utf8');
-  await db.exec(sql);
-  await db.exec(sql);
+  await db.exec(trichHam(DIGEST_FILE, 'public.v5_run_digest'));
+  await db.exec('REVOKE ALL ON FUNCTION public.v5_run_digest() FROM PUBLIC, anon, authenticated; GRANT EXECUTE ON FUNCTION public.v5_run_digest() TO service_role;');
+  // Bốn hàm cũ chỉ có thân GIẢ ở fixture ⇒ lượt 1 thay md5 cũ; v5_route_candidates VÁ trên thân giả ⇒ lượt 2 thay md5 mới.
+  // v5_run_digest dùng thân thật ⇒ kiểm y như production (md5 cũ 526e8ec3…, md5 mới của file).
+  await apHaiLuot(db, docMigration(FILE),
+    ['public.get_salary_v5_config(uuid)', 'public.v5_route_candidates(uuid)', 'public.v5_appeal(date,text)', 'public.report_device_issue(uuid,text)'],
+    ['public.v5_route_candidates(uuid)']);
 }, 60000);
 afterAll(async () => {
   await db.close();
@@ -106,9 +130,11 @@ describe('get_salary_v5_config — nhánh máy chủ', () => {
     expect((await voi(null, null, () => cfg(ORG_B))).rows[0].v).toEqual({ org: ORG_B });
   });
 
-  it('thiếu công ty, hoặc JWT không phải service_role ⇒ 42501 như cũ', async () => {
-    expect(await maLoi(voi(null, '{"role":"service_role"}', () => cfg(null)))).toBe('42501');
+  it('máy chủ không suy được công ty (p_org NULL) ⇒ NULL như nhánh người dùng; JWT không phải service_role ⇒ 42501 như cũ', async () => {
+    expect((await voi(null, '{"role":"service_role"}', () => cfg(null))).rows[0].v).toBeNull();
+    expect((await voi(null, null, () => cfg(null))).rows[0].v).toBeNull();
     expect(await maLoi(voi(null, '{"role":"anon"}', () => cfg(ORG_A)))).toBe('42501');
+    expect(await maLoi(voi(null, '{"role":"anon"}', () => cfg(null)))).toBe('42501');
     expect(await maLoi(voi(null, '{"role":"authenticated"}', () => cfg(ORG_A)))).toBe('42501');
   });
 
@@ -132,6 +158,31 @@ describe('v5_route_candidates — digest dưới service_role', () => {
     expect(r.rows[0].cfg).toEqual({ org: ORG_A });
     const self = await voi(SOLO, '{"role":"authenticated"}', () => db.query<{ cfg: { org: string } }>('SELECT * FROM public.v5_route_candidates($1)', [SOLO]));
     expect(self.rows[0].cfg).toEqual({ org: ORG_A });
+  });
+});
+
+describe('v5_run_digest — một nhân viên lỗi không hỏng cả bản tin', () => {
+  it('thân gốc = 20260905082200 (md5 production 22/10); sau migration có khối EXCEPTION theo nhân viên, ACL giữ nguyên', async () => {
+    const goc = new PGlite();
+    try {
+      await goc.exec(trichHam(DIGEST_FILE, 'public.v5_run_digest'));
+      expect(await md5Than(goc, 'public.v5_run_digest()')).toBe('526e8ec337fcb2e92b2ee7c201cc7b73');
+    } finally {
+      await goc.close();
+    }
+    const acl = await db.query<Record<string, boolean>>(`SELECT
+      has_function_privilege('service_role', 'public.v5_run_digest()', 'EXECUTE') svc,
+      has_function_privilege('authenticated', 'public.v5_run_digest()', 'EXECUTE') auth`);
+    expect(acl.rows[0]).toEqual({ svc: true, auth: false });
+  });
+
+  it('STAFF_LOI ném ⇒ chỉ bỏ bản tin của người đó (WARNING); STAFF vẫn nhận chuông đúng công ty của toà', async () => {
+    await db.query("DELETE FROM public.notifications WHERE metadata->>'v5' = 'digest'");
+    const r = await voi(null, '{"role":"service_role"}', () => db.query<{ user_id: string; title: string; url: string }>(
+      'SELECT user_id, title, url FROM public.v5_run_digest()'));
+    expect(r.rows).toEqual([{ user_id: STAFF, title: 'Tuyến hôm nay: 1 toà nên ghé', url: '/my-day' }]);
+    const n = await db.query("SELECT user_id, organization_id, content FROM public.notifications WHERE metadata->>'v5' = 'digest'");
+    expect(n.rows).toEqual([{ user_id: STAFF, organization_id: ORG_B, content: '• Toà B1 — quá hạn ghé' }]);
   });
 });
 

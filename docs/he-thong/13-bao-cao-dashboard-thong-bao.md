@@ -325,10 +325,17 @@ Từ migration `20261021171251_nhac_viec_server_lifecycle_v1` cùng lane còn nh
 
 Một dòng/người/ngày/họ, nội dung chỉ là số đếm; số cập nhật mỗi lượt 15'. Việc về 0 ⇒ dòng chưa đọc thành `CANCELLED`
 (áp cả ba nhóm trên; dòng đã đọc giữ nguyên), nguồn quay lại trong ngày ⇒ mở lại; ngày mới thay dòng chưa đọc của ngày
-trước. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ (§4.5). Sweep chỉ tính lại (người, họ) khi nguồn
-(id+revision), `organizations.authorization_version` hoặc cổng đổi so với lần tính trong ngày
-(`app_private.lifecycle_reminder_sweep_state`); đo TEST 22/10: lượt đầu ngày ~4,5 s cho hai công ty, các lượt sau ~0,04 s
-(RPC qua PostgREST có trần 8 s).
+trước; người nhận tắt họ đó trong app (cá nhân/công ty/cadence OFF) ⇒ dòng chưa đọc thành `CANCELLED`
+(`PREFERENCE_DISABLED`), bật lại trong ngày ⇒ mở lại. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ (§4.5).
+Edge gọi `lifecycle_reminder_org_ids_v1()` rồi `lifecycle_reminder_sweep_v1(<công ty>)` TỪNG công ty (mỗi RPC một giao
+dịch, trần 8 s của PostgREST riêng, khoá quyết định chỉ giữ trong một công ty). Sweep quét nguồn một lần/công ty, tính
+tập toà được phép một lần cho mỗi (người, công ty, quyền) rồi dùng chung cho mọi họ, và chỉ tính lại (người, họ) khi
+nguồn (id+revision), `organizations.authorization_version` hoặc cổng đổi so với lần tính trong ngày
+(`app_private.lifecycle_reminder_sweep_state`, cột `had_payload` để đếm người nhận đúng khi người nhận mất quyền giữa
+ngày). Claim lọc thiết bị/lượt/giờ yên trước LIMIT (dòng giờ yên không chặn hàng), so ngày + cổng trước khi dựng
+payload và chỉ dựng payload một lần (edge validate ngay trước khi gửi). Đo TEST 22/10 (lượt đầu ngày): sweep ~0,9 s và
+~0,4 s cho hai công ty, các lượt sau ~0,02 s; claim(10) khi mọi thành viên có thiết bị ~0,23 s (RPC qua PostgREST có
+trần 8 s).
 
 ### 4.2a. Bộ sinh thông báo hiện hữu ở Dashboard — runScheduledNotifications
 
@@ -469,10 +476,12 @@ producer ──▶ cổng notify_gate_v1 (E1–E6, Hermes task = E4) / lifecycle
   `CANCELLED` = việc đã xong, ẩn khỏi hộp thư (không xoá; `metadata.cancelled_reason/cancelled_at` để khôi phục).
 - Push chỉ gửi dòng còn `PENDING`: đọc ở bất kỳ đâu (hoặc huỷ) mà push còn `QUEUED` ⇒ `SKIPPED` (trigger + claim).
 - Một sự kiện = một dòng chuông (nếu in_app) + tối đa một push, cùng tiêu đề/nội dung/url, cùng công ty.
-- Client (authenticated) không chạm được hàng đợi: trigger `a00_notifications_guard` (SECURITY INVOKER) ép
-  `push_*`/`sent_at`/`created_at` khi INSERT, UPDATE chỉ đổi được `status` PENDING→READ; INSERT 4 loại nhắc cũ
-  (`PAYMENT_REMINDER`, `OVERDUE_INVOICE`, `CONTRACT_EXPIRING`, `DEPOSIT_SHORTFALL`) thiếu `metadata.event` bị bỏ
-  (bộ nhắc trình duyệt của bản web cũ). `REPLICA IDENTITY FULL` để DELETE/UPDATE qua được filter `user_id` của realtime.
+- Client (authenticated) không chạm được hàng đợi: trigger `a00_notifications_guard` (SECURITY INVOKER, đứng đầu mọi
+  BEFORE INSERT theo tên) ép `push_*`/`sent_at`/`created_at` khi INSERT; UPDATE chỉ ghi khi `status` PENDING→READ hoặc
+  CANCELLED→READ (mọi cột khác giữ cũ), mọi UPDATE khác trả NULL — 0 dòng, không ghi lại, không WAL/sự kiện realtime;
+  INSERT 4 loại nhắc cũ (`PAYMENT_REMINDER`, `OVERDUE_INVOICE`, `CONTRACT_EXPIRING`, `DEPOSIT_SHORTFALL`) thiếu
+  `metadata.event` bị bỏ (bộ nhắc trình duyệt của bản web cũ). `REPLICA IDENTITY FULL` để DELETE/UPDATE qua được filter
+  `user_id` của realtime.
 
 **Các lane push**
 
@@ -488,9 +497,11 @@ producer ──▶ cổng notify_gate_v1 (E1–E6, Hermes task = E4) / lifecycle
 dọn `SENDING` quá 15' (tra `push_send_log` của khoá lượt đó: SENT/PARTIAL ⇒ SENT); dòng không còn PENDING ⇒ SKIPPED;
 đã 3 lượt ⇒ FAILED; gọi lại cổng (amount NULL) ⇒ tắt thì SKIPPED; không thiết bị ⇒ NO_DEVICE; giờ yên ⇒ để QUEUED;
 debounce 10' cho dòng gộp E1. Gộp theo (người, công ty); khoá idempotency đổi theo lượt thử; trả `organization_id` và
-`data = {notificationIds (≤20 mới nhất), organizationId}` để service worker đánh dấu đọc/đổi công ty khi bấm. Settle:
-`DUPLICATE` chỉ thành SENT khi sổ của khoá là SENT/PARTIAL; sổ `SENDING` ⇒ không đụng; còn lại ⇒ thử lại. E1 bump
-(số phiếu tăng) reset `push_attempts`. `url` chỉ nhận đường nội bộ `/…`, còn lại `/my-day`.
+`data = {notificationIds (≤20 mới nhất), organizationId}` để service worker đánh dấu đọc/đổi công ty khi bấm. Settle
+xét sổ `push_send_log` của khoá TRƯỚC mọi nhánh lỗi: sổ SENT/PARTIAL (sent>0) ⇒ SENT (kể cả khi edge chỉ thấy timeout
+hay DUPLICATE — không gửi trùng ở lượt sau); sổ `SENDING` ⇒ không đụng; `DEFERRED` (edge chưa gửi lô) / `CONFIG_ERROR`
+⇒ về QUEUED, không tiêu lượt; còn lại ⇒ thử lại/FAILED. E1 bump (số phiếu tăng) reset `push_attempts`. `url` chỉ nhận
+đường nội bộ `/…`, còn lại `/my-day`.
 
 **Giờ yên** = giờ yên công ty (`app_private.notification_org_config`, chưa có dòng ⇒ 21→7) HOẶC giờ yên cá nhân
 (`public.notification_quiet_hours`, bật/tắt theo người×công ty), khoảng `[start, end)` theo múi giờ công ty
@@ -503,25 +514,31 @@ tượng, `metadata.event` là `LIFECYCLE` | `BILLING` | `CONTRACT_EXPIRY` | `DE
 **Cài đặt** — sở thích cá nhân 10 họ × (trong app / đẩy về máy / nhịp): `E1`–`E6`, `LIFECYCLE`, `BILLING`,
 `CONTRACT_EXPIRY`, `DEPOSIT` (`get/set_my_notification_preferences_v1`). Cấu hình công ty (bật/tắt họ, ngưỡng tiền,
 giờ yên công ty): `get/set_notification_org_config_v2(p_organization_id …)` — cần `settings.view`/`settings.edit` của
-đúng công ty; `set` có `p_expected_updated_at`, lệch ⇒ `PT409`. Ngưỡng tiền chỉ áp E2*, E3, E6c (E5/E6a/E6b là việc
-chờ người nhận — không lọc). Giờ yên cá nhân: `get/set_my_notification_quiet_hours_v1` (membership ACTIVE).
+đúng công ty; `set` có `p_expected_updated_at`, lệch ⇒ `PT409`. Ngưỡng tiền chỉ áp E2* và E3 — đúng hai ô ngưỡng của
+trang Cài đặt thông báo (E5/E6a/E6b là việc chờ người nhận — không lọc; E6c dùng chung khoá E6 nên cũng không lọc).
+Giờ yên cá nhân: `get/set_my_notification_quiet_hours_v1` (membership ACTIVE).
 
 **Quan sát** — `get_notification_delivery_health_v1(p_organization_id)` (`settings.view`): thành viên/thiết bị active,
-hàng đợi, kết quả push 7 ngày theo `push_state`, trạng thái lifecycle, `push_log_7d` (chỉ khoá gắn được với công ty),
-"không có người nhận" 7 ngày, `last_drain_at`. `get_my_push_log_v1(p_limit)`: 1–50 lần gửi gần nhất của chính mình.
-Bảo trì mỗi lượt edge (`notification_maintenance_v1`): huỷ nhắc legacy còn PENDING, E5/E6a trỏ bàn giao đã
-CONFIRMED/CANCELLED; dọn `push_send_log` > 30 ngày tối đa một lần/ngày.
+hàng đợi (`oldest_queued_at` mọi dòng QUEUED; `oldest_eligible_queued_at` chỉ dòng NGOÀI giờ yên — cảnh báo "drain
+hỏng" dựa vào trường này; `deferred_quiet` số dòng đang hoãn vì giờ yên), kết quả push 7 ngày theo `push_state`, trạng
+thái lifecycle, `push_log_7d` (chỉ khoá gắn được với công ty), "không có người nhận" 7 ngày, `last_drain_at/_ok_at`
+(phạm vi HỆ THỐNG, `drain_scope='system'`; chuỗi lỗi `last_drain_error` chỉ super admin đọc).
+`get_my_push_log_v1(p_limit)`: 1–50 lần gửi gần nhất của chính mình.
+Bảo trì mỗi lượt edge (`notification_maintenance_v1`): huỷ nhắc legacy còn PENDING; E5 trỏ bàn giao đã rời PENDING
+(`HANDOVER_RESOLVED`); E6a (nhắc chốt sổ, sinh đúng lúc bàn giao CONFIRMED) chỉ khi két đã chốt tới ngày xác nhận bàn
+giao hoặc sổ không còn/đã xoá/sổ ảo (`CASHBOOK_CLOSED`); dọn `push_send_log` > 30 ngày tối đa một lần/ngày.
 
 **Hạ tầng client** — service worker [public/sw.js](public/sw.js), [src/lib/push.ts](src/lib/push.ts) (đăng ký, lưu
 `push_subscriptions`, iOS chỉ có push khi "Thêm vào màn hình chính"), edge
 [send-push](supabase/functions/send-push/index.ts) (VAPID chỉ trong Supabase secrets; service role tin `body.userId`,
 JWT thường chỉ gửi cho chính mình; tự `is_active=false` thiết bị 404/410). `push_subscriptions`: RLS own-row; anon
-không còn quyền nào, authenticated không có TRUNCATE (20261021171249).
+không còn quyền nào, authenticated không có TRUNCATE; cột `revoked_at` = người dùng đã gỡ máy này (gỡ ⇒
+`is_active=false, revoked_at=now()`, client không tự đăng ký lại; chỉ công tắc bật chủ động đặt lại NULL) (20261021171249).
 
 **Số đo trước đợt sửa (production, chỉ đọc, 21–22/10/2026)**: 0 thiết bị push active từ 05/10; drain cũ chạy 1
-lần/ngày ~07:40 VN (trễ trung vị 15,9 giờ); 2.696 nhắc trình duyệt PENDING (đa số trỏ việc đã xong) + 31 E5/E6a lỗi
-thời — được chuyển `CANCELLED` lúc áp migration; digest v5 lỗi 42501 mỗi ngày thường từ 17/09 (sửa ở
-`20261021171252`). Đo lại sau apply theo §5 của plan.
+lần/ngày ~07:40 VN (trễ trung vị 15,9 giờ); 2.696 nhắc trình duyệt PENDING (đa số trỏ việc đã xong) + 17 E5 lỗi thời —
+được chuyển `CANCELLED` lúc áp migration (14 E6a PENDING đều còn việc vì két chưa chốt — giữ nguyên); digest v5 lỗi
+42501 mỗi ngày thường từ 17/09 (sửa ở `20261021171252`). Đo lại sau apply theo §5 của plan.
 
 ## 5. Quy trình theo từng trang
 

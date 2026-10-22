@@ -6,6 +6,11 @@
 // Bảng/hàm nền tối thiểu theo hình dạng production 22/10 (enum notification_type/status/channel, cột push_*,
 // cột GENERATED remaining_amount…); quyền tenant giả bằng bảng test_permissions (building_id NULL = cả công ty).
 // auth.uid() đọc GUC test.uid; đồng hồ ngày công ty đọc bảng test_clock (giờ yên dùng đồng hồ thật + múi giờ UTC).
+//
+// Ghim thân ($requires$): migration đòi thân đang chạy khớp md5 production. Hàm có THÂN THẬT ở fixture (lane lifecycle
+// gốc, inbox Hermes + feed Copilot trích từ file nguồn) được kiểm đúng như production. Hàm chỉ có THÂN GIẢ ở fixture
+// (THAN_GIA) thì apHaiLuot thay md5 cũ của đúng bộ đó bằng md5 thân giả cho lượt 1; lượt 2 luôn kiểm md5 thân MỚI của
+// file như production (trừ hàm test cố ý sửa thân — VA_THAN). Phép "thân lạ ⇒ dừng" có ca riêng trong test.
 
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -84,6 +89,13 @@ const NEN = `
   CREATE UNIQUE INDEX uq_notif_ie_pending_open ON public.notifications (user_id, organization_id)
     WHERE (metadata->>'kind') = 'ie_pending' AND status IS DISTINCT FROM 'READ';
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
+  -- Như a90_autofill_org / trg_autofill_org_strict production: dòng không có công ty ⇒ 23502. Guard a00 phải bắn TRƯỚC
+  -- (thứ tự tên) để nhắc legacy của bản web cũ bị bỏ êm thay vì ném lỗi.
+  CREATE FUNCTION app_private.test_autofill_org_strict() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.organization_id IS NULL THEN RAISE EXCEPTION 'organization_id bắt buộc' USING ERRCODE = '23502'; END IF;
+    RETURN NEW; END $$;
+  CREATE TRIGGER a90_autofill_org BEFORE INSERT ON public.notifications
+    FOR EACH ROW EXECUTE FUNCTION app_private.test_autofill_org_strict();
 
   CREATE TABLE public.push_subscriptions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, endpoint text,
     is_active boolean NOT NULL DEFAULT true, organization_id uuid);
@@ -96,7 +108,23 @@ const NEN = `
   CREATE TABLE public.notification_logs(id uuid PRIMARY KEY DEFAULT gen_random_uuid());
   CREATE TABLE public.notification_templates(id uuid PRIMARY KEY DEFAULT gen_random_uuid());
   GRANT ALL ON public.push_subscriptions, public.notification_logs, public.notification_templates TO anon, authenticated;
-  CREATE TABLE public.cash_handovers(id uuid PRIMARY KEY, status text, organization_id uuid);
+  CREATE TABLE public.cash_handovers(id uuid PRIMARY KEY, status text, organization_id uuid, from_account_id uuid,
+    confirmed_at timestamptz);
+  CREATE TABLE public.accounts(id uuid PRIMARY KEY, organization_id uuid, name text, is_virtual boolean DEFAULT false,
+    deleted_at timestamptz, lock_date date);
+  CREATE TABLE app_private.cashbook_closures(cashbook_id uuid, closed_through date);
+  -- Bản production 22/10 (pg_get_functiondef, md5 a726dfac…).
+  CREATE FUNCTION app_private.cashbook_closed_through_v1(p_cashbook uuid) RETURNS date LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'app_private', 'public' AS $function$
+  SELECT CASE
+    WHEN COALESCE(current_setting('app_private.demo_reset', true), '') = 'on' THEN NULL
+    ELSE GREATEST(
+      (SELECT max(c.closed_through) FROM app_private.cashbook_closures c
+        WHERE c.cashbook_id = p_cashbook),
+      (SELECT a.lock_date FROM public.accounts a WHERE a.id = p_cashbook)
+    )
+  END;
+$function$;
   CREATE TABLE public.income_expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, building_id uuid,
     deleted_at timestamptz, approval_status text, review_state text, total_amount numeric, created_at timestamptz DEFAULT clock_timestamp());
   CREATE TABLE public.approval_requests(subject_type text, subject_id uuid, state text);
@@ -162,10 +190,85 @@ const NEN = `
     DECLARE k text[] := array['E1','E2','E3','E4','E5','E6']; BEGIN RETURN $1; END $$;
   CREATE FUNCTION app_private.notification_prefs_read_v1(uuid, uuid) RETURNS jsonb LANGUAGE sql AS $$
     SELECT jsonb_agg(k) FROM (values ('E1'),('E2'),('E3'),('E4'),('E5'),('E6')) k $$;
+  CREATE FUNCTION app_private.notify_claim_push_batch_v1(p_limit integer DEFAULT 100)
+    RETURNS TABLE(notification_ids uuid[], user_id uuid, idem_key text, title text, body text, url text, tag text)
+    LANGUAGE sql AS $$ SELECT NULL::uuid[], NULL::uuid, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text WHERE false $$;
+  CREATE FUNCTION app_private.notify_settle_push_batch_v1(p_results jsonb) RETURNS integer LANGUAGE sql AS $$ SELECT 0 $$;
 `;
+
+/** Hàm 20261021171249 thay mà fixture chỉ có thân GIẢ (production: md5 ghim trong $requires$ của file). */
+export const THAN_GIA_PIPELINE = [
+  'app_private.notification_events_normalize_v1(jsonb)',
+  'app_private.notification_prefs_normalize_v1(jsonb)',
+  'app_private.notification_prefs_read_v1(uuid,uuid)',
+  'app_private.notify_gate_v1(uuid,uuid,text,numeric)',
+  'app_private.notify_ie_pending_refresh_v1(uuid,uuid)',
+  'app_private.notify_claim_push_batch_v1(integer)',
+  'app_private.notify_settle_push_batch_v1(jsonb)',
+];
+
+/** Thân hiện hành của hai hàm 20261021171250 thay — trích NGUYÊN VĂN từ file nguồn (md5 = production 22/10). */
+const NGUON_171250 = [
+  ['supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql', 'public.notifications_inbox_v1'],
+  ['supabase/migrations/20260908105446_copilot_notification_feed_v1.sql', 'public.copilot_notification_feed_v1'],
+] as const;
 
 export function docMigration(path: string): string {
   return readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+}
+
+/** Câu CREATE OR REPLACE FUNCTION cuối cùng của `ten` trong file, tới hết dollar-quote đóng thân. */
+export function trichHam(file: string, ten: string): string {
+  const src = docMigration(file);
+  const start = src.lastIndexOf(`CREATE OR REPLACE FUNCTION ${ten}(`);
+  if (start < 0) throw new Error(`không thấy ${ten} trong ${file}`);
+  const as = /\bAS\s+(\$[A-Za-z0-9_]*\$)/.exec(src.slice(start))!;
+  const bodyStart = start + as.index + as[0].length;
+  const end = src.indexOf(as[1], bodyStart) + as[1].length;
+  return `${src.slice(start, end)};`;
+}
+
+type Ghim = { dong: string; sig: string; cu: string; moi: string };
+/** Các bộ ('chữ ký', 'md5 cũ', 'md5 mới') trong khối $requires$ của migration. */
+export function docGhim(sql: string): Ghim[] {
+  const out: Ghim[] = [];
+  for (const m of sql.matchAll(/\('([a-z_]+\.[a-z0-9_]+\([^']*\))', '([0-9a-f]{32}|)', '([0-9a-f]{32})'\)/g)) {
+    out.push({ dong: m[0], sig: m[1], cu: m[2], moi: m[3] });
+  }
+  return out;
+}
+
+/** md5 thân đang chạy, đúng phép tính của $requires$ (bỏ CR; 20261021171253 chuẩn hoá thêm URL dự án). */
+export async function md5Than(db: PGlite, sig: string): Promise<string | null> {
+  const r = await db.query<{ m: string | null }>(
+    `SELECT (SELECT md5(regexp_replace(replace(p.prosrc, chr(13), ''), 'https://[a-z0-9]{20}\\.supabase\\.co',
+                                       'https://<ref>.supabase.co', 'g'))
+               FROM pg_proc p WHERE p.oid = to_regprocedure($1)) m`, [sig]);
+  return r.rows[0].m;
+}
+
+/**
+ * Áp migration hai lượt như lane. `thanGia`: hàm fixture chỉ có thân giả ⇒ lượt 1 thay md5 cũ của đúng bộ đó bằng md5
+ * thân giả. `vaThan`: hàm test sửa thân (đồng hồ thử) hoặc migration VÁ trên thân giả ⇒ lượt 2 thay md5 mới bằng md5
+ * sau lượt 1. Mọi hàm khác kiểm y như production. Ném nếu chữ ký khai không có trong khối $requires$.
+ */
+export async function apHaiLuot(db: PGlite, sql: string, thanGia: string[] = [], vaThan: string[] = []): Promise<void> {
+  const ghim = docGhim(sql);
+  for (const sig of [...thanGia, ...vaThan]) {
+    if (!ghim.some((g) => g.sig === sig)) throw new Error(`${sig} không có trong $requires$`);
+  }
+  let lan1 = sql;
+  for (const g of ghim.filter((x) => thanGia.includes(x.sig))) {
+    const m = await md5Than(db, g.sig);
+    if (!m) throw new Error(`fixture thiếu thân giả của ${g.sig}`);
+    lan1 = lan1.replace(g.dong, `('${g.sig}', '${m}', '${g.moi}')`);
+  }
+  await db.exec(lan1);
+  let lan2 = lan1;
+  for (const g of docGhim(lan1).filter((x) => vaThan.includes(x.sig))) {
+    lan2 = lan2.replace(g.dong, `('${g.sig}', '${g.cu}', '${await md5Than(db, g.sig)}')`);
+  }
+  await db.exec(lan2);
 }
 
 /** Dựng database thử và áp các migration gói B (mỗi file hai lượt). */
@@ -173,14 +276,12 @@ export async function taoDbThongBao(): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(NEN);
   await db.exec(docMigration(MIGRATION.lifecycleBase));
-  for (const path of [MIGRATION.pipeline, MIGRATION.unread]) {
-    const sql = docMigration(path);
-    await db.exec(sql);
-    await db.exec(sql);
-  }
+  await apHaiLuot(db, docMigration(MIGRATION.pipeline), THAN_GIA_PIPELINE);
+  for (const [file, ten] of NGUON_171250) await db.exec(trichHam(file, ten));
+  await apHaiLuot(db, docMigration(MIGRATION.unread));
+  // Sweep đọc đồng hồ thử thay cho giờ thật ⇒ thân sweep khác file ⇒ lượt 2 ghim md5 của thân đã thay.
   const lifecycle = docMigration(MIGRATION.lifecycle).split(DONG_HO_SWEEP).join('(SELECT test_clock.local_now FROM test_clock)');
-  await db.exec(lifecycle);
-  await db.exec(lifecycle);
+  await apHaiLuot(db, lifecycle, [], ['public.lifecycle_reminder_sweep_v1(uuid)']);
   return db;
 }
 

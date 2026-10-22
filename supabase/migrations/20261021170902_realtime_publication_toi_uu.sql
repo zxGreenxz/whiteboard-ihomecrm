@@ -2,14 +2,17 @@
 -- Tối ưu publication supabase_realtime (plan 2026-10-21 realtime + thông báo,
 -- mục A10; RT-DB-2, RT-OTHER-1, RT-HUB-4, RT-HUB-6).
 --
--- 1. DROP public.network_worker_building_status
---    Heartbeat worker Network Center UPSERT bảng này ~6.300 lần/ngày (đo prod
---    21/10: n_tup_upd 329.425, HOT 0). Không RPC, view hay màn nào đọc nó (quét
---    pg_proc: chỉ 3 hàm heartbeat), nhưng nó nằm trong publication và client NC
---    nghe ⇒ mỗi nhịp tim làm tab Network Center gọi lại ~21 RPC ra đúng dữ liệu
---    cũ, kể cả khi tab ẩn. Client đã bỏ nghe bảng này cùng đợt
---    (src/lib/network-center/runtime.ts); để lại trong publication thì chỉ còn
---    tốn giải mã WAL + kiểm RLS cho từng subscriber mà không ai nhận.
+-- 1. KHÔNG DROP public.network_worker_building_status ở file này (RT-CLIENT-1,
+--    SQL-LIFE-5 — review chéo 22/10). Client mới đã bỏ nghe bảng này
+--    (src/lib/network-center/runtime.ts), nhưng bản client production CŨ mở MỘT
+--    kênh network-center-<uid> gồm 5 binding có bảng này; Realtime tạo
+--    subscription của cả kênh trong một transaction (đo TEST 22/10: thiếu một
+--    bảng ⇒ cả kênh 'Unable to subscribe', callback vẫn SUBSCRIBED) ⇒ DROP trước
+--    khi mọi tab cũ tải lại bản mới làm Network Center cũ mất HẾT realtime. Giữ
+--    bảng thêm một vòng phát hành chỉ tốn ~6.300 lượt giải mã WAL/ngày. DROP để
+--    migration RIÊNG, áp SAU khi promote client mới và tab cũ đã tải lại
+--    (follow-up trong plan §6 và tooling/known-gaps.yaml). Thứ tự phát hành:
+--    ADD trước client, DROP sau client.
 --
 -- 2. ADD public.meter_readings, public.meters
 --    Nhân viên ghi chỉ số trên điện thoại, quản lý ở máy khác vẫn thấy "chưa
@@ -20,6 +23,15 @@
 --    đúng người xem màn Chỉ số. Tải nhỏ: meter_readings 395 insert / 51,8 ngày,
 --    0 update, 0 delete; meters 13 dòng. Preflight dưới đây ĐÒI có policy SELECT
 --    cho phép — mất policy đó thì dừng, không thêm một bảng không ai nhận event.
+--    Áp file này TRƯỚC khi promote client mới (hub mới nghe hai bảng này trong
+--    cùng một kênh — thiếu một bảng thì cả 19 bảng của hub im). Client cũ không
+--    nghe hai bảng này nên ADD sớm là an toàn.
+--    KHÔNG REVOKE SELECT của anon trên hai bảng (SQL-LIFE-9): anon vẫn EXECUTE
+--    được hai hàm INVOKER đọc chúng (get_meter_reading_stats,
+--    get_meters_without_readings) và chưa chứng minh được kênh realtime nào không
+--    join dưới vai anon trước khi có JWT — REVOKE có thể làm hỏng cả kênh như
+--    mục 1. Giới hạn DELETE chỉ mang khoá chính (tới cả anon) ghi ở
+--    docs/he-thong/realtime-sync.md §6 và tooling/known-gaps.yaml.
 --
 -- 3. KHÔNG ADD approval_requests / approval_request_steps (RT-HUB-4)
 --    Đo prod 21/10: hai bảng chỉ có policy RESTRICTIVE (org_boundary,
@@ -29,26 +41,11 @@
 --    nới policy chỉ để realtime nhận được (RT-DB-4). Bù bằng poll 60s + focus ở
 --    usePendingApprovals (src/hooks/useApprovals.ts).
 --
--- Idempotent: mỗi bước kiểm pg_publication_tables trước khi ADD/DROP.
+-- Idempotent: kiểm pg_publication_tables trước khi ADD.
 -- Không BEGIN/COMMIT trong file: lane migrate:forward và test-env:thu-sql tự
 -- bọc MỘT transaction quanh thân file.
 -- KHÔNG ĐỤNG TIỀN, KHÔNG DDL bảng, KHÔNG DML: chỉ ALTER PUBLICATION.
 -- =====================================================================
-
-DO $drop$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_publication_tables p
-     WHERE p.pubname = 'supabase_realtime' AND p.schemaname = 'public'
-       AND p.tablename = 'network_worker_building_status'
-  ) THEN
-    ALTER PUBLICATION supabase_realtime DROP TABLE public.network_worker_building_status;
-    RAISE NOTICE 'đã bỏ public.network_worker_building_status khỏi supabase_realtime';
-  ELSE
-    RAISE NOTICE 'public.network_worker_building_status không có trong supabase_realtime — bỏ qua';
-  END IF;
-END
-$drop$;
 
 DO $add$
 DECLARE
@@ -128,14 +125,6 @@ BEGIN
         AND p.tablename = t.tablename);
   IF v_missing IS NOT NULL THEN
     RAISE EXCEPTION 'Còn thiếu trong publication: %. DỪNG.', v_missing;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_publication_tables p
-     WHERE p.pubname = 'supabase_realtime' AND p.schemaname = 'public'
-       AND p.tablename = 'network_worker_building_status'
-  ) THEN
-    RAISE EXCEPTION 'network_worker_building_status vẫn còn trong supabase_realtime. DỪNG.';
   END IF;
 END
 $selfcheck$;

@@ -83,8 +83,9 @@ const REVIEWED_SUCCESSORS = new Map([
     functions: ['app_private.hermes_w2_scope_v1', 'public.vehicles_list_v1'],
   }],
   // Gói B thông báo 21/10: chưa đọc = PENDING, CANCELLED ẩn khỏi hộp thư (web đổi cùng đợt, web-parity w2c-notifications).
+  // 22/10 sau review chéo: thêm $requires$ ghim md5 thân production của hai hàm bị thay (thân hàm không đổi).
   ['20261021171250_thong_bao_chua_doc_bo_cancelled_v1.sql', {
-    sha256: 'fc80390af1041535bc812fd010c658a1d974e42187b3c3b16117e674e938428c',
+    sha256: 'e312db13dbf0d6c91d824190310165e4b669b9fb1ef57d310e92920a2009da56',
     functions: ['public.notifications_inbox_v1'],
   }],
 ]);

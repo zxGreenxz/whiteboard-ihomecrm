@@ -6,22 +6,27 @@
 --     trên dòng của mình ⇒ một tài khoản chiếm trọn lô drain của cả hệ thống (NOTIF-SERVER-6).
 --   * drain không lọc dòng đã đọc, gộp chéo công ty, DUPLICATE bị tính là SENT dù lượt trước lỗi, dòng E1 kẹt sau
 --     3 lượt vì UPSERT không reset push_attempts (NOTIF-SERVER-5/9/10, M1).
---   * 2.696 nhắc hoá đơn/HĐ/cọc do trình duyệt sinh (metadata.event NULL) còn PENDING, đa số trỏ việc đã xong; 31
---     thông báo E5/E6a trỏ bàn giao đã CONFIRMED/CANCELLED (CRITIC-1). Bộ nhắc chuyển lên server ở migration
---     20261021171251_nhac_viec_server_lifecycle_v1.sql; file này chặn bản production cũ đẻ thêm và dọn tồn đọng.
+--   * 2.696 nhắc hoá đơn/HĐ/cọc do trình duyệt sinh (metadata.event NULL) còn PENDING, đa số trỏ việc đã xong; 17
+--     thông báo E5 (bàn giao chờ xác nhận) trỏ bàn giao đã CONFIRMED/CANCELLED (CRITIC-1). Bộ nhắc chuyển lên server ở
+--     migration 20261021171251_nhac_viec_server_lifecycle_v1.sql; file này chặn bản production cũ đẻ thêm và dọn tồn đọng.
 --   * DELETE của dòng gộp E1 không qua được filter user_id của realtime vì REPLICA IDENTITY DEFAULT (RT-DB-7).
 --
 -- NỘI DUNG
+--   0. $requires$: thân ĐANG CHẠY của mọi hàm đã có trên production mà file này thay phải khớp md5 thân gốc đã duyệt
+--      (đo production 22/10/2026) hoặc md5 thân MỚI của chính file (lượt hai) — PR song song thay cùng hàm thì dừng,
+--      không âm thầm gỡ bản vá của PR kia.
 --   1. Sở thích: khoá mới BILLING, CONTRACT_EXPIRY, DEPOSIT (CHECK + normalize + read). notify_gate_v1 chỉ áp
---      min_amount cho E2*, E3, E6c (E1/E4 truyền NULL; E5/E6a/E6b là việc chờ mình làm — ngưỡng nuốt mất việc).
+--      min_amount cho E2* và E3 — đúng tập ô ngưỡng của trang Cài đặt thông báo (E1/E4 truyền NULL; E5/E6a/E6b là
+--      việc chờ mình làm — ngưỡng nuốt mất việc; E6c dùng chung khoá E6 với E6a/E6b nên không có ô riêng).
 --   2. Giờ yên: bảng public.notification_quiet_hours (cá nhân, theo công ty) + helper
 --      app_private.notify_in_quiet_hours_v1 (giờ yên công ty — mặc định 21→7 khi chưa có dòng — HOẶC cá nhân,
 --      theo múi giờ công ty) + app_private.notify_push_allowed_now_v1 cho lane gửi thẳng (B13) + RPC get/set.
 --   3. get/set_notification_org_config_v2 theo công ty tường minh, set có p_expected_updated_at ⇒ lệch là PT409.
 --   4. Trigger a00_notifications_guard (SECURITY INVOKER, theo khuôn app_private.khoa_organization_id_v1): vai không
 --      tin cậy (authenticated/anon) INSERT bị ép push_*/sent_at/created_at; INSERT 4 loại nhắc legacy thiếu
---      metadata.event bị BỎ (BEFORE trả NULL — bản web cũ insert không .select() nên không lỗi); UPDATE chỉ đổi được
---      status PENDING→READ, mọi cột khác giữ OLD. Mọi vai: rời PENDING mà push_state='QUEUED' ⇒ 'SKIPPED'.
+--      metadata.event bị BỎ (BEFORE trả NULL — bản web cũ insert không .select() nên không lỗi); UPDATE chỉ ghi khi
+--      đổi status PENDING→READ hoặc CANCELLED→READ (mọi cột khác giữ OLD), mọi UPDATE khác trả NULL: không ghi, không
+--      RETURNING, không WAL/realtime. Mọi vai: rời PENDING mà push_state='QUEUED' ⇒ 'SKIPPED'.
 --   5. REPLICA IDENTITY FULL cho notifications.
 --   6. notify_ie_pending_refresh_v1 (E1): khi số phiếu tăng (bump) thì reset push_attempts=0, push_leased_at=NULL.
 --   7. notify_claim_push_batch_v2 / notify_settle_push_batch_v2 (+ wrapper public, chỉ service_role). Bản v1 giữ
@@ -31,20 +36,27 @@
 --      public.notify_drain_record_run_v1.
 --   9. get_notification_delivery_health_v1 (settings.view), get_my_push_log_v1.
 --  10. Vệ sinh ACL: anon mất mọi quyền trên push_subscriptions/notification_logs/notification_templates,
---      authenticated mất TRUNCATE trên ba bảng đó.
+--      authenticated mất TRUNCATE trên ba bảng đó. Cột push_subscriptions.revoked_at (dấu "đã gỡ máy này" — client đặt
+--      qua RLS update_own; ensurePushSubscription tôn trọng, không tự đăng ký lại).
 --  11. Dọn lần đầu (B6) trong chính migration.
 --
--- DỌN LẦN ĐẦU — số đo 22/10/2026 (production, chỉ đọc): nhắc legacy PENDING thiếu metadata.event = 2.696
---   (PAYMENT_REMINDER 1.491 · OVERDUE_INVOICE 517 · CONTRACT_EXPIRING 599 · DEPOSIT_SHORTFALL 89); E5/E6a PENDING trỏ
---   bàn giao đã xong = 31 (E5→CONFIRMED 14, E5→CANCELLED 3, E6a→CONFIRMED 14). Chỉ đổi status PENDING→CANCELLED,
---   KHÔNG xoá. Khôi phục nếu cần (một câu, trong lane):
+-- DỌN LẦN ĐẦU — số đo 22/10/2026 (production, chỉ đọc, đo lại sau review chéo): nhắc legacy PENDING thiếu
+--   metadata.event = 2.696 (PAYMENT_REMINDER 1.491 · OVERDUE_INVOICE 517 · CONTRACT_EXPIRING 599 · DEPOSIT_SHORTFALL 89);
+--   E5 PENDING trỏ bàn giao đã rời PENDING = 17 (→CONFIRMED 14, →CANCELLED 3); E6a PENDING = 14, cả 14 két CHƯA chốt
+--   tới ngày xác nhận bàn giao ⇒ 0 dòng E6a bị dọn (E6a sinh đúng lúc bàn giao thành CONFIRMED — "bàn giao đã xong"
+--   không phải dấu hết việc, xem notification_reconcile_stale_v1). Chỉ đổi status PENDING→CANCELLED, KHÔNG xoá.
+--   Khôi phục nếu cần (một câu, trong lane; dòng người dùng đã tự đánh dấu READ sau đó giữ READ):
 --     UPDATE public.notifications SET status='PENDING',
 --            metadata = metadata - 'cancelled_reason' - 'cancelled_at' - 'cancelled_by' - 'cancelled_by_migration'
---      WHERE metadata->>'cancelled_by_migration' = '20261021171249_notify_pipeline_v2';
+--      WHERE metadata->>'cancelled_by_migration' = '20261021171249_notify_pipeline_v2' AND status = 'CANCELLED';
 --
--- TƯƠNG THÍCH bản web production đang chạy (cùng database): đếm chưa đọc = status PENDING nên CANCELLED tự ẩn khỏi
--- chuông; "đánh dấu tất cả đã đọc" (.neq('status','READ')) vẫn chạy — dòng CANCELLED giữ CANCELLED; bộ nhắc
--- trình duyệt (useScheduledNotifications) insert không .select() ⇒ bị bỏ êm.
+-- TƯƠNG THÍCH bản web production đang chạy (cùng database) — CHỈ ĐÚNG MỘT PHẦN, nên áp migration + deploy edge +
+-- promote client mới trong CÙNG một cửa sổ ngắn:
+--   * badge chuông đếm status PENDING ⇒ CANCELLED không vào số đếm;
+--   * nhưng danh sách/tab "Chưa đọc"/tiêu đề trang của bản cũ coi mọi status ≠ 'READ' là chưa đọc ⇒ dòng CANCELLED hiện
+--     đậm như chưa đọc. Bấm một dòng hoặc "đánh dấu tất cả" (.neq('status','READ')) đổi được CANCELLED → READ (guard cho
+--     phép đúng chuyển này) nên bản cũ tự dọn được; mọi UPDATE không hợp lệ khác ra 0 dòng (không ghi lại vô ích);
+--   * bộ nhắc trình duyệt (useScheduledNotifications) insert không .select() ⇒ bị bỏ êm.
 --
 -- SAU KHI APPLY (người tích hợp): npm run gen:types; provenance; org-boundary inventory (bảng mới có policy
 -- notification_quiet_hours_org_boundary); edge lifecycle-reminders chuyển drain sang v2 (gói B-EDGE).
@@ -65,6 +77,7 @@ BEGIN
      OR to_regclass('public.notification_logs') IS NULL
      OR to_regclass('public.notification_templates') IS NULL
      OR to_regclass('public.cash_handovers') IS NULL
+     OR to_regclass('public.accounts') IS NULL
      OR to_regclass('app_private.notification_org_config') IS NULL
      OR to_regclass('app_private.notification_no_recipient_log') IS NULL
      OR to_regclass('app_private.lifecycle_reminder_deliveries') IS NULL
@@ -81,12 +94,42 @@ BEGIN
      OR to_regprocedure('app_private.notify_gate_v1(uuid,uuid,text,numeric)') IS NULL
      OR to_regprocedure('app_private.notify_ie_pending_refresh_v1(uuid,uuid)') IS NULL
      OR to_regprocedure('app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)') IS NULL
+     OR to_regprocedure('app_private.cashbook_closed_through_v1(uuid)') IS NULL
      OR to_regprocedure('public.my_org_ids()') IS NULL
      OR to_regprocedure('public.is_super_admin()') IS NULL
      OR to_regprocedure('public.sandbox_org_ids()') IS NULL THEN
-    RAISE EXCEPTION 'notify_pipeline_v2: thiếu hàm nền (quyền/múi giờ/cổng thông báo)' USING ERRCODE = '55000';
+    RAISE EXCEPTION 'notify_pipeline_v2: thiếu hàm nền (quyền/múi giờ/cổng thông báo/két)' USING ERRCODE = '55000';
   END IF;
 END $tien_quyet$;
+
+-- Ghim thân (bài học 22/10: migration dựng từ thân cũ âm thầm gỡ bản vá của PR song song). Mỗi hàm đã có trên
+-- production mà file này CREATE OR REPLACE: md5(prosrc, bỏ CR) phải bằng md5 thân production đo 22/10/2026 (cột cũ —
+-- thân mà file này dựa vào) HOẶC md5 thân mới của chính file (cột mới — chạy lượt hai). Lệch hay vắng ⇒ dừng, nêu tên.
+DO $requires$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT x.sig, x.cu, x.moi, (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = to_regprocedure(x.sig)) AS hien
+      FROM (VALUES
+        ('app_private.notification_events_normalize_v1(jsonb)', '6f86fd7b6501ec7f071a1a15607de4d2', '09cedb2586022cce4d17e2c88e5c270d'),
+        ('app_private.notification_prefs_normalize_v1(jsonb)', 'd3f5e03a2f5fc440850f6d9e243de13e', '22712d2c5b650368a81b922d72c17b2f'),
+        ('app_private.notification_prefs_read_v1(uuid,uuid)', '11ccd4be9e7e73876811600bd4c6d6b1', '96c601be0893f4c40ffcda93f5832ee1'),
+        ('app_private.notify_gate_v1(uuid,uuid,text,numeric)', '712485c2712b3ef78b88bfac2413c9f9', '26bac6a1b762e336b577bdb6da4587c2'),
+        ('app_private.notify_ie_pending_refresh_v1(uuid,uuid)', 'e6cbe67c70bd1f373b29d0ce8dcf38c1', '1d96f8fdbd23831183175b90983eb308'),
+        ('app_private.notify_claim_push_batch_v1(integer)', 'e44f7b9b7c39973e1aeb4f4ff3577703', '604e92bfd0838945f473ab3137824dbb'),
+        ('app_private.notify_settle_push_batch_v1(jsonb)', '5dc889c1fae082c9a141d6bf3b1708d6', '0f3192eee9344b7c183bc4557837590e')
+      ) AS x(sig, cu, moi)
+  LOOP
+    IF r.hien IS NULL THEN
+      RAISE EXCEPTION 'notify_pipeline_v2: thiếu hàm % (production 22/10 có) — dừng', r.sig USING ERRCODE = '55000';
+    END IF;
+    IF r.hien NOT IN (r.cu, r.moi) THEN
+      RAISE EXCEPTION 'notify_pipeline_v2: thân % đã đổi so với bản đã duyệt (md5 %, chờ % hoặc %) — có PR khác thay hàm này, gộp rồi dựng lại migration',
+        r.sig, r.hien, r.cu, r.moi USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+END $requires$;
 
 -- =====================================================================================================================
 -- 1. B8 — khoá sở thích mới BILLING, CONTRACT_EXPIRY, DEPOSIT (họ nhắc server ở 20261021171251).
@@ -246,9 +289,12 @@ REVOKE ALL ON FUNCTION app_private.notification_prefs_normalize_v1(jsonb) FROM P
 REVOKE ALL ON FUNCTION app_private.notification_prefs_read_v1(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- B8 — notify_gate_v1: thân = bản production, đổi hai chỗ:
---   (1) min_amount chỉ áp cho họ THÔNG TIN mang một số tiền: E2* (kết quả duyệt), E3, E6c (biên bản chốt sổ).
---       E1/E4 truyền amount NULL (ngưỡng vô tác dụng); E5/E6a/E6b là việc chờ người nhận xử lý — lọc theo tiền là
---       nuốt việc (NOTIF-SETTINGS-9). Claim v2 gọi lại cổng với amount NULL nên ngưỡng không áp lần hai.
+--   (1) min_amount chỉ áp cho họ THÔNG TIN mang một số tiền: E2* (kết quả duyệt) và E3 — đúng hai họ trang Cài đặt
+--       thông báo cho nhập ngưỡng (ORG_MIN_AMOUNT_KEYS). E1/E4 truyền amount NULL (ngưỡng vô tác dụng); E5/E6a/E6b là
+--       việc chờ người nhận xử lý — lọc theo tiền là nuốt việc (NOTIF-SETTINGS-9); E6c (biên bản chốt sổ) dùng chung
+--       khoá E6 với E6a/E6b nên một ngưỡng E6 không thể chỉ áp cho E6c mà UI không nói dối (SETTINGS-4). Ngưỡng đã lưu
+--       cho họ khác vẫn nằm trong events (bản web cũ ghi được) nhưng không còn tác dụng. Claim v2 gọi lại cổng với
+--       amount NULL nên ngưỡng không áp lần hai.
 --   (2) không có dòng sở thích ⇒ trả true/true thay vì NULL/NULL (mọi nơi gọi đều coalesce(…, true) nên hành vi như
 --       cũ; claim v2 đọc thẳng g_push).
 CREATE OR REPLACE FUNCTION app_private.notify_gate_v1(p_user uuid, p_org uuid, p_event text, p_amount numeric DEFAULT NULL::numeric)
@@ -298,7 +344,7 @@ begin
   end if;
 
   if v_min is not null and p_amount is not null and p_amount < v_min
-     and (p_event like 'E2%' or p_event in ('E3', 'E6c')) then
+     and (p_event like 'E2%' or p_event = 'E3') then
     v_in := false; v_push := false;
   end if;
 
@@ -633,8 +679,6 @@ CREATE OR REPLACE FUNCTION app_private.notifications_guard_v1()
  SECURITY INVOKER
  SET search_path TO 'pg_catalog'
 AS $fn$
-DECLARE
-  v_status public.notification_status;
 BEGIN
   -- Mã máy chủ: hàm SECURITY DEFINER (current_user = postgres), edge/worker (service_role), lane migration.
   -- Client qua PostgREST là authenticated/anon và không tự đổi được current_user. KHÔNG dùng session_user.
@@ -662,18 +706,21 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- UPDATE từ client: chỉ được PENDING → READ. Mọi cột khác (kể cả nội dung, công ty, created_at, push_*) giữ OLD;
-  -- READ → PENDING, CANCELLED → READ… đều bị bỏ êm (dòng giữ nguyên trạng thái cũ).
-  v_status := NEW.status;
-  NEW := OLD;
-  IF OLD.status = 'PENDING' AND v_status = 'READ' THEN
+  -- UPDATE từ client: chỉ PENDING → READ (đánh dấu đã đọc) và CANCELLED → READ (bản web cũ coi CANCELLED như chưa
+  -- đọc — chuyển này cho nó tự dọn được; READ cũng là trạng thái cuối, không đẻ push). Mọi cột khác (nội dung, công
+  -- ty, created_at, push_*) giữ OLD. Mọi UPDATE khác (READ → PENDING, sửa nội dung, đánh dấu lại dòng đã đọc…) trả
+  -- NULL: dòng KHÔNG bị ghi, không trả qua RETURNING, không sinh WAL hay sự kiện realtime (NEW := OLD vẫn ghi lại
+  -- tuple và với REPLICA IDENTITY FULL nhân đôi WAL cho mỗi lần "đánh dấu tất cả").
+  IF NEW.status = 'READ' AND OLD.status IN ('PENDING', 'CANCELLED') THEN
+    NEW := OLD;
     NEW.status := 'READ';
     IF NEW.push_state = 'QUEUED' THEN
       NEW.push_state := 'SKIPPED';
       NEW.push_leased_at := NULL;
     END IF;
+    RETURN NEW;
   END IF;
-  RETURN NEW;
+  RETURN NULL;
 END $fn$;
 
 REVOKE ALL ON FUNCTION app_private.notifications_guard_v1() FROM PUBLIC, anon, authenticated, service_role;
@@ -958,8 +1005,18 @@ BEGIN
    ORDER BY k.first_at;
 END $fn$;
 
--- Kết quả edge: [{idem_key, outcome, retryable, error, sent}]. DUPLICATE chỉ thành SENT khi sổ push_send_log của
--- khoá đó là SENT/PARTIAL (sent>0); sổ đang SENDING (lượt khác còn bay) ⇒ không đụng; còn lại ⇒ thử lại/FAILED.
+-- Kết quả edge: [{idem_key, outcome, retryable, error, sent}]. Sổ push_send_log của KHOÁ LƯỢT NÀY xét TRƯỚC mọi nhánh
+-- lỗi (EDGE-3): edge timeout/mất phản hồi sau khi send-push đã gửi vẫn báo PROVIDER_ERROR — nếu không nhìn sổ, dòng về
+-- QUEUED và lượt sau (khoá mới) gửi TRÙNG.
+--   SENT/PARTIAL (edge)                         ⇒ SENT
+--   sổ SENT/PARTIAL với sent > 0                ⇒ SENT (mọi outcome khác, kể cả DUPLICATE/PROVIDER_ERROR)
+--   sổ SENDING (send-push còn đang gửi khoá này) ⇒ KEEP — không đụng; bước a) của claim tra sổ khi lease quá 15'
+--   NO_DEVICE                                   ⇒ NO_DEVICE
+--   DEFERRED (edge chưa gửi: hết ngân sách thời gian, EDGE-7) / CONFIG_ERROR (máy chủ thiếu/sai cấu hình push, EDGE-4)
+--                                               ⇒ HOLD: về QUEUED, KHÔNG tiêu lượt (push_attempts lùi 1, tối thiểu 0),
+--                                                 lease bỏ — không phải lỗi của dòng, sửa cấu hình xong vẫn gửi bù
+--   DUPLICATE không có sổ gửi thành công        ⇒ thử lại (khoá mới ở lượt sau) / FAILED khi đã 3 lượt
+--   retryable=false                             ⇒ FAILED; còn lại ⇒ thử lại / FAILED khi đã 3 lượt.
 CREATE OR REPLACE FUNCTION app_private.notify_settle_push_batch_v2(p_results jsonb)
  RETURNS integer
  LANGUAGE plpgsql
@@ -992,9 +1049,10 @@ BEGIN
     SELECT d.*, l.outcome AS log_outcome,
            CASE
              WHEN d.outcome IN ('SENT','PARTIAL') THEN 'SENT'
-             WHEN d.outcome = 'DUPLICATE' AND l.outcome IN ('SENT','PARTIAL') AND coalesce(l.sent, 0) > 0 THEN 'SENT'
-             WHEN d.outcome = 'DUPLICATE' AND l.outcome = 'SENDING' THEN 'KEEP'
+             WHEN l.outcome IN ('SENT','PARTIAL') AND coalesce(l.sent, 0) > 0 THEN 'SENT'
+             WHEN l.outcome = 'SENDING' THEN 'KEEP'
              WHEN d.outcome = 'NO_DEVICE' THEN 'NO_DEVICE'
+             WHEN d.outcome IN ('DEFERRED','CONFIG_ERROR') THEN 'HOLD'
              WHEN d.outcome = 'DUPLICATE' THEN 'RETRY'
              WHEN NOT d.retryable THEN 'FAILED'
              ELSE 'RETRY'
@@ -1008,8 +1066,11 @@ BEGIN
                           WHEN 'SENT'      THEN 'SENT'
                           WHEN 'NO_DEVICE' THEN 'NO_DEVICE'
                           WHEN 'FAILED'    THEN 'FAILED'
+                          WHEN 'HOLD'      THEN 'QUEUED'
                           ELSE CASE WHEN n.push_attempts >= 3 THEN 'FAILED' ELSE 'QUEUED' END
                         END,
+           -- HOLD trả lại lượt claim vừa tính (claim f) đã +1).
+           push_attempts = CASE WHEN v.verdict = 'HOLD' THEN greatest(n.push_attempts - 1, 0) ELSE n.push_attempts END,
            -- sent_at giữ ĐÚNG một nghĩa: "đã đẩy push thành công lúc nào".
            sent_at = CASE WHEN v.verdict = 'SENT' THEN now() ELSE n.sent_at END,
            error_message = CASE WHEN v.verdict = 'SENT' THEN NULL
@@ -1113,7 +1174,12 @@ REVOKE ALL ON TABLE app_private.notification_maintenance_state FROM PUBLIC, anon
 
 -- Chỉ PENDING → CANCELLED, không xoá; ghi lý do + mốc để khôi phục được. p_marker (tên migration) chỉ dùng cho lần
 -- dọn đầu, để câu khôi phục ở đầu file chọn đúng tập dòng.
---   * E5 (bàn giao chờ bạn xác nhận) / E6a (nhắc chốt sổ sau bàn giao) trỏ bàn giao CONFIRMED/CANCELLED.
+--   * E5 (bàn giao chờ BẠN xác nhận): bàn giao đã rời PENDING (xác nhận/huỷ) ⇒ HANDOVER_RESOLVED.
+--   * E6a (nhắc chốt sổ SAU bàn giao) do trigger z95_notify_closing_nudge sinh ĐÚNG lúc bàn giao PENDING → CONFIRMED,
+--     nên "bàn giao CONFIRMED" là điều kiện SINH, không phải dấu hết việc (SQL-PIPE-1 — bản đầu huỷ mọi E6a trong ≤15'
+--     trước khi kịp push). Việc chỉ hết khi két đã chốt tới ngày xác nhận bàn giao (giờ công ty), hoặc sổ không còn
+--     chốt được (không còn / đã xoá / sổ ảo) — đúng điều kiện IM của producer app_private.notify_closing_nudge_v1
+--     ⇒ CASHBOOK_CLOSED.
 --   * Nhắc legacy của bộ nhắc trình duyệt (4 loại, metadata.event NULL): đã có dòng gộp server thay thế
 --     (họ BILLING/CONTRACT_EXPIRY/DEPOSIT); trigger a00 chặn bản web cũ đẻ thêm nên sau lần đầu tập này gần như rỗng.
 CREATE OR REPLACE FUNCTION app_private.notification_reconcile_stale_v1(p_marker text DEFAULT NULL)
@@ -1127,6 +1193,7 @@ DECLARE
   v_extra    jsonb := CASE WHEN p_marker IS NULL THEN '{}'::jsonb
                            ELSE jsonb_build_object('cancelled_by_migration', p_marker) END;
   v_handover integer := 0;
+  v_closed   integer := 0;
   v_legacy   integer := 0;
 BEGIN
   WITH t AS (
@@ -1134,8 +1201,8 @@ BEGIN
       FROM public.notifications n
       JOIN public.cash_handovers h ON h.id::text = n.metadata ->> 'handover_id'
      WHERE n.status = 'PENDING'
-       AND n.metadata ->> 'event' IN ('E5', 'E6a')
-       AND h.status::text IN ('CONFIRMED', 'CANCELLED')
+       AND n.metadata ->> 'event' = 'E5'
+       AND h.status::text <> 'PENDING'
      FOR UPDATE OF n SKIP LOCKED
   )
   UPDATE public.notifications n
@@ -1145,6 +1212,26 @@ BEGIN
     FROM t
    WHERE n.id = t.id;
   GET DIAGNOSTICS v_handover = ROW_COUNT;
+
+  WITH t AS (
+    SELECT n.id
+      FROM public.notifications n
+      JOIN public.cash_handovers h ON h.id::text = n.metadata ->> 'handover_id'
+      LEFT JOIN public.accounts a ON a.id = h.from_account_id
+     WHERE n.status = 'PENDING'
+       AND n.metadata ->> 'event' = 'E6a'
+       AND (a.id IS NULL OR a.deleted_at IS NOT NULL OR coalesce(a.is_virtual, false)
+            OR app_private.cashbook_closed_through_v1(h.from_account_id)
+                 >= (coalesce(h.confirmed_at, n.created_at) AT TIME ZONE app_private.org_timezone_v1(n.organization_id))::date)
+     FOR UPDATE OF n SKIP LOCKED
+  )
+  UPDATE public.notifications n
+     SET status = 'CANCELLED',
+         metadata = n.metadata || jsonb_build_object('cancelled_reason', 'CASHBOOK_CLOSED', 'cancelled_at', v_now,
+                                                     'cancelled_by', 'notification_reconcile_stale_v1') || v_extra
+    FROM t
+   WHERE n.id = t.id;
+  GET DIAGNOSTICS v_closed = ROW_COUNT;
 
   WITH t AS (
     SELECT n.id
@@ -1163,7 +1250,8 @@ BEGIN
    WHERE n.id = t.id;
   GET DIAGNOSTICS v_legacy = ROW_COUNT;
 
-  RETURN jsonb_build_object('legacy_cancelled', v_legacy, 'handover_cancelled', v_handover);
+  RETURN jsonb_build_object('legacy_cancelled', v_legacy, 'handover_cancelled', v_handover,
+                            'cashbook_closed_cancelled', v_closed);
 END $fn$;
 REVOKE ALL ON FUNCTION app_private.notification_reconcile_stale_v1(text) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -1179,17 +1267,19 @@ DECLARE
   v_res     jsonb;
   v_legacy  integer;
   v_handover integer;
+  v_closed  integer;
   v_deleted integer := 0;
   v_last    timestamptz;
 BEGIN
   IF NOT pg_try_advisory_xact_lock(hashtext('notification_maintenance_v1')::bigint) THEN
-    RETURN jsonb_build_object('reconciled', 0, 'legacy_cancelled', 0, 'handover_cancelled', 0, 'push_log_deleted', 0,
-                              'busy', true);
+    RETURN jsonb_build_object('reconciled', 0, 'legacy_cancelled', 0, 'handover_cancelled', 0,
+                              'cashbook_closed_cancelled', 0, 'push_log_deleted', 0, 'busy', true);
   END IF;
 
   v_res := app_private.notification_reconcile_stale_v1(NULL);
   v_legacy := coalesce((v_res ->> 'legacy_cancelled')::integer, 0);
   v_handover := coalesce((v_res ->> 'handover_cancelled')::integer, 0);
+  v_closed := coalesce((v_res ->> 'cashbook_closed_cancelled')::integer, 0);
 
   SELECT s.last_run_at INTO v_last
     FROM app_private.notification_maintenance_state s
@@ -1204,8 +1294,9 @@ BEGIN
     ON CONFLICT (task) DO UPDATE SET last_run_at = excluded.last_run_at;
   END IF;
 
-  RETURN jsonb_build_object('reconciled', v_legacy + v_handover, 'legacy_cancelled', v_legacy,
-                            'handover_cancelled', v_handover, 'push_log_deleted', v_deleted);
+  RETURN jsonb_build_object('reconciled', v_legacy + v_handover + v_closed, 'legacy_cancelled', v_legacy,
+                            'handover_cancelled', v_handover, 'cashbook_closed_cancelled', v_closed,
+                            'push_log_deleted', v_deleted);
 END $fn$;
 
 -- Sổ mỗi lượt drain của edge — get_notification_delivery_health_v1 đọc last_drain_at từ đây.
@@ -1240,6 +1331,11 @@ GRANT EXECUTE ON FUNCTION public.notify_drain_record_run_v1(integer, integer, js
 -- =====================================================================================================================
 -- push_log_7d chỉ đếm khoá GẮN ĐƯỢC với công ty (lô drain của dòng thuộc công ty + lượt lifecycle của công ty):
 -- push_send_log không có cột công ty, đếm theo người sẽ lẫn push của công ty khác khi người đó thuộc hai công ty.
+-- queue.oldest_eligible_queued_at / queue.deferred_quiet: dòng QUEUED đang được HOÃN hợp lệ vì giờ yên công ty hoặc
+-- cá nhân (notify_in_quiet_hours_v1 — cùng phép lọc của claim v2) không phải dấu drain hỏng; client cảnh báo theo
+-- dòng ĐỦ ĐIỀU KIỆN gửi lúc này (SETTINGS-3). oldest_queued_at giữ nguyên nghĩa cũ (mọi dòng QUEUED).
+-- last_drain_* là phạm vi HỆ THỐNG (một lượt drain gửi cho mọi công ty, drain_scope='system'), không thuộc riêng
+-- công ty được hỏi; chuỗi lỗi thô last_drain_error chỉ trả cho super admin (người khác nhận null) — SQL-PIPE-3.
 CREATE OR REPLACE FUNCTION public.get_notification_delivery_health_v1(p_organization_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1274,12 +1370,19 @@ BEGIN
                              WHERE ps.is_active AND ps.user_id = ANY (v_members)),
     'active_devices', (SELECT count(*)::integer FROM public.push_subscriptions ps
                         WHERE ps.is_active AND ps.user_id = ANY (v_members)),
-    'queue', (SELECT jsonb_build_object(
-                       'queued',  count(*) FILTER (WHERE n.push_state = 'QUEUED'),
-                       'sending', count(*) FILTER (WHERE n.push_state = 'SENDING'),
-                       'oldest_queued_at', min(n.created_at) FILTER (WHERE n.push_state = 'QUEUED'))
-                FROM public.notifications n
-               WHERE n.organization_id = p_organization_id AND n.push_state IN ('QUEUED', 'SENDING')),
+    'queue', (WITH q AS (SELECT n.user_id, n.push_state, n.created_at
+                           FROM public.notifications n
+                          WHERE n.organization_id = p_organization_id AND n.push_state IN ('QUEUED', 'SENDING')),
+                   yen AS (SELECT d.user_id, app_private.notify_in_quiet_hours_v1(d.user_id, p_organization_id, v_now) AS quiet
+                             FROM (SELECT DISTINCT q.user_id FROM q WHERE q.push_state = 'QUEUED') d)
+              SELECT jsonb_build_object(
+                       'queued',  count(*) FILTER (WHERE q.push_state = 'QUEUED'),
+                       'sending', count(*) FILTER (WHERE q.push_state = 'SENDING'),
+                       'oldest_queued_at', min(q.created_at) FILTER (WHERE q.push_state = 'QUEUED'),
+                       'oldest_eligible_queued_at',
+                         min(q.created_at) FILTER (WHERE q.push_state = 'QUEUED' AND NOT coalesce(yen.quiet, false)),
+                       'deferred_quiet', count(*) FILTER (WHERE q.push_state = 'QUEUED' AND coalesce(yen.quiet, false)))
+                FROM q LEFT JOIN yen ON yen.user_id = q.user_id),
     'last_7d', (SELECT jsonb_build_object(
                          'sent',      count(*) FILTER (WHERE n.push_state = 'SENT'),
                          'no_device', count(*) FILTER (WHERE n.push_state = 'NO_DEVICE'),
@@ -1324,10 +1427,12 @@ BEGIN
                                  CROSS JOIN LATERAL jsonb_array_elements_text(lr.no_recipient_families) AS f(family)
                                  WHERE lr.organization_id = p_organization_id AND lr.finished_at >= v_since
                                  GROUP BY f.family) q),
+    'drain_scope', 'system',
     'last_drain_at', (SELECT max(r.finished_at) FROM app_private.notification_drain_runs r),
     'last_drain_ok_at', (SELECT max(r.finished_at) FROM app_private.notification_drain_runs r WHERE r.status = 'OK'),
-    'last_drain_error', (SELECT r.error_message FROM app_private.notification_drain_runs r
-                          ORDER BY r.finished_at DESC, r.id DESC LIMIT 1));
+    'last_drain_error', CASE WHEN public.is_super_admin() THEN
+                          (SELECT r.error_message FROM app_private.notification_drain_runs r
+                            ORDER BY r.finished_at DESC, r.id DESC LIMIT 1) END);
 END $fn$;
 
 CREATE OR REPLACE FUNCTION public.get_my_push_log_v1(p_limit integer DEFAULT 10)
@@ -1370,6 +1475,15 @@ REVOKE ALL ON TABLE public.notification_templates FROM anon;
 REVOKE TRUNCATE ON TABLE public.push_subscriptions FROM authenticated;
 REVOKE TRUNCATE ON TABLE public.notification_logs FROM authenticated;
 REVOKE TRUNCATE ON TABLE public.notification_templates FROM authenticated;
+
+-- SETTINGS-1: dấu "đã gỡ máy này" trên chính dòng đăng ký. Gỡ ở "Thiết bị đã đăng ký" = UPDATE is_active=false,
+-- revoked_at=now() qua policy push_subscriptions_update_own (đã có; quyền UPDATE cấp bảng phủ cột mới). Máy bị gỡ mở
+-- lại CRM thì ensurePushSubscription thấy revoked_at và KHÔNG tự đăng ký lại; chỉ công tắc bật chủ động đặt lại NULL.
+-- Không đổi policy. zz_khoa_organization_id chỉ bắn khi UPDATE OF organization_id ⇒ cập nhật revoked_at không vướng.
+ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS revoked_at timestamptz;
+COMMENT ON COLUMN public.push_subscriptions.revoked_at IS
+  'Người dùng đã gỡ máy này lúc nào (NULL = chưa gỡ). Có giá trị ⇒ client không tự đăng ký lại khi mở app; chỉ công tắc '
+  'bật push chủ động đặt lại NULL. send-push vẫn chọn theo is_active (gỡ = is_active false + revoked_at).';
 
 -- =====================================================================================================================
 -- 11. Dọn lần đầu (B6). Lượt hai không còn dòng PENDING nào khớp ⇒ 0, không nhân dữ liệu.
@@ -1422,6 +1536,18 @@ BEGIN
                   WHERE t.tgrelid = 'public.notifications'::regclass AND t.tgname = 'a00_notifications_guard'
                     AND NOT t.tgisinternal) THEN
     RAISE EXCEPTION 'nghiệm thu: thiếu trigger a00_notifications_guard' USING ERRCODE = '55000';
+  END IF;
+  -- Trigger cùng thời điểm bắn theo thứ tự TÊN (so byte). Guard phải đứng đầu mọi BEFORE INSERT: dòng nhắc legacy bị
+  -- bỏ trước khi autofill_org_strict (a90_autofill_org, trg_autofill_org_strict) kịp ném 23502 cho client cũ.
+  IF EXISTS (SELECT 1 FROM pg_trigger t
+              WHERE t.tgrelid = 'public.notifications'::regclass AND NOT t.tgisinternal
+                AND (t.tgtype & 2) <> 0 AND (t.tgtype & 4) <> 0
+                AND t.tgname::text COLLATE "C" < 'a00_notifications_guard') THEN
+    RAISE EXCEPTION 'nghiệm thu: có trigger BEFORE INSERT trên notifications đứng trước a00_notifications_guard' USING ERRCODE = '55000';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'push_subscriptions' AND column_name = 'revoked_at') THEN
+    RAISE EXCEPTION 'nghiệm thu: push_subscriptions thiếu cột revoked_at' USING ERRCODE = '55000';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid = 'app_private.notifications_guard_v1()'::regprocedure AND p.prosecdef) THEN
     RAISE EXCEPTION 'nghiệm thu: notifications_guard_v1 phải SECURITY INVOKER' USING ERRCODE = '55000';

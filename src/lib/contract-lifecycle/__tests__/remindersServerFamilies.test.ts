@@ -197,6 +197,108 @@ describe('bốn họ nhắc server', () => {
     expect((await thongBao(ID.chu, 'INVOICE_DUE'))[0].status).toBe('PENDING');
   });
 
+  it('claim: dòng giờ yên (≥ p_limit) đứng đầu hàng không chặn dòng gửi được sau nó; hết ngày ⇒ SKIPPED trước payload; một payload, edge validate được', async () => {
+    await db.query("INSERT INTO public.push_subscriptions(user_id, endpoint) VALUES ($1, 'ep-chu'), ($2, 'ep-nv')", [ID.chu, ID.nhanVien]);
+    await sweep();
+    // 4 delivery của chủ (đang giờ yên cá nhân) cũ hơn 2 delivery của nhân viên ⇒ đứng đầu ORDER BY.
+    await db.query("UPDATE app_private.lifecycle_reminder_deliveries SET created_at = now() - interval '1 hour' WHERE user_id = $1", [ID.chu]);
+    const homQua = (await db.query<{ id: string }>(`INSERT INTO app_private.lifecycle_reminder_deliveries
+      (organization_id, user_id, reminder_day, source_family, push_status, created_at)
+      VALUES ($1, $2, (SELECT local_now::date FROM test_clock) - 1, 'NOTICE', 'PENDING', now() - interval '2 hours') RETURNING id`,
+      [ID.org, ID.chu])).rows[0].id;
+    const { start, end } = khungChuaBayGio();
+    await db.query('INSERT INTO public.notification_quiet_hours VALUES ($1, $2, true, $3, $4, now())', [ID.chu, ID.org, start, end]);
+    type Lo = Array<{ id: string; lease: string; user_id: string; organization_id: string; idempotency_key: string; title: string;
+      url: string; notification_ids: string[]; count: number }>;
+    const lo = (await db.query<{ r: Lo }>('SELECT public.lifecycle_reminder_claim_v1(2) r')).rows[0].r;
+    expect(lo).toHaveLength(2);
+    expect(lo.every((x) => x.user_id === ID.nhanVien)).toBe(true);
+    expect(Object.keys(lo[0]).sort()).toEqual(['body', 'count', 'id', 'idempotency_key', 'lease', 'notification_ids', 'organization_id',
+      'sources', 'title', 'url', 'user_id']);
+    // Dòng hôm qua đóng SKIPPED dù chủ đang giờ yên; 4 dòng giờ yên của chủ vẫn PENDING (lượt sau xét lại).
+    const st = await db.query<{ id: string; push_status: string; last_error: string | null }>(
+      'SELECT id, push_status, last_error FROM app_private.lifecycle_reminder_deliveries WHERE user_id = $1', [ID.chu]);
+    expect(st.rows.find((x) => x.id === homQua)).toMatchObject({ push_status: 'SKIPPED', last_error: 'Reminder day expired before push' });
+    expect(st.rows.filter((x) => x.id !== homQua).every((x) => x.push_status === 'PENDING')).toBe(true);
+    // Edge validate ngay trước khi gửi: cùng lease, cùng payload.
+    const v = (await db.query<{ v: Lo[number] | null }>('SELECT public.lifecycle_reminder_validate_v1($1, $2) v', [lo[0].id, lo[0].lease])).rows[0].v;
+    expect(v).toMatchObject({ id: lo[0].id, lease: lo[0].lease, title: lo[0].title, count: lo[0].count });
+  });
+
+  it('tắt trong app (cá nhân hoặc công ty) ⇒ dòng PENDING của họ đó thành CANCELLED (PREFERENCE_DISABLED), READ giữ; bật lại trong ngày ⇒ mở lại', async () => {
+    await sweep();
+    const [quaHan] = await thongBao(ID.chu, 'INVOICE_OVERDUE');
+    const [sapHan] = await thongBao(ID.chu, 'INVOICE_DUE');
+    await db.query("UPDATE public.notifications SET status = 'READ' WHERE id = $1", [sapHan.id]);
+    await db.query("INSERT INTO public.notification_preferences(user_id, organization_id, event_key, in_app) VALUES ($1, $2, 'BILLING', false)", [ID.chu, ID.org]);
+    expect((await sweep()).cancelled).toBeGreaterThanOrEqual(1);
+    expect((await thongBao(ID.chu, 'INVOICE_OVERDUE'))[0]).toMatchObject({ id: quaHan.id, status: 'CANCELLED' });
+    expect((await thongBao(ID.chu, 'INVOICE_OVERDUE'))[0].metadata.cancelled_reason).toBe('PREFERENCE_DISABLED');
+    expect((await thongBao(ID.chu, 'INVOICE_DUE'))[0].status).toBe('READ');
+    expect((await thongBao(ID.chu, 'CONTRACT_EXPIRING'))[0].status).toBe('PENDING');
+    // Bật lại cùng ngày ⇒ dòng hôm nay mở lại, không đẻ dòng mới.
+    await db.query("UPDATE public.notification_preferences SET in_app = true WHERE user_id = $1 AND event_key = 'BILLING'", [ID.chu]);
+    await sweep();
+    const moLai = await thongBao(ID.chu, 'INVOICE_OVERDUE');
+    expect(moLai).toHaveLength(1);
+    expect(moLai[0]).toMatchObject({ id: quaHan.id, status: 'PENDING' });
+    expect(moLai[0].metadata.cancelled_reason).toBeUndefined();
+    // Công ty tắt họ cũng vậy (mọi người nhận).
+    await db.query(`UPDATE app_private.notification_org_config SET events = '{"CONTRACT_EXPIRY":{"enabled":false}}' WHERE organization_id = $1`, [ID.org]);
+    await sweep();
+    expect((await thongBao(ID.chu, 'CONTRACT_EXPIRING'))[0].status).toBe('CANCELLED');
+    expect((await thongBao(ID.nhanVien, 'CONTRACT_EXPIRING'))[0].metadata.cancelled_reason).toBe('PREFERENCE_DISABLED');
+  });
+
+  it('tắt trong app TRƯỚC lượt đầu rồi bật lại trong ngày ⇒ delivery có sẵn được gắn dòng chuông mới', async () => {
+    await db.query("INSERT INTO public.notification_preferences(user_id, organization_id, event_key, in_app) VALUES ($1, $2, 'DEPOSIT', false)", [ID.chu, ID.org]);
+    await sweep();
+    expect(await thongBao(ID.chu, 'DEPOSIT_SHORTFALL')).toHaveLength(0);
+    await db.query("UPDATE public.notification_preferences SET in_app = true WHERE user_id = $1 AND event_key = 'DEPOSIT'", [ID.chu]);
+    await sweep();
+    const [coc] = await thongBao(ID.chu, 'DEPOSIT_SHORTFALL');
+    expect(coc).toMatchObject({ status: 'PENDING', type: 'DEPOSIT_SHORTFALL' });
+    const d = await db.query<{ n: number; linked: boolean }>(`SELECT count(*)::int n, bool_and(notification_id = $2) linked
+      FROM app_private.lifecycle_reminder_deliveries WHERE user_id = $1 AND source_family = 'DEPOSIT_SHORTFALL'`, [ID.chu, coc.id]);
+    expect(d.rows[0]).toEqual({ n: 1, linked: true });
+  });
+
+  it('người nhận mất quyền giữa ngày ⇒ các lượt bỏ qua sau đó vẫn báo NO_RECIPIENT (đếm theo had_payload)', async () => {
+    const lanCuoi = async () => (await db.query<{ status: string; no_recipient_families: string[] }>(
+      'SELECT status, no_recipient_families FROM app_private.lifecycle_reminder_runs WHERE organization_id = $1 ORDER BY finished_at DESC LIMIT 1',
+      [ID.org])).rows[0];
+    await sweep();
+    expect(await lanCuoi()).toMatchObject({ status: 'OK' });
+    await db.query("UPDATE test_permissions SET allowed = false WHERE user_id = $1 AND permission = 'invoices.view'", [ID.chu]);
+    await db.query('UPDATE public.organizations SET authorization_version = authorization_version + 1 WHERE id = $1', [ID.org]);
+    await sweep();
+    expect(await lanCuoi()).toMatchObject({ status: 'NO_RECIPIENT', no_recipient_families: ['INVOICE_DUE', 'INVOICE_OVERDUE'] });
+    // Lượt không đổi gì: vân tay như cũ ⇒ bỏ qua, nhưng vẫn không ai nhận (delivery buổi sáng không được tính).
+    const r = await sweep();
+    expect((r as unknown as { unchanged: number }).unchanged).toBeGreaterThanOrEqual(14);
+    expect(await lanCuoi()).toMatchObject({ status: 'NO_RECIPIENT', no_recipient_families: ['INVOICE_DUE', 'INVOICE_OVERDUE'] });
+  });
+
+  it('lifecycle_reminder_org_ids_v1: công ty ACTIVE, chỉ service_role; sweep(<công ty>) chỉ đụng công ty đó', async () => {
+    const ids = async () => (await db.query<{ v: string[] }>('SELECT public.lifecycle_reminder_org_ids_v1() v')).rows[0].v;
+    expect(await ids()).toEqual([ID.org, ID.orgKhac].sort());
+    await db.query("UPDATE public.organizations SET status = 'SUSPENDED' WHERE id = $1", [ID.orgKhac]);
+    try {
+      expect(await ids()).toEqual([ID.org]);
+    } finally {
+      await db.query("UPDATE public.organizations SET status = 'ACTIVE' WHERE id = $1", [ID.orgKhac]);
+    }
+    const acl = await db.query<Record<string, boolean>>(`SELECT
+      has_function_privilege('service_role', 'public.lifecycle_reminder_org_ids_v1()', 'EXECUTE') svc,
+      has_function_privilege('authenticated', 'public.lifecycle_reminder_org_ids_v1()', 'EXECUTE') auth,
+      has_function_privilege('anon', 'public.lifecycle_reminder_org_ids_v1()', 'EXECUTE') anon`);
+    expect(acl.rows[0]).toEqual({ svc: true, auth: false, anon: false });
+    await db.query('SELECT public.lifecycle_reminder_sweep_v1($1)', [ID.orgKhac]);
+    expect((await db.query<{ n: number }>('SELECT count(*)::int n FROM public.notifications')).rows[0].n).toBe(0);
+    const runs = await db.query<{ organization_id: string }>('SELECT DISTINCT organization_id FROM app_private.lifecycle_reminder_runs');
+    expect(runs.rows).toEqual([{ organization_id: ID.orgKhac }]);
+  });
+
   it('người nhận: hai họ hoá đơn cần invoices.view, hai họ HĐ cần contracts.view; CHECK nhận đủ 7 họ', async () => {
     const ok = async (user: string, family: string) => (await db.query<{ v: boolean }>(
       'SELECT app_private.lifecycle_recipient_allowed_v1($1, $2, $3, $4) v', [user, ID.org, ID.toa, family])).rows[0].v;

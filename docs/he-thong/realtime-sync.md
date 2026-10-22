@@ -48,8 +48,9 @@ Bảng phải nằm trong publication `supabase_realtime`. Subscribe một bản
 
 Thay đổi 21/10/2026 ([20261021170902_realtime_publication_toi_uu.sql](../../supabase/migrations/20261021170902_realtime_publication_toi_uu.sql)):
 
-- **Bỏ** `network_worker_building_status`: heartbeat ghi ~6.300 lần/ngày, không màn/RPC nào đọc, mỗi
-  nhịp làm tab NC gọi lại ~21 RPC.
+- **Chưa bỏ** `network_worker_building_status` (client mới đã thôi nghe; heartbeat ~6.300 lần/ngày): client
+  NC production cũ còn nghe bảng này trong cùng kênh — DROP để migration riêng sau promote (known-gap
+  `realtime-nhip-tim-nc-con-trong-publication`).
 - **Thêm** `meter_readings`, `meters`: có policy SELECT theo phạm vi toà cho người xem màn Chỉ số.
 - **Không thêm** `approval_requests` / `approval_request_steps`: chỉ có policy RESTRICTIVE, không có
   policy SELECT cho phép nào ⇒ Realtime (chỉ giao event cho dòng người nghe SELECT được) sẽ không giao
@@ -146,7 +147,9 @@ tự ẩn khi nối lại; nút "Tải lại dữ liệu" gọi `requestResyncAl
 - **DELETE bỏ qua RLS (RT-DB-5)**: event DELETE tới mọi subscriber của bảng (kể cả công ty khác, kể cả anon
   nếu anon có SELECT trên bảng — đo 21/10: 15 bảng publish; migration 21/10 thêm `meters`,
   `meter_readings` cũng có SELECT cho anon) kèm khoá chính dòng bị xoá. Lộ siêu dữ liệu (bảng nào xoá dòng nào lúc nào), không lộ nội dung. Chặn hẳn cần kênh
-  private (Broadcast, RT-DB-1) — chưa làm.
+  private (Broadcast, RT-DB-1) — chưa làm. Chưa REVOKE SELECT anon trên `meters`/`meter_readings`: anon còn EXECUTE hai
+  hàm INVOKER đọc chúng và chưa chứng minh kênh nào không join dưới vai anon (thiếu quyền một bảng có thể làm hỏng cả
+  kênh) — known-gap `realtime-delete-cong-to-toi-anon`.
 - **Filter + DELETE không bao giờ khớp (RT-DB-10)**: REPLICA IDENTITY DEFAULT ⇒ `old_record` của DELETE chỉ
   có khoá chính, filter `organization_id=eq…` / `conversation_id=eq…` trượt. Zalo (59 hard delete trên
   `zalo_messages`) chỉ thấy tin bị xoá ở lần tải kế; **thêm filter org cho hub sẽ làm rơi mọi hard delete

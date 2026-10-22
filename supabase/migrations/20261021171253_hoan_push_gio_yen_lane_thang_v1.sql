@@ -14,6 +14,10 @@
 -- 20261015100000; hermes_schedule_notify_v2 63d78ecd… = 20261015185559; zalo_canh_gac_bao_v1 76a37393… =
 -- 20261009171352). Dấu nhận biết đã vá: chuỗi notify_push_allowed_now_v1 trong thân ⇒ lượt hai bỏ qua.
 -- Chữ ký, kiểu trả về, owner, search_path, ACL giữ nguyên (CREATE OR REPLACE từ chính định nghĩa đang chạy).
+-- $requires$ (ghim thân, bài học 22/10): neo khớp chưa đủ — thân đang chạy phải là ĐÚNG thân production đã duyệt hoặc
+-- thân đã vá của chính file. md5 tính sau khi bỏ CR VÀ chuẩn hoá URL dự án 'https://<ref>.supabase.co': bản đồng bộ
+-- TEST viết lại ref trong thân bốn hàm này (đo 22/10: md5 thô TEST ≠ production, md5 chuẩn hoá bằng nhau), còn mọi
+-- ký tự khác vẫn bị ghim.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
@@ -24,6 +28,32 @@ BEGIN
     RAISE EXCEPTION 'hoan_push_gio_yen: áp 20261021171249_notify_pipeline_v2 trước' USING ERRCODE = '55000';
   END IF;
 END $tien_quyet$;
+
+DO $requires$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT x.sig, x.cu, x.moi,
+           (SELECT md5(regexp_replace(replace(p.prosrc, chr(13), ''), 'https://[a-z0-9]{20}\.supabase\.co',
+                                      'https://<ref>.supabase.co', 'g'))
+              FROM pg_proc p WHERE p.oid = to_regprocedure(x.sig)) AS hien
+      FROM (VALUES
+        ('app_private.hermes_task_follow_notify_v1(uuid,uuid,text,jsonb,text,uuid)', 'cc71a8bd0203f787b63eedebb5327a94', '09a1ff2dc82bf2641bdb2358c7a7d71b'),
+        ('app_private.hermes_schedule_notify_v1(uuid,text)', '705d6c0cfbe83d8ddc9dab250c5caeb8', 'e2680a72ac0a73bd7185f7f7641fccd8'),
+        ('app_private.hermes_schedule_notify_v2(uuid[],text)', 'da889e3c2d105144826cc0616e7bee5c', '14ff85451f6095023bece08df3a01b0d'),
+        ('app_private.zalo_canh_gac_bao_v1(uuid,text,text,text,text,text)', 'c9ca0f1c0b2d9c08c5fcffe2e50a3235', '6a3317b7668f7d9e18900c1131c1c09a')
+      ) AS x(sig, cu, moi)
+  LOOP
+    IF r.hien IS NULL THEN
+      RAISE EXCEPTION 'hoan_push_gio_yen: thiếu hàm % (production 22/10 có) — dừng', r.sig USING ERRCODE = '55000';
+    END IF;
+    IF r.hien NOT IN (r.cu, r.moi) THEN
+      RAISE EXCEPTION 'hoan_push_gio_yen: thân % đã đổi so với bản đã duyệt (md5 chuẩn hoá %, chờ % hoặc %) — có PR khác thay hàm này, gộp rồi dựng lại migration',
+        r.sig, r.hien, r.cu, r.moi USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+END $requires$;
 
 -- 1. Hermes task: dòng chuông đã có id (v_id) trước đoạn lấy JWT.
 DO $va_hermes_task$
