@@ -23,13 +23,13 @@
 --     - dòng phân bổ của toà: month, voucher_id, side, type_id, amount — không tên/nhóm;
 --     - cấu hình cổ đông của toà: shareholder_id, percent — không tên;
 --     - quy tắc lương điều hành có dính toà: rule_id, manager_id, form, basis, amount,
---       percent, building_ids — không tên/nhãn;
+--       percent — không tên/nhãn; building_ids CHỈ với quy tắc nhóm (xem dưới);
 --     - CHỈ quy tắc tính trên tổng nhóm (basis khác 'PER_BUILDING', tức 'TOTAL_GROUP' — xem
 --       _profit_management_allocations_v2: chia theo LN dương của cả nhóm) mới kéo thêm
---       doanh thu / chi phí / LN (không tên) của các toà cùng quy tắc đó. Toà không chung
---       quy tắc nhóm không ảnh hưởng nhau.
---   building_ids của quy tắc (kể cả PER_BUILDING) nằm trong dấu theo đúng yêu cầu: thêm/bớt
---   toà khỏi một quy tắc là đổi CẤU HÌNH lương ⇒ các toà của quy tắc đó lệch (cố ý thận trọng).
+--       building_ids + doanh thu / chi phí / LN (không tên) của các toà cùng quy tắc đó. Toà
+--       không chung quy tắc nhóm không ảnh hưởng nhau.
+--   Quy tắc PER_BUILDING: lương toà chỉ theo số của chính toà ⇒ dấu chỉ ghi toà THUỘC quy tắc
+--   (quy tắc có mặt) + tham số tiền; thêm/bớt toà KHÁC vào quy tắc đó không làm toà này lệch.
 --   Điều chỉnh tay (adjustment) không thuộc tài liệu nguồn — như v2.1.
 --   Số tiền chuẩn hoá bằng trim_scale (100000 và 100000.00 là một), thứ tự sắp COLLATE "C".
 --   Preview và đường kiểm độ tươi gọi CÙNG hàm chiếu ⇒ một định nghĩa, không chép công thức.
@@ -53,9 +53,11 @@
 --     dòng còn lại ⇒ current_profit_building_source_hash_v1 Y NGUYÊN (KHÔNG thay hàm v1:
 --     md5 pg_get_functiondef 13512e71…, prosrc 36611055… giữ nguyên).
 --   - app_private.current_profit_building_source_hash_v2 = thân v1 đang chạy (dựng lại tài
---     liệu nguồn từ dữ liệu hiện tại trên đúng tập toà của lượt chốt, giữ mọi kiểm cấu trúc
---     trả NULL) với hai chỗ đổi đánh dấu "20261022172459": chỉ nhận revision mang
---     'v2.2', và băm bằng hàm chiếu.
+--     liệu nguồn từ dữ liệu hiện tại trên đúng tập toà của lượt chốt) với ba chỗ đổi đánh dấu
+--     "20261022172459": chỉ nhận revision mang 'v2.2'; ba phép kiểm CẤU TRÚC (toà xoá/ảo/
+--     khác công ty, cổ đông hỏng/>100%, lương hỏng) chỉ chạy trên chính toà + toà chung quy
+--     tắc nhóm — đúng tập mà dấu v2.2 phụ thuộc, để cửa chi và preview cùng kết luận; băm
+--     bằng hàm chiếu.
 --   - _profit_close_preview_core_v2: building_source_hash = dấu v2.2 (writer ghi dấu này cho
 --     lần chốt mới); cờ current_hash_mismatch / current_is_stale / current_stale_reason so
 --     dòng 'v2.1' với dấu v2.1 cũ (biểu thức giữ nguyên từng chữ), dòng 'v2.2' với dấu v2.2.
@@ -64,8 +66,8 @@
 --   Dữ liệu (không UPDATE/DELETE profit_monthly / profit_close_* / phân bổ), writer, wrapper,
 --   CAS toàn tháng, guard TOTAL_GROUP, current_profit_building_source_hash_v1. 30 dòng cũ vẫn
 --   báo "lệch nguồn" như hiện nay — chủ tự mở chốt + chốt lại khi muốn; lần chốt lại đó ghi
---   dấu v2.2. Kiểm cấu trúc fail-closed của v1 (toà trong lượt chốt bị xoá/ảo, cấu hình cổ
---   đông/lương hỏng) giữ nguyên trong v2.
+--   dấu v2.2. Kiểm cấu trúc fail-closed của v1 (toà bị xoá/ảo, cấu hình cổ đông/lương hỏng)
+--   giữ trong v2 nhưng thu về tập toà mà dấu của toà đó phụ thuộc.
 --
 -- THÂN GỐC
 --   pg_get_functiondef production đọc 22/10/2026, đọc lại 22/10 17:2x UTC trước khi viết
@@ -142,11 +144,11 @@ BEGIN
     SELECT *
     FROM (VALUES
       ('app_private.profit_building_source_hash_v2_2(jsonb,uuid)',
-       '8c450fe0f6d2b884bd787b3620792b81'),
+       'b36345436ad266e9883eb277cc89c995'),
       ('app_private.profit_building_source_hash_algorithm_v1(uuid)',
        'eb80060667005cf8796192d66c55e333'),
       ('app_private.current_profit_building_source_hash_v2(uuid)',
-       'b34fee7ef639a55e80ed9df318dee052')
+       '7bae4d20612c097460a8c516c5282b5b')
     ) own(signature, expected_md5)
   LOOP
     SELECT md5(replace(p.prosrc, chr(13), '')) INTO v_md5
@@ -319,10 +321,14 @@ AS $fn$
           'basis', rules.value->'basis',
           'amount', trim_scale((rules.value->>'amount')::numeric),
           'percent', trim_scale((rules.value->>'percent')::numeric),
-          'building_ids', (
-            SELECT jsonb_agg(member.building_key ORDER BY member.building_key COLLATE "C")
-            FROM jsonb_array_elements_text(rules.value->'building_ids') member(building_key)
-          )
+          -- PER_BUILDING: lương của toà chỉ theo số của chính toà ⇒ chỉ cần toà thuộc quy tắc
+          -- (đã lọc ở `rules`) + tham số tiền; danh sách toà KHÔNG vào dấu. Quy tắc nhóm: có.
+          'building_ids', CASE
+            WHEN rules.value->>'basis' IS DISTINCT FROM 'PER_BUILDING' THEN (
+              SELECT jsonb_agg(member.building_key ORDER BY member.building_key COLLATE "C")
+              FROM jsonb_array_elements_text(rules.value->'building_ids') member(building_key)
+            )
+          END
         ) ORDER BY (rules.value->>'rule_id') COLLATE "C"
       )
       FROM rules
@@ -381,7 +387,7 @@ AS $fn$
 $fn$;
 
 -- 3. Dựng lại dấu v2.2 từ dữ liệu hiện tại: thân current_profit_building_source_hash_v1
---    đang chạy (366110557…), hai chỗ đổi đánh dấu "20261022172459".
+--    đang chạy (366110557…), ba chỗ đổi đánh dấu "20261022172459".
 CREATE OR REPLACE FUNCTION app_private.current_profit_building_source_hash_v2(p_profit_monthly_id uuid)
  RETURNS text
  LANGUAGE plpgsql
@@ -391,6 +397,7 @@ AS $function$
 DECLARE
   v_profit public.profit_monthly%ROWTYPE;
   v_building_ids uuid[];
+  v_check_ids uuid[];
   v_hash text;
 BEGIN
   SELECT profit.* INTO v_profit
@@ -431,9 +438,39 @@ BEGIN
     RETURN NULL;
   END IF;
 
+  -- 20261022172459: kiểm CẤU TRÚC chỉ trên đúng tập toà mà dấu v2.2 của toà này phụ thuộc —
+  -- chính toà + các toà (trong lượt chốt) chung một quy tắc lương tính trên TỔNG NHÓM (basis
+  -- khác PER_BUILDING; quy tắc + quản lý đang hoạt động, cùng công ty — đúng bộ lọc tài liệu
+  -- nguồn). Toà không liên quan bị xoá/ảo/hỏng cấu hình không làm toà này "không hiện hành";
+  -- preview cũng không kéo chúng vào dấu ⇒ cửa chi và preview cùng một kết luận.
+  SELECT array_agg(DISTINCT member.building_id ORDER BY member.building_id)
+    INTO v_check_ids
+  FROM (
+    SELECT v_profit.building_id AS building_id
+    UNION ALL
+    SELECT peer.building_id
+    FROM public.profit_manager_salaries salary
+    JOIN public.profit_managers manager
+      ON manager.id = salary.manager_id
+     AND manager.organization_id = v_profit.organization_id
+     AND manager.is_active
+     AND manager.deleted_at IS NULL
+    JOIN public.profit_manager_salary_buildings own_building
+      ON own_building.salary_id = salary.id
+     AND own_building.organization_id = v_profit.organization_id
+     AND own_building.building_id = v_profit.building_id
+    JOIN public.profit_manager_salary_buildings peer
+      ON peer.salary_id = salary.id
+     AND peer.organization_id = v_profit.organization_id
+     AND peer.building_id = ANY(v_building_ids)
+    WHERE salary.organization_id = v_profit.organization_id
+      AND salary.is_active
+      AND salary.basis IS DISTINCT FROM 'PER_BUILDING'
+  ) member;
+
   IF EXISTS (
     SELECT 1
-    FROM unnest(v_building_ids) source_building(building_id)
+    FROM unnest(v_check_ids) source_building(building_id)
     LEFT JOIN public.buildings building
       ON building.id = source_building.building_id
     WHERE building.id IS NULL
@@ -449,7 +486,7 @@ BEGIN
     FROM public.building_shareholders building_shareholder
     LEFT JOIN public.shareholders shareholder
       ON shareholder.id = building_shareholder.shareholder_id
-    WHERE building_shareholder.building_id = ANY(v_building_ids)
+    WHERE building_shareholder.building_id = ANY(v_check_ids)
       AND (
         building_shareholder.organization_id IS DISTINCT FROM
           v_profit.organization_id
@@ -465,7 +502,7 @@ BEGIN
      AND shareholder.organization_id = v_profit.organization_id
      AND shareholder.is_active
      AND shareholder.deleted_at IS NULL
-    WHERE building_shareholder.building_id = ANY(v_building_ids)
+    WHERE building_shareholder.building_id = ANY(v_check_ids)
       AND building_shareholder.organization_id = v_profit.organization_id
     GROUP BY building_shareholder.building_id
     HAVING sum(building_shareholder.percent) > 100
@@ -479,7 +516,7 @@ BEGIN
     JOIN public.profit_manager_salaries salary
       ON salary.id = salary_building.salary_id
     LEFT JOIN public.profit_managers manager ON manager.id = salary.manager_id
-    WHERE salary_building.building_id = ANY(v_building_ids)
+    WHERE salary_building.building_id = ANY(v_check_ids)
       AND salary.is_active
       AND (
         manager.id IS NULL
@@ -1708,6 +1745,14 @@ BEGIN
      OR app_private.profit_building_source_hash_v2_2(
           jsonb_set(jsonb_set(v_doc, '{pnl,1,revenue}', '51'), '{accrual_lines,2,amount}', '51'),
           v_a::uuid) IS DISTINCT FROM v_base
+     -- thêm toà C vào quy tắc PER_BUILDING đang có A ⇒ A KHÔNG đổi
+     OR app_private.profit_building_source_hash_v2_2(
+          jsonb_set(v_doc, '{manager_salary_rules,1,building_ids}', jsonb_build_array(v_a, v_b, v_c)),
+          v_a::uuid) IS DISTINCT FROM v_base
+     -- thêm toà B vào quy tắc TOTAL_GROUP đang có A ⇒ A ĐỔI
+     OR app_private.profit_building_source_hash_v2_2(
+          jsonb_set(v_doc, '{manager_salary_rules,0,building_ids}', jsonb_build_array(v_a, v_b, v_c)),
+          v_a::uuid) = v_base
      -- số tiền của chính A, % cổ đông, quy tắc lương, toà C cùng nhóm ⇒ ĐỔI
      OR app_private.profit_building_source_hash_v2_2(
           jsonb_set(v_doc, '{accrual_lines,0,amount}', '101'), v_a::uuid) = v_base
