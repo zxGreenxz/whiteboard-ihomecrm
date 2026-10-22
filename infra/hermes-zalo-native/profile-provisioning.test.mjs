@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel, provisionNativeProfile } from './profile-provisioning.mjs';
+import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel, provisionNativeProfile, assertNativeProfileDmOnly } from './profile-provisioning.mjs';
 import { runProfileProvisioningCli, PROFILE_INPUT_MAX_BYTES } from './profile-provisioning-cli.mjs';
 
 const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
@@ -18,7 +18,7 @@ function fixture(t,{bound=true}={}) {
   const channel={accountId:id('1'),ownUid:'123',pairedUid:'456',mainUid:'456',profile:'alpha',generation:id('2'),token:'hzn_'+'a'.repeat(64),listenPort:8991};
   const options={home,mcpUrl:'http://127.0.0.1:8740/mcp',profile:'alpha',accountId:channel.accountId,ownUid:channel.ownUid,pairedUid:channel.pairedUid};
   const configFile=path.join(home,'config.yaml'),envFile=path.join(home,'.env'),tokenFile=path.join(nativeRoot,'alpha.token'),nativeFile=path.join(nativeRoot,'native.json'),journalFile=path.join(stateRoot,'unknown.json');
-  const config={model:{default:'private-existing'},mcp_servers:{other:{command:'existing',args:['unchanged']},crm:{url:options.mcpUrl,headers:{Authorization:'Bearer hc_'+'b'.repeat(43),'X-Keep':'existing'},timeout:30}},platforms:{zalo_personal:{enabled:true,keep:'existing'},telegram:{enabled:true}}};
+  const config={model:{default:'private-existing'},mcp_servers:{other:{command:'existing',args:['unchanged']},crm:{url:options.mcpUrl,headers:{Authorization:'Bearer hc_'+'b'.repeat(43),'X-Keep':'existing'},timeout:30}},platforms:{zalo_personal:{enabled:true,keep:'existing'},telegram:{enabled:false,keep:'existing'}}};
   fs.writeFileSync(configFile,yaml.dump(config),{mode:0o600});
   const env='# exact env comment\r\nKEEP_OTHER="unchanged with spaces"\r\n'+(bound?
     `export HERMES_ZALO_BRIDGE_URL=http://127.0.0.1:8991\r\nHERMES_ZALO_BRIDGE_TOKEN=${channel.token}\r\nHERMES_ZALO_PROFILE=alpha\r\nHERMES_ZALO_PAIRED_UID=456\r\nHERMES_ZALO_GENERATION=${channel.generation}\r\n`:'');
@@ -335,5 +335,59 @@ test('preserving HTTP requires a canonical private IP origin and exact /mcp URL'
     const f=fixture(t),before=snapshot(f.root);
     assert.throws(()=>planNativeProfileUpdate({...f.options,mcpUrl:url,preserveExistingHttpOrigin:allow},f.request),/native_profile_provisioning_failed/);
     assert.deepEqual(snapshot(f.root),before);
+  }
+});
+
+test('K1: a profile that would carry a CRM token refuses any platform besides zalo_personal not explicitly off; pending/revoke still remove it',async t=>{
+  for(const [name,value] of [['telegram',{enabled:true}],['discord',{}],['api_server','on'],['slack',{enabled:'false'}]]){
+    const f=fixture(t),config=structuredClone(f.config);config.platforms[name]=value;fs.writeFileSync(f.configFile,yaml.dump(config));
+    const before=snapshot(f.root),shared=/^Error: native_profile_shared_platform$/;
+    assert.throws(()=>planNativeProfileUpdate(f.options,f.request),shared);
+    assert.throws(()=>planNativeProfileUpdate(f.options,{...f.request,channel:f.channel}),shared);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential})),shared);
+    const errors=[];
+    assert.equal(await runProfileProvisioningCli(args(f.options),{input:input(f.request),write:()=>{},error:value=>errors.push(JSON.parse(value))}),1);
+    assert.equal(errors[0].error,'native_profile_shared_platform');assert(!JSON.stringify(errors).includes(f.request.credential));
+    assert.deepEqual(snapshot(f.root),before);
+    for(const mode of ['credentialPending','revoked']){
+      provisionNativeProfile(sameUidProfileOptions(f,{[mode]:true}));const actual=yaml.load(read(f.configFile));
+      assert.equal(actual.mcp_servers.crm,undefined);assert.deepEqual(actual.platforms[name],value);
+    }
+  }
+});
+
+// Review #253 mục 3: Hermes v0.21.6 (gateway/config_env.py) bật nền tảng khi biến môi trường của nó có mặt, trừ khi config.yaml
+// ghi đúng `enabled: false`. K1 phải thấy cả .env; profile thật trên VPS (22/10) không có khối platforms, chỉ owner có HERMES_ZALO_*.
+const withoutPlatforms=(f,platforms)=>{const config=structuredClone(f.config);if(platforms==='absent')delete config.platforms;else config.platforms=platforms;
+  fs.writeFileSync(f.configFile,yaml.dump(config));};
+test('K1 sees the environment: a group platform credential in .env refuses every token path; YAML enabled:false and falsy flags still pass',async t=>{
+  const shared=/^Error: native_profile_shared_platform$/;
+  for(const line of ['TELEGRAM_BOT_TOKEN=000000:fake-not-a-token','export DISCORD_BOT_TOKEN="fake"','SLACK_BOT_TOKEN=x','WHATSAPP_ENABLED=true',
+    'SIGNAL_HTTP_URL=http://127.0.0.1:8080','MATRIX_PASSWORD=x','EMAIL_ADDRESS=a@example.test','API_SERVER_KEY=fake-api-server-key-1234','WEBHOOK_ENABLED=yes','GATEWAY_RELAY_URL=https://relay.example.test']){
+    const f=fixture(t);withoutPlatforms(f,'absent');fs.appendFileSync(f.envFile,line+'\n');
+    const before=snapshot(f.root);
+    assert.throws(()=>planNativeProfileUpdate(f.options,f.request),shared,line);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential})),shared,line);
+    assert.throws(()=>assertNativeProfileDmOnly({home:f.home}),shared,line);
+    assert.deepEqual(snapshot(f.root),before,line);
+    // Thu hồi vẫn gỡ token.
+    provisionNativeProfile(sameUidProfileOptions(f,{revoked:true}));assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm,undefined);
+  }
+  for(const [line,platforms] of [['TELEGRAM_BOT_TOKEN=000000:fake',{telegram:{enabled:false}}],['WHATSAPP_ENABLED=false','absent'],['WEBHOOK_ENABLED=0','absent'],
+    ['TELEGRAM_BOT_TOKEN=','absent'],['HERMES_ZALO_EXTRA=1','absent'],['# TELEGRAM_BOT_TOKEN=commented','absent']]){
+    const f=fixture(t);withoutPlatforms(f,platforms);fs.appendFileSync(f.envFile,line+'\n');
+    assert.doesNotThrow(()=>assertNativeProfileDmOnly({home:f.home}),line);
+    assert.doesNotThrow(()=>apply(f),line);
+  }
+});
+test('K1 does not refuse the real VPS shape: platforms absent, null or empty provision, bind, relink and revoke',async t=>{
+  for(const platforms of ['absent',null,{}]){
+    let f=fixture(t);withoutPlatforms(f,platforms);apply(f);
+    assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm.headers.Authorization,'Bearer '+f.request.credential,JSON.stringify(platforms));
+    f=fixture(t,{bound:false});withoutPlatforms(f,platforms);apply(f,{...f.request,channel:f.channel});
+    assert.deepEqual(Object.keys(yaml.load(read(f.configFile)).platforms),['zalo_personal']);
+    f=fixture(t);withoutPlatforms(f,platforms);
+    provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential}));provisionNativeProfile(sameUidProfileOptions(f,{revoked:true}));
+    assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm,undefined);
   }
 });

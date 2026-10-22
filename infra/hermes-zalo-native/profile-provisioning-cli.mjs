@@ -4,7 +4,7 @@ import { isMainModule } from './operator.mjs';
 
 export const PROFILE_INPUT_MAX_BYTES=8192;
 const fail=()=>{throw Error('native_profile_provisioning_failed');};
-const publicError=cause=>['native_profile_revision_changed','native_profile_locked','native_profile_commit_unknown'].includes(cause?.message)?
+const publicError=cause=>['native_profile_revision_changed','native_profile_locked','native_profile_commit_unknown','native_profile_shared_platform'].includes(cause?.message)?
   cause.message:'native_profile_provisioning_failed';
 
 async function readInput(input) {

@@ -34,6 +34,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261018000600_hermes_w2_invoker_gate_v1.sql',
   statementSha256:'eb3603767a8a0c47bbae0c367b3f6714c6a2fc585f64d568f9ab7f85817c5ba5',
  },
+ // Nền chung thao tác ghi (M1): vỏ INVOKER gắn OID guard / giải tên / bước ghi DEFINER lúc tạo.
+ {
+  name:'public.hermes_action_probe_v1',
+  sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
+  statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

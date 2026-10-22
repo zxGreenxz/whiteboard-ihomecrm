@@ -38,6 +38,10 @@ import { createZaloBindingPorts } from '../hermes-zalo-router/binding-adapter.mj
 import { createZaloBindingHttpHandler } from '../hermes-zalo-router/binding-http.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { createConnectorHealth } from './connector-health.mjs';
+import { createActionCatalog } from './action-catalog.mjs';
+import { createActionRuntime } from './action-runtime.mjs';
+import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
+import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -107,7 +111,7 @@ function backendLimits(value) {
  * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -118,6 +122,9 @@ export function createHermesBackend(configuration = {}) {
       // Direct room tool source: 'legacy' (scope map + whole sale page) or 'page' (B3 SQL page RPC).
       (Object.hasOwn(configuration, 'roomRead') && !ROOM_READ_MODES.includes(configuration.roomRead)) ||
       (Object.hasOwn(configuration, 'callLog') && typeof configuration.callLog !== 'function') ||
+      // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
+      // crm_action_* không hiện, không gọi RPC nào của họ này.
+      (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -144,7 +151,15 @@ export function createHermesBackend(configuration = {}) {
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    const auth = createTaskAuth({ baseAuth: expenseAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production Đợt 1 RỖNG (thao tác của từng trang đăng ký sau); lớp quyền
+    // với danh mục rỗng chuyển thẳng xuống lớp gốc, không gọi RPC. hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào.
+    // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
+    // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
+    const actionCatalog = configuration.actionProbe === true
+      ? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM]) : createActionCatalog([]);
+    const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog,
+      reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
+    const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
@@ -172,8 +187,10 @@ export function createHermesBackend(configuration = {}) {
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
+    const actions = createActionRuntime({ catalog: actionCatalog, clock,
+      service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
-    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
+    const broker = createBroker({ tasks, roomPass, customers, expenses, actions, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
       observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
