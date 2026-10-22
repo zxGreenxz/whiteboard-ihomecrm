@@ -59,6 +59,25 @@ const thongBao = async (user: string, family: string) => (await db.query<Dong>(
   "SELECT * FROM public.notifications WHERE user_id = $1 AND metadata->>'source_family' = $2 ORDER BY created_at, id", [user, family])).rows;
 
 describe('bốn họ nhắc server', () => {
+  it('nợ cũ kéo sang hoá đơn sau (previous_debt_sources) đếm MỘT lần ở hoá đơn gốc — công thức chung', async () => {
+    // invoice_effective_outstanding_v1 giữ nợ ở hoá đơn phát sinh gốc (tuổi nợ theo hạn gốc) và trừ khỏi hoá đơn
+    // gánh. Hoá đơn gánh chỉ gồm đúng phần nợ kéo (100) ⇒ nợ thực 0 ⇒ không nhắc "sắp đến hạn"; gốc vẫn quá hạn.
+    await db.query(`INSERT INTO public.invoices(id, organization_id, building_id, room_id, status, due_date, total_amount,
+        paid_amount, previous_debt_sources) VALUES ($1, $2, $3, $4, 'APPROVED', (SELECT local_now::date FROM test_clock) + 2, 100, 0,
+        jsonb_build_array(jsonb_build_object('type', 'invoice', 'id', $5::text, 'amount', 100)))`,
+      [INV.moi, ID.org, ID.toa, ID.phong, INV.quaHan]);
+    await sweep();
+    const [quaHan] = await thongBao(ID.chu, 'INVOICE_OVERDUE');
+    expect(quaHan.metadata).toMatchObject({ count: 1 });
+    const [sapHan] = await thongBao(ID.chu, 'INVOICE_DUE');
+    expect(sapHan.metadata).toMatchObject({ count: 1 });
+    // Hoá đơn gánh có thêm phát sinh mới (tổng 300 = 100 kéo + 200 mới) ⇒ còn nợ thực ⇒ được đếm.
+    await db.query('UPDATE public.invoices SET total_amount = 300, updated_at = now() WHERE id = $1', [INV.moi]);
+    await sweep();
+    const [sapHan2] = await thongBao(ID.chu, 'INVOICE_DUE');
+    expect(sapHan2.metadata).toMatchObject({ count: 2 });
+  });
+
   it('đúng nguồn, đúng type/event/url, người nhận theo quyền theo toà; chạy lại cùng ngày không nhân dòng', async () => {
     expect((await sweep()).inserted).toBe(6);
     const [quaHan] = await thongBao(ID.chu, 'INVOICE_OVERDUE');

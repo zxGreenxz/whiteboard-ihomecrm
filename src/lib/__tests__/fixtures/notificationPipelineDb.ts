@@ -20,6 +20,7 @@ export const MIGRATION = {
   pipeline: 'supabase/migrations/20261021171249_notify_pipeline_v2.sql',
   unread: 'supabase/migrations/20261021171250_thong_bao_chua_doc_bo_cancelled_v1.sql',
   lifecycle: 'supabase/migrations/20261021171251_nhac_viec_server_lifecycle_v1.sql',
+  effectiveOutstanding: 'supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql',
 } as const;
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -75,7 +76,8 @@ const NEN = `
   CREATE TABLE public.invoices(id uuid PRIMARY KEY, organization_id uuid, building_id uuid, room_id uuid, status text,
     due_date date, total_amount numeric NOT NULL DEFAULT 0, paid_amount numeric NOT NULL DEFAULT 0,
     remaining_amount numeric GENERATED ALWAYS AS (total_amount - coalesce(paid_amount, 0)) STORED,
-    deleted_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now());
+    deleted_at timestamptz, updated_at timestamptz NOT NULL DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(), previous_debt_sources jsonb);
   CREATE TABLE public.room_turnovers(id uuid PRIMARY KEY, organization_id uuid, room_id uuid, status text, expected_ready_on date,
     version bigint, epoch integer);
   CREATE TABLE public.contract_exit_cases(id uuid PRIMARY KEY, organization_id uuid, building_id uuid, state text, version bigint);
@@ -279,6 +281,8 @@ export async function taoDbThongBao(): Promise<PGlite> {
   await apHaiLuot(db, docMigration(MIGRATION.pipeline), THAN_GIA_PIPELINE);
   for (const [file, ten] of NGUON_171250) await db.exec(trichHam(file, ten));
   await apHaiLuot(db, docMigration(MIGRATION.unread));
+  // Công thức nợ chung (đã có trên production) mà nguồn nhắc hoá đơn dùng — nạp nguyên văn từ migration gốc.
+  await db.exec(trichHam(MIGRATION.effectiveOutstanding, 'public.invoice_effective_outstanding_v1'));
   // Sweep đọc đồng hồ thử thay cho giờ thật ⇒ thân sweep khác file ⇒ lượt 2 ghim md5 của thân đã thay.
   const lifecycle = docMigration(MIGRATION.lifecycle).split(DONG_HO_SWEEP).join('(SELECT test_clock.local_now FROM test_clock)');
   await apHaiLuot(db, lifecycle, [], ['public.lifecycle_reminder_sweep_v1(uuid)']);
