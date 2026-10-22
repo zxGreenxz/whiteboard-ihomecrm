@@ -25495,6 +25495,7 @@ export type Database = {
         Args: { p_ie_id: string }
         Returns: undefined
       }
+      ie_self_approve_gate_v1: { Args: { p_voucher_id: string }; Returns: Json }
       ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
