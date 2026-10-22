@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T07:21:55.576Z",
+  "generatedAt": "2026-10-22T07:08:44.862Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 807,
+    "ledger-applied": 812,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -12719,25 +12719,80 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022051118_hermes_w2a_invoice_shared_v1.sql",
-      "version": "20261022051118",
-      "name": "hermes_w2a_invoice_shared_v1",
+      "path": "supabase/migrations/20261022024045_ie_quick_entry_shared_rules_v1.sql",
+      "version": "20261022024045",
+      "name": "ie_quick_entry_shared_rules_v1",
       "scheme": "timestamp14",
-      "sha256": "2ebcd79bc6c2f90774dfcf9bf93e5d1d0ccd817e52dc7f268588ee9401c117e0",
+      "sha256": "30b90e5f101ac4983ef2b0d7bbe35c1807d61a3bbdb7c396d9c89c860c6e8af7",
       "state": "ledger-applied",
       "evidence": [
-        "receipt:2026-10-22T07:18:57.995Z|bien-nhan-backup"
+        "receipt:2026-10-22T06:53:47.015Z|bien-nhan-backup"
       ]
     },
     {
-      "path": "supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql",
-      "version": "20261022051620",
-      "name": "hermes_w2a_invoice_reads_v1",
+      "path": "supabase/migrations/20261022024834_hermes_expense_write_v1.sql",
+      "version": "20261022024834",
+      "name": "hermes_expense_write_v1",
       "scheme": "timestamp14",
-      "sha256": "aded05f8f880acd1c870a5376e7405c99d05205577abdf87c71d9a55038e938c",
+      "sha256": "425c40afbea75fc730102d21610c6e9f41e62345dcae30ddba498d3a2b368a8f",
       "state": "ledger-applied",
       "evidence": [
-        "receipt:2026-10-22T07:21:41.837Z|bien-nhan-backup"
+        "receipt:2026-10-22T06:56:33.775Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql",
+      "version": "20261022044120",
+      "name": "hermes_name_directory_virtual_v1",
+      "scheme": "timestamp14",
+      "sha256": "277be7eab7db20dbccfe285387796210f76e8da7715fe27852e9bb0ad5febd93",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:59:16.768Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044123_hermes_expense_scope_v1.sql",
+      "version": "20261022044123",
+      "name": "hermes_expense_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "589394bc34dbae8c45e6e6a8eda9a36420b3da030b86769ef8b2d2071220bacc",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:01:18.679Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql",
+      "version": "20261022044126",
+      "name": "hermes_w2_min_amount_param_v1",
+      "scheme": "timestamp14",
+      "sha256": "b70ef5d0e7c1be4b93f0713815c2a4eab21b0b3000ccbb06f442ed1c301ae43b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:03:59.484Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql",
+      "version": "20261022051029",
+      "name": "hermes_w2b_expense_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "d18005582f663edb84cadef32a000700fdfad24866626a9c7f0f87f9e98e2ecf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:06:13.871Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql",
+      "version": "20261022051032",
+      "name": "hermes_w2b_expense_reports_v1",
+      "scheme": "timestamp14",
+      "sha256": "bf98233cb332a9f9bbfc572b32282fbd7bd71a292ab1113062b2faa0d9b20b72",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:08:17.592Z|bien-nhan-backup"
       ]
     },
     {
