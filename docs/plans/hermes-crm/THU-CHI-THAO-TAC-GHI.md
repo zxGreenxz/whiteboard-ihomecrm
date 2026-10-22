@@ -458,6 +458,8 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 | Bật `approve_vouchers` ⇒ mọi kết nối `inherit_crm` có quyền duyệt CRM nhận ngay | Vừa | Hiện mọi kết nối là của chủ. Trước khi cấp Hermes cho Quản Lý Tòa (Q7) phải loại trừ khoá này hoặc làm O2 (nền chung §8.3) |
 | Thay dispatcher W2 gói B gỡ mất bản vá | Vừa | Ghim md5 thân đang chạy; gộp `main` trước khi áp |
 | Xung đột file dùng chung với Hợp đồng | Thấp | Khối riêng; phiên gộp sau rebase |
+| Chạy thử để lại khe số trong `app_private.income_expense_change_log_id_seq` | Thấp | **Chấp nhận** (phiên chính, 22/10): chỉ là khe số id nhật ký, không phải dữ liệu tiền; SEQUENCE vốn không theo giao dịch |
+| Guard Hermes (role_bindings) và hàm ghi web (staff_assignments) cho hai tập toà khác nhau | Vừa | Mốc 3: phạm vi thao tác thu chi = guard ∩ `authorize_income_expense_on_building` gọi y như hàm ghi (mục 17). Tài khoản chỉ có role_bindings cũng không lập được phiếu trên web — việc của chủ/phiên chính |
 
 ## 12. Điểm cần chốt (mặc định đề xuất in đậm)
 
@@ -472,7 +474,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 | TC7 | Q8 "cần kết nối mới" | **Coi là đạt khi chủ tạo lại kết nối "NG TÂM" một lần (Q27) trước khi bật `approve_vouchers`.** Kết nối của Quản Lý Tòa loại trừ khoá này |
 | TC8 | Kiểu `list` / `record` trong danh mục chung | **Thu chi viết ở Mốc 2; Hợp đồng dùng lại.** Ai gộp sau thì rebase |
 | TC9 | Sổ mặc định phía web | **Hàm SQL nhận `p_last_used`; web giữ localStorage**, nên hành vi web không đổi |
-| TC10 | Đọc bù đặt ở đâu | **Gói W2 B, quyền `income_expenses.view`, không thêm tham số `minAmount`** |
+| TC10 | Đọc bù đặt ở đâu | **Gói W2 B, quyền `income_expenses.view`.** Mốc 3 thêm tham số `minAmount` vì phiên chính yêu cầu lọc theo ngưỡng tiền (mục 17) |
 
 ## 13. Các mốc
 
@@ -480,9 +482,10 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 | --- | --- | --- | --- |
 | 1 | Tài liệu này | docs gate | 0,5 |
 | 2 | `list`/`record`; TC-M1 (hạng mục, sổ, 414 câu parity); TC-M2 phần create + note; danh mục connector; gỡ họ cũ (TC1); lý do mới | tầng 1 + PG17 + tầng 2 (A, B, C, H của plan §6) | 3–4 |
-| 3 | `edit` + `cancel` (TC-M2 lượt 2), cam kết Q12 trong xem trước | tầng 1 + 2 (E, F) | 2 |
-| 4 | `approve` lô ≤ 10, duyệt / duyệt + chi, hạ "chỉ duyệt" | tầng 1 + 2 (G) | 2 |
-| 5 | Đọc bù W2 (TC-M3); web Báo chi nhanh gọi SQL (Playwright màn bị đổi, `e2e:fleet:bien-nhan` nếu manifest đòi); nhãn; `CONNECTOR.md` | đọc + parity + màn web | 2–3 |
+| 3 | (phiên chính đổi thứ tự 22/10) Phạm vi ghi = hàm kiểm quyền của hàm ghi; toà ảo; đọc bù W2 (phiếu chi theo tiền/tuổi, tổng theo hạng mục, gợi ý tham số W2) — mục 17 | tầng 1 + 2 | 2 |
+| 4 | `edit` + `cancel` (TC-M2 lượt 2), cam kết Q12 trong xem trước, cờ TC5 | tầng 1 + 2 (E, F) | 2 |
+| 5 | `approve` lô ≤ 10, duyệt / duyệt + chi, hạ "chỉ duyệt" | tầng 1 + 2 (G) | 2 |
+| 6 | Web Báo chi nhanh gọi SQL dùng chung (Playwright màn bị đổi, `e2e:fleet:bien-nhan` nếu manifest đòi); nhãn; `CONNECTOR.md` | parity + màn web | 1–2 |
 
 ## 14. Việc phiên chính phải làm
 
@@ -497,7 +500,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
    - "Thu …", bỏ cọc, hoàn cọc, hoa hồng, thanh lý, lương, chia lợi nhuận ⇒ không lập phiếu; chỉ đường web.
    - Ảnh bill: nói chưa nhận ảnh qua Zalo; đưa `link` để thêm ảnh trên web.
    - "Duyệt phiếu …" ⇒ `expense.approve`. Đọc rõ phiếu nào chi, phiếu nào chỉ duyệt.
-   - "Chờ duyệt quá N ngày" ⇒ báo cáo `pending_vouchers` với `days=N`. "Chi trên X triệu" ⇒ `expenses_by_amount`. "Tiền điện nước toà X tháng Y" ⇒ `expense_by_category`.
+   - (tên báo cáo chốt ở Mốc 3) "Khoản chi lớn nhất / chi trên X triệu / chi ở toà nào (kể cả kho, văn phòng chung)" ⇒ `crm_read_report` `expense_vouchers` (`fromDate`/`toDate`, `minAmount`, `buildingName`); đọc `summary.count`, `totalAmount`, `maxAmount`, không tự cộng các trang. "Phiếu chờ duyệt lâu nhất" ⇒ `expense_vouchers` `status=UNAPPROVED`, `kind=oldest` (`pendingDays`). "Tháng trước trả tiền nhà / điện / nước bao nhiêu" ⇒ `expense_categories`, đọc `summary.categories`. `top_expenses` chỉ cho tab Chi phí của Phân tích tài chính (một tháng, 10 khoản KQKD).
 6. Trước khi cấp Hermes cho Quản Lý Tòa (Q7): loại trừ `income_expenses.approve_vouchers` trong kết nối của họ, hoặc làm O2.
 
 ## 15. Chưa xác minh
@@ -506,7 +509,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 - ~~Khoá tư vấn và thời gian chạy thử (tầng 2).~~ Đã đo ở Mốc 2 (mục 16).
 - ~~Nguồn ánh xạ hạng mục → `fee_category` của cam kết.~~ Dùng cột `income_expense_types.fee_category` (mỗi khoản phí là duy nhất trong mỗi công ty từ 26/09).
 - Cột nhận diện phiếu con định kỳ (Mốc 4).
-- `w2Report` nhận `income_expenses.view` (Mốc 5).
+- ~~`w2Report` nhận `income_expenses.view`.~~ Đã dùng ở Mốc 3 (khoá đợt 1 dùng lại, đã bật).
 - ~~Hàm ghi gọi từ bước DEFINER của Hermes chạy giống như khi web gọi.~~ Đã thấy trên TEST ở Mốc 2: hàm ghi web nhận đúng người dùng của JWT.
 
 ## 16. Tiến độ Mốc 2 (22/10/2026)
@@ -550,3 +553,84 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 - **Phát hiện 2.** Trên TEST, bộ máy chi không chèn `spend_decisions` cho các phiếu thử. Câu "vì …" khi đó dựng từ dữ kiện (ngưỡng, hạng mục bắt buộc duyệt); trạng thái vẫn lấy từ hàm ghi.
 
 **Cờ TC5** (phiếu con định kỳ có tính là lập tay không) làm cùng thao tác duyệt ở Mốc 4.
+
+## 17. Tiến độ Mốc 3 (22/10/2026)
+
+Phiên chính đổi thứ tự: đọc bù lên trước vì bot đang chạy production. Năm migration, chỉ là file, chưa áp. Áp theo thứ tự tên, SAU hai file Mốc 2.
+
+| File | Nội dung |
+| --- | --- |
+| `20261022044120_hermes_name_directory_virtual_v1` | `public.hermes_building_directory_v2` và `hermes_write_name_resolve_v2` (+ lõi): như v1, thêm tham số `p_include_virtual` (bắt buộc). Bản v1 không đổi |
+| `20261022044123_hermes_expense_scope_v1` | `app_private.hermes_expense_scope_v1`; thay thân lõi giải tên, bước ghi, vỏ `expense.*` (cùng chữ ký) |
+| `20261022044126_hermes_w2_min_amount_param_v1` | Tham số W2 `minAmount` (từ điển + bộ kiểm của nền đợt 2) |
+| `20261022051029_hermes_w2b_expense_shared_v1` | Hàm đọc dùng chung CRM `public.ie_expense_vouchers_v1`, `ie_expense_categories_v1` (file không nêu hàm của trợ lý, như `20261018020050`) |
+| `20261022051032_hermes_w2b_expense_reports_v1` | Hai mục catalog + một nhánh đọc của gói B. Thân dựng từ bản production (md5 catalog `80e6f676…`, đọc `4cdb4ef8…`) bằng script, chỉ thêm |
+
+### 17.1 Lệch quyền guard ↔ hàm ghi (Phát hiện 1)
+
+- **Nguyên nhân.** `create_income_expense_v1` (production = TEST, md5 `8fc6ec5f…`) kiểm `app_private.authorize_income_expense_on_building(actor, org, 'create', toà)`. Hàm này chỉ đọc `staff_assignments` (vai + người cấp là OWNER + toà/khu/mọi toà) và không có nhánh miễn cho chủ. Guard Hermes đọc `role_bindings` (`authorized_scope_v3`). Tài khoản "chủ" của TEST (`068a3985…`) có 2 role_bindings và 0 phân công, nên guard cho 19 toà còn hàm ghi không cho toà nào.
+- Đề giao viết "tài khoản chủ không có `role_bindings`". Thực tế tài khoản thiếu `staff_assignments`. Test bám đúng thực tế.
+- **Sửa.** `hermes_expense_scope_v1(binding, action)` lấy ctx của guard. Với `expense.create`, chỉ giữ toà mà `authorize_income_expense_on_building(app_private.current_uid_v1(), org, 'create', toà)` cho — đúng lời gọi của hàm ghi. Vỏ, lõi giải tên và bước ghi (cả hai lượt) cùng dùng tập này. Toà ngoài tập ⇒ `outside_scope` ngay khi giải tên.
+- **Ghi chú.** `expense.note` khi phải xem trước cũng chạy thử `append_income_expense_supplement_v1` rồi lùi. Xem trước "được" thì ghi được.
+- **Không đổi** guard chung và `hermes_action_capabilities_v1` (dùng chung mọi trang). Danh sách toà của khoá trên trang cài đặt Hermes vì vậy vẫn có thể rộng hơn tập ghi thật.
+- **Đếm production** (chỉ đọc, 22/10): OWNER 4 người, 3 không có phân công (1 trong số đó có kết nối Hermes ACTIVE); PARTNER 2, 1 không có; STAFF 7, 5 không có. Những người này cũng không lập được phiếu trên web. Có cho phép hay không là việc của chủ/phiên chính.
+
+### 17.2 Toà ảo
+
+- Đọc: connector dùng `hermes_building_directory_v2(..., true)` cho khoá `income_expenses.view` (`crm_read_income_expenses` và hai báo cáo mới). Khoá khác giữ v1, nên tool dựa phòng vẫn bỏ toà ảo. Cache danh bạ tách theo loại.
+- Ghi: lõi giải tên `expense.*` gọi `hermes_write_name_resolve_v2(..., true)`.
+
+### 17.3 Đọc bù W2 (gói B, khoá `income_expenses.view`, không thêm byte `tools/list`)
+
+Cả hai báo cáo lọc như trang Thu chi web: `income_expenses` dưới RLS, chưa xoá, phiếu CHI, ngày phiếu, mặc định đã duyệt + chờ duyệt. Chúng gồm mọi toà của khoá, kể cả toà ảo. Phiếu hạn chế của người khác chỉ hiện khi `restricted_view` của kết nối phủ mọi toà, như `top_expenses`.
+
+- `expense_vouchers`:
+  - lọc: `fromDate`/`toDate` (mặc định tháng này), `minAmount`, `status`, `query` (bỏ dấu; tên/mã/hạng mục), `buildingId`/`buildingName`;
+  - sắp: `kind=largest` (mặc định) hoặc `oldest` (kèm `pendingDays`);
+  - `summary` (`count`, `totalAmount`, `maxAmount`, `buildings`, `byBuilding` ≤ 30) tính trên MỌI phiếu khớp, hàng phân trang.
+- `expense_categories`: hàng hạng mục × toà; `summary.categories` là tổng cả phạm vi theo hạng mục (≤ 100).
+- `top_expenses` giữ nguyên (tab Chi phí của Phân tích tài chính); tiêu đề chỉ sang `expense_vouchers`.
+- **Gợi ý tham số W2 (3c).** Với mã hiện tại, lời gọi của bosshuy (`buildingName` + `fromDate`/`toDate` cho `top_expenses`) ra `invalid_request` không kèm gợi ý; `backend_unavailable` không tái hiện được offline (dữ liệu toà production/TEST sạch, tập khoá đủ). Có thể bản connector đang chạy cũ hơn; cần đối chiếu log connector, tôi không chạm VPS. Nay khi `params` có tên lạ hoặc thiếu tham số bắt buộc, broker từ chối ngay bằng `invalid_request` kèm một câu tĩnh của đúng báo cáo: tên nhận, bắt buộc, và với `top_expenses` thì chỉ sang `expense_vouchers`/`expense_categories`. Danh sách đóng sinh từ sổ báo cáo; `mcp-http` chỉ chuyển câu trong danh sách.
+- Mục (d), chưa làm: chi tiết một phiếu.
+
+### 17.4 Kiểm
+
+- **Offline:**
+  - giải tên đọc (toà ảo chỉ với khoá thu chi, cache tách);
+  - gợi ý tham số W2 (không chặn lời gọi đúng, kể cả `room_detail` với `buildingName` + `roomName`; không lặp giá trị đã gửi);
+  - broker từ chối trước mount; sổ báo cáo.
+- **PGlite gói B:**
+  - parity với truy vấn trang Thu chi cùng vai;
+  - toà ảo, ngưỡng, trạng thái, tuổi, chữ tìm bỏ dấu, phiếu hạn chế, theo hạng mục;
+  - 5/5 đột biến bị bắt;
+  - toàn file 58/58.
+- **PGlite bước ghi:** thêm ca lệch quyền hai chiều, chủ không phân công, toà ảo ghi được, ghi chú chạy thử; 10/10; 5/5 đột biến bị bắt.
+- **PG17:** danh bạ v2.
+- **Hợp đồng hàm Hermes:** forward 22 file / 87 định nghĩa; danh sách đọc SQL-standard đã duyệt; `search_path=''`; quyền EXECUTE.
+
+**Tầng 2 trên TEST** (`test-env:thu-sql`, một giao dịch ROLLBACK, bốn kết nối thật):
+
+| Kết nối | Tập toà guard / phạm vi mới | Kết quả |
+| --- | --- | --- |
+| Chủ, 0 phân công (`068a3985`) | 19 / 0 | Xem trước ở toà guard cho và ở Kho ⇒ `needs_input outside_scope` (0,25–0,31 s), không còn "giải được rồi `not_allowed`" |
+| joey (`d1862993`) | 9 / 9, có Kho | Xem trước Kho "VÀO SỔ NGAY…", lượt 2 lập phiếu ở Kho Văn Phòng Chung (lùi khi kết thúc) |
+| NG TÂM (`8d2beda3`) | 19 / 19, có Kho | Như joey |
+| B.Huy (`e0dfbaa2`) | 13 / 13, không có Kho | — |
+
+Danh bạ: v1 không có Kho; v2(true) có; v2(false) không có (cả bốn kết nối, theo RLS từng người).
+
+Đọc W2 qua lối vào thật `public.hermes_w2_read_v1`, so với truy vấn trang Thu chi cùng JWT. Số liệu TEST đồng bộ từ production nên gần bằng production, không bằng tuyệt đối.
+
+| Câu (ma trận lượt 2) | Báo cáo | Kết quả | Web cùng JWT |
+| --- | --- | --- | --- |
+| joey: tháng này Kho Văn Phòng Chung chi bao nhiêu | `expense_vouchers` buildingId=Kho | 10 phiếu, 304.023.000, lớn nhất 122.407.000 (0,24 s) | 10 / 304.023.000 |
+| Các khoản chi trên 10 triệu tháng này | `minAmount=10000000` | 20, lớn nhất 122.407.000 (0,26 s) | 20 |
+| Tuần trước khoản chi nào lớn nhất (13–19/10) | `limit=1` | 94.219.000 ở Kho Văn Phòng Chung; 49 phiếu (0,20 s) | 49, lớn nhất 94.219.000 |
+| Phiếu chờ duyệt lâu nhất | `status=UNAPPROVED, kind=oldest` | PC2607105, chờ 86 ngày; 157 phiếu (0,24 s) | 157 |
+| bosshuy: toà 403, 01–21/10 | `buildingId` (403PVB) | 11 phiếu, lớn nhất 35.900.000 (0,15 s) | 11 |
+| Tháng trước trả tiền nhà bao nhiêu | `expense_categories` T9 | Tiền nhà 9 phiếu, 346.552.000 (0,26 s) | 9 / 346.552.000 |
+
+**Còn lại cho phiên chính:**
+- phát hành connector rồi áp năm file theo thứ tự qua `migrate:forward`;
+- SOUL dùng tên báo cáo ở mục 14;
+- ma trận lại các câu đọc trên.

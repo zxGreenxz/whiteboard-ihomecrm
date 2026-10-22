@@ -917,6 +917,69 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 2, 22/10/2026",
       "sha256": "2848437861b21ec47c98d938f3895d5f187bc279f65e5c25d04889147912578f"
+    },
+    "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_building_directory_v2 / app_private.hermes_write_name_resolve_core_v2 / public.hermes_write_name_resolve_v2"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 hàm trên — sinh 22/10/2026 trên nhánh Thu chi Mốc 3"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 3: danh bạ/giải tên toà nhận toà ảo — chi phí chung — bằng bản _v2 có tham số; _v1 không đổi), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PG17 (name-directory-sql: v2(false) = v1, v2(true) thêm toà ảo dưới RLS người hỏi, NULL ⇒ 22023), PGlite (expense-write-sql: lập phiếu ở toà ảo), lõi v2 = lõi v1 trừ đúng 4 chỗ toà ảo (so văn bản), tầng 2 TEST trong ROLLBACK (4 kết nối thật: v1 không có Kho Văn Phòng Chung, v2 có). Áp qua npm run migrate:forward (TEST trước, rồi production) SAU 20261022024834; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.hermes_building_directory_v2",
+        "function:app_private.hermes_write_name_resolve_core_v2",
+        "function:public.hermes_write_name_resolve_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 3, 22/10/2026",
+      "sha256": "277be7eab7db20dbccfe285387796210f76e8da7715fe27852e9bb0ad5febd93"
+    },
+    "supabase/migrations/20261022044123_hermes_expense_scope_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022044123_hermes_expense_scope_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_expense_scope_v1; thay thân app_private.hermes_expense_resolve_core_v1 / hermes_expense_write_step_v1 / public.hermes_expense_write_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 4 hàm trên (ba hàm sau thuộc 20261022024834 cũng chưa áp) — sinh 22/10/2026 trên nhánh Thu chi Mốc 3"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 3: phạm vi thao tác thu chi = guard ∩ app_private.authorize_income_expense_on_building gọi đúng như create_income_expense_v1 — không còn xem trước \"được\" rồi ghi 42501; toà ảo; ghi chú chạy thử khi xem trước), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (expense-write-sql 10/10: lệch quyền hai chiều, chủ không phân công, toà ảo, ghi chú chạy thử; 5/5 đột biến bị bắt), tầng 2 TEST trong ROLLBACK (chủ không phân công: guard 19 toà, phạm vi 0 ⇒ outside_scope; joey/NG TÂM lập phiếu ở toà ảo). Áp qua npm run migrate:forward SAU 20261022024834 và 20261022044120; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_expense_scope_v1",
+        "function:app_private.hermes_expense_resolve_core_v1",
+        "function:app_private.hermes_expense_write_step_v1",
+        "function:public.hermes_expense_write_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 3, 22/10/2026",
+      "sha256": "e1d0ef4d4e0b77b7f76f82324ef05a02bdc809e7a7b41828563e6aa726185140"
+    },
+    "supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.ie_expense_vouchers_v1 / public.ie_expense_categories_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 2 hàm trên — sinh 22/10/2026 trên nhánh Thu chi Mốc 3"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 3: hai hàm đọc dùng chung CRM — phiếu chi theo tiền, tổng chi theo hạng mục — lọc như trang Thu chi web, gồm toà ảo), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite gói B (wave2-b 58/58: parity với truy vấn trang Thu chi cùng vai, toà ảo, ngưỡng, trạng thái, tuổi, chữ tìm bỏ dấu, phiếu hạn chế; 5/5 đột biến bị bắt), tầng 2 TEST trong ROLLBACK (số khớp truy vấn web cùng JWT: 20 khoản >10tr tháng 10, Tiền nhà T9 346.552.000/9 phiếu). Áp qua npm run migrate:forward SAU 20261022024045 (ie_quick_text_v1) và TRƯỚC 20261022051032; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.ie_expense_vouchers_v1",
+        "function:public.ie_expense_categories_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 3, 22/10/2026",
+      "sha256": "d18005582f663edb84cadef32a000700fdfad24866626a9c7f0f87f9e98e2ecf"
     }
   }
 }

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1572,
   "soFileDocBangFs": 410,
-  "tongLoiGoi": 998,
+  "tongLoiGoi": 1001,
   "khongPhanLoaiDuoc": 444,
   "theoLoai": {
     "ma-nguon": {
@@ -299,6 +299,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/wave2-b.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "sql": 6
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",
       "soGoi": 6,
       "loai": {},
@@ -490,15 +498,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
-      "file": "infra/hermes-broker/wave2-a.test.mjs",
+      "file": "infra/hermes-broker/name-directory-sql.test.mjs",
       "soGoi": 4,
       "loai": {
-        "sql": 4
+        "sql": 2
       },
-      "khongPhanLoaiDuoc": 0
+      "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/hermes-broker/wave2-b.test.mjs",
+      "file": "infra/hermes-broker/wave2-a.test.mjs",
       "soGoi": 4,
       "loai": {
         "sql": 4
@@ -692,14 +700,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/name-directory-sql.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/org-policy-sql.test.mjs",

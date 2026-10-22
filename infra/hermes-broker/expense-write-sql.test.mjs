@@ -12,6 +12,9 @@ const file = slug => { const found = readdirSync('supabase/migrations').filter(n
   return readFileSync(`supabase/migrations/${found[0]}`, 'utf8').replaceAll('\r\n', '\n'); };
 const RESOLVE = file('hermes_write_name_resolve_v1'), FOUNDATION = file('hermes_action_foundation_v1');
 const RULES = file('ie_quick_entry_shared_rules_v1'), WRITE = file('hermes_expense_write_v1');
+// Mốc 3: giải tên nhận toà ảo (v2) + phạm vi = guard ∩ hàm kiểm quyền của hàm ghi web, ghi chú chạy thử.
+const RESOLVE2 = file('hermes_name_directory_virtual_v1'), SCOPE_FIX = file('hermes_expense_scope_v1');
+const VIRTUAL = '00000000-0000-4000-8000-000000000688';
 const rid = n => `00000000-0000-4000-8000-${String(700 + n).padStart(12, '0')}`;
 const code = expected => error => error.code === expected;
 const uid = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -51,6 +54,16 @@ const WEB = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT EXISTS ke
   CREATE TABLE app_private.ie_auto_approve_config(organization_id uuid PRIMARY KEY,threshold numeric);
   CREATE TABLE public.fixture_commitments(building_id uuid,fee_category text,period_month date,amount numeric);
   INSERT INTO app_private.ie_auto_approve_config VALUES('${ORG}',600000);
+  -- Mốc 3: quyền tạo phiếu của hàm ghi web THEO MÔ HÌNH CŨ (staff_assignments) — tách khỏi quyền v3 của guard (fixture_acl) như production;
+  -- hàm ghi port gọi đúng hàm này với app_private.current_uid_v1() như create_income_expense_v1 thật.
+  CREATE TABLE public.fixture_staff_assignments(user_id uuid,building_id uuid);
+  INSERT INTO public.fixture_staff_assignments VALUES('${USER}','${BUILDING}');
+  CREATE FUNCTION app_private.current_uid_v1() RETURNS uuid LANGUAGE sql STABLE AS $f$ SELECT auth.uid() $f$;
+  CREATE FUNCTION app_private.authorize_income_expense_on_building(p_actor uuid,p_organization_id uuid,p_action text,p_building_id uuid) RETURNS boolean
+    LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public AS $f$
+    SELECT p_action IN ('create','restricted_create') AND EXISTS(SELECT 1 FROM public.fixture_staff_assignments s JOIN public.buildings b ON b.id=s.building_id
+      WHERE s.user_id=p_actor AND b.organization_id=p_organization_id AND (s.building_id=p_building_id OR s.building_id IS NULL)) $f$;
+  REVOKE ALL ON FUNCTION app_private.authorize_income_expense_on_building(uuid,uuid,text,uuid) FROM PUBLIC;
   CREATE FUNCTION public.list_cashbooks_for_expense_v2() RETURNS TABLE(id uuid,name text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
     AS $f$ SELECT a.id,a.name FROM public.accounts a WHERE a.user_id=auth.uid() AND a.deleted_at IS NULL ORDER BY a.name $f$;
   GRANT EXECUTE ON FUNCTION public.list_cashbooks_for_expense_v2() TO authenticated;
@@ -87,7 +100,7 @@ const WEB = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT EXISTS ke
     BEGIN
       IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Chưa đăng nhập' USING ERRCODE='42501'; END IF;
       SELECT organization_id INTO v_org FROM public.buildings WHERE id=p_building_id AND deleted_at IS NULL;
-      IF v_org IS NULL OR NOT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='income_expenses.create' AND allowed AND (org_wide OR p_building_id=ANY(building_ids)))
+      IF v_org IS NULL OR NOT app_private.authorize_income_expense_on_building(app_private.current_uid_v1(),v_org,'create',p_building_id)
         THEN RAISE EXCEPTION 'Không có quyền tạo phiếu thu/chi cho toà này' USING ERRCODE='42501'; END IF;
       IF p_voucher_date NOT BETWEEN '2000-01-01' AND '2100-12-31' THEN RAISE EXCEPTION 'Ngày phiếu phải nằm trong khoảng 2000-01-01 đến 2100-12-31'; END IF;
       IF p_account_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=p_account_id AND a.organization_id=v_org AND a.user_id=auth.uid())
@@ -136,6 +149,7 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
   await db.exec(RULES); await db.exec(RULES); await db.exec(WRITE); await db.exec(WRITE); // Idempotent.
+  await db.exec(RESOLVE2); await db.exec(RESOLVE2); await db.exec(SCOPE_FIX); await db.exec(SCOPE_FIX);
   await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('buildings.view',$1) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true", [[BUILDING, OTHER_BUILDING]]);
   const run = (action, phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_expense_write_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
@@ -285,6 +299,60 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     await db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.note'");
   });
 
+  await t.test('Mốc 3: phạm vi = guard ∩ hàm kiểm quyền của hàm ghi web — không bao giờ xem trước "được" rồi ghi "không được"; toà ảo; ghi chú chạy thử', async () => {
+    // Overlay của kết nối thành Toàn tổ chức ⇒ guard (v3: fixture_acl toà A + B) cho cả toà B; hàm ghi web (staff_assignments) chỉ toà A.
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
+      const before = await trace();
+      // Trước Mốc 3: tên giải được, chạy thử 42501 ⇒ rejected not_allowed ở bản xem trước. Nay: toà B ngoài phạm vi ngay khi giải tên.
+      assert.deepEqual(await run('expense.create', 'preview', rid(40), { items: [item({ buildingName: 'Toà B', roomName: undefined })] }),
+        { kind: 'needs_input', reason: 'name_unresolved', field: 'building', wanted: 'Toà B', why: 'outside_scope', candidates: [], more: false });
+      const ok = await run('expense.create', 'preview', rid(41), { items: [item()] });
+      assert.equal(ok.kind, 'preview', 'toà A: cả guard lẫn hàm ghi cho');
+      // Lượt 2 đưa bản đã giải sang toà B (guard cho, hàm ghi không) ⇒ not_allowed TRƯỚC biên nhận, không chạy hàm ghi.
+      const { roomId, roomName, ...toB } = ok.resolved.items[0]; // eslint-disable-line no-unused-vars
+      assert.deepEqual(await run('expense.create', 'apply', rid(41), { items: [item()] }, { resolved: { items: [{ ...toB, buildingId: OTHER_BUILDING }] }, basis: ok.basis }),
+        { kind: 'rejected', reason: 'not_allowed' });
+      // Ngược lại: hàm ghi cho toà B (phân công) nhưng v3 của khoá không có ⇒ ngoài phạm vi ở CẢ hai lượt (cùng một tập toà).
+      await db.query("INSERT INTO public.fixture_staff_assignments VALUES($1,$2)", [USER, OTHER_BUILDING]);
+      await db.query("UPDATE public.fixture_acl SET building_ids=$1 WHERE permission='income_expenses.create'", [[BUILDING]]);
+      assert.equal((await run('expense.create', 'preview', rid(42), { items: [item({ buildingName: 'Toà B', roomName: undefined })] })).why, 'outside_scope');
+      assert.deepEqual(await trace(), before, 'không phiếu, không biên nhận');
+    });
+    // Chủ có role_bindings nhưng KHÔNG có staff_assignments (tài khoản TEST 068a3985…, 22/10): hàm ghi web từ chối mọi toà ⇒ mọi toà ngoài
+    // phạm vi ngay ở bản xem trước, không bao giờ "xem trước được".
+    await f.rollbackCase(async () => {
+      await db.query('DELETE FROM public.fixture_staff_assignments WHERE user_id=$1', [USER]);
+      assert.equal((await run('expense.create', 'preview', rid(43), { items: [item()] })).why, 'outside_scope');
+      assert.deepEqual(await run('expense.create', 'preview', rid(44), { items: [item({ buildingName: 'nhà không có' })] }),
+        { kind: 'needs_input', reason: 'name_unresolved', field: 'building', wanted: 'nhà không có', why: 'not_visible', candidates: [], more: false });
+    });
+    // Toà ảo (chi phí chung): web Thu chi ghi được ⇒ Hermes giải được tên và lập được phiếu ở đó.
+    await f.rollbackCase(async () => {
+      await db.query("INSERT INTO public.buildings VALUES($1,$2,'Kho Văn Phòng Chung',true,null)", [VIRTUAL, ORG]);
+      await db.query("INSERT INTO public.fixture_building_access VALUES($1)", [VIRTUAL]);
+      await db.query("INSERT INTO public.fixture_staff_assignments VALUES($1,$2)", [USER, VIRTUAL]);
+      for (const permission of ['income_expenses.create', 'buildings.view'])
+        await db.query("UPDATE public.fixture_acl SET building_ids=building_ids||$1::uuid WHERE permission=$2", [VIRTUAL, permission]);
+      await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
+      const params = { items: [item({ buildingName: 'kho van phong chung', roomName: undefined, content: 'văn phòng phẩm' })] };
+      const preview = await run('expense.create', 'preview', rid(45), params);
+      assert.deepEqual([preview.kind, preview.resolved.items[0].buildingId, preview.preview.items[0].building], ['preview', VIRTUAL, 'Kho Văn Phòng Chung']);
+      const applied = await applyWith(rid(45), params, preview);
+      assert.deepEqual([applied.kind, applied.result.vouchers[0].building], ['applied', 'Kho Văn Phòng Chung']);
+    });
+    // Ghi chú khi phải xem trước (chính sách always): CHẠY THỬ hàm bổ sung — phiếu người khác ⇒ từ chối ngay ở bản xem trước (trước Mốc 3:
+    // xem trước "được" rồi ghi 42501); phiếu của mình ⇒ xem trước, không để lại dòng bổ sung nào.
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE app_private.hermes_action_policies SET confirm='always' WHERE action='expense.note'");
+      assert.deepEqual(await run('expense.note', 'preview', rid(46), { voucherCode: 'PC2610003', note: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
+      const supplements = async () => (await db.query('SELECT count(*)::int n FROM public.fixture_supplements')).rows[0].n;
+      const count = await supplements();
+      assert.equal((await run('expense.note', 'preview', rid(47), { voucherCode: 'PC2610001', note: 'thêm' })).kind, 'preview');
+      assert.equal(await supplements(), count, 'chạy thử không để lại dòng bổ sung');
+    });
+  });
+
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.create'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run('expense.create', phase, rid(30), { items: [item()] }), code('22023'));
@@ -300,7 +368,7 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       'hermes_expense_category_ok_v1','hermes_expense_cashbook_ok_v1') ORDER BY 1`)).rows;
     assert.deepEqual(acl.map(r => [r.fn.replace(/\(.*/, ''), r.prosecdef, r.standard, r.auth, r.anon]), [
       ['app_private.hermes_expense_create_run_v1', true, false, false, false], ['app_private.hermes_expense_reason_v1', false, false, false, false],
-      ['app_private.hermes_expense_resolve_core_v1', false, false, true, false], ['app_private.hermes_expense_write_step_v1', true, false, true, false],
-      ['hermes_expense_write_v1', false, true, true, false]]);
+      ['app_private.hermes_expense_resolve_core_v1', false, false, true, false], ['app_private.hermes_expense_scope_v1', true, false, true, false],
+      ['app_private.hermes_expense_write_step_v1', true, false, true, false], ['hermes_expense_write_v1', false, true, true, false]]);
   });
 });
