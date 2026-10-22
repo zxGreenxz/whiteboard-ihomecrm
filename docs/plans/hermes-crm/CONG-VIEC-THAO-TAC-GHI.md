@@ -579,3 +579,67 @@ Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ 
 - Tầng 2 trên TEST (ROLLBACK, bật tạm `tasks.delete` trong giao dịch; chủ / joey / bosshuy): ghi chú theo mã ghi thẳng + nối; "tầng 3" khớp 3 việc ⇒ hỏi lại kèm mã; đổi hạn và giao lại joey ⇒ xem trước (cảnh báo joey không quản lý toà) ⇒ lượt 2; joey ghi chú việc có theo dõi ⇒ báo người giao (notified 1); huỷ ⇒ xem trước ⇒ xoá, audit giữ mã; việc có ảnh ⇒ `cancel_blocked` + link; joey huỷ việc toà ngoài phạm vi ⇒ không thấy; việc đã xong ⇒ `task_not_open` + link; bosshuy sửa được việc ở toà mình có `tasks.edit` (như web).
 
 **Thứ tự áp `074741`:** sau `065634` (đã ở production). Không thêm hàm public ⇒ `gen:types` không đổi. Connector phát hành SAU khi áp; connector mới gặp DB chưa có `074741` thì giữ `crm_task_progress` / `crm_task_cancel` và quyền theo dõi cũ.
+
+## 20. Mốc 3b — sửa theo ma trận nghiệm thu pha A vòng 1 (22/10)
+
+Ma trận Công việc pha A vòng 1 (bot thật trên TEST, chỉ đọc): 29/36 đạt, 0 ghi sai. Mốc này sửa bốn ca trượt do thiếu công cụ hoặc rào sai. Nó không đụng `074741` (Mốc 3, chưa áp) hay ba migration của #272: phần SQL là một file mới, ghim thân đang chạy.
+
+**CV-R13 (rào sai ở connector).** Quản lý hỏi "việc đang giao cho tôi" thì `crm_task_follow_list` (`role=assigned_to_me`) trả `backend_unavailable`. SQL (`031600`, Q35) trả đúng cả việc giao cho chính người hỏi ở toà ngoài phạm vi, nhưng `taskFollowResult` từ chối mọi mục ngoài phạm vi toà. Nay connector nhận mục ngoài phạm vi khi role là `assigned_to_me` và `assigneeId` là người hỏi. `assigned_by_me` / `team` vẫn rào phạm vi toà: SQL của hai role này cũng lọc theo toà nên không có mục ngoài phạm vi hợp lệ.
+
+**CV-R01 / R03 / R04 / R06 (thiếu người nhận, mô hình tự cộng).** Chọn mở rộng `crm_read_tasks` (tool bot đã chọn đúng cho cả bốn câu), không định tuyến sang `crm_task_follow_list` `team`:
+
+- `team` không có số đếm, chỉ trả id toà, tối đa 50 dòng một trang và 200 dòng tổng (offset). Mô hình vẫn phải tự cộng nhiều trang, đúng lỗi của R06 (59 thay vì 54).
+- `tasks_board` (Mốc 4, W2 gói C) vẫn giữ phần riêng: trục ngày (việc xong trong tuần, CV-R09), `status=OVERDUE`, Q35 qua RLS, tiến độ, link. Mốc 3b chỉ lấy phần đếm theo nhóm cho tool đang dùng.
+
+**Migration `20261022153345_hermes_domain_tasks_assignee_v1`** (chưa áp):
+
+- Chỉ thay NHÁNH `tasks` của `public.hermes_domain_read_v1`. Mọi nhánh khác giữ từng byte như `20261021063452`, là thân đang chạy trên TEST và production.
+- Ghim md5: `$requires$` nhận `b0d16d1a…` (thân 063452) hoặc `d79bb632…` (thân của file này khi chạy lại); thân khác thì dừng. `$check$` đòi đúng `d79bb632…` cùng quyền như cũ.
+- Cùng chữ ký nên OID giữ nguyên. Không thêm hàm, khoá input hay ERRCODE mới.
+
+| Phần | Luật |
+| --- | --- |
+| Dòng | Thêm `assigneeName`: tên người nhận như web /tasks (`profiles.full_name`, rồi `jobs.assignee_name` gõ tay; null = chưa giao) |
+| `query` | Khớp tiêu đề/mã như cũ HOẶC tên người nhận bỏ dấu (`public.hermes_name_fold_v1`). Lọc theo người không tốn khoá input; `tools/list` chỉ đổi câu gợi ý "Tên/mã việc hoặc tên người nhận." |
+| `summary.byBuilding` | `[{buildingId, buildingName, count, overdue}]`, ≤ 50 nhóm, nhiều việc trước; hoà thì id toà tăng dần, việc không toà (null) cuối |
+| `summary.byAssignee` | `[{assigneeName, count, overdue}]`, ≤ 50 nhóm, nhiều việc trước; hoà thì tên theo byte (`COLLATE "C"`), chưa giao (null) cuối. Gộp theo TÊN hiển thị: hai người trùng tên thành một nhóm |
+| `summary.givenByMe` | `{count, overdue}`: việc người hỏi tạo mà người nhận khác người hỏi, kể cả chưa giao (đúng định nghĩa `cv_r06_given_by_me`) |
+| Tập tính | Cả tập lọc: phạm vi toà của khoá `tasks.view`, trạng thái, toà, query; không cursor, không LIMIT. Một CTE `MATERIALIZED` cho mọi số |
+
+**Connector:**
+
+- Khai `assigneeName` (nullable) và ba khoá summary mới. Cửa sổ một bản: `DOMAIN_READS.tasks.tolerant=['assigneeName']` và `DOMAIN_SUMMARY_KEY_TOLERANT.tasks`. Connector Mốc 3b lên TRƯỚC migration, vì connector cũ từ chối khoá lạ (`backend_unavailable`).
+- Bất biến:
+  - Mỗi nhóm có ≥ 1 việc, quá hạn ≤ số việc; không trùng khoá; nhiều việc trước.
+  - Cộng các nhóm ≤ `count` / `overdue`. Dưới 50 nhóm (không bị cắt) thì phải BẰNG đúng.
+  - Toà của `byBuilding` nằm trong phạm vi khoá và đúng toà lọc; hoà thì toà null đứng cuối.
+  - `givenByMe` ≤ `count`; quá hạn của nó ≤ số giao và ≤ `overdue`.
+- `summarizeRows` (lọc phòng ở connector) tính nhóm từ dòng. `byAssignee` chỉ có khi mọi dòng mang `assigneeName`, để không đoán "chưa giao" từ dòng của SQL cũ. `givenByMe` = null vì dòng không mang người tạo.
+
+**CV-R11 (danh mục loại việc).** Báo cáo W2 `task_types` (gói D, `crm_read_report`) đã có từ trước; bot chỉ không tìm thấy. Thêm `task_types` vào danh sách mã khám phá trong mô tả `crm_read_report` (+12 B; hai tool meta 1 599 / 1 600 B). Không kèm nhãn tiếng Việt vì sẽ vượt trần. Đường chắc chắn là luật SOUL (mục dưới).
+
+**Test:**
+- Toàn bộ test connector: 1 848 đạt, 8 bỏ qua, 1 trượt (WAL Windows đã biết). Nhóm `tools/list` / W2 chạy lại sau khi đổi danh sách khám phá: 174/174. `tool-plan-cases` thêm ba ca CV-R04 / R06 / R11 (đường trả lời có trong khuôn kết quả).
+- `domain-tolerance`: cửa sổ phát hành + 25 ca từ chối. `domain-summary`: nhóm + trần 50. `domain-composition` (PGlite): thân mới + dữ liệu tổng hợp 10 việc (toà ngoài khoá, không toà, công ty khác, hồ sơ trống ⇒ tên gõ tay, tự giao, người khác tạo), query bỏ dấu, phân trang, Toàn tổ chức. Cùng test chạy chính file migration: nhận thân 063452, chạy lại được, thân khác ⇒ dừng.
+- `task-follow`: hồi quy CV-R13.
+- `hermes-durable-schema` 98/98 (forward 28 file / 101 hàm).
+- Đột biến: SQL 9/9 trong `domain-composition`. Connector 25/26; ca còn lại tương đương — role `assigned_to_me` đã bị buộc `assigneeId` = người hỏi ở rào kế bên.
+
+**Tầng 2 trên TEST** (ROLLBACK, thân mới thay trong giao dịch; số khớp `truth.sql` của ma trận):
+
+| Câu | chủ | joey | bosshuy |
+| --- | --- | --- | --- |
+| R01 việc mở | 62 việc, 4 quá hạn, 15 toà; NATHAN 33 / JOEY 25 / NG TÂM 4; cộng nhóm = 62 | 28 việc, 6 toà | 50 việc, 12 toà |
+| R04 `query=nathan` | 33 việc, 10 toà | 3 (toà của joey) | 25 |
+| R03 toà 44TL | 6 việc, NATHAN 4 / JOEY 2 | 42501 (ngoài phạm vi) | 42501 |
+| R06 `givenByMe` | 54 | 0 | 0 |
+| R11 `task_types` | 15 loại | 15 loại | 42501 (không có `task_types.view` CRM) |
+
+Trang 2 mang đúng summary của trang 1. Mọi dòng có `assigneeName`. Tốc độ (chủ, 482 việc, 6 lượt ấm trong một giao dịch): thân cũ 145–148 ms, thân mới 152–159 ms; kết quả 16,4 KB → 20,1 KB.
+
+**Thứ tự phát hành (phiên chính):**
+1. Phát hành connector có Mốc 3b lên mọi host (TEST 8741, production).
+2. Áp `20261022153345` qua lane (TEST rồi production). Provenance xếp file này `catalog-proven` dù CHƯA áp, vì hàm cùng tên đã có. Phải áp đích danh, không trông vào `list-forward-migrations`.
+3. Bản connector kế tiếp gỡ hai cửa sổ của `tasks`.
+
+Rollback: chạy lại câu lệnh hàm của `063452`; `$requires$` của file này nhận cả hai thân. File không phụ thuộc `074741`, áp trước hay sau đều được.

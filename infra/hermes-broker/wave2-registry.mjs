@@ -40,7 +40,9 @@ const FENCE = Object.freeze({ buildings: uuids, cashbooks: uuids, orgWide: value
 // top_expenses) nằm ngay trong mô tả crm_read_report, trong câu đầu (danh sách tool_search chỉ hiện ≤ 60 ký tự đầu) kèm chữ
 // tiếng Việt khi mã không tự nói (xe). wave2-registry.test.mjs khoá mọi mã ở W2_DISCOVERY_REPORTS có trong sổ và trong mô tả;
 // hai tool meta vẫn trong trần riêng 1 600 B (đổi lại bỏ câu "gọi trước crm_read_report": mô tả RUN đã chỉ về mục lục).
-const DISCOVERY = Object.freeze([['xe', 'vehicles'], [null, 'hotlines'], [null, 'cashbooks'], [null, 're_vacant_rooms'], [null, 'top_expenses']]);
+// Mốc 3b Công việc (ma trận 22/10, CV-R11 "có những loại việc nào": bot tra danh mục thao tác, nói không có danh sách):
+// task_types (danh mục loại việc, wave2-d) — 12 B, vừa trần 1 600 B; không kèm nhãn tiếng Việt (vượt trần).
+const DISCOVERY = Object.freeze([['xe', 'vehicles'], [null, 'hotlines'], [null, 'cashbooks'], [null, 're_vacant_rooms'], [null, 'top_expenses'], [null, 'task_types']]);
 export const W2_DISCOVERY_REPORTS = Object.freeze(DISCOVERY.map(([, report]) => report));
 const LIST_DESCRIPTION = 'Mục lục báo cáo kết nối được xem: report, mô tả, params, private. ' +
   'topic: thu_tien=thu tiền/công nợ/cọc; tai_chinh=sổ quỹ/KQKD/lợi nhuận/ví; van_hanh=xe/kho/lương/thông báo/mạng; danh_muc=tài sản/danh mục/hotline/toà phòng/BĐS.';

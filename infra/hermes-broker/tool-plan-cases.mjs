@@ -106,6 +106,15 @@ export const TOOL_PLAN_CASES = Object.freeze([
   { n: 76, q: 'Theo báo cáo bất động sản, phòng nào đang trống (không có hợp đồng hiệu lực)?',
     tool: 'crm_read_report', args: { report: 're_vacant_rooms' }, answerFrom: ['items[].roomName', 'items[].buildingName', 'summary.total'],
     mentions: [{ tool: 'crm_available_rooms', match: /crm_read_report re_vacant_rooms/ }, { tool: 'crm_read_report', match: /re_vacant_rooms/ }] },
+  // Mốc 3b Công việc (ma trận pha A vòng 1, 22/10/2026; mã ca thay số câu): người nhận và số đếm theo nhóm nằm trong
+  // crm_read_tasks (20261022153345) — mô hình không tự cộng các trang; loại việc là báo cáo W2 task_types.
+  { n: 'CV-R04', q: 'Nathan đang làm những việc gì vậy em',
+    tool: 'crm_read_tasks', args: { query: 'Nathan', status: 'IN_PROGRESS' }, answerFrom: ['summary.count', 'summary.byBuilding', 'items[].assigneeName'] },
+  { n: 'CV-R06', q: 'Mấy việc anh giao cho người khác mà chưa xong là những việc nào?',
+    tool: 'crm_read_tasks', args: { status: 'IN_PROGRESS' }, answerFrom: ['summary.givenByMe', 'summary.byAssignee'] },
+  { n: 'CV-R11', q: 'Có những loại việc nào vậy em, anh quên rồi',
+    tool: 'crm_read_report', args: { report: 'task_types' }, answerFrom: ['items[].name', 'summary.total'],
+    mentions: [{ tool: 'crm_read_report', match: /\btask_types\b/ }] },
 ].map(entry => Object.freeze(entry)));
 
 // Đợt 1 nền chung (NEN-CHUNG-THAO-TAC-GHI.md §12.1, review #253): ca khung của họ thao tác ghi — kết quả nào dẫn tới lời gọi
