@@ -12,6 +12,11 @@ const docker = (args, options = {}) => execFileSync('docker', args, {
 test('pinned CPU image loads Paddle models and reads JPEG/H.264 synthetic meter evidence offline', { timeout: 1_380_000 }, () => {
   assert.equal(process.platform, 'linux', 'This runtime suite requires a Linux Docker engine; never skip it as passing.');
   assert.equal(docker(['info', '--format', '{{.OSType}}']).trim(), 'linux');
+  docker(['compose', '--file', resolve(worker, 'compose.yaml'), 'config', '--quiet'], { env: {
+    ...process.env, METER_CAPTURE_API_BASE_URL: 'https://fixture.invalid/functions/v1/meter-capture-worker',
+    METER_CAPTURE_WORKER_TOKEN: 'synthetic-runtime-token-'.repeat(3),
+    METER_CAPTURE_AI_BASE_URL: '', METER_CAPTURE_AI_KEY: '', METER_CAPTURE_AI_MODEL: 'fixture-model',
+  } });
   const suffix = `${process.pid}-${Date.now()}`;
   const image = `meter-capture-smoke:${suffix}`;
   const container = `meter-capture-smoke-${suffix}`;

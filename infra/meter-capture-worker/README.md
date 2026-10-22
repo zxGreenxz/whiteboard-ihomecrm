@@ -11,7 +11,7 @@ Worker CPU kéo một tác vụ mỗi lần qua Edge `meter-capture-worker`. Kh�
 - Edge cần `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `METER_CAPTURE_WORKER_TOKEN`. User RPC luôn dùng JWT người dùng. Chỉ các thao tác claim/receipt/complete và truy cập object đã kiểm scope mới dùng service-role bên Edge.
 - Danh sách lượt chụp trả tham chiếu `/object/authenticated/` không chứa token; giao diện ký bằng JWT khi mở chứng cứ. Đây là object riêng tư, không phải URL công khai. Đường xem chứng cứ đơn lẻ ký tối đa hai URL trong 5 phút, kiểm scope bằng JWT người xem.
 
-Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử: `docker compose build`, rồi `docker compose up`. Không có tự khởi động lại hoặc script tự deploy. Dừng bằng `docker compose stop`; ảnh đã tải và chỉ số vẫn ở hệ thống. Việc chạy thật cần cấu hình secret từ vault, không lưu `.env` vào Git.
+Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử: `docker compose build`, rồi `docker compose up -d`. Container tự khởi động lại sau lỗi hoặc khi máy khởi động; dừng chủ động bằng `docker compose stop` thì giữ trạng thái dừng. Log được xoay vòng tối đa ba tệp 10 MB. Ảnh đã tải và chỉ số vẫn ở hệ thống. Việc chạy thật cần cấu hình secret từ vault, không lưu `.env` vào Git.
 
 Image Python ghim digest Docker Hub; Debian dùng snapshot cố định; 63 wheel Python trong `requirements.lock` ghim phiên bản và SHA-256 cho CPython 3.12/Linux x86_64. Hai model từ tài khoản PaddlePaddle chính thức trên HuggingFace ghim revision, trọng số kiểm SHA-256. Model tải lúc build, không đổi âm thầm khi chạy.
 
@@ -23,6 +23,7 @@ Image Python ghim digest Docker Hub; Debian dùng snapshot cố định; 63 whee
 - Video cần ít nhất hai timestamp khác nhau cùng toàn bộ chỉ số. Hai số khác nhau dù chênh một chữ số đều cần đối chiếu. Giữ tối đa ba JPEG chứng cứ và timestamp; original không bị sửa.
 - Định danh cố ý thận trọng: QR khác/QR thứ hai, AI nhận thấy nhiều đồng hồ hoặc QR không hiện trong khung chứng cứ đều yêu cầu kiểm tra thủ công. Clip có QR đầu đoạn rồi zoom sát ra ngoài QR vẫn được phân tích nhưng không được coi là đã xác minh định danh tự động.
 - Mỗi tác vụ có lease; quá 300 giây dừng tiến trình xử lý. Lỗi không ghi nội dung ảnh, thông tin khách hoặc secret vào log. Worker không chốt chỉ số, hoá đơn hay thanh lý.
+- Yêu cầu HTTPS gửi nhận dạng `User-Agent: ihome-meter-capture/1` cùng bearer. Cổng AI hiện tại từ chối nhận dạng mặc định của Python; khóa, HTTPS và cơ chế chặn chuyển hướng vẫn được kiểm như cũ.
 
 ## Kiểm thử và phần chưa xác minh
 
@@ -45,4 +46,6 @@ Workflow `.github/workflows/meter-capture-runtime.yml` chạy trên Linux, build
 
 Kết quả và ảnh đối chiếu của chỉ số đã chốt được cố định tại thời điểm xác nhận; các lượt đọc bổ sung vẫn giữ trong lịch sử và có cảnh báo, không thay ảnh/giá trị đã duyệt. Chỉ số đã gắn chứng cứ không cho ghi đè trực tiếp.
 
-Chưa chạy build Docker hoặc inference Paddle trong môi trường phát triển này vì Docker Linux engine chưa hoạt động. Chưa gọi cổng AI thật, chưa đo bộ 300–500 ảnh/clip thật, chưa kiểm codec Android/iPhone, throughput/chi phí hay migration/storage production. Không mở rộng vận hành trước khi kiểm các mục này trên toà thí điểm.
+CI Linux đã build image và chạy PaddleOCR/FFmpeg thật trên ảnh JPEG/clip H.264 tổng hợp. Cổng AI thật đã đọc đúng mẫu tổng hợp `12345.67` và mẫu `00078.26` có số 0 đầu; chọn đúng hai thời điểm kWh 1.8.0, bỏ màn V và thanh ghi kWh 2.8.0. Đây là kiểm tích hợp bằng fixture, chưa phải đo độ chính xác đồng hồ thật.
+
+Docker Linux engine tại máy phát triển Windows chưa hoạt động. Chưa đo bộ ảnh/clip đồng hồ thật, chưa kiểm codec Android/iPhone, throughput/chi phí hay migration/storage production. Máy triển khai phải có đủ tài nguyên cho giới hạn 4 GB của container và phần dịch vụ khác đang chạy. Không mở rộng vận hành trước khi kiểm các mục này trên toà thí điểm.

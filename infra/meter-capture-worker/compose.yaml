@@ -3,7 +3,7 @@ services:
     platform: linux/amd64
     build: .
     init: true
-    restart: "no"
+    restart: unless-stopped
     read_only: true
     user: "10001:10001"
     cap_drop: [ALL]
@@ -11,6 +11,11 @@ services:
     pids_limit: 96
     mem_limit: 4g
     cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     tmpfs:
       - /tmp:size=1073741824,mode=1777,noexec,nosuid
     environment:

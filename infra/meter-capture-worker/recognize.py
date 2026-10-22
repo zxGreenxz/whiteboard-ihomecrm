@@ -26,10 +26,13 @@ def https_base(value: str) -> str:
     return value.rstrip("/")
 
 
+def request_headers(token: str) -> dict[str, str]:
+    return {"Authorization": "Bearer " + token, "Content-Type": "application/json",
+            "User-Agent": "ihome-meter-capture/1"}
+
+
 def request_json(url: str, token: str, body: dict, timeout: int = 45, limit: int = 256_000) -> Any:
-    request = urllib.request.Request(url, json.dumps(body).encode(), {
-        "Authorization": "Bearer " + token, "Content-Type": "application/json",
-    })
+    request = urllib.request.Request(url, json.dumps(body).encode(), request_headers(token))
     with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
         raw = response.read(limit + 1)
         if len(raw) > limit:

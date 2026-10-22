@@ -1,11 +1,15 @@
 """Synthetic pipeline fixtures exercise decisions without claiming measured OCR accuracy."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import hashlib
+import io
 import unittest
+import urllib.error
 from unittest.mock import patch
 
-from domain import Reading
-from recognize import recognize
+from domain import InvalidInput, Reading
+from recognize import recognize, request_json
+from worker import Gateway
 
 
 QR = "ihome-meter:11111111-1111-4111-8111-111111111111"
@@ -92,6 +96,36 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(output["ai"]["status"], "error")
             self.assertEqual(output["server"]["value"], "0012.3")
             self.assertIn("ai_reader_error", output["issues"])
+
+
+class HttpBoundaryTests(unittest.TestCase):
+    @staticmethod
+    def gateway_response(request, timeout, body):
+        # The configured production gateway returns 403/1010 for urllib's
+        # generic identity. Use the worker's own identity, never a browser UA.
+        if request.get_header("User-agent") != "ihome-meter-capture/1":
+            raise urllib.error.HTTPError(request.full_url, 403, "client_identity_required", {}, None)
+        return io.BytesIO(body)
+
+    def test_json_gateway_and_ai_requests_identify_the_worker(self):
+        with patch("recognize.urllib.request.build_opener") as opener:
+            opener.return_value.open.side_effect = lambda request, timeout: self.gateway_response(request, timeout, b'{"ok":true}')
+            self.assertEqual(request_json("https://gateway.invalid/chat/completions", "fixture-key", {}), {"ok": True})
+
+    def test_original_download_uses_the_same_identity_and_keeps_digest_validation(self):
+        original = b"fixture-original"
+        media = {"id": "capture", "sizeBytes": len(original), "sha256": hashlib.sha256(original).hexdigest()}
+        with TemporaryDirectory() as directory, patch.dict("os.environ", {
+            "METER_CAPTURE_API_BASE_URL": "https://gateway.invalid/function",
+            "METER_CAPTURE_WORKER_TOKEN": "fixture-token-" * 4,
+        }), patch("worker.urllib.request.build_opener") as opener:
+            opener.return_value.open.side_effect = lambda request, timeout: self.gateway_response(request, timeout, original)
+            destination = Path(directory) / "original"
+            Gateway().download({"jobId": "job", "leaseToken": "lease", "media": [media]}, destination)
+            self.assertEqual(destination.read_bytes(), original)
+            with self.assertRaisesRegex(InvalidInput, "download_digest_mismatch"):
+                Gateway().download({"jobId": "job", "leaseToken": "lease", "media": [{**media, "sha256": "0" * 64}]},
+                                   Path(directory) / "invalid-digest")
 
 
 if __name__ == "__main__":

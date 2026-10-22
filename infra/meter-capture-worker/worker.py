@@ -14,7 +14,7 @@ import urllib.request
 import uuid
 
 from domain import MAX_BYTES, VERSION, InvalidInput, validate_job
-from recognize import NoRedirect, https_base, recognize, request_json
+from recognize import NoRedirect, https_base, recognize, request_headers, request_json
 
 
 class Gateway:
@@ -31,7 +31,7 @@ class Gateway:
         media = job["media"][0]
         request = urllib.request.Request(self.base + "/worker/media", json.dumps({
             "jobId": job["jobId"], "leaseToken": job["leaseToken"], "mediaId": media["id"],
-        }).encode(), {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"})
+        }).encode(), request_headers(self.token))
         size = 0
         digest = hashlib.sha256()
         with urllib.request.build_opener(NoRedirect).open(request, timeout=90) as response, destination.open("xb") as stream:
