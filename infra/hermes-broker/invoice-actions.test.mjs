@@ -51,12 +51,12 @@ test('danh mục Hoá đơn: một thao tác thu tiền, một RPC, khoá riêng
   assert.ok(!HERMES_ACTION_FOUNDATION_KEYS.includes(INVOICE_COLLECT_KEY) && !HERMES_ACTION_CAPABILITIES.includes('thu_tien.collect'), 'không bao giờ là thu_tien.collect');
   const [collect] = invoiceCatalog().listing({ action: [INVOICE_COLLECT_KEY] });
   assert.equal(collect.confirm, 'always');
-  assert.deepEqual(Object.keys(collect.params), ['buildingName', 'roomName', 'month', 'items', 'method', 'amount', 'date', 'overpay', 'cashbookName', 'note']);
+  assert.deepEqual(Object.keys(collect.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'items', 'method', 'amount', 'date', 'overpay', 'cashbookName', 'note']);
   assert.deepEqual(Object.entries(collect.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'method']);
   assert.deepEqual([collect.params.items.max, collect.params.method.values, collect.params.overpay.values], [10, ['TK', 'TT', 'TM'], ['keep', 'return']]);
   assert.deepEqual(validateActionParams(INVOICE_COLLECT, { building_name: '44TL', room_name: '201', method: 'TK', amount: '3650000', cashbook_name: 'mb' }),
     { ok: true, value: { buildingName: '44TL', roomName: '201', method: 'TK', amount: 3650000, cashbookName: 'mb' } });
-  assert.equal(validateActionParams(INVOICE_COLLECT, { buildingName: '44TL', method: 'TT', items: [{ roomName: '201' }, { roomName: '202', month: '2026-09', amount: 1200000 }] }).ok, true);
+  assert.equal(validateActionParams(INVOICE_COLLECT, { buildingName: '44TL', method: 'TT', items: [{ roomName: '201' }, { roomName: '202', month: '2026-09', invoiceNumber: 'INV-2', amount: 1200000 }] }).ok, true);
   for (const params of [{ ...ONE, method: 'CK' }, { ...ONE, amount: 0 }, { ...ONE, overpay: 'refund' }, { ...ONE, date: '22/10/2026' }, { ...ONE, month: '2026-13' },
     { buildingName: '44TL', method: 'TK', items: Array.from({ length: 11 }, (_, i) => ({ roomName: String(101 + i) })) }, { ...ONE, invoiceId: id('1') }])
     assert.equal(validateActionParams(INVOICE_COLLECT, params).ok, false, JSON.stringify(params).slice(0, 80));

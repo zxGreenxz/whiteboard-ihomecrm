@@ -37,7 +37,7 @@ export const ACTION_REASONS = Object.freeze({
   system_voucher: reason('rejected', 'never', 'Phiếu thuộc luồng hệ thống (thu tiền hoá đơn, cọc, thanh lý, hoa hồng, bàn giao, lương); sửa/huỷ/duyệt ở màn gốc trên web.'),
   evidence_required: reason('rejected', 'never', 'Phiếu chưa có chứng từ nên chưa chi được; thêm ảnh trên web hoặc chỉ duyệt.'),
   // Hoá đơn (Đợt 3 Mốc 3, docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 5) — thu tiền.
-  cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc vào sổ HKD.'),
+  cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc thanh toán (TT/POS).'),
   nothing_to_collect: reason('needs_input', 'fix', 'Hoá đơn này không còn số phải thu; hỏi lại người dùng phòng hoặc kỳ.'),
   debt_carried: reason('needs_input', 'fix', 'Nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau (hỏi lại kỳ).'),
   overpay_needs_choice: reason('needs_input', 'fix', 'Khách trả dư; hỏi người dùng giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return).'),

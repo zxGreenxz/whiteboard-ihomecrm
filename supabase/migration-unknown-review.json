@@ -898,24 +898,23 @@
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_reason_v1 / hermes_invoice_scope_v1 / hermes_invoice_lookup_core_v1 / hermes_invoice_action_step_v1, public.hermes_invoice_action_v1 (vỏ SQL-standard); seed khoá thu_tien.collect_transfer TẮT + chính sách invoice.collect"
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_reason_v1 / hermes_invoice_lookup_core_v1 / hermes_invoice_action_step_v1, public.hermes_invoice_action_v1 (vỏ SQL-standard); seed khoá thu_tien.collect_transfer TẮT + chính sách invoice.collect"
         },
         {
           "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects là năm hàm trên — sinh 22/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 3"
+          "trich_doan": "state unknown, missingObjects là bốn hàm trên — sinh 22/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 3/3b"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 3: thao tác invoice.collect — ghi nhận khách đã trả bằng chuyển khoản / sổ HKD qua record_invoice_collection_v5), chưa đi qua lane apply — các hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-write-sql.test.mjs: chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, phạm vi = guard ∩ quyền thu của v5, lý do, ACL), connector (invoice-actions.test.mjs), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 4 kết nối Hermes ACTIVE, v5 thật). Áp qua npm run migrate:forward (TEST trước, rồi production) SAU 20261022075219_invoice_collection_plan_v1; khoá seed TẮT nên không đổi quyền của ai; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 3: thao tác invoice.collect — ghi nhận khách đã trả bằng chuyển khoản / thanh toán TT (POS) qua record_invoice_collection_v5), chưa đi qua lane apply — các hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-write-sql.test.mjs: chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, phạm vi = guard ∩ quyền thu của v5, lý do, ACL; PG17 hai kết nối invoice-write-race-sql.test.mjs: dòng hoá đơn khoá NOWAIT dưới khoá công ty của guard, không 40P01 với web), connector (invoice-actions.test.mjs), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 4 kết nối Hermes ACTIVE, v5 thật). Áp qua npm run migrate:forward (TEST trước, rồi production) SAU 20261022075219_invoice_collection_plan_v1; khoá seed TẮT nên không đổi quyền của ai; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.hermes_invoice_reason_v1",
-        "function:app_private.hermes_invoice_scope_v1",
         "function:app_private.hermes_invoice_lookup_core_v1",
         "function:app_private.hermes_invoice_action_step_v1",
         "function:public.hermes_invoice_action_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 3 22/10/2026",
-      "sha256": "90063c0506e87b8c5ac1b8d261dab1bce3be650d2554a4555ec025bee9a77e65"
+      "sha256": "6a5db142adb069ec6129bcaf4ac83aea72b222d928e17af1922614283103df82"
     }
   }
 }

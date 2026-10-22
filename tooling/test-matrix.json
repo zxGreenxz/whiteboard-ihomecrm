@@ -1062,6 +1062,8 @@
         "infra/hermes-broker/action-reasons.mjs",
         "infra/hermes-broker/capability-contract.mjs",
         "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/invoice-write-fixture.mjs",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
         "infra/hermes-broker/broker.mjs",
         "infra/hermes-broker/server.mjs",
         "infra/hermes-runtime/host-ownership.mjs",
@@ -1072,6 +1074,7 @@
       "testPatterns": [
         "infra/hermes-broker/invoice-actions.test.mjs",
         "infra/hermes-broker/invoice-write-sql.test.mjs",
+        "infra/hermes-broker/invoice-write-race-sql.test.mjs",
         "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
         "infra/hermes-broker/action-reasons.test.mjs",
         "infra/hermes-broker/action-tools-budget.test.mjs",

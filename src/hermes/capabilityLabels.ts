@@ -13,7 +13,7 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'income_expenses.approve_vouchers': 'Duyệt và chi phiếu chi người khác lập tay (Hermes, có xem trước)',
   'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
   // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
-  'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / trả vào sổ HKD (Hermes, không tiền mặt, có xem trước)',
+  'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',

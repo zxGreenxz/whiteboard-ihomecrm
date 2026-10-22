@@ -1,23 +1,26 @@
 -- Đợt 3 trang HOÁ ĐƠN — Mốc 3 (22/10/2026; docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 2–5, 4.1): thao tác invoice.collect (ghi nhận
--- khách đã trả bằng CHUYỂN KHOẢN TK / sổ HKD TT, một phòng hoặc lô ≤ 10 phòng cùng toà) trên khung chung crm_action_* (20261021133823).
+-- khách đã trả bằng CHUYỂN KHOẢN TK / THANH TOÁN TT (POS), một phòng hoặc lô ≤ 10 phòng cùng toà) trên khung chung crm_action_* (20261021133823).
 -- Áp SAU 20261022075219_invoice_collection_plan_v1 (hàm kế hoạch dùng chung) và #267 (20261021183549). Khuôn ba tầng như Thu chi:
 --  (1) app_private.hermes_invoice_reason_v1(sqlstate, message, constraint) IMMUTABLE: câu lỗi thật của record_invoice_collection_v5 ⇒ mã
 --      của trang, rồi danh sách chung app_private.hermes_action_reason_v1.
---  (2) app_private.hermes_invoice_scope_v1(binding, action) DEFINER: ctx của guard; buildingIds chỉ giữ toà mà
---      app_private.authorize_tenant_action_v3(current_uid, org, 'thu_tien.collect', toà) — ĐÚNG lời gọi của v5 — cho phép (luật 17/10:
---      không bao giờ xem trước "được" rồi ghi "không được"). Khoá dòng công ty FOR NO KEY UPDATE TRƯỚC (lock_org_for_decision_v1, như v5):
---      lấy share rồi để v5 nâng khoá là bẫy deadlock 40P01 của hai phiên cùng công ty.
---  (3) app_private.hermes_invoice_lookup_core_v1(org, toà[], action, params) plpgsql STABLE INVOKER search_path='': tiền mặt ⇒ từ chối
---      trước mọi tra cứu (Q13); toà/phòng bằng public.hermes_write_name_resolve_v1 (D7, từng phòng của lô); hoá đơn bằng
+--  (2) app_private.hermes_invoice_lookup_core_v1(org, toà[], action, params) plpgsql STABLE INVOKER search_path='': tiền mặt ⇒ từ chối
+--      trước mọi tra cứu (Q13 = c); toà/phòng bằng public.hermes_write_name_resolve_v1 (D7, từng phòng của lô); hoá đơn bằng
 --      public.invoice_room_invoices_v1 (Mốc 2: RLS + khoá invoices.view, nợ thực #267) — kỳ trống ⇒ hoá đơn còn nợ thực DUY NHẤT, ≥ 2 ⇒
---      hỏi lại; sổ (cashbookName) trong danh sách sổ nhận của toà (get_receiving_cashbooks_v1). Chỉ tham chiếu public.*.
---  (4) app_private.hermes_invoice_action_step_v1(...) DEFINER: phát lại trước; kiểm bản đã giải còn trong phạm vi (toà ∈ (2), hoá đơn
---      thuộc đúng công ty/toà/phòng, sổ trong danh sách sổ nhận); kế hoạch = public.invoice_collection_plan_v1 cho từng hoá đơn (một nguồn
---      luật với web); mục không thu được của LÔ (đã thu đủ, nháp/huỷ, nợ đã kéo sang kỳ sau) bị loại và nêu ở bản xem trước (HDN2);
---      khách trả dư chưa chọn ⇒ bản xem trước hỏi (choiceRequired, HDN4); lượt 1 CHẠY THỬ v5 trong khối con rồi lùi (HD001); lượt 2 ghi
---      cả tập hoặc không gì (biên nhận trong cùng khối con), so basis, hậu điều kiện.
---  (5) public.hermes_invoice_action_v1: vỏ INVOKER SQL-standard gắn OID (2) + (3) + (4) (ghim băm ở scripts/hermes-task-function-contract.mjs).
---  (6) Khoá riêng Hermes thu_tien.collect_transfer seed TẮT (HDN1; quyền CRM giao vào = thu_tien.collect, đúng quyền v5 kiểm). KHÔNG seed
+--      hỏi lại với ứng viên có SỐ HOÁ ĐƠN, người dùng chọn lại bằng invoiceNumber; sổ (cashbookName) trong danh sách sổ nhận của toà
+--      (get_receiving_cashbooks_v1). Chỉ tham chiếu public.*. Không khoá dòng nào.
+--  (3) app_private.hermes_invoice_action_step_v1(...) DEFINER: phát lại trước; kiểm bản đã giải còn trong phạm vi guard (hoá đơn thuộc đúng
+--      công ty/toà/phòng, sổ trong danh sách sổ nhận); khoá các dòng hoá đơn FOR UPDATE NOWAIT theo id tăng; rồi gọi ĐÚNG lời kiểm quyền
+--      của v5 authorize_tenant_action_v3(current_uid, org, 'thu_tien.collect', toà) (luật 17/10: không bao giờ xem trước "được" rồi ghi
+--      "không được"). THỨ TỰ KHOÁ: guard dùng chung đã khoá dòng công ty ngay đầu giao dịch (hermes_private_command_connection_v1 →
+--      lock_org_for_decision_v1, mọi thao tác Hermes), còn record_invoice_collection_v5 khoá hoá đơn → toà/công ty FOR SHARE → công ty
+--      NO KEY UPDATE: hai thứ tự ngược nhau. Hermes chờ dòng hoá đơn web đang giữ ⇒ vòng 40P01, và web nhận lỗi ngẫu nhiên. Vì vậy Hermes
+--      không chờ (NOWAIT): bận ⇒ 55P03 ⇒ lùi cả giao dịch ⇒ connector trả state_changed; web chỉ chờ Hermes lùi. Người không qua guard không
+--      giữ dòng hoá đơn nào (đo PG17 hai kết nối: invoice-write-race-sql.test.mjs). Kế hoạch = public.invoice_collection_plan_v1 cho từng
+--      hoá đơn (một nguồn luật với web), đọc SAU khi giữ khoá; mục không thu được của LÔ (đã thu đủ, nháp/huỷ, nợ đã kéo sang kỳ sau) bị
+--      loại và nêu ở bản xem trước (HDN2); khách trả dư chưa chọn ⇒ bản xem trước hỏi (choiceRequired, HDN4); lượt 1 CHẠY THỬ v5 trong
+--      khối con rồi lùi (HD001); lượt 2 ghi cả tập hoặc không gì (biên nhận trong cùng khối con), so basis, hậu điều kiện.
+--  (4) public.hermes_invoice_action_v1: vỏ INVOKER SQL-standard gắn OID guard + (2) + (3) (ghim băm ở scripts/hermes-task-function-contract.mjs).
+--  (5) Khoá riêng Hermes thu_tien.collect_transfer seed TẮT (HDN1; quyền CRM giao vào = thu_tien.collect, đúng quyền v5 kiểm). KHÔNG seed
 --      thu_tien.collect: khối kiểm của 20261021134531 đòi khoá đó vắng. Chính sách invoice.collect: money, always, chỉ chat riêng.
 -- Không ghi dữ liệu nghiệp vụ, không đổi hàm cũ nào. Idempotent (CREATE OR REPLACE, ON CONFLICT DO NOTHING); khối kiểm cuối chỉ đọc catalog.
 BEGIN;
@@ -70,44 +73,28 @@ RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_pa
     ELSE app_private.hermes_action_reason_v1(p_sqlstate,p_message,p_constraint) END
 $fn$;
 
--- 2. Phạm vi thao tác thu tiền = guard ∩ quyền thu của chính v5 theo toà.
-CREATE OR REPLACE FUNCTION app_private.hermes_invoice_scope_v1(p_binding jsonb,p_action text)
-RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
-DECLARE ctx jsonb; v_org uuid; v_actor uuid; v_kept uuid[];
-BEGIN
-  ctx:=app_private.hermes_action_guard_v1(p_binding,p_action);
-  IF p_action='invoice.collect' THEN
-    v_org:=(ctx->>'organizationId')::uuid; v_actor:=app_private.current_uid_v1();
-    PERFORM app_private.lock_org_for_decision_v1(v_org);
-    SELECT COALESCE(array_agg(x.b ORDER BY x.b),'{}'::uuid[]) INTO v_kept
-      FROM (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid b) x
-      WHERE v_actor IS NOT NULL AND COALESCE((SELECT a.allowed FROM app_private.authorize_tenant_action_v3(v_actor,v_org,'thu_tien.collect',x.b,NULL) a),false);
-    ctx:=ctx||jsonb_build_object('buildingIds',to_jsonb(v_kept));
-  END IF;
-  RETURN ctx;
-END $fn$;
-
--- 3. Tra cứu (INVOKER, RLS người hỏi). Kết quả: {status:'resolved', resolved} | {status:'unresolved', field, wanted, why, candidates, more}
+-- 2. Tra cứu (INVOKER, RLS người hỏi). Kết quả: {status:'resolved', resolved} | {status:'unresolved', field, wanted, why, candidates, more}
 -- | {status:'rejected', reason}. Mục đầu tiên không giải được thì trả về luôn.
 CREATE OR REPLACE FUNCTION app_private.hermes_invoice_lookup_core_v1(p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE
   v_method text; v_entries jsonb; v_e jsonb; v_name jsonb; v_building uuid; v_building_name text; v_room uuid; v_room_name text; v_rows jsonb;
-  v_pick jsonb; v_open jsonb; v_out jsonb:='[]'::jsonb; v_receiving jsonb; v_list jsonb; v_want text; v_hits jsonb; v_account uuid; v_wanted text;
+  v_pick jsonb; v_open jsonb; v_out jsonb:='[]'::jsonb; v_receiving jsonb; v_list jsonb; v_hits jsonb; v_account uuid; v_wanted text;
+  v_number text; v_label text;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'hermes_invoice_lookup_denied' USING ERRCODE='42501'; END IF;
   IF p_organization_id IS NULL OR p_building_ids IS NULL OR p_action IS DISTINCT FROM 'invoice.collect' OR p_params IS NULL OR jsonb_typeof(p_params)<>'object' THEN
     RAISE EXCEPTION 'hermes_invoice_lookup_invalid' USING ERRCODE='22023'; END IF;
   v_method:=upper(btrim(COALESCE(p_params->>'method','')));
-  -- Q13 = c: tiền mặt ghi trên web (trang Thu tiền), kể cả chủ ghi hộ — trước mọi tra cứu.
+  -- Q13 = c (chủ chốt 21/10): tiền mặt ghi trên web (trang Thu tiền), kể cả chủ ghi hộ — trước mọi tra cứu.
   IF v_method='TM' THEN RETURN jsonb_build_object('status','rejected','reason','cash_collection_web_only'); END IF;
-  -- Một phòng (roomName) XOR lô (items ≤ 10); lô không nhận amount chung.
-  IF v_method NOT IN ('TK','TT') OR (p_params ? 'roomName')=(p_params ? 'items') OR (p_params ? 'items' AND p_params ? 'amount')
+  -- Một phòng (roomName) XOR lô (items ≤ 10); lô không nhận amount / invoiceNumber chung.
+  IF v_method NOT IN ('TK','TT') OR (p_params ? 'roomName')=(p_params ? 'items') OR (p_params ? 'items' AND (p_params ? 'amount' OR p_params ? 'invoiceNumber'))
     OR (p_params ? 'items' AND (jsonb_typeof(p_params->'items')<>'array' OR jsonb_array_length(p_params->'items') NOT BETWEEN 1 AND 10)) THEN
     RETURN jsonb_build_object('status','rejected','reason','invalid_params'); END IF;
-  v_entries:=CASE WHEN p_params ? 'items' THEN (SELECT jsonb_agg(jsonb_build_object('roomName',e->>'roomName','month',COALESCE(e->>'month',p_params->>'month')))
-      FROM jsonb_array_elements(p_params->'items') e)
-    ELSE jsonb_build_array(jsonb_build_object('roomName',p_params->>'roomName','month',p_params->>'month')) END;
+  v_entries:=CASE WHEN p_params ? 'items' THEN (SELECT jsonb_agg(jsonb_build_object('roomName',e->>'roomName','month',COALESCE(e->>'month',p_params->>'month'),
+        'invoiceNumber',e->>'invoiceNumber')) FROM jsonb_array_elements(p_params->'items') e)
+    ELSE jsonb_build_array(jsonb_build_object('roomName',p_params->>'roomName','month',p_params->>'month','invoiceNumber',p_params->>'invoiceNumber')) END;
   FOR v_e IN SELECT value FROM jsonb_array_elements(v_entries) LOOP
     v_name:=public.hermes_write_name_resolve_v1(p_organization_id,p_building_ids,
       jsonb_strip_nulls(jsonb_build_object('building',p_params->>'buildingName','room',v_e->>'roomName')));
@@ -118,28 +105,35 @@ BEGIN
       'why','not_visible','candidates','[]'::jsonb,'more',false); END IF;
     SELECT jsonb_agg(to_jsonb(r) ORDER BY r.row_no) INTO v_rows
       FROM public.invoice_room_invoices_v1(p_organization_id,v_room,NULLIF(v_e->>'month',''),ARRAY[v_building]) r;
+    v_number:=upper(btrim(NULLIF(v_e->>'invoiceNumber','')));
+    v_label:=left(v_room_name||COALESCE(' kỳ '||(v_e->>'month'),'')||COALESCE(' '||(v_e->>'invoiceNumber'),''),200);
     IF v_rows IS NULL THEN
-      RETURN jsonb_build_object('status','unresolved','field','invoice','wanted',left(v_room_name||COALESCE(' kỳ '||(v_e->>'month'),''),200),
-        'why','not_visible','candidates','[]'::jsonb,'more',false); END IF;
+      RETURN jsonb_build_object('status','unresolved','field','invoice','wanted',v_label,'why','not_visible','candidates','[]'::jsonb,'more',false); END IF;
     -- Còn nợ thực, thu được (APPROVED/PARTIAL_PAID/OVERDUE) và nợ chưa kéo sang hoá đơn kỳ sau (#267: nợ đã kéo thu ở hoá đơn gánh).
     SELECT jsonb_agg(r ORDER BY (r->>'row_no')::int) INTO v_open FROM jsonb_array_elements(v_rows) r
       WHERE r->>'status' IN ('APPROVED','PARTIAL_PAID','OVERDUE') AND (r->>'effective_outstanding')::numeric>0
         AND (r->>'carried_out_amount')::numeric=0;
-    v_pick:=CASE
-      WHEN jsonb_array_length(v_rows)=1 THEN v_rows->0
-      WHEN jsonb_array_length(COALESCE(v_open,'[]'::jsonb))=1 THEN v_open->0
-      WHEN jsonb_array_length(COALESCE(v_open,'[]'::jsonb))=0 THEN COALESCE(
-        -- Không còn nợ thực: hoá đơn còn số phải thu mà nợ đã kéo sang kỳ sau (⇒ debt_carried), nếu không thì hoá đơn chính (⇒ không còn gì để thu).
-        (SELECT r FROM jsonb_array_elements(v_rows) r WHERE r->>'status' IN ('APPROVED','PARTIAL_PAID','OVERDUE')
-          AND (r->>'remaining_amount')::numeric>0 ORDER BY (r->>'row_no')::int LIMIT 1),v_rows->0) END;
+    IF v_number IS NOT NULL THEN
+      -- Người dùng chọn đích danh bằng số hoá đơn (từ ứng viên của lần hỏi lại).
+      SELECT r INTO v_pick FROM jsonb_array_elements(v_rows) r WHERE upper(btrim(r->>'invoice_number'))=v_number LIMIT 1;
+    ELSE
+      v_pick:=CASE
+        WHEN jsonb_array_length(v_rows)=1 THEN v_rows->0
+        WHEN jsonb_array_length(COALESCE(v_open,'[]'::jsonb))=1 THEN v_open->0
+        WHEN jsonb_array_length(COALESCE(v_open,'[]'::jsonb))=0 THEN COALESCE(
+          -- Không còn nợ thực: hoá đơn còn số phải thu mà nợ đã kéo sang kỳ sau (⇒ debt_carried), nếu không thì hoá đơn chính (⇒ không còn gì để thu).
+          (SELECT r FROM jsonb_array_elements(v_rows) r WHERE r->>'status' IN ('APPROVED','PARTIAL_PAID','OVERDUE')
+            AND (r->>'remaining_amount')::numeric>0 ORDER BY (r->>'row_no')::int LIMIT 1),v_rows->0) END;
+    END IF;
     IF v_pick IS NULL THEN
-      RETURN jsonb_build_object('status','unresolved','field','invoice','wanted',left(v_room_name||COALESCE(' kỳ '||(v_e->>'month'),''),200),
-        'why','ambiguous','more',jsonb_array_length(v_open)>8,
+      -- Ứng viên mang số hoá đơn: hai hoá đơn còn nợ CÙNG kỳ vẫn phân biệt được; mô hình gửi lại invoiceNumber.
+      RETURN jsonb_build_object('status','unresolved','field','invoice','wanted',v_label,
+        'why',CASE WHEN v_number IS NOT NULL THEN 'not_visible' ELSE 'ambiguous' END,'more',jsonb_array_length(COALESCE(v_open,'[]'::jsonb))>8,
         'candidates',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',
-            'kỳ '||to_char(to_date(r->>'billing_month','YYYY-MM'),'MM/YYYY')||' (còn '
+            'kỳ '||to_char(to_date(r->>'billing_month','YYYY-MM'),'MM/YYYY')||COALESCE(' · '||(r->>'invoice_number'),'')||' (còn '
             ||replace(to_char(round((r->>'remaining_amount')::numeric),'FM999,999,999,999,999'),',','.')||'đ'
             ||CASE WHEN COALESCE(r->>'kind','MONTHLY')<>'MONTHLY' THEN ', '||lower(r->>'kind') ELSE '' END||')') ORDER BY (r->>'row_no')::int),'[]'::jsonb)
-          FROM (SELECT r FROM jsonb_array_elements(v_open) r LIMIT 8) x));
+          FROM (SELECT r FROM jsonb_array_elements(COALESCE(v_open,'[]'::jsonb)) r LIMIT 8) x));
     END IF;
     v_out:=v_out||jsonb_build_array(jsonb_build_object('invoiceId',v_pick->>'invoice_id','roomId',v_room,'roomName',v_room_name,
       'invoiceNumber',v_pick->>'invoice_number','billingMonth',v_pick->>'billing_month'));
@@ -169,16 +163,16 @@ BEGIN
     'method',v_method,'accountId',v_account,'items',v_out)));
 END $fn$;
 
--- 4. Bước ghi (DEFINER).
+-- 3. Bước ghi (DEFINER).
 CREATE OR REPLACE FUNCTION app_private.hermes_invoice_action_step_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
   p_resolved jsonb,p_expected_basis text,p_resolution jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE
-  ctx jsonb; v_org uuid; v_resolved jsonb; v_begin jsonb; v_outcome jsonb; v_constraint text; v_method text; v_today date; v_date date;
+  ctx jsonb; v_org uuid; v_resolved jsonb; v_begin jsonb; v_outcome jsonb; v_constraint text; v_method text; v_method_text text; v_today date; v_date date;
   v_building uuid; v_batch boolean; v_n int; v_res jsonb; v_amount jsonb; v_plan jsonb; v_plans jsonb; v_excluded jsonb; v_ex text;
   v_receiving jsonb; v_no_round boolean; v_try int; v_runs jsonb; v_run jsonb; v_items jsonb; v_warnings jsonb; v_choice jsonb; v_basis text;
-  v_total numeric; v_first_reason text; v_label text; v_line text; v_after jsonb; v_left numeric; v_mode text; v_book text; v_key text; v_retry boolean;
-  v_w jsonb; v_reason text; v_sum_applied numeric; v_rounding_missing boolean;
+  v_total numeric; v_first_reason text; v_label text; v_line text; v_left numeric; v_mode text; v_book text; v_key text; v_retry boolean;
+  v_w jsonb; v_text text; v_reason text; v_sum_applied numeric; v_rounding_missing boolean; v_actor uuid;
 BEGIN
   IF p_action IS DISTINCT FROM 'invoice.collect' OR p_phase IS NULL OR p_phase NOT IN ('preview','auto','apply')
     OR p_request_id IS NULL OR p_params IS NULL OR jsonb_typeof(p_params)<>'object'
@@ -186,7 +180,10 @@ BEGIN
     RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023'; END IF;
   v_method:=upper(btrim(COALESCE(p_params->>'method','')));
   IF v_method='TM' THEN RETURN jsonb_build_object('kind','rejected','reason','cash_collection_web_only'); END IF;
-  ctx:=app_private.hermes_invoice_scope_v1(p_binding,p_action);
+  -- Nhãn hình thức như web (RecordPaymentDialog: TK = Chuyển khoản, TT = Thanh toán; toà gọi sổ TT là POS).
+  v_method_text:=CASE v_method WHEN 'TK' THEN 'chuyển khoản' ELSE 'thanh toán (TT/POS)' END;
+  -- Guard dùng chung đã khoá dòng công ty (hermes_private_command_connection_v1 → lock_org_for_decision_v1) cho cả giao dịch.
+  ctx:=app_private.hermes_action_guard_v1(p_binding,p_action);
   v_org:=(ctx->>'organizationId')::uuid;
   IF p_phase='apply' THEN v_resolved:=p_resolved;
   ELSIF p_resolution->>'status'='unresolved' THEN
@@ -196,7 +193,7 @@ BEGIN
   ELSIF p_resolution->>'status'='resolved' THEN v_resolved:=p_resolution->'resolved';
   ELSE RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023';
   END IF;
-  -- Phát lại TRƯỚC mọi kiểm phạm vi/hoá đơn/sổ (khuôn Thu chi Mốc 3b): requestId đã có biên nhận ⇒ đúng kết quả đã chốt.
+  -- Phát lại TRƯỚC mọi kiểm phạm vi/hoá đơn/sổ và mọi khoá (khuôn Thu chi Mốc 3b): requestId đã có biên nhận ⇒ đúng kết quả đã chốt.
   IF p_phase='apply' AND EXISTS(SELECT 1 FROM app_private.hermes_action_receipts r WHERE r.organization_id=v_org AND r.user_id=auth.uid()
       AND r.request_id=p_request_id) THEN
     v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v_resolved));
@@ -205,7 +202,7 @@ BEGIN
     RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409';
   END IF;
 
-  -- Bản đã giải phải còn trong phạm vi: toà ∈ (2), cùng hình thức, mỗi hoá đơn thuộc đúng công ty/toà/phòng, không lặp, sổ trong danh sách.
+  -- Bản đã giải phải còn trong phạm vi guard: toà ∈ guard, cùng hình thức, mỗi hoá đơn thuộc đúng công ty/toà/phòng, không lặp, sổ trong danh sách.
   v_batch:=p_params ? 'items';
   v_building:=NULLIF(v_resolved->>'buildingId','')::uuid;
   IF v_building IS NULL OR NOT (v_building IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid)) OR v_resolved->>'method' IS DISTINCT FROM v_method
@@ -221,6 +218,15 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(v_receiving->v_method,'[]'::jsonb)) b WHERE b->>'id'=v_resolved->>'accountId') THEN
       RETURN jsonb_build_object('kind','rejected','reason','receiving_book_missing'); END IF;
   END IF;
+  -- Dòng hoá đơn KHÔNG CHỜ (id tăng): v5 của web khoá hoá đơn → công ty, còn Hermes đã giữ công ty từ guard; chờ ở đây là vòng 40P01 với web
+  -- đang thu cùng hoá đơn. Bận ⇒ 55P03, giao dịch lùi, connector trả state_changed (xem trước lại); web chạy tiếp ngay.
+  PERFORM 1 FROM public.invoices i WHERE i.id IN (SELECT (x->>'invoiceId')::uuid FROM jsonb_array_elements(v_resolved->'items') x)
+    ORDER BY i.id FOR UPDATE NOWAIT;
+  -- Kiểm quyền của v5 dưới khoá công ty (đã giữ từ guard; gọi lại không chờ).
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
+  v_actor:=app_private.current_uid_v1();
+  IF v_actor IS NULL OR NOT COALESCE((SELECT a.allowed FROM app_private.authorize_tenant_action_v3(v_actor,v_org,'thu_tien.collect',v_building,NULL) a),false) THEN
+    RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
   v_today:=public.org_today_v1(v_org);
   v_date:=COALESCE(NULLIF(p_params->>'date','')::date,v_today);
   IF v_date>v_today THEN RETURN jsonb_build_object('kind','rejected','reason','date_out_of_range'); END IF;
@@ -230,7 +236,7 @@ BEGIN
 
   FOR v_try IN 1..2 LOOP
     v_retry:=false; v_plans:='[]'::jsonb; v_excluded:='[]'::jsonb; v_choice:=NULL; v_rounding_missing:=false; v_n:=0;
-    -- Kế hoạch từng hoá đơn (một nguồn luật với web: public.invoice_collection_plan_v1).
+    -- Kế hoạch từng hoá đơn (một nguồn luật với web: public.invoice_collection_plan_v1), đọc sau khi đã giữ khoá.
     FOR v_res IN SELECT value FROM jsonb_array_elements(v_resolved->'items') LOOP
       v_n:=v_n+1;
       v_amount:=CASE WHEN v_batch THEN p_params->'items'->(v_n-1)->'amount' ELSE p_params->'amount' END;
@@ -323,9 +329,9 @@ BEGIN
         'invoiceNumber',v_plan->>'invoiceNumber','amount',(v_plan->>'gross')::numeric::bigint::text,
         'remainingBefore',(v_plan->>'remaining')::numeric::bigint::text,'remainingAfter',CASE WHEN v_choice IS NULL THEN v_left::bigint::text END,
         'statusAfter',CASE WHEN v_choice IS NULL THEN COALESCE(v_run->>'status',v_plan->'after'->>'status') END,'text',v_line)));
-      -- Cảnh báo (≤ 10, mỗi câu ≤ 300 ký tự).
+      -- Cảnh báo (≤ 10, mỗi câu ≤ 300 ký tự). Mã chưa có câu thì bỏ qua — không bao giờ nối NULL (jsonb || NULL làm mất cả mảng).
       FOR v_w IN SELECT value FROM jsonb_array_elements(COALESCE(v_plan->'warnings','[]'::jsonb)) LOOP
-        v_warnings:=v_warnings||to_jsonb(left(CASE v_w->>'code'
+        v_text:=CASE v_w->>'code'
           WHEN 'possible_duplicate' THEN format('Phòng %s: hoá đơn này vừa được thu %s lúc %s bởi %s — có thể THU TRÙNG; hỏi lại người dùng.',v_plan->>'roomName',
             app_private.hermes_vnd_text_v1((v_w->>'grossAmount')::numeric),to_char(((v_w->>'createdAt')::timestamptz) AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI'),
             COALESCE(NULLIF(btrim(v_w->>'collectorName'),''),'một người khác'))
@@ -333,16 +339,17 @@ BEGIN
           WHEN 'old_date' THEN format('Ngày thu lùi %s ngày so với hôm nay.',v_w->>'days')
           WHEN 'rounding_deposit_due' THEN format('Phòng %s: còn thiếu %s nhưng không làm tròn được vì hoá đơn còn tiền cọc; hoá đơn còn nợ phần này.',
             v_plan->>'roomName',app_private.hermes_vnd_text_v1((v_w->>'shortage')::numeric))
-          ELSE NULL END,300));
+          ELSE NULL END;
+        IF v_text IS NOT NULL THEN v_warnings:=v_warnings||jsonb_build_array(left(v_text,300)); END IF;
       END LOOP;
       IF v_no_round AND (v_plan->>'shortage')::numeric>0 AND (v_plan->>'shortage')::numeric<10000 THEN
-        v_warnings:=v_warnings||to_jsonb(format('Phòng %s: không làm tròn được phần thiếu %s (%s); hoá đơn còn nợ phần này.',v_plan->>'roomName',
+        v_warnings:=v_warnings||jsonb_build_array(format('Phòng %s: không làm tròn được phần thiếu %s (%s); hoá đơn còn nợ phần này.',v_plan->>'roomName',
           app_private.hermes_vnd_text_v1((v_plan->>'shortage')::numeric),
           CASE WHEN v_rounding_missing THEN 'công ty chưa có sổ "Làm tròn tiền thiếu"' ELSE 'phần thiếu là tiền cọc' END)); END IF;
       IF (v_plan->>'gross')::numeric>=50000000 THEN
-        v_warnings:=v_warnings||to_jsonb(format('Phòng %s: số tiền lớn (từ 50 triệu) — đọc lại số cho người dùng.',v_plan->>'roomName')); END IF;
+        v_warnings:=v_warnings||jsonb_build_array(format('Phòng %s: số tiền lớn (từ 50 triệu) — đọc lại số cho người dùng.',v_plan->>'roomName')); END IF;
       IF mod((v_plan->>'gross')::numeric,1000)<>0 THEN
-        v_warnings:=v_warnings||to_jsonb(format('Phòng %s: số tiền không tròn nghìn — kiểm lại đơn vị.',v_plan->>'roomName')); END IF;
+        v_warnings:=v_warnings||jsonb_build_array(format('Phòng %s: số tiền không tròn nghìn — kiểm lại đơn vị.',v_plan->>'roomName')); END IF;
     END LOOP;
     SELECT COALESCE(jsonb_agg(w),'[]'::jsonb) INTO v_warnings FROM (SELECT w FROM jsonb_array_elements(v_warnings) w WHERE jsonb_typeof(w)='string' LIMIT 10) x;
     RETURN jsonb_build_object('kind','preview','basis',v_basis,'resolved',v_resolved||jsonb_build_object('noRounding',v_no_round),'confirm','required',
@@ -352,8 +359,8 @@ BEGIN
               app_private.hermes_vnd_text_v1((v_choice->>'remaining')::numeric),app_private.hermes_vnd_text_v1((v_choice->>'overpay')::numeric),
               CASE WHEN (v_choice->>'canKeep')::boolean THEN 'giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return)? Hỏi người dùng rồi gọi lại kèm overpay, KHÔNG xác nhận bản này.'
                 ELSE 'hoá đơn không gắn hợp đồng nên chỉ trả lại khách được (overpay=return). Hỏi người dùng rồi gọi lại kèm overpay, KHÔNG xác nhận bản này.' END)
-          ELSE format('Sẽ ghi THU %s %s ngày %s vào sổ «%s» cho %s.',app_private.hermes_vnd_text_v1(v_total),
-              CASE v_method WHEN 'TK' THEN 'chuyển khoản' ELSE 'vào sổ HKD (TT)' END,app_private.hermes_vn_date_text_v1(v_date,v_today),v_book,
+          ELSE format('Sẽ ghi THU %s bằng %s ngày %s vào sổ «%s» cho %s.',app_private.hermes_vnd_text_v1(v_total),v_method_text,
+              app_private.hermes_vn_date_text_v1(v_date,v_today),v_book,
               CASE WHEN jsonb_array_length(v_plans)=1 THEN 'hoá đơn '||COALESCE(v_plans->0->>'invoiceNumber','') ELSE jsonb_array_length(v_plans)||' hoá đơn' END) END,
         'choiceRequired',CASE WHEN v_choice IS NOT NULL THEN 'overpay' END,
         'items',v_items,'excluded',CASE WHEN jsonb_array_length(v_excluded)>0 THEN (SELECT jsonb_agg(e->'text' ORDER BY (e->>'n')::int) FROM jsonb_array_elements(v_excluded) e) END,
@@ -382,8 +389,9 @@ BEGIN
         'applied',(v_run->>'applied_amount')::numeric::bigint::text,'credit',NULLIF((v_run->>'credit_amount')::numeric,0)::bigint::text,
         'rounding',NULLIF((v_run->>'rounding_amount')::numeric,0)::bigint::text,
         'remainingAfter',COALESCE((v_run->'invoice'->>'remaining_amount')::numeric,0)::bigint::text,'statusAfter',v_run->'invoice'->>'status',
-        'text',format('Đã ghi thu %s %s cho hoá đơn %s (%s/%s, kỳ %s). Còn nợ %s%s.',app_private.hermes_vnd_text_v1((v_run->>'gross_amount')::numeric),v_method,
-          COALESCE(v_plan->>'invoiceNumber',''),v_resolved->>'buildingName',v_plan->>'roomName',to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),
+        'text',format('Đã ghi thu %s bằng %s cho hoá đơn %s (%s/%s, kỳ %s). Còn nợ %s%s.',app_private.hermes_vnd_text_v1((v_run->>'gross_amount')::numeric),
+          v_method_text,COALESCE(v_plan->>'invoiceNumber',''),v_resolved->>'buildingName',v_plan->>'roomName',
+          to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),
           app_private.hermes_vnd_text_v1(COALESCE((v_run->'invoice'->>'remaining_amount')::numeric,0)),
           CASE WHEN v_run->'invoice'->>'status'='PAID' THEN ' — ĐÃ THANH TOÁN' ELSE '' END))));
     END LOOP;
@@ -401,12 +409,12 @@ BEGIN
   END;
 END $fn$;
 
--- 5. Vỏ public (đầu hàm theo khuôn lane migrate:forward nhận cho thân SQL-standard ghi, như public.hermes_expense_write_v1).
+-- 4. Vỏ public (đầu hàm theo khuôn lane migrate:forward nhận cho thân SQL-standard ghi, như public.hermes_expense_write_v1).
 CREATE OR REPLACE FUNCTION public.hermes_invoice_action_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
   p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL)
 RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public
 BEGIN ATOMIC
-  WITH g AS MATERIALIZED (SELECT app_private.hermes_invoice_scope_v1(p_binding,p_action) AS ctx),
+  WITH g AS MATERIALIZED (SELECT app_private.hermes_action_guard_v1(p_binding,p_action) AS ctx),
   r AS MATERIALIZED (SELECT CASE WHEN p_phase IN ('preview','auto') AND jsonb_typeof(p_params)='object' THEN
       app_private.hermes_invoice_lookup_core_v1((g.ctx->>'organizationId')::uuid,ARRAY(SELECT jsonb_array_elements_text(g.ctx->'buildingIds')::uuid),
         p_action,p_params) END AS resolution FROM g)
@@ -414,18 +422,15 @@ BEGIN ATOMIC
 END;
 
 ALTER FUNCTION app_private.hermes_invoice_reason_v1(text,text,text) OWNER TO postgres;
-ALTER FUNCTION app_private.hermes_invoice_scope_v1(jsonb,text) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) OWNER TO postgres;
 ALTER FUNCTION public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text) OWNER TO postgres;
 REVOKE ALL ON FUNCTION app_private.hermes_invoice_reason_v1(text,text,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
-REVOKE ALL ON FUNCTION app_private.hermes_invoice_scope_v1(jsonb,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
--- Vỏ INVOKER chạy dưới authenticated nên cần EXECUTE trên đúng các hàm app_private nó gắn OID (phạm vi, tra cứu, bước ghi); không có USAGE
--- app_private nên client không gọi theo tên được. Ánh xạ lý do chỉ bước ghi (DEFINER) gọi: không cấp cho authenticated.
-GRANT EXECUTE ON FUNCTION app_private.hermes_invoice_scope_v1(jsonb,text) TO authenticated;
+-- Vỏ INVOKER chạy dưới authenticated nên cần EXECUTE trên đúng các hàm app_private nó gắn OID (tra cứu, bước ghi; guard đã cấp ở
+-- 20261021133823); không có USAGE app_private nên client không gọi theo tên được. Ánh xạ lý do chỉ bước ghi (DEFINER) gọi: không cấp.
 GRANT EXECUTE ON FUNCTION app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated;
@@ -436,10 +441,12 @@ BEGIN
       AND NOT prosecdef AND prosqlbody IS NOT NULL)
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb)'::regprocedure AND NOT prosecdef)
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure AND prosecdef)
-    OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_invoice_scope_v1(jsonb,text)'::regprocedure AND prosecdef AND provolatile='v')
     OR NOT EXISTS(SELECT 1 FROM pg_depend WHERE classid='pg_proc'::regclass
       AND objid='public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure
-      AND refobjid='app_private.hermes_invoice_scope_v1(jsonb,text)'::regprocedure)
+      AND refobjid='app_private.hermes_action_guard_v1(jsonb,text)'::regprocedure)
+    -- Hermes đã giữ dòng công ty từ guard ⇒ dòng hoá đơn khoá KHÔNG CHỜ (chờ = vòng 40P01 với v5 của web).
+    OR position('ORDER BY i.id FOR UPDATE NOWAIT' IN (SELECT prosrc FROM pg_proc
+      WHERE oid='app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure))=0
     OR has_function_privilege('anon','public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE')
     OR has_function_privilege('authenticated','app_private.hermes_invoice_reason_v1(text,text,text)','EXECUTE')
     OR NOT EXISTS(SELECT 1 FROM app_private.hermes_action_policies WHERE action='invoice.collect' AND capability='thu_tien.collect_transfer'
