@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
+import { BrokerError, REQUEST_RECEIPT_UNKNOWN, ACTION_WEB_LINK } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
 import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
@@ -130,7 +130,8 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           // Đợt 1 nền chung: lỗi thật của thao tác ghi mang MỘT lý do dạng rejected của danh sách đóng action-reasons.mjs
           // cùng đúng câu tĩnh của nó; reason/detail nào khác (kể cả gán nhầm) không tới mô hình.
           : safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) && safe.detail === ACTION_REASONS[safe.reason].text
-            ? { reason: safe.reason, detail: safe.detail } : {};
+            // CV12: kèm link web khi đúng khuôn đường dẫn tương đối (không bao giờ chuỗi khác).
+            ? { reason: safe.reason, detail: safe.detail, ...(typeof safe.link === 'string' && ACTION_WEB_LINK.test(safe.link) ? { link: safe.link } : {}) } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });

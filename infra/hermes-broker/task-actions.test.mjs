@@ -5,7 +5,7 @@ import { createActionCatalog, validateActionParams } from './action-catalog.mjs'
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { nameUnresolvedDetail } from './action-contract.mjs';
-import { TASK_ACTIONS, TASK_CREATE, TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_ACTIONS, TASK_CREATE, TASK_UPDATE, TASK_CANCEL, TASK_RETIRED_OPERATIONS, TASK_RETIRED_BY } from './task-actions-contract.mjs';
 import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
@@ -33,7 +33,15 @@ test('catalog: task.create under tasks.create, reversible (server decides confir
   assert.deepEqual(Object.entries(listed.params).filter(([, spec]) => spec.required).map(([name]) => name), ['content']);
   assert.deepEqual([listed.params.deadlineTime.type, listed.params.jobType.type, listed.params.priority.values], ['time', 'name', ['NORMAL', 'URGENT', 'LOW']]);
   assert.deepEqual(catalog.listing({ read: [], action: [] }), []);
-  assert.deepEqual([...TASK_RETIRED_OPERATIONS], ['create', 'status', 'options']);
+  assert.deepEqual([...TASK_RETIRED_OPERATIONS], ['create', 'status', 'options', 'progress', 'cancel']);
+  // Mốc 3: sửa dưới tasks.edit (reversible, máy chủ quyết xem trước), huỷ dưới tasks.delete (irreversible ⇒ luôn xem trước).
+  assert.deepEqual([TASK_UPDATE.key, TASK_UPDATE.class, TASK_CANCEL.key, TASK_CANCEL.class], ['tasks.edit', 'reversible', 'tasks.delete', 'irreversible']);
+  assert.deepEqual(TASK_RETIRED_BY, { create: 'task.create', status: 'task.create', options: 'task.create', progress: 'task.update', cancel: 'task.cancel' });
+  const all = catalog.listing({ read: [], action: [TASK_KEY, 'tasks.edit', 'tasks.delete'] });
+  assert.deepEqual(all.map(item => [item.action, item.confirm]), [['task.create', 'if_required'], ['task.update', 'if_required'], ['task.cancel', 'always']]);
+  assert.deepEqual(all.slice(1).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)), [['job'], ['job']]);
+  assert.equal(all[1].params.job.hint, 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói');
+  for (const action of [TASK_UPDATE, TASK_CANCEL]) assert.ok(action.title.length <= 120 && Object.keys(action.params).length <= 16);
 });
 
 test('params: time HH:MM only; snake_case accepted; content required; static hint never echoes values', () => {
@@ -81,7 +89,7 @@ test('why unspecified (Q31): detail lists suggestions or asks plainly; non-empty
   assert.equal(content(await run({ buildingName: 'Toà A', content: 'sửa vòi', assigneeName: 'tôi' })).outcome, 'applied', 'reversible tự giao: một lượt');
 });
 
-test('broker: task.create in the catalog retires crm_task_create/status/input_options (hidden and refused); follow tools stay', async t => {
+test('broker: live task.create retires crm_task_create/status/input_options; live task.update / task.cancel retire crm_task_progress / crm_task_cancel; follow tools stay', async t => {
   const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
   const legacy = [...TASK_TOOLS, ...TASK_INPUT_TOOLS].map(tool => tool.name).filter(name => ['crm_task_create', 'crm_task_status', 'crm_task_input_options'].includes(name));
   assert.equal(legacy.length, 3);
@@ -92,7 +100,9 @@ test('broker: task.create in the catalog retires crm_task_create/status/input_op
   const listed = (await after.broker.listTools(after.token)).tools, names = listed.map(tool => tool.name);
   assert.deepEqual(names.filter(name => legacy.includes(name)), []);
   for (const name of ['crm_action_list', 'crm_action_run', 'crm_action_status']) assert.ok(names.includes(name), name);
-  for (const tool of TASK_FOLLOW_TOOLS) assert.ok(names.includes(tool.name), `${tool.name} còn hiện`);
+  // Mốc 3: runtime không có danh mục sống ⇒ mọi thao tác của danh mục coi là sống ⇒ tiến độ / huỷ cũ cũng nghỉ; theo dõi còn.
+  for (const tool of TASK_FOLLOW_TOOLS) assert.equal(names.includes(tool.name), !['crm_task_progress', 'crm_task_cancel'].includes(tool.name), tool.name);
+  for (const name of ['crm_task_progress', 'crm_task_cancel']) await assert.rejects(after.broker.callTool(after.token, name, {}), error => error.code === 'tool_not_available', name);
   for (const name of legacy) await assert.rejects(after.broker.callTool(after.token, name, {}), error => error.code === 'tool_not_available', name);
   const bytes = bytesOf(listed), beforeBytes = bytesOf((await before.broker.listTools(before.token)).tools);
   t.diagnostic(`tools/list đủ quyền: trước ${beforeBytes} B, sau ${bytes} B`);
@@ -176,4 +186,43 @@ test('tổ hợp connector mới + DB cũ: lớp khung chung ghi danh mục số
   live.observe({ 'task.create': {} });
   const fresh = (await old.broker.listTools(old.token)).tools.map(tool => tool.name);
   assert.ok(fresh.includes('crm_action_run') && legacy.every(name => !fresh.includes(name)), 'DB mới (cùng connector): đổi ngay ở lời gọi kế');
+});
+
+test('Mốc 3: live task.update / task.cancel retire crm_task_progress / crm_task_cancel one by one; follow layer drops tasks.edit / tasks.delete only when the replacing action is live', async t => {
+  const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
+  const catalog = createActionCatalog(TASK_ACTIONS);
+  const live = createActionLiveCatalog();
+  const env = fullGrantBroker(t, undefined, { actions: createActionRuntime({ catalog, service, live }), actionKeys: [TASK_KEY, 'tasks.edit', 'tasks.delete'] });
+  const visible = async () => { const listed = (await env.broker.listTools(env.token)).tools.map(tool => tool.name);
+    return ['crm_task_progress', 'crm_task_cancel'].map(name => listed.includes(name)); };
+  live.observe({ 'task.create': {} });
+  assert.deepEqual(await visible(), [true, true], 'DB chưa có Mốc 3: tiến độ / huỷ cũ còn');
+  live.observe({ 'task.create': {}, 'task.update': {} });
+  assert.deepEqual(await visible(), [false, true]);
+  await assert.rejects(env.broker.callTool(env.token, 'crm_task_progress', {}), error => error.code === 'tool_not_available');
+  live.observe({ 'task.create': {}, 'task.update': {}, 'task.cancel': {} });
+  assert.deepEqual(await visible(), [false, false]);
+  await assert.rejects(env.broker.callTool(env.token, 'crm_task_cancel', {}), error => error.code === 'tool_not_available');
+
+  // Lớp quyền: tasks.edit / tasks.delete chỉ một nguồn mỗi lời gọi.
+  const input = { accessToken: 'x', organizationId: '00000000-0000-4000-8000-000000000002', userId: '00000000-0000-4000-8000-000000000003', signal: undefined };
+  const allowed = { allowed: true, companyEnabled: true, buildingIds: [B] };
+  const follow = { organizationId: input.organizationId, userId: input.userId, membershipId: 'm', authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
+    permissions: { 'tasks.edit': allowed, 'tasks.delete': allowed, 'assistant.memory.supervise': { allowed: false, companyEnabled: false, buildingIds: [] } } };
+  const reads = { capabilities: async () => null, followCapabilities: async () => follow };
+  const base = keys => ({ permissions: { read: [], action: keys }, companyCeilings: { read: [], action: keys },
+    scopesByPermission: Object.fromEntries(keys.map(key => [key, { buildingIds: [B], cashbookIds: [] }])),
+    membership: { membershipId: 'm', authorizationVersion: 1 }, isSuperadmin: false, epoch: 'e' });
+  const auth = keys => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base(keys) }, reads,
+    createFromActions: true, actionIds: catalog.ids, live });
+  // DB mới: khung chung cấp cả ba khoá; lớp theo dõi không cấp lại, không context_changed.
+  assert.deepEqual((await auth([TASK_KEY, 'tasks.edit', 'tasks.delete']).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  // Chỉ task.update sống: tasks.delete vẫn do lớp theo dõi cấp.
+  live.observe({ 'task.create': {}, 'task.update': {} });
+  assert.deepEqual((await auth([TASK_KEY, 'tasks.edit']).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  // DB cũ (chỉ task.create): lớp theo dõi cấp tasks.edit / tasks.delete như trước; khung chung mà cũng cấp ⇒ context_changed.
+  live.observe({ 'task.create': {} });
+  assert.deepEqual((await auth([TASK_KEY]).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  await assert.rejects(auth([TASK_KEY, 'tasks.edit']).readAuthorization(input), error => error.code === 'context_changed');
+  assert.throws(() => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base([]) }, reads, actionIds: 'task.update' }), /invalid_task_auth/);
 });

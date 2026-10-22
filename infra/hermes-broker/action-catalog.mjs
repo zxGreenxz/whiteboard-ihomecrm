@@ -37,8 +37,10 @@ export const param = Object.freeze({
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
   name: (of, { optional = false } = {}) => {
-    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice', 'jobType'].includes(of)) fail();
-    return spec('name', optional, `tên ${{ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn', jobType: 'loại việc' }[of]} như người dùng nói`, { of, min: 1, max: 120 });
+    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice', 'jobType', 'job'].includes(of)) fail();
+    // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
+    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
+      : `tên ${{ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn', jobType: 'loại việc' }[of]} như người dùng nói`, { of, min: 1, max: 120 });
   },
   int: (min, max, { optional = false } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();

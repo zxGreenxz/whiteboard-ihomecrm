@@ -1,5 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_RETIRED_BY } from './task-actions-contract.mjs';
 import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -114,11 +114,15 @@ export class BrokerError extends Error {
   }
 }
 
-/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
-export function actionRejected(code) {
+/** Đường dẫn web tương đối (CV12, Công việc Mốc 3): chỉ ký tự đường dẫn/truy vấn, bắt đầu bằng '/', không có '//' hay tên miền. */
+export const ACTION_WEB_LINK = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,299}$/;
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. link (CV12): đường dẫn web
+ * tới đúng đối tượng để người dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot); sai khuôn ⇒ bỏ. */
+export function actionRejected(code, link) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
   error.detail = ACTION_REASONS[error.reason].text;
+  if (typeof link === 'string' && ACTION_WEB_LINK.test(link)) error.link = link;
   return error;
 }
 
@@ -474,13 +478,12 @@ export function createBroker({
   // họ thao tác dùng chung hiện với kết nối này thì họ phiếu chi cũ (crm_expense_*) ẩn khỏi danh sách VÀ bị từ chối khi gọi.
   const actionFamilyListed = identity => Boolean(action && action.listed(identity.effective).length);
   const mayUseOldExpense = (identity, operation) => mayUseExpenseAction(identity.effective, operation) && !actionFamilyListed(identity);
-  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
-  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
-  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
-  // còn nguyên, không mất đường tạo việc.
-  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
-  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
-    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7, 19): thao tác thay một tool cũ SỐNG ⇒ tool cũ ẩn VÀ bị từ chối, không để
+  // hai đường cùng hiện — task.create thay crm_task_create / crm_task_status / crm_task_input_options; task.update thay
+  // crm_task_progress; task.cancel thay crm_task_cancel (TASK_RETIRED_BY). Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime
+  // (review Mốc 2 mục 6): connector mới + DB cũ ⇒ thao tác chưa sống ⇒ tool cũ còn nguyên. Theo dõi (follow_*) không có thao tác thay.
+  const taskRetired = operation => Object.hasOwn(TASK_RETIRED_BY, operation) && typeof action?.knows === 'function' && action.knows(TASK_RETIRED_BY[operation]);
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) && !taskRetired(operation);
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),

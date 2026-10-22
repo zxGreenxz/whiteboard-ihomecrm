@@ -14,11 +14,11 @@ const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-$
 
 test('danh sách đóng: 20 mã chung + mã trang, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {
   assert.ok(Object.isFrozen(ACTION_REASONS) && ACTION_REASON_CODES.every(code => Object.isFrozen(ACTION_REASONS[code])));
-  // 20 mã chung của Đợt 1 + khối riêng từng trang (Công việc: task_quota_user, task_quota_pair).
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2);
+  // 20 mã chung của Đợt 1 + khối riêng từng trang (Công việc: task_quota_user, task_quota_pair, cancel_blocked, task_not_open).
+  assert.equal(ACTION_REASON_CODES.length, 20 + 4);
   assert.deepEqual([...ACTION_INPUT_REASONS], ['unknown_action', 'invalid_params', 'name_unresolved', 'reason_required', 'amount_out_of_range',
     'date_out_of_range', 'not_found']);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 4);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

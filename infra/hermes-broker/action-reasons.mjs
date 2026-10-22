@@ -37,6 +37,9 @@ export const ACTION_REASONS = Object.freeze({
   // app_private.hermes_task_limits (20261022031548); task-actions.test.mjs khoá câu với seed — đổi seed phải đổi câu.
   task_quota_user: reason('rejected', 'later', 'Anh/chị đã giao quá số việc cho phép trong 1 giờ qua bot (mặc định 30 việc/giờ; chủ sở hữu 60); thử lại sau ít phút hoặc tạo trên web.'),
   task_quota_pair: reason('rejected', 'later', 'Đã giao quá số việc cho phép cho cùng một người nhận trong 1 giờ (mặc định 10 việc/giờ; chủ sở hữu 40); thử lại sau ít phút hoặc tạo trên web.'),
+  // Trang Công việc Mốc 3 (task.update / task.cancel, 20261022074741): SQL kèm `link` tới việc trên web (CV12) khi biết đúng việc.
+  cancel_blocked: reason('rejected', 'never', 'Việc đã có vật tư hoặc ảnh hoàn thành nên không huỷ qua bot; mở việc trên web (link kèm theo) để xử lý.'),
+  task_not_open: reason('rejected', 'never', 'Việc đã hoàn thành, không còn mở; không sửa hay huỷ qua bot được (xem trên web, link kèm theo).'),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

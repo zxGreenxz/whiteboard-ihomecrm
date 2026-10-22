@@ -164,7 +164,7 @@ export function createHermesBackend(configuration = {}) {
     const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog, live: actionLive,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
-      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), actionIds: actionCatalog.ids, live: actionLive });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
