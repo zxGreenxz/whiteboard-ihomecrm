@@ -606,7 +606,8 @@ Cả hai báo cáo lọc như trang Thu chi web: `income_expenses` dưới RLS, 
   - toàn file 58/58.
 - **PGlite bước ghi:** thêm ca lệch quyền hai chiều, chủ không phân công, toà ảo ghi được, ghi chú chạy thử; 10/10; 5/5 đột biến bị bắt.
 - **PG17:** danh bạ v2.
-- **Hợp đồng hàm Hermes:** forward 22 file / 87 định nghĩa; danh sách đọc SQL-standard đã duyệt; `search_path=''`; quyền EXECUTE.
+- **Hợp đồng hàm Hermes:** forward 23 file (sau khi gộp #267) / 87 định nghĩa; danh sách đọc SQL-standard đã duyệt; `search_path=''`; quyền EXECUTE.
+- Đã gộp `main` có #263 (câu 25: người lập không tự duyệt phiếu chi vượt ngưỡng). #263 chỉ sửa đường duyệt; Mốc 5 phải tính đến nó.
 
 **Tầng 2 trên TEST** (`test-env:thu-sql`, một giao dịch ROLLBACK, bốn kết nối thật):
 

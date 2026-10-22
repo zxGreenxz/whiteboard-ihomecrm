@@ -86,6 +86,16 @@ Owner mở `/settings/general` → tab **Thu chi**:
 - Người lập **có quyền duyệt** thì phiếu tự duyệt — chủ chốt 25/07 và giữ nguyên 26/09 (câu 05), chỉ ghi
   dấu vết để lọc/đếm: màn Cam kết chi → thẻ **Tự duyệt** (`list_self_approved_vouchers_v1`). Người không có
   quyền duyệt thì không tự duyệt được; chuyển người duyệt đúng rule.
+- Câu 25 (chủ chốt 21/10/2026; migration `20261021231237`, **chờ áp**): phiếu CHI có tổng **từ ngưỡng trở
+  lên** thì người lập không có quyền duyệt **không tự duyệt được** — "có quyền duyệt" = đúng rào duyệt của
+  writer: `income_expenses.approve` ở toà của phiếu (`app_private.has_building_perm_v1` — hàm boolean dùng
+  chung, `require_building_perm_v1` của câu 26 cũng gọi hàm này); phiếu không gắn toà chỉ super admin. Mọi đường cùng một hàm luật
+  `app_private.ie_self_approve_over_threshold_blocked_v1`: REST thẳng `approve_income_expense_v1`/`approve_voucher`,
+  nút Duyệt của công ty còn luồng LEGACY, Thanh toán phiếu phí nháp, Chốt lương, Copilot. Bị chặn ⇒ 42501 +
+  HINT `ie_self_approve_over_threshold`; web hỏi cổng `ie_self_approve_gate_v1` ở hộp **Xác nhận duyệt phiếu**
+  (mọi nơi bấm Duyệt đều qua hộp này): khoá nút + giải thích, và hỏi lại ngay trước khi lưu đổi sổ/ảnh hay
+  duyệt. Người khác có quyền duyệt vẫn duyệt bình thường. Phiếu chờ duyệt **dưới** ngưỡng (hạng mục bắt buộc
+  duyệt, bộ máy chi, G6) người lập vẫn tự duyệt được — ngoài câu 25.
 - Phiếu tiền nhà/điện/… bất ngờ về chờ duyệt khi bộ máy đã bật: xem thẻ **Máy chấm thử** — lý do nằm ở cột
   "Máy quyết" (vượt cam kết, tháng chưa ký, vượt trần, phiếu chờ khác đang giữ chỗ…). Tắt công tắc của
   bucket đó ở thẻ **Bật áp dụng** là về luật cũ ngay; tắt hẳn: cờ `spend.engine.v1` ≠ `ON`.

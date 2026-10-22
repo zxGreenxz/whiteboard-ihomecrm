@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1574,
-  "soFileDocBangFs": 413,
-  "tongLoiGoi": 1010,
-  "khongPhanLoaiDuoc": 445,
+  "tongSoFileTest": 1576,
+  "soFileDocBangFs": 414,
+  "tongLoiGoi": 1019,
+  "khongPhanLoaiDuoc": 448,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 165,
+      "soFile": 166,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -245,6 +245,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/selfApproveOverThresholdMigration.test.ts",
+      "soGoi": 8,
+      "loai": {
+        "sql": 6
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-zalo-native/operator.test.mjs",
       "soGoi": 7,
       "loai": {
@@ -273,6 +281,14 @@
       "loai": {
         "manifest": 1,
         "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/contractTerminationSecondRefundGuardMigration.test.ts",
+      "soGoi": 7,
+      "loai": {
+        "sql": 5
       },
       "khongPhanLoaiDuoc": 2
     },
@@ -354,14 +370,6 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/contractTerminationSecondRefundGuardMigration.test.ts",
-      "soGoi": 6,
-      "loai": {
-        "sql": 5
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/voucherDetailReadMigration.test.ts",
