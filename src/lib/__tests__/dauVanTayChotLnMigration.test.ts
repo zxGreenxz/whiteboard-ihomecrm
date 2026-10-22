@@ -279,36 +279,44 @@ async function buildDb(): Promise<PGlite> {
 // ---------------------------------------------------------------- thao tác
 type Json = Record<string, unknown>;
 
-async function preview(db: PGlite, month: string): Promise<Json> {
+/** Preview trên tập toà cho trước (mặc định cả 4 toà — đúng phạm vi writer dùng khi chốt). */
+async function preview(db: PGlite, month: string, buildings: string[] = BUILDINGS): Promise<Json> {
   const { rows } = await db.query<{ p: Json }>(
     `SELECT public._profit_close_preview_core_v2($1, $2::date, $3::uuid[],
-       jsonb_build_array(jsonb_build_object('building_id', $4::uuid, 'adjustment_amount', 0)),
+       CASE WHEN $4::uuid = ANY($3::uuid[])
+         THEN jsonb_build_array(jsonb_build_object('building_id', $4::uuid, 'adjustment_amount', 0))
+         ELSE '[]'::jsonb END,
        'shareholder_profit.view', false) AS p`,
-    [ORG, month, `{${BUILDINGS.join(',')}}`, D],
+    [ORG, month, `{${buildings.join(',')}}`, D],
   );
   return rows[0].p;
 }
 
-async function close(db: PGlite, operation: 'CLOSE' | 'RECLOSE', month: string, key: string): Promise<Json> {
+/** Chốt bằng wrapper production; `buildings` = tập GHI (NULL = theo mặc định của writer). */
+async function close(db: PGlite, operation: 'CLOSE' | 'RECLOSE', month: string, key: string,
+  buildings: string[] | null = null): Promise<Json> {
   const p = await preview(db, month);
   await db.query(`SELECT set_config('test.uid', $1, false)`, [ACTOR]);
   const { rows } = await db.query<{ r: Json }>(
-    `SELECT public._profit_write_close_v2($1, $2, $3::date, $4, $5, $6, NULL,
+    `SELECT public._profit_write_close_v2($1, $2, $3::date, $4, $5, $6, $9::uuid[],
        jsonb_build_array(jsonb_build_object('building_id', $7::uuid, 'adjustment_amount', 0,
          'unallocated_disposition', 'RETAINED_EARNINGS', 'unallocated_disposition_reason', $8::text))) AS r`,
-    [operation, ORG, month, p.source_hash, `Chot thu nghiem ${key}`, `khoa-${key}`, D, REASON_D],
+    [operation, ORG, month, p.source_hash, `Chot thu nghiem ${key}`, `khoa-${key}`, D, REASON_D,
+      buildings ? `{${buildings.join(',')}}` : null],
   );
   return rows[0].r;
 }
 
-/** Mở chốt bằng _profit_state_change_v2 thật (thân baseline = production). */
-async function unlock(db: PGlite, month: string, building: string, key: string) {
+/** Mở chốt / đặt lại bằng _profit_state_change_v2 thật (thân baseline = production). */
+async function stateChange(db: PGlite, operation: 'UNLOCK' | 'RESET', month: string, building: string, key: string) {
   await db.query(`SELECT set_config('test.uid', $1, false)`, [ACTOR]);
   await db.query(
-    `SELECT public._profit_state_change_v2('UNLOCK', $1, $2::date, $3, $4, ARRAY[$5::uuid], NULL)`,
-    [ORG, month, `Mo chot thu nghiem ${key}`, `khoa-mo-${key}`, building],
+    `SELECT public._profit_state_change_v2($6, $1, $2::date, $3, $4, ARRAY[$5::uuid], NULL)`,
+    [ORG, month, `Mo chot thu nghiem ${key}`, `khoa-mo-${key}`, building, operation],
   );
 }
+const unlock = (db: PGlite, month: string, building: string, key: string) =>
+  stateChange(db, 'UNLOCK', month, building, key);
 
 async function isCurrent(db: PGlite, month: string): Promise<Record<string, boolean>> {
   const { rows } = await db.query<{ b: string; ok: boolean }>(
@@ -318,8 +326,8 @@ async function isCurrent(db: PGlite, month: string): Promise<Record<string, bool
 }
 
 type Flags = { mismatch: boolean; stale: boolean; reason: string | null };
-async function previewFlags(db: PGlite, month: string): Promise<Record<string, Flags>> {
-  const p = await preview(db, month);
+async function previewFlags(db: PGlite, month: string, buildings: string[] = BUILDINGS): Promise<Record<string, Flags>> {
+  const p = await preview(db, month, buildings);
   return Object.fromEntries((p.buildings as Json[]).map((row) => [row.building_id as string, {
     mismatch: row.current_hash_mismatch as boolean,
     stale: row.current_is_stale as boolean,
@@ -671,6 +679,107 @@ describe('lần chốt MỚI ghi dấu v2.2', () => {
       // Mở chốt rồi đổi số ⇒ cờ preview mới báo lệch nguồn.
       await changeAmount(sau, D, AUG, 'INCOME', 1);
       expect((await previewFlags(sau, AUG))[D]).toEqual({ mismatch: true, stale: true, reason: 'SOURCE_HASH_MISMATCH' });
+    });
+  });
+
+  // P2-a: kiểm cấu trúc chỉ trên toà + toà chung quy tắc nhóm ⇒ cửa chi và preview cùng kết luận.
+  async function softDelete(building: string) {
+    await sau.query(`UPDATE public.buildings SET deleted_at = now() WHERE id = $1`, [building]);
+  }
+  const others = (gone: string) => BUILDINGS.filter((b) => b !== gone);
+
+  it('xoá mềm toà D (không chung gì) ⇒ A/B/C: cửa chi và preview cùng "khớp"', async () => {
+    await scenario([sau], async () => {
+      await softDelete(D);
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: true, [B]: true, [C]: true, [D]: false });
+      const flags = await previewFlags(sau, AUG, others(D));
+      for (const b of others(D)) expect(flags[b], b).toEqual({ mismatch: false, stale: false, reason: null });
+    });
+  });
+
+  it('xoá mềm toà B (chỉ chung quy tắc PER_BUILDING với A) ⇒ A/C/D: cửa chi và preview cùng "khớp"', async () => {
+    await scenario([sau], async () => {
+      await softDelete(B);
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: true, [B]: false, [C]: true, [D]: true });
+      const flags = await previewFlags(sau, AUG, others(B));
+      for (const b of others(B)) expect(flags[b], b).toEqual({ mismatch: false, stale: false, reason: null });
+    });
+  });
+
+  it('xoá mềm toà C (chung TOTAL_GROUP với A) ⇒ A, C lệch ở cửa chi; preview cũng báo A lệch', async () => {
+    await scenario([sau], async () => {
+      await softDelete(C);
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: false, [B]: true, [C]: false, [D]: true });
+      const flags = await previewFlags(sau, AUG, others(C));
+      expect(flags[A]).toEqual({ mismatch: true, stale: true, reason: 'SOURCE_HASH_MISMATCH' });
+      expect(flags[B].stale).toBe(false);
+      expect(flags[D].stale).toBe(false);
+    });
+  });
+
+  it('cổ đông vượt 100%: ở toà không liên quan ⇒ chỉ toà đó; ở toà chung nhóm ⇒ kéo cả nhóm', async () => {
+    await scenario([sau], async () => {
+      await sau.query(`INSERT INTO public.building_shareholders(organization_id, building_id, shareholder_id, percent)
+        VALUES ($1, $2, $3, 60)`, [ORG, D, S2]); // D: 50 + 60 > 100
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: true, [B]: true, [C]: true, [D]: false });
+    });
+    await scenario([sau], async () => {
+      await sau.query(`INSERT INTO public.building_shareholders(organization_id, building_id, shareholder_id, percent)
+        VALUES ($1, $2, $3, 10)`, [ORG, C, S1]); // C: 100 + 10 > 100
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: false, [B]: true, [C]: false, [D]: true });
+    });
+  });
+
+  // P2-b: danh sách toà của quy tắc PER_BUILDING không nằm trong dấu.
+  it('thêm toà D vào quy tắc PER_BUILDING (A, B) ⇒ A, B vẫn khớp (cửa chi + preview); D lệch', async () => {
+    await scenario([sau], async () => {
+      await sau.query(`INSERT INTO public.profit_manager_salary_buildings(salary_id, building_id, organization_id)
+        VALUES ($1, $2, $3)`, [R_TUNG_TOA, D, ORG]);
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: true, [B]: true, [C]: true, [D]: false });
+      const flags = await previewFlags(sau, AUG);
+      expect([flags[A].stale, flags[B].stale, flags[C].stale, flags[D].stale]).toEqual([false, false, false, true]);
+    });
+  });
+
+  it('thêm toà D vào quy tắc TOTAL_GROUP (A, C) ⇒ A, C, D lệch; B khớp', async () => {
+    await scenario([sau], async () => {
+      await sau.query(`INSERT INTO public.profit_manager_salary_buildings(salary_id, building_id, organization_id)
+        VALUES ($1, $2, $3)`, [R_NHOM, D, ORG]);
+      expect(await isCurrent(sau, AUG)).toEqual({ [A]: false, [B]: true, [C]: false, [D]: false });
+      const flags = await previewFlags(sau, AUG);
+      expect([flags[A].stale, flags[B].stale, flags[C].stale, flags[D].stale]).toEqual([true, false, true, true]);
+    });
+  });
+
+  it('đặt lại (RESET) rồi CLOSE một toà: dòng mới mang v2.2, hiện hành; toà khác giữ nguyên', async () => {
+    await scenario([sau], async () => {
+      const before = await sau.query<{ id: string }>(
+        `SELECT id FROM public.profit_monthly WHERE building_id = $1 AND period_month = $2::date`, [D, AUG]);
+      await stateChange(sau, 'RESET', AUG, D, 'aug-reset-d');
+      expect(Object.keys(await isCurrent(sau, AUG))).toHaveLength(3);
+      await close(sau, 'CLOSE', AUG, 'aug-close-d', [D]);
+      const after = await sau.query<{ id: string }>(
+        `SELECT id FROM public.profit_monthly WHERE building_id = $1 AND period_month = $2::date`, [D, AUG]);
+      expect(after.rows[0].id).not.toBe(before.rows[0].id);
+      expect(await algorithm(sau, AUG)).toEqual(['profit-close-v2.2']);
+      expect(await isCurrent(sau, AUG)).toEqual(all(true));
+      await renameEverything(sau);
+      expect(await isCurrent(sau, AUG)).toEqual(all(true));
+    });
+    // Tháng chốt bằng thuật toán CŨ: RESET + CLOSE toà D ⇒ D sang v2.2, A/B/C vẫn v2.1 và vẫn so như cũ.
+    await scenario([sau], async () => {
+      await stateChange(sau, 'RESET', JUL, D, 'jul-reset-d');
+      await close(sau, 'CLOSE', JUL, 'jul-close-d', [D]);
+      const { rows } = await sau.query<{ b: string; a: string }>(
+        `SELECT pm.building_id::text AS b, app_private.profit_building_source_hash_algorithm_v1(pm.id) AS a
+           FROM public.profit_monthly pm WHERE pm.period_month = $1::date ORDER BY 1`, [JUL]);
+      expect(Object.fromEntries(rows.map((r) => [r.b, r.a]))).toEqual({
+        [A]: 'profit-close-v2.1', [B]: 'profit-close-v2.1', [C]: 'profit-close-v2.1', [D]: 'profit-close-v2.2',
+      });
+      expect(await isCurrent(sau, JUL)).toEqual(all(true));
+      await sau.query(`UPDATE public.buildings SET name = 'Toa D moi' WHERE id = $1`, [D]);
+      // Dấu v2.1 của A/B/C có tên MỌI toà ⇒ lệch như trước; D (v2.2) vẫn khớp.
+      expect(await isCurrent(sau, JUL)).toEqual({ [A]: false, [B]: false, [C]: false, [D]: true });
     });
   });
 

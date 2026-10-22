@@ -902,14 +902,14 @@
       ]
     },
     "supabase/migrations/20261022172459_dau_van_tay_chot_ln_theo_so_tien.sql": {
-      "sha256": "3bea3533ed8bcc746b54d07d7b308f03e7b76bbed875371f00e02ad3cc517fcf",
+      "sha256": "bc1d62fe669212f3566db0e32b4fcca5d30c7cbf9f633bc6a6ad110dc2b5e6bf",
       "missingObjects": [
         "function:app_private.profit_building_source_hash_v2_2",
         "function:app_private.profit_building_source_hash_algorithm_v1",
         "function:app_private.current_profit_building_source_hash_v2"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (đợt rà Báo cáo LN 21/10: F19 — dấu vân tay chốt LN chỉ theo số tiền, chủ chốt áp cho lần chốt mới, dòng cũ giữ nguyên), chưa đi qua lane apply — 3 hàm app_private mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. File còn CREATE OR REPLACE thân hai hàm có sẵn (_profit_close_preview_core_v2, profit_monthly_source_is_current_v1), tiền kiểm ghim md5 thân đang chạy trên production (đọc pg_get_functiondef 22/10/2026). Đã kiểm: PGlite 30 ca chạy thân production thật (md5 đối chiếu 10 hàm) — áp hai lượt, ba ca DỪNG 55000, dòng chốt bằng thuật toán cũ cho kết quả y như thân cũ, lần chốt mới đổi tên không lệch / đổi số lệch đúng toà / chỉ nhóm TOTAL_GROUP kéo nhau; 13 đột biến đều bị bắt. TEST trong ROLLBACK (test-env:thu-sql): migration hai lượt, 30 dòng LOCKED giữ nguyên bytes và kết quả kiểm độ tươi, chốt lại thật hai tháng ⇒ mọi toà hiện hành. Sẽ áp qua lane migrate:forward khi PR được duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 22/10/2026 (đợt rà Báo cáo LN 21/10: F19 — dấu vân tay chốt LN chỉ theo số tiền, chủ chốt áp cho lần chốt mới, dòng cũ giữ nguyên), chưa đi qua lane apply — 3 hàm app_private mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. File còn CREATE OR REPLACE thân hai hàm có sẵn (_profit_close_preview_core_v2, profit_monthly_source_is_current_v1), tiền kiểm ghim md5 thân đang chạy trên production (đọc pg_get_functiondef 22/10/2026). Đã kiểm: PGlite 37 ca chạy thân production thật (md5 đối chiếu 10 hàm) — áp hai lượt, ba ca DỪNG 55000, dòng chốt bằng thuật toán cũ cho kết quả y như thân cũ, lần chốt mới đổi tên không lệch / đổi số lệch đúng toà / chỉ nhóm TOTAL_GROUP kéo nhau; 13 + 8 đột biến đều bị bắt (lượt 2 sửa theo review chéo: kiểm cấu trúc chỉ trên toà + toà chung quy tắc nhóm; building_ids của quy tắc PER_BUILDING không vào dấu). TEST trong ROLLBACK (test-env:thu-sql): migration hai lượt, 30 dòng LOCKED giữ nguyên bytes và kết quả kiểm độ tươi, chốt lại thật hai tháng ⇒ mọi toà hiện hành. Sẽ áp qua lane migrate:forward khi PR được duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "raSoatBoi": "Claude Code — dấu vân tay chốt LN theo số tiền, 22/10/2026",
       "bangChung": [
         {
