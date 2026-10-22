@@ -20,12 +20,11 @@ BEGIN
   IF NOT FOUND OR p.prosecdef OR p.provolatile<>'s' OR pg_get_userbyid(p.proowner)<>'postgres'
     OR replace(COALESCE(array_to_string(p.proconfig,','),''),'"','')<>'search_path='
     THEN RAISE EXCEPTION 'hermes_invoice_report_effective_requires_shared_function'; END IF;
-  -- R2a (20261021004841) hoặc chính bản này đang chạy.
+  -- Thân R2a 20261021004841 đang chạy (md5 production 22/10, bỏ CR) hoặc thân của file này (chạy lại) — không thân nào khác.
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('app_private.hermes_report_read_v2(text,jsonb,uuid,uuid[],boolean,boolean)');
   IF NOT FOUND OR NOT p.prosecdef OR p.provolatile<>'v' OR pg_get_userbyid(p.proowner)<>'postgres'
-    OR position('jsonb_array_elements(v_rows) r' IN p.prosrc)=0
-    OR position('app_private.hermes_pnl_pending_v1(v_from,v_to,v_pnl_buildings,v_basis=''accrual'')' IN p.prosrc)=0
-    THEN RAISE EXCEPTION 'hermes_invoice_report_effective_requires_applied_r2a_report'; END IF;
+    OR md5(replace(p.prosrc,chr(13),'')) NOT IN ('4b442856d0671c9fb96819c8c7b96828','4a4201656a9b4e923f92c737566efca9')
+    THEN RAISE EXCEPTION 'hermes_invoice_report_effective_requires_reviewed_report: %',md5(replace(p.prosrc,chr(13),'')); END IF;
 END $requires$;
 
 -- Thân 20261021004841 với một chỗ đổi: khối tổng của invoice_report stats đọc nợ thực.
@@ -267,6 +266,7 @@ BEGIN
     OR replace(replace(COALESCE(array_to_string(p.proconfig,','),''),'"',''),' ','')<>'search_path=pg_catalog,public,app_private'
     OR has_function_privilege('authenticated',reader,'EXECUTE') OR has_function_privilege('anon',reader,'EXECUTE')
     OR has_function_privilege('service_role',reader,'EXECUTE') OR has_function_privilege('hermes_store_executor',reader,'EXECUTE')
+    OR md5(replace(p.prosrc,chr(13),''))<>'4a4201656a9b4e923f92c737566efca9'
     OR position('jsonb_array_elements(v_rows) r' IN p.prosrc)=0
     OR position('app_private.hermes_pnl_pending_v1(v_from,v_to,v_pnl_buildings,v_basis=''accrual'')' IN p.prosrc)=0
     OR (length(p.prosrc)-length(replace(p.prosrc,'public.invoice_effective_outstanding_v1(ARRAY(SELECT base.id FROM base))','')))

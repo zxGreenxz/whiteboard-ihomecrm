@@ -17,10 +17,8 @@ DECLARE p record;
 BEGIN
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('app_private.hermes_report_read_v2(text,jsonb,uuid,uuid[],boolean,boolean)');
   IF NOT FOUND OR NOT p.prosecdef OR p.provolatile<>'v' OR pg_get_userbyid(p.proowner)<>'postgres'
-    OR position('jsonb_array_elements(v_rows) r' IN p.prosrc)=0
-    OR (position('public.invoice_effective_outstanding_v1(ARRAY(SELECT base.id FROM base))' IN p.prosrc)=0
-      AND position('COALESCE(sum(GREATEST(inv.remaining_amount,0)),0)' IN p.prosrc)=0)
-    THEN RAISE EXCEPTION 'hermes_invoice_report_effective_revert_unexpected'; END IF;
+    OR md5(replace(p.prosrc,chr(13),'')) NOT IN ('4a4201656a9b4e923f92c737566efca9','4b442856d0671c9fb96819c8c7b96828')
+    THEN RAISE EXCEPTION 'hermes_invoice_report_effective_revert_unexpected: %',md5(replace(p.prosrc,chr(13),'')); END IF;
 END $requires$;
 
 -- The 20261021004841 body, verbatim.
@@ -250,7 +248,7 @@ DO $assert$
 DECLARE p record;
 BEGIN
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('app_private.hermes_report_read_v2(text,jsonb,uuid,uuid[],boolean,boolean)');
-  IF position('invoice_effective_outstanding_v1' IN p.prosrc)>0 OR position('COALESCE(sum(GREATEST(inv.remaining_amount,0)),0)' IN p.prosrc)=0
+  IF md5(replace(p.prosrc,chr(13),''))<>'4b442856d0671c9fb96819c8c7b96828' OR position('invoice_effective_outstanding_v1' IN p.prosrc)>0
     THEN RAISE EXCEPTION 'hermes_invoice_report_effective_revert_not_restored'; END IF;
 END $assert$;
 COMMIT;

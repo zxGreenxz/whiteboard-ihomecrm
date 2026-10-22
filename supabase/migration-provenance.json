@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T01:09:05.720Z",
+  "generatedAt": "2026-10-22T01:51:26.930Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12613,7 +12613,7 @@
       "version": "20261021183549",
       "name": "invoice_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "846b6ce91ebd23ef2b68f52e29d8b25eb59d34602fc94e8184af0b72f134b4fd",
+      "sha256": "19865fa07bd85ecac87b4b3c978e41a71e651d009aa8240ad0c0a389da026734",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12625,7 +12625,7 @@
       "version": "20261021185540",
       "name": "hermes_receivables_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "b16cfaf1c089cfff176aa42d1d3e431e5d4c6ab41ac1bb51392fd622fe3d9430",
+      "sha256": "4963a826ea6166db734c9657aa79f88545666703397407e71a43c9307a0a3db4",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.hermes_domain_read_v2",
@@ -12637,7 +12637,7 @@
       "version": "20261021190212",
       "name": "hermes_invoice_report_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "5716023b0ca1c5bcc3d1d5147212583efb1653c1d57be01c20cc8e487d997b09",
+      "sha256": "d9d5140ce2366f6b5526ebe7bf605d80497fcd23bcde545f18ad2c90da5e0fa6",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_report_read_v2"
@@ -12648,7 +12648,7 @@
       "version": "20261021190215",
       "name": "receivable_kpis_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "9366332e331cb2603c7030fd35a755ba9abbbee978ab03a6b66aca51ce0a8907",
+      "sha256": "54d79bd81b4cf09be07853d89b49a54034275742d79163c6df0a693306b782e7",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.fa_snapshot_kpis"

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1548,
   "soFileDocBangFs": 405,
-  "tongLoiGoi": 984,
+  "tongLoiGoi": 985,
   "khongPhanLoaiDuoc": 435,
   "theoLoai": {
     "ma-nguon": {
@@ -723,6 +723,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/web-building-scope-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -1064,14 +1072,6 @@
     },
     {
       "file": "infra/hermes-broker/wave2-z-d.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/web-building-scope-sql.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2

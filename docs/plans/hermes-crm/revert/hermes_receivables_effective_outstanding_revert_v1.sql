@@ -1,15 +1,17 @@
 -- NỢ THỰC (crm_read_receivables) REVERT — chuẩn bị 22/10/2026 cạnh file forward; KHÔNG phải migration
 -- (docs/plans/hermes-crm/revert/). Trả hai hàm mà 20261021185540_hermes_receivables_effective_outstanding_v1.sql thay về ĐÚNG
--- thân trước đó: public.hermes_domain_read_v2 = bản 20261021035022 (R2c), app_private.hermes_domain_read_rows_fast_v1 = bản
+-- thân đang chạy trước đó trên production 22/10: public.hermes_domain_read_v2 = bản 20261021170452 (phạm vi toà web —
+-- KHÔNG lùi về 20261021035022, sẽ mở lại lỗ đọc vượt toà), app_private.hermes_domain_read_rows_fast_v1 = bản
 -- 20261021063452 (R2d) — tức cộng thẳng remaining_amount như trước. Chữ ký, ACL không đổi; không xoá hàm dùng chung
 -- public.invoice_effective_outstanding_v1 (web và báo cáo khác còn gọi).
 -- AN TOÀN: khuôn dòng/summary không đổi ⇒ connector nào cũng nhận.
--- THỨ TỰ: lùi file này TRƯỚC khi chạy các bản lùi cũ hơn của hai hàm này (hermes_domain_summary_largest_by_type_revert_v1.sql,
+-- THỨ TỰ: lùi file này TRƯỚC khi chạy các bản lùi cũ hơn của hai hàm này (hermes_read_web_building_scope_revert_v1.sql,
 -- hermes_domain_without_contract_latest_count_revert_v1.sql) — các bản đó không tự kiểm thân của file này.
 -- ÁP: chép vào supabase/migrations với tên `node scripts/tao-ten-migration.mjs hermes_receivables_effective_outstanding_revert_v1`
 -- cấp; ghim đường nhanh ở scripts/hermes-read-function-specs.mjs và pin forward (live → file mới, 20261021185540 →
 -- FORWARD_SUPERSEDED trong scripts/__tests__/hermes-durable-forward-fixture.mjs); lane TEST rồi production.
--- $requires$ chỉ chạy trên thân của 20261021185540; idempotent (CREATE OR REPLACE).
+-- $requires$ ghim md5: chỉ chạy trên thân của 20261021185540 hoặc thân đã lùi (chạy lại); idempotent (CREATE OR REPLACE).
+-- md5 đường nhanh là md5 pg_get_function_sqlbody đo trên production/TEST 22/10 (PostgreSQL 17.6, schema production).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
@@ -19,21 +21,21 @@ DECLARE p record;
 BEGIN
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('public.hermes_domain_read_v2(jsonb,text,jsonb)');
   IF NOT FOUND OR NOT p.prosecdef OR p.provolatile<>'v' OR pg_get_userbyid(p.proowner)<>'postgres'
-    OR (position('public.invoice_effective_outstanding_v1(ARRAY(' IN p.prosrc)=0 AND position('''remainingAmount'',invoice.remaining_amount::text' IN p.prosrc)=0)
-    THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_unexpected_v2'; END IF;
+    OR md5(replace(p.prosrc,chr(13),'')) NOT IN ('cf03a9fc85f7e4fb4b5b0b8636ee0ef9','32f362d61c2861696e56ef355372b7d4')
+    THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_unexpected_v2: %',md5(replace(p.prosrc,chr(13),'')); END IF;
   SELECT q.oid,q.prosecdef,q.provolatile,q.proowner,q.prosqlbody INTO p FROM pg_proc q JOIN pg_namespace n ON n.oid=q.pronamespace
     WHERE n.nspname='app_private' AND q.proname='hermes_domain_read_rows_fast_v1';
   IF NOT FOUND OR p.prosecdef OR p.provolatile<>'s' OR pg_get_userbyid(p.proowner)<>'postgres' OR p.prosqlbody IS NULL
-    OR position('hermes_customers_without_contract_v1' IN pg_get_function_sqlbody(p.oid))=0
-    THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_unexpected_reader'; END IF;
+    OR md5(pg_get_function_sqlbody(p.oid)) NOT IN ('3da62d56616e690fef3b03a30d4d129c','976ce7eeb92e55271b7c75c56741cfde')
+    THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_unexpected_reader: %',md5(pg_get_function_sqlbody(p.oid)); END IF;
 END $requires$;
 
--- The 20261021035022 body, verbatim.
+-- The 20261021170452 body, verbatim.
 CREATE OR REPLACE FUNCTION public.hermes_domain_read_v2(p_binding jsonb,p_domain text,p_input jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE c app_private.hermes_connections; session app_private.hermes_sessions; policy app_private.hermes_org_policies;
   member jsonb; context jsonb; state jsonb; permission text; v_source text; k text; buildings uuid[]; scopes uuid[]; enabled boolean;
-  query text; row_limit integer; cursor_id uuid; requested_building uuid; v_status text; v_from date; v_to date; rows jsonb; next_cursor uuid; v_summary jsonb;
+  query text; row_limit integer; cursor_id uuid; requested_building uuid; v_status text; v_from date; v_to date; rows jsonb; next_cursor uuid; v_summary jsonb; v_web uuid[]; v_accounts uuid[]:='{}'::uuid[];
 BEGIN
   permission:=CASE p_domain WHEN 'income_expenses' THEN 'income_expenses.view' WHEN 'receivables' THEN 'invoices.view'
     WHEN 'meter_readings' THEN 'meter_readings.view' WHEN 'deposits_held' THEN 'deposits.view'
@@ -113,6 +115,13 @@ BEGIN
     buildings:=ARRAY[requested_building];
   END IF;
   buildings:=COALESCE(buildings,'{}'::uuid[]);
+  -- Web parity (20261021170452; income_expenses only, its grant keeps the key scope): the web shows a voucher of a building in
+  -- its buildings.view set (income_expenses_select_rbac) or, in any building, of a cashbook the asker holds
+  -- (income_expenses_select_fund_member: account/change/rounding account IN accessible_account_ids()).
+  IF p_domain='income_expenses' THEN
+    v_web:=app_private.hermes_web_building_ids_v1(c.organization_id);
+    v_accounts:=COALESCE(ARRAY(SELECT public.accessible_account_ids()),'{}'::uuid[]);
+  END IF;
 
   -- Each branch: the page (cursor, LIMIT row_limit+1) and then the summary of the whole
   -- filtered set (same WHERE without cursor_id, no LIMIT).
@@ -120,13 +129,15 @@ BEGIN
     SELECT COALESCE(jsonb_agg(item ORDER BY id),'[]') INTO rows FROM (
       SELECT ie.id,jsonb_build_object('id',ie.id,'code',app_private.hermes_domain_text_v1(ie.code),'type',ie.type,
         'name',app_private.hermes_domain_text_v1(COALESCE(ie.name,'')),'buildingId',ie.building_id,
-        'buildingName',app_private.hermes_domain_text_v1(COALESCE(building.name,'')),'roomId',room.id,
-        'roomName',app_private.hermes_domain_text_v1(room.name),'voucherDate',ie.voucher_date,
+        'buildingName',CASE WHEN ie.building_id=ANY(v_web) THEN app_private.hermes_domain_text_v1(COALESCE(building.name,'')) ELSE '' END,
+        'roomId',CASE WHEN ie.building_id=ANY(v_web) THEN room.id END,
+        'roomName',CASE WHEN ie.building_id=ANY(v_web) THEN app_private.hermes_domain_text_v1(room.name) END,'voucherDate',ie.voucher_date,
         'totalAmount',COALESCE(ie.total_amount,0)::text,'approvalStatus',ie.approval_status) item
       FROM public.income_expenses ie LEFT JOIN public.rooms room ON room.id=ie.room_id AND room.organization_id=c.organization_id
         AND room.deleted_at IS NULL AND room.building_id=ie.building_id
       LEFT JOIN public.buildings building ON building.id=ie.building_id AND building.organization_id=c.organization_id
       WHERE ie.organization_id=c.organization_id AND ie.deleted_at IS NULL AND ie.building_id=ANY(buildings)
+        AND (ie.building_id=ANY(v_web) OR ie.account_id=ANY(v_accounts) OR ie.change_account_id=ANY(v_accounts) OR ie.rounding_account_id=ANY(v_accounts))
         AND ie.type IN ('INCOME','EXPENSE') AND NOT COALESCE(ie.has_restricted_item,true)
         AND ie.salary_staff_id IS NULL AND ie.shareholder_id IS NULL AND ie.profit_manager_id IS NULL
         AND (cursor_id IS NULL OR ie.id>cursor_id) AND (v_status IS NULL OR ie.approval_status=v_status)
@@ -138,6 +149,7 @@ BEGIN
         SELECT ie.id,ie.code,ie.name,ie.type,ie.approval_status,COALESCE(ie.total_amount,0) total_amount,ie.voucher_date
         FROM public.income_expenses ie
         WHERE ie.organization_id=c.organization_id AND ie.deleted_at IS NULL AND ie.building_id=ANY(buildings)
+          AND (ie.building_id=ANY(v_web) OR ie.account_id=ANY(v_accounts) OR ie.change_account_id=ANY(v_accounts) OR ie.rounding_account_id=ANY(v_accounts))
           AND ie.type IN ('INCOME','EXPENSE') AND NOT COALESCE(ie.has_restricted_item,true)
           AND ie.salary_staff_id IS NULL AND ie.shareholder_id IS NULL AND ie.profit_manager_id IS NULL
           AND (v_status IS NULL OR ie.approval_status=v_status)
@@ -397,10 +409,11 @@ DO $assert$
 DECLARE p record;
 BEGIN
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('public.hermes_domain_read_v2(jsonb,text,jsonb)');
-  IF position('invoice_effective_outstanding_v1' IN p.prosrc)>0 OR position('''remainingAmount'',invoice.remaining_amount::text' IN p.prosrc)=0
+  IF md5(replace(p.prosrc,chr(13),''))<>'32f362d61c2861696e56ef355372b7d4' OR position('invoice_effective_outstanding_v1' IN p.prosrc)>0
     THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_v2_not_restored'; END IF;
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure('app_private.hermes_domain_read_rows_fast_v1(jsonb)');
-  IF position('invoice_effective_outstanding_v1' IN pg_get_function_sqlbody(p.oid))>0
+  IF md5(pg_get_function_sqlbody(p.oid))<>'976ce7eeb92e55271b7c75c56741cfde'
+    OR position('invoice_effective_outstanding_v1' IN pg_get_function_sqlbody(p.oid))>0
     THEN RAISE EXCEPTION 'hermes_receivables_effective_revert_reader_not_restored'; END IF;
 END $assert$;
 COMMIT;

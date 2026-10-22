@@ -23,7 +23,7 @@ BEGIN
     RAISE EXCEPTION 'receivable_kpis_effective_requires_fa_snapshot_kpis';
   END IF;
   -- Chống đè bản khác: chỉ thay đúng thân 20260731070000 (md5 prosrc production 22/10) hoặc chính bản này (chạy lại).
-  IF md5(p.prosrc) NOT IN ('3fda9aa392f6fe7a078558495d0e4acb', '1393fa4367a01c727283d417a360f31a') THEN
+  IF md5(p.prosrc) NOT IN ('3fda9aa392f6fe7a078558495d0e4acb', '47a170efae29fc3bf4fef2d5b033efd6') THEN
     RAISE EXCEPTION 'receivable_kpis_effective_live_body_changed: %', md5(p.prosrc);
   END IF;
 END $requires$;
@@ -68,10 +68,10 @@ AS $function$
       AND c.status = 'ACTIVE'
     GROUP BY r.building_id
   ),
-  -- Nợ thực (20261021190215): nợ cũ đã kéo sang hoá đơn gánh còn mở chỉ đếm ở hoá đơn gánh
+  -- Nợ thực (20261021190215): nợ cũ đã kéo sang hoá đơn gánh chỉ đếm MỘT lần, ở hoá đơn phát sinh gốc
   -- (public.invoice_effective_outstanding_v1, một lời gọi cho mọi hoá đơn mở của các toà được xem).
   -- receivable_total và năm khoảng tuổi nợ cùng đọc nợ thực ⇒ tổng = Σ khoảng như trước (client kiểm).
-  -- Tuổi của phần đã kéo tính theo hạn của hoá đơn gánh (nơi sẽ thu) — ca chờ chủ chốt cách phân bổ.
+  -- Tuổi nợ theo hạn của kỳ phát sinh gốc: tiền thu vào hoá đơn gánh trả phần mới trước, nợ kéo sau cùng.
   open_inv AS MATERIALIZED (
     SELECT i.id, i.building_id, i.due_date
     FROM public.invoices i
@@ -124,7 +124,7 @@ REVOKE ALL ON FUNCTION public.fa_snapshot_kpis(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fa_snapshot_kpis(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.fa_snapshot_kpis(uuid[]) IS
-  'KPI thời điểm hiện tại × toà (Phân tích tài chính, Hiệu quả kinh doanh, Hermes fa_snapshot_kpis). receivable_total và tuổi nợ = Σ nợ thực của hoá đơn mở (invoice_effective_outstanding_v1: không đếm hai lần nợ đã kéo sang hoá đơn gánh còn mở); tuổi phần đã kéo theo hạn hoá đơn gánh.';
+  'KPI thời điểm hiện tại × toà (Phân tích tài chính, Hiệu quả kinh doanh, Hermes fa_snapshot_kpis). receivable_total và tuổi nợ = Σ nợ thực của hoá đơn mở (invoice_effective_outstanding_v1: nợ đã kéo sang hoá đơn gánh chỉ đếm một lần, ở hoá đơn phát sinh gốc); tuổi nợ theo hạn của kỳ phát sinh gốc.';
 
 DO $assert$
 DECLARE p record; sig text := 'public.fa_snapshot_kpis(uuid[])';
@@ -135,7 +135,7 @@ BEGIN
      OR NOT has_function_privilege('authenticated', sig, 'EXECUTE')
      OR has_function_privilege('anon', sig, 'EXECUTE')
      OR position('public.invoice_effective_outstanding_v1(ARRAY(SELECT oi.id FROM open_inv oi))' IN p.prosrc) = 0
-     OR md5(p.prosrc) <> '1393fa4367a01c727283d417a360f31a'
+     OR md5(p.prosrc) <> '47a170efae29fc3bf4fef2d5b033efd6'
      OR (SELECT count(*) FROM pg_proc WHERE proname = 'fa_snapshot_kpis') <> 1 THEN
     RAISE EXCEPTION 'receivable_kpis_effective_contract_violated';
   END IF;

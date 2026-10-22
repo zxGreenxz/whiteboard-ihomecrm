@@ -123,9 +123,13 @@ describe('fa_snapshot_kpis (20261021190215)', () => {
       const aging = num(r.aging_not_due) + num(r.aging_1_30) + num(r.aging_31_60) + num(r.aging_61_90) + num(r.aging_over_90);
       expect(aging).toBe(num(r.receivable_total));
     }
-    // Phần đã kéo mang hạn của hoá đơn gánh (05/10 ⇒ 1–30 ngày) — ca chờ chủ chốt cách phân bổ tuổi nợ.
-    expect(num(after[0].aging_1_30)).toBe(3_380_000);
-    expect(num(after[0].aging_over_90)).toBe(0);
+    // Tuổi nợ theo kỳ phát sinh gốc (ngày 22/10): mỗi hoá đơn của chuỗi giữ phần của nó với hạn của nó —
+    // 600.000 hạn 30/06 (> 90 ngày), 740.000 hạn 31/07 (61–90), 1.040.000 hạn 31/08 (31–60), 1.000.000 hạn 05/10 (1–30).
+    // Trước (cộng thẳng) cũng đúng các khoảng đó nhưng mỗi khoảng phồng thêm phần đã kéo sang hoá đơn sau.
+    expect([after[0].aging_not_due, after[0].aging_1_30, after[0].aging_31_60, after[0].aging_61_90, after[0].aging_over_90].map(num))
+      .toEqual([0, 1_000_000, 1_040_000, 740_000, 600_000]);
+    expect([before[0].aging_not_due, before[0].aging_1_30, before[0].aging_31_60, before[0].aging_61_90, before[0].aging_over_90].map(num))
+      .toEqual([0, 3_380_000, 2_380_000, 1_340_000, 600_000]);
   });
 
   it('hoá đơn gánh bị huỷ ⇒ nợ trở lại nguồn; lọc toà chỉ thu hẹp', async () => {

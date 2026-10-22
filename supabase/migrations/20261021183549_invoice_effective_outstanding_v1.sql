@@ -7,47 +7,58 @@
 --   remaining_amount) cho tới khi hoá đơn gánh được trả đủ — lúc đó recompute_invoice_for_id
 --   mới suy ra nguồn đã trả (20260728160000 B1; 20260915074716 H1: invoice_carried_debt_v1).
 --   Cộng thẳng remaining_amount của mọi hoá đơn mở vì thế đếm phần nợ kéo HAI lần (một lần ở
---   nguồn, một lần trong tổng của hoá đơn gánh); chuỗi kéo nhiều tầng (T5→T7→T6→T8→T9→T10)
---   nhân số lần đếm theo số tầng. Đo 22/10 (chỉ đọc): 22 hoá đơn nguồn đang được một hoá đơn
---   mở khác gánh, phần cộng trùng ≈ 23 % tổng "còn lại" cộng thẳng, nằm ở 3 toà.
+--   nguồn, một lần trong tổng của hoá đơn gánh); chuỗi kéo nhiều tầng nhân số lần đếm theo số
+--   tầng. Đo 22/10 (chỉ đọc): 22 hoá đơn nguồn đang được một hoá đơn mở khác gánh, phần cộng
+--   trùng ≈ 23 % tổng "còn lại" cộng thẳng, nằm ở 3 toà.
 --
 -- ĐỊNH NGHĨA (một hàm, mọi nơi cộng công nợ gọi chung) — cho TẬP hoá đơn S đang được cộng:
---   cạnh gánh X → C: phần tử {type:'invoice', id: X, amount: a} trong previous_debt_sources của
---     hoá đơn gánh C còn mở (APPROVED/PARTIAL_PAID/OVERDUE, deleted_at IS NULL), cùng công ty
---     với X, C tạo SAU X (created_at — mọi cạnh thật đều vậy, đo 22/10: 33/33; chặn luôn chu
---     trình), a là số dương (không phải số ⇒ 0).
---   C "nằm trong S" khi C ∈ S hoặc C bị gánh tiếp (bắc cầu) vào một hoá đơn nằm trong S — nợ
---     của C khi đó đã được đếm trong S.
---   carried_forward(X | S) = Σ a của các cạnh X → C với C nằm trong S.
---   effective_outstanding(X | S) = remaining(X) − LEAST(carried_forward, GREATEST(remaining(X), 0))
---     • chặn trên: không trừ quá dư nợ còn lại (ảnh chụp lớn hơn khi khách trả thẳng vào nguồn
---       sau khi kéo) ⇒ không âm vì phần kéo; remaining ≤ 0 ⇒ không trừ gì.
---   Σ effective_outstanding trên S = nợ của S, mỗi đồng chỉ một lần dù kéo bao nhiêu tầng.
---   • S = mọi hoá đơn mở (tổng công nợ, theo toà, theo phòng): nợ kéo tính ở hoá đơn gánh —
---     nơi sẽ thu; đây là "nợ thực" của từng hoá đơn.
---   • S là tập lọc (một kỳ, một trạng thái, một khoảng hạn): chỉ khử phần trùng NẰM TRONG tập;
---     hoá đơn gánh ngoài tập thì nợ cũ vẫn thuộc tập (nợ quá hạn vẫn là quá hạn khi hoá đơn
---     gánh chưa tới hạn; thẻ một kỳ vẫn khớp các dòng của kỳ đó).
---   • Hoá đơn gánh PAID: KHÔNG trừ lại — recompute đã cộng phần đó vào paid_amount của nguồn.
---   • Gánh CANCELLED / xoá mềm / DRAFT / PENDING_APPROVAL: không gánh ⇒ nợ ở lại nguồn.
---   • Gánh PARTIAL_PAID: nguồn = 0 (nếu gánh trong tập), gánh giữ phần chưa thu (đúng số đòi khách).
+--   Cạnh gánh X → C: phần tử {type:'invoice', id: X, amount: a} trong previous_debt_sources của hoá
+--     đơn gánh C chưa trả xong, chưa huỷ (DRAFT/PENDING_APPROVAL/APPROVED/PARTIAL_PAID/OVERDUE,
+--     deleted_at IS NULL), cùng công ty với X, C tạo SAU X (created_at — mọi cạnh thật đều vậy, đo
+--     22/10: 33/33; chặn luôn chu trình), a là số dương (cặp lặp lại: cộng a).
+--   Cạnh được đếm khi C ∈ S hoặc C bị gánh tiếp (bắc cầu) vào hoá đơn có cạnh được đếm — nợ của C
+--     khi đó đã nằm trong S.
+--   Mỗi đồng nợ tính MỘT lần trong S, ở hoá đơn PHÁT SINH GỐC (hoá đơn cũ nhất của S trên đường kéo)
+--   ⇒ tuổi nợ theo hạn của kỳ phát sinh gốc (mặc định phiên chính chọn 22/10, chờ chủ chốt):
+--   1. t(X→C): dư nợ còn lại của X (≥ 0) chia cho các hoá đơn gánh theo thứ tự tạo, mỗi cạnh tối đa a
+--      (ảnh chụp lớn hơn dư nợ khi khách trả thẳng vào nguồn sau khi kéo).
+--   2. Đi từ hoá đơn mới nhất về cũ nhất, hoá đơn gánh trả phần kéo về nguồn, tối đa phần nó còn giữ:
+--      tiền thu vào hoá đơn gánh trả phần phát sinh MỚI trước, nợ kéo trả SAU CÙNG — khớp
+--      recompute_invoice_for_id (nguồn chỉ được coi là đã trả khi hoá đơn gánh PAID). Nhiều nguồn:
+--      nguồn cũ nhất nhận trước. Nguồn NGOÀI S chỉ chuyển tiếp phần thuộc hoá đơn của S phía trước nó;
+--      phần riêng của nó ở lại hoá đơn gánh trong S.
+--   ⇒ Tổng trên S bằng đúng cách "dồn về hoá đơn gánh" (mỗi đồng chỉ chuyển giữa hai hoá đơn của S).
+--   Cột trả về (kiểu trả về đóng băng sau lần áp đầu — đủ suy CẢ hai cách tính tuổi nợ):
+--     carried_out_amount               = Σ t ra: dư nợ của hoá đơn này đã kéo sang hoá đơn gánh được đếm;
+--     carried_in_amount                = phần dư nợ của hoá đơn này đang tính ở các nguồn trong S;
+--     effective_outstanding            = nợ thực theo kỳ phát sinh gốc — MẶC ĐỊNH, mọi nơi gọi dùng cột này;
+--     effective_outstanding_at_carrier = remaining − carried_out_amount: nợ dồn về hoá đơn gánh (tuổi theo
+--                                        hạn hoá đơn gánh) — dùng nếu chủ chọn cách này, không đổi kiểu trả về.
+--   • S = mọi hoá đơn mở (tổng, theo toà, tuổi nợ): nợ thực từng hoá đơn theo kỳ phát sinh.
+--   • S là tập lọc (kỳ, trạng thái, khoảng hạn): chỉ khử phần trùng NẰM TRONG tập; hoá đơn gánh ngoài
+--     tập thì nợ cũ vẫn thuộc tập, ở hoá đơn của tập.
+--   • Gánh PAID: không phải cạnh — recompute đã cộng phần đó vào paid_amount của nguồn.
+--   • Gánh CANCELLED / xoá mềm: không gánh ⇒ nợ ở lại nguồn.
+--   • Gánh DRAFT/PENDING_APPROVAL: là cạnh (thẻ /invoices cộng cả hoá đơn nháp); chỉ có tác dụng khi
+--     hoá đơn nháp nằm trong S, nên đường đọc chỉ gồm hoá đơn mở không đổi.
+--   • remaining ≤ 0: không kéo gì từ hoá đơn đó; hoá đơn gánh âm không trả gì về nguồn.
 --   • Công ty: như invoice_carried_debt_v1 (H1.2) — chỉ hoá đơn gánh CÙNG công ty.
 --
 -- CỐ Ý KHÔNG LÀM (ca biên chờ chủ quyết — ghi trong PR):
---   • previous_debt > 0 mà KHÔNG khai nguồn (nhập tay/legacy; 1 hoá đơn mở 22/10): không suy ra
---     nguồn, nợ ở lại hoá đơn cũ. Màn lập hoá đơn (computePreviousDebt) dùng heuristic "mọi hoá
---     đơn mở cũ hơn cùng hợp đồng" — không đưa heuristic vào số tiền.
---   • Ảnh chụp lệch dư nợ nguồn (khách trả thẳng vào nguồn SAU khi kéo): hoá đơn gánh vẫn đòi đủ
---     ảnh chụp; hàm báo đúng số hệ thống sẽ đòi, không sửa tổng hoá đơn gánh.
---   • Tách tuổi nợ/kỳ phát sinh của phần kéo (phân bổ FIFO) — cần chủ chốt cách phân bổ.
+--   • previous_debt > 0 mà KHÔNG khai nguồn (nhập tay/legacy): không suy ra nguồn, phần đó là của hoá
+--     đơn gánh. Màn lập hoá đơn (computePreviousDebt) dùng heuristic — không đưa heuristic vào số tiền.
+--   • Ảnh chụp lệch dư nợ nguồn (khách trả thẳng vào nguồn SAU khi kéo): hoá đơn gánh vẫn đòi đủ ảnh
+--     chụp; phần chênh tính ở hoá đơn gánh như số hệ thống sẽ đòi.
+--   • Bên ghi không ép Σ amount của nguồn = previous_debt — chưa chặn ở writer.
 --
 -- QUYỀN (ngoại lệ có chủ ý so với "hàm chung tự chặn current_user <> authenticated")
---   SECURITY INVOKER, search_path ''. Gọi bằng JWT (authenticated): đọc invoices qua RLS của
---   người gọi — không thấy hoá đơn thì không có dòng; hoá đơn gánh không thấy thì không trừ
---   (người đó chỉ thấy nợ một lần ở nguồn). Đường đọc Hermes đang chạy là SECURITY DEFINER
---   (owner postgres) và gọi hàm này cho TẬP ID NÓ ĐÃ CẤP QUYỀN — hàm chỉ trả số của đúng các id
---   được truyền. EXECUTE chỉ authenticated (như invoice_statistics_v3).
---   Một câu; RLS tính theo tập (InitPlan), không gọi theo từng dòng; nơi gọi truyền MẢNG id.
+--   SECURITY INVOKER, search_path ''. Gọi bằng JWT (authenticated): đọc invoices qua RLS của người
+--   gọi — không thấy hoá đơn thì không có dòng; hoá đơn gánh không thấy thì không có cạnh (người đó
+--   thấy nợ một lần ở nguồn). Đường đọc Hermes là SECURITY DEFINER (owner postgres) và gọi hàm này
+--   cho TẬP ID NÓ ĐÃ CẤP QUYỀN — hàm chỉ trả số của đúng các id được truyền. EXECUTE: authenticated và
+--   service_role (get_dashboard_summary cấp cả service_role và gọi hàm này).
+--   Một câu SQL đọc cạnh cho cả tập (cạnh tách TRƯỚC từ hoá đơn gánh, rồi nối hoá đơn nguồn theo khoá
+--   chính); phần chia nợ chạy trên mảng các hoá đơn dính cạnh (O(nút + cạnh)).
 --
 -- invoice_statistics_v3 (thẻ "Phải thu" ở /invoices; Hermes chép công thức ở báo cáo hoá đơn):
 --   total_remaining = Σ GREATEST(effective_outstanding(· | tập của thẻ), 0) thay vì
@@ -62,24 +73,29 @@
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.invoice_effective_outstanding_v1(p_invoice_ids uuid[])
-RETURNS TABLE(invoice_id uuid, remaining_amount numeric, carried_forward_amount numeric, effective_outstanding numeric)
-LANGUAGE sql
+RETURNS TABLE(invoice_id uuid, remaining_amount numeric, carried_out_amount numeric, carried_in_amount numeric,
+              effective_outstanding numeric, effective_outstanding_at_carrier numeric)
+LANGUAGE plpgsql
 STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $fn$
+DECLARE
+  v_ids uuid[] := COALESCE(p_invoice_ids, '{}'::uuid[]);
+  -- Nút: hoá đơn dính cạnh được đếm, xếp (created_at, id) tăng dần — nguồn luôn đứng trước gánh.
+  n_id uuid[]; n_rem numeric[]; n_set boolean[];
+  -- Cạnh (chỉ số nút) xếp (nguồn, gánh) tăng dần; e_by_car: chỉ số cạnh xếp (gánh, nguồn) tăng dần.
+  e_src int[]; e_car int[]; e_amt numeric[]; e_by_car int[];
+  e_t numeric[]; e_cap numeric[]; e_k numeric[];
+  n_out numeric[]; n_pool numeric[]; n_back numeric[]; n_in numeric[]; n_eff numeric[]; n_first int[]; n_last int[];
+  v_n int; v_m int; v_left numeric; v_budget numeric; v_h numeric; v_i int; v_j int; v_p int;
+BEGIN
   WITH RECURSIVE src AS MATERIALIZED (
-    SELECT i.id, i.organization_id, COALESCE(i.remaining_amount, 0)::numeric AS remaining
-      FROM public.invoices i
-     WHERE i.id = ANY (COALESCE(p_invoice_ids, '{}'::uuid[]))
+    SELECT inv.id, inv.organization_id FROM public.invoices inv WHERE inv.id = ANY (v_ids)
   ),
-  links AS MATERIALIZED (
-    -- Cạnh nguồn → hoá đơn gánh còn mở, của (các) công ty có mặt trong tập.
-    SELECT x.id AS source_id, c.id AS carrier_id,
-           GREATEST(CASE
-             WHEN jsonb_typeof(e.value->'amount') = 'number' THEN (e.value->>'amount')::numeric
-             WHEN e.value->>'amount' ~ '^\s*[0-9]+(\.[0-9]+)?\s*$' THEN btrim(e.value->>'amount')::numeric
-             ELSE 0 END, 0) AS amount
+  raw AS MATERIALIZED (
+    -- Cạnh tách từ hoá đơn gánh hợp lệ của (các) công ty trong tập, CHƯA nối hoá đơn nguồn.
+    SELECT c.id AS carrier_id, c.organization_id, c.created_at, ref.id AS source_id, amt.amount
       FROM public.invoices c
      CROSS JOIN LATERAL jsonb_array_elements(
        CASE WHEN jsonb_typeof(c.previous_debt_sources) = 'array' THEN c.previous_debt_sources ELSE '[]'::jsonb END) e
@@ -87,43 +103,120 @@ AS $fn$
        WHEN jsonb_typeof(e.value) = 'object' AND e.value->>'type' = 'invoice'
         AND e.value->>'id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
        THEN (e.value->>'id')::uuid END AS id) ref
-      JOIN public.invoices x
-        ON x.id = ref.id
-       AND x.organization_id = c.organization_id
-       AND x.created_at < c.created_at
+     CROSS JOIN LATERAL (SELECT GREATEST(CASE
+       WHEN jsonb_typeof(e.value->'amount') = 'number' THEN (e.value->>'amount')::numeric
+       WHEN e.value->>'amount' ~ '^\s*[0-9]+(\.[0-9]+)?\s*$' THEN btrim(e.value->>'amount')::numeric
+       ELSE 0 END, 0) AS amount) amt
      WHERE c.deleted_at IS NULL
-       AND c.status::text IN ('APPROVED', 'PARTIAL_PAID', 'OVERDUE')
+       AND c.status::text IN ('DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'PARTIAL_PAID', 'OVERDUE')
        AND c.organization_id IN (SELECT s.organization_id FROM src s)
+       AND ref.id IS NOT NULL AND amt.amount > 0
+  ),
+  edge AS MATERIALIZED (
+    -- Nối hoá đơn nguồn theo khoá chính, rồi lọc cùng công ty và tạo trước hoá đơn gánh.
+    SELECT r.source_id, r.carrier_id, sum(r.amount) AS amount
+      FROM raw r JOIN public.invoices x ON x.id = r.source_id
+     WHERE x.organization_id = r.organization_id AND x.created_at < r.created_at
+     GROUP BY r.source_id, r.carrier_id
   ),
   covered(id) AS (
-    -- Hoá đơn mà nợ của nó đã được đếm trong tập: chính tập, rồi lùi dần theo cạnh gánh.
     SELECT s.id FROM src s
     UNION
-    SELECT l.source_id FROM links l JOIN covered cv ON cv.id = l.carrier_id
+    SELECT e.source_id FROM edge e JOIN covered cv ON cv.id = e.carrier_id
   ),
-  carried AS (
-    SELECT l.source_id, sum(l.amount) AS amount
-      FROM links l
-     WHERE l.carrier_id IN (SELECT cv.id FROM covered cv)
-     GROUP BY l.source_id
+  counted AS MATERIALIZED (
+    SELECT e.source_id, e.carrier_id, e.amount FROM edge e WHERE e.carrier_id IN (SELECT cv.id FROM covered cv)
+  ),
+  node AS MATERIALIZED (
+    SELECT inv.id, COALESCE(inv.remaining_amount, 0)::numeric AS remaining, inv.id = ANY (v_ids) AS in_set,
+           row_number() OVER (ORDER BY inv.created_at, inv.id)::int AS idx
+      FROM public.invoices inv
+     WHERE inv.id IN (SELECT k.source_id FROM counted k UNION SELECT k.carrier_id FROM counted k)
+  ),
+  numbered AS MATERIALIZED (
+    SELECT s.idx AS s_idx, c.idx AS c_idx, k.amount, row_number() OVER (ORDER BY s.idx, c.idx)::int AS pos
+      FROM counted k JOIN node s ON s.id = k.source_id JOIN node c ON c.id = k.carrier_id
   )
-  SELECT s.id,
-         s.remaining,
-         COALESCE(k.amount, 0),
-         s.remaining - LEAST(COALESCE(k.amount, 0), GREATEST(s.remaining, 0))
-    FROM src s
-    LEFT JOIN carried k ON k.source_id = s.id
+  SELECT (SELECT array_agg(n.id ORDER BY n.idx) FROM node n),
+         (SELECT array_agg(n.remaining ORDER BY n.idx) FROM node n),
+         (SELECT array_agg(n.in_set ORDER BY n.idx) FROM node n),
+         (SELECT array_agg(b.s_idx ORDER BY b.pos) FROM numbered b),
+         (SELECT array_agg(b.c_idx ORDER BY b.pos) FROM numbered b),
+         (SELECT array_agg(b.amount ORDER BY b.pos) FROM numbered b),
+         (SELECT array_agg(b.pos ORDER BY b.c_idx, b.s_idx) FROM numbered b)
+    INTO n_id, n_rem, n_set, e_src, e_car, e_amt, e_by_car;
+
+  v_n := COALESCE(cardinality(n_id), 0);
+  v_m := COALESCE(cardinality(e_src), 0);
+  IF v_m > 0 THEN
+    e_t := array_fill(0::numeric, ARRAY[v_m]); e_cap := e_t; e_k := e_t;
+    n_out := array_fill(0::numeric, ARRAY[v_n]); n_pool := n_out; n_back := n_out; n_in := n_out; n_eff := n_out;
+    n_first := array_fill(NULL::int, ARRAY[v_n]); n_last := n_first;
+    -- (1) t: dư nợ của nguồn chia cho các hoá đơn gánh theo thứ tự tạo, mỗi cạnh tối đa ảnh chụp.
+    FOR v_j IN 1..v_m LOOP
+      IF v_j = 1 OR e_src[v_j] <> e_src[v_j - 1] THEN v_left := GREATEST(n_rem[e_src[v_j]], 0); END IF;
+      e_t[v_j] := LEAST(e_amt[v_j], v_left);
+      v_left := v_left - e_t[v_j];
+      n_out[e_src[v_j]] := n_out[e_src[v_j]] + e_t[v_j];
+    END LOOP;
+    -- (2) Sức chuyển ngược của từng cạnh tới hoá đơn trong S: nguồn trong S nhận đủ t; nguồn ngoài S chỉ
+    --     chuyển tiếp tới mức các cạnh vào nó chuyển được (dùng chung cho các hoá đơn gánh của nó).
+    FOR v_j IN 1..v_m LOOP
+      IF n_set[e_src[v_j]] THEN
+        e_cap[v_j] := e_t[v_j];
+      ELSE
+        e_cap[v_j] := LEAST(e_t[v_j], n_pool[e_src[v_j]]);
+        n_pool[e_src[v_j]] := n_pool[e_src[v_j]] - e_cap[v_j];
+      END IF;
+      n_pool[e_car[v_j]] := n_pool[e_car[v_j]] + e_cap[v_j];
+    END LOOP;
+    FOR v_p IN 1..v_m LOOP
+      v_j := e_by_car[v_p];
+      IF n_first[e_car[v_j]] IS NULL THEN n_first[e_car[v_j]] := v_p; END IF;
+      n_last[e_car[v_j]] := v_p;
+    END LOOP;
+    -- (3) Từ hoá đơn mới nhất về cũ nhất: hoá đơn gánh trả phần kéo về nguồn (nguồn cũ nhất trước), tối đa
+    --     phần còn giữ; hoá đơn ngoài S chỉ chuyển tiếp đúng phần nhận về.
+    FOR v_i IN REVERSE v_n..1 LOOP
+      v_h := n_rem[v_i] - n_out[v_i] + n_back[v_i];
+      v_budget := CASE WHEN n_set[v_i] THEN GREATEST(v_h, 0) ELSE n_back[v_i] END;
+      IF n_first[v_i] IS NOT NULL THEN
+        FOR v_p IN n_first[v_i]..n_last[v_i] LOOP
+          v_j := e_by_car[v_p];
+          e_k[v_j] := LEAST(e_cap[v_j], v_budget);
+          v_budget := v_budget - e_k[v_j];
+          n_in[v_i] := n_in[v_i] + e_k[v_j];
+          n_back[e_src[v_j]] := n_back[e_src[v_j]] + e_k[v_j];
+        END LOOP;
+      END IF;
+      n_eff[v_i] := v_h - n_in[v_i];
+    END LOOP;
+  END IF;
+
+  RETURN QUERY
+  SELECT inv.id,
+         COALESCE(inv.remaining_amount, 0)::numeric,
+         COALESCE(n_out[u.idx::int], 0::numeric),
+         COALESCE(n_in[u.idx::int], 0::numeric),
+         COALESCE(n_eff[u.idx::int], COALESCE(inv.remaining_amount, 0)::numeric),
+         COALESCE(inv.remaining_amount, 0)::numeric - COALESCE(n_out[u.idx::int], 0::numeric)
+    FROM public.invoices inv
+    LEFT JOIN unnest(n_id) WITH ORDINALITY AS u(id, idx) ON u.id = inv.id
+   WHERE inv.id = ANY (v_ids);
+END
 $fn$;
 
 COMMENT ON FUNCTION public.invoice_effective_outstanding_v1(uuid[]) IS
-  'Nợ thực khi cộng tập hoá đơn p_invoice_ids: remaining_amount trừ phần đã kéo (previous_debt_sources) '
-  'sang hoá đơn gánh CÒN MỞ cùng công ty, tạo sau, mà nợ của nó cũng nằm trong tập (trực tiếp hoặc '
-  'bắc cầu); chặn trên ở dư nợ còn lại. Tập = mọi hoá đơn mở ⇒ nợ thực từng hoá đơn. Gánh PAID không '
-  'trừ (recompute đã suy vào paid_amount). INVOKER: RLS người gọi; hàm DEFINER gọi cho tập id đã cấp quyền.';
+  'Nợ thực khi cộng tập hoá đơn p_invoice_ids: phần nợ đã kéo (previous_debt_sources) sang hoá đơn gánh chưa trả '
+  'xong/chưa huỷ, cùng công ty, tạo sau, mà nợ của nó cũng nằm trong tập (trực tiếp hoặc bắc cầu) chỉ tính MỘT lần, '
+  'ở hoá đơn phát sinh gốc (effective_outstanding — tuổi nợ theo kỳ gốc; tiền thu vào hoá đơn gánh trả phần mới '
+  'trước). effective_outstanding_at_carrier = remaining − carried_out_amount: cùng tổng, dồn về hoá đơn gánh. '
+  'Gánh PAID không là cạnh (recompute đã suy vào paid_amount). INVOKER: RLS người gọi; hàm DEFINER gọi cho tập id '
+  'đã cấp quyền.';
 
 ALTER FUNCTION public.invoice_effective_outstanding_v1(uuid[]) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.invoice_effective_outstanding_v1(uuid[]) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.invoice_effective_outstanding_v1(uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.invoice_effective_outstanding_v1(uuid[]) TO authenticated, service_role;
 
 -- Chống đè bản khác của thẻ thống kê: chỉ thay đúng thân 20261017115809 (md5 prosrc production 22/10) hoặc chính bản
 -- này (chạy lại); hàm chưa có (CSDL dựng mới) thì tạo mới.
@@ -250,7 +343,7 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[]) IS
-  'Thẻ thống kê hoá đơn dùng chung — công thức get_invoice_statistics_v2 trên cùng tập hoá đơn với invoice_list_v1 (INVOKER + RLS + invoices.view thật, không theo staff_assignments). total_remaining = Σ nợ thực của tập (invoice_effective_outstanding_v1: không đếm hai lần phần đã kéo sang hoá đơn gánh còn mở cùng tập). p_building_ids chỉ thu hẹp: NULL = toàn phạm vi, ''{}'' = rỗng.';
+  'Thẻ thống kê hoá đơn dùng chung — công thức get_invoice_statistics_v2 trên cùng tập hoá đơn với invoice_list_v1 (INVOKER + RLS + invoices.view thật, không theo staff_assignments). total_remaining = Σ nợ thực của tập (invoice_effective_outstanding_v1: không đếm hai lần phần đã kéo sang hoá đơn gánh cùng tập). p_building_ids chỉ thu hẹp: NULL = toàn phạm vi, ''{}'' = rỗng.';
 
 ALTER FUNCTION public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[]) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[])
