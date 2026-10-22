@@ -172,7 +172,8 @@ const REAL = [
   [baseline, 'public.list_cashbook_closings_v1'], [baseline, 'public.get_my_share_buildings'],
   [migration('20261003152559_danh_muc_chi_bao_cao_cong_gop'), 'public.fa_type_breakdown'],
   [migration('20260626000000_fa_accrual_pnl'), 'public.fa_type_breakdown_accrual'],
-  [migration('20260731070000_current_date_to_org_today'), 'public.fa_snapshot_kpis'],
+  // Nợ thực (20261021190215): receivable_total/tuổi nợ cộng public.invoice_effective_outstanding_v1 (nạp ở finance-fixture).
+  [migration('20261021190215_receivable_kpis_effective_outstanding_v1'), 'public.fa_snapshot_kpis'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_occupancy_monthly'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_lease_events'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_invoice_collection'],

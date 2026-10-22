@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { localCluster, setup, jwt, fast, normal, normal1, live, id, ORG, USER, MEMBER, BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE,
-  CUSTOMER, INVOICE, INVOICE2, ROOM } from './crm-shared-read-sql-fixture.mjs';
+import { localCluster, setup, applyEffectiveOutstanding, withLocalFastSqlbodyMd5, jwt, fast, normal, normal1, live, id, ORG, USER, MEMBER, BUILDING, ROLE,
+  BINDING, ORG_SCOPE, BUILDING_SCOPE, CUSTOMER, INVOICE, INVOICE2, ROOM } from './crm-shared-read-sql-fixture.mjs';
 import { domainInput, domainResult } from './domain-contract.mjs';
 import { domainFastResult } from './domain-read-fast.mjs';
 
@@ -20,7 +20,9 @@ import { domainFastResult } from './domain-read-fast.mjs';
 // an expired binding count exactly as in the web resolver; (4) customers.view keeps its key scope, so the R2d withoutContract is
 // null when the contract scope (narrowed to the web) does not cover a Toàn tổ chức customer set, and a number once covered;
 // (5) $requires$ refuses a foreign body even when it carries the reviewed anchor text; (6) the prepared revert restores the
-// exact previous bodies (md5 of production 21/10) and re-opens the leak, and the forward file closes it again. Synthetic rows.
+// exact previous bodies (md5 of production 21/10) and re-opens the leak, and the forward file closes it again; (7) the later
+// effective outstanding 20261021185540, built on this v2 body, keeps the web building scope, and its own revert returns this
+// body (not the 20261021035022 one). Synthetic rows.
 export const WEB_SCOPE_PATH = 'supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql';
 const REVERT_PATH = 'docs/plans/hermes-crm/revert/hermes_read_web_building_scope_revert_v1.sql';
 const forwardSql = () => readFileSync(WEB_SCOPE_PATH, 'utf8');
@@ -300,4 +302,19 @@ test('20261021170452: Hermes building scopes never exceed the asker\'s web RLS (
   assert(leaks(reverted).includes(`tasks:${JOB_OUT}`) && leaks(reverted).includes(`expenses:${V_OUT}`), 'revert re-opens exactly the previous behaviour');
   await apply(pool, forwardSql());
   assert.deepEqual([leaks(await observe()), missing(await observe())], [[], []], 'forward again after the revert');
+
+  // (7) 20261021185540 (effective outstanding of both receivables lanes) is built on THIS v2 body: after the shared function
+  // and that file (twice) the web building scope is intact (no leak, every cashbook voucher) and v2 carries the new body; its
+  // prepared revert returns exactly the 20261021170452 body (never the 20261021035022 one), still without a leak.
+  const v2Md5 = async () => (await pool.query("SELECT md5(replace(prosrc,chr(13),'')) m FROM pg_proc WHERE oid='public.hermes_domain_read_v2(jsonb,text,jsonb)'::regprocedure")).rows[0].m;
+  const fastMd5 = await applyEffectiveOutstanding(pool);
+  assert.equal(await v2Md5(), 'cf03a9fc85f7e4fb4b5b0b8636ee0ef9', '20261021185540 replaced v2 with its reviewed body');
+  const withOutstanding = await observe();
+  assert.deepEqual([leaks(withOutstanding), missing(withOutstanding)], [[], []], 'the effective outstanding keeps the web building scope');
+  assert.deepEqual(withOutstanding.receivables.items.map(r => r.id), [INVOICE], 'receivables: still only the web building');
+  assert.deepEqual(withOutstanding.expenses.items.map(r => r.id).sort(), after.expenses.items.map(r => r.id).sort(), 'vouchers unchanged');
+  const outstandingRevert = withLocalFastSqlbodyMd5(readFileSync('docs/plans/hermes-crm/revert/hermes_receivables_effective_outstanding_revert_v1.sql', 'utf8'), fastMd5);
+  await apply(pool, outstandingRevert); await apply(pool, outstandingRevert);
+  assert.equal(await v2Md5(), '32f362d61c2861696e56ef355372b7d4', 'the effective-outstanding revert restores the 20261021170452 body');
+  assert.deepEqual([leaks(await observe()), missing(await observe())], [[], []], 'still no leak after that revert');
 });

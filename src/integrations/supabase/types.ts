@@ -25552,6 +25552,17 @@ export type Database = {
         }
         Returns: Json
       }
+      invoice_effective_outstanding_v1: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          carried_in_amount: number
+          carried_out_amount: number
+          effective_outstanding: number
+          effective_outstanding_at_carrier: number
+          invoice_id: string
+          remaining_amount: number
+        }[]
+      }
       invoice_list_core_v1: {
         Args: {
           p_adjustment_review_status?: string
