@@ -31,6 +31,7 @@ import { veAnhDanhSach } from './room-list-image.js';
 import { chuanBiAnhPhong } from './automation-room-image.js';
 import { tickHermesSchedules } from './hermes-schedule.js';
 import { INSTANCE_ID } from './lease.js';
+import { saleContentGuard } from './automation-content-guard.js';
 
 /** Nhịp chạy engine. Lịch tính theo phút nên 60s là đủ mịn. */
 export const AUTOMATION_MS = 60_000;
@@ -89,7 +90,7 @@ export function soanTinPhong(room, mau, hotline) {
     loai_phong: room.type || '',
     noi_that: room.amenities.join(', ') || room.description || '',
     tinh_trang: tinhTrang,
-    khuyen_mai: room.saleNote || '',
+    khuyen_mai: room.saleNote?.trim() || (room.status === 'pass' ? room.passSalePolicy?.trim() : '') || '',
     hotline: hotline || '',
   }).replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -100,7 +101,7 @@ export function soanTinPhong(room, mau, hotline) {
  * Chèn 1 dòng zalo_messages (pending) + 1 job zalo_send_queue hẹn giờ.
  * Trả về true nếu xếp được.
  */
-async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId }) {
+async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId, contentGuard }) {
   try {
     // One transaction reserves quota and creates both rows. Retrying the same
     // logical run after a lost response reuses its message/job, never resends it.
@@ -111,11 +112,12 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId }) {
       p_body: body || '',
       p_not_before: khiNao.toISOString(),
       p_request_key: requestKey,
+      p_content_guard: contentGuard,
       p_attachment: anh ? (Array.isArray(anh) ? anh.map(refAnh) : refAnh(anh)) : null,
     };
     const { data, error } = oneshotId
-      ? await sb.rpc('zalo_enqueue_broadcast_oneshot_v1', { p_oneshot_id: oneshotId, p_instance_id: INSTANCE_ID, ...tin })
-      : await sb.rpc('zalo_enqueue_broadcast_v1', tin);
+      ? await sb.rpc('zalo_enqueue_broadcast_oneshot_v2', { p_oneshot_id: oneshotId, p_instance_id: INSTANCE_ID, ...tin })
+      : await sb.rpc('zalo_enqueue_broadcast_v2', tin);
     if (error) throw new Error(error.message);
     if (data?.status === 'queued') return true;
     if (data?.status === 'skipped') {
@@ -154,7 +156,7 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId }) {
+async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId, contentGuard }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
   const bayGio = Date.now();
@@ -185,7 +187,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
         soBoQuaKhungGio++;
         return false;
       }
-      if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, ...content })) {
+      if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, contentGuard, ...content })) {
         soTin++; daGuiChoNguoiNay = true;
         return true;
       }
@@ -498,6 +500,7 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
 
   const ketQua = await xepLo({
     convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId,
+    contentGuard: saleContentGuard(phong, config.template),
   });
 
   const boSot = khoi.includes('room_details') ? Math.max(0, phong.rooms.length - tinPhong.length) : 0;

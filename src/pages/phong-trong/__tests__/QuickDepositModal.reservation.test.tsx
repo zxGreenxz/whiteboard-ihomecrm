@@ -76,3 +76,16 @@ it('lets the modal own one safe inline failure and retains the entered deposit',
  expect(m.options).toHaveBeenCalledWith({silent:true});expect(m.error).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();
  expect((screen.getByLabelText('Số tiền cọc') as HTMLInputElement).value).toBe('100.000');expect(screen.getByRole('alert').textContent).not.toContain('secret_table');
 });
+
+it('a withdrawn inventory permission blocks the open deposit form while preserving the entered customer and money',async()=>{
+ const done=vi.fn(),close=vi.fn();
+ const view=render(<QuickDepositModal room={room} onClose={close} onDone={done}/>);
+ fireEvent.change(screen.getByLabelText('Tên khách gợi nhớ'),{target:{value:'Chị Lan'}});
+ fireEvent.change(screen.getByLabelText('Số tiền cọc'),{target:{value:'500000'}});
+ view.rerender(<QuickDepositModal room={room} onClose={close} onDone={done} blockedReason="Phạm vi phòng đã thay đổi; tải lại để kiểm tra."/>);
+ expect(screen.getByRole('button',{name:'Lưu cọc & giữ phòng'})).toHaveProperty('disabled',true);
+ submit();expect(m.create).not.toHaveBeenCalled();expect(done).not.toHaveBeenCalled();
+ expect(screen.getByLabelText('Tên khách gợi nhớ')).toHaveProperty('value','Chị Lan');
+ expect(screen.getByLabelText('Số tiền cọc')).toHaveProperty('value','500.000');
+ expect(screen.getByRole('alert').textContent).toContain('Phạm vi phòng');
+});

@@ -7,6 +7,9 @@ import './external-group-mount.mjs';
 import { createBroker } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { ROOM_PASS_TOOLS, roomPassInput } from './room-pass-contract.mjs';
+import { SALE_ACTION_TOOLS } from './sale-action-contract.mjs';
+import { SALE_BULK_TOOLS } from './sale-bulk-contract.mjs';
+import { SALE_POLICY_TOOLS } from './sale-policy-contract.mjs';
 import * as guard from './public-text-guard.mjs';
 
 const { CONFIRM_TTL_MS, PUBLIC_TEXT_TOOLS, splitConfirmToken } = guard;
@@ -49,7 +52,14 @@ function setup(t) {
 }
 
 test('danh sách và schema: trường rào có trong schema; không còn trạng thái theo lịch sử đọc', () => {
-  assert.deepEqual(Object.keys(PUBLIC_TEXT_TOOLS), ['crm_room_pass_upsert']);
+  assert.deepEqual(Object.keys(PUBLIC_TEXT_TOOLS), ['crm_room_pass_upsert', 'crm_sale_room_patch', 'crm_sale_bulk_patch', 'crm_sale_policy_save']);
+  for (const [name, spec] of Object.entries(PUBLIC_TEXT_TOOLS)) {
+    const tool = [...ROOM_PASS_TOOLS, ...SALE_ACTION_TOOLS, ...SALE_BULK_TOOLS, ...SALE_POLICY_TOOLS].find(item => item.name === name);
+    assert(tool, name);
+    for (const field of [spec.object, 'confirmToken']) assert(Object.hasOwn(tool.inputSchema.properties, field), `${name}.${field}`);
+    const fields = spec.array ? tool.inputSchema.properties[spec.array].items.properties : tool.inputSchema.properties;
+    for (const field of spec.fields) assert(Object.hasOwn(fields, field), `${name}.${field}`);
+  }
   assert.deepEqual([...PUBLIC_TEXT_TOOLS.crm_room_pass_upsert.fields], ['customerName', 'customerPhone', 'salePolicy']);
   const tool = ROOM_PASS_TOOLS.find(value => value.name === 'crm_room_pass_upsert');
   for (const field of [...PUBLIC_TEXT_TOOLS.crm_room_pass_upsert.fields, PUBLIC_TEXT_TOOLS.crm_room_pass_upsert.object, 'confirmToken'])

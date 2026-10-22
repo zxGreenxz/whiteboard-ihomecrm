@@ -8,6 +8,10 @@ import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
+import { SALE_ACTION_TOOLS, saleActionOperation, saleActionInput, saleActionIsMutation, mayUseSaleAction } from './sale-action-contract.mjs';
+import { SALE_POLICY_TOOLS, salePolicyOperation, salePolicyInput, mayUseSalePolicy } from './sale-policy-contract.mjs';
+import { SALE_BULK_TOOLS, saleBulkOperation, saleBulkInput, mayUseSaleBulk } from './sale-bulk-contract.mjs';
+import { SALE_TOOL, saleToolInput, saleToolDefinition, saleToolListing, saleToolResult, isInternalSaleTool } from './sale-tool-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -53,7 +57,7 @@ const ROOM_TOOL = Object.freeze({
 // per broker, not at module load: external-group-mount imports this module back.
 function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-    ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+    SALE_TOOL, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
@@ -87,7 +91,7 @@ export const ERROR_STATUS = Object.freeze({
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
-  customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
+  customer_outcome_unknown: 503, expense_outcome_unknown: 503, sale_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
   // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật (quyền/nghiệp vụ) mang `reason` của danh sách đóng
   // action-reasons.mjs (dạng rejected) + `detail` = câu tĩnh của mã đó; thiếu/mơ hồ đầu vào KHÔNG là lỗi (needs_input).
   action_rejected: 400, action_outcome_unknown: 503,
@@ -95,9 +99,9 @@ export const ERROR_STATUS = Object.freeze({
 // Write uncertainty codes. Each carries the caller's stable requestId so the
 // model reconciles with the matching *_status tool instead of creating again.
 const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
-  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown',
-  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
+  'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
@@ -322,6 +326,9 @@ export function createBroker({
   tasks,
   customers,
   actions,
+  saleActions,
+  salePolicies,
+  saleBulk,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -383,7 +390,23 @@ export function createBroker({
     }
     action = actions;
   }
+  let sale;
+  if (saleActions !== undefined) {
+    if (!injectedAuthority || ['prepareSaleAction', 'finalizeSaleAction'].some(key => typeof saleActions?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_sale_action_service_required');
+    sale = Object.fromEntries(['prepareSaleAction', 'finalizeSaleAction'].map(key => [key, saleActions[key].bind(saleActions)]));
+  }
   let domain;
+  const extraSale = [
+    { port: salePolicies, methods: ['prepareSalePolicy', 'finalizeSalePolicy'], tools: SALE_POLICY_TOOLS, operation: salePolicyOperation,
+      input: salePolicyInput, mayUse: mayUseSalePolicy, mutation: op => ['save', 'cancel'].includes(op) },
+    { port: saleBulk, methods: ['prepareSaleBulk', 'finalizeSaleBulk'], tools: SALE_BULK_TOOLS, operation: saleBulkOperation,
+      input: saleBulkInput, mayUse: mayUseSaleBulk, mutation: op => op === 'patch' },
+  ].filter(value => value.port !== undefined).map(value => {
+    if (!injectedAuthority || value.methods.some(key => typeof value.port?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_sale_extension_required');
+    return { ...value, prepare: value.port[value.methods[0]].bind(value.port), finalize: value.port[value.methods[1]].bind(value.port) };
+  });
   if (domains !== undefined) {
     if (!injectedAuthority || ['prepareDomain', 'finalizeDomain'].some(key => typeof domains?.[key] !== 'function') ||
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_domain_service_required');
@@ -469,6 +492,10 @@ export function createBroker({
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
   // Shared definitions (not copies) of every tool this identity may call now.
+  const grantedSaleTools = identity => [
+    ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
+    ...extraSale.flatMap(extension => extension.tools.filter(tool => extension.mayUse(identity.effective, extension.operation(tool.name)))),
+  ];
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
     ...(mayReadRooms(identity) ? [ROOM_TOOL] : []),
@@ -476,6 +503,7 @@ export function createBroker({
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
     ...(action ? action.listed(identity.effective) : []),
+    ...(grantedSaleTools(identity).length ? [SALE_TOOL] : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
       mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
@@ -489,7 +517,7 @@ export function createBroker({
   ];
   // crm_new_request_id follows the listing itself: it exists exactly while at
   // least one granted action starts a new requestId command.
-  const mayIssueRequestId = identity => grantedTools(identity).some(startsCrmRequest);
+  const mayIssueRequestId = identity => grantedTools(identity).some(startsCrmRequest) || grantedSaleTools(identity).some(startsCrmRequest);
   if (!exactKeys(suppliedLimits, Object.keys(DEFAULT_LIMITS))) throw new TypeError('invalid_limits');
   const limits = { ...DEFAULT_LIMITS, ...suppliedLimits };
   for (const value of Object.values(limits)) {
@@ -881,15 +909,38 @@ export function createBroker({
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => {
         const tools = grantedTools(identity);
-        return { tools: [...tools, ...(tools.some(startsCrmRequest) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
+        return { tools: [...tools, ...(mayIssueRequestId(identity) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
       }, undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      const publicName = name;
       // Omitted/blank/nil-UUID placeholders of nullable fields become null per
       // the original definition; an unknown name or non-object is left as is.
       args = normalizeToolArguments(definitions.get(name), args);
       // Every tools/call carries its tool name for tool_call_timing (name only; invoke logs it only when catalogued).
-      const call = (handler, finalize, context = {}) => invoke(presentedToken, 'tools/call', handler, finalize, { ...context, tool: name });
+      const call = (handler, finalize, context = {}) => invoke(presentedToken, 'tools/call', handler, finalize, { ...context, tool: publicName });
+      // Legacy operation names are internal dispatch identifiers, never a
+      // second public transport path around the compact envelope.
+      if (isInternalSaleTool(name)) return call(() => { fail('tool_not_available'); });
+      let saleBridgeOperation;
+      if (name === SALE_TOOL.name) {
+        let request;
+        try { request = saleToolInput(args); } catch {
+          return call(identity => {
+            if (!grantedSaleTools(identity).length) fail('tool_not_available');
+            fail('invalid_request');
+          });
+        }
+        if (request.operation === 'list') return call(identity => {
+          const granted = grantedSaleTools(identity);
+          if (!granted.length) fail('tool_not_available');
+          return { content: [{ type: 'text', text: JSON.stringify(saleToolListing(granted)) }], isError: false };
+        });
+        const definition = saleToolDefinition(request.operation);
+        saleBridgeOperation = request.operation;
+        name = definition.name;
+        args = normalizeToolArguments(definition, request.input);
+      }
       // No CRM read/write and no stored state, but the same token/authority,
       // per-connection tools/call quota, audit and post-audit authority check
       // as every tool: a revoked or expired connection never receives an id.
@@ -943,6 +994,48 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId,
           resultCode: () => resultCode });
+      }
+      const saleExtension = extraSale.find(extension => extension.operation(name));
+      if (saleExtension) {
+        const operation = saleExtension.operation(name), split = splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation;
+        try { input = saleExtension.input(operation, split.args); } catch { invalid = true; }
+        return call(async (identity, signal) => {
+          if (!saleExtension.mayUse(identity.effective, operation, input)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          if (reviewed.refused) fail('confirmation_invalid');
+          if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
+          const receipt = await saleExtension.prepare(presentedToken, operation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(saleToolResult(confirmation, saleBridgeOperation)) }], isError: false };
+          const result = await saleExtension.finalize(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = saleExtension.mutation(operation); }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
+      const saleOperation = saleActionOperation(name);
+      if (sale && saleOperation) {
+        const split = splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation;
+        try { input = saleActionInput(saleOperation, split.args); } catch { invalid = true; }
+        return call(async (identity, signal) => {
+          if (!mayUseSaleAction(identity.effective, saleOperation, input)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          if (reviewed.refused) fail('confirmation_invalid');
+          if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
+          const receipt = await sale.prepareSaleAction(presentedToken, saleOperation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(saleToolResult(confirmation, saleBridgeOperation)) }], isError: false };
+          const result = await sale.finalizeSaleAction(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = saleActionIsMutation(saleOperation); }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {

@@ -8,14 +8,15 @@
 --      (TC5, TẠM tới khi chủ trả lời câu 55): phiếu con tự lập từ phiếu lặp (income_expenses.repeat_parent_id, generate_recurring_vouchers)
 --      KHÔNG tính là phiếu lập tay cho Hermes (sửa, huỷ, và duyệt ở Mốc 5).
 --  (3) app_private.hermes_expense_manual_v1(phiếu): NULL nếu bot được sửa/huỷ; không thì mã lý do: web_only (phiếu THU), system_voucher
---      (assert_manual_voucher_v1 của web từ chối, hoặc phiếu con định kỳ khi cờ (2) tắt), period_locked (phiếu trong phiên bàn giao).
+--      (assert_manual_voucher_v1 của web từ chối, hoặc phiếu con định kỳ khi cờ (2) tắt), period_locked (phiếu trong phiên bàn giao). DEFINER, search_path='' (mọi tên đủ schema).
 --  (4) app_private.hermes_expense_create_run_v1 (thay thân): lỗi của một khoản mang HINT hermes_item=<số> ⇒ bản xem trước nói khoản số mấy.
 --  (5) app_private.hermes_expense_resolve_core_v1 (thay thân): giải mã phiếu cho expense.edit/.cancel (như expense.note), tên toà/phòng/
 --      hạng mục/sổ mới của expense.edit; gợi ý hạng mục tự động không nhận hạng mục dòng tiền (c_money_flow của ie_category_suggest_v1)
 --      ⇒ hỏi lại; sổ không giữ ở lô ≥ 2 khoản nói khoản số mấy.
 --  (6) app_private.hermes_expense_write_step_v1 (thay thân): expense.edit = revise_pending_income_expense_v1, expense.cancel =
 --      cancel_income_expense_flex_v1 — ĐÚNG hàm ghi web; xem trước = chạy thử rồi lùi (phiếu đã vào sổ: "tạo bút toán đảo, KHÔNG khôi phục
---      được"); lượt 2 mở biên nhận, so basis (phiên bản phiếu) rồi ghi trong cùng khối con, lệch ⇒ state_changed không chốt.
+--      được"); lượt 2 mở biên nhận, so basis (phiên bản phiếu) rồi ghi trong cùng khối con, CAS phiên bản lệch ⇒ state_changed không chốt; lỗi khác
+--      (quyền, kỳ chốt, lỗi lập trình) ⇒ chốt rejected với lý do thật + SQLSTATE trong biên nhận. Nêu đúng toà hiện tại ⇒ giữ phòng.
 -- (4)–(6) dựng từ thân ĐANG CHẠY production (đo 22/10 bằng db:query; ghim md5 trong $requires$, thân của chính file này cũng nhận ⇒ áp lại
 -- được). Vỏ public.hermes_expense_write_v1 và hermes_expense_scope_v1 không đổi. Không ghi dữ liệu nghiệp vụ. Idempotent.
 BEGIN;
@@ -39,7 +40,7 @@ BEGIN
   FOR pin IN SELECT * FROM (VALUES
       ('app_private.hermes_expense_create_run_v1(uuid,jsonb,jsonb,text)','9932d56b97e80fa36cb9e65009663d98','b09458a449e47e8cd810341babcdc783'),
       ('app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)','59a3a8fddb6ccbdb86fd7ed323025859','cddbdbc517ac74329edbf916293c9260'),
-      ('app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','d82b120263632eb4774bf635a9a00cc9','156e1b1ebcfcf0fea8c33c7782e0182b')) v(fn,running,own) LOOP
+      ('app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','d82b120263632eb4774bf635a9a00cc9','14ebdbcd594a0fcf7a1e5105fc35053a')) v(fn,running,own) LOOP
     IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure(pin.fn)),'') NOT IN (pin.running,pin.own) THEN
       RAISE EXCEPTION 'hermes_expense_edit_cancel_body_drift: %',pin.fn; END IF;
   END LOOP;
@@ -66,7 +67,7 @@ INSERT INTO app_private.hermes_action_flags(flag,enabled,note) VALUES
 
 -- 3. Phiếu bot được sửa/huỷ.
 CREATE OR REPLACE FUNCTION app_private.hermes_expense_manual_v1(p_voucher uuid)
-RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $fn$
 DECLARE v public.income_expenses;
 BEGIN
   SELECT * INTO v FROM public.income_expenses ie WHERE ie.id=p_voucher AND ie.deleted_at IS NULL;
@@ -325,7 +326,7 @@ DECLARE
   v_items jsonb:='[]'::jsonb; v_warnings jsonb:='[]'::jsonb; f jsonb; v_item jsonb; v_today date:=(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date;
   v_total numeric:=0; v_will text; v_why text; v_voucher public.income_expenses; d jsonb; i int;
   v_hint text; v_patch jsonb; v_new_items jsonb; v_changes jsonb; v_out jsonb; v_count int; v_line record; v_shift boolean; v_posted boolean;
-  v_cashbook_name text; v_summary text;
+  v_cashbook_name text; v_summary text; v_moved boolean; v_err_state text; v_err_msg text;
 BEGIN
   IF p_action IS NULL OR p_action NOT IN ('expense.create','expense.note','expense.edit','expense.cancel') OR p_phase IS NULL OR p_phase NOT IN ('preview','auto','apply')
     OR p_request_id IS NULL OR p_params IS NULL OR jsonb_typeof(p_params)<>'object'
@@ -378,10 +379,12 @@ BEGIN
         RETURN jsonb_build_object('kind','rejected','reason','cashbook_not_held'); END IF;
       -- Tiền / hạng mục chỉ sửa qua bot khi phiếu có đúng một dòng hạng mục (phiếu của Báo chi nhanh và của Hermes); nhiều dòng ⇒ web.
       IF (p_params ? 'amount' OR v_resolved ? 'typeId') AND v_count<>1 THEN RETURN jsonb_build_object('kind','rejected','reason','web_only'); END IF;
-      -- Patch theo khoá của revise_pending_income_expense_v1. Đổi toà ⇒ phòng theo toà mới (không nêu ⇒ bỏ phòng).
+      -- Patch theo khoá của revise_pending_income_expense_v1. Nêu đúng toà hiện tại ⇒ không đổi toà, giữ phòng (review Mốc 4). Đổi toà thật ⇒
+      -- phòng theo toà mới; không nêu phòng ⇒ bỏ phòng, bản xem trước cảnh báo.
+      v_moved:=v_resolved ? 'newBuildingId' AND (v_resolved->>'newBuildingId')::uuid IS DISTINCT FROM v_voucher.building_id;
       v_patch:=jsonb_strip_nulls(jsonb_build_object('name',p_params->>'content','payer_name',p_params->>'payee','voucher_date',p_params->>'voucherDate',
-        'account_id',v_resolved->>'cashbookId','building_id',v_resolved->>'newBuildingId'));
-      IF v_resolved ? 'newBuildingId' OR v_resolved ? 'roomId' THEN v_patch:=v_patch||jsonb_build_object('room_id',v_resolved->'roomId'); END IF;
+        'account_id',v_resolved->>'cashbookId','building_id',CASE WHEN v_moved THEN v_resolved->>'newBuildingId' END));
+      IF v_moved OR v_resolved ? 'roomId' THEN v_patch:=v_patch||jsonb_build_object('room_id',v_resolved->'roomId'); END IF;
       -- Dòng hạng mục: đổi tiền (một dòng, số lượng 1) / hạng mục; kỳ một ngày trùng ngày phiếu cũ đi theo ngày phiếu mới (kỳ = ngày phiếu như lúc lập).
       v_shift:=p_params ? 'voucherDate' AND v_count=1 AND v_line.start_date=v_voucher.voucher_date AND v_line.end_date=v_voucher.voucher_date;
       v_new_items:=CASE WHEN p_params ? 'amount' OR v_resolved ? 'typeId' OR v_shift THEN jsonb_build_array(jsonb_build_object(
@@ -399,7 +402,7 @@ BEGIN
         (6,'sổ quỹ',COALESCE((SELECT a.name FROM public.accounts a WHERE a.id=v_voucher.account_id),'(chưa chọn)'),v_resolved->>'cashbookName'),
         (7,'toà',(SELECT b.name FROM public.buildings b WHERE b.id=v_voucher.building_id),v_resolved->>'newBuildingName'),
         (8,'phòng',COALESCE((SELECT r.name FROM public.rooms r WHERE r.id=v_voucher.room_id),'(không)'),
-          CASE WHEN v_resolved ? 'newBuildingId' OR v_resolved ? 'roomId' THEN COALESCE(v_resolved->>'roomName','(không)') END)) c(n,f,b,a)
+          CASE WHEN v_moved OR v_resolved ? 'roomId' THEN COALESCE(v_resolved->>'roomName','(không)') END)) c(n,f,b,a)
         WHERE c.a IS NOT NULL AND c.a IS DISTINCT FROM c.b;
       v_basis:=md5(jsonb_build_array(p_action,v_voucher.id,v_voucher.approval_version,v_voucher.posting_version,v_voucher.approval_status,
         v_voucher.posting_status,v_patch,v_new_items,p_params->>'reason')::text);
@@ -424,6 +427,9 @@ BEGIN
         IF (p_params->>'voucherDate')::date<v_today-7 THEN
           v_warnings:=v_warnings||to_jsonb(format('Ngày phiếu lùi %s ngày so với hôm nay',v_today-(p_params->>'voucherDate')::date)); END IF;
         IF (p_params->>'voucherDate')::date>v_today THEN v_warnings:=v_warnings||to_jsonb('Ngày phiếu ở tương lai'::text); END IF;
+        IF v_moved AND v_voucher.room_id IS NOT NULL AND NOT v_resolved ? 'roomId' THEN
+          v_warnings:=v_warnings||to_jsonb(left(format('Đổi toà: phiếu BỎ phòng %s (phòng của toà cũ); cần phòng ở toà mới thì nêu roomName',
+            COALESCE((SELECT r.name FROM public.rooms r WHERE r.id=v_voucher.room_id),'cũ')),300)); END IF;
         SELECT format('Sửa phiếu %s (chờ duyệt): %s.',v_voucher.code,string_agg(format('%s %s → %s',c->>'field',c->>'before',c->>'after'),'; '))
           ||COALESCE(' Lý do: '||(p_params->>'reason')||'.','') INTO v_summary FROM jsonb_array_elements(v_changes) c;
         RETURN jsonb_build_object('kind','preview','basis',v_basis,'resolved',v_resolved,'confirm','required','warnings',v_warnings,
@@ -447,13 +453,20 @@ BEGIN
         WHEN SQLSTATE 'HS001' THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed');
         WHEN OTHERS THEN
           IF SQLSTATE IN ('40P01','55P03') OR SQLERRM='hermes_action_outcome_unknown' THEN RAISE; END IF;
-          -- Lượt 1 đã chạy thử cùng hàm ghi mà qua: lỗi ở đây (CAS phiên bản, quyền/kỳ vừa đổi) nghĩa là dữ liệu đã đổi ⇒ không ghi, xem trước lại.
-          RETURN jsonb_build_object('kind','rejected','reason','state_changed');
+          -- Mốc 4b (review): chỉ lỗi do dữ liệu vừa đổi (CAS phiên bản PT409/40001 của hàm web) là state_changed, không chốt. Lỗi khác (quyền
+          -- 42501, kỳ đã chốt, hết chờ duyệt, lỗi lập trình ⇒ crm_refused) chốt rejected với lý do thật + SQLSTATE/câu lỗi trong biên nhận để có
+          -- dấu vết; khối con đã lùi cả biên nhận ⇒ mở lại rồi chốt; gọi lại cùng requestId phát lại đúng kết cục.
+          GET STACKED DIAGNOSTICS v_err_state=RETURNED_SQLSTATE,v_err_msg=MESSAGE_TEXT,v_constraint=CONSTRAINT_NAME;
+          v_why:=app_private.hermes_expense_reason_v1(v_err_state,v_err_msg,NULLIF(v_constraint,''));
+          IF v_why='state_changed' THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
+          v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v_resolved));
+          IF v_begin->>'state' IS DISTINCT FROM 'new' THEN RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409'; END IF;
+          RETURN app_private.hermes_action_receipt_finish_v1(p_binding,p_action,p_request_id,jsonb_build_object('kind','rejected','reason',v_why),
+            v_err_state,v_err_msg);
       END;
     END IF;
 
     -- expense.cancel = cancel_income_expense_flex_v1 (đúng hàm web: người lập / chủ / quyền huỷ + giữ sổ; phiếu đã vào sổ ⇒ bút toán đảo).
-    v_posted:=COALESCE(v_voucher.posting_status,'UNPOSTED')='POSTED';
     SELECT a.name INTO v_cashbook_name FROM public.accounts a WHERE a.id=v_voucher.account_id;
     v_basis:=md5(jsonb_build_array(p_action,v_voucher.id,v_voucher.approval_version,v_voucher.posting_version,v_voucher.approval_status,
       v_voucher.posting_status,p_params->>'reason')::text);
@@ -470,6 +483,8 @@ BEGIN
       END;
       -- Hàm web trả changed=false khi phiếu đã huỷ trước đó ⇒ không còn gì để huỷ.
       IF NOT COALESCE((v_out->>'changed')::boolean,false) THEN RETURN jsonb_build_object('kind','rejected','reason','not_pending'); END IF;
+      -- "Đã vào sổ" theo kết cục THẬT của lần chạy thử (hàm web viết bút toán đảo hay không), không theo cột trạng thái (review Mốc 4).
+      v_posted:=v_out->>'cancellation_kind'='CANCELLED_AFTER_POSTING';
       IF COALESCE(v_voucher.repeat_cycle,'NONE')<>'NONE' AND v_voucher.repeat_parent_id IS NULL THEN
         v_warnings:=v_warnings||to_jsonb('Phiếu lặp lại theo chu kỳ: huỷ thì các kỳ sau KHÔNG tự lập nữa'::text); END IF;
       RETURN jsonb_build_object('kind','preview','basis',v_basis,'resolved',v_resolved,'confirm','required','warnings',v_warnings,
@@ -499,8 +514,14 @@ BEGIN
       WHEN SQLSTATE 'HS001' THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed');
       WHEN OTHERS THEN
         IF SQLSTATE IN ('40P01','55P03') OR SQLERRM='hermes_action_outcome_unknown' THEN RAISE; END IF;
-        -- Lượt 1 đã chạy thử cùng hàm ghi mà qua: lỗi ở đây (CAS phiên bản, quyền/kỳ vừa đổi) nghĩa là dữ liệu đã đổi ⇒ không ghi, xem trước lại.
-        RETURN jsonb_build_object('kind','rejected','reason','state_changed');
+        -- Như sửa: chỉ CAS phiên bản ⇒ state_changed; lỗi khác chốt lý do thật + SQLSTATE vào biên nhận.
+        GET STACKED DIAGNOSTICS v_err_state=RETURNED_SQLSTATE,v_err_msg=MESSAGE_TEXT,v_constraint=CONSTRAINT_NAME;
+        v_why:=app_private.hermes_expense_reason_v1(v_err_state,v_err_msg,NULLIF(v_constraint,''));
+        IF v_why='state_changed' THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
+        v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v_resolved));
+        IF v_begin->>'state' IS DISTINCT FROM 'new' THEN RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409'; END IF;
+        RETURN app_private.hermes_action_receipt_finish_v1(p_binding,p_action,p_request_id,jsonb_build_object('kind','rejected','reason',v_why),
+          v_err_state,v_err_msg);
     END;
   END IF;
 
@@ -675,7 +696,8 @@ BEGIN
       (('expense.edit','income_expenses.edit','income_expenses.create','money','always',true),
        ('expense.cancel','income_expenses.cancel','income_expenses.create','irreversible','always',true)))<>2
     OR NOT EXISTS(SELECT 1 FROM app_private.hermes_action_flags WHERE flag='expense.recurring_child_manual')
-    OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_expense_manual_v1(uuid)'::regprocedure AND prosecdef AND provolatile='s')
+    OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_expense_manual_v1(uuid)'::regprocedure AND prosecdef AND provolatile='s'
+      AND 'search_path=""'=ANY(proconfig))
     OR has_function_privilege('authenticated','app_private.hermes_expense_manual_v1(uuid)','EXECUTE')
     OR has_table_privilege('authenticated','app_private.hermes_action_flags','SELECT')
     OR position('cancel_income_expense_flex_v1' IN (SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure))=0

@@ -239,7 +239,8 @@ const WEB4 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS approv
         RAISE EXCEPTION 'Phiếu vừa được người khác thay đổi — hãy tải lại' USING ERRCODE='40001'; END IF;
       IF p_expected_posting_version IS NOT NULL AND v.posting_version<>p_expected_posting_version THEN
         RAISE EXCEPTION 'Phiếu vừa được người khác ghi sổ — hãy tải lại' USING ERRCODE='40001'; END IF;
-      IF COALESCE(v.posting_status,'UNPOSTED')='POSTED' THEN
+      -- reject_name 'cancel-posted' giả lập phiếu mà hàm web xử như đã vào sổ dù cột trạng thái chưa theo kịp (nguồn sự thật = hàm web).
+      IF COALESCE(v.posting_status,'UNPOSTED')='POSTED' OR w.reject_name='cancel-posted' THEN
         INSERT INTO public.fixture_postings VALUES(p_voucher,'REVERSAL',v.total_amount); v_kind:='CANCELLED_AFTER_POSTING'; END IF;
       UPDATE public.income_expenses SET approval_status='CANCELLED',posting_status=CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 'REVERSED' ELSE posting_status END,
         approval_version=approval_version+1,posting_version=posting_version+CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 1 ELSE 0 END WHERE id=p_voucher;
@@ -526,12 +527,31 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       const frozen = await trace4();
       assert.deepEqual(await step('expense.edit', rid(62), next, stale), { kind: 'rejected', reason: 'state_changed' });
       assert.deepEqual(await trace4(), frozen);
-      // Hàm web từ chối ở lượt 2 (kỳ vừa chốt) ⇒ state_changed, không chốt biên nhận; xem trước lại thấy đúng lý do.
-      const fresh = await run('expense.edit', 'preview', rid(63), next);
-      await db.query("UPDATE public.fixture_writer SET rejected_message='[PROFIT_LOCKED] tháng đã chốt',reject_name='revise'");
-      assert.deepEqual(await step('expense.edit', rid(63), next, fresh), { kind: 'rejected', reason: 'state_changed' });
-      assert.deepEqual(await trace4(), frozen);
-      assert.deepEqual(await run('expense.edit', 'preview', rid(64), next), { kind: 'rejected', reason: 'period_locked' });
+      // Mốc 4b (review): hàm web từ chối ở lượt 2 vì lý do KHÁC dữ liệu đổi ⇒ chốt rejected với lý do thật + SQLSTATE trong biên nhận (có
+      // dấu vết, phát lại y nguyên); không sửa gì. Chỉ CAS phiên bản (PT409/40001) mới là state_changed không chốt.
+      const receipt = async requestId => (await db.query('SELECT state,sqlstate FROM app_private.hermes_action_receipts WHERE request_id=$1', [requestId])).rows;
+      for (const [n, message, state, reason] of [[63, '[PROFIT_LOCKED] tháng đã chốt', 'P0001', 'period_locked'],
+        [64, 'column "x" does not exist', '42703', 'crm_refused']]) {
+        const fresh = await run('expense.edit', 'preview', rid(n), next);
+        await db.query("UPDATE public.fixture_writer SET rejected_message=$1,reject_state=$2,reject_name='revise'", [message, state]);
+        const final = await step('expense.edit', rid(n), next, fresh);
+        assert.deepEqual(final, { kind: 'rejected', reason }, message);
+        assert.deepEqual(await receipt(rid(n)), [{ state: 'rejected', sqlstate: state }]);
+        assert.deepEqual(await step('expense.edit', rid(n), next, fresh), final, 'phát lại y nguyên');
+        await db.query('UPDATE public.fixture_writer SET rejected_message=NULL,reject_state=NULL,reject_name=NULL');
+      }
+      assert.equal((await row(id)).name, 'mua bóng đèn', 'không sửa gì');
+      // CAS của hàm web (PT409) ở lượt 2 ⇒ state_changed, không chốt biên nhận.
+      const cas = await run('expense.edit', 'preview', rid(65), next);
+      await db.query("UPDATE public.fixture_writer SET rejected_message='Phiếu vừa được người khác sửa — tải lại để xem thay đổi.',reject_state='PT409',reject_name='revise'");
+      assert.deepEqual(await step('expense.edit', rid(65), next, cas), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await receipt(rid(65)), []);
+      await db.query('UPDATE public.fixture_writer SET rejected_message=NULL,reject_state=NULL,reject_name=NULL');
+      // Mất quyền sau bản xem trước (phiếu thành của người khác, không có quyền sửa) ⇒ not_allowed, chốt 42501.
+      const lost = await run('expense.edit', 'preview', rid(66), next);
+      await db.query('UPDATE public.income_expenses SET user_id=$1 WHERE id=$2', [STRANGER, id]);
+      assert.deepEqual(await step('expense.edit', rid(66), next, lost), { kind: 'rejected', reason: 'not_allowed' });
+      assert.deepEqual(await receipt(rid(66)), [{ state: 'rejected', sqlstate: '42501' }]);
     });
   });
 
@@ -567,6 +587,17 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
         assert.deepEqual(await run('expense.edit', 'apply', rid(72), { voucherCode: 'PC2610504', content: 'hai món' }, { resolved: { ...p.resolved, ...forged }, basis: p.basis }),
           { kind: 'rejected', reason }, JSON.stringify(forged));
       assert.deepEqual(await trace4(), frozen);
+      // Mốc 4b (review): nêu đúng toà hiện tại (không nêu phòng) ⇒ không đổi toà, GIỮ phòng.
+      const same = { voucherCode: 'PC2610502', buildingName: 'toà a', payee: 'thợ điện' };
+      const kept = await run('expense.edit', 'preview', rid(73), same);
+      assert.deepEqual([kept.preview.changes, kept.warnings], [[{ field: 'người nhận', before: '(trống)', after: 'thợ điện' }], []]);
+      assert.equal((await step('expense.edit', rid(73), same, kept)).kind, 'applied');
+      assert.equal((await row(id)).room_id, ROOM, 'phòng giữ nguyên');
+      // Đổi toà thật (toà B trong phạm vi khoá sửa) mà không nêu phòng ⇒ bỏ phòng, bản xem trước cảnh báo rõ.
+      await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
+      const moved = await run('expense.edit', 'preview', rid(74), { voucherCode: 'PC2610502', buildingName: 'Toà B', reason: 'ghi nhầm toà' });
+      assert.deepEqual(moved.preview.changes, [{ field: 'toà', before: 'Toà A', after: 'Toà B' }, { field: 'phòng', before: 'P101', after: '(không)' }]);
+      assert.deepEqual(moved.warnings, ['Đổi toà: phiếu BỎ phòng P101 (phòng của toà cũ); cần phòng ở toà mới thì nêu roomName']);
     });
   });
 
@@ -596,7 +627,19 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       await voucher('PC2610513', { user: STRANGER });
       assert.deepEqual(await run('expense.cancel', 'preview', rid(78), { voucherCode: 'PC2610513', reason: 'lập trùng phiếu' }), { kind: 'rejected', reason: 'not_allowed' });
       await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('income_expenses.cancel',$1)", [[BUILDING]]);
-      assert.equal((await run('expense.cancel', 'preview', rid(79), { voucherCode: 'PC2610513', reason: 'lập trùng phiếu' })).kind, 'preview');
+      const others = { voucherCode: 'PC2610513', reason: 'lập trùng phiếu' };
+      const allowed = await run('expense.cancel', 'preview', rid(79), others);
+      assert.equal(allowed.kind, 'preview');
+      // Mốc 4b (review): mất quyền huỷ sau bản xem trước ⇒ lượt 2 chốt not_allowed (SQLSTATE 42501 trong biên nhận), không phải state_changed.
+      await db.query("DELETE FROM public.fixture_acl WHERE permission='income_expenses.cancel'");
+      assert.deepEqual(await step('expense.cancel', rid(79), others, allowed), { kind: 'rejected', reason: 'not_allowed' });
+      assert.deepEqual((await db.query('SELECT state,sqlstate FROM app_private.hermes_action_receipts WHERE request_id=$1', [rid(79)])).rows,
+        [{ state: 'rejected', sqlstate: '42501' }]);
+      // "Đã vào sổ" theo kết cục THẬT của lần chạy thử (hàm web viết bút toán đảo), không theo cột trạng thái của phiếu.
+      await voucher('PC2610514');
+      await db.query("UPDATE public.fixture_writer SET reject_name='cancel-posted'");
+      assert.match((await run('expense.cancel', 'preview', rid(81), { voucherCode: 'PC2610514', reason: 'lập trùng phiếu' })).preview.willBe, /^ĐÃ VÀO SỔ /);
+      await db.query('UPDATE public.fixture_writer SET reject_name=NULL');
       // Ghi sổ xen giữa hai lượt (phiên bản sổ tăng) ⇒ state_changed, không huỷ.
       const p = await run('expense.cancel', 'preview', rid(80), { voucherCode: 'PC2610512', reason: 'không mua nữa' });
       await db.query("UPDATE public.income_expenses SET posting_version=posting_version+1 WHERE code='PC2610512'");

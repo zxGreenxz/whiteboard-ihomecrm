@@ -15,6 +15,7 @@ import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
+import { SALE_TOOL } from './sale-tool-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { READ_QUERY_HINTS, READ_NAMES, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT, BUILDING_NAME_HINT, ROOM_NAME_HINT, domainOperation } from './domain-contract.mjs';
@@ -23,7 +24,7 @@ import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 const NIL = '00000000-0000-0000-0000-000000000000';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const ALL = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS,
-  ...CUSTOMER_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL];
+  ...CUSTOMER_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL, SALE_TOOL];
 const tool = name => ALL.find(value => value.name === name);
 const nullable = property => Array.isArray(property?.type) && property.type.includes('null');
 const requiredNullable = value => (value.inputSchema.required ?? []).filter(key => nullable(value.inputSchema.properties?.[key]));

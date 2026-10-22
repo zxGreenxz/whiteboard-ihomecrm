@@ -12,6 +12,23 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it('recomputes routing after source/test patterns and ownership change in the same manifest object', () => {
+    const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json', import.meta.url), 'utf8'));
+    const path = 'src/lib/pattern-cache-fixture.ts';
+    const files = ['src/lib/__tests__/pattern-cache-one.test.ts', 'src/lib/__tests__/pattern-cache-two.test.ts'];
+    const rule = { id: 'mutable-fixture', suiteId: 'app-unit', sourcePaths: [path], testPatterns: [files[0]] };
+    matrix.sourceSelectionRules.push(rule);
+    const select = () => plan([changed(path, 'before', 'after')], { testMatrix: matrix, testFiles: files });
+    const selected = () => select().suiteSelections.find(suite => suite.id === 'app-unit')?.files ?? [];
+    expect(selected()).toEqual([files[0]]);
+    rule.testPatterns[0] = files[1];
+    expect(selected()).toEqual([files[1]]);
+    matrix.suites.find(suite => suite.id === 'app-unit').excludes.push(files[1]);
+    expect(selected()).toEqual([]);
+    expect(select().unavailable).toContainEqual(expect.objectContaining({ suiteId: 'app-unit' }));
+    rule.sourcePaths[0] = 'src/lib/different-fixture.ts';
+    expect(select().fullFallback).toBe(true);
+  });
   it('requires Android build/native evidence and keeps bank inbox browser fixtures bounded', () => {
     const android = plan([changed('extensions/sms-webhook/android/app/src/main/java/vn/ihome/smsgateway/GatewayWork.java', 'before', 'after')]);
     expect(android.requiredExternalWorkflows).toContainEqual(expect.objectContaining({

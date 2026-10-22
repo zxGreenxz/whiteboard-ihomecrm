@@ -1,0 +1,14 @@
+{
+  "fixtureOrganization": "8c6e591e-7f66-4e06-8627-70c2908b59ec",
+  "scope": "Synthetic local PostgreSQL; real auth/canonical create and post writer; finalized evidence metadata fixture, no Storage upload; no imported money/posting rows.",
+  "results": [
+    {
+      "name": "PG-M08 scoped Sale report → custodian canonical posting → actual received; exact retry adds no money",
+      "status": "passed",
+      "voucherId": "f0072708-ec8f-43e5-811a-74f07e1606ec",
+      "reservationId": "d61643db-07a3-4392-a757-dc5355d18700",
+      "postingId": "93e9a43d-127f-405e-b46e-07d573ee86bd",
+      "receivedAmount": 500000
+    }
+  ]
+}
