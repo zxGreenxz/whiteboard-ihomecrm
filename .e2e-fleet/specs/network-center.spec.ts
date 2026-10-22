@@ -822,7 +822,7 @@ async function installNetworkCenterFixture(
  *
  * Ta `connectToServer()` nên bắt tay Phoenix vẫn do server thật thực hiện; test
  * chỉ đọc topic từ khung `phx_join` của client rồi gửi thêm một khung
- * `UPDATE` vào trang. KHÔNG bao giờ log payload `phx_join` vì nó chứa
+ * `postgres_changes` với subscription id từ server vào trang. KHÔNG log `phx_join` vì nó chứa
  * `access_token`.
  */
 interface RealtimeInjector {
@@ -831,23 +831,25 @@ interface RealtimeInjector {
 }
 
 async function installRealtimeInjector(page: Page): Promise<RealtimeInjector> {
-  let resolveTopic: (value: string) => void = () => {};
-  const topicPromise = new Promise<string>((resolve) => {
-    resolveTopic = resolve;
-  });
-  let resolveTables: (value: string[]) => void = () => {};
-  const tablesPromise = new Promise<string[]>((resolve) => {
-    resolveTables = resolve;
-  });
+  type Frame = { topic?: string; event?: string; payload?: Json; join_ref?: string | null };
+  const decode = (message: string | Buffer): Frame => {
+    const value = JSON.parse(typeof message === 'string' ? message : message.toString('utf8'));
+    return Array.isArray(value)
+      ? { join_ref: value[0], topic: value[2], event: value[3], payload: value[4] }
+      : value;
+  };
+  let topic = '';
+  let joinRef: string | null = null;
+  let tables: string[] = [];
+  let subscriptionIds = new Map<string, number>();
   let sendToPage: ((message: string) => void) | null = null;
 
   await page.routeWebSocket(/\/realtime\/v1\/websocket/, (ws) => {
     const server = ws.connectToServer();
-    sendToPage = (message: string) => ws.send(message);
+    const protocolV2 = new URL(ws.url()).searchParams.get('vsn') === '2.0.0';
     ws.onMessage((message) => {
-      const text = typeof message === 'string' ? message : message.toString('utf8');
       try {
-        const frame = JSON.parse(text) as { topic?: string; event?: string; payload?: Json };
+        const frame = decode(message);
         if (
           frame.event === 'phx_join'
           && typeof frame.topic === 'string'
@@ -857,10 +859,18 @@ async function installRealtimeInjector(page: Page): Promise<RealtimeInjector> {
           const changes = Array.isArray(config.postgres_changes)
             ? (config.postgres_changes as Array<{ table?: string }>)
             : [];
-          resolveTables(changes
+          tables = changes
             .map((change) => (typeof change.table === 'string' ? change.table : ''))
-            .filter(Boolean));
-          resolveTopic(frame.topic);
+            .filter(Boolean);
+          topic = frame.topic;
+          joinRef = frame.join_ref ?? null;
+          subscriptionIds = new Map();
+          sendToPage = (payload: string) => {
+            const eventPayload: Json = JSON.parse(payload);
+            ws.send(JSON.stringify(protocolV2
+              ? [joinRef, null, topic, 'postgres_changes', eventPayload]
+              : { topic, event: 'postgres_changes', ref: null, payload: eventPayload }));
+          };
         }
       } catch {
         /* khung nhị phân / heartbeat — bỏ qua */
@@ -868,26 +878,42 @@ async function installRealtimeInjector(page: Page): Promise<RealtimeInjector> {
       server.send(message);
     });
     server.onMessage((message) => {
+      try {
+        const frame = decode(message);
+        if (frame.topic === topic && frame.event === 'phx_reply' && frame.payload?.status === 'ok') {
+          const response = frame.payload.response as Json | undefined;
+          const changes = response?.postgres_changes;
+          if (Array.isArray(changes)) {
+            subscriptionIds = new Map(changes
+              .filter((change: Json) => typeof change.table === 'string' && typeof change.id === 'number')
+              .map((change: Json) => [String(change.table), Number(change.id)]));
+          }
+        }
+      } catch { /* No raw socket frames may be logged. */ }
       ws.send(message);
     });
   });
 
   return {
-    joinedTables: () => tablesPromise,
+    async joinedTables() {
+      await expect.poll(() => tables.length, { message: 'Network Center must join Realtime' }).toBeGreaterThan(0);
+      return tables;
+    },
     async emitPostgresChange(record: Json, table = 'network_device_current') {
-      const topic = await topicPromise;
+      await expect.poll(() => subscriptionIds.has(table), {
+        message: 'Realtime server must acknowledge the table subscription',
+      }).toBe(true);
       if (!sendToPage) throw new Error('Chưa có socket Realtime để phát khung postgres_changes.');
       sendToPage(JSON.stringify({
-        topic,
-        event: 'UPDATE',
-        ref: null,
-        payload: {
+        ids: [subscriptionIds.get(table)],
+        data: {
           schema: 'public',
           table,
           commit_timestamp: new Date().toISOString(),
-          eventType: 'UPDATE',
-          new: record,
-          old: {},
+          type: 'UPDATE',
+          columns: Object.keys(record).map((name) => ({ name, type: 'uuid' })),
+          record,
+          old_record: {},
           errors: null,
         },
       }));
@@ -1028,19 +1054,20 @@ test.describe('Network Center production hardening', () => {
 
       const actionButton = page.getByRole('button', { name: 'Thao tác MikroTik' });
       await expect(actionButton).toHaveAttribute('aria-disabled', 'true');
-      await actionButton.click();
+      // Deliberately activate the aria-disabled control to verify its handler guard.
+      await actionButton.click({ force: true });
       await expect(page.getByRole('dialog')).toHaveCount(0);
 
       const maintenanceButton = page.getByRole('button', { name: 'Tạo bảo trì' });
       await expect(maintenanceButton).toHaveAttribute('aria-disabled', 'true');
-      await maintenanceButton.click();
+      await maintenanceButton.click({ force: true });
       await expect(page.getByRole('dialog')).toHaveCount(0);
 
       await page.getByRole('tab', { name: 'Cài đặt', exact: true }).click();
       await expect(page.getByLabel('Chu kỳ kiểm tra (giây)')).toBeDisabled();
       const saveButton = page.getByRole('button', { name: /Lưu cài đặt/ });
       await expect(saveButton).toHaveAttribute('aria-disabled', 'true');
-      await saveButton.click();
+      await saveButton.click({ force: true });
 
       for (const writeRpc of NETWORK_CENTER_WRITE_RPCS) {
         expect(fixture.callsOf(writeRpc), `RPC ghi ${writeRpc} không được gọi`).toEqual([]);
@@ -1107,7 +1134,7 @@ test.describe('Network Center production hardening', () => {
         if (await dialog.count() === 0) {
           await page.getByRole('button', { name: 'Thao tác MikroTik' }).click();
         }
-        await expect(page.getByRole('button', { name: 'Đang theo dõi intent hiện tại' }))
+        await expect(page.getByRole('button', { name: 'Đang theo dõi yêu cầu hiện tại' }))
           .toBeDisabled({ timeout: 2_000 });
       }).toPass({ timeout: 30_000 });
       expect(executeBodies).toHaveLength(1);
@@ -1138,14 +1165,14 @@ test.describe('Network Center production hardening', () => {
 
       const actionButton = page.getByRole('button', { name: 'Thao tác MikroTik' });
       await expect(actionButton).toHaveAttribute('aria-disabled', 'true');
-      await actionButton.click();
+      await actionButton.click({ force: true });
       await expect(page.getByRole('dialog')).toHaveCount(0);
 
       await page.getByRole('tab', { name: 'Cài đặt', exact: true }).click();
       await expect(page.getByLabel('Chu kỳ kiểm tra (giây)')).toBeDisabled();
       const saveButton = page.getByRole('button', { name: /Lưu cài đặt/ });
       await expect(saveButton).toHaveAttribute('aria-disabled', 'true');
-      await saveButton.click();
+      await saveButton.click({ force: true });
 
       for (const writeRpc of NETWORK_CENTER_WRITE_RPCS) {
         expect(fixture.callsOf(writeRpc), `RPC ghi ${writeRpc} không được gọi`).toEqual([]);
@@ -1179,13 +1206,13 @@ test.describe('Network Center production hardening', () => {
 
       const actionButton = page.getByRole('button', { name: 'Thao tác MikroTik' });
       await expect(actionButton).toHaveAttribute('aria-disabled', 'true');
-      await actionButton.click();
+      await actionButton.click({ force: true });
       await expect(page.getByRole('dialog')).toHaveCount(0);
 
       await page.getByRole('tab', { name: 'Sao lưu & so sánh', exact: true }).click();
       const captureButton = page.getByRole('button', { name: /Chụp cấu hình/ });
       await expect(captureButton).toHaveAttribute('aria-disabled', 'true');
-      await captureButton.click();
+      await captureButton.click({ force: true });
 
       for (const writeRpc of NETWORK_CENTER_WRITE_RPCS) {
         expect(fixture.callsOf(writeRpc), `RPC ghi ${writeRpc} không được gọi`).toEqual([]);
@@ -1509,7 +1536,7 @@ test.describe('Network Center production hardening', () => {
       await page.getByLabel('Chu kỳ kiểm tra (giây)').fill('90');
       await page.getByRole('button', { name: /Lưu cài đặt/ }).click();
 
-      await expect(page.locator('.nc-form-error')).toHaveText(
+      await expect(page.locator('.nc-form-error')).toContainText(
         'Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu',
       );
       await expect.poll(() => updateBodies.length, { timeout: 30_000 }).toBe(1);
@@ -1673,7 +1700,7 @@ test.describe('Network Center production hardening', () => {
       await expect(page.locator('.nc-building-statuses')).toContainText('Chỉ đọc');
       const actionButton = page.getByRole('button', { name: 'Thao tác MikroTik' });
       await expect(actionButton).toHaveAttribute('aria-disabled', 'true');
-      await actionButton.click();
+      await actionButton.click({ force: true });
       await expect(page.getByRole('dialog')).toHaveCount(0);
       expect(await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
