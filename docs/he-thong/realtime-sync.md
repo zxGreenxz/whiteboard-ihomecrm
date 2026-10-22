@@ -38,9 +38,19 @@ refetch qua query/RPC đã kiểm quyền. Event không phải ranh giới phân
 
 ## 2. Điều kiện phía database
 
-Bảng phải nằm trong publication `supabase_realtime`. Subscribe một bảng **không** được publish thì
-`subscribe()` vẫn trả SUBSCRIBED, không lỗi, không log — giao diện chỉ lặng lẽ ngừng tự cập nhật. Vì vậy:
+Bảng phải nằm trong publication `supabase_realtime`. **Thiếu MỘT bảng thì CẢ KÊNH mất
+postgres_changes**: Realtime tạo subscription của mọi binding trong kênh bằng MỘT transaction, bảng vắng
+làm transaction rollback, nên mọi bảng khác của kênh (kể cả bảng đã publish) cũng không có event.
+`subscribe()` vẫn trả SUBSCRIBED; dấu vết duy nhất là thông điệp `system`
+`{status:'error', extension:'postgres_changes'}` (đo trên TEST 22/10/2026, RT-CLIENT-1). Hub là một kênh
+19 binding ⇒ một bảng lệch là cả hub im. Từ 22/10 [subscribeResilient](../../src/lib/realtime/subscribeResilient.ts)
+nghe `system`: lỗi ⇒ `console.warn` + kênh `interrupted` (dải cảnh báo hiện sau 10 s), `system` 'ok' sau đó ⇒
+`connected` + bắt kịp. Vì vậy:
 
+- **Luật phát hành: ADD bảng vào publication TRƯỚC client, DROP SAU client.** ADD áp trước khi promote
+  client mới nghe bảng đó (client cũ không nghe nên an toàn). DROP là migration riêng, chỉ áp SAU khi
+  promote client thôi nghe bảng **và** các tab/PWA cũ đã tải lại — client cũ còn nghe bảng đã DROP thì
+  join lại kênh (đổi toà, mạng chập, F5) là mất toàn bộ realtime của kênh đó.
 - `check-realtime-descriptors` (cần PAT) đối chiếu `REALTIME_SYNC_TABLES` với publication production;
 - `check-realtime-surface` giữ toàn cảnh: ai nghe bảng nào, bảng publish mà không ai nghe, REPLICA
   IDENTITY từng bảng. Sinh lại bằng `node scripts/generate-realtime-surface.mjs` **sau khi** migration
@@ -48,9 +58,12 @@ Bảng phải nằm trong publication `supabase_realtime`. Subscribe một bản
 
 Thay đổi 21/10/2026 ([20261021170902_realtime_publication_toi_uu.sql](../../supabase/migrations/20261021170902_realtime_publication_toi_uu.sql)):
 
-- **Bỏ** `network_worker_building_status`: heartbeat ghi ~6.300 lần/ngày, không màn/RPC nào đọc, mỗi
-  nhịp làm tab NC gọi lại ~21 RPC.
-- **Thêm** `meter_readings`, `meters`: có policy SELECT theo phạm vi toà cho người xem màn Chỉ số.
+- **Client mới thôi nghe** `network_worker_building_status` (heartbeat ghi ~6.300 lần/ngày, không màn/RPC
+  nào đọc, mỗi nhịp làm tab NC gọi lại ~21 RPC), nhưng bảng **VẪN để trong publication** tới khi client mới
+  được promote và tab NC cũ đã tải lại — migration 21/10 bỏ lệnh DROP (review RT-CLIENT-1). Gỡ khỏi
+  publication là một migration riêng sau promote; tới lúc đó chi phí chỉ là ~6.300 lượt giải mã WAL/ngày.
+- **Thêm** `meter_readings`, `meters`: có policy SELECT theo phạm vi toà cho người xem màn Chỉ số. Phải áp
+  TRƯỚC khi promote client mới (hub mới nghe hai bảng này; áp sau thì cả hub im tới lúc áp).
 - **Không thêm** `approval_requests` / `approval_request_steps`: chỉ có policy RESTRICTIVE, không có
   policy SELECT cho phép nào ⇒ Realtime (chỉ giao event cho dòng người nghe SELECT được) sẽ không giao
   cho ai. Hộp duyệt bù bằng poll 60 s + focus (§8).
@@ -105,13 +118,20 @@ Hợp đồng [subscribeResilient](../../src/lib/realtime/subscribeResilient.ts)
 
 | Tình huống | Hành vi |
 |---|---|
-| SUBSCRIBED lần đầu | không làm gì (dữ liệu vừa tải là mới) |
-| SUBSCRIBED sau CHANNEL_ERROR / TIMED_OUT / CLOSED | `onResync()` một lần |
-| Tab ẩn ≥ 60 s rồi hiện lại, hoặc window `online` | `onResync()` |
-| Nhiều nguồn bắn cùng lúc | giãn cách 10 s/kênh chống dồn |
-| CLOSED ngoài ý muốn (server `phx_close`, binding lệch) | dựng lại kênh, backoff 1→2→5→10→30 s, topic thêm hậu tố `:r<n>` (bắt buộc: `channel()` trả lại kênh cũ trùng topic đang leave ⇒ subscribe no-op, kênh chết im) |
+| SUBSCRIBED mà trước đó không có lỗi nào (join đầu suôn sẻ, SUBSCRIBED lặp) | không làm gì (dữ liệu vừa tải là mới) |
+| SUBSCRIBED sau CHANNEL_ERROR / TIMED_OUT / CLOSED — **kể cả lỗi trước lần SUBSCRIBED đầu** | `onResync()` một lần (điều kiện là `needResync`, không phải "đã từng SUBSCRIBED" — RT-CLIENT-4) |
+| Tab ẩn ≥ 60 s rồi hiện lại, hoặc window `online` (sau lần SUBSCRIBED đầu) | `onResync()` |
+| Nhiều nguồn bắn cùng lúc | giãn cách 10 s/kênh chống dồn; lượt bắt kịp **sau gián đoạn** bị giãn cách chặn thì **hoãn** tới `lastResyncAt + 10 s` (một timer trailing, huỷ khi dọn hoặc khi đã có lượt khác chạy) — không vứt (RT-CLIENT-3) |
+| `system` báo lỗi postgres_changes (kênh SUBSCRIBED mà không có event — §2) | `console.warn` + `interrupted`; join lại trong lúc lỗi vẫn giữ `interrupted` mốc cũ; `system` 'ok' ⇒ `connected` + `onResync()` (RT-CLIENT-1) |
+| CLOSED ngoài ý muốn (server `phx_close`, binding lệch) | dựng lại kênh, backoff 1→2→5→10→30 s, topic thêm hậu tố `:r<n>` (bắt buộc: `channel()` trả lại kênh cũ trùng topic đang leave ⇒ subscribe no-op, kênh chết im). Backoff chỉ về đầu sau khi giữ SUBSCRIBED liền **30 s**; trong vòng dựng lại store giữ `interrupted` với mốc lần rớt đầu (không báo `connecting`) — RT-CLIENT-5 |
 | Nút "Tải lại dữ liệu" (`requestResyncAll`) | `onResync()` mọi kênh ngay, bỏ giãn cách |
-| Teardown chủ động | không cảnh báo, không dựng lại, rời store sức khoẻ |
+| Teardown chủ động | không cảnh báo, không dựng lại, rời store sức khoẻ, huỷ mọi timer |
+
+Vì sao trailing mà không "đang gián đoạn thì visibility/online nhường cho SUBSCRIBED": ca hai lần rớt cách
+nhau < 10 s là SUBSCRIBED↔SUBSCRIBED, cách nhường không chữa được; và khi WebSocket bị chặn mà HTTP vẫn chạy,
+visibility/online vẫn phải làm tươi được bằng HTTP. Ca điển hình trailing chữa: tab hiện lại ⇒ visibility bắt
+kịp lúc T1, phoenix join lại kênh lúc T1+1,5 s ⇒ lượt SUBSCRIBED bị giãn cách, hoãn tới T1+10 s để phủ thay
+đổi commit trong [T1, T1+1,5 s].
 
 `onResync` chỉ làm tươi query **active** (`refetchType: 'active'`); query nền bị đánh dấu cũ, tải lại lúc
 mở. Kênh nào có bộ gom thì `onResync` hủy việc chờ (lượt bắt kịp đã phủ).
@@ -132,6 +152,10 @@ Trạng thái tổng hợp: có một kênh `interrupted` là cả cụm `interr
 "Mất kết nối cập nhật tự động — đang nối lại…" khi gián đoạn **≥ 10 s** (chập 2 giây là chuyện thường),
 tự ẩn khi nối lại; nút "Tải lại dữ liệu" gọi `requestResyncAll()` — không hứa "đã cập nhật", kết quả hiện
 ở từng màn.
+
+Dải **nổi** (`fixed`, z-[60], không chiếm luồng — RT-CLIENT-8): mobile nằm ngay dưới header 4rem, desktop sát
+mép trên, cộng `safe-area-inset-top`; lớp bọc không bắt con trỏ. Nằm trong luồng thì nó đẩy khối fullBleed cao
+cố định (Chat Zalo, chi tiết HĐ) khỏi đáy viewport ~40 px — ô soạn Zalo khuất đúng lúc mạng có sự cố.
 
 ---
 
@@ -175,8 +199,9 @@ trên `realtime.messages` so chuỗi topic) — ngoài phạm vi đợt 21/10.
 | `dashboard-summary` | 5 phút | đọc leads/issues/deposits — bảng không publish |
 | `["cash-handovers"]`, Zalo accounts | 5 phút (từ 60 s) | hub/kênh Zalo đã phủ + bắt kịp; poll chỉ là lưới an toàn |
 | Zalo worker status | 60 s | nhịp tim worker, không có realtime |
-| Business Performance (pnl, snapshot, occupancy…) | theo hook | báo cáo; Sidebar **không** poll `organizations` (chỉ là cờ menu) |
-| Quay số công khai | 1,2–10 s, **dừng khi quay xong**; trang xem không poll ở nền | link công khai cho nhiều khách |
+| Network Center hạm đội + toà đang chọn | 60 s, **chỉ khi tab hiện** | nhãn độ tươi ("x giây trước", tuổi backup) tính lúc map trong queryFn; bỏ nghe nhịp tim thì nhãn đứng yên tới ~30 phút (RT-CLIENT-6) |
+| Business Performance (pnl, snapshot, occupancy…) | theo hook | báo cáo; Sidebar **không** poll `organizations` (chỉ là cờ menu) — chỉ hub (bảng `buildings`) hoặc `catchUp` làm tươi; được cấp quyền giữa phiên thì mục menu hiện ở lượt bắt kịp kế hoặc F5 (RT-CLIENT-7) |
+| Quay số công khai | 1,2–10 s; **quay xong/đã đóng giãn 30 s (màn chiếu) / 60 s (người xem), cả hai chỉ khi tab hiện**; dừng hẳn khi `closed` liên tục quá 6 giờ; bấm "Quay lại" trên màn chiếu hỏi server trước, không diễn lại kết quả đã bị huỷ | link công khai, không realtime; "Huỷ kết quả và mở lại" phải tới được màn chiếu (RT-CLIENT-2) |
 
 Báo cáo nặng: `financial-analysis`, `settlement-report`, `monthly-building-profit` đã nằm trong descriptor
 `income_expenses`; từ 21/10 thêm `["reports"]` vào `invoices`/`income_expenses`/`contracts` (RT-HUB-11).
@@ -222,7 +247,9 @@ Mutation lo tức thì cho client hiện tại; hub lo cross-client. Mẫu `setQ
    **thực đọc**; chạy `check-realtime-query-keys` + `check-realtime-key-ownership`.
 4. Cần live một bảng chưa publish ⇒ kiểm `pg_policies` có policy SELECT cho phép người cần thấy **trước**
    (không có thì poll + focus), viết migration idempotent, thêm vào `REALTIME_SYNC_TABLES` + descriptor, áp
-   migration rồi mới coi `check-realtime-descriptors` đạt và sinh lại surface.
+   migration **trước khi promote client** rồi mới coi `check-realtime-descriptors` đạt và sinh lại surface.
+   Bỏ một bảng thì ngược lại: client thôi nghe lên production trước, DROP khỏi publication là migration
+   riêng áp sau (§2 — thiếu một bảng là cả kênh im).
 5. Bảng hard delete + cần filter ⇒ cân REPLICA IDENTITY FULL, hoặc chấp nhận DELETE chỉ tới qua bắt kịp.
 6. Bộ gom cho kênh ngoài hub: [burstScheduler.ts](../../src/lib/realtime/burstScheduler.ts) (debounce + trần,
    tab ẩn giữ cờ, dọn thì nhả việc tồn).

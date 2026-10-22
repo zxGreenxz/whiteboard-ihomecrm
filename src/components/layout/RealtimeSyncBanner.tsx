@@ -23,6 +23,16 @@ export const KHOA_NUT_SAU_BAM_MS = 2_000;
  * lượt tải lại; kết quả từng màn tự hiện ở chính màn đó.
  *
  * Không props: gói C mount một bản ở MainLayout.
+ *
+ * NỔI, KHÔNG CHIẾM LUỒNG (RT-CLIENT-8, 22/10/2026): MainLayout đặt dải này ngay
+ * trên khối fullBleed cao cố định (h-[calc(100vh-4rem)] / lg:h-screen — Chat
+ * Zalo, chi tiết HĐ). Nằm trong luồng thì tổng chiều cao vượt viewport ~40 px và
+ * ô soạn/nút gửi Zalo bị đẩy khỏi mép dưới đúng lúc người dùng đang gặp sự cố
+ * mạng. Nên dải là một viên `fixed` ở trên: mobile nằm DƯỚI header 4rem (không
+ * che nút menu/chuông), desktop sát mép trên (không có header); cộng
+ * safe-area-inset-top (viewport-fit=cover); z-[60] trên header (z-50) và sidebar
+ * (z-40), dưới toast (z-100). Lớp bọc ngoài trong suốt với con trỏ để không chặn
+ * bấm vào nội dung hai bên viên.
  */
 export default function RealtimeSyncBanner() {
   const { state, interruptedSince } = useRealtimeHealth();
@@ -56,25 +66,30 @@ export default function RealtimeSyncBanner() {
 
   return (
     <div
-      role="status"
-      aria-live="polite"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100 sm:px-4 sm:text-sm"
+      data-testid="realtime-sync-banner"
+      className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] flex justify-center px-4 lg:top-[calc(env(safe-area-inset-top)+0.75rem)]"
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="min-w-0">Mất kết nối cập nhật tự động — đang nối lại…</span>
-      </span>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={taiLai}
-        disabled={dangTaiLai}
-        className="h-7 shrink-0 border-amber-300 bg-white px-2.5 text-xs text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-900/40"
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-200 bg-amber-50/95 px-3 py-1.5 text-xs text-amber-900 shadow-md backdrop-blur-sm dark:border-amber-900/60 dark:bg-amber-950/90 dark:text-amber-100 sm:w-auto sm:px-4 sm:text-sm"
       >
-        <RefreshCw className={dangTaiLai ? 'animate-spin' : undefined} aria-hidden="true" />
-        {dangTaiLai ? 'Đang tải lại…' : 'Tải lại dữ liệu'}
-      </Button>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0">Mất kết nối cập nhật tự động — đang nối lại…</span>
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={taiLai}
+          disabled={dangTaiLai}
+          className="h-7 shrink-0 border-amber-300 bg-white px-2.5 text-xs text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-900/40"
+        >
+          <RefreshCw className={dangTaiLai ? 'animate-spin' : undefined} aria-hidden="true" />
+          {dangTaiLai ? 'Đang tải lại…' : 'Tải lại dữ liệu'}
+        </Button>
+      </div>
     </div>
   );
 }

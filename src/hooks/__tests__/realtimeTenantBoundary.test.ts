@@ -54,7 +54,10 @@ const DANG_KY: OnArgs[] = (() => {
     fn();
   });
   useRealtimeDataSync();
-  return harness.onCalls as OnArgs[];
+  // Bỏ riêng listener `system` của subscribeResilient (RT-CLIENT-1, 22/10/2026):
+  // nó không nhận dữ liệu bảng, chỉ nhận trạng thái subscription postgres_changes.
+  // Mọi loại binding KHÁC vẫn phải qua phép kiểm "postgres_changes" bên dưới.
+  return (harness.onCalls as OnArgs[]).filter(([suKien]) => suKien !== "system");
 })();
 
 describe("hub realtime — ranh giới tenant nằm ở RLS, không ở client", () => {

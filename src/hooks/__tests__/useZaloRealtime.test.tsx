@@ -23,7 +23,9 @@ const harness = vi.hoisted(() => {
       const channel = {
         topic,
         bindings: [] as Array<{ table: string; filter?: string; handler: Handler }>,
-        on: vi.fn((_event: string, cfg: { table: string; filter?: string }, handler: Handler) => {
+        on: vi.fn((event: string, cfg: { table: string; filter?: string }, handler: Handler) => {
+          // Listener `system` của subscribeResilient (RT-CLIENT-1) không phải bảng.
+          if (event === "system") return channel;
           channel.bindings.push({ table: cfg.table, filter: cfg.filter, handler });
           return channel;
         }),
