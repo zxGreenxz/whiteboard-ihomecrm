@@ -583,6 +583,13 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
 
   Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
 
+  **Sửa theo re-review (#253, lượt 7, 22/10):**
+  - kết cục `applied` không tắt cờ "chưa rõ": broker hỏng SAU khi SQL đã ghi (quá cỡ, hết giờ) ⇒ `action_outcome_unknown` + requestId; `result` > 8 192 B ⇒ `applied` gọn;
+  - tài liệu §6.2 / bảng lý do / §7 khớp mã;
+  - mục 6 lượt 5: guard + capabilities ∩ `hermes_web_building_ids_v1` (#261).
+
+  Test: khoá miền toàn công ty + overlay toàn công ty nhưng `buildings.view` chỉ toà A ⇒ capabilities và guard chỉ còn toà A (toà B là `outside_scope`, lượt 2 đưa id ⇒ `not_allowed`); 4/4 đột biến bị bắt.
+
   **Sửa theo review độc lập connector/runtime (#253, lượt 6, 22/10):**
   - cờ "chưa rõ" chỉ tắt khi phản hồi đủ khuôn: lệnh ghi đã gửi mà khuôn lệch ⇒ `action_outcome_unknown` + requestId;
   - họ phiếu chi cũ bị ẩn và bị chặn khi họ thao tác hiện;
@@ -672,7 +679,7 @@ Thêm từ ca thử Công việc trên TEST (bot thật, 21/10 18:24–18:47): t
 6. Xin chủ trả lời câu 4 (tắt 3 tool phiếu chi cũ) trước khi hiện thao tác thật đầu tiên.
 7. SOUL bản 5: luật hai lượt, chỉ chat riêng, đọc `detail` khi bị từ chối.
 8. Trước khi đưa bản `profile-provisioning.mjs` có luật K1 lên VPS: đọc (chỉ đọc) `platforms` của mọi profile mang token CRM, kể cả profile TEST. Profile nào còn nền tảng khác `zalo_personal` chưa ghi `enabled: false` sẽ bị từ chối ở lần provisioning hoặc đổi credential kế tiếp.
-9. **Còn mở từ review #253 (mục 6):** phạm vi toà của guard và capabilities phải giao với `buildings.view` của web. Hiện đang dùng `authorized_scope_v3(crm_permission)` ∩ overlay, cùng lớp lỗi PR #261. Việc này chờ #261 (`app_private.hermes_web_building_ids_v1`) vào `main`. Ngày 22/10 #261 còn OPEN nên nhánh này chưa làm.
+9. ~~Review #253 mục 6: phạm vi toà của guard và capabilities giao với `buildings.view` của web~~ — đã làm ở lượt 7 (22/10), sau khi #261 vào `main` (`8b567b37d`, đã áp TEST + production 22/10). Guard và `hermes_action_capabilities_v1` giao thêm `app_private.hermes_web_building_ids_v1`. Helper nằm ở migration tên muộn hơn M1 nên chỉ gọi lúc chạy, không đòi ở `$requires$`: M1 vẫn chạy được theo thứ tự tên trên DB rỗng, còn thiếu helper thì đóng. Phải áp sau 20261021170452 (production và TEST đã có).
 
 ## 17. Chưa xác minh
 

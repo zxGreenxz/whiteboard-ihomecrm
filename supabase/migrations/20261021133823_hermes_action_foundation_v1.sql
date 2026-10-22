@@ -11,7 +11,10 @@
 --  (4) app_private.hermes_action_binding_v1(binding): kiểm binding/phiên/thành viên/chính sách công ty (đúng khuôn
 --      hermes_expense_action_v1), không nhận thao tác — tra trạng thái dùng thẳng hàm này.
 --      app_private.hermes_action_guard_v1(binding, action): (4) + thao tác BẮT BUỘC (NULL/lạ ⇒ 42501) + registry bật + khoá
---      trong kết nối và trần công ty + quyền CRM thật; trả ngữ cảnh và tập toà = phạm vi CRM ∩ overlay kết nối.
+--      trong kết nối và trần công ty + quyền CRM thật; trả ngữ cảnh và tập toà = phạm vi CRM ∩ overlay kết nối ∩ tập toà web
+--      (buildings.view, app_private.hermes_web_building_ids_v1 của 20261021170452 — review #253: không rộng hơn web). Helper đó
+--      ở migration tên MUỘN hơn file này: gọi lúc chạy (plpgsql), cố ý không đòi ở $requires$ để chạy được theo thứ tự tên trên
+--      DB rỗng; thiếu helper thì mọi thao tác lỗi (đóng), không mở.
 --  (5) receipt_begin/finish: luôn chạy lại guard (không nhận ngữ cảnh do người gọi đưa ⇒ không giả được), mở/chốt biên
 --      nhận + audit HERMES_ACTION_* trong cùng transaction với thao tác. Hai lời gọi song song cùng requestId: lời gọi sau
 --      chờ lời gọi trước rồi được phát lại (ON CONFLICT DO NOTHING + FOR UPDATE), không nhận 23505 thô.
@@ -149,7 +152,7 @@ END $fn$;
 -- nhánh "chỉ kiểm binding" bỏ qua registry / khoá của kết nối / quyền CRM. Mọi phép so đều đóng khi gặp NULL.
 CREATE OR REPLACE FUNCTION app_private.hermes_action_guard_v1(p_binding jsonb,p_action text)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
-DECLARE b jsonb; a app_private.hermes_action_policies; v_org uuid; v_buildings uuid[]:='{}';
+DECLARE b jsonb; a app_private.hermes_action_policies; v_org uuid; v_buildings uuid[]:='{}'; v_web uuid[];
 BEGIN
   b:=app_private.hermes_action_binding_v1(p_binding);
   v_org:=(b->>'organizationId')::uuid;
@@ -159,11 +162,14 @@ BEGIN
   IF NOT FOUND OR b->'policyEnabled' IS DISTINCT FROM 'true'::jsonb OR b->'permissions'->a.crm_permission IS DISTINCT FROM 'true'::jsonb
     OR NOT COALESCE((b->'connectionActions') ? a.capability,false) OR NOT COALESCE((b->'policyActions') ? a.capability,false)
     THEN RAISE EXCEPTION 'hermes_action_denied' USING ERRCODE='42501'; END IF;
-  -- Phạm vi CRM của quyền giao vào, ∩ overlay đã lưu của kết nối (như hermes_expense_action_v1).
+  -- Phạm vi CRM của quyền giao vào, ∩ overlay đã lưu của kết nối (như hermes_expense_action_v1), ∩ tập toà web (buildings.view):
+  -- khoá miền rộng hơn buildings.view (vd override thành viên phạm vi ORGANIZATION) không đưa Hermes tới toà web không cho xem.
+  v_web:=app_private.hermes_web_building_ids_v1(v_org);
   SELECT COALESCE(array_agg(bd.id ORDER BY bd.id),'{}'::uuid[]) INTO v_buildings FROM public.buildings bd
     CROSS JOIN app_private.authorized_scope_v3(a.crm_permission,v_org) scope
     WHERE bd.organization_id=v_org AND bd.deleted_at IS NULL
       AND (COALESCE(scope.org_wide,false) OR bd.id=ANY(COALESCE(scope.building_ids,'{}'::uuid[])))
+      AND bd.id=ANY(COALESCE(v_web,'{}'::uuid[]))
       AND EXISTS(SELECT 1 FROM public.authorization_scopes overlay WHERE overlay.organization_id=v_org
         AND (b->'connectionScopes') ? overlay.id::text AND (b->'policyScopes') ? overlay.id::text AND overlay.cashbook_id IS NULL
         AND (overlay.scope_type='ORGANIZATION'
@@ -258,7 +264,7 @@ END $fn$;
 CREATE OR REPLACE FUNCTION public.hermes_action_capabilities_v1(p_organization_id uuid)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE member jsonb; context jsonb; policy app_private.hermes_org_policies; enabled boolean; allowed boolean; key text; v_perm text;
-  buildings uuid[]; keys text[]; permissions jsonb:='{}'; actions jsonb;
+  buildings uuid[]; keys text[]; permissions jsonb:='{}'; actions jsonb; v_web uuid[];
 BEGIN
   IF auth.role() IS DISTINCT FROM 'authenticated' OR auth.uid() IS NULL OR p_organization_id IS NULL
     THEN RAISE EXCEPTION 'hermes_action_denied' USING ERRCODE='42501'; END IF;
@@ -271,6 +277,8 @@ BEGIN
     THEN RAISE EXCEPTION 'hermes_action_context_changed' USING ERRCODE='PT409'; END IF;
   SELECT COALESCE(array_agg(DISTINCT p.capability ORDER BY p.capability),'{}'::text[]) INTO keys FROM app_private.hermes_action_policies p;
   policy:=app_private.hermes_effective_org_policy_v1(p_organization_id,'{}'::text[],keys,NULL);
+  -- Cùng rào với guard: tập toà của mỗi khoá ∩ tập toà web (buildings.view) của người hỏi.
+  v_web:=app_private.hermes_web_building_ids_v1(p_organization_id);
   FOREACH key IN ARRAY keys LOOP
     -- Một khoá có thể phục vụ nhiều thao tác; quyền CRM giao vào lấy theo thao tác đầu (cùng khoá ⇒ cùng quyền CRM).
     SELECT p.crm_permission INTO v_perm FROM app_private.hermes_action_policies p WHERE p.capability=key ORDER BY p.action LIMIT 1;
@@ -280,7 +288,7 @@ BEGIN
     SELECT COALESCE(array_agg(b.id ORDER BY b.id),'{}'::uuid[]) INTO buildings FROM public.buildings b
       CROSS JOIN app_private.authorized_scope_v3(v_perm,p_organization_id) scope
       WHERE allowed AND b.organization_id=p_organization_id AND b.deleted_at IS NULL
-        AND (COALESCE(scope.org_wide,false) OR b.id=ANY(COALESCE(scope.building_ids,'{}'::uuid[])));
+        AND (COALESCE(scope.org_wide,false) OR b.id=ANY(COALESCE(scope.building_ids,'{}'::uuid[]))) AND b.id=ANY(COALESCE(v_web,'{}'::uuid[]));
     IF cardinality(buildings)>256 THEN RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023'; END IF;
     permissions:=permissions||jsonb_build_object(key,jsonb_build_object('allowed',allowed,'companyEnabled',COALESCE(enabled,false),'buildingIds',to_jsonb(buildings)));
   END LOOP;

@@ -27,7 +27,15 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
   -- Helper thành viên giả: chỉ người gọi là thành viên ACTIVE (giải tên đòi người gọi thuộc công ty; không ai khác để giao việc).
   CREATE OR REPLACE FUNCTION app_private.hermes_task_assignee_member_v1(p_user uuid,p_org uuid) RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
     SET search_path=pg_catalog,public AS $f$ SELECT p_user=auth.uid() $f$;
-  GRANT EXECUTE ON FUNCTION app_private.hermes_task_assignee_member_v1(uuid,uuid) TO authenticated;`;
+  GRANT EXECUTE ON FUNCTION app_private.hermes_task_assignee_member_v1(uuid,uuid) TO authenticated;
+  -- Tập toà web (20261021170452, PR #261): cùng thân production trừ nhánh has_full_building_scope() (fixture không có siêu quản trị).
+  CREATE OR REPLACE FUNCTION app_private.hermes_web_building_ids_v1(p_org uuid) RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path=pg_catalog,public,app_private AS $f$
+    SELECT COALESCE(array_agg(b.id ORDER BY b.id),'{}'::uuid[]) FROM public.buildings b
+      CROSS JOIN LATERAL (SELECT COALESCE(bool_or(s.org_wide),false) org_wide,COALESCE(array_agg(x),'{}'::uuid[]) ids
+        FROM app_private.authorized_scope_v3('buildings.view',p_org) s LEFT JOIN LATERAL unnest(s.building_ids) x ON true) scope
+      WHERE p_org IS NOT NULL AND auth.uid() IS NOT NULL AND b.organization_id=p_org AND b.deleted_at IS NULL AND (scope.org_wide OR b.id=ANY(scope.ids)) $f$;
+  REVOKE ALL ON FUNCTION app_private.hermes_web_building_ids_v1(uuid) FROM PUBLIC,authenticated;`;
 
 test('action foundation M1: guard, capabilities, receipts, basis, reasons, status, policy floor', { timeout: 240000 }, async t => {
   const f = await setup(t, { action: `${SUPPORT}\n${RESOLVE}` });
@@ -184,6 +192,30 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
     await assert.rejects(call('SELECT app_private.hermes_action_guard_v1($1::jsonb,$2) result', [JSON.stringify(binding), 'probe.note']),
       error => error.code === '42501' && /schema app_private/.test(error.message));
     assert.equal((await receipts()).length, before);
+  });
+
+  await t.test('review #253 mục 6 (lượt 5): khoá miền toàn công ty nhưng buildings.view hẹp ⇒ guard + capabilities chỉ còn toà web thấy', async () => {
+    const UNSELECTED_ORG_SCOPE = '00000000-0000-4000-8000-0000000000a1';
+    await f.rollbackCase(async () => {
+      // Thao tác thử giao vào một khoá miền (tasks.edit) được cấp TOÀN công ty (như override thành viên phạm vi ORGANIZATION),
+      // overlay kết nối phủ cả công ty, nhưng web (buildings.view) chỉ cho xem toà A.
+      await db.query("UPDATE app_private.hermes_action_policies SET crm_permission='tasks.edit' WHERE capability=$1", [PROBE]);
+      await db.query("INSERT INTO public.fixture_acl(permission,org_wide,building_ids) VALUES('tasks.edit',true,'{}') ON CONFLICT(permission) DO UPDATE SET org_wide=true,allowed=true");
+      await db.query("UPDATE public.fixture_acl SET org_wide=false,building_ids=$1 WHERE permission='buildings.view'", [[BUILDING]]);
+      await db.query('UPDATE app_private.hermes_org_policies SET scope_ids=array_append(scope_ids,$1::uuid)', [UNSELECTED_ORG_SCOPE]);
+      await db.query('UPDATE app_private.hermes_connections SET scope_ids=array_append(scope_ids,$1::uuid)', [UNSELECTED_ORG_SCOPE]);
+      const caps = await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG]);
+      assert.deepEqual(caps.permissions[PROBE], { allowed: true, companyEnabled: true, buildingIds: [BUILDING] });
+      // Toà B: khoá miền + overlay cho, web không cho ⇒ ngoài phạm vi được ghi (không giải, không nêu tên), lượt 2 đưa id ⇒ not_allowed.
+      assert.deepEqual(await probe('probe.confirm', 'preview', rid(70), { amount: 1, buildingName: 'Toà B' }), { kind: 'needs_input', reason: 'name_unresolved',
+        field: 'building', wanted: 'Toà B', why: 'outside_scope', candidates: [], more: false });
+      assert.deepEqual(await probe('probe.confirm', 'apply', rid(71), { amount: 1 }, { resolved: { buildingId: OTHER_BUILDING }, basis: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
+      assert.equal((await probe('probe.confirm', 'preview', rid(72), { amount: 1, buildingName: 'Toà A' })).kind, 'preview', 'toà web thấy vẫn làm được');
+      // Web mở cả hai toà ⇒ toà B vào phạm vi (đối chứng: chính tập toà web là thứ chặn).
+      await db.query("UPDATE public.fixture_acl SET building_ids=$1 WHERE permission='buildings.view'", [[BUILDING, OTHER_BUILDING]]);
+      assert.deepEqual((await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG])).permissions[PROBE].buildingIds, [BUILDING, OTHER_BUILDING].sort());
+      assert.equal((await probe('probe.confirm', 'preview', rid(73), { amount: 1, buildingName: 'Toà B' })).kind, 'preview');
+    });
   });
 
   await t.test('policy: DB can tighten a reversible action to always; the floor forbids never on money', async () => {
