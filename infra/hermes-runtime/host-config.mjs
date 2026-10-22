@@ -118,8 +118,12 @@ export async function loadHostConfiguration(configPath) {
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
     if (input?.version !== 2 || input?.mode !== 'connector') fail();
-    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath']);
+    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath', 'roomRead', 'actionProbe']);
     if (Object.hasOwn(input, 'readFastPath') && typeof input.readFastPath !== 'boolean') fail();
+    // Direct room tool source: 'legacy' (default) or 'page' (B3 hermes_available_rooms_page_v1).
+    if (Object.hasOwn(input, 'roomRead') && !['legacy', 'page'].includes(input.roomRead)) fail();
+    // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thao tác thử probe.*); vắng = danh mục rỗng như production.
+    if (Object.hasOwn(input, 'actionProbe') && typeof input.actionProbe !== 'boolean') fail();
     const limits = connectorLimits(input.limits);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
@@ -170,7 +174,9 @@ export async function loadHostConfiguration(configPath) {
     return Object.freeze({ supabase: Object.freeze({ url: url.origin, publishableKey: input.supabase.publishableKey }),
       store: Object.freeze({ projectRef, host, role, password, ...(ca === undefined ? {} : { ca }) }),
       encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, ...(zaloProvisioning===undefined?{}:{zaloProvisioning}),
-      ...(input.readFastPath === undefined ? {} : { readFastPath: input.readFastPath }), mode: 'connector', limits, listenPort: input.listenPort,
+      ...(input.readFastPath === undefined ? {} : { readFastPath: input.readFastPath }),
+      ...(input.roomRead === undefined ? {} : { roomRead: input.roomRead }),
+      ...(input.actionProbe === undefined ? {} : { actionProbe: input.actionProbe }), mode: 'connector', limits, listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

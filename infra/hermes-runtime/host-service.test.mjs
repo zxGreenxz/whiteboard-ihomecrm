@@ -10,12 +10,13 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage;
+  let closes = 0, stage, callLog, maintenanceLog;
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
     http: {}, mode: 'connector', limits: connectorLimits, listenPort: 0,
     ...(changes.readFastPath === undefined ? {} : { readFastPath: changes.readFastPath }),
+    ...(changes.roomRead === undefined ? {} : { roomRead: changes.roomRead }),
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -32,6 +33,8 @@ function fixture(t, changes = {}) {
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
       assert.equal(options.readFastPath, changes.readFastPath);
+      assert.equal(options.roomRead, changes.roomRead);
+      assert.equal(typeof options.callLog, changes.callLogOff ? 'undefined' : 'function'); callLog = options.callLog;
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createNativeBindingReconciler(options) {
       assert.equal(options.handoff,handoff);assert.equal(options.backend,backend);
@@ -41,12 +44,13 @@ function fixture(t, changes = {}) {
         async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
     },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
+      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'log']); assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, get stage() { return stage; } };
+  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -77,6 +81,12 @@ test('only a connector configuration composes a host; the removed managed (versi
 
 test('host forwards the explicit private read rollout flag to the backend', async t => {
   const f = fixture(t, { readFastPath: true }); await f.host.start(); await f.host.close();
+});
+
+test('host forwards the explicit room read source flag to the backend and omits it by default', async t => {
+  for (const roomRead of [undefined, 'legacy', 'page']) {
+    const f = fixture(t, roomRead === undefined ? {} : { roomRead }); await f.host.start(); await f.host.close();
+  }
 });
 
 test('connector shutdown closes the listener while maintenance drains and keeps keys/pool/WAL/lock until that barrier', async t => {
@@ -196,4 +206,31 @@ test('optional native provisioning shares the host lifecycle and retains WAL/poo
   const closing=f.host.close();await entered.promise;
   assert(!f.events.includes('pool-close'));assert(!f.events.includes('wal-close'));assert(!f.events.includes('release'));
   pending.resolve();await closing;assert(f.events.includes('pool-close'));assert(f.events.includes('release'));
+});
+
+test('tool_call_timing sink: one stdout JSON line per record like host_* events; HERMES_CALL_LOG=0 passes no callLog', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  delete process.env.HERMES_CALL_LOG;
+  const on = fixture(t); await on.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'tool_call_timing', ts: '2026-10-20T00:00:00.000Z', operation: 'tools/call', tool: 'crm_auth_context', totalMs: 3 };
+  on.callLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await on.host.close();
+  process.env.HERMES_CALL_LOG = '0';
+  const off = fixture(t, { callLogOff: true }); await off.host.start(); assert.equal(off.callLog, undefined); await off.host.close();
+});
+
+test('connector maintenance sink: one stdout JSON line per record, and HERMES_CALL_LOG=0 does not silence it', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  process.env.HERMES_CALL_LOG = '0';
+  const f = fixture(t, { callLogOff: true }); await f.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'connector_maintenance_connection', ts: '2026-10-21T08:46:00.000Z', connectionId: '1a2b3c4d', action: 'renewal_failed',
+    code: 'maintenance_outcome_unknown', attempt: 1, retryInMs: 30000, expiresInMs: 270000 };
+  f.maintenanceLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await f.host.close();
 });

@@ -13,8 +13,31 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   'tool_not_available', 'rate_limited', 'busy', 'timeout', 'backend_unavailable', 'response_too_large', 'send_outcome_unknown',
   // Báo cáo vượt trần trang của PostgREST (PT413, bound-user-rpc.mjs): mô hình cần thu hẹp bộ lọc, không phải thử lại.
   'result_too_large',
+  // B5d (infra/hermes-broker/read-name-resolution.mjs): tên toà/phòng không giải được — mô hình phải hỏi lại. Audit
+  // không nhận mã này ⇒ audit đỏ ⇒ đóng an toàn thành backend_unavailable cho MỌI tên sai (sự cố 21/10 03:30).
+  'read_name_unresolved',
   // Rào chữ công khai (infra/hermes-broker/public-text-guard.mjs): token xác nhận sai/hết hạn/đã dùng.
-  'confirmation_invalid']);
+  'confirmation_invalid',
+  // Mã bất định của ghi (broker MUTATION_UNKNOWN): broker vẫn ghi sổ outcome=denied với đúng mã rồi ném cho mô hình đối
+  // chiếu bằng *_status; broker nuốt lỗi audit cho riêng các mã này nên thiếu ở đây không đóng broker, nhưng sổ audit sẽ
+  // không có dòng cho lượt ghi bất định. Mọi mã ERROR_STATUS của broker phải có mặt (audit-codes.test.mjs).
+  'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown',
+  'customer_outcome_unknown', 'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown',
+  // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật mang reason (dưới) và mã bất định của ghi.
+  'action_rejected', 'action_outcome_unknown']);
+/** Bản sao chỉ đọc của giao thức mã lỗi sổ audit chấp nhận; audit-codes.test.mjs khoá nó bằng ERROR_STATUS của broker. */
+export const AUDIT_CODES = Object.freeze([...CODES]);
+// Lý do của action_rejected (dạng rejected của danh sách đóng infra/hermes-broker/action-reasons.mjs, D9). Sự kiện
+// audit chỉ nhận trường reason khi code = action_rejected và reason thuộc tập này; audit-codes.test.mjs khoá tập bằng
+// ACTION_REJECT_REASONS cả hai chiều (thiếu mã ⇒ audit đỏ ⇒ broker đóng an toàn thành backend_unavailable — đúng lớp
+// sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
+const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
+  'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
+  // Thu chi (Đợt 2).
+  'system_voucher', 'evidence_required',
+  // Trang Công việc (Đợt 2b).
+  'task_quota_user', 'task_quota_pair']);
+export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
   constructor(code) { super(code); this.name = 'HostOwnershipError'; this.code = code; }
@@ -117,13 +140,14 @@ export async function acquireHostOwnership(options) {
 }
 
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code']);
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason']);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {
-    if (event.connectionId === null || Object.hasOwn(event, 'code')) fail('host_audit_invalid');
+    if (event.connectionId === null || Object.hasOwn(event, 'code') || Object.hasOwn(event, 'reason')) fail('host_audit_invalid');
   } else if (!['denied', 'timeout'].includes(event.outcome) || !CODES.has(event.code) ||
       ((event.outcome === 'timeout') !== (event.code === 'timeout'))) fail('host_audit_invalid');
+  if (Object.hasOwn(event, 'reason') && (event.code !== 'action_rejected' || !REASONS.has(event.reason))) fail('host_audit_invalid');
   return Buffer.from(JSON.stringify(event) + '\n');
 }
 

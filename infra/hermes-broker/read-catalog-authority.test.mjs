@@ -66,13 +66,13 @@ test('cached authority cannot cross tokens, actors, organizations, provider sess
 test('business-statement output authority replaces stale discovery scope and validates exact actor/org/permission', () => {
   const identity = { row: { id: connection, userId: user, organizationId: org }, scopesByPermission: { 'customers.view': { buildingIds: [building], cashbookIds: [] } } };
   const envelope = { authority: { organizationId: org, userId: user, connectionId: connection, permission: 'customers.view', buildingIds: [other], cashbookIds: [] },
-    result: { organizationId: org, domain: 'customers', fetchedAt: new Date(NOW).toISOString(), nextCursor: null,
-      items: [{ id: id(20), name: 'Fixture', phone: null, contractId: id(21), buildingId: other, roomId: id(22), roomName: 'A' }] } };
+    result: { organizationId: org, domain: 'customers', fetchedAt: new Date(NOW).toISOString(), nextCursor: null, summary: { count: 1, byStatus: {}, sum: {} },
+      items: [{ id: id(20), name: 'Fixture', phone: null, contractId: id(21), buildingId: other, buildingName: 'Toà B', roomId: id(22), roomName: 'A' }] } };
   assert.deepEqual(domainFastResult('customers', envelope, identity, domainInput('customers', {})), envelope.result);
   for (const change of [value => { value.authority.userId = other; }, value => { value.authority.organizationId = other; },
     value => { value.authority.connectionId = other; }, value => { value.authority.permission = 'contracts.view'; },
     value => { value.authority.buildingIds = [building]; }, value => { value.authority.cashbookIds = [building]; },
-    value => { value.result.items[0].privateField = 'never'; }]) {
+    value => { value.result.items[0].privateField = 'never'; }, value => { delete value.result.summary; }]) {
     const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('customers', value, identity, domainInput('customers', {})));
   }
 });

@@ -100,15 +100,23 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       // Read once before enrollment is exposed: reject unreadable/tampered WAL.
       await handoff.list({ signal: controller.signal }); live();
       pool = factories.createStorePool(configuration.store);
+      // Mỗi lần broker invoke một dòng JSON tool_call_timing ra stdout (journal), cùng kênh và
+      // cùng khuôn với các event host_* của host-cli (console.info nuốt lỗi ghi); HERMES_CALL_LOG=0 tắt.
+      const callLog = process.env.HERMES_CALL_LOG === '0' ? undefined : record => console.info(JSON.stringify(record));
       backend = factories.createHermesBackend({ supabase: configuration.supabase, store: { pool, expectedRole: configuration.store.role },
         encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
         connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}),
-        ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }) });
+        ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }),
+        ...(configuration.roomRead === undefined ? {} : { roomRead: configuration.roomRead }),
+        ...(configuration.actionProbe === undefined ? {} : { actionProbe: configuration.actionProbe }),
+        ...(callLog ? { callLog } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });
       dispose();
-      maintenance = factories.createConnectorMaintenance({ handoff, backend });
+      // Vòng gia hạn ghi connector_maintenance_* (đổi trạng thái, gia hạn lỗi/chưa xác nhận/khoá/hồi phục)
+      // cùng kênh stdout; không token/digest/thông điệp lỗi, chỉ khi có thay đổi. HERMES_CALL_LOG không tắt nó.
+      maintenance = factories.createConnectorMaintenance({ handoff, backend, log: record => console.info(JSON.stringify(record)) });
       if(configuration.zaloProvisioning) zaloReconciler=factories.createNativeBindingReconciler({
         configuration:configuration.zaloProvisioning,handoff,backend,
         transport:createStoreTransport({pool,expectedRole:configuration.store.role})});

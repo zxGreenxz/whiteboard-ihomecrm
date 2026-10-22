@@ -9,6 +9,7 @@ import { useBuildings, useUpdateBuilding } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import SaleSheet from "./SaleSheet";
 import MobileImageGrid from "./MobileImageGrid";
+import { confirmSaleInfoSwitch, useSaleInfoDraftGuard } from "../useSaleInfoDraftGuard";
 
 const toStrArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
@@ -16,7 +17,7 @@ const tagOf = (s: string) => (s || "").trim().slice(0, 2).toUpperCase() || "—"
 
 type Scope = "building" | "room";
 
-export default function MobileSaleInfo() {
+export default function MobileSaleInfo({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
   const qc = useQueryClient();
   const { data: buildings } = useBuildings();
   const updateBuilding = useUpdateBuilding();
@@ -35,11 +36,14 @@ export default function MobileSaleInfo() {
   const [bName, setBName] = useState("");
   const [bPhone, setBPhone] = useState("");
   const [bImages, setBImages] = useState<string[]>([]);
-  useEffect(() => {
+  const [uploading, setUploading] = useState(false);
+  const buildingGuard = useSaleInfoDraftGuard(buildingId,
+    JSON.stringify({ bName: building?.public_contact_name ?? "", bPhone: building?.public_contact_phone ?? "", bImages: toStrArr(building?.images) }),
+    JSON.stringify({ bName, bPhone, bImages }), uploading || updateBuilding.isPending, () => {
     setBName((building as any)?.public_contact_name ?? "");
     setBPhone((building as any)?.public_contact_phone ?? "");
     setBImages(toStrArr(building?.images));
-  }, [building]);
+  });
 
   // Room form
   const room = useMemo(() => (rooms ?? []).find((r) => r.id === roomId), [rooms, roomId]);
@@ -51,14 +55,18 @@ export default function MobileSaleInfo() {
   const [savingRoom, setSavingRoom] = useState(false);
   const [roomSaveError, setRoomSaveError] = useState("");
   const errorRoomId = useRef("");
-  useEffect(() => {
-    if (room && room.id === errorRoomId.current) return;
+  const roomGuard = useSaleInfoDraftGuard(roomId,
+    JSON.stringify({ amenities: toStrArr(room?.amenities), rImages: toStrArr(room?.images), similarIds: [], amenDraft: "" }),
+    JSON.stringify({ amenities, rImages, similarIds, amenDraft }), savingRoom || uploading, () => {
     errorRoomId.current = "";
     setRoomSaveError("");
     setAmenities(toStrArr(room?.amenities));
     setRImages(toStrArr(room?.images));
     setSimilarIds([]);
-  }, [room]);
+    setAmenDraft("");
+  });
+  const busy = uploading || savingRoom || updateBuilding.isPending;
+  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
   useEffect(() => { setRoomId(""); }, [buildingId]);
 
   const addAmen = () => {
@@ -83,15 +91,15 @@ export default function MobileSaleInfo() {
   };
 
   const saveBuilding = () => {
-    if (!building) return;
+    if (!building || busy || buildingGuard.stale) return;
     updateBuilding.mutate(
       { id: building.id, updates: { public_contact_name: bName.trim() || null, public_contact_phone: bPhone.trim() || null, images: bImages } as any },
-      { onSuccess: () => qc.invalidateQueries({ queryKey: ["my-available-rooms"] }) },
+      { onSuccess: () => { buildingGuard.markSaved(); void qc.invalidateQueries({ queryKey: ["my-available-rooms"] }); } },
     );
   };
 
   const saveRoom = async () => {
-    if (!room) return;
+    if (!room || busy || roomGuard.stale) return;
     setSavingRoom(true);
     setRoomSaveError("");
     const savedIds: string[] = [];
@@ -116,6 +124,7 @@ export default function MobileSaleInfo() {
           throw new TypeError("Incomplete room image receipts");
       }
       errorRoomId.current = "";
+      roomGuard.markSaved();
       toast.success(similarIds.length > 0
         ? "Đã lưu phòng " + room.name + " và xác nhận đồng bộ ảnh cho " + savedIds.length + " phòng."
         : "Đã lưu thông tin phòng " + room.name + ".");
@@ -138,7 +147,7 @@ export default function MobileSaleInfo() {
   return (
     <div style={{ padding: "14px 16px 28px" }}>
       {/* building picker */}
-      <button className="sp-rowcard" style={{ borderRadius: 16, padding: "11px 13px", marginBottom: 13 }} onClick={() => setBuildingSheet(true)}>
+      <button className="sp-rowcard" disabled={busy} style={{ borderRadius: 16, padding: "11px 13px", marginBottom: 13 }} onClick={() => setBuildingSheet(true)}>
         <span className="sp-btag" style={{ width: 38, height: 38, borderRadius: 11 }}>{tagOf(building?.name ?? "?")}</span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span className="gv">Toà nhà</span>
@@ -149,14 +158,14 @@ export default function MobileSaleInfo() {
 
       {/* scope segmented */}
       <div className="sp-pillseg" style={{ marginBottom: 15 }}>
-        <button className={scope === "building" ? "on" : ""} onClick={() => setScope("building")}>Thông tin toà</button>
-        <button className={scope === "room" ? "on" : ""} onClick={() => setScope("room")}>Thông tin phòng</button>
+        <button disabled={busy} className={scope === "building" ? "on" : ""} onClick={() => setScope("building")}>Thông tin toà</button>
+        <button disabled={busy} className={scope === "room" ? "on" : ""} onClick={() => setScope("room")}>Thông tin phòng</button>
       </div>
 
       {!building ? (
         <div className="stub"><p>Chọn toà nhà để chỉnh sửa thông tin sale.</p></div>
       ) : scope === "building" ? (
-        <>
+        <fieldset disabled={busy} className="contents">
           <div className="sp-card">
             <div className="sp-card-t" style={{ marginBottom: 11 }}>Liên hệ quản lý toà</div>
             <label className="sp-label">Người liên hệ</label>
@@ -170,14 +179,15 @@ export default function MobileSaleInfo() {
               <span className="sp-card-t">Ảnh bìa toà</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)" }}>· {bImages.length} ảnh</span>
             </div>
-            <MobileImageGrid value={bImages} onChange={setBImages} />
+            <MobileImageGrid value={bImages} onChange={setBImages} disabled={savingRoom || updateBuilding.isPending} onUploadingChange={setUploading} />
           </div>
-          <button className="sp-save" onClick={saveBuilding} disabled={updateBuilding.isPending}>Lưu thông tin toà nhà</button>
-        </>
+          {buildingGuard.stale && <div role="alert" className="sp-card"><p>Thông tin toà đã đổi trên máy chủ. Bản nháp vẫn được giữ.</p><button className="underline" onClick={buildingGuard.reload}>Đọc bản mới, bỏ nháp toà</button></div>}
+          <button className="sp-save" onClick={saveBuilding} disabled={busy || buildingGuard.stale}>Lưu thông tin toà nhà</button>
+        </fieldset>
       ) : (
         <>
           {/* room picker */}
-          <button className="sp-rowcard" style={{ borderRadius: 16, padding: "12px 13px" }} onClick={() => setRoomSheet(true)}>
+          <button className="sp-rowcard" disabled={busy} style={{ borderRadius: 16, padding: "12px 13px" }} onClick={() => setRoomSheet(true)}>
             <span className="ic" style={{ background: "var(--acc-violet)", color: "#fff" }}><DoorOpen size={19} /></span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span className="gv">Phòng</span>
@@ -189,7 +199,7 @@ export default function MobileSaleInfo() {
           {!room ? (
             <div className="stub"><p>Chọn phòng để chỉnh sửa nội thất, ảnh.</p></div>
           ) : (
-            <>
+            <fieldset disabled={busy} className="contents">
               <div className="sp-card">
                 <div className="sp-card-t" style={{ marginBottom: 11 }}>Nội thất</div>
                 <div className="sp-addrow">
@@ -210,7 +220,7 @@ export default function MobileSaleInfo() {
 
               <div className="sp-card">
                 <div className="sp-card-t" style={{ marginBottom: 11 }}>Ảnh phòng</div>
-                <MobileImageGrid value={rImages} onChange={setRImages} />
+                <MobileImageGrid value={rImages} onChange={setRImages} disabled={savingRoom || updateBuilding.isPending} onUploadingChange={setUploading} />
                 <button className="sp-rowcard" style={{ margin: "12px 0 0", borderRadius: 12, borderStyle: "dashed", padding: "11px 13px" }} onClick={() => setSimilarSheet(true)}>
                   <span className="ic brand"><Images size={18} /></span>
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -228,14 +238,16 @@ export default function MobileSaleInfo() {
                 )}
               </div>
 
+              {roomGuard.stale && <div role="alert" className="sp-card"><p>Thông tin phòng đã đổi trên máy chủ. Bản nháp vẫn được giữ; đọc bản mới trước khi lưu.</p><button className="underline" onClick={roomGuard.reload}>Đọc bản mới, bỏ nháp phòng</button></div>}
               {roomSaveError && <p role="alert" className="text-sm text-destructive">{roomSaveError}</p>}
-              <button className="sp-save" onClick={saveRoom} disabled={savingRoom}>
+              <button className="sp-save" onClick={saveRoom} disabled={busy || roomGuard.stale}>
                 {savingRoom ? "Đang lưu…" : similarIds.length > 0 ? `Lưu & đồng bộ (${similarIds.length + 1} phòng)` : "Lưu thông tin phòng"}
               </button>
-            </>
+            </fieldset>
           )}
         </>
       )}
+      {uploading && <p role="status" className="sp-hint">Đang tải ảnh; chờ xong trước khi lưu hoặc chuyển phòng/toà.</p>}
 
       {/* building picker sheet */}
       <SaleSheet open={buildingSheet} onClose={() => setBuildingSheet(false)}>
@@ -243,7 +255,7 @@ export default function MobileSaleInfo() {
         <div className="sp-picklist">
           {(buildings ?? []).map((b) => (
             <button key={b.id} className={"sp-pickitem" + (b.id === buildingId ? " sel" : "")} style={{ padding: "11px 13px" }}
-              onClick={() => { setBuildingId(b.id); setBuildingSheet(false); }}>
+              disabled={busy} onClick={() => { if (b.id !== buildingId && !confirmSaleInfoSwitch(roomGuard.dirty || buildingGuard.dirty)) return; setBuildingId(b.id); setBuildingSheet(false); }}>
               <span className="tag">{tagOf(b.name)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span className="nm">{b.name}</span>
@@ -261,7 +273,7 @@ export default function MobileSaleInfo() {
         <div className="sp-picklist" style={{ gap: 8 }}>
           {(rooms ?? []).map((r) => (
             <button key={r.id} className={"sp-pickitem" + (r.id === roomId ? " sel" : "")} style={{ padding: "11px 13px" }}
-              onClick={() => { setRoomId(r.id); setRoomSheet(false); }}>
+              disabled={busy} onClick={() => { if (r.id !== roomId && !confirmSaleInfoSwitch(roomGuard.dirty)) return; setRoomId(r.id); setRoomSheet(false); }}>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span className="nm" style={{ fontFamily: "var(--mono)", fontSize: 13.5 }}>{r.name}{r.code && r.code !== r.name ? ` · ${r.code}` : ""}</span>
                 <span className="sub">Tầng {r.floor}{toStrArr(r.images).length > 0 ? " · có ảnh" : ""}</span>

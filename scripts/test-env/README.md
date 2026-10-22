@@ -126,6 +126,12 @@ Advisory lock trên TEST dùng chung cho đồng bộ, runner kiểm, JWT harnes
 Lịch sử RUNNING/FAILED chặn quick dùng lại biên nhận DAT cũ khi đồng bộ bị ngắt.
 Lần đồng bộ sau thay toàn bộ thay đổi TEST; không có chiều đồng bộ TEST về production.
 
+Connector Hermes TEST (dựng 21/10/2026 để thử thao tác ghi của bot trên dữ liệu TEST): vai `hermes_store_host`
+được bật LOGIN trên TEST giữa hai lần đồng bộ. Đồng bộ tự hạ vai này về NOLOGIN và ngắt phiên của nó lúc khôi phục vai
+(kết nối Hermes trên TEST mất cùng `app_private`), rồi chạy tiếp; vai nào khác bật LOGIN hay vai này có thêm quyền
+superuser/createdb/createrole/replication/bypassrls vẫn dừng như cũ. Quick check so digest vai như ngay sau đồng bộ
+(`ownersDigestTest`). Sau mỗi lần đồng bộ, người vận hành connector TEST bật lại LOGIN và tạo lại kết nối.
+
 Bản dump chứa dữ liệu cá nhân thật: ghi ở `%USERPROFILE%/ihomecrm-backups/test-env/` (ngoài repo)
 và xoá khi xong, kể cả khi bị ngắt (SIGINT/SIGTERM). Không có kênh gửi ra ngoài nào nối vào TEST: worker Zalo và Network Center chỉ
 trỏ production, edge function TEST không có khoá VAPID/Zalo.

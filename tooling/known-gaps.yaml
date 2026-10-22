@@ -338,3 +338,32 @@ gaps:
       khẩu qua env), rồi `npm run e2e:fleet:bien-nhan -- --spec .e2e-fleet/specs/rent-support-schedule.spec.ts`
       ra biên nhận xanh 10/10 ca với helper dùng module; hoặc chủ dự án quyết định gỡ/hoãn spec này
       khỏi suite e2e-fleet (deferred-modules) kèm lý do.
+  - id: hermes-pham-vi-toa-chua-giao-web
+    where: >
+      supabase/migrations/20261017023242_hermes_scope_buildings_v1.sql (hermes_scope_buildings_v1('rooms.view'):
+      hermes_sale_listing_rooms_v1 :273, hermes_room_scope_map_v1, lựa chọn toà của kết nối) ·
+      infra/hermes-broker/supabase-durable-auth-adapter.mjs:44-49 (toà của crm_auth_context) ·
+      supabase/migrations/20261015130000_hermes_review_fixes_v1.sql:71-72 (hermes_task_follow_grant_v1) ·
+      capabilities/guard hành động (hermes_task_input_guard_v1, hermes_expense_capabilities_v1, hermes_room_pass_capabilities_v1)
+    expires_at: 2026-11-30
+    why: >
+      20261021170452 (PR #261, CHƯA áp) giao phạm vi toà của các đường ĐỌC crm_read_* với tập toà mà RLS web cho người hỏi
+      thấy (buildings.view, app_private.hermes_web_building_ids_v1). Các đường dưới vẫn lấy toà theo riêng khoá
+      (authorized_scope_v3 / authorize_tenant_action_v3), nên với tài khoản có khoá rộng hơn buildings.view (vd. override
+      thành viên phạm vi ORGANIZATION) chúng có thể vượt web:
+      (1) nguồn phòng của crm_available_rooms bản legacy, tin sale, bản đồ phòng và lựa chọn toà của kết nối dùng
+      hermes_scope_buildings_v1('rooms.view') — chỉ vượt khi rooms.view rộng hơn buildings.view (TEST 21/10: không tài khoản
+      nào như vậy);
+      (2) ID toà của crm_auth_context lấy từ hermes_scope_buildings_v1('rooms.view') (tên toà giải bằng danh bạ INVOKER dưới
+      RLS nên tên không lộ);
+      (3) lượt theo dõi việc tạo TRƯỚC khi áp 20261021170452 ở toà web giấu: lượt nhắc (hermes_task_follow_grant_v1) chỉ kiểm
+      authorize_tenant_action_v3('tasks.create'/'tasks.view') nên vẫn báo tiến độ việc đó;
+      (4) capabilities/guard hành động (crm_task_input_options kind=buildings liệt kê toà theo tasks.create, phiếu chi, tin
+      sale) cho thao tác ở toà web giấu.
+      Ghi kèm (hẹp hơn web, không lộ): phiếu của sổ quỹ người hỏi giữ ở toà NGOÀI phạm vi khoá income_expenses.view không hiện
+      trong crm_read_income_expenses (TEST 21/10: một tài khoản Quản lý toà thấy thêm hàng trăm phiếu như vậy trên web, trước
+      và sau PR #261 như nhau); muốn hiện phải nới rào capabilities v2 của connector.
+    exit_condition: >
+      Mỗi đường (1)–(4) giao thêm hermes_web_building_ids_v1, hoặc test PostgreSQL 17 chứng minh không vượt RLS web, kèm phép đo
+      trên TEST như PR #261; với (3) kiểm buildings.view trong hermes_task_follow_grant_v1 (đóng lượt theo dõi khi mất toà);
+      hoặc chủ dự án quyết định chấp nhận từng đường kèm lý do.

@@ -230,5 +230,90 @@ async def delivery_probe(mode):
         await adapter.disconnect()
 
 
+async def media_probe(mode):
+    # The Node side captures each next item only after the previous event arrived,
+    # so upstream never merges them as a burst. No model is configured or called.
+    import hashlib
+    from gateway.platforms.event import MessageType
+    adapter_module = sys.modules[spec.name + '.adapter']
+    expected = 1 if mode == 'media-tamper' else 3
+    adapter = entry.adapter_factory(PlatformConfig(enabled=True))
+    events, done = [], asyncio.Event()
+
+    async def handler(event):
+        events.append(event)
+        print('GOT', len(events), flush=True)
+        if len(events) == expected:
+            done.set()
+        return None
+    adapter.set_message_handler(handler)
+    assert await adapter.connect()
+    try:
+        await asyncio.sleep(0.5)  # First poll declares `accept` before the Node side captures.
+        print('READY', flush=True)
+        await asyncio.wait_for(done.wait(), 20)
+        await asyncio.sleep(0.5)  # Let the last ack reach the bridge before disconnect.
+        crm_off = '[Ảnh: kết nối CRM chưa bật thao tác có ảnh]'
+        if mode == 'media-tamper':
+            [tampered] = events
+            assert tampered.message_type == MessageType.TEXT and not tampered.media_urls
+            assert tampered.text == 'bill\n[Ảnh không nhận được: bot không đọc được ảnh, gửi lại ảnh]', tampered.text
+            print(json.dumps({'tamperedBytesRejected': True}))
+            return
+        photo, album, notice = events
+        assert photo.message_type == MessageType.PHOTO and photo.media_types == ['image/jpeg']
+        assert photo.text == 'chi 350k sửa vòi\n' + crm_off, photo.text
+        assert photo.source.profile == 'native-fixture' and photo.allow_gateway_control is True
+        assert album.message_type == MessageType.PHOTO and len(album.media_urls) == 1
+        assert album.text == crm_off + '\n[Ảnh 2/2 không nhận được: link Zalo đã hết hạn]', album.text
+        assert notice.message_type == MessageType.TEXT and not notice.media_urls
+        assert notice.text.startswith('[Người dùng vừa gửi 2 tệp qua Zalo. Kênh Zalo của bot chưa nhận loại này'), notice.text
+        cached = [Path(path) for path in photo.media_urls + album.media_urls]
+        assert all(path.is_file() and path.read_bytes()[:3] == b'\xff\xd8\xff' for path in cached)
+        received = datetime(2026, 10, 22, 3, 2, tzinfo=timezone.utc)
+        refs = ['zimg_ab23cd45', 'zimg_cd34ef56', 'zimg_ef56gh7a']
+        assert adapter_module._photo_line(1, refs[:1], None, received) == '[Ảnh zimg_ab23cd45 · 10:02]'
+        assert adapter_module._photo_line(3, refs, None, received) == '[3 ảnh: zimg_ab23cd45, zimg_cd34ef56, zimg_ef56gh7a · 10:02]'
+        assert adapter_module._photo_line(2, ['zimg_ab23cd45', 'ZIMG_bad'], 'lý do', received) == '[2 ảnh: lý do]'
+        print(json.dumps({'photo': True, 'albumWithError': True, 'notice': True, 'zimgLine': True,
+                          'cached': [hashlib.sha256(path.read_bytes()).hexdigest() for path in cached]}))
+    finally:
+        await adapter.disconnect()
+
+
+async def receive_errors_probe():
+    # Handshake decisions only: a fake transport replaces the bridge, no network.
+    import io
+    from urllib.error import HTTPError
+    adapter = entry.adapter_factory(PlatformConfig(enabled=True))
+    calls = []
+
+    def answering(code, body):
+        async def request(route, payload):
+            calls.append('accept' in payload)
+            if 'accept' in payload:
+                raise HTTPError('http://127.0.0.1/v1/receive', code, 'fixture', {}, io.BytesIO(body))
+            return {'status': 'empty'}
+        return request
+
+    for code, body in ((503, b'{"error":"native_unavailable"}'), (400, b'{"error":"generation_mismatch"}'), (400, b'not json')):
+        calls.clear()
+        adapter._request = answering(code, body)
+        try:
+            await adapter._receive()
+            raise AssertionError(f'{code} {body!r} must surface as a transport failure')
+        except HTTPError as error:
+            assert error.code == code
+        assert calls == [True] and adapter._accept_retry_at == 0.0, 'photos stay declared'
+    calls.clear()
+    adapter._request = answering(400, b'{"error":"native_request_rejected"}')
+    assert await adapter._receive() == {'status': 'empty'} and calls == [True, False]
+    assert adapter._accept_retry_at > time.monotonic() + 590
+    calls.clear()
+    assert await adapter._receive() == {'status': 'empty'} and calls == [False], 'text only until the retry'
+    print(json.dumps({'internalFaultKeepsPhotos': True, 'olderWorkerFallsBack': True}))
+
+
 mode = os.environ.get('PROBE_MODE', 'composition')
-asyncio.run(composition_probe() if mode == 'composition' else delivery_probe(mode))
+asyncio.run(composition_probe() if mode == 'composition' else receive_errors_probe() if mode == 'receive-errors'
+            else media_probe(mode) if mode.startswith('media') else delivery_probe(mode))

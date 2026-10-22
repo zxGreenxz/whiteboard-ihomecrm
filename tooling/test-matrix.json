@@ -28,14 +28,16 @@
         "src/components/quick-entry/**",
         "src/pages/quick-entry/**",
         "src/hooks/quick-entry/**",
-        "src/lib/quickEntry/**"
+        "src/lib/quickEntry/**",
+        "supabase/migrations/*_ie_quick_entry_shared_rules_v1.sql"
       ],
       "suiteId": "app-unit",
       "testPatterns": [
         "src/components/quick-entry/**/*.test.*",
         "src/pages/quick-entry/**/*.test.*",
         "src/hooks/quick-entry/**/*.test.*",
-        "src/lib/**/quickEntry*.test.*"
+        "src/lib/**/quickEntry*.test.*",
+        "src/lib/quickEntry/**/*.test.*"
       ],
       "viewports": [
         "affected"
@@ -91,6 +93,16 @@
       "suiteId": "edge-deno-quick-entry",
       "testPatterns": [
         "supabase/functions/quick-entry/index.test.ts"
+      ]
+    },
+    {
+      "id": "door-access-edge",
+      "sourcePaths": [
+        "supabase/functions/door-access/**"
+      ],
+      "suiteId": "edge-deno-door-access",
+      "testPatterns": [
+        "supabase/functions/door-access/*.test.ts"
       ]
     },
     {
@@ -974,6 +986,10 @@
       "id": "hermes-full-read",
       "sourcePaths": [
         "supabase/migrations/*_hermes_full_read_*.sql",
+        "supabase/migrations/*_hermes_w2_customers_building_name_v1.sql",
+        "supabase/migrations/*_hermes_w2_domain_summary_v1.sql",
+        "supabase/migrations/*_hermes_w2_customer_status_summary_v1.sql",
+        "supabase/migrations/*_hermes_w2_customers_without_contract_v1.sql",
         "infra/hermes-broker/full-read-*.mjs",
         "infra/hermes-broker/room-pass-upsert-sql-fixture.mjs",
         "infra/hermes-broker/bound-user-rpc.mjs",
@@ -993,9 +1009,25 @@
       "id": "hermes-finance-expense",
       "sourcePaths": [
         "supabase/migrations/*_hermes_domain_reads_v2.sql",
+        "supabase/migrations/*_hermes_receivables_building_name_v1.sql",
+        "supabase/migrations/*_hermes_domain_reads_building_name_v1.sql",
+        "supabase/migrations/*_hermes_domain_summary_v1.sql",
+        "supabase/migrations/*_hermes_domain_summary_largest_by_type_v1.sql",
         "supabase/migrations/*_hermes_expense_create_action_v1.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
-        "infra/hermes-broker/expense-action-*.mjs",
+        "supabase/migrations/*_hermes_expense_write_v1.sql",
+        "supabase/migrations/*_ie_quick_entry_shared_rules_v1.sql",
+        "supabase/migrations/*_hermes_expense_scope_v1.sql",
+        "supabase/migrations/*_hermes_name_directory_virtual_v1.sql",
+        "supabase/migrations/*_hermes_w2_min_amount_param_v1.sql",
+        "supabase/migrations/*_hermes_w2b_expense_shared_v1.sql",
+        "supabase/migrations/*_hermes_w2b_expense_reports_v1.sql",
+        "infra/hermes-broker/wave2-kit.mjs",
+        "infra/hermes-broker/wave2-b-contract.mjs",
+        "infra/hermes-broker/wave2-b-sql-fixture.mjs",
+        "infra/hermes-broker/read-misuse-hints.mjs",
+        "infra/hermes-broker/expense-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
         "infra/hermes-broker/finance-fixture.mjs",
         "infra/hermes-broker/broker.mjs",
         "infra/hermes-broker/server.mjs",
@@ -1003,11 +1035,20 @@
       ],
       "suiteId": "node-native",
       "testPatterns": [
-        "infra/hermes-broker/expense-action.test.mjs",
-        "infra/hermes-broker/expense-composition.test.mjs",
+        "infra/hermes-broker/expense-actions.test.mjs",
+        "infra/hermes-broker/expense-write-sql.test.mjs",
+        "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+        "infra/hermes-broker/action-catalog.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
         "infra/hermes-broker/domain-v2.test.mjs",
         "infra/hermes-broker/server.test.mjs",
-        "scripts/__tests__/hermes-durable-schema.test.mjs"
+        "infra/hermes-broker/wave2-b.test.mjs",
+        "infra/hermes-broker/wave2-foundation.test.mjs",
+        "infra/hermes-broker/name-directory-sql.test.mjs",
+        "infra/hermes-broker/read-name-resolution.test.mjs",
+        "infra/hermes-broker/tool-plan.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
       ]
     },
     {
@@ -1181,7 +1222,7 @@
         "infra/hermes-broker/capability-contract.mjs",
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
-        "infra/hermes-broker/expense-action-contract.mjs",
+        "infra/hermes-broker/expense-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",
@@ -1389,6 +1430,13 @@
       "sourcePaths": [
         "supabase/migrations/*_crm_shared_read_cores_v1.sql",
         "supabase/migrations/*_hermes_domain_read_fast_v1.sql",
+        "supabase/migrations/*_hermes_domain_read_fast_receivables_v1.sql",
+        "supabase/migrations/*_hermes_receivables_building_name_v1.sql",
+        "supabase/migrations/*_hermes_domain_reads_building_name_v1.sql",
+        "supabase/migrations/*_hermes_domain_summary_v1.sql",
+        "supabase/migrations/*_hermes_domain_summary_largest_by_type_v1.sql",
+        "supabase/migrations/*_hermes_domain_customer_status_asset_created_v1.sql",
+        "supabase/migrations/*_hermes_domain_without_contract_latest_count_v1.sql",
         "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
         "infra/hermes-broker/domain-read-fast.mjs",
         "infra/hermes-broker/read-catalog-authority.mjs"
@@ -1398,6 +1446,37 @@
         "infra/hermes-broker/crm-shared-read-sql.test.mjs",
         "infra/hermes-broker/read-catalog-authority.test.mjs",
         "infra/hermes-broker/domain-*.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-read-web-building-scope",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_read_web_building_scope_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_read_web_building_scope_revert_v1.sql",
+        "infra/hermes-broker/web-building-scope-sql.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/web-building-scope-sql.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-name-directory-context",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_name_directory_v1.sql",
+        "supabase/migrations/*_hermes_name_directory_virtual_v1.sql",
+        "supabase/migrations/*_hermes_user_display_name_v1.sql",
+        "infra/hermes-broker/read-name-resolution.mjs",
+        "infra/hermes-broker/domain-mount.mjs",
+        "infra/hermes-broker/broker.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/name-directory-sql.test.mjs",
+        "infra/hermes-broker/read-name-resolution.test.mjs",
+        "infra/hermes-broker/broker.test.mjs",
         "infra/hermes-broker/server.test.mjs"
       ]
     },
@@ -1630,6 +1709,28 @@
         "supabase/functions/quick-entry/index.test.ts"
       ],
       "note": "Hàm AI của trang Báo chi nhanh /chi-tieu: công tắc, JWT, quyền ghi chi, chế độ thử, trần lượt/ngày giờ VN, chuỗi mô hình dự phòng, chép giọng qua OpenRouter, đọc chữ/ảnh qua 9router, trần âm thanh. Nối vào ci-gates.yml ngày 01/10/2026, ngay sau bước llm-proxy (cùng bước cài Deno).",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
+    },
+    {
+      "id": "edge-deno-door-access",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/door-access/deno.json supabase/functions/door-access/index.test.ts supabase/functions/door-access/tuyaClient.test.ts supabase/functions/door-access/tuyaCrypto.test.ts supabase/functions/door-access/tuyaDoor.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/door-access/*.test.ts"
+      ],
+      "note": "Hàm cửa vân tay SmartLife/Tuya của trang /cua-van-tay (hợp đồng docs/he-thong/26-cua-van-tay.md): handler (CORS, thân ≤16 KB, cấu hình/công tắc DOOR_ACCESS_MODE, phiên, công ty DOOR_ACCESS_ORG_ID, RPC quyền bằng JWT người dùng, chốt nhật ký bằng service role, ánh xạ lỗi PostgREST/Tuya, thao tác ghi không gửi lại) + thư viện Tuya (ký HMAC theo vector chính thức, token, AES-ECB đối chiếu node:crypto, bộ chuyển Door Lock API). Bốn file *.test.ts trong thư mục, cùng một deno.json.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",

@@ -1,7 +1,11 @@
+import { QuickExpenseProvider, usePageQuickExpense } from '@/components/income-expenses/QuickExpenseProvider';
+import { QuickExpenseFeedback, QuickExpenseToolbar } from '@/components/income-expenses/QuickExpenseActions';
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
+import { checkSelfApproveBeforeApprove, useSelfApproveGate } from '@/hooks/income-expenses/selfApproveGate';
+import { useQueryClient } from '@tanstack/react-query';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 import { QueryRegion } from "@/components/errors/QueryRegion";
@@ -189,6 +193,11 @@ const IncomeExpenseDesktopPage = () => {
     useState<IncomeExpenseWithRelations | null>(null);
   const approveHistoryQuery=useIncomeExpenseRevisions(approveTarget?.id);
   const approveHistoryBlocked=!!approveTarget&&(approveHistoryQuery.isError||approveHistoryQuery.isLoading||approveHistoryQuery.data===undefined);
+  // Câu 25: hộp xác nhận là MỘT chỗ cho mọi nơi bấm Duyệt (dòng danh sách, hộp chi tiết, hộp đợt).
+  const queryClient = useQueryClient();
+  const approveSelfGate = useSelfApproveGate(approveTarget?.id, !!approveTarget);
+  // Đang hỏi lại cổng ngay trước khi lưu/duyệt ⇒ khoá các nút của hộp, không bấm hai lần lúc chờ.
+  const [selfApproveChecking, setSelfApproveChecking] = useState(false);
   // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
@@ -364,6 +373,8 @@ const IncomeExpenseDesktopPage = () => {
     );
   const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } = batchQuery;
 
+  const activeListQuery = viewMode === "individual" ? listQuery : batchQuery;
+  const quickExpense = usePageQuickExpense(JSON.stringify([effectiveFilters, searchQuery, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsedSearch.pending);
   const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
@@ -583,6 +594,15 @@ const IncomeExpenseDesktopPage = () => {
       return;
     }
     setActionError(null);
+    // Câu 25: hỏi lại máy chủ NGAY TRƯỚC khi lưu đổi sổ/ảnh hay duyệt — bị chặn thì không lưu gì
+    // (bị chặn: ghi chú trong hộp tự hiện từ cache cổng; chưa kiểm được: báo lỗi ở đây).
+    setSelfApproveChecking(true);
+    const selfCheck = await checkSelfApproveBeforeApprove(queryClient, target.id);
+    setSelfApproveChecking(false);
+    if (!selfCheck.ok) {
+      if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
+      return;
+    }
     // V2 CANONICAL: duyệt-only qua RPC canonical — KHÔNG đổi tồn quỹ, không quick-update
     // sổ/ảnh (posting fields thuộc Posting dialog, §12.3). Không có fallback legacy.
     if (v2ApproveOnly) {
@@ -635,6 +655,7 @@ const IncomeExpenseDesktopPage = () => {
     reviseMutation,
     v2ApproveOnly,
     approveV2Mutation,
+    queryClient,
   ]);
 
   const handleUnapproveVoucher = useCallback((id: string) => {
@@ -859,9 +880,11 @@ const IncomeExpenseDesktopPage = () => {
           </div>
         </div>
 
+        {viewMode === "individual" ? <QuickExpenseToolbar quick={quickExpense} filters={effectiveFilters} search={parsedSearch.text} /> : <QuickExpenseFeedback quick={quickExpense} />}
         <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]} skeleton="table" rows={8}>
         {viewMode === "individual" ? (
           <IncomeExpenseList
+            quickExpense={quickExpense}
             vouchers={vouchers}
             isLoading={isLoading || parsedSearch.pending}
             onView={handleView}
@@ -884,6 +907,7 @@ const IncomeExpenseDesktopPage = () => {
           />
         ) : (
           <IncomeExpenseBatchList
+            quickExpense={quickExpense}
             batches={batches}
             isLoading={isBatchLoading || parsedSearch.pending}
             onView={handleViewBatch}
@@ -923,6 +947,7 @@ const IncomeExpenseDesktopPage = () => {
         defaultType={formType}
       />
       <IncomeExpenseDetailDialog
+        quickExpense={quickExpense}
         open={!!detailVoucherId}
         onOpenChange={(o) => {
           if (!o) setDetailVoucher(null);
@@ -958,6 +983,7 @@ const IncomeExpenseDesktopPage = () => {
         voucher={historyVoucher}
       />
       <IncomeExpenseBatchDetailDialog
+        quickExpense={quickExpense}
         open={!!detailBatch}
         onOpenChange={(o) => {
           if (!o) setDetailBatchId(null);
@@ -1138,6 +1164,17 @@ const IncomeExpenseDesktopPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {/* Câu 25: máy chủ báo người đang xem là người lập không được tự duyệt phiếu này. */}
+          {approveSelfGate.blocked && (
+            <p
+              id="ie-self-approve-note"
+              role="note"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            >
+              {approveSelfGate.message}
+            </p>
+          )}
+
           {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
           {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
 
@@ -1201,7 +1238,8 @@ const IncomeExpenseDesktopPage = () => {
               disabled={
                 approveHistoryBlocked || approveMutation.isPending ||
                 reviseMutation.isPending ||
-                approveV2Mutation.isPending
+                approveV2Mutation.isPending ||
+                selfApproveChecking
               }
             >
               Đóng
@@ -1212,8 +1250,20 @@ const IncomeExpenseDesktopPage = () => {
               <Button
                 variant="outline"
                 className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending}
-                onClick={() => setApproveAndPostOpen(true)}
+                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending || approveSelfGate.blocked || selfApproveChecking}
+                aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
+                onClick={async () => {
+                  if (!approveTarget) return;
+                  // Câu 25: kiểm trước khi mở hộp ghi sổ (hộp đó nhận chứng từ trước khi duyệt).
+                  setSelfApproveChecking(true);
+                  const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
+                  setSelfApproveChecking(false);
+                  if (!selfCheck.ok) {
+                    if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
+                    return;
+                  }
+                  setApproveAndPostOpen(true);
+                }}
               >
                 {approveTarget?.type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
               </Button>
@@ -1228,13 +1278,17 @@ const IncomeExpenseDesktopPage = () => {
                 reviseMutation.isPending ||
                 approveV2Mutation.isPending ||
                 (!v2ApproveOnly && isShareholderPayout && !approveAccountId) ||
-                blockedVoucherId === approveTarget?.id
+                blockedVoucherId === approveTarget?.id ||
+                approveSelfGate.blocked ||
+                selfApproveChecking
               }
+              aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
               className="bg-green-600 hover:bg-green-700"
             >
               {approveMutation.isPending ||
               reviseMutation.isPending ||
-              approveV2Mutation.isPending
+              approveV2Mutation.isPending ||
+              selfApproveChecking
                 ? "Đang duyệt…"
                 : v2ApproveOnly
                   ? "Chỉ duyệt"
@@ -1459,12 +1513,13 @@ const IncomeExpenseDesktopPage = () => {
 // từ matchMedia để không nháy desktop / không mount query nặng trên điện thoại.
 export default function IncomeExpensePage() {
   const isPhone = usePhoneViewport();
-  if (isPhone) {
-    return (
-      <Suspense fallback={null}>
-        <IncomeExpenseMobilePage />
-      </Suspense>
-    );
-  }
-  return <IncomeExpenseDesktopPage />;
+  return (
+    <QuickExpenseProvider>
+      {isPhone ? (
+        <Suspense fallback={null}>
+          <IncomeExpenseMobilePage />
+        </Suspense>
+      ) : <IncomeExpenseDesktopPage />}
+    </QuickExpenseProvider>
+  );
 }

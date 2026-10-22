@@ -47,7 +47,6 @@ import { CustomerSelectionDialog, type CustomerBasic } from "@/components/contra
 import type { CreateRoomReservationInput } from "@/lib/reservationIdentityRpc";
 import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
 import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
-import { useSetReservationHoldTerms } from "@/hooks/useReservationHoldDeadlines";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
 import { todayISO } from '@/lib/collect';
@@ -150,7 +149,6 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
 
   const createReservation = useCreateRoomReservation({silent:true});
   const createSaleBonus = useCreateSaleBonusFromDeposit();
-  const setHoldTerms = useSetReservationHoldTerms({silent:true});
   const roomsQuery=useRooms(undefined, { enabled: open });
   const {data:rooms=[]}=roomsQuery;
   const accountsQuery=useAccounts({ enabled: open });
@@ -305,35 +303,8 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       const bonusAmt = Number(data.sale_bonus_amount) || 0;
       const depositId = createdReservation.receipts[0]?.source_voucher_id ?? null;
 
-      // HẠN PHẢI LÀM HỢP ĐỒNG — ghi vào bảng chuyên trách
-      // (`reservation_hold_deadlines`, migration 20260822010000). Đây mới là
-      // NGUỒN SỰ THẬT mà bàn xử lý /deposits đọc để xếp nhóm "quá hạn làm HĐ";
-      // chuỗi "Giữ phòng đến …" trong ghi chú phiếu vẫn giữ để người đọc phiếu
-      // thấy, nhưng KHÔNG ai suy luận từ nó nữa.
-      //
-      // Hỏng ở đây KHÔNG được kéo đổ phiếu cọc: tiền đã thu, phiếu đã tạo. Báo
-      // rõ để người dùng đặt lại hạn thay vì im lặng nuốt.
-      // Chỉ ghi "cọc cần đủ" khi nó THỰC SỰ lớn hơn số vừa thu. Bằng nhau nghĩa
-      // là đã đủ ngay từ đầu — ghi vào chỉ tạo ra một mốc không bao giờ dùng tới.
-      const targetToSave =
-        Number(data.deposit_target) > Number(data.amount)
-          ? Number(data.deposit_target)
-          : null;
-      const topupToSave = targetToSave !== null ? data.topup_due_date || null : null;
-
-      if ((data.hold_until || topupToSave || targetToSave !== null) && depositId) {
-        try {
-          await setHoldTerms.mutateAsync({
-            incomeExpenseId: depositId,
-            holdUntil: data.hold_until || null,
-            topupDueDate: topupToSave,
-            depositTarget: targetToSave,
-          });
-        } catch (error) {
-          partialMessages.push("Đã tạo hồ sơ cọc nhưng chưa xác nhận được kỳ hạn. Mở hồ sơ đã tạo để kiểm tra hạn làm hợp đồng và hạn bổ sung cọc; không tạo lại cọc.");
-          console.error("Deposit hold terms", error);
-        }
-      }
+      // Reservation terms and voucher projections are saved atomically by
+      // create_room_reservation_v1; no second writer can overwrite them here.
       if (bonusAmt > 0 && depositId) {
         try {
           const r = await createSaleBonus.mutateAsync({

@@ -1,9 +1,12 @@
+import type { QuickExpenseActions } from "@/hooks/income-expenses/useQuickExpense";
+import { QuickExpenseBatchButton } from "./QuickExpenseActions";
 import { Building2, Layers } from "lucide-react";
 import { format } from "date-fns";
 import type { IncomeExpenseBatchSummary } from "@/hooks/useIncomeExpenses";
 import { LoadingState } from "@/components/loading/LoadingState";
 
 interface Props {
+  quickExpense?: QuickExpenseActions;
   batches: IncomeExpenseBatchSummary[];
   isLoading: boolean;
   onView: (batchId: string) => void;
@@ -33,6 +36,7 @@ const fmtDate = (s: string | null) => {
  */
 export function IncomeExpenseBatchListMobile({
   batches,
+  quickExpense,
   isLoading,
   onView,
   totalCount,
@@ -118,6 +122,7 @@ export function IncomeExpenseBatchListMobile({
                 <Layers size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
                 {b.voucher_count} phiếu
               </span>
+              <QuickExpenseBatchButton batch={b} quick={quickExpense} />
             </div>
           </div>
         );

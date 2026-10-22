@@ -1,0 +1,161 @@
+{
+  "businessIds": 28,
+  "executions": 31,
+  "cases": [
+    {
+      "id": "U01",
+      "title": "U01 — Chủ trọ: cho tôi tìm không dấu đúng tòa và cả phòng đã thuê trên máy tính/điện thoại, mobile=false",
+      "status": "passed"
+    },
+    {
+      "id": "U01",
+      "title": "U01 — Chủ trọ: cho tôi tìm không dấu đúng tòa và cả phòng đã thuê trên máy tính/điện thoại, mobile=true",
+      "status": "passed"
+    },
+    {
+      "id": "U02",
+      "title": "U02 — Quản lý: chỉ lưu giá/chính sách vừa sửa, giữ các trường khác và báo đúng phòng đã lưu",
+      "status": "passed"
+    },
+    {
+      "id": "U03",
+      "title": "U03 — Quản lý: người khác vừa sửa phòng thì giữ nháp của tôi, đối chiếu giá mới trước khi ghi",
+      "status": "passed"
+    },
+    {
+      "id": "U04",
+      "title": "U04 — Chủ công ty: mất phản hồi lưu phải đối chiếu đúng yêu cầu cũ, kể cả sau khi quyền thay đổi",
+      "status": "passed"
+    },
+    {
+      "id": "U05",
+      "title": "U05 — Quản lý: nhập giá sai phải chỉ đúng ô, giữ nháp qua đóng/mở và không lộ sang nhân viên khác",
+      "status": "passed"
+    },
+    {
+      "id": "U06",
+      "title": "U06 — Chủ công ty: nhân viên chỉ sửa ảnh không được sửa giá, xem thưởng nội bộ hoặc tạo cọc/lock/pass",
+      "status": "passed"
+    },
+    {
+      "id": "U07",
+      "title": "U07 — Sale Admin: đang tải ảnh thì không được lưu thiếu ảnh hay chuyển phòng làm mất ảnh",
+      "status": "passed"
+    },
+    {
+      "id": "U08",
+      "title": "U08 — Quản lý: mất kết nối đọc thì vẫn xem dữ liệu cũ có cảnh báo, khóa ghi và cho tải lại",
+      "status": "passed"
+    },
+    {
+      "id": "U09",
+      "title": "U09 — Sale Admin: bấm pass/lock/cọc trên dòng nào phải mở đúng phòng đó, không nhầm phòng trùng tên",
+      "status": "passed"
+    },
+    {
+      "id": "U10",
+      "title": "U10 — Chủ trọ: lọc phòng đang dọn sửa riêng, không gộp thành phòng trống sẵn",
+      "status": "passed"
+    },
+    {
+      "id": "U11",
+      "title": "U11 — Sale Admin: liệt kê phòng thiếu ảnh để tôi bổ sung, kể cả phòng đang có khách",
+      "status": "passed"
+    },
+    {
+      "id": "U12",
+      "title": "U12 — Quản lý: lọc các bản nháp của tôi để hoàn tất sau, không trộn với phòng chưa sửa",
+      "status": "passed"
+    },
+    {
+      "id": "U13",
+      "title": "U13 — Chủ công ty: chuyển tổ chức không được đem nháp hoặc lần lưu của công ty trước sang công ty mới",
+      "status": "passed"
+    },
+    {
+      "id": "U14",
+      "title": "U14 — Quản lý: máy chủ từ chối vì dữ liệu đã đổi thì không được bấm lưu lặp dù lần tải lại chưa về",
+      "status": "passed"
+    },
+    {
+      "id": "U15",
+      "title": "U15 — Sale Admin: trường hợp bị từ chối rõ ràng phải giữ nội dung cho tôi sửa và gửi yêu cầu mới",
+      "status": "passed"
+    },
+    {
+      "id": "U16",
+      "title": "U16 — Chủ trọ: hiện rõ giờ hết lock và chỉ cho người đủ quyền gỡ đúng lock của phòng",
+      "status": "passed"
+    },
+    {
+      "id": "U17",
+      "title": "U17 — Chủ công ty: phòng đã thuê không mở tạo cọc nhanh, phòng lock còn đúng quyền vẫn đi qua quy trình cọc",
+      "status": "passed"
+    },
+    {
+      "id": "U18",
+      "title": "U18 — Quản lý: cập nhật dọn sửa phải dùng quy trình có lịch sử và tải lại trạng thái, không tự sửa status",
+      "status": "passed"
+    },
+    {
+      "id": "U19",
+      "title": "U19 — Quản lý: báo trả phải mở hồ sơ đúng phòng và hợp đồng, không đoán hợp đồng từ số phòng",
+      "status": "passed"
+    },
+    {
+      "id": "U20",
+      "title": "U20 — Chủ trọ: danh sách thực sự rỗng phải nói chưa có phòng, còn đang tải không được báo rỗng",
+      "status": "passed"
+    },
+    {
+      "id": "U21",
+      "title": "U21 — Chủ công ty: phòng bị thu hồi phạm vi giữa lúc sửa không được ghi sang phòng khác",
+      "status": "passed"
+    },
+    {
+      "id": "U22",
+      "title": "U22 — Chủ trọ: phòng khách pass hiển thị giá pass riêng và không làm lẫn với giá niêm yết khi sửa",
+      "status": "passed"
+    },
+    {
+      "id": "U23",
+      "title": "U23 — Sale: tôi chỉ xem các tòa được giao, không tìm ra tòa ngoài phạm vi hay được mở sửa nội bộ",
+      "status": "passed"
+    },
+    {
+      "id": "U24",
+      "title": "U24 — Sale: được lock phòng không có nghĩa được thu cọc, sửa pass hoặc gỡ lock của người khác",
+      "status": "passed"
+    },
+    {
+      "id": "U25",
+      "title": "U25 — Sale Admin: chỉ được cấp sửa ảnh thì vẫn lưu ảnh đúng phòng, không gửi kèm giá hay thưởng sale",
+      "status": "passed"
+    },
+    {
+      "id": "U26",
+      "title": "U26 — Sale Admin: cập nhật ảnh phòng cũ thiếu giá không được tự điền giá 0 hoặc chuẩn hóa ghi chú ngoài ý muốn",
+      "status": "passed"
+    },
+    {
+      "id": "U27",
+      "title": "U27 — Chủ công ty: form Lock đang mở phải khóa ghi ngay khi dữ liệu lỗi hoặc bị thu quyền",
+      "status": "passed"
+    },
+    {
+      "id": "U27",
+      "title": "U27 — Chủ công ty: form Cọc đang mở phải khóa ghi ngay khi dữ liệu lỗi hoặc bị thu quyền",
+      "status": "passed"
+    },
+    {
+      "id": "U27",
+      "title": "U27 — Chủ công ty: form Báo pass đang mở phải khóa ghi ngay khi dữ liệu lỗi hoặc bị thu quyền",
+      "status": "passed"
+    },
+    {
+      "id": "U28",
+      "title": "U28 — Quản lý: giữ giao diện cha ở nguyên tab khi đang sửa/tải ảnh rồi mở lại chuyển tab sau khi đóng",
+      "status": "passed"
+    }
+  ]
+}

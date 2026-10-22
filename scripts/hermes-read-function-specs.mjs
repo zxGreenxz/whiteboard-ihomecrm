@@ -7,6 +7,73 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql',
     statementSha256: '150d39f60a1c05bcc7d104ea5680b9a843f7528a8e94b82c148f585f6f397c4e',
   }),
+  // B2 (20261020101836): the same reader gains the receivables branch. The
+  // applied 20261019040055 body above stays pinned: that file is immutable and
+  // its statement must still verify when the forward lane replays history.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql',
+    statementSha256: '3f9edcfa3895ee8c3884079889def27d15f41db7cfca2179fab3165dcc383ecd',
+  }),
+  // B5c (20261020171321): the receivables branch also names the building
+  // (buildingName/buildingCode). The B2 body above stays pinned for the same
+  // reason as the 20261019040055 one.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql',
+    statementSha256: '193af7b6a9f640514f9cc3b856d04bc62efecb789f5737034214c74b91e64a30',
+  }),
+  // B5c step 2 (20261020173818): customers, contracts and invoices rows name their
+  // building/room too. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql',
+    statementSha256: 'e6604edd92a995b8cf823e3785e8f730fa179a5d03e65e0872a7534e23374326',
+  }),
+  // R2a (20261020233934): every list domain of the reader carries the summary of the
+  // whole filtered set (receivables recomputed under RLS; customers/invoices/contracts
+  // from the core totals). Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql',
+    statementSha256: '79cf9b42a5233cc9971e00331dd370e581b12013fd06c5eeb0160d6053c2b953',
+  }),
+  // R2c part 2 (20261021044801): the customers summary counts the contract status
+  // (customers.status_v2) of the core's set under the asker's RLS. Earlier bodies stay
+  // pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql',
+    statementSha256: '729dd8b9a53073c7a552202a40da781c74a067c06f61a69752abf2d00f669631',
+  }),
+  // R2d (20261021063452): the customers summary adds withoutContract, counted by the
+  // private DEFINER helper the body binds. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql',
+    statementSha256: '193528a3d333798560c15e7e9d1647a3bb4aec886f247aba52489995d722bc45',
+  }),
+  // Nợ thực (20261021185540): nhánh receivables đọc public.invoice_effective_outstanding_v1 cho cả tập lọc —
+  // nợ đã kéo sang hoá đơn gánh cùng tập chỉ đếm một lần. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql',
+    statementSha256: '5c7c0295e29b3fa60b7ffb9135e154706536dc38b79f138d0c7444eee5cbbebc',
+  }),
+  // Nền chung thao tác ghi (M5, 20261021132433): vỏ giải tên INVOKER gắn OID lõi app_private và
+  // hàm thành viên lúc tạo, nên chạy được khi authenticated không có USAGE app_private. Băm lại sau
+  // review #253 (người gọi phải là thành viên ACTIVE của công ty được hỏi).
+  Object.freeze({
+    name: 'public.hermes_write_name_resolve_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: 'bc613cc12b31dffae95f80f13058f2f82a79081ea80cfe19c52b1ebf0cfa309e',
+  }),
+  // Thu chi Mốc 3 (20261022044120): cùng khuôn vỏ, thêm p_include_virtual (thu chi nhận toà ảo — chi phí chung).
+  Object.freeze({
+    name: 'public.hermes_write_name_resolve_v2',
+    sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
+    statementSha256: '0668fd72d8207ba675bc0685cd87de32aaa43121768634901c12deb2fffe420c',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

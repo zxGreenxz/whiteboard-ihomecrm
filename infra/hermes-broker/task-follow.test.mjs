@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { taskFollowInput, taskFollowResult, mayUseTaskFollow, taskFollowOperation, TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
+import { taskFollowInput, taskFollowResult, bindTaskFollowCompany, mayUseTaskFollow, taskFollowOperation, TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
 import { extendTaskFollowAuthorization } from './task-follow-adapter.mjs';
 import { taskActionOperation, mayUseTaskAction, TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { workMemoryInput, workMemoryResult, mayUseWorkMemory } from './work-memory-contract.mjs';
@@ -36,14 +36,18 @@ test('follow tools join the task family and map only existing CRM task permissio
   assert.equal(requiresBuildingScope([], ['tasks.delete']), true); assert.equal(requiresBuildingScope(['assistant.memory.supervise']), false);
 });
 
-test('inputs: fixed shapes, explicit company, no actor/role override, bounded single-line text', () => {
+test('inputs: fixed shapes, company optional for the model, no actor/role override, bounded single-line text', () => {
   assert.deepEqual(taskFollowInput('list', { organizationId: ORG, role: 'assigned_to_me' }),
     { organizationId: ORG, role: 'assigned_to_me', assigneeUserId: null, status: 'open', limit: 20, offset: 0 });
   assert.deepEqual(taskFollowInput('set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'Theo dõi' }),
     { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'Theo dõi', remindBeforeMinutes: null, notifyAssigner: true, parentFollowId: null });
   assert.equal(taskFollowInput('progress', { organizationId: ORG, requestId: REQ, jobId: JOB, note: 'Dòng 1\nDòng 2', expectedNoteDigest: 'a'.repeat(32) }).note, 'Dòng 1\nDòng 2');
+  // B5b (20/10): the model may leave the company out; the validated input then has no organizationId key at all.
+  assert.deepEqual(taskFollowInput('list', { role: 'team' }), { role: 'team', assigneeUserId: null, status: 'open', limit: 20, offset: 0 });
+  assert.deepEqual(taskFollowInput('cancel', { requestId: REQ, jobId: JOB, reason: 'Không cần' }), { requestId: REQ, jobId: JOB, reason: 'Không cần' });
   for (const [operation, value] of [
-    ['list', { role: 'team' }], ['list', { organizationId: ORG, role: 'team', assigneeUserId: 'Người làm' }],
+    ['list', { organizationId: ORG, role: 'team', assigneeUserId: 'Người làm' }],
+    ['list', { organizationId: 'công ty', role: 'team' }], ['list', { organizationId: null, role: 'team' }], ['list', { organizationId: undefined, role: 'team' }],
     ['list', { organizationId: ORG, role: 'team', userId: OTHER }], ['list', { organizationId: ORG, role: 'all' }],
     ...[7, 0, true, {}, [], [OTHER], undefined].map(assigneeUserId => ['list', { organizationId: ORG, role: 'assigned_by_me', assigneeUserId }]),
     ['set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'a\nb' }],
@@ -54,6 +58,38 @@ test('inputs: fixed shapes, explicit company, no actor/role override, bounded si
     ['progress', { organizationId: ORG, requestId: REQ, jobId: JOB, note: ' lề', expectedNoteDigest: 'a'.repeat(32) }],
     ['cancel', { organizationId: ORG, requestId: REQ, jobId: JOB, reason: '' }], ['cancel', { organizationId: ORG, requestId: 'x', jobId: JOB, reason: 'r' }],
   ]) assert.throws(() => taskFollowInput(operation, value), /invalid_task_follow/, JSON.stringify(value));
+});
+
+// B5b (20/10/2026): "Tôi có bao nhiêu việc đang theo dõi?" cost a crm_auth_context call (≈5 s) only to
+// copy the company id into organizationId. The company is the connection's: the adapter binds it before
+// any RPC; a company the model still names must restate it; SQL keeps receiving the same key set as before.
+test('B5b: the connection company is bound before SQL; a model-named company must restate it; tools advertise none', () => {
+  const list = taskFollowInput('list', { role: 'assigned_by_me' });
+  assert.deepEqual(bindTaskFollowCompany(list, ORG), { organizationId: ORG, role: 'assigned_by_me', assigneeUserId: null, status: 'open', limit: 20, offset: 0 });
+  assert.ok(Object.isFrozen(bindTaskFollowCompany(list, ORG)));
+  assert.deepEqual(bindTaskFollowCompany(taskFollowInput('list', { organizationId: ORG, role: 'assigned_by_me' }), ORG), bindTaskFollowCompany(list, ORG), 'restated = same SQL input');
+  const cancel = taskFollowInput('cancel', { requestId: REQ, jobId: JOB, reason: 'Không cần' });
+  assert.deepEqual(bindTaskFollowCompany(cancel, ORG), { organizationId: ORG, requestId: REQ, jobId: JOB, reason: 'Không cần' });
+  // Another company: refused by name before SQL; the bound input is never widened to it.
+  assert.throws(() => bindTaskFollowCompany(taskFollowInput('list', { organizationId: u(9), role: 'team' }), ORG), /task_follow_company/);
+  assert.throws(() => bindTaskFollowCompany(taskFollowInput('set', { organizationId: u(9), requestId: REQ, jobId: JOB, objective: 'x' }), ORG), /task_follow_company/);
+  // The connection must carry a real company; anything else is a contract failure, not a bind.
+  for (const company of [undefined, null, '', 'x', 'AAAAAAAA-0000-4000-8000-000000000009', ` ${ORG}`]) assert.throws(() => bindTaskFollowCompany(list, company), /invalid_task_follow/);
+  for (const bad of [null, [], 'x', Object.create({ organizationId: ORG })]) assert.throws(() => bindTaskFollowCompany(bad, ORG), /invalid_task_follow/);
+  // The bound input passes the validator again (operation service + RPC boundary) unchanged and the result fence sees one company.
+  assert.deepEqual(taskFollowInput('list', bindTaskFollowCompany(list, ORG)), bindTaskFollowCompany(list, ORG));
+  const page = { organizationId: ORG, role: 'assigned_by_me', status: 'open', readAt: '2026-10-15T01:00:00.000Z', items: [], offset: 0, nextOffset: null };
+  assert.deepEqual(taskFollowResult('list', page, identity, bindTaskFollowCompany(list, ORG)), page);
+  assert.throws(() => taskFollowResult('list', page, identity, list), /invalid_task_follow/, 'an unbound input never validates a result');
+  assert.throws(() => taskFollowResult('list', { ...page, organizationId: u(9) }, identity, bindTaskFollowCompany(list, ORG)), /invalid_task_follow/);
+  // No tool of the family advertises organizationId any more (tools/list byte budget: tool-argument-shape.test).
+  for (const tool of TASK_FOLLOW_TOOLS) {
+    assert.equal(Object.hasOwn(tool.inputSchema.properties, 'organizationId'), false, tool.name);
+    assert.equal(tool.inputSchema.required.includes('organizationId'), false, tool.name);
+    assert.equal(JSON.stringify(tool).includes('crm_auth_context'), false, tool.name);
+  }
+  assert.deepEqual(TASK_FOLLOW_TOOLS.map(tool => tool.inputSchema.required), [['role'], ['requestId', 'jobId', 'objective'], ['requestId', 'followId', 'expectedVersion'],
+    ['requestId', 'jobId', 'note', 'expectedNoteDigest'], ['requestId', 'jobId', 'reason']]);
 });
 
 test('16/10 20:44Z: assigneeUserId outside role=team is ignored (string/null -> null), never widened for team', () => {

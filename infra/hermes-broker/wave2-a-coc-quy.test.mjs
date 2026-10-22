@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2a, INVOICE_A, CHANGE_BOOK, BUILDING, OTHER_BUILDING, OTHER_ROOM, USER, ORG, FOREIGN, STRANGER, DEPOSIT_TYPE, RV1, RV2, RV3, RV_SETTLED, RV_B } from './wave2-a-sql-fixture.mjs';
+import { sharedW2a, INVOICE_A, CHANGE_BOOK, ROOM, BUILDING, OTHER_BUILDING, OTHER_ROOM, USER, ORG, FOREIGN, STRANGER, DEPOSIT_TYPE, RV1, RV2, RV3, RV_SETTLED, RV_B } from './wave2-a-sql-fixture.mjs';
 import { ORG_SCOPE } from './wave2-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
@@ -166,7 +166,8 @@ test('báo cáo khác KHÔNG đổi: chỉ reservation_vouchers khai rls_buildin
   assert.deepEqual(Object.entries(catalog).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId), ['reservation_vouchers']);
   await orgOverlay(env);
   for (const key of KEYS) await env.db.query('UPDATE public.fixture_acl SET building_ids=$2 WHERE permission=$1', [key, [BUILDING]]);
-  const defaults = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month: '2026-10' }, change_ledger: { cashbookId: CHANGE_BOOK } };
+  const defaults = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month: '2026-10' }, change_ledger: { cashbookId: CHANGE_BOOK },
+    invoice_room_detail: { roomId: ROOM }, invoice_missing: { month: '2026-11' } };
   for (const report of Object.keys(W2A_REPORTS).filter(report => report !== 'reservation_vouchers')) {
     const value = await env.report(report, { ...Object.fromEntries(W2A_REPORTS[report].params.map(name => [name, null])), ...defaults[report] }, { limit: 50 });
     assert.deepEqual(value.fence.buildings, [BUILDING], `${report}: ctx.buildings = toà của khoá ∩ kết nối`);

@@ -7,6 +7,10 @@ import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 // Một PGlite cho cả file; mỗi ca chạy trong BEGIN … ROLLBACK. Migration nạp HAI lượt (idempotent).
 const MIGRATION = 'supabase/migrations/20261017115809_invoice_read_shared_v1.sql';
 const migrationSql = readFileSync(MIGRATION, 'utf8');
+// Nợ thực (22/10/2026): định nghĩa sống của invoice_statistics_v3 — total_remaining trừ phần nợ
+// đã kéo sang hoá đơn gánh còn mở. Nạp SAU bản 17/10, hai lượt.
+const OUTSTANDING_MIGRATION = 'supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql';
+const outstandingSql = readFileSync(OUTSTANDING_MIGRATION, 'utf8');
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG_A = 'aaaa0000-0000-4000-8000-0000000000a1';
@@ -64,7 +68,8 @@ beforeAll(async () => {
       invoice_number text, billing_month text, issue_date date, due_date date, status public.invoice_status,
       total_amount numeric(15,2), paid_amount numeric(15,2) DEFAULT 0,
       remaining_amount numeric(15,2) GENERATED ALWAYS AS (total_amount - paid_amount) STORED,
-      notes text, adjustment_review_status text, created_at timestamptz, deleted_at timestamptz);
+      notes text, adjustment_review_status text, created_at timestamptz, deleted_at timestamptz,
+      previous_debt numeric(15,2) DEFAULT 0, previous_debt_sources jsonb NOT NULL DEFAULT '[]'::jsonb);
     CREATE TABLE invoice_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, invoice_id uuid, type text,
       accounting_class text, description text, unit_price numeric, quantity numeric, coefficient numeric, amount numeric,
       service_id uuid, previous_reading numeric, current_reading numeric, from_date date, to_date date, sort_order integer);
@@ -249,6 +254,8 @@ beforeAll(async () => {
   `);
   await db.exec(migrationSql);
   await db.exec(migrationSql);
+  await db.exec(outstandingSql);
+  await db.exec(outstandingSql);
 }, 60_000);
 
 afterAll(async () => { await db.close(); });
@@ -674,6 +681,29 @@ describe('invoice_statistics_v3', () => {
         ('${I10}','${ORG_A}','${OWNER}','${C1}','${B1}','${R1}','HD-010','2026-11','2026-11-02','APPROVED',200000,0,'2026-11-02 10:00+00')`);
       expect(await stats(OWNER, { p_billing_month: '2026-11' })).toMatchObject({
         total_count: 2, total_amount: 300000, total_paid: 150000, total_remaining: 200000, total_refunded: 50000 });
+    });
+  });
+
+  it('nợ kéo: "Phải thu" không đếm hai lần phần đã kéo sang hoá đơn gánh còn mở (mọi kỳ, từng kỳ, nhân viên)', async () => {
+    await tx(async () => {
+      // I5 (kỳ 09, OVERDUE, còn 1.002.000) được HD-009 (kỳ 11, cùng hợp đồng) gánh trọn trong previous_debt_sources.
+      await db.exec(`INSERT INTO invoices(id,organization_id,user_id,contract_id,building_id,room_id,invoice_number,billing_month,
+          issue_date,status,total_amount,paid_amount,created_at,previous_debt,previous_debt_sources) VALUES
+        ('${I9}','${ORG_A}','${OWNER}','${C1}','${B1}','${R1}','HD-009','2026-11','2026-11-01','APPROVED',1502000,0,'2026-11-01 10:00+00',
+          1002000,'[{"type":"invoice","id":"${I5}","amount":1002000,"label":"HD-005"}]')`);
+      // Trước sửa: 1.000.000 (I1) + 500.000 (I3) + 1.002.000 (I5) + 1.000.000 (I7 nháp) + 1.502.000 (HD-009) = 5.004.000.
+      expect(await stats(OWNER)).toMatchObject({ total_count: 6, total_remaining: 4002000 });
+      // Một kỳ: hoá đơn gánh ở kỳ khác (ngoài tập) ⇒ thẻ kỳ 09 vẫn khớp dòng của kỳ (Tổng − Đã thu = Phải thu).
+      expect(await stats(OWNER, { p_billing_month: '2026-09' })).toMatchObject({ total_count: 1, total_amount: 1002000, total_remaining: 1002000 });
+      expect(await stats(OWNER, { p_billing_month: '2026-11' })).toMatchObject({ total_remaining: 1502000 });
+      expect(await stats(OWNER, { p_billing_month: '2026-10' })).toMatchObject({ total_remaining: 2500000 });
+      // Khoảng ngày lập gồm cả nguồn lẫn gánh ⇒ khử trùng trong khoảng đó.
+      expect(await stats(OWNER, { p_issue_date_from: '2026-09-01', p_issue_date_to: '2026-11-30' })).toMatchObject({ total_remaining: 4002000 });
+      expect(await stats(STAFF)).toMatchObject({ total_remaining: 3502000 });
+      // Hoá đơn gánh bị huỷ thì nợ trở lại nguồn.
+      await db.exec(`UPDATE invoices SET status = 'CANCELLED' WHERE id = '${I9}'`);
+      expect(await stats(OWNER)).toMatchObject({ total_count: 5, total_remaining: 3502000 });
+      expect(await stats(OWNER, { p_billing_month: '2026-09' })).toMatchObject({ total_remaining: 1002000 });
     });
   });
 

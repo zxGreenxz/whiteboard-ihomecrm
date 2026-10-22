@@ -33,12 +33,14 @@ import { addDaysISO, diffDaysISO, formatISODateVN, vnTodayISO } from "@/lib/vnDa
  */
 export interface HoldDeadlineTarget {
   voucherId: string;
+  buildingId: string;
   label: string;
   holdUntil: string | null;
   topupDueDate: string | null;
   depositTarget: number | null;
-  /** Đã thu được bao nhiêu trên phòng này — để tính "còn thiếu". */
+  /** Thực nhận đã xác nhận của đúng hồ sơ — không phải tổng mệnh giá phiếu. */
   paidAmount: number | null;
+  receivedFactStatus?: 'VERIFIED' | 'UNKNOWN';
 }
 
 const QUICK_DAYS = [3, 5, 7, 14];
@@ -148,13 +150,19 @@ function HoldDeadlineForm({
             </div>
             {target.paidAmount !== null && (
               <p className="text-[11.5px] text-muted-foreground">
-                Đã thu trên phòng này: {formatCurrency(target.paidAmount)}
+                Đã xác nhận thực nhận của hồ sơ: {formatCurrency(target.paidAmount)}
                 {conThieu > 0 && (
                   <>
                     {" · còn thiếu "}
                     <strong className="text-orange-600">{formatCurrency(conThieu)}</strong>
                   </>
                 )}
+              </p>
+            )}
+            {target.receivedFactStatus === 'UNKNOWN' && (
+              <p role="status" className="text-[11.5px] text-amber-700">
+                Còn phiếu chưa đối chiếu được tiền thực nhận.
+                {target.paidAmount !== null && ' Số trên chỉ gồm phần đã xác nhận.'}
               </p>
             )}
             {topupDays !== null && conThieu > 0 && (
@@ -203,8 +211,8 @@ function HoldDeadlineForm({
             <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">
               <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
               <span>
-                Hạn bổ sung <strong>sau</strong> hạn làm hợp đồng — tới ngày đó phòng đã
-                nhả khoá, mốc bổ sung thành vô nghĩa. Sửa lại trước khi lưu.
+                Hạn bổ sung <strong>sau</strong> hạn làm hợp đồng. Sửa lại thứ tự kỳ hạn
+                trước khi lưu; quá hạn không tự hủy giữ chỗ.
               </span>
             </div>
           )}

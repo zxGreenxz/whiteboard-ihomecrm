@@ -3,15 +3,25 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { fixture, id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT } from '../hermes-zalo-router/private-command-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_READ_CAPABILITIES, DOMAIN_TOOLS, domainInput, domainResult } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_READ_CAPABILITIES, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
-const candidate = readFileSync(process.env.HERMES_DOMAIN_SQL ?? 'supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8');
+// B5c step 2 (20261020173818) CREATE OR REPLACEs hermes_domain_read_v1 (buildingName/roomName on leads, contracts,
+// invoices, assets, tasks); R2a (20261020233934) adds the `summary` of the whole filtered set to every branch; R2c part 2
+// (20261021044801) dates the asset rows (createdAt) and names the latest asset in the summary; R2d (20261021063452) counts
+// the latest import batch (summary.latestCount) and lets a service whose only active links point to soft-deleted buildings
+// be company-wide again. The applied v1 file runs with that latest body swapped in, so every v1 test measures the live
+// definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
+const LIVE_V1_PATH = 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+const v1Block = src => src.match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v1\([\s\S]*?\$fn\$;/)[0];
+const candidate = process.env.HERMES_DOMAIN_SQL ? readFileSync(process.env.HERMES_DOMAIN_SQL, 'utf8') : (applied => applied.replace(v1Block(applied), () => v1Block(readFileSync(LIVE_V1_PATH, 'utf8'))))(
+  readFileSync('supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8'));
 const forward = source('20261014000503_hermes_optional_org_policy_v1');
 const actual = name => forward.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}[\\s\\S]*?\\$(?:fn)?\\$;`))[0];
 const BUILDING=id('a'), OTHER_BUILDING=id('b'), ROOM=id('c'), OTHER_ROOM=id('e'), ITEM=id('f'), SCOPE=id('0');
@@ -27,13 +37,16 @@ async function setup(t) {
     CREATE TABLE public.areas(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
     CREATE TABLE public.area_buildings(organization_id uuid,area_id uuid,building_id uuid);
     CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
-    CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,status text,deleted_at timestamptz);
+    CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,status text,deleted_at timestamptz,name text);
     CREATE TABLE public.customers(id uuid PRIMARY KEY,organization_id uuid,full_name text,phone text,deleted_at timestamptz);
     CREATE TABLE public.contracts(id uuid PRIMARY KEY,organization_id uuid,room_id uuid,contract_number text,status text,start_date date,end_date date,actual_end_date date,deleted_at timestamptz);
     CREATE TABLE public.contract_customers(organization_id uuid,contract_id uuid,customer_id uuid);
     CREATE TABLE public.leads(id uuid PRIMARY KEY,organization_id uuid,customer_name text,status text,building_id uuid,room_id uuid,next_follow_up_date timestamptz,deleted_at timestamptz);
     CREATE TABLE public.invoices(id uuid PRIMARY KEY,organization_id uuid,invoice_number text,status text,building_id uuid,room_id uuid,billing_month text,total_amount numeric,deleted_at timestamptz);
-    CREATE TABLE public.assets(id uuid PRIMARY KEY,organization_id uuid,name text,code text,condition text,building_id uuid,room_id uuid,quantity numeric,user_id uuid,deleted_at timestamptz);
+    CREATE TABLE public.assets(id uuid PRIMARY KEY,organization_id uuid,name text,code text,condition text,building_id uuid,room_id uuid,quantity numeric,user_id uuid,deleted_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now());
+    -- The company's business time zone (baseline app_private.org_timezone_v1 reads organization_timezones, default VN).
+    CREATE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT 'Asia/Ho_Chi_Minh'::text$$;
     CREATE TABLE public.services(id uuid PRIMARY KEY,organization_id uuid,name text,code text,unit text,unit_price numeric,user_id uuid,deleted_at timestamptz);
     CREATE TABLE public.building_services(organization_id uuid,service_id uuid,building_id uuid,is_active boolean);
     CREATE TABLE public.jobs(id uuid PRIMARY KEY,organization_id uuid,title text,code text,status text,building_id uuid,room_id uuid,deadline timestamptz);
@@ -45,14 +58,14 @@ async function setup(t) {
       'organizationId',p_org,'isOffboarded',false,'membershipId','${USER}','authorizationVersion',o.authorization_version,
       'permissions',(SELECT jsonb_object_agg(permission,allowed) FROM public.fixture_domain_acl)) FROM public.organizations o WHERE o.id=p_org$$;
     INSERT INTO public.buildings VALUES('${BUILDING}','${ORG}','Allowed',null),('${OTHER_BUILDING}','${ORG}','Denied',null),('${FOREIGN}','${FOREIGN}','Foreign',null);
-    INSERT INTO public.rooms VALUES('${ROOM}','${ORG}','${BUILDING}','OCCUPIED',null),('${OTHER_ROOM}','${ORG}','${OTHER_BUILDING}','AVAILABLE',null);
+    INSERT INTO public.rooms VALUES('${ROOM}','${ORG}','${BUILDING}','OCCUPIED',null,'P101'),('${OTHER_ROOM}','${ORG}','${OTHER_BUILDING}','AVAILABLE',null,'P201');
     INSERT INTO public.authorization_scopes VALUES('${SCOPE}','${ORG}','BUILDING','${BUILDING}',null,null);
     INSERT INTO public.customers VALUES('${ITEM}','${ORG}','Synthetic Resident','0901234567',null);
     INSERT INTO public.contracts VALUES('${ITEM}','${ORG}','${ROOM}','CONTRACT','ACTIVE','2026-01-01','2027-01-01',null,null);
     INSERT INTO public.contract_customers VALUES('${ORG}','${ITEM}','${ITEM}');
     INSERT INTO public.leads VALUES('${ITEM}','${ORG}','Synthetic Lead','B1_LEAD','${BUILDING}','${ROOM}',null,null);
     INSERT INTO public.invoices VALUES('${ITEM}','${ORG}','INVOICE','UNPAID','${BUILDING}','${ROOM}','2026-10',123.45,null);
-    INSERT INTO public.assets VALUES('${ITEM}','${ORG}','Synthetic Asset','ASSET','GOOD','${BUILDING}','${ROOM}',2,'${USER}',null);
+    INSERT INTO public.assets VALUES('${ITEM}','${ORG}','Synthetic Asset','ASSET','GOOD','${BUILDING}','${ROOM}',2,'${USER}',null,'2026-10-20T18:30:00Z');
     INSERT INTO public.services VALUES('${ITEM}','${ORG}','Synthetic Service','SERVICE','unit',12.50,'${USER}',null);
     INSERT INTO public.building_services VALUES('${ORG}','${ITEM}','${BUILDING}',true),('${ORG}','${ITEM}','${OTHER_BUILDING}',true);
     INSERT INTO public.jobs VALUES('${ITEM}','${ORG}','Synthetic Task','TASK','IN_PROGRESS','${BUILDING}','${ROOM}',null);`);
@@ -83,8 +96,10 @@ test('domain contract rejects caller-controlled identity, RPC, implicit writes a
   assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,6);assert.equal(DOMAIN_READS.occupancy.family,'v3');assert.equal(DOMAIN_READS.customers.family,'v3');
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
-  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
+  // summary is required since the R2a release window closed (R2c connector).
+  const result={organizationId:ORG,domain:'customers',summary:{count:1,byStatus:{},sum:{}},items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,buildingName:'Allowed',roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
   assert.deepEqual(domainResult('customers',result,identity,domainInput('customers',{})),result);
+  assert.throws(()=>domainResult('customers',(({summary,...rest})=>rest)(result),identity,domainInput('customers',{})),'no summary');
   for(const changed of [{...result,organizationId:FOREIGN},{...result,items:[{...result.items[0],buildingId:OTHER_BUILDING}]},{...result,items:[{...result.items[0],phoneMasked:'***4567'}]},{...result,fetchedAt:'now'},{...result,nextCursor:ITEM}]) assert.throws(()=>domainResult('customers',changed,identity,domainInput('customers',{})));
 });
 
@@ -96,8 +111,205 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       domainResult(operation,result,{row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}},domainInput(operation,{}));
       if(operation==='customers')assert.equal(result.items[0].phoneMasked,'***4567');
       if(operation==='invoices')assert.equal(result.items[0].totalAmount,'123.45');
+      // B5c step 2: every list row names its building and room (fixture: building 'Allowed', room 'P101').
+      if(['leads','contracts','invoices','assets','tasks'].includes(operation))assert.deepEqual([result.items[0].buildingName,result.items[0].roomName],['Allowed','P101'],operation);
       if(operation==='services')assert.deepEqual(result.items[0].buildingIds,[BUILDING]);
       if(operation==='occupancy')assert.equal(result.items[0].total,1);
+    }
+  });
+  // R2a (20261020233934): every list read of v1 carries the summary of the whole filtered set — same WHERE as the
+  // page without the cursor or LIMIT. Synthetic rows; the extra tasks are removed again at the end.
+  await t.test('R2a summary: counts, byStatus (assets: condition), asset quantity and overdue tasks over the whole filtered set, the same on every page',async()=>{
+    const scoped=operation=>({row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}});
+    for(const operation of Object.keys(DOMAIN_READS).filter(key=>DOMAIN_READS[key].family==='v1')){
+      const result=await rpc(operation);
+      assert.deepEqual(Object.keys(result).sort(),['domain','items','nextCursor','organizationId','summary'],operation);
+      // R2d: latestCount counts one exact instant; the rows carry the day only, so summarizeRows says null (one asset here).
+      const rows=summarizeRows(operation,result.items);
+      assert.deepEqual(result.summary,operation==='assets'?{...rows,latestCount:1}:rows,`${operation}: one page holds every row, so the summary is the rows'`);
+      assert.deepEqual(domainResult(operation,result,scoped(operation),domainInput(operation,{})).summary,result.summary,operation);
+    }
+    // R2c part 2: added 2026-10-20 18:30 UTC = 21/10 01:30 in Vietnam ⇒ createdAt 2026-10-21 (company time zone, not UTC).
+    assert.deepEqual((await rpc('assets')).summary,{count:1,byStatus:{GOOD:1},sum:{quantity:'2'},latest:{id:ITEM,name:'Synthetic Asset',code:'ASSET',
+      buildingId:BUILDING,buildingName:'Allowed',roomName:'P101',createdAt:'2026-10-21'},latestCount:1});
+    assert.deepEqual((await rpc('contracts')).summary,{count:1,byStatus:{ACTIVE:1},sum:{}});
+    assert.deepEqual((await rpc('leads')).summary,{count:1,byStatus:{B1_LEAD:1},sum:{}});
+    assert.deepEqual((await rpc('invoices')).summary,{count:1,byStatus:{},sum:{}},'invoices count only: a total over every status would mislead');
+    assert.deepEqual((await rpc('services')).summary,{count:1,byStatus:{},sum:{}});
+    assert.deepEqual((await rpc('tasks')).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:0},'no deadline is never overdue');
+    // Legacy branches (the tools moved to v3) summarise too: customers count, occupancy room totals.
+    assert.deepEqual((await rpc('customers')).summary,{count:1,byStatus:{},sum:{}});
+    assert.deepEqual((await rpc('occupancy')).summary,{count:1,total:1,occupied:1,available:0});
+    const late='77777777-7777-4777-8777-777777777771',done='77777777-7777-4777-8777-777777777772',outside='77777777-7777-4777-8777-777777777773';
+    await db.exec(`INSERT INTO public.jobs VALUES('${late}','${ORG}','Quá hạn','LATE','IN_PROGRESS','${BUILDING}',null,'2020-01-01T00:00:00Z'),
+      ('${done}','${ORG}','Đã xong','DONE','COMPLETED','${BUILDING}',null,'2020-01-01T00:00:00Z'),
+      ('${outside}','${ORG}','Toà khác','OUT','IN_PROGRESS','${OTHER_BUILDING}',null,'2020-01-01T00:00:00Z')`);
+    try{
+      const all={count:3,byStatus:{IN_PROGRESS:2,COMPLETED:1},sum:{},overdue:1};
+      const first=await rpc('tasks',{limit:1}),second=await rpc('tasks',{limit:1,cursor:first.nextCursor});
+      assert.deepEqual([first.items.length,first.summary,second.summary],[1,all,all],'cursor and limit never narrow the summary; the overlay building only');
+      const pages=[first.items,second.items,(await rpc('tasks',{limit:1,cursor:second.nextCursor})).items].flat();
+      assert.deepEqual(summarizeRows('tasks',pages),all,'the summary equals the summary of every page read');
+      assert.deepEqual((await rpc('tasks',{status:'COMPLETED'})).summary,{count:1,byStatus:{COMPLETED:1},sum:{},overdue:0},'status filter');
+      assert.deepEqual((await rpc('tasks',{query:'late'})).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:1},'query filter (code)');
+      assert.deepEqual((await rpc('tasks',{query:'không có'})).summary,{count:0,byStatus:{},sum:{},overdue:0},'empty set: 0 and {} — never null');
+      assert.deepEqual((await rpc('assets',{query:'không có'})).summary,{count:0,byStatus:{},sum:{quantity:'0'},latest:null,latestCount:0});
+    }finally{await db.exec(`DELETE FROM public.jobs WHERE id IN ('${late}','${done}','${outside}')`);}
+  });
+  // R2c part 2 (20261021044801): asset rows carry createdAt — the day the asset was added in the company's business time
+  // zone — and the summary names the most recently added asset of the whole filtered set (created_at desc, then id): every
+  // page alike, never an asset outside the overlay, deleted or filtered out. Synthetic assets, removed again at the end.
+  await t.test('R2c part 2 assets: createdAt in the company time zone, summary.latest of the whole filtered set on every page; mutants caught',async()=>{
+    const A=n=>`88888888-8888-4888-8888-88888888888${n}`;
+    await db.exec(`INSERT INTO public.assets VALUES
+      ('${A(1)}','${ORG}','Bàn họp','BH','GOOD','${BUILDING}',null,1,'${USER}',null,'2026-10-01T03:00:00Z'),
+      ('${A(2)}','${ORG}','Máy lạnh sáng','ML1','GOOD','${BUILDING}','${ROOM}',1,'${USER}',null,'2026-10-22T01:00:00Z'),
+      ('${A(3)}','${ORG}','Máy lạnh tối','ML2','BROKEN','${BUILDING}','${ROOM}',1,'${USER}',null,'2026-10-22T16:59:00Z'),
+      ('${A(4)}','${ORG}','Toà khác','OUT','GOOD','${OTHER_BUILDING}',null,1,'${USER}',null,'2026-10-25T03:00:00Z'),
+      ('${A(5)}','${ORG}','Đã xoá','DEL','GOOD','${BUILDING}',null,1,'${USER}','2026-10-31T00:00:00Z','2026-10-30T03:00:00Z')`);
+    const overlay={row:{organizationId:ORG},scopesByPermission:{'assets.view':{buildingIds:[BUILDING]}}};
+    const newest={id:A(3),name:'Máy lạnh tối',code:'ML2',buildingId:BUILDING,buildingName:'Allowed',roomName:'P101',createdAt:'2026-10-22'};
+    const live=v1Block(readFileSync(LIVE_V1_PATH,'utf8'));
+    const once=(from,to)=>{assert.equal(live.split(from).length,2,`anchor: ${from}`);return live.replace(from,()=>to);};
+    try{
+      const whole=await rpc('assets');
+      assert.deepEqual(whole.items.map(row=>[row.id,row.createdAt]),[[A(1),'2026-10-01'],[A(2),'2026-10-22'],[A(3),'2026-10-22'],[ITEM,'2026-10-21']].sort(),
+        'company time zone: 16:59 UTC is still the 22nd, 18:30 UTC on the 20th is the 21st in Vietnam');
+      assert.deepEqual([whole.summary.count,whole.summary.latest],[4,newest],'the later instant of the 22nd wins over the smaller id; other building and deleted never');
+      assert.deepEqual(domainResult('assets',whole,overlay,domainInput('assets',{})).summary,whole.summary,'the connector accepts it');
+      for(let cursor=null,n=0;n<5;n++){
+        const page=await rpc('assets',{limit:1,cursor});
+        assert.deepEqual(page.summary,whole.summary,'every page carries the whole set');
+        domainResult('assets',page,overlay,domainInput('assets',{limit:1,cursor}));
+        cursor=page.nextCursor;if(cursor===null)break;
+      }
+      assert.deepEqual((await rpc('assets',{query:'bàn'})).summary.latest,{id:A(1),name:'Bàn họp',code:'BH',buildingId:BUILDING,buildingName:'Allowed',roomName:null,createdAt:'2026-10-01'},'query filter');
+      assert.deepEqual((await rpc('assets',{buildingId:BUILDING})).summary.latest,newest,'building filter');
+      assert.equal((await rpc('assets',{query:'không có'})).summary.latest,null,'empty set: null');
+      // Mutants of the latest statement: oldest first (the connector refuses: a page row is newer), the overlay building
+      // dropped (refused: a building outside the key), deleted assets kept (only the expected value sees it).
+      const tail=`      WHERE asset.organization_id=c.organization_id AND asset.deleted_at IS NULL
+        AND (asset.building_id=ANY(buildings) OR (asset.building_id IS NULL AND org_wide AND asset.user_id=ANY(public.current_visible_owner_ids())))
+        AND (query='' OR position(query IN lower(COALESCE(asset.name,'')||' '||COALESCE(asset.code,'')))>0)
+      ORDER BY asset.created_at DESC,asset.id LIMIT 1));`;
+      for(const [label,mutant,expected,refused] of [
+        ['oldest first',once(tail,tail.replace('asset.created_at DESC,','asset.created_at,')),A(1),true],
+        ['overlay building dropped',once(tail,tail.replace('\n        AND (asset.building_id=ANY(buildings) OR (asset.building_id IS NULL AND org_wide AND asset.user_id=ANY(public.current_visible_owner_ids())))','')),A(4),true],
+        ['deleted assets kept',once(tail,tail.replace(' AND asset.deleted_at IS NULL','')),A(5),false],
+      ]){
+        await db.exec(mutant);
+        try{
+          const value=await rpc('assets');
+          assert.equal(value.summary.latest.id,expected,`${label}: the mutant names another asset`);
+          if(refused)assert.throws(()=>domainResult('assets',value,overlay,domainInput('assets',{})),`${label}: refused by the connector`);
+          else assert.deepEqual(domainResult('assets',value,overlay,domainInput('assets',{})).summary.latest.id,expected,`${label}: only the expected value sees it`);
+        }finally{await db.exec(live);}
+        assert.deepEqual((await rpc('assets')).summary.latest,newest,`${label}: reviewed body restored`);
+      }
+    }finally{await db.exec(`DELETE FROM public.assets WHERE id IN ('${A(1)}','${A(2)}','${A(3)}','${A(4)}','${A(5)}')`);}
+  });
+  // R2d (20261021063452): production imported every asset in ONE batch (one created_at), so summary.latest alone names an
+  // arbitrary member. latestCount = the assets of the whole filtered set whose created_at equals the latest one EXACTLY
+  // (the instant, not the day); latest keeps created_at desc then id (the smallest id of the batch). Synthetic assets.
+  await t.test('R2d assets: latestCount = the assets of the whole filtered set at the latest exact instant, on every page; latest by instant then id; mutants caught',async()=>{
+    const A=n=>`99999999-9999-4999-8999-99999999999${n}`,batch='2026-10-23T03:04:05.678Z';
+    // A batch of three at one instant, one a millisecond earlier the same day, one later in a building outside the overlay,
+    // one later still but deleted.
+    await db.exec(`INSERT INTO public.assets VALUES
+      ('${A(1)}','${ORG}','Lô 1','L1','GOOD','${BUILDING}',null,1,'${USER}',null,'${batch}'),
+      ('${A(2)}','${ORG}','Lô 2','L2','GOOD','${BUILDING}','${ROOM}',2,'${USER}',null,'${batch}'),
+      ('${A(3)}','${ORG}','Lô 3','L3','BROKEN','${BUILDING}',null,3,'${USER}',null,'${batch}'),
+      ('${A(4)}','${ORG}','Lô 4','L4','GOOD','${BUILDING}',null,1,'${USER}',null,'2026-10-23T03:04:05.677Z'),
+      ('${A(5)}','${ORG}','Toà khác','OUT','GOOD','${OTHER_BUILDING}',null,1,'${USER}',null,'2026-10-25T03:00:00Z'),
+      ('${A(6)}','${ORG}','Đã xoá','DEL','GOOD','${BUILDING}',null,1,'${USER}','2026-10-31T00:00:00Z','2026-10-26T03:00:00Z')`);
+    const overlay={row:{organizationId:ORG},scopesByPermission:{'assets.view':{buildingIds:[BUILDING]}}};
+    const first={id:A(1),name:'Lô 1',code:'L1',buildingId:BUILDING,buildingName:'Allowed',roomName:null,createdAt:'2026-10-23'};
+    const live=v1Block(readFileSync(LIVE_V1_PATH,'utf8'));
+    const statement=`      WHERE batch.created_at=batch.newest));`;
+    const once=(from,to)=>{assert.equal(live.split(from).length,2,`anchor: ${from}`);return live.replace(from,()=>to);};
+    try{
+      const whole=await rpc('assets');
+      assert.deepEqual([whole.summary.count,whole.summary.latest,whole.summary.latestCount],[5,first,3],
+        'the batch of three (not the asset a millisecond earlier the same day); the smallest id of the batch; outside/deleted never');
+      assert.deepEqual(domainResult('assets',whole,overlay,domainInput('assets',{})).summary,whole.summary,'the connector accepts it');
+      for(let cursor=null,n=0;n<6;n++){
+        const page=await rpc('assets',{limit:2,cursor});
+        assert.deepEqual(page.summary,whole.summary,'every page carries the whole set');
+        domainResult('assets',page,overlay,domainInput('assets',{limit:2,cursor}));
+        cursor=page.nextCursor;if(cursor===null)break;
+      }
+      assert.deepEqual([(await rpc('assets',{query:'lô'})).summary.latestCount,(await rpc('assets',{query:'lô 3'})).summary.latestCount,
+        (await rpc('assets',{query:'lô 4'})).summary.latestCount,(await rpc('assets',{buildingId:BUILDING})).summary.latestCount],[3,1,1,3],'filters narrow the batch like the set');
+      assert.equal((await rpc('assets',{query:'lô 4'})).summary.latest.id,A(4));
+      // One later addition ends the batch: it alone is the latest instant now.
+      await db.exec(`INSERT INTO public.assets VALUES('${A(7)}','${ORG}','Lô mới','L7','GOOD','${BUILDING}',null,1,'${USER}',null,'2026-10-24T00:00:00Z')`);
+      const later=await rpc('assets');
+      assert.deepEqual([later.summary.count,later.summary.latest.id,later.summary.latestCount],[6,A(7),1]);
+      await db.exec(`DELETE FROM public.assets WHERE id='${A(7)}'`);
+      // Mutants of the batch statement: same DAY (counts the asset a millisecond earlier), every asset of the set, deleted
+      // assets kept, the overlay building dropped — only the expected value sees them; strictly newer (0 next to a latest)
+      // is refused by the connector too.
+      const day=`(batch.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=(batch.newest AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`;
+      const where=`      WHERE asset.organization_id=c.organization_id AND asset.deleted_at IS NULL
+        AND (asset.building_id=ANY(buildings) OR (asset.building_id IS NULL AND org_wide AND asset.user_id=ANY(public.current_visible_owner_ids())))
+        AND (query='' OR position(query IN lower(COALESCE(asset.name,'')||' '||COALESCE(asset.code,'')))>0)) batch
+      WHERE batch.created_at=batch.newest));`;
+      for(const [label,mutant,expected,refused] of [
+        ['same day, not the same instant',once(statement,`      WHERE ${day}));`),4,false],
+        ['every asset of the set',once(statement,'      ));'),5,false],
+        ['deleted assets kept',once(where,where.replace(' AND asset.deleted_at IS NULL','')),1,false],
+        ['overlay building dropped',once(where,where.replace('\n        AND (asset.building_id=ANY(buildings) OR (asset.building_id IS NULL AND org_wide AND asset.user_id=ANY(public.current_visible_owner_ids())))','')),1,false],
+        ['strictly newer than the newest',once(statement,'      WHERE batch.created_at>batch.newest));'),0,true],
+      ]){
+        await db.exec(mutant);
+        try{
+          const value=await rpc('assets');
+          assert.equal(value.summary.latestCount,expected,`${label}: the mutant counts another batch`);
+          if(refused)assert.throws(()=>domainResult('assets',value,overlay,domainInput('assets',{})),`${label}: refused by the connector`);
+          else assert.equal(domainResult('assets',value,overlay,domainInput('assets',{})).summary.latestCount,expected,`${label}: only the expected value sees it`);
+        }finally{await db.exec(live);}
+        assert.equal((await rpc('assets')).summary.latestCount,3,`${label}: reviewed body restored`);
+      }
+    }finally{await db.exec(`DELETE FROM public.assets WHERE id IN ('${A(1)}','${A(2)}','${A(3)}','${A(4)}','${A(5)}','${A(6)}','${A(7)}')`);}
+  });
+  // R2d (20261021063452; production 21/10, full50e question 61: the web /services lists every live service, crm_read_services
+  // one fewer): a service whose only ACTIVE links point to soft-deleted buildings is company-wide (Toàn tổ chức) again; a
+  // narrow connection still sees only services actively linked to its buildings (a live building outside it hides the
+  // service as before); an org-wide connection holds every live building, so a live link shows the service through branch
+  // (a) exactly as before. Synthetic services, removed again at the end.
+  await t.test('R2d services: active links to soft-deleted buildings no longer hide a company-wide service; narrow scope and live links outside it unchanged',async()=>{
+    const S=n=>`77777777-7777-4777-8777-77777777778${n}`,GONE=S(5),OUT=S(6);
+    await db.exec(`INSERT INTO public.buildings VALUES('${GONE}','${ORG}','Toà đã xoá',now()),('${OUT}','${ORG}','Toà ngoài phạm vi',null);
+      INSERT INTO public.services VALUES('${S(1)}','${ORG}','Điện toà xoá','DTX','kWh',3500,'${USER}',null),('${S(2)}','${ORG}','Nước toà ngoài','NTN','m3',18000,'${USER}',null),
+        ('${S(3)}','${ORG}','Phí chung','PC','tháng',50000,'${USER}',null);
+      INSERT INTO public.building_services VALUES('${ORG}','${S(1)}','${GONE}',true),('${ORG}','${S(1)}','${BUILDING}',false),('${ORG}','${S(2)}','${OUT}',true)`);
+    const live=v1Block(readFileSync(LIVE_V1_PATH,'utf8'));
+    const ids=result=>result.items.map(row=>row.id);
+    const overlay=buildings=>({row:{organizationId:ORG},scopesByPermission:{'services.view':{buildingIds:buildings}}});
+    try{
+      // Narrow (the fixture overlay: one building): only the service actively linked there; an inactive link never counts.
+      const narrow=await rpc('services');
+      assert.deepEqual([ids(narrow),narrow.summary.count],[[ITEM],1]);
+      const narrowIds=ids(narrow);
+      assert.ok(!narrowIds.includes(S(1))&&!narrowIds.includes(S(2))&&!narrowIds.includes(S(3)),'narrow: a live building outside it, a deleted one or none never shows a service');
+      await db.exec(`UPDATE public.fixture_domain_acl SET org_wide=true WHERE permission='services.view'; UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=null`);
+      const wide=await rpc('services');
+      assert.deepEqual([ids(wide),wide.summary.count],[[ITEM,S(1),S(2),S(3)].sort(),4],
+        'the soft-deleted building no longer hides the service; the live link (branch a) and no link (branch b) as before');
+      assert.deepEqual(wide.items.find(row=>row.id===S(1)).buildingIds,[],'buildingIds still lists only the connection\'s buildings');
+      assert.deepEqual(wide.items.find(row=>row.id===S(2)).buildingIds,[OUT],'the live building belongs to the buildings of an org-wide connection');
+      assert.deepEqual(domainResult('services',wide,overlay([BUILDING,OTHER_BUILDING,OUT]),domainInput('services',{})).summary,wide.summary,'the connector accepts it');
+      const first=await rpc('services',{limit:1}),second=await rpc('services',{limit:1,cursor:first.nextCursor});
+      assert.deepEqual([first.summary,second.summary],[wide.summary,wide.summary],'every page carries the whole set');
+      // The R2c part 2 body (the old rule) hides the service: the expectation above catches a revert of the fix.
+      await db.exec(v1Block(readFileSync('supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql','utf8')));
+      try{const old=await rpc('services');assert.deepEqual([ids(old),old.summary.count],[[ITEM,S(2),S(3)].sort(),3],'old rule: only that one hidden');}
+      finally{await db.exec(live);}
+      assert.deepEqual(ids(await rpc('services')),[ITEM,S(1),S(2),S(3)].sort(),'reviewed body restored');
+    }finally{
+      await db.exec(`UPDATE public.fixture_domain_acl SET org_wide=false WHERE permission='services.view'; UPDATE public.authorization_scopes SET scope_type='BUILDING',building_id='${BUILDING}';
+        DELETE FROM public.building_services WHERE service_id IN ('${S(1)}','${S(2)}','${S(3)}'); DELETE FROM public.services WHERE id IN ('${S(1)}','${S(2)}','${S(3)}');
+        DELETE FROM public.buildings WHERE id IN ('${GONE}','${OUT}')`);
     }
   });
   await t.test('role, caller, provider session, all binding versions and current CRM denial fail closed',async()=>{
@@ -165,10 +377,11 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
   const envelope=crypto.seal({accessToken,refreshToken:'SYNTHETIC_REFRESH',expiresAt},{assistantId:ASSISTANT,userId:USER,organizationId:ORG,sessionId:SESSION});
   await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0)',[JSON.stringify(envelope),expiresAt]);
   const dependencyScope=createDependencyScope();t.after(()=>dependencyScope.close());
-  let beforeRead;
+  let beforeRead,verifications=0;const bindings=[];
   const fetch=async(url,options)=>{
     assert.equal(options.headers.authorization,'Bearer '+accessToken);assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.redirect,'error');
     const name=new URL(url).pathname,args=JSON.parse(options.body);events.push(name);
+    if(name==='/rest/v1/rpc/hermes_domain_read_v1')bindings.push(args.p_binding);
     if(name==='/rest/v1/rpc/hermes_domain_read_v1'&&beforeRead){const hook=beforeRead;beforeRead=undefined;await hook();}
     // Families v2 and v3 (wave 2 keys) are later forward files and are absent in this v1 fixture.
     if(['/rest/v1/rpc/hermes_domain_capabilities_v2','/rest/v1/rpc/hermes_domain_capabilities_v3'].includes(name))return Response.json({code:'PGRST202',message:'missing',details:null,hint:null},{status:404});
@@ -177,7 +390,7 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
     catch(error){return Response.json({code:error.code,message:error.message,details:null,hint:null},{status:error.code==='42501'?403:error.code==='PT409'?409:400});}
   };
   const supabase={url:'https://example.invalid/',publishableKey:'sb_publishable_test'},reads=createSupabaseDomainReads({...supabase,fetch,dependencyScope});
-  const baseAuth={async verifySession({accessToken:provided}){assert.equal(provided,accessToken);return{userId:USER,sessionId:SESSION,expiresAt};},async readAuthorization(){return{
+  const baseAuth={async verifySession({accessToken:provided}){assert.equal(provided,accessToken);verifications++;return{userId:USER,sessionId:SESSION,expiresAt};},async readAuthorization(){return{
     userId:USER,isSuperadmin:false,activeOrganizationIds:[ORG],epoch:'synthetic-base',membership:{organizationId:ORG,status:'ACTIVE',revokedAt:null,validFrom:null,validTo:null,membershipId:USER,authorizationVersion:1},
     permissions:{read:[],action:[]},companyCeilings:{read:[],action:[]},scopesByPermission:{}};}};
   const auth=createDomainAuthAdapter({baseAuth,reads});
@@ -196,4 +409,13 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
   const finalFence=await service.prepareDomain(token,'contracts',{},options);
   beforeRead=()=>db.exec("UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['tasks.view']");
   await assert.rejects(service.finalizeDomain(token,finalFence,options),code('forbidden'));
+  // B2-2: with the read catalog opt-in, tasks (v1, outside the fast plan) keeps hermes_domain_read_v1 and the seven live
+  // keys; the catalog resolves once (one provider verification), then warm reads verify nothing and rebuild nothing.
+  const readAuthority=createReadCatalogAuthority({authority:createDurableAuthority({connectionStore,crypto,auth}),connectionStore});
+  const cached=createDomainMount({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch,readAuthority}).createService();
+  assert.ok(cached.cachedReadOperations.includes('tasks'));assert.ok(!cached.cachedReadOperations.includes('contracts'));
+  const cold=verifications,sent=bindings.length;
+  for(let i=0;i<2;i++){const r=await cached.prepareDomain(token,'tasks',{},options);assert.equal((await cached.finalizeDomain(token,r,options)).items[0].title,'Synthetic Task');}
+  assert.equal(bindings.length,sent+2);assert.deepEqual(bindings.at(-1),binding);assert.equal(verifications,cold+1,'one catalog resolve, no per-read verification');
+  assert.equal(events.at(-1),'/rest/v1/rpc/hermes_domain_read_v1');
 });

@@ -1,3 +1,5 @@
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseBatchButton, QuickExpenseFeedback } from './QuickExpenseActions';
 import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
 import {QueryRegion} from '@/components/errors/QueryRegion';
@@ -43,6 +45,7 @@ import {
 } from '@/components/ui/select';
 
 interface Props {
+  quickExpense?: QuickExpenseActions;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   batch: IncomeExpenseBatchSummary | null;
@@ -94,6 +97,7 @@ function IncomeExpenseBatchDetailContent({
   onEditVoucher,
   onCancelVoucher,
   onApproveVoucher,
+  quickExpense,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [childVoucher, setChildVoucher] =
@@ -103,6 +107,7 @@ function IncomeExpenseBatchDetailContent({
   const accountsQuery=useAccounts();
   const {data:accounts=[]}=accountsQuery;
   const updateBatchAccount = useUpdateBatchAccount();
+  const quickBusy = !!(quickExpense?.busy || quickExpense?.collecting);
   const [changeError,setChangeError]=useState<unknown>(null);
   const issue=changeError||getBatchAccountIssue(batch?.id??"");
   const blocked=issue instanceof VoucherPartialError||voucherOutcomeUnknown(issue);
@@ -168,22 +173,27 @@ function IncomeExpenseBatchDetailContent({
 
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
-            {batch.has_approved && onCancel && (
-              <Button
-                size="sm"
-                variant="default"
-                className="h-8 bg-orange-500 hover:bg-orange-600 text-white"
-                title="Huỷ cả đợt"
-                onClick={() => {
-                  onCancel(batch.id);
-                  onOpenChange(false);
-                }}
-              >
-                <Ban className="h-4 w-4 mr-1" />
-                Huỷ cả đợt
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <QuickExpenseBatchButton batch={batch} quick={quickExpense} />
+              {batch.has_approved && onCancel && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-8 bg-orange-500 hover:bg-orange-600 text-white"
+                  title="Huỷ cả đợt"
+                  disabled={quickBusy}
+                  onClick={() => {
+                    onCancel(batch.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <Ban className="h-4 w-4 mr-1" />
+                  Huỷ cả đợt
+                </Button>
+              )}
+            </div>
           </div>
+          {quickExpense && <QuickExpenseFeedback quick={quickExpense} />}
 
           <div className="rounded-md border border-zinc-200 overflow-hidden">
             <Row
@@ -232,7 +242,7 @@ function IncomeExpenseBatchDetailContent({
                         setPendingAccountId(value);
                       }
                     }}
-                    disabled={updateBatchAccount.isPending}
+                    disabled={updateBatchAccount.isPending || quickBusy}
                   >
                     <SelectTrigger className="h-8 w-[280px]">
                       <SelectValue />
@@ -412,6 +422,7 @@ function IncomeExpenseBatchDetailContent({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        disabled={quickBusy}
                         onClick={() => {
                           onOpenChange(false);
                           onEditVoucher?.(v);
@@ -435,6 +446,7 @@ function IncomeExpenseBatchDetailContent({
 
       {/* Detail dialog cho phiếu con */}
       <IncomeExpenseDetailDialog
+        quickExpense={quickExpense}
         open={!!childVoucher}
         onOpenChange={(o) => {
           if (!o) setChildVoucher(null);
@@ -488,10 +500,10 @@ function IncomeExpenseBatchDetailContent({
         voucherCount={batch.vouchers.filter((v) => v.approval_status !== 'CANCELLED').length}
         pending={updateBatchAccount.isPending}
         error={issue?voucherFailureMessage(issue,"đổi sổ quỹ cả đợt"):null}
-        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading}
+        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading||quickBusy}
         completedIds={issue instanceof VoucherPartialError?issue.completedIds:[]}
         onConfirm={(reason) => {
-          if (!pendingAccountId) return;
+          if (!pendingAccountId || quickBusy) return;
           updateBatchAccount.mutate(
             { batchId: batch.id, accountId: pendingAccountId, reason },
             { onSuccess: () => {setChangeError(null);setPendingAccountId(null);},onError:error=>setChangeError(error) },

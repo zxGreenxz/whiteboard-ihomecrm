@@ -1,11 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, FULL_READ_OWNER_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, W2_CUSTOMER_STATUS_PATH, W2_WITHOUT_CONTRACT_PATH, INVOICE_REPORT_OUTSTANDING_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
   PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
 import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { W2_FOUNDATION_PATH } from './wave2-sql-paths.mjs';
 
@@ -34,8 +34,14 @@ async function orgWideOverlay(db, on = true, crm = on) {
 const grantCustomers = db => db.exec(`UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='customers.view';
   UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||ARRAY['customers.view'];
   UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['customers.view']`);
+// R2d: customers.withoutContract needs the connection's contract scope (contracts.view) to cover its customer scope.
+const grantContracts = db => db.exec(`UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='contracts.view';
+  UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||ARRAY['contracts.view'];
+  UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['contracts.view']`);
 // Gọi thẳng RPC web như người dùng (jwt sub = USER) để so từng con số với Hermes.
 const web = (env, sql, args = []) => env.call(sql, args, { role: 'postgres' });
+// Câu CREATE của một hàm trong một file migration (thân plpgsql kết thúc ở $fn$;).
+const definitionOf = (path, fn) => readFileSync(path, 'utf8').match(new RegExp(`CREATE OR REPLACE FUNCTION ${fn.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`))[0];
 
 // Phòng toà A thêm cho lấp đầy: P102 ghi OCCUPIED nhưng không có hợp đồng (snapshot web xếp
 // "không khai thác", rooms.status đếm là đang ở), P103 trống có giá, P104 giữ chỗ.
@@ -92,7 +98,9 @@ test('contract: one tool per existing permission key, SQL catalog matches the JS
   assert.ok(Buffer.byteLength(JSON.stringify(tools)) < 8000, 'six report tools fit the remaining tools/list budget');
   for (const tool of tools) assert.doesNotMatch(tool.description, /copilot|hermes_|SELECT/i, tool.name);
   assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_zalo_conversations').description, new RegExp(PRIVATE_HINT));
-  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /crm_read_income_expenses với status=UNAPPROVED/);
+  // R2b (21/10): câu đầu ≤ 60 ký tự chỉ sang thu chi (danh sách tool_search của Hermes chỉ hiện chừng đó).
+  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /^Chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt: income_expenses\./);
+  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /crm_read_income_expenses status=UNAPPROVED/);
   for (const bad of [{ report: 'nope' }, { report: 'search', status: 'PAID' }, { report: 'stats', days: 3 }, { report: 'search', month: '2026-13' },
     { report: 'search', limit: 51 }, { report: 'search', offset: -1 }, { report: 'search', query: 'a\nb' }, { report: 'search', organizationId: ORG },
     { report: 'search', basis: 'cash' }])
@@ -116,12 +124,19 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     assert.ok(last, name);
     if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_PARITY_PATH, `${name} lives in the web-parity migration`);
-    if (name === 'app_private.hermes_report_read_v2')
-      assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
     // Đợt 2 thay v3 MỘT lần (20261018000000): thêm định tuyến report/report_list, phần còn lại giữ nguyên
     // bản review-fix (wave2-foundation.test.mjs so từng ký tự); đột biến ở file này vẫn nhắm bản review-fix.
+    // B5c bước 2 (20261020173819, dải nền hermes_w2_): customers thêm buildingName, mọi dòng khác giữ bản nền.
+    // R2a (20261021004841, dải nền hermes_w2_): v3 customers/occupancy thêm summary, báo cáo monthly_pnl thêm tổng;
+    // mọi dòng khác giữ bản 20261020173819 (v3) và 20261017033630 (báo cáo).
+    // R2c phần 2 (20261021044814, dải nền): v3 customers đếm tình trạng hợp đồng; báo cáo giữ bản R2a.
+    // R2d (20261021063453, dải nền): v3 customers đếm khách chưa có hợp đồng — bản cuối của v3.
+    // Nợ thực (20261021190212): báo cáo invoice_report stats đọc nợ thực — bản cuối của báo cáo (ngoài dải nền: hàm này
+    // không thuộc W2_FOUNDATION_FUNCTIONS).
+    if (name === 'app_private.hermes_report_read_v2')
+      assert.equal(`supabase/migrations/${last[0]}`, INVOICE_REPORT_OUTSTANDING_PATH, `${name} lives in the effective-outstanding successor`);
     if (name === 'public.hermes_domain_read_v3')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_FOUNDATION_PATH, `${name} lives in the wave-2 foundation migration`);
+      assert.equal(`supabase/migrations/${last[0]}`, W2_WITHOUT_CONTRACT_PATH, `${name} lives in the R2d wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])
@@ -154,6 +169,10 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   const input = domainInput('occupancy', {}), domain = await env.read3('occupancy', input);
   assert.deepEqual(domain.items, [{ id: BUILDING, buildingId: BUILDING, name: 'Toà A', total: 4, occupied: 1, available: 1 }]);
   assert.deepEqual(domainResult('occupancy', domain, identity('reports_real_estate.occupancy'), input).items, domain.items);
+  // R2a (20261021004841): summary = tổng các dòng snapshot của tập toà đã lọc (mọi trang), count = số toà.
+  assert.deepEqual(domain.summary, { count: 1, total: 4, occupied: 1, available: 1 });
+  assert.deepEqual(domain.summary, summarizeRows('occupancy', domain.items));
+  assert.deepEqual(domainResult('occupancy', domain, identity('reports_real_estate.occupancy'), input).summary, domain.summary);
   // Phòng sắp trống: hợp đồng gia hạn đã duyệt đẩy ngày trống như web (contract_extensions).
   const upcoming = await run(env, 'occupancy_report', { report: 'upcoming', fromDate: '2026-12-15', days: 30 });
   assert.deepEqual(upcoming.value.items.map(row => [row.contractId, row.daysRemaining, row.extensionApplied]), [[CONTRACT_A, 17, false]]);
@@ -166,6 +185,17 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   const both = (await run(env, 'occupancy_report', { report: 'snapshot' })).value.items;
   assert.deepEqual(both.map(row => [row.buildingId, row.total, row.occupied]), [[BUILDING, 4, 1], [OTHER_BUILDING, 1, 1]]);
   assert.deepEqual((await run(env, 'occupancy_report', { report: 'snapshot', buildingId: OTHER_BUILDING })).value.items.map(row => row.buildingId), [OTHER_BUILDING]);
+  // R2a: hai toà — summary cộng cả hai; limit/cursor không thu hẹp; query tên toà và buildingId thu hẹp như các dòng.
+  const wide = await env.read3('occupancy', domainInput('occupancy', {}));
+  assert.deepEqual(wide.summary, { count: 2, total: 5, occupied: 2, available: 1 });
+  assert.deepEqual(wide.summary, summarizeRows('occupancy', wide.items));
+  const first = await env.read3('occupancy', domainInput('occupancy', { limit: 1 }));
+  const second = await env.read3('occupancy', domainInput('occupancy', { limit: 1, cursor: first.nextCursor }));
+  assert.deepEqual([first.items.length, first.summary, second.summary], [1, wide.summary, wide.summary], 'every page carries the whole set');
+  assert.deepEqual(domainResult('occupancy', first, identity('reports_real_estate.occupancy'), domainInput('occupancy', { limit: 1 })).summary, wide.summary);
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { query: 'toà a' }))).summary, { count: 1, total: 4, occupied: 1, available: 1 }, 'building-name query');
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { buildingId: OTHER_BUILDING }))).summary, { count: 1, total: 1, occupied: 1, available: 0 }, 'buildingId');
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { query: 'không có' }))).summary, { count: 0, total: 0, occupied: 0, available: 0 }, 'empty set: zeros, not null');
 }));
 
 test('invoice search like /invoices: cancelled hidden by default, unpaid = no money collected, customer-name search needs customers.view', { timeout: 120000 }, () => inCase(async env => {
@@ -198,6 +228,31 @@ test('invoice search like /invoices: cancelled hidden by default, unpaid = no mo
   assert.equal((await run(env, 'invoice_report', { report: 'stats' })).value.summary.totalCount, 3, 'stats exclude cancelled');
 }));
 
+// Nợ thực (20261021190212): totalRemaining như thẻ "Phải thu" của invoice_statistics_v3 — phần nợ cũ đã kéo sang hoá đơn
+// gánh còn mở CÙNG tập chỉ đếm một lần; một kỳ (hoá đơn gánh ở kỳ khác) giữ nguyên. Bản lùi chuẩn bị sẵn về đúng R2a.
+test('invoice_report stats: nợ thực — nợ kéo sang hoá đơn gánh cùng tập đếm một lần; một kỳ giữ nguyên; bản lùi về R2a rồi forward lại', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  const CARRIER = '0e0e0e0e-0000-4000-8000-000000000099';
+  // INV-A (kỳ 10, còn 2.500.000) được hoá đơn kỳ 11 cùng phòng gánh trọn; hoá đơn gánh tạo SAU (created_at mặc định).
+  await db.exec(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,
+      notes,contract_id,previous_debt_sources) VALUES('${CARRIER}','${ORG}','INV-C','APPROVED','${BUILDING}','${ROOM}','2026-11','2026-11-10',3000000,0,null,
+      '${CONTRACT_A}','[{"type":"invoice","id":"${INVOICE_A}","amount":2500000,"label":"INV-A"}]')`);
+  const remaining = async input => (await run(env, 'invoice_report', { report: 'stats', ...input })).value.summary.totalRemaining;
+  assert.deepEqual([await remaining({}), await remaining({ month: '2026-10' }), await remaining({ month: '2026-11' })],
+    ['3000000.00', '2500000.00', '3000000.00'], 'mọi kỳ: 3.000.000 (cộng thẳng 5.500.000); từng kỳ giữ nguyên');
+  const bodyMd5 = async () => (await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE proname='hermes_report_read_v2'")).rows[0].m;
+  const live = await bodyMd5();
+  const file = revertFile('docs/plans/hermes-crm/revert/hermes_invoice_report_effective_outstanding_revert_v1.sql');
+  await db.exec(file); await db.exec(file);
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
+  const r2a = await bodyMd5();
+  await db.exec(file);
+  assert.equal(await bodyMd5(), r2a, 'bản lùi = đúng thân R2a (20261021004841)');
+  assert.equal(await remaining({}), '5500000.00', 'thân R2a cộng thẳng');
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual([await bodyMd5(), await remaining({})], [live, '3000000.00'], 'forward lại');
+}));
+
 test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on request) plus the pending part BC Doanh Thu Chi Phí adds', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await seedPnl(db);
@@ -208,6 +263,13 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
     ['2026-10-01', BUILDING, 400000, 0, 400000]], 'approved only, re-perioded like fa_monthly_pnl_accrual');
   assert.deepEqual([accrual.value.summary.basis, Number(accrual.value.summary.pendingIncome), Number(accrual.value.summary.pendingExpense),
     accrual.value.summary.pendingVouchers], ['accrual', 600000, 500000, 2], 'pending V5 (T9+T10 of T9–T11) and V3; V4 is outside the overlay');
+  // R2a (20261021004841): summary cũng cộng MỌI hàng của báo cáo (cùng toà/kỳ, mọi trang): 3 tháng; số tiền cộng đúng thang
+  // như sum(numeric) (oracle: summarizeRows của building_profit cộng đúng ba khoá revenue/expense/net).
+  const totals = summary => [summary.revenue, summary.expense, summary.net, summary.rows];
+  const pnlOracle = rows => { const { revenue, expense, net } = summarizeRows('building_profit', rows).sum; return [revenue, expense, net, rows.length]; };
+  assert.deepEqual(totals(accrual.value.summary).map((value, index) => index < 3 ? Number(value) : value), [1200000, 300000, 900000, 3]);
+  assert.deepEqual(totals(accrual.value.summary), pnlOracle(accrual.value.items));
+  assert.deepEqual(accrual.checked.summary, accrual.value.summary, 'the broker passes the eight keys');
   // Từng hàng bằng RPC web (useFinancialAnalysis.ts, hermes-parity:monthly-pnl) trên cùng tập toà.
   const direct = await web(env, `SELECT jsonb_agg(jsonb_build_object('month',month,'buildingId',building_id,'revenue',revenue::text,'expense',expense::text,
     'net',net::text) ORDER BY month) result FROM public.fa_monthly_pnl_accrual($1::date,$2::date,$3::uuid[])`, [range.fromDate, range.toDate, [BUILDING]]);
@@ -215,10 +277,14 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
   const cash = await run(env, 'monthly_pnl', { ...range, basis: 'cash' });
   assert.deepEqual(money(cash.value.items), [['2026-08-01', BUILDING, 1200000, 0, 1200000], ['2026-09-01', BUILDING, 0, 300000, -300000]]);
   assert.deepEqual([cash.value.summary.basis, Number(cash.value.summary.pendingIncome), Number(cash.value.summary.pendingExpense)], ['cash', 900000, 500000]);
+  assert.deepEqual(totals(cash.value.summary), pnlOracle(cash.value.items), 'cash basis: totals of its own two rows');
   const page = await run(env, 'monthly_pnl', { ...range, limit: 2 });
   assert.deepEqual([page.value.items.map(row => row.month), page.value.nextOffset], [['2026-08-01', '2026-09-01'], 2]);
   const next = await run(env, 'monthly_pnl', { ...range, limit: 2, offset: 2 });
   assert.deepEqual([next.value.items.map(row => row.month), next.value.nextOffset], [['2026-10-01'], null]);
+  assert.deepEqual([totals(page.value.summary), totals(next.value.summary)], [totals(accrual.value.summary), totals(accrual.value.summary)],
+    'limit/offset never narrow the totals: rows = 3 on both pages');
+  assert.deepEqual(totals((await run(env, 'monthly_pnl', { ...range, query: 'không có' })).value.summary), ['0', '0', '0', 0], 'no building: zeros, not null');
   // Phần chờ duyệt phân bổ đúng như bản canonical: duyệt xong thì hàng tăng đúng bằng nó.
   await db.exec(`UPDATE public.income_expenses SET approval_status='APPROVED' WHERE id IN ('${V3}','${V5}')`);
   const approved = await run(env, 'monthly_pnl', range);
@@ -230,6 +296,109 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
   await orgWideOverlay(db);
   const wide = await run(env, 'monthly_pnl', range);
   assert.deepEqual([Number(wide.value.summary.pendingIncome), wide.value.summary.pendingVouchers], [700000, 1]);
+}));
+
+// R2a revert artifact, wave-2 half (docs/plans/hermes-crm/revert, not a migration): run inside the case without its own
+// BEGIN/COMMIT (the case is one transaction, rolled back after). It restores the exact 20261020173819 v3 and
+// 20261017033630 report bodies: no summary on customers/occupancy, the four-key monthly_pnl summary — which this
+// connector release still accepts (release window), the safe order the revert header asks for.
+test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 report bodies exactly; this connector (window closed) refuses the result', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  await seedPnl(db); await seedRooms(db);
+  const file = readFileSync('docs/plans/hermes-crm/revert/hermes_w2_domain_summary_revert_v1.sql', 'utf8');
+  assert.equal(file.split('\nBEGIN;\n').length, 2); assert.equal(file.split('\nCOMMIT;\n').length, 2);
+  const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
+  const r2a = await bodies();
+  await db.exec(file.replace('\nBEGIN;\n', '\n').replace('\nCOMMIT;\n', '\n'));
+  const reverted = await bodies();
+  for (const [index, row] of reverted.entries()) assert.notEqual(row.body, r2a[index].body, `${row.proname}: replaced`);
+  const last = (name, fn) => readFileSync(`supabase/migrations/${name}.sql`, 'utf8').match(new RegExp(`CREATE OR REPLACE FUNCTION ${fn.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`))[0];
+  await db.exec(last('20261020173819_hermes_w2_customers_building_name_v1', 'public.hermes_domain_read_v3'));
+  await db.exec(last('20261017033630_hermes_full_read_owner_scope_v1', 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), reverted, 'the revert bodies are the 20261020173819 / 20261017033630 bodies');
+  const occupancy = await env.read3('occupancy', domainInput('occupancy', {}));
+  assert.equal(Object.hasOwn(occupancy, 'summary'), false);
+  // The R2a window is closed (DOMAIN_SUMMARY_TOLERANT = [], no summaryTolerant): this connector refuses the reverted SQL.
+  // The artifact's SAFE ORDER rolls the connector back to the R2a release (3762b3a0) before applying it.
+  assert.throws(() => domainResult('occupancy', occupancy, identity('reports_real_estate.occupancy'), domainInput('occupancy', {})), 'summary is required');
+  const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }), pnl = await env.read3('monthly_pnl', pnlInput);
+  assert.deepEqual(Object.keys(pnl.summary).sort(), ['basis', 'pendingExpense', 'pendingIncome', 'pendingVouchers'], 'the four keys before R2a');
+  assert.throws(() => domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput), 'the four totals are required');
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3')); await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), r2a, 'R2a then R2c part 2 then R2d then the effective-outstanding report forward again');
+}));
+
+// A prepared wave-2 revert, run inside the case without its own BEGIN/COMMIT (the case is one transaction).
+const revertFile = path => {
+  const file = readFileSync(path, 'utf8');
+  assert.equal(file.split('\nBEGIN;\n').length, 2); assert.equal(file.split('\nCOMMIT;\n').length, 2);
+  return file.replace('\nBEGIN;\n', '\n').replace('\nCOMMIT;\n', '\n');
+};
+const R2D_W2_REVERT = 'docs/plans/hermes-crm/revert/hermes_w2_customers_without_contract_revert_v1.sql';
+
+// R2c part 2 (20261021044814): the prepared wave-2 revert returns v3 to its exact R2a body (customers byStatus {} again,
+// which every connector accepts); it runs twice and the forward body re-applies. The report reader is not touched. R2d
+// (20261021063453) is live on top of it: the artifact refuses to run until R2d's own wave-2 revert has.
+test('R2c part 2 W2 revert artifact: refused while R2d is live; then the exact 20261021004841 v3 body; customers byStatus {} again and accepted; runs twice', { timeout: 120000 }, () => inCase(async env => {
+  const { db, orgWide } = env;
+  const file = revertFile('docs/plans/hermes-crm/revert/hermes_w2_customer_status_summary_revert_v1.sql');
+  const run = () => db.exec(file);
+  const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
+  await grantCustomers(db); await orgWide('customers.view');
+  const live = await bodies(), before = await env.read3('customers', domainInput('customers', {}));
+  assert.deepEqual(before.summary.byStatus, { RENTING: 2 }, 'the fixture tabs (two renting, two unclassified)');
+  await db.exec('SAVEPOINT r2d_live');
+  await assert.rejects(run(), /hermes_w2_customer_status_revert_requires_r2d_revert/);
+  await db.exec('ROLLBACK TO SAVEPOINT r2d_live');
+  assert.deepEqual(await bodies(), live, 'refused: nothing replaced');
+  await db.exec(revertFile(R2D_W2_REVERT));
+  const r2c = await bodies();
+  await run();
+  const reverted = await bodies();
+  assert.notEqual(reverted[0].body, r2c[0].body, 'v3 replaced'); assert.equal(reverted[1].body, live[1].body, 'the report reader untouched');
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), reverted, 'the revert body is the 20261021004841 body');
+  await run(); assert.deepEqual(await bodies(), reverted, 'a second run changes nothing');
+  const legacy = await env.read3('customers', domainInput('customers', {}));
+  const { withoutContract, ...r2cSummary } = before.summary;
+  assert.deepEqual([legacy.items, legacy.summary], [before.items, { ...r2cSummary, byStatus: {} }], 'only byStatus differs (withoutContract left with R2d)');
+  assert.deepEqual(domainResult('customers', legacy, identity('customers.view'), domainInput('customers', {})).summary, legacy.summary, 'accepted');
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), live, 'part 2 and R2d forward again');
+}));
+
+// R2d (20261021063453): the prepared wave-2 revert returns v3 to its exact R2c part 2 body — the customers summary without
+// withoutContract, which this connector release accepts (its one-release window); it runs twice, refuses a v3 that is
+// neither (it would undo it), and the forward body re-applies. The report reader is not touched.
+test('R2d W2 revert artifact: restores the exact 20261021044814 v3 body; customers summary without withoutContract, accepted this release; runs twice', { timeout: 120000 }, () => inCase(async env => {
+  const { db, orgWide } = env;
+  const file = revertFile(R2D_W2_REVERT), run = () => db.exec(file);
+  const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
+  await grantCustomers(db); await grantContracts(db); await orgWide('customers.view');
+  const live = await bodies(), before = await env.read3('customers', domainInput('customers', {}));
+  assert.equal(before.summary.withoutContract, 1, 'the fixture customer who never had a contract');
+  await run();
+  const reverted = await bodies();
+  assert.notEqual(reverted[0].body, live[0].body, 'v3 replaced'); assert.equal(reverted[1].body, live[1].body, 'the report reader untouched');
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), reverted, 'the revert body is the 20261021044814 body');
+  await run(); assert.deepEqual(await bodies(), reverted, 'a second run changes nothing');
+  const legacy = await env.read3('customers', domainInput('customers', {}));
+  const { withoutContract, ...r2cSummary } = before.summary;
+  assert.deepEqual([legacy.items, legacy.summary], [before.items, r2cSummary], 'only withoutContract differs');
+  assert.deepEqual(domainResult('customers', legacy, identity('customers.view'), domainInput('customers', {})).summary, legacy.summary, 'accepted (window)');
+  // Over a v3 that is neither R2d nor R2c part 2 (here the R2a body) the artifact stops: it would undo it.
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec('SAVEPOINT r2a_v3');
+  await assert.rejects(run(), /hermes_w2_without_contract_revert_unexpected_v3/);
+  await db.exec('ROLLBACK TO SAVEPOINT r2a_v3');
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), live, 'R2d forward again: the reviewed body');
 }));
 
 test('organization reports: approvals inbox of the asker in this company; Zalo needs Chat Zalo company-wide like the web', { timeout: 120000 }, () => inCase(async env => {
@@ -415,11 +584,33 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
   // P3-8: ảnh chụp không có phạm vi của khoá ⇒ đóng (trước đây coi là mở).
   assert.throws(() => domainResult('invoice_report', value, { row: { organizationId: ORG }, scopesByPermission: {} }, input), 'no scope for the key ⇒ refused');
   const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-08-31' });
+  const pending = { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 };
   const pnl = { ...value, domain: 'monthly_pnl', report: 'by_month', source: 'crm.fa_monthly_pnl', items: [],
-    summary: { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 } };
+    summary: { ...pending, revenue: '0', expense: '0', net: '0', rows: 0 } };
   assert.equal(domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput).summary.basis, 'accrual');
   for (const summary of [{ ...pnl.summary, basis: 'kqkd' }, { ...pnl.summary, pendingExpense: 1 }, (({ basis, ...rest }) => rest)(pnl.summary)])
     assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity('reports_finance.analysis'), pnlInput), JSON.stringify(summary));
+  // R2a: tổng các hàng (revenue/expense/net/rows) đi cùng summary. Cửa sổ phát hành (summaryTolerant) đã đóng 21/10: SQL cũ
+  // (chỉ bốn khoá chờ duyệt) bị từ chối như vắng LẺ một khoá; có mặt thì đủ cả bốn, đúng kiểu.
+  const pnlCheck = value => domainResult('monthly_pnl', value, identity('reports_finance.analysis'), pnlInput);
+  const totals = pnl.summary;
+  assert.deepEqual(pnlCheck({ ...pnl, summary: totals }).summary, totals);
+  assert.throws(() => pnlCheck({ ...pnl, summary: pending }), 'the four keys of the SQL before R2a: refused since the window closed');
+  for (const key of ['revenue', 'expense', 'net', 'rows'])
+    assert.throws(() => pnlCheck({ ...pnl, summary: (({ [key]: _, ...rest }) => rest)(totals) }), `${key} absent alone`);
+  for (const [label, changed] of [['revenue as a number', { revenue: 0 }], ['net not a decimal', { net: '1e3' }], ['negative rows', { rows: -1 }],
+    ['rows as text', { rows: '0' }], ['unknown total', { profit: '0' }]])
+    assert.throws(() => pnlCheck({ ...pnl, summary: { ...totals, ...changed } }), label);
+  // rows đếm mọi hàng trước khi chia trang: không ít hơn offset + hàng của trang; trang cuối có hàng thì đúng bằng.
+  const month = { month: '2026-08-01', buildingId: BUILDING, buildingName: 'Toà A', revenue: '5', expense: '2', net: '3' };
+  const last = { ...pnl, items: [month], summary: { ...totals, revenue: '5', expense: '2', net: '3', rows: 1 } };
+  assert.equal(pnlCheck(last).summary.rows, 1);
+  assert.throws(() => pnlCheck({ ...last, summary: { ...last.summary, rows: 2 } }), 'last page: rows = offset + items');
+  assert.throws(() => pnlCheck({ ...last, summary: { ...last.summary, rows: 0 } }), 'rows below the rows returned');
+  const more = { ...last, nextOffset: 1, summary: { ...last.summary, rows: 3 } };
+  assert.equal(pnlCheck(more).summary.rows, 3, 'more pages: rows above the page');
+  assert.throws(() => pnlCheck({ ...more, summary: { ...more.summary, rows: 0 } }), 'rows below the page while more pages remain');
+  assert.equal(pnlCheck({ ...pnl, summary: { ...totals, rows: 4 } }).summary.rows, 4, 'an empty page (offset past the end) proves nothing about rows');
 });
 
 // Mutation evidence: v3 / reader live in the review-fix file (20261017033630); catalog and the

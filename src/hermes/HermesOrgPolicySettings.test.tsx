@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { StrictMode } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HermesOrgPolicySettings } from './HermesOrgPolicySettings';
 import type { HermesOrgPolicySnapshot } from './orgPolicyClient';
@@ -11,7 +11,7 @@ const scope={userId:USER,organizationId:ORG,generation:0},currentScope=()=>scope
 let value:HermesOrgPolicySnapshot,changed:ReturnType<typeof vi.fn<()=>void>>,fetchMock:ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 const writes=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith('/hermes_set_org_policy_v1'));
 async function respond(url:RequestInfo|URL,init?:RequestInit){
-  if(/\/hermes_org_policy_options_v[1234567]$/.test(String(url)))return Response.json(value);
+  if(/\/hermes_org_policy_options_v[123456789]$/.test(String(url)))return Response.json(value);
   if(!String(url).endsWith('/hermes_set_org_policy_v1'))throw new Error('unexpected_fixture_rpc');
   const input=JSON.parse(init!.body as string);
   if(input.p_expected_version!==value.policy.version)return Response.json({code:'PT409',message:'PRIVATE',details:null,hint:null},{status:409});
@@ -34,14 +34,14 @@ describe('company Hermes policy administration through the real client',()=>{
   it('rejects an unknown fixture RPC before it can mutate the company policy',async()=>{
     const before=structuredClone(value),body=JSON.stringify({p_org:ORG,p_expected_version:value.policy.version,
       p_enabled:true,p_read:[],p_action:[],p_scope_ids:[]});
-    for(const rpc of ['hermes_org_policy_options_v8','hermes_unexpected_v1']){
+    for(const rpc of ['hermes_org_policy_options_v99','hermes_unexpected_v1']){
       await expect(respond('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/'+rpc,{method:'POST',body})).rejects.toThrow('unexpected_fixture_rpc');
       expect(value).toEqual(before);
     }
   });
   it('explains neutral policy is optional and does not persist the displayed ceiling on open',async()=>{
     value.policy={...value.policy,version:0,enabled:true};render(view());await open();
-    expect(fetchMock.mock.calls[0][0]).toBe('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/hermes_org_policy_options_v7');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/hermes_org_policy_options_v9');
     expect(screen.getByText(/Bạn có thể tạo kết nối mà không cần lưu chính sách này/)).toBeTruthy();
     expect((screen.getByRole('checkbox',{name:'Bật Hermes cho công ty'}) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole('button',{name:'Lưu chính sách Hermes'}) as HTMLButtonElement).disabled).toBe(true);
@@ -94,6 +94,16 @@ describe('company Hermes policy administration through the real client',()=>{
 });
 
 describe('shared permission picker for explicit company action ceiling',()=>{
+ it('offers the v9 room edit action unchecked and writes it only after the human selects it',async()=>{
+  value.choices.action=['rooms.edit'];render(view());await open();
+  const actions=within(screen.getByRole('group',{name:'Thao tác dữ liệu'}));
+  fireEvent.change(actions.getByPlaceholderText(/Tìm quyền/),{target:{value:'rooms.edit'}});
+  const edit=actions.getByRole('checkbox');expect(edit.getAttribute('data-state')).toBe('unchecked');
+  expect(screen.getByRole('button',{name:'Lưu chính sách Hermes'})).toHaveProperty('disabled',true);
+  expect(writes()).toHaveLength(0);
+  fireEvent.click(edit);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+  expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_enabled:false,p_action:['rooms.edit'],p_scope_ids:[]});
+ });
  it('offers memory and schedule capabilities as explicit unchecked choices',async()=>{
   value.choices.read.push('assistant.memory.read');value.choices.action=['assistant.memory.write','chat_zalo.manage_automation'];render(view());await open();
   const read=screen.getByRole('checkbox',{name:'Xem ghi nhớ công việc CRM được phép'}),write=screen.getByRole('checkbox',{name:'Lưu, sửa và quên ghi nhớ công việc CRM của chính người dùng'});
@@ -120,7 +130,7 @@ describe('shared permission picker for explicit company action ceiling',()=>{
   value.choices.read.push('assistant.memory.supervise');value.choices.action=['income_expenses.create','income_expenses.approve'];render(view());await open();
   const supervise=screen.getByRole('checkbox',{name:/Hermes tổng: tra ghi nhớ công việc được chia sẻ/});expect((supervise as HTMLInputElement).checked).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:/Thu chi/}));
-  expect(screen.getByText(/Hermes: ghi phiếu CHI nhanh/)).toBeTruthy();expect(screen.getByText(/không có công cụ duyệt/)).toBeTruthy();
+  expect(screen.getByText(/Hermes: lập phiếu CHI lập tay/)).toBeTruthy();expect(screen.getByText(/không công cụ nào dùng khoá này/)).toBeTruthy();
   const create=screen.getByRole('checkbox',{name:/Tạo phiếu thu chi/});expect(create.getAttribute('data-state')).toBe('unchecked');
   fireEvent.click(supervise);fireEvent.click(create);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
   expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','assistant.memory.supervise'],p_action:['income_expenses.create']});

@@ -23,10 +23,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { VoucherPartialError, voucherFailureMessage, voucherLifecycleFeedback, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useAuth } from "@/hooks/useAuth";
+import type { IncomeExpenseWithRelations } from "./types";
+import { withDetailReadDeadline } from "./detailRead";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
 import { isAbortError, UploadTimeoutError, UploadTooLargeError } from '@/lib/uploadDeadline';
-import { uploadFileDetailed, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
+import { downloadFile, parseStorageRef, uploadFileDetailed, deleteFile, sanitizeStorageFileName, uploadToStorageWithDeadline } from "@/lib/storage";
 import type { UploadProgress } from "@/lib/storage/resilientUpload";
 import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
 import { MAX_ATTACHMENT_BYTES, uploadToken } from "@/lib/evidenceUpload";
@@ -61,7 +63,7 @@ const INVALIDATE_KEYS = [
   ["finance-v2-routes"],
 ] as const;
 
-function useInvalidateMoney() {
+export function useInvalidateMoney() {
   const qc = useQueryClient();
   return () => {
     for (const key of INVALIDATE_KEYS) qc.invalidateQueries({ queryKey: [...key] });
@@ -150,7 +152,7 @@ export function usePostApprovedIncomeExpenseV2() {
 }
 
 /** Duyệt và Thu/Chi atomic (actor vừa approver vừa CUSTODIAN). */
-export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
+export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'; deferFeedback?:boolean}={}) {
   const invalidate = useInvalidateMoney();
   const {selectedOrganizationId}=useOrganization();
   const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve-post',options));
@@ -168,11 +170,13 @@ export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
       },undefined,organizationId??selectedOrganizationId??undefined);
     },
     onSuccess: (data) => {
-      invalidate();
-      const feedback = voucherLifecycleFeedback(data, "approvePost");
-      toast[feedback.kind](feedback.message);
+      if (!options.deferFeedback) {
+        invalidate();
+        const feedback = voucherLifecycleFeedback(data, "approvePost");
+        toast[feedback.kind](feedback.message);
+      }
     },
-    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); },
+    onError: (e: unknown) => { if (!options.deferFeedback) { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); } },
   });
 }
 
@@ -291,6 +295,106 @@ export async function adoptVoucherAttachmentsAsEvidence(
     evidenceIds: financialReadRows<string>(payload?.evidence_ids).map(id=>{if(typeof id!=='string' || !id)throw new TypeError('Chưa đọc được mã chứng từ của phiếu.');return id;}),
     skipped: financialReadRows<{url:string;reason:string}>(payload?.skipped).map(row=>{if(!row || typeof row.url!=='string' || typeof row.reason!=='string')throw new TypeError('Chưa đọc được các chứng từ bị bỏ qua.');return row;}),
   };
+}
+
+type QuickExpenseEvidenceResult = { evidenceIds: string[]; skipped: { url: string; reason: string }[] };
+type QuickExpenseEvidenceCache = {
+  blobs: Map<string, Blob>; downloads: Map<string, Promise<Blob | null>>;
+  bytes: number; generation: number;
+};
+const QUICK_EXPENSE_EVIDENCE_CACHE_BYTES = 20 * 1024 * 1024;
+
+/** One run may reuse downloaded bytes; authority and evidence IDs are never cached. */
+export function createQuickExpenseBatchEvidenceSession() {
+  const cache: QuickExpenseEvidenceCache = { blobs: new Map(), downloads: new Map(), bytes: 0, generation: 0 };
+  return (voucher: IncomeExpenseWithRelations) => prepareQuickExpenseBatchEvidenceWithCache(voucher, cache);
+}
+
+async function readQuickExpenseEvidenceBlob(key: string, bucket: string, path: string, cache?: QuickExpenseEvidenceCache) {
+  const saved = cache?.blobs.get(key);
+  if (saved) return saved;
+  const generation = cache?.generation;
+  const download = cache?.downloads.get(key) ?? withDetailReadDeadline(downloadFile(bucket, path));
+  cache?.downloads.set(key, download);
+  try {
+    const blob = await download;
+    if (!(blob instanceof Blob) || !blob.size) throw new Error('Chưa đọc được đầy đủ tệp chứng từ đã lưu.');
+    if (cache && cache.generation === generation && !cache.blobs.has(key) &&
+        cache.bytes + blob.size <= QUICK_EXPENSE_EVIDENCE_CACHE_BYTES) {
+      cache.blobs.set(key, blob);
+      cache.bytes += blob.size;
+    }
+    return blob;
+  } finally {
+    if (cache?.downloads.get(key) === download) cache.downloads.delete(key);
+  }
+}
+
+/** Phiếu tổng dùng chung ảnh, nhưng mỗi lần ghi sổ phải có evidence ORIGINAL riêng. */
+export async function prepareQuickExpenseBatchEvidence(
+  voucher: IncomeExpenseWithRelations,
+): Promise<QuickExpenseEvidenceResult> {
+  return prepareQuickExpenseBatchEvidenceWithCache(voucher);
+}
+
+async function prepareQuickExpenseBatchEvidenceWithCache(
+  voucher: IncomeExpenseWithRelations,
+  cache?: QuickExpenseEvidenceCache,
+): Promise<QuickExpenseEvidenceResult> {
+  const reject = (message: string, cause?: unknown) => new FinancialWorkflowError(message, 'failure', [], cause);
+  try {
+    if (!voucher.id || !voucher.organization_id || !Array.isArray(voucher.attachments) || !voucher.attachments.length) {
+      throw reject('Phiếu thiếu tổ chức hoặc chứng từ đã lưu. Tải lại phiếu trước khi chi nhanh.');
+    }
+    const adopted = await adoptVoucherAttachmentsAsEvidence(voucher.id);
+    if (!adopted.skipped.length) return adopted;
+    const savedUrls = new Set(voucher.attachments);
+    // Chỉ ATTACHED có nghĩa là tệp hợp lệ đã dùng ở phiếu khác. Không vượt qua
+    // QUARANTINED, lỗi storage hoặc kiểm tenant mà RPC đã trả về.
+    if (adopted.skipped.some(row => row.reason !== 'ATTACHED' || !savedUrls.has(row.url))) {
+      throw reject('Chứng từ của phiếu chưa hợp lệ hoặc đã thay đổi. Chưa duyệt và chi.');
+    }
+    const trustedOrigin = new URL(import.meta.env.VITE_SUPABASE_URL).origin;
+    const prefix = `${trustedOrigin}/storage/v1/object/public/`;
+    const copies = [...new Set(adopted.skipped.map(row => row.url))].map(url => {
+      const source = new URL(url);
+      const ref = parseStorageRef(url);
+      const sourcePrefix = ref ? `${prefix}${ref.bucket}/` : '';
+      const rawPath = sourcePrefix && url.startsWith(sourcePrefix) ? url.slice(sourcePrefix.length).split('?')[0] : '';
+      // Adoption uses the literal object path (without URL decoding). Reject
+      // aliases/normalization so download cannot silently resolve another file.
+      if (source.origin !== trustedOrigin || source.username || source.password || source.hash ||
+          !ref || !['income-expense-attachments', 'payment-receipts'].includes(ref.bucket) || !rawPath || ref.path !== rawPath ||
+          source.pathname !== `/storage/v1/object/public/${ref.bucket}/${rawPath}` ||
+          rawPath.includes('\\') || rawPath.split('/').some(part => !part || part === '.' || part === '..')) {
+        throw reject('Đường dẫn chứng từ không khớp kho lưu của phiếu. Chưa duyệt và chi.');
+      }
+      return { ref, url };
+    });
+    const evidenceIds = [...new Set(adopted.evidenceIds)];
+    for (const { ref, url } of copies) {
+      // Only consult bytes after this voucher's adoption and every source URL
+      // passed validation. A new run/retry must create a new session.
+      const key = JSON.stringify([voucher.organization_id, url]);
+      const blob = await readQuickExpenseEvidenceBlob(key, ref.bucket, ref.path, cache);
+      const file = new File([blob], ref.path.split('/').pop() || 'chung-tu', { type: blob.type });
+      const evidenceId = await uploadFinanceEvidence(file, voucher.organization_id);
+      if (!evidenceId || evidenceIds.includes(evidenceId)) {
+        throw reject('Chưa xác nhận được chứng từ riêng cho phiếu này. Chưa duyệt và chi.');
+      }
+      evidenceIds.push(evidenceId);
+    }
+    return { evidenceIds, skipped: [] };
+  } catch (error) {
+    if (cache) {
+      cache.blobs.clear();
+      cache.downloads.clear();
+      cache.bytes = 0;
+      cache.generation++;
+    }
+    if (error instanceof FinancialWorkflowError) throw error;
+    throw reject('Không chuẩn bị được chứng từ đã lưu cho phiếu tổng. Chưa duyệt và chi.', error);
+  }
 }
 
 /** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */

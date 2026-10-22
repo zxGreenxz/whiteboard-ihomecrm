@@ -1,8 +1,9 @@
 import { BrokerError } from './broker.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
-import { domainExact, domainId, domainInput, domainResult, DOMAIN_READS } from './domain-contract.mjs';
+import { domainExact, domainId, domainInput, domainResult, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
 
-export const FAST_READ_OPERATIONS = Object.freeze(['customers', 'contracts', 'invoices']);
+// The allowlist lives in the contract (broker.mjs imports it without a cycle).
+export { FAST_READ_OPERATIONS };
 const fail = code => { throw new BrokerError(code); };
 const ids = value => Array.isArray(value) && value.length <= 256 && value.every(domainId) && new Set(value).size === value.length;
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;

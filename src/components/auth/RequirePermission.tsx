@@ -20,7 +20,7 @@
 //   </ProtectedRoute>} />
 //
 // Super admin & owner (__superadmin sentinel) tự động pass.
-// Check qua canUse (catalog permissionPages.ts) — key chi tiết chưa tồn tại
+// Check qua canUse (src/lib/permissionCheck.ts) — key chi tiết chưa tồn tại
 // trong JSONB cũ sẽ fallback về quyền legacy, nhân viên hiện hữu không bị
 // khoá đột ngột.
 //
@@ -31,7 +31,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate } from "react-router-dom";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
-import { canUse } from "@/lib/permissionPages";
+import { canUse } from "@/lib/permissionCheck";
 import type { ActionKey } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";

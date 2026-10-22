@@ -1,13 +1,18 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
+import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain, splitReadNames } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS, expenseActionOperation, expenseActionInput, mayUseExpenseAction } from './expense-action-contract.mjs';
+import { SALE_ACTION_TOOLS, saleActionOperation, saleActionInput, saleActionIsMutation, mayUseSaleAction } from './sale-action-contract.mjs';
+import { SALE_POLICY_TOOLS, salePolicyOperation, salePolicyInput, mayUseSalePolicy } from './sale-policy-contract.mjs';
+import { SALE_BULK_TOOLS, saleBulkOperation, saleBulkInput, mayUseSaleBulk } from './sale-bulk-contract.mjs';
+import { SALE_TOOL, saleToolInput, saleToolDefinition, saleToolListing, saleToolResult, isInternalSaleTool } from './sale-tool-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -16,7 +21,9 @@ import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
+import { readMisuseHint } from './read-misuse-hints.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
+import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -24,14 +31,21 @@ const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const CONTEXT_PERMISSION = 'assistant.context.read';
 const TOOL = Object.freeze({
   name: 'crm_auth_context',
-  description: 'Read the verified identity and effective assistant permissions of this connection.',
+  // B5d (21/10): also the company name and the buildings (id, name, code) of the widest read scope, so one call
+  // gives the names the read tools accept as buildingName.
+  description: 'Read the verified identity, effective assistant permissions, company name and the buildings (id, name, code) this connection may read.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
 const ROOM_PERMISSION = 'rooms.view';
 const ROOM_TOOL = Object.freeze({
   name: 'crm_available_rooms',
-  description: 'Rooms currently listed for sale: exactly the rooms the CRM "Sale phòng" public share link lists — vacant, soon-vacant and customer-pass (khách pass) rooms, with listed price, availability, room type, furniture, sale policy and the contact that page prints (status text is the automatic one; a status typed inside the app is not included). Use it for any question about which rooms are listed, on sale or vacant. listing "no_sale_page" means the company has no live share link: say so, never "no rooms". Limited to this connection’s building scope; pagination belongs to one read snapshot.',
+  // R2b C1 (21/10/2026, audit L33 + câu 10/49/54/56/76): mô tả tiếng Anh 600 B → tiếng Việt gọn, nói rõ đây là trang Sale
+  // công khai chứ không phải trạng thái CRM, rồi chỉ sang tool đúng cho phòng trống thật / sắp trống / một phòng cụ thể.
+  // Câu đầu ≤ 60 ký tự vì danh sách tool_search của Hermes chỉ hiện câu đầu cắt còn 60 ký tự; "price" giữ chữ tiếng Anh mà
+  // chỉ mục BM25 (token ASCII) của bản cũ có cho truy vấn "available rooms … price". Bù byte cho các mô tả định tuyến mới
+  // (tools/list ≤ 64 000 B, đo ở tool-argument-shape.test.mjs).
+  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; không phải trạng thái CRM. Phòng trống thật: crm_read_occupancy (số), crm_read_report re_vacant_rooms (danh sách); sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -44,7 +58,7 @@ const ROOM_TOOL = Object.freeze({
 // per broker, not at module load: external-group-mount imports this module back.
 function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+    SALE_TOOL, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
@@ -67,19 +81,28 @@ const DEFAULT_LIMITS = Object.freeze({
   maxToolsListBytes: TOOLS_LIST_MAX_BYTES,
 });
 const RATE_WINDOW_MS = 60_000;
-const ERROR_STATUS = Object.freeze({
+// Every code here can be audited as a denied/timeout tools/call event (recordAudit in invoke), so the host audit
+// protocol must accept all of them: infra/hermes-runtime/audit-codes.test.mjs pins ERROR_STATUS ⊆ AUDIT_CODES
+// (21/10 production: read_name_unresolved missing there became backend_unavailable for every unresolved name).
+export const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
+  // B5d: buildingName/roomName the directory in scope could not resolve (0 or ambiguous); `detail` names only
+  // the model's own string and buildings/rooms the asker's RLS already lists (mcp-http forwards it).
+  read_name_unresolved: 400,
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
-  customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
+  customer_outcome_unknown: 503, expense_outcome_unknown: 503, sale_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
+  // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật (quyền/nghiệp vụ) mang `reason` của danh sách đóng
+  // action-reasons.mjs (dạng rejected) + `detail` = câu tĩnh của mã đó; thiếu/mơ hồ đầu vào KHÔNG là lỗi (needs_input).
+  action_rejected: 400, action_outcome_unknown: 503,
 });
 // Write uncertainty codes. Each carries the caller's stable requestId so the
 // model reconciles with the matching *_status tool instead of creating again.
 const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
-  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown',
-  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
@@ -92,6 +115,14 @@ export class BrokerError extends Error {
     this.code = this.message;
     this.status = ERROR_STATUS[this.code];
   }
+}
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
+export function actionRejected(code) {
+  const error = new BrokerError('action_rejected');
+  error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
+  error.detail = ACTION_REASONS[error.reason].text;
+  return error;
 }
 
 const fail = (code) => { throw new BrokerError(code); };
@@ -118,6 +149,10 @@ function roomFilters(value) {
   return Object.freeze({ buildingName, offset, limit });
 }
 
+// Legacy: the whole published page is read (≤2000 rows) and sliced here. Page: one
+// SQL page with the exact filtered total; the tool can still only page to offset 2000.
+const ROOM_SOURCES = Object.freeze({ hermes_sale_listing_rooms_v1: 2000, hermes_available_rooms_page_v1: 10_000_000 });
+const ROOM_MAX_OFFSET = 2000;
 // Protocol validation only. Sale facts and authorization are owned by the shared
 // room service/projection. Never serialize extra fields from a dependency.
 function roomResult(value, request, identity) {
@@ -125,16 +160,19 @@ function roomResult(value, request, identity) {
   const amount = value => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER);
   const day = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
+  const next = request.offset + request.limit;
   if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
     'salePolicies', 'buildings', 'rooms']) ||
-      value.source !== 'hermes_sale_listing_rooms_v1' || value.currency !== 'VND' ||
+      !Object.hasOwn(ROOM_SOURCES, value.source) || value.currency !== 'VND' ||
       value.listing !== (value.publishedPages > 0 ? 'published' : 'no_sale_page') ||
       (value.listing === 'published' ? value.notice !== null : !text(value.notice, 600) || value.totalInSnapshot !== 0) ||
       !['complete', 'source_capped'].includes(value.completeness) || typeof value.readAt !== 'string' ||
+      // The page source knows its exact total: capped means (and only means) deeper than the tool can page.
+      (value.source === 'hermes_available_rooms_page_v1' && value.completeness !== (value.totalInSnapshot > ROOM_MAX_OFFSET ? 'source_capped' : 'complete')) ||
       !Number.isFinite(Date.parse(value.readAt)) || new Date(value.readAt).toISOString() !== value.readAt ||
       !Number.isSafeInteger(value.publishedPages) || value.publishedPages < 0 || value.publishedPages > 1000 ||
-      !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > 2000 ||
-      value.offset !== request.offset || value.nextOffset !== (request.offset + request.limit < value.totalInSnapshot ? request.offset + request.limit : null) ||
+      !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > ROOM_SOURCES[value.source] ||
+      value.offset !== request.offset || value.nextOffset !== (next < value.totalInSnapshot && next <= ROOM_MAX_OFFSET ? next : null) ||
       !Array.isArray(value.salePolicies) || value.salePolicies.length > 50 || !value.salePolicies.every(policy => text(policy, 2000)) ||
       !Array.isArray(value.buildings) || value.buildings.length > 100 ||
       !Array.isArray(value.rooms) || value.rooms.length !== Math.min(request.limit, Math.max(0, value.totalInSnapshot - request.offset))) fail('backend_unavailable');
@@ -283,7 +321,10 @@ export function createBroker({
   roomPass,
   tasks,
   customers,
-  expenses,
+  actions,
+  saleActions,
+  salePolicies,
+  saleBulk,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -292,8 +333,10 @@ export function createBroker({
   assistantStore,
   audit,
   observe,
+  callLog,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
+  if (callLog !== undefined && typeof callLog !== 'function') throw new TypeError('invalid_call_log');
   const definitions = toolDefinitions();
   let injectedAuthority;
   if (authority !== undefined) {
@@ -329,22 +372,53 @@ export function createBroker({
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_customer_action_service_required');
     customer = Object.fromEntries(['prepareCustomerAction', 'finalizeCustomerAction'].map(key => [key, customers[key].bind(customers)]));
   }
-  let expense;
-  if (expenses !== undefined) {
-    if (!injectedAuthority || ['prepareExpenseAction', 'finalizeExpenseAction'].some(key => typeof expenses?.[key] !== 'function') ||
-        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_expense_action_service_required');
-    expense = Object.fromEntries(['prepareExpenseAction', 'finalizeExpenseAction'].map(key => [key, expenses[key].bind(expenses)]));
+  // Đợt 1 nền chung: họ thao tác ghi dùng chung (crm_action_*), lõi ở action-runtime.mjs; broker chỉ móc định nghĩa,
+  // (Đợt 2 Thu chi: họ phiếu chi cũ crm_expense_* đã gỡ — phiếu chi đi expense.* của danh mục; expense_outcome_unknown giữ
+  // trong ERROR_STATUS/sổ audit cho tương thích.)
+  // danh sách tool và một nhánh callTool. Danh mục rỗng hay kết nối không giữ khoá thao tác nào ⇒ không hiện tool nào.
+  let action;
+  if (actions !== undefined) {
+    if (!injectedAuthority || !Array.isArray(actions?.definitions) || ['listed', 'route', 'begin', 'handle', 'finish', 'context'].some(key => typeof actions?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_action_runtime_required');
+    for (const tool of actions.definitions) {
+      if (definitions.has(tool.name)) throw new TypeError('ambiguous_tool_definition');
+      definitions.set(tool.name, tool);
+    }
+    action = actions;
+  }
+  let sale;
+  if (saleActions !== undefined) {
+    if (!injectedAuthority || ['prepareSaleAction', 'finalizeSaleAction'].some(key => typeof saleActions?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_sale_action_service_required');
+    sale = Object.fromEntries(['prepareSaleAction', 'finalizeSaleAction'].map(key => [key, saleActions[key].bind(saleActions)]));
   }
   let domain;
+  const extraSale = [
+    { port: salePolicies, methods: ['prepareSalePolicy', 'finalizeSalePolicy'], tools: SALE_POLICY_TOOLS, operation: salePolicyOperation,
+      input: salePolicyInput, mayUse: mayUseSalePolicy, mutation: op => ['save', 'cancel'].includes(op) },
+    { port: saleBulk, methods: ['prepareSaleBulk', 'finalizeSaleBulk'], tools: SALE_BULK_TOOLS, operation: saleBulkOperation,
+      input: saleBulkInput, mayUse: mayUseSaleBulk, mutation: op => op === 'patch' },
+  ].filter(value => value.port !== undefined).map(value => {
+    if (!injectedAuthority || value.methods.some(key => typeof value.port?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_sale_extension_required');
+    return { ...value, prepare: value.port[value.methods[0]].bind(value.port), finalize: value.port[value.methods[1]].bind(value.port) };
+  });
   if (domains !== undefined) {
     if (!injectedAuthority || ['prepareDomain', 'finalizeDomain'].some(key => typeof domains?.[key] !== 'function') ||
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_domain_service_required');
     domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
     if (domains.readAuthority !== undefined) {
+      // The mount and this dispatcher must agree on both opt-in lanes (fast plan, cached admission).
+      const sameSet = (value, expected) => Array.isArray(value) && value.length === expected.length && expected.every(op => value.includes(op));
       if (['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof domains.readAuthority?.[key] !== 'function') ||
-          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== 3 ||
-          !['customers', 'contracts', 'invoices'].every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
+          !sameSet(domains.fastReadOperations, FAST_READ_OPERATIONS) ||
+          !sameSet(domains.cachedReadOperations, CACHED_READ_OPERATIONS)) throw new TypeError('trusted_domain_service_required');
       domain.readAuthority = domains.readAuthority;
+    }
+    // B5d: optional directory port for crm_auth_context (company name + buildings in scope). Both or neither.
+    if (domains.prepareContext !== undefined || domains.finalizeContext !== undefined) {
+      if (['prepareContext', 'finalizeContext'].some(key => typeof domains[key] !== 'function')) throw new TypeError('trusted_domain_service_required');
+      domain.prepareContext = domains.prepareContext.bind(domains); domain.finalizeContext = domains.finalizeContext.bind(domains);
     }
   }
   let schedule;
@@ -403,14 +477,36 @@ export function createBroker({
   }
   const mayReadRooms = identity => Boolean(rooms && identity.effective.read.includes(ROOM_PERMISSION) &&
     identity.assistantScopeIds.length && identity.scopesByPermission[ROOM_PERMISSION]?.buildingIds.length);
+  // Host opt-in (readFastPath): the fixed private plan ('fast') and the cached
+  // catalog admission ('cached', B2-2) both read current authority inside their
+  // business RPC, so the second authority build is skipped and the read catalog
+  // supplies the identity. Every other domain (zalo_conversations) and a host
+  // without the opt-in keep the full authority and post-audit check unchanged.
+  const domainReadContext = operation => {
+    if (!domain?.readAuthority) return {};
+    const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
+    return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
+  };
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
+  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
+  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
+  // còn nguyên, không mất đường tạo việc.
+  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
+    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
   // Shared definitions (not copies) of every tool this identity may call now.
+  const grantedSaleTools = identity => [
+    ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
+    ...extraSale.flatMap(extension => extension.tools.filter(tool => extension.mayUse(identity.effective, extension.operation(tool.name)))),
+  ];
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
     ...(mayReadRooms(identity) ? [ROOM_TOOL] : []),
-    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
+    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseLegacyTask(identity, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
-    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
+    ...(action ? action.listed(identity.effective) : []),
+    ...(grantedSaleTools(identity).length ? [SALE_TOOL] : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
       mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
@@ -424,7 +520,7 @@ export function createBroker({
   ];
   // crm_new_request_id follows the listing itself: it exists exactly while at
   // least one granted action starts a new requestId command.
-  const mayIssueRequestId = identity => grantedTools(identity).some(startsCrmRequest);
+  const mayIssueRequestId = identity => grantedTools(identity).some(startsCrmRequest) || grantedSaleTools(identity).some(startsCrmRequest);
   if (!exactKeys(suppliedLimits, Object.keys(DEFAULT_LIMITS))) throw new TypeError('invalid_limits');
   const limits = { ...DEFAULT_LIMITS, ...suppliedLimits };
   for (const value of Object.values(limits)) {
@@ -546,6 +642,14 @@ export function createBroker({
     try { observe(Object.freeze({ connectionId, operation, ...(code === undefined ? {} : { code }) })); }
     catch { /* Health observation never changes the call outcome. */ }
   };
+  // Một dòng tool_call_timing mỗi lần invoke (option callLog): mốc ms từng pha,
+  // cỡ kết quả, kết cục. Không tham số, kết quả, token, ID đầy đủ hay dữ liệu
+  // khách; tên tool chỉ khi có trong catalogue. Lỗi của sink bị nuốt.
+  const OK_RESULT_CODES = Object.freeze(['task_options_hint', 'task_options_legacy']);
+  const logCall = (record) => {
+    if (!callLog) return;
+    try { callLog(record()); } catch { /* Timing log never changes the call outcome. */ }
+  };
 
   async function invoke(presentedToken, operation, handler, finalize, context = {}) {
     let release;
@@ -555,16 +659,25 @@ export function createBroker({
     const selectedAuthority = context.authority ?? injectedAuthority;
     const maxBytes = operation === 'tools/list' ? limits.maxToolsListBytes : limits.maxResultBytes;
     let connectionId;
+    const startedAt = performance.now();
+    // Each phase stays null until it has run (or thrown); checkMs is skipped on the initial-admission paths.
+    // A phase still pending when the call settles (timeout/abort) reports its elapsed time so far.
+    const timing = { identifyMs: null, resolveMs: null, handlerMs: null, auditMs: null, checkMs: null, finalizeMs: null };
+    let resultBytes = 0, pending = null;
+    const timed = async (phase, step) => {
+      const at = performance.now(); pending = { phase, at };
+      try { return await step(); } finally { timing[phase] = Math.round(performance.now() - at); if (pending?.phase === phase) pending = null; }
+    };
     // One authority request window per invocation; see authority-request-scope.
     const work = () => runAuthorityRequest(async () => { try {
       const result = await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
         if (selectedAuthority) {
-          const identified = await selectedAuthority.identifyConnection(presentedToken, { signal, [BROKER_AUTHORITY]: true });
+          const identified = await timed('identifyMs', () => selectedAuthority.identifyConnection(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
           if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
           connectionId = identified.connectionId;
         } else {
-          const cheap = await connectionStore.getByDigest(hash(presentedToken));
+          const cheap = await timed('identifyMs', () => connectionStore.getByDigest(hash(presentedToken)));
           if (!cheap || cheap.state !== 'active' || cheap.expiresAt <= clock()) fail('unauthorized');
           connectionId = cheap.id;
         }
@@ -572,32 +685,38 @@ export function createBroker({
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId, operation);
         if (selectedAuthority) {
-          comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true });
+          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
           identity = authorityIdentity(comparisonReceipt, clock());
-        } else identity = await authorize(presentedToken, signal);
+        } else identity = await timed('resolveMs', () => authorize(presentedToken, signal));
         if (signal.aborted) fail('timeout');
         // A token cannot switch actors after reserving another connection's quota.
         if (identity.row.id !== connectionId) fail('context_changed');
-        let result = await handler(identity, signal);
+        let result = await timed('handlerMs', () => handler(identity, signal));
         if (signal.aborted) fail('timeout');
         if (!finalize && Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
         // A prepared response still needs its audit receipt before disclosure.
-        // Direct room reads may complete using the initial admission; shared
-        // group/writer paths retain their post-audit authority check.
-        await recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
+        // Direct room reads and the opt-in domain lanes (fast plan, cached
+        // admission: their SQL compares session and binding live) complete on
+        // the initial admission; shared group/writer paths retain their
+        // post-audit authority check.
+        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
-          if (selectedAuthority) {
-            const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
-            if (checked !== undefined) fail('backend_unavailable');
-            if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
-          } else await checkUnchanged(presentedToken, identity, signal);
+          await timed('checkMs', async () => {
+            if (selectedAuthority) {
+              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
+              if (checked !== undefined) fail('backend_unavailable');
+              if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
+            } else await checkUnchanged(presentedToken, identity, signal);
+          });
         }
         if (signal.aborted) fail('timeout');
         // Finalizers consume private receipts before local result validation.
-        if (finalize) result = await finalize(result, identity, signal);
+        if (finalize) result = await timed('finalizeMs', () => finalize(result, identity, signal));
         if (signal.aborted) fail('timeout');
-        if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
+        const bytes = Buffer.byteLength(JSON.stringify(result));
+        if (bytes > maxBytes) fail('response_too_large');
+        resultBytes = bytes;
         return result;
       }, context.signal);
       report(identity?.row.id, operation);
@@ -611,19 +730,40 @@ export function createBroker({
       // A quota/concurrency rejection is attributable to the identified connection.
       report(identity?.row.id ?? connectionId, operation, safe.code);
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
+      // D9: lý do của action_rejected vào sổ audit (danh sách đóng; host-ownership.mjs REASONS nhận đúng tập này).
+      const reason = safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) ? { reason: safe.reason } : {};
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
-        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
+        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code, ...reason })); }
       catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
     } });
-    if (dependencyScope) {
-      // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
-      // The public timeout remains bounded; release belongs to actual drain.
-      const owned = dependencyScope.begin(work);
-      void owned.drained.then(() => release?.(), () => release?.());
-      return owned.result;
-    }
-    try { return await work(); } finally { release?.(); }
+    const settle = (error) => logCall(() => {
+      const id = identity?.row.id ?? connectionId;
+      if (pending && timing[pending.phase] === null) timing[pending.phase] = Math.round(performance.now() - pending.at);
+      return { event: 'tool_call_timing', ts: new Date(clock()).toISOString(), operation,
+        tool: operation === 'tools/call' && typeof context.tool === 'string' && definitions.has(context.tool) ? context.tool : null,
+        path: context.initialDomainReadAdmission ? context.domainReadPath ?? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
+        ...timing, totalMs: Math.round(performance.now() - startedAt), resultBytes: error ? 0 : resultBytes,
+        // An ordinary result that only carries guidance (crm_task_input_options hint) keeps outcome 'ok' and names
+        // itself with one fixed code, so misuse stays countable in the journal (OK_RESULT_CODES).
+        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown')
+          : OK_RESULT_CODES.includes(context.resultCode?.()) ? context.resultCode() : null,
+        connection: canonicalId(id) ? hash(id).slice(0, 8) : null };
+    });
+    try {
+      let result;
+      if (dependencyScope) {
+        // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
+        // The public timeout remains bounded; release belongs to actual drain.
+        const owned = dependencyScope.begin(work);
+        void owned.drained.then(() => release?.(), () => release?.());
+        result = await owned.result;
+      } else {
+        try { result = await work(); } finally { release?.(); }
+      }
+      settle();
+      return result;
+    } catch (error) { settle(error); throw error; }
   }
 
   return Object.freeze({
@@ -772,39 +912,133 @@ export function createBroker({
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => {
         const tools = grantedTools(identity);
-        return { tools: [...tools, ...(tools.some(startsCrmRequest) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
+        return { tools: [...tools, ...(mayIssueRequestId(identity) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
       }, undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      const publicName = name;
       // Omitted/blank/nil-UUID placeholders of nullable fields become null per
       // the original definition; an unknown name or non-object is left as is.
       args = normalizeToolArguments(definitions.get(name), args);
+      // Every tools/call carries its tool name for tool_call_timing (name only; invoke logs it only when catalogued).
+      const call = (handler, finalize, context = {}) => invoke(presentedToken, 'tools/call', handler, finalize, { ...context, tool: publicName });
+      // Legacy operation names are internal dispatch identifiers, never a
+      // second public transport path around the compact envelope.
+      if (isInternalSaleTool(name)) return call(() => { fail('tool_not_available'); });
+      let saleBridgeOperation;
+      if (name === SALE_TOOL.name) {
+        let request;
+        try { request = saleToolInput(args); } catch {
+          return call(identity => {
+            if (!grantedSaleTools(identity).length) fail('tool_not_available');
+            fail('invalid_request');
+          });
+        }
+        if (request.operation === 'list') return call(identity => {
+          const granted = grantedSaleTools(identity);
+          if (!granted.length) fail('tool_not_available');
+          return { content: [{ type: 'text', text: JSON.stringify(saleToolListing(granted)) }], isError: false };
+        });
+        const definition = saleToolDefinition(request.operation);
+        saleBridgeOperation = request.operation;
+        name = definition.name;
+        args = normalizeToolArguments(definition, request.input);
+      }
       // No CRM read/write and no stored state, but the same token/authority,
       // per-connection tools/call quota, audit and post-audit authority check
       // as every tool: a revoked or expired connection never receives an id.
       if (name === NEW_REQUEST_ID_TOOL.name) {
         const invalid = !dataRecord(args) || Object.keys(args).length !== 0;
-        return invoke(presentedToken, 'tools/call', (identity) => {
+        return call((identity) => {
           if (!mayIssueRequestId(identity)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           return { content: [{ type: 'text', text: JSON.stringify({ requestId: randomUUID() }) }], isError: false };
         }, undefined, external ? { authority: external.authority } : {});
       }
+      // Thao tác ghi dùng chung: needs_input là kết quả thường; lỗi thật mang reason; mất phản hồi ⇒ action_outcome_unknown.
+      const actionRoute = action?.route(name);
+      if (actionRoute) {
+        const plan = action.begin(actionRoute, args);
+        return call((identity, signal) => action.handle(plan, presentedToken, identity, signal),
+          plan.op === 'list' ? undefined : (receipt, identity, signal) => action.finish(plan, presentedToken, receipt, identity, signal),
+          action.context(plan));
+      }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
-        let input, invalid = false, uncertain = false;
+        let input, invalid = false, uncertain = false, retry = null, resultCode = null;
         try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
-          if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+        // 22/10 (câu 29): a crm_task_input_options call refused by the validator answers ONE static hint
+        // (task-input-contract.mjs) as an ordinary result, never reaching CRM: Hermes pauses the whole MCP
+        // server for ~60 s after three isError results in a row (TEST 21/10: 21/27 task creations lost).
+        // tool_call_timing still names it (code task_options_hint / task_options_legacy, outcome ok).
+        const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
+        return call(async (identity, signal) => {
+          if (!mayUseLegacyTask(identity, taskOperation)) fail('tool_not_available');
+          if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => {
-          const result = await task.finalizeTask(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          if (retry !== null) { resultCode = 'task_options_hint'; return { content: [{ type: 'text', text: JSON.stringify(retry) }], isError: false }; }
+          let result;
+          try {
+            result = await task.finalizeTask(presentedToken, receipt, { signal,
+              onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          } catch (error) {
+            // SQL before 20261021172540 (v5) refuses a company-wide jobTypes/assignees lookup with 22023: the same
+            // static guidance (pass a building) instead of a plain error. Transition only: remove this branch (and
+            // TASK_OPTIONS_HINTS.legacy) once 20261021172540 is live on production — afterwards a 22023 here (e.g. the
+            // 256-building cap) would get a misleading "pass buildingId" instead of the plain error.
+            if (!(error instanceof BrokerError) || error.code !== 'invalid_request' || !taskOptionsCompanyWide(taskOperation, input)) throw error;
+            resultCode = 'task_options_legacy';
+            return { content: [{ type: 'text', text: JSON.stringify(taskOptionsRetry(TASK_OPTIONS_HINTS.legacy)) }], isError: false };
+          }
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId });
+        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId,
+          resultCode: () => resultCode });
+      }
+      const saleExtension = extraSale.find(extension => extension.operation(name));
+      if (saleExtension) {
+        const operation = saleExtension.operation(name), split = splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation;
+        try { input = saleExtension.input(operation, split.args); } catch { invalid = true; }
+        return call(async (identity, signal) => {
+          if (!saleExtension.mayUse(identity.effective, operation, input)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          if (reviewed.refused) fail('confirmation_invalid');
+          if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
+          const receipt = await saleExtension.prepare(presentedToken, operation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(saleToolResult(confirmation, saleBridgeOperation)) }], isError: false };
+          const result = await saleExtension.finalize(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = saleExtension.mutation(operation); }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
+      const saleOperation = saleActionOperation(name);
+      if (sale && saleOperation) {
+        const split = splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation;
+        try { input = saleActionInput(saleOperation, split.args); } catch { invalid = true; }
+        return call(async (identity, signal) => {
+          if (!mayUseSaleAction(identity.effective, saleOperation, input)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          if (reviewed.refused) fail('confirmation_invalid');
+          if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
+          const receipt = await sale.prepareSaleAction(presentedToken, saleOperation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(saleToolResult(confirmation, saleBridgeOperation)) }], isError: false };
+          const result = await sale.finalizeSaleAction(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = saleActionIsMutation(saleOperation); }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {
@@ -812,7 +1046,7 @@ export function createBroker({
         const split = splitConfirmToken(name, args);
         let input, invalid = split.invalid, uncertain = false, confirmation;
         try { input = roomPassInput(passOperation, split.args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseRoomPass(identity.effective, passOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Trước mọi I/O ghi: chữ công khai mới luôn phải qua xác nhận hai bước.
@@ -829,7 +1063,7 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'room_pass_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
-      // Customer/lead and expense create share one shape: fixed DTO, branded
+      // Customer/lead create: fixed DTO, branded
       // receipt prepared before audit, final bound-JWT RPC as the last await.
       // Lost ACK after dispatch is a distinct unknown code with the requestId;
       // nothing here retries a create.
@@ -837,7 +1071,7 @@ export function createBroker({
       if (customer && customerOp) {
         let input, invalid = false, uncertain = false;
         try { input = customerActionInput(customerOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseCustomerAction(identity.effective, customerOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await customer.prepareCustomerAction(presentedToken, customerOp, input, { signal });
@@ -849,44 +1083,39 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'customer_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
-      const expenseOp = expenseActionOperation(name);
-      if (expense && expenseOp) {
-        let input, invalid = false, uncertain = false;
-        try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
-          if (!mayUseExpenseAction(identity.effective, expenseOp)) fail('tool_not_available');
-          if (invalid) fail('invalid_request');
-          const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
-          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
-          return receipt;
-        }, async (receipt, _identity, signal) => {
-          const result = await expense.finalizeExpenseAction(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'expense_outcome_unknown', mutationRequestId: () => input?.requestId });
-      }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {
-        let input, invalid = false;
-        try { input = domainInput(domainOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        let input, invalid = false, names = null, deferred = false;
+        // R2b: a call shaped the wrong way (contracts/invoices + dates, pending_approvals + building/status, income_expenses +
+        // type, assets asking for vehicles, a building code as buildingId) carries a static routing hint as `detail` of its
+        // invalid_request (read-misuse-hints.mjs; mcp-http forwards only those strings). Computed on the normalized arguments,
+        // before the names leave them; attached only when the validator refused. Every hint rule names input that no name
+        // resolution can repair (the mount runs domainInput before any directory RPC), so a list-domain call with names and a
+        // hint is refused here with the same code it would get from the mount, now with the detail.
+        const hint = readMisuseHint(domainOp, args);
+        // B5d: buildingName/roomName leave the arguments before the unchanged validator; the mount resolves
+        // them to ids with the asker's JWT (directory under RLS) inside prepare, then validates again. An
+        // input that only passes once the names are ids (a report whose roomId is required) is validated there.
+        try { ({ args, names } = splitReadNames(domainOp, args)); } catch { invalid = true; }
+        if (!invalid) { try { input = domainInput(domainOp, args); } catch { if (names === null || !dataRecord(args) || hint !== null) invalid = true; else { input = args; deferred = true; } } }
+        return call(async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
-          if (invalid) fail('invalid_request');
-          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
-          if (!mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
-          const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
+          if (invalid) { const error = new BrokerError('invalid_request'); if (hint !== null) error.detail = hint; throw error; }
+          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó
+          // (a deferred input is checked by the mount once resolved and validated).
+          if (!deferred && !mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
+          const receipt = await domain.prepareDomain(presentedToken, domainOp, input, names === null ? { signal } : { signal, names });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
           await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }),
-        domain.readAuthority && ['customers', 'contracts', 'invoices'].includes(domainOp)
-          ? { authority: domain.readAuthority, initialDomainReadAdmission: true } : {});
+        domainReadContext(domainOp));
       }
       const scheduleOp = scheduleOperation(name);
       if (schedule && scheduleOp) {
         let input, invalid = false, uncertain = false;
         try { input = scheduleInput(scheduleOp, args, clock()); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOp) || !mayUseSchedule(identity.effective, scheduleOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await schedule.prepareSchedule(presentedToken, scheduleOp, input, { signal });
@@ -905,7 +1134,7 @@ export function createBroker({
       if (broadcast && broadcastOp) {
         let input, invalid = false, uncertain = false;
         try { input = zaloBroadcastInput(broadcastOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseZaloBroadcast(identity.effective, broadcastOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Listed for manage_automation, but turning sends on/adding recipients also needs chat_zalo.send.
@@ -923,7 +1152,7 @@ export function createBroker({
       if (memory && memoryOperation) {
         let input, invalid = false, uncertain = false;
         try { input = workMemoryInput(memoryOperation, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseWorkMemory(identity.effective, memoryOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await memory.prepareMemory(presentedToken, memoryOperation, input, { signal });
@@ -941,7 +1170,7 @@ export function createBroker({
         let input, invalid, service, uncertain = false, dispatchId;
         try { input = externalGroupInput(operation, args); }
         catch (error) { invalid = ['group_recipient_limit', 'group_room_limit'].includes(error?.code) ? error.code : 'invalid_request'; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseGroupTool(identity.effective, operation) ||
               ['preview', 'send'].includes(operation) && !mayReadRooms(identity)) fail('tool_not_available');
           if (invalid) fail(invalid);
@@ -968,9 +1197,10 @@ export function createBroker({
       }
       // Snapshot caller-controlled filters before any awaited admission. Invalid
       // input still goes through the shared admission/audit path.
-      let request, invalidFilters = false;
+      let request, invalidFilters = false, contextReceipt;
       if (name === ROOM_TOOL.name) { try { request = roomFilters(args); } catch { invalidFilters = true; } }
-      return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+      const contextDirectory = name === TOOL.name && Boolean(domain?.prepareContext);
+      return call(async (identity, signal) => {
         if (name === ROOM_TOOL.name) {
           if (!mayReadRooms(identity)) fail('tool_not_available');
           if (invalidFilters) fail('invalid_request');
@@ -985,9 +1215,26 @@ export function createBroker({
           organizationId: identity.row.organizationId, permissions: identity.effective,
           contextVersion: identity.contextVersion,
         };
-        return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        if (!contextDirectory) return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        // B5d: company name and the buildings of the widest read scope, read with the asker's JWT (directory under RLS).
+        const buildingIds = [...new Set(identity.effective.read.flatMap(key => identity.scopesByPermission[key]?.buildingIds ?? []))].slice(0, 256);
+        contextReceipt = await domain.prepareContext(presentedToken, { organizationId: identity.row.organizationId, buildingIds, contextVersion: identity.contextVersion }, { signal });
+        if (!exactData(contextReceipt, []) || !Object.isFrozen(contextReceipt)) fail('backend_unavailable');
+        return result;
       }, name === ROOM_TOOL.name && rooms ? async (prepared, identity, signal) =>
-        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission: true }), request, identity) : undefined,
+        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission: true }), request, identity)
+        : contextDirectory ? async (result, _identity, signal) => {
+          // null: the directory SQL is not deployed yet (never an empty list standing in for "no buildings").
+          const directory = await domain.finalizeContext(presentedToken, contextReceipt, { signal });
+          // R2c phần 2 (c): userName = tên hiển thị của chính người hỏi (null: hàm SQL chưa có hoặc hồ sơ không đọc được).
+          if (!exactData(directory, ['organizationName', 'userName', 'buildings']) || !(directory.organizationName === null || typeof directory.organizationName === 'string') ||
+              !(directory.userName === null || typeof directory.userName === 'string') ||
+              !(directory.buildings === null || Array.isArray(directory.buildings) && directory.buildings.length <= 256 &&
+                directory.buildings.every(row => exactData(row, ['id', 'name', 'code']) && canonicalId(row.id)))) fail('backend_unavailable');
+          const { assistantId, userId, organizationId, permissions, contextVersion } = result;
+          return { content: [{ type: 'text', text: JSON.stringify({ assistantId, userId, userName: directory.userName, organizationId, organizationName: directory.organizationName,
+            permissions, contextVersion, buildings: structuredClone(directory.buildings) }) }], isError: false };
+        } : undefined,
       { initialRoomAdmission: name === ROOM_TOOL.name && Boolean(rooms) });
     },
   });

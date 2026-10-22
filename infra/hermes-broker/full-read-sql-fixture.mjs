@@ -24,6 +24,20 @@ export const fullReadParitySql = () => readFileSync(process.env.HERMES_FULL_READ
 // của v3 / báo cáo / room pass v2 ở file này.
 export const FULL_READ_OWNER_PATH = 'supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql';
 export const fullReadOwnerSql = () => readFileSync(process.env.HERMES_FULL_READ_OWNER_SQL ?? FULL_READ_OWNER_PATH, 'utf8');
+// R2a: định nghĩa SỐNG của v3 (customers/occupancy có summary) và báo cáo (monthly_pnl có tổng) ở file này; đột biến
+// vẫn nhắm bản review-fix (FULL_READ_OWNER_PATH) — thay cả thân hàm nên probe không phụ thuộc summary.
+export const W2_SUMMARY_FILE = '20261021004841_hermes_w2_domain_summary_v1';
+export const W2_SUMMARY_PATH = `supabase/migrations/${W2_SUMMARY_FILE}.sql`;
+// R2c part 2 (wave-2 band): v3 customers summary byStatus = contract status (customers.status_v2).
+export const W2_CUSTOMER_STATUS_FILE = '20261021044814_hermes_w2_customer_status_summary_v1';
+export const W2_CUSTOMER_STATUS_PATH = `supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`;
+// R2d (wave-2 band): v3 customers summary withoutContract (no contract in the connection's contract scope).
+export const W2_WITHOUT_CONTRACT_FILE = '20261021063453_hermes_w2_customers_without_contract_v1';
+export const W2_WITHOUT_CONTRACT_PATH = `supabase/migrations/${W2_WITHOUT_CONTRACT_FILE}.sql`;
+// Nợ thực (22/10/2026): bản cuối của báo cáo — invoice_report stats.totalRemaining không đếm hai lần nợ đã kéo sang hoá
+// đơn gánh còn mở cùng tập (public.invoice_effective_outstanding_v1, nạp sẵn ở finance-fixture).
+export const INVOICE_REPORT_OUTSTANDING_FILE = '20261021190212_hermes_invoice_report_effective_outstanding_v1';
+export const INVOICE_REPORT_OUTSTANDING_PATH = `supabase/migrations/${INVOICE_REPORT_OUTSTANDING_FILE}.sql`;
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -94,7 +108,7 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   // Bảng/cột mà các RPC web thật cần; cổng tổng hợp cùng chữ ký; dữ liệu hoá đơn/hội thoại.
   await db.exec(`ALTER TABLE public.rooms ADD COLUMN rent_price numeric;
     ALTER TABLE public.contracts ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
-    ALTER TABLE public.invoices ADD COLUMN contract_id uuid,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+    ALTER TABLE public.invoices ADD COLUMN contract_id uuid,ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
     ALTER TABLE public.income_expenses ADD COLUMN business_result_accounting boolean,ADD COLUMN invoice_id uuid;
     ALTER TABLE public.income_expense_types ADD COLUMN category text;
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),income_expense_id uuid,income_expense_type_id uuid,
@@ -145,6 +159,22 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   if (fix !== null) { await db.exec(fix); await db.exec(fix); }
   if (parity !== null) { await db.exec(parity); await db.exec(parity); }
   if (owner !== null) { await db.exec(owner); await db.exec(owner); }
+  // B5c step 2 (20261020173819, wave-2 foundation band): the live v3 names the building of the customer's
+  // contract. Only the CREATE statement runs here (the file's DO blocks need the wave-2 routing body, which the
+  // wave-2 fixture installs later and then re-applies this file in full); twice, as the lane would.
+  if (owner !== null) { const v3 = definition(migrationSql('20261020173819_hermes_w2_customers_building_name_v1'), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // R2a (20261021004841, wave-2 foundation band): v3 customers/occupancy and the report reader (monthly_pnl totals)
+  // carry the summary of the whole filtered set. The same two CREATE statements only, twice, for the same reason.
+  if (owner !== null) for (const name of ['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2']) {
+    const body = definition(migrationSql(W2_SUMMARY_FILE), name); await db.exec(body); await db.exec(body);
+  }
+  // R2c part 2 (20261021044814, wave-2 band): v3 customers count the contract status. Same CREATE-only pattern, twice.
+  if (owner !== null) { const v3 = definition(migrationSql(W2_CUSTOMER_STATUS_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // R2d (20261021063453, wave-2 band): v3 customers count the customers without a contract. Same pattern, twice.
+  if (owner !== null) { const v3 = definition(migrationSql(W2_WITHOUT_CONTRACT_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // Nợ thực (20261021190212): the report reader's invoice_report stats read the effective outstanding. Same CREATE-only
+  // pattern, twice.
+  if (owner !== null) { const body = definition(migrationSql(INVOICE_REPORT_OUTSTANDING_FILE), 'app_private.hermes_report_read_v2'); await db.exec(body); await db.exec(body); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

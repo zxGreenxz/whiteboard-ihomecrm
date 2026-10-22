@@ -94,19 +94,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it('kỳ hạn lỗi giữ draft và cả phiếu cọc/thưởng đã tạo, khóa tạo lại cọc', async () => {
+it('kỳ hạn nằm trong một lần tạo giữ chỗ, không gọi writer legacy để ghi đè lần hai', async () => {
   h.hold.mockRejectedValue({ code: '42501', message: 'denied' }); await prepare(true);
-  await screen.findByRole('alert');
-  expect(screen.getByRole('link', { name: 'Mở phiếu ' + voucherId }).getAttribute('href')).toContain(voucherId);
-  expect(screen.getByRole('link', { name: 'Mở phiếu ' + bonusId }).getAttribute('href')).toContain(bonusId);
-  expect(screen.getByRole('textbox', { name: 'Ghi chú' })).toHaveProperty('value', 'Giữ lại nội dung cọc');
-  expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', true);
-  expect(h.close).not.toHaveBeenCalled(); expect(h.success).not.toHaveBeenCalled();
+  await waitFor(() => expect(h.close).toHaveBeenCalledWith(false));
+  expect(h.hold).not.toHaveBeenCalled();
+  expect(h.create).toHaveBeenCalledWith(expect.objectContaining({holdUntil:'2026-10-02',depositTarget:1000000}));
   expect(h.bonus).toHaveBeenCalledWith(expect.objectContaining({commissionReason:'Thưởng theo thỏa thuận cho giao dịch cọc'}));
-  const pending = financialPending.read({ namespace: 'deposit-create', userId, organizationId, businessKey: roomId });
-  expect(pending?.completedIds).toEqual([reservationId, voucherId, bonusId]);
-  fireEvent.submit(document.querySelector('form')!);
-  await waitFor(() => expect(h.create).toHaveBeenCalledOnce());
+  expect(financialPending.read({ namespace: 'deposit-create', userId, organizationId, businessKey: roomId })).toBeNull();
+  expect(h.create).toHaveBeenCalledOnce();
 });
 it('thưởng Sale thiếu lý do chặn trước khi tạo cọc hoặc phiếu thưởng',async()=>{
   await prepare(true,'500000',undefined,'   ');

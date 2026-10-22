@@ -12,6 +12,20 @@ export { id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT };
 // and the canonical expense writer are fixture ports: they prove Hermes'
 // intersection/receipt logic, not the canonical writer, RLS or a live JWT.
 export const READS_PATH = 'supabase/migrations/20261015120000_hermes_domain_reads_v2.sql';
+// B5c (20261020171321, then step 2 20261020173818) CREATE OR REPLACEs hermes_domain_read_v2
+// (receivables, income_expenses and meter_readings rows name their building); R2a (20261020233934)
+// then adds the `summary` of the whole filtered set to every branch, and R2c (20261021035022) names
+// the largest voucher of each income_expenses type in byType. readsSql() runs the applied v2 file with the
+// R2c body swapped in. The later production bodies — the web building scope 20261021170452 and the effective
+// outstanding 20261021185540 built on it — read the web building set (app_private.hermes_web_building_ids_v1,
+// accessible_account_ids) this port does not model; both run on real PostgreSQL 17 instead
+// (web-building-scope-sql.test.mjs, domain-receivables-fast-sql.test.mjs).
+export const READS_B5C_PATH = 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql';
+export const READS_SUMMARY_PATH = 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
+export const READS_LARGEST_PATH = 'supabase/migrations/20261021035022_hermes_domain_summary_largest_by_type_v1.sql';
+// Hàm dùng chung "nợ thực" (chỉ câu CREATE; bảng invoices fixture có đủ cột nó đọc) — báo cáo hoá đơn Hermes
+// (20261021190212, full-read) gọi nó.
+export const OUTSTANDING_PATH = 'supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql';
 export const ACTION_PATH = 'supabase/migrations/20261015120100_hermes_expense_create_action_v1.sql';
 export const HOOK_PATH = 'supabase/migrations/20261015120200_hermes_finance_capabilities_hook.sql';
 export const BUILDING = id('a'), OTHER_BUILDING = id('b'), ROOM = id('c'), OTHER_ROOM = id('e'), ITEM = id('f'), SCOPE = id('0');
@@ -28,8 +42,13 @@ const fn = (src, name) => {
   assert.ok(match, `function ${name} exists`); return match[0];
 };
 export const ACTION_KEYS = ['income_expenses.create', 'income_expenses.approve'];
-export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {
-  const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'] }), { db } = f;
+export const readsSql = () => {
+  const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_LARGEST_PATH, 'utf8'), 'public.hermes_domain_read_v2');
+  return applied.replace(fn(applied, 'public.hermes_domain_read_v2'), () => live);
+};
+// database: PGlite-shaped { exec, query, close } over real PostgreSQL (one-off PG17 checks, e.g. concurrency); default PGlite.
+export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null, database } = {}) {
+  const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'], database }), { db } = f;
   await db.exec(`CREATE SCHEMA extensions;
     CREATE FUNCTION extensions.digest(value text,algorithm text) RETURNS bytea LANGUAGE sql IMMUTABLE AS $$SELECT decode(md5(value)||md5(value),'hex')$$;
     CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$SELECT jsonb_build_object('session_id',current_setting('request.jwt.claim.session',true))$$;
@@ -38,7 +57,7 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
     CREATE TABLE public.authorization_scopes(id uuid PRIMARY KEY,organization_id uuid,scope_type text,building_id uuid,area_id uuid,cashbook_id uuid);
     CREATE TABLE public.areas(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
     CREATE TABLE public.area_buildings(organization_id uuid,area_id uuid,building_id uuid);
-    CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,is_virtual boolean DEFAULT false,deleted_at timestamptz);
+    CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,is_virtual boolean DEFAULT false,deleted_at timestamptz,code text);
     CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,name text,status text,deleted_at timestamptz);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL,user_id uuid NOT NULL,code text,type text NOT NULL,
       name text NOT NULL,building_id uuid NOT NULL,room_id uuid,account_id uuid,voucher_date date NOT NULL,total_amount numeric(15,2) NOT NULL DEFAULT 0,
@@ -46,7 +65,7 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
       profit_manager_id uuid,payer_name text,receive_bank_account text,notes text,kqkd_amount numeric(15,2) NOT NULL DEFAULT 0,deleted_at timestamptz);
     CREATE TABLE public.invoices(id uuid PRIMARY KEY,organization_id uuid,invoice_number text,status text,building_id uuid,room_id uuid,billing_month text,
       due_date date,total_amount numeric(15,2),paid_amount numeric(15,2) DEFAULT 0,remaining_amount numeric(15,2) GENERATED ALWAYS AS (total_amount-COALESCE(paid_amount,0)) STORED,
-      notes text,deleted_at timestamptz);
+      notes text,deleted_at timestamptz,previous_debt_sources jsonb NOT NULL DEFAULT '[]'::jsonb,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
     CREATE TABLE public.meter_readings(id uuid PRIMARY KEY,organization_id uuid,reading_code text,building_id uuid,room_id uuid,meter_type text,settlement_month text,
       reading_date date,previous_reading numeric(10,2) DEFAULT 0,current_reading numeric(10,2),consumption numeric(10,2) GENERATED ALWAYS AS (current_reading-previous_reading) STORED,
       status text,notes text,meter_image_url text,deleted_at timestamptz);
@@ -106,6 +125,7 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
     END $w$;`);
   await db.exec(fn(baseline, 'public.get_held_deposit_summary'));
   await db.exec(fn(baseline, 'public.fa_monthly_pnl'));
+  await db.exec(fn(readFileSync(OUTSTANDING_PATH, 'utf8'), 'public.invoice_effective_outstanding_v1'));
   await db.exec(fn(source('20260725180000_authz_audit_append_helper'), 'app_private.append_authz_audit_v1'));
   const forward = source('20261014000503_hermes_optional_org_policy_v1');
   for (const name of ['app_private.hermes_effective_org_policy_v1', 'app_private.hermes_private_command_connection_v1', 'app_private.hermes_session_gate_v1', 'app_private.hermes_store_read_connection_v1'])

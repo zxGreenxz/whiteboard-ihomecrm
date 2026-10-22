@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BrokerError, createBroker } from './broker.mjs';
 import { MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
 
 const USER_A = '10000000-0000-4000-8000-000000000001';
 const USER_B = '10000000-0000-4000-8000-000000000002';
@@ -319,6 +320,47 @@ test('injected authority reuses dispatcher and forwards branded receipt; P1 stor
   }
 });
 
+// B5d (21/10): with the domain mount's directory port, crm_auth_context also reports the company name and the
+// buildings (id, name, code) of the widest read scope — read after the audit receipt and before the post-audit
+// authority check, through the mount (asker JWT, RLS). Without the port the answer keeps its five keys (above).
+test('crm_auth_context adds organizationName and the buildings of the widest read scope through the domain directory port', async () => {
+  const BUILDING = '50000000-0000-4000-8000-000000000001', OTHER = '50000000-0000-4000-8000-000000000002', seen = [];
+  const scope = createDependencyScope();
+  const domains = { async prepareDomain() { return Object.freeze({}); }, async finalizeDomain() { return {}; },
+    async prepareContext(token, input, { signal }) { seen.push({ token, input, signal }); return Object.freeze({}); },
+    async finalizeContext(token, receipt, { signal }) { seen.push({ token, receipt, signal }); return { organizationName: 'Công ty Thử', userName: 'Người Dùng Thử', buildings: [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }] }; } };
+  const f = authorityFixture({ broker: { domains, dependencyScope: scope }, mutate(value) {
+    value.effective.read = ['assistant.context.read', 'rooms.view']; value.row.restrictions.read = ['assistant.context.read', 'rooms.view'];
+    value.scopesByPermission['rooms.view'].buildingIds = [BUILDING, OTHER]; value.scopesByPermission['assistant.context.read'].buildingIds = [OTHER];
+  } });
+  try {
+    const result = context(await f.broker.callTool(f.token, 'crm_auth_context', {}));
+    // R2c part 2 (c): the asker's own display name next to the user id ("Tôi đang kết nối CRM bằng tài khoản nào?").
+    assert.deepEqual(Object.keys(result), ['assistantId', 'userId', 'userName', 'organizationId', 'organizationName', 'permissions', 'contextVersion', 'buildings']);
+    assert.equal(result.userName, 'Người Dùng Thử');
+    assert.equal(result.organizationName, 'Công ty Thử'); assert.deepEqual(result.buildings, [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }]);
+    assert.equal(result.contextVersion, f.state.contextVersion);
+    assert.deepEqual(seen[0].input, { organizationId: ORG_A, buildingIds: [OTHER, BUILDING], contextVersion: f.state.contextVersion }, 'union of every read key scope, in effective.read order');
+    assert.ok(seen.every(call => call.token === f.token && call.signal instanceof AbortSignal));
+    assert.deepEqual(f.calls.map(call => call.operation), ['identify', 'resolve', 'check'], 'the post-audit check stays');
+    // A directory answer of the wrong shape never reaches the model; a port that is half-wired is refused at construction.
+    const bad = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains,
+      async finalizeContext() { return { organizationName: 'x', userName: null, buildings: [{ id: 'not-a-uuid', name: 'x', code: null }] }; } } } });
+    await assert.rejects(bad.broker.callTool(bad.token, 'crm_auth_context', {}), error('backend_unavailable'));
+    // userName: text or null (function not deployed yet); anything else, or a port without the key, never reaches the model.
+    for (const [label, directory] of [['userName not text', { organizationName: 'x', userName: 7, buildings: [] }],
+      ['userName missing (older port)', { organizationName: 'x', buildings: [] }]]) {
+      const wrong = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains, async finalizeContext() { return directory; } } } });
+      await assert.rejects(wrong.broker.callTool(wrong.token, 'crm_auth_context', {}), error('backend_unavailable'), label);
+    }
+    const absent = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains, async finalizeContext() { return { organizationName: null, userName: null, buildings: null }; } } },
+      mutate(value) { value.effective.read = ['assistant.context.read', 'rooms.view']; value.row.restrictions.read = ['assistant.context.read', 'rooms.view'];
+        value.scopesByPermission['rooms.view'].buildingIds = [BUILDING]; } });
+    assert.equal(context(await absent.broker.callTool(absent.token, 'crm_auth_context', {})).userName, null, 'SQL not deployed: null, not an error');
+    assert.throws(() => createBroker({ authority: f.authority, dependencyScope: scope, domains: { ...domains, finalizeContext: undefined } }), /trusted_domain_service_required/);
+  } finally { await scope.close(); }
+});
+
 test('injected identity shape and scopes are checked before any handler prepares data', async () => {
   for (const mutate of [
     value => { value.accessToken = 'PRIVATE'; }, value => { value.row.credentialRef = USER_B; },
@@ -451,11 +493,19 @@ test('direct room preparation and awaited audit precede receipt consumption with
 
 test('room arguments reject scope/RPC/field overrides and snapshot filters before admission awaits', async () => {
   for (const args of [null, [], { organizationId: ORG_B }, { fields: ['*'] }, { rpc: 'arbitrary' }, { buildingIds: [USER_B] },
-    { limit: 101 }, { limit: 0 }, { offset: -1 }, { offset: 2001 }, { offset: 1.5 }, { buildingName: 'x'.repeat(121) },
+    { limit: 1.5 }, { limit: '100' }, { offset: -1 }, { offset: 2001 }, { offset: 1.5 }, { buildingName: 'x'.repeat(121) },
     Object.defineProperty({}, 'limit', { enumerable: true, get() { throw new Error('private'); } })]) {
     const f = roomsFixture(); await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', args), error('invalid_request'));
     assert(!f.events.includes('prepare')); assert(f.events.includes('denied'));
   }
+  // B1c (20/10): a read tool clamps an integer limit outside 1..100 to the bound before its validator (tool-argument-shape);
+  // offset, non-integer limits and accessors above are still rejected.
+  const capped = roomsFixture();
+  await capped.broker.callTool(capped.token, 'crm_available_rooms', { limit: 101 });
+  assert.deepEqual(capped.input(), { buildingName: '', offset: 0, limit: 100 });
+  const floored = roomsFixture({ result: () => { const value = roomPayload(); value.rooms = value.rooms.slice(0, 1); value.nextOffset = 1; return value; } });
+  await floored.broker.callTool(floored.token, 'crm_available_rooms', { limit: 0 });
+  assert.deepEqual(floored.input(), { buildingName: '', offset: 0, limit: 1 });
   const args = { buildingName: 'House', limit: 1 };
   const f = roomsFixture({ beforeResolve: async () => { args.buildingName = 'Other'; args.limit = 100; },
     result: () => { const value = roomPayload(); value.rooms = value.rooms.slice(0, 1); value.nextOffset = 1; return value; } });
@@ -499,6 +549,25 @@ test('room result rejects fields outside its protocol, foreign buildings and inv
   const f = roomsFixture({ badReceipt: { accessToken: 'PRIVATE' } });
   await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('backend_unavailable'));
   assert(!f.events.includes('prepared')); assert(!f.events.includes('final'));
+});
+
+test('J5: the direct room tool accepts the B3 page source with an exact total above the legacy cap and the 2000 paging ceiling', async () => {
+  const page = (offset, limit, total, source = 'hermes_available_rooms_page_v1') => {
+    const value = roomPayload(); value.source = source; value.totalInSnapshot = total; value.completeness = total > 2000 ? 'source_capped' : 'complete';
+    value.offset = offset; value.nextOffset = offset + limit < total && offset + limit <= 2000 ? offset + limit : null;
+    value.rooms = value.rooms.slice(0, Math.min(limit, Math.max(0, total - offset))); return value;
+  };
+  for (const [args, total, nextOffset] of [[{ limit: 2 }, 2500, 2], [{ offset: 2000, limit: 2 }, 2500, null], [{ offset: 1998, limit: 2 }, 2500, 2000], [{ limit: 2 }, 2, null]]) {
+    const f = roomsFixture({ result: () => page(args.offset ?? 0, args.limit, total) });
+    const value = context(await f.broker.callTool(f.token, 'crm_available_rooms', args));
+    assert.deepEqual([value.source, value.totalInSnapshot, value.nextOffset, value.rooms.length], ['hermes_available_rooms_page_v1', total, nextOffset, 2]);
+  }
+  for (const [args, result] of [[{ limit: 2 }, () => page(0, 2, 2500, 'hermes_sale_listing_rooms_v1')], [{ offset: 2000, limit: 2 }, () => ({ ...page(2000, 2, 2500), nextOffset: 2002 })],
+    [{ limit: 2 }, () => ({ ...page(0, 2, 2500), totalInSnapshot: 10_000_001 })], [{ limit: 2 }, () => ({ ...page(0, 2, 2500), source: 'hermes_available_rooms_page_v2' })],
+    [{ limit: 2 }, () => ({ ...page(0, 2, 2500), completeness: 'complete' })]]) {
+    const f = roomsFixture({ result });
+    await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', args), error('backend_unavailable'));
+  }
 });
 
 test('a company without a live share link gets an explicit no_sale_page result, not an empty room list', async () => {

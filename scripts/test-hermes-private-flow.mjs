@@ -494,13 +494,40 @@ async function context() {
 }
 
 const normalizeSearchPath = value => value.replace(/["\s]/g, '');
-const REVIEWED_EMPTY_SEARCH_PATH = new Map([
-  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => spec.name === 'app_private.hermes_domain_read_rows_fast_v1').map(spec => [spec.name, spec]),
-  ['public.hermes_read_text_v1', {
+// One name may hold several reviewed (file, bytes) pairs: the applied file of a
+// replaced reader is immutable, so its historical statement still verifies.
+const REVIEWED_EMPTY_SEARCH_PATH = new Map();
+for (const spec of [
+  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => ['app_private.hermes_domain_read_rows_fast_v1', 'public.hermes_write_name_resolve_v1',
+    'public.hermes_write_name_resolve_v2'].includes(spec.name)),
+  { name: 'public.hermes_read_text_v1',
     sourcePath: 'supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql',
-    statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105',
-  }],
-]);
+    statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105' },
+  // Shared write foundation name resolution (20261021132433): two pure IMMUTABLE helpers and the plpgsql INVOKER core
+  // whose body names only schema-qualified public objects; its SQL-standard wrapper is pinned above.
+  { name: 'public.hermes_name_fold_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: '16ad1c3501346ab5b730a97acafdc918e233b9f27e0a7bc08e3148c42ff2a82a' },
+  { name: 'public.hermes_room_key_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: '801ff7b91a46c35be4fd9f1f0dd338d20a89738d7e97e94baa3eb2dc25b96527' },
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
+  // Đợt 2 Thu chi (20261022024834): lõi giải tên plpgsql INVOKER của expense.* — chỉ tên public đủ schema; vỏ SQL-standard ghim ở
+  // hermes-task-function-contract.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+    statementSha256: '2555857f637fe17ea488547ca6c0bd34318f2b1d2f50964cb3dd5683c5deea7a' },
+  // Thu chi Mốc 3: lõi giải tên ghi _v2 nhận toà ảo (20261022044120: lõi plpgsql INVOKER = lõi v1 + p_include_virtual; vỏ SQL-standard ghim
+  // ở hermes-read-function-specs) và lõi giải tên expense.* thay thân để gọi _v2 (20261022044123). Chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v2',
+    sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
+    statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
+    statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
+]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
  * CREATE statement (later migrations replace earlier ones, as in the catalog).
@@ -519,8 +546,8 @@ export function hermesFunctionAttributes(sources) {
     // Identifier list only: a later clause such as SET lock_timeout is separate.
     const empty = /\bSET\s+search_path\s*(?:=|\bTO\b)\s*''(?:\s|$)/i.test(header);
     if (empty) {
-      const reviewed = REVIEWED_EMPTY_SEARCH_PATH.get(head[1]);
-      demand(reviewed?.sourcePath === source.path && sha(statement.replace(/\r\n?/g, '\n')) === reviewed.statementSha256,
+      const reviewed = REVIEWED_EMPTY_SEARCH_PATH.get(head[1]) ?? [];
+      demand(reviewed.some(spec => spec.sourcePath === source.path && sha(statement.replace(/\r\n?/g, '\n')) === spec.statementSha256),
         'live_schema_empty_path_unreviewed');
     }
     const path = /\bSET\s+search_path\s*(?:=|\bTO\b)\s*((?:"?[A-Za-z_][A-Za-z_0-9]*"?\s*,\s*)*"?[A-Za-z_][A-Za-z_0-9]*"?)/i.exec(header)?.[1];
@@ -537,7 +564,7 @@ export async function verifyLiveSchema(pool) {
   const rows = (await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosrc,p.prosecdef,pg_get_userbyid(p.proowner) owner,p.proconfig
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1::text[])`, [[...expected.keys()]])).rows;
   const livePath = row => (row.proconfig ?? []).filter(value => value.startsWith('search_path=')).map(value => normalizeSearchPath(value.slice(12)));
-  // Paths are rooted at pg_catalog, except the two byte-bound empty-path
+  // Paths are rooted at pg_catalog, except the byte-bound empty-path
   // readers above; exact value and SECURITY mode still match the source.
   demand(rows.length === expected.size && rows.every(row => {
     const source = attributes.get(row.name), live = livePath(row);

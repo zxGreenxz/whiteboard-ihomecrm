@@ -82,3 +82,12 @@ d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_open
 # Chỉ miễn trừ hai dòng lịch sử này; file và credential khác vẫn được quét.
 cfecd4cdaa99c1a45dffc9a0d4a7201989386fd7:scripts/copilot-l4-risk-ceiling-acceptance.mjs:generic-api-key:12
 6d77729d99a3facca9d0a2157ab7e2987305aa1f:docs/generated/copilot-l4-isolated-acceptance-2026-09-07.json:generic-api-key:10
+# 20/10/2026 — fixture test B3 (PR #235): hai chuỗi 'tok-PRIVATE-a1'/'tok-PRIVATE-a2' là token giả chèn vào
+# bảng public_room_share_tokens của PostgreSQL tạm trong test, không phải credential của hệ thống nào.
+# Commit sau (3107a0957) đã đổi tên thành 'tok-PRIVATE-fake-*'; commit gốc còn trong lịch sử nên miễn trừ đúng hai dòng.
+0e88d71ba5cbf8f2ee300f73452e61678ca585a1:infra/hermes-broker/available-rooms-page-sql.test.mjs:generic-api-key:98
+0e88d71ba5cbf8f2ee300f73452e61678ca585a1:infra/hermes-broker/available-rooms-page-sql.test.mjs:generic-api-key:99
+# 21/10/2026: action-catalog.test.mjs (nhánh claude/hermes-nen-chung-ghi-20261021, Mốc 4) dùng hằng 'PRIVATE…' 18 ký tự làm canary
+# kiểm validator không lặp lại giá trị lạ trong detail — chuỗi giả trong test, không phải khoá/secret thật (đã đọc giá trị).
+# gitleaks trong CI quét mọi nhánh đã đẩy (--all) nên finding ở nhánh draft làm đỏ cả main; miễn trừ đúng một dòng của commit gốc.
+a13fb3c132d01e91b59167f5b9a1800e06cf7061:infra/hermes-broker/action-catalog.test.mjs:generic-api-key:47

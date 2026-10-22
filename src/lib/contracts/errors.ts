@@ -109,6 +109,11 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
   // internal_error: PostgreSQL tự sinh khi lỗi nội bộ, và cổng Hermes đợt 2 ném khi hàm đọc của gói trả sai khuôn
   // (`hermes_w2_package_result_invalid`, 20261018000600/000700). Cả hai là chốt chặn vỡ: kêu to, không thử lại.
   XX000: "internal_invariant",
+  // Tín hiệu nội bộ của hàm ghi phiếu Hermes (20261022024834/044123): HD001 lùi lượt chạy thử về savepoint, HS001 báo dữ liệu đã đổi
+  // giữa xem trước và ghi. Cả hai bị chính hàm bắt (WHEN SQLSTATE …), không ra tới client; lọt ra thì HD001 là chốt chặn vỡ,
+  // HS001 là trạng thái đã đổi (xem trước lại).
+  HD001: "internal_invariant",
+  HS001: "conflict",
 };
 
 /** Mã của PostgREST (không phải SQLSTATE) — nằm cùng trường `code`. */
