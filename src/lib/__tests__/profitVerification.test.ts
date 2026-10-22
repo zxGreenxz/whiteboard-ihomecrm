@@ -138,7 +138,7 @@ describe("F35: lệch theo toà khoá bằng building_id", () => {
     });
     expect(diffs.map((d) => d.buildingId)).toEqual(["b9", "b1", "__no_building__"]);
     expect(diffs[1]).toMatchObject({ incomeDiff: -100 });
-    expect(diffs[2].name).toBe("Không rõ toà");
+    expect(diffs[2]?.name).toBe("Không rõ toà");
   });
 
   it("ngưỡng 2đ và lọc chiều", () => {
