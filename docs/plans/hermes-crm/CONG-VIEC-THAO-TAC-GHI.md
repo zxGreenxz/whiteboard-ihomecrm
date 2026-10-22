@@ -507,7 +507,9 @@ Tuỳ chọn của review cũng làm: ca NOT `v_manages` (giao "huy" ⇒ cảnh 
 
 Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ đếm mã việc / id các bảng phụ có thể nhích vài số).
 
-**Test:** PGlite `task-action-sql` 13/13, `jobs-assignee-sql` 4/4; PG17 `task-action-race-pg` 1 test + 2 ca; connector `task-actions` 7/7. Đột biến 21/21 (SQL 10, RLS 4, connector 7) + 2/2 thứ tự khoá trên PG17.
+**Số lời gọi REST:** lớp task chỉ đọc capability tạo việc cũ khi `task.create` chưa sống (lần đọc quyền trước), cùng đợt với lớp dưới; DB vừa mất dòng giữa hai lời gọi thì đọc bù tuần tự. `mcp-latency` (DB chưa có `task.create`): 16 → 17 lời gọi mỗi lượt đọc quyền (31 → 33 với `crm_auth_context`), số bước tuần tự không đổi; DB mới không tốn lời gọi này (`task-actions.test.mjs` đếm).
+
+**Test:** PGlite `task-action-sql` 13/13, `jobs-assignee-sql` 4/4; PG17 `task-action-race-pg` 1 test + 2 ca; connector `task-actions` 7/7, `mcp-latency` 5/5. Đột biến 25/25: SQL 10, RLS 4, connector 9 (thêm "đọc bù" và "không tốn lời gọi"), thứ tự khoá trên PG17 2.
 
 **Thứ tự áp (phiên chính, qua lane, TEST rồi production):**
 1. `20261022031548_hermes_task_action_create_v1` và `20261022031600_jobs_assignee_visible_v1` trong **cùng một lượt** (lane chạy theo version: 031548 rồi 031600). Hai file độc lập về phụ thuộc; nếu phải tách lượt thì áp liền nhau, không để 031548 chạy một mình trên production: câu cảnh báo "vẫn thấy việc nhưng không sửa/hoàn thành được" trong bản xem trước chỉ đúng khi 031600 đã áp.
