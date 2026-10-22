@@ -40,6 +40,19 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
   statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
  },
+ // Đợt 2 Thu chi (Mốc 2): RPC trang expense.* — cùng khuôn vỏ INVOKER gắn OID guard / lõi giải tên / bước ghi DEFINER.
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+  statementSha256:'5960c256f08748aab117c62bb218324e4dedea62e9b1a57d3f7411fd0ab57d59',
+ },
+ // Đợt 2 Thu chi (Mốc 3): vỏ expense.* gắn OID phạm vi (guard ∩ hàm kiểm quyền của hàm ghi web); giải tên _v2 ghim ở
+ // hermes-read-function-specs (cùng chỗ với _v1).
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
+  statementSha256:'321484f76fedd6f3d96f094ce5f4bf1201e336bc9b50263b2b9ef60faaa0d774',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
