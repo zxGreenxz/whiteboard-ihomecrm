@@ -1,6 +1,7 @@
--- Đợt 2 trang HỢP ĐỒNG — đọc bù qua sổ W2 Gói D (22/10/2026; docs/plans/hermes-crm/HOP-DONG-THAO-TAC-GHI.md mục 6). 0 byte tools/list:
--- báo cáo mới nằm trong kết quả crm_read_report_list. Không DROP, không đổi chữ ký, không ghi dữ liệu.
---   re_contracts_ending   (đọc bù a) HĐ có ngày kết thúc trong khoảng (mặc định tháng này), kể cả quá hạn chưa thanh lý; toà nhiều nhất.
+-- Đợt 2 trang HỢP ĐỒNG — đọc bù qua sổ W2 Gói D (22/10/2026; docs/plans/hermes-crm/HOP-DONG-THAO-TAC-GHI.md mục 6). Báo cáo mới
+-- không thêm tool (nằm trong kết quả crm_read_report_list); riêng kết nối CHỈ có contracts.view nay thấy hai tool báo cáo (+1 585 B,
+-- do khoá dùng lại ở 20261022043540). Không DROP, không đổi chữ ký, không ghi dữ liệu.
+--   re_contracts_ending   (đọc bù a) HĐ còn hiệu lực có ngày kết thúc trong khoảng (vắng = tháng này, một đầu = mở); toà nhiều nhất.
 --   re_move_out_notices   (đọc bù b) ngày khách báo dọn đi (KHÁC ngày hết hạn); mặc định mọi báo trả còn hiệu lực.
 --   re_exit_cases_pending (mục 1)   hồ sơ trả phòng chờ quyết toán, qua đúng RPC web list_contract_exit_cases_v1 (bảng không cấp
 --                                   SELECT cho authenticated); không tên khách.
@@ -253,7 +254,8 @@ BEGIN
             LEFT JOIN public.customers cu ON cu.id=cc.customer_id AND cu.organization_id=v_org WHERE cc.contract_id=v.contract_id),false) ok) nv
         WHERE v.building_id=ANY(v_buildings)) x;
   ELSIF p_report='re_contracts_ending' THEN
-    -- Đợt 2 Hợp đồng (đọc bù a): HĐ có ngày kết thúc trong khoảng (mặc định tháng này), kể cả HĐ đã quá hạn chưa thanh lý.
+    -- Đợt 2 Hợp đồng (đọc bù a): HĐ còn hiệu lực (ACTIVE, chưa thanh lý) có ngày kết thúc trong khoảng. Không truyền ngày = tháng
+    -- này; chỉ một đầu = để mở phía kia (hàm dùng chung cùng luật). overdue = trong khoảng mà đã qua ngày kết thúc.
     IF v_from IS NULL AND v_to IS NULL THEN
       v_from:=date_trunc('month',v_today)::date; v_to:=(date_trunc('month',v_today)+interval '1 month - 1 day')::date; END IF;
     SELECT e.building_name,count(*) INTO v_top_name,v_top_n FROM public.real_estate_contracts_ending_v1(v_org,v_buildings,v_from,v_to,v_today) e
@@ -288,7 +290,7 @@ BEGIN
     -- qua đúng RPC web của hàng đợi (tự kiểm contracts.view theo toà); không trả tên khách (nguồn DEFINER không qua RLS customers).
     v_exit:=public.list_contract_exit_cases_v1(v_org,NULL,'PENDING',100,0,NULL,v_buildings);
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord),'[]'::jsonb),COALESCE((v_exit->>'total')::bigint,0)>100,
-      jsonb_build_object('total',count(*),'oldestDays',max(x.days))
+      jsonb_build_object('total',COALESCE((v_exit->>'total')::bigint,count(*)),'oldestDays',max(x.days))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY (i->>'actual_move_out_on')::date,i->>'id') ord,(v_today-(i->>'actual_move_out_on')::date) days,
         jsonb_build_object('organizationId',(i->>'organization_id')::uuid,'contractId',(i->>'contract_id')::uuid,

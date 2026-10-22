@@ -104,11 +104,12 @@ const BEFORE = `
   CREATE FUNCTION public.list_contract_exit_cases_v1(p_organization_id uuid,p_building_id uuid DEFAULT NULL,p_state text DEFAULT NULL,
     p_limit integer DEFAULT 50,p_offset integer DEFAULT 0,p_contract_id uuid DEFAULT NULL,p_building_ids uuid[] DEFAULT NULL) RETURNS jsonb
     LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
-    SELECT jsonb_build_object('items',COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.actual_move_out_on,x.id),'[]'::jsonb),'total',count(*),
-      'limit',p_limit,'offset',p_offset,'server_today',current_date)
-    FROM (SELECT * FROM public.contract_exit_cases e WHERE e.organization_id=p_organization_id AND (p_state IS NULL OR e.state=p_state)
-      AND (p_building_ids IS NULL OR e.building_id=ANY(p_building_ids)) AND public.fixture_bld(e.building_id)
-      ORDER BY e.actual_move_out_on,e.id LIMIT p_limit OFFSET p_offset) x $$;
+    -- Như hàm web: total đếm cả tập đã lọc (trước LIMIT/OFFSET), items là một trang.
+    WITH f AS (SELECT * FROM public.contract_exit_cases e WHERE e.organization_id=p_organization_id AND (p_state IS NULL OR e.state=p_state)
+      AND (p_building_ids IS NULL OR e.building_id=ANY(p_building_ids)) AND public.fixture_bld(e.building_id))
+    SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.actual_move_out_on,x.id)
+        FROM (SELECT * FROM f ORDER BY f.actual_move_out_on,f.id LIMIT p_limit OFFSET p_offset) x),'[]'::jsonb),'total',(SELECT count(*) FROM f),
+      'limit',p_limit,'offset',p_offset,'server_today',current_date) $$;
   GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
   REVOKE ALL ON public.contract_exit_cases FROM authenticated;
   DO $rls$ DECLARE t text; BEGIN

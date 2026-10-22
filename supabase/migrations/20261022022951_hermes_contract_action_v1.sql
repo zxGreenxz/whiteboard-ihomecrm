@@ -95,7 +95,7 @@ BEGIN
 END $fn$;
 
 -- 5. Bước ghi (DEFINER). phase: preview (chỉ đọc) | auto (theo chính sách: ghi thẳng hoặc trả bản xem trước) | apply (lượt 2:
---    đúng bản đã giải + expectedBasis; basis tính lại sau FOR UPDATE, lệch ⇒ state_changed, không mở biên nhận).
+--    đúng bản đã giải + expectedBasis; basis tính lại sau khoá tổ chức + FOR UPDATE, lệch ⇒ state_changed, không mở biên nhận).
 CREATE OR REPLACE FUNCTION app_private.hermes_contract_action_step_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
   p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_lookup jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
@@ -111,6 +111,11 @@ BEGIN
     RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023'; END IF;
   ctx:=app_private.hermes_action_guard_v1(p_binding,p_action);
   v_org:=(ctx->>'organizationId')::uuid;
+  -- Giao thức ghi chung: khoá tổ chức TRƯỚC mọi khoá dòng (hàm ghi web cũng gọi lock_org_for_decision_v1 rồi mới khoá dòng HĐ /
+  -- khoá tạm). Guard đã khoá qua hermes_private_command_connection_v1; gọi lại ở đây cho tường minh, không dựa vào nội tình guard
+  -- (cùng giao dịch nên không chờ). Kiểm biên nhận ngay dưới chạy SAU khoá này: lời gọi cùng requestId đang chờ sẽ thấy biên nhận
+  -- lời trước vừa chốt (review #270 mục 1–2).
+  PERFORM app_private.lock_org_for_decision_v1(v_org);
   v_notice:=p_action IN ('contract.notice_set','contract.notice_cancel');
   v_contract:=v_notice OR p_action='contract.renew';
   -- Phát lại theo requestId TRƯỚC mọi phép tính lại (thiết kế nền chung mục 3.1): chính lần ghi trước đã đổi HĐ nên basis tính
@@ -158,8 +163,14 @@ BEGIN
       RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
         ELSE jsonb_build_object('kind','needs_input','reason','room_has_no_active_contract') END;
     END IF;
-    SELECT * INTO c FROM public.contracts k WHERE k.id=(v_resolved->>'contractId')::uuid AND k.organization_id=v_org
-      AND k.room_id=(v_resolved->>'roomId')::uuid FOR UPDATE;
+    -- Lượt preview chỉ đọc: không khoá dòng. auto/apply có thể ghi: khoá dòng HĐ (sau khoá tổ chức ở trên).
+    IF p_phase='preview' THEN
+      SELECT * INTO c FROM public.contracts k WHERE k.id=(v_resolved->>'contractId')::uuid AND k.organization_id=v_org
+        AND k.room_id=(v_resolved->>'roomId')::uuid;
+    ELSE
+      SELECT * INTO c FROM public.contracts k WHERE k.id=(v_resolved->>'contractId')::uuid AND k.organization_id=v_org
+        AND k.room_id=(v_resolved->>'roomId')::uuid FOR UPDATE;
+    END IF;
     IF NOT FOUND OR c.status IS DISTINCT FROM 'ACTIVE' OR c.actual_end_date IS NOT NULL OR c.deleted_at IS NOT NULL THEN
       RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
         ELSE jsonb_build_object('kind','needs_input','reason','room_has_no_active_contract') END; END IF;
@@ -237,8 +248,13 @@ BEGIN
     END IF;
   ELSE
     -- Khoá tạm đang mở của phòng (chưa gỡ, chưa hết hạn). Hết hạn thì hàm web tự coi là đóng.
-    SELECT * INTO l FROM public.room_sale_locks k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid
-      AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1 FOR UPDATE;
+    IF p_phase='preview' THEN
+      SELECT * INTO l FROM public.room_sale_locks k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid
+        AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1;
+    ELSE
+      SELECT * INTO l FROM public.room_sale_locks k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid
+        AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1 FOR UPDATE;
+    END IF;
     v_basis:=md5(jsonb_build_array(p_action,v_resolved->'roomId',l.id)::text);
     IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
     IF p_action='contract.room_lock' THEN

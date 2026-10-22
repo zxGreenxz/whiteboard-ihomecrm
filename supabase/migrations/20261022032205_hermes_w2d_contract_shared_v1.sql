@@ -5,7 +5,8 @@ BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
--- Hàm dùng chung (đọc bù a): HĐ hiệu lực chưa thanh lý có ngày kết thúc trong [from, to] (mặc định tháng của hôm nay).
+-- Hàm dùng chung (đọc bù a): HĐ hiệu lực chưa thanh lý có ngày kết thúc trong [from, to]. Không truyền ngày = tháng của
+-- hôm nay; chỉ một đầu = để mở phía kia (không tự kẹp đầu còn lại về tháng này).
 CREATE OR REPLACE FUNCTION public.real_estate_contracts_ending_v1(p_organization_id uuid,p_building_ids uuid[],
   p_from date DEFAULT NULL,p_to date DEFAULT NULL,p_as_of date DEFAULT NULL)
 RETURNS TABLE(contract_id uuid,contract_number text,status text,start_date date,end_date date,days_left integer,expected_move_out_date date,
@@ -18,8 +19,9 @@ BEGIN
   -- Khoá web của trang Hợp đồng (RequirePermission module=contracts, xem) khi web gọi thẳng; RLS contracts lọc theo toà.
   IF NOT COALESCE(public.can_access_org_entity('contracts','view'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
   v_today:=COALESCE(p_as_of,public.org_today_v1(p_organization_id));
-  v_from:=COALESCE(p_from,date_trunc('month',v_today)::date);
-  v_to:=COALESCE(p_to,(date_trunc('month',v_today)+interval '1 month - 1 day')::date);
+  IF p_from IS NULL AND p_to IS NULL THEN
+    v_from:=date_trunc('month',v_today)::date; v_to:=(date_trunc('month',v_today)+interval '1 month - 1 day')::date;
+  ELSE v_from:=p_from; v_to:=p_to; END IF;
   RETURN QUERY
   SELECT c.id,c.contract_number,c.status::text,c.start_date,c.end_date,(c.end_date-v_today)::integer,c.expected_move_out_date,c.rent_price,
     r.id,r.name,r.floor,b.id,b.name,c.organization_id
@@ -27,7 +29,7 @@ BEGIN
   JOIN public.rooms r ON r.id=c.room_id AND (p_building_ids IS NULL OR r.building_id=ANY(p_building_ids))
   JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=p_organization_id
   WHERE c.organization_id=p_organization_id AND c.deleted_at IS NULL AND c.status::text='ACTIVE' AND c.actual_end_date IS NULL
-    AND c.end_date BETWEEN v_from AND v_to
+    AND (v_from IS NULL OR c.end_date>=v_from) AND (v_to IS NULL OR c.end_date<=v_to)
   ORDER BY c.end_date,b.name,r.name,c.id;
 END $fn$;
 

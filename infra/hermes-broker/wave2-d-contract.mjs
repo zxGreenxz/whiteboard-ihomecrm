@@ -75,7 +75,7 @@ export const W2D_REPORTS = Object.freeze({
   // Đợt 2 trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 6; 20261022043617_hermes_w2d_contract_reads_v1): không tên/SĐT khách. Khoá xem
   // hợp đồng (dùng lại từ đợt 1, nền 20261022043540): Quản lý toà có theo toà, không cần quyền báo cáo BĐS.
   re_contracts_ending: w2Report({ permission: 'contracts.view', source: 'crm.real_estate_contracts_ending_v1', scope: 'rows', private: true,
-    title: 'HĐ có ngày kết thúc trong khoảng (mặc định tháng này), kể cả HĐ đã quá hạn chưa thanh lý: "HĐ hết hạn trong tháng X" ⇒ fromDate/toDate của tháng X; summary: tổng, quá hạn, có báo trả, toà nhiều nhất.',
+    title: 'HĐ còn hiệu lực có ngày kết thúc trong khoảng (không truyền ngày = tháng này; chỉ một đầu = mở phía kia): "HĐ hết hạn trong tháng X" ⇒ fromDate/toDate của tháng X (+ buildingName nếu hỏi một toà); summary: tổng, quá hạn (đã qua ngày kết thúc, chưa thanh lý), có báo trả, toà nhiều nhất.',
     params: ['buildingId', 'fromDate', 'toDate'],
     fields: { ...CONTRACT, startDate: nullable(date), endDate: date, daysLeft: int, expectedMoveOutDate: nullable(date), rentPrice: amount, ...ROOM,
       floor: nullable(int) },

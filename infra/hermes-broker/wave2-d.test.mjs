@@ -187,9 +187,16 @@ test('Hợp đồng — kết thúc trong khoảng (mặc định tháng này, g
   assert.ok(value.items.every(row => !Object.hasOwn(row, 'customerName')));
   assert.deepEqual((await run(env, 're_contracts_ending', { fromDate: '2027-01-01', toDate: '2027-01-31' })).items.map(row => row.contractId), [CONTRACT_A],
     'tháng X: đúng khoảng ngày kết thúc');
+  // Review #270: chỉ một đầu khoảng ⇒ để mở phía kia (trước đây hàm dùng chung kẹp đầu còn lại về tháng này ⇒ rỗng im lặng).
+  value = await run(env, 're_contracts_ending', { fromDate: '2027-01-01' });
+  assert.ok(value.items.some(row => row.contractId === CONTRACT_A), 'chỉ fromDate sau tháng này vẫn ra HĐ');
+  assert.ok(value.items.every(row => row.endDate >= '2027-01-01'));
+  assert.deepEqual([value.summary.fromDate, value.summary.toDate], ['2027-01-01', null]);
+  value = await run(env, 're_contracts_ending', { toDate: '2026-10-31' });
+  assert.ok(value.items.some(row => row.contractId === D.C_SOON) && value.items.every(row => row.endDate <= '2026-10-31'), 'chỉ toDate: mở phía trước');
   await db.query("UPDATE public.contracts SET end_date='2026-10-10' WHERE id=$1", [D.C_SOON]);
   value = await run(env, 're_contracts_ending');
-  assert.deepEqual([value.items[0].daysLeft, value.summary.overdue], [-6, 1], 'đã quá hạn mà chưa thanh lý vẫn tính trong tháng');
+  assert.deepEqual([value.items[0].daysLeft, value.summary.overdue], [-6, 1], 'đã qua ngày kết thúc mà chưa thanh lý vẫn tính trong tháng');
   value = await run(env, 're_move_out_notices');
   assert.deepEqual(value.items.map(row => [row.contractId, row.expectedMoveOutDate, row.daysUntil, row.endDate]), [[D.C_SOON, '2026-10-24', 8, '2026-10-10']]);
   assert.deepEqual(value.summary, { fromDate: null, toDate: null, total: 1, overdue: 0, within30Days: 1 });
@@ -199,6 +206,14 @@ test('Hợp đồng — kết thúc trong khoảng (mặc định tháng này, g
     [[D.C_END, '2026-10-10', 'EARLY_RETURN', 'DEFERRED', 6]], 'chỉ PENDING, chỉ toà trong phạm vi');
   assert.deepEqual(value.summary, { total: 1, oldestDays: 6 });
   assert.ok(value.items.every(row => !Object.hasOwn(row, 'customerName')), 'nguồn DEFINER: không tên khách');
+  // Review #270: nguồn trả tối đa 100 hồ sơ ⇒ summary.total là tổng thật của nguồn, không phải số dòng đã nhận.
+  await db.query(`INSERT INTO public.contract_exit_cases(id,organization_id,building_id,contract_id,room_at_handover_id,actual_move_out_on,
+      initial_kind,current_kind,settlement_mode,state,contract_number,building_name,room_name)
+    SELECT gen_random_uuid(),$1,$2,gen_random_uuid(),$3,'2026-10-15','EARLY_RETURN','EARLY_RETURN','DEFERRED','PENDING','HD-X'||n,'Toà A','P202'
+    FROM generate_series(1,120) n`, [ORG, BUILDING, D.ROOM_A2]);
+  value = await run(env, 're_exit_cases_pending', {}, { limit: 50 });
+  assert.deepEqual([value.summary.total, value.summary.oldestDays, value.sourceCapped], [121, 6, true]);
+  await db.query("DELETE FROM public.contract_exit_cases WHERE contract_number LIKE 'HD-X%'");
   await db.query("UPDATE public.contract_exit_cases SET state='FINALIZED' WHERE id=$1", [D.EXIT_A]);
   assert.deepEqual((await run(env, 're_exit_cases_pending')).summary, { total: 0, oldestDays: null });
 }));

@@ -425,3 +425,16 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
     assert.equal(await reason('22023', 'Invalid notice date or reason'), 'reason_required');
   });
 });
+
+// Review #270 mục 1–2: khoá tổ chức (giao thức ghi chung của hàm web) đứng sau guard, TRƯỚC lần kiểm biên nhận và mọi khoá dòng;
+// lượt preview không khoá dòng. PGlite một kết nối không tái hiện được hai phiên song song ⇒ kiểm thứ tự trong thân bước ghi.
+test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng', () => {
+  const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(CONTRACT_ACTION_SQL)[0];
+  const guard = body.indexOf('ctx:=app_private.hermes_action_guard_v1'), lock = body.indexOf('PERFORM app_private.lock_org_for_decision_v1(v_org);');
+  assert.ok(guard > 0 && lock > guard, 'khoá tổ chức ngay sau guard');
+  assert.ok(lock < body.indexOf('FROM app_private.hermes_action_receipts r'), 'khoá tổ chức trước khi kiểm biên nhận');
+  const rowLocks = [...body.matchAll(/FOR UPDATE/g)].map(match => match.index);
+  assert.ok(rowLocks.length >= 2 && rowLocks.every(index => index > lock), 'mọi khoá dòng sau khoá tổ chức');
+  assert.equal([...body.matchAll(/IF p_phase='preview' THEN\n\s+SELECT \* INTO (?:c|l) FROM public\.(?:contracts|room_sale_locks) k(?:(?!FOR UPDATE)[^;])*;\n\s+ELSE\n\s+SELECT[^;]*FOR UPDATE;/g)].length, 2,
+    'đọc HĐ / khoá tạm: preview không FOR UPDATE, nhánh còn lại có');
+});

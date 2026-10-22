@@ -895,7 +895,7 @@
         "function:public.hermes_contract_action_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
-      "sha256": "f048a931be726045c6cda747b5cf8f6c1c1c5ea940b547741cee984857c9c385"
+      "sha256": "495e55c855e2feb2d85f62a044c98f6fbf40ae64026afb074f3ef784a9fca817"
     },
     "supabase/migrations/20261022032205_hermes_w2d_contract_shared_v1.sql": {
       "bangChung": [
@@ -915,7 +915,7 @@
         "function:public.contract_move_out_notices_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
-      "sha256": "494ae0204285d75d3d6c36b99624969db7b101faed0ae7de1408bf4f5935fa7a"
+      "sha256": "cc6b2364e4285d6416764ed9a93687e5b78b63b6adfb21f0d678f873b9a0e02e"
     },
     "supabase/migrations/20261022042822_contract_renewal_end_date_v1.sql": {
       "bangChung": [

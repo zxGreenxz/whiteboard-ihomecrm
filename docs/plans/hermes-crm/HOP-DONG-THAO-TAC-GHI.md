@@ -11,7 +11,7 @@ Căn cứ, theo thứ tự ưu tiên:
 
 ## 0. Kết luận
 
-1. **Mười thao tác, một RPC trang, 0 byte `tools/list`.** Cả mười thao tác đi qua ba tool `crm_action_*`. RPC của trang là `public.hermes_contract_action_v1`, có cùng chữ ký với `hermes_action_probe_v1`. RPC này gồm ba tầng:
+1. **Mười thao tác, một RPC trang, 0 byte `tools/list` cho phần ghi.** Cả mười thao tác đi qua ba tool `crm_action_*`. RPC của trang là `public.hermes_contract_action_v1`, có cùng chữ ký với `hermes_action_probe_v1`. RPC này gồm ba tầng:
    - vỏ INVOKER, thân SQL-standard;
    - hàm tra cứu INVOKER, chạy dưới RLS của người hỏi;
    - bước ghi DEFINER, gọi **đúng** hàm ghi mà web đang dùng.
@@ -20,7 +20,7 @@ Căn cứ, theo thứ tự ưu tiên:
 2. **Mọi hàm ghi web của trang đều là SECURITY DEFINER và tự kiểm `auth.uid()`.** Đó là `set_contract_move_out_notice_v1`, `renew_contract_with_notice_v1`, `confirm_contract_return_v1`, `lock_room_for_sale_v1`, `release_room_sale_lock_v1`, `reconcile_contract_customers_v1` và `save_contract_draft`. Vì vậy bước ghi DEFINER gọi thẳng chúng được mà không bỏ qua RLS: các hàm này vốn không dựa vào RLS. Không có hàm DEFINER nào chép policy.
 3. **Xem trước theo Q2 = a.** Thao tác dính tiền hoặc không lùi được thì luôn xem trước: gia hạn, gia hạn hàng loạt, ghi nhận trả phòng. Các thao tác khác ghi thẳng, trừ khi máy chủ đòi xác nhận cho từng lần gọi: báo trả, huỷ báo trả, khoá tạm, gỡ khoá, thêm/bớt người ở, soạn nháp. Điểm này khác plan §9 Q2 (plan cho báo trả xem trước) và cần phiên chính chốt (D-HĐ1).
 4. **Ngày gia hạn do máy chủ tính bằng hàm dùng chung mới `public.contract_renewal_end_date_v1(end_date, months)`.** Hiện máy chủ không tính ngày, còn web để người dùng tự chọn ngày. Luật "ngày cuối tháng thì giữ cuối tháng, còn lại giữ số ngày" khớp 82/112 lần gia hạn thật. Phép cộng tháng thuần của Postgres chỉ khớp 49/112. Web cũng dùng hàm này qua nút "+N tháng" trong hộp Gia hạn (luật 17/10).
-5. **Đọc bù (a)–(e) không thêm byte.** Phần đọc đi qua sổ W2 và một trường kết quả mới:
+5. **Đọc bù đi qua sổ W2, gần như không thêm byte.** Báo cáo mới nằm trong kết quả `crm_read_report_list`. Hai chỗ đổi byte (đo lại theo review #270, mục 6): mô tả `crm_available_rooms` +48 B; kết nối CHỈ có `contracts.view` thấy thêm hai tool báo cáo. Phần đọc gồm:
    - thêm 3 báo cáo: HĐ kết thúc trong khoảng ngày, báo trả theo khoảng ngày, hồ sơ trả phòng chờ quyết toán;
    - sửa tiêu đề 2 báo cáo: `re_terminations` (kỳ đúng tháng, đếm bỏ cọc), `held_deposits` ("chưa thu đủ cọc" = `SHORT` + `FIRST_INVOICE`, không có status `OWING`);
    - Mốc 3: báo cáo `rooms_occupancy` (số phòng theo toà, khoá `rooms.view`) và ba báo cáo hợp đồng chuyển sang khoá `contracts.view`, để Quản lý toà hỏi được;
@@ -203,7 +203,10 @@ Dùng lại mã chung: `name_unresolved` (toà, phòng, khách), `date_out_of_ra
 
 ## 6. Đọc (mục 1 và đọc bù (a)–(e) của lượt đo nền)
 
-Mọi thay đổi đọc đều 0 byte `tools/list`: báo cáo W2 nằm trong kết quả `crm_read_report_list`; mô tả `crm_read_contract_detail` giữ nguyên.
+Báo cáo W2 mới không thêm tool: chúng nằm trong kết quả `crm_read_report_list`; mô tả `crm_read_contract_detail` giữ nguyên. Đo lại `tools/list` (review #270):
+- kết nối đủ quyền: mô tả `crm_available_rooms` +48 B ⇒ 63 849 / 64 000 B (`tool-argument-shape`); như production 21/10 (không `income_expenses.create`, `tasks.delete`): 61 716 B;
+- kết nối CHỈ có `contracts.view` (khoá dùng lại mới của W2): thêm `crm_read_report_list` + `crm_read_report`, 3 217 → 4 802 B (+1 585 B);
+- kết nối quản lý đã có `rooms.view` (khoá dùng lại sẵn có): đã thấy hai tool đó từ trước ⇒ không đổi.
 
 | # | Câu (đo nền 22/10) | Nguyên nhân (đã tra) | Sửa |
 | --- | --- | --- | --- |
