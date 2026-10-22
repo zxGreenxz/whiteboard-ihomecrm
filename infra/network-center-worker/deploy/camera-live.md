@@ -24,6 +24,8 @@ Provision root-owned `secrets/live-config.json` (0600, parent 0700) through the 
 
 Root-owned `config/runtime.env` contains `CAMERA_MEDIA_BINARY` (absolute executable path under the selected release) and `CAMERA_MEDIA_SHA256`. `camera-live.service` uses systemd credentials and a private runtime directory for the generated media configuration. `KillMode=control-group` makes a gateway stop terminate video too.
 
+Keep `AF_NETLINK` in the service address-family allowlist: the WebRTC library enumerates local network interfaces even when interface-derived ICE candidates are disabled. The host's `/dev/null` must retain its standard character-device permissions (`0666`, device `1:3`) so the unprivileged service can suppress media logs.
+
 Add only the exact `/camera-live/v1/` signaling path to the existing HTTPS tunnel hostname. Back up the tunnel configuration, validate it before restarting, preserve all other ingress rules, and compare them after the change. Do not add a catch-all media route.
 
 ## Verification and rollback
