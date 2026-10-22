@@ -13,7 +13,7 @@ const inDaysVN = n => { const day = new Date(`${VN(new Date())}T00:00:00Z`); day
 
 test('Mốc 3: task.update / task.cancel by name on the shared shell — never picks among ambiguous jobs, cancel always previews', { timeout: 300000 }, async t => {
   const f = await setupTaskActions(t);
-  const { db, action, call } = f;
+  const { db, action, call, receipts } = f;
   // Kết nối + trần công ty giữ thêm tasks.edit / tasks.delete; quyền CRM của người hỏi: tasks.delete chỉ ở toà A.
   await db.query("UPDATE app_private.hermes_org_policies SET action_capabilities=action_capabilities||ARRAY['tasks.edit','tasks.delete']");
   await db.query("UPDATE app_private.hermes_connections SET action_capabilities=action_capabilities||ARRAY['tasks.edit','tasks.delete']");
@@ -105,6 +105,8 @@ test('Mốc 3: task.update / task.cancel by name on the shared shell — never p
       { kind: 'rejected', reason: 'task_not_open', link: `/tasks?job=${b.jobId}` });
     assert.deepEqual(await edit('task.update', 'auto', rid(44), { job: 'vòi nước tắm', note: 'x' }), { kind: 'rejected', reason: 'task_not_open' },
       'chỉ khớp việc đã xong theo tiêu đề ⇒ không mở việc khác');
+    // Tiêu đề khớp một việc đang mở và một việc đã xong ⇒ chỉ việc đang mở (không thành mơ hồ, không bao giờ chọn việc đã xong).
+    assert.equal((await edit('task.update', 'preview', rid(45), { job: 'vòi nước', note: 'y' })).preview.code, a.code);
   });
 
   await t.test('cancel: always previews (even auto), deletes like web, audit keeps code + title; replay; out of delete scope ⇒ not found', async () => {
@@ -139,6 +141,13 @@ test('Mốc 3: task.update / task.cancel by name on the shared shell — never p
     await db.query("UPDATE public.jobs SET assignee_id=$2 WHERE code=$1", [h.code, MANAGER]);
     assert.deepEqual(await edit('task.cancel', 'apply', rid(65), { job: h.code }, preview), { kind: 'rejected', reason: 'state_changed' });
     assert.ok(await job(h.code), 'không xoá');
+    // Lượt 2 chạy lại phạm vi hiện tại của khoá: mất tasks.delete ở toà sau bản xem trước ⇒ not_allowed, không xoá.
+    const again = await edit('task.cancel', 'auto', rid(66), { job: h.code });
+    await db.query("UPDATE public.fixture_acl SET building_ids='{}' WHERE permission='tasks.delete'");
+    assert.deepEqual(await edit('task.cancel', 'apply', rid(66), { job: h.code }, again), { kind: 'rejected', reason: 'not_allowed' });
+    assert.equal((await receipts()).some(r => r.request_id === rid(66)), false, 'từ chối ở bước chuẩn bị, trước khi mở biên nhận (không dựa vào RLS của tầng ghi)');
+    assert.ok(await job(h.code), 'không xoá');
+    await db.query("UPDATE public.fixture_acl SET building_ids=$1 WHERE permission='tasks.delete'", [[BUILDING]]);
     assert.equal((await db.query('SELECT count(*)::int n FROM public.jobs WHERE organization_id=$1', [ORG])).rows[0].n >= 5, true);
     assert.notEqual(OTHER_BUILDING, BUILDING); assert.notEqual(STAFF, USER);
   });

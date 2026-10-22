@@ -1,10 +1,11 @@
-# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b + 2c đã hiện thực)
+# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b + 2c + 3 đã hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a` (đã gộp `3ae1d57f6`).
+Ngày 22/10/2026 (giờ Việt Nam). Mốc 1–2c: nhánh `claude/hermes-cong-viec-ghi-20261022` (PR #272). Mốc 3: nhánh
+`claude/hermes-cong-viec-moc3-20261022`, xếp chồng trên #272, đã gộp `origin/main` (#271 Thu chi).
 Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) và Mốc 2b sửa
 theo review độc lập (mục 17) có hai migration, một bản nháp Q64 chờ chủ (ngoài `supabase/migrations/`) và mã connector.
-Phiên chính đã áp `031548` + `031600` lên **TEST** (22/10, production CHƯA) và chạy bot thật; Mốc 2c (mục 18) thêm migration
-`065634` (suy loại việc), chưa áp. Thứ tự áp: mục 18.
+`031548` + `031600` + `065634` (Mốc 2c, mục 18) đã áp TEST và production (provenance 22/10: catalog-proven). Mốc 3 (mục 19:
+`task.update`, `task.cancel`, CV12) thêm migration `074741`, chưa áp. Thứ tự áp: mục 19.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12 (đã gộp `main` #253, đã lên production 22/10).
@@ -546,3 +547,35 @@ Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ 
 1. TEST: áp `20261022065634` (031548 + 031600 đã có). Connector không đổi (bản `3a352226` dùng được; kết quả có thêm trường `jobTypeWanted` trong `resolved`, connector giữ nguyên khối này).
 2. Production: `20261022031548` + `20261022031600` cùng một lượt, rồi `20261022065634` (cùng lượt hoặc ngay sau, trước khi phát hành connector); `gen:types` (không thêm hàm public mới ở 065634).
 3. Áp production xong mới gộp PR; connector phát hành sau.
+
+## 19. Mốc 3 — sửa và huỷ việc bằng tên, từ chối kèm link (22/10)
+
+**Phạm vi:** `task.update`, `task.cancel` (mục 2.2, 2.4, 13) và CV12. Không thêm tool hay khuôn mới vào `tools/list`: hai thao tác nằm trong danh mục chung (`crm_action_list`), và tool cũ `crm_task_progress` / `crm_task_cancel` nghỉ hưu khi thao tác thay sống.
+
+**Migration `20261022074741_hermes_task_action_edit_v1`** (chưa áp). Dùng lại vỏ `public.hermes_task_action_v1` (BEGIN ATOMIC, gắn OID — không dựng lại, băm ở `hermes-task-function-contract` không đổi). Thay THÂN bốn tầng vỏ gắn (lõi giải tên + chuẩn bị của `065634`, ghi + chốt của `031548`), dựng từ thân đang chạy, ghim md5 (`8b1e8543…`, `f044e2e6…`, `3c359620…`, `f4406f3a…`); cùng chữ ký ⇒ OID giữ nguyên. Thêm hai hàm DEFINER `app_private.hermes_task_edit_prepare_v1`, `hermes_task_edit_finish_v1` (không cấp EXECUTE cho authenticated: chỉ hàm DEFINER gọi).
+
+| Phần | Luật |
+| --- | --- |
+| Dòng chính sách | `task.update`: khoá `tasks.edit`, reversible, never (máy chủ quyết xem trước). `task.cancel`: khoá `tasks.delete`, irreversible, always (sàn `hermes_action_policy_floor`) |
+| Tìm việc (`job`, INVOKER dưới RLS) | Mã đầy đủ (mọi trạng thái); 3–4 số cuối; "vừa giao"/"vừa tạo" = việc mới nhất người hỏi tạo trong 24 giờ; tiêu đề bỏ dấu chứa chuỗi. Ba cách sau chỉ xét việc ĐANG MỞ. Chỉ trong phạm vi toà của khoá (`tasks.edit` / `tasks.delete`); nêu toà/phòng thì lọc thêm. Khớp nhiều ⇒ `needs_input` `ambiguous` kèm "mã · tiêu đề (phòng, người nhận)" + toà, **không bao giờ tự chọn**. Chỉ khớp việc đã xong ⇒ `task_not_open` (kèm link nếu biết đúng việc) |
+| Sửa | Ghi chú tiến độ ghi NỐI vào `completion_description` (ô ghi chú của web) dạng "DD/MM HH:MM Tên: …"; đổi hạn (ngày, giờ; chỉ giờ ⇒ giữ ngày cũ), người nhận (luật xưng hô như `task.create`), ưu tiên, tiêu đề (`content`), mô tả. Chỉ cột thật sự đổi vào kế hoạch; không đổi gì ⇒ `invalid_params`. UPDATE dưới RLS `tasks.edit` + trigger như web (đổi người nhận ⇒ thông báo E4 như web). Ghi chú báo người giao đang theo dõi (như `crm_task_progress` cũ) |
+| Xác nhận của sửa | Ghi thẳng chỉ khi tìm bằng mã đầy đủ VÀ chỉ thêm ghi chú / đổi ưu tiên. Đổi hạn, người nhận, tiêu đề, mô tả; tìm theo số cuối / tiêu đề / "vừa giao"; người nhận mơ hồ hoặc không quản lý toà ⇒ xem trước |
+| Huỷ | LUÔN xem trước (kể cả `auto`): "Huỷ hẳn việc JOB-… 'tiêu đề' — toà, phòng — giao … — hạn … — đang làm. Không khôi phục được; nhật ký giữ mã và tiêu đề." Xoá hẳn như web (RLS `tasks.delete`). Có vật tư (`material_usages`) hoặc ảnh hoàn thành ⇒ `cancel_blocked` kèm link web. Audit `HERMES_TASK_CANCELLED` (old_state: mã, tiêu đề, toà, phòng, người nhận, người tạo, hạn; lý do). Đóng theo dõi (`job_cancelled`) + báo người giao và người nhận như `crm_task_cancel` cũ; bộ quét theo dõi cũng tự đóng theo dõi của việc đã xoá |
+| Lượt 2 | basis = trạng thái hiện tại của việc + thay đổi; đổi giữa hai lượt ⇒ `state_changed`. Guard chạy lại: mất quyền ở toà ⇒ `not_allowed`. Khoá dòng việc FOR UPDATE ở lượt có thể ghi. Phát lại theo requestId trước mọi quyết định |
+
+**CV12 (khung chung, dùng được cho mọi trang):** kết cục `rejected` của RPC trang được kèm `link` (đường dẫn web tương đối `/…`, khuôn `ACTION_WEB_LINK`); runtime kiểm khuôn (sai khuôn sau khi đã gửi lệnh ghi ⇒ `action_outcome_unknown`), `actionRejected(code, link)` chỉ giữ link đúng khuôn, mcp-http chuyển `link` cùng `reason` + câu tĩnh. Hai lý do mới: `cancel_blocked`, `task_not_open` (cả `action-reasons.mjs` lẫn sổ audit `host-ownership.mjs`).
+
+**Connector:** `TASK_UPDATE`, `TASK_CANCEL` (`param.name('job')`, nhãn "việc"); `TASK_RETIRED_BY` = tool cũ ↔ thao tác thay (create/status/options ↔ `task.create`, progress ↔ `task.update`, cancel ↔ `task.cancel`), xét theo danh mục SỐNG từng lời gọi. Lớp theo dõi (`extendTaskFollowAuthorization`) thôi cấp `tasks.edit` / `tasks.delete` khi `task.update` / `task.cancel` sống (lớp khung chung là nguồn), như `tasks.create` ở Mốc 2b; DB chưa có Mốc 3 ⇒ như cũ.
+
+**Khoá `tasks.delete` (phiên chính):** registry đang TẮT ở production (`20261021162612`, sau sự cố huỷ nhầm 21/10) nên `task.cancel` chưa chạy được ở production dù đã áp `074741`. Bật lại theo thứ tự:
+1. Áp `074741` (TEST rồi production) và phát hành connector có Mốc 3 lên MỌI host (TEST 8741 và production). Kiểm `crm_task_cancel` không còn trong `tools/list` của kết nối giữ `tasks.delete` (danh mục sống có `task.cancel`).
+2. Forward migration riêng: `UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='tasks.delete' AND mode='action'` (có rào: không còn kết nối `legacy_allowlist` ACTIVE giữ khoá này, như `20261021162612`). Bật trước khi connector mới chạy khắp nơi ⇒ connector cũ quảng bá lại `crm_task_cancel` không xem trước — đúng lớp sự cố 21/10.
+3. Chạy ma trận bot cho huỷ (mơ hồ ⇒ hỏi lại; luôn xem trước; việc có vật tư ⇒ link web).
+
+**Test:**
+- PGlite `task-edit-sql` 7 ca (tìm theo mã / số cuối / "vừa giao" / tiêu đề, mơ hồ hai toà, chỉ việc đang mở, ghi chú nối + phát lại, đổi hạn / người nhận / tiêu đề, basis, không có gì đổi, việc đã xong, huỷ luôn xem trước + audit + phát lại, ngoài phạm vi khoá xoá, chặn vật tư / ảnh, mất quyền giữa hai lượt).
+- `task-action-sql`, `task-type-infer-sql` trên chuỗi 031548 → 065634 → 074741; connector (danh mục, nghỉ hưu từng tool theo danh mục sống, lớp theo dõi thôi cấp khoá trùng, CV12 runtime + mcp-http).
+- Đột biến 20/20 (SQL 13, connector 7).
+- Tầng 2 trên TEST (ROLLBACK, bật tạm `tasks.delete` trong giao dịch; chủ / joey / bosshuy): ghi chú theo mã ghi thẳng + nối; "tầng 3" khớp 3 việc ⇒ hỏi lại kèm mã; đổi hạn và giao lại joey ⇒ xem trước (cảnh báo joey không quản lý toà) ⇒ lượt 2; joey ghi chú việc có theo dõi ⇒ báo người giao (notified 1); huỷ ⇒ xem trước ⇒ xoá, audit giữ mã; việc có ảnh ⇒ `cancel_blocked` + link; joey huỷ việc toà ngoài phạm vi ⇒ không thấy; việc đã xong ⇒ `task_not_open` + link; bosshuy sửa được việc ở toà mình có `tasks.edit` (như web).
+
+**Thứ tự áp `074741`:** sau `065634` (đã ở production). Không thêm hàm public ⇒ `gen:types` không đổi. Connector phát hành SAU khi áp; connector mới gặp DB chưa có `074741` thì giữ `crm_task_progress` / `crm_task_cancel` và quyền theo dõi cũ.
