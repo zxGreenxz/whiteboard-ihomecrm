@@ -55,7 +55,7 @@ Tất cả đường dẫn dưới đây tính từ `infra/hermes-broker/`, tr�
 | Cấp requestId | `request-id-contract.mjs`, tool `crm_new_request_id` (531 B) | Connector tự cấp ở lượt xem trước; tool ghi mới không bắt buộc `requestId`, nên `startsCrmRequest` không kéo thêm `crm_new_request_id` | Tool ghi cũ vẫn cần `crm_new_request_id` cho tới khi chuyển hết |
 | Khuôn ghi prepare/finalize | `bound-user-operation.mjs`; ví dụ `expense-action-adapter.mjs`, `task-adapter.mjs` | Thêm một service cùng khuôn cho thao tác: biên nhận có nhãn, lời gọi RPC JWT người dùng là lệnh `await` cuối | Mỗi họ tool có adapter, biên nhận và tool `*_status` riêng |
 | Mã lỗi broker | `broker.mjs` `ERROR_STATUS`, `MUTATION_UNKNOWN`, `REQUEST_RECEIPT_UNKNOWN` | Thêm 2 mã (mục 6.3) | Lỗi nghiệp vụ SQL chỉ còn 4 mã trơn |
-| Ánh xạ lỗi PostgREST | `bound-user-rpc.mjs`: 401 → `unauthorized`, 42501 → `forbidden`, PT409 → `context_changed`, 22023 → `invalid_request`, PT413 → `result_too_large`, còn lại → `backend_unavailable` | Giữ nguyên cho tool cũ. RPC thao tác mới trả lý do trong JSON 200 nên không đi qua nhánh này | Mất câu lý do (sự cố R2 của khảo sát Công việc) |
+| Ánh xạ lỗi PostgREST | `bound-user-rpc.mjs`: 401 → `unauthorized`, 42501 → `forbidden`, PT409 → `context_changed`, 22023 → `invalid_request`, PT413 → `result_too_large`, còn lại → `backend_unavailable` | Giữ nguyên cho tool cũ. RPC thao tác mới trả lý do trong JSON 200; lỗi thoát ra thì đi nhánh này với cờ `action: true` (mục 6.2: PGRST202 ⇒ `action_disabled`, lỗi tạm ⇒ `state_changed`) | Mất câu lý do (sự cố R2 của khảo sát Công việc) |
 | Chuyển `detail` cho mô hình | `mcp-http.mjs`: chỉ `read_name_unresolved.detail` và gợi ý tĩnh `READ_MISUSE_HINT_TEXTS` | Thêm nhánh cho `action_rejected` (`reason` + `detail` trong danh sách đóng). Thiếu/mơ hồ đầu vào đi bằng kết quả `needs_input`, không qua nhánh lỗi | — |
 | Sổ kiểm toán host | `infra/hermes-runtime/host-ownership.mjs` `CODES`; test `infra/hermes-runtime/audit-codes.test.mjs` | Thêm 2 mã + tập `AUDIT_REASONS` + trường `reason` tuỳ chọn; mở rộng test | Thiếu mã là nguyên nhân sự cố 21/10: mọi lỗi tên hiện thành "CRM tạm lỗi" |
 | Giải tên đọc | `read-name-resolution.mjs`: toà bỏ dấu, bỏ tiền tố "toà", khớp bằng rồi chứa; phòng gọi `hermes_room_directory_v1` | Dùng lại `foldName`, `matchBuildings`, cache danh bạ toà 5 phút | Mã toà không tách bí danh theo dấu phẩy như web (`splitAliases`). Không có tên thường gọi (`building_common_names`). Phòng khớp chứa |
@@ -210,7 +210,7 @@ Câu chữ chốt nằm trong `action-reasons.mjs`; bảng dưới là tóm tắ
 | `action_disabled` | Thao tác này chưa được bật cho kết nối. | không | registry tắt / kết nối thiếu khoá |
 | `not_allowed` | Anh/chị không có quyền làm thao tác này ở toà này. | không | 42501, phạm vi toà |
 | `private_chat_only` | Lệnh ghi chỉ nhận trong chat riêng. | không | chính sách kênh (mục 8.2) |
-| `state_changed` | Dữ liệu vừa đổi sau bản xem trước; cần xem trước lại. | xem trước lại | basis lệch, PT409, 40001 (gộp ba mã "dữ liệu vừa đổi" của Thu chi) |
+| `state_changed` | Dữ liệu vừa đổi sau bản xem trước; cần xem trước lại. | xem trước lại | basis lệch (SQL trả); lỗi tạm 40001/40P01/55P03 (connector ánh xạ, mục 6.2). PT409 KHÔNG vào đây: ra `context_changed` |
 | `request_conflict` | Mã yêu cầu này đã dùng cho lệnh khác; xem trước lại. | xem trước lại | biên nhận khác đầu vào |
 | `period_locked` | Kỳ này đã chốt (lợi nhuận, sổ quỹ hoặc bàn giao); không ghi được. | không | `[PROFIT_LOCKED]`, `[CASHBOOK_CLOSED]`, `[HANDOVER_LOCKED]`, `[PERIOD_CLOSED]` |
 | `cashbook_not_held` | Anh/chị không giữ sổ quỹ này. | không | không có quyền dùng sổ / không giữ sổ |
@@ -243,10 +243,16 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
   - **Rào khung:** ràng buộc trigger DEFERRED `hermes_action_receipt_settled` làm COMMIT thất bại khi còn biên nhận `started`. Trang quên gọi finish thì cả giao dịch lùi, không để `requestId` kẹt ở `unknown` vĩnh viễn.
 - **SQLSTATE và câu thô chỉ nằm trong biên nhận.** Biên nhận (`app_private`, không ai đọc được ngoài DEFINER) giữ thêm `sqlstate` và 200 ký tự đầu của thông điệp, để phân loại các ca `crm_refused` về sau.
 - **Connector chỉ nhận mã trong danh sách.** Connector kiểm `reason ∈ ACTION_REASONS`; ngoài danh sách thì đổi thành `crm_refused`. Mô hình không bao giờ nhận nguyên văn lỗi SQL, vì lỗi có thể chứa ID hoặc dữ liệu.
-- **Lỗi thoát khỏi wrapper.** Lỗi PostgREST thoát ra ngoài wrapper (wrapper chưa có, hết giờ…) vẫn theo `bound-user-rpc.mjs`. Riêng RPC thao tác mới đổi thêm như sau:
-  - PT409 → `state_changed`;
-  - 42501 → `not_allowed`;
-  - PGRST202 → `action_disabled` (hàm chưa áp: connector chạy trước migration).
+- **Lỗi thoát khỏi wrapper.** Lỗi PostgREST thoát ra ngoài wrapper (wrapper chưa có, hết giờ, lỗi tạm `RAISE` lại…) đi qua `bound-user-rpc.mjs` với cờ `action: true`. Bảng dưới khớp mã ở `bound-user-rpc.mjs`. Cả bốn mã là kết cục đã biết: `onRejected` được gọi, không bao giờ thành `action_outcome_unknown`.
+
+  | Lỗi SQL / PostgREST | Ra connector | Ghi chú |
+  | --- | --- | --- |
+  | 40001, 40P01, 55P03 (mọi HTTP, thân lỗi PostgREST) | `action_rejected` lý do `state_changed` | Lỗi tạm: câu lệnh lỗi nên giao dịch đã lùi, chưa ghi gì. Xem trước lại / thử lại được |
+  | 404 PGRST202 | `action_rejected` lý do `action_disabled` | Hàm trang chưa áp: connector chạy trước migration |
+  | 403 42501 | `forbidden` | Như mọi tool |
+  | 409 PT409 | `context_changed` | Như mọi tool. Gồm cả PT409 mà hàm ghi `RAISE` lại (mục 3.1) |
+
+  Lỗi khác (vd 500 không mã đã biết) là `backend_unavailable`. Nếu lệnh ghi đã gửi thì vẫn giữ "chưa rõ", ra `action_outcome_unknown` + requestId. Kết cục `applied` (đã ghi) không tắt cờ "chưa rõ": lỗi của broker sau finalize (quá cỡ, hết giờ) cũng ra `action_outcome_unknown` + requestId. `result` lớn hơn 8 192 B thì trả `applied` gọn: `result: null`, `resultOmitted: true`.
 
 ### 6.3 Đường tới mô hình và sổ kiểm toán
 
@@ -293,7 +299,7 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
   - `outside_scope`: người dùng *thấy* đối tượng (RLS) nhưng nó ngoài phạm vi toà của khoá ghi. **Không kèm tên** (review #253, mục 2). Lý do: phạm vi được ghi là phạm vi khoá ∩ overlay kết nối, hẹp hơn `buildings.view` của web. Nêu tên thì một kết nối bị overlay giới hạn sẽ liệt kê được toà ngoài overlay (dò chuỗi 2 ký tự ra tới 8 tên mỗi lần). Danh bạ đọc (`20261020175803`) cũng không bao giờ nêu tên ngoài danh sách được giao;
   - `not_visible`: không thấy gì trong phạm vi quyền.
 
-  Connector dựng câu theo `why` (`nameUnresolvedDetail`). `outside_scope` không có tên thì rơi về câu "không thấy … trong phạm vi quyền".
+  Connector dựng câu theo `why` (`nameUnresolvedDetail`). `outside_scope` là câu tĩnh không tên: "Toà '…' nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng." Ứng viên nào kèm theo cũng bị bỏ.
 
 | | Đọc (hiện có, ở connector) | Ghi (Đợt 1, trong SQL) |
 | --- | --- | --- |

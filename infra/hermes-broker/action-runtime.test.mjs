@@ -20,7 +20,7 @@ const START = Date.parse('2026-10-21T12:00:00.000Z');
 const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t, { action = [PROBE_KEY], respond } = {}) {
+function setup(t, { action = [PROBE_KEY], respond, limits } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const clock = { now: START }, requests = [], audits = [];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000,
@@ -35,7 +35,8 @@ function setup(t, { action = [PROBE_KEY], respond } = {}) {
   const runtime = createActionRuntime({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
     service, clock: () => clock.now, mintRequestId: () => id(String(++next)) });
   const broker = createBroker({ authority: { identifyConnection: async token => ({ connectionId: CONNECTIONS[token] }), resolve: async token => identity(token),
-    checkUnchanged: async () => {} }, dependencyScope: scope, audit: async event => { audits.push(event); }, clock: () => clock.now, actions: runtime });
+    checkUnchanged: async () => {} }, dependencyScope: scope, audit: async event => { audits.push(event); }, clock: () => clock.now, actions: runtime,
+    ...(limits ? { limits } : {}) });
   const call = async (name, args, token = TOKEN_A) => {
     const result = await broker.callTool(token, name, args);
     assert.equal(result.isError, false);
@@ -204,6 +205,28 @@ test('review #253 mục 1: lệnh ghi đã gửi + phản hồi lệch khuôn �
   reply = { kind: 'applied', result: { ok: true }, link: null };
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.confirm', params: { amount: 1, buildingName: 'A' } }),
     error => error.code === 'backend_unavailable');
+});
+
+test('re-review #253: SQL đã ghi mà broker hỏng SAU finalize ⇒ action_outcome_unknown + requestId; kết quả quá cỡ ⇒ applied gọn', async t => {
+  // Phép thử của reviewer: applied đủ khuôn kèm result 20 KB (> trần 16 384 B của broker) ⇒ trước đây response_too_large, requestId null.
+  const big = setup(t, { respond: (_request, hooks) => { hooks.onDispatch(); return { kind: 'applied', result: { blob: 'x'.repeat(20_000) }, link: null }; } });
+  assert.deepEqual(await big.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+    { outcome: 'applied', applied: true, action: 'probe.note', requestId: id('1'), result: null, resultOmitted: true, link: null });
+  // Broker hỏng sau finalize (trần nhỏ hơn cả bản gọn): vẫn action_outcome_unknown + requestId, không phải response_too_large.
+  const tiny = setup(t, { limits: { maxResultBytes: 64 }, respond: (request, hooks) => { hooks.onDispatch(); return APPLIED(request); } });
+  await assert.rejects(tiny.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+    error => error.code === 'action_outcome_unknown' && error.requestId === id('1'));
+  // Hết giờ đúng lúc trả kết quả đã ghi: như trên.
+  const late = setup(t, { limits: { timeoutMs: 40 }, respond: async (request, hooks) => { hooks.onDispatch(); await new Promise(resolve => setTimeout(resolve, 120)); return APPLIED(request); } });
+  await assert.rejects(late.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+    error => error.code === 'action_outcome_unknown' && error.requestId === id('1'));
+  // Đối chứng: bản xem trước (chưa ghi gì) quá cỡ ⇒ response_too_large, không bịa "chưa rõ".
+  const preview = setup(t, { limits: { maxResultBytes: 64 }, respond: request => PREVIEW(request) });
+  await assert.rejects(preview.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.confirm', params: { amount: 1, buildingName: 'A' } }),
+    error => error.code === 'response_too_large');
+  // Tra trạng thái với kết quả quá cỡ ⇒ applied gọn.
+  const status = setup(t, { respond: () => ({ kind: 'status', outcome: 'applied', action: 'probe.note', result: { blob: 'x'.repeat(20_000) } }) });
+  assert.deepEqual(await status.call('crm_action_status', { requestId: id('7') }), { requestId: id('7'), outcome: 'applied', action: 'probe.note', resultOmitted: true });
 });
 
 test('review #253 mục 6: lỗi tạm của SQL (giao dịch đã lùi) là kết cục đã biết ⇒ action_rejected state_changed, không bao giờ action_outcome_unknown', async t => {

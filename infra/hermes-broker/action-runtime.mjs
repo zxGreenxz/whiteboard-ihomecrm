@@ -9,7 +9,8 @@
 //     gửi đúng bản đã giải + expectedBasis xuống SQL (không giải tên lần hai); SQL tính lại basis, lệch ⇒ state_changed.
 //   Mất phản hồi sau khi gửi lệnh ghi ⇒ action_outcome_unknown + requestId (broker), mô hình tra crm_action_status. Cờ "chưa
 //     rõ" chỉ tắt khi phản hồi ĐỦ KHUÔN (mục 12.1): lệnh ghi đã gửi mà phản hồi lệch khuôn vẫn là action_outcome_unknown, không
-//     bao giờ là lỗi chung (mô hình sẽ gọi lại với requestId mới ⇒ ghi trùng).
+//     bao giờ là lỗi chung (mô hình sẽ gọi lại với requestId mới ⇒ ghi trùng). Kết cục applied (đã ghi) KHÔNG tắt cờ: lỗi của
+//     broker sau finalize (quá cỡ, hết giờ) vẫn ra action_outcome_unknown + requestId.
 // Cổng dịch vụ (service) là adapter SQL (Mốc 6): prepareAction(token, request, {signal}) ⇒ biên nhận rỗng đông cứng;
 // finalizeAction(token, receipt, {signal, onDispatch, onRejected}) ⇒ outcome (khuôn kiểm ở dưới).
 import { randomUUID } from 'node:crypto';
@@ -32,6 +33,10 @@ const content = value => ({ content: [{ type: 'text', text: JSON.stringify(value
 const shortText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
 const candidatesOf = value => Array.isArray(value) && value.length <= 8 && value.every(entry => exact(entry, ['name'], ['buildingName']) &&
   shortText(entry.name, 120) && (entry.buildingName === undefined || shortText(entry.buildingName, 120)));
+// Kết quả của thao tác ĐÃ GHI lớn hơn mức này ⇒ trả applied gọn (result null, resultOmitted) thay vì để broker từ chối vì quá
+// cỡ (trần mặc định 16 384 B) — kết cục "đã ghi" luôn tới được mô hình.
+export const APPLIED_RESULT_MAX_BYTES = 8_192;
+const fitsApplied = result => Buffer.byteLength(JSON.stringify(result)) <= APPLIED_RESULT_MAX_BYTES;
 
 export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID } = {}) {
   if (!catalog || typeof catalog.get !== 'function' || ['prepareAction', 'finalizeAction'].some(key => typeof service?.[key] !== 'function') ||
@@ -119,7 +124,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
             !['applied', 'rejected', 'not_found', 'unknown'].includes(outcome.outcome)) fail('backend_unavailable');
         const reason = outcome.outcome === 'rejected' ? (ACTION_REJECT_REASONS.includes(outcome.reason) || ACTION_INPUT_REASONS.includes(outcome.reason) ? outcome.reason : 'crm_refused') : null;
         return known(content({ requestId: plan.requestId, outcome: outcome.outcome, ...(typeof outcome.action === 'string' ? { action: outcome.action } : {}),
-          ...(outcome.outcome === 'applied' && data(outcome.result) ? { result: outcome.result } : {}),
+          ...(outcome.outcome === 'applied' && data(outcome.result) ? fitsApplied(outcome.result) ? { result: outcome.result } : { resultOmitted: true } : {}),
           ...(reason ? { reason, detail: ACTION_REASONS[reason].text } : {}) }));
       }
       if (outcome.kind === 'needs_input') return known(content(needsFromOutcome(plan, outcome)));
@@ -143,7 +148,12 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       if (outcome.kind === 'applied') {
         if (plan.phase === 'preview' || !exact(outcome, ['kind', 'result'], ['link']) || !data(outcome.result) ||
             !(outcome.link === undefined || outcome.link === null || (shortText(outcome.link, 300) && outcome.link.startsWith('/')))) fail('backend_unavailable');
-        return known(content({ outcome: 'applied', applied: true, action: plan.action, requestId: plan.requestId, result: outcome.result, link: outcome.link ?? null }));
+        // SQL ĐÃ GHI: KHÔNG tắt cờ "chưa rõ" (khác mọi nhánh trên) — broker còn có thể hỏng SAU finalize (quá cỡ, hết giờ đúng
+        // lúc trả); khi đó vẫn phải là action_outcome_unknown + requestId để mô hình tra crm_action_status thay vì gọi lại với
+        // requestId mới ⇒ ghi trùng (như họ phiếu chi cũ, broker.mjs). Kết quả quá cỡ ⇒ applied gọn.
+        const fits = fitsApplied(outcome.result);
+        return content({ outcome: 'applied', applied: true, action: plan.action, requestId: plan.requestId, result: fits ? outcome.result : null,
+          ...(fits ? {} : { resultOmitted: true }), link: outcome.link ?? null });
       }
       fail('backend_unavailable');
     },
