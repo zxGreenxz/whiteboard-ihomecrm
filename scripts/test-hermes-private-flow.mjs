@@ -518,6 +518,11 @@ for (const spec of [
   { name: 'public.hermes_contract_action_lookup_v1',
     sourcePath: 'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
     statementSha256: '4ddf5730093afb09b04c566c774e9b10e27643d7a0ae65bea2d5e66d26f4e301' },
+  // Contract return (20261022061813) replaces that lookup: same body plus the unpaid invoices of the contract, only when the asker
+  // may view invoices in that building (public.can_do_on_building) and through the shared invoice_effective_outstanding_v1.
+  { name: 'public.hermes_contract_action_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022061813_hermes_contract_return_v1.sql',
+    statementSha256: '49a183d7254c6579d68004d51a0bc99008e2efe79c3d8381618eed88199275a6' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

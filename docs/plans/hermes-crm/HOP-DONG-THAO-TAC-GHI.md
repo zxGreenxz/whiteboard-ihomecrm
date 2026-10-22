@@ -1,6 +1,6 @@
 # Thao tác ghi của Hermes — trang HỢP ĐỒNG (Đợt 2: thiết kế ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế, chốt D-HĐ1–D-HĐ10 theo mặc định và chốt D-HĐ11 (22/10). Tiến độ ở mục 15 (Mốc 2 và Mốc 3 xong). Migration chỉ là file, chưa áp; production chưa đổi.
+Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế, chốt D-HĐ1–D-HĐ10 theo mặc định và chốt D-HĐ11 (22/10). Tiến độ ở mục 15 (Mốc 2, 3, 4 xong). Migration chỉ là file, chưa áp; production chưa đổi.
 
 Căn cứ, theo thứ tự ưu tiên:
 1. Đáp án 40 câu chủ chốt ngày 21/10: Q2, Q3, Q7, Q20–Q23, Q26. Khi đáp án và plan mâu thuẫn, đáp án thắng.
@@ -150,6 +150,14 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
   - Cùng requestId ⇒ phát lại.
   - Hàm web có khoá `(org, người, key)` cộng băm nội dung.
 - **Kết quả.** Có `nextStep: 'Quyết toán trên web: /contracts/<id>'`.
+- **Đã làm (Mốc 4, file MỚI `20261022061813_hermes_contract_return_v1`).**
+  - Không sửa `20261022022951`: file mới `CREATE OR REPLACE` tra cứu + bước ghi, dựng từ thân của file đó (sẽ là thân đang chạy khi áp), ghim `md5(prosrc)` ở `$requires$`; vỏ giữ nguyên OID.
+  - Ngày tương lai ⇒ lý do riêng `return_date_future` (needs_input, hướng sang báo trả), khác thiết kế ban đầu (`date_out_of_range`) để câu tĩnh chỉ đúng đường.
+  - `note` (nội dung thanh lý) bắt buộc 3–1000 ký tự vì hàm web đòi; `forfeit` chỉ nhận `true`/`false`.
+  - Cảnh báo: trả trước ngày hết hạn ⇒ "loại TRẢ SỚM, bỏ cọc chỉ khi người dùng nói rõ"; báo trả khác ngày trả thực tế ⇒ nêu cả hai ngày.
+  - Hoá đơn chưa thu: tra cứu INVOKER tính dưới RLS `invoices`, chỉ khi người hỏi có quyền xem hoá đơn ở toà (`can_do_on_building('invoices','view')`); còn nợ theo hàm dùng chung `invoice_effective_outstanding_v1` (như thẻ "Phải thu"), bỏ hoá đơn huỷ. Không có quyền ⇒ câu xem trước nói "không xem được".
+  - Đã có hồ sơ thanh lý cũ (`contract_terminations`) hay hồ sơ trả phòng ⇒ `already_returned` trước khi gọi hàm web.
+  - Kết quả có `exitCaseId`, `roomStatus` (phòng về `AVAILABLE` nhờ trigger `trigger_update_room_status` khi HĐ rời ACTIVE), `nextStep`.
 
 ### 4.5 Thêm / bớt người ở (Mốc 5)
 - **Tìm khách.** Ưu tiên SĐT: chuẩn hoá còn chữ số, khớp đúng trong công ty, dưới RLS `customers`. Có tên thì chỉ nhận khi khớp đúng một khách. Không khớp hoặc khớp nhiều ⇒ `name_unresolved` (`field: 'customer'`). Ứng viên dạng "Nguyễn V. B · …123" (≤ 8), không lộ đủ SĐT. Khách chưa có thì tiêu đề thao tác nhắc tạo trước bằng `crm_customer_create`.
@@ -192,6 +200,7 @@ Thêm vào `action-reasons.mjs`. Các mã dạng `rejected` thêm cả vào `REA
 | `room_not_lockable` | rejected | Phòng không khoá tạm được: đã cọc, đang giữ chỗ hoặc đang có khách ở |
 | `room_already_locked` | rejected | Phòng đang được khoá tạm; gỡ khoá cũ trước nếu muốn khoá lại |
 | `no_open_lock` | rejected | Phòng này không có khoá tạm nào đang mở |
+| `return_date_future` | needs_input | Ngày trả phòng ở tương lai: khách chưa dọn thì dùng báo trả; đã dọn thì hỏi lại ngày trả thực tế (Mốc 4) |
 | `cannot_remove_representative` | rejected | Không bỏ được người đại diện HĐ qua bot; đổi người đại diện trên web trước |
 
 Dùng lại mã chung: `name_unresolved` (toà, phòng, khách), `date_out_of_range`, `invalid_params`, `reason_required` (trigger `z98` khi lý do không đạt), `not_allowed` (42501 của hàm web, kể cả `[THIEU_QUYEN:…]` sau Q26), `state_changed`, `crm_refused`.
@@ -218,7 +227,14 @@ Báo cáo W2 mới không thêm tool: chúng nằm trong kết quả `crm_read_r
 | (e) | "Tháng trước bao nhiêu phòng trả phòng": bot ra ít hơn web | Đo: tiêu chí của `re_terminations` (HĐ `TERMINATED/EXPIRED` có `COALESCE(actual_end_date, end_date)` trong kỳ) cho tháng 9 ra đúng số của web, gồm cả bỏ cọc; tầng 2 trên TEST ra 28. Reader tự đặt kỳ "đầu tháng này → hôm nay" khi thiếu ngày, nên bot quên truyền kỳ, hoặc đếm bằng trang `contract_search`, sẽ ra sai | **Đã làm (Mốc 2):** chỉ sửa tiêu đề, theo cách 0 SQL: "tháng trước" ⇒ truyền `fromDate`/`toDate` đúng tháng; số phòng trả = `summary.total`, bỏ cọc = các dòng `terminationType FORFEIT`. Không đổi khuôn summary, vì khuôn bị kiểm khít: connector lên trước migration sẽ làm vỡ báo cáo. Cộng SOUL |
 | (f) | Quản lý toà: "toà X còn phòng trống?", "đang cho thuê bao nhiêu phòng?" (ma trận lượt 2) | `re_vacant_rooms` cần khoá báo cáo BĐS ⇒ `forbidden`; `crm_read_occupancy` cần `reports_real_estate.occupancy`, kết nối quản lý không có tool này, mà mô tả `crm_available_rooms` lại chỉ sang nó. Web: Quản lý toà xem trang Phòng bằng `rooms.view` theo toà | **Đã làm (Mốc 3):** báo cáo W2D `rooms_occupancy` (`rooms.view`, nguồn `crm.rooms_list_v1` như trang Phòng): mỗi toà một dòng tổng / đang cho thuê (OCCUPIED + EXPIRING_SOON) / sắp hết hạn / trống / giữ chỗ / bảo trì. Danh sách phòng trống = báo cáo `rooms` có sẵn (`displayStatus AVAILABLE`). Mô tả `crm_available_rooms` chỉ thêm đường "không quyền BĐS: `rooms_occupancy` / `rooms`" (+48 B `tools/list`) |
 | (g) | "Tháng 2 năm sau toà 80 có mấy HĐ hết hạn?" (quản lý; bot ra 13, đúng 11) | Bot tự lọc tay danh sách; `re_contracts_ending` dùng khoá báo cáo BĐS nên quản lý không gọi được | **Đã làm (Mốc 3):** ba báo cáo hợp đồng (`re_contracts_ending`, `re_move_out_notices`, `re_exit_cases_pending`) chuyển sang khoá `contracts.view`, thêm vào tập khoá dùng lại của W2. `re_contracts_ending` vốn nhận tháng tương lai + `buildingId`; tầng 2 ra đúng 11 |
-| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Chưa làm.** Mốc 3 do phiên chính giao chỉ gồm gia hạn + đọc của vai quản lý. Việc này phải dựng lại hàm nền `hermes_domain_read_v3` (~1 000 dòng, ghim md5 thân production) và thêm cấu hình host `publicWebOrigin` (D-HĐ9). `crm_read_contract_detail` sẽ thêm `publicLink`, chỉ cho HĐ ACTIVE. Chờ phiên chính xếp mốc |
+| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Chưa làm (không gọn, xem "Chỗ nối `publicLink`" ngay dưới).** Phải dựng lại `hermes_domain_read_v3` (thân ~300 dòng, ghim md5 thân production), đổi khuôn kiểm khít của connector và thêm cấu hình host; SQL lên trước connector thì mọi lần đọc chi tiết HĐ hỏng |
+
+**Chỗ nối `publicLink` (D-HĐ9; dùng chung với phiên Hoá đơn — chưa hiện thực).**
+- **Đường web:** `/c/:code` (`src/app/routes/publicRoutes.tsx`) là trang công khai của HĐ, liệt kê cả hoá đơn của HĐ đó; `code` = `contracts.public_code` (6–8 ký tự, unique). Link hoá đơn công khai của phiên Hoá đơn cũng là `/c/<public_code của HĐ>`, không có đường riêng cho từng hoá đơn.
+- **SQL** chỉ trả đường tương đối `publicPath` (`'/c/'||public_code`, chỉ khi HĐ ACTIVE), không bao giờ trả URL tuyệt đối: nhánh `contract_detail` của `hermes_domain_read_v3` (file mới, ghim md5 thân production như các bản dựng lại khác); báo cáo hoá đơn của phiên kia thêm cùng trường từ HĐ của hoá đơn.
+- **Cấu hình host:** khoá tuỳ chọn `publicWebOrigin` cạnh `actionPages` trong `infra/hermes-runtime/host-config.mjs` (`new URL(x).origin === x`, chỉ `https:`); `infra/hermes-broker/server.mjs` thêm vào danh sách `optional` và truyền vào broker. Vắng ⇒ không có link, hành vi như cũ.
+- **Connector:** một hàm nhỏ dùng chung (vd `infra/hermes-broker/public-link.mjs`: `publicLink(origin, path)` ⇒ `origin + path` khi `path` khớp `^/c/[A-Za-z0-9]{6,8}$` và có origin, còn lại `null`). `full-read-contract.mjs` thêm `publicLink` vào `CONTRACT_DETAIL_FIELDS`, ánh xạ `publicPath` → `publicLink` trước khi kiểm khuôn; nhận cả item thiếu `publicPath` (SQL cũ) bằng cách điền `null`.
+- **Thứ tự phát hành:** connector chịu được cả hai khuôn ⇒ áp migration SQL ⇒ khai `publicWebOrigin` ở host. Ngược lại (SQL trước) thì connector cũ từ chối khoá lạ `publicPath` ⇒ `crm_read_contract_detail` hỏng tới khi deploy connector.
 
 **Đã làm ở Mốc 2.**
 - Hai hàm INVOKER dùng chung mới: `public.real_estate_contracts_ending_v1` và `public.contract_move_out_notices_v1`.
@@ -264,7 +280,8 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 | 3 ✓ | `20261022042822_contract_renewal_end_date_v1` | Hàm dùng chung tính ngày gia hạn (web + Hermes). Lane xếp SAU file trang; hàm trang chỉ gọi nó lúc chạy |
 | 3 ✓ | `20261022043540_hermes_w2_contracts_view_reused_v1` | `contracts.view` vào tập khoá dùng lại của W2. Phải áp TRƯỚC `043617` (thứ tự tên đảm bảo) |
 | 3 ✓ | (nối vào `20261022022951`) | Nhánh gia hạn + phát lại biên nhận sớm; policy `contract.renew` (irreversible / always) |
-| — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6) |
+| 4 ✓ | `20261022061813_hermes_contract_return_v1` (MỚI) | Thay tra cứu + bước ghi của trang (dựng từ thân `022951`, ghim md5): nhánh `contract.return` + hoá đơn chưa thu; policy `contract.return`. Áp SAU `022951` |
+| — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6, "Chỗ nối `publicLink`") |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
 Nếu phát hành Mốc 2–4 cùng một lần thì gộp thành một migration trang (D-HĐ10). Migration đã merge là bất biến, nên mốc sau phải dùng migration mới.
@@ -386,6 +403,7 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 7. Gia hạn ⇒ `contract.renew` với `months` (hoặc `newEndDate` nếu người dùng nói ngày). Không có lý do ⇒ hỏi MỘT câu; người dùng nói không có ⇒ `noReason=true`. HĐ có báo trả ⇒ hỏi giữ hay huỷ (`keepMoveOutNotice`). Đổi giá/cọc ⇒ chỉ đường web. Luôn đọc `preview.text` nguyên văn và chờ "đồng ý"; có cảnh báo "HĐ vừa được gia hạn" thì nói rõ trước khi hỏi.
 8. Quản lý toà (không có `crm_read_occupancy` / `re_vacant_rooms`): "toà X còn phòng trống?" ⇒ `crm_read_report rooms` với `buildingName`, lấy phòng `displayStatus AVAILABLE`; "đang cho thuê bao nhiêu phòng" ⇒ `rooms_occupancy`, số = `rented` (từng toà) hoặc `summary.rented` (cả phạm vi). Không lấy trang Sale (`crm_available_rooms`) làm trạng thái phòng.
 9. "Tháng X (năm sau) toà Y có mấy HĐ hết hạn" ⇒ `re_contracts_ending` với `buildingName` + `fromDate`/`toDate` đúng tháng; số = `summary.total`, không tự lọc tay danh sách.
+10. "Khách phòng X đã dọn đi / trả phòng rồi" ⇒ `contract.return` với `date` (ngày thực tế, không phải tương lai) + `note` (nội dung thanh lý; thiếu thì hỏi một câu). Chỉ `forfeit=true` khi người dùng nói rõ bỏ cọc. Đọc `preview.text` nguyên văn (có "KHÔNG lùi được") và chờ "đồng ý"; sau khi ghi nhắc quyết toán trên web theo `nextStep`. `needs_input return_date_future` ⇒ hỏi khách đã dọn chưa: chưa thì dùng báo trả.
 
 ## 14. Việc phiên chính phải làm
 
@@ -442,12 +460,34 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
   - đọc vai quản lý: joey (tài khoản thử `testquanly`) cho thuê 102 phòng (8 toà), 111PVC trống L04; kết nối quản lý thứ hai: 15KV cho thuê 8; 80DS3 hết hạn 02/2027 = 11 (đếm thẳng = 11);
   - `held_deposits`: `SHORT` 331PHI/303 4.400.000 + `FIRST_INVOICE` 102LVT/505 74.000 (D-HĐ11).
 
+**Sửa theo review #270, 22/10 (`1b8a49297`, migration chưa áp, sửa tại chỗ theo phiên chính).**
+- Bước ghi gọi `lock_org_for_decision_v1` tường minh ngay sau guard, trước lần kiểm biên nhận và mọi khoá dòng; lượt preview không còn `FOR UPDATE`. Đo thân trước sửa: guard đã khoá tổ chức qua `hermes_private_command_connection_v1`, nên thứ tự cũ không deadlock và lời gọi cùng requestId đang chờ vẫn thấy biên nhận; bản sửa bỏ phụ thuộc vào nội tình guard.
+- `real_estate_contracts_ending_v1`: chỉ mặc định tháng khi cả hai đầu khoảng rỗng; một đầu ⇒ để mở (TEST: chỉ `fromDate` 01/02/2027 ⇒ 259 HĐ, trước đây rỗng).
+- `re_exit_cases_pending`: `summary.total` = tổng thật của nguồn.
+- Đo lại `tools/list` và sửa câu "0 byte" (mục 0, mục 6).
+
+**Mốc 4, 22/10.** Migration MỚI `20261022061813_hermes_contract_return_v1` (không sửa 5 file trước).
+
+*Ghi nhận trả phòng, quyết toán sau (mục 4.4).*
+- `contract.return` (khoá `contracts.terminate`, irreversible / always) gọi `confirm_contract_return_v1` chế độ DEFERRED, khoá idempotency `hermes:<requestId>`.
+- Tra cứu thêm hoá đơn chưa thu (quyền xem hoá đơn theo toà + hàm dùng chung `invoice_effective_outstanding_v1`); lý do mới `return_date_future`.
+- `publicLink`: chưa làm, chỗ nối ở mục 6.
+
+*Kiểm.*
+- PGlite trang 21/21 (thêm test Mốc 4 + test `$requires$`: thân lạ bị từ chối, thân `022951` được nhận — md5 Postgres khớp số ghim); đột biến Mốc 4 14/14, trang 23/23, review 4/4.
+- Connector: `contract-action` 7/7, broker + runtime 1 924 đạt (1 đỏ môi trường Windows sẵn có, không đụng nhánh); hợp đồng duyệt hàm Hermes 241/241; security-gate tĩnh 10/10; `gate:truoc-push` 46/48 (2 cửa đỏ sẵn có trên Windows; các ca PG đỏ khi đầy tải chạy riêng xanh).
+- Tầng 2 trên TEST, ROLLBACK, kết nối thật, hàm ghi web thật (3 kết nối có quyền):
+  - lượt auto chỉ xem trước, câu có "KHÔNG lùi được", nêu loại + cọc đã thu + hoá đơn chưa thu;
+  - ghi: HĐ `TERMINATED` đúng ngày, đúng một hồ sơ PENDING DEFERRED khoá `hermes:<requestId>`, phòng về `AVAILABLE`, biên nhận + audit; đếm và tổng phiếu thu chi + hoá đơn của HĐ không đổi;
+  - phát lại cùng requestId y nguyên; requestId mới ⇒ `already_returned`;
+  - rào P0a: chèn hồ sơ thanh lý nháp qua đường REST sau đó ⇒ 55000 `[TERMINATION_CONTRACT_CLOSED]`.
+
 ## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.
 - Cổng W2 `hermes_w2_read_v1` có cần đổi khi thêm báo cáo vào W2D không. Mốc 2 đọc.
 - Cách form web dựng dịch vụ và ngày tính tiền mặc định cho HĐ mới; đường dẫn web của nháp. Mốc 5 tra.
 - `statement_timeout` thật của `authenticated` qua PostgREST, và thời gian lô 20 HĐ. Mốc 6 đo.
-- Cột liên kết HĐ chính xác của `invoices` / `payments` cho hậu điều kiện tiền. Mốc 4 xác minh; `income_expenses.contract_id` đã thấy trong baseline.
+- ~~Cột liên kết HĐ của `invoices` cho hậu điều kiện tiền~~: Mốc 4 xác minh `invoices.contract_id NOT NULL`, `income_expenses.contract_id`, tiền ở `total_amount` cả hai bảng.
 - Playwright hộp Gia hạn trên TEST: chưa chạy được đường có ngày, vì `contract_renewal_end_date_v1` chưa áp lên TEST (đường lỗi + bố cục kiểm bằng test component).
 - `rooms_occupancy` so với Báo cáo lấp đầy của web khi công tắc "Hoạt động" ghi đè trạng thái phòng (phòng có HĐ mà `AVAILABLE`): báo cáo theo `displayStatus` như trang Phòng, có thể lệch Báo cáo lấp đầy ở các phòng đó.

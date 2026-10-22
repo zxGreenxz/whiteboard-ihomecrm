@@ -36,5 +36,14 @@ export const CONTRACT_RENEW = defineAction({ id: 'contract.renew', page: 'contra
     newDeposit: param.vnd({ min: 0, optional: true }) },
   reasons: ['room_has_no_active_contract', 'already_returned', 'renew_reason_ask', 'notice_choice_required', 'renew_price_change_web_only'] });
 
+// Mốc 4: ghi nhận khách ĐÃ trả phòng, quyết toán sau (Q20 = a, DEFERRED; migration 20261022061813). irreversible ⇒ luôn xem
+// trước; câu xem trước nói rõ HĐ chuyển Đã thanh lý, phòng thành trống, KHÔNG lùi được, quyết toán làm trên web. Loại do máy chủ
+// suy từ ngày (D-HĐ6); forfeit=true chỉ khi người dùng nói bỏ cọc. note = nội dung thanh lý (hàm web bắt buộc).
+export const CONTRACT_RETURN = defineAction({ id: 'contract.return', page: 'contract', key: 'contracts.terminate', class: 'irreversible', rpc: RPC,
+  title: 'Ghi nhận khách ĐÃ trả phòng, quyết toán sau trên web; không lùi được; forfeit=true chỉ khi người dùng nói bỏ cọc',
+  params: { ...place(), date: param.date(), note: param.text(3, 1000), forfeit: param.bool({ optional: true }) },
+  reasons: ['room_has_no_active_contract', 'already_returned', 'return_date_future'] });
+
 /** Danh mục production của trang (server.mjs nạp cùng các trang khác). */
-export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK, CONTRACT_RENEW]);
+export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK, CONTRACT_RENEW,
+  CONTRACT_RETURN]);

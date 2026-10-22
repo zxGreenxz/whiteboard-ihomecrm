@@ -46,6 +46,7 @@ function contractReasons() {
     renew_reason_ask: reason('needs_input', 'fix', 'Hỏi người dùng MỘT câu lý do gia hạn; họ nói không có thì gọi lại với noReason=true, không tự bịa lý do.'),
     notice_choice_required: reason('needs_input', 'fix', 'Hợp đồng đang có báo trả; hỏi người dùng gia hạn thì GIỮ hay HUỶ báo trả (keepMoveOutNotice).'),
     occupant_not_on_contract: reason('needs_input', 'fix', 'Người này không có trong hợp đồng của phòng; hỏi lại tên hoặc SĐT người ở.'),
+    return_date_future: reason('needs_input', 'fix', 'Ngày trả phòng ở tương lai: khách chưa dọn đi thì dùng báo trả (contract.notice_set); đã dọn thì hỏi lại ngày trả thực tế.'),
     already_returned: reason('rejected', 'never', 'Phòng đã ghi nhận trả phòng, đang chờ quyết toán trên web; không ghi lại.'),
     renew_price_change_web_only: reason('rejected', 'never', 'Gia hạn qua bot chỉ giữ nguyên giá và cọc; đổi giá/cọc làm trên web (Hợp đồng → Gia hạn).'),
     no_notice: reason('rejected', 'never', 'Hợp đồng này chưa có báo trả nào để huỷ.'),

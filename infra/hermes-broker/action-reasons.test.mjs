@@ -25,7 +25,7 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   assert.ok(shared.every(code => !page.has(code)));
   // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 5 mã needs_input + 7 mã rejected.
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'needs_input'),
-    ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract']);
+    ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract', 'return_date_future']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'rejected'),
     ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative']);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');

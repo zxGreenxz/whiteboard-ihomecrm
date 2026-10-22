@@ -935,6 +935,26 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
       "sha256": "023e38a21a42a969ec3fc2e31bbcbca484b7916cc6659bac285f2c6a8a33efde"
+    },
+    "supabase/migrations/20261022061813_hermes_contract_return_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022061813_hermes_contract_return_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_contract_action_lookup_v1 / app_private.hermes_contract_action_step_v1 (dựng từ thân 20261022022951, md5(prosrc) ghim ở $requires$) + một dòng chính sách contract.return"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 2 hàm trên — sinh 22/10/2026 trên nhánh Hợp đồng Đợt 2 Mốc 4"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 4: ghi nhận khách trả phòng, quyết toán sau — contract.return gọi confirm_contract_return_v1 chế độ DEFERRED), chưa đi qua lane apply — 2 hàm vắng mặt trên production vì CẢ file này lẫn file trang 20261022022951 đều CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql gồm test Mốc 4 và test $requires$ nhận đúng thân 20261022022951, từ chối thân lạ; 14/14 đột biến Mốc 4 bị bắt), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql), buildTransaction của lane nhận file. Áp qua npm run migrate:forward SAU 20261022022951 (thứ tự tên đảm bảo) khi phiên chính phát hành Mốc 2–4 (D-HĐ10); khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.hermes_contract_action_lookup_v1",
+        "function:app_private.hermes_contract_action_step_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
+      "sha256": "d7d498180ca2488a30f3af4702ea54ab213536801fb8da3b110d143eff9817b4"
     }
   }
 }

@@ -14,6 +14,9 @@ const RESOLVE = file('hermes_write_name_resolve_v1'), FOUNDATION = file('hermes_
 // Hàm dùng chung tính ngày gia hạn (Mốc 3; web cùng gọi) + bộ vector dùng chung.
 const RENEWAL_DATE = file('contract_renewal_end_date_v1');
 const RENEWAL_VECTORS = JSON.parse(readFileSync('infra/hermes-broker/contract-renewal-vectors.json', 'utf8')).cases;
+// Mốc 4: file MỚI thay hai hàm của trang (ghi nhận trả phòng); md5 thân của file trang ghim ở $requires$.
+const RETURN_SQL = file('hermes_contract_return_v1');
+const plain = sql => sql.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
 const u = n => `00000000-0000-4000-8000-${String(500 + n).padStart(12, '0')}`;
 const CONTRACT = u(1), CUSTOMER = u(2), EMPTY_ROOM = u(3), RETURNED_ROOM = u(4), OLD_CONTRACT = u(5), OTHER_USER = u(6);
 const rid = n => `00000000-0000-4000-8000-${String(700 + n).padStart(12, '0')}`;
@@ -152,11 +155,14 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
       RETURN jsonb_build_object('id',k.id,'room_id',k.room_id,'active',false,'released_at',k.released_at);
     END $w$;`;
 
-test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / huỷ, khoá tạm / gỡ khoá', { timeout: 240000 }, async t => {
-  const f = await setup(t, { action: `${SUPPORT}\n${RESOLVE}\n${RENEWAL_DATE.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '')}` });
+// Dựng chung cho các test của trang: fixture Hermes thật + M1/M2 + giải tên + hàm ngày gia hạn + file trang, mỗi file chạy hai lần
+// (chạy lại được). `support`/`migrations`: fixture bổ sung và migration nối tiếp của mốc sau (vd Mốc 4).
+async function pageSetup(t, { support = '', migrations = [] } = {}) {
+  const f = await setup(t, { action: `${SUPPORT}\n${support}\n${RESOLVE}\n${plain(RENEWAL_DATE)}` });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(KEYS);
   await db.exec(CONTRACT_ACTION_SQL); await db.exec(CONTRACT_ACTION_SQL); // Idempotent re-apply.
+  for (const sql of migrations) { await db.exec(sql); await db.exec(sql); }
   const keys = ['contracts.terminate', 'sale_phong.lock_room', 'contracts.renew'];
   assert.deepEqual((await db.query('SELECT capability,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1) ORDER BY 1', [keys])).rows,
     [...keys].sort().map(capability => ({ capability, enabled: false })), 'khoá seed TẮT');
@@ -179,7 +185,12 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
     [JSON.stringify(binding), action, phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null], options);
   const receipts = async () => (await db.query('SELECT request_id,action,state,sqlstate FROM app_private.hermes_action_receipts ORDER BY created_at,request_id')).rows;
   const contract = async () => (await db.query('SELECT expected_move_out_date::text d,updated_at FROM public.contracts WHERE id=$1', [CONTRACT])).rows[0];
-  const P101 = { buildingName: 'toa a', roomName: 'P101' };
+  return { f, db, call, keys, run, receipts, contract };
+}
+const P101 = { buildingName: 'toa a', roomName: 'P101' };
+
+test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / huỷ, khoá tạm / gỡ khoá', { timeout: 240000 }, async t => {
+  const { f, db, call, keys, run, receipts, contract } = await pageSetup(t);
 
   await t.test('capabilities: bốn thao tác của trang có lớp/chính sách; hai khoá theo phạm vi toà', async () => {
     const caps = await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG]);
@@ -429,7 +440,10 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
 // Review #270 mục 1–2: khoá tổ chức (giao thức ghi chung của hàm web) đứng sau guard, TRƯỚC lần kiểm biên nhận và mọi khoá dòng;
 // lượt preview không khoá dòng. PGlite một kết nối không tái hiện được hai phiên song song ⇒ kiểm thứ tự trong thân bước ghi.
 test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng', () => {
-  const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(CONTRACT_ACTION_SQL)[0];
+  for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL]) stepLockOrder(sql);
+});
+function stepLockOrder(sql) {
+  const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(sql)[0];
   const guard = body.indexOf('ctx:=app_private.hermes_action_guard_v1'), lock = body.indexOf('PERFORM app_private.lock_org_for_decision_v1(v_org);');
   assert.ok(guard > 0 && lock > guard, 'khoá tổ chức ngay sau guard');
   assert.ok(lock < body.indexOf('FROM app_private.hermes_action_receipts r'), 'khoá tổ chức trước khi kiểm biên nhận');
@@ -437,4 +451,176 @@ test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước m
   assert.ok(rowLocks.length >= 2 && rowLocks.every(index => index > lock), 'mọi khoá dòng sau khoá tổ chức');
   assert.equal([...body.matchAll(/IF p_phase='preview' THEN\n\s+SELECT \* INTO (?:c|l) FROM public\.(?:contracts|room_sale_locks) k(?:(?!FOR UPDATE)[^;])*;\n\s+ELSE\n\s+SELECT[^;]*FOR UPDATE;/g)].length, 2,
     'đọc HĐ / khoá tạm: preview không FOR UPDATE, nhánh còn lại có');
+}
+
+// Mốc 4 — fixture bổ sung: cột hồ sơ trả phòng, bảng thanh lý cũ, quyền theo toà (can_do_on_building), nợ thực của hoá đơn (port
+// hàm dùng chung #267: remaining_amount, ghi đè được để chứng minh lookup đi qua hàm này) và bản port DEFERRED tối giản của hàm ghi
+// web confirm_contract_return_v1 (giữ chữ ký, rào, câu lỗi). bad: 'return_money' sinh hoá đơn 1đ, 'return_zero' sinh dòng 0đ (chỉ
+// phép ĐẾM bắt), 'return_amount' sửa tiền hoá đơn có sẵn (chỉ phép TỔNG bắt), 'return_status' không đổi HĐ, 'return_case' lưu khoá
+// idempotency khác (để thử hậu điều kiện).
+const RETURN_SUPPORT = `ALTER TABLE public.contract_exit_cases ADD COLUMN IF NOT EXISTS building_id uuid, ADD COLUMN IF NOT EXISTS actual_move_out_on date,
+    ADD COLUMN IF NOT EXISTS initial_kind text, ADD COLUMN IF NOT EXISTS current_kind text, ADD COLUMN IF NOT EXISTS settlement_mode text,
+    ADD COLUMN IF NOT EXISTS physical_actor uuid, ADD COLUMN IF NOT EXISTS physical_idempotency_key text, ADD COLUMN IF NOT EXISTS return_note text;
+  CREATE TABLE IF NOT EXISTS public.contract_terminations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid UNIQUE,status text);
+  CREATE TABLE IF NOT EXISTS public.fixture_outstanding(invoice_id uuid PRIMARY KEY,effective numeric);
+  GRANT SELECT ON public.invoices,public.fixture_outstanding TO authenticated;
+  CREATE OR REPLACE FUNCTION public.can_do_on_building(_table text,_action text,_building_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path=pg_catalog,public AS $f$ SELECT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission=_table||'.'||_action AND allowed
+      AND (org_wide OR _building_id=ANY(building_ids))) $f$;
+  CREATE OR REPLACE FUNCTION public.invoice_effective_outstanding_v1(p_invoice_ids uuid[]) RETURNS TABLE(invoice_id uuid,remaining_amount numeric,
+    carried_out_amount numeric,carried_in_amount numeric,effective_outstanding numeric,effective_outstanding_at_carrier numeric)
+    LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $f$
+    SELECT i.id,i.remaining_amount,0::numeric,0::numeric,COALESCE(o.effective,i.remaining_amount),COALESCE(o.effective,i.remaining_amount)
+      FROM public.invoices i LEFT JOIN public.fixture_outstanding o ON o.invoice_id=i.id WHERE i.id=ANY(p_invoice_ids) $f$;
+  GRANT EXECUTE ON FUNCTION public.can_do_on_building(text,text,uuid),public.invoice_effective_outstanding_v1(uuid[]) TO authenticated;
+  CREATE OR REPLACE FUNCTION public.confirm_contract_return_v1(p_organization_id uuid,p_contract_id uuid,p_expected_contract_updated_at timestamptz,
+    p_idempotency_key text,p_actual_move_out_on date,p_initial_kind text,p_settlement_mode text,p_settlement jsonb DEFAULT NULL,p_meter_boundary jsonb DEFAULT NULL,
+    p_return_note text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $w$
+    DECLARE c public.contracts; v_room public.rooms; e public.contract_exit_cases; v_key text:=btrim(p_idempotency_key);
+      v_bad text:=(SELECT bad FROM public.fixture_contract_writer);
+    BEGIN
+      IF NULLIF(btrim(p_return_note),'') IS NULL THEN RAISE EXCEPTION 'Vui lòng nhập nội dung thanh lý để đối chiếu sau này' USING ERRCODE='22023'; END IF;
+      IF p_actual_move_out_on IS NULL OR p_initial_kind IS NULL OR p_initial_kind NOT IN ('NATURAL_EXPIRY','EARLY_RETURN','FORFEIT')
+        OR p_settlement_mode IS DISTINCT FROM 'DEFERRED' OR p_settlement IS NOT NULL OR v_key IS NULL OR v_key!~'^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$' THEN
+        RAISE EXCEPTION 'Actual date, initial kind, mode and request key are required' USING ERRCODE='22023'; END IF;
+      IF (SELECT raise_state FROM public.fixture_contract_writer) IS NOT NULL THEN
+        RAISE EXCEPTION 'fixture writer refused' USING ERRCODE=(SELECT raise_state FROM public.fixture_contract_writer); END IF;
+      SELECT * INTO c FROM public.contracts WHERE id=p_contract_id AND organization_id=p_organization_id AND deleted_at IS NULL FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'Contract not found' USING ERRCODE='42501'; END IF;
+      SELECT * INTO v_room FROM public.rooms WHERE id=c.room_id;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='contracts.terminate' AND allowed AND (org_wide OR v_room.building_id=ANY(building_ids)))
+        THEN RAISE EXCEPTION '[THIEU_QUYEN:contracts.terminate] Bạn không có quyền trả phòng / thanh lý hợp đồng ở toà nhà này.' USING ERRCODE='42501'; END IF;
+      PERFORM 1 FROM public.contract_exit_cases WHERE contract_id=p_contract_id;
+      IF FOUND THEN RAISE EXCEPTION 'Contract has already been physically returned' USING ERRCODE='PT409'; END IF;
+      IF c.updated_at IS DISTINCT FROM p_expected_contract_updated_at THEN RAISE EXCEPTION 'Contract changed; reload before returning' USING ERRCODE='PT409'; END IF;
+      IF p_actual_move_out_on>public.org_today_v1(p_organization_id) THEN
+        RAISE EXCEPTION 'Actual return date cannot be in the future; use a planned notice' USING ERRCODE='22023'; END IF;
+      IF c.status<>'ACTIVE' OR c.actual_end_date IS NOT NULL OR p_actual_move_out_on<c.start_date
+        OR EXISTS(SELECT 1 FROM public.contract_terminations t WHERE t.contract_id=c.id) THEN
+        RAISE EXCEPTION 'Contract is not eligible for an actual return' USING ERRCODE='55000'; END IF;
+      INSERT INTO public.contract_exit_cases(organization_id,building_id,contract_id,actual_move_out_on,initial_kind,current_kind,settlement_mode,state,
+        physical_actor,physical_idempotency_key,return_note)
+        VALUES(c.organization_id,v_room.building_id,c.id,p_actual_move_out_on,p_initial_kind,p_initial_kind,'DEFERRED','PENDING',auth.uid(),
+          CASE WHEN v_bad='return_case' THEN 'khac:'||v_key ELSE v_key END,btrim(p_return_note)) RETURNING * INTO e;
+      IF v_bad IS DISTINCT FROM 'return_status' THEN
+        UPDATE public.contracts SET status='TERMINATED',actual_end_date=p_actual_move_out_on,updated_at=clock_timestamp() WHERE id=c.id;
+        UPDATE public.rooms SET status='AVAILABLE' WHERE id=c.room_id; END IF;
+      IF v_bad IN ('return_money','return_zero') THEN INSERT INTO public.invoices(id,organization_id,contract_id,total_amount)
+        VALUES(gen_random_uuid(),c.organization_id,c.id,CASE WHEN v_bad='return_money' THEN 1 ELSE 0 END); END IF;
+      IF v_bad='return_amount' THEN UPDATE public.invoices SET total_amount=total_amount+1 WHERE contract_id=c.id AND status='PAID'; END IF;
+      RETURN jsonb_build_object('id',e.id,'state',e.state,'settlement_mode',e.settlement_mode);
+    END $w$;`;
+
+test('trang Hợp đồng — Mốc 4: ghi nhận khách trả phòng, quyết toán sau (20261022061813)', { timeout: 240000 }, async t => {
+  const { f, db, call, run, receipts } = await pageSetup(t, { support: RETURN_SUPPORT, migrations: [RETURN_SQL] });
+  await db.query(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('invoices.view',$1)
+    ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true`, [[BUILDING, OTHER_BUILDING]]);
+  await db.query("UPDATE public.contracts SET deposit_paid=4500000,total_deposit=4500000 WHERE id=$1", [CONTRACT]);
+  const inv = n => `00000000-0000-4000-8000-${String(900 + n).padStart(12, '0')}`;
+  await db.query(`INSERT INTO public.invoices(id,organization_id,contract_id,status,total_amount,paid_amount) VALUES
+    ($1,$4,$5,'APPROVED',1500000,0),($2,$4,$5,'PAID',1000000,1000000),($3,$4,$5,'CANCELLED',500000,0)`, [inv(1), inv(2), inv(3), ORG, CONTRACT]);
+  const base = { ...P101, date: '2026-10-20', note: 'Khách trả phòng, bàn giao đủ' };
+  const state = async () => (await db.query(`SELECT k.status,k.actual_end_date::text d,(SELECT count(*)::int FROM public.contract_exit_cases x WHERE x.contract_id=k.id) cases
+    FROM public.contracts k WHERE k.id=$1`, [CONTRACT])).rows[0];
+
+  await t.test('chính sách: contract.return cùng khoá contracts.terminate, irreversible, luôn xem trước', async () => {
+    const caps = await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG]);
+    assert.deepEqual(caps.actions['contract.return'], { capability: 'contracts.terminate', actionClass: 'irreversible', confirm: 'always', privateOnly: true });
+  });
+
+  await t.test('xem trước: nói rõ không lùi được + quyết toán trên web; loại suy từ ngày; cọc + hoá đơn chưa thu qua hàm dùng chung', async () => {
+    await f.rollbackCase(async () => {
+      const preview = await run('contract.return', 'auto', rid(200), base);
+      assert.equal(preview.kind, 'preview', 'irreversible: lượt auto vẫn chỉ xem trước'); assert.equal(preview.confirm, 'required');
+      assert.equal(preview.preview.text, 'Sẽ ghi nhận khách TRẢ PHÒNG phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử): ngày trả thứ Ba 20/10/2026 ' +
+        '(2 ngày trước), loại: trả sớm. Sau khi ghi: HĐ chuyển Đã thanh lý, phòng thành trống, KHÔNG lùi được. Quyết toán (hoàn cọc, trừ tiền, ' +
+        'chỉ số chốt) làm trên web. Cọc đã thu 4.500.000đ; hoá đơn chưa thu: 1 hoá đơn, 1.500.000đ; chỉ số điện nước khi trả: chưa ghi. ' +
+        'Nội dung thanh lý: "Khách trả phòng, bàn giao đủ".');
+      assert.deepEqual([preview.preview.returnDate, preview.preview.kind, preview.preview.depositPaid, preview.preview.unpaidInvoices],
+        ['2026-10-20', 'EARLY_RETURN', '4500000', { count: 1, amount: '1500000.00' }]);
+      assert.ok(preview.warnings.some(text => /^Trả trước ngày hết hạn HĐ \(28\/02\/2027\) ⇒ loại TRẢ SỚM/.test(text)), JSON.stringify(preview.warnings));
+      assert.equal((await receipts()).some(row => row.request_id === rid(200)), false, 'xem trước không mở biên nhận');
+      assert.deepEqual(await state(), { status: 'ACTIVE', d: null, cases: 0 });
+      // Nợ thực do hàm dùng chung tính (ghi đè ⇒ đổi theo), không đọc remaining_amount trực tiếp.
+      await db.query('INSERT INTO public.fixture_outstanding VALUES($1,0)', [inv(1)]);
+      assert.match((await run('contract.return', 'preview', rid(201), base)).preview.text, /hoá đơn chưa thu: không có;/);
+      // Không có quyền xem hoá đơn ở toà ⇒ không lộ số.
+      await db.query("UPDATE public.fixture_acl SET allowed=false WHERE permission='invoices.view'");
+      const hidden = await run('contract.return', 'preview', rid(202), base);
+      assert.match(hidden.preview.text, /hoá đơn chưa thu: không xem được \(cần quyền xem hoá đơn\);/);
+      assert.equal(Object.hasOwn(hidden.preview, 'unpaidInvoices'), false);
+    });
+    await f.rollbackCase(async () => {
+      assert.equal((await run('contract.return', 'preview', rid(203), { ...base, forfeit: true })).preview.kind, 'FORFEIT', 'bỏ cọc chỉ khi người dùng nói');
+      assert.equal((await run('contract.return', 'preview', rid(206), { ...base, forfeit: false })).preview.kind, 'EARLY_RETURN', 'forfeit=false không phải bỏ cọc');
+      await db.query("UPDATE public.contracts SET end_date='2026-10-15' WHERE id=$1", [CONTRACT]);
+      const natural = await run('contract.return', 'preview', rid(204), base);
+      assert.deepEqual([natural.preview.kind, natural.warnings.some(text => /TRẢ SỚM/.test(text))], ['NATURAL_EXPIRY', false], 'ngày trả ≥ ngày hết hạn');
+      await db.query("UPDATE public.contracts SET expected_move_out_date='2026-10-25' WHERE id=$1", [CONTRACT]);
+      assert.ok((await run('contract.return', 'preview', rid(205), base)).warnings.some(text => /^Báo trả trước đó là 25\/10\/2026; ngày trả thực tế ghi 20\/10\/2026\./.test(text)));
+    });
+  });
+
+  await t.test('rào: ngày tương lai ⇒ báo trả; trước ngày bắt đầu; thiếu nội dung; thanh lý cũ ⇒ already_returned', async () => {
+    await f.rollbackCase(async () => {
+      assert.deepEqual(await run('contract.return', 'preview', rid(210), { ...base, date: '2026-10-23' }), { kind: 'needs_input', reason: 'return_date_future' });
+      assert.deepEqual(await run('contract.return', 'preview', rid(211), { ...base, date: '2026-02-28' }), { kind: 'needs_input', reason: 'date_out_of_range' });
+      assert.deepEqual(await run('contract.return', 'preview', rid(212), { ...P101, date: '2026-10-20', note: ' ' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.return', 'preview', rid(213), { ...base, forfeit: 'có' }), { kind: 'needs_input', reason: 'invalid_params' });
+      assert.deepEqual(await run('contract.return', 'preview', rid(214), { ...base, date: '20/10/2026' }), { kind: 'needs_input', reason: 'invalid_params' });
+      await db.query("INSERT INTO public.contract_terminations(contract_id,status) VALUES($1,'COMPLETED')", [CONTRACT]);
+      assert.deepEqual(await run('contract.return', 'preview', rid(215), base), { kind: 'rejected', reason: 'already_returned' });
+    });
+  });
+
+  await t.test('ghi: DEFERRED qua hàm web, đúng một hồ sơ PENDING khoá hermes:<requestId>, biên nhận; phát lại; lần sau ⇒ already_returned', async () => {
+    await f.rollbackCase(async () => {
+      const preview = await run('contract.return', 'preview', rid(220), base);
+      const applied = await run('contract.return', 'apply', rid(220), base, preview);
+      assert.equal(applied.kind, 'applied'); assert.equal(applied.link, `/contracts/${CONTRACT}`);
+      assert.match(applied.result.text, /^Đã ghi nhận khách trả phòng phòng P101 toà Toà A \(HĐ HĐ-THU-001, khách Khách Thử\): ngày trả thứ Ba 20\/10\/2026 \(2 ngày trước\), loại: trả sớm\. HĐ đã chuyển Đã thanh lý, phòng trống\. Quyết toán/);
+      assert.deepEqual([applied.result.returnDate, applied.result.kind, applied.result.roomStatus, applied.result.nextStep],
+        ['2026-10-20', 'EARLY_RETURN', 'AVAILABLE', `Quyết toán trên web: /contracts/${CONTRACT}`]);
+      assert.deepEqual(await state(), { status: 'TERMINATED', d: '2026-10-20', cases: 1 });
+      const exit = (await db.query('SELECT id,state,settlement_mode,physical_idempotency_key k,initial_kind FROM public.contract_exit_cases WHERE contract_id=$1', [CONTRACT])).rows[0];
+      assert.deepEqual([exit.state, exit.settlement_mode, exit.k, exit.initial_kind, applied.result.exitCaseId], ['PENDING', 'DEFERRED', `hermes:${rid(220)}`, 'EARLY_RETURN', exit.id]);
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(220)).map(row => row.state), ['applied']);
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.invoices WHERE contract_id=$1', [CONTRACT])).rows[0].n, 3, 'không phát sinh hoá đơn');
+      assert.deepEqual(await run('contract.return', 'apply', rid(220), base, preview), applied, 'phát lại cùng requestId: không ghi lần hai');
+      assert.deepEqual(await run('contract.return', 'preview', rid(221), base), { kind: 'rejected', reason: 'already_returned' }, 'requestId mới');
+      assert.deepEqual(await run('contract.notice_set', 'auto', rid(222), { ...P101, date: '2026-10-30' }), { kind: 'rejected', reason: 'already_returned' });
+    });
+    await f.rollbackCase(async () => {
+      // HĐ đổi giữa hai lượt ⇒ state_changed, không ghi.
+      const preview = await run('contract.return', 'preview', rid(223), base);
+      await db.query("UPDATE public.contracts SET expected_move_out_date='2026-10-30',updated_at=clock_timestamp() WHERE id=$1", [CONTRACT]);
+      assert.deepEqual(await run('contract.return', 'apply', rid(223), base, preview), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await state(), { status: 'ACTIVE', d: null, cases: 0 });
+    });
+  });
+
+  await t.test('hậu điều kiện: hàm ghi sinh tiền / không đổi HĐ / sai khoá ⇒ lùi về savepoint, crm_refused', async () => {
+    for (const [index, bad] of ['return_money', 'return_zero', 'return_amount', 'return_status', 'return_case'].entries()) await f.rollbackCase(async () => {
+      await db.query('UPDATE public.fixture_contract_writer SET bad=$1', [bad]);
+      const preview = await run('contract.return', 'preview', rid(230 + index), base);
+      assert.deepEqual(await run('contract.return', 'apply', rid(230 + index), base, preview), { kind: 'rejected', reason: 'crm_refused' }, bad);
+      assert.deepEqual(await state(), { status: 'ACTIVE', d: null, cases: 0 }, bad);
+      assert.equal((await db.query('SELECT count(*)::int n FROM public.invoices WHERE contract_id=$1', [CONTRACT])).rows[0].n, 3, bad);
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(230 + index)).map(row => row.state), ['rejected'], bad);
+    });
+  });
+
+  await t.test('$requires$: thân bước ghi đang chạy khác thân 20261022022951 ⇒ dừng; đúng thân ⇒ nhận (md5 ghim khớp Postgres)', async () => {
+    const original = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?END \$fn\$;/.exec(CONTRACT_ACTION_SQL)[0];
+    const lookup = /CREATE OR REPLACE FUNCTION public\.hermes_contract_action_lookup_v1[\s\S]*?END \$fn\$;/.exec(CONTRACT_ACTION_SQL)[0];
+    await f.rollbackCase(async () => {
+      await db.exec(original.replace('-- Lượt preview chỉ đọc', '-- Lượt preview (thân lạ) chỉ đọc')); await db.exec(lookup);
+      await assert.rejects(db.exec(plain(RETURN_SQL)), /hermes_contract_return_base_changed/);
+    });
+    await f.rollbackCase(async () => {
+      await db.exec(original); await db.exec(lookup);
+      await db.exec(plain(RETURN_SQL));
+      assert.match((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc, /contract\.return/);
+    });
+  });
 });
