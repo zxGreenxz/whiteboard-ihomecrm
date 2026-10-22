@@ -1725,7 +1725,15 @@
     "src/lib/__tests__/profitReportChecks.test.ts",
     "src/components/reports/ProfitReportChecks.tsx",
     "src/components/reports/__tests__/ProfitReportChecks.test.tsx",
-    "src/hooks/reports/__tests__/vacantRoomNotes.test.ts"
+    "src/hooks/reports/__tests__/vacantRoomNotes.test.ts",
+    "src/lib/profitOverviewCoverage.ts",
+    "src/lib/__tests__/profitOverviewCoverage.test.ts",
+    "src/lib/profitLockPrecheck.ts",
+    "src/lib/__tests__/profitLockPrecheck.test.ts",
+    "src/hooks/useProfitLockChecks.ts",
+    "src/hooks/useProfitOverviewCoverage.ts",
+    "src/components/shareholders/ProfitCoverageCard.tsx",
+    "src/components/shareholders/__tests__/ProfitCoverageCard.test.tsx"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

@@ -308,6 +308,21 @@ function Detail({
   return <StaleDetail checks={checks} />;
 }
 
+/**
+ * Danh sách khoản chi cố định THIẾU / THIẾU SỐ / CÓ THỂ TRÙNG (không chip, không nút) — dùng
+ * trong hộp xác nhận chốt lợi nhuận (rà 21/10, F20). Không có cảnh báo nào thì không vẽ gì.
+ */
+export function FixedFeeIssueList({ checks }: { checks: ProfitReportChecksResult }) {
+  const f = checks.fixedFees;
+  if (f.issues.length === 0) return null;
+  return (
+    <div className="divide-y rounded-md border">
+      {f.missingBuildingCount > 0 && <MissingDetail checks={checks} />}
+      {f.duplicateBuildingCount > 0 && <DuplicateDetail checks={checks} />}
+    </div>
+  );
+}
+
 export default function ProfitReportChecks({
   checks,
   roomSummary,

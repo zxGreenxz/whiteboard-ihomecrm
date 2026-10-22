@@ -160,6 +160,116 @@ export function buildProfitCloseAdjustments(
   });
 }
 
+// ── Lý do chép nguyên câu báo lỗi (F60, rà 21/10) ─────────────────────
+//
+// Luật cũ chỉ đo ĐỘ DÀI 8–500 ký tự, mà chính câu báo lỗi "Lý do xử lý phải có
+// 8–500 ký tự" dài 31 ký tự ⇒ dán nó vào ô lý do là qua. Dữ liệu thật đã có 6 dòng
+// chốt T7 mang đúng câu đó làm lý do giữ lại — nhật ký chốt mất nghĩa. Client từ
+// chối khi cả ô chỉ là một câu báo lỗi/gợi ý của màn này (hoặc một câu luật độ dài).
+// Máy chủ KHÔNG kiểm điều này (không sửa hàm SQL nào) — đây là lưới phía giao diện.
+
+/** Câu báo lỗi / gợi ý mà màn chốt lợi nhuận hiện ra cho người dùng. */
+const PROFIT_SYSTEM_MESSAGES: readonly string[] = [
+  "Số điều chỉnh không hợp lệ",
+  "Số điều chỉnh tối đa 2 chữ số thập phân",
+  "Lý do điều chỉnh phải có 8–500 ký tự",
+  "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau",
+  "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự",
+  "Lý do xử lý phải có 8–500 ký tự",
+  "Chọn cách xử lý phần chưa phân bổ",
+  "Chọn cách xử lý",
+  "Cách xử lý phần chưa phân bổ không hợp lệ",
+  "Lý do chốt lại phải có 8–1000 ký tự",
+  "Lý do mở khoá phải có 8–1000 ký tự",
+  "Lý do đặt lại phải có 8–1000 ký tự",
+  "Lý do cần có 8–1000 ký tự.",
+  "Nhập lý do đặt lại từ 8 đến 1000 ký tự.",
+  "Nhập lý do mở khóa từ 8 đến 1000 ký tự.",
+  "Chọn ít nhất một nhà để chốt",
+  "Vùng chọn đang lẫn nhà đã chốt và nhà chưa chốt — tách làm hai lượt",
+  "Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.",
+  "Đang cập nhật preview theo điều chỉnh mới nhất",
+  "Lý do (ít nhất 8 ký tự)",
+  "Lý do xử lý (ít nhất 8 ký tự)",
+  "Không bắt buộc",
+  "Không bắt buộc cho lần chốt đầu",
+  "Bắt buộc: lý do đặt lại",
+  "Bắt buộc: mô tả vì sao cần thay snapshot đã chốt",
+  "reason must contain 8..1000 characters",
+];
+
+/** Câu báo khi ô lý do chỉ là câu báo lỗi — CHÍNH chúng cũng bị từ chối nếu bị dán lại. */
+export const ADJUSTMENT_REASON_SYSTEM_MESSAGE =
+  "Lý do điều chỉnh đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const UNALLOCATED_REASON_SYSTEM_MESSAGE =
+  "Lý do xử lý phần chưa phân bổ đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const RECLOSE_REASON_SYSTEM_MESSAGE =
+  "Lý do chốt lại đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const CLOSE_NOTE_SYSTEM_MESSAGE =
+  "Ghi chú lần chốt đang chép câu báo lỗi của hệ thống — ghi nội dung thật hoặc để trống";
+export const UNLOCK_REASON_SYSTEM_MESSAGE =
+  "Lý do mở khoá đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+export const RESET_REASON_SYSTEM_MESSAGE =
+  "Lý do đặt lại đang chép câu báo lỗi của hệ thống — ghi lý do thật";
+
+/** Chuẩn hoá để so: NFC, chữ thường, gạch ngang/khoảng trắng gom một kiểu, bỏ dấu câu cuối,
+ *  dấu thanh kiểu cũ "khóa" ≡ kiểu mới "khoá". */
+export function normalizeReasonText(text: string): string {
+  return text
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/óa/g, "oá")
+    .replace(/òa/g, "oà")
+    .replace(/ỏa/g, "oả")
+    .replace(/õa/g, "oã")
+    .replace(/ọa/g, "oạ")
+    .replace(/[‐-―−]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, "-")
+    .trim()
+    .replace(/^["'“”‘’\s]+/u, "")
+    .replace(/["'“”‘’\s.!?…:;,]+$/u, "");
+}
+
+const KNOWN_SYSTEM_MESSAGES: ReadonlySet<string> = new Set(
+  [
+    ...PROFIT_SYSTEM_MESSAGES,
+    ADJUSTMENT_REASON_SYSTEM_MESSAGE,
+    UNALLOCATED_REASON_SYSTEM_MESSAGE,
+    RECLOSE_REASON_SYSTEM_MESSAGE,
+    CLOSE_NOTE_SYSTEM_MESSAGE,
+    UNLOCK_REASON_SYSTEM_MESSAGE,
+    RESET_REASON_SYSTEM_MESSAGE,
+  ].map(normalizeReasonText),
+);
+
+/** Câu NGẮN chỉ nói luật độ dài / chỉ là lời từ chối của màn này. */
+const SYSTEM_MESSAGE_PATTERNS: readonly RegExp[] = [
+  /(phải|cần) có \d+-\d+ ký tự$/u,
+  /từ \d+ đến \d+ ký tự$/u,
+  /\(?ít nhất \d+ ký tự\)?$/u,
+  /\d+\.\.\d+ characters$/u,
+  /đang chép câu báo lỗi/u,
+];
+
+/** true khi CẢ ô lý do chỉ là một câu báo lỗi / gợi ý của hệ thống, không phải lý do thật. */
+export function isSystemMessageReason(text: string): boolean {
+  const normalized = normalizeReasonText(text);
+  if (!normalized) return false;
+  if (KNOWN_SYSTEM_MESSAGES.has(normalized)) return true;
+  if (normalized.length > 120) return false;
+  return SYSTEM_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export type ReasonProblem = "LENGTH" | "SYSTEM_MESSAGE";
+
+/** Lỗi của một ô lý do bắt buộc: độ dài (sau cắt khoảng trắng) hoặc chép câu báo lỗi. */
+export function reasonProblem(text: string, min: number, max: number): ReasonProblem | null {
+  const trimmed = text.trim();
+  if (trimmed.length < min || trimmed.length > max) return "LENGTH";
+  return isSystemMessageReason(trimmed) ? "SYSTEM_MESSAGE" : null;
+}
+
 export function validateProfitCloseDrafts(
   buildingIds: string[],
   drafts: ProfitCloseDraftMap,
@@ -186,13 +296,15 @@ export function validateProfitCloseDrafts(
       rowErrors[buildingId] = "Số điều chỉnh tối đa 2 chữ số thập phân";
       continue;
     }
-    if (
-      draft.adjustmentAmount !== 0 &&
-      (draft.adjustmentReason.trim().length < 8 ||
-        draft.adjustmentReason.trim().length > 500)
-    ) {
-      rowErrors[buildingId] = "Lý do điều chỉnh phải có 8–500 ký tự";
-      continue;
+    if (draft.adjustmentAmount !== 0) {
+      const problem = reasonProblem(draft.adjustmentReason, 8, 500);
+      if (problem) {
+        rowErrors[buildingId] =
+          problem === "LENGTH"
+            ? "Lý do điều chỉnh phải có 8–500 ký tự"
+            : ADJUSTMENT_REASON_SYSTEM_MESSAGE;
+        continue;
+      }
     }
 
     const unallocatedProfit =
@@ -203,19 +315,29 @@ export function validateProfitCloseDrafts(
           "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau";
         continue;
       }
-      const dispositionReason = draft.unallocatedDispositionReason.trim();
-      if (dispositionReason.length < 8 || dispositionReason.length > 500) {
+      const problem = reasonProblem(draft.unallocatedDispositionReason, 8, 500);
+      if (problem) {
         rowErrors[buildingId] =
-          "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự";
+          problem === "LENGTH"
+            ? "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự"
+            : UNALLOCATED_REASON_SYSTEM_MESSAGE;
       }
     }
   }
 
-  const overallReasonError =
-    options.reclose &&
-    (options.overallReason.trim().length < 8 || options.overallReason.trim().length > 1000)
-      ? "Lý do chốt lại phải có 8–1000 ký tự"
+  const overallProblem = options.reclose
+    ? reasonProblem(options.overallReason, 8, 1000)
+    : isSystemMessageReason(options.overallReason)
+      ? "SYSTEM_MESSAGE"
       : null;
+  const overallReasonError =
+    overallProblem === "LENGTH"
+      ? "Lý do chốt lại phải có 8–1000 ký tự"
+      : overallProblem === "SYSTEM_MESSAGE"
+        ? options.reclose
+          ? RECLOSE_REASON_SYSTEM_MESSAGE
+          : CLOSE_NOTE_SYSTEM_MESSAGE
+        : null;
 
   return {
     valid: Object.keys(rowErrors).length === 0 && !overallReasonError,

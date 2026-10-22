@@ -66,14 +66,25 @@ import {
   hasUnallocatedProfitResidual,
   mergeProfitCloseDrafts,
   normalizeUnallocatedDisposition,
+  reasonProblem,
   resolveCloseAction,
   resolveProfitCloseOrganizationId,
   unallocatedDispositionLabel,
   validateProfitCloseDrafts,
+  RESET_REASON_SYSTEM_MESSAGE,
+  UNALLOCATED_REASON_SYSTEM_MESSAGE,
+  UNLOCK_REASON_SYSTEM_MESSAGE,
   type ProfitCloseDraftMap,
   type ProfitUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { useCashbookMonthlyClosingStatus } from "@/hooks/useCashbookClosing";
+import { useProfitLockChecks } from "@/hooks/useProfitLockChecks";
+import {
+  LANDLORD_OPERATED_LOCK_LABEL,
+  lockPrecheckSignature,
+  resolveLockPrecheck,
+} from "@/lib/profitLockPrecheck";
+import { FixedFeeIssueList } from "@/components/reports/ProfitReportChecks";
 import { formatCurrency } from "@/lib/utils";
 import { currentYear, periodOf, periodToLabel } from "./shareholderUtils";
 
@@ -178,8 +189,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const [actionError,setActionError] = useState('');
   const [previewSourceError,setPreviewSourceError]=useState('');
   const [resetReason, setResetReason] = useState("");
-  const resetReasonLength = resetReason.trim().length;
-  const resetReasonValid = resetReasonLength >= 8 && resetReasonLength <= 1000;
+  // Rà 21/10 F60: ngoài độ dài 8–1000, lý do không được là nguyên câu báo lỗi của màn.
+  const resetReasonProblem = reasonProblem(resetReason, 8, 1000);
+  const resetReasonValid = resetReasonProblem === null;
   // Mở khoá: chụp phạm vi lúc mở hộp (như resetGuard) — preview/state tải lại
   // nền không được đổi tập nhà dưới tay người đang gõ lý do.
   const [unlockOpen, setUnlockOpen] = useState(false);
@@ -191,7 +203,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   } | null>(null);
   const [unlockReason, setUnlockReason] = useState("");
   const unlockReasonLength = unlockReason.trim().length;
-  const unlockReasonValid = unlockReasonLength >= 8 && unlockReasonLength <= 1000;
+  const unlockReasonProblem = reasonProblem(unlockReason, 8, 1000);
+  const unlockReasonValid = unlockReasonProblem === null;
+  // Rà 21/10 F20: chữ ký tập cảnh báo chi cố định mà người chốt đã tick "đã xem".
+  const [precheckAck, setPrecheckAck] = useState<string | null>(null);
   const selectedOrganization = organizations.find(
     (organization) => organization.organization_id === organizationId,
   );
@@ -380,6 +395,22 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     () => selectedRows.map((row) => row.building_id),
     [selectedRows],
   );
+  // Rà 21/10 F20 + F07: bộ dò chi cố định cho đúng các nhà sắp chốt (chỉ tải khi chốt
+  // được) và danh sách toà vận hành cho chủ nhà (lỗi/không quyền ⇒ im lặng, không nhãn).
+  const lockChecks = useProfitLockChecks({
+    organizationId,
+    period,
+    targetBuildingIds,
+    enabled: canLock,
+  });
+  const precheck = resolveLockPrecheck({
+    hasTargets: targetBuildingIds.length > 0,
+    isLoading: lockChecks.isLoading,
+    isError: lockChecks.isError,
+    checks: lockChecks.checks,
+  });
+  const precheckSignature = lockPrecheckSignature(targetBuildingIds, lockChecks.checks, precheck.status);
+  const precheckAcked = !precheck.needsAck || precheckAck === precheckSignature;
   const closeAction = useMemo(
     () => resolveCloseAction(selectedRows),
     [selectedRows],
@@ -398,7 +429,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           row.unallocated_disposition_reason ??
           ""
         ).trim();
-        return !disposition || reason.length < 8 || reason.length > 500;
+        // F60: độ dài 8–500 VÀ không phải nguyên câu báo lỗi (cùng luật validateProfitCloseDrafts).
+        return !disposition || reasonProblem(reason, 8, 500) !== null;
       }),
     [activeDrafts, selectedRows],
   );
@@ -602,7 +634,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     void focusFirstError({ ...fields, ...(overallError ? { overallReason: overallError } : {}) });
   };
   const reportResidualRows = () => {
-    const errors = Object.fromEntries(invalidResidualRows.map(row => [row.building_id, !normalizeUnallocatedDisposition(activeDrafts[row.building_id]?.unallocatedDisposition ?? row.unallocated_disposition) ? 'Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau' : 'Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự']));
+    const errors = Object.fromEntries(invalidResidualRows.map(row => [row.building_id, !normalizeUnallocatedDisposition(activeDrafts[row.building_id]?.unallocatedDisposition ?? row.unallocated_disposition) ? 'Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau' : reasonProblem(activeDrafts[row.building_id]?.unallocatedDispositionReason ?? row.unallocated_disposition_reason ?? '', 8, 500) === 'SYSTEM_MESSAGE' ? UNALLOCATED_REASON_SYSTEM_MESSAGE : 'Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự']));
     setRowErrors(errors);
     focusCloseRows(errors);
   };
@@ -645,11 +677,15 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       setPreviewSourceError(message);void focusFirstError({profitPreviewSource:message});
       return;
     }
+    // Mỗi lần mở hộp phải tick lại "đã xem" cảnh báo chi cố định (không nhớ từ lượt trước).
+    setPrecheckAck(null);
     setConfirmOpen(true);
   };
 
   const confirmClose = async () => {
     if (!preview || sourceUnavailable || actionBlocked) return;
+    // Lưới mềm F20: đang dò thì chờ; còn cảnh báo thì phải tick "đã xem" (không chặn cứng).
+    if (precheck.blocksConfirm || !precheckAcked) return;
     setActionError('');
     if (hasInvalidResidualDisposition) {
       setConfirmOpen(false);
@@ -680,7 +716,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
   const confirmReset = async () => {
     if (!resetGuard || sourceUnavailable || actionBlocked) return;
-    if(!resetReasonValid){setReasonErrors({resetReason:'Nhập lý do đặt lại từ 8 đến 1000 ký tự.'});await focusFirstError({resetReason:'invalid'});return;}
+    if(!resetReasonValid){setReasonErrors({resetReason:resetReasonProblem==='SYSTEM_MESSAGE'?RESET_REASON_SYSTEM_MESSAGE:'Nhập lý do đặt lại từ 8 đến 1000 ký tự.'});await focusFirstError({resetReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
       await resetMutation.mutateAsync({
@@ -714,7 +750,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
   const confirmUnlock = async () => {
     if (!unlockGuard || sourceUnavailable || actionBlocked) return;
-    if(!unlockReasonValid){setReasonErrors({unlockReason:'Nhập lý do mở khóa từ 8 đến 1000 ký tự.'});await focusFirstError({unlockReason:'invalid'});return;}
+    if(!unlockReasonValid){setReasonErrors({unlockReason:unlockReasonProblem==='SYSTEM_MESSAGE'?UNLOCK_REASON_SYSTEM_MESSAGE:'Nhập lý do mở khóa từ 8 đến 1000 ký tự.'});await focusFirstError({unlockReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
       await unlockMutation.mutateAsync({
@@ -1281,13 +1317,15 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                     normalizeUnallocatedDisposition(
                       draft.unallocatedDisposition,
                     );
-                  const dispositionReasonLength =
-                    draft.unallocatedDispositionReason.trim().length;
+                  // F60: cùng luật validateProfitCloseDrafts — độ dài 8–500 và không chép câu báo lỗi.
+                  const dispositionReasonProblem = reasonProblem(
+                    draft.unallocatedDispositionReason,
+                    8,
+                    500,
+                  );
                   const dispositionInvalid =
                     hasResidual &&
-                    (!normalizedDraftDisposition ||
-                      dispositionReasonLength < 8 ||
-                      dispositionReasonLength > 500);
+                    (!normalizedDraftDisposition || dispositionReasonProblem !== null);
                   const displayedDistributable =
                     row.computed_profit + draft.adjustmentAmount - row.management_salary;
                   return (
@@ -1320,6 +1358,15 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       </TableCell>
                       <TableCell className="align-top font-medium">
                         <div>{row.building_name}</div>
+                        {/* Rà 21/10 F07: chỉ nhãn, không đổi số. */}
+                        {lockChecks.operatedBuildingIds.has(row.building_id) && (
+                          <p
+                            className="mt-1 max-w-[220px] text-[11px] font-normal leading-snug text-amber-700"
+                            data-testid="landlord-operated-label"
+                          >
+                            {LANDLORD_OPERATED_LOCK_LABEL}
+                          </p>
+                        )}
                         <div className="mt-1 flex flex-wrap gap-1">
                           {row.is_stale && <Badge variant="destructive">Cũ</Badge>}
                           {row.is_stale && (
@@ -1453,7 +1500,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                                     ? rowError
                                     : !normalizedDraftDisposition
                                       ? "Chọn cách xử lý phần chưa phân bổ"
-                                      : "Lý do xử lý phải có 8–500 ký tự"}
+                                      : dispositionReasonProblem === "SYSTEM_MESSAGE"
+                                        ? UNALLOCATED_REASON_SYSTEM_MESSAGE
+                                        : "Lý do xử lý phải có 8–500 ký tự"}
                                 </p>
                               )}
                             </>
@@ -1639,9 +1688,62 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                     nhuận đem chia chưa có ai đếm quỹ và ký nhận.
                   </p>
                 )}
+                {selectedRows.some((row) => lockChecks.operatedBuildingIds.has(row.building_id)) && (
+                  <p className="font-medium text-amber-700">
+                    Có toà vận hành cho chủ nhà trong lượt chốt:{" "}
+                    {selectedRows
+                      .filter((row) => lockChecks.operatedBuildingIds.has(row.building_id))
+                      .map((row) => row.building_name)
+                      .join(" · ")}{" "}
+                    — LN chốt là của cả toà, chưa trừ phần chủ nhà (xem tab Quyết toán vận hành).
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Rà 21/10 F20: dò chi cố định cho đúng các nhà sắp chốt — lưới MỀM, tick là chốt được. */}
+          <div className="space-y-2 text-sm" data-testid="profit-lock-precheck">
+            {precheck.status === "loading" && (
+              <p className="text-muted-foreground">Đang dò chi cố định của các nhà sắp chốt…</p>
+            )}
+            {precheck.status === "error" && (
+              <p className="font-medium text-amber-700">
+                Chưa dò được chi cố định của các nhà sắp chốt (lỗi tải dữ liệu hoặc không thấy toà) —
+                kiểm tay tiền nhà, điện, nước… trước khi chốt.
+              </p>
+            )}
+            {precheck.status === "clean" && lockChecks.checks && (
+              <p className="text-muted-foreground">
+                Đã dò chi cố định {lockChecks.checks.fixedFees.checkedBuildingCount} nhà: không thấy khoản thiếu hay trùng
+                (theo kỳ phân bổ, gồm phiếu chờ duyệt, chỉ KQKD, so với mức khai ở Phí cố định theo toà).
+              </p>
+            )}
+            {precheck.status === "issues" && lockChecks.checks && (
+              <>
+                <p className="font-medium text-amber-700">
+                  Còn {precheck.issueCount} khoản chi cố định thiếu hoặc có thể trùng ở các nhà sắp chốt — chốt
+                  bây giờ thì lợi nhuận đem chia có thể sai. Cơ sở dò: theo kỳ phân bổ, gồm phiếu chờ duyệt, chỉ KQKD,
+                  so với mức khai ở Phí cố định theo toà.
+                </p>
+                <div className="max-h-56 overflow-y-auto">
+                  <FixedFeeIssueList checks={lockChecks.checks} />
+                </div>
+              </>
+            )}
+            {precheck.needsAck && (
+              <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                <Checkbox
+                  checked={precheckAcked}
+                  onCheckedChange={(value) => setPrecheckAck(value === true ? precheckSignature : null)}
+                  aria-label="Đã xem cảnh báo chi cố định"
+                  disabled={closeMutation.isPending}
+                />
+                <span>
+                  Tôi đã xem {precheck.status === "error" ? "cảnh báo chưa dò được chi cố định" : "các khoản thiếu / có thể trùng ở trên"} và vẫn muốn chốt.
+                </span>
+              </label>
+            )}
+          </div>
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
@@ -1652,7 +1754,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 closeMutation.isPending || actionBlocked || sourceUnavailable ||
                 previewInputPending ||
                 previewQuery.isFetching ||
-                hasInvalidResidualDisposition
+                hasInvalidResidualDisposition ||
+                precheck.blocksConfirm ||
+                !precheckAcked
               }
             >
               {closeMutation.isPending
@@ -1694,7 +1798,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             />
             {reasonErrors.resetReason && <p id="reset-reason-error" className="text-sm text-destructive">{reasonErrors.resetReason}</p>}
             {!resetReasonValid && (
-              <p className="text-xs text-muted-foreground">Lý do cần có 8–1000 ký tự.</p>
+              <p className="text-xs text-muted-foreground">
+                {resetReasonProblem === "SYSTEM_MESSAGE"
+                  ? "Lý do đang chép câu báo lỗi của hệ thống — ghi lý do thật."
+                  : "Lý do cần có 8–1000 ký tự."}
+              </p>
             )}
           </div>
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
@@ -1761,7 +1869,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               className={`text-xs ${unlockReasonValid ? "text-muted-foreground" : "text-amber-700"}`}
             >
               {unlockReasonLength}/1000 ký tự
-              {unlockReasonValid ? "" : " — lý do cần có 8–1000 ký tự."}
+              {unlockReasonValid
+                ? ""
+                : unlockReasonProblem === "SYSTEM_MESSAGE"
+                  ? " — lý do đang chép câu báo lỗi của hệ thống, ghi lý do thật."
+                  : " — lý do cần có 8–1000 ký tự."}
             </p>
           </div>
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
