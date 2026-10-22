@@ -26,6 +26,7 @@ export const D = Object.freeze({
   FLOOR_A1: u(71), FLOOR_A2: u(72), FLOOR_B1: u(73),
   JOB_TYPE: u(81), JOB_GROUP: u(82), DEPARTMENT: u(83), HOTLINE: u(84), HOTLINE_HIDDEN: u(85),
   IE_TYPE_INCOME: u(91), IE_TYPE_SALARY: u(92), IE_TYPE_DUP: u(93),
+  EXIT_A: u(101), EXIT_DONE: u(102), EXIT_B: u(103),
 });
 
 const BEFORE = `
@@ -95,7 +96,21 @@ const BEFORE = `
     IF NOT public.can_access_building(v_building) THEN RAISE EXCEPTION 'Bạn không có quyền xem toà này' USING ERRCODE='42501'; END IF;
     RETURN (SELECT value FROM public.fixture_lifecycle WHERE room_id=p_room_id);
   END $$;
+  -- Hàng đợi trả phòng (Đợt 2 Hợp đồng): bảng như bản thật (KHÔNG cấp SELECT cho authenticated, thu hồi sau GRANT chung dưới)
+  -- + cổng tổng hợp cùng chữ ký RPC web list_contract_exit_cases_v1 (DEFINER, lọc toà như can_access_building).
+  CREATE TABLE public.contract_exit_cases(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,contract_id uuid,room_at_handover_id uuid,
+    actual_move_out_on date,initial_kind text,current_kind text,settlement_mode text,state text,contract_number text,building_name text,room_name text,
+    customer_name text);
+  CREATE FUNCTION public.list_contract_exit_cases_v1(p_organization_id uuid,p_building_id uuid DEFAULT NULL,p_state text DEFAULT NULL,
+    p_limit integer DEFAULT 50,p_offset integer DEFAULT 0,p_contract_id uuid DEFAULT NULL,p_building_ids uuid[] DEFAULT NULL) RETURNS jsonb
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+    SELECT jsonb_build_object('items',COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.actual_move_out_on,x.id),'[]'::jsonb),'total',count(*),
+      'limit',p_limit,'offset',p_offset,'server_today',current_date)
+    FROM (SELECT * FROM public.contract_exit_cases e WHERE e.organization_id=p_organization_id AND (p_state IS NULL OR e.state=p_state)
+      AND (p_building_ids IS NULL OR e.building_id=ANY(p_building_ids)) AND public.fixture_bld(e.building_id)
+      ORDER BY e.actual_move_out_on,e.id LIMIT p_limit OFFSET p_offset) x $$;
   GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
+  REVOKE ALL ON public.contract_exit_cases FROM authenticated;
   DO $rls$ DECLARE t text; BEGIN
     FOREACH t IN ARRAY ARRAY['buildings','rooms','contracts','customers','contract_customers','contract_extensions','contract_terminations',
       'income_expenses','income_expense_items','income_expense_types','assets','asset_categories','suppliers','services','building_services',
@@ -162,6 +177,12 @@ const SEED = `
       '2026-09-15T20:00:00Z'),
     ('${D.C_B2}','${ORG}','${D.ROOM_B2}','ACTIVE',2500000,null,'HD-B2','2026-10-01','2026-10-01','2026-10-20',null,2500000,'MONTHLY','{"amount":100000}',
       '2026-10-01T03:00:00Z');
+  -- Đợt 2 Hợp đồng: một báo trả còn hiệu lực; hai hồ sơ trả phòng chờ quyết toán (toà A, toà B) + một đã quyết toán.
+  UPDATE public.contracts SET expected_move_out_date='2026-10-24' WHERE id='${D.C_SOON}';
+  INSERT INTO public.contract_exit_cases VALUES
+    ('${D.EXIT_A}','${ORG}','${BUILDING}','${D.C_END}','${D.ROOM_A2}','2026-10-10','EARLY_RETURN','EARLY_RETURN','DEFERRED','PENDING','HD-END','Toà A','P202','Khách A'),
+    ('${D.EXIT_DONE}','${ORG}','${BUILDING}','${D.C_EXP}','${D.ROOM_A4}','2026-08-01','NATURAL_EXPIRY','NATURAL_EXPIRY','IMMEDIATE','FINALIZED','HD-EXP','Toà A','P204',null),
+    ('${D.EXIT_B}','${ORG}','${OTHER_BUILDING}','${D.C_B2}','${D.ROOM_B2}','2026-10-15','FORFEIT','FORFEIT','DEFERRED','PENDING','HD-B2','Toà B','P202',null);
   INSERT INTO public.contract_customers(organization_id,contract_id,customer_id,is_representative) VALUES
     ('${ORG}','${D.C_SOON}','${CUSTOMER_C}',true),('${ORG}','${D.C_END}','${CO_TENANT}',false),('${ORG}','${D.C_TRANSFER}','${CUSTOMER_A}',true),
     ('${ORG}','${D.C_B2}','${CUSTOMER_B}',true);

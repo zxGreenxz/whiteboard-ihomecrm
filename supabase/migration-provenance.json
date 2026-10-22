@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T02:55:52.135Z",
+  "generatedAt": "2026-10-22T03:27:30.361Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 796,
-    "unknown": 82,
-    "catalog-proven": 207,
+    "unknown": 83,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12672,6 +12672,31 @@
         "function:public.hermes_contract_action_lookup_v1",
         "function:app_private.hermes_contract_action_step_v1",
         "function:public.hermes_contract_action_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022032205_hermes_w2d_contract_shared_v1.sql",
+      "version": "20261022032205",
+      "name": "hermes_w2d_contract_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "0c079ed4d1c8c76cdb4f98f0b390037175b11468ac350e831822ef5af3a7c65e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.real_estate_contracts_ending_v1",
+        "function:public.contract_move_out_notices_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022032214_hermes_w2d_contract_reads_v1.sql",
+      "version": "20261022032214",
+      "name": "hermes_w2d_contract_reads_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e162752d0cc6384f70c7c65f1c49841b729e838d5bea997bc45b87280ac6b62",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2d_catalog_v1",
+        "catalog:function:app_private.hermes_w2d_read_v1"
       ]
     },
     {

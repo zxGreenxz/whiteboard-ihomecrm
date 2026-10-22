@@ -941,6 +941,26 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
       "sha256": "3ed73f06addfb4816ee6fdd0917c91d573bbd5a5ea345af48c49ba2651708f5b"
+    },
+    "supabase/migrations/20261022032205_hermes_w2d_contract_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022032205_hermes_w2d_contract_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.real_estate_contracts_ending_v1 / public.contract_move_out_notices_v1 (hàm dùng chung MỚI, INVOKER, search_path rỗng)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 2 hàm trên — sinh 22/10/2026 trên nhánh Hợp đồng Đợt 2 Mốc 2"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 2 đọc bù: hai hàm dùng chung cho báo cáo W2 re_contracts_ending / re_move_out_notices), chưa đi qua lane apply — 2 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite gói D (wave2-d 103 ca gồm ngữ nghĩa ba báo cáo mới, cấu trúc INVOKER/search_path rỗng/chỉ authenticated/tự kiểm khoá web), buildTransaction của lane nhận file. Áp qua npm run migrate:forward (TEST trước, rồi production) CÙNG file kế tiếp 20261022032214_hermes_w2d_contract_reads_v1 (bảng báo cáo + hàm đọc gói D) sau khi PR #270 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.real_estate_contracts_ending_v1",
+        "function:public.contract_move_out_notices_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
+      "sha256": "0c079ed4d1c8c76cdb4f98f0b390037175b11468ac350e831822ef5af3a7c65e"
     }
   }
 }

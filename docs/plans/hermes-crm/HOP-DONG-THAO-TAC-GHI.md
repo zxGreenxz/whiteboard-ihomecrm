@@ -1,6 +1,6 @@
-# Thao tác ghi của Hermes — trang HỢP ĐỒNG (Đợt 2, Mốc 1: THIẾT KẾ, chờ duyệt)
+# Thao tác ghi của Hermes — trang HỢP ĐỒNG (Đợt 2: thiết kế ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Chưa có mã, chưa có migration, chưa đổi production.
+Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế và chốt D-HĐ1–D-HĐ10 theo mặc định (22/10). Tiến độ ở mục 15. Migration chỉ là file, chưa áp; production chưa đổi.
 
 Căn cứ, theo thứ tự ưu tiên:
 1. Đáp án 40 câu chủ chốt ngày 21/10: Q2, Q3, Q7, Q20–Q23, Q26. Khi đáp án và plan mâu thuẫn, đáp án thắng.
@@ -25,7 +25,7 @@ Căn cứ, theo thứ tự ưu tiên:
    - sửa 2 báo cáo: `re_terminations` có thêm đếm bỏ cọc, `held_deposits` có thêm lọc "còn thiếu";
    - thêm `publicLink` vào chi tiết HĐ.
 
-   Nguyên nhân của (d) và (e) đã đo được (mục 6). **Đáp án "2 HĐ thiếu cọc" của ma trận cần xem lại:** production có 17 HĐ ACTIVE chưa thu đồng cọc nào, cộng 1 HĐ thu dở ở chế độ "thu ở hoá đơn đầu".
+   Nguyên nhân của (d) và (e) đã đo được (mục 6). Đáp án "2 HĐ thiếu cọc" của ma trận đúng với TEST: `SHORT` 1 + `FIRST_INVOICE` 1, đo ở tầng 2 ngày 22/10. Production lúc đo có 17 HĐ ACTIVE chưa thu đồng cọc nào, cộng 1 HĐ ở chế độ `FIRST_INVOICE`; chênh lệch là dữ liệu production khác bản chép TEST, không phải đáp án sai.
 6. **Rào bất biến nằm trong bước ghi.**
    - Trả phòng DEFERRED: trong giao dịch không được có phiếu thu/chi hay hoá đơn mới của HĐ. Có thì lùi về savepoint.
    - Migration của trang đòi P0a đã áp, kiểm bằng dấu `[TERMINATION_CONTRACT_CLOSED]` trong thân `approve_contract_termination_v1`.
@@ -208,11 +208,22 @@ Mọi thay đổi đọc đều 0 byte `tools/list`: báo cáo W2 nằm trong k�
 | (b) | "Phòng nào báo sắp dọn đi?" | Bot đọc ngày hết hạn. `re_expiring` / `contract_search` không lọc theo ngày báo trả | Báo cáo W2 `re_move_out_notices` (`buildingId`, `fromDate`, `toDate`; mặc định mọi báo trả còn hiệu lực) trên hàm INVOKER dùng chung mới `public.contract_move_out_notices_v1`. Summary: total, quá ngày báo mà chưa trả, trong 30 ngày |
 | (a) | "HĐ hết hạn trong tháng X", đếm theo toà | `re_expiring` chỉ có `days` tính từ hôm nay; `contract_search` không lọc ngày | Báo cáo W2 `re_contracts_ending` (`buildingId`, `fromDate`, `toDate`; mặc định tháng này), gồm cả HĐ đã quá hạn chưa thanh lý, trên hàm INVOKER dùng chung mới `public.real_estate_contracts_ending_v1`. Summary: total, quá hạn, có báo trả, toà nhiều nhất + số. Tiêu đề `re_expiring` nói rõ "N ngày tới tính từ hôm nay" |
 | (c) | Cọc của MỘT phòng | Dữ liệu đã có: `crm_read_contract_detail` trả `totalDeposit`, `depositPaid`, `depositRemaining`. Bot dùng nhầm tổng theo toà | SOUL (mục 13). Không đổi mã |
-| (d) | HĐ thiếu cọc nhỏ bị sót | Đo production: HĐ đó ở chế độ `FIRST_INVOICE` (thu ở hoá đơn đầu), nên nằm ngoài lọc `SHORT`. Ngoài ra có 17 HĐ ACTIVE chưa thu đồng cọc nào (`SHORT`) | `held_deposits` thêm `status=OWING` (= `SHORT` ∪ `FIRST_INVOICE`), sắp theo số còn thiếu giảm dần. Tiêu đề: "chưa thu đủ cọc = OWING". **Phiên chính xem lại đáp án ma trận** ("2 HĐ") so với 17 + 1 |
-| (e) | "Tháng trước bao nhiêu phòng trả phòng": bot ra ít hơn web | Đo production: tiêu chí của `re_terminations` (HĐ `TERMINATED/EXPIRED` có `COALESCE(actual_end_date, end_date)` trong kỳ) cho tháng 9 ra đúng số của web, gồm cả bỏ cọc. Reader tự đặt kỳ "đầu tháng này → hôm nay" khi thiếu ngày, nên bot quên truyền kỳ, hoặc đếm bằng trang `contract_search`, sẽ ra sai | `re_terminations` summary thêm `forfeit` và `normal`. Tiêu đề nhắc "tháng trước ⇒ truyền `fromDate`/`toDate` của tháng đó; đếm = `summary.total`". SOUL |
-| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | `crm_read_contract_detail` thêm `publicLink` (chỉ HĐ ACTIVE): `CONTRACT_DETAIL_FIELDS` + nhánh SQL. Link tuyệt đối cần origin web; D-HĐ9 |
+| (d) | HĐ thiếu cọc nhỏ bị sót | Đo: HĐ đó ở chế độ `FIRST_INVOICE` (thu ở hoá đơn đầu), nên nằm ngoài lọc `SHORT`. TEST có `SHORT` 1 + `FIRST_INVOICE` 1, khớp đáp án | **Đã làm (Mốc 2):** chỉ sửa tiêu đề báo cáo, theo cách 0 SQL: "HĐ chưa thu đủ cọc" = `SHORT` + `FIRST_INVOICE`; gọi mỗi status một lần, số = `shortCount` + `firstInvoiceCount`. Bỏ `status=OWING`, vì phải dựng lại reader gói A (vùng của phiên Thu chi), trong khi summary đã đủ số |
+| (e) | "Tháng trước bao nhiêu phòng trả phòng": bot ra ít hơn web | Đo: tiêu chí của `re_terminations` (HĐ `TERMINATED/EXPIRED` có `COALESCE(actual_end_date, end_date)` trong kỳ) cho tháng 9 ra đúng số của web, gồm cả bỏ cọc; tầng 2 trên TEST ra 28. Reader tự đặt kỳ "đầu tháng này → hôm nay" khi thiếu ngày, nên bot quên truyền kỳ, hoặc đếm bằng trang `contract_search`, sẽ ra sai | **Đã làm (Mốc 2):** chỉ sửa tiêu đề, theo cách 0 SQL: "tháng trước" ⇒ truyền `fromDate`/`toDate` đúng tháng; số phòng trả = `summary.total`, bỏ cọc = các dòng `terminationType FORFEIT`. Không đổi khuôn summary, vì khuôn bị kiểm khít: connector lên trước migration sẽ làm vỡ báo cáo. Cộng SOUL |
+| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Dời sang Mốc 3.** Việc này phải dựng lại hàm nền `hermes_domain_read_v3` (~1 000 dòng, ghim md5 thân production) và thêm cấu hình host `publicWebOrigin` (D-HĐ9). `crm_read_contract_detail` sẽ thêm `publicLink`, chỉ cho HĐ ACTIVE |
 
-Ba hàm INVOKER dùng chung mới có `search_path=''`, từ chối khi `current_user <> 'authenticated'`, và nhận `p_building_ids` để Hermes thu hẹp phạm vi, luôn giao với RLS. Web chưa gọi chúng ở đợt này; trang Hợp đồng chuyển sang dùng là việc sau. Báo cáo mới thêm vào gói W2D (cùng reader với các báo cáo `re_*`), quyền `contracts.view`. Gói đó do Mốc 2 chốt, sau khi đọc cổng `hermes_w2_read_v1`.
+**Đã làm ở Mốc 2.**
+- Hai hàm INVOKER dùng chung mới: `public.real_estate_contracts_ending_v1` và `public.contract_move_out_notices_v1`.
+  - `search_path=''`; từ chối khi `current_user <> 'authenticated'`; tự kiểm khoá web của màn Sắp hết hạn.
+  - Nhận `p_building_ids` để Hermes thu hẹp phạm vi, luôn giao với RLS.
+  - Đặt ở file riêng không chứa hàm của trợ lý, theo lệ hàm dùng chung của gói D.
+- Hồ sơ chờ quyết toán gọi đúng RPC web `list_contract_exit_cases_v1`, không trả tên khách.
+- Ba báo cáo vào gói W2D, dùng khoá sẵn có:
+  - `re_contracts_ending`, `re_move_out_notices`: khoá `reports_real_estate.expiring`;
+  - `re_exit_cases_pending`: khoá `reports_real_estate.terminations`.
+
+  Không dùng `contracts.view`, vì khoá đó không thuộc tập khoá W2. Muốn thêm thì phải sửa nền W2.
+- **Giới hạn đo ở tầng 2:** quản lý toà không có quyền báo cáo BĐS bị cổng W2 từ chối cả ba báo cáo. Nếu muốn quản lý hỏi được "phòng nào báo trả / hồ sơ nào chờ quyết toán", cần thêm `contracts.view` vào tập khoá dùng lại của W2. Việc này sửa nền W2 và cần phiên chính chốt.
 
 ## 7. Hàm dùng chung tính ngày gia hạn
 
@@ -235,9 +246,10 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 
 | Mốc | Migration (tên tạm) | Nội dung |
 | --- | --- | --- |
-| 2 | `hermes_contract_action_v1` | Seed `hermes_action_policies` cho mười thao tác (khoá đã seed TẮT ở M2). Vỏ, tra cứu, bước ghi (nhánh báo trả + khoá tạm). `$requires$` đòi M1, M2, giải tên, P0a |
-| 2 | `hermes_w2_contract_reads_v1` | Ba hàm INVOKER dùng chung + nhánh W2D mới; `re_terminations` thêm đếm; `held_deposits` thêm `OWING` (CREATE OR REPLACE reader W2A/W2D theo thân mới nhất) |
-| 2 | `hermes_contract_detail_public_link_v1` | Nhánh `contract_detail` của `hermes_domain_read_v3` thêm `publicLink` |
+| 2 ✓ | `20261022022951_hermes_contract_action_v1` | Seed `hermes_action_policies` cho bốn thao tác Mốc 2. Vỏ, tra cứu, bước ghi (nhánh báo trả + khoá tạm). `$requires$` đòi M1, M2, giải tên, P0a. Mốc 3–4 nối tiếp vào file này (D-HĐ10) |
+| 2 ✓ | `20261022032205_hermes_w2d_contract_shared_v1` | Hai hàm dùng chung mới (file không chứa hàm của trợ lý) |
+| 2 ✓ | `20261022032214_hermes_w2d_contract_reads_v1` | Bảng báo cáo + reader gói D dựng từ thân đang chạy. `md5(prosrc)` = production = TEST = repo, ghim ở `$requires$`. Ba báo cáo mới |
+| 3 | `hermes_contract_detail_public_link_v1` (tạm) | Nhánh `contract_detail` của `hermes_domain_read_v3` thêm `publicLink` (dời từ Mốc 2) |
 | 3 | `contract_renewal_end_date_v1` | Hàm dùng chung; bước ghi thêm nhánh gia hạn (CREATE OR REPLACE) |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
@@ -249,7 +261,7 @@ Nếu phát hành Mốc 2–4 cùng một lần thì gộp thành một migratio
 | --- | --- |
 | `infra/hermes-broker/action-reasons.mjs` | 12 mã (mục 5) |
 | `infra/hermes-runtime/host-ownership.mjs` | 7 mã dạng `rejected` vào `REASONS` |
-| `infra/hermes-broker/server.mjs` | một dòng nạp `CONTRACT_ACTIONS` vào danh mục production |
+| `infra/hermes-broker/server.mjs` + `infra/hermes-runtime/host-config.mjs`, `host-service.mjs` | cấu hình host `actionPages` (vd `["contract"]`). Vắng thì danh mục production rỗng: không gọi `hermes_action_capabilities_v1`, `tools/list` không đổi |
 | `infra/hermes-broker/CONNECTOR.md` | một dòng cho thao tác Hợp đồng |
 | `scripts/hermes-task-function-contract.mjs` | băm vỏ `hermes_contract_action_v1` (`externalStandard`) |
 | `scripts/hermes-read-function-specs.mjs` / `scripts/test-hermes-private-flow.mjs` | hàm `search_path=''` mới (tra cứu, ba hàm đọc, hàm ngày) |
@@ -370,7 +382,30 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 5. Chạy ma trận ≥ 60 câu trên TEST; xếp ca trả phòng cuối, rồi `test-env:sync`.
 6. Đưa mục 12 và mục 13 vào SOUL.
 
-## 15. Chưa xác minh
+## 15. Tiến độ
+
+**Mốc 2, 22/10.** Hai lát, mỗi lát một commit:
+
+*Lát A — thao tác ghi.*
+- `contract.notice_set`, `contract.notice_cancel`, `contract.room_lock`, `contract.room_unlock`.
+- Connector chỉ nạp khi cấu hình host khai `actionPages: ["contract"]`. Lý do: danh mục production không rỗng sẽ thêm một lời gọi `hermes_action_capabilities_v1` vào chuỗi phân quyền của MỌI lời gọi; mặc định giữ đúng hành vi Đợt 1.
+- 12 lý do của trang vào khối `contract` (`ACTION_PAGE_REASON_BLOCKS`); 7 mã dạng `rejected` vào sổ audit host.
+
+*Lát B — đọc bù.*
+- Ba báo cáo W2D (mục 6).
+- Sửa tiêu đề `re_expiring`, `re_terminations`, `held_deposits`.
+
+*Kiểm.*
+- PGlite trang: 11/11; đột biến 13/13.
+- W2 + hợp đồng duyệt hàm Hermes: 352/352.
+- Tầng 2 trên TEST, ROLLBACK, 4 kết nối thật:
+  - báo trả / trùng ngày / ngày đã qua / huỷ / huỷ khi không có báo trả: đạt với 3 kết nối có quyền;
+  - khoá tạm: ca có khách bị từ chối đúng câu của hàm web; khoá rồi gỡ đạt với kết nối có quyền khoá tạm;
+  - toà ngoài phạm vi ⇒ `name_unresolved`;
+  - không phát sinh phiếu hay hoá đơn;
+  - báo cáo đọc khớp số đối chiếu (2 / 1 / 1; tháng 9 = 28).
+
+## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.
 - Cổng W2 `hermes_w2_read_v1` có cần đổi khi thêm báo cáo vào W2D không. Mốc 2 đọc.
