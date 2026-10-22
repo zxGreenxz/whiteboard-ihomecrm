@@ -80,8 +80,8 @@ Luồng hiện hành — trang **Tài chính → Sổ quỹ** (cả desktop lẫ
 
 Trang **Phân bổ lợi nhuận** có thanh Kiểm chứng (desktop + mobile):
 - `Tổng = Σ dòng hiển thị ✓` — tổng thẻ luôn cộng tay lại được.
-- `Không nằm trong tổng:` N phiếu nháp · khoản ngoài-KQKD (cọc, điều chỉnh…) · phiếu chưa chọn sổ — trả lời "thiếu gì".
-- `Khớp engine chia cổ đông ±0 ✓` — đối chiếu với `fa_monthly_pnl_accrual` (engine snapshot chia LN); **LỆCH đỏ thì DỪNG chia LN, điều tra trước**.
+- `Không nằm trong tổng:` khoản ngoài-KQKD (cọc, điều chỉnh…) — tính **theo ngày phiếu, chỉ phiếu đã duyệt**; ở chế độ Dồn tích đây là cơ sở khác với tổng nên chỉ để tham khảo, và số âm được giữ nguyên (không che) — cùng phiếu chưa chọn sổ. Dòng `Đã huỷ trong kỳ` (theo ngày phiếu, phần tính KQKD) cho biết phiếu huỷ không còn trong tổng.
+- `Khớp engine (phần đã duyệt) ±0 ✓` — đối chiếu với `fa_monthly_pnl_accrual` (engine snapshot chia LN). Khớp chỉ chứng minh trang bằng engine **trên cùng tập phiếu đã duyệt**, không chứng minh đã nhập đủ phiếu. Chưa đối chiếu được engine (không phải Dồn tích + chỉ KQKD) ⇒ vàng `Chưa đối chiếu engine`, không xanh. **LỆCH đỏ thì DỪNG chia LN, điều tra trước**; mục "Lệch theo toà" nêu đúng toà lệch (theo mã toà) kèm số chênh. Lọc "Chỉ khoản thu/chi" thì chỉ so chiều đang xem.
 - Tiền đã thu hoá đơn kỳ (đối chiếu dòng tiền — lệch với doanh thu ghi nhận là bình thường do thu trước/sau kỳ).
 
 ## 5. Việc chưa quyết (theo dõi)
