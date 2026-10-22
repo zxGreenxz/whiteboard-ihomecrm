@@ -69,6 +69,9 @@ export interface ProfitVerificationBarProps {
   /** F12: cảnh báo từ bên ngoài (vd bộ dò thiếu chi cố định) — có ≥1 dòng thì
    *  trạng thái tối thiểu là WARNING. */
   extraWarnings?: readonly string[];
+  /** Trang còn đang tải số (tổng / dòng) — đang tải thì thanh ở trạng thái LOADING, không so số
+   *  0 của trang với engine rồi báo LỆCH oan. */
+  pageLoading?: boolean;
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
    *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
   onIssueChange?: (hasIssue: boolean) => void;
@@ -84,7 +87,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     totalIncome, totalExpense, shownIncomeSum, shownExpenseSum,
     hiddenCount, hiddenIncomeSum, hiddenExpenseSum, capWarning,
     pendingCount = 0, pendingIncome = 0, pendingExpense = 0,
-    voucherType = "all", accrualRows, extraWarnings,
+    voucherType = "all", accrualRows, extraWarnings, pageLoading = false,
   } = props;
   const [open, setOpen] = useState(false);
   const sides = profitVerificationSides(voucherType);
@@ -146,7 +149,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
   );
 
   const visualState = resolveProfitVerificationVisualState({
-    loading: verificationQuery.isLoading || (!v && !verificationQuery.isError),
+    loading: pageLoading || verificationQuery.isLoading || (!v && !verificationQuery.isError),
     unavailable: verificationQuery.isError,
     capWarning: !!capWarning,
     incomeMatches: invariant.incomeMatches,

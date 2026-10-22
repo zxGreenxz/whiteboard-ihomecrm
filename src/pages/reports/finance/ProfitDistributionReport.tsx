@@ -358,7 +358,8 @@ function ProfitDistributionDesktop() {
   const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : cashExpense;
   const displayDiff = displayIncome - displayExpense;
 
-  const loading = accrualMode ? accrualLoading : isLoading;
+  // chưa chốt phạm vi công ty (toà / công ty đang nạp) cũng là đang tải — không hiện số 0 như thật
+  const loading = !scopeReady || (accrualMode ? accrualLoading : isLoading);
 
   // Phòng trống trong tháng (đầu cột Thu, nền vàng cam). Chỉ tính khi panel Thu
   // hiển thị, không lọc 1 phòng cụ thể, và đã chọn ≥1 toà (cần danh sách phòng
@@ -911,7 +912,8 @@ function ProfitDistributionDesktop() {
   const profitApplies = voucherType === "all";
   const pendingBuildingIds = useMemo(() => pendingBuildingIdsOf(accrual?.rows), [accrual]);
   const ihomeLine = useIhomeProfitLine(ym, scopeIds, displayDiff, {
-    enabled: profitApplies && !hideStatCards,
+    // đang tải thì tổng còn là 0 ⇒ chưa trừ được (tránh hiện số âm bằng đúng phần chủ nhà)
+    enabled: profitApplies && !hideStatCards && !loading,
     sameBasis: accrualMode && pnlOnly,
     pendingBuildingIds,
   });
@@ -1207,23 +1209,36 @@ function ProfitDistributionDesktop() {
         <ProfitHubSlot name="kpis">
           <div className="ph-kpi">
             <div className="ph-kpi__label">Doanh thu</div>
-            <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(displayIncome)}</div>
-            <div className="ph-kpi__sub">
-              {incomeCount} khoản thu{buildingCount > 0 ? ` · ${buildingCount} tòa nhà` : ""}
+            {/* đang tải: khối xám, không hiện "0 ₫" như số thật */}
+            <div className="ph-kpi__value ph-kpi__value--mint">
+              {loading ? <span className="ph-kpi__skel animate-pulse" aria-hidden /> : formatCurrency(displayIncome)}
             </div>
+            {!loading && (
+              <div className="ph-kpi__sub">
+                {incomeCount} khoản thu{buildingCount > 0 ? ` · ${buildingCount} tòa nhà` : ""}
+              </div>
+            )}
           </div>
           <div className="ph-op">−</div>
           <div className="ph-kpi">
             <div className="ph-kpi__label">Chi phí</div>
-            <div className="ph-kpi__value ph-kpi__value--peach">{formatCurrency(displayExpense)}</div>
-            <div className="ph-kpi__sub">
-              {expenseCount} khoản chi{displayIncome > 0 ? ` · ${expenseRatio}% doanh thu` : ""}
+            <div className="ph-kpi__value ph-kpi__value--peach">
+              {loading ? <span className="ph-kpi__skel animate-pulse" aria-hidden /> : formatCurrency(displayExpense)}
             </div>
+            {!loading && (
+              <div className="ph-kpi__sub">
+                {expenseCount} khoản chi{displayIncome > 0 ? ` · ${expenseRatio}% doanh thu` : ""}
+              </div>
+            )}
           </div>
           <div className="ph-op">=</div>
           <div className="ph-kpi">
             <div className="ph-kpi__label">Lợi nhuận</div>
-            {profitApplies ? (
+            {loading ? (
+              <div className="ph-kpi__value ph-kpi__value--lg">
+                <span className="ph-kpi__skel ph-kpi__skel--lg animate-pulse" aria-hidden />
+              </div>
+            ) : profitApplies ? (
               <>
                 <div className="ph-kpi__row">
                   <div className="ph-kpi__value ph-kpi__value--lg">{formatCurrency(displayDiff)}</div>
@@ -1600,6 +1615,7 @@ function ProfitDistributionDesktop() {
             voucherType={voucherType === "INCOME" || voucherType === "EXPENSE" ? voucherType : "all"}
             accrualRows={accrualMode ? accrual?.rows : undefined}
             extraWarnings={checkWarnings}
+            pageLoading={loading}
             onStateChange={handleVerifyState}
           />
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft, ChevronRight, CalendarDays, SlidersHorizontal, Building2, X, Check,
@@ -184,7 +184,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
 
-  const loading = accrualMode ? accrualLoading : cashLoading;
+  // chưa chốt phạm vi công ty cũng là đang tải — không hiện số 0 như thật
+  const loading = !scopeReady || (accrualMode ? accrualLoading : cashLoading);
+  const skel = <span className="inline-block h-[15px] w-16 rounded bg-[#efece4] animate-pulse align-middle" aria-hidden />;
 
   // §2.3: phần "chờ duyệt" trong tổng — đồng bộ công thức desktop.
   const pendingInfo = useMemo(() => {
@@ -572,7 +574,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     [accrualMode, accrual],
   );
   const ihomeLine = useIhomeProfitLine(ymStr, scopeIds, displayDiff, {
-    enabled: !hideStatCards,
+    enabled: !hideStatCards && !loading,
     sameBasis: accrualMode && pnlOnly,
     pendingBuildingIds,
   });
@@ -728,7 +730,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   );
 
   const stripCol = (
-    label: string, dot: string, value: string, color: string, grow = "flex-1",
+    label: string, dot: string, value: ReactNode, color: string, grow = "flex-1",
     issue?: { on: boolean; toggle: () => void },
   ) => (
     <div
@@ -770,11 +772,11 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           {/* Dải tổng DOANH THU | CHI PHÍ | LỢI NHUẬN */}
           {!hideStatCards && (
             <div className="flex items-center gap-2.5 rounded-[13px] border border-[#e7e3da] bg-white px-[13px] py-[11px] shadow-[0_1px_2px_rgba(27,24,19,.05)]">
-              {stripCol("DOANH THU", "#1f9d57", fmtShort(displayIncome), "#0e7a47")}
+              {stripCol("DOANH THU", "#1f9d57", loading ? skel : fmtShort(displayIncome), "#0e7a47")}
               <div className="w-px self-stretch bg-[#efece4] shrink-0" />
-              {stripCol("CHI PHÍ", "#e0691f", fmtShort(displayExpense), "#c2570f")}
+              {stripCol("CHI PHÍ", "#e0691f", loading ? skel : fmtShort(displayExpense), "#c2570f")}
               <div className="w-px self-stretch bg-[#efece4] shrink-0" />
-              {stripCol("LỢI NHUẬN", "#1b1813", fmtShort(displayDiff), profitPos ? "#0e7a47" : "#c2570f", "flex-[1.1]", {
+              {stripCol("LỢI NHUẬN", "#1b1813", loading ? skel : fmtShort(displayDiff), profitPos ? "#0e7a47" : "#c2570f", "flex-[1.1]", {
                 on: hasVerifyIssue,
                 toggle: () => setVerifyOpen((v) => !v),
               })}
@@ -839,6 +841,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             pendingExpense={pendingInfo.expense}
             accrualRows={accrualMode ? accrual?.rows : undefined}
             extraWarnings={checkWarnings}
+            pageLoading={loading}
             onIssueChange={setHasVerifyIssue}
           />
           </div>
