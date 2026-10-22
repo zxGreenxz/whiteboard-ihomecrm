@@ -14,7 +14,6 @@ import { DOMAIN_TOOLS, ALL_DOMAIN_READ_CAPABILITIES, domainInput } from './domai
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
@@ -24,7 +23,7 @@ import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 const NIL = '00000000-0000-0000-0000-000000000000';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const ALL = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS,
-  ...CUSTOMER_ACTION_TOOLS, ...EXPENSE_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL];
+  ...CUSTOMER_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL];
 const tool = name => ALL.find(value => value.name === name);
 const nullable = property => Array.isArray(property?.type) && property.type.includes('null');
 const requiredNullable = value => (value.inputSchema.required ?? []).filter(key => nullable(value.inputSchema.properties?.[key]));
@@ -52,7 +51,7 @@ const INCIDENT = Object.freeze({ kind: 'buildings', buildingId: NIL, query: '', 
 test('advertised schemas make required nullable fields omittable, read tools null-free, and leave every original unchanged', () => {
   const before = JSON.stringify(ALL);
   assert.deepEqual(ALL.filter(value => requiredNullable(value).length).map(value => value.name).sort(), ['crm_customer_create',
-    'crm_expense_create', 'crm_lead_create', 'crm_task_create', 'crm_task_input_options', 'crm_work_memory_upsert', 'crm_zalo_broadcast_send']);
+    'crm_lead_create', 'crm_task_create', 'crm_task_input_options', 'crm_work_memory_upsert', 'crm_zalo_broadcast_send']);
   for (const original of ALL) {
     const listed = advertisedTool(original), dropped = requiredNullable(original), properties = original.inputSchema.properties ?? {};
     assert.deepEqual(requiredNullable(listed), [], original.name);
@@ -130,7 +129,7 @@ test('20/10: read tools advertise no null at the top level; the originals, norma
 });
 
 test('write tools keep their advertised shape: only required+nullable becomes omittable', () => {
-  for (const name of ['crm_room_pass_upsert', 'crm_task_create', 'crm_expense_create', 'crm_customer_create', 'crm_zalo_broadcast_send', 'crm_task_follow_set']) {
+  for (const name of ['crm_room_pass_upsert', 'crm_task_create', 'crm_customer_create', 'crm_zalo_broadcast_send', 'crm_task_follow_set']) {
     const original = tool(name), listed = advertisedTool(original), dropped = requiredNullable(original);
     assert.equal(readOnly(original), false, name);
     assert.deepEqual(Object.keys(listed.inputSchema.properties), Object.keys(original.inputSchema.properties), name);
@@ -163,11 +162,6 @@ test('required nullable fields: absent, blank and nil UUID become null; everythi
   const real = { kind: 'rooms\t', buildingId: ` ${id('1')}`, query: '  Nhà A ', limit: '50', cursor: id('2'), extra: NIL };
   assert.deepEqual(normalizeToolArguments(options, real), real);
   for (const value of [null, 0, false, 7, {}, []]) assert.equal(normalizeToolArguments(options, { ...INCIDENT, cursor: value }).cursor, value);
-  // Only the top level: nested lines and non-nullable UUIDs reach the validator as sent.
-  const lines = [{ categoryId: NIL, amount: 1, description: ' ' }];
-  const expense = normalizeToolArguments(tool('crm_expense_create'), { requestId: id('3'), buildingId: id('4'), cashbookId: NIL, voucherDate: '2026-10-16', name: 'x', vendor: '  ', lines });
-  assert.equal(expense.lines, lines); assert.deepEqual(lines, [{ categoryId: NIL, amount: 1, description: ' ' }]);
-  assert.equal(expense.roomId, null); assert.equal(expense.vendor, null); assert.equal(expense.cashbookId, NIL);
   // A required nullable text field is not a UUID: the nil-UUID string is real text there.
   assert.equal(normalizeToolArguments(tool('crm_customer_create'), { notes: NIL }).notes, NIL);
   assert.deepEqual(normalizeToolArguments(tool('crm_customer_create'), { notes: ' \n' }), { notes: null, email: null });
@@ -228,7 +222,6 @@ test('B1c: read tools alias snake_case to a schema camelCase key and clamp limit
   const follow = { requestId: id('3'), job_id: id('5'), objective: 'x' };
   assert.deepEqual(normalizeToolArguments(tool('crm_task_follow_set'), follow), follow);
   assert.throws(() => taskActionInput('set', normalizeToolArguments(tool('crm_task_follow_set'), follow)));
-  assert.deepEqual(normalizeToolArguments(tool('crm_expense_create'), { requestId: id('3'), building_id: id('4') }).building_id, id('4'));
   assert.deepEqual(normalizeToolArguments(tool('crm_work_memory_upsert'), { key: 'k', expected_version: 1 }).expected_version, 1);
   for (const write of ALL.filter(value => !readOnly(value))) assert.equal(Object.hasOwn(normalizeToolArguments(write, { limit: 10 ** 6, building_id: id('4') }), 'building_id'), true, write.name);
   // Nil/blank UUID behaviour of the 16/10 fix is unchanged next to the aliases.
@@ -330,7 +323,6 @@ test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep 
     domainInput('customers', { limit: 5 }));
   // Dates are not UUIDs: an optional blank date stays for the validator to reject.
   assert.deepEqual(normalizeToolArguments(tool('crm_read_income_expenses'), { fromDate: ' ' }), { fromDate: ' ' });
-  assert.deepEqual(normalizeToolArguments(tool('crm_expense_input_options'), { kind: 'rooms', buildingId: NIL }), { kind: 'rooms', buildingId: null });
 });
 
 test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final', () => {
@@ -474,7 +466,7 @@ function brokerFixture(t) {
     // Same data cap as server.mjs; tools/list has its own cap (TOOLS_LIST_MAX_BYTES).
     dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
-    customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
+    customers: port('prepareCustomerAction', 'finalizeCustomerAction'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'),
   });
@@ -484,7 +476,7 @@ function brokerFixture(t) {
 test('broker tools/list advertises no required nullable field across mounted families', async t => {
   const { broker, token } = brokerFixture(t);
   const listed = (await broker.listTools(token)).tools;
-  for (const name of ['crm_task_input_options', 'crm_task_create', 'crm_customer_create', 'crm_lead_create', 'crm_expense_create',
+  for (const name of ['crm_task_input_options', 'crm_task_create', 'crm_customer_create', 'crm_lead_create',
     'crm_work_memory_upsert', 'crm_read_customers', 'crm_room_pass_upsert', 'crm_room_schedule_list', 'crm_zalo_broadcast_send', 'crm_zalo_broadcast_update', 'crm_new_request_id']) {
     assert.ok(listed.some(value => value.name === name), name);
   }

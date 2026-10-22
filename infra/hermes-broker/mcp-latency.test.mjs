@@ -25,7 +25,8 @@ const READS = ['assistant.context.read', 'customers.view', 'rooms.view'];
 // granted here answers PGRST202, exactly like an absent SQL family.
 const optional = ['hermes_group_action_context_v1', 'hermes_work_memory_capabilities_v1', 'hermes_room_schedule_capabilities_v1',
   'hermes_room_pass_capabilities_v1', 'hermes_task_create_capabilities_v1', 'hermes_task_follow_capabilities_v1',
-  'hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3',
+  // Đợt 2 Thu chi: phiếu chi đi danh mục thao tác chung (hermes_action_capabilities_v1); họ crm_expense_* cũ đã gỡ.
+  'hermes_customer_create_capabilities_v1', 'hermes_action_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3',
   // B5d: crm_auth_context directory (company name, buildings) — absent SQL degrades to null, one extra store read and one REST wave.
   'hermes_organization_name_v1', 'hermes_building_directory_v1',
   // R2c part 2 (c): the asker's display name, same optional degradation.

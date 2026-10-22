@@ -68,6 +68,12 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
     statementSha256: 'bc613cc12b31dffae95f80f13058f2f82a79081ea80cfe19c52b1ebf0cfa309e',
   }),
+  // Thu chi Mốc 3 (20261022044120): cùng khuôn vỏ, thêm p_include_virtual (thu chi nhận toà ảo — chi phí chung).
+  Object.freeze({
+    name: 'public.hermes_write_name_resolve_v2',
+    sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
+    statementSha256: '0668fd72d8207ba675bc0685cd87de32aaa43121768634901c12deb2fffe420c',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

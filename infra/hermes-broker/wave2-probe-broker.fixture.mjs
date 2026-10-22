@@ -24,7 +24,7 @@ function broker(read, action = []) {
     async [finalize]() { return { ok: true }; } });
   const value = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
-    customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
+    customers: port('prepareCustomerAction', 'finalizeCustomerAction'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
     externalGroups: { authority, createService: () => ({}) } });

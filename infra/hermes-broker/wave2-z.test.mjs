@@ -11,7 +11,6 @@ import { DOMAIN_TOOLS } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastInput } from './zalo-broadcast-contract.mjs';
 import { W2, W2_READ_KEY_LIST, W2_ENABLED_KEYS, W2_DISABLED_KEYS, W2_TOOL_NAMES } from './wave2-registry.mjs';
@@ -126,7 +125,7 @@ test('hàng rào gói sau tích hợp: repo sạch; hai gói cùng định nghĩ
 // crm_read_report đi cùng đường MCP nên thừa hưởng đúng rào đó. Test này khoá rào: tool mới có đích hội thoại mà nhận chữ tự
 // do (đường để mô hình chép kết quả báo cáo vào tin nhóm) sẽ làm đỏ.
 const ALL = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-  ...EXPENSE_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL, GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL,
+  ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL, GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL,
   GROUP_SEND_STATUS_TOOL];
 const properties = (schema, path = '') => Object.entries(schema?.properties ?? {}).flatMap(([key, value]) => [[`${path}${key}`, value],
   ...properties(value, `${path}${key}.`), ...(value?.items ? [[`${path}${key}[]`, value.items], ...properties(value.items, `${path}${key}[].`)] : [])]);

@@ -62,6 +62,21 @@ test('name directory: buildings and rooms under the asker RLS, company name for 
     for (const bad of [[], null, Array.from({ length: 257 }, (_, n) => id(1000 + n))]) await assert.rejects(buildings(bad), code('22023'), JSON.stringify(bad));
     await assert.rejects(jwt(pool, async c => c.query('SELECT public.hermes_building_directory_v1($1::uuid,$2::uuid[])', [null, [BUILDING]])), code('22023'));
   });
+  // Thu chi Mốc 3 (20261022044120): danh bạ v2 = v1 + toà ảo khi p_include_virtual (khoá thu chi). Chỉ nạp định nghĩa hàm này (file còn lõi
+  // giải tên ghi v2 cần hàm bỏ dấu/thành viên mà fixture này không có).
+  await t.test('Thu chi Mốc 3 — danh bạ v2: false = v1; true thêm toà ảo dưới RLS người hỏi; NULL ⇒ 22023', async () => {
+    const virtualSql = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(name => /^\d{14}_hermes_name_directory_virtual_v1\.sql$/.test(name))}`, 'utf8')
+      .replaceAll('\r\n', '\n');
+    const start = virtualSql.indexOf('CREATE OR REPLACE FUNCTION public.hermes_building_directory_v2(');
+    await pool.query(virtualSql.slice(start, virtualSql.indexOf('END $fn$;', start) + 'END $fn$;'.length) +
+      '\nREVOKE ALL ON FUNCTION public.hermes_building_directory_v2(uuid,uuid[],boolean) FROM PUBLIC;\nGRANT EXECUTE ON FUNCTION public.hermes_building_directory_v2(uuid,uuid[],boolean) TO authenticated;');
+    const v2 = (ids, include, user = USER) => jwt(pool, async c => (await c.query('SELECT public.hermes_building_directory_v2($1::uuid,$2::uuid[],$3) value', [ORG, ids, include])).rows[0].value, user);
+    assert.deepEqual(await v2(ALL, false), await buildings(ALL), 'false = v1');
+    assert.deepEqual(await v2(ALL, true), { buildings: [{ id: B2, name: 'London Garden', code: null }, { id: BUILDING, name: 'Toà 950NK', code: '950NK' },
+      { id: BV, name: 'Toà Ảo', code: 'AO' }, { id: B3, name: 'Tòa Điện Biên Phủ', code: 'DBP' }] }, 'toà ảo có, toà đã xoá/công ty khác vẫn không');
+    assert.deepEqual(await v2(ALL, true, USER2), { buildings: [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }] }, 'RLS người hỏi vẫn quyết');
+    await assert.rejects(v2(ALL, null), code('22023'));
+  });
   await t.test('rooms: exact name/code first, contains otherwise, Vietnamese case folding, deleted rooms and rooms of deleted/virtual/foreign buildings never appear, ≤ 50', async () => {
     const room = (rid, name, cod, building) => ({ id: rid, name, code: cod, floor: 5, buildingId: building });
     assert.deepEqual(await rooms(ALL, ' london 5 '), { rooms: [room(R(3), 'London 5', null, B2), room(ROOM, 'London 5', 'L5', BUILDING)] }, 'exact beats London 50; deleted/virtual/foreign copies absent');

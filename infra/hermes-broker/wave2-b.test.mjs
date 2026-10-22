@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2b, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
+import { sharedW2b, definitionOf, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
 import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ORG_SCOPE, USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
 import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
@@ -134,7 +134,8 @@ test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app
 
 test('mục lục: MỌI báo cáo gói B là private (số liệu tài chính nội bộ) — khai báo JS và mục lục crm_read_report_list', () => inCase(async env => {
   const { db } = env;
-  assert.equal(Object.keys(W2B_REPORTS).length, 19);
+  // 19 + 2 báo cáo thu chi (Mốc 3, 22/10: expense_vouchers, expense_categories).
+  assert.equal(Object.keys(W2B_REPORTS).length, 21);
   for (const [report, spec] of Object.entries(W2B_REPORTS)) {
     assert.equal(spec.private, true, report);
     assert.equal(w2CatalogEntry(report, spec, 'b').private, true, report);
@@ -144,7 +145,7 @@ test('mục lục: MỌI báo cáo gói B là private (số liệu tài chính n
   await db.exec(`INSERT INTO public.super_admins VALUES('${USER}')`);
   const input = W2.reads.report_list.input({ topic: 'tai_chinh' });
   const listed = W2.reads.report_list.result(await env.reportList(input.topic), { effective: { read: keys, action: [] } }, input).items;
-  assert.deepEqual(sorted(listed.map(entry => entry.report)), sorted(Object.keys(W2B_REPORTS)), 'mục lục đủ 19 báo cáo khi đủ khoá');
+  assert.deepEqual(sorted(listed.map(entry => entry.report)), sorted(Object.keys(W2B_REPORTS)), 'mục lục đủ 21 báo cáo khi đủ khoá');
   assert.ok(listed.every(entry => entry.private === true), 'mọi mục private=true');
 }));
 
@@ -792,6 +793,182 @@ for (const probe of probes) {
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
     await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'bản sống từ chối'));
     await inCase(async env => {
+      for (const sql of changed) await env.db.exec(sql);
+      assert.equal(await probe.run(env), true, 'bản đột biến lọt');
+    });
+  });
+}
+
+// ===== Thu chi Mốc 3 (22/10/2026): phiếu chi theo tiền/tuổi và tổng theo hạng mục — hàm dùng chung 20261022051029 (file không nêu hàm của
+// trợ lý, như 20261018020050) + catalog/nhánh đọc 20261022051032. Như trang Thu chi web (src/hooks/income-expenses/queries.ts: income_expenses
+// dưới RLS, chưa xoá, PHIẾU CHI, ngày phiếu, mặc định ALL_ACTIVE = đã duyệt + chờ duyệt), mọi toà của khoá KỂ CẢ toà ảo (chi phí chung). Số
+// khớp truy vấn web chạy dưới vai người hỏi (parity).
+const EXPENSE_SHARED = readFileSync('supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql', 'utf8');
+const expenseSql = [EXPENSE_SHARED, readFileSync('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql', 'utf8')].join('\n');
+const IE = 'income_expenses.view', EX = n => `0b0b0b0b-0000-4000-8000-00000000${String(900 + n).padStart(4, '0')}`;
+async function expenseSetup(env) {
+  const { db } = env;
+  await db.exec(`INSERT INTO public.fixture_building_access VALUES('${VIRTUAL}') ON CONFLICT DO NOTHING;
+    INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,voucher_date,total_amount,approval_status,kqkd_amount) VALUES
+      ('${EX(1)}','${ORG}','${OTHER_USER}','PC-901','EXPENSE','Văn phòng phẩm chung','${VIRTUAL}','2026-10-14',94219000,'APPROVED',0),
+      ('${EX(2)}','${ORG}','${OTHER_USER}','PC-902','EXPENSE','Phiếu huỷ','${BUILDING}','2026-10-05',20000000,'CANCELLED',0),
+      ('${EX(3)}','${ORG}','${OTHER_USER}','PC-903','EXPENSE','Tháng trước','${BUILDING}','2026-09-30',50000000,'APPROVED',0);
+    INSERT INTO public.income_expense_items(income_expense_id,income_expense_type_id,amount,accounting_class) VALUES('${EX(1)}','${CATEGORY}',94219000,'PNL');
+    UPDATE public.income_expenses SET created_at='2026-10-01T03:00:00Z' WHERE code='PC-405';`);
+  await grantRead(db, [IE], { buildings: [BUILDING, OTHER_BUILDING, VIRTUAL] });
+  await orgOverlay(db);
+}
+const OCT = { fromDate: '2026-10-01', toDate: '2026-10-31' };
+const codes = value => value.items.map(row => row.code);
+// Truy vấn của trang Thu chi (lọc như useIncomeExpenses: công ty, PHIẾU CHI, ngày phiếu, ALL_ACTIVE) dưới vai người hỏi.
+const webList = (env, extra = '') => webRows(env, `SELECT code,total_amount FROM public.income_expenses WHERE organization_id=$1 AND deleted_at IS NULL AND type='EXPENSE'
+  AND voucher_date BETWEEN '2026-10-01' AND '2026-10-31' AND approval_status IN ('APPROVED','UNAPPROVED') ${extra} ORDER BY total_amount DESC,code`, [ORG]);
+
+test('Thu chi Mốc 3 — expense_vouchers = trang Thu chi web: lớn trước, kể cả toà ảo, mặc định đã duyệt + chờ duyệt; tổng trên MỌI phiếu, hàng phân trang', { timeout: 120000 }, () => inCase(async env => {
+  await expenseSetup(env);
+  const value = await all(env, 'expense_vouchers', OCT);
+  assert.deepEqual(codes(value), ['PC-901', 'PC-405', 'PC-503', 'PC-501', 'PC-401', 'PC-403', 'PC-404', 'PC-502'],
+    'toà ảo có mặt; phiếu huỷ, tháng trước, phiếu thu, phiếu hạn chế của người khác không; phiếu hạn chế của chính mình có (như RLS web)');
+  const web = await webList(env);
+  assert.deepEqual(value.items.map(row => [row.code, num(row.totalAmount)]), web.map(row => [row.code, num(row.total_amount)]), 'parity: đúng tập + thứ tự tiền của web');
+  assert.deepEqual([value.summary.count, num(value.summary.totalAmount), num(value.summary.maxAmount), value.summary.buildings, value.summary.restrictedIncluded],
+    [web.length, web.reduce((sum, row) => sum + num(row.total_amount), 0), 94219000, 3, false]);
+  assert.deepEqual(value.summary.byBuilding.map(entry => [entry.buildingId, entry.count, num(entry.totalAmount)]),
+    [[VIRTUAL, 1, 94219000], [BUILDING, 5, 13600000], [OTHER_BUILDING, 2, 800000]]);
+  const first = value.items[0];
+  assert.deepEqual([first.buildingId, first.buildingName, first.categories, first.approvalStatus, first.pendingDays, first.voucherDate],
+    [VIRTUAL, 'Chung', 'Sửa chữa', 'APPROVED', null, '2026-10-14']);
+  // Phân trang: trang 3 dòng vẫn mang tổng của cả tập (không phải của trang).
+  const page = await run(env, 'expense_vouchers', OCT, { limit: 3 });
+  assert.deepEqual([codes(page), page.nextOffset, page.summary.count], [['PC-901', 'PC-405', 'PC-503'], 3, 8]);
+  // Mặc định tháng của "hôm nay" (fixture 2026-10-16); chỉ fromDate ⇒ tới hôm nay; chỉ toDate ⇒ từ đầu tháng của toDate.
+  const month = (await run(env, 'expense_vouchers')).summary;
+  assert.deepEqual([month.fromDate, month.toDate], ['2026-10-01', '2026-10-31']);
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { fromDate: '2026-10-08' })), ['PC-901', 'PC-405', 'PC-503', 'PC-501', 'PC-502']);
+  assert.equal((await run(env, 'expense_vouchers', { fromDate: '2026-10-08' })).summary.toDate, '2026-10-16');
+  assert.equal((await run(env, 'expense_vouchers', { toDate: '2026-09-30' })).summary.fromDate, '2026-09-01');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { toDate: '2026-09-30' })), ['PC-903']);
+}));
+
+test('Thu chi Mốc 3 — expense_vouchers: ngưỡng tiền, toà (ảo), trạng thái, chờ duyệt theo tuổi, chữ tìm bỏ dấu, phiếu hạn chế khi restricted_view phủ mọi toà', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  await expenseSetup(env);
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, minAmount: 1000000 })), ['PC-901', 'PC-405', 'PC-503', 'PC-501'], '≥ 1 triệu');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, buildingId: VIRTUAL })), ['PC-901'], 'toà ảo (chi phí chung) lọc được');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, status: 'CANCELLED' })), ['PC-902']);
+  const pending = await all(env, 'expense_vouchers', { ...OCT, status: 'UNAPPROVED', kind: 'oldest' });
+  assert.deepEqual([codes(pending), pending.items[0].pendingDays], [['PC-405'], 15], 'lập 01/10, hôm nay 16/10');
+  assert.equal(codes(await all(env, 'expense_vouchers', { ...OCT, kind: 'oldest' }))[0], 'PC-405', 'kind=oldest: lập sớm nhất trước');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, query: 'chua duyet' })), ['PC-405'], 'bỏ dấu, tên phiếu');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, query: 'SỬA CHỮA' })), ['PC-901', 'PC-405', 'PC-401', 'PC-403'], 'tên hạng mục');
+  // restricted_view phủ MỌI toà của báo cáo (kể cả toà ảo) ⇒ phiếu hạn chế của người khác (PC-402) như web.
+  await grantRead(db, [RESTRICTED], { buildings: [BUILDING, OTHER_BUILDING] });
+  assert.equal(codes(await all(env, 'expense_vouchers', OCT)).includes('PC-402'), false, 'không phủ toà ảo ⇒ vẫn ẩn');
+  await grantRead(db, [RESTRICTED], { buildings: [BUILDING, OTHER_BUILDING, VIRTUAL] });
+  const value = await all(env, 'expense_vouchers', OCT);
+  assert.deepEqual([codes(value).includes('PC-402'), value.summary.count, value.summary.restrictedIncluded], [true, 9, true]);
+  assert.equal((await webList(env)).length, 9, 'parity với web khi có quyền xem phiếu hạn chế');
+}));
+
+test('Thu chi Mốc 3 — expense_categories: tổng CHI theo hạng mục × toà và cả phạm vi (summary.categories), cùng bộ lọc phiếu với expense_vouchers', { timeout: 120000 }, () => inCase(async env => {
+  await expenseSetup(env);
+  const value = await all(env, 'expense_categories', OCT);
+  assert.deepEqual(value.items.map(row => [row.buildingId, row.typeId, row.typeName, row.voucherCount, num(row.totalAmount)]), [
+    [VIRTUAL, CATEGORY, 'Sửa chữa', 1, 94219000], [BUILDING, CATEGORY, 'Sửa chữa', 2, 9800000], [OTHER_BUILDING, CATEGORY, 'Sửa chữa', 1, 600000],
+    [BUILDING, RESTRICTED_CATEGORY, null, 1, 300000]], 'hạng mục hạn chế RLS giấu tên ⇒ null, tiền vẫn đúng hạng mục');
+  assert.deepEqual(value.summary.categories.map(entry => [entry.typeId, entry.voucherCount, num(entry.totalAmount)]),
+    [[CATEGORY, 4, 104619000], [RESTRICTED_CATEGORY, 1, 300000]]);
+  assert.equal(num(value.summary.totalAmount), 104919000);
+  // Parity với web lọc hạng mục "Sửa chữa" (phiếu có dòng hạng mục đó, ALL_ACTIVE, dưới RLS).
+  const web = await webList(env, `AND EXISTS(SELECT 1 FROM public.income_expense_items it WHERE it.income_expense_id=income_expenses.id AND it.income_expense_type_id='${CATEGORY}')`);
+  assert.deepEqual([web.length, web.reduce((sum, row) => sum + num(row.total_amount), 0)], [4, 104619000]);
+  assert.deepEqual((await all(env, 'expense_categories', { ...OCT, status: 'UNAPPROVED' })).summary.categories.map(entry => [entry.typeId, num(entry.totalAmount)]),
+    [[CATEGORY, 9000000]]);
+  assert.deepEqual((await all(env, 'expense_categories', { ...OCT, buildingId: VIRTUAL })).items.map(row => num(row.totalAmount)), [94219000]);
+}));
+
+test('Thu chi Mốc 3 — cấu trúc: hai hàm dùng chung INVOKER search_path rỗng, chỉ authenticated, tự từ chối ngoài vai authenticated; file không ghi dữ liệu', () => inCase(async ({ db }) => {
+  assert.doesNotMatch(stripComments(expenseSql), /\bDROP\b|ALTER TABLE|INSERT INTO|UPDATE public|DELETE FROM/i);
+  assert.doesNotMatch(EXPENSE_SHARED, /\bhermes_/i, 'file hàm dùng chung không nêu hàm của trợ lý');
+  assert.doesNotMatch(stripComments(block(expenseSql, 'app_private.hermes_w2b_read_v1')).replace(/^CREATE OR REPLACE FUNCTION app_private\.hermes_w2b_read_v1/, ''), /app_private\./);
+  for (const name of ['public.ie_expense_vouchers_v1', 'public.ie_expense_categories_v1']) {
+    const proc = (await db.query(`SELECT p.prosecdef d,p.proconfig c,has_function_privilege('authenticated',p.oid,'EXECUTE') a,has_function_privilege('anon',p.oid,'EXECUTE') n
+      FROM pg_proc p JOIN pg_namespace s ON s.oid=p.pronamespace WHERE s.nspname||'.'||p.proname=$1`, [name])).rows[0];
+    assert.deepEqual([proc.d, proc.c, proc.a, proc.n], [false, ['search_path=""'], true, false], name);
+  }
+  for (const sql of [`SELECT count(*) FROM public.ie_expense_vouchers_v1('${ORG}',ARRAY['${BUILDING}'::uuid],'2026-10-01','2026-10-31')`,
+    `SELECT count(*) FROM public.ie_expense_categories_v1('${ORG}',ARRAY['${BUILDING}'::uuid],'2026-10-01','2026-10-31')`]) {
+    await db.exec('SAVEPOINT role_check');
+    const failed = await db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true); ${sql}`).then(() => null, error => error);
+    await db.exec('ROLLBACK TO SAVEPOINT role_check; RELEASE SAVEPOINT role_check');
+    assert.equal(failed?.code, '42501', sql);
+  }
+}));
+
+// Mốc 3b (review): hai file THAY THÂN hàm đã có trên production ghim md5 thân đang chạy trong $requires$ — lệch (một bản vá khác đã
+// thay hàm) ⇒ dừng, không đè mất vá; thân production hoặc chính thân của file (chạy lại) ⇒ qua.
+test('Mốc 3b — ghim thân đang chạy: $requires$ dừng khi thân lệch, qua khi là bản production hoặc chính thân của file', () => inCase(async ({ db }) => {
+  const requiresOf = path => { const found = readFileSync(path, 'utf8').match(/DO \$requires\$[\s\S]*?END \$requires\$;/); assert.ok(found, path); return found[0]; };
+  const PARAM = requiresOf('supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql');
+  const READS = requiresOf('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql');
+  await db.exec(PARAM); await db.exec(READS); // fixture đã áp hai file: thân của chính file ⇒ qua
+  const cases = [[PARAM, 'app_private.hermes_w2_param_names_v1()', 'hermes_w2_min_amount_param_body_drift'],
+    [PARAM, 'app_private.hermes_w2_params_v1(jsonb,jsonb)', 'hermes_w2_min_amount_param_body_drift'],
+    [READS, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_reports_body_drift'],
+    [READS, 'app_private.hermes_w2b_read_v1(text,jsonb,jsonb)', 'hermes_w2b_expense_reports_body_drift']];
+  for (const [guard, signature, message] of cases) {
+    await db.exec('SAVEPOINT drift');
+    const definition = (await db.query('SELECT pg_get_functiondef($1::regprocedure) d', [signature])).rows[0].d;
+    // "Bản vá khác": cùng thân thêm một dòng chú thích ⇒ md5 khác cả bản production lẫn bản của file.
+    await db.exec(definition.replace(/AS \$function\$\n/, 'AS $function$\n-- vá của phiên khác\n'));
+    const failed = await db.exec(guard).then(() => null, error => error);
+    await db.exec('ROLLBACK TO SAVEPOINT drift; RELEASE SAVEPOINT drift');
+    assert.match(failed?.message ?? '', new RegExp(message), signature);
+  }
+  // Bản production (thân trước mỗi file, = file gốc 20261018000000 / 020200 / 080200) cũng qua — từng file theo thứ tự áp (file báo cáo
+  // đòi minAmount mà file tham số thêm trước nó).
+  for (const [guard, pairs] of [[PARAM, [['20261018000000_hermes_w2_foundation_v1', 'app_private.hermes_w2_param_names_v1'],
+      ['20261018000000_hermes_w2_foundation_v1', 'app_private.hermes_w2_params_v1']]],
+    [READS, [['20261018020200_hermes_w2b_finance_read_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261018080200_hermes_w2z_finance_fail_closed_v1', 'app_private.hermes_w2b_read_v1']]]]) {
+    await db.exec('SAVEPOINT production');
+    for (const [file, name] of pairs) await db.exec(definitionOf(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'), name));
+    await db.exec(guard);
+    await db.exec('ROLLBACK TO SAVEPOINT production; RELEASE SAVEPOINT production');
+  }
+}));
+
+// Đột biến trên hàng rào riêng của hai báo cáo (bản sống = hai file 20261022051029 + 20261022051032).
+const expenseLive = [...expenseSql.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)].map(match => match[0]).join('\n\n');
+const expenseMutate = (from, to) => replaceExactly(expenseLive, from, to);
+// Web thấy phiếu hạn chế (CRM restricted_view ở toà B: can_view_restricted_ie đúng ở bất kỳ đâu) nhưng Read của kết nối không phủ mọi toà
+// ⇒ chỉ hàng rào của Hermes ẩn PC-402 (RLS không che hộ).
+const webSeesRestricted = db => db.exec(`INSERT INTO public.fixture_acl(permission,allowed,org_wide,building_ids) VALUES('${RESTRICTED}',true,false,ARRAY['${OTHER_BUILDING}'::uuid])
+  ON CONFLICT(permission) DO UPDATE SET allowed=true,org_wide=false,building_ids=EXCLUDED.building_ids`);
+const VOUCHER_FILTER = `    AND (p_min_amount IS NULL OR ie.total_amount>=p_min_amount)
+    AND (p_include_restricted OR NOT COALESCE(ie.has_restricted_item,false) OR ie.user_id=auth.uid())
+    AND (v_query IS NULL`;
+const expenseProbes = [
+  { name: 'mặc định ALL_ACTIVE (không gồm phiếu huỷ)', sql: expenseMutate(`ie.approval_status IN ('APPROVED','UNAPPROVED') ELSE ie.approval_status=p_status END
+    AND (p_min_amount IS NULL`, `ie.approval_status IN ('APPROVED','UNAPPROVED','CANCELLED') ELSE ie.approval_status=p_status END
+    AND (p_min_amount IS NULL`),
+    run: async env => codes(await all(env, 'expense_vouchers', OCT)).includes('PC-902') },
+  { name: 'ngưỡng tiền minAmount', sql: expenseMutate(VOUCHER_FILTER, VOUCHER_FILTER.replace('ie.total_amount>=p_min_amount', 'true')),
+    run: async env => codes(await all(env, 'expense_vouchers', { ...OCT, minAmount: 1000000 })).includes('PC-401') },
+  { name: 'phiếu hạn chế của người khác (phiếu chi)', sql: expenseMutate(VOUCHER_FILTER, VOUCHER_FILTER.replace('p_include_restricted OR NOT', 'true OR NOT')),
+    run: async env => { await webSeesRestricted(env.db); return codes(await all(env, 'expense_vouchers', OCT)).includes('PC-402'); } },
+  { name: 'phiếu hạn chế của người khác (theo hạng mục)', sql: expenseMutate(`    AND (p_include_restricted OR NOT COALESCE(ie.has_restricted_item,false) OR ie.user_id=auth.uid())
+  GROUP BY`, `    AND (true OR NOT COALESCE(ie.has_restricted_item,false) OR ie.user_id=auth.uid())
+  GROUP BY`),
+    run: async env => { await webSeesRestricted(env.db); return num((await all(env, 'expense_categories', OCT)).summary.totalAmount) !== 104919000; } },
+  { name: 'tổng trên MỌI phiếu (không phải trang)', sql: expenseMutate(`        INTO v_rows,v_capped,v_summary FROM v;`, `        INTO v_rows,v_capped,v_summary FROM (SELECT * FROM v WHERE v.ord<=3) v;`),
+    run: async env => (await run(env, 'expense_vouchers', OCT, { limit: 3 })).summary.count !== 8 },
+];
+for (const probe of expenseProbes) {
+  const changed = changedFunctions(expenseLive, probe.sql);
+  test(`mutation is caught (Thu chi Mốc 3): ${probe.name}`, { timeout: 120000 }, async () => {
+    await inCase(async env => { await expenseSetup(env); assert.equal(await probe.run(env), false, 'bản sống từ chối'); });
+    await inCase(async env => {
+      await expenseSetup(env);
       for (const sql of changed) await env.db.exec(sql);
       assert.equal(await probe.run(env), true, 'bản đột biến lọt');
     });

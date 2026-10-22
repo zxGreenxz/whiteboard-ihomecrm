@@ -23,6 +23,8 @@ const DIGEST = 'd'.repeat(64), VERSION = 'c'.repeat(64);
 const code = expected => error => error instanceof BrokerError && error.code === expected;
 const unresolved = pattern => error => error instanceof BrokerError && error.code === 'read_name_unresolved' && pattern.test(error.detail);
 const BUILDINGS = [{ id: A, name: 'Toà 950NK', code: '950NK' }, { id: B, name: 'London Garden', code: null }, { id: C, name: 'London Park', code: 'LP' }];
+// Toà ảo (chi phí chung): chỉ danh bạ v2 với p_include_virtual trả.
+const VIRTUAL_BUILDING = { id: V, name: 'Kho Văn Phòng Chung', code: null };
 const ROOMS = [{ id: R(1), name: 'London 5', code: null, floor: 5, buildingId: A }, { id: R(2), name: 'London 50', code: null, floor: 5, buildingId: A },
   { id: R(3), name: 'London 5', code: null, floor: 5, buildingId: B }, { id: R(4), name: 'Studio 1', code: 'L5', floor: 1, buildingId: C },
   ...[5, 6, 7, 8, 9, 10].map(n => ({ id: R(n), name: `P${n}`, code: null, floor: 1, buildingId: C })), { id: R(11), name: 'P55', code: null, floor: 5, buildingId: B },
@@ -40,6 +42,9 @@ function fakeRpc(calls = []) {
   return async (name, accessToken, args, { signal }) => {
     assert.ok(signal instanceof AbortSignal); calls.push({ name, accessToken, args: structuredClone(args) });
     if (name === 'hermes_building_directory_v1') return { buildings: BUILDINGS.filter(row => args.p_building_ids.includes(row.id)) };
+    // v2 (Thu chi Mốc 3): như v1, thêm toà ảo khi p_include_virtual.
+    if (name === 'hermes_building_directory_v2') return { buildings: [...BUILDINGS, ...(args.p_include_virtual ? [VIRTUAL_BUILDING] : [])]
+      .filter(row => args.p_building_ids.includes(row.id)) };
     if (name === 'hermes_room_directory_v1') return { rooms: directoryRooms(args) };
     if (name === 'hermes_organization_name_v1') return { id: args.p_organization_id, name: 'Công ty Thử' };
     throw new Error(`unexpected rpc ${name}`);
@@ -110,7 +115,8 @@ test('splitReadNames: names leave the arguments before the validator; blanks are
     assert.equal(Object.hasOwn(properties, 'roomName'), spec.room === 'rows', tool.name);
     if (spec.room === 'rows' && !spec.reports) assert.ok(Object.hasOwn(DOMAIN_READS[operation].fields ?? {}, 'roomId') || DOMAIN_READS[operation].reports, `${tool.name}: rows carry roomId`);
   }
-  assert.deepEqual(DIRECTORY_RPCS, ['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1', 'hermes_user_display_name_v1']);
+  assert.deepEqual(DIRECTORY_RPCS, ['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1', 'hermes_user_display_name_v1',
+    'hermes_building_directory_v2']);
 });
 
 test('buildingName: exact name/code first (case-insensitive), then contains; 0 ⇒ detail; ≥2 ⇒ detail lists the names in scope; buildingId must agree', async () => {
@@ -155,6 +161,33 @@ test('directory cache: one RPC per token+permission for 5 minutes; a new context
   assert.deepEqual(calls.slice(before).map(call => call.name), ['hermes_room_directory_v1', 'hermes_room_directory_v1']);
   assert.throws(() => createReadNameResolver({ rpc: fakeRpc(), ttlMs: 300_001 }), /invalid_read_name_resolver/);
   assert.throws(() => createReadNameResolver({}), /invalid_read_name_resolver/);
+});
+
+test('toà ảo (Thu chi Mốc 3): khoá income_expenses.view giải tên qua danh bạ v2 nhận toà ảo; khoá khác vẫn v1 bỏ toà ảo; cache tách theo loại danh bạ', async () => {
+  const { calls, resolve } = setup();
+  const identity = identityOf(KEYS, [A, B, C, V]);
+  const run = (operation, input, names) => resolve(operation, input, names, { identity });
+  // Câu ma trận 22/10: "tháng này kho văn phòng chung chi bao nhiêu" (không dấu cũng khớp).
+  assert.equal((await run('income_expenses', {}, { buildingName: 'kho van phong chung' })).input.buildingId, V);
+  assert.equal((await run('report', { report: 'expense_vouchers', params: {} }, { buildingName: 'Kho Văn Phòng Chung' })).input.params.buildingId, V);
+  await assert.rejects(run('customers', {}, { buildingName: 'Kho Văn Phòng Chung' }), unresolved(/Không thấy toà 'Kho Văn Phòng Chung'/));
+  await assert.rejects(run('report', { report: 'top_expenses', params: { month: '2026-10' } }, { buildingName: 'Kho Văn Phòng Chung' }),
+    unresolved(/Không thấy toà/), 'top_expenses (khoá Phân tích tài chính) giữ v1');
+  assert.deepEqual(calls.filter(call => call.name.startsWith('hermes_building_directory')).map(call => [call.name, call.args.p_include_virtual ?? null]),
+    [['hermes_building_directory_v2', true], ['hermes_building_directory_v1', null], ['hermes_building_directory_v1', null]],
+    'hai lời gọi thu chi cùng khoá: một RPC v2 (cache); khoá khác: v1');
+  // Connector phát hành TRƯỚC migration: v2 vắng (transport trả null cho PGRST202 khi optional) ⇒ v1 như trước — toà thường vẫn giải được,
+  // toà ảo chưa (không hỏng thành backend_unavailable).
+  const absent = [];
+  const before = createReadNameResolver({ rpc: async (name, accessToken, args, options, transport) => {
+    absent.push([name, transport?.optional ?? false]);
+    if (name === 'hermes_building_directory_v2') { assert.equal(transport?.optional, true, 'v2 luôn gọi optional'); return null; }
+    return fakeRpc()(name, accessToken, args, options);
+  } });
+  const resolveBefore = (operation, input, names) => before.resolve({ operation, input, names, lane: 'legacy', accessToken: 'bearer-fixture', identity,
+    tokenDigest: DIGEST, signal });
+  assert.equal((await resolveBefore('income_expenses', {}, { buildingName: '950nk' })).input.buildingId, A);
+  assert.deepEqual(absent, [['hermes_building_directory_v2', true], ['hermes_building_directory_v1', false]]);
 });
 
 test('roomName: searched inside the resolved building or the whole scope; duplicates across buildings pass together up to 5 like the web; more or a one-room report asks for the building', async () => {

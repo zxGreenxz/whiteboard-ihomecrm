@@ -40,7 +40,7 @@ const inputFiles = ['infra/hermes-runtime/runtime-contract.mjs', 'infra/hermes-r
     'group-preview-mount', 'capability-contract', 'external-group-mount', 'durable-authority',
     'durable-connection-store', 'room-read-service', 'group-room-preview', 'group-preview-adapter',
     'session-crypto', 'room-read-projection', 'external-group-adapter', 'store-transport',
-    'customer-action-contract', 'expense-action-contract', 'request-id-contract', 'task-contract',
+    'customer-action-contract', 'request-id-contract', 'task-contract',
     'task-input-contract', 'clock-skew'].map(name => `infra/hermes-broker/${name}.mjs`),
   'src/lib/roomSaleFacts.ts'];
 const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), status: 'BLOCKED', mode,
