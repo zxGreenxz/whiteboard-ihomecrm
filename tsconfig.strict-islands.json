@@ -16,6 +16,11 @@
   },
   "include": [],
   "files": [
+    "src/components/network-center/tabs/CamerasTab.tsx",
+    "src/hooks/network-center/useBuildingCameras.ts",
+    "src/lib/network-center/cameraContracts.ts",
+    "src/lib/network-center/cameraDemo.ts",
+    "src/lib/network-center/cameraRepository.ts",
     "src/lib/quickExpense.ts",
     "src/hooks/income-expenses/useQuickExpense.ts",
     "src/components/income-expenses/QuickExpenseActions.tsx",

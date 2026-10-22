@@ -35,6 +35,7 @@ export const NETWORK_CENTER_TABS = [
   { value: "interfaces", label: "Cổng giao tiếp" },
   { value: "clients", label: "Thiết bị kết nối" },
   { value: "topology", label: "Aruba & sơ đồ" },
+  { value: "cameras", label: "Camera" },
   { value: "incidents", label: "Sự cố & SLA" },
   { value: "configuration", label: "Cấu hình" },
   { value: "backups", label: "Sao lưu & so sánh" },

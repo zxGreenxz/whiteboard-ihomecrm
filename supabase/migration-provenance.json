@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T17:29:37.783Z",
+  "generatedAt": "2026-10-22T18:36:30.800Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 831,
+    "ledger-applied": 836,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -12202,6 +12202,50 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261018052307_an_khach_network_center_clients_khi_thieu_quyen.sql",
+      "version": "20261018052307",
+      "name": "an_khach_network_center_clients_khi_thieu_quyen",
+      "scheme": "timestamp14",
+      "sha256": "e591b23d4d6b9e942e58806c2e4bc16004f29fe6a8bc731aca1a703a77050d8b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T17:33:45.483Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018052723_chot_so_quy_chi_so_nguoi_goi_nhin_thay.sql",
+      "version": "20261018052723",
+      "name": "chot_so_quy_chi_so_nguoi_goi_nhin_thay",
+      "scheme": "timestamp14",
+      "sha256": "d93c78bf458d7b6d6941a64a34c981e143e33e338de6d29395582b9c1c0cab1e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T17:37:38.997Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.sql",
+      "version": "20261018052932",
+      "name": "vong_doi_tien_phong_doi_khoa_man_hinh",
+      "scheme": "timestamp14",
+      "sha256": "c165eb834f8d435677ffde895a30dfed0c572faa58eac4bfba5f6a42e2c2c4c2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T17:40:45.543Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018053756_areas_select_theo_bo_giai_quyen_hien_hanh.sql",
+      "version": "20261018053756",
+      "name": "areas_select_theo_bo_giai_quyen_hien_hanh",
+      "scheme": "timestamp14",
+      "sha256": "65b29478cbe23fbaa19576bab4383aeff066f17ddb9a7ad82d8187a26d4c1052",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T17:43:56.179Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql",
       "version": "20261018080000",
       "name": "hermes_w2z_shared_fixes_v1",
@@ -13002,6 +13046,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T15:05:00.801Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql",
+      "version": "20261022145352",
+      "name": "network_center_camera_monitoring_v1",
+      "scheme": "timestamp14",
+      "sha256": "19358a71c8ba6894411382e68b6ec86feb5f74b4fef2dba50dba997a64eedc5f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T18:18:50.859Z|bien-nhan-backup"
       ]
     },
     {
