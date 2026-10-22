@@ -146,8 +146,8 @@ describe("GĐ3 — file phải KHỚP inventory, không được sửa tay", () 
         // Quyết định gỡ rào phải có lý do + người duyệt trong sổ miễn trừ (inventory đọc từ production).
         const dong = (inventory.rows as Array<{ table_name: string; exemption_reason: string | null; decided_by: string | null }>)
           .find((r) => r.table_name === t);
-        expect(dong.exemption_reason, t).toBeTruthy();
-        expect(dong.decided_by, t).toBeTruthy();
+        expect(dong?.exemption_reason, t).toBeTruthy();
+        expect(dong?.decided_by, t).toBeTruthy();
         continue;
       }
       expect(bangTrongSql).not.toContain(t);
