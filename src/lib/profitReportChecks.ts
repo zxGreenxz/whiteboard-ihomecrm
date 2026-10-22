@@ -548,6 +548,13 @@ export const summarizeRoomNotes = (
   return out;
 };
 
+/**
+ * Số điền sẵn khi bấm "Lập phiếu" ở một ô chi cố định: thiếu hẳn ⇒ nguyên mức; thiếu số ⇒ PHẦN CÒN THIẾU
+ * (điền nguyên mức rồi lưu là cộng trùng phần đã có); chưa khai mức ⇒ 0 (người dùng tự nhập).
+ */
+export const fixedFeePrefillAmount = (cell: Pick<FixedFeeCell, 'status' | 'expected' | 'gap'>): number =>
+  cell.status === 'SHORT' ? Math.max(0, cell.gap) : cell.expected ?? 0;
+
 const vnd = (n: number): string => `${Math.round(n).toLocaleString('vi-VN')} đ`;
 const ddmm = (iso: string | null | undefined): string => {
   const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso ?? '');

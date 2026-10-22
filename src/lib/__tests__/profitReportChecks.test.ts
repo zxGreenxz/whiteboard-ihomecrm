@@ -4,6 +4,7 @@ import {
   activeRoomNoteText,
   buildFeeKeyContext,
   endedUnsettledNoteText,
+  fixedFeePrefillAmount,
   classifyFixedFee,
   computeFixedFeeChecks,
   computeProfitReportChecks,
@@ -301,6 +302,14 @@ describe('summarizeRoomNotes', () => {
       endedUnsettledRemaining: 1_000_000,
     });
     expect(summarizeRoomNotes(undefined).vacantRooms).toBe(0);
+  });
+});
+
+describe('số điền sẵn khi "Lập phiếu" từ ô chi cố định', () => {
+  it('thiếu hẳn ⇒ nguyên mức; thiếu số ⇒ phần còn thiếu (không cộng trùng phần đã có); chưa khai mức ⇒ 0', () => {
+    expect(fixedFeePrefillAmount({ status: 'MISSING', expected: 5_000_000, gap: 5_000_000 })).toBe(5_000_000);
+    expect(fixedFeePrefillAmount({ status: 'SHORT', expected: 132_000_000, gap: 62_000_000 })).toBe(62_000_000);
+    expect(fixedFeePrefillAmount({ status: 'MISSING', expected: null, gap: 0 })).toBe(0);
   });
 });
 

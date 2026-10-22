@@ -42,6 +42,7 @@ import {
   activeRoomNoteText,
   computeProfitReportChecks,
   endedUnsettledNoteText,
+  fixedFeePrefillAmount,
   summarizeRoomNotes,
   type FixedFeeCell,
   type ProfitCheckBuilding,
@@ -500,7 +501,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       building_id: cell.buildingId,
       period: { start_date: startDate, end_date: endDate },
       items: type
-        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: cell.expected ?? 0 }]
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: fixedFeePrefillAmount(cell) }]
         : undefined,
     });
     setExpenseFormOpen(true);

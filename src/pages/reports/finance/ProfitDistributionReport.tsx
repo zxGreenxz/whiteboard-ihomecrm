@@ -32,6 +32,7 @@ import {
   activeRoomNoteText,
   computeProfitReportChecks,
   endedUnsettledNoteText,
+  fixedFeePrefillAmount,
   summarizeRoomNotes,
   type FixedFeeCell,
   type ProfitCheckBuilding,
@@ -790,7 +791,7 @@ function ProfitDistributionDesktop() {
       building_id: cell.buildingId,
       period: { start_date: startDate, end_date: endDate },
       items: type
-        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: cell.expected ?? 0 }]
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: fixedFeePrefillAmount(cell) }]
         : undefined,
     });
     setExpenseFormOpen(true);
@@ -913,7 +914,7 @@ function ProfitDistributionDesktop() {
   const pendingBuildingIds = useMemo(() => pendingBuildingIdsOf(accrual?.rows), [accrual]);
   const ihomeLine = useIhomeProfitLine(ym, scopeIds, displayDiff, {
     // đang tải thì tổng còn là 0 ⇒ chưa trừ được (tránh hiện số âm bằng đúng phần chủ nhà)
-    enabled: profitApplies && !hideStatCards && !loading,
+    enabled: profitApplies && roomId === "all" && !hideStatCards && !loading,
     sameBasis: accrualMode && pnlOnly,
     pendingBuildingIds,
   });

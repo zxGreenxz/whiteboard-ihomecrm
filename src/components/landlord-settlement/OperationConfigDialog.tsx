@@ -75,6 +75,9 @@ export function OperationConfigDialog({
   const [buildingId, setBuildingId] = useState<string | null>(initialBuildingId);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  // updated_at của cấu hình lúc NẠP nháp (không phải bản cache mới nhất) — gửi kèm khi lưu để server từ
+  // chối nếu người khác đã lưu sau đó, thay vì ghi đè số của họ bằng số cũ đang hiện trên hộp
+  const [seenUpdatedAt, setSeenUpdatedAt] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -118,6 +121,7 @@ export function OperationConfigDialog({
       const thang = vnYmOf();
       setDraft({ ...EMPTY, month: thang, termsMonth: thang });
     }
+    setSeenUpdatedAt(c ? c.updated_at : null);
     setLoadedFor(buildingId);
   }, [buildingId, options.data, options.isFetching, loadedFor]);
 
@@ -231,6 +235,7 @@ export function OperationConfigDialog({
         // thì server so với tháng mặc định — xem một mốc khác rồi lưu sẽ đè điều khoản các tháng chưa chốt)
         termsFrom: cur ? monthToDate(draft.termsMonth) : null,
         openingSeenPreStart: cur ? preStart : null,
+        expectedUpdatedAt: seenUpdatedAt,
       });
       // trạng thái SAU khi lưu do server tính (cọc trước kỳ theo tháng / sổ mới), không đoán theo số cũ trên màn
       if (r.opening_needs_reconfirm || r.opening_needs_confirm) {

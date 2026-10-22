@@ -875,7 +875,7 @@
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     },
     "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql": {
-      "sha256": "6201aece3052bf18792b700147dda9912a4a918af16683ca023c5bb61036ade1",
+      "sha256": "e26597399d8ba0dda6e85fb8872072b10010de9debce1e680ddd98409f668404",
       "missingObjects": [
         "table:app_private.landlord_operations",
         "table:app_private.landlord_operation_terms",

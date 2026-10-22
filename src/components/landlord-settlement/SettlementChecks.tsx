@@ -106,7 +106,7 @@ export function KqkdBridgeBlock({ bridge }: { bridge: KqkdBridge }) {
     <details className="rounded-lg border p-3 text-sm" data-testid="settlement-kqkd-bridge" open={loiKyThuat}>
       <summary className="cursor-pointer font-medium">
         Đối chiếu với Báo cáo LN (KQKD toà) ·{' '}
-        {diff === 0 && bridge.rows.length === 0
+        {Math.abs(diff) < 0.5 && bridge.rows.length === 0
           ? <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />khớp từng đồng</span>
           : <span className={loiKyThuat ? 'text-destructive' : 'text-amber-700 dark:text-amber-400'}>
               lệch {formatVND(diff)} ({bridge.rows.length} phiếu)

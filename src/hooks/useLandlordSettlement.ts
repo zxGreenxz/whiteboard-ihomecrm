@@ -187,6 +187,8 @@ export interface UpsertLandlordOperationInput {
   termsFrom: string | null;
   /** Số cọc trước kỳ ở sổ chủ nhà mà màn đã hiện — server chỉ nhận xác nhận khi đúng số này. */
   openingSeenPreStart: number | null;
+  /** updated_at của cấu hình lúc hộp NẠP nháp — người khác lưu sau đó thì server từ chối (40001). */
+  expectedUpdatedAt: string | null;
 }
 
 export const useUpsertLandlordOperation = () => {
@@ -206,6 +208,7 @@ export const useUpsertLandlordOperation = () => {
         p_opening_confirmed: input.openingConfirmed,
         p_terms_from: input.termsFrom,
         p_opening_seen_pre_start: input.openingSeenPreStart,
+        p_expected_updated_at: input.expectedUpdatedAt,
       });
       if (error) throw error;
       const receipt = upsertReceiptSchema.parse(data);

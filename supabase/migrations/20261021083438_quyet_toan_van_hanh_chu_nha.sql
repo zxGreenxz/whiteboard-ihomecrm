@@ -1614,6 +1614,9 @@ $fn$;
 
 REVOKE ALL ON FUNCTION app_private.landlord_operation_state_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
+-- bản 11 tham số (chưa có chống ghi đè) chỉ từng được dựng trên TEST — bỏ để không thành hai hàm trùng tên
+-- mà PostgREST không chọn được (production chưa từng có: IF EXISTS là không làm gì)
+DROP FUNCTION IF EXISTS public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric, boolean, date, numeric);
 CREATE OR REPLACE FUNCTION public.landlord_operation_upsert_v1(
   p_building_id          uuid,
   p_landlord_name        text,
@@ -1625,7 +1628,9 @@ CREATE OR REPLACE FUNCTION public.landlord_operation_upsert_v1(
   p_opening_balance      numeric DEFAULT 0,
   p_opening_confirmed    boolean DEFAULT false,
   p_terms_from           date DEFAULT NULL,
-  p_opening_seen_pre_start numeric DEFAULT NULL
+  p_opening_seen_pre_start numeric DEFAULT NULL,
+  -- updated_at hộp cài đặt đọc lúc mở (landlord_operation_options_v1); NULL = không kiểm (gọi ngoài màn)
+  p_expected_updated_at  timestamptz DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1695,6 +1700,13 @@ BEGIN
 
   SELECT * INTO v_old FROM app_private.landlord_operations o WHERE o.building_id = p_building_id FOR UPDATE;
   v_exists := FOUND;
+  -- chống ghi đè: người khác đã lưu sau lúc hộp này mở ⇒ từ chối, không ghi đè số của họ (và không tạo
+  -- xác nhận số dư đầu kỳ mới cho con số cũ đang hiện trên hộp)
+  IF v_exists AND p_expected_updated_at IS NOT NULL
+     AND v_old.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'Cài đặt toà vừa được người khác sửa — đóng hộp, mở lại để xem bản mới rồi lưu lại'
+      USING ERRCODE = '40001';
+  END IF;
   v_before := app_private.landlord_operation_state_v1(p_building_id);
   SELECT * INTO v_latest
     FROM app_private.landlord_operation_terms t
@@ -2302,8 +2314,10 @@ $fn$;
 --      "Lợi nhuận của iHome" = tổng − phần chủ nhà của các toà vận hành. Phần chủ nhà vẫn tính nhưng
 --      không hiện thành dòng riêng. Trả theo toà × tháng (từ tháng áp dụng, tới tháng hiện tại): tháng
 --      đã chốt lấy số đã chốt, tháng mở lấy số tạm tính (theo kỳ, phiếu đã duyệt). Chỉ toà người gọi xem
---      được — cùng luật can_access_building mà fa_accrual_allocations (nguồn Báo cáo LN) dùng. Kể cả toà
---      đang tạm ngừng: các tháng đã vận hành vẫn là của chủ nhà.
+--      được — cùng luật can_access_building mà fa_accrual_allocations (nguồn Báo cáo LN) dùng. Toà đang
+--      tạm ngừng (is_active = false, không lưu ngày ngừng): chỉ các tháng ĐÃ CHỐT còn được trả (số đã chốt
+--      vẫn là của chủ nhà); tháng mở không tính tạm — cùng luật với bộ dò trước khi chốt LN (chỉ toà đang
+--      áp dụng mới bỏ tiền nhà), để hai màn không mâu thuẫn và tháng sau khi ngừng không bị trừ mãi.
 CREATE OR REPLACE FUNCTION public.landlord_ihome_profit_v1(p_from date, p_to date)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2327,7 +2341,7 @@ BEGIN
   -- tối đa 24 tháng mỗi lần gọi (Báo cáo LN xem 1 tháng + biểu đồ 6 tháng)
   v_from := GREATEST(v_from, (v_to - interval '23 months')::date);
   FOR v_r IN
-    SELECT o.building_id, o.effective_from
+    SELECT o.building_id, o.effective_from, o.is_active
       FROM app_private.landlord_operations o
       JOIN public.buildings b ON b.id = o.building_id AND b.deleted_at IS NULL
      WHERE public.can_access_building(o.building_id)
@@ -2341,6 +2355,11 @@ BEGIN
        ORDER BY c.revision DESC
        LIMIT 1;
       v_closed := FOUND AND v_last.action = 'CLOSE';
+      -- toà tạm ngừng: tháng chưa chốt không tính tạm (xem ghi chú đầu mục)
+      IF NOT v_closed AND NOT v_r.is_active THEN
+        v_m := (v_m + interval '1 month')::date;
+        CONTINUE;
+      END IF;
       v_stmt := CASE WHEN v_closed THEN v_last.snapshot
                      ELSE app_private.landlord_settlement_compute_v1(v_r.building_id, v_m) END;
       v_rows := v_rows || jsonb_build_object(
@@ -2364,7 +2383,7 @@ REVOKE ALL ON FUNCTION public.landlord_operation_options_v1(uuid) FROM PUBLIC, a
 REVOKE ALL ON FUNCTION public.landlord_settlement_month_v1(uuid, date) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_overview_v1(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_share_links_v1(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric, boolean, date, numeric) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric, boolean, date, numeric, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_close_v1(uuid, date, text, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_reopen_v1(uuid, date, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_add_payment_v1(uuid, date, text, numeric, text, text) FROM PUBLIC, anon;
@@ -2379,7 +2398,7 @@ GRANT EXECUTE ON FUNCTION public.landlord_operation_options_v1(uuid) TO authenti
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_month_v1(uuid, date) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_overview_v1(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_share_links_v1(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric, boolean, date, numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric, boolean, date, numeric, timestamptz) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_close_v1(uuid, date, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_reopen_v1(uuid, date, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_add_payment_v1(uuid, date, text, numeric, text, text) TO authenticated;

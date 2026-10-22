@@ -1129,6 +1129,44 @@ describe("vòng 4: sổ đã xoá ở phiên bản cũ, kẹp tháng áp tỷ l�
   });
 });
 
+describe("vòng 6 (review chéo trước phát hành): chống ghi đè cài đặt, toà tạm ngừng", () => {
+  const UPSERT_CAS = "public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], 'chỉ sửa ghi chú', true, 100000, true, null, 700000, $3::timestamptz)";
+  const caiDat = async () =>
+    landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A])).current!;
+
+  it("lưu kèm updated_at đã cũ ⇒ 40001, không ghi đè số người khác vừa lưu; đọc lại rồi lưu thì được; null ⇒ không kiểm", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const daThay = (await caiDat()).updated_at;
+      // người khác lưu số dư đầu kỳ 200.000 trong lúc hộp này đang mở
+      await caiToaA(30, "2025-01-01", 200_000, true);
+      await expectLoi(`SELECT ${UPSERT_CAS}`, [TOA_A, [SO_CHU_NHA], daThay], "40001");
+      const sau = await caiDat();
+      expect(sau.opening_balance).toBe(200_000);
+      expect(sau.note ?? null).not.toBe("chỉ sửa ghi chú");
+      // mở lại hộp (đọc updated_at mới) ⇒ lưu được
+      await rpc(UPSERT_CAS, [TOA_A, [SO_CHU_NHA], sau.updated_at]);
+      expect((await caiDat()).opening_balance).toBe(100_000);
+      // gọi không kèm updated_at (ngoài màn) ⇒ không kiểm như cũ
+      await rpc(UPSERT_CAS, [TOA_A, [SO_CHU_NHA], null]);
+    });
+  });
+
+  it("toà tạm ngừng: phần chủ nhà cho Báo cáo LN chỉ còn tháng đã chốt, tháng mở không tính tạm", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await chot("2025-02-01");
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, false)", [TOA_A, [SO_CHU_NHA]]);
+      const rows = await rpc<Json[]>("public.landlord_ihome_profit_v1($1::date, $2::date)", ["2025-01-01", "2025-03-01"]);
+      expect(rows.map((r) => [r.period_month, r.status])).toEqual([["2025-02-01", "CLOSED"]]);
+      // bật lại ⇒ các tháng mở tính tạm trở lại
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, true)", [TOA_A, [SO_CHU_NHA]]);
+      const lai = await rpc<Json[]>("public.landlord_ihome_profit_v1($1::date, $2::date)", ["2025-01-01", "2025-03-01"]);
+      expect(lai.map((r) => r.status)).toEqual(["OPEN", "CLOSED", "OPEN"]);
+    });
+  });
+});
+
 describe("gói RPC thật và schema zod", () => {
   it("gói RPC thật parse được bằng đúng schema zod mà web dùng", async () => {
     await trongGiaoDich(async () => {
