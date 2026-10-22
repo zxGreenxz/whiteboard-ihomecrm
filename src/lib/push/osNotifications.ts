@@ -9,6 +9,10 @@
 //   - lô gộp:    `crm-<user_id>`  — không ánh xạ được về từng dòng;
 //   - vòng đời:  `lifecycle:<delivery_id>` — cũng không ánh xạ được.
 // Hai loại sau chỉ đóng khi số chưa đọc về 0 (khi đó chắc chắn không còn gì).
+// Số chưa đọc là của CÔNG TY ĐANG CHỌN (inboxScope), nên "về 0" chỉ đóng thông báo
+// mang `data.organizationId` của công ty đó hoặc không mang công ty — thông báo của
+// công ty khác vẫn còn việc chờ, giữ nguyên (NOTIF-CLIENT-4). send-push trải
+// `data` của payload vào Notification.data (public/sw.js).
 // Nhắc "Việc của tôi" (`personal-task:…`) là nhắc cục bộ, KHÔNG thuộc hộp thư,
 // nên không bao giờ bị đóng ở đây.
 //
@@ -25,7 +29,15 @@ export function laTagHopThu(tag: string | undefined | null): boolean {
   return typeof tag === "string" && (tag.startsWith("crm-") || tag.startsWith("lifecycle:"));
 }
 
-type DanhSachThongBao = ReadonlyArray<Pick<Notification, "tag" | "close">>;
+type DanhSachThongBao = ReadonlyArray<Pick<Notification, "tag" | "close" | "data">>;
+
+/** Công ty của thông báo theo payload push; thiếu/méo ⇒ null (thông báo không gắn công ty). */
+function congTyCua(n: Pick<Notification, "data">): string | null {
+  const data: unknown = n.data;
+  if (!data || typeof data !== "object") return null;
+  const org = (data as { organizationId?: unknown }).organizationId;
+  return typeof org === "string" && org ? org.toLowerCase() : null;
+}
 
 async function thongBaoDangHien(): Promise<DanhSachThongBao> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return [];
@@ -53,12 +65,18 @@ export async function dongThongBaoDaDoc(notificationIds: readonly string[]): Pro
   }
 }
 
-/** Số chưa đọc về 0 ⇒ không còn thông báo hộp thư nào đáng hiện trên màn khoá. */
-export async function dongMoiThongBaoHopThu(): Promise<number> {
+/**
+ * Số chưa đọc của công ty `organizationId` về 0 ⇒ đóng thông báo hộp thư của công ty
+ * đó (và thông báo không gắn công ty). `null` = chưa chốt công ty ⇒ chỉ đóng thông
+ * báo không gắn công ty.
+ */
+export async function dongMoiThongBaoHopThu(organizationId: string | null): Promise<number> {
+  const congTy = organizationId ? organizationId.toLowerCase() : null;
   try {
     let dong = 0;
     for (const n of await thongBaoDangHien()) {
-      if (laTagHopThu(n.tag)) {
+      const cua = congTyCua(n);
+      if (laTagHopThu(n.tag) && (cua === null || cua === congTy)) {
         n.close();
         dong += 1;
       }
@@ -76,7 +94,10 @@ type NavigatorBadge = Navigator & {
 };
 
 /**
- * Số trên icon PWA = số chưa đọc. Badging API chỉ có ở một số nền (PWA đã cài
+ * Số trên icon PWA = số chưa đọc CỦA CÔNG TY ĐANG CHỌN (cùng số với chuông — chọn
+ * có chủ ý: đếm mọi công ty cần thêm một truy vấn đếm ngoài inboxScope mỗi lần làm
+ * tươi, trong khi người thuộc nhiều công ty rất hiếm). Người nhiều công ty
+ * thấy số của công ty đang xem, không phải tổng. Badging API chỉ có ở một số nền (PWA đã cài
  * trên Chrome/Edge desktop, iOS 16.4+) — thiếu thì lặng lẽ bỏ qua; hàm trả
  * promise và có thể reject (quyền, chưa cài) nên bắt cả hai kiểu lỗi.
  */

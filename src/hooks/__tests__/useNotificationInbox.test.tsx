@@ -6,10 +6,14 @@ import type { ReactNode } from "react";
 
 interface Row { id: string; created_at: string; status: string; type: string }
 
+interface Call { eq: Array<[string, unknown]>; neq: Array<[string, unknown]>; or: string[]; gte: Array<[string, string]>; lte: Array<[string, string]> }
+
 const io = vi.hoisted(() => ({
   parity: [] as Row[],
   pageReply: [] as Row[],
-  calls: [] as Array<{ eq: Array<[string, unknown]>; neq: Array<[string, unknown]>; or: string[] }>,
+  /** "Bảng" cho truy vấn dải hở (gte/lte): lọc theo created_at, mới trước. */
+  db: [] as Row[],
+  calls: [] as Call[],
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "u1" } }) }));
@@ -22,15 +26,23 @@ vi.mock("@/hooks/useNotifications", () => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => {
-      const call = { eq: [] as Array<[string, unknown]>, neq: [] as Array<[string, unknown]>, or: [] as string[] };
+      const call: Call = { eq: [], neq: [], or: [], gte: [], lte: [] };
       io.calls.push(call);
+      const reply = () => {
+        if (!call.gte.length) return io.pageReply;
+        const from = Date.parse(call.gte[0]![1]);
+        const to = Date.parse(call.lte[0]![1]);
+        return io.db.filter((r) => Date.parse(r.created_at) >= from && Date.parse(r.created_at) <= to);
+      };
       const q = {
         select: () => q,
         eq: (c: string, v: unknown) => { call.eq.push([c, v]); return q; },
         neq: (c: string, v: unknown) => { call.neq.push([c, v]); return q; },
         or: (f: string) => { call.or.push(f); return q; },
+        gte: (c: string, v: string) => { call.gte.push([c, v]); return q; },
+        lte: (c: string, v: string) => { call.lte.push([c, v]); return q; },
         order: () => q,
-        limit: () => Promise.resolve({ data: io.pageReply, error: null }),
+        limit: () => Promise.resolve({ data: reply(), error: null }),
       };
       return q;
     },
@@ -48,10 +60,14 @@ function setup(tab: InboxTab) {
   return renderHook(() => useNotificationInbox(tab), { wrapper });
 }
 
+const truyVanTrang = () => io.calls.filter((c) => !c.gte.length && c.or.some((f) => f.includes("created_at")));
+const truyVanDaiHo = () => io.calls.filter((c) => c.gte.length > 0);
+
 describe("useNotificationInbox — 200 dòng parity + Xem thêm keyset, tab Chưa đọc lọc server", () => {
   beforeEach(() => {
     io.parity = [];
     io.pageReply = [];
+    io.db = [];
     io.calls = [];
   });
   afterEach(cleanup);
@@ -79,6 +95,36 @@ describe("useNotificationInbox — 200 dòng parity + Xem thêm keyset, tab Chư
     // Trang đủ 50 ⇒ còn có thể xem thêm.
     expect(result.current.coThem).toBe(true);
     expect(new Set(result.current.rows.map((r) => r.id)).size).toBe(249);
+  });
+
+  it("thông báo mới tới sau khi đã Xem thêm: GIỮ các trang đã tải, tải bù dải hở [mốc neo, đuôi mới] rồi gộp khử trùng", async () => {
+    io.parity = Array.from({ length: 200 }, (_, i) => row(i));
+    io.pageReply = Array.from({ length: 50 }, (_, i) => row(199 + i));
+    io.db = Array.from({ length: 260 }, (_, i) => row(i));
+    const { result, rerender } = setup("all");
+    act(() => result.current.taiThem());
+    await waitFor(() => expect(result.current.rows).toHaveLength(249));
+    expect(truyVanTrang()).toHaveLength(1);
+
+    // Hai thông báo mới chèn lên đầu: row(198), row(199) rơi khỏi top 200, đuôi parity giờ là row(197).
+    const moi = [{ ...row(0), id: "00000000-0000-4000-8000-00000000aaa1", created_at: iso(-2) }, { ...row(0), id: "00000000-0000-4000-8000-00000000aaa2", created_at: iso(-1) }];
+    io.parity = [...moi, ...Array.from({ length: 198 }, (_, i) => row(i))];
+    rerender();
+    // Dải hở mốc neo row(199) .. đuôi row(197) phủ row(198) — trước đây mốc dời ⇒ khoá đổi ⇒ còn 250 dòng mất trang.
+    await waitFor(() => expect(result.current.rows).toHaveLength(251));
+    const ids = new Set(result.current.rows.map((r) => r.id));
+    expect(ids.size).toBe(251);
+    expect(ids.has(row(198).id)).toBe(true);
+    expect(ids.has(row(248).id)).toBe(true);
+    const hoi = truyVanDaiHo().at(-1)!;
+    expect(hoi.gte).toEqual([["created_at", iso(199)]]);
+    expect(hoi.lte).toEqual([["created_at", iso(197)]]);
+    expect(hoi.neq).toContainEqual(["status", "CANCELLED"]);
+    expect(hoi.or[0]).toBe("organization_id.eq.org-a");
+    // Trang "Xem thêm" KHÔNG bị tải lại từ đầu (khoá giữ nguyên theo mốc neo).
+    expect(truyVanTrang()).toHaveLength(1);
+    // Thứ tự: mới trước, không lặp.
+    expect(result.current.rows[0]!.id).toBe(moi[0]!.id);
   });
 
   it("tab Chưa đọc: lọc PENDING ở server từ dòng mới nhất, không dùng danh sách parity", async () => {

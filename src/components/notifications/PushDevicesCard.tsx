@@ -1,5 +1,10 @@
 // "Thiết bị đã đăng ký" — mục D3: mọi dòng `push_subscriptions` của CHÍNH tôi (RLS select_own),
-// đánh dấu máy đang dùng, gỡ từng máy khác (RLS delete_own, đọc biên nhận đúng một dòng).
+// đánh dấu máy đang dùng, gỡ từng máy khác (RLS update_own, đọc biên nhận đúng một dòng).
+//
+// "Gỡ" = gắn dấu thu hồi (is_active=false + revoked_at), KHÔNG xoá dòng: xoá thì máy đó mở CRM
+// lần sau tự lưu lại (ensurePushSubscription thấy thiếu dòng) — SETTINGS-1. Dòng đã gỡ vẫn hiện
+// kèm nhãn "Đã gỡ" để người dùng thấy máy nào đã bị chặn; bật lại chỉ bằng công tắc trên chính
+// máy đó. Gỡ push KHÔNG đăng xuất máy đó — hàng rào thật là phiên đăng nhập.
 //
 // Máy đang dùng KHÔNG gỡ ở đây: xoá dòng máy chủ mà để nguyên đăng ký trình duyệt thì
 // `isSubscribed()` của chính máy này kẹt ở "chưa xác định". Tắt bằng công tắc ở "Thiết bị
@@ -83,6 +88,7 @@ export default function PushDevicesCard() {
           <ul className="divide-y">
             {devices.data.map((device) => {
               const isCurrent = !!currentEndpoint && device.endpoint === currentEndpoint;
+              const revoked = device.revokedAt !== null;
               const name = describeUserAgent(device.userAgent);
               return (
                 <li key={device.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -90,14 +96,23 @@ export default function PushDevicesCard() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{name}</span>
                       {isCurrent && <Badge variant="secondary">Máy này</Badge>}
-                      {device.isActive
-                        ? <Badge variant="outline" className="border-emerald-300 text-emerald-700">Đang nhận</Badge>
-                        : <Badge variant="outline" className="text-muted-foreground">Đã ngừng (hết hạn)</Badge>}
+                      {revoked
+                        ? <Badge variant="outline" className="text-muted-foreground">Đã gỡ</Badge>
+                        : device.isActive
+                          ? <Badge variant="outline" className="border-emerald-300 text-emerald-700">Đang nhận</Badge>
+                          : <Badge variant="outline" className="text-muted-foreground">Đã ngừng (hết hạn)</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground">Bật từ {formatDay(device.createdAt)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Bật từ {formatDay(device.createdAt)}
+                      {revoked && device.revokedAt ? ` · gỡ ngày ${formatDay(device.revokedAt)}` : ""}
+                    </p>
                   </div>
                   {isCurrent ? (
-                    <span className="text-xs text-muted-foreground">Tắt bằng công tắc ở mục "Thiết bị này"</span>
+                    <span className="text-xs text-muted-foreground">
+                      {revoked ? 'Bật lại bằng công tắc ở mục "Thiết bị này"' : 'Tắt bằng công tắc ở mục "Thiết bị này"'}
+                    </span>
+                  ) : revoked ? (
+                    <span className="text-xs text-muted-foreground">Chỉ bật lại được trên chính máy đó</span>
                   ) : (
                     <Button
                       variant="outline"
@@ -121,8 +136,9 @@ export default function PushDevicesCard() {
             <AlertDialogHeader>
               <AlertDialogTitle>Gỡ thiết bị này khỏi danh sách nhận thông báo?</AlertDialogTitle>
               <AlertDialogDescription>
-                {confirming ? `${describeUserAgent(confirming.userAgent)} (bật từ ${formatDay(confirming.createdAt)})` : ""} sẽ thôi nhận thông báo đẩy.
-                Muốn nhận lại thì mở CRM trên máy đó và bật ở mục "Thiết bị này".
+                {confirming ? `${describeUserAgent(confirming.userAgent)} (bật từ ${formatDay(confirming.createdAt)})` : ""} sẽ thôi nhận thông báo đẩy
+                và không tự bật lại khi mở CRM trên máy đó. Muốn nhận lại thì bật bằng công tắc ở mục "Thiết bị này"
+                trên chính máy đó. Gỡ thông báo không đăng xuất tài khoản trên máy đó — máy dùng chung thì nhớ đăng xuất.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

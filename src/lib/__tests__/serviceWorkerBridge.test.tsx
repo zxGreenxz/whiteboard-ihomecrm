@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { MemoryRouter, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ORG_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -22,8 +23,10 @@ const io = vi.hoisted(() => ({
   markRead: vi.fn(),
   invalidate: vi.fn(),
   badge: vi.fn(),
-  closeAll: vi.fn(async () => 0),
+  closeAll: vi.fn(async (_org: string | null) => 0),
   ensure: vi.fn(async () => "in-sync"),
+  recover: vi.fn(async () => "resubscribed"),
+  ghiOrg: 0,
 }));
 
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: io.invalidate }) }));
@@ -35,7 +38,7 @@ vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: io
 vi.mock("@/hooks/useNotifications", () => ({ useUnreadNotificationsCount: () => ({ data: io.count }) }));
 vi.mock("@/hooks/useMarkNotificationsRead", () => ({ useMarkNotificationsRead: () => ({ mutate: io.markRead }) }));
 vi.mock("@/lib/push/osNotifications", () => ({ capNhatSoTrenIcon: io.badge, dongMoiThongBaoHopThu: io.closeAll }));
-vi.mock("@/lib/push", () => ({ ensurePushSubscription: io.ensure }));
+vi.mock("@/lib/push", () => ({ ensurePushSubscription: io.ensure, recoverPushAfterBrowserChange: io.recover }));
 
 import { CHO_DOI_CONG_TY_MS, ServiceWorkerBridge } from "@/lib/push/serviceWorkerBridge";
 
@@ -71,6 +74,7 @@ describe("cầu nối service worker ↔ app (C4/C5/C7)", () => {
     io.perms = { __superadmin: true };
     io.permsLoading = false;
     io.count = 3;
+    io.ghiOrg = 0;
     swListener = null;
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
@@ -94,11 +98,17 @@ describe("cầu nối service worker ↔ app (C4/C5/C7)", () => {
     expect(viTri()).toBe(`/thu-tien?handover=${ID2}`);
   });
 
-  it("url ngoài allow-list: đánh dấu đọc nhưng KHÔNG điều hướng", () => {
+  it("url ngoài allow-list: đánh dấu đọc rồi về /my-day (khớp đích dự phòng của SQL), không 'bấm mà không đi đâu'", () => {
     dung();
     swGui({ type: "notification-click", url: "/khong-co-route", notificationIds: [ID1], organizationId: null });
     expect(io.markRead).toHaveBeenCalledWith([ID1]);
-    expect(viTri()).toBe("/income-expense");
+    expect(viTri()).toBe("/my-day");
+  });
+
+  it("push lịch Hermes (/settings/hermes) điều hướng đúng trang khi app đang mở", () => {
+    dung();
+    swGui({ type: "notification-click", url: "/settings/hermes", notificationIds: [], organizationId: ORG_A });
+    expect(viTri()).toBe("/settings/hermes");
   });
 
   it("thiếu quyền module của đích: hạ về /my-day", () => {
@@ -141,11 +151,58 @@ describe("cầu nối service worker ↔ app (C4/C5/C7)", () => {
     expect(viTri()).toBe("/tasks");
   });
 
-  it("mở tab mới từ push (?notif=&org=): gỡ tham số khỏi URL, đánh dấu đọc, đổi công ty, ở nguyên trang", () => {
-    dung(`/thu-tien?handover=${ID2}&notif=${ID1}&org=${ORG_B}`);
+  it("mở tab mới từ push (?__pn=&__porg=): gỡ tham số khỏi URL, đánh dấu đọc, đổi công ty, ở nguyên trang", () => {
+    dung(`/thu-tien?handover=${ID2}&__pn=${ID1}&__porg=${ORG_B}`);
     expect(viTri()).toBe(`/thu-tien?handover=${ID2}`);
     expect(io.markRead).toHaveBeenCalledWith([ID1]);
     expect(io.selectOrganization).toHaveBeenCalledWith(ORG_B);
+  });
+
+  it("tham số cũ `notif`/`org` không còn là tín hiệu của cầu nối: URL giữ nguyên, không đánh dấu/đổi công ty", () => {
+    dung(`/reports/x?notif=${ID1}&org=${ORG_B}`);
+    expect(viTri()).toBe(`/reports/x?notif=${ID1}&org=${ORG_B}`);
+    expect(io.markRead).not.toHaveBeenCalled();
+    expect(io.selectOrganization).not.toHaveBeenCalled();
+  });
+
+  describe("NOTIF-CLIENT-1: trang tự ghi ?org= (báo cáo KQKD) sống chung với cầu nối", () => {
+    /** Chép đúng khuôn effect của BusinessPerformanceReportPage: thiếu/lệch `org` ⇒ ghi lại bằng replace. */
+    function TrangBaoCao() {
+      const [params, setParams] = useSearchParams();
+      useEffect(() => {
+        if (params.get("org") === ORG_B) return;
+        io.ghiOrg += 1;
+        if (io.ghiOrg > 50) throw new Error("vòng lặp ghi ?org= vô hạn");
+        const next = new URLSearchParams(params);
+        next.set("org", ORG_B);
+        setParams(next, { replace: true });
+      }, [params, setParams]);
+      return null;
+    }
+    const dungBaoCao = (entry: string) => render(
+      <MemoryRouter initialEntries={[entry]}>
+        <ServiceWorkerBridge />
+        <Routes><Route path="/reports/finance/business-performance" element={<TrangBaoCao />} /></Routes>
+        <ViTri />
+      </MemoryRouter>,
+    );
+
+    it("trang ghi ?org= một lần, URL ổn định, cầu nối không gọi selectOrganization", () => {
+      dungBaoCao("/reports/finance/business-performance");
+      expect(viTri()).toBe(`/reports/finance/business-performance?org=${ORG_B}`);
+      expect(io.ghiOrg).toBe(1);
+      expect(io.selectOrganization).not.toHaveBeenCalled();
+      expect(io.markRead).not.toHaveBeenCalled();
+    });
+
+    it("mở từ push vào chính trang đó: chỉ gỡ __pn/__porg, `org` của trang giữ nguyên, xử lý đúng một lần", () => {
+      dungBaoCao(`/reports/finance/business-performance?org=${ORG_B}&__pn=${ID1}&__porg=${ORG_B}`);
+      expect(viTri()).toBe(`/reports/finance/business-performance?org=${ORG_B}`);
+      expect(io.ghiOrg).toBe(0);
+      expect(io.markRead).toHaveBeenCalledTimes(1);
+      expect(io.selectOrganization).toHaveBeenCalledTimes(1);
+      expect(io.selectOrganization).toHaveBeenCalledWith(ORG_B);
+    });
   });
 
   it("push-received làm tươi hộp thư; tin lạ bị bỏ qua", () => {
@@ -156,7 +213,7 @@ describe("cầu nối service worker ↔ app (C4/C5/C7)", () => {
     expect(io.invalidate).toHaveBeenCalledWith({ queryKey: ["notifications"] });
   });
 
-  it("số chưa đọc ⇒ số trên icon; về 0 ⇒ đóng thông báo hộp thư trên màn khoá", () => {
+  it("số chưa đọc (công ty đang chọn) ⇒ số trên icon; về 0 ⇒ chỉ đóng thông báo hộp thư của CÔNG TY ĐANG CHỌN", () => {
     const view = dung();
     expect(io.badge).toHaveBeenLastCalledWith(3);
     expect(io.closeAll).not.toHaveBeenCalled();
@@ -164,13 +221,23 @@ describe("cầu nối service worker ↔ app (C4/C5/C7)", () => {
     view.rerender(<MemoryRouter><ServiceWorkerBridge /><ViTri /></MemoryRouter>);
     expect(io.badge).toHaveBeenLastCalledWith(0);
     expect(io.closeAll).toHaveBeenCalledOnce();
+    expect(io.closeAll).toHaveBeenCalledWith(ORG_A);
   });
 
   it("có phiên + đã chốt công ty: đối chiếu đăng ký push một lần; SW báo đăng ký đổi thì đối chiếu lại", async () => {
     dung();
     await vi.waitFor(() => expect(io.ensure).toHaveBeenCalledWith(ORG_A));
-    swGui({ type: "push-subscription-changed" });
+    swGui({ type: "push-subscription-changed", endpoint: "https://push.example/new", oldEndpoint: "https://push.example/old" });
     await vi.waitFor(() => expect(io.ensure).toHaveBeenCalledTimes(2));
+    expect(io.recover).not.toHaveBeenCalled();
+  });
+
+  it("SW không tự đăng ký lại được (endpoint null): app khôi phục bằng khoá của app, mang endpoint cũ để kiểm 'từng có dòng'", async () => {
+    dung();
+    await vi.waitFor(() => expect(io.ensure).toHaveBeenCalledTimes(1));
+    swGui({ type: "push-subscription-changed", endpoint: null, oldEndpoint: "https://push.example/old" });
+    await vi.waitFor(() => expect(io.recover).toHaveBeenCalledWith("https://push.example/old", ORG_A));
+    expect(io.ensure).toHaveBeenCalledTimes(1);
   });
 
   it("chưa chốt công ty: chưa đối chiếu (lưu đăng ký cần organization_id)", async () => {

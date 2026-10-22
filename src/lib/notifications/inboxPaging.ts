@@ -12,6 +12,12 @@
 //   Hộp thư đổi liên tục (realtime chèn dòng mới lên đầu). Offset 200 sau một lần
 //   chèn sẽ lặp lại dòng 200 cũ; keyset theo mốc thời gian thì không.
 //
+// VÌ SAO MỐC NEO KHÔNG DỜI KHI CÓ THÔNG BÁO MỚI (NOTIF-CLIENT-6)
+//   Dời mốc theo đuôi parity = đổi queryKey ⇒ useInfiniteQuery mới chỉ còn trang đầu:
+//   400 dòng đã tải co về 250, vị trí cuộn nhảy. Nay mốc neo giữ nguyên từ lúc bấm
+//   "Xem thêm"; khoảng hở giữa mốc neo và đuôi parity mới được tải bù bằng truy vấn
+//   dải hở riêng rồi gộp khử trùng (gopDongHopThu).
+//
 // VÌ SAO TRANG ĐẦU CỦA "XEM THÊM" LẤY `created_at <= mốc` (CÓ CẢ MỐC)
 //   Hook parity chỉ sắp theo created_at; các dòng CÙNG created_at (một giao dịch
 //   chèn nhiều dòng dùng chung now()) đứng theo thứ tự tuỳ ý. Lấy `< (mốc, id)`
@@ -65,11 +71,49 @@ export function mocTrangSau(page: readonly InboxRowKey[]): InboxCursor | undefin
   return cuoi ? { created_at: cuoi.created_at, id: cuoi.id } : undefined;
 }
 
+const TIMESTAMP_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}(?::?\d{2})?)?$/i;
+
+/**
+ * Khoá so sánh của một timestamptz ở ĐỘ PHÂN GIẢI MICRO GIÂY (Postgres), dạng chuỗi
+ * cùng độ dài so được bằng `<`: "<giây epoch UTC, 12 chữ số>.<6 chữ số micro giây>".
+ * KHÔNG dùng Date.parse: nó cắt về mili giây, nên hai dòng khác nhau trong cùng 1 ms
+ * thành "bằng nhau" và mốc không dời ⇒ hở (NOTIF-CLIENT-6). Chuỗi lạ (không phải ISO)
+ * mới lùi về Date.parse.
+ */
+export function khoaThoiGian(ts: string): string {
+  const m = TIMESTAMP_RE.exec(ts.trim());
+  let giay: number;
+  let micro: string;
+  if (m) {
+    const [, y, mo, d, h, mi, s, frac, tz] = m;
+    let lech = 0;
+    if (tz && tz.toUpperCase() !== "Z") {
+      const dau = tz.startsWith("-") ? -1 : 1;
+      const so = tz.slice(1).replace(":", "");
+      lech = dau * (Number(so.slice(0, 2)) * 60 + Number(so.slice(2, 4) || "0"));
+    }
+    giay = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s ?? "0")) / 1000 - lech * 60;
+    micro = (frac ?? "").padEnd(6, "0").slice(0, 6);
+  } else {
+    const ms = Date.parse(ts);
+    if (!Number.isFinite(ms)) return "";
+    giay = Math.floor(ms / 1000);
+    micro = String(ms - giay * 1000).padStart(3, "0").padEnd(6, "0");
+  }
+  return `${String(giay).padStart(12, "0")}.${micro}`;
+}
+
+/** So hai timestamptz ở độ phân giải micro giây: âm ⇒ a cũ hơn b, 0 ⇒ cùng thời điểm. */
+export function soSanhThoiGian(a: string, b: string): number {
+  const ka = khoaThoiGian(a);
+  const kb = khoaThoiGian(b);
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+
 /** So hai dòng theo thứ tự hộp thư (mới trước): âm ⇒ a đứng trước b. */
 export function soThuTu(a: InboxRowKey, b: InboxRowKey): number {
-  const ta = Date.parse(a.created_at);
-  const tb = Date.parse(b.created_at);
-  if (ta !== tb) return tb - ta;
+  const t = soSanhThoiGian(b.created_at, a.created_at);
+  if (t !== 0) return t;
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
@@ -81,11 +125,19 @@ export function gopDongHopThu<T extends InboxRowKey>(...nguon: ReadonlyArray<rea
 }
 
 /**
- * Dòng cuối của danh sách parity mới hơn mốc đã chốt ⇒ có dòng vừa rơi khỏi top
- * 200 (vì dòng mới chèn lên đầu) mà trang "Xem thêm" không phủ. Lúc đó phải dời
- * mốc về dòng cuối mới, nếu không sẽ hở một khoảng.
+ * Dòng cuối của danh sách parity mới hơn mốc neo ⇒ có dòng vừa rơi khỏi top 200 (vì
+ * dòng mới chèn lên đầu) mà các trang "Xem thêm" (`created_at <= mốc neo`) không phủ:
+ * phải tải bù DẢI HỞ [mốc neo, đuôi parity] — gồm cả hai mép vì nhóm cùng created_at
+ * ở mép có thứ tự tuỳ ý (khử trùng theo id khi ghép). So ở độ phân giải micro giây
+ * (soSanhThoiGian), không phải mili giây.
  */
 export function canDoiMoc(moc: InboxCursor, duoiParity: InboxRowKey | undefined): boolean {
   if (!duoiParity) return false;
-  return Date.parse(duoiParity.created_at) > Date.parse(moc.created_at);
+  return soSanhThoiGian(duoiParity.created_at, moc.created_at) > 0;
 }
+
+/**
+ * Trần số dòng của một lượt tải bù dải hở. Dải dài đúng bằng số dòng mới chèn kể từ lúc
+ * bấm "Xem thêm"; chạm trần ⇒ dải có thể chưa đủ ⇒ bên gọi neo lại từ đuôi parity.
+ */
+export const TRAN_DAI_HO = TRAN_DANH_SACH_PARITY;

@@ -50,13 +50,19 @@ it('giờ yên: biên nhận lệch là chưa xác nhận, khớp mới báo đ�
  m.rpc.mockResolvedValueOnce({data:{enabled:true,quiet_start:22,quiet_end:7,updated_at:'2026-10-21T01:00:00Z'},error:null});
  await act(async()=>{await h.result.current.mutateAsync({enabled:true,quietStart:22,quietEnd:7});});expect(m.success).toHaveBeenCalledWith('Đã lưu giờ yên của bạn');
 });
-function deleteChain(result:{data:unknown;error:unknown}){const calls:unknown[][]=[];const chain={delete:()=>chain,eq:(...a:unknown[])=>{calls.push(a);return chain;},select:async()=>result};m.from.mockReturnValue(chain);return calls;}
-it('gỡ thiết bị: xoá theo id + user_id của chính mình và đọc biên nhận đúng một dòng',async()=>{
- const calls=deleteChain({data:[{id:'dev-1',user_id:'actor-a',endpoint:'https://push/1'}],error:null});
+function updateChain(result:{data:unknown;error:unknown}){
+ const seen={patch:null as Record<string,unknown>|null,eq:[] as unknown[][],deleted:false};
+ const chain={update:(p:Record<string,unknown>)=>{seen.patch=p;return chain;},delete:()=>{seen.deleted=true;return chain;},eq:(...a:unknown[])=>{seen.eq.push(a);return chain;},select:async()=>result};
+ m.from.mockReturnValue(chain);return seen;
+}
+it('gỡ thiết bị: GẮN DẤU THU HỒI (is_active=false + revoked_at) theo id + user_id, không xoá dòng; đọc biên nhận đúng một dòng',async()=>{
+ const seen=updateChain({data:[{id:'dev-1',user_id:'actor-a',is_active:false,revoked_at:'2026-10-22T01:00:00+00:00'}],error:null});
  const h=renderHook(()=>useRemovePushDevice(),{wrapper});await act(async()=>{await h.result.current.mutateAsync('dev-1');});
- expect(m.from).toHaveBeenCalledWith('push_subscriptions');expect(calls).toEqual([['id','dev-1'],['user_id','actor-a']]);expect(m.success).toHaveBeenCalledOnce();
+ expect(m.from).toHaveBeenCalledWith('push_subscriptions');expect(seen.deleted).toBe(false);
+ expect(seen.patch).toMatchObject({is_active:false});expect(typeof seen.patch?.revoked_at).toBe('string');
+ expect(seen.eq).toEqual([['id','dev-1'],['user_id','actor-a']]);expect(m.success).toHaveBeenCalledOnce();
 });
-it('gỡ thiết bị: không xoá được dòng nào thì không báo đã gỡ',async()=>{
- deleteChain({data:[],error:null});const h=renderHook(()=>useRemovePushDevice(),{wrapper});
+it.each<[unknown]>([[[]],[[{id:'dev-1',user_id:'actor-a',is_active:true,revoked_at:'2026-10-22T01:00:00Z'}]],[[{id:'dev-1',user_id:'actor-a',is_active:false,revoked_at:null}]],[[{id:'dev-2',user_id:'actor-a',is_active:false,revoked_at:'2026-10-22T01:00:00Z'}]]])('gỡ thiết bị: biên nhận %j không khớp thì không báo đã gỡ',async data=>{
+ updateChain({data,error:null});const h=renderHook(()=>useRemovePushDevice(),{wrapper});
  await act(async()=>{await expect(h.result.current.mutateAsync('dev-1')).rejects.toBeInstanceOf(Error);});expect(m.success).not.toHaveBeenCalled();
 });

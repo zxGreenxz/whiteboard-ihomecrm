@@ -102,6 +102,10 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/", module: null },
   { path: "/viec-cua-toi", module: null },
   { path: "/account/notifications", module: null },
+  // settingsRoutes.tsx — chỉ ProtectedRoute, trang tự kiểm quyền. Đích của cảnh báo lịch
+  // Hermes (hermes_schedule_notify_v1/v2). Thiếu dòng này thì bấm push khi app đang mở
+  // không đi đâu, còn mở tab mới lại tới đúng trang (NOTIF-CLIENT-5).
+  { path: "/settings/hermes", module: null },
   // App.tsx:316
   { path: "/notifications", module: "notifications" },
   // App.tsx:367. E1 cần CẢ HAI param: chỉ `approval_status=UNAPPROVED` mà thiếu

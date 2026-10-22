@@ -5,8 +5,11 @@ import { capNhatSoTrenIcon, dongMoiThongBaoHopThu, dongThongBaoDaDoc } from "@/l
 const ID1 = "11111111-1111-4111-8111-111111111111";
 const ID2 = "22222222-2222-4222-8222-222222222222";
 
-function thongBao(tag: string) {
-  return { tag, close: vi.fn() };
+const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ORG_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+function thongBao(tag: string, data: unknown = { url: "/" }) {
+  return { tag, data, close: vi.fn() };
 }
 
 describe("đóng thông báo hệ điều hành theo trạng thái đã đọc", () => {
@@ -14,12 +17,13 @@ describe("đóng thông báo hệ điều hành theo trạng thái đã đọc",
 
   beforeEach(() => {
     dangHien = [
-      thongBao(`crm-${ID1}`),
+      thongBao(`crm-${ID1}`, { notificationIds: [ID1], organizationId: ORG_A }),
       thongBao(`crm-${ID2}`),
-      thongBao("crm-user-gop"),
-      thongBao("lifecycle:delivery-1"),
+      thongBao("crm-user-gop", { organizationId: ORG_A.toUpperCase() }),
+      thongBao("lifecycle:delivery-1", null),
       thongBao("personal-task:u1:t1"),
       thongBao(""),
+      thongBao(`crm-user-${ORG_B}`, { notificationIds: [ID2], organizationId: ORG_B }),
     ];
     const registration = { getNotifications: vi.fn(async () => dangHien) };
     Object.defineProperty(navigator, "serviceWorker", {
@@ -35,10 +39,26 @@ describe("đóng thông báo hệ điều hành theo trạng thái đã đọc",
     expect(dangHien[2]!.close).not.toHaveBeenCalled();
   });
 
-  it("chưa đọc về 0: đóng mọi thông báo hộp thư, KHÔNG đụng nhắc Việc của tôi", async () => {
-    await expect(dongMoiThongBaoHopThu()).resolves.toBe(4);
+  it("chưa đọc của công ty A về 0: đóng thông báo hộp thư của A + không gắn công ty, KHÔNG đụng công ty B hay nhắc Việc của tôi", async () => {
+    await expect(dongMoiThongBaoHopThu(ORG_A)).resolves.toBe(4);
+    for (const i of [0, 1, 2, 3]) expect(dangHien[i]!.close).toHaveBeenCalledOnce();
     expect(dangHien[4]!.close).not.toHaveBeenCalled();
     expect(dangHien[5]!.close).not.toHaveBeenCalled();
+    // Thông báo của công ty B vẫn PENDING ở B ⇒ giữ trên màn khoá (NOTIF-CLIENT-4).
+    expect(dangHien[6]!.close).not.toHaveBeenCalled();
+  });
+
+  it("đổi sang công ty B mà B không còn chưa đọc: chỉ đóng của B, A còn nguyên", async () => {
+    await expect(dongMoiThongBaoHopThu(ORG_B)).resolves.toBe(3);
+    expect(dangHien[6]!.close).toHaveBeenCalledOnce();
+    expect(dangHien[0]!.close).not.toHaveBeenCalled();
+    expect(dangHien[2]!.close).not.toHaveBeenCalled();
+  });
+
+  it("chưa chốt công ty: chỉ đóng thông báo không gắn công ty", async () => {
+    await expect(dongMoiThongBaoHopThu(null)).resolves.toBe(2);
+    expect(dangHien[1]!.close).toHaveBeenCalledOnce();
+    expect(dangHien[3]!.close).toHaveBeenCalledOnce();
   });
 
   it("trình duyệt không có service worker / lỗi đọc: không ném, trả 0", async () => {
@@ -48,7 +68,7 @@ describe("đóng thông báo hệ điều hành theo trạng thái đã đọc",
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     await expect(dongThongBaoDaDoc([ID1])).resolves.toBe(0);
-    await expect(dongMoiThongBaoHopThu()).resolves.toBe(0);
+    await expect(dongMoiThongBaoHopThu(ORG_A)).resolves.toBe(0);
     warn.mockRestore();
   });
 });

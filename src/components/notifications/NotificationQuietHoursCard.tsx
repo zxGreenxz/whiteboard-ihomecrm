@@ -1,5 +1,6 @@
 // "Giờ yên của tôi" — mục D5: khung giờ cá nhân trong đó thông báo ĐẨY bị hoãn tới hết khung;
-// chuông/Bản tin vẫn ghi ngay. Máy chủ lấy giao của khung công ty và khung cá nhân (plan B3).
+// chuông/Bản tin vẫn ghi ngay. Máy chủ lấy HỢP hai khung (công ty HOẶC cá nhân): đang ở trong
+// một trong hai khung là push bị hoãn (notify_in_quiet_hours_v1, plan B3).
 // Giờ theo múi giờ công ty (`org_timezone_v1`), 0..23, `[từ, đến)`; từ = đến là không có khung.
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

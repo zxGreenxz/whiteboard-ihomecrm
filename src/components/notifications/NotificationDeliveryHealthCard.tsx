@@ -6,16 +6,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingState } from "@/components/loading/LoadingState";
-import { Activity, AlertTriangle, RefreshCw } from "lucide-react";
+import { Activity, AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { actionErrorMessage } from "@/lib/actionFeedback";
 import { isMissingRpcError, isPermissionError } from "@/lib/notifications/settingsRpc";
-import { pushOutcomeLabel } from "@/lib/notifications/settingsDisplay";
-import { useNotificationDeliveryHealth } from "@/hooks/useNotificationSettings";
-
-/** Dòng QUEUED cũ hơn mốc này ⇒ coi là kẹt (lượt drain chạy mỗi 15 phút — plan B12). */
-const STUCK_QUEUE_MINUTES = 30;
+import { assessDeliveryQueue, noRecipientLabel, pushOutcomeLabel, type DrainProblem } from "@/lib/notifications/settingsDisplay";
+import { NOTIFICATION_EVENT_LABELS, useNotificationDeliveryHealth } from "@/hooks/useNotificationSettings";
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString("vi-VN") : "Chưa có");
+
+/** Câu cảnh báo khi CHÍNH lượt gửi định kỳ có dấu hiệu hỏng (assessDeliveryQueue). */
+function drainProblemText(p: DrainProblem): string {
+  switch (p.kind) {
+    case "error":
+      return `Lượt gửi định kỳ gần nhất báo lỗi: ${p.message}. Lượt gửi có thể đang lỗi.`;
+    case "stale":
+      return `Lượt gửi định kỳ thành công gần nhất cách đây ${p.minutes} phút (lúc ${fmt(p.since)}), trong khi lượt chạy mỗi 15 phút. Lượt gửi có thể đang lỗi.`;
+    case "never-ok":
+      return "Chưa có lượt gửi định kỳ nào thành công. Lượt gửi có thể đang lỗi.";
+  }
+}
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
@@ -31,9 +40,7 @@ export default function NotificationDeliveryHealthCard({ organizationId }: { org
   const health = useNotificationDeliveryHealth(organizationId, true);
   const h = health.data;
 
-  const stuckMinutes = h?.queue.oldestQueuedAt
-    ? Math.floor((Date.parse(h.generatedAt) - Date.parse(h.queue.oldestQueuedAt)) / 60_000)
-    : 0;
+  const danhGia = h ? assessDeliveryQueue(h) : null;
   const lifecycleStates = h ? Object.entries(h.lifecycle.pushStates) : [];
   const logOutcomes = h ? Object.entries(h.pushLog7d).sort((a, b) => b[1] - a[1]) : [];
 
@@ -71,20 +78,44 @@ export default function NotificationDeliveryHealthCard({ organizationId }: { org
                 </AlertDescription>
               </Alert>
             )}
-            {stuckMinutes >= STUCK_QUEUE_MINUTES && (
+            {danhGia?.drainProblem && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{drainProblemText(danhGia.drainProblem)}</AlertDescription>
+              </Alert>
+            )}
+            {danhGia?.queueNote?.kind === "stuck-eligible" && (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Có thông báo đẩy chờ gửi đã {stuckMinutes} phút (từ {fmt(h.queue.oldestQueuedAt)}). Lượt gửi định kỳ có thể đang lỗi.
+                  Có thông báo đẩy đủ điều kiện gửi đã chờ {danhGia.queueNote.minutes} phút (từ {fmt(danhGia.queueNote.since)}).
                 </AlertDescription>
               </Alert>
+            )}
+            {danhGia?.queueNote?.kind === "old-maybe-quiet" && (
+              <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                Có thông báo đẩy chờ gửi từ {fmt(danhGia.queueNote.since)} — có thể đang hoãn vì giờ yên.
+              </p>
+            )}
+            {!!danhGia?.deferredQuiet && (
+              <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                {danhGia.deferredQuiet} thông báo đang hoãn vì giờ yên — sẽ gửi khi hết giờ yên.
+              </p>
             )}
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Thành viên có thiết bị" value={`${h.membersWithDevice}/${h.membersTotal}`} />
               <Stat label="Thiết bị đang nhận" value={h.activeDevices} />
               <Stat label="Đang chờ gửi" value={h.queue.queued} hint={h.queue.sending ? `${h.queue.sending} đang gửi` : undefined} />
-              <Stat label="Lượt gửi gần nhất" value={h.lastDrainAt ? new Date(h.lastDrainAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—"} hint={h.lastDrainAt ? new Date(h.lastDrainAt).toLocaleDateString("vi-VN") : "Chưa chạy"} />
+              <Stat
+                label="Lượt gửi gần nhất"
+                value={h.lastDrainAt ? new Date(h.lastDrainAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                hint={h.lastDrainAt
+                  ? `${new Date(h.lastDrainAt).toLocaleDateString("vi-VN")}${danhGia?.latestDrainFailed ? " · lượt này lỗi" : ""}`
+                  : "Chưa chạy"}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -106,7 +137,8 @@ export default function NotificationDeliveryHealthCard({ organizationId }: { org
                 )}
               </div>
               <div className="space-y-1 text-sm">
-                <p className="font-medium">Nhắc theo dõi trả phòng</p>
+                {/* Lane nhắc việc máy chủ: trả phòng (NOTICE/TURNOVER/EXIT) + hoá đơn, HĐ hết hạn, thiếu cọc (171251). */}
+                <p className="font-medium">Nhắc việc từ máy chủ</p>
                 {lifecycleStates.length === 0 ? <p className="text-muted-foreground">Chưa có lượt nhắc.</p> : (
                   <ul className="space-y-0.5">
                     {lifecycleStates.map(([state, n]) => (
@@ -122,11 +154,14 @@ export default function NotificationDeliveryHealthCard({ organizationId }: { org
               <p className="font-medium">Thông báo không có người nhận (7 ngày)</p>
               {h.noRecipient7d.length === 0 ? <p className="text-muted-foreground">Không có.</p> : (
                 <ul className="space-y-0.5">
-                  {h.noRecipient7d.map((row) => (
-                    <li key={`${row.event}-${row.reason}`} className="flex flex-wrap justify-between gap-x-3">
-                      <span>{row.event} · {row.reason}</span><span className="tabular-nums">{row.n}</span>
-                    </li>
-                  ))}
+                  {h.noRecipient7d.map((row) => {
+                    const nhan = noRecipientLabel(row, NOTIFICATION_EVENT_LABELS);
+                    return (
+                      <li key={`${row.event}-${row.reason}`} className="flex flex-wrap justify-between gap-x-3">
+                        <span>{nhan.event} · {nhan.reason}</span><span className="tabular-nums">{row.n}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
