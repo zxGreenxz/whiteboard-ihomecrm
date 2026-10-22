@@ -50,6 +50,8 @@ const TABLES = `
   CREATE TABLE app_private.cashbook_closure_requests(id uuid PRIMARY KEY,organization_id uuid,cashbook_id uuid,closed_through date,counted_balance numeric(15,2),
     system_balance numeric(15,2),note text,proposed_by uuid,confirmer_user_id uuid NOT NULL,status text,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
   ALTER TABLE public.income_expense_types ADD COLUMN merged_into_id uuid;
+  -- Thu chi Mốc 3 (expense_vouchers): hai cột production (baseline) mà hàng báo cáo nêu.
+  ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS posting_status text,ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
   ALTER TABLE public.contract_extensions ADD COLUMN extension_date date;
   CREATE TABLE public.contract_terminations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid,status text,termination_date date);
   CREATE TABLE public.shareholders(id uuid PRIMARY KEY,user_id uuid,auth_user_id uuid,name text,is_active boolean DEFAULT true,
@@ -172,13 +174,16 @@ const REAL = [
   [baseline, 'public.list_cashbook_closings_v1'], [baseline, 'public.get_my_share_buildings'],
   [migration('20261003152559_danh_muc_chi_bao_cao_cong_gop'), 'public.fa_type_breakdown'],
   [migration('20260626000000_fa_accrual_pnl'), 'public.fa_type_breakdown_accrual'],
-  [migration('20260731070000_current_date_to_org_today'), 'public.fa_snapshot_kpis'],
+  // Nợ thực (20261021190215): receivable_total/tuổi nợ cộng public.invoice_effective_outstanding_v1 (nạp ở finance-fixture).
+  [migration('20261021190215_receivable_kpis_effective_outstanding_v1'), 'public.fa_snapshot_kpis'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_occupancy_monthly'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_lease_events'],
   [migration('20260611140000_financial_analysis_rpcs'), 'public.fa_invoice_collection'],
   [migration('20261004212309_personal_finance_wallets'), 'public.personal_finance_snapshot'],
   [migration('20261009042140_bank_event_raw_inbox'), 'app_private.bank_event_metadata_v1'],
   [migration('20261009103855_bank_event_gmail_nguon_va_tom_tat'), 'public.bank_event_admin_v1'],
+  // Thu chi Mốc 3 (expense_vouchers: chữ tìm bỏ dấu bằng công thức Báo chi nhanh, 20261022024045).
+  [migration('20261022024045_ie_quick_entry_shared_rules_v1'), 'public.ie_quick_text_v1'],
 ];
 export const REAL_FUNCTIONS = REAL.map(([, name]) => name);
 
@@ -196,6 +201,8 @@ const RLS = `
     public.profit_allocations,public.personal_wallets,public.personal_categories,public.personal_legacy_category_map,public.personal_transactions,
     public.personal_wallet_transfers,public.personal_budget_limits,public.personal_goals,public.super_admins,public.fixture_acl,
     public.fixture_company_owners,public.fixture_building_access,public.organization_memberships TO authenticated;
+  -- Thu chi Mốc 3 (expense_vouchers nêu tên phòng): production cho authenticated SELECT rooms dưới RLS.
+  GRANT SELECT ON public.rooms TO authenticated;
   ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
   CREATE POLICY fixture_accounts_select ON public.accounts FOR SELECT TO authenticated USING (
     (organization_id IS NULL OR public.is_super_admin() OR organization_id=ANY(public.my_org_ids()))

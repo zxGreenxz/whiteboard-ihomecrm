@@ -5,8 +5,9 @@ import * as domainContract from './domain-contract.mjs';
 import { W2 } from './wave2-registry.mjs';
 import { roomPassResult } from './room-pass-contract.mjs';
 import { normalizeToolArguments } from './tool-argument-shape.mjs';
-import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT, readMisuseHint } from './read-misuse-hints.mjs';
-import { TOOL_PLAN_CASES, SUMMARY_PENDING } from './tool-plan-cases.mjs';
+import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT, W2_PARAM_HINTS, readMisuseHint } from './read-misuse-hints.mjs';
+import { TOOL_PLAN_CASES, SUMMARY_PENDING, ACTION_PLAN_CASES } from './tool-plan-cases.mjs';
+import { ACTION_RUN_TOOL, confirmationRequired, needsInput } from './action-contract.mjs';
 
 // T4 (R2b, 21/10/2026; plan R2 §B.6): chọn đúng tool cho các câu của bộ 79 câu production, không gọi model, không SQL.
 // Hermes kiểm đối số của `tool_call` theo schema QUẢNG BÁO trước khi gọi connector (validate_deferred_call_args; trace
@@ -180,7 +181,8 @@ test('T4: mô tả quảng bá chỉ đường (mentions) và 60 ký tự đầu
 
 test('read-misuse-hints: chuỗi tĩnh, không chứa dữ liệu đã gửi, chỉ khi luật khớp; không đọc accessor', () => {
   assert.deepEqual(Object.keys(READ_MISUSE_HINTS).sort(), ['assets', 'contracts', 'income_expenses', 'invoices', 'pending_approvals']);
-  assert.deepEqual(READ_MISUSE_HINT_TEXTS, [...Object.values(READ_MISUSE_HINTS).map(rule => rule.hint), BUILDING_ID_HINT]);
+  assert.deepEqual(READ_MISUSE_HINT_TEXTS, [...Object.values(READ_MISUSE_HINTS).map(rule => rule.hint), BUILDING_ID_HINT, ...Object.values(W2_PARAM_HINTS)]);
+  assert.deepEqual(Object.keys(W2_PARAM_HINTS).sort(), Object.keys(W2.reports).sort(), 'một câu cho mỗi báo cáo W2');
   assert.equal(new Set(READ_MISUSE_HINT_TEXTS).size, READ_MISUSE_HINT_TEXTS.length);
   for (const hint of READ_MISUSE_HINT_TEXTS) {
     assert.ok(Object.isFrozen(READ_MISUSE_HINT_TEXTS) && hint.length <= 300, hint);
@@ -213,6 +215,17 @@ test('read-misuse-hints: chuỗi tĩnh, không chứa dữ liệu đã gửi, ch
   assert.equal(readMisuseHint('contracts', keyed), READ_MISUSE_HINTS.contracts.hint); assert.equal(reads, 0);
   const hostile = new Proxy({}, { ownKeys() { throw new Error('private'); } });
   assert.equal(readMisuseHint('contracts', hostile), null);
+  // Thu chi Mốc 3 (ma trận đọc lượt 2, bosshuy): params lạ / thiếu tham số bắt buộc của crm_read_report ⇒ câu tĩnh của ĐÚNG báo cáo
+  // (tên params nhận + chỗ đúng), không lặp giá trị đã gửi; lời gọi đúng (kể cả tên thay buildingName/roomName) ⇒ null.
+  assert.equal(readMisuseHint('report', { report: 'top_expenses', params: { buildingName: MARK, fromDate: MARK, toDate: MARK } }), W2_PARAM_HINTS.top_expenses);
+  assert.match(W2_PARAM_HINTS.top_expenses, /nhận params: month, buildingId, buildingName; bắt buộc: month\. .*report=expense_vouchers/);
+  assert.equal(readMisuseHint('report', { report: 'top_expenses', params: {} }), W2_PARAM_HINTS.top_expenses, 'thiếu month');
+  assert.equal(readMisuseHint('report', { report: 'expense_vouchers', params: { amount: MARK } }), W2_PARAM_HINTS.expense_vouchers);
+  assert.equal(readMisuseHint('report', { report: 'room_detail', params: {} }), W2_PARAM_HINTS.room_detail, 'thiếu roomId và roomName');
+  for (const args of [{ report: 'top_expenses', params: { buildingName: '403', month: '2026-10' } }, { report: 'expense_vouchers', params: { minAmount: 1, buildingName: 'Kho' } },
+    { report: 'expense_vouchers' }, { report: 'room_detail', params: { roomName: 'P1', buildingName: 'A' } }, { report: 'room_detail', params: { roomId: fullGrantId('1') } },
+    { report: 'khong_co', params: { x: 1 } }, { report: 'top_expenses', params: [] }])
+    assert.equal(readMisuseHint('report', args), null, JSON.stringify(args));
 });
 
 test('broker: hint chỉ đi kèm lời gọi validator đã từ chối; có tên toà + hint ⇒ từ chối ngay, không hoãn tới mount', async t => {
@@ -227,8 +240,18 @@ test('broker: hint chỉ đi kèm lời gọi validator đã từ chối; có t�
   await assert.rejects(broker.callTool(token, 'crm_read_contracts', { buildingName: '44TL', fromDate: '2026-10-01' }), refused(READ_MISUSE_HINTS.contracts.hint));
   await assert.rejects(broker.callTool(token, 'crm_read_invoices', { status: 'unpaid' }), refused(READ_MISUSE_HINTS.invoices.hint));
   await assert.rejects(broker.callTool(token, 'crm_read_occupancy_report', { report: 'snapshot', buildingId: '102LVT' }), refused(BUILDING_ID_HINT));
+  // Ma trận đọc lượt 2 (bosshuy): tên toà + khoảng ngày cho báo cáo chỉ nhận month ⇒ từ chối ngay kèm câu của báo cáo, không hoãn tới mount.
+  await assert.rejects(broker.callTool(token, 'crm_read_report', { report: 'top_expenses', params: { buildingName: '403', fromDate: '2026-10-13', toDate: '2026-10-19' } }),
+    refused(W2_PARAM_HINTS.top_expenses));
   // Sai nhưng không khớp luật nào: invalid_request trơn như trước R2b (có tên toà thì vẫn hoãn tới mount như B5d).
   await assert.rejects(broker.callTool(token, 'crm_read_contracts', { cursor: 'trang-2' }), error => error.code === 'invalid_request' && error.detail === undefined);
   await assert.rejects(broker.callTool(token, 'crm_read_customers', { status: 'ACTIVE' }), error => error.code === 'invalid_request' && error.detail === undefined);
   assert.deepEqual(seen, []);
+});
+
+test('§12.1 ca khung họ thao tác ghi: mỗi kết quả dẫn tới đúng lời gọi kế tiếp bằng câu hướng dẫn tĩnh', () => {
+  const sources = { run: ACTION_RUN_TOOL.description, unknown_action: needsInput({ action: null, reason: 'unknown_action' }).huongDan,
+    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan };
+  assert.ok(ACTION_PLAN_CASES.length >= 4);
+  for (const entry of ACTION_PLAN_CASES) assert.match(sources[entry.source], entry.match, entry.when);
 });

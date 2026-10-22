@@ -265,8 +265,9 @@ function main() {
   // /voice-task-lab da cat kho 30/09/2026 (tag archive/voice-task-lab-20260930) nen khong tinh.
   // Them /chi-tieu (Bao chi nhanh, 01/10/2026) dua con so len 113 — trang co AI rieng, mien hop dong Copilot.
   // /viec-cua-toi: kho cá nhân trên thiết bị, được khai exemption riêng, tổng 114 route.
-  // Quyết toán vận hành (21/10/2026): /reports/finance/quyet-toan-van-hanh + link /qt/:token, tổng 116.
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 116, actionIds);
+  // /cua-van-tay (Cửa vân tay, 21/10/2026): mở cửa thật + phát mã cửa, miễn hợp đồng Copilot — tổng 115.
+  // Quyết toán vận hành (21/10/2026): /reports/finance/quyet-toan-van-hanh + link /qt/:token, tổng 117.
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 117, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

@@ -13,7 +13,11 @@ import { isW2ReportId } from './wave2-kit.mjs';
 
 // R2c phần 2 (c): hermes_user_display_name_v1 (20261021044821, INVOKER) — tên hiển thị của CHÍNH người hỏi cho crm_auth_context.
 export const DIRECTORY_RPCS = Object.freeze(['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1',
-  'hermes_user_display_name_v1']);
+  'hermes_user_display_name_v1', 'hermes_building_directory_v2']);
+// Thu chi Mốc 3 (22/10, 20261022044120): toà ảo là nơi web Thu chi ghi chi phí chung ⇒ khoá thu chi giải tên cả toà ảo
+// (hermes_building_directory_v2 p_include_virtual=true); "tháng này kho văn phòng chung chi bao nhiêu" từng ra read_name_unresolved.
+// Khoá khác (tool dựa phòng: khách, HĐ, hoá đơn, công việc…) giữ danh bạ v1 bỏ toà ảo.
+export const VIRTUAL_BUILDING_PERMISSIONS = Object.freeze(['income_expenses.view']);
 // Như web (hoá đơn/thu chi/công việc/chỉ số gộp room_ids của mọi toà cùng tên): tới 5 phòng trùng tên đi cùng
 // một lần; hơn thì hỏi lại. Trang SQL 50 dòng, tối đa 4 trang một lượt gọi (≤ 200 dòng quét) khi lọc hàng.
 export const ROOM_MATCH_LIMIT = 5, ROOM_FILTER_PAGE_LIMIT = 50, ROOM_FILTER_MAX_PAGES = 4;
@@ -23,7 +27,11 @@ const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
 const text = value => typeof value === 'string' && value.length > 0 && value.length <= TEXT_CAP && !CONTROL.test(value);
 const nullableText = value => value === null || (typeof value === 'string' && value.length <= TEXT_CAP && !CONTROL.test(value));
 const canonical = value => domainId(value) && value === value.toLowerCase();
+// Phòng: so không phân biệt hoa thường, GIỮ dấu — chỉ để quyết định đặt query = tên phòng cho SQL (khớp room.name có dấu).
 const fold = value => value.normalize('NFC').toLowerCase().trim();
+// Toà (21/10): không phân biệt dấu — NFD bỏ dấu kết hợp, đ/Đ → d, chữ thường, bỏ khoảng trắng đầu/cuối, gộp khoảng trắng
+// liên tiếp. "le van tho" phải khớp "Lê Văn Thọ": trước đây không khớp nên bot trả lời "không có toà" — sai.
+const foldName = value => value.normalize('NFD').replace(/\p{M}/gu, '').replace(/[đĐ]/g, 'd').toLowerCase().trim().replace(/\s+/g, ' ');
 const list = values => values.slice(0, LIST_CAP).join(', ') + (values.length > LIST_CAP ? ', …' : '');
 export function unresolved(detail) {
   const error = new BrokerError('read_name_unresolved');
@@ -43,13 +51,18 @@ function rows(data, key, check, max) {
 const building = row => domainExact(row, ['id', 'name', 'code']) && canonical(row.id) && text(row.name) && nullableText(row.code);
 const room = row => domainExact(row, ['id', 'name', 'code', 'floor', 'buildingId']) && canonical(row.id) && text(row.name) && nullableText(row.code) &&
   (row.floor === null || Number.isSafeInteger(row.floor)) && canonical(row.buildingId);
-const matches = (entry, needle) => fold(entry.name) === needle || (entry.code !== null && fold(entry.code) === needle);
-const contains = (entry, needle) => fold(entry.name).includes(needle) || (entry.code !== null && fold(entry.code).includes(needle));
-/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường) trước; không có thì chứa. */
+const matches = (entry, needle) => foldName(entry.name) === needle || (entry.code !== null && foldName(entry.code) === needle);
+const contains = (entry, needle) => foldName(entry.name).includes(needle) || (entry.code !== null && foldName(entry.code).includes(needle));
+/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường lẫn dấu) trước; không có thì chứa. Mô hình hay gửi "Toà 44TL": tên
+ * bắt đầu bằng "toa " (sau khi bỏ dấu) được thử thêm KHÔNG có tiền tố đó — sau dạng đầy đủ ở cùng bậc (toà có tên thật
+ * "Toà A" vẫn khớp bằng trước), nên luật bằng-trước-rồi-chứa giữ nguyên. */
 export function matchBuildings(directory, name) {
-  const needle = fold(name);
-  const exact = directory.filter(entry => matches(entry, needle));
-  return exact.length ? exact : directory.filter(entry => contains(entry, needle));
+  const folded = foldName(name), needles = folded.startsWith('toa ') && folded.length > 4 ? [folded, folded.slice(4)] : [folded];
+  for (const test of [matches, contains]) for (const needle of needles) {
+    const found = directory.filter(entry => test(entry, needle));
+    if (found.length) return found;
+  }
+  return [];
 }
 
 /** Kế hoạch lọc hàng theo phòng cho tool mà SQL không nhận ID phòng: trang SQL 50 dòng, lấy thêm trang (cursor
@@ -110,15 +123,21 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
   const check = signal => { if (!(signal instanceof AbortSignal)) fail('invalid_request'); if (signal.aborted) fail('timeout'); };
   // optional (crm_auth_context only): a directory RPC not yet deployed (PGRST202) yields null instead of failing the
   // call — the connector may run before the migration is applied. Name resolution itself never degrades (fails closed).
-  async function directory({ accessToken, organizationId, buildingIds, tokenDigest, contextVersion, label, signal, optional = false }) {
+  async function directory({ accessToken, organizationId, buildingIds, tokenDigest, contextVersion, label, signal, optional = false, includeVirtual = false }) {
     check(signal);
     if (!domainId(organizationId) || !Array.isArray(buildingIds) || !buildingIds.length || buildingIds.length > 256 || buildingIds.some(id => !canonical(id)) ||
-        typeof tokenDigest !== 'string' || typeof contextVersion !== 'string' || typeof label !== 'string' || typeof optional !== 'boolean') fail('invalid_request');
-    const ids = [...new Set(buildingIds)], key = `${tokenDigest}:${label}`;
+        typeof tokenDigest !== 'string' || typeof contextVersion !== 'string' || typeof label !== 'string' || typeof optional !== 'boolean' ||
+        typeof includeVirtual !== 'boolean') fail('invalid_request');
+    const ids = [...new Set(buildingIds)], key = `${tokenDigest}:${label}${includeVirtual ? ':virtual' : ''}`;
     const fingerprint = createHash('sha256').update(JSON.stringify([organizationId, ...ids].sort())).digest('hex');
     const hit = cached(key, contextVersion, fingerprint);
     if (hit !== undefined) return hit;
-    const data = await rpc('hermes_building_directory_v1', accessToken, { p_organization_id: organizationId, p_building_ids: ids }, { signal }, { optional }); check(signal);
+    // v2 chưa áp (PGRST202 ⇒ null) ⇒ v1 như trước Mốc 3 (không toà ảo): connector phát hành TRƯỚC migration không làm hỏng giải tên thu chi.
+    let data = includeVirtual
+      ? await rpc('hermes_building_directory_v2', accessToken, { p_organization_id: organizationId, p_building_ids: ids, p_include_virtual: true }, { signal }, { optional: true })
+      : null;
+    check(signal);
+    if (data === null) { data = await rpc('hermes_building_directory_v1', accessToken, { p_organization_id: organizationId, p_building_ids: ids }, { signal }, { optional }); check(signal); }
     if (data === null && optional) return remember(key, contextVersion, fingerprint, null);
     const value = rows(data, 'buildings', building, 256);
     if (value.some(entry => !ids.includes(entry.id))) fail('backend_unavailable');
@@ -167,7 +186,8 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
     const scope = identity?.scopesByPermission?.[permission]?.buildingIds, organizationId = identity?.row?.organizationId, contextVersion = identity?.contextVersion;
     if (!Array.isArray(scope) || !domainId(organizationId) || typeof contextVersion !== 'string') fail('backend_unavailable');
     const resolved = structuredClone(base), target = w2 ? resolved.params : resolved;
-    const buildings = () => directory({ accessToken, organizationId, buildingIds: scope, tokenDigest, contextVersion, label: permission, signal });
+    const buildings = () => directory({ accessToken, organizationId, buildingIds: scope, tokenDigest, contextVersion, label: permission, signal,
+      includeVirtual: VIRTUAL_BUILDING_PERMISSIONS.includes(permission) });
     let chosen = null;
     if (names.buildingName !== undefined) {
       const wanted = names.buildingName.trim();

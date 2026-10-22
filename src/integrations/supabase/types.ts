@@ -5995,6 +5995,197 @@ export type Database = {
           },
         ]
       }
+      door_action_logs: {
+        Row: {
+          action: string
+          actor_id: string
+          building_id: string
+          created_at: string
+          detail: Json
+          door_device_id: string
+          error_code: string | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          organization_id: string
+          status: string
+          tuya_password_id: number | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          building_id: string
+          created_at?: string
+          detail?: Json
+          door_device_id: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id: string
+          status?: string
+          tuya_password_id?: number | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          building_id?: string
+          created_at?: string
+          detail?: Json
+          door_device_id?: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          status?: string
+          tuya_password_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_action_logs_device_fk"
+            columns: ["organization_id", "door_device_id"]
+            isOneToOne: false
+            referencedRelation: "door_devices"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      door_devices: {
+        Row: {
+          building_id: string
+          channel_id: number
+          created_at: string
+          created_by: string | null
+          device_kind: string
+          display_name: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          password_length: number
+          tuya_category: string | null
+          tuya_device_id: string
+          tuya_product_name: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          building_id: string
+          channel_id?: number
+          created_at?: string
+          created_by?: string | null
+          device_kind: string
+          display_name: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          password_length?: number
+          tuya_category?: string | null
+          tuya_device_id: string
+          tuya_product_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          building_id?: string
+          channel_id?: number
+          created_at?: string
+          created_by?: string | null
+          device_kind?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          password_length?: number
+          tuya_category?: string | null
+          tuya_device_id?: string
+          tuya_product_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_devices_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "door_devices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      door_key_links: {
+        Row: {
+          customer_id: string | null
+          device_user_name: string | null
+          door_device_id: string
+          id: string
+          label: string | null
+          linked_at: string
+          linked_by: string
+          organization_id: string
+          tuya_user_id: string | null
+          unlink_reason: string | null
+          unlinked_at: string | null
+          unlinked_by: string | null
+          unlock_sn: number
+          unlock_type: string
+        }
+        Insert: {
+          customer_id?: string | null
+          device_user_name?: string | null
+          door_device_id: string
+          id?: string
+          label?: string | null
+          linked_at?: string
+          linked_by: string
+          organization_id: string
+          tuya_user_id?: string | null
+          unlink_reason?: string | null
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          unlock_sn: number
+          unlock_type: string
+        }
+        Update: {
+          customer_id?: string | null
+          device_user_name?: string | null
+          door_device_id?: string
+          id?: string
+          label?: string | null
+          linked_at?: string
+          linked_by?: string
+          organization_id?: string
+          tuya_user_id?: string | null
+          unlink_reason?: string | null
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          unlock_sn?: number
+          unlock_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_key_links_customer_fk"
+            columns: ["organization_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "door_key_links_device_fk"
+            columns: ["organization_id", "door_device_id"]
+            isOneToOne: false
+            referencedRelation: "door_devices"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       excess_amounts: {
         Row: {
           amount: number
@@ -13809,6 +14000,41 @@ export type Database = {
           },
         ]
       }
+      notification_quiet_hours: {
+        Row: {
+          enabled: boolean
+          organization_id: string
+          quiet_end: number
+          quiet_start: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          organization_id: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          organization_id?: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_quiet_hours_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_templates: {
         Row: {
           created_at: string
@@ -15852,6 +16078,7 @@ export type Database = {
           is_active: boolean
           organization_id: string
           p256dh: string
+          revoked_at: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -15864,6 +16091,7 @@ export type Database = {
           is_active?: boolean
           organization_id: string
           p256dh: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id: string
@@ -15876,6 +16104,7 @@ export type Database = {
           is_active?: boolean
           organization_id?: string
           p256dh?: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id?: string
@@ -23790,6 +24019,95 @@ export type Database = {
         }
         Returns: Json
       }
+      door_access_action_logs_v1: {
+        Args: {
+          p_actions?: string[]
+          p_before?: string
+          p_before_id?: string
+          p_device_id?: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      door_access_authorize_v1: {
+        Args: {
+          p_device_id: string
+          p_organization_id: string
+          p_permission: string
+        }
+        Returns: Json
+      }
+      door_access_begin_action_v1: {
+        Args: {
+          p_action: string
+          p_detail?: Json
+          p_device_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      door_access_building_tenants_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_can_manage_org_v1: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      door_access_devices_v1: {
+        Args: { p_include_inactive?: boolean; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_disable_device_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_finish_action_v1: {
+        Args: {
+          p_error_code?: string
+          p_error_message?: string
+          p_log_id: string
+          p_status: string
+          p_tuya_password_id?: number
+        }
+        Returns: Json
+      }
+      door_access_key_links_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_link_key_v1: {
+        Args: {
+          p_customer_id?: string
+          p_device_id: string
+          p_device_user_name?: string
+          p_label?: string
+          p_organization_id: string
+          p_tuya_user_id?: string
+          p_unlock_sn: number
+          p_unlock_type: string
+        }
+        Returns: Json
+      }
+      door_access_save_device_v1: {
+        Args: {
+          p_building_id: string
+          p_channel_id?: number
+          p_device_kind: string
+          p_display_name: string
+          p_organization_id: string
+          p_password_length?: number
+          p_tuya_category?: string
+          p_tuya_device_id: string
+          p_tuya_product_name?: string
+        }
+        Returns: Json
+      }
+      door_access_unlink_key_v1: {
+        Args: { p_link_id: string; p_organization_id: string }
+        Returns: Json
+      }
       dry_run_rent_support_reconciliation_v1: {
         Args: { p_entries: Json; p_organization_id: string }
         Returns: Json
@@ -24560,9 +24878,21 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_my_notification_quiet_hours_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_organizations: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_permissions_v2: { Args: { p_org: string }; Returns: Json }
+      get_my_push_log_v1: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_at: string
+          outcome: string
+          sent: number
+        }[]
+      }
       get_my_share_buildings: {
         Args: never
         Returns: {
@@ -24570,7 +24900,15 @@ export type Database = {
           name: string
         }[]
       }
+      get_notification_delivery_health_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_notification_org_config_v1: { Args: never; Returns: Json }
+      get_notification_org_config_v2: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_or_create_deposit_account: { Args: never; Returns: string }
       get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
@@ -24770,6 +25108,26 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: boolean
       }
+      hermes_action_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_action_probe_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
+      hermes_action_status_v1: {
+        Args: { p_binding: Json; p_request_id: string }
+        Returns: Json
+      }
       hermes_available_rooms_page_v1: {
         Args: {
           p_binding: Json
@@ -24784,6 +25142,14 @@ export type Database = {
       }
       hermes_building_directory_v1: {
         Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: Json
+      }
+      hermes_building_directory_v2: {
+        Args: {
+          p_building_ids: string[]
+          p_include_virtual: boolean
+          p_organization_id: string
+        }
         Returns: Json
       }
       hermes_connection_context_v1: {
@@ -24875,6 +25241,18 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_expense_write_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_external_group_directory_v1: { Args: { p: Json }; Returns: Json }
       hermes_external_group_preview_decision_v1: {
         Args: { p: Json }
@@ -24918,6 +25296,7 @@ export type Database = {
         Args: { p_offset: number; p_org: string }
         Returns: Json
       }
+      hermes_name_fold_v1: { Args: { p_text: string }; Returns: string }
       hermes_org_policy_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v3: { Args: { p_org: string }; Returns: Json }
@@ -24957,6 +25336,7 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_room_key_v1: { Args: { p_text: string }; Returns: string }
       hermes_room_pass_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
@@ -25094,6 +25474,23 @@ export type Database = {
         Args: { p: Json; p_input: Json }
         Returns: Json
       }
+      hermes_write_name_resolve_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_names: Json
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      hermes_write_name_resolve_v2: {
+        Args: {
+          p_building_ids: string[]
+          p_include_virtual: boolean
+          p_names: Json
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_broadcast_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
@@ -25120,6 +25517,15 @@ export type Database = {
         Args: { _building_id: string }
         Returns: boolean
       }
+      ie_category_suggest_v1: {
+        Args: {
+          p_include_restricted?: boolean
+          p_items: Json
+          p_organization_id: string
+          p_type?: string
+        }
+        Returns: Json
+      }
       ie_compat_cancel_v2: {
         Args: { p_ids: string[]; p_reason?: string }
         Returns: Json
@@ -25131,6 +25537,60 @@ export type Database = {
       ie_compat_update_pending_v2: {
         Args: { p_id: string; p_items?: Json; p_patch: Json }
         Returns: Json
+      }
+      ie_default_cashbook_v1: {
+        Args: {
+          p_building_id?: string
+          p_last_used?: string
+          p_organization_id: string
+        }
+        Returns: string
+      }
+      ie_expense_categories_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from: string
+          p_include_restricted?: boolean
+          p_organization_id: string
+          p_status?: string
+          p_to: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          organization_id: string
+          total_amount: number
+          type_id: string
+          type_name: string
+          voucher_count: number
+        }[]
+      }
+      ie_expense_vouchers_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from: string
+          p_include_restricted?: boolean
+          p_min_amount?: number
+          p_organization_id: string
+          p_query?: string
+          p_status?: string
+          p_to: string
+        }
+        Returns: {
+          approval_status: string
+          building_id: string
+          building_name: string
+          categories: string
+          code: string
+          created_at: string
+          name: string
+          organization_id: string
+          posting_status: string
+          room_name: string
+          total_amount: number
+          voucher_date: string
+          voucher_id: string
+        }[]
       }
       ie_form_buildings: {
         Args: never
@@ -25181,10 +25641,15 @@ export type Database = {
       }
       ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
       ie_item_restricted_visible: { Args: { _ie_id: string }; Returns: boolean }
+      ie_quick_text_v1: {
+        Args: { p_bare?: boolean; p_text: string }
+        Returns: string
+      }
       ie_recompute_commission_kind: {
         Args: { p_ie_id: string }
         Returns: undefined
       }
+      ie_self_approve_gate_v1: { Args: { p_voucher_id: string }; Returns: Json }
       ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
@@ -25241,6 +25706,17 @@ export type Database = {
           p_organization_id: string
         }
         Returns: Json
+      }
+      invoice_effective_outstanding_v1: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          carried_in_amount: number
+          carried_out_amount: number
+          effective_outstanding: number
+          effective_outstanding_at_carrier: number
+          invoice_id: string
+          remaining_amount: number
+        }[]
       }
       invoice_list_core_v1: {
         Args: {
@@ -25438,6 +25914,7 @@ export type Database = {
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
+      lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
       lifecycle_reminder_record_failure_v1: {
         Args: { p_error: string }
         Returns: undefined
@@ -26394,6 +26871,11 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      notification_is_unread_v1: {
+        Args: { p_status: Database["public"]["Enums"]["notification_status"] }
+        Returns: boolean
+      }
+      notification_maintenance_v1: { Args: never; Returns: Json }
       notifications_inbox_v1: {
         Args: {
           p_limit?: number
@@ -26424,7 +26906,34 @@ export type Database = {
           user_id: string
         }[]
       }
+      notify_claim_push_batch_v2: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          data: Json
+          idem_key: string
+          notification_ids: string[]
+          organization_id: string
+          tag: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      notify_drain_record_run_v1: {
+        Args: {
+          p_batches: number
+          p_error?: string
+          p_outcomes: Json
+          p_settled: number
+        }
+        Returns: undefined
+      }
       notify_settle_push_batch_v1: {
+        Args: { p_results: Json }
+        Returns: number
+      }
+      notify_settle_push_batch_v2: {
         Args: { p_results: Json }
         Returns: number
       }
@@ -28024,12 +28533,31 @@ export type Database = {
         Args: { p_organization_id: string; p_prefs: Json }
         Returns: Json
       }
+      set_my_notification_quiet_hours_v1: {
+        Args: {
+          p_enabled: boolean
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
+        Returns: Json
+      }
       set_my_ui_preference: {
         Args: { p_key: string; p_value: Json }
         Returns: Json
       }
       set_notification_org_config_v1: {
         Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
+        Returns: Json
+      }
+      set_notification_org_config_v2: {
+        Args: {
+          p_events: Json
+          p_expected_updated_at: string
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
         Returns: Json
       }
       set_personal_cash_book_v1: {

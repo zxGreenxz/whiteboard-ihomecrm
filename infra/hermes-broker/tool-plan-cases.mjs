@@ -24,10 +24,12 @@ export const TOOL_PLAN_CASES = Object.freeze([
   { n: 3, q: 'Phòng 305 toà 102LVT hiện ai đang ở? Cho tôi số điện thoại của khách.',
     tool: 'crm_room_lookup', args: { buildingName: '102LVT', roomCode: '305' }, answerFrom: ['rooms[].hasActiveContract', 'rooms[].representative'],
     mentions: [{ tool: 'crm_available_rooms', match: /một phòng \(ai ở, trống\): crm_room_lookup/ }], listing: [SALE_PAGE] },
-  // R2c phần 2 (a): đếm khách theo tình trạng hợp đồng (status_v2, ba tab /customers; WALK_IN = chưa có hợp đồng) —
-  // 20261021044801 (đường nhanh, khi query rỗng) và 20261021044814 (v3). Trace full50c/d: crm_read_customers query rỗng.
+  // R2c phần 2 (a) đếm khách theo status_v2 (ba tab /customers), nhưng production 21/10 không có khách WALK_IN: khách chưa
+  // từng có hợp đồng mang RENTING ⇒ byStatus không trả lời được câu này. R2d: summary.withoutContract = số khách của cả tập
+  // không có hợp đồng nào (mọi trạng thái) trong phạm vi hợp đồng của kết nối — 20261021063452 (đường nhanh, query rỗng) và
+  // 20261021063453 (v3). Trace full50c/d: crm_read_customers query rỗng.
   { n: 5, q: 'Có bao nhiêu khách trong CRM chưa có hợp đồng nào?',
-    tool: 'crm_read_customers', args: { query: '' }, answerFrom: ['summary.byStatus'] },
+    tool: 'crm_read_customers', args: { query: '' }, answerFrom: ['summary.withoutContract'] },
   { n: 10, q: 'Phòng 999 toà 44TL có ai ở không?',
     tool: 'crm_room_lookup', args: { buildingName: '44TL', roomCode: '999' }, answerFrom: ['rooms', 'truncated'],
     wrong: [{ tool: 'crm_available_rooms', args: { buildingName: '44TL', roomName: '999' }, hermes: 'rejects', hint: null }],
@@ -90,9 +92,10 @@ export const TOOL_PLAN_CASES = Object.freeze([
     mentions: [{ tool: 'crm_available_rooms', match: /sắp trống N ngày: crm_read_occupancy_report upcoming/ }], listing: [SALE_PAGE] },
   { n: 58, q: 'Toà 162NVK có bao nhiêu tài sản?',
     tool: 'crm_read_assets', args: { buildingName: '162NVK' }, answerFrom: ['summary.count'] },
-  // R2c phần 2 (b): tài sản thêm gần đây nhất của cả tập lọc + ngày thêm của từng dòng (20261021044801).
+  // R2c phần 2 (b): tài sản thêm gần đây nhất của cả tập lọc + ngày thêm của từng dòng (20261021044801). R2d: production
+  // nhập cả kho trong MỘT đợt ⇒ latest chỉ là một món của đợt; latestCount = số tài sản cùng đúng thời điểm đó (20261021063452).
   { n: 59, q: 'Tài sản nào được thêm vào gần đây nhất?',
-    tool: 'crm_read_assets', args: {}, answerFrom: ['summary.latest', 'items[].createdAt'] },
+    tool: 'crm_read_assets', args: {}, answerFrom: ['summary.latest', 'summary.latestCount', 'items[].createdAt'] },
   { n: 72, q: 'Hotline của công ty là số nào?',
     tool: 'crm_read_report', args: { report: 'hotlines' }, answerFrom: ['items[].phoneNumber', 'summary.total'],
     mentions: [{ tool: 'crm_read_report', match: /\bhotlines\b/ }], listing: [{ tool: 'crm_read_report', match: /hotlines/ }] },
@@ -103,4 +106,16 @@ export const TOOL_PLAN_CASES = Object.freeze([
   { n: 76, q: 'Theo báo cáo bất động sản, phòng nào đang trống (không có hợp đồng hiệu lực)?',
     tool: 'crm_read_report', args: { report: 're_vacant_rooms' }, answerFrom: ['items[].roomName', 'items[].buildingName', 'summary.total'],
     mentions: [{ tool: 'crm_available_rooms', match: /crm_read_report re_vacant_rooms/ }, { tool: 'crm_read_report', match: /re_vacant_rooms/ }] },
+].map(entry => Object.freeze(entry)));
+
+// Đợt 1 nền chung (NEN-CHUNG-THAO-TAC-GHI.md §12.1, review #253): ca khung của họ thao tác ghi — kết quả nào dẫn tới lời gọi
+// kế tiếp nào. Kiểm trên câu hướng dẫn tĩnh (mô tả crm_action_run, huongDan của kết quả), không gọi model, không gọi SQL.
+//   source  'run' = mô tả quảng bá của crm_action_run; 'unknown_action' / 'confirmation_required' = huongDan của kết quả đó.
+export const ACTION_PLAN_CASES = Object.freeze([
+  { when: 'thao tác lạ (needs_input unknown_action)', next: 'crm_action_list', source: 'unknown_action', match: /Gọi crm_action_list/ },
+  { when: 'mất phản hồi sau lệnh ghi (action_outcome_unknown)', next: 'crm_action_status', source: 'run',
+    match: /action_outcome_unknown: crm_action_status cùng requestId, không gọi lại/ },
+  { when: 'confirmation_required', next: 'không tự gọi lượt 2', source: 'confirmation_required', match: /chỉ khi họ đồng ý rõ ràng SAU khi xem/ },
+  { when: 'action_rejected state_changed (lỗi tạm, dữ liệu đổi)', next: 'crm_action_run không kèm confirmToken', source: 'run',
+    match: /detail bảo xem trước lại thì gọi lại không kèm confirmToken/ },
 ].map(entry => Object.freeze(entry)));

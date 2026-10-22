@@ -1,5 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
+import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
@@ -8,7 +8,6 @@ import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS, expenseActionOperation, expenseActionInput, mayUseExpenseAction } from './expense-action-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -19,6 +18,7 @@ import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { readMisuseHint } from './read-misuse-hints.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
+import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -53,7 +53,7 @@ const ROOM_TOOL = Object.freeze({
 // per broker, not at module load: external-group-mount imports this module back.
 function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+    ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
@@ -88,13 +88,16 @@ export const ERROR_STATUS = Object.freeze({
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
   customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
+  // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật (quyền/nghiệp vụ) mang `reason` của danh sách đóng
+  // action-reasons.mjs (dạng rejected) + `detail` = câu tĩnh của mã đó; thiếu/mơ hồ đầu vào KHÔNG là lỗi (needs_input).
+  action_rejected: 400, action_outcome_unknown: 503,
 });
 // Write uncertainty codes. Each carries the caller's stable requestId so the
 // model reconciles with the matching *_status tool instead of creating again.
 const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
-  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown',
-  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
@@ -107,6 +110,14 @@ export class BrokerError extends Error {
     this.code = this.message;
     this.status = ERROR_STATUS[this.code];
   }
+}
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
+export function actionRejected(code) {
+  const error = new BrokerError('action_rejected');
+  error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
+  error.detail = ACTION_REASONS[error.reason].text;
+  return error;
 }
 
 const fail = (code) => { throw new BrokerError(code); };
@@ -305,7 +316,7 @@ export function createBroker({
   roomPass,
   tasks,
   customers,
-  expenses,
+  actions,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -353,11 +364,19 @@ export function createBroker({
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_customer_action_service_required');
     customer = Object.fromEntries(['prepareCustomerAction', 'finalizeCustomerAction'].map(key => [key, customers[key].bind(customers)]));
   }
-  let expense;
-  if (expenses !== undefined) {
-    if (!injectedAuthority || ['prepareExpenseAction', 'finalizeExpenseAction'].some(key => typeof expenses?.[key] !== 'function') ||
-        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_expense_action_service_required');
-    expense = Object.fromEntries(['prepareExpenseAction', 'finalizeExpenseAction'].map(key => [key, expenses[key].bind(expenses)]));
+  // Đợt 1 nền chung: họ thao tác ghi dùng chung (crm_action_*), lõi ở action-runtime.mjs; broker chỉ móc định nghĩa,
+  // (Đợt 2 Thu chi: họ phiếu chi cũ crm_expense_* đã gỡ — phiếu chi đi expense.* của danh mục; expense_outcome_unknown giữ
+  // trong ERROR_STATUS/sổ audit cho tương thích.)
+  // danh sách tool và một nhánh callTool. Danh mục rỗng hay kết nối không giữ khoá thao tác nào ⇒ không hiện tool nào.
+  let action;
+  if (actions !== undefined) {
+    if (!injectedAuthority || !Array.isArray(actions?.definitions) || ['listed', 'route', 'begin', 'handle', 'finish', 'context'].some(key => typeof actions?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_action_runtime_required');
+    for (const tool of actions.definitions) {
+      if (definitions.has(tool.name)) throw new TypeError('ambiguous_tool_definition');
+      definitions.set(tool.name, tool);
+    }
+    action = actions;
   }
   let domain;
   if (domains !== undefined) {
@@ -451,7 +470,7 @@ export function createBroker({
     ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
-    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
+    ...(action ? action.listed(identity.effective) : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
       mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
@@ -590,6 +609,7 @@ export function createBroker({
   // Một dòng tool_call_timing mỗi lần invoke (option callLog): mốc ms từng pha,
   // cỡ kết quả, kết cục. Không tham số, kết quả, token, ID đầy đủ hay dữ liệu
   // khách; tên tool chỉ khi có trong catalogue. Lỗi của sink bị nuốt.
+  const OK_RESULT_CODES = Object.freeze(['task_options_hint', 'task_options_legacy']);
   const logCall = (record) => {
     if (!callLog) return;
     try { callLog(record()); } catch { /* Timing log never changes the call outcome. */ }
@@ -674,8 +694,10 @@ export function createBroker({
       // A quota/concurrency rejection is attributable to the identified connection.
       report(identity?.row.id ?? connectionId, operation, safe.code);
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
+      // D9: lý do của action_rejected vào sổ audit (danh sách đóng; host-ownership.mjs REASONS nhận đúng tập này).
+      const reason = safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) ? { reason: safe.reason } : {};
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
-        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
+        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code, ...reason })); }
       catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
     } });
@@ -686,7 +708,10 @@ export function createBroker({
         tool: operation === 'tools/call' && typeof context.tool === 'string' && definitions.has(context.tool) ? context.tool : null,
         path: context.initialDomainReadAdmission ? context.domainReadPath ?? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
         ...timing, totalMs: Math.round(performance.now() - startedAt), resultBytes: error ? 0 : resultBytes,
-        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown') : null,
+        // An ordinary result that only carries guidance (crm_task_input_options hint) keeps outcome 'ok' and names
+        // itself with one fixed code, so misuse stays countable in the journal (OK_RESULT_CODES).
+        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown')
+          : OK_RESULT_CODES.includes(context.resultCode?.()) ? context.resultCode() : null,
         connection: canonicalId(id) ? hash(id).slice(0, 8) : null };
     });
     try {
@@ -871,21 +896,48 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify({ requestId: randomUUID() }) }], isError: false };
         }, undefined, external ? { authority: external.authority } : {});
       }
+      // Thao tác ghi dùng chung: needs_input là kết quả thường; lỗi thật mang reason; mất phản hồi ⇒ action_outcome_unknown.
+      const actionRoute = action?.route(name);
+      if (actionRoute) {
+        const plan = action.begin(actionRoute, args);
+        return call((identity, signal) => action.handle(plan, presentedToken, identity, signal),
+          plan.op === 'list' ? undefined : (receipt, identity, signal) => action.finish(plan, presentedToken, receipt, identity, signal),
+          action.context(plan));
+      }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
-        let input, invalid = false, uncertain = false;
+        let input, invalid = false, uncertain = false, retry = null, resultCode = null;
         try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
+        // 22/10 (câu 29): a crm_task_input_options call refused by the validator answers ONE static hint
+        // (task-input-contract.mjs) as an ordinary result, never reaching CRM: Hermes pauses the whole MCP
+        // server for ~60 s after three isError results in a row (TEST 21/10: 21/27 task creations lost).
+        // tool_call_timing still names it (code task_options_hint / task_options_legacy, outcome ok).
+        const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
         return call(async (identity, signal) => {
           if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => {
-          const result = await task.finalizeTask(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          if (retry !== null) { resultCode = 'task_options_hint'; return { content: [{ type: 'text', text: JSON.stringify(retry) }], isError: false }; }
+          let result;
+          try {
+            result = await task.finalizeTask(presentedToken, receipt, { signal,
+              onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          } catch (error) {
+            // SQL before 20261021172540 (v5) refuses a company-wide jobTypes/assignees lookup with 22023: the same
+            // static guidance (pass a building) instead of a plain error. Transition only: remove this branch (and
+            // TASK_OPTIONS_HINTS.legacy) once 20261021172540 is live on production — afterwards a 22023 here (e.g. the
+            // 256-building cap) would get a misleading "pass buildingId" instead of the plain error.
+            if (!(error instanceof BrokerError) || error.code !== 'invalid_request' || !taskOptionsCompanyWide(taskOperation, input)) throw error;
+            resultCode = 'task_options_legacy';
+            return { content: [{ type: 'text', text: JSON.stringify(taskOptionsRetry(TASK_OPTIONS_HINTS.legacy)) }], isError: false };
+          }
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId });
+        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId,
+          resultCode: () => resultCode });
       }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {
@@ -910,7 +962,7 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'room_pass_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
-      // Customer/lead and expense create share one shape: fixed DTO, branded
+      // Customer/lead create: fixed DTO, branded
       // receipt prepared before audit, final bound-JWT RPC as the last await.
       // Lost ACK after dispatch is a distinct unknown code with the requestId;
       // nothing here retries a create.
@@ -929,22 +981,6 @@ export function createBroker({
             onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'customer_outcome_unknown', mutationRequestId: () => input?.requestId });
-      }
-      const expenseOp = expenseActionOperation(name);
-      if (expense && expenseOp) {
-        let input, invalid = false, uncertain = false;
-        try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
-        return call(async (identity, signal) => {
-          if (!mayUseExpenseAction(identity.effective, expenseOp)) fail('tool_not_available');
-          if (invalid) fail('invalid_request');
-          const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
-          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
-          return receipt;
-        }, async (receipt, _identity, signal) => {
-          const result = await expense.finalizeExpenseAction(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'expense_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {

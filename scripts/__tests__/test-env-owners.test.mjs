@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { haDangNhapVaiDichVu, kiemOwnersSnapshot, ownersDigest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
+import { haDangNhapVaiDichVu, kiemOwnersSnapshot, ownersDigest, ownersDigestTest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
 
 const roles = [{ name: 'ie_detail_reader', inherit: true, login: false, superuser: false,
   createdb: false, createrole: false, replication: false, bypassrls: false, connectionLimit: -1,
@@ -135,6 +135,35 @@ describe('TEST restore preserves restricted routine execution identity', () => {
     await db.exec(sqlKhoiPhucVai(test));
     expect((await db.query(`SELECT rolcanlogin FROM pg_roles WHERE rolname='hermes_store_host'`)).rows[0].rolcanlogin).toBe(false);
   }));
+
+  it('downgrades an existing TEST service role that a TEST connector left LOGIN, instead of failing after the wipe', async () => fixture(async (db) => {
+    await db.exec('CREATE ROLE hermes_store_host LOGIN NOINHERIT;');
+    const meta = metadata(); meta.roles[0].name = 'hermes_store_host'; meta.roles[0].login = true;
+    meta.memberships = []; meta.routines = []; meta.schemaAcl = [];
+    await db.exec(sqlKhoiPhucVai(haDangNhapVaiDichVu(meta)));
+    expect((await db.query(`SELECT rolcanlogin, rolinherit FROM pg_roles WHERE rolname='hermes_store_host'`)).rows[0])
+      .toEqual({ rolcanlogin: false, rolinherit: true });
+  }));
+
+  it.each(['CREATEDB', 'CREATEROLE', 'BYPASSRLS'])('still stops when the existing TEST service role also has %s', async (attribute) => fixture(async (db) => {
+    await db.exec(`CREATE ROLE hermes_store_host LOGIN ${attribute};`);
+    const meta = metadata(); meta.roles[0].name = 'hermes_store_host';
+    meta.memberships = []; meta.routines = []; meta.schemaAcl = [];
+    await expect(db.exec(sqlKhoiPhucVai(meta))).rejects.toThrow(/not restricted/);
+  }));
+
+  it('still stops when any other existing TEST role can log in', async () => fixture(async (db) => {
+    await db.exec('CREATE ROLE ie_detail_reader LOGIN;');
+    await expect(db.exec(sqlKhoiPhucVai(metadata()))).rejects.toThrow(/not restricted/);
+  }));
+
+  it('quick-check digest ignores LOGIN of the approved service role only', () => {
+    const base = metadata(); base.roles[0].name = 'hermes_store_host';
+    const live = structuredClone(base); live.roles[0].login = true;
+    expect(ownersDigestTest(live)).toBe(ownersDigest(base));
+    const other = metadata(); const otherLive = structuredClone(other); otherLive.roles[0].login = true;
+    expect(ownersDigestTest(otherLive)).not.toBe(ownersDigest(other));
+  });
 
   it.each(['superuser', 'createdb', 'createrole', 'replication', 'bypassrls'])('still rejects the approved service role with %s', (attribute) => {
     const meta = metadata(); meta.roles[0].name = 'hermes_store_host'; meta.roles[0].login = true; meta.roles[0][attribute] = true;

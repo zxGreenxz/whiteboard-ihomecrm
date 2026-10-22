@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_SUMMARY_ENTRY_TOLERANT, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_SUMMARY_ENTRY_TOLERANT, DOMAIN_TOOLS, completeListSummary, domainInput, domainResult,
+  summarizeRows } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver } from './read-name-resolution.mjs';
 
 // R2a (21/10/2026), phía connector của `summary` (SQL: domain-summary-sql.test.mjs trên PostgreSQL 17 và các test PGlite
 // v1/v2/v3): khuôn chính xác theo miền, bất biến giữa summary và trang (count ≥ số dòng, byStatus đúng bộ lọc, byBuilding
 // trong phạm vi khoá, largest trong kỳ), summary BẮT BUỘC (cửa sổ phát hành R2a đã đóng 21/10), summarizeRows khớp từng ký
-// tự cách SQL cộng numeric, lọc phòng ở connector thay summary. R2c: byType.<loại>.largest của income_expenses (bất biến +
-// cửa sổ phát hành của riêng khoá con này). Dữ liệu tổng hợp, không có dữ liệu khách thật.
+// tự cách SQL cộng numeric, lọc phòng ở connector thay summary. R2c: byType.<loại>.largest của income_expenses (cửa sổ phát
+// hành đã đóng ở bản R2d). R2d: customers.withoutContract, assets.latestCount (bất biến + cửa sổ một bản). Dữ liệu tổng hợp,
+// không có dữ liệu khách thật.
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(1), A = id(2), B = id(3), OUT = id(4), ROOM = id(5), USER = id(6), CONNECTION = id(7);
 const NOW = Date.parse('2026-10-21T00:00:00.000Z');
@@ -179,14 +181,15 @@ test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CA
   assert.deepEqual(full('meter_readings'), { count: 3, byStatus: { APPROVED: 2, UNAPPROVED: 1 }, sum: { consumption: '53.50' }, byType: { ELECTRICITY: 1, WATER: 2 }, rooms: 1 });
   assert.deepEqual(full('tasks'), { count: 4, byStatus: { IN_PROGRESS: 3, COMPLETED: 1 }, sum: {}, overdue: 1 }, 'past deadline and still IN_PROGRESS');
   assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' },
-    latest: { id: id(12), name: 'Bàn', code: null, buildingId: B, buildingName: 'Toà B', roomName: 'P2', createdAt: '2026-10-15' } },
-  'condition null counts in count only; latest: the newest day, the smaller id within it (SQL orders the real instant)');
+    latest: { id: id(12), name: 'Bàn', code: null, buildingId: B, buildingName: 'Toà B', roomName: 'P2', createdAt: '2026-10-15' }, latestCount: null },
+  'condition null counts in count only; latest: the newest day, the smaller id within it (SQL orders the real instant); latestCount: rows carry no instant');
   assert.deepEqual(full('occupancy'), { count: 2, total: 15, occupied: 12, available: 2 });
   assert.deepEqual(full('deposits_held'), { count: 2, sum: { expected: '10000000', held: '7000000.50', shortfallAll: '2999999.50' }, contractCount: 4, fullCount: 3, shortCount: 1 });
   assert.deepEqual(full('building_profit'), { count: 2, sum: { revenue: '2500000.00', expense: '770000.50', net: '1729999.50' } });
   assert.deepEqual(full('contracts'), { count: 3, byStatus: { ACTIVE: 2, TERMINATED: 1 }, sum: {} });
   for (const operation of ['invoices', 'services']) assert.deepEqual(full(operation), { count: ROWS[operation].length, byStatus: {}, sum: {} });
-  assert.deepEqual(full('customers'), { count: ROWS.customers.length, byStatus: null, sum: {} }, 'customer rows carry no contract status: unknown, not {}');
+  assert.deepEqual(full('customers'), { count: ROWS.customers.length, byStatus: null, sum: {}, withoutContract: null },
+    'customer rows carry no contract status nor contract history: unknown, not {} or 0');
   // 55 buildings: k = 0..4 hold two rows (2 × (100 + k) = 200..208), k = 5..54 one row (105..154).
   const many = Array.from({ length: 60 }, (_, n) => ({ ...ROWS.receivables[0], id: id(1000 + n), buildingId: id(2000 + (n % 55)), remainingAmount: String(100 + (n % 55)) }));
   const capped = summarizeRows('receivables', many).byBuilding;
@@ -232,12 +235,11 @@ test('R2c byType.<type>.largest: the largest live voucher of each type; invarian
   const tied = summarizeRows('income_expenses', tie);
   assert.deepEqual([tied.largest.id, tied.byType.EXPENSE.largest.id, tied.byType.INCOME.largest.id], [id(11), id(41), id(11)]);
   assert.deepEqual(check('income_expenses', tied, [...ROWS.income_expenses, tie[0]].sort((a, b) => a.id < b.id ? -1 : 1), month).summary, tied);
-  // Release window (DOMAIN_SUMMARY_ENTRY_TOLERANT): the R2a shape {count, sum} in EVERY entry still passes this release.
-  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT, { income_expenses: { byType: ['largest'] } }, 'next release: {}');
+  // Release window (DOMAIN_SUMMARY_ENTRY_TOLERANT) closed by the R2d connector (production applied 20261021035022 on
+  // 21/10): the R2a shape {count, sum} without largest is refused, in every entry or in one.
+  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT, {}, 'closed: largest is required in every byType entry');
   const r2a = { ...money, byType: Object.fromEntries(Object.entries(money.byType).map(([type, { largest, ...rest }]) => [type, rest])) };
-  assert.deepEqual(check('income_expenses', r2a, ROWS.income_expenses, month).summary, r2a);
-  assert.throws(() => check('income_expenses', { ...r2a, largest: null }, ROWS.income_expenses, month), 'the R2a invariants still hold in the window');
-  assert.throws(() => check('income_expenses', { ...r2a, byType: { EXPENSE: r2a.byType.EXPENSE } }, ROWS.income_expenses, month), 'the type of summary.largest is in byType');
+  assert.throws(() => check('income_expenses', r2a, ROWS.income_expenses, month), 'the R2a entries (no largest anywhere) are refused');
 });
 
 // R2c part 2 (SQL 20261021044801/20261021044814; PostgreSQL 17 in domain-summary-sql.test.mjs, PGlite in
@@ -259,13 +261,88 @@ test('R2c part 2 invariants: assets.latest of the whole set (null only when empt
   ]) assert.throws(() => check('assets', changed, items, extra), label);
   // Unassigned (company-wide) assets have no building: such a latest is not fenced by building.
   assert.equal(check('assets', { ...assets, latest: { ...latest, createdAt: '2026-10-20', buildingId: null, buildingName: '', roomName: null } }).summary.latest.buildingId, null);
-  assert.deepEqual(summarizeRows('assets', []), { count: 0, byStatus: {}, sum: { quantity: '0' }, latest: null }, 'empty set: latest null');
+  assert.deepEqual(summarizeRows('assets', []), { count: 0, byStatus: {}, sum: { quantity: '0' }, latest: null, latestCount: null }, 'empty set: latest null');
   // Customers: the three tabs only, their total never above count; null (fast lane with a query) or {} (SQL before part 2).
   const customers = full('customers');
   for (const byStatus of [{ RENTING: 1, WALK_IN: 1 }, { MOVED_OUT: 2 }, {}, null])
     assert.deepEqual(check('customers', { ...customers, byStatus }).summary.byStatus, byStatus);
   for (const byStatus of [{ RENTING: 2, WALK_IN: 1 }, { ACTIVE: 1 }, { WALK_IN: 1.5 }])
     assert.throws(() => check('customers', { ...customers, byStatus }), JSON.stringify(byStatus));
+});
+
+// R2d (SQL 20261021063452/20261021063453; PostgreSQL 17 in domain-summary-sql.test.mjs, PGlite in domain-composition/
+// domain-v3): customers.withoutContract — customers of the whole set without any contract in the connection's contract scope
+// (production: no WALK_IN customer, byStatus could not answer) — and assets.latestCount — the assets sharing the latest
+// asset's exact created_at (production imported every asset in one batch). Both may be absent this release (the window)
+// and null (unknown: fast lane with a query or an uncovered scope; summarizeRows, whose rows carry no history/instant).
+test('R2d invariants: customers.withoutContract never counts a customer shown with a contract; assets.latestCount is 0 exactly without latest, never above count', () => {
+  const customers = full('customers'), withContract = ROWS.customers.filter(row => row.contractId !== null).length;
+  assert.equal(withContract, 1, 'fixture: one page row holds an active contract');
+  for (const withoutContract of [0, 1, null])
+    assert.equal(check('customers', { ...customers, withoutContract }).summary.withoutContract, withoutContract);
+  assert.equal(check('customers', { ...customers, count: 9, withoutContract: 8 }).summary.withoutContract, 8, 'the rest of the set may lack one');
+  assert.equal(Object.hasOwn(check('customers', (({ withoutContract, ...rest }) => rest)(customers)).summary, 'withoutContract'), false, 'absent (window): SQL before R2d');
+  for (const [label, withoutContract, count = customers.count] of [['the contract holder counted', 2], ['above count', 3, 2], ['negative', -1], ['fraction', 0.5],
+    ['text', '1'], ['boolean', false], ['object', {}]])
+    assert.throws(() => check('customers', { ...customers, count, withoutContract }), label);
+  assert.throws(() => check('customers', { ...customers, withoutContract: 0, withContract: 1 }), 'unknown key');
+  // assets: SQL counts the batch of the latest instant (>= 1 when there is a latest, 0 for an empty set).
+  const assets = { ...full('assets'), latestCount: 2 };
+  assert.equal(check('assets', assets).summary.latestCount, 2);
+  assert.equal(check('assets', { ...assets, latestCount: 3 }).summary.latestCount, 3, 'the whole set may share one instant');
+  assert.equal(check('assets', { ...assets, latestCount: null }).summary.latestCount, null, 'unknown');
+  assert.equal(Object.hasOwn(check('assets', (({ latestCount, ...rest }) => rest)(assets)).summary, 'latestCount'), false, 'absent (window): SQL before R2d');
+  const empty = { count: 0, byStatus: {}, sum: { quantity: '0' }, latest: null };
+  assert.deepEqual(check('assets', { ...empty, latestCount: 0 }, []).summary, { ...empty, latestCount: 0 }, 'empty set: 0');
+  for (const [label, changed, items = ROWS.assets] of [['a batch without latest', { ...empty, latestCount: 1 }, []], ['latest without a batch', { ...assets, latestCount: 0 }],
+    ['batch above count', { ...assets, latestCount: 4 }], ['negative', { ...assets, latestCount: -1 }], ['fraction', { ...assets, latestCount: 1.5 }],
+    ['text', { ...assets, latestCount: '2' }]])
+    assert.throws(() => check('assets', changed, items), label);
+  // The fast lane carries the same customers rule.
+  const authority = { organizationId: ORG, userId: USER, connectionId: CONNECTION, permission: 'customers.view', buildingIds: [A, B], cashbookIds: [] };
+  const result = envelope('customers', ROWS.customers, { ...customers, withoutContract: 1 });
+  assert.equal(domainFastResult('customers', { authority, result }, identity('customers'), input('customers')).summary.withoutContract, 1);
+  assert.throws(() => domainFastResult('customers', { authority, result: { ...result, summary: { ...customers, withoutContract: 2 } } }, identity('customers'), input('customers')));
+});
+
+// Hậu xử lý sau validator (21/10; full50e câu 14, production: crm_read_occupancy_report {report:upcoming, days:60} trả 15
+// dòng, summary null ⇒ mô hình tự đếm bảng và nói "14 hợp đồng"): báo cáo phân trang offset mà SQL không có tổng riêng được
+// connector cấp summary = {count: items.length} khi tập đã TRỌN; một phần thì không bao giờ.
+test('completeListSummary: a complete offset-paged report without a summary of its own gets {count: items.length}; a part, a summary of its own and cursor lists are left alone', () => {
+  const upcomingRow = n => ({ contractId: id(800 + n), contractNumber: `HD${n}`, buildingId: n % 2 ? A : B, buildingName: n % 2 ? 'Toà A' : 'Toà B', roomId: id(900 + n),
+    roomName: `P${n}`, effectiveEndDate: '2026-11-30', daysRemaining: 40, rentPrice: '3000000', extensionApplied: false });
+  const report = (operation, name, source, items, extra = {}) => ({ organizationId: ORG, domain: operation, fetchedAt: '2026-10-21T00:00:00.000Z', report: name, source,
+    unavailable: null, summary: null, items, offset: 0, nextOffset: null, sourceCapped: false, ...extra });
+  const upcoming = (items, extra) => report('occupancy_report', 'upcoming', 'crm.occupancy_upcoming_vacancy_v2', items, extra);
+  const fifteen = Array.from({ length: 15 }, (_, n) => upcomingRow(n + 1));
+  const validated = domainResult('occupancy_report', upcoming(fifteen), identity('occupancy_report'),
+    domainInput('occupancy_report', { report: 'upcoming', days: 60, limit: 50 }));
+  assert.equal(validated.summary, null, 'the validator is unchanged: this report has no summary of its own');
+  const complete = completeListSummary(validated);
+  assert.deepEqual(complete.summary, { count: 15 }, 'the production question: 15 contracts, read from summary.count');
+  assert.deepEqual(Object.keys(complete), Object.keys(validated), 'same keys in the same order');
+  assert.deepEqual({ ...complete, summary: null }, validated, 'nothing else changes');
+  assert.equal(validated.summary, null, 'the validated result is not mutated');
+  assert.deepEqual(completeListSummary(upcoming([])).summary, { count: 0 }, 'a complete empty report: 0');
+  for (const [label, extra, items = fifteen] of [['a next page (nextOffset)', { nextOffset: 15 }], ['the source capped', { sourceCapped: true }],
+    ['a later page (offset > 0: the earlier rows are not in it)', { offset: 20 }], ['unavailable (no building: not a 0)', { unavailable: 'no_building_scope' }, []],
+    ['sourceCapped not a boolean', { sourceCapped: undefined }]])
+    assert.equal(completeListSummary(upcoming(items, extra)).summary, null, label);
+  // Another report of the same shape (v3 invoice search) and a crm_read_report run (wave 2, same items/offset/summary shape).
+  const invoices = report('invoice_report', 'search', 'crm.invoices', [{ id: id(801) }, { id: id(802) }]);
+  assert.deepEqual(completeListSummary(invoices).summary, { count: 2 });
+  const run = report('report', 'room_detail', 'crm.rooms', [{ id: id(803) }]);
+  assert.deepEqual(completeListSummary(run).summary, { count: 1 });
+  // A summary of its own is never replaced (invoice stats, monthly_pnl, Zalo).
+  const stats = report('invoice_report', 'stats', 'crm.invoices', [], { summary: { totalCount: 3 } });
+  assert.equal(completeListSummary(stats), stats, 'returned as is');
+  // Cursor lists keep the SQL summary (required since R2a); a room-filter merge with rows left keeps null.
+  const list = { organizationId: ORG, domain: 'contracts', summary: full('contracts'), items: ROWS.contracts, nextCursor: null };
+  assert.equal(completeListSummary(list), list);
+  const partial = { ...list, summary: null, nextCursor: id(13) };
+  assert.equal(completeListSummary(partial), partial);
+  assert.equal(completeListSummary({ ...partial, nextCursor: null }).summary, null, 'a cursor list never gets a count from here');
+  for (const other of [null, [], 'x', { items: [] }, { organizationId: ORG, domain: 'customer_detail', item: null }]) assert.equal(completeListSummary(other), other);
 });
 
 test('R2a room filter: the connector filters rows by room, so the merge replaces the SQL summary with the kept rows (complete) or null (more to read)', async () => {

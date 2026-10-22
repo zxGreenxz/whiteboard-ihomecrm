@@ -134,7 +134,11 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     // R2a (21/10): v3 customers/occupancy thêm summary (+ báo cáo monthly_pnl có tổng) — cũng là bản kế của hàm nền.
     'supabase/migrations/20261021004841_hermes_w2_domain_summary_v1.sql',
     // R2c phần 2 (21/10): v3 customers đếm tình trạng hợp đồng (status_v2) — bản kế tiếp của hàm nền.
-    'supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql']);
+    'supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql',
+    // R2d (21/10): v3 customers đếm khách chưa có hợp đồng (withoutContract) — bản kế tiếp của hàm nền.
+    'supabase/migrations/20261021063453_hermes_w2_customers_without_contract_v1.sql',
+    // Thu chi Mốc 3 (22/10): tham số minAmount — bản kế tiếp của từ điển + bộ kiểm tham số (hàm nền).
+    'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 

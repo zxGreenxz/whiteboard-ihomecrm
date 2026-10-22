@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { createSupabaseDomainReads } from './domain-adapter.mjs';
-import { CACHED_READ_OPERATIONS, domainExact, domainId, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { CACHED_READ_OPERATIONS, completeListSummary, domainExact, domainId, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { createSupabaseDomainFastReads, domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver, DIRECTORY_RPCS } from './read-name-resolution.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
@@ -66,7 +66,9 @@ export function createDomainMount({ authority, connectionStore, crypto, auth, su
     const service = createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads,
       mayUse: mayUseDomain, validateInput: domainInput, validateResult: domainResult, clock, resolveInput: resolveFor('legacy') });
     const contextPort = createContextDirectory({ connectionStore, crypto, resolver, clock });
-    if (!readAuthority) return Object.freeze({ prepareDomain: service.prepare, finalizeDomain: service.finalize, ...contextPort });
+    // Kết quả cuối (đã kiểm, đã gộp trang lọc phòng): báo cáo phân trang offset đã trọn mà summary null ⇒ {count} (completeListSummary).
+    if (!readAuthority) return Object.freeze({ prepareDomain: service.prepare,
+      finalizeDomain: async (token, receipt, options) => completeListSummary(await service.finalize(token, receipt, options)), ...contextPort });
     const fast = createBoundUserOperationService({ authority: readAuthority, connectionStore, crypto, auth,
       reads: createSupabaseDomainFastReads({ ...supabase, dependencyScope, fetch }),
       mayUse: mayUseDomain, validateInput: domainInput, validateResult: domainFastResult, clock, admission: 'initialRead', resolveInput: resolveFor('fast') });
@@ -84,7 +86,7 @@ export function createDomainMount({ authority, connectionStore, crypto, auth, su
       async finalizeDomain(token, receipt, options) {
         const selected = issued.get(receipt); issued.delete(receipt);
         if (!selected) throw new TypeError('invalid_domain_receipt');
-        return selected.finalize(token, receipt, options);
+        return completeListSummary(await selected.finalize(token, receipt, options));
       } });
   } });
 }

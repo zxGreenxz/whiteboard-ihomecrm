@@ -45,8 +45,8 @@ const instant = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:
 // KHÔNG đổi cùng lúc, nên SQL cũ có thể trả dòng chưa có khoá mới. `tolerant` liệt kê các khoá MỚI của một miền cho đúng
 // MỘT bản phát hành: vắng = chưa áp SQL ⇒ vẫn qua; có mặt ⇒ kiểm kiểu như mọi khoá; khoá lạ vẫn bị từ chối (domainResult).
 // B5c (21/10/2026; 3 migration 20261020171321/173818/173819: buildingName, buildingCode, roomName) đã dùng cơ chế này;
-// đã gỡ 21/10 sau khi prod áp đủ 3 migration B5c. R2c phần 2 (21/10): assets.createdAt (20261021044801) là khoá
-// `tolerant` duy nhất của bản này; bản kế tiếp (sau khi prod áp) gỡ (domain-tolerance.test.mjs khoá cả hai trạng thái).
+// đã gỡ 21/10 sau khi prod áp đủ 3 migration B5c. R2c phần 2 (assets.createdAt, 20261021044801) cũng đã gỡ ở bản R2d:
+// production áp đủ bốn migration R2c 21/10 (13:16–13:31 giờ VN). Hiện không miền nào khai `tolerant`.
 const define = (permission, label, fields, statuses = [], options = {}) => Object.freeze({ family: 'v1', permission, label,
   fields: Object.freeze(fields), statuses: Object.freeze(statuses), dated: false, requiresDates: false, perBuilding: false, source: null, ...options,
   tolerant: Object.freeze([...(options.tolerant ?? [])]) });
@@ -95,10 +95,10 @@ export const DOMAIN_READS = Object.freeze({
     id: domainId, number: nullable(text), status: text, buildingId: domainId, buildingName: text, roomId: domainId, roomName: nullable(text), billingMonth: nullable(text), totalAmount: amount }),
   // R2b (câu 73): xe không phải tài sản — báo cáo vehicles của crm_read_report; câu đầu đúng 60 ký tự (danh sách tool_search).
   // R2c phần 2 (câu "tài sản nào thêm gần đây nhất"): createdAt = ngày thêm (múi giờ nghiệp vụ của công ty, 20261021044801);
-  // `tolerant` một bản phát hành (SQL trước đó không có). Mô tả không đổi (0 byte tools/list).
+  // bắt buộc từ bản R2d (cửa sổ một bản đã đóng: production áp 20261021044801). Mô tả không đổi (0 byte tools/list).
   assets: define('assets.view', 'Tra tài sản, vị trí, số lượng; xe: crm_read_report vehicles', {
     id: domainId, name: text, code: nullable(text), condition: nullable(text), buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), quantity: amount,
-    createdAt: date }, [], { tolerant: ['createdAt'] }),
+    createdAt: date }),
   services: define('services.view', 'Tra danh mục dịch vụ và các tòa áp dụng được phép xem', {
     id: domainId, name: text, code: nullable(text), unit: nullable(text), unitPrice: amount, buildingIds: ids }),
   tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành', {
@@ -156,7 +156,8 @@ const summaryCounts = (keys = null) => value => domainRecord(value) && Object.ke
 const summarySums = keys => value => domainExact(value, keys) && keys.every(key => amount(value[key]));
 const LARGEST_FIELDS = Object.freeze({ id: domainId, code: nullable(text), name: text, type: oneOf(['INCOME', 'EXPENSE']), totalAmount: amount, voucherDate: date });
 const summaryLargest = value => domainExact(value, Object.keys(LARGEST_FIELDS)) && Object.entries(LARGEST_FIELDS).every(([key, check]) => check(value[key]));
-// {count, sum, largest}; {count, sum} (SQL R2a) chỉ qua trong cửa sổ DOMAIN_SUMMARY_ENTRY_TOLERANT và đồng loạt (domainSummary).
+// {count, sum, largest}; {count, sum} (SQL R2a) chỉ qua trong cửa sổ DOMAIN_SUMMARY_ENTRY_TOLERANT (đã đóng ở bản R2d) và đồng
+// loạt (domainSummary).
 const summaryTyped = value => (domainExact(value, ['count', 'sum']) || domainExact(value, ['count', 'sum', 'largest']) && nullable(summaryLargest)(value.largest)) &&
   integer(value.count) && amount(value.sum);
 const BY_BUILDING_FIELDS = Object.freeze({ buildingId: domainId, buildingName: text, count: integer, remainingAmount: amount });
@@ -169,15 +170,22 @@ export const CUSTOMER_CONTRACT_STATUSES = Object.freeze(['RENTING', 'MOVED_OUT',
 const summaryShape = (fields, statusKey = null) => Object.freeze({ fields: Object.freeze(fields), statusKey });
 const COMMON = (byStatus, sum = []) => ({ count: integer, byStatus, sum: summarySums(sum) });
 export const DOMAIN_SUMMARIES = Object.freeze({
-  // R2c phần 2 ("bao nhiêu khách chưa có hợp đồng"): byStatus đếm khách theo status_v2 — RENTING đang thuê, MOVED_OUT
-  // đã chuyển đi, WALK_IN vãng lai = chưa có hợp đồng (20261021044801 đường nhanh, 20261021044814 v3); đường nhanh trả
-  // null khi có query (mẫu tìm của lõi không chép lại, như contracts); SQL trước đó trả {} (vẫn hợp lệ, không cần cửa sổ).
-  customers: summaryShape(COMMON(nullable(summaryCounts(CUSTOMER_CONTRACT_STATUSES)))),
+  // R2c phần 2: byStatus đếm khách theo status_v2 — RENTING đang thuê, MOVED_OUT đã chuyển đi, WALK_IN vãng lai
+  // (20261021044801 đường nhanh, 20261021044814 v3); đường nhanh trả null khi có query (mẫu tìm của lõi không chép lại,
+  // như contracts); SQL trước đó trả {} (vẫn hợp lệ). R2d ("bao nhiêu khách chưa có hợp đồng nào", production 21/10: không
+  // khách nào WALK_IN — khách chưa từng có HĐ mang RENTING ⇒ byStatus trả lời sai): withoutContract = số khách của CẢ tập
+  // lọc không có hợp đồng nào (mọi trạng thái, trừ HĐ đã xoá) ở toà thuộc phạm vi hợp đồng của kết nối (20261021063452 đường
+  // nhanh qua hàm DEFINER chỉ trả số, 20261021063453 v3); null khi có query (đường nhanh) hoặc khi phạm vi hợp đồng không
+  // phủ phạm vi khách (số đó chỉ có thể sai). Cửa sổ một bản: DOMAIN_SUMMARY_KEY_TOLERANT.
+  customers: summaryShape({ ...COMMON(nullable(summaryCounts(CUSTOMER_CONTRACT_STATUSES))), withoutContract: nullable(integer) }),
   leads: summaryShape(COMMON(summaryCounts()), 'status'),
   contracts: summaryShape(COMMON(nullable(summaryCounts())), 'status'),
   invoices: summaryShape(COMMON(summaryCounts([]))),
-  // R2c phần 2: latest = tài sản thêm gần đây nhất của cả tập lọc (created_at giảm dần rồi id), null khi tập rỗng.
-  assets: summaryShape({ ...COMMON(summaryCounts(), ['quantity']), latest: nullable(summaryAssetLatest) }, 'condition'),
+  // R2c phần 2: latest = tài sản thêm gần đây nhất của cả tập lọc (created_at đầy đủ giảm dần rồi id), null khi tập rỗng.
+  // R2d (production nhập cả kho tài sản trong MỘT đợt, cùng một created_at ⇒ latest chỉ là một món tuỳ ý của đợt):
+  // latestCount = số tài sản của tập lọc có created_at BẰNG ĐÚNG mốc của latest (cùng thời điểm, không phải cùng ngày); 0
+  // khi tập rỗng (20261021063452). null = không biết (summarizeRows: dòng chỉ mang NGÀY). Cửa sổ một bản như withoutContract.
+  assets: summaryShape({ ...COMMON(summaryCounts(), ['quantity']), latest: nullable(summaryAssetLatest), latestCount: nullable(integer) }, 'condition'),
   services: summaryShape(COMMON(summaryCounts([]))),
   tasks: summaryShape({ ...COMMON(summaryCounts()), overdue: integer }, 'status'),
   occupancy: summaryShape({ count: integer, total: integer, occupied: integer, available: integer }),
@@ -200,14 +208,15 @@ export const DOMAIN_SUMMARIES = Object.freeze({
 export const DOMAIN_SUMMARY_TOLERANT = Object.freeze([]);
 // Cửa sổ phát hành cho khoá con MỚI trong phần tử của một khoá summary: { miền: { khoá summary: [khoá con] } }. Vắng = SQL
 // chưa áp ⇒ qua, nhưng vắng ĐỒNG LOẠT ở mọi phần tử; có mặt ở một phần tử ⇒ đủ ở mọi phần tử, kiểm kiểu + bất biến. R2c
-// (21/10/2026): byType.<INCOME|EXPENSE>.largest — connector lên TRƯỚC 20261021035022_hermes_domain_summary_largest_by_type_v1;
-// bản connector kế tiếp (sau khi prod áp) đưa về {} (domain-tolerance.test.mjs khoá cả hai trạng thái).
-export const DOMAIN_SUMMARY_ENTRY_TOLERANT = Object.freeze({ income_expenses: Object.freeze({ byType: Object.freeze(['largest']) }) });
+// (byType.<INCOME|EXPENSE>.largest, 20261021035022) đã đóng ở bản R2d — production áp 21/10 ⇒ {}: largest bắt buộc ở mọi
+// phần tử byType. Cơ chế giữ cho lần đổi khuôn sau (domain-tolerance.test.mjs khoá).
+export const DOMAIN_SUMMARY_ENTRY_TOLERANT = Object.freeze({});
 const entryTolerant = (operation, key, entry) => DOMAIN_SUMMARY_ENTRY_TOLERANT[operation]?.[key]?.includes(entry) === true;
 // Cửa sổ phát hành cho khoá summary MỚI ở cấp một: { miền: [khoá] } được vắng (SQL chưa áp), có mặt ⇒ kiểm như mọi khoá.
-// R2c phần 2 (21/10/2026): assets.latest (20261021044801), đi cùng createdAt của dòng (DOMAIN_READS.assets.tolerant).
-// Bản connector kế tiếp (sau khi prod áp) đưa về {} (domain-tolerance.test.mjs khoá cả hai trạng thái).
-export const DOMAIN_SUMMARY_KEY_TOLERANT = Object.freeze({ assets: Object.freeze(['latest']) });
+// R2c phần 2 (assets.latest, 20261021044801) đã đóng ở bản R2d (production áp 21/10). R2d (21/10/2026): customers.
+// withoutContract (20261021063452 đường nhanh + 20261021063453 v3) và assets.latestCount (20261021063452) — connector lên
+// TRƯỚC hai migration; bản connector kế tiếp (sau khi prod áp) đưa về {} (domain-tolerance.test.mjs khoá cả hai trạng thái).
+export const DOMAIN_SUMMARY_KEY_TOLERANT = Object.freeze({ customers: Object.freeze(['withoutContract']), assets: Object.freeze(['latestCount']) });
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
 export const DOMAIN_READ_CAPABILITIES = DOMAIN_FAMILIES.v1.capabilities;
@@ -334,15 +343,20 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
   if (domainRecord(summary.byStatus) && (!within(total(Object.values(summary.byStatus))) ||
       input.status && shape.statusKey !== null && Object.keys(summary.byStatus).some(key => key !== input.status))) fail();
   if (operation === 'tasks' && !within(summary.overdue)) fail();
+  // R2d: withoutContract (vắng trong cửa sổ; null = đường nhanh có query, hoặc phạm vi hợp đồng không phủ phạm vi khách).
+  // Khách hiện kèm hợp đồng đang hiệu lực (contractId) trên trang đã có hợp đồng trong phạm vi ⇒ không thể nằm trong số đó.
+  if (operation === 'customers' && Number.isInteger(summary.withoutContract) &&
+      summary.withoutContract > summary.count - items.filter(row => row.contractId !== null).length) fail();
   if (operation === 'assets') {
-    // R2c phần 2: createdAt của dòng và summary.latest đến từ cùng một bản SQL — cùng có, hoặc cùng vắng (cửa sổ).
-    const dated = items.filter(row => Object.hasOwn(row, 'createdAt')).length, withLatest = Object.hasOwn(summary, 'latest');
-    if (dated !== 0 && dated !== items.length || dated > 0 && !withLatest || withLatest && items.length > 0 && dated === 0) fail();
-    const { latest } = summary;
-    // Mới nhất của CẢ tập: null ⇔ tập rỗng; toà như toà của dòng (phạm vi khoá, đúng toà lọc); không cũ hơn dòng nào của trang.
-    if (withLatest && ((latest === null) !== (summary.count === 0) || latest !== null && (Array.isArray(scopes) && latest.buildingId !== null &&
+    // R2c phần 2 (createdAt của dòng và latest bắt buộc từ bản R2d): mới nhất của CẢ tập — null ⇔ tập rỗng; toà như toà của
+    // dòng (phạm vi khoá, đúng toà lọc); không cũ hơn dòng nào của trang.
+    const { latest, latestCount } = summary;
+    if ((latest === null) !== (summary.count === 0) || latest !== null && (Array.isArray(scopes) && latest.buildingId !== null &&
         !scopes.includes(latest.buildingId) || input.buildingId && latest.buildingId !== input.buildingId ||
-        items.some(row => row.createdAt > latest.createdAt)))) fail();
+        items.some(row => row.createdAt > latest.createdAt))) fail();
+    // R2d: latestCount (vắng trong cửa sổ; null = không biết) = số tài sản cùng đúng thời điểm với latest: 0 ⇔ không có
+    // latest; không vượt count.
+    if (Number.isInteger(latestCount) && ((latestCount === 0) !== (latest === null) || !within(latestCount))) fail();
   }
   if (operation === 'occupancy' && summary.occupied + summary.available > summary.total) fail();
   if (operation === 'meter_readings' && (!within(summary.rooms) || !within(total(Object.values(summary.byType))))) fail();
@@ -353,7 +367,7 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
     // largest có mặt trong byType.
     if (!within(total(entries.map(([, entry]) => entry.count))) || (largest === null) !== (entries.length === 0) ||
         largest !== null && (summary.count < 1 || outside(largest.voucherDate) || !Object.hasOwn(byType, largest.type))) fail();
-    // R2c: byType.<loại>.largest có ở MỌI phần tử, hoặc vắng ở mọi phần tử chỉ trong cửa sổ phát hành (SQL R2a).
+    // R2c: byType.<loại>.largest có ở MỌI phần tử (vắng ở mọi phần tử chỉ khi cửa sổ phát hành mở — đã đóng ở bản R2d).
     const typed = entries.filter(([, entry]) => Object.hasOwn(entry, 'largest'));
     if (typed.length < entries.length && (typed.length > 0 || !entryTolerant(operation, 'byType', 'largest'))) fail();
     for (const [type, { count, sum, largest: best }] of typed) {
@@ -380,6 +394,20 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
   }
   return structuredClone(summary);
 }
+/** Hậu xử lý SAU validator (và sau khi gộp trang lọc phòng), không nới validator: kết quả phân trang offset (báo cáo họ v3
+ * crm_read_occupancy_report/invoice_report/pending_approvals/zalo_conversations/contract_search và crm_read_report của đợt
+ * 2 — cùng khuôn items/offset/nextOffset/sourceCapped/unavailable/summary) mà SQL trả `summary: null` (báo cáo không có
+ * tổng riêng) và tập đã TRỌN — bắt đầu từ offset 0, không còn trang sau (nextOffset null), nguồn không bị cắt
+ * (sourceCapped false), không unavailable — thì số dòng chính là tổng: summary = {count: items.length}. Ca thật (full50e
+ * câu 14, production 21/10): upcoming days=60 trả 15 dòng, summary null ⇒ mô hình tự đếm bảng và nói "14 hợp đồng". Còn
+ * trang sau, bị cắt, offset > 0 (không biết các trang trước) hay unavailable ⇒ giữ null: không bao giờ là số của một phần.
+ * summary khác null giữ nguyên. Tool danh sách con trỏ (nextCursor) không đổi: summary của SQL bắt buộc từ R2a, và gộp
+ * lọc phòng đã thay bằng summary của các hàng giữ lại khi đọc hết. Trả object mới, không sửa đầu vào. */
+export function completeListSummary(value) {
+  if (!domainRecord(value) || value.summary !== null || !Array.isArray(value.items) || !Object.hasOwn(value, 'nextOffset') ||
+      value.offset !== 0 || value.nextOffset !== null || value.sourceCapped !== false || value.unavailable !== null) return value;
+  return { ...value, summary: { count: value.items.length } };
+}
 /** Cùng khuôn summary tính từ một mảng dòng ĐÃ kiểm (thuần, không I/O): lọc phòng ở connector (read-name-resolution
  * rowsPlan.merge — summary SQL mô tả tập CHƯA lọc phòng) và oracle của test SQL (summary SQL = summarizeRows(mọi dòng
  * của tập lọc)). now: mốc của tasks.overdue (SQL dùng now() của câu lệnh). */
@@ -394,20 +422,19 @@ export function summarizeRows(operation, rows, { now = Date.now() } = {}) {
   const money = (key, keep = () => true) => sumAmounts(rows.filter(keep).map(row => row[key]));
   const add = key => rows.reduce((sum, row) => sum + row[key], 0);
   switch (operation) {
-    // R2c phần 2: dòng khách không mang tình trạng hợp đồng (status_v2) ⇒ byStatus không suy ra được từ dòng: null.
-    case 'customers': return { count, byStatus: null, sum: {} };
+    // R2c phần 2: dòng khách không mang tình trạng hợp đồng (status_v2) ⇒ byStatus không suy ra được từ dòng: null. R2d:
+    // contractId của dòng chỉ là HĐ đang hiệu lực (vắng không có nghĩa là chưa từng có HĐ) ⇒ withoutContract null.
+    case 'customers': return { count, byStatus: null, sum: {}, withoutContract: null };
     case 'invoices': case 'services': return { count, byStatus: {}, sum: {} };
     case 'leads': case 'contracts': return { count, byStatus: tally('status'), sum: {} };
     case 'tasks': return { count, byStatus: tally('status'), sum: {},
       overdue: rows.filter(row => row.status === 'IN_PROGRESS' && row.deadline !== null && Date.parse(row.deadline) < now).length };
     case 'assets': {
-      // R2c phần 2: latest như SQL nhưng chỉ theo NGÀY của dòng (cùng ngày ⇒ id nhỏ hơn; SQL xếp theo giờ thật). Dòng của
-      // SQL trước 20261021044801 (không createdAt) ⇒ không có khoá latest, như SQL đó.
-      const base = { count, byStatus: tally('condition'), sum: { quantity: money('quantity') } };
-      if (rows.some(row => !Object.hasOwn(row, 'createdAt'))) return base;
+      // R2c phần 2: latest như SQL nhưng chỉ theo NGÀY của dòng (cùng ngày ⇒ id nhỏ hơn; SQL xếp theo thời điểm thật). R2d:
+      // latestCount đếm cùng THỜI ĐIỂM — dòng chỉ mang ngày ⇒ không suy ra được: null (không bao giờ đoán theo ngày).
       const latest = rows.reduce((best, row) => best === null || row.createdAt > best.createdAt || row.createdAt === best.createdAt && row.id < best.id ? row : best, null);
-      return { ...base, latest: latest === null ? null : { id: latest.id, name: latest.name, code: latest.code, buildingId: latest.buildingId,
-        buildingName: latest.buildingName, roomName: latest.roomName, createdAt: latest.createdAt } };
+      return { count, byStatus: tally('condition'), sum: { quantity: money('quantity') }, latest: latest === null ? null : { id: latest.id, name: latest.name,
+        code: latest.code, buildingId: latest.buildingId, buildingName: latest.buildingName, roomName: latest.roomName, createdAt: latest.createdAt }, latestCount: null };
     }
     case 'occupancy': return { count, total: add('total'), occupied: add('occupied'), available: add('available') };
     case 'income_expenses': {

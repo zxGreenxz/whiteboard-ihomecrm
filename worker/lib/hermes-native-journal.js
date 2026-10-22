@@ -72,16 +72,28 @@ export function createNativeJournal(root, channel, { io = fs } = {}) {
       throw new Error('native_journal_unavailable');
     }
   }
-  function update(kind, id, record) {
-    ready(kind); validateRecord(kind, id, record, channel);
-    if (!Object.hasOwn(state[kind], id) && Object.keys(state[kind]).length >= MAX_RECORDS) throw new Error('native_journal_capacity');
-    const next = { ...state, [kind]: { ...state[kind], [id]: { ...record } } };
-    save(next); return { ...record };
+  // One fsynced snapshot for several records (a media group is claimed or
+  // acknowledged as a whole). Every record passes the unchanged validator.
+  function updateMany(kind, records) {
+    ready(kind);
+    const ids = new Set();
+    for (const record of records) {
+      if (!plain(record) || ids.has(record.id)) fail();
+      validateRecord(kind, record.id, record, channel); ids.add(record.id);
+    }
+    const added = [...ids].filter(id => !Object.hasOwn(state[kind], id)).length;
+    if (added && Object.keys(state[kind]).length + added > MAX_RECORDS) throw new Error('native_journal_capacity');
+    const next = { ...state, [kind]: { ...state[kind], ...Object.fromEntries(records.map(record => [record.id, { ...record }])) } };
+    save(next); return records.map(record => ({ ...record }));
   }
+  const update = (kind, id, record) => {
+    if (!plain(record) || record.id !== id) fail();
+    return updateMany(kind, [record])[0];
+  };
   return {
     get: (kind, id) => { ready(kind); return Object.hasOwn(state[kind], id) ? { ...state[kind][id] } : null; },
     values: kind => { ready(kind); return Object.values(state[kind]).map(record => ({ ...record })); },
-    update,
+    update, updateMany,
     // Storage exhaustion fails closed instead of evicting dedup tombstones.
     admit(id, record) {
       ready('inbound');

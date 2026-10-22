@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T18:23:25.791Z",
+  "generatedAt": "2026-10-22T08:25:45.639Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 786,
+    "ledger-applied": 812,
     "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
@@ -12510,6 +12510,39 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql",
+      "version": "20261021063452",
+      "name": "hermes_domain_without_contract_latest_count_v1",
+      "scheme": "timestamp14",
+      "sha256": "04c133abcf099e8cfbdb120c98237a11333e953e805959bcfc4c06c92af96bf7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T09:58:30.093Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021063453_hermes_w2_customers_without_contract_v1.sql",
+      "version": "20261021063453",
+      "name": "hermes_w2_customers_without_contract_v1",
+      "scheme": "timestamp14",
+      "sha256": "698402efb36fc2ffdc5bb572e0a5aeb6bf8b39a74fc609659fc5c820f95b8e56",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T10:01:04.049Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021072938_cua_van_tay_tuya.sql",
+      "version": "20261021072938",
+      "name": "cua_van_tay_tuya",
+      "scheme": "timestamp14",
+      "sha256": "49f5124482c209ba59aded22e43c2f242d9410b814be6ef39caf9a73cc7e1071",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T18:57:35.661Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql",
       "version": "20261021083438",
       "name": "quyet_toan_van_hanh_chu_nha",
@@ -12523,6 +12556,259 @@
         "table:app_private.landlord_operation_changes",
         "table:app_private.landlord_settlement_closes",
         "table:app_private.landlord_settlement_payments"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021113528_hermes_expense_tools_disable_v1.sql",
+      "version": "20261021113528",
+      "name": "hermes_expense_tools_disable_v1",
+      "scheme": "timestamp14",
+      "sha256": "3b2d36259988151696742ad4f64ad7a67f6670e8a321c36c679766c9629b1e76",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T12:54:07.307Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021114556_contract_termination_second_refund_guard_v1.sql",
+      "version": "20261021114556",
+      "name": "contract_termination_second_refund_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "982d5b638a66ca6b3814b79652e40316762865950a2242fbf6c016b55840cc07",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T16:25:51.642Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql",
+      "version": "20261021132433",
+      "name": "hermes_write_name_resolve_v1",
+      "scheme": "timestamp14",
+      "sha256": "b4a83ad70210df1c286234367adc6dfce511033584c3f42882f32ce147987c82",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T01:55:40.022Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021133823_hermes_action_foundation_v1.sql",
+      "version": "20261021133823",
+      "name": "hermes_action_foundation_v1",
+      "scheme": "timestamp14",
+      "sha256": "67061794749877d78f58f99c5325ce83cd51f0924c0437ae8df0487b3846933f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T01:58:20.400Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021134531_hermes_action_keys_seed_v1.sql",
+      "version": "20261021134531",
+      "name": "hermes_action_keys_seed_v1",
+      "scheme": "timestamp14",
+      "sha256": "61e2c81d38617379dccd6551ff49be5a72c8126866d45daad2a3bf8f1d44b814",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T02:02:49.391Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021162612_hermes_task_cancel_disable_v1.sql",
+      "version": "20261021162612",
+      "name": "hermes_task_cancel_disable_v1",
+      "scheme": "timestamp14",
+      "sha256": "03602e45d568d4a3540f7ded924366722816627c9df18d254f5eaa3561e9a5e3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T16:33:21.493Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql",
+      "version": "20261021170452",
+      "name": "hermes_read_web_building_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "554d65ed8cc61cccd54c0f114a5def8f0ef03a9e04409972abf01d7389bc122d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T00:04:05.773Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql",
+      "version": "20261021172540",
+      "name": "hermes_task_input_options_no_building_v1",
+      "scheme": "timestamp14",
+      "sha256": "20dc3b21839e70f3a3fab36454f2e3617a209383050d597caa4c6fcabb4a3f6a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T22:39:17.320Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql",
+      "version": "20261021180057",
+      "name": "contract_lifecycle_permission_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "3fa711a88b1d8fe0ec0d9f0ecaeeeb320ad5b831bfdc8693217357a758a2a159",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T22:53:46.812Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021181209_invoice_cancel_refund_permission_guard_v1.sql",
+      "version": "20261021181209",
+      "name": "invoice_cancel_refund_permission_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "2d9e9ae416dc5e1b92ef35acda76956fd4aebf37e604b2203d5b45c99b3a7b52",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql",
+      "version": "20261021183549",
+      "name": "invoice_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "19865fa07bd85ecac87b4b3c978e41a71e651d009aa8240ad0c0a389da026734",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:45:12.440Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql",
+      "version": "20261021185540",
+      "name": "hermes_receivables_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "4963a826ea6166db734c9657aa79f88545666703397407e71a43c9307a0a3db4",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:47:14.092Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190212_hermes_invoice_report_effective_outstanding_v1.sql",
+      "version": "20261021190212",
+      "name": "hermes_invoice_report_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "d9d5140ce2366f6b5526ebe7bf605d80497fcd23bcde545f18ad2c90da5e0fa6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:49:13.863Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190215_receivable_kpis_effective_outstanding_v1.sql",
+      "version": "20261021190215",
+      "name": "receivable_kpis_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "54d79bd81b4cf09be07853d89b49a54034275742d79163c6df0a693306b782e7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:51:50.724Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190406_dashboard_total_debt_effective_outstanding_v1.sql",
+      "version": "20261021190406",
+      "name": "dashboard_total_debt_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "44071f3d0d60878c38b90708698ff3fea03f8d6bc807bb6d572b56d0b41dd20d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:53:52.286Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql",
+      "version": "20261021231237",
+      "name": "chan_tu_duyet_phieu_chi_vuot_nguong_v1",
+      "scheme": "timestamp14",
+      "sha256": "3ab6ff41436134e6c7fc79068a5de696b2ea6f064cae4e932c184b78ea66ce93",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T05:22:56.233Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022024045_ie_quick_entry_shared_rules_v1.sql",
+      "version": "20261022024045",
+      "name": "ie_quick_entry_shared_rules_v1",
+      "scheme": "timestamp14",
+      "sha256": "30b90e5f101ac4983ef2b0d7bbe35c1807d61a3bbdb7c396d9c89c860c6e8af7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:53:47.015Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022024834_hermes_expense_write_v1.sql",
+      "version": "20261022024834",
+      "name": "hermes_expense_write_v1",
+      "scheme": "timestamp14",
+      "sha256": "425c40afbea75fc730102d21610c6e9f41e62345dcae30ddba498d3a2b368a8f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:56:33.775Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql",
+      "version": "20261022044120",
+      "name": "hermes_name_directory_virtual_v1",
+      "scheme": "timestamp14",
+      "sha256": "277be7eab7db20dbccfe285387796210f76e8da7715fe27852e9bb0ad5febd93",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:59:16.768Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044123_hermes_expense_scope_v1.sql",
+      "version": "20261022044123",
+      "name": "hermes_expense_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "589394bc34dbae8c45e6e6a8eda9a36420b3da030b86769ef8b2d2071220bacc",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:01:18.679Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql",
+      "version": "20261022044126",
+      "name": "hermes_w2_min_amount_param_v1",
+      "scheme": "timestamp14",
+      "sha256": "b70ef5d0e7c1be4b93f0713815c2a4eab21b0b3000ccbb06f442ed1c301ae43b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:03:59.484Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022051029_hermes_w2b_expense_shared_v1.sql",
+      "version": "20261022051029",
+      "name": "hermes_w2b_expense_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "d18005582f663edb84cadef32a000700fdfad24866626a9c7f0f87f9e98e2ecf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:06:13.871Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql",
+      "version": "20261022051032",
+      "name": "hermes_w2b_expense_reports_v1",
+      "scheme": "timestamp14",
+      "sha256": "bf98233cb332a9f9bbfc572b32282fbd7bd71a292ab1113062b2faa0d9b20b72",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:08:17.592Z|bien-nhan-backup"
       ]
     },
     {

@@ -34,6 +34,25 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261018000600_hermes_w2_invoker_gate_v1.sql',
   statementSha256:'eb3603767a8a0c47bbae0c367b3f6714c6a2fc585f64d568f9ab7f85817c5ba5',
  },
+ // Nền chung thao tác ghi (M1): vỏ INVOKER gắn OID guard / giải tên / bước ghi DEFINER lúc tạo.
+ {
+  name:'public.hermes_action_probe_v1',
+  sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
+  statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
+ },
+ // Đợt 2 Thu chi (Mốc 2): RPC trang expense.* — cùng khuôn vỏ INVOKER gắn OID guard / lõi giải tên / bước ghi DEFINER.
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+  statementSha256:'5960c256f08748aab117c62bb218324e4dedea62e9b1a57d3f7411fd0ab57d59',
+ },
+ // Đợt 2 Thu chi (Mốc 3): vỏ expense.* gắn OID phạm vi (guard ∩ hàm kiểm quyền của hàm ghi web); giải tên _v2 ghim ở
+ // hermes-read-function-specs (cùng chỗ với _v1).
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
+  statementSha256:'321484f76fedd6f3d96f094ce5f4bf1201e336bc9b50263b2b9ef60faaa0d774',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
@@ -75,7 +94,9 @@ export function extractHermesFunctionDefinitions(sql,path='migration.sql'){
    return [{qualifiedName:head[1],bodyKind:'sql-standard',bodyDigest:null,external:true}];
   }
   if(spec){
-   requireValue(hash(statement)===spec.statementSha256,'task_sql_standard_source_mismatch');
+   // A reviewed forward migration that CREATE OR REPLACEs a SQL-standard task body is path- and byte-bound
+   // through spec.successors[path] (22/10: hermes_task_input_rows_v1); every other path keeps the base bytes.
+   requireValue(hash(statement)===(spec.successors?.[path]?.statementSha256??spec.statementSha256),'task_sql_standard_source_mismatch');
    return [{qualifiedName:spec.name,bodyKind:'sql-standard',bodyDigest:null}];
   }
   return extractFunctionDefinitions(raw,path);
@@ -117,9 +138,10 @@ export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,
     &&row.arguments===spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item=>item.trim()).join(', ')
     &&row.result===(spec.name==='app_private.hermes_task_assignee_member_v1'?'boolean':'jsonb'),'live_'+prefix+'_definition_mismatch');
    if(spec.standard){
-    requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===spec.deparsedSha256,'live_'+prefix+'_sql_standard_body_mismatch');
+    // The latest source decides which reviewed deparse is live: a successor's, else the base.
+    requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===(successor?.deparsedSha256??spec.deparsedSha256),'live_'+prefix+'_sql_standard_body_mismatch');
     requireValue(Array.isArray(row.dependencies)&&row.dependencies.every(item=>Number.isInteger(item.bound_oid)&&item.bound_oid>0&&item.bound_oid===item.resolved_oid)
-     &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(spec.dependencies),'live_'+prefix+'_dependency_mismatch');
+     &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(successor?.dependencies??spec.dependencies),'live_'+prefix+'_dependency_mismatch');
    }else {
     const digest=successor?.bodyDigest??spec.bodyDigest??source.bodyDigest;
     requireValue(source.bodyDigest===digest&&row.parsed_body===false&&typeof row.prosrc==='string'

@@ -31,6 +31,13 @@ export const W2_SUMMARY_PATH = `supabase/migrations/${W2_SUMMARY_FILE}.sql`;
 // R2c part 2 (wave-2 band): v3 customers summary byStatus = contract status (customers.status_v2).
 export const W2_CUSTOMER_STATUS_FILE = '20261021044814_hermes_w2_customer_status_summary_v1';
 export const W2_CUSTOMER_STATUS_PATH = `supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`;
+// R2d (wave-2 band): v3 customers summary withoutContract (no contract in the connection's contract scope).
+export const W2_WITHOUT_CONTRACT_FILE = '20261021063453_hermes_w2_customers_without_contract_v1';
+export const W2_WITHOUT_CONTRACT_PATH = `supabase/migrations/${W2_WITHOUT_CONTRACT_FILE}.sql`;
+// Nợ thực (22/10/2026): bản cuối của báo cáo — invoice_report stats.totalRemaining không đếm hai lần nợ đã kéo sang hoá
+// đơn gánh còn mở cùng tập (public.invoice_effective_outstanding_v1, nạp sẵn ở finance-fixture).
+export const INVOICE_REPORT_OUTSTANDING_FILE = '20261021190212_hermes_invoice_report_effective_outstanding_v1';
+export const INVOICE_REPORT_OUTSTANDING_PATH = `supabase/migrations/${INVOICE_REPORT_OUTSTANDING_FILE}.sql`;
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -101,7 +108,7 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   // Bảng/cột mà các RPC web thật cần; cổng tổng hợp cùng chữ ký; dữ liệu hoá đơn/hội thoại.
   await db.exec(`ALTER TABLE public.rooms ADD COLUMN rent_price numeric;
     ALTER TABLE public.contracts ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
-    ALTER TABLE public.invoices ADD COLUMN contract_id uuid,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+    ALTER TABLE public.invoices ADD COLUMN contract_id uuid,ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
     ALTER TABLE public.income_expenses ADD COLUMN business_result_accounting boolean,ADD COLUMN invoice_id uuid;
     ALTER TABLE public.income_expense_types ADD COLUMN category text;
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),income_expense_id uuid,income_expense_type_id uuid,
@@ -163,6 +170,11 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   }
   // R2c part 2 (20261021044814, wave-2 band): v3 customers count the contract status. Same CREATE-only pattern, twice.
   if (owner !== null) { const v3 = definition(migrationSql(W2_CUSTOMER_STATUS_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // R2d (20261021063453, wave-2 band): v3 customers count the customers without a contract. Same pattern, twice.
+  if (owner !== null) { const v3 = definition(migrationSql(W2_WITHOUT_CONTRACT_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // Nợ thực (20261021190212): the report reader's invoice_report stats read the effective outstanding. Same CREATE-only
+  // pattern, twice.
+  if (owner !== null) { const body = definition(migrationSql(INVOICE_REPORT_OUTSTANDING_FILE), 'app_private.hermes_report_read_v2'); await db.exec(body); await db.exec(body); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

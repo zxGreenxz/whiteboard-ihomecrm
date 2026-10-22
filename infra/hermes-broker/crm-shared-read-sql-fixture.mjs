@@ -37,6 +37,20 @@ const largestByTypeSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
 // rows carry createdAt and the summary the latest asset. Applied after R2c, twice (idempotent).
 export const CUSTOMER_STATUS_PATH='supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql';
 const customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
+// R2d (20261021063452): the reader's customers summary counts the customers without a contract in the connection's
+// contract scope (withoutContract, through the DEFINER helper hermes_customers_without_contract_v1); v1 assets count
+// the latest import batch (latestCount). Applied after R2c part 2, twice (idempotent).
+export const WITHOUT_CONTRACT_PATH='supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+const withoutContractSql=readFileSync(WITHOUT_CONTRACT_PATH,'utf8');
+// Phạm vi toà web (20261021170452) rồi nợ thực (22/10/2026): hàm dùng chung public.invoice_effective_outstanding_v1
+// (20261021183549) và cả hai đường đọc công nợ (v2 + đọc nhanh) không đếm hai lần nợ đã kéo sang hoá đơn gánh
+// (20261021185540, dựng từ thân v2 của 20261021170452 — $requires$ ghim md5 thân đó). KHÔNG nằm trong setup():
+// test của 20261021170452 cần đúng thân trước nó; test cần nợ thực gọi applyWebBuildingScope rồi applyEffectiveOutstanding.
+export const WEB_BUILDING_SCOPE_PATH='supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql';
+export const OUTSTANDING_PATH='supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql';
+const outstandingSql=readFileSync(OUTSTANDING_PATH,'utf8');
+export const RECEIVABLES_OUTSTANDING_PATH='supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql';
+const receivablesOutstandingSql=readFileSync(RECEIVABLES_OUTSTANDING_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -202,7 +216,8 @@ async function setup(pool) {
  CREATE TABLE public.contract_extensions(contract_id uuid,new_contract_id uuid,extension_type text,status text);
  CREATE TABLE public.invoices(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,contract_id uuid,building_id uuid,room_id uuid,
  invoice_number text,billing_month text,issue_date date,due_date date,status public.invoice_status,total_amount numeric,paid_amount numeric,
- remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz);
+ remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz,
+ previous_debt numeric DEFAULT 0,previous_debt_sources jsonb NOT NULL DEFAULT '[]'::jsonb);
  CREATE TABLE public.invoice_items(id uuid,invoice_id uuid,type text,accounting_class text,description text,unit_price numeric,quantity numeric,coefficient numeric,amount numeric,
  service_id uuid,previous_reading numeric,current_reading numeric,from_date date,to_date date,sort_order integer);
  CREATE TABLE public.payments(id uuid,invoice_id uuid,amount numeric,payment_date date,payment_method public.payment_method,notes text,receipt_image_url text,collection_id uuid,reversed_at timestamptz);
@@ -276,9 +291,51 @@ async function setup(pool) {
  await pool.query(summarySql);await pool.query(summarySql); // R2a summary after B5c step 2, twice (idempotent).
  await pool.query(largestByTypeSql);await pool.query(largestByTypeSql); // R2c after R2a, twice (idempotent).
  await pool.query(customerStatusSql);await pool.query(customerStatusSql); // R2c part 2 after R2c, twice (idempotent).
+ await pool.query(withoutContractSql);await pool.query(withoutContractSql); // R2d after R2c part 2, twice (idempotent).
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};
+}
+// 20261021170452 on the setup() state: the live helpers its $requires$/new helper read (as its own test loads them), then
+// the file twice (idempotent). Production runs this body since 22/10/2026.
+const WEB_BUILDING_SCOPE_LIVE=['app_private.buildings_for_v3','public.has_full_building_scope','public.accessible_building_ids','public.accessible_room_ids',
+ 'app_private.my_possessed_cashbook_ids_v1','public.accessible_account_ids','public.can_view_restricted_ie','app_private.hermes_task_follow_buildings_v1'];
+async function applyWebBuildingScope(pool){
+ for(const name of WEB_BUILDING_SCOPE_LIVE){assert(live.has(name),name);await pool.query(live.get(name));}
+ const sql=readFileSync(WEB_BUILDING_SCOPE_PATH,'utf8');await pool.query(sql);await pool.query(sql);
+}
+// md5 of pg_get_function_sqlbody depends on the schema it was parsed against (and the server build): 20261021185540 and its
+// prepared revert pin the production/TEST 17.6 values of the fast reader (063452 body, new body). This reduced fixture parses
+// the SAME text to other bytes, so the two pins are swapped for the values measured here (new body created in a rolled-back
+// transaction). Only those two literals change; every guard and statement runs as written.
+const FAST_SQLBODY_MD5_PRODUCTION={old:'976ce7eeb92e55271b7c75c56741cfde',fresh:'3da62d56616e690fef3b03a30d4d129c'};
+async function fastSqlbodyMd5(client){
+ return (await client.query(`SELECT md5(pg_get_function_sqlbody(p.oid)) m FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app_private' AND p.proname='hermes_domain_read_rows_fast_v1'`)).rows[0]?.m;
+}
+async function localFastSqlbodyMd5(pool){
+ const start=receivablesOutstandingSql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_domain_read_rows_fast_v1(');
+ const statement=receivablesOutstandingSql.slice(start,receivablesOutstandingSql.indexOf('\nEND;',start)+'\nEND;'.length);
+ const client=await pool.connect();
+ try{
+  const old=await fastSqlbodyMd5(client);
+  await client.query('BEGIN');await client.query(statement);const fresh=await fastSqlbodyMd5(client);await client.query('ROLLBACK');
+  assert(/^[0-9a-f]{32}$/.test(old??'')&&/^[0-9a-f]{32}$/.test(fresh??'')&&old!==fresh);
+  return {old,fresh};
+ }finally{client.release();}
+}
+function withLocalFastSqlbodyMd5(sql,local){
+ assert(sql.includes(FAST_SQLBODY_MD5_PRODUCTION.old)&&sql.includes(FAST_SQLBODY_MD5_PRODUCTION.fresh),'the file pins the production fast-reader digests');
+ return sql.replaceAll(FAST_SQLBODY_MD5_PRODUCTION.old,local.old).replaceAll(FAST_SQLBODY_MD5_PRODUCTION.fresh,local.fresh);
+}
+// Nợ thực after 20261021170452: the shared function, then both receivables lanes; each file twice (idempotent). Returns the
+// local fast-reader digests (for the revert and refusal probes).
+async function applyEffectiveOutstanding(pool){
+ await pool.query(outstandingSql);await pool.query(outstandingSql);
+ const local=await localFastSqlbodyMd5(pool);
+ const sql=withLocalFastSqlbodyMd5(receivablesOutstandingSql,local);
+ await pool.query(sql);await pool.query(sql);
+ return local;
 }
 async function web(pool,fn,extra=''){
  return jwt(pool,async c=>(await c.query(`SELECT public.${fn}(${fn==='customer_list_v1'?`'${ORG}'::uuid`:''}${extra}) value`)).rows[0].value);
@@ -300,4 +357,4 @@ async function normal1(pool,binding,domain,input={},actor={}) {
  return (await c.query('SELECT public.hermes_domain_read_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
 }
 
-export {settings,localCluster,setup,jwt,fast,normal,normal1,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};
+export {settings,localCluster,setup,applyWebBuildingScope,applyEffectiveOutstanding,withLocalFastSqlbodyMd5,jwt,fast,normal,normal1,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};

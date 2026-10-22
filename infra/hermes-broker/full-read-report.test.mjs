@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, W2_CUSTOMER_STATUS_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, W2_CUSTOMER_STATUS_PATH, W2_WITHOUT_CONTRACT_PATH, INVOICE_REPORT_OUTSTANDING_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
   PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
@@ -34,6 +34,10 @@ async function orgWideOverlay(db, on = true, crm = on) {
 const grantCustomers = db => db.exec(`UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='customers.view';
   UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||ARRAY['customers.view'];
   UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['customers.view']`);
+// R2d: customers.withoutContract needs the connection's contract scope (contracts.view) to cover its customer scope.
+const grantContracts = db => db.exec(`UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='contracts.view';
+  UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||ARRAY['contracts.view'];
+  UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['contracts.view']`);
 // Gọi thẳng RPC web như người dùng (jwt sub = USER) để so từng con số với Hermes.
 const web = (env, sql, args = []) => env.call(sql, args, { role: 'postgres' });
 // Câu CREATE của một hàm trong một file migration (thân plpgsql kết thúc ở $fn$;).
@@ -125,11 +129,14 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     // B5c bước 2 (20261020173819, dải nền hermes_w2_): customers thêm buildingName, mọi dòng khác giữ bản nền.
     // R2a (20261021004841, dải nền hermes_w2_): v3 customers/occupancy thêm summary, báo cáo monthly_pnl thêm tổng;
     // mọi dòng khác giữ bản 20261020173819 (v3) và 20261017033630 (báo cáo).
-    // R2c phần 2 (20261021044814, dải nền): v3 customers đếm tình trạng hợp đồng — bản cuối của v3; báo cáo giữ bản R2a.
+    // R2c phần 2 (20261021044814, dải nền): v3 customers đếm tình trạng hợp đồng; báo cáo giữ bản R2a.
+    // R2d (20261021063453, dải nền): v3 customers đếm khách chưa có hợp đồng — bản cuối của v3.
+    // Nợ thực (20261021190212): báo cáo invoice_report stats đọc nợ thực — bản cuối của báo cáo (ngoài dải nền: hàm này
+    // không thuộc W2_FOUNDATION_FUNCTIONS).
     if (name === 'app_private.hermes_report_read_v2')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_SUMMARY_PATH, `${name} lives in the R2a wave-2 successor`);
+      assert.equal(`supabase/migrations/${last[0]}`, INVOICE_REPORT_OUTSTANDING_PATH, `${name} lives in the effective-outstanding successor`);
     if (name === 'public.hermes_domain_read_v3')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_CUSTOMER_STATUS_PATH, `${name} lives in the R2c part 2 wave-2 successor`);
+      assert.equal(`supabase/migrations/${last[0]}`, W2_WITHOUT_CONTRACT_PATH, `${name} lives in the R2d wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])
@@ -221,6 +228,31 @@ test('invoice search like /invoices: cancelled hidden by default, unpaid = no mo
   assert.equal((await run(env, 'invoice_report', { report: 'stats' })).value.summary.totalCount, 3, 'stats exclude cancelled');
 }));
 
+// Nợ thực (20261021190212): totalRemaining như thẻ "Phải thu" của invoice_statistics_v3 — phần nợ cũ đã kéo sang hoá đơn
+// gánh còn mở CÙNG tập chỉ đếm một lần; một kỳ (hoá đơn gánh ở kỳ khác) giữ nguyên. Bản lùi chuẩn bị sẵn về đúng R2a.
+test('invoice_report stats: nợ thực — nợ kéo sang hoá đơn gánh cùng tập đếm một lần; một kỳ giữ nguyên; bản lùi về R2a rồi forward lại', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  const CARRIER = '0e0e0e0e-0000-4000-8000-000000000099';
+  // INV-A (kỳ 10, còn 2.500.000) được hoá đơn kỳ 11 cùng phòng gánh trọn; hoá đơn gánh tạo SAU (created_at mặc định).
+  await db.exec(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,
+      notes,contract_id,previous_debt_sources) VALUES('${CARRIER}','${ORG}','INV-C','APPROVED','${BUILDING}','${ROOM}','2026-11','2026-11-10',3000000,0,null,
+      '${CONTRACT_A}','[{"type":"invoice","id":"${INVOICE_A}","amount":2500000,"label":"INV-A"}]')`);
+  const remaining = async input => (await run(env, 'invoice_report', { report: 'stats', ...input })).value.summary.totalRemaining;
+  assert.deepEqual([await remaining({}), await remaining({ month: '2026-10' }), await remaining({ month: '2026-11' })],
+    ['3000000.00', '2500000.00', '3000000.00'], 'mọi kỳ: 3.000.000 (cộng thẳng 5.500.000); từng kỳ giữ nguyên');
+  const bodyMd5 = async () => (await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE proname='hermes_report_read_v2'")).rows[0].m;
+  const live = await bodyMd5();
+  const file = revertFile('docs/plans/hermes-crm/revert/hermes_invoice_report_effective_outstanding_revert_v1.sql');
+  await db.exec(file); await db.exec(file);
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
+  const r2a = await bodyMd5();
+  await db.exec(file);
+  assert.equal(await bodyMd5(), r2a, 'bản lùi = đúng thân R2a (20261021004841)');
+  assert.equal(await remaining({}), '5500000.00', 'thân R2a cộng thẳng');
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual([await bodyMd5(), await remaining({})], [live, '3000000.00'], 'forward lại');
+}));
+
 test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on request) plus the pending part BC Doanh Thu Chi Phí adds', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await seedPnl(db);
@@ -294,31 +326,79 @@ test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 
   assert.throws(() => domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput), 'the four totals are required');
   await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3')); await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
   await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
-  assert.deepEqual(await bodies(), r2a, 'R2a then R2c part 2 forward again');
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), r2a, 'R2a then R2c part 2 then R2d then the effective-outstanding report forward again');
 }));
 
-// R2c part 2 (20261021044814): the prepared wave-2 revert returns v3 to its exact R2a body (customers byStatus {} again,
-// which every connector accepts); it runs twice and the forward body re-applies. The report reader is not touched.
-test('R2c part 2 W2 revert artifact: restores the exact 20261021004841 v3 body; customers byStatus {} again and accepted; runs twice', { timeout: 120000 }, () => inCase(async env => {
-  const { db, orgWide } = env;
-  const file = readFileSync('docs/plans/hermes-crm/revert/hermes_w2_customer_status_summary_revert_v1.sql', 'utf8');
+// A prepared wave-2 revert, run inside the case without its own BEGIN/COMMIT (the case is one transaction).
+const revertFile = path => {
+  const file = readFileSync(path, 'utf8');
   assert.equal(file.split('\nBEGIN;\n').length, 2); assert.equal(file.split('\nCOMMIT;\n').length, 2);
-  const run = () => db.exec(file.replace('\nBEGIN;\n', '\n').replace('\nCOMMIT;\n', '\n'));
+  return file.replace('\nBEGIN;\n', '\n').replace('\nCOMMIT;\n', '\n');
+};
+const R2D_W2_REVERT = 'docs/plans/hermes-crm/revert/hermes_w2_customers_without_contract_revert_v1.sql';
+
+// R2c part 2 (20261021044814): the prepared wave-2 revert returns v3 to its exact R2a body (customers byStatus {} again,
+// which every connector accepts); it runs twice and the forward body re-applies. The report reader is not touched. R2d
+// (20261021063453) is live on top of it: the artifact refuses to run until R2d's own wave-2 revert has.
+test('R2c part 2 W2 revert artifact: refused while R2d is live; then the exact 20261021004841 v3 body; customers byStatus {} again and accepted; runs twice', { timeout: 120000 }, () => inCase(async env => {
+  const { db, orgWide } = env;
+  const file = revertFile('docs/plans/hermes-crm/revert/hermes_w2_customer_status_summary_revert_v1.sql');
+  const run = () => db.exec(file);
   const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
   await grantCustomers(db); await orgWide('customers.view');
   const live = await bodies(), before = await env.read3('customers', domainInput('customers', {}));
   assert.deepEqual(before.summary.byStatus, { RENTING: 2 }, 'the fixture tabs (two renting, two unclassified)');
+  await db.exec('SAVEPOINT r2d_live');
+  await assert.rejects(run(), /hermes_w2_customer_status_revert_requires_r2d_revert/);
+  await db.exec('ROLLBACK TO SAVEPOINT r2d_live');
+  assert.deepEqual(await bodies(), live, 'refused: nothing replaced');
+  await db.exec(revertFile(R2D_W2_REVERT));
+  const r2c = await bodies();
   await run();
   const reverted = await bodies();
-  assert.notEqual(reverted[0].body, live[0].body, 'v3 replaced'); assert.equal(reverted[1].body, live[1].body, 'the report reader untouched');
+  assert.notEqual(reverted[0].body, r2c[0].body, 'v3 replaced'); assert.equal(reverted[1].body, live[1].body, 'the report reader untouched');
   await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3'));
   assert.deepEqual(await bodies(), reverted, 'the revert body is the 20261021004841 body');
   await run(); assert.deepEqual(await bodies(), reverted, 'a second run changes nothing');
   const legacy = await env.read3('customers', domainInput('customers', {}));
-  assert.deepEqual([legacy.items, legacy.summary], [before.items, { ...before.summary, byStatus: {} }], 'only byStatus differs');
+  const { withoutContract, ...r2cSummary } = before.summary;
+  assert.deepEqual([legacy.items, legacy.summary], [before.items, { ...r2cSummary, byStatus: {} }], 'only byStatus differs (withoutContract left with R2d)');
   assert.deepEqual(domainResult('customers', legacy, identity('customers.view'), domainInput('customers', {})).summary, legacy.summary, 'accepted');
   await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
-  assert.deepEqual(await bodies(), live, 'part 2 forward again');
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), live, 'part 2 and R2d forward again');
+}));
+
+// R2d (20261021063453): the prepared wave-2 revert returns v3 to its exact R2c part 2 body — the customers summary without
+// withoutContract, which this connector release accepts (its one-release window); it runs twice, refuses a v3 that is
+// neither (it would undo it), and the forward body re-applies. The report reader is not touched.
+test('R2d W2 revert artifact: restores the exact 20261021044814 v3 body; customers summary without withoutContract, accepted this release; runs twice', { timeout: 120000 }, () => inCase(async env => {
+  const { db, orgWide } = env;
+  const file = revertFile(R2D_W2_REVERT), run = () => db.exec(file);
+  const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
+  await grantCustomers(db); await grantContracts(db); await orgWide('customers.view');
+  const live = await bodies(), before = await env.read3('customers', domainInput('customers', {}));
+  assert.equal(before.summary.withoutContract, 1, 'the fixture customer who never had a contract');
+  await run();
+  const reverted = await bodies();
+  assert.notEqual(reverted[0].body, live[0].body, 'v3 replaced'); assert.equal(reverted[1].body, live[1].body, 'the report reader untouched');
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), reverted, 'the revert body is the 20261021044814 body');
+  await run(); assert.deepEqual(await bodies(), reverted, 'a second run changes nothing');
+  const legacy = await env.read3('customers', domainInput('customers', {}));
+  const { withoutContract, ...r2cSummary } = before.summary;
+  assert.deepEqual([legacy.items, legacy.summary], [before.items, r2cSummary], 'only withoutContract differs');
+  assert.deepEqual(domainResult('customers', legacy, identity('customers.view'), domainInput('customers', {})).summary, legacy.summary, 'accepted (window)');
+  // Over a v3 that is neither R2d nor R2c part 2 (here the R2a body) the artifact stops: it would undo it.
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec('SAVEPOINT r2a_v3');
+  await assert.rejects(run(), /hermes_w2_without_contract_revert_unexpected_v3/);
+  await db.exec('ROLLBACK TO SAVEPOINT r2a_v3');
+  await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
+  await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
+  assert.deepEqual(await bodies(), live, 'R2d forward again: the reviewed body');
 }));
 
 test('organization reports: approvals inbox of the asker in this company; Zalo needs Chat Zalo company-wide like the web', { timeout: 120000 }, () => inCase(async env => {

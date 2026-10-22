@@ -139,6 +139,7 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/dashboard", reason: "dashboard shell is deferred" },
   { route: "/building-map", reason: "map surface is deferred" },
   { route: "/network-center/*", reason: "infrastructure surface is deferred" },
+  { route: "/cua-van-tay", reason: "door access opens physical doors and issues door codes; no Copilot page contract" },
   { route: "/notifications", reason: "notification surface is deferred" },
   { route: "/finance/personal-wallet", reason: "Owner-private personal finance is excluded from Copilot live-data tools; the product surface is available independently" },
   { route: "/chi-tieu", reason: "quick-entry page calls its own edge function quick-entry (voice: OpenRouter, reading: 9router); Copilot launcher is hidden there" },
@@ -229,6 +230,28 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     },
     e2e: { spec: ".e2e-fleet/specs/network-center.spec.ts" },
     risk: "infrastructure",
+  },
+  {
+    id: "door-access",
+    primaryRoute: "/cua-van-tay",
+    label: "Cửa vân tay",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "door_access", action: "view" },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/cua-van-tay" },
+    docs: {
+      systemDoc: "docs/he-thong/26-cua-van-tay.md",
+      // Ra mắt ở chế độ chỉ đọc (DOOR_ACCESS_MODE=read) và chưa kiểm trên máy thật; hướng dẫn
+      // người dùng viết sau khi mở ghi, để không hứa thao tác mà nút còn khoá.
+      userDoc: null,
+      userDocMienTruVi:
+        "Chạy chỉ đọc tới khi kiểm trên máy thật; quyền chỉ chủ sở hữu có sẵn. Hướng dẫn nằm ở tài liệu hệ thống 26 cho tới khi mở ghi.",
+      visibility: "internal",
+    },
+    e2e: {
+      spec: null,
+      mienTruVi: "Chưa có spec khói .e2e-fleet: TEST không có khoá Tuya nên trang dừng ở trạng thái chưa kết nối; kiểm bằng Playwright trên TEST khi tích hợp.",
+    },
+    risk: "security",
   },
   // ===========================================================================
   // ĐỢT MIỀN TIỀN — bốn bề mặt đầu tiên KHÔNG phải "tính năng sau cờ".

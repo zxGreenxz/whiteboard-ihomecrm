@@ -77,6 +77,7 @@ import {
   Network,
   BadgeCheck,
   Handshake,
+  Fingerprint,
 } from 'lucide-react';
 
 interface NavItem {
@@ -196,6 +197,7 @@ export const navigationGroups: NavGroup[] = [
         ],
       },
       ...navFieldsFor('network-center').map((f) => ({ ...f, icon: Network }) satisfies NavItem),
+      ...navFieldsFor('door-access').map((x) => ({ ...x, icon: Fingerprint }) satisfies NavItem),
       ...navFieldsFor('tasks').map((x) => ({ ...x, icon: ClipboardList }) satisfies NavItem),
       ...navFieldsFor('notifications').map((x) => ({ ...x, icon: Bell }) satisfies NavItem),
     ],

@@ -9,14 +9,18 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   // Đợt 2: web không có khoá catalog cho hai màn này.
   'assistant.salary.self': 'Xem lương của tôi (như trang Lương của tôi)',
   'assistant.bank_events.read': 'Xem biến động số dư (chỉ super admin, như trang Biến động số dư)',
+  // Đợt 1 nền chung thao tác ghi: hai khoá riêng Hermes (seed TẮT; chỉ hiện ở màn tạo kết nối khi đã bật).
+  'income_expenses.approve_vouchers': 'Duyệt và chi phiếu chi người khác lập tay (Hermes, có xem trước)',
+  'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
   'tasks.delete': 'Hermes: huỷ công việc khi bạn yêu cầu rõ',
   'customers.create': 'Hermes: tạo khách cá nhân chưa gắn tòa; cần phạm vi Toàn tổ chức',
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
-  'income_expenses.create': 'Hermes: ghi phiếu CHI nhanh; thang duyệt CRM quyết trạng thái, Hermes không duyệt hay vào sổ',
-  'income_expenses.approve': 'Hermes: chỉ cho phiếu chi Hermes ghi được duyệt ngay bằng quyền duyệt của bạn; không có công cụ duyệt',
+  // Đợt 2 Thu chi: thang duyệt CRM quyết trạng thái như web; phiếu ra đời đã duyệt thì CRM vào sổ quỹ ngay.
+  'income_expenses.create': 'Hermes: lập phiếu CHI lập tay (luôn xem trước, dưới ngưỡng hoặc người lập có quyền duyệt thì vào sổ ngay) và ghi chú phiếu',
+  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt và chi phiếu chi người khác lập tay"',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
   'deposits.view': 'Hermes: chỉ tổng cọc đang giữ theo tòa, không có chi tiết khách',
@@ -55,6 +59,19 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'reports_real_estate.new_leases': 'Hermes: báo cáo hợp đồng mới',
   'reports_real_estate.terminations': 'Hermes: báo cáo thanh lý',
   'reports_real_estate.expense_ratio': 'Hermes: báo cáo tỷ lệ chi phí',
+  // Đợt 1 nền chung thao tác ghi (seed TẮT, bật theo từng trang): phần Hermes làm, luôn qua bản xem trước nếu có tiền.
+  'income_expenses.edit': 'Hermes: sửa phiếu chi đang chờ duyệt, có xem trước',
+  'income_expenses.cancel': 'Hermes: huỷ phiếu chi lập tay, bắt lý do, có xem trước',
+  'meter_readings.create': 'Hermes: ghi chỉ số điện nước, chống trùng tháng, có xem trước',
+  'invoices.edit': 'Hermes: điều chỉnh hoá đơn (dòng không có chỉ số) và xác nhận kiểm tra điều chỉnh, có xem trước',
+  'invoices.cancel': 'Hermes: huỷ hoá đơn chưa thu, có xem trước',
+  'invoices.approve': 'Hermes: duyệt hoá đơn, có xem trước',
+  'contracts.terminate': 'Hermes: báo trả phòng và ghi nhận trả phòng (quyết toán vẫn trên web), có xem trước',
+  'contracts.renew': 'Hermes: gia hạn hợp đồng giữ giá, có xem trước',
+  'contracts.edit': 'Hermes: thêm, bớt người ở trong hợp đồng, có xem trước',
+  'contracts.create': 'Hermes: soạn nháp hợp đồng; người ký trên web',
+  'contracts.transfer': 'Hermes: chuyển phòng, có xem trước',
+  'sale_phong.lock_room': 'Hermes: lock tạm phòng 6/12/24 giờ và bỏ lock',
 });
 const own = (map: Readonly<Record<string, string>>, key: string) => Object.prototype.hasOwnProperty.call(map, key);
 export const hermesCapabilityLabel = (key: string): string => (own(LABELS, key) ? LABELS[key] : key);
