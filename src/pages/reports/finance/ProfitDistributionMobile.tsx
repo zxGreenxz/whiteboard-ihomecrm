@@ -37,6 +37,17 @@ import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hooks/useIhomeProfitLine";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
+import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import {
+  activeRoomNoteText,
+  computeProfitReportChecks,
+  endedUnsettledNoteText,
+  summarizeRoomNotes,
+  type FixedFeeCell,
+  type ProfitCheckBuilding,
+} from "@/lib/profitReportChecks";
+import { useFeeConfigMatrix } from "@/hooks/useFeeConfigMatrix";
+import { useLandlordIhomeProfit } from "@/hooks/useLandlordSettlement";
 import { MobileHeader, fmtShort } from "@/components/shareholders/profitMobileShared";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
@@ -168,7 +179,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: stats } = useIncomeExpenseStats(filters, { businessResultOnly: pnlOnly });
   const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
   // Phòng trống / thiếu hoá đơn trong tháng (cột Thu) — cùng hook desktop.
-  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, scopeReady);
+  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, scopeReady, { includeEndedContracts: true });
   // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
@@ -327,16 +338,39 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       inc.sort(sorter);
       return { incomeRows: inc, expenseRows: exp };
     }
-    // Phòng gắn cờ KHÔNG có khoản thu trong tháng → dòng ghi chú:
-    //  - còn HĐ → đỏ "Chưa có hoá đơn"; trống thật → vàng cam "Trống phòng — lý do".
+    // Dòng ghi chú (đồng bộ desktop): HĐ kết thúc giữa tháng chưa thanh lý → đỏ; còn HĐ → theo hoá
+    // đơn kỳ: chưa có hoá đơn / có hoá đơn chưa thu → đỏ, thu một phần/đủ → không ghi; trống thật
+    // (phòng không có khoản thu nào) → vàng cam "Trống phòng — lý do".
     const anyIncomeRooms = new Set<string>();
-    for (const r of inc) if (r.roomId) anyIncomeRooms.add(r.roomId);
+    const invoicedIncomeRooms = new Set<string>();
+    for (const r of inc) {
+      if (!r.roomId) continue;
+      anyIncomeRooms.add(r.roomId);
+      if (r.invoiceId) invoicedIncomeRooms.add(r.roomId);
+    }
     for (const note of vacantNotes.values()) {
-      if (anyIncomeRooms.has(note.roomId)) continue;
+      if (note.kind === "ended_unsettled") {
+        inc.push({
+          key: `ended-${note.contractId ?? note.roomId}`,
+          desc: `⚠️ ${endedUnsettledNoteText(note)}`,
+          building: note.buildingName, room: note.roomName, roomId: note.roomId,
+          type: "—", period: "", amount: 0, notKqkd: false, invoiceId: null,
+          isNote: true, isMissingInvoice: true,
+        });
+        continue;
+      }
+      if (note.kind === "active") {
+        const st = note.invoiceState;
+        if (st === "paid" || st === "partial") continue;
+        if (st === undefined && anyIncomeRooms.has(note.roomId)) continue;
+        if (st === "none" && invoicedIncomeRooms.has(note.roomId)) continue;
+      } else if (anyIncomeRooms.has(note.roomId)) {
+        continue;
+      }
       if (note.kind === "active") {
         inc.push({
           key: `missing-${note.roomId}`,
-          desc: "⚠️ Chưa có hoá đơn tháng này (còn HĐ)",
+          desc: `⚠️ ${activeRoomNoteText(note)} (còn HĐ)`,
           building: note.buildingName, room: note.roomName, roomId: note.roomId,
           type: "—", period: "", amount: 0, notKqkd: false, invoiceId: null,
           isNote: true, isMissingInvoice: true,
@@ -401,7 +435,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
   const canEditBuildings = canUse(perms, "buildings", "edit");
-  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
+  // tải cho mọi người: bộ dò chi cố định khớp hạng mục theo khoá fee_category (đồng bộ desktop)
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense");
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
   const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
   const [missingCfgOpen, setMissingCfgOpen] = useState(false);
@@ -426,27 +461,64 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     setExpenseFormOpen(true);
   };
 
-  // Placeholder "chưa có phiếu" cho hạng mục chi cố định còn thiếu — như desktop:
-  // chỉ ở chế độ dồn tích + đúng 1 toà thật; dò trên danh sách ĐẦY ĐỦ expenseRows.
+  // Bộ dò dùng chung (đồng bộ desktop): chi cố định thiếu/thiếu số/có thể trùng ở MỌI toà trong phạm
+  // vi + phiếu chờ duyệt quá 30 ngày; chỉ chế độ phân bổ theo kỳ; toà vận hành cho chủ nhà bỏ tiền nhà.
+  const { data: feeRates } = useFeeConfigMatrix();
+  const { data: landlordRows } = useLandlordIhomeProfit(scopeReady ? `${ymStr}-01` : null, scopeReady ? `${ymStr}-01` : null);
+  const profitChecks = useMemo(
+    () =>
+      !accrualMode || !accrual || !feeRates
+        ? null
+        : computeProfitReportChecks({
+            rows: accrual.rows,
+            buildings: buildings as ProfitCheckBuilding[],
+            feeRates,
+            expenseTypes,
+            scopeBuildingIds: scopeIds,
+            skipRentBuildingIds: landlordRows?.map((r) => r.building_id),
+            today: todayStr,
+          }),
+    [accrualMode, accrual, feeRates, buildings, expenseTypes, scopeIds, landlordRows, todayStr],
+  );
+  const roomSummary = useMemo(() => (vacantNotes ? summarizeRoomNotes(vacantNotes) : null), [vacantNotes]);
+  const checkWarnings = useMemo(() => {
+    const out: string[] = [];
+    const f = profitChecks?.fixedFees;
+    if (f && f.missingBuildingCount > 0) out.push(`Thiếu chi cố định ở ${f.missingBuildingCount} toà`);
+    if (f && f.duplicateBuildingCount > 0) out.push(`Có thể trùng chi cố định ở ${f.duplicateBuildingCount} toà`);
+    const s = profitChecks?.stalePending;
+    if (s && s.count > 0) out.push(`${s.count} phiếu chờ duyệt quá ${s.thresholdDays} ngày vẫn đang nằm trong tổng`);
+    return out;
+  }, [profitChecks]);
+  const openCreateFixedFee = (cell: FixedFeeCell) => {
+    const rank = FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === cell.key);
+    const type = findTypeForFixedCategory(expenseTypes, rank);
+    if (!type) toast.info(`Không tìm thấy loại chi khớp "${cell.label}" — chọn hạng mục thủ công trong form`);
+    setExpensePrefill({
+      building_id: cell.buildingId,
+      period: { start_date: startDate, end_date: endDate },
+      items: type
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: cell.expected ?? 0 }]
+        : undefined,
+    });
+    setExpenseFormOpen(true);
+  };
+
+  // Placeholder "chưa có phiếu" khi lọc đúng 1 toà thật — lấy từ bộ dò chung (như desktop).
   const displayExpenseRows = useMemo(() => {
-    if (loading || !accrualMode || !singleBuilding || singleBuilding.is_virtual) return shownExpenseRows;
-    const present = new Set<number>();
-    for (const r of expenseRows)
-      if (!r.isNote) present.add(expenseRankOf(r.category, r.type, r.desc));
-    const hiddenFixed = new Set<string>(
-      (singleBuilding.hidden_fixed_expenses as string[] | null) ?? [],
-    );
+    if (loading || !profitChecks || !singleBuilding || singleBuilding.is_virtual) return shownExpenseRows;
     const missing: MRow[] = [];
-    FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
-      if (present.has(i)) return;
-      if (cat.requiresElevator && !singleBuilding.has_elevator) return;
-      if (hiddenFixed.has(cat.key)) return;
+    for (const cell of profitChecks.fixedFees.issues) {
+      if (cell.buildingId !== singleBuilding.id || cell.status !== "MISSING") continue;
+      const i = FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === cell.key);
+      const cat = FIXED_EXPENSE_CATEGORIES[i];
+      if (!cat) continue;
       missing.push({
         key: `missing-exp-${i}`, desc: cat.label, building: singleBuilding.name ?? "—",
         room: null, type: cat.label, period: "", amount: 0, notKqkd: false,
         invoiceId: null, isNote: true, isMissingExpense: true, fixedRank: i,
       });
-    });
+    }
     if (missing.length === 0) return shownExpenseRows;
     return [...shownExpenseRows, ...missing].sort(
       (a, b) =>
@@ -454,7 +526,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           expenseRankOf(b.category, b.type, b.desc, b.fixedRank) ||
         compareRoom(a.room, b.room) || a.desc.localeCompare(b.desc, "vi"),
     );
-  }, [shownExpenseRows, expenseRows, loading, accrualMode, singleBuilding]);
+  }, [shownExpenseRows, loading, profitChecks, singleBuilding]);
 
   // Note "thiếu/thừa so với hoá đơn" — port desktop (bù cọc-trong-HĐ + phần thanh lý đã tách).
   const noteFor = (row: MRow): { text: string; kind: "lack" | "over" } | null => {
@@ -732,6 +804,15 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             </div>
           )}
 
+          {/* Bộ dò chung: chi cố định thiếu / có thể trùng, chờ duyệt lâu, phòng chưa có / chưa thu hoá
+              đơn, HĐ kết thúc chưa thanh lý, phòng trống — bấm chip để xem chi tiết. */}
+          <ProfitReportChecks
+            variant="mobile"
+            checks={profitChecks}
+            roomSummary={roomSummary}
+            onCreateExpense={canCreate ? openCreateFixedFee : undefined}
+          />
+
           {/* B5: thanh kiểm chứng — ẩn mặc định, chỉ hiện khi có lệch + bấm chấm đỏ.
               Luôn mount (display:none) để tự tính trạng thái lệch. */}
           <div className={showVerify ? "" : "hidden"}>
@@ -757,6 +838,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             pendingIncome={pendingInfo.income}
             pendingExpense={pendingInfo.expense}
             accrualRows={accrualMode ? accrual?.rows : undefined}
+            extraWarnings={checkWarnings}
             onIssueChange={setHasVerifyIssue}
           />
           </div>

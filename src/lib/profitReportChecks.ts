@@ -547,3 +547,23 @@ export const summarizeRoomNotes = (
   }
   return out;
 };
+
+const vnd = (n: number): string => `${Math.round(n).toLocaleString('vi-VN')} đ`;
+const ddmm = (iso: string | null | undefined): string => {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso ?? '');
+  return m ? `${m[2]}/${m[1]}` : '?';
+};
+
+/** Chữ ghi chú phòng CÒN HĐ theo hoá đơn kỳ (desktop + mobile dùng chung). */
+export const activeRoomNoteText = (note: VacantRoomNote): string =>
+  note.invoiceState === 'unpaid'
+    ? `Có hoá đơn, chưa thu ${vnd(note.invoiceRemaining ?? note.invoiceTotal ?? 0)}${note.invoiceOverdue ? ' — quá hạn' : ''}`
+    : 'Chưa có hoá đơn tháng này';
+
+/** Chữ ghi chú HĐ kết thúc giữa tháng mà chưa thanh lý xong (desktop + mobile dùng chung). */
+export const endedUnsettledNoteText = (note: VacantRoomNote): string => {
+  const hd = note.contractNumber ? `HĐ ${note.contractNumber}` : 'HĐ';
+  const why = note.missingTermination ? 'chưa thanh lý' : 'thanh lý chưa xong, chưa có hoá đơn cuối';
+  const owe = (note.finalInvoiceRemaining ?? 0) > 0 ? ` · còn phải thu ${vnd(note.finalInvoiceRemaining ?? 0)}` : '';
+  return `${hd} kết thúc ${ddmm(note.endedOn)} — ${why}${owe}`;
+};

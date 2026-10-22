@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   FIXED_FEE_KINDS,
+  activeRoomNoteText,
   buildFeeKeyContext,
+  endedUnsettledNoteText,
   classifyFixedFee,
   computeFixedFeeChecks,
   computeProfitReportChecks,
@@ -299,5 +301,21 @@ describe('summarizeRoomNotes', () => {
       endedUnsettledRemaining: 1_000_000,
     });
     expect(summarizeRoomNotes(undefined).vacantRooms).toBe(0);
+  });
+});
+
+describe('chữ ghi chú phòng (desktop + mobile dùng chung)', () => {
+  const base = { roomName: 'P', buildingId: 'A', buildingName: 'Toà A', roomId: 'r1' } as const;
+  it('còn HĐ: chưa có hoá đơn / có hoá đơn chưa thu (kèm quá hạn)', () => {
+    expect(activeRoomNoteText({ ...base, kind: 'active', invoiceState: 'none' } as VacantRoomNote)).toBe('Chưa có hoá đơn tháng này');
+    const t = activeRoomNoteText({ ...base, kind: 'active', invoiceState: 'unpaid', invoiceRemaining: 3_000_000, invoiceOverdue: true } as VacantRoomNote);
+    expect(t).toMatch(/^Có hoá đơn, chưa thu 3[.,]000[.,]000 đ — quá hạn$/);
+    expect(activeRoomNoteText({ ...base, kind: 'active', invoiceState: 'unpaid', invoiceTotal: 500_000 } as VacantRoomNote)).not.toMatch(/quá hạn/);
+  });
+  it('HĐ kết thúc chưa thanh lý: ngày kết thúc, lý do, số còn phải thu', () => {
+    expect(endedUnsettledNoteText({ ...base, kind: 'ended_unsettled', contractNumber: 'HD01', endedOn: '2026-10-15', missingTermination: true } as VacantRoomNote))
+      .toBe('HĐ HD01 kết thúc 15/10 — chưa thanh lý');
+    expect(endedUnsettledNoteText({ ...base, kind: 'ended_unsettled', endedOn: '2026-10-20', missingTermination: false, finalInvoiceRemaining: 1_000_000 } as VacantRoomNote))
+      .toMatch(/^HĐ kết thúc 20\/10 — thanh lý chưa xong, chưa có hoá đơn cuối · còn phải thu 1[.,]000[.,]000 đ$/);
   });
 });

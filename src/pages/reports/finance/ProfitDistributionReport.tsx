@@ -27,6 +27,17 @@ import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hooks/useIhomeProfitLine";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
+import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import {
+  activeRoomNoteText,
+  computeProfitReportChecks,
+  endedUnsettledNoteText,
+  summarizeRoomNotes,
+  type FixedFeeCell,
+  type ProfitCheckBuilding,
+} from "@/lib/profitReportChecks";
+import { useFeeConfigMatrix } from "@/hooks/useFeeConfigMatrix";
+import { useLandlordIhomeProfit } from "@/hooks/useLandlordSettlement";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
@@ -227,8 +238,9 @@ function ProfitDistributionDesktop() {
   // theo toà (ghi buildings.hidden_fixed_expenses).
   const canEditBuildings = canUse(perms, "buildings", "edit");
   // Loại CHI trong DB — resolve dòng "chưa có phiếu" (hạng mục cố định) → đúng
-  // income_expense_type_id để prefill form. Chỉ fetch khi có quyền tạo.
-  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
+  // income_expense_type_id để prefill form, và cho bộ dò chi cố định khớp hạng mục
+  // theo khoá fee_category (thiếu danh sách thì bộ dò phải khớp theo tên) ⇒ tải cho mọi người.
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense");
 
   // Hạng mục đánh dấu đặc biệt — khớp dòng theo type_id HOẶC tên (dữ liệu có thể
   // trùng tên "Tiền nhà" giữa nhiều type_id; đánh dấu 1 cái → ẩn mọi dòng cùng tên).
@@ -353,10 +365,34 @@ function ProfitDistributionDesktop() {
   // đầy đủ của toà).
   // B5: bật mặc định cả khi chưa chọn toà (hook tự quét mọi toà theo RLS).
   const vacancyEnabled = voucherType !== "EXPENSE" && roomId === "all";
-  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, vacancyEnabled && scopeReady);
+  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, vacancyEnabled && scopeReady, {
+    includeEndedContracts: true,
+  });
   // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
+
+  // Bộ dò dùng chung (F13/F17): chi cố định thiếu/thiếu số/có thể trùng ở MỌI toà trong phạm vi,
+  // phiếu chờ duyệt quá 30 ngày. Chỉ ở chế độ phân bổ theo kỳ (theo ngày phiếu thì phiếu tháng lân
+  // cận lệch tháng ⇒ dò không tin cậy). Toà vận hành cho chủ nhà không trả tiền nhà ⇒ bỏ khoản đó.
+  const { data: feeRates } = useFeeConfigMatrix();
+  const { data: landlordRows } = useLandlordIhomeProfit(scopeReady ? `${ym}-01` : null, scopeReady ? `${ym}-01` : null);
+  const profitChecks = useMemo(
+    () =>
+      !accrualMode || !accrual || !feeRates || voucherType === "INCOME" || roomId !== "all"
+        ? null
+        : computeProfitReportChecks({
+            rows: accrual.rows,
+            buildings: buildings as ProfitCheckBuilding[],
+            feeRates,
+            expenseTypes,
+            scopeBuildingIds: scopeIds,
+            skipRentBuildingIds: landlordRows?.map((r) => r.building_id),
+            today: todayStr,
+          }),
+    [accrualMode, accrual, feeRates, voucherType, roomId, buildings, expenseTypes, scopeIds, landlordRows, todayStr]
+  );
+  const roomSummary = useMemo(() => (vacantNotes ? summarizeRoomNotes(vacantNotes) : null), [vacantNotes]);
 
   // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
   const { incomeRows, expenseRows } = useMemo(() => {
@@ -505,7 +541,13 @@ function ProfitDistributionDesktop() {
     }
 
     const anyIncomeRooms = new Set<string>();
-    for (const r of inc) if (r.roomId) anyIncomeRooms.add(r.roomId);
+    // phòng có khoản thu GẮN HOÁ ĐƠN trong tháng — đã có hoá đơn (có thể của HĐ khác khi đổi phòng)
+    const invoicedIncomeRooms = new Set<string>();
+    for (const r of inc) {
+      if (!r.roomId) continue;
+      anyIncomeRooms.add(r.roomId);
+      if (r.invoiceId) invoicedIncomeRooms.add(r.roomId);
+    }
 
     // KHÔNG dồn dòng nào lên đầu nữa — xếp ĐỀU mọi dòng theo thứ tự phòng
     // (MB → G → L → 0 → 1 → 2 …). Vẫn GIỮ màu nền: khoản thanh lý/bỏ cọc vàng cam,
@@ -519,18 +561,47 @@ function ProfitDistributionDesktop() {
           }
         : r
     );
-    // Phòng gắn cờ KHÔNG có khoản thu nào trong tháng → dòng ghi chú thuần:
-    //  - còn HĐ (kind 'active') → CẢNH BÁO đỏ "Chưa có hoá đơn".
-    //  - trống thật (kind 'vacant') → ghi chú vàng cam "Trống phòng — <lý do>".
+    // Dòng ghi chú thuần (không cộng vào tổng):
+    //  - HĐ kết thúc giữa tháng chưa thanh lý (kind 'ended_unsettled') → CẢNH BÁO đỏ.
+    //  - còn HĐ (kind 'active'), theo hoá đơn kỳ của HĐ: chưa có hoá đơn → đỏ "Chưa có hoá đơn";
+    //    có hoá đơn chưa thu đồng nào → đỏ "Có hoá đơn, chưa thu X"; đã thu một phần/đủ → không ghi.
+    //  - trống thật (kind 'vacant') → ghi chú vàng cam "Trống phòng — <lý do>" (khi phòng không có
+    //    khoản thu nào — phòng có dòng thanh lý/bỏ cọc đã được tô vàng ở trên).
     for (const note of vacantNotes.values()) {
-      if (anyIncomeRooms.has(note.roomId)) continue;
+      if (note.kind === "ended_unsettled") {
+        all.push({
+          key: `ended-${note.contractId ?? note.roomId}`,
+          monthLabel,
+          description: endedUnsettledNoteText(note),
+          buildingName: note.buildingName,
+          roomName: note.roomName,
+          roomId: note.roomId,
+          periodLabel: "—",
+          typeName: "—",
+          category: null,
+          amount: 0,
+          notKqkd: false,
+          isMissingInvoice: true,
+          isNote: true,
+        });
+        continue;
+      }
+      if (note.kind === "active") {
+        const st = note.invoiceState;
+        if (st === "paid" || st === "partial") continue;
+        // chưa rõ trạng thái hoá đơn (dữ liệu cũ) ⇒ giữ luật cũ: phòng có khoản thu thì bỏ qua
+        if (st === undefined && anyIncomeRooms.has(note.roomId)) continue;
+        if (st === "none" && invoicedIncomeRooms.has(note.roomId)) continue;
+      } else if (anyIncomeRooms.has(note.roomId)) {
+        continue;
+      }
       if (note.kind === "active") {
         all.push({
           key: `missing-${note.roomId}`,
           monthLabel,
           // Nhãn "Còn hợp đồng" nay là badge đỏ riêng bên cạnh (xem renderPanel)
           // nên mô tả không lặp lại nữa.
-          description: "Chưa có hoá đơn tháng này",
+          description: activeRoomNoteText(note),
           buildingName: note.buildingName,
           roomName: note.roomName,
           roomId: note.roomId,
@@ -591,33 +662,19 @@ function ProfitDistributionDesktop() {
     [buildings, buildingIds]
   );
 
-  // Chèn dòng placeholder "chưa có phiếu" cho các hạng mục chi CỐ ĐỊNH còn thiếu.
-  // CHỈ khi đang lọc đúng 1 toà và không lọc riêng 1 phòng (9 khoản này là chi phí
-  // cố định theo TỪNG toà — "thiếu" chỉ rõ nghĩa trong ngữ cảnh 1 toà). Dòng
-  // placeholder là ghi chú (isNote) nên KHÔNG ảnh hưởng tổng 3 thẻ / "X khoản".
-  // Thang máy chỉ cảnh báo khi toà bật has_elevator.
+  // Chèn dòng placeholder "chưa có phiếu" cho các hạng mục chi CỐ ĐỊNH còn thiếu khi đang lọc
+  // đúng 1 toà — lấy từ bộ dò chung (profitChecks: khớp hạng mục theo khoá fee_category, bỏ khoản
+  // "không áp dụng", thang máy khi toà không có, tiền nhà ở toà vận hành cho chủ nhà; chỉ chế độ phân
+  // bổ theo kỳ, không lọc 1 phòng / chỉ thu). Xem nhiều toà thì thiếu/trùng hiện ở chip bộ dò.
+  // Dòng placeholder là ghi chú (isNote) nên KHÔNG ảnh hưởng tổng 3 thẻ / "X khoản".
   const displayExpenseRows = useMemo(() => {
-    // Chỉ ở chế độ phân bổ theo kỳ (accrual) — chế độ tiền mặt gom theo NGÀY PHIẾU
-    // nên phiếu tháng lân cận bị lệch tháng → dò thiếu không tin cậy (đồng bộ mobile).
-    if (loading || voucherType === "INCOME" || !accrualMode) return shownExpenseRows;
-    // Bỏ qua TOÀ ẢO "Chung" (bucket chia LN cổ đông) — không phải toà vật lý, không
-    // bao giờ có phiếu Tiền nhà/Điện/… nên đừng báo thiếu nhầm.
-    if (!singleBuilding || singleBuilding.is_virtual || roomId !== "all") return shownExpenseRows;
-    // Dò "đã có phiếu" trên DANH SÁCH ĐẦY ĐỦ (expenseRows) — kể cả hạng mục đang
-    // bị ẩn bởi "Ẩn hạng mục đặc biệt" — để không báo thiếu nhầm khi nó đã có.
-    const present = new Set<number>();
-    for (const r of expenseRows)
-      if (!r.isNote) present.add(expenseRankOf(r.category, r.typeName, r.description));
-    // Hạng mục toà này TẮT cảnh báo (buildings.hidden_fixed_expenses — vd toà
-    // xài nước giếng tắt Nước) → không sinh dòng vàng.
-    const hiddenFixed = new Set<string>(
-      (singleBuilding.hidden_fixed_expenses as string[] | null) ?? []
-    );
+    if (loading || !profitChecks || !singleBuilding || singleBuilding.is_virtual) return shownExpenseRows;
     const missing: DisplayRow[] = [];
-    FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
-      if (present.has(i)) return;
-      if (cat.requiresElevator && !singleBuilding.has_elevator) return;
-      if (hiddenFixed.has(cat.key)) return;
+    for (const cell of profitChecks.fixedFees.issues) {
+      if (cell.buildingId !== singleBuilding.id || cell.status !== "MISSING") continue;
+      const i = FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === cell.key);
+      const cat = FIXED_EXPENSE_CATEGORIES[i];
+      if (!cat) continue;
       missing.push({
         key: `missing-exp-${i}`,
         monthLabel,
@@ -633,7 +690,7 @@ function ProfitDistributionDesktop() {
         isMissingExpense: true,
         fixedRank: i,
       });
-    });
+    }
     if (missing.length === 0) return shownExpenseRows;
     return [...shownExpenseRows, ...missing].sort(
       (a, b) =>
@@ -642,7 +699,7 @@ function ProfitDistributionDesktop() {
         compareRoom(a.roomName, b.roomName) ||
         a.description.localeCompare(b.description, "vi")
     );
-  }, [shownExpenseRows, expenseRows, loading, voucherType, accrualMode, singleBuilding, roomId, monthLabel]);
+  }, [shownExpenseRows, loading, profitChecks, singleBuilding, monthLabel]);
 
   // B5: số liệu cho thanh kiểm chứng — Σ dòng hiển thị vs tổng thẻ.
   const sumRows = (rows: DisplayRow[]) =>
@@ -719,6 +776,20 @@ function ProfitDistributionDesktop() {
       period: { start_date: startDate, end_date: endDate },
       items: type
         ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: 0 }]
+        : undefined,
+    });
+    setExpenseFormOpen(true);
+  };
+  // "Lập phiếu" ở một khoản chi cố định còn thiếu trong chip bộ dò (mọi toà): đúng toà + hạng mục.
+  const openCreateFixedFee = (cell: FixedFeeCell) => {
+    const rank = FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === cell.key);
+    const type = findTypeForFixedCategory(expenseTypes, rank);
+    if (!type) toast.info(`Không tìm thấy loại chi khớp "${cell.label}" — chọn hạng mục thủ công trong form`);
+    setExpensePrefill({
+      building_id: cell.buildingId,
+      period: { start_date: startDate, end_date: endDate },
+      items: type
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: cell.expected ?? 0 }]
         : undefined,
     });
     setExpenseFormOpen(true);
@@ -855,9 +926,17 @@ function ProfitDistributionDesktop() {
     for (const r of [...incomeRows, ...expenseRows]) if (r.buildingName) names.add(r.buildingName);
     return names.size;
   }, [incomeRows, expenseRows]);
-  const missingInvoiceCount = incomeRows.filter((r) => r.isMissingInvoice).length;
-  const vacantNoteCount = incomeRows.filter((r) => r.isNote && r.isVacant).length;
-  const missingExpenseCount = displayExpenseRows.filter((r) => r.isMissingExpense).length;
+  // Cảnh báo bộ dò đẩy thanh kiểm chứng (và chip của nó) lên "cần xem lại": khớp engine chỉ chứng
+  // minh cùng tập phiếu, không chứng minh đã đủ phiếu.
+  const checkWarnings = useMemo(() => {
+    const out: string[] = [];
+    const f = profitChecks?.fixedFees;
+    if (f && f.missingBuildingCount > 0) out.push(`Thiếu chi cố định ở ${f.missingBuildingCount} toà`);
+    if (f && f.duplicateBuildingCount > 0) out.push(`Có thể trùng chi cố định ở ${f.duplicateBuildingCount} toà`);
+    const s = profitChecks?.stalePending;
+    if (s && s.count > 0) out.push(`${s.count} phiếu chờ duyệt quá ${s.thresholdDays} ngày vẫn đang nằm trong tổng`);
+    return out;
+  }, [profitChecks]);
   const expenseRatio = displayIncome > 0 ? Math.round((displayExpense / displayIncome) * 100) : 0;
   const marginPct = displayIncome > 0 ? Math.round((displayDiff / displayIncome) * 100) : 0;
 
@@ -1216,24 +1295,13 @@ function ProfitDistributionDesktop() {
       )}
 
       <ProfitHubSlot name="chips">
-        {missingInvoiceCount > 0 && (
-          <span className="ph-chip ph-chip--red">
-            <span className="ph-chip__dot" />
-            {missingInvoiceCount} phòng thiếu hoá đơn
-          </span>
-        )}
-        {vacantNoteCount > 0 && (
-          <span className="ph-chip ph-chip--amber">
-            <span className="ph-chip__dot" />
-            {vacantNoteCount} phòng trống
-          </span>
-        )}
-        {missingExpenseCount > 0 && (
-          <span className="ph-chip ph-chip--yellow">
-            <span className="ph-chip__dot" />
-            {missingExpenseCount} chi cố định chưa có phiếu
-          </span>
-        )}
+        {/* Bộ dò chung (mọi toà trong phạm vi): chi cố định thiếu / có thể trùng, chờ duyệt quá 30
+            ngày, phòng chưa có hoá đơn / có hoá đơn chưa thu, HĐ kết thúc chưa thanh lý, phòng trống. */}
+        <ProfitReportChecks
+          checks={profitChecks}
+          roomSummary={roomSummary}
+          onCreateExpense={canCreate ? openCreateFixedFee : undefined}
+        />
         {pendingInfo.count > 0 && (
           <span className="ph-chip">
             {pendingInfo.count} phiếu chờ duyệt · {toMillions(pendingInfo.income + pendingInfo.expense, 1)}tr
@@ -1531,6 +1599,7 @@ function ProfitDistributionDesktop() {
             pendingExpense={pendingInfo.expense}
             voucherType={voucherType === "INCOME" || voucherType === "EXPENSE" ? voucherType : "all"}
             accrualRows={accrualMode ? accrual?.rows : undefined}
+            extraWarnings={checkWarnings}
             onStateChange={handleVerifyState}
           />
         </div>
