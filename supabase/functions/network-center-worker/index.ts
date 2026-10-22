@@ -40,6 +40,43 @@ type RouteDefinition = {
 };
 
 const SECRET_HEADER = "x-network-worker-secret";
+const cameraPayloadSchema = z.object({
+  recorderId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  observedAt: z.string().datetime({ offset: true }),
+  status: z.enum(["ONLINE", "OFFLINE", "UNKNOWN", "AUTH_DENIED"]),
+  channels: z.array(z.object({
+    channel: z.number().int().min(1).max(256),
+    name: z.string().max(128).optional(),
+    state: z.enum(["CONNECTED", "DISCONNECTED", "EMPTY", "UNKNOWN"]),
+  }).strict()).max(256),
+  storage: z.array(z.object({
+    slot: z.number().int().min(1).max(32),
+    state: z.enum(["NORMAL", "ERROR", "MISSING", "UNKNOWN"]),
+    totalBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+    usedBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  }).strict()).max(32),
+  eventCoverage: z.enum(["STATE_POLLING_ONLY", "EVENT_STREAM"]),
+  issues: z.array(z.enum(["NETWORK_UNREACHABLE", "AUTHENTICATION_FAILED", "CHANNEL_STATUS_UNAVAILABLE", "STORAGE_STATUS_UNAVAILABLE", "EVENT_STREAM_UNAVAILABLE", "DEVICE_RESPONSE_INVALID"])).max(6),
+  events: z.array(z.object({
+    eventKey: z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/),
+    code: z.enum(["VideoLoss", "VideoBlind", "VideoMotion", "AlarmLocal", "StorageFailure", "StorageNotExist", "StorageLowSpace", "NetAbort", "CameraOffline", "COVERAGE_GAP"]),
+    action: z.enum(["Start", "Stop", "Pulse"]),
+    channel: z.number().int().min(1).max(256).nullable().optional(),
+    observedAt: z.string().datetime({ offset: true }),
+  }).strict()).max(200),
+}).strict();
+
+function cameraIngestArgs(body: JsonObject): Record<string, unknown> {
+  const parsed = cameraPayloadSchema.safeParse(body.payload);
+  if (!parsed.success) throw new RequestValidationError("payload contains an invalid camera field");
+  const payload = parsed.data;
+  if (new Set(payload.channels.map((item) => item.channel)).size !== payload.channels.length ||
+      new Set(payload.storage.map((item) => item.slot)).size !== payload.storage.length) {
+    throw new RequestValidationError("payload contains duplicate camera channels or storage slots");
+  }
+  return { p_payload: payload };
+}
 const CLAIM_LIMIT = 3;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -607,6 +644,18 @@ const ROUTES: ReadonlyMap<string, RouteDefinition> = new Map<
     rpcName: "network_center_worker_ingest_v2",
     bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: ingestArgs,
+  }],
+  ["camera-connections", {
+    maxBodyBytes: 8_192,
+    rpcName: "network_center_worker_camera_connections_v1",
+    bodySchema: strictBodySchema(["limit"]),
+    toRpcArgs: connectionsArgs,
+  }],
+  ["camera-ingest", {
+    maxBodyBytes: 300_000,
+    rpcName: "network_center_worker_camera_ingest_v1",
+    bodySchema: strictBodySchema(["payload"]),
+    toRpcArgs: cameraIngestArgs,
   }],
   ["inventory", {
     maxBodyBytes: 600_000,

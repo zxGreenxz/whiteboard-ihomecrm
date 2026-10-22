@@ -380,3 +380,64 @@ ký của một fleet khỏe mạnh chưa provision gì. Server chốt thêm l�
 heartbeat đó, hoặc bằng chứng đang lưu của cùng release) có `failedPolls > 0` —
 chỉ hạ, không bao giờ nâng — nên một bản rollback về image cũ vẫn không nói dối
 được.
+
+## Giám sát đầu ghi KBVISION / Dahua
+
+`src/cameraMain.ts` là bộ thu thập riêng, không thay vòng giám sát MikroTik hoặc
+thực thi lệnh. Nó đọc RPC2 (kênh), CGI Digest (ổ cứng) và luồng `VideoLoss`,
+`StorageFailure`, `StorageNotExist`, `StorageLowSpace`. Không thay cấu hình ghi hình.
+Trạng thái khởi tạo/không đọc được là UNKNOWN; sai quyền là AUTH_DENIED; slot
+EMPTY không phải camera mất kết nối. Timestamp sự kiện là lúc bộ thu thập nhận
+bản tin UTC. Chưa lấy bù nhật ký cũ từ đầu ghi, chưa có video gateway/WebRTC.
+
+Tab Camera chỉ đọc qua hai RPC có kiểm quyền theo tòa, phân trang lịch sử theo
+thời gian và ID. Dữ liệu quá hạn được hiển thị chưa xác minh, không suy tất cả
+camera đều offline. Transition từ polling do database sinh, chống lặp qua restart
+và replay. Luồng sự kiện chỉ bao phủ các mã trên; `COVERAGE_GAP` ghi nhận restart
+hoặc mất luồng, không tuyên bố mọi sự kiện trong khoảng gián đoạn đều đã lưu.
+
+Trước phát hành cần migration `network_center_camera_monitoring_v1`, Edge routes
+`camera-connections`/`camera-ingest`, read RPC và kiểm JWT/RLS theo Contract.
+Operator dùng `network_center_admin_enroll_camera_v1` (service_role only) để ghim
+recorder vào đúng organization/building/router connection đã có. Worker không
+được tự gán scope hoặc đổi đầu ghi. Không ghi fixture vào org thật.
+
+Build artifact bằng `node infra/network-center-worker/scripts/build-camera-monitor.mjs`.
+Artifact và SHA256 ở `infra/network-center-worker/camera-dist/` (ignored). Chỉ
+chuyển artifact của SHA đã review/gate đạt; đối chiếu hash sau khi tải lên.
+Runtime yêu cầu Node **22.23.2**, service mẫu `deploy/camera-monitor.service` kiểm
+đúng phiên bản trước khi chạy, không mở listening port.
+
+Layout cho mỗi bản phát hành:
+
+- `/opt/ihome-camera-monitor/releases/<reviewed-sha>/cameraMain.mjs` cùng SHA256SUMS;
+  `current` trỏ bản được duyệt, giữ bản trước để rollback.
+- `/opt/ihome-camera-monitor/config/worker.env` chỉ chứa `NETWORK_CENTER_EDGE_URL`
+  của đúng project; endpoint HTTPS, không userinfo/query.
+- `/opt/ihome-camera-monitor/secrets/worker-secret` là credential worker có scope
+  router phù hợp; `/opt/ihome-camera-monitor/secrets/camera-credentials.json` map
+  credentialRef sang `{origin,username,password}`. Hai file root-only0600, thư mục0700.
+  `origin` phải đúng IP private+port của enrollment, không dùng DDNS/publicIP.
+  systemd LoadCredential cấp bản mount riêng cho DynamicUser; không truyền mật khẩu
+  qua CLI, URL, frontend, Git hoặc log. Vault950NK dùng các tên
+  `NVR_950NK_USERNAME`/`NVR_950NK_PASSWORD`, nạp qua `scripts/lib/vault.mjs`.
+
+Đường HTTP phải chạy qua mạng quản trị riêng đã kiểm chứng. Giữ NAT giới hạn
+nguồn/interface/đích và rollback riêng; không mở WAN để chạy collector.
+Snapshot/luồng sự kiện được xếp hàng trên `/var/lib/ihome-camera-monitor/<recorder-id>`.
+Mỗi batch ghi atomic+fsync; chỉ xóa sau receipt ingest. Giới hạn64MiB/recorder:
+đầy thì báo lỗi và dừng lưu mới, không xóa lịch sử cũ. Khi CRM trở lại, batch giữ
+nguyên eventKey để chống trùng; ingest nhận dữ liệu chậm tối đa30ngày. Theo dõi
+log delivery/capacity và UI freshness, không coi process đang chạy là bằng chứng
+đã thu thập thành công.
+Batch thuộc connection cũ hoặc quá cửa sổ30ngày được chuyển nguyên vẹn vào
+`quarantine/BINDING_CHANGED` hoặc `quarantine/EXPIRED` để operator đối chiếu;
+không gửi lại dưới danh tính connection mới. Có log lỗi và COVERAGE_GAP cho
+khoảng không nhập được này; batch hợp lệ phía sau tiếp tục gửi.
+
+Canary: kiểm snapshot đúng số kênh, heartbeat stream và đọc lại CRM; kiểm ngắt/kết
+nối bằng fixture, không tự tắt camera đang bảo vệ nhà để thử. Sau rollout mới có
+thể xác nhận hoạt động liên tục; không dùng unit test thay bằng chứng live.
+Rollback collector: stop service, chuyển `current` về artifact có hash đã xác
+minh rồi start; giữ nguyên state/outbox và credentials. Không drop schema hoặc
+xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI sẽ hết độ mới.
