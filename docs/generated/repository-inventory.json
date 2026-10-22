@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1620,
-  "soFileDocBangFs": 426,
-  "tongLoiGoi": 1050,
+  "tongSoFileTest": 1614,
+  "soFileDocBangFs": 424,
+  "tongLoiGoi": 1047,
   "khongPhanLoaiDuoc": 460,
   "theoLoai": {
     "ma-nguon": {
@@ -11,7 +11,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 60,
+      "soFile": 59,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 171,
+      "soFile": 170,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1349,14 +1349,6 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "scripts/__tests__/meter-capture-sql.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/migration-target.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -2011,14 +2003,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/meter-capture-worker/worker.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",

@@ -35,6 +35,8 @@ function envDayDu() {
     VERCEL_TOKEN: 'vcp_' + lap('V', 30),
     GH_TOKEN: 'ghp_' + lap('G', 36),
     TEST_SUPABASE_REF: lap('t', 20),
+    NVR_950NK_USERNAME: 'camera-proof-user',
+    NVR_950NK_PASSWORD: 'camera-proof-' + lap('x', 12),
   };
 }
 
