@@ -1,6 +1,8 @@
 // salary-v5-jobs — edge function TRANSPORT cho các job v5 (logic nằm trong DB).
 // Jobs: nightly (tier + score + close_period nếu là ngày 1 VN) · digest · push_drain · hoặc job lẻ để "Chạy lại".
 // Auth (1 trong 3): x-cron-secret == CRON_SECRET · Bearer service_role · JWT user là admin (nút Chạy lại).
+// verify_jwt=FALSE ở cổng (supabase/config.toml): api/salary-v5-cron.js chỉ gửi x-cron-secret, không có
+// Authorization ⇒ cổng verify_jwt=true trả 401 và job nightly/digest chết. Deploy bằng CLI phải giữ cờ này.
 // Idempotent qua cron_runs (job, idem_key=ngày VN); job KHÔNG SINH TIỀN — fail không sai lương.
 //
 // push_drain: từ 21/10/2026 (B12) drain hàng đợi push E1–E6 chạy CHÍNH ở edge `lifecycle-reminders`
@@ -97,6 +99,8 @@ async function runDigest(idem: string) {
 }
 
 Deno.serve(async (req) => {
+  // Mốc đầu request: ngân sách drain tính cả thời gian kiểm auth (gọi RPC is_admin) trước đó.
+  const startedAt = Date.now();
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
   const job = url.searchParams.get("job") ?? "";
@@ -125,6 +129,7 @@ Deno.serve(async (req) => {
         fetch,
         SUPABASE_URL,
         SERVICE_KEY,
+        { startedAt },
       );
       out.push(drain);
       // Lỗi giao vận từng lô nằm trong drain.failures/outcomes (UI tự cảnh báo); 500 chỉ khi chuỗi
