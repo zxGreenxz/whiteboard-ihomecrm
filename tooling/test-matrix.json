@@ -28,14 +28,16 @@
         "src/components/quick-entry/**",
         "src/pages/quick-entry/**",
         "src/hooks/quick-entry/**",
-        "src/lib/quickEntry/**"
+        "src/lib/quickEntry/**",
+        "supabase/migrations/*_ie_quick_entry_shared_rules_v1.sql"
       ],
       "suiteId": "app-unit",
       "testPatterns": [
         "src/components/quick-entry/**/*.test.*",
         "src/pages/quick-entry/**/*.test.*",
         "src/hooks/quick-entry/**/*.test.*",
-        "src/lib/**/quickEntry*.test.*"
+        "src/lib/**/quickEntry*.test.*",
+        "src/lib/quickEntry/**/*.test.*"
       ],
       "viewports": [
         "affected"
@@ -1013,7 +1015,19 @@
         "supabase/migrations/*_hermes_domain_summary_largest_by_type_v1.sql",
         "supabase/migrations/*_hermes_expense_create_action_v1.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
-        "infra/hermes-broker/expense-action-*.mjs",
+        "supabase/migrations/*_hermes_expense_write_v1.sql",
+        "supabase/migrations/*_ie_quick_entry_shared_rules_v1.sql",
+        "supabase/migrations/*_hermes_expense_scope_v1.sql",
+        "supabase/migrations/*_hermes_name_directory_virtual_v1.sql",
+        "supabase/migrations/*_hermes_w2_min_amount_param_v1.sql",
+        "supabase/migrations/*_hermes_w2b_expense_shared_v1.sql",
+        "supabase/migrations/*_hermes_w2b_expense_reports_v1.sql",
+        "infra/hermes-broker/wave2-kit.mjs",
+        "infra/hermes-broker/wave2-b-contract.mjs",
+        "infra/hermes-broker/wave2-b-sql-fixture.mjs",
+        "infra/hermes-broker/read-misuse-hints.mjs",
+        "infra/hermes-broker/expense-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
         "infra/hermes-broker/finance-fixture.mjs",
         "infra/hermes-broker/broker.mjs",
         "infra/hermes-broker/server.mjs",
@@ -1021,11 +1035,20 @@
       ],
       "suiteId": "node-native",
       "testPatterns": [
-        "infra/hermes-broker/expense-action.test.mjs",
-        "infra/hermes-broker/expense-composition.test.mjs",
+        "infra/hermes-broker/expense-actions.test.mjs",
+        "infra/hermes-broker/expense-write-sql.test.mjs",
+        "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+        "infra/hermes-broker/action-catalog.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
         "infra/hermes-broker/domain-v2.test.mjs",
         "infra/hermes-broker/server.test.mjs",
-        "scripts/__tests__/hermes-durable-schema.test.mjs"
+        "infra/hermes-broker/wave2-b.test.mjs",
+        "infra/hermes-broker/wave2-foundation.test.mjs",
+        "infra/hermes-broker/name-directory-sql.test.mjs",
+        "infra/hermes-broker/read-name-resolution.test.mjs",
+        "infra/hermes-broker/tool-plan.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
       ]
     },
     {
@@ -1199,7 +1222,7 @@
         "infra/hermes-broker/capability-contract.mjs",
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
-        "infra/hermes-broker/expense-action-contract.mjs",
+        "infra/hermes-broker/expense-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",
@@ -1443,6 +1466,7 @@
       "id": "hermes-name-directory-context",
       "sourcePaths": [
         "supabase/migrations/*_hermes_name_directory_v1.sql",
+        "supabase/migrations/*_hermes_name_directory_virtual_v1.sql",
         "supabase/migrations/*_hermes_user_display_name_v1.sql",
         "infra/hermes-broker/read-name-resolution.mjs",
         "infra/hermes-broker/domain-mount.mjs",

@@ -20,10 +20,11 @@ function untilLabel(iso: string): string {
  * Lock tạm 6/12/24 giờ (ẩn phòng khỏi danh sách sale, không khách/tiền/phiếu) hoặc gỡ lock.
  * Chỉ mount khi người dùng đã đăng nhập và có quyền: hook mutation đọc tổ chức đang chọn.
  */
-export function LockRoomModal({ action, onClose, onDone }: {
+export function LockRoomModal({ action, onClose, onDone, blockedReason }: {
   action: SaleLockAction | null;
   onClose: () => void;
   onDone: (msg: string) => void;
+  blockedReason?: string;
 }) {
   const lock = useLockRoomForSale();
   const release = useReleaseRoomSaleLock();
@@ -40,7 +41,7 @@ export function LockRoomModal({ action, onClose, onDone }: {
   const saleLock = room.saleLock;
 
   async function submit() {
-    if (submitting) return;
+    if (submitting || blockedReason) return;
     setError('');
     try {
       if (mode === 'lock') {
@@ -99,10 +100,11 @@ export function LockRoomModal({ action, onClose, onDone }: {
             <p className="qd-hint">Phòng không còn lock tạm.</p>
           )}
           {error && <p role="alert" className="qd-err">{error}</p>}
+          {blockedReason && <p role="alert" className="qd-err">{blockedReason}</p>}
         </div>
         <div className="qd-actions">
           <button className="qd-btn qd-cancel" onClick={onClose} disabled={submitting}>Hủy</button>
-          <button className="qd-btn qd-submit" onClick={submit} disabled={submitting || (mode === 'release' && !saleLock)}>
+          <button className="qd-btn qd-submit" onClick={submit} disabled={submitting || !!blockedReason || (mode === 'release' && !saleLock)}>
             {submitting ? 'Đang lưu…' : mode === 'lock' ? `Lock ${hours} giờ` : 'Gỡ lock'}
           </button>
         </div>

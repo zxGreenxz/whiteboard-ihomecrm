@@ -14,9 +14,9 @@ import { fetchAllRows } from "@/lib/supabaseFetchAll";
  *   topupDueDate  hạn phải BỔ SUNG CỌC   → quá hạn là nguy cơ mất TIỀN (của khách)
  * `depositTarget` là số cọc phải đủ; thiếu nó thì không kết luận được "đã đủ chưa".
  *
- * ĐỌC thẳng bảng dưới RLS; GHI bắt buộc qua `set_reservation_hold_terms_v1` —
- * chỉ hàm đó mới kiểm được quyền TOÀ NHÀ của phiếu, thứ RLS không nhìn thấy
- * (policy chỉ biết `organization_id` của chính dòng kỳ hạn).
+ * ĐỌC thẳng bảng dưới RLS. Hồ sơ giữ chỗ đồng bộ kỳ hạn sang bảng này trong
+ * cùng giao dịch. `set_reservation_hold_terms_v1` kiểm deposits.edit theo toà;
+ * phiếu đã gắn hồ sơ đi qua writer hồ sơ, phiếu legacy còn dùng bảng kỳ hạn.
  *
  * KHÔNG có dòng ⇒ phiếu CHƯA đặt kỳ hạn nào. Đó KHÔNG phải "quá hạn" — xem bất
  * biến trong `buildDepositWorkQueue`.
@@ -101,6 +101,7 @@ export function useSetReservationHoldTerms(options: {silent?: boolean} = {}) {
     },
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: HOLD_DEADLINE_KEY });
+      queryClient.invalidateQueries({ queryKey: ["room-reservations"] });
       const conKyHan =
         vars.holdUntil !== null || vars.topupDueDate !== null || vars.depositTarget !== null;
       if (!options.silent) toast.success(conKyHan ? "Đã cập nhật kỳ hạn phiếu cọc" : "Đã bỏ kỳ hạn phiếu cọc");

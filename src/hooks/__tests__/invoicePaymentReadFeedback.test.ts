@@ -82,7 +82,11 @@ it.each([{...reservationRow,income_expense_items:null},{...reservationRow,income
  h.response.data=[data];await expect(query(()=>useReservationDeposits())).rejects.toThrow();
 });
 it('cọc giữ chỗ trộn item cọc0 giữ tổng cọc0, không lấy cả phiếu100',async()=>{
- h.response.data=[reservationRow];await expect(query(()=>useReservationDeposits())).resolves.toMatchObject([{total_amount:0}]);
+ h.response.data=[reservationRow];
+ // No visible posting facts is UNKNOWN, independently of the zero deposit item.
+ h.rpc.mockResolvedValueOnce({data:[],error:null});
+ await expect(query(()=>useReservationDeposits())).resolves.toMatchObject([{total_amount:0,received_amount:0,received_fact_status:'UNKNOWN'}]);
+ expect(h.rpc).toHaveBeenCalledWith('read_reservation_deposit_received_v1',{p_organization_id:'org1',p_voucher_ids:['r1']});
 });
 it.each([null,[{id:'m1',utility_type:'unexpected'}]])('đồng hồ điện/nước thiếu nguồn/status không thành [] hoặc nước: %s',async data=>{
  h.response.data=data;await expect(query(()=>useUtilityAccounts())).rejects.toThrow();

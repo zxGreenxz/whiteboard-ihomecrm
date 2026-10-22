@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST. | Bổ sung 27/09/2026: 20260927155251_hoa_hong_quan_ly_so_ao.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST + harness 28/28 ca. | Bổ sung 03/10/2026: 20261003151606_danh_muc_chi_cau_truc.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST (md5 trạng thái trùng) + bộ thử quyền 6/6 ca + 4 đột biến. | Bổ sung 22/10/2026: 20261021180057_contract_lifecycle_permission_guard_v1.sql và 20261021181209_invoice_cancel_refund_permission_guard_v1.sql (câu 26 — kiểm quyền máy chủ khớp web) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy trên TEST trong ROLLBACK (test-env:thu-sql) + test PGlite theo vai + 11 đột biến. | Bổ sung 22/10/2026: 3 file Hermes Đợt 2b Công việc Mốc 2 (20261022031548 task.create, 20261022031600 người nhận thấy việc — Q35, 20261022031605 người nhận ghi tiến độ/hoàn thành — Q64 chờ chủ) — cùng diện chua-ap-dung-cho-y, bằng chứng là PGlite + chạy trên TEST trong ROLLBACK (test-env:thu-sql) + 16 đột biến.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F. | Bổ sung 25/09/2026: 5 file đợt 1 sửa phiếu thu chi (20260925072852 … 20260925083655) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên môi trường TEST. | Bổ sung 27/09/2026: 20260927155251_hoa_hong_quan_ly_so_ao.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST + harness 28/28 ca. | Bổ sung 03/10/2026: 20261003151606_danh_muc_chi_cau_truc.sql — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy hai lượt trên TEST (md5 trạng thái trùng) + bộ thử quyền 6/6 ca + 4 đột biến. | Bổ sung 22/10/2026: 20261021180057_contract_lifecycle_permission_guard_v1.sql và 20261021181209_invoice_cancel_refund_permission_guard_v1.sql (câu 26 — kiểm quyền máy chủ khớp web) — cùng diện `chua-ap-dung-cho-y`, bằng chứng là chạy trên TEST trong ROLLBACK (test-env:thu-sql) + test PGlite theo vai + 11 đột biến.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -873,81 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261022031548_hermes_task_action_create_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261022031548_hermes_task_action_create_v1.sql",
-          "trich_doan": "INSERT dòng chính sách task.create; CREATE TABLE app_private.hermes_task_limits / hermes_task_jobs; CREATE OR REPLACE FUNCTION public.job_deadline_v1, public.job_open_duplicates_v1, app_private.hermes_task_building_managers_v1 / _quota_v1 / _when_v1 / _resolve_core_v1 / _action_prepare_v1 / _action_write_v1 / _action_finish_v1, vỏ public.hermes_task_action_v1"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 22/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 16 (Mốc 2) và 17 (Mốc 2b sửa theo review): phạm vi, test, tầng 2 trên TEST, thứ tự áp"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2b, Mốc 2 trang Công việc: task.create bằng tên trên khung thao tác ghi dùng chung), chưa đi qua lane apply — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite (task-action-sql.test.mjs 12/12, chạy file hai lượt), lane buildTransaction nhận file, hermes-durable-schema ghim băm 10 hàm + quyền EXECUTE, 9 đột biến SQL bị bắt, và chạy trên TEST trong ROLLBACK (test-env:thu-sql) cùng hai file đi kèm với 3 persona thật (chủ, Quản Lý Tòa, partner). Sẽ áp qua npm run migrate:forward (phiên chính) TRƯỚC khi phát hành connector; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "table:app_private.hermes_task_limits",
-        "table:app_private.hermes_task_jobs",
-        "function:public.job_deadline_v1",
-        "function:public.job_open_duplicates_v1",
-        "function:app_private.hermes_task_building_managers_v1"
-      ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 + 2b (22/10/2026)",
-      "sha256": "994d3603c3e1ffc6df95ee9b337623d6c720228aff4978391b19163e60b85aa6"
-    },
-    "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.job_visible_as_assignee_v1; CREATE POLICY jobs_select_own_assignee ON public.jobs (PERMISSIVE SELECT); CREATE OR REPLACE public.hermes_task_follow_read_v1 (dựng từ thân production md5 78f403b9…)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 22/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 16 (Mốc 2) và 17 (Mốc 2b sửa theo review): phạm vi, test, tầng 2 trên TEST, thứ tự áp"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Q35 của chủ: người được giao luôn thấy việc của chính mình, web và Hermes cùng một hàm), chưa đi qua lane apply — hàm và policy vắng mặt vì migration CHƯA CHẠY. Bằng chứng: PGlite jobs-assignee-sql.test.mjs (trước/sau áp, người khác vẫn không thấy), 1 đột biến bị bắt, lane buildTransaction nhận file, chạy trên TEST trong ROLLBACK (joey thấy việc giao cho mình ở toà ngoài phạm vi). Áp qua npm run migrate:forward; gate tự nhắc gỡ hồ sơ sau khi áp.",
-      "missingObjects": [
-        "function:public.job_visible_as_assignee_v1",
-        "policy:public.jobs.jobs_select_own_assignee"
-      ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 + 2b (22/10/2026)",
-      "sha256": "fd7f979ab80fcfc7bc7084ffd4ec79821eb267c22a13547debefbefe9cbfa0b6"
-    },
-    "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_task_resolve_core_v1 / app_private.hermes_task_action_prepare_v1 (thay thân của 20261022031548, ghim md5 thân đang chạy trên TEST 2c7dd0a8… / 0a01318d…)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 22/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 18 (Mốc 2c): suy loại việc khi jobType không khớp, test, tầng 2 trên TEST, thứ tự áp"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2b, Mốc 2c trang Công việc: bot thật trên TEST trượt vì jobType mô hình tự đặt), chưa đi qua lane apply — hai hàm vắng trên production vì 20261022031548 (tạo chúng) và file này CHƯA CHẠY trên production (đã áp TEST 031548/031600). Áp SAU 20261022031548. Bằng chứng: PGlite task-type-infer-sql 9/9 + task-action-sql 13/13 trên chuỗi 031548 → 065634.",
-      "missingObjects": [
-        "function:app_private.hermes_task_resolve_core_v1",
-        "function:app_private.hermes_task_action_prepare_v1"
-      ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2c (22/10/2026)",
-      "sha256": "77fdaeac113cebe12e64322c5c7f279500ee5ad6b0b4cb5956ef9a38dec721ec"
     }
   }
 }

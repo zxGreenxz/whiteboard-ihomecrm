@@ -10,7 +10,8 @@ import { usePhongTrong } from "./usePhongTrong";
 import { QuickDepositModal } from "./QuickDepositModal";
 import { LockRoomModal, type SaleLockAction } from "./LockRoomModal";
 import { useSession } from "@/hooks/useAuth";
-import { useMyPermissions, can } from "@/hooks/useMyPermissions";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 import { useTracking, TrackingProvider } from "./useTracking";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { LoadingState } from "@/components/loading/LoadingState";
@@ -30,6 +31,8 @@ export interface PhongTrongPageProps {
   token?: string;
   /** Dữ liệu tòa/phòng có sẵn (in-app authenticated) — ưu tiên hơn token. */
   buildings?: Building[];
+  /** Fresh authenticated source for embedded image export. */
+  readFreshBuildings?: () => Promise<Building[]>;
   /** Nhúng trong shell mobile: ẩn brand header. */
   embedded?: boolean;
 }
@@ -39,7 +42,7 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const token = props.token ?? tokenParam;
   const isEmbedded = !!props.embedded;
   // In-app: chỉ gọi RPC token khi KHÔNG được truyền sẵn buildings.
-  const { data, isLoading, isError, error, refetch } = usePhongTrong(props.buildings ? undefined : token);
+  const { data, isLoading, isError, error, refetch, readFresh } = usePhongTrong(props.buildings ? undefined : token);
   // Dữ liệu truyền vào, kể cả [], là kết quả có chủ đích của màn hình in-app.
   const sourced = props.buildings ?? data;
   const buildings = sourced ?? [];
@@ -63,20 +66,20 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   useEffect(() => {
     if (room && !currentRoom) { setRoom(null); setSheetShow(false); }
   }, [room, currentRoom]);
-  // "Tạo cọc nhanh": chỉ cho user ĐANG ĐĂNG NHẬP có quyền sale_phong.create_deposit.
+  // Match the canonical reservation writer: deposits.create on this building.
   const { data: session } = useSession();
   const { data: perms } = useMyPermissions();
-  const canQuickDeposit = !!session?.user && can(perms, "sale_phong", "create_deposit");
+  const canQuickDeposit = (r: Room) => !!session?.user && canUse(perms, "deposits", "create", r.buildingId);
   // "Lock tạm": ẩn phòng khỏi danh sách sale 6/12/24 giờ. Gỡ lock: người đã lock hoặc người
   // được tạo cọc (máy chủ kiểm lại cả hai). Lock chỉ hiện trên dữ liệu trong app.
-  const canLock = !!session?.user && can(perms, "sale_phong", "lock_room");
-  const canCreateDeposit = !!session?.user && can(perms, "deposits", "create");
-  const canReleaseLock = (r: Room) => (!!r.saleLock?.lockedByMe && canLock) || canCreateDeposit;
+  const canLock = (r: Room) => !!session?.user && canUse(perms, "sale_phong", "lock_room", r.buildingId);
+  const canReleaseLock = (r: Room) => (!!r.saleLock?.lockedByMe && canLock(r)) || canQuickDeposit(r);
   const [lockAction, setLockAction] = useState<SaleLockAction | null>(null);
   // Bộ đo đếm: no-op khi không có token; is_staff = đang đăng nhập (cờ boolean, KHÔNG id/email).
   const tracker = useTracking(token, !!session?.user);
   const [depositRoom, setDepositRoom] = useState<Room | null>(null);
   const openDeposit = (r: Room) => {
+    if (!canQuickDeposit(r)) return;
     setDepositRoom(r);
     tracker.track("deposit_dialog", {
       room_id: r.id, room_code: r.code, room_name: String(r.no),
@@ -222,11 +225,14 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
     setExporting(true);
     try {
       const { downloadRoomListImage } = await import("./exportRoomListImage");
-      const n = await downloadRoomListImage(buildings);
+      const refresh = props.buildings === undefined ? readFresh : props.readFreshBuildings;
+      if (!refresh) throw new Error('Không có nguồn đối chiếu');
+      const freshBuildings = await refresh();
+      const n = await downloadRoomListImage(freshBuildings);
       tracker.track("share", { metadata: { kind: "export_image", rooms: n } });
       showToast(n ? `Đã tải ảnh ${n} phòng trống` : "Hiện chưa có phòng trống để xuất ảnh");
     } catch {
-      showToast("Không tạo được ảnh. Thử lại nhé.");
+      showToast("Chưa xác minh được danh sách mới nhất để tạo ảnh. Vui lòng thử lại.");
     } finally {
       setExporting(false);
     }
@@ -345,22 +351,22 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
                   ))
                 : <FloorPlan building={building} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />)
             : (isOverview
-                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={bandTest} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={bandTest} onOpen={openRoom} onQuickDeposit={openDeposit} canQuickDeposit={canQuickDeposit} />
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
-        <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined}
-          onLock={canLock ? (r) => { closeSheet(); setLockAction({ room: r, mode: "lock" }); } : undefined}
-          onReleaseLock={canLock || canCreateDeposit ? (r) => { closeSheet(); setLockAction({ room: r, mode: "release" }); } : undefined}
+        <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={currentRoom && canQuickDeposit(currentRoom) ? (r) => { closeSheet(); openDeposit(r); } : undefined}
+          onLock={currentRoom && canLock(currentRoom) ? (r) => { if (canLock(r)) { closeSheet(); setLockAction({ room: r, mode: "lock" }); } } : undefined}
+          onReleaseLock={currentRoom && canReleaseLock(currentRoom) ? (r) => { if (canReleaseLock(r)) { closeSheet(); setLockAction({ room: r, mode: "release" }); } } : undefined}
           canReleaseLock={canReleaseLock} />
         {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
             khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
             danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom
             luôn null nên bỏ mount cũng không mất chức năng gì. */}
-        {canQuickDeposit && (
+        {depositRoom && canQuickDeposit(depositRoom) && (
           <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
         )}
-        {(canLock || canCreateDeposit) && (
+        {lockAction && (lockAction.mode === "lock" ? canLock(lockAction.room) : canReleaseLock(lockAction.room)) && (
           <LockRoomModal action={lockAction} onClose={() => setLockAction(null)} onDone={showToast} />
         )}
         <Toast msg={toast.msg} show={toast.show} />

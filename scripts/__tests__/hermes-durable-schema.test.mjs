@@ -112,8 +112,15 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)',
   // B5d (20261020175803): name directories under the asker's RLS (INVOKER) and the member-only company name (DEFINER).
   'hermes_building_directory_v1(uuid,uuid[])', 'hermes_room_directory_v1(uuid,uuid[],text)', 'hermes_organization_name_v1(uuid)',
+  // Thu chi Mốc 3 (20261022044120): the building directory with virtual buildings for the income/expense key (INVOKER).
+  'hermes_building_directory_v2(uuid,uuid[],boolean)',
   // R2c part 2 (20261021044821): the caller's own display name for crm_auth_context, under the caller's RLS (INVOKER).
-  'hermes_user_display_name_v1()'];
+  'hermes_user_display_name_v1()',
+  // Bounded sale actions (20261020183546); input helpers remain private/invoker.
+  'hermes_sale_actions_v1(jsonb,text,jsonb)', 'hermes_sale_capabilities_v1(uuid)',
+  'hermes_org_policy_options_v8(uuid)', 'hermes_connection_options_v8(uuid)', 'hermes_connection_context_v8(uuid)',
+  'hermes_sale_policy_actions_v1(jsonb,text,jsonb)', 'hermes_sale_policy_capabilities_v1(uuid)',
+  'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -438,7 +445,8 @@ const W2_READERS = new Set(['a', 'b', 'c', 'd'].map(letter => `app_private.herme
 const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
 // B5d (20261020175803): the building/room directories run as the asker (RLS of buildings/rooms decides what is
 // listed), so they are plpgsql STABLE INVOKER and may not name app_private; the company-name helper stays DEFINER.
-const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1']);
+const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1',
+  'public.hermes_building_directory_v2']);
 const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
   ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
 // Shared write foundation (20261021132433 name resolution, 20261021133823 guard/receipts/probe): the caller executes the two
@@ -448,7 +456,15 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)', 'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)',
   'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
-  'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
+  'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Đợt 2 Thu chi (20261022024834): vỏ expense.* gắn OID lõi giải tên (INVOKER) + bước ghi (DEFINER); ánh xạ lý do, chạy lô, định
+  // dạng chỉ bước ghi gọi (owner-only).
+  'app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  'public.hermes_expense_write_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Thu chi Mốc 3: name resolution _v2 (virtual buildings; wrapper binds the core OID) and the expense scope step the wrapper binds
+  // (guard ∩ the web writer's own authorize_income_expense_on_building, 20261022044120 / 20261022044123).
+  'app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)', 'public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)',
+  'app_private.hermes_expense_scope_v1(jsonb,text)'];
 // Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
 // wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
 // building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
@@ -680,6 +696,38 @@ function forwardDefinitionContract(name, definition) {
   assert.equal(digest(definition), FORWARD_BY_NAME.get(name).sha256, `${name}: exact reviewed forward definition`);
 }
 
+// Exact input-only INVOKER helpers, not a generic exception to DEFINER/path rules.
+// They run inside the caller-owned definer and must never gain direct API grants.
+const SALE_INPUT_HELPERS = new Map([
+  ['app_private.hermes_sale_keys_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_sale_keys_v1(p_operation text,p_input jsonb)
+RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $fn$
+ SELECT CASE
+ WHEN p_operation='patch' THEN CASE WHEN p_input ? 'images' AND NOT EXISTS(
+  SELECT 1 FROM jsonb_object_keys(p_input) k WHERE k NOT IN ('requestId','roomId','expectedRevision','images'))
+  THEN ARRAY['rooms.edit','sale_phong.edit','sale_phong.manage_images'] ELSE ARRAY['rooms.edit','sale_phong.edit'] END
+ WHEN p_operation='lock' THEN ARRAY['sale_phong.lock_room']
+ WHEN p_operation='release' THEN ARRAY['sale_phong.lock_room','deposits.create']
+ WHEN p_operation IN ('reservation_create','reservation_topup') THEN ARRAY['deposits.create']
+ WHEN p_operation IN ('reservation_update','reservation_assign') THEN ARRAY['deposits.edit']
+ WHEN p_operation='options' THEN ARRAY[p_input->>'action']
+ WHEN p_operation='observe' THEN ARRAY['rooms.edit','sale_phong.edit','sale_phong.manage_images']
+ ELSE ARRAY['rooms.edit','sale_phong.edit','sale_phong.manage_images','sale_phong.lock_room','deposits.create','deposits.edit'] END
+$fn$`)],
+  ['app_private.hermes_sale_receipt_input_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_sale_receipt_input_v1(p_input jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,app_private AS $fn$
+BEGIN
+ PERFORM app_private.hermes_request_v1(p_input,ARRAY['amount','accountId','voucherDate','name','description']);
+ IF jsonb_typeof(p_input->'amount') IS DISTINCT FROM 'number' OR (p_input->>'amount') !~ '^[1-9][0-9]{0,12}$'
+  OR (p_input->'name'<>'null'::jsonb AND (jsonb_typeof(p_input->'name') IS DISTINCT FROM 'string' OR char_length(p_input->>'name') NOT BETWEEN 1 AND 200))
+  OR (p_input->'description'<>'null'::jsonb AND (jsonb_typeof(p_input->'description') IS DISTINCT FROM 'string' OR char_length(p_input->>'description')>1000))
+  THEN RAISE EXCEPTION 'hermes_sale_invalid' USING ERRCODE='22023'; END IF;
+ IF p_input->'accountId'<>'null'::jsonb THEN PERFORM app_private.hermes_uuid_v1(p_input->'accountId'); END IF;
+ IF app_private.hermes_domain_date_v2(p_input->'voucherDate') IS NULL THEN RAISE EXCEPTION 'hermes_sale_invalid' USING ERRCODE='22023'; END IF;
+ RETURN jsonb_build_object('amount',p_input->'amount','account_id',p_input->'accountId','voucher_date',p_input->'voucherDate',
+  'name',p_input->'name','description',p_input->'description','attachments','[]'::jsonb);
+END $fn$`)],
+]);
+
 function securityContract(sql = all, registry = functions) {
   sql = expandReviewedFunctionAcl(sql);
   const normalizedAclSql = sql.replace(/,\s+/g, ',');
@@ -709,6 +757,7 @@ function securityContract(sql = all, registry = functions) {
     else if (CDE_CATALOG_HELPERS.has(name)) assert.equal(definition, CDE_CATALOG_HELPERS.get(name), `${name}: exact private pg_catalog helper`);
     else if (name === 'app_private.hermes_room_pass_revision_v1') assert.equal(definition, ROOM_PASS_REVISION_HELPER, 'exact private room-pass revision helper');
     else if (CD_NARROW_PATH_HELPERS.has(name)) assert.equal(definition, CD_NARROW_PATH_HELPERS.get(name), `${name}: exact private narrow-path helper`);
+    else if (SALE_INPUT_HELPERS.has(name)) assert.equal(definition, SALE_INPUT_HELPERS.get(name), `${name}: exact private sale input helper`);
     else if (name === 'app_private.hermes_task_follow_apply_v1') assert.equal(header, TASK_FOLLOW_APPLY_HEADER, 'exact task-follow invoker step');
     else if (name === 'public.hermes_task_follow_action_v1') assert.equal(definition, TASK_FOLLOW_ACTION, 'exact task-follow SQL-standard wrapper');
     else if (CUSTOMER_INVOKER.has(name)) assert.match(header, /SECURITY INVOKER SET search_path=pg_catalog,public/i, name);
@@ -909,7 +958,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-three reviewed forward migrations and their 88 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all twenty-six reviewed forward migrations and their 99 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -921,9 +970,9 @@ test('all twenty-three reviewed forward migrations and their 88 latest definitio
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 23);
-  assert.equal(FORWARD_FUNCTIONS.length, 88);
-  assert.equal(FORWARD_BY_NAME.size, 88, 'one live definition per reviewed name');
+  assert.equal(paths.length, 26);
+  assert.equal(FORWARD_FUNCTIONS.length, 99);
+  assert.equal(FORWARD_BY_NAME.size, 99, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -1147,6 +1196,38 @@ test('current numeric formatter stays pure invoker-only and cannot gain an API e
   }
   for (const role of ['authenticated', 'service_role', 'hermes_store_executor']) {
     assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${name}(numeric) TO ${role};`), /cannot execute/);
+  }
+});
+
+test('sale input helpers keep exact invoker bodies and cannot gain an API execute grant', () => {
+  for (const [name, current] of SALE_INPUT_HELPERS) {
+    assert.equal(functions.get(name), current, `${name}: latest definition is reviewed`);
+    for (const [before, after] of [
+      ['IMMUTABLE SET', 'IMMUTABLE SECURITY DEFINER SET'],
+      ['search_path=pg_catalog', 'search_path=pg_catalog,untrusted'],
+      ['AS $fn$', 'AS $fn$ SELECT * FROM public.rooms;'],
+    ]) {
+      const changed = current.replace(before, after); assert.notEqual(changed, current);
+      const registry = new Map(functions); registry.set(name, changed);
+      assert.throws(() => securityContract(all, registry), /exact private sale input helper/);
+    }
+    const target = `${name}(${name.endsWith('keys_v1') ? 'text,jsonb' : 'jsonb'})`;
+    for (const role of ['authenticated', 'service_role', 'hermes_store_executor']) {
+      assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO ${role};`), /cannot execute/);
+    }
+    assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO PUBLIC;`), /supported recipient/);
+  }
+});
+
+test('sale action, policy and v8/v9 option RPC grants remain authenticated-only', () => {
+  const ports = PUBLIC.filter(name => /^(?:hermes_sale_(?:policy_)?(?:actions|capabilities)_v1|hermes_(?:org_policy_options|connection_options|connection_context)_v[89])\(/.test(name));
+  assert.equal(ports.length, 10);
+  for (const port of ports) {
+    const target = `public.${port}`;
+    for (const role of ['service_role', 'hermes_store_executor']) {
+      assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO ${role};`), /cannot execute/);
+    }
+    assert.throws(() => securityContract(`${all}; REVOKE EXECUTE ON FUNCTION ${target} FROM authenticated;`), /effective execute ACL/);
   }
 });
 

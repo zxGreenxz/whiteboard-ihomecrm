@@ -1,19 +1,24 @@
 import { StorageImage } from "@/components/ui/storage-image";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
 import { X, Star } from "lucide-react";
+import { useRef } from "react";
 
 /**
  * Grid ảnh sale 3 cột cho mobile: ảnh hiện có (đặt bìa = phần tử đầu, xoá) + ô
  * upload (ImageUploadZone) để thêm nhiều ảnh. Thứ tự mảng = thứ tự hiển thị.
  */
 export default function MobileImageGrid({
-  value, onChange, bucket = "room-sale-images",
+  value, onChange, bucket = "room-sale-images", disabled = false, onUploadingChange,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   bucket?: string;
+  disabled?: boolean;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const imgs = value ?? [];
+  const latest = useRef(imgs);
+  latest.current = imgs;
   const removeAt = (i: number) => onChange(imgs.filter((_, idx) => idx !== i));
   const toFront = (i: number) => {
     if (i === 0) return;
@@ -33,11 +38,11 @@ export default function MobileImageGrid({
               {i === 0 ? (
                 <span className="cover">Ảnh bìa</span>
               ) : (
-                <button className="rm" style={{ left: 5, right: "auto", background: "rgba(31,122,82,.85)" }} title="Đặt làm bìa" onClick={() => toFront(i)}>
+                <button type="button" disabled={disabled} className="rm" style={{ left: 5, right: "auto", background: "rgba(31,122,82,.85)" }} title="Đặt làm bìa" onClick={() => toFront(i)}>
                   <Star size={12} />
                 </button>
               )}
-              <button className="rm" title="Xoá ảnh" onClick={() => removeAt(i)}><X size={12} /></button>
+              <button type="button" disabled={disabled} className="rm" title="Xoá ảnh" onClick={() => removeAt(i)}><X size={12} /></button>
             </div>
           ))}
         </div>
@@ -46,8 +51,10 @@ export default function MobileImageGrid({
         label=""
         value=""
         multiple
-        onChange={(url) => { if (url) onChange([...imgs, url]); }}
-        onAddMany={(urls) => { if (urls.length) onChange([...imgs, ...urls]); }}
+        onChange={(url) => { if (url) onChange([...latest.current, url]); }}
+        onAddMany={(urls) => { if (urls.length) onChange([...latest.current, ...urls]); }}
+        disabled={disabled}
+        onUploadingChange={onUploadingChange}
         bucket={bucket}
         accept="image/png,image/jpeg,image/jpg,image/webp"
         maxSizeMB={5}

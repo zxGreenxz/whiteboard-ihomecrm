@@ -14000,6 +14000,41 @@ export type Database = {
           },
         ]
       }
+      notification_quiet_hours: {
+        Row: {
+          enabled: boolean
+          organization_id: string
+          quiet_end: number
+          quiet_start: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          organization_id: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          organization_id?: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_quiet_hours_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_templates: {
         Row: {
           created_at: string
@@ -16043,6 +16078,7 @@ export type Database = {
           is_active: boolean
           organization_id: string
           p256dh: string
+          revoked_at: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -16055,6 +16091,7 @@ export type Database = {
           is_active?: boolean
           organization_id: string
           p256dh: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id: string
@@ -16067,6 +16104,7 @@ export type Database = {
           is_active?: boolean
           organization_id?: string
           p256dh?: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id?: string
@@ -22199,6 +22237,16 @@ export type Database = {
       }
       cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
       cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
+      cancel_room_sale_policy_v1: {
+        Args: {
+          p_expected_version: number
+          p_organization_id: string
+          p_policy_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       cancel_special_fee_claim_v1: {
         Args: { p_claim_id: string; p_reason: string }
         Returns: Json
@@ -22541,6 +22589,33 @@ export type Database = {
           p_with_customers?: boolean
         }
         Returns: Json
+      }
+      contract_move_out_notices_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_until: number
+          end_date: string
+          expected_move_out_date: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          status: string
+        }[]
+      }
+      contract_renewal_end_date_v1: {
+        Args: { p_end_date: string; p_months: number }
+        Returns: string
       }
       contract_stats_v2: { Args: { p_building_ids?: string[] }; Returns: Json }
       copilot_action_ledger_list_v1: {
@@ -24840,9 +24915,21 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_my_notification_quiet_hours_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_organizations: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_permissions_v2: { Args: { p_org: string }; Returns: Json }
+      get_my_push_log_v1: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_at: string
+          outcome: string
+          sent: number
+        }[]
+      }
       get_my_share_buildings: {
         Args: never
         Returns: {
@@ -24850,7 +24937,15 @@ export type Database = {
           name: string
         }[]
       }
+      get_notification_delivery_health_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_notification_org_config_v1: { Args: never; Returns: Json }
+      get_notification_org_config_v2: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_or_create_deposit_account: { Args: never; Returns: string }
       get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
@@ -24990,6 +25085,14 @@ export type Database = {
       }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
       get_salary_v5_config: { Args: { p_org?: string }; Returns: Json }
+      get_sale_room_inventory_v1: {
+        Args: {
+          p_building_id?: string
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: Json
+      }
       get_special_fee_prices_v1: {
         Args: { p_building_ids?: string[]; p_month?: string }
         Returns: {
@@ -25086,6 +25189,14 @@ export type Database = {
         Args: { p_building_ids: string[]; p_organization_id: string }
         Returns: Json
       }
+      hermes_building_directory_v2: {
+        Args: {
+          p_building_ids: string[]
+          p_include_virtual: boolean
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       hermes_connection_context_v1: {
         Args: { p_connection_id: string }
         Returns: Json
@@ -25114,6 +25225,14 @@ export type Database = {
         Args: { p_connection_id: string }
         Returns: Json
       }
+      hermes_connection_context_v8: {
+        Args: { p_connection_id: string }
+        Returns: Json
+      }
+      hermes_connection_context_v9: {
+        Args: { p_connection_id: string }
+        Returns: Json
+      }
       hermes_connection_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v3: { Args: { p_org: string }; Returns: Json }
@@ -25121,6 +25240,24 @@ export type Database = {
       hermes_connection_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v7: { Args: { p_org: string }; Returns: Json }
+      hermes_connection_options_v8: { Args: { p_org: string }; Returns: Json }
+      hermes_connection_options_v9: { Args: { p_org: string }; Returns: Json }
+      hermes_contract_action_lookup_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
+        Returns: Json
+      }
+      hermes_contract_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -25175,6 +25312,18 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_expense_write_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_external_group_directory_v1: { Args: { p: Json }; Returns: Json }
       hermes_external_group_preview_decision_v1: {
         Args: { p: Json }
@@ -25226,6 +25375,8 @@ export type Database = {
       hermes_org_policy_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v7: { Args: { p_org: string }; Returns: Json }
+      hermes_org_policy_options_v8: { Args: { p_org: string }; Returns: Json }
+      hermes_org_policy_options_v9: { Args: { p_org: string }; Returns: Json }
       hermes_organization_name_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -25323,7 +25474,23 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_sale_actions_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
+      hermes_sale_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       hermes_sale_listing_rooms_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_sale_policy_actions_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
+      hermes_sale_policy_capabilities_v1: {
         Args: { p_organization_id: string }
         Returns: Json
       }
@@ -25339,6 +25506,18 @@ export type Database = {
           p_org: string
           p_read: string[]
           p_scope_ids: string[]
+        }
+        Returns: Json
+      }
+      hermes_task_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
         }
         Returns: Json
       }
@@ -25404,6 +25583,15 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_write_name_resolve_v2: {
+        Args: {
+          p_building_ids: string[]
+          p_include_virtual: boolean
+          p_names: Json
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_broadcast_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
@@ -25430,6 +25618,15 @@ export type Database = {
         Args: { _building_id: string }
         Returns: boolean
       }
+      ie_category_suggest_v1: {
+        Args: {
+          p_include_restricted?: boolean
+          p_items: Json
+          p_organization_id: string
+          p_type?: string
+        }
+        Returns: Json
+      }
       ie_compat_cancel_v2: {
         Args: { p_ids: string[]; p_reason?: string }
         Returns: Json
@@ -25441,6 +25638,60 @@ export type Database = {
       ie_compat_update_pending_v2: {
         Args: { p_id: string; p_items?: Json; p_patch: Json }
         Returns: Json
+      }
+      ie_default_cashbook_v1: {
+        Args: {
+          p_building_id?: string
+          p_last_used?: string
+          p_organization_id: string
+        }
+        Returns: string
+      }
+      ie_expense_categories_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from: string
+          p_include_restricted?: boolean
+          p_organization_id: string
+          p_status?: string
+          p_to: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          organization_id: string
+          total_amount: number
+          type_id: string
+          type_name: string
+          voucher_count: number
+        }[]
+      }
+      ie_expense_vouchers_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from: string
+          p_include_restricted?: boolean
+          p_min_amount?: number
+          p_organization_id: string
+          p_query?: string
+          p_status?: string
+          p_to: string
+        }
+        Returns: {
+          approval_status: string
+          building_id: string
+          building_name: string
+          categories: string
+          code: string
+          created_at: string
+          name: string
+          organization_id: string
+          posting_status: string
+          room_name: string
+          total_amount: number
+          voucher_date: string
+          voucher_id: string
+        }[]
       }
       ie_form_buildings: {
         Args: never
@@ -25491,6 +25742,10 @@ export type Database = {
       }
       ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
       ie_item_restricted_visible: { Args: { _ie_id: string }; Returns: boolean }
+      ie_quick_text_v1: {
+        Args: { p_bare?: boolean; p_text: string }
+        Returns: string
+      }
       ie_recompute_commission_kind: {
         Args: { p_ie_id: string }
         Returns: undefined
@@ -25545,6 +25800,54 @@ export type Database = {
           payment_methods: string[]
         }[]
       }
+      invoice_adjustments_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_from?: string
+          p_organization_id: string
+          p_room_id?: string
+          p_status?: string
+          p_to?: string
+        }
+        Returns: {
+          adjusted_at: string
+          adjusted_by: string
+          adjusted_by_name: string
+          adjustment_id: string
+          after_total: number
+          before_total: number
+          billing_month: string
+          building_id: string
+          checked_at: string
+          checked_by_name: string
+          contract_id: string
+          delta: number
+          invoice_id: string
+          invoice_number: string
+          is_current: boolean
+          organization_id: string
+          reason: string
+          review_status: string
+          revision: number
+          room_id: string
+        }[]
+      }
+      invoice_collection_by_method_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          amount: number
+          building_id: string
+          invoice_count: number
+          organization_id: string
+          payment_count: number
+          payment_method: string
+        }[]
+      }
       invoice_detail_v1: {
         Args: {
           p_building_ids?: string[]
@@ -25562,6 +25865,31 @@ export type Database = {
           effective_outstanding_at_carrier: number
           invoice_id: string
           remaining_amount: number
+        }[]
+      }
+      invoice_lateness_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids?: string[]
+          p_from?: string
+          p_organization_id: string
+          p_room_id?: string
+          p_to?: string
+        }
+        Returns: {
+          billing_month: string
+          building_id: string
+          contract_id: string
+          days_late: number
+          due_date: string
+          invoice_id: string
+          invoice_number: string
+          is_open: boolean
+          organization_id: string
+          remaining_amount: number
+          room_id: string
+          settled_date: string
+          total_amount: number
         }[]
       }
       invoice_list_core_v1: {
@@ -25609,6 +25937,49 @@ export type Database = {
           p_view_status?: string
         }
         Returns: Json
+      }
+      invoice_missing_v1: {
+        Args: {
+          p_billing_month: string
+          p_building_ids?: string[]
+          p_organization_id: string
+        }
+        Returns: {
+          building_id: string
+          contract_id: string
+          contract_number: string
+          customer_name: string
+          end_date: string
+          organization_id: string
+          room_id: string
+          start_date: string
+        }[]
+      }
+      invoice_open_debts_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: {
+          billing_month: string
+          building_id: string
+          contract_active: boolean
+          contract_id: string
+          customer_name: string
+          due_date: string
+          effective_outstanding: number
+          invoice_id: string
+          invoice_number: string
+          is_overdue: boolean
+          organization_id: string
+          overdue_days: number
+          public_code: string
+          remaining_amount: number
+          room_id: string
+          total_amount: number
+        }[]
       }
       invoice_payment_method_drilldown: {
         Args: {
@@ -25669,6 +26040,38 @@ export type Database = {
         Returns: {
           invoice_ids: string[]
           payment_method: string
+        }[]
+      }
+      invoice_room_invoices_v1: {
+        Args: {
+          p_as_of?: string
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_room_id: string
+        }
+        Returns: {
+          billing_month: string
+          building_id: string
+          carried_in_amount: number
+          carried_out_amount: number
+          contract_id: string
+          due_date: string
+          effective_outstanding: number
+          invoice_id: string
+          invoice_number: string
+          is_overdue: boolean
+          issue_date: string
+          kind: string
+          organization_id: string
+          overdue_days: number
+          paid_amount: number
+          paid_date: string
+          remaining_amount: number
+          room_id: string
+          row_no: number
+          status: string
+          total_amount: number
         }[]
       }
       invoice_scope_building_ids_v1: { Args: never; Returns: string[] }
@@ -25736,6 +26139,19 @@ export type Database = {
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
       is_user_super_admin: { Args: { p_user: string }; Returns: boolean }
+      job_deadline_v1: {
+        Args: { p_date?: string; p_organization_id: string; p_time?: string }
+        Returns: string
+      }
+      job_open_duplicates_v1: {
+        Args: {
+          p_building_id: string
+          p_job_type_id: string
+          p_organization_id: string
+          p_room_id: string
+        }
+        Returns: Json
+      }
       job_photo_ok: {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
@@ -25757,9 +26173,14 @@ export type Database = {
           organization_id: string
         }[]
       }
+      job_visible_as_assignee_v1: {
+        Args: { p_assignee_id: string }
+        Returns: boolean
+      }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
+      lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
       lifecycle_reminder_record_failure_v1: {
         Args: { p_error: string }
         Returns: undefined
@@ -26716,6 +27137,11 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      notification_is_unread_v1: {
+        Args: { p_status: Database["public"]["Enums"]["notification_status"] }
+        Returns: boolean
+      }
+      notification_maintenance_v1: { Args: never; Returns: Json }
       notifications_inbox_v1: {
         Args: {
           p_limit?: number
@@ -26746,7 +27172,34 @@ export type Database = {
           user_id: string
         }[]
       }
+      notify_claim_push_batch_v2: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          data: Json
+          idem_key: string
+          notification_ids: string[]
+          organization_id: string
+          tag: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      notify_drain_record_run_v1: {
+        Args: {
+          p_batches: number
+          p_error?: string
+          p_outcomes: Json
+          p_settled: number
+        }
+        Returns: undefined
+      }
       notify_settle_push_batch_v1: {
+        Args: { p_results: Json }
+        Returns: number
+      }
+      notify_settle_push_batch_v2: {
         Args: { p_results: Json }
         Returns: number
       }
@@ -27264,6 +27717,10 @@ export type Database = {
         Args: { p_period_month?: string; p_voucher_ids: string[] }
         Returns: Json
       }
+      read_reservation_deposit_received_v1: {
+        Args: { p_organization_id: string; p_voucher_ids: string[] }
+        Returns: Json
+      }
       read_room_turnover_v1: {
         Args: { p_organization_id: string; p_room_id: string }
         Returns: Json
@@ -27271,6 +27728,31 @@ export type Database = {
       real_estate_contract_count_v1: {
         Args: { p_building_ids: string[]; p_organization_id: string }
         Returns: number
+      }
+      real_estate_contracts_ending_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_left: number
+          end_date: string
+          expected_move_out_date: string
+          floor: number
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          start_date: string
+          status: string
+        }[]
       }
       real_estate_expense_ratio_v1: {
         Args: {
@@ -28156,6 +28638,16 @@ export type Database = {
         }
         Returns: Json
       }
+      save_room_sale_policy_v1: {
+        Args: {
+          p_expected_revision: string
+          p_organization_id: string
+          p_policy: Json
+          p_request_id: string
+          p_room_id: string
+        }
+        Returns: Json
+      }
       save_room_turnover_v1: {
         Args: {
           p_expected_version: number
@@ -28346,12 +28838,31 @@ export type Database = {
         Args: { p_organization_id: string; p_prefs: Json }
         Returns: Json
       }
+      set_my_notification_quiet_hours_v1: {
+        Args: {
+          p_enabled: boolean
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
+        Returns: Json
+      }
       set_my_ui_preference: {
         Args: { p_key: string; p_value: Json }
         Returns: Json
       }
       set_notification_org_config_v1: {
         Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
+        Returns: Json
+      }
+      set_notification_org_config_v2: {
+        Args: {
+          p_events: Json
+          p_expected_updated_at: string
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
         Returns: Json
       }
       set_personal_cash_book_v1: {
@@ -29037,6 +29548,16 @@ export type Database = {
         }
         Returns: Json
       }
+      update_room_sale_info_v1: {
+        Args: {
+          p_expected_revision: string
+          p_organization_id: string
+          p_patch: Json
+          p_request_id: string
+          p_room_id: string
+        }
+        Returns: Json
+      }
       upsert_building_fee_account: {
         Args: {
           p_account_holder?: string
@@ -29524,10 +30045,34 @@ export type Database = {
         }
         Returns: Json
       }
+      zalo_enqueue_broadcast_oneshot_v2: {
+        Args: {
+          p_attachment: Json
+          p_body: string
+          p_content_guard: Json
+          p_conversation_id: string
+          p_instance_id: string
+          p_not_before: string
+          p_oneshot_id: string
+          p_request_key: string
+        }
+        Returns: Json
+      }
       zalo_enqueue_broadcast_v1: {
         Args: {
           p_attachment?: Json
           p_body: string
+          p_conversation_id: string
+          p_not_before: string
+          p_request_key: string
+        }
+        Returns: Json
+      }
+      zalo_enqueue_broadcast_v2: {
+        Args: {
+          p_attachment: Json
+          p_body: string
+          p_content_guard: Json
           p_conversation_id: string
           p_not_before: string
           p_request_key: string
