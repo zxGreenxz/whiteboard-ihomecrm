@@ -27,7 +27,13 @@ BEGIN
     OR to_regprocedure('public.invoice_adjustments_list_v1(uuid,uuid[],uuid,text,date,date)') IS NULL
     OR to_regprocedure('public.invoice_missing_v1(uuid,text,uuid[])') IS NULL
     OR to_regprocedure('public.invoice_open_debts_v1(uuid,uuid[],uuid,date)') IS NULL
-    OR to_regprocedure('public.invoice_detail_v1(uuid,uuid,uuid[])') IS NULL THEN
+    OR to_regprocedure('public.invoice_detail_v1(uuid,uuid,uuid[])') IS NULL
+    -- Hàm sáu hàm dùng chung gọi lúc chạy (plpgsql không đòi lúc tạo): áp sai thứ tự (thiếu #267 …) thì dừng ở đây, không để báo cáo
+    -- lỗi 42883 lúc chạy (review #273).
+    OR to_regprocedure('public.invoice_effective_outstanding_v1(uuid[])') IS NULL
+    OR to_regprocedure('public.is_overdue(public.invoices)') IS NULL
+    OR to_regprocedure('public.can_do_on_building(text,text,uuid)') IS NULL
+    OR to_regprocedure('public.org_today_v1(uuid)') IS NULL THEN
     RAISE EXCEPTION 'hermes_w2a_invoice_reads_dependency_invalid'; END IF;
   -- Thân nguyên văn (prosrc) — không phụ thuộc cách pg_get_functiondef định dạng đầu hàm giữa các bản PostgreSQL.
   SELECT p.prosrc INTO v_reader FROM pg_catalog.pg_proc p WHERE p.oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure;
@@ -366,7 +372,9 @@ BEGIN
             'label',to_jsonb(e->>'description'),'category',e->'type','amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),
             'unitPrice',to_jsonb((e->>'unitPrice')::numeric::text),'quantity',to_jsonb((e->>'quantity')::numeric::text),
             'previousReading',to_jsonb((e->>'previousReading')::numeric::text),'currentReading',to_jsonb((e->>'currentReading')::numeric::text),
-            'consumption',to_jsonb(((e->>'currentReading')::numeric-(e->>'previousReading')::numeric)::text),'date',e->'fromDate','status',NULL) item
+            -- Số tiêu thụ chỉ khi cuối ≥ đầu (thay công tơ / quay vòng ⇒ null, xem quantity).
+            'consumption',to_jsonb(CASE WHEN (e->>'currentReading')::numeric>=(e->>'previousReading')::numeric
+              THEN ((e->>'currentReading')::numeric-(e->>'previousReading')::numeric)::text END),'date',e->'fromDate','status',NULL) item
           FROM jsonb_array_elements(v_detail->'items') WITH ORDINALITY a(e,n)
         UNION ALL
         SELECT 2,n,jsonb_build_object('kind','payment','id',e->'id','organizationId',e->'organizationId','buildingId',v_head->'buildingId',
@@ -378,8 +386,8 @@ BEGIN
 
   ELSIF p_report='invoice_lateness' THEN
     -- (b) Ai hay đóng trễ: mỗi hoá đơn có hạn trong khoảng (mặc định 90 ngày tới hôm nay); summary gộp sẵn theo phòng (topLateRooms) để
-    -- mô hình không phải tự đếm.
-    v_from:=COALESCE(v_from,v_today-90); v_to:=COALESCE(v_to,v_today);
+    -- mô hình không phải tự đếm. Khoảng kẹp tối đa 366 ngày tính lùi từ toDate (cùng luật với hàm dùng chung).
+    v_to:=COALESCE(v_to,v_today); v_from:=GREATEST(COALESCE(v_from,v_to-90),v_to-366);
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.days_late DESC,x.due_date,x.invoice_id),'[]'::jsonb),count(*)::integer INTO v_rows,v_total FROM (
       SELECT l.days_late,l.due_date,l.invoice_id,jsonb_build_object('invoiceId',l.invoice_id,'organizationId',l.organization_id,'invoiceNumber',l.invoice_number,
           'buildingId',l.building_id,'buildingName',bd.name,'roomId',l.room_id,'roomName',r.name,'billingMonth',l.billing_month,'dueDate',l.due_date,
@@ -423,9 +431,11 @@ BEGIN
 
   ELSIF p_report='invoice_adjustments' THEN
     -- (d) Điều chỉnh hoá đơn + xác nhận kiểm tra; summary.pendingCount = điều chỉnh CHỜ KIỂM (phiên bản hiện hành, PENDING). Lý do là chữ
-    -- tự do gắn hợp đồng: chỉ khi toà ∈ customers.view VÀ mọi khách của HĐ nhìn thấy dưới RLS (như ghi chú hoá đơn).
+    -- tự do gắn hợp đồng: chỉ khi toà ∈ customers.view VÀ mọi khách của HĐ nhìn thấy dưới RLS (như ghi chú hoá đơn). Khoảng ngày mặc định
+    -- và kẹp 366 ngày tới toDate (cùng luật với hàm dùng chung).
+    v_to:=COALESCE(v_to,v_today); v_from:=GREATEST(COALESCE(v_from,v_to-366),v_to-366);
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.adj_at DESC,x.adj_id),'[]'::jsonb),count(*)::integer,
-        jsonb_build_object('count',count(*)::integer,'pendingCount',(count(*) FILTER (WHERE x.pending))::integer,
+        jsonb_build_object('fromDate',v_from,'toDate',v_to,'count',count(*)::integer,'pendingCount',(count(*) FILTER (WHERE x.pending))::integer,
           'checkedCount',(count(*) FILTER (WHERE x.adj_status='CHECKED'))::integer,'oldestPendingDate',min(x.adj_day) FILTER (WHERE x.pending),
           'oldestPendingDays',(v_today-min(x.adj_day) FILTER (WHERE x.pending))::integer)
       INTO v_rows,v_total,v_summary FROM (
@@ -459,7 +469,8 @@ BEGIN
 
   ELSIF p_report='invoice_room_debts' THEN
     -- (f) Công nợ GỘP SẴN theo PHÒNG (nợ thực #267; số phòng phân biệt — đo nền 22/10: mô hình đếm hoá đơn thay phòng và tự cộng lệch).
-    -- days = chỉ phòng có hoá đơn quá hạn ≥ N ngày ("quá hạn hơn 1 tháng" ⇒ days=31); summary chỉ tính các phòng được liệt kê.
+    -- days = chỉ hoá đơn quá hạn ≥ N ngày ("quá hạn hơn 1 tháng" ⇒ days=31): lọc HOÁ ĐƠN trước khi gộp phòng, nên mọi số của dòng và
+    -- summary (tổng nợ, số hoá đơn, tháng) chỉ cộng các hoá đơn đó — review #273: lọc theo phòng rồi cộng mọi hoá đơn mở là sai tổng.
     v_days:=(p_params->>'days')::integer;
     SELECT COALESCE(jsonb_agg(g.item ORDER BY g.debt DESC,g.bname,g.rname,g.room_key),'[]'::jsonb),count(*)::integer,
         jsonb_build_object('rooms',count(*)::integer,'invoices',COALESCE(sum(g.n),0)::integer,'debtTotal',COALESCE(sum(g.debt),0)::text,
@@ -477,33 +488,38 @@ BEGIN
           'months',string_agg(to_char(to_date(d.billing_month||'-01','YYYY-MM-DD'),'MM/YYYY'),', ' ORDER BY d.billing_month,d.invoice_id)) item
       FROM public.invoice_open_debts_v1(v_org,v_b,(p_params->>'roomId')::uuid,v_today) d
       LEFT JOIN public.buildings bd ON bd.id=d.building_id LEFT JOIN public.rooms r ON r.id=d.room_id
-      GROUP BY d.building_id,d.room_id
-      HAVING v_days IS NULL OR COALESCE(max(d.overdue_days),0)>=v_days) g;
+      WHERE v_days IS NULL OR d.overdue_days>=v_days
+      GROUP BY d.building_id,d.room_id) g;
 
   ELSIF p_report='invoice_reminders' THEN
     -- Q18: tin nhắc nợ soạn sẵn theo PHÒNG (người dùng tự bấm gửi; không có đường tự gửi). Tổng = nợ thực gộp sẵn (đo nền 22/10: mô hình
     -- tự cộng lệch 1.000đ). publicPath = /c/<mã> của HĐ đang hiệu lực (trang công khai hiện hoá đơn MỚI NHẤT của HĐ); link tuyệt đối = địa
-    -- chỉ web + publicPath (cấu hình host, D-HĐ9). Tin không nêu tên khách.
+    -- chỉ web + publicPath (cấu hình host, D-HĐ9). Trang /c/<mã> hiện tên khách ⇒ publicPath chỉ khi toà ∈ customers.view của kết nối
+    -- (hàm dùng chung đã đòi customers.view CRM ở toà; review #273). Tin không nêu tên khách; liệt kê tối đa 8 hoá đơn cũ nhất rồi "và N hoá
+    -- đơn khác" để câu kết không bị cắt. days = chỉ phòng có hoá đơn quá hạn ≥ N ngày; tin vẫn nêu TOÀN BỘ nợ của phòng.
     v_days:=(p_params->>'days')::integer;
     SELECT COALESCE(jsonb_agg(g.item ORDER BY g.debt DESC,g.bname,g.rname,g.room_key),'[]'::jsonb),count(*)::integer,
         jsonb_build_object('rooms',count(*)::integer,'debtTotal',COALESCE(sum(g.debt),0)::text,
-          'withLink',(count(*) FILTER (WHERE g.code IS NOT NULL))::integer)
+          'withLink',(count(*) FILTER (WHERE g.link IS NOT NULL))::integer)
       INTO v_rows,v_total,v_summary FROM (
-      SELECT h.bname,h.rname,h.room_key,h.debt,h.code,jsonb_build_object('buildingId',h.building_id,'organizationId',h.org,'buildingName',h.bname,
+      SELECT h.bname,h.rname,h.room_key,h.debt,h.link,jsonb_build_object('buildingId',h.building_id,'organizationId',h.org,'buildingName',h.bname,
           'roomId',h.room_id,'roomName',h.rname,'customerName',CASE WHEN h.building_id=ANY(v_cust) THEN h.customer_name END,'debtTotal',h.debt::text,
           'invoiceCount',h.n,'oldestDueDate',h.oldest_due,'maxOverdueDays',h.max_days,'details',h.details,
-          'publicPath',CASE WHEN h.code IS NOT NULL THEN '/c/'||h.code END,
+          'publicPath',CASE WHEN h.link IS NOT NULL THEN '/c/'||h.link END,
           'messageText',format('Chào anh/chị, phòng %s toà %s hiện còn %sđ chưa thanh toán: %s.%s Anh/chị vui lòng thanh toán giúp. Cảm ơn anh/chị!',
             COALESCE(h.rname,'(không tên)'),COALESCE(h.bname,'(không tên)'),replace(to_char(round(h.debt),'FM999,999,999,999,990'),',','.'),h.details,
-            CASE WHEN h.code IS NOT NULL THEN ' Chi tiết hoá đơn xem ở link kèm theo.' ELSE '' END)) item
+            CASE WHEN h.link IS NOT NULL THEN ' Chi tiết hoá đơn xem ở link kèm theo.' ELSE '' END)) item
       FROM (SELECT d.building_id,d.room_id,COALESCE(d.room_id::text,'') room_key,(array_agg(d.organization_id))[1] org,max(bd.name) bname,
           max(r.name) rname,count(*)::integer n,sum(d.effective_outstanding) debt,min(d.due_date) oldest_due,max(d.overdue_days) max_days,
           (array_agg(d.customer_name ORDER BY d.billing_month DESC,d.invoice_id))[1] customer_name,
-          (array_agg(d.public_code ORDER BY d.billing_month DESC,d.invoice_id) FILTER (WHERE d.public_code IS NOT NULL))[1] code,
+          CASE WHEN d.building_id=ANY(v_cust) THEN
+            (array_agg(d.public_code ORDER BY d.billing_month DESC,d.invoice_id) FILTER (WHERE d.public_code IS NOT NULL))[1] END link,
           string_agg(format('tháng %s: %sđ (hạn %s%s)',to_char(to_date(d.billing_month||'-01','YYYY-MM-DD'),'MM/YYYY'),
             replace(to_char(round(d.effective_outstanding),'FM999,999,999,999,990'),',','.'),to_char(d.due_date,'DD/MM/YYYY'),
-            CASE WHEN d.is_overdue THEN ', đã quá '||d.overdue_days||' ngày' ELSE '' END),'; ' ORDER BY d.billing_month,d.invoice_id) details
-        FROM public.invoice_open_debts_v1(v_org,v_b,(p_params->>'roomId')::uuid,v_today) d
+            CASE WHEN d.is_overdue THEN ', đã quá '||d.overdue_days||' ngày' ELSE '' END),'; ' ORDER BY d.billing_month,d.invoice_id) FILTER (WHERE d.rn<=8)
+            ||CASE WHEN count(*)>8 THEN format('; và %s hoá đơn khác',count(*)-8) ELSE '' END details
+        FROM (SELECT o.*,row_number() OVER (PARTITION BY o.building_id,o.room_id ORDER BY o.billing_month,o.invoice_id) rn
+          FROM public.invoice_open_debts_v1(v_org,v_b,(p_params->>'roomId')::uuid,v_today) o) d
         LEFT JOIN public.buildings bd ON bd.id=d.building_id LEFT JOIN public.rooms r ON r.id=d.room_id
         GROUP BY d.building_id,d.room_id
         HAVING v_days IS NULL OR COALESCE(max(d.overdue_days),0)>=v_days) h) g;

@@ -45,7 +45,8 @@ BEGIN
   ORDER BY 1;
 END $fn$;
 
--- (b) Đóng trễ: hoá đơn có HẠN trong [p_from, p_to] (mặc định 90 ngày tới hôm nay), chưa xoá/huỷ/nháp, tổng > 0. Ngày trả đủ = ngày của
+-- (b) Đóng trễ: hoá đơn có HẠN trong [p_from, p_to] (mặc định 90 ngày tới p_to / hôm nay; kẹp tối đa 366 ngày tính lùi từ p_to — không
+-- quét cả lịch sử khi chỉ có p_from), chưa xoá/huỷ/nháp, tổng > 0. Ngày trả đủ = ngày của
 -- lần thu làm số đã thu cộng dồn đạt tổng tiền; hoá đơn đã PAID mà không đạt (làm tròn / cấn trừ) ⇒ paid_date, không có thì lần thu cuối.
 -- Số ngày trễ = ngày trả đủ − hạn; còn nợ ⇒ hôm nay − hạn (trễ tới nay); sớm/đúng hạn = 0.
 CREATE OR REPLACE FUNCTION public.invoice_lateness_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,p_room_id uuid DEFAULT NULL,
@@ -61,7 +62,7 @@ BEGIN
     WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
       AND public.can_do_on_building('invoices','view',b.id);
   v_today:=COALESCE(p_as_of,public.org_today_v1(p_organization_id));
-  v_from:=COALESCE(p_from,v_today-90); v_to:=COALESCE(p_to,v_today);
+  v_to:=COALESCE(p_to,v_today); v_from:=GREATEST(COALESCE(p_from,v_to-90),v_to-366);
   RETURN QUERY
   WITH inv AS MATERIALIZED (
     SELECT i.id,i.organization_id,i.building_id,i.room_id,i.contract_id,i.invoice_number,i.billing_month,i.due_date,i.paid_date,i.status::text AS status,
@@ -112,8 +113,9 @@ BEGIN
   ORDER BY i.building_id,p.payment_method::text;
 END $fn$;
 
--- (d) Điều chỉnh hoá đơn (bất biến, invoice_adjustments) kèm trạng thái kiểm tra; is_current = đúng phiên bản hiện hành của hoá đơn (chỉ
--- phiên bản đó xác nhận kiểm tra được). Tên người điều chỉnh / kiểm tra dưới RLS profiles. Ngày lọc theo giờ Việt Nam.
+-- (d) Điều chỉnh hoá đơn (bất biến, invoice_adjustments) của hoá đơn chưa xoá, chưa huỷ, kèm trạng thái kiểm tra; is_current = đúng phiên
+-- bản hiện hành của hoá đơn (chỉ phiên bản đó xác nhận kiểm tra được). Tên người điều chỉnh / kiểm tra dưới RLS profiles. Ngày lọc theo giờ
+-- Việt Nam, khoảng [p_from, p_to] mặc định 366 ngày tới p_to / hôm nay và kẹp tối đa 366 ngày (không đọc cả lịch sử).
 CREATE OR REPLACE FUNCTION public.invoice_adjustments_list_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,p_room_id uuid DEFAULT NULL,
   p_status text DEFAULT NULL,p_from date DEFAULT NULL,p_to date DEFAULT NULL)
 RETURNS TABLE(adjustment_id uuid,organization_id uuid,invoice_id uuid,invoice_number text,billing_month text,building_id uuid,room_id uuid,
@@ -121,22 +123,22 @@ RETURNS TABLE(adjustment_id uuid,organization_id uuid,invoice_id uuid,invoice_nu
   adjusted_by_name text,adjusted_at timestamptz,review_status text,checked_by_name text,checked_at timestamptz)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
-DECLARE v_b uuid[];
+DECLARE v_b uuid[]; v_from date; v_to date;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
   SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
     WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
       AND public.can_do_on_building('invoices','view',b.id);
+  v_to:=COALESCE(p_to,public.org_today_v1(p_organization_id)); v_from:=GREATEST(COALESCE(p_from,v_to-366),v_to-366);
   RETURN QUERY
   SELECT ad.id,ad.organization_id,i.id,i.invoice_number,i.billing_month,i.building_id,i.room_id,i.contract_id,ad.revision,
     ad.revision=i.adjustment_revision,ad.before_total,ad.after_total,ad.delta,ad.reason,ad.adjusted_by,
     (SELECT pr.full_name FROM public.profiles pr WHERE pr.id=ad.adjusted_by),ad.adjusted_at,ad.review_status,
     (SELECT pr.full_name FROM public.profiles pr WHERE pr.id=ad.checked_by),ad.checked_at
   FROM public.invoice_adjustments ad JOIN public.invoices i ON i.id=ad.invoice_id
-  WHERE ad.organization_id=p_organization_id AND i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.building_id=ANY(v_b)
-    AND (p_room_id IS NULL OR i.room_id=p_room_id) AND (p_status IS NULL OR ad.review_status=p_status)
-    AND (p_from IS NULL OR (ad.adjusted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date>=p_from)
-    AND (p_to IS NULL OR (ad.adjusted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_to)
+  WHERE ad.organization_id=p_organization_id AND i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED'
+    AND i.building_id=ANY(v_b) AND (p_room_id IS NULL OR i.room_id=p_room_id) AND (p_status IS NULL OR ad.review_status=p_status)
+    AND (ad.adjusted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN v_from AND v_to
   ORDER BY ad.adjusted_at DESC,ad.id;
 END $fn$;
 
@@ -173,6 +175,7 @@ END $fn$;
 
 -- (f) + nhắc nợ (Q18): hoá đơn còn nợ THỰC > 0 (chưa xoá, APPROVED / PARTIAL_PAID / OVERDUE, còn lại > 0 — đúng tập của công nợ #267),
 -- kèm quá hạn, mã tra cứu công khai của HĐ đang hiệu lực (trang /c/<mã> luôn hiện hoá đơn MỚI NHẤT của HĐ) và tên khách đại diện (RLS).
+-- Trang /c/<mã> hiện tên khách (20260808100000) và mã chỉ 6 ký tự ⇒ mã chỉ trả khi người gọi có customers.view ở toà của hoá đơn.
 CREATE OR REPLACE FUNCTION public.invoice_open_debts_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,p_room_id uuid DEFAULT NULL,
   p_as_of date DEFAULT NULL)
 RETURNS TABLE(invoice_id uuid,organization_id uuid,building_id uuid,room_id uuid,contract_id uuid,invoice_number text,billing_month text,
@@ -195,7 +198,8 @@ BEGIN
     COALESCE(i.remaining_amount,0),e.effective_outstanding,COALESCE(public.is_overdue(i),false),
     CASE WHEN COALESCE(public.is_overdue(i),false) THEN (v_today-i.due_date)::integer END,
     COALESCE(c.status::text='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL,false),
-    CASE WHEN c.status::text='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL THEN c.public_code END,
+    CASE WHEN c.status::text='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL
+      AND public.can_do_on_building('customers','view',i.building_id) THEN c.public_code END,
     COALESCE(rc.full_name,fc.full_name)
   FROM public.invoices i
   JOIN public.invoice_effective_outstanding_v1(v_ids) e ON e.invoice_id=i.id

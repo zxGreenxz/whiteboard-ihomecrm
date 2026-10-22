@@ -229,18 +229,20 @@ Dùng lại mã chung: `period_locked` (`[PROFIT_LOCKED]`, `[CASHBOOK_CLOSED]`, 
 
 | Câu đo nền | Báo cáo | Khoá | Tham số | Hàng / summary | Hàm dùng chung |
 | --- | --- | --- | --- | --- | --- |
-| (a) chi tiết khoản một hoá đơn theo phòng + kỳ (TC-I03); (b) hạn đóng một hoá đơn (TC-I10) | `invoice_room_detail` | `invoices.view` | `roomId*` (hoặc `roomName`), `month` (mặc định tháng này) | hàng = từng khoản (dòng có chỉ số kèm `consumption` = cuối − đầu) + lần thu (hình thức, ngày, REVERSED); summary = đầu hoá đơn + `dueDate`, `paidDate`, `isOverdue`, `overdueDays`, `effectiveOutstanding`, `otherInvoices` | `invoice_room_invoices_v1` + `invoice_detail_v1` sẵn có |
-| (b) ai hay trả trễ (TC-I05) | `invoice_lateness` | `invoices.view` | `buildingId`, `roomId`, `fromDate`/`toDate` theo HẠN (mặc định 90 ngày qua) | mỗi hoá đơn: hạn, ngày trả đủ (lần thu làm số đã thu đạt tổng), số ngày trễ (còn nợ = trễ tới hôm nay); summary gộp sẵn `topLateRooms` (số lần trễ, trung bình ngày) | `invoice_lateness_v1` |
-| (c) thu tháng này tách CK/TM/TT (TC-I06) | `collection_by_method` | `thu_tien.view` | `month` hoặc `fromDate`/`toDate` (NGÀY THU), `buildingId` | theo (toà, hình thức): số lần, số hoá đơn, số tiền; summary `tm`/`tk`/`tt`/`ct`/`total` | `invoice_collection_by_method_v1` |
-| (d) điều chỉnh chờ kiểm + lịch sử (TC-I07) | `invoice_adjustments` | `invoices.view` | `buildingId`, `roomId`, `status` (PENDING/CHECKED), `fromDate`/`toDate` | tổng trước/sau, chênh, lý do (chỉ khi mọi khách của HĐ nhìn thấy, như ghi chú hoá đơn), người/ngày/giờ điều chỉnh, người/ngày kiểm, `current`; summary `pendingCount` = chờ kiểm thật (phiên bản hiện hành) | `invoice_adjustments_list_v1` |
+| (a) chi tiết khoản một hoá đơn theo phòng + kỳ (TC-I03); (b) hạn đóng một hoá đơn (TC-I10) | `invoice_room_detail` | `invoices.view` | `roomId*` (hoặc `roomName`), `month` (mặc định tháng này) | hàng = từng khoản (dòng có chỉ số kèm `consumption` = cuối − đầu; số cuối nhỏ hơn số đầu, vd thay đồng hồ, ⇒ `null`, không trả số âm) + lần thu (hình thức, ngày, REVERSED); summary = đầu hoá đơn + `dueDate`, `paidDate`, `isOverdue`, `overdueDays`, `effectiveOutstanding`, `otherInvoices` | `invoice_room_invoices_v1` + `invoice_detail_v1` sẵn có |
+| (b) ai hay trả trễ (TC-I05) | `invoice_lateness` | `invoices.view` | `buildingId`, `roomId`, `fromDate`/`toDate` theo HẠN (mặc định 90 ngày qua; SQL kẹp ≤ 366 ngày tính lùi từ `toDate`) | mỗi hoá đơn: hạn, ngày trả đủ (lần thu làm số đã thu đạt tổng), số ngày trễ (còn nợ = trễ tới hôm nay); summary gộp sẵn `topLateRooms` (số lần trễ, trung bình ngày) | `invoice_lateness_v1` |
+| (c) thu tháng này tách CK/TM/TT (TC-I06) | `collection_by_method` | `thu_tien.view` | `month` hoặc `fromDate`/`toDate` (NGÀY THU), `buildingId` | theo (toà, hình thức): số lần, số hoá đơn, số tiền; summary `tm`/`tk`/`tt`/`ct`/`total`. Số = tiền **áp vào hoá đơn** theo ngày thu (như trang Thu tiền), có thể khác thẻ thống kê ở trang Hoá đơn (thẻ đó gộp theo kỳ hoá đơn) | `invoice_collection_by_method_v1` |
+| (d) điều chỉnh chờ kiểm + lịch sử (TC-I07) | `invoice_adjustments` | `invoices.view` | `buildingId`, `roomId`, `status` (PENDING/CHECKED), `fromDate`/`toDate` theo ngày điều chỉnh (mặc định và trần 366 ngày; summary nêu `fromDate`/`toDate` thật đã dùng); bỏ hoá đơn đã huỷ | tổng trước/sau, chênh, lý do (chỉ khi mọi khách của HĐ nhìn thấy, như ghi chú hoá đơn), người/ngày/giờ điều chỉnh, người/ngày kiểm, `current`; summary `pendingCount` = chờ kiểm thật (phiên bản hiện hành) | `invoice_adjustments_list_v1` |
 | (e) phòng có HĐ hiệu lực chưa có hoá đơn kỳ M (TC-I08) | `invoice_missing` | `invoices.view` | `month*`, `buildingId` | phòng, số HĐ, khách (đại diện, RLS ẩn thì khách đầu), ngày bắt đầu/kết thúc; summary số phòng + `byBuilding` | `invoice_missing_v1` |
-| (f) "nợ quá hạn" (TC-I09) + công nợ theo phòng | `invoice_room_debts` (tên mới, thay `invoice_overdue_rooms` của Mốc 1) | `invoices.view` | `buildingId`, `roomId`, `days` (chỉ phòng quá hạn ≥ N ngày; "hơn 1 tháng" ⇒ 31) | mỗi PHÒNG: tổng nợ thực, số hoá đơn, quá hạn, hạn cũ nhất, các tháng; summary `rooms` = số phòng | `invoice_open_debts_v1` |
-| Q18 soạn tin nhắc nợ | `invoice_reminders` | `invoices.view` | `buildingId`, `roomId`, `days` | mỗi phòng: `messageText` soạn sẵn (không tên khách), `details`, tổng nợ thực, `publicPath` | `invoice_open_debts_v1` |
+| (f) "nợ quá hạn" (TC-I09) + công nợ theo phòng | `invoice_room_debts` (tên mới, thay `invoice_overdue_rooms` của Mốc 1) | `invoices.view` | `buildingId`, `roomId`, `days` (chỉ hoá đơn quá hạn ≥ N ngày; "hơn 1 tháng" ⇒ 31) | mỗi PHÒNG: tổng nợ thực, số hoá đơn, quá hạn, hạn cũ nhất, các tháng; summary `rooms` = số phòng. Có `days` ⇒ **mọi số (hàng và summary) chỉ cộng các hoá đơn quá hạn ≥ N ngày**, không cộng hoá đơn mới hơn của cùng phòng (Mốc 2b, review độc lập) | `invoice_open_debts_v1` |
+| Q18 soạn tin nhắc nợ | `invoice_reminders` | `invoices.view` | `buildingId`, `roomId`, `days` (lọc PHÒNG có hoá đơn quá hạn ≥ N ngày) | mỗi phòng: `messageText` soạn sẵn (không tên khách) = **toàn bộ** nợ của phòng (tin gửi khách phải đủ), tối đa 8 dòng chi tiết rồi "và N hoá đơn khác" (không cắt giữa câu), `details`, tổng nợ thực, `publicPath` (chỉ khi người hỏi được **xem khách** ở toà đó) | `invoice_open_debts_v1` |
 
 - Quá hạn tính theo `is_overdue` (hạn < hôm nay giờ tổ chức, chưa thu đủ), không theo `status='OVERDUE'` (chỉ được đánh dấu khi có người mở trang Hoá đơn). Nợ = `effective_outstanding` (#267) trên tập hoá đơn mở của phạm vi, như công nợ.
 - Sáu hàm dùng chung: INVOKER, STABLE, `search_path=''`, chỉ `authenticated`, tự kiểm khoá web theo toà (`invoices.view`; `thu_tien.view` cho thu theo hình thức), lọc công ty tường minh; file không chứa hàm của trợ lý. Web dùng được về sau (vd màn "điều chỉnh chờ kiểm", plan §8.7).
 - `app_private.hermes_w2a_read_v1` và `hermes_w2a_catalog_v1` dựng lại **từ thân đang chạy** (bài học #267) bằng script sinh (chép nguyên thân + chèn nhánh): md5 `prosrc` production = TEST = repo (đo 22/10), ghim ở `$requires$`; nhận thêm thân trước đó `d7fea7ee…` (chuỗi của fixture PGlite gói A, không có `20261019040948`) vì thân mới là siêu tập của nó. Ghim băm ở forward fixture chuyển nguồn sang file mới; thân của `20261019040948` thành bản "superseded".
-- Đường dẫn công khai: SQL trả `publicPath` = `/c/<mã>`; link tuyệt đối = địa chỉ web + đường dẫn theo cơ chế D-HĐ9 (cấu hình host `publicWebOrigin` của connector, chưa có ở connector). Tới khi có, SOUL dặn bot ghép địa chỉ web CRM.
+- Phòng chưa có hoá đơn (`invoice_missing`): không xét `payment_cycle` của hợp đồng — bộ lập hoá đơn web cũng không dùng trường này, và TEST đo 22/10 mọi HĐ hiệu lực đều `MONTHLY`. Khi web lập hoá đơn theo chu kỳ khác tháng thì báo cáo phải theo.
+- `$requires$` của `20261022051620` dừng (fail-closed) nếu thiếu bất kỳ hàm web nào mà sáu hàm dùng chung gọi lúc chạy: `invoice_effective_outstanding_v1(uuid[])` (#267), `is_overdue(invoices)`, `can_do_on_building(text,text,uuid)`, `org_today_v1(uuid)`; file `20261022051118` không có `$requires$` (tạo hàm `plpgsql` không cần hàm phụ có sẵn; khối đọc mới là nơi chặn).
+- Đường dẫn công khai: SQL trả `publicPath` = `/c/<mã>` **chỉ khi người hỏi có `customers.view` ở toà đó** (mã cổng khách mở được hồ sơ khách; người chỉ xem hoá đơn không được nhận — kiểm ở cả hàm dùng chung `invoice_open_debts_v1` lẫn khối đọc, Mốc 2b); link tuyệt đối = địa chỉ web + đường dẫn theo cơ chế D-HĐ9 (cấu hình host `publicWebOrigin` của connector, chưa có ở connector). Tới khi có, SOUL dặn bot ghép địa chỉ web CRM.
 - Lỗi SOUL của lượt đo nền (TC-J01/J02 coi tiền khách trả là phiếu chi, TC-I01 không tìm ra tool, TC-I09) sửa ở SOUL (mục 12), không cần mã.
 
 ## 8. Hàm báo giá hoá đơn tháng (P7, Q17 = a) — chỉ thiết kế, MỐC CUỐI tuỳ chọn
@@ -359,6 +361,7 @@ Byte `tools/list`: không đổi (họ thao tác 1 959 B đã tính; báo cáo W
 | --- | --- | --- |
 | 1 ✓ | Tài liệu này + 20 ca phát triển | — |
 | 2 ✓ | Đọc bù: 6 hàm đọc dùng chung + 7 báo cáo W2 gói A; tầng 1 + PGlite + tầng 2 (kết quả bên dưới) | 2–3 |
+| 2b ✓ | Sửa theo review độc lập Mốc 2 (4 bắt buộc + tuỳ chọn) | 0,5 |
 | 3 | `invoice.collect` (đơn + lô) + `invoice_collection_plan_v1` + seed khoá + nhãn | 4–5 |
 | 3b | (nếu duyệt) web Thu tiền chuyển sang kế hoạch SQL, bỏ `changeAccounts.ts` | 1,5–2 |
 | 4 | `invoice.meter_record` + `record_meter_readings_v2` + form web | 3–4 |
@@ -369,6 +372,21 @@ Byte `tools/list`: không đổi (họ thao tác 1 959 B đã tính; báo cáo W
 - Tầng 1 (PGlite gói A): `wave2-a.test.mjs` 53/53 (vòng lặp mọi báo cáo giờ gồm 16 báo cáo: rào công ty, rào đầu ra, che tên khách, quyền theo toà, broker chiếu đúng khuôn); `wave2-a-hoa-don.test.mjs` 21/21 — số tính tay từng báo cáo, ca nợ kéo #267 (phòng gánh nợ cũ chỉ tính một lần), cấu trúc 6 hàm dùng chung, 10/10 đột biến bị bắt (nợ thực, quá hạn theo hạn, khoá trang, chỉ `authenticated`, hoá đơn huỷ, ngày trả đủ, lọc ≥ N ngày, tên khách, lý do điều chỉnh, chờ kiểm theo phiên bản hiện hành); `wave2-a-coc-quy`, `wave2-foundation`, `copied-text-parity-sql` xanh; `hermes-durable-schema` 98/98.
 - Tầng 2 (TEST, `test-env:thu-sql`, ROLLBACK, 3 kết nối Hermes ACTIVE thật qua lối vào `public.hermes_w2_read_v1`): 0 lỗi; 7 báo cáo 150–850 ms; persona quản lý chỉ thấy toà của mình. Số khớp đối chiếu đo nền: chi tiết hoá đơn một phòng (tiền phòng, điện theo số đầu–cuối và kWh, nước, dịch vụ), hạn đóng một phòng (TC-I10), 11 phòng chưa có hoá đơn tháng 10 cùng một toà (TC-I08), 23 phòng quá hạn hơn 1 tháng (TC-I09, khớp truy vấn độc lập không RLS), tổng nợ một toà và tổng nợ một phòng đúng như bản sửa #267 (TC-I02, ghi chú lượt 2).
 - Byte `tools/list`: không đổi (báo cáo W2 nằm trong kết quả `crm_read_report_list`).
+
+**Mốc 2b (22/10/2026, sửa theo review độc lập Mốc 2; vẫn chưa áp):**
+- Mã cổng khách / `publicPath` chỉ khi có `customers.view` ở toà.
+- `invoice_room_debts` có `days` chỉ cộng hoá đơn quá hạn ≥ N ngày.
+- `$requires$` của `20261022051620` đòi bốn hàm web chạy lúc gọi.
+- Kẹp 366 ngày.
+- Điều chỉnh của hoá đơn huỷ bị bỏ.
+- `consumption` âm ⇒ `null`.
+- Tin nhắc nợ tối đa 8 dòng chi tiết.
+
+Kiểm:
+- `wave2-a-hoa-don.test.mjs` 29/29 (15 ca + 14 đột biến).
+- Gói W2 khác + nền 186/186; fixture W2 chung có bản thế chỗ đóng an toàn cho hai hàm web khi thiếu.
+- `hermes-durable-schema` 98/98.
+- Tầng 2 (4 kết nối ACTIVE): 0 lỗi ngoài rào phạm vi. `days=31` cho 23 phòng / 44 hoá đơn, tổng nợ thực khớp truy vấn độc lập không RLS. Các số khớp đo nền ở Mốc 2 giữ nguyên.
 
 ## 16. Chưa xác minh
 

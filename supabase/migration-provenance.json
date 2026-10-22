@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T05:54:09.975Z",
+  "generatedAt": "2026-10-22T06:15:18.854Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12723,7 +12723,7 @@
       "version": "20261022051118",
       "name": "hermes_w2a_invoice_shared_v1",
       "scheme": "timestamp14",
-      "sha256": "2331b3848b60298b9ee54b9608a5329355523896e0abe4da29b6e75484f98a32",
+      "sha256": "2ebcd79bc6c2f90774dfcf9bf93e5d1d0ccd817e52dc7f268588ee9401c117e0",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12739,7 +12739,7 @@
       "version": "20261022051620",
       "name": "hermes_w2a_invoice_reads_v1",
       "scheme": "timestamp14",
-      "sha256": "85f34d09eb07809b7c86523b64e97e733a5e8bf0c70d8599b6634d604c075fbd",
+      "sha256": "aded05f8f880acd1c870a5376e7405c99d05205577abdf87c71d9a55038e938c",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_w2a_catalog_v1",
