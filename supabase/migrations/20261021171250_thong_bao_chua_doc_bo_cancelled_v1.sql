@@ -15,9 +15,32 @@
 --     rollout copilot.notifications.feed không đụng).
 -- Không ghi dữ liệu, không DROP. File riêng (không gộp vào 20261021171249) để hàng rào gói Hermes
 -- (infra/hermes-broker/wave2-sql-paths.mjs REVIEWED_SUCCESSORS) ghim đúng một file nhỏ, ít đổi.
+-- $requires$: thân đang chạy của hai hàm bị thay phải là thân production đo 22/10/2026 (= 20261018080000 /
+-- 20260908105446) hoặc thân mới của chính file (lượt hai) — PR song song thay cùng hàm thì dừng.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
+
+DO $requires$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT x.sig, x.cu, x.moi, (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = to_regprocedure(x.sig)) AS hien
+      FROM (VALUES
+        ('public.notifications_inbox_v1(uuid,boolean,text,integer)', '05993208cbfb153a3336cf471fab65f6', 'd242a3fa8bc78c1122197c6011755657'),
+        ('public.copilot_notification_feed_v1(uuid,boolean,integer)', '59c245df752b54184730dbc3ccc28a2f', 'd90e69b2524fbaa107a328159b03104f')
+      ) AS x(sig, cu, moi)
+  LOOP
+    IF r.hien IS NULL THEN
+      RAISE EXCEPTION 'thong_bao_chua_doc: thiếu hàm % (production 22/10 có) — dừng', r.sig USING ERRCODE = '55000';
+    END IF;
+    IF r.hien NOT IN (r.cu, r.moi) THEN
+      RAISE EXCEPTION 'thong_bao_chua_doc: thân % đã đổi so với bản đã duyệt (md5 %, chờ % hoặc %) — có PR khác thay hàm này, gộp rồi dựng lại migration',
+        r.sig, r.hien, r.cu, r.moi USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+END $requires$;
 
 CREATE OR REPLACE FUNCTION public.notification_is_unread_v1(p_status public.notification_status)
 RETURNS boolean
