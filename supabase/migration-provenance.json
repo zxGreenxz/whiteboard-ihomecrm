@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T08:25:45.639Z",
+  "generatedAt": "2026-10-22T10:34:34.513Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 812,
     "unknown": 81,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12547,7 +12547,7 @@
       "version": "20261021083438",
       "name": "quyet_toan_van_hanh_chu_nha",
       "scheme": "timestamp14",
-      "sha256": "ad16d58b15b8a5e85b3130a0c5ce1f1e8295f8c03c1a60ba8d6df2476df1453e",
+      "sha256": "6201aece3052bf18792b700147dda9912a4a918af16683ca023c5bb61036ade1",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12809,6 +12809,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T07:08:17.592Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022101837_bo_sinh_dinh_ky_chong_trung.sql",
+      "version": "20261022101837",
+      "name": "bo_sinh_dinh_ky_chong_trung",
+      "scheme": "timestamp14",
+      "sha256": "3bf3261a8ab7a63c2a19932cb6878c77863b5f9187bf63721225891f1a59f5d7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.generate_recurring_vouchers"
       ]
     },
     {
