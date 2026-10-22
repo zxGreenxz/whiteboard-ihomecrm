@@ -1,4 +1,5 @@
 import { AlertTriangle, Camera, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,6 +8,8 @@ import type { NetworkCenterController } from "@/hooks/network-center/useNetworkC
 import { cameraRecorderStatus, type CameraEvent, type CameraRecorder } from "@/lib/network-center/cameraContracts";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 import { NetworkCenterRepositoryError } from "@/lib/network-center/supabaseRepository";
+
+const CameraLiveWall = lazy(() => import("./CameraLiveWall"));
 
 const stateLabels: Record<string, string> = {
   ONLINE: "Đầu ghi kết nối", OFFLINE: "Mất kết nối đến đầu ghi", UNKNOWN: "Chưa xác định",
@@ -105,7 +108,7 @@ export function CamerasTab({ site, controller }: {
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
         <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { void snapshotQuery.refetch(); void eventsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
       </div>
-      <div className="nc-locked-note nc-display-note"><Camera aria-hidden="true" /><p><strong>Xem trực tiếp chưa được cấu hình.</strong> Mục này theo dõi kết nối, ổ cứng và lịch sử sự kiện.</p></div>
+      {controller.isDemo ? <p className="nc-empty-copy">DEMO chỉ mô phỏng trạng thái; không kết nối video thật.</p> : cameras.recorders.map((recorder) => <Suspense key={`${controller.actor.id}:${organizationId}:${recorder.id}`} fallback={<LoadingState label="trình xem camera" variant="cards" rows={1} />}><CameraLiveWall recorder={recorder} /></Suspense>)}
       {cameras.recorders.length === 0 ? <section className="nc-panel p-6"><h3>Chưa cấu hình đầu ghi</h3><p>Tòa nhà chưa có đầu ghi được đăng ký theo dõi.</p></section>
         : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} />)}
       <section className="nc-panel" aria-labelledby="camera-events-title">

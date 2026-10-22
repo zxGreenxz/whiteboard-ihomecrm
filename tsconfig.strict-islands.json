@@ -16,6 +16,8 @@
   },
   "include": [],
   "files": [
+    "src/components/network-center/tabs/CameraLiveWall.tsx",
+    "src/lib/network-center/cameraLive.ts",
     "src/components/network-center/tabs/CamerasTab.tsx",
     "src/hooks/network-center/useBuildingCameras.ts",
     "src/lib/network-center/cameraContracts.ts",

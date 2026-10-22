@@ -47,7 +47,7 @@ describe("camera tab", () => {
     expect(screen.getByText("Chưa xác định")).toBeTruthy();
     expect(screen.getByText("Bình thường")).toBeTruthy();
     expect(screen.getByText("Theo lần kiểm tra")).toBeTruthy();
-    expect(screen.getByText("Xem trực tiếp chưa được cấu hình.")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Xem trực tiếp" })).toBeTruthy();
     expect(container.querySelector("video,iframe")).toBeNull();
   });
 
