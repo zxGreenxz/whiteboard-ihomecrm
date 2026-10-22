@@ -81,3 +81,19 @@ Hermes đã tích hợp một công cụ công khai `crm_sale_action`, phân ph�
 Migration activation riêng chỉ bật sáu khóa Sale sau bảy migration schema và bản broker/web tương ứng. Giữ nguyên cờ Thu Chi, chính sách tổ chức, exclusions, ý định phạm vi, session và credentials; kết nối hết hạn vẫn phải đăng nhập lại. Kiểm độc lập xác nhận transaction/guards và phạm vi cập nhật; không coi SQL này là bằng chứng broker đã triển khai.
 
 Tại thời điểm ghi báo cáo này chưa phát hành production. CI đúng SHA, lane migration production, phát hành web/broker/worker và smoke sau phát hành còn phải hoàn tất. Nhật ký mới ở `release-gate.log`, `release-tail-*.log/json`, `review-photo-busy-final.json`, `hermes-compact-affected.log` trong thư mục test-results local; các nhật ký đó không được đóng gói trong Git.
+
+### Bổ sung bằng chứng trước phát hành
+
+Bộ Auth/JWT/PostgREST thứ hai đạt **101/101** ca với năm vai trò: giữ/mở phòng, cọc chưa thu, tạo cọc qua writer canonical, nhận lại kết quả khi gửi lặp, hai hạn giữ chỗ/bổ sung, revision cũ và giới hạn tổ chức/tòa. Mỗi vai trò có ca nhận 500.000 đồng tạo đúng một posting và tổng dòng tiền tương ứng; phiếu chỉ được đánh dấu duyệt mà chưa có posting không bị tính là đã nhận tiền. Dữ liệu kiểm thử thuộc tổ chức tổng hợp trên TEST đã dọn sạch; ba guard bất biến lịch sử tài chính được xác nhận bật lại đúng chế độ. Không tạo giao dịch tổ chức thật.
+
+Suite trình duyệt Auth chính thức trên preview TEST của source `f85ff9887d4259ca9a86b2d957a7f62e82bb14f5` đạt **4/4**, không skip/flaky, đăng nhập thật vai chủ công ty và quản lý. Kiểm trước khi chạy xác nhận build SHA và dữ liệu chỉ tới TEST; config, global setup, auth helper và spec không đổi trước/sau. Lease TEST đã giải phóng và cookie bypass tạm đã xóa. Suite này chỉ kiểm hai vai; không dùng nó thay thế bằng chứng năm vai của hai suite JWT.
+
+Activation được kiểm trên TEST **21/21** ca, gồm guard âm và rollback; không để lại capability bật thêm hoặc lease. Restore Drill CI của đúng source trên đạt; đây là khôi phục baseline/roles shim và replay migration, không phải bằng chứng đã phục hồi toàn bộ dump production mới lên Supabase.
+
+CI lần đầu phát hiện ba assertion cũ trong `reservationHoldDeadlineMigration.test.ts`: writer hiện ủy quyền kiểm phạm vi cho helper chung và phải từ chối phiếu `CANCELLED`. Đã cập nhật test để kiểm cả chuỗi helper đang sống, nhánh từ chối quyền và ngăn lệnh tự hủy/thu thêm; không sửa SQL để đáp ứng test cũ. Kiểm riêng đạt **21/21**, lint và migration-test-liveness đạt. Không coi CI lần đầu là xanh; kết quả CI bản cuối được kiểm riêng khi phát hành.
+
+Bằng chứng local bổ sung: `release-sale-reservation-actual-jwt.json`, `reservation-jwt-recovery-evidence.json`, `preview-test-auth.json`, `sale-activation-test-evidence.json` và `deadline-live-guards-*.log`. Preview local cổng 4201 vẫn là dữ liệu tổng hợp, tách biệt dữ liệu thật.
+
+CI còn phát hiện lỗi dọn PostgreSQL dùng riêng cho test stable binding: `pool.end()` có thể trả về trước khi kết nối vật lý đóng, khiến lệnh dừng cluster phát sinh lỗi muộn. Đã thêm chờ kết nối đóng; test hồi quy đỏ với cách cũ, bộ cuối đạt 13/13. Không thay SQL, timeout hoặc điều kiện quyền. Bộ kỳ hạn cọc sửa ở trên cũng đạt 21/21 trong cả bốn múi giờ; đây là kiểm phần sửa, không thay kết luận full timezone của CI cuối.
+
+Bảy migration schema production đã hoàn tất qua forward-only lane, mỗi lượt có backup và receipt khớp digest nguồn; migration cuối hoàn tất lúc 21:06 ngày 22/10/2026 (UTC+7). Lượt đầu của migration 07 bị ngắt tại backup, chưa apply; đã xác minh live function còn đúng bản trước rồi chạy lại lane đầy đủ. Chưa bật activation sáu Sale keys, chưa chuyển web hoặc runtime trong bước schema này. Receipt được lưu tại `docs/generated/schema-change-evidence/`.
