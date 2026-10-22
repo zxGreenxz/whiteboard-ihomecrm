@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T23:51:24.395Z",
+  "generatedAt": "2026-10-22T00:04:38.785Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 794,
-    "unknown": 81,
+    "ledger-applied": 795,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12565,6 +12565,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql",
+      "version": "20261021170452",
+      "name": "hermes_read_web_building_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "554d65ed8cc61cccd54c0f114a5def8f0ef03a9e04409972abf01d7389bc122d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T00:04:05.773Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql",
       "version": "20261021172540",
       "name": "hermes_task_input_options_no_building_v1",
@@ -12595,20 +12606,6 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql",
-      "version": "20261021231237",
-      "name": "chan_tu_duyet_phieu_chi_vuot_nguong_v1",
-      "scheme": "timestamp14",
-      "sha256": "3ab6ff41436134e6c7fc79068a5de696b2ea6f064cae4e932c184b78ea66ce93",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.has_building_perm_v1",
-        "function:app_private.ie_self_approve_over_threshold_blocked_v1",
-        "function:public.ie_self_approve_gate_v1"
       ]
     },
     {
