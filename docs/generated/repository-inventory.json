@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1556,
-  "soFileDocBangFs": 406,
-  "tongLoiGoi": 987,
-  "khongPhanLoaiDuoc": 439,
+  "tongSoFileTest": 1570,
+  "soFileDocBangFs": 408,
+  "tongLoiGoi": 991,
+  "khongPhanLoaiDuoc": 442,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 159,
+      "soFile": 160,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1102,6 +1102,18 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-zalo-native/upstream.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-zalo-router/privacy-schema.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1881,12 +1893,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "infra/hermes-zalo-native/upstream.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",
       "soGoi": 1,
       "loai": {
@@ -2593,6 +2599,14 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/doorAccessMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },

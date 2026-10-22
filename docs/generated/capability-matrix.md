@@ -15,7 +15,7 @@ risk: normal
 
 ## Capability khai trong registry
 
-Registry hiện phủ **29** capability. Toàn app có ~146 route —
+Registry hiện phủ **30** capability. Toàn app có ~146 route —
 phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt
 đầu từ hai capability đã drift thật, mở rộng là việc riêng.
 
@@ -23,6 +23,7 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 |---|---|---|---|---|
 | Biến động số dư | `/bien-dong-so-du` | `?.?` | an ninh | docs/he-thong/25-bien-dong-so-du.md |
 | Trung tâm mạng | `/network-center` | `network_center.view` | hạ tầng | docs/he-thong/22-network-center.md |
+| Cửa vân tay | `/cua-van-tay` | `door_access.view` | an ninh | docs/he-thong/26-cua-van-tay.md |
 | Hoá đơn | `/invoices` | `invoices.view` | tiền | docs/he-thong/07-hoa-don-thanh-toan.md |
 | Thu chi | `/income-expense` | `income_expenses.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
 | Báo chi nhanh | `/chi-tieu` | `income_expenses.create` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
@@ -55,8 +56,8 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 
 | Chỉ số | Giá trị |
 |---|---|
-| Thư mục mã nguồn | 11 |
-| ĐANG CHẠY trên server | 10 |
+| Thư mục mã nguồn | 12 |
+| ĐANG CHẠY trên server | 11 |
 | Có mã mà **chưa deploy** | 1 — network-watchdog |
 | `verify_jwt = false` (ai cũng gọi được) | 4 — bank-event-ingest, demo-reset, network-center-worker, salary-v5-jobs |
 

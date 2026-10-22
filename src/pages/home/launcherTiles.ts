@@ -35,6 +35,7 @@ import {
   Network,
   Banknote,
   DollarSign,
+  Fingerprint,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 import { launcherFieldsFor } from '@/app/capabilities/surfaceAdapters';
@@ -79,6 +80,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       // Sinh từ capability registry (Đợt 4 lát 3) — chỉ `icon`/`accent` là của
       // riêng launcher, phần còn lại registry sở hữu.
       ...launcherFieldsFor('network-center').map((f) => ({ ...f, icon: Network, accent: '#111111' }) satisfies LauncherTile),
+      ...launcherFieldsFor('door-access').map((x) => ({ ...x, icon: Fingerprint, accent: '#0f766e' }) satisfies LauncherTile),
       ...launcherFieldsFor('sale-phong').map((x) => ({ ...x, icon: DoorOpen, accent: '#16a34a' }) satisfies LauncherTile),
     ],
   },
