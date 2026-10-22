@@ -82,6 +82,12 @@ const REVIEWED_SUCCESSORS = new Map([
     sha256: '5c537c32c6f87b59a60b840827b2e44b6fdf9b488ffffd1bb8398259fb77d6ca',
     functions: ['app_private.hermes_w2_scope_v1', 'public.vehicles_list_v1'],
   }],
+  // Gói B thông báo 21/10: chưa đọc = PENDING, CANCELLED ẩn khỏi hộp thư (web đổi cùng đợt, web-parity w2c-notifications).
+  // 22/10 sau review chéo: thêm $requires$ ghim md5 thân production của hai hàm bị thay (thân hàm không đổi).
+  ['20261021171250_thong_bao_chua_doc_bo_cancelled_v1.sql', {
+    sha256: 'e312db13dbf0d6c91d824190310165e4b669b9fb1ef57d310e92920a2009da56',
+    functions: ['public.notifications_inbox_v1'],
+  }],
 ]);
 
 /** Hàng rào gói (P2-4, review PR #195; mở rộng sau review cổng INVOKER). files: [{name, sql}] mọi migration theo

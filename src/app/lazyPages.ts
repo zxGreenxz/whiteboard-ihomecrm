@@ -126,6 +126,7 @@ export const OwnerDashboardV5 = lazy(() => import("../pages/reports/OwnerDashboa
 
 // Tài khoản + Info + Public
 export const ProfilePage = lazy(() => import("../pages/account/ProfilePage"));
+export const NotificationSettingsPage = lazy(() => import("../pages/account/NotificationSettingsPage"));
 export const SubscriptionPage = lazy(() => import("../pages/account/SubscriptionPage"));
 export const PublicContractInvoicePage = lazy(() => import("../pages/public/PublicContractInvoicePage"));
 export const FaqPage = lazy(() => import("../pages/FaqPage"));

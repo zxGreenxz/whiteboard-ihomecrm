@@ -1,10 +1,13 @@
 import { notifyActionError } from '@/lib/asyncActionFeedback';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { subscribeResilient } from '@/lib/realtime/subscribeResilient';
+import { useRealtimeHealth, type RealtimeLinkState } from '@/lib/realtime/channelHealth';
+import { suKienCanLamMoi, taoBoGomThongBao, type NotificationChangePayload } from '@/lib/notifications/realtimeSignal';
 
 // Mọi dòng notifications đều mang organization_id (trigger autofill_org_strict
 // fail-closed từ 15/09/2026, đo 0 dòng NULL) ⇒ đã chốt công ty thì MỌI thông báo —
@@ -13,7 +16,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 // Chưa chốt (null) giữ hành vi cũ: ẩn LIFECYCLE (link phụ thuộc công ty), dòng
 // không có event phải qua được ngữ nghĩa NULL của SQL.
 // hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1: phạm vi công ty)
-function inboxScope(organizationId: string | null): string {
+export function inboxScope(organizationId: string | null): string {
   return organizationId
     ? `organization_id.eq.${organizationId}`
     : 'metadata->>event.neq.LIFECYCLE,metadata->>event.is.null';
@@ -88,6 +91,18 @@ export interface CreateNotificationInput {
 }
 
 /**
+ * Đóng thông báo hệ điều hành của các dòng vừa đọc (C5). Nạp lười: module này nằm
+ * trong chunk vào app (chuông mount ở AppProviders) mà chunk đó đang sát ngưỡng
+ * bundle — phần dọn màn khoá chỉ cần khi người dùng thực sự đánh dấu đọc.
+ */
+export function dongThongBaoHeDieuHanh(notificationIds: readonly string[]): void {
+  if (notificationIds.length === 0) return;
+  void import('@/lib/push/osNotifications')
+    .then((os) => os.dongThongBaoDaDoc(notificationIds))
+    .catch((error: unknown) => console.warn('[push] chưa đóng được thông báo hệ điều hành đã đọc', error));
+}
+
+/**
  * Hook to fetch all notifications for the current user
  */
 export function useNotifications() {
@@ -107,6 +122,9 @@ export function useNotifications() {
         // + tránh quét thừa. Xem migration 20260729130000_notifications_rls_own_row.sql.
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
+        // CANCELLED = việc đã xong (hoá đơn đã thu, bàn giao đã xác nhận…): server tự
+        // đóng dòng nhắc thay vì xoá, để sự kiện UPDATE vẫn tới chuông. Ẩn khỏi hộp thư.
+        .neq('status', 'CANCELLED')
         .or(inboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
@@ -150,6 +168,10 @@ export function useUnreadNotificationsCount() {
     },
     enabled: !!user?.id,
     staleTime: 1000 * 30, // 30 seconds
+    // Toàn app tắt refetchOnWindowFocus có chủ ý (QueryProvider). Riêng số chưa đọc
+    // + danh sách thả xuống thì rẻ (head count + 10 dòng) và là thứ người dùng nhìn
+    // đầu tiên khi quay lại tab: bù cho sự kiện realtime đã lỡ lúc tab ngủ.
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -170,6 +192,8 @@ export function useRecentNotifications(limit: number = 5) {
         .select('*')
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
+        // Cùng tập với hộp thư (vùng parity ở trên): việc đã xong thì không hiện.
+        .neq('status', 'CANCELLED')
         .or(inboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -179,6 +203,7 @@ export function useRecentNotifications(limit: number = 5) {
     },
     enabled: !!user?.id,
     staleTime: 1000 * 30,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -206,9 +231,11 @@ export function useMarkAsRead() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, notificationId) => {
       // Invalidate all notification queries to refresh
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      // Đã đọc trong app ⇒ thông báo cùng dòng trên màn khoá máy này hết ý nghĩa.
+      dongThongBaoHeDieuHanh([notificationId]);
     },
     onError: (error) => {
       notifyActionError(error, 'Chưa xác nhận được kết quả đánh dấu thông báo đã đọc');
@@ -233,7 +260,9 @@ export function useMarkAllAsRead() {
         .update({ status: 'READ' })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ');
+        // Chưa đọc = PENDING ở mọi nơi. `neq READ` cũ quét cả CANCELLED (việc đã xong),
+        // mà guard server chỉ cho người dùng đổi PENDING→READ.
+        .eq('status', 'PENDING');
       // Cùng phạm vi với hộp thư đang hiện: không đánh dấu ngầm thông báo của công ty khác.
       if (selectedOrganizationId) query = query.eq('organization_id', selectedOrganizationId);
       const { data, error } = await query.select('id');
@@ -244,6 +273,7 @@ export function useMarkAllAsRead() {
     },
     onSuccess: (rows) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      dongThongBaoHeDieuHanh(rows.map((row) => row.id));
       if (rows.length) toast.success(`Đã đánh dấu ${rows.length} thông báo là đã đọc.`);
       else toast.info('Không có thông báo chưa đọc cần thay đổi.');
     },
@@ -371,19 +401,28 @@ export function useDeleteAllRead() {
  *
  * An toàn dữ liệu: Realtime áp RLS của người đăng ký, và từ 20260729130000 policy
  * `notifications` đã là own-row, nên filter `user_id=eq.<uid>` chỉ là lớp thứ hai.
- * Chỉ nghe INSERT: đánh dấu đã đọc/xoá đều do chính máy này gây ra và đã invalidate
- * trong `onSuccess` của mutation.
+ *
+ * Nghe '*' (21/10/2026, C1): đọc/xoá ở THIẾT BỊ KHÁC và mọi UPDATE phía server
+ * (dòng gộp E1 đổi số, LIFECYCLE, v5 tự đánh dấu đọc, nhắc bị huỷ khi việc xong)
+ * đều phải tới chuông. Bản cũ chỉ nghe INSERT với lập luận "đọc/xoá là do chính
+ * máy này gây ra" — sai khi có hai thiết bị, sai với mọi UPDATE từ server.
+ * Sự kiện vẫn chỉ là TÍN HIỆU: lọc bằng `suKienCanLamMoi` (bỏ UPDATE cột push_*
+ * của hàng đợi drain) rồi gom 300 ms / trần 1 s (`taoBoGomThongBao`), sau đó mới
+ * invalidate — xem realtimeSignal.ts vì sao không gom thì markAll là bão refetch.
+ * DELETE tới được qua filter user_id vì bảng để REPLICA IDENTITY FULL (gói B2).
+ *
+ * Vòng đời kênh (bắt kịp sau rớt/ngủ máy, dựng lại khi server đóng, trạng thái cho
+ * dải cảnh báo) do `subscribeResilient` lo — id 'notif' trong store channelHealth.
  */
-type NotificationConnection = 'connecting' | 'connected' | 'interrupted';
-let notificationConnection: NotificationConnection = 'connecting';
-const connectionListeners = new Set<() => void>();
-function publishConnection(value: NotificationConnection) {
-  if (notificationConnection === value) return;
-  notificationConnection = value;
-  connectionListeners.forEach(listener => listener());
-}
-export function useNotificationConnectionStatus() {
-  return useSyncExternalStore(listener => { connectionListeners.add(listener); return () => { connectionListeners.delete(listener); }; }, () => notificationConnection, () => 'connecting' as NotificationConnection);
+export const NOTIF_CHANNEL_ID = 'notif';
+
+/**
+ * Trạng thái kênh chuông cho popover. MỘT nguồn: store channelHealth (id 'notif')
+ * — store riêng cũ đã bỏ để dải cảnh báo layout và chuông không bao giờ lệch nhau.
+ * Chưa có kênh (chưa đăng nhập / vừa dọn) ⇒ 'connecting'.
+ */
+export function useNotificationConnectionStatus(): RealtimeLinkState {
+  return useRealtimeHealth().channels[NOTIF_CHANNEL_ID] ?? 'connecting';
 }
 
 export function useNotificationsRealtime() {
@@ -392,44 +431,35 @@ export function useNotificationsRealtime() {
   const uid = user?.id ?? null;
 
   useEffect(() => {
-    publishConnection("connecting");
     if (!uid) return;
+    const lamMoi = () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+    const boGom = taoBoGomThongBao(lamMoi);
 
-    // Xem chú thích cùng tên ở useRealtimeDataSync: CLOSED bắn cả khi ta chủ
-    // động dọn, nên không có cờ này thì cảnh báo kêu cả lúc bình thường.
-    let dangTuDon = false;
-
-    const channel = supabase
-      .channel(`notif-${uid}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${uid}`,
-        },
-        () => {
-          // Payload không được dùng — sự kiện chỉ là TÍN HIỆU làm mới cache.
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        },
-      )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') publishConnection('connected');
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          publishConnection('interrupted');
-          console.warn(`[realtime] notif ${status}`, err?.message ?? '');
-          return;
-        }
-        if (status === 'CLOSED' && !dangTuDon) {
-          publishConnection('interrupted');
-          console.warn('[realtime] notif CLOSED ngoài ý muốn — chuông ngừng cập nhật');
-        }
-      });
+    const stop = subscribeResilient({
+      id: NOTIF_CHANNEL_ID,
+      topic: `notif-${uid}`,
+      bind: (channel) =>
+        channel.on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${uid}`,
+          },
+          (payload: NotificationChangePayload) => {
+            if (suKienCanLamMoi(payload)) boGom.day();
+          },
+        ),
+      // Sau gián đoạn/ngủ máy: làm tươi NGAY, không chờ gom — đây là lần bù duy nhất.
+      onResync: lamMoi,
+    });
 
     return () => {
-      dangTuDon = true;
-      supabase.removeChannel(channel);
+      boGom.huy();
+      stop();
     };
   }, [uid, queryClient]);
 }

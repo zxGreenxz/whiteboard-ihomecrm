@@ -51,8 +51,11 @@ vi.mock("@/integrations/supabase/client", () => ({
 // prefetchPages kéo theo hooks của 4 trang (supabase client, permission…) — hub
 // import ĐỘNG nó, nên mock ở đây vừa giữ test nhẹ vừa cho phép ĐẾM số lần hâm
 // cache. Cửa chặn route/throttle nằm ở prefetchGate, KHÔNG bị mock.
+// Từ 21/10 hub gọi prefetchDomainTuHub (kiểm quyền xem domain rồi mới
+// prefetchDomain) — phần kiểm quyền có test riêng ở prefetchDomainTuHub.test.ts.
 vi.mock("@/lib/prefetchPages", () => ({
   prefetchDomain: harness.prefetchDomain,
+  prefetchDomainTuHub: harness.prefetchDomain,
 }));
 
 import {
@@ -326,7 +329,12 @@ describe("useRealtimeDataSync report invalidation", () => {
     harness.handlers.get(table)?.();
     vi.advanceTimersByTime(800);
 
-    expect(invalidatedReportRoots()).toEqual(expectedRoots);
+    // So theo TẬP: từ 21/10 cả cụm nhả trong một lượt (hubCollector) nên thứ tự
+    // hai lời gọi báo cáo không còn phụ thuộc thứ tự đặt timer — thứ tự không
+    // phải tính chất hành vi, "đúng gốc, mỗi gốc một lần" mới là.
+    const sortRoots = (roots: readonly (readonly unknown[])[]) =>
+      roots.map((root) => String(root[0])).sort();
+    expect(sortRoots(invalidatedReportRoots())).toEqual(sortRoots(expectedRoots));
   });
 
   // 31/08 (audit /thanh-toan P2-01): C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
@@ -395,9 +403,11 @@ describe("useRealtimeDataSync report invalidation", () => {
   it("registers every realtime table exactly once per mount", () => {
     useRealtimeDataSync();
 
-    const registeredTables = harness.channel.on.mock.calls.map(
-      ([, filter]) => (filter as { table: string }).table,
-    );
+    // Listener `system` do subscribeResilient gắn (RT-CLIENT-1, 22/10/2026) để
+    // bắt lỗi postgres_changes — không phải binding bảng, nên loại khỏi phép đếm.
+    const registeredTables = harness.channel.on.mock.calls
+      .filter(([event]) => event !== "system")
+      .map(([, filter]) => (filter as { table: string }).table);
     // SO THEO TẬP, KHÔNG THEO THỨ TỰ.
     //
     // Bản trước so mảng theo đúng thứ tự khai. Thứ tự đăng ký handler không phải
@@ -434,6 +444,9 @@ describe("useRealtimeDataSync report invalidation", () => {
       // Xử lý bỏ cọc phải cập nhật hàng chờ hoàn và lịch sử trên máy khác.
       "reservation_deposit_settlements",
       "income_expense_supplements",
+      // 21/10/2026 (RT-HUB-6): công tơ — migration realtime_publication_toi_uu.
+      "meter_readings",
+      "meters",
     ].sort());
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
   });
@@ -644,41 +657,68 @@ describe("useRealtimeDataSync report invalidation", () => {
     }
   });
 
-  it("keeps table invalidations independent and cancels a pending shared BP flush", () => {
+  // ĐỔI CÓ CHỦ ĐÍCH 21/10/2026 (RT-HUB-7). Ca cũ "keeps table invalidations
+  // independent" ghim việc contracts nhả ở 800ms trong khi rooms còn chờ — tức
+  // ghim đúng hành vi gây refetch lặp: một giao dịch chạm hai bảng nhả hai lượt
+  // cách nhau vài trăm ms. Nay hai bảng trong cùng cụm nhả MỘT lượt ở mốc
+  // debounce của event cuối (vẫn trong trần MAX_WAIT_MS), và cleanup trước mốc
+  // đó huỷ cả cụm.
+  it("gom hai bảng của một cụm vào một lượt nhả; cleanup trước mốc thì không nhả gì", () => {
     useRealtimeDataSync();
     getRealtimeHandler("contracts")();
     vi.advanceTimersByTime(400);
     getRealtimeHandler("rooms")();
     vi.advanceTimersByTime(400);
 
-    expect(invalidatedRoots()).toEqual([
-      "contracts",
-      "customer-residence",
-      "customers",
-      "contracts-legacy",
-      "deposit-dashboard",
-      "unpaid-invoices",
-      "dashboard-alerts",
-      "recent-activities",
-      "dashboard-summary",
-      "occupancy-dashboard",
-    ]);
+    // 800ms sau event ĐẦU: cụm chưa nhả vì event rooms đặt lại debounce.
+    expect(harness.invalidateQueries).not.toHaveBeenCalled();
 
     const cleanup = harness.cleanup;
     expect(cleanup).toBeTypeOf("function");
     if (typeof cleanup !== "function") throw new Error("Missing cleanup");
     cleanup();
     harness.cleanup = undefined;
+    vi.advanceTimersByTime(2400);
+
+    expect(harness.invalidateQueries).not.toHaveBeenCalled();
+    expect(harness.removeChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("cụm contracts + rooms: mỗi gốc key bị invalidate ĐÚNG MỘT lần, kể cả gốc hai bảng cùng khai", () => {
+    useRealtimeDataSync();
+    getRealtimeHandler("contracts")();
+    vi.advanceTimersByTime(400);
+    getRealtimeHandler("rooms")();
     vi.advanceTimersByTime(800);
 
-    expect(invalidatedRoots()).not.toContain("business-performance");
-    expect(originalInvalidations()).toHaveLength(10);
-    expect(harness.removeChannel).toHaveBeenCalledTimes(1);
+    const roots = invalidatedRoots();
+    // ["rooms"] nằm ở CẢ entry contracts lẫn rooms — bản gom theo bảng gọi hai lần.
+    expect(roots.filter((root) => root === "rooms")).toHaveLength(1);
+    expect(new Set(roots).size).toBe(roots.length);
+    expect(roots.filter((root) => root === "business-performance")).toHaveLength(1);
+  });
+
+  it("một query active chạm bởi hai bảng trong cụm chỉ fetch MỘT lần", async () => {
+    let starts = 0;
+    const observer = new QueryObserver(harness.queryClient, {
+      queryKey: ["rooms", "building", "building-a"],
+      initialData: [],
+      staleTime: Infinity,
+      queryFn: () => { starts += 1; return new Promise<never[]>(() => {}); },
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    useRealtimeDataSync();
+    getRealtimeHandler("contracts")();
+    getRealtimeHandler("rooms")();
+    getRealtimeHandler("reservation_deposit_settlements")();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(starts).toBe(1);
+    unsubscribe();
   });
 
   it("debounces a same-table burst into one invalidation", () => {
     useRealtimeDataSync();
-    const handler = getRealtimeHandler("rooms");
+    const handler = getRealtimeHandler("buildings");
 
     handler();
     vi.advanceTimersByTime(400);
@@ -687,8 +727,10 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(harness.invalidateQueries).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(originalInvalidations()).toHaveLength(1);
-    expect(invalidatedRoots()).toEqual(["business-performance"]);
+    // Entry buildings: ["buildings"], ["rooms"] + MỘT lượt gom báo cáo. Hai event
+    // nhả một lần — nhiều hơn 3 lời gọi nghĩa là debounce đã không gộp.
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["buildings", "rooms", "business-performance"]);
   });
 
   // ── TRẦN CHỜ (MAX_WAIT_MS) ────────────────────────────────────────────────
@@ -765,15 +807,63 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["rooms", "buildings"])(
-    "invalidates only the Business Performance root for %s",
-    (table) => {
-      useRealtimeDataSync();
-      triggerTable(table);
+  // ĐỔI CÓ CHỦ ĐÍCH 21/10/2026 (RT-HUB-3). Ca cũ "invalidates only the Business
+  // Performance root" ghim đúng lỗ hổng: phòng/toà đổi mà Danh mục căn hộ, Sơ đồ
+  // toà, chi tiết phòng không ai làm mới. Nay ghim tập key thật của các màn đó.
+  it.each([
+    ["rooms", ["rooms", "rooms-with-contracts", "room-detail-contracts", "room-detail-tenants",
+      "room-active-contract", "business-performance"]],
+    ["buildings", ["buildings", "rooms", "business-performance"]],
+  ])("%s làm mới màn phòng/toà + đúng một lượt báo cáo", (table, expected) => {
+    useRealtimeDataSync();
+    triggerTable(table);
 
-      expect(invalidatedRoots()).toEqual(["business-performance"]);
-    },
-  );
+    expect(invalidatedRoots()).toEqual(expected);
+  });
+
+  it("hợp đồng đổi ⇒ Sơ đồ toà (rooms-with-contracts) và chi tiết khách được làm mới", () => {
+    useRealtimeDataSync();
+    triggerTable("contracts");
+    const roots = invalidatedRoots();
+    for (const root of ["rooms", "rooms-with-contracts", "room-detail-contracts",
+      "building-detail-contracts", "room-active-contract", "customer-contracts", "reports"]) {
+      expect(roots, `thiếu ['${root}']`).toContain(root);
+    }
+  });
+
+  it.each([
+    ["income_expenses", ["contract-pending-forfeit", "contract-termination-info", "invoice-vouchers",
+      "cashbook-closing-blockers", "income-cancel-eligibility", "pending-approvals", "revenue-chart"]],
+    ["income_expense_items", ["contract-pending-forfeit", "contract-termination-info", "invoice-vouchers",
+      "cashbook-closing-blockers", "income-cancel-eligibility"]],
+    ["invoices", ["room-detail-invoices", "building-detail-invoices", "room-latest-invoice",
+      "ie-related-invoice", "income-cancel-eligibility", "revenue-chart", "debt-chart", "reports"]],
+    ["payments", ["payments-summary"]],
+    ["meter_readings", ["meter-readings", "meter-reading-stats", "unrecorded-meters",
+      "meters-with-latest-reading", "contract-meter-followups"]],
+    ["meters", ["meters", "meters-with-latest-reading", "unrecorded-meters"]],
+  ])("%s làm mới các màn chi tiết đọc bằng key riêng (RT-HUB-5/6)", (table, expected) => {
+    useRealtimeDataSync();
+    triggerTable(table);
+    const roots = invalidatedRoots();
+    for (const root of expected) expect(roots, `${table} thiếu ['${root}']`).toContain(root);
+  });
+
+  // RT-HUB-11: bốn khối của GatedData ở /bao-cao/hieu-qua chỉ có staleTime.
+  it.each([
+    ["invoices", ["break-even", "invoice-cohort", "cash-received"]],
+    ["income_expenses", ["break-even", "category-breakdown"]],
+    ["payments", ["cash-received", "invoice-cohort"]],
+  ])("%s làm mới đúng các subtype báo cáo mới", (table, expected) => {
+    const all = ["break-even", "invoice-cohort", "cash-received", "category-breakdown"];
+    const key = (subtype: string) => ["business-performance", "user-a", subtype, "org-a", "ACCRUAL", ["b"]];
+    for (const subtype of all) harness.queryClient.setQueryData(key(subtype), []);
+    useRealtimeDataSync();
+    triggerTable(table);
+    const invalidated = all.filter((subtype) =>
+      harness.queryClient.getQueryState(key(subtype))?.isInvalidated);
+    expect(invalidated.sort()).toEqual([...expected].sort());
+  });
 
   // ── CỬA SỔ "VỪA TỰ GHI" (plan con B, mục 1) ──────────────────────────────
   //
@@ -905,5 +995,74 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(
       harness.prefetchDomain.mock.calls.map((c) => c[1]),
     ).toEqual(["contracts", "invoices"]);
+  });
+
+  // ── BẮT KỊP SAU GIÁN ĐOẠN (21/10/2026, RT-HUB-1 / RT-DB-3) ────────────────
+  // postgres_changes không phát lại event đã lỡ. Trước đây hub bỏ qua SUBSCRIBED
+  // lần hai nên thay đổi trong lúc rớt mất hẳn. Nay: SUBSCRIBED sau CHANNEL_ERROR
+  // ⇒ catchUp gọi invalidateQueries ĐÚNG MỘT lần, chỉ refetch query active.
+  function trangThaiKenh() {
+    const cb = harness.channel.subscribe.mock.calls[0]?.[0] as
+      | ((status: string, err?: Error) => void)
+      | undefined;
+    expect(cb, "hub không đăng ký callback trạng thái kênh").toBeTypeOf("function");
+    return cb!;
+  }
+
+  it("SUBSCRIBED lần đầu KHÔNG bắt kịp — dữ liệu vừa tải là mới", () => {
+    useRealtimeDataSync();
+    trangThaiKenh()("SUBSCRIBED");
+    expect(harness.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("CHANNEL_ERROR → SUBSCRIBED gọi catchUp đúng MỘT lần, phủ gốc key hub + báo cáo + quyết toán", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    useRealtimeDataSync();
+    const cb = trangThaiKenh();
+    cb("SUBSCRIBED");
+    cb("CHANNEL_ERROR", new Error("socket"));
+    expect(harness.invalidateQueries).not.toHaveBeenCalled();
+    cb("SUBSCRIBED");
+
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(1);
+    const [filters] = harness.invalidateQueries.mock.calls[0] as [
+      { queryKey?: unknown; refetchType?: string; predicate: (q: { queryKey: readonly unknown[] }) => boolean },
+    ];
+    expect(filters.queryKey).toBeUndefined();
+    expect(filters.refetchType).toBe("active");
+    for (const root of ["income-expenses", "invoices", "contracts", "jobs", "rooms-with-contracts",
+      "business-performance", "contract-settlement", "termination-refund-facts", "commission-voucher-facts"]) {
+      expect(filters.predicate({ queryKey: [root, "x"] }), root).toBe(true);
+    }
+    // Gốc ngoài hub (chuông, quyền) không bị kéo theo.
+    expect(filters.predicate({ queryKey: ["notifications", "count"] })).toBe(false);
+    expect(filters.predicate({ queryKey: ["my-permissions", "org-a"] })).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("bắt kịp chỉ refetch query ĐANG ACTIVE; query nền chỉ bị đánh dấu cũ", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let activeFetches = 0;
+    const observer = new QueryObserver(harness.queryClient, {
+      queryKey: ["income-expenses", "list"],
+      initialData: [],
+      staleTime: Infinity,
+      queryFn: () => { activeFetches += 1; return new Promise<never[]>(() => {}); },
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    harness.queryClient.setQueryData(["invoices", "background"], []);
+
+    useRealtimeDataSync();
+    const cb = trangThaiKenh();
+    cb("SUBSCRIBED");
+    cb("TIMED_OUT");
+    cb("SUBSCRIBED");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(activeFetches).toBe(1);
+    expect(harness.queryClient.getQueryState(["invoices", "background"])?.isInvalidated).toBe(true);
+    expect(harness.queryClient.getQueryState(["invoices", "background"])?.fetchStatus).toBe("idle");
+    unsubscribe();
+    warn.mockRestore();
   });
 });

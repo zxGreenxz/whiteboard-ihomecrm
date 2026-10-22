@@ -94,6 +94,51 @@
       ]
     },
     {
+      "id": "notification-push-edge",
+      "sourcePaths": [
+        "supabase/functions/send-push/**",
+        "supabase/functions/lifecycle-reminders/**",
+        "supabase/functions/salary-v5-jobs/**",
+        "supabase/functions/_shared/push-drain*"
+      ],
+      "suiteId": "edge-deno-notifications",
+      "testPatterns": [
+        "supabase/functions/_shared/push-drain.test.ts",
+        "supabase/functions/lifecycle-reminders/runner.test.ts",
+        "supabase/functions/send-push/policy.test.ts"
+      ]
+    },
+    {
+      "id": "notification-push-edge-callers",
+      "sourcePaths": [
+        "supabase/functions/lifecycle-reminders/**",
+        "supabase/functions/salary-v5-jobs/**",
+        "supabase/functions/_shared/push-drain*"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/lifecycle-reminder-edge-auth.test.ts",
+        "src/lib/__tests__/salarySettingsFeedback.test.ts"
+      ]
+    },
+    {
+      "id": "edge-deploy-bundle",
+      "sourcePaths": [
+        "scripts/test-env/edge.mjs",
+        "scripts/test-env/bootstrap-lifecycle-reminders.mjs",
+        "supabase/functions/_shared/**",
+        "supabase/functions/lifecycle-reminders/**",
+        "supabase/functions/salary-v5-jobs/**",
+        "supabase/functions/send-push/**"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/test-env-edge.test.mjs",
+        "scripts/__tests__/test-env-edge-bundle.test.mjs",
+        "scripts/__tests__/contract-lifecycle-reminders-bootstrap.test.mjs"
+      ]
+    },
+    {
       "id": "door-access-edge",
       "sourcePaths": [
         "supabase/functions/door-access/**"
@@ -2010,6 +2055,30 @@
         "supabase/functions/bank-event-ingest/*.test.ts",
         "supabase/functions/bank-event-admin/*.test.ts"
       ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5
+    },
+    {
+      "id": "edge-deno-notifications",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "quality-gates",
+      "command": "deno test --config supabase/functions/lifecycle-reminders/deno.json supabase/functions/_shared/push-drain.test.ts supabase/functions/lifecycle-reminders/runner.test.ts supabase/functions/send-push/policy.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/_shared/push-drain.test.ts",
+        "supabase/functions/lifecycle-reminders/runner.test.ts",
+        "supabase/functions/send-push/policy.test.ts"
+      ],
+      "note": "Pipeline push thông báo (B12, plan 2026-10-21): drain chung _shared/push-drain.ts (lặp claim v2 tới rỗng, phân loại outcome theo body, settle chạy kể cả khi một lô lỗi, record_run), 3 pha lifecycle-reminders (pha lỗi không chặn pha sau, tiền tố [maintenance]/[lifecycle]/[drain]), hàm thuần send-push (data notificationIds/organizationId, trần byte, quy tắc DUPLICATE/giành lại khoá). RPC và fetch đều giả, không mạng; chỉ import node:assert.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",

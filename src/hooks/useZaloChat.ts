@@ -14,10 +14,12 @@ import { chuHienThi, docThe, linkMediaAnToan } from '@/lib/zaloContent';
 //   2. Chọn cột tường minh CONV_COLS/MSG_COLS — cấm select('*'); thêm cột hiển
 //      thị mới thì thêm vào hằng.
 //   3. LIMIT trần: CONV_LIMIT 5000 / MSG_LIMIT 1000 (tin mới nhất, đảo client).
-import { useEffect, useRef, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { createBurstScheduler } from '@/lib/realtime/burstScheduler';
+import { subscribeResilient } from '@/lib/realtime/subscribeResilient';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type {
   ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey, ZaloProfile, ZaloGroupMembers,
@@ -657,7 +659,10 @@ export function useZaloAccounts() {
       if (error) throw error;
       return (data || []).map(mapAccount);
     },
-    refetchInterval: 60000,
+    // 60 s → 5 phút (21/10/2026, RT-OTHER-5): kênh zalo-convs đã nghe
+    // zalo_accounts và bắt kịp sau rớt kết nối; poll chỉ còn là lưới an toàn.
+    // Nhịp tim worker (useZaloWorkerStatus) vẫn 60 s — nó không có realtime.
+    refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: false,
   });
 }
@@ -725,51 +730,90 @@ export function useDisconnectAccount() {
 }
 
 // ── Realtime: cập nhật danh sách + luồng tin + trạng thái tài khoản tức thì ──
+//
+// 21/10/2026 (plan realtime + thông báo, A8 — RT-OTHER-2/3/7, RT-DB-3):
+//   - Gom 800 ms, TRẦN 2,5 s (quy tắc egress #1 vẫn giữ: ≥400 ms). Debounce
+//     400 ms trailing thuần cũ không có mốc nhả muộn nhất, mà giờ cao điểm ~24
+//     tin/phút thì hầu như không gộp được gì.
+//   - Tab ẩn chỉ đặt cờ, hiện lại mới tải MỘT lần: mỗi sự kiện danh sách kéo lại
+//     tới 5.000 hội thoại (~2 MB JSON chưa nén) — tab bỏ quên không được trả giá đó.
+//   - Key EXACT theo org/hội thoại: prefix QK.conversations cũ kéo theo cả key
+//     thành viên nhóm ([..., orgId, 'members', …]) và danh sách của org khác.
+//   - Sự kiện tin nhắn chỉ làm mới luồng tin đang mở: hội thoại đã có UPDATE
+//     riêng trên zalo_conversations (n_tup_upd > số tin chèn) — gọi thêm ở đây là
+//     tải danh sách lần hai cho cùng một tin.
+//   - Kênh qua subscribeResilient (id 'zalo-convs' / 'zalo-msg'): rớt rồi nối lại,
+//     tab hiện lại sau ≥60 s ⇒ làm tươi các key trên (query active). Topic kèm
+//     org để hai org không chung một kênh tên tĩnh.
+// Còn hở (ghi ở docs/he-thong/realtime-sync.md): kênh có filter không bao giờ
+// nhận DELETE (REPLICA IDENTITY DEFAULT) — tin bị xoá hẳn chỉ biến mất ở lần
+// tải kế tiếp.
+export const ZALO_REALTIME_DEBOUNCE_MS = 800;
+export const ZALO_REALTIME_MAX_WAIT_MS = 2_500;
+
+/** Bộ gom key exact cho MỘT kênh Zalo. */
+function taoBoGomZalo(qc: QueryClient) {
+  const keys = new Map<string, readonly unknown[]>();
+  const scheduler = createBurstScheduler({
+    debounceMs: ZALO_REALTIME_DEBOUNCE_MS,
+    maxWaitMs: ZALO_REALTIME_MAX_WAIT_MS,
+    flush: () => {
+      for (const key of keys.values()) void qc.invalidateQueries({ queryKey: [...key], exact: true });
+      keys.clear();
+    },
+  });
+  return {
+    them(key: readonly unknown[]) {
+      keys.set(JSON.stringify(key), key);
+      scheduler.poke();
+    },
+    /** Bắt kịp: làm tươi mọi key của kênh (query active), bỏ việc chờ đã nằm trong đó. */
+    batKip(all: readonly (readonly unknown[])[]) {
+      scheduler.cancel();
+      keys.clear();
+      for (const key of all) void qc.invalidateQueries({ queryKey: [...key], exact: true, refetchType: 'active' });
+    },
+    dispose() {
+      scheduler.dispose({ flush: true });
+    },
+  };
+}
+
 export function useZaloRealtime(activeId?: string) {
   const qc = useQueryClient();
   const orgId = useZaloOrgId();
 
-  // Debounce gộp bão event bulk-sync về ~1 refetch/đợt (quy tắc egress #1).
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const debouncedInvalidate = useCallback((key: readonly unknown[], ms = 400) => {
-    const k = key.join('|');
-    const t = timers.current;
-    if (t[k]) clearTimeout(t[k]);
-    t[k] = setTimeout(() => { delete t[k]; qc.invalidateQueries({ queryKey: key as any }); }, ms);
-  }, [qc]);
   useEffect(() => {
-    const t = timers.current;
-    return () => { for (const k in t) clearTimeout(t[k]); };
-  }, []);
-
-  useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) return undefined;
+    const convKey = [...QK.conversations, orgId] as const;
+    const accountKey = [...QK.accounts, orgId] as const;
+    const labelKey = [...QK.labels, orgId] as const;
+    const gom = taoBoGomZalo(qc);
     // Filter theo org ngay ở subscription: user đa-org không nhận event của
     // org khác → không refetch chéo (đúng tinh thần tách bạch + egress).
-    const convCh = supabase
-      .channel('zalo-convs')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_conversations', filter: `organization_id=eq.${orgId}` }, () => {
-        debouncedInvalidate(QK.conversations);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_accounts', filter: `organization_id=eq.${orgId}` }, () => {
-        debouncedInvalidate(QK.accounts, 200);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_labels', filter: `organization_id=eq.${orgId}` }, () => {
-        debouncedInvalidate(QK.labels);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(convCh); };
-  }, [debouncedInvalidate, orgId]);
+    const stop = subscribeResilient({
+      id: 'zalo-convs',
+      topic: `zalo-convs-${orgId}`,
+      bind: (channel) => channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_conversations', filter: `organization_id=eq.${orgId}` }, () => gom.them(convKey))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_accounts', filter: `organization_id=eq.${orgId}` }, () => gom.them(accountKey))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_labels', filter: `organization_id=eq.${orgId}` }, () => gom.them(labelKey)),
+      onResync: () => gom.batKip([convKey, accountKey, labelKey]),
+    });
+    return () => { gom.dispose(); stop(); };
+  }, [qc, orgId]);
 
   useEffect(() => {
-    if (!activeId) return;
-    const msgCh = supabase
-      .channel(`zalo-msg-${activeId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_messages', filter: `conversation_id=eq.${activeId}` }, () => {
-        debouncedInvalidate(QK.messages(activeId));
-        debouncedInvalidate(QK.conversations);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(msgCh); };
-  }, [activeId, debouncedInvalidate]);
+    if (!activeId) return undefined;
+    const msgKey = QK.messages(activeId);
+    const gom = taoBoGomZalo(qc);
+    const stop = subscribeResilient({
+      id: 'zalo-msg',
+      topic: `zalo-msg-${activeId}`,
+      bind: (channel) => channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_messages', filter: `conversation_id=eq.${activeId}` }, () => gom.them(msgKey)),
+      onResync: () => gom.batKip([msgKey]),
+    });
+    return () => { gom.dispose(); stop(); };
+  }, [qc, activeId]);
 }

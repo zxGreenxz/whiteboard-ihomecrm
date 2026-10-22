@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useProfile } from "@/hooks/useProfile";
-import { supabase } from "@/integrations/supabase/client";
 import { canUse } from "@/lib/permissionPages";
 import type {
   ArubaNode,
@@ -27,10 +26,12 @@ import {
   synchronizeDemoNetworkCenterRepository,
 } from "@/lib/network-center/repositoryLifecycle";
 import {
-  NETWORK_CENTER_REALTIME_TABLES,
+  type NetworkCenterRealtimeContext,
+  subscribeNetworkCenterRealtime,
+} from "@/lib/network-center/realtimeSync";
+import {
   NETWORK_CENTER_RUNTIME_ENABLED,
   NETWORK_CENTER_RUNTIME_MODE,
-  resolveNetworkCenterRealtimeTarget,
   selectNetworkCenterRepository,
 } from "@/lib/network-center/runtime";
 import {
@@ -40,20 +41,25 @@ import {
 
 const EXECUTE_DISABLED_MESSAGE =
   "Tài khoản chỉ có quyền xem. Cần network_center.execute để thực thi thao tác.";
+// Nhịp gom realtime (5 s, trần 15 s) và lý do đo được nay nằm cạnh kênh ở
+// src/lib/network-center/realtimeSync.ts.
+
 /**
- * Gom sự kiện realtime trước khi refetch. 150ms → 5000ms ngày 30/08/2026.
- *
- * Đo trên production: một vòng poll ghi ~40 dòng current-state rải ra hơn 150ms,
- * nên mỗi vòng sinh ~39 lần refetch thay vì 1 — 8.625 lượt gọi
- * `network_center_get_building_v1` trong 4 giờ, chiếm 28,8% CPU SQL của cả
- * database. Nhịp poll nay là 30 phút (xem migration 20260830165629) nên sự kiện
- * đến theo cụm; 5 giây gom trọn một cụm.
- *
- * Cái giá: bảng số trên màn hình cập nhật chậm thêm ~5 giây so với lúc dữ liệu
- * chạm database. Với dữ liệu 30 phút mới làm mới một lần thì không ai nhận ra —
- * và nút "Làm mới" ở header cho người dùng đường tắt khi cần ngay.
+ * Làm tươi hạm đội + toà đang chọn 60 s/lần, CHỈ khi tab hiện (RT-CLIENT-6,
+ * 22/10/2026). Nhãn độ tươi ("x giây trước", tuổi backup) được tính lúc map
+ * trong queryFn (dto.ts). Trước 21/10 nhịp tim worker (~30 s, kể cả tab ẩn) làm
+ * hai query này refetch nên nhãn luôn đúng tuổi; bỏ nghe nhịp tim thì chỉ còn
+ * event của 4 bảng current-state (worker poll ~30 phút) ⇒ nhãn đứng yên, router
+ * chết giữa hai vòng poll vẫn hiện "giây trước". Không nghe lại nhịp tim: 60 s
+ * khi tab hiện rẻ hơn mà nhãn sai tối đa một phút. (Tính nhãn lúc render bằng
+ * đồng hồ tick phải đổi contracts + mọi component NC — để dành nếu cần chính
+ * xác tới giây.)
  */
-const REALTIME_DEBOUNCE_MS = 5_000;
+export const NHIP_LAM_TUOI_DO_TUOI_MS = 60_000;
+const NHIP_LAM_TUOI_NHAN_DO_TUOI = {
+  refetchInterval: NHIP_LAM_TUOI_DO_TUOI_MS,
+  refetchIntervalInBackground: false,
+} as const;
 
 function normalizeId(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
@@ -148,6 +154,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     enabled: canView && !buildingsQuery.isLoading && !permissionsQuery.isLoading,
     retry: shouldRetryNetworkCenterQuery,
     retryOnMount: false,
+    ...NHIP_LAM_TUOI_NHAN_DO_TUOI,
   });
   const fleet = useMemo(() => fleetQuery.data ?? [], [fleetQuery.data]);
 
@@ -194,6 +201,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
     retry: shouldRetryNetworkCenterQuery,
     retryOnMount: false,
+    ...NHIP_LAM_TUOI_NHAN_DO_TUOI,
   });
   const activeIntent = useMemo(
     () => intentRegistry.list({
@@ -425,68 +433,31 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
   });
 
+  // Toà đang chọn / fleetKey / bản đồ toà → công ty đi qua REF, không qua deps
+  // của effect kênh (RT-OTHER-7): bản cũ để chúng trong deps nên mỗi lần đổi toà
+  // là leave/join lại kênh và vứt các invalidate đang chờ. Ref cập nhật trong
+  // effect không deps (không ghi ref lúc render); kênh đọc nó lúc nhả.
+  const realtimeContextRef = useRef<NetworkCenterRealtimeContext>({
+    selectedBuildingId: normalizedSelectedBuildingId,
+    fleetKey,
+    organizationIdOf: (buildingId) => physicalBuildingById.get(buildingId)?.organizationId ?? "unscoped",
+  });
+  useEffect(() => {
+    realtimeContextRef.current = {
+      selectedBuildingId: normalizedSelectedBuildingId,
+      fleetKey,
+      organizationIdOf: (buildingId) => physicalBuildingById.get(buildingId)?.organizationId ?? "unscoped",
+    };
+  });
+
   useEffect(() => {
     if (mode !== "production" || !canView || !actor.id) return undefined;
-
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let invalidateFleet = false;
-    const pendingBuildingIds = new Set<string>();
-    const flush = () => {
-      timeout = undefined;
-      const promises: Array<Promise<unknown>> = [];
-      if (invalidateFleet) {
-        promises.push(queryClient.invalidateQueries({ queryKey: fleetKey, exact: true }));
-      }
-      for (const buildingId of pendingBuildingIds) {
-        const organizationId = physicalBuildingById.get(buildingId)?.organizationId ?? "unscoped";
-        promises.push(queryClient.invalidateQueries({
-          queryKey: networkCenterQueryKeys.building(actor.id, organizationId, buildingId),
-          exact: true,
-        }));
-        promises.push(queryClient.invalidateQueries({
-          queryKey: networkCenterQueryKeys.aruba(actor.id, organizationId, buildingId),
-          exact: true,
-        }));
-      }
-      invalidateFleet = false;
-      pendingBuildingIds.clear();
-      void Promise.allSettled(promises);
-    };
-    const schedule = (table: (typeof NETWORK_CENTER_REALTIME_TABLES)[number], payload: unknown) => {
-      const target = resolveNetworkCenterRealtimeTarget(
-        table,
-        payload,
-        normalizedSelectedBuildingId || undefined,
-      );
-      invalidateFleet ||= target.invalidateFleet;
-      target.buildingIds.forEach((buildingId) => pendingBuildingIds.add(buildingId));
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(flush, REALTIME_DEBOUNCE_MS);
-    };
-
-    let channel = supabase.channel(`network-center-${actor.id}`);
-    for (const table of NETWORK_CENTER_REALTIME_TABLES) {
-      channel = channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        (payload) => schedule(table, payload),
-      );
-    }
-    channel.subscribe();
-
-    return () => {
-      if (timeout) clearTimeout(timeout);
-      void supabase.removeChannel(channel);
-    };
-  }, [
-    actor.id,
-    canView,
-    fleetKey,
-    mode,
-    normalizedSelectedBuildingId,
-    physicalBuildingById,
-    queryClient,
-  ]);
+    return subscribeNetworkCenterRealtime({
+      actorId: actor.id,
+      queryClient,
+      getContext: () => realtimeContextRef.current,
+    });
+  }, [actor.id, canView, mode, queryClient]);
 
   const requireExecute = () => {
     if (!canExecute) throw new Error(EXECUTE_DISABLED_MESSAGE);

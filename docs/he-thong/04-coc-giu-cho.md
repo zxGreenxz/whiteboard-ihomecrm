@@ -280,7 +280,7 @@ Trigger legacy `trigger_auto_calculate_deposit_paid` (BEFORE INSERT `contracts`)
 
 ### 4.8. Nhắc bổ sung cọc — `checkDepositTopupReminders`
 
-[notificationScheduler.ts](src/lib/notificationScheduler.ts)
+`notificationScheduler.ts` — **ĐÃ GỠ 21/10/2026** (bộ nhắc chạy ở trình duyệt). Nhắc thiếu cọc chuyển lên máy chủ: họ `DEPOSIT` của lane lifecycle (plan `docs/plans/2026-10-21-realtime-thong-bao-toi-uu.md`, mục B5). Mô tả dưới đây là hành vi CŨ, giữ để đối chiếu.
 
 Chạy hằng ngày: quét HĐ `ACTIVE` (EXTENDED đã ngưng dùng — HĐ gia hạn giữ nguyên `ACTIVE`), `deposit_remaining >= ngưỡng`, `deposit_debt_mode IS NULL OR = 'DEBT'` (loại `FIRST_INVOICE` vì khoản đó thu qua hoá đơn). Scope chỉ theo `.eq('user_id', userId)` — không lọc theo toà/khu vực, notification tạo cho owner. Tạo notification `type='DEPOSIT_SHORTFALL'`. Throttle: quá hẹn (`deposit_topup_due_date < hôm nay`) nhắc 1 lần/ngày, chưa tới hẹn 1 lần/tuần.
 

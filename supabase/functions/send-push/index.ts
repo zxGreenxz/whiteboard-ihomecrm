@@ -20,12 +20,19 @@
 // KHÔNG BAO GIỜ suy trạng thái giao vận từ HTTP status — luôn đọc trường `outcome` trong body.
 // `outcome:"SENT"` chỉ có nghĩa DỊCH VỤ PUSH ĐÃ NHẬN, KHÔNG chứng minh máy đã hiện thông báo.
 //
+// Từ 21/10/2026 (B12, plan 2026-10-21 §4):
+//   • payload có `data:{notificationIds?(≤20 UUID), organizationId?}` để SW bấm vào đánh dấu đọc
+//     đúng dòng và chuyển đúng công ty — logic thuần ở ./policy.ts;
+//   • khoá trùng chỉ là DUPLICATE khi lượt trước SENT/PARTIAL hoặc đang SENDING trong 15 phút;
+//     lượt trước lỗi/không thiết bị/SENDING quá hạn thì giành lại khoá (UPDATE có điều kiện) và gửi lại.
+//
 // Secrets cần đặt (Supabase ▸ Edge Functions ▸ Secrets):
 //   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:... hoặc https URL)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 import webpush from 'npm:web-push@3.6.7';
+import { buildPushData, buildPushPayload, decideExistingIdempotencyKey } from './policy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,19 +90,22 @@ interface SendPushBody {
   tag?: unknown;
   icon?: unknown;
   badge?: unknown;
-  data?: Record<string, unknown>;
+  organizationId?: unknown;
+  data?: unknown;
 }
 
-/** Trạng thái claim khoá khử trùng trong public.push_send_log. */
-type DedupeState = 'claimed' | 'duplicate' | 'unavailable' | 'error';
+/**
+ * Trạng thái claim khoá khử trùng trong public.push_send_log.
+ * 'reclaimed' = khoá cũ của lượt không tới máy nào (hoặc SENDING quá hạn) đã được giành lại để gửi lại.
+ * 'conflict'  = khoá đã thuộc người dùng khác — caller sai, không gửi.
+ */
+type DedupeState = 'claimed' | 'reclaimed' | 'duplicate' | 'conflict' | 'unavailable' | 'error';
 
 const MAX_IDEM_KEY = 128;
 const MAX_DEVICE_BODY = 300;
 // Web Push aes128gcm: bản mã trần ~4 kB. Chừa chỗ cho padding/record overhead của web-push để
 // không tự chuốc lấy 413 (413 = `rejected`, retryable=false ⇒ thông báo mất hẳn, không gửi lại).
 const MAX_PAYLOAD_BYTES = 3500;
-
-const utf8len = (s: string) => new TextEncoder().encode(s).length;
 
 interface RespondArgs {
   outcome: Outcome;
@@ -179,7 +189,7 @@ function jwtRole(token: string): string | null {
 /**
  * Giữ chỗ khoá khử trùng TRƯỚC khi gửi (§D.1a).
  * `ignoreDuplicates:true` → PostgREST sinh `ON CONFLICT (idempotency_key) DO NOTHING`; đụng khoá
- * cũ thì .select() trả mảng rỗng ⇒ 'duplicate' ⇒ chỗ gọi KHÔNG gửi.
+ * cũ thì .select() trả mảng rỗng ⇒ đọc dòng cũ rồi quyết theo decideExistingIdempotencyKey.
  */
 async function claimIdempotency(
   admin: SupabaseClient,
@@ -198,7 +208,7 @@ async function claimIdempotency(
 
     if (error) {
       const code = String((error as { code?: string })?.code ?? '');
-      if (code === '23505') return 'duplicate';
+      if (code === '23505') return await resolveExistingKey(admin, key, userId, requestId);
       // Bảng chưa có (migration chưa apply) hoặc schema cache PostgREST chưa reload → fail-open,
       // vì chặn cứng ở đây làm CHẾT toàn bộ push chỉ vì thứ tự deploy. Có cờ dedupe trong response
       // để người vận hành thấy ngay là đang chạy KHÔNG có khử trùng.
@@ -211,12 +221,64 @@ async function claimIdempotency(
         JSON.stringify({ requestId, code, message: error.message }));
       return 'error';
     }
-    return Array.isArray(data) && data.length > 0 ? 'claimed' : 'duplicate';
+    if (Array.isArray(data) && data.length > 0) return 'claimed';
+    return await resolveExistingKey(admin, key, userId, requestId);
   } catch (e) {
     console.error('[send-push] claim idempotency ném',
       JSON.stringify({ requestId, message: String((e as Error)?.message ?? e) }));
     return 'error';
   }
+}
+
+/**
+ * Khoá đã tồn tại (NOTIF-SERVER-5). Trước đây mọi khoá trùng đều là DUPLICATE ⇒ thử lại sau lỗi
+ * 5xx/429/mạng bị settle thành SENT giả. Giờ chỉ SENT/PARTIAL hoặc SENDING còn trong 15 phút mới là
+ * DUPLICATE; còn lại giành lại khoá bằng compare-and-swap trên đúng (outcome, created_at) vừa đọc —
+ * hai lượt chạy song song thì chỉ một lượt thắng, lượt kia nhận 0 dòng ⇒ DUPLICATE, không gửi trùng.
+ */
+async function resolveExistingKey(
+  admin: SupabaseClient,
+  key: string,
+  userId: string,
+  requestId: string,
+): Promise<DedupeState> {
+  const { data: existing, error } = await admin
+    .from('push_send_log')
+    .select('outcome, created_at, user_id')
+    .eq('idempotency_key', key)
+    .maybeSingle();
+  if (error || !existing) {
+    // Không đọc được dòng vừa đụng (lỗi mạng, hoặc bị dọn đúng lúc) ⇒ không đủ căn cứ để gửi.
+    console.error('[send-push] đọc khoá trùng lỗi',
+      JSON.stringify({ requestId, key, message: error?.message ?? 'không thấy dòng' }));
+    return 'error';
+  }
+  const decision = decideExistingIdempotencyKey(existing, userId, Date.now());
+  if (decision === 'duplicate') return 'duplicate';
+  if (decision === 'conflict') {
+    console.error('[send-push] khoá idempotency thuộc người dùng khác', JSON.stringify({ requestId, key }));
+    return 'conflict';
+  }
+
+  let reclaim = admin
+    .from('push_send_log')
+    .update({ outcome: 'SENDING', sent: 0, created_at: new Date().toISOString() })
+    .eq('idempotency_key', key)
+    .eq('user_id', userId)
+    .eq('created_at', existing.created_at);
+  reclaim = typeof existing.outcome === 'string'
+    ? reclaim.eq('outcome', existing.outcome)
+    : reclaim.is('outcome', null);
+  const { data: won, error: reclaimError } = await reclaim.select('idempotency_key');
+  if (reclaimError) {
+    console.error('[send-push] giành lại khoá lỗi',
+      JSON.stringify({ requestId, key, message: reclaimError.message }));
+    return 'error';
+  }
+  if (!Array.isArray(won) || won.length === 0) return 'duplicate'; // lượt khác vừa giành trước
+  console.log('[send-push] giành lại khoá để gửi lại',
+    JSON.stringify({ requestId, key, previousOutcome: existing.outcome }));
+  return 'reclaimed';
 }
 
 /** Ghi outcome cuối vào sổ. Lỗi ở đây KHÔNG được làm hỏng kết quả gửi — chỉ log. */
@@ -228,7 +290,7 @@ async function finishLog(
   sent: number,
   requestId: string,
 ): Promise<void> {
-  if (dedupe !== 'claimed') return;
+  if (dedupe !== 'claimed' && dedupe !== 'reclaimed') return;
   const { error } = await admin
     .from('push_send_log')
     .update({ outcome, sent })
@@ -301,9 +363,9 @@ serve(async (req) => {
     }
     const body = raw as SendPushBody;
 
-    // notificationIds: nhận + kiểm kiểu, dùng để log/đối soát với hàng đợi. CỐ Ý KHÔNG nhét vào
-    // payload push — 100 UUID ≈ 3,7 kB, đủ đẩy payload qua trần 4 kB và ăn 413 (mất hẳn thông báo).
-    // sw.js cũng không đọc trường này (public/sw.js:23-30).
+    // notificationIds: nhận + kiểm kiểu, dùng để log/đối soát với hàng đợi. Payload push chỉ mang
+    // TỐI ĐA 20 UUID hợp lệ (buildPushData) — 100 UUID ≈ 3,7 kB, đủ đẩy payload qua trần 4 kB và ăn
+    // 413 (mất hẳn thông báo); quá trần thì buildPushPayload cắt bớt id trước cả nội dung.
     let notificationIds: string[] = [];
     if (body.notificationIds !== undefined && body.notificationIds !== null) {
       if (!Array.isArray(body.notificationIds) || body.notificationIds.some((x) => typeof x !== 'string')) {
@@ -367,7 +429,13 @@ serve(async (req) => {
       return respond({
         outcome: 'DUPLICATE', requestId, idempotencyKey, dedupe,
         total: 0, sent: 0, failed: 0, pruned: 0, retryable: false,
-        note: 'Lượt gửi này đã được ghi nhận trước đó — không gửi lại',
+        note: 'Lượt gửi này đã tới dịch vụ push hoặc đang được gửi — không gửi lại',
+      });
+    }
+    if (dedupe === 'conflict') {
+      return respond({
+        outcome: 'BAD_REQUEST', requestId, idempotencyKey, dedupe, retryable: false,
+        error: 'idempotencyKey đã được dùng cho người nhận khác — không gửi',
       });
     }
     if (dedupe === 'error' && isService) {
@@ -410,24 +478,25 @@ serve(async (req) => {
     const tag = typeof body.tag === 'string' ? body.tag : undefined;
     const icon = typeof body.icon === 'string' && body.icon ? body.icon : '/pwa-192.png';
     const badge = typeof body.badge === 'string' && body.badge ? body.badge : '/pwa-192.png';
-    const data = body.data && typeof body.data === 'object' ? body.data : {};
+    // Hợp đồng §4: data = body.data (object) + notificationIds (≤20 UUID, từ body.notificationIds
+    // hoặc body.data.notificationIds) + organizationId (UUID, từ body.organizationId hoặc body.data).
+    const data = buildPushData({ data: body.data, notificationIds, organizationId: body.organizationId });
 
-    const build = (text: string) =>
-      JSON.stringify({ title, body: text, url, tag, icon, badge, data });
-
-    let text = typeof body.body === 'string' ? body.body : '';
-    let payload = build(text);
-    let truncated = false;
-    while (utf8len(payload) > MAX_PAYLOAD_BYTES && text.length > 0) {
-      // Cắt theo tỉ lệ (không theo byte) vì tiếng Việt là đa byte; vòng lặp hội tụ nhanh.
-      const keep = Math.max(0, Math.floor(text.length * 0.85) - 1);
-      text = text.slice(0, keep);
-      payload = build(text ? `${text}…` : '');
-      truncated = true;
+    const built = buildPushPayload(
+      { title, body: typeof body.body === 'string' ? body.body : '', url, tag, icon, badge, data },
+      MAX_PAYLOAD_BYTES,
+    );
+    const payload = built.payload;
+    if (built.truncatedBody || built.droppedNotificationIds > 0) {
+      console.warn('[send-push] payload quá trần — đã cắt bớt',
+        JSON.stringify({
+          requestId, idempotencyKey, bytes: built.bytes,
+          droppedNotificationIds: built.droppedNotificationIds, truncatedBody: built.truncatedBody,
+        }));
     }
-    if (truncated) {
-      console.warn('[send-push] payload quá 4kB — đã cắt bớt body',
-        JSON.stringify({ requestId, idempotencyKey, bytes: utf8len(payload) }));
+    if (built.bytes > MAX_PAYLOAD_BYTES) {
+      console.warn('[send-push] payload vẫn quá trần sau khi cắt (title/data quá dài)',
+        JSON.stringify({ requestId, idempotencyKey, bytes: built.bytes }));
     }
 
     // ---- Gửi ----

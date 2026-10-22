@@ -21,13 +21,21 @@
 // network-center-worker cố ý bỏ: không worker nào của TEST.
 
 import { randomBytes } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import ts from "typescript";
 
 import { PROD_REF, credential, docVault, ghiLog, mgmt, repoRoot } from "./lib.mjs";
 
-export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry", "door-access"];
+// lifecycle-reminders: chỉ deploy MÃ. Secret LIFECYCLE_REMINDERS_SERVICE_JWT (khớp token trong Vault TEST) và
+// cron 15' do scripts/test-env/bootstrap-lifecycle-reminders.mjs --apply cài; chưa bootstrap thì hàm trả 401 cho
+// mọi lời gọi (đóng an toàn), deploy lại mã không đụng secret đã đặt.
+export const DANH_SACH = [
+  "admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry", "door-access",
+  "lifecycle-reminders",
+];
 
 // Hàm MỚI chưa từng lên production thì chưa có cờ verify_jwt để chép ⇒ khai sẵn ở đây. Lên production
 // rồi thì cờ production thắng (vòng dưới đọc production trước) — hai bên vẫn phải khớp.
@@ -42,13 +50,86 @@ export function chanSecretCam(names, luc) {
   if (names.some((n) => /^TUYA_/.test(n))) throw new Error(`TEST có secret TUYA_* (${luc}) — door-access có thể mở cửa thật. Xoá ngay.`);
 }
 
-/** File được tải lên: file cấp cao nhất .ts/.json/.lock của thư mục hàm, bỏ *.test.ts. */
+const GOC_HAM = "supabase/functions";
+const LA_TEST = /\.test\.[cm]?[jt]sx?$/;
+const LA_MA = /\.[cm]?[jt]sx?$/;
+
+/** Import TƯƠNG ĐỐI (./, ../) của một file mã — tĩnh, `export … from`, `import type` và `import()`; bỏ chú thích/chuỗi. */
+export function importTuongDoi(maNguon) {
+  return ts.preProcessFile(maNguon, true, true).importedFiles
+    .map((f) => f.fileName)
+    .filter((ten) => ten.startsWith("./") || ten.startsWith("../"));
+}
+
+/**
+ * Gói deploy multipart cho Management API `POST /v1/projects/{ref}/functions/deploy` — hàm THUẦN (chỉ đọc file).
+ *
+ * Quy ước đọc lại từ production 22/10 (bank-event-ingest v5, bank-event-admin v4 — hàm import ../_shared đang chạy):
+ * mọi tên file TÍNH TỪ GỐC REPO (production ghi entrypoint `…/source/supabase/functions/<slug>/index.ts`), nên
+ * import `../_shared/x.ts` của `supabase/functions/<slug>/index.ts` giải đúng tới `supabase/functions/_shared/x.ts`.
+ *   files:    file cấp cao nhất .ts/.json/.lock của thư mục hàm (bỏ *.test.*) + bao đóng import tương đối của
+ *             chúng (vd. supabase/functions/_shared/push-drain.ts). Import trỏ ra ngoài supabase/functions, trỏ
+ *             vào file test hoặc file không tồn tại ⇒ ném (deploy hỏng ồn ào, không âm thầm thiếu file).
+ *   metadata: entrypoint_path = supabase/functions/<slug>/index.ts; import_map_path = supabase/functions/<slug>/deno.json
+ *             khi thư mục hàm có deno.json — kể cả deno.json chỉ có compilerOptions: bank-event-* production chạy
+ *             đúng như vậy (import_map_path trỏ deno.json) và đây cũng là hành vi cũ của script cho các hàm khác.
+ *             Không có deno.json ⇒ không gửi import_map_path (như demo-reset production).
+ * `name`/`verify_jwt` do bên gọi thêm (formDeploy).
+ */
+export function dungGoiDeploy(slug, { goc = repoRoot } = {}) {
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug ?? "")) throw new Error(`Slug edge function không hợp lệ: ${slug}`);
+  const thuMucHam = `${GOC_HAM}/${slug}`;
+  const tuyetDoi = (duongDan) => join(goc, ...duongDan.split("/"));
+  const tep = new Map();
+  const hangDoi = [];
+  const them = (duongDan) => {
+    if (tep.has(duongDan)) return;
+    tep.set(duongDan, readFileSync(tuyetDoi(duongDan)));
+    hangDoi.push(duongDan);
+  };
+  for (const ten of readdirSync(tuyetDoi(thuMucHam)).sort()) {
+    if (/\.(ts|json|lock)$/.test(ten) && !LA_TEST.test(ten) && statSync(tuyetDoi(`${thuMucHam}/${ten}`)).isFile()) {
+      them(`${thuMucHam}/${ten}`);
+    }
+  }
+  while (hangDoi.length) {
+    const nguon = hangDoi.shift();
+    if (!LA_MA.test(nguon)) continue;
+    for (const ten of importTuongDoi(tep.get(nguon).toString("utf8"))) {
+      const dich = posix.normalize(posix.join(posix.dirname(nguon), ten.split(/[?#]/)[0]));
+      if (!dich.startsWith(`${GOC_HAM}/`)) throw new Error(`${nguon}: import "${ten}" trỏ ra ngoài ${GOC_HAM}/`);
+      if (LA_TEST.test(dich)) throw new Error(`${nguon}: import "${ten}" trỏ vào file test`);
+      if (!existsSync(tuyetDoi(dich)) || !statSync(tuyetDoi(dich)).isFile()) {
+        throw new Error(`${nguon}: import "${ten}" — không có file ${dich}`);
+      }
+      them(dich);
+    }
+  }
+  const entrypoint = `${thuMucHam}/index.ts`;
+  if (!tep.has(entrypoint)) throw new Error(`${slug}: thiếu ${entrypoint}`);
+  const metadata = { entrypoint_path: entrypoint };
+  const denoJson = `${thuMucHam}/deno.json`;
+  if (tep.has(denoJson)) {
+    const cauHinh = JSON.parse(tep.get(denoJson).toString("utf8"));
+    if (cauHinh.importMap !== undefined) throw new Error(`${denoJson}: "importMap" trỏ file riêng — chưa hỗ trợ, khai "imports" trong deno.json`);
+    metadata.import_map_path = denoJson;
+  }
+  const files = [...tep.keys()].sort().map((path) => ({ path, contents: tep.get(path) }));
+  return { files, metadata };
+}
+
+/** File được tải lên (tên tính từ gốc repo) — xem dungGoiDeploy. */
 export function tepFunction(slug) {
-  const goc = join(repoRoot, "supabase", "functions", slug);
-  return readdirSync(goc)
-    .filter((f) => /\.(ts|json|lock)$/.test(f) && !/\.test\.ts$/.test(f))
-    .sort()
-    .map((f) => ({ path: f, contents: readFileSync(join(goc, f)) }));
+  return dungGoiDeploy(slug).files;
+}
+
+/** FormData multipart: phần `metadata` (JSON) + mỗi file một phần `file` mang tên = đường dẫn từ gốc repo. */
+export function formDeploy(goi, { name, verify_jwt }) {
+  if (typeof verify_jwt !== "boolean") throw new Error(`${name}: verify_jwt phải là boolean`);
+  const form = new FormData();
+  form.append("metadata", JSON.stringify({ name, ...goi.metadata, verify_jwt }));
+  for (const f of goi.files) form.append("file", new Blob([f.contents], { type: "application/octet-stream" }), f.path);
+  return form;
 }
 
 /** `phuThuoc` chỉ để test thay credential/Management API/fetch/vault/log; chạy thật dùng mặc định. */
@@ -76,12 +157,9 @@ export async function main(argv, phuThuoc = {}) {
   for (const slug of slugs) {
     const prod = cauHinhProd.get(slug) ?? CHUA_CO_O_PRODUCTION[slug];
     if (!prod) throw new Error(`Production không có function ${slug}.`);
-    const files = tepFunction(slug);
-    const metadata = { name: slug, entrypoint_path: "index.ts", verify_jwt: prod.verify_jwt };
-    if (files.some((f) => f.path === "deno.json")) metadata.import_map_path = "deno.json";
-    const form = new FormData();
-    form.append("metadata", JSON.stringify(metadata));
-    for (const f of files) form.append("file", new Blob([f.contents], { type: "application/octet-stream" }), f.path);
+    const goi = dungGoiDeploy(slug);
+    const files = goi.files;
+    const form = formDeploy(goi, { name: slug, verify_jwt: prod.verify_jwt });
     const res = await guiDeploy(`https://api.supabase.com/v1/projects/${cred.testRef}/functions/deploy?slug=${slug}`, {
       method: "POST", headers: { Authorization: `Bearer ${cred.testPat}` }, body: form,
     });

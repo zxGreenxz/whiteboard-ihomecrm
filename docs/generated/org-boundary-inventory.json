@@ -1,11 +1,12 @@
 {
   "note": "Sinh bằng máy. Giai đoạn LẤY TỪ việc quét docs/plans/PLAN-TACH-DU-LIEU-DA-CONG-TY-V2.md, miễn trừ LẤY TỪ app_private.org_boundary_exemptions. Đừng sửa tay.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-30T17:08:02.536Z",
-  "catalogFingerprint": "71f1af6813b0d116121ec86a394163304dac6af77d66e50eff9b4e779d00da4e",
+  "capturedAt": "2026-10-22T06:39:52.383Z",
+  "catalogFingerprint": "9de4d878b491b9d978e0c24d9f4d1dca62c6cc578ffa61fc7d825cb1dd8a0e69",
   "counts": {
-    "DA_CO_BOUNDARY": 227,
-    "NO_ORG_COLUMN": 17
+    "DA_CO_BOUNDARY": 263,
+    "NO_ORG_COLUMN": 23,
+    "EXEMPT": 1
   },
   "rows": [
     {
@@ -95,7 +96,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -113,7 +114,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -131,7 +132,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -149,7 +150,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -167,7 +168,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -185,7 +186,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "ai_user_memory",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "ai_user_memory_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -419,7 +438,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -455,7 +474,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 778,
+      "source_line": 780,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -491,7 +510,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 778,
+      "source_line": 780,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -527,7 +546,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 706,
+      "source_line": 708,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -567,6 +586,24 @@
       "group": "DA_CO_BOUNDARY"
     },
     {
+      "table_name": "building_common_names",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "building_common_names_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
       "table_name": "building_fee_accounts",
       "relkind": "r",
       "is_partition": false,
@@ -581,7 +618,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "building_legal_owners",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "building_legal_owners_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -653,7 +708,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 842,
+      "source_line": 844,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -671,7 +726,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -747,6 +802,96 @@
       "group": "DA_CO_BOUNDARY"
     },
     {
+      "table_name": "company_wallet_requests",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "company_wallet_requests_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "company_wallet_voucher_origins",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "company_wallet_voucher_origins_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "company_wallets",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "company_wallets_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_commission_events",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_commission_events_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_commission_requests",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_commission_requests_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
       "table_name": "contract_customers",
       "relkind": "r",
       "is_partition": false,
@@ -761,7 +906,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -773,6 +918,96 @@
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "contract_deposit_links_org_boundary",
       "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_draft_documents",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_draft_documents_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_draft_signings",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_draft_signings_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_draft_versions",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_draft_versions_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_drafts",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_drafts_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_exit_cases",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_exit_cases_org_boundary",
+      "authenticated_can_select": false,
       "in_realtime_publication": false,
       "boundary_name_matches_convention": true,
       "assigned_phase": null,
@@ -797,7 +1032,79 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_meter_boundaries",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_meter_boundaries_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_meter_boundary_sets",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_meter_boundary_sets_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_move_out_notice_events",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_move_out_notice_events_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_notice_transition_events",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_notice_transition_events_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -815,7 +1122,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -833,7 +1140,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -851,7 +1158,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "contract_transfer_links",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "contract_transfer_links_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -869,7 +1194,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -887,7 +1212,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 684,
+      "source_line": 686,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -941,7 +1266,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1013,7 +1338,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 824,
+      "source_line": 826,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1071,6 +1396,24 @@
       "group": "DA_CO_BOUNDARY"
     },
     {
+      "table_name": "deposit_management_exclusions",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "deposit_management_exclusions_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
       "table_name": "deposits",
       "relkind": "r",
       "is_partition": false,
@@ -1085,7 +1428,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1103,7 +1446,61 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "door_action_logs",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "door_action_logs_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "door_devices",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "door_devices_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "door_key_links",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "door_key_links_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1121,7 +1518,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1485,6 +1882,42 @@
       "group": "DA_CO_BOUNDARY"
     },
     {
+      "table_name": "income_expense_revisions",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "income_expense_revisions_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "income_expense_supplements",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "income_expense_supplements_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": true,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
       "table_name": "income_expense_templates",
       "relkind": "r",
       "is_partition": false,
@@ -1535,7 +1968,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 798,
+      "source_line": 800,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -1553,7 +1986,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 733,
+      "source_line": 735,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1571,7 +2004,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 824,
+      "source_line": 826,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1589,7 +2022,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1607,7 +2040,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "invoice_adjustments",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "invoice_adjustments_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1625,7 +2076,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1661,7 +2112,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 678,
+      "source_line": 680,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1733,7 +2184,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 824,
+      "source_line": 826,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1841,7 +2292,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 778,
+      "source_line": 780,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1859,7 +2310,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1877,7 +2328,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -1906,42 +2357,6 @@
       "has_organization_id": true,
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "leads_org_boundary",
-      "authenticated_can_select": true,
-      "in_realtime_publication": false,
-      "boundary_name_matches_convention": true,
-      "assigned_phase": null,
-      "exemption_reason": null,
-      "decided_by": null,
-      "expires_at": null,
-      "source_line": null,
-      "group": "DA_CO_BOUNDARY"
-    },
-    {
-      "table_name": "legacy_owner_allowlist",
-      "relkind": "r",
-      "is_partition": false,
-      "rls_enabled": true,
-      "has_organization_id": false,
-      "org_column_names": "{}",
-      "boundary_policy_name": null,
-      "authenticated_can_select": true,
-      "in_realtime_publication": false,
-      "boundary_name_matches_convention": false,
-      "assigned_phase": null,
-      "exemption_reason": null,
-      "decided_by": null,
-      "expires_at": null,
-      "source_line": 706,
-      "group": "NO_ORG_COLUMN"
-    },
-    {
-      "table_name": "legacy_owner_organization_map",
-      "relkind": "r",
-      "is_partition": false,
-      "rls_enabled": true,
-      "has_organization_id": true,
-      "org_column_names": "{organization_id}",
-      "boundary_policy_name": "legacy_owner_organization_map_org_boundary",
       "authenticated_can_select": true,
       "in_realtime_publication": false,
       "boundary_name_matches_convention": true,
@@ -1985,7 +2400,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 835,
+      "source_line": 837,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -2003,7 +2418,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 842,
+      "source_line": 844,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2057,7 +2472,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 776,
+      "source_line": 778,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2075,7 +2490,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 776,
+      "source_line": 778,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2093,7 +2508,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 776,
+      "source_line": 778,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2111,7 +2526,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2129,7 +2544,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 776,
+      "source_line": 778,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2147,7 +2562,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2165,7 +2580,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2183,7 +2598,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 774,
+      "source_line": 776,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2231,7 +2646,7 @@
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "meter_readings_org_boundary",
       "authenticated_can_select": true,
-      "in_realtime_publication": false,
+      "in_realtime_publication": true,
       "boundary_name_matches_convention": true,
       "assigned_phase": null,
       "exemption_reason": null,
@@ -2249,7 +2664,7 @@
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "meters_org_boundary",
       "authenticated_can_select": true,
-      "in_realtime_publication": false,
+      "in_realtime_publication": true,
       "boundary_name_matches_convention": true,
       "assigned_phase": null,
       "exemption_reason": null,
@@ -2507,7 +2922,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 799,
+      "source_line": 801,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2597,7 +3012,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 799,
+      "source_line": 801,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2885,7 +3300,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 712,
+      "source_line": 714,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "notification_quiet_hours",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "notification_quiet_hours_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -2921,7 +3354,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3029,7 +3462,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 905,
+      "source_line": 907,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -3065,7 +3498,97 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 706,
+      "source_line": 708,
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_budget_limits",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_categories",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_finance_requests",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_goals",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_legacy_category_map",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -3075,16 +3598,54 @@
       "rls_enabled": true,
       "has_organization_id": true,
       "org_column_names": "{organization_id}",
-      "boundary_policy_name": "personal_transactions_org_boundary",
+      "boundary_policy_name": null,
       "authenticated_can_select": true,
       "in_realtime_publication": false,
-      "boundary_name_matches_convention": true,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": "Actor-owned personal ledger. TEST: 5 real JWT actors; 4 other actors (same/different org, org owner, super admin) read 0 owner rows; owner retains history after membership removal. organization_id is historical metadata, not ownership.",
+      "decided_by": "Product owner: approved personal-finance design 2026-10-05",
+      "expires_at": "2027-01-05",
+      "source_line": null,
+      "group": "EXEMPT",
+      "dang_ro": false,
+      "visible_foreign_do_duoc": 0
+    },
+    {
+      "table_name": "personal_wallet_transfers",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
       "assigned_phase": null,
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
       "source_line": null,
-      "group": "DA_CO_BOUNDARY"
+      "group": "NO_ORG_COLUMN"
+    },
+    {
+      "table_name": "personal_wallets",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": false,
+      "org_column_names": "{}",
+      "boundary_policy_name": null,
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": false,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "NO_ORG_COLUMN"
     },
     {
       "table_name": "phase_transitions",
@@ -3119,7 +3680,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3227,7 +3788,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3281,7 +3842,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 711,
+      "source_line": 713,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3299,7 +3860,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 711,
+      "source_line": 713,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3335,7 +3896,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 731,
+      "source_line": 733,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3371,7 +3932,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 683,
+      "source_line": 685,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3407,7 +3968,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 758,
+      "source_line": 760,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "reservation_deposit_settlements",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "reservation_deposit_settlements_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": true,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3418,6 +3997,78 @@
       "has_organization_id": true,
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "reservation_hold_deadlines_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "reservation_receipts",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "reservation_receipts_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "reservation_settlement_vouchers",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "reservation_settlement_vouchers_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "residence_dossier_files",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "residence_dossier_files_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "residence_registrations",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "residence_registrations_org_boundary",
       "authenticated_can_select": true,
       "in_realtime_publication": false,
       "boundary_name_matches_convention": true,
@@ -3497,7 +4148,25 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "room_next_claims",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "room_next_claims_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3533,7 +4202,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 713,
+      "source_line": 715,
       "group": "NO_ORG_COLUMN"
     },
     {
@@ -3544,6 +4213,78 @@
       "has_organization_id": true,
       "org_column_names": "{organization_id}",
       "boundary_policy_name": "room_reservation_holds_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "room_reservations",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "room_reservations_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "room_sale_locks",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "room_sale_locks_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "room_turnover_events",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "room_turnover_events_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "room_turnovers",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "room_turnovers_org_boundary",
       "authenticated_can_select": true,
       "in_realtime_publication": false,
       "boundary_name_matches_convention": true,
@@ -3569,7 +4310,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 729,
+      "source_line": 731,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3605,7 +4346,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3623,7 +4364,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 758,
+      "source_line": 760,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3641,7 +4382,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 864,
+      "source_line": 866,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3695,7 +4436,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 864,
+      "source_line": 866,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3785,7 +4526,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 821,
+      "source_line": 823,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3893,7 +4634,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 704,
+      "source_line": 706,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3947,7 +4688,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 778,
+      "source_line": 780,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -3965,7 +4706,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 711,
+      "source_line": 713,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -4019,7 +4760,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 864,
+      "source_line": 866,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -4199,7 +4940,7 @@
       "exemption_reason": null,
       "decided_by": null,
       "expires_at": null,
-      "source_line": 711,
+      "source_line": 713,
       "group": "DA_CO_BOUNDARY"
     },
     {
@@ -4266,6 +5007,42 @@
       "boundary_policy_name": "zalo_accounts_org_boundary",
       "authenticated_can_select": true,
       "in_realtime_publication": true,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "zalo_automation_oneshots",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "zalo_automation_oneshots_org_boundary",
+      "authenticated_can_select": false,
+      "in_realtime_publication": false,
+      "boundary_name_matches_convention": true,
+      "assigned_phase": null,
+      "exemption_reason": null,
+      "decided_by": null,
+      "expires_at": null,
+      "source_line": null,
+      "group": "DA_CO_BOUNDARY"
+    },
+    {
+      "table_name": "zalo_automation_runs",
+      "relkind": "r",
+      "is_partition": false,
+      "rls_enabled": true,
+      "has_organization_id": true,
+      "org_column_names": "{organization_id}",
+      "boundary_policy_name": "zalo_automation_runs_org_boundary",
+      "authenticated_can_select": true,
+      "in_realtime_publication": false,
       "boundary_name_matches_convention": true,
       "assigned_phase": null,
       "exemption_reason": null,

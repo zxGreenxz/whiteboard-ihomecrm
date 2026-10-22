@@ -37,6 +37,7 @@ import { formatCountdown } from '@/lib/luckyWheel';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
 import MultiRoundStage from './MultiRoundStage';
+import { nhipHoiSauKhiXong, NHIP_SAU_XONG_NGUOI_XEM_MS, taoTheoDoiDong } from './quaySoPolling';
 import './quayso.css';
 
 const CODE_KEY = 'qs_code_v1';
@@ -400,6 +401,7 @@ export default function QuaySoPage() {
   // Trang có chứng kiến sự kiện lúc còn 'open' không? Có = đang xem trực tiếp
   // nên bánh xe tự quay; không = vào sau khi đã quay, chờ bấm nút.
   const sawOpenRef = useRef(false);
+  const theoDoiDongRef = useRef(taoTheoDoiDong());
 
   // Đồng hồ 1s cho đếm ngược.
   const [tick, setTick] = useState(0);
@@ -419,10 +421,17 @@ export default function QuaySoPage() {
     meta: { errorDisplay: "inline", label: "trạng thái sự kiện quay số" },
     enabled: Boolean(eventParam || slug || savedCode),
     queryFn: () => fetchLuckyPublicState(eventParam, savedCode || null, slug),
-    refetchIntervalInBackground: true,
+    // Trang NGƯỜI XEM: tab nền thì thôi hỏi (21/10/2026, RT-OTHER-6) — quay lại
+    // tab thì nhịp hỏi chạy tiếp; đếm ngược tính theo giờ server nên không lệch.
+    refetchIntervalInBackground: false,
     refetchInterval: (query) => {
       const s = query.state.data;
       if (!s?.ok || !s.event) return 4000;
+      // Quay xong hết (hoặc sự kiện đã đóng) thì GIÃN 60 s chứ không dừng —
+      // quản trị "Huỷ kết quả và mở lại" thì người xem vẫn phải thấy
+      // (RT-CLIENT-2); chỉ dừng hẳn khi đã đóng quá 6 giờ (quaySoPolling.ts).
+      const sauKhiXong = nhipHoiSauKhiXong(s, NHIP_SAU_XONG_NGUOI_XEM_MS, theoDoiDongRef.current);
+      if (sauKhiXong !== null) return sauKhiXong;
       if (s.event.status === 'drawn') return 10000;
       if (s.event.drawAt) {
         const offset = serverClockOffset(s.event.serverNow);

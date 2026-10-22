@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T05:23:14.800Z",
+  "generatedAt": "2026-10-22T06:38:42.163Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 805,
+    "ledger-applied": 811,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -12617,6 +12617,72 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T00:04:05.773Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021170902_realtime_publication_toi_uu.sql",
+      "version": "20261021170902",
+      "name": "realtime_publication_toi_uu",
+      "scheme": "timestamp14",
+      "sha256": "b704fc2c219a3c9f95b5beef1c79caed7799ecb67e4cf024688bdc95ef8e4aef",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:24:23.369Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021171249_notify_pipeline_v2.sql",
+      "version": "20261021171249",
+      "name": "notify_pipeline_v2",
+      "scheme": "timestamp14",
+      "sha256": "fca2bd6ed24645f080e43b4ba53c19877c416ee119e2896a9fe37eabdf342599",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:27:15.838Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021171250_thong_bao_chua_doc_bo_cancelled_v1.sql",
+      "version": "20261021171250",
+      "name": "thong_bao_chua_doc_bo_cancelled_v1",
+      "scheme": "timestamp14",
+      "sha256": "e312db13dbf0d6c91d824190310165e4b669b9fb1ef57d310e92920a2009da56",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:29:59.792Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021171251_nhac_viec_server_lifecycle_v1.sql",
+      "version": "20261021171251",
+      "name": "nhac_viec_server_lifecycle_v1",
+      "scheme": "timestamp14",
+      "sha256": "fe3daf8710d213b85724bd87d272fc9680d503875d234b1d0d799fbc767478cc",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:32:42.272Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021171252_sua_producer_v5_thong_bao_v1.sql",
+      "version": "20261021171252",
+      "name": "sua_producer_v5_thong_bao_v1",
+      "scheme": "timestamp14",
+      "sha256": "9de729ba957853526545265424347f248cbcf2ee4fbce205eaeb8a07f466e2f4",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:35:04.604Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021171253_hoan_push_gio_yen_lane_thang_v1.sql",
+      "version": "20261021171253",
+      "name": "hoan_push_gio_yen_lane_thang_v1",
+      "scheme": "timestamp14",
+      "sha256": "87e19f94505eeb45e179177ab430b0e656a6ca4941b0b72180caba641b0e14ad",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T06:37:08.361Z|bien-nhan-backup"
       ]
     },
     {

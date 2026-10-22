@@ -8,7 +8,18 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.lifecycle-reminders]
+# Cổng đòi JWT; trong hàm còn so khớp ĐÚNG LIFECYCLE_REMINDERS_SERVICE_JWT (pg_cron + pg_net gọi mỗi 15').
 verify_jwt = true
+
+[functions.send-push]
+# KHÔNG BAO GIỜ tắt: jwtRole() trong hàm chỉ giải mã payload, chữ ký JWT do cổng kiểm. Trong hàm phân
+# service_role (drain/digest) với JWT người dùng (chỉ gửi cho chính người gọi).
+verify_jwt = true
+
+[functions.salary-v5-jobs]
+# api/salary-v5-cron.js (Vercel Cron) chỉ gửi x-cron-secret, KHÔNG có Authorization ⇒ cổng phải tắt verify_jwt
+# (production đang false). Trong hàm kiểm x-cron-secret / Bearer service_role / JWT admin (is_admin).
+verify_jwt = false
 
 [functions.door-access]
 # JWT người dùng do gateway kiểm; trong hàm còn kiểm lại phiên (/auth/v1/user), công ty và quyền theo toà.

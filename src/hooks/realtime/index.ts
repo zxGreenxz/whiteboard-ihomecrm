@@ -101,11 +101,26 @@ const BUSINESS_PERFORMANCE_OCCUPANCY_RULES = [
  * các miền. Rải nó ra sẽ buộc mỗi miền biết về nhóm key của miền khác.
  */
 export const BUSINESS_PERFORMANCE_INVALIDATION_RULES = {
+  // 21/10/2026 (RT-HUB-11): thêm bốn subtype của useBusinessPerformanceGatedData
+  // — trên cùng một trang, ô pnl/snapshot đã nhảy số còn hoà vốn, nhóm tuổi hoá
+  // đơn, tiền đã thu, cơ cấu chi vẫn giữ số cũ tới hết staleTime.
   invoices: [
     { subtype: "pnl", basis: "ACCRUAL" },
     { subtype: "snapshot" },
+    { subtype: "break-even" },
+    { subtype: "invoice-cohort" },
+    { subtype: "cash-received" },
   ],
-  income_expenses: [{ subtype: "pnl" }],
+  income_expenses: [
+    { subtype: "pnl" },
+    { subtype: "break-even" },
+    { subtype: "category-breakdown" },
+  ],
+  // payments.reversed_at đổi tiền đã thu và tuổi nợ, không đổi hoá đơn gốc.
+  payments: [
+    { subtype: "cash-received" },
+    { subtype: "invoice-cohort" },
+  ],
   contracts: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
   rooms: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
   buildings: [

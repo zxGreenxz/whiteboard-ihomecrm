@@ -6,16 +6,19 @@
 // Nên phải có test, đặc biệt cho E6c: biên bản chốt sổ là route DUY NHẤT dùng
 // khoá BIGINT, matcher gốc chỉ nhận UUID.
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NOTIFICATION_FALLBACK_URL,
   resolveNotificationUrl,
 } from "@/lib/notificationRoutes";
+import type { PermsLike } from "@/lib/permissionCheck";
 
 /** Quyền: mọi module đều xem được. `canUse` đọc bản đồ dạng `{key: {view: true}}`. */
-const ALL: any = new Proxy({}, { get: () => ({ view: true }) });
+const ALL = new Proxy({}, { get: () => ({ view: true }) }) as PermsLike;
 /** Không có quyền nào. */
-const NONE: any = {};
+const NONE = {} as PermsLike;
 
 const BOOK = "f21f1cb7-e9af-4b2d-99d4-e24f2a605889";
 const REQ = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
@@ -86,6 +89,55 @@ describe("resolveNotificationUrl — PA4 (E6a/E6b/E6c)", () => {
     expect(resolveNotificationUrl(`/thu-tien?handover=${REQ}`, ALL)).toBe(
       `/thu-tien?handover=${REQ}`,
     );
+  });
+});
+
+describe("mọi url thông báo do SQL/edge phát ra phải resolve được (NOTIF-CLIENT-5)", () => {
+  // Quét literal url trong migration (hàm SQL sinh thông báo/push) + edge function. Thiếu một
+  // route trong allow-list thì bấm push khi app đang mở KHÔNG đi đâu (cầu nối chỉ còn đích dự
+  // phòng /my-day), còn mở tab mới lại tới đúng trang — hai đường lệch nhau. Đây là cổng.
+  const root = process.cwd();
+  const doc = (dir: string, re: RegExp) => readdirSync(join(root, dir), { recursive: true, encoding: "utf8" })
+    .filter((f) => re.test(f))
+    .map((f) => readFileSync(join(root, dir, f), "utf8"));
+  const sqls = doc("supabase/migrations", /\.sql$/);
+  // Bỏ file test của edge (fixture dùng url giả như '/approvals').
+  const edges = doc("supabase/functions", /(?<!\.test)\.ts$/);
+
+  /** Literal nội bộ (bắt đầu `/`), bỏ URL tuyệt đối (http_post tới edge). */
+  function thuUrl(): Set<string> {
+    const out = new Set<string>();
+    for (const src of sqls) {
+      // jsonb_build_object(..., 'url', '/x?k=' || id, ...)
+      for (const m of src.matchAll(/'url'\s*,\s*'(\/[^']*)'/g)) out.add(m[1]!);
+      // route := '/x' | v_url := CASE … THEN '/a' ELSE '/b' END | url := '/my-day'
+      for (const m of src.matchAll(/\b(?:route|v_url|url)\s*:=\s*([^;]*)/g))
+        for (const lit of m[1]!.matchAll(/'(\/[^']*)'/g)) out.add(lit[1]!);
+    }
+    for (const src of edges) for (const m of src.matchAll(/\burl\b[^\n]{0,80}?:\s*'(\/[^']*)'/g)) out.add(m[1]!);
+    return out;
+  }
+  /** Literal kết thúc bằng `=` hoặc `/` là tiền tố nối với id (`|| p_job::text`). */
+  const dien = (lit: string) =>
+    lit.endsWith("/closure/") ? `${lit}35` : (lit.endsWith("=") || (lit.endsWith("/") && lit.length > 1)) ? `${lit}${BOOK}` : lit;
+
+  it("tìm thấy đủ nhóm url đã biết (bộ quét không xanh rỗng)", () => {
+    const urls = thuUrl();
+    for (const known of [
+      "/settings/hermes", "/chat-zalo", "/my-day", "/tasks?job=", "/thu-tien?handover=",
+      "/income-expense?approval_status=UNAPPROVED&layer=PENDING", "/income-expense/voucher/",
+      "/finance/cashbooks?close=", "/finance/cashbooks?confirm=", "/finance/cashbooks/closure/",
+      "/contracts", "/rooms", "/invoices",
+    ]) expect(urls, known).toContain(known);
+  });
+
+  it("mỗi url resolve khác null (đủ quyền), và về đích dự phòng chứ không null khi thiếu quyền", () => {
+    const urls = [...thuUrl(), "/"]; // send-push mặc định url '/' (gửi thử)
+    for (const lit of urls) {
+      const url = dien(lit);
+      expect(resolveNotificationUrl(url, ALL), url).not.toBeNull();
+      expect(resolveNotificationUrl(url, NONE), url).not.toBeNull();
+    }
   });
 });
 

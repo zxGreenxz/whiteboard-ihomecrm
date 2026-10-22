@@ -14000,6 +14000,41 @@ export type Database = {
           },
         ]
       }
+      notification_quiet_hours: {
+        Row: {
+          enabled: boolean
+          organization_id: string
+          quiet_end: number
+          quiet_start: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          organization_id: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          organization_id?: string
+          quiet_end?: number
+          quiet_start?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_quiet_hours_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_templates: {
         Row: {
           created_at: string
@@ -16043,6 +16078,7 @@ export type Database = {
           is_active: boolean
           organization_id: string
           p256dh: string
+          revoked_at: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -16055,6 +16091,7 @@ export type Database = {
           is_active?: boolean
           organization_id: string
           p256dh: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id: string
@@ -16067,6 +16104,7 @@ export type Database = {
           is_active?: boolean
           organization_id?: string
           p256dh?: string
+          revoked_at?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id?: string
@@ -24840,9 +24878,21 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_my_notification_quiet_hours_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_organizations: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_permissions_v2: { Args: { p_org: string }; Returns: Json }
+      get_my_push_log_v1: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_at: string
+          outcome: string
+          sent: number
+        }[]
+      }
       get_my_share_buildings: {
         Args: never
         Returns: {
@@ -24850,7 +24900,15 @@ export type Database = {
           name: string
         }[]
       }
+      get_notification_delivery_health_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_notification_org_config_v1: { Args: never; Returns: Json }
+      get_notification_org_config_v2: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_or_create_deposit_account: { Args: never; Returns: string }
       get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
@@ -25760,6 +25818,7 @@ export type Database = {
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
+      lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
       lifecycle_reminder_record_failure_v1: {
         Args: { p_error: string }
         Returns: undefined
@@ -26716,6 +26775,11 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      notification_is_unread_v1: {
+        Args: { p_status: Database["public"]["Enums"]["notification_status"] }
+        Returns: boolean
+      }
+      notification_maintenance_v1: { Args: never; Returns: Json }
       notifications_inbox_v1: {
         Args: {
           p_limit?: number
@@ -26746,7 +26810,34 @@ export type Database = {
           user_id: string
         }[]
       }
+      notify_claim_push_batch_v2: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          data: Json
+          idem_key: string
+          notification_ids: string[]
+          organization_id: string
+          tag: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      notify_drain_record_run_v1: {
+        Args: {
+          p_batches: number
+          p_error?: string
+          p_outcomes: Json
+          p_settled: number
+        }
+        Returns: undefined
+      }
       notify_settle_push_batch_v1: {
+        Args: { p_results: Json }
+        Returns: number
+      }
+      notify_settle_push_batch_v2: {
         Args: { p_results: Json }
         Returns: number
       }
@@ -28346,12 +28437,31 @@ export type Database = {
         Args: { p_organization_id: string; p_prefs: Json }
         Returns: Json
       }
+      set_my_notification_quiet_hours_v1: {
+        Args: {
+          p_enabled: boolean
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
+        Returns: Json
+      }
       set_my_ui_preference: {
         Args: { p_key: string; p_value: Json }
         Returns: Json
       }
       set_notification_org_config_v1: {
         Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
+        Returns: Json
+      }
+      set_notification_org_config_v2: {
+        Args: {
+          p_events: Json
+          p_expected_updated_at: string
+          p_organization_id: string
+          p_quiet_end: number
+          p_quiet_start: number
+        }
         Returns: Json
       }
       set_personal_cash_book_v1: {

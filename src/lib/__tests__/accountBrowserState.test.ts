@@ -114,7 +114,6 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/quick-entry/useQuickEntryFeed.ts": "gan-nguoi-dung",
   "src/lib/quickEntry/models.ts": "gan-nguoi-dung",
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",
-  "src/hooks/useScheduledNotifications.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTasks.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
   // Máy cửa vừa chọn: khoá `door-access.last-device.v1:<công ty>:<người dùng>` — không sang tài khoản khác.

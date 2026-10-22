@@ -30,10 +30,10 @@ describe("hub realtime giữ vai điều phối", () => {
   it("hub KHÔNG chứa query key nghiệp vụ — invalidate là việc của descriptor", () => {
     const key = [...new Set(SYNC_ENTRIES.flatMap((e) => e.keys.map((k) => String(k[0]))))];
     const nhacKey = key.filter((k) => HUB.includes(`"${k}"`) || HUB.includes(`'${k}'`));
-    // `business-performance` là ngoại lệ ĐÃ BIẾT: hub gom nhiều bảng vào một lượt
-    // làm mới báo cáo, nên nó buộc phải biết tên nhóm đó. Khai tường minh ở đây
-    // thay vì nới khẳng định — một ngoại lệ có tên thì cãi được.
-    expect(nhacKey).toEqual(["business-performance"]);
+    // Tới 21/10/2026 `business-performance` là ngoại lệ ĐÃ BIẾT: hub tự gom nhóm
+    // báo cáo. Nay việc gom cả cụm (kể cả nhóm báo cáo và quyết toán) nằm ở
+    // src/lib/realtime/hubCollector.ts, nên hub không còn ngoại lệ nào.
+    expect(nhacKey).toEqual([]);
   });
 
   it("hub đủ ngắn để đọc hết trong một lượt (đo 11/08/2026: 168 dòng)", () => {
