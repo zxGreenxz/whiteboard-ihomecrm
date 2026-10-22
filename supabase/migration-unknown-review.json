@@ -924,6 +924,30 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 + 2b (22/10/2026)",
       "sha256": "fd7f979ab80fcfc7bc7084ffd4ec79821eb267c22a13547debefbefe9cbfa0b6"
+    },
+    "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_task_resolve_core_v1 / app_private.hermes_task_action_prepare_v1 (thay thân của 20261022031548, ghim md5 thân đang chạy trên TEST 2c7dd0a8… / 0a01318d…)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 22/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 18 (Mốc 2c): suy loại việc khi jobType không khớp, test, tầng 2 trên TEST, thứ tự áp"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2b, Mốc 2c trang Công việc: bot thật trên TEST trượt vì jobType mô hình tự đặt), chưa đi qua lane apply — hai hàm vắng trên production vì 20261022031548 (tạo chúng) và file này CHƯA CHẠY trên production (đã áp TEST 031548/031600). Áp SAU 20261022031548. Bằng chứng: PGlite task-type-infer-sql 9/9 + task-action-sql 13/13 trên chuỗi 031548 → 065634.",
+      "missingObjects": [
+        "function:app_private.hermes_task_resolve_core_v1",
+        "function:app_private.hermes_task_action_prepare_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2c (22/10/2026)",
+      "sha256": "77fdaeac113cebe12e64322c5c7f279500ee5ad6b0b4cb5956ef9a38dec721ec"
     }
   }
 }

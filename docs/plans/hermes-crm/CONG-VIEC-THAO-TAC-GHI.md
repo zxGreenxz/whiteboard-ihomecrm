@@ -1,9 +1,10 @@
-# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b đã hiện thực)
+# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b + 2c đã hiện thực)
 
 Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a` (đã gộp `3ae1d57f6`).
 Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) và Mốc 2b sửa
-theo review độc lập (mục 17) có hai migration, một bản nháp Q64 chờ chủ (ngoài `supabase/migrations/`) và mã connector;
-**chưa áp migration nào, chưa đổi TEST hay production**. Thứ tự áp: mục 17.
+theo review độc lập (mục 17) có hai migration, một bản nháp Q64 chờ chủ (ngoài `supabase/migrations/`) và mã connector.
+Phiên chính đã áp `031548` + `031600` lên **TEST** (22/10, production CHƯA) và chạy bot thật; Mốc 2c (mục 18) thêm migration
+`065634` (suy loại việc), chưa áp. Thứ tự áp: mục 18.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12 (đã gộp `main` #253, đã lên production 22/10).
@@ -110,7 +111,7 @@ Lõi giải tên riêng của trang `app_private.hermes_task_resolve_core_v1` (p
 | --- | --- |
 | Toà, phòng | `public.hermes_write_name_resolve_v1` (D7): toà bỏ dấu, bỏ tiền tố, mã tách bí danh, tên thường gọi; phòng chỉ khớp bằng; chỉ nêu phòng ⇒ toà suy từ phòng duy nhất. Từ khoá cả toà xử lý trước khi gọi |
 | Toà ảo | **Không nhận** (CV6). Hàm giải tên ghi đã loại toà ảo; web cũng không tạo việc ở toà ảo (`useBuildings` lọc `is_virtual`, RLS SELECT `jobs` đi qua `accessible_building_ids()` vốn loại toà ảo). Production: 2/383 việc ở toà ảo, 0 đang mở |
-| Loại việc | Có `jobType` ⇒ hàm giải tên ghi (bỏ loại đã tắt). Trống ⇒ đoán: loại đang bật có tên (bỏ dấu) là một từ hoặc cụm đứng đầu `content`, như `jobQuickInput.ts:122-124`; đúng một ⇒ dùng + đòi xác nhận; 0 hoặc ≥ 2 ⇒ `needs_input` (`field: jobType`) kèm ≤ 8 loại đang bật |
+| Loại việc | **Mốc 2c (mục 18):** `jobType` khớp đúng một loại ⇒ dùng; không khớp ⇒ coi như chưa nêu, chấm điểm theo nội dung + chính chuỗi đó (đầu nội dung, chứa tên loại, đồng nghĩa trỏ tới tên loại thật), đúng một loại điểm cao nhất ⇒ dùng và luôn xem trước; không thì hỏi lại kèm ≤ 5 gợi ý xếp theo độ gần. Thiết kế gốc: có `jobType` ⇒ hàm giải tên ghi (bỏ loại đã tắt). Trống ⇒ đoán: loại đang bật có tên (bỏ dấu) là một từ hoặc cụm đứng đầu `content`, như `jobQuickInput.ts:122-124`; đúng một ⇒ dùng + đòi xác nhận; 0 hoặc ≥ 2 ⇒ `needs_input` (`field: jobType`) kèm ≤ 8 loại đang bật |
 | Người nhận | Chỉ token tự xưng không thể là tên (`tôi`, `tui`, `self`, `me`, `chính mình`, `chính tôi`, `bản thân`) ⇒ người hỏi. `mình`/`anh`/`chị`/`em` (có thể là tên như "Minh", "Anh") ⇒ hàm giải tên như mọi tên; không khớp ai thấy được ⇒ người hỏi; khớp chính người hỏi hay khớp người khác đều đòi xem trước kèm câu "hiểu là …". Còn lại ⇒ hàm giải tên ghi (`person`: hồ sơ thấy qua RLS + thành viên ACTIVE theo `hermes_task_assignee_member_v1`, đúng luật hàm tạo việc đang dùng) |
 | Thiếu người nhận (Q31) | `app_private.hermes_task_building_managers_v1(org, toà)` (DEFINER) trả id người quản lý toà (mục 3.4); lõi chỉ giữ người mà người hỏi thấy hồ sơ. Đúng 1 ⇒ bản xem trước "Chưa nêu người nhận — giao Nathan (quản lý toà 44TL) nhé?"; 0 hoặc ≥ 2 ⇒ `needs_input` (`field: person`, `why: unspecified`) kèm danh sách |
 | Việc (`job`) | Mã đầy đủ khớp bằng (không phân biệt hoa thường); 3–4 chữ số ⇒ đuôi mã trong các việc đang mở; "vừa giao"/"vừa tạo" ⇒ việc mới nhất người hỏi tạo qua Hermes trong 24 giờ; còn lại ⇒ tiêu đề bỏ dấu chứa chuỗi, chỉ trong việc ĐANG MỞ thấy được qua RLS và trong phạm vi khoá, lọc thêm theo toà/phòng nếu có. 0 ⇒ `not_found`; chỉ khớp việc đã xong ⇒ `task_not_open`; ≥ 2 ⇒ `name_unresolved` kèm ứng viên "JOB-…-0003 · sửa vòi nước (44TL/201, Nathan)". **Không bao giờ tự chọn** (sự cố 21/10: huỷ nhầm việc cùng tên ở 158PVC) |
@@ -517,3 +518,31 @@ Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ 
 3. Áp production xong mới gộp PR (cửa idempotent / permission-catalog của CI).
 4. Connector phát hành SAU bước 1. Connector mới gặp DB chưa áp vẫn an toàn (mục 6), nhưng không có `task.create`.
 5. Q64: chỉ khi chủ chọn (a) — cấp tên mới bằng `scripts/tao-ten-migration.mjs` (version sau 031600), chép nguyên văn bản nháp, đăng ký provenance + hồ sơ unknown, áp SAU 031600.
+
+## 18. Mốc 2c — loại việc khi mô hình tự đặt tên (22/10)
+
+**Bối cảnh:** phiên chính áp `031548` + `031600` lên TEST, chạy bot thật (connector `3a352226`, SOUL 4.9). Lỗi lớn nhất: mô hình tự đặt `jobType` không có trong danh mục ("kiểm tra điện", "Bảo trì", "Dọn vệ sinh", "Sửa chữa", "sửa chữa") ⇒ `needs_input` kèm gợi ý theo chữ cái ("check", "checkin", "làm"…) ⇒ 5/11 ca không tạo được việc.
+
+**Danh mục loại thật** (production = TEST, chỉ đọc 22/10): `sửa` (dùng 250–275 lần), `checkin`, `OT`, `check`, `thay`, `làm`, `vesinh`, `decor`, `mua`, `giặt`, `vệ`, `950nk`, `thông`, `162nvk`, `ml`.
+
+**Migration `20261022065634_hermes_task_type_infer_v1`** (chưa áp): chỉ thay thân `hermes_task_resolve_core_v1` và `hermes_task_action_prepare_v1` của `031548`, dựng từ thân đang chạy trên TEST và ghim md5 (`2c7dd0a8…`, `0a01318d…`; thân khác ⇒ dừng). Cùng chữ ký ⇒ OID giữ nguyên, vỏ BEGIN ATOMIC không phải dựng lại. Không đổi tên hay thứ tự `031548`/`031600` (đã áp TEST).
+
+| Luật | Chi tiết |
+| --- | --- |
+| `jobType` khớp đúng một loại | Dùng, không đoán (như cũ) |
+| `jobType` không khớp, hoặc trống | Coi như chưa nêu; chấm điểm trên loại đang bật thấy được (RLS): 95 chuỗi loại bỏ khoảng trắng trùng tên ("ve sinh" ~ `vesinh`) > 90 đầu nội dung > 80 chuỗi loại chứa tên loại > 70 đồng nghĩa trong chuỗi loại > 60 nội dung chứa tên loại > 50 đồng nghĩa trong nội dung; cùng mức thì tên dài hơn thắng. So theo từ sau khi bỏ dấu và dấu câu |
+| Đồng nghĩa | Trỏ tới tên loại thật (bỏ dấu, bỏ khoảng trắng): sửa chữa / bảo trì / bảo dưỡng / khắc phục / hỏng / lắp đặt → `sửa`; kiểm tra / rà soát → `check`; nhận phòng / làm hợp đồng → `checkin`; dọn dẹp / dọn phòng / lau chùi / vệ sinh → `vesinh` (hoặc `vệ`); thay thế → `thay`; mua sắm → `mua`; giặt ủi → `giặt`; thông tắc / tắc nghẽn → `thông`; trang trí → `decor`; tăng ca / ngoài giờ / thu tiền → `OT`. Công ty không có loại đích thì dòng tự bỏ qua |
+| Đúng một loại điểm cao nhất (≥ mức 50) | Dùng + cờ đoán ⇒ luôn xem trước: "(loại X, tự chọn theo nội dung)"; nếu mô hình đã nêu chuỗi khác thì cảnh báo "Không khớp loại việc '…'; tự chọn loại 'X' theo nội dung — hỏi lại nếu sai." |
+| Không suy được hoặc hoà | `needs_input` (`why: unspecified`) kèm ≤ 5 gợi ý xếp theo độ gần (điểm, rồi tiền tố chung dài nhất với một từ), không theo chữ cái; chỉ một loại thấy được mà nội dung không nhắc tới cũng hỏi lại |
+| Không thấy loại nào (vd thiếu `task_types.view`) | Giữ kết quả hàm giải tên như cũ, không gợi ý |
+
+**Mục 2 (hạn chỉ ngày):** `deadline: "2026-10-25"` = hết 25/10 23:59:59.999 giờ VN (đúng từ Mốc 2, `job_deadline_v1`); thêm test độc lập (Intl + mốc UTC) và tầng 2. **Mục 3 ("cho mình"):** đi đúng nhánh mơ hồ của Mốc 2b ⇒ xem trước (CVDM1 trước đây dừng ở loại việc nên chưa tới bước người nhận).
+
+**Test:** `task-type-infer-sql.test.mjs` 10/10 (danh mục thật; 5 chuỗi bot trượt + "Giặt rèm"; trống loại: đầu nội dung, đồng nghĩa, dấu câu; tên loại đúng; hoà; xếp gợi ý; một loại duy nhất; hạn chỉ ngày; "mình"; không thấy loại). `task-action-sql` 13/13 trên chuỗi 031548 → 065634. Đột biến riêng (tự tính lại md5 ghim sau mỗi đột biến): xem báo cáo.
+
+**Tầng 2 trên TEST** (ROLLBACK, binding thật của chủ, danh mục thật): CVD07 → `check`; CVD02, CVD10, CVDM1 → `sửa`; CVDJ2 → `vesinh`; CVD01 (không `jobType`) → `check`; tất cả xem trước có câu "tự chọn theo nội dung"; CVDM1 thêm "Hiểu 'mình' là chính anh/chị…"; chuỗi không suy được ⇒ hỏi lại kèm `check, checkin, mua, 162nvk, 950nk`; hạn `2026-10-25` ⇒ "hết Chủ nhật 25/10/2026 (còn 3 ngày)".
+
+**Thứ tự áp (phiên chính, qua lane):**
+1. TEST: áp `20261022065634` (031548 + 031600 đã có). Connector không đổi (bản `3a352226` dùng được; kết quả có thêm trường `jobTypeWanted` trong `resolved`, connector giữ nguyên khối này).
+2. Production: `20261022031548` + `20261022031600` cùng một lượt, rồi `20261022065634` (cùng lượt hoặc ngay sau, trước khi phát hành connector); `gen:types` (không thêm hàm public mới ở 065634).
+3. Áp production xong mới gộp PR; connector phát hành sau.

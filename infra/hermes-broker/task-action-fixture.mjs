@@ -28,6 +28,8 @@ export const migration = slug => { const found = readdirSync('supabase/migration
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8').replaceAll('\r\n', '\n');
 const extract = (src, name) => src.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}[\\s\\S]*?\\$(?:fn)?\\$;`, 'i'))[0];
 export const CREATE_SQL = migration('hermes_task_action_create_v1');
+// Mốc 2c: thay thân lõi giải tên + bước chuẩn bị của CREATE_SQL (suy loại việc khi jobType không khớp). Chuỗi như production.
+export const TYPE_INFER_SQL = migration('hermes_task_type_infer_v1');
 
 const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,building_id uuid,name text);
   CREATE TABLE IF NOT EXISTS public.job_types(id uuid PRIMARY KEY,organization_id uuid,name text,is_active boolean);
@@ -110,8 +112,8 @@ async function createJobs(db) {
     GRANT SELECT,INSERT,UPDATE,DELETE ON public.jobs TO authenticated;`);
 }
 
-/** Fixture đầy đủ: nền chung (M5 + M1) + jobs + migration Công việc (chạy hai lượt: idempotent). `extra` = migration chạy sau. */
-export async function setupTaskActions(t, { sql = CREATE_SQL, extra = [], database } = {}) {
+/** Fixture đầy đủ: nền chung (M5 + M1) + jobs + migration Công việc (chạy hai lượt: idempotent) + Mốc 2c. `extra` = migration chạy sau. */
+export async function setupTaskActions(t, { sql = CREATE_SQL, infer = TYPE_INFER_SQL, extra = [], database } = {}) {
   const f = await financeSetup(t, { action: `${SUPPORT}\n${migration('hermes_write_name_resolve_v1')}`, database });
   const { db } = f;
   await db.exec(migration('hermes_action_foundation_v1'));
@@ -140,6 +142,7 @@ export async function setupTaskActions(t, { sql = CREATE_SQL, extra = [], databa
   await db.query('UPDATE app_private.hermes_org_policies SET action_capabilities=array_append(action_capabilities,$1),scope_ids=$2', ['tasks.create', [SCOPE, UNSELECTED_ORG_SCOPE]]);
   await db.query('UPDATE app_private.hermes_connections SET action_capabilities=array_append(action_capabilities,$1),scope_ids=$2', ['tasks.create', [SCOPE, UNSELECTED_ORG_SCOPE]]);
   await db.exec(sql); await db.exec(sql);
+  if (infer) { await db.exec(infer); await db.exec(infer); }
   for (const file of extra) { await db.exec(file); await db.exec(file); }
   const action = (phase, requestId, params, extraArgs = {}, b = binding, options) => f.call(
     'SELECT public.hermes_task_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
