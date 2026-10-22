@@ -395,6 +395,121 @@ AS $fn$
                 FROM (SELECT * FROM p ORDER BY p.voucher_date, p.code LIMIT 30) x), '[]'::jsonb));
 $fn$;
 
+-- Dòng KQKD của MỘT toà chia theo KỲ (chủ chốt 22/10: lợi nhuận chia % lấy theo kỳ ghi trên hạng mục,
+-- khớp Báo cáo LN). BẢN CHÉP đúng luật xếp tháng của public.fa_accrual_allocations (nguồn KQKD / Báo cáo
+-- LN / Chốt LN): hoá đơn hợp lệ ⇒ tháng hoá đơn; hạng mục có kỳ ⇒ chia đều theo tháng của kỳ (làm tròn
+-- như canonical); kỳ ngược ⇒ tháng bắt đầu; không kỳ / phiếu không dòng ⇒ tháng của ngày phiếu; dòng có
+-- hạng mục không tồn tại bị canonical bỏ (JOIN) nên ở đây cũng bỏ. Khác canonical ĐÚNG HAI điểm: không xét
+-- quyền người gọi (link công khai của chủ nhà không đăng nhập — quyền do hàm gọi kiểm) và có cả phiếu chờ
+-- duyệt (cột approval_status). Test PGlite so từng đồng với định nghĩa SỐNG của fa_accrual_allocations —
+-- sửa luật xếp tháng ở đó mà quên sửa ở đây thì test đỏ.
+CREATE OR REPLACE FUNCTION app_private.landlord_kqkd_lines_v1(
+  p_building_id uuid,
+  p_from        date,
+  p_to          date
+)
+RETURNS TABLE (month date, voucher_id uuid, approval_status text, side text, amount numeric)
+LANGUAGE sql
+STABLE
+SET search_path TO ''
+AS $fn$
+  WITH win AS (
+    SELECT pg_catalog.date_trunc('month', p_from)::date AS w_start,
+           pg_catalog.date_trunc('month', p_to)::date AS w_end
+  ),
+  vouchers AS (
+    SELECT v.id, v.type::text AS side, v.voucher_date, v.approval_status::text AS st,
+           v.total_amount, v.business_result_accounting AS override,
+           CASE
+             WHEN v.invoice_id IS NOT NULL AND inv.billing_month ~ '^\d{4}-\d{2}$'
+             THEN pg_catalog.to_date(inv.billing_month, 'YYYY-MM')
+           END AS inv_month
+      FROM public.buildings b
+      JOIN public.income_expenses v ON v.building_id = b.id
+      LEFT JOIN public.invoices inv ON inv.id = v.invoice_id AND inv.deleted_at IS NULL
+     WHERE b.id = p_building_id
+       AND b.deleted_at IS NULL
+       AND v.deleted_at IS NULL
+       AND v.approval_status::text IN ('APPROVED', 'UNAPPROVED')
+       AND v.business_result_accounting IS DISTINCT FROM false
+  ),
+  invoice_items AS (
+    SELECT vo.inv_month AS m, vo.id, vo.st, vo.side,
+           COALESCE(i.amount, i.unit_price * i.quantity)::numeric AS amt
+      FROM vouchers vo
+      JOIN public.income_expense_items i ON i.income_expense_id = vo.id
+      JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+     WHERE vo.inv_month IS NOT NULL
+       AND (vo.override IS TRUE OR i.accounting_class = 'PNL')
+  ),
+  invoice_no_item AS (
+    SELECT vo.inv_month AS m, vo.id, vo.st, vo.side, vo.total_amount AS amt
+      FROM vouchers vo
+     WHERE vo.inv_month IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = vo.id)
+  ),
+  period_items AS (
+    SELECT (pg_catalog.date_trunc('month', i.start_date) + (s.k || ' month')::interval)::date AS m,
+           vo.id, vo.st, vo.side,
+           (pg_catalog.round(COALESCE(i.amount, i.unit_price * i.quantity) * (s.k + 1) / c.n)
+            - pg_catalog.round(COALESCE(i.amount, i.unit_price * i.quantity) * s.k / c.n))::numeric AS amt
+      FROM vouchers vo
+      JOIN public.income_expense_items i ON i.income_expense_id = vo.id
+      JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+     CROSS JOIN LATERAL (
+       SELECT GREATEST(
+         EXTRACT(year FROM i.end_date)::int * 12 + EXTRACT(month FROM i.end_date)::int
+         - EXTRACT(year FROM i.start_date)::int * 12 - EXTRACT(month FROM i.start_date)::int + 1,
+         1) AS n) c
+     CROSS JOIN LATERAL pg_catalog.generate_series(0, c.n - 1) AS s(k)
+     WHERE vo.inv_month IS NULL
+       AND (vo.override IS TRUE OR i.accounting_class = 'PNL')
+       AND i.start_date IS NOT NULL
+       AND i.end_date IS NOT NULL
+       AND i.end_date >= i.start_date
+  ),
+  invalid_period_items AS (
+    SELECT pg_catalog.date_trunc('month', i.start_date)::date AS m, vo.id, vo.st, vo.side,
+           COALESCE(i.amount, i.unit_price * i.quantity)::numeric AS amt
+      FROM vouchers vo
+      JOIN public.income_expense_items i ON i.income_expense_id = vo.id
+      JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+     WHERE vo.inv_month IS NULL
+       AND (vo.override IS TRUE OR i.accounting_class = 'PNL')
+       AND i.start_date IS NOT NULL
+       AND i.end_date IS NOT NULL
+       AND i.end_date < i.start_date
+  ),
+  no_period_items AS (
+    SELECT pg_catalog.date_trunc('month', vo.voucher_date)::date AS m, vo.id, vo.st, vo.side,
+           COALESCE(i.amount, i.unit_price * i.quantity)::numeric AS amt
+      FROM vouchers vo
+      JOIN public.income_expense_items i ON i.income_expense_id = vo.id
+      JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+     WHERE vo.inv_month IS NULL
+       AND (vo.override IS TRUE OR i.accounting_class = 'PNL')
+       AND (i.start_date IS NULL OR i.end_date IS NULL)
+  ),
+  no_item AS (
+    SELECT pg_catalog.date_trunc('month', vo.voucher_date)::date AS m, vo.id, vo.st, vo.side,
+           vo.total_amount AS amt
+      FROM vouchers vo
+     WHERE vo.inv_month IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = vo.id)
+  ),
+  unioned AS (
+    SELECT * FROM invoice_items
+    UNION ALL SELECT * FROM invoice_no_item
+    UNION ALL SELECT * FROM period_items
+    UNION ALL SELECT * FROM invalid_period_items
+    UNION ALL SELECT * FROM no_period_items
+    UNION ALL SELECT * FROM no_item
+  )
+  SELECT u.m, u.id, u.st, u.side, u.amt
+    FROM unioned u, win
+   WHERE u.m BETWEEN win.w_start AND win.w_end;
+$fn$;
+
 -- ---------------------------------------------------------------------------
 -- 6. CÔNG THỨC — nơi duy nhất tính quyết toán tháng. Không kiểm quyền: chỉ các
 --    hàm SECURITY DEFINER bên dưới gọi, sau khi đã kiểm.
@@ -437,21 +552,11 @@ AS $fn$
     SELECT pg_catalog.date_trunc('month', p_month)::date AS dau,
            (pg_catalog.date_trunc('month', p_month) + interval '1 month')::date AS sau
   ),
-  phieu AS (
-    SELECT v.id, v.code, v.voucher_date, v.type::text AS loai, v.name,
-           v.account_id, a.name AS so_quy, v.approval_status,
-           v.business_result_accounting AS kqkd, v.total_amount,
-           COALESCE(v.system_source, '') AS nguon,
-           COALESCE(v.posting_status, '') AS but_toan,
-           COALESCE(v.has_restricted_item, false) AS han_che,
-           COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false) AS ben_chu_nha,
-           (NOT COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false)
-            AND EXISTS (SELECT 1 FROM so_toa_khac s WHERE s.account_id = v.account_id)) AS so_toa_khac,
-           -- tiền thối rơi vào sổ chủ nhà: tiền của khách, chủ nhà giữ hộ. Làm tròn KHÔNG tính —
-           -- đó là phần khách trả thiếu được bỏ qua, không phải tiền mặt.
-           CASE WHEN v.change_account_id = ANY (cfg.landlord_account_ids)
-                THEN COALESCE(v.change_amount, 0) ELSE 0 END
-           * CASE WHEN v.type::text = 'EXPENSE' THEN -1 ELSE 1 END AS du_chu_nha
+  -- phiếu có NGÀY PHIẾU trong tháng: nguồn của dòng cọc / không tính và tiền thối (dòng tiền thật,
+  -- không phải lãi lỗ ⇒ theo ngày tiền đi)
+  ngay AS (
+    SELECT v.id, v.type::text AS loai, v.business_result_accounting AS kqkd, v.total_amount,
+           v.approval_status::text AS approval_status, v.change_account_id, v.change_amount
       FROM cfg
       CROSS JOIN ky
       JOIN public.income_expenses v
@@ -459,40 +564,64 @@ AS $fn$
        AND v.deleted_at IS NULL
        AND v.voucher_date >= ky.dau
        AND v.voucher_date < ky.sau
-       AND v.approval_status IN ('APPROVED', 'UNAPPROVED')
-      LEFT JOIN public.accounts a ON a.id = v.account_id
+       AND v.approval_status::text IN ('APPROVED', 'UNAPPROVED')
   ),
   dong AS (
     -- MỌI dòng của phiếu đều vào đúng MỘT nhóm — không dòng nào rơi mất im lặng:
-    --   KQKD  đúng vị ngữ của fa_accrual_allocations (tính lợi nhuận);
-    --   COC   cọc / tiền khách trả thừa — tiền giữ hộ khách, quản lý chịu trách nhiệm hoàn;
-    --   KHAC  không tính (nội bộ, phiếu tắt KQKD…) — vẫn liệt kê để đối chiếu.
-    SELECT p.id,
-           CASE
-             WHEN p.kqkd IS TRUE THEN 'KQKD'
-             WHEN i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT') THEN 'COC'
-             WHEN p.kqkd IS NULL AND i.accounting_class = 'PNL' THEN 'KQKD'
-             ELSE 'KHAC'
-           END::text AS nhom,
-           COALESCE(i.amount, i.unit_price * i.quantity)::numeric AS so_tien
-      FROM phieu p
-      JOIN public.income_expense_items i ON i.income_expense_id = p.id
+    --   KQKD  dòng lãi lỗ, xếp tháng THEO KỲ đúng luật fa_accrual_allocations (khớp Báo cáo LN);
+    --   COC   cọc / tiền khách trả thừa — tiền giữ hộ khách, quản lý chịu trách nhiệm hoàn (theo ngày phiếu);
+    --   KHAC  không tính (nội bộ, phiếu tắt KQKD, dòng không có hạng mục…) — vẫn liệt kê (theo ngày phiếu).
+    SELECT l.voucher_id AS id, 'KQKD'::text AS nhom, NULL::text AS ly_do, l.amount AS so_tien
+      FROM app_private.landlord_kqkd_lines_v1(p_building_id, p_month, p_month) AS l
     UNION ALL
-    -- phiếu không có dòng hạng mục: lấy cả phiếu, như canonical
-    SELECT p.id, CASE WHEN p.kqkd IS DISTINCT FROM false THEN 'KQKD' ELSE 'KHAC' END::text,
-           COALESCE(p.total_amount, 0)::numeric
-      FROM phieu p
-     WHERE NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = p.id)
+    -- phần bù của vị ngữ KQKD canonical: dòng phiếu tắt KQKD, hoặc dòng không phải PNL khi phiếu không ép
+    SELECT n.id,
+           CASE WHEN i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT') THEN 'COC' ELSE 'KHAC' END::text,
+           CASE WHEN i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT') THEN NULL
+                WHEN n.kqkd IS FALSE THEN 'NOT_KQKD' ELSE 'INTERNAL' END::text,
+           COALESCE(i.amount, i.unit_price * i.quantity)::numeric
+      FROM ngay n
+      JOIN public.income_expense_items i ON i.income_expense_id = n.id
+     WHERE NOT (n.kqkd IS DISTINCT FROM false AND (n.kqkd IS TRUE OR COALESCE(i.accounting_class, '') = 'PNL'))
+    UNION ALL
+    -- dòng đúng vị ngữ KQKD nhưng hạng mục không tồn tại: canonical bỏ (không vào lợi nhuận) ⇒ hiện ở
+    -- "không tính" để thấy được, không biến mất
+    SELECT n.id, 'KHAC'::text, 'NO_CATEGORY'::text, COALESCE(i.amount, i.unit_price * i.quantity)::numeric
+      FROM ngay n
+      JOIN public.income_expense_items i ON i.income_expense_id = n.id
+     WHERE n.kqkd IS DISTINCT FROM false AND (n.kqkd IS TRUE OR i.accounting_class = 'PNL')
+       AND NOT EXISTS (SELECT 1 FROM public.income_expense_types t WHERE t.id = i.income_expense_type_id)
+    UNION ALL
+    -- phiếu tắt KQKD không có dòng hạng mục: lấy cả phiếu (phiếu KQKD không dòng đã nằm trong KQKD)
+    SELECT n.id, 'KHAC'::text, 'NOT_KQKD'::text, COALESCE(n.total_amount, 0)::numeric
+      FROM ngay n
+     WHERE n.kqkd IS FALSE
+       AND NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = n.id)
   ),
   gop AS (
-    SELECT d.id, d.nhom, sum(d.so_tien) AS so_tien
+    SELECT d.id, d.nhom, max(d.ly_do) AS ly_do, sum(d.so_tien) AS so_tien
       FROM dong d
      GROUP BY d.id, d.nhom
+  ),
+  phieu AS (
+    SELECT v.id, v.code, v.voucher_date, v.type::text AS loai, v.name,
+           v.account_id, a.name AS so_quy, v.approval_status::text AS approval_status,
+           v.business_result_accounting AS kqkd, v.total_amount,
+           COALESCE(v.system_source, '') AS nguon,
+           COALESCE(v.posting_status, '') AS but_toan,
+           COALESCE(v.has_restricted_item, false) AS han_che,
+           COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false) AS ben_chu_nha,
+           (NOT COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false)
+            AND EXISTS (SELECT 1 FROM so_toa_khac s WHERE s.account_id = v.account_id)) AS so_toa_khac
+      FROM (SELECT DISTINCT g.id FROM gop g) x
+      CROSS JOIN cfg
+      JOIN public.income_expenses v ON v.id = x.id
+      LEFT JOIN public.accounts a ON a.id = v.account_id
   ),
   ct AS (
     SELECT p.id, p.code, p.voucher_date, p.loai, p.name, p.account_id, p.so_quy,
            p.approval_status, p.ben_chu_nha, p.nguon, p.kqkd, p.but_toan, p.han_che, p.so_toa_khac,
-           g.nhom, g.so_tien
+           g.nhom, g.ly_do, g.so_tien
       FROM phieu p
       JOIN gop g ON g.id = p.id
      WHERE g.so_tien <> 0
@@ -506,8 +635,14 @@ AS $fn$
      WHERE ct.approval_status = 'APPROVED' AND ct.nhom IN ('KQKD', 'COC')
   ),
   du AS (
-    SELECT COALESCE(sum(p.du_chu_nha) FILTER (WHERE p.approval_status = 'APPROVED'), 0) AS du_chu_nha
-      FROM phieu p
+    -- tiền thối rơi vào sổ chủ nhà (theo ngày phiếu): tiền của khách, chủ nhà giữ hộ. Làm tròn KHÔNG
+    -- tính — đó là phần khách trả thiếu được bỏ qua, không phải tiền mặt.
+    SELECT COALESCE(sum(CASE WHEN n.change_account_id = ANY (cfg.landlord_account_ids)
+                             THEN COALESCE(n.change_amount, 0) ELSE 0 END
+                        * CASE WHEN n.loai = 'EXPENSE' THEN -1 ELSE 1 END)
+                    FILTER (WHERE n.approval_status = 'APPROVED'), 0) AS du_chu_nha
+      FROM ngay n
+      CROSS JOIN cfg
   ),
   so AS (
     SELECT
@@ -643,8 +778,7 @@ AS $fn$
                        'foreign_landlord_account', ct.so_toa_khac,
                        'restricted', ct.han_che,
                        'excluded_reason', CASE WHEN ct.nhom <> 'KHAC' THEN NULL
-                                               WHEN ct.kqkd IS FALSE THEN 'NOT_KQKD'
-                                               ELSE 'INTERNAL' END,
+                                               ELSE COALESCE(ct.ly_do, 'INTERNAL') END,
                        'status', ct.approval_status,
                        'amount', ct.so_tien)
                      ORDER BY ct.voucher_date, ct.code, ct.nhom)
@@ -658,6 +792,7 @@ REVOKE ALL ON FUNCTION app_private.landlord_actor_can_manage_v1(uuid) FROM PUBLI
 REVOKE ALL ON FUNCTION app_private.landlord_closed_months_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_pre_start_deposits_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_opening_check_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.landlord_kqkd_lines_v1(uuid, date, date) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_settlement_compute_v1(uuid, date) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
@@ -692,6 +827,45 @@ AS $fn$
                 FROM (SELECT * FROM p ORDER BY p.voucher_date DESC, p.code LIMIT 30) x), '[]'::jsonb));
 $fn$;
 
+
+-- Khoản LÃI LỖ có KỲ trước tháng áp dụng nhưng phiếu lập từ tháng áp dụng trở đi (đã duyệt hoặc chờ
+-- duyệt): xếp theo kỳ thì thuộc giai đoạn TRƯỚC khi vận hành cho chủ nhà nên không vào tháng nào của
+-- quyết toán. Chỉ đưa ra để người quyết toán thấy (vd chi điện tháng trước trả từ sổ chủ nhà) — không
+-- tính, không chặn chốt (phiếu đã duyệt thì không bao giờ "xử lý xong", chặn sẽ là chặn vĩnh viễn).
+CREATE OR REPLACE FUNCTION app_private.landlord_pre_start_period_v1(p_building_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path TO ''
+AS $fn$
+  WITH o AS (
+    SELECT o.effective_from FROM app_private.landlord_operations o WHERE o.building_id = p_building_id
+  ),
+  l AS (
+    SELECT l.voucher_id, l.approval_status, l.side, sum(l.amount) AS so_tien
+      FROM o
+      CROSS JOIN LATERAL app_private.landlord_kqkd_lines_v1(
+        p_building_id, DATE '1900-01-01', (o.effective_from - interval '1 month')::date) AS l
+     GROUP BY 1, 2, 3
+  ),
+  p AS (
+    SELECT v.code, v.voucher_date, l.side AS loai, v.name, l.so_tien, l.approval_status
+      FROM l
+      CROSS JOIN o
+      JOIN public.income_expenses v ON v.id = l.voucher_id
+     WHERE v.voucher_date >= o.effective_from AND l.so_tien <> 0
+  )
+  SELECT pg_catalog.jsonb_build_object(
+           'voucher_count', (SELECT count(*) FROM p),
+           'income', (SELECT COALESCE(sum(p.so_tien) FILTER (WHERE p.loai = 'INCOME'), 0) FROM p),
+           'expense', (SELECT COALESCE(sum(p.so_tien) FILTER (WHERE p.loai = 'EXPENSE'), 0) FROM p),
+           'vouchers', COALESCE((
+              SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'code', x.code, 'voucher_date', x.voucher_date, 'type', x.loai,
+                       'name', x.name, 'amount', x.so_tien, 'status', x.approval_status)
+                     ORDER BY x.voucher_date, x.code)
+                FROM (SELECT * FROM p ORDER BY p.voucher_date DESC, p.code LIMIT 30) x), '[]'::jsonb));
+$fn$;
 
 -- Lý do chưa chốt được tháng (mã). Màn và hàm chốt dùng chung.
 CREATE OR REPLACE FUNCTION app_private.landlord_close_blockers_v1(
@@ -745,9 +919,11 @@ BEGIN
 END
 $fn$;
 
--- Đối chiếu với KQKD toà (fa_accrual_allocations — nguồn của Chốt LN, chia THÁNG theo kỳ hoá
--- đơn / kỳ dịch vụ): liệt kê từng phiếu làm hai con số lợi nhuận khác nhau, để không khoản nào
--- "lệch mà không ai thấy". fa_accrual_allocations tự kiểm can_access_building của người gọi.
+-- Đối chiếu với KQKD toà (fa_accrual_allocations — nguồn Báo cáo LN / Chốt LN). Từ 22/10 quyết toán xếp
+-- dòng lãi lỗ theo ĐÚNG luật kỳ đó (landlord_kqkd_lines_v1) nên bình thường khớp từng đồng; còn lệch chỉ
+-- có thể do (1) tháng đã chốt mà phiếu đổi sau khi chốt, hoặc (2) luật xếp tháng của fa_accrual_allocations
+-- đã đổi mà bản chép chưa đổi theo (lỗi kỹ thuật — màn báo ngay). Liệt kê từng phiếu lệch để không khoản
+-- nào "lệch mà không ai thấy". fa_accrual_allocations tự kiểm can_access_building của người gọi.
 CREATE OR REPLACE FUNCTION app_private.landlord_kqkd_bridge_v1(
   p_building_id uuid,
   p_month       date,
@@ -795,49 +971,10 @@ AS $fn$
                        'name', v.name,
                        'settlement_amount', l.qt_tien,
                        'kqkd_amount', l.kq_tien,
-                       -- lý do đi đúng nhánh canonical xếp tháng (hoá đơn hợp lệ = hoá đơn sống, kỳ đúng
-                       -- dạng YYYY-MM; không có thì theo kỳ dịch vụ trên dòng, rồi ngày phiếu); không đoán
-                       -- được thì nói "khác"
-                       'reason', CASE
-                                   WHEN p_is_stale AND l.qt_tien <> 0
-                                        AND pg_catalog.date_trunc('month', v.voucher_date)::date
-                                            <> pg_catalog.date_trunc('month', p_month)::date
-                                     THEN 'CHANGED_AFTER_CLOSE'
-                                   WHEN pg_catalog.date_trunc('month', v.voucher_date)::date
-                                        <> pg_catalog.date_trunc('month', p_month)::date THEN 'VOUCHER_OTHER_MONTH'
-                                   WHEN h.thang_hd IS NOT NULL AND h.thang_hd <> pg_catalog.to_char(p_month, 'YYYY-MM')
-                                     THEN 'INVOICE_PERIOD'
-                                   WHEN h.thang_hd IS NULL AND EXISTS (
-                                          SELECT 1 FROM public.income_expense_items i
-                                           WHERE i.income_expense_id = v.id AND i.end_date < i.start_date)
-                                     THEN 'INVALID_PERIOD'
-                                   WHEN h.thang_hd IS NULL AND EXISTS (
-                                          SELECT 1 FROM public.income_expense_items i
-                                           WHERE i.income_expense_id = v.id
-                                             AND pg_catalog.date_trunc('month', i.end_date)
-                                                 > pg_catalog.date_trunc('month', i.start_date))
-                                     THEN 'SERVICE_PERIOD'
-                                   WHEN h.thang_hd IS NULL AND EXISTS (
-                                          SELECT 1 FROM public.income_expense_items i
-                                           WHERE i.income_expense_id = v.id
-                                             AND pg_catalog.date_trunc('month', i.start_date)::date
-                                                 <> pg_catalog.date_trunc('month', p_month)::date)
-                                     THEN 'SERVICE_OTHER_MONTH'
-                                   WHEN EXISTS (
-                                          SELECT 1 FROM public.income_expense_items i
-                                           WHERE i.income_expense_id = v.id
-                                             AND NOT EXISTS (SELECT 1 FROM public.income_expense_types t
-                                                              WHERE t.id = i.income_expense_type_id))
-                                     THEN 'NO_CATEGORY'
-                                   WHEN p_is_stale THEN 'CHANGED_AFTER_CLOSE'
-                                   ELSE 'OTHER' END)
+                       'reason', CASE WHEN p_is_stale THEN 'CHANGED_AFTER_CLOSE' ELSE 'FORMULA_DRIFT' END)
                      ORDER BY v.voucher_date, v.code)
                 FROM lech l
-                JOIN public.income_expenses v ON v.id = l.id
-                CROSS JOIN LATERAL (
-                  SELECT (SELECT inv.billing_month FROM public.invoices inv
-                           WHERE inv.id = v.invoice_id AND inv.deleted_at IS NULL
-                             AND inv.billing_month ~ '^\d{4}-\d{2}$') AS thang_hd) h), '[]'::jsonb));
+                JOIN public.income_expenses v ON v.id = l.id), '[]'::jsonb));
 $fn$;
 
 -- Khoản chi cố định đã khai ở "Phí cố định theo toà" (trừ ô "không áp dụng") — và điện, nước dù chưa
@@ -960,6 +1097,7 @@ AS $fn$
 $fn$;
 
 REVOKE ALL ON FUNCTION app_private.landlord_pre_start_pending_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.landlord_pre_start_period_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_account_elsewhere_v1(uuid, date) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_close_blockers_v1(uuid, date, jsonb) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION app_private.landlord_kqkd_bridge_v1(uuid, date, jsonb, boolean) FROM PUBLIC, anon, authenticated, service_role;
@@ -1096,7 +1234,9 @@ BEGIN
        'related_elsewhere', app_private.landlord_related_elsewhere_v1(p_building_id, v_month),
        'landlord_account_elsewhere', app_private.landlord_account_elsewhere_v1(p_building_id, v_month),
        'pre_start_pending', CASE WHEN v_month = v_cfg.effective_from
-                                 THEN app_private.landlord_pre_start_pending_v1(p_building_id) END) END,
+                                 THEN app_private.landlord_pre_start_pending_v1(p_building_id) END,
+       'pre_start_period', CASE WHEN v_month = v_cfg.effective_from
+                                THEN app_private.landlord_pre_start_period_v1(p_building_id) END) END,
     'kqkd_bridge', CASE WHEN p_public THEN NULL
                         ELSE app_private.landlord_kqkd_bridge_v1(p_building_id, v_month, v_stmt,
                                v_status = 'CLOSED' AND v_last.source_hash IS DISTINCT FROM (v_live->>'source_hash')) END);
@@ -2158,6 +2298,66 @@ END
 $fn$;
 
 -- ---------------------------------------------------------------------------
+-- 11b. Phần chủ nhà cho Báo cáo LN (chủ chốt 22/10): Báo cáo LN giữ TỔNG lợi nhuận và thêm MỘT dòng
+--      "Lợi nhuận của iHome" = tổng − phần chủ nhà của các toà vận hành. Phần chủ nhà vẫn tính nhưng
+--      không hiện thành dòng riêng. Trả theo toà × tháng (từ tháng áp dụng, tới tháng hiện tại): tháng
+--      đã chốt lấy số đã chốt, tháng mở lấy số tạm tính (theo kỳ, phiếu đã duyệt). Chỉ toà người gọi xem
+--      được — cùng luật can_access_building mà fa_accrual_allocations (nguồn Báo cáo LN) dùng. Kể cả toà
+--      đang tạm ngừng: các tháng đã vận hành vẫn là của chủ nhà.
+CREATE OR REPLACE FUNCTION public.landlord_ihome_profit_v1(p_from date, p_to date)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public', 'app_private'
+AS $fn$
+DECLARE
+  v_from   date := date_trunc('month', p_from)::date;
+  v_to     date := LEAST(date_trunc('month', p_to)::date, app_private.landlord_current_month_v1());
+  v_rows   jsonb := '[]'::jsonb;
+  v_r      record;
+  v_m      date;
+  v_stmt   jsonb;
+  v_last   app_private.landlord_settlement_closes%ROWTYPE;
+  v_closed boolean;
+BEGIN
+  IF auth.uid() IS NULL OR v_from IS NULL OR v_to IS NULL OR v_from > v_to THEN
+    RETURN v_rows;
+  END IF;
+  -- tối đa 24 tháng mỗi lần gọi (Báo cáo LN xem 1 tháng + biểu đồ 6 tháng)
+  v_from := GREATEST(v_from, (v_to - interval '23 months')::date);
+  FOR v_r IN
+    SELECT o.building_id, o.effective_from
+      FROM app_private.landlord_operations o
+      JOIN public.buildings b ON b.id = o.building_id AND b.deleted_at IS NULL
+     WHERE public.can_access_building(o.building_id)
+     ORDER BY o.building_id
+  LOOP
+    v_m := GREATEST(v_from, v_r.effective_from);
+    WHILE v_m <= v_to LOOP
+      SELECT * INTO v_last
+        FROM app_private.landlord_settlement_closes c
+       WHERE c.building_id = v_r.building_id AND c.period_month = v_m
+       ORDER BY c.revision DESC
+       LIMIT 1;
+      v_closed := FOUND AND v_last.action = 'CLOSE';
+      v_stmt := CASE WHEN v_closed THEN v_last.snapshot
+                     ELSE app_private.landlord_settlement_compute_v1(v_r.building_id, v_m) END;
+      v_rows := v_rows || jsonb_build_object(
+        'building_id', v_r.building_id,
+        'period_month', v_m,
+        'status', CASE WHEN v_closed THEN 'CLOSED' ELSE 'OPEN' END,
+        'profit', COALESCE((v_stmt->'totals'->>'profit')::numeric, 0),
+        'manager_share', COALESCE((v_stmt->'totals'->>'manager_share')::numeric, 0),
+        'landlord_share', COALESCE((v_stmt->'totals'->>'landlord_share')::numeric, 0));
+      v_m := (v_m + interval '1 month')::date;
+    END LOOP;
+  END LOOP;
+  RETURN v_rows;
+END
+$fn$;
+
+-- ---------------------------------------------------------------------------
 -- 12. Quyền gọi.
 REVOKE ALL ON FUNCTION public.landlord_operations_list_v1() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_operation_options_v1(uuid) FROM PUBLIC, anon;
@@ -2172,6 +2372,7 @@ REVOKE ALL ON FUNCTION public.landlord_settlement_void_payment_v1(uuid, text) FR
 REVOKE ALL ON FUNCTION public.landlord_share_link_create_v1(uuid, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_share_link_revoke_v1(text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_public_v1(text, date) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.landlord_ihome_profit_v1(date, date) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.landlord_operations_list_v1() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_operation_options_v1(uuid) TO authenticated;
@@ -2186,6 +2387,7 @@ GRANT EXECUTE ON FUNCTION public.landlord_settlement_void_payment_v1(uuid, text)
 GRANT EXECUTE ON FUNCTION public.landlord_share_link_create_v1(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_share_link_revoke_v1(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_public_v1(text, date) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.landlord_ihome_profit_v1(date, date) TO authenticated;
 
 COMMIT;
 NOTIFY pgrst, 'reload schema';

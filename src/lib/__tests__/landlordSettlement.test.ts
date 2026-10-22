@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   describeNet,
   describeOperationChange,
+  ihomeProfitOf,
   landlordErrorMessage,
   landlordShareUrl,
   monthKey,
@@ -139,6 +140,27 @@ describe('lịch sử cài đặt toà', () => {
     ]);
     expect(describeOperationChange(after, { ...after, opening_confirmed_at: null }, vnd)).toEqual(['Bỏ xác nhận số dư đầu kỳ']);
     expect(describeOperationChange(base, { ...base, effective_from: '2024-12-01' }, vnd)).toEqual(['Áp dụng từ: 01/2025 → 12/2024']);
+  });
+});
+
+describe('lợi nhuận của iHome trên Báo cáo LN', () => {
+  const A = '00000000-0000-4000-8000-0000000000aa';
+  const B = '00000000-0000-4000-8000-0000000000bb';
+  const rows = [
+    { building_id: A, period_month: '2026-10-01', status: 'CLOSED' as const, profit: 40_000_000, manager_share: 12_000_000, landlord_share: 28_000_000 },
+    { building_id: A, period_month: '2026-11-01', status: 'OPEN' as const, profit: 10_000_000, manager_share: 3_000_000, landlord_share: 7_000_000 },
+    // tháng lỗ: quản lý 0đ, chủ nhà chịu cả phần lỗ ⇒ iHome = tổng + 5tr
+    { building_id: B, period_month: '2026-10-01', status: 'OPEN' as const, profit: -5_000_000, manager_share: 0, landlord_share: -5_000_000 },
+  ];
+  it('tổng − phần chủ nhà của toà vận hành trong đúng tháng và toà đang xem', () => {
+    expect(ihomeProfitOf(100_000_000, rows, { months: ['2026-10'], buildingIds: null }))
+      .toEqual({ profit: 77_000_000, landlordShare: 23_000_000, operatedCount: 2, provisional: true });
+    expect(ihomeProfitOf(100_000_000, rows, { months: ['2026-10-01'], buildingIds: [A] }))
+      .toEqual({ profit: 72_000_000, landlordShare: 28_000_000, operatedCount: 1, provisional: false });
+  });
+  it('không có toà vận hành trong phạm vi ⇒ bằng đúng tổng', () => {
+    expect(ihomeProfitOf(50_000_000, rows, { months: ['2026-09'], buildingIds: null }))
+      .toEqual({ profit: 50_000_000, landlordShare: 0, operatedCount: 0, provisional: false });
   });
 });
 

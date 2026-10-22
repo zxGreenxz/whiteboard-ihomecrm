@@ -43,8 +43,13 @@ const fmtDay = (iso: string) => {
 /** Link chủ nhà: tên sổ đã là nhãn bên giữ tiền ('Sổ chủ nhà' / 'Sổ quản lý' / 'Cấn trừ cọc') — in nguyên. */
 const accountText = (name: string, mode: 'admin' | 'public') => (mode === 'public' ? name : `sổ ${name}`);
 
-function rowNote(v: SettlementVoucher, key: GroupKey, mode: 'admin' | 'public'): string {
+function rowNote(v: SettlementVoucher, key: GroupKey, mode: 'admin' | 'public', periodMonth: string): string {
   const parts: string[] = [];
+  // dòng lãi lỗ xếp tháng THEO KỲ trên hạng mục: phiếu lập tháng khác vẫn có thể thuộc tháng này (vd thu
+  // trước tiền phòng tháng sau). Số tiền là phần của kỳ tháng này.
+  if (v.group === 'PNL' && v.voucher_date.slice(0, 7) !== periodMonth.slice(0, 7)) {
+    parts.push(`tính theo kỳ tháng ${periodMonth.slice(5, 7)}/${periodMonth.slice(0, 4)}`);
+  }
   if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);
   if (key === 'termination' || key === 'deposit' || key === 'pending' || key === 'excluded') {
     if (v.group === 'DEPOSIT') parts.push(v.type === 'INCOME' ? 'thu cọc/trả thừa' : 'hoàn/cấn cọc');
@@ -60,10 +65,12 @@ function rowNote(v: SettlementVoucher, key: GroupKey, mode: 'admin' | 'public'):
   return parts.length ? ` · ${parts.join(' · ')}` : '';
 }
 
-export function VoucherBreakdown({ vouchers, totals, mode }: {
+export function VoucherBreakdown({ vouchers, totals, mode, periodMonth }: {
   vouchers: SettlementVoucher[];
   totals: SettlementStatement['totals'];
   mode: 'admin' | 'public';
+  /** 'YYYY-MM-DD' — tháng của bảng quyết toán (để ghi chú phiếu lập tháng khác mà tính theo kỳ tháng này). */
+  periodMonth: string;
 }) {
   const grouped = useMemo(
     () => GROUPS.map((g) => ({ ...g, rows: vouchers.filter(g.match) })),
@@ -105,7 +112,7 @@ export function VoucherBreakdown({ vouchers, totals, mode }: {
               <span className="text-right font-medium tabular-nums">{formatVND(v.amount)}</span>
               <span className="text-xs text-muted-foreground">
                 {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · ${accountText(v.account_name, mode)}` : ''}
-                {rowNote(v, current.key, mode)}
+                {rowNote(v, current.key, mode, periodMonth)}
               </span>
               <span />
             </div>

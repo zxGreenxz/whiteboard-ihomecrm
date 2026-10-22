@@ -32,7 +32,8 @@ export const settlementVoucherSchema = z.object({
   foreign_landlord_account: z.boolean().optional(),
   /** Phiếu có hạng mục hạn chế — link chủ nhà che tên phiếu. */
   restricted: z.boolean(),
-  excluded_reason: z.enum(['NOT_KQKD', 'INTERNAL']).nullable(),
+  /** NO_CATEGORY: dòng lãi lỗ mà hạng mục không còn tồn tại — KQKD (Báo cáo LN) bỏ qua, ở đây vẫn liệt kê. */
+  excluded_reason: z.enum(['NOT_KQKD', 'INTERNAL', 'NO_CATEGORY']).nullable(),
   status: z.enum(['APPROVED', 'UNAPPROVED']),
   amount: money,
 });
@@ -114,13 +115,16 @@ export const settlementWarningsSchema = z.object({
   landlord_account_elsewhere: countedVouchersSchema,
   /** Phiếu chờ duyệt ghi ngày trước tháng áp dụng (chỉ ở tháng đầu tiên). */
   pre_start_pending: countedVouchersSchema.extend({ income: money, expense: money }).nullable(),
+  /** Khoản lãi lỗ có KỲ trước tháng áp dụng mà phiếu lập sau (chỉ ở tháng đầu tiên) — không tính, không chặn. */
+  pre_start_period: countedVouchersSchema.extend({ income: money, expense: money }).nullable().optional(),
 });
 export type SettlementWarnings = z.infer<typeof settlementWarningsSchema>;
 
-export const BRIDGE_REASONS = [
-  'VOUCHER_OTHER_MONTH', 'INVOICE_PERIOD', 'INVALID_PERIOD', 'SERVICE_PERIOD', 'SERVICE_OTHER_MONTH',
-  'NO_CATEGORY', 'CHANGED_AFTER_CLOSE', 'OTHER',
-] as const;
+/**
+ * Quyết toán xếp dòng lãi lỗ theo đúng luật kỳ của KQKD nên bình thường khớp từng đồng. Còn lệch chỉ do
+ * phiếu đổi sau khi chốt, hoặc luật kỳ của KQKD đã đổi mà quyết toán chưa đổi theo (lỗi kỹ thuật).
+ */
+export const BRIDGE_REASONS = ['CHANGED_AFTER_CLOSE', 'FORMULA_DRIFT'] as const;
 /** Đối chiếu với KQKD toà (theo kỳ) — từng phiếu làm hai con số lợi nhuận khác nhau. */
 export const kqkdBridgeSchema = z.object({
   kqkd_profit: money,
@@ -346,18 +350,46 @@ export const VOUCHER_SOURCE_LABEL: Record<NonNullable<SettlementVoucher['source'
 export const EXCLUDED_REASON_LABEL: Record<NonNullable<SettlementVoucher['excluded_reason']>, string> = {
   NOT_KQKD: 'phiếu tắt tính KQKD',
   INTERNAL: 'khoản nội bộ',
+  NO_CATEGORY: 'dòng phiếu có hạng mục đã mất — Báo cáo LN cũng bỏ qua',
 };
 
 export const BRIDGE_REASON_LABEL: Record<typeof BRIDGE_REASONS[number], string> = {
-  VOUCHER_OTHER_MONTH: 'Ngày phiếu ở tháng khác, KQKD tính vào tháng này',
-  INVOICE_PERIOD: 'Hoá đơn của kỳ khác — KQKD tính theo tháng hoá đơn',
-  INVALID_PERIOD: 'Kỳ dịch vụ trên phiếu bị ngược (ngày kết thúc trước ngày bắt đầu)',
-  SERVICE_PERIOD: 'Khoản chia theo kỳ dịch vụ nhiều tháng',
-  SERVICE_OTHER_MONTH: 'Kỳ dịch vụ là tháng khác (trả trước / trả sau)',
-  NO_CATEGORY: 'Dòng phiếu chưa có hạng mục — KQKD bỏ qua dòng này',
   CHANGED_AFTER_CLOSE: 'Phiếu đổi sau khi chốt (số chốt khác số hiện tại)',
-  OTHER: 'Khác — mở phiếu để xem',
+  FORMULA_DRIFT: 'Lệch công thức chia kỳ với Báo cáo LN — lỗi kỹ thuật, báo người làm phần mềm',
 };
+
+/** Phần chủ nhà theo toà × tháng cho dòng "Lợi nhuận của iHome" trên Báo cáo LN (chủ chốt 22/10). */
+export const landlordIhomeProfitSchema = z.array(z.object({
+  building_id: z.string().uuid(),
+  period_month: isoDate,
+  /** CLOSED: số đã chốt · OPEN: số tạm tính (theo kỳ, phiếu đã duyệt). */
+  status: z.enum(['OPEN', 'CLOSED']),
+  profit: money,
+  manager_share: money,
+  landlord_share: money,
+}));
+export type LandlordIhomeProfitRow = z.infer<typeof landlordIhomeProfitSchema>[number];
+
+/**
+ * Lợi nhuận của iHome = tổng lợi nhuận đang xem − phần chủ nhà của các toà vận hành có trong phạm vi
+ * (toà đang lọc × tháng đang xem). Phần chủ nhà vẫn tính nhưng không hiện thành dòng riêng.
+ */
+export function ihomeProfitOf(
+  totalProfit: number,
+  rows: readonly LandlordIhomeProfitRow[],
+  scope: { months: readonly string[]; buildingIds: readonly string[] | null },
+): { profit: number; landlordShare: number; operatedCount: number; provisional: boolean } {
+  const months = new Set(scope.months.map(monthKey));
+  const buildings = scope.buildingIds ? new Set(scope.buildingIds) : null;
+  const hit = rows.filter((r) => months.has(monthKey(r.period_month)) && (!buildings || buildings.has(r.building_id)));
+  const landlordShare = hit.reduce((s, r) => s + r.landlord_share, 0);
+  return {
+    profit: totalProfit - landlordShare,
+    landlordShare,
+    operatedCount: new Set(hit.map((r) => r.building_id)).size,
+    provisional: hit.some((r) => r.status === 'OPEN'),
+  };
+}
 
 const FIXED_FEE_LABEL: Record<string, string> = {
   tien_nha: 'Tiền nhà', dien: 'Điện', nuoc: 'Nước', internet: 'Internet', quan_ly: 'Phí quản lý',

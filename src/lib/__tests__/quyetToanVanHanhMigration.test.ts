@@ -731,50 +731,136 @@ describe("cảnh báo và đối chiếu", () => {
     });
   });
 
-  it("đối chiếu KQKD: khớp khi không lệch kỳ; hoá đơn kỳ khác hiện từng phiếu và cộng đúng", async () => {
+  it("theo kỳ: tiền phòng hoá đơn tháng 02 thu sớm ngày 28/01 vào ĐÚNG tháng 02 (như Báo cáo LN); đối chiếu khớp từng đồng", async () => {
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
       const jan0 = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
       expect(jan0.kqkd_bridge).toEqual({ kqkd_profit: 8_870_000, settlement_profit: 8_870_000, rows: [] });
 
-      // tiền phòng hoá đơn tháng 02 thu ngày 28/01: quyết toán tính tháng 01, KQKD tính tháng 02
       await asPostgres();
       await db.query("INSERT INTO public.invoices(id, billing_month) VALUES ($1, '2025-02')", [id(901)]);
-      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-28", hoaDon: id(901), dong: [{ lop: "PNL", tien: 500_000 }] });
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-28", hoaDon: id(901), ten: "Tiền phòng T2 thu sớm",
+        dong: [{ lop: "PNL", tien: 500_000 }] });
       await asUser(CHU_A);
       const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
       const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
-      expect(jan.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
-        .toEqual([["INVOICE_PERIOD", 500_000, 0]]);
-      expect(feb.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
-        .toEqual([["VOUCHER_OTHER_MONTH", 0, 500_000]]);
+      // tháng 01 không đổi; tháng 02 có thêm 500k chủ nhà thu (lập ngày 28/01)
+      expect(jan.statement!.totals.profit).toBe(8_870_000);
+      expect(jan.statement!.vouchers.some((v) => v.name === "Tiền phòng T2 thu sớm")).toBe(false);
+      expect(feb.statement!.totals.landlord_collected).toBe(1_500_000);
+      expect(feb.statement!.totals.profit).toBe(-1_500_000);
+      expect(feb.statement!.vouchers.find((v) => v.name === "Tiền phòng T2 thu sớm"))
+        .toMatchObject({ voucher_date: "2025-01-28", side: "LANDLORD", group: "PNL", amount: 500_000 });
       for (const m of [jan, feb]) {
-        const b = m.kqkd_bridge!;
-        // khớp từng đồng: KQKD = quyết toán + Σ(KQKD − quyết toán) của các phiếu lệch
-        expect(b.settlement_profit).toBe(m.statement!.totals.profit);
-        expect(b.kqkd_profit).toBe(b.settlement_profit + b.rows.reduce((s, r) => s + r.kqkd_amount - r.settlement_amount, 0));
+        expect(m.kqkd_bridge?.rows).toEqual([]);
+        expect(m.kqkd_bridge?.settlement_profit).toBe(m.statement!.totals.profit);
+        expect(m.kqkd_bridge?.kqkd_profit).toBe(m.statement!.totals.profit);
       }
-      expect(feb.kqkd_bridge?.kqkd_profit).toBe(-1_500_000);
     });
   });
 
-  it("đối chiếu KQKD: nhãn lý do đúng ngữ cảnh — kỳ dịch vụ tháng khác, phiếu đổi sau khi chốt", async () => {
+  it("theo kỳ: kỳ dịch vụ 2 tháng chia đều 2 tháng; phiếu sửa sau khi chốt ⇒ 'đổi sau khi chốt'", async () => {
     await trongGiaoDich(async () => {
       await asPostgres();
-      // trả trong tháng 01 cho kỳ dịch vụ đúng một tháng 02
-      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-25",
-        dong: [{ lop: "PNL", tien: 120_000, tu: "2025-02-01", den: "2025-02-28" }] });
+      // trả trong tháng 01 cho kỳ dịch vụ 01/02–31/03 (2 tháng)
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-25", ten: "Dịch vụ quý",
+        dong: [{ lop: "PNL", tien: 120_000, tu: "2025-02-01", den: "2025-03-31" }] });
       await asUser(CHU_A);
-      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
-      expect(jan.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
-        .toEqual([["SERVICE_OTHER_MONTH", -120_000, 0]]);
+      const [jan, feb, mar] = await Promise.all(["2025-01-01", "2025-02-01", "2025-03-01"]
+        .map(async (m) => settlementMonthSchema.parse(await thang(TOA_A, m))));
+      expect(jan.statement!.vouchers.some((v) => v.name === "Dịch vụ quý")).toBe(false);
+      expect(feb.statement!.vouchers.find((v) => v.name === "Dịch vụ quý")?.amount).toBe(60_000);
+      expect(mar.statement!.vouchers.find((v) => v.name === "Dịch vụ quý")?.amount).toBe(60_000);
+      expect(feb.statement!.totals.manager_paid).toBe(3_060_000);
+      for (const m of [jan, feb, mar]) expect(m.kqkd_bridge?.rows).toEqual([]);
       // tháng 02 đã chốt, sau đó phiếu chi của tháng bị sửa ⇒ "đổi sau khi chốt"
       await chot("2025-02-01");
       await asPostgres();
       await db.query("UPDATE public.income_expense_items SET amount = 2500000 WHERE income_expense_id = $1", [PHIEU_LO_CHI]);
       await asUser(CHU_A);
+      const feb2 = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb2.is_stale).toBe(true);
+      expect(feb2.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
+        .toEqual([["CHANGED_AFTER_CLOSE", -3_000_000, -2_500_000]]);
+    });
+  });
+
+  it("bản chép luật kỳ (landlord_kqkd_lines_v1) khớp TỪNG ĐỒNG với định nghĩa sống của fa_accrual_allocations", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      // đủ mọi nhánh xếp tháng: hoá đơn, hoá đơn không dòng, kỳ chia lẻ nhiều tháng, kỳ ngược, không kỳ,
+      // phiếu không dòng, ép KQKD, hạng mục không tồn tại, phiếu chờ duyệt (chỉ bản chép có)
+      await db.query("INSERT INTO public.invoices(id, billing_month) VALUES ($1, '2025-03'), ($2, '2025-04')", [id(911), id(912)]);
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-02-27", hoaDon: id(911), dong: [{ lop: "PNL", tien: 333_333 }, { lop: "DEPOSIT", tien: 1_000 }] });
+      await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-03-02", hoaDon: id(912), tong: 70_000 });
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-03", dong: [{ lop: "PNL", tien: 100_001, tu: "2025-01-15", den: "2025-04-02" }] });
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-03", dong: [{ lop: "PNL", tien: 40_000, tu: "2025-03-20", den: "2025-03-01" }] });
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-03-09", kqkd: true, dong: [{ lop: "DEPOSIT", tien: 9_000, tu: "2025-03-01" }] });
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-03-10", loaiHangMuc: id(399), dong: [{ lop: "PNL", tien: 7_000 }] });
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-03-11", trangThai: "UNAPPROVED", dong: [{ lop: "PNL", tien: 8_000, tu: "2025-03-01", den: "2025-04-30" }] });
+      await db.query("INSERT INTO public.super_admins VALUES ($1) ON CONFLICT DO NOTHING", [SUPER]);
+      await asUser(SUPER);
+      const canon = await db.query<{ k: string; s: string }>(
+        `SELECT a.month || '|' || a.voucher_id || '|' || upper(a.side) AS k, sum(a.amount)::text AS s
+           FROM public.fa_accrual_allocations('2024-12-01'::date, '2025-05-01'::date, ARRAY[$1]::uuid[]) a
+          GROUP BY 1 ORDER BY 1`, [TOA_A]);
+      await asPostgres();
+      const ban = await db.query<{ k: string; s: string }>(
+        `SELECT l.month || '|' || l.voucher_id || '|' || upper(l.side) AS k, sum(l.amount)::text AS s
+           FROM app_private.landlord_kqkd_lines_v1($1, '2024-12-01'::date, '2025-05-01'::date) l
+          WHERE l.approval_status = 'APPROVED'
+          GROUP BY 1 ORDER BY 1`, [TOA_A]);
+      expect(canon.rows.length).toBeGreaterThan(20);
+      expect(ban.rows.map((r) => [r.k, Number(r.s)])).toEqual(canon.rows.map((r) => [r.k, Number(r.s)]));
+      // phiếu chờ duyệt chỉ có ở bản chép, chia 2 tháng 4k + 4k
+      const cho = await db.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM app_private.landlord_kqkd_lines_v1($1, '2025-03-01'::date, '2025-04-01'::date) l
+          WHERE l.approval_status = 'UNAPPROVED' AND l.amount = 4000`, [TOA_A]);
+      expect(Number(cho.rows[0].n)).toBe(2);
+    });
+  });
+
+  it("khoản lãi lỗ có kỳ trước tháng áp dụng (phiếu lập sau): cảnh báo ở tháng đầu, không tính, không chặn chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_CHU_NHA, thang: "2025-01-04", ten: "Điện tháng 12 trả muộn",
+        dong: [{ lop: "PNL", tien: 450_000, tu: "2024-12-01", den: "2024-12-31" }] });
+      await asUser(CHU_A);
+      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(jan.statement!.totals.profit).toBe(8_870_000);
+      expect(jan.warnings?.pre_start_period).toMatchObject({ voucher_count: 1, expense: 450_000 });
+      expect(jan.warnings?.pre_start_period?.vouchers[0]).toMatchObject({ name: "Điện tháng 12 trả muộn", amount: 450_000 });
+      expect(jan.close_blockers).not.toContain("PRE_START_PENDING");
       const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
-      expect(feb.kqkd_bridge?.rows.find((r) => r.settlement_amount === -3_000_000)?.reason).toBe("CHANGED_AFTER_CLOSE");
+      expect(feb.warnings?.pre_start_period).toBeNull();
+    });
+  });
+
+  it("phần chủ nhà cho Báo cáo LN: đúng số từng tháng (chốt lấy số đã chốt), chỉ toà người gọi xem được", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await chot("2025-02-01");
+      // sau khi chốt, phiếu tháng 02 bị sửa: phần chủ nhà vẫn lấy SỐ ĐÃ CHỐT, không lấy số sống
+      await asPostgres();
+      await db.query("UPDATE public.income_expense_items SET amount = 2500000 WHERE income_expense_id = $1", [PHIEU_LO_CHI]);
+      await asUser(CHU_A);
+      const rows = await rpc<Json[]>("public.landlord_ihome_profit_v1($1::date, $2::date)", ["2024-11-01", "2025-03-01"]);
+      // trước tháng áp dụng (01/2025) không có dòng: cả lợi nhuận là của iHome
+      expect(rows.map((r) => [r.period_month, r.status])).toEqual([
+        ["2025-01-01", "OPEN"], ["2025-02-01", "CLOSED"], ["2025-03-01", "OPEN"]]);
+      expect(rows.every((r) => r.building_id === TOA_A)).toBe(true);
+      expect([so(rows[0].profit), so(rows[0].manager_share), so(rows[0].landlord_share)]).toEqual([8_870_000, 2_661_000, 6_209_000]);
+      expect([so(rows[1].profit), so(rows[1].manager_share), so(rows[1].landlord_share)]).toEqual([-2_000_000, 0, -2_000_000]);
+      for (const r of rows) {
+        const m = settlementMonthSchema.parse(await thang(TOA_A, String(r.period_month)));
+        expect([r.status, so(r.profit), so(r.manager_share), so(r.landlord_share)]).toEqual(
+          [m.status, m.statement!.totals.profit, m.statement!.totals.manager_share, m.statement!.totals.landlord_share]);
+      }
+      // công ty khác: không thấy toà nào; anon: không có quyền gọi
+      await asUser(CHU_B);
+      expect(await rpc<Json[]>("public.landlord_ihome_profit_v1($1::date, $2::date)", ["2025-01-01", "2025-03-01"])).toEqual([]);
+      await asUser(null);
+      await expectLoi("SELECT public.landlord_ihome_profit_v1('2025-01-01'::date, '2025-03-01'::date)", [], "42501");
     });
   });
 

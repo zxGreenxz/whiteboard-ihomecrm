@@ -20,10 +20,14 @@
 
 `app_private.landlord_settlement_compute_v1(toà, tháng)`; web và link chủ nhà chỉ hiển thị.
 
-- **Phiếu tính:** phiếu của toà, ngày phiếu trong tháng, `approval_status = 'APPROVED'`; dòng tính như KQKD canonical
+- **Phiếu tính:** phiếu của toà, `approval_status = 'APPROVED'`; dòng tính như KQKD canonical
   (`fa_accrual_allocations`): `business_result_accounting IS DISTINCT FROM false` và
   (`business_result_accounting IS TRUE` hoặc `accounting_class = 'PNL'`); phiếu không có dòng hạng mục lấy `total_amount`.
-- **Khác KQKD đúng một điểm:** chia tháng theo **ngày phiếu** (tiền thực thu/chi), vì đây là bàn giao tiền.
+- **Chia tháng theo kỳ (chủ chốt 22/10):** dòng lãi lỗ vào tháng theo **kỳ ghi trên hạng mục**, đúng luật của
+  `fa_accrual_allocations` (hoá đơn ⇒ tháng hoá đơn; kỳ nhiều tháng ⇒ chia đều; không kỳ ⇒ ngày phiếu) qua bản chép
+  `app_private.landlord_kqkd_lines_v1` (không xét quyền người gọi — link chủ nhà — và có cả phiếu chờ duyệt; test so từng đồng
+  với hàm gốc) ⇒ lợi nhuận quyết toán = lợi nhuận toà trên Báo cáo LN (phần đã duyệt). Cọc / trả thừa / không tính / tiền thối
+  theo **ngày phiếu** (dòng tiền thật). Bản 21/10 chia theo ngày phiếu — đã bỏ.
 - **Bên giữ tiền:** sổ quỹ của phiếu nằm trong danh sách "sổ chủ nhà" của toà ⇒ CHỦ NHÀ; mọi sổ khác
   (kể cả sổ ảo cấn trừ thanh lý, phiếu không sổ) ⇒ QUẢN LÝ.
 
@@ -56,8 +60,12 @@ Kiểm chứng: chủ nhà đang giữ (chủ nhà thu − chủ nhà chi + coc_
 - **Điều khoản theo tháng** (bổ sung sau rà 21/10): % và sổ chủ nhà lưu theo `valid_from`; sửa "từ tháng X" (chưa chốt) chỉ
   ghi trường đã đổi so với điều khoản đang áp ở X, cho X và các mốc sau; tháng đã chốt giữ nguyên. Không dời tháng áp dụng ra
   sau tháng đã chốt. Xác nhận số dư đầu kỳ chỉ nhận khi đúng số cọc trước kỳ màn đã hiện và cơ sở không đổi trong lần lưu.
-- **Đối chiếu KQKD** (chỉ màn quản trị): lợi nhuận quyết toán (ngày phiếu) cạnh lợi nhuận KQKD toà (kỳ, `fa_accrual_allocations`)
-  và từng phiếu làm hai số khác nhau. Cảnh báo: khoản chi cố định chưa có phiếu, phiếu ở toà khác nhắc mã toà.
+- **Đối chiếu Báo cáo LN** (chỉ màn quản trị): lợi nhuận quyết toán cạnh lợi nhuận toà theo `fa_accrual_allocations` — cùng luật
+  kỳ nên khớp từng đồng; lệch chỉ khi phiếu đổi sau khi chốt (hoặc lỗi công thức). Cảnh báo: khoản chi cố định chưa có phiếu,
+  phiếu ở toà khác nhắc mã toà, khoản lãi lỗ có kỳ trước tháng áp dụng mà phiếu lập sau (không tính, không chặn).
+- **Dòng "Lợi nhuận của iHome" trên Báo cáo LN** (chủ chốt 22/10): giữ tổng lợi nhuận, thêm một dòng = tổng − phần chủ nhà
+  của toà vận hành trong phạm vi đang xem (`public.landlord_ihome_profit_v1`; tháng chốt lấy số đã chốt, tháng mở tạm tính).
+  Phần chủ nhà không hiện thành dòng riêng.
 - **Cộng dồn:** còn lại = Σ quyết toán các tháng **đã chốt** − chủ nhà đã trả + quản lý đã trả. Màn hiện thêm số
   "gồm cả tháng tạm tính".
 
@@ -131,7 +139,7 @@ Quyền: `public.is_super_admin()` hoặc chủ công ty của đúng công ty s
 
 ## 9. Mặc định đã tự chọn (chủ đổi được khi xem thử)
 
-- Tính theo **tiền thực thu/chi theo ngày phiếu**, chỉ phiếu đã duyệt.
+- Lợi nhuận chia **theo kỳ** trên hạng mục (chủ chốt 22/10), chỉ phiếu đã duyệt; tiền cọc / trả thừa theo ngày phiếu.
 - Chỉ **chốt tháng đã qua** và không còn phiếu chờ duyệt.
 - Thanh toán quyết toán ghi trên trang này; **không** tự sinh phiếu thu/chi trong sổ quỹ.
 - Link chủ nhà: không cần đăng nhập, thu hồi được, không lộ id nội bộ; chủ nhà thấy tên phiếu và số tiền, tên sổ chỉ hiện
@@ -139,5 +147,5 @@ Quyền: `public.is_super_admin()` hoặc chủ công ty của đúng công ty s
 
 ## 10. Ngoài phạm vi đợt này
 
-- Báo cáo Lợi nhuận / KQKD và Chốt LN tháng **không đổi** — 3 toà vẫn hiện LN toàn toà ở đó.
+- Chốt LN tháng (Profit Close) **không đổi** — vẫn chốt LN toàn toà; Báo cáo LN chỉ thêm dòng "Lợi nhuận của iHome".
 - Hermes chưa đọc quyết toán vận hành.

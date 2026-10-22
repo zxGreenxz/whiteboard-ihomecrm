@@ -170,8 +170,8 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <Kpi label="Doanh thu" value={t.revenue} hint="đã duyệt · theo ngày phiếu" />
-          <Kpi label="Chi phí" value={t.expense} hint="đã duyệt · theo ngày phiếu" />
+          <Kpi label="Doanh thu" value={t.revenue} hint="đã duyệt · theo kỳ trên phiếu" />
+          <Kpi label="Chi phí" value={t.expense} hint="đã duyệt · theo kỳ trên phiếu" />
           <Kpi label="Lợi nhuận" value={t.profit} tone={t.profit < 0 ? 'neg' : 'pos'} />
           <Kpi label={`Phần quản lý (${pct}%)`} value={t.manager_share} hint={t.profit <= 0 ? 'Lỗ hoặc hoà — không tính' : undefined} />
           <Kpi label="Phần chủ nhà" value={t.landlord_share} tone={t.landlord_share < 0 ? 'neg' : undefined} />
@@ -261,7 +261,7 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
           </p>
         )}
 
-        <VoucherBreakdown vouchers={st.vouchers} totals={t} mode={mode} />
+        <VoucherBreakdown vouchers={st.vouchers} totals={t} mode={mode} periodMonth={st.period_month} />
 
         {mode === 'admin' && month.kqkd_bridge && <KqkdBridgeBlock bridge={month.kqkd_bridge} />}
       </CardContent>

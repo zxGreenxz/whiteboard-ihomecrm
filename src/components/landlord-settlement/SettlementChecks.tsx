@@ -1,6 +1,6 @@
 // Kiểm tra quanh quyết toán — CHỈ màn quản trị. Không đổi số quyết toán; chỉ làm lộ những chỗ có
-// thể làm sai số: khoản chi cố định chưa có phiếu, phiếu ở toà khác có nhắc mã toà, phiếu chờ duyệt
-// ghi ngày trước tháng áp dụng, và đối chiếu từng phiếu với KQKD toà (theo kỳ). Số lấy nguyên server.
+// thể làm sai số: khoản chi cố định chưa có phiếu, phiếu ở toà khác có nhắc mã toà, khoản nằm ngoài
+// kỳ áp dụng, và đối chiếu từng phiếu với KQKD toà (Báo cáo LN). Số lấy nguyên server.
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { formatVND } from '@/lib/utils';
 import {
@@ -43,8 +43,10 @@ export function SettlementWarningsBlock({ warnings }: { warnings: SettlementWarn
   const missing = warnings.missing_fixed_expenses;
   const rel = warnings.related_elsewhere;
   const pre = warnings.pre_start_pending;
+  const ngoaiKy = warnings.pre_start_period;
   const soChuNha = warnings.landlord_account_elsewhere;
-  if (missing.length === 0 && rel.voucher_count === 0 && soChuNha.voucher_count === 0 && (!pre || pre.voucher_count === 0)) return null;
+  if (missing.length === 0 && rel.voucher_count === 0 && soChuNha.voucher_count === 0
+      && (!pre || pre.voucher_count === 0) && (!ngoaiKy || ngoaiKy.voucher_count === 0)) return null;
   return (
     <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20"
       data-testid="settlement-warnings">
@@ -78,9 +80,19 @@ export function SettlementWarningsBlock({ warnings }: { warnings: SettlementWarn
         <div>
           <p>
             {pre.voucher_count} phiếu chờ duyệt ghi ngày trước tháng áp dụng (thu {formatVND(pre.income)} · chi {formatVND(pre.expense)}) —
-            duyệt xong cũng không rơi vào tháng nào của quyết toán. Duyệt hoặc huỷ trước khi chốt tháng đầu tiên.
+            duyệt xong có thể đổi số dư đầu kỳ. Duyệt hoặc huỷ trước khi chốt tháng đầu tiên.
           </p>
           <VoucherLines rows={pre.vouchers} total={pre.voucher_count} />
+        </div>
+      )}
+      {ngoaiKy && ngoaiKy.voucher_count > 0 && (
+        <div>
+          <p>
+            {ngoaiKy.voucher_count} phiếu lập từ tháng áp dụng nhưng kỳ ghi trên hạng mục là <b>trước</b> tháng áp dụng
+            (thu {formatVND(ngoaiKy.income)} · chi {formatVND(ngoaiKy.expense)}) — thuộc giai đoạn trước khi vận hành cho chủ nhà nên
+            <b> không tính</b> vào quyết toán. Nếu tiền đi từ sổ chủ nhà, tính vào số dư đầu kỳ khi đối chiếu với chủ nhà.
+          </p>
+          <VoucherLines rows={ngoaiKy.vouchers} total={ngoaiKy.voucher_count} />
         </div>
       )}
     </div>
@@ -89,25 +101,28 @@ export function SettlementWarningsBlock({ warnings }: { warnings: SettlementWarn
 
 export function KqkdBridgeBlock({ bridge }: { bridge: KqkdBridge }) {
   const diff = bridge.kqkd_profit - bridge.settlement_profit;
+  const loiKyThuat = bridge.rows.some((r) => r.reason === 'FORMULA_DRIFT');
   return (
-    <details className="rounded-lg border p-3 text-sm" data-testid="settlement-kqkd-bridge">
+    <details className="rounded-lg border p-3 text-sm" data-testid="settlement-kqkd-bridge" open={loiKyThuat}>
       <summary className="cursor-pointer font-medium">
-        Đối chiếu với KQKD toà (theo kỳ) ·{' '}
-        {diff === 0
-          ? <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />khớp</span>
-          : <span className="text-amber-700 dark:text-amber-400">lệch {formatVND(diff)} ({bridge.rows.length} phiếu)</span>}
+        Đối chiếu với Báo cáo LN (KQKD toà) ·{' '}
+        {diff === 0 && bridge.rows.length === 0
+          ? <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />khớp từng đồng</span>
+          : <span className={loiKyThuat ? 'text-destructive' : 'text-amber-700 dark:text-amber-400'}>
+              lệch {formatVND(diff)} ({bridge.rows.length} phiếu)
+            </span>}
       </summary>
       <p className="mt-2 text-xs text-muted-foreground">
-        Quyết toán tính theo <b>ngày phiếu</b> (tiền thực thu/chi, phiếu đã duyệt). KQKD / Chốt LN tính theo <b>kỳ</b> hoá đơn hoặc kỳ dịch vụ.
-        Hai số chênh nhau đúng bằng các phiếu liệt kê dưới đây.
+        Quyết toán và Báo cáo LN cùng chia tháng <b>theo kỳ</b> ghi trên hạng mục phiếu (hoá đơn theo tháng hoá đơn), cùng chỉ tính
+        phiếu đã duyệt — nên lợi nhuận hai nơi bằng nhau. Lệch chỉ khi tháng đã chốt mà phiếu đổi sau đó (mở chốt rồi chốt lại để lấy số mới).
       </p>
       <dl className="mt-2 space-y-1">
         <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Lợi nhuận quyết toán (theo ngày phiếu)</dt>
+          <dt className="text-muted-foreground">Lợi nhuận trên quyết toán</dt>
           <dd className="whitespace-nowrap tabular-nums">{formatVND(bridge.settlement_profit)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Lợi nhuận KQKD toà (theo kỳ)</dt>
+          <dt className="text-muted-foreground">Lợi nhuận toà trên Báo cáo LN (đã duyệt)</dt>
           <dd className="whitespace-nowrap tabular-nums">{formatVND(bridge.kqkd_profit)}</dd>
         </div>
       </dl>
@@ -119,7 +134,7 @@ export function KqkdBridgeBlock({ bridge }: { bridge: KqkdBridge }) {
                 <th className="px-2 py-1.5 text-left font-medium">Phiếu</th>
                 <th className="px-2 py-1.5 text-left font-medium">Vì sao lệch</th>
                 <th className="px-2 py-1.5 text-right font-medium">Quyết toán</th>
-                <th className="px-2 py-1.5 text-right font-medium">KQKD</th>
+                <th className="px-2 py-1.5 text-right font-medium">Báo cáo LN</th>
               </tr>
             </thead>
             <tbody>

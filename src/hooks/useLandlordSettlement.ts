@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   closeReceiptSchema,
+  landlordIhomeProfitSchema,
   landlordOperationOptionsSchema,
   landlordOperationsListSchema,
   linkCreateReceiptSchema,
@@ -53,6 +54,7 @@ export const landlordSettlementKeys = {
   month: (buildingId: string, month: string) => [KEY, 'month', buildingId, month] as const,
   overview: (buildingId: string) => [KEY, 'overview', buildingId] as const,
   links: (buildingId: string) => [KEY, 'links', buildingId] as const,
+  ihome: (from: string, to: string) => [KEY, 'ihome', from, to] as const,
   public: (token: string, month: string | null) => [`${KEY}-public`, token, month ?? 'latest'] as const,
 };
 
@@ -121,6 +123,23 @@ export const useLandlordShareLinks = (buildingId: string | null, enabled = true)
       if (error) throw error;
       return shareLinksSchema.parse(data);
     },
+  });
+
+/**
+ * Phần chủ nhà theo toà × tháng cho dòng "Lợi nhuận của iHome" trên Báo cáo LN (tháng chốt = số đã chốt,
+ * tháng mở = số tạm tính). Chỉ toà người gọi xem được. from/to: 'YYYY-MM-01'.
+ */
+export const useLandlordIhomeProfit = (from: string | null, to: string | null) =>
+  useQuery({
+    meta: { label: 'lợi nhuận của iHome', errorDisplay: 'inline' },
+    queryKey: landlordSettlementKeys.ihome(from ?? '', to ?? ''),
+    enabled: !!from && !!to,
+    queryFn: async () => {
+      const { data, error } = await goiRpcQuyetToan('landlord_ihome_profit_v1', { p_from: from, p_to: to });
+      if (error) throw error;
+      return landlordIhomeProfitSchema.parse(data);
+    },
+    staleTime: 30_000,
   });
 
 /**
