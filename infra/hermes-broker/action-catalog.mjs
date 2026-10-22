@@ -19,7 +19,7 @@ const MAX_PARAMS = 16, MAX_ACTIONS = 128, MAX_LIST = 20, MAX_RECORD_FIELDS = 12;
 // Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh).
 const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool']);
 const NAME_LABELS = Object.freeze({ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn',
-  category: 'hạng mục', cashbook: 'sổ quỹ' });
+  category: 'hạng mục', cashbook: 'sổ quỹ', jobType: 'loại việc' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
 const MAX_VND = 9_999_999_999_999;
 const fail = () => { throw new TypeError('invalid_action_catalog'); };
@@ -58,6 +58,8 @@ export const param = Object.freeze({
   },
   date: ({ optional = false } = {}) => spec('date', optional, 'ngày YYYY-MM-DD (giờ Việt Nam)'),
   month: ({ optional = false } = {}) => spec('month', optional, 'tháng YYYY-MM'),
+  // Trang Công việc (Đợt 2b): giờ trong ngày của hạn việc; trống = cuối ngày như web.
+  time: ({ optional = false } = {}) => spec('time', optional, 'giờ HH:MM (giờ Việt Nam)'),
   oneOf: (values, { optional = false } = {}) => {
     if (!Array.isArray(values) || !values.length || values.length > 16 || values.some(value => typeof value !== 'string' || !/^[A-Za-z0-9_]{1,32}$/.test(value)) ||
         new Set(values).size !== values.length) fail();
@@ -83,7 +85,7 @@ export const param = Object.freeze({
     return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max });
   },
 });
-const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool', 'attachments', 'list']);
+const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
 
 /** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs). */
 export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], ...rest } = {}) {
@@ -164,6 +166,7 @@ function checkValue(spec, raw) {
     }
     case 'date': return date(raw) ? raw : undefined;
     case 'month': return month(raw) ? raw : undefined;
+    case 'time': return typeof raw === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(raw.trim()) ? raw.trim() : undefined;
     case 'oneOf': return typeof raw === 'string' && spec.values.includes(raw.trim()) ? raw.trim() : undefined;
     case 'bool': return typeof raw === 'boolean' ? raw : raw === 'true' ? true : raw === 'false' ? false : undefined;
     default: return undefined;

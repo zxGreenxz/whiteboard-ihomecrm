@@ -46,6 +46,7 @@ export const readsSql = () => {
   const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_LARGEST_PATH, 'utf8'), 'public.hermes_domain_read_v2');
   return applied.replace(fn(applied, 'public.hermes_domain_read_v2'), () => live);
 };
+// database: PGlite-shaped { exec, query, close } over real PostgreSQL (one-off PG17 checks, e.g. concurrency); default PGlite.
 export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null, database } = {}) {
   const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'], database }), { db } = f;
   await db.exec(`CREATE SCHEMA extensions;

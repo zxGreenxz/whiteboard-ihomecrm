@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T16:27:29.674Z",
+  "generatedAt": "2026-10-22T17:27:00.709Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 822,
+    "ledger-applied": 825,
     "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
@@ -12818,6 +12818,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022031548_hermes_task_action_create_v1.sql",
+      "version": "20261022031548",
+      "name": "hermes_task_action_create_v1",
+      "scheme": "timestamp14",
+      "sha256": "994d3603c3e1ffc6df95ee9b337623d6c720228aff4978391b19163e60b85aa6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:02:33.121Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql",
+      "version": "20261022031600",
+      "name": "jobs_assignee_visible_v1",
+      "scheme": "timestamp14",
+      "sha256": "fd7f979ab80fcfc7bc7084ffd4ec79821eb267c22a13547debefbefe9cbfa0b6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:05:18.244Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql",
       "version": "20261022044120",
       "name": "hermes_name_directory_virtual_v1",
@@ -12892,6 +12914,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T07:21:41.837Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql",
+      "version": "20261022065634",
+      "name": "hermes_task_type_infer_v1",
+      "scheme": "timestamp14",
+      "sha256": "77fdaeac113cebe12e64322c5c7f279500ee5ad6b0b4cb5956ef9a38dec721ec",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:07:39.783Z|bien-nhan-backup"
       ]
     },
     {

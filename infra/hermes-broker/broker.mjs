@@ -1,4 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
+import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
 import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -486,6 +487,13 @@ export function createBroker({
     const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
+  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
+  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
+  // còn nguyên, không mất đường tạo việc.
+  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
+    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedSaleTools = identity => [
     ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
@@ -494,7 +502,7 @@ export function createBroker({
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
     ...(mayReadRooms(identity) ? [ROOM_TOOL] : []),
-    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
+    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseLegacyTask(identity, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
     ...(action ? action.listed(identity.effective) : []),
@@ -965,7 +973,7 @@ export function createBroker({
         // tool_call_timing still names it (code task_options_hint / task_options_legacy, outcome ok).
         const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
         return call(async (identity, signal) => {
-          if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (!mayUseLegacyTask(identity, taskOperation)) fail('tool_not_available');
           if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });

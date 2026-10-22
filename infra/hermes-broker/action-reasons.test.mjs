@@ -13,7 +13,7 @@ import { createMcpHttpServer } from './mcp-http.mjs';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 
 // Mã riêng của từng trang (Đợt 2), mỗi trang một khối; trang gộp sau thêm khối của mình.
-const PAGE_REJECT_REASONS = { expense: ['system_voucher', 'evidence_required'],
+const PAGE_REJECT_REASONS = { expense: ['system_voucher', 'evidence_required'], task: ['task_quota_user', 'task_quota_pair'],
   invoice: ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required'] };
 const PAGE_CODES = Object.values(PAGE_REJECT_REASONS).flat();
 // Hoá đơn Mốc 3: ba mã dạng needs_input (hỏi lại người dùng, không phải lỗi).
@@ -26,7 +26,7 @@ test('danh sách đóng: 20 mã chung + mã riêng của trang, mỗi mã một 
   assert.deepEqual([...ACTION_INPUT_REASONS], ['unknown_action', 'invalid_params', 'name_unresolved', 'reason_required', 'amount_out_of_range',
     'date_out_of_range', 'not_found', ...PAGE_INPUT_CODES]);
   assert.equal(ACTION_REJECT_REASONS.length, 13 + PAGE_CODES.length);
-  assert.ok(PAGE_CODES.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang (Thu chi, Hoá đơn) dạng rejected là lỗi thật');
+  assert.ok(PAGE_CODES.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã riêng của trang (Thu chi, Công việc, Hoá đơn) là lỗi thật (dạng rejected)');
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {
