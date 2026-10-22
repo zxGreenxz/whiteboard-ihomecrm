@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1569,
-  "soFileDocBangFs": 407,
-  "tongLoiGoi": 988,
-  "khongPhanLoaiDuoc": 439,
+  "tongSoFileTest": 1570,
+  "soFileDocBangFs": 408,
+  "tongLoiGoi": 991,
+  "khongPhanLoaiDuoc": 442,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -1102,6 +1102,18 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-zalo-native/upstream.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-zalo-router/privacy-schema.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1876,12 +1888,6 @@
     },
     {
       "file": "infra/hermes-zalo-native/profile-provisioning.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-zalo-native/upstream.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

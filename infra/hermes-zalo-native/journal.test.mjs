@@ -50,6 +50,18 @@ test('private config refuses unknown grants, oversized files and hardlinks', t =
   fs.linkSync(tokenFile, path.join(root, 'linked-token'));
   assert.throws(() => readNativeConfig(file), /native/);
 });
+test('a media group claim writes all records in one snapshot or none', t => {
+  const { root } = fixture(t);
+  const scoped = { ...channel, pairedUid: '200' };
+  const journal = createNativeJournal(root, scoped);
+  const claimed = id => ({ id: nativeDigest([scoped.accountId, scoped.generation, '200', id]), digest: nativeDigest([id]),
+    status: 'dispatch_unknown', messageId: id, sentAt: 1, senderUid: '200', dispatchedAt: 2 });
+  assert.throws(() => journal.updateMany('inbound', [claimed('p1'), { ...claimed('p2'), status: 'queued' }]), /journal/);
+  assert.deepEqual(journal.values('inbound'), [], 'an invalid record aborts the whole claim');
+  assert.throws(() => journal.updateMany('inbound', [claimed('p1'), claimed('p1')]), /journal/);
+  journal.updateMany('inbound', [claimed('p1'), claimed('p2')]);
+  assert.deepEqual(createNativeJournal(root, scoped).values('inbound').map(record => record.messageId), ['p1', 'p2']);
+});
 test('Linux rejects shared permissions and symbolic paths', { skip: process.platform === 'win32' }, t => {
   const { root } = fixture(t);
   fs.chmodSync(root, 0o755);
