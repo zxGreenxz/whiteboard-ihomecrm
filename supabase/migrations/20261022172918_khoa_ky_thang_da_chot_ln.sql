@@ -46,14 +46,10 @@
 --   Hai giới hạn (app_private.ie_invoice_locked_month_v1):
 --     · hoá đơn của toà KHÁC ⇒ không phải thu nợ cũ của toà này ⇒ khoá như mọi phiếu;
 --     · khoản theo hoá đơn ĐÃ NẰM TRONG SỐ CHỐT (lập và duyệt trước lúc chốt — đúng tiêu chí
---       after_lock của RPC mục 4) ⇒ không gỡ / huỷ duyệt / sửa dòng được, kể cả qua
---       undo_invoice_payment_compat_v1 và unapprove_voucher (hai hàm không gọi
---       app_private.assert_period_open_for_edit_v1).
---   5. Cửa chặn chốt app_private.guard_profit_month_lock_pending_v1 (trigger
---      a10_profit_month_lock_requires_no_pending, DỰNG TỪ THÂN production md5 a388bdb8…): ngoài
---      phiếu chờ duyệt có NGÀY PHIẾU trong tháng đang chốt, đếm cả phiếu chờ duyệt (không theo
---      hoá đơn) có dòng KQKD mà KỲ rơi vào tháng đó — sau chốt phiếu đó không duyệt được nữa.
---      Câu báo giữ nguyên: "duyệt hoặc huỷ trước khi chốt".
+--       after_lock của RPC mục 4) ⇒ không gỡ / huỷ duyệt / sửa dòng được, kể cả qua nhánh xoá
+--       của undo_invoice_payment_compat_v1 và unapprove_voucher (hai hàm không gọi
+--       app_private.assert_period_open_for_edit_v1). Nhánh hoàn tác (REVERSED) lập phiếu đảo
+--       MỚI sau chốt ⇒ không bị chặn nhưng hiện ở after_lock.
 --   4. RPC CHỈ ĐỌC public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids): trong
 --      các toà×tháng ĐÃ CHỐT (profit_monthly LOCKED, có locked_at), trả
 --        · locked     — toà×tháng đã chốt (form phiếu báo lỗi trước khi lưu, tab Chốt LN);
@@ -65,6 +61,11 @@
 --      nhãn. Quyền: chỉ toà public.can_access_building (như fa_accrual_allocations); anon /
 --      chưa đăng nhập ⇒ 42501. Phiếu có hạng mục hạn chế mà người gọi không được xem (đúng
 --      luật policy income_expenses_restricted_select) vẫn đếm tiền nhưng che mã và tên.
+--   5. Cửa chặn chốt app_private.guard_profit_month_lock_pending_v1 (trigger
+--      a10_profit_month_lock_requires_no_pending, DỰNG TỪ THÂN production md5 a388bdb8…): ngoài
+--      phiếu chờ duyệt có NGÀY PHIẾU trong tháng đang chốt, đếm cả phiếu chờ duyệt (không theo
+--      hoá đơn) có dòng KQKD mà KỲ rơi vào tháng đó — sau chốt phiếu đó không duyệt được nữa.
+--      Câu báo giữ nguyên: "duyệt hoặc huỷ trước khi chốt".
 --
 -- KHÔNG ĐỤNG
 --   Không sửa dữ liệu cũ (phiếu đã có kỳ trong tháng đã chốt nằm yên, hiện ở after_lock).
