@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testsuite name="Hermes owner requests" time="2.484726" disabled="0" errors="0" tests="24" failures="0" skipped="0" hostname="DESKTOP-7IG3HQE">
+		<testcase name="H01 | Chủ trọ | Tìm phòng 101 thuộc tòa tôi được sửa." time="0.039436" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H02 | Sale | Cho tôi sửa phòng ở tòa ngoài phạm vi được giao." time="0.010727" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H03 | Quản lý | Đổi giá phòng 101 thành 3.100.000 đồng theo bản vừa mở." time="0.016283" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H04 | Quản lý | Lưu giá theo bản phòng đã cũ." time="0.011856" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H05 | Chủ công ty | Đăng chính sách mới: Wifi miễn phí." time="0.006750" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H06 | Chủ công ty | Tôi đồng ý nguyên văn bản chính sách vừa xem." time="0.008284" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H07 | Sale Admin | Dùng xác nhận cũ nhưng đổi chính sách thành miễn tiền điện." time="0.001711" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H08 | Sale Admin | Ghi thưởng sale 500.000 đồng vào ghi chú nội bộ." time="0.008217" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H09 | Sale | Tôi chỉ được quản lý ảnh; thay ảnh phòng đã tải lên." time="0.008040" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H10 | Sale | Tôi chỉ được quản lý ảnh; đổi thêm giá phòng." time="0.006893" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H11 | Chủ trọ | Lock tạm phòng 101 trong 6 giờ để khách đi xem." time="0.006713" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H12 | Sale | Lock phòng 101 trong 48 giờ." time="0.005217" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H13 | Quản lý | Mạng lỗi lúc lock; gửi lại đúng mã yêu cầu cũ sau ba ngày." time="0.009813" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H14 | Sale Admin | Giữ mã yêu cầu đã dùng nhưng đổi thời gian lock." time="0.008684" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H15 | Chủ trọ | Kiểm tra mã yêu cầu này đã xử lý chưa." time="0.005903" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H16 | Chủ công ty | Đã thu hồi quyền sửa của sale; thử tra lại biên nhận sửa cũ." time="0.010966" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H17 | Sale Admin | Báo cọc 2 triệu cho Khách An, mục tiêu cọc 3 triệu." time="0.006927" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H18 | Chủ công ty | Cho sale tạo cọc nhưng chưa cấp quyền duyệt qua Hermes." time="0.005384" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H19 | Quản lý | Đổi hạn thu thêm và ghi chú cọc theo phiên bản 1." time="0.007097" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H20 | Sale Admin | Gắn khách danh bạ vào cọc tên gợi nhớ." time="0.007295" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H21 | Quản lý | Gỡ lock của phòng vừa giữ cho khách xem." time="0.009614" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H22 | Sale Admin | Thu thêm 2 triệu vào cọc hiện tại." time="0.008073" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H23 | Sale | Tôi chỉ có quyền đọc phòng; hãy sửa giá giúp tôi." time="0.006221" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+		<testcase name="H24 | Sale | Tôi chỉ được quản lý ảnh; xem giá và thưởng nội bộ trước khi sửa ảnh." time="0.011097" classname="test" file="C:\Users\Nguyen Tam\codex-worktrees\sale-phong-action-audit-20261021\infra\hermes-broker\sale-owner-requests.test.mjs"/>
+	</testsuite>
+	<!-- tests 25 -->
+	<!-- suites 0 -->
+	<!-- pass 25 -->
+	<!-- fail 0 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 3488.6373 -->
+</testsuites>

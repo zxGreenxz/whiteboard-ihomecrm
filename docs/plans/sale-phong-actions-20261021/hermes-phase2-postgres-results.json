@@ -1,0 +1,85 @@
+{
+  "layer": "Actual local PostgreSQL canonical writers and CRM auth; synthetic platform session; no HTTP/LLM claim",
+  "results": [
+    {
+      "id": "HB01",
+      "request": "company: sửa thông tin và tạo/dừng chính sách trực tiếp bằng quyền Sale edit",
+      "status": "passed",
+      "detail": {
+        "status": "ACTIVE",
+        "cancelled": "CANCELLED"
+      }
+    },
+    {
+      "id": "HB02",
+      "request": "landlord: sửa thông tin và tạo/dừng chính sách trực tiếp bằng quyền Sale edit",
+      "status": "passed",
+      "detail": {
+        "status": "ACTIVE",
+        "cancelled": "CANCELLED"
+      }
+    },
+    {
+      "id": "HB03",
+      "request": "manager: sửa thông tin và tạo/dừng chính sách trực tiếp bằng quyền Sale edit",
+      "status": "passed",
+      "detail": {
+        "status": "ACTIVE",
+        "cancelled": "CANCELLED"
+      }
+    },
+    {
+      "id": "HB04",
+      "request": "saleAdmin: sửa thông tin và tạo/dừng chính sách trực tiếp bằng quyền Sale edit",
+      "status": "passed",
+      "detail": {
+        "status": "ACTIVE",
+        "cancelled": "CANCELLED"
+      }
+    },
+    {
+      "id": "HB05",
+      "request": "sale: sửa thông tin và tạo/dừng chính sách trực tiếp bằng quyền Sale edit",
+      "status": "passed",
+      "detail": {
+        "status": "ACTIVE",
+        "cancelled": "CANCELLED"
+      }
+    },
+    {
+      "id": "HB06",
+      "request": "Ngoài tòa/kết nối và công ty khác đều bị chặn trước khi ghi",
+      "status": "passed"
+    },
+    {
+      "id": "HB07",
+      "request": "Thay nội dung trên requestId cũ hoặc sai session revision không được ghi",
+      "status": "passed"
+    },
+    {
+      "id": "HB08",
+      "request": "Quyền Sale edit không mở công cụ ghi cọc hoặc bỏ qua money overlay",
+      "status": "passed"
+    },
+    {
+      "id": "HB09",
+      "request": "Thu hồi phạm vi/kết nối chặn cả đối soát biên nhận chính sách cũ",
+      "status": "passed"
+    },
+    {
+      "id": "HB10",
+      "request": "Bulk orchestration qua SQL thật: phòng1 ghi, phòng2 CAS cũ, phòng3 ngoài quyền",
+      "status": "passed"
+    },
+    {
+      "id": "HB11",
+      "request": "Bulk mất ACK sau commit thật dừng phòng sau và đối soát bằng mã từng phòng",
+      "status": "passed"
+    },
+    {
+      "id": "HB12",
+      "request": "Biên nhận patch cũ dạng object được đối soát/replay an toàn sau kiểm quyền, không ghi lần hai",
+      "status": "passed"
+    }
+  ]
+}

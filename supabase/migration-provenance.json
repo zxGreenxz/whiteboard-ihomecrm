@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T07:08:44.862Z",
+  "generatedAt": "2026-10-22T12:13:44.375Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 812,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 87,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12444,6 +12444,68 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261020183008_sale_reservation_deadline_received_scope_v1.sql",
+      "version": "20261020183008",
+      "name": "sale_reservation_deadline_received_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "b62067f3839aa07f301817476564bb014aede7564c5db1ded84e5f06874d36a0",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.sync_reservation_hold_terms_v1",
+        "function:app_private.sync_reservation_hold_terms_trigger_v1",
+        "function:public.read_reservation_deposit_received_v1",
+        "trigger:public.room_reservations.reservation_terms_projection",
+        "trigger:public.reservation_receipts.reservation_receipt_terms_projection"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020183120_sale_room_quick_operations.sql",
+      "version": "20261020183120",
+      "name": "sale_room_quick_operations",
+      "scheme": "timestamp14",
+      "sha256": "55200fd67c2fc0653b2a022af6e6ed957425cdb9aa14ec6ca607546a77dcecd3",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.sale_room_change_receipts",
+        "function:app_private.sale_room_can_v1",
+        "function:public.get_sale_room_inventory_v1",
+        "function:public.update_room_sale_info_v1",
+        "index:app_private.sale_room_change_receipts_room_idx"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020183546_hermes_sale_actions_v1.sql",
+      "version": "20261020183546",
+      "name": "hermes_sale_actions_v1",
+      "scheme": "timestamp14",
+      "sha256": "d3efe75edc9b3f254aa05fa40a4a6eec22f7ffd45dbd2ad4d475f75700fe34a2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_sale_action_receipts",
+        "function:app_private.hermes_sale_binding_v1",
+        "function:app_private.hermes_sale_buildings_v1",
+        "function:app_private.hermes_sale_keys_v1",
+        "function:app_private.hermes_sale_receipt_input_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020184631_zalo_broadcast_content_guard_v2.sql",
+      "version": "20261020184631",
+      "name": "zalo_broadcast_content_guard_v2",
+      "scheme": "timestamp14",
+      "sha256": "30431dd72cd7570b3b79c564e11c882aa3d05e620056581e6f2d12c24e9bd633",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.zalo_attach_broadcast_content_guard_v1",
+        "function:public.zalo_enqueue_broadcast_v2",
+        "function:public.zalo_enqueue_broadcast_oneshot_v2"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261020233934_hermes_domain_summary_v1.sql",
       "version": "20261020233934",
       "name": "hermes_domain_summary_v1",
@@ -12529,6 +12591,49 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T10:01:04.049Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021063721_sale_room_timed_policy_v1.sql",
+      "version": "20261021063721",
+      "name": "sale_room_timed_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "35e346ad0173daba5e2d6ceeee6b7a34bd0f678ddfa1070cd8521bbf261d3e7b",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.sale_info_default_grants_v1",
+        "table:app_private.room_sale_policies_v1",
+        "table:app_private.room_sale_policy_receipts_v1",
+        "function:app_private.sale_room_can_edit_v1",
+        "function:app_private.sale_room_authorize_edit_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021064112_hermes_sale_bulk_policy_v1.sql",
+      "version": "20261021064112",
+      "name": "hermes_sale_bulk_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "930d1353984f9e6b99dc09f4132c589467b3c3b956a7f095c3cc1785934f8d93",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_sale_policy_receipts",
+        "function:app_private.hermes_sale_policy_room_v1",
+        "function:public.hermes_sale_policy_actions_v1",
+        "function:app_private.hermes_sale_keys_v1",
+        "function:public.hermes_sale_actions_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021072345_hermes_room_timed_policy_projection_v1.sql",
+      "version": "20261021072345",
+      "name": "hermes_room_timed_policy_projection_v1",
+      "scheme": "timestamp14",
+      "sha256": "449458143a3fdc184027046318bbf1d0a35733c1e3e525714251d4a44ae750e3",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_available_rooms_page_v1"
       ]
     },
     {
@@ -12793,6 +12898,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T07:08:17.592Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022121254_hermes_sale_action_activation_v1.sql",
+      "version": "20261022121254",
+      "name": "hermes_sale_action_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "177d8f000320fb4a3c3828ffe859b8d1ba519c77b72f33cd57b5dae3309fe4df",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

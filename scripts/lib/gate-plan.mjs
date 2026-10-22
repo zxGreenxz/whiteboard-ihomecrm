@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import yaml from "js-yaml";
-import { khopGlob, phanLoai } from "../check-risk-classifier.mjs";
+import { globSangRegex, khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
 import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
@@ -106,12 +106,18 @@ function sensitiveBehavior(change, demo) {
   const auth = /\b(?:policy|security\s+definer|auth\.uid|RequirePermission|can_access_building|organization_id|authorize|jwt|service_role|permission)\b/i.test(tokens);
   return { money: money && (!demo || remote), auth: auth && !demo };
 }
-const owned = (file, suite) => !isDeferredTest(file) && matches(file, suite.includes) && !matches(file, suite.excludes);
-
 /** Pure selection; snapshots and manifests in, serializable obligations out. */
 export function createGatePlan({ changes = [], snapshot, full = false, environment = "local", riskMap = riskDefault, testMatrix = testsDefault, registry = GATE_REGISTRY, testFiles = [], trackedPaths = [], digests = {} } = {}) {
   if (!snapshot?.head || !snapshot?.tree) throw new Error("A verified snapshot head and tree are required");
   if (!riskMap.scope || !riskMap.gateProfiles || !Array.isArray(testMatrix.sourceSelectionRules)) throw new Error("Scope policy is missing or invalid");
+  // A policy pattern is tested against many files/rules. Compile it once per
+  // plan, without retaining decisions or mutable manifests between snapshots.
+  const compiledPatterns = new Map();
+  const matches = (path, patterns = []) => patterns.some((pattern) => {
+    if (!compiledPatterns.has(pattern)) compiledPatterns.set(pattern, globSangRegex(pattern));
+    return compiledPatterns.get(pattern).test(path);
+  });
+  const owned = (file, suite) => !isDeferredTest(file) && matches(file, suite.includes) && !matches(file, suite.excludes);
   const profiles = new Set(); const reasons = [];
   const paths = unique(changes.flatMap((c) => [c.path, c.oldPath].filter(Boolean)).map((p) => p.replace(/\\/g, "/")));
   const gates = new Set(["secret-scan"]); const generators = new Set(); const matchedRules = new Set(); const directTests = new Set(); const offlinePaths = new Set();

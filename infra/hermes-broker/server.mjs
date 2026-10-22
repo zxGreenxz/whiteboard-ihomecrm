@@ -3,6 +3,9 @@ import { createTaskAuth, createTaskReads } from './task-adapter.mjs';
 import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
+import { createSaleActionAuth, createSaleActionReads, createSaleActionService } from './sale-action-adapter.mjs';
+import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
+import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
@@ -158,7 +161,9 @@ export function createHermesBackend(configuration = {}) {
     const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
-    const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
+    const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
+    const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
@@ -188,7 +193,10 @@ export function createHermesBackend(configuration = {}) {
     const actions = createActionRuntime({ catalog: actionCatalog, clock,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
-    const broker = createBroker({ tasks, roomPass, customers, actions, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
+    const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
+    const salePolicies = createSalePolicyService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
+    const saleBulk = createSaleBulkService({ authority, saleActions });
+    const broker = createBroker({ tasks, roomPass, customers, actions, saleActions, salePolicies, saleBulk, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
       observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise

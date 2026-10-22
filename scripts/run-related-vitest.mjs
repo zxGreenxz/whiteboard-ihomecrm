@@ -55,8 +55,10 @@ async function main(argv) {
   const { startVitest } = await import('vitest/node');
   let context;
   try {
-    // Nửa số luồng: test DOM hết giờ 5 s khi máy đầy tải (đỏ giả, chạy riêng xanh).
-    const maxWorkers = Math.max(1, Math.floor(availableParallelism() / 2));
+    // Local workers share disk/CPU with other checkouts. CPU-count fanout also
+    // starves the real Git-history fixtures, even after native SQL has finished.
+    // Preserve the selected files and their timeouts; bound parallel workers.
+    const maxWorkers = Math.min(2, Math.max(1, Math.floor(availableParallelism() / 2)));
     context = await startVitest('test', [], { include, related: related.map((p) => resolve(p)), run: true, watch: false, passWithNoTests: true, maxWorkers });
     if (!context) throw new Error('Vitest không trả về context');
   } finally { await context?.close(); }
