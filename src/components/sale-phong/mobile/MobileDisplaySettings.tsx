@@ -15,6 +15,7 @@ import {
 import { useRoomListSheetDraft } from "../useRoomListSheetDraft";
 import SaleSheet from "./SaleSheet";
 import type { HeaderAction } from "./types";
+import SheetDraftStatus from '../SheetDraftStatus';
 
 type SheetKey = null | "settings" | "phone" | "preview" | "copy";
 type TabKey = "policy" | Exclude<RoomField, "price">;
@@ -39,7 +40,7 @@ const hasLines = (cur: string, src: string) => {
  * (chạm 2 lần), chính sách (có sao chép sang phòng khác), loại phòng, nội thất, tình trạng.
  * Cài đặt chung (sắp trống, hotline, chính sách chung, phòng đã thuê) nằm sau nút bánh răng.
  */
-export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderAction?: (a: HeaderAction | null) => void }) {
+export default function MobileDisplaySettings({ onHeaderAction, onBusyChange }: { onHeaderAction?: (a: HeaderAction | null) => void; onBusyChange?: (busy: boolean) => void }) {
   const sheet = useRoomListSheetDraft();
   // Không gắn `root`: ô lỗi có thể nằm trong sheet (portal ra .cm-app, ngoài khung này) nên tìm ô cần focus trên cả trang.
   const { settings, hotlines: hotlineQuery, form, days, errors, writeError, canSave, set, changeDays, rooms, edits, cellErrors } = sheet;
@@ -55,12 +56,16 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
   const [toast, setToast] = useState("");
   const [image, setImage] = useState<{ url: string } | { error: string } | null>(null);
   const lastTap = useRef<{ id: string; at: number } | null>(null);
+  useEffect(() => {
+    onBusyChange?.(sheet.busy || open === 'phone' || open === 'copy');
+    return () => onBusyChange?.(false);
+  }, [sheet.busy, open, onBusyChange]);
 
   // Nút bánh răng trên app-bar → sheet "Cài đặt chung".
   useEffect(() => {
-    onHeaderAction?.({ label: "Cài đặt chung", icon: Settings, iconOnly: true, onClick: () => setOpen("settings") });
+    onHeaderAction?.(sheet.canManageSettings ? { label: "Cài đặt chung", icon: Settings, iconOnly: true, onClick: () => setOpen("settings") } : null);
     return () => onHeaderAction?.(null);
-  }, [onHeaderAction]);
+  }, [onHeaderAction, sheet.canManageSettings]);
 
   useEffect(() => {
     if (!toast) return;
@@ -116,7 +121,7 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
   const hotlines = sheet.hotlineList.filter((h) => h.is_active !== false || h.id === form.hotline_id);
 
   const targets = useMemo(() => (copyFrom
-    ? table.groups.map((g) => ({ ...g, rows: g.rows.filter((r) => r.roomId !== copyFrom.id) })).filter((g) => g.rows.length)
+    ? table.groups.map((g) => ({ ...g, rows: g.rows.filter((r) => r.roomId !== copyFrom.id && sheet.roomWritable(r.roomId)) })).filter((g) => g.rows.length)
     : []), [table, copyFrom]);
   const targetIds = targets.flatMap((g) => g.rows.map((r) => r.roomId));
   const allPicked = targetIds.length > 0 && targetIds.every((id) => picks.has(id));
@@ -132,11 +137,11 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
     return next;
   });
   const applyCopy = () => {
-    if (!copyFrom || picks.size === 0) return;
+    if (!copyFrom || picks.size === 0 || sheet.busy) return;
     let changed = 0;
     for (const id of picks) {
       const room = byRoom.get(id);
-      if (!room) continue;
+      if (!room || !sheet.roomWritable(id)) continue;
       const cur = policyOf(room).trim();
       // Mặc định BỔ SUNG xuống dòng dưới; bỏ qua nếu phòng đã có đúng dòng này.
       const next = replace || !cur ? copyFrom.policy : hasLines(cur, copyFrom.policy) ? cur : `${cur}\n${copyFrom.policy}`;
@@ -158,8 +163,9 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
   const openPreview = async () => {
     setPriceEdit(null); setImage(null); setOpen("preview");
     try {
+      const freshTable = buildRoomListTable(await sheet.readPreview());
       const { drawRoomListImage } = await import("@/pages/phong-trong/exportRoomListImage");
-      setImage({ url: table.totalRooms ? drawRoomListImage(table).toDataURL("image/png") : "" });
+      setImage({ url: freshTable.totalRooms ? drawRoomListImage(freshTable).toDataURL("image/png") : "" });
     } catch {
       setImage({ error: "Không vẽ được ảnh xem trước. Thử lại nhé." });
     }
@@ -176,7 +182,8 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
   const err = (name: string) => (cellErrors[name] ? <p id={`${name}-error`} role="alert" className="sp-err">{cellErrors[name]}</p> : null);
 
   return (
-    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={[settings, hotlineQuery]} skeleton="detail" rows={4}>
+    <div style={{ padding: "14px 16px 28px" }}><QueryRegion label="cài đặt hiển thị" queries={sheet.canManageSettings ? [settings, hotlineQuery] : []} skeleton="detail" rows={4}>
+      {!onHeaderAction && sheet.canManageSettings && <button type="button" className="mb-3 inline-flex items-center gap-2 rounded border px-3 py-2 text-sm" onClick={() => setOpen('settings')} disabled={sheet.busy}><Settings size={16} />Cài đặt chung</button>}
       <div className="sp-sec">Từng nhà &amp; phòng<span className="cnt">{table.groups.length} nhà · {roomCount} phòng</span></div>
       <p className="sp-hint" style={{ margin: "0 0 12px", padding: "0 2px" }}>
         Bấm nút điện thoại ở mỗi nhà để đặt SĐT riêng, không đặt thì dùng hotline chung. Chạm 2 lần vào giá để sửa.
@@ -204,6 +211,7 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
                   <span className="ad">{g.address}</span>
                   <span className="sub">{sub}</span>
                   <button type="button" className={"sp-phonepill" + (ps.own ? " own" : "")} aria-label={`SĐT riêng của nhà ${g.address}`}
+                    disabled={!sheet.phoneWritable(g.buildingId)}
                     aria-invalid={!!cellErrors[sheetKey.phone(g.buildingId)]}
                     onClick={(e) => { e.stopPropagation(); setPhoneEdit({ id: g.buildingId, address: g.address, value: phone }); setOpen("phone"); }}>
                     <Phone size={14} />{ps.own ? phone.trim() : "Dùng hotline"}
@@ -233,14 +241,15 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
                     <div className="sp-room-h">
                       <span className="code">{row.code}</span>
                       {editing ? (
-                        <input className="sp-priceedit" autoFocus inputMode="numeric" name={sheetKey.field("price", room.id)} disabled={sheet.busy}
-                          aria-label={`Giá phòng ${row.code}`} value={price} maxLength={13}
+                        <input className="sp-priceedit" autoFocus inputMode="numeric" name={sheetKey.field("price", room.id)} disabled={!sheet.roomWritable(room.id)}
+                          aria-label={`Giá phòng ${row.code}`} value={price}
                           aria-invalid={!!cellErrors[sheetKey.field("price", room.id)]}
                           onChange={(e) => sheet.setRoomField("price", room.id, formatPriceInput(e.target.value))}
                           onBlur={() => setPriceEdit(null)}
                           onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }} />
                       ) : priceEditable(room) ? (
                         <button type="button" className={"price" + (price ? "" : " empty")} title="Chạm 2 lần để sửa giá"
+                          disabled={!sheet.roomWritable(room.id)}
                           aria-label={`Giá phòng ${row.code}: ${price || "chưa có"} — chạm 2 lần để sửa`}
                           onClick={() => tapPrice(room.id)}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setPriceEdit(room.id); } }}>
@@ -263,12 +272,12 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
                     </div>
                     {cur === "policy" ? (
                       <div className="sp-polrow">
-                        <textarea name={sheetKey.policy(room.id)} maxLength={ROOM_POLICY_MAX} disabled={sheet.busy}
+                        <textarea name={sheetKey.policy(room.id)} maxLength={ROOM_POLICY_MAX} disabled={!sheet.roomWritable(room.id)}
                           rows={Math.max(1, policyOf(room).split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 34)), 0))}
                           placeholder={passPolicy ? `Khách pass: ${passPolicy}` : "Chính sách riêng phòng"} aria-label={`Chính sách sale phòng ${row.code}`}
                           aria-invalid={!!cellErrors[sheetKey.policy(room.id)]}
                           value={policyOf(room)} onChange={(e) => sheet.setPolicy(room.id, e.target.value)} />
-                        <button type="button" className="sp-iconbtn" disabled={!policyOf(room).trim()} aria-label={`Sao chép chính sách phòng ${row.code} sang phòng khác`}
+                        <button type="button" className="sp-iconbtn" disabled={!policyOf(room).trim() || !sheet.roomWritable(room.id)} aria-label={`Sao chép chính sách phòng ${row.code} sang phòng khác`}
                           title="Sao chép sang phòng khác" onClick={() => openCopy(room, row.code, g.address)}>
                           <Copy size={17} />
                         </button>
@@ -276,7 +285,7 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
                     ) : fd && (
                       <>
                         <div className="sp-fieldrow">
-                          <input className="sp-rfield" name={fieldName} maxLength={fd.max} disabled={sheet.busy}
+                          <input className="sp-rfield" name={fieldName} maxLength={fd.max} disabled={!sheet.roomWritable(room.id)}
                             placeholder={fd.key === "status" ? `Tự tính: ${autoStatusLines(room).join(" · ")}`
                               : fd.key === "amenities" && amenitiesFallback(room) ? `Đang in mô tả: ${amenitiesFallback(room)}` : fd.ph}
                             aria-label={`${fd.label} phòng ${row.code}`} aria-invalid={!!cellErrors[fieldName]}
@@ -291,6 +300,9 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
                       </>
                     )}
                     {ROOM_KEYS.filter((k) => k !== "price").map((k) => <span key={k}>{err(`${k}:${room.id}`)}</span>)}
+                    {sheet.activePolicies[room.id] && <div className="mt-2 rounded border border-green-700/30 p-2 text-sm" aria-label={`Chương trình đang áp dụng phòng ${row.code}`}>
+                      <b>Chương trình đang áp dụng</b><p className="whitespace-pre-line">{sheet.activePolicies[room.id]}</p>
+                    </div>}
                   </div>
                 );
               })}
@@ -298,6 +310,7 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
           );
         })}
       </QueryRegion>
+      <SheetDraftStatus sheet={sheet} />
 
       {writeError && open !== "settings" && <p role="alert" className="sp-err">{writeError}</p>}
       {sheet.sheetWriteError && open !== "settings" && <p role="alert" className="sp-err">{sheet.sheetWriteError}</p>}
@@ -308,17 +321,18 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
       </div>
 
       {/* Cài đặt chung (nút bánh răng) */}
-      <SaleSheet open={open === "settings"} onClose={() => setOpen(null)}
+      <SaleSheet open={open === "settings" && sheet.canManageSettings} onClose={() => setOpen(null)}
         footer={<button type="button" className="sp-save" disabled={sheet.busy || !canSave}
           onClick={async () => { if (await submit()) setOpen(null); }}>Lưu cài đặt</button>}>
         <h3>Cài đặt chung</h3>
+        <fieldset disabled={sheet.busy || !sheet.canManageSettings}>
         <p className="desc">Áp dụng chung cho mọi link chia sẻ của tài khoản và cho ảnh "Danh sách phòng trống" (nút Tải ảnh, tin gửi Zalo).</p>
 
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, background: "var(--soonBg)", color: "var(--soon)", display: "grid", placeItems: "center", flexShrink: 0 }}><Calendar size={18} /></span>
           <label htmlFor="mobile-soon-days" style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Số ngày báo "sắp trống"</label>
         </div>
-        <p className="sp-hint" style={{ margin: "10px 0 13px" }}>Phòng có hợp đồng sắp hết hạn trong khoảng này sẽ được gắn nhãn "Sắp trống" trên trang công khai. Mặc định 30 ngày.</p>
+        <p className="sp-hint" style={{ margin: "10px 0 13px" }}>Khoảng ngày dùng để chào phòng đã có thông tin trả phòng hoặc ngày nhận khách phù hợp. Hợp đồng sắp hết hạn không tự xác nhận phòng "Sắp trống". Mặc định 30 ngày.</p>
         <div className="sp-step">
           <button type="button" aria-label="Giảm số ngày" disabled={!/^\d+$/.test(days) || Number(days) <= 0} onClick={() => changeDays(String(Math.max(0, Number(days) - 1)))}>–</button>
           <div className="box">
@@ -369,13 +383,14 @@ export default function MobileDisplaySettings({ onHeaderAction }: { onHeaderActi
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Hiện phòng đã thuê</div>
-            <p className="sp-hint" style={{ margin: "3px 0 0" }}>Vẽ mờ phòng đã thuê trên sơ đồ để giữ đầy đủ bố cục tầng.</p>
+            <p className="sp-hint" style={{ margin: "3px 0 0" }}>Luôn vẽ mờ phòng đã thuê để giữ đầy đủ sơ đồ tầng. Chưa hỗ trợ đổi cách hiển thị này.</p>
           </div>
-          <button type="button" role="switch" aria-checked={form.show_rented} className={"sp-switch" + (form.show_rented ? " on" : "")}
-            aria-label="Hiện phòng đã thuê" onClick={() => set("show_rented", !form.show_rented)}><span className="knob" /></button>
+          <button type="button" role="switch" aria-checked className="sp-switch on" disabled
+            aria-label="Luôn vẽ mờ phòng đã thuê"><span className="knob" /></button>
         </div>
         {writeError && <p role="alert" className="sp-err">{writeError}</p>}
         {sheet.sheetWriteError && <p role="alert" className="sp-err">{sheet.sheetWriteError}</p>}
+        </fieldset>
       </SaleSheet>
 
       {/* SĐT riêng của nhà */}

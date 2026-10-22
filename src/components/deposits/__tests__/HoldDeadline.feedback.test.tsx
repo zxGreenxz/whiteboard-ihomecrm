@@ -4,7 +4,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 const h=vi.hoisted(()=>({rpc:vi.fn(),close:vi.fn()}));
 vi.mock('@/hooks/useReservationHoldDeadlines',()=>({useSetReservationHoldTerms:()=>({isPending:false,mutate:h.rpc})}));
 import {HoldDeadlineDialog} from '../HoldDeadlineDialog';
-const target={voucherId:'voucher1',label:'Cọc phòng 101',holdUntil:'2026-10-03',topupDueDate:'2026-10-01',depositTarget:1000000,paidAmount:500000};
+const target={voucherId:'voucher1',buildingId:'b1',label:'Cọc phòng 101',holdUntil:'2026-10-03',topupDueDate:'2026-10-01',depositTarget:1000000,paidAmount:500000};
 beforeEach(()=>{cleanup();vi.clearAllMocks();});
 const view=()=>render(<HoldDeadlineDialog target={target} onOpenChange={h.close}/>);
 describe('D16 kỳ hạn giữ draft invalid trước nút manual',()=>{
@@ -26,5 +26,15 @@ describe('D16 kỳ hạn giữ draft invalid trước nút manual',()=>{
   view();fireEvent.change(screen.getByRole('textbox',{name:'Hạn bổ sung'}),{target:{value:'31022026'}});
   fireEvent.click(screen.getByRole('button',{name:/Bỏ hết kỳ hạn/}));
   expect(h.rpc).toHaveBeenCalledWith({incomeExpenseId:'voucher1',holdUntil:null,topupDueDate:null,depositTarget:null},expect.any(Object));
+ });
+ it.each([null,0])('thực nhận %s không được diễn giải thành mệnh giá hay tiền của cả phòng',paidAmount=>{
+  render(<HoldDeadlineDialog target={{...target,paidAmount,receivedFactStatus:paidAmount===null?'UNKNOWN':'VERIFIED'}} onOpenChange={h.close}/>);
+  expect(screen.queryByText(/Đã thu trên phòng này/)).toBeNull();
+  if(paidAmount===null){
+   expect(screen.queryByText(/Đã xác nhận thực nhận của hồ sơ/)).toBeNull();
+   expect(screen.getByText(/Còn phiếu chưa đối chiếu được tiền thực nhận/)).toBeTruthy();
+  }else{
+   expect(screen.getByText(/Đã xác nhận thực nhận của hồ sơ: 0/)).toBeTruthy();
+  }
  });
 });

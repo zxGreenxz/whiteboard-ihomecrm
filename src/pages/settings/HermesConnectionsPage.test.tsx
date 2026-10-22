@@ -37,7 +37,7 @@ let fetchMock: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 let writeClipboard: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>;
 async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const input = JSON.parse(init!.body as string), operation = String(path).split('/').at(-1);
-  if (['hermes_org_policy_options_v7', 'hermes_org_policy_options_v6', 'hermes_org_policy_options_v5', 'hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1'].includes(operation ?? '')) return json(companyPolicy);
+  if (['hermes_org_policy_options_v9', 'hermes_org_policy_options_v8', 'hermes_org_policy_options_v7', 'hermes_org_policy_options_v6', 'hermes_org_policy_options_v5', 'hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1'].includes(operation ?? '')) return json(companyPolicy);
   if (operation === 'hermes_set_org_policy_v1') {
     companyPolicy.policy = { organizationId: ORG, version: input.p_expected_version + 1,
       enabled: input.p_enabled, read: input.p_read, action: input.p_action, scopeIds: input.p_scope_ids };

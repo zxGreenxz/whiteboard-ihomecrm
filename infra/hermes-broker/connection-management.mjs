@@ -287,11 +287,11 @@ export function createSupabaseConnectionManagementReads({ url, publishableKey, f
       !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxResponseBytes) || maxResponseBytes > 131072 ||
       (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) throw new TypeError('invalid_management_reads_config');
   const fixed = { listConnections: { path: '/rest/v1/rpc/hermes_my_connections_v1', key: 'organizationId', arg: 'p_org' },
-    // v7 = customer(v6), v6 = task-follow(v5) and v5 = finance(task(v4)) at
+    // v8 = sale(v7); v7 retains the current read/customer stack, at
     // runtime; older names are negotiated only on an exact PGRST202 while a
     // lane is still applying.
-    connectionOptions: { path: '/rest/v1/rpc/hermes_connection_options_v7', legacyPaths: ['/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_options_v1'], key: 'organizationId', arg: 'p_org' },
-    connectionContext: { path: '/rest/v1/rpc/hermes_connection_context_v7', legacyPaths: ['/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_context_v2', '/rest/v1/rpc/hermes_connection_context_v1'], key: 'connectionId', arg: 'p_connection_id' } };
+    connectionOptions: { path: '/rest/v1/rpc/hermes_connection_options_v9', legacyPaths: ['/rest/v1/rpc/hermes_connection_options_v8', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_options_v1'], key: 'organizationId', arg: 'p_org' },
+    connectionContext: { path: '/rest/v1/rpc/hermes_connection_context_v9', legacyPaths: ['/rest/v1/rpc/hermes_connection_context_v8', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_context_v2', '/rest/v1/rpc/hermes_connection_context_v1'], key: 'connectionId', arg: 'p_connection_id' } };
   return Object.freeze(Object.fromEntries(Object.entries(fixed).map(([operation, endpoint]) => [operation, async (input, { signal } = {}) => {
     if (!exact(input, ['accessToken', endpoint.key]) || typeof input.accessToken !== 'string' || !TOKEN.test(input.accessToken) || !uuid(input[endpoint.key])) fail('invalid_request');
     const bearer = input.accessToken, body = JSON.stringify({ [endpoint.arg]: input[endpoint.key] });

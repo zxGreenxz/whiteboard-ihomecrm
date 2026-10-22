@@ -29,7 +29,7 @@ export function useRoomSaleLocks(enabled = true) {
 }
 
 /** Lock/gỡ đổi ngay danh sách phòng trống (trong app và link công khai) và khối lock ở Quản lý cọc. */
-const AFFECTED_KEYS = ['room-sale-locks', 'my-available-rooms', 'phong-trong'];
+const AFFECTED_KEYS = ['room-sale-locks', 'my-available-rooms', 'phong-trong', 'sale-room-inventory'];
 function useSaleLockMutation<Input>(fn: (org: string, input: Input) => ReturnType<typeof lockRoomForSale>) {
   const { selectedOrganizationId } = useOrganization();
   const cache = useQueryClient();

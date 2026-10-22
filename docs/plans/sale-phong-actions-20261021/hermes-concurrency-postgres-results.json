@@ -1,0 +1,74 @@
+{
+  "layer": "Actual local PostgreSQL, two concurrent authenticated sessions; canonical web/Hermes writers; synthetic claims; no HTTP/provider/model evaluation",
+  "fixtureOrganization": "02cfe97b-515f-4562-a749-1c3c111e2da9",
+  "results": [
+    {
+      "id": "HC01",
+      "request": "Sale trên web lock phòng; đồng thời Hermes báo cọc cùng phòng",
+      "expected": "Cọc tiếp quản lock sau khi giao dịch web hoàn tất; đúng một cọc, không còn lock hoạt động.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 42628,
+        "blockerPid": 4540,
+        "reservationId": "f5a7c281-9a47-430c-8557-b0bf7373c3d5",
+        "lockId": "06c79e3c-7cbb-4201-a831-002d9790c614"
+      }
+    },
+    {
+      "id": "HC02",
+      "request": "Sale trên web tạo cọc; đồng thời Hermes lock cùng phòng",
+      "expected": "Cọc web thành công; Hermes nhận lỗi 55000, không tạo lock hay biên nhận giả.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 42628,
+        "blockerPid": 4540,
+        "rejectedCode": "55000"
+      }
+    },
+    {
+      "id": "HC03",
+      "request": "Quản lý sửa giá trên web và Hermes từ cùng phiên bản",
+      "expected": "Web ghi trước; Hermes nhận PT409, giá web còn nguyên và chỉ có một biên nhận sửa phòng.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 36396,
+        "blockerPid": 25568,
+        "rejectedCode": "PT409"
+      }
+    },
+    {
+      "id": "HC04",
+      "request": "Quản lý sửa thông tin trên web; Sale đồng thời báo cọc qua Hermes",
+      "expected": "Hai thao tác hợp lệ cùng hoàn tất sau khi nối tiếp khóa phòng; thông tin mới và cọc đều được giữ.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 42628,
+        "blockerPid": 25568
+      }
+    },
+    {
+      "id": "HC05",
+      "request": "Sale web và Hermes cùng bổ sung cọc từ một revision hồ sơ",
+      "expected": "Một phiếu bổ sung; yêu cầu thứ hai PT409, không thêm tiền hoặc phiếu khi revision đã đổi.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 42628,
+        "blockerPid": 4540,
+        "rejectedCode": "PT409",
+        "sourceVoucherCount": 2
+      }
+    },
+    {
+      "id": "HC06",
+      "request": "Thu hồi kết nối khi thao tác Hermes đang đợi khóa phòng",
+      "expected": "Hàm thu hồi canonical hoàn tất trước admission; Hermes bị từ chối, giá và biên nhận không đổi.",
+      "status": "passed",
+      "detail": {
+        "waitingPid": 36396,
+        "blockerPid": 25568,
+        "rejectedCode": "42501",
+        "revocation": "revoked"
+      }
+    }
+  ]
+}

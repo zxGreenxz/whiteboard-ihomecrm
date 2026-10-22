@@ -1,0 +1,35 @@
+{
+  "version": "17.10",
+  "fixtureOrganization": "d905d1b8-1201-4a56-95a8-accf35fa0807",
+  "scope": "Loopback synthetic fixtures; real business functions and auth role; no HTTP JWT/PostgREST.",
+  "results": [
+    {
+      "name": "PG-M01 Sale creates a scoped reservation; real posting facts define received money and exact replay",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M02 Sale cannot edit terms; manager can use legacy terms route and source/history agree",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M03 received RPC respects actual RLS and rejects foreign organization actors",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M04 Sale Admin scope cannot create reservation on building B or another company",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M05 two real sessions competing for the same temporary lock have exactly one winner",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M06 two real sessions cannot acquire two live reservation claims on one room",
+      "status": "passed"
+    },
+    {
+      "name": "PG-M07 APPROVED alone has no received cash without a real unreversed posting",
+      "status": "passed"
+    }
+  ]
+}
