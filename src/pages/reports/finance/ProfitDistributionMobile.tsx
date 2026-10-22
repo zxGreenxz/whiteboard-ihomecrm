@@ -756,6 +756,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             pendingCount={pendingInfo.count}
             pendingIncome={pendingInfo.income}
             pendingExpense={pendingInfo.expense}
+            accrualRows={accrualMode ? accrual?.rows : undefined}
             onIssueChange={setHasVerifyIssue}
           />
           </div>

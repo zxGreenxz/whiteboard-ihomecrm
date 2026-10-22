@@ -4,7 +4,7 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import { useFaMonthlyPnl } from "@/hooks/useFinancialAnalysis";
 import { toMillions } from "@/components/shareholders/profitCharts";
-import type { ProfitVerificationVisualState } from "@/lib/profitVerification";
+import { profitVerificationChipLabel, type ProfitVerificationVisualState } from "@/lib/profitVerification";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import ProfitDistributionMobile from "./ProfitDistributionMobile";
 import {
@@ -1254,13 +1254,8 @@ function ProfitDistributionDesktop() {
           title="Xem chi tiết thanh kiểm chứng"
         >
           {verifyState !== "OK" && <span className="ph-chip__dot" />}
-          {verifyState === "OK"
-            ? `✓ Kiểm chứng khớp${verifiedAt ? ` · ${verifiedAt}` : ""}`
-            : verifyState === "LOADING"
-              ? "Đang kiểm chứng…"
-              : verifyState === "WARNING"
-                ? "Kiểm chứng: cần xem lại"
-                : "Kiểm chứng LỆCH"}
+          {/* F12: "khớp" chỉ chứng minh client khớp engine trên phần ĐÃ DUYỆT, không phải đã đủ phiếu */}
+          {profitVerificationChipLabel(verifyState, verifiedAt)}
         </button>
       </ProfitHubSlot>
 
@@ -1534,6 +1529,8 @@ function ProfitDistributionDesktop() {
             pendingCount={pendingInfo.count}
             pendingIncome={pendingInfo.income}
             pendingExpense={pendingInfo.expense}
+            voucherType={voucherType === "INCOME" || voucherType === "EXPENSE" ? voucherType : "all"}
+            accrualRows={accrualMode ? accrual?.rows : undefined}
             onStateChange={handleVerifyState}
           />
         </div>
