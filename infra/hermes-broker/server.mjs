@@ -3,7 +3,6 @@ import { createTaskAuth, createTaskReads } from './task-adapter.mjs';
 import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
-import { createExpenseActionAuth, createExpenseActionReads, createExpenseActionService } from './expense-action-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
@@ -42,6 +41,7 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
 
@@ -152,16 +152,17 @@ export function createHermesBackend(configuration = {}) {
     // Each optional capability RPC absent (PGRST202) leaves its keys ungranted;
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký (Đợt 2b: task.create);
-    // cờ host actionProbe thêm danh mục thử (chỉ connector TEST). hermes_action_capabilities_v1 chưa áp hoặc chưa khai khoá ⇒ không
-    // cấp khoá nào. actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá tasks.create
-    // CHỈ đến từ lớp này và tool tạo việc cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như trước.
-    // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
-    // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
-    const actionCatalog = createActionCatalog([...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác các trang đã đăng ký — Thu chi (Đợt 2; họ crm_expense_* cũ
+    // đã gỡ — TC1, cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create; Mốc 3: task.update, task.cancel). Thao tác
+    // chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒ action_disabled.
+    // hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe (connector TEST).
+    // actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: thao tác Công việc sống ⇒ khoá của nó CHỈ đến từ lớp
+    // này và tool cũ tương ứng nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task/theo dõi cũ cấp khoá như trước.
+    // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai khoá
+    // ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
     const actionLive = createActionLiveCatalog();
-    const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog, live: actionLive,
+    const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
       createFromActions: actionCatalog.keys.includes(TASK_ACTION), actionIds: actionCatalog.ids, live: actionLive });
@@ -191,11 +192,10 @@ export function createHermesBackend(configuration = {}) {
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
-    const broker = createBroker({ tasks, roomPass, customers, expenses, actions, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
+    const broker = createBroker({ tasks, roomPass, customers, actions, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
       observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise

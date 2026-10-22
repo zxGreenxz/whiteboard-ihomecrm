@@ -18,7 +18,8 @@ describe('Hermes capability labels', () => {
       expect(HERMES_READ_CAPABILITIES.includes(key) || HERMES_ACTION_CAPABILITIES.includes(key), key).toBe(true);
       expect(hermesCapabilityHint(key), key).toMatch(/^Hermes: /);
     }
-    expect(hermesCapabilityHint('income_expenses.approve')).toContain('không có công cụ duyệt');
+    expect(hermesCapabilityHint('income_expenses.approve')).toContain('không công cụ nào dùng khoá này');
+    expect(hermesCapabilityHint('income_expenses.create')).toContain('luôn xem trước');
     expect(hermesCapabilityHint('toString')).toBeUndefined();
     expect(hermesCapabilityLabel('constructor')).toBe('constructor');
   });

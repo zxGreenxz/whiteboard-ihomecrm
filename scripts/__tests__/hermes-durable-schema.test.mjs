@@ -112,6 +112,8 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)',
   // B5d (20261020175803): name directories under the asker's RLS (INVOKER) and the member-only company name (DEFINER).
   'hermes_building_directory_v1(uuid,uuid[])', 'hermes_room_directory_v1(uuid,uuid[],text)', 'hermes_organization_name_v1(uuid)',
+  // Thu chi Mốc 3 (20261022044120): the building directory with virtual buildings for the income/expense key (INVOKER).
+  'hermes_building_directory_v2(uuid,uuid[],boolean)',
   // R2c part 2 (20261021044821): the caller's own display name for crm_auth_context, under the caller's RLS (INVOKER).
   'hermes_user_display_name_v1()'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
@@ -438,7 +440,8 @@ const W2_READERS = new Set(['a', 'b', 'c', 'd'].map(letter => `app_private.herme
 const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
 // B5d (20261020175803): the building/room directories run as the asker (RLS of buildings/rooms decides what is
 // listed), so they are plpgsql STABLE INVOKER and may not name app_private; the company-name helper stays DEFINER.
-const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1']);
+const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1',
+  'public.hermes_building_directory_v2']);
 const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
   ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
 // Shared write foundation (20261021132433 name resolution, 20261021133823 guard/receipts/probe): the caller executes the two
@@ -448,7 +451,15 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)', 'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)',
   'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
-  'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
+  'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Đợt 2 Thu chi (20261022024834): vỏ expense.* gắn OID lõi giải tên (INVOKER) + bước ghi (DEFINER); ánh xạ lý do, chạy lô, định
+  // dạng chỉ bước ghi gọi (owner-only).
+  'app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  'public.hermes_expense_write_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Thu chi Mốc 3: name resolution _v2 (virtual buildings; wrapper binds the core OID) and the expense scope step the wrapper binds
+  // (guard ∩ the web writer's own authorize_income_expense_on_building, 20261022044120 / 20261022044123).
+  'app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)', 'public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)',
+  'app_private.hermes_expense_scope_v1(jsonb,text)'];
 // Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
 // wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
 // building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
@@ -909,7 +920,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-three reviewed forward migrations and their 88 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all twenty-seven reviewed forward migrations and their 101 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -921,9 +932,9 @@ test('all twenty-three reviewed forward migrations and their 88 latest definitio
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 23);
-  assert.equal(FORWARD_FUNCTIONS.length, 88);
-  assert.equal(FORWARD_BY_NAME.size, 88, 'one live definition per reviewed name');
+  assert.equal(paths.length, 27);
+  assert.equal(FORWARD_FUNCTIONS.length, 101);
+  assert.equal(FORWARD_BY_NAME.size, 101, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

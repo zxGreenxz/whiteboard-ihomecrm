@@ -13,7 +13,11 @@ import { isW2ReportId } from './wave2-kit.mjs';
 
 // R2c phần 2 (c): hermes_user_display_name_v1 (20261021044821, INVOKER) — tên hiển thị của CHÍNH người hỏi cho crm_auth_context.
 export const DIRECTORY_RPCS = Object.freeze(['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1',
-  'hermes_user_display_name_v1']);
+  'hermes_user_display_name_v1', 'hermes_building_directory_v2']);
+// Thu chi Mốc 3 (22/10, 20261022044120): toà ảo là nơi web Thu chi ghi chi phí chung ⇒ khoá thu chi giải tên cả toà ảo
+// (hermes_building_directory_v2 p_include_virtual=true); "tháng này kho văn phòng chung chi bao nhiêu" từng ra read_name_unresolved.
+// Khoá khác (tool dựa phòng: khách, HĐ, hoá đơn, công việc…) giữ danh bạ v1 bỏ toà ảo.
+export const VIRTUAL_BUILDING_PERMISSIONS = Object.freeze(['income_expenses.view']);
 // Như web (hoá đơn/thu chi/công việc/chỉ số gộp room_ids của mọi toà cùng tên): tới 5 phòng trùng tên đi cùng
 // một lần; hơn thì hỏi lại. Trang SQL 50 dòng, tối đa 4 trang một lượt gọi (≤ 200 dòng quét) khi lọc hàng.
 export const ROOM_MATCH_LIMIT = 5, ROOM_FILTER_PAGE_LIMIT = 50, ROOM_FILTER_MAX_PAGES = 4;
@@ -119,15 +123,21 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
   const check = signal => { if (!(signal instanceof AbortSignal)) fail('invalid_request'); if (signal.aborted) fail('timeout'); };
   // optional (crm_auth_context only): a directory RPC not yet deployed (PGRST202) yields null instead of failing the
   // call — the connector may run before the migration is applied. Name resolution itself never degrades (fails closed).
-  async function directory({ accessToken, organizationId, buildingIds, tokenDigest, contextVersion, label, signal, optional = false }) {
+  async function directory({ accessToken, organizationId, buildingIds, tokenDigest, contextVersion, label, signal, optional = false, includeVirtual = false }) {
     check(signal);
     if (!domainId(organizationId) || !Array.isArray(buildingIds) || !buildingIds.length || buildingIds.length > 256 || buildingIds.some(id => !canonical(id)) ||
-        typeof tokenDigest !== 'string' || typeof contextVersion !== 'string' || typeof label !== 'string' || typeof optional !== 'boolean') fail('invalid_request');
-    const ids = [...new Set(buildingIds)], key = `${tokenDigest}:${label}`;
+        typeof tokenDigest !== 'string' || typeof contextVersion !== 'string' || typeof label !== 'string' || typeof optional !== 'boolean' ||
+        typeof includeVirtual !== 'boolean') fail('invalid_request');
+    const ids = [...new Set(buildingIds)], key = `${tokenDigest}:${label}${includeVirtual ? ':virtual' : ''}`;
     const fingerprint = createHash('sha256').update(JSON.stringify([organizationId, ...ids].sort())).digest('hex');
     const hit = cached(key, contextVersion, fingerprint);
     if (hit !== undefined) return hit;
-    const data = await rpc('hermes_building_directory_v1', accessToken, { p_organization_id: organizationId, p_building_ids: ids }, { signal }, { optional }); check(signal);
+    // v2 chưa áp (PGRST202 ⇒ null) ⇒ v1 như trước Mốc 3 (không toà ảo): connector phát hành TRƯỚC migration không làm hỏng giải tên thu chi.
+    let data = includeVirtual
+      ? await rpc('hermes_building_directory_v2', accessToken, { p_organization_id: organizationId, p_building_ids: ids, p_include_virtual: true }, { signal }, { optional: true })
+      : null;
+    check(signal);
+    if (data === null) { data = await rpc('hermes_building_directory_v1', accessToken, { p_organization_id: organizationId, p_building_ids: ids }, { signal }, { optional }); check(signal); }
     if (data === null && optional) return remember(key, contextVersion, fingerprint, null);
     const value = rows(data, 'buildings', building, 256);
     if (value.some(entry => !ids.includes(entry.id))) fail('backend_unavailable');
@@ -176,7 +186,8 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
     const scope = identity?.scopesByPermission?.[permission]?.buildingIds, organizationId = identity?.row?.organizationId, contextVersion = identity?.contextVersion;
     if (!Array.isArray(scope) || !domainId(organizationId) || typeof contextVersion !== 'string') fail('backend_unavailable');
     const resolved = structuredClone(base), target = w2 ? resolved.params : resolved;
-    const buildings = () => directory({ accessToken, organizationId, buildingIds: scope, tokenDigest, contextVersion, label: permission, signal });
+    const buildings = () => directory({ accessToken, organizationId, buildingIds: scope, tokenDigest, contextVersion, label: permission, signal,
+      includeVirtual: VIRTUAL_BUILDING_PERMISSIONS.includes(permission) });
     let chosen = null;
     if (names.buildingName !== undefined) {
       const wanted = names.buildingName.trim();

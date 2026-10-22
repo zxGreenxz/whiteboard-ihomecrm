@@ -15,7 +15,11 @@ export const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
 // từ chối lúc nạp (không để mô hình tưởng gửi ảnh được).
 export const ATTACHMENTS_READY = false;
 const PARAM = /^[a-z][A-Za-z0-9]{0,31}$/;
-const MAX_PARAMS = 16, MAX_ACTIONS = 128;
+const MAX_PARAMS = 16, MAX_ACTIONS = 128, MAX_LIST = 20, MAX_RECORD_FIELDS = 12;
+// Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh).
+const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool']);
+const NAME_LABELS = Object.freeze({ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn',
+  category: 'hạng mục', cashbook: 'sổ quỹ', jobType: 'loại việc' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
 const MAX_VND = 9_999_999_999_999;
 const fail = () => { throw new TypeError('invalid_action_catalog'); };
@@ -27,6 +31,10 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
 // Bản ghi dữ liệu thuần: chỉ khoá chuỗi, enumerable, có value (không accessor).
 const dataRecord = value => plain(value) && Reflect.ownKeys(value).every(key => typeof key === 'string' &&
   Object.getOwnPropertyDescriptor(value, key)?.enumerable === true && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
+// Mảng dữ liệu thuần: prototype Array, chỉ chỉ số + length, mọi phần tử là value (không accessor, không lỗ).
+const dataArray = value => Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype &&
+  Reflect.ownKeys(value).every(key => key === 'length' || (typeof key === 'string' && /^(0|[1-9][0-9]*)$/.test(key) &&
+    Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'))) && Object.keys(value).length === value.length;
 
 // ---- Khuôn tham số. Mỗi khuôn: { kind, optional, hint, ...giới hạn } đông cứng. hint là câu tĩnh cho mô hình.
 const spec = (kind, optional, hint, extra = {}) => Object.freeze({ kind, optional: optional === true, hint, ...extra });
@@ -37,10 +45,10 @@ export const param = Object.freeze({
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
   name: (of, { optional = false } = {}) => {
-    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice', 'jobType', 'job'].includes(of)) fail();
+    if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job') fail();
     // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
-    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
-      : `tên ${{ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn', jobType: 'loại việc' }[of]} như người dùng nói`, { of, min: 1, max: 120 });
+    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
+      { of, min: 1, max: 120 });
   },
   int: (min, max, { optional = false } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();
@@ -65,8 +73,21 @@ export const param = Object.freeze({
     if (!Number.isSafeInteger(max) || max < 1 || max > 10) fail();
     return spec('attachments', optional, `tối đa ${max} tham chiếu ảnh đã tải lên`, { max });
   },
+  // Lô (Đợt 2: Thu chi ≤ 5 khoản/≤ 10 phiếu, Hợp đồng gia hạn ≤ 20 HĐ). Phần tử là khuôn vô hướng hoặc record (chỉ dùng
+  // trong list). Cả lô là MỘT params: token xác nhận gắn cả lô (canonicalJson giữ thứ tự phần tử).
+  record: (fields) => {
+    if (!plain(fields) || !Object.keys(fields).length || Object.keys(fields).length > MAX_RECORD_FIELDS || Object.entries(fields).some(([name, value]) =>
+      !PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !SCALARS.includes(value.kind))) fail();
+    return spec('record', false, `{${Object.entries(fields).map(([name, value]) => `${name}${value.optional ? '' : '*'} (${value.hint})`).join('; ')}}`,
+      { fields: Object.freeze({ ...fields }) });
+  },
+  list: (item, { min = 1, max, optional = false } = {}) => {
+    if (!plain(item) || !Object.isFrozen(item) || ![...SCALARS, 'record'].includes(item.kind) || item.optional ||
+        !Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 1 || max < min || max > MAX_LIST) fail();
+    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max });
+  },
 });
-const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments']);
+const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
 
 /** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs). */
 export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], ...rest } = {}) {
@@ -84,6 +105,14 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
   const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
   DEFINED.add(action);
   return action;
+}
+
+// Khuôn một tham số trong mục lục crm_action_list (list ⇒ khuôn phần tử; record ⇒ khuôn từng trường).
+function listedParam(value) {
+  const base = { type: value.kind, required: !value.optional, hint: value.hint, ...(value.kind === 'oneOf' ? { values: [...value.values] } : {}) };
+  if (value.kind === 'record') return { ...base, fields: Object.fromEntries(Object.entries(value.fields).map(([name, field]) => [name, listedParam(field)])) };
+  if (value.kind === 'list') return { ...base, min: value.min, max: value.max, item: listedParam(value.item) };
+  return base;
 }
 
 /** Gom danh mục. `keys` = tập khoá Action được nhận; mặc định và trần là HERMES_ACTION_CAPABILITIES của capability-contract
@@ -113,8 +142,7 @@ export function createActionCatalog(actions, { keys = HERMES_ACTION_CAPABILITIES
       return ids.map(id => byId[id]).filter(action => granted(effective, action) && (page === null || action.page === page)).map(action => ({
         action: action.id, page: action.page, title: action.title,
         confirm: action.class === 'reversible' ? 'if_required' : 'always',
-        params: Object.fromEntries(Object.entries(action.params).map(([name, value]) => [name,
-          { type: value.kind, required: !value.optional, hint: value.hint, ...(value.kind === 'oneOf' ? { values: [...value.values] } : {}) }])),
+        params: Object.fromEntries(Object.entries(action.params).map(([name, value]) => [name, listedParam(value)])),
       }));
     },
   });
@@ -154,24 +182,59 @@ export function validateActionParams(action, raw) {
   const refuse = (problem) => ({ ok: false, detail: `${problem} Khuôn ${action.id}: ${shape()}. (* = bắt buộc)` });
   if (raw === undefined || raw === null) raw = {};
   if (!dataRecord(raw)) return refuse('params phải là object.');
-  // snake_case → camelCase như normalizeToolArguments; gửi cả hai dạng của cùng một tham số là sai.
+  const checked = checkFields(action.params, raw, '');
+  if (checked.unknown) return refuse('Có tham số không nhận.');
+  if (checked.duplicate) return refuse(`Tham số ${checked.duplicate} gửi hai lần.`);
+  if (checked.wrong.length) return refuse(`Thiếu hoặc sai: ${checked.wrong.map(entry => `${entry.path} (${entry.hint})`).join('; ')}.`);
+  return { ok: true, value: checked.value };
+}
+
+// Kiểm một tập trường (params cấp ngoài, hoặc record trong list). snake_case → camelCase như normalizeToolArguments; gửi cả
+// hai dạng của cùng một tham số là sai. wrong = [{path, hint}] — path chỉ gồm tên trong khuôn và số thứ tự (#1 = mục đầu),
+// không bao giờ nhắc lại giá trị hay khoá lạ mô hình gửi.
+function checkFields(fields, raw, prefix) {
   const input = {};
+  let unknown = false, duplicate = null;
   for (const [supplied, value] of Object.entries(raw)) {
-    const name = Object.hasOwn(action.params, supplied) ? supplied : snakeToCamel(supplied);
-    if (!Object.hasOwn(action.params, name)) return refuse('Có tham số không nhận.');
-    if (Object.hasOwn(input, name)) return refuse(`Tham số ${name} gửi hai lần.`);
+    const name = Object.hasOwn(fields, supplied) ? supplied : snakeToCamel(supplied);
+    if (!Object.hasOwn(fields, name)) { unknown = true; continue; }
+    if (Object.hasOwn(input, name)) { duplicate ??= name; continue; }
     input[name] = value;
   }
   const value = {}, wrong = [];
-  for (const name of accepted) {
-    const spec = action.params[name], supplied = input[name];
+  for (const [name, spec] of Object.entries(fields)) {
+    const supplied = input[name], path = `${prefix}${name}`;
     const blank = supplied === undefined || supplied === null || (typeof supplied === 'string' && supplied.trim() === '');
-    if (blank) { if (!spec.optional) wrong.push(name); continue; }
+    if (blank) { if (!spec.optional) wrong.push({ path, hint: spec.hint }); continue; }
+    if (spec.kind === 'list') {
+      const list = checkList(spec, supplied, path);
+      if (list.wrong.length) wrong.push(...list.wrong); else value[name] = list.value;
+      continue;
+    }
     const checked = checkValue(spec, supplied);
-    if (checked === undefined) wrong.push(name); else value[name] = checked;
+    if (checked === undefined) wrong.push({ path, hint: spec.hint }); else value[name] = checked;
   }
-  if (wrong.length) return refuse(`Thiếu hoặc sai: ${wrong.map(name => `${name} (${action.params[name].hint})`).join('; ')}.`);
-  return { ok: true, value };
+  return { value, wrong, unknown, duplicate };
+}
+
+function checkList(spec, raw, path) {
+  if (!dataArray(raw) || raw.length < spec.min || raw.length > spec.max) return { wrong: [{ path, hint: `danh sách ${spec.min}–${spec.max} mục` }] };
+  const value = [], wrong = [];
+  raw.forEach((element, index) => {
+    const at = `${path}#${index + 1}`;
+    if (spec.item.kind !== 'record') {
+      const checked = checkValue(spec.item, element);
+      if (checked === undefined) wrong.push({ path: at, hint: spec.item.hint }); else value.push(checked);
+      return;
+    }
+    if (!dataRecord(element)) { wrong.push({ path: at, hint: 'mỗi mục là object' }); return; }
+    const checked = checkFields(spec.item.fields, element, `${at}.`);
+    if (checked.unknown) wrong.push({ path: at, hint: 'có trường không nhận' });
+    if (checked.duplicate) wrong.push({ path: `${at}.${checked.duplicate}`, hint: 'gửi hai lần' });
+    wrong.push(...checked.wrong);
+    value.push(checked.value);
+  });
+  return { value, wrong };
 }
 
 /** JSON chuẩn hoá (khoá sắp xếp) — dùng cho khoá binding xác nhận: cùng nội dung ⇒ cùng chuỗi. */

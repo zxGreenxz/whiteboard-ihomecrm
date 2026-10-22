@@ -9,7 +9,6 @@ import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS, expenseActionOperation, expenseActionInput, mayUseExpenseAction } from './expense-action-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -55,7 +54,7 @@ const ROOM_TOOL = Object.freeze({
 // per broker, not at module load: external-group-mount imports this module back.
 function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+    ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
@@ -322,7 +321,6 @@ export function createBroker({
   roomPass,
   tasks,
   customers,
-  expenses,
   actions,
   dependencyScope,
   clock = Date.now,
@@ -371,13 +369,9 @@ export function createBroker({
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_customer_action_service_required');
     customer = Object.fromEntries(['prepareCustomerAction', 'finalizeCustomerAction'].map(key => [key, customers[key].bind(customers)]));
   }
-  let expense;
-  if (expenses !== undefined) {
-    if (!injectedAuthority || ['prepareExpenseAction', 'finalizeExpenseAction'].some(key => typeof expenses?.[key] !== 'function') ||
-        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_expense_action_service_required');
-    expense = Object.fromEntries(['prepareExpenseAction', 'finalizeExpenseAction'].map(key => [key, expenses[key].bind(expenses)]));
-  }
   // Đợt 1 nền chung: họ thao tác ghi dùng chung (crm_action_*), lõi ở action-runtime.mjs; broker chỉ móc định nghĩa,
+  // (Đợt 2 Thu chi: họ phiếu chi cũ crm_expense_* đã gỡ — phiếu chi đi expense.* của danh mục; expense_outcome_unknown giữ
+  // trong ERROR_STATUS/sổ audit cho tương thích.)
   // danh sách tool và một nhánh callTool. Danh mục rỗng hay kết nối không giữ khoá thao tác nào ⇒ không hiện tool nào.
   let action;
   if (actions !== undefined) {
@@ -474,10 +468,6 @@ export function createBroker({
     const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
-  // Hai họ ghi phiếu chi không bao giờ cùng hiện (D4; review #253): cùng hiện là 65 705 B > trần tools/list 64 000 B. Khi
-  // họ thao tác dùng chung hiện với kết nối này thì họ phiếu chi cũ (crm_expense_*) ẩn khỏi danh sách VÀ bị từ chối khi gọi.
-  const actionFamilyListed = identity => Boolean(action && action.listed(identity.effective).length);
-  const mayUseOldExpense = (identity, operation) => mayUseExpenseAction(identity.effective, operation) && !actionFamilyListed(identity);
   // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7, 19): thao tác thay một tool cũ SỐNG ⇒ tool cũ ẩn VÀ bị từ chối, không để
   // hai đường cùng hiện — task.create thay crm_task_create / crm_task_status / crm_task_input_options; task.update thay
   // crm_task_progress; task.cancel thay crm_task_cancel (TASK_RETIRED_BY). Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime
@@ -491,7 +481,6 @@ export function createBroker({
     ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseLegacyTask(identity, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
-    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseOldExpense(identity, expenseActionOperation(tool.name))) : []),
     ...(action ? action.listed(identity.effective) : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
@@ -984,7 +973,7 @@ export function createBroker({
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'room_pass_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
-      // Customer/lead and expense create share one shape: fixed DTO, branded
+      // Customer/lead create: fixed DTO, branded
       // receipt prepared before audit, final bound-JWT RPC as the last await.
       // Lost ACK after dispatch is a distinct unknown code with the requestId;
       // nothing here retries a create.
@@ -1003,22 +992,6 @@ export function createBroker({
             onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'customer_outcome_unknown', mutationRequestId: () => input?.requestId });
-      }
-      const expenseOp = expenseActionOperation(name);
-      if (expense && expenseOp) {
-        let input, invalid = false, uncertain = false;
-        try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
-        return call(async (identity, signal) => {
-          if (!mayUseOldExpense(identity, expenseOp)) fail('tool_not_available');
-          if (invalid) fail('invalid_request');
-          const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
-          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
-          return receipt;
-        }, async (receipt, _identity, signal) => {
-          const result = await expense.finalizeExpenseAction(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
-          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'expense_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {
