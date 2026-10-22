@@ -34,6 +34,9 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { toast } from "sonner";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
+import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hooks/useIhomeProfitLine";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import { MobileHeader, fmtShort } from "@/components/shareholders/profitMobileShared";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
@@ -128,7 +131,16 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const ymStr = `${ym.y}-${String(ym.m).padStart(2, "0")}`;
   const monthLabel = `${String(ym.m).padStart(2, "0")}/${ym.y}`;
 
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  // Chỉ toà của CÔNG TY đang chọn (siêu quản trị thấy toà mọi công ty qua RLS — để trống bộ lọc là cộng
+  // lẫn số công ty khác). Mọi truy vấn nhận danh sách toà cụ thể (scopeIds) — đồng bộ desktop.
+  const { data: allBuildings = [], isSuccess: buildingsLoaded } = useBuildings({ includeVirtual: true });
+  const { selectedOrganizationId } = useOrganization();
+  const buildings = useMemo(
+    () => orgBuildingsOf(allBuildings as { id: string; organization_id?: string | null }[], selectedOrganizationId),
+    [allBuildings, selectedOrganizationId],
+  );
+  const scopeReady = buildingsLoaded && !!selectedOrganizationId;
+  const scopeIds = useMemo(() => profitScopeIds(buildings, buildingIds), [buildings, buildingIds]);
   const { data: specialTypes = [] } = useHiddenInReportTypes();
   const specialTypeIds = useMemo(() => new Set(specialTypes.map((t) => t.id)), [specialTypes]);
   const specialTypeNames = useMemo(
@@ -137,7 +149,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   );
 
   const filters: IncomeExpenseFilters = {
-    building_ids: buildingIds.length ? buildingIds : undefined,
+    building_ids: scopeIds,
     start_date: startDate,
     end_date: endDate,
     // Finance V2 §2.3: phiếu CHỜ DUYỆT vẫn ghi nhận KQKD — tính cả UNAPPROVED,
@@ -147,16 +159,16 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   };
 
   const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
-    accrualMode ? ymStr : "", filters, { businessResultOnly: pnlOnly },
+    accrualMode && scopeReady ? ymStr : "", filters, { businessResultOnly: pnlOnly },
   );
   // Cash chỉ đọc ở nhánh !accrualMode (đồng bộ desktop) — đừng kéo 2000 dòng khi đang dồn tích.
   const { data: cash, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useIncomeExpenses(
-    filters, { page: 1, pageSize: LIST_LIMIT }, undefined, { enabled: !accrualMode },
+    filters, { page: 1, pageSize: LIST_LIMIT }, undefined, { enabled: !accrualMode && scopeReady },
   );
   const { data: stats } = useIncomeExpenseStats(filters, { businessResultOnly: pnlOnly });
   const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
   // Phòng trống / thiếu hoá đơn trong tháng (cột Thu) — cùng hook desktop.
-  const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, true);
+  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, scopeReady);
   // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
@@ -464,6 +476,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const displayDescription = (r: MRow): string => {
     // Dòng ghi chú thuần giữ nguyên mô tả (ghi chú trống phòng có thể chứa "Thanh lý HĐ").
     if (r.isNote) return r.desc;
+    // Đổi tên theo hoá đơn / thanh lý chỉ cho khoản THU — phiếu chi giữ đúng tên của nó.
+    if (side === "expense") return r.desc;
     if (nrm(`${r.type} ${r.desc}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
     const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
     if (invTitle) return invTitle;
@@ -477,8 +491,27 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
 
   const toggleBuilding = (id: string) =>
     setBuildingIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const modeCount = (!pnlOnly ? 1 : 0) + (accrualMode ? 0 : 1);
+  // công tắc "ẩn hạng mục đặc biệt" cũng là một bộ lọc đang bật — đếm vào huy hiệu
+  const modeCount = (!pnlOnly ? 1 : 0) + (accrualMode ? 0 : 1) + (hideSpecialTypes ? 1 : 0);
   const profitPos = displayDiff >= 0;
+
+  const pendingBuildingIds = useMemo(
+    () => (accrualMode ? pendingBuildingIdsOf(accrual?.rows) : new Set<string>()),
+    [accrualMode, accrual],
+  );
+  const ihomeLine = useIhomeProfitLine(ymStr, scopeIds, displayDiff, {
+    enabled: !hideStatCards,
+    sameBasis: accrualMode && pnlOnly,
+    pendingBuildingIds,
+  });
+  // Những gì đang nằm trong tổng / đang bị ẩn — hiện thường trực dưới dải tổng (desktop có chip tương ứng).
+  const summaryNotes: string[] = [];
+  if (pendingInfo.count > 0)
+    summaryNotes.push(`Gồm ${pendingInfo.count} phiếu chờ duyệt (thu ${fmtShort(pendingInfo.income)} · chi ${fmtShort(pendingInfo.expense)})`);
+  if (hideSpecialTypes && hiddenCount > 0)
+    summaryNotes.push(`Đang ẩn ${hiddenCount} dòng hạng mục đặc biệt (thu ${fmtShort(hiddenIncomeSum)} · chi ${fmtShort(hiddenExpenseSum)}) — tổng vẫn gồm`);
+  if (!pnlOnly) summaryNotes.push("Tổng đang gồm cả khoản không tính KQKD (cọc, hoàn cọc…)");
+  if (!accrualMode) summaryNotes.push("Đang xếp theo ngày phiếu (không phân bổ theo kỳ)");
 
   const badge = (n: number) => (
     <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-[3px] grid place-items-center rounded-full bg-[#1f7a52] text-white font-mono text-[9px] font-bold">
@@ -676,22 +709,39 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             </div>
           )}
 
+          {/* Dòng "Lợi nhuận của iHome" (tổng − phần chủ nhà của toà vận hành) + tóm tắt LUÔN hiện những gì
+              đang nằm trong tổng / đang bị ẩn — không để thanh kiểm chứng ẩn đi mất các thông tin này. */}
+          {!hideStatCards && (ihomeLine.kind === "ready" || ihomeLine.kind === "other-basis" || ihomeLine.kind === "error"
+            || summaryNotes.length > 0) && (
+            <div className="flex flex-col gap-0.5 px-1 text-[11.5px] leading-snug text-[#6b6558]">
+              {ihomeLine.kind === "ready" && (
+                <span data-testid="ihome-profit" title={ihomeLineTitle(ihomeLine)}>
+                  Lợi nhuận của iHome: <b className="font-mono text-[#1b1813]">{fmtShort(ihomeLine.profit)}</b>
+                  {ihomeLine.provisional ? " · tạm tính" : ""}
+                </span>
+              )}
+              {ihomeLine.kind === "other-basis" && (
+                <span data-testid="ihome-profit">Lợi nhuận của iHome: chỉ tính khi xem phân bổ theo kỳ, chỉ khoản KQKD</span>
+              )}
+              {ihomeLine.kind === "error" && (
+                <button type="button" className="text-left underline" onClick={ihomeLine.retry}>
+                  Chưa tính được lợi nhuận của iHome — thử lại
+                </button>
+              )}
+              {summaryNotes.map((t) => <span key={t}>{t}</span>)}
+            </div>
+          )}
+
           {/* B5: thanh kiểm chứng — ẩn mặc định, chỉ hiện khi có lệch + bấm chấm đỏ.
               Luôn mount (display:none) để tự tính trạng thái lệch. */}
           <div className={showVerify ? "" : "hidden"}>
-            {/* buildingIds: không lọc toà → truyền TOÀN BỘ toà org hiện hành,
-                tránh RPC kiểm chứng quét cả org khác (V2-PRE-1, đồng bộ desktop). */}
+            {/* buildingIds: luôn là toà cụ thể của CÔNG TY đang chọn (scopeIds), tránh RPC
+                kiểm chứng quét cả org khác (V2-PRE-1, đồng bộ desktop). */}
             <ProfitVerificationBar
             ym={ymStr}
             startDate={startDate}
             endDate={endDate}
-            buildingIds={
-              buildingIds.length > 0
-                ? buildingIds
-                : (buildings as any[]).length > 0
-                  ? (buildings as any[]).map((b) => b.id)
-                  : undefined
-            }
+            buildingIds={scopeIds}
             monthLabel={monthLabel}
             accrualMode={accrualMode}
             pnlOnly={pnlOnly}

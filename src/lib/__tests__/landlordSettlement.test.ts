@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   describeNet,
   describeOperationChange,
+  ihomeLineOf,
   ihomeProfitOf,
   landlordErrorMessage,
+  pendingBuildingIdsOf,
   landlordShareUrl,
   monthKey,
   monthLabel,
@@ -161,6 +163,42 @@ describe('lợi nhuận của iHome trên Báo cáo LN', () => {
   it('không có toà vận hành trong phạm vi ⇒ bằng đúng tổng', () => {
     expect(ihomeProfitOf(50_000_000, rows, { months: ['2026-09'], buildingIds: null }))
       .toEqual({ profit: 50_000_000, landlordShare: 0, operatedCount: 0, provisional: false });
+  });
+
+  const none: ReadonlySet<string> = new Set();
+  const base = { ym: '2026-10', buildingIds: [] as string[], totalProfit: 100_000_000, sameBasis: true, pendingBuildingIds: none };
+  it('dòng iHome: không có toà vận hành trong phạm vi ⇒ ẩn (tổng chính là của iHome)', () => {
+    expect(ihomeLineOf(rows, { ...base, ym: '2026-09' })).toEqual({ kind: 'hidden' });
+    expect(ihomeLineOf(rows, { ...base, buildingIds: ['00000000-0000-4000-8000-0000000000cc'] })).toEqual({ kind: 'hidden' });
+  });
+  it('dòng iHome: trang đang xem cơ sở khác (theo ngày phiếu / gồm cọc) ⇒ không trừ, báo khác cơ sở', () => {
+    expect(ihomeLineOf(rows, { ...base, sameBasis: false })).toEqual({ kind: 'other-basis', operatedCount: 2 });
+  });
+  it('dòng iHome: đúng cơ sở ⇒ tổng − phần chủ nhà; tháng chưa chốt ⇒ tạm tính', () => {
+    expect(ihomeLineOf(rows, base)).toEqual({ kind: 'ready', profit: 77_000_000, operatedCount: 2, provisional: true });
+    expect(ihomeLineOf(rows, { ...base, buildingIds: [A] }))
+      .toEqual({ kind: 'ready', profit: 72_000_000, operatedCount: 1, provisional: false });
+  });
+  it('dòng iHome: toà vận hành còn phiếu chờ duyệt trong tổng ⇒ tạm tính dù tháng đã chốt', () => {
+    expect(ihomeLineOf(rows, { ...base, buildingIds: [A], pendingBuildingIds: new Set([A]) }))
+      .toEqual({ kind: 'ready', profit: 72_000_000, operatedCount: 1, provisional: true });
+    // phiếu chờ duyệt ở toà KHÔNG vận hành (hoặc ngoài phạm vi lọc) không làm dòng iHome thành tạm tính
+    expect(ihomeLineOf(rows, { ...base, buildingIds: [A], pendingBuildingIds: new Set([B, 'toa-thuong']) }))
+      .toEqual({ kind: 'ready', profit: 72_000_000, operatedCount: 1, provisional: false });
+    // toà vận hành chỉ có quyết toán ở tháng KHÁC (chưa áp dụng ở tháng đang xem) ⇒ không xét
+    const C = '00000000-0000-4000-8000-0000000000cc';
+    const rows2 = [rows[0]!, { ...rows[1]!, building_id: C }];
+    expect(ihomeLineOf(rows2, { ...base, pendingBuildingIds: new Set([C]) }))
+      .toEqual({ kind: 'ready', profit: 72_000_000, operatedCount: 1, provisional: false });
+  });
+  it('toà có phiếu chờ duyệt: chỉ lấy dòng UNAPPROVED có toà', () => {
+    const ids = pendingBuildingIdsOf([
+      { buildingId: A, approvalStatus: 'UNAPPROVED' },
+      { buildingId: B, approvalStatus: 'APPROVED' },
+      { buildingId: null, approvalStatus: 'UNAPPROVED' },
+    ]);
+    expect([...ids]).toEqual([A]);
+    expect(pendingBuildingIdsOf(undefined).size).toBe(0);
   });
 });
 

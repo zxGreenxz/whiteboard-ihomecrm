@@ -24,6 +24,9 @@ import { canUse } from "@/lib/permissionPages";
 import { toast } from "sonner";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
+import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hooks/useIhomeProfitLine";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
@@ -247,7 +250,16 @@ function ProfitDistributionDesktop() {
 
   // Trang này cần cả toà ảo "Chung" (phiếu chia LN cổ đông) → tự fetch
   // includeVirtual và truyền vào BuildingMultiSelect thay vì để nó tự fetch.
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  // Chỉ toà của CÔNG TY đang chọn: RLS cho siêu quản trị thấy toà mọi công ty (gồm DEMO) — để trống bộ
+  // lọc là cộng lẫn số công ty khác vào tổng. Mọi truy vấn của trang nhận danh sách toà cụ thể (scopeIds).
+  const { data: allBuildings = [], isSuccess: buildingsLoaded } = useBuildings({ includeVirtual: true });
+  const { selectedOrganizationId } = useOrganization();
+  const buildings = useMemo(
+    () => orgBuildingsOf(allBuildings as { id: string; organization_id?: string | null }[], selectedOrganizationId),
+    [allBuildings, selectedOrganizationId]
+  );
+  const scopeReady = buildingsLoaded && !!selectedOrganizationId;
+  const scopeIds = useMemo(() => profitScopeIds(buildings, buildingIds), [buildings, buildingIds]);
   const buildingOptions = useMemo(
     () =>
       (buildings as any[]).map((b) => ({
@@ -258,7 +270,7 @@ function ProfitDistributionDesktop() {
     [buildings]
   );
 
-  const buildingFilter = buildingIds.length > 0 ? buildingIds : undefined;
+  const buildingFilter = scopeIds;
   const filters: IncomeExpenseFilters = {
     building_ids: buildingFilter,
     room_id: roomId === "all" ? undefined : roomId,
@@ -282,7 +294,7 @@ function ProfitDistributionDesktop() {
       pageSize: LIST_LIMIT,
     },
     undefined,
-    { enabled: !accrualMode }
+    { enabled: !accrualMode && scopeReady }
   );
   // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter.
   // businessResultOnly đồng bộ với toggle → loại tiền cọc khỏi Doanh thu/Lợi nhuận.
@@ -295,7 +307,7 @@ function ProfitDistributionDesktop() {
   // (hook tự bỏ qua start/end_date — kỳ lấy theo `month`); truyền BIẾN thay vì
   // object literal để building_ids đi qua được dù AccrualFilters chưa khai báo.
   const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
-    accrualMode ? ym : "",
+    accrualMode && scopeReady ? ym : "",
     filters,
     { businessResultOnly: pnlOnly }
   );
@@ -341,7 +353,7 @@ function ProfitDistributionDesktop() {
   // đầy đủ của toà).
   // B5: bật mặc định cả khi chưa chọn toà (hook tự quét mọi toà theo RLS).
   const vacancyEnabled = voucherType !== "EXPENSE" && roomId === "all";
-  const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, vacancyEnabled);
+  const { data: vacantNotes } = useVacantRoomNotes(scopeIds, endDate, vacancyEnabled && scopeReady);
   // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
@@ -744,10 +756,13 @@ function ProfitDistributionDesktop() {
   //    "<phòng>/<toà>" (phòng đã có cột riêng) — vd "TIỀN PHÒNG - 05/2026",
   //    HĐ tháng đầu là "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
   //  - Chưa tải xong invoiceTotals → tạm rơi về nhãn rút gọn cũ.
-  const displayDescription = (r: DisplayRow): string => {
+  const displayDescription = (r: DisplayRow, side: "income" | "expense"): string => {
     // Dòng ghi chú thuần (phòng trống/thiếu hoá đơn) giữ nguyên mô tả — ghi chú
     // "Trống N ngày … — Thanh lý HĐ" chứa "thanh ly" nhưng KHÔNG phải khoản thanh lý.
     if (r.isNote) return r.description;
+    // Đổi tên theo hoá đơn / thanh lý chỉ cho khoản THU — phiếu chi (vd chi hoàn cọc khi thanh lý)
+    // giữ đúng tên của nó, không bị gọi thành "HĐ Thanh Lý Hợp Đồng".
+    if (side === "expense") return r.description;
     if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
     const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
     if (invTitle) return invTitle;
@@ -791,11 +806,12 @@ function ProfitDistributionDesktop() {
   // Nút ◀ ▶ trên dải hero — lùi/tiến 1 tháng (không giới hạn 24 tháng như dropdown).
   const stepMonth = (delta: number) => setMonthStr(format(addMonths(monthDate, delta), "MM-yyyy"));
 
-  // Cột LN 6 tháng gần nhất trên hero. 5 tháng trước lấy từ RPC fa_monthly_pnl
-  // (aggregate server, không dính cap 1000); tháng ĐANG XEM dùng chính số của
-  // trang để cột cao nhất luôn khớp con số Lợi nhuận in ngay bên cạnh.
+  // Cột LN 6 tháng gần nhất trên hero — CẢ 6 cột (kể cả tháng đang xem) lấy từ RPC
+  // fa_monthly_pnl (aggregate server, không dính cap 1000) cùng MỘT cơ sở: phiếu đã
+  // duyệt, chỉ KQKD. Trước đây cột tháng đang xem lấy số của trang (gồm chờ duyệt,
+  // có thể gồm ngoài-KQKD) nên so với 5 cột trước là so hai cơ sở khác nhau.
   const { data: faMonths = [] } = useFaMonthlyPnl(
-    format(startOfMonth(addMonths(monthDate, -5)), "yyyy-MM-dd"),
+    scopeReady ? format(startOfMonth(addMonths(monthDate, -5)), "yyyy-MM-dd") : undefined,
     endDate,
     buildingFilter,
     accrualMode,
@@ -808,17 +824,26 @@ function ProfitDistributionDesktop() {
     }
     return Array.from({ length: 6 }, (_, i) => {
       const d = addMonths(monthDate, i - 5);
-      const current = i === 5;
       return {
         label: `T${d.getMonth() + 1}`,
-        value: current ? displayDiff : byMonth.get(format(d, "yyyy-MM")) ?? 0,
-        current,
+        value: byMonth.get(format(d, "yyyy-MM")) ?? 0,
+        current: i === 5,
       };
     });
-  }, [faMonths, monthDate, displayDiff]);
+  }, [faMonths, monthDate]);
   const prevMonthProfit = profitSeries[4]?.value ?? 0;
+  const curMonthApproved = profitSeries[5]?.value ?? 0;
+  // % so tháng trước: cùng cơ sở với cột (đã duyệt, chỉ KQKD) — không lấy số lớn (gồm chờ duyệt)
   const momPct =
-    prevMonthProfit !== 0 ? ((displayDiff - prevMonthProfit) / Math.abs(prevMonthProfit)) * 100 : null;
+    prevMonthProfit !== 0 ? ((curMonthApproved - prevMonthProfit) / Math.abs(prevMonthProfit)) * 100 : null;
+  // Thẻ Lợi nhuận chỉ có nghĩa khi xem cả thu lẫn chi
+  const profitApplies = voucherType === "all";
+  const pendingBuildingIds = useMemo(() => pendingBuildingIdsOf(accrual?.rows), [accrual]);
+  const ihomeLine = useIhomeProfitLine(ym, scopeIds, displayDiff, {
+    enabled: profitApplies && !hideStatCards,
+    sameBasis: accrualMode && pnlOnly,
+    pendingBuildingIds,
+  });
   const prevMonthLabel = format(addMonths(monthDate, -1), "MM/yyyy");
   const sparkMax = Math.max(1, ...profitSeries.map((p) => Math.abs(p.value)));
 
@@ -987,14 +1012,14 @@ function ProfitDistributionDesktop() {
                             e.stopPropagation();
                             openInvoiceModal(
                               r.invoiceId!,
-                              displayDescription(r) + (r.roomName ? ` — ${r.roomName}` : "")
+                              displayDescription(r, side) + (r.roomName ? ` — ${r.roomName}` : "")
                             );
                           }}
                         >
-                          {displayDescription(r)}
+                          {displayDescription(r, side)}
                         </button>
                       ) : (
-                        displayDescription(r)
+                        displayDescription(r, side)
                       )}
                       {fd && <span className="ph-inline ph-inline--first">HĐ tháng đầu</span>}
                       {r.isMissingInvoice && <span className="ph-inline ph-inline--alert">Còn hợp đồng</span>}
@@ -1119,15 +1144,43 @@ function ProfitDistributionDesktop() {
           <div className="ph-op">=</div>
           <div className="ph-kpi">
             <div className="ph-kpi__label">Lợi nhuận</div>
-            <div className="ph-kpi__row">
-              <div className="ph-kpi__value ph-kpi__value--lg">{formatCurrency(displayDiff)}</div>
-              {displayIncome > 0 && <div className="ph-pill-mint">Biên {marginPct}%</div>}
-            </div>
-            {momPct !== null && (
-              <div className="ph-kpi__sub ph-kpi__sub--mint">
-                {momPct >= 0 ? "▲ +" : "▼ "}
-                {momPct.toFixed(1).replace(".", ",")}% so với T{prevMonthLabel}
-              </div>
+            {profitApplies ? (
+              <>
+                <div className="ph-kpi__row">
+                  <div className="ph-kpi__value ph-kpi__value--lg">{formatCurrency(displayDiff)}</div>
+                  {displayIncome > 0 && <div className="ph-pill-mint">Biên {marginPct}%</div>}
+                </div>
+                {ihomeLine.kind === "ready" && (
+                  <div className="ph-kpi__ihome" data-testid="ihome-profit" title={ihomeLineTitle(ihomeLine)}>
+                    Của iHome: <b>{formatCurrency(ihomeLine.profit)}</b>
+                    {ihomeLine.provisional ? " · tạm tính" : ""}
+                  </div>
+                )}
+                {ihomeLine.kind === "other-basis" && (
+                  <div className="ph-kpi__ihome" data-testid="ihome-profit">
+                    Của iHome: chỉ tính khi xem phân bổ theo kỳ, chỉ khoản tính KQKD
+                  </div>
+                )}
+                {ihomeLine.kind === "error" && (
+                  <button type="button" className="ph-kpi__ihome underline" onClick={ihomeLine.retry}>
+                    Chưa tính được lợi nhuận của iHome — thử lại
+                  </button>
+                )}
+                {momPct !== null && (
+                  <div
+                    className={`ph-kpi__sub ${momPct >= 0 ? "ph-kpi__sub--mint" : "ph-kpi__sub--peach"}`}
+                    title="So phần đã duyệt, chỉ khoản tính KQKD — cùng cơ sở với cột 6 tháng"
+                  >
+                    {momPct >= 0 ? "▲ +" : "▼ "}
+                    {momPct.toFixed(1).replace(".", ",")}% so với T{prevMonthLabel} (đã duyệt)
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="ph-kpi__value ph-kpi__value--lg">—</div>
+                <div className="ph-kpi__sub">Đang lọc chỉ khoản {voucherType === "INCOME" ? "thu" : "chi"} — chọn "Tất cả" để xem lợi nhuận</div>
+              </>
             )}
           </div>
           <div className="ph-kpi__div ph-kpi__div--push" />
@@ -1139,11 +1192,15 @@ function ProfitDistributionDesktop() {
                   key={p.label}
                   className={`ph-spark__bar${
                     p.current ? " ph-spark__bar--cur" : i === 4 ? " ph-spark__bar--prev" : ""
-                  }`}
+                  }${p.value < 0 ? " ph-spark__bar--neg" : ""}`}
                   style={{ height: Math.max(4, Math.round((Math.abs(p.value) / sparkMax) * 62)) }}
-                  title={`${p.label}: ${formatCurrency(p.value)}`}
+                  title={`${p.label}: ${p.value < 0 ? "lỗ " : ""}${formatCurrency(p.value)} (đã duyệt, chỉ KQKD)`}
                 >
-                  {p.current && <div className="ph-spark__cap">{toMillions(p.value)}tr</div>}
+                  {p.current && (
+                    <div className={`ph-spark__cap${p.value < 0 ? " ph-spark__cap--neg" : ""}`}>
+                      {p.value < 0 ? "−" : ""}{toMillions(Math.abs(p.value))}tr
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1454,22 +1511,15 @@ function ProfitDistributionDesktop() {
 
         {/* B5: thanh kiểm chứng — desktop + mobile dùng chung. Chip "Kiểm chứng"
             trên hero là bản rút gọn của thanh này (bấm chip cuộn xuống đây).
-            buildingIds: khi user KHÔNG lọc toà phải truyền TOÀN BỘ toà của org
-            hiện hành (không phải null) — RPC kiểm chứng (fa engine, layer stats)
-            là SECURITY DEFINER quét MỌI building user thấy, gồm cả org khác
-            (V2-PRE-1: org DEMO lọt vào engine ⇒ lệch −17,3tr oan). */}
+            buildingIds: luôn là danh sách toà cụ thể của CÔNG TY đang chọn (scopeIds) —
+            RPC kiểm chứng (fa engine, layer stats) là SECURITY DEFINER quét MỌI building
+            user thấy, gồm cả org khác (V2-PRE-1: org DEMO lọt vào engine ⇒ lệch −17,3tr oan). */}
         <div className="ph-verify" id="ph-verify">
           <ProfitVerificationBar
             ym={ym}
             startDate={startDate}
             endDate={endDate}
-            buildingIds={
-              buildingIds.length > 0
-                ? buildingIds
-                : buildingOptions.length > 0
-                  ? buildingOptions.map((b) => b.id)
-                  : undefined
-            }
+            buildingIds={scopeIds}
             monthLabel={monthLabel}
             accrualMode={accrualMode}
             pnlOnly={pnlOnly}

@@ -391,6 +391,55 @@ export function ihomeProfitOf(
   };
 }
 
+/** Dòng "Lợi nhuận của iHome" trên Báo cáo LN khi đã có dữ liệu phần chủ nhà. */
+export type IhomeLineDecision =
+  | { kind: 'hidden' }
+  /** Có toà vận hành trong phạm vi nhưng trang đang xem cơ sở khác (theo ngày phiếu / gồm cọc). */
+  | { kind: 'other-basis'; operatedCount: number }
+  | { kind: 'ready'; profit: number; operatedCount: number; provisional: boolean };
+
+/**
+ * Quyết định dòng iHome. Phần chủ nhà (server) tính theo kỳ trên phiếu ĐÃ DUYỆT, chỉ KQKD ⇒ chỉ trừ vào
+ * tổng cùng cơ sở (`sameBasis`); toà vận hành trong phạm vi còn phiếu CHỜ DUYỆT nằm trong tổng ⇒ phần chủ
+ * nhà của các phiếu đó chưa trừ ⇒ "tạm tính", như tháng chưa chốt quyết toán.
+ */
+export function ihomeLineOf(
+  rows: readonly LandlordIhomeProfitRow[],
+  input: {
+    ym: string;
+    buildingIds: readonly string[];
+    totalProfit: number;
+    sameBasis: boolean;
+    pendingBuildingIds: ReadonlySet<string>;
+  },
+): IhomeLineDecision {
+  const scope = { months: [input.ym], buildingIds: input.buildingIds.length > 0 ? input.buildingIds : null };
+  const r = ihomeProfitOf(input.totalProfit, rows, scope);
+  // không có toà vận hành nào trong phạm vi: tổng chính là lợi nhuận của iHome — không cần dòng riêng
+  if (r.operatedCount === 0) return { kind: 'hidden' };
+  if (!input.sameBasis) return { kind: 'other-basis', operatedCount: r.operatedCount };
+  const inScope = scope.buildingIds ? new Set(scope.buildingIds) : null;
+  const pendingOperated = rows.some((row) => monthKey(row.period_month) === monthKey(input.ym)
+    && (!inScope || inScope.has(row.building_id))
+    && input.pendingBuildingIds.has(row.building_id));
+  return { kind: 'ready', profit: r.profit, operatedCount: r.operatedCount, provisional: r.provisional || pendingOperated };
+}
+
+/** Toà có phiếu chờ duyệt trong các dòng báo cáo đang xem (để đánh dấu "tạm tính"). */
+export function pendingBuildingIdsOf(
+  rows: readonly { buildingId: string | null; approvalStatus: 'APPROVED' | 'UNAPPROVED' }[] | undefined,
+): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const r of rows ?? []) if (r.approvalStatus === 'UNAPPROVED' && r.buildingId) out.add(r.buildingId);
+  return out;
+}
+
+/** Chữ giải thích dòng iHome (tooltip) — desktop và mobile dùng chung. */
+export function ihomeLineTitle(line: { operatedCount: number; provisional: boolean }): string {
+  return `Tổng lợi nhuận trừ phần của chủ nhà ở ${line.operatedCount} toà vận hành cho chủ nhà (theo kỳ, phiếu đã duyệt)`
+    + (line.provisional ? ' — tạm tính: còn tháng chưa chốt quyết toán hoặc phiếu chờ duyệt ở toà vận hành' : '');
+}
+
 const FIXED_FEE_LABEL: Record<string, string> = {
   tien_nha: 'Tiền nhà', dien: 'Điện', nuoc: 'Nước', internet: 'Internet', quan_ly: 'Phí quản lý',
   ve_sinh: 'Vệ sinh', cong_an: 'Công an', rac: 'Rác', thang_may: 'Thang máy',
