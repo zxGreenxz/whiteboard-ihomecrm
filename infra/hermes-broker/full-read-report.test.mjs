@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, W2_CUSTOMER_STATUS_PATH, W2_WITHOUT_CONTRACT_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, W2_CUSTOMER_STATUS_PATH, W2_WITHOUT_CONTRACT_PATH, INVOICE_REPORT_OUTSTANDING_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
   PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
@@ -131,8 +131,10 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     // mọi dòng khác giữ bản 20261020173819 (v3) và 20261017033630 (báo cáo).
     // R2c phần 2 (20261021044814, dải nền): v3 customers đếm tình trạng hợp đồng; báo cáo giữ bản R2a.
     // R2d (20261021063453, dải nền): v3 customers đếm khách chưa có hợp đồng — bản cuối của v3.
+    // Nợ thực (20261021190212): báo cáo invoice_report stats đọc nợ thực — bản cuối của báo cáo (ngoài dải nền: hàm này
+    // không thuộc W2_FOUNDATION_FUNCTIONS).
     if (name === 'app_private.hermes_report_read_v2')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_SUMMARY_PATH, `${name} lives in the R2a wave-2 successor`);
+      assert.equal(`supabase/migrations/${last[0]}`, INVOICE_REPORT_OUTSTANDING_PATH, `${name} lives in the effective-outstanding successor`);
     if (name === 'public.hermes_domain_read_v3')
       assert.equal(`supabase/migrations/${last[0]}`, W2_WITHOUT_CONTRACT_PATH, `${name} lives in the R2d wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
@@ -226,6 +228,31 @@ test('invoice search like /invoices: cancelled hidden by default, unpaid = no mo
   assert.equal((await run(env, 'invoice_report', { report: 'stats' })).value.summary.totalCount, 3, 'stats exclude cancelled');
 }));
 
+// Nợ thực (20261021190212): totalRemaining như thẻ "Phải thu" của invoice_statistics_v3 — phần nợ cũ đã kéo sang hoá đơn
+// gánh còn mở CÙNG tập chỉ đếm một lần; một kỳ (hoá đơn gánh ở kỳ khác) giữ nguyên. Bản lùi chuẩn bị sẵn về đúng R2a.
+test('invoice_report stats: nợ thực — nợ kéo sang hoá đơn gánh cùng tập đếm một lần; một kỳ giữ nguyên; bản lùi về R2a rồi forward lại', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  const CARRIER = '0e0e0e0e-0000-4000-8000-000000000099';
+  // INV-A (kỳ 10, còn 2.500.000) được hoá đơn kỳ 11 cùng phòng gánh trọn; hoá đơn gánh tạo SAU (created_at mặc định).
+  await db.exec(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,
+      notes,contract_id,previous_debt_sources) VALUES('${CARRIER}','${ORG}','INV-C','APPROVED','${BUILDING}','${ROOM}','2026-11','2026-11-10',3000000,0,null,
+      '${CONTRACT_A}','[{"type":"invoice","id":"${INVOICE_A}","amount":2500000,"label":"INV-A"}]')`);
+  const remaining = async input => (await run(env, 'invoice_report', { report: 'stats', ...input })).value.summary.totalRemaining;
+  assert.deepEqual([await remaining({}), await remaining({ month: '2026-10' }), await remaining({ month: '2026-11' })],
+    ['3000000.00', '2500000.00', '3000000.00'], 'mọi kỳ: 3.000.000 (cộng thẳng 5.500.000); từng kỳ giữ nguyên');
+  const bodyMd5 = async () => (await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE proname='hermes_report_read_v2'")).rows[0].m;
+  const live = await bodyMd5();
+  const file = revertFile('docs/plans/hermes-crm/revert/hermes_invoice_report_effective_outstanding_revert_v1.sql');
+  await db.exec(file); await db.exec(file);
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
+  const r2a = await bodyMd5();
+  await db.exec(file);
+  assert.equal(await bodyMd5(), r2a, 'bản lùi = đúng thân R2a (20261021004841)');
+  assert.equal(await remaining({}), '5500000.00', 'thân R2a cộng thẳng');
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual([await bodyMd5(), await remaining({})], [live, '3000000.00'], 'forward lại');
+}));
+
 test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on request) plus the pending part BC Doanh Thu Chi Phí adds', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await seedPnl(db);
@@ -300,7 +327,8 @@ test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 
   await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3')); await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
   await db.exec(definitionOf(W2_CUSTOMER_STATUS_PATH, 'public.hermes_domain_read_v3'));
   await db.exec(definitionOf(W2_WITHOUT_CONTRACT_PATH, 'public.hermes_domain_read_v3'));
-  assert.deepEqual(await bodies(), r2a, 'R2a then R2c part 2 then R2d forward again');
+  await db.exec(definitionOf(INVOICE_REPORT_OUTSTANDING_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), r2a, 'R2a then R2c part 2 then R2d then the effective-outstanding report forward again');
 }));
 
 // A prepared wave-2 revert, run inside the case without its own BEGIN/COMMIT (the case is one transaction).
