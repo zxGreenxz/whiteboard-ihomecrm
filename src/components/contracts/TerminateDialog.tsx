@@ -295,6 +295,7 @@ function StepForfeit({
   });
 
   const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const [meterValid, setMeterValid] = useState(false);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
   // B4 (audit 03/07): số cọc THỰC sẽ chuyển thành doanh thu = LEAST(cọc theo HĐ,
@@ -313,12 +314,13 @@ function StepForfeit({
     useState<TerminateForfeitFormData | null>(null);
 
   const onSubmit = (data: TerminateForfeitFormData) => {
+    if (!meterValid) return;
     setPendingData(data);
     setConfirmOpen(true);
   };
 
   const doTerminate = async () => {
-    if (!pendingData) return;
+    if (!pendingData || !meterValid) return;
     setConfirmOpen(false);
     try {
       await onSettle({ extraCharges });
@@ -461,6 +463,7 @@ function StepForfeit({
             contract={contract}
             chargeDate={form.watch("forfeit_date")}
             onChange={setExtraCharges}
+            onValidityChange={setMeterValid}
           />
           {extraTotal > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
@@ -485,7 +488,7 @@ function StepForfeit({
           <Button
             type="submit"
             variant="destructive"
-            disabled={isPending}
+            disabled={isPending || !meterValid}
           >
             {isPending && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -527,7 +530,7 @@ function StepForfeit({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Xem lại</AlertDialogCancel>
-            <AlertDialogAction onClick={doTerminate}>
+            <AlertDialogAction onClick={doTerminate} disabled={isPending || !meterValid}>
               Xác nhận thanh lý
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -585,6 +588,7 @@ function StepMoveOut({
   });
 
   const [editableCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const [meterValid, setMeterValid] = useState(false);
   const extraCharges = useMemo(() => withTransferBrokerFee(editableCharges, brokerFee), [editableCharges, brokerFee]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
@@ -653,12 +657,13 @@ function StepMoveOut({
   const settlementAmount = settlement.net;
 
   const onSubmit = (data: TerminateMoveOutFormData) => {
+    if (!meterValid) return;
     setPendingData(data);
     setConfirmOpen(true);
   };
 
   const doTerminate = async () => {
-    if (!pendingData) return;
+    if (!pendingData || !meterValid) return;
     setConfirmOpen(false);
     try {
       await onSettle({
@@ -908,6 +913,7 @@ function StepMoveOut({
             contract={contract}
             chargeDate={form.watch("move_out_date")}
             onChange={setExtraCharges}
+            onValidityChange={setMeterValid}
           />
           {extraTotal > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
@@ -1147,7 +1153,7 @@ function StepMoveOut({
           <Button
             type="submit"
             variant="destructive"
-            disabled={isPending}
+            disabled={isPending || !meterValid}
           >
             {isPending && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1244,7 +1250,7 @@ function StepMoveOut({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Xem lại</AlertDialogCancel>
-            <AlertDialogAction onClick={doTerminate}>
+            <AlertDialogAction onClick={doTerminate} disabled={isPending || !meterValid}>
               Xác nhận thanh lý
             </AlertDialogAction>
           </AlertDialogFooter>

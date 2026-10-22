@@ -3,95 +3,78 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContractWithRelations } from '@/types/contract';
 import type { ExtraChargeItem } from '@/lib/contractValidation';
-
-const db = vi.hoisted(() => ({ meters: [] as { id: string; status: string | null }[], lastReading: 0, readingMeter: '',
-  metersError: null as null | { message: string }, readingsError: null as null | { message: string },
-  hold: false, release: null as null | (() => void) }));
-vi.mock('@/integrations/supabase/client', () => {
-  const builder = (table: string) => {
-    const filters: Record<string, unknown> = {};
-    const chain = {
-      select: () => chain, is: () => chain, order: () => chain,
-      eq: (column: string, value: unknown) => { filters[column] = value; return chain; },
-      limit: () => chain,
-      then: (resolve: (value: { data: unknown; error: unknown }) => void) => {
-        if (table === 'meters') {
-          const answer = () => resolve(db.metersError ? { data: null, error: db.metersError } : { data: db.meters, error: null });
-          if (db.hold) { db.release = answer; return; }
-          return answer();
-        }
-        db.readingMeter = String(filters.meter_id);
-        if (db.readingsError) return resolve({ data: null, error: db.readingsError });
-        return resolve({ data: [{ current_reading: db.lastReading }], error: null });
-      },
-    };
-    return chain;
-  };
-  return { supabase: { from: builder } };
-});
+import type { MeterBillingSource } from '@/lib/meter-capture/types';
+const api = vi.hoisted(() => ({ resolve: vi.fn() }));
+vi.mock('@/lib/meter-capture/service', () => ({ resolveMeterBilling: api.resolve }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
+vi.mock('@/components/meter-readings/MeterEvidenceThumb', () => ({ MeterEvidenceThumb: ({ captureId }: { captureId?: string }) => captureId ? <span>Ảnh {captureId}</span> : null }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [
   { is_active: true, service_id: 'elec', unit_price_override: 3500, service: { name: 'Tiền điện', unit_price: 3500 } },
 ] }) }));
 import { TerminationExtraCharges } from '../TerminationExtraCharges';
-
-const contract = { id: 'c1', room_id: 'room-1', rent_price: 3_000_000, contract_services: [], contract_customers: [],
-  initial_electricity_reading: 100, room: { building_id: 'b1' } } as unknown as ContractWithRelations;
+const id = (n: number) => `11111111-1111-4111-8111-${String(n).padStart(12, '0')}`;
+const contract = { id: id(1), room_id: id(2), rent_price: 3_000_000, contract_services: [], contract_customers: [],
+  initial_electricity_reading: 100, room: { building_id: id(3) } } as unknown as ContractWithRelations;
+const source = (n = 4): MeterBillingSource => ({ meterId: id(n), meterName: `Đồng hồ ${n}`, meterType: 'ELECTRICITY', serviceId: null,
+  decimalPlaces: 2, registerCode: '1.8.0', issues: [],
+  start: { readingId: id(10 + n), value: '5000', version: '1', captureId: id(30 + n), readingDate: '2026-09-30' },
+  end: { readingId: id(20 + n), value: '5012', version: '2', captureId: id(40 + n), readingDate: '2026-10-08' } });
 let items: ExtraChargeItem[] = [];
-const show = () => render(<TerminationExtraCharges contract={contract} chargeDate="2026-10-08" onChange={value => { items = value; }} />);
-const electric = () => items.find(item => item.kind === 'ELECTRIC');
-
-beforeEach(() => { items = []; db.meters = [{ id: 'm-active', status: 'ACTIVE' }]; db.lastReading = 5000; db.readingMeter = '';
-  db.metersError = null; db.readingsError = null; db.hold = false; db.release = null; });
+const valid = vi.fn();
+const changed = (value: ExtraChargeItem[]) => { items = value; };
+const show = () => render(<TerminationExtraCharges contract={contract} chargeDate="2026-10-08" onChange={changed} onValidityChange={valid} />);
+const electric = () => items.filter(item => item.kind === 'ELECTRIC');
+beforeEach(() => { items = []; vi.clearAllMocks(); api.resolve.mockResolvedValue([source()]); });
 afterEach(cleanup);
 
-describe('Tiền điện khi thanh lý: dòng nhắc chỉ hứa ghi số khi thật sự có dòng tiền điện', () => {
-  it('có tiêu thụ trên đồng hồ đang chạy ⇒ phát dòng điện gắn đồng hồ và nói số được ghi', async () => {
+describe('nguồn điện thanh lý đúng hợp đồng, ngày chốt và từng đồng hồ', () => {
+  it('tự điền hai số đã chốt, khoá chỉnh tay và liên kết chứng cứ có phiên bản', async () => {
     show();
-    await waitFor(() => expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('5000'));
-    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '5012' } });
-    await waitFor(() => expect(electric()).toMatchObject({ meter_id: 'm-active', previous_reading: 5000, current_reading: 5012, amount: 42000 }));
-    expect(screen.getByText('Số cuối ghi luôn làm chỉ số lúc trả phòng.')).toBeTruthy();
+    await waitFor(() => expect(electric()).toHaveLength(1));
+    expect(api.resolve).toHaveBeenCalledWith('org-a', { contractId: contract.id, month: '2026-10', readingDate: '2026-10-08', purpose: 'MOVE_OUT' });
+    expect(electric()[0]).toMatchObject({ meter_id: id(4), previous_reading: 5000, current_reading: 5012, amount: 42000,
+      meter_source: { startReadingId: id(14), endReadingId: id(24), endVersion: '2', purpose: 'MOVE_OUT' } });
+    expect((screen.getByTitle('Số điện cuối Đồng hồ 4') as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.getByText(`Ảnh ${id(44)}`)).toBeTruthy();
+    expect(valid).toHaveBeenLastCalledWith(true);
   });
-  it('số cuối bằng số đầu ⇒ không có dòng điện nên nói rõ số không được ghi', async () => {
-    show();
-    await waitFor(() => expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('5000'));
-    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '5000' } });
-    await waitFor(() => expect(screen.getByText(/Không phát sinh tiền điện nên số này không được ghi/)).toBeTruthy());
-    expect(electric()).toBeUndefined();
+  it('giữ dòng 0 kWh có chứng cứ và hỗ trợ nhiều đồng hồ', async () => {
+    const first = source(), second = source(5);
+    first.end!.value = first.start!.value;
+    api.resolve.mockResolvedValue([first, second]); show();
+    await waitFor(() => expect(electric()).toHaveLength(2));
+    expect(electric()[0]).toMatchObject({ amount: 0, meter_source: { meterId: id(4), sortOrder: 0 } });
+    expect(electric()[1]).toMatchObject({ amount: 42000, meter_source: { meterId: id(5), sortOrder: 1 } });
   });
-  it('đang tìm đồng hồ: khối xám, không báo sai "chưa có đồng hồ"; tìm xong mới hiện câu', async () => {
-    db.hold = true;
-    show();
-    expect(screen.getByRole('status')).toBeTruthy();
-    expect(screen.queryByText(/Phòng chưa có đồng hồ điện đang dùng/)).toBeNull();
-    await waitFor(() => expect(db.release).toBeTypeOf('function'));
-    db.release!();
-    await waitFor(() => expect(screen.getByText('Số cuối ghi luôn làm chỉ số lúc trả phòng.')).toBeTruthy());
+  it('lỗi nguồn chặn quyết toán, không lấy số đầu hợp đồng làm dự phòng', async () => {
+    api.resolve.mockRejectedValue(new Error('Không tải được nguồn chỉ số')); show();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Không tải được nguồn'));
+    expect(valid).toHaveBeenLastCalledWith(false); expect(electric()).toEqual([]);
+    expect(screen.queryByTitle('Số điện đầu Đồng hồ 4')).toBeNull();
   });
-  it('lỗi đọc đồng hồ: báo lỗi, số đầu theo hợp đồng, không gửi mã đồng hồ', async () => {
-    db.metersError = { message: 'network' };
-    show();
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Không tải được đồng hồ điện/));
-    expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('100');
-    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '150' } });
-    await waitFor(() => expect(electric()).toMatchObject({ meter_id: null, current_reading: 150 }));
+  it('thiếu số một trong nhiều đồng hồ chặn quyết toán, không bỏ qua đồng hồ đó', async () => {
+    api.resolve.mockResolvedValue([source(), { ...source(5), end: null, issues: ['MISSING_END'] }]); show();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Thiếu nguồn hợp lệ'));
+    expect(valid).toHaveBeenLastCalledWith(false);
+    expect((screen.getByTitle('Số điện cuối Đồng hồ 5') as HTMLInputElement).readOnly).toBe(true);
   });
-  it('có đồng hồ đang chạy nhưng lỗi đọc số đầu: báo kiểm tra số đầu, số cuối VẪN ghi (gửi mã đồng hồ)', async () => {
-    db.readingsError = { message: 'network' };
-    show();
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Không tải được số đầu.*số cuối vẫn ghi/));
-    expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('100');
-    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '150' } });
-    await waitFor(() => expect(electric()).toMatchObject({ meter_id: 'm-active', current_reading: 150 }));
+  it('một đồng hồ chưa có ảnh chốt vẫn nhập tay số cuối, không cho thay số đầu hoặc giảm số', async () => {
+    api.resolve.mockResolvedValue([{ ...source(), end: null, issues: ['MISSING_END'] }]); show();
+    await waitFor(() => expect(screen.getByTitle('Số điện cuối Đồng hồ 4')).toBeTruthy());
+    expect((screen.getByTitle('Số điện đầu Đồng hồ 4') as HTMLInputElement).readOnly).toBe(true);
+    fireEvent.change(screen.getByTitle('Số điện cuối Đồng hồ 4'), { target: { value: '5012' } });
+    await waitFor(() => expect(electric()[0]).toMatchObject({ meter_id: id(4), current_reading: 5012, amount: 42000 }));
+    expect(electric()[0].meter_source).toBeUndefined();
+    fireEvent.change(screen.getByTitle('Số điện cuối Đồng hồ 4'), { target: { value: '4999' } });
+    await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
+    expect(electric()).toEqual([]);
   });
-  it('đồng hồ điện duy nhất đã ngừng ⇒ số đầu vẫn lấy từ đồng hồ đó, không gửi mã đồng hồ, nói rõ không ghi', async () => {
-    db.meters = [{ id: 'm-gone', status: 'REMOVED' }, { id: 'm-old', status: 'INACTIVE' }];
-    db.lastReading = 7000;
-    show();
-    await waitFor(() => expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('7000'));
-    expect(db.readingMeter).toBe('m-old');
-    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '7010' } });
-    await waitFor(() => expect(electric()).toMatchObject({ meter_id: null, current_reading: 7010 }));
-    expect(screen.getByText(/Phòng chưa có đồng hồ điện đang dùng/)).toBeTruthy();
+  it('đổi ngày chốt xoá nguồn cũ và chặn trong khi tải lại', async () => {
+    const view = show(); await waitFor(() => expect(electric()).toHaveLength(1));
+    api.resolve.mockReturnValue(new Promise(() => undefined));
+    view.rerender(<TerminationExtraCharges contract={contract} chargeDate="2026-10-09" onChange={changed} onValidityChange={valid} />);
+    await waitFor(() => expect(electric()).toHaveLength(0));
+    expect(valid).toHaveBeenLastCalledWith(false);
+    expect(api.resolve).toHaveBeenLastCalledWith('org-a', expect.objectContaining({ readingDate: '2026-10-09' }));
   });
 });

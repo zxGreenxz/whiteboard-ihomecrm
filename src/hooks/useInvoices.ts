@@ -1,4 +1,5 @@
 import {useRef} from 'react';
+import { createInvoiceWithMeterSources, meterInvoiceRequestId } from '@/lib/meter-capture/service';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
@@ -566,6 +567,7 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
       if (!user) throw new Error('Not authenticated');
 
       const { items, ...invoiceFields } = formData;
+      const meterSources = items.flatMap(item => item.meter_source ? [item.meter_source] : []);
 
       // Calculate totals from items
       const subtotal = items.reduce(
@@ -590,7 +592,9 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
       );
 
       const supportContext = invoiceFields.rent_support_context ? invoiceRentSupportContextSchema.parse(invoiceFields.rent_support_context) : undefined;
-      const request = prepareCustomerCreditRequest('invoice-create', supportContext?.request_id);
+      const meterRequest = meterSources.length && selectedOrganizationId
+        ? invoiceFields.meter_capture_request_id ?? await meterInvoiceRequestId(selectedOrganizationId, formData) : undefined;
+      const request = prepareCustomerCreditRequest('invoice-create', supportContext?.request_id ?? meterRequest);
       const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const creatorName: string =
         (typeof meta.full_name === 'string' && meta.full_name)
@@ -611,6 +615,7 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         p_total_amount: total_amount,
         p_previous_debt: invoiceFields.previous_debt || 0,
         p_items: items.map((item) => ({
+          ...(item.meter_source ? { meter_source: item.meter_source } : {}),
           service_id: item.service_id || null,
           type: item.type,
           accounting_class: item.accounting_class,
@@ -647,6 +652,11 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
             p_idempotency_key: request.idempotencyKey,
             p_applied_credit: 0,
           };
+
+      if (meterSources.length) {
+        if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
+        return confirmedInvoiceReceipt(await createInvoiceWithMeterSources(selectedOrganizationId, canonicalArgs, meterSources));
+      }
 
       // Credit invoices have one atomic path and fail closed on every RPC error.
       // Non-credit invoices retain the existing controlled legacy fallback.

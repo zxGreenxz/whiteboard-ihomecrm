@@ -873,6 +873,28 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql": {
+      "sha256": "ef091e8b35d70301e8a181b3eb30bd7eac72578f8ef9334a213bdaf0791b6976",
+      "missingObjects": [
+        "table:app_private.meter_capture_profiles",
+        "table:app_private.meter_capture_profile_history",
+        "table:app_private.meter_captures",
+        "table:app_private.meter_capture_jobs",
+        "table:app_private.meter_capture_results"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của chức năng ghi chỉ số bằng QR/ảnh/clip, chưa áp dụng production. Catalog production chưa có các bảng này là đúng trạng thái triển khai. Đã chạy dry-run ROLLBACK trên TEST hzulujxgonszuleqticb bằng apply-reviewed-migration và bộ kiểm PGlite có quyền, receipt, CAS, đối chiếu hóa đơn/thanh lý. Chỉ đưa tính năng vào sử dụng sau lane apply được review, backup và triển khai worker. Hồ sơ này không chứng minh production đã có tính năng.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_profiles"
+        },
+        {
+          "duong_dan": "scripts/__tests__/meter-capture-sql.test.mjs",
+          "trich_doan": "test('billing resolver uses exact contract/period and wrapper atomically links sources, rejects stale values and duplicate retry'"
+        }
+      ]
     }
   }
 }
