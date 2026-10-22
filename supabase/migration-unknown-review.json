@@ -900,6 +900,33 @@
           "trich_doan": "Chạy THẬT trên PostgreSQL nhúng: migration HAI lượt, rồi gọi RPC bằng vai authenticated / anon như PostgREST."
         }
       ]
+    },
+    "supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql": {
+      "sha256": "774a0963ddc462507ab176d6af8a1f0b1a516db4578e4b7b112e419cb5185a02",
+      "missingObjects": [
+        "function:app_private.profit_line_months_v1",
+        "function:app_private.profit_line_locked_month_v1",
+        "function:app_private.ie_invoice_month_v1",
+        "function:app_private.ie_profit_period_locked_month_v1",
+        "function:app_private.raise_profit_period_locked_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (rà 21/10 F06: tháng đã chốt LN khoá cả phiếu có KỲ trong tháng đó + RPC đọc khoản phát sinh sau chốt; chủ chốt \"chặn hẳn\"). Hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP: thân trigger phiếu đang chạy production vẫn là md5 877f88c3… (đúng thân 20260925073251, đọc 22/10/2026), tức chưa có cửa kỳ. Web gọi RPC mới qua lớp bọc riêng (useProfitPostLock), lỗi thì không tách số mà cảnh báo. Đã kiểm: PGlite chạy migration hai lượt trên thân production tái lập md5 + 30 ca (chặn lập/sửa/xoá/huỷ/duyệt với mọi người, ngoại lệ không đổi tiền, thu tiền hoá đơn tháng đã chốt vẫn qua và hiện ở RPC, luật tháng khớp fa_accrual_allocations sống, quyền RPC, job sinh phiếu định kỳ); 14 đột biến tay đều bị bắt; áp trên TEST trong ROLLBACK hai lượt. Sẽ áp qua lane migrate:forward khi chủ duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "raSoatBoi": "Claude Code — F06 khoá kỳ tháng đã chốt LN, 22/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.profit_line_months_v1( … / CREATE OR REPLACE FUNCTION app_private.ie_profit_period_locked_month_v1( …"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects function:app_private.profit_line_months_v1, function:app_private.profit_line_locked_month_v1, function:app_private.ie_invoice_month_v1, function:app_private.ie_profit_period_locked_month_v1, function:app_private.raise_profit_period_locked_v1 — sinh 22/10/2026 sau khi tạo file"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/khoaKyThangDaChotLnMigration.test.ts",
+          "trich_doan": "migration 20261022172918 áp HAI lượt (lane kiểm idempotency)"
+        }
+      ]
     }
   }
 }

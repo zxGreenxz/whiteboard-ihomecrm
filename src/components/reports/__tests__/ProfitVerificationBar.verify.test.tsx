@@ -158,6 +158,39 @@ describe("ProfitVerificationBar", () => {
     expect(states.at(-1)).toBe("OK");
   });
 
+  it("F06: engine vẫn tính khoản phát sinh sau chốt ⇒ trừ đúng phần đó thì khớp (cả theo toà); không trừ thì LỆCH", () => {
+    // Trang đã bỏ 300 thu + 50 chi của tháng đã chốt; engine (fa_*) vẫn có.
+    m.data = { ...baseData, fa: engine(1300, 450) };
+    const ex = {
+      count: 2,
+      income: 300,
+      expense: 50,
+      byBuilding: new Map([["b1", { income: 300, expense: 50 }]]),
+    };
+    const states: string[] = [];
+    render(
+      <ProfitVerificationBar
+        {...baseProps}
+        accrualRows={[{ buildingId: "b1", buildingName: "Toà A", income: 1000, expense: 400 }]}
+        engineExclusions={ex}
+        extraWarnings={["2 khoản phát sinh sau chốt chưa cộng"]}
+        onStateChange={(s) => states.push(s)}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /Kiểm chứng T9/ });
+    expect(btn.textContent).toContain("Khớp engine");
+    expect(document.body.textContent).toContain("Đối chiếu engine đã trừ:");
+    expect(document.body.textContent).toMatch(/2 khoản phát sinh sau chốt \(thu 300 đ · chi 50 đ\)/);
+    // có khoản sau chốt ⇒ "cần xem lại", không xanh
+    expect(states.at(-1)).toBe("WARNING");
+    cleanup();
+
+    const states2: string[] = [];
+    render(<ProfitVerificationBar {...baseProps} onStateChange={(s) => states2.push(s)} />);
+    expect(screen.getByRole("button", { name: /Kiểm chứng T9/ }).textContent).toMatch(/LỆCH engine/);
+    expect(states2.at(-1)).toBe("ERROR");
+  });
+
   it("F36: hiện dòng phiếu đã huỷ trong kỳ khi có", () => {
     m.data = { ...baseData, fa: engine(1000, 400), cancelled: { income: 2000, expense: 300 } };
     render(<ProfitVerificationBar {...baseProps} />);

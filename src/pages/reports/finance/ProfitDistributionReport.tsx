@@ -28,6 +28,8 @@ import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hook
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import ProfitPostLockNotice from "@/components/reports/ProfitPostLockNotice";
+import { useProfitPostLockReport } from "@/hooks/useProfitPostLock";
 import {
   activeRoomNoteText,
   computeProfitReportChecks,
@@ -318,11 +320,21 @@ function ProfitDistributionDesktop() {
   // Truyền month='' khi tắt → hook trả rỗng, không query. Dùng chung `filters`
   // (hook tự bỏ qua start/end_date — kỳ lấy theo `month`); truyền BIẾN thay vì
   // object literal để building_ids đi qua được dù AccrualFilters chưa khai báo.
-  const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
+  const { data: accrualRaw, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
     accrualMode && scopeReady ? ym : "",
     filters,
     { businessResultOnly: pnlOnly }
   );
+  // F06 (chủ chốt 22/10/2026): toà × tháng ĐÃ CHỐT không cộng khoản phát sinh sau lúc chốt (vd thu
+  // tiền hoá đơn của tháng đó) — tách khỏi danh sách và tổng, báo lên ở chip riêng. Mọi chỗ bên dưới
+  // (tổng, chờ duyệt, bộ dò, dòng "Của iHome", thanh kiểm chứng) dùng bản đã tách.
+  const postLock = useProfitPostLockReport({
+    ym,
+    buildingIds: scopeIds,
+    accrual: accrualRaw,
+    enabled: accrualMode && scopeReady,
+  });
+  const accrual = postLock.accrual;
 
   // §2.3: phần "chờ duyệt" ĐANG NẰM TRONG tổng — accrual lấy từ hook (đúng phân
   // bổ kỳ), tiền mặt tính từ list (kqkd khi pnlOnly, total khi không).
@@ -359,7 +371,7 @@ function ProfitDistributionDesktop() {
   const displayDiff = displayIncome - displayExpense;
 
   // chưa chốt phạm vi công ty (toà / công ty đang nạp) cũng là đang tải — không hiện số 0 như thật
-  const loading = !scopeReady || (accrualMode ? accrualLoading : isLoading);
+  const loading = !scopeReady || (accrualMode ? accrualLoading || postLock.isLoading : isLoading);
 
   // Phòng trống trong tháng (đầu cột Thu, nền vàng cam). Chỉ tính khi panel Thu
   // hiển thị, không lọc 1 phòng cụ thể, và đã chọn ≥1 toà (cần danh sách phòng
@@ -937,8 +949,9 @@ function ProfitDistributionDesktop() {
     if (f && f.duplicateBuildingCount > 0) out.push(`Có thể trùng chi cố định ở ${f.duplicateBuildingCount} toà`);
     const s = profitChecks?.stalePending;
     if (s && s.count > 0) out.push(`${s.count} phiếu chờ duyệt quá ${s.thresholdDays} ngày vẫn đang nằm trong tổng`);
+    out.push(...postLock.warnings);
     return out;
-  }, [profitChecks]);
+  }, [profitChecks, postLock.warnings]);
   const expenseRatio = displayIncome > 0 ? Math.round((displayExpense / displayIncome) * 100) : 0;
   const marginPct = displayIncome > 0 ? Math.round((displayDiff / displayIncome) * 100) : 0;
 
@@ -1317,6 +1330,12 @@ function ProfitDistributionDesktop() {
           roomSummary={roomSummary}
           onCreateExpense={canCreate ? openCreateFixedFee : undefined}
         />
+        <ProfitPostLockNotice
+          entries={postLock.entries}
+          count={postLock.count}
+          income={postLock.income}
+          expense={postLock.expense}
+        />
         {pendingInfo.count > 0 && (
           <span className="ph-chip">
             {pendingInfo.count} phiếu chờ duyệt · {toMillions(pendingInfo.income + pendingInfo.expense, 1)}tr
@@ -1615,6 +1634,7 @@ function ProfitDistributionDesktop() {
             voucherType={voucherType === "INCOME" || voucherType === "EXPENSE" ? voucherType : "all"}
             accrualRows={accrualMode ? accrual?.rows : undefined}
             extraWarnings={checkWarnings}
+            engineExclusions={accrualMode ? postLock.engineExclusions : undefined}
             pageLoading={loading}
             onStateChange={handleVerifyState}
           />

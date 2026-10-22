@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T10:34:34.513Z",
+  "generatedAt": "2026-10-22T18:33:50.907Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 812,
-    "unknown": 81,
+    "unknown": 82,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -12820,6 +12820,22 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.generate_recurring_vouchers"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql",
+      "version": "20261022172918",
+      "name": "khoa_ky_thang_da_chot_ln",
+      "scheme": "timestamp14",
+      "sha256": "774a0963ddc462507ab176d6af8a1f0b1a516db4578e4b7b112e419cb5185a02",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.profit_line_months_v1",
+        "function:app_private.profit_line_locked_month_v1",
+        "function:app_private.ie_invoice_month_v1",
+        "function:app_private.ie_profit_period_locked_month_v1",
+        "function:app_private.raise_profit_period_locked_v1"
       ]
     },
     {

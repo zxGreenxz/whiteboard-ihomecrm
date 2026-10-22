@@ -521,6 +521,8 @@ function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["profit-monthly"] });
   qc.invalidateQueries({ queryKey: ["profit-allocations"] });
   qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
+  // F06: chốt / mở khoá / chốt lại đổi tập "phát sinh sau chốt" (profitPostLockKeys.all).
+  qc.invalidateQueries({ queryKey: ["profit-post-lock"] });
 }
 
 export const useCloseProfitPeriod = () => {

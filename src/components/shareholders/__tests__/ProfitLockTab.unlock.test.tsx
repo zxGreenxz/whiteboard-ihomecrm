@@ -33,6 +33,9 @@ const state = vi.hoisted(() => ({
     isError: false,
     operatedBuildingIds: new Set<string>() as ReadonlySet<string>,
   },
+  // F06: gói RPC phát sinh sau chốt (undefined = chưa có / lỗi).
+  postLock: undefined as unknown,
+  postLockArgs: null as unknown,
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -80,6 +83,12 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
 // Bộ dò chi cố định + toà vận hành (rà 21/10 F20/F07) — mock gọn một chỗ.
 vi.mock("@/hooks/useProfitLockChecks", () => ({
   useProfitLockChecks: () => state.lockChecks,
+}));
+vi.mock("@/hooks/useProfitPostLock", () => ({
+  useProfitPostLock: (o: unknown) => {
+    state.postLockArgs = o;
+    return { data: state.postLock };
+  },
 }));
 
 import ProfitLockTab from "../ProfitLockTab";
@@ -168,6 +177,8 @@ beforeEach(() => {
   state.profitState = TRANG_THAI;
   state.preview = undefined;
   state.closeCalls = [];
+  state.postLock = undefined;
+  state.postLockArgs = null;
   // Mặc định: đã dò, không có khoản thiếu/trùng nào.
   state.lockChecks = {
     checks: computeProfitReportChecks({ rows: [], buildings: [], today: "2026-10-22" }),
@@ -392,6 +403,30 @@ describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 
     render(<ProfitLockTab organizations={ORGS} />);
     await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
     expect(screen.queryByTestId("landlord-operated-label")).toBeNull();
+  });
+
+  it("F06: toà đã chốt có khoản phát sinh sau chốt ⇒ nhãn 'N khoản … (chưa cộng)'; không có thì không nhãn", async () => {
+    const khoan = (voucher: string, building: string) => ({
+      voucher_id: voucher, building_id: building, building_name: "x", month: KY, locked_at: "2026-08-02T00:00:00Z",
+      code: "PT0001", name: "Thu HĐ", restricted: false, voucher_date: KY, type: "INCOME", invoice_month: KY.slice(0, 7),
+      period_from: null, period_to: null, income: 1_000, expense: 0, created_at: "2026-08-05T00:00:00Z", approved_at: null,
+    });
+    state.postLock = {
+      from: KY, to: KY, locked: [],
+      after_lock: [khoan("v1", B1), khoan("v2", B1)],
+    };
+    render(<ProfitLockTab organizations={ORGS} />);
+    const nhan = await screen.findAllByTestId("post-lock-label");
+    expect(nhan).toHaveLength(1);
+    expect(nhan[0]?.textContent).toBe("2 khoản phát sinh sau chốt (chưa cộng)");
+    // chỉ hỏi các toà đang LOCKED của đúng tháng
+    expect(state.postLockArgs).toMatchObject({ from: KY, to: KY, buildingIds: [B1, B2].sort(), enabled: true });
+    cleanup();
+
+    state.postLock = undefined;
+    render(<ProfitLockTab organizations={ORGS} />);
+    await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
+    expect(screen.queryByTestId("post-lock-label")).toBeNull();
   });
 
   it("lý do mở khoá là nguyên câu báo lỗi ⇒ không gửi, báo đúng lỗi", async () => {

@@ -13,6 +13,7 @@ import {
   type ProfitVerificationVisualState,
   type ProfitVerificationVoucherType,
 } from "@/lib/profitVerification";
+import { NO_ENGINE_EXCLUSIONS, subtractEngineExclusions, type EngineExclusions } from "@/lib/profitPostLock";
 
 /**
  * B5 (thống nhất tài chính 04/07): thanh KIỂM CHỨNG của trang Phân bổ lợi
@@ -72,6 +73,10 @@ export interface ProfitVerificationBarProps {
   /** Trang còn đang tải số (tổng / dòng) — đang tải thì thanh ở trạng thái LOADING, không so số
    *  0 của trang với engine rồi báo LỆCH oan. */
   pageLoading?: boolean;
+  /** F06 (22/10/2026): khoản PHÁT SINH SAU CHỐT của tháng đã chốt — trang không cộng nhưng
+   *  engine (fa_*) vẫn tính ⇒ trừ đúng phần này phía engine trước khi so, kẻo báo LỆCH giả.
+   *  Trang tự đẩy cảnh báo của nó vào `extraWarnings`. */
+  engineExclusions?: EngineExclusions;
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
    *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
   onIssueChange?: (hasIssue: boolean) => void;
@@ -88,6 +93,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     hiddenCount, hiddenIncomeSum, hiddenExpenseSum, capWarning,
     pendingCount = 0, pendingIncome = 0, pendingExpense = 0,
     voucherType = "all", accrualRows, extraWarnings, pageLoading = false,
+    engineExclusions = NO_ENGINE_EXCLUSIONS,
   } = props;
   const [open, setOpen] = useState(false);
   const sides = profitVerificationSides(voucherType);
@@ -97,6 +103,11 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     ym, startDate, endDate, buildingIds, pnlOnly, accrualMode, voucherType,
   });
   const { data: v } = verificationQuery;
+  // Engine trừ khoản phát sinh sau chốt (trang không cộng vào tháng đã chốt).
+  const engine = useMemo(
+    () => (v?.fa ? subtractEngineExclusions(v.fa, engineExclusions) : null),
+    [v?.fa, engineExclusions],
+  );
 
   // 1) Hai bất biến độc lập; không cho chênh Thu bù trừ chênh Chi.
   const invariant = calculateProfitVerificationInvariant({
@@ -115,7 +126,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
   // = CHƯA đối chiếu được (không phải khớp) ⇒ WARNING.
   const tieOut = calculateEngineTieOut({
     totalIncome, totalExpense, pendingIncome, pendingExpense,
-    fa: v?.fa ?? null, voucherType,
+    fa: engine, voucherType,
   });
   const faDiffIncome = tieOut.incomeDiff;
   const faDiffExpense = tieOut.expenseDiff;
@@ -138,14 +149,14 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
   // F35: toà thật sự lệch engine (khoá building_id, phía client chỉ phần đã duyệt).
   const buildingDiffs = useMemo(
     () =>
-      v?.fa && accrualRows
+      engine && accrualRows
         ? calculateBuildingDiffs({
             clientRows: accrualRows,
-            engine: v.fa.byBuilding,
+            engine: engine.byBuilding,
             voucherType,
           })
         : null,
-    [v?.fa, accrualRows, voucherType],
+    [engine, accrualRows, voucherType],
   );
 
   const visualState = resolveProfitVerificationVisualState({
@@ -275,6 +286,18 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
           {warnings.map((w) => (
             <span key={w}>{w}</span>
           ))}
+        </div>
+      )}
+
+      {/* F06: khoản phát sinh sau chốt — engine vẫn tính, trang không cộng vào tháng đã chốt. */}
+      {engineExclusions.count > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-amber-700">
+          <span className="font-medium">Đối chiếu engine đã trừ:</span>
+          <span>
+            <b className="tabular-nums">{engineExclusions.count}</b> khoản phát sinh sau chốt
+            {" "}(thu {fmt(engineExclusions.income)} · chi {fmt(engineExclusions.expense)}) — engine vẫn tính,
+            tháng đã chốt không cộng
+          </span>
         </div>
       )}
 
