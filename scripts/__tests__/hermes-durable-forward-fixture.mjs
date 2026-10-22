@@ -11,13 +11,13 @@
 // private DEFINER helper, hermes_web_building_ids_v1 — the task input lookup
 // without buildingId for jobTypes/assignees 20261021172540, the receivables
 // effective outstanding of both lanes 20261021185540, built on the
-// 20261021170452 v2 body, the Thu chi page write RPC expense.create/expense.note
+// 20261021170452 v2 body, the invoice page reads of W2 package A
+// 20261022051620 — its reader and catalog rebuilt from the live
+// 20261019040948 / 20261018185413 bodies plus seven report branches — the Thu chi page write RPC expense.create/expense.note
 // 20261022024834, its Mốc 3 virtual-building name directory/resolution _v2
-// 20261022044120 and expense scope = guard ∩ the web writer's own check 20261022044123,
-// and the invoice page reads of W2 package A 20261022051620 — its reader and catalog
-// rebuilt from the live 20261019040948 / 20261018185413 bodies plus seven report
-// branches), and the invoice page write RPC invoice.collect 20261022075230 — scope =
-// guard ∩ the web writer's own thu_tien.collect check); source review covers each pin.
+// 20261022044120 and expense scope = guard ∩ the web writer's own check 20261022044123),
+// and the invoice page write RPC invoice.collect 20261022075230 — scope =
+// guard ∩ the web writer's own thu_tien.collect check; source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [

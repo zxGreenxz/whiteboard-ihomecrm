@@ -28,6 +28,24 @@ vi.mock('../lib/room-list-image.js', () => ({
 
 const { tachRefStorage, dienMau, soanTinPhong, diaChiSoVaDuong } = await import('../lib/automation.js');
 
+describe('chính sách pass trong tin chi tiết', () => {
+  const room = {
+    code: '101', buildingName: 'Tòa thử', buildingAddr: '1 Đường thử',
+    price: 3, area: 20, type: 'Studio', amenities: [], status: 'pass',
+    saleNote: '', passSalePolicy: 'Ưu đãi khách pass', saleBonus: 'Thưởng nội bộ',
+  };
+  it('giữ chính sách pass khi phòng không có chính sách riêng', () => {
+    expect(soanTinPhong(room, 'Khuyến mãi: {khuyen_mai}', '')).toBe('Khuyến mãi: Ưu đãi khách pass');
+  });
+  it('ưu tiên chính sách riêng giống bảng ảnh và không lộ thưởng nội bộ', () => {
+    expect(soanTinPhong({ ...room, saleNote: 'Ưu đãi của phòng' }, '{khuyen_mai}', '')).toBe('Ưu đãi của phòng');
+    expect(soanTinPhong(room, '{khuyen_mai}', '')).not.toContain(room.saleBonus);
+  });
+  it('không dùng lại chính sách khách cũ khi phòng không còn pass', () => {
+    expect(soanTinPhong({ ...room, status: 'free' }, '{khuyen_mai}', '')).toBe('');
+  });
+});
+
 describe('địa chỉ gửi Zalo chỉ có số nhà và đường', () => {
   it.each([
     ['12/3 Đường A, Phường B, Quận C, Thành phố D', '12/3 Đường A'],
