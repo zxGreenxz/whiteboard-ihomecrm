@@ -33,11 +33,18 @@ export const NATIVE_MEDIA_DEFAULTS = Object.freeze({
   downloads: 2,         // concurrent CDN downloads per worker
 });
 // Non-text kinds the bot answers with one "not supported yet" line (Q52).
-// Stickers and unknown kinds stay silent, as before.
+// Stickers and unknown kinds stay silent, as before. `chat.recommended` shares
+// its Zalo type code with links, so it is not called a contact card.
 const NOTICES = new Map([['share.file', 'file'], ['chat.voice', 'voice'], ['chat.video.msg', 'video'],
   ['chat.gif', 'gif'], ['chat.doodle', 'drawing'], ['chat.location.new', 'location'],
-  ['chat.recommended', 'contact'], ['chat.link', 'link']]);
+  ['chat.recommended', 'shared'], ['chat.link', 'link']]);
 const ACCEPT = ['photo', 'notice'];
+// Gateway commands (/stop, /new …) are never held behind or merged into a photo group.
+const command = record => record.text.trimStart().startsWith('/');
+// Bad input answers 400 `native_request_rejected` (also what an older worker
+// answers to `accept`); internal failures such as an unwritable journal answer 503.
+const CLIENT_ERRORS = new Set(['invalid_request', 'body_too_large', 'generation_mismatch', 'invalid_native_request',
+  'event_not_dispatched', 'request_id_conflict']);
 const caption = value => typeof value === 'string' && Buffer.byteLength(value, 'utf8') <= 8192
   ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim() : '';
 const parsed = value => {
@@ -69,11 +76,16 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
   const limits = { ...NATIVE_MEDIA_DEFAULTS, ...mediaOverrides };
   // Operator diagnostics only; a failing logger never changes a send outcome.
   const fault = code => { try { onFault(code); } catch { /* diagnostics only */ } };
-  const channels = config.channels.map(channel => ({ channel, pending: new Set(),
-    journal: createNativeJournal(config.stateRoot, channel),
+  const channels = config.channels.map(channel => {
+    const journal = createNativeJournal(config.stateRoot, channel);
+    // Every claim gets a dispatchedAt no other claim of this journal has, so the
+    // records of one media group are found again by it (late ack, restart).
+    const lastStamp = journal.values('inbound').reduce((max, record) => Math.max(max, record.dispatchedAt || 0), 0);
     // Media lives only in RAM: captured items wait here (arrival order), then a
     // claimed group keeps its bytes until ack. The journal never sees bytes/URLs.
-    accept: { photo: 0, notice: 0 }, items: [], delivered: new Map() }));
+    return { channel, pending: new Set(), journal, lastStamp, accept: { photo: 0, notice: 0 }, items: [], delivered: new Map() };
+  });
+  const stamp = entry => (entry.lastStamp = Math.max(now(), entry.lastStamp + 1));
   const attached = new Map();
   const providers = new Set();
   let closing = null, requests = 0;
@@ -140,7 +152,8 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
   const pendingPhotos = entry => [...entry.items, ...[...entry.delivered.values()].map(({ item }) => item)]
     .reduce((count, item) => count + (item.photos ? item.photos.filter(photo => photo.state !== 'error').length : 0), 0);
   function capturePhoto(entry, data, part, forwarded) {
-    if (!accepts(entry, 'photo') || known(entry, part.id)) return;
+    if (!accepts(entry, 'photo')) { fault('native_photo_dropped:not_declared'); return; }
+    if (known(entry, part.id)) { fault('native_photo_dropped:duplicate'); return; }
     const content = own(data, 'content');
     const params = parsed(own(content, 'params'));
     const urls = [own(params, 'hd'), own(params, 'rawUrl'), own(content, 'href')].filter(url => typeof url === 'string');
@@ -167,7 +180,8 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     download(photo, urls);
   }
   function captureNotice(entry, notice, part) {
-    if (!accepts(entry, 'notice') || known(entry, part.id)) return;
+    if (!accepts(entry, 'notice')) { fault('native_notice_dropped:not_declared'); return; }
+    if (known(entry, part.id)) { fault('native_notice_dropped:duplicate'); return; }
     const last = entry.items.at(-1), at = now();
     // A burst of the same kind becomes one reply.
     if (last?.notice === notice && last.entries.length < limits.photosPerEvent) { last.entries.push(part); last.lastAt = at; return; }
@@ -180,7 +194,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     now() - item.lastAt >= limits.settleMs && (item.caption.length > 0 || followed || now() - item.lastAt >= limits.waitMs);
   function claim(entry, item, texts) {
     const { channel, journal } = entry;
-    const dispatchedAt = now(), parts = [...(item.caption || [])], merged = [];
+    const dispatchedAt = stamp(entry), parts = [...(item.caption || [])], merged = [];
     for (const record of texts) {
       if (Buffer.byteLength([...parts, record.text].join('\n'), 'utf8') > 8192) break;
       parts.push(record.text); merged.push(record);
@@ -197,7 +211,7 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     journal.updateMany('inbound', records);
     entry.items.splice(entry.items.indexOf(item), 1);
     const id = records[0].id, text = parts.join('\n');
-    entry.delivered.set(id, { item, recordIds: records.map(record => record.id), dispatchedAt });
+    entry.delivered.set(id, { item, dispatchedAt });
     return { status: 'message', ...publicChannel(channel), event: {
       id, messageId: records[0].messageId, sentAt: item.startedAt, senderUid: channel.pairedUid,
       ...(text ? { text } : {}), parts: records.length,
@@ -228,23 +242,30 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           if (isHermesLinkMessage(event)) return false;
           // The paired DM remains private even if malformed, stale or an echo.
           const { channel, journal } = entry;
-          if (attached.get(accountId) !== source || !isActive() || own(event, 'isSelf') !== false ||
-              own(data, 'uidFrom') !== channel.pairedUid || own(data, 'idTo') !== ownUid ||
-              threadId !== channel.pairedUid || flagged(event, QUOTES) || flagged(data, QUOTES)) return true;
+          const msgType = own(data, 'msgType');
+          const kind = msgType === 'chat.photo' ? 'photo' : typeof msgType === 'string' && NOTICES.has(msgType) ? 'notice' : null;
+          // Every dropped photo/notice leaves a code-only fault (no URL, ID or
+          // content), so a provider payload shape that is always filtered shows up.
+          const drop = reason => { if (kind) fault(`native_${kind}_dropped:${reason}`); return true; };
+          if (attached.get(accountId) !== source || !isActive()) return drop('inactive');
+          if (own(event, 'isSelf') !== false) return drop('echo');
+          if (own(data, 'uidFrom') !== channel.pairedUid || own(data, 'idTo') !== ownUid ||
+              threadId !== channel.pairedUid) return drop('peer');
+          if (flagged(event, QUOTES) || flagged(data, QUOTES)) return drop('quoted');
           const forwarded = flagged(event, FORWARDS) || flagged(data, FORWARDS);
-          const msgType = own(data, 'msgType'), messageId = own(data, 'msgId');
+          const messageId = own(data, 'msgId');
           const timestamp = own(data, 'ts');
           const sentAt = typeof timestamp === 'string' && /^[1-9][0-9]{0,15}$/.test(timestamp) ? Number(timestamp) : timestamp;
-          if (!nativeId(messageId) || !Number.isSafeInteger(sentAt) ||
-              sentAt < Math.max(source.connectedAt - 30000, now() - 300000) || sentAt > now() + 30000) return true;
+          if (!nativeId(messageId) || !Number.isSafeInteger(sentAt)) return drop('invalid');
+          if (sentAt < Math.max(source.connectedAt - 30000, now() - 300000) || sentAt > now() + 30000) return drop('stale');
           const id = nativeDigest([channel.accountId, channel.generation, channel.pairedUid, messageId]);
           if (msgType === 'webchat') {
             const text = own(data, 'content');
             if (forwarded || !validText(text, 8192)) return true;
             journal.admit(id, { id, messageId, text, sentAt, senderUid: channel.pairedUid,
               digest: nativeDigest([messageId, sentAt, text]), status: 'queued' });
-          } else if (msgType === 'chat.photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded);
-          else if (typeof msgType === 'string' && NOTICES.has(msgType)) captureNotice(entry, NOTICES.get(msgType), { id, messageId, sentAt });
+          } else if (kind === 'photo') capturePhoto(entry, data, { id, messageId, sentAt }, forwarded);
+          else if (kind === 'notice') captureNotice(entry, NOTICES.get(msgType), { id, messageId, sentAt });
           // Stickers and unknown kinds are swallowed: still never CRM inbox.
           return true;
         } catch { onFault('native_capture_failed'); return true; } // Never leak a personal DM into CRM.
@@ -285,16 +306,19 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
       sweep();
       const queued = journal.values('inbound').filter(record => record.status === 'queued');
       const [item, after] = entry.items;
-      if (item && !(queued[0]?.sentAt < item.startedAt)) {
-        // Text typed after a photo joins its event; the text stays durable in
-        // the journal while the group settles.
-        const texts = item.notice ? [] : queued.filter(record => record.sentAt >= item.startedAt && !(record.sentAt >= after?.startedAt));
-        return ripe(item, texts.length > 0 || !!after) ? claim(entry, item, texts) : { status: 'empty' };
+      let next = queued[0];
+      if (item && !(next?.sentAt < item.startedAt)) {
+        next = queued.find(record => command(record));
+        if (!next) {
+          // Text typed after a photo joins its event; the text stays durable in
+          // the journal while the group settles.
+          const texts = item.notice ? [] : queued.filter(record => record.sentAt >= item.startedAt && !(record.sentAt >= after?.startedAt));
+          return ripe(item, texts.length > 0 || !!after) ? claim(entry, item, texts) : { status: 'empty' };
+        }
       }
-      const next = queued[0];
       if (!next) return { status: 'empty' };
       // Claim-before-delivery: a lost response/crash is ambiguous and is never replayed.
-      journal.update('inbound', next.id, { ...next, status: 'dispatch_unknown', dispatchedAt: now() });
+      journal.update('inbound', next.id, { ...next, status: 'dispatch_unknown', dispatchedAt: stamp(entry) });
       return { status: 'message', ...publicChannel(channel), event: {
         id: next.id, messageId: next.messageId, text: next.text, sentAt: next.sentAt, senderUid: next.senderUid } };
     }
@@ -308,20 +332,17 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
     }
     if (route === '/v1/ack' && exact(body, ['generation', 'eventId', 'status']) &&
         ['accepted', 'rejected', 'dispatch_unknown'].includes(body.status)) {
-      const group = typeof body.eventId === 'string' ? entry.delivered.get(body.eventId) : undefined;
-      if (group) {
-        const records = group.recordIds.map(id => journal.get('inbound', id));
-        if (records.some(record => !record || record.status === 'queued')) throw new Error('event_not_dispatched');
-        journal.updateMany('inbound', records.map(({ text: _text, ...receipt }) =>
-          ({ ...receipt, status: body.status, acknowledgedAt: now() })));
-        entry.delivered.delete(body.eventId); release(group.item);
-        return { status: body.status };
-      }
       const event = journal.get('inbound', body.eventId);
       if (!event || event.status === 'queued') throw new Error('event_not_dispatched');
+      // A claim stamps all its records with one dispatchedAt no other claim has, so
+      // the whole media group closes even after byte expiry or a worker restart.
+      const members = event.status !== 'dispatch_unknown' ? [event] : journal.values('inbound')
+        .filter(record => record.status === 'dispatch_unknown' && record.dispatchedAt === event.dispatchedAt);
       // After admission the text lives in Hermes' own profile; keep only the tombstone here.
-      const { text: _text, ...receipt } = event;
-      journal.update('inbound', event.id, { ...receipt, status: body.status, acknowledgedAt: now() });
+      journal.updateMany('inbound', members.map(({ text: _text, ...receipt }) =>
+        ({ ...receipt, status: body.status, acknowledgedAt: now() })));
+      const group = entry.delivered.get(event.id);
+      if (group) { entry.delivered.delete(event.id); release(group.item); }
       return { status: body.status };
     }
     if (route === '/v1/send' && exact(body, ['generation', 'requestId', 'text']) &&
@@ -411,8 +432,10 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
       res.writeHead(200); res.end(JSON.stringify(result));
     } catch (error) {
       const missing = error instanceof MediaUnavailable;
-      if (!res.headersSent) res.writeHead(missing ? 404 : 400);
-      res.end(missing ? '{"error":"media_unavailable"}' : '{"error":"native_request_rejected"}');
+      const rejected = error instanceof SyntaxError || error?.code === 'ERR_ENCODING_INVALID_ENCODED_DATA' ||
+        CLIENT_ERRORS.has(error?.message);
+      if (!res.headersSent) res.writeHead(missing ? 404 : rejected ? 400 : 503);
+      res.end(missing ? '{"error":"media_unavailable"}' : rejected ? '{"error":"native_request_rejected"}' : '{"error":"native_unavailable"}');
     } finally { requests--; }
   });
   server.requestTimeout = 65000; server.headersTimeout = 10000;

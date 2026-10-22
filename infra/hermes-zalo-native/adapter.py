@@ -45,7 +45,9 @@ _MEDIA_ERRORS = {"too_large": "quá 10 MB", "not_image": "không phải ảnh JP
 _MEDIA_UNREADABLE = "bot không đọc được ảnh, gửi lại ảnh"
 # Kinds answered with one "not supported yet" sentence (owner question 52 default).
 _NOTICES = {"file": "tệp", "voice": "tin nhắn thoại", "video": "video", "gif": "ảnh GIF",
-            "drawing": "hình vẽ", "location": "vị trí", "contact": "danh thiếp", "link": "link"}
+            "drawing": "hình vẽ", "location": "vị trí", "shared": "danh thiếp hoặc link", "link": "link"}
+# Same caps as the worker: each side 32-12 000 px and at most 40 MP in total.
+_MEDIA_MAX_PIXELS = 40_000_000
 # A photo becomes attachable only through the connector inbox (milestone M3). Until
 # then every received photo carries this reason instead of a zimg_ reference.
 _CRM_OFF = "kết nối CRM chưa bật thao tác có ảnh"
@@ -86,7 +88,8 @@ def _media_event_valid(raw):
         elif set(item) != {"index", "mime", "bytes", "width", "height", "sha256"} or item["mime"] not in _MEDIA_EXT \
                 or not all(integer(item[key]) for key in ("bytes", "width", "height")) \
                 or not 0 < item["bytes"] <= _MEDIA_MAX_BYTES or not 32 <= item["width"] <= 12000 \
-                or not 32 <= item["height"] <= 12000 or not isinstance(item["sha256"], str) \
+                or not 32 <= item["height"] <= 12000 or item["width"] * item["height"] > _MEDIA_MAX_PIXELS \
+                or not isinstance(item["sha256"], str) \
                 or not re.fullmatch(r"[a-f0-9]{64}", item["sha256"]):
             return False
     return True
@@ -180,8 +183,16 @@ class ZaloNativeAdapter(BasePlatformAdapter):
             try:
                 return await self._request("/v1/receive", {**body, "accept": _ACCEPT})
             except HTTPError as error:
-                error.close()
-                if error.code != 400:
+                # Only the request-rejected 400 means "worker predates `accept`". A newer
+                # worker answers 503 for internal faults (journal), which must not switch
+                # photos off.
+                try:
+                    older = error.code == 400 and json.loads(error.read(257) or b"{}").get("error") == "native_request_rejected"
+                except (ValueError, AttributeError):
+                    older = False
+                finally:
+                    error.close()
+                if not older:
                     raise
                 # Older worker: it rejects the body before claiming anything, so no event is lost.
                 self._accept_retry_at = time.monotonic() + _ACCEPT_RETRY_SECONDS

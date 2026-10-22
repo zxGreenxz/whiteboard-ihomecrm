@@ -266,7 +266,9 @@ export function stripImageMetadata(data) {
 export const NATIVE_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 export const NATIVE_PHOTO_ERRORS = Object.freeze(['too_large', 'not_image', 'bad_dimensions', 'expired', 'download_failed', 'busy']);
 const MIME = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
-const MIN_SIDE = 32, MAX_SIDE = 12000;
+// The model side decodes the image: a 144 MP photo would inflate its RAM, so the
+// total pixel count is capped as well as each side.
+const MIN_SIDE = 32, MAX_SIDE = 12000, MAX_PIXELS = 40_000_000;
 
 /** First allowed Zalo CDN URL → bounded bytes → format/size check → metadata
  * removed → sha256. Bytes stay in the caller's memory only. */
@@ -277,7 +279,9 @@ export async function loadNativePhoto(urls, { fetchImpl = fetch, maxBytes = NATI
   try { ({ data } = await downloadForwardUrl(url, { fetchImpl, maxBytes, timeoutMs })); }
   catch (error) { throw NATIVE_PHOTO_ERRORS.includes(error?.code) ? error : coded('Không tải được ảnh', 'download_failed'); }
   const { extension, width, height } = imageDetails(data);
-  if (![width, height].every(side => side >= MIN_SIDE && side <= MAX_SIDE)) throw coded('Kích thước ảnh không hợp lệ', 'bad_dimensions');
+  if (![width, height].every(side => side >= MIN_SIDE && side <= MAX_SIDE) || width * height > MAX_PIXELS) {
+    throw coded('Kích thước ảnh không hợp lệ', 'bad_dimensions');
+  }
   const bytes = stripImageMetadata(data);
   return { bytes, mime: MIME[extension], width, height, sha256: createHash('sha256').update(bytes).digest('hex') };
 }

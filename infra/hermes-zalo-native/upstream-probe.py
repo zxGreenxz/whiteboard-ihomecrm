@@ -281,6 +281,39 @@ async def media_probe(mode):
         await adapter.disconnect()
 
 
+async def receive_errors_probe():
+    # Handshake decisions only: a fake transport replaces the bridge, no network.
+    import io
+    from urllib.error import HTTPError
+    adapter = entry.adapter_factory(PlatformConfig(enabled=True))
+    calls = []
+
+    def answering(code, body):
+        async def request(route, payload):
+            calls.append('accept' in payload)
+            if 'accept' in payload:
+                raise HTTPError('http://127.0.0.1/v1/receive', code, 'fixture', {}, io.BytesIO(body))
+            return {'status': 'empty'}
+        return request
+
+    for code, body in ((503, b'{"error":"native_unavailable"}'), (400, b'{"error":"generation_mismatch"}'), (400, b'not json')):
+        calls.clear()
+        adapter._request = answering(code, body)
+        try:
+            await adapter._receive()
+            raise AssertionError(f'{code} {body!r} must surface as a transport failure')
+        except HTTPError as error:
+            assert error.code == code
+        assert calls == [True] and adapter._accept_retry_at == 0.0, 'photos stay declared'
+    calls.clear()
+    adapter._request = answering(400, b'{"error":"native_request_rejected"}')
+    assert await adapter._receive() == {'status': 'empty'} and calls == [True, False]
+    assert adapter._accept_retry_at > time.monotonic() + 590
+    calls.clear()
+    assert await adapter._receive() == {'status': 'empty'} and calls == [False], 'text only until the retry'
+    print(json.dumps({'internalFaultKeepsPhotos': True, 'olderWorkerFallsBack': True}))
+
+
 mode = os.environ.get('PROBE_MODE', 'composition')
-asyncio.run(composition_probe() if mode == 'composition'
+asyncio.run(composition_probe() if mode == 'composition' else receive_errors_probe() if mode == 'receive-errors'
             else media_probe(mode) if mode.startswith('media') else delivery_probe(mode))

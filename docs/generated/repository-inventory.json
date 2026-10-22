@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1546,
   "soFileDocBangFs": 402,
-  "tongLoiGoi": 976,
-  "khongPhanLoaiDuoc": 436,
+  "tongLoiGoi": 977,
+  "khongPhanLoaiDuoc": 437,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -1079,6 +1079,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-zalo-native/upstream.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -1837,12 +1843,6 @@
     },
     {
       "file": "infra/hermes-runtime/host-config.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

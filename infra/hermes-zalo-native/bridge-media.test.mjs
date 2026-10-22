@@ -170,6 +170,7 @@ test('photo loader maps failures to closed codes and never contacts a non-CDN ho
     ['too_large', () => new Response('x', { headers: { 'content-length': String(11 * 1024 * 1024) } })],
     ['not_image', image(Buffer.from('GIF89a not accepted'))],
     ['bad_dimensions', image(jpeg({ width: 16, height: 16 }))],
+    ['bad_dimensions', image(jpeg({ width: 8000, height: 6000 }))], // 48 MP: each side fine, total over 40 MP
     ['download_failed', () => new Response(null, { status: 302, headers: { location: 'https://169.254.169.254/x' } })],
   ];
   for (const [code, respond] of cases) {
@@ -234,6 +235,7 @@ test('photos reach only an adapter that declared them; text-only adapters behave
   await f.flush(); f.advance(5000);
   assert.equal((await f.receive(null)).data.status, 'empty');
   assert.deepEqual(f.calls, [], 'undeclared photos are swallowed without any download');
+  assert.deepEqual(f.faults, ['native_photo_dropped:not_declared']);
   await f.session.capture(text(f, 't0', 'Phòng trống'));
   const plain = (await f.receive()).data.event;
   assert.deepEqual(Object.keys(plain).sort(), ['id', 'messageId', 'senderUid', 'sentAt', 'text'], 'text envelope is unchanged');
@@ -352,6 +354,12 @@ test('forwarded photo drops the original caption; quoted, group, echo, stale and
   await f.ack(event.id);
   assert.equal((await f.receive()).data.status, 'empty');
   assert.equal(f.calls.length, 1, 'rejected photos are never downloaded');
+  // Group messages belong to the CRM path; every private drop leaves a code-only fault.
+  assert.deepEqual(f.faults.filter(code => code.startsWith('native_photo_dropped')),
+    ['quoted', 'echo', 'peer', 'peer', 'peer', 'stale'].map(reason => `native_photo_dropped:${reason}`));
+  await f.session.capture({ ...file(f, 'n-echo'), isSelf: true });
+  assert.deepEqual(f.faults.slice(-1), ['native_notice_dropped:echo']);
+  assert.doesNotMatch(f.faults.join(), /zdn|http|chú thích|x[0-9]/);
 });
 
 test('download failures arrive as closed error codes without bytes', async t => {
@@ -380,12 +388,16 @@ test('files, voice and video get one notice per burst; stickers stay silent; not
   await f.session.capture(file(f, 'n1')); await f.session.capture(file(f, 'n2'));
   await f.session.capture(base(f, { msgType: 'chat.sticker', msgId: 's1', content: { id: 1 } }));
   await f.session.capture(file(f, 'v1', 'chat.voice'));
+  await f.session.capture(file(f, 'r1', 'chat.recommended'));
   const notice = (await f.receive()).data.event;
   assert.deepEqual([notice.notice, notice.parts, notice.text, notice.media], ['file', 2, undefined, undefined]);
   assert.doesNotMatch(JSON.stringify(notice), /private-name|zdn/);
   await f.ack(notice.id);
   const voice = (await f.receive()).data.event;
   assert.equal(voice.notice, 'voice'); await f.ack(voice.id);
+  const shared = (await f.receive()).data.event;
+  assert.equal(shared.notice, 'shared', 'chat.recommended shares a Zalo code with links: not called a contact card');
+  await f.ack(shared.id);
   assert.equal((await f.receive()).data.status, 'empty', 'sticker produced nothing');
   assert.equal(f.calls.length, 0);
 });
@@ -467,4 +479,71 @@ test('restart loses unclaimed photos and never re-delivers a claimed one', async
   assert.equal((await g.media(event.id)).status, 404, 'bytes did not survive the restart');
   assert.equal((await g.ack(event.id)).data.status, 'accepted');
   assert.deepEqual(g.journal().map(record => [record.messageId, record.status]), [['kept', 'accepted']]);
+});
+
+// Two photos + a merged text, as one claim; returns the event.
+async function albumWithText(f) {
+  await f.session.capture(photo(f, 'g1', { layout: 'L' }));
+  await f.session.capture(photo(f, 'g2', { layout: 'L' }));
+  await f.flush(); f.advance(3500);
+  await f.session.capture(text(f, 'gt', 'ghi phiếu chi kèm 2 ảnh'));
+  const { event } = (await f.receive()).data;
+  assert.equal(event.parts, 3);
+  return event;
+}
+const rows = f => Object.fromEntries(f.journal().map(record => [record.messageId, [record.status, 'text' in record]]));
+
+test('a late ack closes every record of a media group after byte expiry, never another claim of the same instant', async t => {
+  const f = await fixture(t);
+  await f.receive();
+  const event = await albumWithText(f);
+  // Same clock reading: the next claim still gets its own dispatchedAt.
+  await f.session.capture(text(f, 'other', 'câu khác'));
+  assert.equal((await f.receive()).data.event.messageId, 'other');
+  f.advance(121000);
+  assert.equal((await f.receive()).data.status, 'empty'); // the poll also sweeps expired bytes
+  assert.equal((await f.media(event.id)).status, 404);
+  assert.equal((await f.ack(event.id)).data.status, 'accepted');
+  assert.deepEqual(rows(f), { g1: ['accepted', false], g2: ['accepted', false], gt: ['accepted', false],
+    other: ['dispatch_unknown', true] });
+});
+
+test('an ack after a worker restart closes the whole group and drops the merged text from disk', async t => {
+  const f = await fixture(t);
+  await f.receive();
+  const event = await albumWithText(f);
+  await f.bridge.close();
+  const g = await fixture(t, { config: f.config });
+  assert.equal((await g.ack(event.id, 'rejected')).data.status, 'rejected');
+  assert.deepEqual(rows(g), { g1: ['rejected', false], g2: ['rejected', false], gt: ['rejected', false] });
+  assert.doesNotMatch(fs.readFileSync(path.join(f.config.stateRoot, fs.readdirSync(f.config.stateRoot)[0]), 'utf8'), /ghi phiếu/);
+});
+
+test('gateway commands typed while photos wait are delivered at once and never merged', async t => {
+  const f = await fixture(t);
+  await f.receive();
+  await f.session.capture(photo(f, 'p1'));
+  await f.flush(); f.advance(1000);
+  await f.session.capture(text(f, 't-stop', ' /stop'));
+  await f.session.capture(text(f, 't-cmd', 'ghi phiếu chi kèm ảnh'));
+  const stop = (await f.receive()).data.event;
+  assert.deepEqual([stop.messageId, stop.text, stop.media], ['t-stop', ' /stop', undefined], 'no wait for the album gap');
+  await f.ack(stop.id);
+  f.advance(3000);
+  const group = (await f.receive()).data.event;
+  assert.deepEqual([group.text, group.parts, group.media.length], ['ghi phiếu chi kèm ảnh', 2, 1]);
+});
+
+test('internal journal failures answer 503, never the 400 an adapter reads as an older worker', async t => {
+  const f = await fixture(t);
+  await f.receive();
+  await f.session.capture(text(f, 't1', 'xin chào'));
+  const rename = fs.renameSync;
+  fs.renameSync = () => { throw new Error('injected_disk_failure'); };
+  try {
+    const failed = await f.receive();
+    assert.deepEqual([failed.status, failed.data.error], [503, 'native_unavailable']);
+  } finally { fs.renameSync = rename; }
+  const stale = await f.request('/v1/receive', { generation: 'stale', accept: ACCEPT });
+  assert.deepEqual([stale.status, stale.data.error], [400, 'native_request_rejected']);
 });

@@ -264,6 +264,12 @@ test('real upstream adapter keeps text working against an older worker that reje
   }, { rejectAccept: true });
 });
 
+test('real upstream adapter treats only the request-rejected 400 as an older worker', upstreamRequired, async () => {
+  await withMediaFixture(async ({ probe }) => {
+    assert.deepEqual(await probe('receive-errors'), { internalFaultKeepsPhotos: true, olderWorkerFallsBack: true });
+  });
+});
+
 test('real upstream adapter refuses photo bytes that do not match the announced digest', upstreamRequired, async () => {
   await withMediaFixture(async ({ probe, session, photo, journal }) => {
     assert.deepEqual(await probe('media-tamper', async line => {
