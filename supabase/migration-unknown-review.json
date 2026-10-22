@@ -873,6 +873,29 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261022051118_hermes_w2a_invoice_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022051118_hermes_w2a_invoice_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_room_invoices_v1 / invoice_lateness_v1 / invoice_collection_by_method_v1 / invoice_adjustments_list_v1 / invoice_missing_v1 / invoice_open_debts_v1 (hàm đọc dùng chung MỚI, INVOKER, STABLE, search_path rỗng, chỉ authenticated)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là các hàm trên — sinh 22/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 2"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 2 đọc bù (a)–(f) + soạn tin nhắc nợ Q18: sáu hàm đọc dùng chung cho 7 báo cáo W2 gói A), chưa đi qua lane apply — các hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng hiện có: PGlite gói A (wave2-a 53/53 với 16 báo cáo; wave2-a-hoa-don 21/21 gồm số tính tay, ca nợ kéo #267, cấu trúc INVOKER/search_path rỗng/chỉ authenticated/tự kiểm khoá web, 10/10 đột biến bị bắt), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 3 kết nối Hermes ACTIVE thật qua lối vào public.hermes_w2_read_v1; số khớp đối chiếu đo nền 22/10). Áp qua npm run migrate:forward (TEST trước, rồi production) CÙNG 20261022051620_hermes_w2a_invoice_reads_v1 (bảng báo cáo + hàm đọc gói A, dựng từ thân đang chạy) và SAU #267 (20261021183549, hàm nợ thực gọi lúc chạy); khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.invoice_room_invoices_v1",
+        "function:public.invoice_lateness_v1",
+        "function:public.invoice_collection_by_method_v1",
+        "function:public.invoice_adjustments_list_v1",
+        "function:public.invoice_missing_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn 22/10/2026",
+      "sha256": "2331b3848b60298b9ee54b9608a5329355523896e0abe4da29b6e75484f98a32"
     }
   }
 }
