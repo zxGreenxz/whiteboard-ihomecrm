@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBuildings, useUpdateBuilding } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import SaleImageManager from "./SaleImageManager";
+import { confirmSaleInfoSwitch, useSaleInfoDraftGuard, type SaleInfoDraftState } from "./useSaleInfoDraftGuard";
 
 /** jsonb images/amenities (string[] | null | gì khác) → string[]. */
 const toStrArr = (v: unknown): string[] =>
@@ -59,7 +60,7 @@ function AmenityEditor({ value, onChange }: { value: string[]; onChange: (next: 
 
 /** Thông tin Sale của TỪNG PHÒNG: nội thất + ảnh phòng (kèm đồng bộ ảnh sang phòng tương tự).
  *  Toà nhà dùng chung với mục "Thông tin toà nhà" (nhận qua prop, không có dropdown riêng). */
-function RoomInfoSection({ buildingId }: { buildingId: string }) {
+function RoomInfoSection({ buildingId, onDraftStateChange }: { buildingId: string; onDraftStateChange: (state: SaleInfoDraftState) => void }) {
   const qc = useQueryClient();
   const { data: buildings } = useBuildings();
   const { data: rooms } = useRooms(buildingId || undefined);
@@ -74,17 +75,20 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
   // Các phòng "cùng mẫu" cần đồng bộ CÙNG bộ ảnh với phòng chính.
   const [similarIds, setSimilarIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [roomSaveError, setRoomSaveError] = useState("");
   const errorRoomId = useRef("");
 
-  useEffect(() => {
-    if (room && room.id === errorRoomId.current) return;
+  const guard = useSaleInfoDraftGuard(roomId,
+    JSON.stringify({ amenities: toStrArr(room?.amenities), images: toStrArr(room?.images), similarIds: [] }),
+    JSON.stringify({ amenities, images, similarIds }), saving || uploading, () => {
     errorRoomId.current = "";
     setRoomSaveError("");
     setAmenities(toStrArr(room?.amenities));
     setImages(toStrArr(room?.images));
     setSimilarIds([]);
-  }, [room]);
+  });
+  useEffect(() => { onDraftStateChange({ dirty: guard.dirty, busy: saving || uploading }); }, [guard.dirty, saving, uploading, onDraftStateChange]);
   // Đổi toà → reset phòng đang chọn.
   useEffect(() => { setRoomId(""); }, [buildingId]);
 
@@ -127,7 +131,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
   const removeSimilar = (rid: string) => setSimilarIds((prev) => prev.filter((x) => x !== rid));
 
   const save = async () => {
-    if (!room) return;
+    if (!room || saving || uploading || guard.stale) return;
     setSaving(true);
     setRoomSaveError("");
     const savedIds: string[] = [];
@@ -152,6 +156,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
           throw new TypeError("Incomplete room image receipts");
       }
       errorRoomId.current = "";
+      guard.markSaved();
       toast.success(similarIds.length > 0
         ? "Đã lưu phòng " + room.name + " và xác nhận đồng bộ ảnh cho " + savedIds.length + " phòng."
         : "Đã lưu thông tin phòng " + room.name + ".");
@@ -183,13 +188,13 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
             Phòng
             {buildingName && <span className="text-xs font-normal text-muted-foreground"> · Toà {buildingName}</span>}
           </Label>
-          <SearchableSelect value={roomId} onValueChange={setRoomId} options={roomOpts}
+          <SearchableSelect value={roomId} onValueChange={id => { if (id === roomId || (!saving && !uploading && confirmSaleInfoSwitch(guard.dirty))) setRoomId(id); }} options={roomOpts}
             placeholder={buildingId ? "Chọn phòng" : "Chọn toà nhà trước"} emptyText="Không có phòng"
-            disabled={!buildingId || saving} />
+            disabled={!buildingId || saving || uploading} />
         </div>
 
         {room ? (
-          <>
+          <fieldset disabled={saving || uploading} className="contents">
             <div className="space-y-2 pt-4 border-t">
               <Label>Nội thất</Label>
               <AmenityEditor value={amenities} onChange={setAmenities} />
@@ -197,7 +202,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
 
             <div className="space-y-3 pt-4 border-t">
               <Label>Ảnh phòng</Label>
-              <SaleImageManager value={images} onChange={setImages} />
+              <SaleImageManager value={images} onChange={setImages} disabled={saving} onUploadingChange={setUploading} />
 
               {/* Đồng bộ ảnh sang các phòng cùng mẫu */}
               <div className="space-y-2 rounded-lg border border-dashed p-3">
@@ -231,9 +236,11 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
               </div>
             </div>
 
+            {guard.stale && <div role="alert" className="space-y-2 text-sm text-amber-700"><p>Thông tin phòng đã đổi trên máy chủ. Bản nháp vẫn được giữ; đọc bản mới trước khi lưu.</p><Button variant="outline" onClick={guard.reload}>Đọc bản mới, bỏ nháp phòng</Button></div>}
+            {uploading && <p role="status" className="text-sm text-muted-foreground">Đang tải ảnh; chờ xong trước khi lưu hoặc chuyển phòng/toà.</p>}
             {roomSaveError && <p role="alert" className="text-sm text-destructive">{roomSaveError}</p>}
             <div className="flex justify-end">
-              <Button disabled={saving} onClick={save}>
+              <Button disabled={saving || uploading || guard.stale} onClick={save}>
                 {saving
                   ? "Đang lưu..."
                   : similarIds.length > 0
@@ -241,7 +248,7 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
                     : "Lưu thông tin phòng"}
               </Button>
             </div>
-          </>
+          </fieldset>
         ) : (
           <p className="text-sm text-muted-foreground">
             {buildingId
@@ -255,7 +262,9 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
 }
 
 /** Thông tin Sale của TOÀ NHÀ: liên hệ quản lý + ảnh bìa toà. Toà nhà do component cha giữ (dùng chung với mục Phòng). */
-function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: string; onBuildingChange: (id: string) => void }) {
+function BuildingInfoSection({ buildingId, onBuildingChange, otherBusy, onDraftStateChange }: {
+  buildingId: string; onBuildingChange: (id: string) => void; otherBusy: boolean; onDraftStateChange: (state: SaleInfoDraftState) => void;
+}) {
   const qc = useQueryClient();
   const { data: buildings } = useBuildings();
   const updateBuilding = useUpdateBuilding();
@@ -264,16 +273,20 @@ function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: str
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [images, setImages] = useState<string[]>([]);
-  useEffect(() => {
+  const [uploading, setUploading] = useState(false);
+  const guard = useSaleInfoDraftGuard(buildingId,
+    JSON.stringify({ contactName: building?.public_contact_name ?? "", contactPhone: building?.public_contact_phone ?? "", images: toStrArr(building?.images) }),
+    JSON.stringify({ contactName, contactPhone, images }), uploading || updateBuilding.isPending, () => {
     setContactName((building as any)?.public_contact_name ?? "");
     setContactPhone((building as any)?.public_contact_phone ?? "");
     setImages(toStrArr(building?.images));
-  }, [building]);
+  });
+  useEffect(() => { onDraftStateChange({ dirty: guard.dirty, busy: uploading || updateBuilding.isPending }); }, [guard.dirty, uploading, updateBuilding.isPending, onDraftStateChange]);
 
   const buildingOpts = (buildings ?? []).map((b) => ({ value: b.id, label: `${b.name}${b.code && b.code !== b.name ? ` (${b.code})` : ""}` }));
 
   const save = () => {
-    if (!building) return;
+    if (!building || uploading || updateBuilding.isPending || guard.stale) return;
     updateBuilding.mutate(
       {
         id: building.id,
@@ -283,7 +296,7 @@ function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: str
           images,
         },
       },
-      { onSuccess: () => qc.invalidateQueries({ queryKey: ["my-available-rooms"] }) },
+      { onSuccess: () => { guard.markSaved(); void qc.invalidateQueries({ queryKey: ["my-available-rooms"] }); } },
     );
   };
 
@@ -297,11 +310,11 @@ function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: str
         <div className="space-y-1.5 sm:max-w-sm">
           <Label>Toà nhà</Label>
           <SearchableSelect value={buildingId} onValueChange={onBuildingChange} options={buildingOpts}
-            placeholder="Chọn toà nhà" emptyText="Không có toà nhà" />
+            placeholder="Chọn toà nhà" emptyText="Không có toà nhà" disabled={uploading || updateBuilding.isPending || otherBusy} />
         </div>
 
         {building ? (
-          <>
+          <fieldset disabled={uploading || updateBuilding.isPending} className="contents">
             <div className="space-y-3 pt-4 border-t">
               <Label>Liên hệ quản lý toà</Label>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -323,15 +336,17 @@ function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: str
 
             <div className="space-y-2 pt-4 border-t">
               <Label>Ảnh toà nhà</Label>
-              <SaleImageManager value={images} onChange={setImages} />
+              <SaleImageManager value={images} onChange={setImages} disabled={updateBuilding.isPending} onUploadingChange={setUploading} />
             </div>
 
             <div className="flex justify-end">
-              <Button disabled={updateBuilding.isPending} onClick={save}>
+              <Button disabled={updateBuilding.isPending || uploading || guard.stale} onClick={save}>
                 {updateBuilding.isPending ? "Đang lưu..." : "Lưu thông tin toà nhà"}
               </Button>
             </div>
-          </>
+            {guard.stale && <div role="alert" className="space-y-2 text-sm text-amber-700"><p>Thông tin toà đã đổi trên máy chủ. Bản nháp vẫn được giữ.</p><Button variant="outline" onClick={guard.reload}>Đọc bản mới, bỏ nháp toà</Button></div>}
+            {uploading && <p role="status" className="text-sm text-muted-foreground">Đang tải ảnh; chờ xong trước khi lưu hoặc chuyển toà.</p>}
+          </fieldset>
         ) : (
           <p className="text-sm text-muted-foreground">Chọn toà nhà để chỉnh sửa liên hệ, ảnh.</p>
         )}
@@ -345,13 +360,20 @@ function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: str
  * theo 2 cấp — Toà nhà (liên hệ quản lý + ảnh bìa) và Phòng (nội thất + ảnh).
  * Bố cục responsive (shadcn Card + grid) dùng tốt trên cả desktop lẫn mobile.
  */
-export default function SaleImagesTab() {
+export default function SaleImagesTab({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
   // Toà nhà chọn 1 lần, dùng chung cho cả mục "Thông tin toà nhà" lẫn "Thông tin phòng".
   const [buildingId, setBuildingId] = useState("");
+  const [roomState, setRoomState] = useState<SaleInfoDraftState>({ dirty: false, busy: false });
+  const [buildingState, setBuildingState] = useState<SaleInfoDraftState>({ dirty: false, busy: false });
+  useEffect(() => { onBusyChange?.(roomState.busy || buildingState.busy); return () => onBusyChange?.(false); }, [roomState.busy, buildingState.busy, onBusyChange]);
+  const changeBuilding = (id: string) => {
+    if (roomState.busy || buildingState.busy) return;
+    if (id === buildingId || confirmSaleInfoSwitch(roomState.dirty || buildingState.dirty)) setBuildingId(id);
+  };
   return (
     <div className="space-y-4">
-      <BuildingInfoSection buildingId={buildingId} onBuildingChange={setBuildingId} />
-      <RoomInfoSection buildingId={buildingId} />
+      <BuildingInfoSection buildingId={buildingId} onBuildingChange={changeBuilding} otherBusy={roomState.busy} onDraftStateChange={setBuildingState} />
+      <RoomInfoSection buildingId={buildingId} onDraftStateChange={setRoomState} />
     </div>
   );
 }

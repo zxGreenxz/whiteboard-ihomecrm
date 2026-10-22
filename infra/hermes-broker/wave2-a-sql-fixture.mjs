@@ -29,6 +29,7 @@ export const CHANGE_BOOK = u(90), ROUND_BOOK = u(91), OTHER_BOOK = u(92);
 export const L1 = u(93), L2 = u(94), L3 = u(95), L4 = u(96), L5 = u(97), L6 = u(98), L7 = u(99);
 export const V_COLLECT = u(100), V_COLLECT2 = u(101), V_COLLECT_RESTRICTED = u(102), V_DETAIL = u(103), V_DETAIL_UNAPPROVED = u(104), V_DETAIL_RESTRICTED = u(105);
 export const PAY_A_REV = u(106), V_DETAIL_REVERSED = u(107);
+export const ADJ_PENDING = u(140), ADJ_OLD = u(141);
 
 // Định nghĩa hàm trong migration: từ CREATE … đến thẻ đóng thân đầu tiên (kể cả thẻ đóng không có ';').
 function definition(path, name) {
@@ -58,6 +59,17 @@ const TABLES = `
     payment_date date,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),reversed_at timestamptz,receipt_image_url text);
   CREATE TABLE public.invoice_adjustments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,invoice_id uuid,review_status text,
     before_snapshot jsonb);
+  -- Đợt 3 Hoá đơn (20261022051118): cột điều chỉnh bất biến, tên nhân viên dưới RLS profiles, cột suy is_overdue. Bản port is_overdue cùng
+  -- ý nghĩa với thân thật (20260915074716), so status dạng chữ vì fixture không có enum invoice_status.
+  ALTER TABLE public.invoices ADD COLUMN adjustment_revision bigint NOT NULL DEFAULT 0;
+  ALTER TABLE public.invoice_adjustments ADD COLUMN revision bigint,ADD COLUMN reason text,ADD COLUMN before_total numeric,ADD COLUMN after_total numeric,
+    ADD COLUMN delta numeric,ADD COLUMN adjusted_by uuid,ADD COLUMN adjusted_at timestamptz,ADD COLUMN checked_by uuid,ADD COLUMN checked_at timestamptz;
+  CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text);
+  ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY f_select ON public.profiles FOR SELECT TO authenticated USING (true);
+  CREATE FUNCTION public.is_overdue(public.invoices) RETURNS boolean LANGUAGE sql STABLE AS $$
+    SELECT $1.due_date IS NOT NULL AND $1.deleted_at IS NULL AND $1.status NOT IN ('PAID','CANCELLED')
+      AND COALESCE($1.paid_amount,0)<COALESCE($1.total_amount,0) AND $1.due_date<public.org_today_v1($1.organization_id)$$;
   CREATE TABLE public.contract_terminations(id uuid PRIMARY KEY,organization_id uuid,contract_id uuid,termination_date date,termination_type text,
     total_deposit numeric,total_deductions numeric,refund_amount numeric,status text);
   CREATE TABLE public.reservation_deposit_settlements(id uuid PRIMARY KEY,organization_id uuid,source_voucher_id uuid,building_id uuid,room_id uuid,
@@ -156,7 +168,11 @@ const SEED = `
   UPDATE public.invoice_items SET unit_price=amount,quantity=1,sort_order=CASE description WHEN 'Tiền phòng' THEN 1 WHEN 'Tiền điện T10' THEN 2
     WHEN 'Tiền nước T10' THEN 3 ELSE 4 END WHERE invoice_id='${INVOICE_A}';
   UPDATE public.invoice_items SET previous_reading=100,current_reading=200,unit_price=3500,quantity=100 WHERE description='Tiền điện T10';
-  INSERT INTO public.invoice_adjustments(organization_id,invoice_id,review_status) VALUES('${ORG}','${INVOICE_A}','CHECKED');
+  INSERT INTO public.invoice_adjustments(organization_id,invoice_id,review_status,revision,reason,before_total,after_total,delta,adjusted_by,adjusted_at,
+      checked_by,checked_at) VALUES('${ORG}','${INVOICE_A}','CHECKED',1,'Giảm 100k mất nước 2 ngày',3600000,3500000,-100000,'${USER}','2026-10-12T08:20:00Z',
+      '${USER}','2026-10-13T02:00:00Z');
+  UPDATE public.invoices SET adjustment_revision=1 WHERE id='${INVOICE_A}';
+  INSERT INTO public.profiles VALUES('${USER}','Kế toán A'),('${STRANGER}','Quản lý B');
   -- Lịch thanh toán: phòng P101 (hạn 10/10 + 10/12; huỷ, quá 365 ngày, đã xoá bị bỏ), P102 (không hợp đồng), toà B, công ty khác.
   INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,deleted_at) VALUES
     ('${INV_A3}','${ORG}','INV-A3','APPROVED','${BUILDING}','${ROOM}','2026-12','2026-12-10',3500000,0,'${CONTRACT_A}',null),
@@ -242,7 +258,12 @@ const SEED = `
     ('${L4}','${ORG}','${USER}','PT-T4','INCOME','Thu tháng trước','${BUILDING}','${ROOM2}','2026-09-20',300000,'APPROVED',null,null,null,'${CHANGE_BOOK}',4000,null,null,false),
     ('${L5}','${ORG}','${USER}','PT-T5','INCOME','Thu toà B','${OTHER_BUILDING}','${OTHER_ROOM}','2026-10-10',300000,'APPROVED',null,null,null,'${CHANGE_BOOK}',6000,null,null,false),
     ('${L6}','${ORG}','${USER}','PT-T6','INCOME','Thu làm tròn','${BUILDING}','${ROOM3}','2026-10-04',998000,'APPROVED',null,null,null,null,null,'${ROUND_BOOK}',2000,false),
-    ('${L7}','${ORG}','${STRANGER}','PT-T7','INCOME','Thu hạn chế','${BUILDING}','${ROOM3}','2026-10-05',1,'APPROVED',null,null,null,'${CHANGE_BOOK}',9000,null,null,true);`;
+    ('${L7}','${ORG}','${STRANGER}','PT-T7','INCOME','Thu hạn chế','${BUILDING}','${ROOM3}','2026-10-05',1,'APPROVED',null,null,null,'${CHANGE_BOOK}',9000,null,null,true);
+  -- Đợt 3 Hoá đơn: điều chỉnh CHỜ KIỂM của người khác trên INV-C2 (phiên bản hiện hành) + bản cũ hơn đã bị thay (không kiểm được nữa).
+  INSERT INTO public.invoice_adjustments(id,organization_id,invoice_id,review_status,revision,reason,before_total,after_total,delta,adjusted_by,adjusted_at) VALUES
+    ('${ADJ_PENDING}','${ORG}','${INV_C_UNPAID}','PENDING',2,'Thêm 50k vệ sinh',1550000,1500000,-50000,'${STRANGER}','2026-10-14T03:00:00Z'),
+    ('${ADJ_OLD}','${ORG}','${INV_C_UNPAID}','PENDING',1,'Giảm nhầm',1600000,1550000,-50000,'${STRANGER}','2026-10-13T03:00:00Z');
+  UPDATE public.invoices SET adjustment_revision=2,adjustment_review_status='PENDING' WHERE id='${INV_C_UNPAID}';`;
 
 // RLS cổng tổng hợp cho vai authenticated (mô hình INVOKER + RLS 18/10): hàm dùng chung và hàm đọc gói A chạy
 // dưới RLS của người hỏi. Policy chép ĐÚNG ý nghĩa bản sống (pg_policies TEST 17/10), cấp toà qua

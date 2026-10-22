@@ -72,3 +72,36 @@ it.each([false,true])('preserves signed and decimal SQL numeric prices without s
   view.unmount();
  }
 });
+it('quick board preselection opens the exact room and defaults new pass contact to the manager', async () => {
+ io.rooms=query([{room_id:'room-a',room_name:'101',building_name:'Tòa A',room_code:'101',has_active_contract:true}]);
+ render(<PassListingsTab focusRoomId="room-a" />);
+ const dialog=await screen.findByRole('dialog');
+ expect(within(dialog).getByRole('switch',{name:'Liên hệ quản lý (ẩn SĐT khách)'}).getAttribute('aria-checked')).toBe('true');
+ expect(within(dialog).getByRole('combobox')).toHaveProperty('disabled',true);
+ fireEvent.click(within(dialog).getByRole('button',{name:'Lưu'}));
+ await waitFor(()=>expect(io.upsert).toHaveBeenCalledWith(expect.objectContaining({roomId:'room-a',id:null,contactManager:true})));
+});
+it('quick board edits an existing active pass without allowing its source room to be moved', async () => {
+ io.listings=query([listing]);
+ io.rooms=query([{room_id:'room-a',room_name:'101',building_name:'Tòa A',room_code:'101',has_active_contract:true}]);
+ render(<PassListingsTab focusRoomId="room-a" />);
+ const dialog=await screen.findByRole('dialog');
+ expect(within(dialog).getByText('Sửa phòng khách nhờ sale')).toBeTruthy();
+ expect(within(dialog).getByRole('combobox')).toHaveProperty('disabled',true);
+ fireEvent.click(within(dialog).getByRole('button',{name:'Lưu'}));
+ await waitFor(()=>expect(io.upsert).toHaveBeenCalledWith(expect.objectContaining({roomId:'room-a',id:'pass-a'})));
+});
+
+it('quick board permission withdrawal preserves an open pass draft but prevents submission', async () => {
+ io.listings=query([listing]);
+ io.rooms=query([{room_id:'room-a',room_name:'101',building_name:'Tòa A',room_code:'101',has_active_contract:true}]);
+ const view=render(<PassListingsTab focusRoomId="room-a" />);
+ const dialog=await screen.findByRole('dialog');
+ fireEvent.change(within(dialog).getByDisplayValue('Draft khách'),{target:{value:'Khách đang nhập'}});
+ view.rerender(<PassListingsTab focusRoomId="room-a" blockedReason="Quyền cập nhật phòng vừa bị thu hồi." />);
+ expect(within(dialog).getByDisplayValue('Khách đang nhập')).toBeTruthy();
+ expect(within(dialog).getByRole('button',{name:'Lưu'})).toHaveProperty('disabled',true);
+ fireEvent.click(within(dialog).getByRole('button',{name:'Lưu'}));
+ expect(io.upsert).not.toHaveBeenCalled();
+ expect(within(dialog).getByRole('alert').textContent).toContain('thu hồi');
+});
