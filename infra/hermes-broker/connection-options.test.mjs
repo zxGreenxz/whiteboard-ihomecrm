@@ -13,7 +13,7 @@ test('enrollment options are frozen own-data projections bound to the verified c
 test('options reject foreign identity, unsupported capabilities and malformed scope labels without invoking getters',()=>{
  let invoked=0;
  for(const mutate of [
-  x=>x.userId=OTHER,x=>x.organizationId=OTHER,x=>x.read.push('future.unsupported_read'),x=>x.action.push('rooms.edit'),
+  x=>x.userId=OTHER,x=>x.organizationId=OTHER,x=>x.read.push('future.unsupported_read'),x=>x.action.push('rooms.delete'),
   x=>x.scopes[0].scopeType='CASHBOOK',x=>x.scopes[0].areaId=OTHER,x=>x.scopes[0].buildingId=null,
   x=>x.scopes[0].label='x'.repeat(1025),x=>x.scopes[0].label='a\0b',x=>x.scopes.push({...x.scopes[0]}),
   x=>x.scopes=[],x=>x.enabled=false,x=>x.policyVersion=-1,x=>x.authorizationVersion=0,
@@ -37,6 +37,17 @@ test('group read does not imply room scope or action',()=>{
  assert.deepEqual(connectionOptions(input,ORG,USER),input);
  assert.throws(()=>connectionOptions({...input,read:['chat_zalo.send']},ORG,USER),/connection_options_invalid/);
  assert.throws(()=>connectionOptions({...input,action:['chat_zalo.view']},ORG,USER),/connection_options_invalid/);
+});
+
+test('sale action choices preserve only the server projection without inferring receipt approval or read access',()=>{
+ const actions=['rooms.edit','sale_phong.edit','sale_phong.manage_images','sale_phong.lock_room','deposits.create','deposits.edit'];
+ assert.deepEqual(connectionOptions(valid(),ORG,USER).action,[]);
+ for(const action of actions){
+  const input={...valid(),read:['assistant.context.read'],action:[action]};
+  const result=connectionOptions(input,ORG,USER);
+  assert.deepEqual(result.action,[action]);assert.deepEqual(result.read,['assistant.context.read']);
+  assert.throws(()=>connectionOptions({...input,scopes:[]},ORG,USER),/connection_options_invalid/);
+ }
 });
 
 test('domain-only grants use their shared building scope contract without requiring rooms.view',()=>{

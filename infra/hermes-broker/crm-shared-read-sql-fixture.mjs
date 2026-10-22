@@ -14,8 +14,43 @@ import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from 
 const migrationName='20261019040055_crm_shared_read_cores_v1.sql';
 const migration=readFileSync('supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql','utf8');
 const sharedSql=readFileSync(`supabase/migrations/${migrationName}`,'utf8');
-const fastOriginal=readFileSync('supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql','utf8');
-const fastSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? fastOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : fastOriginal;
+const fastSql=readFileSync('supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql','utf8');
+// B2 (20261020101836) replaces the admission and the shared reader; the mutation
+// probe targets that last definition because it is the one that runs.
+const receivablesOriginal=readFileSync('supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql','utf8');
+const receivablesSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? receivablesOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : receivablesOriginal;
+// B5c (20261020171321) replaces the shared reader and hermes_domain_read_v2 again:
+// receivables rows name their building on both lanes. Applied after B2, twice.
+const buildingSql=readFileSync('supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql','utf8');
+// B5c step 2 (20261020173818): the reader names the building/room on customers, contracts and
+// invoices; hermes_domain_read_v1/v2 follow (requires v1 to be installed first). Applied last, twice.
+const buildingNameSql=readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8');
+// R2a (20261020233934): every list read of v1/v2 and the reader carries `summary` over the whole filtered
+// set (requires B5c step 2 live). Applied after B5c step 2, twice (idempotent).
+export const SUMMARY_PATH='supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
+const summarySql=readFileSync(SUMMARY_PATH,'utf8');
+// R2c (20261021035022): byType entries of the income_expenses summary name their largest voucher (v2 only; requires
+// R2a live). Applied after R2a, twice (idempotent).
+export const LARGEST_BY_TYPE_PATH='supabase/migrations/20261021035022_hermes_domain_summary_largest_by_type_v1.sql';
+const largestByTypeSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
+// R2c part 2 (20261021044801): the reader's customers summary counts the contract status (status_v2); v1 assets
+// rows carry createdAt and the summary the latest asset. Applied after R2c, twice (idempotent).
+export const CUSTOMER_STATUS_PATH='supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql';
+const customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
+// R2d (20261021063452): the reader's customers summary counts the customers without a contract in the connection's
+// contract scope (withoutContract, through the DEFINER helper hermes_customers_without_contract_v1); v1 assets count
+// the latest import batch (latestCount). Applied after R2c part 2, twice (idempotent).
+export const WITHOUT_CONTRACT_PATH='supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+const withoutContractSql=readFileSync(WITHOUT_CONTRACT_PATH,'utf8');
+// Phạm vi toà web (20261021170452) rồi nợ thực (22/10/2026): hàm dùng chung public.invoice_effective_outstanding_v1
+// (20261021183549) và cả hai đường đọc công nợ (v2 + đọc nhanh) không đếm hai lần nợ đã kéo sang hoá đơn gánh
+// (20261021185540, dựng từ thân v2 của 20261021170452 — $requires$ ghim md5 thân đó). KHÔNG nằm trong setup():
+// test của 20261021170452 cần đúng thân trước nó; test cần nợ thực gọi applyWebBuildingScope rồi applyEffectiveOutstanding.
+export const WEB_BUILDING_SCOPE_PATH='supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql';
+export const OUTSTANDING_PATH='supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql';
+const outstandingSql=readFileSync(OUTSTANDING_PATH,'utf8');
+export const RECEIVABLES_OUTSTANDING_PATH='supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql';
+const receivablesOutstandingSql=readFileSync(RECEIVABLES_OUTSTANDING_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -68,13 +103,20 @@ function run(binary, args, options = {}) {
   assert.equal(result.status, 0, `${binary}: ${result.error?.message ?? result.stderr}`);
   return result.stdout;
 }
-async function localCluster(t) {
+/** initdbArgs: extra initdb switches after the fixed C-locale set, e.g. the PostgreSQL 17
+ * builtin C.UTF-8 provider when a test needs Unicode lower()/upper() like production. */
+async function localCluster(t, { initdbArgs = [] } = {}) {
   const suffix = process.platform === 'win32' ? '.exe' : '';
   const bin = candidateLocalPostgresBins().find(p => existsSync(join(p, `initdb${suffix}`)));
   assert(bin, 'PostgreSQL 16+ required: set POSTGRES_BIN; no remote fallback');
   const binary = name => join(bin, name + suffix);
   const version = run(binary('initdb'), ['--version']);
   assertSupportedLocalPostgresVersion('initdb', version); t.diagnostic(version.trim());
+  // PostgreSQL 16 (CI runner) has no builtin locale provider: the libc C.UTF-8 locale
+  // gives the same Unicode-aware lower()/upper() as production for these fixtures.
+  const major = Number(/\b(\d+)\.\d+/.exec(version)?.[1]);
+  const builtin = arg => arg.startsWith('--locale-provider=') || arg.startsWith('--builtin-locale=');
+  const localeArgs = major >= 17 || !initdbArgs.some(builtin) ? initdbArgs : [...initdbArgs.filter(arg => !builtin(arg)), '--locale=C.UTF-8'];
   const root = mkdtempSync(join(tmpdir(), 'hermes-metadata-pg-'));
   const server = createServer();
   await new Promise((ok, bad) => server.once('error', bad).listen(0, '127.0.0.1', ok));
@@ -88,7 +130,7 @@ async function localCluster(t) {
     rmSync(target, { recursive: true });
   };
   try {
-    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale']);
+    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale', ...localeArgs]);
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
@@ -158,7 +200,7 @@ const [ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2]=Array
 async function setup(pool) {
  await setupBase(pool);
  await pool.query(`ALTER TABLE auth.users ADD COLUMN email text;
- ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,
+ ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,ADD COLUMN code text,
  ADD COLUMN default_account_id_tt uuid,ADD COLUMN default_account_id_tk uuid;
  CREATE TYPE public.invoice_status AS ENUM('DRAFT','APPROVED','PARTIAL_PAID','PAID','OVERDUE','CANCELLED');
  CREATE TYPE public.payment_method AS ENUM('TM','TK','TT','CT');
@@ -174,7 +216,8 @@ async function setup(pool) {
  CREATE TABLE public.contract_extensions(contract_id uuid,new_contract_id uuid,extension_type text,status text);
  CREATE TABLE public.invoices(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,contract_id uuid,building_id uuid,room_id uuid,
  invoice_number text,billing_month text,issue_date date,due_date date,status public.invoice_status,total_amount numeric,paid_amount numeric,
- remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz);
+ remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz,
+ previous_debt numeric DEFAULT 0,previous_debt_sources jsonb NOT NULL DEFAULT '[]'::jsonb);
  CREATE TABLE public.invoice_items(id uuid,invoice_id uuid,type text,accounting_class text,description text,unit_price numeric,quantity numeric,coefficient numeric,amount numeric,
  service_id uuid,previous_reading numeric,current_reading numeric,from_date date,to_date date,sort_order integer);
  CREATE TABLE public.payments(id uuid,invoice_id uuid,amount numeric,payment_date date,payment_method public.payment_method,notes text,receipt_image_url text,collection_id uuid,reversed_at timestamptz);
@@ -182,6 +225,7 @@ async function setup(pool) {
  after_total numeric,delta numeric,adjusted_by uuid,adjusted_at timestamptz,review_status text,checked_by uuid,checked_at timestamptz);
  CREATE TABLE public.active_payment_receipts(organization_id uuid,invoice_id uuid,payment_method public.payment_method,collected_amount numeric);
  CREATE FUNCTION public.org_today_v1(uuid DEFAULT NULL) RETURNS date LANGUAGE sql STABLE AS $$ SELECT date '2026-10-19' $$;
+ CREATE TABLE public.organization_timezones(organization_id uuid PRIMARY KEY,timezone text NOT NULL);
  CREATE TABLE public.areas(id uuid,organization_id uuid,deleted_at timestamptz);
  `);
  const support=['app_private.can_v3','public.is_admin','public.current_visible_owner_ids','public.sandbox_org_ids','public.demo_user_ids','public.can_access_building','public.can_do_on_building',
@@ -194,6 +238,15 @@ async function setup(pool) {
  ...[1,2,3].map(n=>`public.hermes_domain_capabilities_v${n}`)]) {assert(live.has(name),name);await pool.query(live.get(name));}
  for(const name of ['hermes_group_action_context_v1',...['work_memory','room_schedule','room_pass','task_create','task_follow','customer_create','expense'].map(n=>`hermes_${n}_capabilities_v1`),...[1,2,3].map(n=>`hermes_domain_capabilities_v${n}`)])
  await pool.query(`REVOKE ALL ON FUNCTION public.${name}(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;GRANT EXECUTE ON FUNCTION public.${name}(uuid) TO authenticated;`);
+ // Family v2 reader (normal lane) and the date helper the B2 admission depends on,
+ // so receivables can be compared normal-vs-fast on the same data and JWT.
+ for(const name of ['app_private.hermes_domain_text_v1','app_private.hermes_domain_date_v2','app_private.hermes_private_command_connection_v1','public.hermes_domain_read_v2',
+  // The company's business time zone (baseline): v1 dates the asset rows with it (R2c part 2).
+  'app_private.org_timezone_v1',
+  // Family v1 reader (normal lane of contracts/invoices) so the B5c step-2 migration can require it and the
+  // fast rows can be compared with it on the same data and JWT.
+  'app_private.hermes_domain_permission_v1','public.hermes_domain_read_v1'])
+ {assert(live.has(name),name);await pool.query(live.get(name));}
  await pool.query(readFileSync('supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql','utf8'));
  await pool.query(`INSERT INTO public.permission_definitions(key) VALUES('buildings.view'),('contracts.view'),('invoices.view') ON CONFLICT DO NOTHING;
  INSERT INTO public.role_permissions SELECT '${ORG}','${ROLE}',key,'ALLOW' FROM public.permission_definitions WHERE key IN('buildings.view','customers.view','contracts.view','invoices.view');
@@ -232,16 +285,76 @@ async function setup(pool) {
  `);
  const before={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])before[fn]=await web(pool,fn);
  await pool.query(sharedSql);await pool.query(sharedSql);await pool.query(fastSql);
+ await pool.query(receivablesSql);await pool.query(receivablesSql); // Idempotency, same candidate.
+ await pool.query(buildingSql);await pool.query(buildingSql); // B5c after B2, twice.
+ await pool.query(buildingNameSql);await pool.query(buildingNameSql); // B5c step 2 after B5c, twice.
+ await pool.query(summarySql);await pool.query(summarySql); // R2a summary after B5c step 2, twice (idempotent).
+ await pool.query(largestByTypeSql);await pool.query(largestByTypeSql); // R2c after R2a, twice (idempotent).
+ await pool.query(customerStatusSql);await pool.query(customerStatusSql); // R2c part 2 after R2c, twice (idempotent).
+ await pool.query(withoutContractSql);await pool.query(withoutContractSql); // R2d after R2c part 2, twice (idempotent).
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};
 }
+// 20261021170452 on the setup() state: the live helpers its $requires$/new helper read (as its own test loads them), then
+// the file twice (idempotent). Production runs this body since 22/10/2026.
+const WEB_BUILDING_SCOPE_LIVE=['app_private.buildings_for_v3','public.has_full_building_scope','public.accessible_building_ids','public.accessible_room_ids',
+ 'app_private.my_possessed_cashbook_ids_v1','public.accessible_account_ids','public.can_view_restricted_ie','app_private.hermes_task_follow_buildings_v1'];
+async function applyWebBuildingScope(pool){
+ for(const name of WEB_BUILDING_SCOPE_LIVE){assert(live.has(name),name);await pool.query(live.get(name));}
+ const sql=readFileSync(WEB_BUILDING_SCOPE_PATH,'utf8');await pool.query(sql);await pool.query(sql);
+}
+// md5 of pg_get_function_sqlbody depends on the schema it was parsed against (and the server build): 20261021185540 and its
+// prepared revert pin the production/TEST 17.6 values of the fast reader (063452 body, new body). This reduced fixture parses
+// the SAME text to other bytes, so the two pins are swapped for the values measured here (new body created in a rolled-back
+// transaction). Only those two literals change; every guard and statement runs as written.
+const FAST_SQLBODY_MD5_PRODUCTION={old:'976ce7eeb92e55271b7c75c56741cfde',fresh:'3da62d56616e690fef3b03a30d4d129c'};
+async function fastSqlbodyMd5(client){
+ return (await client.query(`SELECT md5(pg_get_function_sqlbody(p.oid)) m FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app_private' AND p.proname='hermes_domain_read_rows_fast_v1'`)).rows[0]?.m;
+}
+async function localFastSqlbodyMd5(pool){
+ const start=receivablesOutstandingSql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_domain_read_rows_fast_v1(');
+ const statement=receivablesOutstandingSql.slice(start,receivablesOutstandingSql.indexOf('\nEND;',start)+'\nEND;'.length);
+ const client=await pool.connect();
+ try{
+  const old=await fastSqlbodyMd5(client);
+  await client.query('BEGIN');await client.query(statement);const fresh=await fastSqlbodyMd5(client);await client.query('ROLLBACK');
+  assert(/^[0-9a-f]{32}$/.test(old??'')&&/^[0-9a-f]{32}$/.test(fresh??'')&&old!==fresh);
+  return {old,fresh};
+ }finally{client.release();}
+}
+function withLocalFastSqlbodyMd5(sql,local){
+ assert(sql.includes(FAST_SQLBODY_MD5_PRODUCTION.old)&&sql.includes(FAST_SQLBODY_MD5_PRODUCTION.fresh),'the file pins the production fast-reader digests');
+ return sql.replaceAll(FAST_SQLBODY_MD5_PRODUCTION.old,local.old).replaceAll(FAST_SQLBODY_MD5_PRODUCTION.fresh,local.fresh);
+}
+// Nợ thực after 20261021170452: the shared function, then both receivables lanes; each file twice (idempotent). Returns the
+// local fast-reader digests (for the revert and refusal probes).
+async function applyEffectiveOutstanding(pool){
+ await pool.query(outstandingSql);await pool.query(outstandingSql);
+ const local=await localFastSqlbodyMd5(pool);
+ const sql=withLocalFastSqlbodyMd5(receivablesOutstandingSql,local);
+ await pool.query(sql);await pool.query(sql);
+ return local;
+}
 async function web(pool,fn,extra=''){
  return jwt(pool,async c=>(await c.query(`SELECT public.${fn}(${fn==='customer_list_v1'?`'${ORG}'::uuid`:''}${extra}) value`)).rows[0].value);
 }
+// Family v2 domains (receivables, income_expenses) send the seven-key input; v1/v3 keep five keys.
+const domainInputOf=(domain,input)=>({query:'',limit:20,cursor:null,buildingId:null,status:null,...(['receivables','income_expenses'].includes(domain)?{fromDate:null,toDate:null}:{}),...input});
 async function fast(pool,binding,domain,input={},actor={}) {
  return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
- return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify({query:'',limit:20,cursor:null,buildingId:null,status:null,...input})])).rows[0].value;},actor.user??USER);
+ return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
+}
+// Normal lane of family v2 (hermes_domain_read_v2, seven-key binding) on the same JWT claims.
+async function normal(pool,binding,domain,input={},actor={}) {
+ return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
+ return (await c.query('SELECT public.hermes_domain_read_v2($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
+}
+// Normal lane of family v1 (hermes_domain_read_v1, seven-key binding, five-key input) on the same JWT claims.
+async function normal1(pool,binding,domain,input={},actor={}) {
+ return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
+ return (await c.query('SELECT public.hermes_domain_read_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
 }
 
-export {settings,localCluster,setup,jwt,fast,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};
+export {settings,localCluster,setup,applyWebBuildingScope,applyEffectiveOutstanding,withLocalFastSqlbodyMd5,jwt,fast,normal,normal1,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};

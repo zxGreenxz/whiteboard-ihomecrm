@@ -1,3 +1,5 @@
+import { QuickExpenseButton } from './QuickExpenseActions';
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import { useMemo, useState } from 'react';
 import {
   Table,
@@ -87,6 +89,7 @@ interface IncomeExpenseListProps {
   /** Append-only narrative/evidence; available independently of financial edits. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
+  quickExpense?: QuickExpenseActions;
   /** Finance V2 §12.3: CUSTODIAN Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (không cần
    *  quyền duyệt). Chỉ hiện khi org CANONICAL read + phiếu APPROVED+UNPOSTED,
    *  và cả phiếu ĐÃ HOÀN TÁC (chi lại — thế hệ bút toán mới). */
@@ -206,6 +209,7 @@ const IncomeExpenseList = ({
   onEdit,
   onQuickEdit,
   onApprove,
+  quickExpense,
   onPostApproved,
   onReversePosting,
   onUnapprove,
@@ -301,6 +305,11 @@ const IncomeExpenseList = ({
       <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
         <TableHeader>
           <TableRow>
+            {quickExpense && <TableHead className="w-10"><input type="checkbox" aria-label="Chọn tất cả phiếu đủ điều kiện trên trang"
+              disabled={!vouchers.some(v => !quickExpense.reason(v)) || quickExpense.busy || quickExpense.collecting}
+              checked={vouchers.some(v => !quickExpense.reason(v)) && vouchers.filter(v => !quickExpense.reason(v)).every(v => quickExpense.selected.some(s => s.id === v.id))}
+              ref={node => { if (node) { const eligible = vouchers.filter(v => !quickExpense.reason(v)); const n = eligible.filter(v => quickExpense.selected.some(s => s.id === v.id)).length; node.indeterminate = n > 0 && n < eligible.length; } }}
+              onChange={e => quickExpense.togglePage(vouchers, e.target.checked)} /></TableHead>}
             <TableHead>Thao tác</TableHead>
             <TableHead>Tên</TableHead>
             <TableHead className="text-right">Số tiền</TableHead>
@@ -361,6 +370,11 @@ const IncomeExpenseList = ({
 
             return (
               <TableRow key={voucher.id} className={rowClass}>
+                {quickExpense && <TableCell><span title={quickExpense.reason(voucher) ?? 'Chọn để duyệt và chi nhanh'}><input type="checkbox"
+                  aria-label={`Chọn phiếu ${voucher.code || voucher.name}`} className="disabled:opacity-30 disabled:cursor-not-allowed"
+                  disabled={!!quickExpense.reason(voucher) || quickExpense.busy || quickExpense.collecting}
+                  checked={quickExpense.selected.some(v => v.id === voucher.id)}
+                  onChange={e => quickExpense.toggle(voucher, e.target.checked)} /></span></TableCell>}
                 {/* Thao tác */}
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -551,6 +565,7 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
+                    <QuickExpenseButton voucher={voucher} quick={quickExpense} />
                     {/* Tạo bản sao từ phiếu đã huỷ: mở form tạo mới prefill
                         toàn bộ thông tin (kể cả hình ảnh) — sửa nhanh chỗ sai
                         rồi lưu thành phiếu mới. Thay cho "sửa" phiếu canonical

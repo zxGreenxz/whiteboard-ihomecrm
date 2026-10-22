@@ -311,3 +311,128 @@ test('HTTP deadline aborts a hanging body, cleans listeners and ignores late res
   wait.resolve(Response.json(payload())); await tick(); assert.equal(calls, 1); assert(received.aborted);
   assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
 });
+
+// ── B3 page mode (roomRead: 'page' → hermes_available_rooms_page_v1) ───────────────────
+const pageBinding = () => ({ connectionId: I.connection, tokenDigest: digest, expectedEpoch: 1, expectedSessionRevision: 1 });
+const pageRoom = (value, buildingId, extra = {}) => ({ id: value, building_id: buildingId, floor: 1, name: 'Phòng', code: 'P101', area: 24, rent_price: 4_000_000,
+  deposit_amount: 8_000_000, amenities: [], description: null, sale_note: null, room_type: null, status_public: 'free', sale_state: 'READY', avail_date: null,
+  sale_today: '2026-10-12', expected_ready_on: null, pass_contact_name: null, pass_contact_phone: null, pass_sale_policy: null, pass_price: null,
+  pass_avail_date: null, pass_contact_manager: false, ...extra });
+const pageBuilding = value => ({ id: value, name: 'Cùng tên', code: 'B', address: null, public_contact_name: null, public_contact_phone: null,
+  page_contact_name: 'Hotline thử', page_contact_phone: '0900000001' });
+const pageEnvelope = ({ offset = 0, limit = 50, buildingIds = [I.a], rooms = [pageRoom(id(51), I.a)], buildings = [pageBuilding(I.a)], totalCount = rooms.length } = {}) => ({
+  authority: { organizationId: I.org, userId: I.user, connectionId: I.connection, permission: 'rooms.view', buildingIds, cashbookIds: [] },
+  result: { publishedPages: 1, totalCount, offset, limit, nextOffset: offset + limit < totalCount && offset + limit <= 2000 ? offset + limit : null, rooms, buildings, salePolicies: ['Chính sách thử'] } });
+function pageFixture(reply = async () => pageEnvelope()) {
+  const f = fixture();
+  f.reads.availableRoomsPage = async (input, { signal }) => { f.events.push('page'); assert(signal instanceof AbortSignal); return reply(input, f); };
+  return f;
+}
+test('J3: page mode reads one bound page RPC after the same admission; no scope map, no whole-page read, legacy stays the default', async t => {
+  const f = pageFixture(async input => {
+    assert.deepEqual(input, { accessToken: f.material.accessToken, organizationId: I.org, binding: pageBinding(), filters: { buildingName: 'cùng', offset: 2, limit: 3 } });
+    return pageEnvelope({ offset: 2, limit: 3, totalCount: 5, rooms: [pageRoom(id(53), I.a), pageRoom(id(54), I.a), pageRoom(id(55), I.a, { status_public: 'pass', sale_state: 'PASS', pass_contact_manager: true })] });
+  }); t.after(() => f.crypto.destroy());
+  const out = await f.create({ roomRead: 'page' }).availableRooms(opaque, { buildingName: 'cùng', offset: 2, limit: 3 }, { ...f.options, useInitialAdmission: true });
+  // Durable authority (store, Auth verify + CRM authz), connection store, session verify, then the one page RPC.
+  assert.deepEqual(f.events, ['store', 'verify', 'authz', 'store', 'store', 'verify', 'page']);
+  // Rows 3..5 of 5: the window ends exactly at the total, so there is no next page.
+  assert.deepEqual([out.source, out.offset, out.nextOffset, out.totalInSnapshot, out.rooms.map(room => room.id), out.rooms[2].availability.label, out.salePolicies],
+    ['hermes_available_rooms_page_v1', 2, null, 5, [id(53), id(54), id(55)], 'Khách pass phòng · Liên hệ admin iHome mở cửa', ['Chính sách thử']]);
+  assert(!JSON.stringify(out).includes(jwt())); assert(!JSON.stringify(out).includes(digest));
+  // Default stays legacy: the same service without the flag runs map + whole-page read, never the page RPC.
+  f.events.length = 0;
+  const legacy = await f.create().availableRooms(opaque, {}, f.options);
+  assert.equal(legacy.source, 'hermes_sale_listing_rooms_v1'); assert(f.events.includes('map') && f.events.includes('rooms') && !f.events.includes('page'));
+});
+test('J4: a caller pins the source per call: group preview asks for legacy on a page-configured service; page needs a page reader', async t => {
+  const f = pageFixture(); t.after(() => f.crypto.destroy());
+  const service = f.create({ roomRead: 'page' });
+  const pinned = await service.availableRooms(opaque, { offset: 0, limit: 100 }, { ...f.options, roomRead: 'legacy' });
+  assert.equal(pinned.source, 'hermes_sale_listing_rooms_v1'); assert(!f.events.includes('page')); assert.equal(f.events.filter(e => e === 'map').length, 2);
+  await assert.rejects(service.prepareAvailableRooms(opaque, {}, { ...f.options, roomRead: 'fast' }), code('invalid_request'));
+  const plain = fixture(); t.after(() => plain.crypto.destroy());
+  await assert.rejects(plain.create().prepareAvailableRooms(opaque, {}, { ...plain.options, roomRead: 'page' }), code('backend_unavailable'));
+  assert(!plain.events.includes('rooms'));
+  assert.throws(() => plain.create({ roomRead: 'page' }), TypeError); assert.throws(() => plain.create({ roomRead: 'other' }), TypeError);
+  const explicit = await plain.create().availableRooms(opaque, {}, { ...plain.options, roomRead: 'legacy' });
+  assert.equal(explicit.source, 'hermes_sale_listing_rooms_v1');
+});
+test('J3: a page receipt is single-use, token-bound and only finalized by the direct read lane (initial admission)', async t => {
+  const f = pageFixture(); t.after(() => f.crypto.destroy()); const service = f.create({ roomRead: 'page', timeoutMs: 1000 });
+  const prepared = await service.prepareAvailableRooms(opaque, {}, f.options);
+  assert.equal(JSON.stringify(prepared), '{}'); assert(Object.isFrozen(prepared));
+  await assert.rejects(service.finalizeAvailableRooms(opaque, prepared, f.options), code('invalid_request'));
+  await assert.rejects(service.finalizeAvailableRooms(opaque, prepared, { ...f.options, useInitialAdmission: true }), code('context_changed'));
+  const again = await service.prepareAvailableRooms(opaque, {}, f.options);
+  await assert.rejects(service.finalizeAvailableRooms('hc_' + 'B'.repeat(43), again, { ...f.options, useInitialAdmission: true }), code('context_changed'));
+  const expired = await service.prepareAvailableRooms(opaque, {}, f.options); f.time(NOW + 1000);
+  await assert.rejects(service.finalizeAvailableRooms(opaque, expired, { ...f.options, useInitialAdmission: true }), code('timeout'));
+  f.time(NOW);
+  const fine = await service.prepareAvailableRooms(opaque, {}, f.options);
+  f.joined.connection.state = 'revoked'; f.reads.availableRoomsPage = async () => { throw new Error('unexpected second page read'); };
+  assert.equal((await service.finalizeAvailableRooms(opaque, fine, { ...f.options, useInitialAdmission: true })).rooms.length, 1);
+});
+test('J3: page RPC denials and envelope drift map to broker errors; the SQL authority must name this connection inside the admitted view', async t => {
+  for (const [reply, expected] of [[() => { throw new BrokerError('forbidden'); }, 'forbidden'], [() => { throw new BrokerError('context_changed'); }, 'context_changed'],
+    [() => { throw new BrokerError('invalid_request'); }, 'invalid_request'], [() => { throw new BrokerError('backend_unavailable'); }, 'backend_unavailable'],
+    [() => { throw new Error('PRIVATE'); }, 'backend_unavailable'], [() => ({ error: 'PRIVATE' }), 'backend_unavailable'],
+    [() => ({ ...pageEnvelope(), extra: 1 }), 'backend_unavailable'],
+    [() => { const v = pageEnvelope(); v.authority.organizationId = I.foreign; return v; }, 'backend_unavailable'],
+    [() => { const v = pageEnvelope(); v.authority.userId = I.foreign; return v; }, 'backend_unavailable'],
+    [() => { const v = pageEnvelope(); v.authority.connectionId = I.foreign; return v; }, 'backend_unavailable'],
+    [() => { const v = pageEnvelope(); v.authority.permission = 'customers.view'; return v; }, 'backend_unavailable'],
+    [() => { const v = pageEnvelope(); v.authority.cashbookIds = [I.book]; return v; }, 'backend_unavailable'],
+    [() => pageEnvelope({ buildingIds: [] }), 'forbidden'],
+    [() => pageEnvelope({ buildingIds: [I.a, I.foreign] }), 'context_changed'],
+    [() => pageEnvelope({ rooms: [pageRoom(id(51), I.foreign)], buildings: [pageBuilding(I.foreign)], buildingIds: [I.a] }), 'backend_unavailable'],
+    [() => pageEnvelope({ rooms: [{ ...pageRoom(id(51), I.a), contact: 'PRIVATE' }] }), 'backend_unavailable'],
+    [() => pageEnvelope({ rooms: [pageRoom(id(51), I.a, { status_public: 'rented' })] }), 'backend_unavailable'],
+    [() => ({ ...pageEnvelope(), result: { ...pageEnvelope().result, offset: 1 } }), 'backend_unavailable']]) {
+    const f = pageFixture(reply);
+    await assert.rejects(f.create({ roomRead: 'page' }).availableRooms(opaque, {}, { ...f.options, useInitialAdmission: true }), code(expected));
+    assert(!f.events.includes('map') && !f.events.includes('rooms')); f.crypto.destroy();
+  }
+  // No rooms.view, no assistant scope or a dead credential never reaches the page RPC.
+  for (const mutate of [f => { f.authz.permissions.read = ['assistant.context.read']; }, f => { f.joined.connection.scopeIds = []; },
+    f => { f.joined.connection.state = 'revoked'; }, f => { f.joined.session.binding.sessionId = I.foreign; }]) {
+    const f = pageFixture(); mutate(f);
+    await assert.rejects(f.create({ roomRead: 'page' }).availableRooms(opaque, {}, { ...f.options, useInitialAdmission: true }), error => error instanceof BrokerError);
+    assert(!f.events.includes('page')); f.crypto.destroy();
+  }
+  t.diagnostic('page mode admission reuses the legacy authority/store/crypto/Auth checks before the one bound RPC');
+});
+test('J3: HTTP adapter posts the seven named page arguments with the bound 4-field binding and maps PostgREST errors without fallback', async () => {
+  const calls = [], f = new AbortController();
+  const reads = createSupabaseRoomReads({ url: origin, publishableKey, fetch: async (url, options) => { calls.push({ url, ...options }); return Response.json(pageEnvelope()); } });
+  const value = await reads.availableRoomsPage({ accessToken: jwt(), organizationId: I.org, binding: pageBinding(), filters: { buildingName: 'Cùng', offset: 2, limit: 3 } }, { signal: f.signal });
+  assert.deepEqual(value, pageEnvelope());
+  assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_available_rooms_page_v1']);
+  assert.deepEqual(JSON.parse(calls[0].body), { p_binding: pageBinding(), p_organization_id: I.org, p_building_ids: null, p_building_name: 'Cùng', p_statuses: null, p_limit: 3, p_offset: 2 });
+  assert.equal(calls[0].method, 'POST'); assert.equal(calls[0].redirect, 'error'); assert.equal(calls[0].headers.authorization, `Bearer ${jwt()}`);
+  assert.equal(calls[0].headers.apikey, publishableKey); assert.equal(calls[0].headers['content-profile'], 'public'); assert.equal(calls[0].headers['accept-profile'], 'public');
+  const options = { signal: new AbortController().signal };
+  for (const input of [{ accessToken: jwt('service_role'), organizationId: I.org, binding: pageBinding(), filters: {} },
+    { accessToken: jwt(), organizationId: I.org, binding: pageBinding(), filters: {}, rpc: 'other' },
+    { accessToken: jwt(), organizationId: I.org, binding: { ...pageBinding(), expectedPolicyVersion: 1 }, filters: {} },
+    { accessToken: jwt(), organizationId: I.org, binding: { ...pageBinding(), expectedEpoch: 0 }, filters: {} },
+    { accessToken: jwt(), organizationId: I.org, binding: pageBinding(), filters: { limit: 101 } },
+    { accessToken: jwt(), organizationId: I.org, binding: pageBinding(), filters: { buildingIds: [I.a] } },
+    { accessToken: jwt(), organizationId: 'Cùng tên', binding: pageBinding(), filters: {} }]) {
+    await assert.rejects(reads.availableRoomsPage(input, options), code('invalid_request'));
+  }
+  assert.equal(calls.length, 1);
+  for (const [reply, expected] of [[() => Response.json({ code: 'PGRST202', message: 'PRIVATE', details: null, hint: null }, { status: 404 }), 'backend_unavailable'],
+    [() => Response.json({ message: 'PRIVATE' }, { status: 401 }), 'unauthorized'],
+    [() => Response.json({ code: '42501', message: 'PRIVATE', details: null, hint: null }, { status: 403 }), 'forbidden'],
+    [() => Response.json({ code: '42501', message: 'PRIVATE', details: null, hint: null }, { status: 400 }), 'backend_unavailable'],
+    [() => Response.json({ code: 'PT409', message: 'PRIVATE', details: null, hint: null }, { status: 409 }), 'context_changed'],
+    [() => Response.json({ code: '22023', message: 'PRIVATE', details: null, hint: null }, { status: 400 }), 'invalid_request'],
+    [() => Response.json({ code: 'PT413', message: 'PRIVATE', details: null, hint: null }, { status: 413 }), 'result_too_large'],
+    [() => Response.json({ code: '40001', message: 'PRIVATE', details: null, hint: null }, { status: 500 }), 'backend_unavailable'],
+    [() => Response.json({ error: 'PRIVATE' }), 'backend_unavailable'], [() => Response.json({ oversized: 'x'.repeat(1000) }), 'response_too_large']]) {
+    let count = 0; const adapter = createSupabaseRoomReads({ url: origin, publishableKey, maxResponseBytes: 512, fetch: async () => { count++; return reply(); } });
+    await assert.rejects(adapter.availableRoomsPage({ accessToken: jwt(), organizationId: I.org, binding: pageBinding(), filters: {} }, options), code(expected));
+    assert.equal(count, 1);
+  }
+});

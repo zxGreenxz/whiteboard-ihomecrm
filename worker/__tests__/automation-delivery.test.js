@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/ctx.js', () => ({ sb: {} }));
 const { validateAutomationDelivery } = await import('../lib/automation-delivery.js');
+const { saleContentGuard } = await import('../lib/automation-content-guard.js');
+const { chuanHoaBroadcast } = await import('../lib/automation-config.js');
 
 const now = new Date('2026-10-11T12:59:00Z');
+const contentGuard = saleContentGuard({ buildings: [], hotline: '', trangSale: null }, chuanHoaBroadcast({}).template);
 const job = { account_id: 'a', organization_id: 'o', conversation_id: 'c',
-  payload: { tu_dong: true }, not_before: now.toISOString() };
+  payload: { tu_dong: true, sale_content_guard: contentGuard }, not_before: now.toISOString() };
 function database({ enabled = true, sale = true, recipients = ['c'], error = null,
   conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true,
   stopAt = null, stopError = null, saves = [] } = {}) {
-  return { from: vi.fn(table => {
+  return { rpc: vi.fn(async () => ({ data: { buildings: [], rooms: [], contact: {} }, error: null })), from: vi.fn(table => {
     const data = table === 'zalo_automations'
       ? (automation ? { enabled, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
       : table === 'zalo_automation_oneshots' ? shot
@@ -59,7 +62,7 @@ describe('automation dispatch checks current conditions', () => {
   });
 
   describe('one-shot (gửi ngay / hẹn giờ một lần)', () => {
-    const shotJob = { ...job, payload: { tu_dong: true, oneshot_id: 's1' } };
+    const shotJob = { ...job, payload: { ...job.payload, oneshot_id: 's1' } };
     const shot = (over = {}) => ({ organization_id: 'o', status: 'running', recipients: ['c'], ...over });
     it('is its own authority: schedule off, no row, or recipient outside config.recipients still pass', async () => {
       for (const settings of [{ enabled: false }, { recipients: [] }, { automation: false }]) {

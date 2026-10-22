@@ -1,4 +1,4 @@
-import { BrokerError } from './broker.mjs';
+import { BrokerError, actionRejected } from './broker.mjs';
 const fail = code => { throw new BrokerError(code); };
 const record = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const exact = (value, keys) => record(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -27,7 +27,10 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
     typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) || typeof request !== 'function' ||
     typeof dependencyScope?.track !== 'function' || !Array.isArray(allowedNames) || !allowedNames.length || allowedNames.length > 32 || allowedNames.some(name => typeof name !== 'string' || !/^hermes_[a-z0-9_]+_v[1-9][0-9]*$/.test(name))) throw new TypeError('invalid_memory_transport');
   const names = new Set(allowedNames);
-  async function rpc(name, accessToken, args, { signal, onDispatch, onRejected } = {}, { write = false, optional = false } = {}) {
+  // action: RPC của thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md §6.2). Lỗi tạm của SQL (40001/40P01/55P03: câu lệnh
+  // lỗi ⇒ giao dịch đã lùi, chưa ghi gì) là kết cục ĐÃ BIẾT ⇒ action_rejected state_changed (xem trước lại, thử lại được),
+  // không bao giờ "chưa rõ"; hàm trang chưa áp (PGRST202) ⇒ action_rejected action_disabled, không phải "CRM tạm lỗi".
+  async function rpc(name, accessToken, args, { signal, onDispatch, onRejected } = {}, { write = false, optional = false, action = false } = {}) {
     if (!names.has(name) || !jwt(accessToken) || !(signal instanceof AbortSignal) || (write && [onDispatch, onRejected].some(fn => typeof fn !== 'function'))) fail('invalid_request');
     if (signal.aborted) fail('timeout');
     return dependencyScope.track(async () => {
@@ -38,10 +41,13 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
       const data = await json(response, signal);
       const error = exact(data, ['code', 'message', 'details', 'hint']) && typeof data.code === 'string' && typeof data.message === 'string' &&
         [data.details, data.hint].every(v => v === null || typeof v === 'string');
+      const transient = action && error && ['40001', '40P01', '55P03'].includes(data.code);
       const rejected = error && (response.status === 401 || response.status === 403 && data.code === '42501' ||
-        response.status === 409 && data.code === 'PT409' || response.status === 400 && data.code === '22023' || response.status === 404 && data.code === 'PGRST202');
+        response.status === 409 && data.code === 'PT409' || response.status === 400 && data.code === '22023' || response.status === 404 && data.code === 'PGRST202' || transient);
       if (write && rejected) onRejected();
       if (optional && response.status === 404 && error && data.code === 'PGRST202') return null;
+      if (action && response.status === 404 && error && data.code === 'PGRST202') throw actionRejected('action_disabled');
+      if (transient) throw actionRejected('state_changed');
       if (response.status === 401) fail('unauthorized');
       if (response.status === 403 && error && data.code === '42501') fail('forbidden');
       if (response.status === 409 && error && data.code === 'PT409') fail('context_changed');

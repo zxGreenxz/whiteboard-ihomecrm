@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { friendlyError, isSystemOnlyManualBlocked } from "../friendlyError";
+import { friendlyError, isSelfApproveOverThreshold, isSystemOnlyManualBlocked } from "../friendlyError";
 
 describe("friendlyError — hạng mục hệ thống bị chặn lập tay (danh mục chi chuẩn 03/10/2026)", () => {
   const blocked = {
@@ -29,6 +29,32 @@ describe("friendlyError — hạng mục hệ thống bị chặn lập tay (dan
     expect(friendlyError({ code: "42501", message: "permission denied for table x" }).title).toBe("Không đủ quyền");
   });
 });
+describe("friendlyError — câu 25: người lập không tự duyệt phiếu chi vượt ngưỡng (21/10/2026)", () => {
+  const blocked = {
+    code: "42501",
+    message: "Phiếu chi từ ngưỡng tự duyệt trở lên cần người có quyền duyệt thu chi duyệt — người lập phiếu không tự duyệt được.",
+    hint: "ie_self_approve_over_threshold",
+  };
+
+  it("đổi 42501 + HINT thành lời giải thích, không phải 'Không đủ quyền' chung chung", () => {
+    const fe = friendlyError(blocked, "Không thể duyệt phiếu", { operation: "duyệt phiếu", financial: true });
+    expect(fe.title).toBe("Cần người khác duyệt");
+    expect(fe.description).toBe(
+      "Phiếu chi từ ngưỡng tự duyệt trở lên phải do người có quyền duyệt thu chi duyệt. Bạn là người lập phiếu nên không tự duyệt được — hãy nhờ người có quyền duyệt.",
+    );
+    // Lỗi bọc trong cause (FinancialWorkflow/persistent workflow) vẫn nhận.
+    expect(isSelfApproveOverThreshold({ cause: blocked })).toBe(true);
+    // Đường Thanh toán phiếu phí nháp / Chốt lương không truyền rules: vẫn ra đúng câu.
+    expect(friendlyError(blocked).title).toBe("Cần người khác duyệt");
+  });
+
+  it("chỉ nhận đúng mã: 42501 khác, hoặc HINT khác, giữ cách báo cũ", () => {
+    expect(isSelfApproveOverThreshold({ code: "42501", message: blocked.message })).toBe(false);
+    expect(isSelfApproveOverThreshold({ code: "P0001", message: "x", hint: blocked.hint })).toBe(false);
+    expect(friendlyError({ code: "42501", message: "permission denied for table x" }).title).toBe("Không đủ quyền");
+  });
+});
+
 it('reports rent support disabled without implying a contract was saved', () => {
   expect(friendlyError({ code: '55000', message: 'RENT_SUPPORT_WRITERS_DISABLED' }).description).toContain('chưa được bật');
 });

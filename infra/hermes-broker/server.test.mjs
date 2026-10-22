@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
-import { DOMAIN_FAMILIES } from './domain-contract.mjs';
+import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -77,7 +77,16 @@ function fakeBackend() {
     }
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
-    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2'].includes(endpoint.pathname))
+    // B5d: the crm_auth_context directory (hermes_organization_name_v1, hermes_building_directory_v1) is optional too — absent ⇒ null, never a failed call.
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_action_capabilities_v1',
+      '/rest/v1/rpc/hermes_sale_capabilities_v1', '/rest/v1/rpc/hermes_sale_policy_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v9', '/rest/v1/rpc/hermes_connection_context_v9', '/rest/v1/rpc/hermes_connection_options_v8', '/rest/v1/rpc/hermes_connection_context_v8',
+      '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
+      '/rest/v1/rpc/hermes_organization_name_v1', '/rest/v1/rpc/hermes_building_directory_v1',
+      // R2c part 2 (c): the asker's own display name is optional the same way.
+      '/rest/v1/rpc/hermes_user_display_name_v1',
+      // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác chung đọc hermes_action_capabilities_v1 và lớp task đọc thẳng
+      // capability theo dõi việc; vắng (PGRST202) ⇒ không cấp khoá, như mọi họ tuỳ chọn.
+      '/rest/v1/rpc/hermes_action_capabilities_v1', '/rest/v1/rpc/hermes_task_follow_capabilities_v1'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -157,29 +166,45 @@ async function listening(t, configuration) {
   return { ...backend, address, send, browser, connect, mcp };
 }
 
-test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
-  const measured = [];
+test('TG3b opt-in runtime: the fast plan (4 reads) and the cached admission (B2-2) both cut Auth/capability adapter requests >=70%; audit is followed only by the business RPC; flag off = legacy lane', async t => {
+  const measured = { cached: [], fast: [] };
+  assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
+  // B2-2 sample: cached domains this fixture can grant (v1 leads/tasks, v2 income_expenses); W2 keys need capabilities_v3, absent here.
+  const CACHED_SAMPLE = ['leads', 'tasks', 'income_expenses'];
+  assert.ok(CACHED_SAMPLE.every(operation => CACHED_READ_OPERATIONS.includes(operation)));
+  const allowed = ['customers.view', 'contracts.view', 'invoices.view', 'leads.view', 'tasks.view', 'income_expenses.view'];
   for (const enabled of [false, true]) {
-    const f = fakeBackend(), events = [], baseFetch = f.configuration.fetch;
-    let missingFastRpc = false;
-    f.configuration.readFastPath = enabled;
-    const allowed = ['customers.view', 'contracts.view', 'invoices.view'];
+    const f = fakeBackend(), events = [], records = [], baseFetch = f.configuration.fetch;
+    let missingRpc = false;
+    f.configuration.readFastPath = enabled; f.configuration.callLog = record => { records.push(record); };
+    const capabilities = family => Response.json({ organizationId: I.org, userId: I.user,
+      membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
+      permissions: Object.fromEntries(DOMAIN_FAMILIES[family].capabilities.map(key => [key,
+        { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
     f.configuration.fetch = async (url, options) => {
       const path = new URL(url).pathname; events.push(path);
-      if (path.endsWith('/hermes_domain_capabilities_v1')) return Response.json({ organizationId: I.org, userId: I.user,
-        membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
-        permissions: Object.fromEntries(DOMAIN_FAMILIES.v1.capabilities.map(key => [key,
-          { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
-      if (/\/hermes_domain_read_(?:fast_v1|v1|v3)$/.test(path)) {
-        if (missingFastRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
-        const args = JSON.parse(options.body), operation = args.p_domain;
+      if (path.endsWith('/hermes_domain_capabilities_v1')) return capabilities('v1');
+      if (path.endsWith('/hermes_domain_capabilities_v2')) return capabilities('v2');
+      if (/\/hermes_domain_read_(?:fast_v1|v1|v2|v3)$/.test(path)) {
+        if (missingRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
+        const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation], joined = f.read().joined;
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        // Each family keeps its own result envelope on every lane: v2 adds source and time, v3 adds time; list reads carry
+        // `summary` (required since the R2a release window closed) — here the summary of the empty page.
         const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
-          ...(operation === 'customers' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
-        if (!path.endsWith('/hermes_domain_read_fast_v1')) return Response.json(result);
+          ...(Object.hasOwn(DOMAIN_SUMMARIES, operation) ? { summary: summarizeRows(operation, []) } : {}),
+          ...(definition.family === 'v2' ? { source: definition.source, fetchedAt: new Date(NOW).toISOString() } : {}),
+          ...(definition.family === 'v3' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
+        if (!path.endsWith('/hermes_domain_read_fast_v1')) {
+          // Legacy and cached lanes send the same reviewed RPC the same seven keys, read from the live snapshot.
+          assert.deepEqual(args.p_binding, { connectionId: I.connection, tokenDigest: joined.connection.tokenDigest, expectedEpoch: joined.connection.epoch,
+            expectedPolicyVersion: joined.policy.version, expectedMembershipId: I.member, expectedAuthorizationVersion: 1, expectedSessionRevision: joined.session.revision }, operation);
+          return Response.json(result);
+        }
         assert.deepEqual(Object.keys(args.p_binding).sort(), ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'].sort());
+        assert.deepEqual(Object.keys(args.p_input).sort(), [...DOMAIN_FAMILIES[definition.family].inputKeys].sort(), `${operation}: the family input shape reaches the fast RPC`);
         return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection,
-          permission: `${operation}.view`, buildingIds: [I.building], cashbookIds: [] }, result });
+          permission: definition.permission, buildingIds: [I.building], cashbookIds: [] }, result });
       }
       return baseFetch(url, options);
     };
@@ -189,27 +214,46 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
     const joined = f.read().joined; joined.connection.restrictions.read.push(...allowed); joined.policy.read.push(...allowed);
     joined.connection.scopeIds = [I.scope]; joined.policy.scopeIds = [I.scope];
     events.length = 0;
-    for (const operation of ['customers', 'contracts', 'invoices']) {
+    const authRequests = list => list.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
+    // Cold catalog first on the cached lane, then the fast plan warm: both lanes share the one read catalog entry.
+    const lane = async (operations, label) => {
       const start = events.length;
-      const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
-      assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
-      assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
-      if (enabled) assert.deepEqual(events.slice(start).slice(events.slice(start).indexOf('audit:prepared') + 1), ['/rest/v1/rpc/hermes_domain_read_fast_v1']);
-    }
-    const authRequests = events.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
-    measured.push(authRequests);
-    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, 3);
+      for (const operation of operations) {
+        const at = events.length;
+        const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
+        assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
+        assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
+        const expectedRpc = enabled && label === 'fast' ? 'hermes_domain_read_fast_v1' : DOMAIN_FAMILIES[DOMAIN_READS[operation].family].readRpc;
+        const tail = events.slice(at), afterAudit = tail.slice(tail.indexOf('audit:prepared') + 1);
+        assert.equal(tail.filter(path => path.includes('/hermes_domain_read_')).at(-1), `/rest/v1/rpc/${expectedRpc}`, `${operation}: ${enabled ? label : 'legacy'} lane`);
+        if (enabled) assert.deepEqual(afterAudit, [`/rest/v1/rpc/${expectedRpc}`], `${operation}: audit followed only by the business RPC`);
+        else assert.ok(afterAudit.includes('/auth/v1/user') && afterAudit.at(-1) === `/rest/v1/rpc/${expectedRpc}`, `${operation}: the legacy lane rebuilds authority after the audit`);
+        const record = records.at(-1);
+        assert.equal(record.tool, `crm_read_${operation}`); assert.equal(record.path, enabled ? label : 'normal', operation);
+        assert.equal(record.checkMs === null, enabled, `${operation}: checkMs only on the legacy lane`);
+      }
+      return authRequests(events.slice(start));
+    };
+    measured.cached.push(await lane(CACHED_SAMPLE, 'cached'));
+    measured.fast.push(await lane(FAST_READ_OPERATIONS, 'fast'));
+    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, FAST_READ_OPERATIONS.length);
     if (enabled) {
-      missingFastRpc = true; const start = events.length;
-      const failed = await backend.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
-      assert.equal(failed.status, 200); assert.equal(failed.body.result.isError, true);
-      assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
-      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).length, 1, 'missing candidate SQL is not retried or silently routed to the legacy reader');
+      missingRpc = true;
+      for (const operation of ['customers', 'leads']) {
+        const start = events.length;
+        const failed = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
+        assert.equal(failed.status, 200); assert.equal(failed.body.result.isError, true);
+        assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
+        assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).length, 1, `${operation}: missing SQL is not retried or silently routed to another reader`);
+      }
     }
     await backend.close();
   }
-  assert(measured[0] > 0); assert(measured[1] <= measured[0] * 0.3, JSON.stringify(measured));
-  t.diagnostic(`Auth/capability requests over the same cold+warm three-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
+  for (const label of ['cached', 'fast']) {
+    const [legacy, candidate] = measured[label];
+    assert(legacy > 0, label); assert(candidate <= legacy * 0.3, `${label}: ${JSON.stringify(measured[label])}`);
+  }
+  t.diagnostic(`Auth/capability requests, same cold+warm set per lane: cached (${CACHED_SAMPLE.length} reads) legacy=${measured.cached[0]}, candidate=${measured.cached[1]}; fast (${FAST_READ_OPERATIONS.length} reads, warm) legacy=${measured.fast[0]}, candidate=${measured.fast[1]}. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
 });
 
 test('construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact', async () => {
@@ -302,6 +346,12 @@ test('real composed constructors serve connect, durable MCP authority and manage
   assert.equal(called.body.result.isError, false);
   const identity = JSON.parse(called.body.result.content[0].text); assert.equal(identity.userId, I.user); assert.equal(identity.organizationId, I.org);
   assert.deepEqual(identity.permissions, limits());
+  // B5d: the directory SQL is absent in this fixture ⇒ the company name degrades to null (not an error); this connection
+  // holds no building scope at all, so its building list is [] without any directory read.
+  assert.deepEqual([identity.organizationName, identity.userName, identity.buildings], [null, null, []]);
+  assert(f.calls.some(call => call.path === '/rest/v1/rpc/hermes_user_display_name_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`),
+    'R2c part 2 (c): the display name is read with the assistant JWT of the asker');
+  assert(f.calls.some(call => call.path === '/rest/v1/rpc/hermes_organization_name_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`), 'directory read with the assistant JWT');
   const forbidden = await http.mcp(token, 'tools/call', { name: 'phong_trong', arguments: {} }); assert.equal(forbidden.body.result.isError, true);
   assert(!f.calls.some(call => call.path.includes('copilot_available_rooms') || call.path.includes('hermes_room_scope_map')));
   const restricted = await http.browser('restrict', { connectionId: I.connection, expectedEpoch: 2, restrictions: { read: [], action: [] }, scopeIds: [] });
@@ -421,18 +471,67 @@ test('composed room tool uses the encrypted assistant JWT, initial scope/data RP
   assert.equal(f.calls.filter(call => call.path.endsWith('hermes_sale_listing_rooms_v1')).length, 1);
 });
 
-test('server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed', async t => {
+test('roomRead=page: the direct room tool reads one bound page RPC (no scope map, no whole-page RPC), never falls back, and an unknown flag is refused', async t => {
+  const f = fakeBackend(), order = [], original = f.configuration.fetch;
+  assert.throws(() => createHermesBackend({ ...f.configuration, roomRead: 'other' }), { message: 'invalid_backend_config' });
+  assert.throws(() => createHermesBackend({ ...f.configuration, roomRead: true }), { message: 'invalid_backend_config' });
+  f.configuration.roomRead = 'page';
+  let missing = false;
+  f.configuration.fetch = async (url, options) => {
+    const path = new URL(url).pathname; order.push(path.split('/').at(-1));
+    if (path === '/rest/v1/rpc/hermes_available_rooms_page_v1') {
+      if (missing) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
+      assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+      const args = JSON.parse(options.body), joined = f.read().joined;
+      assert.deepEqual(Object.keys(args).sort(), ['p_binding', 'p_building_ids', 'p_building_name', 'p_limit', 'p_offset', 'p_organization_id', 'p_statuses'].sort());
+      assert.deepEqual(args.p_binding, { connectionId: I.connection, tokenDigest: joined.connection.tokenDigest, expectedEpoch: joined.connection.epoch, expectedSessionRevision: joined.session.revision });
+      assert.deepEqual([args.p_organization_id, args.p_building_ids, args.p_building_name, args.p_statuses, args.p_limit, args.p_offset], [I.org, null, 'House', null, 100, 0]);
+      return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection, permission: 'rooms.view', buildingIds: [I.building], cashbookIds: [] },
+        result: { publishedPages: 1, totalCount: 1, offset: 0, limit: 100, nextOffset: null, salePolicies: ['Chính sách thử'],
+          rooms: [{ id: id(10), building_id: I.building, floor: 1, name: '101', code: '101', area: 20, rent_price: 3000000, deposit_amount: 3000000, amenities: ['Máy lạnh'],
+            description: null, sale_note: null, room_type: null, status_public: 'free', sale_state: 'READY', avail_date: null, sale_today: '2026-10-12', expected_ready_on: null,
+            pass_contact_name: null, pass_contact_phone: null, pass_sale_policy: null, pass_price: null, pass_avail_date: null, pass_contact_manager: false }],
+          buildings: [{ id: I.building, name: 'House A', code: 'A', address: 'Đường Thử', public_contact_name: null, public_contact_phone: null, page_contact_name: 'Hotline thử', page_contact_phone: '0900000001' }] } });
+    }
+    return original(url, options);
+  };
+  f.configuration.audit = async event => { f.audits.push(event); order.push(`audit:${event.outcome}`); };
+  const http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
+  f.grantRooms(); order.length = 0;
+  const response = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { buildingName: 'House', limit: 100 } });
+  assert.equal(response.body.result.isError, false, response.text);
+  const data = JSON.parse(response.body.result.content[0].text);
+  assert.deepEqual([data.source, data.rooms.length, data.rooms[0].building.id, data.rooms[0].availability.label, data.rooms[0].amenities, data.totalInSnapshot, data.nextOffset, data.completeness, data.salePolicies],
+    ['hermes_available_rooms_page_v1', 1, I.building, 'Trống sẵn', 'Máy lạnh', 1, null, 'complete', ['Chính sách thử']]);
+  assert.equal(order.filter(value => value === 'hermes_available_rooms_page_v1').length, 1);
+  assert(!order.includes('hermes_room_scope_map_v1')); assert(!order.includes('hermes_sale_listing_rooms_v1'));
+  assert(order.indexOf('hermes_available_rooms_page_v1') < order.indexOf('audit:prepared')); assert.equal(order.at(-1), 'audit:prepared');
+  const exposed = response.text + JSON.stringify(f.audits);
+  for (const secret of [token, browserJwt, assistantJwt, 'SYNTHETIC-REFRESH-SECRET']) assert(!exposed.includes(secret));
+  // Missing candidate SQL: backend_unavailable, never a silent fallback to the legacy whole-page read.
+  missing = true; order.length = 0;
+  const failed = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
+  assert.equal(failed.body.result.isError, true); assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
+  assert.equal(order.filter(value => value === 'hermes_available_rooms_page_v1').length, 1);
+  assert(!order.includes('hermes_room_scope_map_v1')); assert(!order.includes('hermes_sale_listing_rooms_v1'));
+});
+
+test('server auth chain consults customer/action/sale capability RPCs; absent RPCs keep their action tools closed', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
   f.grantRooms();
   const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
-  for (const path of ['hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1'])
+  // Đợt 2 Thu chi: phiếu chi đi danh mục thao tác chung (hermes_action_capabilities_v1); họ crm_expense_* cũ đã gỡ, không còn hỏi
+  // hermes_expense_capabilities_v1.
+  for (const path of ['hermes_customer_create_capabilities_v1', 'hermes_action_capabilities_v1', 'hermes_sale_capabilities_v1', 'hermes_sale_policy_capabilities_v1'])
     assert(f.calls.some(call => call.path === `/rest/v1/rpc/${path}` && call.options.headers.authorization === `Bearer ${assistantJwt}`), path);
-  assert(!listed.some(name => /^crm_(customer|lead|expense)_/.test(name)));
-  for (const name of ['crm_customer_create', 'crm_lead_status', 'crm_expense_create', 'crm_expense_input_options']) {
+  assert(!listed.some(name => /^crm_(customer|lead|expense|action|sale)_/.test(name)));
+  assert(!f.calls.some(call => call.path === '/rest/v1/rpc/hermes_expense_capabilities_v1'), 'họ phiếu chi cũ đã gỡ');
+  for (const name of ['crm_customer_create', 'crm_lead_status', 'crm_expense_create', 'crm_expense_input_options', 'crm_action_run',
+    'crm_sale_action', 'crm_sale_room_patch', 'crm_sale_room_lock', 'crm_sale_reservation_create', 'crm_sale_bulk_patch', 'crm_sale_policy_save']) {
     const response = await http.mcp(token, 'tools/call', { name, arguments: {} });
     assert.equal(JSON.parse(response.body.result.content[0].text).error, 'tool_not_available', name);
   }
-  assert(!f.calls.some(call => /hermes_(customer_create|expense)_action_v1$/.test(call.path)), 'no action RPC without capability');
+  assert(!f.calls.some(call => /hermes_(customer_create_action|expense_action|expense_write|sale_actions|sale_policy_actions)_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {

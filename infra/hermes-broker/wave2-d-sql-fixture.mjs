@@ -29,7 +29,7 @@ export const D = Object.freeze({
 });
 
 const BEFORE = `
-  ALTER TABLE public.buildings ADD COLUMN code text,ADD COLUMN type text DEFAULT 'APARTMENT',ADD COLUMN status text DEFAULT 'ACTIVE',ADD COLUMN total_floors integer,
+  ALTER TABLE public.buildings ADD COLUMN IF NOT EXISTS code text,ADD COLUMN type text DEFAULT 'APARTMENT',ADD COLUMN status text DEFAULT 'ACTIVE',ADD COLUMN total_floors integer,
     ADD COLUMN description text,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp(),ADD COLUMN updated_at timestamptz,
     ADD COLUMN commission_tiers jsonb,ADD COLUMN commission_change_reason text,ADD COLUMN default_account_id_tt uuid,ADD COLUMN public_contact_phone text;
   ALTER TABLE public.rooms ADD COLUMN code text,ADD COLUMN floor integer NOT NULL DEFAULT 1,ADD COLUMN area numeric,ADD COLUMN deposit_amount numeric NOT NULL DEFAULT 0,

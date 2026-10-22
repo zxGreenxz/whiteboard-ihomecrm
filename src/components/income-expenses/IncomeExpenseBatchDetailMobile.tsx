@@ -1,3 +1,5 @@
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseBatchButton, QuickExpenseFeedback } from './QuickExpenseActions';
 import {VoucherPartialError,voucherFailureMessage,voucherOutcomeUnknown} from '@/lib/voucherFeedback';
 import {getBatchAccountIssue} from '@/hooks/income-expenses/batch';
 import {QueryRegion} from '@/components/errors/QueryRegion';
@@ -21,6 +23,7 @@ import { VoucherSheetReadState } from "./VoucherReadState";
 import { detailReadErrorMessage, useSheetStill } from "./voucherSheetState";
 
 interface Props {
+  quickExpense?: QuickExpenseActions;
   batch: IncomeExpenseBatchSummary;
   onClose: () => void;
   onCancelBatch?: (batchId: string) => void;
@@ -64,6 +67,7 @@ function IncomeExpenseBatchDetailContent({
   onEditVoucher,
   onCancelVoucher,
   onApproveVoucher,
+  quickExpense,
   still = false,
 }: Props & { still?: boolean }) {
   const [child, setChild] = useState<IncomeExpenseWithRelations | null>(null);
@@ -73,6 +77,7 @@ function IncomeExpenseBatchDetailContent({
   const accountsQuery=useAccounts();
   const {data:accounts=[]}=accountsQuery;
   const updateBatchAccount = useUpdateBatchAccount();
+  const quickBusy = !!(quickExpense?.busy || quickExpense?.collecting);
   const [changeError,setChangeError]=useState<unknown>(null);
   const issue=changeError||getBatchAccountIssue(batch?.id??"");
   const blocked=issue instanceof VoucherPartialError||voucherOutcomeUnknown(issue);
@@ -114,13 +119,15 @@ function IncomeExpenseBatchDetailContent({
 
         <div className="vd-sec">
           <span className="vd-sec-t">Thông tin chung</span>
-          {batch.has_approved && onCancelBatch && (
-            <div className="vd-acts">
+          <div className="vd-acts">
+            <QuickExpenseBatchButton batch={batch} quick={quickExpense} />
+            {batch.has_approved && onCancelBatch && (
               <button
                 className="vd-act"
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ cả đợt"
                 title="Huỷ cả đợt"
+                disabled={quickBusy}
                 onClick={() => {
                   onCancelBatch(batch.id);
                   onClose();
@@ -128,9 +135,10 @@ function IncomeExpenseBatchDetailContent({
               >
                 <Ban size={15} />
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+        {quickExpense && <QuickExpenseFeedback quick={quickExpense} />}
 
         <div className="vd-table">
           <div className="vd-row">
@@ -162,7 +170,7 @@ function IncomeExpenseBatchDetailContent({
                 <select
                   className="vd-accsel"
                   value={sharedAccountId}
-                  disabled={updateBatchAccount.isPending}
+                  disabled={updateBatchAccount.isPending || quickBusy}
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value && value !== sharedAccountId) {
@@ -288,6 +296,7 @@ function IncomeExpenseBatchDetailContent({
                     <button
                       className="bchild-edit"
                       aria-label="Sửa phiếu"
+                      disabled={quickBusy}
                       title={unapproved ? "Sửa phiếu chờ duyệt" : "Sửa phiếu (Super Admin)"}
                       onClick={() => {
                         onClose();
@@ -309,6 +318,7 @@ function IncomeExpenseBatchDetailContent({
       {/* Chi tiết phiếu con — sheet chồng lên */}
       {child && (
         <IncomeExpenseDetailMobile
+          quickExpense={quickExpense}
           voucher={child}
           previewVoucher={child}
           onClose={() => setChild(null)}
@@ -359,10 +369,10 @@ function IncomeExpenseBatchDetailContent({
         voucherCount={batch.vouchers.filter((v) => v.approval_status !== "CANCELLED").length}
         pending={updateBatchAccount.isPending}
         error={issue?voucherFailureMessage(issue,"đổi sổ quỹ cả đợt"):null}
-        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading}
+        blocked={blocked||accountsQuery.isError||accountsQuery.isLoading||quickBusy}
         completedIds={issue instanceof VoucherPartialError?issue.completedIds:[]}
         onConfirm={(reason) => {
-          if (!pendingAccountId) return;
+          if (!pendingAccountId || quickBusy) return;
           updateBatchAccount.mutate(
             { batchId: batch.id, accountId: pendingAccountId, reason },
             { onSuccess: () => {setChangeError(null);setPendingAccountId(null);},onError:error=>setChangeError(error) },

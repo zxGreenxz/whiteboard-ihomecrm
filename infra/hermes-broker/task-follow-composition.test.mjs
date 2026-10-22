@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { setupFollow, u, USER, ORG, ASSIGNEE, BUILDING, SESSION } from './task-follow-fixture.mjs';
+import { setupFollow, u, USER, ORG, FOREIGN, ASSIGNEE, BUILDING, SESSION } from './task-follow-fixture.mjs';
 import { ASSISTANT } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { createTaskAuth, createTaskReads } from './task-adapter.mjs';
 import { createTaskServiceWithOptions } from './task-input-adapter.mjs';
@@ -34,7 +34,7 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   const envelope = crypto.seal({ accessToken, refreshToken: 'SYNTHETIC_REFRESH', expiresAt }, { assistantId: ASSISTANT, userId: USER, organizationId: ORG, sessionId: SESSION });
   await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0) WHERE id=$3', [JSON.stringify(envelope), expiresAt, SESSION]);
   const dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
-  const events = [], listInputs = []; let loseAck = false, beforeFinal;
+  const events = [], listInputs = []; let loseAck = false, beforeFinal, storeReads = 0, verifies = 0;
   const transport = async (url, options) => {
     assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
     const path = new URL(url).pathname, args = JSON.parse(options.body), entry = SQL[path];
@@ -54,14 +54,14 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' };
   // Base CRM resolver port: tasks.view is what the domain adapter contributes in
   // production; create/edit/delete come from the real capability RPCs above.
-  const baseAuth = { async verifySession() { return { userId: USER, sessionId: SESSION, expiresAt }; }, async readAuthorization() { return {
+  const baseAuth = { async verifySession() { verifies += 1; return { userId: USER, sessionId: SESSION, expiresAt }; }, async readAuthorization() { return {
     userId: USER, isSuperadmin: false, activeOrganizationIds: [ORG], epoch: 'base',
     membership: { organizationId: ORG, status: 'ACTIVE', revokedAt: null, validFrom: null, validTo: null, membershipId: USER, authorizationVersion: 1 },
     permissions: { read: ['tasks.view'], action: [] }, companyCeilings: { read: ['tasks.view'], action: [] },
     scopesByPermission: { 'tasks.view': { buildingIds: [BUILDING], cashbookIds: [] } } }; } };
   const auth = createTaskAuth({ baseAuth, reads: createTaskReads({ ...supabase, fetch: transport, dependencyScope }) });
   const connectionStore = createDurableConnectionStore({ transport: { async call(operation, payload) {
-    assert.equal(operation, 'readConnection');
+    assert.equal(operation, 'readConnection'); storeReads += 1;
     await db.exec('BEGIN;SET LOCAL ROLE hermes_store_executor'); await db.query("SELECT set_config('request.jwt.claim.role','hermes_store_executor',true)");
     try { const value = (await db.query('SELECT app_private.hermes_store_read_connection_v1($1::jsonb) result', [JSON.stringify(payload)])).rows[0].result; await db.exec('COMMIT'); return value; }
     catch (error) { await db.exec('ROLLBACK'); throw error; } finally { await db.exec('RESET ROLE'); } } } });
@@ -103,6 +103,34 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   assert.deepEqual(listInputs, [], 'non-string assigneeUserId never reaches SQL');
   const listedTool = (await broker.listTools(token)).tools.find(tool => tool.name === 'crm_task_follow_list');
   assert.equal(listedTool.inputSchema.properties.assigneeUserId.description, 'Chỉ dùng với role=team; khác thì bỏ qua.');
+
+  // B5b (20/10/2026 production trace): the model no longer names the company. Without organizationId the
+  // SQL input still carries the connection's company (no crm_auth_context round trip, no extra Auth/SQL read:
+  // the broker's handed authority result serves the adapter and the operation service alike).
+  const cost = async (name, args) => { const reads = storeReads, checks = verifies; const result = await mcp(name, args); return { result, reads: storeReads - reads, checks: verifies - checks }; };
+  const restated = await cost('crm_task_follow_list', { organizationId: ORG, role: 'assigned_by_me' });
+  listInputs.length = 0;
+  const bare = await cost('crm_task_follow_list', { role: 'assigned_by_me' });
+  assert.equal(bare.result.isError, false); assert.deepEqual(bare.result.value.items.map(item => item.id), [J1]); assert.equal(bare.result.value.organizationId, ORG);
+  assert.deepEqual(listInputs, [{ organizationId: ORG, role: 'assigned_by_me', assigneeUserId: null, status: 'open', limit: 20, offset: 0 }]);
+  assert.ok(restated.reads > 0 && restated.checks > 0);
+  assert.deepEqual([bare.reads, bare.checks], [restated.reads, restated.checks], 'binding the company adds no connection read or Auth check');
+  // A model that still names the company must restate it; another company is refused before any RPC.
+  listInputs.length = 0;
+  const reads = events.filter(event => event === 'hermes_task_follow_read_v1').length;
+  const foreign = await mcp('crm_task_follow_list', { organizationId: FOREIGN, role: 'assigned_by_me' });
+  assert.equal(foreign.value.error, 'forbidden'); assert.deepEqual(listInputs, []);
+  assert.equal(events.filter(event => event === 'hermes_task_follow_read_v1').length, reads, 'no SQL for another company');
+  assert.equal((await mcp('crm_task_follow_list', { organizationId: 'công ty', role: 'assigned_by_me' })).value.error, 'invalid_request');
+  // A write without the company: the same bound input reaches the action RPC and the echo names the connection's company.
+  const progressed = await mcp('crm_task_progress', { requestId: u(4), jobId: J1, note: 'Đã sơn lớp lót', expectedNoteDigest: createHash('md5').update('').digest('hex') });
+  assert.equal(progressed.isError, false); assert.equal(progressed.value.outcome, 'applied'); assert.equal(progressed.value.organizationId, ORG); assert.equal(progressed.value.job.id, J1);
+  assert.equal((await mcp('crm_task_follow_list', { role: 'assigned_by_me' })).value.items[0].progressNote, 'Đã sơn lớp lót');
+  for (const tool of (await broker.listTools(token)).tools.filter(value => value.name.startsWith('crm_task_follow_') || ['crm_task_progress', 'crm_task_cancel'].includes(value.name))) {
+    assert.equal(Object.hasOwn(tool.inputSchema.properties, 'organizationId'), false, tool.name);
+    assert.equal(tool.inputSchema.required.includes('organizationId'), false, tool.name);
+  }
+  assert.deepEqual(listedTool.inputSchema.required, ['role']);
 
   // Lost ACK on a dispatched cancel: the broker reports unknown with the
   // requestId; calling again with the same requestId reconciles, never redoes.

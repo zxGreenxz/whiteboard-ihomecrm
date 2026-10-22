@@ -70,6 +70,25 @@ it('actual listener uses native grant despite denied CRM, suppresses personal hi
     expect(JSON.stringify(state.writes)).not.toContain('PERSONAL');
     expect(JSON.stringify(state.logs)).not.toContain('PERSONAL');
     expect(notifyPush).not.toHaveBeenCalled(); expect(xuLyTinDen).not.toHaveBeenCalled();
+    // Photos and files of the paired user follow the private channel once the
+    // adapter declares them, and still never reach the CRM inbox or auto-reply.
+    const realFetch = globalThis.fetch, cdn = [];
+    vi.stubGlobal('fetch', (url, init) => String(url).includes('zdn.vn')
+      ? (cdn.push(url), Promise.resolve(new Response('PERSONAL_BYTES', { headers: { 'content-type': 'image/jpeg' } })))
+      : realFetch(url, init));
+    try {
+      expect((await request('/v1/receive', { generation, accept: ['photo', 'notice'] })).status).toBe('empty');
+      const writesBefore = state.writes.length;
+      await handlers.get('message')({ ...m, data: { ...m.data, msgType: 'chat.photo', msgId: 'native-photo',
+        content: { title: 'PERSONAL_CAPTION', href: 'https://photo-stal.zdn.vn/p.jpg', params: '{}' } } });
+      await handlers.get('message')({ ...m, data: { ...m.data, msgType: 'share.file', msgId: 'native-file',
+        content: { title: 'PERSONAL_FILE.pdf', href: 'https://f.zdn.vn/f' } } });
+      await vi.waitFor(() => expect(cdn).toHaveLength(1));
+      expect(state.writes.length).toBe(writesBefore);
+      expect(state.rpc.length).toBe(rpcBefore);
+      expect(JSON.stringify([state.writes, state.logs])).not.toMatch(/PERSONAL_(CAPTION|FILE|BYTES)|zdn\.vn/);
+      expect(notifyPush).not.toHaveBeenCalled(); expect(xuLyTinDen).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
     // A later CRM linking request must recover registration and persist only
     // redacted identity rows, while personal history remains outside the CRM.
     state.allowLink = true;

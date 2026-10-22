@@ -25,8 +25,11 @@ test('fixed action-input contract rejects arbitrary identity/directory and remai
  for(const buildingId of [7,0,true,{},[],[BUILDING],undefined])assert.throws(()=>taskActionInput('options',{...options('buildings'),buildingId}),'non-string/null is still rejected');
  for(const kind of ['rooms','jobTypes','assignees']){
   assert.deepEqual(taskActionInput('options',options(kind,COMPANY_ID)),options(kind,COMPANY_ID),kind+' keeps the id for SQL to decide');
-  for(const buildingId of [null,'','Nhà A',7])assert.throws(()=>taskActionInput('options',options(kind,buildingId)),kind+' still needs a real UUID');
+  for(const buildingId of ['','Nhà A',7])assert.throws(()=>taskActionInput('options',options(kind,buildingId)),kind+' never accepts a non-UUID building');
  }
+ // 22/10 (câu 29): job types and assignees are company-wide (SQL 20261021172540 decides the authority); rooms is not.
+ assert.throws(()=>taskActionInput('options',options('rooms',null)),'rooms still needs a real UUID');
+ for(const kind of ['jobTypes','assignees'])assert.deepEqual(taskActionInput('options',options(kind,null)),options(kind,null),kind+' without a building');
  const result={organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Nhà A'}],nextCursor:null};
  assert.deepEqual(taskOptionsResult('options',result,{row:{organizationId:ORG},scopesByPermission:{'tasks.create':{buildingIds:[BUILDING]}}},options('buildings')),result);
  assert.deepEqual(taskOptionsResult('options',result,{row:{organizationId:ORG}},taskActionInput('options',incident)),result,'normalized input matches the SQL echo');

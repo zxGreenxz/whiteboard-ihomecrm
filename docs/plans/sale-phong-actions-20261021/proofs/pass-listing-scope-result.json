@@ -1,0 +1,25 @@
+{
+  "status": "BUG_REPRODUCED",
+  "finding": "upsert checks target room A, but overwrites supplied listing from unauthorized building B",
+  "controls": {
+    "actorCannotReadListingB": true,
+    "directUpdateDeniedByRls": true,
+    "targetBRejected": true
+  },
+  "effect": {
+    "originalListingIdReused": true,
+    "movedFromUnauthorizedBuildingBToA": true,
+    "organizationIdUnchanged": true
+  },
+  "limitations": [
+    "PGlite fixture, not production",
+    "auth.uid/can_do_on_building/can_access_building/org membership primitives use synthetic fixtures",
+    "Actual upsert, management guard, organization trigger bodies are loaded unchanged from source",
+    "Does not certify JWT/PostgREST or deployed database catalog"
+  ],
+  "sourceSha256": {
+    "supabase/migrations/20260617090000_room_pass_listings.sql": "1c94dd11344a6e57b5830e7a0871864d93c049a641f0b57e5388a6795372901a",
+    "supabase/migrations/20260629100000_room_pass_listings_contact_manager.sql": "a77481db65145855806b7bb894fd6d6e75d6b1d3b9a994c4fe82174f625dcaa6",
+    "supabase/migrations/20261011042329_chan_null_org_va_khoa_dau_cong_ty.sql": "bd05cffa26b7fe5a1830227e545dc84a4e1f4a7b772bf79a977dfef73b52e80d"
+  }
+}

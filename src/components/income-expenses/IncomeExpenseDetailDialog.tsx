@@ -1,3 +1,5 @@
+import { QuickExpenseButton, QuickExpenseFeedback } from './QuickExpenseActions';
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
@@ -73,6 +75,7 @@ interface Props {
   /** Append-only narrative/evidence, independent of the financial edit form. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
+  quickExpense?: QuickExpenseActions;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
@@ -136,6 +139,7 @@ function IncomeExpenseDetailDialogContent({
   onEdit,
   onQuickEdit,
   onApprove,
+  quickExpense,
   onUnapprove,
   onRestore,
   onCopy,
@@ -267,7 +271,7 @@ function IncomeExpenseDetailDialogContent({
               MỌI nút thao tác khoá tới khi bản đọc mới về. Ngoài fieldset chỉ còn phần CHỈ
               ĐỂ XEM: nút đóng, Thử lại của vùng đọc phụ, ô ảnh đính kèm, lịch sử. `grid
               gap-4` giữ khoảng cách như khi các khối là con trực tiếp của DialogContent. */}
-          <fieldset className="m-0 grid min-w-0 gap-4 border-0 p-0" disabled={locked}>
+          <fieldset className="m-0 grid min-w-0 gap-4 border-0 p-0" disabled={locked || quickExpense?.busy || quickExpense?.collecting}>
           {/* Section header với action buttons bên phải */}
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
@@ -315,6 +319,7 @@ function IncomeExpenseDetailDialogContent({
                   <CheckCircle2 className="h-4 w-4 text-white" />
                 </Button>
               )}
+              {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={voucher} quick={quickExpense} />}
               {monetaryActionsAllowed && isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
                 <Button
                   size="icon"
@@ -390,6 +395,7 @@ function IncomeExpenseDetailDialogContent({
             </div>
           </div>
 
+          {quickExpense && <QuickExpenseFeedback quick={quickExpense} />}
           {/* Bảng key-value */}
           <div className="rounded-md border border-zinc-200 overflow-hidden">
             <Row
@@ -684,7 +690,7 @@ function IncomeExpenseDetailDialogContent({
             </>
           )}
           {canSettleReservation && (
-            <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked}>
+            <fieldset className="m-0 min-w-0 border-0 p-0" disabled={locked || quickExpense?.busy || quickExpense?.collecting}>
               <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>
             </fieldset>
           )}

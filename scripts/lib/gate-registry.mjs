@@ -70,6 +70,7 @@ for (const [id, job, command, args] of [
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
   ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
+  ['edge-deno-door-access', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/door-access/deno.json']],
   ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
@@ -119,7 +120,14 @@ export function getGate(id, plan) {
     }
     if (suiteId === 'app-unit') {
       gate.args = ['scripts/run-selected-vitest.mjs', '--plan', plan.environment === 'ci' ? '.gate-evidence/plan.json' : '.cache/gate-receipts/plan.json', '--selection-digest', selectionDigest(selection.files)];
-    } else gate.args.push(...selection.files);
+    } else {
+      // The local gate already runs several checks together. Native SQL tests
+      // also start private PostgreSQL clusters; CPU-count fanout can exhaust
+      // disk/startup capacity (initdb timed out at 30s; isolated run took 9s).
+      // Bound this nested fanout without dropping files or changing CI policy.
+      if (suiteId === 'node-native' && plan.environment === 'local') gate.args.push('--test-concurrency=2');
+      gate.args.push(...selection.files);
+    }
     if (gate.command === 'deno') gate.args.push('--allow-env');
     if (suiteId.startsWith('e2e-')) gate.args.push('--workers=1', '--reporter=list');
     // Broad CI owns the full app suite; targeted local feedback remains available.

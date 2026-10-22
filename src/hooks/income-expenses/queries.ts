@@ -250,12 +250,14 @@ const applyLayerFilters = (query: any, filters: IncomeExpenseFilters) => {
 export const incomeExpensesListQuery = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
-  searchQuery?: string
+  searchQuery?: string,
+  organizationId?: string,
 ) => ({
     gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5' hay bị GC trước khi bấm)
     queryKey: [
       "income-expenses",
       "list",
+      ...(organizationId ? [organizationId] : []),
       filters.building_id,
       filters.building_ids,
       filters.room_id,
@@ -307,6 +309,7 @@ export const incomeExpensesListQuery = (
         )
         .is("deleted_at", null);
 
+      if (organizationId) query = query.eq("organization_id", organizationId);
       query = applyItemFilterToQuery(query, itemPlan);
       query = applyLayerFilters(query, filters);
 
@@ -407,7 +410,7 @@ export const incomeExpensesListQuery = (
       }
 
       // Order by voucher_date desc
-      query = query.order("voucher_date", { ascending: false });
+      query = query.order("voucher_date", { ascending: false }).order("id", { ascending: false });
 
       const { data: vouchers, error, count } = await query;
 
@@ -1010,6 +1013,8 @@ export const useIncomeExpenseBatches = (
 
         summaries.push({
           id: b.id,
+          organization_id: b.organization_id ?? null,
+          voucher_ids: vIds,
           user_id: b.user_id,
           name: b.name,
           type: b.type,

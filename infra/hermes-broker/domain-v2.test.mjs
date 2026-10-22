@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { setup, READS_PATH, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
+import { setup, readsSql, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
+import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -93,8 +95,11 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
     ['building_profit', { fromDate: '2025-01-01', toDate: '2026-12-31' }], ['income_expenses', { fromDate: '2026-02-30' }], ['income_expenses', { fromDate: '2026-10-02', toDate: '2026-10-01' }],
     ['income_expenses', { status: 'PAID' }], ['receivables', { status: 'DRAFT' }], ['income_expenses', { organizationId: FOREIGN }], ['meter_readings', { table: 'x' }]])
     assert.throws(() => domainInput(domain, extra), `${domain} ${JSON.stringify(extra)}`);
-  const row = { id: BUILDING, code: 'PC1', type: 'EXPENSE', name: 'x', buildingId: BUILDING, roomId: null, roomName: null, voucherDate: '2026-10-02', totalAmount: '150000.00', approvalStatus: 'UNAPPROVED' };
-  const value = { organizationId: ORG, domain: 'income_expenses', items: [row], nextCursor: null, source: 'crm.income_expenses', fetchedAt: '2026-10-15T01:02:03.004Z' };
+  const row = { id: BUILDING, code: 'PC1', type: 'EXPENSE', name: 'x', buildingId: BUILDING, buildingName: 'Toà A', roomId: null, roomName: null, voucherDate: '2026-10-02', totalAmount: '150000.00', approvalStatus: 'UNAPPROVED' };
+  // R2a/R2c: summary is required (window closed); each envelope carries the summary of its own rows, so only the defect
+  // under test makes it fail.
+  const value = { organizationId: ORG, domain: 'income_expenses', summary: summarizeRows('income_expenses', [row]), items: [row], nextCursor: null,
+    source: 'crm.income_expenses', fetchedAt: '2026-10-15T01:02:03.004Z' };
   const filtered = input('income_expenses', { status: 'UNAPPROVED', fromDate: '2026-10-01', toDate: '2026-10-31' });
   assert.deepEqual(domainResult('income_expenses', value, identity('income_expenses.view'), filtered), value);
   // Text bound = SQL left(...,200) in code points: 200 emoji (400 UTF-16 units) pass, 201 do not.
@@ -106,10 +111,55 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
     { ...value, items: [{ ...row, voucherDate: '2026-09-30' }] }, { ...value, items: [{ ...row, notes: 'x' }] }, { ...value, items: [{ ...row, totalAmount: 150000 }] }])
     assert.throws(() => domainResult('income_expenses', changed, identity('income_expenses.view'), filtered));
   assert.throws(() => domainResult('income_expenses', value, identity('income_expenses.view', [OTHER_BUILDING]), filtered), 'CRM scope fence');
-  const debt = { id: BUILDING, number: null, status: 'APPROVED', buildingId: BUILDING, roomId: ROOM, roomName: null, billingMonth: null, dueDate: null, totalAmount: '1', paidAmount: '1', remainingAmount: '0.00' };
-  assert.throws(() => domainResult('receivables', { ...value, domain: 'receivables', source: 'crm.invoices', items: [debt] }, identity('invoices.view'), input('receivables')), 'settled invoice is not a debt');
+  const debt = { id: BUILDING, number: null, status: 'APPROVED', buildingId: BUILDING, buildingName: '', buildingCode: null, roomId: ROOM, roomName: null, billingMonth: null, dueDate: null, totalAmount: '1', paidAmount: '1', remainingAmount: '0.00' };
+  const owed = { ...debt, paidAmount: '0', remainingAmount: '1' };
+  assert.equal(domainResult('receivables', { ...value, domain: 'receivables', source: 'crm.invoices', items: [owed], summary: summarizeRows('receivables', [owed]) },
+    identity('invoices.view'), input('receivables')).items.length, 1, 'the same envelope with money left to collect passes');
+  assert.throws(() => domainResult('receivables', { ...value, domain: 'receivables', source: 'crm.invoices', items: [debt], summary: summarizeRows('receivables', [owed]) },
+    identity('invoices.view'), input('receivables')), 'settled invoice is not a debt');
   const profit = { id: ROOM, buildingId: BUILDING, name: 'x', revenue: '1', expense: '0', net: '1', months: 1 };
-  assert.throws(() => domainResult('building_profit', { ...value, domain: 'building_profit', source: 'crm.fa_monthly_pnl', items: [profit] }, identity('reports_finance.analysis'), input('building_profit')), 'per-building row id');
+  assert.equal(domainResult('building_profit', { ...value, domain: 'building_profit', source: 'crm.fa_monthly_pnl', items: [{ ...profit, id: BUILDING }], summary: summarizeRows('building_profit', [profit]) },
+    identity('reports_finance.analysis'), input('building_profit')).items.length, 1, 'the same envelope with the building as row id passes');
+  assert.throws(() => domainResult('building_profit', { ...value, domain: 'building_profit', source: 'crm.fa_monthly_pnl', items: [profit], summary: summarizeRows('building_profit', [profit]) },
+    identity('reports_finance.analysis'), input('building_profit')), 'per-building row id');
+});
+
+test('B2: receivables joins the fixed private read plan with family v2 input and result semantics', () => {
+  assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
+  assert.equal(DOMAIN_READS.receivables.family, 'v2');
+  const connection = uuid(), fastInput = domainInput('receivables', { fromDate: '2026-10-01', toDate: '2026-10-31', status: 'OVERDUE' });
+  assert.deepEqual(Object.keys(fastInput).sort(), ['buildingId', 'cursor', 'fromDate', 'limit', 'query', 'status', 'toDate'], 'the fast RPC receives the seven v2 keys');
+  // The live business statement supplies the output scope; the identity row only fixes actor, company and connection.
+  const fastIdentity = { row: { id: connection, userId: USER, organizationId: ORG }, scopesByPermission: {} };
+  const debt = { id: uuid(), number: 'HD1', status: 'OVERDUE', buildingId: BUILDING, buildingName: 'Toà A', buildingCode: 'A', roomId: ROOM, roomName: 'P101', billingMonth: '2026-10',
+    dueDate: '2026-10-10', totalAmount: '3000000.00', paidAmount: '1000000.00', remainingAmount: '2000000.00' };
+  const envelope = { authority: { organizationId: ORG, userId: USER, connectionId: connection, permission: 'invoices.view', buildingIds: [BUILDING], cashbookIds: [] },
+    result: { organizationId: ORG, domain: 'receivables', summary: summarizeRows('receivables', [debt]), items: [debt], nextCursor: null, source: 'crm.invoices',
+      fetchedAt: '2026-10-20T01:02:03.004Z' } };
+  assert.deepEqual(domainFastResult('receivables', envelope, fastIdentity, fastInput), envelope.result);
+  for (const [label, change] of [
+    ['v1-shaped result without source/fetchedAt', value => { delete value.result.source; delete value.result.fetchedAt; }],
+    ['source of another domain', value => { value.result.source = 'crm.income_expenses'; }],
+    ['time that is not an instant', value => { value.result.fetchedAt = '2026-10-20'; }],
+    ['permission of another domain', value => { value.authority.permission = 'customers.view'; }],
+    ['row outside the live building scope', value => { value.authority.buildingIds = [OTHER_BUILDING]; }],
+    ['settled invoice', value => { value.result.items[0].remainingAmount = '0.00'; }],
+    ['due date outside the requested range', value => { value.result.items[0].dueDate = '2026-11-01'; }],
+    ['status outside the requested filter', value => { value.result.items[0].status = 'APPROVED'; }],
+    ['private field on the row', value => { value.result.items[0].notes = 'x'; }],
+    ['cursor without a full page', value => { value.result.nextCursor = debt.id; value.result.items = []; }],
+    // B5c: the building columns are typed when present; a non-text name/code is refused.
+    ['building name that is not text', value => { value.result.items[0].buildingName = null; }],
+    ['building code that is not text', value => { value.result.items[0].buildingCode = 7; }],
+    // R2a window closed: the fast lane requires the summary too.
+    ['no summary', value => { delete value.result.summary; }],
+  ]) { const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('receivables', value, fastIdentity, fastInput), label); }
+  const unnamed = structuredClone(envelope); unnamed.result.items[0].buildingName = ''; unnamed.result.items[0].buildingCode = null;
+  assert.deepEqual(domainFastResult('receivables', unnamed, fastIdentity, fastInput), unnamed.result, 'an unnamed building (empty text, null code) is a valid row');
+  // Khuôn chính xác: `tolerant` của B5c đã gỡ 21/10 sau khi prod áp đủ ba migration, nên dòng của SQL trước B5c (không
+  // có hai khoá mới) bị từ chối — xem domain-tolerance.test.mjs.
+  const preB5c = structuredClone(envelope); delete preB5c.result.items[0].buildingName; delete preB5c.result.items[0].buildingCode;
+  assert.throws(() => domainFastResult('receivables', preB5c, fastIdentity, fastInput), 'pre-B5c row is refused once the release window has closed');
 });
 
 test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM ACL ports, no live JWT proof', { timeout: 120000 }, async t => {
@@ -124,9 +174,13 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
       for (const item of result.items) assert.equal(item.buildingId, BUILDING, `${domain}: overlay building only`);
     }
     const debts = await read('receivables', input('receivables'));
-    assert.deepEqual(debts.items.map(row => [row.id, row.remainingAmount, row.roomName]), [[ids.debt, '2000000.00', 'P101']]);
+    assert.deepEqual(debts.items.map(row => [row.id, row.remainingAmount, row.roomName, row.buildingName, row.buildingCode]), [[ids.debt, '2000000.00', 'P101', 'Toà A', null]],
+      'B5c: the reserve lane names the building of the debt (code null when the building has none)');
     const readings = await read('meter_readings', input('meter_readings'));
-    assert.deepEqual(readings.items.map(row => [row.id, row.consumption]), [[ids.reading, '50.00']]); assert.equal(JSON.stringify(readings).includes('example.invalid'), false);
+    assert.deepEqual(readings.items.map(row => [row.id, row.consumption, row.buildingName, row.roomName]), [[ids.reading, '50.00', 'Toà A', 'P101']]); assert.equal(JSON.stringify(readings).includes('example.invalid'), false);
+    // B5c step 2: vouchers name their building too (room only when the voucher has one).
+    const vouchers = await read('income_expenses', input('income_expenses'));
+    assert.deepEqual(vouchers.items.map(row => `${row.buildingName}|${row.roomId === null ? String(row.roomName) : 'room'}`).sort(), ['Toà A|null', 'Toà A|room', 'Toà A|room']);
     const deposits = await read('deposits_held', input('deposits_held'));
     assert.deepEqual(deposits.items, [{ id: BUILDING, buildingId: BUILDING, name: 'Toà A', contractCount: 1, expected: '3000000', held: '3000000',
       shortfallAll: '0', shortfallShort: '0', fullCount: 1, shortCount: 0, firstInvoiceCount: 0 }]);
@@ -167,8 +221,105 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
   });
 });
 
+// R2a (20261020233934): every v2 branch adds the summary of the whole filtered set (same WHERE as the page, no cursor,
+// no LIMIT). Money of income_expenses (sum, byType, largest) leaves CANCELLED vouchers out; count/byStatus keep them.
+// R2c (20261021035022): each byType entry also names the largest live voucher of its type.
+test('R2a v2 SQL summary: whole filtered set on every page, CANCELLED money left out, filters and scope as the rows; mutants of the summary turn it red', { timeout: 180000 }, async t => {
+  const env = await ready(t), { db, read, ids } = env, cancelled = uuid();
+  await db.exec(`INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,voucher_date,total_amount,approval_status,kqkd_amount)
+    VALUES('${cancelled}','${ORG}','${USER}','PC8','EXPENSE','Huỷ lớn','${BUILDING}','2026-10-04',9000000,'CANCELLED',0)`);
+  const spend = { id: ids.spend, code: 'PC1', name: 'Sửa điện', type: 'EXPENSE', totalAmount: '150000.00', voucherDate: '2026-10-02' };
+  const material = { id: ids.pnlExpense, code: 'PC2', name: 'Vật tư', type: 'EXPENSE', totalAmount: '500000.00', voucherDate: '2026-10-03' };
+  const pages = async (domain, extra = {}) => {
+    const seen = [], summaries = [];
+    for (let cursor = null, n = 0; n < 10; n++) {
+      const page = await read(domain, input(domain, { ...extra, limit: 1, cursor }));
+      seen.push(...page.items); summaries.push(page.summary); cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    return { rows: seen, summaries };
+  };
+  const live = { id: ids.income, code: 'PT1', name: 'Thu tiền phòng', type: 'INCOME', totalAmount: '2500000.00', voucherDate: '2026-10-05' };
+  await t.test('income_expenses: count/byStatus with CANCELLED, money without it, largest live voucher, same summary on every page', async () => {
+    const whole = await read('income_expenses', input('income_expenses'));
+    assert.deepEqual(whole.summary, { count: 4, byStatus: { UNAPPROVED: 1, APPROVED: 2, CANCELLED: 1 }, sum: { totalAmount: '3150000.00' },
+      byType: { INCOME: { count: 1, sum: '2500000.00', largest: live }, EXPENSE: { count: 2, sum: '650000.00', largest: material } }, largest: live },
+    'the 9 000 000 voucher is CANCELLED: the largest expense is 500 000 (R2c), the largest of all stays the income voucher');
+    assert.deepEqual(whole.summary, summarizeRows('income_expenses', whole.items), 'oracle: the rows of the one page');
+    assert.deepEqual(domainResult('income_expenses', whole, identity('income_expenses.view'), input('income_expenses')).summary, whole.summary);
+    const paged = await pages('income_expenses');
+    assert.equal(paged.rows.length, 4);
+    for (const summary of paged.summaries) assert.deepEqual(summary, whole.summary, 'cursor and limit never change the summary');
+    assert.deepEqual(summarizeRows('income_expenses', paged.rows), whole.summary, 'count === rows once every page is read');
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { status: 'UNAPPROVED' }))).summary, { count: 1, byStatus: { UNAPPROVED: 1 },
+      sum: { totalAmount: '150000.00' }, byType: { EXPENSE: { count: 1, sum: '150000.00', largest: spend } }, largest: spend });
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { status: 'CANCELLED' }))).summary,
+      { count: 1, byStatus: { CANCELLED: 1 }, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'only CANCELLED: counted, no money');
+    const dated = await read('income_expenses', input('income_expenses', { fromDate: '2026-10-03', toDate: '2026-10-04' }));
+    assert.deepEqual([dated.summary.count, dated.summary.sum.totalAmount, dated.summary.largest.id, dated.summary.byType], [2, '500000.00', ids.pnlExpense,
+      { EXPENSE: { count: 1, sum: '500000.00', largest: material } }], 'date range: no income in it, so byType has no INCOME entry');
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { query: '%_' }))).summary,
+      { count: 0, byStatus: {}, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'empty set: 0, {} and null — never a NULL summary');
+  });
+  await t.test('receivables, meter_readings, deposits_held, building_profit: totals of the overlay buildings only', async () => {
+    const debts = await read('receivables', input('receivables'));
+    assert.deepEqual(debts.summary, { count: 1, byStatus: { APPROVED: 1 }, sum: { totalAmount: '3000000.00', paidAmount: '1000000.00', remainingAmount: '2000000.00' },
+      byBuilding: [{ buildingId: BUILDING, buildingName: 'Toà A', count: 1, remainingAmount: '2000000.00' }] }, 'PAID/DRAFT are not debts; OTHER_BUILDING is outside the overlay');
+    assert.deepEqual((await read('receivables', input('receivables', { status: 'OVERDUE' }))).summary,
+      { count: 0, byStatus: {}, sum: { totalAmount: '0', paidAmount: '0', remainingAmount: '0' }, byBuilding: [] });
+    const readings = await read('meter_readings', input('meter_readings'));
+    assert.deepEqual(readings.summary, { count: 1, byStatus: { APPROVED: 1 }, sum: { consumption: '50.00' }, byType: { ELECTRICITY: 1 }, rooms: 1 });
+    const deposits = await read('deposits_held', input('deposits_held'));
+    assert.deepEqual(deposits.summary, { count: 1, sum: { expected: '3000000', held: '3000000', shortfallAll: '0' }, contractCount: 1, fullCount: 1, shortCount: 0 });
+    const profit = await read('building_profit', input('building_profit'));
+    assert.deepEqual(profit.summary, { count: 1, sum: { revenue: '2500000.00', expense: '500000.00', net: '2000000.00' } });
+    for (const [domain, result] of [['receivables', debts], ['meter_readings', readings], ['deposits_held', deposits], ['building_profit', profit]]) {
+      assert.deepEqual(result.summary, summarizeRows(domain, result.items), `${domain}: oracle`);
+      assert.deepEqual(domainResult(domain, result, identity(DOMAIN_READS[domain].permission), input(domain)).summary, result.summary, domain);
+    }
+    // Overlay Toàn tổ chức (cả toà B): công nợ theo toà giảm dần theo tiền còn nợ; buildingId lọc đúng một toà.
+    await db.exec(`UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=null WHERE id='${SCOPE}'`);
+    try {
+      const both = await read('receivables', input('receivables'));
+      assert.deepEqual(both.summary.byBuilding.map(entry => [entry.buildingId, entry.count, entry.remainingAmount]), [[OTHER_BUILDING, 1, '3000000.00'], [BUILDING, 1, '2000000.00']]);
+      assert.deepEqual([both.summary.count, both.summary.byStatus, both.summary.sum.remainingAmount], [2, { APPROVED: 1, OVERDUE: 1 }, '5000000.00']);
+      assert.deepEqual(both.summary, summarizeRows('receivables', both.items));
+      assert.deepEqual(domainResult('receivables', both, identity('invoices.view'), input('receivables')).summary, both.summary);
+      // Rows of toà A only (in scope) but a byBuilding naming toà B: the earlier CRM scope fences the summary too.
+      const onlyA = { ...both, items: both.items.filter(row => row.buildingId === BUILDING) };
+      assert.throws(() => domainResult('receivables', onlyA, identity('invoices.view', [BUILDING]), input('receivables')), 'byBuilding outside the CRM scope is refused');
+      const one = await read('receivables', input('receivables', { buildingId: BUILDING }));
+      assert.deepEqual([one.summary.count, one.summary.byBuilding.map(entry => entry.buildingId)], [1, [BUILDING]], 'buildingId filter');
+    } finally { await db.exec(`UPDATE public.authorization_scopes SET scope_type='BUILDING',building_id='${BUILDING}' WHERE id='${SCOPE}'`); }
+  });
+  await t.test('mutants of the summary statement are caught by the oracle checks (status filter, CANCELLED money, cursor, R2c per-type largest)', async () => {
+    const statement = readsSql().match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v2\([\s\S]*?\$fn\$;/)[0];
+    const once = (from, to) => { assert.equal(statement.split(from).length, 2, `anchor: ${from}`); return statement.replace(from, () => to); };
+    const vouchers = async extra => { const value = await read('income_expenses', input('income_expenses', extra)); return [value.summary, summarizeRows('income_expenses', value.items)]; };
+    for (const [label, mutant, probe] of [
+      ['summary ignores the status filter', once(`          AND (v_status IS NULL OR ie.approval_status=v_status)\n`, ''), () => vouchers({ status: 'APPROVED' })],
+      ['summary keeps CANCELLED money', once(`live AS (SELECT * FROM f WHERE f.approval_status IS DISTINCT FROM 'CANCELLED')`, 'live AS (SELECT * FROM f)'), () => vouchers({})],
+      ['summary follows the cursor', once(`      SELECT jsonb_build_object('count',(SELECT count(*) FROM f),`, `      SELECT jsonb_build_object('count',(SELECT count(*) FROM f WHERE cursor_id IS NULL OR f.id>cursor_id),`),
+        async () => { const first = await read('income_expenses', input('income_expenses', { limit: 1 }));
+          return [(await read('income_expenses', input('income_expenses', { limit: 1, cursor: first.nextCursor }))).summary, first.summary]; }],
+      // R2c: the largest voucher of each type.
+      ['per-type largest ignores the type', once('FROM live big WHERE big.type=t.type ORDER BY', 'FROM live big ORDER BY'), () => vouchers({})],
+      ['per-type largest keeps CANCELLED vouchers', once('FROM live big WHERE', 'FROM f big WHERE'), () => vouchers({})],
+      ['per-type largest takes the smallest voucher', once('ORDER BY big.total_amount DESC,big.id LIMIT 1', 'ORDER BY big.total_amount,big.id LIMIT 1'), () => vouchers({})],
+    ]) {
+      const [before, expected] = await probe();
+      assert.deepEqual(before, expected, `${label}: the reviewed body passes`);
+      await db.exec(mutant);
+      try { const [changed, oracle] = await probe(); assert.notDeepEqual(changed, oracle, `${label}: the mutant is detected`); }
+      finally { await db.exec(statement); }
+    }
+    assert.deepEqual(...(await vouchers({})), 'reviewed body restored');
+  });
+});
+
 test('v2 SQL mutations: removing overlay, CRM scope, org, restricted, permission, registry or connection checks turns a check red', { timeout: 300000 }, async t => {
-  const candidate = readFileSync(READS_PATH, 'utf8');
+  // The applied v2 file with the live (R2c) body of hermes_domain_read_v2 swapped in (finance-fixture.readsSql).
+  const candidate = readsSql();
   for (const [label, before, after, check] of [
     ['unselected overlay scope accepted', 'WHERE scope.id=ANY(scopes) AND scope.organization_id=c.organization_id', 'WHERE scope.organization_id=c.organization_id', 'projection'],
     ['building overlay matches any building', "(scope.scope_type='BUILDING' AND scope.building_id=b.id)", "scope.scope_type='BUILDING'", 'projection'],
@@ -269,4 +420,61 @@ test('domain mount routes v2 tools to the v2 RPC with the bound user JWT and mer
   const before = events.filter(name => name.endsWith('read_v2')).length;
   await assert.rejects(service.finalizeDomain(token, stale, options), code('context_changed'));
   assert.equal(events.filter(name => name.endsWith('read_v2')).length, before, 'no data RPC after a permission change');
+});
+
+test('B2-2 cached admission: income_expenses keeps hermes_domain_read_v2 with the live seven-key binding; the statement alone refuses a lost grant (42501) and a moved session (PT409); a changed snapshot re-resolves', { timeout: 120000 }, async t => {
+  const env = await ready(t), { db, call } = env, events = [], bindings = [];
+  const expiresAt = (Math.floor(Date.now() / 1000) + 3600) * 1000;
+  const accessToken = ['header', Buffer.from(JSON.stringify({ role: 'authenticated', sub: USER, session_id: SESSION, exp: expiresAt / 1000 })).toString('base64url'), 'signature'].join('.');
+  const crypto = createSessionCrypto({ activeKeyVersion: 'test', keys: new Map([['test', randomBytes(32)]]) }); t.after(() => crypto.destroy());
+  const envelope = crypto.seal({ accessToken, refreshToken: 'SYNTHETIC_REFRESH', expiresAt }, { assistantId: ASSISTANT, userId: USER, organizationId: ORG, sessionId: SESSION });
+  await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0)', [JSON.stringify(envelope), expiresAt]);
+  const dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
+  const sql = { '/rest/v1/rpc/hermes_domain_capabilities_v1': 'SELECT public.hermes_domain_capabilities_v1($1::uuid) result',
+    '/rest/v1/rpc/hermes_domain_capabilities_v2': 'SELECT public.hermes_domain_capabilities_v2($1::uuid) result',
+    '/rest/v1/rpc/hermes_domain_read_v2': 'SELECT public.hermes_domain_read_v2($1::jsonb,$2::text,$3::jsonb) result' };
+  const fetch = async (url, options) => {
+    assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
+    const name = new URL(url).pathname, args = JSON.parse(options.body); events.push(name);
+    if (name === '/rest/v1/rpc/hermes_domain_capabilities_v3') return Response.json({ code: 'PGRST202', message: 'missing', details: null, hint: null }, { status: 404 });
+    assert.ok(Object.hasOwn(sql, name), `unexpected RPC ${name}`);
+    if (name.endsWith('read_v2')) bindings.push(args.p_binding);
+    try { return Response.json(await call(sql[name], name.includes('capabilities') ? [args.p_organization_id] : [JSON.stringify(args.p_binding), args.p_domain, JSON.stringify(args.p_input)])); }
+    catch (error) { return Response.json({ code: error.code, message: error.message, details: null, hint: null }, { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 }); }
+  };
+  const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' }, reads = createSupabaseDomainReads({ ...supabase, fetch, dependencyScope });
+  let verifications = 0;
+  const baseAuth = { async verifySession() { verifications++; return { userId: USER, sessionId: SESSION, expiresAt }; }, async readAuthorization() { return {
+    userId: USER, isSuperadmin: false, activeOrganizationIds: [ORG], epoch: 'synthetic-base', membership: { organizationId: ORG, status: 'ACTIVE', revokedAt: null, validFrom: null, validTo: null, membershipId: USER, authorizationVersion: 1 },
+    permissions: { read: [], action: [] }, companyCeilings: { read: [], action: [] }, scopesByPermission: {} }; } };
+  const auth = createDomainAuthAdapter({ baseAuth, reads });
+  const connectionStore = createDurableConnectionStore({ transport: { async call(operation, payload) { assert.equal(operation, 'readConnection'); return env.rpc('app_private.hermes_store_read_connection_v1', payload); } } });
+  const authority = createDurableAuthority({ connectionStore, crypto, auth });
+  const readAuthority = createReadCatalogAuthority({ authority: createDurableAuthority({ connectionStore, crypto, auth }), connectionStore });
+  const service = createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, readAuthority }).createService(), options = { signal: new AbortController().signal };
+  assert.ok(service.cachedReadOperations.includes('income_expenses')); assert.ok(service.fastReadOperations.includes('receivables'));
+  const run = async () => { const receipt = await service.prepareDomain(token, 'income_expenses', {}, options); return service.finalizeDomain(token, receipt, options); };
+  const first = await run();
+  assert.deepEqual(sorted(first.items.map(row => row.id)), sorted([env.ids.spend, env.ids.income, env.ids.pnlExpense]));
+  assert.equal(events.at(-1), '/rest/v1/rpc/hermes_domain_read_v2'); assert.deepEqual(bindings.at(-1), binding, 'the seven keys of the full lane, read from the live snapshot');
+  const cold = verifications; assert.equal(cold, 1, 'one catalog resolve');
+  await run(); await run();
+  assert.equal(verifications, cold, 'warm reads: no provider verification, no second authority build');
+  assert.equal(bindings.length, 3);
+  // Grant lost between prepare and finalize: the full lane answered context_changed before any RPC (test above);
+  // here the reviewed statement itself is asked and answers 42501 ⇒ forbidden.
+  const stale = await service.prepareDomain(token, 'income_expenses', {}, options);
+  await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='income_expenses.view'");
+  await assert.rejects(service.finalizeDomain(token, stale, options), code('forbidden'));
+  assert.equal(bindings.length, 4, 'the statement decided');
+  await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='income_expenses.view'");
+  // Session moved on after prepare: the receipt binds revision 1, SQL sees 2 ⇒ PT409 ⇒ context_changed.
+  const moved = await service.prepareDomain(token, 'income_expenses', {}, options);
+  await db.exec('UPDATE app_private.hermes_sessions SET revision=2');
+  await assert.rejects(service.finalizeDomain(token, moved, options), code('context_changed'));
+  assert.equal(bindings.at(-1).expectedSessionRevision, 1);
+  // The persisted snapshot changed, so the next read misses the catalog, resolves again and binds revision 2.
+  const next = await run();
+  assert.equal(next.items.length, 3); assert.equal(verifications, cold + 1); assert.equal(bindings.at(-1).expectedSessionRevision, 2);
+  assert.deepEqual(bindings.at(-1), { ...binding, expectedSessionRevision: 2 });
 });

@@ -3,7 +3,9 @@ import { createTaskAuth, createTaskReads } from './task-adapter.mjs';
 import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
-import { createExpenseActionAuth, createExpenseActionReads, createExpenseActionService } from './expense-action-adapter.mjs';
+import { createSaleActionAuth, createSaleActionReads, createSaleActionService } from './sale-action-adapter.mjs';
+import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
+import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
@@ -32,12 +34,19 @@ import { createRefreshManager } from './refresh-manager.mjs';
 import { createDurableRefreshStore } from './durable-refresh-store.mjs';
 import { createSupabaseRefreshProvider } from './supabase-refresh-provider.mjs';
 import { createMcpHttpHandler } from './mcp-http.mjs';
-import { createRoomReadService, createSupabaseRoomReads } from './room-read-service.mjs';
+import { createRoomReadService, createSupabaseRoomReads, ROOM_READ_MODES } from './room-read-service.mjs';
 import { createZaloBindingService } from '../hermes-zalo-router/binding-service.mjs';
 import { createZaloBindingPorts } from '../hermes-zalo-router/binding-adapter.mjs';
 import { createZaloBindingHttpHandler } from '../hermes-zalo-router/binding-http.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { createConnectorHealth } from './connector-health.mjs';
+import { createActionCatalog } from './action-catalog.mjs';
+import { createActionRuntime } from './action-runtime.mjs';
+import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
+import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { TASK_ACTION } from './task-contract.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -102,9 +111,12 @@ function backendLimits(value) {
  * tools/call rates, the broker's total deadline for one MCP invocation, and how
  * long an external MCP request waits for its connection's maintenance fence
  * before answering 503 connection_maintenance (0 keeps the immediate 503).
+ * Optional `callLog(record)`: one tool_call_timing record per broker invocation
+ * (phase durations, result size, outcome; never arguments, results or tokens).
+ * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -112,10 +124,16 @@ export function createHermesBackend(configuration = {}) {
       (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
       (Object.hasOwn(configuration, 'connectorOnly') && configuration.connectorOnly !== true) ||
       (Object.hasOwn(configuration, 'readFastPath') && typeof configuration.readFastPath !== 'boolean') ||
+      // Direct room tool source: 'legacy' (scope map + whole sale page) or 'page' (B3 SQL page RPC).
+      (Object.hasOwn(configuration, 'roomRead') && !ROOM_READ_MODES.includes(configuration.roomRead)) ||
+      (Object.hasOwn(configuration, 'callLog') && typeof configuration.callLog !== 'function') ||
+      // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
+      // crm_action_* không hiện, không gọi RPC nào của họ này.
+      (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
-  const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now } = configuration;
+  const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now, callLog } = configuration;
   let crypto;
   try {
     const limits = backendLimits(configuration.limits);
@@ -137,8 +155,22 @@ export function createHermesBackend(configuration = {}) {
     // Each optional capability RPC absent (PGRST202) leaves its keys ungranted;
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    const auth = createTaskAuth({ baseAuth: expenseAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký — Thu chi (Đợt 2; họ
+    // crm_expense_* cũ đã gỡ — TC1, cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create). Thao tác chỉ hiện khi khoá
+    // registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒ action_disabled. hermes_action_capabilities_v1
+    // chưa áp ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe (connector TEST). actionLive = danh mục thao
+    // tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá tasks.create CHỈ đến từ lớp này và tool tạo việc
+    // cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES
+    // của capability-contract (mặc định của createActionCatalog): thao tác nào khai khoá ngoài hợp đồng thì danh mục từ chối nạp,
+    // connector không khởi động.
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
+    const actionLive = createActionLiveCatalog();
+    const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
+      reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
+    const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
+    const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
@@ -149,7 +181,7 @@ export function createHermesBackend(configuration = {}) {
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
       provider: refreshProvider, crypto, clock, dependencyScope });
     const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
-    const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock,
+    const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group
     // methods that need a host-supplied private command context (no MCP route).
@@ -165,10 +197,14 @@ export function createHermesBackend(configuration = {}) {
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
+      service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
-    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
+    const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
+    const salePolicies = createSalePolicyService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
+    const saleBulk = createSaleBulkService({ authority, saleActions });
+    const broker = createBroker({ tasks, roomPass, customers, actions, saleActions, salePolicies, saleBulk, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
+      observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.

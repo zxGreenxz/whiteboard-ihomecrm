@@ -131,11 +131,13 @@ test('audit writes only the real broker protocol, snapshots callers and remains 
   const confirmation = { ...EVENT, outcome: 'denied', code: 'confirmation_invalid' };
   // Báo cáo vượt trần trang (PT413) giữ đúng mã để mô hình thu hẹp bộ lọc.
   const tooLarge = { ...EVENT, outcome: 'denied', code: 'result_too_large' };
-  await Promise.all([sink.write(denied), sink.write(timeout), sink.write(confirmation), sink.write(tooLarge)]); await sink.close();
+  // Tên toà/phòng không giải được (B5d) giữ đúng mã để mô hình hỏi lại — không thành backend_unavailable.
+  const unresolved = { ...EVENT, outcome: 'denied', code: 'read_name_unresolved' };
+  await Promise.all([sink.write(denied), sink.write(timeout), sink.write(confirmation), sink.write(tooLarge), sink.write(unresolved)]); await sink.close();
   const filename = path.join(root, 'broker-audit.jsonl');
-  const rows = (await fs.readFile(filename, 'utf8')).trim().split('\n').map(JSON.parse); assert.deepEqual(rows, [EVENT, denied, timeout, confirmation, tooLarge]);
+  const rows = (await fs.readFile(filename, 'utf8')).trim().split('\n').map(JSON.parse); assert.deepEqual(rows, [EVENT, denied, timeout, confirmation, tooLarge, unresolved]);
   const again = createHostAudit({ directory: root }); await again.write(EVENT); await again.close();
-  assert.equal((await fs.readFile(filename, 'utf8')).trim().split('\n').length, 6);
+  assert.equal((await fs.readFile(filename, 'utf8')).trim().split('\n').length, 7);
 });
 
 test('group directory and preview audit operations retain the exact private host protocol', async t => {

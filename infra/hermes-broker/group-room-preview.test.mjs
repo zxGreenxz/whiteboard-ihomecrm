@@ -178,8 +178,10 @@ function serviceFixture() {
   let time = now, observedIntent;
   const decisionReceipt = Object.freeze({}), roomReceipt = Object.freeze({});
   const roomReads = {
-    async prepareAvailableRooms(token, filters, { signal }) {
+    async prepareAvailableRooms(token, filters, { signal, roomRead }) {
       events.push('room.prepare'); assert.equal(token, opaque); assert.deepEqual(filters, { offset: 0, limit: 100 });
+      // J4: the preview digest is the legacy projection; the B3 page source is never requested here.
+      assert.equal(roomRead, 'legacy');
       assert(signal instanceof AbortSignal); return roomReceipt;
     },
     async finalizeAvailableRooms(token, receipt) {

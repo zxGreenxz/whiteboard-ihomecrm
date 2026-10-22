@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectAvailableRooms } from './room-read-projection.mjs';
+import { projectAvailableRooms, projectAvailableRoomsPage, MAX_OFFSET, PAGE_SOURCE } from './room-read-projection.mjs';
 
 // Synthetic data only (public repo): names, prices and phone numbers are invented.
 const uuid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -145,5 +145,97 @@ test('caller cannot forward actor, org, RPC, URLs or an unbounded result request
   for (const change of [{ organizationId: A }, { userId: A }, { rpc: 'other' }, { limit: 101 }, { offset: -1 },
     { readAt: 0 }, { readAt: Number.MAX_SAFE_INTEGER }, { buildingName: 'A'.repeat(121) }]) {
     assert.throws(() => project(payload(), options(change)), code('rooms_projection_request_invalid'));
+  }
+});
+
+// ── B3 page projection (hermes_available_rooms_page_v1.result) ─────────────────────────
+const PAGE_ROOM_KEYS = ['id', 'building_id', 'floor', 'name', 'code', 'area', 'rent_price', 'deposit_amount', 'amenities', 'description', 'sale_note', 'room_type',
+  'status_public', 'sale_state', 'avail_date', 'sale_today', 'expected_ready_on', 'pass_contact_name', 'pass_contact_phone', 'pass_sale_policy', 'pass_price',
+  'pass_avail_date', 'pass_contact_manager'];
+const PAGE_BUILDING_KEYS = ['id', 'name', 'code', 'address', 'public_contact_name', 'public_contact_phone', 'page_contact_name', 'page_contact_phone'];
+const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+const floorDesc = (a, b) => a === b ? 0 : a === null ? 1 : b === null ? -1 : b - a;
+/** What the SQL page returns for a legacy payload that is already in the wrapper's canonical
+ * order: the same owner/status rules, name filter, order and window the legacy JS applies. */
+function sqlPage(legacy, { allowedBuildingIds, buildingName = '', offset = 0, limit = 50 }) {
+  const blds = new Map(legacy.buildings.filter(b => allowedBuildingIds.includes(b.id)).map(b => [b.id, b]));
+  const listed = legacy.rooms.filter(r => blds.has(r.building_id) && ['free', 'soon', 'pass'].includes(r.status_public) &&
+    blds.get(r.building_id).name.toLowerCase().includes(buildingName.toLowerCase()))
+    .sort((x, y) => { const bx = blds.get(x.building_id), by = blds.get(y.building_id);
+      return cmp(bx.name, by.name) || cmp(bx.id, by.id) || floorDesc(x.floor, y.floor) || cmp(x.name, y.name) || cmp(x.id, y.id); });
+  const rows = listed.slice(offset, offset + limit), used = new Set(rows.map(r => r.building_id)), next = offset + limit, policies = [];
+  for (const r of listed) { const p = blds.get(r.building_id).page_sale_policy?.trim(); if (p && !policies.includes(p)) policies.push(p); }
+  return { publishedPages: legacy.pages, totalCount: listed.length, offset, limit, nextOffset: next < listed.length && next <= MAX_OFFSET ? next : null,
+    rooms: rows.map(r => Object.fromEntries(PAGE_ROOM_KEYS.map(k => [k, r[k] ?? null]))),
+    buildings: [...blds.values()].filter(b => used.has(b.id)).sort((x, y) => cmp(x.name, y.name) || cmp(x.id, y.id)).map(b => Object.fromEntries(PAGE_BUILDING_KEYS.map(k => [k, b[k] ?? null]))),
+    salePolicies: policies };
+}
+const strip = ({ source, ...rest }) => rest;
+const B1 = uuid(31), B2 = uuid(32), B3 = uuid(33), B4 = uuid(34), B5 = uuid(35);
+// Canonical wrapper order: building name then id, floor desc nulls last, room name, id.
+function canonical() {
+  return {
+    pages: 2,
+    buildings: [building(B1, { name: 'Tòa 1', page_sale_policy: 'Chính sách X' }), building(B2, { name: 'Tòa 2', page_sale_policy: 'Chính sách X', public_contact_name: 'Quản lý 2', public_contact_phone: '0900000022' }),
+      building(B3, { name: 'Tòa 2', code: null, address: null, page_sale_policy: 'Chính sách X' }), building(B4, { name: 'Tòa chữ', page_sale_policy: ' Chính sách Y ' }),
+      building(B5, { name: 'Tòa ẩn', page_sale_policy: 'Hidden' })],
+    rooms: [
+      room(uuid(41), B1, { code: 'P301', floor: 3, status_public: 'pass', sale_state: 'PASS', pass_price: 2900000, pass_contact_manager: true, pass_sale_policy: 'Pass policy' }),
+      room(uuid(42), B1, { code: 'P201', name: 'Phòng 201', floor: 2, status_public: 'soon', sale_state: 'NOTICE', avail_date: '2026-10-20', rent_price: 3100000 }),
+      room(uuid(43), B1, { code: 'P202', name: 'Phòng 202', floor: 2, sale_note: ' Khuyến mãi ', amenities: [{ name: 'Tủ lạnh' }, 'Giường'] }),
+      room(uuid(44), B1, { code: 'P101', floor: 1, status_public: 'pass', sale_state: 'PASS', pass_contact_phone: '0900000002', pass_contact_name: 'Khách Thử', pass_avail_date: '2026-10-25' }),
+      room(uuid(45), B1, { code: 'Pnull', floor: null, area: null, rent_price: null, description: ' Mô tả ' }),
+      room(uuid(46), B1, { code: 'P999', floor: 9, status_public: 'rented', sale_state: 'RENTED' }),
+      room(uuid(47), B2, { code: 'P101', floor: 1, sale_state: 'PREPARING', expected_ready_on: '2026-10-30' }),
+      room(uuid(48), B3, { code: 'P101', floor: 1 }),
+      room(uuid(49), B4, { code: 'P1', floor: 1, status_public: 'soon', sale_state: 'NOTICE_OVERDUE', avail_date: '2026-10-01' }),
+      room(uuid(50), B5, { code: 'HIDDEN', floor: 1 }),
+    ],
+  };
+}
+// The legacy wrapper never ships rented rows; the legacy JS rejects them. Compare on a wrapper-shaped payload.
+const wrapperData = () => { const data = canonical(); data.rooms = data.rooms.filter(r => r.status_public !== 'rented'); return data; };
+test('B3 page projection equals the legacy projection of the same canonical snapshot (states, contact, text, policies, paging)', () => {
+  const data = wrapperData(), all = [B1, B2, B3, B4];
+  for (const options of [{ allowedBuildingIds: all }, { allowedBuildingIds: all, offset: 1, limit: 2 }, { allowedBuildingIds: all, offset: 4, limit: 2 },
+    { allowedBuildingIds: all, offset: 7, limit: 2 }, { allowedBuildingIds: all, offset: 8, limit: 2 }, { allowedBuildingIds: [B2, B3, B4], buildingName: 'tòa 2' },
+    { allowedBuildingIds: all, buildingName: 'CHỮ' }, { allowedBuildingIds: [B1], buildingName: 'nope' }, { allowedBuildingIds: [B5] }, { allowedBuildingIds: all, limit: 1 }]) {
+    const legacy = projectAvailableRooms(data, { readAt: NOW, ...options });
+    const page = projectAvailableRoomsPage(sqlPage(canonical(), options), { offset: options.offset ?? 0, limit: options.limit ?? 50, readAt: NOW });
+    assert.equal(page.source, PAGE_SOURCE); assert.equal(legacy.source, 'hermes_sale_listing_rooms_v1');
+    assert.deepEqual(strip(page), strip(legacy), JSON.stringify(options));
+  }
+  const full = projectAvailableRoomsPage(sqlPage(canonical(), { allowedBuildingIds: all }), { offset: 0, limit: 50, readAt: NOW });
+  assert.deepEqual(full.rooms.map(r => r.code), ['P301', 'P201', 'P202', 'P101', 'Pnull', 'P101', 'P101', 'P1']);
+  assert.deepEqual(full.rooms.map(r => r.availability.kind), ['pass', 'notice', 'ready', 'pass', 'ready', 'preparing', 'ready', 'confirm_notice']);
+  assert.deepEqual([full.totalInSnapshot, full.publishedPages, full.salePolicies, full.buildings.map(b => b.id)], [8, 2, ['Chính sách X', 'Chính sách Y'], [B1, B2, B3, B4]]);
+  assert.deepEqual(full.buildings[1].contact, { name: 'Quản lý 2', phone: '0900000022' }); assert.deepEqual(full.buildings[2].contact, { name: 'Hotline thử', phone: '0900000001' });
+  assert(!JSON.stringify(full).includes('Hidden') && !JSON.stringify(full).includes('HIDDEN'));
+});
+test('B3 page projection: exact total above the tool ceiling is source_capped, the window never re-slices and nextOffset stops at 2000', () => {
+  const base = sqlPage(canonical(), { allowedBuildingIds: [B1, B2, B3, B4], limit: 2 });
+  const at = (offset, limit, totalCount) => ({ ...base, offset, limit, totalCount, nextOffset: offset + limit < totalCount && offset + limit <= MAX_OFFSET ? offset + limit : null,
+    rooms: base.rooms.slice(0, Math.min(limit, Math.max(0, totalCount - offset))), buildings: base.buildings.slice(0, 1) });
+  const project = (offset, limit, totalCount) => projectAvailableRoomsPage(at(offset, limit, totalCount), { offset, limit, readAt: NOW });
+  assert.deepEqual([project(0, 2, 2000).completeness, project(0, 2, 2001).completeness, project(0, 2, 2).completeness], ['complete', 'source_capped', 'complete']);
+  assert.deepEqual([project(2000, 2, 2500).nextOffset, project(1998, 2, 2500).nextOffset, project(0, 2, 2500).nextOffset, project(0, 2, 2).nextOffset], [null, 2000, 2, null]);
+  assert.deepEqual([project(2000, 2, 2500).totalInSnapshot, project(2000, 2, 2500).rooms.length, project(2000, 2, 2001).rooms.length], [2500, 2, 1]);
+  assert.equal(projectAvailableRoomsPage({ ...at(0, 2, 0), buildings: [], rooms: [], salePolicies: [], publishedPages: 0 }, { offset: 0, limit: 2, readAt: NOW }).listing, 'no_sale_page');
+});
+test('B3 page projection fails closed on any shape drift of the SQL page instead of inventing rows', () => {
+  const good = () => sqlPage(canonical(), { allowedBuildingIds: [B1, B2, B3, B4], limit: 3 });
+  const options = { offset: 0, limit: 3, readAt: NOW };
+  assert.equal(projectAvailableRoomsPage(good(), options).rooms.length, 3);
+  for (const mutate of [v => { v.extra = 1; }, v => { delete v.salePolicies; }, v => { v.offset = 1; }, v => { v.limit = 2; }, v => { v.nextOffset = null; },
+    v => { v.nextOffset = 4; }, v => { v.totalCount = 2; }, v => { v.totalCount = -1; }, v => { v.rooms.pop(); }, v => { v.buildings.push({ ...v.buildings[0], id: B5 }); },
+    v => { v.rooms[0].building_id = B5; }, v => { v.rooms[1].id = v.rooms[0].id; }, v => { v.publishedPages = 0; }, v => { v.rooms[0].images = []; },
+    v => { delete v.rooms[0].pass_contact_manager; }, v => { v.buildings[0].floor_layouts = {}; }, v => { v.rooms[0].status_public = 'rented'; },
+    v => { v.salePolicies = [1]; }, v => { v.rooms[0].rent_price = '1'; }, v => { v.rooms[0].sale_today = '2026-02-30'; }, v => { v.buildings[0].name = 'x'.repeat(501); },
+    v => { v.error = 'PRIVATE'; }, v => { v.rooms = null; }]) {
+    const value = good(); mutate(value);
+    assert.throws(() => projectAvailableRoomsPage(value, options), code('rooms_response_invalid'));
+  }
+  for (const bad of [{ offset: 0, limit: 3 }, { ...options, allowedBuildingIds: [B1] }, { ...options, offset: 2001 }, { ...options, limit: 101 }, { ...options, readAt: 0 }]) {
+    assert.throws(() => projectAvailableRoomsPage(good(), bad), code('rooms_projection_request_invalid'));
   }
 });

@@ -1,3 +1,5 @@
+import { QuickExpenseButton, QuickExpenseFeedback } from './QuickExpenseActions';
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
@@ -66,6 +68,7 @@ interface Props {
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
+  quickExpense?: QuickExpenseActions;
   onCancel?: (id: string, type?: string | null) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
@@ -128,6 +131,7 @@ function IncomeExpenseDetailMobileContent({
   onEdit,
   onQuickEdit,
   onApprove,
+  quickExpense,
   onCancel,
   onRestore,
   onCopy,
@@ -256,7 +260,8 @@ function IncomeExpenseDetailMobileContent({
             MỌI nút thao tác khoá tới khi bản đọc mới về — fieldset disabled khoá cả nút của
             component con (Đổi hình thức thu, gán QL…). Ngoài fieldset chỉ còn phần CHỈ ĐỂ
             XEM: nút Đóng, Thử lại của vùng đọc phụ, ô ảnh đính kèm, lịch sử. */}
-        <fieldset className="vd-lock" disabled={locked}>
+        {quickExpense && <QuickExpenseFeedback quick={quickExpense} />}
+        <fieldset className="vd-lock" disabled={locked || quickExpense?.busy || quickExpense?.collecting}>
         <div className="vd-sec">
           <span className="vd-sec-t">Thông tin chung</span>
           <div className="vd-acts">
@@ -301,6 +306,7 @@ function IncomeExpenseDetailMobileContent({
                 <CheckCircle2 size={15} />
               </button>
             )}
+            {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={v} quick={quickExpense} />}
             {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (CUSTODIAN, không
                 cần quyền duyệt); phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
             {monetaryActionsAllowed && onPostApproved &&
@@ -635,7 +641,7 @@ function IncomeExpenseDetailMobileContent({
           </>
         )}
         {canSettleReservation && (
-          <fieldset className="vd-lock" disabled={locked}>
+          <fieldset className="vd-lock" disabled={locked || quickExpense?.busy || quickExpense?.collecting}>
             <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>
           </fieldset>
         )}
