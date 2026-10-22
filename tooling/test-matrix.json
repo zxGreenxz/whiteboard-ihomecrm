@@ -1427,6 +1427,19 @@
       ]
     },
     {
+      "id": "hermes-read-web-building-scope",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_read_web_building_scope_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_read_web_building_scope_revert_v1.sql",
+        "infra/hermes-broker/web-building-scope-sql.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/web-building-scope-sql.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-name-directory-context",
       "sourcePaths": [
         "supabase/migrations/*_hermes_name_directory_v1.sql",

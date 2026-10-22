@@ -2559,7 +2559,7 @@
       "sql": [
         {
           "function": "public.hermes_domain_read_v2",
-          "sha256": "7f21c0dda6f21d3b96a27336b0d5e3b8e0fb7e19d86ad531fabe85111a29a82f"
+          "sha256": "b004abe170c66d1bf460a3ec730efc8c416595c9c7c4b40db30871d0a0f808dc"
         }
       ],
       "hermes": [
@@ -2579,7 +2579,7 @@
           "contains": "'receivables']"
         }
       ],
-      "notes": "Không có trang web để bắt chước (ghi chú đầu file): nguồn chép là nhánh v2 của chính Hermes, nên đổi hermes_domain_read_v2 phải soát lại nhánh fast; parity normal↔fast trên cùng dữ liệu/JWT ở infra/hermes-broker/domain-receivables-fast-sql.test.mjs. Khác biệt đã biết: fast đọc dưới RLS (rooms/invoices theo buildings.view, ẩn demo/sandbox với admin) nên có thể ÍT dòng hơn v2, không bao giờ nhiều hơn."
+      "notes": "Không có trang web để bắt chước (ghi chú đầu file): nguồn chép là nhánh v2 của chính Hermes, nên đổi hermes_domain_read_v2 phải soát lại nhánh fast; parity normal↔fast trên cùng dữ liệu/JWT ở infra/hermes-broker/domain-receivables-fast-sql.test.mjs. Khác biệt đã biết: fast đọc dưới RLS (rooms/invoices theo buildings.view, ẩn demo/sandbox với admin) nên có thể ÍT dòng hơn v2, không bao giờ nhiều hơn. 20261021170452 (PR #261) chỉ đổi nhánh income_expenses của hermes_domain_read_v2 (lọc toà web + nhánh sổ quỹ); nhánh receivables giữ nguyên từng byte — không cần soát lại fast. Phạm vi toà của v2 nay giao với tập web (hermes_domain_grant_v2), nên lane thường cũng không còn rộng hơn RLS."
     }
   ]
 }
