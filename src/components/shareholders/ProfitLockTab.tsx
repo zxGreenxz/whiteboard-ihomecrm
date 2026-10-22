@@ -79,6 +79,13 @@ import {
 } from "@/lib/profitClose";
 import { useCashbookMonthlyClosingStatus } from "@/hooks/useCashbookClosing";
 import { useProfitLockChecks } from "@/hooks/useProfitLockChecks";
+import { useProfitPostLock } from "@/hooks/useProfitPostLock";
+import {
+  POST_LOCK_HOW_TO_ADD,
+  postLockByBuildingMonth,
+  postLockCellKey,
+  postLockLockTabLabel,
+} from "@/lib/profitPostLock";
 import {
   LANDLORD_OPERATED_LOCK_LABEL,
   lockPrecheckSignature,
@@ -438,6 +445,20 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const isEditing =
     canLock && !mixedState && (closeAction === "CLOSE" || closeAction === "RECLOSE");
   const rows = baseRows;
+  // Rà 21/10 F06 (chủ chốt 22/10/2026): toà×tháng đã chốt có khoản tạo/duyệt SAU lúc chốt
+  // (vd thu tiền hoá đơn của tháng đó) ⇒ nhãn "chưa cộng". Lỗi tải ⇒ không nhãn (Báo cáo LN
+  // vẫn nêu ở thanh kiểm chứng).
+  const lockedRowIds = useMemo(
+    () => rows.filter((row) => row.current_snapshot?.status === "LOCKED").map((row) => row.building_id).sort(),
+    [rows],
+  );
+  const postLockQuery = useProfitPostLock({
+    from: period,
+    to: period,
+    buildingIds: lockedRowIds,
+    enabled: lockedRowIds.length > 0,
+  });
+  const postLockCells = useMemo(() => postLockByBuildingMonth(postLockQuery.data), [postLockQuery.data]);
   const dataLoading = stateQuery.isLoading || (canLock && previewQuery.isLoading);
   const displayedHash = canLock ? preview?.source_hash : state?.state_hash;
   const closeMutation = useCloseProfitPeriod();
@@ -1367,6 +1388,18 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                             {LANDLORD_OPERATED_LOCK_LABEL}
                           </p>
                         )}
+                        {rowLocked && (() => {
+                          const label = postLockLockTabLabel(postLockCells.get(postLockCellKey(row.building_id, period)));
+                          return label ? (
+                            <p
+                              className="mt-1 max-w-[220px] text-[11px] font-normal leading-snug text-amber-700"
+                              data-testid="post-lock-label"
+                              title={`${label} — tạo/duyệt sau lúc chốt nên không nằm trong số đã chốt. ${POST_LOCK_HOW_TO_ADD}.`}
+                            >
+                              {label}
+                            </p>
+                          ) : null;
+                        })()}
                         <div className="mt-1 flex flex-wrap gap-1">
                           {row.is_stale && <Badge variant="destructive">Cũ</Badge>}
                           {row.is_stale && (

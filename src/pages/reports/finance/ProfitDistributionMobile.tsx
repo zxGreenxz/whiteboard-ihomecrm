@@ -38,6 +38,8 @@ import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hook
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import ProfitPostLockNotice from "@/components/reports/ProfitPostLockNotice";
+import { useProfitPostLockReport } from "@/hooks/useProfitPostLock";
 import {
   activeRoomNoteText,
   computeProfitReportChecks,
@@ -170,9 +172,18 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     business_result_only: pnlOnly,
   };
 
-  const { data: accrual, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
+  const { data: accrualRaw, isLoading: accrualLoading, isError: accrualError, refetch: retryAccrual } = useAccrualMonthReport(
     accrualMode && scopeReady ? ymStr : "", filters, { businessResultOnly: pnlOnly },
   );
+  // F06 (chủ chốt 22/10/2026): tháng ĐÃ CHỐT không cộng khoản phát sinh sau lúc chốt — tách khỏi
+  // danh sách + tổng, báo lên ở thẻ riêng (đồng bộ desktop).
+  const postLock = useProfitPostLockReport({
+    ym: ymStr,
+    buildingIds: scopeIds,
+    accrual: accrualRaw,
+    enabled: accrualMode && scopeReady,
+  });
+  const accrual = postLock.accrual;
   // Cash chỉ đọc ở nhánh !accrualMode (đồng bộ desktop) — đừng kéo 2000 dòng khi đang dồn tích.
   const { data: cash, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useIncomeExpenses(
     filters, { page: 1, pageSize: LIST_LIMIT }, undefined, { enabled: !accrualMode && scopeReady },
@@ -186,7 +197,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
 
   // chưa chốt phạm vi công ty cũng là đang tải — không hiện số 0 như thật
-  const loading = !scopeReady || (accrualMode ? accrualLoading : cashLoading);
+  const loading = !scopeReady || (accrualMode ? accrualLoading || postLock.isLoading : cashLoading);
   const skel = <span className="inline-block h-[15px] w-16 rounded bg-[#efece4] animate-pulse align-middle" aria-hidden />;
 
   // §2.3: phần "chờ duyệt" trong tổng — đồng bộ công thức desktop.
@@ -491,8 +502,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     if (f && f.duplicateBuildingCount > 0) out.push(`Có thể trùng chi cố định ở ${f.duplicateBuildingCount} toà`);
     const s = profitChecks?.stalePending;
     if (s && s.count > 0) out.push(`${s.count} phiếu chờ duyệt quá ${s.thresholdDays} ngày vẫn đang nằm trong tổng`);
+    out.push(...postLock.warnings);
     return out;
-  }, [profitChecks]);
+  }, [profitChecks, postLock.warnings]);
   const openCreateFixedFee = (cell: FixedFeeCell) => {
     const rank = FIXED_EXPENSE_CATEGORIES.findIndex((c) => c.key === cell.key);
     const type = findTypeForFixedCategory(expenseTypes, rank);
@@ -815,6 +827,13 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             roomSummary={roomSummary}
             onCreateExpense={canCreate ? openCreateFixedFee : undefined}
           />
+          <ProfitPostLockNotice
+            variant="mobile"
+            entries={postLock.entries}
+            count={postLock.count}
+            income={postLock.income}
+            expense={postLock.expense}
+          />
 
           {/* B5: thanh kiểm chứng — ẩn mặc định, chỉ hiện khi có lệch + bấm chấm đỏ.
               Luôn mount (display:none) để tự tính trạng thái lệch. */}
@@ -842,6 +861,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             pendingExpense={pendingInfo.expense}
             accrualRows={accrualMode ? accrual?.rows : undefined}
             extraWarnings={checkWarnings}
+            engineExclusions={accrualMode ? postLock.engineExclusions : undefined}
             pageLoading={loading}
             onIssueChange={setHasVerifyIssue}
           />

@@ -119,6 +119,28 @@ Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
   `a10_profit_month_lock_requires_no_pending` trên `profit_monthly`, phủ mọi đường đặt `locked_at`).
 - Mở khoá: `profit_unlock_v2` kèm lý do 8–1000 ký tự (lưu `profit_close_runs` + `profit_close_revisions`).
 
+**Khoá theo KỲ + phát sinh sau chốt** (rà 21/10 F06, chủ chốt 22/10/2026 "chặn hẳn", migration
+[20261022172918](../../supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql)):
+- Lợi nhuận tính theo **kỳ** (`fa_accrual_allocations`: phiếu gắn hoá đơn ⇒ tháng hoá đơn; hạng mục có kỳ ⇒
+  các tháng của kỳ; không kỳ ⇒ tháng ngày phiếu), nên ngoài ngày phiếu, trigger còn xét **tháng KQKD theo kỳ**:
+  phiếu (bản cũ đang tính LN = đã duyệt; bản mới đã duyệt hoặc chờ duyệt) có phần KQKD rơi vào tháng đã chốt của
+  toà ⇒ khoá **cả phiếu** như khoá theo ngày phiếu — lập, sửa, xoá, huỷ, **duyệt**, khôi phục đều bị chặn, với mọi
+  người. Cùng các ngoại lệ không đổi tiền ở trên. Hạng mục: trigger AFTER `a02_ie_items_profit_period_lock` (thêm /
+  sửa / xoá dòng có kỳ trong tháng đã chốt). Câu lỗi: `[PROFIT_LOCKED] Tháng MM/YYYY của toà X đã chốt lợi nhuận —
+  không ghi được phiếu có kỳ trong tháng này. Muốn ghi: mở khoá tháng ở tab Chốt LN.` Form phiếu
+  (`postLockFormBlock` trong `src/lib/profitPostLock.ts`) báo đúng câu này trước khi lưu và mờ nút Lưu.
+- **Thu mới nợ cũ** vẫn đi: phiếu theo hoá đơn (tháng KQKD = tháng hoá đơn) không bị cửa kỳ chặn — thu tiền hoá
+  đơn của tháng đã chốt (kèm tiền thối/hoàn trả gắn hoá đơn) và duyệt khoản đó vẫn làm được. Phiếu chờ duyệt có kỳ
+  trong tháng đã chốt (dữ liệu trước khoá kỳ) vẫn huỷ/xoá được.
+- **Phát sinh sau chốt**: `public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids)` (chỉ đọc, DEFINER,
+  quyền `can_access_building`, anon ⇒ 42501) trả toà×tháng đã chốt và các phiếu đã duyệt đóng góp KQKD vào tháng
+  đã chốt (theo `fa_accrual_allocations`) mà **tạo hoặc duyệt sau lúc chốt** — thu tiền hoá đơn tháng đã chốt, hoặc
+  dữ liệu cũ trước khoá kỳ. Báo cáo LN (chế độ theo kỳ) **không cộng** chúng vào tháng đã chốt: bỏ khỏi danh sách
+  thu/chi và tổng (dòng "Của iHome", bộ dò, phần chờ duyệt tính trên tổng mới), hiện chip "Phát sinh sau chốt —
+  chưa cộng vào tháng đã chốt: N khoản · thu X · chi Y" kèm danh sách; thanh kiểm chứng trừ đúng phần này phía
+  engine (không báo LỆCH giả) và chuyển "cần xem lại". Tab Chốt LN gắn nhãn "N khoản phát sinh sau chốt (chưa
+  cộng)". Muốn cộng: mở khoá tháng ở tab Chốt LN rồi chốt lại.
+
 ### 4.4. Đặt lại tháng
 
 Toà đã chốt xen toà chưa chốt KHÔNG còn là trạng thái hỏng — đó chính là thứ chốt-theo-từng-toà tạo ra. Chỉ khi tháng còn snapshot nằm trên toà ảo/đã xoá (`has_out_of_scope_snapshots`) hoặc không thể reclose an toàn thì UI mới dùng **Đặt lại**.
