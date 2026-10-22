@@ -170,6 +170,12 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
   - `p_expected` đúng khuôn hàm web dựng (`customer_id`, `is_representative`, `notes`, sắp theo `customer_id`) và nằm trong basis; người mới `is_representative=false`, ghi chú của người khác giữ nguyên.
   - Hậu điều kiện: danh sách sau ghi = danh sách mong muốn, tập người đại diện không đổi; lệch ⇒ `crm_refused`.
   - Phòng không có HĐ hiện hành ⇒ `room_has_no_active_contract` trước mọi câu hỏi về khách.
+- **Sửa theo review #277 (Mốc 5b, sửa thẳng trong `074815` vì chưa áp ở đâu).**
+  - **Phạm vi = guard ∩ quyền.** Hàm tra khách nhận thêm tập toà guard trả cho khoá (`p_building_ids`, chữ ký mới `(uuid,uuid,uuid[],text,jsonb)`). Khách thuộc phạm vi khi có HĐ (mọi trạng thái, chưa xoá) ở toà trong tập — như đọc khách theo toà (`20261021063453`) — hoặc không có HĐ nào ở toà ngoài tập (khách chưa gắn toà, vd vừa tạo trên web). Khách chỉ có HĐ ở toà ngoài tập ⇒ `name_unresolved` `why: outside_scope`, không nêu tên; ứng viên tên trùng chỉ lấy khách trong phạm vi. RLS có thể giấu HĐ ở toà người hỏi không xem, nên bước ghi DEFINER kiểm lại cùng luật trên mọi HĐ ở cả hai lượt.
+  - **Lượt 2 kiểm lại khách.** Vỏ gọi lại hàm tra khách theo `customerId` của bản đã giải (dưới RLS người hỏi, trong tập toà); không còn thấy / ra khách khác ⇒ `state_changed`. Basis người ở và nháp có thêm `customerId` (đổi khách ở lượt 2 ⇒ lệch basis).
+  - **Bớt người có ghi chú.** Ghi chú nằm trên dòng thành viên nên mất khi bớt, thêm lại không khôi phục ⇒ máy chủ đòi xác nhận; cảnh báo "Ghi chú của … trên HĐ sẽ mất (thêm lại không khôi phục)" và câu xem trước/kết quả nêu nội dung ghi chú (≤ 200 ký tự). Không có ghi chú thì ghi thẳng như cũ.
+  - **Biên nhận không giữ SĐT.** `input.params` lưu `customerPhoneSha256` = sha256(tổ chức + ":" + SĐT đã chuẩn hoá như hàm tra khách) thay cho `customerPhone`; phép so phát lại dùng cùng dạng nên cùng SĐT (kể cả khác cách viết) ⇒ phát lại, SĐT khác ⇒ `request_conflict`. Băm chỉ để biên nhận không chứa SĐT dạng chữ: SĐT có ~10⁹ giá trị nên ai đọc được bảng biên nhận (`app_private`, chỉ chủ hàm) vẫn dò được — người đó cũng đọc được `customers.phone`.
+  - **HĐ `EXTENDED` / `EXPIRED` chưa kết thúc: giữ tra cứu `ACTIVE` cho thao tác người ở.** Đo production 22/10 (chỉ đếm): `ACTIVE` 298, `TERMINATED` 151, không HĐ nào `EXTENDED`/`EXPIRED`; không hàm ghi hiện hành nào đặt hai trạng thái này (chỉ migration cũ 008/012/015/`20250710000001`/`20260510000012`). Mở rộng thì phải thay bằng file mới hàm tra cứu + bước ghi Mốc 2–4 đang chạy, và hàm ghi web của Mốc 2–4 có luật trạng thái riêng ⇒ không đáng khi production không có dòng nào. Test ghim hành vi: HĐ `EXTENDED` ⇒ `room_has_no_active_contract`.
 
 ### 4.6 Soạn nháp HĐ mới (Mốc 5)
 - **Payload theo đúng allowlist của `save_contract_draft`.** `form` đủ 12 khoá:
@@ -190,6 +196,7 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
   - Ngày: bắt đầu trong ±366 ngày quanh hôm nay, kết thúc > bắt đầu và ≤ bắt đầu + 3 660 ngày.
   - Hậu điều kiện: đúng một nháp mới (id theo requestId) EDITABLE đúng phòng + ngày + giá; số HĐ của phòng và trạng thái phòng không đổi.
   - Web không có đường riêng cho nháp (mở bằng tab Nháp ở `/contracts`) ⇒ `link: '/contracts'`, `nextStep` "Mở Hợp đồng → tab Nháp để kiểm, xuất và ký".
+  - Mốc 5b: cảnh báo "phòng đang có HĐ" tính HĐ `ACTIVE` + `EXTENDED` như web coi là còn khách (`20261010114500`, giữ chỗ phòng); khách nêu trong nháp theo cùng luật phạm vi và kiểm lại ở lượt 2 như mục 4.5.
 
 ### 4.7 Gia hạn hàng loạt (Mốc 6, xong trước 01/2027)
 - **Chọn HĐ.** `l` chọn HĐ ACTIVE thấy được, có `end_date` trong `endMonth`, trong tập toà của khoá (∩ `buildingName` nếu có), sắp theo toà rồi phòng, lấy 21 dòng để biết còn dư. **Loại** HĐ đang có báo trả, vì không quyết hộ việc giữ hay huỷ báo trả; cảnh báo liệt kê các HĐ bị loại. Lô tối đa 20 HĐ.
@@ -513,6 +520,9 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 - PGlite trang 29/29 (thêm test Mốc 5: tìm khách SĐT/+84/tên trùng/không thấy/mất quyền xem khách; thêm/bớt; không bỏ đại diện; hậu điều kiện; nháp phòng trống / trùng / còn HĐ / ngày sai; `$requires$`); W2 297/297; connector 102/102; hợp đồng duyệt hàm Hermes 241/241 (23 file / 82 hàm). Đột biến Mốc 5 18/18.
 - `tools/list` đủ quyền giữ 63 849 / 64 000 B (thao tác nằm trong kết quả `crm_action_list`, báo cáo trong `crm_read_report_list`).
 - Tầng 2 trên TEST (đã có 6 migration #270; chỉ chạy hai file mới, ROLLBACK, hàm ghi web thật, 3 kết nối có quyền): `$requires$` nhận đúng thân đang chạy thật; thêm / thêm lại (không đổi) / bớt người ở; bỏ người đại diện ⇒ từ chối; nháp phòng trống ghi thẳng (không sinh HĐ, phòng giữ trạng thái); nháp trùng 24 giờ và phòng còn HĐ ⇒ đòi xác nhận; báo cáo `contract_drafts` thấy nháp vừa soạn, không có tên khách.
+
+**Mốc 5b, 22/10 (sửa #277 theo review độc lập; `074815` sửa tại chỗ vì chưa áp, `075119` không đổi).** Mục 4.5 "Sửa theo review #277": phạm vi khách = guard ∩ quyền (chữ ký hàm tra khách thêm `uuid[]`), lượt 2 kiểm lại khách, basis có khách đã chọn, bớt người có ghi chú đòi xác nhận, biên nhận lưu băm SĐT, cảnh báo nháp tính HĐ `EXTENDED`; thao tác người ở giữ tra cứu `ACTIVE` (production không có HĐ `EXTENDED`/`EXPIRED`).
+- PGlite trang 34/34 (thêm: khách ngoài phạm vi kết nối ⇒ `outside_scope` không tên, ứng viên chỉ trong phạm vi, HĐ cũ ở toà trong phạm vi vẫn nhận, RLS giấu HĐ toà ngoài ⇒ bước ghi vẫn chặn; lượt 2 mất quyền xem / ra ngoài phạm vi / khách bị xoá / đổi khách ⇒ `state_changed`; basis người ở lệch ⇒ `state_changed`; phát lại người ở cùng / khác cách viết SĐT ⇒ y nguyên, SĐT khác ⇒ `request_conflict`; biên nhận không có SĐT; bớt người có ghi chú; HĐ `EXTENDED`); hợp đồng duyệt hàm Hermes 241/241 (ghim băm mới của ba hàm).
 
 ## 16. Chưa xác minh
 

@@ -7,8 +7,13 @@
 --     không tạo tiền; người ký và hoàn tất trên web. Máy chủ đòi xác nhận cho lần gọi khi phòng còn HĐ phủ ngày bắt đầu hoặc đã có nháp
 --     của phòng trong 24 giờ (D-HĐ3).
 --   Khách tìm dưới RLS người hỏi bằng hàm INVOKER MỚI public.hermes_contract_party_lookup_v1 (SĐT ưu tiên, rồi tên khớp đúng; ứng
---     viên "tên · …3 số cuối"). Vỏ dựng lại (thân 20261022022951 + một nhánh gọi hàm tra khách); bước ghi dựng từ thân 20261022061813
---     (sẽ là thân ĐANG CHẠY khi áp file này), md5(prosrc) ghim ở $requires$, chạy lại nhận thân đã có nhánh mới.
+--     viên "tên · …3 số cuối"), giao với phạm vi toà của kết nối; lượt 2 tra lại đúng khách đã chọn, bước ghi DEFINER kiểm lại phạm
+--     vi trên mọi HĐ (review #277). Biên nhận lưu băm SĐT, không lưu SĐT. Vỏ dựng lại (thân 20261022022951 + nhánh gọi hàm tra khách);
+--     bước ghi dựng từ thân 20261022061813 (sẽ là thân ĐANG CHẠY khi áp file này), md5(prosrc) ghim ở $requires$, chạy lại nhận thân
+--     đã có nhánh mới.
+--   HĐ EXTENDED / EXPIRED chưa kết thúc: production 22/10 không có HĐ nào (ACTIVE 298, TERMINATED 151; không hàm ghi hiện hành nào
+--     đặt hai trạng thái này) ⇒ thao tác người ở giữ đúng tra cứu ACTIVE của Mốc 2–4 đang chạy; cảnh báo "phòng còn HĐ" của nháp
+--     tính cả EXTENDED như web.
 -- Không đổi chữ ký, chủ, ACL của hàm có sẵn; không ghi dữ liệu ngoài ba dòng chính sách.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -39,43 +44,63 @@ INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,
   ('contract.draft','contracts.create','contracts.create','reversible','never',true)
   ON CONFLICT(action) DO NOTHING;
 
--- 2. Tra khách dưới RLS người hỏi (INVOKER, STABLE, search_path='').
-CREATE OR REPLACE FUNCTION public.hermes_contract_party_lookup_v1(p_organization_id uuid,p_room_id uuid,p_action text,p_params jsonb)
+-- 2. Tra khách dưới RLS người hỏi (INVOKER, STABLE, search_path=''), giao với phạm vi kết nối: p_building_ids = tập toà guard trả
+--    cho khoá (quyền CRM ∩ overlay ∩ toà web). Phạm vi = guard ∩ quyền như đọc khách theo toà (20261021063453: kết nối theo toà chỉ
+--    thấy khách có HĐ ở toà của nó): khách có HĐ (mọi trạng thái, chưa xoá) ở toà trong tập, HOẶC không có HĐ nào ở toà ngoài tập
+--    (khách chưa gắn toà, vd vừa tạo trên web: không mang dữ liệu toà nào ngoài phạm vi). Khách chỉ có HĐ ở toà ngoài tập ⇒
+--    outside_scope, không nêu tên. RLS có thể giấu HĐ ở toà người hỏi không xem ⇒ bước ghi DEFINER kiểm lại cùng luật trên mọi HĐ.
+--    Lượt 2 (apply) vỏ gọi lại bằng customerId đã chọn: khách phải còn thấy được và còn trong phạm vi.
+CREATE OR REPLACE FUNCTION public.hermes_contract_party_lookup_v1(p_organization_id uuid,p_room_id uuid,p_building_ids uuid[],p_action text,p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
-DECLARE v_ids uuid[]; v_contract uuid; v_phone text; v_name text; v_found jsonb; v_count integer;
+DECLARE v_ids uuid[]; v_contract uuid; v_phone text; v_name text; v_id uuid; v_found jsonb; v_count integer; v_seen integer;
 BEGIN
   IF current_user IS DISTINCT FROM 'authenticated' OR auth.uid() IS NULL OR p_organization_id IS NULL OR p_room_id IS NULL
-    OR p_action IS NULL OR p_action NOT IN ('contract.occupant_add','contract.occupant_remove','contract.draft')
+    OR p_building_ids IS NULL OR p_action IS NULL OR p_action NOT IN ('contract.occupant_add','contract.occupant_remove','contract.draft')
     OR p_params IS NULL OR jsonb_typeof(p_params)<>'object' THEN
     RAISE EXCEPTION 'hermes_contract_lookup_denied' USING ERRCODE='42501'; END IF;
   -- HĐ hiện hành của phòng mà người hỏi thấy (như tra cứu của trang); bớt người ở chỉ tìm trong khách của HĐ này.
   SELECT array_agg(c.id ORDER BY c.id) INTO v_ids FROM public.contracts c
     WHERE c.organization_id=p_organization_id AND c.room_id=p_room_id AND c.status='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL;
   IF COALESCE(cardinality(v_ids),0)=1 THEN v_contract:=v_ids[1]; END IF;
-  -- SĐT ưu tiên: chỉ chữ số, +84/84 đầu số ⇒ 0; khớp đúng. Không có SĐT thì tên: khớp đúng sau khi gấp dấu/hoa thường.
-  v_phone:=regexp_replace(COALESCE(p_params->>'customerPhone',''),'[^0-9]','','g');
-  IF v_phone ~ '^84[0-9]{9,10}$' THEN v_phone:='0'||substr(v_phone,3); END IF;
-  v_name:=NULLIF(btrim(COALESCE(p_params->>'customerName','')),'');
-  IF v_phone='' AND v_name IS NULL THEN RETURN jsonb_build_object('customer',jsonb_build_object('status','none')); END IF;
-  -- Dưới RLS customers của người hỏi (khoá web customers.view theo toà): không thấy thì như không có.
-  SELECT count(*)::integer,COALESCE(jsonb_agg(jsonb_build_object('id',x.id,'name',x.full_name,'tail',right(x.digits,3)) ORDER BY x.full_name,x.id)
-      FILTER (WHERE x.n<=9),'[]'::jsonb)
-    INTO v_count,v_found
-    FROM (SELECT cu.id,cu.full_name,regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g') digits,row_number() OVER (ORDER BY cu.full_name,cu.id) n
+  -- Lượt 2: tra lại đúng khách đã chọn ở lượt 1 (id do connector giữ trong confirmToken).
+  IF p_params ? 'customerId' THEN
+    v_id:=CASE WHEN p_params->>'customerId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_params->>'customerId')::uuid END;
+    IF v_id IS NULL THEN RAISE EXCEPTION 'hermes_contract_lookup_denied' USING ERRCODE='42501'; END IF;
+  ELSE
+    -- SĐT ưu tiên: chỉ chữ số, +84/84 đầu số ⇒ 0; khớp đúng. Không có SĐT thì tên: khớp đúng sau khi gấp dấu/hoa thường.
+    v_phone:=regexp_replace(COALESCE(p_params->>'customerPhone',''),'[^0-9]','','g');
+    IF v_phone ~ '^84[0-9]{9,10}$' THEN v_phone:='0'||substr(v_phone,3); END IF;
+    v_name:=NULLIF(btrim(COALESCE(p_params->>'customerName','')),'');
+    IF v_phone='' AND v_name IS NULL THEN RETURN jsonb_build_object('customer',jsonb_build_object('status','none')); END IF;
+  END IF;
+  -- Dưới RLS customers của người hỏi (khoá web customers.view): không thấy thì như không có. Ứng viên chỉ lấy khách trong phạm vi.
+  SELECT count(*)::integer,count(*) FILTER (WHERE x.in_scope)::integer,
+      COALESCE(jsonb_agg(jsonb_build_object('id',x.id,'name',x.full_name,'tail',right(x.digits,3)) ORDER BY x.full_name,x.id)
+        FILTER (WHERE x.in_scope AND x.n<=9),'[]'::jsonb)
+    INTO v_seen,v_count,v_found
+    FROM (SELECT y.*,row_number() OVER (PARTITION BY y.in_scope ORDER BY y.full_name,y.id) n FROM (
+      SELECT cu.id,cu.full_name,regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g') digits,
+        EXISTS(SELECT 1 FROM public.contract_customers cc JOIN public.contracts k ON k.id=cc.contract_id AND k.organization_id=p_organization_id
+            AND k.deleted_at IS NULL JOIN public.rooms r ON r.id=k.room_id WHERE cc.customer_id=cu.id AND r.building_id=ANY(p_building_ids))
+          OR NOT EXISTS(SELECT 1 FROM public.contract_customers cc JOIN public.contracts k ON k.id=cc.contract_id AND k.organization_id=p_organization_id
+            AND k.deleted_at IS NULL JOIN public.rooms r ON r.id=k.room_id WHERE cc.customer_id=cu.id AND NOT (r.building_id=ANY(p_building_ids))) in_scope
       FROM public.customers cu WHERE cu.organization_id=p_organization_id AND cu.deleted_at IS NULL
-        AND CASE WHEN v_phone<>'' THEN (CASE WHEN regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g') ~ '^84[0-9]{9,10}$'
+        AND CASE WHEN v_id IS NOT NULL THEN cu.id=v_id
+          WHEN v_phone<>'' THEN (CASE WHEN regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g') ~ '^84[0-9]{9,10}$'
               THEN '0'||substr(regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g'),3) ELSE regexp_replace(COALESCE(cu.phone,''),'[^0-9]','','g') END)=v_phone
           ELSE public.hermes_name_fold_v1(cu.full_name)=public.hermes_name_fold_v1(v_name) END
         AND (p_action<>'contract.occupant_remove' OR EXISTS(SELECT 1 FROM public.contract_customers cc WHERE cc.contract_id=v_contract
-          AND cc.customer_id=cu.id))) x;
+          AND cc.customer_id=cu.id))) y) x;
   IF v_count=1 THEN
     RETURN jsonb_build_object('customer',jsonb_build_object('status','resolved','id',v_found->0->'id','name',v_found->0->'name'));
   END IF;
-  -- Ứng viên: tên · …3 số cuối SĐT (không lộ đủ SĐT), tối đa 8.
+  -- Ứng viên: tên · …3 số cuối SĐT (không lộ đủ SĐT), tối đa 8, chỉ khách trong phạm vi. Chỉ thấy khách ngoài phạm vi ⇒
+  -- outside_scope, không nêu tên.
   RETURN jsonb_build_object('customer',jsonb_build_object('status','unresolved','field','customer',
-    'wanted',COALESCE(v_name,'SĐT …'||right(v_phone,3)),'why',CASE WHEN v_count=0 THEN 'not_visible' ELSE 'ambiguous' END,
-    'candidates',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',left(f->>'name',100)||' · …'||(f->>'tail')) ORDER BY o)
-      FROM jsonb_array_elements(v_found) WITH ORDINALITY e(f,o) WHERE o<=8),'[]'::jsonb),'more',v_count>8));
+    'wanted',COALESCE(v_name,CASE WHEN v_id IS NOT NULL THEN 'khách đã chọn' ELSE 'SĐT …'||right(v_phone,3) END),
+    'why',CASE WHEN v_count>1 THEN 'ambiguous' WHEN v_seen>0 THEN 'outside_scope' ELSE 'not_visible' END,
+    'candidates',CASE WHEN v_count>1 THEN COALESCE((SELECT jsonb_agg(jsonb_build_object('name',left(f->>'name',100)||' · …'||(f->>'tail')) ORDER BY o)
+      FROM jsonb_array_elements(v_found) WITH ORDINALITY e(f,o) WHERE o<=8),'[]'::jsonb) ELSE '[]'::jsonb END,'more',v_count>8));
 END $fn$;
 
 -- 3. Bước ghi (thân 20261022061813 + nhánh người ở + nháp).
@@ -89,6 +114,7 @@ DECLARE ctx jsonb; v_org uuid; v_resolved jsonb; v_today date; v_tz text; c publ
   v_kind text; v_money_sum numeric; v_unpaid jsonb; v_case public.contract_exit_cases; v_room_status text;
   v_customer uuid; v_members jsonb; v_desired jsonb; v_after jsonb; v_need_confirm boolean:=false; v_start date; v_end date;
   v_rent numeric; v_deposit numeric; v_payload jsonb; v_draft_id uuid; v_last_draft public.contract_drafts; v_party boolean;
+  v_phone text; v_params jsonb;
 BEGIN
   -- NULL không bao giờ lọt: NOT IN với NULL cho NULL (không RAISE), nên mọi tham số bắt buộc kiểm IS NULL trước.
   IF p_action IS NULL OR p_action NOT IN ('contract.notice_set','contract.notice_cancel','contract.room_lock','contract.room_unlock','contract.renew',
@@ -108,6 +134,16 @@ BEGIN
   -- Mốc 5: thao tác có khách (tra dưới RLS người hỏi ở vỏ); nháp chỉ khi người dùng nêu khách.
   v_party:=p_action IN ('contract.occupant_add','contract.occupant_remove')
     OR (p_action='contract.draft' AND (p_params ? 'customerPhone' OR p_params ? 'customerName'));
+  -- Biên nhận không giữ SĐT đầy đủ (review #277 mục 4): params lưu và so khi phát lại thay customerPhone bằng sha256 của
+  -- (tổ chức, SĐT đã chuẩn hoá như hàm tra khách). Cùng SĐT ⇒ cùng băm nên phát lại / request_conflict vẫn đúng. Băm chỉ để biên
+  -- nhận không chứa SĐT dạng chữ; SĐT có ~10^9 giá trị nên ai đọc được bảng biên nhận (app_private, chỉ chủ hàm) vẫn dò được, như
+  -- đọc thẳng customers.phone.
+  v_params:=p_params;
+  IF p_params ? 'customerPhone' THEN
+    v_phone:=regexp_replace(COALESCE(p_params->>'customerPhone',''),'[^0-9]','','g');
+    IF v_phone ~ '^84[0-9]{9,10}$' THEN v_phone:='0'||substr(v_phone,3); END IF;
+    v_params:=(p_params-'customerPhone')||jsonb_build_object('customerPhoneSha256',encode(sha256(convert_to(v_org::text||':'||v_phone,'UTF8')),'hex'));
+  END IF;
   -- Phát lại theo requestId TRƯỚC mọi phép tính lại (thiết kế nền chung mục 3.1): chính lần ghi trước đã đổi HĐ nên basis tính
   -- lại sẽ lệch; không phát lại ở đây thì lần gọi lại nhận state_changed, mô hình xem trước lại và có thể ghi chồng. Biên nhận đã
   -- chốt cùng thao tác + cùng params ⇒ trả y nguyên; khác ⇒ request_conflict; kết nối khác ⇒ PT409 (như receipt_begin). Biên nhận
@@ -115,7 +151,7 @@ BEGIN
   SELECT * INTO v_prev FROM app_private.hermes_action_receipts r WHERE r.organization_id=v_org AND r.user_id=auth.uid() AND r.request_id=p_request_id;
   IF FOUND AND v_prev.state IN ('applied','rejected') THEN
     IF v_prev.connection_id::text IS DISTINCT FROM ctx->>'connectionId' THEN RAISE EXCEPTION 'hermes_action_context_changed' USING ERRCODE='PT409'; END IF;
-    IF v_prev.action IS DISTINCT FROM p_action OR v_prev.input->'params' IS DISTINCT FROM p_params THEN
+    IF v_prev.action IS DISTINCT FROM p_action OR v_prev.input->'params' IS DISTINCT FROM v_params THEN
       RETURN jsonb_build_object('kind','rejected','reason','request_conflict'); END IF;
     RETURN v_prev.result;
   END IF;
@@ -154,6 +190,23 @@ BEGIN
     OR NOT EXISTS(SELECT 1 FROM public.rooms r WHERE r.id=(v_resolved->>'roomId')::uuid AND r.building_id=(v_resolved->>'buildingId')::uuid
       AND r.organization_id=v_org AND r.deleted_at IS NULL) THEN
     RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
+  -- Mốc 5b (review #277 mục 2–3): khách đã chọn phải còn trong phạm vi ở CẢ HAI lượt. Lượt 2 vỏ tra lại đúng customerId dưới RLS
+  -- người hỏi (p_lookup.party): không còn thấy / ra khách khác ⇒ state_changed. Rồi kiểm dứt khoát (DEFINER, thấy mọi HĐ) cùng
+  -- luật phạm vi với hàm tra khách: có HĐ ở toà của kết nối, hoặc không có HĐ nào ở toà ngoài phạm vi.
+  IF v_party AND p_phase='apply' AND (NOT (v_resolved ? 'customerId') OR p_lookup#>>'{party,customer,status}' IS DISTINCT FROM 'resolved'
+    OR p_lookup#>>'{party,customer,id}' IS DISTINCT FROM v_resolved->>'customerId') THEN
+    RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
+  IF v_party AND v_resolved ? 'customerId' AND NOT (
+      EXISTS(SELECT 1 FROM public.contract_customers cc JOIN public.contracts k ON k.id=cc.contract_id AND k.organization_id=v_org AND k.deleted_at IS NULL
+        JOIN public.rooms r ON r.id=k.room_id WHERE cc.customer_id=(v_resolved->>'customerId')::uuid
+          AND r.building_id IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid))
+      OR NOT EXISTS(SELECT 1 FROM public.contract_customers cc JOIN public.contracts k ON k.id=cc.contract_id AND k.organization_id=v_org AND k.deleted_at IS NULL
+        JOIN public.rooms r ON r.id=k.room_id WHERE cc.customer_id=(v_resolved->>'customerId')::uuid
+          AND r.building_id NOT IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid))) THEN
+    RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
+      ELSE jsonb_build_object('kind','needs_input','reason','name_unresolved','field','customer','wanted',CASE WHEN v_phone<>'' THEN 'SĐT …'||right(v_phone,3)
+        ELSE COALESCE(NULLIF(btrim(p_params->>'customerName'),''),'khách đã nêu') END,'why','outside_scope','candidates','[]'::jsonb,'more',false) END;
+  END IF;
   v_today:=public.org_today_v1(v_org);
   v_tz:=COALESCE(app_private.org_timezone_v1(v_org),'Asia/Ho_Chi_Minh');
   v_place:=format('phòng %s toà %s',v_resolved->>'roomName',v_resolved->>'buildingName');
@@ -178,13 +231,13 @@ BEGIN
     IF NOT FOUND OR c.status IS DISTINCT FROM 'ACTIVE' OR c.actual_end_date IS NOT NULL OR c.deleted_at IS NOT NULL THEN
       RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
         ELSE jsonb_build_object('kind','needs_input','reason','room_has_no_active_contract') END; END IF;
-    -- Người ở: danh sách thành viên đúng khuôn hàm web dựng (p_expected) vào basis; thao tác khác basis giữ nguyên.
+    -- Người ở: danh sách thành viên đúng khuôn hàm web dựng (p_expected) + khách đã chọn vào basis; thao tác khác basis giữ nguyên.
     IF p_action IN ('contract.occupant_add','contract.occupant_remove') THEN
       SELECT COALESCE(jsonb_agg(jsonb_build_object('customer_id',cc.customer_id,'is_representative',cc.is_representative,'notes',cc.notes)
           ORDER BY cc.customer_id),'[]'::jsonb) INTO v_members FROM public.contract_customers cc WHERE cc.contract_id=c.id;
     END IF;
     v_basis:=md5((jsonb_build_array(p_action,c.id,c.updated_at,c.expected_move_out_date,c.end_date,c.status,c.rent_price,c.total_deposit)
-      ||CASE WHEN v_members IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(v_members) END)::text);
+      ||CASE WHEN v_members IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(v_members,v_resolved->'customerId') END)::text);
     IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
     v_place:=format('%s (HĐ %s%s)',v_place,COALESCE(c.contract_number,'chưa có số'),
       CASE WHEN v_resolved->>'representativeName' IS NOT NULL THEN ', khách '||(v_resolved->>'representativeName') ELSE '' END);
@@ -306,7 +359,15 @@ BEGIN
           RETURN jsonb_build_object('kind','rejected','reason','cannot_remove_representative'); END IF;
         SELECT COALESCE(jsonb_agg(m ORDER BY m->>'customer_id'),'[]'::jsonb) INTO v_desired FROM jsonb_array_elements(v_members) m
           WHERE m->>'customer_id'<>v_customer::text;
-        v_text:=format('bớt người ở %s khỏi %s.',v_resolved->>'customerName',v_place);
+        -- Ghi chú của người bị bớt mất theo dòng thành viên (thêm lại không khôi phục) ⇒ không còn "lùi được" trọn vẹn: có ghi chú thì
+        -- nói rõ và máy chủ đòi xác nhận (review #277 mục 4).
+        SELECT NULLIF(btrim(m->>'notes'),'') INTO v_note FROM jsonb_array_elements(v_members) m WHERE m->>'customer_id'=v_customer::text;
+        IF v_note IS NOT NULL THEN
+          v_need_confirm:=true;
+          v_warnings:=v_warnings||to_jsonb('Ghi chú của '||(v_resolved->>'customerName')||' trên HĐ sẽ mất (thêm lại không khôi phục): "'||left(v_note,200)||'".');
+        END IF;
+        v_text:=format('bớt người ở %s khỏi %s%s.',v_resolved->>'customerName',v_place,
+          CASE WHEN v_note IS NOT NULL THEN '; xoá cả ghi chú của người này trên HĐ ("'||left(v_note,200)||'")' ELSE '' END);
       END IF;
     ELSE
       IF c.expected_move_out_date IS NULL THEN RETURN jsonb_build_object('kind','rejected','reason','no_notice'); END IF;
@@ -328,12 +389,13 @@ BEGIN
     IF v_rent<1 THEN RETURN jsonb_build_object('kind','needs_input','reason','invalid_params'); END IF;
     IF v_end<=v_start OR v_end>v_start+3660 OR v_start<v_today-366 OR v_start>v_today+366 THEN
       RETURN jsonb_build_object('kind','needs_input','reason','date_out_of_range'); END IF;
-    -- HĐ hiện hành của phòng (đọc DEFINER, không dữ liệu cá nhân) + nháp gần nhất còn sửa được của phòng.
-    SELECT * INTO c FROM public.contracts k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid AND k.status='ACTIVE'
+    -- HĐ còn hiệu lực của phòng (đọc DEFINER, không dữ liệu cá nhân) + nháp gần nhất còn sửa được của phòng. ACTIVE + EXTENDED như web
+    -- coi là còn khách (20261010114500, giữ chỗ phòng); chỉ để cảnh báo nên rộng hơn thao tác người ở (review #277 mục 1).
+    SELECT * INTO c FROM public.contracts k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid AND k.status IN ('ACTIVE','EXTENDED')
       AND k.actual_end_date IS NULL AND k.deleted_at IS NULL ORDER BY k.end_date DESC NULLS LAST,k.id LIMIT 1;
     SELECT * INTO v_last_draft FROM public.contract_drafts d WHERE d.organization_id=v_org AND d.room_id=(v_resolved->>'roomId')::uuid
       AND d.status='EDITABLE' ORDER BY d.created_at DESC,d.id LIMIT 1;
-    v_basis:=md5(jsonb_build_array(p_action,v_resolved->'roomId',c.id,c.updated_at,v_last_draft.id,v_last_draft.updated_at)::text);
+    v_basis:=md5(jsonb_build_array(p_action,v_resolved->'roomId',c.id,c.updated_at,v_last_draft.id,v_last_draft.updated_at,v_resolved->'customerId')::text);
     IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
     -- Máy chủ đòi xác nhận (D-HĐ3): phòng còn HĐ phủ ngày bắt đầu, hoặc đã có nháp của phòng trong 24 giờ.
     IF c.id IS NOT NULL AND COALESCE(c.expected_move_out_date,c.end_date)>=v_start THEN
@@ -403,7 +465,7 @@ BEGIN
         'draft',CASE WHEN p_action='contract.draft' THEN jsonb_build_object('startDate',v_start,'endDate',v_end,'rentPrice',v_rent::text,
           'deposit',v_deposit::text,'paymentCycle','MONTHLY') END)));
   END IF;
-  v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v_resolved));
+  v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',v_params,'resolved',v_resolved));
   IF v_begin->>'state'='replay' THEN RETURN v_begin->'result'; END IF;
   IF v_begin->>'state'='conflict' THEN RETURN jsonb_build_object('kind','rejected','reason','request_conflict'); END IF;
   IF v_begin->>'state' IS DISTINCT FROM 'new' THEN RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409'; END IF;
@@ -526,15 +588,15 @@ BEGIN
   RETURN app_private.hermes_action_receipt_finish_v1(p_binding,p_action,p_request_id,v_outcome);
 END $fn$;
 
-ALTER FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb) OWNER TO postgres;
+ALTER FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb) OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
+REVOKE ALL ON FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
-GRANT EXECUTE ON FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb) TO authenticated;
 
--- 4. Vỏ public: thân 20261022022951 + tra khách cho ba thao tác Mốc 5 (gắn OID hàm tra khách lúc tạo). Câu lệnh ghim băm ở
---    scripts/hermes-task-function-contract.mjs.
+-- 4. Vỏ public: thân 20261022022951 + tra khách cho ba thao tác Mốc 5 (gắn OID hàm tra khách lúc tạo): lượt 1 theo SĐT/tên, lượt 2
+--    (apply) theo customerId trong bản đã giải; cả hai trong tập toà guard trả. Câu lệnh ghim băm ở scripts/hermes-task-function-contract.mjs.
 CREATE OR REPLACE FUNCTION public.hermes_contract_action_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
   p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL)
 RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public
@@ -546,8 +608,14 @@ BEGIN ATOMIC
   l AS MATERIALIZED (SELECT r.resolution,CASE WHEN r.resolution->>'status'='resolved' AND r.resolution#>>'{room,id}' IS NOT NULL THEN
       public.hermes_contract_action_lookup_v1((r.ctx->>'organizationId')::uuid,(r.resolution#>>'{room,id}')::uuid)
       ||CASE WHEN p_action IN ('contract.occupant_add','contract.occupant_remove','contract.draft') THEN jsonb_build_object('party',
-        public.hermes_contract_party_lookup_v1((r.ctx->>'organizationId')::uuid,(r.resolution#>>'{room,id}')::uuid,p_action,p_params))
-        ELSE '{}'::jsonb END END AS lookup FROM r)
+        public.hermes_contract_party_lookup_v1((r.ctx->>'organizationId')::uuid,(r.resolution#>>'{room,id}')::uuid,
+          ARRAY(SELECT jsonb_array_elements_text(r.ctx->'buildingIds')::uuid),p_action,p_params))
+        ELSE '{}'::jsonb END
+    WHEN p_phase='apply' AND p_action IN ('contract.occupant_add','contract.occupant_remove','contract.draft') AND jsonb_typeof(p_resolved)='object'
+      AND p_resolved ? 'customerId' AND p_resolved ? 'roomId' THEN jsonb_build_object('party',
+        public.hermes_contract_party_lookup_v1((r.ctx->>'organizationId')::uuid,(p_resolved->>'roomId')::uuid,
+          ARRAY(SELECT jsonb_array_elements_text(r.ctx->'buildingIds')::uuid),p_action,jsonb_build_object('customerId',p_resolved->'customerId')))
+    END AS lookup FROM r)
   SELECT app_private.hermes_contract_action_step_v1(p_binding,p_action,p_phase,p_request_id,p_params,p_resolved,p_expected_basis,l.resolution,l.lookup) FROM l;
 END;
 
@@ -558,7 +626,7 @@ GRANT EXECUTE ON FUNCTION public.hermes_contract_action_v1(jsonb,text,text,uuid,
 DO $check$
 DECLARE v_party pg_catalog.pg_proc;
 BEGIN
-  SELECT * INTO v_party FROM pg_catalog.pg_proc WHERE oid=to_regprocedure('public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb)');
+  SELECT * INTO v_party FROM pg_catalog.pg_proc WHERE oid=to_regprocedure('public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)');
   IF (SELECT count(*) FROM app_private.hermes_action_policies WHERE action LIKE 'contract.%')<>9
     OR (SELECT count(*) FROM app_private.hermes_action_policies WHERE (action,capability,crm_permission,action_class,confirm,private_only) IN
       (('contract.occupant_add','contracts.edit','contracts.edit','reversible','never',true),
@@ -567,9 +635,9 @@ BEGIN
     OR position('contract.occupant_add' IN (SELECT prosrc FROM pg_catalog.pg_proc WHERE oid=to_regprocedure('app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)')))=0
     OR v_party.oid IS NULL OR v_party.prosecdef OR replace(COALESCE(array_to_string(v_party.proconfig,','),''),'"','')<>'search_path='
     OR position('hermes_contract_party_lookup_v1' IN pg_get_functiondef('public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure))=0
-    OR NOT has_function_privilege('authenticated','public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb)','EXECUTE')
+    OR NOT has_function_privilege('authenticated','public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)','EXECUTE')
     OR NOT has_function_privilege('authenticated','public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE')
-    OR has_function_privilege('anon','public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb)','EXECUTE') OR has_function_privilege('anon','public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE') THEN
+    OR has_function_privilege('anon','public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)','EXECUTE') OR has_function_privilege('anon','public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE') THEN
     RAISE EXCEPTION 'hermes_contract_party_check_failed'; END IF;
 END $check$;
 COMMIT;

@@ -46,11 +46,11 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
   statementSha256:'cb4774dc01070a244241028a4c3977c33222da25f654b817a0a9b860f800ff0b',
  },
- // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp).
+ // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp; lượt 2 tra lại theo customerId).
  {
   name:'public.hermes_contract_action_v1',
   sourcePath:'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
-  statementSha256:'3b1893b51c051fcb73a22ec6fbcc6de8da521a58954e526e0cda31d17f0f879f',
+  statementSha256:'4f6e55f7823b2cfa3458b37866c323e478b1d60b5ac6493e9f55140adf1b20b9',
  },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);

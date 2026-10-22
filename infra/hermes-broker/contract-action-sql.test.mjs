@@ -760,6 +760,125 @@ test('trang Hợp đồng — Mốc 5: thêm / bớt người ở + soạn nháp
     });
   });
 
+  // Mốc 5b (review #277). Overlay của kết nối fixture chỉ phủ toà A ⇒ guard trả buildingIds = [toà A]; khách có HĐ ở toà B.
+  const OUT_CONTRACT = '00000000-0000-4000-8000-000000000990';
+  const outsideB = async () => {
+    await db.query(`INSERT INTO public.customers(id,organization_id,full_name,phone) VALUES($1,$3,'Lê Văn Năm','0916000006'),($2,$3,'Nguyễn Văn Hai','0917000007')`,
+      [c(5), c(6), ORG]);
+    await db.query(`INSERT INTO public.contracts(id,organization_id,room_id,status,contract_number,start_date,end_date) VALUES($1,$2,$3,'ACTIVE','HĐ-B-001','2026-01-01','2026-12-31')`,
+      [OUT_CONTRACT, ORG, OTHER_ROOM]);
+    await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,true),($1,$3,false)', [OUT_CONTRACT, c(5), c(6)]);
+  };
+
+  await t.test('phạm vi = guard ∩ quyền: khách chỉ có HĐ ở toà ngoài khoá ⇒ outside_scope, không nêu tên; ứng viên chỉ trong phạm vi', async () => {
+    await f.rollbackCase(async () => {
+      await outsideB();
+      const out = await run('contract.occupant_add', 'auto', rid(350), { ...P101, customerPhone: '0916000006' });
+      assert.deepEqual(out, { kind: 'needs_input', reason: 'name_unresolved', field: 'customer', wanted: 'SĐT …006', why: 'outside_scope', candidates: [], more: false });
+      assert.equal(JSON.stringify(out).includes('Năm'), false, 'không nêu tên khách ngoài phạm vi');
+      const ambiguous = await run('contract.occupant_add', 'auto', rid(351), { ...P101, customerName: 'Nguyễn Văn Hai' });
+      assert.deepEqual(ambiguous.candidates, [{ name: 'Nguyễn Văn Hai · …678' }, { name: 'Nguyễn Văn Hai · …004' }], 'không có ứng viên toà B');
+      // Khách chưa gắn toà nào (vd vừa tạo trên web) vẫn nhận; khoá phủ cả toà B ⇒ khách toà B nhận.
+      const fresh = await run('contract.occupant_add', 'auto', rid(352), { ...P101, customerPhone: '0913000003' });
+      assert.equal(fresh.kind, 'applied', JSON.stringify(fresh));
+      // Khách toà B từng có HĐ (đã kết thúc) ở toà A ⇒ trong phạm vi (như đọc khách theo toà: HĐ mọi trạng thái).
+      await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,true)', [OLD_CONTRACT, c(5)]);
+      const known = await run('contract.occupant_add', 'auto', rid(353), { ...P101, customerPhone: '0916000006' });
+      assert.equal(known.kind, 'applied', JSON.stringify(known));
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(350) || row.request_id === rid(351)), [], 'hỏi lại không mở biên nhận');
+    });
+    // RLS giấu HĐ toà B (không contracts.view) ⇒ hàm tra khách tưởng khách chưa gắn toà; bước ghi DEFINER thấy mọi HĐ nên vẫn chặn.
+    await f.rollbackCase(async () => {
+      await outsideB();
+      await db.query("UPDATE public.fixture_acl SET allowed=false WHERE permission='contracts.view'");
+      const out = await run('contract.draft', 'auto', rid(354), { buildingName: 'toa a', roomName: 'P102', startDate: '2026-11-01', endDate: '2027-10-31',
+        rentPrice: 3000000, deposit: 0, customerPhone: '0916000006' });
+      assert.deepEqual([out.kind, out.reason, out.why, out.candidates], ['needs_input', 'name_unresolved', 'outside_scope', []]);
+      assert.deepEqual(await drafts(), []);
+    });
+  });
+
+  await t.test('lượt 2 kiểm lại khách: mất quyền xem / ra ngoài phạm vi / bị xoá ⇒ state_changed, không ghi', async () => {
+    for (const [index, change] of [
+      () => db.query("UPDATE public.fixture_acl SET allowed=false WHERE permission='customers.view'"),
+      async () => { await outsideB();
+        await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,false)', [OUT_CONTRACT, c(1)]); },
+      () => db.query('UPDATE public.customers SET deleted_at=clock_timestamp() WHERE id=$1', [c(1)]),
+    ].entries()) await f.rollbackCase(async () => {
+      const preview = await run('contract.occupant_add', 'preview', rid(360 + index), { ...P101, customerPhone: '0912345678' });
+      assert.deepEqual([preview.kind, preview.resolved.customerId], ['preview', c(1)]);
+      const before = await members();
+      await change();
+      assert.deepEqual(await run('contract.occupant_add', 'apply', rid(360 + index), { ...P101, customerPhone: '0912345678' }, preview),
+        { kind: 'rejected', reason: 'state_changed' }, String(index));
+      assert.deepEqual(await members(), before, String(index));
+    });
+    // Bản đã giải bị đổi sang khách khác ở lượt 2: khách công ty khác ⇒ hàm tra khách không thấy; khách khác thấy được ⇒ basis
+    // (gồm khách đã chọn) lệch. Cả hai ⇒ state_changed, không ghi.
+    for (const [index, other] of [c(4), c(3)].entries()) await f.rollbackCase(async () => {
+      const preview = await run('contract.occupant_add', 'preview', rid(364 + index), { ...P101, customerPhone: '0912345678' });
+      const before = await members();
+      assert.deepEqual(await run('contract.occupant_add', 'apply', rid(364 + index), { ...P101, customerPhone: '0912345678' },
+        { ...preview, resolved: { ...preview.resolved, customerId: other } }), { kind: 'rejected', reason: 'state_changed' }, other);
+      assert.deepEqual(await members(), before, other);
+    });
+  });
+
+  await t.test('basis người ở lệch (danh sách đổi giữa hai lượt) ⇒ state_changed; phát lại cùng requestId ⇒ y nguyên, không ghi chồng', async () => {
+    await f.rollbackCase(async () => {
+      const preview = await run('contract.occupant_add', 'preview', rid(370), { ...P101, customerPhone: '0912345678' });
+      await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative) VALUES($1,$2,false)', [CONTRACT, c(2)]);
+      const before = await members();
+      assert.deepEqual(await run('contract.occupant_add', 'apply', rid(370), { ...P101, customerPhone: '0912345678' }, preview),
+        { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await members(), before);
+    });
+    await f.rollbackCase(async () => {
+      const first = await run('contract.occupant_add', 'auto', rid(371), { ...P101, customerPhone: '0912 345 678' });
+      assert.deepEqual([first.kind, first.result.changed], ['applied', true]);
+      // Cùng requestId: cùng SĐT (khác cách viết, cùng băm) ⇒ phát lại y nguyên; SĐT khác ⇒ request_conflict. Danh sách không đổi.
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(371), { ...P101, customerPhone: '0912 345 678' }), first);
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(371), { ...P101, customerPhone: '+84912345678' }), first);
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(371), { ...P101, customerPhone: '0913000003' }), { kind: 'rejected', reason: 'request_conflict' });
+      assert.equal((await members()).length, 2);
+      const removed = await run('contract.occupant_remove', 'auto', rid(372), { ...P101, customerPhone: '0912345678' });
+      assert.equal(removed.kind, 'applied');
+      assert.deepEqual(await run('contract.occupant_remove', 'auto', rid(372), { ...P101, customerPhone: '0912345678' }), removed, 'phát lại sau khi đã bớt');
+      assert.equal((await members()).length, 1);
+      // Biên nhận không giữ SĐT dạng chữ.
+      const stored = (await db.query("SELECT input::text t FROM app_private.hermes_action_receipts WHERE request_id=ANY($1)", [[rid(371), rid(372)]])).rows;
+      assert.equal(stored.length, 2);
+      for (const { t: text } of stored) {
+        assert.match(text, /"customerPhoneSha256": "[0-9a-f]{64}"/);
+        assert.equal(/345.?678/.test(text.replace(/[0-9a-f]{64}/g, '')), false, text);
+      }
+    });
+  });
+
+  await t.test('bớt người có ghi chú ⇒ máy chủ đòi xác nhận, nói ghi chú sẽ mất', async () => {
+    await f.rollbackCase(async () => {
+      await db.query('INSERT INTO public.contract_customers(contract_id,customer_id,is_representative,notes) VALUES($1,$2,false,$3)', [CONTRACT, c(1), 'ở ghép']);
+      const preview = await run('contract.occupant_remove', 'auto', rid(380), { ...P101, customerPhone: '0912345678' });
+      assert.deepEqual([preview.kind, preview.confirm], ['preview', 'required']);
+      assert.deepEqual(preview.warnings, ['Ghi chú của Nguyễn Văn Hai trên HĐ sẽ mất (thêm lại không khôi phục): "ở ghép".']);
+      assert.equal(preview.preview.text, 'Sẽ bớt người ở Nguyễn Văn Hai khỏi phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử); xoá cả ghi chú của người này trên HĐ ("ở ghép").');
+      assert.equal((await members()).length, 2, 'chưa ghi');
+      const applied = await run('contract.occupant_remove', 'apply', rid(380), { ...P101, customerPhone: '0912345678' }, preview);
+      assert.equal(applied.result.text, 'Đã bớt người ở Nguyễn Văn Hai khỏi phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử); xoá cả ghi chú của người này trên HĐ ("ở ghép"). HĐ có 1 người ở.');
+    });
+  });
+
+  await t.test('HĐ EXTENDED: nháp cảnh báo phòng còn HĐ như web; thao tác người ở giữ tra cứu ACTIVE của Mốc 2–4', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.contracts SET status='EXTENDED' WHERE id=$1", [CONTRACT]);
+      const busy = await run('contract.draft', 'auto', rid(390), { ...P101, startDate: '2026-11-01', endDate: '2027-10-31', rentPrice: 4500000, deposit: 4500000 });
+      assert.deepEqual([busy.kind, busy.confirm], ['preview', 'required']);
+      assert.deepEqual(busy.warnings, ['Phòng đang có HĐ HĐ-THU-001 tới 28/02/2027, mà nháp bắt đầu 01/11/2026: kiểm lại trước khi ký.']);
+      assert.deepEqual(await run('contract.occupant_add', 'auto', rid(391), { ...P101, customerPhone: '0912345678' }),
+        { kind: 'needs_input', reason: 'room_has_no_active_contract' });
+    });
+  });
+
   await t.test('hậu điều kiện người ở: hàm ghi hạ cờ đại diện / thêm người lạ ⇒ lùi, crm_refused', async () => {
     for (const [index, bad] of ['party_rep', 'party_extra'].entries()) await f.rollbackCase(async () => {
       await db.query('UPDATE public.fixture_contract_writer SET bad=$1', [bad]);

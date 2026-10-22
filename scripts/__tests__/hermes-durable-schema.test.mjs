@@ -455,7 +455,7 @@ const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uu
   'app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
   'public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
   // Mốc 5 (20261022074815): tra khách INVOKER mà vỏ gọi dưới vai authenticated.
-  'public.hermes_contract_party_lookup_v1(uuid,uuid,text,jsonb)'];
+  'public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)'];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
