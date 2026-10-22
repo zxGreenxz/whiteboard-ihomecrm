@@ -718,7 +718,7 @@ expense.cancel  voucherCode*, reason* (8–1000)
 | --- | --- | --- |
 | `app_private.hermes_expense_create_run_v1` | `9932d56b97e80fa36cb9e65009663d98` | `b09458a449e47e8cd810341babcdc783` |
 | `app_private.hermes_expense_resolve_core_v1` | `59a3a8fddb6ccbdb86fd7ed323025859` | `cddbdbc517ac74329edbf916293c9260` |
-| `app_private.hermes_expense_write_step_v1` | `d82b120263632eb4774bf635a9a00cc9` | `14ebdbcd594a0fcf7a1e5105fc35053a` (Mốc 4b) |
+| `app_private.hermes_expense_write_step_v1` | `d82b120263632eb4774bf635a9a00cc9` | `5ba3da9c66df803792ab769b29dd24a5` (Mốc 4b) |
 
 Ba thân dựng bằng script từ thân production (chỉ thay các chỗ nêu trên). Vỏ `public.hermes_expense_write_v1` và `hermes_expense_scope_v1` không đổi.
 
@@ -764,6 +764,17 @@ Kết luận review: APPROVE có điều kiện, không có lỗi chặn. Migrat
      IF COALESCE(v_voucher.posting_status,'UNPOSTED')='POSTED' THEN RETURN jsonb_build_object('kind','rejected','reason','web_only'); END IF;
      ```
 
+6. **Khoá dòng phiếu NOWAIT** (phiên chính báo từ Hoá đơn #279):
+   - Guard dùng chung (`hermes_action_binding_v1` → `hermes_private_command_connection_v1` → `lock_org_for_decision_v1`) khoá dòng CÔNG TY ngay đầu mọi giao dịch Hermes.
+   - Thứ tự khoá của hai hàm web (đo thân production):
+     - `revise_pending_income_expense_v1` khoá công ty TRƯỚC rồi mới khoá phiếu ⇒ cùng thứ tự Hermes, không vòng;
+     - `cancel_income_expense_flex_v1` khoá phiếu `FOR UPDATE` trước, rồi tới công ty: qua `authorize_tenant_action_v3` khi người huỷ không phải chủ / người lập, và qua trigger `rent_support_voucher_lifecycle_guard_v1` trên `income_expenses`.
+   - Hệ quả: Hermes sửa/huỷ một phiếu mà web đang huỷ ⇒ Hermes giữ công ty chờ phiếu, web giữ phiếu chờ công ty ⇒ 40P01.
+   - Sửa: nhánh sửa/huỷ của bước ghi khoá dòng phiếu `FOR UPDATE NOWAIT` TRƯỚC khi gọi hàm web.
+     - Phiếu đang bị giữ ⇒ 55P03 ngay; connector đổi thành `state_changed` (xem trước lại), web làm xong.
+     - Đổi thứ tự khoá trong bước ghi không gỡ được, vì khoá công ty đã nằm ở guard.
+   - `expense.note` (Mốc 2, đã lên production) có cùng loại rủi ro: hàm bổ sung chèn dòng có khoá ngoại tới phiếu ⇒ cần `KEY SHARE` trên phiếu. Chưa sửa trong #278 vì ngoài phạm vi; ghi vào báo cáo cho phiên chính.
+
 **Kiểm (4b):**
 - PGlite `expense-write-sql` 16/16, có thêm các ca:
   - lượt 2 chốt `period_locked` / `crm_refused` (42703) kèm SQLSTATE trong biên nhận, phát lại y nguyên;
@@ -772,6 +783,10 @@ Kết luận review: APPROVE có điều kiện, không có lỗi chặn. Migrat
   - toà trùng giữ phòng; đổi toà cảnh báo bỏ phòng;
   - xem trước huỷ theo kết cục chạy thử.
 - **19/19 đột biến bị bắt** (14 cũ + 5 cho các sửa trên).
+- **PG17 hai kết nối** (`expense-write-race-sql.test.mjs`, fixture dùng chung `expense-write-fixture.mjs`; bản port hàm huỷ khoá phiếu → công ty như hàm thật):
+  - web đang huỷ phiếu ⇒ `expense.cancel` / `expense.edit` của Hermes trả 55P03 trong < 1 s, web huỷ xong;
+  - không có web chen ⇒ xem trước bình thường;
+  - đối chứng bỏ NOWAIT ⇒ đúng một bên 40P01.
 - Tầng 2 TEST (ROLLBACK, kết nối thật của chủ và một nhân viên):
   - toà trùng ⇒ chỉ đổi "người nhận", phòng giữ nguyên;
   - sửa/huỷ, phiếu THU / hệ thống / phiếu con như mục 19.5;

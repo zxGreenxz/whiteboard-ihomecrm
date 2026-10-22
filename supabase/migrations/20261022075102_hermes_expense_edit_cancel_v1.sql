@@ -17,6 +17,7 @@
 --      cancel_income_expense_flex_v1 — ĐÚNG hàm ghi web; xem trước = chạy thử rồi lùi (phiếu đã vào sổ: "tạo bút toán đảo, KHÔNG khôi phục
 --      được"); lượt 2 mở biên nhận, so basis (phiên bản phiếu) rồi ghi trong cùng khối con, CAS phiên bản lệch ⇒ state_changed không chốt; lỗi khác
 --      (quyền, kỳ chốt, lỗi lập trình) ⇒ chốt rejected với lý do thật + SQLSTATE trong biên nhận. Nêu đúng toà hiện tại ⇒ giữ phòng.
+--      Dòng phiếu khoá FOR UPDATE NOWAIT trước khi gọi hàm web: không chờ web khi đang giữ khoá công ty của guard ⇒ không vòng 40P01.
 -- (4)–(6) dựng từ thân ĐANG CHẠY production (đo 22/10 bằng db:query; ghim md5 trong $requires$, thân của chính file này cũng nhận ⇒ áp lại
 -- được). Vỏ public.hermes_expense_write_v1 và hermes_expense_scope_v1 không đổi. Không ghi dữ liệu nghiệp vụ. Idempotent.
 BEGIN;
@@ -40,7 +41,7 @@ BEGIN
   FOR pin IN SELECT * FROM (VALUES
       ('app_private.hermes_expense_create_run_v1(uuid,jsonb,jsonb,text)','9932d56b97e80fa36cb9e65009663d98','b09458a449e47e8cd810341babcdc783'),
       ('app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)','59a3a8fddb6ccbdb86fd7ed323025859','cddbdbc517ac74329edbf916293c9260'),
-      ('app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','d82b120263632eb4774bf635a9a00cc9','14ebdbcd594a0fcf7a1e5105fc35053a')) v(fn,running,own) LOOP
+      ('app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','d82b120263632eb4774bf635a9a00cc9','5ba3da9c66df803792ab769b29dd24a5')) v(fn,running,own) LOOP
     IF COALESCE((SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid=to_regprocedure(pin.fn)),'') NOT IN (pin.running,pin.own) THEN
       RAISE EXCEPTION 'hermes_expense_edit_cancel_body_drift: %',pin.fn; END IF;
   END LOOP;
@@ -357,7 +358,11 @@ BEGIN
   IF p_action IN ('expense.edit','expense.cancel') THEN
     -- Mốc 4: phiếu đã giải phải của công ty, còn sống, ở toà trong phạm vi khoá, và là phiếu CHI lập tay (hermes_expense_manual_v1: THU ⇒
     -- web_only; luồng hệ thống, hoặc phiếu con định kỳ khi cờ TC5 tắt ⇒ system_voucher). Lượt 2 kiểm lại: bản đã giải đến từ connector.
-    SELECT * INTO v_voucher FROM public.income_expenses ie WHERE ie.id=(v_resolved->>'voucherId')::uuid AND ie.organization_id=v_org AND ie.deleted_at IS NULL;
+    -- Khoá dòng phiếu NOWAIT TRƯỚC khi gọi hàm web (Mốc 4b, cùng mẫu Hoá đơn #279): guard dùng chung đã giữ dòng CÔNG TY từ đầu giao dịch,
+    -- còn hàm web (cancel_income_expense_flex_v1, trigger vòng đời) giữ dòng phiếu rồi mới khoá công ty ⇒ chờ phiếu ở đây là vòng 40P01.
+    -- NOWAIT ⇒ 55P03 ngay (connector: state_changed, xem trước lại), Hermes không bao giờ chờ web.
+    SELECT * INTO v_voucher FROM public.income_expenses ie WHERE ie.id=(v_resolved->>'voucherId')::uuid AND ie.organization_id=v_org AND ie.deleted_at IS NULL
+      FOR UPDATE NOWAIT;
     IF NOT FOUND OR NOT (v_voucher.building_id IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid)) THEN
       RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
     v_why:=app_private.hermes_expense_manual_v1(v_voucher.id);
