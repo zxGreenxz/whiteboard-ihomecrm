@@ -1227,6 +1227,7 @@
     "src/lib/__tests__/contractMeterBoundaryFinalReadingSync.test.ts",
     "src/lib/contractMoneyReceipt.ts",
     "src/lib/contractMoveOutNotice.ts",
+    "src/lib/contractRenewalEndDate.ts",
     "src/lib/contractNoticeOperationReceipt.ts",
     "src/lib/contractPriceAdjustment.ts",
     "src/lib/contractQrImage.ts",
