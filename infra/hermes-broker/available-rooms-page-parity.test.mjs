@@ -157,7 +157,7 @@ test('G1: web-parity pins the sale page as the mirrored source of the page funct
   assert.deepEqual(entry.sql.map(item => item.function), ['public.get_public_available_rooms']);
   assert.match(entry.sql[0].sha256 ?? '', /^[0-9a-f]{64}$/, 'hash written with --write');
   const page = entry.hermes.find(item => item.sql === 'public.hermes_available_rooms_page_v1');
-  assert.deepEqual(page.calls, ['room_sale_workflow_fact_v1', 'hermes_room_page_admission_v1']);
+  assert.deepEqual(page.calls, ['room_sale_workflow_fact_v1', 'hermes_room_page_admission_v1', 'room_sale_policy_active_text_v1']);
   assert(entry.hermes.some(item => item.sql === 'app_private.hermes_room_page_admission_v1'));
   assert(entry.hermes.some(item => item.path === 'infra/hermes-broker/room-read-service.mjs' && item.contains === 'hermes_available_rooms_page_v1'));
   // The legacy entry stays: group preview/send and schedules keep hermes_sale_listing_rooms_v1.

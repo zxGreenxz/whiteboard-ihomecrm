@@ -59,8 +59,8 @@ test('options v7 make Khách hàng selectable and a connection with customers.cr
     assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
     const path = new URL(url).pathname, args = JSON.parse(options.body); paths.push(path.replace('/rest/v1/rpc/', ''));
     try {
-      const reads = /^\/rest\/v1\/rpc\/hermes_connection_(options|context)_v([67])$/.exec(path);
-      if (reads && reads[2] === '7' && !v7Deployed) return Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 });
+      const reads = /^\/rest\/v1\/rpc\/hermes_connection_(options|context)_v([6789])$/.exec(path);
+      if (reads && (['8', '9'].includes(reads[2]) || reads[2] === '7' && !v7Deployed)) return Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 });
       if (reads) return Response.json(await caller(`SELECT public.hermes_connection_${reads[1]}_v${reads[2]}($1::uuid) result`, reads[1] === 'options' ? args.p_org : args.p_connection_id));
       if (path === '/rest/v1/rpc/hermes_customer_create_capabilities_v1') { assert.deepEqual(args, { p_organization_id: ORG }); return Response.json(await rpc(null, 'capabilities', {})); }
       if (path === '/rest/v1/rpc/hermes_customer_create_action_v1') return Response.json(await rpc(args.p_kind, args.p_operation, args.p_input, args.p_binding));
@@ -106,7 +106,7 @@ test('options v7 make Khách hàng selectable and a connection with customers.cr
   // Before v7 (lane not applied yet): negotiated v6 offers no Khách hàng action, so no customer tool can ever list.
   const legacy = (await management.options(browser(), signal())).options;
   assert.deepEqual(legacy.action, []); assert.deepEqual(legacy.scopes, []);
-  assert.deepEqual(paths.filter(path => path.startsWith('hermes_connection_options')).slice(0, 2), ['hermes_connection_options_v7', 'hermes_connection_options_v6']);
+  assert.deepEqual(paths.filter(path => path.startsWith('hermes_connection_options')).slice(0, 4), ['hermes_connection_options_v9', 'hermes_connection_options_v8', 'hermes_connection_options_v7', 'hermes_connection_options_v6']);
   await select(legacy.action, legacy.scopes.map(scope => scope.scopeId));
   assert.equal((await listed()).some(name => CUSTOMER_TOOLS.includes(name)), false);
 

@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T10:34:34.513Z",
+  "generatedAt": "2026-10-22T17:23:10.622Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 812,
+    "ledger-applied": 825,
     "unknown": 81,
     "catalog-proven": 206,
     "superseded": 15
@@ -12444,6 +12444,50 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261020183008_sale_reservation_deadline_received_scope_v1.sql",
+      "version": "20261020183008",
+      "name": "sale_reservation_deadline_received_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "b62067f3839aa07f301817476564bb014aede7564c5db1ded84e5f06874d36a0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:29:13.065Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020183120_sale_room_quick_operations.sql",
+      "version": "20261020183120",
+      "name": "sale_room_quick_operations",
+      "scheme": "timestamp14",
+      "sha256": "55200fd67c2fc0653b2a022af6e6ed957425cdb9aa14ec6ca607546a77dcecd3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:33:00.041Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020183546_hermes_sale_actions_v1.sql",
+      "version": "20261020183546",
+      "name": "hermes_sale_actions_v1",
+      "scheme": "timestamp14",
+      "sha256": "d3efe75edc9b3f254aa05fa40a4a6eec22f7ffd45dbd2ad4d475f75700fe34a2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:35:44.950Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020184631_zalo_broadcast_content_guard_v2.sql",
+      "version": "20261020184631",
+      "name": "zalo_broadcast_content_guard_v2",
+      "scheme": "timestamp14",
+      "sha256": "30431dd72cd7570b3b79c564e11c882aa3d05e620056581e6f2d12c24e9bd633",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:37:49.670Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261020233934_hermes_domain_summary_v1.sql",
       "version": "20261020233934",
       "name": "hermes_domain_summary_v1",
@@ -12529,6 +12573,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T10:01:04.049Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021063721_sale_room_timed_policy_v1.sql",
+      "version": "20261021063721",
+      "name": "sale_room_timed_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "35e346ad0173daba5e2d6ceeee6b7a34bd0f678ddfa1070cd8521bbf261d3e7b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:40:45.618Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021064112_hermes_sale_bulk_policy_v1.sql",
+      "version": "20261021064112",
+      "name": "hermes_sale_bulk_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "930d1353984f9e6b99dc09f4132c589467b3c3b956a7f095c3cc1785934f8d93",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T13:43:26.732Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021072345_hermes_room_timed_policy_projection_v1.sql",
+      "version": "20261021072345",
+      "name": "hermes_room_timed_policy_projection_v1",
+      "scheme": "timestamp14",
+      "sha256": "449458143a3fdc184027046318bbf1d0a35733c1e3e525714251d4a44ae750e3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T14:06:36.633Z|bien-nhan-backup"
       ]
     },
     {
@@ -12757,6 +12834,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022031548_hermes_task_action_create_v1.sql",
+      "version": "20261022031548",
+      "name": "hermes_task_action_create_v1",
+      "scheme": "timestamp14",
+      "sha256": "994d3603c3e1ffc6df95ee9b337623d6c720228aff4978391b19163e60b85aa6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:02:33.121Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql",
+      "version": "20261022031600",
+      "name": "jobs_assignee_visible_v1",
+      "scheme": "timestamp14",
+      "sha256": "fd7f979ab80fcfc7bc7084ffd4ec79821eb267c22a13547debefbefe9cbfa0b6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:05:18.244Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql",
       "version": "20261022044120",
       "name": "hermes_name_directory_virtual_v1",
@@ -12812,6 +12911,39 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022051118_hermes_w2a_invoice_shared_v1.sql",
+      "version": "20261022051118",
+      "name": "hermes_w2a_invoice_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "2ebcd79bc6c2f90774dfcf9bf93e5d1d0ccd817e52dc7f268588ee9401c117e0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:18:57.995Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql",
+      "version": "20261022051620",
+      "name": "hermes_w2a_invoice_reads_v1",
+      "scheme": "timestamp14",
+      "sha256": "aded05f8f880acd1c870a5376e7405c99d05205577abdf87c71d9a55038e938c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T07:21:41.837Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022065634_hermes_task_type_infer_v1.sql",
+      "version": "20261022065634",
+      "name": "hermes_task_type_infer_v1",
+      "scheme": "timestamp14",
+      "sha256": "77fdaeac113cebe12e64322c5c7f279500ee5ad6b0b4cb5956ef9a38dec721ec",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T08:07:39.783Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022101837_bo_sinh_dinh_ky_chong_trung.sql",
       "version": "20261022101837",
       "name": "bo_sinh_dinh_ky_chong_trung",
@@ -12820,6 +12952,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.generate_recurring_vouchers"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022121254_hermes_sale_action_activation_v1.sql",
+      "version": "20261022121254",
+      "name": "hermes_sale_action_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "177d8f000320fb4a3c3828ffe859b8d1ba519c77b72f33cd57b5dae3309fe4df",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T15:05:00.801Z|bien-nhan-backup"
       ]
     },
     {

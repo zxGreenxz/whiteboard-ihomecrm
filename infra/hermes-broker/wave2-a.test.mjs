@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2a, BUILDING, OTHER_BUILDING, USER, ORG, FOREIGN, CUSTOMER_C, CONTRACT_A, INVOICE_A, INVOICE_B, ROOM2,
+import { sharedW2a, BUILDING, OTHER_BUILDING, USER, ORG, FOREIGN, CUSTOMER_C, CONTRACT_A, INVOICE_A, INVOICE_B, ROOM, ROOM2,
   INV_OVER, INV_OVER_CANCELLED, INV_OVER_DELETED, INV_OVER_B, INV_C_PAID, INV_C_REV, PAY_A,
   CONTRACT_FULL, CONTRACT_FI, CONTRACT_TERM, RV1, RV2, RV3, RV_EXCL, RV_SETTLED, S1, S2, S3, T1, T2, T3, CHANGE_BOOK, ROUND_BOOK, OTHER_BOOK,
   L1, L2, L4, L6, L7, V_DETAIL, V_DETAIL_UNAPPROVED, V_DETAIL_RESTRICTED, V_DETAIL_REVERSED } from './wave2-a-sql-fixture.mjs';
@@ -30,6 +30,9 @@ const zFix = readFileSync(Z_PATH, 'utf8');
 // lần cuối và hàm dùng chung public.deposit_reservation_vouchers_v1 (test riêng: wave2-a-coc-quy.test.mjs).
 const POST_PATH = 'supabase/migrations/20261018182656_hermes_w2a_reservation_fund_member_v1.sql';
 const postFix = readFileSync(POST_PATH, 'utf8');
+// Đợt 3 Hoá đơn (22/10): thân sống cuối = thân production (20261019040948) + 7 nhánh báo cáo hoá đơn; test riêng ở wave2-a-hoa-don.test.mjs.
+const INVOICE_READS_PATH = 'supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql';
+const invoiceReads = readFileSync(INVOICE_READS_PATH, 'utf8');
 const READ_HEAD = 'CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(';
 const readBodyOf = sql => sql.slice(sql.indexOf(READ_HEAD)).split('$fn$')[1];
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
@@ -43,7 +46,8 @@ const inCase = work => shared.isolated(async env => { await env.grant(KEYS); ret
 const code = expected => error => error.code === expected;
 const params = (report, values = {}) => ({ ...Object.fromEntries(W2A_REPORTS[report].params.map(name => [name, null])), ...values });
 const ids = (items, key) => items.map(row => row[key]);
-const DEFAULTS = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month: '2026-10' }, change_ledger: { cashbookId: CHANGE_BOOK } };
+const DEFAULTS = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month: '2026-10' }, change_ledger: { cashbookId: CHANGE_BOOK },
+  invoice_room_detail: { roomId: ROOM }, invoice_missing: { month: '2026-11' } };
 const CTX = { organizationId: ORG, userId: USER, report: null, permission: null, scope: 'rows', buildings: [BUILDING], requestedBuildingId: null,
   overlayOrg: false, orgWide: false, isSuperadmin: false, today: '2026-10-16', scopes: { 'customers.view': [BUILDING] } };
 // Hàm đọc của gói, bằng vai authenticated (như cổng INVOKER sẽ gọi).
@@ -62,9 +66,10 @@ const identity = (read, buildings = [BUILDING]) => ({ row: { organizationId: ORG
 
 test('gói A: bảng báo cáo SQL (hermes_w2a_catalog_v1) khớp khai báo JS (W2A_REPORTS)', () => shared.isolated(env => assertPackageParity(env, 'a')));
 
-test('khai báo: 9 báo cáo, đều riêng tư, tên khách qua customers.view; nguồn là hàm dùng chung/RPC web có thật; mục lục chủ đề thu_tien', () => inCase(async env => {
-  assert.deepEqual([...REPORTS].sort(), ['change_ledger', 'collection', 'deposit_refunds', 'held_deposits', 'invoice_detail', 'overpayment', 'payment_schedule',
-    'reservation_settlements', 'reservation_vouchers']);
+test('khai báo: 16 báo cáo, đều riêng tư, tên khách qua customers.view; nguồn là hàm dùng chung/RPC web có thật; mục lục chủ đề thu_tien', () => inCase(async env => {
+  assert.deepEqual([...REPORTS].sort(), ['change_ledger', 'collection', 'collection_by_method', 'deposit_refunds', 'held_deposits', 'invoice_adjustments',
+    'invoice_detail', 'invoice_lateness', 'invoice_missing', 'invoice_reminders', 'invoice_room_debts', 'invoice_room_detail', 'overpayment',
+    'payment_schedule', 'reservation_settlements', 'reservation_vouchers']);
   for (const [report, spec] of Object.entries(W2A_REPORTS)) {
     assert.equal(spec.private, true, report); assert.deepEqual(spec.scopeKeys, ['customers.view'], report); assert.equal(spec.scope, report === 'reservation_vouchers' ? 'rls_buildings' : 'rows', report);
     const fn = spec.source.replace(/^crm\./, '');
@@ -96,7 +101,8 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   assert.doesNotMatch(readBodyOf(fixed), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(fixed, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   assert.equal((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc,
-    readBodyOf(postFix), 'thân sống = bản sau phát hành (phiếu cọc giữ chỗ theo web), thay bản Z (080100)');
+    readBodyOf(invoiceReads), 'thân sống = bản Đợt 3 Hoá đơn (thân production 20261019040948 + 7 nhánh), thay bản sau phát hành (182656)');
+  assert.notEqual(readBodyOf(invoiceReads), readBodyOf(postFix), 'bản Đợt 3 thay thân bản sau phát hành');
   assert.notEqual(readBodyOf(zFix), readBodyOf(fixes), 'bản Z thay thân bản sửa sau review');
   assert.notEqual(readBodyOf(postFix), readBodyOf(zFix), 'bản sau phát hành thay thân bản Z');
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.provolatile vol,
@@ -156,7 +162,7 @@ test('cổng đầu-cuối (public.hermes_w2_read_v1): số như gọi thẳng; 
   assert.ok(wide.fence.orgWide && wide.items.some(row => row.buildingId === OTHER_BUILDING), 'Toàn tổ chức ⇒ có toà B');
 }));
 
-test('rào công ty (000700): mọi hàng của 9 báo cáo mang organizationId từ cột nguồn; cổng gỡ trước khi trả; thân hàm đọc không chép ctx', () => inCase(async env => {
+test('rào công ty (000700): mọi hàng của 16 báo cáo mang organizationId từ cột nguồn; cổng gỡ trước khi trả; thân hàm đọc không chép ctx', () => inCase(async env => {
   for (const report of REPORTS) {
     const raw = await direct(env, report);
     assert.ok(raw.rows.length > 0, `${report}: có hàng để kiểm`);
@@ -393,7 +399,7 @@ test('trần nguồn invoice_detail: hơn 2001 dòng ⇒ đúng 2000 hàng đầ
     [2000, true, 'Tiền phòng', 'Dòng 1996', '3500000.00'], '4 + 2001 dòng hoá đơn + 2 khoản thu + 2 phiếu = 2009 dòng');
 }));
 
-test('rào broker: kết quả SQL thật của cả 9 báo cáo qua domainInput/domainResult của crm_read_report; hàng toà ngoài phạm vi bị chặn', () => inCase(async env => {
+test('rào broker: kết quả SQL thật của cả 16 báo cáo qua domainInput/domainResult của crm_read_report; hàng toà ngoài phạm vi bị chặn', () => inCase(async env => {
   for (const report of REPORTS) {
     const input = domainInput('report', { report, params: DEFAULTS[report] ?? {}, limit: 50 });
     // Phong bì THẬT của lối vào (có fence); broker rào theo fence rồi bỏ fence khỏi đầu ra.

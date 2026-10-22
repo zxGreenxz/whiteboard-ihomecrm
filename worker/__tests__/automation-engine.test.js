@@ -94,11 +94,12 @@ const sbGia = {
       oneshotCalls.push({ name, args });
       return { data: finishResult ?? { ok: true, status: args.p_ok ? 'done' : 'failed' }, error: null };
     }
-    if (name === 'zalo_enqueue_broadcast_oneshot_v1') {
-      expect(Object.keys(args).sort()).toEqual(['p_attachment', 'p_body', 'p_conversation_id', 'p_instance_id',
+    if (name === 'zalo_enqueue_broadcast_oneshot_v2') {
+      expect(Object.keys(args).sort()).toEqual(['p_attachment', 'p_body', 'p_content_guard', 'p_conversation_id', 'p_instance_id',
         'p_not_before', 'p_oneshot_id', 'p_request_key']);
       expect(args.p_instance_id).toBe(INSTANCE_ID);
-    } else if (name !== 'zalo_enqueue_broadcast_v1') throw new Error(`unexpected_fixture_rpc:${name}`);
+    } else if (name !== 'zalo_enqueue_broadcast_v2') throw new Error(`unexpected_fixture_rpc:${name}`);
+    expect(args.p_content_guard).toMatchObject({ version: 1, fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
     // Legacy assertions observe only its exact enqueue boundary. Hermes due
     // reads and runs have their own strict contract and never fabricate a send.
     rpcCalls.push({ name, args });
@@ -258,7 +259,7 @@ describe('engine broadcast — xếp hàng', () => {
     ]);
     expect(workerLogs).toContainEqual(['hermes schedule run rejected', 'schedule-a', 'network_ack_lost']);
     expect(rpcCalls).toHaveLength(4);
-    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
+    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v2')).toBe(true);
     expect(daChen.queue).toHaveLength(4);
   });
 
@@ -384,7 +385,7 @@ describe('engine broadcast — xếp hàng', () => {
     datCauHinh();
     await tickTuDongHoa();
     const first = rpcCalls.map(call => call.args.p_request_key);
-    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
+    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v2')).toBe(true);
     expect(new Set(first).size).toBe(4);
     rpcCalls = [];
     // Same schedule/stats after a lost response or worker restart.
@@ -602,7 +603,7 @@ describe('engine broadcast — lượt gửi một lần', () => {
     await tickTuDongHoa(['org-1']);
     expect(oneshotCalls[0]).toMatchObject({ name: 'zalo_worker_claim_oneshot_v1', args: { p_organization_ids: ['org-1'] } });
     expect(rpcCalls).toHaveLength(8); // (link + ảnh bảng + 2 phòng) × 2 nhóm
-    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v1' && c.args.p_oneshot_id === SHOT)).toBe(true);
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v2' && c.args.p_oneshot_id === SHOT)).toBe(true);
     expect(rpcCalls.map(c => c.args.p_request_key).slice(0, 4)).toEqual([
       `oneshot:${SHOT}:c1:link`, `oneshot:${SHOT}:c1:table_image`, `oneshot:${SHOT}:c1:room:r1`, `oneshot:${SHOT}:c1:room:r2`]);
     expect(rpcCalls[0].args.p_body).toContain('https://ptcrm.test/r/abc');
@@ -628,7 +629,7 @@ describe('engine broadcast — lượt gửi một lần', () => {
     oneshotClaims = [claimOf({ mode: 'compact' })];
     await tickTuDongHoa();
     expect(rpcCalls).toHaveLength(4);
-    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v1')).toBe(true);
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v2')).toBe(true);
     expect(capNhatAutomations).toHaveLength(1);
     expect(capNhatAutomations[0]).toEqual({ stats: expect.objectContaining({ sentToday: 8, lastRoomsHash: vanTayDanhSach(phongGia) }) });
     expect(locCapNhat[0]).toContainEqual(['enabled', true]);
@@ -718,6 +719,6 @@ describe('engine broadcast — lượt gửi một lần', () => {
     await tickTuDongHoa();
     expect(workerLogs).toContainEqual(['automation: chiếm lượt một lần lỗi', 'offline']);
     expect(rpcCalls).toHaveLength(4);
-    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_v2')).toBe(true);
   });
 });

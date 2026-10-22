@@ -54,8 +54,21 @@ export function createActionReads({ catalog, ...options } = {}) {
   });
 }
 
-/** Lớp quyền mở rộng: khoá Action của danh mục được bật cho người dùng (registry ∩ trần công ty ∩ quyền CRM) + phạm vi toà. */
-export function createActionAuth({ baseAuth, reads, catalog } = {}) {
+/** Danh mục thao tác SỐNG phía SQL: các dòng của app_private.hermes_action_policies, đọc qua `actions` của
+ * hermes_action_capabilities_v1 mỗi lần lớp quyền chạy (Đợt 2b, review Mốc 2 mục 6). Connector mới chạy với DB cũ (chưa có dòng của
+ * một thao tác) thì thao tác đó không "sống": runtime không quảng bá nó và broker không nghỉ hưu họ tool cũ mà nó thay. Của cả tiến
+ * trình (danh mục SQL là của cả DB, không theo người); chưa đọc được lần nào, hoặc RPC vắng ⇒ không thao tác nào sống. */
+export function createActionLiveCatalog() {
+  let ids = new Set();
+  return Object.freeze({
+    observe(actions) { ids = new Set(actions !== null && typeof actions === 'object' && !Array.isArray(actions) ? Object.keys(actions) : []); },
+    has: id => ids.has(id),
+  });
+}
+
+/** Lớp quyền mở rộng: khoá Action của danh mục được bật cho người dùng (registry ∩ trần công ty ∩ quyền CRM) + phạm vi toà.
+ * `live` (tuỳ chọn) ghi lại danh mục thao tác sống mỗi lần đọc capability. */
+export function createActionAuth({ baseAuth, reads, catalog, live } = {}) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function') || !Array.isArray(catalog?.keys))
     throw new TypeError('invalid_action_auth');
   const KEYS = catalog.keys;
@@ -67,7 +80,7 @@ export function createActionAuth({ baseAuth, reads, catalog } = {}) {
     // Khoá của họ này chỉ đến từ capabilities, không bao giờ từ lớp quyền gốc.
     if (KEYS.some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) fail('context_changed');
     const cap = extended.capability();
-    if (cap === null) return current;
+    if (cap === null) { live?.observe(null); return current; }
     if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions', 'actions']) ||
         cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||
         cap.authorizationVersion !== current.membership.authorizationVersion || cap.isSuperadmin !== current.isSuperadmin ||
@@ -84,6 +97,7 @@ export function createActionAuth({ baseAuth, reads, catalog } = {}) {
       if (permission.companyEnabled) ceilings.push(key);
       if (permission.allowed) { granted.push(key); scopes[key] = { buildingIds: [...permission.buildingIds], cashbookIds: [] }; }
     }
+    live?.observe(cap.actions);
     return { ...current, permissions: { ...current.permissions, action: [...current.permissions.action, ...granted] },
       companyCeilings: { ...current.companyCeilings, action: [...current.companyCeilings.action, ...ceilings] },
       scopesByPermission: { ...current.scopesByPermission, ...scopes }, epoch: createHash('sha256').update(JSON.stringify({ base: current.epoch, cap })).digest('hex') };

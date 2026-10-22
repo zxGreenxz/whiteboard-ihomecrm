@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1588,
-  "soFileDocBangFs": 416,
-  "tongLoiGoi": 1027,
-  "khongPhanLoaiDuoc": 452,
+  "tongSoFileTest": 1617,
+  "soFileDocBangFs": 422,
+  "tongLoiGoi": 1048,
+  "khongPhanLoaiDuoc": 459,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 57,
+      "soFile": 58,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 168,
+      "soFile": 172,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -195,6 +195,14 @@
         "sql": 9
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "soGoi": 10,
+      "loai": {
+        "sql": 8
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
@@ -396,6 +404,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/wave2-a.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/wave2-foundation.test.mjs",
       "soGoi": 5,
       "loai": {},
@@ -476,6 +492,22 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/roomSaleLockMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
       "soGoi": 5,
       "loai": {
@@ -512,14 +544,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "infra/hermes-broker/wave2-a.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/wave2-d.test.mjs",
@@ -672,22 +696,6 @@
     },
     {
       "file": "src/lib/__tests__/receivableKpisEffectiveOutstandingMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/roomSaleLockMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
       "soGoi": 4,
       "loai": {
         "sql": 4
@@ -1068,6 +1076,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/jobs-assignee-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/metadata-read-sql.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -1091,6 +1107,14 @@
     },
     {
       "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-a-hoa-don.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2
@@ -1298,6 +1322,14 @@
       "soGoi": 2,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/gate-plan.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
     },
@@ -1859,6 +1891,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/sale-policy-page-parity.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/schedule-capabilities.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -1871,6 +1909,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/task-actions.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/task-follow-capabilities-hook.test.mjs",
@@ -1931,6 +1975,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/zalo-content-guard-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-runtime/fixture-server.test.mjs",
@@ -2069,12 +2121,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gate-plan.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/generate-bundle-inventory.test.mjs",

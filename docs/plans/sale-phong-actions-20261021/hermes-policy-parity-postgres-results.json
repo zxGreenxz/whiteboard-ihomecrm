@@ -1,0 +1,75 @@
+{
+  "layer": "Real local PostgreSQL canonical writers/readers/auth plus production JS projections; synthetic sessions; time states set on isolated fixture only; no HTTP or LLM claim",
+  "results": [
+    {
+      "id": "HP01",
+      "request": "Hermes legacy và page giữ cùng danh sách/phạm vi khi chưa có chương trình",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "Ghi chú nền"
+      }
+    },
+    {
+      "id": "HP02",
+      "request": "Canonical web writer lưu ACTIVE; cả legacy/page và public trả cùng chính sách",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "Ghi chú nền\nMiễn phí gửi xe"
+      }
+    },
+    {
+      "id": "HP03",
+      "request": "Chính sách chưa đến giờ không lộ trên Hermes hoặc public",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "Ghi chú nền"
+      }
+    },
+    {
+      "id": "HP04",
+      "request": "Chính sách đã hết giờ tự biến mất ở lần đọc mới, giữ ghi chú nền",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "Ghi chú nền"
+      }
+    },
+    {
+      "id": "HP05",
+      "request": "Policy CANCELLED không trở lại trong hai nguồn danh sách",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "Ghi chú nền"
+      }
+    },
+    {
+      "id": "HP06",
+      "request": "Nội dung dài giữ giới hạn transport241/display240 và bằng canonical oracle đã rút gọn",
+      "status": "passed",
+      "detail": {
+        "rooms": 1,
+        "total": 1,
+        "salePolicy": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA…"
+      }
+    },
+    {
+      "id": "HP07",
+      "request": "Phân trang giữ tổng và không tự mở phạm vi tòa/công ty",
+      "status": "passed"
+    },
+    {
+      "id": "HP08",
+      "request": "Thu hồi rooms.view ở kết nối chặn page, không suy quyền đọc từ quyền sửa CRM",
+      "status": "passed"
+    }
+  ]
+}
