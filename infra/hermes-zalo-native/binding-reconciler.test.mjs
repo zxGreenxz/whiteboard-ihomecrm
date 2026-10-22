@@ -135,3 +135,22 @@ test('a crash immediately after profile publication leaves a durable restart mar
   assert.deepEqual(readNativeConfig(f.configuration.configFile).channels[0],before);
   await reconciler.close();
 });
+test('K1 runs BEFORE any native write: a profile enabling a group platform (config.yaml or .env) stops with a public code, nothing written',async t=>{
+  for(const [label,change] of [['env token',f=>fs.appendFileSync(path.join(f.home,'.env'),'TELEGRAM_BOT_TOKEN=000000:fake-not-a-token\n')],
+    ['yaml platform',f=>fs.writeFileSync(path.join(f.home,'config.yaml'),'model: {default: private-existing}\nplatforms: {discord: {enabled: true}}\n',{mode:0o600})]]){
+    const f=fixture(t);change(f);
+    const before={config:fs.readFileSync(path.join(f.home,'config.yaml'),'utf8'),env:fs.readFileSync(path.join(f.home,'.env'),'utf8')};
+    const reconciler=f.create();t.after(()=>reconciler.close());
+    await reconciler.reconcile();
+    assert.deepEqual(reconciler.status().blocked,[{profile:'alpha',code:'native_profile_shared_platform'}],label);
+    assert.equal(reconciler.status().state,'pending');
+    assert.equal(f.work.provisioningState,'pending',`${label}: no restart_pending acknowledgement`);
+    assert.equal(fs.existsSync(f.configuration.configFile),false,`${label}: native binding not written`);
+    assert.deepEqual({config:fs.readFileSync(path.join(f.home,'config.yaml'),'utf8'),env:fs.readFileSync(path.join(f.home,'.env'),'utf8')},before,`${label}: profile untouched`);
+    // Once the operator turns the platform off explicitly, the next cycle provisions and the block disappears.
+    fs.writeFileSync(path.join(f.home,'config.yaml'),'model: {default: private-existing}\nplatforms: {telegram: {enabled: false}, discord: {enabled: false}}\n',{mode:0o600});
+    await reconciler.reconcile();
+    assert.equal(reconciler.status().blocked,undefined,label);
+    assert.equal(f.work.provisioningState,'restart_pending',label);
+  }
+});

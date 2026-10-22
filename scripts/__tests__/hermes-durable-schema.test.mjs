@@ -441,6 +441,14 @@ const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
 const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1']);
 const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
   ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
+// Shared write foundation (20261021132433 name resolution, 20261021133823 guard/receipts/probe): the caller executes the two
+// SQL-standard wrappers, the pure fold/room-key helpers, the status/capability readers, and only the app_private steps a
+// wrapper binds (name-resolution core, guard, probe step). Receipt begin/finish and the reason map stay owner-only.
+const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.hermes_room_key_v1(text)',
+  'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)', 'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)',
+  'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
+  'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -730,7 +738,9 @@ function securityContract(sql = all, registry = functions) {
       'public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean)',
       'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)',
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
-      'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])'])],
+      'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
+      // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
+      ...WRITE_FOUNDATION_CALLER])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
@@ -891,7 +901,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all eighteen reviewed forward migrations and their 62 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all twenty reviewed forward migrations and their 76 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -903,9 +913,9 @@ test('all eighteen reviewed forward migrations and their 62 latest definitions r
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 18);
-  assert.equal(FORWARD_FUNCTIONS.length, 62);
-  assert.equal(FORWARD_BY_NAME.size, 62, 'one live definition per reviewed name');
+  assert.equal(paths.length, 20);
+  assert.equal(FORWARD_FUNCTIONS.length, 76);
+  assert.equal(FORWARD_BY_NAME.size, 76, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -981,6 +991,7 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     ['public.hermes_domain_read_fast_v1(jsonb,text,jsonb)', 'authenticated'],
     ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
     ['app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])', 'authenticated'],
+    ...WRITE_FOUNDATION_CALLER.map(target => [target, 'authenticated']),
     ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
     ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
     ...INHERITED_CRM_ACL.map(spec => [spec.signature, 'authenticated']),
@@ -989,6 +1000,11 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO service_role`), /cannot execute/, target);
     assert.throws(() => securityContract(`${all}; REVOKE EXECUTE ON FUNCTION ${target} FROM ${role}`), /effective execute ACL/, target);
   }
+  // Only DEFINER steps check bindings, write receipts and map reasons; the caller never reaches them (or the settle trigger) directly.
+  for (const target of ['app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)',
+    'app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)', 'app_private.hermes_action_reason_v1(text,text,text)',
+    'app_private.hermes_action_binding_v1(jsonb)', 'app_private.hermes_action_receipt_settled_v1()'])
+    assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO authenticated`), /cannot execute/, target);
   for (const spec of INHERITED_CRM_ACL) {
     const grant = `GRANT EXECUTE ON FUNCTION ${spec.signature} TO authenticated`;
     assert(all.includes(grant));

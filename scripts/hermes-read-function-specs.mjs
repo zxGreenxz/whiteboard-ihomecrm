@@ -54,11 +54,19 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     statementSha256: '193528a3d333798560c15e7e9d1647a3bb4aec886f247aba52489995d722bc45',
   }),
   // Nợ thực (20261021185540): nhánh receivables đọc public.invoice_effective_outstanding_v1 cho cả tập lọc —
-  // nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần. Earlier bodies stay pinned for the same reason.
+  // nợ đã kéo sang hoá đơn gánh cùng tập chỉ đếm một lần. Earlier bodies stay pinned for the same reason.
   Object.freeze({
     name: 'app_private.hermes_domain_read_rows_fast_v1',
     sourcePath: 'supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql',
     statementSha256: '5c7c0295e29b3fa60b7ffb9135e154706536dc38b79f138d0c7444eee5cbbebc',
+  }),
+  // Nền chung thao tác ghi (M5, 20261021132433): vỏ giải tên INVOKER gắn OID lõi app_private và
+  // hàm thành viên lúc tạo, nên chạy được khi authenticated không có USAGE app_private. Băm lại sau
+  // review #253 (người gọi phải là thành viên ACTIVE của công ty được hỏi).
+  Object.freeze({
+    name: 'public.hermes_write_name_resolve_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: 'bc613cc12b31dffae95f80f13058f2f82a79081ea80cfe19c52b1ebf0cfa309e',
   }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
