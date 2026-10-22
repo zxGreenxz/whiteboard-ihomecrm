@@ -450,7 +450,7 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pu
 $$;
 
 CREATE OR REPLACE FUNCTION app_private.meter_capture_catalog_v1(p_org uuid)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
+RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
  SELECT jsonb_build_object('meters',COALESCE(jsonb_agg(jsonb_build_object('id',m.id,'meterId',m.id,'code',m.code,
   'orgId',m.organization_id,'name',m.name,'buildingId',m.building_id,'buildingName',b.name,'roomId',m.room_id,'roomName',r.name,'meterType',m.meter_type,
   'serviceId',m.service_id,'serialNumber',COALESCE(p.serial_number,m.serial_number),'qrText',CASE WHEN p.revoked_at IS NULL THEN 'ihome-meter:'||p.qr_token END,
@@ -705,8 +705,10 @@ END $$;
 INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 VALUES ('meter-capture-media','meter-capture-media',false,104857600,ARRAY['image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime'])
 ON CONFLICT(id) DO UPDATE SET public=false,file_size_limit=EXCLUDED.file_size_limit,allowed_mime_types=EXCLUDED.allowed_mime_types;
+-- The permission resolver takes decision locks; PostgREST must not put this RPC
+-- in a read-only transaction based on a STABLE declaration.
 CREATE OR REPLACE FUNCTION public.meter_capture_storage_allowed_v1(p_name text,p_write boolean DEFAULT false)
-RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
 DECLARE c app_private.meter_captures%ROWTYPE;v_org uuid;v_building uuid;v_allowed boolean;
 BEGIN
  IF auth.uid() IS NULL THEN RETURN false; END IF;

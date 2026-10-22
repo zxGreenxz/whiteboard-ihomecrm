@@ -875,7 +875,7 @@
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     },
     "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql": {
-      "sha256": "ef091e8b35d70301e8a181b3eb30bd7eac72578f8ef9334a213bdaf0791b6976",
+      "sha256": "c94769291a2234b0fa7a47045b3d735a6d6b71101ca9756ad56768267e8827d2",
       "missingObjects": [
         "table:app_private.meter_capture_profiles",
         "table:app_private.meter_capture_profile_history",

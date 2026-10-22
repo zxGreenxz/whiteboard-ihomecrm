@@ -153,6 +153,24 @@ test('video needs measured server duration; immutable result and late OCR cannot
  assert.equal((await rpc(db, 'getCapture', { captureId: ready.capture.id })).capture.mediaValidated, true);
 });
 
+test('storage authorization remains callable when PostgREST chooses transaction mode from function volatility', async t => {
+ const db = await fixture(); t.after(() => db.close());
+ await db.exec(`CREATE OR REPLACE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
+ RETURNS TABLE(allowed boolean) LANGUAGE plpgsql VOLATILE AS $$ BEGIN
+ PERFORM 1 FROM public.buildings WHERE id=$4 FOR SHARE;
+ RETURN QUERY SELECT $1=auth.uid() AND current_setting('test.access',true)='yes' AND $4='${building}';
+ END $$;`);
+ const volatility = (await db.query("SELECT provolatile FROM pg_proc WHERE oid='public.meter_capture_storage_allowed_v1(text,boolean)'::regprocedure")).rows[0].provolatile;
+ // PostgREST uses a read-only transaction for a STABLE/IMMUTABLE RPC. The real
+ // permission resolver takes a row lock, which fails with 25006 in that mode.
+ await db.exec(volatility === 'v' ? 'BEGIN' : 'BEGIN READ ONLY');
+ try {
+  const result = await db.query('SELECT public.meter_capture_storage_allowed_v1($1,false) AS allowed', [profilePath]);
+  assert.equal(result.rows[0].allowed, true);
+  assert.equal((await rpc(db, 'catalog')).meters.length, 1);
+ } finally { await db.exec('ROLLBACK'); }
+});
+
 test('private storage stays scoped even with a broad legacy policy; originals cannot be overwritten/deleted', async t => {
  const db = await fixture(); t.after(() => db.close()); await register(db); const cap = await start(db);
  await db.exec('SET ROLE authenticated');
