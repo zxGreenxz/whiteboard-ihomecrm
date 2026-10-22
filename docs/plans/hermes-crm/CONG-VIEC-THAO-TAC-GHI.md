@@ -1,8 +1,9 @@
-# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 đã hiện thực)
+# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b đã hiện thực)
 
 Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a` (đã gộp `3ae1d57f6`).
-Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) có ba migration
-và mã connector; **chưa áp migration nào, chưa đổi TEST hay production**.
+Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) và Mốc 2b sửa
+theo review độc lập (mục 17) có hai migration, một bản nháp Q64 chờ chủ (ngoài `supabase/migrations/`) và mã connector;
+**chưa áp migration nào, chưa đổi TEST hay production**. Thứ tự áp: mục 17.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12 (đã gộp `main` #253, đã lên production 22/10).
@@ -76,7 +77,8 @@ task.create        buildingName name(building)   trống được khi roomName c
                    jobType      name(jobType)    trống ⇒ SQL đoán theo content; đoán ⇒ xem trước
                    content*     text 1–200       nội dung ngắn; tiêu đề = "<loại> <content>" như web (bỏ lặp nếu content đã mở đầu bằng tên loại)
                    description  text 1–2000      trống = content
-                   assigneeName name(person)     "tôi"/"mình"/"em"/"anh"/"chị" đứng một mình = người hỏi; trống ⇒ Q31
+                   assigneeName name(person)     "tôi"/"tui"/"chính mình"/"bản thân" = người hỏi (ghi thẳng được); "mình"/"anh"/"chị"/"em" hay tên chính mình
+                                                 ⇒ giải tên như mọi tên, luôn xem trước kèm câu "hiểu là …" (mục 17); trống ⇒ Q31
                    deadline     date             trống ⇒ hết ngày mai (Q30); quá khứ ⇒ needs_input date_out_of_range
                    deadlineTime time HH:MM       trống ⇒ 23:59:59.999 như web
                    priority     oneOf NORMAL, URGENT, LOW   trống ⇒ NORMAL
@@ -109,7 +111,7 @@ Lõi giải tên riêng của trang `app_private.hermes_task_resolve_core_v1` (p
 | Toà, phòng | `public.hermes_write_name_resolve_v1` (D7): toà bỏ dấu, bỏ tiền tố, mã tách bí danh, tên thường gọi; phòng chỉ khớp bằng; chỉ nêu phòng ⇒ toà suy từ phòng duy nhất. Từ khoá cả toà xử lý trước khi gọi |
 | Toà ảo | **Không nhận** (CV6). Hàm giải tên ghi đã loại toà ảo; web cũng không tạo việc ở toà ảo (`useBuildings` lọc `is_virtual`, RLS SELECT `jobs` đi qua `accessible_building_ids()` vốn loại toà ảo). Production: 2/383 việc ở toà ảo, 0 đang mở |
 | Loại việc | Có `jobType` ⇒ hàm giải tên ghi (bỏ loại đã tắt). Trống ⇒ đoán: loại đang bật có tên (bỏ dấu) là một từ hoặc cụm đứng đầu `content`, như `jobQuickInput.ts:122-124`; đúng một ⇒ dùng + đòi xác nhận; 0 hoặc ≥ 2 ⇒ `needs_input` (`field: jobType`) kèm ≤ 8 loại đang bật |
-| Người nhận | Từ chỉ chính mình ⇒ người hỏi. Còn lại ⇒ hàm giải tên ghi (`person`: hồ sơ thấy qua RLS + thành viên ACTIVE theo `hermes_task_assignee_member_v1`, đúng luật hàm tạo việc đang dùng) |
+| Người nhận | Chỉ token tự xưng không thể là tên (`tôi`, `tui`, `self`, `me`, `chính mình`, `chính tôi`, `bản thân`) ⇒ người hỏi. `mình`/`anh`/`chị`/`em` (có thể là tên như "Minh", "Anh") ⇒ hàm giải tên như mọi tên; không khớp ai thấy được ⇒ người hỏi; khớp chính người hỏi hay khớp người khác đều đòi xem trước kèm câu "hiểu là …". Còn lại ⇒ hàm giải tên ghi (`person`: hồ sơ thấy qua RLS + thành viên ACTIVE theo `hermes_task_assignee_member_v1`, đúng luật hàm tạo việc đang dùng) |
 | Thiếu người nhận (Q31) | `app_private.hermes_task_building_managers_v1(org, toà)` (DEFINER) trả id người quản lý toà (mục 3.4); lõi chỉ giữ người mà người hỏi thấy hồ sơ. Đúng 1 ⇒ bản xem trước "Chưa nêu người nhận — giao Nathan (quản lý toà 44TL) nhé?"; 0 hoặc ≥ 2 ⇒ `needs_input` (`field: person`, `why: unspecified`) kèm danh sách |
 | Việc (`job`) | Mã đầy đủ khớp bằng (không phân biệt hoa thường); 3–4 chữ số ⇒ đuôi mã trong các việc đang mở; "vừa giao"/"vừa tạo" ⇒ việc mới nhất người hỏi tạo qua Hermes trong 24 giờ; còn lại ⇒ tiêu đề bỏ dấu chứa chuỗi, chỉ trong việc ĐANG MỞ thấy được qua RLS và trong phạm vi khoá, lọc thêm theo toà/phòng nếu có. 0 ⇒ `not_found`; chỉ khớp việc đã xong ⇒ `task_not_open`; ≥ 2 ⇒ `name_unresolved` kèm ứng viên "JOB-…-0003 · sửa vòi nước (44TL/201, Nathan)". **Không bao giờ tự chọn** (sự cố 21/10: huỷ nhầm việc cùng tên ở 158PVC) |
 | Quy tắc (`rule`) | Mã `DK-NNNN` khớp bằng; còn lại nội dung bỏ dấu chứa chuỗi trong quy tắc chưa xoá; luật mơ hồ như `job` |
@@ -145,13 +147,14 @@ cancel   text: "Huỷ hẳn việc JOB-20261021-0003 'sửa vòi nước' — 44
 recurring_create text: "Tạo việc định kỳ 'kiểm máy bơm' — 111PVC, cả toà — giao Nathan — mỗi thứ Hai, từ 27/10/2026, hạn cuối ngày sinh. Ba lần tới: 27/10, 03/11, 10/11."
 ```
 
-Kết quả `applied` có tên: `{text, job:{code, title, building, room, assignee, deadline, priority}, deadlineDefaulted, link}`; `link` = `/tasks?job=<id>` (khung chung cho phép UUID trong link). Lô: `jobs[]` từng dòng. Q30: tạo thẳng với hạn mặc định thì `text` nói rõ "hạn mặc định hết ngày mai 23/10".
+Kết quả `applied` có tên: `{text, job:{jobId, code, title, building, room, assignee, deadline, priority}, deadlineDefaulted, link}`; `link` = `/tasks?job=<id>` (khung chung cho phép UUID trong link). `job.jobId` (UUID, Mốc 2b) là id duy nhất trong kết quả, để bot nối thẳng `crm_task_follow_set` (`jobId`) sau khi tạo. Lô: `jobs[]` từng dòng. Q30: tạo thẳng với hạn mặc định thì `text` nói rõ "hạn mặc định hết ngày mai 23/10".
 
 ### 2.6 Trùng việc (Q36)
 
 - **Định nghĩa:** cùng toà + cùng phòng (hoặc cùng "cả toà") + cùng loại + đang mở. Production: 25/383 việc (6,5 %) rơi vào trường hợp này.
 - **Hàm dùng chung** `public.job_open_duplicates_v1(p_building uuid, p_room uuid, p_job_type uuid)` INVOKER STABLE, dưới RLS người gọi; trả ≤ 5 việc (mã, tiêu đề, người nhận, hạn). Web dùng được khi làm lại ô tạo việc (Q40 về sau).
 - Có trùng ⇒ máy chủ đòi xác nhận và nêu việc trùng. Tập id trùng nằm trong `basis`: có thêm việc trùng giữa hai lượt ⇒ `state_changed`.
+- Hai lời gọi song song: guard khung chung đã khoá dòng công ty (`lock_org_for_decision_v1`, FOR NO KEY UPDATE) trước mọi quyết định; Mốc 2b thêm khoá tư vấn `(công ty, toà)` lấy TRƯỚC khi tính trùng ở lượt ghi (không lấy ở `preview`). Test PG17 hai kết nối đo riêng từng lớp (mục 17). Web tạo việc không đi qua khoá nào (như hiện nay).
 - Lô: trùng với việc đang mở và trùng giữa các dòng trong lô đều thành cảnh báo theo dòng.
 
 ## 3. SQL
@@ -209,7 +212,7 @@ public.hermes_task_action_v1(p_binding, p_action, p_phase, p_request_id, p_param
 
 ### 3.6 Q35 — người được giao luôn thấy việc của mình
 
-- **Web:** `jobs_select_rbac` thêm vế `OR (assignee_id IS NOT NULL AND assignee_id = (SELECT auth.uid()))`, viết kiểu tập hợp như các vế hiện có. Thông báo E4 mở `/tasks?job=<id>` sẽ thấy việc thay vì "Không tìm thấy".
+- **Web:** policy SELECT cộng thêm `jobs_select_own_assignee` `USING (assignee_id = (SELECT auth.uid()))` (dạng initplan, Mốc 2b), không viết lại `jobs_select_rbac`. Thông báo E4 mở `/tasks?job=<id>` sẽ thấy việc thay vì "Không tìm thấy".
 - **Hermes:** mọi đường đọc mới (`tasks_board`, lõi giải tên `job`) đi qua RLS nên tự có. Đường DEFINER cũ `hermes_task_follow_read_v1` (`role=assigned_to_me`) thêm đúng một vế cùng nghĩa; reader `tasks` của họ đọc v1 tra lại ở Mốc 2 và làm tương tự nếu là DEFINER. Test PG17 khoá: cùng fixture, RLS và các reader DEFINER cho cùng tập việc của người nhận ngoài phạm vi.
 - **Giới hạn:** chỉ là XEM. Người nhận ngoài phạm vi vẫn không sửa/hoàn thành được trên web (RLS UPDATE đòi `tasks.edit` ở toà). Bản xem trước cảnh báo đúng điều này (CV5). Hoàn thành cho người nhận ngoài phạm vi là câu hỏi mới cho chủ.
 - **Phụ thuộc Q53** (chủ chưa trả lời: siết SELECT `jobs` đòi `tasks.view`). Nếu chủ chọn siết thì gộp cùng migration để chỉ thay policy một lần.
@@ -367,7 +370,7 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng.
 
 - **Thứ tự áp production trước khi gộp:** CV-M3 ghim md5 thân của CV-M1, CV-M4 ghim thân W2 đang chạy. Cửa idempotent của CI chạy từng migration trên trạng thái production, nên chuỗi phải được áp production theo đúng thứ tự CV-M1 → CV-M2 → CV-M3 → CV-M4 → CV-M5 → CV-M6 trước khi gộp nhánh chứa migration sau.
 - Có hàm public mới ⇒ `gen:types` sau mỗi lần áp.
-- **Phát hành:** migration trước, connector sau. Lý do: connector đang chạy không biết khoá công việc trong danh mục thao tác nên bỏ qua dòng chính sách mới; còn connector mới mà thiếu dòng chính sách thì lớp khung chung không cấp `tasks.create` ⇒ theo dõi việc tạm ẩn.
+- **Phát hành:** migration trước, connector sau. Lý do: connector đang chạy không biết khoá công việc trong danh mục thao tác nên bỏ qua dòng chính sách mới. Mốc 2b: connector mới gặp DB cũ (chưa có dòng `task.create`) tự nhận ra qua danh mục SỐNG `hermes_action_capabilities_v1.actions` ⇒ giữ tool tạo việc cũ và quyền `tasks.create` kiểu cũ, không quảng bá `crm_action_run`; DB có dòng ⇒ đổi ngay ở lời gọi kế (mục 17).
 
 ## 11. Rủi ro
 
@@ -451,7 +454,7 @@ Mốc 4 dùng `list`/`record` của Thu chi; nếu PR #271 chưa gộp thì Mố
 | --- | --- | --- |
 | `20261022031548_hermes_task_action_create_v1` (CV-M1) | Dòng chính sách `task.create`; bảng `hermes_task_limits` (seed member 30/10, owner 60/40) và `hermes_task_jobs`; `public.job_deadline_v1`, `public.job_open_duplicates_v1`; `hermes_task_building_managers_v1`, `hermes_task_quota_v1`, `hermes_task_when_v1`; lõi giải tên + ba tầng + vỏ `hermes_task_action_v1` | Cần M5/M1 của nền chung (đã ở production) |
 | `20261022031600_jobs_assignee_visible_v1` (CV-M2, Q35 XEM) | `public.job_visible_as_assignee_v1`; policy SELECT mới `jobs_select_own_assignee` (cộng thêm, không sửa `jobs_select_rbac`); `hermes_task_follow_read_v1` (`assigned_to_me`) thêm cùng vế, dựng từ thân production md5 `78f403b9…` | Độc lập với CV-M1 |
-| `20261022031605_jobs_assignee_progress_complete_v1` (CV-M2b, Q64) | Policy UPDATE `jobs_update_own_assignee` + guard cột `zz_jobs_assignee_update_guard` (DEFINER + WHEN `current_user`): người nhận ngoài phạm vi chỉ ghi tiến độ / hoàn thành việc của mình, không đổi cột khác, không mở lại | Cần CV-M2; **chỉ áp khi chủ chọn Q64 (a)** |
+| ~~`20261022031605_jobs_assignee_progress_complete_v1`~~ → bản nháp `docs/plans/hermes-crm/cho-chu/q64_jobs_assignee_progress_complete.sql` (Mốc 2b, Q64) | Policy UPDATE `jobs_update_own_assignee` + guard cột `zz_jobs_assignee_update_guard` (DEFINER + WHEN `current_user`): người nhận ngoài phạm vi chỉ ghi tiến độ / hoàn thành việc của mình, không đổi cột khác, không mở lại | Cần CV-M2; **chỉ áp khi chủ chọn Q64 (a)** |
 
 **Khác thiết kế (đã sửa ngay trong mã):**
 - Không làm `hermes_task_reason_v1`: lỗi tầng ghi của `task.create` chỉ có RLS (42501 ⇒ `not_allowed`) và lỗi lạ, ánh xạ chung đủ; hạn mức trả mã thẳng. Mốc 3 thêm nếu `cancel`/`update` cần.
@@ -474,3 +477,41 @@ Mốc 4 dùng `list`/`record` của Thu chi; nếu PR #271 chưa gộp thì Mố
 **Phát hiện trên TEST:**
 - Phạm vi ghi của joey (guard chung) có cả toà ảo "Kho Văn Phòng Chung"; giải tên việc không nhận toà ảo (CV6) nên không ghi được việc ở đó, khớp web.
 - bosshuy không có `task_types.view` ⇒ không thấy loại việc nào ⇒ `needs_input` loại việc. Web cũng không chọn được loại (cùng RLS). Muốn bosshuy giao việc qua bot thì cấp `task_types.view` cho vai đó.
+
+## 17. Mốc 2b — sửa theo review độc lập (22/10)
+
+| # | Review | Đã sửa |
+| --- | --- | --- |
+| 1 | Từ "mình/anh/chị/em" bị coi là tự giao, ghi thẳng sai người nếu có thành viên tên Minh/Anh | Chỉ token tự xưng không thể là tên (`tôi`, `tui`, `self`, `me`, `chính mình`, `chính tôi`, `bản thân`) là tự giao. `mình`/`anh`/`chị`/`em` đi qua giải tên như mọi tên; khớp người khác ⇒ xem trước "Hiểu '…' là người nhận X; nếu ý là chính anh/chị, nói "giao cho tôi""; không khớp ai thấy được ⇒ chính người hỏi nhưng vẫn xem trước "Hiểu '…' là chính anh/chị"; tên khớp chính người hỏi cũng xem trước. Mơ hồ luôn đòi xác nhận (`v_confirm`) |
+| 2 | Q64 nằm trong `supabase/migrations/` dù chủ chưa trả lời | Dời (git mv) sang `docs/plans/hermes-crm/cho-chu/q64_jobs_assignee_progress_complete.sql`, đầu file ghi rõ là bản nháp và cách đưa vào khi chủ chọn (a). Gỡ khỏi provenance và hồ sơ unknown. Test `jobs-assignee-sql` vẫn chạy bản nháp |
+| 3 | Policy `jobs_select_own_assignee` gọi hàm từng hàng | `USING (assignee_id = (SELECT auth.uid()))` (initplan); khối kiểm cuối đọc đúng dạng này. Hàm `job_visible_as_assignee_v1` giữ cho reader DEFINER của Hermes |
+| 4 | Kiểm trùng chạy trước khoá ⇒ hai lời gọi song song cùng ghi | Khoá tư vấn `(công ty, toà)` lấy TRƯỚC `job_open_duplicates_v1` ở lượt ghi. Test PG17 hai kết nối (`task-action-race-pg.test.mjs`): lời gọi sau chờ rồi thấy việc vừa tạo ⇒ xem trước, đúng 1 việc. **Phát hiện:** đường thật đã tuần tự sẵn nhờ guard khung chung khoá dòng công ty (`lock_org_for_decision_v1`, FOR NO KEY UPDATE); test đo riêng hai lớp — có khoá công ty (B chờ `transactionid`) và gỡ khoá công ty (B chờ `advisory`) — đột biến "tính trùng trước khoá"/"bỏ khoá" chỉ làm đỏ ca thứ hai |
+| 5 | Kết quả không có id để nối theo dõi việc | `result.job.jobId` (UUID). Test: `taskFollowInput('set', {jobId})` nhận; tầng 2: `hermes_task_follow_action_v1('set')` bằng `jobId` vừa tạo ⇒ theo dõi `active` đúng việc |
+| 6 | Connector mới + DB cũ: ẩn tool cũ mà `task.create` chưa có | Danh mục SỐNG (`createActionLiveCatalog`, ghi từ `hermes_action_capabilities_v1.actions` mỗi lần đọc quyền). Runtime chỉ quảng bá / chạy thao tác sống; broker chỉ ẩn tool tạo việc cũ khi `task.create` sống; lớp task cấp `tasks.create` kiểu cũ khi chưa sống. Test tổ hợp "connector mới + DB cũ" (đổi ngay ở lời gọi kế khi DB có dòng) |
+| 7 | Q64 chưa chạy trên bảng `jobs` thật với mọi trigger | Tầng 2 trên TEST (bên dưới) chạy đúng câu UPDATE của web (`useCompleteJob`, RETURNING) qua 8 trigger thật |
+
+Tuỳ chọn của review cũng làm: ca NOT `v_manages` (giao "huy" ⇒ cảnh báo không có `tasks.edit`); Q30 tính kỳ vọng độc lập (`Intl` giờ Việt Nam, mốc UTC); ghi `description` + `URGENT`.
+
+**Tầng 2 trên TEST** (`test-env:thu-sql`, ROLLBACK, không `--ghi`; ghép 031548 + 031600 + phần A + bản nháp Q64 + phần B; binding thật của chủ và joey):
+
+| Ca | Kết quả |
+| --- | --- |
+| Trigger `jobs` trên TEST | `jobs_set_user_id_audit`, `trg_autofill_org`, `trigger_generate_job_code` (BEFORE INSERT); `trigger_jobs_stamp_completion_time`, `trigger_jobs_updated_at`, `zz_khoa_organization_id` (BEFORE UPDATE); `z95_notify_job_assigned_ins/upd` (AFTER) |
+| D1 tạo → theo dõi bằng `jobId` | OK, theo dõi `active` đúng việc |
+| D2 "mình", "anh", "chị", "em", tên chính chủ | OK — xem trước kèm câu "hiểu là" (TEST không có thành viên tên Minh ⇒ hiểu là chính chủ); "chính mình", "tui" ⇒ tự giao rõ ràng |
+| D3a trước Q64: joey bấm "Hoàn thành" như web ở việc toà ngoài phạm vi | 0 hàng (như hiện nay) |
+| D3b sau Q64: cùng câu UPDATE | 1 hàng, `COMPLETED`, `completion_time` do trigger đóng dấu, ảnh + GPS ghi đủ; guard không chặn cột nào trigger tự đổi |
+| D3c hai RPC web gọi tiếp dưới JWT joey | `award_job_bonus` 1 dòng thưởng; `v5_tick_from_job` chạy được |
+| D3d mở lại / đổi tiêu đề | 42501 (guard) |
+| D3e chủ có `tasks.edit` sửa tiêu đề và hoàn thành như web | không bị guard chạm |
+
+Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ đếm mã việc / id các bảng phụ có thể nhích vài số).
+
+**Test:** PGlite `task-action-sql` 13/13, `jobs-assignee-sql` 4/4; PG17 `task-action-race-pg` 1 test + 2 ca; connector `task-actions` 7/7. Đột biến 21/21 (SQL 10, RLS 4, connector 7) + 2/2 thứ tự khoá trên PG17.
+
+**Thứ tự áp (phiên chính, qua lane, TEST rồi production):**
+1. `20261022031548_hermes_task_action_create_v1` và `20261022031600_jobs_assignee_visible_v1` trong **cùng một lượt** (lane chạy theo version: 031548 rồi 031600). Hai file độc lập về phụ thuộc; nếu phải tách lượt thì áp liền nhau, không để 031548 chạy một mình trên production: câu cảnh báo "vẫn thấy việc nhưng không sửa/hoàn thành được" trong bản xem trước chỉ đúng khi 031600 đã áp.
+2. `gen:types` (hàm public mới: `job_deadline_v1`, `job_open_duplicates_v1`, `hermes_task_action_v1`, `job_visible_as_assignee_v1`).
+3. Áp production xong mới gộp PR (cửa idempotent / permission-catalog của CI).
+4. Connector phát hành SAU bước 1. Connector mới gặp DB chưa áp vẫn an toàn (mục 6), nhưng không có `task.create`.
+5. Q64: chỉ khi chủ chọn (a) — cấp tên mới bằng `scripts/tao-ten-migration.mjs` (version sau 031600), chép nguyên văn bản nháp, đăng ký provenance + hồ sơ unknown, áp SAU 031600.

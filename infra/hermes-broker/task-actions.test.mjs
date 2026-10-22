@@ -10,6 +10,7 @@ import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
 import { createTaskAuth } from './task-adapter.mjs';
+import { createActionAuth, createActionLiveCatalog } from './action-adapter.mjs';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 
 // Trang Công việc, Mốc 2 (CONG-VIEC-THAO-TAC-GHI.md mục 2, 7): danh mục task.create, kiểu giờ, why unspecified (Q31), lý do hạn mức
@@ -105,24 +106,74 @@ test('broker: task.create in the catalog retires crm_task_create/status/input_op
   assert.ok(nowBytes < nowBeforeBytes, 'họ thao tác (≈1,96 KB) nhỏ hơn bốn tool cũ được gỡ (≈3,9 KB)');
 });
 
-test('createTaskAuth createFromActions (CV1): tasks.create from the shared action layer is kept, follow keys added, no context_changed', async () => {
+test('createTaskAuth (CV1 + review Mốc 2 mục 6): task.create sống ⇒ tasks.create của lớp khung chung; chưa sống ⇒ lớp task cũ cấp như trước', async () => {
   const input = { accessToken: 'x', organizationId: '00000000-0000-4000-8000-000000000002', userId: '00000000-0000-4000-8000-000000000003', signal: undefined };
-  const current = { permissions: { read: [], action: [TASK_KEY] }, companyCeilings: { read: [], action: [TASK_KEY] }, scopesByPermission: { [TASK_KEY]: { buildingIds: [B], cashbookIds: [] } },
+  const fromActions = { permissions: { read: [], action: [TASK_KEY] }, companyCeilings: { read: [], action: [TASK_KEY] }, scopesByPermission: { [TASK_KEY]: { buildingIds: [B], cashbookIds: [] } },
     membership: { membershipId: 'm', authorizationVersion: 1 }, isSuperadmin: false, epoch: 'e' };
-  const baseAuth = { verifySession: async () => ({}), readAuthorization: async () => current };
-  let createRead = 0;
+  const withoutKey = { ...fromActions, permissions: { read: [], action: [] }, companyCeilings: { read: [], action: [] }, scopesByPermission: {} };
   const follow = { organizationId: input.organizationId, userId: input.userId, membershipId: 'm', authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
     permissions: { 'tasks.edit': { allowed: true, companyEnabled: true, buildingIds: [B] }, 'tasks.delete': { allowed: false, companyEnabled: false, buildingIds: [] },
       'assistant.memory.supervise': { allowed: false, companyEnabled: false, buildingIds: [] } } };
-  const reads = { capabilities: async () => { createRead++; return null; }, followCapabilities: async () => follow };
-  const auth = createTaskAuth({ baseAuth, reads, createFromActions: true });
-  const result = await auth.readAuthorization(input);
-  assert.equal(createRead, 0, 'không đọc hermes_task_create_capabilities_v1');
-  assert.deepEqual(result.permissions.action, [TASK_KEY, 'tasks.edit']);
-  assert.deepEqual(result.scopesByPermission[TASK_KEY], { buildingIds: [B], cashbookIds: [] }, 'phạm vi tasks.create giữ của lớp khung chung');
-  const legacy = createTaskAuth({ baseAuth, reads });
-  await assert.rejects(legacy.readAuthorization(input), error => error.code === 'context_changed', 'chế độ cũ + khoá đã có ⇒ context_changed');
-  const noFollow = createTaskAuth({ baseAuth, reads: {}, createFromActions: true });
-  assert.equal(await noFollow.readAuthorization(input), current);
-  assert.throws(() => createTaskAuth({ baseAuth, reads: {} }), /invalid_task_auth/);
+  const legacyCap = { organizationId: input.organizationId, userId: input.userId, membershipId: 'm', authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
+    allowed: true, companyEnabled: true, buildingIds: [B] };
+  let legacyReads = 0;
+  const reads = { capabilities: async () => { legacyReads++; return legacyCap; }, followCapabilities: async () => follow };
+  const live = createActionLiveCatalog();
+  // DB mới: lớp khung chung đã cấp tasks.create; lớp task chỉ thêm khoá theo dõi, bỏ qua capability cũ.
+  live.observe({ 'task.create': {} });
+  const alive = await createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => fromActions }, reads, createFromActions: true, live })
+    .readAuthorization(input);
+  assert.deepEqual(alive.permissions.action, [TASK_KEY, 'tasks.edit']);
+  assert.deepEqual(alive.scopesByPermission[TASK_KEY], { buildingIds: [B], cashbookIds: [] });
+  assert.equal(legacyReads, 0, 'DB mới: không tốn lời gọi capability cũ (mcp-latency giữ 16 lời gọi REST)');
+  // Connector mới + DB cũ: SQL chưa có dòng task.create ⇒ lớp khung chung không cấp; lớp task cấp tasks.create từ capability cũ.
+  live.observe({});
+  const fallback = await createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => withoutKey }, reads, createFromActions: true, live })
+    .readAuthorization(input);
+  assert.deepEqual(fallback.permissions.action, [TASK_KEY, 'tasks.edit'], 'tạo việc và theo dõi cũ không mất');
+  assert.equal(legacyReads, 1);
+  // DB mất dòng task.create ngay trong lời gọi này (lớp khung chung ghi danh mục sống trống) ⇒ đọc bù capability cũ, vẫn đủ quyền.
+  live.observe({ 'task.create': {} });
+  const lost = await createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => { live.observe({}); return withoutKey; } }, reads, createFromActions: true, live })
+    .readAuthorization(input);
+  assert.deepEqual(lost.permissions.action, [TASK_KEY, 'tasks.edit']);
+  assert.equal(legacyReads, 2, 'đọc bù tuần tự đúng một lần');
+  // Chế độ cũ mà khoá đã có từ lớp dưới ⇒ context_changed (một nguồn mỗi lời gọi).
+  await assert.rejects(createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => fromActions }, reads }).readAuthorization(input),
+    error => error.code === 'context_changed');
+  assert.throws(() => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => fromActions }, reads: {} }), /invalid_task_auth/);
+  assert.throws(() => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => fromActions }, reads, live: {} }), /invalid_task_auth/);
+});
+
+test('tổ hợp connector mới + DB cũ: lớp khung chung ghi danh mục sống; task.create chưa sống ⇒ không quảng bá, tool tạo việc cũ còn; sống ⇒ ngược lại', async t => {
+  const input = { accessToken: 'x', organizationId: '00000000-0000-4000-8000-000000000002', userId: '00000000-0000-4000-8000-000000000003', signal: undefined };
+  const base = { permissions: { read: [], action: [] }, companyCeilings: { read: [], action: [] }, scopesByPermission: {},
+    membership: { membershipId: 'm', authorizationVersion: 1 }, isSuperadmin: false, epoch: 'e' };
+  const catalog = createActionCatalog(TASK_ACTIONS);
+  const capability = sqlHasTask => ({ organizationId: input.organizationId, userId: input.userId, membershipId: 'm', authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
+    permissions: sqlHasTask ? { [TASK_KEY]: { allowed: true, companyEnabled: true, buildingIds: [B] } } : {},
+    actions: sqlHasTask ? { 'task.create': { capability: TASK_KEY, actionClass: 'reversible', confirm: 'never', privateOnly: true } } : {} });
+  const live = createActionLiveCatalog();
+  for (const sqlHasTask of [false, true]) {
+    const auth = createActionAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base }, catalog, live,
+      reads: { capabilities: async () => capability(sqlHasTask) } });
+    const result = await auth.readAuthorization(input);
+    assert.equal(live.has('task.create'), sqlHasTask, 'danh mục sống theo dòng SQL');
+    assert.equal(result.permissions.action.includes(TASK_KEY), sqlHasTask, 'DB cũ: lớp khung chung không cấp khoá SQL chưa khai');
+  }
+  // RPC capability vắng hẳn (PGRST202 ⇒ null) ⇒ không thao tác nào sống.
+  await createActionAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base }, catalog, live, reads: { capabilities: async () => null } })
+    .readAuthorization(input);
+  assert.equal(live.has('task.create'), false);
+  // Broker: kết nối giữ tasks.create (DB cũ: do lớp task cũ cấp) nhưng task.create chưa sống ⇒ crm_action_* không hiện, tool cũ còn.
+  const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
+  const legacy = ['crm_task_create', 'crm_task_status', 'crm_task_input_options'];
+  const old = fullGrantBroker(t, undefined, { actions: createActionRuntime({ catalog, service, live }), actionKeys: [TASK_KEY] });
+  const oldNames = (await old.broker.listTools(old.token)).tools.map(tool => tool.name);
+  assert.ok(legacy.every(name => oldNames.includes(name)), 'DB cũ: tool tạo việc cũ còn');
+  assert.ok(!oldNames.includes('crm_action_run'), 'DB cũ: không quảng bá task.create');
+  await assert.rejects(old.broker.callTool(old.token, 'crm_action_run', { action: 'task.create', params: { content: 'x' } }), error => error.code === 'tool_not_available');
+  live.observe({ 'task.create': {} });
+  const fresh = (await old.broker.listTools(old.token)).tools.map(tool => tool.name);
+  assert.ok(fresh.includes('crm_action_run') && legacy.every(name => !fresh.includes(name)), 'DB mới (cùng connector): đổi ngay ở lời gọi kế');
 });

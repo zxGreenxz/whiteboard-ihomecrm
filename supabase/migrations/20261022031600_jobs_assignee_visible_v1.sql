@@ -1,9 +1,12 @@
 -- Hermes Đợt 2b — trang Công việc, Mốc 2 (CV-M2; docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md mục 3.6). Q35 của chủ (chốt
--- 21/10): người được giao LUÔN thấy việc của chính mình, kể cả ở toà họ không có buildings.view; web và Hermes cùng MỘT hàm.
--- Chỉ phần XEM. Ghi tiến độ / hoàn thành việc của chính mình là migration riêng (Q64, chờ chủ), áp hay không áp độc lập.
+-- 21/10): người được giao LUÔN thấy việc của chính mình, kể cả ở toà họ không có buildings.view; web và Hermes cùng MỘT luật.
+-- Chỉ phần XEM. Ghi tiến độ / hoàn thành việc của chính mình (Q64, chờ chủ) nằm ngoài thư mục migration
+-- (docs/plans/hermes-crm/cho-chu/), phiên chính cấp tên và đưa vào khi chủ chọn.
 --  (1) Hàm dùng chung public.job_visible_as_assignee_v1(assignee): đúng khi người gọi (auth.uid() theo JWT) là người nhận.
---  (2) Policy SELECT mới trên jobs, PERMISSIVE, gọi hàm (1): cộng thêm vào jobs_select_rbac (giữ nguyên); các policy RESTRICTIVE
---      (ranh giới công ty, ẩn demo/sandbox) vẫn áp. Vế này từng có và bị gỡ 28/05 (20260528000003).
+--  (2) Policy SELECT mới trên jobs, PERMISSIVE, cùng luật với (1) nhưng viết dạng initplan assignee_id = (SELECT auth.uid()) để
+--      planner tính auth.uid() một lần cho cả câu (như gói WALRUS của jobs, 20260726130000) — hàm có SET search_path không inline được
+--      (review Mốc 2, mục 3). Cộng thêm vào jobs_select_rbac (giữ nguyên); các policy RESTRICTIVE (ranh giới công ty, ẩn demo/sandbox)
+--      vẫn áp. Vế này từng có và bị gỡ 28/05 (20260528000003). Test PGlite khoá RLS và đường Hermes cho cùng tập.
 --  (3) Đường đọc DEFINER của Hermes: danh sách việc giao cho tôi (role assigned_to_me) thêm đúng vế (1); dựng từ thân ĐANG CHẠY
 --      production (md5 78f403b9…, đọc 22/10 bằng db:query, khớp file 20261015110000), chỉ đổi mệnh đề WHERE.
 -- Không đổi quyền ghi. Idempotent; khối kiểm cuối chỉ đọc catalog.
@@ -29,12 +32,12 @@ ALTER FUNCTION public.job_visible_as_assignee_v1(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.job_visible_as_assignee_v1(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 GRANT EXECUTE ON FUNCTION public.job_visible_as_assignee_v1(uuid) TO authenticated;
 
--- 2. Policy SELECT cộng thêm (không sửa jobs_select_rbac).
+-- 2. Policy SELECT cộng thêm (không sửa jobs_select_rbac), dạng initplan.
 DO $policy$
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_policy WHERE polrelid='public.jobs'::regclass AND polname='jobs_select_own_assignee') THEN
     CREATE POLICY jobs_select_own_assignee ON public.jobs AS PERMISSIVE FOR SELECT TO authenticated
-      USING (public.job_visible_as_assignee_v1(assignee_id));
+      USING (assignee_id = (SELECT auth.uid()));
   END IF;
 END $policy$;
 
@@ -98,7 +101,7 @@ END $fn$;
 DO $check$
 BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_policy p WHERE p.polrelid='public.jobs'::regclass AND p.polname='jobs_select_own_assignee' AND p.polcmd='r' AND p.polpermissive
-      AND pg_get_expr(p.polqual,p.polrelid) LIKE '%job_visible_as_assignee_v1(assignee_id)%')
+      AND pg_get_expr(p.polqual,p.polrelid) LIKE '%assignee_id = ( SELECT auth.uid()%')
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='public.job_visible_as_assignee_v1(uuid)'::regprocedure AND NOT prosecdef AND provolatile='s')
     OR has_function_privilege('anon','public.job_visible_as_assignee_v1(uuid)','EXECUTE')
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='public.hermes_task_follow_read_v1(jsonb,jsonb)'::regprocedure AND prosecdef

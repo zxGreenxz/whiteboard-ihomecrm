@@ -13,6 +13,8 @@ export const MANAGER = '00000000-0000-4000-8000-0000000000c1';
 export const STAFF = '00000000-0000-4000-8000-0000000000c2';
 export const CO_OWNER = '00000000-0000-4000-8000-0000000000c3';
 export const OUTSIDER = '00000000-0000-4000-8000-0000000000c4';
+// Thành viên tên chứa 'Minh' (review Mốc 2, chặn 1): 'Minh'/'mình' phải giao cho người này qua xem trước, không thành tự giao.
+export const MINH = '00000000-0000-4000-8000-0000000000c5';
 export const VIRTUAL = '00000000-0000-4000-8000-0000000000d1';
 export const ROOM_A201 = '00000000-0000-4000-8000-0000000000d2';
 export const VIRTUAL_ROOM = '00000000-0000-4000-8000-0000000000d4';
@@ -109,17 +111,17 @@ async function createJobs(db) {
 }
 
 /** Fixture đầy đủ: nền chung (M5 + M1) + jobs + migration Công việc (chạy hai lượt: idempotent). `extra` = migration chạy sau. */
-export async function setupTaskActions(t, { sql = CREATE_SQL, extra = [] } = {}) {
-  const f = await financeSetup(t, { action: `${SUPPORT}\n${migration('hermes_write_name_resolve_v1')}` });
+export async function setupTaskActions(t, { sql = CREATE_SQL, extra = [], database } = {}) {
+  const f = await financeSetup(t, { action: `${SUPPORT}\n${migration('hermes_write_name_resolve_v1')}`, database });
   const { db } = f;
   await db.exec(migration('hermes_action_foundation_v1'));
   await createJobs(db);
-  await db.exec(`INSERT INTO auth.users VALUES('${MANAGER}'),('${STAFF}'),('${CO_OWNER}'),('${OUTSIDER}') ON CONFLICT DO NOTHING;
+  await db.exec(`INSERT INTO auth.users VALUES('${MANAGER}'),('${STAFF}'),('${CO_OWNER}'),('${OUTSIDER}'),('${MINH}') ON CONFLICT DO NOTHING;
     UPDATE public.organization_memberships SET member_type='OWNER' WHERE user_id='${USER}';
     INSERT INTO public.organization_memberships(id,user_id,organization_id,status,member_type) VALUES
       ('${MANAGER}','${MANAGER}','${ORG}','ACTIVE','STAFF'),('${STAFF}','${STAFF}','${ORG}','ACTIVE','STAFF'),
-      ('${CO_OWNER}','${CO_OWNER}','${ORG}','ACTIVE','OWNER'),('${OUTSIDER}','${OUTSIDER}','00000000-0000-4000-8000-00000000f0f0','ACTIVE','STAFF');
-    INSERT INTO public.profiles VALUES('${USER}','Chủ Thử'),('${MANAGER}','Nathan Quản Lý'),('${STAFF}','Huy Nhân Viên'),('${CO_OWNER}','Chủ Hai'),('${OUTSIDER}','Người Ngoài')
+      ('${CO_OWNER}','${CO_OWNER}','${ORG}','ACTIVE','OWNER'),('${MINH}','${MINH}','${ORG}','ACTIVE','STAFF'),('${OUTSIDER}','${OUTSIDER}','00000000-0000-4000-8000-00000000f0f0','ACTIVE','STAFF');
+    INSERT INTO public.profiles VALUES('${USER}','Chủ Thử'),('${MANAGER}','Nathan Quản Lý'),('${STAFF}','Huy Nhân Viên'),('${CO_OWNER}','Chủ Hai'),('${OUTSIDER}','Người Ngoài'),('${MINH}','Nguyễn Văn Minh')
       ON CONFLICT (id) DO UPDATE SET full_name=excluded.full_name;
     INSERT INTO public.buildings VALUES('${VIRTUAL}','${ORG}','Kho Văn Phòng Chung',true,null,'KHO');
     INSERT INTO public.rooms(id,organization_id,building_id,name,status,deleted_at) VALUES('${ROOM_A201}','${ORG}','${BUILDING}','201','OCCUPIED',null),('${VIRTUAL_ROOM}','${ORG}','${VIRTUAL}','K1','AVAILABLE',null);

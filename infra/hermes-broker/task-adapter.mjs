@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { TASK_ACTION, taskInput, taskResult, mayUseTask } from './task-contract.mjs';
 import { createTaskFollowReads, extendTaskFollowAuthorization } from './task-follow-adapter.mjs';
 const positive=value=>Number.isSafeInteger(value)&&value>0;
+const TASK_CREATE_ACTION_ID='task.create';
 const keys=['connectionId','tokenDigest','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision'];
 export function createTaskReads(options){
   const rpc=createBoundUserRpcTransport({...options,allowedNames:['hermes_task_create_action_v1','hermes_task_create_capabilities_v1']});
@@ -22,31 +23,40 @@ export function createTaskReads(options){
     return rpc('hermes_task_create_action_v1',value.accessToken,{p_binding:value.binding,p_operation:operation,p_input:input},callOptions,{write:operation==='create'});
   }});
 }
-// createFromActions (Đợt 2b, CV1): danh mục thao tác ghi dùng chung có task.create ⇒ tasks.create đến từ lớp đó (phạm vi đã giao
-// buildings.view); lớp này thôi đọc hermes_task_create_capabilities_v1 và chỉ thêm khoá theo dõi/tiến độ/huỷ. Hai lớp cùng cấp một
-// khoá là context_changed (rào bên dưới), nên phải chọn một nguồn.
-export function createTaskAuth({baseAuth,reads,createFromActions=false}){
-  if([baseAuth?.verifySession,baseAuth?.readAuthorization].some(fn=>typeof fn!=='function')||typeof createFromActions!=='boolean'||
-    (!createFromActions&&typeof reads?.capabilities!=='function'))throw new TypeError('invalid_task_auth');
+// createFromActions (Đợt 2b, CV1): danh mục thao tác ghi dùng chung của connector có task.create. Khi task.create SỐNG phía SQL
+// (live.has — review Mốc 2 mục 6) tasks.create do lớp khung chung cấp (phạm vi đã giao buildings.view) và lớp này chỉ thêm khoá theo
+// dõi/tiến độ/huỷ; khi chưa (connector mới + DB cũ) lớp này cấp tasks.create như trước, nên tạo việc và theo dõi cũ không mất. Hai
+// lớp cùng cấp một khoá là context_changed (rào bên dưới), nên mỗi lời gọi chỉ một nguồn. Capability cũ chỉ đọc (cùng đợt với lớp
+// dưới) khi task.create chưa sống theo lần đọc quyền trước: DB mới không tốn thêm lời gọi; lần đầu sau khởi động (danh mục sống còn
+// trống) đọc cả hai; DB vừa mất dòng task.create giữa hai lời gọi thì đọc bù tuần tự. live được lớp khung chung (baseAuth) ghi trong
+// chính lời gọi này, trước khi quyết định bên dưới.
+export function createTaskAuth({baseAuth,reads,createFromActions=false,live}){
+  if([baseAuth?.verifySession,baseAuth?.readAuthorization,reads?.capabilities].some(fn=>typeof fn!=='function')||typeof createFromActions!=='boolean'||
+    (live!==undefined&&typeof live?.has!=='function'))throw new TypeError('invalid_task_auth');
+  const fromActions=()=>createFromActions&&(live===undefined||live.has(TASK_CREATE_ACTION_ID));
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
-    if(createFromActions){
-      if(typeof reads?.followCapabilities!=='function')return baseAuth.readAuthorization(input);
-      const reading=await readWithBaseAuthorization(baseAuth,input,()=>reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}));
-      return extendTaskFollowAuthorization(reading.current,reading.capability(),input);
-    }
     // Task and follow capability RPCs start in the same wave as the base chain.
     // The follow observation is still consulted (and its failure surfaced) only
     // after a present, valid task capability, exactly as before.
     const follows=typeof reads.followCapabilities==='function';
+    const capabilityInput={accessToken:input.accessToken,organizationId:input.organizationId};
+    const legacy=!fromActions();
     const reading=await readWithBaseAuthorization(baseAuth,input,async()=>{
-      const [task,follow]=await Promise.allSettled([reads.capabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}),
-        follows?reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}):undefined]);
-      if(task.status==='rejected')throw task.reason;
-      return {cap:task.value,follow};
+      const [task,follow]=await Promise.allSettled([legacy?reads.capabilities(capabilityInput,{signal:input.signal}):undefined,
+        follows?reads.followCapabilities(capabilityInput,{signal:input.signal}):undefined]);
+      return {task,follow};
     });
     const current=reading.current;
+    let {task,follow}=reading.capability();
+    if(fromActions()){
+      if(!follows)return current;
+      if(follow.status==='rejected')throw follow.reason;
+      return extendTaskFollowAuthorization(current,follow.value,input);
+    }
     if(current.permissions.action.includes(TASK_ACTION)||current.companyCeilings.action.includes(TASK_ACTION))throw new BrokerError('context_changed');
-    const {cap,follow}=reading.capability();if(cap===null)return current;
+    if(!legacy)[task]=await Promise.allSettled([reads.capabilities(capabilityInput,{signal:input.signal})]);
+    if(task.status==='rejected')throw task.reason;
+    const cap=task.value;if(cap===null)return current;
     if(!domainExact(cap,['organizationId','userId','membershipId','authorizationVersion','isSuperadmin','policyVersion','allowed','companyEnabled','buildingIds'])||
       cap.organizationId!==input.organizationId||cap.userId!==input.userId||cap.membershipId!==current.membership.membershipId||cap.authorizationVersion!==current.membership.authorizationVersion||
       cap.isSuperadmin!==current.isSuperadmin||!(cap.policyVersion===0||positive(cap.policyVersion))||typeof cap.allowed!=='boolean'||typeof cap.companyEnabled!=='boolean'||

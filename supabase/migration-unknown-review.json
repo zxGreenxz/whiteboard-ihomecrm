@@ -886,7 +886,7 @@
         },
         {
           "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 16 (Mốc 2): phạm vi, test, tầng 2 trên TEST"
+          "trich_doan": "mục 16 (Mốc 2) và 17 (Mốc 2b sửa theo review): phạm vi, test, tầng 2 trên TEST, thứ tự áp"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
@@ -898,8 +898,8 @@
         "function:public.job_open_duplicates_v1",
         "function:app_private.hermes_task_building_managers_v1"
       ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 (22/10/2026)",
-      "sha256": "5c6f6c90993cfa7a9dc221704e073b23f9b3a22643ac16bcf52c89acb01f4a06"
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 + 2b (22/10/2026)",
+      "sha256": "994d3603c3e1ffc6df95ee9b337623d6c720228aff4978391b19163e60b85aa6"
     },
     "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql": {
       "bangChung": [
@@ -913,7 +913,7 @@
         },
         {
           "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 16 (Mốc 2): phạm vi, test, tầng 2 trên TEST"
+          "trich_doan": "mục 16 (Mốc 2) và 17 (Mốc 2b sửa theo review): phạm vi, test, tầng 2 trên TEST, thứ tự áp"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
@@ -922,33 +922,8 @@
         "function:public.job_visible_as_assignee_v1",
         "policy:public.jobs.jobs_select_own_assignee"
       ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 (22/10/2026)",
-      "sha256": "c79fb7c188eb11f63b0ec051abbece9d7bb32eb2e921a914ac0357a118e094b6"
-    },
-    "supabase/migrations/20261022031605_jobs_assignee_progress_complete_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261022031605_jobs_assignee_progress_complete_v1.sql",
-          "trich_doan": "CREATE POLICY jobs_update_own_assignee ON public.jobs (PERMISSIVE UPDATE); CREATE OR REPLACE FUNCTION app_private.jobs_assignee_update_guard_v1; CREATE TRIGGER zz_jobs_assignee_update_guard (WHEN current_user IN authenticated, anon)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 22/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 16 (Mốc 2): phạm vi, test, tầng 2 trên TEST"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Q64 của chủ, CHƯA trả lời: người được giao ghi tiến độ / hoàn thành việc của chính mình ở toà họ không quản lý), chưa đi qua lane apply CÓ CHỦ Ý — phiên chính chỉ áp khi chủ chọn phương án (a); cần 20261022031600 trước. Bằng chứng: PGlite jobs-assignee-sql.test.mjs (ghi tiến độ/hoàn thành được; đổi tiêu đề/toà/người nhận/hạn và mở lại việc bị 42501; người khác bị RLS chặn), 2 đột biến bị bắt, lane buildTransaction nhận file, chạy trên TEST trong ROLLBACK.",
-      "missingObjects": [
-        "function:app_private.jobs_assignee_update_guard_v1",
-        "policy:public.jobs.jobs_update_own_assignee",
-        "trigger:public.jobs.zz_jobs_assignee_update_guard"
-      ],
-      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 (22/10/2026)",
-      "sha256": "be1331ad5fd33f057f9a1b993ec8c6c401a04314b0302eef180c9b711c3c81ad"
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 2 + 2b (22/10/2026)",
+      "sha256": "fd7f979ab80fcfc7bc7084ffd4ec79821eb267c22a13547debefbefe9cbfa0b6"
     }
   }
 }

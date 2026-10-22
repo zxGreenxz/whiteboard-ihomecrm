@@ -476,9 +476,11 @@ export function createBroker({
   const mayUseOldExpense = (identity, operation) => mayUseExpenseAction(identity.effective, operation) && !actionFamilyListed(identity);
   // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
   // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
-  const taskCreateRetired = typeof action?.knows === 'function' && action.knows('task.create');
+  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
+  // còn nguyên, không mất đường tạo việc.
+  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
   const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
-    !(taskCreateRetired && TASK_RETIRED_OPERATIONS.includes(operation));
+    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),

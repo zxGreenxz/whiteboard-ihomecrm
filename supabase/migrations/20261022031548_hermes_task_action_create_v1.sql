@@ -166,6 +166,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalo
 DECLARE v_org uuid; v_scope uuid[]; v_building text; v_room text; v_type text; v_person text; v_content text; v_whole boolean:=false;
   v_self boolean:=false; v_res jsonb; v_job jsonb; v_who jsonb; v_guessed boolean:=false; v_date date; v_time time; v_deadline timestamptz;
   v_fold text; v_tfold text; v_title text; v_desc text; v_priority text; v_found jsonb; v_best integer; v_more boolean;
+  v_pfold text; v_ambiguous boolean:=false;
 BEGIN
   IF p_action IS NULL OR p_action<>'task.create' OR p_ctx IS NULL OR p_params IS NULL OR jsonb_typeof(p_params)<>'object'
     OR jsonb_typeof(p_params->'content') IS DISTINCT FROM 'string' THEN RAISE EXCEPTION 'hermes_task_invalid' USING ERRCODE='22023'; END IF;
@@ -207,13 +208,23 @@ BEGIN
     END IF;
   END IF;
 
-  -- Người nhận: từ chỉ chính mình ⇒ người hỏi; còn lại qua hàm giải tên (hồ sơ thấy được + thành viên ACTIVE); trống ⇒ Q31.
-  IF v_person IS NOT NULL AND public.hermes_name_fold_v1(v_person) IN ('toi','minh','tui','em','anh','chi','self','me','chinh minh','ban than') THEN
-    v_self:=true; v_person:=NULL; END IF;
+  -- Người nhận (review Mốc 2, chặn 1): chỉ từ KHÔNG thể là tên người mới hiểu là chính người hỏi và được ghi thẳng. "mình", "anh",
+  -- "chị", "em" có thể là tên (Minh, Anh…) ⇒ qua hàm giải tên (hồ sơ thấy được + thành viên ACTIVE); không thấy ai tên như vậy
+  -- thì hiểu là chính người hỏi nhưng cờ mơ hồ ⇒ LUÔN xem trước. Tên giải ra đúng người hỏi cũng tính là mơ hồ. Trống ⇒ Q31.
+  IF v_person IS NOT NULL THEN
+    v_pfold:=public.hermes_name_fold_v1(v_person);
+    IF v_pfold IN ('toi','tui','self','me','chinh minh','chinh toi','ban than') THEN v_self:=true; v_person:=NULL;
+    ELSIF v_pfold IN ('minh','anh','chi','em') THEN v_ambiguous:=true; END IF;
+  END IF;
   IF v_person IS NOT NULL THEN
     v_who:=public.hermes_write_name_resolve_v1(v_org,v_scope,jsonb_build_object('person',v_person));
-    IF v_who->>'status' IS DISTINCT FROM 'resolved' THEN RETURN v_who; END IF;
-    v_who:=v_who->'person';
+    IF v_who->>'status'='resolved' THEN
+      v_who:=v_who->'person';
+      IF v_who->>'id'=auth.uid()::text THEN v_ambiguous:=true; END IF;
+    ELSIF v_ambiguous AND v_who->>'why'='not_visible' THEN
+      v_who:=jsonb_build_object('id',auth.uid(),'name',(SELECT p.full_name FROM public.profiles p WHERE p.id=auth.uid()));
+    ELSE RETURN v_who;
+    END IF;
   ELSIF v_self THEN
     v_who:=jsonb_build_object('id',auth.uid(),'name',(SELECT p.full_name FROM public.profiles p WHERE p.id=auth.uid()));
   END IF;
@@ -242,6 +253,7 @@ BEGIN
     'wholeBuilding',v_whole AND v_room IS NULL AND jsonb_typeof(v_res->'room') IS DISTINCT FROM 'object',
     'roomMissing',jsonb_typeof(v_res->'room') IS DISTINCT FROM 'object' AND NOT v_whole,
     'jobType',v_job,'jobTypeGuessed',v_guessed,'person',v_who,'personMissing',v_who IS NULL,
+    'personAmbiguous',v_ambiguous,'personWanted',CASE WHEN v_ambiguous THEN left(btrim(p_params->>'assigneeName'),40) END,
     'deadline',v_deadline,'deadlineDefaulted',v_date IS NULL,'title',v_title,'description',v_desc,'priority',v_priority);
 END $fn$;
 
@@ -288,6 +300,7 @@ BEGIN
       'wholeBuilding',p_resolution->'wholeBuilding','roomMissing',p_resolution->'roomMissing',
       'jobTypeId',p_resolution#>'{jobType,id}','jobTypeGuessed',p_resolution->'jobTypeGuessed',
       'assigneeId',COALESCE(p_resolution#>'{person,id}','null'::jsonb),'assigneeSuggested',false,
+      'assigneeAmbiguous',COALESCE(p_resolution->'personAmbiguous','false'::jsonb),'assigneeWanted',COALESCE(p_resolution->'personWanted','null'::jsonb),
       'deadline',p_resolution->'deadline','deadlineDefaulted',p_resolution->'deadlineDefaulted',
       'title',p_resolution->'title','description',p_resolution->'description','priority',p_resolution->'priority');
     IF p_resolution->'personMissing'='true'::jsonb THEN
@@ -329,6 +342,10 @@ BEGIN
   IF v_deadline<=clock_timestamp() THEN RETURN jsonb_build_object('kind','needs_input','reason','date_out_of_range'); END IF;
   SELECT p.full_name INTO v_assignee_name FROM public.profiles p WHERE p.id=v_assignee;
 
+  -- Lượt có thể ghi (auto/apply): khoá theo (công ty, toà) TRƯỚC khi tính việc trùng (review Mốc 2, mục 4) — hai lời gọi song song
+  -- khác requestId không cùng thấy "chưa có việc trùng" rồi cùng tạo; lời gọi sau thấy việc của lời gọi trước (basis lệch hoặc
+  -- phải xem trước). Khoá giữ tới hết giao dịch ghi.
+  IF p_phase<>'preview' THEN PERFORM pg_advisory_xact_lock(hashtextextended('hermes_task_dup:'||v_org::text||':'||v_building::text,0)); END IF;
   v_dups:=public.job_open_duplicates_v1(v_org,v_building,v_room,v_type);
   IF v_assignee<>v_actor THEN
     PERFORM app_private.lock_org_for_decision_v1(v_org);
@@ -341,10 +358,14 @@ BEGIN
   IF p_phase<>'apply' THEN
     v_confirm:=p_phase='preview' OR COALESCE(ctx->>'confirm','always')<>'never' OR v_assignee<>v_actor
       OR v->'jobTypeGuessed'='true'::jsonb OR v->'roomMissing'='true'::jsonb OR jsonb_array_length(v_dups)>0
-      OR v->'assigneeSuggested'='true'::jsonb OR NOT v_manages;
+      OR v->'assigneeSuggested'='true'::jsonb OR v->'assigneeAmbiguous'='true'::jsonb OR NOT v_manages;
     IF v_confirm THEN
       IF v->'jobTypeGuessed'='true'::jsonb THEN v_warnings:=v_warnings||to_jsonb(format('Loại việc ''%s'' do bot chọn theo nội dung.',v_type_name)); END IF;
       IF v->'roomMissing'='true'::jsonb THEN v_warnings:=v_warnings||to_jsonb('Chưa nêu phòng: việc cho CẢ TOÀ.'::text); END IF;
+      IF v->'assigneeAmbiguous'='true'::jsonb THEN v_warnings:=v_warnings||to_jsonb(left(CASE WHEN v_assignee=v_actor
+        THEN format('Hiểu ''%s'' là chính anh/chị; nếu là người khác, nêu đủ tên người đó.',v->>'assigneeWanted')
+        ELSE format('Hiểu ''%s'' là người nhận %s; nếu ý là chính anh/chị, nói "giao cho tôi".',v->>'assigneeWanted',COALESCE(v_assignee_name,'(không xem được tên)')) END,300));
+      END IF;
       FOR v_dup IN SELECT e FROM jsonb_array_elements(v_dups) e LIMIT 3 LOOP
         v_warnings:=v_warnings||to_jsonb(left(format('Đã có việc %s ''%s'' đang mở ở chỗ này (giao %s, hạn %s) — vẫn tạo thêm?',
           COALESCE(v_dup->>'code','—'),left(v_dup->>'title',80),
@@ -409,7 +430,8 @@ BEGIN
 END $fn$;
 
 -- 4d. Chốt (DEFINER): kết cục không ghi đi thẳng; lỗi hàm ghi ⇒ lý do đóng + chốt rejected; đã ghi ⇒ đối chiếu hàng vừa ghi với
--- kế hoạch, ghi sổ việc, audit HERMES_TASK_CREATED, chốt applied. Lệch ⇒ RAISE (cả giao dịch lùi).
+-- kế hoạch, ghi sổ việc, audit HERMES_TASK_CREATED, chốt applied. Lệch ⇒ RAISE (cả giao dịch lùi). Kết quả có jobId (UUID) để
+-- dùng tiếp cho theo dõi việc; mọi trường khác là tên.
 CREATE OR REPLACE FUNCTION app_private.hermes_task_action_finish_v1(p_binding jsonb,p_action text,p_plan jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE v_job public.jobs; v_plan jsonb:=p_plan->'job'; v_org uuid; v_outcome jsonb; v_building text; v_room text; v_assignee text; v_when text;
@@ -448,7 +470,8 @@ BEGIN
     'text',format('Đã tạo việc %s ''%s'' — toà %s%s — giao %s — hạn %s.',v_job.code,v_job.title,v_building,
       CASE WHEN v_room IS NOT NULL THEN ', phòng '||v_room ELSE ', cả toà' END,
       CASE WHEN v_job.assignee_id=auth.uid() THEN 'chính anh/chị' ELSE COALESCE(v_assignee,'(không xem được tên)') END,v_when),
-    'job',jsonb_strip_nulls(jsonb_build_object('code',v_job.code,'title',v_job.title,'building',v_building,'room',v_room,
+    -- jobId (review Mốc 2, mục 5): để bot gọi tiếp crm_task_follow_set (giao rồi theo dõi); SOUL dặn không đọc UUID cho người dùng.
+    'job',jsonb_strip_nulls(jsonb_build_object('jobId',v_job.id,'code',v_job.code,'title',v_job.title,'building',v_building,'room',v_room,
       'wholeBuilding',v_job.room_id IS NULL,'assignee',CASE WHEN v_job.assignee_id=auth.uid() THEN 'chính anh/chị' ELSE v_assignee END,
       'assigneeSelf',v_job.assignee_id=auth.uid(),
       'deadline',to_char(v_job.deadline AT TIME ZONE app_private.org_timezone_v1(v_org),'YYYY-MM-DD HH24:MI'),'deadlineText',v_when,

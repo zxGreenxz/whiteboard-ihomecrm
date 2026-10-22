@@ -38,9 +38,14 @@ const candidatesOf = value => Array.isArray(value) && value.length <= 8 && value
 export const APPLIED_RESULT_MAX_BYTES = 8_192;
 const fitsApplied = result => Buffer.byteLength(JSON.stringify(result)) <= APPLIED_RESULT_MAX_BYTES;
 
-export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID } = {}) {
+export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live } = {}) {
   if (!catalog || typeof catalog.get !== 'function' || ['prepareAction', 'finalizeAction'].some(key => typeof service?.[key] !== 'function') ||
-      typeof clock !== 'function' || typeof mintRequestId !== 'function') throw new TypeError('invalid_action_runtime');
+      typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function')) throw new TypeError('invalid_action_runtime');
+  // live (Đợt 2b): danh mục thao tác SỐNG phía SQL (createActionLiveCatalog). Có thì thao tác chỉ được quảng bá / chạy khi SQL đã có
+  // dòng của nó (connector mới + DB cũ ⇒ không hiện, không nghỉ hưu tool cũ); không truyền ⇒ như cũ (mọi thao tác của danh mục).
+  const alive = id => live === undefined || live.has(id);
+  const usable = (effective, id) => catalog.granted(effective, id) && alive(id);
+  const anyUsable = effective => catalog.ids.some(id => usable(effective, id));
   const definitions = Object.freeze(actionTools(catalog, shape));
   const confirms = createConfirmStore({ clock });
   const binding = (connectionId, action, params, requestId) => confirmBinding([connectionId, action, canonicalJson(params), requestId]);
@@ -62,10 +67,10 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
 
   return Object.freeze({
     definitions,
-    listed: effective => listedActionTools(catalog, effective, shape),
+    listed: effective => (anyUsable(effective) ? listedActionTools(catalog, effective, shape) : []),
     route: name => actionToolRoute(name, catalog, shape),
     /** Danh mục có thao tác này (broker dùng để ẩn họ tool cũ mà thao tác thay thế). */
-    knows: id => catalog.get(id) !== null,
+    knows: id => catalog.get(id) !== null && alive(id),
     /** Đồng bộ, trước admission: tách confirmToken (chỉ ở run) và kiểm phong bì. Không đọc gì của CRM. */
     begin(route, args) {
       const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null };
@@ -79,11 +84,11 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     },
     /** handler của broker.invoke: trả biên nhận đông cứng (hoặc kết quả cuối với list). */
     async handle(plan, token, identity, signal) {
-      if (!catalog.any(identity.effective)) fail('tool_not_available');
+      if (!anyUsable(identity.effective)) fail('tool_not_available');
       if (plan.invalid) fail('invalid_request');
       if (plan.tokenInvalid) fail('confirmation_invalid');
       if (plan.op === 'list') return content({ organizationId: identity.row.organizationId, fetchedAt: new Date(clock()).toISOString(),
-        items: catalog.listing(identity.effective, plan.page) });
+        items: catalog.listing(identity.effective, plan.page).filter(item => alive(item.action)) });
       if (plan.op === 'status') {
         const receipt = await service.prepareAction(token, Object.freeze({ op: 'status', requestId: plan.requestId }), { signal });
         if (!emptyReceipt(receipt)) fail('backend_unavailable');
@@ -92,7 +97,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       const action = catalog.get(plan.action);
       // Mã lạ: chỉ nhắc lại khi đúng mẫu mã thao tác (không phản chiếu chuỗi tuỳ ý của mô hình).
       if (action === null) { plan.immediate = needsInput({ action: ACTION_ID.test(plan.action) ? plan.action : null, reason: 'unknown_action' }); return Object.freeze({}); }
-      if (!catalog.granted(identity.effective, action.id)) throw actionRejected('action_disabled');
+      if (!usable(identity.effective, action.id)) throw actionRejected('action_disabled');
       const checked = validateActionParams(action, plan.params);
       if (!checked.ok) { plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: checked.detail }); return Object.freeze({}); }
       plan.params = checked.value; plan.class = action.class;

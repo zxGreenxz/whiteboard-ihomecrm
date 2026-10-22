@@ -41,8 +41,9 @@ export const readsSql = () => {
   const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_LARGEST_PATH, 'utf8'), 'public.hermes_domain_read_v2');
   return applied.replace(fn(applied, 'public.hermes_domain_read_v2'), () => live);
 };
-export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {
-  const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'] }), { db } = f;
+// database: PGlite-shaped { exec, query, close } over real PostgreSQL (one-off PG17 checks, e.g. concurrency); default PGlite.
+export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null, database } = {}) {
+  const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'], database }), { db } = f;
   await db.exec(`CREATE SCHEMA extensions;
     CREATE FUNCTION extensions.digest(value text,algorithm text) RETURNS bytea LANGUAGE sql IMMUTABLE AS $$SELECT decode(md5(value)||md5(value),'hex')$$;
     CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$SELECT jsonb_build_object('session_id',current_setting('request.jwt.claim.session',true))$$;

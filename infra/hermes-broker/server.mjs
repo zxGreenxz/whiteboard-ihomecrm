@@ -40,7 +40,7 @@ import { createDependencyScope } from './dependency-scope.mjs';
 import { createConnectorHealth } from './connector-health.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
-import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
+import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
@@ -155,14 +155,16 @@ export function createHermesBackend(configuration = {}) {
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
     // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký (Đợt 2b: task.create);
     // cờ host actionProbe thêm danh mục thử (chỉ connector TEST). hermes_action_capabilities_v1 chưa áp hoặc chưa khai khoá ⇒ không
-    // cấp khoá nào. Khoá tasks.create khi đó CHỈ đến từ lớp này (createTaskAuth createFromActions).
+    // cấp khoá nào. actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá tasks.create
+    // CHỈ đến từ lớp này và tool tạo việc cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như trước.
     // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
     // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
     const actionCatalog = createActionCatalog([...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
-    const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog,
+    const actionLive = createActionLiveCatalog();
+    const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog, live: actionLive,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
-      createFromActions: actionCatalog.keys.includes(TASK_ACTION) });
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
@@ -190,7 +192,7 @@ export function createHermesBackend(configuration = {}) {
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const actions = createActionRuntime({ catalog: actionCatalog, clock,
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const broker = createBroker({ tasks, roomPass, customers, expenses, actions, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,

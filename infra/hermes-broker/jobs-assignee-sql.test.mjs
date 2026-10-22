@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { setupFollow, ASSIGNEE, USER, ORG, TYPE, u } from './task-follow-fixture.mjs';
 
-// Q35 (CV-M2, 20261022031600) và Q64 (CV-M2b, 20261022031605) trên PGlite, nền fixture theo dõi việc (bảng jobs + RLS + thân
+// Q35 (CV-M2, 20261022031600) và Q64 (CV-M2b, bản nháp chờ chủ ở docs/plans/hermes-crm/cho-chu/) trên PGlite, nền fixture theo dõi việc (bảng jobs + RLS + thân
 // hermes_task_follow_read_v1 thật). Người được giao thấy việc của chính mình ở toà ngoài phạm vi buildings.view — qua RLS web và
 // qua danh sách "giao cho tôi" của Hermes (cùng một hàm); người khác vẫn không thấy. Q64 (migration riêng): người nhận ghi tiến
 // độ / hoàn thành việc của mình, không đổi được cột khác, không mở lại việc đã xong; người có tasks.edit đi như cũ.
 const migration = slug => { const found = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
   assert.equal(found.length, 1, slug); return readFileSync(`supabase/migrations/${found[0]}`, 'utf8').replaceAll('\r\n', '\n'); };
-const VISIBLE = migration('jobs_assignee_visible_v1'), PROGRESS = migration('jobs_assignee_progress_complete_v1');
+// Q64 chưa được chủ trả lời ⇒ bản nháp nằm NGOÀI supabase/migrations (review Mốc 2 mục 2); test vẫn chạy nó trên cùng fixture.
+const VISIBLE = migration('jobs_assignee_visible_v1');
+const PROGRESS = readFileSync('docs/plans/hermes-crm/cho-chu/q64_jobs_assignee_progress_complete.sql', 'utf8').replaceAll('\r\n', '\n');
 const FAR = u(901), OTHER = u(104);
 
 test('Q35 view + Q64 progress/complete for the assignee of a job outside their buildings', { timeout: 300000 }, async t => {
