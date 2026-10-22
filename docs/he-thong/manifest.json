@@ -210,6 +210,12 @@
       "copilotIngest": false,
       "reviewed": null,
       "why": "Bề mặt superadmin chứa nghiệp vụ SMS/OTP nhạy cảm; cần ánh xạ và kiểm quyền superadmin trước khi cho AI đọc. Chỉ phân loại tài liệu, chưa đưa vào corpus."
+    },
+    {
+      "file": "26-cua-van-tay.md",
+      "copilotIngest": false,
+      "reviewed": null,
+      "why": "Cửa vân tay mở cửa thật và phát mã cửa (SmartLife/Tuya); hợp đồng RPC/Edge cho người phát triển, quyền theo tòa chưa ánh xạ cho AI. Chỉ phân loại tài liệu, chưa đưa vào corpus."
     }
   ]
 }

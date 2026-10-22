@@ -71,6 +71,7 @@ for (const [id, job, command, args] of [
   ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['edge-deno-notifications', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/lifecycle-reminders/deno.json']],
+  ['edge-deno-door-access', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/door-access/deno.json']],
   ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],

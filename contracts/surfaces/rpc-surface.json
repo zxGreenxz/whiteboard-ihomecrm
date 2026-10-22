@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2580,
-    "catalogFunctions": 1455,
+    "sourceCallSites": 2629,
+    "catalogFunctions": 1473,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 373,
+    "calledRpcs": 382,
     "byRisk": {
-      "normal": 271,
+      "normal": 280,
       "financial": 102
     },
-    "securityDefiner": 353
+    "securityDefiner": 362
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2005,6 +2005,177 @@
         "src/hooks/income-expenses/specialized.ts"
       ],
       "risk": "financial"
+    },
+    "door_access_action_logs_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_device_id uuid DEFAULT NULL::uuid, p_actions text[] DEFAULT NULL::text[], p_limit integer DEFAULT 100, p_before timestamp with time zone DEFAULT NULL::timestamp with time zone, p_before_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_building_tenants_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_device_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_can_manage_org_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_devices_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_include_inactive boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_disable_device_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_device_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_key_links_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_device_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_link_key_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_device_id uuid, p_unlock_type text, p_unlock_sn integer, p_tuya_user_id text DEFAULT NULL::text, p_device_user_name text DEFAULT NULL::text, p_customer_id uuid DEFAULT NULL::uuid, p_label text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_save_device_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_tuya_device_id text, p_building_id uuid, p_display_name text, p_device_kind text, p_tuya_category text DEFAULT NULL::text, p_tuya_product_name text DEFAULT NULL::text, p_channel_id integer DEFAULT 1, p_password_length integer DEFAULT 7",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
+    },
+    "door_access_unlink_key_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_link_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/door-access/repository.ts"
+      ],
+      "risk": "normal"
     },
     "dry_run_rent_support_reconciliation_v1": {
       "definitions": [

@@ -105,7 +105,8 @@
         "scripts/test-hermes-cde-live.mjs",
         "scripts/test-hermes-native-ci.mjs",
         "scripts/measure-org-leak.mjs",
-        "supabase/functions/_shared/**"
+        "supabase/functions/_shared/**",
+        "supabase/functions/door-access/**"
       ]
     },
     "migration": {

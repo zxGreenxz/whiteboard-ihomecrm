@@ -122,6 +122,16 @@
       ]
     },
     {
+      "id": "door-access-edge",
+      "sourcePaths": [
+        "supabase/functions/door-access/**"
+      ],
+      "suiteId": "edge-deno-door-access",
+      "testPatterns": [
+        "supabase/functions/door-access/*.test.ts"
+      ]
+    },
+    {
       "id": "network-edge",
       "sourcePaths": [
         "supabase/functions/network-center-worker/**",
@@ -1445,6 +1455,19 @@
       ]
     },
     {
+      "id": "hermes-read-web-building-scope",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_read_web_building_scope_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_read_web_building_scope_revert_v1.sql",
+        "infra/hermes-broker/web-building-scope-sql.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/web-building-scope-sql.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-name-directory-context",
       "sourcePaths": [
         "supabase/migrations/*_hermes_name_directory_v1.sql",
@@ -1690,6 +1713,28 @@
         "supabase/functions/quick-entry/index.test.ts"
       ],
       "note": "Hàm AI của trang Báo chi nhanh /chi-tieu: công tắc, JWT, quyền ghi chi, chế độ thử, trần lượt/ngày giờ VN, chuỗi mô hình dự phòng, chép giọng qua OpenRouter, đọc chữ/ảnh qua 9router, trần âm thanh. Nối vào ci-gates.yml ngày 01/10/2026, ngay sau bước llm-proxy (cùng bước cài Deno).",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
+    },
+    {
+      "id": "edge-deno-door-access",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/door-access/deno.json supabase/functions/door-access/index.test.ts supabase/functions/door-access/tuyaClient.test.ts supabase/functions/door-access/tuyaCrypto.test.ts supabase/functions/door-access/tuyaDoor.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/door-access/*.test.ts"
+      ],
+      "note": "Hàm cửa vân tay SmartLife/Tuya của trang /cua-van-tay (hợp đồng docs/he-thong/26-cua-van-tay.md): handler (CORS, thân ≤16 KB, cấu hình/công tắc DOOR_ACCESS_MODE, phiên, công ty DOOR_ACCESS_ORG_ID, RPC quyền bằng JWT người dùng, chốt nhật ký bằng service role, ánh xạ lỗi PostgREST/Tuya, thao tác ghi không gửi lại) + thư viện Tuya (ký HMAC theo vector chính thức, token, AES-ECB đối chiếu node:crypto, bộ chuyển Door Lock API). Bốn file *.test.ts trong thư mục, cùng một deno.json.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",

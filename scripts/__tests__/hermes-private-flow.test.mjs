@@ -357,8 +357,11 @@ test('policy fixture does not retry or continue after permission mutation failur
 function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
   const sources = migrationSources(); const bodies = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').replace(/\r\n?/g, '\n')
     .matchAll(/(\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\$)([\s\S]*?)\1/g)].map(match => [sha(match[2]), match[2]])));
-  const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path))
+  const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path)
+    .map(definition => ({ ...definition, sourcePath: item.path })))
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item]));
+  // What PostgreSQL holds after every source ran: a reviewed successor of the latest source, else the base spec.
+  const live = spec => spec.successors?.[definitions.get(spec.name)?.sourcePath] ?? {};
   const volatility = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').matchAll(
     /CREATE OR REPLACE FUNCTION ((?:public|app_private)\.hermes_\w+)\([^)]*\)[\s\S]*?LANGUAGE \w+ (STABLE|VOLATILE|IMMUTABLE)/g)]
     .map(match => [match[1], { STABLE: 's', VOLATILE: 'v', IMMUTABLE: 'i' }[match[2]]])));
@@ -374,8 +377,9 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
       proconfig: ['search_path=' + spec.searchPath.replaceAll(',', ', ')],
       arguments: spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item => item.trim()).join(', '),
       result: spec.name === 'app_private.hermes_task_assignee_member_v1' ? 'boolean' : 'jsonb',
-      parsed_body: spec.standard, prosrc: spec.standard ? '' : bodies.get(definitions.get(spec.name).bodyDigest), definition: spec.deparsedDefinition,
-      dependencies: spec.dependencies?.map((item,index) => ({...item,bound_oid:1000+index,resolved_oid:1000+index})),
+      parsed_body: spec.standard, prosrc: spec.standard ? '' : bodies.get(definitions.get(spec.name).bodyDigest),
+      definition: live(spec).deparsedDefinition ?? spec.deparsedDefinition,
+      dependencies: (live(spec).dependencies ?? spec.dependencies)?.map((item,index) => ({...item,bound_oid:1000+index,resolved_oid:1000+index})),
       acl: ['postgres', ...(spec.authenticated ? ['authenticated'] : [])].map(grantee => ({grantee,privilege:'EXECUTE',grantable:false})),
       })) };
     }
@@ -738,7 +742,8 @@ test('Hermes function attributes come from the last reviewed CREATE statement',(
   assert.deepEqual(attributes.get('app_private.hermes_schedule_message_v1'),{definer:false,searchPath:'pg_catalog'});
   assert.deepEqual(attributes.get('app_private.hermes_work_memory_int_v1'),{definer:true,searchPath:'pg_catalog'});
   assert.deepEqual([...attributes].filter(([,item])=>item.searchPath==='').map(([name])=>name).sort(),
-    ['app_private.hermes_domain_read_rows_fast_v1','public.hermes_read_text_v1']);
+    ['app_private.hermes_domain_read_rows_fast_v1','app_private.hermes_write_name_resolve_core_v1','public.hermes_name_fold_v1',
+      'public.hermes_read_text_v1','public.hermes_room_key_v1','public.hermes_write_name_resolve_v1']);
   assert.ok([...attributes.values()].every(item=>item.searchPath===''||item.searchPath?.startsWith('pg_catalog')));
 });
 
@@ -753,4 +758,18 @@ test('shared read source is fingerprinted and empty paths require exact reviewed
     {...source,bytes:Buffer.from(text.replace('SELECT left(regexp_replace','SELECT  left(regexp_replace'))},
     {...source,bytes:Buffer.from(text.replace('IMMUTABLE PARALLEL SAFE SECURITY INVOKER','IMMUTABLE PARALLEL SAFE SECURITY DEFINER'))},
   ])assert.throws(()=>hermesFunctionAttributes([changed]),{code:'live_schema_empty_path_unreviewed'});
+});
+
+test('write-foundation name resolution: every empty-path statement stays bound to its reviewed file and bytes',()=>{
+  const path='supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql';
+  const source=migrationSources().find(item=>item.path===path);assert(source);
+  assert.doesNotThrow(()=>hermesFunctionAttributes([source]));
+  const text=source.bytes.toString('utf8');
+  for(const [from,to] of [["RETURN jsonb_build_object('status','resolved'","RETURN jsonb_build_object('status','resolved','x',1"],
+    ["translate(lower(normalize(COALESCE(p_text,''),NFC))","translate(upper(normalize(COALESCE(p_text,''),NFC))"],
+    ['SECURITY INVOKER SET search_path=\'\'\nBEGIN ATOMIC','SECURITY DEFINER SET search_path=\'\'\nBEGIN ATOMIC']]){
+    assert(text.includes(from),from);
+    assert.throws(()=>hermesFunctionAttributes([{...source,bytes:Buffer.from(text.replace(from,to))}]),/empty_path_unreviewed|task_sql_standard_source_mismatch/,from);
+  }
+  assert.throws(()=>hermesFunctionAttributes([{...source,path:path.replace('write_name_resolve','unreviewed')}]),/empty_path_unreviewed|task_sql_standard_source_mismatch/);
 });

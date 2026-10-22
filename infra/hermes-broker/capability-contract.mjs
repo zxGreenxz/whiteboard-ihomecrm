@@ -10,6 +10,14 @@ import { W2_READ_KEYS } from './wave2-registry.mjs';
 // resource: 'building' = the SQL intersects a building scope overlay;
 // 'organization_scope' = the record has no building, yet SQL still requires a
 // selected Toàn tổ chức overlay scope; both therefore need a selected scope.
+// Đợt 1 nền chung thao tác ghi (docs/plans/hermes-crm/NEN-CHUNG-THAO-TAC-GHI.md mục 8.3): 13 khoá ghi dự kiến của Thu chi,
+// Hoá đơn, Hợp đồng seed TẮT ở registry (20261021134531, không có thu_tien.collect — câu 13/14) + khoá thử
+// assistant.action_probe (20261021133823, chỉ bật trên TEST). Có ở đây TRƯỚC khi bật để web và connector đọc được khoá
+// (bài học 19/10); quyền thật vẫn = registry ∩ quyền CRM ∩ khoá của kết nối, và thao tác chỉ hiện khi danh mục của
+// connector có. income_expenses.approve_vouchers và assistant.action_probe là khoá riêng Hermes (không có trong catalog CRM).
+export const HERMES_ACTION_FOUNDATION_KEYS = Object.freeze(['income_expenses.edit', 'income_expenses.cancel', 'income_expenses.approve_vouchers',
+  'meter_readings.create', 'invoices.edit', 'invoices.cancel', 'invoices.approve', 'contracts.terminate', 'contracts.renew', 'contracts.edit',
+  'sale_phong.lock_room', 'contracts.create', 'contracts.transfer', 'assistant.action_probe']);
 const BEFORE_W2 = Object.freeze({
   [TASK_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   [ROOM_PASS_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
@@ -33,6 +41,8 @@ const BEFORE_W2 = Object.freeze({
   'chat_zalo.view': Object.freeze({ mode: 'read', resource: 'organization' }),
   'chat_zalo.manage_automation': Object.freeze({ mode: 'action', resource: 'organization' }),
   'chat_zalo.send': Object.freeze({ mode: 'action', resource: 'organization' }),
+  // Đợt 1 nền chung: mọi khoá ghi dùng chung giao theo phạm vi toà (khoá thử dùng phạm vi toà của buildings.view).
+  ...Object.fromEntries(HERMES_ACTION_FOUNDATION_KEYS.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
 });
 // Đợt 2 đọc đầy đủ (20261018000000): mọi khoá đọc mới, seed MỘT lần ở trạng thái tắt; 'self' =
 // dữ liệu của chính người hỏi, không cần chọn phạm vi toà (wave2-registry.mjs giải thích từng khoá).

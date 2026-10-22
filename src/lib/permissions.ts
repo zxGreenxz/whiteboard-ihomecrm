@@ -121,7 +121,11 @@ export type ActionKey =
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
   | "pay_manager"                 // shareholder_profit — chi lương quản lý
   // Trung tâm mạng: thao tác allowlist, không fallback từ quyền quản lý chung.
-  | "execute";
+  | "execute"
+  // Cửa vân tay (docs/he-thong/26-cua-van-tay.md) — theo tòa của máy.
+  | "temp_password"
+  | "remote_unlock"
+  | "manage_devices";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -243,6 +247,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     label: "Vận hành & Báo cáo",
     modules: [
       { key: "network_center", label: "Trung tâm mạng", core: ["view", "execute"] },
+      { key: "door_access", label: "Cửa vân tay", core: ["view"], extra: ["temp_password", "remote_unlock", "manage_devices"] },
       { key: "tasks",      label: "Công việc", extra: ["complete", "approve"] },
       { key: "task_types", label: "Loại công việc" },
       {
@@ -371,6 +376,9 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   pay_manager:    "Chi lương quản lý",
   ui_control:     "AI điều khiển trang (experimental)",
   execute:        "Thực thi",
+  temp_password:  "Mật khẩu tạm",
+  remote_unlock:  "Mở cửa từ xa",
+  manage_devices: "Quản lý máy & vân tay",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

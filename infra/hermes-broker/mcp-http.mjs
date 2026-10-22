@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
+import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 import { vietnamToolResult } from './vietnam-time.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
@@ -125,7 +126,11 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           : safe.code === 'read_name_unresolved' && typeof safe.detail === 'string' ? { detail: safe.detail }
           // R2b: invalid_request của tool đọc gọi sai cách mang MỘT trong các hint tĩnh của read-misuse-hints.mjs (danh sách
           // đóng, chỉ nêu tool/tham số đúng); chuỗi nào khác — kể cả gán nhầm vào detail — không tới mô hình.
-          : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail } : {};
+          : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail }
+          // Đợt 1 nền chung: lỗi thật của thao tác ghi mang MỘT lý do dạng rejected của danh sách đóng action-reasons.mjs
+          // cùng đúng câu tĩnh của nó; reason/detail nào khác (kể cả gán nhầm) không tới mô hình.
+          : safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) && safe.detail === ACTION_REASONS[safe.reason].text
+            ? { reason: safe.reason, detail: safe.detail } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });

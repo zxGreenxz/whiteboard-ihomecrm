@@ -5995,6 +5995,197 @@ export type Database = {
           },
         ]
       }
+      door_action_logs: {
+        Row: {
+          action: string
+          actor_id: string
+          building_id: string
+          created_at: string
+          detail: Json
+          door_device_id: string
+          error_code: string | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          organization_id: string
+          status: string
+          tuya_password_id: number | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          building_id: string
+          created_at?: string
+          detail?: Json
+          door_device_id: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id: string
+          status?: string
+          tuya_password_id?: number | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          building_id?: string
+          created_at?: string
+          detail?: Json
+          door_device_id?: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          status?: string
+          tuya_password_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_action_logs_device_fk"
+            columns: ["organization_id", "door_device_id"]
+            isOneToOne: false
+            referencedRelation: "door_devices"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      door_devices: {
+        Row: {
+          building_id: string
+          channel_id: number
+          created_at: string
+          created_by: string | null
+          device_kind: string
+          display_name: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          password_length: number
+          tuya_category: string | null
+          tuya_device_id: string
+          tuya_product_name: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          building_id: string
+          channel_id?: number
+          created_at?: string
+          created_by?: string | null
+          device_kind: string
+          display_name: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          password_length?: number
+          tuya_category?: string | null
+          tuya_device_id: string
+          tuya_product_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          building_id?: string
+          channel_id?: number
+          created_at?: string
+          created_by?: string | null
+          device_kind?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          password_length?: number
+          tuya_category?: string | null
+          tuya_device_id?: string
+          tuya_product_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_devices_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "door_devices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      door_key_links: {
+        Row: {
+          customer_id: string | null
+          device_user_name: string | null
+          door_device_id: string
+          id: string
+          label: string | null
+          linked_at: string
+          linked_by: string
+          organization_id: string
+          tuya_user_id: string | null
+          unlink_reason: string | null
+          unlinked_at: string | null
+          unlinked_by: string | null
+          unlock_sn: number
+          unlock_type: string
+        }
+        Insert: {
+          customer_id?: string | null
+          device_user_name?: string | null
+          door_device_id: string
+          id?: string
+          label?: string | null
+          linked_at?: string
+          linked_by: string
+          organization_id: string
+          tuya_user_id?: string | null
+          unlink_reason?: string | null
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          unlock_sn: number
+          unlock_type: string
+        }
+        Update: {
+          customer_id?: string | null
+          device_user_name?: string | null
+          door_device_id?: string
+          id?: string
+          label?: string | null
+          linked_at?: string
+          linked_by?: string
+          organization_id?: string
+          tuya_user_id?: string | null
+          unlink_reason?: string | null
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          unlock_sn?: number
+          unlock_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "door_key_links_customer_fk"
+            columns: ["organization_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "door_key_links_device_fk"
+            columns: ["organization_id", "door_device_id"]
+            isOneToOne: false
+            referencedRelation: "door_devices"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       excess_amounts: {
         Row: {
           amount: number
@@ -23790,6 +23981,95 @@ export type Database = {
         }
         Returns: Json
       }
+      door_access_action_logs_v1: {
+        Args: {
+          p_actions?: string[]
+          p_before?: string
+          p_before_id?: string
+          p_device_id?: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      door_access_authorize_v1: {
+        Args: {
+          p_device_id: string
+          p_organization_id: string
+          p_permission: string
+        }
+        Returns: Json
+      }
+      door_access_begin_action_v1: {
+        Args: {
+          p_action: string
+          p_detail?: Json
+          p_device_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      door_access_building_tenants_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_can_manage_org_v1: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      door_access_devices_v1: {
+        Args: { p_include_inactive?: boolean; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_disable_device_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_finish_action_v1: {
+        Args: {
+          p_error_code?: string
+          p_error_message?: string
+          p_log_id: string
+          p_status: string
+          p_tuya_password_id?: number
+        }
+        Returns: Json
+      }
+      door_access_key_links_v1: {
+        Args: { p_device_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      door_access_link_key_v1: {
+        Args: {
+          p_customer_id?: string
+          p_device_id: string
+          p_device_user_name?: string
+          p_label?: string
+          p_organization_id: string
+          p_tuya_user_id?: string
+          p_unlock_sn: number
+          p_unlock_type: string
+        }
+        Returns: Json
+      }
+      door_access_save_device_v1: {
+        Args: {
+          p_building_id: string
+          p_channel_id?: number
+          p_device_kind: string
+          p_display_name: string
+          p_organization_id: string
+          p_password_length?: number
+          p_tuya_category?: string
+          p_tuya_device_id: string
+          p_tuya_product_name?: string
+        }
+        Returns: Json
+      }
+      door_access_unlink_key_v1: {
+        Args: { p_link_id: string; p_organization_id: string }
+        Returns: Json
+      }
       dry_run_rent_support_reconciliation_v1: {
         Args: { p_entries: Json; p_organization_id: string }
         Returns: Json
@@ -24770,6 +25050,26 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: boolean
       }
+      hermes_action_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_action_probe_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
+      hermes_action_status_v1: {
+        Args: { p_binding: Json; p_request_id: string }
+        Returns: Json
+      }
       hermes_available_rooms_page_v1: {
         Args: {
           p_binding: Json
@@ -24918,6 +25218,7 @@ export type Database = {
         Args: { p_offset: number; p_org: string }
         Returns: Json
       }
+      hermes_name_fold_v1: { Args: { p_text: string }; Returns: string }
       hermes_org_policy_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v3: { Args: { p_org: string }; Returns: Json }
@@ -24957,6 +25258,7 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_room_key_v1: { Args: { p_text: string }; Returns: string }
       hermes_room_pass_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
@@ -25092,6 +25394,14 @@ export type Database = {
       hermes_work_memory_status_v1: { Args: { p: Json }; Returns: Json }
       hermes_work_memory_upsert_v1: {
         Args: { p: Json; p_input: Json }
+        Returns: Json
+      }
+      hermes_write_name_resolve_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_names: Json
+          p_organization_id: string
+        }
         Returns: Json
       }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }

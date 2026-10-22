@@ -27,6 +27,8 @@
 export const EDGE_FN = {
   adminCreateUser: "admin-create-user",
   sendPush: "send-push",
+  // Cửa vân tay (SmartLife/Tuya) — hợp đồng ở docs/he-thong/26-cua-van-tay.md, kiểu ở src/lib/door-access/.
+  doorAccess: "door-access",
 } as const;
 
 export type EdgeFnName = (typeof EDGE_FN)[keyof typeof EDGE_FN];

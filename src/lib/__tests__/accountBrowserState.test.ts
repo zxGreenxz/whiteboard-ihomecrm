@@ -116,6 +116,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",
   "src/hooks/usePersonalTasks.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
+  // Máy cửa vừa chọn: khoá `door-access.last-device.v1:<công ty>:<người dùng>` — không sang tài khoản khác.
+  "src/components/door-access/DoorAccessScreen.tsx": "gan-nguoi-dung",
   "src/hooks/personal-finance/usePersonalFinance.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/contractEditWorkflow.ts": "nhat-ky-chong-ghi-trung",
   "src/lib/contractImportWorkflow.ts": "nhat-ky-chong-ghi-trung",
@@ -132,6 +134,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/useAuth.ts": "phien-dang-nhap",
   "src/lib/authSession.ts": "chi-chu-thich",
   "src/copilot/confirmationStore.ts": "chi-chu-thich",
+  // Chỉ chú thích "mật khẩu tạm không ghi localStorage".
+  "src/components/door-access/TempPasswordDialogs.tsx": "chi-chu-thich",
   "src/components/pwa/InstallHint.tsx": "tuy-chon-may",
   "src/components/chat-zalo/composer/EmojiPicker.tsx": "tuy-chon-may",
   "src/pages/quayso/QuaySoPage.tsx": "tuy-chon-may",

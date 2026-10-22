@@ -8,7 +8,7 @@ import { TOOLS_LIST_MAX_BYTES, createBroker } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_INPUT_TOOLS, taskActionInput } from './task-input-contract.mjs';
+import { TASK_INPUT_TOOLS, TASK_OPTIONS_HINTS, taskActionInput } from './task-input-contract.mjs';
 import { ROOM_PASS_TOOLS, roomPassInput } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, ALL_DOMAIN_READ_CAPABILITIES, domainInput } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
@@ -356,7 +356,12 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
   const options = advertisedTool(tool('crm_task_input_options'));
   assert.ok(options.description.endsWith(` ${EMPTY}`));
   assert.match(options.inputSchema.properties.query.description, /^Lọc theo tên/);
-  assert.match(options.inputSchema.properties.buildingId.description, /không phải ID công ty\. kind=buildings: không cần buildingId\./);
+  // 22/10 (câu 29): buildingId is required only for kind=rooms (the advertised OMIT now reads true for every other kind);
+  // the first sentence (≤60 characters, tool_search shows that much) carries the ASCII keywords.
+  assert.equal(options.inputSchema.properties.buildingId.description, `Chỉ kind=rooms (bắt buộc): id toà từ kind=buildings, không phải ID công ty. ${OMIT}`);
+  assert.match(options.description, /^Task assign IDs: buildings, rooms, jobTypes, assignees\. Chỉ kind=rooms cần buildingId/);
+  assert.ok([...options.description.split('. ')[0]].length <= 60 && /^[\x20-\x7e]+$/.test(options.description.split('. ')[0]));
+  assert.doesNotMatch(options.description, /assignees cần buildingId|jobTypes, assignees cần/);
 });
 
 // P2-1 (review 85280779): kết nối đủ quyền thấy MỌI họ tool cùng lúc (cả crm_available_rooms,
@@ -378,6 +383,9 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // −58 B; định tuyến contracts +91, assets +27, income_expenses −11, pending_approvals +10; hai tool meta W2 mang mã báo cáo
 // ASCII cho tool_search (report_list −50, report +39; trần riêng 1 600 B ở wave2-registry.test.mjs): 63 819 B — còn 181 B.
 // Hint invalid_request (read-misuse-hints.mjs) và alias trạng thái (normalizeToolArguments) không đổi một byte tools/list.
+// Trước 22/10: 63 832 B (tập đang quảng bá thật, registry tắt 3 tool phiếu chi + crm_task_cancel: 61 tool, 59 739 B). 22/10
+// (câu 29) crm_task_input_options: câu đầu ASCII "Task assign IDs: …" (55 ký tự), buildingId chỉ bắt buộc với rooms −31 B:
+// 63 801 B — còn 199 B (tập thật 59 708 B). Câu hướng dẫn khi gọi sai (TASK_OPTIONS_HINTS) không đổi byte tools/list.
 // fullGrantBroker: full-grant-broker.fixture.mjs (dùng chung với tool-plan.test.mjs).
 const TOOLS_LIST_BUDGET = 64_000;
 
@@ -496,11 +504,20 @@ test('broker turns the 16/10 incident call into the null call before any validat
     assert.equal((await broker.callTool(token, 'crm_task_input_options', args)).isError, false);
     assert.deepEqual(seen, expected);
   }
-  // A placeholder never stands in for a needed id: same code and status as before.
+  // A placeholder never stands in for a needed id: rooms is refused before any backend call. Since 22/10 (câu 29) the
+  // refusal is an ordinary result carrying one static hint (Hermes pauses the MCP server after three isError results).
   seen.length = 0;
-  await assert.rejects(broker.callTool(token, 'crm_task_input_options', { ...INCIDENT, kind: 'rooms' }),
-    error => error.code === 'invalid_request' && error.status === 400);
+  const refused = await broker.callTool(token, 'crm_task_input_options', { ...INCIDENT, kind: 'rooms' });
+  assert.equal(refused.isError, false);
+  assert.deepEqual(JSON.parse(refused.content[0].text), { ok: false, code: 'invalid_request', huongDan: TASK_OPTIONS_HINTS.rooms });
   assert.deepEqual(seen, []);
+  // ... while job types and assignees are company-wide: the placeholder is the null SQL answers without a building.
+  for (const kind of ['jobTypes', 'assignees']) {
+    seen.length = 0;
+    assert.equal((await broker.callTool(token, 'crm_task_input_options', { ...INCIDENT, kind })).isError, false);
+    assert.deepEqual(seen, [['options', { ...INCIDENT, kind, buildingId: null, cursor: null }]]);
+  }
+  seen.length = 0;
   await broker.callTool(token, 'crm_read_customers', { cursor: NIL, buildingId: ' ', limit: 5 });
   assert.deepEqual(seen, [['customers', domainInput('customers', { limit: 5 })]]);
   seen.length = 0;

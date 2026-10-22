@@ -108,12 +108,15 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
         connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}),
         ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }),
         ...(configuration.roomRead === undefined ? {} : { roomRead: configuration.roomRead }),
+        ...(configuration.actionProbe === undefined ? {} : { actionProbe: configuration.actionProbe }),
         ...(callLog ? { callLog } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });
       dispose();
-      maintenance = factories.createConnectorMaintenance({ handoff, backend });
+      // Vòng gia hạn ghi connector_maintenance_* (đổi trạng thái, gia hạn lỗi/chưa xác nhận/khoá/hồi phục)
+      // cùng kênh stdout; không token/digest/thông điệp lỗi, chỉ khi có thay đổi. HERMES_CALL_LOG không tắt nó.
+      maintenance = factories.createConnectorMaintenance({ handoff, backend, log: record => console.info(JSON.stringify(record)) });
       if(configuration.zaloProvisioning) zaloReconciler=factories.createNativeBindingReconciler({
         configuration:configuration.zaloProvisioning,handoff,backend,
         transport:createStoreTransport({pool,expectedRole:configuration.store.role})});
