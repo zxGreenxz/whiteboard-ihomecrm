@@ -24,6 +24,7 @@ export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 // vì có CSS toàn cục cần cô lập).
 export const BuildingMapPage = lazy(() => import("../pages/building-map/BuildingMapPage"));
 export const NetworkCenterApp = lazy(() => import("../pages/network-center/NetworkCenterApp"));
+export const DoorAccessPage = lazy(() => import("../pages/door-access/DoorAccessPage"));
 export const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
 export const BankEventsPage = lazy(() => import("../pages/bank-events/BankEventsPage"));
 export const PersonalTasksPage = lazy(() => import("../pages/PersonalTasksPage"));
