@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T04:55:40.524Z",
+  "generatedAt": "2026-10-22T05:16:57.181Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 804,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12705,6 +12705,20 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T04:53:52.286Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql",
+      "version": "20261021231237",
+      "name": "chan_tu_duyet_phieu_chi_vuot_nguong_v1",
+      "scheme": "timestamp14",
+      "sha256": "3ab6ff41436134e6c7fc79068a5de696b2ea6f064cae4e932c184b78ea66ce93",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.has_building_perm_v1",
+        "function:app_private.ie_self_approve_over_threshold_blocked_v1",
+        "function:public.ie_self_approve_gate_v1"
       ]
     },
     {
