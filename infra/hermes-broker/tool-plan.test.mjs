@@ -6,7 +6,8 @@ import { W2 } from './wave2-registry.mjs';
 import { roomPassResult } from './room-pass-contract.mjs';
 import { normalizeToolArguments } from './tool-argument-shape.mjs';
 import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT, readMisuseHint } from './read-misuse-hints.mjs';
-import { TOOL_PLAN_CASES, SUMMARY_PENDING } from './tool-plan-cases.mjs';
+import { TOOL_PLAN_CASES, SUMMARY_PENDING, ACTION_PLAN_CASES } from './tool-plan-cases.mjs';
+import { ACTION_RUN_TOOL, confirmationRequired, needsInput } from './action-contract.mjs';
 
 // T4 (R2b, 21/10/2026; plan R2 §B.6): chọn đúng tool cho các câu của bộ 79 câu production, không gọi model, không SQL.
 // Hermes kiểm đối số của `tool_call` theo schema QUẢNG BÁO trước khi gọi connector (validate_deferred_call_args; trace
@@ -231,4 +232,11 @@ test('broker: hint chỉ đi kèm lời gọi validator đã từ chối; có t�
   await assert.rejects(broker.callTool(token, 'crm_read_contracts', { cursor: 'trang-2' }), error => error.code === 'invalid_request' && error.detail === undefined);
   await assert.rejects(broker.callTool(token, 'crm_read_customers', { status: 'ACTIVE' }), error => error.code === 'invalid_request' && error.detail === undefined);
   assert.deepEqual(seen, []);
+});
+
+test('§12.1 ca khung họ thao tác ghi: mỗi kết quả dẫn tới đúng lời gọi kế tiếp bằng câu hướng dẫn tĩnh', () => {
+  const sources = { run: ACTION_RUN_TOOL.description, unknown_action: needsInput({ action: null, reason: 'unknown_action' }).huongDan,
+    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan };
+  assert.ok(ACTION_PLAN_CASES.length >= 4);
+  for (const entry of ACTION_PLAN_CASES) assert.match(sources[entry.source], entry.match, entry.when);
 });

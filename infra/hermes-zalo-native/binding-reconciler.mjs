@@ -1,8 +1,10 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { provisionNativeBinding } from './binding-provisioning.mjs';
-import { provisionNativeProfile, validateNativeProvisioningConfiguration } from './profile-provisioning.mjs';
+import { assertNativeProfileDmOnly, provisionNativeProfile, validateNativeProvisioningConfiguration } from './profile-provisioning.mjs';
 const fail=()=>{throw Error('native_binding_reconciler_invalid');};
+// Mã lỗi công khai báo ra status() (không bao giờ nuốt thành "pending" trơn): profile bị K1 chặn.
+const PUBLIC_BLOCKS=['native_profile_shared_platform'];
 const same=(a,b)=>['assistantId','userId','organizationId'].every(key=>a[key]===b[key]);
 /** Bounded host maintenance. Only configured assistant/bot/profile mappings are
  * read. Encrypted enrollment supplies the EXACT selected connection credential.
@@ -12,9 +14,10 @@ const same=(a,b)=>['assistantId','userId','organizationId'].every(key=>a[key]===
 export function createNativeBindingReconciler({configuration,handoff,backend,transport,timers={setTimeout,clearTimeout}}={}) {
   const config=validateNativeProvisioningConfiguration(configuration);
   if([handoff?.list,backend?.resolveConnection,transport?.call,timers?.setTimeout,timers?.clearTimeout].some(fn=>typeof fn!=='function'))fail();
-  const controller=new AbortController();let running,timer,closed,closing=false,started=false,state='idle',pending=0;
+  const controller=new AbortController();let running,timer,closed,closing=false,started=false,state='idle',pending=0,blocked=[];
+  const block=(mapping,error)=>{if(PUBLIC_BLOCKS.includes(error?.message))blocked.push(Object.freeze({profile:mapping.profile,code:error.message}));};
   const cycle=async()=>{
-    state='checking';pending=0;
+    state='checking';pending=0;blocked=[];
     try {
       const enrollments=await handoff.list({signal:controller.signal});
       if(!Array.isArray(enrollments)||enrollments.length>256)fail();
@@ -46,6 +49,11 @@ export function createNativeBindingReconciler({configuration,handoff,backend,tra
               await pendingCredential();continue;
             }
           } else if(snapshot.status!=='revoked')fail();
+          // K1 TRƯỚC khi ghi liên kết native hay xác nhận restart_pending (review #253): profile sắp nhận token CRM mà bật
+          // nền tảng có nhóm thì dừng ở đây, không để trạng thái nửa vời (native đã ghi, profile bị từ chối). Thu hồi vẫn chạy.
+          if(snapshot.status==='active'){
+            try{assertNativeProfileDmOnly(mapping);}catch(error){pending++;block(mapping,error);continue;}
+          }
           const options={transport,bindingId:snapshot.bindingId,profileBinding:{assistantId:mapping.assistantId,
             userId:mapping.userId,organizationId:mapping.organizationId,profile:mapping.profile},
             configFile:config.configFile,tokenFile:path.join(path.dirname(config.configFile),mapping.profile+'.issued.'+randomUUID()+'.token'),
@@ -66,7 +74,7 @@ export function createNativeBindingReconciler({configuration,handoff,backend,tra
           // No restart verification API exists. A disk no-op is never proof
           // that a running worker/profile loaded this configuration.
           void native;
-        } catch {pending++;}
+        } catch(error) {pending++;block(mapping,error);}
       }
       state=pending?'pending':'ready';
     } catch {state='unavailable';pending++;}
@@ -75,7 +83,7 @@ export function createNativeBindingReconciler({configuration,handoff,backend,tra
   return Object.freeze({
     start(){if(closing)fail();if(!started){started=true;poll();}},
     async reconcile(){if(closing)fail();if(running)return running;running=cycle();try{await running;}finally{running=undefined;}},
-    status(){return Object.freeze({state,pending});},
+    status(){return Object.freeze({state,pending,...(blocked.length?{blocked:Object.freeze([...blocked])}:{})});},
     close(){if(!closed){closing=true;controller.abort();timers.clearTimeout(timer);closed=Promise.resolve().then(async()=>{await running;state='closed';});void closed.catch(()=>{});}return closed;}
   });
 }

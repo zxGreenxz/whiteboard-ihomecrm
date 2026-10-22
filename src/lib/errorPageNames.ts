@@ -30,6 +30,7 @@ export const ERROR_PAGE_NAMES = [
   { route: "/settings/categories/warehouses", label: "Kho" },
   { route: "/settings/categories/suppliers", label: "Nhà cung cấp" },
   { route: "/network-center", label: "Trung tâm mạng" },
+  { route: "/cua-van-tay", label: "Cửa vân tay" },
   { route: "/tasks", label: "Công việc" },
   { route: "/settings/categories/task-types", label: "Loại công việc" },
   { route: "/reports/real-estate", label: "Báo cáo BĐS" },

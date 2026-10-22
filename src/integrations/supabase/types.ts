@@ -25050,6 +25050,26 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: boolean
       }
+      hermes_action_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_action_probe_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
+      hermes_action_status_v1: {
+        Args: { p_binding: Json; p_request_id: string }
+        Returns: Json
+      }
       hermes_available_rooms_page_v1: {
         Args: {
           p_binding: Json
@@ -25198,6 +25218,7 @@ export type Database = {
         Args: { p_offset: number; p_org: string }
         Returns: Json
       }
+      hermes_name_fold_v1: { Args: { p_text: string }; Returns: string }
       hermes_org_policy_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v3: { Args: { p_org: string }; Returns: Json }
@@ -25237,6 +25258,7 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_room_key_v1: { Args: { p_text: string }; Returns: string }
       hermes_room_pass_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
@@ -25372,6 +25394,14 @@ export type Database = {
       hermes_work_memory_status_v1: { Args: { p: Json }; Returns: Json }
       hermes_work_memory_upsert_v1: {
         Args: { p: Json; p_input: Json }
+        Returns: Json
+      }
+      hermes_write_name_resolve_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_names: Json
+          p_organization_id: string
+        }
         Returns: Json
       }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }
@@ -25521,6 +25551,17 @@ export type Database = {
           p_organization_id: string
         }
         Returns: Json
+      }
+      invoice_effective_outstanding_v1: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          carried_in_amount: number
+          carried_out_amount: number
+          effective_outstanding: number
+          effective_outstanding_at_carrier: number
+          invoice_id: string
+          remaining_amount: number
+        }[]
       }
       invoice_list_core_v1: {
         Args: {

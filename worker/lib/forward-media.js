@@ -1,63 +1,10 @@
 import { sb, SUPABASE_URL } from './ctx.js';
 import { readForwardSources } from './forward-source.js';
 import { finalizeSend, sendReceipt } from './send-finalization.js';
+import { downloadForwardUrl, imageDetails } from './hermes-native-media.js';
 
-export const MAX_FORWARD_BYTES = 25 * 1024 * 1024;
-const CDN = /(^|\.)(zdn\.vn|zadn\.vn|dlmd\.me|mdchat\.me|dlfl\.vn)$/i;
+export { MAX_FORWARD_BYTES, downloadForwardUrl, imageDetails } from './hermes-native-media.js';
 const BUCKETS = new Set(['zalo-media', 'room-sale-images']);
-const DEADLINE_MS = 30_000;
-
-function allowedUrl(value, storageOrigin) {
-  let url;
-  try { url = new URL(value); } catch { throw new Error('Đường dẫn media không hợp lệ'); }
-  if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')
-      || (!CDN.test(url.hostname) && url.origin !== storageOrigin)) {
-    throw new Error('Máy chủ media không được phép chuyển tiếp');
-  }
-  return url;
-}
-
-// No cookies or credentials are sent to CDN hosts. Each redirect is checked,
-// and both the advertised size and streamed bytes have a hard bound.
-export async function downloadForwardUrl(value, { fetchImpl = fetch, storageOrigin, maxBytes = MAX_FORWARD_BYTES, timeoutMs = DEADLINE_MS } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    let url = allowedUrl(value, storageOrigin);
-    for (let redirects = 0; redirects <= 3; redirects++) {
-      const res = await fetchImpl(url.toString(), { redirect: 'manual', signal: controller.signal });
-      if ([301, 302, 303, 307, 308].includes(res.status)) {
-        await res.body?.cancel();
-        const next = res.headers.get('location');
-        if (!next || redirects === 3) throw new Error('Media chuyển hướng quá nhiều lần');
-        url = allowedUrl(new URL(next, url).toString(), storageOrigin);
-        continue;
-      }
-      if (!res.ok) { await res.body?.cancel(); throw new Error(`Không tải được media nguồn (${res.status}); tệp có thể đã hết hạn trên Zalo`); }
-      const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-      if (['text/html', 'application/xhtml+xml'].includes(mime)) { await res.body?.cancel(); throw new Error('Máy chủ trả trang lỗi thay cho media'); }
-      if (Number(res.headers.get('content-length')) > maxBytes) { await res.body?.cancel(); throw new Error('Media vượt giới hạn 25MB'); }
-      if (!res.body) throw new Error('Media nguồn rỗng');
-      const reader = res.body.getReader();
-      const parts = []; let length = 0;
-      try {
-        while (true) {
-          const { done, value: chunk } = await reader.read();
-          if (done) break;
-          length += chunk.byteLength;
-          if (length > maxBytes) { await reader.cancel(); throw new Error('Media vượt giới hạn 25MB'); }
-          parts.push(Buffer.from(chunk));
-        }
-      } finally { reader.releaseLock(); }
-      if (!length) throw new Error('Media nguồn rỗng');
-      return { data: Buffer.concat(parts, length), mime };
-    }
-    throw new Error('Không tải được media');
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error('Tải media quá lâu; chưa chuyển tiếp');
-    throw error;
-  } finally { clearTimeout(timer); }
-}
 
 function storageRef(source, storageOrigin) {
   const meta = source.media_meta || {};
@@ -87,39 +34,6 @@ async function sourceBytes(source, job, db, download) {
     url = signed.data.signedUrl;
   }
   return download(url, { storageOrigin });
-}
-
-// Read dimensions from the actual bytes. Never let an arbitrary filename turn
-// an image into a file in zca-js (its upload classification uses the extension).
-export function imageDetails(data) {
-  if (data.length >= 24 && data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
-    return { extension: 'png', width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
-  }
-  if (data.length >= 30 && data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') {
-    const kind = data.toString('ascii', 12, 16);
-    if (kind === 'VP8X') return { extension: 'webp', width: 1 + data.readUIntLE(24, 3), height: 1 + data.readUIntLE(27, 3) };
-    if (kind === 'VP8 ' && data.subarray(23,26).equals(Buffer.from([157,1,42]))) return { extension: 'webp', width: data.readUInt16LE(26) & 16383, height: data.readUInt16LE(28) & 16383 };
-    if (kind === 'VP8L' && data[20] === 47) {
-      const packed = data.readUInt32LE(21);
-      return { extension: 'webp', width: (packed & 16383) + 1, height: ((packed >>> 14) & 16383) + 1 };
-    }
-  }
-  if (data[0] === 255 && data[1] === 216) {
-    let offset = 2;
-    while (offset + 4 <= data.length) {
-      if (data[offset] !== 255) break;
-      const marker = data[offset + 1]; offset += 2;
-      if (marker === 216 || marker === 1) continue;
-      if (marker === 217 || marker === 218) break;
-      const size = data.readUInt16BE(offset);
-      if (size < 2 || offset + size > data.length) break;
-      if ([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker) && size >= 7) {
-        return { extension: 'jpg', width: data.readUInt16BE(offset + 5), height: data.readUInt16BE(offset + 3) };
-      }
-      offset += size;
-    }
-  }
-  throw new Error('Ảnh nguồn không có định dạng JPEG, PNG hoặc WebP hợp lệ');
 }
 
 function imageSource(bytes, label = 'anh') {

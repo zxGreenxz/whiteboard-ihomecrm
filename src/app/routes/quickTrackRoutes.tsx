@@ -10,6 +10,7 @@ import { Route, Navigate } from "react-router-dom";
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
 import {
   BuildingMapPage,
+  DoorAccessPage,
   NetworkCenterApp,
   NotificationsPage,
 } from "../lazyPages";
@@ -36,6 +37,7 @@ export const quickTrackRoutes = (
     {NETWORK_CENTER_RUNTIME_ENABLED ? (
       <Route path="/network-center/*" element={<ProtectedRoute><RequirePermission module="network_center" action="view"><NetworkCenterApp /></RequirePermission></ProtectedRoute>} />
     ) : null}
+    <Route path="/cua-van-tay" element={<ProtectedRoute><RequirePermission module="door_access"><DoorAccessPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
 
   </>
