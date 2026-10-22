@@ -20,10 +20,13 @@ export const FULL_GRANT_ACTION = Object.freeze([...new Set([...HERMES_ACTION_CAP
   'sale_phong.manage_pass_listings', 'customers.create', 'leads.create', 'income_expenses.create', 'chat_zalo.manage_automation', 'chat_zalo.send',
   'assistant.memory.write'])]);
 
-/** { broker, token, seen }: `t` đóng dependency scope khi test xong; `limits` như createBroker. */
-export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
+/** { broker, token, seen }: `t` đóng dependency scope khi test xong; `limits` như createBroker.
+ * `actions` (Đợt 1 nền chung): lõi thao tác ghi dùng chung (action-runtime.mjs) + `actionKeys` cấp thêm cho kết nối;
+ * `withoutAction`: khoá Action bỏ khỏi kết nối (vd họ phiếu chi cũ đã tắt ở registry, D4). */
+export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }, { actions, actionKeys = [], withoutAction = [] } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
-  const CONNECTION = fullGrantId('a'), read = [...FULL_GRANT_READ], action = [...FULL_GRANT_ACTION], seen = [];
+  const CONNECTION = fullGrantId('a'), read = [...FULL_GRANT_READ], seen = [];
+  const action = [...new Set([...FULL_GRANT_ACTION, ...actionKeys])].filter(key => !withoutAction.includes(key));
   const identity = { row: { id: CONNECTION, assistantId: fullGrantId('b'), userId: fullGrantId('c'), organizationId: FULL_GRANT_ORGANIZATION,
     expiresAt: Date.now() + 600_000, epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
   policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [fullGrantId('e')],
@@ -42,6 +45,7 @@ export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
     externalGroups: { authority, createService: () => ({}) },
+    ...(actions ? { actions } : {}),
     // Host-only private port (never in tools/list): a directory result of a few hundred bytes.
     groupPreviews: { authority, createService: () => ({ async prepareGroupDirectory() { return Object.freeze({}); },
       async finalizeGroupDirectory() { return { groups: ['1', '2', '3', '4'].map(n => ({ conversationId: fullGrantId(n), name: `Nhóm ${n}` })) }; } }) } });
