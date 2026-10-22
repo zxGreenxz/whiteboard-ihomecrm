@@ -22580,6 +22580,33 @@ export type Database = {
         }
         Returns: Json
       }
+      contract_move_out_notices_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_until: number
+          end_date: string
+          expected_move_out_date: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          status: string
+        }[]
+      }
+      contract_renewal_end_date_v1: {
+        Args: { p_end_date: string; p_months: number }
+        Returns: string
+      }
       contract_stats_v2: { Args: { p_building_ids?: string[] }; Returns: Json }
       copilot_action_ledger_list_v1: {
         Args: { p_limit?: number; p_organization_id: string }
@@ -25187,6 +25214,22 @@ export type Database = {
       hermes_connection_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v7: { Args: { p_org: string }; Returns: Json }
+      hermes_contract_action_lookup_v1: {
+        Args: { p_organization_id: string; p_room_id: string }
+        Returns: Json
+      }
+      hermes_contract_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -25417,6 +25460,18 @@ export type Database = {
           p_org: string
           p_read: string[]
           p_scope_ids: string[]
+        }
+        Returns: Json
+      }
+      hermes_task_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
         }
         Returns: Json
       }
@@ -26038,6 +26093,19 @@ export type Database = {
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
       is_user_super_admin: { Args: { p_user: string }; Returns: boolean }
+      job_deadline_v1: {
+        Args: { p_date?: string; p_organization_id: string; p_time?: string }
+        Returns: string
+      }
+      job_open_duplicates_v1: {
+        Args: {
+          p_building_id: string
+          p_job_type_id: string
+          p_organization_id: string
+          p_room_id: string
+        }
+        Returns: Json
+      }
       job_photo_ok: {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
@@ -26058,6 +26126,10 @@ export type Database = {
           name: string
           organization_id: string
         }[]
+      }
+      job_visible_as_assignee_v1: {
+        Args: { p_assignee_id: string }
+        Returns: boolean
       }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
@@ -27606,6 +27678,31 @@ export type Database = {
       real_estate_contract_count_v1: {
         Args: { p_building_ids: string[]; p_organization_id: string }
         Returns: number
+      }
+      real_estate_contracts_ending_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_left: number
+          end_date: string
+          expected_move_out_date: string
+          floor: number
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          start_date: string
+          status: string
+        }[]
       }
       real_estate_expense_ratio_v1: {
         Args: {
