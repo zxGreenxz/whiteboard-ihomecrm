@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T05:21:15.218Z",
+  "generatedAt": "2026-10-22T05:37:38.603Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 799,
+    "ledger-applied": 804,
     "unknown": 85,
     "catalog-proven": 207,
     "superseded": 15
@@ -12650,6 +12650,61 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql",
+      "version": "20261021183549",
+      "name": "invoice_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "19865fa07bd85ecac87b4b3c978e41a71e651d009aa8240ad0c0a389da026734",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:45:12.440Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql",
+      "version": "20261021185540",
+      "name": "hermes_receivables_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "4963a826ea6166db734c9657aa79f88545666703397407e71a43c9307a0a3db4",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:47:14.092Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190212_hermes_invoice_report_effective_outstanding_v1.sql",
+      "version": "20261021190212",
+      "name": "hermes_invoice_report_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "d9d5140ce2366f6b5526ebe7bf605d80497fcd23bcde545f18ad2c90da5e0fa6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:49:13.863Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190215_receivable_kpis_effective_outstanding_v1.sql",
+      "version": "20261021190215",
+      "name": "receivable_kpis_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "54d79bd81b4cf09be07853d89b49a54034275742d79163c6df0a693306b782e7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:51:50.724Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190406_dashboard_total_debt_effective_outstanding_v1.sql",
+      "version": "20261021190406",
+      "name": "dashboard_total_debt_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "44071f3d0d60878c38b90708698ff3fea03f8d6bc807bb6d572b56d0b41dd20d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T04:53:52.286Z|bien-nhan-backup"
       ]
     },
     {

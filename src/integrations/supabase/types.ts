@@ -25495,6 +25495,7 @@ export type Database = {
         Args: { p_ie_id: string }
         Returns: undefined
       }
+      ie_self_approve_gate_v1: { Args: { p_voucher_id: string }; Returns: Json }
       ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
@@ -25551,6 +25552,17 @@ export type Database = {
           p_organization_id: string
         }
         Returns: Json
+      }
+      invoice_effective_outstanding_v1: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          carried_in_amount: number
+          carried_out_amount: number
+          effective_outstanding: number
+          effective_outstanding_at_carrier: number
+          invoice_id: string
+          remaining_amount: number
+        }[]
       }
       invoice_list_core_v1: {
         Args: {
