@@ -115,14 +115,15 @@ function VoucherRow({ v, mode, periodMonth }: { v: SettlementVoucher; mode: 'adm
   const note = voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth).replace(/^ · /, '');
   const income = v.type === 'INCOME';
   return (
-    <li className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
+    <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
       data-testid="settlement-cash-row">
+      {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng, không cắt chữ */}
       <span title={tile}
-        className={cn('row-span-2 flex h-8 w-10 items-center justify-center self-start truncate rounded-lg border px-0.5 text-[11px] font-bold',
+        className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
           v.side === 'LANDLORD'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
             : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300')}>
-        {tile}
+        <span className="line-clamp-2 text-center">{tile}</span>
       </span>
       <span className="min-w-0 truncate text-[13px] font-semibold" title={mode === 'admin' ? (v.name ?? '') : name} data-testid="settlement-voucher-name">
         {name}
@@ -174,7 +175,7 @@ function ListCard({ kind, st, filter, mode }: { kind: Kind; st: SettlementStatem
         <p className="px-4 py-7 text-center text-[12.5px] text-muted-foreground">Không có khoản {income ? 'thu' : 'chi'} nào{sideText} trong tháng.</p>
       ) : (
         <>
-          <div className="grid grid-cols-[44px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
             <span>{income ? 'Phòng' : 'Loại'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
           </div>
           <ul>{rows.map((v, i) => <VoucherRow key={`${v.code ?? 'phieu'}-${i}`} v={v} mode={mode} periodMonth={st.period_month} />)}</ul>
