@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T10:37:57.544Z",
+  "generatedAt": "2026-10-23T11:58:05.063Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 866,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13387,6 +13387,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-23T10:37:34.771Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023113626_quan_ly_nhan_tien_co_dinh.sql",
+      "version": "20261023113626",
+      "name": "quan_ly_nhan_tien_co_dinh",
+      "scheme": "timestamp14",
+      "sha256": "934d527a91cd013ec63b48c47204624085962d73b53d55cd4f4346850946db81",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.landlord_settlement_compute_v1",
+        "catalog:function:app_private.landlord_settlement_overview_payload_v1"
       ]
     },
     {

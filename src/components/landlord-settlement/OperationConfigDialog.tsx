@@ -1,7 +1,9 @@
-// Cài đặt một toà vận hành cho chủ nhà: tên chủ nhà, % quản lý theo thoả thuận,
-// tháng bắt đầu, sổ quỹ nào là của chủ nhà, số dư đầu kỳ. Server kiểm lại mọi thứ.
-// % và sổ chủ nhà theo phiên bản tháng: chọn "sửa từ tháng X" thì ô % và danh sách sổ hiện đúng
-// điều khoản đang áp ở tháng X; lưu thì server chỉ ghi TRƯỜNG đã đổi cho tháng X và các mốc sau.
+// Cài đặt một toà vận hành cho chủ nhà: tên chủ nhà, phần quản lý theo thoả thuận (tiền cố định/tháng
+// và/hoặc % lợi nhuận — chủ chốt 23/10/2026), tháng bắt đầu, sổ quỹ nào là của chủ nhà, số dư đầu kỳ.
+// Server kiểm lại mọi thứ.
+// %, tiền cố định và sổ chủ nhà theo phiên bản tháng: chọn "sửa từ tháng X" thì ô %, ô tiền cố định và
+// danh sách sổ hiện đúng điều khoản đang áp ở tháng X; lưu thì server chỉ ghi TRƯỜNG đã đổi cho tháng X
+// và các mốc sau.
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -22,6 +24,7 @@ import { useLandlordOperationOptions, useUpsertLandlordOperation } from '@/hooks
 import {
   describeOperationChange,
   landlordErrorMessage,
+  managerTermsLabel,
   monthKey,
   monthShort,
   monthToDate,
@@ -38,12 +41,16 @@ type Terms = NonNullable<LandlordOperationOptions['current']>['terms'][number];
 interface Draft {
   landlordName: string;
   month: string;
-  /** 'YYYY-MM' — % và sổ bên dưới là điều khoản áp từ tháng này. */
+  /** 'YYYY-MM' — %, tiền cố định và sổ bên dưới là điều khoản áp từ tháng này. */
   termsMonth: string;
+  /** Ô trống = 0; NaN = đang gõ sai (ô tự báo). */
   percent: number;
+  /** Tiền cố định/tháng (đồng). Ô trống = 0; NaN = đang gõ sai. */
+  fixed: number;
   accountIds: string[];
-  /** Tháng mà % / sổ đang hiện được NẠP tự động từ đó — khác điều khoản của tháng này = người dùng đã sửa. */
+  /** Tháng mà % / tiền cố định / sổ đang hiện được NẠP tự động từ đó — khác điều khoản của tháng này = người dùng đã sửa. */
   pctFrom: string;
+  fixedFrom: string;
   idsFrom: string;
   note: string;
   isActive: boolean;
@@ -52,7 +59,7 @@ interface Draft {
 }
 
 const EMPTY: Draft = {
-  landlordName: '', month: '', termsMonth: '', percent: Number.NaN, accountIds: [], pctFrom: '', idsFrom: '',
+  landlordName: '', month: '', termsMonth: '', percent: 0, fixed: 0, accountIds: [], pctFrom: '', fixedFrom: '', idsFrom: '',
   note: '', isActive: true, openingBalance: 0, openingConfirmed: false,
 };
 const MAX_SO_CHU_NHA = 20;
@@ -108,8 +115,10 @@ export function OperationConfigDialog({
         month: monthKey(c.effective_from),
         termsMonth: thang,
         percent: dk?.manager_percent ?? c.manager_percent,
+        fixed: dk?.manager_fixed_amount ?? c.manager_fixed_amount,
         accountIds: dk?.landlord_account_ids ?? c.landlord_account_ids,
         pctFrom: thang,
+        fixedFrom: thang,
         idsFrom: thang,
         note: c.note ?? '',
         isActive: c.is_active,
@@ -141,7 +150,9 @@ export function OperationConfigDialog({
   // điều khoản đang áp ở tháng đang sửa và những gì sẽ đổi khi lưu (y như server làm: từng trường)
   const base = cur && THANG_HOP_LE.test(draft.termsMonth) ? termsAt(terms, draft.termsMonth) : null;
   const pctChanged = !!base && draft.percent !== base.manager_percent;
+  const fixedChanged = !!base && draft.fixed !== base.manager_fixed_amount;
   const idsChanged = !!base && !sameIdSet(draft.accountIds, base.landlord_account_ids);
+  const termsChanged = pctChanged || fixedChanged || idsChanged;
   const laterTerms = cur ? terms.filter((t) => monthKey(t.valid_from) > draft.termsMonth) : [];
   // cơ sở của số dư đầu kỳ (tháng áp dụng + sổ của điều khoản đầu) đổi ngay trong lần lưu này ⇒ chưa thể
   // đối chiếu: cọc trước kỳ theo cơ sở mới chỉ tính ra sau khi lưu
@@ -157,13 +168,16 @@ export function OperationConfigDialog({
     const moi = THANG_HOP_LE.test(m) ? termsAt(terms, m) : null;
     if (!moi) return { ...d, termsMonth: m };
     const pctGoc = termsAt(terms, d.pctFrom);
+    const fixedGoc = termsAt(terms, d.fixedFrom);
     const idsGoc = termsAt(terms, d.idsFrom);
     const daSuaPct = !!pctGoc && d.percent !== pctGoc.manager_percent;
+    const daSuaFixed = !!fixedGoc && d.fixed !== fixedGoc.manager_fixed_amount;
     const daSuaIds = !!idsGoc && !sameIdSet(d.accountIds, idsGoc.landlord_account_ids);
     return {
       ...d,
       termsMonth: m,
       ...(daSuaPct ? {} : { percent: moi.manager_percent, pctFrom: m }),
+      ...(daSuaFixed ? {} : { fixed: moi.manager_fixed_amount, fixedFrom: m }),
       ...(daSuaIds ? {} : { accountIds: moi.landlord_account_ids, idsFrom: m }),
     };
   };
@@ -176,6 +190,7 @@ export function OperationConfigDialog({
     return theo ? { ...withTermsOf(d, m), month: m } : { ...d, month: m };
   });
   const setPercent = (v: number) => setDraft((d) => ({ ...d, percent: v }));
+  const setFixed = (v: number) => setDraft((d) => ({ ...d, fixed: v }));
   const toggleAccount = (id: string, checked: boolean) =>
     setDraft((d) => ({ ...d, accountIds: checked ? [...d.accountIds, id] : d.accountIds.filter((x) => x !== id) }));
   // sổ đã có ở BẤT KỲ phiên bản điều khoản nào (server cho giữ sổ ảo / đã xoá trong tập này)
@@ -189,9 +204,15 @@ export function OperationConfigDialog({
     const name = draft.landlordName.trim();
     if (!name) e.landlordName = 'Nhập tên chủ nhà.';
     else if (name.length > 120) e.landlordName = 'Tối đa 120 ký tự.';
-    // ô số để trống phát ra 0 ⇒ 0% coi như chưa nhập (thoả thuận vận hành không có 0%)
-    if (!Number.isFinite(draft.percent) || draft.percent <= 0 || draft.percent > 100) e.percent = 'Nhập tỷ lệ lớn hơn 0, tối đa 100.';
+    // ô số để trống phát ra 0: quản lý có thể chỉ nhận % hoặc chỉ nhận tiền cố định, không được cả hai 0
+    if (!Number.isFinite(draft.percent) || draft.percent < 0 || draft.percent > 100) e.percent = 'Nhập tỷ lệ từ 0 đến 100.';
     else if (Math.abs(Math.round(draft.percent * 100) - draft.percent * 100) > 1e-6) e.percent = 'Tối đa 2 chữ số thập phân.';
+    if (!Number.isFinite(draft.fixed) || !Number.isInteger(draft.fixed) || draft.fixed < 0) {
+      e.fixed = 'Nhập số tiền nguyên đồng, từ 0 trở lên.';
+    }
+    if (!e.percent && !e.fixed && draft.percent === 0 && draft.fixed === 0) {
+      e.share = 'Nhập % lợi nhuận hoặc tiền cố định (hoặc cả hai) — không để cả hai bằng 0.';
+    }
     if (!THANG_HOP_LE.test(draft.month)) e.month = 'Chọn tháng bắt đầu áp dụng.';
     else if (firstClosed && draft.month > firstClosed) {
       e.month = `Tháng ${monthShort(firstClosed)} đã chốt — không dời tháng bắt đầu ra sau tháng đó (mở chốt trước).`;
@@ -202,10 +223,10 @@ export function OperationConfigDialog({
     const bad = options.data?.accounts.filter((a) =>
       draft.accountIds.includes(a.id) && !dangCo.has(a.id) && (a.is_virtual || a.is_deleted)) ?? [];
     if (bad.length > 0) e.accounts = `Bỏ chọn ${bad.map((a) => a.name).join(', ')} — không thêm sổ ảo hoặc sổ đã xoá làm sổ chủ nhà.`;
-    if (cur && !THANG_HOP_LE.test(draft.termsMonth)) e.termsMonth = 'Chọn tháng áp tỷ lệ / sổ chủ nhà.';
+    if (cur && !THANG_HOP_LE.test(draft.termsMonth)) e.termsMonth = 'Chọn tháng áp điều khoản (phần quản lý / sổ chủ nhà).';
     else if (cur && THANG_HOP_LE.test(draft.month) && draft.termsMonth < draft.month) {
       e.termsMonth = 'Phải từ tháng bắt đầu áp dụng trở đi.';
-    } else if (cur && (pctChanged || idsChanged)) {
+    } else if (cur && termsChanged) {
       if (lastClosed && draft.termsMonth <= lastClosed) {
         e.termsMonth = `Đã chốt tới tháng ${monthShort(lastClosed)} — chọn từ tháng sau đó, hoặc mở chốt trước.`;
       }
@@ -225,14 +246,16 @@ export function OperationConfigDialog({
         buildingId,
         landlordName: draft.landlordName.trim(),
         managerPercent: draft.percent,
+        managerFixedAmount: draft.fixed,
         effectiveFrom: monthToDate(draft.month),
         landlordAccountIds: draft.accountIds,
         note: draft.note.trim() || null,
         isActive: draft.isActive,
         openingBalance: draft.openingBalance,
         openingConfirmed: draft.openingConfirmed && !basisChanging,
-        // LUÔN gửi tháng đang xem: server so % và sổ với đúng điều khoản màn đã hiện cho tháng đó (không gửi
-        // thì server so với tháng mặc định — xem một mốc khác rồi lưu sẽ đè điều khoản các tháng chưa chốt)
+        // LUÔN gửi tháng đang xem: server so %, tiền cố định và sổ với đúng điều khoản màn đã hiện cho tháng
+        // đó (không gửi thì server so với tháng mặc định — xem một mốc khác rồi lưu sẽ đè điều khoản các
+        // tháng chưa chốt)
         termsFrom: cur ? monthToDate(draft.termsMonth) : null,
         openingSeenPreStart: cur ? preStart : null,
         expectedUpdatedAt: seenUpdatedAt,
@@ -258,7 +281,7 @@ export function OperationConfigDialog({
         <DialogHeader>
           <DialogTitle>Cài đặt toà vận hành cho chủ nhà</DialogTitle>
           <DialogDescription>
-            Quản lý nhận % lợi nhuận tháng theo thoả thuận (lỗ thì không tính). Phiếu ghi vào sổ của chủ nhà là tiền chủ nhà giữ; sổ khác là tiền quản lý giữ.
+            Quản lý nhận tiền cố định mỗi tháng và/hoặc % lợi nhuận tháng theo thoả thuận (tháng lỗ thì phần % không tính, tiền cố định vẫn nhận đủ). Phiếu ghi vào sổ của chủ nhà là tiền chủ nhà giữ; sổ khác là tiền quản lý giữ.
           </DialogDescription>
         </DialogHeader>
 
@@ -303,21 +326,31 @@ export function OperationConfigDialog({
               <div className="space-y-3 rounded-md border p-3">
                 {cur && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="lo-terms">Tỷ lệ và sổ chủ nhà áp từ tháng</Label>
+                    <Label htmlFor="lo-terms">Phần quản lý và sổ chủ nhà áp từ tháng</Label>
                     <MonthInput id="lo-terms" value={draft.termsMonth} onChange={setTermsMonth} />
                     <p className="text-xs text-muted-foreground">
-                      Ô % và sổ bên dưới là điều khoản đang áp ở tháng này. Sửa thì chỉ phần sửa áp từ tháng này trở đi;
+                      Ô %, ô tiền cố định và sổ bên dưới là điều khoản đang áp ở tháng này. Sửa thì chỉ phần sửa áp từ tháng này trở đi;
                       các tháng trước giữ nguyên{lastClosed ? ` (đã chốt tới tháng ${monthShort(lastClosed)})` : ''}.
                     </p>
                     {errors.termsMonth && <p className="text-xs text-destructive">{errors.termsMonth}</p>}
                   </div>
                 )}
-                <div className="space-y-1.5">
-                  <Label htmlFor="lo-pct">Quản lý nhận (%)</Label>
-                  <NumberInput id="lo-pct" allowDecimal min={0} max={100} value={Number.isFinite(draft.percent) ? draft.percent : null}
-                    onChange={setPercent} placeholder="vd 30" />
-                  {errors.percent && <p className="text-xs text-destructive">{errors.percent}</p>}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="lo-pct">Quản lý nhận (%)</Label>
+                    <NumberInput id="lo-pct" allowDecimal min={0} max={100} value={Number.isFinite(draft.percent) ? draft.percent : null}
+                      onChange={setPercent} placeholder="vd 30" />
+                    <p className="text-[11px] text-muted-foreground">% lợi nhuận tháng — tháng lỗ thì không tính.</p>
+                    {errors.percent && <p className="text-xs text-destructive">{errors.percent}</p>}
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="lo-fixed">Quản lý nhận tiền cố định (đ/tháng)</Label>
+                    <CurrencyInput id="lo-fixed" value={Number.isFinite(draft.fixed) ? draft.fixed : null} onChange={setFixed} placeholder="vd 5.000.000" />
+                    <p className="text-[11px] text-muted-foreground">Vẫn nhận đủ khi tháng lỗ (chủ nhà bù phần thiếu).</p>
+                    {errors.fixed && <p className="text-xs text-destructive">{errors.fixed}</p>}
+                  </div>
                 </div>
+                {errors.share && <p role="alert" className="text-xs text-destructive">{errors.share}</p>}
 
                 <div className="space-y-1.5">
                   <Label>Sổ quỹ của chủ nhà</Label>
@@ -356,19 +389,23 @@ export function OperationConfigDialog({
                   {errors.accounts && <p className="text-xs text-destructive">{errors.accounts}</p>}
                 </div>
 
-                {cur && (pctChanged || idsChanged) && THANG_HOP_LE.test(draft.termsMonth) && (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                {cur && base && termsChanged && Number.isFinite(draft.percent) && Number.isFinite(draft.fixed)
+                  && THANG_HOP_LE.test(draft.termsMonth) && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                    data-testid="landlord-terms-preview">
                     <p>
-                      Từ tháng {monthShort(draft.termsMonth)}:
-                      {pctChanged && <> % quản lý {base?.manager_percent}% → {draft.percent}%</>}
-                      {pctChanged && idsChanged && ';'}
-                      {idsChanged && <> sổ chủ nhà đổi ({base?.landlord_account_ids.length} → {draft.accountIds.length} sổ)</>}
-                      .
+                      Từ tháng {monthShort(draft.termsMonth)}:{' '}
+                      {[
+                        pctChanged ? `% quản lý ${base.manager_percent}% → ${draft.percent}%` : null,
+                        fixedChanged ? `tiền cố định ${formatVND(base.manager_fixed_amount)} → ${formatVND(draft.fixed)}/tháng` : null,
+                        idsChanged ? `sổ chủ nhà đổi (${base.landlord_account_ids.length} → ${draft.accountIds.length} sổ)` : null,
+                      ].filter(Boolean).join('; ')}.
                     </p>
                     {laterTerms.length > 0 && (
                       <p className="mt-1">
-                        Mốc đã có sau đó cũng nhận {pctChanged && idsChanged ? 'cả % và sổ' : pctChanged ? '% mới' : 'sổ mới'}:{' '}
-                        {laterTerms.map((t) => `từ ${monthShort(t.valid_from)} (đang ${t.manager_percent}%, ${t.landlord_account_ids.length} sổ)`).join('; ')}.
+                        Mốc đã có sau đó cũng nhận {[pctChanged ? '%' : null, fixedChanged ? 'tiền cố định' : null, idsChanged ? 'sổ' : null]
+                          .filter(Boolean).join(', ')} mới:{' '}
+                        {laterTerms.map((t) => `từ ${monthShort(t.valid_from)} (đang ${managerTermsLabel(t, formatVND)}, ${t.landlord_account_ids.length} sổ)`).join('; ')}.
                       </p>
                     )}
                   </div>
@@ -434,7 +471,7 @@ export function OperationConfigDialog({
                   <p className="font-medium">Điều khoản theo tháng</p>
                   <ul className="space-y-0.5 text-muted-foreground">
                     {terms.map((t) => (
-                      <li key={t.valid_from}>Từ {monthShort(t.valid_from)}: {t.manager_percent}% · {t.landlord_account_ids.length} sổ chủ nhà</li>
+                      <li key={t.valid_from}>Từ {monthShort(t.valid_from)}: {managerTermsLabel(t, formatVND)} · {t.landlord_account_ids.length} sổ chủ nhà</li>
                     ))}
                   </ul>
                 </div>

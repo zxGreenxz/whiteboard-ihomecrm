@@ -8,6 +8,8 @@ import {
   CLOSE_BLOCKER_LABEL,
   NET_DIRECTION_LABEL,
   describeNet,
+  landlordShortfallOf,
+  managerTermsLabel,
   monthLabel,
   monthShort,
   type SettlementMonth,
@@ -99,7 +101,17 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
   const t = st.totals;
   const net = describeNet(t.landlord_owes_manager);
   const pct = st.manager_percent.toLocaleString('vi-VN');
+  const coDinh = t.manager_fixed_share > 0;
+  // dòng % hiện khi thoả thuận có % (hoặc không có gì khác để hiện — ảnh chốt cũ chỉ có %)
+  const coPhanTram = st.manager_percent > 0 || !coDinh;
+  const shortfall = landlordShortfallOf(t);
+  const termsNote = st.manager_percent <= 0 ? ''
+    : st.manager_fixed_amount > 0 ? ' (phần % lỗ thì không tính; tiền cố định vẫn nhận đủ)' : ' (lỗ thì không tính)';
   const closedAt = month.closed ? new Date(month.closed.closed_at).toLocaleString('vi-VN') : null;
+  const managerHint = coDinh && coPhanTram
+    ? `cố định ${formatVND(t.manager_fixed_share)} + ${pct}% LN ${formatVND(t.manager_percent_share)}`
+    : coDinh ? 'tiền cố định — nhận đủ cả tháng lỗ'
+      : t.profit <= 0 ? 'Lỗ hoặc hoà — không tính' : undefined;
 
   return (
     <Card data-testid="settlement-statement">
@@ -109,8 +121,9 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
           <StatusBadge month={month} mode={mode} />
         </div>
         <CardDescription>
-          {month.building_name} · Chủ nhà: {month.landlord_name} · Quản lý nhận {pct}% lợi nhuận tháng (lỗ thì không tính)
-          {st.terms_from !== month.effective_from && <> — tỷ lệ áp từ {monthShort(st.terms_from)}</>}
+          {month.building_name} · Chủ nhà: {month.landlord_name} · Quản lý nhận {managerTermsLabel(st, formatVND)}
+          {st.manager_percent > 0 ? ' tháng' : ''}{termsNote}
+          {st.terms_from !== month.effective_from && <> — điều khoản áp từ {monthShort(st.terms_from)}</>}
           {closedAt && <> · Chốt lúc {closedAt}{month.closed?.closed_by_name ? ` bởi ${month.closed.closed_by_name}` : ''}</>}
         </CardDescription>
         {month.closed?.note && <p className="text-sm">Ghi chú khi chốt: {month.closed.note}</p>}
@@ -173,9 +186,23 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
           <Kpi label="Doanh thu" value={t.revenue} hint="đã duyệt · theo kỳ trên phiếu" />
           <Kpi label="Chi phí" value={t.expense} hint="đã duyệt · theo kỳ trên phiếu" />
           <Kpi label="Lợi nhuận" value={t.profit} tone={t.profit < 0 ? 'neg' : 'pos'} />
-          <Kpi label={`Phần quản lý (${pct}%)`} value={t.manager_share} hint={t.profit <= 0 ? 'Lỗ hoặc hoà — không tính' : undefined} />
-          <Kpi label="Phần chủ nhà" value={t.landlord_share} tone={t.landlord_share < 0 ? 'neg' : undefined} />
+          <Kpi label={coDinh ? 'Phần quản lý' : `Phần quản lý (${pct}%)`} value={t.manager_share} hint={managerHint} />
+          <Kpi label="Phần chủ nhà" value={t.landlord_share} tone={t.landlord_share < 0 ? 'neg' : undefined}
+            hint={shortfall !== null ? 'âm — chủ nhà bù phí cố định' : undefined} />
         </div>
+
+        {shortfall !== null && (
+          <p role="status" data-testid="settlement-landlord-shortfall"
+            className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {t.profit < 0
+                ? <>Tháng này lỗ {formatVND(-t.profit)} nhưng phí quản lý cố định vẫn tính đủ {formatVND(t.manager_fixed_share)}</>
+                : <>Lợi nhuận tháng này ({formatVND(t.profit)}) không đủ trả phí quản lý {formatVND(t.manager_share)}</>}
+              {' '}— chủ nhà phải bù <b className="tabular-nums">{formatVND(shortfall)}</b> (phần chủ nhà âm). Khoản này đã tính trong số quyết toán bên dưới.
+            </span>
+          </p>
+        )}
 
         <div>
           <p className="mb-2 text-sm font-medium">Ai đang giữ tiền</p>
@@ -207,10 +234,20 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
         <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4" data-testid="settlement-net">
           <p className="mb-2 text-sm font-medium">Quyết toán tháng</p>
           <dl className="space-y-1 text-sm">
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Phần quản lý ({pct}% lợi nhuận)</dt>
-              <dd className="whitespace-nowrap tabular-nums">{formatVND(t.manager_share)}</dd>
-            </div>
+            {coDinh && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Phí quản lý cố định</dt>
+                <dd className="whitespace-nowrap tabular-nums">{formatVND(t.manager_fixed_share)}</dd>
+              </div>
+            )}
+            {coPhanTram && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  {coDinh ? '+ ' : ''}Phần quản lý ({pct}% lợi nhuận{t.profit <= 0 ? ' — lỗ hoặc hoà nên 0đ' : ''})
+                </dt>
+                <dd className="whitespace-nowrap tabular-nums">{formatVND(t.manager_percent_share)}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">+ Quản lý đã chi hộ</dt>
               <dd className="whitespace-nowrap tabular-nums">{formatVND(t.manager_paid)}</dd>
