@@ -970,6 +970,58 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
       "sha256": "53d88bde95a696bba585f70b06059e2998143d7fbd9bd28b4cc844a300035a75"
+    },
+    "supabase/migrations/20261023063140_task_reminder_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023063140_task_reminder_v1.sql",
+          "trich_doan": "CREATE TABLE app_private.task_reminder_config / app_private.task_reminder_outbox (RLS bật, không cấp cho vai nào) + bảy hàm app_private.task_reminder_* (chọn việc, người nhận, nội dung, giờ yên, dọn lease, bộ sinh DEFINER) + cron task-reminders-15m; KHÔNG chèn dòng cấu hình (khoá để TẮT)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 23 (Mốc 6): hàng đợi nhắc việc Zalo, bộ sinh, giờ yên, khoá để TẮT, thứ tự áp"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 6: nhắc việc qua Zalo — phần DB), chưa đi qua lane apply — bảng và hàm vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023063142. Bằng chứng: PGlite task-reminder-sql (chọn việc, chống gửi trùng, quyền / phạm vi, giờ yên, 5 đột biến) + PG17 task-reminder-race-pg.",
+      "missingObjects": [
+        "table:app_private.task_reminder_config",
+        "table:app_private.task_reminder_outbox",
+        "function:app_private.task_reminder_quiet_v1",
+        "function:app_private.task_reminder_quiet_end_v1",
+        "function:app_private.task_reminder_recipient_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 6 (23/10/2026)",
+      "sha256": "2e21f0981e5da7d1e77284191141202ffa661f13b2e301cdfa33ebdd4a6dcbf2"
+    },
+    "supabase/migrations/20261023063142_zalo_worker_task_reminder_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023063142_zalo_worker_task_reminder_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.zalo_worker_claim_task_reminders_v1 / zalo_worker_begin_task_reminder_v1 / zalo_worker_settle_task_reminder_v1 (mới, DEFINER, chỉ service_role, đòi lease zalo_worker_lease)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 23 (Mốc 6) + docs/plans/hermes-crm/CONG-VIEC-NHAC-ZALO-WORKER.md: hợp đồng RPC cho worker Zalo"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 6: ba RPC cho worker Zalo đọc hàng đợi nhắc việc), chưa đi qua lane apply — hàm mới vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023063140. Worker chưa gọi các hàm này (phiên chính sửa worker sau). Bằng chứng: PGlite task-reminder-sql (lease, claim / begin / settle, thử lại, unknown không gửi lại, ACL) + PG17 (SKIP LOCKED).",
+      "missingObjects": [
+        "function:public.zalo_worker_claim_task_reminders_v1",
+        "function:public.zalo_worker_begin_task_reminder_v1",
+        "function:public.zalo_worker_settle_task_reminder_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 6 (23/10/2026)",
+      "sha256": "a13f42af763cb918c125b6de37cee4436cbae9590ef1346567f297eb1dffdbaf"
     }
   }
 }

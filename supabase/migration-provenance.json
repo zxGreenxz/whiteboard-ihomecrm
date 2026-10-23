@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T06:38:47.987Z",
+  "generatedAt": "2026-10-23T07:18:23.418Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 852,
-    "unknown": 84,
+    "unknown": 86,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -13298,6 +13298,36 @@
       "evidence": [
         "catalog:function:app_private.hermes_w2c_catalog_v1",
         "catalog:function:app_private.hermes_w2c_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023063140_task_reminder_v1.sql",
+      "version": "20261023063140",
+      "name": "task_reminder_v1",
+      "scheme": "timestamp14",
+      "sha256": "2e21f0981e5da7d1e77284191141202ffa661f13b2e301cdfa33ebdd4a6dcbf2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.task_reminder_config",
+        "table:app_private.task_reminder_outbox",
+        "function:app_private.task_reminder_quiet_v1",
+        "function:app_private.task_reminder_quiet_end_v1",
+        "function:app_private.task_reminder_recipient_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023063142_zalo_worker_task_reminder_v1.sql",
+      "version": "20261023063142",
+      "name": "zalo_worker_task_reminder_v1",
+      "scheme": "timestamp14",
+      "sha256": "a13f42af763cb918c125b6de37cee4436cbae9590ef1346567f297eb1dffdbaf",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.zalo_worker_claim_task_reminders_v1",
+        "function:public.zalo_worker_begin_task_reminder_v1",
+        "function:public.zalo_worker_settle_task_reminder_v1"
       ]
     },
     {

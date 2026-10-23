@@ -776,3 +776,34 @@ INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,
 **Thứ tự áp (phiên chính):** `042424` → `042431` → `042436` (sau `164201`) → `042445` → `042450`. `042450` bị provenance xếp `catalog-proven` dù chưa áp (thay hàm đã có) ⇒ áp đích danh. Connector Mốc 5 phát hành trước hay sau migration đều an toàn: không có dòng chính sách thì thao tác ẩn; báo cáo chỉ hiện khi catalog SQL có. Cuối cùng mới bật bốn dòng chính sách bằng migration riêng.
 
 Rollback: chạy lại câu lệnh hàm của `164201` / `180402` (`$requires$` nhận cả hai thân); xoá lịch cron `job-recurrence-daily`; bảng mới để lại không hại.
+
+## 23. Mốc 6 — nhắc việc qua Zalo, phần DB (23/10)
+
+**Phạm vi:** mục 6 (Q38 = b, CV11). Hàng đợi + bộ sinh nhắc + ba RPC cho worker. Không đổi worker, không thêm tool Hermes, không đổi connector. Hai migration mới, chưa áp; chỉ thêm đối tượng mới (không thay thân hàm nào ⇒ không ghim md5, không file nào ghim chéo thân file trước). Hợp đồng cho worker: [CONG-VIEC-NHAC-ZALO-WORKER.md](CONG-VIEC-NHAC-ZALO-WORKER.md).
+
+**Khoá để TẮT:** không chèn dòng `app_private.task_reminder_config` nào ⇒ bộ sinh chạy cron nhưng không làm gì. Phiên chính bật bằng migration riêng sau khi worker có vòng claim / begin / settle (SQL ở tài liệu worker mục 6).
+
+**`20261023063140_task_reminder_v1`** (không hàm nào tên `hermes_`):
+
+| Phần | Luật |
+| --- | --- |
+| `task_reminder_config` | Theo công ty: `enabled` (mặc định false), `due_hour` 8, `overdue_hour` 8, `overdue_days` 3 (1–14), `daily_cap` 2 (1–2), `send_until_hour` 11 (không sinh nhắc mới sau giờ này, để không nhắn giữa ngày cho việc vừa báo bằng E4), `app_base_url` (https, cho link `/tasks`) |
+| `task_reminder_outbox` | Như mục 6.2, thêm `binding_id`, `job_total`, `updated_at`. `UNIQUE(công ty, người, loại, ngày)` ⇒ chạy lại / hai lượt song song không gửi trùng. CHECK: lease có khi và chỉ khi `claimed`/`sending`; `sending`/`sent`/`unknown` phải có `provider_started_at`. Hai bảng ở `app_private`, RLS bật, không cấp cho vai nào (kể cả `service_role`) |
+| Chọn việc `task_reminder_jobs_v1` | Việc `IN_PROGRESS` (huỷ = xoá) giao cho người đó ở công ty đó; `due_today` = hạn (giờ công ty) đúng hôm nay; `overdue` = hạn trong [hôm nay − N, hôm qua] |
+| Người nhận `task_reminder_recipient_v1` | Thành viên ACTIVE (đọc thẳng `organization_memberships`, không dùng helper đòi JWT) + liên kết `hermes_zalo_bindings` ACTIVE chưa thu hồi, nick bot của chính công ty đang bật đúng phiên bản, trợ lý ACTIVE (đúng điều kiện provisioning của worker). Không có đường nào tới khách / người ngoài |
+| Nội dung `task_reminder_body_v1` | Mã · tiêu đề (≤ 60 ký tự) · toà/phòng · hạn giờ hoặc "quá hạn N ngày (hạn dd/mm)"; ≤ 10 việc, ≤ 1000 ký tự, phần dư "… và N việc khác"; link `/tasks` khi có `app_base_url` |
+| Giờ yên | `app_private.notify_in_quiet_hours_v1` (công ty + cá nhân) khi DB có — production có từ đợt thông báo 21/10 nhưng chuỗi migration repo chưa có, nên gọi theo tên chỉ khi `to_regprocedure` thấy; không thì giờ yên công ty `notification_org_config` (mặc định 21→7). Đang yên ⇒ `not_before` = đầu giờ tròn hết yên; yên tới quá `send_until_hour` ⇒ bỏ |
+| Bộ sinh `task_reminder_enqueue_v1(p_now)` | DEFINER, cron `task-reminders-15m`. Dọn lease quá hạn (giờ thật), xoá nhật ký > 30 ngày. Mỗi công ty bật: khoá tư vấn THỬ theo công ty (bận ⇒ bỏ lượt), khối con riêng; chỉ trong [giờ nhắc, `send_until_hour`); mỗi người nhận có việc: kiểm người nhận + E4 (`notify_gate_v1`: tắt cả chuông lẫn push ⇒ không nhắc Zalo; người chưa có dòng sở thích nhận `(NULL, NULL)` ⇒ coi là bật như mọi nơi gọi — tầng 2 bắt được bản đầu coi NULL là tắt) ⇒ `due_today` rồi `overdue`, dừng khi đủ `daily_cap` |
+
+**`20261023063142_zalo_worker_task_reminder_v1`:** `zalo_worker_claim_task_reminders_v1` / `_begin_task_reminder_v1` / `_settle_task_reminder_v1`, DEFINER, chỉ `service_role`, đòi lease singleton `zalo_worker_lease` như `zalo_worker_claim_job_v1`. Claim SKIP LOCKED, giữ 60 s, kiểm lại cấu hình / ngày / người nhận. Begin là cổng ngay trước khi gọi Zalo: kiểm lại cấu hình, ngày, người nhận, E4, giờ yên (đang yên cùng ngày ⇒ về `queued` với `not_before` mới), dựng lại nội dung từ việc còn mở (hết ⇒ `skipped`), chuyển `sending` giữ 90 s. Settle: `failed` (chắc chắn chưa gửi) thử lại tối đa 3 lần (+5 / +30 phút), `unknown` không bao giờ gửi lại, phát lại cùng kết quả an toàn. Lease quá hạn: `claimed` ⇒ `queued`, `sending` ⇒ `unknown`.
+
+**Soát 40P01 / cron:** không khoá dòng công ty (chỉ khoá tư vấn thử theo công ty và khoá dòng hàng đợi SKIP LOCKED / FOR UPDATE ngắn); worker giữ lease FOR SHARE. Không vòng với guard Hermes hay hàng đợi `zalo_send_queue`. Mọi hàm chạy từ cron / worker không dùng helper đòi `auth.role()` / `auth.uid()`.
+
+**Test:**
+- PGlite `task-reminder-sql` (nền: migration THẬT của trợ lý / phiên / liên kết Zalo, bảng giờ yên như production): khoá để TẮT + khung giờ; chọn việc (hạn hôm nay, quá hạn ≤ 3 ngày, việc xong / ngày mai / công ty khác / người chưa liên kết bị loại), một tin mỗi loại, chạy lại không trùng, nội dung đúng từng ký tự, > 10 việc; E4 tắt / thành viên nghỉ / hết hạn / liên kết thu hồi / nick tắt ⇒ không nhắc, trần 1 tin; giờ yên công ty ⇒ dời 09:00, yên quá giờ ⇒ bỏ, helper công ty + cá nhân khi có; worker: lease, claim một lần, begin dựng lại nội dung khi một việc đã xong, settle phát lại, ACL `service_role` (authenticated bị từ chối; `service_role` không đọc thẳng bảng, không gọi bộ sinh); thử lại ≤ 3 lần giãn cách, `unknown` không trao lại, lease quá hạn, tin cũ ⇒ `skipped`; 5 đột biến (bỏ kiểm thành viên, bỏ kiểm lease, trao lại `unknown`, bỏ giờ yên, begin không kiểm việc còn mở) đều bị bắt.
+- PG17 `task-reminder-race-pg`: hai lượt bộ sinh song song ⇒ lượt sau `busy`, không chờ, không trùng; hai worker claim ⇒ hai tin rời nhau; dọn lease không chờ tin đang begin.
+- Tầng 2 trên TEST (ROLLBACK; nạp hai file trong giao dịch; người nhận = liên kết Zalo ACTIVE thật, hai việc tổng hợp; bộ sinh chạy như cron không JWT): chưa bật ⇒ 0; 07:30 ⇒ 0; 08:05 ⇒ 2 tin, chạy lại 0; cron đã đăng ký; vai `authenticated` gọi claim / `service_role` đọc thẳng bảng ⇒ 42501; lease khác ⇒ `lease_lost`; claim 2 tin (có UID), claim lại 0; begin trả nội dung có link; settle `sent` + phát lại; việc bị huỷ giữa claim và begin ⇒ `jobs_closed`; giờ yên 21→9 ⇒ dời 09:00. TEST chưa có helper giờ yên cá nhân (production có) ⇒ nhánh giờ yên công ty.
+
+**Thứ tự áp:** `063140` → `063142`, độc lập với Mốc 5. Không file nào `catalog-proven` giả (bảng / hàm đều mới). Rồi worker (phiên chính), rồi migration bật cấu hình.
+
+Rollback: `SELECT cron.unschedule('task-reminders-15m')`; hai bảng + mười hàm mới để lại không hại (cấu hình tắt).
