@@ -144,6 +144,7 @@ export const PUBLIC_ROUTES = new Map([
   ["/c/:code", "link hoá đơn hợp đồng công khai gửi khách"],
   ["/r/:token", "trang Phòng trống công khai (token)"],
   ["/phongtrong", "alias thương hiệu của /r/:token"],
+  ["/qt/:token", "quyết toán vận hành chỉ đọc cho chủ nhà (token thu hồi được)"],
   ["/quayso", "sự kiện quay số cho sale, không đăng nhập"],
   ["/quayso/:slug", "sự kiện quay số theo slug"],
   ["/quayso/:slug/quay", "màn quay của sự kiện"],

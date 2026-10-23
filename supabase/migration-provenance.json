@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T18:36:30.800Z",
+  "generatedAt": "2026-10-23T01:25:09.141Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 836,
+    "ledger-applied": 840,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -12664,6 +12664,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql",
+      "version": "20261021083438",
+      "name": "quyet_toan_van_hanh_chu_nha",
+      "scheme": "timestamp14",
+      "sha256": "e26597399d8ba0dda6e85fb8872072b10010de9debce1e680ddd98409f668404",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T23:23:32.409Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261021113528_hermes_expense_tools_disable_v1.sql",
       "version": "20261021113528",
       "name": "hermes_expense_tools_disable_v1",
@@ -13038,6 +13049,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022101837_bo_sinh_dinh_ky_chong_trung.sql",
+      "version": "20261022101837",
+      "name": "bo_sinh_dinh_ky_chong_trung",
+      "scheme": "timestamp14",
+      "sha256": "3bf3261a8ab7a63c2a19932cb6878c77863b5f9187bf63721225891f1a59f5d7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T23:25:38.751Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022121254_hermes_sale_action_activation_v1.sql",
       "version": "20261022121254",
       "name": "hermes_sale_action_activation_v1",
@@ -13057,6 +13079,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T18:18:50.859Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022172459_dau_van_tay_chot_ln_theo_so_tien.sql",
+      "version": "20261022172459",
+      "name": "dau_van_tay_chot_ln_theo_so_tien",
+      "scheme": "timestamp14",
+      "sha256": "bc1d62fe669212f3566db0e32b4fcca5d30c7cbf9f633bc6a6ad110dc2b5e6bf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T23:28:19.859Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql",
+      "version": "20261022172918",
+      "name": "khoa_ky_thang_da_chot_ln",
+      "scheme": "timestamp14",
+      "sha256": "f178ee3ed02f8654936c637f1482b169293b18741d0fb831ec6e6c8235b0d82b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T23:30:27.523Z|bien-nhan-backup"
       ]
     },
     {

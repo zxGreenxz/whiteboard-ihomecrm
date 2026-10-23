@@ -42,9 +42,12 @@ export interface FeeConfigCell {
   voucherCount: number;
 }
 
-export const useFeeConfigMatrix = (buildingIds?: string[]) => {
+// `options.enabled`: màn chỉ cần ma trận ở một nhánh (vd bộ dò trước khi chốt LN — chỉ người
+// chốt được) tắt truy vấn ở nhánh còn lại; mặc định bật như cũ.
+export const useFeeConfigMatrix = (buildingIds?: string[], options?: { enabled?: boolean }) => {
   const key = buildingIds && buildingIds.length ? [...buildingIds].sort() : null;
   const query = useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ['fee-config-matrix', key],
     queryFn: async (): Promise<FeeConfigCell[]> => {
       const { data, error } = await supabase.rpc('get_fee_config_matrix_v1', {

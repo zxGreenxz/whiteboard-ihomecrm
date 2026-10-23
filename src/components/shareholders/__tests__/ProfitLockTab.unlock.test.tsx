@@ -11,6 +11,12 @@ import type {
   ProfitCloseState,
   ProfitCloseStateRow,
 } from "@/hooks/useShareholderProfit";
+import {
+  FIXED_FEE_KINDS,
+  computeProfitReportChecks,
+  type ProfitReportChecksResult,
+} from "@/lib/profitReportChecks";
+import { UNALLOCATED_REASON_SYSTEM_MESSAGE, UNLOCK_REASON_SYSTEM_MESSAGE } from "@/lib/profitClose";
 
 const state = vi.hoisted(() => ({
   unlockCalls: [] as unknown[],
@@ -21,6 +27,15 @@ const state = vi.hoisted(() => ({
   closingStatus: [] as unknown[],
   preview: undefined as ProfitClosePreview | undefined,
   closeCalls: [] as unknown[],
+  lockChecks: {
+    checks: null as ProfitReportChecksResult | null,
+    isLoading: false,
+    isError: false,
+    operatedBuildingIds: new Set<string>() as ReadonlySet<string>,
+  },
+  // F06: gói RPC phát sinh sau chốt (undefined = chưa có / lỗi).
+  postLock: undefined as unknown,
+  postLockArgs: null as unknown,
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -64,6 +79,16 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
     refetch: vi.fn(),
   }),
   useProfitTotalGroupPeers: () => ({ data: {}, status: "success", fetchStatus: "idle", isLoading: false, isError: false, error: null, refetch: vi.fn() }),
+}));
+// Bộ dò chi cố định + toà vận hành (rà 21/10 F20/F07) — mock gọn một chỗ.
+vi.mock("@/hooks/useProfitLockChecks", () => ({
+  useProfitLockChecks: () => state.lockChecks,
+}));
+vi.mock("@/hooks/useProfitPostLock", () => ({
+  useProfitPostLock: (o: unknown) => {
+    state.postLockArgs = o;
+    return { data: state.postLock };
+  },
 }));
 
 import ProfitLockTab from "../ProfitLockTab";
@@ -152,6 +177,15 @@ beforeEach(() => {
   state.profitState = TRANG_THAI;
   state.preview = undefined;
   state.closeCalls = [];
+  state.postLock = undefined;
+  state.postLockArgs = null;
+  // Mặc định: đã dò, không có khoản thiếu/trùng nào.
+  state.lockChecks = {
+    checks: computeProfitReportChecks({ rows: [], buildings: [], today: "2026-10-22" }),
+    isLoading: false,
+    isError: false,
+    operatedBuildingIds: new Set<string>(),
+  };
 });
 afterEach(cleanup);
 
@@ -293,6 +327,134 @@ it('thiếu cách xử lý residual vẫn bấm validation và focus select củ
 it('có disposition nhưng thiếu lý do residual focus đúng ô reason', async () => {
  const button = await mountClose({ unallocated_profit: 100000, unallocated_disposition: 'RETAINED_EARNINGS', shareholder_percent_total: 90, shareholder_allocated_amount: 900000 }); expect((button as HTMLButtonElement).disabled).toBe(false); fireEvent.click(button);
  const reason = screen.getByLabelText('Lý do xử lý phần chưa phân bổ 15KV'); await waitFor(() => expect(document.activeElement).toBe(reason)); expect(reason.getAttribute('aria-invalid')).toBe('true');expect(document.getElementById(reason.getAttribute('aria-describedby')??'')?.getAttribute('role')).toBe('alert'); expect(state.closeCalls).toHaveLength(0);
+});
+
+describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 lý do)", () => {
+  const ALL_KEYS = FIXED_FEE_KINDS.map((k) => k.key);
+  // 15KV chỉ bật Tiền nhà, mức giả 10tr/kỳ, tháng chưa có phiếu nào ⇒ THIẾU.
+  const thieuTienNha = () =>
+    computeProfitReportChecks({
+      rows: [],
+      buildings: [{ id: B1, name: "15KV", is_virtual: false, has_elevator: false, hidden_fixed_expenses: ALL_KEYS.filter((k) => k !== "tien_nha"), status: "ACTIVE" }],
+      feeRates: [{ buildingId: B1, feeCategory: "tien_nha", defaultAmount: 10_000_000 }],
+      expenseTypes: [],
+      scopeBuildingIds: [B1],
+      today: "2026-10-22",
+    });
+
+  it("còn khoản thiếu: hộp chốt liệt kê và chỉ chốt được sau khi tick 'đã xem'", async () => {
+    state.lockChecks = { ...state.lockChecks, checks: thieuTienNha() };
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByText(/Còn 1 khoản chi cố định thiếu hoặc có thể trùng/)).toBeTruthy();
+    expect(within(hop).getByText("Tiền nhà")).toBeTruthy();
+    const chot = within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(true);
+    fireEvent.click(chot);
+    expect(state.closeCalls).toHaveLength(0);
+
+    fireEvent.click(within(hop).getByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" }));
+    await waitFor(() => expect(chot.disabled).toBe(false));
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("không có khoản thiếu: không bắt tick, chốt được ngay", async () => {
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).queryByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" })).toBeNull();
+    const chot = within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(false);
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("đang dò thì chờ; dò lỗi thì phải tick (không chặn cứng)", async () => {
+    state.lockChecks = { ...state.lockChecks, checks: null, isLoading: true };
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByText(/Đang dò chi cố định/)).toBeTruthy();
+    expect((within(hop).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
+    state.lockChecks = { ...state.lockChecks, checks: null, isLoading: false, isError: true };
+    const button2 = await mountClose();
+    fireEvent.click(button2);
+    const hop2 = await screen.findByRole("alertdialog");
+    expect(within(hop2).getByText(/Chưa dò được chi cố định/)).toBeTruthy();
+    const chot2 = within(hop2).getByRole("button", { name: "Chốt 1 nhà" }) as HTMLButtonElement;
+    expect(chot2.disabled).toBe(true);
+    fireEvent.click(within(hop2).getByRole("checkbox", { name: "Đã xem cảnh báo chi cố định" }));
+    await waitFor(() => expect(chot2.disabled).toBe(false));
+  });
+
+  it("toà vận hành cho chủ nhà có nhãn; lỗi/không quyền (tập rỗng) thì không nhãn", async () => {
+    state.lockChecks = { ...state.lockChecks, operatedBuildingIds: new Set([B1]) };
+    render(<ProfitLockTab organizations={ORGS} />);
+    const nhan = await screen.findAllByTestId("landlord-operated-label");
+    expect(nhan).toHaveLength(1);
+    expect(nhan[0]?.textContent).toMatch(/Vận hành cho chủ nhà — LN chốt là của cả toà, chưa trừ phần chủ nhà/);
+    cleanup();
+
+    state.lockChecks = { ...state.lockChecks, operatedBuildingIds: new Set<string>() };
+    render(<ProfitLockTab organizations={ORGS} />);
+    await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
+    expect(screen.queryByTestId("landlord-operated-label")).toBeNull();
+  });
+
+  it("F06: toà đã chốt có khoản phát sinh sau chốt ⇒ nhãn 'N khoản … (chưa cộng)'; không có thì không nhãn", async () => {
+    const khoan = (voucher: string, building: string) => ({
+      voucher_id: voucher, building_id: building, building_name: "x", month: KY, locked_at: "2026-08-02T00:00:00Z",
+      code: "PT0001", name: "Thu HĐ", restricted: false, voucher_date: KY, type: "INCOME", invoice_month: KY.slice(0, 7),
+      period_from: null, period_to: null, income: 1_000, expense: 0, created_at: "2026-08-05T00:00:00Z", approved_at: null,
+    });
+    state.postLock = {
+      from: KY, to: KY, locked: [],
+      after_lock: [khoan("v1", B1), khoan("v2", B1)],
+    };
+    render(<ProfitLockTab organizations={ORGS} />);
+    const nhan = await screen.findAllByTestId("post-lock-label");
+    expect(nhan).toHaveLength(1);
+    expect(nhan[0]?.textContent).toBe("2 khoản phát sinh sau chốt (chưa cộng)");
+    // chỉ hỏi các toà đang LOCKED của đúng tháng
+    expect(state.postLockArgs).toMatchObject({ from: KY, to: KY, buildingIds: [B1, B2].sort(), enabled: true });
+    cleanup();
+
+    state.postLock = undefined;
+    render(<ProfitLockTab organizations={ORGS} />);
+    await screen.findByRole("checkbox", { name: "Chọn tất cả nhà" });
+    expect(screen.queryByTestId("post-lock-label")).toBeNull();
+  });
+
+  it("lý do mở khoá là nguyên câu báo lỗi ⇒ không gửi, báo đúng lỗi", async () => {
+    const hop = await moHopMoKhoa();
+    const oLyDo = within(hop).getByLabelText("Lý do mở khoá");
+    fireEvent.change(oLyDo, { target: { value: "Lý do mở khoá phải có 8–1000 ký tự" } });
+    fireEvent.click(within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }));
+    expect(await within(hop).findByText(UNLOCK_REASON_SYSTEM_MESSAGE)).toBeTruthy();
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
+  it("lý do giữ lại là nguyên câu báo lỗi (dữ liệu T7) ⇒ không mở hộp chốt, báo tại ô", async () => {
+    const button = await mountClose({
+      unallocated_profit: 100000,
+      unallocated_disposition: "RETAINED_EARNINGS",
+      unallocated_disposition_reason: "Lý do xử lý phải có 8–500 ký tự",
+      shareholder_percent_total: 90,
+      shareholder_allocated_amount: 900000,
+    });
+    fireEvent.click(button);
+    const reason = screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV");
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+    expect(document.getElementById(reason.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      UNALLOCATED_REASON_SYSTEM_MESSAGE,
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(state.closeCalls).toHaveLength(0);
+  });
 });
 
 it('preview thiếu source hash hiện inline reload, giữ điều chỉnh và không mở xác nhận',async()=>{const button=await mountClose({},'');fireEvent.click(button);const alert=(await screen.findByText('Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.')).closest('[role="alert"]') as HTMLElement;expect(alert).toBeTruthy();expect(within(alert).getByRole('button',{name:'Tải lại số liệu'})).toBeTruthy();expect(screen.queryByRole('alertdialog')).toBeNull();expect(state.closeCalls).toHaveLength(0);});
