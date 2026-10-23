@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T12:35:46.536Z",
+  "generatedAt": "2026-10-23T12:56:09.970Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13394,7 +13394,7 @@
       "version": "20261023113626",
       "name": "quan_ly_nhan_tien_co_dinh",
       "scheme": "timestamp14",
-      "sha256": "ccfed6d70a5e641710a693652edcd35153aafe4efc5a131e72ecbd919580c061",
+      "sha256": "668ba97a612c25a14cfb466ff85d34415de61fdf964f7873ab696402a7ae2270",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.landlord_settlement_compute_v1",

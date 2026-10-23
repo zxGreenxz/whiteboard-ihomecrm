@@ -69,22 +69,26 @@ export const normalizeVi = (s: string | null | undefined): string =>
     .replace(/đ/g, 'd')
     .trim();
 
+/** Bỏ đuôi "— HĐ <mã hợp đồng>" của tên hệ thống (phòng đã có cột riêng ở nơi gọi). */
+const withoutContractCode = (name: string): string => name.replace(CONTRACT_CODE_SUFFIX, '').trimEnd() || name;
+
 /**
- * Tên dòng Báo cáo LN (desktop + điện thoại). Dời nguyên từ hai trang báo cáo về đây (23/10/2026), không
- * đổi hành vi:
- *  - dòng ghi chú thuần (phòng trống/thiếu hoá đơn) và mọi dòng CHI giữ mô tả gốc;
+ * Tên dòng Báo cáo LN (desktop + điện thoại). Dời từ hai trang báo cáo về đây (23/10/2026):
+ *  - dòng ghi chú thuần (phòng trống/thiếu hoá đơn) giữ mô tả gốc;
+ *  - dòng CHI giữ mô tả gốc, chỉ bỏ đuôi "— HĐ <mã>" (vd "Hoàn tiền cọc — HĐ …" ⇒ "Hoàn tiền cọc");
  *  - khoản thu thanh lý hợp đồng ⇒ "HĐ Thanh Lý Hợp Đồng" (phiếu trải nhiều HĐ, giữ nhãn gộp);
  *  - dòng gắn hoá đơn ⇒ tên hoá đơn KHÔNG kèm phòng (phòng có cột riêng);
- *  - chưa tải xong hoá đơn ⇒ nhãn rút gọn cũ "Hóa Đơn Tiền Phòng T<tháng>".
+ *  - chưa tải xong hoá đơn ⇒ nhãn rút gọn cũ "Hóa Đơn Tiền Phòng T<tháng>";
+ *  - còn lại: mô tả gốc bỏ đuôi "— HĐ <mã>" (vd "Doanh thu bỏ cọc — HĐ …" ⇒ "Doanh thu bỏ cọc").
  */
 export function profitReportRowDescription(
   r: { isNote: boolean; side: 'income' | 'expense'; typeName: string | null | undefined; description: string },
   ctx: { invoice?: InvoiceTitleParts | null; month: number | string },
 ): string {
   if (r.isNote) return r.description;
-  if (r.side === 'expense') return r.description;
+  if (r.side === 'expense') return withoutContractCode(r.description);
   if (normalizeVi(`${r.typeName ?? ''} ${r.description}`).includes('thanh ly')) return 'HĐ Thanh Lý Hợp Đồng';
   if (ctx.invoice) return invoiceTitleFromParts(ctx.invoice, null);
   if (normalizeVi(r.description).includes('thu tien theo hd tien phong')) return `Hóa Đơn Tiền Phòng T${ctx.month}`;
-  return r.description;
+  return withoutContractCode(r.description);
 }

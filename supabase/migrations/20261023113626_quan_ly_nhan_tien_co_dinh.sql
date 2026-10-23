@@ -94,7 +94,7 @@ BEGIN
       ('app_private.landlord_strip_public_v1(jsonb)',
        ARRAY['2e819cd3bc7d0201114207e689bd8b0b', '2377f91bcdab86e42a8371c0b6cb6ef2']),
       ('app_private.landlord_settlement_overview_payload_v1(uuid,boolean)',
-       ARRAY['1281400ce7f5a31776d517e2bd0d406a', '9fca043968c02474eb42810ad71bfadd']),
+       ARRAY['1281400ce7f5a31776d517e2bd0d406a', '0884667fb4d68f576e158af7056f801a']),
       ('app_private.landlord_operation_state_v1(uuid)',
        ARRAY['9452c2a2b43081989b25dd56bad3bce8', 'fb8fecf22a102dc96e9d2937d4247b49']),
       ('public.landlord_operations_list_v1()',
@@ -571,7 +571,9 @@ BEGIN
     IF v_closed THEN
       v_closed_net := v_closed_net + v_net;
       v_closed_count := v_closed_count + 1;
-    ELSE
+    ELSIF v_cfg.is_active THEN
+      -- toà đã ngừng áp dụng: tháng mở vẫn liệt kê (chốt được) nhưng không cộng tạm tính — phí cố
+      -- định không tự dồn mãi theo tháng; cùng luật với landlord_ihome_profit_v1 (23/10/2026)
       v_open_net := v_open_net + v_net;
     END IF;
     v_months := v_months || pg_catalog.jsonb_build_object(

@@ -140,21 +140,30 @@ describe('tên hiển thị phiếu', () => {
 });
 
 describe('tên dòng Báo cáo LN dời về hàm dùng chung', () => {
-  it('trùng bản cũ của hai trang báo cáo trên mọi loại dòng', () => {
+  it('trùng bản cũ của hai trang báo cáo trên mọi loại dòng, trừ đuôi "— HĐ <mã>" nay được bỏ', () => {
     const inv = invoiceTitlePartsOf({ kind: 'MONTHLY', billing_month: '2026-10', invoice_items: [{ type: 'RENT' }, { type: 'SERVICE' }] });
     const rows = [
       { isNote: true, typeName: 'Ghi chú', description: 'Trống 12 ngày — Thanh lý HĐ' },
       { isNote: false, typeName: 'Doanh thu thanh lý', description: 'Doanh thu thanh lý — HĐ HD-1' },
+      { isNote: false, typeName: 'Cọc', description: 'Doanh thu bỏ cọc — HĐ HĐT-0001/2026' },
       { isNote: false, typeName: 'Tiền phòng', description: 'Thu tiền theo HĐ Tiền phòng T10' },
       { isNote: false, typeName: 'Tiền phòng', description: 'Thu tiền theo HĐ INV-1' },
       { isNote: false, typeName: 'Điện', description: 'Chi tiền điện' },
       { isNote: false, typeName: null as unknown as string, description: 'Thu khác' },
     ];
+    const boMa = (s: string) => s.replace(/\s+—\s+HĐ\s+\S+\s*$/, '');
     for (const r of rows) for (const side of ['income', 'expense'] as const) for (const coHd of [true, false]) for (const mm of [10, 0]) {
       const invTitle = coHd ? invoiceTitleFromParts(inv, null) : undefined;
+      const cu = moTaBaoCaoCu({ ...r, invTitle }, side, mm);
       expect(profitReportRowDescription({ ...r, side }, { invoice: coHd ? inv : null, month: mm || 1 }))
-        .toBe(moTaBaoCaoCu({ ...r, invTitle }, side, mm));
+        .toBe(r.isNote ? cu : boMa(cu));
     }
+    expect(profitReportRowDescription(
+      { isNote: false, side: 'expense', typeName: 'Cọc', description: 'Hoàn tiền cọc — HĐ HD-2026-0012' }, { month: 10 }))
+      .toBe('Hoàn tiền cọc');
+    expect(profitReportRowDescription(
+      { isNote: false, side: 'income', typeName: 'Cọc', description: 'Doanh thu bỏ cọc — HĐ HD-2026-0012' }, { month: 10 }))
+      .toBe('Doanh thu bỏ cọc');
     expect(normalizeVi(' ĐIỆN Nước ')).toBe('dien nuoc');
   });
 });

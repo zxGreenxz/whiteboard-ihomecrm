@@ -251,7 +251,7 @@ export const settlementOverviewSchema = z.object({
   landlord_name: z.string(),
   manager_percent: money,
   /** Tiền cố định/tháng của điều khoản mới nhất. */
-  manager_fixed_amount: money,
+  manager_fixed_amount: money.optional().default(0),
   effective_from: isoDate,
   is_active: z.boolean(),
   /** Số dư đầu kỳ đã được đối chiếu với chủ nhà. */
@@ -264,7 +264,7 @@ export const settlementOverviewSchema = z.object({
     is_current_month: z.boolean(),
     manager_percent: money,
     /** Server đã đổi ảnh chốt cũ (không có trường) thành 0. */
-    manager_fixed_amount: money,
+    manager_fixed_amount: money.optional().default(0),
     revenue: money,
     expense: money,
     profit: money,
@@ -300,7 +300,7 @@ export const landlordOperationsListSchema = z.object({
     organization_id: z.string().uuid(),
     landlord_name: z.string(),
     manager_percent: money,
-    manager_fixed_amount: money,
+    manager_fixed_amount: money.optional().default(0),
     effective_from: isoDate,
     is_active: z.boolean(),
   })),
@@ -319,7 +319,7 @@ export const landlordOperationOptionsSchema = z.object({
     landlord_name: z.string(),
     /** %, tiền cố định và sổ chủ nhà của điều khoản MỚI NHẤT (từ terms_from). */
     manager_percent: money,
-    manager_fixed_amount: money,
+    manager_fixed_amount: money.optional().default(0),
     landlord_account_ids: z.array(z.string().uuid()),
     terms_from: isoDate,
     effective_from: isoDate,
@@ -340,7 +340,7 @@ export const landlordOperationOptionsSchema = z.object({
     terms: z.array(z.object({
       valid_from: isoDate,
       manager_percent: money,
-      manager_fixed_amount: money,
+      manager_fixed_amount: money.optional().default(0),
       landlord_account_ids: z.array(z.string().uuid()),
     })),
     updated_at: z.string(),

@@ -1519,6 +1519,26 @@ describe("tiền cố định: Báo cáo LN và link chủ nhà", () => {
       .toMatchObject({ profit: 5_000_000, landlordShare: -7_000_000 });
   });
 
+  it("toà ngừng áp dụng: tháng mở vẫn liệt kê (chốt được) nhưng không cộng tạm tính — phí cố định không tự dồn", async () => {
+    const [dang, ngung] = await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await caiCoDinh(30, 5_000_000);
+      await chot("2025-02-01");
+      const truoc = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, false)", [TOA_A, [SO_CHU_NHA]]);
+      const sau = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      return [truoc, sau] as const;
+    });
+    const mo = dang.months.filter((m) => m.status === "OPEN");
+    expect(mo.length).toBeGreaterThan(1);
+    expect(dang.totals.open_net).toBe(mo.reduce((s, m) => s + m.landlord_owes_manager, 0));
+    expect(dang.totals.open_net).not.toBe(0);
+    expect(ngung.is_active).toBe(false);
+    expect(ngung.months.map((m) => [m.period_month, m.status])).toEqual(dang.months.map((m) => [m.period_month, m.status]));
+    expect([ngung.totals.open_net, ngung.totals.closed_net]).toEqual([0, dang.totals.closed_net]);
+    expect(ngung.totals.balance_with_open).toBe(ngung.totals.balance_closed);
+  });
+
   it("link công khai: chủ nhà thấy tiền cố định và phần % tách riêng, không lộ id", async () => {
     const pub = await trongGiaoDich(async () => {
       await asUser(CHU_A);
