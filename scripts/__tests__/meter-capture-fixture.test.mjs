@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { newFixture, provisionSql, validateFixture } from '../test-env/meter-capture-fixture.mjs';
-import { requestTestJson } from '../test-env/meter-capture-live.mjs';
+import { matchesTestBuild, requestTestJson } from '../test-env/meter-capture-live.mjs';
 
 const fresh=()=>newFixture(randomUUID(),'a'.repeat(40),'meter-test@example.invalid','2026-10-23');
 test('TEST meter fixture refuses production, missing disposable marker and reused subject IDs',()=>{
@@ -35,4 +35,13 @@ test('parent TEST HTTP client handles native Response.ok and does not expose err
   await assert.rejects(requestTestJson(url,{},async()=>new Response(JSON.stringify(payload),{status:502})),{message:'TEST endpoint /auth/v1/token returned HTTP 502.'});
  }
  let called=false;await assert.rejects(requestTestJson('https://tryymsxyyckgbrmmvozx.supabase.co/auth/v1/token',{},async()=>{called=true;return new Response('{}');}));assert.equal(called,false);
+});
+test('TEST preview cache refuses a different project, commit or changed HTML',()=>{
+ const sha='a'.repeat(40),index=`<meta name="build-sha" content="${sha}">`;
+ const manifest={projectRef:'hzulujxgonszuleqticb',sourceSha:sha,indexSha256:createHash('sha256').update(index).digest('hex')};
+ assert.equal(matchesTestBuild(manifest,index,sha),true);
+ assert.equal(matchesTestBuild({...manifest,projectRef:'tryymsxyyckgbrmmvozx'},index,sha),false);
+ assert.equal(matchesTestBuild(manifest,index,'b'.repeat(40)),false);
+ assert.equal(matchesTestBuild(manifest,index+'changed',sha),false);
+ assert.equal(matchesTestBuild(null,null,sha),false);
 });

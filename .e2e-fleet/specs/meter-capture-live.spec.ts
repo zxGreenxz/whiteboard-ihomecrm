@@ -6,10 +6,10 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import QRCode from 'qrcode';
 import { z } from 'zod';
-import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 import { loadMeterLiveFixture, METER_TEST_REF, METER_TEST_URL, type MeterLiveFixture } from '../support/meter-capture-live-fixture';
 import { meterBillingSourceSchema } from '../../src/lib/meter-capture/types';
 import { assertMonthlyInvoice, assertZeroMoveOut, financialSource, monthlyInvoiceRequest, zeroMoveOutRequest } from '../support/meter-capture-financial';
+import { installMeterLiveBrowser } from '../support/meter-capture-live-browser';
 
 /**
  * Live TEST smoke, not the synthetic gateway/component harness.
@@ -63,7 +63,7 @@ async function syntheticClip(directory: string, fixture: MeterLiveFixture, tag: 
   return readFile(file);
 }
 
-test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped billing sources', async ({ page, request }, testInfo) => {
+test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settlement', async ({ page, request }, testInfo) => {
   test.setTimeout(35 * 60_000);
   const appOrigin=process.env.FLEET_BASE_URL??'';
   expect(appOrigin,'Only TEST loopback or the dedicated TEST preview is allowed').toMatch(/^http:\/\/127\.0\.0\.1:\d+$|^https:\/\/ihomecrm-git-test-env-[a-z0-9-]+\.vercel\.app$/);
@@ -71,23 +71,7 @@ test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped
   const { fixture, lifecycle } = await loadMeterLiveFixture();
   expect(fixture.expectedBuildSha).toBe(process.env.EXPECTED_SOURCE_SHA);
   const created = { clientIds: [] as string[], captureIds: [] as string[] };
-  const errors: string[] = [], forbiddenHosts: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  const readers=new Set([...readRpcAllowlist('dashboard'),'get_meter_reading_stats']);
-  await page.route('**/*',route=>{
-    const req=route.request(),url=new URL(req.url()),method=req.method();
-    const block=()=>{forbiddenHosts.push(`${method} ${url.host}${url.pathname}`);return route.abort('blockedbyclient');};
-    if(url.origin===appOrigin||(['fonts.googleapis.com','fonts.gstatic.com'].includes(url.host)&&method==='GET'))return route.continue();
-    if(url.origin!==METER_TEST_URL)return block();
-    if(['GET','HEAD','OPTIONS'].includes(method)||url.pathname==='/auth/v1/token')return route.continue();
-    const name=url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
-    // Only unrelated UI preference persistence is isolated. Meter gateway,
-    // media, worker, confirmation and financial source responses remain live.
-    const preference=uiPreferenceFakeBody(req,fixture.organizationId);
-    if(preference)return route.fulfill({status:200,contentType:'application/json',body:preference});
-    if(name&&readers.has(name))return route.continue();
-    return block();
-  });
+  const ui=await installMeterLiveBrowser(page,fixture,created,appOrigin);
   try {
     if (!process.env.FLEET_METER_FFMPEG || !process.env.TEST_SUPABASE_PUBLISHABLE_KEY) throw new Error('Missing TEST publishable key or pinned FFmpeg; no capture has been created.');
     const password=process.env.FLEET_PASS_TEST_CHU;if(!password)throw new Error('Missing private TEST actor password');
@@ -127,14 +111,21 @@ test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped
     const initial = await resolve('MONTHLY');
     expect(initial).toHaveLength(1);expect(initial[0].meterId).toBe(fixture.meterId);expect(Number(initial[0].start?.value)).toBe(Number(fixture.previousValue));expect(initial[0].end).toBeNull();
     const collect = async (purpose:'MONTHLY'|'MOVE_OUT',tag:string): Promise<Capture> => {
-      const clip = await syntheticClip(testInfo.outputDir,fixture,tag), sha256=createHash('sha256').update(clip).digest('hex'), clientId=randomUUID();
-      created.clientIds.push(clientId);
-      const started = z.object({capture:captureSchema,uploadPath:z.string()}).parse(await call('startCapture',{clientId,meterId:fixture.meterId,contractId:fixture.contractId,qrText:fixture.qrText,purpose,readingDate:fixture.readingDate,month,capturedAt:new Date().toISOString(),sha256,durationSeconds:4,mimeType:'video/mp4',sizeBytes:clip.length}));
-      created.captureIds.push(started.capture.id);
+      const clip = await syntheticClip(testInfo.outputDir,fixture,tag), sha256=createHash('sha256').update(clip).digest('hex');
+      let started:{capture:Capture;uploadPath:string};
+      if(purpose==='MONTHLY'){
+        const browserStarted=await ui.upload(clip,sha256);
+        let uploaded:Capture|null=null;
+        await expect.poll(async()=>{uploaded=z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:browserStarted.capture.id})).capture;return uploaded.mediaReceived;},{timeout:90_000}).toBe(true);
+        started={capture:z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:browserStarted.capture.id})).capture,uploadPath:browserStarted.uploadPath};
+      }else{
+        const clientId=randomUUID();created.clientIds.push(clientId);
+        started=z.object({capture:captureSchema,uploadPath:z.string()}).parse(await call('startCapture',{clientId,meterId:fixture.meterId,contractId:fixture.contractId,qrText:fixture.qrText,purpose,readingDate:fixture.readingDate,month,capturedAt:new Date().toISOString(),sha256,durationSeconds:4,mimeType:'video/mp4',sizeBytes:clip.length}));
+        created.captureIds.push(started.capture.id);
+        const upload=await request.post(`${METER_TEST_URL}/storage/v1/object/meter-capture-media/${started.uploadPath}`,{headers:{...headers,'content-type':'video/mp4','x-upsert':'false'},data:clip});expect(upload.ok()).toBe(true);
+        const finalized=await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,{headers,data:{action:'finalize',organizationId:fixture.organizationId,captureId:started.capture.id}});expect(finalized.ok()).toBe(true);
+      }
       expect(started.uploadPath.startsWith(`${fixture.organizationId}/meter-captures/${started.capture.id}/`)).toBe(true);
-      const upload = await request.post(`${METER_TEST_URL}/storage/v1/object/meter-capture-media/${started.uploadPath}`,{headers:{...headers,'content-type':'video/mp4','x-upsert':'false'},data:clip});
-      expect(upload.ok()).toBe(true);
-      const finalized=await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,{headers,data:{action:'finalize',organizationId:fixture.organizationId,captureId:started.capture.id}});expect(finalized.ok()).toBe(true);
       expect(await lifecycle.processCapture(fixture,started.capture.id)).toEqual({captureId:started.capture.id,completed:true});
       let capture=started.capture;
       await expect.poll(async()=>{capture=z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:started.capture.id})).capture;return capture.status;},{timeout:6*60_000,intervals:[3000,5000,10000]}).toBe('REVIEW');
@@ -146,9 +137,10 @@ test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped
       for (const url of [evidence.imageUrl,evidence.videoUrl]) {expect(new URL(url).origin).toBe(METER_TEST_URL);expect((await request.get(url)).ok()).toBe(true);}
       const privateUrl=`${METER_TEST_URL}/storage/v1/object/authenticated/meter-capture-media/${started.uploadPath}`;
       expect((await request.get(privateUrl)).ok()).toBe(false);
-      const confirmed=z.object({capture:captureSchema}).parse(await call('confirmCapture',{captureId:capture.id,expectedVersion:capture.version,expectedPreviousValue:capture.previousValue,value:fixture.currentValue,reason:`E2E synthetic ${tag}: exact rendered digits verified`})).capture;
+      const payload=purpose==='MONTHLY'?await ui.confirm(capture,testInfo):{captureId:capture.id,expectedVersion:capture.version,expectedPreviousValue:capture.previousValue,value:fixture.currentValue,reason:`E2E synthetic ${tag}: exact rendered digits verified`};
+      const confirmed=z.object({capture:captureSchema}).parse(await call(purpose==='MONTHLY'?'getCapture':'confirmCapture',purpose==='MONTHLY'?{captureId:capture.id}:payload)).capture;
       expect(confirmed.status).toBe('CONFIRMED');expect(confirmed.confirmedReadingId).not.toBeNull();
-      const repeated=z.object({capture:captureSchema}).parse(await call('confirmCapture',{captureId:capture.id,expectedVersion:capture.version,expectedPreviousValue:capture.previousValue,value:fixture.currentValue,reason:`E2E synthetic ${tag}: exact rendered digits verified`})).capture;
+      const repeated=z.object({capture:captureSchema}).parse(await call('confirmCapture',payload)).capture;
       expect(repeated.confirmedReadingId).toBe(confirmed.confirmedReadingId);
       return confirmed;
     };
@@ -175,8 +167,10 @@ test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped
     expect(z.array(z.unknown()).parse(await read('payments',{select:'id',invoice_id:`eq.${invoice.id}`}))).toEqual([]);
     expect(z.array(z.unknown()).parse(await read('income_expenses',{select:'id',contract_id:`eq.${fixture.contractId}`}))).toEqual([]);
     expect(z.array(z.unknown()).parse(await read('invoices',{select:'id',contract_id:`eq.${fixture.contractId}`}))).toHaveLength(1);
-    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
-    expect(forbiddenHosts).toEqual([]);expect(errors).toEqual([]);
+    await ui.showZeroMoveOut(moveOut,testInfo);
+    expect(ui.writes).toEqual(expect.arrayContaining(['startCapture','storageUpload','finalize','confirmCapture']));
+    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
+    expect(ui.blocked).toEqual([]);expect(ui.errors).toEqual([]);
   } finally {
     const retired=await lifecycle.retireFixture(fixture,created);
     expect(retired).toEqual({fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true});

@@ -7,12 +7,13 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile, realpath } from 'node:fs/promises';
-import { resolve, isAbsolute } from 'node:path';
+import { resolve, isAbsolute, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { credential, ketNoi, lit, psql, psqlJson, repoRoot } from './lib.mjs';
 import { matKhauTest } from './hau-ky.mjs';
 import { chromeBuildEnv } from './chrome.mjs';
+import { probeTarget, verifyTestTarget } from '../lib/e2e-fleet-runner.mjs';
 import { assertTestLease, withTestCleanup, withTestLock } from './lock.mjs';
 import { inspectFixture, METER_TEST_REF, newFixture, provisionFixture, retireFixture, verifyFixture } from './meter-capture-fixture.mjs';
 
@@ -43,6 +44,45 @@ export async function requestTestJson(url,options,fetcher=fetch){
 }
 const json=requestTestJson;
 
+export function matchesTestBuild(manifest,index,sha){
+ return manifest?.projectRef===METER_TEST_REF&&manifest?.sourceSha===sha&&typeof index==='string'
+  &&index.includes(`name="build-sha" content="${sha}"`)
+  &&manifest?.indexSha256===createHash('sha256').update(index).digest('hex');
+}
+async function startTestPreview(cred,sha,base){
+ const cache=resolve(repoRoot,'.cache'),output=resolve(cache,'meter-live-web');
+ assert(output.startsWith(cache+sep),'Build output must stay in the owned workspace cache');
+ const metadata=resolve(cache,'meter-live-web-build.json');
+ await mkdir(cache,{recursive:true});
+ const prior=await readFile(metadata,'utf8').then(JSON.parse).catch(()=>null);
+ const index=await readFile(resolve(output,'index.html'),'utf8').catch(()=>null);
+ const env=chromeBuildEnv(cred,sha),viteBin=resolve(repoRoot,'node_modules/vite/bin/vite.js');
+ if(!matchesTestBuild(prior,index,sha)){
+  console.log(JSON.stringify({event:'meter_test_build_started',sourceSha:sha}));
+  let log='';const build=child(process.execPath,[viteBin,'build','--outDir',output,'--emptyOutDir'],env,chunk=>{log+=chunk.toString();});
+  const timer=setTimeout(()=>{void stopOwned(build).catch(()=>{});},15*60_000);
+  try{assert.equal(await build.done,0,'TEST build failed; inspect ignored meter-live-web-build.log');}
+  finally{clearTimeout(timer);await writeFile(resolve(cache,'meter-live-web-build.log'),log);}
+  const built=await readFile(resolve(output,'index.html'),'utf8');assert(built.includes(`name="build-sha" content="${sha}"`));
+  await writeFile(metadata,JSON.stringify({projectRef:METER_TEST_REF,sourceSha:sha,indexSha256:createHash('sha256').update(built).digest('hex')}));
+ }
+ // Static preview avoids the reproduced dev-server stall after its first HTML
+ // response. No TEST fixture is written until the same target verifier passes.
+ const run=child(process.execPath,[viteBin,'preview','--outDir',output,'--host','127.0.0.1','--port',new URL(base).port,'--strictPort'],env,()=>{});
+ try{
+  let ready=false;for(let i=0;i<60;i++){
+   if(run.child.exitCode!==null)throw new Error('TEST preview failed; loopback port may already be occupied');
+   try{const response=await fetch(base,{signal:AbortSignal.timeout(1000)});if(response.ok&&(await response.text()).includes(`name="build-sha" content="${sha}"`)){ready=true;break;}}catch{}
+   await new Promise(yes=>setTimeout(yes,500));
+  }assert(ready,'TEST preview did not become ready');
+  const probe=await probeTarget({origin:base,fetchText:async url=>{
+   assert.equal(new URL(url).origin,base);const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(15_000)});
+   if(!response.ok)throw new Error(`TEST preview HTTP ${response.status}`);return response.text();
+  }});const verdict=verifyTestTarget(probe);assert.equal(verdict.ok,true,'TEST preview project verification failed');assert.equal(probe.buildSha,sha);
+  console.log(JSON.stringify({event:'meter_test_preview_ready',sourceSha:sha,base}));return run;
+ }catch(error){await stopOwned(run);throw error;}
+}
+
 async function main(){
  assert.deepEqual(process.argv.slice(2),['--run'],'Usage: node scripts/test-env/meter-capture-live.mjs --run');
  assert.equal(git('status','--porcelain'),'', 'Commit reviewed source first; official receipt requires a clean worktree.');
@@ -54,12 +94,16 @@ async function main(){
  await realpath(ffmpeg);await realpath(launcher);
  const cred=credential();assert.equal(cred.testRef,METER_TEST_REF);assert(cred.testPat&&cred.testPublishableKey,'TEST PAT and publishable key required');
  const actorEmail=process.env.METER_TEST_ACTOR_EMAIL;assert(actorEmail,'TEST actor email must be supplied privately through env');
+ const base=process.env.FLEET_BASE_URL??'http://127.0.0.1:5199';assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'This provisioner launches only its own TEST loopback preview');
+ const preview=await startTestPreview(cred,sha,base);
+ try{
+ assert.equal(git('rev-parse','HEAD'),sha);assert.equal(git('status','--porcelain'),'','Source changed during TEST build');
  const {test}=await ketNoi(cred);
  await withTestLock({cred,test},async lease=>{
   const [actor]=psqlJson(test,`SELECT id FROM auth.users WHERE email=${lit(actorEmail)}`);assert(actor&&uuid.test(actor.id),'TEST actor missing');
   const fixture=newFixture(actor.id,sha,actorEmail),directory=resolve(repoRoot,'.cache',`meter-live-${fixture.fixtureId}`);
   await mkdir(directory,{recursive:true});
-  let retired=false,server,vite,activeWorker,inflight=Promise.resolve();
+  let retired=false,server,activeWorker,inflight=Promise.resolve();
   const created={clientIds:[],captureIds:[]};
   const clean=async()=>{
    if(retired)return {fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true};
@@ -116,14 +160,6 @@ async function main(){
    });
    server.requestTimeout=0;await new Promise((yes,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',yes);});
    const address=server.address();assert(address&&typeof address==='object');
-   const base=process.env.FLEET_BASE_URL??'http://127.0.0.1:5199';assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'This provisioner launches only its own TEST loopback dev server');
-   const port=Number(new URL(base).port);
-   vite=child(process.execPath,[resolve(repoRoot,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port',String(port),'--strictPort'],{...chromeBuildEnv(cred,sha),NODE_ENV:'development'},()=>{});
-   let ready=false;for(let i=0;i<60;i++){
-    if(vite.child.exitCode!==null)throw new Error('TEST dev server failed; loopback port may already be occupied');
-    try{const response=await fetch(base,{signal:AbortSignal.timeout(1000)});if(response.ok&&(await response.text()).includes(`name="build-sha" content="${sha}"`)){ready=true;break;}}catch{}
-    await new Promise(yes=>setTimeout(yes,500));
-   }assert(ready,'TEST dev server did not become ready');
    const fleetEnv={...process.env,FLEET_BASE_URL:base,FLEET_TARGET_ENV:'TEST',FLEET_AGENT:'codex',FLEET_WORKERS:'1',FLEET_METER_LIVE:'1',EXPECTED_SOURCE_SHA:sha,
     TEST_SUPABASE_PUBLISHABLE_KEY:cred.testPublishableKey,FLEET_PASS_TEST_CHU:password,FLEET_METER_FIXTURE_MANIFEST:manifest,
     METER_FIXTURE_LIFECYCLE_URL:`http://127.0.0.1:${address.port}`,METER_FIXTURE_LIFECYCLE_TOKEN:token};
@@ -135,9 +171,10 @@ async function main(){
    // RUNNING job fails closed and leaves active_run for explicit recovery.
    if(activeWorker)await activeWorker.done.catch(()=>{});
    await inflight;
-   try{await clean();}finally{if(server)await new Promise(yes=>server.close(yes));await stopOwned(vite);}
+   try{await clean();}finally{if(server)await new Promise(yes=>server.close(yes));}
   }
  });
+ }finally{await stopOwned(preview);}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  main().catch(error=>{console.error(`Meter TEST live smoke stopped: ${error.name}: ${error.message}`);process.exitCode=1;});
