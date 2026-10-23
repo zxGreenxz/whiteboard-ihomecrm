@@ -1,6 +1,6 @@
 # Thao tác ghi của Hermes — trang HỢP ĐỒNG (Đợt 2: thiết kế ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế, chốt D-HĐ1–D-HĐ10 theo mặc định và chốt D-HĐ11 (22/10). Tiến độ ở mục 15 (Mốc 2, 3, 4 xong). Migration chỉ là file, chưa áp; production chưa đổi.
+Ngày 22/10/2026 (giờ Việt Nam). Tài liệu này cắm các thao tác ghi của trang Hợp đồng vào khung chung đã có trên `main` ([NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md)). Phiên chính đã duyệt thiết kế, chốt D-HĐ1–D-HĐ10 theo mặc định và chốt D-HĐ11 (22/10). Tiến độ ở mục 15 (Mốc 2–5 xong; Mốc 5 xếp chồng trên #270). Migration chỉ là file, chưa áp; production chưa đổi.
 
 Căn cứ, theo thứ tự ưu tiên:
 1. Đáp án 40 câu chủ chốt ngày 21/10: Q2, Q3, Q7, Q20–Q23, Q26. Khi đáp án và plan mâu thuẫn, đáp án thắng.
@@ -164,6 +164,18 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
 - **Thêm.** Khách đã có trong HĐ ⇒ kết quả "đã có, không đổi". Người mới luôn `is_representative=false`.
 - **Bớt.** Người không có trong HĐ ⇒ `occupant_not_on_contract` (needs_input). Người đang là đại diện ⇒ `cannot_remove_representative` (rejected). Hàm web không chặn việc bỏ người đại diện; đổi đại diện làm trên web.
 - **Ghi.** `p_expected` = danh sách lúc tra (PT409 nếu đổi). Kết quả liệt kê người ở sau thay đổi (tên theo RLS).
+- **Đã làm (Mốc 5, file MỚI `20261022074815_hermes_contract_party_draft_v1`).**
+  - Tìm khách bằng hàm INVOKER mới `public.hermes_contract_party_lookup_v1` dưới RLS `customers` (khoá web `customers.view`): SĐT chỉ còn chữ số, `+84`/`84` đầu số ⇒ `0`, khớp đúng; không có SĐT thì tên khớp đúng sau khi gấp dấu. Ứng viên "tên · …3 số cuối" (≤ 8). Bớt người ở chỉ tìm trong khách của HĐ.
+  - Vỏ dựng lại (thân `022951` + một nhánh gọi hàm tra khách, kết quả ghép vào khoá `party` của tra cứu); bước ghi dựng từ thân `061813`, ghim md5.
+  - `p_expected` đúng khuôn hàm web dựng (`customer_id`, `is_representative`, `notes`, sắp theo `customer_id`) và nằm trong basis; người mới `is_representative=false`, ghi chú của người khác giữ nguyên.
+  - Hậu điều kiện: danh sách sau ghi = danh sách mong muốn, tập người đại diện không đổi; lệch ⇒ `crm_refused`.
+  - Phòng không có HĐ hiện hành ⇒ `room_has_no_active_contract` trước mọi câu hỏi về khách.
+- **Sửa theo review #277 (Mốc 5b, sửa thẳng trong `074815` vì chưa áp ở đâu).**
+  - **Phạm vi = guard ∩ quyền.** Hàm tra khách nhận thêm tập toà guard trả cho khoá (`p_building_ids`, chữ ký mới `(uuid,uuid,uuid[],text,jsonb)`). Khách thuộc phạm vi khi có HĐ (mọi trạng thái, chưa xoá) ở toà trong tập — như đọc khách theo toà (`20261021063453`) — hoặc không có HĐ nào ở toà ngoài tập (khách chưa gắn toà, vd vừa tạo trên web). Khách chỉ có HĐ ở toà ngoài tập ⇒ `name_unresolved` `why: outside_scope`, không nêu tên; ứng viên tên trùng chỉ lấy khách trong phạm vi. RLS có thể giấu HĐ ở toà người hỏi không xem, nên bước ghi DEFINER kiểm lại cùng luật trên mọi HĐ ở cả hai lượt.
+  - **Lượt 2 kiểm lại khách.** Vỏ gọi lại hàm tra khách theo `customerId` của bản đã giải (dưới RLS người hỏi, trong tập toà); không còn thấy / ra khách khác ⇒ `state_changed`. Basis người ở và nháp có thêm `customerId` (đổi khách ở lượt 2 ⇒ lệch basis).
+  - **Bớt người có ghi chú.** Ghi chú nằm trên dòng thành viên nên mất khi bớt, thêm lại không khôi phục ⇒ máy chủ đòi xác nhận; cảnh báo "Ghi chú của … trên HĐ sẽ mất (thêm lại không khôi phục)" và câu xem trước/kết quả nêu nội dung ghi chú (≤ 200 ký tự). Không có ghi chú thì ghi thẳng như cũ.
+  - **Biên nhận không giữ SĐT.** `input.params` lưu `customerPhoneSha256` = sha256(tổ chức + ":" + SĐT đã chuẩn hoá như hàm tra khách) thay cho `customerPhone`; phép so phát lại dùng cùng dạng nên cùng SĐT (kể cả khác cách viết) ⇒ phát lại, SĐT khác ⇒ `request_conflict`. Băm chỉ để biên nhận không chứa SĐT dạng chữ: SĐT có ~10⁹ giá trị nên ai đọc được bảng biên nhận (`app_private`, chỉ chủ hàm) vẫn dò được — người đó cũng đọc được `customers.phone`.
+  - **HĐ `EXTENDED` / `EXPIRED` chưa kết thúc: giữ tra cứu `ACTIVE` cho thao tác người ở.** Đo production 22/10 (chỉ đếm): `ACTIVE` 298, `TERMINATED` 151, không HĐ nào `EXTENDED`/`EXPIRED`; không hàm ghi hiện hành nào đặt hai trạng thái này (chỉ migration cũ 008/012/015/`20250710000001`/`20260510000012`). Mở rộng thì phải thay bằng file mới hàm tra cứu + bước ghi Mốc 2–4 đang chạy, và hàm ghi web của Mốc 2–4 có luật trạng thái riêng ⇒ không đáng khi production không có dòng nào. Test ghim hành vi: HĐ `EXTENDED` ⇒ `room_has_no_active_contract`.
 
 ### 4.6 Soạn nháp HĐ mới (Mốc 5)
 - **Payload theo đúng allowlist của `save_contract_draft`.** `form` đủ 12 khoá:
@@ -175,6 +187,16 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
   `customers` có 0 hoặc 1 khách đã có sẵn. Không giữ phòng, không có tiền.
 - **Máy chủ đòi xác nhận** khi phòng đang có HĐ mà ngày hết hạn / báo trả ≥ `startDate`, hoặc khi đã có nháp của phòng này trong 24 giờ qua.
 - **Kết quả.** "Đã soạn nháp HĐ phòng 205 toà C … — mở nháp trên web để kiểm, xuất và ký". Link nháp: đường dẫn web của nháp tra ở Mốc 5.
+- **Đã làm (Mốc 5).**
+  - **Ngày kết thúc do người dùng nói (`endDate` bắt buộc), không có `months`.** Form web không tự tính ngày kết thúc; đo production (449 HĐ, 18 tháng): "+N tháng" khớp 19, "+N tháng − 1 ngày" khớp 54, cuối tháng 158 — không có luật nào chiếm đa số nên không tự đặt luật.
+  - Mặc định như form web: ngày ký = hôm nay, kỳ hằng tháng, giảm giá 0, ngày bắt đầu/kết thúc tính tiền để trống (= theo ngày bắt đầu). Dịch vụ: `services: []` + `use_custom_services: false` ⇒ lúc ký `sign_and_checkin_contract_draft_v1` truyền `services: []` cho `create_contract_v2`, tức dịch vụ mặc định của toà như form web; không chép công thức dịch vụ.
+  - Khách: 0 hoặc 1 khách đã có (người đại diện), lấy đúng 6 khoá của allowlist từ bảng `customers`.
+  - `p_draft_id = md5('draft:'||requestId)::uuid`, `p_request_id = requestId`, mẫu = NULL.
+  - Máy chủ đòi xác nhận (lượt auto trả bản xem trước dù chính sách ghi thẳng) khi phòng còn HĐ có (báo trả hoặc) ngày hết hạn ≥ ngày bắt đầu, hoặc phòng đã có nháp EDITABLE soạn trong 24 giờ.
+  - Ngày: bắt đầu trong ±366 ngày quanh hôm nay, kết thúc > bắt đầu và ≤ bắt đầu + 3 660 ngày.
+  - Hậu điều kiện: đúng một nháp mới (id theo requestId) EDITABLE đúng phòng + ngày + giá; số HĐ của phòng và trạng thái phòng không đổi.
+  - Web không có đường riêng cho nháp (mở bằng tab Nháp ở `/contracts`) ⇒ `link: '/contracts'`, `nextStep` "Mở Hợp đồng → tab Nháp để kiểm, xuất và ký".
+  - Mốc 5b: cảnh báo "phòng đang có HĐ" tính HĐ `ACTIVE` + `EXTENDED` như web coi là còn khách (`20261010114500`, giữ chỗ phòng); khách nêu trong nháp theo cùng luật phạm vi và kiểm lại ở lượt 2 như mục 4.5.
 
 ### 4.7 Gia hạn hàng loạt (Mốc 6, xong trước 01/2027)
 - **Chọn HĐ.** `l` chọn HĐ ACTIVE thấy được, có `end_date` trong `endMonth`, trong tập toà của khoá (∩ `buildingName` nếu có), sắp theo toà rồi phòng, lấy 21 dòng để biết còn dư. **Loại** HĐ đang có báo trả, vì không quyết hộ việc giữ hay huỷ báo trả; cảnh báo liệt kê các HĐ bị loại. Lô tối đa 20 HĐ.
@@ -227,6 +249,7 @@ Báo cáo W2 mới không thêm tool: chúng nằm trong kết quả `crm_read_r
 | (e) | "Tháng trước bao nhiêu phòng trả phòng": bot ra ít hơn web | Đo: tiêu chí của `re_terminations` (HĐ `TERMINATED/EXPIRED` có `COALESCE(actual_end_date, end_date)` trong kỳ) cho tháng 9 ra đúng số của web, gồm cả bỏ cọc; tầng 2 trên TEST ra 28. Reader tự đặt kỳ "đầu tháng này → hôm nay" khi thiếu ngày, nên bot quên truyền kỳ, hoặc đếm bằng trang `contract_search`, sẽ ra sai | **Đã làm (Mốc 2):** chỉ sửa tiêu đề, theo cách 0 SQL: "tháng trước" ⇒ truyền `fromDate`/`toDate` đúng tháng; số phòng trả = `summary.total`, bỏ cọc = các dòng `terminationType FORFEIT`. Không đổi khuôn summary, vì khuôn bị kiểm khít: connector lên trước migration sẽ làm vỡ báo cáo. Cộng SOUL |
 | (f) | Quản lý toà: "toà X còn phòng trống?", "đang cho thuê bao nhiêu phòng?" (ma trận lượt 2) | `re_vacant_rooms` cần khoá báo cáo BĐS ⇒ `forbidden`; `crm_read_occupancy` cần `reports_real_estate.occupancy`, kết nối quản lý không có tool này, mà mô tả `crm_available_rooms` lại chỉ sang nó. Web: Quản lý toà xem trang Phòng bằng `rooms.view` theo toà | **Đã làm (Mốc 3):** báo cáo W2D `rooms_occupancy` (`rooms.view`, nguồn `crm.rooms_list_v1` như trang Phòng): mỗi toà một dòng tổng / đang cho thuê (OCCUPIED + EXPIRING_SOON) / sắp hết hạn / trống / giữ chỗ / bảo trì. Danh sách phòng trống = báo cáo `rooms` có sẵn (`displayStatus AVAILABLE`). Mô tả `crm_available_rooms` chỉ thêm đường "không quyền BĐS: `rooms_occupancy` / `rooms`" (+48 B `tools/list`) |
 | (g) | "Tháng 2 năm sau toà 80 có mấy HĐ hết hạn?" (quản lý; bot ra 13, đúng 11) | Bot tự lọc tay danh sách; `re_contracts_ending` dùng khoá báo cáo BĐS nên quản lý không gọi được | **Đã làm (Mốc 3):** ba báo cáo hợp đồng (`re_contracts_ending`, `re_move_out_notices`, `re_exit_cases_pending`) chuyển sang khoá `contracts.view`, thêm vào tập khoá dùng lại của W2. `re_contracts_ending` vốn nhận tháng tương lai + `buildingId`; tầng 2 ra đúng 11 |
+| (h) | "Còn HĐ nào chưa ký / nháp chờ ký?" (Mốc 5) | Chưa có báo cáo | **Đã làm (Mốc 5):** báo cáo W2D `contract_drafts` (`contracts.view`, file `20261022075119`, dựng từ thân `043617`, ghim md5) gọi đúng RPC web `list_contract_drafts`; chỉ nháp EDITABLE trong tập toà; KHÔNG trả dữ liệu khách của nháp (chỉ số khách, có đại diện chưa, số bản đã xuất, số ngày chờ). Không phụ thuộc file trang Mốc 5 |
 | — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Chưa làm (không gọn, xem "Chỗ nối `publicLink`" ngay dưới).** Phải dựng lại `hermes_domain_read_v3` (thân ~300 dòng, ghim md5 thân production), đổi khuôn kiểm khít của connector và thêm cấu hình host; SQL lên trước connector thì mọi lần đọc chi tiết HĐ hỏng |
 
 **Chỗ nối `publicLink` (D-HĐ9; dùng chung với phiên Hoá đơn — chưa hiện thực).**
@@ -281,6 +304,8 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 | 3 ✓ | `20261022043540_hermes_w2_contracts_view_reused_v1` | `contracts.view` vào tập khoá dùng lại của W2. Phải áp TRƯỚC `043617` (thứ tự tên đảm bảo) |
 | 3 ✓ | (nối vào `20261022022951`) | Nhánh gia hạn + phát lại biên nhận sớm; policy `contract.renew` (irreversible / always) |
 | 4 ✓ | `20261022061813_hermes_contract_return_v1` (MỚI) | Thay tra cứu + bước ghi của trang (dựng từ thân `022951`, ghim md5): nhánh `contract.return` + hoá đơn chưa thu; policy `contract.return`. Áp SAU `022951` |
+| 5 ✓ | `20261022074815_hermes_contract_party_draft_v1` (MỚI) | Hàm tra khách INVOKER mới; thay vỏ (thân `022951` + tra khách) và bước ghi (thân `061813`, ghim md5); 3 dòng chính sách người ở + nháp. Áp SAU `061813` |
+| 5 ✓ | `20261022075119_hermes_w2d_contract_drafts_v1` (MỚI) | Báo cáo `contract_drafts` (dựng từ thân `043617`, ghim md5). Tách phát hành sớm được |
 | — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6, "Chỗ nối `publicLink`") |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
@@ -404,6 +429,9 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 8. Quản lý toà (không có `crm_read_occupancy` / `re_vacant_rooms`): "toà X còn phòng trống?" ⇒ `crm_read_report rooms` với `buildingName`, lấy phòng `displayStatus AVAILABLE`; "đang cho thuê bao nhiêu phòng" ⇒ `rooms_occupancy`, số = `rented` (từng toà) hoặc `summary.rented` (cả phạm vi). Không lấy trang Sale (`crm_available_rooms`) làm trạng thái phòng.
 9. "Tháng X (năm sau) toà Y có mấy HĐ hết hạn" ⇒ `re_contracts_ending` với `buildingName` + `fromDate`/`toDate` đúng tháng; số = `summary.total`, không tự lọc tay danh sách.
 10. "Khách phòng X đã dọn đi / trả phòng rồi" ⇒ `contract.return` với `date` (ngày thực tế, không phải tương lai) + `note` (nội dung thanh lý; thiếu thì hỏi một câu). Chỉ `forfeit=true` khi người dùng nói rõ bỏ cọc. Đọc `preview.text` nguyên văn (có "KHÔNG lùi được") và chờ "đồng ý"; sau khi ghi nhắc quyết toán trên web theo `nextStep`. `needs_input return_date_future` ⇒ hỏi khách đã dọn chưa: chưa thì dùng báo trả.
+11. "Thêm / bớt người ở phòng X" ⇒ `contract.occupant_add` / `contract.occupant_remove` với SĐT (ưu tiên) hoặc tên khách đã có trong CRM; ghi thẳng, đọc lại `result.text`. Khách chưa có thì tạo trước bằng `crm_customer_create`. Không bỏ được người đại diện qua bot (đổi đại diện trên web).
+12. "Soạn HĐ cho phòng X" ⇒ `contract.draft` với `startDate`, `endDate` (người dùng nói; chỉ nói số tháng thì hỏi ngày kết thúc), `rentPrice`, `deposit`, khách tuỳ chọn. Nhắc rằng đây là NHÁP, ký và hoàn tất trên web (Hợp đồng → tab Nháp). Có bản xem trước (phòng còn khách / trùng nháp) thì đọc cảnh báo và chờ "đồng ý".
+13. "Còn HĐ nào chưa ký / nháp chờ ký" ⇒ `crm_read_report contract_drafts`; số = `summary.total`.
 
 ## 14. Việc phiên chính phải làm
 
@@ -481,6 +509,41 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
   - ghi: HĐ `TERMINATED` đúng ngày, đúng một hồ sơ PENDING DEFERRED khoá `hermes:<requestId>`, phòng về `AVAILABLE`, biên nhận + audit; đếm và tổng phiếu thu chi + hoá đơn của HĐ không đổi;
   - phát lại cùng requestId y nguyên; requestId mới ⇒ `already_returned`;
   - rào P0a: chèn hồ sơ thanh lý nháp qua đường REST sau đó ⇒ 55000 `[TERMINATION_CONTRACT_CLOSED]`.
+
+**Mốc 5, 22/10 (nhánh `claude/hermes-hop-dong-moc5-20261022`, xếp chồng trên #270).** Hai migration MỚI, không sửa 6 file của #270.
+
+*Người ở + nháp (mục 4.5–4.6):* `contract.occupant_add`, `contract.occupant_remove` (khoá `contracts.edit`), `contract.draft` (khoá `contracts.create`), đều ghi thẳng; nháp đòi xác nhận theo từng lần gọi khi phòng còn HĐ hoặc trùng nháp 24 giờ. Hàm tra khách INVOKER mới; vỏ + bước ghi thay bằng file mới ghim md5.
+
+*Đọc:* báo cáo `contract_drafts` (mục 6 (h)).
+
+*Kiểm.*
+- PGlite trang 29/29 (thêm test Mốc 5: tìm khách SĐT/+84/tên trùng/không thấy/mất quyền xem khách; thêm/bớt; không bỏ đại diện; hậu điều kiện; nháp phòng trống / trùng / còn HĐ / ngày sai; `$requires$`); W2 297/297; connector 102/102; hợp đồng duyệt hàm Hermes 241/241 (23 file / 82 hàm). Đột biến Mốc 5 18/18.
+- `tools/list` đủ quyền giữ 63 849 / 64 000 B (thao tác nằm trong kết quả `crm_action_list`, báo cáo trong `crm_read_report_list`).
+- Tầng 2 trên TEST (đã có 6 migration #270; chỉ chạy hai file mới, ROLLBACK, hàm ghi web thật, 3 kết nối có quyền): `$requires$` nhận đúng thân đang chạy thật; thêm / thêm lại (không đổi) / bớt người ở; bỏ người đại diện ⇒ từ chối; nháp phòng trống ghi thẳng (không sinh HĐ, phòng giữ trạng thái); nháp trùng 24 giờ và phòng còn HĐ ⇒ đòi xác nhận; báo cáo `contract_drafts` thấy nháp vừa soạn, không có tên khách.
+
+**Mốc 5b, 22/10 (sửa #277 theo review độc lập; `074815` sửa tại chỗ vì chưa áp, `075119` không đổi).** Mục 4.5 "Sửa theo review #277": phạm vi khách = guard ∩ quyền (chữ ký hàm tra khách thêm `uuid[]`), lượt 2 kiểm lại khách, basis có khách đã chọn, bớt người có ghi chú đòi xác nhận, biên nhận lưu băm SĐT, cảnh báo nháp tính HĐ `EXTENDED`; thao tác người ở giữ tra cứu `ACTIVE` (production không có HĐ `EXTENDED`/`EXPIRED`).
+- PGlite trang 34/34 (thêm: khách ngoài phạm vi kết nối ⇒ `outside_scope` không tên, ứng viên chỉ trong phạm vi, HĐ cũ ở toà trong phạm vi vẫn nhận, RLS giấu HĐ toà ngoài ⇒ bước ghi vẫn chặn; lượt 2 mất quyền xem / ra ngoài phạm vi / khách bị xoá / đổi khách ⇒ `state_changed`; basis người ở lệch ⇒ `state_changed`; phát lại người ở cùng / khác cách viết SĐT ⇒ y nguyên, SĐT khác ⇒ `request_conflict`; biên nhận không có SĐT; bớt người có ghi chú; HĐ `EXTENDED`); hợp đồng duyệt hàm Hermes 241/241 (ghim băm mới của ba hàm).
+
+**Soát deadlock 40P01, 23/10 (sửa tại chỗ `074815`; theo lỗi Hoá đơn #279).**
+- *Vòng.* Guard khoá dòng công ty trước mọi việc. Đo production 23/10: nhiều hàm ghi web khoá dòng nghiệp vụ TRƯỚC rồi mới khoá công ty.
+  - Dòng HĐ: `create_new_contract_extension`, `terminate_contract_move_out`.
+  - Dòng phòng:
+    - `create_contract_v2` / `sign_and_checkin_contract_draft_v1` (`FOR UPDATE`);
+    - `lock_room_for_sale_v1` / `release_room_sale_lock_v1` (`FOR NO KEY UPDATE`);
+    - các hàm giữ chỗ, chính sách bán, tin pass.
+  - Khi đó bước ghi đang giữ công ty mà chờ đúng dòng ấy (HĐ: Mốc 2–5; phòng: khoá tạm / gỡ khoá / trả phòng / soạn nháp qua khoá ngoại) thì thành vòng.
+  - Không hàm web nào khoá khách, khoá tạm, tin pass hay hồ sơ trả phòng trước công ty.
+- *Sửa.* File này thay cả bước ghi, nên sửa cho mọi thao tác của trang, kể cả Mốc 2–4.
+  - Ở lượt có thể ghi: dòng HĐ và dòng khoá tạm lấy `FOR UPDATE NOWAIT`.
+  - Dòng phòng lấy trước, `NOWAIT`, đúng mức cao nhất mà hàm web phía sau sẽ xin (không nâng khoá giữa chừng):
+    - `NO KEY UPDATE` cho khoá tạm / gỡ khoá / trả phòng;
+    - `KEY SHARE` cho nháp.
+  - Đang bị giữ ⇒ 55P03, cả giao dịch lùi, connector đổi thành `state_changed` (đã có từ #253). Đổi thứ tự trong bước ghi không gỡ được vòng vì khoá công ty nằm ở guard.
+- *Kiểm.*
+  - Test hai phiên trên PostgreSQL 17 cục bộ (`contract-action-sql.test.mjs`):
+    - phiên web giữ dòng trước ⇒ thêm người ở / báo trả / nháp / khoá tạm / trả phòng đều báo 55P03 ngay, rồi phiên web lấy được khoá công ty;
+    - chiều ngược lại (bước ghi giữ trước) ⇒ phiên web chờ rồi chạy tiếp.
+  - Đột biến bỏ `NOWAIT` tái hiện đúng `40P01 deadlock detected`; 5/5 đột biến bị bắt.
 
 ## 16. Chưa xác minh
 

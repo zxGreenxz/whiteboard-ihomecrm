@@ -98,6 +98,13 @@ export const W2D_REPORTS = Object.freeze({
     params: ['buildingId'],
     fields: { buildingId: id, buildingName: text(200), total: count, rented: count, expiringSoon: count, available: count, reserved: count, maintenance: count },
     summary: { buildings: count, total: count, rented: count, expiringSoon: count, available: count, reserved: count, maintenance: count } }),
+  // Mốc 5 (20261022075119): nháp HĐ chưa ký qua RPC web list_contract_drafts; không dữ liệu khách của nháp.
+  contract_drafts: w2Report({ permission: 'contracts.view', source: 'crm.list_contract_drafts', scope: 'rows', private: true,
+    title: 'Nháp HĐ chưa ký (tab Nháp trang Hợp đồng): phòng, ngày bắt đầu/kết thúc, giá, cọc, số khách, đã xuất chưa, số ngày chờ. Dùng cho "còn HĐ nào chưa ký / nháp chờ ký".',
+    params: ['buildingId'],
+    fields: { draftId: id, ...ROOM, startDate: nullable(date), endDate: nullable(date), rentPrice: amount, totalDeposit: amount, customerCount: count,
+      hasRepresentative: bool, documentCount: count, createdOn: date, updatedOn: date, daysOpen: int },
+    summary: { total: count, exported: count, withoutCustomer: count, oldestDays: nullable(int) } }),
   re_expense_ratio: w2Report({ permission: 'reports_real_estate.expense_ratio', source: 'crm.real_estate_expense_ratio_v1', scope: 'rows', private: true,
     title: 'Tỷ lệ chi phí/doanh thu (mặc định 6 tháng): summary/byMonth gộp mọi toà như web, hàng theo toà. kind=month|category|type; query = đúng tên nhóm chi. Phần chi cần quyền danh mục.',
     params: ['buildingId', 'fromDate', 'toDate', 'query', 'kind'], kinds: ['month', 'category', 'type'],
