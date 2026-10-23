@@ -791,3 +791,235 @@ Kết luận review: APPROVE có điều kiện, không có lỗi chặn. Migrat
   - toà trùng ⇒ chỉ đổi "người nhận", phòng giữ nguyên;
   - sửa/huỷ, phiếu THU / hệ thống / phiếu con như mục 19.5;
   - huỷ phiếu đã vào sổ: 1 bút toán đảo, tổng bút toán = 0.
+
+## 20. Mốc 5 — duyệt / duyệt + chi (23/10/2026)
+
+Nhánh `claude/hermes-thu-chi-moc5-20261023`, xếp chồng trên #278 (`7d365cd45`). Migration `20261023013109_hermes_expense_approve_v1`, **chưa áp**; áp SAU `20261022075102`.
+
+### 20.1 Thao tác
+
+| `id` | Khoá (seed TẮT) | Quyền CRM giao vào | Lớp | Hàm ghi web |
+| --- | --- | --- | --- | --- |
+| `expense.approve` | `income_expenses.approve_vouchers` | `income_expenses.approve` (Q25) | `money`, `always` | `adopt_voucher_attachments_as_evidence_v2` + `approve_and_post_income_expense_v2`, hoặc `approve_income_expense_v2` |
+
+```text
+expense.approve  voucherCodes* list 1–10 của name(voucher), post bool (mặc định true = duyệt và chi)
+```
+
+Khuôn `list` và `bool` đã có trong danh mục chung, nên không thêm byte `tools/list`.
+
+- **Giải mã:** từng mã giải như mã phiếu của note/edit/cancel: dưới RLS, trong phạm vi khoá. Mơ hồ, ngoài phạm vi hay không thấy ⇒ `needs_input` có ứng viên. Hai mã cùng một phiếu ⇒ `invalid_params`.
+  - Vòng giải nằm ngay trong lõi. Lõi chạy INVOKER dưới `authenticated`, không có USAGE `app_private`, nên không gọi lại chính nó theo tên được.
+- **Kế hoạch từng phiếu** (xem trước = chạy thử hàm web rồi lùi):
+  - **không làm:**
+    - `hermes_expense_manual_v1`: THU ⇒ `web_only`; phiếu hệ thống, hoặc phiếu con định kỳ khi cờ TC5 tắt ⇒ `system_voucher`;
+    - hết chờ duyệt ⇒ `not_pending`;
+    - Q25 (#263, `ie_self_approve_over_threshold_blocked_v1`, rào thứ hai, cùng hàm của web) ⇒ `not_allowed`;
+    - hàm web từ chối khi chạy thử: kỳ sổ chốt ⇒ `period_locked`, quyền ⇒ `not_allowed`, …
+  - **duyệt + chi:** `adopt…` rồi `approve_and_post…`. Payload đúng đường "Chi nhanh" của web (`useQuickExpense`): sổ của phiếu, `postedOn` = hôm nay giờ VN, chứng từ = ảnh của phiếu, `expectedExecutionRevision` 0, hai phiên bản.
+  - **chỉ duyệt** (TC4, nói rõ lý do): khi
+    - `post=false`;
+    - phiếu không chi qua sổ quỹ (`posting_mode` ≠ `CASHBOOK`);
+    - phiếu chưa chọn sổ;
+    - phiếu chưa có ảnh;
+    - ảnh không dùng làm chứng từ được (adopt bỏ qua, hoặc hàm web đòi chứng từ `FINALIZED`);
+    - người duyệt không giữ sổ của phiếu (CUSTODIAN).
+  - Lô không còn phiếu nào làm được ⇒ `rejected` với lý do của phiếu đầu tiên; lô ≥ 2 phiếu thì kèm `item`.
+- **Bản xem trước:**
+  - `summary` "Duyệt N phiếu: duyệt + CHI x phiếu, tổng …; chỉ duyệt y phiếu (chưa chi); không làm z phiếu." Câu này gom theo kế hoạch, khác mẫu ở mục 5.
+  - `items[{stt, code, content, building, category, amount, maker, ageDays, attachments, cashbook, plan}]`, với `plan` là câu tiếng Việt.
+  - Có phiếu không làm được ⇒ thêm cảnh báo. Không có UUID.
+- **Lượt 2** (plan G4):
+  - `basis` = md5 của kế hoạch đã xem. Lệch, hoặc kế hoạch bị sửa ⇒ `state_changed`, trước khi mở biên nhận.
+  - Từng phiếu một, mỗi phiếu một khối con, khoá idempotency web `hermes-approve:<requestId>:<i>`:
+    - kiểm lại "lập tay" (cờ TC5) và #263 ⇒ nếu sai thì là lý do cuối;
+    - lệch `approval_version` / `posting_version` ⇒ phiếu đó `state_changed`;
+    - ảnh bị gỡ (adopt rỗng) ⇒ `state_changed`; không tự hạ xuống "chỉ duyệt" khi người dùng chưa xem lại;
+    - lỗi hàm web ⇒ lý do thật.
+  - Có ít nhất 1 phiếu xong ⇒ chốt `applied` với `{items[{code, outcome: approved_posted | approved | state_changed | rejected, reason?, statusText}], totalPosted, totalPostedText}`. `link`: một phiếu ⇒ trang phiếu; nhiều phiếu ⇒ `/income-expense`.
+  - 0 phiếu xong và có lý do cuối ⇒ chốt `rejected` (kèm `item` ở lô ≥ 2, SQLSTATE vào biên nhận). Tất cả đều `state_changed` ⇒ không chốt.
+- **Khoá:**
+  - Bước ghi khoá các dòng phiếu của lô `FOR UPDATE NOWAIT`, theo thứ tự id, trước khi gọi hàm web.
+  - Lý do: hai hàm duyệt web khoá phiếu trước rồi mới khoá công ty (`authorize_tenant_action_v3`), nên có cùng vòng 40P01 như huỷ (19.7 điểm 6).
+  - Phiếu đang bị giữ ⇒ 55P03 ⇒ connector trả `state_changed`.
+  - Vì đã giữ dòng phiếu và so phiên bản trước khi gọi, hàm web không thể thấy lệch phiên bản.
+
+### 20.2 Khoá Hermes và quyền CRM
+
+Đề của phiên chính ghi "khoá `income_expenses.approve` seed TẮT". Mốc 5 theo thiết kế đã duyệt (mục 2):
+
+- **Khoá Hermes** là `income_expenses.approve_vouchers`. Khoá này đã seed TẮT ở `20261021134531` và có nhãn trong `capability-contract.mjs`.
+- **Quyền CRM giao vào** là `income_expenses.approve`, vì hai hàm duyệt web đòi đúng quyền này.
+- Khoá Hermes `income_expenses.approve` cũ (đợt 1) vẫn TẮT và không dùng cho thao tác nào.
+- Migration không bật khoá nào; test khoá điều này.
+
+### 20.3 Ghim thân đang chạy
+
+| Hàm | Đang chạy (= thân 075102) | Thân của file |
+| --- | --- | --- |
+| `app_private.hermes_expense_resolve_core_v1` | `cddbdbc517ac74329edbf916293c9260` | `9aaa6cfceb6f30f204feb3da256c0eef` |
+| `app_private.hermes_expense_write_step_v1` | `5ba3da9c66df803792ab769b29dd24a5` | `817c4c8346d5a5457db4dad223b32f82` |
+
+Hai thân dựng bằng script từ thân `075102`; chỉ thêm nhánh `expense.approve`. Vỏ, `hermes_expense_scope_v1` và `hermes_expense_manual_v1` không đổi. `$requires$` còn đòi đủ các hàm web: duyệt, duyệt + chi, adopt, rào #263.
+
+### 20.4 Kiểm
+
+- **Offline:**
+  - danh mục 5 thao tác; khoá `approve_vouchers` chỉ hiện `expense.approve`; quyền CRM `income_expenses.approve` không phải khoá Hermes;
+  - lô 1–10, `post` bool; sàn xác nhận; "Khoản N: …";
+  - `tools/list` không đổi byte.
+- **PGlite** (`expense-write-sql`, 20/20). Fixture có bản port hai hàm duyệt web, adopt và rào #263, khoá phiếu → công ty như hàm thật. Bốn ca Mốc 5:
+  - lô hỗn hợp duyệt + chi / chỉ duyệt / không làm; chạy thử không để lại duyệt, bút toán, chứng từ hay biên nhận; phát lại y nguyên;
+  - các đường hạ "chỉ duyệt" và câu từng đường; kỳ sổ chốt ⇒ không làm; hàm web từ chối khi chạy thử;
+  - lượt 2: lệch một phiếu, lệch tất cả, basis hoặc kế hoạch bị sửa, ảnh bị gỡ, lỗi cuối có SQLSTATE, lô nói phiếu số mấy, một phiếu xong một phiếu kỳ chốt;
+  - THU / hệ thống / phiếu con theo cờ TC5 (cả cờ đổi giữa hai lượt), #263 hai lượt, giải mã (không thấy, ngoài phạm vi, mơ hồ, lặp), bản đã giải giả.
+- **22/22 đột biến bị bắt** (21 trên PGlite, 1 trên PG17).
+- **PG17 hai kết nối** (`expense-write-race-sql`, 7/7):
+  - web đang duyệt phiếu ⇒ lô duyệt của Hermes trả 55P03 trong < 1 s, web duyệt xong;
+  - không có web chen ⇒ xem trước bình thường;
+  - đối chứng bỏ NOWAIT ⇒ đúng một bên 40P01.
+- **Tầng 2 trên TEST** (`test-env:thu-sql`, một giao dịch rồi ROLLBACK; ghép `075102` + `013109` vào giao dịch; kết nối thật của chủ và một nhân viên):
+  - `$requires$` của cả hai file qua: thân trên TEST = thân production, hàm #263 có trên TEST;
+  - chủ, lô [phiếu chờ duyệt có ảnh, phiếu đã duyệt]:
+    - xem trước "duyệt + CHI 450.000đ khỏi sổ <sổ của phiếu>" và "không làm: phiếu không còn chờ duyệt", không có UUID;
+    - chạy thử không để lại bút toán, chứng từ hay biên nhận;
+    - ghi ⇒ `approved_posted` + `rejected not_pending`; phiếu thành `APPROVED/POSTED`, có 1 bút toán và 1 biên nhận;
+    - phát lại y nguyên; xem lại ⇒ `not_pending`;
+    - thời gian: xem trước 1,3 s, ghi 1,2 s;
+  - người duyệt không giữ sổ của phiếu ⇒ "chỉ duyệt (anh/chị không giữ sổ …)"; ghi ⇒ `APPROVED/UNPOSTED`;
+  - `post=false` ⇒ "chỉ duyệt (theo yêu cầu, chưa chi)"; hai mã cùng phiếu ⇒ `invalid_params`;
+  - THU ⇒ `web_only`; phiếu hệ thống và phiếu con định kỳ ⇒ `system_voucher`; mã không có ⇒ hỏi lại (`not_visible`);
+  - nhân viên không có quyền CRM `income_expenses.approve` ⇒ guard từ chối (42501), dù kết nối giữ khoá.
+  - Chưa đo được trên TEST, đã có ở PGlite / PG17: phiếu chờ duyệt không ảnh (trong phạm vi không có phiếu nào như vậy); #263 (chủ có quyền duyệt); web giữ phiếu (cần hai kết nối).
+
+### 20.5 Phát hành (phiên chính)
+
+1. Connector và migration không phụ thuộc thứ tự vì khoá đang TẮT. Theo thói quen, phát hành connector trước.
+2. Áp `20261023013109` qua `migrate:forward` (TEST rồi production), SAU `20261022075102`.
+   - Provenance xếp file này là `catalog-proven`, nhưng đó là kết quả giả: tên hai hàm thay thân đã có sẵn trong catalog.
+   - Vì vậy phải áp đích danh. Áp xong, `$check$` xác nhận dòng chính sách và nhánh duyệt.
+3. Trên TEST: bật `income_expenses.approve_vouchers`, rồi chạy ma trận ≥ 60 câu: lô hỗn hợp, phiếu không ảnh, không giữ sổ, #263, phiếu con định kỳ, mã mơ hồ.
+4. TC7: tạo lại kết nối "NG TÂM" trước khi bật trên production. Kết nối của Quản Lý Tòa loại trừ `approve_vouchers` (mục 14.6).
+5. SOUL:
+   - "Duyệt phiếu PC…, PC…" ⇒ `expense.approve` (≤ 10 mã). "Chỉ duyệt" hoặc "chưa chi" ⇒ `post=false`.
+   - Đọc nguyên văn `summary` và cột `plan` từng phiếu.
+   - Sau lượt 2, đọc `outcome` và `statusText` từng mã. Gặp `state_changed` ⇒ xem trước lại.
+
+Phiên chính giữ cả ba điểm Mốc 5 tự chọn theo đề xuất: kỳ sổ đã chốt ⇒ không làm; ảnh bị gỡ giữa hai lượt ⇒ xem trước lại; ngày chi = hôm nay.
+
+## 21. Lượt 8 — vá vòng 40P01 giữa bước ghi và hàm web (23/10/2026)
+
+Nhánh `claude/hermes-thu-chi-note-nowait-20261023`, xếp chồng trên #289 (`8326a7dcc`). Migration `20261023031258_hermes_expense_row_locks_nowait_v1`, **chưa áp**. Phải áp SAU `20261023013109`.
+
+### 21.1 Lỗi
+
+- Guard dùng chung khoá dòng CÔNG TY ngay đầu mọi giao dịch Hermes (`lock_org_for_decision_v1`, `FOR NO KEY UPDATE`).
+- Nhiều hàm web làm ngược thứ tự: khoá một dòng nghiệp vụ trước, rồi mới khoá công ty (`authorize_tenant_action_v3` lấy `FOR SHARE`, hoặc `lock_org_for_decision_v1`).
+- Nếu bước ghi của Hermes cần đúng dòng nghiệp vụ đó (do chính nó khoá, hoặc do hàm web nó gọi khoá) ⇒ hai bên chờ nhau ⇒ 40P01.
+- Mốc 4b đã vá cho dòng phiếu của sửa/huỷ; Mốc 5 vá cho lô duyệt.
+- Rủi ro còn mở ở 19.7 điểm 6 là `expense.note`. Đo thân production: `append_income_expense_supplement_v1` khoá phiếu `FOR UPDATE` (mạnh hơn `KEY SHARE` mà Mốc 4b đoán).
+
+Quét toàn bộ thân hàm production (23/10, chỉ đọc) để tìm hàm khoá ghi dòng nghiệp vụ trước khi khoá công ty:
+
+| Dòng | Hàm web khoá ghi rồi mới khoá công ty (ví dụ) | Bước ghi Hermes cần dòng đó ở mode |
+| --- | --- | --- |
+| phiếu | `cancel_income_expense_flex_v1`, `approve_income_expense_v2`, `approve_and_post_income_expense_v2` (`FOR UPDATE`) | note: `FOR UPDATE` (hàm bổ sung); sửa/huỷ/duyệt: đã vá ở 4b/5 |
+| sổ (`accounts`) | `confirm_cashbook_closing_v1`, `propose_cashbook_closing_v1`, `set_cashbook_access_v2`, `lock_cashbook_period_v1`, `archive_cashbook_v1` (`FOR UPDATE`) | create: `FOR SHARE` (`create_income_expense_v1`); duyệt + chi: `FOR UPDATE`; huỷ phiếu đã vào sổ: `KEY SHARE` (khoá ngoại của bút toán đảo); sửa đổi sổ: `KEY SHARE` (khoá ngoại) |
+| phòng (`rooms`) | `create_contract_v2`, `save_room_sale_policy_v1`, `sign_and_checkin_contract_draft_v1` (`FOR UPDATE`); `consume_room_next_claim_v1`, giữ chỗ (`FOR NO KEY UPDATE`) | create: `FOR SHARE`; sửa đổi phòng: `KEY SHARE` (chỉ vướng nhóm `FOR UPDATE`) |
+| yêu cầu duyệt (`approval_requests`) | `emergency_approve_financial_v1`, `self_approve_within_limit_v1` (`FOR UPDATE`) | duyệt: hàm duyệt web cập nhật yêu cầu; huỷ: trigger `a75_ie_cancel_close_request` cập nhật |
+
+Toà, hạng mục, thành viên, cờ tính năng cũng bị `create_income_expense_v1` khoá `FOR SHARE`, nhưng không hàm web nào khoá ghi các dòng đó trước công ty. Vì vậy Mốc này không khoá trước chúng, để không sinh `state_changed` thừa.
+
+### 21.2 Sửa
+
+Luật chung: trước khi gọi hàm web, bước ghi khoá NOWAIT mọi dòng ở bảng 21.1 mà hàm web sẽ khoá, đúng mode mạnh nhất. Gặp 55P03 thì connector trả `state_changed` (xem trước lại). Hermes không bao giờ chờ web.
+
+| Thao tác | Khoá thêm (NOWAIT) |
+| --- | --- |
+| `expense.note` | phiếu `FOR UPDATE` (cả xem trước lẫn ghi) |
+| `expense.create` | phòng, sổ của từng khoản `FOR SHARE` (thứ tự id) |
+| `expense.edit` / `expense.cancel` | yêu cầu duyệt của phiếu `FOR UPDATE`; sổ của phiếu + sổ mới `KEY SHARE`; phòng mới `KEY SHARE` |
+| `expense.approve` | yêu cầu duyệt của các phiếu `FOR UPDATE`; sổ của các phiếu sẽ chi `FOR UPDATE` (xem trước khi `post` ≠ false; lượt 2 theo kế hoạch `approve_post`) |
+
+- Chỉ thay thân `hermes_expense_write_step_v1`, dựng bằng script từ thân của `013109`.
+- `$requires$` ghim md5 thân đang chạy `817c4c83…` (= thân `013109`) và thân của chính file `ea3cd4ac…`.
+- `$check$` đếm đúng 6 `FOR UPDATE NOWAIT`, 2 `FOR SHARE NOWAIT`, 2 `FOR KEY SHARE NOWAIT`.
+
+### 21.3 Kiểm
+
+- **PG17 hai kết nối** (`expense-write-race-sql`, 18/18): 11 ca đua, mỗi ca một hàm web khoá dòng rồi chờ công ty.
+  - Note, sửa, huỷ, duyệt khi web huỷ / duyệt giữ phiếu.
+  - Create khi web chốt sổ giữ sổ; create khi web giữ chỗ phòng.
+  - Duyệt + chi khi web chốt sổ; duyệt khi web duyệt khẩn giữ yêu cầu duyệt.
+  - Huỷ phiếu đã vào sổ khi web chốt sổ; huỷ khi web duyệt khẩn.
+  - Sửa đổi phòng khi web lưu chính sách bán phòng giữ phòng `FOR UPDATE`.
+  - Kết quả: Hermes trả 55P03 trong < 1 s, web làm xong, dữ liệu không đổi.
+  - Không có web chen ⇒ xem trước của cả 11 ca chạy bình thường.
+  - 5 ca đối chứng bỏ NOWAIT ⇒ đúng một bên 40P01.
+- Fixture có bản port hàm web khoá đúng như thân production:
+  - hàm bổ sung khoá phiếu `FOR UPDATE`;
+  - hàm lập phiếu khoá phòng và sổ `FOR SHARE`;
+  - hàm huỷ phiếu đã vào sổ lấy `KEY SHARE` sổ và đóng yêu cầu duyệt;
+  - hàm sửa đổi sổ / phòng lấy `KEY SHARE`;
+  - hai hàm duyệt cập nhật yêu cầu duyệt;
+  - ba hàm "khoá dòng rồi mới khoá công ty" (chốt sổ, giữ chỗ / chính sách phòng, duyệt khẩn).
+- **PGlite** `expense-write-sql` 20/20: các đường thường không đổi.
+- **Đột biến:** mỗi vị trí khoá bỏ NOWAIT, cộng hai đột biến xoá hẳn câu khoá ⇒ phải đỏ ở ca đua tương ứng (mục 21.4).
+
+### 21.4 Phát hành (phiên chính)
+
+1. Áp `20261023031258` qua `migrate:forward`, sau `20261022075102` và `20261023013109`. Provenance có thể xếp file là `catalog-proven` giả (hàm đã có tên) ⇒ áp đích danh.
+2. Không đổi connector. 55P03 vốn đã được đổi thành `state_changed`.
+3. Bản vá này phải lên trước khi bật bất kỳ khoá Thu chi nào (`income_expenses.create` cho note / create, `.edit`, `.cancel`, `.approve_vouchers`).
+
+## 22. Mốc 6 — web Báo chi nhanh dùng hai hàm SQL chung (23/10/2026)
+
+Nhánh `claude/hermes-thu-chi-moc6-20261023`, xếp chồng trên #293 (`1c069ddb6`).
+
+**Không có migration mới.** Web gọi đúng hai hàm mà bot đang dùng: `ie_category_suggest_v1` và `ie_default_cashbook_v1`. Cả hai nằm trong `20261022024045`, đã áp production ở Mốc 2. Đo production 23/10 (chỉ đọc): hai hàm có mặt và `authenticated` được `EXECUTE`.
+
+### 22.1 Đổi gì
+
+- **Gợi ý hạng mục**
+  - `compose.ts` nhận `ctx.suggestCategory` thay cho `suggestCategory` TypeScript; hai chỗ gọi giữ nguyên.
+  - Feed ghép thẻ hai lượt quanh một lần gọi RPC (`sharedRules.composeWithSuggestions`):
+    - lượt 1 gom các câu cần gợi ý;
+    - mỗi chiều thu/chi gọi `ie_category_suggest_v1` một lần (≤ 100 câu mỗi lần);
+    - lượt 2 ghép thẻ với kết quả.
+  - Kết quả RPC được kiểm khuôn: hạng mục phải nằm trong danh sách dùng được của đúng chiều, lý do phải là lý do đã biết. Sai khuôn ⇒ coi như không gợi ý.
+  - RPC lỗi ⇒ ghép thẻ không có gợi ý (AI hoặc người dùng chọn), tin vẫn ra thẻ.
+  - Đã xoá `categoryRules.ts`, phần đoán của `categorySuggest.ts` (`suggestCategory`, cụm phí, từ dừng), cùng các test chỉ dành cho bản TypeScript.
+- **Sổ chọn sẵn**
+  - `useQuickEntryRefs` nạp sẵn `ie_default_cashbook_v1` cho thẻ chưa có toà và cho từng toà trong phạm vi, kèm sổ nhớ ở máy. Production có tối đa 19 toà mỗi công ty ⇒ ≤ 20 lời gọi song song lúc mở trang.
+  - `defaultAccountFor` vẫn đồng bộ: đọc bảng đã nạp, chỉ nhận sổ trong danh sách sổ đang giữ.
+  - Đã xoá `pickDefaultAccount`.
+  - Lỗi ⇒ không chọn sẵn sổ (người dùng chọn tay), không chặn trang.
+- **Nhãn:** khoá `income_expenses.approve_vouchers` ghi "Duyệt, hoặc duyệt và chi, phiếu CHI lập tay (Hermes, tối đa 10 phiếu, luôn xem trước)", khớp Mốc 5.
+
+### 22.2 Thao tác người dùng
+
+Thao tác giữ nguyên, và kết quả gợi ý giống hệt bản cũ: hàm SQL khớp TypeScript trên cả 610 ca vàng. Có hai khác biệt nhỏ nhìn thấy được:
+- thẻ hiện ra sau một lượt RPC thay vì ngay lập tức;
+- khung xương lúc mở trang chờ thêm bảng sổ mặc định.
+
+Trên TEST, thẻ hiện cùng lúc với tin gửi đi (vòng RPC khoảng 0,2 s).
+
+### 22.3 Kiểm
+
+- **Bảng đứng thay SQL trong vitest:** `__tests__/fixtures/goi-y-hang-muc-test.json`, gồm 7 bộ hạng mục và 87 câu.
+  - Bảng sinh một lần từ bản TypeScript cũ trên chính các câu test, trước khi xoá TypeScript.
+  - `infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs` khoá bảng này khớp đúng `ie_category_suggest_v1` trên PostgreSQL 17 (87/87), cùng 610 ca vàng.
+  - Nhờ đó, test compose / feed / page chạy trên kết quả thật của database.
+- **vitest:** quick entry + Hermes 916 test đạt; thêm `sharedRules.test.ts` và `useQuickEntryRefs.sharedRules.test.tsx` (13 test). Đảo strict 0 lỗi, `typecheck:baseline` khớp, eslint 0 lỗi.
+- **Trình duyệt thật trên TEST** (Chromium, vite của worktree trỏ TEST; chặn mọi origin Supabase khác và chặn AI; không bấm Lưu), khổ desktop 1366 px và mobile 390 px:
+  - mở trang ⇒ 20 lời gọi `ie_default_cashbook_v1`, tất cả HTTP 200;
+  - gửi "102LVT tiền điện tháng 10 1tr2; mua sơn cửa 300k" ⇒ đúng một lời gọi `ie_category_suggest_v1` cho 2 câu, kết quả `rule` / không gợi ý;
+  - thẻ: sổ "Tâm Thu" chọn sẵn, dòng 1 "Đóng tiền điện", dòng 2 "Chọn hạng mục" (chờ AI);
+  - không cuộn ngang; console chỉ có lỗi của lời gọi AI bị chặn.
+
+### 22.4 Phát hành
+
+1. Web không phụ thuộc migration chưa áp. Mã Mốc 6 cũng không dùng gì của #278 / #289 / #293; PR chỉ xếp chồng để giữ một dòng nhánh.
+2. Thứ tự đề xuất: gộp theo dòng nhánh (#278 → #289 → #293 → Mốc 6) sau khi phiên chính áp các migration của từng PR.
+3. Muốn phát hành web sớm hơn thì cherry-pick commit Mốc 6 lên `main`: chỉ đụng web, tài liệu và một test SQL.
+4. Connector không đổi.

@@ -38,9 +38,9 @@ test('danh mục Thu chi (production): khoá income_expenses.create ⇒ ba tool 
   const probeOnly = fullGrantBroker(t, undefined, { actions: createActionRuntime({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM]), service }),
     actionKeys: [PROBE_KEY] });
   assert.equal(bytesOf((await probeOnly.broker.listTools(probeOnly.token)).tools), bytes);
-  // Kết nối không giữ khoá nào của Thu chi (create/edit/cancel đang TẮT ở registry production) ⇒ không hiện tool nào của họ thao tác;
+  // Kết nối không giữ khoá nào của Thu chi (create/edit/cancel/approve_vouchers đang TẮT ở registry production) ⇒ không hiện tool nào của họ thao tác;
   // chỉ giữ một khoá (vd income_expenses.cancel, Mốc 4) ⇒ ba tool chung hiện, cùng số byte.
-  const off = fullGrantBroker(t, undefined, { actions: runtime, withoutAction: ['income_expenses.create', 'income_expenses.edit', 'income_expenses.cancel'] });
+  const off = fullGrantBroker(t, undefined, { actions: runtime, withoutAction: ['income_expenses.create', 'income_expenses.edit', 'income_expenses.cancel', 'income_expenses.approve_vouchers'] });
   assert.deepEqual((await off.broker.listTools(off.token)).tools.filter(tool => tool.name.startsWith('crm_action_')), []);
   const cancelOnly = fullGrantBroker(t, undefined, { actions: runtime, withoutAction: ['income_expenses.create', 'income_expenses.edit'] });
   assert.equal(bytesOf((await cancelOnly.broker.listTools(cancelOnly.token)).tools), bytes);
