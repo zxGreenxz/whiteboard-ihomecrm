@@ -15,6 +15,18 @@ const money = z.number().finite();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}/);
 
 /**
+ * Người giữ cọc của khách (chủ chốt 23/10/2026, hợp đồng dữ liệu v3): bên giữ cọc là bên hoàn cọc khi khách
+ * trả phòng. Cọc nằm ở sổ bên kia thì bên đó bàn giao lại trong quyết toán (`deposit_adjustment`).
+ */
+export const DEPOSIT_HOLDERS = ['MANAGER', 'LANDLORD'] as const;
+export type DepositHolder = typeof DEPOSIT_HOLDERS[number];
+/** Gói/ảnh chốt trước v3 không có trường ⇒ luật cũ: quản lý giữ cọc. */
+const depositHolderOrManager = z.enum(DEPOSIT_HOLDERS).nullish().transform((v): DepositHolder => v ?? 'MANAGER');
+/** Trường số MỚI của v3 — ảnh chốt cũ không có ⇒ null (UI ẩn / hiện "—"), không đoán số. */
+const newMoney = money.nullish().transform((v) => v ?? null);
+const newText = z.string().nullish().transform((v) => v ?? null);
+
+/**
  * Các phần dựng tên hoá đơn của phiếu (server CHÉP luật invoiceTitlePartsOf — link chủ nhà chạy bằng anon
  * nên không đọc được bảng invoices). Không có notes.
  */
@@ -59,8 +71,22 @@ export const settlementVoucherSchema = z.object({
    */
   room_name: z.string().nullable().optional(),
   invoice: settlementVoucherInvoiceSchema.nullable().optional(),
+  /**
+   * Chỉ dòng lãi lỗ (group PNL): phần tiền của KỲ tháng này theo hạng mục, server gộp theo tên, xếp giảm dần.
+   * Ảnh chốt trước v3 không có; link chủ nhà: phiếu hạn chế ⇒ null.
+   */
+  lines: z.array(z.object({ category: z.string(), amount: money })).nullish().transform((v) => v ?? null),
 });
 export type SettlementVoucher = z.infer<typeof settlementVoucherSchema>;
+
+/** Một hạng mục lãi lỗ ĐÃ DUYỆT trong tháng — amount = landlord_amount + manager_amount do server cộng. */
+export const settlementCategorySchema = z.object({
+  name: z.string(),
+  amount: money,
+  landlord_amount: money,
+  manager_amount: money,
+});
+export type SettlementCategory = z.infer<typeof settlementCategorySchema>;
 
 /** Phần hoá đơn server trả → InvoiceTitleParts (đổi tên trường, không suy thêm). */
 export function invoicePartsOfSettlement(inv: z.infer<typeof settlementVoucherInvoiceSchema>): InvoiceTitleParts {
@@ -99,6 +125,8 @@ export const settlementStatementSchema = z.object({
   manager_fixed_amount: money.optional().default(0),
   /** Tháng bắt đầu của điều khoản (% + tiền cố định + sổ chủ nhà) đang áp cho tháng này. */
   terms_from: isoDate,
+  /** Người giữ cọc của điều khoản đang áp. Ảnh chốt trước v3 ⇒ "MANAGER" (luật cũ). */
+  deposit_holder: depositHolderOrManager,
   totals: z.object({
     landlord_collected: money,
     manager_collected: money,
@@ -120,16 +148,33 @@ export const settlementStatementSchema = z.object({
     /** Tiền thối rơi vào sổ chủ nhà (tiền của khách, chủ nhà giữ hộ). Làm tròn không tính. */
     landlord_extra_cash: money,
     landlord_owes_manager: money,
+    /** v3: cọc/trả thừa ở SỔ QUẢN LÝ trong tháng (thu − hoàn/cấn), đã duyệt. Ảnh cũ ⇒ null ("—"). */
+    manager_held_deposits: money.nullish(),
+    /**
+     * v3: phần cọc đã cộng vào landlord_owes_manager, CÓ DẤU — quản lý giữ: = landlord_held_deposits;
+     * chủ nhà giữ: = −manager_held_deposits. Ảnh cũ ⇒ chép landlord_held_deposits (không tính).
+     */
+    deposit_adjustment: money.nullish(),
   }).transform((t) => ({
     ...t,
     // không cộng trừ: ảnh chốt cũ (chỉ có %) thì phần % chính là toàn bộ phần quản lý server đã tính
     manager_fixed_share: t.manager_fixed_share ?? 0,
     manager_percent_share: t.manager_percent_share ?? t.manager_share,
+    manager_held_deposits: t.manager_held_deposits ?? null,
+    deposit_adjustment: t.deposit_adjustment ?? t.landlord_held_deposits,
   })),
   reversed_voucher_count: z.number().int().nonnegative(),
   unposted_voucher_count: z.number().int().nonnegative(),
   foreign_account_voucher_count: z.number().int().nonnegative(),
-  deposits: z.object({ received: money, paid_out: money, landlord_received: money, landlord_paid_out: money }),
+  deposits: z.object({
+    received: money,
+    paid_out: money,
+    landlord_received: money,
+    landlord_paid_out: money,
+    /** v3: cọc/trả thừa vào / ra ở sổ quản lý. Ảnh cũ ⇒ null. */
+    manager_received: newMoney,
+    manager_paid_out: newMoney,
+  }),
   termination: z.object({
     revenue_from_deposit: money,
     forfeit_revenue: money,
@@ -145,9 +190,16 @@ export const settlementStatementSchema = z.object({
     expense: money,
     /** Cọc/trả thừa chờ duyệt ở sổ chủ nhà (vào dương, ra âm). */
     landlord_deposit: money,
-  }),
+    /** v3: cọc/trả thừa CHỜ DUYỆT ở bên sổ có tính vào quyết toán (theo deposit_holder), có dấu. */
+    deposit: money.nullish(),
+  }).transform((p) => ({ ...p, deposit: p.deposit ?? p.landlord_deposit })),
   excluded: z.object({ voucher_count: z.number().int().nonnegative(), income: money, expense: money }),
   vouchers: z.array(settlementVoucherSchema),
+  /** v3: lãi lỗ ĐÃ DUYỆT theo hạng mục. Ảnh cũ ⇒ null (ẩn khối "Theo hạng mục"). */
+  categories: z.object({
+    income: z.array(settlementCategorySchema),
+    expense: z.array(settlementCategorySchema),
+  }).nullish().transform((v) => v ?? null),
   source_hash: z.string().min(1),
 });
 export type SettlementStatement = z.infer<typeof settlementStatementSchema>;
@@ -221,13 +273,21 @@ export const settlementMonthSchema = z.object({
   closed: z.object({
     revision: z.number().int().positive(),
     closed_at: z.string(),
+    /** Ghi chú bàn giao MỚI NHẤT của lần chốt này (v3: sửa được sau khi chốt). */
     note: z.string().nullable(),
     closed_by_name: z.string().nullable(),
+    /** v3: lúc sửa ghi chú bàn giao sau khi chốt; chưa sửa / ảnh cũ ⇒ null. */
+    note_updated_at: newText,
   }).nullable(),
   can_close: z.boolean(),
   close_blockers: z.array(z.enum(CLOSE_BLOCKERS)),
   warnings: settlementWarningsSchema.nullable(),
   kqkd_bridge: kqkdBridgeSchema.nullable(),
+  /**
+   * v3: chủ nhà xác nhận đã xem số liệu cho ĐÚNG lần chốt hiện tại (closed.revision). Mở chốt / chốt lại /
+   * tháng OPEN / server cũ ⇒ null = CHƯA xác nhận.
+   */
+  confirmation: z.object({ confirmed_at: z.string(), note: newText }).nullish().transform((v) => v ?? null),
 });
 export type SettlementMonth = z.infer<typeof settlementMonthSchema>;
 
@@ -271,7 +331,24 @@ export const settlementOverviewSchema = z.object({
     manager_share: money,
     landlord_owes_manager: money,
     pending_count: z.number().int().nonnegative(),
+    // v3 — "Cách tính" từng tháng ở tab Thống kê. Thiếu ⇒ null: UI ẩn dòng đó, không tự tính.
+    manager_fixed_share: newMoney,
+    manager_percent_share: newMoney,
+    /** Quản lý đã chi hộ. */
+    manager_paid: newMoney,
+    /** Quản lý đã thu hộ. */
+    manager_collected: newMoney,
+    deposit_holder: z.enum(DEPOSIT_HOLDERS).nullish().transform((v) => v ?? null),
+    /** Có dấu như statement.totals.deposit_adjustment. */
+    deposit_adjustment: newMoney,
+    /** landlord_extra_cash của tháng. */
+    extra_cash: newMoney,
+    close_revision: z.number().int().positive().nullish().transform((v) => v ?? null),
+    /** Chủ nhà xác nhận lần chốt hiện tại; chưa / server cũ ⇒ null. */
+    confirmed_at: newText,
   })),
+  /** v3: người giữ cọc của điều khoản MỚI NHẤT; server cũ ⇒ null. */
+  deposit_holder: z.enum(DEPOSIT_HOLDERS).nullish().transform((v) => v ?? null),
   payments: z.array(settlementPaymentSchema),
   totals: z.object({
     opening_balance: money,
@@ -321,6 +398,8 @@ export const landlordOperationOptionsSchema = z.object({
     manager_percent: money,
     manager_fixed_amount: money.optional().default(0),
     landlord_account_ids: z.array(z.string().uuid()),
+    /** v3: người giữ cọc của điều khoản mới nhất; thiếu ⇒ "MANAGER". */
+    deposit_holder: depositHolderOrManager,
     terms_from: isoDate,
     effective_from: isoDate,
     note: z.string().nullable(),
@@ -342,6 +421,8 @@ export const landlordOperationOptionsSchema = z.object({
       manager_percent: money,
       manager_fixed_amount: money.optional().default(0),
       landlord_account_ids: z.array(z.string().uuid()),
+      /** v3; thiếu ⇒ "MANAGER" (luật cũ). */
+      deposit_holder: depositHolderOrManager,
     })),
     updated_at: z.string(),
   }).nullable(),
@@ -396,6 +477,20 @@ export const paymentReceiptSchema = z.object({ id: z.string().uuid(), status: z.
 export const voidReceiptSchema = z.object({ id: z.string().uuid(), status: z.enum(['VOIDED', 'ALREADY_VOIDED']) });
 export const linkCreateReceiptSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{32,64}$/) });
 export const linkRevokeReceiptSchema = z.object({ status: z.enum(['REVOKED', 'ALREADY_REVOKED']) });
+/** landlord_settlement_note_update_v1 — sửa ghi chú bàn giao của lần chốt `revision`. */
+export const noteUpdateReceiptSchema = z.object({
+  status: z.enum(['UPDATED', 'UNCHANGED']),
+  revision: z.number().int().positive(),
+  updated_at: z.string(),
+});
+/** landlord_settlement_confirm_v1 (link chủ nhà) — xác nhận đã xem số liệu lần chốt đó. */
+export const confirmReceiptSchema = z.object({
+  status: z.enum(['CONFIRMED', 'ALREADY_CONFIRMED']),
+  confirmed_at: z.string(),
+});
+/** Giới hạn server (22023 khi vượt). */
+export const HANDOVER_NOTE_MAX = 1000;
+export const LANDLORD_CONFIRM_NOTE_MAX = 500;
 
 // ─────────────────────────────── nhãn hiển thị ───────────────────────────────
 
@@ -410,6 +505,114 @@ export const CLOSE_BLOCKER_LABEL: Record<CloseBlocker, string> = {
   OPENING_UNCONFIRMED: 'Chưa xác nhận số dư đầu kỳ với chủ nhà (hoặc xác nhận cũ hết hiệu lực vì đã dời tháng áp dụng / cọc trước kỳ đổi) — mở Cài đặt toà, đối chiếu rồi đánh dấu đã xác nhận',
   INACTIVE: 'Toà đang ngừng áp dụng vận hành cho chủ nhà',
 };
+
+/** Nhãn ngắn cho chip "Chưa chốt được: …" ở đầu trang (câu đầy đủ ở CLOSE_BLOCKER_LABEL). */
+export const CLOSE_BLOCKER_SHORT: Record<CloseBlocker, string> = {
+  MONTH_NOT_ENDED: 'tháng chưa kết thúc',
+  PENDING_VOUCHERS: 'còn phiếu chờ duyệt',
+  REVERSED_POSTINGS: 'có bút toán sổ quỹ bị đảo',
+  UNPOSTED_POSTINGS: 'có phiếu chưa ghi sổ quỹ',
+  FOREIGN_LANDLORD_ACCOUNT: 'có phiếu dùng sổ chủ nhà toà khác',
+  LANDLORD_ACCOUNT_ELSEWHERE: 'có phiếu toà khác vào sổ chủ nhà',
+  PRE_START_PENDING: 'còn phiếu chờ duyệt trước tháng áp dụng',
+  OPENING_UNCONFIRMED: 'chưa đối chiếu số dư đầu kỳ',
+  INACTIVE: 'toà đang ngừng áp dụng',
+};
+
+export const DEPOSIT_HOLDER_LABEL: Record<DepositHolder, string> = { MANAGER: 'Quản lý', LANDLORD: 'Chủ nhà' };
+
+/**
+ * Dòng cọc trong "Cách tính" theo người giữ cọc và dấu của deposit_adjustment (server tính). Chỉ đổi mã ⇒
+ * chữ; số hiện là trị tuyệt đối, dấu nằm ở chữ "+ / −".
+ */
+export function depositAdjustmentLine(holder: DepositHolder, adjustment: number): { label: string; sub: string; amount: number } {
+  const amount = Math.abs(adjustment);
+  if (holder === 'MANAGER') {
+    if (adjustment < 0) return { label: '− Cọc chủ nhà đã chi trả khách thay quản lý', sub: 'quản lý giữ cọc', amount };
+    return {
+      label: '+ Cọc của khách ở sổ chủ nhà',
+      sub: adjustment > 0 ? 'quản lý giữ cọc → chủ nhà bàn giao cho quản lý' : 'quản lý giữ cọc · tháng này sổ chủ nhà không có cọc',
+      amount,
+    };
+  }
+  if (adjustment > 0) return { label: '+ Cọc quản lý đã chi trả khách thay chủ nhà', sub: 'chủ nhà giữ cọc', amount };
+  return {
+    label: '− Cọc của khách ở sổ quản lý',
+    sub: adjustment < 0 ? 'chủ nhà giữ cọc → quản lý bàn giao cho chủ nhà' : 'chủ nhà giữ cọc · tháng này sổ quản lý không có cọc',
+    amount,
+  };
+}
+
+/** Tiền thối (landlord_extra_cash) — chỉ hiện khi khác 0. */
+export function extraCashLabel(extra: number): string {
+  return extra > 0 ? '+ Tiền thối của khách nằm ở sổ chủ nhà' : '− Tiền thối chủ nhà đã chi';
+}
+
+/** Tỷ lệ phần / tổng (0–100) CHỈ để vẽ thanh — kẹp biên, tổng ≤ 0 ⇒ 0. Không dùng để ra số tiền. */
+export function barPercent(part: number, total: number): number {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.min(100, Math.max(0, (part / total) * 100));
+}
+
+/** Chữ tỷ trọng "57%" · "8,5%" (dưới 10% giữ một chữ số lẻ); tổng ≤ 0 ⇒ null (không hiện). */
+export function shareText(part: number, total: number): string | null {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return null;
+  const p = (part / total) * 100;
+  return Math.abs(p) >= 10 ? `${Math.round(p)}%` : `${p.toFixed(1).replace('.', ',')}%`;
+}
+
+const VN_TZ = 'Asia/Ho_Chi_Minh';
+const vnParts = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: VN_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return { day: `${get('day')}/${get('month')}/${get('year')}`, time: `${get('hour')}:${get('minute')}` };
+};
+/** Thời điểm (timestamptz) → "08:30 · 01/11/2026" giờ Việt Nam. */
+export function vnDateTime(iso: string): string {
+  const p = vnParts(iso);
+  return p ? `${p.time} · ${p.day}` : iso;
+}
+/** Thời điểm (timestamptz) → "01/11/2026" giờ Việt Nam. */
+export function vnDate(iso: string): string {
+  return vnParts(iso)?.day ?? iso;
+}
+
+/**
+ * Các năm có trong danh sách tháng, mới nhất trước. Trường để tuỳ chọn vì tsconfig.app (không strict) suy
+ * kiểu zod thành tuỳ chọn (như ManagerTerms).
+ */
+export function settlementYears(months: readonly { period_month?: string }[]): string[] {
+  const years = months.flatMap((m) => (m.period_month ? [monthKey(m.period_month).slice(0, 4)] : []));
+  return [...new Set(years)].sort((a, b) => b.localeCompare(a));
+}
+
+export type MonthConfirmState =
+  | { kind: 'CONFIRMED'; at: string }
+  | { kind: 'WAITING'; text: 'Chờ xác nhận' | 'Chưa xác nhận' }
+  | { kind: 'OPEN'; text: 'Đang chạy' | 'Tạm tính' };
+
+/** Cột "Chủ nhà" ở tab Thống kê: đã xác nhận lần chốt hiện tại / chưa / tháng chưa chốt. */
+export function monthConfirmState(
+  // tuỳ chọn: xem settlementYears
+  m: { status?: 'OPEN' | 'CLOSED'; is_current_month?: boolean; confirmed_at?: string | null },
+  viewing: boolean,
+): MonthConfirmState {
+  if (m.status === 'OPEN') return { kind: 'OPEN', text: m.is_current_month ? 'Đang chạy' : 'Tạm tính' };
+  if (m.confirmed_at) return { kind: 'CONFIRMED', at: m.confirmed_at };
+  return { kind: 'WAITING', text: viewing ? 'Chờ xác nhận' : 'Chưa xác nhận' };
+}
+
+/** Ô chữ viết tắt cho dòng không có phòng: "Tiền điện" → "TĐ", "Internet" → "IN". */
+export function initialsOf(name: string | null | undefined): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '—';
+  if (words.length === 1) return words[0].slice(0, 2).toLocaleUpperCase('vi-VN');
+  return `${words[0][0]}${words[1][0]}`.toLocaleUpperCase('vi-VN');
+}
 
 export const VOUCHER_SOURCE_LABEL: Record<NonNullable<SettlementVoucher['source']>, string> = {
   TERMINATION_REVENUE: 'Thanh lý: cấn cọc vào khoản khách phải trả',
@@ -578,6 +781,100 @@ export const NET_DIRECTION_LABEL: Record<NetDirection, string> = {
   EVEN: 'Hai bên không còn phải trả nhau',
 };
 
+// ─────────────────────────────── dòng phiếu & "Cách tính" (hiển thị) ───────────────────────────────
+
+/** Nhóm phiếu của danh sách "Phiếu trong tháng" / "Khoản khác". */
+export type VoucherGroupKey =
+  | 'landlord_in' | 'manager_in' | 'landlord_out' | 'manager_out'
+  | 'termination' | 'deposit' | 'pending' | 'excluded';
+
+/** Ghi chú phụ của một dòng phiếu (kỳ khác, thanh lý, không tính, sổ quỹ…) — dạng " · a · b" hoặc "". */
+export function voucherRowNote(v: SettlementVoucher, key: VoucherGroupKey, mode: 'admin' | 'public', periodMonth: string): string {
+  const parts: string[] = [];
+  // dòng lãi lỗ xếp tháng THEO KỲ trên hạng mục: phiếu lập tháng khác vẫn có thể thuộc tháng này (vd thu
+  // trước tiền phòng tháng sau). Số tiền là phần của kỳ tháng này.
+  if (v.group === 'PNL' && v.voucher_date.slice(0, 7) !== periodMonth.slice(0, 7)) {
+    parts.push(`tính theo kỳ tháng ${periodMonth.slice(5, 7)}/${periodMonth.slice(0, 4)}`);
+  }
+  if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);
+  if (key === 'termination' || key === 'deposit' || key === 'pending' || key === 'excluded') {
+    if (v.group === 'DEPOSIT') parts.push(v.type === 'INCOME' ? 'thu cọc/trả thừa' : 'hoàn/cấn cọc');
+    else if (v.group === 'PNL') parts.push(v.type === 'INCOME' ? 'doanh thu' : 'chi phí');
+    // link chủ nhà: tên sổ đã là nhãn bên giữ tiền thì không nhắc lại
+    if (mode === 'admin' || !v.account_name) parts.push(v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý');
+  }
+  if (v.excluded_reason) parts.push(`không tính: ${EXCLUDED_REASON_LABEL[v.excluded_reason]}`);
+  if (v.cash_reversed) parts.push('bút toán sổ quỹ đã bị đảo');
+  if (v.cash_unposted) parts.push('chưa ghi sổ quỹ');
+  if (v.foreign_landlord_account) parts.push('sổ chủ nhà của toà khác — chặn chốt');
+  if (v.status === 'UNAPPROVED') parts.push('chờ duyệt');
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
+}
+
+export interface CalcLine {
+  key: string;
+  label: string;
+  sub?: string | null;
+  amount: number;
+  /** Số 0 / không áp dụng — chữ nhạt. */
+  muted?: boolean;
+}
+
+/**
+ * Dòng "Cách tính" (tab Quyết toán và "Cách tính · Tháng X" ở tab Thống kê). Trường null = gói không có
+ * (ảnh chốt / server cũ) ⇒ ẩn dòng đó, không tự tính bù. Chữ "+ / −" mang dấu; số là số server trả.
+ */
+export interface CalcInput {
+  managerPercent: number;
+  /** Tiền cố định/tháng của điều khoản (để biết có phần cố định khi chưa có số tách). */
+  managerFixedAmount: number;
+  managerShare: number;
+  fixedShare: number | null;
+  percentShare: number | null;
+  profit: number;
+  managerPaid: number | null;
+  managerCollected: number | null;
+  paidSub?: string;
+  collectedSub?: string;
+  depositHolder: DepositHolder | null;
+  depositAdjustment: number | null;
+  extraCash: number | null;
+}
+
+export function calcLines(c: CalcInput, formatMoney: (n: number) => string): CalcLine[] {
+  const pct = c.managerPercent.toLocaleString('vi-VN');
+  const phanTramSub = c.profit > 0 ? `${pct}% × lợi nhuận ${formatMoney(c.profit)}` : 'lỗ hoặc hoà — không tính';
+  const out: CalcLine[] = [];
+  if (c.fixedShare !== null && c.fixedShare > 0) {
+    out.push({ key: 'fixed', label: 'Phí quản lý cố định', sub: 'nhận đủ cả tháng lỗ', amount: c.fixedShare });
+    if (c.managerPercent > 0 && c.percentShare !== null) {
+      out.push({ key: 'percent', label: `+ Phần quản lý ${pct}% lợi nhuận`, sub: phanTramSub, amount: c.percentShare, muted: c.percentShare === 0 });
+    }
+  } else {
+    const sub = c.fixedShare === null && c.managerFixedAmount > 0
+      ? managerTermsLabel({ manager_percent: c.managerPercent, manager_fixed_amount: c.managerFixedAmount }, formatMoney)
+      : c.managerPercent > 0 ? phanTramSub : null;
+    out.push({ key: 'share', label: 'Phần quản lý', sub, amount: c.managerShare, muted: c.managerShare === 0 });
+  }
+  if (c.managerPaid !== null) {
+    out.push({ key: 'paid', label: '+ Quản lý đã chi hộ', sub: c.paidSub ?? 'các khoản chi từ sổ quản lý', amount: c.managerPaid, muted: c.managerPaid === 0 });
+  }
+  if (c.managerCollected !== null) {
+    out.push({
+      key: 'collected', label: '− Quản lý đã thu hộ', sub: c.collectedSub ?? 'tiền khách trả vào sổ quản lý',
+      amount: c.managerCollected, muted: c.managerCollected === 0,
+    });
+  }
+  if (c.depositHolder !== null && c.depositAdjustment !== null) {
+    const d = depositAdjustmentLine(c.depositHolder, c.depositAdjustment);
+    out.push({ key: 'deposit', label: d.label, sub: d.sub, amount: d.amount, muted: d.amount === 0 });
+  }
+  if (c.extraCash !== null && c.extraCash !== 0) {
+    out.push({ key: 'extra', label: extraCashLabel(c.extraCash), sub: 'làm tròn không tính', amount: Math.abs(c.extraCash) });
+  }
+  return out;
+}
+
 // ─────────────────────────────── tháng ───────────────────────────────
 
 /** 'YYYY-MM-DD' | 'YYYY-MM' → 'YYYY-MM'. */
@@ -641,15 +938,43 @@ const termsText = (v: unknown, formatMoney: (n: number) => string): string => {
   return v.map((t) => {
     const r = (t ?? {}) as {
       valid_from?: unknown; manager_percent?: unknown; manager_fixed_amount?: unknown; landlord_account_ids?: unknown;
+      deposit_holder?: unknown;
     };
     const from = typeof r.valid_from === 'string' ? monthShort(r.valid_from) : '?';
     const n = Array.isArray(r.landlord_account_ids) ? r.landlord_account_ids.length : 0;
     // ảnh trước 23/10/2026 không có tiền cố định (thoả thuận chỉ có %)
     const coDinh = Number(r.manager_fixed_amount ?? 0);
     const tien = Number.isFinite(coDinh) && coDinh > 0 ? ` + ${formatMoney(coDinh)}/tháng` : '';
-    return `từ ${from}: ${String(r.manager_percent)}%${tien} · ${n} sổ chủ nhà`;
+    // ảnh trước v3 không có người giữ cọc — không nói gì thay vì đoán
+    const coc = r.deposit_holder === 'MANAGER' || r.deposit_holder === 'LANDLORD'
+      ? ` · ${DEPOSIT_HOLDER_LABEL[r.deposit_holder].toLowerCase()} giữ cọc` : '';
+    return `từ ${from}: ${String(r.manager_percent)}%${tien} · ${n} sổ chủ nhà${coc}`;
   }).join('; ');
 };
+
+const holderOf = (v: unknown): DepositHolder | null => (v === 'MANAGER' || v === 'LANDLORD' ? v : null);
+
+/**
+ * Mốc điều khoản mà người giữ cọc khác với người giữ cọc đang áp ở tháng đó TRƯỚC khi lưu (kể cả mốc mới
+ * tạo). Ảnh thiếu trường (trước v3) thì không nói — không đoán.
+ */
+function holderChanges(before: unknown, after: unknown): string[] {
+  if (!Array.isArray(before) || !Array.isArray(after)) return [];
+  const terms = (list: unknown[]) => list
+    .map((t) => (t ?? {}) as { valid_from?: unknown; deposit_holder?: unknown })
+    .filter((r): r is { valid_from: string; deposit_holder?: unknown } => typeof r.valid_from === 'string')
+    .map((r) => ({ valid_from: r.valid_from, holder: holderOf(r.deposit_holder) }))
+    .sort((a, b) => a.valid_from.localeCompare(b.valid_from));
+  const truoc = terms(before);
+  const out: string[] = [];
+  for (const t of terms(after)) {
+    const cu = termsAt(truoc, monthKey(t.valid_from))?.holder ?? null;
+    if (cu && t.holder && cu !== t.holder) {
+      out.push(`Người giữ cọc từ ${monthShort(t.valid_from)}: ${DEPOSIT_HOLDER_LABEL[cu]} → ${DEPOSIT_HOLDER_LABEL[t.holder]}`);
+    }
+  }
+  return out;
+}
 
 /**
  * Một dòng sổ thay đổi cấu hình (ảnh trước/sau do server ghi) → các câu ngắn cho người đọc.
@@ -669,6 +994,7 @@ export function describeOperationChange(
   }
   if (diff('terms')) {
     out.push(`Phần quản lý / sổ chủ nhà: ${termsText(before.terms, formatMoney)} → ${termsText(after.terms, formatMoney)}`);
+    out.push(...holderChanges(before.terms, after.terms));
   }
   if (diff('opening_balance')) {
     out.push(`Số dư đầu kỳ: ${formatMoney(Number(before.opening_balance ?? 0))} → ${formatMoney(Number(after.opening_balance ?? 0))}`);
