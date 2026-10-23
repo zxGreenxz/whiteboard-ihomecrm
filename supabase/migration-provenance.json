@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T03:19:35.323Z",
+  "generatedAt": "2026-10-23T03:16:59.154Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 840,
-    "unknown": 84,
-    "catalog-proven": 205,
+    "unknown": 82,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13049,31 +13049,27 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022075219_invoice_collection_plan_v1.sql",
-      "version": "20261022075219",
-      "name": "invoice_collection_plan_v1",
+      "path": "supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql",
+      "version": "20261022074815",
+      "name": "hermes_contract_party_draft_v1",
       "scheme": "timestamp14",
-      "sha256": "3e38bf42127d04d5a40122d8cc433f6eaf34f29b2989d2183be0d17ef829e25e",
+      "sha256": "8104e94881a234ee74471010dfbe2f50f88c2322f90a58de4f99310213bbde27",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "function:public.invoice_collection_plan_core_v1",
-        "function:public.invoice_collection_plan_v1"
+        "function:public.hermes_contract_party_lookup_v1"
       ]
     },
     {
-      "path": "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql",
-      "version": "20261022075230",
-      "name": "hermes_invoice_action_v1",
+      "path": "supabase/migrations/20261022075119_hermes_w2d_contract_drafts_v1.sql",
+      "version": "20261022075119",
+      "name": "hermes_w2d_contract_drafts_v1",
       "scheme": "timestamp14",
-      "sha256": "6a5db142adb069ec6129bcaf4ac83aea72b222d928e17af1922614283103df82",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_invoice_reason_v1",
-        "function:app_private.hermes_invoice_lookup_core_v1",
-        "function:app_private.hermes_invoice_action_step_v1",
-        "function:public.hermes_invoice_action_v1"
+      "sha256": "f948bb548a87b37dbb317e013d9a5efd7b9816bbc7a93f603e3ccc4e8d7f2d07",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2d_catalog_v1",
+        "catalog:function:app_private.hermes_w2d_read_v1"
       ]
     },
     {
@@ -13132,31 +13128,16 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022183026_meter_readings_v2.sql",
-      "version": "20261022183026",
-      "name": "meter_readings_v2",
+      "path": "supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql",
+      "version": "20261023030305",
+      "name": "hermes_contract_renew_batch_v1",
       "scheme": "timestamp14",
-      "sha256": "fa75c146353affdc10ccef7b681fe1a52c38af76ad04dbad5ba196b615b81f71",
+      "sha256": "be39ecb5b2c50d6e8c3abaa83df6bc61b668b6b9f6493a18adbab56ed4ac1286",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "function:public.meter_readings_plan_v1",
-        "function:public.record_meter_readings_v2"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql",
-      "version": "20261022183445",
-      "name": "hermes_invoice_meter_v1",
-      "scheme": "timestamp14",
-      "sha256": "52535735f77ac21191f626e2fdeb94cc0d90b5e0dd264d2052e101e7d40ec8e3",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_invoice_reading_text_v1",
-        "function:app_private.hermes_invoice_meter_lookup_v1",
-        "function:app_private.hermes_invoice_meter_step_v1",
-        "function:public.hermes_invoice_action_v1"
+        "function:public.hermes_contract_batch_lookup_v1",
+        "function:app_private.hermes_contract_batch_step_v1"
       ]
     },
     {

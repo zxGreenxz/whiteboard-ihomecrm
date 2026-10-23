@@ -19,6 +19,8 @@ const RENEWAL_VECTORS = JSON.parse(readFileSync('infra/hermes-broker/contract-re
 const RETURN_SQL = file('hermes_contract_return_v1');
 // Mốc 5: file MỚI — hàm tra khách INVOKER, vỏ dựng lại, bước ghi dựng từ thân 061813 (md5 ghim ở $requires$).
 const PARTY_SQL = file('hermes_contract_party_draft_v1');
+// Mốc 6: file MỚI — hàm tra lô INVOKER, bước ghi lô DEFINER, vỏ dựng lại; md5 thân bước ghi 074815 ghim ở $requires$.
+const BATCH_SQL = file('hermes_contract_renew_batch_v1');
 const plain = sql => sql.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
 const u = n => `00000000-0000-4000-8000-${String(500 + n).padStart(12, '0')}`;
 const CONTRACT = u(1), CUSTOMER = u(2), EMPTY_ROOM = u(3), RETURNED_ROOM = u(4), OLD_CONTRACT = u(5), OTHER_USER = u(6);
@@ -44,7 +46,7 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
   CREATE TABLE IF NOT EXISTS public.room_sale_locks(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,building_id uuid,room_id uuid,hours integer,
     note text,locked_by uuid,locked_at timestamptz DEFAULT clock_timestamp(),expires_at timestamptz,released_at timestamptz,released_by uuid,release_reason text);
   CREATE TABLE IF NOT EXISTS public.fixture_today(d date);
-  CREATE TABLE IF NOT EXISTS public.fixture_contract_writer(raise_state text,bad text);
+  CREATE TABLE IF NOT EXISTS public.fixture_contract_writer(raise_state text,bad text,fail_contract uuid,fail_state text);
   DELETE FROM public.fixture_today; DELETE FROM public.fixture_contract_writer;
   INSERT INTO public.fixture_today VALUES('${TODAY}'); INSERT INTO public.fixture_contract_writer(raise_state) VALUES(null);
   ALTER TABLE public.contracts ENABLE ROW LEVEL SECURITY; ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
@@ -103,6 +105,9 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
     BEGIN
       IF (SELECT raise_state FROM public.fixture_contract_writer) IS NOT NULL THEN
         RAISE EXCEPTION 'fixture writer refused' USING ERRCODE=(SELECT raise_state FROM public.fixture_contract_writer); END IF;
+      -- Mốc 6: lỗi riêng một HĐ (fail_contract, mã fail_state hoặc P0001) để thử lô "một dòng lỗi, các dòng khác vẫn ghi".
+      IF p_contract_id=(SELECT fail_contract FROM public.fixture_contract_writer) THEN
+        RAISE EXCEPTION 'fixture row refused' USING ERRCODE=COALESCE((SELECT fail_state FROM public.fixture_contract_writer),'P0001'); END IF;
       IF p_notice_choice IS NULL OR p_notice_choice NOT IN ('KEEP','CANCEL') OR p_request_id IS NULL THEN
         RAISE EXCEPTION 'Cần chọn giữ hoặc hủy báo dọn và mã yêu cầu hợp lệ' USING ERRCODE='22023'; END IF;
       SELECT * INTO c FROM public.contracts WHERE id=p_contract_id AND organization_id=p_organization_id FOR UPDATE;
@@ -445,6 +450,14 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
 test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng; 074815 khoá dòng NOWAIT', () => {
   for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL]) stepLockOrder(sql);
   stepLockOrder(PARTY_SQL, { nowait: true });
+  // Mốc 6: bước ghi lô — guard rồi khoá công ty trước kiểm biên nhận; khoá dòng duy nhất là mọi HĐ của lô, NOWAIT, chỉ ở lượt có thể ghi.
+  const batch = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_batch_step_v1[\s\S]*?\$fn\$;/.exec(BATCH_SQL)[0];
+  const guard = batch.indexOf("ctx:=app_private.hermes_action_guard_v1(p_binding,'contract.renew_batch');"), lock = batch.indexOf('PERFORM app_private.lock_org_for_decision_v1(v_org);');
+  assert.ok(guard > 0 && lock > guard && lock < batch.indexOf('FROM app_private.hermes_action_receipts r'));
+  assert.ok(batch.indexOf('FROM app_private.hermes_action_receipts r') < batch.indexOf('v_basis:=md5('), 'phát lại biên nhận đứng trước phép so basis');
+  assert.deepEqual([...batch.matchAll(/FOR (?:UPDATE|NO KEY UPDATE|SHARE|KEY SHARE)[^;]*;/g)].map(match => match[0]), ['FOR UPDATE NOWAIT;']);
+  assert.match(batch, /IF p_phase<>'preview' THEN\n\s+PERFORM 1 FROM public\.contracts k WHERE k\.id=ANY\(v_ids\) AND k\.organization_id=v_org ORDER BY k\.id FOR UPDATE NOWAIT;\n\s+END IF;/);
+  assert.ok(lock < batch.indexOf('FOR UPDATE NOWAIT'));
 });
 function stepLockOrder(sql, { nowait = false } = {}) {
   const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(sql)[0];
@@ -961,6 +974,146 @@ test('trang Hợp đồng — Mốc 5: thêm / bớt người ở + soạn nháp
   });
 });
 
+// Mốc 6 — gia hạn hàng loạt (20261023030305). Dữ liệu: n HĐ ACTIVE hết hạn tháng 11/2026 ở toà A (phòng B01…, xen kẽ 30/11 và
+// 15/11), cộng bốn HĐ không được vào lô: có báo trả (B90), hết hạn tháng khác (B91), đã thanh lý (B92), ở toà B ngoài phạm vi khoá
+// (overlay của kết nối fixture chỉ phủ toà A).
+const bRoom = n => `00000000-0000-4000-8000-${String(600 + n).padStart(12, '0')}`;
+const bContract = n => `00000000-0000-4000-8000-${String(650 + n).padStart(12, '0')}`;
+async function seedBatch(db, count) {
+  const room = (n, building, name) => db.query("INSERT INTO public.rooms VALUES($1,$2,$3,$4,'OCCUPIED',null)", [bRoom(n), ORG, building, name]);
+  const contract = (n, status, end, notice = null) => db.query(`INSERT INTO public.contracts(id,organization_id,room_id,status,contract_number,start_date,
+    end_date,expected_move_out_date,rent_price,total_deposit) VALUES($1,$2,$3,$4,$5,'2025-12-01',$6,$7,4000000,4000000)`,
+    [bContract(n), ORG, bRoom(n), status, `HĐ-L-${n}`, end, notice]);
+  for (let n = 1; n <= count; n += 1) { await room(n, BUILDING, `B${String(n).padStart(2, '0')}`); await contract(n, 'ACTIVE', n % 2 ? '2026-11-30' : '2026-11-15'); }
+  await room(40, BUILDING, 'B90'); await contract(40, 'ACTIVE', '2026-11-30', '2026-11-30');
+  await room(41, BUILDING, 'B91'); await contract(41, 'ACTIVE', '2026-12-31');
+  await room(42, BUILDING, 'B92'); await contract(42, 'TERMINATED', '2026-11-10');
+  await room(43, OTHER_BUILDING, 'C01'); await contract(43, 'ACTIVE', '2026-11-20');
+}
+
+test('trang Hợp đồng — Mốc 6: gia hạn hàng loạt (20261023030305)', { timeout: 300000 }, async t => {
+  const { f, db, call, run, receipts } = await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`, migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL] });
+  const batch = { endMonth: '2026-11', months: 6, noReason: true };
+  const state = async () => (await db.query(`SELECT k.id::text id,k.end_date::text d,k.rent_price::text p,(SELECT count(*)::int FROM public.contract_extensions e
+    WHERE e.contract_id=k.id) x FROM public.contracts k WHERE k.id::text LIKE '00000000-0000-4000-8000-0000000006%' ORDER BY k.id`)).rows;
+  const rowsOf = preview => preview.preview.rows.map(row => `${row.roomName} ${row.endDate.from}→${row.endDate.to}`);
+
+  await t.test('chính sách: contract.renew_batch cùng khoá contracts.renew, irreversible, luôn xem trước', async () => {
+    const caps = await call('SELECT public.hermes_action_capabilities_v1($1::uuid) result', [ORG]);
+    assert.deepEqual(caps.actions['contract.renew_batch'], { capability: 'contracts.renew', actionClass: 'irreversible', confirm: 'always', privateOnly: true });
+  });
+
+  await t.test('xem trước: bảng đúng tập ghi (toà A, tháng 11, không báo trả); ngày mới theo hàm dùng chung; HĐ báo trả nêu trong cảnh báo', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 3);
+      const preview = await run('contract.renew_batch', 'auto', rid(400), batch);
+      assert.deepEqual([preview.kind, preview.confirm], ['preview', 'required'], 'irreversible: lượt auto chỉ xem trước');
+      assert.deepEqual(rowsOf(preview), ['B01 2026-11-30→2027-05-31', 'B02 2026-11-15→2027-05-15', 'B03 2026-11-30→2027-05-31']);
+      assert.deepEqual([preview.preview.count, preview.preview.more, preview.preview.months, preview.preview.endMonth], [3, 0, 6, '2026-11']);
+      assert.equal(preview.preview.text, 'Sẽ gia hạn 3 HĐ hết hạn tháng 11/2026 (mọi toà trong phạm vi) thêm 6 tháng: giữ nguyên giá thuê và cọc; lý do ghi vào ' +
+        'từng HĐ: "Gia hạn theo yêu cầu qua Hermes, không nêu lý do.". Không phát sinh hoá đơn hay phiếu. Danh sách: Toà A B01 (HĐ HĐ-L-1) 30/11/2026 → ' +
+        '31/05/2027; Toà A B02 (HĐ HĐ-L-2) 15/11/2026 → 15/05/2027; Toà A B03 (HĐ HĐ-L-3) 30/11/2026 → 31/05/2027.');
+      assert.deepEqual(preview.warnings, ['Không gia hạn 1 HĐ đang có báo trả (giữ hay huỷ báo trả phải quyết từng HĐ bằng gia hạn lẻ): Toà A B90 (dọn đi 30/11/2026).']);
+      assert.equal(JSON.stringify(preview).includes('Khách Thử'), false, 'không dữ liệu khách');
+      assert.deepEqual(await receipts(), [], 'xem trước không mở biên nhận');
+      assert.deepEqual((await run('contract.renew_batch', 'auto', rid(401), { ...batch, buildingName: 'toa a' })).resolved,
+        { buildingId: BUILDING, buildingName: 'Toà A', count: 3 });
+      const outside = await run('contract.renew_batch', 'auto', rid(402), { ...batch, buildingName: 'Toà B' });
+      assert.deepEqual([outside.reason, outside.why, outside.candidates], ['name_unresolved', 'outside_scope', []]);
+    });
+  });
+
+  await t.test('ghi: mỗi HĐ qua hàm web thật của gia hạn; phát lại y nguyên; lô sau chỉ còn HĐ chưa gia hạn; hết ⇒ renew_batch_empty', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 22);
+      const preview = await run('contract.renew_batch', 'auto', rid(410), batch);
+      assert.deepEqual([preview.preview.count, preview.preview.more], [20, 2]);
+      assert.ok(preview.warnings.includes('Còn 2 HĐ hết hạn tháng 11/2026 chưa vào lô này (tối đa 20 HĐ mỗi lô); ghi xong lô này rồi gọi lại để làm lô sau.'));
+      const applied = await run('contract.renew_batch', 'apply', rid(410), batch, preview);
+      assert.deepEqual([applied.kind, applied.link, applied.result.renewed, applied.result.failed, applied.result.more], ['applied', '/contracts', 20, 0, 2]);
+      assert.match(applied.result.text, /^Đã gia hạn 20\/20 HĐ hết hạn tháng 11\/2026 thêm 6 tháng/);
+      const after = await state();
+      assert.equal(after.filter(row => row.x === 1).length, 20, 'đúng 20 HĐ có một bản gia hạn');
+      assert.ok(after.every(row => row.p === '4000000'), 'giữ giá');
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(410)).map(row => row.state), ['applied']);
+      assert.deepEqual(await run('contract.renew_batch', 'apply', rid(410), batch, preview), applied, 'phát lại cùng requestId ⇒ y nguyên, không gia hạn chồng');
+      const second = await run('contract.renew_batch', 'auto', rid(411), batch);
+      assert.deepEqual(rowsOf(second), ['B21 2026-11-30→2027-05-31', 'B22 2026-11-15→2027-05-15'], 'HĐ đã gia hạn rời khỏi tháng 11');
+      assert.equal((await run('contract.renew_batch', 'apply', rid(411), batch, second)).result.renewed, 2);
+      assert.deepEqual(await run('contract.renew_batch', 'auto', rid(412), batch), { kind: 'needs_input', reason: 'renew_batch_empty' });
+      assert.equal((await state()).filter(row => row.x > 1).length, 0, 'không HĐ nào gia hạn hai lần');
+    });
+  });
+
+  await t.test('basis lệch (HĐ của lô đổi giữa hai lượt) ⇒ state_changed, không ghi; lỗi một dòng ⇒ dòng đó rejected, dòng khác vẫn ghi', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 3);
+      const preview = await run('contract.renew_batch', 'auto', rid(420), batch);
+      await db.query("UPDATE public.contracts SET updated_at=clock_timestamp()+interval '1 second' WHERE id=$1", [bContract(2)]);
+      assert.deepEqual(await run('contract.renew_batch', 'apply', rid(420), batch, preview), { kind: 'rejected', reason: 'state_changed' });
+      assert.ok((await state()).every(row => row.x === 0)); assert.deepEqual(await receipts(), []);
+      const fresh = await run('contract.renew_batch', 'auto', rid(421), batch);
+      await db.query('UPDATE public.fixture_contract_writer SET fail_contract=$1', [bContract(2)]);
+      const applied = await run('contract.renew_batch', 'apply', rid(421), batch, fresh);
+      assert.deepEqual([applied.result.renewed, applied.result.failed], [2, 1]);
+      assert.deepEqual(applied.result.rows.map(row => [row.roomName, row.renewed, row.reason ?? null]), [['B01', true, null], ['B02', false, 'crm_refused'], ['B03', true, null]]);
+      assert.match(applied.result.text, /Không gia hạn được: Toà A B02 \(crm_refused\); xem trên web\.$/);
+      assert.deepEqual((await state()).map(row => row.x), [1, 0, 1, 0, 0, 0, 0], 'B02 giữ nguyên (lùi về savepoint của dòng)');
+    });
+  });
+
+  await t.test('lỗi tạm của một dòng ⇒ cả lô lùi (không biên nhận); mọi dòng lỗi nghiệp vụ ⇒ cả lô rejected, chốt biên nhận', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 3);
+      const preview = await run('contract.renew_batch', 'auto', rid(430), batch);
+      await db.query("UPDATE public.fixture_contract_writer SET fail_contract=$1,fail_state='40001'", [bContract(3)]);
+      await assert.rejects(run('contract.renew_batch', 'apply', rid(430), batch, preview), code('40001'));
+      assert.ok((await state()).every(row => row.x === 0), 'dòng đã ghi trước đó cũng lùi'); assert.deepEqual(await receipts(), []);
+      await db.query("UPDATE public.fixture_contract_writer SET fail_contract=NULL,fail_state=NULL,bad='price'");
+      assert.deepEqual(await run('contract.renew_batch', 'apply', rid(430), batch, preview), { kind: 'rejected', reason: 'crm_refused' }, 'hậu điều kiện giữ giá');
+      assert.ok((await state()).every(row => row.x === 0));
+      assert.deepEqual((await receipts()).map(row => row.state), ['rejected']);
+    });
+  });
+
+  await t.test('tham số: thiếu lý do ⇒ hỏi một câu; lý do ngắn; months / tháng sai; tháng quá xa; không HĐ nào ⇒ renew_batch_empty', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 1);
+      const cases = [[{ endMonth: '2026-11', months: 6 }, 'renew_reason_ask'], [{ endMonth: '2026-11', months: 6, reason: 'ngắn' }, 'reason_required'],
+        [{ ...batch, months: 25 }, 'invalid_params'], [{ ...batch, months: 0 }, 'invalid_params'], [{ ...batch, endMonth: '2026-13' }, 'invalid_params'],
+        [{ ...batch, endMonth: '2029-01' }, 'date_out_of_range'], [{ ...batch, endMonth: '2025-09' }, 'date_out_of_range'],
+        [{ ...batch, endMonth: '2027-01' }, 'renew_batch_empty']];
+      for (const [index, [params, reason]] of cases.entries())
+        assert.deepEqual(await run('contract.renew_batch', 'auto', rid(440 + index), params), { kind: 'needs_input', reason }, JSON.stringify(params));
+      const preview = await run('contract.renew_batch', 'auto', rid(450), { ...batch, noReason: undefined, reason: 'Khách xin ở tiếp một năm' });
+      await run('contract.renew_batch', 'apply', rid(450), { ...batch, noReason: undefined, reason: 'Khách xin ở tiếp một năm' }, preview);
+      assert.match((await db.query('SELECT notes FROM public.contracts WHERE id=$1', [bContract(1)])).rows[0].notes, /\[Gia hạn\] Khách xin ở tiếp một năm/);
+    });
+  });
+
+  await t.test('bước ghi lô đọc lại từng id (DEFINER): id do tra lô đưa vào mà có báo trả / ngoài toà của khoá / khác tháng / đã thanh lý đều bị bỏ', async () => {
+    await f.rollbackCase(async () => {
+      await seedBatch(db, 2);
+      // Gọi thẳng bước ghi lô (vai chủ sở hữu, như vỏ gọi) với danh sách id lạ: chỉ hai HĐ đạt mới vào bảng.
+      const lookup = { batch: { eligible: [bContract(1), bContract(2), bContract(40), bContract(41), bContract(42), bContract(43)], eligibleTotal: 6,
+        excluded: [], excludedTotal: 0 } };
+      const preview = await call('SELECT app_private.hermes_contract_batch_step_v1($1::jsonb,$2,$3::uuid,$4::jsonb,NULL,NULL,NULL,$5::jsonb) result',
+        [JSON.stringify(binding), 'preview', rid(460), JSON.stringify(batch), JSON.stringify(lookup)], { role: 'postgres' });
+      assert.deepEqual(rowsOf(preview), ['B01 2026-11-30→2027-05-31', 'B02 2026-11-15→2027-05-15']);
+    });
+  });
+
+  await t.test('$requires$: bước ghi chung khác thân 20261022074815 ⇒ dừng; md5 ghim khớp Postgres; bước ghi chung không đổi', async () => {
+    const original = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?END \$fn\$;/.exec(PARTY_SQL)[0];
+    const live = (await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].m;
+    assert.equal(live, '239f771b1a5de25c56c44fa059edbbdd', 'thân bước ghi chung sau file Mốc 6 vẫn là thân 074815');
+    await f.rollbackCase(async () => {
+      await db.exec(original.replace('-- Lượt preview chỉ đọc', '-- Lượt preview (thân lạ) chỉ đọc'));
+      await assert.rejects(db.exec(plain(BATCH_SQL)), /hermes_contract_batch_base_changed/);
+    });
+  });
+});
+
 // Soát 40P01 (23/10, mẫu Hoá đơn #279). Guard của bước ghi khoá dòng công ty trước mọi việc. Nhiều hàm ghi web khoá dòng nghiệp vụ
 // TRƯỚC rồi mới khoá công ty (đo production 23/10):
 //   - dòng HĐ: create_new_contract_extension, terminate_contract_move_out;
@@ -976,7 +1129,8 @@ test('PG hai phiên: hàm ghi web khoá dòng HĐ / phòng trước công ty ⇒
   const main = await pool.connect(), hermes = await pool.connect(), web = await pool.connect();
   t.after(async () => { for (const client of [main, hermes, web]) client.release(); await pool.end(); cleanup(); });
   const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
-  await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`, migrations: [RETURN_SQL, PARTY_SQL], database });
+  await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`, migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL], database });
+  await seedBatch(database, 1);
   const more = ['contracts.edit', 'contracts.create'];
   await main.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1) AND mode='action'", [more]);
   for (const permission of more)
@@ -1004,6 +1158,8 @@ test('PG hai phiên: hàm ghi web khoá dòng HĐ / phòng trước công ty ⇒
       `SELECT 1 FROM public.rooms WHERE id='${EMPTY_ROOM}' FOR UPDATE`],
     ['contract.room_lock', { ...P102, hours: 6 }, `SELECT 1 FROM public.rooms WHERE id='${EMPTY_ROOM}' FOR NO KEY UPDATE`],
     ['contract.return', { ...P101, date: '2026-10-20', note: 'Khách trả phòng, bàn giao đủ' }, `SELECT 1 FROM public.rooms WHERE id='${ROOM}' FOR NO KEY UPDATE`],
+    // Mốc 6: lô gia hạn khoá mọi dòng HĐ của lô NOWAIT (renew_contract_with_notice_v1 khoá công ty rồi dòng HĐ).
+    ['contract.renew_batch', { endMonth: '2026-11', months: 6, noReason: true }, `SELECT 1 FROM public.contracts WHERE id='${bContract(1)}' FOR UPDATE`],
   ];
   for (const [index, [action, params, webLock]] of cases.entries()) await t.test(`${action}: phiên web giữ dòng trước ⇒ 55P03 ngay`, async () => {
     await web.query('BEGIN'); await web.query(webLock);

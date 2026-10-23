@@ -204,6 +204,20 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt, ở 
 - **Ghi.** Mỗi dòng nằm trong một savepoint riêng. Lỗi nghiệp vụ của dòng ⇒ dòng `rejected` + lý do, các dòng khác vẫn ghi. Lỗi tạm ⇒ cả lô lùi (`state_changed`). Kết quả trả từng dòng.
 - **Gọi lại sau khi xong.** HĐ đã gia hạn rời khỏi `endMonth`, nên lần chọn sau tự bỏ chúng. Không bao giờ gia hạn chồng một HĐ trong cùng lô.
 - **Thời gian.** Lô 20 dòng phải xong dưới `statement_timeout` của `authenticated`; đo trên TEST ở Mốc 6. Hàm ghi gia hạn khoá cả tổ chức (`lock_org_for_decision_v1`) suốt giao dịch.
+- **Đã làm (Mốc 6, file MỚI `20261023030305_hermes_contract_renew_batch_v1`, chưa áp).**
+  - Thao tác `contract.renew_batch` (khoá + quyền CRM `contracts.renew` như `contract.renew`; irreversible / always): `endMonth*` (YYYY-MM, từ 12 tháng trước tới 24 tháng sau tháng hiện tại), `months*` (1–24), `buildingName` tuỳ chọn, `reason` hoặc `noReason`.
+  - Chọn HĐ bằng hàm INVOKER MỚI `public.hermes_contract_batch_lookup_v1` dưới RLS người hỏi, trong tập toà guard trả (∩ toà đã nêu): 20 HĐ đầu không có báo trả + 10 HĐ đầu có báo trả + hai số đếm; chỉ id, không tên hay dữ liệu khách.
+  - Bước ghi lô là hàm DEFINER MỚI `app_private.hermes_contract_batch_step_v1`; vỏ dựng lại từ thân `074815` + nhánh lô (giải tên toà, tra lô, chuyển sang bước ghi lô). Bước ghi chung của trang KHÔNG đổi; md5 thân `074815` ghim ở `$requires$`.
+  - Bước ghi lô đọc lại từng id với đủ điều kiện (ACTIVE chưa kết thúc, không báo trả, đúng tháng, toà thuộc khoá) nên id lạ do bất kỳ đường nào đưa vào cũng bị bỏ.
+  - Thứ tự: khoá công ty → phát lại biên nhận theo requestId (TRƯỚC basis) → tham số → khoá mọi dòng HĐ của lô `FOR UPDATE NOWAIT` (lượt có thể ghi) → đọc lại → basis = md5(tháng, số tháng, toà, danh sách (HĐ, `updated_at`, `end_date`), danh sách HĐ bị loại) → xem trước hoặc ghi.
+  - Xem trước luôn có, kể cả lượt auto: `preview.rows` (toà / phòng / HĐ / ngày cũ → ngày mới), `count`, `more` (HĐ còn lại ngoài lô), câu `text` liệt kê đủ lô. Cảnh báo: HĐ bị loại vì báo trả (D-HĐ7), còn N HĐ làm lô sau, HĐ vừa gia hạn trong 24 giờ.
+  - Ghi: mỗi dòng một khối `BEGIN … EXCEPTION` (savepoint), gọi `renew_contract_with_notice_v1` với `KEEP` và khoá idempotency `md5('renew_batch:'||requestId||':'||HĐ)`. Hậu điều kiện như `contract.renew`.
+    - Lỗi nghiệp vụ ⇒ dòng `renewed=false` + `reason`, dòng khác vẫn ghi.
+    - Lỗi tạm ⇒ cả lô lùi (`state_changed`).
+    - Không dòng nào ghi được ⇒ cả lô `rejected` với lý do dòng đầu.
+    - Một biên nhận cho cả lô; kết quả có `rows`, `renewed`, `failed`, `more`.
+  - Lô rỗng ⇒ needs_input mới `renew_batch_empty` (khối Hợp đồng của `action-reasons.mjs`; dạng needs_input nên không vào `host-ownership`).
+  - Đo (23/10): `statement_timeout` của `authenticated` là 8 giây trên TEST lẫn production. Tầng 2 trên TEST: lô 20 HĐ qua hàm ghi web thật mất 0,86–1,47 giây.
 
 ## 5. Lý do riêng trang (thêm vào danh sách đóng)
 
@@ -306,6 +320,7 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 | 4 ✓ | `20261022061813_hermes_contract_return_v1` (MỚI) | Thay tra cứu + bước ghi của trang (dựng từ thân `022951`, ghim md5): nhánh `contract.return` + hoá đơn chưa thu; policy `contract.return`. Áp SAU `022951` |
 | 5 ✓ | `20261022074815_hermes_contract_party_draft_v1` (MỚI) | Hàm tra khách INVOKER mới; thay vỏ (thân `022951` + tra khách) và bước ghi (thân `061813`, ghim md5); 3 dòng chính sách người ở + nháp. Áp SAU `061813` |
 | 5 ✓ | `20261022075119_hermes_w2d_contract_drafts_v1` (MỚI) | Báo cáo `contract_drafts` (dựng từ thân `043617`, ghim md5). Tách phát hành sớm được |
+| 6 ✓ | `20261023030305_hermes_contract_renew_batch_v1` (MỚI) | Hàm tra lô INVOKER + bước ghi lô DEFINER mới; thay vỏ (thân `074815` + nhánh lô); 1 dòng chính sách `contract.renew_batch`. md5 bước ghi chung `074815` ghim ở `$requires$`. Áp SAU `074815` |
 | — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6, "Chỗ nối `publicLink`") |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
@@ -432,6 +447,12 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 11. "Thêm / bớt người ở phòng X" ⇒ `contract.occupant_add` / `contract.occupant_remove` với SĐT (ưu tiên) hoặc tên khách đã có trong CRM; ghi thẳng, đọc lại `result.text`. Khách chưa có thì tạo trước bằng `crm_customer_create`. Không bỏ được người đại diện qua bot (đổi đại diện trên web).
 12. "Soạn HĐ cho phòng X" ⇒ `contract.draft` với `startDate`, `endDate` (người dùng nói; chỉ nói số tháng thì hỏi ngày kết thúc), `rentPrice`, `deposit`, khách tuỳ chọn. Nhắc rằng đây là NHÁP, ký và hoàn tất trên web (Hợp đồng → tab Nháp). Có bản xem trước (phòng còn khách / trùng nháp) thì đọc cảnh báo và chờ "đồng ý".
 13. "Còn HĐ nào chưa ký / nháp chờ ký" ⇒ `crm_read_report contract_drafts`; số = `summary.total`.
+14. "Gia hạn hết các HĐ hết hạn tháng X (toà Y) thêm N tháng" ⇒ `contract.renew_batch` với `endMonth` = tháng X (YYYY-MM), `months` = N, `buildingName` nếu người dùng nêu toà.
+    - Không có lý do ⇒ hỏi MỘT câu; người dùng nói không có ⇒ `noReason=true`.
+    - Đọc `preview.text` nguyên văn và nói rõ từng cảnh báo (HĐ có báo trả bị loại thì gia hạn lẻ bằng `contract.renew`; còn N HĐ thì làm lô sau), rồi chờ "đồng ý" một lần cho cả lô.
+    - Sau khi ghi đọc `result.text`; dòng `renewed=false` thì báo kèm lý do và chỉ đường web.
+    - Còn `more` > 0 thì gọi lại lô mới với requestId mới; HĐ đã gia hạn tự ra khỏi tháng.
+    - Đổi giá/cọc khi gia hạn ⇒ chỉ đường web. Một HĐ lẻ ⇒ dùng `contract.renew`, không dùng lô.
 
 ## 14. Việc phiên chính phải làm
 
@@ -545,12 +566,27 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
     - chiều ngược lại (bước ghi giữ trước) ⇒ phiên web chờ rồi chạy tiếp.
   - Đột biến bỏ `NOWAIT` tái hiện đúng `40P01 deadlock detected`; 5/5 đột biến bị bắt.
 
+**Mốc 6, 23/10 (nhánh `claude/hermes-hop-dong-moc6-20261023`, xếp chồng trên #277).** Gia hạn hàng loạt `contract.renew_batch` (mục 4.7 "Đã làm"), migration MỚI `20261023030305`, chưa áp.
+- *Kiểm.*
+  - PGlite trang 51/51 (thêm 8 ca Mốc 6):
+    - xem trước bảng / loại báo trả / ngoài toà của khoá / khác tháng / đã thanh lý; toà nêu tên, toà ngoài phạm vi;
+    - ghi 20 + lô sau 2 + lô rỗng; phát lại y nguyên; basis lệch;
+    - một dòng lỗi; lỗi tạm lùi cả lô; mọi dòng lỗi ⇒ rejected;
+    - tham số; bước ghi lô đọc lại id lạ; `$requires$`.
+  - Thứ tự khoá của bước ghi lô; test hai phiên PG thêm ca lô (hàm web giữ dòng HĐ ⇒ 55P03 ngay).
+  - Đột biến 14/14.
+  - Connector: `contract-action` + `action-reasons` + `action-tools-budget` + `tool-argument-shape` 30/30; `tools/list` không đổi.
+- *Tầng 2 TEST* (ROLLBACK, hàm ghi web thật):
+  - chủ (2 kết nối) và joey: xem trước 20 dòng; ghi 20/20 HĐ (đúng ngày mới theo hàm dùng chung, không phiếu / hoá đơn mới) trong 0,86–1,47 giây, dưới trần 8 giây;
+  - phát lại y nguyên; lô sau không lặp HĐ; một biên nhận;
+  - B.Huy không có khoá ghi.
+
 ## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.
 - Cổng W2 `hermes_w2_read_v1` có cần đổi khi thêm báo cáo vào W2D không. Mốc 2 đọc.
 - Cách form web dựng dịch vụ và ngày tính tiền mặc định cho HĐ mới; đường dẫn web của nháp. Mốc 5 tra.
-- `statement_timeout` thật của `authenticated` qua PostgREST, và thời gian lô 20 HĐ. Mốc 6 đo.
+- ~~`statement_timeout` thật của `authenticated` qua PostgREST, và thời gian lô 20 HĐ~~: Mốc 6 đo, 8 giây (TEST và production), lô 20 HĐ 0,86–1,47 giây trên TEST. Chưa đo qua PostgREST thật (cộng thời gian guard + mạng) — ca tầng 3.
 - ~~Cột liên kết HĐ của `invoices` cho hậu điều kiện tiền~~: Mốc 4 xác minh `invoices.contract_id NOT NULL`, `income_expenses.contract_id`, tiền ở `total_amount` cả hai bảng.
 - Playwright hộp Gia hạn trên TEST: chưa chạy được đường có ngày, vì `contract_renewal_end_date_v1` chưa áp lên TEST (đường lỗi + bố cục kiểm bằng test component).
 - `rooms_occupancy` so với Báo cáo lấp đầy của web khi công tắc "Hoạt động" ghi đè trạng thái phòng (phòng có HĐ mà `AVAILABLE`): báo cáo theo `displayStatus` như trang Phòng, có thể lệch Báo cáo lấp đầy ở các phòng đó.
