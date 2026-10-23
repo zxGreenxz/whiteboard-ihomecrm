@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  ihomeProfitOf, landlordIhomeProfitSchema, landlordOperationOptionsSchema, landlordOperationsListSchema,
-  settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema, shareLinksSchema, upsertReceiptSchema,
+  ihomeProfitOf, invoicePartsOfSettlement, landlordIhomeProfitSchema, landlordOperationOptionsSchema,
+  landlordOperationsListSchema, settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema,
+  settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
 } from "@/lib/landlordSettlement";
+import { getInvoiceTitle, invoiceTitlePartsOf } from "@/lib/invoiceUtils";
+import type { InvoiceWithRelations } from "@/types/invoice";
 
 /**
  * Migration 20261021083438 — quyết toán toà VẬN HÀNH CHO CHỦ NHÀ (chủ chốt 21/10/2026).
@@ -89,18 +92,18 @@ async function phieu(p: {
   toa?: string; loai: "INCOME" | "EXPENSE"; so: string | null; thang: string; trangThai?: string;
   kqkd?: boolean | null; xoa?: boolean; dong?: { lop: string; tien: number; tu?: string; den?: string }[]; tong?: number; nguon?: string;
   butToan?: string; lamTron?: { so: string; tien: number }; thoi?: { so: string; tien: number };
-  ten?: string; hoaDon?: string; hanChe?: boolean; loaiHangMuc?: string;
+  ten?: string; hoaDon?: string; hanChe?: boolean; loaiHangMuc?: string; phong?: string;
 }) {
   const pid = id(n++);
   await db.query(
     `INSERT INTO public.income_expenses(id, organization_id, building_id, code, name, type, voucher_date, account_id,
        approval_status, business_result_accounting, total_amount, deleted_at, system_source, posting_status,
-       rounding_account_id, rounding_amount, change_account_id, change_amount, invoice_id, has_restricted_item)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+       rounding_account_id, rounding_amount, change_account_id, change_amount, invoice_id, has_restricted_item, room_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [pid, ORG_A, p.toa ?? TOA_A, `P${n}`, p.ten ?? `Phiếu ${n}`, p.loai, p.thang, p.so, p.trangThai ?? "APPROVED",
       p.kqkd ?? null, p.tong ?? (p.dong ?? []).reduce((s, d) => s + d.tien, 0), p.xoa ? new Date().toISOString() : null,
       p.nguon ?? null, p.butToan ?? "POSTED", p.lamTron?.so ?? null, p.lamTron?.tien ?? 0,
-      p.thoi?.so ?? null, p.thoi?.tien ?? 0, p.hoaDon ?? null, p.hanChe ?? false],
+      p.thoi?.so ?? null, p.thoi?.tien ?? 0, p.hoaDon ?? null, p.hanChe ?? false, p.phong ?? null],
   );
   for (const d of p.dong ?? []) {
     await db.query(
@@ -120,6 +123,7 @@ let PHIEU_HAN_CHE_MA = "";
  */
 const FILE_CO_DINH = process.env.QTCD_MIGRATION_FILE
   ?? "supabase/migrations/20261023113626_quan_ly_nhan_tien_co_dinh.sql";
+const UPSERT_CU = "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamptz)";
 /** md5(pg_get_functiondef) thân đang chạy production, đọc chỉ đọc 23/10/2026 (không có CR). */
 const PROD_MD5: Record<string, string> = {
   "app_private.landlord_settlement_compute_v1(uuid,date)": "4483be0be8948c7b97e0e2fb211c817c",
@@ -129,13 +133,11 @@ const PROD_MD5: Record<string, string> = {
   "public.landlord_operation_options_v1(uuid)": "88eef03f7956f40f7a76e8c718f0311c",
   "public.landlord_ihome_profit_v1(date,date)": "c00e7d21798664b8439a4d2a46273aae",
   "app_private.landlord_strip_public_v1(jsonb)": "2e819cd3bc7d0201114207e689bd8b0b",
-  "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamptz)":
-    "8437e4e3d83990937ba3be94adb233d7",
+  [UPSERT_CU]: "8437e4e3d83990937ba3be94adb233d7",
 };
-const UPSERT_CU = "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamptz)";
 const UPSERT_MOI = "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamptz,numeric)";
 /** Hàm file thay thân (lượt hai phải nhận md5 của chính file). */
-const HAM_THAY = Object.keys(PROD_MD5).slice(0, 5);
+const HAM_THAY = Object.keys(PROD_MD5).filter((k) => k !== UPSERT_CU && k !== "public.landlord_ihome_profit_v1(date,date)");
 /** Mọi hàm file ghim (gồm hai hàm chỉ đọc không thay). */
 const HAM_GHIM = Object.keys(PROD_MD5).filter((k) => k !== UPSERT_CU);
 let md5Goc: Record<string, string> = {};
@@ -186,13 +188,17 @@ beforeAll(async () => {
       notes text, type text, voucher_date date, account_id uuid, approval_status text, business_result_accounting boolean,
       total_amount numeric, deleted_at timestamptz, system_source text, posting_status text,
       change_account_id uuid, change_amount numeric DEFAULT 0, rounding_account_id uuid, rounding_amount numeric DEFAULT 0,
-      invoice_id uuid, has_restricted_item boolean DEFAULT false);
+      invoice_id uuid, has_restricted_item boolean DEFAULT false, room_id uuid);
     CREATE TABLE public.income_expense_types(id uuid PRIMARY KEY, organization_id uuid, name text, category text,
       fee_category text, type text);
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), income_expense_id uuid,
       amount numeric, unit_price numeric, quantity numeric, accounting_class text, income_expense_type_id uuid,
       start_date date, end_date date);
-    CREATE TABLE public.invoices(id uuid PRIMARY KEY, billing_month text, deleted_at timestamptz);
+    CREATE TABLE public.invoices(id uuid PRIMARY KEY, billing_month text, deleted_at timestamptz,
+      kind text, issue_date date, notes text, contract_id uuid, room_id uuid);
+    CREATE TABLE public.invoice_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), invoice_id uuid, type text, from_date date);
+    CREATE TABLE public.contracts(id uuid PRIMARY KEY, start_billing_date date);
+    CREATE TABLE public.rooms(id uuid PRIMARY KEY, name text);
     CREATE TABLE public.building_fee_accounts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), building_id uuid,
       fee_category text, not_applicable boolean DEFAULT false, deleted_at timestamptz);
     CREATE TABLE public.profiles(id uuid PRIMARY KEY, full_name text, email text);
@@ -1528,5 +1534,151 @@ describe("tiền cố định: Báo cáo LN và link chủ nhà", () => {
     expect(st.vouchers.every((v) => v.id === undefined)).toBe(true);
     expect(pub.overview.manager_fixed_amount).toBe(5_000_000);
     expect(pub.overview.months.find((m) => m.period_month === "2025-02-01")?.manager_fixed_amount).toBe(5_000_000);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tên hiển thị phiếu trong "Phiếu trong tháng" (chủ nhắn 23/10/2026): server trả phần dựng tên, web dựng
+// bằng src/lib/voucherDisplayName.ts — cùng đường với Thu chi / Báo cáo LN. Mã / tên giả.
+// ─────────────────────────────────────────────────────────────────────────────
+const [PHONG_1, PHONG_2, HOP_DONG_1] = [41, 42, 51].map(id);
+async function phongVaHopDong() {
+  await db.query("INSERT INTO public.rooms VALUES ($1, '203'), ($2, 'Phòng 305')", [PHONG_1, PHONG_2]);
+  await db.query("INSERT INTO public.contracts VALUES ($1, '2025-01-01')", [HOP_DONG_1]);
+}
+let soHoaDon = 700;
+/** Hoá đơn tháng 01/2025 của phòng 203 + phiếu thu "Thu tiền theo HĐ …" gắn hoá đơn đó. */
+async function hoaDonVaPhieu(h: {
+  kind?: string | null; notes?: string | null; issue?: string; hopDong?: string | null;
+  dong?: { type: string; tu?: string | null }[]; tenPhieu?: string; hanChe?: boolean;
+}) {
+  const hid = id(soHoaDon++);
+  await db.query(
+    `INSERT INTO public.invoices(id, billing_month, kind, issue_date, notes, contract_id, room_id)
+     VALUES ($1, '2025-01', $2, $3, $4, $5, $6)`,
+    [hid, h.kind ?? null, h.issue ?? "2025-01-02", h.notes ?? null, h.hopDong === undefined ? HOP_DONG_1 : h.hopDong, PHONG_1]);
+  for (const d of h.dong ?? []) {
+    await db.query("INSERT INTO public.invoice_items(invoice_id, type, from_date) VALUES ($1, $2, $3)", [hid, d.type, d.tu ?? null]);
+  }
+  const ma = `P${n + 1}`;
+  await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-03", hoaDon: hid, phong: PHONG_1, hanChe: h.hanChe,
+    ten: h.tenPhieu ?? `Thu tiền theo HĐ INV-2025-${soHoaDon}`, dong: [{ lop: "PNL", tien: 1_000 }] });
+  return { hid, ma };
+}
+const phieuThang = async (m = "2025-01-01") =>
+  settlementMonthSchema.parse(await thang(TOA_A, m)).statement!.vouchers;
+
+describe("tên hiển thị phiếu (quyết toán + link chủ nhà)", () => {
+  it("'Thu tiền theo HĐ <mã>' ⇒ tên hoá đơn có phòng; '… — HĐ <mã HĐ>' ⇒ '… — phòng <phòng>'; tên tự gõ giữ nguyên", async () => {
+    const ten = await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongVaHopDong();
+      const dau = await hoaDonVaPhieu({ kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-01" }, { type: "SERVICE" }] });
+      const tl = await hoaDonVaPhieu({ kind: "SETTLEMENT", issue: "2025-01-20", notes: "Thanh lý hợp đồng",
+        tenPhieu: "Doanh thu bỏ cọc — HĐ HD-2025-0001" });
+      const tuGo = await hoaDonVaPhieu({ kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-05" }], tenPhieu: "Tiền phòng anh Ba (chuyển khoản)" });
+      const maPhong2 = `P${n + 1}`;
+      await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-21", phong: PHONG_2, nguon: "termination.extra_receipt",
+        ten: "Khách trả thêm khi thanh lý — HĐ HĐT-0002/2025", dong: [{ lop: "PNL", tien: 2_000 }] });
+      const khongHoaDon = `P${n + 1}`;
+      await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-22", ten: "Thu tiền theo HĐ INV-9999", dong: [{ lop: "PNL", tien: 3_000 }] });
+      await asUser(CHU_A);
+      const ds = await phieuThang();
+      const theoMa = (ma: string) => settlementVoucherName(ds.find((v) => v.code === ma)!, "admin");
+      return [theoMa(dau.ma), theoMa(tl.ma), theoMa(tuGo.ma), theoMa(maPhong2), theoMa(khongHoaDon)];
+    });
+    expect(ten).toEqual([
+      "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 203 - 01/2025",
+      "Doanh thu bỏ cọc — phòng 203",
+      "Tiền phòng anh Ba (chuyển khoản)",
+      "Khách trả thêm khi thanh lý — Phòng 305",
+      // không gắn hoá đơn ⇒ không có gì để dựng ⇒ giữ tên gốc
+      "Thu tiền theo HĐ INV-9999",
+    ]);
+  });
+
+  it("cờ dựng tên của server CHÉP ĐÚNG luật TS (invoiceTitlePartsOf / isFirstMonthInvoice) — từng biến thể ghi chú, loại, dòng", async () => {
+    const MAU: Parameters<typeof hoaDonVaPhieu>[0][] = [
+      { kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-01" }, { type: "SERVICE" }] },
+      { kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-05" }, { type: "SERVICE" }] },
+      { kind: "MONTHLY", notes: "HĐ THÁNG ĐẦU của hợp đồng", hopDong: null, dong: [{ type: "RENT", tu: "2025-01-05" }] },
+      { kind: "MONTHLY", notes: "Tiền phòng đầu tiên", hopDong: null, dong: [{ type: "RENT" }] },
+      { kind: "MONTHLY", notes: "ghi tháng_đầu", hopDong: null, dong: [{ type: "RENT" }] },
+      { kind: "SETTLEMENT", notes: "  HOÁ ĐƠN THU THÊM khi khách bỏ cọc", issue: "2025-01-25" },
+      { kind: "SETTLEMENT", notes: "Hoá đơn thu thêm", dong: [{ type: "PENALTY" }] },
+      { kind: "MONTHLY", notes: "Hoá đơn tháng 1 + thu thêm 200.000đ", dong: [{ type: "SERVICE" }] },
+      { kind: null, notes: "THANH LÝ hợp đồng sớm" },
+      { kind: "SETTLEMENT", notes: null, dong: [{ type: "PENALTY" }] },
+      { kind: "MONTHLY", notes: "abc", dong: [] },
+      { kind: "MONTHLY", dong: [{ type: "RENT", tu: null }] },
+      { kind: "MONTHLY", dong: [{ type: "PENALTY" }, { type: "RENT", tu: "2025-01-01" }, { type: "RENT", tu: "2024-12-01" }] },
+    ];
+    const [ketQua, nguon] = await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongVaHopDong();
+      const ma: string[] = [];
+      for (const h of MAU) ma.push((await hoaDonVaPhieu(h)).ma);
+      await asUser(CHU_A);
+      const ds = await phieuThang();
+      return [ma.map((m) => ds.find((v) => v.code === m)!), ma] as const;
+    });
+    expect(ketQua.length).toBe(MAU.length);
+    ketQua.forEach((v: SettlementVoucher, i) => {
+      const h = MAU[i]!;
+      const banGhi = {
+        kind: h.kind ?? null, notes: h.notes ?? null, billing_month: "2025-01", issue_date: h.issue ?? "2025-01-02",
+        invoice_items: (h.dong ?? []).map((d) => ({ type: d.type, from_date: d.tu ?? null })),
+        contract: h.hopDong === null ? null : { start_billing_date: "2025-01-01" },
+      };
+      expect(v.code).toBe(nguon[i]);
+      expect(v.room_name).toBe("203");
+      // từng cờ server tính trùng hàm TS trên cùng bản ghi
+      expect({ i, ...invoicePartsOfSettlement(v.invoice!) }).toEqual({ i, ...invoiceTitlePartsOf(banGhi) });
+      // và tên cuối cùng trùng tên trang Hoá đơn (getInvoiceTitle) với phòng, không toà
+      expect(settlementVoucherName(v, "admin"))
+        .toBe(getInvoiceTitle({ ...banGhi, room: { name: "203" } } as unknown as InvoiceWithRelations));
+    });
+    // đủ các nhánh tên
+    expect(new Set(ketQua.map((v) => settlementVoucherName(v, "admin").split(" - ")[0]))).toEqual(new Set([
+      "TIỀN PHÒNG THÁNG ĐẦU TIÊN", "TIỀN PHÒNG", "Hóa đơn thu thêm (thanh lý)", "Hóa đơn dịch vụ", "Hóa đơn thanh lý",
+      "Hóa đơn", "Hóa đơn tiền nhà",
+    ]));
+  });
+
+  it("link chủ nhà: có tên phòng + phần hoá đơn; phiếu HẠN CHẾ bỏ cả hai, tên vẫn bị che", async () => {
+    const pub = await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongVaHopDong();
+      await hoaDonVaPhieu({ kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-05" }, { type: "SERVICE" }] });
+      await hoaDonVaPhieu({ kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-05" }], hanChe: true });
+      await asUser(CHU_A);
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asUser(null);
+      return rpc<Json>("public.landlord_settlement_public_v1($1, '2025-01-01'::date)", [token]);
+    });
+    const raw = ((pub.month as Json).statement as Json).vouchers as Json[];
+    const coTen = raw.filter((v) => v.invoice);
+    expect(coTen.length).toBe(1);
+    expect(raw.filter((v) => v.restricted === true && ("invoice" in v || "room_name" in v))).toEqual([]);
+    const ds = settlementPublicSchema.parse(pub).month.statement!.vouchers;
+    expect(ds.map((v) => settlementVoucherName(v, "public"))).toContain("TIỀN PHÒNG - 203 - 01/2025");
+    expect(ds.filter((v) => v.restricted).map((v) => settlementVoucherName(v, "public")))
+      .toEqual(["Khoản hạn chế (ẩn chi tiết)", "Khoản hạn chế (ẩn chi tiết)"]);
+  });
+
+  it("phần dựng tên không vào source_hash: đổi tên phòng không làm tháng 'đổi sau khi chốt'", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongVaHopDong();
+      await hoaDonVaPhieu({ kind: "MONTHLY", dong: [{ type: "RENT", tu: "2025-01-05" }, { type: "SERVICE" }] });
+      await asUser(CHU_A);
+      const h1 = String((await thang(TOA_A, "2025-01-01")).live_hash);
+      await asPostgres();
+      await db.query("UPDATE public.rooms SET name = '203A' WHERE id = $1", [PHONG_1]);
+      await asUser(CHU_A);
+      const sau = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(sau.live_hash).toBe(h1);
+      expect(sau.statement!.vouchers.map((v) => settlementVoucherName(v, "admin"))).toContain("TIỀN PHÒNG - 203A - 01/2025");
+    });
   });
 });

@@ -6,6 +6,7 @@ import { formatVND } from '@/lib/utils';
 import {
   EXCLUDED_REASON_LABEL,
   VOUCHER_SOURCE_LABEL,
+  settlementVoucherName,
   type SettlementStatement,
   type SettlementVoucher,
 } from '@/lib/landlordSettlement';
@@ -106,9 +107,14 @@ export function VoucherBreakdown({ vouchers, totals, mode, periodMonth }: {
         <p className="rounded-md border border-dashed p-3 text-center text-sm text-muted-foreground">Không có phiếu.</p>
       ) : (
         <div className="divide-y rounded-lg border" role="tabpanel">
-          {current.rows.map((v, i) => (
+          {current.rows.map((v, i) => {
+            const shown = settlementVoucherName(v, mode);
+            return (
             <div key={`${v.code ?? 'phieu'}-${v.group}-${i}`} className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
-              <span className="min-w-0 truncate" title={v.name ?? ''}>{v.name || '(không tên)'}</span>
+              {/* màn quản trị: rê chuột thấy tên gốc của phiếu (có mã); link chủ nhà: đúng tên đang hiện */}
+              <span className="min-w-0 truncate" title={mode === 'admin' ? (v.name ?? '') : shown} data-testid="settlement-voucher-name">
+                {shown}
+              </span>
               <span className="text-right font-medium tabular-nums">{formatVND(v.amount)}</span>
               <span className="text-xs text-muted-foreground">
                 {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · ${accountText(v.account_name, mode)}` : ''}
@@ -116,7 +122,8 @@ export function VoucherBreakdown({ vouchers, totals, mode, periodMonth }: {
               </span>
               <span />
             </div>
-          ))}
+            );
+          })}
           {totalKey && (
             <div className="flex justify-between bg-muted/40 px-3 py-2 text-sm font-medium">
               <span>Cộng</span>

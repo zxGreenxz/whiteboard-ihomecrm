@@ -8,9 +8,26 @@
 
 import { z } from 'zod';
 import { friendlyError } from '@/lib/friendlyError';
+import type { InvoiceTitleParts } from '@/lib/invoiceUtils';
+import { voucherDisplayName } from '@/lib/voucherDisplayName';
 
 const money = z.number().finite();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}/);
+
+/**
+ * Các phần dựng tên hoá đơn của phiếu (server CHÉP luật invoiceTitlePartsOf — link chủ nhà chạy bằng anon
+ * nên không đọc được bảng invoices). Không có notes.
+ */
+export const settlementVoucherInvoiceSchema = z.object({
+  kind: z.string().nullable(),
+  billing_month: z.string().nullable(),
+  issue_date: isoDate.nullable(),
+  has_rent: z.boolean(),
+  has_service: z.boolean(),
+  is_first_month: z.boolean(),
+  is_liquidation: z.boolean(),
+  is_extra: z.boolean(),
+});
 
 export const settlementVoucherSchema = z.object({
   id: z.string().uuid().optional(),
@@ -36,8 +53,41 @@ export const settlementVoucherSchema = z.object({
   excluded_reason: z.enum(['NOT_KQKD', 'INTERNAL', 'NO_CATEGORY']).nullable(),
   status: z.enum(['APPROVED', 'UNAPPROVED']),
   amount: money,
+  /**
+   * Tên phòng + phần hoá đơn để dựng TÊN HIỂN THỊ (src/lib/voucherDisplayName.ts, chủ nhắn 23/10/2026).
+   * Ảnh chốt trước ngày đó không có; link chủ nhà bỏ cả hai ở phiếu hạn chế.
+   */
+  room_name: z.string().nullable().optional(),
+  invoice: settlementVoucherInvoiceSchema.nullable().optional(),
 });
 export type SettlementVoucher = z.infer<typeof settlementVoucherSchema>;
+
+/** Phần hoá đơn server trả → InvoiceTitleParts (đổi tên trường, không suy thêm). */
+export function invoicePartsOfSettlement(inv: z.infer<typeof settlementVoucherInvoiceSchema>): InvoiceTitleParts {
+  return {
+    isLiquidation: inv.is_liquidation,
+    isExtra: inv.is_extra,
+    isFirstMonth: inv.is_first_month,
+    hasRent: inv.has_rent,
+    hasService: inv.has_service,
+    billingMonth: inv.billing_month,
+    issueDate: inv.issue_date,
+  };
+}
+
+/**
+ * Tên hiển thị của phiếu trong "Phiếu trong tháng": tên hoá đơn thay "Thu tiền theo HĐ INV-…", bỏ mã hợp
+ * đồng ở tên thanh lý / bỏ cọc; danh sách không có cột phòng ⇒ chèn tên phòng. Link chủ nhà: phiếu hạn chế
+ * giữ đúng tên đã bị server che.
+ */
+export function settlementVoucherName(v: SettlementVoucher, mode: 'admin' | 'public'): string {
+  if (v.restricted && mode === 'public') return v.name || '(không tên)';
+  const shown = voucherDisplayName(
+    { name: v.name, roomName: v.room_name ?? null, invoice: v.invoice ? invoicePartsOfSettlement(v.invoice) : null },
+    { includeRoom: true },
+  );
+  return shown || '(không tên)';
+}
 
 export const settlementStatementSchema = z.object({
   period_month: isoDate,

@@ -1,6 +1,6 @@
 -- =============================================================================
 -- quan_ly_nhan_tien_co_dinh — toà vận hành cho chủ nhà: quản lý nhận TIỀN CỐ ĐỊNH (đ/tháng)
--- và/hoặc % lợi nhuận tháng
+-- và/hoặc % lợi nhuận tháng; kèm phần dựng TÊN HIỂN THỊ phiếu cho màn quyết toán + link chủ nhà
 -- Ngày 23/10/2026 · chủ chốt trong ngày:
 --   · Phần quản lý = tiền cố định + % × LN tháng. Hai phần tính độc lập trên cùng LN tháng (LN theo
 --     kỳ, như hiện nay). Ví dụ LN 50tr, cố định 5tr, 30% ⇒ quản lý 5tr + 15tr = 20tr.
@@ -35,13 +35,19 @@
 --      xét từng trường %, tiền cố định, sổ chủ nhà như cũ (tháng đã chốt bị chặn 55000; gộp mốc trùng xét
 --      cả ba trường). Cả % lẫn tiền cố định của tháng T bằng 0, hoặc lan sang một mốc sau T thành 0/0 ⇒
 --      22023.
+--   6. TÊN HIỂN THỊ của phiếu trong "Phiếu trong tháng" (chủ nhắn 23/10/2026: đừng ghi "Thu tiền theo HĐ
+--      INV-…", ghi rõ tiền phòng kỳ nào; thanh lý / bỏ cọc đừng ghi mã). compute_v1 trả thêm mỗi phiếu
+--      room_name và invoice {kind, billing_month, issue_date, has_rent, has_service, is_first_month,
+--      is_liquidation, is_extra} (CHÉP LUẬT src/lib/invoiceUtils.ts, không trả notes) để web dựng tên bằng
+--      src/lib/voucherDisplayName.ts — link chủ nhà chạy bằng anon, không đọc được bảng invoices. Hai trường
+--      không vào source_hash (chỉ là chữ hiển thị). app_private.landlord_strip_public_v1 (md5 2e819cd3…):
+--      phiếu HẠN CHẾ bỏ luôn hai trường đó ở link chủ nhà (tên đã che thì không dựng lại được).
 --   Không đổi: landlord_ihome_profit_v1 (đọc totals.manager_share / landlord_share — tự gồm phần cố
---   định), landlord_strip_public_v1 (gói thêm trường số, không lộ gì mới), chốt / mở chốt / thanh toán
---   (net_amount = totals.landlord_owes_manager). Hai hàm đọc đầu được ghim md5 để biết chúng còn đúng bản
---   đã rà.
+--   định; ghim md5 để biết còn đúng bản đã rà), chốt / mở chốt / thanh toán (net_amount =
+--   totals.landlord_owes_manager), cột income_expenses.name và mọi hàm ghi phiếu.
 --
 -- ĐƯỜNG LÙI
---   CREATE OR REPLACE năm hàm (2, 3, 4) bằng thân của 20261021083438; DROP FUNCTION
+--   CREATE OR REPLACE sáu hàm (2, 2b, 3, 4) bằng thân của 20261021083438; DROP FUNCTION
 --   public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric,
 --   boolean, date, numeric, timestamptz, numeric) rồi tạo lại bản 12 tham số + REVOKE/GRANT như
 --   20261021083438 mục 12. Cột manager_fixed_amount để nguyên (không ai đọc nữa) — xoá cột là phá huỷ.
@@ -84,7 +90,9 @@ BEGIN
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
       ('app_private.landlord_settlement_compute_v1(uuid,date)',
-       ARRAY['4483be0be8948c7b97e0e2fb211c817c', '7d33763d45c73ae3a99bc03d57d395a4']),
+       ARRAY['4483be0be8948c7b97e0e2fb211c817c', '1af9d2b8c6d10ca32dc177cf0d6a6d2a']),
+      ('app_private.landlord_strip_public_v1(jsonb)',
+       ARRAY['2e819cd3bc7d0201114207e689bd8b0b', '2377f91bcdab86e42a8371c0b6cb6ef2']),
       ('app_private.landlord_settlement_overview_payload_v1(uuid,boolean)',
        ARRAY['1281400ce7f5a31776d517e2bd0d406a', '9fca043968c02474eb42810ad71bfadd']),
       ('app_private.landlord_operation_state_v1(uuid)',
@@ -93,11 +101,9 @@ BEGIN
        ARRAY['f30a66cda55e61b50109b817940ebda1', 'a6dedb62e5f26ae4d67e3653b05505ce']),
       ('public.landlord_operation_options_v1(uuid)',
        ARRAY['88eef03f7956f40f7a76e8c718f0311c', 'fb58fc832aed0dffb93997a5f81aa991']),
-      -- hai hàm KHÔNG thay, chỉ đọc phần quản lý / gói tháng — đổi thì rà lại trước khi áp
+      -- hàm KHÔNG thay, chỉ đọc phần quản lý từ gói tháng — đổi thì rà lại trước khi áp
       ('public.landlord_ihome_profit_v1(date,date)',
-       ARRAY['c00e7d21798664b8439a4d2a46273aae']),
-      ('app_private.landlord_strip_public_v1(jsonb)',
-       ARRAY['2e819cd3bc7d0201114207e689bd8b0b'])
+       ARRAY['c00e7d21798664b8439a4d2a46273aae'])
     ) AS x(sig, ghim)
   LOOP
     IF to_regprocedure(v_sig) IS NULL THEN
@@ -243,7 +249,8 @@ AS $fn$
            COALESCE(v.has_restricted_item, false) AS han_che,
            COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false) AS ben_chu_nha,
            (NOT COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false)
-            AND EXISTS (SELECT 1 FROM so_toa_khac s WHERE s.account_id = v.account_id)) AS so_toa_khac
+            AND EXISTS (SELECT 1 FROM so_toa_khac s WHERE s.account_id = v.account_id)) AS so_toa_khac,
+           v.invoice_id, v.room_id
       FROM (SELECT DISTINCT g.id FROM gop g) x
       CROSS JOIN cfg
       JOIN public.income_expenses v ON v.id = x.id
@@ -252,10 +259,49 @@ AS $fn$
   ct AS (
     SELECT p.id, p.code, p.voucher_date, p.loai, p.name, p.account_id, p.so_quy,
            p.approval_status, p.ben_chu_nha, p.nguon, p.kqkd, p.but_toan, p.han_che, p.so_toa_khac,
+           p.invoice_id, p.room_id,
            g.nhom, g.ly_do, g.so_tien
       FROM phieu p
       JOIN gop g ON g.id = p.id
      WHERE g.so_tien <> 0
+  ),
+  -- TÊN HIỂN THỊ (chủ nhắn 23/10/2026: đừng ghi "Thu tiền theo HĐ INV-…", ghi rõ tiền phòng kỳ nào; thanh lý /
+  -- bỏ cọc đừng ghi mã). Web dựng tên bằng src/lib/voucherDisplayName.ts — cùng một đường với Thu chi và Báo
+  -- cáo LN; link chủ nhà chạy bằng anon nên không đọc được bảng invoices ⇒ trả các PHẦN dựng tên ở đây.
+  -- KHÔNG trả notes. Ba cờ CHÉP LUẬT src/lib/invoiceUtils.ts (invoiceTitlePartsOf / isFirstMonthInvoice):
+  --   is_liquidation  kind = 'SETTLEMENT' hoặc notes có "thanh lý";
+  --   is_extra        notes MỞ ĐẦU "hoá đơn thu thêm";
+  --   is_first_month  notes có "tháng đầu" / "đầu tiên", hoặc dòng RENT có kỳ sớm nhất bắt đầu đúng
+  --                   contracts.start_billing_date.
+  -- Regex viết cả chữ hoa có dấu ([áÁ]…) vì lower() chỉ chắc với chữ ASCII ở mọi locale. Test PGlite so từng
+  -- cờ với hàm TS — sửa luật một bên mà quên bên kia thì test đỏ.
+  hien_thi AS (
+    SELECT x.id,
+           COALESCE(vr.name, ir.name) AS ten_phong,
+           CASE WHEN inv.id IS NULL THEN NULL ELSE pg_catalog.jsonb_build_object(
+             'kind', inv.kind,
+             'billing_month', inv.billing_month,
+             'issue_date', inv.issue_date,
+             'has_rent', EXISTS (SELECT 1 FROM public.invoice_items ii
+                                  WHERE ii.invoice_id = inv.id AND ii.type::text = 'RENT'),
+             'has_service', EXISTS (SELECT 1 FROM public.invoice_items ii
+                                     WHERE ii.invoice_id = inv.id AND ii.type::text IN ('SERVICE', 'PENALTY')),
+             'is_first_month',
+               pg_catalog.lower(COALESCE(inv.notes, '')) ~ 'th[aáÁ]ng[\s_]?[đĐ][ầẦ]u|[đĐ][ầẦ]u\s*ti[êÊ]n'
+               OR COALESCE((SELECT min(ii.from_date) FROM public.invoice_items ii
+                             WHERE ii.invoice_id = inv.id AND ii.type::text = 'RENT' AND ii.from_date IS NOT NULL)
+                           = c.start_billing_date, false),
+             'is_liquidation',
+               COALESCE(inv.kind = 'SETTLEMENT', false)
+               OR pg_catalog.lower(COALESCE(inv.notes, '')) ~ 'thanh\s*l[ýÝ]',
+             'is_extra',
+               pg_catalog.lower(COALESCE(inv.notes, '')) ~ '^\s*ho[áÁ]\s*[đĐ][ơƠ]n\s*thu\s*th[êÊ]m')
+           END AS hoa_don
+      FROM (SELECT DISTINCT ct.id, ct.invoice_id, ct.room_id FROM ct) x
+      LEFT JOIN public.rooms vr ON vr.id = x.room_id
+      LEFT JOIN public.invoices inv ON inv.id = x.invoice_id AND inv.deleted_at IS NULL
+      LEFT JOIN public.rooms ir ON ir.id = inv.room_id
+      LEFT JOIN public.contracts c ON c.id = inv.contract_id
   ),
   -- phiếu đã duyệt nhưng bút toán sổ quỹ đã bị đảo (tiền KHÔNG còn ở sổ nào) hoặc chưa ghi sổ
   -- (UNPOSTED: tiền chưa thực vào/ra) ⇒ chặn chốt
@@ -424,14 +470,55 @@ AS $fn$
                        'excluded_reason', CASE WHEN ct.nhom <> 'KHAC' THEN NULL
                                                ELSE COALESCE(ct.ly_do, 'INTERNAL') END,
                        'status', ct.approval_status,
-                       'amount', ct.so_tien)
+                       'amount', ct.so_tien,
+                       'room_name', ht.ten_phong,
+                       'invoice', ht.hoa_don)
                      ORDER BY ct.voucher_date, ct.code, ct.nhom)
-                FROM ct), '[]'::jsonb),
+                FROM ct LEFT JOIN hien_thi ht ON ht.id = ct.id), '[]'::jsonb),
            'source_hash', vet.source_hash)
     FROM chia CROSS JOIN vet;
 $fn$;
 
 REVOKE ALL ON FUNCTION app_private.landlord_settlement_compute_v1(uuid, date) FROM PUBLIC, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2b. Gói cho link chủ nhà: thân production + phiếu HẠN CHẾ bỏ luôn các phần dựng tên (tên phòng, phần
+--     hoá đơn) — tên phiếu đã bị che thì web không được dựng lại tên từ phần khác.
+CREATE OR REPLACE FUNCTION app_private.landlord_strip_public_v1(p_statement jsonb)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO ''
+AS $fn$
+  SELECT CASE
+    WHEN p_statement IS NULL THEN NULL
+    ELSE pg_catalog.jsonb_set(
+           p_statement - 'building_id',
+           '{vouchers}',
+           COALESCE((SELECT pg_catalog.jsonb_agg(
+                              (e.value - 'id' - 'foreign_landlord_account'
+                                 - CASE WHEN (e.value->>'restricted')::boolean IS TRUE
+                                        THEN ARRAY['room_name', 'invoice']::text[]
+                                        ELSE ARRAY[]::text[] END)
+                              || pg_catalog.jsonb_build_object(
+                                   'account_name',
+                                   CASE
+                                     WHEN e.value->>'side' = 'LANDLORD' THEN 'Sổ chủ nhà'
+                                     WHEN e.value->>'source' IN ('TERMINATION_REVENUE', 'FORFEIT_REVENUE',
+                                                                'DEPOSIT_OFFSET', 'RENT_REFUND_INTERNAL')
+                                       THEN 'Cấn trừ cọc (nội bộ)'
+                                     ELSE 'Sổ quản lý' END,
+                                   'name',
+                                   CASE WHEN (e.value->>'restricted')::boolean IS TRUE
+                                        THEN pg_catalog.to_jsonb('Khoản hạn chế (ẩn chi tiết)'::text)
+                                        ELSE COALESCE(e.value->'name', 'null'::jsonb) END)
+                              ORDER BY e.ordinality)
+                       FROM pg_catalog.jsonb_array_elements(p_statement->'vouchers') WITH ORDINALITY AS e),
+                    '[]'::jsonb))
+  END;
+$fn$;
+
+REVOKE ALL ON FUNCTION app_private.landlord_strip_public_v1(jsonb) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3. Tổng quyết toán: thân production + tiền cố định theo tháng (ảnh chốt cũ không có ⇒ 0).

@@ -17,6 +17,7 @@ import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { vacancyNoteText } from "@/lib/vacancyReason";
+import { profitReportRowDescription } from "@/lib/voucherDisplayName";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
 import {
@@ -560,17 +561,12 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   };
 
   // Tên dòng THU — như desktop: thanh lý → nhãn gộp; gắn HĐ → tên bên trang /invoices.
-  const displayDescription = (r: MRow): string => {
-    // Dòng ghi chú thuần giữ nguyên mô tả (ghi chú trống phòng có thể chứa "Thanh lý HĐ").
-    if (r.isNote) return r.desc;
-    // Đổi tên theo hoá đơn / thanh lý chỉ cho khoản THU — phiếu chi giữ đúng tên của nó.
-    if (side === "expense") return r.desc;
-    if (nrm(`${r.type} ${r.desc}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
-    const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
-    if (invTitle) return invTitle;
-    if (nrm(r.desc).includes("thu tien theo hd tien phong")) return `Hóa Đơn Tiền Phòng T${ym.m}`;
-    return r.desc;
-  };
+  // Luật ở src/lib/voucherDisplayName.ts (dùng chung với desktop, Thu chi, Quyết toán vận hành).
+  const displayDescription = (r: MRow): string =>
+    profitReportRowDescription(
+      { isNote: !!r.isNote, side, typeName: r.type, description: r.desc },
+      { invoice: r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.titleParts : null, month: ym.m },
+    );
 
   const rows = side === "income" ? shownIncomeRows : displayExpenseRows;
   const nInc = shownIncomeRows.filter((r) => !r.isNote).length;

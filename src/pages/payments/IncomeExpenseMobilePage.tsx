@@ -69,6 +69,7 @@ import {
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
 import { useReviseIncomeExpense, useRevisionCounts } from "@/hooks/income-expenses/revisions";
+import { useVoucherDisplayNames } from "@/hooks/useVoucherDisplayNames";
 import { RevisionComparison } from "@/components/income-expenses/RevisionSummary";
 import {
   accountChangeNeedsReason,
@@ -433,6 +434,8 @@ export default function IncomeExpenseMobilePage() {
   const vouchers = listResult?.data ?? [];
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));
+  // Tên hiển thị (chủ chốt 23/10/2026): thẻ đã có dòng "toà - phòng" nên không chèn phòng vào tên.
+  const displayNameOf = useVoucherDisplayNames(vouchers, { includeRoom: false });
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
@@ -964,7 +967,7 @@ export default function IncomeExpenseMobilePage() {
                           </span>
                         </div>
                         <div className="vch-name">
-                          <b>{v.name}</b>
+                          <b data-testid="voucher-display-name">{displayNameOf(v)}</b>
                           {v.payer_name && (
                             <span className="vch-payer"> · {v.payer_name}</span>
                           )}
