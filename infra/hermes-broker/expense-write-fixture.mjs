@@ -1,7 +1,7 @@
 // Fixture SQL dùng chung của RPC trang Thu chi: expense-write-sql.test.mjs (PGlite) và expense-write-race-sql.test.mjs (PostgreSQL thật, hai
 // kết nối). Migration Hermes thật + BẢN PORT hàm ghi web (cùng chữ ký, cùng câu lỗi chính, cùng thứ tự khoá ở chỗ được đo); quyền CRM giả
-// qua fixture_acl. database: PGlite-shaped { exec, query, close } trên PostgreSQL thật (finance-fixture); edit: thân 20261022075102 thay
-// thế (đột biến).
+// qua fixture_acl. database: PGlite-shaped { exec, query, close } trên PostgreSQL thật (finance-fixture); edit / approve: thân
+// 20261022075102 / 20261023013109 thay thế (đột biến).
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER, ACTION_PATH } from './finance-fixture.mjs';
@@ -251,7 +251,114 @@ export const WEB4 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS
   INSERT INTO public.income_expense_types(id,organization_id,type,name,rule_key,keywords,sort_order) VALUES
     ('00000000-0000-4000-8000-000000000605','${ORG}','expense','Trả lại tiền thừa cho khách','tra_tien_thua_khach',ARRAY['thối tiền','khách đóng dư'],40);`;
 
-export async function expenseSetup(t, { database, edit = EDIT } = {}) {
+// Mốc 5: hàm duyệt web — BẢN PORT (cùng chữ ký, cùng câu lỗi chính, cùng thứ tự khoá: dòng phiếu FOR UPDATE → công ty): duyệt
+// (approve_income_expense_v2), duyệt + chi (approve_and_post_income_expense_v2: quyền duyệt ở toà, sổ phải do người gọi giữ, chỉ phiếu
+// CASHBOOK, CAS hai phiên bản, đòi chứng từ FINALIZED), nhận ảnh phiếu làm chứng từ (adopt_…: chỉ URL storage của bucket ảnh thu chi;
+// đã gắn / cách ly ⇒ bỏ qua), rào #263 (ie_self_approve_over_threshold_blocked_v1 đọc has_building_perm_v1 = fixture_legacy_approvers).
+// fixture_writer.reject_name 'approve' / 'approve-post' giả lập lỗi của hàm web (kỳ đã chốt, mất quyền …). Hàm thật đo ở tầng 2 trên TEST.
+export const APPROVE = file('hermes_expense_approve_v1');
+export const IMAGE = n => `https://fixture.invalid/storage/v1/object/public/income-expense-attachments/fixture/${n}.jpg`;
+export const WEB5 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS posting_mode text NOT NULL DEFAULT 'CASHBOOK',
+    ADD COLUMN IF NOT EXISTS review_state text DEFAULT 'PENDING',ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS creator_name text,ADD COLUMN IF NOT EXISTS approved_by uuid;
+  CREATE TABLE public.fixture_evidence(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,object_name text,state text NOT NULL DEFAULT 'FINALIZED',
+    UNIQUE(organization_id,object_name));
+  CREATE TABLE public.fixture_approvals(voucher_id uuid,kind text,actor uuid,idempotency_key text);
+  CREATE TABLE public.fixture_legacy_approvers(user_id uuid,building_id uuid);
+  CREATE FUNCTION app_private.has_building_perm_v1(p_building uuid,p_perm text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
+    AS $f$ SELECT p_perm='income_expenses.approve' AND EXISTS(SELECT 1 FROM public.fixture_legacy_approvers a WHERE a.user_id=auth.uid() AND a.building_id=p_building) $f$;
+  CREATE FUNCTION app_private.ie_self_approve_over_threshold_blocked_v1(p_voucher_id uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v record; v_threshold numeric;
+    BEGIN
+      IF auth.uid() IS NULL OR p_voucher_id IS NULL THEN RETURN false; END IF;
+      SELECT ie.organization_id,ie.type,ie.user_id,ie.building_id,ie.total_amount INTO v FROM public.income_expenses ie WHERE ie.id=p_voucher_id;
+      IF NOT FOUND OR v.user_id IS DISTINCT FROM auth.uid() OR v.type IS DISTINCT FROM 'EXPENSE' THEN RETURN false; END IF;
+      SELECT c.threshold INTO v_threshold FROM app_private.ie_auto_approve_config c WHERE c.organization_id=v.organization_id;
+      IF v_threshold IS NULL OR COALESCE(v.total_amount,0)<v_threshold THEN RETURN false; END IF;
+      RETURN NOT COALESCE(app_private.has_building_perm_v1(v.building_id,'income_expenses.approve'),false);
+    END $f$;
+  CREATE FUNCTION public.adopt_voucher_attachments_as_evidence_v2(p_voucher uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path=pg_catalog,app_private,public AS $f$
+    DECLARE v public.income_expenses; v_url text; v_prefix text:='/storage/v1/object/public/income-expense-attachments/'; v_object text; v_row public.fixture_evidence;
+      v_ids jsonb:='[]'; v_skipped jsonb:='[]';
+    BEGIN
+      SELECT * INTO v FROM public.income_expenses ie WHERE ie.id=p_voucher AND ie.deleted_at IS NULL;
+      IF NOT FOUND THEN RAISE EXCEPTION 'adopt_voucher_attachments_as_evidence_v2: phiếu % không tồn tại',p_voucher USING ERRCODE='P0002'; END IF;
+      IF v.attachments IS NULL OR jsonb_typeof(v.attachments)<>'array' THEN RETURN jsonb_build_object('evidence_ids',v_ids,'skipped',v_skipped); END IF;
+      FOR v_url IN SELECT jsonb_array_elements_text(v.attachments) LOOP
+        IF position(v_prefix IN COALESCE(v_url,''))=0 THEN v_skipped:=v_skipped||jsonb_build_object('url',v_url,'reason','KHONG_PHAI_FILE_STORAGE'); CONTINUE; END IF;
+        v_object:=substring(v_url FROM position(v_prefix IN v_url)+length(v_prefix));
+        INSERT INTO public.fixture_evidence(organization_id,object_name) VALUES(v.organization_id,v_object) ON CONFLICT(organization_id,object_name) DO NOTHING;
+        SELECT * INTO v_row FROM public.fixture_evidence e WHERE e.organization_id=v.organization_id AND e.object_name=v_object FOR UPDATE;
+        IF v_row.state<>'FINALIZED' THEN v_skipped:=v_skipped||jsonb_build_object('url',v_url,'reason',v_row.state); CONTINUE; END IF;
+        v_ids:=v_ids||to_jsonb(v_row.id);
+      END LOOP;
+      RETURN jsonb_build_object('evidence_ids',v_ids,'skipped',v_skipped);
+    END $f$;
+  CREATE FUNCTION public.approve_income_expense_v2(p_voucher uuid,p_expected_approval_version bigint,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql
+    SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v public.income_expenses; w public.fixture_writer;
+    BEGIN
+      IF p_idempotency_key IS NULL OR length(p_idempotency_key)=0 THEN
+        RAISE EXCEPTION 'approve_income_expense_v2: idempotency key is required' USING ERRCODE='22023'; END IF;
+      SELECT * INTO v FROM public.income_expenses ie WHERE ie.id=p_voucher FOR UPDATE;
+      IF NOT FOUND OR v.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'approve_income_expense_v2: voucher % not found',p_voucher USING ERRCODE='P0002'; END IF;
+      -- Như hàm thật: dòng phiếu trước, dòng CÔNG TY sau (authorize_tenant_action_v3).
+      PERFORM app_private.lock_org_for_decision_v1(v.organization_id);
+      IF EXISTS(SELECT 1 FROM public.fixture_approvals a WHERE a.idempotency_key=p_idempotency_key AND a.actor=auth.uid()) THEN
+        RETURN jsonb_build_object('voucherId',p_voucher,'approvalStatus',v.approval_status,'replayed',true); END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='income_expenses.approve' AND a.allowed AND (a.org_wide OR v.building_id=ANY(a.building_ids))) THEN
+        RAISE EXCEPTION 'approve_income_expense_v2: income_expenses.approve required in scope' USING ERRCODE='42501'; END IF;
+      SELECT * INTO w FROM public.fixture_writer;
+      IF w.rejected_message IS NOT NULL AND w.reject_name='approve' THEN RAISE EXCEPTION '%',w.rejected_message USING ERRCODE=COALESCE(w.reject_state,'P0001'); END IF;
+      IF v.approval_status<>'UNAPPROVED' OR v.review_state NOT IN ('PENDING','CHANGES_REQUESTED') THEN
+        RAISE EXCEPTION 'approve_income_expense_v2: voucher not in an approvable state (%, %)',v.approval_status,v.review_state USING ERRCODE='55000'; END IF;
+      IF v.approval_version<>p_expected_approval_version THEN
+        RAISE EXCEPTION 'approve_income_expense_v2: approval_version mismatch (expected %, found %)',p_expected_approval_version,v.approval_version USING ERRCODE='55000'; END IF;
+      UPDATE public.income_expenses SET approval_status='APPROVED',approved_by=auth.uid(),review_state='RESOLVED',approval_version=approval_version+1 WHERE id=p_voucher;
+      INSERT INTO public.fixture_approvals VALUES(p_voucher,'APPROVE',auth.uid(),p_idempotency_key);
+      RETURN jsonb_build_object('voucherId',p_voucher,'approvalStatus','APPROVED','reviewState','RESOLVED','approvalVersion',v.approval_version+1);
+    END $f$;
+  CREATE FUNCTION public.approve_and_post_income_expense_v2(input jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v public.income_expenses; w public.fixture_writer; v_cashbook uuid:=(input->>'cashbookId')::uuid;
+      v_ev uuid[]:=ARRAY(SELECT jsonb_array_elements_text(COALESCE(input->'evidenceIds','[]'::jsonb))::uuid);
+    BEGIN
+      IF COALESCE(input->>'subjectKind','VOUCHER')<>'VOUCHER' THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: only VOUCHER subjects are supported here' USING ERRCODE='22023'; END IF;
+      IF input->>'subjectId' IS NULL OR v_cashbook IS NULL OR input->>'postedOn' IS NULL OR input->>'idempotencyKey' IS NULL THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: subjectId, cashbookId, postedOn, idempotencyKey are required' USING ERRCODE='22023'; END IF;
+      SELECT * INTO v FROM public.income_expenses ie WHERE ie.id=(input->>'subjectId')::uuid FOR UPDATE;
+      IF NOT FOUND OR v.deleted_at IS NOT NULL THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: voucher % not found',input->>'subjectId' USING ERRCODE='P0002'; END IF;
+      PERFORM app_private.lock_org_for_decision_v1(v.organization_id);
+      IF EXISTS(SELECT 1 FROM public.fixture_approvals a WHERE a.idempotency_key=input->>'idempotencyKey' AND a.actor=auth.uid()) THEN
+        RETURN jsonb_build_object('voucherId',v.id,'approvalStatus',v.approval_status,'postingStatus',v.posting_status,'replayed',true); END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='income_expenses.approve' AND a.allowed AND (a.org_wide OR v.building_id=ANY(a.building_ids))) THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: income_expenses.approve required in scope' USING ERRCODE='42501'; END IF;
+      PERFORM 1 FROM public.accounts a WHERE a.id=v_cashbook AND a.organization_id=v.organization_id AND a.deleted_at IS NULL FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'approve_and_post_income_expense_v2: cashbook % not found',v_cashbook USING ERRCODE='42501'; END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=v_cashbook AND a.user_id=auth.uid()) THEN
+        RAISE EXCEPTION 'assert_cashbook_access_v2: no CUSTODIAN possession of cashbook %',v_cashbook USING ERRCODE='42501'; END IF;
+      IF v.posting_mode IS DISTINCT FROM 'CASHBOOK' THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: only CASHBOOK vouchers can be posted' USING ERRCODE='55000'; END IF;
+      IF v.approval_status IS DISTINCT FROM 'UNAPPROVED' OR COALESCE(v.review_state,'') NOT IN ('PENDING','CHANGES_REQUESTED') OR v.posting_status IS DISTINCT FROM 'UNPOSTED' THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: voucher not approvable+postable (%, %, %)',v.approval_status,v.review_state,v.posting_status USING ERRCODE='55000'; END IF;
+      IF v.approval_version<>(input->>'expectedApprovalVersion')::bigint OR v.posting_version<>(input->>'expectedPostingVersion')::bigint THEN
+        RAISE EXCEPTION 'approve_and_post_income_expense_v2: version mismatch' USING ERRCODE='55000'; END IF;
+      SELECT * INTO w FROM public.fixture_writer;
+      IF w.rejected_message IS NOT NULL AND w.reject_name='approve-post' THEN RAISE EXCEPTION '%',w.rejected_message USING ERRCODE=COALESCE(w.reject_state,'P0001'); END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.fixture_evidence e WHERE e.id=ANY(v_ev) AND e.state='FINALIZED') THEN
+        RAISE EXCEPTION 'finance_v2_post_manual_voucher: at least one FINALIZED evidence is required' USING ERRCODE='55000'; END IF;
+      UPDATE public.fixture_evidence SET state='ATTACHED' WHERE id=ANY(v_ev);
+      UPDATE public.income_expenses SET approval_status='APPROVED',approved_by=auth.uid(),review_state='RESOLVED',approval_version=approval_version+1,
+        posting_status='POSTED',posting_version=posting_version+1,account_id=v_cashbook WHERE id=v.id;
+      INSERT INTO public.fixture_postings VALUES(v.id,'POSTING',v.total_amount);
+      INSERT INTO public.fixture_approvals VALUES(v.id,'APPROVE_POST',auth.uid(),input->>'idempotencyKey');
+      RETURN jsonb_build_object('voucherId',v.id,'approvalStatus','APPROVED','postingStatus','POSTED','approvalVersion',v.approval_version+1,'postingVersion',v.posting_version+1);
+    END $f$;`;
+
+export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
@@ -259,9 +366,11 @@ export async function expenseSetup(t, { database, edit = EDIT } = {}) {
   await db.exec(RESOLVE2); await db.exec(RESOLVE2); await db.exec(SCOPE_FIX); await db.exec(SCOPE_FIX);
   // Mốc 4 áp lên thân Mốc 3 (= production): $requires$ ghim md5 thân đang chạy; lần hai nhận thân của chính file.
   await db.exec(KEYS); await db.exec(WEB4); await db.exec(edit); await db.exec(edit);
-  await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel')");
+  // Mốc 5 áp lên thân Mốc 4/4b (ghim md5 như trên).
+  await db.exec(WEB5); await db.exec(approve); await db.exec(approve);
+  await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers')");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
-    await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel']`);
+    await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers']`);
   await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('buildings.view',$1) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true", [[BUILDING, OTHER_BUILDING]]);
   const run = (action, phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_expense_write_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',

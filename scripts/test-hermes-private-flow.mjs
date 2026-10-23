@@ -537,6 +537,11 @@ for (const spec of [
   { name: 'app_private.hermes_expense_manual_v1',
     sourcePath: 'supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql',
     statementSha256: 'c3b35ae8d93f5bcf6236cebef19ec3c9a0f580e851875949eff6928f96cf7444' },
+  // Thu chi Mốc 5 (20261023013109): lõi giải tên expense.* thay thân — voucherCodes của expense.approve giải từng mã như mã phiếu (vòng tại
+  // chỗ, không gọi lại chính nó theo tên). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023013109_hermes_expense_approve_v1.sql',
+    statementSha256: '6534eda19a29a4e86d6a89fe7d2e3319c65f78b44cd03a51eb443743cf5ca3b6' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
