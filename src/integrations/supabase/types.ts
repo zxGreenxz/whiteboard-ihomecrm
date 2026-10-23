@@ -22579,6 +22579,19 @@ export type Database = {
         Returns: Json
       }
       cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
+      cash_flow_external_rows_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_end: string
+          p_organization_id: string
+          p_start: string
+        }
+        Returns: {
+          building_id: string
+          day: string
+          signed_amount: number
+        }[]
+      }
       cashbook_balance_as_of_v1: {
         Args: { p_as_of?: string; p_cashbook: string }
         Returns: number
