@@ -1052,6 +1052,53 @@
       ]
     },
     {
+      "id": "hermes-invoice-actions",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_collection_plan_v1.sql",
+        "supabase/migrations/*_hermes_invoice_action_v1.sql",
+        "supabase/migrations/*_hermes_w2a_invoice_shared_v1.sql",
+        "infra/hermes-broker/invoice-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
+        "infra/hermes-broker/action-reasons.mjs",
+        "infra/hermes-broker/capability-contract.mjs",
+        "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/invoice-write-fixture.mjs",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-runtime/host-ownership.mjs",
+        "scripts/hermes-task-function-contract.mjs",
+        "scripts/test-hermes-private-flow.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/invoice-actions.test.mjs",
+        "infra/hermes-broker/invoice-write-sql.test.mjs",
+        "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
+        "infra/hermes-broker/action-reasons.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "invoice-collection-plan-parity",
+      "sourcePaths": [
+        "src/lib/collectPlan.ts",
+        "src/lib/collectionSettlement.ts",
+        "src/lib/duplicateCollection.ts",
+        "src/lib/changeAccounts.ts",
+        "src/lib/__tests__/fixtures/invoice-collection-plan-vectors.json",
+        "supabase/migrations/*_invoice_collection_plan_v1.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceCollectionPlanVectors.test.ts"
+      ]
+    },
+    {
       "id": "hermes-customer-actions",
       "sourcePaths": [
         "supabase/migrations/*_hermes_customer_lead_create_action_v1.sql",
@@ -1223,6 +1270,7 @@
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
         "infra/hermes-broker/expense-actions-contract.mjs",
+        "infra/hermes-broker/invoice-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",

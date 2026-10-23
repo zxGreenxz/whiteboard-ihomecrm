@@ -35,11 +35,16 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   // batch_too_large (Mốc 4, lô quá 20 việc) dạng needs_input — hỏi chia lô.
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'batch_too_large']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large']);
-  // Đúng ba khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 5 Công việc.
-  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 5);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6 + 1);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4);
+  // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5, Đợt 3 Mốc 3 thu tiền): 3 mã needs_input (hỏi lại) + 5 mã rejected.
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
+    ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice']);
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'rejected'),
+    ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required']);
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 5 Công việc + 8 Hoá đơn.
+  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 5 + 8);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6 + 1 + 3);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4 + 5);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

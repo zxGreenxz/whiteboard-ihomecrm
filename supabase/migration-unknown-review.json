@@ -965,6 +965,48 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 4b, 22/10/2026",
       "sha256": "e42ed628bb109d71ded4957066c67387a022894a25e0eba1f25b1992c7a46d91"
+    },
+    "supabase/migrations/20261022075219_invoice_collection_plan_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022075219_invoice_collection_plan_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_collection_plan_core_v1 (IMMUTABLE, thuần) / public.invoice_collection_plan_v1 (STABLE INVOKER, search_path rỗng, chỉ authenticated) — hàm kế hoạch thu tiền dùng chung MỚI"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là hai hàm trên — sinh 22/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 3"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 3: kế hoạch thu tiền dùng chung web ⇄ trợ lý, thay dần công thức client collectPlan.ts / collectionSettlement.ts / duplicateCollection.ts / changeAccounts.ts), chưa đi qua lane apply — hai hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: bộ vector parity 33 ca (src/lib/__tests__/fixtures/invoice-collection-plan-vectors.json) khớp cả TS (vitest) lẫn SQL (PGlite); RPC trang Hoá đơn dùng hàm này chạy thật trên TEST trong ROLLBACK (test-env:thu-sql). Áp qua npm run migrate:forward (TEST trước, rồi production) TRƯỚC 20261022075230_hermes_invoice_action_v1; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.invoice_collection_plan_core_v1",
+        "function:public.invoice_collection_plan_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 3 22/10/2026",
+      "sha256": "3e38bf42127d04d5a40122d8cc433f6eaf34f29b2989d2183be0d17ef829e25e"
+    },
+    "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_reason_v1 / hermes_invoice_lookup_core_v1 / hermes_invoice_action_step_v1, public.hermes_invoice_action_v1 (vỏ SQL-standard); seed khoá thu_tien.collect_transfer TẮT + chính sách invoice.collect"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là bốn hàm trên — sinh 22/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 3/3b"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 3: thao tác invoice.collect — ghi nhận khách đã trả bằng chuyển khoản / thanh toán TT (POS) qua record_invoice_collection_v5), chưa đi qua lane apply — các hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-write-sql.test.mjs: chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, phạm vi = guard ∩ quyền thu của v5, lý do, ACL; PG17 hai kết nối invoice-write-race-sql.test.mjs: dòng hoá đơn khoá NOWAIT dưới khoá công ty của guard, không 40P01 với web), connector (invoice-actions.test.mjs), tầng 2 trên TEST trong ROLLBACK (test-env:thu-sql, 4 kết nối Hermes ACTIVE, v5 thật). Áp qua npm run migrate:forward (TEST trước, rồi production) SAU 20261022075219_invoice_collection_plan_v1; khoá seed TẮT nên không đổi quyền của ai; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_invoice_reason_v1",
+        "function:app_private.hermes_invoice_lookup_core_v1",
+        "function:app_private.hermes_invoice_action_step_v1",
+        "function:public.hermes_invoice_action_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 3 22/10/2026",
+      "sha256": "6a5db142adb069ec6129bcaf4ac83aea72b222d928e17af1922614283103df82"
     }
   }
 }

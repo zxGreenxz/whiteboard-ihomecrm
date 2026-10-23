@@ -25,8 +25,8 @@
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
   "knownLimits": [
-    "55/81 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
-    "26 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
+    "55/82 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "27 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
     "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
@@ -375,7 +375,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 5
+        "forwardSuccessions": 4
       },
       "witness": {
         "functions": [
@@ -880,29 +880,6 @@
               },
               "after": {
                 "md5": "172864298949f72dd8272728072a0bec",
-                "owner": "postgres",
-                "acl": "{postgres=X/postgres,authenticated=X/postgres}"
-              }
-            }
-          ]
-        },
-        {
-          "file": "20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.sql",
-          "sha256": "c165eb834f8d435677ffde895a30dfed0c572faa58eac4bfba5f6a42e2c2c4c2",
-          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.json",
-          "expectedCounts": {
-            "functions": 1
-          },
-          "functions": [
-            {
-              "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
-              "before": {
-                "md5": "2c5c0f54d345ca35c3cac80232c3d837",
-                "owner": "postgres",
-                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
-              },
-              "after": {
-                "md5": "a637b2312d020da2f7de2da01d5b6435",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres}"
               }

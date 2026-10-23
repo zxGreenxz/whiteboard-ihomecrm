@@ -47,6 +47,7 @@ import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
 
 // Thao tác ghi của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng).
@@ -165,15 +166,17 @@ export function createHermesBackend(configuration = {}) {
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
     // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác trang Thu chi (Đợt 2; họ crm_expense_* cũ đã gỡ — TC1,
-    // cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create; Mốc 3: task.update, task.cancel; Mốc 4: task.create_batch) + thao tác của các trang host bật (actionPages, vd. Hợp
-    // đồng). Thao tác chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒
-    // action_disabled. Trang đã bật mà khoá còn TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao tác ẩn;
-    // hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe
+    // cùng khoá income_expenses.create), Công việc (Đợt 2b: task.create; Mốc 3: task.update, task.cancel; Mốc 4: task.create_batch) và
+    // Hoá đơn (Đợt 3 Mốc 3: invoice.collect, khoá riêng thu_tien.collect_transfer seed TẮT ⇒ không hiện tới khi bật khoá) + thao tác
+    // của các trang host bật (actionPages, vd. Hợp đồng). Thao tác chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp;
+    // RPC trang chưa áp (PGRST202) ⇒ action_disabled. Trang đã bật mà khoá còn TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao
+    // tác ẩn; hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe
     // (connector TEST). actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: thao tác Công việc sống ⇒ khoá
     // của nó CHỈ đến từ lớp này và tool cũ tương ứng nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như
     // trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào
     // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS,
+      ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
       ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionLive = createActionLiveCatalog();
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
