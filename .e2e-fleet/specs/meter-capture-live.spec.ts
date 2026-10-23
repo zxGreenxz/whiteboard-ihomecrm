@@ -112,7 +112,7 @@ test('TEST: real JWT clip upload, worker evidence, human confirmation and scoped
       }return response.json() as Promise<unknown>;
     };
     const read=async(table:string,params:Record<string,string>)=>{
-      const response=await request.get(`${METER_TEST_URL}/rest/v1/${table}`,{headers,params:{...params,organization_id:`eq.${fixture.organizationId}`},maxRedirects:0});
+      const response=await request.get(`${METER_TEST_URL}/rest/v1/${table}`,{headers:{...headers,'Accept-Profile':'public'},params:{...params,organization_id:`eq.${fixture.organizationId}`},maxRedirects:0});
       expect(response.status(),`Actual TEST ${table} read`).toBe(200);return response.json() as Promise<unknown>;
     };
     const call = async (rpcAction: string, payload: Record<string, unknown>, organizationId = fixture.organizationId) => {

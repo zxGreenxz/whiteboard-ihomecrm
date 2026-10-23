@@ -30,5 +30,9 @@ test('parent TEST HTTP client handles native Response.ok and does not expose err
  const url='https://hzulujxgonszuleqticb.supabase.co/auth/v1/token';
  assert.deepEqual(await requestTestJson(url,{},async()=>new Response('{"ok":true}',{status:200})),{ok:true});
  await assert.rejects(requestTestJson(url,{},async()=>new Response('private server body',{status:403})),error=>error.message.includes('HTTP 403')&&!error.message.includes('private server body'));
+ await assert.rejects(requestTestJson(url,{},async()=>new Response(JSON.stringify({code:'PGRST202',message:'private database message',token:'private token'}),{status:502})),error=>error.message.includes('(PGRST202)')&&!error.message.includes('private'));
+ for(const payload of [{error:'Bearer private token',code:'SQLSTATE: 42703',message:'private'},{error:'sb_secret_example',code:'A'.repeat(100)},{error:{token:'private'}}]){
+  await assert.rejects(requestTestJson(url,{},async()=>new Response(JSON.stringify(payload),{status:502})),{message:'TEST endpoint /auth/v1/token returned HTTP 502.'});
+ }
  let called=false;await assert.rejects(requestTestJson('https://tryymsxyyckgbrmmvozx.supabase.co/auth/v1/token',{},async()=>{called=true;return new Response('{}');}));assert.equal(called,false);
 });

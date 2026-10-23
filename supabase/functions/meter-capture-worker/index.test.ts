@@ -12,13 +12,14 @@ function assert(value: unknown, message = 'assertion failed'): asserts value { i
 function equal(actual: unknown, expected: unknown) { assert(JSON.stringify(actual) === JSON.stringify(expected), `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`); }
 function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } }); }
 function request(body: unknown, route = '', bearer = 'user-jwt'): Request { return new Request('https://edge.test/meter-capture-worker' + route, { method: 'POST', headers: { Authorization: 'Bearer ' + bearer, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
-type Call = { url: string; auth: string | null; body: unknown };
+type Call = { url: string; auth: string | null; profile: string | null; body: unknown };
 function harness(reply: (call: Call) => Response | Promise<Response>) {
   const calls: Call[] = [];
   const handler = createHandler({ env: key => values[key], fetch: async (input, init) => {
     const raw = init?.body; let body: unknown = raw;
     if (typeof raw === 'string') body = JSON.parse(raw);
-    const call = { url: String(input), auth: new Headers(init?.headers).get('Authorization'), body };
+    const headers = new Headers(init?.headers);
+    const call = { url: String(input), auth: headers.get('Authorization'), profile: headers.get('Content-Profile'), body };
     calls.push(call); return await reply(call);
   } });
   return { handler, calls };
@@ -35,6 +36,30 @@ Deno.test('worker claim reaches only scoped RPC; empty queue stays null', async 
   const { handler, calls } = harness(call => { assert(call.url.endsWith('/rpc/meter_capture_claim_v1')); equal(call.auth, 'Bearer fixture-service-role'); return json(null); });
   const result = await handler(request({ workerId: 'cpu1' }, '/worker/claim', WORKER));
   equal(result.status, 200); equal(await result.json(), null); equal(calls[0].body, { p_worker_id: 'cpu1' });
+});
+Deno.test('user, worker and financial RPCs explicitly target public when REST defaults to api', async () => {
+  const { handler, calls } = harness(call => {
+    // TEST and production expose api first. A missing profile reaches a different
+    // schema and returns PGRST202 before any business function can execute.
+    if (call.profile !== 'public') return json({ code: 'PGRST202' }, 404);
+    return json(null);
+  });
+  const requests = [
+    request({ action: 'rpc', organizationId: ORG, rpcAction: 'catalog', payload: {} }),
+    request({ action: 'rpc', organizationId: ORG, rpcAction: 'profile', payload: { meterId: CAPTURE } }),
+    request({ action: 'invoice', organizationId: ORG, arguments: {}, sources: [] }),
+    request({ action: 'exit', organizationId: ORG, rpcName: 'confirm_contract_return_v1', arguments: {}, sources: [] }),
+    request({ workerId: 'cpu1' }, '/worker/claim', WORKER),
+    request({ jobId: JOB, leaseToken: LEASE, result: {} }, '/worker/complete', WORKER),
+  ];
+  for (const input of requests) equal((await handler(input)).status, 200);
+  equal(calls.map(call => call.url.split('/').pop()), [
+    'meter_capture_v1', 'meter_capture_v1', 'meter_capture_invoice_v1',
+    'meter_capture_exit_v1', 'meter_capture_claim_v1', 'meter_capture_complete_v1',
+  ]);
+  equal(calls.map(call => call.auth), [
+    ...Array(4).fill('Bearer user-jwt'), ...Array(2).fill('Bearer fixture-service-role'),
+  ]);
 });
 Deno.test('user operation never receives service role and arbitrary RPC/action rejected', async () => {
   const { handler, calls } = harness(call => { equal(call.auth, 'Bearer user-jwt'); assert(call.url.endsWith('/rpc/meter_capture_v1')); return json({ meters: [] }); });

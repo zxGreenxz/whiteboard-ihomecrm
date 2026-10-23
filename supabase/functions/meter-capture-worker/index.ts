@@ -85,7 +85,7 @@ export function createHandler(dependencies: Dependencies = {}) {
         headers: { Authorization: 'Bearer ' + token, apikey: apiKey, ...init.headers },
       });
       const rpc = async (name: string, args: Json, user = false): Promise<unknown> => {
-        const result = await call(base + '/rest/v1/rpc/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) }, user ? auth.slice(7) : service, user ? anon : service);
+        const result = await call(base + '/rest/v1/rpc/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Profile': 'public' }, body: JSON.stringify(args) }, user ? auth.slice(7) : service, user ? anon : service);
         if (!result.ok) {
           const error: unknown = await result.json().catch(() => null);
           const code = object(error) && typeof error.code === 'string' ? error.code : '';

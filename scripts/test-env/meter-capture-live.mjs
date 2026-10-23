@@ -33,7 +33,12 @@ async function stopOwned(run){
 export async function requestTestJson(url,options,fetcher=fetch){
  assert.equal(new URL(url).origin,TEST_ORIGIN,'Only the fixed TEST endpoint is permitted');
  const response=await fetcher(url,{...options,redirect:'error',signal:AbortSignal.timeout(60_000)});
- if(!response.ok)throw new Error(`TEST endpoint ${new URL(url).pathname} returned HTTP ${response.status}.`);
+ if(!response.ok){
+  const payload=await response.json().catch(()=>null);
+  const safeCode=/^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|(?:meter_capture_|worker_|original_|evidence_|invalid_)[a-z0-9_]{1,48}|unauthorized)$/;
+  const code=payload&&typeof payload==='object'?[payload.code,payload.error].find(value=>typeof value==='string'&&value.length<=64&&safeCode.test(value)):null;
+  throw new Error(`TEST endpoint ${new URL(url).pathname} returned HTTP ${response.status}${code?` (${code})`:''}.`);
+ }
  return response.json();
 }
 const json=requestTestJson;
