@@ -922,7 +922,7 @@
         "function:app_private.hermes_task_recurrence_generate_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
-      "sha256": "316e38d2327638e86ffaf2810fc9d047d4f963069c65d94dba03807c7c41d6e6"
+      "sha256": "1b6884fe0e64569b70f71cb2894c901ecd58c2ca3e3279c6dfd0d5c187c639b2"
     },
     "supabase/migrations/20261023042436_hermes_task_recurring_v1.sql": {
       "bangChung": [

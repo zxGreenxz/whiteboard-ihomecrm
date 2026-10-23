@@ -6,7 +6,8 @@
 --     song không bao giờ sinh trùng.
 --  3. Kiểm lại trước khi sinh: người tạo còn là thành viên ACTIVE và còn tasks.create ở toà (authorize_tenant_action_v3 — cùng hàm quyền
 --     policy INSERT jobs dựa vào), toà / phòng / loại còn sống, người nhận còn là thành viên. Hỏng ⇒ tạm dừng quy tắc kèm lý do, ghi lần
---     sinh 'skipped', audit JOB_RECURRENCE_PAUSED.
+--     sinh 'skipped', audit JOB_RECURRENCE_PAUSED. Thành viên đọc thẳng organization_memberships (đúng các vế của
+--     hermes_task_assignee_member_v1): helper đó đòi JWT authenticated mà cron không có ⇒ sẽ tạm dừng mọi quy tắc.
 --  4. Việc sinh ra là việc thường: user_id = người tạo quy tắc (trigger jobs_set_user_id_audit chỉ điền khi trống), mã việc và E4 do
 --     trigger như web; hạn = cuối ngày (ngày sinh + due_days) giờ công ty; mô tả có dòng "(định kỳ DK-NNNN)". Sổ hermes_task_jobs
 --     ghi source = recurrence (không tính hạn mức Q37).
@@ -21,7 +22,7 @@ BEGIN
   IF to_regclass('public.job_recurrence_rules') IS NULL OR to_regclass('public.job_recurrence_occurrences') IS NULL
     OR to_regprocedure('public.job_recurrence_dates_v1(text,integer,smallint[],integer,date,date,date,date)') IS NULL
     OR to_regprocedure('public.job_deadline_v1(uuid,date,time)') IS NULL OR to_regprocedure('public.org_today_v1(uuid)') IS NULL
-    OR to_regprocedure('app_private.hermes_task_assignee_member_v1(uuid,uuid)') IS NULL
+    OR to_regclass('public.organization_memberships') IS NULL
     OR to_regprocedure('app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)') IS NULL
     OR to_regprocedure('app_private.append_authz_audit_v1(uuid,text,text,uuid,jsonb,jsonb,text)') IS NULL
     OR to_regclass('app_private.hermes_task_jobs') IS NULL THEN
@@ -43,7 +44,9 @@ BEGIN
       v_from:=GREATEST(COALESCE(r.last_generated_date,r.start_date-1)+1,v_today-6,r.start_date);
       IF v_from>v_today OR (r.end_date IS NOT NULL AND v_from>r.end_date) THEN CONTINUE; END IF;
       v_reason:=NULL;
-      IF NOT COALESCE(app_private.hermes_task_assignee_member_v1(r.created_by,r.organization_id),false) THEN v_reason:='membership_lost';
+      IF NOT EXISTS(SELECT 1 FROM public.organization_memberships m WHERE m.user_id=r.created_by AND m.organization_id=r.organization_id
+          AND m.status='ACTIVE' AND m.revoked_at IS NULL AND (m.valid_from IS NULL OR m.valid_from<=clock_timestamp())
+          AND (m.valid_to IS NULL OR m.valid_to>clock_timestamp())) THEN v_reason:='membership_lost';
       ELSIF NOT COALESCE((SELECT a.allowed FROM app_private.authorize_tenant_action_v3(r.created_by,r.organization_id,'tasks.create',
           r.building_id,NULL) a),false) THEN v_reason:='permission_lost';
       ELSIF NOT EXISTS(SELECT 1 FROM public.buildings b WHERE b.id=r.building_id AND b.organization_id=r.organization_id AND b.deleted_at IS NULL
@@ -52,7 +55,9 @@ BEGIN
           AND rm.deleted_at IS NULL))
         OR NOT EXISTS(SELECT 1 FROM public.job_types j WHERE j.id=r.job_type_id AND j.organization_id=r.organization_id
           AND COALESCE(j.is_active,true)) THEN v_reason:='target_deleted';
-      ELSIF r.assignee_id IS NOT NULL AND NOT COALESCE(app_private.hermes_task_assignee_member_v1(r.assignee_id,r.organization_id),false) THEN
+      ELSIF r.assignee_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.organization_memberships m WHERE m.user_id=r.assignee_id
+          AND m.organization_id=r.organization_id AND m.status='ACTIVE' AND m.revoked_at IS NULL
+          AND (m.valid_from IS NULL OR m.valid_from<=clock_timestamp()) AND (m.valid_to IS NULL OR m.valid_to>clock_timestamp())) THEN
         v_reason:='membership_lost';
       END IF;
       IF v_reason IS NOT NULL THEN

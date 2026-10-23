@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { setupTaskActions, migration, binding, ORG, USER, BUILDING, OTHER_BUILDING, ROOM, MANAGER, STAFF, TYPE_SUA } from './task-action-fixture.mjs';
 
 // Công việc Mốc 5 (CONG-VIEC-THAO-TAC-GHI.md mục 5, 22): fixture PGlite cho việc định kỳ = fixture trang Công việc (RLS jobs production,
@@ -13,13 +14,20 @@ export const ENABLE_POLICIES = `INSERT INTO app_private.hermes_action_policies(a
   ON CONFLICT(action) DO NOTHING;`;
 const SUPPORT = `CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $f$
     SELECT COALESCE(ARRAY(SELECT m.organization_id FROM public.organization_memberships m WHERE m.user_id=auth.uid() AND m.status='ACTIVE'),'{}') $f$;
-  GRANT EXECUTE ON FUNCTION public.my_org_ids() TO authenticated;`;
+  GRANT EXECUTE ON FUNCTION public.my_org_ids() TO authenticated;
+  ALTER TABLE public.organization_memberships ADD COLUMN IF NOT EXISTS revoked_at timestamptz,ADD COLUMN IF NOT EXISTS valid_from timestamptz,
+    ADD COLUMN IF NOT EXISTS valid_to timestamptz;`;
+// Thân THẬT của helper thành viên (20261014094913: đòi JWT authenticated) thay stub của fixture Công việc. Bộ sinh chạy từ cron, không
+// có JWT, nên không được dựa vào helper này (bản đầu của 042431 tạm dừng mọi quy tắc với membership_lost; phát hiện 23/10).
+export const MEMBER_SQL = readFileSync('supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql', 'utf8').replaceAll('\r\n', '\n')
+  .match(/CREATE OR REPLACE FUNCTION app_private\.hermes_task_assignee_member_v1[\s\S]*?\$fn\$;/)[0];
 export { binding, ORG, USER, BUILDING, OTHER_BUILDING, ROOM, MANAGER, STAFF, TYPE_SUA };
 
 export async function setupRecurring(t, { recurrence = RECURRENCE_SQL, generate = GENERATE_SQL, recurring = RECURRING_SQL, enable = true, database } = {}) {
   const f = await setupTaskActions(t, { database });
   const { db } = f;
   await db.exec(SUPPORT);
+  await db.exec(MEMBER_SQL);
   for (const [label, sql] of [['20261023042424', recurrence], ['20261023042431', generate], ['20261023042436', recurring]]) {
     if (!sql) continue;
     try { await db.exec(sql); await db.exec(sql); } catch (error) { error.message = `${label}: ${error.message}`; throw error; }

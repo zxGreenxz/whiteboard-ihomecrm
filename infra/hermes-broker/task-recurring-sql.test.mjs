@@ -216,6 +216,16 @@ test('generator: once per (rule, day), rerun-safe, backfill ≤ 7 days, creator 
   assert.equal((await db.query('SELECT count(*)::int n FROM public.job_recurrence_occurrences WHERE job_id IS NULL')).rows[0].n, 1);
 });
 
+test('generator runs as cron (no JWT claims): the real member helper is false there, the generator reads memberships itself and pauses nothing', { timeout: 300000 }, async t => {
+  const f = await setupRecurring(t, { recurring: null, enable: false });
+  const { db } = f;
+  await createRule(f, { title: 'chạy như cron', frequency: 'daily' });
+  const ctx = (await db.query('SELECT auth.role() r,auth.uid() u,app_private.hermes_task_assignee_member_v1($1,$2) m', [USER, ORG])).rows[0];
+  assert.deepEqual([ctx.r || null, ctx.u, ctx.m], [null, null, false], 'ngữ cảnh cron: không JWT ⇒ helper thành viên trả false');
+  assert.deepEqual(await f.generate(today), { checked: 1, generated: 1, paused: 0, failed: 0, busy: 0 });
+  assert.equal((await f.rules())[0].paused_reason, null);
+});
+
 test('generator: lost permission / membership / target ⇒ pauses with reason, skipped occurrence, audit; paused and deleted rules are not generated', { timeout: 300000 }, async t => {
   const f = await setupRecurring(t, { recurring: null, enable: false });
   const { db } = f;
@@ -247,7 +257,7 @@ test('generator: lost permission / membership / target ⇒ pauses with reason, s
   assert.equal((await f.generate(plus(today, 2))).generated, 0);
 });
 
-test('mutation: generator permission recheck, trigger delete key, resolver ambiguity guard are each load-bearing', { timeout: 300000 }, async t => {
+test('mutation: generator permission recheck, cron-safe membership, trigger delete key, resolver ambiguity guard are each load-bearing', { timeout: 300000 }, async t => {
   const recurringSource = (await import('./task-recurring-fixture.mjs')).RECURRING_SQL;
   const generator = GENERATE_SQL.slice(GENERATE_SQL.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_task_recurrence_generate_v1'), GENERATE_SQL.indexOf('END $fn$;') + 'END $fn$;'.length);
   const guardStart = RECURRENCE_SQL.indexOf('CREATE OR REPLACE FUNCTION app_private.job_recurrence_guard_v1()');
@@ -262,6 +272,16 @@ test('mutation: generator permission recheck, trigger delete key, resolver ambig
         await createRule(f, { frequency: 'daily' });
         await f.db.query("UPDATE public.fixture_acl SET building_ids='{}' WHERE permission='tasks.create'");
         return (await f.generate(today)).generated === 0;
+      }],
+    ['generator reads memberships itself, not the JWT-bound helper (cron has no JWT)', mutate(generator,
+      "IF NOT EXISTS(SELECT 1 FROM public.organization_memberships m WHERE m.user_id=r.created_by AND m.organization_id=r.organization_id\n" +
+      "          AND m.status='ACTIVE' AND m.revoked_at IS NULL AND (m.valid_from IS NULL OR m.valid_from<=clock_timestamp())\n" +
+      "          AND (m.valid_to IS NULL OR m.valid_to>clock_timestamp())) THEN v_reason:='membership_lost';",
+      "IF NOT COALESCE(app_private.hermes_task_assignee_member_v1(r.created_by,r.organization_id),false) THEN v_reason:='membership_lost';"),
+      async f => {
+        await createRule(f, { frequency: 'daily' });
+        const r = await f.generate(today);
+        return r.generated === 1 && r.paused === 0;
       }],
     ['soft delete needs tasks.delete, not only tasks.edit', mutate(guard, "v_need:=CASE WHEN NEW.deleted_at IS NOT NULL THEN 'tasks.delete' ELSE 'tasks.edit' END;", "v_need:='tasks.edit';"),
       async f => {
