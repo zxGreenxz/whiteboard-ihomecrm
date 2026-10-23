@@ -450,6 +450,14 @@ AS $fn$
   )
 $fn$;
 
+-- Scoped platform shim for camera RLS. This harness models network grants;
+-- actual platform authorization is also checked through TEST PostgREST.
+CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'pg_catalog'
+AS $fn$
+  SELECT public.can_do_on_building('network_center', 'view', $1)
+$fn$;
+
 CREATE FUNCTION public.update_updated_at_column()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -3,8 +3,17 @@ import { useMemo, useState } from "react";
 import { Plus, Briefcase } from "lucide-react";
 import { colorAt } from "./shareholderUtils";
 import { useShareholders } from "@/hooks/useShareholders";
-import { useProfitManagers } from "@/hooks/useProfitManagers";
+import { useProfitManagers, useRetiredProfitManagers } from "@/hooks/useProfitManagers";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useProfitOverviewCoverage } from "@/hooks/useProfitOverviewCoverage";
+import {
+  retainedKpiSub,
+  retiredManagerBalances,
+  splitLockedProfit,
+  PROFIT_PAYOUT_OFF_NOTE,
+  RETIRED_MANAGER_NOTE,
+} from "@/lib/profitOverviewCoverage";
+import { ProfitCoverageMobile } from "./ProfitCoverageCard";
 import {
   useProfitMonthly,
   useProfitAllocations,
@@ -136,6 +145,18 @@ export default function ProfitOverviewMobile({
     [managers, managerAllocations, managerPayouts, activeMgrIds]
   );
 
+  // Rà 21/10 (F21): LN đã chốt đi về đâu + quản lý đã xoá còn phần — CHỈ HIỆN (đồng bộ desktop).
+  const lockedSplit = useMemo(() => splitLockedProfit(profitMonthly), [profitMonthly]);
+  const retiredBalances = useMemo(
+    () => retiredManagerBalances(activeMgrIds, managerAllocations, managerPayouts),
+    [activeMgrIds, managerAllocations, managerPayouts]
+  );
+  const retiredManagersQuery = useRetiredProfitManagers(retiredBalances.map((r) => r.managerId));
+  const retiredName = (id: string) =>
+    retiredManagersQuery.data?.find((m) => m.id === id)?.name ?? "Quản lý đã xoá";
+  // Rà 21/10 (F18/F20): phủ chốt theo tháng + LN chưa chốt (ước tính) + đối chiếu.
+  const coverageData = useProfitOverviewCoverage(year, month === ALL ? null : Number(month), profitMonthly);
+
   const totals = useMemo(() => {
     const lockedProfit = profitMonthly
       .filter((p) => p.status === "LOCKED")
@@ -214,10 +235,19 @@ export default function ProfitOverviewMobile({
           </div>
           <div className={kpiSub}>Được chia − đã ứng</div>
         </div>
+        <div className={`${CARD} px-3 py-2.5 col-span-2`}>
+          <div className={kpiLabel}>Giữ lại công ty (luỹ kế)</div>
+          <div className={`${kpiVal} text-[#1b1813]`}>{fmtShort(lockedSplit.retained + lockedSplit.legacyRetained)}</div>
+          <div className={kpiSub}>{retainedKpiSub(lockedSplit, fmtShort)}</div>
+        </div>
       </div>
+      <p className="m-0 -mt-1 px-1 text-[10.5px] font-semibold text-[#a35a0c]">{PROFIT_PAYOUT_OFF_NOTE}.</p>
 
       {/* Năm + chip tháng */}
       <YearMonthRow year={year} month={month} onYearShift={shiftYear} onMonthChange={setMonth} />
+
+      {/* Rà 21/10 F18/F20: tình trạng chốt theo tháng × toà (bản thu gọn) */}
+      <ProfitCoverageMobile data={coverageData} year={year} monthFilter={month === ALL ? null : Number(month)} />
 
       {/* Chip cổ đông */}
       <div className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
@@ -344,7 +374,7 @@ export default function ProfitOverviewMobile({
       </div>
 
       {/* Lương điều hành */}
-      {managers.length > 0 && (
+      {(managers.length > 0 || retiredBalances.length > 0) && (
         <div className={`${CARD} overflow-hidden`}>
           <div className="flex items-center gap-2 px-3 py-3 border-b border-[#efece4]">
             <Briefcase className="h-3.5 w-3.5 text-[#c2570f]" />
@@ -377,6 +407,32 @@ export default function ProfitOverviewMobile({
               </div>
             );
           })}
+          {/* Rà 21/10 F21: quản lý đã xoá còn phần — chỉ hiện, không nút Chi. */}
+          {retiredBalances.map((r) => (
+            <div key={r.managerId} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-[#f4f1ea] last:border-b-0 bg-[#faf8f4]">
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#514c42]">
+                  <span className="truncate">{retiredName(r.managerId)}</span>
+                  <span className="shrink-0 text-[9.5px] font-bold text-[#8d8678] bg-white border border-[#e7e3da] rounded-[5px] px-1 py-px">
+                    đã nghỉ
+                  </span>
+                </span>
+                <span className="text-[10.5px] font-semibold text-[#8d8678]">
+                  Được nhận <b className="font-mono text-[#c2570f]">{fmtShort(r.accrued)}</b> · Đã trả{" "}
+                  <b className="font-mono text-[#c97a10]">{fmtShort(r.paid)}</b>
+                </span>
+              </div>
+              <div className="flex flex-col items-end shrink-0">
+                <span className={`font-mono text-[13.5px] font-bold tracking-[-0.3px] ${r.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
+                  {fmtShort(r.remaining)}
+                </span>
+                <span className="text-[9.5px] font-semibold text-[#b6b0a3]">còn lại</span>
+              </div>
+            </div>
+          ))}
+          {retiredBalances.length > 0 && (
+            <p className="m-0 px-3 py-2 text-[10.5px] font-semibold text-[#8d8678]">{RETIRED_MANAGER_NOTE}</p>
+          )}
         </div>
       )}
 

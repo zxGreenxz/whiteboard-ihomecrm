@@ -2352,6 +2352,159 @@ export type Database = {
           },
         ]
       }
+      camera_events: {
+        Row: {
+          action: string | null
+          building_id: string
+          channel: number | null
+          code: string | null
+          event_key: string
+          id: string
+          kind: string
+          observed_at: string
+          organization_id: string
+          previous_state: string | null
+          received_at: string
+          recorder_id: string
+          slot: number | null
+          state: string
+        }
+        Insert: {
+          action?: string | null
+          building_id: string
+          channel?: number | null
+          code?: string | null
+          event_key: string
+          id?: string
+          kind: string
+          observed_at: string
+          organization_id: string
+          previous_state?: string | null
+          received_at?: string
+          recorder_id: string
+          slot?: number | null
+          state: string
+        }
+        Update: {
+          action?: string | null
+          building_id?: string
+          channel?: number | null
+          code?: string | null
+          event_key?: string
+          id?: string
+          kind?: string
+          observed_at?: string
+          organization_id?: string
+          previous_state?: string | null
+          received_at?: string
+          recorder_id?: string
+          slot?: number | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "camera_events_organization_id_building_id_recorder_id_fkey"
+            columns: ["organization_id", "building_id", "recorder_id"]
+            isOneToOne: false
+            referencedRelation: "camera_recorders"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+        ]
+      }
+      camera_recorder_current: {
+        Row: {
+          building_id: string
+          channels: Json
+          checked_at: string
+          event_coverage: string
+          issues: string[]
+          organization_id: string
+          received_at: string
+          recorder_id: string
+          status: string
+          storage: Json
+        }
+        Insert: {
+          building_id: string
+          channels: Json
+          checked_at: string
+          event_coverage: string
+          issues?: string[]
+          organization_id: string
+          received_at?: string
+          recorder_id: string
+          status: string
+          storage: Json
+        }
+        Update: {
+          building_id?: string
+          channels?: Json
+          checked_at?: string
+          event_coverage?: string
+          issues?: string[]
+          organization_id?: string
+          received_at?: string
+          recorder_id?: string
+          status?: string
+          storage?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "camera_recorder_current_organization_id_building_id_record_fkey"
+            columns: ["organization_id", "building_id", "recorder_id"]
+            isOneToOne: false
+            referencedRelation: "camera_recorders"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+        ]
+      }
+      camera_recorders: {
+        Row: {
+          building_id: string
+          channel_count: number
+          created_at: string
+          display_name: string
+          enabled: boolean
+          id: string
+          model: string | null
+          organization_id: string
+          stale_after_seconds: number
+          vendor: string
+        }
+        Insert: {
+          building_id: string
+          channel_count: number
+          created_at?: string
+          display_name: string
+          enabled?: boolean
+          id?: string
+          model?: string | null
+          organization_id: string
+          stale_after_seconds?: number
+          vendor: string
+        }
+        Update: {
+          building_id?: string
+          channel_count?: number
+          created_at?: string
+          display_name?: string
+          enabled?: boolean
+          id?: string
+          model?: string | null
+          organization_id?: string
+          stale_after_seconds?: number
+          vendor?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "camera_recorders_organization_id_building_id_fkey"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       cash_handover_items: {
         Row: {
           amount: number
@@ -22106,6 +22259,19 @@ export type Database = {
         }[]
       }
       calculate_lead_score: { Args: { lead_id: string }; Returns: number }
+      camera_building_events_v1: {
+        Args: {
+          p_before_id?: string
+          p_before_observed_at?: string
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      camera_building_snapshot_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
       can_access_building: { Args: { _building_id: string }; Returns: boolean }
       can_access_org_entity: {
         Args: { _action: string; _resource: string }
@@ -26178,6 +26344,84 @@ export type Database = {
         Returns: boolean
       }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
+      landlord_ihome_profit_v1: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
+      landlord_operation_options_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_operation_upsert_v1: {
+        Args: {
+          p_building_id: string
+          p_effective_from: string
+          p_expected_updated_at?: string
+          p_is_active?: boolean
+          p_landlord_account_ids: string[]
+          p_landlord_name: string
+          p_manager_percent: number
+          p_note?: string
+          p_opening_balance?: number
+          p_opening_confirmed?: boolean
+          p_opening_seen_pre_start?: number
+          p_terms_from?: string
+        }
+        Returns: Json
+      }
+      landlord_operations_list_v1: { Args: never; Returns: Json }
+      landlord_settlement_add_payment_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_direction: string
+          p_idempotency_key: string
+          p_note: string
+          p_paid_on: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_close_v1: {
+        Args: {
+          p_building_id: string
+          p_expected_hash: string
+          p_month: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_month_v1: {
+        Args: { p_building_id: string; p_month: string }
+        Returns: Json
+      }
+      landlord_settlement_overview_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_settlement_public_v1: {
+        Args: { p_month?: string; p_token: string }
+        Returns: Json
+      }
+      landlord_settlement_reopen_v1: {
+        Args: { p_building_id: string; p_month: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_settlement_void_payment_v1: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_share_link_create_v1: {
+        Args: { p_building_id: string; p_label?: string }
+        Returns: Json
+      }
+      landlord_share_link_revoke_v1: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      landlord_share_links_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
       lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
@@ -26743,6 +26987,22 @@ export type Database = {
         }
         Returns: Json
       }
+      network_center_admin_enroll_camera_v1: {
+        Args: {
+          p_building_id: string
+          p_channel_count: number
+          p_credential_ref: string
+          p_display_name: string
+          p_enabled?: boolean
+          p_endpoint: string
+          p_model: string
+          p_organization_id: string
+          p_recorder_id: string
+          p_router_connection_id: string
+          p_vendor: string
+        }
+        Returns: Json
+      }
       network_center_admin_finalize_worker_compatibility_v1: {
         Args: never
         Returns: Json
@@ -26963,6 +27223,14 @@ export type Database = {
       }
       network_center_watchdog_maintenance_v1: {
         Args: { p_now?: string }
+        Returns: Json
+      }
+      network_center_worker_camera_connections_v1: {
+        Args: { p_credential_digest: string; p_limit?: number }
+        Returns: Json
+      }
+      network_center_worker_camera_ingest_v1: {
+        Args: { p_credential_digest: string; p_payload: Json }
         Returns: Json
       }
       network_center_worker_claim_v1: {
@@ -27551,6 +27819,10 @@ export type Database = {
       }
       profit_my_share_v1: {
         Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: Json
+      }
+      profit_post_lock_vouchers_v1: {
+        Args: { p_building_ids?: string[]; p_from: string; p_to: string }
         Returns: Json
       }
       profit_reclose_v2: {

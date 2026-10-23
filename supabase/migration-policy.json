@@ -375,7 +375,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 4
+        "forwardSuccessions": 5
       },
       "witness": {
         "functions": [
@@ -880,6 +880,29 @@
               },
               "after": {
                 "md5": "172864298949f72dd8272728072a0bec",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.sql",
+          "sha256": "c165eb834f8d435677ffde895a30dfed0c572faa58eac4bfba5f6a42e2c2c4c2",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.json",
+          "expectedCounts": {
+            "functions": 1
+          },
+          "functions": [
+            {
+              "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+              "before": {
+                "md5": "2c5c0f54d345ca35c3cac80232c3d837",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "a637b2312d020da2f7de2da01d5b6435",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres}"
               }
