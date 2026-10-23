@@ -25,6 +25,7 @@ import {
   ForgotPassword,
   ResetPassword,
   PublicContractInvoicePage,
+  LandlordSettlementPublicPage,
   PhongTrongPage,
   QuaySoPage,
   QuaySoScreenPage,
@@ -67,6 +68,18 @@ export const publicRoutes = (
       element={
         <Suspense fallback={null}>
           <PhongTrongPage />
+        </Suspense>
+      }
+    />
+
+    {/* Quyết toán vận hành CHỈ ĐỌC cho chủ nhà (21/10/2026). Token do chủ công ty
+        tạo ở /reports/finance/quyet-toan-van-hanh, thu hồi được; RPC trả NULL khi
+        token sai/thu hồi và không lộ id nội bộ. KHÔNG bọc ProtectedRoute. */}
+    <Route
+      path="/qt/:token"
+      element={
+        <Suspense fallback={null}>
+          <LandlordSettlementPublicPage />
         </Suspense>
       }
     />

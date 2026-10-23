@@ -74,6 +74,21 @@ test('action probe catalog requires an explicit boolean opt-in and is absent by 
   }
 });
 
+// Đợt 2: trang có thao tác ghi thật chỉ nạp khi host khai tên trang; vắng = danh mục production rỗng.
+test('action pages require an explicit list of page names and are absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'actionPages'), false); } finally { baseline.dispose(); }
+  for (const actionPages of [[], ['contract']]) {
+    await f.save({ ...f.input, actionPages });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.deepEqual(config.actionPages, actionPages); assert.ok(Object.isFrozen(config.actionPages)); } finally { config.dispose(); }
+  }
+  for (const actionPages of [null, 'contract', [1], ['contract', 'contract'], ['Contract'], ['x'], Array(9).fill(0).map((_, n) => `page${'abcdefghi'[n]}`)]) {
+    await f.save({ ...f.input, actionPages }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
 test('room read source accepts only legacy|page, is absent by default and never coerces', async t => {
   const f = await fixture(t);
   const baseline = await loadHostConfiguration(f.configPath);

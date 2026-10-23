@@ -137,6 +137,8 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     'supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql',
     // R2d (21/10): v3 customers đếm khách chưa có hợp đồng (withoutContract) — bản kế tiếp của hàm nền.
     'supabase/migrations/20261021063453_hermes_w2_customers_without_contract_v1.sql',
+    // Đợt 2 trang Hợp đồng: khoá contracts.view vào tập khoá dùng lại.
+    'supabase/migrations/20261022043540_hermes_w2_contracts_view_reused_v1.sql',
     // Thu chi Mốc 3 (22/10): tham số minAmount — bản kế tiếp của từ điển + bộ kiểm tham số (hàm nền).
     'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql',
     // Công việc Mốc 4 (23/10): tasks.view vào tập khoá dùng lại (báo cáo tasks_board) — bản kế tiếp của hàm nền.

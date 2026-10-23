@@ -21,6 +21,9 @@ const CATALOG_SQL = readFileSync(`supabase/migrations/${FILES[1]}`, 'utf8');
 // 040300 = bản CUỐI của hàm đọc. Đột biến neo vào bản cuối.
 const SHARED_FIX_SQL = readFileSync(`supabase/migrations/${FILES[2]}`, 'utf8');
 const READER_SQL = readFileSync(`supabase/migrations/${FILES[3]}`, 'utf8');
+// Đợt 2 trang Hợp đồng: file hàm dùng chung mới (không chữ hermes_) rồi bản cuối của bảng báo cáo và hàm đọc (ba báo cáo đọc bù).
+const CONTRACT_SHARED_SQL = readFileSync(`supabase/migrations/${FILES[4]}`, 'utf8');
+const CONTRACT_READS_SQL = readFileSync(`supabase/migrations/${FILES[5]}`, 'utf8');
 const stripComments = sql => sql.replace(/--[^\n]*/g, '');
 let shared;
 before(async () => { shared = await sharedW2d(); });
@@ -57,23 +60,28 @@ test('gói D: bảng báo cáo SQL (hermes_w2d_catalog_v1) khớp khai báo JS (
 
 test('cấu trúc: ba file dải D; hàng rào gói; hàm dùng chung INVOKER search_path rỗng, chỉ authenticated, tự kiểm khoá web; không DEFINER; hàm đọc INVOKER không gọi app_private', () => inCase(async ({ db }) => {
   assert.deepEqual(FILES, ['20261018040000_hermes_w2d_catalog_read_v1.sql', '20261018040100_hermes_w2d_reader_v1.sql',
-    '20261018040200_hermes_w2d_shared_fixes_v1.sql', '20261018040300_hermes_w2d_reader_fixes_v1.sql']);
+    '20261018040200_hermes_w2d_shared_fixes_v1.sql', '20261018040300_hermes_w2d_reader_fixes_v1.sql',
+    // Đợt 2 trang Hợp đồng (sau công tắc, tên giờ thực): hai hàm dùng chung mới, rồi bảng báo cáo + hàm đọc (ba báo cáo đọc bù).
+    '20261022032205_hermes_w2d_contract_shared_v1.sql', '20261022043617_hermes_w2d_contract_reads_v1.sql']);
   assert.deepEqual(w2FenceViolations(w2AllMigrations()), [], 'hàng rào gói của nền (P2-4)');
-  for (const sql of [SHARED_SQL, CATALOG_SQL, SHARED_FIX_SQL, READER_SQL]) {
+  for (const sql of [SHARED_SQL, CATALOG_SQL, SHARED_FIX_SQL, READER_SQL, CONTRACT_SHARED_SQL, CONTRACT_READS_SQL]) {
     assert.doesNotMatch(stripComments(sql), /copilot/i);
     assert.doesNotMatch(stripComments(sql), /\bDROP\b|ALTER TABLE|\bINSERT\s+INTO\b|\bUPDATE\s+[a-z_]+\.|\bDELETE\s+FROM\b|CREATE TEMP|check_function_bodies|\bGRANT\b[^;]*hermes_w2d|\bREVOKE\b[^;]*hermes_w2d_read/i);
   }
   const created = sql => [...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
-  const pub = created(SHARED_SQL).filter(name => name.startsWith('public.'));
+  const pub = [...created(SHARED_SQL), ...created(CONTRACT_SHARED_SQL)].filter(name => name.startsWith('public.'));
   assert.deepEqual(created(SHARED_SQL).filter(name => !name.startsWith('public.')), [], 'file hàm dùng chung không có hàm nội bộ');
-  for (const sql of [SHARED_SQL, SHARED_FIX_SQL]) assert.doesNotMatch(sql, /hermes_/i, 'file hàm dùng chung (RPC web) không chứa hàm Hermes nào');
+  for (const sql of [SHARED_SQL, SHARED_FIX_SQL, CONTRACT_SHARED_SQL]) assert.doesNotMatch(sql, /hermes_/i, 'file hàm dùng chung (RPC web) không chứa hàm Hermes nào');
   assert.deepEqual(created(CATALOG_SQL), ['app_private.hermes_w2d_catalog_v1', 'app_private.hermes_w2d_read_v1']);
   assert.deepEqual(created(SHARED_FIX_SQL), ['public.report_text_v1', 'public.areas_in_scope_v1'], 'sửa review: chỉ thay thân hàm dùng chung');
   assert.deepEqual(created(READER_SQL), ['app_private.hermes_w2d_read_v1'], 'sửa review: chỉ thay thân hàm đọc');
+  assert.deepEqual(created(CONTRACT_SHARED_SQL), ['public.real_estate_contracts_ending_v1', 'public.contract_move_out_notices_v1'], 'đọc bù Hợp đồng: hai hàm dùng chung mới');
+  assert.deepEqual(created(CONTRACT_READS_SQL), ['app_private.hermes_w2d_catalog_v1', 'app_private.hermes_w2d_read_v1'], 'đọc bù Hợp đồng: bản cuối của gói');
   for (const [report, spec] of Object.entries(W2D_REPORTS)) {
     const source = spec.source.replace(/^crm\./, 'public.');
-    assert.ok(pub.includes(source) || source === 'public.get_room_cash_lifecycle_v1', `${report}: ${spec.source}`);
-    assert.ok(W2_READ_KEY_LIST.includes(spec.permission) || ['assets.view', 'services.view', 'rooms.view'].includes(spec.permission), spec.permission);
+    // RPC web gọi thẳng: dòng tiền phòng; hàng đợi trả phòng (bảng contract_exit_cases không cấp SELECT cho authenticated).
+    assert.ok(pub.includes(source) || ['public.get_room_cash_lifecycle_v1', 'public.list_contract_exit_cases_v1'].includes(source), `${report}: ${spec.source}`);
+    assert.ok(W2_READ_KEY_LIST.includes(spec.permission) || ['assets.view', 'services.view', 'rooms.view', 'contracts.view'].includes(spec.permission), spec.permission);
   }
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.prosrc src,
       p.proretset retset,pg_get_function_result(p.oid) result,has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
@@ -122,7 +130,7 @@ test('hàm dùng chung: chỉ authenticated có khoá web; p_building_ids NULL =
   await assert.rejects(env.call('SELECT public.report_text_v1($1,5) result', ['x'], { role: 'postgres' }), code('42501'), 'report_text_v1: chỉ authenticated (review P3)');
 }));
 
-test('đầu–cuối qua cổng: cả 22 báo cáo qua rào đầu ra của nền và khuôn JS của broker (fence, toà ∈ phạm vi)', () => inCase(async env => {
+test('đầu–cuối qua cổng: cả 26 báo cáo qua rào đầu ra của nền và khuôn JS của broker (fence, toà ∈ phạm vi)', () => inCase(async env => {
   await env.grant([...KEYS, 'suppliers.view', 'categories.view', 'tasks.view']);
   await orgWide(env, KEYS);
   // RLS areas (giả lập) chỉ cho quản trị: không có quản trị thì báo cáo khu rỗng đúng như web (review P1).
@@ -165,6 +173,66 @@ test('BĐS sắp hết hạn: ACTIVE chưa xoá trong N ngày; tên khách cần
   await dropRead(db, 'customers.view');
   value = await run(env, 're_expiring');
   assert.deepEqual([value.items[0].customerName, value.items.length], [null, 1], 'kết nối không chọn customers.view');
+}));
+
+// Đợt 2 trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 6): đọc bù a/b + hồ sơ chờ quyết toán. Không tên/SĐT khách ở cả ba.
+test('Hợp đồng — kết thúc trong khoảng (mặc định tháng này, gồm quá hạn), báo dọn đi (khác ngày hết hạn), hồ sơ chờ quyết toán', () => inCase(async env => {
+  const { db } = env;
+  await env.grant(['contracts.view']);
+  let value = await run(env, 're_contracts_ending');
+  assert.deepEqual(value.items.map(row => [row.contractId, row.endDate, row.daysLeft, row.expectedMoveOutDate]), [[D.C_SOON, '2026-10-25', 9, '2026-10-24']],
+    'tháng này: HĐ toà ngoài phạm vi, HĐ đã xoá, HĐ đã thanh lý không có');
+  const building = value.items[0].buildingName;
+  assert.deepEqual(value.summary, { fromDate: '2026-10-01', toDate: '2026-10-31', total: 1, overdue: 0, withNotice: 1, topBuildingName: building, topBuildingCount: 1 });
+  assert.ok(value.items.every(row => !Object.hasOwn(row, 'customerName')));
+  assert.deepEqual((await run(env, 're_contracts_ending', { fromDate: '2027-01-01', toDate: '2027-01-31' })).items.map(row => row.contractId), [CONTRACT_A],
+    'tháng X: đúng khoảng ngày kết thúc');
+  // Review #270: chỉ một đầu khoảng ⇒ để mở phía kia (trước đây hàm dùng chung kẹp đầu còn lại về tháng này ⇒ rỗng im lặng).
+  value = await run(env, 're_contracts_ending', { fromDate: '2027-01-01' });
+  assert.ok(value.items.some(row => row.contractId === CONTRACT_A), 'chỉ fromDate sau tháng này vẫn ra HĐ');
+  assert.ok(value.items.every(row => row.endDate >= '2027-01-01'));
+  assert.deepEqual([value.summary.fromDate, value.summary.toDate], ['2027-01-01', null]);
+  value = await run(env, 're_contracts_ending', { toDate: '2026-10-31' });
+  assert.ok(value.items.some(row => row.contractId === D.C_SOON) && value.items.every(row => row.endDate <= '2026-10-31'), 'chỉ toDate: mở phía trước');
+  await db.query("UPDATE public.contracts SET end_date='2026-10-10' WHERE id=$1", [D.C_SOON]);
+  value = await run(env, 're_contracts_ending');
+  assert.deepEqual([value.items[0].daysLeft, value.summary.overdue], [-6, 1], 'đã qua ngày kết thúc mà chưa thanh lý vẫn tính trong tháng');
+  value = await run(env, 're_move_out_notices');
+  assert.deepEqual(value.items.map(row => [row.contractId, row.expectedMoveOutDate, row.daysUntil, row.endDate]), [[D.C_SOON, '2026-10-24', 8, '2026-10-10']]);
+  assert.deepEqual(value.summary, { fromDate: null, toDate: null, total: 1, overdue: 0, within30Days: 1 });
+  assert.equal((await run(env, 're_move_out_notices', { fromDate: '2026-11-01', toDate: '2026-11-30' })).items.length, 0, 'lọc theo NGÀY BÁO dọn đi');
+  value = await run(env, 're_exit_cases_pending');
+  assert.deepEqual(value.items.map(row => [row.contractId, row.actualMoveOutOn, row.kind, row.settlementMode, row.daysWaiting]),
+    [[D.C_END, '2026-10-10', 'EARLY_RETURN', 'DEFERRED', 6]], 'chỉ PENDING, chỉ toà trong phạm vi');
+  assert.deepEqual(value.summary, { total: 1, oldestDays: 6 });
+  assert.ok(value.items.every(row => !Object.hasOwn(row, 'customerName')), 'nguồn DEFINER: không tên khách');
+  // Review #270: nguồn trả tối đa 100 hồ sơ ⇒ summary.total là tổng thật của nguồn, không phải số dòng đã nhận.
+  await db.query(`INSERT INTO public.contract_exit_cases(id,organization_id,building_id,contract_id,room_at_handover_id,actual_move_out_on,
+      initial_kind,current_kind,settlement_mode,state,contract_number,building_name,room_name)
+    SELECT gen_random_uuid(),$1,$2,gen_random_uuid(),$3,'2026-10-15','EARLY_RETURN','EARLY_RETURN','DEFERRED','PENDING','HD-X'||n,'Toà A','P202'
+    FROM generate_series(1,120) n`, [ORG, BUILDING, D.ROOM_A2]);
+  value = await run(env, 're_exit_cases_pending', {}, { limit: 50 });
+  assert.deepEqual([value.summary.total, value.summary.oldestDays, value.sourceCapped], [121, 6, true]);
+  await db.query("DELETE FROM public.contract_exit_cases WHERE contract_number LIKE 'HD-X%'");
+  await db.query("UPDATE public.contract_exit_cases SET state='FINALIZED' WHERE id=$1", [D.EXIT_A]);
+  assert.deepEqual((await run(env, 're_exit_cases_pending')).summary, { total: 0, oldestDays: null });
+}));
+
+// Mốc 3 (vai quản lý): đếm phòng theo toà bằng khoá xem phòng, khớp từng số với báo cáo rooms (cùng rooms_list_v1, cùng phạm vi).
+test('Phòng theo toà (rooms_occupancy): chỉ cần rooms.view; đang cho thuê = có HĐ hiệu lực (gồm sắp hết hạn); khớp báo cáo rooms', () => inCase(async env => {
+  await env.grant(['rooms.view']);
+  const occupancy = await run(env, 'rooms_occupancy'), rooms = await run(env, 'rooms', {}, { limit: 50 });
+  assert.equal(occupancy.unavailable, null);
+  assert.ok(occupancy.items.length > 0 && occupancy.items.every(row => row.total >= row.rented + row.available + row.reserved + row.maintenance),
+    'tổng ≥ các nhóm (phần còn lại là trạng thái khác)');
+  const sum = key => occupancy.items.reduce((total, row) => total + row[key], 0);
+  for (const key of ['total', 'rented', 'expiringSoon', 'available', 'reserved', 'maintenance']) assert.equal(occupancy.summary[key], sum(key), key);
+  assert.equal(occupancy.summary.buildings, occupancy.items.length);
+  assert.deepEqual([occupancy.summary.total, occupancy.summary.available, occupancy.summary.expiringSoon, occupancy.summary.reserved],
+    [rooms.summary.total, rooms.summary.available, rooms.summary.expiringSoon, rooms.summary.reserved], 'cùng số với báo cáo rooms');
+  const display = rooms.items.reduce((counts, row) => ({ ...counts, [row.displayStatus]: (counts[row.displayStatus] ?? 0) + 1 }), {});
+  assert.equal(occupancy.summary.rented, (display.OCCUPIED ?? 0) + (display.EXPIRING_SOON ?? 0), 'đang cho thuê = OCCUPIED + EXPIRING_SOON của trang Phòng');
+  assert.ok(occupancy.summary.rented > 0, 'fixture có phòng đang cho thuê');
 }));
 
 test('BĐS gia hạn & chuyển nhượng; khuyến mại; HĐ mới; thanh lý — số như bộ lọc web', () => inCase(async env => {
