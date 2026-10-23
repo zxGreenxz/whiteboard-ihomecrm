@@ -140,7 +140,9 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     // Đợt 2 trang Hợp đồng: khoá contracts.view vào tập khoá dùng lại.
     'supabase/migrations/20261022043540_hermes_w2_contracts_view_reused_v1.sql',
     // Thu chi Mốc 3 (22/10): tham số minAmount — bản kế tiếp của từ điển + bộ kiểm tham số (hàm nền).
-    'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql']);
+    'supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql',
+    // Công việc Mốc 4 (23/10): tasks.view vào tập khoá dùng lại (báo cáo tasks_board) — bản kế tiếp của hàm nền.
+    'supabase/migrations/20261022180359_hermes_w2_tasks_view_reused_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 

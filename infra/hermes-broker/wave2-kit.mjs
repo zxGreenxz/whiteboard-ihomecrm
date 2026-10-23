@@ -114,7 +114,8 @@ export const W2_READ_KEYS = Object.freeze({
 export const W2_REUSED_KEYS = Object.freeze(['invoices.view', 'deposits.view', 'reports_finance.analysis', 'assets.view', 'services.view',
   'rooms.view', 'income_expenses.view',
   // Đợt 2 trang Hợp đồng (20261022043540): báo cáo hợp đồng đọc được bằng quyền xem hợp đồng (Quản lý toà không có báo cáo BĐS).
-  'contracts.view']);
+  // Công việc Mốc 4 (20261022180359): báo cáo tasks_board đọc bằng đúng khoá đọc của trang /tasks.
+  'contracts.view', 'tasks.view']);
 // Khoá không theo toà (grant buildingIds=[]; khớp app_private.hermes_w2_self_keys_v1).
 export const W2_SELF_KEYS = Object.freeze(Object.keys(W2_READ_KEYS).filter(key => W2_READ_KEYS[key] === 'self'));
 export const W2_PLATFORM_KEYS = Object.freeze(['assistant.bank_events.read']);

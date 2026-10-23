@@ -27,6 +27,7 @@ export const D = Object.freeze({
   JOB_TYPE: u(81), JOB_GROUP: u(82), DEPARTMENT: u(83), HOTLINE: u(84), HOTLINE_HIDDEN: u(85),
   IE_TYPE_INCOME: u(91), IE_TYPE_SALARY: u(92), IE_TYPE_DUP: u(93),
   EXIT_A: u(101), EXIT_DONE: u(102), EXIT_B: u(103),
+  DRAFT_A: u(111), DRAFT_B: u(112), DRAFT_SIGNED: u(113), DRAFT_DELETED: u(114),
 });
 
 const BEFORE = `
@@ -110,6 +111,18 @@ const BEFORE = `
     SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.actual_move_out_on,x.id)
         FROM (SELECT * FROM f ORDER BY f.actual_move_out_on,f.id LIMIT p_limit OFFSET p_offset) x),'[]'::jsonb),'total',(SELECT count(*) FROM f),
       'limit',p_limit,'offset',p_offset,'server_today',current_date) $$;
+  -- Mốc 5: nháp HĐ (bảng của web) + cổng cùng chữ ký RPC web list_contract_drafts (DEFINER; bỏ nháp DELETED; contracts.view theo toà),
+  -- trả cả payload (có dữ liệu khách) như hàm web — báo cáo phải tự bỏ.
+  CREATE TABLE public.contract_drafts(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,room_id uuid,payload jsonb,template_id uuid,
+    revision integer DEFAULT 1,status text DEFAULT 'EDITABLE',created_by uuid,created_at timestamptz,updated_at timestamptz);
+  CREATE TABLE public.contract_draft_documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),draft_id uuid,created_at timestamptz DEFAULT clock_timestamp(),
+    document_data text);
+  CREATE FUNCTION public.list_contract_drafts(p_organization_id uuid,p_building_id uuid DEFAULT NULL) RETURNS jsonb
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+    SELECT COALESCE(jsonb_agg(to_jsonb(d)||jsonb_build_object('documents',COALESCE((SELECT jsonb_agg(to_jsonb(x)-'document_data' ORDER BY x.created_at DESC)
+        FROM public.contract_draft_documents x WHERE x.draft_id=d.id),'[]'::jsonb)) ORDER BY d.updated_at DESC),'[]'::jsonb)
+      FROM public.contract_drafts d WHERE d.organization_id=p_organization_id AND d.status<>'DELETED'
+        AND (p_building_id IS NULL OR d.building_id=p_building_id) AND public.fixture_bld(d.building_id) $$;
   GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
   REVOKE ALL ON public.contract_exit_cases FROM authenticated;
   DO $rls$ DECLARE t text; BEGIN
@@ -184,6 +197,18 @@ const SEED = `
     ('${D.EXIT_A}','${ORG}','${BUILDING}','${D.C_END}','${D.ROOM_A2}','2026-10-10','EARLY_RETURN','EARLY_RETURN','DEFERRED','PENDING','HD-END','Toà A','P202','Khách A'),
     ('${D.EXIT_DONE}','${ORG}','${BUILDING}','${D.C_EXP}','${D.ROOM_A4}','2026-08-01','NATURAL_EXPIRY','NATURAL_EXPIRY','IMMEDIATE','FINALIZED','HD-EXP','Toà A','P204',null),
     ('${D.EXIT_B}','${ORG}','${OTHER_BUILDING}','${D.C_B2}','${D.ROOM_B2}','2026-10-15','FORFEIT','FORFEIT','DEFERRED','PENDING','HD-B2','Toà B','P202',null);
+  -- Mốc 5: nháp chưa ký toà A (một khách đại diện, đã xuất một bản) và toà B (chưa khách); một đã ký, một đã xoá (không tính).
+  INSERT INTO public.contract_drafts(id,organization_id,building_id,room_id,payload,status,created_at,updated_at) VALUES
+    ('${D.DRAFT_A}','${ORG}','${BUILDING}','${D.ROOM_A2}','{"form":{"start_date":"2026-11-01","end_date":"2027-10-31","rent_price":3200000,"total_deposit":3200000},
+      "customers":[{"id":"x","full_name":"Khách Nháp","phone":"0900000999","id_number":"079000000001","is_representative":true,"notes":null}],
+      "services":[],"use_custom_services":false}','EDITABLE','2026-10-12T02:00:00Z','2026-10-14T02:00:00Z'),
+    ('${D.DRAFT_B}','${ORG}','${OTHER_BUILDING}','${D.ROOM_B2}','{"form":{"start_date":"","end_date":"","rent_price":2500000,"total_deposit":0},
+      "customers":[],"services":[],"use_custom_services":false}','EDITABLE','2026-10-15T02:00:00Z','2026-10-15T02:00:00Z'),
+    ('${D.DRAFT_SIGNED}','${ORG}','${BUILDING}','${D.ROOM_A3}','{"form":{},"customers":[],"services":[],"use_custom_services":false}','SIGNED',
+      '2026-10-01T02:00:00Z','2026-10-02T02:00:00Z'),
+    ('${D.DRAFT_DELETED}','${ORG}','${BUILDING}','${D.ROOM_A4}','{"form":{},"customers":[],"services":[],"use_custom_services":false}','DELETED',
+      '2026-10-01T02:00:00Z','2026-10-03T02:00:00Z');
+  INSERT INTO public.contract_draft_documents(draft_id,document_data) VALUES('${D.DRAFT_A}','base64…');
   INSERT INTO public.contract_customers(organization_id,contract_id,customer_id,is_representative) VALUES
     ('${ORG}','${D.C_SOON}','${CUSTOMER_C}',true),('${ORG}','${D.C_END}','${CO_TENANT}',false),('${ORG}','${D.C_TRANSFER}','${CUSTOMER_A}',true),
     ('${ORG}','${D.C_B2}','${CUSTOMER_B}',true);

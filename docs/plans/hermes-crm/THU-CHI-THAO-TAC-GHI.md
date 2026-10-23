@@ -1,7 +1,7 @@
-# Thao tác ghi Hermes — trang THU CHI (Đợt 2: thiết kế đã duyệt; Mốc 2 xong)
+# Thao tác ghi Hermes — trang THU CHI (Đợt 2: thiết kế đã duyệt; Mốc 2–4 xong)
 
 Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-thu-chi-ghi-20261022`, gốc `origin/main` `2d0a0099a`.
-Phiên chính duyệt thiết kế 22/10: TC1–TC10 theo mặc định, riêng TC5 đổi thành cờ chính sách (mục 12). Mốc 2 đã làm xong, kết quả ở mục 16. Migration mới chỉ là file: chưa áp TEST hay production.
+Phiên chính duyệt thiết kế 22/10: TC1–TC10 theo mặc định, riêng TC5 đổi thành cờ chính sách (mục 12). Mốc 2–3b đã lên production 22/10 (PR #271, mục 16–18). Mốc 4 (sửa, huỷ, cờ TC5) ở mục 19: migration mới chỉ là file, chưa áp.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12. Khung đã gộp `main` (#253) và đã áp production (#269).
@@ -278,7 +278,7 @@ Phiếu lập tay theo đúng allow-list của `app_private.assert_manual_vouche
 
 Bổ sung cho thao tác ghi:
 - **Chỉ phiếu CHI.** Phiếu THU ⇒ `web_only`.
-- **Phiếu con định kỳ** (tự lập từ phiếu lặp): mặc định coi là KHÔNG lập tay khi duyệt (TC5). Mốc 4 xác định cột nhận diện.
+- **Phiếu con định kỳ** (tự lập từ phiếu lặp): nhận diện bằng `income_expenses.repeat_parent_id` (`generate_recurring_vouchers`). Mặc định TẠM coi là KHÔNG lập tay (TC5, cờ `expense.recurring_child_manual`, mục 19).
 
 ## 5. Xem trước nói gì
 
@@ -509,7 +509,7 @@ Có hàm public mới ⇒ chạy `gen:types` sau khi áp.
 - `spend_decisions` có được chèn cho mọi phiếu do `create_income_expense_v1` lập không, hay chỉ khi bộ máy chi ở chế độ bóng (`zz_spend_shadow_birth`). Nếu không, câu "vì …" dựng từ dữ kiện (mục 5).
 - ~~Khoá tư vấn và thời gian chạy thử (tầng 2).~~ Đã đo ở Mốc 2 (mục 16).
 - ~~Nguồn ánh xạ hạng mục → `fee_category` của cam kết.~~ Dùng cột `income_expense_types.fee_category` (mỗi khoản phí là duy nhất trong mỗi công ty từ 26/09).
-- Cột nhận diện phiếu con định kỳ (Mốc 4).
+- ~~Cột nhận diện phiếu con định kỳ (Mốc 4).~~ `repeat_parent_id` (mục 19).
 - ~~`w2Report` nhận `income_expenses.view`.~~ Đã dùng ở Mốc 3 (khoá đợt 1 dùng lại, đã bật).
 - ~~Hàm ghi gọi từ bước DEFINER của Hermes chạy giống như khi web gọi.~~ Đã thấy trên TEST ở Mốc 2: hàm ghi web nhận đúng người dùng của JWT.
 
@@ -664,3 +664,130 @@ Kết luận review: APPROVE có điều kiện. Không có lỗi ghi sai, ghi t
 - ngân sách byte: họ thao tác còn 41 B so với trần 2 000 B, `tools/list` còn 1 394 B so với 64 000 B ⇒ Mốc 4–5 không thêm tool hay khuôn tham số mới vào `tools/list`.
 
 **Thứ tự áp (theo tên, không đổi):** `20261022024045` → `20261022024834` → `20261022044120` → `20261022044123` → `20261022044126` → `20261022051029` → `20261022051032`.
+
+## 19. Mốc 4 — sửa, huỷ, cờ TC5 (22/10/2026)
+
+Nhánh `claude/hermes-thu-chi-moc4-20261022` (gốc `main` sau khi #271 gộp). Migration `20261022075102_hermes_expense_edit_cancel_v1`, **chưa áp**. Bảy migration Mốc 2–3b không đổi.
+
+### 19.1 Hai thao tác
+
+| `id` | Khoá (seed TẮT) | Quyền CRM giao vào | Lớp | Hàm ghi web |
+| --- | --- | --- | --- | --- |
+| `expense.edit` | `income_expenses.edit` | `income_expenses.create` (TC6) | `money`, `always` | `revise_pending_income_expense_v1` |
+| `expense.cancel` | `income_expenses.cancel` | `income_expenses.create` (TC6) | `irreversible`, `always` | `cancel_income_expense_flex_v1` |
+
+Tham số dùng lại khuôn đã có (`name`, `vnd`, `text`, `date`), không thêm byte `tools/list`:
+
+```text
+expense.edit    voucherCode*, amount, category, content, payee, voucherDate, cashbook, buildingName, roomName, reason (8–1000)
+expense.cancel  voucherCode*, reason* (8–1000)
+```
+
+- **Chỉ phiếu CHI lập tay** (`app_private.hermes_expense_manual_v1`, mới): phiếu THU ⇒ `web_only`. Phiếu bị `assert_manual_voucher_v1` của web từ chối ⇒ `system_voucher` (bàn giao ⇒ `period_locked`). Riêng sửa: web cho sửa phiếu hoa hồng / trả khách thanh lý, Hermes thì không.
+- **Sửa** (Q9 = a): chỉ phiếu chờ duyệt (hàm web từ chối phiếu khác ⇒ `not_pending`).
+  - Đổi tiền, hạng mục, sổ hay toà ⇒ hàm web đòi lý do ⇒ `needs_input reason_required`.
+  - Đổi tiền hoặc hạng mục chỉ khi phiếu có đúng một dòng hạng mục (mọi phiếu của Báo chi nhanh và của Hermes); nhiều dòng ⇒ `web_only`.
+  - Đổi toà thật ⇒ phòng theo toà mới; không nêu phòng ⇒ bỏ phòng, bản xem trước cảnh báo rõ. Nêu đúng toà hiện tại ⇒ không đổi toà, giữ phòng (Mốc 4b). Chỉ nêu phòng ⇒ phòng trong toà của phiếu.
+  - Đổi ngày: dòng hạng mục có kỳ một ngày trùng ngày phiếu cũ thì kỳ đi theo ngày mới (kỳ = ngày phiếu như lúc lập).
+  - Bản xem trước: `summary` "Sửa phiếu PC… (chờ duyệt): số tiền A → B; …. Lý do: …", `changes[{field, before, after}]`, `willBe` "Sau khi sửa phiếu vẫn CHỜ DUYỆT…". Không có trường nào đổi thật ⇒ `invalid_params`.
+- **Huỷ**: bắt lý do. Bản xem trước:
+  - đã vào sổ ⇒ "ĐÃ VÀO SỔ <sổ> ⇒ huỷ sẽ tạo bút toán đảo (cộng lại <tiền> vào sổ), KHÔNG khôi phục được";
+  - chưa vào sổ ⇒ "CHƯA VÀO SỔ ⇒ phiếu chuyển sang Đã huỷ, sổ quỹ không đổi";
+  - phiếu cha đang lặp ⇒ cảnh báo "các kỳ sau KHÔNG tự lập nữa";
+  - đã huỷ trước đó ⇒ `not_pending`; công ty chế độ chặt ⇒ `strict_mode`.
+- **Vòng đời** như `expense.create`: xem trước = chạy thử hàm web trong khối con rồi lùi (quyền người lập / người có quyền sửa-huỷ, giữ sổ, kỳ đã chốt đều bắt sớm). Lượt 2 mở biên nhận, so `basis` (ID, `approval_version`, `posting_version`, trạng thái, patch, lý do) rồi ghi trong cùng khối con. Lệch phiên bản (basis, hoặc CAS PT409/40001 của hàm web) ⇒ lùi cả biên nhận, `state_changed`, không chốt. Lỗi khác của hàm web ở lượt 2 (quyền 42501, kỳ chốt, hết chờ duyệt, lỗi lập trình ⇒ `crm_refused`) ⇒ chốt `rejected` với lý do thật + SQLSTATE trong biên nhận (Mốc 4b). Bản đã giải từ connector được kiểm lại: phiếu và toà mới trong phạm vi khoá, phòng thuộc toà, hạng mục dùng được, sổ đang giữ.
+
+### 19.2 Cờ TC5 (câu 55)
+
+- Bảng `app_private.hermes_action_flags(flag, enabled, note)` (RLS, không cấp cho vai API). Dòng `expense.recurring_child_manual` = **false** (TẠM, tới khi chủ trả lời).
+- Phiếu con định kỳ = `income_expenses.repeat_parent_id IS NOT NULL` (phiếu do `generate_recurring_vouchers` tự lập). Cờ tắt ⇒ bot coi là không lập tay ⇒ `system_voucher` khi sửa, huỷ, và duyệt (Mốc 5 dùng cùng hàm).
+- Chủ trả lời "có" ⇒ `UPDATE app_private.hermes_action_flags SET enabled=true, updated_at=clock_timestamp() WHERE flag='expense.recurring_child_manual'` (qua lane), không sửa mã.
+- Câu 55 hỏi về duyệt; cờ áp cho cả sửa/huỷ để "lập tay" có một nghĩa. Nếu chủ muốn bot sửa phiếu con nhưng không duyệt thì tách cờ (thêm một dòng + đổi điều kiện ở `hermes_expense_manual_v1`).
+- **Cờ dùng chung toàn hệ thống**: bảng không có cột công ty, nên câu 55 trả lời MỘT lần cho mọi công ty dùng Hermes (hiện chỉ một công ty). Cần khác nhau theo công ty thì thêm `organization_id` vào khoá của bảng.
+
+### 19.3 Ghi nhận review Mốc 2+3
+
+- **Khoản số mấy.** `hermes_expense_create_run_v1` gắn HINT `hermes_item=<i>` vào lỗi của khoản thứ i (giữ SQLSTATE, câu lỗi, ràng buộc). Bản xem trước lô ≥ 2 khoản trả `{kind:'rejected', reason, item}`; sổ không giữ phát hiện lúc giải tên cũng kèm `item`. Connector: lỗi `action_rejected` có `item` (1–20) và `detail` = "Khoản N: " + câu tĩnh; lý do dạng hỏi lại thì `detail` của `needs_input` có "Khoản N: ". `item` sai khuôn ⇒ `backend_unavailable`; `mcp-http` chỉ chuyển `item` khi `detail` khớp đúng câu.
+- **`tra_tien_thua_khach`.** Gợi ý hạng mục tự động không nhận hạng mục dòng tiền (`noi_bo`, `bo_sung_hoan_coc`, `tra_tien_thua_khach`, `chia_loi_nhuan` = `c_money_flow` của `ie_category_suggest_v1`; test khoá hai danh sách bằng nhau) dù luật khoá cứng. Ví dụ "tiền phòng 5 ngày" ⇒ hỏi lại, "Trả lại tiền thừa cho khách" đứng đầu ứng viên. Người dùng nêu tên hạng mục thì vẫn nhận.
+
+### 19.4 Ghim thân đang chạy
+
+`$requires$` dừng nếu thân đang chạy khác bản production đo 22/10 bằng `db:query` (production = TEST) và khác thân của chính file:
+
+| Hàm | Đang chạy | Thân của file |
+| --- | --- | --- |
+| `app_private.hermes_expense_create_run_v1` | `9932d56b97e80fa36cb9e65009663d98` | `b09458a449e47e8cd810341babcdc783` |
+| `app_private.hermes_expense_resolve_core_v1` | `59a3a8fddb6ccbdb86fd7ed323025859` | `cddbdbc517ac74329edbf916293c9260` |
+| `app_private.hermes_expense_write_step_v1` | `d82b120263632eb4774bf635a9a00cc9` | `5ba3da9c66df803792ab769b29dd24a5` (Mốc 4b) |
+
+Ba thân dựng bằng script từ thân production (chỉ thay các chỗ nêu trên). Vỏ `public.hermes_expense_write_v1` và `hermes_expense_scope_v1` không đổi.
+
+### 19.5 Kiểm
+
+- **Offline:** danh mục 4 thao tác (khuôn ⊆ khuôn đã có, khoá chỉ hiện thao tác của nó), sàn xác nhận sửa/huỷ, `item` qua runtime, broker và `mcp-http`; `tools/list` không đổi byte (kết nối chỉ giữ khoá huỷ cũng đúng ba tool).
+- **PGlite** (`expense-write-sql`, bản port hàm sửa/huỷ/allow-list của web): 5 ca Mốc 4 + 10 ca cũ chạy trên thân mới. Gồm: chạy thử không để lại lần sửa, bút toán, dòng huỷ hay biên nhận; lệch phiên bản ⇒ `state_changed`; hàm web từ chối ở lượt 2; bản đã giải giả (phiếu toà khác, toà mới, phòng, hạng mục hệ thống, sổ người khác); THU, phiếu hệ thống (kể cả hoa hồng), phiếu con định kỳ theo cờ; khoản số mấy; hạng mục dòng tiền. **14/14 đột biến bị bắt.**
+- **Tầng 2 trên TEST** (`test-env:thu-sql`, ROLLBACK, kết nối thật của chủ và một nhân viên quản lý toà, phiếu thật):
+  - `$requires$` qua (thân TEST = thân production đo);
+  - sửa tiền không lý do ⇒ `reason_required`; có lý do ⇒ xem trước (0 lần sửa để lại) ⇒ ghi (1 lần sửa, phiên bản 2, vẫn chờ duyệt) ⇒ phát lại y nguyên;
+  - huỷ phiếu đã vào sổ ⇒ câu "bút toán đảo" ⇒ ghi: `CANCELLED/REVERSED`, 1 bút toán đảo, tổng bút toán của phiếu = 0, 1 dòng huỷ (đếm bằng quyền chủ DB: RLS che bút toán với kết nối của chủ); xem lại ⇒ `not_pending`;
+  - THU ⇒ `web_only`; phiếu hệ thống và phiếu con định kỳ ⇒ `system_voucher`; bật cờ TC5 ⇒ xem trước được;
+  - nhân viên huỷ phiếu chờ duyệt của người khác mà không giữ sổ ⇒ `cashbook_not_held` ngay ở bản xem trước (như web);
+  - "tiền phòng 5 ngày" ⇒ hỏi hạng mục, ứng viên đầu "Trả lại tiền thừa cho khách";
+  - thời gian xem trước sửa 0,3–2,0 s, huỷ 0,3–1,0 s (lần đầu chậm hơn).
+- Chưa đo được trên TEST: lô có khoản rơi vào kỳ đã chốt (ngày 15/12/2025 chưa chốt ⇒ xem trước bình thường); sổ "thấy mà không giữ" với nhân viên (RLS không cho thấy ⇒ hỏi lại tên sổ). Hai đường này đã có ở PGlite.
+
+### 19.6 Phát hành (phiên chính)
+
+1. Phát hành connector **trước** migration: SQL mới trả `item` trong `rejected`; connector cũ coi khuôn đó là lệch ⇒ `backend_unavailable`.
+2. Áp `20261022075102` qua `migrate:forward` (TEST rồi production), SAU `20261022044123`. Provenance sẽ chuyển `catalog-proven`; hồ sơ `chua-ap-dung-cho-y` thành thừa.
+3. Bật `income_expenses.edit` / `.cancel` trên TEST, chạy ma trận ≥ 60 câu (sửa tiền có/không lý do, huỷ phiếu đã vào sổ, THU, phiếu hệ thống, phiếu con định kỳ).
+4. SOUL: "Sửa phiếu PC…" ⇒ `expense.edit` (đọc `changes` và `willBe`; hỏi lý do khi đổi tiền/hạng mục/sổ/toà). "Huỷ phiếu PC…" ⇒ `expense.cancel` (luôn hỏi lý do; đọc nguyên văn `willBe`, nhất là "KHÔNG khôi phục được"). Lỗi có `item` ⇒ nói khoản số mấy.
+
+### 19.7 Mốc 4b — sửa theo review độc lập Mốc 4 (22/10/2026)
+
+Kết luận review: APPROVE có điều kiện, không có lỗi chặn. Migration `20261022075102` chưa áp nên sửa thẳng trong file. Hồ sơ `chua-ap-dung-cho-y`, ghim forward và ghim `search_path=''` đã tính lại.
+
+1. **`hermes_expense_manual_v1` chạy `search_path=''`.** Thân chỉ dùng tên đủ schema. Hàm có dòng duyệt trong `REVIEWED_EMPTY_SEARCH_PATH`; `$check$` khoá giá trị này.
+2. **Xem trước huỷ** lấy "đã vào sổ / chưa vào sổ" từ `cancellation_kind` mà hàm web trả ở lần chạy thử. Trước đây lấy từ cột `posting_status` của phiếu.
+3. **Nêu đúng toà hiện tại** (không nêu phòng) ⇒ không đổi toà, GIỮ phòng. Đổi toà thật mà không nêu phòng ⇒ bỏ phòng, và bản xem trước cảnh báo: "Đổi toà: phiếu BỎ phòng <phòng> (phòng của toà cũ); cần phòng ở toà mới thì nêu roomName".
+4. **Lượt 2 sửa/huỷ:**
+   - chỉ lệch phiên bản (basis, hoặc CAS PT409/40001 của hàm web) là `state_changed`, không chốt;
+   - lỗi khác chốt `rejected` với lý do thật và lưu SQLSTATE + câu lỗi vào biên nhận: quyền (42501 ⇒ `not_allowed`), kỳ chốt, hết chờ duyệt, lỗi lập trình (⇒ `crm_refused`);
+   - gọi lại cùng requestId phát lại đúng kết cục;
+   - lỗi tạm 40P01/55P03 vẫn ném ra.
+5. **Ghi rõ:**
+   - Cờ `hermes_action_flags` dùng chung toàn hệ thống (mục 19.2).
+   - Mã phiếu trùng giữa các toà (mã cũ trước 25/09) ⇒ `expense.cancel` trả `needs_input` kèm ứng viên "mã · ngày · toà · tiền", không tự chọn. Thao tác chỉ có `voucherCode`, không có tham số để chọn giữa các phiếu cùng mã, nên người dùng phải huỷ trên web. Đây là ngõ cụt có chủ đích: an toàn hơn huỷ nhầm phiếu (sửa cũng vậy).
+   - **`expense.cancel` huỷ được phiếu đã duyệt / đã vào sổ** bằng bút toán đảo, giống web (TC6, phiên chính giữ nguyên). Khoá `income_expenses.cancel` đang TẮT. Nếu chủ muốn bot chỉ huỷ phiếu chưa vào sổ: thêm một dòng ở nhánh huỷ của bước ghi, sau `hermes_expense_manual_v1`:
+
+     ```sql
+     IF COALESCE(v_voucher.posting_status,'UNPOSTED')='POSTED' THEN RETURN jsonb_build_object('kind','rejected','reason','web_only'); END IF;
+     ```
+
+6. **Khoá dòng phiếu NOWAIT** (phiên chính báo từ Hoá đơn #279):
+   - Guard dùng chung (`hermes_action_binding_v1` → `hermes_private_command_connection_v1` → `lock_org_for_decision_v1`) khoá dòng CÔNG TY ngay đầu mọi giao dịch Hermes.
+   - Thứ tự khoá của hai hàm web (đo thân production):
+     - `revise_pending_income_expense_v1` khoá công ty TRƯỚC rồi mới khoá phiếu ⇒ cùng thứ tự Hermes, không vòng;
+     - `cancel_income_expense_flex_v1` khoá phiếu `FOR UPDATE` trước, rồi tới công ty: qua `authorize_tenant_action_v3` khi người huỷ không phải chủ / người lập, và qua trigger `rent_support_voucher_lifecycle_guard_v1` trên `income_expenses`.
+   - Hệ quả: Hermes sửa/huỷ một phiếu mà web đang huỷ ⇒ Hermes giữ công ty chờ phiếu, web giữ phiếu chờ công ty ⇒ 40P01.
+   - Sửa: nhánh sửa/huỷ của bước ghi khoá dòng phiếu `FOR UPDATE NOWAIT` TRƯỚC khi gọi hàm web.
+     - Phiếu đang bị giữ ⇒ 55P03 ngay; connector đổi thành `state_changed` (xem trước lại), web làm xong.
+     - Đổi thứ tự khoá trong bước ghi không gỡ được, vì khoá công ty đã nằm ở guard.
+   - `expense.note` (Mốc 2, đã lên production) có cùng loại rủi ro: hàm bổ sung chèn dòng có khoá ngoại tới phiếu ⇒ cần `KEY SHARE` trên phiếu. Chưa sửa trong #278 vì ngoài phạm vi; ghi vào báo cáo cho phiên chính.
+
+**Kiểm (4b):**
+- PGlite `expense-write-sql` 16/16, có thêm các ca:
+  - lượt 2 chốt `period_locked` / `crm_refused` (42703) kèm SQLSTATE trong biên nhận, phát lại y nguyên;
+  - CAS PT409 ⇒ `state_changed`, không biên nhận;
+  - mất quyền sửa/huỷ sau xem trước ⇒ `not_allowed` chốt 42501;
+  - toà trùng giữ phòng; đổi toà cảnh báo bỏ phòng;
+  - xem trước huỷ theo kết cục chạy thử.
+- **19/19 đột biến bị bắt** (14 cũ + 5 cho các sửa trên).
+- **PG17 hai kết nối** (`expense-write-race-sql.test.mjs`, fixture dùng chung `expense-write-fixture.mjs`; bản port hàm huỷ khoá phiếu → công ty như hàm thật):
+  - web đang huỷ phiếu ⇒ `expense.cancel` / `expense.edit` của Hermes trả 55P03 trong < 1 s, web huỷ xong;
+  - không có web chen ⇒ xem trước bình thường;
+  - đối chứng bỏ NOWAIT ⇒ đúng một bên 40P01.
+- Tầng 2 TEST (ROLLBACK, kết nối thật của chủ và một nhân viên):
+  - toà trùng ⇒ chỉ đổi "người nhận", phòng giữ nguyên;
+  - sửa/huỷ, phiếu THU / hệ thống / phiếu con như mục 19.5;
+  - huỷ phiếu đã vào sổ: 1 bút toán đảo, tổng bút toán = 0.

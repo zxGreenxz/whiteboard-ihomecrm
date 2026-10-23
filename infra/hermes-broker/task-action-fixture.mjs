@@ -30,10 +30,15 @@ const extract = (src, name) => src.match(new RegExp(`CREATE OR REPLACE FUNCTION 
 export const CREATE_SQL = migration('hermes_task_action_create_v1');
 // Mốc 2c: thay thân lõi giải tên + bước chuẩn bị của CREATE_SQL (suy loại việc khi jobType không khớp). Chuỗi như production.
 export const TYPE_INFER_SQL = migration('hermes_task_type_infer_v1');
+// Mốc 3: task.update + task.cancel trên cùng vỏ (thay bốn tầng, thêm hai hàm DEFINER).
+export const EDIT_SQL = migration('hermes_task_action_edit_v1');
+// Mốc 4: task.create_batch trên cùng vỏ (thay bốn tầng của EDIT_SQL, thêm ba hàm DEFINER). Chuỗi mặc định như production sau khi áp.
+export const BATCH_SQL = migration('hermes_task_batch_v1');
 
 const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,building_id uuid,name text);
   CREATE TABLE IF NOT EXISTS public.job_types(id uuid PRIMARY KEY,organization_id uuid,name text,is_active boolean);
   CREATE TABLE IF NOT EXISTS public.profiles(id uuid PRIMARY KEY,full_name text);
+  CREATE TABLE IF NOT EXISTS public.material_usages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),job_id uuid);
   ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS code text;
   REVOKE USAGE ON SCHEMA app_private FROM authenticated, PUBLIC;
   GRANT SELECT ON public.building_common_names,public.job_types,public.profiles,public.buildings,public.rooms TO authenticated;
@@ -112,8 +117,8 @@ async function createJobs(db) {
     GRANT SELECT,INSERT,UPDATE,DELETE ON public.jobs TO authenticated;`);
 }
 
-/** Fixture đầy đủ: nền chung (M5 + M1) + jobs + migration Công việc (chạy hai lượt: idempotent) + Mốc 2c. `extra` = migration chạy sau. */
-export async function setupTaskActions(t, { sql = CREATE_SQL, infer = TYPE_INFER_SQL, extra = [], database } = {}) {
+/** Fixture đầy đủ: nền chung (M5 + M1) + jobs + migration Công việc (chạy hai lượt: idempotent) + Mốc 2c + Mốc 3 + Mốc 4. `extra` = migration chạy sau. */
+export async function setupTaskActions(t, { sql = CREATE_SQL, infer = TYPE_INFER_SQL, edit = EDIT_SQL, batch = BATCH_SQL, extra = [], database } = {}) {
   const f = await financeSetup(t, { action: `${SUPPORT}\n${migration('hermes_write_name_resolve_v1')}`, database });
   const { db } = f;
   await db.exec(migration('hermes_action_foundation_v1'));
@@ -133,7 +138,7 @@ export async function setupTaskActions(t, { sql = CREATE_SQL, infer = TYPE_INFER
     INSERT INTO public.fixture_member_acl VALUES('${MANAGER}','tasks.edit','{${BUILDING}}'),('${MANAGER}','buildings.view','{${BUILDING}}'),
       ('${STAFF}','buildings.view','{${OTHER_BUILDING}}'),('${CO_OWNER}','tasks.edit','{${BUILDING},${OTHER_BUILDING}}'),
       ('${CO_OWNER}','buildings.view','{${BUILDING},${OTHER_BUILDING}}');
-    INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('tasks.create','action',true)
+    INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('tasks.create','action',true),('tasks.edit','action',true),('tasks.delete','action',true)
       ON CONFLICT(capability) DO UPDATE SET enabled=true;`);
   for (const permission of ['tasks.create', 'tasks.edit', 'tasks.view', 'buildings.view'])
     await db.query('INSERT INTO public.fixture_acl(permission,building_ids) VALUES($1,$2) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true',
@@ -143,6 +148,8 @@ export async function setupTaskActions(t, { sql = CREATE_SQL, infer = TYPE_INFER
   await db.query('UPDATE app_private.hermes_connections SET action_capabilities=array_append(action_capabilities,$1),scope_ids=$2', ['tasks.create', [SCOPE, UNSELECTED_ORG_SCOPE]]);
   await db.exec(sql); await db.exec(sql);
   if (infer) { await db.exec(infer); await db.exec(infer); }
+  if (edit) { await db.exec(edit); await db.exec(edit); }
+  if (edit && batch) { await db.exec(batch); await db.exec(batch); }
   for (const file of extra) { await db.exec(file); await db.exec(file); }
   const action = (phase, requestId, params, extraArgs = {}, b = binding, options) => f.call(
     'SELECT public.hermes_task_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',

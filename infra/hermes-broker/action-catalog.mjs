@@ -16,8 +16,9 @@ export const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
 export const ATTACHMENTS_READY = false;
 const PARAM = /^[a-z][A-Za-z0-9]{0,31}$/;
 const MAX_PARAMS = 16, MAX_ACTIONS = 128, MAX_LIST = 20, MAX_RECORD_FIELDS = 12;
-// Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh).
-const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool']);
+// Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh). time (Công việc Mốc 4): giờ hạn của từng
+// mục trong lô task.create_batch.
+const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool']);
 const NAME_LABELS = Object.freeze({ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn',
   category: 'hạng mục', cashbook: 'sổ quỹ', jobType: 'loại việc' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
@@ -45,8 +46,10 @@ export const param = Object.freeze({
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
   name: (of, { optional = false } = {}) => {
-    if (!Object.hasOwn(NAME_LABELS, of)) fail();
-    return spec('name', optional, `tên ${NAME_LABELS[of]} như người dùng nói`, { of, min: 1, max: 120 });
+    if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job') fail();
+    // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
+    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
+      { of, min: 1, max: 120 });
   },
   int: (min, max, { optional = false } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();

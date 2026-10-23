@@ -44,6 +44,22 @@ export const CONTRACT_RETURN = defineAction({ id: 'contract.return', page: 'cont
   params: { ...place(), date: param.date(), note: param.text(3, 1000), forfeit: param.bool({ optional: true }) },
   reasons: ['room_has_no_active_contract', 'already_returned', 'return_date_future'] });
 
+// Mốc 5 (Q22 = a; migration 20261022074815): thêm / bớt người ở (khoá contracts.edit, ghi thẳng; không bỏ được người đại diện) và
+// soạn NHÁP HĐ mới (contracts.create; người ký trên web; máy chủ đòi xác nhận khi phòng còn HĐ phủ ngày bắt đầu hoặc trùng nháp 24
+// giờ). Khách đã có trong CRM: customerPhone ưu tiên, hoặc customerName; SQL tìm dưới RLS người hỏi, chưa rõ thì hỏi lại.
+const customer = () => ({ customerPhone: param.text(6, 20, { optional: true }), customerName: param.name('customer', { optional: true }) });
+export const CONTRACT_OCCUPANT_ADD = defineAction({ id: 'contract.occupant_add', page: 'contract', key: 'contracts.edit', class: 'reversible', rpc: RPC,
+  title: 'Thêm người ở (khách đã có trong CRM, theo customerPhone hoặc customerName) vào HĐ của phòng; ghi thẳng',
+  params: { ...place(), ...customer() }, reasons: ['room_has_no_active_contract', 'already_returned'] });
+export const CONTRACT_OCCUPANT_REMOVE = defineAction({ id: 'contract.occupant_remove', page: 'contract', key: 'contracts.edit', class: 'reversible', rpc: RPC,
+  title: 'Bớt người ở khỏi HĐ của phòng (không bỏ được người đại diện); customerPhone hoặc customerName; ghi thẳng',
+  params: { ...place(), ...customer() },
+  reasons: ['room_has_no_active_contract', 'already_returned', 'occupant_not_on_contract', 'cannot_remove_representative'] });
+export const CONTRACT_DRAFT = defineAction({ id: 'contract.draft', page: 'contract', key: 'contracts.create', class: 'reversible', rpc: RPC,
+  title: 'Soạn NHÁP HĐ mới (ký trên web; không giữ phòng, không tiền): startDate, endDate người dùng nói, giá, cọc, khách tuỳ chọn',
+  params: { ...place(), startDate: param.date(), endDate: param.date(), rentPrice: param.vnd(), deposit: param.vnd({ min: 0 }), ...customer(),
+    note: param.text(1, 500, { optional: true }) } });
+
 /** Danh mục production của trang (server.mjs nạp cùng các trang khác). */
 export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK, CONTRACT_RENEW,
-  CONTRACT_RETURN]);
+  CONTRACT_RETURN, CONTRACT_OCCUPANT_ADD, CONTRACT_OCCUPANT_REMOVE, CONTRACT_DRAFT]);

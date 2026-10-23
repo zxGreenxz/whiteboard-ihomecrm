@@ -12,6 +12,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   // Đợt 1 nền chung thao tác ghi: hai khoá riêng Hermes (seed TẮT; chỉ hiện ở màn tạo kết nối khi đã bật).
   'income_expenses.approve_vouchers': 'Duyệt và chi phiếu chi người khác lập tay (Hermes, có xem trước)',
   'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
+  // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
+  'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
@@ -69,9 +71,9 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'income_expenses.edit': 'Hermes: sửa phiếu chi đang chờ duyệt, có xem trước',
   'income_expenses.cancel': 'Hermes: huỷ phiếu chi lập tay, bắt lý do, có xem trước',
   'meter_readings.create': 'Hermes: ghi chỉ số điện nước, chống trùng tháng, có xem trước',
-  'invoices.edit': 'Hermes: điều chỉnh hoá đơn (dòng không có chỉ số) và xác nhận kiểm tra điều chỉnh, có xem trước',
+  'invoices.edit': 'Hermes: điều chỉnh hoá đơn (dòng không có chỉ số), có xem trước',
   'invoices.cancel': 'Hermes: huỷ hoá đơn chưa thu, có xem trước',
-  'invoices.approve': 'Hermes: duyệt hoá đơn, có xem trước',
+  'invoices.approve': 'Hermes: xác nhận đã kiểm tra điều chỉnh hoá đơn do người khác làm (không phải duyệt hoá đơn), có xem trước',
   'contracts.terminate': 'Hermes: báo trả phòng và ghi nhận trả phòng (quyết toán vẫn trên web), có xem trước',
   'contracts.renew': 'Hermes: gia hạn hợp đồng giữ giá, có xem trước',
   'contracts.edit': 'Hermes: thêm, bớt người ở trong hợp đồng, có xem trước',

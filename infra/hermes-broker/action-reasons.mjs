@@ -39,6 +39,8 @@ export const ACTION_REASONS = Object.freeze({
   ...contractReasons(),
   // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 2.4). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...taskReasons(),
+  // Trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 5) — thu tiền. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
+  ...invoiceReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 // Mã riêng từng trang, theo khối (test khoá: danh sách chung 20 mã + đúng các khối này, mỗi khối một trang).
@@ -46,6 +48,7 @@ export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({
   expense: Object.freeze(Object.keys(expenseReasons())),
   contract: Object.freeze(Object.keys(contractReasons())),
   task: Object.freeze(Object.keys(taskReasons())),
+  invoice: Object.freeze(Object.keys(invoiceReasons())),
 });
 function expenseReasons() {
   return {
@@ -76,6 +79,24 @@ function taskReasons() {
   return {
     task_quota_user: reason('rejected', 'later', 'Anh/chị đã giao quá số việc cho phép trong 1 giờ qua bot (mặc định 30 việc/giờ; chủ sở hữu 60); thử lại sau ít phút hoặc tạo trên web.'),
     task_quota_pair: reason('rejected', 'later', 'Đã giao quá số việc cho phép cho cùng một người nhận trong 1 giờ (mặc định 10 việc/giờ; chủ sở hữu 40); thử lại sau ít phút hoặc tạo trên web.'),
+    // Mốc 3 (task.update / task.cancel, 20261022074741): SQL kèm `link` tới việc trên web (CV12) khi biết đúng việc.
+    cancel_blocked: reason('rejected', 'never', 'Việc đã có vật tư hoặc ảnh hoàn thành nên không huỷ qua bot; mở việc trên web (link kèm theo) để xử lý.'),
+    task_not_open: reason('rejected', 'never', 'Việc đã hoàn thành, không còn mở; không sửa hay huỷ qua bot được (xem trên web, link kèm theo).'),
+    // Mốc 4 (task.create_batch, 20261022164201): tối đa 20 việc MỘT lần đồng ý (Q37) — dạng needs_input: hỏi chia lô.
+    batch_too_large: reason('needs_input', 'fix', 'Tối đa 20 việc một lần giao; chia thành nhiều lô (mỗi lô tối đa 20 việc) hoặc tạo trên web.'),
+  };
+}
+// Trang Hoá đơn (Đợt 3 Mốc 3): thu tiền chuyển khoản / TT-POS qua bot.
+function invoiceReasons() {
+  return {
+    cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc thanh toán (TT/POS).'),
+    nothing_to_collect: reason('needs_input', 'fix', 'Hoá đơn này không còn số phải thu; hỏi lại người dùng phòng hoặc kỳ.'),
+    debt_carried: reason('needs_input', 'fix', 'Nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau (hỏi lại kỳ).'),
+    overpay_needs_choice: reason('needs_input', 'fix', 'Khách trả dư; hỏi người dùng giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return).'),
+    invoice_not_collectible: reason('rejected', 'never', 'Hoá đơn nháp hoặc đã huỷ, không thu tiền được.'),
+    credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
+    receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
+    reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

@@ -31,14 +31,20 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   // Thu chi (THU-CHI-THAO-TAC-GHI.md mục 2.3): 2 mã, đều là lỗi thật (dạng rejected).
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.expense], ['system_voucher', 'evidence_required']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.expense.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Thu chi là lỗi thật (dạng rejected)');
-  // Công việc (CONG-VIEC-THAO-TAC-GHI.md mục 2.4): 2 mã hạn mức giao việc, đều là lỗi thật (dạng rejected).
-  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair']);
-  assert.ok(ACTION_PAGE_REASON_BLOCKS.task.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Công việc là lỗi thật (dạng rejected)');
-  // Đúng ba khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 2 Công việc.
-  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 2);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 2);
+  // Công việc (CONG-VIEC-THAO-TAC-GHI.md mục 2.4, 19, 21): 2 mã hạn mức + 2 mã Mốc 3 (cancel_blocked, task_not_open) là lỗi thật;
+  // batch_too_large (Mốc 4, lô quá 20 việc) dạng needs_input — hỏi chia lô.
+  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'batch_too_large']);
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large']);
+  // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5, Đợt 3 Mốc 3 thu tiền): 3 mã needs_input (hỏi lại) + 5 mã rejected.
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
+    ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice']);
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'rejected'),
+    ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required']);
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 5 Công việc + 8 Hoá đơn.
+  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 5 + 8);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6 + 1 + 3);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4 + 5);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {
@@ -68,6 +74,13 @@ test('broker: action_rejected (400) và action_outcome_unknown (503, kèm reques
   }
   // Mã dạng needs_input hay mã lạ không bao giờ đi đường lỗi với chính nó.
   for (const code of [...ACTION_INPUT_REASONS, 'nope', undefined]) assert.equal(actionRejected(code).reason, 'crm_refused', String(code));
+  // Thu chi Mốc 4: khoản số mấy của lô (1–20) ⇒ item + "Khoản N: " trước câu tĩnh; giá trị khác bị bỏ.
+  const batch = actionRejected('period_locked', 2);
+  assert.deepEqual([batch.reason, batch.item, batch.detail], ['period_locked', 2, `Khoản 2: ${ACTION_REASONS.period_locked.text}`]);
+  for (const item of [0, 21, 2.5, '2', null, -1]) {
+    const error = actionRejected('period_locked', item);
+    assert.deepEqual([Object.hasOwn(error, 'item'), error.detail], [false, ACTION_REASONS.period_locked.text], String(item));
+  }
 });
 
 test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ, dạng needs_input hay detail khác đều bị bỏ', async t => {
@@ -91,6 +104,14 @@ test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ
     ['nope', ACTION_REASONS.crm_refused.text], [null, null], ['period_locked', { text: ACTION_REASONS.period_locked.text }]]) {
     problem = forged(reason, detail);
     assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(reason));
+  }
+  // Khoản số mấy của lô: item + câu "Khoản N: …" đi cùng; item giả hay câu không khớp item ⇒ bỏ hết.
+  problem = actionRejected('cashbook_not_held', 3);
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cashbook_not_held', detail: `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`, item: 3 });
+  for (const [item, detail] of [[3, ACTION_REASONS.cashbook_not_held.text], [99, `Khoản 99: ${ACTION_REASONS.cashbook_not_held.text}`],
+    ['3', `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`], [undefined, `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`]]) {
+    problem = Object.assign(forged('cashbook_not_held', detail), item === undefined ? {} : { item });
+    assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(item));
   }
   // Câu tĩnh của action_rejected không đi theo mã khác.
   problem = Object.assign(new BrokerError('forbidden'), { reason: 'not_allowed', detail: ACTION_REASONS.not_allowed.text });

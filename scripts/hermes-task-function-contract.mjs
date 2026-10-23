@@ -65,6 +65,18 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022031548_hermes_task_action_create_v1.sql',
   statementSha256:'2948cefb90348c6445074b162ec4bbd7906d802965c8a86a4dc7a63208bee61d',
  },
+ // Đợt 3 Hoá đơn (Mốc 3/3b): RPC trang invoice.* — vỏ INVOKER gắn OID guard / tra cứu INVOKER / bước ghi DEFINER (quyền thu của v5).
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261022075230_hermes_invoice_action_v1.sql',
+  statementSha256:'388d177cd7ec770dd0e3bae00a936304753a43db310c2a2064e8d4735c559097',
+ },
+ // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp; lượt 2 tra lại theo customerId).
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
+  statementSha256:'4f6e55f7823b2cfa3458b37866c323e478b1d60b5ac6493e9f55140adf1b20b9',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

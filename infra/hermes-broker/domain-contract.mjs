@@ -46,7 +46,8 @@ const instant = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:
 // MỘT bản phát hành: vắng = chưa áp SQL ⇒ vẫn qua; có mặt ⇒ kiểm kiểu như mọi khoá; khoá lạ vẫn bị từ chối (domainResult).
 // B5c (21/10/2026; 3 migration 20261020171321/173818/173819: buildingName, buildingCode, roomName) đã dùng cơ chế này;
 // đã gỡ 21/10 sau khi prod áp đủ 3 migration B5c. R2c phần 2 (assets.createdAt, 20261021044801) cũng đã gỡ ở bản R2d:
-// production áp đủ bốn migration R2c 21/10 (13:16–13:31 giờ VN). Hiện không miền nào khai `tolerant`.
+// production áp đủ bốn migration R2c 21/10 (13:16–13:31 giờ VN). Mốc 3b Công việc (22/10): tasks.assigneeName
+// (20261022153345) — connector lên TRƯỚC migration; gỡ ở bản connector kế tiếp sau khi production áp.
 const define = (permission, label, fields, statuses = [], options = {}) => Object.freeze({ family: 'v1', permission, label,
   fields: Object.freeze(fields), statuses: Object.freeze(statuses), dated: false, requiresDates: false, perBuilding: false, source: null, ...options,
   tolerant: Object.freeze([...(options.tolerant ?? [])]) });
@@ -101,9 +102,12 @@ export const DOMAIN_READS = Object.freeze({
     createdAt: date }),
   services: define('services.view', 'Tra danh mục dịch vụ và các tòa áp dụng được phép xem', {
     id: domainId, name: text, code: nullable(text), unit: nullable(text), unitPrice: amount, buildingIds: ids }),
+  // Mốc 3b (ma trận Công việc 22/10, CV-R03/R04): assigneeName = tên người nhận như web /tasks (null = chưa giao); query
+  // khớp thêm tên người nhận (bỏ dấu) — lọc theo người không thêm khoá input (20261022153345). Cửa sổ một bản: tolerant.
   tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành', {
-    id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), deadline: nullable(text) },
-  ['IN_PROGRESS', 'COMPLETED']),
+    id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), deadline: nullable(text),
+    assigneeName: nullable(text) },
+  ['IN_PROGRESS', 'COMPLETED'], { tolerant: ['assigneeName'] }),
   // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
   occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
     id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
@@ -161,6 +165,14 @@ const summaryLargest = value => domainExact(value, Object.keys(LARGEST_FIELDS)) 
 const summaryTyped = value => (domainExact(value, ['count', 'sum']) || domainExact(value, ['count', 'sum', 'largest']) && nullable(summaryLargest)(value.largest)) &&
   integer(value.count) && amount(value.sum);
 const BY_BUILDING_FIELDS = Object.freeze({ buildingId: domainId, buildingName: text, count: integer, remainingAmount: amount });
+// Mốc 3b Công việc (ma trận 22/10, CV-R01/R06: mô hình tự cộng các trang và cộng sai; 20261022153345): việc của CẢ tập lọc theo
+// toà / người nhận (≤50 nhóm, nhiều việc trước; null = việc không toà / chưa giao) và việc người hỏi đã giao cho người khác.
+const TASK_GROUP_FIELDS = Object.freeze({
+  byBuilding: Object.freeze({ buildingId: nullable(domainId), buildingName: text, count: integer, overdue: integer }),
+  byAssignee: Object.freeze({ assigneeName: nullable(text), count: integer, overdue: integer }) });
+const taskGroups = fields => value => Array.isArray(value) && value.length <= 50 && value.every(entry => domainExact(entry, Object.keys(fields)) &&
+  Object.entries(fields).every(([key, check]) => check(entry[key])));
+const taskGiven = value => domainExact(value, ['count', 'overdue']) && integer(value.count) && integer(value.overdue);
 // R2c phần 2: phần tử mới nhất của tài sản (assets.latest) — như dòng, thêm ngày thêm vào (createdAt).
 const ASSET_LATEST_FIELDS = Object.freeze({ id: domainId, name: text, code: nullable(text), buildingId: nullable(domainId), buildingName: text,
   roomName: nullable(text), createdAt: date });
@@ -187,7 +199,10 @@ export const DOMAIN_SUMMARIES = Object.freeze({
   // khi tập rỗng (20261021063452). null = không biết (summarizeRows: dòng chỉ mang NGÀY). Cửa sổ một bản như withoutContract.
   assets: summaryShape({ ...COMMON(summaryCounts(), ['quantity']), latest: nullable(summaryAssetLatest), latestCount: nullable(integer) }, 'condition'),
   services: summaryShape(COMMON(summaryCounts([]))),
-  tasks: summaryShape({ ...COMMON(summaryCounts()), overdue: integer }, 'status'),
+  // Mốc 3b: byBuilding / byAssignee / givenByMe (null = không biết: summarizeRows, dòng không mang người tạo). Cửa sổ một bản:
+  // DOMAIN_SUMMARY_KEY_TOLERANT.
+  tasks: summaryShape({ ...COMMON(summaryCounts()), overdue: integer, byBuilding: taskGroups(TASK_GROUP_FIELDS.byBuilding),
+    byAssignee: taskGroups(TASK_GROUP_FIELDS.byAssignee), givenByMe: nullable(taskGiven) }, 'status'),
   occupancy: summaryShape({ count: integer, total: integer, occupied: integer, available: integer }),
   income_expenses: summaryShape({ ...COMMON(summaryCounts(['UNAPPROVED', 'APPROVED', 'CANCELLED']), ['totalAmount']),
     byType: value => domainRecord(value) && Object.keys(value).every(key => ['INCOME', 'EXPENSE'].includes(key)) && Object.values(value).every(summaryTyped),
@@ -216,7 +231,9 @@ const entryTolerant = (operation, key, entry) => DOMAIN_SUMMARY_ENTRY_TOLERANT[o
 // R2c phần 2 (assets.latest, 20261021044801) đã đóng ở bản R2d (production áp 21/10). R2d (21/10/2026): customers.
 // withoutContract (20261021063452 đường nhanh + 20261021063453 v3) và assets.latestCount (20261021063452) — connector lên
 // TRƯỚC hai migration; bản connector kế tiếp (sau khi prod áp) đưa về {} (domain-tolerance.test.mjs khoá cả hai trạng thái).
-export const DOMAIN_SUMMARY_KEY_TOLERANT = Object.freeze({ customers: Object.freeze(['withoutContract']), assets: Object.freeze(['latestCount']) });
+// Mốc 3b Công việc (22/10): tasks.byBuilding/byAssignee/givenByMe (20261022153345), cùng thứ tự connector trước migration.
+export const DOMAIN_SUMMARY_KEY_TOLERANT = Object.freeze({ customers: Object.freeze(['withoutContract']), assets: Object.freeze(['latestCount']),
+  tasks: Object.freeze(['byBuilding', 'byAssignee', 'givenByMe']) });
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
 export const DOMAIN_READ_CAPABILITIES = DOMAIN_FAMILIES.v1.capabilities;
@@ -342,7 +359,29 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
   const total = values => values.reduce((sum, n) => sum + n, 0), within = n => n <= summary.count;
   if (domainRecord(summary.byStatus) && (!within(total(Object.values(summary.byStatus))) ||
       input.status && shape.statusKey !== null && Object.keys(summary.byStatus).some(key => key !== input.status))) fail();
-  if (operation === 'tasks' && !within(summary.overdue)) fail();
+  if (operation === 'tasks') {
+    if (!within(summary.overdue)) fail();
+    // Mốc 3b (vắng trong cửa sổ): mỗi nhóm ≥1 việc, quá hạn ≤ số việc, không trùng khoá, nhiều việc trước; cộng các nhóm không
+    // vượt tổng — dưới 50 nhóm (không bị cắt) thì bằng đúng count và overdue.
+    for (const [key, name] of [['byBuilding', 'buildingId'], ['byAssignee', 'assigneeName']]) {
+      if (!Object.hasOwn(summary, key)) continue;
+      const groups = summary[key], seen = new Set();
+      groups.forEach((entry, index) => {
+        if (seen.has(entry[name]) || entry.count < 1 || entry.overdue > entry.count || index > 0 && groups[index - 1].count < entry.count) fail();
+        seen.add(entry[name]);
+      });
+      const counted = total(groups.map(entry => entry.count)), late = total(groups.map(entry => entry.overdue));
+      if (!within(counted) || late > summary.overdue || groups.length < 50 && (counted !== summary.count || late !== summary.overdue)) fail();
+    }
+    // Toà của byBuilding như toà của dòng: trong phạm vi khoá, đúng toà lọc (lọc toà ⇒ không có nhóm null); hoà ⇒ id tăng, null cuối.
+    (summary.byBuilding ?? []).forEach((entry, index) => {
+      const previous = summary.byBuilding[index - 1];
+      if (entry.buildingId !== null && Array.isArray(scopes) && !scopes.includes(entry.buildingId) || input.buildingId && entry.buildingId !== input.buildingId ||
+          previous?.count === entry.count && (previous.buildingId === null || entry.buildingId !== null && previous.buildingId >= entry.buildingId)) fail();
+    });
+    const given = summary.givenByMe;
+    if (domainRecord(given) && (!within(given.count) || given.overdue > given.count || given.overdue > summary.overdue)) fail();
+  }
   // R2d: withoutContract (vắng trong cửa sổ; null = đường nhanh có query, hoặc phạm vi hợp đồng không phủ phạm vi khách).
   // Khách hiện kèm hợp đồng đang hiệu lực (contractId) trên trang đã có hợp đồng trong phạm vi ⇒ không thể nằm trong số đó.
   if (operation === 'customers' && Number.isInteger(summary.withoutContract) &&
@@ -427,8 +466,24 @@ export function summarizeRows(operation, rows, { now = Date.now() } = {}) {
     case 'customers': return { count, byStatus: null, sum: {}, withoutContract: null };
     case 'invoices': case 'services': return { count, byStatus: {}, sum: {} };
     case 'leads': case 'contracts': return { count, byStatus: tally('status'), sum: {} };
-    case 'tasks': return { count, byStatus: tally('status'), sum: {},
-      overdue: rows.filter(row => row.status === 'IN_PROGRESS' && row.deadline !== null && Date.parse(row.deadline) < now).length };
+    case 'tasks': {
+      // Mốc 3b: nhóm như SQL — nhiều việc trước; hoà: id toà / tên theo đơn vị mã (= COLLATE "C" với chữ BMP), null cuối; ≤50.
+      // byAssignee chỉ khi mọi dòng mang assigneeName (dòng của SQL cũ trong cửa sổ phát hành thì không: không đoán "chưa giao").
+      // givenByMe: dòng không mang người tạo ⇒ null.
+      const late = row => row.status === 'IN_PROGRESS' && row.deadline !== null && Date.parse(row.deadline) < now;
+      const group = (key, extra) => {
+        const seen = new Map();
+        for (const row of rows) {
+          const entry = seen.get(row[key]) ?? { [key]: row[key], ...extra(row), count: 0, overdue: 0 };
+          entry.count += 1; entry.overdue += late(row) ? 1 : 0; seen.set(row[key], entry);
+        }
+        return [...seen.values()].sort((a, b) => b.count - a.count || (a[key] === null) - (b[key] === null) ||
+          (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0)).slice(0, 50);
+      };
+      return { count, byStatus: tally('status'), sum: {}, overdue: rows.filter(late).length,
+        byBuilding: group('buildingId', row => ({ buildingName: row.buildingName })),
+        ...(rows.every(row => Object.hasOwn(row, 'assigneeName')) ? { byAssignee: group('assigneeName', () => ({})) } : {}), givenByMe: null };
+    }
     case 'assets': {
       // R2c phần 2: latest như SQL nhưng chỉ theo NGÀY của dòng (cùng ngày ⇒ id nhỏ hơn; SQL xếp theo thời điểm thật). R2d:
       // latestCount đếm cùng THỜI ĐIỂM — dòng chỉ mang ngày ⇒ không suy ra được: null (không bao giờ đoán theo ngày).
@@ -486,7 +541,7 @@ export const READ_QUERY_HINTS = Object.freeze({
   invoices: 'Số hoá đơn; đường nhanh thêm tên khách.',
   assets: 'Tên hoặc mã tài sản.',
   services: 'Tên hoặc mã dịch vụ.',
-  tasks: 'Tên hoặc mã công việc.',
+  tasks: 'Tên/mã việc hoặc tên người nhận.',
   occupancy: 'Tên toà.',
   income_expenses: 'Tên hoặc mã phiếu; không khớp phòng.',
   receivables: 'Số hoá đơn hoặc tên phòng.',

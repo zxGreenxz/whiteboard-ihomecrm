@@ -23,7 +23,8 @@ const ROWS = {
   invoices: { id: ITEM, number: 'INV1', status: 'APPROVED', buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101', billingMonth: '2026-10', totalAmount: '1' },
   assets: { id: ITEM, name: 'Tài sản', code: null, condition: null, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101', quantity: '1',
     createdAt: '2026-10-21' },
-  tasks: { id: ITEM, title: 'Việc', code: null, status: 'IN_PROGRESS', buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101', deadline: null },
+  tasks: { id: ITEM, title: 'Việc', code: null, status: 'IN_PROGRESS', buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101', deadline: null,
+    assigneeName: 'Người nhận' },
   income_expenses: { id: ITEM, code: null, type: 'EXPENSE', name: 'Chi', buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101',
     voucherDate: '2026-10-02', totalAmount: '1', approvalStatus: 'APPROVED' },
   receivables: { id: ITEM, number: 'INV1', status: 'APPROVED', buildingId: BUILDING, buildingName: 'Toà A', buildingCode: 'A', roomId: ROOM, roomName: 'P101',
@@ -51,9 +52,9 @@ const envelope = (operation, row) => ({ ...bare(operation, row), summary: summar
 const identity = operation => ({ row: { id: CONNECTION, organizationId: ORG, userId: USER },
   scopesByPermission: { [DOMAIN_READS[operation].permission]: { buildingIds: [BUILDING], cashbookIds: [] } } });
 
-test('exact shape: the B5c keys and assets.createdAt are declared fields with no window; no domain declares tolerant keys', () => {
+test('exact shape: the B5c keys and assets.createdAt are declared fields with no window; only tasks.assigneeName (Mốc 3b) is tolerant', () => {
   const declared = Object.fromEntries(Object.entries(DOMAIN_READS).filter(([, definition]) => definition.tolerant?.length).map(([key, definition]) => [key, [...definition.tolerant]]));
-  assert.deepEqual(declared, {}, 'B5c window closed 21/10; the R2c part 2 window (assets.createdAt, 20261021044801) closed by the R2d connector');
+  assert.deepEqual(declared, { tasks: ['assigneeName'] }, 'B5c window closed 21/10; the R2c part 2 window (assets.createdAt, 20261021044801) closed by the R2d connector; Mốc 3b (20261022153345) opens tasks.assigneeName for one release');
   for (const operation of Object.keys(DOMAIN_READS)) {
     const { tolerant } = DOMAIN_READS[operation];
     if (tolerant !== undefined) assert.ok(Array.isArray(tolerant) && Object.isFrozen(tolerant) && tolerant.every(key => Object.hasOwn(DOMAIN_READS[operation].fields, key)),
@@ -158,7 +159,7 @@ test('R2c part 2 window closed: assets rows need createdAt and the summary needs
 // SQL R2d (có mặt, đúng kiểu, đúng bất biến); khoá lạ, sai kiểu vẫn bị từ chối. Bản kế (sau khi production áp hai migration):
 // DOMAIN_SUMMARY_KEY_TOLERANT = {} — hai khoá bắt buộc — và đổi test này theo.
 test('R2d release window: customers.withoutContract and assets.latestCount may be absent this release; present means checked', () => {
-  assert.deepEqual(DOMAIN_SUMMARY_KEY_TOLERANT, { customers: ['withoutContract'], assets: ['latestCount'] }, 'next release: {}');
+  assert.deepEqual(DOMAIN_SUMMARY_KEY_TOLERANT, { customers: ['withoutContract'], assets: ['latestCount'], tasks: ['byBuilding', 'byAssignee', 'givenByMe'] }, 'next release: {} (tasks: Mốc 3b window below)');
   assert.ok(Object.isFrozen(DOMAIN_SUMMARY_KEY_TOLERANT) && Object.values(DOMAIN_SUMMARY_KEY_TOLERANT).every(Object.isFrozen));
   for (const [operation, key, fresh] of [['customers', 'withoutContract', 0], ['assets', 'latestCount', 1]]) {
     const who = identity(operation), input = domainInput(operation, {}), base = summarizeRows(operation, [ROWS[operation]]);
@@ -176,6 +177,63 @@ test('R2d release window: customers.withoutContract and assets.latestCount may b
     identity('customers'), domainInput('customers', {})), 'the page row with a contract cannot be without one');
   assert.throws(() => domainResult('assets', { ...bare('assets', ROWS.assets), summary: { ...summarizeRows('assets', [ROWS.assets]), latestCount: 0 } },
     identity('assets'), domainInput('assets', {})), 'a latest asset with an empty batch');
+});
+
+// Mốc 3b Công việc (22/10/2026, ma trận pha A CV-R01/R03/R04/R06): crm_read_tasks thêm dòng assigneeName và summary
+// byBuilding/byAssignee/givenByMe (20261022153345) — lên SAU connector này. Bản này nhận SQL 063452 (vắng) và SQL Mốc 3b
+// (có mặt, đúng kiểu, đúng bất biến); bản kế (sau khi production áp) gỡ cả bốn khoá khỏi cửa sổ.
+test('Mốc 3b release window: tasks rows may lack assigneeName and the summary its groups this release; present means checked', () => {
+  const operation = 'tasks', who = identity(operation), input = domainInput(operation, {}), other = id(20), late = '2020-01-01T00:00:00.000Z';
+  const rows = [ROWS.tasks, { ...ROWS.tasks, id: id(12), deadline: late, assigneeName: null },
+    { ...ROWS.tasks, id: id(13), buildingId: null, buildingName: '', roomId: null, roomName: null, assigneeName: 'Người nhận' }];
+  const fresh = summarizeRows(operation, rows), value = (items, summary) => ({ ...bare(operation, items[0]), items, summary });
+  const pass = (items, summary, label) => assert.deepEqual(domainResult(operation, value(items, summary), who, input).summary, summary, label);
+  const fail = (items, summary, label) => assert.throws(() => domainResult(operation, value(items, summary), who, input), label);
+  assert.deepEqual(fresh.byBuilding, [{ buildingId: BUILDING, buildingName: 'Toà A', count: 2, overdue: 1 }, { buildingId: null, buildingName: '', count: 1, overdue: 0 }]);
+  assert.deepEqual(fresh.byAssignee, [{ assigneeName: 'Người nhận', count: 2, overdue: 0 }, { assigneeName: null, count: 1, overdue: 1 }]);
+  assert.equal(fresh.givenByMe, null, 'rows do not carry the creator');
+  const sql = { ...fresh, givenByMe: { count: 2, overdue: 1 } };
+  pass(rows, sql, 'Mốc 3b SQL');
+  pass(rows, fresh, 'givenByMe unknown (null)');
+  const old = rows.map(row => without(row, ['assigneeName'])), before = without(sql, ['byBuilding', 'byAssignee', 'givenByMe']);
+  pass(old, before, 'SQL 063452: no assigneeName, no groups (window)');
+  assert.equal(Object.hasOwn(summarizeRows(operation, old), 'byAssignee'), false, 'rows without assigneeName: no guessed "unassigned" group');
+  for (const [label, items, summary] of [
+    ['assigneeName not text', [{ ...rows[0], assigneeName: 7 }, ...rows.slice(1)], sql],
+    ['unknown row key', [{ ...rows[0], assigneeId: other }, ...rows.slice(1)], sql],
+    ['unknown summary key', rows, { ...sql, byRoom: [] }],
+    ['unknown group key', rows, { ...sql, byAssignee: [{ ...sql.byAssignee[0], assigneeId: other }, sql.byAssignee[1]] }],
+    ['groups do not add up to count (fewer than 50 groups)', rows, { ...sql, byBuilding: sql.byBuilding.slice(0, 1) }],
+    ['group overdue does not add up', rows, { ...sql, byAssignee: [sql.byAssignee[0], { ...sql.byAssignee[1], overdue: 0 }] }],
+    ['empty group', rows, { ...sql, byAssignee: [...sql.byAssignee, { assigneeName: 'Khác', count: 0, overdue: 0 }] }],
+    ['overdue above the group count', rows, { ...sql, count: 3, byBuilding: [{ ...sql.byBuilding[0], count: 1, overdue: 2 }, { ...sql.byBuilding[1], count: 2 }] }],
+    ['overdue above the group count, totals right', rows, { ...sql, overdue: 2, byBuilding: [{ ...sql.byBuilding[0], count: 2, overdue: 0 }, { ...sql.byBuilding[1], count: 1, overdue: 2 }],
+      byAssignee: [{ ...sql.byAssignee[0], overdue: 1 }, { ...sql.byAssignee[1], overdue: 1 }] }],
+    ['duplicate key', rows, { ...sql, byAssignee: [{ ...sql.byAssignee[0], count: 1 }, { ...sql.byAssignee[0], count: 1 }, sql.byAssignee[1]] }],
+    ['smaller group first', rows, { ...sql, byAssignee: [...sql.byAssignee].reverse() }],
+    ['tie: null building before a building', rows, { ...sql, count: 4, byBuilding: [{ ...sql.byBuilding[1], count: 2 }, { ...sql.byBuilding[0], count: 2 }],
+      byAssignee: [{ assigneeName: 'Người nhận', count: 4, overdue: 1 }] }],
+    ['building outside the key scope', rows, { ...sql, byBuilding: [{ ...sql.byBuilding[0], buildingId: other }, sql.byBuilding[1]] }],
+    ['givenByMe above count', rows, { ...sql, givenByMe: { count: 4, overdue: 0 } }],
+    ['givenByMe overdue above its count', rows, { ...sql, givenByMe: { count: 0, overdue: 1 } }],
+    ['givenByMe not an object', rows, { ...sql, givenByMe: 2 }],
+    ['givenByMe overdue above the set overdue', rows, { ...sql, givenByMe: { count: 2, overdue: 2 } }],
+    ['50 groups adding up above count', rows, { ...sql, byAssignee: Array.from({ length: 50 }, (_, n) => ({ assigneeName: `N${String(n).padStart(2, '0')}`, count: 1, overdue: 0 })) }],
+    ['50 groups with overdue above the set', rows, { ...sql, count: 60, byBuilding: [{ ...sql.byBuilding[0], count: 59 }, sql.byBuilding[1]],
+      byAssignee: Array.from({ length: 50 }, (_, n) => ({ assigneeName: `N${String(n).padStart(2, '0')}`, count: 1, overdue: 1 })) }],
+    ['more than 50 groups', rows, { ...sql, count: 60, byBuilding: [{ ...sql.byBuilding[0], count: 59 }, sql.byBuilding[1]],
+      byAssignee: Array.from({ length: 51 }, (_, n) => ({ assigneeName: `N${String(n).padStart(2, '0')}`, count: 1, overdue: 0 })) }]])
+    fail(items, summary, label);
+  pass(rows, { ...sql, count: 4, byBuilding: [{ ...sql.byBuilding[0], count: 2 }, { ...sql.byBuilding[1], count: 2 }],
+    byAssignee: [{ assigneeName: 'Người nhận', count: 4, overdue: 1 }] }, 'tie: the building before the null group');
+  // Lọc theo toà: mọi nhóm đúng toà lọc, không có nhóm null.
+  const filtered = domainInput(operation, { buildingId: BUILDING }), inBuilding = rows.slice(0, 2), one = { ...summarizeRows(operation, inBuilding), givenByMe: { count: 0, overdue: 0 } };
+  assert.deepEqual(domainResult(operation, value(inBuilding, one), who, filtered).summary, one, 'buildingId filter');
+  assert.throws(() => domainResult(operation, value(inBuilding, { ...one, count: 3, byBuilding: [...one.byBuilding, { buildingId: null, buildingName: '', count: 1, overdue: 0 }],
+    byAssignee: [{ ...one.byAssignee[0], count: 2 }, one.byAssignee[1]] }), who, filtered), 'null building under a buildingId filter');
+  // Đủ 50 nhóm (bị cắt): cộng các nhóm được thiếu so với count.
+  const many = Array.from({ length: 50 }, (_, n) => ({ assigneeName: `N${String(n).padStart(2, '0')}`, count: 1, overdue: 0 }));
+  pass(rows, { ...sql, count: 60, byBuilding: [{ ...sql.byBuilding[0], count: 59 }, sql.byBuilding[1]], byAssignee: many }, '50 groups: capped');
 });
 
 test('exact shape on the fast lane: domainFastResult applies the same row rule', () => {

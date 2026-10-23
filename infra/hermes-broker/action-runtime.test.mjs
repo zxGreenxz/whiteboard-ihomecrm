@@ -166,6 +166,23 @@ test('từ chối thật của SQL ⇒ lỗi action_rejected mang reason + câu 
     error => error.code === 'action_outcome_unknown' && typeof error.requestId === 'string', 'ứng viên mang thêm trường (ID) ⇒ sai khuôn ⇒ chưa rõ');
 });
 
+test('Công việc Mốc 4: needs_input may carry item (1–20) ⇒ detail starts with "Mục #n: "; a malformed item is a shape mismatch', async t => {
+  let reply;
+  const env = setup(t, { respond: (_request, hooks) => { hooks.onDispatch(); return reply; } });
+  reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'room', wanted: '999', why: 'not_visible', candidates: [], more: false, item: 3 };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail,
+    "Mục #3: Không thấy phòng '999' trong phạm vi quyền của anh/chị; hỏi lại người dùng.");
+  reply = { kind: 'needs_input', reason: 'date_out_of_range', item: 2 };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail, `Mục #2: ${ACTION_REASONS.date_out_of_range.text}`);
+  reply = { kind: 'needs_input', reason: 'batch_too_large' };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail, ACTION_REASONS.batch_too_large.text);
+  for (const item of [0, 21, 1.5, '2']) {
+    reply = { kind: 'needs_input', reason: 'date_out_of_range', item };
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+      error => error.code === 'action_outcome_unknown', `item ${JSON.stringify(item)} sai khuôn`);
+  }
+});
+
 test('mất phản hồi sau khi gửi lệnh ghi ⇒ action_outcome_unknown kèm requestId; tra trạng thái theo requestId', async t => {
   let mode = 'lost';
   const env = setup(t, { respond: (request, hooks) => {
@@ -227,6 +244,16 @@ test('re-review #253: SQL đã ghi mà broker hỏng SAU finalize ⇒ action_out
   // Tra trạng thái với kết quả quá cỡ ⇒ applied gọn.
   const status = setup(t, { respond: () => ({ kind: 'status', outcome: 'applied', action: 'probe.note', result: { blob: 'x'.repeat(20_000) } }) });
   assert.deepEqual(await status.call('crm_action_status', { requestId: id('7') }), { requestId: id('7'), outcome: 'applied', action: 'probe.note', resultOmitted: true });
+});
+
+// CV12 (Công việc Mốc 3): từ chối kèm link web tới đúng đối tượng; link sai khuôn ⇒ khuôn lệch sau khi đã gửi lệnh ghi ⇒ kết cục chưa
+// rõ (action_outcome_unknown), không bao giờ chuyển chuỗi lạ tới mô hình.
+test('CV12: rejected may carry a relative web link; a malformed link is a shape mismatch, never forwarded', async t => {
+  for (const [link, code] of [['/tasks?job=' + id('7'), 'action_rejected'], ['https://example.invalid', 'action_outcome_unknown'], ['//x', 'action_outcome_unknown'], [7, 'action_outcome_unknown']]) {
+    const env = setup(t, { respond: (_request, hooks) => { hooks.onDispatch(); return { kind: 'rejected', reason: 'cancel_blocked', link }; } });
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+      error => error.code === code && (code !== 'action_rejected' || (error.reason === 'cancel_blocked' && error.link === link)), String(link));
+  }
 });
 
 test('review #253 mục 6: lỗi tạm của SQL (giao dịch đã lùi) là kết cục đã biết ⇒ action_rejected state_changed, không bao giờ action_outcome_unknown', async t => {
