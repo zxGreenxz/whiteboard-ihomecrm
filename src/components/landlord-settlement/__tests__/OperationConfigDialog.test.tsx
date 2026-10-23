@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-// Hộp "Cài đặt toà vận hành": quản lý nhận tiền cố định (đ/tháng) và/hoặc % (chủ chốt 23/10/2026).
-// Kiểm: ô tiền cố định nạp theo đúng điều khoản của tháng đang xem, trường đã sửa giữ khi đổi tháng (so với
-// tháng NẠP, như %), cả hai bằng 0 bị chặn trước khi gửi, gửi đúng số + tháng đang xem. Số tiền / tên là giả.
+// Hộp "Cài đặt toà vận hành": quản lý nhận tiền cố định (đ/tháng) và/hoặc % (chủ chốt 23/10/2026), người giữ
+// cọc (v3). Kiểm: ô tiền cố định nạp theo đúng điều khoản của tháng đang xem, trường đã sửa giữ khi đổi tháng
+// (so với tháng NẠP, như %), cả hai bằng 0 bị chặn trước khi gửi, gửi đúng số + tháng đang xem; mở từ nút gạt
+// người giữ cọc thì chọn sẵn giá trị mới ở tháng đang xem. Số tiền / tên là giả.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { LandlordOperationOptions } from '@/lib/landlordSettlement';
+import type { DepositHolder, LandlordOperationOptions } from '@/lib/landlordSettlement';
 
 const TOA = '00000000-0000-4000-8000-000000000011';
 const SO = '00000000-0000-4000-8000-000000000021';
@@ -18,15 +19,15 @@ vi.mock('sonner', () => ({ toast: { success: m.success, warning: m.warning, erro
 
 import { OperationConfigDialog } from '../OperationConfigDialog';
 
-const dk = (valid_from: string, manager_percent: number, manager_fixed_amount: number) =>
-  ({ valid_from, manager_percent, manager_fixed_amount, landlord_account_ids: [SO] });
+const dk = (valid_from: string, manager_percent: number, manager_fixed_amount: number, deposit_holder: DepositHolder = 'MANAGER') =>
+  ({ valid_from, manager_percent, manager_fixed_amount, landlord_account_ids: [SO], deposit_holder });
 
 function options(terms: ReturnType<typeof dk>[]): LandlordOperationOptions {
   const last = terms[terms.length - 1]!;
   return {
     current: {
       landlord_name: 'Chủ nhà A', manager_percent: last.manager_percent, manager_fixed_amount: last.manager_fixed_amount,
-      landlord_account_ids: [SO], terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
+      landlord_account_ids: [SO], deposit_holder: last.deposit_holder, terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
       opening_balance: 0, opening_confirmed_at: '2026-10-20T00:00:00Z', opening_confirmation_stale: false,
       opening_confirmed_pre_start: 0, pre_start_landlord_deposits: 0, first_closed_month: '2026-10-01',
       last_closed_month: '2026-10-01', next_terms_month: '2026-11-01', terms, updated_at: '2026-10-22T00:00:00Z',
@@ -36,8 +37,8 @@ function options(terms: ReturnType<typeof dk>[]): LandlordOperationOptions {
   };
 }
 
-const hop = () => (
-  <OperationConfigDialog open onOpenChange={vi.fn()} initialBuildingId={TOA}
+const hop = (preset: { initialTermsMonth?: string; initialDepositHolder?: DepositHolder } = {}) => (
+  <OperationConfigDialog open onOpenChange={vi.fn()} initialBuildingId={TOA} {...preset}
     candidates={[{ building_id: TOA, building_name: 'Toà A', organization_id: TOA, configured: true }]} />
 );
 const o = (nhan: string) => screen.getByLabelText(nhan) as HTMLInputElement;
@@ -106,4 +107,28 @@ it('đổi từ tháng đã chốt (kể cả chỉ đổi tiền cố định) 
   luu();
   expect(await screen.findByText(/Đã chốt tới tháng 10\/2026/)).toBeTruthy();
   expect(m.save).not.toHaveBeenCalled();
+});
+
+it('mở từ nút gạt người giữ cọc: chọn sẵn "Chủ nhà" ở tháng đang xem, xem trước nêu đổi, gửi p_deposit_holder', async () => {
+  m.options = options([dk('2026-10-01', 30, 0)]);
+  render(hop({ initialTermsMonth: '2026-11', initialDepositHolder: 'LANDLORD' }));
+  expect(o(THANG).value).toBe('2026-11');
+  expect(screen.getByRole('radio', { name: 'Chủ nhà' }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByTestId('landlord-terms-preview').textContent).toMatch(/Từ tháng 11\/2026: người giữ cọc Quản lý → Chủ nhà\./);
+  luu();
+  await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
+  expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', termsFrom: '2026-11-01', managerPercent: 30 });
+});
+
+it('mở bình thường: người giữ cọc theo điều khoản của tháng đang sửa, lưu gửi lại đúng giá trị đó', async () => {
+  m.options = options([dk('2026-10-01', 30, 0), dk('2026-12-01', 30, 0, 'LANDLORD')]);
+  render(hop());
+  // tháng 11 đang áp mốc 10 (quản lý giữ cọc)
+  expect(screen.getByRole('radio', { name: 'Quản lý' }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.queryByTestId('landlord-terms-preview')).toBeNull();
+  fireEvent.change(o(THANG), { target: { value: '2026-12' } });
+  expect(screen.getByRole('radio', { name: 'Chủ nhà' }).getAttribute('aria-checked')).toBe('true');
+  luu();
+  await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
+  expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', termsFrom: '2026-12-01' });
 });

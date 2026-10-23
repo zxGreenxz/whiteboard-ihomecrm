@@ -7,15 +7,17 @@
 // Gói trả về đi qua zod (src/lib/landlordSettlement.ts): sai hình là lỗi, không đoán số.
 // =============================================================================
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   closeReceiptSchema,
+  confirmReceiptSchema,
   landlordIhomeProfitSchema,
   landlordOperationOptionsSchema,
   landlordOperationsListSchema,
   linkCreateReceiptSchema,
   linkRevokeReceiptSchema,
+  noteUpdateReceiptSchema,
   paymentReceiptSchema,
   reopenReceiptSchema,
   settlementMonthSchema,
@@ -24,6 +26,7 @@ import {
   shareLinksSchema,
   upsertReceiptSchema,
   voidReceiptSchema,
+  type DepositHolder,
   type PaymentDirection,
 } from '@/lib/landlordSettlement';
 
@@ -56,6 +59,8 @@ export const landlordSettlementKeys = {
   links: (buildingId: string) => [KEY, 'links', buildingId] as const,
   ihome: (from: string, to: string) => [KEY, 'ihome', from, to] as const,
   public: (token: string, month: string | null) => [`${KEY}-public`, token, month ?? 'latest'] as const,
+  /** Mọi tháng của một link chủ nhà (tiền tố của `public`). */
+  publicAll: (token: string) => [`${KEY}-public`, token] as const,
 };
 
 // ─────────────────────────────── đọc ───────────────────────────────
@@ -161,6 +166,8 @@ export const useLandlordSettlementPublic = (token: string, month: string | null)
       return data === null ? null : settlementPublicSchema.parse(data);
     },
     staleTime: 60_000,
+    // đổi tháng bằng nút ‹ › giữ trang (tab đang xem) thay vì nháy về khung chờ; isPlaceholderData báo đang đổi
+    placeholderData: keepPreviousData,
   });
 
 // ─────────────────────────────── ghi ───────────────────────────────
@@ -192,6 +199,8 @@ export interface UpsertLandlordOperationInput {
   openingSeenPreStart: number | null;
   /** updated_at của cấu hình lúc hộp NẠP nháp — người khác lưu sau đó thì server từ chối (40001). */
   expectedUpdatedAt: string | null;
+  /** Người giữ cọc đang hiện cho tháng termsFrom (null: server giữ của điều khoản tháng đó). */
+  depositHolder: DepositHolder | null;
 }
 
 export const useUpsertLandlordOperation = () => {
@@ -214,6 +223,7 @@ export const useUpsertLandlordOperation = () => {
         p_expected_updated_at: input.expectedUpdatedAt,
         // luôn gửi đúng số đang hiện cho tháng termsFrom (server so từng trường với điều khoản đang áp ở đó)
         p_manager_fixed_amount: input.managerFixedAmount,
+        p_deposit_holder: input.depositHolder,
       });
       if (error) throw error;
       const receipt = upsertReceiptSchema.parse(data);
@@ -333,5 +343,67 @@ export const useRevokeLandlordShareLink = () => {
       return linkRevokeReceiptSchema.parse(data);
     },
     onSuccess: () => invalidate(),
+  });
+};
+
+// ─────────────────────────────── bàn giao (v3) ───────────────────────────────
+
+export interface UpdateHandoverNoteInput {
+  buildingId: string;
+  /** 'YYYY-MM-01' */
+  month: string;
+  /** closed.revision đang hiện — mở chốt / chốt lại sau đó thì server từ chối (40001). */
+  revision: number;
+  note: string | null;
+}
+
+/** Sửa ghi chú bàn giao của tháng ĐÃ chốt (chủ công ty / super admin). */
+export const useUpdateLandlordHandoverNote = () => {
+  const invalidate = useInvalidateLandlord();
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: UpdateHandoverNoteInput) => {
+      const { data, error } = await goiRpcQuyetToan('landlord_settlement_note_update_v1', {
+        p_building_id: input.buildingId,
+        p_month: input.month,
+        p_revision: input.revision,
+        p_note: input.note,
+      });
+      if (error) throw error;
+      const receipt = noteUpdateReceiptSchema.parse(data);
+      if (receipt.revision !== input.revision) throw new TypeError('Chưa xác nhận được ghi chú bàn giao');
+      return receipt;
+    },
+    // 40001 (vừa mở chốt / chốt lại) cũng phải nạp lại để thấy lần chốt mới
+    onSettled: () => invalidate(),
+  });
+};
+
+export interface ConfirmLandlordMonthInput {
+  token: string;
+  /** 'YYYY-MM-01' */
+  month: string;
+  /** closed.revision chủ nhà đang xem. */
+  revision: number;
+  note: string | null;
+}
+
+/** Link chủ nhà (anon): xác nhận đã xem số liệu của lần chốt đang hiện. */
+export const useConfirmLandlordMonth = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: ConfirmLandlordMonthInput) => {
+      const { data, error } = await goiRpcQuyetToan('landlord_settlement_confirm_v1', {
+        p_token: input.token,
+        p_month: input.month,
+        p_revision: input.revision,
+        p_note: input.note,
+      });
+      if (error) throw error;
+      return confirmReceiptSchema.parse(data);
+    },
+    // lỗi mạng vẫn có thể là server ĐÃ ghi; 40001 = lần chốt đã đổi ⇒ nạp lại gói của link trong mọi trường hợp
+    onSettled: (_d, _e, input) => qc.invalidateQueries({ queryKey: landlordSettlementKeys.publicAll(input.token) }),
   });
 };
