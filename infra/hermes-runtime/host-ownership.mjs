@@ -39,7 +39,7 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
   'cannot_remove_representative',
   // Trang Công việc (Đợt 2b).
-  'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open',
+  'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
   'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
   // Hoá đơn (Mốc 4, ghi chỉ số).

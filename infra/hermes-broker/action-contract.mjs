@@ -135,11 +135,12 @@ export function confirmationRequired({ action, requestId, preview, warnings, con
   return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt, huongDan: CONFIRM_GUIDANCE };
 }
 
-export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook', 'job']);
+export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook', 'job',
+  'recurrence']);
 // unspecified (trang Công việc, Đợt 2b): người dùng chưa nêu trường này (wanted rỗng); candidates là gợi ý để hỏi lại một câu (Q31).
 export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visible', 'unspecified']);
 const LABELS = Object.freeze({ building: 'toà', room: 'phòng', jobType: 'loại việc', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn',
-  category: 'hạng mục', cashbook: 'sổ quỹ', job: 'việc' });
+  category: 'hạng mục', cashbook: 'sổ quỹ', job: 'việc', recurrence: 'việc định kỳ' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/gu;
 const quoted = value => `'${String(value).replace(CONTROL, ' ').trim().slice(0, 60)}'`;
 /** detail của name_unresolved từ kết quả hàm giải tên SQL (hermes_write_name_resolve_v1): chỉ chuỗi mô hình gửi + ứng viên mà

@@ -47,9 +47,11 @@ export const param = Object.freeze({
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
   name: (of, { optional = false } = {}) => {
-    if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job') fail();
+    if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job' && of !== 'recurrence') fail();
     // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
-    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
+    // recurrence (Mốc 5): mã việc định kỳ DK-… hoặc nội dung — SQL tìm đúng một quy tắc, mơ hồ thì hỏi lại.
+    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
+      : of === 'recurrence' ? 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
       { of, min: 1, max: 120 });
   },
   int: (min, max, { optional = false } = {}) => {

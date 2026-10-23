@@ -33,9 +33,11 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.expense], ['system_voucher', 'evidence_required']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.expense.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Thu chi là lỗi thật (dạng rejected)');
   // Công việc (CONG-VIEC-THAO-TAC-GHI.md mục 2.4, 19, 21): 2 mã hạn mức + 2 mã Mốc 3 (cancel_blocked, task_not_open) là lỗi thật;
-  // batch_too_large (Mốc 4, lô quá 20 việc) dạng needs_input — hỏi chia lô.
-  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'batch_too_large']);
-  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large']);
+  // batch_too_large (Mốc 4, lô quá 20 việc) dạng needs_input — hỏi chia lô; Mốc 5 (việc định kỳ): recurrence_quota là lỗi thật (trần
+  // 100 quy tắc), recurrence_unchanged hỏi lại (đã đúng trạng thái yêu cầu).
+  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'batch_too_large',
+    'recurrence_quota', 'recurrence_unchanged']);
+  assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large', 'recurrence_unchanged']);
   // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5): Mốc 3 thu tiền + Mốc 4 ghi chỉ số + Mốc 5 điều chỉnh/kiểm tra/huỷ/khôi phục — 9 mã needs_input
   // + 17 mã rejected.
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
@@ -46,11 +48,11 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
       'meter_used_by_invoice', 'meter_has_later_reading', 'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried',
       'adjust_below_collected', 'adjustment_self_check_web_only', 'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict',
       'invoice_already_cancelled', 'invoice_not_cancelled']);
-  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 5 Công việc + 26 Hoá đơn.
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 7 Công việc + 26 Hoá đơn.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 5 + 26);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7 + 1 + 9);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4 + 17);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 7 + 26);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7 + 2 + 9);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 5 + 17);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

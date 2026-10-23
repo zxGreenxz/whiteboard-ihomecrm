@@ -5,7 +5,8 @@ import { createActionCatalog, validateActionParams } from './action-catalog.mjs'
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { nameUnresolvedDetail } from './action-contract.mjs';
-import { TASK_ACTIONS, TASK_CREATE, TASK_CREATE_BATCH, TASK_BATCH_MAX, TASK_UPDATE, TASK_CANCEL, TASK_RETIRED_OPERATIONS, TASK_RETIRED_BY } from './task-actions-contract.mjs';
+import { TASK_ACTIONS, TASK_CREATE, TASK_CREATE_BATCH, TASK_BATCH_MAX, TASK_UPDATE, TASK_CANCEL, TASK_RETIRED_OPERATIONS, TASK_RETIRED_BY,
+  TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE } from './task-actions-contract.mjs';
 import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
@@ -39,8 +40,21 @@ test('catalog: task.create under tasks.create, reversible (server decides confir
   assert.deepEqual(TASK_RETIRED_BY, { create: 'task.create', status: 'task.create', options: 'task.create', progress: 'task.update', cancel: 'task.cancel' });
   const all = catalog.listing({ read: [], action: [TASK_KEY, 'tasks.edit', 'tasks.delete'] });
   assert.deepEqual(all.map(item => [item.action, item.confirm]), [['task.create', 'if_required'], ['task.create_batch', 'if_required'], ['task.update', 'if_required'],
-    ['task.cancel', 'always']]);
-  assert.deepEqual(all.slice(2).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)), [['job'], ['job']]);
+    ['task.cancel', 'always'], ['task.recurring_create', 'if_required'], ['task.recurring_update', 'if_required'], ['task.recurring_pause', 'if_required'],
+    ['task.recurring_delete', 'if_required']]);
+  assert.deepEqual(all.slice(2, 4).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)), [['job'], ['job']]);
+  // Mốc 5: việc định kỳ — tạo dưới tasks.create, sửa / tạm dừng dưới tasks.edit, xoá (mềm) dưới tasks.delete; reversible + chính sách DB
+  // always (máy chủ luôn xem trước). Quy tắc là tên kiểu recurrence (mã DK-… hoặc nội dung); thứ trong tuần là danh sách oneOf.
+  assert.deepEqual([TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE].map(action => [action.key, action.class, action.reasons]),
+    [['tasks.create', 'reversible', ['recurrence_quota']], ['tasks.edit', 'reversible', ['recurrence_unchanged']],
+      ['tasks.edit', 'reversible', ['recurrence_unchanged']], ['tasks.delete', 'reversible', []]]);
+  assert.deepEqual(all.slice(4).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)),
+    [['content', 'frequency'], ['rule'], ['rule'], ['rule']]);
+  assert.equal(all[5].params.rule.hint, 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói');
+  assert.deepEqual([all[4].params.weekdays.type, all[4].params.weekdays.max, all[4].params.weekdays.item.values, all[4].params.monthDay.hint],
+    ['list', 7, ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], 'số nguyên -1–31']);
+  for (const action of [TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE])
+    assert.ok(action.title.length <= 120 && Object.keys(action.params).length <= 16, action.id);
   assert.equal(all[2].params.job.hint, 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói');
   // Mốc 4: lô dưới CÙNG khoá tasks.create (chính sách DB always ⇒ máy chủ luôn xem trước); items ≤ 20 mục, mỗi mục là record có giờ hạn;
   // không tham số bắt buộc ở connector (SQL đòi đúng một trong items / buildingsManagedBy).

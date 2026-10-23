@@ -162,6 +162,15 @@ export const W2C_REPORTS = Object.freeze({
       overdueDays: nullable(count), progress: text(300), createdOn: nullable(date), completedOn: nullable(date), link: text(80) },
     summary: { total: count, overdue: count, byAssignee: list(20, { assigneeName: text(200), count, overdue: count }),
       byBuilding: list(50, { buildingId: nullable(id), buildingName: text(200), count, overdue: count }) } }),
+  // Công việc Mốc 5 (20261023042450; CONG-VIEC-THAO-TAC-GHI.md mục 4, 22): việc định kỳ dưới RLS job_recurrence_rules của người hỏi
+  // (rls_buildings như tasks_board). Lịch dạng chữ + lần sinh kế tiếp do SQL tính; summary trên CẢ tập khớp.
+  task_recurrences: w2Report({ permission: 'tasks.view', source: 'crm.job_recurrences_list_v1', scope: 'rls_buildings', private: true,
+    title: 'Việc định kỳ: mã DK, nội dung, toà/phòng, người nhận, lịch, lần sinh kế tiếp; status ACTIVE/PAUSED/ENDED; query mã/nội dung/tên người nhận.',
+    params: ['query', 'status', 'buildingId'], statuses: ['ACTIVE', 'PAUSED', 'ENDED'],
+    fields: { id, code: text(20), title: text(200), jobType: text(100), buildingId: id, buildingName: text(200), roomId: nullable(id), roomName: text(100),
+      assigneeName: text(200), schedule: text(200), startDate: date, endDate: nullable(date), dueDays: count, status: code, pausedReason: nullable(code),
+      nextDate: nullable(date) },
+    summary: { total: count, active: count, paused: count, ended: count } }),
 });
 
 // Chuông Hermes ↔ web: mục w2c-* trong infra/hermes-broker/web-parity.json (marker // hermes-parity:begin/end w2c-*
