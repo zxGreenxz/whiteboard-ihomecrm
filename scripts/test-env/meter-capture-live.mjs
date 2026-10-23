@@ -16,6 +16,7 @@ import { chromeBuildEnv } from './chrome.mjs';
 import { probeTarget, verifyTestTarget } from '../lib/e2e-fleet-runner.mjs';
 import { assertTestLease, withTestCleanup, withTestLock } from './lock.mjs';
 import { inspectFixture, METER_TEST_REF, newFixture, provisionFixture, retireFixture, verifyFixture } from './meter-capture-fixture.mjs';
+import { MeterTestHttpError, withMeterReadRetry } from './meter-capture-readiness.mjs';
 
 const exec = promisify(execFile), TEST_ORIGIN=`https://${METER_TEST_REF}.supabase.co`;
 const git=(...args)=>execFileSync('git',args,{cwd:repoRoot,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -31,14 +32,12 @@ async function stopOwned(run){
  else run.child.kill('SIGTERM');
  await run.done;
 }
-export async function requestTestJson(url,options,fetcher=fetch){
+export async function requestTestJson(url,options,fetcher=fetch,timeoutMs=60_000){
  assert.equal(new URL(url).origin,TEST_ORIGIN,'Only the fixed TEST endpoint is permitted');
- const response=await fetcher(url,{...options,redirect:'error',signal:AbortSignal.timeout(60_000)});
+ const response=await fetcher(url,{...options,redirect:'error',signal:AbortSignal.timeout(timeoutMs)});
  if(!response.ok){
   const payload=await response.json().catch(()=>null);
-  const safeCode=/^(?:[0-9A-Z]{5}|PGRST[0-9]{3}|(?:meter_capture_|worker_|original_|evidence_|invalid_)[a-z0-9_]{1,48}|unauthorized)$/;
-  const code=payload&&typeof payload==='object'?[payload.code,payload.error].find(value=>typeof value==='string'&&value.length<=64&&safeCode.test(value)):null;
-  throw new Error(`TEST endpoint ${new URL(url).pathname} returned HTTP ${response.status}${code?` (${code})`:''}.`);
+  throw new MeterTestHttpError(`TEST endpoint ${new URL(url).pathname}`,response.status,payload);
  }
  return response.json();
 }
@@ -116,6 +115,18 @@ async function main(){
    const session=await json(`${TEST_ORIGIN}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:cred.testPublishableKey,'content-type':'application/json'},body:JSON.stringify({email:actorEmail,password})});
    assert.equal(session.user?.id,fixture.actorId);assert.equal(typeof session.access_token,'string');
    const headers={apikey:cred.testPublishableKey,authorization:`Bearer ${session.access_token}`};
+   const catalogReady=async()=>{
+    const catalog=await withMeterReadRetry('catalog',timeout=>json(`${TEST_ORIGIN}/functions/v1/meter-capture-worker`,{
+     method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({action:'rpc',organizationId:fixture.organizationId,rpcAction:'catalog',payload:{}}),
+    },fetch,timeout));
+    assert(Array.isArray(catalog.meters),'TEST catalog response must contain meters');
+    const meter=catalog.meters.find(row=>row.id===fixture.meterId);
+    assert.equal(meter?.orgId,fixture.organizationId);assert.equal(meter?.buildingId,fixture.buildingId);assert.equal(meter?.roomId,fixture.roomId);
+    if(fixture.qrText)assert.equal(meter.qrText,fixture.qrText);
+    console.log(JSON.stringify({event:'meter_test_catalog_ready',fixtureId:fixture.fixtureId}));
+   };
+   // Probe through the real user's gateway after fixture DDL, before profile writes.
+   await catalogReady();
    const reference=resolve(directory,'synthetic-reference.png');
    await exec(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=white:s=1280x720',
     '-vf',`drawtext=text='${fixture.currentValue}  kWh  1.8.0':x=140:y=220:fontsize=70:fontcolor=black,drawtext=text='${fixture.serial}':x=100:y=400:fontsize=25:fontcolor=black`,'-frames:v','1',reference],{timeout:30_000,windowsHide:true});
@@ -160,6 +171,8 @@ async function main(){
    });
    server.requestTimeout=0;await new Promise((yes,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',yes);});
    const address=server.address();assert(address&&typeof address==='object');
+   // A later cache reload must not turn browser startup into a false schema diagnosis.
+   await catalogReady();
    const fleetEnv={...process.env,FLEET_BASE_URL:base,FLEET_TARGET_ENV:'TEST',FLEET_AGENT:'codex',FLEET_WORKERS:'1',FLEET_METER_LIVE:'1',EXPECTED_SOURCE_SHA:sha,
     TEST_SUPABASE_PUBLISHABLE_KEY:cred.testPublishableKey,FLEET_PASS_TEST_CHU:password,FLEET_METER_FIXTURE_MANIFEST:manifest,
     METER_FIXTURE_LIFECYCLE_URL:`http://127.0.0.1:${address.port}`,METER_FIXTURE_LIFECYCLE_TOKEN:token};

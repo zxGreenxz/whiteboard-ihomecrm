@@ -86,6 +86,11 @@ BEGIN
    AND old.reading_date=c.reading_date AND old.purpose=c.purpose AND old.status='CONFIRMED' AND old.superseded_by IS NULL;
  IF FOUND THEN RETURN v_previous; END IF;
  SELECT start_date INTO v_start_date FROM public.contracts WHERE id=c.contract_id AND organization_id=c.organization_id AND deleted_at IS NULL;
+ -- Keep authorized capture history readable after the contract is retired.
+ -- A pending capture has no live billing baseline in that case; do not invoke
+ -- the active-contract resolver and fail every row in the organization list.
+ -- Confirmation still checks the live contract independently under its lock.
+ IF NOT FOUND THEN RETURN c.previous_value; END IF;
  SELECT r.current_reading INTO v_previous FROM public.meter_readings r
   LEFT JOIN app_private.meter_captures cap ON cap.reading_id=r.id
   WHERE r.meter_id=c.meter_id AND r.contract_id=c.contract_id AND r.organization_id=c.organization_id

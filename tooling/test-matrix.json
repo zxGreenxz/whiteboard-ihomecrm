@@ -1700,6 +1700,8 @@
         "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
         "scripts/__tests__/meter-capture-sql.test.mjs",
         "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -2041,6 +2043,8 @@
       "includes": [
         "scripts/__tests__/meter-capture-sql.test.mjs",
         "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",

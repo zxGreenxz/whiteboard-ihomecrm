@@ -10,6 +10,7 @@ import { loadMeterLiveFixture, METER_TEST_REF, METER_TEST_URL, type MeterLiveFix
 import { meterBillingSourceSchema } from '../../src/lib/meter-capture/types';
 import { assertMonthlyInvoice, assertZeroMoveOut, financialSource, monthlyInvoiceRequest, zeroMoveOutRequest } from '../support/meter-capture-financial';
 import { installMeterLiveBrowser } from '../support/meter-capture-live-browser';
+import { MeterTestHttpError, withMeterReadRetry } from '../../scripts/test-env/meter-capture-readiness.mjs';
 
 /**
  * Live TEST smoke, not the synthetic gateway/component harness.
@@ -91,18 +92,22 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     const financial=async(data:Record<string,unknown>)=>{
       const response=await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,{headers,data,maxRedirects:0});
       if(!response.ok()){
-        const code=z.object({code:z.string().optional(),error:z.string().optional()}).safeParse(await response.json().catch(()=>null));
-        throw new Error(`TEST financial gateway returned HTTP ${response.status()} (${code.success?code.data.code??code.data.error??'unknown':'unknown'}).`);
+        throw new MeterTestHttpError('TEST financial gateway',response.status(),await response.json().catch(()=>null));
       }return response.json() as Promise<unknown>;
     };
     const read=async(table:string,params:Record<string,string>)=>{
-      const response=await request.get(`${METER_TEST_URL}/rest/v1/${table}`,{headers:{...headers,'Accept-Profile':'public'},params:{...params,organization_id:`eq.${fixture.organizationId}`},maxRedirects:0});
-      expect(response.status(),`Actual TEST ${table} read`).toBe(200);return response.json() as Promise<unknown>;
+      return withMeterReadRetry('restRead',async timeout=>{
+        const response=await request.get(`${METER_TEST_URL}/rest/v1/${table}`,{headers:{...headers,'Accept-Profile':'public'},params:{...params,organization_id:`eq.${fixture.organizationId}`},maxRedirects:0,timeout});
+        if(!response.ok())throw new MeterTestHttpError(`Actual TEST ${table} read`,response.status(),await response.json().catch(()=>null));
+        expect(response.status(),`Actual TEST ${table} read`).toBe(200);return response.json() as Promise<unknown>;
+      });
     };
     const call = async (rpcAction: string, payload: Record<string, unknown>, organizationId = fixture.organizationId) => {
-      const response = await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`, { headers, data: { action:'rpc',organizationId,rpcAction,payload } });
-      if (!response.ok()) throw new Error(`Meter gateway ${rpcAction} returned HTTP ${response.status()}.`);
-      return response.json() as Promise<unknown>;
+      return withMeterReadRetry(rpcAction,async timeout=>{
+        const response = await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`, { headers, data: { action:'rpc',organizationId,rpcAction,payload },maxRedirects:0,timeout });
+        if (!response.ok()) throw new MeterTestHttpError(`Meter gateway ${rpcAction}`,response.status(),await response.json().catch(()=>null));
+        return response.json() as Promise<unknown>;
+      });
     };
     const catalog = z.object({ meters: z.array(z.object({ id:z.string(),orgId:z.string(),buildingId:z.string(),roomId:z.string().nullable(),code:z.string(),qrText:z.string().nullable(),profile:z.object({serial:z.string(),registerCode:z.string(),decimalPlaces:z.number()}).nullable() })) }).parse(await call('catalog',{}));
     expect(catalog.meters.find(meter => meter.id === fixture.meterId)).toMatchObject({orgId:fixture.organizationId,buildingId:fixture.buildingId,roomId:fixture.roomId,code:fixture.meterCode,qrText:fixture.qrText,profile:{serial:fixture.serial,registerCode:fixture.registerCode,decimalPlaces:2}});

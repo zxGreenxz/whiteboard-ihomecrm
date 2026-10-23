@@ -470,6 +470,35 @@ test('review shows the same scoped approved baseline used at confirmation and ke
  await assert.rejects(db.exec(`SET ROLE authenticated;SELECT app_private.meter_capture_previous_value_v1('${cap.capture.id}')`),{code:'42501'});
 });
 
+test('retired contract pending capture does not poison organization history or change confirmed evidence', async t => {
+ const db=await fixture();t.after(()=>db.close());await register(db);
+ const pending=(await upload(db,await start(db,{clientId:id(701),readingDate:'2026-10-20',sha256:'7'.repeat(64)}))).capture;
+ const confirmed=(await confirm(db,(await upload(db,await start(db))).capture)).capture;
+ const s=await source(db),bill=await invoice(db,invoiceArgs(s),[s]);
+ const beforeEvidence=await rpc(db,'documentEvidence',{kind:'INVOICE',documentId:bill.invoice_id});
+ const beforeMedia=await rpc(db,'evidence',{captureId:confirmed.id});
+ const immutable=async()=>({
+  captures:(await db.query('SELECT to_jsonb(c) facts FROM app_private.meter_captures c ORDER BY id')).rows,
+  readings:(await db.query('SELECT to_jsonb(r) facts FROM meter_readings r ORDER BY id')).rows,
+  links:(await db.query('SELECT to_jsonb(l) facts FROM app_private.meter_capture_evidence_links l ORDER BY id')).rows,
+  originals:(await db.query('SELECT to_jsonb(o) facts FROM storage.objects o ORDER BY id')).rows,
+ });
+ const before=await immutable();
+ await db.query('UPDATE contracts SET deleted_at=clock_timestamp() WHERE id=$1',[contract]);
+ const history=(await rpc(db,'listCaptures',{month:'2026-10'})).captures;
+ assert.equal(history.length,2);
+ assert.equal(history.find(c=>c.id===pending.id).previousValue,null);
+ assert.deepEqual(history.find(c=>c.id===confirmed.id),confirmed);
+ assert.deepEqual(await rpc(db,'documentEvidence',{kind:'INVOICE',documentId:bill.invoice_id}),beforeEvidence);
+ assert.deepEqual(await rpc(db,'evidence',{captureId:confirmed.id}),beforeMedia);
+ const orphan=(await rpc(db,'getCapture',{captureId:pending.id})).capture;
+ await assert.rejects(confirm(db,orphan,'115'),{code:'PT409'});
+ assert.deepEqual(await immutable(),before);
+ await db.exec("SELECT set_config('test.access','no',false)");
+ assert.deepEqual((await rpc(db,'listCaptures',{month:'2026-10'})).captures,[]);
+ await assert.rejects(rpc(db,'getCapture',{captureId:confirmed.id}),{code:'42501'});
+});
+
 test('Sol proposal and all persisted clip timestamps survive disagreement; no automatic confirmation', async t => {
  const db=await fixture();t.after(()=>db.close());await register(db);
  const cap=await upload(db,await start(db,{mimeType:'video/mp4',durationSeconds:10}),false);
