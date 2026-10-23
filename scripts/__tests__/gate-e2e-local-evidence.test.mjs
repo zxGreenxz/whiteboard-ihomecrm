@@ -304,39 +304,35 @@ function writeReceipt({ git, put }, name, patch = {}, { commit: doCommit = true 
 const fleetBlocked = (p) => p.unavailable.some((u) => u.suiteId === "e2e-fleet");
 
 describe("planFromGit reads committed receipts from the planned snapshot", () => {
-  it("binds the receipt to Git history: green passes, later spec edit and forged SHA block", () => {
+  it.each(['missing', 'green', 'disabled', 'staged', 'stale'])("binds the receipt to Git history: %s", (state) => {
     const fx = gitFixture(); const base = fx.git("rev-parse", "HEAD");
     fx.put(SPEC_A, "test('a2', () => {});\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "spec");
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
-    writeReceipt(fx, "green");
-    const ok = planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" });
-    expect(fleetBlocked(ok)).toBe(false);
-    expect(ok.localEvidence[0].files).toEqual([SPEC_A]);
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD", localEvidence: false }))).toBe(true);
+    if (state !== 'missing') writeReceipt(fx, "green");
     // Staged snapshot (gate:truoc-push) reads the same receipt from the index.
-    fx.put("docs/note.md", "x"); fx.git("add", "docs/note.md");
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "staged", base, head: "HEAD" }))).toBe(false);
-    fx.git("commit", "-qm", "docs");
-    fx.put(SPEC_A, "test('a3', () => {});\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "edit after run");
-    const stale = planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" });
-    expect(fleetBlocked(stale)).toBe(true);
-    expect(stale.unavailable.find((u) => u.suiteId === "e2e-fleet").localEvidence.rejected[0].problems).toContain("Fleet tree changed after the run");
+    if (state === 'staged' || state === 'stale') { fx.put("docs/note.md", "x"); fx.git("add", "docs/note.md"); }
+    if (state === 'stale') {
+      fx.git("commit", "-qm", "docs");
+      fx.put(SPEC_A, "test('a3', () => {});\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "edit after run");
+    }
+    const result = planFromGit({ root: fx.root, mode: state === 'staged' ? 'staged' : 'commit', base, head: 'HEAD', localEvidence: state !== 'disabled' });
+    expect(fleetBlocked(result)).toBe(!['green', 'staged'].includes(state));
+    if (state === 'green') expect(result.localEvidence[0].files).toEqual([SPEC_A]);
+    if (state === 'stale') expect(result.unavailable.find((u) => u.suiteId === "e2e-fleet").localEvidence.rejected[0].problems).toContain("Fleet tree changed after the run");
   });
-  it("a receipt naming a commit that does not exist, or a foreign tree, is rejected", () => {
+  it.each(['forged', 'foreign-tree', 'orphan', 'tag'])("rejects an independently invalid Git receipt: %s", (kind) => {
     const fx = gitFixture(); const base = fx.git("rev-parse", "HEAD");
     fx.put(SPEC_A, "test('a2', () => {});\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "spec");
-    writeReceipt(fx, "forged", { commit: "1".repeat(40) });
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
-    writeReceipt(fx, "foreign-tree", { fleetTree: fx.git("rev-parse", `${base}:.e2e-fleet`) });
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
+    let patch;
+    if (kind === 'forged') patch = { commit: "1".repeat(40) };
+    if (kind === 'foreign-tree') patch = { fleetTree: fx.git("rev-parse", `${base}:.e2e-fleet`) };
     // Same bytes, but a commit outside the planned history (e.g. a rebased/squashed copy).
-    const orphan = fx.git("commit-tree", "HEAD^{tree}", "-m", "orphan copy");
-    writeReceipt(fx, "orphan", { commit: orphan });
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
+    if (kind === 'orphan') patch = { commit: fx.git("commit-tree", "HEAD^{tree}", "-m", "orphan copy") };
     // An annotated tag peels to the right commit, but the receipt must name the commit itself.
-    fx.git("tag", "-a", "-m", "tag", "run-tag", "HEAD");
-    writeReceipt(fx, "tag", { commit: fx.git("rev-parse", "run-tag") });
-    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
+    if (kind === 'tag') { fx.git("tag", "-a", "-m", "tag", "run-tag", "HEAD"); patch = { commit: fx.git("rev-parse", "run-tag") }; }
+    writeReceipt(fx, kind, patch);
+    const result = planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" });
+    expect(fleetBlocked(result)).toBe(true);
+    expect(result.unavailable.find(u => u.suiteId === 'e2e-fleet').localEvidence.rejected).toHaveLength(1);
   });
   it("red receipt in Git history: blocks greens of its commit and older ones, a fixed later commit passes", () => {
     const fx = gitFixture(); const base = fx.git("rev-parse", "HEAD");

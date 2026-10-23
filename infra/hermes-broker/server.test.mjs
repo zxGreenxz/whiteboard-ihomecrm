@@ -78,12 +78,15 @@ function fakeBackend() {
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
     // B5d: the crm_auth_context directory (hermes_organization_name_v1, hermes_building_directory_v1) is optional too — absent ⇒ null, never a failed call.
-    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_action_capabilities_v1',
+      '/rest/v1/rpc/hermes_sale_capabilities_v1', '/rest/v1/rpc/hermes_sale_policy_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v9', '/rest/v1/rpc/hermes_connection_context_v9', '/rest/v1/rpc/hermes_connection_options_v8', '/rest/v1/rpc/hermes_connection_context_v8',
+      '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
       '/rest/v1/rpc/hermes_organization_name_v1', '/rest/v1/rpc/hermes_building_directory_v1',
       // R2c part 2 (c): the asker's own display name is optional the same way.
       '/rest/v1/rpc/hermes_user_display_name_v1',
-      // Đợt 2: capabilities của thao tác ghi dùng chung (chỉ gọi khi host bật actionPages); vắng ⇒ không cấp khoá nào.
-      '/rest/v1/rpc/hermes_action_capabilities_v1'].includes(endpoint.pathname))
+      // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác chung đọc hermes_action_capabilities_v1 và lớp task đọc thẳng
+      // capability theo dõi việc; vắng (PGRST202) ⇒ không cấp khoá, như mọi họ tuỳ chọn.
+      '/rest/v1/rpc/hermes_action_capabilities_v1', '/rest/v1/rpc/hermes_task_follow_capabilities_v1'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -513,28 +516,35 @@ test('roomRead=page: the direct room tool reads one bound page RPC (no scope map
   assert(!order.includes('hermes_room_scope_map_v1')); assert(!order.includes('hermes_sale_listing_rooms_v1'));
 });
 
-test('server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed', async t => {
+test('server auth chain consults customer/action/sale capability RPCs; absent RPCs keep their action tools closed', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
   f.grantRooms();
   const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
-  for (const path of ['hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1'])
+  // Đợt 2 Thu chi: phiếu chi đi danh mục thao tác chung (hermes_action_capabilities_v1); họ crm_expense_* cũ đã gỡ, không còn hỏi
+  // hermes_expense_capabilities_v1.
+  for (const path of ['hermes_customer_create_capabilities_v1', 'hermes_action_capabilities_v1', 'hermes_sale_capabilities_v1', 'hermes_sale_policy_capabilities_v1'])
     assert(f.calls.some(call => call.path === `/rest/v1/rpc/${path}` && call.options.headers.authorization === `Bearer ${assistantJwt}`), path);
-  assert(!listed.some(name => /^crm_(customer|lead|expense)_/.test(name)));
-  for (const name of ['crm_customer_create', 'crm_lead_status', 'crm_expense_create', 'crm_expense_input_options']) {
+  assert(!listed.some(name => /^crm_(customer|lead|expense|action|sale)_/.test(name)));
+  assert(!f.calls.some(call => call.path === '/rest/v1/rpc/hermes_expense_capabilities_v1'), 'họ phiếu chi cũ đã gỡ');
+  for (const name of ['crm_customer_create', 'crm_lead_status', 'crm_expense_create', 'crm_expense_input_options', 'crm_action_run',
+    'crm_sale_action', 'crm_sale_room_patch', 'crm_sale_room_lock', 'crm_sale_reservation_create', 'crm_sale_bulk_patch', 'crm_sale_policy_save']) {
     const response = await http.mcp(token, 'tools/call', { name, arguments: {} });
     assert.equal(JSON.parse(response.body.result.content[0].text).error, 'tool_not_available', name);
   }
-  assert(!f.calls.some(call => /hermes_(customer_create|expense)_action_v1$/.test(call.path)), 'no action RPC without capability');
+  assert(!f.calls.some(call => /hermes_(customer_create_action|expense_action|expense_write|sale_actions|sale_policy_actions)_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
-test('actionPages: host opt-in per page; default never calls the shared action capabilities RPC; absent RPC keeps crm_action_* hidden', async t => {
+test('actionPages: host opt-in per page on top of the production Thu chi catalog; absent RPC keeps crm_action_* hidden', async t => {
   const f = fakeBackend();
   for (const actionPages of ['contract', ['nope'], ['contract', 'contract'], [1], {}])
     assert.throws(() => createHermesBackend({ ...f.configuration, actionPages }), error => error.message === 'invalid_backend_config', JSON.stringify(actionPages));
+  // Danh mục production đã có thao tác Thu chi (expense.*, gộp #271) nên cấu hình mặc định cũng hỏi capabilities của thao tác;
+  // không có actionPages thì không nạp thao tác Hợp đồng và không bao giờ gọi RPC trang Hợp đồng.
   const off = fakeBackend(), plain = await listening(t, off.configuration), offToken = (await plain.connect()).body.token;
   off.grantRooms();
   assert(!(await plain.mcp(offToken)).body.result.tools.some(tool => tool.name.startsWith('crm_action_')));
-  assert(!off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'mặc định không gọi capabilities của thao tác');
+  assert(off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'danh mục Thu chi mặc định hỏi capabilities của thao tác');
+  assert(!off.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
   const on = fakeBackend(), http = await listening(t, { ...on.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
   on.grantRooms();
   const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);

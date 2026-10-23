@@ -22,7 +22,7 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   // chiếu bằng *_status; broker nuốt lỗi audit cho riêng các mã này nên thiếu ở đây không đóng broker, nhưng sổ audit sẽ
   // không có dòng cho lượt ghi bất định. Mọi mã ERROR_STATUS của broker phải có mặt (audit-codes.test.mjs).
   'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown',
-  'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown',
+  'customer_outcome_unknown', 'expense_outcome_unknown', 'sale_outcome_unknown', 'zalo_broadcast_outcome_unknown',
   // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật mang reason (dưới) và mã bất định của ghi.
   'action_rejected', 'action_outcome_unknown']);
 /** Bản sao chỉ đọc của giao thức mã lỗi sổ audit chấp nhận; audit-codes.test.mjs khoá nó bằng ERROR_STATUS của broker. */
@@ -33,9 +33,13 @@ export const AUDIT_CODES = Object.freeze([...CODES]);
 // sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
 const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
+  // Thu chi (Đợt 2).
+  'system_voucher', 'evidence_required',
   // Trang Hợp đồng (Đợt 2).
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
-  'cannot_remove_representative']);
+  'cannot_remove_representative',
+  // Trang Công việc (Đợt 2b).
+  'task_quota_user', 'task_quota_pair']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {

@@ -22,7 +22,7 @@ export const FULL_GRANT_ACTION = Object.freeze([...new Set([...HERMES_ACTION_CAP
 
 /** { broker, token, seen }: `t` đóng dependency scope khi test xong; `limits` như createBroker.
  * `actions` (Đợt 1 nền chung): lõi thao tác ghi dùng chung (action-runtime.mjs) + `actionKeys` cấp thêm cho kết nối;
- * `withoutAction`: khoá Action bỏ khỏi kết nối (vd họ phiếu chi cũ đã tắt ở registry, D4). */
+ * `withoutAction`: khoá Action bỏ khỏi kết nối (vd khoá đang tắt ở registry production). */
 export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }, { actions, actionKeys = [], withoutAction = [] } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const CONNECTION = fullGrantId('a'), read = [...FULL_GRANT_READ], seen = [];
@@ -41,7 +41,9 @@ export function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }, { action
   });
   const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits,
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
-    customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
+    customers: port('prepareCustomerAction', 'finalizeCustomerAction'),
+    saleActions: port('prepareSaleAction', 'finalizeSaleAction'),
+    salePolicies: port('prepareSalePolicy', 'finalizeSalePolicy'), saleBulk: port('prepareSaleBulk', 'finalizeSaleBulk'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
     externalGroups: { authority, createService: () => ({}) },

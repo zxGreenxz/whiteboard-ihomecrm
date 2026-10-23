@@ -16,6 +16,7 @@ import {
   DepositsReport,
   FinanceReportsPage,
   FinancialAnalysisReport,
+  LandlordSettlementPage,
   OverpaymentReport,
   PaymentScheduleReport,
   ProfitHubPage,
@@ -43,6 +44,8 @@ export const financeReportRoutes = (
     <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
     {/* Trang gộp: Phân bổ lợi nhuận (báo cáo) + Chia lợi nhuận cổ đông — tab theo quyền, gate bên trong */}
     <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />
+    {/* Toà vận hành cho chủ nhà (21/10/2026): chỉ chủ công ty / super admin — RPC chặn 42501, trang tự báo */}
+    <Route path="/reports/finance/quyet-toan-van-hanh" element={<ProtectedRoute><LandlordSettlementPage /></ProtectedRoute>} />
     {/* 2 BC công nợ đã bỏ (Phase 7) — nghiệp vụ nợ xử lý ở màn Thu tiền */}
     <Route path="/reports/finance/new-contract-debt" element={<Navigate to="/thu-tien" replace />} />
     <Route path="/reports/finance/debt" element={<Navigate to="/thu-tien" replace />} />

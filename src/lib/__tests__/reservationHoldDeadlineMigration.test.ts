@@ -26,7 +26,7 @@ function migrationCorpus(): { file: string; sql: string }[] {
 }
 
 /**
- * Lần CREATE cuối cùng của một hàm public — định nghĩa đang sống.
+ * Lần CREATE cuối cùng của một hàm — định nghĩa đang sống.
  *
  * `body` là RIÊNG thân hàm, cắt từ `CREATE ... FUNCTION` tới hết `$…$;`.
  * KHÔNG được để test soi cả file: khối tự-kiểm và các khối guard của chính
@@ -38,11 +38,11 @@ function migrationCorpus(): { file: string; sql: string }[] {
  * `whole` giữ nguyên cả file cho các phép kiểm về GRANT/REVOKE — chúng nằm
  * NGOÀI thân hàm nên phải soi ở phạm vi file.
  */
-function liveFunction(fnName: string): { file: string; whole: string; body: string } {
-  const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
+function liveFunction(fnName: string, schema: "public" | "app_private" = "public"): { file: string; whole: string; body: string } {
+  const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`, "i");
   let hit: { file: string; sql: string } | null = null;
   for (const m of migrationCorpus()) if (re.test(m.sql)) hit = m;
-  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của public.${fnName}`);
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của ${schema}.${fnName}`);
 
   const start = hit.sql.search(re);
   const rest = hit.sql.slice(start);
@@ -178,7 +178,9 @@ describe("hạn BỔ SUNG CỌC (mốc thứ hai)", () => {
     expect(body).toMatch(/SECURITY\s+DEFINER/i);
     expect(body).toMatch(/\bVOLATILE\b/i);
     expect(body).toMatch(/FOR\s+UPDATE/i);
-    expect(body).toMatch(/can_access_building\s*\(\s*v_ie\.building_id\s*\)/i);
+    expect(body).toMatch(
+      /PERFORM\s+app_private\.authorize_room_reservation_writer_v1\(\s*v_ie\.organization_id\s*,\s*v_ie\.building_id\s*,\s*'deposits\.edit'\s*\)/i,
+    );
     expect(body).toMatch(/auth\.uid\(\)/);
   });
 
@@ -204,7 +206,18 @@ describe("hạn BỔ SUNG CỌC (mốc thứ hai)", () => {
     // Bất kỳ lệnh nào tự đổi trạng thái phiếu trong writer đều là vi phạm.
     const { body } = liveFunction(TERMS);
     expect(body).not.toMatch(/UPDATE\s+public\.income_expenses/i);
-    expect(body).not.toMatch(/'CANCELLED'/);
+    // CANCELLED trong điều kiện TỪ CHỐI phiếu đã huỷ không phải lệnh tự huỷ.
+    expect(body).toMatch(
+      /IF\s+v_ie\.deleted_at\s+IS\s+NOT\s+NULL\s+OR\s+v_ie\.contract_id\s+IS\s+NOT\s+NULL\s+OR\s+v_ie\.approval_status\s*=\s*'CANCELLED'\s+OR\s+app_private\.reservation_deposit_is_settled_v1\(v_ie\.id\)\s+THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'55000'/i,
+    );
+    // Nguồn canonical chỉ được UPDATE kỳ hạn; không truyền CANCEL/TOPUP hay
+    // receipt xuống writer vốn cũng có nhánh xử lý tiền và huỷ giữ chỗ.
+    expect(body.match(/\bpublic\.update_room_reservation_v1\s*\(/gi)).toHaveLength(1);
+    expect(body).toMatch(
+      /PERFORM\s+public\.update_room_reservation_v1\(\s*r\.organization_id\s*,\s*r\.id\s*,\s*r\.revision\s*,\s*'hold-terms-'\s*\|\|\s*gen_random_uuid\(\)::text\s*,\s*'UPDATE'\s*,\s*jsonb_build_object\(\s*'hold_until'\s*,\s*p_hold_until\s*,\s*'topup_due_on'\s*,\s*p_topup_due_date\s*,\s*'deposit_target'\s*,\s*p_deposit_target\s*\)\s*,\s*NULL\s*\)/i,
+    );
+    expect(body).not.toMatch(/'(?:CANCEL|FORFEIT|TOPUP)'/i);
+    expect(body).not.toMatch(/\b(?:PERFORM|SELECT|CALL)\s+(?:public|app_private)\.\w*(?:cancel|forfeit|settle)\w*\s*\(/i);
   });
 });
 
@@ -234,9 +247,21 @@ describe("writer set_reservation_hold_terms_v1", () => {
 
   it("kiểm quyền toà nhà — không tin client", () => {
     const { body } = liveFunction(FN);
-    expect(body).toMatch(/can_access_building\s*\(\s*v_ie\.building_id\s*\)/i);
-    expect(body).toMatch(/ie_all_buildings_scope\s*\(\s*v_ie\.building_id\s*\)/i);
+    expect(body).toMatch(
+      /PERFORM\s+app_private\.authorize_room_reservation_writer_v1\(\s*v_ie\.organization_id\s*,\s*v_ie\.building_id\s*,\s*'deposits\.edit'\s*\)/i,
+    );
     expect(body).toMatch(/auth\.uid\(\)/);
+    // Quyền nay do helper chung cưỡng chế. Phải soi định nghĩa helper ĐANG
+    // SỐNG và nhánh từ chối, không chỉ thấy tên helper trong lời gọi.
+    const { body: authority } = liveFunction("authorize_room_reservation_writer_v1", "app_private");
+    expect(authority).toMatch(/PERFORM\s+app_private\.assert_room_reservation_scope_v1\(\s*p_org\s*,\s*p_building\s*,\s*p_action\s*\)/i);
+    expect(authority).toMatch(
+      /IF\s+NOT\s+COALESCE\(\s*\(SELECT\s+allowed\s+FROM\s+app_private\.authorize_tenant_action_v3\(\s*auth\.uid\(\)\s*,\s*p_org\s*,\s*p_action\s*,\s*p_building\s*,\s*NULL\s*\)\)\s*,\s*false\s*\)\s+THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'42501'/i,
+    );
+    const { body: scope } = liveFunction("assert_room_reservation_scope_v1", "app_private");
+    expect(scope).toMatch(
+      /IF\s+auth\.uid\(\)\s+IS\s+NULL\s+OR\s+NOT\s+COALESCE\(\s*p_org\s*=\s*ANY\(public\.my_org_ids\(\)\)\s*,\s*false\s*\)\s+OR\s+NOT\s+COALESCE\(\s*public\.can_access_building\(p_building\)\s*,\s*false\s*\)\s+OR\s+NOT\s+COALESCE\(\s*public\.can_do_on_building\(\s*split_part\(p_action\s*,\s*'\.'\s*,\s*1\)\s*,\s*split_part\(p_action\s*,\s*'\.'\s*,\s*2\)\s*,\s*p_building\s*\)\s*,\s*false\s*\)[\s\S]*?THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'42501'/i,
+    );
   });
 
   it("từ chối hạn nằm trước ngày lập phiếu", () => {

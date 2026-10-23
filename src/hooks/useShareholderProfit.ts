@@ -159,9 +159,14 @@ export interface ShareholderDistribution {
 
 // --- Queries ---
 
-// Gom các dòng accrual (tháng × toà) của fa_monthly_pnl_accrual về 1 dòng/toà,
-// BỎ toà ảo ("Chung" chứa phiếu chia LN). Tách riêng để dùng lại ở resync.
-// LN theo nhà cho 1 khoảng — DỒN TÍCH (accrual), KHỚP báo cáo Phân bổ lợi nhuận.
+// Gom các dòng accrual (tháng × toà) của fa_monthly_pnl_accrual về 1 dòng/toà
+// (readAccrualByBuilding), BỎ toà ảo. Toà ảo (Kho văn phòng chung) KHÔNG chỉ chứa
+// phiếu chia LN: nó còn gom CHI PHÍ CHUNG của công ty và có cả khoản lẽ ra thuộc
+// một toà cụ thể (đo prod, rà 21/10 F18). Chốt LN (profit_close_preview_v2) cũng
+// bỏ toà ảo ⇒ phần này KHÔNG vào chia LN; tab Tổng quan hiện riêng dòng "Chi phí
+// chung ở toà ảo — không vào chia LN".
+// LN theo nhà cho 1 khoảng — DỒN TÍCH (accrual), cùng nguồn với chốt LN. Báo cáo
+// Phân bổ lợi nhuận (tab BC) thì cộng cả toà ảo và phiếu chờ duyệt ⇒ không trùng số.
 // Trước đây dùng RPC monthly_building_profit (cash-basis theo voucher_date + chỉ
 // phiếu owner) nên lệch số. Nay gọi fa_monthly_pnl_accrual: doanh thu HĐ theo
 // billing_month, item có kỳ chia đều ra từng tháng, gồm cả phiếu nhân viên.
@@ -516,6 +521,8 @@ function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["profit-monthly"] });
   qc.invalidateQueries({ queryKey: ["profit-allocations"] });
   qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
+  // F06: chốt / mở khoá / chốt lại đổi tập "phát sinh sau chốt" (profitPostLockKeys.all).
+  qc.invalidateQueries({ queryKey: ["profit-post-lock"] });
 }
 
 export const useCloseProfitPeriod = () => {

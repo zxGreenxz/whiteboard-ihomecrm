@@ -12,7 +12,6 @@ import { TASK_TOOLS, taskInput } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { ROOM_PASS_TOOLS } from './room-pass-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionInput } from './customer-action-contract.mjs';
-import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { DOMAIN_TOOLS } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
@@ -29,7 +28,7 @@ const tokenDigest = createHash('sha256').update(token).digest('hex');
 const code = expected => error => error instanceof BrokerError && error.code === expected;
 const issued = result => { assert.equal(result.isError, false); const value = JSON.parse(result.content[0].text);
   assert.deepEqual(Object.keys(value), ['requestId']); assert.match(value.requestId, UUID_V4); return value.requestId; };
-const ALL_TOOLS = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS, ...EXPENSE_ACTION_TOOLS,
+const ALL_TOOLS = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
   ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS];
 
 // Real durable authority (digest-bound joined read, sealed session, live Auth)
@@ -74,13 +73,13 @@ function fixture(t, { read = [], action = ['customers.create'], limits, onAudit 
 }
 
 test('every requestId action points to crm_new_request_id; status tools reuse the original id; validation stays UUID', () => {
-  assert.deepEqual(ALL_TOOLS.filter(startsCrmRequest).map(tool => tool.name).sort(), ['crm_customer_create', 'crm_expense_create',
+  assert.deepEqual(ALL_TOOLS.filter(startsCrmRequest).map(tool => tool.name).sort(), ['crm_customer_create',
     'crm_group_room_send', 'crm_lead_create', 'crm_room_pass_set_active', 'crm_room_pass_upsert', 'crm_room_schedule_create', 'crm_room_schedule_reconcile',
     'crm_room_schedule_revoke', 'crm_room_schedule_update', 'crm_task_cancel', 'crm_task_create', 'crm_task_follow_set',
     'crm_task_follow_stop', 'crm_task_progress', 'crm_zalo_broadcast_send', 'crm_zalo_broadcast_update']);
   const takesRequestId = ALL_TOOLS.filter(tool => Object.hasOwn(tool.inputSchema.properties ?? {}, 'requestId'));
   assert.deepEqual(takesRequestId.filter(tool => !startsCrmRequest(tool)).map(tool => tool.name).sort(),
-    ['crm_customer_status', 'crm_expense_status', 'crm_lead_status', 'crm_room_pass_status', 'crm_task_status']);
+    ['crm_customer_status', 'crm_lead_status', 'crm_room_pass_status', 'crm_task_status']);
   for (const tool of takesRequestId) {
     assert.ok(tool.inputSchema.required.includes('requestId'), tool.name);
     if (startsCrmRequest(tool)) {

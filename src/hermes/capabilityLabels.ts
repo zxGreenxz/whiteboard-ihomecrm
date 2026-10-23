@@ -18,8 +18,15 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.delete': 'Hermes: huỷ công việc khi bạn yêu cầu rõ',
   'customers.create': 'Hermes: tạo khách cá nhân chưa gắn tòa; cần phạm vi Toàn tổ chức',
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
-  'income_expenses.create': 'Hermes: ghi phiếu CHI nhanh; thang duyệt CRM quyết trạng thái, Hermes không duyệt hay vào sổ',
-  'income_expenses.approve': 'Hermes: chỉ cho phiếu chi Hermes ghi được duyệt ngay bằng quyền duyệt của bạn; không có công cụ duyệt',
+  // Đợt 2 Thu chi: thang duyệt CRM quyết trạng thái như web; phiếu ra đời đã duyệt thì CRM vào sổ quỹ ngay.
+  'income_expenses.create': 'Hermes: lập phiếu CHI lập tay (luôn xem trước, dưới ngưỡng hoặc người lập có quyền duyệt thì vào sổ ngay) và ghi chú phiếu',
+  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt và chi phiếu chi người khác lập tay"',
+  'rooms.edit': 'Hermes: sửa thông tin Sale phòng theo phiên bản hiện tại; chữ công khai cần duyệt trước',
+  'sale_phong.edit': 'Hermes: cập nhật thông tin Sale và chương trình có thời hạn trực tiếp; xem trước nội dung công khai',
+  'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',
+  'sale_phong.lock_room': 'Hermes: lock tạm 6/12/24 giờ và gỡ lock của bạn',
+  'deposits.create': 'Hermes: báo cọc/thu thêm qua phiếu CRM; cần quyền tạo thu chi và phạm vi cùng tòa',
+  'deposits.edit': 'Hermes: sửa thông tin cọc hoặc gắn khách danh bạ; không hủy/hoàn tiền/ký hợp đồng',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
   'deposits.view': 'Hermes: chỉ tổng cọc đang giữ theo tòa, không có chi tiết khách',
@@ -70,7 +77,6 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'contracts.edit': 'Hermes: thêm, bớt người ở trong hợp đồng, có xem trước',
   'contracts.create': 'Hermes: soạn nháp hợp đồng; người ký trên web',
   'contracts.transfer': 'Hermes: chuyển phòng, có xem trước',
-  'sale_phong.lock_room': 'Hermes: lock tạm phòng 6/12/24 giờ và bỏ lock',
 });
 const own = (map: Readonly<Record<string, string>>, key: string) => Object.prototype.hasOwnProperty.call(map, key);
 export const hermesCapabilityLabel = (key: string): string => (own(LABELS, key) ? LABELS[key] : key);

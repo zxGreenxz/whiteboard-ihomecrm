@@ -46,6 +46,25 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
   statementSha256:'cb4774dc01070a244241028a4c3977c33222da25f654b817a0a9b860f800ff0b',
  },
+ // Đợt 2 Thu chi (Mốc 2): RPC trang expense.* — cùng khuôn vỏ INVOKER gắn OID guard / lõi giải tên / bước ghi DEFINER.
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022024834_hermes_expense_write_v1.sql',
+  statementSha256:'5960c256f08748aab117c62bb218324e4dedea62e9b1a57d3f7411fd0ab57d59',
+ },
+ // Đợt 2 Thu chi (Mốc 3): vỏ expense.* gắn OID phạm vi (guard ∩ hàm kiểm quyền của hàm ghi web); giải tên _v2 ghim ở
+ // hermes-read-function-specs (cùng chỗ với _v1).
+ {
+  name:'public.hermes_expense_write_v1',
+  sourcePath:'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
+  statementSha256:'321484f76fedd6f3d96f094ce5f4bf1201e336bc9b50263b2b9ef60faaa0d774',
+ },
+ // Đợt 2b Công việc (CV-M1): vỏ INVOKER gắn OID guard / lõi giải tên / người quản lý toà / ba tầng chuẩn bị-ghi-chốt lúc tạo.
+ {
+  name:'public.hermes_task_action_v1',
+  sourcePath:'supabase/migrations/20261022031548_hermes_task_action_create_v1.sql',
+  statementSha256:'2948cefb90348c6445074b162ec4bbd7906d802965c8a86a4dc7a63208bee61d',
+ },
  // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp; lượt 2 tra lại theo customerId).
  {
   name:'public.hermes_contract_action_v1',
