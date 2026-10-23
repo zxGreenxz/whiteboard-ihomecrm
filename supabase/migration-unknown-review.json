@@ -873,6 +873,52 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.job_type_building_like_v1 (mới, INVOKER) + thân mới của app_private.hermes_write_name_resolve_core_v1 (ghim md5 thân 20261021132433: bỏ danh xưng khi khớp người, không nhận loại việc trùng tên toà)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 24/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 24 (lượt 11): lỗi 2 + 4, thứ tự áp, ghim chéo"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — hàm dùng chung mới vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023185116. Bằng chứng: PGlite task-nghiem-thu-sql (danh xưng, loại trùng tên toà, đột biến) + tầng 2 TEST chỉ đọc.",
+      "missingObjects": [
+        "function:public.job_type_building_like_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu (24/10/2026)",
+      "sha256": "aed0fd0b492559af09992727771fbcc2a8a0d98aef239309a8fe896c54b4a340"
+    },
+    "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql",
+          "trich_doan": "CREATE TABLE app_private.hermes_task_assignee_offers (mới, RLS bật, không cấp vai nào) + thân mới của lõi giải tên và bước chuẩn bị của vỏ hermes_task_action_v1 (ghim md5 hai thân 20261023042436)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 24/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 24 (lượt 11): lỗi 1 + 2 + 3, thứ tự áp, ghim chéo"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — bảng lời mời chọn người nhận vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023185114. Bằng chứng: PGlite task-nghiem-thu-sql (lựa chọn Q31 = đồng ý, gợi ý loại, tìm việc kèm phòng / toà, 6 đột biến) + tầng 2 TEST chỉ đọc.",
+      "missingObjects": [
+        "table:app_private.hermes_task_assignee_offers"
+      ],
+      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu (24/10/2026)",
+      "sha256": "2e47cb3018130fd06c3b093e7ea5a7d69b5aebc55406eefaa2cd0a969855ec21"
     }
   }
 }

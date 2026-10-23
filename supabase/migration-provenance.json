@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T17:30:46.293Z",
+  "generatedAt": "2026-10-23T19:12:03.802Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 869,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 82,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13420,6 +13420,41 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-23T15:52:15.586Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql",
+      "version": "20261023185114",
+      "name": "hermes_name_resolve_honorific_v1",
+      "scheme": "timestamp14",
+      "sha256": "aed0fd0b492559af09992727771fbcc2a8a0d98aef239309a8fe896c54b4a340",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.job_type_building_like_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql",
+      "version": "20261023185116",
+      "name": "hermes_task_nghiem_thu_v1",
+      "scheme": "timestamp14",
+      "sha256": "2e47cb3018130fd06c3b093e7ea5a7d69b5aebc55406eefaa2cd0a969855ec21",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_task_assignee_offers"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023185118_hermes_task_follow_read_total_v1.sql",
+      "version": "20261023185118",
+      "name": "hermes_task_follow_read_total_v1",
+      "scheme": "timestamp14",
+      "sha256": "fd1f288587922e6deede448c09d8b6784dbd5b99e42bdbe92547d31453aff01c",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_task_follow_read_v1"
       ]
     },
     {

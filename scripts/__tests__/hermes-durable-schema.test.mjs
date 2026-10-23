@@ -454,6 +454,8 @@ const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app
 // wrapper binds (name-resolution core, guard, probe step). Receipt begin/finish and the reason map stay owner-only.
 const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.hermes_room_key_v1(text)',
   'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)', 'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)',
+  // Lượt 11 Công việc (20261023185114): loại việc trùng tên toà — helper INVOKER thuần đọc dưới RLS, lõi giải tên và lõi task gọi.
+  'public.job_type_building_like_v1(uuid,text)',
   'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
   'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
@@ -976,7 +978,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all forty-four reviewed forward migrations and their 128 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all forty-seven reviewed forward migrations and their 129 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -990,9 +992,9 @@ test('all forty-four reviewed forward migrations and their 128 latest definition
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 44);
-  assert.equal(FORWARD_FUNCTIONS.length, 128);
-  assert.equal(FORWARD_BY_NAME.size, 128, 'one live definition per reviewed name');
+  assert.equal(paths.length, 47);
+  assert.equal(FORWARD_FUNCTIONS.length, 129);
+  assert.equal(FORWARD_BY_NAME.size, 129, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

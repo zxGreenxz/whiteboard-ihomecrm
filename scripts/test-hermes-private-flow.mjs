@@ -576,6 +576,11 @@ for (const spec of [
   { name: 'app_private.hermes_invoice_edit_lookup_v1',
     sourcePath: 'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
     statementSha256: 'd1c7b73a8705caca8a84b24ded68016cd93dd23062f3b71f76f571bb6c144e27' },
+  // Lượt 11 Công việc (20261023185114): lõi giải tên v1 thay thân — bỏ danh xưng khi khớp người, không nhận loại việc trùng tên toà
+  // (gọi public.job_type_building_like_v1 đủ schema). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql',
+    statementSha256: '414d614e41fcbb161a906dd42139df0d1fcb1d029dc7efb121ee7d0f4a938db0' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
