@@ -25,8 +25,8 @@
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
   "knownLimits": [
-    "55/81 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
-    "26 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
+    "55/82 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "27 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
     "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
@@ -279,6 +279,108 @@
       "lop": "phép đo replay đơn lẻ gặp hàm đã được migration sau đổi kiểu trả về",
       "why": "File 030100 (Hermes đợt 2 Gói C) tạo 8 hàm dùng chung (vehicles_list_v1, materials_*_v1, warehouses_list_v1, salary_locked_month_v1) bằng CREATE OR REPLACE. File 030300 áp sau (cùng ngày, chưa phát hành) DROP rồi CREATE lại 8 hàm đó với kiểu trả về mới. Replay 030100 trên catalog đã có 030300 nên CREATE OR REPLACE ngã 42P13 — đúng hành vi Postgres, không phải lỗi file.",
       "heQua": "Mục này ghim file 030100 và migration 030300 đã áp production (biên nhận backup); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022074741_hermes_task_action_edit_v1.sql",
+      "sha256": "88ae400567ff56b11c8af4566a9a416c46074b4fe758cf3662ac365b05263a8f",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_action_edit_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022074741_hermes_task_action_edit_v1.json",
+      "supersededBy": {
+        "file": "20261022164201_hermes_task_batch_v1.sql",
+        "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022164201_hermes_task_batch_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39908442827",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 074741 (Hermes Công việc Mốc 3) thay thân 4 tầng vỏ task.* và ghim md5 thân cũ (065634/031548) trong khối $requires$. File 164201 (Mốc 4, áp production ngay sau, cùng lượt B1 #291) lại thay chính 4 thân đó và ghim md5 thân của 074741. Trên trạng thái production hiện tại, chạy lại 074741 gặp thân của 164201 nên khối $requires$ ném hermes_task_action_edit_dependency_invalid — đúng thiết kế (không ghi đè thân mới bằng thân cũ).",
+      "heQua": "Mục này ghim file 074741 và migration 164201 đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023013109_hermes_expense_approve_v1.sql",
+      "sha256": "286e212c69439cef05e6faaaa4460f6823c46221465f96caaf13c3b10d06377f",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_approve_body_drift: app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023013109_hermes_expense_approve_v1.json",
+      "supersededBy": {
+        "file": "20261023031258_hermes_expense_row_locks_nowait_v1.sql",
+        "sha256": "a7dde2449d5e433dd1ce49046da09132831cf7de962997713dc28fd66f4cb154",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023031258_hermes_expense_row_locks_nowait_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/298",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 013109 (Thu chi Mốc 5) thay thân bước ghi expense và ghim md5 thân trước nó; 031258 (vá NOWAIT, cùng lượt B2 #298) thay lại chính thân write_step đó. Chạy lại file gốc trên trạng thái production gặp thân/dòng mới nên khối kiểm ném đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo trên TEST (ROLLBACK, phiên B2) và production 23/10.",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022075102_hermes_expense_edit_cancel_v1.sql",
+      "sha256": "e42ed628bb109d71ded4957066c67387a022894a25e0eba1f25b1992c7a46d91",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_edit_cancel_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022075102_hermes_expense_edit_cancel_v1.json",
+      "supersededBy": {
+        "file": "20261023013109_hermes_expense_approve_v1.sql",
+        "sha256": "286e212c69439cef05e6faaaa4460f6823c46221465f96caaf13c3b10d06377f",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023013109_hermes_expense_approve_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/298",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 075102 (Thu chi Mốc 4, B1) ghim md5 thân resolve_core cũ; 013109 (Mốc 5, B2) thay thân resolve_core. Chạy lại file gốc trên trạng thái production gặp thân/dòng mới nên khối kiểm ném đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo trên TEST (ROLLBACK, phiên B2) và production 23/10.",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022074815_hermes_contract_party_draft_v1.sql",
+      "sha256": "8104e94881a234ee74471010dfbe2f50f88c2322f90a58de4f99310213bbde27",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_contract_party_check_failed",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022074815_hermes_contract_party_draft_v1.json",
+      "supersededBy": {
+        "file": "20261023030305_hermes_contract_renew_batch_v1.sql",
+        "sha256": "be39ecb5b2c50d6e8c3abaa83df6bc61b668b6b9f6493a18adbab56ed4ac1286",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023030305_hermes_contract_renew_batch_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/298",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 074815 (Hợp đồng Mốc 5, B1) có khối $check$ đếm đúng 9 dòng chính sách contract.%; 030305 (Mốc 6, B2) thêm contract.renew_batch thành 10. Chạy lại file gốc trên trạng thái production gặp thân/dòng mới nên khối kiểm ném đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo trên TEST (ROLLBACK, phiên B2) và production 23/10.",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022164201_hermes_task_batch_v1.sql",
+      "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_batch_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022164201_hermes_task_batch_v1.json",
+      "supersededBy": {
+        "file": "20261023042436_hermes_task_recurring_v1.sql",
+        "sha256": "9d6fa47e92e1bfc687beb92b14501418aceb12839c3453ca6307ffb2db190614",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023042436_hermes_task_recurring_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/298",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 164201 (Công việc Mốc 4, B1) ghim md5 4 thân vỏ task.*; 042436 (Mốc 5, B2) thay lại 4 thân đó. Chạy lại file gốc trên trạng thái production gặp thân/dòng mới nên khối kiểm ném đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo trên TEST (ROLLBACK, phiên B2) và production 23/10.",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022180402_hermes_w2c_tasks_board_v1.sql",
+      "sha256": "16d862ef0ab0c341e746656878bd13e7f88682cce6c3dcd4339401b8141ea272",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_w2c_tasks_board_body_drift: app_private.hermes_w2c_catalog_v1",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022180402_hermes_w2c_tasks_board_v1.json",
+      "supersededBy": {
+        "file": "20261023042450_hermes_w2c_task_recurrences_v1.sql",
+        "sha256": "526b1a0cbe62bb7afb7337c3e2161fd0b27256831718e58528a36c2c74c41f04",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023042450_hermes_w2c_task_recurrences_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/298",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 180402 (Công việc Mốc 4, B1) ghim md5 thân hermes_w2c_catalog_v1; 042450 (Mốc 5, B2) thay thân catalog để thêm báo cáo task_recurrences. Chạy lại file gốc trên trạng thái production gặp thân/dòng mới nên khối kiểm ném đúng thiết kế (không ghi đè thân mới bằng thân cũ). Đo trên TEST (ROLLBACK, phiên B2) và production 23/10.",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
       "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],

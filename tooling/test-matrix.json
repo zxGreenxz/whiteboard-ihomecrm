@@ -209,6 +209,7 @@
       "testPatterns": [
         "scripts/__tests__/migration-target.test.mjs",
         "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
@@ -1066,6 +1067,64 @@
       ]
     },
     {
+      "id": "hermes-invoice-actions",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_collection_plan_v1.sql",
+        "supabase/migrations/*_hermes_invoice_action_v1.sql",
+        "supabase/migrations/*_hermes_invoice_meter_v1.sql",
+        "supabase/migrations/*_meter_readings_v2.sql",
+        "supabase/migrations/*_hermes_invoice_edit_v1.sql",
+        "supabase/migrations/*_invoice_adjustment_build_v1.sql",
+        "supabase/migrations/*_hermes_w2a_invoice_shared_v1.sql",
+        "infra/hermes-broker/meter-trigger-bodies.json",
+        "infra/hermes-broker/invoice-writer-bodies.json",
+        "infra/hermes-broker/invoice-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
+        "infra/hermes-broker/action-reasons.mjs",
+        "infra/hermes-broker/capability-contract.mjs",
+        "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/invoice-write-fixture.mjs",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-runtime/host-ownership.mjs",
+        "scripts/hermes-task-function-contract.mjs",
+        "scripts/test-hermes-private-flow.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/invoice-actions.test.mjs",
+        "infra/hermes-broker/invoice-write-sql.test.mjs",
+        "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-race-sql.test.mjs",
+        "infra/hermes-broker/action-catalog.test.mjs",
+        "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
+        "infra/hermes-broker/action-reasons.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "invoice-collection-plan-parity",
+      "sourcePaths": [
+        "src/lib/collectPlan.ts",
+        "src/lib/collectionSettlement.ts",
+        "src/lib/duplicateCollection.ts",
+        "src/lib/changeAccounts.ts",
+        "src/lib/__tests__/fixtures/invoice-collection-plan-vectors.json",
+        "supabase/migrations/*_invoice_collection_plan_v1.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceCollectionPlanVectors.test.ts"
+      ]
+    },
+    {
       "id": "hermes-customer-actions",
       "sourcePaths": [
         "supabase/migrations/*_hermes_customer_lead_create_action_v1.sql",
@@ -1237,6 +1296,7 @@
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
         "infra/hermes-broker/expense-actions-contract.mjs",
+        "infra/hermes-broker/invoice-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",
@@ -1531,11 +1591,16 @@
       "id": "meter-capture-sql",
       "sourcePaths": [
         "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
-        "scripts/__tests__/meter-capture-sql.test.mjs"
+        "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+        "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+        "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
       ],
       "suiteId": "node-native",
       "testPatterns": [
-        "scripts/__tests__/meter-capture-sql.test.mjs"
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
       ]
     },
     {
@@ -1634,6 +1699,7 @@
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
         "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
         "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -1974,6 +2040,7 @@
       "risk": "infrastructure",
       "includes": [
         "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",

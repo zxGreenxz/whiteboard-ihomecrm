@@ -1,6 +1,6 @@
 # Cổ đông, Profit Close V2 và ví cá nhân
 
-> **Reviewed:** 2026-08-27
+> **Reviewed:** 2026-10-21
 > Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts` và migrations `20260720210000`–`20260720223000`.
 
 ## 1. Phạm vi
@@ -119,6 +119,28 @@ Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
   `a10_profit_month_lock_requires_no_pending` trên `profit_monthly`, phủ mọi đường đặt `locked_at`).
 - Mở khoá: `profit_unlock_v2` kèm lý do 8–1000 ký tự (lưu `profit_close_runs` + `profit_close_revisions`).
 
+**Khoá theo KỲ + phát sinh sau chốt** (rà 21/10 F06, chủ chốt 22/10/2026 "chặn hẳn", migration
+[20261022172918](../../supabase/migrations/20261022172918_khoa_ky_thang_da_chot_ln.sql)):
+- Lợi nhuận tính theo **kỳ** (`fa_accrual_allocations`: phiếu gắn hoá đơn ⇒ tháng hoá đơn; hạng mục có kỳ ⇒
+  các tháng của kỳ; không kỳ ⇒ tháng ngày phiếu), nên ngoài ngày phiếu, trigger còn xét **tháng KQKD theo kỳ**:
+  phiếu (bản cũ đang tính LN = đã duyệt; bản mới đã duyệt hoặc chờ duyệt) có phần KQKD rơi vào tháng đã chốt của
+  toà ⇒ khoá **cả phiếu** như khoá theo ngày phiếu — lập, sửa, xoá, huỷ, **duyệt**, khôi phục đều bị chặn, với mọi
+  người. Cùng các ngoại lệ không đổi tiền ở trên. Hạng mục: trigger AFTER `a02_ie_items_profit_period_lock` (thêm /
+  sửa / xoá dòng có kỳ trong tháng đã chốt). Câu lỗi: `[PROFIT_LOCKED] Tháng MM/YYYY của toà X đã chốt lợi nhuận —
+  không ghi được phiếu có kỳ trong tháng này. Muốn ghi: mở khoá tháng ở tab Chốt LN.` Form phiếu
+  (`postLockFormBlock` trong `src/lib/profitPostLock.ts`) báo đúng câu này trước khi lưu và mờ nút Lưu.
+- **Thu mới nợ cũ** vẫn đi: phiếu theo hoá đơn (tháng KQKD = tháng hoá đơn) không bị cửa kỳ chặn — thu tiền hoá
+  đơn của tháng đã chốt (kèm tiền thối/hoàn trả gắn hoá đơn) và duyệt khoản đó vẫn làm được. Phiếu chờ duyệt có kỳ
+  trong tháng đã chốt (dữ liệu trước khoá kỳ) vẫn huỷ/xoá được.
+- **Phát sinh sau chốt**: `public.profit_post_lock_vouchers_v1(p_from, p_to, p_building_ids)` (chỉ đọc, DEFINER,
+  quyền `can_access_building`, anon ⇒ 42501) trả toà×tháng đã chốt và các phiếu đã duyệt đóng góp KQKD vào tháng
+  đã chốt (theo `fa_accrual_allocations`) mà **tạo hoặc duyệt sau lúc chốt** — thu tiền hoá đơn tháng đã chốt, hoặc
+  dữ liệu cũ trước khoá kỳ. Báo cáo LN (chế độ theo kỳ) **không cộng** chúng vào tháng đã chốt: bỏ khỏi danh sách
+  thu/chi và tổng (dòng "Của iHome", bộ dò, phần chờ duyệt tính trên tổng mới), hiện chip "Phát sinh sau chốt —
+  chưa cộng vào tháng đã chốt: N khoản · thu X · chi Y" kèm danh sách; thanh kiểm chứng trừ đúng phần này phía
+  engine (không báo LỆCH giả) và chuyển "cần xem lại". Tab Chốt LN gắn nhãn "N khoản phát sinh sau chốt (chưa
+  cộng)". Muốn cộng: mở khoá tháng ở tab Chốt LN rồi chốt lại.
+
 ### 4.4. Đặt lại tháng
 
 Toà đã chốt xen toà chưa chốt KHÔNG còn là trạng thái hỏng — đó chính là thứ chốt-theo-từng-toà tạo ra. Chỉ khi tháng còn snapshot nằm trên toà ảo/đã xoá (`has_out_of_scope_snapshots`) hoặc không thể reclose an toàn thì UI mới dùng **Đặt lại**.
@@ -177,3 +199,18 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 8. Nếu migration đụng view, chạy `node scripts/check-view-invoker.mjs`.
 
 Xem hướng dẫn thao tác: [Chia lợi nhuận](../huong-dan-su-dung/03-quan-ly-van-hanh/chia-loi-nhuan/).
+
+## 9. Toà vận hành cho chủ nhà — quyết toán tháng (chủ chốt 21/10/2026)
+
+Toà do chủ nhà sở hữu, công ty vận hành và nhận % lợi nhuận tháng theo thoả thuận riêng từng toà — không thuê lại, không có tiền nhà. Toà loại này **không** quyết toán qua Profit Close V2 hay chia cổ đông ở trên.
+
+- Màn `/reports/finance/quyet-toan-van-hanh` (chủ công ty / super admin, RPC chặn 42501) và link chỉ đọc `/qt/:token` cho chủ nhà (không đăng nhập, thu hồi được, không lộ id nội bộ).
+- Công thức một nơi: `app_private.landlord_settlement_compute_v1` ([migration](../../supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql)). Phiếu đã duyệt; dòng lãi lỗ (đúng vị ngữ KQKD canonical: `business_result_accounting IS DISTINCT FROM false` và (`IS TRUE` hoặc `accounting_class = 'PNL'`)) chia tháng **theo kỳ** ghi trên hạng mục — chủ chốt 22/10 — bằng `app_private.landlord_kqkd_lines_v1`, bản chép đúng luật xếp tháng của `fa_accrual_allocations` (hoá đơn ⇒ tháng hoá đơn; kỳ nhiều tháng ⇒ chia đều; không kỳ ⇒ ngày phiếu) nhưng không xét quyền người gọi (link chủ nhà) và có cả phiếu chờ duyệt; test PGlite so từng đồng với định nghĩa sống của `fa_accrual_allocations`. Lợi nhuận quyết toán vì thế bằng đúng lợi nhuận toà trên Báo cáo LN (phần đã duyệt). Cọc / tiền khách trả thừa / dòng không tính / tiền thối là dòng tiền thật ⇒ theo **ngày phiếu**. Phiếu ở sổ quỹ thuộc danh sách sổ chủ nhà ⇒ chủ nhà giữ; mọi sổ khác ⇒ quản lý giữ.
+- Phần quản lý = `round(LN × %)` khi LN > 0, ngược lại 0đ. Chủ nhà trả quản lý = phần quản lý + quản lý chi − quản lý thu + cọc/tiền khách trả thừa/tiền thối đang nằm ở sổ chủ nhà (âm ⇒ quản lý trả lại chủ nhà). Làm tròn **không** tính (là phần khách trả thiếu được bỏ qua). Cọc ở sổ quản lý chỉ hiển thị.
+- % quản lý và sổ chủ nhà theo **phiên bản tháng** (`app_private.landlord_operation_terms`, tháng M dùng `valid_from` lớn nhất ≤ M). Sửa "từ tháng X" (mặc định ngay sau tháng chốt gần nhất): so với điều khoản đang áp ở X, **trường nào đổi thì ghi trường đó** cho X và mọi mốc sau X — đổi % không kéo theo sổ của mốc khác và ngược lại; tháng trước X giữ nguyên; X không được là tháng đã chốt. Không dời "áp dụng từ tháng" ra sau tháng đã chốt (55000). Sổ chủ nhà thêm mới phải là sổ quỹ thật, chưa xoá (sổ đang có mà sau bị xoá vẫn giữ được).
+- Thanh lý tách theo `system_source` (`termination.revenue`, `forfeit_revenue`, `extra_receipt`, `refund`, `offset`, `rent_refund_*`); mọi dòng thuộc đúng một nhóm (tính KQKD / cọc / không tính) — nhóm "không tính" vẫn liệt kê kèm lý do.
+- Chốt tháng: chỉ tháng đã qua, không còn phiếu chờ duyệt, không có phiếu đã duyệt mà bút toán sổ quỹ bị đảo hoặc chưa ghi sổ (UNPOSTED), không có phiếu dùng sổ chủ nhà của toà vận hành khác, không có phiếu của toà khác ghi vào sổ chủ nhà của toà này, tháng đầu tiên không còn phiếu chờ duyệt ghi ngày trước tháng áp dụng, số dư đầu kỳ đã được đánh dấu "đã đối chiếu với chủ nhà" (khi số dư hoặc cọc trước kỳ ở sổ chủ nhà khác 0). Dấu đối chiếu gắn với **cơ sở** lúc xác nhận (tháng áp dụng + cọc trước kỳ): dời tháng hay cọc trước kỳ đổi (phiếu nhập muộn, đổi sổ) thì hết hiệu lực; xác nhận mới chỉ được nhận khi cơ sở không đổi ngay trong lần lưu đó và đúng số cọc trước kỳ màn đã hiện (`p_opening_seen_pre_start`) — không ai "xác nhận" một con số chưa thấy. CAS theo `source_hash` (chỉ dòng KQKD và cọc ở sổ chủ nhà — duyệt cọc giữ chỗ ở sổ quản lý không làm tháng "đã đổi"), append-only. Chốt **không khoá phiếu**: phiếu đổi sau khi chốt ⇒ màn báo "đổi sau khi chốt"; mở chốt (lý do ≥ 8 ký tự) rồi chốt lại.
+- Màn quản trị (không có trên link chủ nhà) kèm: khối **đối chiếu với Báo cáo LN** (`fa_accrual_allocations`) — cùng luật kỳ nên khớp từng đồng; lệch chỉ khi tháng đã chốt mà phiếu đổi sau đó, hoặc luật kỳ của `fa_accrual_allocations` đổi mà bản chép chưa đổi (lỗi kỹ thuật, màn báo đỏ); cảnh báo khoản chi cố định chưa có phiếu (theo Phí cố định theo toà, điện/nước mặc định, bỏ tiền nhà; hạng mục đã gắn khoá là nguồn đúng), phiếu ở toà khác/toà ảo có nhắc tên toà (bỏ dấu), phiếu toà khác ghi vào sổ chủ nhà, phiếu chờ duyệt trước tháng áp dụng, khoản lãi lỗ có **kỳ trước tháng áp dụng** mà phiếu lập sau (không tính, không chặn chốt). Dòng lãi lỗ mà hạng mục không còn tồn tại (KQKD bỏ qua) hiện ở "không tính" kèm lý do. Hộp cài đặt đánh dấu sổ "dùng chung với N toà khác" và không gợi ý sổ dùng chung.
+- Link chủ nhà: không lộ id, tên sổ chỉ còn "Sổ chủ nhà" / "Sổ quản lý" / "Cấn trừ cọc (nội bộ)", tên phiếu có hạng mục hạn chế bị che; ghi chú chốt và ghi chú thanh toán chủ nhà xem được. Toà bị xoá mềm / chuyển toà ảo ⇒ link chết. Huỷ thanh toán / thu hồi link: id/token không có và không có quyền trả cùng lỗi 42501.
+- Thanh toán quyết toán giữa hai bên ghi ở `app_private.landlord_settlement_payments` (không sinh phiếu thu/chi, huỷ phải có lý do). Còn lại = số dư đầu kỳ + Σ quyết toán tháng đã chốt − chủ nhà đã trả + quản lý đã trả; chưa chốt tháng nào thì màn ghi "Chưa chốt tháng nào" thay vì 0 đ.
+- Báo cáo Lợi Nhuận giữ **tổng lợi nhuận** như cũ và thêm **một dòng "Lợi nhuận của iHome"** = tổng − phần chủ nhà của các toà vận hành trong phạm vi đang xem (chủ chốt 22/10: phần chủ nhà vẫn tính, không hiện thành dòng riêng). Phần chủ nhà lấy từ `public.landlord_ihome_profit_v1` theo toà × tháng: tháng đã chốt lấy số đã chốt, tháng mở là số tạm tính; chỉ toà người gọi xem được (`can_access_building`). Chốt LN tháng (Profit Close) **chưa đổi**: vẫn chốt lợi nhuận toàn toà.

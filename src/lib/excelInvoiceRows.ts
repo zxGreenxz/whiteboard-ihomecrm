@@ -279,8 +279,11 @@ export function buildExcelRows(args: {
       const firstSource = sources?.[0];
       const prev = sources ? Number(firstSource?.start?.value ?? 0) : meterId ? lastReading.get(meterId) ?? 0 : 0;
       const current = sources?.length === 1 && firstSource?.end ? Number(firstSource.end.value) : '' as const;
-      const sourceError = (sources?.some(source => source.issues.some(issue => issue !== 'MISSING_END')) ? 'Nguồn chỉ số cần đối chiếu. Kiểm tra tại Ghi chỉ số trước khi tạo hóa đơn.' : undefined)
+      const sourceError = (sources?.some(source => source.issues.includes('BILLED_READING_REPLACED'))
+        ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi lập tiếp; chứng từ cũ không tự đổi.'
+        : sources?.some(source => source.issues.some(issue => issue !== 'MISSING_END')) ? 'Nguồn chỉ số cần đối chiếu. Kiểm tra tại Ghi chỉ số trước khi tạo hóa đơn.' : undefined)
         || (sources?.some(source => !source.start) ? 'Thiếu chỉ số đầu trong hợp đồng; cần đối soát.' : undefined)
+        || (sources?.some(source => source.registerCode.trim() && !source.end) ? 'Đồng hồ đã đăng ký QR/ảnh: chốt số cuối tại Ghi chỉ số, kể cả 0 kWh, rồi tải lại trước khi tạo hóa đơn.' : undefined)
         || (sources && sources.length > 1 && sources.some(source => !source.end) ? 'Chưa chốt đủ đồng hồ của phòng. Bổ sung tại Ghi chỉ số.' : undefined);
       const credit = Math.max(0, creditByContract.get(c.id) || 0);
       const debtEntry = previousDebtByContract.get(c.id);

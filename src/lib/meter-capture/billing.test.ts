@@ -42,7 +42,17 @@ describe('nguồn chỉ số của hóa đơn nhanh', () => {
     expect(() => buildInvoiceFormData(row([source(), source({ meterId: id(10), end: null, issues: ['MISSING_END'] })]), ctx)).toThrow();
   });
   it('một đồng hồ chưa có số cuối cho nhập tay, vẫn dùng đúng số đầu', () => {
-    const result = row([source({ end: null, issues: ['MISSING_END'] })]);
+    const result = row([source({ registerCode: '', end: null, issues: ['MISSING_END'] })]);
     expect(result.meter_billing_error).toBeFalsy(); expect(result.current_reading).toBe(''); expect(result.prev_reading).toBe(123.45);
+  });
+  it('đồng hồ đã đăng ký ảnh phải chốt số cuối trước khi tạo hóa đơn', () => {
+    const result = row([source({ end: null, issues: ['MISSING_END'] })]);
+    expect(result.meter_billing_error).toContain('chốt số cuối');
+    expect(() => buildInvoiceFormData({ ...result, current_reading: 145.5 }, ctx)).toThrow();
+  });
+  it('chỉ số đã dùng rồi bị thay thế yêu cầu kế toán xử lý, không âm thầm tính lại hóa đơn', () => {
+    const result = row([source({ issues: ['BILLED_READING_REPLACED'] })]);
+    expect(result.meter_billing_error).toContain('kế toán xử lý');
+    expect(() => buildInvoiceFormData(result, ctx)).toThrow();
   });
 });

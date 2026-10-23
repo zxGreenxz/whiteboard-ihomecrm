@@ -2,16 +2,24 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import json
 import os
 from pathlib import Path
 import subprocess
+import time
 from typing import Any
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from domain import MAX_AI_FRAMES, MAX_SECONDS, VERSION, InvalidInput, ai_prompt, ocr_reading, parse_ai, stable_reading
+
+AI_MODEL = "cx/gpt-6.1-sol"
+AI_REASONING = "medium"
+AI_DETAIL = "original"
+RECOGNITION_BUDGET_SECONDS = 240
+OCR_FRAME_RESERVE_SECONDS = 20
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -154,78 +162,123 @@ class PaddleReader:
         return output
 
 
-def read_ai(frames: list[dict], meter: dict) -> tuple[list, bool, str]:
+def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90) -> tuple[list, bool, str]:
     base = os.environ.get("METER_CAPTURE_AI_BASE_URL", "").strip()
     key = os.environ.get("METER_CAPTURE_AI_KEY", "").strip()
-    model = os.environ.get("METER_CAPTURE_AI_MODEL", "cx/gpt-5.6-terra(low)").strip()
+    model = os.environ.get("METER_CAPTURE_AI_MODEL", AI_MODEL).strip() or AI_MODEL
     if not base or not key:
         raise InvalidInput("ai_not_configured")
+    if not 0 < len(frames) <= MAX_AI_FRAMES:
+        raise InvalidInput("invalid_ai_frame_count")
     content: list[dict] = [{"type": "text", "text": ai_prompt(meter["registerCode"], meter["decimalPlaces"])}]
     for index, frame in enumerate(frames):
         content.extend([
             {"type": "text", "text": f"frameIndex={index}"},
-            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(frame["path"].read_bytes()).decode()}},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(frame["path"].read_bytes()).decode(), "detail": AI_DETAIL}},
         ])
     response = request_json(https_base(base) + "/chat/completions", key, {
-        "model": model, "messages": [{"role": "user", "content": content}],
+        "model": model, "reasoning_effort": AI_REASONING, "messages": [{"role": "user", "content": content}],
         "response_format": {"type": "json_object"}, "max_tokens": 4000, "stream": False,
-    }, timeout=60)
+    }, timeout=timeout)
     choices = response.get("choices", []) if isinstance(response, dict) else []
     if not choices or choices[0].get("finish_reason") != "stop":
         raise InvalidInput("ai_incomplete")
     readings, single = parse_ai(choices[0].get("message", {}).get("content"),
                                 [frame["timestamp"] for frame in frames], meter["registerCode"], meter["decimalPlaces"])
-    return readings, single, model
+    return readings, single, f"{model};reasoning={AI_REASONING};detail={AI_DETAIL}"
 
 
 def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
+    deadline = time.monotonic() + RECOGNITION_BUDGET_SECONDS
     meter = job["meter"]
     is_video = job["media"][0]["mimeType"].startswith("video/")
     duration = probe_media(path, is_video)
-    selected, qr_tokens = inspect_frames(extract_frames(path, directory / "frames5", is_video, 5), meter["qrToken"])
-    multiple_qr = any(frame["multipleQr"] for frame in selected)
-    selected = representatives(selected)
     issues: list[str] = []
-    server_readings = []
-    server_status = "unreadable"
-    try:
-        reader = PaddleReader()
-        for frame in selected:
-            reading = ocr_reading(reader.read(frame["path"]), frame["timestamp"], meter["registerCode"], meter["decimalPlaces"], meter.get("serialNumber"))
-            if reading:
-                server_readings.append(reading)
-        server_value, server_times, server_issues = stable_reading(server_readings, is_video)
-        if not server_value and is_video:
-            denser, more_qr = inspect_frames(extract_frames(path, directory / "frames10", True, 10), meter["qrToken"])
-            qr_tokens.update(more_qr)
-            multiple_qr = multiple_qr or any(frame["multipleQr"] for frame in denser)
-            selected = representatives(denser)
-            server_readings = []
-            for frame in selected:
-                reading = ocr_reading(reader.read(frame["path"]), frame["timestamp"], meter["registerCode"], meter["decimalPlaces"], meter.get("serialNumber"))
-                if reading:
-                    server_readings.append(reading)
-            server_value, server_times, server_issues = stable_reading(server_readings, is_video)
-        server_status = "ok" if server_value is not None else "unreadable"
-        issues.extend("server_" + issue for issue in server_issues)
-    except Exception:
-        # Never log provider exception text: it can include image data or credentials.
-        server_value, server_times, server_status = None, [], "error"
-        issues.append("server_reader_error")
-    ai_status, ai_value, ai_times, ai_version = "error", None, [], os.environ.get("METER_CAPTURE_AI_MODEL", "cx/gpt-5.6-terra(low)")
-    single_meter = False
-    try:
-        ai_readings, single_meter, ai_version = read_ai(selected, meter)
-        ai_value, ai_times, ai_issues = stable_reading(ai_readings, is_video)
-        ai_status = "ok" if ai_value is not None else "unreadable"
-        issues.extend("ai_" + issue for issue in ai_issues)
-    except Exception:
-        issues.append("ai_reader_error")
-    by_time = {frame["timestamp"]: frame for frame in selected}
-    evidence_times = sorted(set(server_times + ai_times))[:3]
+    server_readings, ai_readings = [], []
+    server_status = ai_status = "unreadable"
+    server_value = ai_value = None
+    server_times, ai_times, server_issues, ai_issues = [], [], [], []
+    ai_version = f"{os.environ.get('METER_CAPTURE_AI_MODEL', AI_MODEL).strip() or AI_MODEL};reasoning={AI_REASONING};detail={AI_DETAIL}"
+    single_meter, multiple_qr = True, False
+    qr_tokens: set[str] = set()
+    by_time: dict[float, dict] = {}
+    reader = None
+    server_seen: set[float] = set()
+    for fps in ([5, 10] if is_video else [5]):
+        # Leave room for FFmpeg (60s), inspection and the reader still needed.
+        # A dense retry must not consume a valid first-pass AI result by hitting
+        # the process's 300s hard limit and replacing it with a failed job.
+        dense_budget = 60 + 20 + (90 if ai_status == "unreadable" else OCR_FRAME_RESERVE_SECONDS)
+        if fps == 10 and deadline - time.monotonic() < dense_budget:
+            issues.append("recognition_time_budget_exhausted")
+            break
+        inspected, found_qr = inspect_frames(extract_frames(path, directory / f"frames{fps}", is_video, fps), meter["qrToken"])
+        qr_tokens.update(found_qr)
+        multiple_qr = multiple_qr or any(frame["multipleQr"] for frame in inspected)
+        selected = representatives(inspected)
+        # Preserve the exact bytes cited by an earlier pass at the same timestamp.
+        selected = [by_time.setdefault(frame["timestamp"], frame) for frame in selected]
+        # HTTP inference and local CPU OCR have independent inputs and resources.
+        # Start AI first so a slow CPU cannot starve the primary model entirely.
+        executor, pending_ai = None, None
+        if ai_status != "error" and ai_value is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 5:
+                issues.append("ai_time_budget_exhausted")
+                single_meter = False
+            else:
+                executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="meter-ai")
+                pending_ai = executor.submit(read_ai, selected, meter, timeout=min(90, remaining - 5))
+        try:
+            if server_status != "error" and server_value is None:
+                try:
+                    for frame in selected:
+                        # by_time keeps the exact first-pass bytes at overlapping timestamps.
+                        if frame["timestamp"] in server_seen:
+                            continue
+                        if deadline - time.monotonic() < OCR_FRAME_RESERVE_SECONDS:
+                            issues.append("server_time_budget_exhausted")
+                            break
+                        reader = reader or PaddleReader()
+                        reading = ocr_reading(reader.read(frame["path"]), frame["timestamp"], meter["registerCode"], meter["decimalPlaces"], meter.get("serialNumber"))
+                        server_seen.add(frame["timestamp"])
+                        if reading:
+                            server_readings.append(reading)
+                    # Dense retries add evidence, never erase an earlier conflicting value.
+                    server_value, server_times, server_issues = stable_reading(server_readings, is_video)
+                    server_status = "ok" if server_value is not None else "unreadable"
+                except Exception:
+                    # Provider errors may contain image data or credentials. Keep only the code.
+                    server_value, server_times, server_status = None, [], "error"
+                    issues.append("server_reader_error")
+            if pending_ai is not None:
+                try:
+                    observations, same_meter, ai_version = pending_ai.result(timeout=max(0, deadline - time.monotonic()))
+                    ai_readings.extend(observations)
+                    single_meter = single_meter and same_meter
+                    ai_value, ai_times, ai_issues = stable_reading(ai_readings, is_video)
+                    ai_status = "ok" if ai_value is not None else "unreadable"
+                except FutureTimeoutError:
+                    issues.append("ai_reader_error" if pending_ai.done() else "ai_time_budget_exhausted")
+                    ai_value, ai_times, ai_status, single_meter = None, [], "error", False
+                except Exception:
+                    ai_value, ai_times, ai_status, single_meter = None, [], "error", False
+                    issues.append("ai_reader_error")
+        finally:
+            if executor is not None:
+                # Do not let a stuck provider extend the job at executor shutdown.
+                # The parent receives the result then terminates any live child.
+                executor.shutdown(wait=False, cancel_futures=True)
+        # Retry missing evidence, not service failures; an already stable reader
+        # keeps its first result and is not called again at the other reader's expense.
+        if not is_video or (server_status != "unreadable" and ai_status != "unreadable"):
+            break
+    issues.extend("server_" + issue for issue in server_issues)
+    issues.extend("ai_" + issue for issue in ai_issues)
+    evidence_times = sorted(set(server_times + ai_times))
     # Keep useful visual evidence even when both readers abstain.
     if not evidence_times:
-        evidence_times = [frame["timestamp"] for frame in selected[:3]]
+        evidence_times = [frame["timestamp"] for frame in representatives(sorted(by_time.values(), key=lambda frame: frame["timestamp"]), 3)]
     frames_by_time = {timestamp: by_time[timestamp] for timestamp in evidence_times}
     ambiguous = multiple_qr or qr_tokens != {meter["qrToken"]} or not single_meter or any(not frame["identity"] for frame in frames_by_time.values())
     if ambiguous:

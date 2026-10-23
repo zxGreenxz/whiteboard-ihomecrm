@@ -3,7 +3,8 @@ import test from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { createFixtureBroker } from './fixture.mjs';
 import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
-import { BrokerError } from './broker.mjs';
+import { BrokerError, actionRejected } from './broker.mjs';
+import { ACTION_REASONS } from './action-reasons.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT } from './read-misuse-hints.mjs';
 
@@ -137,6 +138,29 @@ test('read_name_unresolved forwards its detail string to the model and nothing e
   assert.equal(new BrokerError('read_name_unresolved').status, 400);
   problem = Object.assign(new BrokerError('read_name_unresolved'), { detail: { secret: 'PRIVATE' } });
   assert.deepEqual(await invoke(), { error: 'read_name_unresolved' });
+});
+
+// CV12 (Công việc Mốc 3): a write refusal may carry a relative web link to the very object (e.g. a job with materials that only the
+// web can cancel). Only the closed reason + its static text + a link of the relative-path shape reach the model.
+test('action_rejected forwards reason, static detail and a relative web link only', async t => {
+  let problem = null;
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw problem; } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const invoke = async () => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}` }, body: JSON.stringify(call('crm_action_run', { action: 'task.cancel' })) });
+    const body = await response.json(); assert.equal(response.status, 200); assert.equal(body.result.isError, true);
+    return JSON.parse(body.result.content[0].text);
+  };
+  const link = '/tasks?job=00000000-0000-4000-8000-000000000009';
+  problem = actionRejected('cancel_blocked', link);
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cancel_blocked', detail: ACTION_REASONS.cancel_blocked.text, link });
+  for (const bad of ['https://example.invalid/x', '//example.invalid', '/tasks?job=1 OR 1=1', 42]) {
+    problem = Object.assign(actionRejected('cancel_blocked'), { link: bad });
+    assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cancel_blocked', detail: ACTION_REASONS.cancel_blocked.text }, String(bad));
+  }
+  assert.equal(actionRejected('task_not_open', 'https://example.invalid').link, undefined, 'actionRejected bỏ link sai khuôn');
 });
 
 // R2b (21/10): a read tool called the wrong way gets invalid_request with ONE of the static routing hints of

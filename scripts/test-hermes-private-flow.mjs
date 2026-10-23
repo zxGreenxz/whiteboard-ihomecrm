@@ -514,6 +514,16 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
     statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
+  // Contract page write RPC (20261022022951): the plpgsql INVOKER lookup under the caller's RLS names only schema-qualified
+  // public/auth objects; its SQL-standard wrapper is pinned in hermes-task-function-contract.
+  { name: 'public.hermes_contract_action_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
+    statementSha256: '4ddf5730093afb09b04c566c774e9b10e27643d7a0ae65bea2d5e66d26f4e301' },
+  // Contract return (20261022061813) replaces that lookup: same body plus the unpaid invoices of the contract, only when the asker
+  // may view invoices in that building (public.can_do_on_building) and through the shared invoice_effective_outstanding_v1.
+  { name: 'public.hermes_contract_action_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022061813_hermes_contract_return_v1.sql',
+    statementSha256: '49a183d7254c6579d68004d51a0bc99008e2efe79c3d8381618eed88199275a6' },
   // Đợt 2 Thu chi (20261022024834): lõi giải tên plpgsql INVOKER của expense.* — chỉ tên public đủ schema; vỏ SQL-standard ghim ở
   // hermes-task-function-contract.
   { name: 'app_private.hermes_expense_resolve_core_v1',
@@ -527,6 +537,45 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
     statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
+  // Thu chi Mốc 4 (20261022075102): lõi giải tên expense.* thay thân — mã phiếu cho expense.edit/.cancel, tên mới của expense.edit, gợi ý
+  // không tự nhận hạng mục dòng tiền. Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql',
+    statementSha256: '99f1352dff60daa23eee1a4c35aff31293f89bb912a3ebd04ef12837b7ec1169' },
+  // Thu chi Mốc 4b (review): hàm DEFINER "phiếu bot được sửa/huỷ" chỉ tên đủ schema (public.income_expenses, app_private.assert_manual_voucher_v1,
+  // app_private.hermes_expense_reason_v1, app_private.hermes_action_flags) ⇒ search_path=''.
+  { name: 'app_private.hermes_expense_manual_v1',
+    sourcePath: 'supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql',
+    statementSha256: 'c3b35ae8d93f5bcf6236cebef19ec3c9a0f580e851875949eff6928f96cf7444' },
+  // Đợt 3 Hoá đơn Mốc 3 (20261022075230): tra cứu plpgsql INVOKER của invoice.* — chỉ tên public đủ schema; vỏ SQL-standard ghim ở
+  // hermes-task-function-contract.
+  { name: 'app_private.hermes_invoice_lookup_core_v1',
+    sourcePath: 'supabase/migrations/20261022075230_hermes_invoice_action_v1.sql',
+    statementSha256: 'ded13e9c5914ed5f5167d291a4cc54fec7bede83fb49cb2c51967ba9ac0a3170' },
+  // Occupants + drafts (20261022074815): INVOKER customer lookup under the caller's RLS ∩ the connection's buildings (phone first, else
+  // exact folded name, or the chosen customerId on the apply turn; candidates carry only a name and the last three phone digits);
+  // schema-qualified public/auth objects only.
+  { name: 'public.hermes_contract_party_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
+    statementSha256: '4d9c7d8d0de7c484c833dcba263f91d024103f48e4fa1ab8986d2343e6c79cbe' },
+  // Thu chi Mốc 5 (20261023013109): lõi giải tên expense.* thay thân — voucherCodes của expense.approve giải từng mã như mã phiếu (vòng tại
+  // chỗ, không gọi lại chính nó theo tên). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023013109_hermes_expense_approve_v1.sql',
+    statementSha256: '6534eda19a29a4e86d6a89fe7d2e3319c65f78b44cd03a51eb443743cf5ca3b6' },
+  // Mốc 4 (20261022183445): tra cứu plpgsql INVOKER của invoice.meter_record — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_meter_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql',
+    statementSha256: '0119a90d9ac05ec7a3bceeb835b83c4f36353b03c1f7b0e4be719c937d2d6ff4' },
+  // Renew batch (20261023030305): INVOKER batch lookup under the caller's RLS ∩ the connection's buildings — ACTIVE contracts ending in
+  // one month, ids + move-out flag + counts only (no names, no customer data); schema-qualified public/auth objects only.
+  { name: 'public.hermes_contract_batch_lookup_v1',
+    sourcePath: 'supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql',
+    statementSha256: 'abc42f34682088fec505d7103d3102d6793b24a66181d80135dbe4ca79bee97e' },
+  // Mốc 5 (20261023042723): tra cứu plpgsql INVOKER của điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_edit_lookup_v1',
+    sourcePath: 'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
+    statementSha256: 'd1c7b73a8705caca8a84b24ded68016cd93dd23062f3b71f76f571bb6c144e27' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

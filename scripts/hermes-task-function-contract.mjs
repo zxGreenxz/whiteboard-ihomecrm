@@ -40,6 +40,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
   statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
  },
+ // Trang Hợp đồng (Đợt 2): vỏ INVOKER gắn OID guard / giải tên / tra cứu / bước ghi DEFINER lúc tạo.
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261022022951_hermes_contract_action_v1.sql',
+  statementSha256:'cb4774dc01070a244241028a4c3977c33222da25f654b817a0a9b860f800ff0b',
+ },
  // Đợt 2 Thu chi (Mốc 2): RPC trang expense.* — cùng khuôn vỏ INVOKER gắn OID guard / lõi giải tên / bước ghi DEFINER.
  {
   name:'public.hermes_expense_write_v1',
@@ -58,6 +64,36 @@ for(const spec of [
   name:'public.hermes_task_action_v1',
   sourcePath:'supabase/migrations/20261022031548_hermes_task_action_create_v1.sql',
   statementSha256:'2948cefb90348c6445074b162ec4bbd7906d802965c8a86a4dc7a63208bee61d',
+ },
+ // Đợt 3 Hoá đơn (Mốc 3/3b): RPC trang invoice.* — vỏ INVOKER gắn OID guard / tra cứu INVOKER / bước ghi DEFINER (quyền thu của v5).
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261022075230_hermes_invoice_action_v1.sql',
+  statementSha256:'388d177cd7ec770dd0e3bae00a936304753a43db310c2a2064e8d4735c559097',
+ },
+ // Mốc 5 dựng lại vỏ trang (thêm tra khách INVOKER cho người ở + nháp; lượt 2 tra lại theo customerId).
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
+  statementSha256:'4f6e55f7823b2cfa3458b37866c323e478b1d60b5ac6493e9f55140adf1b20b9',
+ },
+ // Đợt 3 Hoá đơn (Mốc 4): vỏ invoice.* chuyển theo thao tác — invoice.meter_record tới tra cứu/bước ghi chỉ số, còn lại như Mốc 3.
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql',
+  statementSha256:'44cca4c35b0025fd1366965519246ed58976cee683d7416f9adee2728765280e',
+ },
+ // Mốc 6 dựng lại vỏ trang (nhánh gia hạn lô: giải tên toà, tra lô INVOKER, chuyển sang bước ghi lô DEFINER).
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql',
+  statementSha256:'8068e6728d9577cd2517283ea2737c56b5d1d280a150a8435bcfb2bb58728612',
+ },
+ // Đợt 3 Hoá đơn (Mốc 5): vỏ invoice.* chuyển thêm điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục tới tra cứu/bước ghi riêng.
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
+  statementSha256:'9ebf55b62159fa6c78174f8a17e7fa7170fec72d8ecc95f2c32a028ea5a8c1f5',
  },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);

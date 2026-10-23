@@ -89,7 +89,7 @@ export function createHandler(dependencies: Dependencies = {}) {
         if (!result.ok) {
           const error: unknown = await result.json().catch(() => null);
           const code = object(error) && typeof error.code === 'string' ? error.code : '';
-          const status = ['42501', 'PGRST301'].includes(code) ? 403 : ['PT409', '23505'].includes(code) ? 409 : ['22023', '55000'].includes(code) ? 422 : 502;
+          const status = ['42501', 'PGRST301'].includes(code) ? 403 : ['PT409', '23505'].includes(code) ? 409 : ['PT422', '22023', '55000'].includes(code) ? 422 : 502;
           throw new RequestError(status, code || 'meter_capture_rpc_failed');
         }
         if (result.status === 204) return null;
@@ -111,14 +111,25 @@ export function createHandler(dependencies: Dependencies = {}) {
         if (!object(value)) return value;
         const privateReference = (key: unknown) => key == null ? null
           : base + '/storage/v1/object/authenticated/' + BUCKET + '/' + pathFor(requiredString(key));
+        const evidenceFrames = (frames: unknown) => {
+          if (frames == null) return [];
+          if (!Array.isArray(frames) || frames.length > 6) throw new RequestError(502, 'invalid_evidence_frames');
+          return frames.map(frame => {
+            if (!object(frame) || typeof frame.timestampSeconds !== 'number' || !Number.isFinite(frame.timestampSeconds)
+              || frame.timestampSeconds < 0 || frame.timestampSeconds > 60 || typeof frame.objectKey !== 'string') {
+              throw new RequestError(502, 'invalid_evidence_frames');
+            }
+            return { timestampSeconds: frame.timestampSeconds, imageUrl: privateReference(frame.objectKey) };
+          });
+        };
         const captureReferences = (capture: unknown) => {
           if (!object(capture)) return capture;
-          if (!capture.mediaReceived) return { ...capture, evidenceUrl: null, videoUrl: null };
+          if (!capture.mediaReceived) return { ...capture, evidenceUrl: null, videoUrl: null, evidenceFrames: [] };
           // Existing StorageImage/useSignedUrl signs these only when expanded. References have
           // no bearer token and remain private; listing 500 captures must not make 1000 sign calls.
-          return { ...capture, evidenceUrl: privateReference(capture.imageObjectKey), videoUrl: privateReference(capture.videoObjectKey) };
+          return { ...capture, evidenceUrl: privateReference(capture.imageObjectKey), videoUrl: privateReference(capture.videoObjectKey), evidenceFrames: evidenceFrames(capture.evidenceFrames) };
         };
-        if (object(value.evidence)) return { ...value, evidence: { ...value.evidence, imageUrl: await signed(value.evidence.imageObjectKey), videoUrl: await signed(value.evidence.videoObjectKey) } };
+        if (object(value.evidence)) return { ...value, evidence: { ...value.evidence, imageUrl: await signed(value.evidence.imageObjectKey), videoUrl: await signed(value.evidence.videoObjectKey), evidenceFrames: evidenceFrames(value.evidence.evidenceFrames) } };
         if ('capture' in value) return { ...value, capture: captureReferences(value.capture) };
         if (Array.isArray(value.captures)) {
           return { ...value, captures: value.captures.map(captureReferences) };

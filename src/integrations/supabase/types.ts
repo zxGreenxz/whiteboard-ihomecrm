@@ -10137,6 +10137,157 @@ export type Database = {
           },
         ]
       }
+      job_recurrence_occurrences: {
+        Row: {
+          created_at: string
+          job_id: string | null
+          occurrence_date: string
+          organization_id: string
+          outcome: string
+          reason: string | null
+          rule_id: string
+        }
+        Insert: {
+          created_at?: string
+          job_id?: string | null
+          occurrence_date: string
+          organization_id: string
+          outcome: string
+          reason?: string | null
+          rule_id: string
+        }
+        Update: {
+          created_at?: string
+          job_id?: string | null
+          occurrence_date?: string
+          organization_id?: string
+          outcome?: string
+          reason?: string | null
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_recurrence_occurrences_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_recurrence_occurrences_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "job_recurrence_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_recurrence_rules: {
+        Row: {
+          assignee_id: string | null
+          building_id: string
+          code: string
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          description: string | null
+          due_days: number
+          end_date: string | null
+          every: number
+          frequency: string
+          id: string
+          job_type_id: string
+          last_generated_date: string | null
+          month_day: number | null
+          organization_id: string
+          paused_at: string | null
+          paused_reason: string | null
+          priority: string
+          room_id: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          version: number
+          weekdays: number[] | null
+        }
+        Insert: {
+          assignee_id?: string | null
+          building_id: string
+          code: string
+          created_at?: string
+          created_by: string
+          deleted_at?: string | null
+          description?: string | null
+          due_days?: number
+          end_date?: string | null
+          every?: number
+          frequency: string
+          id?: string
+          job_type_id: string
+          last_generated_date?: string | null
+          month_day?: number | null
+          organization_id: string
+          paused_at?: string | null
+          paused_reason?: string | null
+          priority?: string
+          room_id?: string | null
+          start_date: string
+          title: string
+          updated_at?: string
+          version?: number
+          weekdays?: number[] | null
+        }
+        Update: {
+          assignee_id?: string | null
+          building_id?: string
+          code?: string
+          created_at?: string
+          created_by?: string
+          deleted_at?: string | null
+          description?: string | null
+          due_days?: number
+          end_date?: string | null
+          every?: number
+          frequency?: string
+          id?: string
+          job_type_id?: string
+          last_generated_date?: string | null
+          month_day?: number | null
+          organization_id?: string
+          paused_at?: string | null
+          paused_reason?: string | null
+          priority?: string
+          room_id?: string | null
+          start_date?: string
+          title?: string
+          updated_at?: string
+          version?: number
+          weekdays?: number[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_recurrence_rules_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "job_recurrence_rules_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_recurrence_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_types: {
         Row: {
           acceptance_deadline: number | null
@@ -25424,6 +25575,25 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_contract_batch_lookup_v1: {
+        Args: {
+          p_building_id: string
+          p_building_ids: string[]
+          p_end_month: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      hermes_contract_party_lookup_v1: {
+        Args: {
+          p_action: string
+          p_building_ids: string[]
+          p_organization_id: string
+          p_params: Json
+          p_room_id: string
+        }
+        Returns: Json
+      }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -25508,6 +25678,18 @@ export type Database = {
         Returns: Json
       }
       hermes_group_send_v1: { Args: { p: Json }; Returns: Json }
+      hermes_invoice_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_my_connections_v1: { Args: { p_org: string }; Returns: Json }
       hermes_my_task_follow_stop_v1: {
         Args: { p_input: Json; p_org: string }
@@ -25966,6 +26148,10 @@ export type Database = {
           payment_methods: string[]
         }[]
       }
+      invoice_adjustment_build_v1: {
+        Args: { p_invoice_id: string; p_ops?: Json }
+        Returns: Json
+      }
       invoice_adjustments_list_v1: {
         Args: {
           p_building_ids?: string[]
@@ -26013,6 +26199,14 @@ export type Database = {
           payment_count: number
           payment_method: string
         }[]
+      }
+      invoice_collection_plan_core_v1: {
+        Args: { p_input: Json }
+        Returns: Json
+      }
+      invoice_collection_plan_v1: {
+        Args: { p_invoice_id: string; p_lines: Json; p_options?: Json }
+        Returns: Json
       }
       invoice_detail_v1: {
         Args: {
@@ -26322,6 +26516,222 @@ export type Database = {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
       }
+      job_recurrence_create_v1: {
+        Args: {
+          p_assignee_id: string
+          p_building_id: string
+          p_description: string
+          p_due_days: number
+          p_end_date: string
+          p_every: number
+          p_frequency: string
+          p_job_type_id: string
+          p_month_day: number
+          p_organization_id: string
+          p_priority: string
+          p_room_id: string
+          p_start_date: string
+          p_title: string
+          p_weekdays: number[]
+        }
+        Returns: {
+          assignee_id: string | null
+          building_id: string
+          code: string
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          description: string | null
+          due_days: number
+          end_date: string | null
+          every: number
+          frequency: string
+          id: string
+          job_type_id: string
+          last_generated_date: string | null
+          month_day: number | null
+          organization_id: string
+          paused_at: string | null
+          paused_reason: string | null
+          priority: string
+          room_id: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          version: number
+          weekdays: number[] | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "job_recurrence_rules"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      job_recurrence_dates_v1: {
+        Args: {
+          p_end: string
+          p_every: number
+          p_frequency: string
+          p_from: string
+          p_month_day: number
+          p_start: string
+          p_to: string
+          p_weekdays: number[]
+        }
+        Returns: string[]
+      }
+      job_recurrence_delete_v1: {
+        Args: { p_expected_version: number; p_rule_id: string }
+        Returns: {
+          assignee_id: string | null
+          building_id: string
+          code: string
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          description: string | null
+          due_days: number
+          end_date: string | null
+          every: number
+          frequency: string
+          id: string
+          job_type_id: string
+          last_generated_date: string | null
+          month_day: number | null
+          organization_id: string
+          paused_at: string | null
+          paused_reason: string | null
+          priority: string
+          room_id: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          version: number
+          weekdays: number[] | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "job_recurrence_rules"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      job_recurrence_schedule_text_v1: {
+        Args: {
+          p_every: number
+          p_frequency: string
+          p_month_day: number
+          p_weekdays: number[]
+        }
+        Returns: string
+      }
+      job_recurrence_set_paused_v1: {
+        Args: {
+          p_expected_version: number
+          p_paused: boolean
+          p_rule_id: string
+        }
+        Returns: {
+          assignee_id: string | null
+          building_id: string
+          code: string
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          description: string | null
+          due_days: number
+          end_date: string | null
+          every: number
+          frequency: string
+          id: string
+          job_type_id: string
+          last_generated_date: string | null
+          month_day: number | null
+          organization_id: string
+          paused_at: string | null
+          paused_reason: string | null
+          priority: string
+          room_id: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          version: number
+          weekdays: number[] | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "job_recurrence_rules"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      job_recurrence_update_v1: {
+        Args: { p_changes: Json; p_expected_version: number; p_rule_id: string }
+        Returns: {
+          assignee_id: string | null
+          building_id: string
+          code: string
+          created_at: string
+          created_by: string
+          deleted_at: string | null
+          description: string | null
+          due_days: number
+          end_date: string | null
+          every: number
+          frequency: string
+          id: string
+          job_type_id: string
+          last_generated_date: string | null
+          month_day: number | null
+          organization_id: string
+          paused_at: string | null
+          paused_reason: string | null
+          priority: string
+          room_id: string | null
+          start_date: string
+          title: string
+          updated_at: string
+          version: number
+          weekdays: number[] | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "job_recurrence_rules"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      job_recurrences_list_v1: {
+        Args: {
+          p_building_id?: string
+          p_building_ids: string[]
+          p_organization_id: string
+          p_query?: string
+          p_status?: string
+        }
+        Returns: {
+          assignee_id: string
+          assignee_name: string
+          building_id: string
+          building_name: string
+          code: string
+          created_at: string
+          due_days: number
+          end_date: string
+          job_type: string
+          next_date: string
+          organization_id: string
+          paused_reason: string
+          room_id: string
+          room_name: string
+          rule_id: string
+          schedule_text: string
+          start_date: string
+          status: string
+          title: string
+        }[]
+      }
       job_types_list_v1: {
         Args: { p_organization_id: string }
         Returns: {
@@ -26343,7 +26753,123 @@ export type Database = {
         Args: { p_assignee_id: string }
         Returns: boolean
       }
+      jobs_board_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_kind?: string
+          p_org_wide?: boolean
+          p_organization_id: string
+          p_query?: string
+          p_room_id?: string
+          p_staff_id?: string
+          p_status?: string
+          p_to?: string
+        }
+        Returns: {
+          assignee_id: string
+          assignee_name: string
+          assigner_name: string
+          building_id: string
+          building_name: string
+          code: string
+          completed_on: string
+          completion_time: string
+          created_on: string
+          deadline: string
+          deadline_local: string
+          job_id: string
+          job_type: string
+          organization_id: string
+          overdue: boolean
+          overdue_days: number
+          progress: string
+          room_id: string
+          room_name: string
+          status: string
+          title: string
+        }[]
+      }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
+      landlord_ihome_profit_v1: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
+      landlord_operation_options_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_operation_upsert_v1: {
+        Args: {
+          p_building_id: string
+          p_effective_from: string
+          p_expected_updated_at?: string
+          p_is_active?: boolean
+          p_landlord_account_ids: string[]
+          p_landlord_name: string
+          p_manager_fixed_amount?: number
+          p_manager_percent: number
+          p_note?: string
+          p_opening_balance?: number
+          p_opening_confirmed?: boolean
+          p_opening_seen_pre_start?: number
+          p_terms_from?: string
+        }
+        Returns: Json
+      }
+      landlord_operations_list_v1: { Args: never; Returns: Json }
+      landlord_settlement_add_payment_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_direction: string
+          p_idempotency_key: string
+          p_note: string
+          p_paid_on: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_close_v1: {
+        Args: {
+          p_building_id: string
+          p_expected_hash: string
+          p_month: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_month_v1: {
+        Args: { p_building_id: string; p_month: string }
+        Returns: Json
+      }
+      landlord_settlement_overview_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_settlement_public_v1: {
+        Args: { p_month?: string; p_token: string }
+        Returns: Json
+      }
+      landlord_settlement_reopen_v1: {
+        Args: { p_building_id: string; p_month: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_settlement_void_payment_v1: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_share_link_create_v1: {
+        Args: { p_building_id: string; p_label?: string }
+        Returns: Json
+      }
+      landlord_share_link_revoke_v1: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      landlord_share_links_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
       lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
@@ -26860,6 +27386,15 @@ export type Database = {
           total_quantity: number
           usage_date: string
         }[]
+      }
+      meter_readings_plan_v1: {
+        Args: {
+          p_building_id: string
+          p_reading_date: string
+          p_replace?: boolean
+          p_rows: Json
+        }
+        Returns: Json
       }
       meters_list_v1: {
         Args: {
@@ -27743,6 +28278,10 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_organization_id: string }
         Returns: Json
       }
+      profit_post_lock_vouchers_v1: {
+        Args: { p_building_ids?: string[]; p_from: string; p_to: string }
+        Returns: Json
+      }
       profit_reclose_v2: {
         Args: {
           p_adjustments?: Json
@@ -28222,6 +28761,16 @@ export type Database = {
           p_receipt_number?: string
           p_voucher?: Json
           p_voucher_owner_id?: string
+        }
+        Returns: Json
+      }
+      record_meter_readings_v2: {
+        Args: {
+          p_building_id: string
+          p_idempotency_key?: string
+          p_reading_date: string
+          p_replace?: boolean
+          p_rows: Json
         }
         Returns: Json
       }
@@ -30698,12 +31247,20 @@ export type Database = {
         Args: { p_instance_id: string; p_job_id: string }
         Returns: boolean
       }
+      zalo_worker_begin_task_reminder_v1: {
+        Args: { p_id: string; p_instance_id: string }
+        Returns: Json
+      }
       zalo_worker_claim_job_v1: {
         Args: { p_instance_id: string; p_job_id: string }
         Returns: Json
       }
       zalo_worker_claim_oneshot_v1: {
         Args: { p_instance_id: string; p_organization_ids?: string[] }
+        Returns: Json
+      }
+      zalo_worker_claim_task_reminders_v1: {
+        Args: { p_instance_id: string; p_limit?: number }
         Returns: Json
       }
       zalo_worker_finalize_send_v1: {
@@ -30721,6 +31278,15 @@ export type Database = {
       }
       zalo_worker_recover_jobs_v1: {
         Args: { p_instance_id: string }
+        Returns: Json
+      }
+      zalo_worker_settle_task_reminder_v1: {
+        Args: {
+          p_error_code?: string
+          p_id: string
+          p_instance_id: string
+          p_outcome: string
+        }
         Returns: Json
       }
       zalo_worker_status_v1: { Args: never; Returns: Json }

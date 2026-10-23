@@ -51,6 +51,21 @@ test('P2-1: each reminder tick rechecks the Hermes Read tasks.view grant; losing
   }
 });
 
+// Known-gap hermes-pham-vi-toa-chua-giao-web mục (3) (Công việc Mốc 4, 20261022180351): người giao mất buildings.view ở toà của việc (web
+// giấu toà) ⇒ lượt nhắc kế tiếp đóng theo dõi như mất quyền, không báo thêm. Bản trước đó (building:null) vẫn nhắc — phép đo không rỗng.
+test('known-gap (3): losing buildings.view at the job building closes the follow silently; the previous grant kept reminding', { timeout: 120000 }, async t => {
+  for (const [label, options, expected] of [['20261022180351', {}, { state: 'REVOKED', close_reason: 'permission_lost', due: false }],
+    ['before it', { building: null }, { state: 'ACTIVE', close_reason: null, due: true }]]) {
+    const f = await setupFollow(t, options), { db } = f;
+    const jobId = await f.job({ deadline: iso(10 * 60_000), title: `toà bị giấu (${label})` });
+    await f.action('set', set(u(1), jobId));
+    await db.query(`DELETE FROM public.fixture_perm WHERE user_id=$1 AND permission='buildings.view'`, [USER]);
+    const result = await f.tick();
+    assert.equal(result.failed, 0, label);
+    assert.deepEqual(await follow(db, jobId), expected, label);
+  }
+});
+
 test('P3a: a failing follow or notice is isolated, retried next tick; a busy company is skipped, not waited on', { timeout: 120000 }, async t => {
   const f = await setupFollow(t), { db } = f;
   const poisoned = await f.job({ deadline: iso(10 * 60_000), title: 'Việc lỗi' });

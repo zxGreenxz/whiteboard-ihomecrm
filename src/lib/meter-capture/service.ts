@@ -32,6 +32,7 @@ async function gateway(body: Record<string, unknown>): Promise<unknown> {
 function meterGatewayMessage(code: string): string {
   if (code === '42501' || code === 'worker_forbidden') return 'Bạn chưa có quyền thực hiện thao tác này.';
   if (code === 'PT409' || code === '23505') return 'Dữ liệu đã thay đổi hoặc đã được lưu. Tải lại để đối chiếu trước khi tiếp tục.';
+  if (code === 'PT422') return 'Chỉ số đã dùng cho thanh lý đã hoàn tất. Cần kế toán và quản lý hợp đồng xử lý điều chỉnh trước; chứng từ cũ được giữ nguyên.';
   if (code === '55000' || code === '22023') return 'Chỉ số hoặc chứng cứ chưa đủ điều kiện. Tải lại và kiểm tra đồng hồ, kỳ chốt.';
   return 'Chưa xử lý được yêu cầu ghi chỉ số. Giữ bản trên điện thoại và thử lại.';
 }
@@ -81,7 +82,8 @@ export async function submitMeterCapture(input: SubmitMeterCaptureInput): Promis
   if (!done.capture.mediaReceived || !receiptMatches(done.capture)) throw new Error('Chưa xác minh được ảnh trên máy chủ; vẫn giữ bản trên điện thoại.');
   return done.capture;
 }
-export async function confirmMeterCapture(input: { orgId: string; captureId: string; expectedVersion: number; value: string; reason?: string }) {
+export async function confirmMeterCapture(input: { orgId: string; captureId: string; expectedVersion: number; expectedPreviousValue: string | null;
+  supersedesCaptureId?: string; expectedSupersededVersion?: number; value: string; reason?: string }) {
   const { orgId, ...payload } = input;
   return z.object({ capture: meterCaptureSchema }).parse(await call(orgId, 'confirmCapture', payload)).capture;
 }
@@ -109,7 +111,7 @@ export async function readMeterEvidence(orgId: string, captureId: string) {
   return z.object({ evidence: meterEvidenceSchema }).parse(await call(orgId, 'evidence', { captureId })).evidence;
 }
 export async function readDocumentEvidence(orgId: string, documentId: string, kind: 'INVOICE' | 'EXIT' = 'INVOICE') {
-  return z.object({ sources: z.array(z.object({ meterId: uuid, meterName: z.string(), sortOrder: z.number().int().nonnegative(),
+  return z.object({ sources: z.array(z.object({ meterId: uuid, meterName: z.string(), sortOrder: z.number().int().nonnegative().nullable(),
     startCaptureId: uuid.nullable(), endCaptureId: uuid.nullable(), previousReading: z.string(), currentReading: z.string() })) })
     .parse(await call(orgId, 'documentEvidence', { documentId, kind })).sources;
 }

@@ -30,6 +30,12 @@ class RecognitionRules(unittest.TestCase):
         self.assertIsNone(stable_reading(readings, True)[0])
         self.assertIsNone(stable_reading([Reading("0010", "1.8.0", 1), Reading("0010", "2.8.0", 2)], True)[0])
 
+    def test_retained_timestamps_keep_the_span_that_proved_stability(self):
+        value, timestamps, issues = stable_reading([Reading("0010", "total", t) for t in [0, .02, .04, .06, 2]], True)
+        self.assertEqual(value, "0010")
+        self.assertEqual(timestamps, [0, .04, 2])
+        self.assertEqual(issues, [])
+
     def test_ocr_requires_register_unit_and_numeric_proximity(self):
         values = [token("1.8.0", [0, 0, 30, 10]), token("0123.4", [10, 20, 90, 40]), token("kWh", [100, 22, 130, 38]), token("SERIAL77", [0, 100, 100, 110])]
         reading = ocr_reading(values, 1.5, "1.8.0", 1, "SERIAL77")
@@ -44,6 +50,19 @@ class RecognitionRules(unittest.TestCase):
         self.assertIsNone(ocr_reading(values, 0, "total", 0, None))
         self.assertIsNone(ocr_reading([token("123 kWh", [0, 0, 90, 30], .91)], 0, "total", 0, None))
         self.assertEqual(ocr_reading(values[:1], 0, "total", 0, None).value, "123")
+
+    def test_ocr_rejects_a_confident_tail_beside_weak_integer_digits(self):
+        values = [token("4967", [0, 20, 70, 40], .6), token("0.4", [73, 20, 100, 40]), token("kWh", [110, 22, 140, 38])]
+        self.assertIsNone(ocr_reading(values, 0, "total", 1, None))
+        # Do not join a complete integer and a separate fraction either.
+        values[0]["score"] = .99
+        self.assertIsNone(ocr_reading(values, 0, "total", 1, None))
+
+    def test_ocr_rejects_duplicate_values_on_two_meters_or_a_distant_register(self):
+        values = [token("123 kWh", [0, 0, 90, 30]), token("123 kWh", [0, 100, 90, 130])]
+        self.assertIsNone(ocr_reading(values, 0, "total", 0, None))
+        values = [token("1.8.0", [500, 0, 550, 10]), token("123.4 kWh", [0, 20, 120, 40])]
+        self.assertIsNone(ocr_reading(values, 0, "1.8.0", 1, None))
 
     def test_ai_structured_schema_no_extra_fields_unknown_frames_or_fences(self):
         item = {"frameIndex": 0, "value": "0012.3", "registerCode": "1.8.0", "unit": "kWh", "clear": True}
@@ -66,6 +85,13 @@ class RecognitionRules(unittest.TestCase):
         prompt = ai_prompt("1.8.0", 1)
         self.assertNotIn("previous", prompt)
         self.assertNotIn("OCR result", prompt)
+
+    def test_ai_must_account_for_every_frame_and_cannot_read_ambiguous_meters(self):
+        item = {"frameIndex": 0, "value": "0012.3", "registerCode": "1.8.0", "unit": "kWh", "clear": True}
+        with self.assertRaisesRegex(InvalidInput, "invalid_ai_schema"):
+            parse_ai(json.dumps({"singleMeter": True, "readings": [item]}), [0, .2], "1.8.0", 1)
+        with self.assertRaisesRegex(InvalidInput, "ambiguous_ai_meter"):
+            parse_ai(json.dumps({"singleMeter": False, "readings": [item]}), [0], "1.8.0", 1)
 
     def test_selection_uses_quality_and_time_not_digits(self):
         frames = [{"timestamp": index, "quality": index % 3, "ocrValue": "9999"} for index in range(60)]

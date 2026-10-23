@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { inferPaymentKind, selectPaymentWallet, type PaymentWalletCandidate } from '../payment';
 import { draftFromBill, draftsFromText, enrichFromAi, markTouched, type ComposeContext } from '../compose';
+import { stubSuggest } from './sqlSuggestStub';
 import { parseAiResult, type AiResult } from '../aiSchema';
 import { resolvePersonalDraft } from '../personalRefs';
 import { deserializeCards, serializeCards } from '../feedStorage';
@@ -17,7 +18,7 @@ const ctx = (mode: 'company' | 'personal' = 'company', overrides: Partial<Compos
   mode, entrySource: 'personal_wallet', companyOrganizationId: 'org-one', createdAt: 100,
   today: '2026-10-08', refs: { buildings: [], rooms: [] }, categories: [],
   personalWalletId: 'legacy-default', paymentWallets: wallets,
-  newId: () => crypto.randomUUID(), defaultAccountFor: () => 'unconfigured-book', ...overrides,
+  newId: () => crypto.randomUUID(), defaultAccountFor: () => 'unconfigured-book', suggestCategory: stubSuggest([]), ...overrides,
 });
 const bill = (overrides: Partial<AiResult> = {}): AiResult => {
   const parsed = parseAiResult(JSON.stringify({ items: [{ desc: 'Vật tư', amount_vnd: 50_000, transactionType: 'EXPENSE' }], ...overrides }), 0);

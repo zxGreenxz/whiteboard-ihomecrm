@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const io = vi.hoisted(() => ({ invoke: vi.fn(), upload: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { functions: { invoke: io.invoke } } }));
 vi.mock('@/lib/storage', () => ({ uploadFileDetailed: io.upload }));
-import { submitMeterCapture, meterInvoiceRequestId } from './service';
+import { submitMeterCapture, meterInvoiceRequestId, readDocumentEvidence } from './service';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hash = 'a'.repeat(64);
 const input = { clientId: id(1), orgId: id(2), meterId: id(3), qrText: 'ihome-meter:' + id(4), purpose: 'MONTHLY' as const,
@@ -14,6 +14,12 @@ const capture = { id: id(5), clientId: input.clientId, orgId: input.orgId, meter
 const reply = (data: unknown) => ({ data, error: null });
 beforeEach(() => { vi.resetAllMocks(); });
 describe('media receipt boundary', () => {
+  it('keeps zero-usage settlement evidence even when no charge line exists on the invoice', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ sources: [{ meterId: id(3), meterName: 'Điện phòng A', sortOrder: null,
+      startCaptureId: id(4), endCaptureId: id(5), previousReading: '120.25', currentReading: '120.25' }] }));
+    const evidence = await readDocumentEvidence(id(2), id(6));
+    expect(evidence[0]).toMatchObject({ sortOrder: null, currentReading: '120.25', endCaptureId: id(5) });
+  });
   it('reconciles an already uploaded original before attempting storage again', async () => {
     io.invoke.mockResolvedValueOnce(reply({ capture, uploadPath: 'original' }))
       .mockResolvedValueOnce(reply({ capture: { ...capture, mediaReceived: true } }));

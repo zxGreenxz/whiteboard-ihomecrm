@@ -895,6 +895,71 @@
           "trich_doan": "test('billing resolver uses exact contract/period and wrapper atomically links sources, rejects stale values and duplicate retry'"
         }
       ]
+    },
+    "supabase/migrations/20261023142638_meter_capture_sol_review.sql": {
+      "sha256": "9776dc5f420b1b6baef66459ed58e71a3e7bfdb13e3d67ab8c7063970ec50434",
+      "missingObjects": [
+        "function:app_private.meter_capture_previous_value_v1",
+        "function:app_private.meter_capture_evidence_frames_v1",
+        "function:app_private.meter_capture_json_v1",
+        "function:public.meter_capture_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_previous_value_v1(p_id uuid)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql": {
+      "sha256": "8bb763093eccb416e2941ab36197642aa8460e2ce5f874ccfdeedef2b79d2547",
+      "missingObjects": [
+        "table:app_private.meter_capture_invoice_facts",
+        "function:app_private.meter_capture_invoice_scope_v1",
+        "function:app_private.meter_capture_invoice_line_v1",
+        "function:app_private.meter_capture_snapshot_invoice_link_v1",
+        "function:app_private.meter_capture_assert_invoice_facts_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_invoice_facts ("
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023150206_meter_capture_correction_chain.sql": {
+      "sha256": "53677711006945aa0992375df73b3eb40a53781da76422029de293ac159c8027",
+      "missingObjects": [
+        "function:app_private.meter_capture_is_retirement_v1",
+        "function:app_private.meter_capture_approved_writer_v1",
+        "function:app_private.meter_capture_reading_guard_v1",
+        "function:app_private.meter_capture_replacement_v1",
+        "function:app_private.meter_capture_previous_value_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_is_retirement_v1(p_old public.meter_readings,p_new public.meter_readings)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
     }
   }
 }

@@ -115,7 +115,10 @@ export function taskFollowResult(operation, value, identity, input) {
         !nullable(v => typeof v === 'string' && [...v].length <= 1000 && !v.includes('\0'))(item.progressNote) || !digest(item.progressDigest) ||
         !Array.isArray(item.follows) || item.follows.length > 5 ||
         item.follows.some(f => !follow(f) || f.state !== 'active' || f.jobId !== item.id || (f.assignerUserId !== me && f.executorUserId !== me)) ||
-        !buildingAllowed(identity, TASK_FOLLOW_READ, item.buildingId) ||
+        // Q35 (20261022031600): việc giao cho CHÍNH người hỏi hiện trong "giao cho tôi" dù ở toà ngoài phạm vi tasks.view (SQL cùng
+        // luật RLS). Chỉ role assigned_to_me; assigned_by_me / team vẫn đúng phạm vi toà (ma trận CV-R13, 22/10: rào cũ ném
+        // backend_unavailable cho cả trang).
+        !(buildingAllowed(identity, TASK_FOLLOW_READ, item.buildingId) || (input.role === 'assigned_to_me' && item.assigneeId === me)) ||
         (input.status === 'open' && item.status !== 'IN_PROGRESS') || (input.status === 'completed' && item.status !== 'COMPLETED') ||
         (input.role === 'assigned_to_me' && item.assigneeId !== me) ||
         (input.role === 'team' && input.assigneeUserId !== null && item.assigneeId !== input.assigneeUserId)) fail();

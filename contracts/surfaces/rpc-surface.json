@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2704,
-    "catalogFunctions": 1532,
+    "sourceCallSites": 2747,
+    "catalogFunctions": 1566,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 382,
+    "calledRpcs": 386,
     "byRisk": {
-      "normal": 280,
-      "financial": 102
+      "normal": 283,
+      "financial": 103
     },
-    "securityDefiner": 362
+    "securityDefiner": 363
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3433,6 +3433,26 @@
       ],
       "risk": "financial"
     },
+    "ie_category_suggest_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_items jsonb, p_type text DEFAULT 'expense'::text, p_include_restricted boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
+    },
     "ie_compat_update_pending_v2": {
       "definitions": [
         {
@@ -3451,6 +3471,26 @@
         "src/hooks/useUploadPaymentReceipt.ts"
       ],
       "risk": "financial"
+    },
+    "ie_default_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_last_used uuid DEFAULT NULL::uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
     },
     "ie_form_buildings": {
       "definitions": [
@@ -3549,6 +3589,25 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "invoice_adjustment_build_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_ops jsonb DEFAULT '{}'::jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
     },
     "invoice_list_v1": {
       "definitions": [
@@ -5319,6 +5378,25 @@
         "src/lib/contractCommissionFollowup.ts"
       ],
       "risk": "financial"
+    },
+    "record_meter_readings_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_reading_date date, p_rows jsonb, p_replace boolean DEFAULT false, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
     },
     "record_payment_gps": {
       "definitions": [

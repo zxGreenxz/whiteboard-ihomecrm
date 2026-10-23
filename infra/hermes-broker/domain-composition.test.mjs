@@ -16,9 +16,12 @@ const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 // invoices, assets, tasks); R2a (20261020233934) adds the `summary` of the whole filtered set to every branch; R2c part 2
 // (20261021044801) dates the asset rows (createdAt) and names the latest asset in the summary; R2d (20261021063452) counts
 // the latest import batch (summary.latestCount) and lets a service whose only active links point to soft-deleted buildings
-// be company-wide again. The applied v1 file runs with that latest body swapped in, so every v1 test measures the live
-// definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
-const LIVE_V1_PATH = 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+// be company-wide again; Mốc 3b Công việc (20261022153345) gives task rows their assignee (assigneeName), lets query match the
+// assignee name too and adds summary.byBuilding/byAssignee/givenByMe. The applied v1 file runs with that latest body swapped in, so
+// every v1 test measures the newest definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
+const R2D_V1_PATH = 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+const LIVE_V1_PATH = 'supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql';
+const NAME_FOLD = readFileSync('supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql', 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_name_fold_v1\([\s\S]*?\$fn\$;/)[0];
 const v1Block = src => src.match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v1\([\s\S]*?\$fn\$;/)[0];
 const candidate = process.env.HERMES_DOMAIN_SQL ? readFileSync(process.env.HERMES_DOMAIN_SQL, 'utf8') : (applied => applied.replace(v1Block(applied), () => v1Block(readFileSync(LIVE_V1_PATH, 'utf8'))))(
   readFileSync('supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8'));
@@ -49,7 +52,10 @@ async function setup(t) {
     CREATE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT 'Asia/Ho_Chi_Minh'::text$$;
     CREATE TABLE public.services(id uuid PRIMARY KEY,organization_id uuid,name text,code text,unit text,unit_price numeric,user_id uuid,deleted_at timestamptz);
     CREATE TABLE public.building_services(organization_id uuid,service_id uuid,building_id uuid,is_active boolean);
-    CREATE TABLE public.jobs(id uuid PRIMARY KEY,organization_id uuid,title text,code text,status text,building_id uuid,room_id uuid,deadline timestamptz);
+    CREATE TABLE public.jobs(id uuid PRIMARY KEY,organization_id uuid,title text,code text,status text,building_id uuid,room_id uuid,deadline timestamptz,
+      assignee_id uuid,assignee_name text,user_id uuid);
+    CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text);
+    ${NAME_FOLD}
     CREATE TABLE public.fixture_domain_acl(permission text PRIMARY KEY,allowed boolean DEFAULT true,org_wide boolean DEFAULT false,building_ids uuid[]);
     CREATE FUNCTION public.current_visible_owner_ids() RETURNS uuid[] LANGUAGE sql AS $$SELECT ARRAY[auth.uid()]$$;
     CREATE FUNCTION app_private.authorized_scope_v3(p_permission text,p_org uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[])
@@ -121,12 +127,16 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
   // page without the cursor or LIMIT. Synthetic rows; the extra tasks are removed again at the end.
   await t.test('R2a summary: counts, byStatus (assets: condition), asset quantity and overdue tasks over the whole filtered set, the same on every page',async()=>{
     const scoped=operation=>({row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}});
+    // Mốc 3b: every task of these sets sits in the overlay building, unassigned, created by nobody of the fixture.
+    const tasks=(count,byStatus,overdue)=>({count,byStatus,sum:{},overdue,byBuilding:count?[{buildingId:BUILDING,buildingName:'Allowed',count,overdue}]:[],
+      byAssignee:count?[{assigneeName:null,count,overdue}]:[],givenByMe:{count:0,overdue:0}});
     for(const operation of Object.keys(DOMAIN_READS).filter(key=>DOMAIN_READS[key].family==='v1')){
       const result=await rpc(operation);
       assert.deepEqual(Object.keys(result).sort(),['domain','items','nextCursor','organizationId','summary'],operation);
       // R2d: latestCount counts one exact instant; the rows carry the day only, so summarizeRows says null (one asset here).
       const rows=summarizeRows(operation,result.items);
-      assert.deepEqual(result.summary,operation==='assets'?{...rows,latestCount:1}:rows,`${operation}: one page holds every row, so the summary is the rows'`);
+      // Mốc 3b: givenByMe needs the creator, which rows do not carry (summarizeRows: null); the fixture task has none (0).
+      assert.deepEqual(result.summary,operation==='assets'?{...rows,latestCount:1}:operation==='tasks'?{...rows,givenByMe:{count:0,overdue:0}}:rows,`${operation}: one page holds every row, so the summary is the rows'`);
       assert.deepEqual(domainResult(operation,result,scoped(operation),domainInput(operation,{})).summary,result.summary,operation);
     }
     // R2c part 2: added 2026-10-20 18:30 UTC = 21/10 01:30 in Vietnam ⇒ createdAt 2026-10-21 (company time zone, not UTC).
@@ -136,7 +146,7 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
     assert.deepEqual((await rpc('leads')).summary,{count:1,byStatus:{B1_LEAD:1},sum:{}});
     assert.deepEqual((await rpc('invoices')).summary,{count:1,byStatus:{},sum:{}},'invoices count only: a total over every status would mislead');
     assert.deepEqual((await rpc('services')).summary,{count:1,byStatus:{},sum:{}});
-    assert.deepEqual((await rpc('tasks')).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:0},'no deadline is never overdue');
+    assert.deepEqual((await rpc('tasks')).summary,tasks(1,{IN_PROGRESS:1},0),'no deadline is never overdue');
     // Legacy branches (the tools moved to v3) summarise too: customers count, occupancy room totals.
     assert.deepEqual((await rpc('customers')).summary,{count:1,byStatus:{},sum:{}});
     assert.deepEqual((await rpc('occupancy')).summary,{count:1,total:1,occupied:1,available:0});
@@ -145,14 +155,14 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       ('${done}','${ORG}','Đã xong','DONE','COMPLETED','${BUILDING}',null,'2020-01-01T00:00:00Z'),
       ('${outside}','${ORG}','Toà khác','OUT','IN_PROGRESS','${OTHER_BUILDING}',null,'2020-01-01T00:00:00Z')`);
     try{
-      const all={count:3,byStatus:{IN_PROGRESS:2,COMPLETED:1},sum:{},overdue:1};
+      const all=tasks(3,{IN_PROGRESS:2,COMPLETED:1},1);
       const first=await rpc('tasks',{limit:1}),second=await rpc('tasks',{limit:1,cursor:first.nextCursor});
       assert.deepEqual([first.items.length,first.summary,second.summary],[1,all,all],'cursor and limit never narrow the summary; the overlay building only');
       const pages=[first.items,second.items,(await rpc('tasks',{limit:1,cursor:second.nextCursor})).items].flat();
-      assert.deepEqual(summarizeRows('tasks',pages),all,'the summary equals the summary of every page read');
-      assert.deepEqual((await rpc('tasks',{status:'COMPLETED'})).summary,{count:1,byStatus:{COMPLETED:1},sum:{},overdue:0},'status filter');
-      assert.deepEqual((await rpc('tasks',{query:'late'})).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:1},'query filter (code)');
-      assert.deepEqual((await rpc('tasks',{query:'không có'})).summary,{count:0,byStatus:{},sum:{},overdue:0},'empty set: 0 and {} — never null');
+      assert.deepEqual(summarizeRows('tasks',pages),{...all,givenByMe:null},'the summary equals the summary of every page read (rows carry no creator)');
+      assert.deepEqual((await rpc('tasks',{status:'COMPLETED'})).summary,tasks(1,{COMPLETED:1},0),'status filter');
+      assert.deepEqual((await rpc('tasks',{query:'late'})).summary,tasks(1,{IN_PROGRESS:1},1),'query filter (code)');
+      assert.deepEqual((await rpc('tasks',{query:'không có'})).summary,tasks(0,{},0),'empty set: 0, {} and [] — never null');
       assert.deepEqual((await rpc('assets',{query:'không có'})).summary,{count:0,byStatus:{},sum:{quantity:'0'},latest:null,latestCount:0});
     }finally{await db.exec(`DELETE FROM public.jobs WHERE id IN ('${late}','${done}','${outside}')`);}
   });
@@ -310,6 +320,106 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       await db.exec(`UPDATE public.fixture_domain_acl SET org_wide=false WHERE permission='services.view'; UPDATE public.authorization_scopes SET scope_type='BUILDING',building_id='${BUILDING}';
         DELETE FROM public.building_services WHERE service_id IN ('${S(1)}','${S(2)}','${S(3)}'); DELETE FROM public.services WHERE id IN ('${S(1)}','${S(2)}','${S(3)}');
         DELETE FROM public.buildings WHERE id IN ('${GONE}','${OUT}')`);
+    }
+  });
+  // Mốc 3b Công việc (20261022153345; ma trận 22/10 CV-R01/R03/R04/R06): task rows name the assignee like the web /tasks
+  // (profile name, then the typed name; null = unassigned), query also matches the assignee name with accents folded, and the
+  // summary groups the WHOLE filtered set by building and by assignee and counts what the asker gave to someone else (created by
+  // the asker, assignee another person or nobody). Synthetic jobs and profiles, removed again at the end.
+  await t.test('Mốc 3b tasks: assigneeName, query by assignee name (accents folded), byBuilding/byAssignee/givenByMe of the whole set; migration file; mutants caught',async()=>{
+    const P=n=>`55555555-5555-4555-8555-55555555555${n}`,J=n=>`66666666-6666-4666-8666-66666666666${n}`,THIRD=P(8),OTHER_USER=P(9);
+    const past='2020-01-01T00:00:00Z',future='2099-01-01T00:00:00Z';
+    await db.exec(`INSERT INTO public.buildings VALUES('${THIRD}','${ORG}','Ngoài khoá',null);
+      INSERT INTO public.profiles VALUES('${P(1)}','Nguyễn Văn Ánh'),('${P(2)}','NATHAN'),('${USER}','Chủ'),('${P(3)}','');
+      INSERT INTO public.jobs VALUES
+        ('${J(1)}','${ORG}','Sửa vòi','J1','IN_PROGRESS','${BUILDING}',null,'${past}','${P(1)}',null,'${USER}'),
+        ('${J(2)}','${ORG}','Thay đèn','J2','IN_PROGRESS','${OTHER_BUILDING}',null,'${future}','${P(2)}',null,'${USER}'),
+        ('${J(3)}','${ORG}','Dọn kho','J3','IN_PROGRESS','${OTHER_BUILDING}',null,'${past}','${P(2)}',null,'${OTHER_USER}'),
+        ('${J(4)}','${ORG}','Tự làm','J4','IN_PROGRESS','${BUILDING}',null,null,'${USER}',null,'${USER}'),
+        ('${J(5)}','${ORG}','Gõ tay','J5','IN_PROGRESS','${BUILDING}',null,null,null,'Chị Hoa','${USER}'),
+        ('${J(6)}','${ORG}','Đã xong','J6','COMPLETED','${OTHER_BUILDING}',null,'${past}','${P(1)}',null,'${USER}'),
+        ('${J(7)}','${ORG}','Hồ sơ trống','J7','IN_PROGRESS','${BUILDING}',null,null,'${P(3)}','Tên cũ','${USER}'),
+        ('${J(8)}','${ORG}','Toà ngoài khoá','J8','IN_PROGRESS','${THIRD}',null,'${future}','${P(2)}',null,'${OTHER_USER}'),
+        ('${J(9)}','${ORG}','Không toà','J9','IN_PROGRESS',null,null,null,'${P(2)}',null,'${USER}'),
+        ('${J(0)}','${FOREIGN}','Công ty khác','J0','IN_PROGRESS','${FOREIGN}',null,'${past}','${P(2)}',null,'${USER}');
+      UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=null`);
+    const both={row:{organizationId:ORG},scopesByPermission:{'tasks.view':{buildingIds:[BUILDING,OTHER_BUILDING]}}};
+    const group=(buildingId,buildingName,count,overdue)=>({buildingId,buildingName,count,overdue}),person=(assigneeName,count,overdue)=>({assigneeName,count,overdue});
+    const live=v1Block(readFileSync(LIVE_V1_PATH,'utf8'));
+    try{
+      const whole=await rpc('tasks');
+      assert.deepEqual(Object.fromEntries(whole.items.map(row=>[row.code,row.assigneeName])),{TASK:null,J1:'Nguyễn Văn Ánh',J2:'NATHAN',J3:'NATHAN',J4:'Chủ',J5:'Chị Hoa',J6:'Nguyễn Văn Ánh',J7:'Tên cũ'},
+        'profile name, else the typed name (an empty profile name falls back like the web); the building outside the key, no building (not org-wide) and another company never');
+      const expected={count:8,byStatus:{IN_PROGRESS:7,COMPLETED:1},sum:{},overdue:2,
+        byBuilding:[group(BUILDING,'Allowed',5,1),group(OTHER_BUILDING,'Denied',3,1)],
+        byAssignee:[person('NATHAN',2,1),person('Nguyễn Văn Ánh',2,1),person('Chị Hoa',1,0),person('Chủ',1,0),person('Tên cũ',1,0),person(null,1,0)],
+        givenByMe:{count:5,overdue:1}};
+      assert.deepEqual(whole.summary,expected,'groups: most tasks first, names by byte (COLLATE "C"), unassigned last; given: created by the asker for someone else or nobody, not self-assigned, not another creator\'s');
+      assert.deepEqual(domainResult('tasks',whole,both,domainInput('tasks',{})).summary,expected,'the connector accepts it');
+      assert.deepEqual(summarizeRows('tasks',whole.items),{...expected,givenByMe:null},'one page holds every row: the rows summarise the same (creator unknown)');
+      for(let cursor=null,n=0;n<9;n++){
+        const page=await rpc('tasks',{limit:3,cursor});
+        assert.deepEqual(page.summary,expected,'every page carries the whole set');
+        domainResult('tasks',page,both,domainInput('tasks',{limit:3,cursor}));
+        cursor=page.nextCursor;if(cursor===null)break;
+      }
+      const codes=result=>result.items.map(row=>row.code).sort();
+      for(const [query,want] of [['nathan',['J2','J3']],['NATHAN',['J2','J3']],['anh',['J1','J6']],['ÁNH',['J1','J6']],['nguyen van',['J1','J6']],['hoa',['J5']],['tên cũ',['J7']],['ten cu',['J7']],['đèn',['J2']]])
+        assert.deepEqual(codes(await rpc('tasks',{query})),want,`query ${query}: title/code as before, or the assignee name without accents`);
+      const nathan=await rpc('tasks',{query:'nathan',status:'IN_PROGRESS'});
+      assert.deepEqual(nathan.summary,{count:2,byStatus:{IN_PROGRESS:2},sum:{},overdue:1,byBuilding:[group(OTHER_BUILDING,'Denied',2,1)],byAssignee:[person('NATHAN',2,1)],givenByMe:{count:1,overdue:0}},
+        'one person: count and buildings in SQL (CV-R04)');
+      const inBuilding=await rpc('tasks',{buildingId:BUILDING});
+      assert.deepEqual([inBuilding.summary.byBuilding,inBuilding.summary.byAssignee.map(entry=>entry.assigneeName)],[[group(BUILDING,'Allowed',5,1)],['Chị Hoa','Chủ','Nguyễn Văn Ánh','Tên cũ',null]],
+        'one building: who works there (CV-R03)');
+      domainResult('tasks',inBuilding,both,domainInput('tasks',{buildingId:BUILDING}));
+      assert.deepEqual((await rpc('tasks',{status:'COMPLETED'})).summary.byAssignee,[person('Nguyễn Văn Ánh',1,0)],'status filter');
+      // Org-wide (CRM org-wide + organization overlay): every live building of the company and the tasks without a building.
+      await db.exec(`UPDATE public.fixture_domain_acl SET org_wide=true WHERE permission='tasks.view'`);
+      try{
+        const wide=await rpc('tasks');
+        assert.deepEqual([wide.summary.count,wide.summary.byBuilding,wide.summary.byAssignee[0],wide.summary.givenByMe],
+          [10,[group(BUILDING,'Allowed',5,1),group(OTHER_BUILDING,'Denied',3,1),group(THIRD,'Ngoài khoá',1,0),group(null,'',1,0)],person('NATHAN',4,1),{count:6,overdue:1}],
+          'the building without a name sorts last among equals as null');
+        domainResult('tasks',wide,{row:{organizationId:ORG},scopesByPermission:{'tasks.view':{buildingIds:[BUILDING,OTHER_BUILDING,THIRD]}}},domainInput('tasks',{}));
+        assert.throws(()=>domainResult('tasks',wide,both,domainInput('tasks',{})),'a group outside the key scope is refused');
+      }finally{await db.exec(`UPDATE public.fixture_domain_acl SET org_wide=false WHERE permission='tasks.view'`);}
+      // Mutants of the tasks branch: only the expected value sees some; the connector refuses the others.
+      const all=(from,to)=>{assert.ok(live.includes(from),`anchor: ${from}`);return live.replaceAll(from,()=>to);};
+      const second=(from,to)=>{const at=live.indexOf(from,live.indexOf(from)+1);assert.ok(at>0&&live.indexOf(from,at+1)<0,`second anchor: ${from}`);return live.slice(0,at)+to+live.slice(at+from.length);};
+      const nameMatch=`\n          OR position(public.hermes_name_fold_v1(query) IN public.hermes_name_fold_v1(COALESCE(NULLIF(person.full_name,''),job.assignee_name)))>0)`;
+      // probe null ⇒ the connector refuses the mutant's result.
+      for(const [label,mutant,probe] of [
+        ['name match dropped',all(nameMatch,')'),async()=>assert.deepEqual(codes(await rpc('tasks',{query:'nathan'})),['J2','J3'])],
+        ['summary ignores the name match',second(nameMatch,')'),async()=>assert.equal((await rpc('tasks',{query:'nathan'})).summary.count,2)],
+        ['given overdue ignores the deadline',all('FILTER (WHERE given AND late)','FILTER (WHERE given)'),async()=>assert.deepEqual((await rpc('tasks')).summary.givenByMe,expected.givenByMe)],
+        ['typed name ignored',all("COALESCE(NULLIF(person.full_name,''),job.assignee_name)","NULLIF(person.full_name,'')"),async()=>assert.deepEqual((await rpc('tasks')).summary,expected)],
+        ['self-assigned counted as given',all(' AND job.assignee_id IS DISTINCT FROM job.user_id',''),async()=>assert.deepEqual((await rpc('tasks')).summary.givenByMe,expected.givenByMe)],
+        ['another creator counted as given',all('job.user_id=c.user_id AND ',''),async()=>assert.deepEqual((await rpc('tasks')).summary.givenByMe,expected.givenByMe)],
+        ['unassigned first',all('g.assignee_name COLLATE "C" NULLS LAST),','g.assignee_name COLLATE "C" NULLS FIRST),'),async()=>assert.deepEqual((await rpc('tasks')).summary.byAssignee,expected.byAssignee)],
+        ['group overdue lost',all('count(*) FILTER (WHERE late) late FROM found\n          GROUP BY building_id','0 late FROM found\n          GROUP BY building_id'),null],
+        ['summary scope dropped',second('(job.building_id=ANY(buildings) OR (job.building_id IS NULL AND org_wide))','true'),null],
+      ]){
+        await db.exec(mutant);
+        try{
+          if(probe)await assert.rejects(probe(),`${label}: the expected value catches the mutant`);
+          else{const value=await rpc('tasks');assert.throws(()=>domainResult('tasks',value,both,domainInput('tasks',{})),`${label}: refused by the connector`);}
+        }finally{await db.exec(live);}
+        assert.deepEqual((await rpc('tasks')).summary,expected,`${label}: reviewed body restored`);
+      }
+      // The migration file itself: accepts the running 063452 body, then its own (re-run); any other body stops it.
+      const file=readFileSync(LIVE_V1_PATH,'utf8'),md5=async()=>(await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='public.hermes_domain_read_v1(jsonb,text,jsonb)'::regprocedure")).rows[0].m;
+      await db.exec(v1Block(readFileSync(R2D_V1_PATH,'utf8')));
+      assert.equal(await md5(),'b0d16d1af0b2ce453b2ea53fdf919098','the 063452 body running on TEST and production');
+      await db.exec(file);await db.exec(file);
+      assert.equal(await md5(),'d79bb632be427768e64b6f3e7f543e73','the file installs its pinned body, twice');
+      assert.deepEqual((await rpc('tasks')).summary,expected);
+      await db.exec(all(' AND job.assignee_id IS DISTINCT FROM job.user_id',''));
+      await assert.rejects(db.exec(file),/hermes_domain_tasks_assignee_requires_063452_body/,'another running body: stop, never overwrite a patch');
+      await db.exec('ROLLBACK').catch(()=>{});await db.exec(live);
+    }finally{
+      await db.exec(`UPDATE public.authorization_scopes SET scope_type='BUILDING',building_id='${BUILDING}'; DELETE FROM public.jobs WHERE id<>'${ITEM}';
+        DELETE FROM public.profiles; DELETE FROM public.buildings WHERE id='${THIRD}'`);
     }
   });
   await t.test('role, caller, provider session, all binding versions and current CRM denial fail closed',async()=>{

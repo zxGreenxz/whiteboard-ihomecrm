@@ -67,13 +67,20 @@ export function createActionLiveCatalog() {
 }
 
 /** Lớp quyền mở rộng: khoá Action của danh mục được bật cho người dùng (registry ∩ trần công ty ∩ quyền CRM) + phạm vi toà.
- * `live` (tuỳ chọn) ghi lại danh mục thao tác sống mỗi lần đọc capability. */
-export function createActionAuth({ baseAuth, reads, catalog, live } = {}) {
-  if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function') || !Array.isArray(catalog?.keys))
+ * `live` (tuỳ chọn) ghi lại danh mục thao tác sống mỗi lần đọc capability.
+ * `borrowedKeys` (tuỳ chọn, ⊆ khoá danh mục): khoá mà MỘT lớp quyền khác trong chuỗi đã là nguồn cấp (vd. sale_phong.lock_room của lớp
+ * Sale, khoá cho contract.room_lock / room_unlock). Hai lớp cùng cấp một khoá là context_changed (rào ở mọi lớp), nên lớp này không
+ * kiểm, không cấp các khoá đó; thao tác dùng chúng vẫn chạy được khi lớp chủ của khoá cấp (runtime xét quyền cuối cùng của chuỗi), còn
+ * SQL của thao tác tự kiểm lại registry / chính sách / quyền CRM / phạm vi mỗi lượt. */
+export function createActionAuth({ baseAuth, reads, catalog, live, borrowedKeys = [] } = {}) {
+  if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function') || !Array.isArray(catalog?.keys) ||
+      !Array.isArray(borrowedKeys) || borrowedKeys.some(key => typeof key !== 'string' || !catalog.keys.includes(key)) || new Set(borrowedKeys).size !== borrowedKeys.length)
     throw new TypeError('invalid_action_auth');
-  const KEYS = catalog.keys;
+  const BORROWED = new Set(borrowedKeys);
+  const KEYS = catalog.keys.filter(key => !BORROWED.has(key));
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    if (!KEYS.length) return baseAuth.readAuthorization(input);
+    // Danh mục rỗng: không gọi RPC nào. Danh mục chỉ có khoá mượn vẫn đọc capability để biết thao tác nào sống.
+    if (!catalog.keys.length) return baseAuth.readAuthorization(input);
     const extended = await readWithBaseAuthorization(baseAuth, input,
       () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
     const current = extended.current;

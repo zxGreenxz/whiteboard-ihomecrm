@@ -237,57 +237,100 @@ export function isFirstMonthInvoice(invoice: {
  * - Còn lại → "Hóa đơn - <phòng>/<toà> - MM/YYYY"
  */
 export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
-  const month = invoice.billing_month ?? '';
+  const loc = [invoice.room?.name, invoice.building?.name]
+    .filter(Boolean)
+    .join('/');
+  return invoiceTitleFromParts(invoiceTitlePartsOf(invoice), loc);
+}
+
+/**
+ * Các phần đủ để dựng tên hoá đơn (getInvoiceTitle) mà KHÔNG cần notes / dòng hoá đơn / hợp đồng.
+ * Tách ra (23/10/2026) để nơi không đọc được bảng invoices — link chủ nhà /qt/:token chạy bằng anon —
+ * nhận các phần này từ server (app_private.landlord_settlement_compute_v1 CHÉP luật bên dưới) rồi
+ * dựng tên bằng ĐÚNG hàm invoiceTitleFromParts như mọi màn khác.
+ */
+export interface InvoiceTitleParts {
+  /** invoices.kind = 'SETTLEMENT', hoặc notes có "thanh lý" (payload cũ chưa select kind). */
+  isLiquidation: boolean;
+  /** Hoá đơn thu thêm riêng của bỏ cọc: notes MỞ ĐẦU "Hoá đơn thu thêm". */
+  isExtra: boolean;
+  /** HĐ tháng đầu của hợp đồng (isFirstMonthInvoice). */
+  isFirstMonth: boolean;
+  hasRent: boolean;
+  /** Có dòng SERVICE hoặc PENALTY. */
+  hasService: boolean;
+  /** invoices.billing_month 'YYYY-MM'. */
+  billingMonth: string | null;
+  /** invoices.issue_date 'YYYY-MM-DD'. */
+  issueDate: string | null;
+}
+
+/** Bản ghi hoá đơn (có notes / dòng / hợp đồng) → các phần dựng tên. */
+export function invoiceTitlePartsOf(invoice: {
+  kind?: string | null;
+  notes?: string | null;
+  billing_month?: string | null;
+  issue_date?: string | null;
+  invoice_items?: Array<{ type?: string | null; from_date?: string | null }> | null;
+  contract?: { start_billing_date?: string | null } | null;
+}): InvoiceTitleParts {
+  const notes = invoice.notes ?? '';
+  return {
+    // Nguồn sự thật là invoices.kind (từ 20260709100000); regex notes giữ làm
+    // fallback cho payload chưa select cột kind. Hoá đơn THÁNG không còn bị RPC
+    // thanh lý append ghi chú nên regex không thể nhuộm nhầm hoá đơn thường.
+    isLiquidation: invoice.kind === 'SETTLEMENT' || /thanh\s*lý/i.test(notes),
+    // Nhãn "thu thêm" CHỈ theo marker MỞ ĐẦU notes (hoá đơn thu thêm riêng của
+    // forfeit) — đừng match cả breakdown "… + thu thêm 200.000đ" của hoá đơn
+    // thanh lý move-out kẻo gắn nhầm nhãn.
+    isExtra: /^hoá\s*đơn\s*thu\s*thêm/i.test(notes.trimStart()),
+    isFirstMonth: isFirstMonthInvoice(invoice),
+    hasRent: !!invoice.invoice_items?.some((i) => i.type === 'RENT'),
+    hasService: !!invoice.invoice_items?.some((i) => i.type === 'SERVICE' || i.type === 'PENALTY'),
+    billingMonth: invoice.billing_month ?? null,
+    issueDate: invoice.issue_date ?? null,
+  };
+}
+
+/**
+ * Lõi tên hoá đơn (xem getInvoiceTitle). `loc` là phần chèn sau nhãn — '<phòng>/<toà>' ở trang Hoá đơn,
+ * chỉ '<phòng>' ở nơi đã rõ toà, rỗng ở nơi đã có cột phòng riêng.
+ */
+export function invoiceTitleFromParts(p: InvoiceTitleParts, loc?: string | null): string {
+  const month = p.billingMonth ?? '';
   const monthDisplay = (() => {
     if (!month) return '';
     // billing_month dạng "2026-05" → "05/2026"
     const m = /^(\d{4})-(\d{2})$/.exec(month);
     return m ? `${m[2]}/${m[1]}` : month;
   })();
-
-  const loc = [invoice.room?.name, invoice.building?.name]
-    .filter(Boolean)
-    .join('/');
+  const place = loc ?? '';
   const monthPart = monthDisplay || month;
-  const suffix = [loc, monthPart].filter(Boolean).join(' - ');
+  const suffix = [place, monthPart].filter(Boolean).join(' - ');
 
-  const notes = invoice.notes ?? '';
-  // Nguồn sự thật là invoices.kind (từ 20260709100000); regex notes giữ làm
-  // fallback cho payload chưa select cột kind. Hoá đơn THÁNG không còn bị RPC
-  // thanh lý append ghi chú nên regex không thể nhuộm nhầm hoá đơn thường.
-  const isLiquidation =
-    (invoice as { kind?: string }).kind === 'SETTLEMENT' || /thanh\s*lý/i.test(notes);
-  if (isLiquidation) {
+  if (p.isLiquidation) {
     // B6 (audit 03/07): hiển thị NGÀY LẬP thay vì kỳ (kỳ hoá đơn thanh lý cũ có
     // thể là "slot" mượn tháng khác; bản mới đã đúng tháng nhưng ngày lập vẫn
-    // thông tin hơn). Nhãn "thu thêm" CHỈ theo marker MỞ ĐẦU notes (hoá đơn thu
-    // thêm riêng của forfeit) — đừng match cả breakdown "… + thu thêm 200.000đ"
-    // của hoá đơn thanh lý move-out kẻo gắn nhầm nhãn.
-    const isExtra = /^hoá\s*đơn\s*thu\s*thêm/i.test(notes.trimStart());
+    // thông tin hơn).
     const issueDisplay = (() => {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(invoice.issue_date ?? '');
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.issueDate ?? '');
       return m ? `${m[3]}/${m[2]}/${m[1]}` : monthDisplay;
     })();
-    const liqSuffix = [loc, issueDisplay].filter(Boolean).join(' - ');
-    const label = isExtra ? 'Hóa đơn thu thêm (thanh lý)' : 'Hóa đơn thanh lý';
+    const liqSuffix = [place, issueDisplay].filter(Boolean).join(' - ');
+    const label = p.isExtra ? 'Hóa đơn thu thêm (thanh lý)' : 'Hóa đơn thanh lý';
     return liqSuffix ? `${label} - ${liqSuffix}` : label;
   }
 
-  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
-  const hasService = invoice.invoice_items?.some(
-    (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
-  );
-
-  if (hasRent && isFirstMonthInvoice(invoice)) {
+  if (p.hasRent && p.isFirstMonth) {
     return suffix
       ? `TIỀN PHÒNG THÁNG ĐẦU TIÊN - ${suffix}`
       : 'TIỀN PHÒNG THÁNG ĐẦU TIÊN';
   }
-  if (hasRent && hasService) {
+  if (p.hasRent && p.hasService) {
     return suffix ? `TIỀN PHÒNG - ${suffix}` : 'TIỀN PHÒNG';
   }
-  if (hasRent) return suffix ? `Hóa đơn tiền nhà - ${suffix}` : 'Hóa đơn tiền nhà';
-  if (hasService) return suffix ? `Hóa đơn dịch vụ - ${suffix}` : 'Hóa đơn dịch vụ';
+  if (p.hasRent) return suffix ? `Hóa đơn tiền nhà - ${suffix}` : 'Hóa đơn tiền nhà';
+  if (p.hasService) return suffix ? `Hóa đơn dịch vụ - ${suffix}` : 'Hóa đơn dịch vụ';
   return suffix ? `Hóa đơn - ${suffix}` : 'Hóa đơn';
 }
 

@@ -33,6 +33,7 @@ import { voucherEditAction } from '@/lib/incomeExpenseRevision';
 import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { RevisionCountBadges } from '@/components/income-expenses/RevisionSummary';
 import { useRevisionCounts } from '@/hooks/income-expenses/revisions';
+import { useVoucherDisplayNames } from '@/hooks/useVoucherDisplayNames';
 import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
@@ -248,6 +249,9 @@ const IncomeExpenseList = ({
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const voucherIds = useMemo(() => vouchers.map((v) => v.id), [vouchers]);
   const { data: revisionCounts } = useRevisionCounts(voucherIds);
+  // Tên hiển thị (chủ chốt 23/10/2026): "Thu tiền theo HĐ INV-…" ⇒ tên hoá đơn; bảng có cột Toà/Phòng
+  // nên không chèn tên phòng vào tên. Cột name trong DB giữ nguyên (tooltip hiện tên gốc).
+  const displayNameOf = useVoucherDisplayNames(vouchers, { includeRoom: false });
   const displayRows = useMemo(() => {
     const rows: Array<{
       voucher: IncomeExpenseWithRelations;
@@ -642,11 +646,18 @@ const IncomeExpenseList = ({
                         aria-hidden
                       />
                     )}
-                    <span
-                      className={`truncate ${isCancelled ? 'line-through' : ''}`}
-                    >
-                      {voucher.name}
-                    </span>
+                    {(() => {
+                      const shown = displayNameOf(voucher);
+                      return (
+                        <span
+                          className={`truncate ${isCancelled ? 'line-through' : ''}`}
+                          title={shown !== voucher.name ? `${shown} (${voucher.name})` : undefined}
+                          data-testid="voucher-display-name"
+                        >
+                          {shown}
+                        </span>
+                      );
+                    })()}
                     {/* Nhãn cho chính phiếu đối ứng khi mở ra xem */}
                     {nested && (
                       <Badge

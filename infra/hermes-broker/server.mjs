@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
 import { createSaleActionAuth, createSaleActionReads, createSaleActionService } from './sale-action-adapter.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
 import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
@@ -44,9 +45,14 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
-import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+
+// Thao tác ghi của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng).
+const ACTION_PAGE_CATALOGS = Object.freeze({ contract: CONTRACT_ACTIONS });
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -116,7 +122,7 @@ function backendLimits(value) {
  * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -130,6 +136,11 @@ export function createHermesBackend(configuration = {}) {
       // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
       // crm_action_* không hiện, không gọi RPC nào của họ này.
       (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
+      // Đợt 2: trang có thao tác ghi thật được nạp thêm vào danh mục (vd ['contract']). Vắng/[] = chỉ danh mục production
+      // (thao tác Thu chi expense.*), không nạp thao tác của trang nào khác. Phiên chính bật sau khi migration của trang đã áp.
+      (Object.hasOwn(configuration, 'actionPages') && (!Array.isArray(configuration.actionPages) ||
+        configuration.actionPages.some(page => typeof page !== 'string' || !Object.hasOwn(ACTION_PAGE_CATALOGS, page)) ||
+        new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -155,22 +166,32 @@ export function createHermesBackend(configuration = {}) {
     // Each optional capability RPC absent (PGRST202) leaves its keys ungranted;
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký — Thu chi (Đợt 2; họ
-    // crm_expense_* cũ đã gỡ — TC1, cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create). Thao tác chỉ hiện khi khoá
-    // registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒ action_disabled. hermes_action_capabilities_v1
-    // chưa áp ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe (connector TEST). actionLive = danh mục thao
-    // tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá tasks.create CHỈ đến từ lớp này và tool tạo việc
-    // cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES
-    // của capability-contract (mặc định của createActionCatalog): thao tác nào khai khoá ngoài hợp đồng thì danh mục từ chối nạp,
-    // connector không khởi động.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác trang Thu chi (Đợt 2; họ crm_expense_* cũ đã gỡ — TC1,
+    // cùng khoá income_expenses.create), Công việc (Đợt 2b: task.create; Mốc 3: task.update, task.cancel; Mốc 4: task.create_batch) và
+    // Hoá đơn (Đợt 3 Mốc 3: invoice.collect, khoá riêng thu_tien.collect_transfer seed TẮT ⇒ không hiện tới khi bật khoá) + thao tác
+    // của các trang host bật (actionPages, vd. Hợp đồng). Thao tác chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp;
+    // RPC trang chưa áp (PGRST202) ⇒ action_disabled. Trang đã bật mà khoá còn TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao
+    // tác ẩn; hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe
+    // (connector TEST). actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: thao tác Công việc sống ⇒ khoá
+    // của nó CHỈ đến từ lớp này và tool cũ tương ứng nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như
+    // trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào
+    // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động. Đợt 3 Hoá đơn (Mốc 3–4): invoice.collect
+    // (khoá thu_tien.collect_transfer) và invoice.meter_record (khoá meter_readings.create) nằm trong danh mục production như #279,
+    // cả hai khoá seed TẮT ⇒ ẩn tới khi bật khoá.
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS,
+      ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
+      ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionLive = createActionLiveCatalog();
+    // Khoá do HAI lớp cùng cần chỉ được MỘT lớp cấp (lớp sau thấy khoá đã có ⇒ context_changed cho mọi kết nối; sự cố TEST 23/10 khi
+    // bật actionPages contract cùng sale_phong.lock_room). Khoá của lớp Sale (SALE_ACTIONS) do lớp Sale cấp như production; thao tác
+    // trang dùng chung khoá đó (contract.room_lock / room_unlock) mượn khoá, không cấp lại. tasks.* đã phối hợp riêng (live, task-adapter).
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
+      borrowedKeys: actionCatalog.keys.filter(key => SALE_ACTIONS.includes(key)),
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
     const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
-      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), actionIds: actionCatalog.ids, live: actionLive });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,

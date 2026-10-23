@@ -58,6 +58,7 @@
     "src/hooks/useInvoices.ts::approve_invoice_v1",
     "src/hooks/useInvoices.ts::bulk_approve_invoices_v1",
     "src/hooks/useInvoices.ts::get_customer_credit_balance_v1",
+    "src/hooks/useInvoices.ts::invoice_adjustment_build_v1",
     "src/hooks/useInvoices.ts::invoice_list_v1",
     "src/hooks/useInvoices.ts::invoice_statistics_v3",
     "src/hooks/useInvoices.ts::mark_overdue_invoices_v1",

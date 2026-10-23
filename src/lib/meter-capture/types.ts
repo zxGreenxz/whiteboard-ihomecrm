@@ -18,12 +18,18 @@ export const engineResultSchema = z.object({
   status: z.string(), frames: z.array(z.object({ timestampSeconds: z.number().nonnegative(), objectKey: z.string().optional() })).optional(),
 }).passthrough();
 export type EngineResult = z.infer<typeof engineResultSchema>;
+export const meterEvidenceFrameSchema = z.object({ imageUrl: z.string(), timestampSeconds: z.number().finite().nonnegative() });
+export type MeterEvidenceFrame = z.infer<typeof meterEvidenceFrameSchema>;
 export const meterCaptureSchema = z.object({
   id: uuid, clientId: uuid, orgId: uuid, meterId: uuid, version: z.number().int(),
   status: z.enum(['UPLOADING', 'QUEUED', 'PROCESSING', 'REVIEW', 'CONFIRMED', 'FAILED']),
   proposedValue: meterValueSchema.nullable(), issues: z.array(z.string()),
+  previousValue: meterValueSchema.nullable().default(null),
+  replacement: z.object({ id: uuid, version: z.number().int(), value: meterValueSchema }).nullable().default(null),
+  supersedesCaptureId: uuid.nullable().default(null), supersededBy: uuid.nullable().default(null),
   serverResult: engineResultSchema.nullable(), aiResult: engineResultSchema.nullable(),
   evidenceUrl: z.string().nullable(), videoUrl: z.string().nullable(),
+  evidenceFrames: z.array(meterEvidenceFrameSchema).default([]),
   confirmedReadingId: uuid.nullable(), readingDate: z.string(), month: z.string(),
   purpose: z.enum(['MONTHLY', 'MOVE_OUT']), capturedAt: z.string(),
   sha256: z.string(), mediaReceived: z.boolean(), mediaValidated: z.boolean().optional(),
@@ -33,6 +39,7 @@ export type MeterCapture = z.infer<typeof meterCaptureSchema>;
 export const meterEvidenceSchema = z.object({
   captureId: uuid, imageUrl: z.string().nullable(), videoUrl: z.string().nullable(),
   timestampSeconds: z.number().nonnegative().nullable().optional(),
+  evidenceFrames: z.array(meterEvidenceFrameSchema).default([]),
 });
 export type MeterEvidence = z.infer<typeof meterEvidenceSchema>;
 export const meterPointSchema = z.object({

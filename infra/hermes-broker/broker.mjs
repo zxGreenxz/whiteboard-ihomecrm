@@ -1,5 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_RETIRED_BY } from './task-actions-contract.mjs';
 import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -45,7 +45,7 @@ const ROOM_TOOL = Object.freeze({
   // Câu đầu ≤ 60 ký tự vì danh sách tool_search của Hermes chỉ hiện câu đầu cắt còn 60 ký tự; "price" giữ chữ tiếng Anh mà
   // chỉ mục BM25 (token ASCII) của bản cũ có cho truy vấn "available rooms … price". Bù byte cho các mô tả định tuyến mới
   // (tools/list ≤ 64 000 B, đo ở tool-argument-shape.test.mjs).
-  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; không phải trạng thái CRM. Phòng trống thật: crm_read_occupancy (số), crm_read_report re_vacant_rooms (danh sách); sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
+  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; ≠ trạng thái CRM. Phòng trống thật (số/danh sách): crm_read_occupancy, crm_read_report re_vacant_rooms; không quyền BĐS: crm_read_report rooms_occupancy/rooms; sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -117,11 +117,23 @@ export class BrokerError extends Error {
   }
 }
 
-/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
-export function actionRejected(code) {
+/** Đường dẫn web tương đối (CV12, Công việc Mốc 3): chỉ ký tự đường dẫn/truy vấn, bắt đầu bằng '/', không có '//' hay tên miền. */
+export const ACTION_WEB_LINK = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,299}$/;
+/** Số thứ tự khoản trong lô (1–20) mà SQL báo kèm lý do; câu tới mô hình = "Khoản N: " + câu tĩnh của lý do. */
+export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && value <= 20;
+export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. Phần kèm theo, nhận theo kiểu:
+ * số = khoản số mấy của lô (Thu chi Mốc 4, 1–20); chuỗi = link (CV12, Công việc Mốc 3): đường dẫn web tới đúng đối tượng để người
+ * dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot). Sai khuôn ⇒ bỏ. */
+export function actionRejected(code, ...extras) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
-  error.detail = ACTION_REASONS[error.reason].text;
+  for (const extra of extras) {
+    if (actionItem(extra)) error.item = extra;
+    else if (typeof extra === 'string' && ACTION_WEB_LINK.test(extra)) error.link = extra;
+  }
+  error.detail = itemDetail(error.item, ACTION_REASONS[error.reason].text);
   return error;
 }
 
@@ -487,13 +499,12 @@ export function createBroker({
     const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
-  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
-  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
-  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
-  // còn nguyên, không mất đường tạo việc.
-  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
-  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
-    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7, 19): thao tác thay một tool cũ SỐNG ⇒ tool cũ ẩn VÀ bị từ chối, không để
+  // hai đường cùng hiện — task.create thay crm_task_create / crm_task_status / crm_task_input_options; task.update thay
+  // crm_task_progress; task.cancel thay crm_task_cancel (TASK_RETIRED_BY). Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime
+  // (review Mốc 2 mục 6): connector mới + DB cũ ⇒ thao tác chưa sống ⇒ tool cũ còn nguyên. Theo dõi (follow_*) không có thao tác thay.
+  const taskRetired = operation => Object.hasOwn(TASK_RETIRED_BY, operation) && typeof action?.knows === 'function' && action.knows(TASK_RETIRED_BY[operation]);
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) && !taskRetired(operation);
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedSaleTools = identity => [
     ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),

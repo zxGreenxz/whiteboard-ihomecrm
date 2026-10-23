@@ -36,7 +36,11 @@ export interface AccrualReportRow {
   itemId: string;
   voucherId: string;
   voucherName: string;
+  /** building_id của phiếu — gộp/đối chiếu theo toà bằng id (tên toà có thể trùng). */
+  buildingId: string | null;
   buildingName: string | null;
+  /** Ngày lập phiếu ('YYYY-MM-DD') — khác tháng đang xem khi phiếu được xếp theo kỳ. */
+  voucherDate: string | null;
   roomName: string | null;
   /** room_id của phiếu — khớp phòng chính xác (tránh trùng tên giữa các toà). */
   roomId: string | null;
@@ -335,7 +339,9 @@ export const useAccrualMonthReport = (
           itemId: it.id,
           voucherId: voucher.id,
           voucherName: voucher.name ?? "",
+          buildingId: voucher.building_id ?? voucher.building?.id ?? null,
           buildingName: voucher.building?.name ?? null,
+          voucherDate: voucher.voucher_date ?? null,
           roomName: voucher.room?.name ?? null,
           roomId: voucher.room_id ?? voucher.room?.id ?? null,
           typeName: t?.name ?? "",

@@ -46,7 +46,7 @@ test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộ
     { summary: [] }, { private: 'yes' }, { extra: 1 }, { params: ['query', 'query'] },
     // P2-1 (review PR #195): khoá ↔ scope, khoá ngoài danh sách, tham số gắn toà chỉ ở rows/buildings.
     { scope: 'self' }, { permission: 'assistant.salary.self' }, { permission: 'assistant.bank_events.read', scope: 'organization' },
-    { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'contracts.view' },
+    { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'customers.view' },
     { scope: 'organization', params: ['roomId'] }, { scope: 'cashbooks', params: ['invoiceId'] }, { scope: 'organization', params: ['areaId'] },
     // P2-b (review cổng INVOKER): khoá organization_scope chỉ scope organization/cashbooks.
     { permission: 'salary.view' }, { permission: 'materials.view', scope: 'buildings' }, { permission: 'cashbooks.view', scope: 'rows' },
@@ -119,7 +119,7 @@ test('mặt tool: đúng hai tool meta, gọn (≤ 1 600 B), không nhắc bản
 // sách tool_search chỉ hiện chừng đó).
 test('khám phá: mã báo cáo nêu trong mô tả crm_read_report có trong sổ, ASCII, câu đầu nêu xe/hotline', () => {
   const run = DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_report').description;
-  assert.deepEqual(W2_DISCOVERY_REPORTS, ['vehicles', 'hotlines', 'cashbooks', 're_vacant_rooms', 'top_expenses']);
+  assert.deepEqual(W2_DISCOVERY_REPORTS, ['vehicles', 'hotlines', 'cashbooks', 're_vacant_rooms', 'top_expenses', 'task_types']);
   for (const report of W2_DISCOVERY_REPORTS) {
     assert.ok(Object.hasOwn(W2.reports, report), `${report} có trong sổ W2`);
     assert.match(report, /^[a-z][a-z_]+$/); assert.match(run, new RegExp(`\\b${report}\\b`), report);

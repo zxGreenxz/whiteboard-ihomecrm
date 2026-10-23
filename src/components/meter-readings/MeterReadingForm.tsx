@@ -69,6 +69,7 @@ import { LoadingState } from '@/components/loading/LoadingState';
 import { todayISO } from '@/lib/collect';
 import { focusFirstError } from '@/lib/formErrors';
 import {recordWriteBlocked,recordWriteMessage} from '@/lib/recordWriteOutcome';
+import { MeterReadingsRejectedError, meterRejectedRowText } from '@/lib/meterReadingRpc';
 import {validateInputDrafts} from '@/lib/inputDraftValidation';
 
 // ============================================================================
@@ -319,6 +320,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     if (!validateReadings()) return;
 
     busy.current=true;setSubmitFailure('');
+    // Vị trí trong form của từng dòng gửi lên (dòng chỉ số 0 không gửi): hàm ghi đánh số dòng lỗi theo thứ tự gửi.
+    let sentIndexes: number[] = [];
     try {
       if (isEditing && reading) {
         // Update single reading
@@ -332,9 +335,11 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         });
       } else {
         // Bulk create readings (only rows with current_reading > 0)
+        sentIndexes = data.readings.flatMap((r, index) => (r.current_reading > 0 ? [index] : []));
         const readingsToCreate = data.readings
           .filter((r) => r.current_reading > 0)
           .map((r) => ({
+            building_id: data.building_id,
             meter_id: r.meter_id,
             reading_date: data.reading_date,
             current_reading: r.current_reading,
@@ -354,6 +359,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       const message=recordWriteMessage(error,'lưu chỉ số');
       setSubmitFailure(message);
       if(recordWriteBlocked(error))setUnknownBatchOutcome(message);
+      // Từ chối cả lô (vd tháng này đã có chỉ số): đánh dấu đúng dòng, chưa ghi dòng nào.
+      if(error instanceof MeterReadingsRejectedError){
+        const rowErrors=Object.fromEntries(error.rows.flatMap(row=>row.n && sentIndexes[row.n-1]!==undefined?[[sentIndexes[row.n-1],meterRejectedRowText(row)]]:[]));
+        setValidationErrors(rowErrors);
+        void focusFirstError(Object.fromEntries(Object.entries(rowErrors).map(([index,text])=>[`readings.${index}.current_reading`,text])),{root:formRef.current});
+      }
     } finally {busy.current=false;}
   };
 

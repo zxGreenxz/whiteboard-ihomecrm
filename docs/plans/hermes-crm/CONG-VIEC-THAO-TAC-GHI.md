@@ -1,10 +1,11 @@
-# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b + 2c đã hiện thực)
+# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 + 2b + 2c + 3 đã hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a` (đã gộp `3ae1d57f6`).
+Ngày 22/10/2026 (giờ Việt Nam). Mốc 1–2c: nhánh `claude/hermes-cong-viec-ghi-20261022` (PR #272). Mốc 3: nhánh
+`claude/hermes-cong-viec-moc3-20261022`, xếp chồng trên #272, đã gộp `origin/main` (#271 Thu chi).
 Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) và Mốc 2b sửa
 theo review độc lập (mục 17) có hai migration, một bản nháp Q64 chờ chủ (ngoài `supabase/migrations/`) và mã connector.
-Phiên chính đã áp `031548` + `031600` lên **TEST** (22/10, production CHƯA) và chạy bot thật; Mốc 2c (mục 18) thêm migration
-`065634` (suy loại việc), chưa áp. Thứ tự áp: mục 18.
+`031548` + `031600` + `065634` (Mốc 2c, mục 18) đã áp TEST và production (provenance 22/10: catalog-proven). Mốc 3 (mục 19:
+`task.update`, `task.cancel`, CV12) thêm migration `074741`, chưa áp. Thứ tự áp: mục 19.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12 (đã gộp `main` #253, đã lên production 22/10).
@@ -546,3 +547,263 @@ Dấu vết trên TEST: giao dịch ROLLBACK, nhưng SEQUENCE không lùi (bộ 
 1. TEST: áp `20261022065634` (031548 + 031600 đã có). Connector không đổi (bản `3a352226` dùng được; kết quả có thêm trường `jobTypeWanted` trong `resolved`, connector giữ nguyên khối này).
 2. Production: `20261022031548` + `20261022031600` cùng một lượt, rồi `20261022065634` (cùng lượt hoặc ngay sau, trước khi phát hành connector); `gen:types` (không thêm hàm public mới ở 065634).
 3. Áp production xong mới gộp PR; connector phát hành sau.
+
+## 19. Mốc 3 — sửa và huỷ việc bằng tên, từ chối kèm link (22/10)
+
+**Phạm vi:** `task.update`, `task.cancel` (mục 2.2, 2.4, 13) và CV12. Không thêm tool hay khuôn mới vào `tools/list`: hai thao tác nằm trong danh mục chung (`crm_action_list`), và tool cũ `crm_task_progress` / `crm_task_cancel` nghỉ hưu khi thao tác thay sống.
+
+**Migration `20261022074741_hermes_task_action_edit_v1`** (chưa áp). Dùng lại vỏ `public.hermes_task_action_v1` (BEGIN ATOMIC, gắn OID — không dựng lại, băm ở `hermes-task-function-contract` không đổi). Thay THÂN bốn tầng vỏ gắn (lõi giải tên + chuẩn bị của `065634`, ghi + chốt của `031548`), dựng từ thân đang chạy, ghim md5 (`8b1e8543…`, `f044e2e6…`, `3c359620…`, `f4406f3a…`); cùng chữ ký ⇒ OID giữ nguyên. Thêm hai hàm DEFINER `app_private.hermes_task_edit_prepare_v1`, `hermes_task_edit_finish_v1` (không cấp EXECUTE cho authenticated: chỉ hàm DEFINER gọi).
+
+| Phần | Luật |
+| --- | --- |
+| Dòng chính sách | `task.update`: khoá `tasks.edit`, reversible, never (máy chủ quyết xem trước). `task.cancel`: khoá `tasks.delete`, irreversible, always (sàn `hermes_action_policy_floor`) |
+| Tìm việc (`job`, INVOKER dưới RLS) | Mã đầy đủ (mọi trạng thái); 3–4 số cuối; "vừa giao"/"vừa tạo" = việc mới nhất người hỏi tạo trong 24 giờ; tiêu đề bỏ dấu chứa chuỗi. Ba cách sau chỉ xét việc ĐANG MỞ. Chỉ trong phạm vi toà của khoá (`tasks.edit` / `tasks.delete`); nêu toà/phòng thì lọc thêm. Khớp nhiều ⇒ `needs_input` `ambiguous` kèm "mã · tiêu đề (phòng, người nhận)" + toà, **không bao giờ tự chọn**. Chỉ khớp việc đã xong ⇒ `task_not_open` (kèm link nếu biết đúng việc) |
+| Sửa | Ghi chú tiến độ ghi NỐI vào `completion_description` (ô ghi chú của web) dạng "DD/MM HH:MM Tên: …"; đổi hạn (ngày, giờ; chỉ giờ ⇒ giữ ngày cũ), người nhận (luật xưng hô như `task.create`), ưu tiên, tiêu đề (`content`), mô tả. Chỉ cột thật sự đổi vào kế hoạch; không đổi gì ⇒ `invalid_params`. UPDATE dưới RLS `tasks.edit` + trigger như web (đổi người nhận ⇒ thông báo E4 như web). Ghi chú báo người giao đang theo dõi (như `crm_task_progress` cũ) |
+| Xác nhận của sửa | Ghi thẳng chỉ khi tìm bằng mã đầy đủ VÀ chỉ thêm ghi chú / đổi ưu tiên. Đổi hạn, người nhận, tiêu đề, mô tả; tìm theo số cuối / tiêu đề / "vừa giao"; người nhận mơ hồ hoặc không quản lý toà ⇒ xem trước |
+| Huỷ | LUÔN xem trước (kể cả `auto`): "Huỷ hẳn việc JOB-… 'tiêu đề' — toà, phòng — giao … — hạn … — đang làm. Không khôi phục được; nhật ký giữ mã và tiêu đề." Xoá hẳn như web (RLS `tasks.delete`). Có vật tư (`material_usages`) hoặc ảnh hoàn thành ⇒ `cancel_blocked` kèm link web. Audit `HERMES_TASK_CANCELLED` (old_state: mã, tiêu đề, toà, phòng, người nhận, người tạo, hạn; lý do). Đóng theo dõi (`job_cancelled`) + báo người giao và người nhận như `crm_task_cancel` cũ; bộ quét theo dõi cũng tự đóng theo dõi của việc đã xoá |
+| Lượt 2 | basis = trạng thái hiện tại của việc + thay đổi; đổi giữa hai lượt ⇒ `state_changed`. Guard chạy lại: mất quyền ở toà ⇒ `not_allowed`. Khoá dòng việc FOR UPDATE ở lượt có thể ghi. Phát lại theo requestId trước mọi quyết định |
+
+**CV12 (khung chung, dùng được cho mọi trang):** kết cục `rejected` của RPC trang được kèm `link` (đường dẫn web tương đối `/…`, khuôn `ACTION_WEB_LINK`); runtime kiểm khuôn (sai khuôn sau khi đã gửi lệnh ghi ⇒ `action_outcome_unknown`), `actionRejected(code, link)` chỉ giữ link đúng khuôn, mcp-http chuyển `link` cùng `reason` + câu tĩnh. Hai lý do mới: `cancel_blocked`, `task_not_open` (cả `action-reasons.mjs` lẫn sổ audit `host-ownership.mjs`).
+
+**Connector:** `TASK_UPDATE`, `TASK_CANCEL` (`param.name('job')`, nhãn "việc"); `TASK_RETIRED_BY` = tool cũ ↔ thao tác thay (create/status/options ↔ `task.create`, progress ↔ `task.update`, cancel ↔ `task.cancel`), xét theo danh mục SỐNG từng lời gọi. Lớp theo dõi (`extendTaskFollowAuthorization`) thôi cấp `tasks.edit` / `tasks.delete` khi `task.update` / `task.cancel` sống (lớp khung chung là nguồn), như `tasks.create` ở Mốc 2b; DB chưa có Mốc 3 ⇒ như cũ.
+
+**Khoá `tasks.delete` (phiên chính):** registry đang TẮT ở production (`20261021162612`, sau sự cố huỷ nhầm 21/10) nên `task.cancel` chưa chạy được ở production dù đã áp `074741`. Bật lại theo thứ tự:
+1. Áp `074741` (TEST rồi production) và phát hành connector có Mốc 3 lên MỌI host (TEST 8741 và production). Kiểm `crm_task_cancel` không còn trong `tools/list` của kết nối giữ `tasks.delete` (danh mục sống có `task.cancel`).
+2. Forward migration riêng: `UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='tasks.delete' AND mode='action'` (có rào: không còn kết nối `legacy_allowlist` ACTIVE giữ khoá này, như `20261021162612`). Bật trước khi connector mới chạy khắp nơi ⇒ connector cũ quảng bá lại `crm_task_cancel` không xem trước — đúng lớp sự cố 21/10.
+3. Chạy ma trận bot cho huỷ (mơ hồ ⇒ hỏi lại; luôn xem trước; việc có vật tư ⇒ link web).
+
+**Test:**
+- PGlite `task-edit-sql` 7 ca (tìm theo mã / số cuối / "vừa giao" / tiêu đề, mơ hồ hai toà, chỉ việc đang mở, ghi chú nối + phát lại, đổi hạn / người nhận / tiêu đề, basis, không có gì đổi, việc đã xong, huỷ luôn xem trước + audit + phát lại, ngoài phạm vi khoá xoá, chặn vật tư / ảnh, mất quyền giữa hai lượt).
+- `task-action-sql`, `task-type-infer-sql` trên chuỗi 031548 → 065634 → 074741; connector (danh mục, nghỉ hưu từng tool theo danh mục sống, lớp theo dõi thôi cấp khoá trùng, CV12 runtime + mcp-http).
+- Đột biến 20/20 (SQL 13, connector 7).
+- Tầng 2 trên TEST (ROLLBACK, bật tạm `tasks.delete` trong giao dịch; chủ / joey / bosshuy): ghi chú theo mã ghi thẳng + nối; "tầng 3" khớp 3 việc ⇒ hỏi lại kèm mã; đổi hạn và giao lại joey ⇒ xem trước (cảnh báo joey không quản lý toà) ⇒ lượt 2; joey ghi chú việc có theo dõi ⇒ báo người giao (notified 1); huỷ ⇒ xem trước ⇒ xoá, audit giữ mã; việc có ảnh ⇒ `cancel_blocked` + link; joey huỷ việc toà ngoài phạm vi ⇒ không thấy; việc đã xong ⇒ `task_not_open` + link; bosshuy sửa được việc ở toà mình có `tasks.edit` (như web).
+
+**Thứ tự áp `074741`:** sau `065634` (đã ở production). Không thêm hàm public ⇒ `gen:types` không đổi. Connector phát hành SAU khi áp; connector mới gặp DB chưa có `074741` thì giữ `crm_task_progress` / `crm_task_cancel` và quyền theo dõi cũ.
+
+## 20. Mốc 3b — sửa theo ma trận nghiệm thu pha A vòng 1 (22/10)
+
+Ma trận Công việc pha A vòng 1 (bot thật trên TEST, chỉ đọc): 29/36 đạt, 0 ghi sai. Mốc này sửa bốn ca trượt do thiếu công cụ hoặc rào sai. Nó không đụng `074741` (Mốc 3, chưa áp) hay ba migration của #272: phần SQL là một file mới, ghim thân đang chạy.
+
+**CV-R13 (rào sai ở connector).** Quản lý hỏi "việc đang giao cho tôi" thì `crm_task_follow_list` (`role=assigned_to_me`) trả `backend_unavailable`. SQL (`031600`, Q35) trả đúng cả việc giao cho chính người hỏi ở toà ngoài phạm vi, nhưng `taskFollowResult` từ chối mọi mục ngoài phạm vi toà. Nay connector nhận mục ngoài phạm vi khi role là `assigned_to_me` và `assigneeId` là người hỏi. `assigned_by_me` / `team` vẫn rào phạm vi toà: SQL của hai role này cũng lọc theo toà nên không có mục ngoài phạm vi hợp lệ.
+
+**CV-R01 / R03 / R04 / R06 (thiếu người nhận, mô hình tự cộng).** Chọn mở rộng `crm_read_tasks` (tool bot đã chọn đúng cho cả bốn câu), không định tuyến sang `crm_task_follow_list` `team`:
+
+- `team` không có số đếm, chỉ trả id toà, tối đa 50 dòng một trang và 200 dòng tổng (offset). Mô hình vẫn phải tự cộng nhiều trang, đúng lỗi của R06 (59 thay vì 54).
+- `tasks_board` (Mốc 4, W2 gói C) vẫn giữ phần riêng: trục ngày (việc xong trong tuần, CV-R09), `status=OVERDUE`, Q35 qua RLS, tiến độ, link. Mốc 3b chỉ lấy phần đếm theo nhóm cho tool đang dùng.
+
+**Migration `20261022153345_hermes_domain_tasks_assignee_v1`** (chưa áp):
+
+- Chỉ thay NHÁNH `tasks` của `public.hermes_domain_read_v1`. Mọi nhánh khác giữ từng byte như `20261021063452`, là thân đang chạy trên TEST và production.
+- Ghim md5: `$requires$` nhận `b0d16d1a…` (thân 063452) hoặc `d79bb632…` (thân của file này khi chạy lại); thân khác thì dừng. `$check$` đòi đúng `d79bb632…` cùng quyền như cũ.
+- Cùng chữ ký nên OID giữ nguyên. Không thêm hàm, khoá input hay ERRCODE mới.
+
+| Phần | Luật |
+| --- | --- |
+| Dòng | Thêm `assigneeName`: tên người nhận như web /tasks (`profiles.full_name`, rồi `jobs.assignee_name` gõ tay; null = chưa giao) |
+| `query` | Khớp tiêu đề/mã như cũ HOẶC tên người nhận bỏ dấu (`public.hermes_name_fold_v1`). Lọc theo người không tốn khoá input; `tools/list` chỉ đổi câu gợi ý "Tên/mã việc hoặc tên người nhận." |
+| `summary.byBuilding` | `[{buildingId, buildingName, count, overdue}]`, ≤ 50 nhóm, nhiều việc trước; hoà thì id toà tăng dần, việc không toà (null) cuối |
+| `summary.byAssignee` | `[{assigneeName, count, overdue}]`, ≤ 50 nhóm, nhiều việc trước; hoà thì tên theo byte (`COLLATE "C"`), chưa giao (null) cuối. Gộp theo TÊN hiển thị: hai người trùng tên thành một nhóm |
+| `summary.givenByMe` | `{count, overdue}`: việc người hỏi tạo mà người nhận khác người hỏi, kể cả chưa giao (đúng định nghĩa `cv_r06_given_by_me`) |
+| Tập tính | Cả tập lọc: phạm vi toà của khoá `tasks.view`, trạng thái, toà, query; không cursor, không LIMIT. Một CTE `MATERIALIZED` cho mọi số |
+
+**Connector:**
+
+- Khai `assigneeName` (nullable) và ba khoá summary mới. Cửa sổ một bản: `DOMAIN_READS.tasks.tolerant=['assigneeName']` và `DOMAIN_SUMMARY_KEY_TOLERANT.tasks`. Connector Mốc 3b lên TRƯỚC migration, vì connector cũ từ chối khoá lạ (`backend_unavailable`).
+- Bất biến:
+  - Mỗi nhóm có ≥ 1 việc, quá hạn ≤ số việc; không trùng khoá; nhiều việc trước.
+  - Cộng các nhóm ≤ `count` / `overdue`. Dưới 50 nhóm (không bị cắt) thì phải BẰNG đúng.
+  - Toà của `byBuilding` nằm trong phạm vi khoá và đúng toà lọc; hoà thì toà null đứng cuối.
+  - `givenByMe` ≤ `count`; quá hạn của nó ≤ số giao và ≤ `overdue`.
+- `summarizeRows` (lọc phòng ở connector) tính nhóm từ dòng. `byAssignee` chỉ có khi mọi dòng mang `assigneeName`, để không đoán "chưa giao" từ dòng của SQL cũ. `givenByMe` = null vì dòng không mang người tạo.
+
+**CV-R11 (danh mục loại việc).** Báo cáo W2 `task_types` (gói D, `crm_read_report`) đã có từ trước; bot chỉ không tìm thấy. Thêm `task_types` vào danh sách mã khám phá trong mô tả `crm_read_report` (+12 B; hai tool meta 1 599 / 1 600 B). Không kèm nhãn tiếng Việt vì sẽ vượt trần. Đường chắc chắn là luật SOUL (mục dưới).
+
+**Test:**
+- Toàn bộ test connector: 1 848 đạt, 8 bỏ qua, 1 trượt (WAL Windows đã biết). Nhóm `tools/list` / W2 chạy lại sau khi đổi danh sách khám phá: 174/174. `tool-plan-cases` thêm ba ca CV-R04 / R06 / R11 (đường trả lời có trong khuôn kết quả).
+- `domain-tolerance`: cửa sổ phát hành + 25 ca từ chối. `domain-summary`: nhóm + trần 50. `domain-composition` (PGlite): thân mới + dữ liệu tổng hợp 10 việc (toà ngoài khoá, không toà, công ty khác, hồ sơ trống ⇒ tên gõ tay, tự giao, người khác tạo), query bỏ dấu, phân trang, Toàn tổ chức. Cùng test chạy chính file migration: nhận thân 063452, chạy lại được, thân khác ⇒ dừng.
+- `task-follow`: hồi quy CV-R13.
+- `hermes-durable-schema` 98/98 (forward 28 file / 101 hàm).
+- Đột biến: SQL 9/9 trong `domain-composition`. Connector 25/26; ca còn lại tương đương — role `assigned_to_me` đã bị buộc `assigneeId` = người hỏi ở rào kế bên.
+
+**Tầng 2 trên TEST** (ROLLBACK, thân mới thay trong giao dịch; số khớp `truth.sql` của ma trận):
+
+| Câu | chủ | joey | bosshuy |
+| --- | --- | --- | --- |
+| R01 việc mở | 62 việc, 4 quá hạn, 15 toà; NATHAN 33 / JOEY 25 / NG TÂM 4; cộng nhóm = 62 | 28 việc, 6 toà | 50 việc, 12 toà |
+| R04 `query=nathan` | 33 việc, 10 toà | 3 (toà của joey) | 25 |
+| R03 toà 44TL | 6 việc, NATHAN 4 / JOEY 2 | 42501 (ngoài phạm vi) | 42501 |
+| R06 `givenByMe` | 54 | 0 | 0 |
+| R11 `task_types` | 15 loại | 15 loại | 42501 (không có `task_types.view` CRM) |
+
+Trang 2 mang đúng summary của trang 1. Mọi dòng có `assigneeName`. Tốc độ (chủ, 482 việc, 6 lượt ấm trong một giao dịch): thân cũ 145–148 ms, thân mới 152–159 ms; kết quả 16,4 KB → 20,1 KB.
+
+**Thứ tự phát hành (phiên chính):**
+1. Phát hành connector có Mốc 3b lên mọi host (TEST 8741, production).
+2. Áp `20261022153345` qua lane (TEST rồi production). Provenance xếp file này `catalog-proven` dù CHƯA áp, vì hàm cùng tên đã có. Phải áp đích danh, không trông vào `list-forward-migrations`.
+3. Bản connector kế tiếp gỡ hai cửa sổ của `tasks`.
+
+Rollback: chạy lại câu lệnh hàm của `063452`; `$requires$` của file này nhận cả hai thân. File không phụ thuộc `074741`, áp trước hay sau đều được.
+
+## 21. Mốc 4 — giao nhiều việc một lần, bảng việc, theo dõi kiểm toà (23/10)
+
+**Phạm vi:** `task.create_batch` (Q37, CV8), báo cáo W2 `tasks_board` (CV14, mục 4), known-gap `hermes-pham-vi-toa-chua-giao-web` mục (3). Không thêm tool nào vào `tools/list`: lô nằm trong danh mục chung (`crm_action_list`), bảng việc nằm trong `crm_read_report` (hai tool meta giữ 1 599 / 1 600 B). Năm migration, đều là file mới, chưa áp.
+
+**`20261022164201_hermes_task_batch_v1`** (áp SAU `074741`). Vỏ `hermes_task_action_v1` giữ nguyên. Thay thân bốn tầng vỏ gắn, dựng từ thân `074741` và ghim md5 (`$requires$` nhận thân `074741` hoặc thân của file này). Thêm ba hàm DEFINER không cấp EXECUTE cho vai API: `hermes_task_managed_buildings_v1`, `hermes_task_batch_prepare_v1`, `hermes_task_batch_finish_v1`.
+
+| Phần | Luật |
+| --- | --- |
+| Dòng chính sách | `task.create_batch`: khoá `tasks.create`, reversible, `always` ⇒ LUÔN xem trước MỘT lần cho cả lô |
+| Tham số | `items` (1–20 bản ghi: toà, phòng, nội dung, loại, người nhận, hạn, giờ, ưu tiên) HOẶC `buildingsManagedBy` (đúng một trong hai, không thì `invalid_params`). Giá trị chung ở ngoài (`buildingName`, `jobType`, `content`, `description`, `assigneeName`, `deadline`, `deadlineTime`, `priority`), mục đè từng trường. "Toà X, mỗi phòng một việc" chỉ nêu toà một lần (thêm sau tầng 2: CV-B04/B05 nêu toà chung). `buildingsManagedBy` kèm `buildingName` là mâu thuẫn ⇒ `invalid_params` |
+| Mỗi mục | Đúng luật `task.create`: giải tên dưới RLS người hỏi, đoán loại (Mốc 2c), hạn trống = hết ngày mai, toà ảo không nhận, tiêu đề như web. Người nhận phải nêu rõ (lô không đề xuất người quản lý Q31). Mục đầu tiên chưa giải được ⇒ `needs_input` kèm `item` (1–20); connector ghi "Mục #n: …" |
+| `buildingsManagedBy` | Giải người, rồi trải ra mọi toà trong phạm vi khoá mà người đó quản lý theo luật Q31 (thành viên ACTIVE không phải OWNER, có `tasks.edit` + `buildings.view` ở toà), xếp theo tên toà; mỗi toà một việc cả toà. Người nhận trống = chính người đó. Không quản lý toà nào ⇒ `needs_input` `building` `unspecified` |
+| Kiểm | Trùng đang mở (như `task.create`) + hai mục trùng nhau trong lô + người nhận không quản lý toà ⇒ cảnh báo theo mục. Hạn mức Q37 tính cho CẢ lô, vượt ⇒ `rejected` ngay ở bản xem trước (`task_quota_user` / `task_quota_pair`) và kiểm lại ở lượt ghi. > 20 mục ⇒ `batch_too_large` (connector chặn trước ở khuôn danh sách 1–20) |
+| Lượt 2 | Khoá công ty (guard) → khoá tư vấn (công ty, toà) theo thứ tự id toà → mọi INSERT trong một khối dưới RLS + trigger như web; một hàng lỗi ⇒ cả lô lùi, biên nhận `rejected`. Basis = md5 nối basis từng mục; lệch ⇒ `state_changed`. Phát lại theo `requestId` trước mọi quyết định |
+| Chốt | Đối chiếu từng hàng như `task.create`, sổ `hermes_task_jobs` (`action='task.create_batch'`), audit `HERMES_TASK_CREATED` từng việc (kèm `item`/`items`). `result` = câu "Đã tạo N việc: mã (toà phòng), …" + `count` + `jobs[]` (id, mã, tiêu đề, toà, phòng, người nhận, hạn); `link` `/tasks` |
+
+**Khung chung (connector):** `needs_input` nhận thêm `item` (số nguyên 1–20), runtime kiểm khuôn. Trường bản ghi nhận thêm loại `time`. Lý do mới `batch_too_large` (lớp `needs_input`, câu "Tối đa 20 việc một lần giao…").
+
+**`tasks_board`** (gói C, `crm_read_report`). Ba file, áp theo thứ tự:
+1. `20261022180359_hermes_w2_tasks_view_reused_v1`: thêm `tasks.view` vào `hermes_w2_reused_keys_v1`. Dựng từ thân production, đã có `contracts.view` của `20261022043540` (#270). `W2_REUSED_KEYS` ở JS khớp cả hai khoá.
+2. `20261022180400_hermes_w2c_jobs_board_shared_v1`: hàm dùng chung `public.jobs_board_v1` (INVOKER, `search_path=''`, chỉ `authenticated`). Nội dung file không có chữ `hermes_` (luật hàm dùng chung CRM).
+3. `20261022180402_hermes_w2c_tasks_board_v1`: thay `hermes_w2c_catalog_v1` (thân production `20261018030200`) và `hermes_w2c_read_v1` (thân production `20261019040948`; nhận thêm thân cuối chuỗi file của fixture), thêm một mục catalog và một nhánh đọc; ghim md5.
+
+| Phần | Luật |
+| --- | --- |
+| Khoá, phạm vi | `tasks.view`, `rls_buildings`: toà công ty ∩ phạm vi kết nối, RLS `jobs` của người hỏi quyết từng việc, kể cả việc giao cho chính người hỏi ở toà ngoài khoá (Q35). Việc không gắn toà chỉ hiện khi Toàn tổ chức. Rào `fence` của broker nhận đúng các hàng (test) nên giữ `rls_buildings` |
+| Tham số | `query` (mã, tiêu đề, tên người nhận bỏ dấu), `status` IN_PROGRESS / COMPLETED / OVERDUE (= đang làm mà quá hạn lúc gọi), `kind` deadline / created / completed + `fromDate`/`toDate` (ngày giờ công ty), `buildingId`, `roomId`, `staffId`. Tên toà/phòng đi qua `buildingName`/`roomName` của cơ chế giải tên W2 sẵn có |
+| Hàng | mã, tiêu đề, loại, toà, phòng, người nhận, người giao, hạn "YYYY-MM-DD HH:MM", số ngày quá hạn, tiến độ (300 ký tự đầu `completion_description`), ngày tạo/xong, `link` `/tasks?job=…`. Đang làm + quá hạn đứng đầu |
+| `summary` | Do SQL tính trên CẢ tập khớp: `total`, `overdue`, `byAssignee` (≤ 20, nhiều việc trước, chưa giao cuối), `byBuilding` (≤ 50, toà null cuối) |
+
+Lệch so với mục 4: không có trường "nguồn (web/Hermes/định kỳ)", vì `task_recurrences` chưa làm. Tên không xem được trả null (theo RLS `profiles`), không phải chuỗi "(không xem được tên)". `byAssignee` đếm việc + quá hạn của tập lọc, không tách "mở".
+
+**`20261022180351_hermes_task_follow_building_v1`** (known-gap mục 3). Dựng từ thân `hermes_task_follow_grant_v1` đang chạy (`20261015130000`, ghim md5), thêm đúng một điều kiện: người giao phải còn `buildings.view` ở toà của việc (`authorize_tenant_action_v3`). Mất quyền ⇒ `permission_lost` ⇒ lượt nhắc đóng theo dõi, không báo thêm. Việc không gắn toà giữ luật cũ. `known-gaps.yaml` ghi bản sửa, gỡ mục (3) khi file đã áp production.
+
+**Soát deadlock 40P01 (yêu cầu phiên chính 23/10): không có vòng, không cần NOWAIT.** Đo catalog production, chỉ đọc:
+- Guard dùng `lock_org_for_decision_v1`. Hàm này khoá dòng công ty bằng `FOR NO KEY UPDATE`, không xung đột với `FOR KEY SHARE` mà kiểm khoá ngoại lấy.
+- Trigger trên `jobs`: `jobs_set_user_id_audit`, `trg_autofill_org`, `trigger_generate_job_code` (khoá tư vấn khi INSERT), `trigger_jobs_stamp_completion_time`, `trigger_jobs_updated_at`, `z95_notify_job_assigned_ins/upd`, `zz_khoa_organization_id`. Không trigger nào khoá hay UPDATE dòng `organizations`.
+- Trigger E4 chèn `notifications`. Bốn trigger trên `notifications` cũng không khoá dòng công ty; khoá ngoại `notifications/jobs/material_usages → organizations` chỉ lấy KEY SHARE.
+- Hàm vừa chạm `jobs`/`material_usages` vừa gọi guard: chỉ có `hermes_task_follow_tick_v1`, và hàm này khoá công ty TRƯỚC (cùng thứ tự với Hermes, `lock_timeout` ⇒ bỏ qua công ty bận). Gọi gián tiếp một bậc: hai hàm đọc Hermes, không khoá dòng việc. Không hàm nào chạm `jobs` mà UPDATE hay khoá `organizations`.
+- Vậy web khoá dòng việc xong không bao giờ phải chờ dòng công ty mà Hermes đang giữ. Lô không khoá dòng việc có sẵn, chỉ INSERT.
+
+**Test:**
+- PGlite `task-batch-sql` 8/8: xem trước một lần, ghi, phát lại, sổ, audit; mục đầu chưa giải kèm số mục; toà chung + mục đè; > 20; `buildingsManagedBy`; cả lô hoặc không gì; `state_changed` + cảnh báo trùng; hạn mức ở bản xem trước; mất phạm vi giữa hai lượt.
+- `wave2-c-tasks-board` 4/4: hàng + summary + lọc (CV-R09, OVERDUE, tên bỏ dấu, người nhận, phòng, trục ngày tạo), Toàn tổ chức có việc không toà, Q35 qua policy, 3 đột biến hàm dùng chung. Chạy trên RLS `jobs` thật của baseline và rào broker.
+- `task-follow-review-fixes`: known-gap (3) có file ⇒ REVOKED, bản trước ⇒ vẫn nhắc. `task-follow-mutation` thêm ca bỏ điều kiện `buildings.view`.
+- `hermes-durable-schema` 100/100 (forward 31 file / 106 hàm). Test W2 cập nhật: dải nền thêm `180359`, `tasks_board` là báo cáo `rls_buildings` thứ hai, ví dụ khai sai đổi `contracts.view` → `customers.view` (giống #270).
+
+**Tầng 2 trên TEST** (ROLLBACK, nạp `074741` → `164201` → `180351` → `180359` → `180400` → `180402` trong giao dịch; chủ / joey / bosshuy):
+
+| Ca | Kết quả | Ma trận |
+| --- | --- | --- |
+| B01 mỗi toà Nathan quản lý | xem trước 9 toà (102LVT, 1392QT, 15KV, 331PHI, 403PVB, 405PVB, 44TL, 481NVK, 512TT) ⇒ 9 việc, NATHAN, 31/10 23:59; phát lại không thêm; sổ 9, audit 9 | 9 toà, đúng danh sách |
+| B02 ba toà cho Joey | xem trước 3 ⇒ 3 việc, 30/10 23:59 | 3 |
+| B03 21 mục | `batch_too_large` | tối đa 20 |
+| B04 phòng 999 | `needs_input` mục #3 `room` `not_visible`, chưa tạo gì; bỏ mục ⇒ 2 việc 403PVB/101, 102 | cả lô hoặc không gì |
+| B05 joey 11 việc cho Nathan | `rejected` `task_quota_pair` ở lượt 1, không tạo gì (10 việc ⇒ xem trước được) | chặn cả lô |
+| R09 tuần này xong | chủ 50 việc (NATHAN 29, JOEY 20, chưa giao 1); joey 21; bosshuy 37 | truth: 49 có người nhận / 50, NATHAN 29 |
+| Quá hạn | chủ 4 việc | truth 4 |
+
+bosshuy giao lô bị `needs_input` `jobType` `not_visible`: tài khoản này không thấy loại việc (không có `task_types.view` CRM, như R11 của Mốc 3b). Đây là hành vi sẵn có của `task.create`, không riêng lô. TEST không có lượt theo dõi ACTIVE nên chưa đo được số lượt sẽ đóng theo điều kiện mới.
+
+**Thứ tự phát hành (phiên chính):**
+1. Lô: áp `074741` rồi `164201` qua lane (TEST rồi production), sau đó phát hành connector có Mốc 4. Danh mục sống quyết việc quảng bá `task.create_batch`; connector cũ bỏ qua thao tác lạ.
+2. Bảng việc: áp `180359` → `180400` → `180402` (`180402` đòi hai file trước). Phát hành connector có `tasks_board` cùng lúc hoặc sau: connector cũ không có báo cáo trong sổ nên không gọi tới.
+3. Theo dõi: áp `180351` lúc nào cũng được. Provenance xếp `180351`, `180359`, `180402` là `catalog-proven` dù CHƯA áp (hàm cùng tên đã có) ⇒ phải áp đích danh.
+4. `180359` dựng từ thân có `contracts.view` (#270 đã áp production). Gộp main có #270 thì `wave2-kit.mjs` / test dải nền sẽ xung đột nhẹ: giữ cả hai khoá và cả hai file trong dải.
+
+Rollback: chạy lại câu lệnh hàm của file trước (`074741`, `20261015130000`, thân production của reused keys / catalog / reader gói C); `$requires$` của mỗi file nhận cả thân cũ lẫn thân mới. `public.jobs_board_v1` để lại không hại (không ai gọi ngoài nhánh mới).
+
+## 22. Mốc 5 — việc định kỳ (23/10)
+
+**Phạm vi:** mục 5 (Q39 = b, CV9). Đây là tính năng CRM mới: web chưa có bảng hay hàm định kỳ cho việc (chỉ có phiếu định kỳ của Thu chi). Phần dùng chung đặt trong DB để web gọi lại sau (Q40 = b, chưa làm giao diện). Không thêm tool vào `tools/list`: bốn thao tác nằm trong `crm_action_list`, báo cáo nằm trong `crm_read_report`. Năm migration mới, đều chưa áp.
+
+**Khoá để TẮT:** không file nào chèn dòng chính sách `task.recurring_*`. Khi không có dòng chính sách, danh mục thao tác sống không có bốn thao tác ⇒ connector không quảng bá và guard từ chối. Bảng, hàm ghi CRM, bộ sinh và báo cáo vẫn có (bảng rỗng ⇒ bộ sinh không làm gì). Vai API gọi thẳng được bốn hàm ghi CRM qua PostgREST, với đúng quyền `tasks.create` / `tasks.edit` / `tasks.delete` như web; giao diện web chưa có. Phiên chính bật bằng một migration riêng, sau khi connector có Mốc 5 và chủ đồng ý:
+
+```sql
+INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,action_class,confirm,private_only) VALUES
+  ('task.recurring_create','tasks.create','tasks.create','reversible','always',true),
+  ('task.recurring_update','tasks.edit','tasks.edit','reversible','always',true),
+  ('task.recurring_pause','tasks.edit','tasks.edit','reversible','always',true),
+  ('task.recurring_delete','tasks.delete','tasks.delete','reversible','always',true)
+  ON CONFLICT(action) DO NOTHING;
+```
+
+`task.recurring_delete` dùng khoá `tasks.delete`, mà khoá này đang tắt ở production (#259) ⇒ xoá quy tắc chỉ chạy khi khoá đó đã bật lại.
+
+**`20261023042424_job_recurrence_v1`** (CRM dùng chung; nội dung không có chữ `hermes_`):
+
+| Phần | Luật |
+| --- | --- |
+| `public.job_recurrence_rules` | Việc mẫu (toà bắt buộc, phòng, loại, tiêu đề, mô tả, người nhận, ưu tiên) + lịch: `daily` / `weekly` / `monthly`, mỗi N (1–12), thứ ISO 1–7, ngày -1–31 (-1 = cuối tháng), từ / tới ngày, hạn = ngày sinh + N ngày (0–30). Mã `DK-NNNN` theo công ty. Xoá mềm. Tạm dừng có lý do (`user` / `permission_lost` / `membership_lost` / `target_deleted`). `version` tăng khi cột người dùng thấy đổi; bộ sinh cập nhật `last_generated_date` thì không tăng |
+| `public.job_recurrence_occurrences` | Khoá `(quy tắc, ngày)` ⇒ không bao giờ sinh hai việc cho một ngày. Việc bị xoá ⇒ `job_id` về NULL, lần sinh còn (không sinh lại) |
+| RLS | Soi gương policy `jobs` đọc 23/10: SELECT như `jobs_select_rbac`; INSERT đòi `tasks.create` ở toà; UPDATE đòi `tasks.edit` hoặc `tasks.delete` (qua `app_private.buildings_for_v3`) + ranh giới công ty. Vai API chỉ có quyền cột ghi được, không DELETE; bảng lần sinh chỉ SELECT |
+| Trigger (DEFINER, `WHEN current_user` là vai API) | Xoá mềm đòi đúng `tasks.delete`, đổi khác đòi `tasks.edit` (`authorize_tenant_action_v3`); cột bất biến; ngày bắt đầu không ở quá khứ; trần 100 quy tắc đang chạy mỗi công ty (lỗi 54000); mã cấp dưới khoá tư vấn theo công ty; chuẩn hoá lịch (weekly mặc định thứ của ngày bắt đầu, monthly mặc định ngày của ngày bắt đầu); chạy lại không bù các ngày đã dừng. Trigger thứ hai (vai hệ thống) chỉ chuẩn hoá + tăng `version` |
+| `public.job_recurrence_dates_v1` | Thuần. Tháng tính từ tháng neo, không cộng dồn (29–31 rơi vào tháng thiếu ⇒ cuối tháng đó, tháng sau trở lại đúng ngày). Tuần neo theo tuần ISO của ngày bắt đầu. Tối đa 400 ngày một lần gọi |
+| `public.job_recurrence_schedule_text_v1` | "hằng ngày", "mỗi thứ Hai, thứ Năm", "mỗi 2 tuần vào Chủ nhật", "ngày cuối tháng hằng tháng", "ngày 15, mỗi 3 tháng" |
+| Bốn hàm ghi (INVOKER, `search_path=''`) | `job_recurrence_create_v1` / `_update_v1` (khoá = tên cột) / `_set_paused_v1` / `_delete_v1`, CAS theo `version`. Lỗi: 42501 không quyền, 22023 dữ liệu sai, P0002 không thấy, 40001 version lệch, 54000 vượt trần |
+
+**`20261023042431_hermes_task_recurrence_generate_v1`:** bộ sinh `app_private.hermes_task_recurrence_generate_v1(p_today)` (DEFINER), cron `job-recurrence-daily` lúc 17:10 UTC (00:10 giờ VN).
+- Mỗi quy tắc đang chạy: các ngày đến hạn trong (`last_generated_date`, hôm nay theo giờ công ty], bù tối đa 7 ngày.
+- Dòng quy tắc khoá `FOR NO KEY UPDATE SKIP LOCKED`: đang bị sửa ⇒ bỏ lượt này, lượt sau bù.
+- INSERT lần sinh `ON CONFLICT DO NOTHING`; chỉ ngày vừa chèn được mới sinh việc.
+- Kiểm lại: người tạo còn ACTIVE + còn `tasks.create` ở toà, toà / phòng / loại còn sống, người nhận còn là thành viên. Hỏng ⇒ tạm dừng kèm lý do, lần sinh `skipped`, audit `JOB_RECURRENCE_PAUSED`.
+- Thành viên đọc thẳng `organization_memberships` (ACTIVE, chưa thu hồi, trong `valid_from`/`valid_to`). Không gọi `hermes_task_assignee_member_v1`: helper đó đòi JWT `authenticated`, cron không có ⇒ bản đầu sẽ tạm dừng MỌI quy tắc ở lần chạy đầu (phát hiện khi soát Mốc 6, 23/10; sửa tại chỗ vì file chưa áp). Các trigger trên `jobs` / `notifications` và `append_authz_audit_v1` chỉ đọc `auth.uid()` để ghi người thao tác (NULL = hệ thống, cột audit cho NULL).
+- Việc sinh ra là việc thường: `user_id` = người tạo quy tắc (trigger chỉ điền khi trống ⇒ không cần đặt claims; thông báo E4 ghi người giao là "hệ thống"), hạn cuối ngày (ngày sinh + N), mô tả có "(định kỳ DK-NNNN)". Sổ `hermes_task_jobs` ghi `source = recurrence` (không tính hạn mức Q37).
+- Mỗi quy tắc một khối con. Không khoá dòng công ty.
+
+**`20261023042436_hermes_task_recurring_v1`** (áp SAU `164201` và `042424`): thay thân bốn tầng vỏ `hermes_task_action_v1`, dựng từ thân `164201` và ghim md5. Thêm `app_private.hermes_task_recurring_prepare_v1` / `_finish_v1` (DEFINER, không cấp cho vai API).
+
+| Thao tác | Khoá | Luật |
+| --- | --- | --- |
+| `task.recurring_create` | `tasks.create` | Đi chung nhánh một mục của `task.create` (toà / phòng / loại / người nhận / tiêu đề như web, Q31 đề xuất người quản lý). Lịch chuẩn hoá như trigger CRM; ngày bắt đầu quá khứ / kết thúc trước bắt đầu / lịch không ra ngày nào ⇒ `date_out_of_range`; tham số lịch sai ⇒ `invalid_params`. Trần 100 ⇒ `recurrence_quota` ngay ở bản xem trước |
+| `task.recurring_update` | `tasks.edit` | Lịch, người nhận (luật như `task.update`), nội dung, mô tả, ưu tiên, từ / tới ngày, hạn sau N ngày. Chỉ cột thật sự đổi vào kế hoạch; không đổi gì ⇒ `recurrence_unchanged`. Việc đã sinh không đổi |
+| `task.recurring_pause` | `tasks.edit` | `resume=true` = chạy lại; trạng thái đã đúng ⇒ `recurrence_unchanged`. Chạy lại không bù các ngày đã dừng |
+| `task.recurring_delete` | `tasks.delete` | Xoá mềm; việc đã sinh giữ nguyên |
+| Chung | — | Tìm quy tắc: mã `DK-NNNN` (chấp nhận "dk3", "DK 0003") hoặc nội dung bỏ dấu, dưới RLS người hỏi, trong phạm vi toà của khoá; mơ hồ ⇒ hỏi lại kèm "mã · nội dung (phòng, lịch)" + toà, không tự chọn. Chính sách `always` ⇒ luôn xem trước kèm lịch dạng chữ và ba lần tới. Lượt 2: basis = bản đã giải (tạo) hoặc id + `version` + thay đổi; khoá dòng quy tắc `FOR UPDATE NOWAIT` (bận ⇒ 55P03 ⇒ `state_changed`); ghi qua đúng bốn hàm ghi CRM; chốt đối chiếu dòng, audit `HERMES_TASK_RECURRING_CREATED/UPDATED/PAUSED/RESUMED/DELETED` |
+
+**Báo cáo `task_recurrences`** (gói C): `20261023042445` hàm dùng chung `public.job_recurrences_list_v1` (INVOKER) → `20261023042450` catalog + hàm đọc gói C dựng từ thân `180402` và ghim md5. Khoá `tasks.view`, phạm vi `rls_buildings`. Lọc `status` ACTIVE / PAUSED / ENDED, `query` (mã, nội dung, tên người nhận bỏ dấu), `buildingId`. Mỗi hàng có lịch dạng chữ và lần sinh kế tiếp. `summary` = tổng / đang chạy / tạm dừng / đã kết thúc.
+
+**Connector:** `TASK_RECURRING_CREATE/UPDATE/PAUSE/DELETE` (tham số 14 / 12 / 2 / 1; `weekdays` là danh sách `oneOf` MON…SUN); `param.name('recurrence')` (nhãn "việc định kỳ"); lý do `recurrence_quota` (rejected), `recurrence_unchanged` (needs_input); báo cáo `task_recurrences` trong W2 gói C (22 báo cáo).
+
+**Soát 40P01:** guard khoá dòng công ty (`FOR NO KEY UPDATE`) rồi mới khoá dòng quy tắc. Không đường nào khoá dòng quy tắc rồi mới khoá công ty: bộ sinh và hàm ghi CRM không khoá công ty, trigger CRM chỉ lấy khoá tư vấn theo công ty khi INSERT (không xung đột khoá dòng). Vậy không có vòng. Hermes vẫn lấy dòng quy tắc bằng NOWAIT để không đứng chờ bộ sinh.
+
+**Test:**
+- PGlite `task-recurring-sql`: bảng ngày (31, tháng 2, năm nhuận, mỗi 2 tuần, cuối tháng, tới ngày); hàm ghi CRM dưới RLS + trigger (mã, mặc định, cột bất biến, CAS, xoá cần `tasks.delete`, quyền cột, trần 100); bốn thao tác Hermes (xem trước một lần + ba lần tới, Q31, phát lại, audit, lịch sai ⇒ hỏi lại, mơ hồ ⇒ hỏi lại, đổi giữa hai lượt ⇒ `state_changed`, không có dòng chính sách ⇒ guard từ chối); bộ sinh (một lần mỗi ngày, chạy lại an toàn, bù ≤ 7 ngày, người tạo đứng tên, hạn cuối ngày + N, mất quyền / thành viên / loại ⇒ tạm dừng có lý do; chạy như cron không JWT với thân THẬT của helper thành viên ⇒ vẫn sinh, không tạm dừng); 4 đột biến (bỏ kiểm quyền người tạo ở bộ sinh, bộ sinh dùng lại helper đòi JWT, xoá chỉ cần `tasks.edit`, lõi tự chọn khi mơ hồ) đều bị bắt.
+- PG17 `task-recurring-race-pg`: hai lượt sinh song song ⇒ lượt sau bỏ qua dòng đang bị giữ, đúng một việc; Hermes tạm dừng lúc bộ sinh giữ dòng ⇒ 55P03 ngay.
+- `wave2-c-task-recurrences`: hàng, lịch, lần kế tiếp, trạng thái, summary, Toàn tổ chức, RLS giấu toà không xem được, rào broker.
+- Tầng 2 trên TEST (ROLLBACK; nạp năm file trong giao dịch, bật tạm bốn dòng chính sách + `tasks.delete`; chủ / joey / bosshuy): chủ tạo "mỗi thứ Hai" ⇒ xem trước có lịch chữ + 26/10, 02/11, 09/11 ⇒ `DK-0001`; "ngày cuối tháng" ⇒ 31/10, 30/11, 31/12; lịch sai / bắt đầu hôm qua ⇒ hỏi lại; joey tạo, tạm dừng theo mã, chạy lại theo nội dung không dấu; chủ sửa lịch + người nhận ⇒ xem trước đúng hai thay đổi + cảnh báo người nhận thiếu quyền ở toà; nội dung khớp hai quy tắc ⇒ hỏi lại kèm 2 ứng viên; bosshuy gọi quy tắc ở toà ngoài phạm vi ⇒ `not_visible`; bộ sinh chạy trong ngữ cảnh đã xoá claims (như cron: `auth.role()`/`auth.uid()` NULL, helper thành viên trả false) hôm nay 1 việc, chạy lại 0, tới +7 thêm 5 (đúng lịch), không tạm dừng quy tắc nào, người tạo đứng tên, hạn cuối ngày; xoá ⇒ báo cáo bỏ quy tắc đã xoá; 7 biên nhận, 7 audit.
+
+**Thứ tự áp (phiên chính):** `042424` → `042431` → `042436` (sau `164201`) → `042445` → `042450`. `042450` bị provenance xếp `catalog-proven` dù chưa áp (thay hàm đã có) ⇒ áp đích danh. Connector Mốc 5 phát hành trước hay sau migration đều an toàn: không có dòng chính sách thì thao tác ẩn; báo cáo chỉ hiện khi catalog SQL có. Cuối cùng mới bật bốn dòng chính sách bằng migration riêng.
+
+Rollback: chạy lại câu lệnh hàm của `164201` / `180402` (`$requires$` nhận cả hai thân); xoá lịch cron `job-recurrence-daily`; bảng mới để lại không hại.
+
+## 23. Mốc 6 — nhắc việc qua Zalo, phần DB (23/10)
+
+**Phạm vi:** mục 6 (Q38 = b, CV11). Hàng đợi + bộ sinh nhắc + ba RPC cho worker. Không đổi worker, không thêm tool Hermes, không đổi connector. Hai migration mới, chưa áp; chỉ thêm đối tượng mới (không thay thân hàm nào ⇒ không ghim md5, không file nào ghim chéo thân file trước). Hợp đồng cho worker: [CONG-VIEC-NHAC-ZALO-WORKER.md](CONG-VIEC-NHAC-ZALO-WORKER.md).
+
+**Khoá để TẮT:** không chèn dòng `app_private.task_reminder_config` nào ⇒ bộ sinh chạy cron nhưng không làm gì. Phiên chính bật bằng migration riêng sau khi worker có vòng claim / begin / settle (SQL ở tài liệu worker mục 6).
+
+**`20261023063140_task_reminder_v1`** (không hàm nào tên `hermes_`):
+
+| Phần | Luật |
+| --- | --- |
+| `task_reminder_config` | Theo công ty: `enabled` (mặc định false), `due_hour` 8, `overdue_hour` 8, `overdue_days` 3 (1–14), `daily_cap` 2 (1–2), `send_until_hour` 11 (không sinh nhắc mới sau giờ này, để không nhắn giữa ngày cho việc vừa báo bằng E4), `app_base_url` (https, cho link `/tasks`) |
+| `task_reminder_outbox` | Như mục 6.2, thêm `binding_id`, `job_total`, `updated_at`. `UNIQUE(công ty, người, loại, ngày)` ⇒ chạy lại / hai lượt song song không gửi trùng. CHECK: lease có khi và chỉ khi `claimed`/`sending`; `sending`/`sent`/`unknown` phải có `provider_started_at`. Hai bảng ở `app_private`, RLS bật, không cấp cho vai nào (kể cả `service_role`) |
+| Chọn việc `task_reminder_jobs_v1` | Việc `IN_PROGRESS` (huỷ = xoá) giao cho người đó ở công ty đó; `due_today` = hạn (giờ công ty) đúng hôm nay; `overdue` = hạn trong [hôm nay − N, hôm qua] |
+| Người nhận `task_reminder_recipient_v1` | Thành viên ACTIVE (đọc thẳng `organization_memberships`, không dùng helper đòi JWT) + liên kết `hermes_zalo_bindings` ACTIVE chưa thu hồi, nick bot của chính công ty đang bật đúng phiên bản, trợ lý ACTIVE (đúng điều kiện provisioning của worker). Không có đường nào tới khách / người ngoài |
+| Nội dung `task_reminder_body_v1` | Mã · tiêu đề (≤ 60 ký tự) · toà/phòng · hạn giờ hoặc "quá hạn N ngày (hạn dd/mm)"; ≤ 10 việc, ≤ 1000 ký tự, phần dư "… và N việc khác"; link `/tasks` khi có `app_base_url` |
+| Giờ yên | `app_private.notify_in_quiet_hours_v1` (công ty + cá nhân) khi DB có — production có từ đợt thông báo 21/10 nhưng chuỗi migration repo chưa có, nên gọi theo tên chỉ khi `to_regprocedure` thấy; không thì giờ yên công ty `notification_org_config` (mặc định 21→7). Đang yên ⇒ `not_before` = đầu giờ tròn hết yên; yên tới quá `send_until_hour` ⇒ bỏ |
+| Bộ sinh `task_reminder_enqueue_v1(p_now)` | DEFINER, cron `task-reminders-15m`. Dọn lease quá hạn (giờ thật), xoá nhật ký > 30 ngày. Mỗi công ty bật: khoá tư vấn THỬ theo công ty (bận ⇒ bỏ lượt), khối con riêng; chỉ trong [giờ nhắc, `send_until_hour`); mỗi người nhận có việc: kiểm người nhận + E4 (`notify_gate_v1`: tắt cả chuông lẫn push ⇒ không nhắc Zalo; người chưa có dòng sở thích nhận `(NULL, NULL)` ⇒ coi là bật như mọi nơi gọi — tầng 2 bắt được bản đầu coi NULL là tắt) ⇒ `due_today` rồi `overdue`, dừng khi đủ `daily_cap` |
+
+**`20261023063142_zalo_worker_task_reminder_v1`:** `zalo_worker_claim_task_reminders_v1` / `_begin_task_reminder_v1` / `_settle_task_reminder_v1`, DEFINER, chỉ `service_role`, đòi lease singleton `zalo_worker_lease` như `zalo_worker_claim_job_v1`. Claim SKIP LOCKED, giữ 60 s, kiểm lại cấu hình / ngày / người nhận. Begin là cổng ngay trước khi gọi Zalo: kiểm lại cấu hình, ngày, người nhận, E4, giờ yên (đang yên cùng ngày ⇒ về `queued` với `not_before` mới), dựng lại nội dung từ việc còn mở (hết ⇒ `skipped`), chuyển `sending` giữ 90 s. Settle: `failed` (chắc chắn chưa gửi) thử lại tối đa 3 lần (+5 / +30 phút), `unknown` không bao giờ gửi lại, phát lại cùng kết quả an toàn. Lease quá hạn: `claimed` ⇒ `queued`, `sending` ⇒ `unknown`.
+
+**Soát 40P01 / cron:** không khoá dòng công ty (chỉ khoá tư vấn thử theo công ty và khoá dòng hàng đợi SKIP LOCKED / FOR UPDATE ngắn); worker giữ lease FOR SHARE. Không vòng với guard Hermes hay hàng đợi `zalo_send_queue`. Mọi hàm chạy từ cron / worker không dùng helper đòi `auth.role()` / `auth.uid()`.
+
+**Test:**
+- PGlite `task-reminder-sql` (nền: migration THẬT của trợ lý / phiên / liên kết Zalo, bảng giờ yên như production): khoá để TẮT + khung giờ; chọn việc (hạn hôm nay, quá hạn ≤ 3 ngày, việc xong / ngày mai / công ty khác / người chưa liên kết bị loại), một tin mỗi loại, chạy lại không trùng, nội dung đúng từng ký tự, > 10 việc; E4 tắt / thành viên nghỉ / hết hạn / liên kết thu hồi / nick tắt ⇒ không nhắc, trần 1 tin; giờ yên công ty ⇒ dời 09:00, yên quá giờ ⇒ bỏ, helper công ty + cá nhân khi có; worker: lease, claim một lần, begin dựng lại nội dung khi một việc đã xong, settle phát lại, ACL `service_role` (authenticated bị từ chối; `service_role` không đọc thẳng bảng, không gọi bộ sinh); thử lại ≤ 3 lần giãn cách, `unknown` không trao lại, lease quá hạn, tin cũ ⇒ `skipped`; 5 đột biến (bỏ kiểm thành viên, bỏ kiểm lease, trao lại `unknown`, bỏ giờ yên, begin không kiểm việc còn mở) đều bị bắt.
+- PG17 `task-reminder-race-pg`: hai lượt bộ sinh song song ⇒ lượt sau `busy`, không chờ, không trùng; hai worker claim ⇒ hai tin rời nhau; dọn lease không chờ tin đang begin.
+- Tầng 2 trên TEST (ROLLBACK; nạp hai file trong giao dịch; người nhận = liên kết Zalo ACTIVE thật, hai việc tổng hợp; bộ sinh chạy như cron không JWT): chưa bật ⇒ 0; 07:30 ⇒ 0; 08:05 ⇒ 2 tin, chạy lại 0; cron đã đăng ký; vai `authenticated` gọi claim / `service_role` đọc thẳng bảng ⇒ 42501; lease khác ⇒ `lease_lost`; claim 2 tin (có UID), claim lại 0; begin trả nội dung có link; settle `sent` + phát lại; việc bị huỷ giữa claim và begin ⇒ `jobs_closed`; giờ yên 21→9 ⇒ dời 09:00. TEST chưa có helper giờ yên cá nhân (production có) ⇒ nhánh giờ yên công ty.
+
+**Thứ tự áp:** `063140` → `063142`, độc lập với Mốc 5. Không file nào `catalog-proven` giả (bảng / hàm đều mới). Rồi worker (phiên chính), rồi migration bật cấu hình.
+
+Rollback: `SELECT cron.unschedule('task-reminders-15m')`; hai bảng + mười hàm mới để lại không hại (cấu hình tắt).

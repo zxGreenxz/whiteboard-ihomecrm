@@ -28,6 +28,11 @@ beforeEach(() => { items = []; vi.clearAllMocks(); api.resolve.mockResolvedValue
 afterEach(cleanup);
 
 describe('nguồn điện thanh lý đúng hợp đồng, ngày chốt và từng đồng hồ', () => {
+  it('nguồn đã dùng bị thay thế chặn thanh lý và hướng dẫn kế toán điều chỉnh', async () => {
+    api.resolve.mockResolvedValue([{ ...source(), issues: ['BILLED_READING_REPLACED'] }]); show();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('kế toán xử lý điều chỉnh'));
+    expect(valid).toHaveBeenLastCalledWith(false); expect(electric()).toEqual([]);
+  });
   it('tự điền hai số đã chốt, khoá chỉnh tay và liên kết chứng cứ có phiên bản', async () => {
     show();
     await waitFor(() => expect(electric()).toHaveLength(1));
@@ -58,8 +63,8 @@ describe('nguồn điện thanh lý đúng hợp đồng, ngày chốt và từn
     expect(valid).toHaveBeenLastCalledWith(false);
     expect((screen.getByTitle('Số điện cuối Đồng hồ 5') as HTMLInputElement).readOnly).toBe(true);
   });
-  it('một đồng hồ chưa có ảnh chốt vẫn nhập tay số cuối, không cho thay số đầu hoặc giảm số', async () => {
-    api.resolve.mockResolvedValue([{ ...source(), end: null, issues: ['MISSING_END'] }]); show();
+  it('một đồng hồ chưa đăng ký capture vẫn nhập tay số cuối, không cho thay số đầu hoặc giảm số', async () => {
+    api.resolve.mockResolvedValue([{ ...source(), registerCode: '', end: null, issues: ['MISSING_END'] }]); show();
     await waitFor(() => expect(screen.getByTitle('Số điện cuối Đồng hồ 4')).toBeTruthy());
     expect((screen.getByTitle('Số điện đầu Đồng hồ 4') as HTMLInputElement).readOnly).toBe(true);
     fireEvent.change(screen.getByTitle('Số điện cuối Đồng hồ 4'), { target: { value: '5012' } });
@@ -68,6 +73,20 @@ describe('nguồn điện thanh lý đúng hợp đồng, ngày chốt và từn
     fireEvent.change(screen.getByTitle('Số điện cuối Đồng hồ 4'), { target: { value: '4999' } });
     await waitFor(() => expect(valid).toHaveBeenLastCalledWith(false));
     expect(electric()).toEqual([]);
+  });
+  it('một đồng hồ đã đăng ký capture thiếu số cuối phải chốt trước khi thanh lý, kể cả 0 kWh', async () => {
+    api.resolve.mockResolvedValueOnce([{ ...source(), end: null, issues: ['MISSING_END'] }]); show();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('cần chốt số cuối tại Ghi chỉ số'));
+    expect(valid).toHaveBeenLastCalledWith(false);
+    expect(electric()).toEqual([]);
+    expect((screen.getByTitle('Số điện cuối Đồng hồ 4') as HTMLInputElement).readOnly).toBe(true);
+    const approved = source(); approved.end!.value = approved.start!.value;
+    api.resolve.mockResolvedValueOnce([approved]);
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại chỉ số đã chốt' }));
+    await waitFor(() => expect(electric()).toHaveLength(1));
+    expect(valid).toHaveBeenLastCalledWith(true);
+    expect(electric()[0]).toMatchObject({ amount: 0, previous_reading: 5000, current_reading: 5000,
+      meter_source: { meterId: id(4), endReadingId: id(24) } });
   });
   it('đổi ngày chốt xoá nguồn cũ và chặn trong khi tải lại', async () => {
     const view = show(); await waitFor(() => expect(electric()).toHaveLength(1));

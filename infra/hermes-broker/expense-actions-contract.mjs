@@ -5,7 +5,10 @@
 //   expense.create — phiếu CHI lập tay, mỗi khoản một phiếu, ≤ 5 khoản cho MỘT lần đồng ý (Q10); luôn xem trước (money). Bản xem
 //                    trước = chạy thử create_income_expense_v1 trong savepoint rồi lùi ⇒ nói đúng "vào sổ ngay" / "chờ duyệt vì …".
 //   expense.note   — ghi chú phiếu (append_income_expense_supplement_v1); không dính tiền ⇒ ghi thẳng (Q2, chính sách never).
-// Sửa / huỷ / duyệt thêm ở Mốc 3–4 (khoá income_expenses.edit/.cancel/.approve_vouchers đã seed TẮT).
+//   expense.edit   — sửa phiếu CHI lập tay đang chờ duyệt (revise_pending_income_expense_v1); đổi tiền/hạng mục/sổ/toà ⇒ hàm web đòi lý do.
+//   expense.cancel — huỷ phiếu CHI lập tay (cancel_income_expense_flex_v1), bắt lý do; phiếu đã vào sổ ⇒ bút toán đảo, không khôi phục được.
+//   Phiếu THU / phiếu hệ thống / phiếu con định kỳ (cờ TC5 tắt) ⇒ từ chối, chỉ đường web. Khoá income_expenses.edit/.cancel seed TẮT.
+//   expense.approve — duyệt / duyệt + chi ≤ 10 phiếu (Mốc 5; khoá income_expenses.approve_vouchers seed TẮT).
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 
 export const EXPENSE_RPC = 'hermes_expense_write_v1';
@@ -26,5 +29,27 @@ export const EXPENSE_NOTE = defineAction({ id: 'expense.note', page: 'expense', 
   params: { voucherCode: param.name('voucher'), note: param.text(1, 1000) },
   reasons: ['not_found', 'not_allowed'] });
 
-export const EXPENSE_ACTIONS = Object.freeze([EXPENSE_CREATE, EXPENSE_NOTE]);
+// Mốc 4: chỉ khuôn tham số đã có (name/vnd/text/date) — không thêm byte tools/list (khuôn nằm trong kết quả crm_action_list).
+export const EXPENSE_EDIT = defineAction({ id: 'expense.edit', page: 'expense', key: 'income_expenses.edit', class: 'money', rpc: EXPENSE_RPC,
+  title: 'Sửa phiếu CHI chờ duyệt (nêu ít nhất một trường đổi)',
+  params: { voucherCode: param.name('voucher'), amount: param.vnd({ optional: true }), category: param.name('category', { optional: true }),
+    content: param.text(1, 200, { optional: true }), payee: param.text(1, 100, { optional: true }), voucherDate: param.date({ optional: true }),
+    cashbook: param.name('cashbook', { optional: true }), buildingName: param.name('building', { optional: true }),
+    roomName: param.name('room', { optional: true }), reason: param.text(8, 1000, { optional: true }) },
+  reasons: ['not_found', 'not_pending', 'reason_required', 'system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed'] });
+
+export const EXPENSE_CANCEL = defineAction({ id: 'expense.cancel', page: 'expense', key: 'income_expenses.cancel', class: 'irreversible', rpc: EXPENSE_RPC,
+  title: 'Huỷ phiếu CHI lập tay (bắt lý do; đã vào sổ ⇒ bút toán đảo)',
+  params: { voucherCode: param.name('voucher'), reason: param.text(8, 1000) },
+  reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'strict_mode', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed'] });
+
+// Mốc 5: duyệt / duyệt + chi ≤ 10 phiếu (Q8). Khoá Hermes income_expenses.approve_vouchers (seed TẮT), quyền CRM giao vào
+// income_expenses.approve (Q25). post mặc định true; chưa có ảnh / không giữ sổ ⇒ SQL hạ "chỉ duyệt" và nói rõ trong bản xem trước (TC4).
+export const EXPENSE_APPROVE_MAX = 10;
+export const EXPENSE_APPROVE = defineAction({ id: 'expense.approve', page: 'expense', key: 'income_expenses.approve_vouchers', class: 'money', rpc: EXPENSE_RPC,
+  title: 'Duyệt phiếu CHI (≤ 10 mã; post=false chỉ duyệt, mặc định duyệt và chi)',
+  params: { voucherCodes: param.list(param.name('voucher'), { min: 1, max: EXPENSE_APPROVE_MAX }), post: param.bool({ optional: true }) },
+  reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'evidence_required', 'cashbook_not_held', 'period_locked', 'not_allowed', 'state_changed'] });
+
+export const EXPENSE_ACTIONS = Object.freeze([EXPENSE_CREATE, EXPENSE_NOTE, EXPENSE_EDIT, EXPENSE_CANCEL, EXPENSE_APPROVE]);
 export const expenseCatalog = () => createActionCatalog(EXPENSE_ACTIONS);

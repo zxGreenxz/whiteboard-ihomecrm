@@ -55,6 +55,12 @@ Deno.test('unauthorized cross-org capture fails before service storage access', 
   const result = await handler(request({ action: 'finalize', organizationId: ORG, captureId: CAPTURE }));
   equal(result.status, 403); equal(calls.length, 1);
 });
+Deno.test('finalized settlement correction is a business conflict, not an upstream outage', async () => {
+  const { handler, calls } = harness(call => { equal(call.auth, 'Bearer user-jwt'); return json({ code: 'PT422' }, 422); });
+  const result = await handler(request({ action: 'rpc', organizationId: ORG, rpcAction: 'confirmCapture', payload: { captureId: CAPTURE } }));
+  equal(result.status, 422); equal(calls.length, 1);
+  const body = await result.json(); equal(body.error, 'PT422');
+});
 Deno.test('finalize hashes persisted original then records service receipt and queues under user JWT', async () => {
   const data = await capture();
   const { handler, calls } = harness(call => {
@@ -145,4 +151,34 @@ Deno.test('signing failure is visible instead of unsafe/public URL fallback', as
   const { handler } = harness(call => call.url.includes('/rpc/') ? json({ evidence: { imageObjectKey: ORIGINAL } }) : json({ error: 'denied' }, 403));
   const result = await handler(request({ action: 'rpc', rpcAction: 'evidence', organizationId: ORG, payload: { captureId: CAPTURE } }));
   equal(result.status, 403); equal(await result.json(), { error: 'evidence_sign_failed' });
+});
+
+Deno.test('clip review and invoice evidence expose every timestamp as private references without eager signing', async () => {
+  const frames = [0, 1, 2, 6, 7, 8].map(timestampSeconds => ({ timestampSeconds, objectKey: ORIGINAL }));
+  const { handler, calls } = harness(call => {
+    equal(call.auth, 'Bearer user-jwt');
+    const args = call.body as Record<string, unknown>;
+    return args.p_action === 'evidence'
+      ? json({ evidence: { captureId: CAPTURE, imageObjectKey: null, videoObjectKey: null, evidenceFrames: frames } })
+      : json({ capture: { id: CAPTURE, mediaReceived: true, imageObjectKey: null, videoObjectKey: null, evidenceFrames: frames } });
+  });
+  for (const rpcAction of ['getCapture', 'evidence']) {
+    const result = await handler(request({ action: 'rpc', rpcAction, organizationId: ORG, payload: { captureId: CAPTURE } }));
+    equal(result.status, 200); const data = await result.json();
+    const actual = (data.capture ?? data.evidence).evidenceFrames;
+    equal(actual.map((frame: { timestampSeconds: number }) => frame.timestampSeconds), [0, 1, 2, 6, 7, 8]);
+    assert(actual.every((frame: { imageUrl: string }) => frame.imageUrl.includes('/object/authenticated/') && !frame.imageUrl.includes('token=')));
+  }
+  equal(calls.length, 2);
+});
+
+Deno.test('malformed frame metadata is rejected and pending uploads expose no frame references', async () => {
+  for (const frames of [[{ timestampSeconds: -1, objectKey: ORIGINAL }], [{ timestampSeconds: 1, objectKey: '../other' }], Array(7).fill({ timestampSeconds: 1, objectKey: ORIGINAL })]) {
+    const { handler } = harness(() => json({ capture: { mediaReceived: true, evidenceFrames: frames } }));
+    const result = await handler(request({ action: 'rpc', rpcAction: 'getCapture', organizationId: ORG, payload: { captureId: CAPTURE } }));
+    assert(result.status >= 400);
+  }
+  const { handler } = harness(() => json({ capture: { mediaReceived: false, evidenceFrames: [{ timestampSeconds: 1, objectKey: ORIGINAL }] } }));
+  const result = await handler(request({ action: 'rpc', rpcAction: 'getCapture', organizationId: ORG, payload: { captureId: CAPTURE } }));
+  equal((await result.json()).capture.evidenceFrames, []);
 });

@@ -134,6 +134,7 @@ export function TerminationExtraCharges({
 
   const onlySource = meterSources.length === 1 ? meterSources[0] : undefined;
   const manualSource = onlySource?.start && !onlySource.end
+    && !onlySource.registerCode.trim()
     && onlySource.issues.every(issue => issue === 'MISSING_END') ? onlySource : null;
   const previousReading = manualSource?.start ? Number(manualSource.start.value) : null;
   const manualConsumption = currentReading != null && previousReading != null ? currentReading - previousReading : 0;
@@ -300,7 +301,9 @@ export function TerminationExtraCharges({
             </div>
             {source.end && source.start && !source.issues.length ? <p className="text-xs text-muted-foreground">Liên kết chỉ số đã chốt và chứng cứ khi quyết toán, kể cả 0 kWh.</p>
               : source === manualSource ? <p className={`text-xs ${manualInvalid ? 'text-destructive' : 'text-muted-foreground'}`} role={manualInvalid ? 'alert' : undefined}>{manualInvalid ? 'Số cuối không được nhỏ hơn số đầu.' : currentReading != null && manualConsumption === 0 ? 'Số nhập tay 0 kWh chưa được lưu làm chứng cứ. Chốt bằng ảnh tại Ghi chỉ số để lưu mốc này.' : 'Chưa có ảnh đã chốt: có thể nhập số cuối thủ công. Số đầu lấy đúng kỳ/hợp đồng.'}</p>
-              : <p role="alert" className="text-xs text-destructive">Thiếu nguồn hợp lệ cho đồng hồ này. Chốt đủ chỉ số tại Ghi chỉ số rồi tải lại.</p>}
+              : <p role="alert" className="text-xs text-destructive">{source.issues.includes('BILLED_READING_REPLACED')
+                ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi thanh lý; chứng từ cũ không tự đổi.'
+                : <>Thiếu nguồn hợp lệ cho đồng hồ này. {source.registerCode.trim() && !source.end ? 'Đồng hồ đã đăng ký đọc bằng QR/ảnh: cần chốt số cuối tại Ghi chỉ số, kể cả khi không dùng thêm điện, rồi tải lại trước khi thanh lý.' : 'Chốt đủ chỉ số tại Ghi chỉ số rồi tải lại.'}</>}</p>}
           </div>)}
           {meterLookup === 'ready' && <Button type="button" variant="outline" size="sm" onClick={() => setReload(value => value + 1)}>Tải lại chỉ số đã chốt</Button>}
         </div>
