@@ -35,6 +35,9 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
   // Thu chi (Đợt 2).
   'system_voucher', 'evidence_required',
+  // Trang Hợp đồng (Đợt 2).
+  'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
+  'cannot_remove_representative',
   // Trang Công việc (Đợt 2b).
   'task_quota_user', 'task_quota_pair']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);

@@ -534,6 +534,25 @@ test('server auth chain consults customer/action/sale capability RPCs; absent RP
   assert(!f.calls.some(call => /hermes_(customer_create_action|expense_action|expense_write|sale_actions|sale_policy_actions)_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
+test('actionPages: host opt-in per page on top of the production Thu chi catalog; absent RPC keeps crm_action_* hidden', async t => {
+  const f = fakeBackend();
+  for (const actionPages of ['contract', ['nope'], ['contract', 'contract'], [1], {}])
+    assert.throws(() => createHermesBackend({ ...f.configuration, actionPages }), error => error.message === 'invalid_backend_config', JSON.stringify(actionPages));
+  // Danh mục production đã có thao tác Thu chi (expense.*, gộp #271) nên cấu hình mặc định cũng hỏi capabilities của thao tác;
+  // không có actionPages thì không nạp thao tác Hợp đồng và không bao giờ gọi RPC trang Hợp đồng.
+  const off = fakeBackend(), plain = await listening(t, off.configuration), offToken = (await plain.connect()).body.token;
+  off.grantRooms();
+  assert(!(await plain.mcp(offToken)).body.result.tools.some(tool => tool.name.startsWith('crm_action_')));
+  assert(off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'danh mục Thu chi mặc định hỏi capabilities của thao tác');
+  assert(!off.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+  const on = fakeBackend(), http = await listening(t, { ...on.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  on.grantRooms();
+  const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
+  assert(on.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`));
+  assert(!listed.some(name => name.startsWith('crm_action_')), 'RPC vắng ⇒ không khoá nào ⇒ họ thao tác ẩn');
+  assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+});
+
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {
   const f = fakeBackend(), original = f.configuration.fetch; let maps = 0;
   f.configuration.audit = async event => { f.audits.push(event); if (event.outcome === 'prepared' && maps === 1) f.read().joined.connection.state = 'revoked'; };
