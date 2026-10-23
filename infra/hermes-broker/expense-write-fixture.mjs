@@ -1,7 +1,7 @@
 // Fixture SQL dùng chung của RPC trang Thu chi: expense-write-sql.test.mjs (PGlite) và expense-write-race-sql.test.mjs (PostgreSQL thật, hai
 // kết nối). Migration Hermes thật + BẢN PORT hàm ghi web (cùng chữ ký, cùng câu lỗi chính, cùng thứ tự khoá ở chỗ được đo); quyền CRM giả
-// qua fixture_acl. database: PGlite-shaped { exec, query, close } trên PostgreSQL thật (finance-fixture); edit / approve: thân
-// 20261022075102 / 20261023013109 thay thế (đột biến).
+// qua fixture_acl. database: PGlite-shaped { exec, query, close } trên PostgreSQL thật (finance-fixture); edit / approve / locks: thân
+// 20261022075102 / 20261023013109 / 20261023031258 thay thế (đột biến).
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER, ACTION_PATH } from './finance-fixture.mjs';
@@ -88,6 +88,7 @@ export const WEB = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT EX
     BEGIN
       IF NOT EXISTS(SELECT 1 FROM public.income_expenses ie WHERE ie.id=p_voucher AND ie.user_id=auth.uid()) THEN
         RAISE EXCEPTION 'Không có quyền bổ sung phiếu này' USING ERRCODE='42501'; END IF;
+      PERFORM 1 FROM public.income_expenses ie WHERE ie.id=p_voucher FOR UPDATE; -- như hàm thật: khoá dòng phiếu
       SELECT * INTO v FROM public.fixture_supplements WHERE idempotency_key=p_idempotency_key;
       IF FOUND AND v.note IS DISTINCT FROM p_note THEN RAISE EXCEPTION 'Mã yêu cầu đã dùng với nội dung khác' USING ERRCODE='23505'; END IF;
       IF NOT FOUND THEN INSERT INTO public.fixture_supplements VALUES(p_voucher,p_note,p_idempotency_key); END IF;
@@ -106,6 +107,9 @@ export const WEB = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT EX
       IF p_voucher_date NOT BETWEEN '2000-01-01' AND '2100-12-31' THEN RAISE EXCEPTION 'Ngày phiếu phải nằm trong khoảng 2000-01-01 đến 2100-12-31'; END IF;
       IF p_account_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=p_account_id AND a.organization_id=v_org AND a.user_id=auth.uid())
         THEN RAISE EXCEPTION 'Không có quyền sử dụng sổ quỹ này' USING ERRCODE='42501'; END IF;
+      -- Như hàm thật: khoá FOR SHARE phòng và sổ của phiếu (sau khi guard của Hermes đã giữ công ty).
+      PERFORM 1 FROM public.rooms r WHERE r.id=p_room_id FOR SHARE;
+      PERFORM 1 FROM public.accounts a WHERE a.id=p_account_id FOR SHARE;
       SELECT * INTO w FROM public.fixture_writer;
       IF w.rejected_message IS NOT NULL AND (w.reject_name IS NULL OR w.reject_name=p_name) THEN
         RAISE EXCEPTION '%',w.rejected_message USING ERRCODE=COALESCE(w.reject_state,'P0001'); END IF;
@@ -205,6 +209,9 @@ export const WEB4 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS
       IF cardinality(v_changed)=0 THEN RETURN jsonb_build_object('id',p_voucher,'changed',false); END IF;
       IF (v_changed && ARRAY['building_id','items'] OR ('account_id'=ANY(v_changed) AND v.account_id IS NOT NULL)) AND (v_reason IS NULL OR char_length(v_reason)<8) THEN
         RAISE EXCEPTION 'Đổi số tiền, hạng mục, loại, sổ quỹ hoặc toà phải ghi lý do (ít nhất 8 ký tự).' USING ERRCODE='22023'; END IF;
+      -- Như bảng thật: khoá ngoại phiếu → sổ / phòng ⇒ đổi sổ / phòng lấy KEY SHARE trên dòng mới.
+      IF 'account_id'=ANY(v_changed) THEN PERFORM 1 FROM public.accounts a WHERE a.id=(p_patch->>'account_id')::uuid FOR KEY SHARE; END IF;
+      IF 'room_id'=ANY(v_changed) THEN PERFORM 1 FROM public.rooms r WHERE r.id=(p_patch->>'room_id')::uuid FOR KEY SHARE; END IF;
       UPDATE public.income_expenses SET name=COALESCE(p_patch->>'name',name),payer_name=CASE WHEN p_patch ? 'payer_name' THEN p_patch->>'payer_name' ELSE payer_name END,
         voucher_date=COALESCE((p_patch->>'voucher_date')::date,voucher_date),account_id=CASE WHEN p_patch ? 'account_id' THEN (p_patch->>'account_id')::uuid ELSE account_id END,
         building_id=COALESCE((p_patch->>'building_id')::uuid,building_id),room_id=CASE WHEN p_patch ? 'room_id' THEN (p_patch->>'room_id')::uuid ELSE room_id END,
@@ -242,9 +249,13 @@ export const WEB4 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS
         RAISE EXCEPTION 'Phiếu vừa được người khác ghi sổ — hãy tải lại' USING ERRCODE='40001'; END IF;
       -- reject_name 'cancel-posted' giả lập phiếu mà hàm web xử như đã vào sổ dù cột trạng thái chưa theo kịp (nguồn sự thật = hàm web).
       IF COALESCE(v.posting_status,'UNPOSTED')='POSTED' OR w.reject_name='cancel-posted' THEN
+        -- Như bảng thật: bút toán đảo có khoá ngoại tới sổ của phiếu ⇒ KEY SHARE trên dòng sổ.
+        PERFORM 1 FROM public.accounts a WHERE a.id=v.account_id FOR KEY SHARE;
         INSERT INTO public.fixture_postings VALUES(p_voucher,'REVERSAL',v.total_amount); v_kind:='CANCELLED_AFTER_POSTING'; END IF;
       UPDATE public.income_expenses SET approval_status='CANCELLED',posting_status=CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 'REVERSED' ELSE posting_status END,
         approval_version=approval_version+1,posting_version=posting_version+CASE WHEN v_kind='CANCELLED_AFTER_POSTING' THEN 1 ELSE 0 END WHERE id=p_voucher;
+      -- Như trigger thật a75_ie_cancel_close_request: đóng yêu cầu duyệt đang mở của phiếu.
+      UPDATE public.approval_requests ar SET state='CANCELLED' WHERE ar.subject_type='INCOME_EXPENSE' AND ar.subject_id=p_voucher AND ar.state='PENDING_APPROVAL';
       INSERT INTO public.fixture_cancellations VALUES(p_voucher,v_kind,p_reason);
       RETURN jsonb_build_object('id',p_voucher,'changed',true,'cancellation_kind',v_kind);
     END $f$;
@@ -317,6 +328,7 @@ export const WEB5 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS
       IF v.approval_version<>p_expected_approval_version THEN
         RAISE EXCEPTION 'approve_income_expense_v2: approval_version mismatch (expected %, found %)',p_expected_approval_version,v.approval_version USING ERRCODE='55000'; END IF;
       UPDATE public.income_expenses SET approval_status='APPROVED',approved_by=auth.uid(),review_state='RESOLVED',approval_version=approval_version+1 WHERE id=p_voucher;
+      UPDATE public.approval_requests ar SET state='APPROVED' WHERE ar.subject_type='INCOME_EXPENSE' AND ar.subject_id=p_voucher AND ar.state='PENDING_APPROVAL';
       INSERT INTO public.fixture_approvals VALUES(p_voucher,'APPROVE',auth.uid(),p_idempotency_key);
       RETURN jsonb_build_object('voucherId',p_voucher,'approvalStatus','APPROVED','reviewState','RESOLVED','approvalVersion',v.approval_version+1);
     END $f$;
@@ -353,12 +365,65 @@ export const WEB5 = `ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS
       UPDATE public.fixture_evidence SET state='ATTACHED' WHERE id=ANY(v_ev);
       UPDATE public.income_expenses SET approval_status='APPROVED',approved_by=auth.uid(),review_state='RESOLVED',approval_version=approval_version+1,
         posting_status='POSTED',posting_version=posting_version+1,account_id=v_cashbook WHERE id=v.id;
+      UPDATE public.approval_requests ar SET state='APPROVED' WHERE ar.subject_type='INCOME_EXPENSE' AND ar.subject_id=v.id AND ar.state='PENDING_APPROVAL';
       INSERT INTO public.fixture_postings VALUES(v.id,'POSTING',v.total_amount);
       INSERT INTO public.fixture_approvals VALUES(v.id,'APPROVE_POST',auth.uid(),input->>'idempotencyKey');
       RETURN jsonb_build_object('voucherId',v.id,'approvalStatus','APPROVED','postingStatus','POSTED','approvalVersion',v.approval_version+1,'postingVersion',v.posting_version+1);
     END $f$;`;
 
-export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE } = {}) {
+// Lượt 8: bước ghi khoá NOWAIT trước các dòng mà hàm web sẽ khoá (20261023031258). Bảng yêu cầu duyệt (hàm duyệt / huỷ web ghi nó) và
+// BẢN PORT ba kiểu hàm web khoá dòng nghiệp vụ rồi mới khoá công ty (đo thân production 23/10): confirm_cashbook_closing_v1 (sổ FOR UPDATE →
+// lock_org_for_decision_v1), consume_room_next_claim_v1 (phòng FOR NO KEY UPDATE → công ty), save_room_sale_policy_v1 (phòng FOR UPDATE →
+// công ty), emergency_approve_financial_v1 (yêu cầu duyệt FOR UPDATE → công ty). Dùng cho test đua hai kết nối.
+export const LOCKS = file('hermes_expense_row_locks_nowait_v1');
+// Mỗi câu khoá trước của bước ghi lượt 8 (đúng một chỗ trong thân) — test đua và đột biến dùng chung.
+const VOUCHER_ROW = "ie.deleted_at IS NULL\n      FOR UPDATE NOWAIT;";
+export const LOCK_SITES = {
+  editCancelVoucher: `Hermes không bao giờ chờ web.\n    SELECT * INTO v_voucher FROM public.income_expenses ie WHERE ie.id=(v_resolved->>'voucherId')::uuid AND ie.organization_id=v_org AND ${VOUCHER_ROW}`,
+  noteVoucher: `cả lượt xem trước lẫn lượt ghi.\n    SELECT * INTO v_voucher FROM public.income_expenses ie WHERE ie.id=(v_resolved->>'voucherId')::uuid AND ie.organization_id=v_org AND ${VOUCHER_ROW}`,
+  approveVouchers: 'ORDER BY ie.id FOR UPDATE NOWAIT;',
+  approveRequests: "ar.subject_id IN (SELECT (x->>'voucherId')::uuid FROM jsonb_array_elements(v_resolved->'vouchers') x) ORDER BY ar.id FOR UPDATE NOWAIT;",
+  approveCashbooks: '      ORDER BY a.id FOR UPDATE NOWAIT;',
+  editCancelRequests: 'ar.subject_id=v_voucher.id\n      ORDER BY ar.id FOR UPDATE NOWAIT;',
+  editCancelCashbooks: 'ORDER BY a.id FOR KEY SHARE NOWAIT;',
+  editRoom: "r.id=(v_resolved->>'roomId')::uuid FOR KEY SHARE NOWAIT;",
+  createRooms: 'ORDER BY r.id FOR SHARE NOWAIT;',
+  createCashbooks: 'ORDER BY a.id FOR SHARE NOWAIT;',
+};
+export const WEB8 = `CREATE TABLE public.approval_requests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,subject_type text,subject_id uuid,
+    state text NOT NULL DEFAULT 'PENDING_APPROVAL');
+  GRANT SELECT ON public.approval_requests TO authenticated;
+  CREATE FUNCTION public.fixture_close_cashbook(p_cashbook uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v_org uuid;
+    BEGIN
+      SELECT a.organization_id INTO v_org FROM public.accounts a WHERE a.id=p_cashbook FOR UPDATE;
+      PERFORM app_private.lock_org_for_decision_v1(v_org);
+      RETURN 'closed';
+    END $f$;
+  CREATE FUNCTION public.fixture_claim_room(p_room uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v_org uuid;
+    BEGIN
+      SELECT r.organization_id INTO v_org FROM public.rooms r WHERE r.id=p_room FOR NO KEY UPDATE;
+      PERFORM app_private.lock_org_for_decision_v1(v_org);
+      RETURN 'claimed';
+    END $f$;
+  CREATE FUNCTION public.fixture_save_room_policy(p_room uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v_org uuid;
+    BEGIN
+      SELECT r.organization_id INTO v_org FROM public.rooms r WHERE r.id=p_room FOR UPDATE;
+      PERFORM app_private.lock_org_for_decision_v1(v_org);
+      RETURN 'saved';
+    END $f$;
+  CREATE FUNCTION public.fixture_emergency_approve(p_request uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$
+    DECLARE v_org uuid;
+    BEGIN
+      SELECT ar.organization_id INTO v_org FROM public.approval_requests ar WHERE ar.id=p_request FOR UPDATE;
+      PERFORM app_private.lock_org_for_decision_v1(v_org);
+      UPDATE public.approval_requests SET state='APPROVED' WHERE id=p_request;
+      RETURN 'approved';
+    END $f$;`;
+
+export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
@@ -368,6 +433,8 @@ export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE
   await db.exec(KEYS); await db.exec(WEB4); await db.exec(edit); await db.exec(edit);
   // Mốc 5 áp lên thân Mốc 4/4b (ghim md5 như trên).
   await db.exec(WEB5); await db.exec(approve); await db.exec(approve);
+  // Lượt 8 áp lên thân Mốc 5.
+  await db.exec(WEB8); await db.exec(locks); await db.exec(locks);
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers')");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers']`);
