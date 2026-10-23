@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2732,
+    "sourceCallSites": 2737,
     "catalogFunctions": 1552,
     "schemas": [
       "public",
@@ -9,14 +9,27 @@
     ]
   },
   "counts": {
-    "calledRpcs": 382,
+    "calledRpcs": 384,
     "byRisk": {
-      "normal": 280,
+      "normal": 282,
       "financial": 102
     },
     "securityDefiner": 362
   },
-  "missingOnServer": [],
+  "missingOnServer": [
+    {
+      "name": "invoice_adjustment_build_v1",
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ]
+    },
+    {
+      "name": "record_meter_readings_v2",
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ]
+    }
+  ],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -3433,6 +3446,26 @@
       ],
       "risk": "financial"
     },
+    "ie_category_suggest_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_items jsonb, p_type text DEFAULT 'expense'::text, p_include_restricted boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
+    },
     "ie_compat_update_pending_v2": {
       "definitions": [
         {
@@ -3451,6 +3484,26 @@
         "src/hooks/useUploadPaymentReceipt.ts"
       ],
       "risk": "financial"
+    },
+    "ie_default_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_last_used uuid DEFAULT NULL::uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
     },
     "ie_form_buildings": {
       "definitions": [
