@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
 import { createSaleActionAuth, createSaleActionReads, createSaleActionService } from './sale-action-adapter.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
 import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
@@ -181,7 +182,11 @@ export function createHermesBackend(configuration = {}) {
       ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
       ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionLive = createActionLiveCatalog();
+    // Khoá do HAI lớp cùng cần chỉ được MỘT lớp cấp (lớp sau thấy khoá đã có ⇒ context_changed cho mọi kết nối; sự cố TEST 23/10 khi
+    // bật actionPages contract cùng sale_phong.lock_room). Khoá của lớp Sale (SALE_ACTIONS) do lớp Sale cấp như production; thao tác
+    // trang dùng chung khoá đó (contract.room_lock / room_unlock) mượn khoá, không cấp lại. tasks.* đã phối hợp riêng (live, task-adapter).
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
+      borrowedKeys: actionCatalog.keys.filter(key => SALE_ACTIONS.includes(key)),
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
