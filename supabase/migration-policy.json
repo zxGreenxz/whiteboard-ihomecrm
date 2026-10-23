@@ -280,6 +280,23 @@
       "why": "File 030100 (Hermes đợt 2 Gói C) tạo 8 hàm dùng chung (vehicles_list_v1, materials_*_v1, warehouses_list_v1, salary_locked_month_v1) bằng CREATE OR REPLACE. File 030300 áp sau (cùng ngày, chưa phát hành) DROP rồi CREATE lại 8 hàm đó với kiểu trả về mới. Replay 030100 trên catalog đã có 030300 nên CREATE OR REPLACE ngã 42P13 — đúng hành vi Postgres, không phải lỗi file.",
       "heQua": "Mục này ghim file 030100 và migration 030300 đã áp production (biên nhận backup); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
       "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022074741_hermes_task_action_edit_v1.sql",
+      "sha256": "88ae400567ff56b11c8af4566a9a416c46074b4fe758cf3662ac365b05263a8f",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_action_edit_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022074741_hermes_task_action_edit_v1.json",
+      "supersededBy": {
+        "file": "20261022164201_hermes_task_batch_v1.sql",
+        "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022164201_hermes_task_batch_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39908442827",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 074741 (Hermes Công việc Mốc 3) thay thân 4 tầng vỏ task.* và ghim md5 thân cũ (065634/031548) trong khối $requires$. File 164201 (Mốc 4, áp production ngay sau, cùng lượt B1 #291) lại thay chính 4 thân đó và ghim md5 thân của 074741. Trên trạng thái production hiện tại, chạy lại 074741 gặp thân của 164201 nên khối $requires$ ném hermes_task_action_edit_dependency_invalid — đúng thiết kế (không ghi đè thân mới bằng thân cũ).",
+      "heQua": "Mục này ghim file 074741 và migration 164201 đã áp production (biên nhận backup 23/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

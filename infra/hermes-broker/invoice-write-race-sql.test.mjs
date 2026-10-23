@@ -30,9 +30,13 @@ const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_
 
 test('PG17 hai kết nối: web v5 và Hermes cùng thu một hoá đơn không deadlock; cùng requestId ở hai kết nối ⇒ phát lại', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
-  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); cleanup(); });
+  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
   const { run, applyWith, one } = await invoiceSetup(t, { database: db });
   const [hermesPid, webPid] = await Promise.all([hermes, web].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   // Kết nối đang chờ khoá; trả các bảng có khoá dòng (tuple) nó đang xếp hàng.
