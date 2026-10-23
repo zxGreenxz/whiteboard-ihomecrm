@@ -60,6 +60,15 @@ export const CONTRACT_DRAFT = defineAction({ id: 'contract.draft', page: 'contra
   params: { ...place(), startDate: param.date(), endDate: param.date(), rentPrice: param.vnd(), deposit: param.vnd({ min: 0 }), ...customer(),
     note: param.text(1, 500, { optional: true }) } });
 
+// Mốc 6 (Q23 = a; migration 20261023030305): gia hạn HÀNG LOẠT các HĐ hết hạn trong một tháng, ≤ 20 HĐ một lô, đúng luật
+// contract.renew (giữ giá/cọc, months cộng bằng hàm dùng chung, lý do chung). irreversible ⇒ luôn xem trước, một lần đồng ý cho cả
+// lô. HĐ đang có báo trả bị loại (D-HĐ7, nêu trong cảnh báo). buildingName tuỳ chọn (vắng = mọi toà trong phạm vi khoá).
+export const CONTRACT_RENEW_BATCH = defineAction({ id: 'contract.renew_batch', page: 'contract', key: 'contracts.renew', class: 'irreversible', rpc: RPC,
+  title: 'Gia hạn hàng loạt HĐ hết hạn trong tháng endMonth (≤ 20/lô, giữ giá/cọc); thiếu lý do hỏi 1 câu, không có ⇒ noReason',
+  params: { buildingName: param.name('building', { optional: true }), endMonth: param.month(), months: param.int(1, 24),
+    reason: param.text(8, 1000, { optional: true }), noReason: param.bool({ optional: true }) },
+  reasons: ['renew_reason_ask', 'renew_batch_empty'] });
+
 /** Danh mục production của trang (server.mjs nạp cùng các trang khác). */
 export const CONTRACT_ACTIONS = Object.freeze([CONTRACT_NOTICE_SET, CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK, CONTRACT_RENEW,
-  CONTRACT_RETURN, CONTRACT_OCCUPANT_ADD, CONTRACT_OCCUPANT_REMOVE, CONTRACT_DRAFT]);
+  CONTRACT_RETURN, CONTRACT_OCCUPANT_ADD, CONTRACT_OCCUPANT_REMOVE, CONTRACT_DRAFT, CONTRACT_RENEW_BATCH]);

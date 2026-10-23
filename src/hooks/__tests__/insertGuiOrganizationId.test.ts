@@ -273,14 +273,17 @@ describe("hook tạo một dòng", () => {
     expectOrg("meter_readings");
   });
 
-  it("useBulkCreateMeterReadings (useMeterReadings) → meter_readings từng dòng", async () => {
-    io.rows.meter_readings = [{ id: 'reading-1' }, { id: 'reading-2' }];
+  it("useBulkCreateMeterReadings (useMeterReadings) → record_meter_readings_v2, không INSERT thẳng (tổ chức suy từ toà ở database)", async () => {
+    const [b1, m1, m2, r1, r2] = ["b", "1", "2", "3", "4"].map(c => `${c.repeat(8)}-${c.repeat(4)}-4${c.repeat(3)}-8${c.repeat(3)}-${c.repeat(12)}`);
+    io.goiRpc.mockResolvedValueOnce({ data: { buildingId: b1, readingDate: "2026-09-01", settlementMonth: "2026-09", count: 2, replaced: [],
+      created: [{ n: 1, id: r1, meterId: m1, previous: 100, value: 120, consumption: 20 }, { n: 2, id: r2, meterId: m2, previous: 50, value: 80, consumption: 30 }] }, error: null });
     await run(useBulkCreateMeterReadings, [
-      { meter_id: "m1", reading_date: "2026-09-01", current_reading: 120 },
-      { meter_id: "m2", reading_date: "2026-09-01", current_reading: 80 },
+      { building_id: b1, meter_id: m1, reading_date: "2026-09-01", current_reading: 120 },
+      { building_id: b1, meter_id: m2, reading_date: "2026-09-01", current_reading: 80 },
     ]);
-    expectOrg("meter_readings");
-    expect((insertsOf("meter_readings")[0]?.payload as unknown[]).length).toBe(2);
+    expect(insertsOf("meter_readings")).toHaveLength(0);
+    expect(io.goiRpc).toHaveBeenCalledWith("record_meter_readings_v2", expect.objectContaining({ p_building_id: b1, p_reading_date: "2026-09-01",
+      p_rows: [{ meterId: m1, value: 120 }, { meterId: m2, value: 80 }], p_replace: false }));
   });
 
   it("useCreatePayment (không hoá đơn — không có cha để suy) → payments", async () => {

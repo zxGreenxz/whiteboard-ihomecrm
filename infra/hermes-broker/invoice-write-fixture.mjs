@@ -171,7 +171,253 @@ const SEED = `INSERT INTO public.rooms VALUES('${ROOM2}','${ORG}','${BUILDING}',
       '[{"type":"invoice","id":"${INV_D9}","amount":1000000}]');
   INSERT INTO public.invoice_items(invoice_id,type,description,amount,accounting_class) VALUES('${INV_E}','OTHER','Phí nội bộ',5000,'NON_PNL');`;
 
-export async function invoiceSetup(t, { database } = {}) {
+// Mốc 4 (chỉ số, meter: true): bảng meters, cột còn thiếu của meter_readings / invoice_items, sổ idempotency canonical_write_operations,
+// quyền web (is_super_admin, my_org_ids, buildings_for_v3 theo bảng RIÊNG fixture_meter_acl — tách khỏi quyền v3 của guard như production)
+// và năm trigger BEFORE INSERT của production chạy NGUYÊN VĂN (meter-trigger-bodies.json; md5 hai thân ghim ở $requires$ của migration).
+const METER_A = file('meter_readings_v2'), METER_PAGE = file('hermes_invoice_meter_v1');
+const TRIGGERS = JSON.parse(readFileSync(new URL('./meter-trigger-bodies.json', import.meta.url), 'utf8'));
+const trigger = (name, secdef = false) => `CREATE OR REPLACE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql${secdef ? ' SECURITY DEFINER' : ''}
+  SET search_path=public AS $tg$${TRIGGERS[name]}$tg$;`;
+export const [ROOM6, M1, M2, M3, M4A, M4B, M5, M6, M7, SERVICE_E] = [815, 841, 842, 843, 844, 845, 846, 847, 848, 849].map(uid);
+const METER = `INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('meter_readings.create','action',false) ON CONFLICT(capability) DO NOTHING;
+  CREATE TABLE public.meters(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,code text NOT NULL CHECK(char_length(code)>0),building_id uuid,room_id uuid,
+    service_id uuid,meter_type text,name text,initial_reading numeric(10,2) DEFAULT 0,status text DEFAULT 'ACTIVE',deleted_at timestamptz,organization_id uuid,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp());
+  ALTER TABLE public.meter_readings ALTER COLUMN id SET DEFAULT gen_random_uuid(),ALTER COLUMN status SET DEFAULT 'UNAPPROVED',
+    ADD COLUMN user_id uuid,ADD COLUMN meter_id uuid,ADD COLUMN contract_id uuid,ADD COLUMN service_id uuid,ADD COLUMN approved_by uuid,ADD COLUMN approved_at timestamptz,
+    ADD COLUMN recorded_by uuid,ADD COLUMN boundary_id uuid,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    ADD COLUMN updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    ADD CONSTRAINT meter_readings_current_gte_previous CHECK (current_reading>=previous_reading);
+  CREATE UNIQUE INDEX idx_meter_readings_code ON public.meter_readings(reading_code) WHERE reading_code IS NOT NULL;
+  ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS service_id uuid,ADD COLUMN IF NOT EXISTS previous_reading numeric(10,2),
+    ADD COLUMN IF NOT EXISTS current_reading numeric(10,2);
+  CREATE TABLE app_private.canonical_write_operations(organization_id uuid NOT NULL,operation text NOT NULL,subject_scope text NOT NULL,actor_id uuid NOT NULL,
+    idempotency_key text NOT NULL,payload_hash text NOT NULL CHECK(char_length(payload_hash)=32),subject_id uuid,response_payload jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),completed_at timestamptz,PRIMARY KEY(organization_id,operation,subject_scope,actor_id,idempotency_key),
+    CHECK(((completed_at IS NULL)=(response_payload IS NULL)) AND ((completed_at IS NULL)=(subject_id IS NULL))));
+  CREATE FUNCTION app_private.guard_canonical_write_operation() RETURNS trigger LANGUAGE plpgsql AS $g$ BEGIN
+    IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Canonical operation ledger is append-only' USING ERRCODE='55000'; END IF;
+    IF OLD.completed_at IS NOT NULL OR NEW.completed_at IS NULL THEN RAISE EXCEPTION 'Canonical operation can only transition once to completed' USING ERRCODE='55000'; END IF;
+    RETURN NEW; END $g$;
+  CREATE TRIGGER canonical_write_operations_immutable BEFORE DELETE OR UPDATE ON app_private.canonical_write_operations FOR EACH ROW
+    EXECUTE FUNCTION app_private.guard_canonical_write_operation();
+  CREATE TABLE public.fixture_meter_acl(permission text,building_id uuid);
+  CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT EXISTS(SELECT 1 FROM public.super_admins WHERE user_id=auth.uid()) $f$;
+  CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT COALESCE(array_agg(organization_id),'{}') FROM public.organization_memberships WHERE user_id=auth.uid() AND status='ACTIVE' $f$;
+  CREATE OR REPLACE FUNCTION app_private.buildings_for_v3(p_permission text) RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT COALESCE(array_agg(a.building_id),'{}') FROM public.fixture_meter_acl a WHERE a.permission=p_permission AND auth.uid()='${USER}' $f$;
+  GRANT EXECUTE ON FUNCTION public.is_super_admin(),public.my_org_ids() TO authenticated;
+  GRANT SELECT ON public.meters,public.meter_readings TO authenticated;
+  ${trigger('public.auto_populate_meter_reading_fields')}
+  ${trigger('public.auto_populate_previous_reading')}
+  ${trigger('public.auto_generate_reading_code', true)}
+  ${trigger('public.set_user_id_from_auth', true)}
+  CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS $u$ BEGIN NEW.updated_at:=clock_timestamp(); RETURN NEW; END $u$;
+  CREATE TRIGGER meter_readings_set_user_id_audit BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.set_user_id_from_auth();
+  CREATE TRIGGER trigger_auto_generate_reading_code BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_generate_reading_code();
+  CREATE TRIGGER trigger_auto_populate_meter_reading_fields BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_populate_meter_reading_fields();
+  CREATE TRIGGER trigger_auto_populate_previous_reading BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_populate_previous_reading();
+  CREATE TRIGGER trigger_update_meter_reading_updated_at BEFORE UPDATE ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();`;
+// Công tơ ĐIỆN (toà A trừ M6): M1 P101 có chỉ số tháng 9; M2 P102 ba kỳ 100 kWh (trung bình 3 kỳ); M3 P103 đã có chỉ số tháng 10 và đã lên
+// hoá đơn INV_C; M4A/M4B hai công tơ ở P104; M5 P105 chưa có chỉ số nào, chỉ số ban đầu 2.210; M7 P106 có chỉ số chốt trả phòng TLY tháng 10;
+// M6 P201 toà B. Chỉ số lịch sử chèn trực tiếp (trigger điền số đầu như production).
+const METER_SEED = `INSERT INTO public.rooms VALUES('${ROOM6}','${ORG}','${BUILDING}','P106','OCCUPIED',null);
+  INSERT INTO public.meters(id,user_id,code,building_id,room_id,service_id,meter_type,initial_reading,organization_id) VALUES
+    ('${M1}','${USER}','DH-101','${BUILDING}','${ROOM}','${SERVICE_E}','ELECTRICITY',1000,'${ORG}'),
+    ('${M2}','${USER}','DH-102','${BUILDING}','${ROOM2}','${SERVICE_E}','ELECTRICITY',400,'${ORG}'),
+    ('${M3}','${USER}','DH-103','${BUILDING}','${ROOM3}','${SERVICE_E}','ELECTRICITY',300,'${ORG}'),
+    ('${M4A}','${USER}','DH-104A','${BUILDING}','${ROOM4}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M4B}','${USER}','DH-104B','${BUILDING}','${ROOM4}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M5}','${USER}','DH-105','${BUILDING}','${ROOM5}','${SERVICE_E}','ELECTRICITY',2210,'${ORG}'),
+    ('${M6}','${USER}','DH-201','${OTHER_BUILDING}','${OTHER_ROOM}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M7}','${USER}','DH-106','${BUILDING}','${ROOM6}','${SERVICE_E}','ELECTRICITY',100,'${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M1}','2026-09-30',1200,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-07-31',500,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-08-31',600,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-09-30',700,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M3}','2026-10-10',350,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_code,reading_date,current_reading,status,organization_id) VALUES('${M7}','TLY2610001','2026-10-05',150,'APPROVED','${ORG}');
+  INSERT INTO public.invoice_items(invoice_id,type,description,amount,current_reading,previous_reading) VALUES('${INV_C}','SERVICE','Tiền điện (300 → 350)',175000,350,300);
+  INSERT INTO public.fixture_meter_acl VALUES('meter_readings.create','${BUILDING}'),('meter_readings.create','${OTHER_BUILDING}'),
+    ('meter_readings.edit','${BUILDING}'),('meter_readings.edit','${OTHER_BUILDING}');`;
+
+// Mốc 5 (điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục, edit: true — kéo theo meter vì vỏ trang Mốc 5 thay vỏ Mốc 4). Thân PRODUCTION
+// chạy NGUYÊN VĂN (invoice-writer-bodies.json, đọc 23/10; md5 kiểm ở invoice-edit-sql.test.mjs): review_invoice_adjustment_v2,
+// cancel_invoice_with_credit_v1, restore_invoice_with_credit_v1, invoice_rent_support_lock_v1 (khoá công ty → hợp đồng), dựng/làm tròn dòng
+// (normalize_invoice_adjustment_items_v2, round_invoice_total_v1) và rào quyền (require/has_building_perm_v1). adjust_invoice_v2 là BẢN PORT
+// (thân thật kéo cả bộ đối soát kế toán): cùng chữ ký, cùng thứ tự khoá (invoice_rent_support_lock_v1 rồi hoá đơn FOR UPDATE), cùng câu
+// lỗi mục 5, idempotency theo (hoá đơn, khoá) + vân tay, khoá lạc quan ba giá trị. Hàm phụ credit/sổ chuỗi kế toán là bản port tối giản.
+// Quyền ghi web theo bảng RIÊNG fixture_invoice_acl (tách khỏi quyền v3 của guard, như production).
+const BUILD = file('invoice_adjustment_build_v1'), EDIT_PAGE = file('hermes_invoice_edit_v1');
+export const WRITER_BODIES = JSON.parse(readFileSync(new URL('./invoice-writer-bodies.json', import.meta.url), 'utf8'));
+const real = name => { const f = WRITER_BODIES[name];
+  return `CREATE OR REPLACE FUNCTION ${name}(${f.args}) RETURNS ${f.result === 'invoice_adjustments' ? 'public.invoice_adjustments' : f.result} LANGUAGE ${f.lang}
+  ${f.volatility === 's' ? 'STABLE' : f.volatility === 'i' ? 'IMMUTABLE' : 'VOLATILE'}${f.definer ? ' SECURITY DEFINER' : ''} SET ${f.config} AS $body$${f.body}$body$;`; };
+export const [ROOM7, ROOM8, ROOM9, CONTRACT2, CONTRACT3, CONTRACT4, INV_P, INV_S, INV_X, INV_X2, ADJ_P, ADJ_S, INV_O] =
+  [816, 817, 818, 837, 838, 839, 851, 852, 853, 854, 855, 856, 857].map(uid);
+export const [LINE_RENT, LINE_ELEC, LINE_WATER, LINE_PDV, LINE_PARK, LINE_P, LINE_S, LINE_O] = [861, 862, 863, 864, 865, 866, 867, 868].map(uid);
+const EDIT = `INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('invoices.edit','action',false),('invoices.approve','action',false),
+    ('invoices.cancel','action',false) ON CONFLICT(capability) DO NOTHING;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS subtotal numeric(15,2),ADD COLUMN IF NOT EXISTS discount_amount numeric(15,2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS discount_notes text,ADD COLUMN IF NOT EXISTS previous_debt numeric(15,2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS adjustment_review_status text DEFAULT 'NONE',ADD COLUMN IF NOT EXISTS approved_at timestamptz,ADD COLUMN IF NOT EXISTS approved_by uuid;
+  ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS organization_id uuid,ADD COLUMN IF NOT EXISTS unit_price numeric(15,2),
+    ADD COLUMN IF NOT EXISTS quantity numeric DEFAULT 1,ADD COLUMN IF NOT EXISTS coefficient numeric DEFAULT 1,ADD COLUMN IF NOT EXISTS from_date date,
+    ADD COLUMN IF NOT EXISTS to_date date,ADD COLUMN IF NOT EXISTS sort_order int DEFAULT 0,ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT clock_timestamp(),
+    ALTER COLUMN accounting_class SET DEFAULT 'REVENUE';
+  UPDATE public.invoice_items SET accounting_class='REVENUE' WHERE accounting_class='PNL';
+  CREATE TYPE public.invoice_item_type AS ENUM ('RENT','SERVICE','PENALTY','DISCOUNT','OTHER');
+  CREATE TABLE public.services(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz);
+  CREATE TABLE public.invoice_adjustments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL,invoice_id uuid NOT NULL,revision bigint NOT NULL,
+    idempotency_key text NOT NULL,request_fingerprint text,reason text NOT NULL,before_snapshot jsonb NOT NULL,after_snapshot jsonb NOT NULL,before_total numeric NOT NULL,
+    after_total numeric NOT NULL,delta numeric NOT NULL,adjusted_by uuid NOT NULL,adjusted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    review_status text NOT NULL DEFAULT 'PENDING',checked_by uuid,checked_at timestamptz,UNIQUE(invoice_id,revision),UNIQUE(invoice_id,idempotency_key));
+  CREATE TABLE public.customer_credit_applications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,invoice_id uuid,amount numeric(15,2),
+    applied_at timestamptz NOT NULL DEFAULT clock_timestamp(),reversed_at timestamptz,restored_at timestamptz,restored_by uuid,restoration_idempotency_key text);
+  CREATE TABLE public.fixture_invoice_acl(permission text,building_id uuid);
+  CREATE TABLE public.fixture_edit(rejected_message text,reject_state text,reject_action text);
+  INSERT INTO public.fixture_edit VALUES(null,null,null);
+  GRANT SELECT ON public.invoice_adjustments,public.customer_credit_applications TO authenticated;
+  CREATE OR REPLACE FUNCTION public.can_do_on_building(_table text,_action text,_building_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path=pg_catalog,public AS $f$ SELECT EXISTS(SELECT 1 FROM public.fixture_building_access WHERE building_id=_building_id)
+      AND (_table||'.'||_action NOT IN ('invoices.edit','invoices.approve','invoices.cancel','invoices.delete')
+        OR EXISTS(SELECT 1 FROM public.fixture_invoice_acl a WHERE a.permission=_table||'.'||_action AND a.building_id=_building_id AND auth.uid()='${USER}')) $f$;
+  CREATE FUNCTION app_private.can_edit_invoice_building_v1(p_building_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS
+    $f$ SELECT public.is_super_admin() OR EXISTS(SELECT 1 FROM public.fixture_invoice_acl a WHERE a.permission='invoices.edit' AND a.building_id=p_building_id
+      AND auth.uid()='${USER}') $f$;
+  CREATE FUNCTION app_private.assert_invoice_credit_cancellable_v1(p_invoice_id uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $f$
+    BEGIN IF EXISTS(SELECT 1 FROM public.fixture_edit WHERE reject_action='cancel_source') THEN
+      RAISE EXCEPTION 'Reverse the payment credit source before cancelling this invoice' USING ERRCODE='55000'; END IF; END $f$;
+  CREATE FUNCTION app_private.reverse_invoice_customer_credit_v1(p_actor uuid,p_invoice_id uuid,p_reason text,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql
+    SECURITY DEFINER SET search_path=pg_catalog,public AS $f$ DECLARE v_total numeric; BEGIN
+      SELECT COALESCE(sum(amount),0) INTO v_total FROM public.customer_credit_applications WHERE invoice_id=p_invoice_id AND reversed_at IS NULL;
+      UPDATE public.customer_credit_applications SET reversed_at=clock_timestamp() WHERE invoice_id=p_invoice_id AND reversed_at IS NULL;
+      RETURN jsonb_build_object('invoice_id',p_invoice_id,'reversed_amount',v_total,'applications','[]'::jsonb); END $f$;
+  CREATE FUNCTION app_private.apply_customer_credit_fifo_v1(p_actor uuid,p_contract_id uuid,p_amount numeric,p_invoice_id uuid,p_application_kind text,
+    p_description text,p_idempotency_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $f$ BEGIN
+      PERFORM app_private.lock_org_for_decision_v1((SELECT organization_id FROM public.invoices WHERE id=p_invoice_id));
+      INSERT INTO public.customer_credit_applications(organization_id,invoice_id,amount) SELECT organization_id,p_invoice_id,p_amount FROM public.invoices WHERE id=p_invoice_id;
+      RETURN jsonb_build_object('invoice_id',p_invoice_id,'applied_amount',p_amount,'applications','[]'::jsonb); END $f$;
+  CREATE FUNCTION app_private.begin_accounting_chain_write_v1() RETURNS void LANGUAGE plpgsql AS $f$ BEGIN END $f$;
+  CREATE FUNCTION app_private.end_accounting_chain_write_v1() RETURNS void LANGUAGE plpgsql AS $f$ BEGIN END $f$;
+  ${['app_private.invoice_rent_support_lock_v1', 'app_private.round_invoice_total_v1', 'app_private.normalize_invoice_adjustment_items_v2',
+    'app_private.has_building_perm_v1', 'app_private.require_building_perm_v1', 'public.review_invoice_adjustment_v2', 'public.cancel_invoice_with_credit_v1',
+    'public.restore_invoice_with_credit_v1'].map(real).join('\n  ')}
+  -- Bản port adjust_invoice_v2 (20260912091403): cùng chữ ký và thứ tự khoá; câu lỗi như mục 5; fixture_edit ép một lỗi bất kỳ.
+  CREATE FUNCTION public.adjust_invoice_v2(p_invoice_id uuid,p_after_items jsonb,p_discount_amount numeric,p_discount_notes text,p_notes text,p_reason text,
+    p_expected_revision bigint,p_expected_paid_amount numeric,p_expected_updated_at timestamptz,p_idempotency_key text) RETURNS public.invoice_adjustments
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $w$
+    DECLARE inv public.invoices%ROWTYPE; result public.invoice_adjustments%ROWTYPE; actor uuid:=auth.uid(); items jsonb; old_items jsonb; v_subtotal numeric;
+      total numeric; discount numeric; key text:=btrim(p_idempotency_key); fingerprint text; x jsonb; f public.fixture_edit;
+    BEGIN
+      PERFORM app_private.invoice_rent_support_lock_v1(p_invoice_id);
+      IF actor IS NULL THEN RAISE EXCEPTION 'Chưa đăng nhập' USING ERRCODE='42501'; END IF;
+      SELECT * INTO inv FROM public.invoices WHERE id=p_invoice_id AND deleted_at IS NULL FOR UPDATE;
+      IF NOT FOUND OR public.can_access_building(inv.building_id) IS DISTINCT FROM true OR public.can_do_on_building('invoices','edit',inv.building_id) IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'Không có quyền điều chỉnh hóa đơn trong tổ chức/toà này' USING ERRCODE='42501'; END IF;
+      IF key IS NULL OR key !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$' OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 3 AND 1000 THEN
+        RAISE EXCEPTION 'Lý do phải dài 3–1000 ký tự và khóa yêu cầu phải hợp lệ' USING ERRCODE='22023'; END IF;
+      items:=app_private.normalize_invoice_adjustment_items_v2(p_after_items,inv.organization_id);
+      discount:=coalesce(p_discount_amount,0);
+      IF discount<0 THEN RAISE EXCEPTION 'Giảm giá không hợp lệ' USING ERRCODE='22023'; END IF;
+      fingerprint:=md5(jsonb_build_object('items',items,'discount',discount,'discount_notes',p_discount_notes,'notes',p_notes,'reason',btrim(p_reason),
+        'revision',p_expected_revision,'paid',p_expected_paid_amount,'updated',p_expected_updated_at)::text);
+      SELECT * INTO result FROM public.invoice_adjustments WHERE invoice_id=p_invoice_id AND idempotency_key=key;
+      IF FOUND THEN
+        IF result.request_fingerprint IS DISTINCT FROM fingerprint THEN RAISE EXCEPTION 'Khóa yêu cầu đã dùng cho nội dung khác; vui lòng tải lại' USING ERRCODE='23505'; END IF;
+        RETURN result; END IF;
+      SELECT * INTO f FROM public.fixture_edit;
+      IF f.rejected_message IS NOT NULL AND COALESCE(f.reject_action,'adjust')='adjust' THEN
+        RAISE EXCEPTION '%',f.rejected_message USING ERRCODE=COALESCE(f.reject_state,'P0001'); END IF;
+      IF inv.status NOT IN ('APPROVED','PARTIAL_PAID','PAID','OVERDUE') THEN RAISE EXCEPTION 'Chỉ điều chỉnh hóa đơn đã phát hành' USING ERRCODE='55000'; END IF;
+      IF p_expected_revision IS DISTINCT FROM inv.adjustment_revision OR p_expected_paid_amount IS DISTINCT FROM coalesce(inv.paid_amount,0)
+        OR p_expected_updated_at IS DISTINCT FROM inv.updated_at THEN RAISE EXCEPTION 'Hóa đơn vừa thay đổi hoặc vừa thu tiền; vui lòng tải lại' USING ERRCODE='PT409'; END IF;
+      IF EXISTS(SELECT 1 FROM jsonb_array_elements(items) it WHERE it->>'id' IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM public.invoice_items old WHERE old.id=(it->>'id')::uuid AND old.invoice_id=p_invoice_id)) THEN
+        RAISE EXCEPTION 'Hạng mục không thuộc hóa đơn/tổ chức' USING ERRCODE='42501'; END IF;
+      IF EXISTS(SELECT 1 FROM public.invoice_payment_collections c WHERE c.invoice_id=p_invoice_id AND c.status='ACTIVE' AND c.rounding_amount<>0)
+        OR EXISTS(SELECT 1 FROM public.customer_credit_applications c WHERE c.invoice_id=p_invoice_id AND c.reversed_at IS NULL) THEN
+        RAISE EXCEPTION 'Hóa đơn có làm tròn hoặc cấn trừ credit đang hiệu lực; đảo giao dịch trong Lịch sử thanh toán trước khi điều chỉnh' USING ERRCODE='55000'; END IF;
+      IF EXISTS(SELECT 1 FROM public.invoices later WHERE later.contract_id=inv.contract_id AND later.billing_month>inv.billing_month AND later.deleted_at IS NULL
+        AND later.status<>'CANCELLED' AND later.previous_debt_sources @> jsonb_build_array(jsonb_build_object('type','invoice','id',p_invoice_id::text))) THEN
+        RAISE EXCEPTION 'Nợ đã chuyển sang hóa đơn sau; cần tất toán hoặc xử lý hóa đơn sau trước khi điều chỉnh' USING ERRCODE='55000'; END IF;
+      SELECT sum((v->>'amount')::numeric) INTO v_subtotal FROM jsonb_array_elements(items) v;
+      total:=app_private.round_invoice_total_v1(v_subtotal-discount+coalesce(inv.previous_debt,0));
+      IF discount>v_subtotal OR total<0 THEN RAISE EXCEPTION 'Giảm giá hoặc tổng tiền không hợp lệ' USING ERRCODE='22023'; END IF;
+      SELECT coalesce(jsonb_agg(to_jsonb(i) ORDER BY i.sort_order,i.id),'[]') INTO old_items FROM public.invoice_items i WHERE i.invoice_id=p_invoice_id;
+      IF jsonb_array_length(old_items)>0 AND (SELECT jsonb_agg(it-'id') FROM jsonb_array_elements(items) it)
+        =(SELECT jsonb_agg(it-'id') FROM jsonb_array_elements(app_private.normalize_invoice_adjustment_items_v2(old_items,inv.organization_id)) it)
+        AND discount=coalesce(inv.discount_amount,0) AND p_discount_notes IS NOT DISTINCT FROM inv.discount_notes AND p_notes IS NOT DISTINCT FROM inv.notes THEN
+        RAISE EXCEPTION 'Không có thay đổi nội dung hóa đơn' USING ERRCODE='22023'; END IF;
+      SELECT jsonb_agg(it||jsonb_build_object('id',coalesce((it->>'id')::uuid,gen_random_uuid())) ORDER BY ord) INTO items
+        FROM jsonb_array_elements(items) WITH ORDINALITY row_item(it,ord);
+      INSERT INTO public.invoice_adjustments(organization_id,invoice_id,revision,idempotency_key,request_fingerprint,reason,before_snapshot,after_snapshot,before_total,
+        after_total,delta,adjusted_by) VALUES(inv.organization_id,p_invoice_id,inv.adjustment_revision+1,key,fingerprint,btrim(p_reason),
+        to_jsonb(inv)||jsonb_build_object('items',old_items),to_jsonb(inv)||jsonb_build_object('items',items,'subtotal',v_subtotal,'total_amount',total,
+          'discount_amount',discount),inv.total_amount,total,total-inv.total_amount,actor) RETURNING * INTO result;
+      DELETE FROM public.invoice_items WHERE invoice_id=p_invoice_id;
+      FOR x IN SELECT value FROM jsonb_array_elements(items) LOOP
+        INSERT INTO public.invoice_items(id,invoice_id,organization_id,service_id,type,description,unit_price,quantity,coefficient,amount,previous_reading,current_reading,
+          from_date,to_date,sort_order,accounting_class) VALUES((x->>'id')::uuid,p_invoice_id,inv.organization_id,(x->>'service_id')::uuid,x->>'type',x->>'description',
+          (x->>'unit_price')::numeric,(x->>'quantity')::numeric,(x->>'coefficient')::numeric,(x->>'amount')::numeric,(x->>'previous_reading')::numeric,
+          (x->>'current_reading')::numeric,(x->>'from_date')::date,(x->>'to_date')::date,(x->>'sort_order')::integer,x->>'accounting_class');
+      END LOOP;
+      IF total<coalesce(inv.paid_amount,0) THEN
+        RAISE EXCEPTION 'Nội dung mới thấp hơn tiền đã phân bổ; đảo giao dịch trong Lịch sử thanh toán trước khi điều chỉnh' USING ERRCODE='55000'; END IF;
+      UPDATE public.invoices SET subtotal=v_subtotal,total_amount=total,discount_amount=discount,discount_notes=p_discount_notes,notes=p_notes,
+        adjustment_revision=result.revision,adjustment_review_status='PENDING',updated_at=clock_timestamp(),
+        status=CASE WHEN coalesce(paid_amount,0)>=total AND total>0 THEN 'PAID' WHEN coalesce(paid_amount,0)>0 THEN 'PARTIAL_PAID'
+          WHEN status='OVERDUE' THEN 'OVERDUE' ELSE 'APPROVED' END WHERE id=p_invoice_id;
+      RETURN result;
+    END $w$;
+  GRANT EXECUTE ON FUNCTION public.adjust_invoice_v2(uuid,jsonb,numeric,text,text,text,bigint,numeric,timestamptz,text),public.review_invoice_adjustment_v2(uuid,bigint),
+    public.cancel_invoice_with_credit_v1(uuid,text),public.restore_invoice_with_credit_v1(uuid,text) TO authenticated;`;
+// P101 (INV_A, 3.650.000đ, HĐ CONTRACT): tiền phòng, điện có chỉ số, nước theo người (khoá theo mô tả), PDV, gửi xe (thành tiền lệch đơn giá ×
+// SL ⇒ dòng giữ nguyên quy về đơn giá = thành tiền). P107 (INV_P): điều chỉnh lần 1 CHỜ KIỂM do người khác làm (Quản lý B). P108 (INV_S):
+// điều chỉnh chờ kiểm do CHÍNH người hỏi làm. P109 (INV_X): hoá đơn đã huỷ, có tiền dư khách đã hoàn chờ cấn lại. P107 còn INV_X2 đã huỷ cùng
+// HĐ, cùng kỳ với INV_P đang hiệu lực (khôi phục ⇒ trùng kỳ). INV_D10 gánh nợ cũ INV_D9 và có tiền dư đã cấn. INV_E có nợ cũ không nguồn.
+// INV_O ở toà B: guard cho, quyền ghi web (fixture_invoice_acl) chỉ có toà A.
+const EDIT_SEED = `INSERT INTO public.rooms VALUES('${ROOM7}','${ORG}','${BUILDING}','P107','OCCUPIED',null),('${ROOM8}','${ORG}','${BUILDING}','P108','OCCUPIED',null),
+    ('${ROOM9}','${ORG}','${BUILDING}','P109','OCCUPIED',null);
+  INSERT INTO public.contracts(id,organization_id,room_id,status) VALUES('${CONTRACT}','${ORG}','${ROOM}','ACTIVE'),('${CONTRACT2}','${ORG}','${ROOM7}','ACTIVE'),
+    ('${CONTRACT3}','${ORG}','${ROOM8}','ACTIVE'),('${CONTRACT4}','${ORG}','${ROOM9}','ACTIVE') ON CONFLICT(id) DO NOTHING;
+  UPDATE public.invoices SET subtotal=total_amount,discount_amount=0;
+  UPDATE public.invoices SET previous_debt=1000000 WHERE id='${INV_D10}';
+  UPDATE public.invoices SET previous_debt=300000 WHERE id='${INV_E}';
+  INSERT INTO public.invoice_items(id,invoice_id,organization_id,type,description,unit_price,quantity,coefficient,amount,previous_reading,current_reading,sort_order,accounting_class) VALUES
+    ('${LINE_RENT}','${INV_A}','${ORG}','RENT','Tiền phòng tháng 10/2026',3000000,1,1,3000000,null,null,0,'REVENUE'),
+    ('${LINE_ELEC}','${INV_A}','${ORG}','SERVICE','Tiền điện (1.200 → 1.250)',3500,50,1,175000,1200,1250,1,'REVENUE'),
+    ('${LINE_WATER}','${INV_A}','${ORG}','SERVICE','Tiền Nước (2 người)',100000,2,1,200000,null,null,2,'REVENUE'),
+    ('${LINE_PDV}','${INV_A}','${ORG}','SERVICE','Phí dịch vụ',150000,1,1,150000,null,null,3,'REVENUE'),
+    ('${LINE_PARK}','${INV_A}','${ORG}','OTHER','Phí gửi xe máy',100000,1,1,125000,null,null,4,'REVENUE');
+  INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,created_at,subtotal,
+    discount_amount,adjustment_revision,adjustment_review_status) VALUES
+    ('${INV_P}','${ORG}','INV-P-10','APPROVED','${BUILDING}','${ROOM7}','2026-10','2026-10-30',1900000,0,'${CONTRACT2}','2026-10-01',1900000,0,1,'PENDING'),
+    ('${INV_S}','${ORG}','INV-S-10','APPROVED','${BUILDING}','${ROOM8}','2026-10','2026-10-30',1500000,0,'${CONTRACT3}','2026-10-01',1500000,0,1,'PENDING'),
+    ('${INV_X}','${ORG}','INV-X-10','CANCELLED','${BUILDING}','${ROOM9}','2026-10','2026-10-15',1200000,0,'${CONTRACT4}','2026-10-01',1200000,0,0,'NONE'),
+    ('${INV_X2}','${ORG}','INV-X2-10','CANCELLED','${BUILDING}','${ROOM7}','2026-10','2026-10-30',2000000,0,'${CONTRACT2}','2026-09-30',2000000,0,0,'NONE'),
+    ('${INV_O}','${ORG}','INV-O-10','APPROVED','${OTHER_BUILDING}','${OTHER_ROOM}','2026-10','2026-10-30',800000,0,null,'2026-10-01',800000,0,0,'NONE');
+  INSERT INTO public.invoice_items(id,invoice_id,organization_id,type,description,unit_price,quantity,coefficient,amount,sort_order,accounting_class) VALUES
+    ('${LINE_P}','${INV_P}','${ORG}','RENT','Tiền phòng',1900000,1,1,1900000,0,'REVENUE'),('${LINE_S}','${INV_S}','${ORG}','RENT','Tiền phòng',1500000,1,1,1500000,0,'REVENUE'),
+    ('${LINE_O}','${INV_O}','${ORG}','RENT','Tiền phòng',800000,1,1,800000,0,'REVENUE');
+  INSERT INTO public.invoice_items(invoice_id,organization_id,type,description,unit_price,quantity,coefficient,amount,sort_order,accounting_class) VALUES
+    ('${INV_B}','${ORG}','RENT','Tiền phòng',2000000,1,1,2000000,0,'REVENUE'),('${INV_D9}','${ORG}','RENT','Tiền phòng',1000000,1,1,1000000,0,'REVENUE'),
+    ('${INV_D10}','${ORG}','RENT','Tiền phòng',1500000,1,1,1500000,0,'REVENUE');
+  INSERT INTO public.invoice_adjustments(id,organization_id,invoice_id,revision,idempotency_key,request_fingerprint,reason,before_snapshot,after_snapshot,before_total,
+    after_total,delta,adjusted_by,adjusted_at) VALUES
+    ('${ADJ_P}','${ORG}','${INV_P}',1,'web-adj-00000001','f','Giảm tiền phòng do sửa chữa',
+      '{"discount_amount":0,"items":[{"id":"${LINE_P}","description":"Tiền phòng","amount":2000000}]}',
+      '{"discount_amount":0,"items":[{"id":"${LINE_P}","description":"Tiền phòng","amount":1900000}]}',2000000,1900000,-100000,'${STRANGER}','2026-10-20 08:20:00+00'),
+    ('${ADJ_S}','${ORG}','${INV_S}',1,'web-adj-00000002','f','Bớt tiền phòng cho khách quen',
+      '{"discount_amount":0,"items":[{"id":"${LINE_S}","description":"Tiền phòng","amount":1600000}]}',
+      '{"discount_amount":0,"items":[{"id":"${LINE_S}","description":"Tiền phòng","amount":1500000}]}',1600000,1500000,-100000,'${USER}','2026-10-21 02:00:00+00');
+  INSERT INTO public.customer_credit_applications(organization_id,invoice_id,amount) VALUES('${ORG}','${INV_D10}',50000);
+  INSERT INTO public.customer_credit_applications(organization_id,invoice_id,amount,reversed_at) VALUES('${ORG}','${INV_X}',50000,'2026-10-16 03:00:00+00');
+  INSERT INTO public.fixture_invoice_acl VALUES('invoices.edit','${BUILDING}'),('invoices.approve','${BUILDING}'),('invoices.cancel','${BUILDING}');`;
+
+export async function invoiceSetup(t, { database, meter = false, edit = false } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   const exec = async (label, sql) => { try { await db.exec(sql); } catch (error) { error.message = `${label}: ${error.message}`; throw error; } };
@@ -186,6 +432,29 @@ export async function invoiceSetup(t, { database } = {}) {
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='thu_tien.collect_transfer'");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,'thu_tien.collect_transfer')`);
+  if (meter || edit) {
+    await exec('meter fixture', METER);
+    for (const [label, sql] of [['meter v2', METER_A], ['meter v2#2', METER_A], ['meter page', METER_PAGE], ['meter page#2', METER_PAGE]]) await exec(label, sql);
+    await exec('meter seed', METER_SEED);
+    await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('meter_readings.create',$1) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true", [[BUILDING, OTHER_BUILDING]]);
+    assert.equal((await db.query("SELECT enabled FROM app_private.hermes_capabilities WHERE capability='meter_readings.create'")).rows[0].enabled, false);
+    await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='meter_readings.create'");
+    for (const table of ['hermes_org_policies', 'hermes_connections'])
+      await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,'meter_readings.create')`);
+  }
+  if (edit) {
+    await exec('edit fixture', EDIT);
+    for (const [label, sql] of [['build', BUILD], ['build#2', BUILD], ['edit page', EDIT_PAGE], ['edit page#2', EDIT_PAGE]]) await exec(label, sql);
+    await exec('edit seed', EDIT_SEED);
+    for (const key of ['invoices.edit', 'invoices.approve', 'invoices.cancel']) {
+      await db.query('INSERT INTO public.fixture_acl(permission,building_ids) VALUES($1,$2) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true',
+        [key, [BUILDING, OTHER_BUILDING]]);
+      assert.equal((await db.query('SELECT enabled FROM app_private.hermes_capabilities WHERE capability=$1', [key])).rows[0].enabled, false);
+      await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=$1', [key]);
+      for (const table of ['hermes_org_policies', 'hermes_connections'])
+        await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,$1)`, [key]);
+    }
+  }
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
     [JSON.stringify(binding), extra.action ?? 'invoice.collect', phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null]);
@@ -194,5 +463,9 @@ export async function invoiceSetup(t, { database } = {}) {
     (SELECT count(*)::int FROM public.fixture_v5_ops) ops,(SELECT count(*)::int FROM app_private.hermes_action_receipts) receipts,
     (SELECT COALESCE(sum(paid_amount),0)::bigint::text FROM public.invoices) paid`)).rows[0];
   const one = (extra = {}) => ({ buildingName: 'toa a', roomName: 'p101', method: 'TK', ...extra });
-  return { ...f, exec, run, applyWith, trace, one };
+  const meterRun = (phase, requestId, params, extra = {}) => run(phase, requestId, params, { ...extra, action: 'invoice.meter_record' });
+  const meterApply = (requestId, params, preview) => meterRun('apply', requestId, params, { resolved: preview.resolved, basis: preview.basis });
+  const editRun = (action, phase, requestId, params, extra = {}) => run(phase, requestId, params, { ...extra, action });
+  const editApply = (action, requestId, params, preview) => editRun(action, 'apply', requestId, params, { resolved: preview.resolved, basis: preview.basis });
+  return { ...f, exec, run, applyWith, trace, one, meterRun, meterApply, editRun, editApply };
 }

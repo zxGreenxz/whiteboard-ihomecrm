@@ -10,7 +10,7 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'assistant.salary.self': 'Xem lương của tôi (như trang Lương của tôi)',
   'assistant.bank_events.read': 'Xem biến động số dư (chỉ super admin, như trang Biến động số dư)',
   // Đợt 1 nền chung thao tác ghi: hai khoá riêng Hermes (seed TẮT; chỉ hiện ở màn tạo kết nối khi đã bật).
-  'income_expenses.approve_vouchers': 'Duyệt và chi phiếu chi người khác lập tay (Hermes, có xem trước)',
+  'income_expenses.approve_vouchers': 'Duyệt, hoặc duyệt và chi, phiếu CHI lập tay (Hermes, tối đa 10 phiếu, luôn xem trước)',
   'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
   // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
   'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
@@ -22,7 +22,7 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
   // Đợt 2 Thu chi: thang duyệt CRM quyết trạng thái như web; phiếu ra đời đã duyệt thì CRM vào sổ quỹ ngay.
   'income_expenses.create': 'Hermes: lập phiếu CHI lập tay (luôn xem trước, dưới ngưỡng hoặc người lập có quyền duyệt thì vào sổ ngay) và ghi chú phiếu',
-  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt và chi phiếu chi người khác lập tay"',
+  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt, hoặc duyệt và chi, phiếu CHI lập tay"',
   'rooms.edit': 'Hermes: sửa thông tin Sale phòng theo phiên bản hiện tại; chữ công khai cần duyệt trước',
   'sale_phong.edit': 'Hermes: cập nhật thông tin Sale và chương trình có thời hạn trực tiếp; xem trước nội dung công khai',
   'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',

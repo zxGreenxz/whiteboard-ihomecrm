@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T05:33:17.938Z",
+  "generatedAt": "2026-10-23T10:37:57.544Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 852,
+    "ledger-applied": 866,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -13233,6 +13233,160 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-23T05:19:53.074Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022183026_meter_readings_v2.sql",
+      "version": "20261022183026",
+      "name": "meter_readings_v2",
+      "scheme": "timestamp14",
+      "sha256": "fa75c146353affdc10ccef7b681fe1a52c38af76ad04dbad5ba196b615b81f71",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:03:17.399Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql",
+      "version": "20261022183445",
+      "name": "hermes_invoice_meter_v1",
+      "scheme": "timestamp14",
+      "sha256": "52535735f77ac21191f626e2fdeb94cc0d90b5e0dd264d2052e101e7d40ec8e3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:06:13.653Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023013109_hermes_expense_approve_v1.sql",
+      "version": "20261023013109",
+      "name": "hermes_expense_approve_v1",
+      "scheme": "timestamp14",
+      "sha256": "286e212c69439cef05e6faaaa4460f6823c46221465f96caaf13c3b10d06377f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:08:37.434Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql",
+      "version": "20261023030305",
+      "name": "hermes_contract_renew_batch_v1",
+      "scheme": "timestamp14",
+      "sha256": "be39ecb5b2c50d6e8c3abaa83df6bc61b668b6b9f6493a18adbab56ed4ac1286",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:10:57.728Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023031258_hermes_expense_row_locks_nowait_v1.sql",
+      "version": "20261023031258",
+      "name": "hermes_expense_row_locks_nowait_v1",
+      "scheme": "timestamp14",
+      "sha256": "a7dde2449d5e433dd1ce49046da09132831cf7de962997713dc28fd66f4cb154",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:13:10.748Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042242_invoice_adjustment_build_v1.sql",
+      "version": "20261023042242",
+      "name": "invoice_adjustment_build_v1",
+      "scheme": "timestamp14",
+      "sha256": "dd599f03b156a453e452a2076b005eec339d6a30592c3737b4a9738abcbc7c98",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:15:14.833Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042424_job_recurrence_v1.sql",
+      "version": "20261023042424",
+      "name": "job_recurrence_v1",
+      "scheme": "timestamp14",
+      "sha256": "94cd4579924420ec61705b1331d542ac01a0d4ba6c06714946418dc08f292f65",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:18:08.289Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042431_hermes_task_recurrence_generate_v1.sql",
+      "version": "20261023042431",
+      "name": "hermes_task_recurrence_generate_v1",
+      "scheme": "timestamp14",
+      "sha256": "1b6884fe0e64569b70f71cb2894c901ecd58c2ca3e3279c6dfd0d5c187c639b2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:20:55.100Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042436_hermes_task_recurring_v1.sql",
+      "version": "20261023042436",
+      "name": "hermes_task_recurring_v1",
+      "scheme": "timestamp14",
+      "sha256": "9d6fa47e92e1bfc687beb92b14501418aceb12839c3453ca6307ffb2db190614",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:23:51.125Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042445_hermes_w2c_task_recurrences_shared_v1.sql",
+      "version": "20261023042445",
+      "name": "hermes_w2c_task_recurrences_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "53d88bde95a696bba585f70b06059e2998143d7fbd9bd28b4cc844a300035a75",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:26:10.561Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042450_hermes_w2c_task_recurrences_v1.sql",
+      "version": "20261023042450",
+      "name": "hermes_w2c_task_recurrences_v1",
+      "scheme": "timestamp14",
+      "sha256": "526b1a0cbe62bb7afb7337c3e2161fd0b27256831718e58528a36c2c74c41f04",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:28:59.155Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql",
+      "version": "20261023042723",
+      "name": "hermes_invoice_edit_v1",
+      "scheme": "timestamp14",
+      "sha256": "b230f2d3004bd8fa2095886d477bcb54d1db52d7b45e7e2bb4a1918fc28b2d0f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:31:46.918Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023063140_task_reminder_v1.sql",
+      "version": "20261023063140",
+      "name": "task_reminder_v1",
+      "scheme": "timestamp14",
+      "sha256": "2e21f0981e5da7d1e77284191141202ffa661f13b2e301cdfa33ebdd4a6dcbf2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:34:45.533Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023063142_zalo_worker_task_reminder_v1.sql",
+      "version": "20261023063142",
+      "name": "zalo_worker_task_reminder_v1",
+      "scheme": "timestamp14",
+      "sha256": "a13f42af763cb918c125b6de37cee4436cbae9590ef1346567f297eb1dffdbaf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-23T10:37:34.771Z|bien-nhan-backup"
       ]
     },
     {

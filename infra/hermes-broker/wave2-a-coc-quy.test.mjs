@@ -161,8 +161,8 @@ test('cổng thật: không có deposits.view ở đâu (hoặc mất khoá) ⇒
 }));
 
 // Công việc Mốc 4 (20261022180402): tasks_board (gói C) là báo cáo rls_buildings thứ hai — bảng việc dưới RLS jobs như /tasks.
-test('báo cáo khác KHÔNG đổi: chỉ reservation_vouchers và tasks_board khai rls_buildings; báo cáo rows giữ ctx.buildings = toà của khoá ∩ kết nối', () => inCase(async env => {
-  assert.deepEqual(Object.entries(W2.reports).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId).sort(), ['reservation_vouchers', 'tasks_board']);
+test('báo cáo khác KHÔNG đổi: chỉ reservation_vouchers, tasks_board và task_recurrences khai rls_buildings; báo cáo rows giữ ctx.buildings = toà của khoá ∩ kết nối', () => inCase(async env => {
+  assert.deepEqual(Object.entries(W2.reports).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId).sort(), ['reservation_vouchers', 'task_recurrences', 'tasks_board']);
   const catalog = (await env.db.query('SELECT app_private.hermes_w2_catalog_v1(NULL) spec')).rows[0].spec;
   // Fixture này chỉ nạp dải gói A (+ nền): catalog SQL không có gói C ⇒ chỉ reservation_vouchers.
   assert.deepEqual(Object.entries(catalog).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId), ['reservation_vouchers']);

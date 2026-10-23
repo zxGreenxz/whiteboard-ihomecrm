@@ -39,7 +39,7 @@ export const ACTION_REASONS = Object.freeze({
   ...contractReasons(),
   // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 2.4). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...taskReasons(),
-  // Trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 5) — thu tiền. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
+  // Trang Hoá đơn (Đợt 3 Mốc 3 thu tiền + Mốc 4 ghi chỉ số, HOA-DON-THAO-TAC-GHI.md mục 5). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...invoiceReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
@@ -64,6 +64,8 @@ function contractReasons() {
     notice_choice_required: reason('needs_input', 'fix', 'Hợp đồng đang có báo trả; hỏi người dùng gia hạn thì GIỮ hay HUỶ báo trả (keepMoveOutNotice).'),
     occupant_not_on_contract: reason('needs_input', 'fix', 'Người này không có trong hợp đồng của phòng; hỏi lại tên hoặc SĐT người ở.'),
     return_date_future: reason('needs_input', 'fix', 'Ngày trả phòng ở tương lai: khách chưa dọn đi thì dùng báo trả (contract.notice_set); đã dọn thì hỏi lại ngày trả thực tế.'),
+    // Mốc 6 (gia hạn hàng loạt): không còn HĐ nào gia hạn được trong tháng đã nêu.
+    renew_batch_empty: reason('needs_input', 'fix', 'Không có HĐ nào hết hạn trong tháng đó để gia hạn (trong phạm vi quyền, không tính HĐ đang có báo trả); hỏi lại tháng hoặc toà.'),
     already_returned: reason('rejected', 'never', 'Phòng đã ghi nhận trả phòng, đang chờ quyết toán trên web; không ghi lại.'),
     renew_price_change_web_only: reason('rejected', 'never', 'Gia hạn qua bot chỉ giữ nguyên giá và cọc; đổi giá/cọc làm trên web (Hợp đồng → Gia hạn).'),
     no_notice: reason('rejected', 'never', 'Hợp đồng này chưa có báo trả nào để huỷ.'),
@@ -84,11 +86,16 @@ function taskReasons() {
     task_not_open: reason('rejected', 'never', 'Việc đã hoàn thành, không còn mở; không sửa hay huỷ qua bot được (xem trên web, link kèm theo).'),
     // Mốc 4 (task.create_batch, 20261022164201): tối đa 20 việc MỘT lần đồng ý (Q37) — dạng needs_input: hỏi chia lô.
     batch_too_large: reason('needs_input', 'fix', 'Tối đa 20 việc một lần giao; chia thành nhiều lô (mỗi lô tối đa 20 việc) hoặc tạo trên web.'),
+    // Mốc 5 (việc định kỳ, 20261023042424 / 20261023042436): trần 100 quy tắc đang chạy mỗi công ty (trigger CRM); trạng thái đã đúng
+    // như yêu cầu (tạm dừng cái đang dừng, sửa mà không đổi gì) ⇒ hỏi lại, không ghi.
+    recurrence_quota: reason('rejected', 'never', 'Công ty đã có 100 việc định kỳ đang chạy; tạm dừng hoặc xoá bớt trước khi tạo thêm.'),
+    recurrence_unchanged: reason('needs_input', 'fix', 'Việc định kỳ này đã đúng như yêu cầu (đang chạy / đang tạm dừng, lịch không đổi); không cần ghi gì.'),
   };
 }
-// Trang Hoá đơn (Đợt 3 Mốc 3): thu tiền chuyển khoản / TT-POS qua bot.
+// Trang Hoá đơn: Mốc 3 thu tiền + Mốc 4 ghi chỉ số.
 function invoiceReasons() {
   return {
+    // Mốc 3 — thu tiền.
     cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc thanh toán (TT/POS).'),
     nothing_to_collect: reason('needs_input', 'fix', 'Hoá đơn này không còn số phải thu; hỏi lại người dùng phòng hoặc kỳ.'),
     debt_carried: reason('needs_input', 'fix', 'Nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau (hỏi lại kỳ).'),
@@ -97,6 +104,26 @@ function invoiceReasons() {
     credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
     receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
     reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
+    // Mốc 4 — ghi chỉ số: bốn mã hỏi lại người dùng, hai mã chỉ đường web.
+    meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),
+    meter_ambiguous: reason('needs_input', 'fix', 'Phòng có nhiều công tơ cùng loại; hỏi mã công tơ.'),
+    meter_duplicate_month: reason('needs_input', 'fix', 'Tháng này đã có chỉ số; chỉ thay khi người dùng nói rõ "sửa" (replace=true).'),
+    meter_lower_than_previous: reason('needs_input', 'fix', 'Chỉ số mới nhỏ hơn chỉ số đầu; hỏi lại số trên công tơ.'),
+    meter_used_by_invoice: reason('rejected', 'never', 'Chỉ số tháng này đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web.'),
+    meter_has_later_reading: reason('rejected', 'never', 'Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (trang Ghi chỉ số).'),
+    // Mốc 5 — điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục: hai mã hỏi lại người dùng, mười mã chỉ đường web hoặc báo trạng thái.
+    adjust_no_change: reason('needs_input', 'fix', 'Điều chỉnh này không đổi gì trên hoá đơn; hỏi lại người dùng muốn đổi khoản nào, bao nhiêu.'),
+    nothing_to_check: reason('needs_input', 'fix', 'Hoá đơn này không có điều chỉnh nào chờ xác nhận kiểm tra; hỏi lại phòng hoặc kỳ.'),
+    adjust_meter_line_web_only: reason('rejected', 'never', 'Dòng điện/nước có chỉ số, tiền cọc hay khoản nội bộ chỉ sửa trên web (Hoá đơn → Điều chỉnh).'),
+    adjust_has_rounding_or_credit: reason('rejected', 'never', 'Hoá đơn có làm tròn hoặc tiền dư đã cấn đang hiệu lực; đảo giao dịch ở Lịch sử thanh toán trên web trước.'),
+    adjust_debt_carried: reason('rejected', 'never', 'Nợ của hoá đơn này đã chuyển sang hoá đơn kỳ sau; xử lý hoá đơn kỳ sau trên web trước.'),
+    adjust_below_collected: reason('rejected', 'never', 'Tổng mới thấp hơn số đã thu; đảo lần thu ở Lịch sử thanh toán trên web trước khi giảm.'),
+    adjustment_self_check_web_only: reason('rejected', 'never', 'Không tự xác nhận kiểm tra điều chỉnh do chính anh/chị làm qua bot (cần người khác kiểm); làm trên web nếu thật cần.'),
+    cancel_has_payment: reason('rejected', 'never', 'Hoá đơn đã thu tiền nên không huỷ được; đảo lần thu ở Lịch sử thanh toán trên web trước.'),
+    cancel_overdue_web_only: reason('rejected', 'never', 'Hoá đơn quá hạn chỉ huỷ trên web (trang Hoá đơn).'),
+    restore_conflict: reason('rejected', 'never', 'Kỳ này đã có hoá đơn tháng khác đang hiệu lực cùng hợp đồng; không khôi phục được.'),
+    invoice_already_cancelled: reason('rejected', 'never', 'Hoá đơn này đã huỷ; muốn dùng lại thì khôi phục trước.'),
+    invoice_not_cancelled: reason('rejected', 'never', 'Hoá đơn này đang hiệu lực (chưa huỷ); không có gì để khôi phục.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

@@ -558,6 +558,24 @@ for (const spec of [
   { name: 'public.hermes_contract_party_lookup_v1',
     sourcePath: 'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
     statementSha256: '4d9c7d8d0de7c484c833dcba263f91d024103f48e4fa1ab8986d2343e6c79cbe' },
+  // Thu chi Mốc 5 (20261023013109): lõi giải tên expense.* thay thân — voucherCodes của expense.approve giải từng mã như mã phiếu (vòng tại
+  // chỗ, không gọi lại chính nó theo tên). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023013109_hermes_expense_approve_v1.sql',
+    statementSha256: '6534eda19a29a4e86d6a89fe7d2e3319c65f78b44cd03a51eb443743cf5ca3b6' },
+  // Mốc 4 (20261022183445): tra cứu plpgsql INVOKER của invoice.meter_record — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_meter_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql',
+    statementSha256: '0119a90d9ac05ec7a3bceeb835b83c4f36353b03c1f7b0e4be719c937d2d6ff4' },
+  // Renew batch (20261023030305): INVOKER batch lookup under the caller's RLS ∩ the connection's buildings — ACTIVE contracts ending in
+  // one month, ids + move-out flag + counts only (no names, no customer data); schema-qualified public/auth objects only.
+  { name: 'public.hermes_contract_batch_lookup_v1',
+    sourcePath: 'supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql',
+    statementSha256: 'abc42f34682088fec505d7103d3102d6793b24a66181d80135dbe4ca79bee97e' },
+  // Mốc 5 (20261023042723): tra cứu plpgsql INVOKER của điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_edit_lookup_v1',
+    sourcePath: 'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
+    statementSha256: 'd1c7b73a8705caca8a84b24ded68016cd93dd23062f3b71f76f571bb6c144e27' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

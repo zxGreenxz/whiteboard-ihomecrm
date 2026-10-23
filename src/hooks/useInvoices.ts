@@ -54,6 +54,7 @@ export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 export type { AdjustInvoiceInput } from '@/lib/invoiceAdjustmentRpc';
 import { adjustInvoice, reviewInvoiceAdjustment, type AdjustInvoiceInput, type ReviewAdjustmentInput } from '@/lib/invoiceAdjustmentRpc';
+import { fetchAdjustmentBuild, type AdjustmentBuildInvoker } from '@/lib/invoiceAdjustmentBuildRpc';
 
 // 15/09 (plan con B): 16 tiền tố cũ ở đây là lượt ĐÁNH THỨ NHẤT, rồi ~0,8s sau
 // hub realtime nhận event `invoices` và đánh lượt THỨ HAI trên gần đúng tập ấy
@@ -72,6 +73,14 @@ import { adjustInvoice, reviewInvoiceAdjustment, type AdjustInvoiceInput, type R
 const adjustmentAggregatePrefixes = [
   'excess-amount', 'invoice-rounding-report', 'invoice-payments-summary', 'collection-cycle',
 ];
+// Dòng giữ nguyên + lý do chặn của form Điều chỉnh từ hàm dùng chung với trợ lý (invoice_adjustment_build_v1, Hermes Mốc 5). Khoá theo
+// phiên bản + updated_at của ảnh chụp lúc mở: tải lại hoá đơn ⇒ đọc lại; không giữ bản cũ (dòng phải khớp đúng hoá đơn đang sửa).
+const adjustmentBuildInvoke: AdjustmentBuildInvoker = (_name, args) => supabase.rpc('invoice_adjustment_build_v1' as never, args as never) as never;
+export const useInvoiceAdjustmentBuild = (invoiceId: string, revision: number, updatedAt: string | null | undefined) => useQuery({
+  queryKey: ['invoice-adjustment-build', invoiceId, revision, updatedAt ?? null],
+  queryFn: () => fetchAdjustmentBuild(adjustmentBuildInvoke, invoiceId),
+  staleTime: 0, gcTime: 0, retry: 1, refetchOnWindowFocus: false,
+});
 export const useAdjustInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();

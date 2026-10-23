@@ -29,10 +29,16 @@ vi.mock("../useQuickEntrySave", () => ({
 import { needsAi, onlyCategoriesMissing, useQuickEntryFeed } from "../useQuickEntryFeed";
 import type { QuickEntryRefs } from "../useQuickEntryRefs";
 import { draftsKey } from "@/lib/quickEntry/feedStorage";
+import { stubLoadSuggestions } from "@/lib/quickEntry/__tests__/sqlSuggestStub";
 
 const ORG = "org-1";
 const USER = "user-1";
-const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
+// Gợi ý hạng mục = hàm SQL ie_category_suggest_v1 trên đúng danh sách hạng mục của refs (sqlSuggestStub).
+const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => {
+  const base = refsBase(over);
+  return { ...base, suggestCategories: over.suggestCategories ?? stubLoadSuggestions(base.categories) };
+};
+const refsBase = (over: Partial<QuickEntryRefs>): Omit<QuickEntryRefs, "suggestCategories"> => ({
   orgId: ORG,
   loading: false,
   permissionsLoading:false, permissionsError:null, personalLoading:false, personalError:null, personalReady:true,
@@ -379,6 +385,8 @@ describe("useQuickEntryFeed — tin chữ", () => {
     act(() => {
       pending = result.current.submitText("102LVT sơn 300k", "company");
     });
+    // Thẻ hiện sau một lượt gọi hàm SQL gợi ý hạng mục (composeShared), trước khi AI trả.
+    await waitFor(() => expect(cardsOf(result)).toHaveLength(1));
     const [c] = cardsOf(result);
     act(() =>
       result.current.changeCard(c.id, {

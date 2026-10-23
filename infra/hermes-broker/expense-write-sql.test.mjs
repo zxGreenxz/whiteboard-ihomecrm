@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, VIRTUAL, rid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, IMAGE, VIRTUAL, rid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -232,9 +232,10 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
   const voucher = async (code, extra = {}) => {
     const v = { type: 'EXPENSE', name: 'mua bóng đèn', amount: 400000, status: 'UNAPPROVED', posting: 'UNPOSTED', account: CASHBOOK, user: USER, date: TODAY, ...extra };
     const id = (await db.query(`INSERT INTO public.income_expenses(organization_id,user_id,code,type,name,building_id,room_id,account_id,voucher_date,total_amount,
-        approval_status,posting_status,payer_name,system_source,salary_staff_id,repeat_parent_id,repeat_cycle)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`, [ORG, v.user, code, v.type, v.name, v.building ?? BUILDING, v.room ?? null,
-      v.account, v.date, v.amount, v.status, v.posting, v.payee ?? null, v.system ?? null, v.salary ?? null, v.parent ?? null, v.cycle ?? 'NONE'])).rows[0].id;
+        approval_status,posting_status,payer_name,system_source,salary_staff_id,repeat_parent_id,repeat_cycle,attachments,posting_mode,creator_name)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`, [ORG, v.user, code, v.type, v.name, v.building ?? BUILDING, v.room ?? null,
+      v.account, v.date, v.amount, v.status, v.posting, v.payee ?? null, v.system ?? null, v.salary ?? null, v.parent ?? null, v.cycle ?? 'NONE',
+      JSON.stringify(v.images ?? []), v.mode ?? 'CASHBOOK', v.maker ?? null])).rows[0].id;
     for (const amount of v.lines ?? [v.amount])
       await db.query('INSERT INTO public.income_expense_items(income_expense_id,income_expense_type_id,amount,start_date,end_date) VALUES($1,$2,$3,$4,$4)', [id, v.typeId ?? CATEGORY, amount, v.date]);
     return id;
@@ -441,12 +442,205 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     assert.ok(list(RULES) && list(RULES) === list(EDIT), `${list(RULES)} ≠ ${list(EDIT)}`);
   });
 
+  // ---- Mốc 5: duyệt / duyệt + chi ≤ 10 phiếu. Phiếu do nhân viên (STRANGER) lập, người duyệt là USER (giữ sổ CASHBOOK, CB2).
+  const trace5 = async () => ({ ...(await trace4()), ...(await db.query(`SELECT (SELECT count(*)::int FROM public.fixture_approvals) approvals,
+    (SELECT count(*)::int FROM public.fixture_evidence) evidence,(SELECT string_agg(state,',' ORDER BY object_name) FROM public.fixture_evidence) evidence_states`)).rows[0] });
+  const staff = (extra = {}) => ({ user: STRANGER, maker: 'Nhân viên A', ...extra });
+  const receiptOf = async requestId => (await db.query('SELECT state,sqlstate FROM app_private.hermes_action_receipts WHERE request_id=$1', [requestId])).rows;
+  const states = async ids => (await db.query('SELECT approval_status||\'/\'||posting_status s FROM public.income_expenses WHERE id=ANY($1) ORDER BY code', [ids])).rows.map(r => r.s);
+  const hook = (name, message, state) => db.query('UPDATE public.fixture_writer SET rejected_message=$1,reject_state=$2,reject_name=$3', [message, state, name]);
+
+  await t.test('Mốc 5 expense.approve: lô hỗn hợp duyệt + chi / chỉ duyệt (chưa ảnh) / không làm; chạy thử không để lại dấu vết; lượt 2 + phát lại', async () => {
+    await f.rollbackCase(async () => {
+      const a = await voucher('PC2610601', staff({ amount: 700000, images: [IMAGE(1)] }));
+      const b = await voucher('PC2610602', staff({ amount: 300000 }));
+      const c = await voucher('PC2610603', staff({ status: 'APPROVED', posting: 'POSTED' }));
+      const params = { voucherCodes: ['pc2610601', 'PC2610602', 'PC2610603'] };
+      const before = await trace5();
+      const preview = await run('expense.approve', 'preview', rid(100), params);
+      assert.deepEqual([preview.kind, preview.confirm, preview.preview.summary, preview.warnings], ['preview', 'required',
+        'Duyệt 2 phiếu: duyệt + CHI 1 phiếu, tổng 700.000đ; chỉ duyệt 1 phiếu (chưa chi); không làm 1 phiếu.', ['1 phiếu không làm được — xem cột plan của từng phiếu']]);
+      assert.deepEqual(preview.preview.items[0], { stt: 1, code: 'PC2610601', content: 'mua bóng đèn', building: 'Toà A', category: 'Sửa chữa', amount: '700.000đ',
+        maker: 'Nhân viên A', ageDays: 0, attachments: 1, cashbook: 'Quỹ VCB 0123456789', plan: 'duyệt + CHI 700.000đ khỏi sổ Quỹ VCB 0123456789' });
+      assert.deepEqual(preview.preview.items.slice(1).map(item => item.plan), ['chỉ duyệt (chưa có ảnh — thêm ảnh ở trang phiếu rồi chi)', 'không làm: phiếu không còn chờ duyệt']);
+      assert.ok(!JSON.stringify(preview.preview).match(/[0-9a-f]{8}-[0-9a-f]{4}-/), 'bản xem trước không có UUID');
+      assert.deepEqual(preview.resolved.vouchers.map(v => [v.voucherId, v.plan, v.note ?? null, v.skip ?? null]),
+        [[a, 'approve_post', null, null], [b, 'approve', 'no_attachment', null], [c, 'skip', null, 'not_pending']]);
+      assert.deepEqual(await trace5(), before, 'chạy thử không để lại duyệt, bút toán, chứng từ, biên nhận');
+      const applied = await step('expense.approve', rid(100), params, preview);
+      assert.deepEqual(applied, { kind: 'applied', link: '/income-expense', result: { totalPosted: 700000, totalPostedText: '700.000đ', items: [
+        { code: 'PC2610601', outcome: 'approved_posted', statusText: 'Đã duyệt và CHI khỏi sổ Quỹ VCB 0123456789' },
+        { code: 'PC2610602', outcome: 'approved', statusText: 'Đã duyệt (chưa chi)' },
+        { code: 'PC2610603', outcome: 'rejected', reason: 'not_pending', statusText: 'Không làm: phiếu không còn chờ duyệt' }] } });
+      assert.deepEqual(await states([a, b, c]), ['APPROVED/POSTED', 'APPROVED/UNPOSTED', 'APPROVED/POSTED']);
+      assert.deepEqual((await db.query('SELECT kind,amount::bigint::text amount FROM public.fixture_postings WHERE voucher_id=$1', [a])).rows, [{ kind: 'POSTING', amount: '700000' }]);
+      const after = await trace5();
+      assert.deepEqual([after.approvals - before.approvals, after.evidence_states, after.receipts - before.receipts], [2, 'ATTACHED', 1], 'ảnh phiếu thành chứng từ đã gắn');
+      assert.deepEqual(await step('expense.approve', rid(100), params, preview), applied, 'phát lại y nguyên');
+      assert.deepEqual(await trace5(), after);
+      assert.deepEqual(await run('expense.approve', 'preview', rid(101), { voucherCodes: ['PC2610601'] }), { kind: 'rejected', reason: 'not_pending' }, 'đã duyệt');
+    });
+  });
+
+  await t.test('Mốc 5: hạ "chỉ duyệt" và nói rõ — post=false, không giữ sổ, ảnh không dùng được, chưa chọn sổ, không chi qua sổ, hàm web đòi chứng từ; kỳ chốt ⇒ không làm', async () => {
+    await f.rollbackCase(async () => {
+      const d = await voucher('PC2610611', staff({ images: [IMAGE(11)] }));
+      await voucher('PC2610612', staff({ images: [IMAGE(12)], account: FOREIGN_CASHBOOK }));
+      await voucher('PC2610613', staff({ images: ['https://fixture.invalid/khac/anh.jpg'] }));
+      await voucher('PC2610614', staff({ images: [IMAGE(14)], account: null }));
+      await voucher('PC2610615', staff({ images: [IMAGE(15)], mode: 'NON_CASH' }));
+      await voucher('PC2610616', staff({ images: [IMAGE(16)] }));
+      await db.query("INSERT INTO public.fixture_evidence(organization_id,object_name,state) VALUES($1,'fixture/16.jpg','QUARANTINED')", [ORG]);
+      const before = await trace5();
+      const mixed = await run('expense.approve', 'preview', rid(110), { voucherCodes: ['PC2610612', 'PC2610613', 'PC2610614', 'PC2610615', 'PC2610616'] });
+      assert.deepEqual([mixed.preview.summary, mixed.warnings], ['Duyệt 5 phiếu: chỉ duyệt 5 phiếu (chưa chi).', []]);
+      assert.deepEqual(mixed.preview.items.map(item => item.plan), ['chỉ duyệt (anh/chị không giữ sổ Quỹ người khác)',
+        'chỉ duyệt (ảnh trên phiếu chưa dùng làm chứng từ được)', 'chỉ duyệt (phiếu chưa chọn sổ quỹ)', 'chỉ duyệt (phiếu không chi qua sổ quỹ)',
+        'chỉ duyệt (ảnh trên phiếu chưa dùng làm chứng từ được)']);
+      assert.deepEqual(mixed.resolved.vouchers.map(v => v.note), ['not_custodian', 'evidence_unusable', 'no_cashbook', 'non_cash', 'evidence_unusable']);
+      assert.equal(mixed.preview.items[2].cashbook, undefined);
+      // Hàm duyệt + chi của web đòi chứng từ (lỗi thật, không phải do adopt rỗng) ⇒ cũng hạ; kỳ sổ đã chốt ⇒ không làm.
+      await hook('approve-post', 'finance_v2_post_manual_voucher: at least one FINALIZED evidence is required', '55000');
+      assert.equal((await run('expense.approve', 'preview', rid(111), { voucherCodes: ['PC2610611'] })).preview.items[0].plan, 'chỉ duyệt (ảnh trên phiếu chưa dùng làm chứng từ được)');
+      await hook('approve-post', 'approve_and_post_income_expense_v2: posted_on 2026-10-23 is inside a locked cashbook period', '55000');
+      assert.deepEqual(await run('expense.approve', 'preview', rid(112), { voucherCodes: ['PC2610611'] }), { kind: 'rejected', reason: 'period_locked' });
+      await hook('approve', 'approve_income_expense_v2: income_expenses.approve required in scope', '42501');
+      assert.deepEqual(await run('expense.approve', 'preview', rid(114), { voucherCodes: ['PC2610613'] }), { kind: 'rejected', reason: 'not_allowed' }, 'chạy thử duyệt bị hàm web từ chối');
+      await hook(null, null, null);
+      assert.deepEqual(await trace5(), before);
+      // post=false ⇒ chỉ duyệt theo yêu cầu dù đủ điều kiện chi; một phiếu ⇒ link trang phiếu.
+      const only = await run('expense.approve', 'preview', rid(113), { voucherCodes: ['PC2610611'], post: false });
+      assert.deepEqual([only.preview.summary, only.preview.items[0].plan], ['Duyệt 1 phiếu: chỉ duyệt 1 phiếu (chưa chi).', 'chỉ duyệt (theo yêu cầu, chưa chi)']);
+      const applied = await step('expense.approve', rid(113), { voucherCodes: ['PC2610611'], post: false }, only);
+      assert.deepEqual([applied.link, applied.result.items, applied.result.totalPosted], [`/income-expense/voucher/${d}`,
+        [{ code: 'PC2610611', outcome: 'approved', statusText: 'Đã duyệt (chưa chi)' }], 0]);
+      assert.deepEqual(await states([d]), ['APPROVED/UNPOSTED']);
+    });
+  });
+
+  await t.test('Mốc 5 lượt 2: từng phiếu một — lệch phiên bản ⇒ phiếu đó state_changed, phiếu khác vẫn chạy; tất cả lệch ⇒ không biên nhận; lỗi cuối ⇒ chốt rejected + SQLSTATE', async () => {
+    await f.rollbackCase(async () => {
+      const [p1, p2] = [await voucher('PC2610621', staff({ images: [IMAGE(21)] })), await voucher('PC2610622', staff())];
+      const two = { voucherCodes: ['PC2610621', 'PC2610622'] };
+      const preview = await run('expense.approve', 'preview', rid(120), two);
+      await db.query('UPDATE public.income_expenses SET approval_version=approval_version+1 WHERE id=$1', [p1]);
+      const mixed = await step('expense.approve', rid(120), two, preview);
+      assert.deepEqual([mixed.kind, mixed.result.items, mixed.result.totalPosted], ['applied', [
+        { code: 'PC2610621', outcome: 'state_changed', statusText: 'Phiếu vừa đổi sau bản xem trước — xem trước lại' },
+        { code: 'PC2610622', outcome: 'approved', statusText: 'Đã duyệt (chưa chi)' }], 0]);
+      assert.deepEqual(await states([p1, p2]), ['UNAPPROVED/UNPOSTED', 'APPROVED/UNPOSTED']);
+      assert.deepEqual(await receiptOf(rid(120)), [{ state: 'applied', sqlstate: null }]);
+      // Tất cả lệch (ghi sổ xen giữa) ⇒ state_changed, không chốt biên nhận, không đổi gì.
+      const p3 = await voucher('PC2610623', staff());
+      const one = { voucherCodes: ['PC2610623'] };
+      const stale = await run('expense.approve', 'preview', rid(121), one);
+      await db.query('UPDATE public.income_expenses SET posting_version=posting_version+1 WHERE id=$1', [p3]);
+      let frozen = await trace5();
+      assert.deepEqual(await step('expense.approve', rid(121), one, stale), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual([await trace5(), await receiptOf(rid(121))], [frozen, []]);
+      // Basis lệch / kế hoạch bị sửa (chỉ duyệt → duyệt + chi) mà giữ basis ⇒ state_changed trước biên nhận.
+      const fresh = await run('expense.approve', 'preview', rid(122), one);
+      assert.deepEqual(await run('expense.approve', 'apply', rid(122), one, { resolved: fresh.resolved, basis: 'f'.repeat(32) }), { kind: 'rejected', reason: 'state_changed' });
+      const upgraded = { vouchers: fresh.resolved.vouchers.map(v => ({ ...v, plan: 'approve_post', note: undefined })) };
+      assert.deepEqual(await run('expense.approve', 'apply', rid(122), one, { resolved: upgraded, basis: fresh.basis }), { kind: 'rejected', reason: 'state_changed' });
+      // Ảnh bị gỡ giữa hai lượt ⇒ không còn chứng từ ⇒ state_changed (không tự hạ xuống chỉ duyệt khi chưa hỏi lại).
+      const p4 = await voucher('PC2610624', staff({ images: [IMAGE(24)] }));
+      const withImage = await run('expense.approve', 'preview', rid(123), { voucherCodes: ['PC2610624'] });
+      assert.equal(withImage.resolved.vouchers[0].plan, 'approve_post');
+      await db.query("UPDATE public.income_expenses SET attachments='[]' WHERE id=$1", [p4]);
+      frozen = await trace5();
+      assert.deepEqual(await step('expense.approve', rid(123), { voucherCodes: ['PC2610624'] }, withImage), { kind: 'rejected', reason: 'state_changed' });
+      assert.deepEqual(await trace5(), frozen);
+      await voucher('PC2610627', staff());
+      // Lỗi cuối của hàm web ⇒ chốt rejected với lý do thật + SQLSTATE, phát lại y nguyên; lô 2 phiếu nói phiếu số mấy.
+      for (const [n, codes, message, state, expected] of [
+        [124, ['PC2610623'], '[PROFIT_LOCKED] tháng đã chốt', 'P0001', { kind: 'rejected', reason: 'period_locked' }],
+        [125, ['PC2610623', 'PC2610627'], 'approve_income_expense_v2: income_expenses.approve required in scope', '42501', { kind: 'rejected', reason: 'not_allowed', item: 1 }]]) {
+        const p = await run('expense.approve', 'preview', rid(n), { voucherCodes: codes });
+        await hook('approve', message, state);
+        const final = await step('expense.approve', rid(n), { voucherCodes: codes }, p);
+        assert.deepEqual(final, expected, message);
+        assert.deepEqual(await receiptOf(rid(n)), [{ state: 'rejected', sqlstate: state }]);
+        assert.deepEqual(await step('expense.approve', rid(n), { voucherCodes: codes }, p), final, 'phát lại y nguyên');
+        await hook(null, null, null);
+      }
+      // Một phiếu xong, phiếu kia gặp kỳ sổ chốt khi chi ⇒ applied, phiếu kia rejected kèm lý do.
+      const p9 = await voucher('PC2610629', staff({ images: [IMAGE(29)] }));
+      const pair = { voucherCodes: ['PC2610623', 'PC2610629'] };
+      const p = await run('expense.approve', 'preview', rid(126), pair);
+      await hook('approve-post', '[CASHBOOK_CLOSED] sổ đã khoá', 'P0001');
+      const partial = await step('expense.approve', rid(126), pair, p);
+      await hook(null, null, null);
+      assert.deepEqual(partial.result.items, [{ code: 'PC2610623', outcome: 'approved', statusText: 'Đã duyệt (chưa chi)' },
+        { code: 'PC2610629', outcome: 'rejected', reason: 'period_locked', statusText: 'Không làm: kỳ đã chốt' }]);
+      assert.deepEqual(await states([p3, p9]), ['APPROVED/UNPOSTED', 'UNAPPROVED/UNPOSTED']);
+    });
+  });
+
+  await t.test('Mốc 5: chỉ phiếu CHI lập tay chờ duyệt (THU / hệ thống / định kỳ theo cờ TC5), Q25 #263, giải mã (mơ hồ, ngoài phạm vi, lặp), bản đã giải giả ⇒ not_allowed', async () => {
+    await f.rollbackCase(async () => {
+      await voucher('PT2610631', staff({ type: 'INCOME' }));
+      await voucher('PC2610632', staff({ system: 'contract.commission' }));
+      await voucher('PC2610633', staff({ status: 'APPROVED', posting: 'POSTED' }));
+      for (const [codes, expected] of [[['PT2610631'], { kind: 'rejected', reason: 'web_only' }], [['PC2610632'], { kind: 'rejected', reason: 'system_voucher' }],
+        [['PC2610633', 'PT2610631'], { kind: 'rejected', reason: 'not_pending', item: 1 }]])
+        assert.deepEqual(await run('expense.approve', 'preview', rid(130), { voucherCodes: codes }), expected, codes.join());
+      // TC5: phiếu con định kỳ ⇒ system_voucher khi cờ tắt; bật cờ ⇒ duyệt được; tắt lại trước lượt 2 ⇒ lý do cuối, chốt rejected.
+      const parent = await voucher('PC2610634', staff({ status: 'APPROVED', posting: 'POSTED', cycle: 'MONTH' }));
+      await voucher('PC2610635', staff({ parent }));
+      assert.deepEqual(await run('expense.approve', 'preview', rid(131), { voucherCodes: ['PC2610635'] }), { kind: 'rejected', reason: 'system_voucher' });
+      await db.query("UPDATE app_private.hermes_action_flags SET enabled=true WHERE flag='expense.recurring_child_manual'");
+      const child = await run('expense.approve', 'preview', rid(132), { voucherCodes: ['PC2610635'] });
+      assert.equal(child.kind, 'preview');
+      await db.query("UPDATE app_private.hermes_action_flags SET enabled=false WHERE flag='expense.recurring_child_manual'");
+      assert.deepEqual(await step('expense.approve', rid(132), { voucherCodes: ['PC2610635'] }, child), { kind: 'rejected', reason: 'system_voucher' });
+      assert.deepEqual(await receiptOf(rid(132)), [{ state: 'rejected', sqlstate: null }]);
+      // Q25 (#263): phiếu CHI chính người duyệt lập, từ ngưỡng 600.000đ, không có quyền duyệt kiểu cũ ở toà ⇒ not_allowed; dưới ngưỡng ⇒ được.
+      await voucher('PC2610636', { amount: 700000 });
+      await voucher('PC2610637', { amount: 300000 });
+      assert.deepEqual(await run('expense.approve', 'preview', rid(133), { voucherCodes: ['PC2610636'] }), { kind: 'rejected', reason: 'not_allowed' });
+      assert.equal((await run('expense.approve', 'preview', rid(134), { voucherCodes: ['PC2610637'] })).kind, 'preview');
+      await db.query('INSERT INTO public.fixture_legacy_approvers VALUES($1,$2)', [USER, BUILDING]);
+      const own = await run('expense.approve', 'preview', rid(135), { voucherCodes: ['PC2610636'] });
+      assert.equal(own.kind, 'preview');
+      await db.query('DELETE FROM public.fixture_legacy_approvers');
+      assert.deepEqual(await step('expense.approve', rid(135), { voucherCodes: ['PC2610636'] }, own), { kind: 'rejected', reason: 'not_allowed' }, 'rào #263 kiểm lại ở lượt 2');
+      // Giải mã: không thấy / ngoài phạm vi khoá / mơ hồ ⇒ hỏi lại đúng như mã phiếu của note; hai mã cùng phiếu ⇒ invalid_params.
+      const elsewhere = await voucher('PC2610638', staff({ building: OTHER_BUILDING }));
+      await voucher('PC2609001', staff({ date: '2026-09-03' }));
+      await voucher('PC2609001', staff({ date: '2026-09-12', amount: 1200000 }));
+      const unresolved = (wanted, why, extra = {}) => ({ kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted, why, candidates: [], more: false, ...extra });
+      assert.deepEqual(await run('expense.approve', 'preview', rid(136), { voucherCodes: ['PC2610637', 'PC0000000'] }), unresolved('PC0000000', 'not_visible'));
+      assert.deepEqual(await run('expense.approve', 'preview', rid(136), { voucherCodes: ['PC2610638'] }), unresolved('PC2610638', 'outside_scope'));
+      assert.deepEqual(await run('expense.approve', 'preview', rid(136), { voucherCodes: ['pc2609001'] }), unresolved('pc2609001', 'ambiguous',
+        { candidates: [{ name: 'PC2609001 · 12/09/2026 · Toà A · 1.200.000đ' }, { name: 'PC2609001 · 03/09/2026 · Toà A · 400.000đ' }] }));
+      assert.deepEqual(await run('expense.approve', 'preview', rid(136), { voucherCodes: ['PC2610637', ' pc2610637'] }), { kind: 'rejected', reason: 'invalid_params' });
+      // Lượt 2 đưa bản đã giải giả ⇒ not_allowed trước biên nhận.
+      const p = await run('expense.approve', 'preview', rid(137), { voucherCodes: ['PC2610637'] });
+      const v0 = p.resolved.vouchers[0];
+      const frozen = await trace5();
+      for (const [forged, codes] of [[[{ ...v0, voucherId: elsewhere }], ['PC2610637']], [[v0, v0], ['PC2610637', 'PC2610637']], [[], ['PC2610637']],
+        [[v0], ['PC2610637', 'PC2610636']], [[{ ...v0, voucherId: rid(999) }], ['PC2610637']]])
+        assert.deepEqual(await run('expense.approve', 'apply', rid(137), { voucherCodes: codes }, { resolved: { vouchers: forged }, basis: p.basis }),
+          { kind: 'rejected', reason: 'not_allowed' }, JSON.stringify(forged).slice(0, 80));
+      assert.deepEqual(await trace5(), frozen);
+    });
+  });
+
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.create'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run('expense.create', phase, rid(30), { items: [item()] }), code('22023'));
     await assert.rejects(run(null, 'preview', rid(31), { items: [item()] }), code('42501'));
-    await assert.rejects(run('expense.approve', 'preview', rid(32), { voucherCodes: ['PC2610001'] }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
-    await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action IN ('expense.edit','expense.cancel')"), code('23514'));
+    await assert.rejects(run('expense.reject', 'preview', rid(32), { voucherCodes: ['PC2610001'] }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
+    await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action IN ('expense.edit','expense.cancel','expense.approve')"), code('23514'));
+    // Mốc 5: khoá Hermes riêng (seed TẮT ở 20261021134531; migration không bật), quyền CRM giao vào = income_expenses.approve (Q25).
+    assert.deepEqual((await db.query("SELECT capability,crm_permission,action_class,confirm FROM app_private.hermes_action_policies WHERE action='expense.approve'")).rows,
+      [{ capability: 'income_expenses.approve_vouchers', crm_permission: 'income_expenses.approve', action_class: 'money', confirm: 'always' }]);
+    assert.doesNotMatch(APPROVE, /hermes_capabilities\s+SET|action_capabilities\s*=/i, 'migration Mốc 5 không bật khoá nào');
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='income_expenses.approve_vouchers'");
+      await assert.rejects(run('expense.approve', 'preview', rid(34), { voucherCodes: ['PC2610001'] }), code('42501'), 'khoá tắt ⇒ guard từ chối');
+    });
     // Khoá tắt (trạng thái production, Q4) ⇒ guard từ chối trước khi giải tên.
     await f.rollbackCase(async () => {
       await db.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='income_expenses.create'");

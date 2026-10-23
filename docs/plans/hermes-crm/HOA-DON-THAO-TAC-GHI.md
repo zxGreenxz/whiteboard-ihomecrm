@@ -159,6 +159,26 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 
 **Xem trước (ví dụ).** "Sẽ ghi 38 chỉ số ĐIỆN toà 44TL, ngày chốt thứ Sáu 31/10/2026, tháng 10/2026: 101 1.200 → 1.234 (34 kWh) … Không ghi 2 dòng: 105 nhỏ hơn số đầu 2.210; 203 tháng 10 đã có 1.987 (nói 'sửa' để thay). Cảnh báo: 302 tiêu thụ 412 kWh, gấp 4,1 lần trung bình."
 
+**Đã làm ở Mốc 4 (23/10), khác thiết kế ở các điểm sau (có lý do):**
+- **Chỉ số đầu: hai số, không phải một.**
+  - CHECK `current ≥ previous` so với số đầu của TRIGGER `auto_populate_previous_reading`: dòng chưa xoá mới nhất (mọi trạng thái), không có thì `meters.initial_reading`, không có nữa thì 0. Kế hoạch chép đúng luật này; `$requires$` ghim md5 thân trigger.
+  - Hoá đơn tháng (`excelInvoiceRows`, `GenerateInvoiceDialog`) lại lấy số đầu từ dòng `APPROVED` mới nhất và KHÔNG đọc `initial_reading`.
+  - Khi hai số lệch, kế hoạch cảnh báo: `no_approved_start` (công tơ chưa có chỉ số đã duyệt ⇒ hoá đơn tính từ 0) hoặc `start_differs` (dòng mới nhất chưa duyệt). Không có trigger sinh dòng đầu khi tạo công tơ.
+- **Khoá tư vấn THEO TOÀ, không theo công tơ.** Hàm ghi chưa biết công tơ trước khi giải dòng. Khoá theo toà tránh phải sắp thứ tự khoá nhiều công tơ, mà vẫn đủ chống trùng (công tơ thuộc một toà). Lượt 2 của Hermes lấy khoá này bằng `pg_try_advisory_xact_lock`: KHÔNG CHỜ, vì guard đã giữ dòng công ty (bài học Mốc 3b); bận ⇒ 55P03 ⇒ `state_changed`.
+- **Trùng tháng chỉ tính chỉ số tháng:** bỏ chỉ số chốt trả phòng (`TLY…`) và dòng gắn ranh giới hợp đồng (`boundary_id`). Không thêm unique: production có sẵn 12 cặp (công tơ, tháng) trùng ngoài `TLY`, và chốt trả phòng hợp lệ cùng tháng. Nhiều dòng tháng ⇒ "sửa" cũng không thay (không biết thay dòng nào).
+- **Mới: `has_later_reading`** (lý do `meter_has_later_reading`, rejected). Đã có chỉ số ngày SAU ngày chốt ⇒ không ghi, vì trigger lấy số đầu theo `reading_date` mới nhất nên ghi lùi ngày làm lệch chuỗi (án lệ 23/09).
+- **"Đã lên hoá đơn" KHÔNG xét `service_id`** (thiết kế cũ đòi trùng). Đo production 23/10 (chỉ đọc, chỉ số tháng 07–09/2026, không TLY):
+  - giữ điều kiện `service_id` thì chỉ ~3 % khớp, vì dòng hoá đơn mang `service_id` khác của công tơ (383 dòng còn NULL);
+  - bỏ điều kiện thì 663/692 (96 %) khớp số cuối của hoá đơn CÙNG kỳ; 597/692 là số đầu của hoá đơn kỳ SAU (đã chặn bằng `has_later_reading` khi kỳ sau có chỉ số);
+  - không phòng nào khớp có hơn một công tơ điện.
+- **RPC trang:** file mới thay VỎ SQL-standard để chuyển theo thao tác. `invoice.meter_record` đi tới tra cứu + bước ghi chỉ số mới; thu tiền giữ nguyên thân `075230` (md5 ghim ở `$requires$`).
+- **Tham số:** `readings[].value` là số nguyên (công tơ điện; production chỉ có 274 công tơ ĐIỆN đang dùng, nước số lẻ ghi trên web). `meterType` là `dien`/`nuoc`. `meterCode` chỉ cần khi phòng có nhiều công tơ cùng loại. Mã công tơ chỉ hiện trong câu xem trước khi người dùng nêu mã.
+- **Form web Ghi chỉ số** (đổi hành vi có chủ ý):
+  - gọi `record_meter_readings_v2` qua `src/lib/meterReadingRpc.ts`, mỗi lần một toà và một ngày chốt (đúng cách form đang chọn);
+  - tháng đã có chỉ số ⇒ cả lô bị từ chối; form nêu lỗi ở thông báo và ở đúng dòng, không ghi dòng thứ hai;
+  - khoá idempotency = `requestKey` của workflow; tải lại trang rồi gửi lại đúng nội dung ⇒ hàm ghi trả kết quả cũ, không ghi lần hai.
+  - Nhập Excel (`bulk_create_meter_readings`) và INSERT chỉ số cuối kỳ của luồng lập hoá đơn KHÔNG đổi.
+
 ### 4.3 Điều chỉnh hoá đơn (`invoice.adjust`, Mốc 5)
 
 - **Dựng dòng sau** bằng `invoice_adjustment_build_v1` (mục 6.3): dòng không đổi đi nguyên như `toAdjustmentItem` của web; `discount` cộng THÊM vào giảm trừ hiện có (HDN5); `addItems` thêm dòng `OTHER`, `accounting_class` mặc định như web (chủ chốt 12/09: không cho người dùng chọn); `setItems.match` khớp **đúng một** dòng theo mô tả đã bỏ dấu.
@@ -166,6 +186,15 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 - **Chạy thử** `adjust_invoice_v2(…, p_expected_revision, p_expected_paid_amount, p_expected_updated_at, 'hermes-dry:'||rid)`: tổng sau do chính hàm ghi tính (làm tròn nghìn), lỗi của hàm ghi ra lý do ngay ở lượt 1.
 - **Xem trước:** bảng dòng trước/sau (chỉ dòng đổi), tạm tính, giảm trừ, tổng trước → sau, đã thu, trạng thái sau, lý do; câu "điều chỉnh sẽ chờ người có quyền xác nhận kiểm tra".
 - **Trùng lặp:** biên nhận + khoá `hermes-adj:` (cùng khoá cùng vân tay ⇒ hàm ghi trả lại bản cũ) + ba giá trị kỳ vọng (PT409 ⇒ `state_changed`).
+
+**Đã làm ở Mốc 5, khác thiết kế ở các điểm sau:**
+- `invoice_adjustment_build_v1` nhận thao tác THEO ID dòng: `{discountAdd, addItems[{description, amount}], setItems[{id, amount}]}`.
+  - Khớp `setItems.match` theo mô tả đã bỏ dấu nằm ở tầng tra cứu Hermes, vì file hàm dùng chung không được chứa hàm trợ lý. Nhờ vậy web gọi được cùng hàm.
+- **Form Điều chỉnh của web chuyển sang hàm này**: dòng giữ nguyên và câu chặn (thanh lý, nợ cũ lệch nguồn) lấy từ máy chủ; `toAdjustmentItem` / `adjustmentReconcileBlocker` ở trình duyệt đã gỡ.
+  - Web phát hành SAU khi áp `20261023042242`; trước đó form báo "Chưa tải được dữ liệu điều chỉnh" và không cho lưu.
+- Dòng khoá theo đúng luật nhận diện của web (`decomposeInvoice`): có chỉ số; SERVICE có chữ "điện"/"nước" (kể cả chữ hoa); cọc (`DEPOSIT`); `NON_PNL`; dòng `DISCOUNT`.
+- `invoiceNumber` (tuỳ chọn) có ở cả bốn thao tác như thu tiền Mốc 3b, để chọn đích danh khi một kỳ có hai hoá đơn.
+- Lỗi PT409 `REVENUE_CAP_REVIEW` / `Support discount changes…` (hoá đơn có hỗ trợ tiền phòng) ⇒ `web_only`, không ném lại như PT409 "vừa đổi".
 
 ### 4.4 Xác nhận "đã kiểm tra" điều chỉnh (`invoice.adjustment_check`, Mốc 5, Q19 = a)
 
@@ -181,6 +210,14 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 - **Khôi phục:** chỉ `CANCELLED`; đã có hoá đơn MONTHLY khác cùng HĐ, cùng kỳ còn hiệu lực ⇒ `restore_conflict`.
 - **Lý do bắt buộc** (8–500). Hàm ghi không có tham số lý do: lý do nằm trong biên nhận Hermes (`input.params.reason`) và audit `HERMES_ACTION_APPLIED`; không ghi đè `invoices.notes` (HDN8).
 - **Xem trước:** số hoá đơn, kỳ, tổng, credit đã cấn sẽ hoàn về khách, và — từ #267 — hoá đơn này đang gánh nợ cũ (`carried_in_amount > 0`): "huỷ thì nợ 1.200.000đ của kỳ 09/2026 tính lại ở hoá đơn kỳ 9".
+
+**Đã làm ở Mốc 5:**
+- Nợ cũ đang gánh đọc từ `previous_debt_sources` (nguồn `invoice`), không gọi lại #267.
+- "Đã huỷ trước đó" (huỷ) và "đang hiệu lực" (khôi phục) không trả được dạng `applied` ở lượt xem trước (runtime chỉ nhận `applied` ở lượt 2). Hai mã mới thay thế: `invoice_already_cancelled`, `invoice_not_cancelled` (mục 5).
+- Khôi phục kiểm trùng kỳ trước khi chạy thử: cùng HĐ, cùng kỳ, MONTHLY chưa huỷ; chỉ mục duy nhất `idx_invoices_unique_contract_billing` cũng ra `restore_conflict`.
+- **Thứ tự khoá đo được:**
+  - Hoá đơn KHÔNG gắn hợp đồng: `invoice_rent_support_lock_v1` bỏ qua khoá công ty, nên hàm huỷ/điều chỉnh web chỉ giữ dòng hoá đơn ⇒ Hermes nhận 55P03 ngay.
+  - Hoá đơn có hợp đồng: web giữ công ty trước ⇒ Hermes chờ ở guard rồi `state_changed`.
 
 ### 4.6 Soạn tin nhắc nợ / gửi hoá đơn (Q18 = a; đọc, không phải thao tác)
 
@@ -208,6 +245,7 @@ Khối "Hoá đơn" riêng trong `action-reasons.mjs`; mã dạng `rejected` và
 | `meter_duplicate_month` | needs_input | Tháng này đã có chỉ số; người dùng nói "sửa" mới thay | kế hoạch chỉ số (Q16) |
 | `meter_lower_than_previous` | needs_input | Chỉ số mới nhỏ hơn số đầu; hỏi lại số | 23514 `meter_readings_current_gte_previous` |
 | `meter_used_by_invoice` | rejected | Chỉ số đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web | kế hoạch chỉ số |
+| `meter_has_later_reading` | rejected | Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (Mốc 4, mới) | kế hoạch chỉ số |
 | `adjust_meter_line_web_only` | rejected | Dòng điện/nước có chỉ số, cọc hay khoản nội bộ sửa trên web | dựng dòng |
 | `adjust_has_rounding_or_credit` | rejected | Hoá đơn có làm tròn/cấn trừ đang hiệu lực; đảo giao dịch trên web trước | `55000 Hóa đơn có làm tròn hoặc cấn trừ…` |
 | `adjust_debt_carried` | rejected | Nợ đã chuyển sang hoá đơn sau; xử lý hoá đơn sau trên web trước | `55000 Nợ đã chuyển sang hóa đơn sau…` |
@@ -218,10 +256,22 @@ Khối "Hoá đơn" riêng trong `action-reasons.mjs`; mã dạng `rejected` và
 | `cancel_has_payment` | rejected | Hoá đơn đã thu tiền nên không huỷ được; đảo lần thu trên web trước | trạng thái; P0001 `Không thể huỷ hoá đơn ở trạng thái này…` |
 | `cancel_overdue_web_only` | rejected | Hoá đơn quá hạn huỷ trên web | `status='OVERDUE'` |
 | `restore_conflict` | rejected | Kỳ này đã có hoá đơn khác đang hiệu lực; không khôi phục được | tra cứu; 23505 ràng buộc (HĐ, kỳ) |
+| `invoice_already_cancelled` | rejected | Hoá đơn này đã huỷ; muốn dùng lại thì khôi phục trước (Mốc 5, mới) | tra cứu; `noop` của hàm huỷ |
+| `invoice_not_cancelled` | rejected | Hoá đơn đang hiệu lực, không có gì để khôi phục (Mốc 5, mới) | tra cứu; `noop` / `55000 Only cancelled invoices…` |
 
 Dùng lại mã chung: `period_locked` (`[PROFIT_LOCKED]`, `[CASHBOOK_CLOSED]`, `[HANDOVER_LOCKED]`), `cashbook_not_held` (`Bạn không được giao sổ quỹ này…`), `not_allowed` (42501 còn lại), `state_changed` (PT409 `Số đã thu vừa thay đổi…`, `Hóa đơn vừa thay đổi…`, `Hóa đơn đã có phiên bản mới…`), `date_out_of_range`, `reason_required`, `web_only` (rào hỗ trợ tiền phòng `REVENUE_CAP_REVIEW`, `SETTLEMENT`, writer đóng băng 55000), `duplicate_request` (chỉ đúng ràng buộc idempotency). 23505 "idempotency_key đã dùng với nội dung khác" của hàm ghi web **không** là `duplicate_request` (khoá do requestId cấp, trùng nghĩa là lệch đầu vào) ⇒ `crm_refused`. Tổng: 23 mã mới, 14 dạng `rejected`. Mã vào file chung theo mốc của thao tác dùng chúng (Mốc 2 chỉ đọc nên chưa thêm mã nào). Mốc 3 đã thêm 8 mã của thu tiền:
 - dạng `rejected` (cũng vào `host-ownership.mjs`): `cash_collection_web_only`, `invoice_not_collectible`, `credit_requires_contract`, `receiving_book_missing`, `reconciliation_required`;
 - dạng `needs_input`: `nothing_to_collect`, `debt_carried`, `overpay_needs_choice`.
+
+Mốc 4 thêm 6 mã của ghi chỉ số:
+- dạng `needs_input`: `meter_not_found`, `meter_ambiguous`, `meter_duplicate_month`, `meter_lower_than_previous`;
+- dạng `rejected` (cũng vào `host-ownership.mjs`): `meter_used_by_invoice`, `meter_has_later_reading`.
+
+Mốc 5 thêm 12 mã (10 của bảng trên + hai mã mới cho trạng thái "đã huỷ" / "chưa huỷ"):
+- dạng `needs_input`: `adjust_no_change`, `nothing_to_check`;
+- dạng `rejected` (cũng vào `host-ownership.mjs`): `adjust_meter_line_web_only`, `adjust_has_rounding_or_credit`, `adjust_debt_carried`, `adjust_below_collected`, `adjustment_self_check_web_only`, `cancel_has_payment`, `cancel_overdue_web_only`, `restore_conflict`, `invoice_already_cancelled`, `invoice_not_cancelled`.
+
+Ánh xạ câu lỗi của bốn hàm ghi web nằm ở `app_private.hermes_invoice_edit_reason_v1`, rơi về `hermes_invoice_reason_v1` của Mốc 3.
 
 ## 6. Hàm dùng chung mới (luật 17/10)
 
@@ -310,9 +360,10 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng; chỉ
 | 2 ✓ | `20261022051620_hermes_w2a_invoice_reads_v1` | catalog + reader gói A dựng từ thân đang chạy (md5 ghim ở `$requires$`), 7 báo cáo | dòng trên |
 | 3 ✓ | `20261022075219_invoice_collection_plan_v1` | lõi thuần + hàm kế hoạch thu (file không chứa hàm trợ lý) | #267 |
 | 3 ✓ | `20261022075230_hermes_invoice_action_v1` | seed khoá `thu_tien.collect_transfer` TẮT; dòng chính sách `invoice.collect`; ánh xạ lý do; phạm vi, tra cứu, bước ghi, vỏ | M1, M5, #267, Mốc 2 (`invoice_room_invoices_v1`), Thu chi (nhãn tiền/ngày), dòng trên |
-| 4 | `meter_readings_v2` | `meter_readings_plan_v1` + `record_meter_readings_v2` (`gen:types`) | — |
-| 4 | (nối vào migration trang) | nhánh `meter_record` | dòng trên |
-| 5 | `invoice_adjustment_build_v1` + (nối vào migration trang) | hàm dựng dòng; nhánh `adjust`, `adjustment_check`, `cancel`, `restore` | — |
+| 4 | `20261022183026_meter_readings_v2` | `meter_readings_plan_v1` + `record_meter_readings_v2` (`gen:types` sau khi áp; web gọi qua service có kiểu nên không chờ types) | — |
+| 4 | `20261022183445_hermes_invoice_meter_v1` | tra cứu + bước ghi `invoice.meter_record`, THAY vỏ RPC trang (chuyển theo thao tác), dòng chính sách | `075230`, dòng trên |
+| 5 | `20261023042242_invoice_adjustment_build_v1` | hàm dựng dòng dùng chung (file không chứa hàm trợ lý); form Điều chỉnh web gọi | — |
+| 5 | `20261023042723_hermes_invoice_edit_v1` | lý do, tra cứu, bước ghi `adjust` / `adjustment_check` / `cancel` / `restore`, THAY vỏ RPC trang (thân thu tiền + chỉ số md5 ghim), bốn dòng chính sách | `183445`, dòng trên |
 | 6 | `invoice_month_quote_v1` | nếu P7 được duyệt | — |
 
 **Thứ tự áp (cửa idempotent của CI main chạy từng migration trên trạng thái production):** #267 → M1/M2/M5 (đã áp) → migration Mốc 2 → Mốc 3 → Mốc 4 → Mốc 5; mỗi cái áp TEST rồi production **trước khi gộp** PR. Khoá `thu_tien.collect_transfer` seed TẮT cùng lần promote web có khoá trong `capability-contract.mjs` + nhãn (bài học 19/10). Bật khoá bằng migration riêng sau nghiệm thu. Không migration nào được seed `thu_tien.collect`: khối kiểm của M2 `20261021134531` đòi khoá đó vắng.
@@ -480,13 +531,54 @@ Kiểm:
   - hoá đơn có hợp đồng, chọn bằng `invoiceNumber` (chữ thường) ⇒ đúng hoá đơn; thu một phần 100.000đ rồi xem trước cùng số ⇒ cảnh báo THU TRÙNG; trả dư `keep` đi hết v5 thật ⇒ lần thu `credit_amount` 50.000đ, ĐÃ THANH TOÁN (TK ×2, TT ×1);
   - lô 9 / 3 / 1 phòng: xem trước 2,1 / 0,8 / 0,4 s, ghi 2,1 / 0,9 / 0,5 s.
 
+**Mốc 4 (23/10, ghi chỉ số; hai migration MỚI chưa áp — `20261022183026_meter_readings_v2` dùng chung, `20261022183445_hermes_invoice_meter_v1` trang):**
+- **PGlite** `invoice-meter-sql.test.mjs` 8 ca: năm trigger BEFORE INSERT của production chạy nguyên văn (`meter-trigger-bodies.json`). Phủ: kế hoạch (số đầu trigger vs hoá đơn, TLY, ghi lùi ngày, nhiều công tơ, cảnh báo); hàm ghi đường web (cả-hoặc-không, idempotency khoá + băm, DETAIL từng dòng, quyền tạo/sửa/tổ chức); "sửa"; Hermes (xem trước/loại/cảnh báo, ghi, phát lại, `request_conflict`, lý do của dòng đầu, Q16, đổi loại, phạm vi = guard ∩ quyền hàm ghi ngay ở bản xem trước, bản đã giải giả, basis lệch); ACL; số kiểu Việt.
+- **PG17 hai kết nối** `invoice-meter-race-sql.test.mjs` 3/3:
+  - form web đang ghi cùng toà (giữ khoá toà) ⇒ Hermes lượt 2 nhận 55P03 ngay (< 1 s), không ghi;
+  - luồng lập hoá đơn INSERT thẳng (giữ khoá mã `CSS2610`) ⇒ Hermes chờ rồi ghi xong, không vòng chờ;
+  - cùng `requestId` hai kết nối ⇒ phát lại, một dòng.
+- **Web:** vitest `meterReadingRpc` 5, hook 19, `insertGuiOrganizationId` 33, form 4. Kiểm màn Ghi chỉ số (Playwright, vite worktree trỏ TEST, desktop 1366 + mobile 390): RPC mới chặn và giả lập ở trình duyệt (chưa có trên TEST), 0 request ghi tới TEST.
+  - bị từ chối trùng tháng ⇒ form giữ mở, lỗi ở thông báo và ở đúng dòng;
+  - lưu lại ⇒ đóng form, "Đã tạo 1 chỉ số thành công", khoá idempotency mới.
+  - Mobile: vùng cuộn của form rộng hơn màn 22 px ngay từ trước (có sẵn); khi có lỗi, focusFirstError cuộn 22 px tới ô nhập (như lỗi kiểm ở client).
+- **Tầng 2 trên TEST** (ROLLBACK, bốn migration trong giao dịch, binding thật):
+  - chủ và joey: xem trước 0,26–0,37 s → ghi 0,47–0,58 s → phát lại khớp; số đầu trigger khớp kế hoạch; mã `CSS…`; khoá `hermes-meter:<requestId>`;
+  - ghi lại ⇒ `meter_duplicate_month`; "sửa" ⇒ bản thay số;
+  - đường web gọi thẳng hàm ghi ⇒ ghi; ghi lại ⇒ 22023 `meter_readings_rejected`, hint `duplicate_month`, DETAIL JSON;
+  - lô 40 dòng xem trước 0,84 s (39 dòng loại vì tháng 10 đã có chỉ số trên TEST);
+  - bosshuy: guard từ chối (không có quyền `meter_readings.create`).
+
+**Mốc 5 (23/10, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục; hai migration MỚI chưa áp — `20261023042242_invoice_adjustment_build_v1` dùng chung, `20261023042723_hermes_invoice_edit_v1` trang):**
+- **PGlite** `invoice-edit-sql.test.mjs` 18 ca. Thân production chạy nguyên văn (`invoice-writer-bodies.json`, md5 kiểm trong test): review, huỷ, khôi phục, khoá hợp đồng, dựng/làm tròn dòng, rào quyền; `adjust_invoice_v2` là bản port cùng thứ tự khoá và câu lỗi. Phủ:
+  - hàm dựng dòng: ca chép từ `invoiceAdjustmentEntry.test.ts` (dòng lệch thành tiền, nợ cũ lệch/không nguồn/nguồn lạ, thanh lý), khoá dòng, thao tác, khuôn sai ⇒ 22023;
+  - điều chỉnh: chạy thử không dấu vết, ghi `hermes-adj:`, phát lại, `request_conflict`, khớp dòng theo mô tả, basis lệch, dòng điện/nước, các lý do của hàm ghi (cấn trừ, nợ đã kéo, thấp hơn đã thu, thanh lý, hỗ trợ tiền phòng, kỳ chốt, không đổi), PT409 khác ném lại;
+  - xác nhận kiểm tra: người làm/giờ/dòng đổi, CHECKED, phát lại, tự kiểm, không có gì để kiểm, phiên bản đổi;
+  - huỷ/khôi phục: tiền dư đã cấn, nợ cũ đang gánh, đã thu, quá hạn, trùng kỳ, lý do chỉ ở biên nhận (HDN8), quyền đúng hàm ghi ngay ở bản xem trước;
+  - bản đã giải giả, basis sai, ACL.
+- **PG17 hai kết nối** `invoice-edit-race-sql.test.mjs` 8 ca, mỗi hàm ghi web một ca:
+  - `adjust_invoice_v2`, `cancel_…`, `restore_…` (công ty → hợp đồng → hoá đơn): Hermes chờ ở dòng công ty, web xong, Hermes `state_changed`;
+  - hoá đơn không hợp đồng (web không xin công ty) và `review_invoice_adjustment_v2` (hoá đơn → điều chỉnh): Hermes 55P03 ngay;
+  - v5 giữ hoá đơn / đường giữ hợp đồng rồi xin công ty: Hermes 55P03; đối chứng đột biến bỏ NOWAIT ở hoá đơn, rồi ở hợp đồng ⇒ đúng một bên 40P01;
+  - cùng `requestId` hai kết nối ⇒ phát lại.
+- **Web:** form Điều chỉnh lấy dòng giữ nguyên + câu chặn từ hàm dùng chung (`src/lib/invoiceAdjustmentBuildRpc.ts`, hook `useInvoiceAdjustmentBuild`); vitest service, bộ dựng dòng, component.
+- **Tầng 2 trên TEST** (ROLLBACK, sáu migration trong giao dịch, binding ACTIVE thật; md5 bốn hàm ghi web + khoá hợp đồng trên TEST = production):
+  - hai người: điều chỉnh xem trước 0,25–0,95 s → ghi 0,5–0,6 s → phát lại khớp; khoá `hermes-adj:<requestId>`; chạy thử không để lại dấu vết; người thứ hai điều chỉnh tiếp ⇒ cảnh báo "đang chờ kiểm";
+  - huỷ rồi khôi phục cùng hoá đơn qua hàm thật: ĐÃ HUỶ → ĐÃ DUYỆT;
+  - điều chỉnh TĂNG hoá đơn đã thu: hàm ghi thật qua đủ đối soát, cảnh báo "khách còn nợ";
+  - xác nhận một điều chỉnh có sẵn do người khác làm ⇒ CHECKED, dòng đổi đúng ảnh trước/sau;
+  - tự kiểm ⇒ `adjustment_self_check_web_only`; sửa dòng điện ⇒ `adjust_meter_line_web_only`; huỷ hoá đơn đã thu / quá hạn ⇒ `cancel_has_payment` / `cancel_overdue_web_only`; khôi phục hoá đơn đang hiệu lực ⇒ `invoice_not_cancelled`;
+  - người không có `invoices.edit` / `invoices.approve`: guard từ chối.
+
 ## 16. Chưa xác minh
 
 - Luật sổ thối theo possession có trùng 2 ID viết cứng ở `changeAccounts.ts` không (đo chỉ đọc trên production ở Mốc 3).
 - ~~Chạy thử v5 trong khối con: khoá tư vấn và thời gian lô 10~~ — đo ở tầng 2 Mốc 3/3b (lô 9 phòng ≈ 2 s, giữ khoá công ty suốt lượt).
 - NOWAIT trên TEST/production với web thật (hai kết nối): tầng 2 chỉ chạy một kết nối; bằng chứng thứ tự khoá là PG17 hai kết nối với bản port v5 cùng thứ tự khoá + catalog TEST của guard.
 - Hook options màn tạo kết nối nhận khoá riêng Hermes `thu_tien.collect_transfer` thế nào (`hermes_*_extend_options_v1` theo danh sách cứng hay theo registry); tiền lệ `income_expenses.approve_vouchers` cho thấy chỉ cần `capability-contract.mjs` + nhãn, chưa thử trên TEST.
-- Heuristic "chỉ số đã lên hoá đơn" trên dữ liệu thật: số ca dương tính giả/âm tính giả (đo chỉ đọc ở Mốc 4).
+- ~~Heuristic "chỉ số đã lên hoá đơn" trên dữ liệu thật~~ — đo ở Mốc 4 (mục 4.2): 96 % khớp khi bỏ `service_id`; 4 % còn lại là hoá đơn không có dòng chỉ số hoặc số cuối khác (sửa tay) ⇒ "sửa" qua bot có thể thay một chỉ số mà hoá đơn đã dùng số khác — hoá đơn không đổi, chỉ chuỗi chỉ số đổi.
+- Mobile 390 px: vùng cuộn của form Ghi chỉ số rộng hơn màn 22 px (có sẵn trước Mốc 4).
+- Tên người điều chỉnh ở bản xem trước xác nhận kiểm tra đọc dưới RLS `profiles` (thiết kế mục 4.4). Tầng 2: chủ không thấy tên người điều chỉnh (khác nhóm) ⇒ "một người khác". Muốn hiện tên thì đọc ở bước ghi DEFINER — cần phiên chính quyết.
+- Form Điều chỉnh web: "khoản thêm" đang có (gửi xe, cọc, phạt…) vẫn gửi đơn giá × SL theo form, không theo dạng "giữ nguyên" của máy chủ — y như trước Mốc 5. Dòng lệch thành tiền thuộc loại này có thể mất phần lệch khi lưu (có sẵn, chưa đổi).
 - ~~Bản dựng lại `hermes_w2a_read_v1` / `hermes_w2a_catalog_v1` khớp md5 production~~ — đã đo ở Mốc 2: production = TEST = repo (`13812ba6…` / `c24d2655…`).
 - Thời gian trả lời của bot với 7 báo cáo mới và việc bot chọn đúng báo cáo (tầng 3, phiên chính).
 

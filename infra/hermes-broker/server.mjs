@@ -174,7 +174,9 @@ export function createHermesBackend(configuration = {}) {
     // (connector TEST). actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: thao tác Công việc sống ⇒ khoá
     // của nó CHỈ đến từ lớp này và tool cũ tương ứng nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như
     // trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào
-    // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
+    // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động. Đợt 3 Hoá đơn (Mốc 3–4): invoice.collect
+    // (khoá thu_tien.collect_transfer) và invoice.meter_record (khoá meter_readings.create) nằm trong danh mục production như #279,
+    // cả hai khoá seed TẮT ⇒ ẩn tới khi bật khoá.
     const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS,
       ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
       ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);

@@ -39,9 +39,14 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
   'cannot_remove_representative',
   // Trang Công việc (Đợt 2b).
-  'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open',
+  'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
-  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required']);
+  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+  // Hoá đơn (Mốc 4, ghi chỉ số).
+  'meter_used_by_invoice', 'meter_has_later_reading',
+  // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).
+  'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried', 'adjust_below_collected', 'adjustment_self_check_web_only',
+  'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict', 'invoice_already_cancelled', 'invoice_not_cancelled']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
