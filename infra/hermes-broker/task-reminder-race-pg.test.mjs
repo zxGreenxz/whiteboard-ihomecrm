@@ -9,8 +9,11 @@ import { setupReminders, ORG, USER, INSTANCE } from './task-reminder-fixture.mjs
 //     không thêm dòng (UNIQUE người, loại, ngày). Đúng hai tin.
 //  2. Hai worker claim cùng lúc: SKIP LOCKED ⇒ hai tập rời nhau, không ai đứng chờ.
 //  3. Bộ sinh dọn lease trong lúc worker đang begin một tin: SKIP LOCKED ⇒ không chờ, không cướp tin đang gửi.
-const AT = '2026-10-23 08:05:00+07';
-const DUE = '2026-10-23 23:59:59.999+07', OVER2 = '2026-10-21 23:59:59.999+07';
+// Phần worker chạy theo GIỜ THẬT (tin được đưa về "hôm nay") ⇒ hạn việc cũng phải là hôm nay theo giờ Việt Nam.
+// Ghim cứng 23/10/2026 làm ca begin đỏ từ 00:00 24/10 (việc hết là "hạn hôm nay" ⇒ jobs_closed).
+const vnNgay = (luiNgay = 0) => new Date(Date.now() + 7 * 3600e3 - luiNgay * 86400e3).toISOString().slice(0, 10);
+const AT = `${vnNgay()} 08:05:00+07`;
+const DUE = `${vnNgay()} 23:59:59.999+07`, OVER2 = `${vnNgay(2)} 23:59:59.999+07`;
 
 test('PostgreSQL: concurrent enqueue is busy-skipped and deduplicated; concurrent claims are disjoint; reaping never waits on a live send', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
