@@ -77,6 +77,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql',
   statementSha256:'44cca4c35b0025fd1366965519246ed58976cee683d7416f9adee2728765280e',
  },
+ // Đợt 3 Hoá đơn (Mốc 5): vỏ invoice.* chuyển thêm điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục tới tra cứu/bước ghi riêng.
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
+  statementSha256:'9ebf55b62159fa6c78174f8a17e7fa7170fec72d8ecc95f2c32a028ea5a8c1f5',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

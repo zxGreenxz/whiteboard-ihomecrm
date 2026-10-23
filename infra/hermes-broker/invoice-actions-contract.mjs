@@ -5,7 +5,7 @@
 //   invoice.collect — ghi nhận khách đã trả bằng chuyển khoản (TK) hoặc thanh toán (TT — sổ POS của toà, nhãn như web), một phòng hoặc lô
 //                     ≤ 10 phòng cùng toà cho MỘT lần đồng ý; luôn xem trước (money). Tiền mặt (TM) bị từ chối, chỉ đường /thu-tien (Q13). Bản xem trước = chạy thử
 //                     record_invoice_collection_v5 trong khối con rồi lùi; khách trả dư chưa chọn ⇒ bản xem trước hỏi (choiceRequired).
-// Điều chỉnh, xác nhận kiểm tra, huỷ/khôi phục thêm ở Mốc 5 (khoá invoices.* đã seed TẮT).
+// Ghi chỉ số (Mốc 4) và điều chỉnh, xác nhận kiểm tra, huỷ/khôi phục (Mốc 5) ở dưới.
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 
 export const INVOICE_RPC = 'hermes_invoice_action_v1';
@@ -45,5 +45,34 @@ export const INVOICE_METER_RECORD = defineAction({ id: 'invoice.meter_record', p
   reasons: ['meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous', 'meter_used_by_invoice', 'meter_has_later_reading',
     'not_allowed', 'state_changed', 'date_out_of_range', 'invalid_params'] });
 
-export const INVOICE_ACTIONS = Object.freeze([INVOICE_COLLECT, INVOICE_METER_RECORD]);
+// Mốc 5 (mục 4.3–4.5, 6.3): ba khoá invoices.* (seed TẮT ở 20261021134531, quyền CRM cùng tên). Hoá đơn giải bằng toà + phòng + kỳ, chọn
+// đích danh bằng invoiceNumber; kỳ trống ⇒ hoá đơn tháng mới nhất (khôi phục: mới nhất đã huỷ; xác nhận kiểm tra: điều chỉnh chờ duy nhất).
+//   invoice.adjust — chạy thử adjust_invoice_v2: giảm THÊM (discount, HDN5), thêm khoản (addItems), đặt lại tiền một khoản theo mô tả
+//                    (setItems.match khớp đúng một dòng; dòng điện/nước có chỉ số, cọc, nội bộ ⇒ chỉ đường web). Điều chỉnh chờ người khác kiểm.
+//   invoice.adjustment_check — xác nhận ĐÃ KIỂM TRA điều chỉnh do NGƯỜI KHÁC làm (HDN6); không bỏ được (irreversible).
+//   invoice.cancel / invoice.restore — huỷ hoá đơn chưa thu (quá hạn huỷ trên web) / khôi phục hoá đơn đã huỷ; lý do chỉ ở biên nhận (HDN8).
+const invoiceTarget = () => ({ buildingName: param.name('building'), roomName: param.name('room'), month: param.month({ optional: true }),
+  invoiceNumber: param.name('invoice', { optional: true }) });
+export const INVOICE_ADJUST = defineAction({ id: 'invoice.adjust', page: 'invoice', key: 'invoices.edit', class: 'money', rpc: INVOICE_RPC,
+  title: 'Điều chỉnh hoá đơn: giảm thêm, thêm khoản, đặt lại tiền một khoản không có chỉ số; chờ người khác xác nhận kiểm tra',
+  params: { ...invoiceTarget(), reason: param.text(8, 1000), discount: param.vnd({ optional: true }),
+    addItems: param.list(param.record({ description: param.text(1, 200), amount: param.vnd() }), { max: 5, optional: true }),
+    setItems: param.list(param.record({ match: param.text(1, 120), amount: param.vnd({ min: 0 }) }), { max: 5, optional: true }) },
+  reasons: ['adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried', 'adjust_below_collected', 'adjust_no_change',
+    'invoice_already_cancelled', 'reconciliation_required', 'period_locked', 'not_allowed', 'state_changed', 'amount_out_of_range', 'reason_required',
+    'invalid_params', 'web_only'] });
+export const INVOICE_ADJUSTMENT_CHECK = defineAction({ id: 'invoice.adjustment_check', page: 'invoice', key: 'invoices.approve', class: 'irreversible',
+  rpc: INVOICE_RPC, title: 'Xác nhận ĐÃ KIỂM TRA điều chỉnh hoá đơn do người khác làm (không bỏ được sau khi xác nhận)',
+  params: invoiceTarget(), reasons: ['nothing_to_check', 'adjustment_self_check_web_only', 'not_allowed', 'state_changed'] });
+export const INVOICE_CANCEL = defineAction({ id: 'invoice.cancel', page: 'invoice', key: 'invoices.cancel', class: 'money', rpc: INVOICE_RPC,
+  title: 'Huỷ hoá đơn chưa thu đồng nào (hoá đơn quá hạn huỷ trên web); lý do bắt buộc',
+  params: { ...invoiceTarget(), reason: param.text(8, 500) },
+  reasons: ['cancel_has_payment', 'cancel_overdue_web_only', 'invoice_already_cancelled', 'reconciliation_required', 'period_locked', 'not_allowed',
+    'state_changed', 'reason_required', 'web_only'] });
+export const INVOICE_RESTORE = defineAction({ id: 'invoice.restore', page: 'invoice', key: 'invoices.cancel', class: 'money', rpc: INVOICE_RPC,
+  title: 'Khôi phục hoá đơn đã huỷ (kỳ chưa có hoá đơn tháng khác đang hiệu lực); lý do bắt buộc',
+  params: { ...invoiceTarget(), reason: param.text(8, 500) },
+  reasons: ['restore_conflict', 'invoice_not_cancelled', 'reconciliation_required', 'period_locked', 'not_allowed', 'state_changed', 'reason_required'] });
+
+export const INVOICE_ACTIONS = Object.freeze([INVOICE_COLLECT, INVOICE_METER_RECORD, INVOICE_ADJUST, INVOICE_ADJUSTMENT_CHECK, INVOICE_CANCEL, INVOICE_RESTORE]);
 export const invoiceCatalog = () => createActionCatalog(INVOICE_ACTIONS);

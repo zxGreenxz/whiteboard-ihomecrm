@@ -957,6 +957,47 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 4 23/10/2026",
       "sha256": "52535735f77ac21191f626e2fdeb94cc0d90b5e0dd264d2052e101e7d40ec8e3"
+    },
+    "supabase/migrations/20261023042242_invoice_adjustment_build_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042242_invoice_adjustment_build_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_adjustment_build_v1 (STABLE INVOKER search_path=''): dòng giữ nguyên theo luật toAdjustmentItem, khoá dòng, chặn nợ cũ/thanh lý theo luật adjustmentReconcileBlocker"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là hàm trên — sinh 23/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 5"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 5: hàm dùng chung web ⇄ trợ lý dựng dòng điều chỉnh hoá đơn — form Điều chỉnh của web và thao tác invoice.adjust cùng gọi), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-edit-sql.test.mjs, ca chép từ invoiceAdjustmentEntry.test.ts), tầng 2 trên TEST trong ROLLBACK. Áp qua npm run migrate:forward (TEST trước, rồi production) TRƯỚC khi phát hành web Mốc 5; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa (gỡ).",
+      "missingObjects": [
+        "function:public.invoice_adjustment_build_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 5 23/10/2026",
+      "sha256": "dd599f03b156a453e452a2076b005eec339d6a30592c3737b4a9738abcbc7c98"
+    },
+    "supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_edit_reason_v1 / hermes_invoice_edit_lookup_v1 / hermes_invoice_edit_step_v1, public.hermes_invoice_action_v1 (vỏ SQL-standard thay vỏ 20261022183445); dòng chính sách invoice.adjust / invoice.adjustment_check / invoice.cancel / invoice.restore"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là bốn hàm trên — sinh 23/10/2026 trên nhánh Hoá đơn Đợt 3 Mốc 5"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 3 trang Hoá đơn, Mốc 5: điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục hoá đơn qua đúng bốn hàm ghi web, hợp đồng → hoá đơn → điều chỉnh khoá KHÔNG CHỜ dưới khoá công ty của guard), chưa đi qua lane apply — các hàm vắng mặt trên production vì migration CHƯA CHẠY (public.hermes_invoice_action_v1 cũng chưa có vì 20261022075230 chưa áp). Bằng chứng: PGlite (invoice-edit-sql.test.mjs), PG17 hai kết nối (invoice-edit-race-sql.test.mjs), connector (invoice-actions.test.mjs), tầng 2 trên TEST trong ROLLBACK. Áp qua npm run migrate:forward SAU 20261022183445 và 20261023042242; ba khoá invoices.* vẫn TẮT nên không đổi quyền của ai.",
+      "missingObjects": [
+        "function:app_private.hermes_invoice_edit_reason_v1",
+        "function:app_private.hermes_invoice_edit_lookup_v1",
+        "function:app_private.hermes_invoice_edit_step_v1",
+        "function:public.hermes_invoice_action_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn Mốc 5 23/10/2026",
+      "sha256": "b230f2d3004bd8fa2095886d477bcb54d1db52d7b45e7e2bb4a1918fc28b2d0f"
     }
   }
 }
