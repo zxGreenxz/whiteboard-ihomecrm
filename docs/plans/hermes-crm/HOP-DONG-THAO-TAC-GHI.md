@@ -524,6 +524,27 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 **Mốc 5b, 22/10 (sửa #277 theo review độc lập; `074815` sửa tại chỗ vì chưa áp, `075119` không đổi).** Mục 4.5 "Sửa theo review #277": phạm vi khách = guard ∩ quyền (chữ ký hàm tra khách thêm `uuid[]`), lượt 2 kiểm lại khách, basis có khách đã chọn, bớt người có ghi chú đòi xác nhận, biên nhận lưu băm SĐT, cảnh báo nháp tính HĐ `EXTENDED`; thao tác người ở giữ tra cứu `ACTIVE` (production không có HĐ `EXTENDED`/`EXPIRED`).
 - PGlite trang 34/34 (thêm: khách ngoài phạm vi kết nối ⇒ `outside_scope` không tên, ứng viên chỉ trong phạm vi, HĐ cũ ở toà trong phạm vi vẫn nhận, RLS giấu HĐ toà ngoài ⇒ bước ghi vẫn chặn; lượt 2 mất quyền xem / ra ngoài phạm vi / khách bị xoá / đổi khách ⇒ `state_changed`; basis người ở lệch ⇒ `state_changed`; phát lại người ở cùng / khác cách viết SĐT ⇒ y nguyên, SĐT khác ⇒ `request_conflict`; biên nhận không có SĐT; bớt người có ghi chú; HĐ `EXTENDED`); hợp đồng duyệt hàm Hermes 241/241 (ghim băm mới của ba hàm).
 
+**Soát deadlock 40P01, 23/10 (sửa tại chỗ `074815`; theo lỗi Hoá đơn #279).**
+- *Vòng.* Guard khoá dòng công ty trước mọi việc. Đo production 23/10: nhiều hàm ghi web khoá dòng nghiệp vụ TRƯỚC rồi mới khoá công ty.
+  - Dòng HĐ: `create_new_contract_extension`, `terminate_contract_move_out`.
+  - Dòng phòng:
+    - `create_contract_v2` / `sign_and_checkin_contract_draft_v1` (`FOR UPDATE`);
+    - `lock_room_for_sale_v1` / `release_room_sale_lock_v1` (`FOR NO KEY UPDATE`);
+    - các hàm giữ chỗ, chính sách bán, tin pass.
+  - Khi đó bước ghi đang giữ công ty mà chờ đúng dòng ấy (HĐ: Mốc 2–5; phòng: khoá tạm / gỡ khoá / trả phòng / soạn nháp qua khoá ngoại) thì thành vòng.
+  - Không hàm web nào khoá khách, khoá tạm, tin pass hay hồ sơ trả phòng trước công ty.
+- *Sửa.* File này thay cả bước ghi, nên sửa cho mọi thao tác của trang, kể cả Mốc 2–4.
+  - Ở lượt có thể ghi: dòng HĐ và dòng khoá tạm lấy `FOR UPDATE NOWAIT`.
+  - Dòng phòng lấy trước, `NOWAIT`, đúng mức cao nhất mà hàm web phía sau sẽ xin (không nâng khoá giữa chừng):
+    - `NO KEY UPDATE` cho khoá tạm / gỡ khoá / trả phòng;
+    - `KEY SHARE` cho nháp.
+  - Đang bị giữ ⇒ 55P03, cả giao dịch lùi, connector đổi thành `state_changed` (đã có từ #253). Đổi thứ tự trong bước ghi không gỡ được vòng vì khoá công ty nằm ở guard.
+- *Kiểm.*
+  - Test hai phiên trên PostgreSQL 17 cục bộ (`contract-action-sql.test.mjs`):
+    - phiên web giữ dòng trước ⇒ thêm người ở / báo trả / nháp / khoá tạm / trả phòng đều báo 55P03 ngay, rồi phiên web lấy được khoá công ty;
+    - chiều ngược lại (bước ghi giữ trước) ⇒ phiên web chờ rồi chạy tiếp.
+  - Đột biến bỏ `NOWAIT` tái hiện đúng `40P01 deadlock detected`; 5/5 đột biến bị bắt.
+
 ## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.

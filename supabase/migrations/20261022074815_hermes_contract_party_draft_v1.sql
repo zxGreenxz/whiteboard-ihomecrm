@@ -14,6 +14,8 @@
 --   HĐ EXTENDED / EXPIRED chưa kết thúc: production 22/10 không có HĐ nào (ACTIVE 298, TERMINATED 151; không hàm ghi hiện hành nào
 --     đặt hai trạng thái này) ⇒ thao tác người ở giữ đúng tra cứu ACTIVE của Mốc 2–4 đang chạy; cảnh báo "phòng còn HĐ" của nháp
 --     tính cả EXTENDED như web.
+--   Chống vòng khoá 40P01 (soát 23/10): ở lượt có thể ghi, dòng HĐ / dòng phòng / dòng khoá tạm lấy NOWAIT (cho mọi thao tác của
+--     trang, kể cả Mốc 2–4, vì file này thay cả bước ghi) ⇒ đang bị hàm ghi web giữ thì 55P03 ⇒ connector trả state_changed.
 -- Không đổi chữ ký, chủ, ACL của hàm có sẵn; không ghi dữ liệu ngoài ba dòng chính sách.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -210,6 +212,24 @@ BEGIN
   v_today:=public.org_today_v1(v_org);
   v_tz:=COALESCE(app_private.org_timezone_v1(v_org),'Asia/Ho_Chi_Minh');
   v_place:=format('phòng %s toà %s',v_resolved->>'roomName',v_resolved->>'buildingName');
+  -- Chống vòng khoá 40P01 (soát 23/10, mẫu Hoá đơn #279). Bước ghi đã giữ khoá công ty (guard + dòng trên), còn nhiều hàm ghi web
+  -- khoá dòng nghiệp vụ TRƯỚC rồi mới khoá công ty (đo production 23/10):
+  --   - dòng HĐ: create_new_contract_extension, terminate_contract_move_out;
+  --   - dòng phòng: create_contract_v2, sign_and_checkin_contract_draft_v1, lock_room_for_sale_v1, release_room_sale_lock_v1,
+  --     giữ chỗ / chính sách bán / tin pass.
+  -- Nếu bước ghi CHỜ đúng dòng đó thì thành vòng. Đổi thứ tự trong bước ghi không gỡ được vì khoá công ty đã nằm ở guard. Vì vậy ở
+  -- lượt có thể ghi, các dòng sẽ phải chờ được lấy NOWAIT:
+  --   - đang bị giữ ⇒ 55P03 ngay, cả giao dịch lùi, connector đổi thành state_changed;
+  --   - lấy được ⇒ giao dịch web đến sau chờ bước ghi xong, không còn chiều ngược lại.
+  -- Độ mạnh bằng mức cao nhất mà hàm ghi web phía sau sẽ xin (không nâng khoá giữa chừng):
+  --   - khoá tạm / gỡ khoá / trả phòng: NO KEY UPDATE (lock_room_for_sale_v1, release_room_sale_lock_v1, trigger trạng thái phòng);
+  --   - nháp: KEY SHARE (khoá ngoại khi chèn nháp).
+  -- Không hàm web nào khoá khách / khoá tạm / tin pass / hồ sơ trả phòng trước công ty.
+  IF p_phase<>'preview' AND p_action IN ('contract.room_lock','contract.room_unlock','contract.return') THEN
+    PERFORM 1 FROM public.rooms r WHERE r.id=(v_resolved->>'roomId')::uuid FOR NO KEY UPDATE NOWAIT;
+  ELSIF p_phase<>'preview' AND p_action='contract.draft' THEN
+    PERFORM 1 FROM public.rooms r WHERE r.id=(v_resolved->>'roomId')::uuid FOR KEY SHARE NOWAIT;
+  END IF;
 
   IF v_contract THEN
     IF v_resolved->>'contractId' IS NULL THEN
@@ -220,13 +240,13 @@ BEGIN
       RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
         ELSE jsonb_build_object('kind','needs_input','reason','room_has_no_active_contract') END;
     END IF;
-    -- Lượt preview chỉ đọc: không khoá dòng. auto/apply có thể ghi: khoá dòng HĐ (sau khoá tổ chức ở trên).
+    -- Lượt preview chỉ đọc: không khoá dòng. auto/apply có thể ghi: khoá dòng HĐ (sau khoá tổ chức ở trên), NOWAIT (xem trên).
     IF p_phase='preview' THEN
       SELECT * INTO c FROM public.contracts k WHERE k.id=(v_resolved->>'contractId')::uuid AND k.organization_id=v_org
         AND k.room_id=(v_resolved->>'roomId')::uuid;
     ELSE
       SELECT * INTO c FROM public.contracts k WHERE k.id=(v_resolved->>'contractId')::uuid AND k.organization_id=v_org
-        AND k.room_id=(v_resolved->>'roomId')::uuid FOR UPDATE;
+        AND k.room_id=(v_resolved->>'roomId')::uuid FOR UPDATE NOWAIT;
     END IF;
     IF NOT FOUND OR c.status IS DISTINCT FROM 'ACTIVE' OR c.actual_end_date IS NOT NULL OR c.deleted_at IS NOT NULL THEN
       RETURN CASE WHEN p_phase='apply' THEN jsonb_build_object('kind','rejected','reason','state_changed')
@@ -432,7 +452,7 @@ BEGIN
         AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1;
     ELSE
       SELECT * INTO l FROM public.room_sale_locks k WHERE k.organization_id=v_org AND k.room_id=(v_resolved->>'roomId')::uuid
-        AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1 FOR UPDATE;
+        AND k.released_at IS NULL AND k.expires_at>clock_timestamp() ORDER BY k.locked_at DESC, k.id LIMIT 1 FOR UPDATE NOWAIT;
     END IF;
     v_basis:=md5(jsonb_build_array(p_action,v_resolved->'roomId',l.id)::text);
     IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;

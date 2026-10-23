@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, ORG } from './finance-fixture.mjs';
+import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, ORG, USER, SESSION } from './finance-fixture.mjs';
+import { localCluster } from './crm-shared-read-sql-fixture.mjs';
 
 // RPC trang HỢP ĐỒNG (20261022022951, HOP-DONG-THAO-TAC-GHI.md mục 2–5) trên PGlite: binding/phiên/chính sách Hermes THẬT của
 // fixture, M5 + M1 + M2 thật, và bản port TỐI GIẢN của ba hàm ghi web (giữ chữ ký, tác dụng chính, câu lỗi dùng để ánh xạ).
@@ -159,8 +160,8 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
 
 // Dựng chung cho các test của trang: fixture Hermes thật + M1/M2 + giải tên + hàm ngày gia hạn + file trang, mỗi file chạy hai lần
 // (chạy lại được). `support`/`migrations`: fixture bổ sung và migration nối tiếp của mốc sau (vd Mốc 4).
-async function pageSetup(t, { support = '', migrations = [] } = {}) {
-  const f = await setup(t, { action: `${SUPPORT}\n${support}\n${RESOLVE}\n${plain(RENEWAL_DATE)}` });
+async function pageSetup(t, { support = '', migrations = [], database } = {}) {
+  const f = await setup(t, { action: `${SUPPORT}\n${support}\n${RESOLVE}\n${plain(RENEWAL_DATE)}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(KEYS);
   await db.exec(CONTRACT_ACTION_SQL); await db.exec(CONTRACT_ACTION_SQL); // Idempotent re-apply.
@@ -441,18 +442,25 @@ test('trang Hợp đồng — RPC thao tác (Mốc 2): báo trả / dời / hu�
 
 // Review #270 mục 1–2: khoá tổ chức (giao thức ghi chung của hàm web) đứng sau guard, TRƯỚC lần kiểm biên nhận và mọi khoá dòng;
 // lượt preview không khoá dòng. PGlite một kết nối không tái hiện được hai phiên song song ⇒ kiểm thứ tự trong thân bước ghi.
-test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng', () => {
-  for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL, PARTY_SQL]) stepLockOrder(sql);
+test('bước ghi: khoá tổ chức trước kiểm biên nhận và trước mọi FOR UPDATE; preview không khoá dòng; 074815 khoá dòng NOWAIT', () => {
+  for (const sql of [CONTRACT_ACTION_SQL, RETURN_SQL]) stepLockOrder(sql);
+  stepLockOrder(PARTY_SQL, { nowait: true });
 });
-function stepLockOrder(sql) {
+function stepLockOrder(sql, { nowait = false } = {}) {
   const body = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?\$fn\$;/.exec(sql)[0];
   const guard = body.indexOf('ctx:=app_private.hermes_action_guard_v1'), lock = body.indexOf('PERFORM app_private.lock_org_for_decision_v1(v_org);');
   assert.ok(guard > 0 && lock > guard, 'khoá tổ chức ngay sau guard');
   assert.ok(lock < body.indexOf('FROM app_private.hermes_action_receipts r'), 'khoá tổ chức trước khi kiểm biên nhận');
-  const rowLocks = [...body.matchAll(/FOR UPDATE/g)].map(match => match.index);
+  const rowLocks = [...body.matchAll(/FOR (?:UPDATE|NO KEY UPDATE|KEY SHARE)/g)].map(match => match.index);
   assert.ok(rowLocks.length >= 2 && rowLocks.every(index => index > lock), 'mọi khoá dòng sau khoá tổ chức');
-  assert.equal([...body.matchAll(/IF p_phase='preview' THEN\n\s+SELECT \* INTO (?:c|l) FROM public\.(?:contracts|room_sale_locks) k(?:(?!FOR UPDATE)[^;])*;\n\s+ELSE\n\s+SELECT[^;]*FOR UPDATE;/g)].length, 2,
+  assert.equal([...body.matchAll(/IF p_phase='preview' THEN\n\s+SELECT \* INTO (?:c|l) FROM public\.(?:contracts|room_sale_locks) k(?:(?!FOR UPDATE)[^;])*;\n\s+ELSE\n\s+SELECT[^;]*FOR UPDATE(?: NOWAIT)?;/g)].length, 2,
     'đọc HĐ / khoá tạm: preview không FOR UPDATE, nhánh còn lại có');
+  // Soát 40P01 (074815): hàm ghi web khoá dòng HĐ / phòng TRƯỚC công ty ⇒ bước ghi (đã giữ công ty) không được CHỜ các dòng đó.
+  if (nowait) {
+    assert.ok(rowLocks.every(index => /^FOR (?:UPDATE|NO KEY UPDATE|KEY SHARE) NOWAIT;/.test(body.slice(index))), 'mọi khoá dòng của bước ghi đều NOWAIT');
+    assert.match(body, /IF p_phase<>'preview' AND p_action IN \('contract\.room_lock','contract\.room_unlock','contract\.return'\) THEN\n\s+PERFORM 1 FROM public\.rooms r WHERE r\.id=\(v_resolved->>'roomId'\)::uuid FOR NO KEY UPDATE NOWAIT;\n\s+ELSIF p_phase<>'preview' AND p_action='contract\.draft' THEN\n\s+PERFORM 1 FROM public\.rooms r WHERE r\.id=\(v_resolved->>'roomId'\)::uuid FOR KEY SHARE NOWAIT;/,
+      'dòng phòng lấy trước, NOWAIT, đúng độ mạnh hàm web sẽ xin');
+  }
 }
 
 // Mốc 4 — fixture bổ sung: cột hồ sơ trả phòng, bảng thanh lý cũ, quyền theo toà (can_do_on_building), nợ thực của hoá đơn (port
@@ -950,5 +958,84 @@ test('trang Hợp đồng — Mốc 5: thêm / bớt người ở + soạn nháp
       await db.exec(plain(PARTY_SQL));
       assert.match((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc, /contract\.occupant_add/);
     });
+  });
+});
+
+// Soát 40P01 (23/10, mẫu Hoá đơn #279). Guard của bước ghi khoá dòng công ty trước mọi việc. Nhiều hàm ghi web khoá dòng nghiệp vụ
+// TRƯỚC rồi mới khoá công ty (đo production 23/10):
+//   - dòng HĐ: create_new_contract_extension, terminate_contract_move_out;
+//   - dòng phòng: create_contract_v2 / sign_and_checkin_contract_draft_v1 (FOR UPDATE), lock_room_for_sale_v1 /
+//     release_room_sale_lock_v1 (FOR NO KEY UPDATE).
+// Bước ghi mà CHỜ đúng dòng đó thì thành vòng. PGlite một kết nối không tái hiện được ⇒ chạy trên cụm PostgreSQL cục bộ dùng một
+// lần, hai phiên. Phiên "web" (postgres, như hàm DEFINER) giữ dòng nghiệp vụ trước, rồi phiên Hermes gọi thao tác:
+//   - bước ghi phải báo 55P03 NGAY (connector đổi thành state_changed);
+//   - sau đó phiên web lấy được khoá công ty.
+// Đột biến bỏ NOWAIT ⇒ bước ghi chờ ⇒ test tạo đúng vòng và đỏ.
+test('PG hai phiên: hàm ghi web khoá dòng HĐ / phòng trước công ty ⇒ bước ghi Hermes báo 55P03 ngay, không vòng 40P01', { timeout: 300000 }, async t => {
+  const { pool, cleanup } = await localCluster(t);
+  const main = await pool.connect(), hermes = await pool.connect(), web = await pool.connect();
+  t.after(async () => { for (const client of [main, hermes, web]) client.release(); await pool.end(); cleanup(); });
+  const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
+  await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`, migrations: [RETURN_SQL, PARTY_SQL], database });
+  const more = ['contracts.edit', 'contracts.create'];
+  await main.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1) AND mode='action'", [more]);
+  for (const permission of more)
+    await main.query('INSERT INTO public.fixture_acl(permission,building_ids) VALUES($1,$2) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true',
+      [permission, [BUILDING, OTHER_BUILDING]]);
+  await main.query('UPDATE app_private.hermes_org_policies SET action_capabilities=action_capabilities||$1::text[]', [more]);
+  await main.query('UPDATE app_private.hermes_connections SET action_capabilities=action_capabilities||$1::text[]', [more]);
+  const GUEST = '00000000-0000-4000-8000-000000000981';
+  await main.query("INSERT INTO public.customers(id,organization_id,full_name,phone) VALUES($1,$2,'Khách Song Song','0918000008')", [GUEST, ORG]);
+  const begin = async client => {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('request.jwt.claim.role','authenticated',true),set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.session',$2,true)",
+      [USER, SESSION]);
+    await client.query('SET LOCAL ROLE authenticated');
+  };
+  const act = (client, action, requestId, params) => client.query('SELECT public.hermes_contract_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,NULL,NULL) result',
+    [JSON.stringify(binding), action, 'auto', requestId, JSON.stringify(params)]).then(result => result.rows[0].result);
+  const settle = promise => promise.then(value => ({ value }), error => ({ code: error.code, message: error.message }));
+  const sleep = ms => new Promise(done => setTimeout(done, ms));
+  const P102 = { buildingName: 'toa a', roomName: 'P102' };
+  const cases = [
+    ['contract.occupant_add', { ...P101, customerPhone: '0918000008' }, `SELECT 1 FROM public.contracts WHERE id='${CONTRACT}' FOR UPDATE`],
+    ['contract.notice_set', { ...P101, date: '2026-12-31' }, `SELECT 1 FROM public.contracts WHERE id='${CONTRACT}' FOR UPDATE`],
+    ['contract.draft', { ...P102, startDate: '2026-11-01', endDate: '2027-10-31', rentPrice: 3000000, deposit: 0 },
+      `SELECT 1 FROM public.rooms WHERE id='${EMPTY_ROOM}' FOR UPDATE`],
+    ['contract.room_lock', { ...P102, hours: 6 }, `SELECT 1 FROM public.rooms WHERE id='${EMPTY_ROOM}' FOR NO KEY UPDATE`],
+    ['contract.return', { ...P101, date: '2026-10-20', note: 'Khách trả phòng, bàn giao đủ' }, `SELECT 1 FROM public.rooms WHERE id='${ROOM}' FOR NO KEY UPDATE`],
+  ];
+  for (const [index, [action, params, webLock]] of cases.entries()) await t.test(`${action}: phiên web giữ dòng trước ⇒ 55P03 ngay`, async () => {
+    await web.query('BEGIN'); await web.query(webLock);
+    await begin(hermes);
+    const outcome = settle(act(hermes, action, `00000000-0000-4000-8000-${String(990 + index).padStart(12, '0')}`, params));
+    const first = await Promise.race([outcome, sleep(1500).then(() => 'waiting')]);
+    let detail = first;
+    if (first === 'waiting') {
+      // Bước ghi đang CHỜ dòng phiên web giữ: phiên web xin khoá công ty ⇒ đúng vòng; ghi lại ai bị PostgreSQL huỷ.
+      const webOrg = settle(web.query('SELECT app_private.lock_org_for_decision_v1($1::uuid)', [ORG]));
+      detail = { hermes: await outcome, web: await webOrg };
+    }
+    await hermes.query('ROLLBACK');
+    assert.equal(first?.code, '55P03', `${action}: bước ghi phải báo 55P03 ngay, không chờ: ${JSON.stringify(detail)}`);
+    await web.query('SELECT app_private.lock_org_for_decision_v1($1::uuid)', [ORG]);
+    await web.query('ROLLBACK');
+  });
+  await t.test('chiều ngược lại: bước ghi giữ dòng trước ⇒ phiên web đến sau CHỜ rồi chạy tiếp, không vòng', async () => {
+    await begin(hermes);
+    const applied = await act(hermes, 'contract.occupant_add', '00000000-0000-4000-8000-000000000999', { ...P101, customerPhone: '0918000008' });
+    assert.equal(applied.kind, 'applied', JSON.stringify(applied));
+    await web.query('BEGIN');
+    const webPid = (await web.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+    let settled = false;
+    const webLock = settle(web.query(`SELECT 1 FROM public.contracts WHERE id='${CONTRACT}' FOR UPDATE`)).then(value => { settled = true; return value; });
+    await sleep(600);
+    assert.equal(settled, false, 'phiên web chờ bước ghi');
+    assert.deepEqual((await main.query('SELECT locktype FROM pg_locks WHERE pid=$1 AND NOT granted', [webPid])).rows.map(row => row.locktype), ['transactionid']);
+    await hermes.query('COMMIT');
+    assert.equal((await webLock).code, undefined, JSON.stringify(await webLock));
+    await web.query('SELECT app_private.lock_org_for_decision_v1($1::uuid)', [ORG]);
+    await web.query('ROLLBACK');
+    assert.equal((await main.query('SELECT count(*)::int n FROM public.contract_customers WHERE contract_id=$1 AND customer_id=$2', [CONTRACT, GUEST])).rows[0].n, 1);
   });
 });

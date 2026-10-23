@@ -886,12 +886,12 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 5: thêm / bớt người ở qua reconcile_contract_customers_v1 và soạn nháp HĐ qua save_contract_draft), chưa đi qua lane apply — hàm tra khách mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sửa tại chỗ 22/10 theo review độc lập #277 (Mốc 5b: phạm vi khách = guard ∩ quyền, lượt 2 kiểm lại khách, bớt người có ghi chú đòi xác nhận, biên nhận lưu băm SĐT, cảnh báo nháp tính HĐ EXTENDED) — file chưa áp ở đâu nên sửa thẳng, sha256 dưới đây là bản sau sửa. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql 34/34 gồm test Mốc 5 / 5b và test $requires$ nhận đúng thân 20261022061813, từ chối thân lạ; 25/25 đột biến Mốc 5 + 5b bị bắt), tầng 2 trên TEST trong ROLLBACK (chủ, joey; khách ngoài phạm vi thật của joey ⇒ outside_scope), buildTransaction của lane nhận file. Áp qua npm run migrate:forward SAU 20261022061813 khi phiên chính phát hành Mốc 5; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 trang Hợp đồng, Mốc 5: thêm / bớt người ở qua reconcile_contract_customers_v1 và soạn nháp HĐ qua save_contract_draft), chưa đi qua lane apply — hàm tra khách mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sửa tại chỗ 22/10 theo review độc lập #277 (Mốc 5b: phạm vi khách = guard ∩ quyền, lượt 2 kiểm lại khách, bớt người có ghi chú đòi xác nhận, biên nhận lưu băm SĐT, cảnh báo nháp tính HĐ EXTENDED) và 23/10 theo soát deadlock 40P01 (bước ghi lấy dòng HĐ / phòng / khoá tạm NOWAIT vì nhiều hàm ghi web khoá các dòng đó trước khoá công ty) — file chưa áp ở đâu nên sửa thẳng, sha256 dưới đây là bản sau sửa. Bằng chứng hiện có: PGlite với fixture Hermes thật (contract-action-sql gồm test Mốc 5 / 5b và test $requires$ nhận đúng thân 20261022061813, từ chối thân lạ; 25/25 đột biến Mốc 5 + 5b bị bắt), test hai phiên trên PostgreSQL 17 cục bộ (hàm web giữ dòng trước ⇒ bước ghi 55P03 ngay; bỏ NOWAIT ⇒ 40P01 thật; 5/5 đột biến bị bắt), tầng 2 trên TEST trong ROLLBACK (chủ, joey; khách ngoài phạm vi thật của joey ⇒ outside_scope), buildTransaction của lane nhận file. Áp qua npm run migrate:forward SAU 20261022061813 khi phiên chính phát hành Mốc 5; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:public.hermes_contract_party_lookup_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
-      "sha256": "83c32886dcfbb31f950c03def57b01f75cdbdcdf69b20c95f578552a6d29ac1e"
+      "sha256": "8104e94881a234ee74471010dfbe2f50f88c2322f90a58de4f99310213bbde27"
     }
   }
 }
