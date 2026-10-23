@@ -2,7 +2,10 @@
  * Nối bộ nhập liệu chung (invoiceEntry) với luồng ĐIỀU CHỈNH hoá đơn đã duyệt /
  * đã thanh toán (adjust_invoice_v2). Nguyên tắc: dòng nào người dùng không đụng
  * thì đi vào RPC NGUYÊN XI (id, service_id, hệ số, chỉ số, kỳ, sort_order) để
- * lịch sử điều chỉnh chỉ ghi đúng phần đã đổi.
+ * lịch sử điều chỉnh chỉ ghi đúng phần đã đổi. Dạng "nguyên xi" và lý do chặn
+ * điều chỉnh (thanh lý, nợ cũ lệch nguồn) do hàm dùng chung
+ * public.invoice_adjustment_build_v1 trả (invoiceAdjustmentBuildRpc.ts), cùng
+ * luật với trợ lý Hermes — không tính lại ở trình duyệt.
  */
 import type { AdjustmentItem } from './invoiceAdjustmentEditor';
 import {
@@ -14,40 +17,7 @@ import {
   type InvoiceSourceItem,
 } from './invoiceEntry';
 
-import type { InvoiceWithRelations } from '@/types/invoice';
-
 const DEFAULT_ELEC = 3500;
-
-/**
- * Lý do máy chủ sẽ từ chối điều chỉnh vì cơ cấu hoá đơn không đối soát được
- * (cùng luật với app_private.sync_finance_invoice_components_v1), hoặc null.
- * Chỉ áp cho hoá đơn tháng; hoá đơn thanh lý không xét nợ cũ.
- */
-export function adjustmentReconcileBlocker(invoice: Pick<InvoiceWithRelations, 'kind' | 'previous_debt' | 'previous_debt_sources'>): string | null {
-  // Hoá đơn thanh lý: dòng "Tiền cọc hoàn trả"/"Tiền phòng thừa" (type DISCOUNT) lưu amount dương
-  // nhưng bị TRỪ vào tạm tính; adjust_invoice_v2 lại cộng dương mọi dòng → tổng sai dấu.
-  // Chặn ở client cho tới khi server xử lý dấu của dòng DISCOUNT (đo 13/09/2026: 5 hoá đơn thanh lý
-  // có subtotal ≠ Σ amount vì lý do này).
-  if (invoice.kind === 'SETTLEMENT') {
-    return 'Hoá đơn thanh lý chưa hỗ trợ điều chỉnh: dòng hoàn trả (cọc, tiền phòng thừa) mang dấu trừ mà máy chủ điều chỉnh đang cộng dương. Cần vá máy chủ trước.';
-  }
-  const debt = Number(invoice.previous_debt) || 0;
-  const sources = Array.isArray(invoice.previous_debt_sources) ? invoice.previous_debt_sources : null;
-  if (!sources) return debt > 0 ? reconcileMessage(debt, 0) : null;
-  let total = 0;
-  for (const s of sources as Array<{ type?: string; amount?: unknown }>) {
-    const amount = Number(s?.amount);
-    if ((s?.type !== 'invoice' && s?.type !== 'deposit') || !Number.isFinite(amount) || amount < 0) {
-      return `Nợ cũ ${fmt(debt)} có nguồn không hợp lệ nên máy chủ không đối soát được cơ cấu hoá đơn — cần kế toán sửa nguồn nợ trước khi điều chỉnh.`;
-    }
-    total += amount;
-  }
-  return Math.abs(total - debt) >= 0.01 ? reconcileMessage(debt, total) : null;
-}
-
-const fmt = (n: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(n))} đ`;
-const reconcileMessage = (debt: number, sourced: number) =>
-  `Nợ cũ ${fmt(debt)} không khớp nguồn đối chiếu (${fmt(sourced)}) — máy chủ sẽ từ chối điều chỉnh hoá đơn này cho tới khi kế toán đối soát nợ cũ.`;
 const DEFAULT_WATER = 100000;
 const DEFAULT_PDV = 150000;
 
@@ -86,32 +56,17 @@ export function pricingFromInvoice(d: DecomposedInvoice): AdjustmentPricing {
   };
 }
 
-/**
- * adjust_invoice_v2 tính lại amount = đơn giá × số lượng × hệ số và bỏ qua amount gửi lên.
- * Dòng cũ có amount đã lưu ≠ u×q×c (vd điện ghi số lượng 1, amount = tổng) phải quy về
- * một dòng đơn giá = amount, số lượng 1, hệ số 1 — nếu không, "giữ nguyên" lại làm mất tiền.
- */
-function toAdjustmentItem(src: InvoiceSourceItem): AdjustmentItem {
-  const price = Number(src.unit_price) || 0;
-  const qty = Number(src.quantity) || 0;
-  const coef = src.coefficient == null ? 1 : Number(src.coefficient);
-  const stored = src.amount == null ? NaN : Number(src.amount);
-  const drift = Number.isFinite(stored) && Math.abs(stored - price * qty * coef) >= 0.01;
-  return {
-    id: src.id,
-    service_id: src.service_id ?? null,
-    type: src.type,
-    accounting_class: src.accounting_class ?? 'REVENUE',
-    description: src.description,
-    unit_price: drift ? stored : price,
-    quantity: drift ? 1 : qty,
-    coefficient: drift ? 1 : coef,
-    previous_reading: src.previous_reading ?? null,
-    current_reading: src.current_reading ?? null,
-    from_date: src.from_date ?? null,
-    to_date: src.to_date ?? null,
-    sort_order: src.sort_order ?? 0,
-  };
+/** Dòng máy chủ trả cho id này (luật dòng giữ nguyên của invoice_adjustment_build_v1); thiếu ⇒ hoá đơn vừa đổi, tải lại. */
+export class AdjustmentKeptLineMissingError extends Error {
+  constructor() {
+    super('Hạng mục của hoá đơn vừa thay đổi trên máy chủ. Tải lại hoá đơn trước khi điều chỉnh.');
+    this.name = 'AdjustmentKeptLineMissingError';
+  }
+}
+function keptLine(kept: ReadonlyMap<string, AdjustmentItem>, src: InvoiceSourceItem): AdjustmentItem {
+  const line = src.id ? kept.get(src.id) : undefined;
+  if (!line) throw new AdjustmentKeptLineMissingError();
+  return { ...line };
 }
 
 /** Ô cấu trúc nào chưa đổi so với giá trị gốc thì giữ nguyên dòng đã lưu. */
@@ -135,10 +90,10 @@ function structuredUntouched(role: EntryStructuredRole, v: InvoiceEntryValues, b
 
 /**
  * Dựng p_after_items cho adjust_invoice_v2 từ form. Dòng gốc được giữ nguyên
- * khi không đổi; dòng đổi giữ id/service_id/sort_order gốc; dòng mới id null và
- * xếp sau cùng.
+ * khi không đổi (đúng dạng máy chủ trả trong `kept`); dòng đổi giữ
+ * id/service_id/sort_order gốc; dòng mới id null và xếp sau cùng.
  */
-export function buildAdjustmentItems(v: InvoiceEntryValues, d: DecomposedInvoice): AdjustmentItem[] {
+export function buildAdjustmentItems(v: InvoiceEntryValues, d: DecomposedInvoice, kept: ReadonlyMap<string, AdjustmentItem>): AdjustmentItem[] {
   const { sources, baseline, rentDescription, values: base } = d;
   const lines = buildStructuredLines(v, {
     elecServiceId: sources.electric?.service_id ?? null,
@@ -164,9 +119,9 @@ export function buildAdjustmentItems(v: InvoiceEntryValues, d: DecomposedInvoice
     // Hoá đơn không có dòng tiền phòng (vd hoá đơn thanh lý) → không tự sinh dòng 0đ.
     if (role === 'rent' && !src && !(item.unit_price > 0)) continue;
     if (src && structuredUntouched(role, v, base)) {
-      const kept = toAdjustmentItem(src);
-      kept.sort_order = takeOrder(kept.sort_order);
-      out.push(kept);
+      const line = keptLine(kept, src);
+      line.sort_order = takeOrder(line.sort_order);
+      out.push(line);
       continue;
     }
     out.push({
@@ -192,14 +147,14 @@ export function buildAdjustmentItems(v: InvoiceEntryValues, d: DecomposedInvoice
   for (const ci of v.custom_items ?? []) {
     const src = ci.id ? byId.get(ci.id) : undefined;
     if (src) {
-      const kept = toAdjustmentItem(src);
-      kept.type = ci.type;
-      kept.description = ci.description;
-      kept.unit_price = ci.unit_price;
-      kept.quantity = ci.quantity;
-      kept.coefficient = ci.coefficient ?? kept.coefficient;
-      kept.sort_order = takeOrder(kept.sort_order);
-      out.push(kept);
+      const line = keptLine(kept, src);
+      line.type = ci.type;
+      line.description = ci.description;
+      line.unit_price = ci.unit_price;
+      line.quantity = ci.quantity;
+      line.coefficient = ci.coefficient ?? line.coefficient;
+      line.sort_order = takeOrder(line.sort_order);
+      out.push(line);
       continue;
     }
     out.push({

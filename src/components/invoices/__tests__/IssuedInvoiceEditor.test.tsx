@@ -4,15 +4,23 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { InvoiceWithRelations } from '@/types/invoice';
 import IssuedInvoiceEditor from '../IssuedInvoiceEditor';
 import { InvoiceAdjustmentError } from '@/lib/invoiceAdjustmentRpc';
-const mocks = vi.hoisted(() => ({ save: vi.fn(), refetch: vi.fn(), defaults: vi.fn() }));
-vi.mock('@/hooks/useInvoices', () => ({ useAdjustInvoice: () => ({ mutateAsync: mocks.save, isPending: false }), useInvoice: () => ({ refetch: mocks.refetch }) }));
+const mocks = vi.hoisted(() => ({ save: vi.fn(), refetch: vi.fn(), defaults: vi.fn(), build: vi.fn() }));
+vi.mock('@/hooks/useInvoices', () => ({ useAdjustInvoice: () => ({ mutateAsync: mocks.save, isPending: false }), useInvoice: () => ({ refetch: mocks.refetch }),
+  useInvoiceAdjustmentBuild: mocks.build }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: mocks.defaults }));
 vi.mock('../PaymentsSummaryDialog', () => ({ default: ({ open }: { open: boolean }) => open ? <div>Hoàn tác khoản thu</div> : null }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
 const invoice = { id: 'dddd0000-0000-4000-8000-000000000101', status: 'APPROVED', paid_amount: 0, adjustment_revision: 2, updated_at: '2026-09-12T10:00:00Z', total_amount: 2000, discount_amount: 0, notes: 'Cũ', invoice_items: [{ id: 'dddd0000-0000-4000-8000-000000000111', service_id: null, type: 'OTHER', accounting_class: 'DEPOSIT', description: 'Cọc', unit_price: 2000, quantity: 2, coefficient: 0.5, amount: 2000, sort_order: 4, previous_reading: 0, current_reading: 0, from_date: '2026-09-01', to_date: '2026-09-12' }] } as InvoiceWithRelations;
+// Kết quả của hàm dùng chung invoice_adjustment_build_v1 (máy chủ quyết dạng dòng giữ nguyên + lý do chặn); mặc định = dòng đã lưu.
+const serverBuild = (inv: InvoiceWithRelations, extra: Record<string, unknown> = {}) => ({ invoiceId: inv.id, blockers: [],
+  before: { items: (inv.invoice_items ?? []).map(i => ({ id: i.id, service_id: i.service_id ?? null, type: i.type, accounting_class: i.accounting_class ?? 'REVENUE',
+    description: i.description, unit_price: i.unit_price, quantity: i.quantity, coefficient: i.coefficient ?? 1, previous_reading: i.previous_reading ?? null,
+    current_reading: i.current_reading ?? null, from_date: i.from_date ?? null, to_date: i.to_date ?? null, sort_order: i.sort_order })), previousDebt: 0, sourcedDebt: 0 },
+  ...extra });
 afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks(); mocks.save.mockResolvedValue({});
+  mocks.build.mockReturnValue({ data: serverBuild(invoice), error: null });
   vi.stubGlobal('PointerEvent', MouseEvent);
   HTMLElement.prototype.scrollIntoView = vi.fn();
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
@@ -85,8 +93,37 @@ it('opens the canonical payment history in context after an allocation constrain
   expect(await screen.findByText('Hoàn tác khoản thu')).toBeTruthy();
 });
 
-it('khoá Lưu và báo rõ khi hoá đơn mang nợ cũ nhập tay không nguồn', () => {
+it('khoá Lưu và báo rõ khi máy chủ (hàm dựng dòng dùng chung) chặn: nợ cũ nhập tay không nguồn', () => {
+  mocks.build.mockReturnValue({ data: serverBuild(invoice, { blockers: ['debt_source_mismatch'],
+    before: { ...serverBuild(invoice).before, previousDebt: 100000, sourcedDebt: 0 } }), error: null });
   render(<IssuedInvoiceEditor invoice={{ ...invoice, kind: 'MONTHLY', previous_debt: 100000, previous_debt_sources: [] }} onOpenChange={() => {}} />);
-  expect(screen.getByRole('alert').textContent).toMatch(/Nợ cũ 100.000 đ không khớp nguồn đối chiếu/);
+  expect(screen.getByRole('alert').textContent).toMatch(/Nợ cũ 100.000 đ không khớp nguồn đối chiếu \(0 đ\)/);
   expect((screen.getByRole('button', { name: 'Lưu điều chỉnh' }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('dòng không đụng gửi đúng dạng máy chủ trả (luật dòng giữ nguyên ở database), không tự tính ở trình duyệt', async () => {
+  // Dòng tiền phòng lưu 1.000 × 2 nhưng thành tiền 2.500: máy chủ quy về đơn giá = thành tiền, SL 1, hệ số 1; form gửi nguyên dạng đó.
+  const rent = { id: 'dddd0000-0000-4000-8000-000000000112', service_id: null, type: 'RENT', accounting_class: 'REVENUE', description: 'Tiền phòng',
+    unit_price: 1000, quantity: 2, coefficient: 1, amount: 2500, sort_order: 0, previous_reading: null, current_reading: null, from_date: null, to_date: null };
+  const withRent = { ...invoice, total_amount: 4500, invoice_items: [rent, ...invoice.invoice_items!] } as InvoiceWithRelations;
+  const server = serverBuild(withRent);
+  mocks.build.mockReturnValue({ data: { ...server, before: { ...server.before,
+    items: server.before.items.map(i => i.id === rent.id ? { ...i, unit_price: 2500, quantity: 1, coefficient: 1 } : i) } }, error: null });
+  render(<IssuedInvoiceEditor invoice={withRent} onOpenChange={() => {}} />);
+  fireEvent.change(screen.getByLabelText('Ghi chú'), { target: { value: 'Mới' } }); fillReason();
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu điều chỉnh' }));
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
+  expect(mocks.save.mock.calls[0]?.[0].afterItems).toContainEqual(expect.objectContaining({ id: rent.id, unit_price: 2500, quantity: 1, coefficient: 1 }));
+  expect(mocks.build).toHaveBeenCalledWith(invoice.id, 2, '2026-09-12T10:00:00Z');
+});
+
+it('chưa tải xong / không tải được dữ liệu của hàm dựng dòng ⇒ chưa cho lưu; lỗi hiện rõ', () => {
+  mocks.build.mockReturnValue({ data: undefined, error: null });
+  const view = render(<IssuedInvoiceEditor invoice={invoice} onOpenChange={() => {}} />);
+  expect((screen.getByRole('button', { name: 'Lưu điều chỉnh' }) as HTMLButtonElement).disabled).toBe(true);
+  mocks.build.mockReturnValue({ data: undefined, error: new Error('Chưa tải được dữ liệu điều chỉnh từ máy chủ. Tải lại hoá đơn rồi thử lại.') });
+  view.rerender(<IssuedInvoiceEditor invoice={invoice} onOpenChange={() => {}} />);
+  expect(screen.getByRole('alert').textContent).toMatch(/Chưa tải được dữ liệu điều chỉnh từ máy chủ/);
+  expect((screen.getByRole('button', { name: 'Lưu điều chỉnh' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.save).not.toHaveBeenCalled();
 });
