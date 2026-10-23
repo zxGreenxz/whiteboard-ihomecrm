@@ -873,29 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261023142407_quyet_toan_v3_ban_giao_giu_coc.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261023142407_quyet_toan_v3_ban_giao_giu_coc.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.landlord_settlement_handovers / app_private.landlord_settlement_confirmations; CREATE OR REPLACE FUNCTION app_private.landlord_kqkd_lines_v2 / app_private.landlord_public_categories_v1 / public.landlord_settlement_note_update_v1 / public.landlord_settlement_confirm_v1"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 5 object trên — sinh 23/10/2026 ngay sau khi sửa file theo review chéo"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 23/10/2026 (Quyết toán vận hành v3: người giữ cọc là cài đặt của toà, hạng mục thu/chi, ghi chú bàn giao, chủ nhà xác nhận trên link), chưa đi qua lane apply — các object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã kiểm: PGlite hai lượt 93/93 ca (75 ca cũ chạy trên thân mới) + 9/9 đột biến bị bắt; TEST: đưa các hàm về đúng md5 production rồi áp file này (tiền kiểm md5 production đạt), lượt hai ROLLBACK đạt; công thức cũ vs mới (bỏ trường v3) khớp từng byte 7/7 toà × tháng. Review chéo độc lập ĐẠT sau khi sửa P1 (người giữ cọc đổi giữa chừng). Sẽ áp qua npm run migrate:forward sau khi PR được duyệt và chủ đồng ý; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "table:app_private.landlord_settlement_handovers",
-        "table:app_private.landlord_settlement_confirmations",
-        "function:app_private.landlord_kqkd_lines_v2",
-        "function:app_private.landlord_public_categories_v1",
-        "function:public.landlord_settlement_note_update_v1"
-      ],
-      "raSoatBoi": "Claude Code — quyết toán vận hành v3 23/10/2026",
-      "sha256": "43abd1da2280341fda98ccacdcaee5cd936860ad64a89cf2c06a9215aeee3666"
     }
   }
 }
