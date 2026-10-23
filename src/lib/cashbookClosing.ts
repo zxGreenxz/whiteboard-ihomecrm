@@ -29,9 +29,10 @@ export const PERIOD_BLOCK_DETAIL: Record<PeriodBlockCode, string> = {
   HANDOVER_LOCKED:
     "Phiếu đang nằm trong một phiên bàn giao tiền mặt đã xác nhận. Muốn sửa hoặc huỷ, hai bên phải huỷ phiên bàn giao đó trước.",
   // Khoá tháng lợi nhuận là TUYỆT ĐỐI (chủ chốt 25/09/2026): mọi phiếu có ngày
-  // trong tháng đã chốt, mọi loại, với mọi người kể cả chủ công ty.
+  // trong tháng đã chốt, mọi loại, với mọi người kể cả chủ công ty. Từ 22/10/2026 (F06)
+  // cả phiếu có KỲ tính lợi nhuận rơi vào tháng đó (trừ thu tiền hoá đơn).
   PROFIT_LOCKED:
-    "Tháng của phiếu này đã chốt lợi nhuận — mọi phiếu có ngày trong tháng đó bị khoá với tất cả mọi người, kể cả chủ công ty. Muốn sửa, nhờ chủ công ty mở khoá tháng (phải ghi lý do). Chỉ cần thêm ảnh chứng từ hoặc ghi chú thì dùng nút “Bổ sung”.",
+    "Tháng của phiếu này đã chốt lợi nhuận — mọi phiếu có ngày hoặc có kỳ tính lợi nhuận trong tháng đó bị khoá với tất cả mọi người, kể cả chủ công ty. Muốn sửa, nhờ chủ công ty mở khoá tháng ở tab Chốt LN (phải ghi lý do). Chỉ cần thêm ảnh chứng từ hoặc ghi chú thì dùng nút “Bổ sung”.",
   UNKNOWN:
     "Kỳ kế toán của phiếu này đã đóng nên không thao tác được nữa. Hãy lập phiếu điều chỉnh ở kỳ hiện tại.",
 };
