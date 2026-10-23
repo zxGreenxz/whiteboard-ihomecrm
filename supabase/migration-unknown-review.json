@@ -886,16 +886,16 @@
         },
         {
           "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 24 (lượt 11): lỗi 2 + 4, thứ tự áp, ghim chéo"
+          "trich_doan": "mục 24 (lượt 11 + 11b): lỗi 2 + 4, thứ tự áp, ghim chéo"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — hàm dùng chung mới vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023185116. Bằng chứng: PGlite task-nghiem-thu-sql (danh xưng, loại trùng tên toà, đột biến) + tầng 2 TEST chỉ đọc.",
+      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — hàm dùng chung mới vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023185116. Bằng chứng: PGlite task-nghiem-thu-sql (danh xưng — thứ tự khớp sửa ở 11b, loại trùng tên toà, đột biến) + write-name-resolve-sql PG17 (mọi vector dùng chung chạy lại trên thân mới) + tầng 2 TEST chỉ đọc.",
       "missingObjects": [
         "function:public.job_type_building_like_v1"
       ],
-      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu (24/10/2026)",
-      "sha256": "aed0fd0b492559af09992727771fbcc2a8a0d98aef239309a8fe896c54b4a340"
+      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu + 11b sửa theo review (24/10/2026)",
+      "sha256": "8db2875d73f2c340324529626e09962c7bef19f6206617e31b5e88ff8fc11763"
     },
     "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql": {
       "bangChung": [
@@ -909,16 +909,16 @@
         },
         {
           "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 24 (lượt 11): lỗi 1 + 2 + 3, thứ tự áp, ghim chéo"
+          "trich_doan": "mục 24 (lượt 11 + 11b): lỗi 1 + 2 + 3, thứ tự áp, ghim chéo"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — bảng lời mời chọn người nhận vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023185114. Bằng chứng: PGlite task-nghiem-thu-sql (lựa chọn Q31 = đồng ý, gợi ý loại, tìm việc kèm phòng / toà, 6 đột biến) + tầng 2 TEST chỉ đọc.",
+      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — bảng lời mời chọn người nhận vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023185114. Bằng chứng: PGlite task-nghiem-thu-sql (lựa chọn Q31 = đồng ý, gợi ý loại, tìm việc kèm phòng / toà, 13 đột biến — mỗi rào lời mời một đột biến) + task-nghiem-thu-race-pg PG17 (hai lượt song song ghi một việc) + tầng 2 TEST chỉ đọc.",
       "missingObjects": [
         "table:app_private.hermes_task_assignee_offers"
       ],
-      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu (24/10/2026)",
-      "sha256": "2e47cb3018130fd06c3b093e7ea5a7d69b5aebc55406eefaa2cd0a969855ec21"
+      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu + 11b sửa theo review (24/10/2026)",
+      "sha256": "1ec64aa5fb4873e460879840557b051d6f551306940996febfbe4f1cf18c5074"
     }
   }
 }

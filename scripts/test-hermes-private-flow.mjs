@@ -580,7 +580,7 @@ for (const spec of [
   // (gọi public.job_type_building_like_v1 đủ schema). Vẫn chỉ tên public đủ schema.
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql',
-    statementSha256: '414d614e41fcbb161a906dd42139df0d1fcb1d029dc7efb121ee7d0f4a938db0' },
+    statementSha256: 'ca38182f3eb344c198b52f335ea422f8316465bf87ac02efbae1f4313353d8d3' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

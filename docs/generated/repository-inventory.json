@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1671,
+  "tongSoFileTest": 1672,
   "soFileDocBangFs": 434,
-  "tongLoiGoi": 1083,
+  "tongLoiGoi": 1084,
   "khongPhanLoaiDuoc": 479,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 177,
+      "soFile": 178,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -791,6 +791,15 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -1190,14 +1199,6 @@
       "soGoi": 2,
       "loai": {
         "sql": 1
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
     },

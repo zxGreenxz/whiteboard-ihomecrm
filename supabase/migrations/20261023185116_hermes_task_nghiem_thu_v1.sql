@@ -24,7 +24,7 @@ BEGIN
     OR to_regprocedure('app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)') IS NULL
     -- Thân đang chạy phải đúng thân 20261023042436 (hoặc đúng thân của file này khi chạy lại).
     OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_resolve_core_v1(jsonb,text,jsonb)'::regprocedure) NOT IN ('0a399cc52caa8dbb12cf6e8cc7936f42','bc2815291c35227110d0546a6d7a3b37')
-    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure) NOT IN ('1f0b98d1a0ace9c61da52858f4fefac5','776e41559df9e7cb0f84f566c00118cc') THEN
+    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure) NOT IN ('1f0b98d1a0ace9c61da52858f4fefac5','3cc9a78f2974335f9c3fe94775779f89') THEN
     RAISE EXCEPTION 'hermes_task_nghiem_thu_dependency_invalid'; END IF;
 END $requires$;
 
@@ -504,8 +504,10 @@ BEGIN
         -- ĐÚNG một người trong danh sách với cùng nội dung lệnh ⇒ lựa chọn đó là đồng ý giao (tinh thần Q31: một câu hỏi), không xem
         -- trước lần nữa CHỈ vì lý do "giao người khác"; mọi lý do xem trước khác (đoán loại, thiếu phòng, trùng việc…) vẫn giữ.
         IF jsonb_typeof(p_managers)='array' AND jsonb_array_length(p_managers)>1 THEN
-          DELETE FROM app_private.hermes_task_assignee_offers o WHERE o.organization_id=v_org AND o.user_id=v_actor
-            AND o.offered_at<clock_timestamp()-interval '1 day';
+          -- Dọn lời mời cũ không đứng chờ (SKIP LOCKED); UPSERT dưới đây chỉ có thể chờ một lượt ghi đang xoá CHÍNH dòng đó (ngắn).
+          DELETE FROM app_private.hermes_task_assignee_offers o WHERE (o.organization_id,o.user_id,o.params_digest) IN (
+            SELECT x.organization_id,x.user_id,x.params_digest FROM app_private.hermes_task_assignee_offers x WHERE x.organization_id=v_org
+              AND x.user_id=v_actor AND x.offered_at<clock_timestamp()-interval '1 day' FOR UPDATE SKIP LOCKED);
           INSERT INTO app_private.hermes_task_assignee_offers(organization_id,user_id,params_digest,building_id,candidate_ids,offered_at)
           VALUES(v_org,v_actor,md5((p_params-'assigneeName')::text),(p_resolution#>>'{building,id}')::uuid,
             ARRAY(SELECT (x.e->>'id')::uuid FROM jsonb_array_elements(p_managers) WITH ORDINALITY x(e,ord) WHERE x.ord<=8 ORDER BY x.ord),clock_timestamp())
@@ -560,8 +562,10 @@ BEGIN
   IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
 
   -- Lựa chọn từ danh sách Q31 (lời mời còn hạn, cùng người hỏi, cùng nội dung lệnh trừ người nhận, cùng toà, người được chọn có trong
-  -- danh sách) ⇒ đồng ý giao người đó.
-  IF p_phase='auto' AND v_assignee<>v_actor THEN
+  -- danh sách) ⇒ đồng ý giao người đó. Pha preview vẫn chỉ xem trước nhờ p_phase='preview' trong v_confirm (rào có từ Mốc 2, có đột
+  -- biến); pha apply (đã xác nhận) chỉ dọn lời mời. Máy chủ KHÔNG phân biệt người dùng chọn với bot tự chọn tên trong danh sách: rào
+  -- đó là luật SOUL; lối tắt chỉ có tác dụng khi chính sách thao tác là confirm='never' (task.create).
+  IF v_assignee<>v_actor THEN
     v_offer:=md5((p_params-'assigneeName')::text);
     v_chosen:=EXISTS(SELECT 1 FROM app_private.hermes_task_assignee_offers o WHERE o.organization_id=v_org AND o.user_id=v_actor
       AND o.params_digest=v_offer AND o.building_id=v_building AND v_assignee=ANY(o.candidate_ids)
@@ -611,8 +615,13 @@ BEGIN
   IF v_quota IS NOT NULL THEN RETURN jsonb_build_object('kind','rejected','reason',v_quota); END IF;
   v_begin:=app_private.hermes_action_receipt_begin_v1(p_binding,p_action,p_request_id,jsonb_build_object('params',p_params,'resolved',v));
   IF v_begin->>'state'='replay' THEN RETURN jsonb_build_object('kind','replay','outcome',v_begin->'result'); END IF;
-  -- Lời mời đã dùng: xoá cùng giao dịch ghi (ghi lỗi ⇒ lùi cả hai).
-  IF v_chosen THEN DELETE FROM app_private.hermes_task_assignee_offers o WHERE o.organization_id=v_org AND o.user_id=v_actor AND o.params_digest=v_offer; END IF;
+  -- Lời mời đã dùng: xoá cùng giao dịch ghi (ghi lỗi ⇒ lùi cả hai), không đứng chờ (SKIP LOCKED). Hai lượt chọn song song cùng lệnh
+  -- đã nối đuôi ở khoá tư vấn (công ty, toà) phía trên: lượt sau thấy việc vừa tạo (trùng) và lời mời đã xoá ⇒ xem trước.
+  IF v_chosen THEN
+    DELETE FROM app_private.hermes_task_assignee_offers o WHERE (o.organization_id,o.user_id,o.params_digest) IN (
+      SELECT x.organization_id,x.user_id,x.params_digest FROM app_private.hermes_task_assignee_offers x WHERE x.organization_id=v_org
+        AND x.user_id=v_actor AND x.params_digest=v_offer FOR UPDATE SKIP LOCKED);
+  END IF;
   IF v_begin->>'state'='conflict' THEN RETURN jsonb_build_object('kind','rejected','reason','request_conflict'); END IF;
   IF v_begin->>'state' IS DISTINCT FROM 'new' THEN RAISE EXCEPTION 'hermes_action_outcome_unknown' USING ERRCODE='PT409'; END IF;
   RETURN jsonb_build_object('kind','write','action',p_action,'requestId',p_request_id,'organizationId',v_org,'actorId',v_actor,
@@ -636,7 +645,7 @@ BEGIN
     OR has_table_privilege('authenticated','app_private.hermes_task_assignee_offers','SELECT')
     OR has_table_privilege('service_role','app_private.hermes_task_assignee_offers','SELECT')
     OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_resolve_core_v1(jsonb,text,jsonb)'::regprocedure AND NOT p.prosecdef) IS DISTINCT FROM 'bc2815291c35227110d0546a6d7a3b37'
-    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure AND p.prosecdef) IS DISTINCT FROM '776e41559df9e7cb0f84f566c00118cc'
+    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure AND p.prosecdef) IS DISTINCT FROM '3cc9a78f2974335f9c3fe94775779f89'
     OR has_function_privilege('anon','app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)','EXECUTE') OR has_function_privilege('anon','app_private.hermes_task_resolve_core_v1(jsonb,text,jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'hermes_task_nghiem_thu_check_failed'; END IF;
 END $check$;

@@ -4,8 +4,9 @@
 --      (0 việc, trùng tên toà — dữ liệu nhập nhầm) ⇒ bot từng được gợi ý / khớp các chuỗi đó như loại việc. Hàm dùng chung mới
 --      public.job_type_building_like_v1 (INVOKER, dưới RLS người gọi) để lõi task (20261023185116) lọc gợi ý cùng một luật.
 --      KHÔNG xoá / tắt dữ liệu: dọn danh mục là việc của chủ (đề xuất trong báo cáo).
---  (2) Người: "anh Huy", "chị Lan", "a Huy"… không ai khớp nguyên chuỗi ⇒ bỏ danh xưng rồi khớp lại. Danh xưng đứng một mình vẫn
---      không phải tên (bẫy "mình" / "anh" / "em" của lõi task giữ nguyên).
+--  (2) Người: "anh Huy", "chị Lan", "e Hoa"… ⇒ bằng nguyên chuỗi (tên thật như "Anh Tú"), rồi bằng tên đã bỏ danh xưng, rồi tên đã bỏ
+--      danh xưng là TRỌN TỪ trong tên. Không "chứa" nguyên chuỗi có danh xưng ("anh huy" ⊂ "thanh huy" — review 11b). Danh xưng đứng
+--      một mình vẫn không phải tên (bẫy "mình" / "anh" / "em" của lõi task giữ nguyên; chuỗi không danh xưng đi luật cũ).
 -- Dựng từ thân production (md5 dfb062cf84bc9486e64a2e7b493a7233, đọc 24/10 bằng db:query, khớp file 20261021132433); vỏ public.hermes_write_name_resolve_v1
 -- gắn OID lõi lúc tạo nên CREATE OR REPLACE giữ nguyên OID ⇒ vỏ không đổi. Không DROP. Idempotent.
 BEGIN;
@@ -18,7 +19,7 @@ BEGIN
     OR to_regprocedure('public.hermes_name_fold_v1(text)') IS NULL
     OR to_regprocedure('public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)') IS NULL
     -- Thân đang chạy phải đúng thân 20261021132433 (hoặc đúng thân của file này khi chạy lại).
-    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure) NOT IN ('dfb062cf84bc9486e64a2e7b493a7233','61c730443aa0de267f097f8c0974f0f9') THEN
+    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure) NOT IN ('dfb062cf84bc9486e64a2e7b493a7233','081243f1965abdde1431607e762be438') THEN
     RAISE EXCEPTION 'hermes_name_resolve_honorific_dependency_invalid'; END IF;
 END $requires$;
 
@@ -45,7 +46,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn
 DECLARE
   v_entry record; v_value text;
   v_building text; v_room text; v_job text; v_person text;
-  v_needles text[]; v_needle text; v_attempt int; v_found jsonb; v_in jsonb; v_out jsonb;
+  v_needles text[]; v_needle text; v_attempt int; v_found jsonb; v_in jsonb; v_out jsonb; v_honor boolean:=false;
   r_building jsonb; r_room jsonb; r_job jsonb; r_person jsonb;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN
@@ -152,22 +153,28 @@ BEGIN
   END IF;
 
   -- Người: hồ sơ thấy được qua RLS + thành viên ACTIVE (cùng helper của hàm tạo việc); bằng rồi chứa, bỏ dấu. Danh xưng + tên
-  -- ("anh Huy", "chị Lan", "a Huy"): khớp nguyên chuỗi trước (tên thật có thể mở đầu bằng "Anh"), không ai khớp thì bỏ danh xưng
-  -- rồi khớp lại (bằng rồi chứa). Danh xưng đứng một mình ("anh", "em") không phải tên: chỉ khớp nguyên chuỗi như cũ.
+  -- ("anh Huy", "chị Lan", "e Hoa"; review lượt 11b): (1) bằng NGUYÊN chuỗi (tên thật mở đầu bằng "Anh" như "Anh Tú"), (2) bằng tên đã
+  -- bỏ danh xưng, (3) tên đã bỏ danh xưng là TRỌN TỪ trong tên (bỏ dấu câu: "B.Huy" = "b huy"). Không bao giờ "chứa" nguyên chuỗi có
+  -- danh xưng: "anh huy" nằm trong "thanh huy", "e hoa" nằm trong "le hoa" — khớp nhầm. Danh xưng đứng một mình ("anh", "em") không
+  -- phải tên: đi luật cũ (bằng rồi chứa) như mọi chuỗi không có danh xưng.
   IF v_person IS NOT NULL THEN
     v_needles:=ARRAY[public.hermes_name_fold_v1(v_person)];
-    IF v_needles[1] ~ '^(anh|chi|em|co|chu|bac|ong|ba|thay|di|cau|a|c|e) +[a-z0-9]' THEN
-      v_needles:=v_needles||regexp_replace(v_needles[1],'^[a-z]+ +','');
+    v_honor:=v_needles[1] ~ '^(anh|chi|em|co|chu|bac|ong|ba|thay|di|cau|a|c|e) +[a-z0-9]';
+    IF v_honor THEN
+      v_needles:=v_needles||btrim(regexp_replace(regexp_replace(v_needles[1],'^[a-z]+ +',''),'[^a-z0-9]+',' ','g'));
     END IF;
     v_found:='[]'::jsonb;
-    FOR v_attempt IN 1..4 LOOP
-      CONTINUE WHEN v_attempt>2 AND cardinality(v_needles)<2;
-      v_needle:=v_needles[CASE WHEN v_attempt<=2 THEN 1 ELSE 2 END];
-      CONTINUE WHEN v_attempt IN (2,4) AND char_length(v_needle)<2;
+    FOR v_attempt IN 1..3 LOOP
+      CONTINUE WHEN v_attempt=3 AND NOT v_honor;
+      CONTINUE WHEN v_attempt=2 AND NOT v_honor AND char_length(v_needles[1])<2;
       SELECT COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'name',p.full_name) ORDER BY p.full_name,p.id),'[]'::jsonb) INTO v_found
         FROM public.profiles p WHERE p.full_name IS NOT NULL AND p.id=ANY(COALESCE(p_member_ids,'{}'::uuid[]))
-          AND CASE WHEN v_attempt IN (1,3) THEN public.hermes_name_fold_v1(p.full_name)=v_needle
-            ELSE strpos(public.hermes_name_fold_v1(p.full_name),v_needle)>0 END;
+          AND CASE
+            WHEN v_attempt=1 THEN public.hermes_name_fold_v1(p.full_name)=v_needles[1]
+            -- Không danh xưng: chứa như cũ (ba trang ghi cùng dùng).
+            WHEN NOT v_honor THEN strpos(public.hermes_name_fold_v1(p.full_name),v_needles[1])>0
+            WHEN v_attempt=2 THEN btrim(regexp_replace(public.hermes_name_fold_v1(p.full_name),'[^a-z0-9]+',' ','g'))=v_needles[2]
+            ELSE position(' '||v_needles[2]||' ' IN ' '||btrim(regexp_replace(public.hermes_name_fold_v1(p.full_name),'[^a-z0-9]+',' ','g'))||' ')>0 END;
       EXIT WHEN jsonb_array_length(v_found)>0;
     END LOOP;
     IF jsonb_array_length(v_found)<>1 THEN
@@ -194,7 +201,7 @@ GRANT EXECUTE ON FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uui
 DO $check$
 BEGIN
   IF (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure AND NOT p.prosecdef
-      AND 'search_path=""'=ANY(COALESCE(p.proconfig,'{}'::text[]))) IS DISTINCT FROM '61c730443aa0de267f097f8c0974f0f9'
+      AND 'search_path=""'=ANY(COALESCE(p.proconfig,'{}'::text[]))) IS DISTINCT FROM '081243f1965abdde1431607e762be438'
     OR NOT EXISTS(SELECT 1 FROM pg_proc p WHERE p.oid='public.job_type_building_like_v1(uuid,text)'::regprocedure AND NOT p.prosecdef AND p.provolatile='s'
       AND 'search_path=""'=ANY(COALESCE(p.proconfig,'{}'::text[])))
     OR has_function_privilege('anon','public.job_type_building_like_v1(uuid,text)','EXECUTE') OR NOT has_function_privilege('authenticated','public.job_type_building_like_v1(uuid,text)','EXECUTE')
