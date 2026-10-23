@@ -10,10 +10,15 @@ import { localCluster, jwt, id, ORG, FOREIGN, USER } from './crm-shared-read-sql
 // cố định (đổi luật = đổi hàm SQL bằng migration + sửa vàng).
 // (2) lọc công ty / hạn chế / ẩn; (3) public.ie_default_cashbook_v1 đúng thứ tự pickDefaultAccount cũ; (4) đầu vào sai ⇒ 22023;
 // (5) bảng đứng thay SQL của vitest (src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-test.json) == hàm SQL.
-const slug = 'ie_quick_entry_shared_rules_v1';
-const files = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
-assert.equal(files.length, 1);
-const sql = readFileSync(`supabase/migrations/${files[0]}`, 'utf8').replaceAll('\r\n', '\n');
+// Lượt 11 (nghiệm thu 24/10): ie_quick_entry_shared_rules_v2 thêm lớp (3b) từ vựng vật tư / sửa chữa / văn phòng phẩm, áp lên thân v1. Bộ
+// vàng đổi đúng 15 ca (đều từ không ra gì / gợi ý yếu ⇒ khoá cứng đúng hạng mục, đã soát tay) và thêm 37 câu chi thường gặp (vòi nước, ốc
+// vít, ổ cắm, dây điện, văn phòng phẩm…, cả ca phải ra null).
+const read = slug => {
+  const files = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
+  assert.equal(files.length, 1, slug);
+  return readFileSync(`supabase/migrations/${files[0]}`, 'utf8').replaceAll('\r\n', '\n');
+};
+const sql = read('ie_quick_entry_shared_rules_v1'), sql2 = read('ie_quick_entry_shared_rules_v2');
 const golden = JSON.parse(readFileSync('src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-vang.json', 'utf8'));
 const spec = JSON.parse(readFileSync('supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql', 'utf8').split('$spec$')[1]);
 const lit = value => value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
@@ -58,11 +63,18 @@ async function schema(pool) {
       ('${USER}','${CB_BUILDING}',4),('${USER}','${CB_LAST}',5),('${USER}','${CB_DEFAULT}',6);`);
 }
 
-test('ie_quick_entry_shared_rules_v1: gợi ý hạng mục == vàng TS; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
+test('ie_quick_entry_shared_rules_v1 + v2: gợi ý hạng mục == vàng; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
   const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
   t.after(async () => { await pool.end(); cleanup(); });
   await schema(pool);
   await pool.query(sql); await pool.query(sql); // Idempotent.
+  // v2 ghim md5 thân đang chạy (= thân v1) hoặc thân của chính nó: thân lạ ⇒ dừng, không thay.
+  await pool.query('BEGIN');
+  await pool.query(`CREATE OR REPLACE FUNCTION public.ie_category_suggest_v1(p_organization_id uuid,p_items jsonb,p_type text DEFAULT 'expense',
+    p_include_restricted boolean DEFAULT false) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $f$ SELECT '[]'::jsonb $f$`);
+  await assert.rejects(pool.query(sql2), error => error.message === 'ie_quick_entry_rules_v2_body_drift');
+  await pool.query('ROLLBACK');
+  await pool.query(sql2); await pool.query(sql2); // Áp lên thân v1, rồi áp lại.
   const suggest = (items, { org = ORG, type = 'expense', restricted = false } = {}) => jwt(pool, async c =>
     (await c.query('SELECT public.ie_category_suggest_v1($1::uuid,$2::jsonb,$3,$4) value', [org, JSON.stringify(items), type, restricted])).rows[0].value);
   const keyOf = new Map([...typeId].map(([key, value]) => [value, key]));

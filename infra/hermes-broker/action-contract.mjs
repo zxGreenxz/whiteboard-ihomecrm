@@ -155,6 +155,11 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
+  // Thu chi lượt 11 (nghiệm thu): mã phiếu bị dùng lại giữa các toà ⇒ chỉ mã thì không chọn được; SQL nhận mã kèm ngày / toà (hoặc nguyên nhãn
+  // ứng viên). Hạng mục là danh mục của cả công ty (không theo toà) ⇒ "không thấy" nghĩa là không có trong danh mục chi dùng được qua bot.
+  if (kind === 'ambiguous' && names.length && field === 'voucher')
+    return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng chọn một, rồi gọi lại với voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.`;
   if (kind === 'ambiguous' && names.length) return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng nêu rõ.`;
+  if (field === 'category') return `Không có hạng mục ${quoted(wanted)} trong danh mục chi dùng được qua bot (hạng mục hệ thống, hạn chế, cọc, chuyển nội bộ chỉ lập trên web); hỏi người dùng nêu hạng mục khác.`;
   return `Không thấy ${label} ${quoted(wanted)} trong phạm vi quyền của anh/chị; hỏi lại người dùng.`;
 }

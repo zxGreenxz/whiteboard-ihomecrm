@@ -873,6 +873,25 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_expense_category_pick_v1 (MỚI, INVOKER, search_path rỗng); thay thân app_private.hermes_expense_resolve_core_v1 (ghim md5 thân 20261023013109) và app_private.hermes_expense_write_step_v1 (ghim md5 thân 20261023031258)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng function:public.hermes_expense_category_pick_v1 — sinh 24/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (Hermes Thu chi lượt 11 — sửa phía máy chủ theo nghiệm thu bot thật trên TEST: chọn hạng mục, khớp mã phiếu trùng giữa các toà, cam kết Q12 trong bản xem trước, mở lại phiếu ⇒ web), chưa đi qua lane apply — hàm public.hermes_expense_category_pick_v1 vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (expense-write-sql.test.mjs 22/22, gồm hai ca lượt 11), PG17 hai kết nối (expense-write-race-sql.test.mjs 18/18), connector (expense-actions, action-contract), và tầng 2 trên TEST trong một giao dịch ROLLBACK: áp 20261023210633 + file này lên thân thật (ghim md5 khớp), chạy hàm chọn hạng mục / lõi giải tên dưới RLS một chủ công ty khác (chỉ đọc) — câu nghiệm thu ra đúng hạng mục, mã phiếu trùng thật chọn đúng phiếu khi kèm ngày/toà. Áp qua npm run migrate:forward SAU 20261023210633; không đổi quyền của ai (khoá ghi Thu chi vẫn như registry).",
+      "missingObjects": [
+        "function:public.hermes_expense_category_pick_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Thu chi lượt 11, 24/10/2026",
+      "sha256": "0983ce02d4c641365a54df12309849f505237e11454af5ec91d20da43e60dffb"
     }
   }
 }
