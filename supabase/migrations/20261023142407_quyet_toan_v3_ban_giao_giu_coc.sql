@@ -31,6 +31,7 @@
 --        LANDLORD: sổ quản lý) — chế độ MANAGER cho đúng chuỗi băm cũ ⇒ tháng đã chốt không thành "đổi sau
 --        khi chốt"; LANDLORD thêm '|giu_coc:LANDLORD' vào phần điều khoản.
 --      · trả thêm: deposit_holder, totals.manager_held_deposits, totals.deposit_adjustment,
+--        totals.landlord_net_held / manager_net_held (thu − chi lãi lỗ của từng sổ),
 --        deposits.manager_received / manager_paid_out, pending.deposit, categories {income, expense}
 --        (dòng lãi lỗ đã duyệt theo tên hạng mục, kèm phần sổ chủ nhà / sổ quản lý, cờ restricted), và mỗi
 --        phiếu lãi lỗ một mảng lines [{category, amount}]. Hạng mục / lines không vào chuỗi băm.
@@ -96,7 +97,7 @@ BEGIN
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
       ('app_private.landlord_settlement_compute_v1(uuid,date)',
-       ARRAY['1af9d2b8c6d10ca32dc177cf0d6a6d2a', 'c16c06b4ff30472812d2809a2db98a55']),
+       ARRAY['1af9d2b8c6d10ca32dc177cf0d6a6d2a', 'ad0218a979233a5b15c17b7a141dfaea']),
       ('app_private.landlord_strip_public_v1(jsonb)',
        ARRAY['2377f91bcdab86e42a8371c0b6cb6ef2', '5ba02b4cd662bfdbf24b1e688de4f519']),
       ('app_private.landlord_settlement_month_payload_v1(uuid,date,boolean)',
@@ -630,6 +631,9 @@ AS $fn$
               'manager_percent_share', chia.phan_phan_tram,
               'manager_share',      chia.phan_quan_ly,
               'landlord_share',     chia.loi_nhuan - chia.phan_quan_ly,
+              -- mỗi sổ đang giữ bao nhiêu từ thu chi lãi lỗ trong tháng (thu − chi; âm = bên đó ứng tiền chi hộ)
+              'landlord_net_held',  chia.chu_nha_thu - chia.chu_nha_chi,
+              'manager_net_held',   chia.quan_ly_thu - chia.quan_ly_chi,
               'landlord_held_deposits', chia.coc_chu_nha_thu - chia.coc_chu_nha_chi,
               'manager_held_deposits', chia.coc_quan_ly_thu - chia.coc_quan_ly_chi,
               'deposit_adjustment', chia.phan_coc,

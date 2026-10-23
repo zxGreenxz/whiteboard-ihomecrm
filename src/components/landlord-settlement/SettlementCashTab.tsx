@@ -243,17 +243,28 @@ export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatemen
             );
           })}
         </div>
-        {/* Server chưa trả số "đang giữ" (thu − chi) của từng sổ ⇒ hiện thu và chi riêng, không tự trừ. */}
-        <div className="grid grid-cols-2 gap-2.5 border-t bg-muted/30 px-4 py-2.5">
-          {(['LANDLORD', 'MANAGER'] as const).map((side) => (
-            <div key={side} className="min-w-0">
-              <p className="text-[11px] text-muted-foreground">{side === 'LANDLORD' ? 'Chủ nhà đang giữ' : 'Quản lý đang giữ'}</p>
-              <p className="mt-px text-[12.5px] tabular-nums">
-                nhận <b>{formatVND(side === 'LANDLORD' ? t.landlord_collected : t.manager_collected)}</b>
-                {' '}· chi <b>{formatVND(side === 'LANDLORD' ? t.landlord_paid : t.manager_paid)}</b>
-              </p>
-            </div>
-          ))}
+        {/* Số "đang giữ" (thu − chi) do server tính; ảnh chốt cũ không có ⇒ hiện thu và chi riêng, không tự trừ. */}
+        <div className="grid grid-cols-2 gap-2.5 border-t bg-muted/30 px-4 py-2.5" data-testid="settlement-net-held">
+          {(['LANDLORD', 'MANAGER'] as const).map((side) => {
+            const held = side === 'LANDLORD' ? t.landlord_net_held : t.manager_net_held;
+            return (
+              <div key={side} className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">{side === 'LANDLORD' ? 'Chủ nhà đang giữ' : 'Quản lý đang giữ'}</p>
+                {held != null ? (
+                  <>
+                    <p className={cn('mt-px whitespace-nowrap text-sm font-extrabold tabular-nums',
+                      held < 0 && 'text-amber-700 dark:text-amber-400')}>{formatVND(held)}</p>
+                    {held < 0 && <p className="mt-px text-[10.5px] text-muted-foreground">đã ứng tiền để chi hộ</p>}
+                  </>
+                ) : (
+                  <p className="mt-px text-[12.5px] tabular-nums">
+                    nhận <b>{formatVND(side === 'LANDLORD' ? t.landlord_collected : t.manager_collected)}</b>
+                    {' '}· chi <b>{formatVND(side === 'LANDLORD' ? t.landlord_paid : t.manager_paid)}</b>
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </SectionCard>
 

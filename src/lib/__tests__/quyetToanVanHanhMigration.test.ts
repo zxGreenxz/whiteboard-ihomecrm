@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  confirmReceiptSchema, noteUpdateReceiptSchema,
   ihomeProfitOf, invoicePartsOfSettlement, landlordIhomeProfitSchema, landlordOperationOptionsSchema,
   landlordOperationsListSchema, settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema,
   settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
@@ -1828,6 +1829,8 @@ describe("v3: người giữ cọc", () => {
     expect(so(t.manager_held_deposits)).toBe(1_750_000);
     expect(so(t.deposit_adjustment)).toBe(805_000);
     expect(so(t.landlord_owes_manager)).toBe(4_096_000);
+    // mỗi sổ đang giữ từ thu chi lãi lỗ: chủ nhà 10tr − 500k; quản lý 1,55tr − 2,18tr (âm = ứng tiền chi hộ)
+    expect([so(t.landlord_net_held), so(t.manager_net_held)]).toEqual([9_500_000, -630_000]);
     expect(so((st.pending as Json).deposit)).toBe(so((st.pending as Json).landlord_deposit));
   });
 
@@ -2054,6 +2057,38 @@ describe("v3: chủ nhà xác nhận đã xem số liệu", () => {
       await rpc("public.landlord_share_link_revoke_v1($1)", [token]);
       await asUser(null);
       await expectLoi(`SELECT ${XAC_NHAN}`, [token, "2025-02-01", 3, null], "P0002");
+    });
+  });
+});
+
+describe("v3: gói RPC thật parse được bằng schema zod của web", () => {
+  it("tháng (admin + link chủ nhà), tổng quyết toán, hộp cài đặt, biên nhận ghi chú / xác nhận — chủ nhà giữ cọc", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await giuCoc("LANDLORD", "2025-03-01");
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await chotCoGhiChu("2025-02-01", "ghi chú lúc chốt");
+      const ghiChu = noteUpdateReceiptSchema.parse(await rpc(BAN_GIAO, [TOA_A, "2025-02-01", 1, "bàn giao tháng 2"]));
+      expect(ghiChu.status).toBe("UPDATED");
+      await asUser(null);
+      const xn = confirmReceiptSchema.parse(await rpc(XAC_NHAN, [token, "2025-02-01", 1, "đã xem"]));
+      expect(xn.status).toBe("CONFIRMED");
+      const pub = settlementPublicSchema.parse(await rpc("public.landlord_settlement_public_v1($1, '2025-02-01'::date)", [token]));
+      expect(pub.month.confirmation?.note).toBe("đã xem");
+      expect(pub.month.closed?.note).toBe("bàn giao tháng 2");
+      expect(pub.month.statement?.categories?.income.length).toBeGreaterThan(0);
+      expect(pub.overview.months.find((m) => m.period_month.startsWith("2025-02"))?.confirmed_at).toBe(xn.confirmed_at);
+
+      await asUser(CHU_A);
+      const mar = settlementMonthSchema.parse(await thang(TOA_A, "2025-03-01"));
+      expect(mar.statement?.deposit_holder).toBe("LANDLORD");
+      expect(mar.statement?.totals.landlord_net_held).not.toBeNull();
+      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(jan.statement?.vouchers.filter((v) => v.group === "PNL").every((v) => (v.lines?.length ?? 0) > 0)).toBe(true);
+      const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect(ov.deposit_holder).toBe("LANDLORD");
+      const opt = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(opt.current?.terms.map((x) => x.deposit_holder)).toEqual(["MANAGER", "LANDLORD"]);
     });
   });
 });

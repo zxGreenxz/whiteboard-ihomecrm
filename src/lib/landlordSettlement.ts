@@ -155,12 +155,17 @@ export const settlementStatementSchema = z.object({
      * chủ nhà giữ: = −manager_held_deposits. Ảnh cũ ⇒ chép landlord_held_deposits (không tính).
      */
     deposit_adjustment: money.nullish(),
+    /** v3: mỗi sổ đang giữ từ thu chi lãi lỗ trong tháng (thu − chi; âm = ứng tiền chi hộ). Ảnh cũ ⇒ null. */
+    landlord_net_held: money.nullish(),
+    manager_net_held: money.nullish(),
   }).transform((t) => ({
     ...t,
     // không cộng trừ: ảnh chốt cũ (chỉ có %) thì phần % chính là toàn bộ phần quản lý server đã tính
     manager_fixed_share: t.manager_fixed_share ?? 0,
     manager_percent_share: t.manager_percent_share ?? t.manager_share,
     manager_held_deposits: t.manager_held_deposits ?? null,
+    landlord_net_held: t.landlord_net_held ?? null,
+    manager_net_held: t.manager_net_held ?? null,
     deposit_adjustment: t.deposit_adjustment ?? t.landlord_held_deposits,
   })),
   reversed_voucher_count: z.number().int().nonnegative(),
