@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2b, definitionOf, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
+import { sharedW2b, definitionOf, cashFlowMigration, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
 import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ORG_SCOPE, USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
 import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
@@ -29,7 +29,7 @@ const main = [readFileSync(SHARED_PATH, 'utf8'), readFileSync(MAIN_PATH, 'utf8')
 // bằng một bản cũ, đo sai thứ.
 const live = (() => {
   const last = new Map();
-  for (const [sql] of main.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)) last.set(sql.match(/^CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/)[1], sql);
+  for (const [sql] of [main,cashFlowMigration.sql].join('\n').matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)) last.set(sql.match(/^CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/)[1], sql);
   return [...last.values()].join('\n\n');
 })();
 let shared;
@@ -222,19 +222,19 @@ test('B1/B2: người nhiều công ty — RPC web (lọc my_org_ids) trộn cô
   assert.equal((await all(env, 'cash_flow', { year: 2026 })).summary.income, '1840000.00');
 }));
 
-test('B2 dòng tiền năm = cashflow_by_day cả năm gộp 12 tháng + 4 quý như CashFlowReport', { timeout: 120000 }, () => inCase(async env => {
+test('B2 dòng tiền năm = RPC dùng chung cuối mà web gọi; sổ theo ngày giữ nguyên lịch sử hoàn tác', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await grantRead(db, ['reports_finance.cash_flow'], { orgWide: true });
   await orgOverlay(db);
   const value = await all(env, 'cash_flow', { year: 2026 });
-  const webDays = await webRows(env, "SELECT * FROM public.cashflow_by_day('2026-01-01','2026-12-31',NULL,NULL)");
-  const byMonth = Array.from({ length: 12 }, (_, i) => webDays.filter(row => Number(row.day.slice(5, 7)) === i + 1)
-    .reduce((sum, row) => [sum[0] + num(row.income), sum[1] + num(row.expense)], [0, 0]));
-  assert.deepEqual(value.items.slice(0, 12).map(row => [row.buildingId, row.period, num(row.income), num(row.expense), num(row.net)]),
-    byMonth.map(([income, expense], i) => [null, `2026-${String(i + 1).padStart(2, '0')}`, income, expense, income - expense]));
+  const webPeriods = await webRows(env, 'SELECT * FROM public.cashbook_cash_flow_v1($1,2026,null)', [ORG]);
+  assert.deepEqual(value.items.map(row => [row.buildingId, row.period, num(row.income), num(row.expense), num(row.net)]),
+    webPeriods.map(row => [row.building_id,row.period,num(row.income),num(row.expense),num(row.net)]));
   assert.deepEqual(value.items.slice(12).map(row => [row.period, num(row.income), num(row.expense)]),
-    [['2026-Q1', 40000, 0], ['2026-Q2', 0, 0], ['2026-Q3', 500000, 0], ['2026-Q4', 1300000, 350000]]);
-  assert.deepEqual(value.summary, { year: 2026, income: '1840000.00', expense: '350000.00', net: '1490000.00' });
+    [['2026-Q1', 40000, 0], ['2026-Q2', 0, 0], ['2026-Q3', 500000, 0], ['2026-Q4', 1300000, 300000]]);
+  assert.deepEqual(value.summary, { year: 2026, income: '1840000.00', expense: '300000.00', net: '1540000.00' });
+  const webDays = await webRows(env, "SELECT * FROM public.cashflow_by_day('2026-01-01','2026-12-31',NULL,NULL)");
+  assert.equal(webDays.reduce((sum,row) => sum+num(row.expense),0),350000,'sổ theo ngày vẫn giữ chuyển động 50k REVERSAL');
   assert.equal((await all(env, 'cash_flow')).summary.year, 2026, 'mặc định năm của hôm nay');
   await orgOverlay(db, false);
   const perBuilding = await all(env, 'cash_flow', { year: 2026 });
@@ -693,18 +693,6 @@ const probes = [
       // Sổ công ty khác bị RLS giấu (như policy RESTRICTIVE ẩn demo/sandbox với super admin) nhưng RPC web vẫn cộng.
       await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
       return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
-  { name: 'dòng tiền: "Tất cả" chỉ khi người hỏi thuộc đúng công ty (RLS sổ hẹp hơn tập sổ RPC web cộng)', sql: mutate([
-    `  IF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
-  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
-  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
-  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
-    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`, `  IF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
-  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`]),
-    run: async env => { await grantRead(env.db, ['reports_finance.cash_flow'], { orgWide: true }); await orgOverlay(env.db);
-      const one = (await all(env, 'cash_flow', { year: 2026 })).summary;
-      await secondOrg(env.db);
-      await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
-      return JSON.stringify((await all(env, 'cash_flow', { year: 2026 })).summary) !== JSON.stringify(one); } },
   { name: 'chi lớn: hàm đọc truyền restricted_view của kết nối (v_ok) vào hàm nguồn', sql: mutate([`v_buildings,10,v_ok) t) x;`, `v_buildings,10,NULL) t) x;`]),
     run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
       return (await all(env, 'top_expenses', { month: '2026-10' })).items.some(row => row.code === 'PC-402'); } },

@@ -1486,7 +1486,7 @@
     {
       "id": "cashbook-daily-cash-flow",
       "kind": "rpc",
-      "description": "Sổ quỹ theo ngày và Dòng tiền năm (crm_read_report report=cashbook_daily, cash_flow): Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như useCashBook, rồi chép phép tính của hai trang: tồn đầu/cuối cộng dồn từng ngày, ngày không phát sinh = 0, mặc định đầu tháng → hôm nay (DailyCashbookReport) và gộp 12 tháng + 4 quý của cả năm, mặc định năm nay (CashFlowReport).",
+      "description": "Sổ quỹ theo ngày: Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như web, giữ lịch sử luân chuyển để đối chiếu số dư.",
       "rpc": [
         "cashbook_opening_balance",
         "cashflow_by_day"
@@ -1501,11 +1501,6 @@
           "path": "src/pages/reports/finance/DailyCashbookReport.tsx",
           "region": "cashbook-daily-cash-flow",
           "sha256": "286f1cc9f985b9185afa35e64cb043e664bdb43c03d5b78a6c5ff07d66a69bea"
-        },
-        {
-          "path": "src/pages/reports/finance/CashFlowReport.tsx",
-          "region": "cashbook-daily-cash-flow",
-          "sha256": "5588175babd0e47f00deab9182283ad83d627ab1e9c9474309c481032ac733c3"
         }
       ],
       "webCalls": [
@@ -1528,30 +1523,58 @@
           "note": "cashbook_daily"
         },
         {
-          "sql": "public.cashbook_cash_flow_v1",
-          "calls": [
-            "cashflow_by_day"
-          ],
-          "note": "cash_flow"
-        },
-        {
           "sql": "app_private.hermes_w2b_read_v1",
           "calls": [
-            "cashbook_daily_v1",
-            "cashbook_cash_flow_v1"
+            "cashbook_daily_v1"
           ],
-          "note": "cashbook_daily, cash_flow"
+          "note": "cashbook_daily"
         },
         {
           "path": "infra/hermes-broker/wave2-b-contract.mjs",
           "contains": "crm.cashbook_daily_v1"
+        }
+      ],
+      "notes": "Dòng tiền năm dùng cashbook_cash_flow_v1 ở mục cash-flow-external-report. Sổ quỹ ngày vẫn giữ bút toán bàn giao, sổ ảo và hoàn tác để đối chiếu số dư."
+    },
+    {
+      "id": "cash-flow-external-report",
+      "kind": "rpc",
+      "description": "Dòng tiền bên ngoài của đúng công ty: web và Hermes dùng chung cashbook_cash_flow_v1, loại DEMO, sổ ảo, bàn giao nội bộ và phiếu hoàn tác; giữ tiền cọc/hoàn trả thực tế.",
+      "rpc": [
+        "cashbook_cash_flow_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useCashFlowReport.ts",
+          "region": "cash-flow-external-report",
+          "sha256": "251eaf47d5eee36e0b9331bfacbb9d628edb9ad421f0d424e7a9cf3ee0cecd0f"
+        },
+        {
+          "path": "src/pages/reports/finance/CashFlowReport.tsx",
+          "region": "cash-flow-external-report",
+          "sha256": "ed78bd802e01001bc66e1cdf4aaba2cf1381cda8c808525a782976cfa529579b"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useCashFlowReport.ts",
+          "rpc": "cashbook_cash_flow_v1"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "cashbook_cash_flow_v1"
+          ],
+          "note": "cash_flow"
         },
         {
           "path": "infra/hermes-broker/wave2-b-contract.mjs",
           "contains": "crm.cashbook_cash_flow_v1"
         }
       ],
-      "notes": "Đã biết 18/10: tổng thu/chi của trang ngày (summary web) lấy từ cashbook_period_totals, Hermes cộng từ các dòng cashflow_by_day nên không gọi cashbook_period_totals (không có marker). Hermes gọi hai RPC theo VỊ TRÍ tham số (p_before_date, p_building_id, p_account_id / p_start, p_end, p_building_id, p_account_id): đổi thứ tự tham số RPC là hỏng mà bản đồ không bắt. Hai RPC lọc my_org_ids() nên người ở nhiều công ty được Hermes gọi từng sổ của đúng công ty kết nối."
+      "notes": "RPC trả 12 tháng và 4 quý cho từng phạm vi toà. Web chỉ cộng dòng tháng; quý/năm được cộng từ tháng, tránh đếm lại quý. Các cặp ghi nhận–hoàn tác bị loại trên toàn lịch sử, kể cả khác kỳ."
     },
     {
       "id": "cashbook-list",

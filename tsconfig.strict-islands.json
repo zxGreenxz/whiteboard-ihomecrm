@@ -16,6 +16,7 @@
   },
   "include": [],
   "files": [
+    "src/hooks/useCashFlowReport.ts",
     "src/components/network-center/tabs/CameraLiveWall.tsx",
     "src/lib/network-center/cameraLive.ts",
     "src/components/network-center/tabs/CamerasTab.tsx",
