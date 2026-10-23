@@ -742,7 +742,7 @@ test('Hermes function attributes come from the last reviewed CREATE statement',(
   assert.deepEqual(attributes.get('app_private.hermes_schedule_message_v1'),{definer:false,searchPath:'pg_catalog'});
   assert.deepEqual(attributes.get('app_private.hermes_work_memory_int_v1'),{definer:true,searchPath:'pg_catalog'});
   assert.deepEqual([...attributes].filter(([,item])=>item.searchPath==='').map(([name])=>name).sort(),
-    ['app_private.hermes_domain_read_rows_fast_v1','app_private.hermes_expense_resolve_core_v1',
+    ['app_private.hermes_domain_read_rows_fast_v1','app_private.hermes_expense_manual_v1','app_private.hermes_expense_resolve_core_v1',
       'app_private.hermes_write_name_resolve_core_v1','app_private.hermes_write_name_resolve_core_v2',
       'public.hermes_contract_action_lookup_v1','public.hermes_name_fold_v1','public.hermes_read_text_v1','public.hermes_room_key_v1',
       'public.hermes_write_name_resolve_v1','public.hermes_write_name_resolve_v2']);

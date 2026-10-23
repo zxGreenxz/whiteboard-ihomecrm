@@ -14,7 +14,7 @@
 // Cổng dịch vụ (service) là adapter SQL (Mốc 6): prepareAction(token, request, {signal}) ⇒ biên nhận rỗng đông cứng;
 // finalizeAction(token, receipt, {signal, onDispatch, onRejected}) ⇒ outcome (khuôn kiểm ở dưới).
 import { randomUUID } from 'node:crypto';
-import { BrokerError, actionRejected, ACTION_WEB_LINK } from './broker.mjs';
+import { BrokerError, actionItem, actionRejected, itemDetail, ACTION_WEB_LINK } from './broker.mjs';
 import { ACTION_ID, canonicalJson, validateActionParams } from './action-catalog.mjs';
 import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 import { ACTION_TOOL_SHAPE, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired, listedActionTools,
@@ -131,7 +131,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       // Cờ "chưa rõ" chỉ tắt khi phản hồi đủ khuôn (known / rejected dưới đây). Lệnh ghi đã gửi mà khuôn lệch giữ cờ ⇒ broker
       // trả action_outcome_unknown + requestId, không phải backend_unavailable (mô hình sẽ gọi lại với requestId mới ⇒ ghi trùng).
       const known = value => { plan.uncertain = false; return value; };
-      const rejected = (reason, link) => { plan.uncertain = false; return actionRejected(reason, link); };
+      const rejected = (reason, ...extras) => { plan.uncertain = false; return actionRejected(reason, ...extras); };
       if (!data(outcome) || typeof outcome.kind !== 'string') fail('backend_unavailable');
       if (plan.op === 'status') {
         if (outcome.kind !== 'status' || !exact(outcome, ['kind', 'outcome'], ['action', 'result', 'reason']) ||
@@ -143,11 +143,15 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       }
       if (outcome.kind === 'needs_input') return known(content(needsFromOutcome(plan, outcome)));
       if (outcome.kind === 'rejected') {
-        // CV12 (Công việc Mốc 3): từ chối có thể kèm link web tới đúng đối tượng; link sai khuôn ⇒ khuôn lệch.
-        if (!exact(outcome, ['kind', 'reason'], ['link']) || !(outcome.link === undefined || (typeof outcome.link === 'string' && ACTION_WEB_LINK.test(outcome.link)))) fail('backend_unavailable');
+        // CV12 (Công việc Mốc 3): từ chối có thể kèm link web tới đúng đối tượng; item: khoản số mấy của lô bị từ chối (Thu chi Mốc 4)
+        // — số nguyên 1–20, không bao giờ chuỗi tự do. Sai khuôn ⇒ khuôn lệch.
+        if (!exact(outcome, ['kind', 'reason'], ['link', 'item'])
+          || !(outcome.link === undefined || (typeof outcome.link === 'string' && ACTION_WEB_LINK.test(outcome.link)))
+          || !(outcome.item === undefined || actionItem(outcome.item))) fail('backend_unavailable');
         // Lý do dạng needs_input từ SQL (vd thiếu lý do lúc ghi) vẫn là kết quả thường, không phải lỗi.
-        if (ACTION_INPUT_REASONS.includes(outcome.reason) && outcome.reason !== 'name_unresolved') return known(content(needsInput({ action: plan.action, reason: outcome.reason })));
-        throw rejected(outcome.reason, outcome.link);
+        if (ACTION_INPUT_REASONS.includes(outcome.reason) && outcome.reason !== 'name_unresolved') return known(content(needsInput({ action: plan.action, reason: outcome.reason,
+          detail: outcome.item === undefined ? undefined : itemDetail(outcome.item, ACTION_REASONS[outcome.reason].text) })));
+        throw rejected(outcome.reason, outcome.item, outcome.link);
       }
       if (outcome.kind === 'preview') {
         if (plan.phase === 'apply' || !exact(outcome, ['kind', 'preview', 'basis', 'resolved', 'confirm'], ['warnings']) || !data(outcome.preview) ||

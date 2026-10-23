@@ -537,6 +537,16 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
     statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
+  // Thu chi Mốc 4 (20261022075102): lõi giải tên expense.* thay thân — mã phiếu cho expense.edit/.cancel, tên mới của expense.edit, gợi ý
+  // không tự nhận hạng mục dòng tiền. Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql',
+    statementSha256: '99f1352dff60daa23eee1a4c35aff31293f89bb912a3ebd04ef12837b7ec1169' },
+  // Thu chi Mốc 4b (review): hàm DEFINER "phiếu bot được sửa/huỷ" chỉ tên đủ schema (public.income_expenses, app_private.assert_manual_voucher_v1,
+  // app_private.hermes_expense_reason_v1, app_private.hermes_action_flags) ⇒ search_path=''.
+  { name: 'app_private.hermes_expense_manual_v1',
+    sourcePath: 'supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql',
+    statementSha256: 'c3b35ae8d93f5bcf6236cebef19ec3c9a0f580e851875949eff6928f96cf7444' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

@@ -945,6 +945,26 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 4 (23/10/2026)",
       "sha256": "7504efedcec9e0a966ff3c2419300f7ad20feb1609532c5969b4cdf4b96e500c"
+    },
+    "supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_action_flags; CREATE OR REPLACE FUNCTION app_private.hermes_expense_manual_v1; thay thân hermes_expense_create_run_v1 / hermes_expense_resolve_core_v1 / hermes_expense_write_step_v1 (ghim md5 thân production)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects = bảng cờ + hàm mới — sinh 22/10/2026 trên nhánh Thu chi Mốc 4b"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (Hermes Đợt 2 Thu chi, Mốc 4 + 4b: expense.edit / expense.cancel gọi đúng revise_pending_income_expense_v1 / cancel_income_expense_flex_v1, cờ chính sách TC5 câu 55 mặc định false, lỗi lô nói khoản số mấy, gợi ý hạng mục không tự nhận hạng mục dòng tiền; 4b sửa theo review: search_path rỗng, xem trước huỷ theo kết cục chạy thử, giữ phòng khi toà không đổi, lượt 2 chốt lý do thật), chưa đi qua lane apply — bảng và hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (expense-write-sql 16/16; 19/19 đột biến bị bắt), tầng 2 TEST trong ROLLBACK. Áp qua npm run migrate:forward SAU 20261022044123 ($requires$ ghim md5 thân đang chạy); khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "table:app_private.hermes_action_flags",
+        "function:app_private.hermes_expense_manual_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2 Thu chi Mốc 4b, 22/10/2026",
+      "sha256": "e42ed628bb109d71ded4957066c67387a022894a25e0eba1f25b1992c7a46d91"
     }
   }
 }

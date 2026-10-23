@@ -119,13 +119,21 @@ export class BrokerError extends Error {
 
 /** Đường dẫn web tương đối (CV12, Công việc Mốc 3): chỉ ký tự đường dẫn/truy vấn, bắt đầu bằng '/', không có '//' hay tên miền. */
 export const ACTION_WEB_LINK = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,299}$/;
-/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. link (CV12): đường dẫn web
- * tới đúng đối tượng để người dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot); sai khuôn ⇒ bỏ. */
-export function actionRejected(code, link) {
+/** Số thứ tự khoản trong lô (1–20) mà SQL báo kèm lý do; câu tới mô hình = "Khoản N: " + câu tĩnh của lý do. */
+export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && value <= 20;
+export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. Phần kèm theo, nhận theo kiểu:
+ * số = khoản số mấy của lô (Thu chi Mốc 4, 1–20); chuỗi = link (CV12, Công việc Mốc 3): đường dẫn web tới đúng đối tượng để người
+ * dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot). Sai khuôn ⇒ bỏ. */
+export function actionRejected(code, ...extras) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
-  error.detail = ACTION_REASONS[error.reason].text;
-  if (typeof link === 'string' && ACTION_WEB_LINK.test(link)) error.link = link;
+  for (const extra of extras) {
+    if (actionItem(extra)) error.item = extra;
+    else if (typeof extra === 'string' && ACTION_WEB_LINK.test(extra)) error.link = extra;
+  }
+  error.detail = itemDetail(error.item, ACTION_REASONS[error.reason].text);
   return error;
 }
 
