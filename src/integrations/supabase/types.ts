@@ -25424,6 +25424,16 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_contract_party_lookup_v1: {
+        Args: {
+          p_action: string
+          p_building_ids: string[]
+          p_organization_id: string
+          p_params: Json
+          p_room_id: string
+        }
+        Returns: Json
+      }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -25508,6 +25518,18 @@ export type Database = {
         Returns: Json
       }
       hermes_group_send_v1: { Args: { p: Json }; Returns: Json }
+      hermes_invoice_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_my_connections_v1: { Args: { p_org: string }; Returns: Json }
       hermes_my_task_follow_stop_v1: {
         Args: { p_input: Json; p_org: string }
@@ -26014,6 +26036,14 @@ export type Database = {
           payment_method: string
         }[]
       }
+      invoice_collection_plan_core_v1: {
+        Args: { p_input: Json }
+        Returns: Json
+      }
+      invoice_collection_plan_v1: {
+        Args: { p_invoice_id: string; p_lines: Json; p_options?: Json }
+        Returns: Json
+      }
       invoice_detail_v1: {
         Args: {
           p_building_ids?: string[]
@@ -26342,6 +26372,43 @@ export type Database = {
       job_visible_as_assignee_v1: {
         Args: { p_assignee_id: string }
         Returns: boolean
+      }
+      jobs_board_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_kind?: string
+          p_org_wide?: boolean
+          p_organization_id: string
+          p_query?: string
+          p_room_id?: string
+          p_staff_id?: string
+          p_status?: string
+          p_to?: string
+        }
+        Returns: {
+          assignee_id: string
+          assignee_name: string
+          assigner_name: string
+          building_id: string
+          building_name: string
+          code: string
+          completed_on: string
+          completion_time: string
+          created_on: string
+          deadline: string
+          deadline_local: string
+          job_id: string
+          job_type: string
+          organization_id: string
+          overdue: boolean
+          overdue_days: number
+          progress: string
+          room_id: string
+          room_name: string
+          status: string
+          title: string
+        }[]
       }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       landlord_ihome_profit_v1: {
