@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1637,
-  "soFileDocBangFs": 429,
-  "tongLoiGoi": 1067,
-  "khongPhanLoaiDuoc": 471,
+  "tongSoFileTest": 1646,
+  "soFileDocBangFs": 431,
+  "tongLoiGoi": 1074,
+  "khongPhanLoaiDuoc": 470,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 61,
+      "soFile": 62,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 174,
+      "soFile": 177,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -166,6 +166,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/domain-composition.test.mjs",
+      "soGoi": 12,
+      "loai": {
+        "sql": 11
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
       "soGoi": 11,
       "loai": {
@@ -234,14 +242,6 @@
         "ma-nguon": 3
       },
       "khongPhanLoaiDuoc": 6
-    },
-    {
-      "file": "infra/hermes-broker/domain-composition.test.mjs",
-      "soGoi": 8,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/wave2-b.test.mjs",
@@ -1095,10 +1095,13 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/expense-write-sql.test.mjs",
+      "file": "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
       "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
+      "loai": {
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/jobs-assignee-sql.test.mjs",
@@ -1129,6 +1132,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
@@ -1888,6 +1897,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/optional-org-policy-sql.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1966,12 +1983,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/hermes-broker/task-input-options.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1981,6 +1992,14 @@
     },
     {
       "file": "infra/hermes-broker/task-metadata.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-c-tasks-board.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1

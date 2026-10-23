@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T02:14:50.640Z",
+  "generatedAt": "2026-10-23T03:04:21.824Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 840,
-    "unknown": 81,
-    "catalog-proven": 206,
+    "unknown": 87,
+    "catalog-proven": 210,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13049,6 +13049,19 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022074741_hermes_task_action_edit_v1.sql",
+      "version": "20261022074741",
+      "name": "hermes_task_action_edit_v1",
+      "scheme": "timestamp14",
+      "sha256": "88ae400567ff56b11c8af4566a9a416c46074b4fe758cf3662ac365b05263a8f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_edit_prepare_v1",
+        "function:app_private.hermes_task_edit_finish_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql",
       "version": "20261022074815",
       "name": "hermes_contract_party_draft_v1",
@@ -13061,6 +13074,19 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql",
+      "version": "20261022075102",
+      "name": "hermes_expense_edit_cancel_v1",
+      "scheme": "timestamp14",
+      "sha256": "e42ed628bb109d71ded4957066c67387a022894a25e0eba1f25b1992c7a46d91",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_action_flags",
+        "function:app_private.hermes_expense_manual_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022075119_hermes_w2d_contract_drafts_v1.sql",
       "version": "20261022075119",
       "name": "hermes_w2d_contract_drafts_v1",
@@ -13070,6 +13096,34 @@
       "evidence": [
         "catalog:function:app_private.hermes_w2d_catalog_v1",
         "catalog:function:app_private.hermes_w2d_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022075219_invoice_collection_plan_v1.sql",
+      "version": "20261022075219",
+      "name": "invoice_collection_plan_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e38bf42127d04d5a40122d8cc433f6eaf34f29b2989d2183be0d17ef829e25e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.invoice_collection_plan_core_v1",
+        "function:public.invoice_collection_plan_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql",
+      "version": "20261022075230",
+      "name": "hermes_invoice_action_v1",
+      "scheme": "timestamp14",
+      "sha256": "6a5db142adb069ec6129bcaf4ac83aea72b222d928e17af1922614283103df82",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_invoice_reason_v1",
+        "function:app_private.hermes_invoice_lookup_core_v1",
+        "function:app_private.hermes_invoice_action_step_v1",
+        "function:public.hermes_invoice_action_v1"
       ]
     },
     {
@@ -13106,6 +13160,31 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql",
+      "version": "20261022153345",
+      "name": "hermes_domain_tasks_assignee_v1",
+      "scheme": "timestamp14",
+      "sha256": "685a34685a2e1d8bcf8864d0c736250eb7e43d0f4e98169c8eac07f386a7c040",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022164201_hermes_task_batch_v1.sql",
+      "version": "20261022164201",
+      "name": "hermes_task_batch_v1",
+      "scheme": "timestamp14",
+      "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_managed_buildings_v1",
+        "function:app_private.hermes_task_batch_prepare_v1",
+        "function:app_private.hermes_task_batch_finish_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261022172459_dau_van_tay_chot_ln_theo_so_tien.sql",
       "version": "20261022172459",
       "name": "dau_van_tay_chot_ln_theo_so_tien",
@@ -13125,6 +13204,52 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-22T23:30:27.523Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180351_hermes_task_follow_building_v1.sql",
+      "version": "20261022180351",
+      "name": "hermes_task_follow_building_v1",
+      "scheme": "timestamp14",
+      "sha256": "b541675c1098a47d9a00840c4f0b8c80e8f366c7e07503b6f5a2dd9ece514a80",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_task_follow_grant_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180359_hermes_w2_tasks_view_reused_v1.sql",
+      "version": "20261022180359",
+      "name": "hermes_w2_tasks_view_reused_v1",
+      "scheme": "timestamp14",
+      "sha256": "ca392c9bfca451ac3563a815f3ff3ce7caa2c612c98b973bb7ead48e5a3c88d9",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2_reused_keys_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180400_hermes_w2c_jobs_board_shared_v1.sql",
+      "version": "20261022180400",
+      "name": "hermes_w2c_jobs_board_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "7504efedcec9e0a966ff3c2419300f7ad20feb1609532c5969b4cdf4b96e500c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.jobs_board_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180402_hermes_w2c_tasks_board_v1.sql",
+      "version": "20261022180402",
+      "name": "hermes_w2c_tasks_board_v1",
+      "scheme": "timestamp14",
+      "sha256": "16d862ef0ab0c341e746656878bd13e7f88682cce6c3dcd4339401b8141ea272",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2c_catalog_v1",
+        "catalog:function:app_private.hermes_w2c_read_v1"
       ]
     },
     {
