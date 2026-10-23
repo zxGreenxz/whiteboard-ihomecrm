@@ -26807,6 +26807,7 @@ export type Database = {
           p_is_active?: boolean
           p_landlord_account_ids: string[]
           p_landlord_name: string
+          p_manager_fixed_amount?: number
           p_manager_percent: number
           p_note?: string
           p_opening_balance?: number

@@ -9,6 +9,7 @@ import {
   NET_DIRECTION_LABEL,
   PAYMENT_DIRECTION_LABEL,
   describeNet,
+  managerTermsShort,
   monthKey,
   monthLabel,
   type SettlementOverview,
@@ -131,7 +132,7 @@ export function SettlementOverviewCard({
                 </span>
                 <span className="mt-1 flex justify-between gap-2 text-xs text-muted-foreground">
                   <span>Lợi nhuận {formatVND(m.profit)}</span>
-                  <span>Phần quản lý ({m.manager_percent.toLocaleString('vi-VN')}%) {formatVND(m.manager_share)}</span>
+                  <span>Phần quản lý ({managerTermsShort(m)}) {formatVND(m.manager_share)}</span>
                 </span>
                 <span className="mt-0.5 flex justify-end"><NetText value={m.landlord_owes_manager} className="font-medium" /></span>
               </button>
@@ -164,7 +165,7 @@ export function SettlementOverviewCard({
                     <td className={`px-3 py-2 text-right tabular-nums ${m.profit < 0 ? 'text-destructive' : ''}`}>{formatVND(m.profit)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatVND(m.manager_share)}
-                      <span className="ml-1 text-xs text-muted-foreground">({m.manager_percent.toLocaleString('vi-VN')}%)</span>
+                      <span className="ml-1 text-xs text-muted-foreground">({managerTermsShort(m)})</span>
                     </td>
                     <td className="px-3 py-2 text-right"><NetText value={m.landlord_owes_manager} /></td>
                     <td className="px-3 py-2">

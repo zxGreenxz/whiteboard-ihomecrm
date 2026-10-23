@@ -173,7 +173,10 @@ function useInvalidateLandlord() {
 export interface UpsertLandlordOperationInput {
   buildingId: string;
   landlordName: string;
+  /** % lợi nhuận tháng (0–100, tối đa 2 chữ số thập phân); 0 nếu chỉ nhận tiền cố định. */
   managerPercent: number;
+  /** Tiền quản lý nhận cố định mỗi tháng, nguyên đồng ≥ 0 (vẫn nhận đủ khi tháng lỗ). */
+  managerFixedAmount: number;
   /** 'YYYY-MM-01' */
   effectiveFrom: string;
   landlordAccountIds: string[];
@@ -183,7 +186,7 @@ export interface UpsertLandlordOperationInput {
   openingBalance: number;
   /** Đã đối chiếu số dư đầu kỳ với chủ nhà (chưa xác nhận thì không chốt được tháng). */
   openingConfirmed: boolean;
-  /** 'YYYY-MM-01' — % / sổ mới áp từ tháng này (null: server lấy ngay sau tháng chốt gần nhất). */
+  /** 'YYYY-MM-01' — % / tiền cố định / sổ mới áp từ tháng này (null: server lấy ngay sau tháng chốt gần nhất). */
   termsFrom: string | null;
   /** Số cọc trước kỳ ở sổ chủ nhà mà màn đã hiện — server chỉ nhận xác nhận khi đúng số này. */
   openingSeenPreStart: number | null;
@@ -209,6 +212,8 @@ export const useUpsertLandlordOperation = () => {
         p_terms_from: input.termsFrom,
         p_opening_seen_pre_start: input.openingSeenPreStart,
         p_expected_updated_at: input.expectedUpdatedAt,
+        // luôn gửi đúng số đang hiện cho tháng termsFrom (server so từng trường với điều khoản đang áp ở đó)
+        p_manager_fixed_amount: input.managerFixedAmount,
       });
       if (error) throw error;
       const receipt = upsertReceiptSchema.parse(data);

@@ -32,7 +32,6 @@ import {
   getInvoiceEditMode,
   canCancelInvoice,
   roundInvoiceTotal,
-  getInvoiceTitle,
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
 import { invoiceListRpcArgs, invoiceStatisticsRpcArgs, readInvoiceListPayload } from '@/lib/invoiceReadArgs';
@@ -262,61 +261,9 @@ export const useInvoice = (invoiceId?: string) => {
   });
 };
 
-// =============================================
-// useInvoiceTotalsByIds — lấy GỌN tổng/đã trả/còn lại của nhiều hoá đơn theo id.
-// Dùng cho báo cáo gộp khoản thu theo hoá đơn (note thiếu/thừa so với HĐ) —
-// chỉ cần vài cột số, không kéo cả quan hệ như useInvoice.
-// =============================================
-
-export interface InvoiceTotalLite {
-  id: string;
-  total_amount: number;
-  paid_amount: number;
-  remaining_amount: number;
-  // Tên hoá đơn KHÔNG kèm phòng/toà (getInvoiceTitle trên bản ghi thiếu quan hệ
-  // room/building) — cột Thu bên BC Lợi Nhuận hiện đúng tên như trang /invoices
-  // nhưng gọn (phòng đã có cột riêng). Vd "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
-  displayTitle: string;
-}
-
-export const useInvoiceTotalsByIds = (ids: string[]) => {
-  // Dedupe + sort để queryKey ổn định (không refetch oan khi thứ tự đổi).
-  const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
-  return useQuery({
-    queryKey: ['invoice-totals-by-ids', sortedIds],
-    enabled: sortedIds.length > 0,
-    queryFn: async (): Promise<Map<string, InvoiceTotalLite>> => {
-      const map = new Map<string, InvoiceTotalLite>();
-      // Chunk để tránh URL .in() quá dài (PostgREST 400 khi danh sách id lớn).
-      const CHUNK = 200;
-      for (let i = 0; i < sortedIds.length; i += CHUNK) {
-        const slice = sortedIds.slice(i, i + CHUNK);
-        const { data, error } = await supabase
-          .from('invoices')
-          .select(
-            `id, total_amount, paid_amount, remaining_amount,
-             kind, billing_month, notes, issue_date,
-             contract:contracts!invoices_contract_id_fkey (start_billing_date),
-             invoice_items (type, from_date)`,
-          )
-          .in('id', slice)
-          .is('deleted_at', null);
-        if (error) throw error;
-        for (const row of financialReadRows(data as any[] | null)) {
-          map.set(row.id, {
-            id: row.id,
-            total_amount: financialReadNumber(row.total_amount),
-            paid_amount: financialReadNumber(row.paid_amount),
-            remaining_amount: financialReadNumber(row.remaining_amount),
-            // Không select room/building → title tự rớt phần "<phòng>/<toà>".
-            displayTitle: getInvoiceTitle(row),
-          });
-        }
-      }
-      return map;
-    },
-  });
-};
+// useInvoiceTotalsByIds — tổng/đã trả/còn lại + tên của nhiều hoá đơn theo id: nay ở module riêng
+// (trang Thu chi dùng mà không kéo cả file này). Giữ đường import cũ cho nơi đang dùng.
+export { useInvoiceTotalsByIds, type InvoiceTotalLite } from '@/hooks/useInvoiceTotalsByIds';
 
 // =============================================
 // useFirstInvoiceDetails — chi tiết "hoá đơn tháng đầu" (HĐ tự sinh khi ký HĐ).

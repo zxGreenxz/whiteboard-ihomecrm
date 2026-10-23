@@ -1,8 +1,9 @@
 // =============================================================================
 // Quyết toán vận hành — toà VẬN HÀNH CHO CHỦ NHÀ (chủ chốt 21/10/2026).
 //
-// Chủ nhà sở hữu toà, iHome vận hành và nhận % lợi nhuận tháng theo thoả thuận
-// (lỗ thì không tính). Mỗi tháng: ai đang giữ tiền (sổ chủ nhà / sổ quản lý) ⇒
+// Chủ nhà sở hữu toà, iHome vận hành và nhận % lợi nhuận tháng (lỗ thì phần % không tính) và/hoặc
+// tiền cố định mỗi tháng (vẫn nhận đủ khi lỗ — chủ chốt 23/10/2026) theo thoả thuận. Mỗi tháng: ai
+// đang giữ tiền (sổ chủ nhà / sổ quản lý) ⇒
 // quyết toán chủ nhà trả quản lý hay quản lý trả lại chủ nhà, cộng dồn các tháng.
 // Chỉ chủ công ty / super admin vào được — server chặn bằng 42501; route chỉ cần
 // đăng nhập, giống trang Báo cáo Lợi Nhuận (gate bên trong trang).
@@ -72,7 +73,7 @@ export default function LandlordSettlementPage() {
           <EmptyState
             icon={Building2}
             title="Chưa có toà vận hành cho chủ nhà"
-            description="Cài đặt toà: tên chủ nhà, % quản lý theo thoả thuận, tháng bắt đầu và sổ quỹ của chủ nhà."
+            description="Cài đặt toà: tên chủ nhà, phần quản lý theo thoả thuận (% lợi nhuận và/hoặc tiền cố định mỗi tháng), tháng bắt đầu và sổ quỹ của chủ nhà."
             actionLabel="Cài đặt toà vận hành"
             onAction={() => setConfig({ buildingId: null })}
           />

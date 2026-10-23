@@ -5,6 +5,9 @@ import {
   ihomeLineOf,
   ihomeProfitOf,
   landlordErrorMessage,
+  landlordShortfallOf,
+  managerTermsLabel,
+  managerTermsShort,
   pendingBuildingIdsOf,
   landlordShareUrl,
   monthKey,
@@ -55,11 +58,11 @@ describe('đọc gói quyết toán', () => {
   it('nhận gói link công khai (không có id phiếu)', () => {
     const parsed = settlementPublicSchema.parse({
       overview: {
-        building_name: 'Toà A', landlord_name: 'Chủ nhà A', manager_percent: 30, effective_from: '2025-01-01',
+        building_name: 'Toà A', landlord_name: 'Chủ nhà A', manager_percent: 30, manager_fixed_amount: 0, effective_from: '2025-01-01',
         is_active: true, opening_confirmed: true, current_month: '2025-02-01',
         months: [{
-          period_month: '2025-01-01', status: 'OPEN', is_stale: false, is_current_month: false, manager_percent: 30, revenue: 1, expense: 0,
-          profit: 1, manager_share: 0, landlord_owes_manager: 0, pending_count: 0,
+          period_month: '2025-01-01', status: 'OPEN', is_stale: false, is_current_month: false, manager_percent: 30,
+          manager_fixed_amount: 0, revenue: 1, expense: 0, profit: 1, manager_share: 0, landlord_owes_manager: 0, pending_count: 0,
         }],
         payments: [{ paid_on: '2025-02-03', direction: 'LANDLORD_TO_MANAGER', amount: 1_000_000, note: null }],
         totals: { opening_balance: 0, closed_month_count: 0, closed_net: 0, open_net: 0, paid_by_landlord: 1_000_000, paid_by_manager: 0, balance_closed: -1_000_000, balance_with_open: -1_000_000 },
@@ -73,6 +76,45 @@ describe('đọc gói quyết toán', () => {
     expect(() => settlementMonthSchema.parse({ ...month, statement: { ...statement, totals: { ...statement.totals, profit: '9020000' } } })).toThrow();
     expect(() => settlementMonthSchema.parse({ ...month, status: 'LOCKED' })).toThrow();
     expect(() => settlementMonthSchema.parse({ ...month, close_blockers: ['UNKNOWN'] })).toThrow();
+    expect(() => settlementMonthSchema.parse({ ...month, statement: { ...statement, manager_fixed_amount: '5000000' } })).toThrow();
+    expect(() => settlementMonthSchema.parse({ ...month, statement: { ...statement, totals: { ...statement.totals, manager_fixed_share: null } } })).toThrow();
+  });
+
+  it('ảnh chốt trước 23/10/2026 (chỉ có %): tiền cố định 0, phần % là toàn bộ phần quản lý server đã tính', () => {
+    const st = settlementMonthSchema.parse(month).statement!;
+    expect(st.manager_fixed_amount).toBe(0);
+    expect([st.totals.manager_fixed_share, st.totals.manager_percent_share, st.totals.manager_share]).toEqual([0, 2_706_000, 2_706_000]);
+  });
+
+  it('gói có tiền cố định: lấy nguyên hai phần server tách, không tự cộng trừ', () => {
+    const st = settlementMonthSchema.parse({
+      ...month,
+      statement: {
+        ...statement, manager_fixed_amount: 5_000_000,
+        totals: { ...statement.totals, manager_fixed_share: 5_000_000, manager_percent_share: 2_706_000, manager_share: 7_706_000 },
+      },
+    }).statement!;
+    expect([st.manager_fixed_amount, st.totals.manager_fixed_share, st.totals.manager_percent_share, st.totals.manager_share])
+      .toEqual([5_000_000, 5_000_000, 2_706_000, 7_706_000]);
+  });
+});
+
+describe('phần quản lý: tiền cố định và/hoặc %', () => {
+  const vnd = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
+  it.each([
+    [{ manager_percent: 30, manager_fixed_amount: 5_000_000 }, '5.000.000 đ/tháng + 30% lợi nhuận', 'cố định + 30%'],
+    [{ manager_percent: 0, manager_fixed_amount: 5_000_000 }, '5.000.000 đ/tháng cố định', 'cố định'],
+    [{ manager_percent: 12.5, manager_fixed_amount: 0 }, '12,5% lợi nhuận', '12,5%'],
+  ])('%o ⇒ %s', (t, dai, ngan) => {
+    expect(managerTermsLabel(t, vnd)).toBe(dai);
+    expect(managerTermsShort(t)).toBe(ngan);
+  });
+  it('chủ nhà bù: chỉ khi có phần cố định và phần chủ nhà âm', () => {
+    expect(landlordShortfallOf({ manager_fixed_share: 5_000_000, landlord_share: -7_000_000 })).toBe(7_000_000);
+    expect(landlordShortfallOf({ manager_fixed_share: 5_000_000, landlord_share: 0 })).toBeNull();
+    expect(landlordShortfallOf({ manager_fixed_share: 5_000_000, landlord_share: 1_209_000 })).toBeNull();
+    // không có phần cố định: phần chủ nhà âm là lỗ của tháng (luật cũ), không phải "bù phí"
+    expect(landlordShortfallOf({ manager_fixed_share: 0, landlord_share: -2_000_000 })).toBeNull();
   });
 });
 
@@ -135,13 +177,19 @@ describe('lịch sử cài đặt toà', () => {
       terms: [...base.terms, { valid_from: '2025-03-01', manager_percent: 40, landlord_account_ids: ['s1', 's2'] }],
     };
     expect(describeOperationChange(base, after, vnd)).toEqual([
-      'Tỷ lệ / sổ chủ nhà: từ 01/2025: 30% · 1 sổ chủ nhà → từ 01/2025: 30% · 1 sổ chủ nhà; từ 03/2025: 40% · 2 sổ chủ nhà',
+      'Phần quản lý / sổ chủ nhà: từ 01/2025: 30% · 1 sổ chủ nhà → từ 01/2025: 30% · 1 sổ chủ nhà; từ 03/2025: 40% · 2 sổ chủ nhà',
       'Số dư đầu kỳ: 0đ → 300000đ',
       'Xác nhận số dư đầu kỳ với chủ nhà',
       'Ngừng áp dụng',
     ]);
     expect(describeOperationChange(after, { ...after, opening_confirmed_at: null }, vnd)).toEqual(['Bỏ xác nhận số dư đầu kỳ']);
     expect(describeOperationChange(base, { ...base, effective_from: '2024-12-01' }, vnd)).toEqual(['Áp dụng từ: 01/2025 → 12/2024']);
+  });
+  it('đổi tiền cố định: nói rõ số trước/sau; ảnh cũ không có trường thì coi là 0', () => {
+    const after = { ...base, terms: [{ ...base.terms[0]!, manager_fixed_amount: 5_000_000 }] };
+    expect(describeOperationChange(base, after, vnd)).toEqual([
+      'Phần quản lý / sổ chủ nhà: từ 01/2025: 30% · 1 sổ chủ nhà → từ 01/2025: 30% + 5000000đ/tháng · 1 sổ chủ nhà',
+    ]);
   });
 });
 
@@ -159,6 +207,12 @@ describe('lợi nhuận của iHome trên Báo cáo LN', () => {
       .toEqual({ profit: 77_000_000, landlordShare: 23_000_000, operatedCount: 2, provisional: true });
     expect(ihomeProfitOf(100_000_000, rows, { months: ['2026-10-01'], buildingIds: [A] }))
       .toEqual({ profit: 72_000_000, landlordShare: 28_000_000, operatedCount: 1, provisional: false });
+  });
+  it('tháng lỗ có phí quản lý cố định: phần chủ nhà âm ⇒ của iHome = tổng + phần chủ nhà bù (= đúng phí cố định)', () => {
+    // LN toà −2tr, phí cố định 5tr ⇒ phần chủ nhà −7tr ⇒ iHome = −2tr − (−7tr) = 5tr
+    const lo = [{ building_id: A, period_month: '2026-12-01', status: 'OPEN' as const, profit: -2_000_000, manager_share: 5_000_000, landlord_share: -7_000_000 }];
+    expect(ihomeProfitOf(-2_000_000, lo, { months: ['2026-12'], buildingIds: [A] }))
+      .toEqual({ profit: 5_000_000, landlordShare: -7_000_000, operatedCount: 1, provisional: true });
   });
   it('không có toà vận hành trong phạm vi ⇒ bằng đúng tổng', () => {
     expect(ihomeProfitOf(50_000_000, rows, { months: ['2026-09'], buildingIds: null }))

@@ -308,6 +308,11 @@ export function CloseMonthDialog({
           <dl className="space-y-1 rounded-md border p-3 text-sm">
             <div className="flex justify-between"><dt>Lợi nhuận</dt><dd className="tabular-nums">{formatVND(t.profit)}</dd></div>
             <div className="flex justify-between"><dt>Phần quản lý</dt><dd className="tabular-nums">{formatVND(t.manager_share)}</dd></div>
+            {t.manager_fixed_share > 0 && (
+              <p className="text-xs text-muted-foreground">
+                gồm phí cố định {formatVND(t.manager_fixed_share)} + phần % {formatVND(t.manager_percent_share)}
+              </p>
+            )}
             <div className="flex justify-between font-semibold"><dt>{NET_DIRECTION_LABEL[net.direction]}</dt><dd className="tabular-nums">{formatVND(net.amount)}</dd></div>
           </dl>
         )}

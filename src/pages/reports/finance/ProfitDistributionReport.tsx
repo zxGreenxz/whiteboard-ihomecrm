@@ -21,6 +21,7 @@ import IncomeExpenseForm, {
 import MissingExpenseSettingsDialog from "@/components/reports/MissingExpenseSettingsDialog";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
+import { profitReportRowDescription } from "@/lib/voucherDisplayName";
 import { toast } from "sonner";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
@@ -841,20 +842,14 @@ function ProfitDistributionDesktop() {
   //    "<phòng>/<toà>" (phòng đã có cột riêng) — vd "TIỀN PHÒNG - 05/2026",
   //    HĐ tháng đầu là "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
   //  - Chưa tải xong invoiceTotals → tạm rơi về nhãn rút gọn cũ.
-  const displayDescription = (r: DisplayRow, side: "income" | "expense"): string => {
-    // Dòng ghi chú thuần (phòng trống/thiếu hoá đơn) giữ nguyên mô tả — ghi chú
-    // "Trống N ngày … — Thanh lý HĐ" chứa "thanh ly" nhưng KHÔNG phải khoản thanh lý.
-    if (r.isNote) return r.description;
-    // Đổi tên theo hoá đơn / thanh lý chỉ cho khoản THU — phiếu chi (vd chi hoàn cọc khi thanh lý)
-    // giữ đúng tên của nó, không bị gọi thành "HĐ Thanh Lý Hợp Đồng".
-    if (side === "expense") return r.description;
-    if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
-    const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
-    if (invTitle) return invTitle;
-    if (nrm(r.description).includes("thu tien theo hd tien phong"))
-      return `Hóa Đơn Tiền Phòng T${mm || 1}`;
-    return r.description;
-  };
+  //  Luật nằm ở src/lib/voucherDisplayName.ts (dùng chung với Thu chi và Quyết toán vận hành). Dòng
+  //  ghi chú thuần ("Trống N ngày … — Thanh lý HĐ" chứa "thanh ly" nhưng KHÔNG phải khoản thanh lý) và
+  //  phiếu chi (vd chi hoàn cọc khi thanh lý) giữ đúng tên của nó.
+  const displayDescription = (r: DisplayRow, side: "income" | "expense"): string =>
+    profitReportRowDescription(
+      { isNote: !!r.isNote, side, typeName: r.typeName, description: r.description },
+      { invoice: r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.titleParts : null, month: mm || 1 },
+    );
 
   // Mặc định ẩn/hiện cột: ẩn cột mà MỌI dòng (gộp cả 2 bên để 2 bảng đồng cột)
   // có cùng giá trị — tức cột đã bị bộ lọc ghim (tháng/toà/phòng/kỳ…).
