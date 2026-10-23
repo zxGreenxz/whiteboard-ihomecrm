@@ -47,7 +47,10 @@ const preview = (extra = {}) => ({ kind: 'preview', basis: 'b'.repeat(32), resol
 
 test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong hợp đồng; thu một phòng hoặc lô ≤ 10', () => {
   assert.deepEqual(INVOICE_ACTIONS.map(action => [action.id, action.key, action.class, action.rpc]),
-    [['invoice.collect', 'thu_tien.collect_transfer', 'money', INVOICE_RPC], ['invoice.meter_record', 'meter_readings.create', 'money', INVOICE_RPC]]);
+    [['invoice.collect', 'thu_tien.collect_transfer', 'money', INVOICE_RPC], ['invoice.meter_record', 'meter_readings.create', 'money', INVOICE_RPC],
+      ['invoice.adjust', 'invoices.edit', 'money', INVOICE_RPC], ['invoice.adjustment_check', 'invoices.approve', 'irreversible', INVOICE_RPC],
+      ['invoice.cancel', 'invoices.cancel', 'money', INVOICE_RPC], ['invoice.restore', 'invoices.cancel', 'money', INVOICE_RPC]]);
+  assert.ok(INVOICE_ACTIONS.every(action => HERMES_ACTION_CAPABILITIES.includes(action.key)), 'mọi khoá trong hợp đồng');
   assert.ok(HERMES_ACTION_CAPABILITIES.includes(INVOICE_COLLECT_KEY));
   assert.ok(!HERMES_ACTION_FOUNDATION_KEYS.includes(INVOICE_COLLECT_KEY) && !HERMES_ACTION_CAPABILITIES.includes('thu_tien.collect'), 'không bao giờ là thu_tien.collect');
   const [collect] = invoiceCatalog().listing({ action: [INVOICE_COLLECT_KEY] });
@@ -76,6 +79,43 @@ test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong
   assert.equal(validateActionParams(INVOICE_METER_RECORD, { buildingName: 'A', readings: Array.from({ length: 60 }, (_, i) => ({ roomName: String(i), value: i })) }).ok, true);
   // Hai trang cùng một danh mục production (server.mjs): không trùng mã, không khoá ngoài hợp đồng.
   assert.deepEqual([...createActionCatalog([...EXPENSE_ACTIONS, ...INVOICE_ACTIONS]).pages], ['expense', 'invoice']);
+});
+
+test('Mốc 5: điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục — khuôn tham số, lý do bắt buộc, luôn xem trước (kể cả irreversible)', () => {
+  const listed = invoiceCatalog().listing({ action: ['invoices.edit', 'invoices.approve', 'invoices.cancel'] });
+  assert.deepEqual(listed.map(item => [item.action, item.confirm]), [['invoice.adjust', 'always'], ['invoice.adjustment_check', 'always'],
+    ['invoice.cancel', 'always'], ['invoice.restore', 'always']]);
+  const [adjust, check, cancel] = listed;
+  assert.deepEqual(Object.keys(adjust.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'reason', 'discount', 'addItems', 'setItems']);
+  assert.deepEqual(Object.entries(adjust.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName', 'reason']);
+  assert.deepEqual([adjust.params.addItems.max, adjust.params.setItems.max], [5, 5]);
+  assert.deepEqual(Object.keys(check.params), ['buildingName', 'roomName', 'month', 'invoiceNumber']);
+  assert.deepEqual(Object.entries(cancel.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName', 'reason']);
+  const [ADJUST, , CANCEL] = INVOICE_ACTIONS.slice(2);
+  const base = { buildingName: '44TL', roomName: '201', reason: 'Khách báo sai tiền phòng' };
+  assert.deepEqual(validateActionParams(ADJUST, { ...base, discount: '100000', set_items: [{ match: 'tiền phòng', amount: 0 }],
+    add_items: [{ description: 'Phí sửa khoá', amount: 200000 }] }),
+    { ok: true, value: { ...base, discount: 100000, setItems: [{ match: 'tiền phòng', amount: 0 }], addItems: [{ description: 'Phí sửa khoá', amount: 200000 }] } });
+  for (const params of [{ ...base, reason: 'ngắn' }, { ...base, discount: 0 }, { ...base, addItems: [{ description: 'x', amount: 0 }] },
+    { ...base, setItems: Array.from({ length: 6 }, () => ({ match: 'a', amount: 1 })) }, { ...base, setItems: [{ id: id('1'), amount: 1 }] }, { ...base, invoiceId: id('1') }])
+    assert.equal(validateActionParams(ADJUST, params).ok, false, JSON.stringify(params).slice(0, 80));
+  assert.equal(validateActionParams(CANCEL, { ...base, reason: 'x'.repeat(501) }).ok, false);
+  assert.equal(validateActionParams(CANCEL, { ...base, month: '2026-10', invoiceNumber: 'INV-1' }).ok, true);
+});
+
+test('Mốc 5 qua runtime: không đổi gì / không có gì để kiểm là câu hỏi lại; tự kiểm, đã thu, trùng kỳ là lỗi có câu tĩnh', async t => {
+  for (const [reasonCode, form] of [['adjust_no_change', 'needs_input'], ['nothing_to_check', 'needs_input'], ['adjustment_self_check_web_only', 'rejected'],
+    ['cancel_has_payment', 'rejected'], ['restore_conflict', 'rejected'], ['invoice_already_cancelled', 'rejected']]) {
+    const { broker, call } = setup(t, { action: ['invoices.edit', 'invoices.approve', 'invoices.cancel'], respond: () => ({ kind: 'rejected', reason: reasonCode }) });
+    const args = { action: 'invoice.adjustment_check', params: { buildingName: '44TL', roomName: '201' } };
+    if (form === 'needs_input') {
+      const out = await call(args);
+      assert.deepEqual([out.outcome ?? out.kind, out.reason], ['needs_input', reasonCode], JSON.stringify(out));
+    } else {
+      await assert.rejects(broker.callTool(TOKEN, 'crm_action_run', args), error =>
+        error.code === 'action_rejected' && error.reason === reasonCode && error.detail === ACTION_REASONS[reasonCode].text, reasonCode);
+    }
+  }
 });
 
 test('invoice.collect: luôn xem trước (sàn money) kể cả khi SQL nói không cần; lượt 2 gửi đúng bản đã giải + basis', async t => {
@@ -136,4 +176,9 @@ test('kết nối không giữ thu_tien.collect_transfer (khoá TẮT ở produc
   const listed = await on.call({ page: 'invoice' }, 'crm_action_list');
   assert.deepEqual(listed.items.map(item => item.action), ['invoice.collect']);
   assert.ok(Buffer.byteLength(JSON.stringify(listed), 'utf8') <= 8192, 'crm_action_list của trang ≤ 8 KB');
+  // Kết nối giữ đủ năm khoá của trang: cả sáu thao tác vẫn ≤ 8 KB.
+  const all = setup(t, { action: [INVOICE_COLLECT_KEY, INVOICE_METER_KEY, 'invoices.edit', 'invoices.approve', 'invoices.cancel'], respond: () => preview() });
+  const full = await all.call({ page: 'invoice' }, 'crm_action_list');
+  assert.equal(full.items.length, 6);
+  assert.ok(Buffer.byteLength(JSON.stringify(full), 'utf8') <= 8192, `crm_action_list đủ sáu thao tác ≤ 8 KB (${Buffer.byteLength(JSON.stringify(full), 'utf8')} B)`);
 });

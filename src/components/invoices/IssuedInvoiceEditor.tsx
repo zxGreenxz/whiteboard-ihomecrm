@@ -3,14 +3,15 @@ import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { useAdjustInvoice, useInvoice } from '@/hooks/useInvoices';
+import { useAdjustInvoice, useInvoice, useInvoiceAdjustmentBuild } from '@/hooks/useInvoices';
 import {
   buildAdjustmentRequest,
   createAdjustmentRetryKey,
   createAdjustmentSnapshot,
   issuedInvoiceSchema,
 } from '@/lib/invoiceAdjustmentEditor';
-import { adjustmentReconcileBlocker, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import { AdjustmentKeptLineMissingError, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import { adjustmentBlockerMessage, keptItemsById } from '@/lib/invoiceAdjustmentBuildRpc';
 import { InvoiceAdjustmentError } from '@/lib/invoiceAdjustmentRpc';
 import {
   decomposeInvoice,
@@ -64,6 +65,8 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
   const mutation = useAdjustInvoice();
   const { refetch } = useInvoice(invoice.id);
   const { snapshot, entry } = opened;
+  // Dòng giữ nguyên + lý do chặn từ hàm dùng chung với trợ lý (invoice_adjustment_build_v1): chưa tải xong ⇒ chưa lưu được.
+  const build = useInvoiceAdjustmentBuild(snapshot.invoiceId, snapshot.expectedRevision, snapshot.expectedUpdatedAt);
 
   const form = useForm<AdjustmentEntryValues>({
     resolver: zodResolver(adjustmentEntrySchema) as Resolver<AdjustmentEntryValues>,
@@ -94,11 +97,11 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
   }, [entry, snapshot]);
 
   const submit = handleSubmit(async (data) => {
-    if (inFlight.current || stale) return;
+    if (inFlight.current || stale || !build.data) return;
     inFlight.current = true; setBusy(true); setError(null);
     try {
       const request = buildAdjustmentRequest(snapshot, {
-        items: buildAdjustmentItems(data, entry),
+        items: buildAdjustmentItems(data, entry, keptItemsById(build.data)),
         discount_amount: data.discount_amount || 0,
         discount_notes: data.discount_notes?.trim() ? data.discount_notes.trim() : null,
         notes: data.notes ?? null,
@@ -108,7 +111,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
       onOpenChange(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new InvoiceAdjustmentError({}));
-      if (cause instanceof InvoiceAdjustmentError && cause.kind === 'conflict') setStale(true);
+      if ((cause instanceof InvoiceAdjustmentError && cause.kind === 'conflict') || cause instanceof AdjustmentKeptLineMissingError) setStale(true);
     } finally { inFlight.current = false; setBusy(false); }
   });
 
@@ -128,7 +131,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
 
   const close = () => { if (!inFlight.current) onOpenChange(false); };
   const src = opened.invoice;
-  const reconcileBlocker = adjustmentReconcileBlocker(src);
+  const reconcileBlocker = build.error ? build.error.message : build.data ? adjustmentBlockerMessage(build.data) : null;
 
   return <>
     <InvoiceEntryShell
@@ -179,7 +182,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
         label: 'Lưu điều chỉnh',
         pendingLabel: 'Đang lưu…',
         pending: busy || mutation.isPending,
-        disabled: stale || !!reconcileBlocker,
+        disabled: stale || !build.data || !!reconcileBlocker,
       }}
     />
     {paymentsOpen && <Suspense fallback={null}><PaymentsSummaryDialog open onOpenChange={setPaymentsOpen} invoice={invoice} /></Suspense>}

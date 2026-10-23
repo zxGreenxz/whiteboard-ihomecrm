@@ -36,17 +36,21 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   // batch_too_large (Mốc 4, lô quá 20 việc) dạng needs_input — hỏi chia lô.
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'batch_too_large']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large']);
-  // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5): Mốc 3 thu tiền + Mốc 4 ghi chỉ số — 7 mã needs_input + 7 mã rejected.
+  // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5): Mốc 3 thu tiền + Mốc 4 ghi chỉ số + Mốc 5 điều chỉnh/kiểm tra/huỷ/khôi phục — 9 mã needs_input
+  // + 17 mã rejected.
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
-    ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous']);
+    ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous',
+      'adjust_no_change', 'nothing_to_check']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'rejected'),
     ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
-      'meter_used_by_invoice', 'meter_has_later_reading']);
-  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 5 Công việc + 14 Hoá đơn.
+      'meter_used_by_invoice', 'meter_has_later_reading', 'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried',
+      'adjust_below_collected', 'adjustment_self_check_web_only', 'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict',
+      'invoice_already_cancelled', 'invoice_not_cancelled']);
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 5 Công việc + 26 Hoá đơn.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 5 + 14);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7 + 1 + 7);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4 + 7);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 5 + 26);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7 + 1 + 9);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 4 + 17);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

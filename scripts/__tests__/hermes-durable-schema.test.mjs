@@ -470,7 +470,10 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   'app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb)',
   'app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)', 'public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
   // Mốc 4 (20261022183445): vỏ chuyển invoice.meter_record sang tra cứu chỉ số (INVOKER) + bước ghi chỉ số (DEFINER); hàm số chỉ số owner-only.
-  'app_private.hermes_invoice_meter_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
+  'app_private.hermes_invoice_meter_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  // Mốc 5 (20261023042723): vỏ chuyển điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục sang tra cứu (INVOKER) + bước ghi (DEFINER; hợp đồng →
+  // hoá đơn → điều chỉnh NOWAIT dưới khoá công ty của guard); ánh xạ lý do của nhánh này owner-only.
+  'app_private.hermes_invoice_edit_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_edit_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
 // Contract page write RPC (20261022022951): the caller executes the SQL-standard wrapper and the two functions it binds (the
 // RLS lookup, the DEFINER step); the Vietnamese date label and the page reason map stay owner-only.
 const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uuid)',
@@ -973,7 +976,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all forty reviewed forward migrations and their 122 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all forty-one reviewed forward migrations and their 125 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -987,9 +990,9 @@ test('all forty reviewed forward migrations and their 122 latest definitions rem
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 40);
-  assert.equal(FORWARD_FUNCTIONS.length, 122);
-  assert.equal(FORWARD_BY_NAME.size, 122, 'one live definition per reviewed name');
+  assert.equal(paths.length, 41);
+  assert.equal(FORWARD_FUNCTIONS.length, 125);
+  assert.equal(FORWARD_BY_NAME.size, 125, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

@@ -107,6 +107,19 @@ function invoiceReasons() {
     meter_lower_than_previous: reason('needs_input', 'fix', 'Chỉ số mới nhỏ hơn chỉ số đầu; hỏi lại số trên công tơ.'),
     meter_used_by_invoice: reason('rejected', 'never', 'Chỉ số tháng này đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web.'),
     meter_has_later_reading: reason('rejected', 'never', 'Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (trang Ghi chỉ số).'),
+    // Mốc 5 — điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục: hai mã hỏi lại người dùng, mười mã chỉ đường web hoặc báo trạng thái.
+    adjust_no_change: reason('needs_input', 'fix', 'Điều chỉnh này không đổi gì trên hoá đơn; hỏi lại người dùng muốn đổi khoản nào, bao nhiêu.'),
+    nothing_to_check: reason('needs_input', 'fix', 'Hoá đơn này không có điều chỉnh nào chờ xác nhận kiểm tra; hỏi lại phòng hoặc kỳ.'),
+    adjust_meter_line_web_only: reason('rejected', 'never', 'Dòng điện/nước có chỉ số, tiền cọc hay khoản nội bộ chỉ sửa trên web (Hoá đơn → Điều chỉnh).'),
+    adjust_has_rounding_or_credit: reason('rejected', 'never', 'Hoá đơn có làm tròn hoặc tiền dư đã cấn đang hiệu lực; đảo giao dịch ở Lịch sử thanh toán trên web trước.'),
+    adjust_debt_carried: reason('rejected', 'never', 'Nợ của hoá đơn này đã chuyển sang hoá đơn kỳ sau; xử lý hoá đơn kỳ sau trên web trước.'),
+    adjust_below_collected: reason('rejected', 'never', 'Tổng mới thấp hơn số đã thu; đảo lần thu ở Lịch sử thanh toán trên web trước khi giảm.'),
+    adjustment_self_check_web_only: reason('rejected', 'never', 'Không tự xác nhận kiểm tra điều chỉnh do chính anh/chị làm qua bot (cần người khác kiểm); làm trên web nếu thật cần.'),
+    cancel_has_payment: reason('rejected', 'never', 'Hoá đơn đã thu tiền nên không huỷ được; đảo lần thu ở Lịch sử thanh toán trên web trước.'),
+    cancel_overdue_web_only: reason('rejected', 'never', 'Hoá đơn quá hạn chỉ huỷ trên web (trang Hoá đơn).'),
+    restore_conflict: reason('rejected', 'never', 'Kỳ này đã có hoá đơn tháng khác đang hiệu lực cùng hợp đồng; không khôi phục được.'),
+    invoice_already_cancelled: reason('rejected', 'never', 'Hoá đơn này đã huỷ; muốn dùng lại thì khôi phục trước.'),
+    invoice_not_cancelled: reason('rejected', 'never', 'Hoá đơn này đang hiệu lực (chưa huỷ); không có gì để khôi phục.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));
