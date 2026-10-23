@@ -403,7 +403,10 @@ export const landlordOperationOptionsSchema = z.object({
     manager_percent: money,
     manager_fixed_amount: money.optional().default(0),
     landlord_account_ids: z.array(z.string().uuid()),
-    /** v3: người giữ cọc của điều khoản mới nhất; thiếu ⇒ "MANAGER". */
+    /**
+     * v3: người giữ cọc của TOÀ (áp mọi tháng từ tháng bắt đầu; chỉ đổi được khi chưa chốt tháng nào —
+     * chủ chốt 23/10/2026); thiếu ⇒ "MANAGER".
+     */
     deposit_holder: depositHolderOrManager,
     terms_from: isoDate,
     effective_from: isoDate,
@@ -413,9 +416,12 @@ export const landlordOperationOptionsSchema = z.object({
     opening_confirmed_at: z.string().nullable(),
     /** Xác nhận cũ hết hiệu lực: đã dời tháng áp dụng hoặc cọc trước kỳ đã đổi. */
     opening_confirmation_stale: z.boolean(),
-    /** Cọc trước kỳ ở sổ chủ nhà lúc xác nhận. */
+    /** Gợi ý cọc trước kỳ (cùng cách tính bên dưới) lúc xác nhận. */
     opening_confirmed_pre_start: money.nullable(),
-    /** Gợi ý: cọc/trả thừa đã nằm ở sổ chủ nhà trước tháng áp dụng. */
+    /**
+     * Gợi ý số dư đầu kỳ từ cọc/trả thừa nằm TRƯỚC tháng áp dụng ở sổ của bên KHÔNG giữ cọc, có dấu: quản lý
+     * giữ cọc ⇒ + cọc ở sổ chủ nhà (chủ nhà bàn giao); chủ nhà giữ cọc ⇒ − cọc ở sổ quản lý (quản lý bàn giao).
+     */
     pre_start_landlord_deposits: money,
     first_closed_month: isoDate.nullable(),
     last_closed_month: isoDate.nullable(),
@@ -426,8 +432,6 @@ export const landlordOperationOptionsSchema = z.object({
       manager_percent: money,
       manager_fixed_amount: money.optional().default(0),
       landlord_account_ids: z.array(z.string().uuid()),
-      /** v3; thiếu ⇒ "MANAGER" (luật cũ). */
-      deposit_holder: depositHolderOrManager,
     })),
     updated_at: z.string(),
   }).nullable(),
@@ -943,43 +947,17 @@ const termsText = (v: unknown, formatMoney: (n: number) => string): string => {
   return v.map((t) => {
     const r = (t ?? {}) as {
       valid_from?: unknown; manager_percent?: unknown; manager_fixed_amount?: unknown; landlord_account_ids?: unknown;
-      deposit_holder?: unknown;
     };
     const from = typeof r.valid_from === 'string' ? monthShort(r.valid_from) : '?';
     const n = Array.isArray(r.landlord_account_ids) ? r.landlord_account_ids.length : 0;
     // ảnh trước 23/10/2026 không có tiền cố định (thoả thuận chỉ có %)
     const coDinh = Number(r.manager_fixed_amount ?? 0);
     const tien = Number.isFinite(coDinh) && coDinh > 0 ? ` + ${formatMoney(coDinh)}/tháng` : '';
-    // ảnh trước v3 không có người giữ cọc — không nói gì thay vì đoán
-    const coc = r.deposit_holder === 'MANAGER' || r.deposit_holder === 'LANDLORD'
-      ? ` · ${DEPOSIT_HOLDER_LABEL[r.deposit_holder].toLowerCase()} giữ cọc` : '';
-    return `từ ${from}: ${String(r.manager_percent)}%${tien} · ${n} sổ chủ nhà${coc}`;
+    return `từ ${from}: ${String(r.manager_percent)}%${tien} · ${n} sổ chủ nhà`;
   }).join('; ');
 };
 
 const holderOf = (v: unknown): DepositHolder | null => (v === 'MANAGER' || v === 'LANDLORD' ? v : null);
-
-/**
- * Mốc điều khoản mà người giữ cọc khác với người giữ cọc đang áp ở tháng đó TRƯỚC khi lưu (kể cả mốc mới
- * tạo). Ảnh thiếu trường (trước v3) thì không nói — không đoán.
- */
-function holderChanges(before: unknown, after: unknown): string[] {
-  if (!Array.isArray(before) || !Array.isArray(after)) return [];
-  const terms = (list: unknown[]) => list
-    .map((t) => (t ?? {}) as { valid_from?: unknown; deposit_holder?: unknown })
-    .filter((r): r is { valid_from: string; deposit_holder?: unknown } => typeof r.valid_from === 'string')
-    .map((r) => ({ valid_from: r.valid_from, holder: holderOf(r.deposit_holder) }))
-    .sort((a, b) => a.valid_from.localeCompare(b.valid_from));
-  const truoc = terms(before);
-  const out: string[] = [];
-  for (const t of terms(after)) {
-    const cu = termsAt(truoc, monthKey(t.valid_from))?.holder ?? null;
-    if (cu && t.holder && cu !== t.holder) {
-      out.push(`Người giữ cọc từ ${monthShort(t.valid_from)}: ${DEPOSIT_HOLDER_LABEL[cu]} → ${DEPOSIT_HOLDER_LABEL[t.holder]}`);
-    }
-  }
-  return out;
-}
 
 /**
  * Một dòng sổ thay đổi cấu hình (ảnh trước/sau do server ghi) → các câu ngắn cho người đọc.
@@ -999,7 +977,12 @@ export function describeOperationChange(
   }
   if (diff('terms')) {
     out.push(`Phần quản lý / sổ chủ nhà: ${termsText(before.terms, formatMoney)} → ${termsText(after.terms, formatMoney)}`);
-    out.push(...holderChanges(before.terms, after.terms));
+  }
+  // người giữ cọc là cài đặt của toà (ảnh trước v3 không có trường — không nói gì thay vì đoán)
+  const giuCocTruoc = holderOf(before.deposit_holder);
+  const giuCocSau = holderOf(after.deposit_holder);
+  if (giuCocTruoc && giuCocSau && giuCocTruoc !== giuCocSau) {
+    out.push(`Người giữ cọc: ${DEPOSIT_HOLDER_LABEL[giuCocTruoc]} → ${DEPOSIT_HOLDER_LABEL[giuCocSau]}`);
   }
   if (diff('opening_balance')) {
     out.push(`Số dư đầu kỳ: ${formatMoney(Number(before.opening_balance ?? 0))} → ${formatMoney(Number(after.opening_balance ?? 0))}`);

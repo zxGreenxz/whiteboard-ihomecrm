@@ -80,8 +80,13 @@ function LandlordConfirmForm({ month, token, revision, disabled }: {
     dangGui.current = true;
     setError(null);
     try {
-      await confirm.mutateAsync({ token, month: monthToDate(month.period_month), revision, note: note.trim() || null });
-      toast.success(`Đã xác nhận đã xem số liệu ${monthLabel(month.period_month).toLowerCase()}`);
+      const r = await confirm.mutateAsync({ token, month: monthToDate(month.period_month), revision, note: note.trim() || null });
+      // đã xác nhận từ trước (máy khác / bấm lại): server giữ xác nhận đầu, ghi chú lần này KHÔNG lưu — nói rõ
+      if (r.status === 'ALREADY_CONFIRMED') {
+        toast.info(`Tháng này đã được xác nhận trước đó lúc ${vnDateTime(r.confirmed_at)} — ghi chú lần này không được lưu.`);
+      } else {
+        toast.success(`Đã xác nhận đã xem số liệu ${monthLabel(month.period_month).toLowerCase()}`);
+      }
     } catch (e) {
       setError(errCode(e) === '40001'
         ? 'Bên quản lý vừa mở chốt hoặc chốt lại tháng này — trang đang tải lại số mới, xem lại rồi xác nhận.'
@@ -133,7 +138,8 @@ export function SettlementHandoverTab({ month, mode, buildingId, token, busy = f
           <Eyebrow className="mb-2">Ghi chú bàn giao của quản lý</Eyebrow>
           {mode === 'admin' ? (
             closed && buildingId
-              ? <AdminNoteEditor key={`${month.period_month}-${closed.revision}`} month={month} buildingId={buildingId} revision={closed.revision} />
+              // key theo THÁNG (không theo lần chốt): lỗi 40001 nạp lại lần chốt mới mà không mất chữ đang gõ
+              ? <AdminNoteEditor key={month.period_month} month={month} buildingId={buildingId} revision={closed.revision} />
               : (
                 <p className="rounded-[9px] border border-dashed p-3.5 text-center text-[12.5px] text-muted-foreground">
                   Ghi chú nhập khi chốt tháng (ô "Ghi chú" trong hộp Chốt tháng); sau khi chốt vẫn sửa được ở đây.
@@ -175,7 +181,8 @@ export function SettlementHandoverTab({ month, mode, buildingId, token, busy = f
               </div>
             </div>
           ) : mode === 'public' && token ? (
-            <LandlordConfirmForm key={`${month.period_month}-${closed.revision}`} month={month} token={token} revision={closed.revision} disabled={busy} />
+            // key theo THÁNG: bên quản lý chốt lại (40001) thì form giữ ghi chú đang gõ, gửi lại với lần chốt mới
+            <LandlordConfirmForm key={month.period_month} month={month} token={token} revision={closed.revision} disabled={busy} />
           ) : (
             <p className="flex items-start gap-2.5 rounded-[9px] border bg-slate-50 px-3 py-2.5 text-[12.5px] leading-normal text-slate-700 dark:bg-slate-900 dark:text-slate-300"
               data-testid="settlement-not-confirmed">

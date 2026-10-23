@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Hộp "Cài đặt toà vận hành": quản lý nhận tiền cố định (đ/tháng) và/hoặc % (chủ chốt 23/10/2026), người giữ
-// cọc (v3). Kiểm: ô tiền cố định nạp theo đúng điều khoản của tháng đang xem, trường đã sửa giữ khi đổi tháng
-// (so với tháng NẠP, như %), cả hai bằng 0 bị chặn trước khi gửi, gửi đúng số + tháng đang xem; mở từ nút gạt
-// người giữ cọc thì chọn sẵn giá trị mới ở tháng đang xem. Số tiền / tên là giả.
+// cọc (v3 — cài đặt của TOÀ, chỉ đổi khi chưa chốt tháng nào). Kiểm: ô tiền cố định nạp theo đúng điều khoản
+// của tháng đang xem, trường đã sửa giữ khi đổi tháng (so với tháng NẠP, như %), cả hai bằng 0 bị chặn trước
+// khi gửi, gửi đúng số + tháng đang xem; mở từ nút gạt người giữ cọc thì chọn sẵn giá trị mới; toà đã chốt
+// tháng thì khoá người giữ cọc. Số tiền / tên là giả.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { DepositHolder, LandlordOperationOptions } from '@/lib/landlordSettlement';
@@ -19,18 +20,21 @@ vi.mock('sonner', () => ({ toast: { success: m.success, warning: m.warning, erro
 
 import { OperationConfigDialog } from '../OperationConfigDialog';
 
-const dk = (valid_from: string, manager_percent: number, manager_fixed_amount: number, deposit_holder: DepositHolder = 'MANAGER') =>
-  ({ valid_from, manager_percent, manager_fixed_amount, landlord_account_ids: [SO], deposit_holder });
+const dk = (valid_from: string, manager_percent: number, manager_fixed_amount: number) =>
+  ({ valid_from, manager_percent, manager_fixed_amount, landlord_account_ids: [SO] });
 
-function options(terms: ReturnType<typeof dk>[]): LandlordOperationOptions {
+/** Mặc định: toà đã chốt tháng 10/2026, quản lý giữ cọc. `chot: null` = chưa chốt tháng nào. */
+function options(terms: ReturnType<typeof dk>[], { holder = 'MANAGER', chot = '2026-10-01' }: {
+  holder?: DepositHolder; chot?: string | null;
+} = {}): LandlordOperationOptions {
   const last = terms[terms.length - 1]!;
   return {
     current: {
       landlord_name: 'Chủ nhà A', manager_percent: last.manager_percent, manager_fixed_amount: last.manager_fixed_amount,
-      landlord_account_ids: [SO], deposit_holder: last.deposit_holder, terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
+      landlord_account_ids: [SO], deposit_holder: holder, terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
       opening_balance: 0, opening_confirmed_at: '2026-10-20T00:00:00Z', opening_confirmation_stale: false,
-      opening_confirmed_pre_start: 0, pre_start_landlord_deposits: 0, first_closed_month: '2026-10-01',
-      last_closed_month: '2026-10-01', next_terms_month: '2026-11-01', terms, updated_at: '2026-10-22T00:00:00Z',
+      opening_confirmed_pre_start: 0, pre_start_landlord_deposits: 0, first_closed_month: chot,
+      last_closed_month: chot, next_terms_month: chot ? '2026-11-01' : '2026-10-01', terms, updated_at: '2026-10-22T00:00:00Z',
     },
     accounts: [{ id: SO, name: 'Sổ chủ nhà', code: null, is_virtual: false, is_deleted: false, income_count_120d: 3, other_building_count_120d: 0 }],
     history: [],
@@ -109,23 +113,33 @@ it('đổi từ tháng đã chốt (kể cả chỉ đổi tiền cố định) 
   expect(m.save).not.toHaveBeenCalled();
 });
 
-it('mở từ nút gạt người giữ cọc: chọn sẵn "Chủ nhà" ở tháng đang xem, xem trước nêu đổi, gửi p_deposit_holder', async () => {
-  m.options = options([dk('2026-10-01', 30, 0)]);
+it('toà CHƯA chốt tháng nào, mở từ nút gạt: chọn sẵn "Chủ nhà", nêu đổi áp mọi tháng (không phải điều khoản tháng), gửi depositHolder', async () => {
+  m.options = options([dk('2026-10-01', 30, 0)], { chot: null });
   render(hop({ initialTermsMonth: '2026-11', initialDepositHolder: 'LANDLORD' }));
-  expect(o(THANG).value).toBe('2026-11');
   expect(screen.getByRole('radio', { name: 'Chủ nhà' }).getAttribute('aria-checked')).toBe('true');
-  expect(screen.getByTestId('landlord-terms-preview').textContent).toMatch(/Từ tháng 11\/2026: người giữ cọc Quản lý → Chủ nhà\./);
+  expect(screen.getByTestId('landlord-holder').textContent).toMatch(/Quản lý → Chủ nhà: áp lại cho mọi tháng từ 10\/2026/);
+  // không phải thay đổi điều khoản theo tháng
+  expect(screen.queryByTestId('landlord-terms-preview')).toBeNull();
   luu();
   await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
-  expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', termsFrom: '2026-11-01', managerPercent: 30 });
+  expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', managerPercent: 30 });
 });
 
-it('mở bình thường: người giữ cọc theo điều khoản của tháng đang sửa, lưu gửi lại đúng giá trị đó', async () => {
-  m.options = options([dk('2026-10-01', 30, 0), dk('2026-12-01', 30, 0, 'LANDLORD')]);
+it('toà ĐÃ chốt tháng: người giữ cọc khoá, nêu lý do; mở từ nút gạt với giá trị khác ⇒ báo lỗi, không gửi', async () => {
+  m.options = options([dk('2026-10-01', 30, 0)]);
+  render(hop({ initialDepositHolder: 'LANDLORD' }));
+  expect(screen.getByTestId('landlord-holder').textContent).toMatch(/đã chốt tháng 10\/2026 nên không đổi được nữa/);
+  for (const r of screen.getAllByRole('radio')) expect((r as HTMLButtonElement).disabled).toBe(true);
+  luu();
+  expect(await screen.findByText(/người giữ cọc chỉ đổi được khi chưa chốt tháng nào/)).toBeTruthy();
+  expect(m.save).not.toHaveBeenCalled();
+});
+
+it('mở bình thường: người giữ cọc của toà, lưu gửi lại đúng giá trị đó', async () => {
+  m.options = options([dk('2026-10-01', 30, 0), dk('2026-12-01', 30, 1_000_000)], { holder: 'LANDLORD' });
   render(hop());
-  // tháng 11 đang áp mốc 10 (quản lý giữ cọc)
-  expect(screen.getByRole('radio', { name: 'Quản lý' }).getAttribute('aria-checked')).toBe('true');
-  expect(screen.queryByTestId('landlord-terms-preview')).toBeNull();
+  expect(screen.getByRole('radio', { name: 'Chủ nhà' }).getAttribute('aria-checked')).toBe('true');
+  // đổi tháng đang xem không đổi người giữ cọc (không theo điều khoản tháng)
   fireEvent.change(o(THANG), { target: { value: '2026-12' } });
   expect(screen.getByRole('radio', { name: 'Chủ nhà' }).getAttribute('aria-checked')).toBe('true');
   luu();

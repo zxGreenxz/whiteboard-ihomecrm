@@ -371,7 +371,8 @@ describe('hợp đồng dữ liệu v3 (bàn giao, người giữ cọc, hạng 
       accounts: [], history: [],
     });
     expect(o.current?.deposit_holder).toBe('MANAGER');
-    expect(o.current?.terms[0]?.deposit_holder).toBe('MANAGER');
+    // người giữ cọc là cài đặt của toà, không có ở từng điều khoản tháng
+    expect(o.current?.terms[0]).not.toHaveProperty('deposit_holder');
   });
 
   it('biên nhận ghi chú / xác nhận: thiếu trường là chưa xác nhận', () => {
@@ -408,19 +409,14 @@ describe('hợp đồng dữ liệu v3 (bàn giao, người giữ cọc, hạng 
     expect([initialsOf('Tiền điện'), initialsOf('Internet'), initialsOf(null)]).toEqual(['TĐ', 'IN', '—']);
   });
 
-  it('lịch sử cài đặt: nói được đổi người giữ cọc (kể cả mốc mới); ảnh cũ không có trường thì im', () => {
+  it('lịch sử cài đặt: nói được đổi người giữ cọc của toà; ảnh cũ (trước v3) không có trường thì im', () => {
     const vnd = (n: number) => `${n}đ`;
-    const truoc = { terms: [{ valid_from: '2025-01-01', manager_percent: 30, landlord_account_ids: ['s1'], deposit_holder: 'MANAGER' }] };
-    const sau = { terms: [...truoc.terms, { valid_from: '2025-03-01', manager_percent: 30, landlord_account_ids: ['s1'], deposit_holder: 'LANDLORD' }] };
-    expect(describeOperationChange(truoc, sau, vnd)).toEqual([
-      'Phần quản lý / sổ chủ nhà: từ 01/2025: 30% · 1 sổ chủ nhà · quản lý giữ cọc → từ 01/2025: 30% · 1 sổ chủ nhà · quản lý giữ cọc; từ 03/2025: 30% · 1 sổ chủ nhà · chủ nhà giữ cọc',
-      'Người giữ cọc từ 03/2025: Quản lý → Chủ nhà',
-    ]);
-    const cu = { terms: [{ valid_from: '2025-01-01', manager_percent: 30, landlord_account_ids: ['s1'] }] };
-    const moi = { terms: [{ ...cu.terms[0]!, deposit_holder: 'LANDLORD' }] };
-    expect(describeOperationChange(cu, moi, vnd)).toEqual([
-      'Phần quản lý / sổ chủ nhà: từ 01/2025: 30% · 1 sổ chủ nhà → từ 01/2025: 30% · 1 sổ chủ nhà · chủ nhà giữ cọc',
-    ]);
+    const terms = [{ valid_from: '2025-01-01', manager_percent: 30, landlord_account_ids: ['s1'] }];
+    expect(describeOperationChange({ deposit_holder: 'MANAGER', terms }, { deposit_holder: 'LANDLORD', terms }, vnd))
+      .toEqual(['Người giữ cọc: Quản lý → Chủ nhà']);
+    // ảnh chụp trước v3 không có trường ⇒ không đoán là "đổi"
+    expect(describeOperationChange({ terms }, { deposit_holder: 'MANAGER', terms }, vnd))
+      .toEqual(['Lưu lại, không đổi nội dung']);
   });
 });
 

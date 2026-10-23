@@ -92,11 +92,12 @@ function CategoryBlock({ cats, total, filter, kind }: {
     <div className="border-b px-3.5 pb-3 pt-2.5" data-testid={`settlement-categories-${kind === 'INCOME' ? 'income' : 'expense'}`}>
       <div className="flex justify-between"><Eyebrow>Theo hạng mục</Eyebrow><Eyebrow>Tỷ trọng</Eyebrow></div>
       <div className="mt-2 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
-        {shown.map((c, i) => <div key={c.name} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, total)}%` }} />)}
+        {/* server gom theo tên + cờ hạn chế ⇒ hai dòng có thể cùng tên: key kèm thứ tự */}
+        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, total)}%` }} />)}
       </div>
       <ul className="mt-2.5 flex flex-col gap-1.5">
         {shown.map((c, i) => (
-          <li key={c.name} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
+          <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
             <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
             <span className="truncate text-foreground/75">{c.name}</span>
             <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>

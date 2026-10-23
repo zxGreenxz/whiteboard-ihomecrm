@@ -133,12 +133,33 @@ it('Bàn giao — link chủ nhà, tháng đã chốt chưa xác nhận: có nú
   expect(m.confirm).toHaveBeenCalledWith({ token: 'tok-abc', month: '2026-10-01', revision: 3, note: 'Khớp sổ' });
 });
 
-it('Bàn giao — 40001 (vừa mở chốt / chốt lại): báo tải lại, không báo thành công', async () => {
-  m.confirm.mockRejectedValue({ code: '40001', message: 'Bên quản lý vừa chốt lại tháng này' });
+it('Bàn giao — 40001 (vừa mở chốt / chốt lại): báo tải lại, không báo thành công; trang nạp lần chốt mới vẫn GIỮ ghi chú đang gõ, gửi lại đúng lần chốt mới', async () => {
+  m.confirm.mockRejectedValueOnce({ code: '40001', message: 'Bên quản lý vừa chốt lại tháng này' });
+  const p = { mode: 'public' as const, buildingId: undefined, token: 'tok' };
+  const { rerender } = ve({ ...p, month: closedMonth() });
+  fireEvent.click(tab(/Bàn giao/));
+  fireEvent.change(screen.getByLabelText('Ghi chú của chủ nhà (không bắt buộc)'), { target: { value: 'P.302 trả tiền mặt' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xem số liệu' }));
+  expect((await screen.findByRole('alert')).textContent).toMatch(/tải lại số mới/);
+  expect(m.success).not.toHaveBeenCalled();
+  // trang nạp lại: bên quản lý đã chốt lại (lần chốt 5)
+  const chotLai = closedMonth({ closed: { ...closedMonth().closed!, revision: 5 } });
+  rerender(<SettlementScreen mode="public" buildingName="Toà A" landlordName="Chủ nhà A" month={chotLai} overview={overviewV3()}
+    months={['2026-11', '2026-10', '2026-09', '2026-08']} selectedMonth="2026-10" onSelectMonth={vi.fn()} token="tok" />);
+  expect((screen.getByLabelText('Ghi chú của chủ nhà (không bắt buộc)') as HTMLTextAreaElement).value).toBe('P.302 trả tiền mặt');
+  m.confirm.mockResolvedValueOnce({ status: 'CONFIRMED', confirmed_at: '2026-11-03T02:12:00Z' });
+  fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xem số liệu' }));
+  await waitFor(() => expect(m.success).toHaveBeenCalled());
+  expect(m.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 5, note: 'P.302 trả tiền mặt' }));
+});
+
+it('Bàn giao — đã có xác nhận từ trước (ALREADY_CONFIRMED): báo rõ ghi chú lần này không lưu, không báo "đã xác nhận" như lần đầu', async () => {
+  m.confirm.mockResolvedValue({ status: 'ALREADY_CONFIRMED', confirmed_at: '2026-11-03T02:12:00Z' });
   ve({ mode: 'public', buildingId: undefined, token: 'tok', month: closedMonth() });
   fireEvent.click(tab(/Bàn giao/));
   fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xem số liệu' }));
-  expect((await screen.findByRole('alert')).textContent).toMatch(/tải lại số mới/);
+  await waitFor(() => expect(m.info).toHaveBeenCalled());
+  expect(String(m.info.mock.calls[0]?.[0])).toMatch(/đã được xác nhận trước đó lúc 09:12 · 03\/11\/2026 — ghi chú lần này không được lưu/);
   expect(m.success).not.toHaveBeenCalled();
 });
 
@@ -177,9 +198,11 @@ it('Bàn giao — admin sửa ghi chú sau khi chốt: gửi đúng revision c�
   expect(m.note).toHaveBeenCalledWith({ buildingId: 'toa-1', month: '2026-10-01', revision: 3, note: 'Ghi chú mới' });
 });
 
-it('nút gạt người giữ cọc (admin): bấm lựa chọn khác chỉ báo lên trang; tháng đã chốt thì tắt; link chủ nhà chỉ thấy chip', () => {
+it('nút gạt người giữ cọc (admin): toà chưa chốt tháng nào ⇒ bấm lựa chọn khác chỉ báo lên trang; toà đã chốt tháng ⇒ tắt; link chủ nhà chỉ thấy chip', () => {
   const doi = vi.fn();
-  ve({ onRequestDepositHolder: doi });
+  const ov = overviewV3();
+  const chuaChot = { ...ov, months: ov.months.map((m) => ({ ...m, status: 'OPEN' as const })) };
+  ve({ onRequestDepositHolder: doi, overview: chuaChot });
   fireEvent.click(tab(/Quyết toán/));
   const quanLy = screen.getByRole('radio', { name: 'Quản lý' });
   expect(quanLy.getAttribute('aria-checked')).toBe('true');
@@ -191,11 +214,14 @@ it('nút gạt người giữ cọc (admin): bấm lựa chọn khác chỉ báo
   expect(tien(screen.getByTestId('settlement-deposit-manager'))).toBe('5.400.000 đ');
   cleanup();
 
-  ve({ onRequestDepositHolder: doi, month: closedMonth() });
+  // toà đã chốt tháng 12/2025 (tháng đang xem vẫn mở): người giữ cọc là cài đặt của toà ⇒ khoá
+  ve({ onRequestDepositHolder: doi });
   fireEvent.click(tab(/Quyết toán/));
   const chuNha = screen.getByRole('radio', { name: 'Chủ nhà' }) as HTMLButtonElement;
   expect(chuNha.disabled).toBe(true);
-  expect(chuNha.title).toBe('Tháng đã chốt — mở chốt để đổi');
+  expect(chuNha.title).toBe('Toà đã chốt tháng 12/2025 — người giữ cọc chỉ đổi được khi chưa chốt tháng nào');
+  fireEvent.click(chuNha);
+  expect(doi).toHaveBeenCalledTimes(1);
   cleanup();
 
   ve({ mode: 'public', buildingId: undefined, token: 'tok', month: closedMonth({}, { deposit_holder: 'LANDLORD' }) });

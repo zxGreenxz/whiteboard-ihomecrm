@@ -165,8 +165,10 @@ const PROD_MD5_V3: Record<string, string> = {
   "app_private.landlord_strip_public_v1(jsonb)": "2377f91bcdab86e42a8371c0b6cb6ef2",
   "app_private.landlord_settlement_month_payload_v1(uuid,date,boolean)": "2f18d20bea0b4e607b7cbf43e3bbe9be",
   "app_private.landlord_settlement_overview_payload_v1(uuid,boolean)": "0884667fb4d68f576e158af7056f801a",
-  "app_private.landlord_operation_state_v1(uuid)": "fb8fecf22a102dc96e9d2937d4247b49",
+  "app_private.landlord_pre_start_deposits_v1(uuid)": "54eeb7489079dd992ee672da3cd4be41",
   "public.landlord_operation_options_v1(uuid)": "fb58fc832aed0dffb93997a5f81aa991",
+  "app_private.landlord_operation_state_v1(uuid)": "fb8fecf22a102dc96e9d2937d4247b49",
+  "app_private.landlord_opening_check_v1(uuid)": "b78e2d79a8d528179bf3bb65a30229bc",
   "app_private.landlord_kqkd_lines_v1(uuid,date,date)": "d7f64c98db3dd4598051377bb15b28d0",
   "app_private.landlord_close_blockers_v1(uuid,date,jsonb)": "852a5bda931276ac220153774abaa766",
   "public.landlord_settlement_close_v1(uuid,date,text,text)": "838f1727dfca7a29b84066e87528c08c",
@@ -176,6 +178,7 @@ const PROD_MD5_V3: Record<string, string> = {
 };
 const UPSERT_V3 = "public.landlord_operation_upsert_v1(uuid,text,numeric,date,uuid[],text,boolean,numeric,boolean,date,numeric,timestamptz,numeric,text)";
 const KHONG_THAY_V3 = new Set([
+  "app_private.landlord_operation_state_v1(uuid)", "app_private.landlord_opening_check_v1(uuid)",
   "app_private.landlord_kqkd_lines_v1(uuid,date,date)", "app_private.landlord_close_blockers_v1(uuid,date,jsonb)",
   "public.landlord_settlement_close_v1(uuid,date,text,text)", "public.landlord_settlement_reopen_v1(uuid,date,text)",
   "public.landlord_settlement_public_v1(text,date)", "public.landlord_ihome_profit_v1(date,date)",
@@ -1790,20 +1793,25 @@ describe("v3: migration", () => {
     });
   });
 
-  it("đúng MỘT chữ ký hàm ghi; điều khoản có sẵn nhận MANAGER; quản lý giữ cọc băm y như trước (tháng đã chốt không 'đổi')", async () => {
+  it("đúng MỘT chữ ký hàm ghi; toà có sẵn nhận MANAGER; quản lý giữ cọc băm y như trước (tháng đã chốt không 'đổi')", async () => {
     const r = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'landlord_operation_upsert_v1'");
     expect(r.rows[0].n).toBe(1);
     expect((await db.query("SELECT to_regprocedure($1) IS NOT NULL AS c", [UPSERT_V3])).rows[0]).toEqual({ c: true });
     const t = await db.query<{ h: string }>(
-      "SELECT deposit_holder AS h FROM app_private.landlord_operation_terms WHERE building_id = $1", [TOA_A]);
+      "SELECT deposit_holder AS h FROM app_private.landlord_operations WHERE building_id = $1", [TOA_A]);
     expect(t.rows.map((x) => x.h)).toEqual(["MANAGER"]);
+    // người giữ cọc là cài đặt của toà, không theo điều khoản tháng
+    const cot = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = 'app_private.landlord_operation_terms'::regclass
+        AND attname = 'deposit_holder' AND NOT attisdropped`);
+    expect(cot.rows[0].n).toBe(0);
     expect(hashSauV3).toEqual(hashTruoc);
   });
 
   it("CHECK cột người giữ cọc", async () => {
     await trongGiaoDich(async () => {
       await asPostgres();
-      await expectLoi("UPDATE app_private.landlord_operation_terms SET deposit_holder = 'KHACH' WHERE building_id = $1", [TOA_A], "23514");
+      await expectLoi("UPDATE app_private.landlord_operations SET deposit_holder = 'KHACH' WHERE building_id = $1", [TOA_A], "23514");
     });
   });
 
@@ -1839,7 +1847,8 @@ describe("v3: người giữ cọc", () => {
       await asUser(CHU_A);
       const h1 = String((await thang(TOA_A, "2025-01-01")).live_hash);
       const hFeb = String((await thang(TOA_A, "2025-02-01")).live_hash);
-      expect((await giuCoc("LANDLORD")).terms_from).toBe("2025-01-01");
+      // người giữ cọc là cài đặt của toà ⇒ không sinh mốc điều khoản mới
+      expect((await giuCoc("LANDLORD")).terms_from).toBeNull();
       const m = await thang(TOA_A, "2025-01-01");
       const t = tongCua(m);
       expect((m.statement as Json).deposit_holder).toBe("LANDLORD");
@@ -1863,29 +1872,62 @@ describe("v3: người giữ cọc", () => {
       expect([so(jan.manager_paid), so(jan.manager_collected), so(jan.extra_cash)]).toEqual([2_180_000, 1_550_000, 0]);
       const opt = await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A]);
       expect((opt.current as Json).deposit_holder).toBe("LANDLORD");
-      expect(((opt.current as Json).terms as Json[]).map((x) => x.deposit_holder)).toEqual(["LANDLORD"]);
+      expect(((opt.current as Json).terms as Json[]).every((x) => !("deposit_holder" in x))).toBe(true);
+      // sổ thay đổi ghi được việc đổi người giữ cọc (ảnh = to_jsonb(dòng toà))
       const ls = (opt.history as Json[])[0];
-      expect(((ls.after as Json).terms as Json[])[0].deposit_holder).toBe("LANDLORD");
+      expect([(ls.before as Json).deposit_holder, (ls.after as Json).deposit_holder]).toEqual(["MANAGER", "LANDLORD"]);
       // về lại quản lý giữ cọc ⇒ đúng chuỗi băm cũ
       await giuCoc("MANAGER");
       expect((await thang(TOA_A, "2025-01-01")).live_hash).toBe(h1);
     });
   });
 
-  it("đổi từ tháng chưa chốt: tháng đã chốt giữ số, không 'đổi sau khi chốt'; từ tháng đã chốt ⇒ 55000; NULL giữ nguyên; giá trị lạ ⇒ 22023", async () => {
+  it("cài đặt của TOÀ: chưa chốt tháng nào ⇒ đổi được, áp MỌI tháng; đã chốt một tháng ⇒ 55000 (đổi giữa chừng cọc đang giữ không tự bàn giao); NULL giữ nguyên; giá trị lạ ⇒ 22023", async () => {
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
+      // chưa chốt: đổi từ "tháng 03" cũng áp cho mọi tháng — không có mốc giữa chừng
+      expect((await giuCoc("LANDLORD", "2025-03-01")).terms_from).toBeNull();
+      for (const m of ["2025-01-01", "2025-02-01", "2025-03-01"]) {
+        expect((await thang(TOA_A, m)).statement).toMatchObject({ deposit_holder: "LANDLORD" });
+      }
+      expect((await giuCoc("MANAGER")).terms_from).toBeNull();
       expect((await chot("2025-02-01")).status).toBe("CLOSED");
-      expect((await giuCoc("LANDLORD", "2025-03-01")).terms_from).toBe("2025-03-01");
+      // đã chốt một tháng: cả hai chiều, từ tháng nào cũng bị chặn; tháng đã chốt giữ nguyên số
+      await expectLoi(`SELECT ${UPSERT_GIU_COC}`, [TOA_A, [SO_CHU_NHA], null, "LANDLORD"], "55000");
+      await expectLoi(`SELECT ${UPSERT_GIU_COC}`, [TOA_A, [SO_CHU_NHA], "2025-03-01", "LANDLORD"], "55000");
       const feb = await thang(TOA_A, "2025-02-01");
       expect([feb.status, feb.is_stale, (feb.statement as Json).deposit_holder]).toEqual(["CLOSED", false, "MANAGER"]);
-      expect((await thang(TOA_A, "2025-01-01")).statement).toMatchObject({ deposit_holder: "MANAGER" });
-      expect((await thang(TOA_A, "2025-03-01")).statement).toMatchObject({ deposit_holder: "LANDLORD" });
-      await expectLoi(`SELECT ${UPSERT_GIU_COC}`, [TOA_A, [SO_CHU_NHA], "2025-02-01", "LANDLORD"], "55000");
-      // NULL = giữ người giữ cọc của điều khoản tháng T
-      expect((await giuCoc(null, "2025-03-01")).terms_from).toBeNull();
-      expect((await thang(TOA_A, "2025-03-01")).statement).toMatchObject({ deposit_holder: "LANDLORD" });
+      // gửi lại đúng người giữ cọc đang có hoặc NULL thì vẫn lưu được các trường khác
+      expect((await giuCoc("MANAGER")).terms_from).toBeNull();
+      expect((await giuCoc(null)).terms_from).toBeNull();
       await expectLoi(`SELECT ${UPSERT_GIU_COC}`, [TOA_A, [SO_CHU_NHA], null, "KHACH"], "22023");
+      // mở chốt hết thì đổi lại được
+      await rpc("public.landlord_settlement_reopen_v1($1, '2025-02-01'::date, 'đổi người giữ cọc của toà')", [TOA_A]);
+      await giuCoc("LANDLORD");
+      expect((await thang(TOA_A, "2025-02-01")).statement).toMatchObject({ deposit_holder: "LANDLORD" });
+    });
+  });
+
+  it("gợi ý số dư đầu kỳ theo người giữ cọc: quản lý giữ ⇒ + cọc trước kỳ ở sổ chủ nhà; chủ nhà giữ ⇒ − cọc trước kỳ ở sổ quản lý; đổi thì xác nhận cũ hết hiệu lực", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      // trước tháng áp dụng: khách nộp cọc 300k vào sổ quản lý (ngoài 700k ở sổ chủ nhà của fixture)
+      await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2024-12-22", dong: [{ lop: "DEPOSIT", tien: 300_000 }] });
+      await asUser(CHU_A);
+      const truoc = (await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A])).current as Json;
+      expect([so(truoc.pre_start_landlord_deposits), truoc.opening_confirmation_stale]).toEqual([700_000, false]);
+      // đổi sang chủ nhà giữ cọc (gửi kèm số cũ 700k đã thấy ⇒ server KHÔNG nhận xác nhận cho số chưa từng thấy)
+      expect((await giuCoc("LANDLORD")).opening_needs_reconfirm).toBe(true);
+      const sau = (await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A])).current as Json;
+      expect([so(sau.pre_start_landlord_deposits), sau.opening_confirmed_at]).toEqual([-300_000, null]);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).toContain("OPENING_UNCONFIRMED");
+      // đối chiếu đúng số mới (−300k) thì xác nhận lại được, hết chặn
+      const xn = await rpc<Json>(
+        `public.landlord_operation_upsert_v1(p_building_id => $1, p_landlord_name => 'Chủ nhà A', p_manager_percent => 30,
+          p_effective_from => '2025-01-01'::date, p_landlord_account_ids => $2::uuid[], p_opening_balance => -300000,
+          p_opening_confirmed => true, p_opening_seen_pre_start => -300000)`, [TOA_A, [SO_CHU_NHA]]);
+      expect([xn.opening_needs_reconfirm, xn.opening_needs_confirm]).toEqual([false, false]);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).not.toContain("OPENING_UNCONFIRMED");
     });
   });
 
@@ -2088,7 +2130,7 @@ describe("v3: gói RPC thật parse được bằng schema zod của web", () =>
       const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
       expect(ov.deposit_holder).toBe("LANDLORD");
       const opt = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
-      expect(opt.current?.terms.map((x) => x.deposit_holder)).toEqual(["MANAGER", "LANDLORD"]);
+      expect(opt.current?.deposit_holder).toBe("LANDLORD");
     });
   });
 });

@@ -22,8 +22,9 @@ import { CalcRows, Eyebrow, NetResult, SectionCard } from './SettlementParts';
 function TerminationBlock({ st }: { st: SettlementStatement }) {
   const tl = st.termination;
   const rows: { label: string; value: number; note: string }[] = [
-    { label: 'Cấn cọc vào khoản khách phải trả (điện, nước, ngày ở, phí…)', value: tl.revenue_from_deposit, note: 'doanh thu · tiền nằm ở sổ cọc của quản lý' },
-    { label: 'Khách bỏ cọc', value: tl.forfeit_revenue, note: 'doanh thu · tiền nằm ở sổ cọc của quản lý' },
+    // cấn từ tiền cọc qua sổ cấn trừ (nội bộ) — không nói "sổ cọc của quản lý": chủ nhà có thể là bên giữ cọc
+    { label: 'Cấn cọc vào khoản khách phải trả (điện, nước, ngày ở, phí…)', value: tl.revenue_from_deposit, note: 'doanh thu · cấn từ tiền cọc của khách' },
+    { label: 'Khách bỏ cọc', value: tl.forfeit_revenue, note: 'doanh thu · cấn từ tiền cọc của khách' },
     { label: 'Khách trả thêm phần phí vượt cọc', value: tl.extra_receipt, note: 'doanh thu · bên giữ tiền theo sổ nhận' },
     { label: 'Trả thêm cho khách ngoài cọc (hoàn tiền phòng/tiền thừa)', value: tl.refund_beyond_deposit, note: 'chi phí · quản lý chi' },
     { label: 'Hoàn cọc cho khách', value: tl.deposit_refunded, note: 'trả lại tiền cọc · không tính lợi nhuận' },
@@ -67,14 +68,20 @@ function Alert({ children, tone = 'red' }: { children: ReactNode; tone?: 'red' |
 }
 
 /** Tiền cọc của khách: cọc ở hai sổ, người giữ cọc (admin đổi qua hộp Cài đặt toà — không gọi RPC ở đây). */
-function DepositBlock({ month, st, mode, onRequestDepositHolder }: {
+function DepositBlock({ month, st, mode, onRequestDepositHolder, lockedSince }: {
   month: SettlementMonth; st: SettlementStatement; mode: 'admin' | 'public';
   onRequestDepositHolder?: (holder: DepositHolder) => void;
+  lockedSince: string | null;
 }) {
   const t = st.totals;
   const d = st.deposits;
   const holder = st.deposit_holder;
-  const locked = month.status === 'CLOSED';
+  // người giữ cọc là cài đặt của TOÀ: đã chốt bất kỳ tháng nào thì không đổi được (cọc đang giữ không tự
+  // bàn giao — chủ chốt 23/10/2026); tháng đang xem đã chốt cũng khoá
+  const locked = month.status === 'CLOSED' || !!lockedSince;
+  const lockTitle = lockedSince
+    ? `Toà đã chốt ${monthLabel(lockedSince).toLowerCase()} — người giữ cọc chỉ đổi được khi chưa chốt tháng nào`
+    : 'Tháng đã chốt — mở chốt để đổi';
   const dash = (v: number | null) => (v === null ? '—' : formatVND(v));
   return (
     <div className="mx-4 mb-3.5 rounded-[10px] border px-3.5 py-3" data-testid="settlement-deposits">
@@ -89,13 +96,13 @@ function DepositBlock({ month, st, mode, onRequestDepositHolder }: {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-foreground/75" id="qt-holder-label">Người giữ cọc</span>
             <div role="radiogroup" aria-labelledby="qt-holder-label" className="inline-flex overflow-hidden rounded-[9px] border bg-card"
-              title={locked ? 'Tháng đã chốt — mở chốt để đổi' : undefined}>
+              title={locked ? lockTitle : undefined}>
               {DEPOSIT_HOLDERS.map((h, i) => {
                 const on = h === holder;
                 return (
                   <button key={h} type="button" role="radio" aria-checked={on}
                     disabled={locked || !onRequestDepositHolder}
-                    title={locked ? 'Tháng đã chốt — mở chốt để đổi' : on ? undefined : `Đổi người giữ cọc từ ${monthLabel(month.period_month).toLowerCase()} (mở Cài đặt toà)`}
+                    title={locked ? lockTitle : on ? undefined : 'Đổi người giữ cọc của toà — áp cho mọi tháng (mở Cài đặt toà)'}
                     onClick={() => { if (!on && onRequestDepositHolder) onRequestDepositHolder(h); }}
                     className={cn('px-3 py-1.5 text-xs disabled:cursor-not-allowed', i > 0 && 'border-l',
                       on ? (h === 'MANAGER'
@@ -159,11 +166,13 @@ function DepositBlock({ month, st, mode, onRequestDepositHolder }: {
   );
 }
 
-export function SettlementStatementCard({ month, mode, onRequestDepositHolder, onGoHandover }: {
+export function SettlementStatementCard({ month, mode, onRequestDepositHolder, holderLockedSince = null, onGoHandover }: {
   month: SettlementMonth;
   mode: 'admin' | 'public';
   /** Màn quản trị: bấm sang người giữ cọc khác ⇒ trang mở Cài đặt toà chọn sẵn giá trị đó. */
   onRequestDepositHolder?: (holder: DepositHolder) => void;
+  /** Tháng chốt sớm nhất của toà ('YYYY-MM-DD'); có ⇒ người giữ cọc không đổi được nữa (cài đặt của toà). */
+  holderLockedSince?: string | null;
   /** Link chủ nhà: thẻ "Số liệu đã đúng?" chuyển sang tab Bàn giao. */
   onGoHandover?: () => void;
 }) {
@@ -261,7 +270,8 @@ export function SettlementStatementCard({ month, mode, onRequestDepositHolder, o
             </div>
           )}
         </div>
-        <DepositBlock month={month} st={st} mode={mode} onRequestDepositHolder={onRequestDepositHolder} />
+        <DepositBlock month={month} st={st} mode={mode} onRequestDepositHolder={onRequestDepositHolder}
+          lockedSince={holderLockedSince} />
       </SectionCard>
 
       {mode === 'public' && month.status === 'CLOSED' && !month.confirmation && onGoHandover && (

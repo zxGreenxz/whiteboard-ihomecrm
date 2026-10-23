@@ -11,8 +11,10 @@
 --   · BÀN GIAO: ghi chú của quản lý (đang chỉ nhập được lúc chốt) và xác nhận của chủ nhà.
 --
 -- LÀM GÌ
---   1. landlord_operation_terms THÊM cột deposit_holder ('MANAGER' | 'LANDLORD', mặc định 'MANAGER' = luật
---      cũ ⇒ số cũ không đổi). Theo PHIÊN BẢN THÁNG như % và tiền cố định (đổi chỉ từ tháng chưa chốt).
+--   1. landlord_operations THÊM cột deposit_holder ('MANAGER' | 'LANDLORD', mặc định 'MANAGER' = luật cũ ⇒
+--      số cũ không đổi). Là cài đặt của TOÀ, áp mọi tháng từ tháng bắt đầu — KHÔNG theo phiên bản tháng: đổi
+--      giữa chừng thì tiền cọc bên cũ đang giữ không tự bàn giao sang bên mới (review chéo 23/10 P1) ⇒ chủ
+--      chốt: chỉ đổi được khi toà chưa chốt tháng nào.
 --   2. Hai bảng append-only mới:
 --      · landlord_settlement_handovers — ghi chú bàn giao của MỘT lần chốt (khoá ngoại tới lần chốt). Dòng
 --        mới nhất là ghi chú hiện hành; chưa có dòng nào ⇒ ghi chú lúc chốt (closes.reason).
@@ -23,7 +25,7 @@
 --   4. app_private.landlord_settlement_compute_v1 (DỰNG TỪ THÂN production md5 1af9d2b8…, file
 --      20261023113626) — đổi:
 --      · đọc dòng lãi lỗ từ v2 (cùng số tiền với v1 — test PGlite so từng dòng);
---      · người giữ cọc của tháng: MANAGER ⇒ cộng cọc ở sổ chủ nhà (như cũ); LANDLORD ⇒ TRỪ cọc ở sổ quản lý
+--      · người giữ cọc của toà: MANAGER ⇒ cộng cọc ở sổ chủ nhà (như cũ); LANDLORD ⇒ TRỪ cọc ở sổ quản lý
 --        (thu − hoàn/cấn, đã duyệt). Phần cọc vào số bàn giao trả thành totals.deposit_adjustment (có dấu):
 --          landlord_owes_manager = phần quản lý + quản lý chi − quản lý thu + deposit_adjustment + tiền thối
 --        Tiền thối ở sổ chủ nhà (landlord_extra_cash) giữ luật cũ ở cả hai chế độ.
@@ -41,13 +43,16 @@
 --      hiện hành, thêm closed.note_updated_at; thêm confirmation {confirmed_at, note} của lần chốt hiện tại.
 --   7. app_private.landlord_settlement_overview_payload_v1 (md5 0884667f…): months[] thêm các dòng "Cách
 --      tính" (phần cố định/%, quản lý chi hộ/thu hộ, người giữ cọc, deposit_adjustment, tiền thối), lần chốt
---      và thời điểm chủ nhà xác nhận; gói thêm deposit_holder của điều khoản mới nhất. Ảnh chốt cũ thiếu
---      trường ⇒ chép trường tương đương (deposit_adjustment = landlord_held_deposits, giữ cọc = MANAGER).
---   8. public.landlord_operation_options_v1 (md5 fb58fc83…), app_private.landlord_operation_state_v1
---      (md5 fb8fecf2…): kèm deposit_holder.
+--      và thời điểm chủ nhà xác nhận; gói thêm deposit_holder của toà. Ảnh chốt cũ thiếu trường ⇒ chép
+--      trường tương đương (deposit_adjustment = landlord_held_deposits, giữ cọc = MANAGER).
+--   8. public.landlord_operation_options_v1 (md5 fb58fc83…): current.deposit_holder của toà.
+--      app_private.landlord_pre_start_deposits_v1 (md5 54eeb748…): gợi ý số dư đầu kỳ từ cọc trước kỳ ở sổ
+--      của bên KHÔNG giữ cọc, có dấu (quản lý giữ: + sổ chủ nhà như cũ; chủ nhà giữ: − sổ quản lý) — chủ
+--      chốt 23/10. Đổi người giữ cọc ⇒ số này đổi ⇒ xác nhận số dư đầu kỳ cũ hết hiệu lực (như dời tháng).
+--      landlord_operation_state_v1 KHÔNG thay (to_jsonb(dòng toà) tự gồm cột mới ⇒ sổ thay đổi ghi được).
 --   9. public.landlord_operation_upsert_v1 (md5 23c71a9a…): THÊM tham số cuối p_deposit_holder text DEFAULT
---      NULL ⇒ DROP đúng chữ ký 13 tham số rồi CREATE 14 tham số, cấp quyền như cũ. NULL = giữ người giữ cọc
---      của điều khoản đang áp ở tháng T (toà mới: MANAGER). Đổi xét từng trường như %, tiền cố định, sổ.
+--      NULL ⇒ DROP đúng chữ ký 13 tham số rồi CREATE 14 tham số, cấp quyền như cũ. NULL = giữ nguyên (toà
+--      mới: MANAGER). Đổi khi toà đã có tháng chốt ⇒ 55000. Phần điều khoản theo tháng y như production.
 --  10. RPC mới:
 --      · public.landlord_settlement_note_update_v1 (authenticated, chủ công ty / super admin) — sửa ghi chú
 --        bàn giao của lần chốt hiện tại. 55000 tháng chưa chốt, 40001 lần chốt đã đổi.
@@ -56,11 +61,12 @@
 --        Ghi được qua anon là CÓ CHỦ ĐÍCH: chỉ ghi một dòng/lần chốt, cần token chưa thu hồi của đúng toà.
 --   Không đổi: chốt / mở chốt / thanh toán (net_amount = totals.landlord_owes_manager), landlord_ihome_profit_v1
 --   (đọc manager_share / landlord_share — người giữ cọc không đổi hai số này), landlord_close_blockers_v1
---   (đọc pending.voucher_count), landlord_settlement_public_v1, gợi ý cọc trước kỳ (landlord_pre_start_*:
---   vẫn là cọc ở sổ chủ nhà — số dư đầu kỳ do người dùng đối chiếu và nhập tay). Ghim md5 các hàm này.
+--   (đọc pending.voucher_count), landlord_settlement_public_v1, landlord_opening_check_v1,
+--   landlord_operation_state_v1. Ghim md5 các hàm này.
 --
 -- ĐƯỜNG LÙI
---   CREATE OR REPLACE các hàm 4–8 bằng thân của 20261023113626 / 20261021083438; DROP FUNCTION
+--   CREATE OR REPLACE các hàm 4–8 (gồm landlord_pre_start_deposits_v1) bằng thân của 20261023113626 /
+--   20261021083438; DROP FUNCTION
 --   public.landlord_operation_upsert_v1 bản 14 tham số rồi tạo lại bản 13 tham số + REVOKE/GRANT như
 --   20261023113626 mục 6; DROP hai RPC mới và landlord_kqkd_lines_v2. Cột deposit_holder, hai bảng mới để
 --   nguyên (không ai đọc nữa) — xoá là phá huỷ.
@@ -97,18 +103,23 @@ BEGIN
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
       ('app_private.landlord_settlement_compute_v1(uuid,date)',
-       ARRAY['1af9d2b8c6d10ca32dc177cf0d6a6d2a', 'ad0218a979233a5b15c17b7a141dfaea']),
+       ARRAY['1af9d2b8c6d10ca32dc177cf0d6a6d2a', '4aeced8e78010313db6de24f910b88cd']),
       ('app_private.landlord_strip_public_v1(jsonb)',
        ARRAY['2377f91bcdab86e42a8371c0b6cb6ef2', '5ba02b4cd662bfdbf24b1e688de4f519']),
       ('app_private.landlord_settlement_month_payload_v1(uuid,date,boolean)',
        ARRAY['2f18d20bea0b4e607b7cbf43e3bbe9be', 'c172acff6a3488ae6d26c1b71d9f8693']),
       ('app_private.landlord_settlement_overview_payload_v1(uuid,boolean)',
-       ARRAY['0884667fb4d68f576e158af7056f801a', 'e9f3454e0a1ddecd56d4ef5d69ff7ac8']),
-      ('app_private.landlord_operation_state_v1(uuid)',
-       ARRAY['fb8fecf22a102dc96e9d2937d4247b49', '1d1fdb65604925a4b2e394d141336d8a']),
+       ARRAY['0884667fb4d68f576e158af7056f801a', '6e24b6cf619f18b062f4779531544998']),
+      ('app_private.landlord_pre_start_deposits_v1(uuid)',
+       ARRAY['54eeb7489079dd992ee672da3cd4be41', '4a862c780288bfd4578e9d031c701df9']),
       ('public.landlord_operation_options_v1(uuid)',
-       ARRAY['fb58fc832aed0dffb93997a5f81aa991', 'f90e67730dbb2a8a4d0845dee972629b']),
-      -- hàm KHÔNG thay — đọc gói tháng / gọi các hàm trên; đổi thì rà lại trước khi áp
+       ARRAY['fb58fc832aed0dffb93997a5f81aa991', 'd21beaf97052e2efa08e2d53b65b68b7']),
+      -- hàm KHÔNG thay — đọc gói tháng / gọi các hàm trên; đổi thì rà lại trước khi áp. state_v1 (ảnh sổ thay
+      -- đổi = to_jsonb(dòng toà) + điều khoản) tự gồm cột deposit_holder mới; opening_check_v1 gọi pre_start_v1.
+      ('app_private.landlord_operation_state_v1(uuid)',
+       ARRAY['fb8fecf22a102dc96e9d2937d4247b49']),
+      ('app_private.landlord_opening_check_v1(uuid)',
+       ARRAY['b78e2d79a8d528179bf3bb65a30229bc']),
       ('app_private.landlord_kqkd_lines_v1(uuid,date,date)',
        ARRAY['d7f64c98db3dd4598051377bb15b28d0']),
       ('app_private.landlord_close_blockers_v1(uuid,date,jsonb)',
@@ -141,7 +152,7 @@ BEGIN
     END IF;
   ELSIF to_regprocedure(v_moi) IS NOT NULL THEN
     v_md5 := md5(pg_get_functiondef(v_moi::regprocedure));
-    IF v_md5 <> '32311fa35dd5a531532da958428e8342' THEN
+    IF v_md5 <> 'bd06a10bd48ab937499939c9a4b11037' THEN
       RAISE EXCEPTION '% KHÁC bản của file này (md5 %) — DỪNG.', v_moi, v_md5 USING ERRCODE = '55000';
     END IF;
   ELSE
@@ -151,14 +162,16 @@ END
 $truoc$;
 
 -- ---------------------------------------------------------------------------
--- 1. Người giữ cọc theo phiên bản tháng. Dòng có sẵn nhận 'MANAGER' = luật cũ (không UPDATE dữ liệu).
-ALTER TABLE app_private.landlord_operation_terms
+-- 1. Người giữ cọc là cài đặt của TOÀ (áp mọi tháng từ tháng bắt đầu). Dòng có sẵn nhận 'MANAGER' = luật cũ
+--    (không UPDATE dữ liệu). Không theo phiên bản tháng: đổi giữa chừng thì tiền cọc bên cũ đang giữ không tự bàn
+--    giao sang bên mới ⇒ chỉ đổi được khi toà chưa chốt tháng nào (landlord_operation_upsert_v1 chặn 55000).
+ALTER TABLE app_private.landlord_operations
   ADD COLUMN IF NOT EXISTS deposit_holder text NOT NULL DEFAULT 'MANAGER'
-    CONSTRAINT landlord_operation_terms_deposit_holder_check
+    CONSTRAINT landlord_operations_deposit_holder_check
     CHECK (deposit_holder IN ('MANAGER', 'LANDLORD'));
 
-COMMENT ON COLUMN app_private.landlord_operation_terms.deposit_holder IS
-  'Bên giữ cọc của khách (và hoàn cọc khi trả phòng): MANAGER — cọc nằm ở sổ chủ nhà thì chủ nhà bàn giao cho quản lý (luật từ 21/10/2026); LANDLORD — cọc nằm ở sổ quản lý thì quản lý bàn giao cho chủ nhà. Chủ chốt 23/10/2026.';
+COMMENT ON COLUMN app_private.landlord_operations.deposit_holder IS
+  'Bên giữ cọc của khách (và hoàn cọc khi trả phòng), áp mọi tháng: MANAGER — cọc nằm ở sổ chủ nhà thì chủ nhà bàn giao cho quản lý (luật từ 21/10/2026); LANDLORD — cọc nằm ở sổ quản lý thì quản lý bàn giao cho chủ nhà. Chỉ đổi được khi toà chưa chốt tháng nào. Chủ chốt 23/10/2026.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Ghi chú bàn giao và xác nhận của chủ nhà — append-only, gắn với MỘT lần chốt.
@@ -332,13 +345,13 @@ STABLE
 SET search_path TO ''
 AS $fn$
   WITH cfg AS (
-    -- điều khoản (% + tiền cố định + sổ chủ nhà + người giữ cọc) đang áp ở tháng này
+    -- điều khoản (% + tiền cố định + sổ chủ nhà) đang áp ở tháng này; người giữ cọc là cài đặt của toà
     SELECT o.building_id, o.organization_id, o.effective_from,
            t.valid_from AS terms_from, t.manager_percent, t.manager_fixed_amount, t.landlord_account_ids,
-           t.deposit_holder
+           o.deposit_holder
       FROM app_private.landlord_operations o
       JOIN LATERAL (
-        SELECT t.valid_from, t.manager_percent, t.manager_fixed_amount, t.landlord_account_ids, t.deposit_holder
+        SELECT t.valid_from, t.manager_percent, t.manager_fixed_amount, t.landlord_account_ids
           FROM app_private.landlord_operation_terms t
          WHERE t.building_id = o.building_id
            AND t.valid_from <= pg_catalog.date_trunc('month', p_month)::date
@@ -956,7 +969,6 @@ DECLARE
   v_closed_count integer := 0;
   v_percent      numeric;
   v_fixed        numeric;
-  v_holder       text;
   v_paid_l       numeric;
   v_paid_m       numeric;
   v_payments     jsonb;
@@ -1041,8 +1053,8 @@ BEGIN
    WHERE p.building_id = p_building_id
      AND (NOT p_public OR p.voided_at IS NULL);
 
-  -- tỷ lệ + tiền cố định + người giữ cọc của điều khoản mới nhất (từng tháng có điều khoản riêng trong months[])
-  SELECT t.manager_percent, t.manager_fixed_amount, t.deposit_holder INTO v_percent, v_fixed, v_holder
+  -- tỷ lệ + tiền cố định của điều khoản mới nhất (từng tháng có điều khoản riêng trong months[])
+  SELECT t.manager_percent, t.manager_fixed_amount INTO v_percent, v_fixed
     FROM app_private.landlord_operation_terms t
    WHERE t.building_id = p_building_id
    ORDER BY t.valid_from DESC
@@ -1053,7 +1065,8 @@ BEGIN
     'landlord_name', v_cfg.landlord_name,
     'manager_percent', v_percent,
     'manager_fixed_amount', v_fixed,
-    'deposit_holder', v_holder,
+    -- người giữ cọc của toà (áp mọi tháng)
+    'deposit_holder', v_cfg.deposit_holder,
     'effective_from', v_cfg.effective_from,
     'is_active', v_cfg.is_active,
     'opening_confirmed', COALESCE((SELECT c.confirmed FROM app_private.landlord_opening_check_v1(p_building_id) AS c), false),
@@ -1108,7 +1121,8 @@ BEGIN
                'landlord_name', o.landlord_name,
                'manager_percent', lt.manager_percent,
                'manager_fixed_amount', lt.manager_fixed_amount,
-               'deposit_holder', lt.deposit_holder,
+               -- người giữ cọc của toà (áp mọi tháng; chỉ đổi khi chưa chốt tháng nào)
+               'deposit_holder', o.deposit_holder,
                'landlord_account_ids', to_jsonb(lt.landlord_account_ids),
                'terms_from', lt.valid_from,
                'effective_from', o.effective_from,
@@ -1132,14 +1146,13 @@ BEGIN
                            'valid_from', t.valid_from,
                            'manager_percent', t.manager_percent,
                            'manager_fixed_amount', t.manager_fixed_amount,
-                           'deposit_holder', t.deposit_holder,
                            'landlord_account_ids', to_jsonb(t.landlord_account_ids)) ORDER BY t.valid_from)
                     FROM app_private.landlord_operation_terms t
                    WHERE t.building_id = o.building_id), '[]'::jsonb),
                'updated_at', o.updated_at)
         FROM app_private.landlord_operations o
         CROSS JOIN LATERAL (
-          SELECT t.valid_from, t.manager_percent, t.manager_fixed_amount, t.deposit_holder, t.landlord_account_ids
+          SELECT t.valid_from, t.manager_percent, t.manager_fixed_amount, t.landlord_account_ids
             FROM app_private.landlord_operation_terms t
            WHERE t.building_id = o.building_id
            ORDER BY t.valid_from DESC
@@ -1182,29 +1195,40 @@ BEGIN
 END
 $fn$;
 
--- Ảnh cấu hình để ghi sổ thay đổi: bỏ cột dấu thời gian/người sửa, kèm toàn bộ điều khoản theo tháng.
-CREATE OR REPLACE FUNCTION app_private.landlord_operation_state_v1(p_building_id uuid)
-RETURNS jsonb
+-- Gợi ý số dư đầu kỳ từ cọc / tiền khách trả thừa nằm TRƯỚC tháng áp dụng ở sổ của bên KHÔNG giữ cọc (thân
+-- production 20261021083438 md5 54eeb748… + người giữ cọc, chủ chốt 23/10/2026), có dấu như số bàn giao:
+--   · quản lý giữ cọc: + cọc ở sổ chủ nhà (chủ nhà bàn giao cho quản lý) — y như trước;
+--   · chủ nhà giữ cọc: − cọc ở sổ quản lý (sổ không thuộc sổ chủ nhà của điều khoản đầu; quản lý bàn giao).
+-- Khác 0 thì phải xác nhận số dư đầu kỳ trước khi chốt; đổi người giữ cọc làm số này đổi ⇒ xác nhận cũ hết hiệu
+-- lực (landlord_opening_check_v1 so với số lúc xác nhận). landlord_operation_state_v1 KHÔNG thay: to_jsonb(o)
+-- tự gồm cột deposit_holder mới của bảng toà ⇒ sổ thay đổi ghi được việc đổi người giữ cọc.
+CREATE OR REPLACE FUNCTION app_private.landlord_pre_start_deposits_v1(p_building_id uuid)
+RETURNS numeric
 LANGUAGE sql
 STABLE
 SET search_path TO ''
 AS $fn$
-  SELECT (pg_catalog.to_jsonb(o) - 'created_by' - 'updated_by' - 'created_at' - 'updated_at'
-            - 'organization_id' - 'building_id')
-         || pg_catalog.jsonb_build_object('terms', COALESCE((
-              SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
-                       'valid_from', t.valid_from,
-                       'manager_percent', t.manager_percent,
-                       'manager_fixed_amount', t.manager_fixed_amount,
-                       'deposit_holder', t.deposit_holder,
-                       'landlord_account_ids', pg_catalog.to_jsonb(t.landlord_account_ids)) ORDER BY t.valid_from)
-                FROM app_private.landlord_operation_terms t
-               WHERE t.building_id = o.building_id), '[]'::jsonb))
+  SELECT COALESCE(sum(COALESCE(i.amount, i.unit_price * i.quantity)
+                      * CASE WHEN v.type::text = 'EXPENSE' THEN -1 ELSE 1 END
+                      * CASE WHEN o.deposit_holder = 'LANDLORD' THEN -1 ELSE 1 END), 0)
     FROM app_private.landlord_operations o
+    JOIN app_private.landlord_operation_terms t
+      ON t.building_id = o.building_id AND t.valid_from = o.effective_from
+    JOIN public.income_expenses v
+      ON v.building_id = o.building_id
+     AND v.deleted_at IS NULL
+     AND v.approval_status = 'APPROVED'
+     AND v.voucher_date < o.effective_from
+     -- sổ của bên KHÔNG giữ cọc: quản lý giữ ⇒ sổ chủ nhà; chủ nhà giữ ⇒ sổ khác (sổ quản lý)
+     AND COALESCE(v.account_id = ANY (t.landlord_account_ids), false) = (o.deposit_holder = 'MANAGER')
+     AND v.business_result_accounting IS NOT TRUE
+    JOIN public.income_expense_items i
+      ON i.income_expense_id = v.id
+     AND i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT')
    WHERE o.building_id = p_building_id;
 $fn$;
 
-REVOKE ALL ON FUNCTION app_private.landlord_operation_state_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION app_private.landlord_pre_start_deposits_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 9. Ghi cài đặt: thân production + tham số cuối p_deposit_holder. Thêm tham số không làm được bằng CREATE OR
@@ -1257,7 +1281,6 @@ DECLARE
   v_pct_change   boolean;
   v_fixed_change boolean;
   v_ids_change   boolean;
-  v_holder_change boolean;
   v_fixed        numeric;
   v_holder       text;
   v_zero_month   date;
@@ -1371,28 +1394,37 @@ BEGIN
       to_char(v_first_closed, 'MM/YYYY') USING ERRCODE = '55000';
   END IF;
 
+  -- người giữ cọc là cài đặt của TOÀ (áp mọi tháng): NULL = giữ nguyên (toà mới: quản lý). Đổi giữa chừng thì
+  -- tiền cọc bên cũ đang giữ không tự bàn giao sang bên mới ⇒ chỉ đổi được khi toà chưa chốt tháng nào
+  -- (chủ chốt 23/10/2026)
+  v_holder := COALESCE(p_deposit_holder, CASE WHEN v_exists THEN v_old.deposit_holder END, 'MANAGER');
+  IF v_exists AND v_holder IS DISTINCT FROM v_old.deposit_holder AND v_first_closed IS NOT NULL THEN
+    RAISE EXCEPTION 'Toà đã chốt tháng % — người giữ cọc chỉ đổi được khi chưa chốt tháng nào (đổi giữa chừng thì tiền cọc đang giữ không tự bàn giao)',
+      to_char(v_first_closed, 'MM/YYYY') USING ERRCODE = '55000';
+  END IF;
+
   -- dấu xác nhận số dư đầu kỳ xử lý SAU khi điều khoản đã chuẩn hoá (cơ sở xác nhận phụ thuộc
-  -- tháng áp dụng và sổ chủ nhà của điều khoản đầu)
+  -- tháng áp dụng, sổ chủ nhà của điều khoản đầu và người giữ cọc)
   INSERT INTO app_private.landlord_operations AS o
     (building_id, organization_id, landlord_name, effective_from, note, is_active,
-     opening_balance, created_by, updated_by)
+     opening_balance, deposit_holder, created_by, updated_by)
   VALUES
     (p_building_id, v_org, v_name, v_from, v_note, COALESCE(p_is_active, true),
-     v_opening, v_actor, v_actor)
+     v_opening, v_holder, v_actor, v_actor)
   ON CONFLICT (building_id) DO UPDATE
      SET landlord_name = EXCLUDED.landlord_name,
          effective_from = EXCLUDED.effective_from,
          note = EXCLUDED.note,
          is_active = EXCLUDED.is_active,
          opening_balance = EXCLUDED.opening_balance,
+         deposit_holder = EXCLUDED.deposit_holder,
          updated_by = v_actor,
          updated_at = clock_timestamp();
 
   IF NOT v_exists THEN
     INSERT INTO app_private.landlord_operation_terms
-      (building_id, valid_from, manager_percent, manager_fixed_amount, deposit_holder, landlord_account_ids, created_by)
-    VALUES (p_building_id, v_from, p_manager_percent, COALESCE(p_manager_fixed_amount, 0),
-            COALESCE(p_deposit_holder, 'MANAGER'), v_ids, v_actor);
+      (building_id, valid_from, manager_percent, manager_fixed_amount, landlord_account_ids, created_by)
+    VALUES (p_building_id, v_from, p_manager_percent, COALESCE(p_manager_fixed_amount, 0), v_ids, v_actor);
     v_terms_from := v_from;
   ELSE
     -- 1. dời tháng bắt đầu: điều khoản đầu tiên luôn bắt đầu đúng tháng áp dụng
@@ -1415,11 +1447,10 @@ BEGIN
       END IF;
     END IF;
 
-    -- 2. đổi % / tiền cố định / sổ chủ nhà / người giữ cọc TỪNG TRƯỜNG, từ tháng T (p_terms_from, mặc định
-    --    ngay sau tháng chốt gần nhất) trở đi: so với điều khoản ĐANG ÁP ở T (đúng thứ màn đã hiện cho tháng
-    --    đó). Trường nào đổi thì ghi trường đó cho T và mọi mốc sau T; trường không đổi giữ nguyên ở từng mốc
-    --    (đổi % không kéo theo tiền cố định, sổ hay người giữ cọc của mốc khác, và ngược lại). Tháng trước T
-    --    giữ điều khoản cũ.
+    -- 2. đổi % / tiền cố định / sổ chủ nhà TỪNG TRƯỜNG, từ tháng T (p_terms_from, mặc định ngay sau tháng
+    --    chốt gần nhất) trở đi: so với điều khoản ĐANG ÁP ở T (đúng thứ màn đã hiện cho tháng đó). Trường nào
+    --    đổi thì ghi trường đó cho T và mọi mốc sau T; trường không đổi giữ nguyên ở từng mốc (đổi % không kéo
+    --    theo tiền cố định hay sổ của mốc khác, và ngược lại). Tháng trước T giữ điều khoản cũ.
     -- tháng trước tháng áp dụng không có trong quyết toán ⇒ T sớm hơn thì kẹp về tháng áp dụng
     v_terms_from := GREATEST(COALESCE(date_trunc('month', p_terms_from)::date,
                                       CASE WHEN v_last_closed IS NULL THEN v_from
@@ -1430,7 +1461,6 @@ BEGIN
      ORDER BY t.valid_from DESC
      LIMIT 1;
     v_fixed := COALESCE(p_manager_fixed_amount, v_prev.manager_fixed_amount, 0);
-    v_holder := COALESCE(p_deposit_holder, v_prev.deposit_holder, 'MANAGER');
     -- điều khoản màn đang lưu cho tháng T: quản lý phải nhận % hoặc tiền cố định (hoặc cả hai)
     IF p_manager_percent = 0 AND v_fixed = 0 THEN
       RAISE EXCEPTION 'Quản lý phải nhận %% lợi nhuận hoặc tiền cố định (hoặc cả hai) — không để cả hai bằng 0'
@@ -1439,8 +1469,7 @@ BEGIN
     v_pct_change := v_prev.manager_percent IS DISTINCT FROM p_manager_percent;
     v_fixed_change := v_prev.manager_fixed_amount IS DISTINCT FROM v_fixed;
     v_ids_change := v_prev.landlord_account_ids IS DISTINCT FROM v_ids;
-    v_holder_change := v_prev.deposit_holder IS DISTINCT FROM v_holder;
-    IF NOT (v_pct_change OR v_fixed_change OR v_ids_change OR v_holder_change) THEN
+    IF NOT (v_pct_change OR v_fixed_change OR v_ids_change) THEN
       v_terms_from := NULL;
     ELSE
       IF v_terms_from < v_from THEN
@@ -1451,25 +1480,22 @@ BEGIN
         FROM app_private.landlord_closed_months_v1(p_building_id) AS m
        WHERE m >= v_terms_from;
       IF v_blocked IS NOT NULL THEN
-        RAISE EXCEPTION 'Tháng % đã chốt — mở chốt tháng đó trước khi đổi tỷ lệ / tiền cố định / sổ chủ nhà / người giữ cọc từ tháng %',
+        RAISE EXCEPTION 'Tháng % đã chốt — mở chốt tháng đó trước khi đổi tỷ lệ / tiền cố định / sổ chủ nhà từ tháng %',
           to_char(v_blocked, 'MM/YYYY'), to_char(v_terms_from, 'MM/YYYY') USING ERRCODE = '55000';
       END IF;
       INSERT INTO app_private.landlord_operation_terms AS t
-        (building_id, valid_from, manager_percent, manager_fixed_amount, deposit_holder, landlord_account_ids, created_by)
+        (building_id, valid_from, manager_percent, manager_fixed_amount, landlord_account_ids, created_by)
       VALUES (p_building_id, v_terms_from,
               CASE WHEN v_pct_change THEN p_manager_percent ELSE v_prev.manager_percent END,
               CASE WHEN v_fixed_change THEN v_fixed ELSE v_prev.manager_fixed_amount END,
-              CASE WHEN v_holder_change THEN v_holder ELSE v_prev.deposit_holder END,
               CASE WHEN v_ids_change THEN v_ids ELSE v_prev.landlord_account_ids END, v_actor)
       ON CONFLICT (building_id, valid_from) DO UPDATE
          SET manager_percent = EXCLUDED.manager_percent,
              manager_fixed_amount = EXCLUDED.manager_fixed_amount,
-             deposit_holder = EXCLUDED.deposit_holder,
              landlord_account_ids = EXCLUDED.landlord_account_ids;
       UPDATE app_private.landlord_operation_terms t
          SET manager_percent = CASE WHEN v_pct_change THEN p_manager_percent ELSE t.manager_percent END,
              manager_fixed_amount = CASE WHEN v_fixed_change THEN v_fixed ELSE t.manager_fixed_amount END,
-             deposit_holder = CASE WHEN v_holder_change THEN v_holder ELSE t.deposit_holder END,
              landlord_account_ids = CASE WHEN v_ids_change THEN v_ids ELSE t.landlord_account_ids END
        WHERE t.building_id = p_building_id AND t.valid_from > v_terms_from;
       -- đổi một trường mà mốc sau T giữ trường kia ⇒ mốc đó có thể thành 0% + 0đ: không cho lưu
@@ -1486,7 +1512,6 @@ BEGIN
        USING (SELECT x.valid_from,
                      x.manager_percent = lag(x.manager_percent) OVER w
                      AND x.manager_fixed_amount = lag(x.manager_fixed_amount) OVER w
-                     AND x.deposit_holder = lag(x.deposit_holder) OVER w
                      AND x.landlord_account_ids = lag(x.landlord_account_ids) OVER w AS trung
                 FROM app_private.landlord_operation_terms x
                WHERE x.building_id = p_building_id
@@ -1734,9 +1759,9 @@ BEGIN
     RAISE EXCEPTION 'public.landlord_operation_upsert_v1 phải còn đúng MỘT chữ ký' USING ERRCODE = 'XX000';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_attribute a
-                  WHERE a.attrelid = 'app_private.landlord_operation_terms'::regclass
+                  WHERE a.attrelid = 'app_private.landlord_operations'::regclass
                     AND a.attname = 'deposit_holder' AND NOT a.attisdropped) THEN
-    RAISE EXCEPTION 'Thiếu cột landlord_operation_terms.deposit_holder' USING ERRCODE = 'XX000';
+    RAISE EXCEPTION 'Thiếu cột landlord_operations.deposit_holder' USING ERRCODE = 'XX000';
   END IF;
   IF to_regclass('app_private.landlord_settlement_handovers') IS NULL
      OR to_regclass('app_private.landlord_settlement_confirmations') IS NULL THEN

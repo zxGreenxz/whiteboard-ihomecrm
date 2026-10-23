@@ -130,6 +130,7 @@ export function SettlementScreen({
           {tab === 'thuchi' && <SettlementCashTab key={monthKey(month.period_month)} st={st} mode={mode} narrow={narrow} />}
           {tab === 'quyettoan' && (
             <SettlementStatementCard month={month} mode={mode} onRequestDepositHolder={onRequestDepositHolder}
+              holderLockedSince={overview.months.find((m) => m.status === 'CLOSED')?.period_month ?? null}
               onGoHandover={() => selectTab('bangiao')} />
           )}
           {tab === 'bangiao' && <SettlementHandoverTab month={month} mode={mode} buildingId={buildingId} token={token} busy={busy} />}
