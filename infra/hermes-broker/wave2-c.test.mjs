@@ -126,10 +126,11 @@ test('cấu trúc: hàm dùng chung INVOKER (trừ helper salary_is_admin_v1), c
   await assert.rejects(env.call('SELECT count(*)::int result FROM public.materials_items_v1($1)', [ORG]), code('42501'));
 }));
 
-test('mục lục qua cổng: đủ 20 báo cáo Gói C khi giữ đủ khoá; topic van_hanh = gói c', () => inCase(async env => {
+// Công việc Mốc 4 (20261022180402): + tasks_board (khoá tasks.view, dùng lại) ⇒ 21 báo cáo.
+test('mục lục qua cổng: đủ 21 báo cáo Gói C khi giữ đủ khoá; topic van_hanh = gói c', () => inCase(async env => {
   await env.grant(C_KEYS);
   assert.deepEqual((await env.reportList('c')).items.map(row => row.report), Object.keys(W2C_REPORTS).sort());
-  assert.equal(Object.keys(W2C_REPORTS).length, 20);
+  assert.equal(Object.keys(W2C_REPORTS).length, 21);
 }));
 
 test('C1 xe: RLS + vehicles.view theo toà; ctx thu hẹp (overlay, khách theo customers.view, xe không toà khi toàn công ty)', () => inCase(async env => {
@@ -368,7 +369,7 @@ const notPrivate = specs => Object.entries(specs).filter(([, spec]) => spec.priv
 test('mọi báo cáo gói C private=true (khai báo JS, sổ đợt 2 và dòng mục lục)', () => {
   assert.deepEqual(notPrivate(W2C_REPORTS), []);
   const registered = Object.fromEntries(Object.entries(W2.reports).filter(([, spec]) => spec.package === 'c'));
-  assert.equal(Object.keys(registered).length, 20);
+  assert.equal(Object.keys(registered).length, 21);
   assert.deepEqual(notPrivate(registered), []);
   for (const reportId of Object.keys(registered)) assert.equal(w2CatalogEntry(reportId, registered[reportId], 'c').private, true, reportId);
   assert.deepEqual(notPrivate({ ...W2C_REPORTS, probe: { ...W2C_REPORTS.materials, private: false } }), ['probe'], 'phép kiểm không xanh rỗng');

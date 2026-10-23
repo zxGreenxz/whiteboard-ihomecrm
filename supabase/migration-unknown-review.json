@@ -897,6 +897,54 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 3 (22/10/2026)",
       "sha256": "88ae400567ff56b11c8af4566a9a416c46074b4fe758cf3662ac365b05263a8f"
+    },
+    "supabase/migrations/20261022164201_hermes_task_batch_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022164201_hermes_task_batch_v1.sql",
+          "trich_doan": "INSERT dòng chính sách task.create_batch; CREATE OR REPLACE FUNCTION app_private.hermes_task_managed_buildings_v1 / hermes_task_batch_prepare_v1 / hermes_task_batch_finish_v1 (mới) + bốn tầng của vỏ hermes_task_action_v1 (ghim md5 thân của 074741)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 21 (Mốc 4): task.create_batch, test, tầng 2 trên TEST, thứ tự áp"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 4 trang Công việc: giao tối đa 20 việc một lần đồng ý trên vỏ dùng chung), chưa đi qua lane apply — ba hàm mới vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261022074741. Bằng chứng: PGlite task-batch-sql 8/8 + task-action-sql / task-edit-sql trên chuỗi 031548 → 065634 → 074741 → 164201.",
+      "missingObjects": [
+        "function:app_private.hermes_task_managed_buildings_v1",
+        "function:app_private.hermes_task_batch_prepare_v1",
+        "function:app_private.hermes_task_batch_finish_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 4 (23/10/2026)",
+      "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6"
+    },
+    "supabase/migrations/20261022180400_hermes_w2c_jobs_board_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022180400_hermes_w2c_jobs_board_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.jobs_board_v1 (mới, INVOKER, search_path rỗng) + GRANT EXECUTE TO authenticated"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 21 (Mốc 4): báo cáo W2 tasks_board, thứ tự áp 180359 → 180400 → 180402"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 4: hàm bảng việc dùng chung cho báo cáo W2 tasks_board), chưa đi qua lane apply — hàm mới vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261022180402. Bằng chứng: PGlite wave2-c-tasks-board 4/4 (RLS jobs của baseline, Q35, đột biến).",
+      "missingObjects": [
+        "function:public.jobs_board_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 4 (23/10/2026)",
+      "sha256": "7504efedcec9e0a966ff3c2419300f7ad20feb1609532c5969b4cdf4b96e500c"
     }
   }
 }

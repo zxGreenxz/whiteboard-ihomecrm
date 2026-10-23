@@ -643,3 +643,72 @@ Trang 2 mang đúng summary của trang 1. Mọi dòng có `assigneeName`. Tốc
 3. Bản connector kế tiếp gỡ hai cửa sổ của `tasks`.
 
 Rollback: chạy lại câu lệnh hàm của `063452`; `$requires$` của file này nhận cả hai thân. File không phụ thuộc `074741`, áp trước hay sau đều được.
+
+## 21. Mốc 4 — giao nhiều việc một lần, bảng việc, theo dõi kiểm toà (23/10)
+
+**Phạm vi:** `task.create_batch` (Q37, CV8), báo cáo W2 `tasks_board` (CV14, mục 4), known-gap `hermes-pham-vi-toa-chua-giao-web` mục (3). Không thêm tool nào vào `tools/list`: lô nằm trong danh mục chung (`crm_action_list`), bảng việc nằm trong `crm_read_report` (hai tool meta giữ 1 599 / 1 600 B). Năm migration, đều là file mới, chưa áp.
+
+**`20261022164201_hermes_task_batch_v1`** (áp SAU `074741`). Vỏ `hermes_task_action_v1` giữ nguyên. Thay thân bốn tầng vỏ gắn, dựng từ thân `074741` và ghim md5 (`$requires$` nhận thân `074741` hoặc thân của file này). Thêm ba hàm DEFINER không cấp EXECUTE cho vai API: `hermes_task_managed_buildings_v1`, `hermes_task_batch_prepare_v1`, `hermes_task_batch_finish_v1`.
+
+| Phần | Luật |
+| --- | --- |
+| Dòng chính sách | `task.create_batch`: khoá `tasks.create`, reversible, `always` ⇒ LUÔN xem trước MỘT lần cho cả lô |
+| Tham số | `items` (1–20 bản ghi: toà, phòng, nội dung, loại, người nhận, hạn, giờ, ưu tiên) HOẶC `buildingsManagedBy` (đúng một trong hai, không thì `invalid_params`). Giá trị chung ở ngoài (`buildingName`, `jobType`, `content`, `description`, `assigneeName`, `deadline`, `deadlineTime`, `priority`), mục đè từng trường. "Toà X, mỗi phòng một việc" chỉ nêu toà một lần (thêm sau tầng 2: CV-B04/B05 nêu toà chung). `buildingsManagedBy` kèm `buildingName` là mâu thuẫn ⇒ `invalid_params` |
+| Mỗi mục | Đúng luật `task.create`: giải tên dưới RLS người hỏi, đoán loại (Mốc 2c), hạn trống = hết ngày mai, toà ảo không nhận, tiêu đề như web. Người nhận phải nêu rõ (lô không đề xuất người quản lý Q31). Mục đầu tiên chưa giải được ⇒ `needs_input` kèm `item` (1–20); connector ghi "Mục #n: …" |
+| `buildingsManagedBy` | Giải người, rồi trải ra mọi toà trong phạm vi khoá mà người đó quản lý theo luật Q31 (thành viên ACTIVE không phải OWNER, có `tasks.edit` + `buildings.view` ở toà), xếp theo tên toà; mỗi toà một việc cả toà. Người nhận trống = chính người đó. Không quản lý toà nào ⇒ `needs_input` `building` `unspecified` |
+| Kiểm | Trùng đang mở (như `task.create`) + hai mục trùng nhau trong lô + người nhận không quản lý toà ⇒ cảnh báo theo mục. Hạn mức Q37 tính cho CẢ lô, vượt ⇒ `rejected` ngay ở bản xem trước (`task_quota_user` / `task_quota_pair`) và kiểm lại ở lượt ghi. > 20 mục ⇒ `batch_too_large` (connector chặn trước ở khuôn danh sách 1–20) |
+| Lượt 2 | Khoá công ty (guard) → khoá tư vấn (công ty, toà) theo thứ tự id toà → mọi INSERT trong một khối dưới RLS + trigger như web; một hàng lỗi ⇒ cả lô lùi, biên nhận `rejected`. Basis = md5 nối basis từng mục; lệch ⇒ `state_changed`. Phát lại theo `requestId` trước mọi quyết định |
+| Chốt | Đối chiếu từng hàng như `task.create`, sổ `hermes_task_jobs` (`action='task.create_batch'`), audit `HERMES_TASK_CREATED` từng việc (kèm `item`/`items`). `result` = câu "Đã tạo N việc: mã (toà phòng), …" + `count` + `jobs[]` (id, mã, tiêu đề, toà, phòng, người nhận, hạn); `link` `/tasks` |
+
+**Khung chung (connector):** `needs_input` nhận thêm `item` (số nguyên 1–20), runtime kiểm khuôn. Trường bản ghi nhận thêm loại `time`. Lý do mới `batch_too_large` (lớp `needs_input`, câu "Tối đa 20 việc một lần giao…").
+
+**`tasks_board`** (gói C, `crm_read_report`). Ba file, áp theo thứ tự:
+1. `20261022180359_hermes_w2_tasks_view_reused_v1`: thêm `tasks.view` vào `hermes_w2_reused_keys_v1`. Dựng từ thân production, đã có `contracts.view` của `20261022043540` (#270). `W2_REUSED_KEYS` ở JS khớp cả hai khoá.
+2. `20261022180400_hermes_w2c_jobs_board_shared_v1`: hàm dùng chung `public.jobs_board_v1` (INVOKER, `search_path=''`, chỉ `authenticated`). Nội dung file không có chữ `hermes_` (luật hàm dùng chung CRM).
+3. `20261022180402_hermes_w2c_tasks_board_v1`: thay `hermes_w2c_catalog_v1` (thân production `20261018030200`) và `hermes_w2c_read_v1` (thân production `20261019040948`; nhận thêm thân cuối chuỗi file của fixture), thêm một mục catalog và một nhánh đọc; ghim md5.
+
+| Phần | Luật |
+| --- | --- |
+| Khoá, phạm vi | `tasks.view`, `rls_buildings`: toà công ty ∩ phạm vi kết nối, RLS `jobs` của người hỏi quyết từng việc, kể cả việc giao cho chính người hỏi ở toà ngoài khoá (Q35). Việc không gắn toà chỉ hiện khi Toàn tổ chức. Rào `fence` của broker nhận đúng các hàng (test) nên giữ `rls_buildings` |
+| Tham số | `query` (mã, tiêu đề, tên người nhận bỏ dấu), `status` IN_PROGRESS / COMPLETED / OVERDUE (= đang làm mà quá hạn lúc gọi), `kind` deadline / created / completed + `fromDate`/`toDate` (ngày giờ công ty), `buildingId`, `roomId`, `staffId`. Tên toà/phòng đi qua `buildingName`/`roomName` của cơ chế giải tên W2 sẵn có |
+| Hàng | mã, tiêu đề, loại, toà, phòng, người nhận, người giao, hạn "YYYY-MM-DD HH:MM", số ngày quá hạn, tiến độ (300 ký tự đầu `completion_description`), ngày tạo/xong, `link` `/tasks?job=…`. Đang làm + quá hạn đứng đầu |
+| `summary` | Do SQL tính trên CẢ tập khớp: `total`, `overdue`, `byAssignee` (≤ 20, nhiều việc trước, chưa giao cuối), `byBuilding` (≤ 50, toà null cuối) |
+
+Lệch so với mục 4: không có trường "nguồn (web/Hermes/định kỳ)", vì `task_recurrences` chưa làm. Tên không xem được trả null (theo RLS `profiles`), không phải chuỗi "(không xem được tên)". `byAssignee` đếm việc + quá hạn của tập lọc, không tách "mở".
+
+**`20261022180351_hermes_task_follow_building_v1`** (known-gap mục 3). Dựng từ thân `hermes_task_follow_grant_v1` đang chạy (`20261015130000`, ghim md5), thêm đúng một điều kiện: người giao phải còn `buildings.view` ở toà của việc (`authorize_tenant_action_v3`). Mất quyền ⇒ `permission_lost` ⇒ lượt nhắc đóng theo dõi, không báo thêm. Việc không gắn toà giữ luật cũ. `known-gaps.yaml` ghi bản sửa, gỡ mục (3) khi file đã áp production.
+
+**Soát deadlock 40P01 (yêu cầu phiên chính 23/10): không có vòng, không cần NOWAIT.** Đo catalog production, chỉ đọc:
+- Guard dùng `lock_org_for_decision_v1`. Hàm này khoá dòng công ty bằng `FOR NO KEY UPDATE`, không xung đột với `FOR KEY SHARE` mà kiểm khoá ngoại lấy.
+- Trigger trên `jobs`: `jobs_set_user_id_audit`, `trg_autofill_org`, `trigger_generate_job_code` (khoá tư vấn khi INSERT), `trigger_jobs_stamp_completion_time`, `trigger_jobs_updated_at`, `z95_notify_job_assigned_ins/upd`, `zz_khoa_organization_id`. Không trigger nào khoá hay UPDATE dòng `organizations`.
+- Trigger E4 chèn `notifications`. Bốn trigger trên `notifications` cũng không khoá dòng công ty; khoá ngoại `notifications/jobs/material_usages → organizations` chỉ lấy KEY SHARE.
+- Hàm vừa chạm `jobs`/`material_usages` vừa gọi guard: chỉ có `hermes_task_follow_tick_v1`, và hàm này khoá công ty TRƯỚC (cùng thứ tự với Hermes, `lock_timeout` ⇒ bỏ qua công ty bận). Gọi gián tiếp một bậc: hai hàm đọc Hermes, không khoá dòng việc. Không hàm nào chạm `jobs` mà UPDATE hay khoá `organizations`.
+- Vậy web khoá dòng việc xong không bao giờ phải chờ dòng công ty mà Hermes đang giữ. Lô không khoá dòng việc có sẵn, chỉ INSERT.
+
+**Test:**
+- PGlite `task-batch-sql` 8/8: xem trước một lần, ghi, phát lại, sổ, audit; mục đầu chưa giải kèm số mục; toà chung + mục đè; > 20; `buildingsManagedBy`; cả lô hoặc không gì; `state_changed` + cảnh báo trùng; hạn mức ở bản xem trước; mất phạm vi giữa hai lượt.
+- `wave2-c-tasks-board` 4/4: hàng + summary + lọc (CV-R09, OVERDUE, tên bỏ dấu, người nhận, phòng, trục ngày tạo), Toàn tổ chức có việc không toà, Q35 qua policy, 3 đột biến hàm dùng chung. Chạy trên RLS `jobs` thật của baseline và rào broker.
+- `task-follow-review-fixes`: known-gap (3) có file ⇒ REVOKED, bản trước ⇒ vẫn nhắc. `task-follow-mutation` thêm ca bỏ điều kiện `buildings.view`.
+- `hermes-durable-schema` 100/100 (forward 31 file / 106 hàm). Test W2 cập nhật: dải nền thêm `180359`, `tasks_board` là báo cáo `rls_buildings` thứ hai, ví dụ khai sai đổi `contracts.view` → `customers.view` (giống #270).
+
+**Tầng 2 trên TEST** (ROLLBACK, nạp `074741` → `164201` → `180351` → `180359` → `180400` → `180402` trong giao dịch; chủ / joey / bosshuy):
+
+| Ca | Kết quả | Ma trận |
+| --- | --- | --- |
+| B01 mỗi toà Nathan quản lý | xem trước 9 toà (102LVT, 1392QT, 15KV, 331PHI, 403PVB, 405PVB, 44TL, 481NVK, 512TT) ⇒ 9 việc, NATHAN, 31/10 23:59; phát lại không thêm; sổ 9, audit 9 | 9 toà, đúng danh sách |
+| B02 ba toà cho Joey | xem trước 3 ⇒ 3 việc, 30/10 23:59 | 3 |
+| B03 21 mục | `batch_too_large` | tối đa 20 |
+| B04 phòng 999 | `needs_input` mục #3 `room` `not_visible`, chưa tạo gì; bỏ mục ⇒ 2 việc 403PVB/101, 102 | cả lô hoặc không gì |
+| B05 joey 11 việc cho Nathan | `rejected` `task_quota_pair` ở lượt 1, không tạo gì (10 việc ⇒ xem trước được) | chặn cả lô |
+| R09 tuần này xong | chủ 50 việc (NATHAN 29, JOEY 20, chưa giao 1); joey 21; bosshuy 37 | truth: 49 có người nhận / 50, NATHAN 29 |
+| Quá hạn | chủ 4 việc | truth 4 |
+
+bosshuy giao lô bị `needs_input` `jobType` `not_visible`: tài khoản này không thấy loại việc (không có `task_types.view` CRM, như R11 của Mốc 3b). Đây là hành vi sẵn có của `task.create`, không riêng lô. TEST không có lượt theo dõi ACTIVE nên chưa đo được số lượt sẽ đóng theo điều kiện mới.
+
+**Thứ tự phát hành (phiên chính):**
+1. Lô: áp `074741` rồi `164201` qua lane (TEST rồi production), sau đó phát hành connector có Mốc 4. Danh mục sống quyết việc quảng bá `task.create_batch`; connector cũ bỏ qua thao tác lạ.
+2. Bảng việc: áp `180359` → `180400` → `180402` (`180402` đòi hai file trước). Phát hành connector có `tasks_board` cùng lúc hoặc sau: connector cũ không có báo cáo trong sổ nên không gọi tới.
+3. Theo dõi: áp `180351` lúc nào cũng được. Provenance xếp `180351`, `180359`, `180402` là `catalog-proven` dù CHƯA áp (hàm cùng tên đã có) ⇒ phải áp đích danh.
+4. `180359` dựng từ thân có `contracts.view` (#270 đã áp production). Gộp main có #270 thì `wave2-kit.mjs` / test dải nền sẽ xung đột nhẹ: giữ cả hai khoá và cả hai file trong dải.
+
+Rollback: chạy lại câu lệnh hàm của file trước (`074741`, `20261015130000`, thân production của reused keys / catalog / reader gói C); `$requires$` của mỗi file nhận cả thân cũ lẫn thân mới. `public.jobs_board_v1` để lại không hại (không ai gọi ngoài nhánh mới).

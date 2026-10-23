@@ -16,8 +16,9 @@ export const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
 export const ATTACHMENTS_READY = false;
 const PARAM = /^[a-z][A-Za-z0-9]{0,31}$/;
 const MAX_PARAMS = 16, MAX_ACTIONS = 128, MAX_LIST = 20, MAX_RECORD_FIELDS = 12;
-// Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh).
-const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool']);
+// Khuôn vô hướng: được làm phần tử của list hoặc trường của record (không lồng list/record/ảnh). time (Công việc Mốc 4): giờ hạn của từng
+// mục trong lô task.create_batch.
+const SCALARS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool']);
 const NAME_LABELS = Object.freeze({ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn',
   category: 'hạng mục', cashbook: 'sổ quỹ', jobType: 'loại việc' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;

@@ -166,6 +166,23 @@ test('từ chối thật của SQL ⇒ lỗi action_rejected mang reason + câu 
     error => error.code === 'action_outcome_unknown' && typeof error.requestId === 'string', 'ứng viên mang thêm trường (ID) ⇒ sai khuôn ⇒ chưa rõ');
 });
 
+test('Công việc Mốc 4: needs_input may carry item (1–20) ⇒ detail starts with "Mục #n: "; a malformed item is a shape mismatch', async t => {
+  let reply;
+  const env = setup(t, { respond: (_request, hooks) => { hooks.onDispatch(); return reply; } });
+  reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'room', wanted: '999', why: 'not_visible', candidates: [], more: false, item: 3 };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail,
+    "Mục #3: Không thấy phòng '999' trong phạm vi quyền của anh/chị; hỏi lại người dùng.");
+  reply = { kind: 'needs_input', reason: 'date_out_of_range', item: 2 };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail, `Mục #2: ${ACTION_REASONS.date_out_of_range.text}`);
+  reply = { kind: 'needs_input', reason: 'batch_too_large' };
+  assert.equal((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail, ACTION_REASONS.batch_too_large.text);
+  for (const item of [0, 21, 1.5, '2']) {
+    reply = { kind: 'needs_input', reason: 'date_out_of_range', item };
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
+      error => error.code === 'action_outcome_unknown', `item ${JSON.stringify(item)} sai khuôn`);
+  }
+});
+
 test('mất phản hồi sau khi gửi lệnh ghi ⇒ action_outcome_unknown kèm requestId; tra trạng thái theo requestId', async t => {
   let mode = 'lost';
   const env = setup(t, { respond: (request, hooks) => {

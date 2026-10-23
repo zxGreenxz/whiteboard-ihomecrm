@@ -1,4 +1,5 @@
-// Danh mục thao tác ghi của trang Công việc (Đợt 2b, docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md mục 2). Mốc 2: task.create; Mốc 3: task.update, task.cancel.
+// Danh mục thao tác ghi của trang Công việc (Đợt 2b, docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md mục 2). Mốc 2: task.create; Mốc 3: task.update, task.cancel;
+// Mốc 4: task.create_batch.
 // Tên toà/phòng/loại/người do SQL giải dưới RLS người hỏi (public.hermes_task_action_v1, 20261022031548). Lớp reversible + chính
 // sách DB never: tự giao, đủ thông tin ⇒ ghi thẳng; máy chủ tự đòi xem trước khi giao người khác, khi phải đoán loại/phòng, khi
 // có việc trùng đang mở, khi người nhận không quản lý toà, khi đề xuất người nhận (Q31, Q32, Q35, Q36). Hạn trống = hết ngày mai
@@ -50,7 +51,32 @@ export const TASK_CANCEL = defineAction({ id: 'task.cancel', page: 'task', key: 
   },
   reasons: ['cancel_blocked', 'task_not_open'] });
 
-export const TASK_ACTIONS = Object.freeze([TASK_CREATE, TASK_UPDATE, TASK_CANCEL]);
+// Mốc 4 (20261022164201): giao tối đa 20 việc MỘT lần đồng ý (Q37), cả lô hoặc không gì. Mỗi mục theo đúng luật task.create (giá trị chung
+// ở ngoài — kể cả buildingName cho "toà X, mỗi phòng một việc" — mục đè từng trường); buildingsManagedBy thay items = mỗi toà người đó quản lý một việc (người nhận trống = chính người đó). Chính
+// sách DB always ⇒ máy chủ LUÔN xem trước một lần cho cả lô; mục đầu tiên chưa ổn ⇒ needs_input kèm số mục.
+export const TASK_BATCH_MAX = 20;
+export const TASK_CREATE_BATCH = defineAction({ id: 'task.create_batch', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1',
+  title: 'Giao nhiều việc một lần (≤20, một lần đồng ý): items từng toà/phòng, hoặc buildingsManagedBy = mỗi toà người đó quản lý',
+  params: {
+    items: param.list(param.record({
+      buildingName: param.name('building', { optional: true }), roomName: param.name('room', { optional: true }),
+      content: param.text(1, 200, { optional: true }), jobType: param.name('jobType', { optional: true }),
+      assigneeName: param.name('person', { optional: true }), deadline: param.date({ optional: true }),
+      deadlineTime: param.time({ optional: true }), priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
+    }), { min: 1, max: TASK_BATCH_MAX, optional: true }),
+    buildingsManagedBy: param.name('person', { optional: true }),
+    buildingName: param.name('building', { optional: true }),
+    jobType: param.name('jobType', { optional: true }),
+    content: param.text(1, 200, { optional: true }),
+    description: param.text(1, 2000, { optional: true }),
+    assigneeName: param.name('person', { optional: true }),
+    deadline: param.date({ optional: true }),
+    deadlineTime: param.time({ optional: true }),
+    priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
+  },
+  reasons: ['task_quota_user', 'task_quota_pair', 'batch_too_large'] });
+
+export const TASK_ACTIONS = Object.freeze([TASK_CREATE, TASK_CREATE_BATCH, TASK_UPDATE, TASK_CANCEL]);
 // Thao tác của danh mục thay họ tool cũ, xét theo TỪNG lời gọi qua danh mục SỐNG phía SQL (broker.mjs): task.create sống ⇒
 // crm_task_create / crm_task_status / crm_task_input_options ẩn và bị từ chối; task.update sống ⇒ crm_task_progress; task.cancel
 // sống ⇒ crm_task_cancel. Connector mới + DB cũ ⇒ tool cũ còn nguyên.

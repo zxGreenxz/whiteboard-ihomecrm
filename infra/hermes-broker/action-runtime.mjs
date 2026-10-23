@@ -52,8 +52,13 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
   const mint = () => { const value = mintRequestId(); if (typeof value !== 'string' || !UUID.test(value)) fail('backend_unavailable'); return value; };
 
   function needsFromOutcome(plan, outcome) {
-    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more']) || !ACTION_INPUT_REASONS.includes(outcome.reason)) fail('backend_unavailable');
-    if (outcome.reason !== 'name_unresolved') return needsInput({ action: plan.action, reason: outcome.reason });
+    // item (Công việc Mốc 4, lô task.create_batch): số mục 1–20 của MỤC ĐẦU TIÊN chưa ổn; câu chi tiết nêu "Mục #n: …".
+    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more', 'item']) || !ACTION_INPUT_REASONS.includes(outcome.reason) ||
+        !(outcome.item === undefined || Number.isSafeInteger(outcome.item) && outcome.item >= 1 && outcome.item <= 20)) fail('backend_unavailable');
+    const mark = text => outcome.item === undefined ? text : `Mục #${outcome.item}: ${text}`;
+    if (outcome.reason !== 'name_unresolved') {
+      return needsInput({ action: plan.action, reason: outcome.reason, ...(outcome.item === undefined ? {} : { detail: mark(ACTION_REASONS[outcome.reason].text) }) });
+    }
     // Khuôn kết quả "unresolved" của hermes_write_name_resolve_v1 (field, wanted, why, candidates ≤ 8, more).
     // why unspecified (Công việc, Q31): trường chưa được nêu ⇒ wanted rỗng; mọi why khác phải nhắc lại đúng chuỗi người dùng nói.
     if (!NAME_FIELDS.includes(outcome.field) || !(outcome.why === 'unspecified' ? outcome.wanted === '' : shortText(outcome.wanted, 200)) ||
@@ -62,7 +67,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     // outside_scope không bao giờ kèm tên (SQL không trả tên ngoài phạm vi được ghi; review #253): bỏ mọi tên nếu có.
     const candidates = outcome.why === 'outside_scope' ? [] : outcome.candidates ?? [];
     return needsInput({ action: plan.action, reason: 'name_unresolved', candidates,
-      detail: nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, why: outcome.why, candidates, more: outcome.more === true }) });
+      detail: mark(nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, why: outcome.why, candidates, more: outcome.more === true })) });
   }
 
   return Object.freeze({

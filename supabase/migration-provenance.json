@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T17:30:48.274Z",
+  "generatedAt": "2026-10-23T01:39:36.601Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 825,
-    "unknown": 81,
-    "catalog-proven": 206,
+    "unknown": 83,
+    "catalog-proven": 209,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12960,6 +12960,66 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.hermes_domain_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022164201_hermes_task_batch_v1.sql",
+      "version": "20261022164201",
+      "name": "hermes_task_batch_v1",
+      "scheme": "timestamp14",
+      "sha256": "3ac82bba17cce57a8c7cf5806d97c284cad9cf116c46e72ff5d8f8700440a6f6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_managed_buildings_v1",
+        "function:app_private.hermes_task_batch_prepare_v1",
+        "function:app_private.hermes_task_batch_finish_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180351_hermes_task_follow_building_v1.sql",
+      "version": "20261022180351",
+      "name": "hermes_task_follow_building_v1",
+      "scheme": "timestamp14",
+      "sha256": "b541675c1098a47d9a00840c4f0b8c80e8f366c7e07503b6f5a2dd9ece514a80",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_task_follow_grant_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180359_hermes_w2_tasks_view_reused_v1.sql",
+      "version": "20261022180359",
+      "name": "hermes_w2_tasks_view_reused_v1",
+      "scheme": "timestamp14",
+      "sha256": "ca392c9bfca451ac3563a815f3ff3ce7caa2c612c98b973bb7ead48e5a3c88d9",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2_reused_keys_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180400_hermes_w2c_jobs_board_shared_v1.sql",
+      "version": "20261022180400",
+      "name": "hermes_w2c_jobs_board_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "7504efedcec9e0a966ff3c2419300f7ad20feb1609532c5969b4cdf4b96e500c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.jobs_board_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180402_hermes_w2c_tasks_board_v1.sql",
+      "version": "20261022180402",
+      "name": "hermes_w2c_tasks_board_v1",
+      "scheme": "timestamp14",
+      "sha256": "16d862ef0ab0c341e746656878bd13e7f88682cce6c3dcd4339401b8141ea272",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2c_catalog_v1",
+        "catalog:function:app_private.hermes_w2c_read_v1"
       ]
     },
     {

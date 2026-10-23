@@ -43,6 +43,8 @@ export const ACTION_REASONS = Object.freeze({
   // Trang Công việc Mốc 3 (task.update / task.cancel, 20261022074741): SQL kèm `link` tới việc trên web (CV12) khi biết đúng việc.
   cancel_blocked: reason('rejected', 'never', 'Việc đã có vật tư hoặc ảnh hoàn thành nên không huỷ qua bot; mở việc trên web (link kèm theo) để xử lý.'),
   task_not_open: reason('rejected', 'never', 'Việc đã hoàn thành, không còn mở; không sửa hay huỷ qua bot được (xem trên web, link kèm theo).'),
+  // Trang Công việc Mốc 4 (task.create_batch, 20261022164201): tối đa 20 việc MỘT lần đồng ý (Q37) — dạng needs_input: hỏi chia lô.
+  batch_too_large: reason('needs_input', 'fix', 'Tối đa 20 việc một lần giao; chia thành nhiều lô (mỗi lô tối đa 20 việc) hoặc tạo trên web.'),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

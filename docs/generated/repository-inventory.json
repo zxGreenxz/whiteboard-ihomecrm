@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1606,
-  "soFileDocBangFs": 420,
-  "tongLoiGoi": 1046,
-  "khongPhanLoaiDuoc": 456,
+  "tongSoFileTest": 1608,
+  "soFileDocBangFs": 421,
+  "tongLoiGoi": 1048,
+  "khongPhanLoaiDuoc": 457,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 170,
+      "soFile": 171,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1098,6 +1098,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1917,12 +1923,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/hermes-broker/task-input-options.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1932,6 +1932,14 @@
     },
     {
       "file": "infra/hermes-broker/task-metadata.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-c-tasks-board.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1

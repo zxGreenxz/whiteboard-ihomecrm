@@ -46,7 +46,7 @@ test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộ
     { summary: [] }, { private: 'yes' }, { extra: 1 }, { params: ['query', 'query'] },
     // P2-1 (review PR #195): khoá ↔ scope, khoá ngoài danh sách, tham số gắn toà chỉ ở rows/buildings.
     { scope: 'self' }, { permission: 'assistant.salary.self' }, { permission: 'assistant.bank_events.read', scope: 'organization' },
-    { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'contracts.view' },
+    { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'customers.view' },
     { scope: 'organization', params: ['roomId'] }, { scope: 'cashbooks', params: ['invoiceId'] }, { scope: 'organization', params: ['areaId'] },
     // P2-b (review cổng INVOKER): khoá organization_scope chỉ scope organization/cashbooks.
     { permission: 'salary.view' }, { permission: 'materials.view', scope: 'buildings' }, { permission: 'cashbooks.view', scope: 'rows' },
