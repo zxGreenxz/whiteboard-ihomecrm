@@ -83,6 +83,7 @@ export const OverpaymentReport = lazy(() => import("../pages/reports/finance/Ove
 export const DepositsReport = lazy(() => import("../pages/reports/finance/DepositsReport"));
 export const ProfitHubPage = lazy(() => import("../pages/reports/finance/ProfitHubPage"));
 export const BusinessPerformanceReportPage = lazy(() => import("../pages/reports/finance/BusinessPerformanceReportPage"));
+export const LandlordSettlementPage = lazy(() => import("../pages/reports/finance/LandlordSettlementPage"));
 export const FinancialAnalysisReport = lazy(() => import("../pages/reports/finance/FinancialAnalysisReport"));
 export const BanGiaoReport = lazy(() => import("../pages/reports/finance/BanGiaoReport"));
 export const BanGiaoCycleReport = lazy(() => import("../pages/reports/finance/BanGiaoCycleReport"));
@@ -128,6 +129,7 @@ export const OwnerDashboardV5 = lazy(() => import("../pages/reports/OwnerDashboa
 export const ProfilePage = lazy(() => import("../pages/account/ProfilePage"));
 export const SubscriptionPage = lazy(() => import("../pages/account/SubscriptionPage"));
 export const PublicContractInvoicePage = lazy(() => import("../pages/public/PublicContractInvoicePage"));
+export const LandlordSettlementPublicPage = lazy(() => import("../pages/public/LandlordSettlementPublicPage"));
 export const FaqPage = lazy(() => import("../pages/FaqPage"));
 export const ChangelogPage = lazy(() => import("../pages/ChangelogPage"));
 export const AppGuidePage = lazy(() => import("../pages/AppGuidePage"));

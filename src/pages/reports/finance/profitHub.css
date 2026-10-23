@@ -160,6 +160,13 @@
 .ph-kpi__sub { font-size: 11px; color: rgba(255, 255, 255, 0.5); margin-top: 2px; }
 .ph-kpi__sub--mint { color: var(--ph-mint-2); }
 .ph-kpi__sub--gold { color: var(--ph-gold); font-weight: 600; }
+.ph-kpi__sub--peach { color: var(--ph-peach); }
+/* Dòng "Lợi nhuận của iHome" dưới thẻ Lợi nhuận: tổng − phần chủ nhà của toà vận hành cho chủ nhà. */
+.ph-kpi__ihome { font-size: 12px; color: rgba(255, 255, 255, 0.75); margin-top: 4px; white-space: nowrap; }
+.ph-kpi__ihome b { color: #fff; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* Lúc đang tải: khối xám thay cho "0 ₫" (không để số 0 trông như số thật). */
+.ph-kpi__skel { display: inline-block; width: 140px; height: 0.9em; border-radius: 6px; background: rgba(255, 255, 255, 0.18); vertical-align: middle; }
+.ph-kpi__skel--lg { width: 190px; }
 .ph-kpi__row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .ph-kpi__div { width: 1px; align-self: stretch; background: rgba(255, 255, 255, 0.14); }
 /* Trang chạy full width: 4 ô KPI dàn đều hết bề ngang thay vì dồn về trái. */
@@ -191,6 +198,10 @@
 }
 .ph-spark__bar--prev { background: rgba(255, 255, 255, 0.28); }
 .ph-spark__bar--cur { background: var(--ph-mint); }
+/* Tháng LỖ: cột màu cam đỏ + nhãn âm — không vẽ lỗ thành cột dương cùng màu lãi. */
+.ph-spark__bar--neg { background: rgba(255, 138, 101, 0.7); }
+.ph-spark__bar--neg.ph-spark__bar--cur { background: var(--ph-peach); }
+.ph-spark__cap--neg { color: var(--ph-peach); }
 .ph-spark__cap {
   position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
   font-size: 10px; font-weight: 700; color: var(--ph-mint-2); white-space: nowrap;

@@ -73,7 +73,7 @@ export const W2A_REPORTS = Object.freeze({
       refundPaidCount: count } }),
   // /deposits tab Đủ/Thiếu cọc (useDepositDashboard.ts:329-386; KPI get_held_deposit_summary).
   held_deposits: w2Report({ permission: 'deposits.view', source: 'crm.deposit_held_contracts_v1', scope: 'rows',
-    title: 'Cọc đang giữ theo hợp đồng hiệu lực: cọc phải thu, đã thu, còn thiếu; status FULL (thiếu < 10.000đ), SHORT (thiếu cọc), FIRST_INVOICE (trừ vào hoá đơn đầu). summary: KPI cọc như trang Quản lý cọc.',
+    title: 'Cọc đang giữ theo hợp đồng hiệu lực: cọc phải thu, đã thu, còn thiếu; status FULL (thiếu < 10.000đ), SHORT (thiếu cọc), FIRST_INVOICE (thiếu, trừ vào hoá đơn đầu). "HĐ chưa thu đủ cọc" = SHORT + FIRST_INVOICE: gọi mỗi status một lần; số = shortCount + firstInvoiceCount.',
     params: ['buildingId', 'status'], statuses: ['FULL', 'SHORT', 'FIRST_INVOICE'], scopeKeys: CUSTOMER, private: true,
     fields: { contractId: id, contractNumber: number, buildingId: id, buildingName, roomId: id, roomName, customerName: personName,
       totalDeposit: amount, depositPaid: amount, depositRemaining: amount, debtMode: nullable(longText(40)), topupDueDate: nullable(date),

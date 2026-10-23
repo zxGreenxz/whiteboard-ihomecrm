@@ -465,6 +465,11 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   // (guard ∩ the web writer's own authorize_income_expense_on_building, 20261022044120 / 20261022044123).
   'app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)', 'public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)',
   'app_private.hermes_expense_scope_v1(jsonb,text)'];
+// Contract page write RPC (20261022022951): the caller executes the SQL-standard wrapper and the two functions it binds (the
+// RLS lookup, the DEFINER step); the Vietnamese date label and the page reason map stay owner-only.
+const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uuid)',
+  'app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
+  'public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
 // Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
 // wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
 // building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
@@ -797,7 +802,7 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER, ...TASK_ACTION_CALLER])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
@@ -958,21 +963,22 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-nine reviewed forward migrations and their 101 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all thirty-one reviewed forward migrations and their 106 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
   // R2d 20261021063452; the 20261019034254 capabilities v1 and metadata grant and the R2c
   // 20261021035022 v2 reader after the web building scope 20261021170452; that v2 body and
   // the R2d reader after the receivables effective outstanding 20261021185540, which keeps
-  // the 20261021170452 body and changes only its receivables branch): its statements are
+  // the 20261021170452 body and changes only its receivables branch; the contract page lookup and
+  // step of 20261022022951 after the contract return 20261022061813): its statements are
   // then only superseded pins. 20261021172540 replaces the two task-input steps of
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 29);
-  assert.equal(FORWARD_FUNCTIONS.length, 101);
-  assert.equal(FORWARD_BY_NAME.size, 101, 'one live definition per reviewed name');
+  assert.equal(paths.length, 31);
+  assert.equal(FORWARD_FUNCTIONS.length, 106);
+  assert.equal(FORWARD_BY_NAME.size, 106, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -1049,6 +1055,7 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
     ['app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])', 'authenticated'],
     ...WRITE_FOUNDATION_CALLER.map(target => [target, 'authenticated']),
+    ...CONTRACT_ACTION_CALLER.map(target => [target, 'authenticated']),
     ...TASK_ACTION_CALLER.map(target => [target, 'authenticated']),
     ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
     ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
@@ -1061,7 +1068,8 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
   // Only DEFINER steps check bindings, write receipts and map reasons; the caller never reaches them (or the settle trigger) directly.
   for (const target of ['app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)',
     'app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)', 'app_private.hermes_action_reason_v1(text,text,text)',
-    'app_private.hermes_action_binding_v1(jsonb)', 'app_private.hermes_action_receipt_settled_v1()'])
+    'app_private.hermes_action_binding_v1(jsonb)', 'app_private.hermes_action_receipt_settled_v1()',
+    'app_private.hermes_contract_reason_v1(text,text,text)', 'app_private.hermes_contract_date_label_v1(date,date)'])
     assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO authenticated`), /cannot execute/, target);
   for (const spec of INHERITED_CRM_ACL) {
     const grant = `GRANT EXECUTE ON FUNCTION ${spec.signature} TO authenticated`;

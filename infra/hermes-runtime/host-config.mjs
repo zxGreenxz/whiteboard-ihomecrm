@@ -118,12 +118,15 @@ export async function loadHostConfiguration(configPath) {
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
     if (input?.version !== 2 || input?.mode !== 'connector') fail();
-    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath', 'roomRead', 'actionProbe']);
+    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath', 'roomRead', 'actionProbe', 'actionPages']);
     if (Object.hasOwn(input, 'readFastPath') && typeof input.readFastPath !== 'boolean') fail();
     // Direct room tool source: 'legacy' (default) or 'page' (B3 hermes_available_rooms_page_v1).
     if (Object.hasOwn(input, 'roomRead') && !['legacy', 'page'].includes(input.roomRead)) fail();
     // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thao tác thử probe.*); vắng = danh mục rỗng như production.
     if (Object.hasOwn(input, 'actionProbe') && typeof input.actionProbe !== 'boolean') fail();
+    // Đợt 2: tên trang có thao tác ghi thật (vd ["contract"]); server kiểm tên trang có trong danh mục. Vắng = rỗng như production.
+    if (Object.hasOwn(input, 'actionPages') && (!Array.isArray(input.actionPages) || input.actionPages.length > 8 ||
+      input.actionPages.some(page => typeof page !== 'string' || !/^[a-z]{2,16}$/.test(page)) || new Set(input.actionPages).size !== input.actionPages.length)) fail();
     const limits = connectorLimits(input.limits);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
@@ -176,7 +179,8 @@ export async function loadHostConfiguration(configPath) {
       encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, ...(zaloProvisioning===undefined?{}:{zaloProvisioning}),
       ...(input.readFastPath === undefined ? {} : { readFastPath: input.readFastPath }),
       ...(input.roomRead === undefined ? {} : { roomRead: input.roomRead }),
-      ...(input.actionProbe === undefined ? {} : { actionProbe: input.actionProbe }), mode: 'connector', limits, listenPort: input.listenPort,
+      ...(input.actionProbe === undefined ? {} : { actionProbe: input.actionProbe }),
+      ...(input.actionPages === undefined ? {} : { actionPages: Object.freeze([...input.actionPages]) }), mode: 'connector', limits, listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

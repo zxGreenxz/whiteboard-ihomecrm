@@ -1,13 +1,19 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { InlineSkeleton } from '@/components/loading/LoadingState';
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, AlertTriangle, ChevronDown, Info } from "lucide-react";
 import { useProfitVerification } from "@/hooks/useProfitVerification";
 import {
+  calculateBuildingDiffs,
+  calculateEngineTieOut,
   calculateProfitVerificationInvariant,
+  profitVerificationSides,
   resolveProfitVerificationVisualState,
+  type ProfitVerificationClientRow,
   type ProfitVerificationVisualState,
+  type ProfitVerificationVoucherType,
 } from "@/lib/profitVerification";
+import { NO_ENGINE_EXCLUSIONS, subtractEngineExclusions, type EngineExclusions } from "@/lib/profitPostLock";
 
 /**
  * B5 (thống nhất tài chính 04/07): thanh KIỂM CHỨNG của trang Phân bổ lợi
@@ -20,6 +26,8 @@ import {
  *     Phiếu đã duyệt chưa chọn sổ vẫn nằm trong tổng và được cảnh báo riêng.
  *  3. Khớp engine chia cổ đông (fa_monthly_pnl_accrual) — engine chỉ tính
  *     APPROVED nên tie-out so TỔNG TRỪ PHẦN CHỜ DUYỆT; lệch ≠ 0 là ĐỎ.
+ *     "Khớp" chỉ chứng minh trang = engine trên CÙNG tập phiếu đã duyệt, KHÔNG
+ *     chứng minh đã đủ phiếu; chưa đối chiếu được engine ⇒ WARNING (không OK).
  *  4. Đối chiếu tiền đã thu của hoá đơn kỳ (thông tin, lệch là bình thường).
  *
  * Mọi con số lấy từ RPC aggregate server-side — không dính cap 1000.
@@ -53,6 +61,22 @@ export interface ProfitVerificationBarProps {
   pendingCount?: number;
   pendingIncome?: number;
   pendingExpense?: number;
+  /** F48: bộ lọc loại phiếu của trang (mặc định 'all'). Khác 'all' ⇒ chỉ so chiều
+   *  đang xem (Σ dòng, engine, thống kê ngoài-KQKD/đã huỷ). */
+  voucherType?: ProfitVerificationVoucherType;
+  /** F35: các dòng báo cáo dồn tích (accrual?.rows) để chỉ đúng toà lệch engine.
+   *  Chỉ phần APPROVED được gộp theo building_id. Không truyền ⇒ không chỉ được toà. */
+  accrualRows?: readonly ProfitVerificationClientRow[];
+  /** F12: cảnh báo từ bên ngoài (vd bộ dò thiếu chi cố định) — có ≥1 dòng thì
+   *  trạng thái tối thiểu là WARNING. */
+  extraWarnings?: readonly string[];
+  /** Trang còn đang tải số (tổng / dòng) — đang tải thì thanh ở trạng thái LOADING, không so số
+   *  0 của trang với engine rồi báo LỆCH oan. */
+  pageLoading?: boolean;
+  /** F06 (22/10/2026): khoản PHÁT SINH SAU CHỐT của tháng đã chốt — trang không cộng nhưng
+   *  engine (fa_*) vẫn tính ⇒ trừ đúng phần này phía engine trước khi so, kẻo báo LỆCH giả.
+   *  Trang tự đẩy cảnh báo của nó vào `extraWarnings`. */
+  engineExclusions?: EngineExclusions;
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
    *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
   onIssueChange?: (hasIssue: boolean) => void;
@@ -68,13 +92,22 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     totalIncome, totalExpense, shownIncomeSum, shownExpenseSum,
     hiddenCount, hiddenIncomeSum, hiddenExpenseSum, capWarning,
     pendingCount = 0, pendingIncome = 0, pendingExpense = 0,
+    voucherType = "all", accrualRows, extraWarnings, pageLoading = false,
+    engineExclusions = NO_ENGINE_EXCLUSIONS,
   } = props;
   const [open, setOpen] = useState(false);
+  const sides = profitVerificationSides(voucherType);
+  const warnings = (extraWarnings ?? []).filter((w) => w.trim() !== "");
 
   const verificationQuery = useProfitVerification({
-    ym, startDate, endDate, buildingIds, pnlOnly, accrualMode,
+    ym, startDate, endDate, buildingIds, pnlOnly, accrualMode, voucherType,
   });
   const { data: v } = verificationQuery;
+  // Engine trừ khoản phát sinh sau chốt (trang không cộng vào tháng đã chốt).
+  const engine = useMemo(
+    () => (v?.fa ? subtractEngineExclusions(v.fa, engineExclusions) : null),
+    [v?.fa, engineExclusions],
+  );
 
   // 1) Hai bất biến độc lập; không cho chênh Thu bù trừ chênh Chi.
   const invariant = calculateProfitVerificationInvariant({
@@ -84,25 +117,56 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     shownExpenseSum,
     hiddenIncomeSum,
     hiddenExpenseSum,
+    voucherType,
   });
   const hiddenSum = hiddenIncomeSum + hiddenExpenseSum;
 
   // 3) Tie-out engine chia cổ đông (chỉ chạy accrual + pnlOnly). Engine SQL chỉ
-  // tính APPROVED → so phần APPROVED của tổng (tổng − phần chờ duyệt).
-  const faDiffIncome = v?.fa ? totalIncome - pendingIncome - v.fa.income : 0;
-  const faDiffExpense = v?.fa ? totalExpense - pendingExpense - v.fa.expense : 0;
-  const faOk = v?.fa ? Math.abs(faDiffIncome) < 2 && Math.abs(faDiffExpense) < 2 : null;
+  // tính APPROVED → so phần APPROVED của tổng (tổng − phần chờ duyệt). faOk=null
+  // = CHƯA đối chiếu được (không phải khớp) ⇒ WARNING.
+  const tieOut = calculateEngineTieOut({
+    totalIncome, totalExpense, pendingIncome, pendingExpense,
+    fa: engine, voucherType,
+  });
+  const faDiffIncome = tieOut.incomeDiff;
+  const faDiffExpense = tieOut.expenseDiff;
+  const faOk = tieOut.matches;
 
-  const anyExcluded =
-    Math.abs(v?.nonKqkdIncome ?? 0) + Math.abs(v?.nonKqkdExpense ?? 0) > 0;
+  // F34: ngoài-KQKD đếm theo NGÀY PHIẾU + chỉ phiếu đã duyệt (RPC thống kê) — KHÁC
+  // cơ sở của tổng khi ở chế độ dồn tích. Số âm được giữ nguyên để lộ bất thường.
+  const showNonKqkd =
+    pnlOnly &&
+    ((sides.income && Math.round(v?.nonKqkdIncome ?? 0) !== 0) ||
+      (sides.expense && Math.round(v?.nonKqkdExpense ?? 0) !== 0));
+  const nonKqkdNegative = (v?.nonKqkdIncome ?? 0) < 0 || (v?.nonKqkdExpense ?? 0) < 0;
+  // F36: phiếu đã huỷ trong kỳ (theo ngày phiếu) — không còn "biến mất không dấu vết".
+  const showCancelled =
+    !!v?.cancelled &&
+    ((sides.income && Math.round(v.cancelled.income) !== 0) ||
+      (sides.expense && Math.round(v.cancelled.expense) !== 0));
+  const anyExcluded = showNonKqkd;
+
+  // F35: toà thật sự lệch engine (khoá building_id, phía client chỉ phần đã duyệt).
+  const buildingDiffs = useMemo(
+    () =>
+      engine && accrualRows
+        ? calculateBuildingDiffs({
+            clientRows: accrualRows,
+            engine: engine.byBuilding,
+            voucherType,
+          })
+        : null,
+    [engine, accrualRows, voucherType],
+  );
 
   const visualState = resolveProfitVerificationVisualState({
-    loading: verificationQuery.isLoading || (!v && !verificationQuery.isError),
+    loading: pageLoading || verificationQuery.isLoading || (!v && !verificationQuery.isError),
     unavailable: verificationQuery.isError,
     capWarning: !!capWarning,
     incomeMatches: invariant.incomeMatches,
     expenseMatches: invariant.expenseMatches,
     faMatches: faOk,
+    extraWarnings: warnings.length,
   });
 
   // Cờ đỏ tổng hợp (cùng điều kiện icon AlertTriangle ở header) — báo lên parent.
@@ -156,22 +220,44 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
           </span>
         ) : (
           <>
-            <span className={invariant.incomeMatches ? "text-emerald-700" : "font-medium text-red-600"}>
-              Thu {invariant.incomeMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.incomeDiff))})`}
-            </span>
-            <span className={invariant.expenseMatches ? "text-emerald-700" : "font-medium text-red-600"}>
-              Chi {invariant.expenseMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.expenseDiff))})`}
-            </span>
+            {invariant.incomeCompared ? (
+              <span className={invariant.incomeMatches ? "text-emerald-700" : "font-medium text-red-600"}>
+                Thu {invariant.incomeMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.incomeDiff))})`}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Thu: không so (đang lọc chỉ khoản chi)</span>
+            )}
+            {invariant.expenseCompared ? (
+              <span className={invariant.expenseMatches ? "text-emerald-700" : "font-medium text-red-600"}>
+                Chi {invariant.expenseMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.expenseDiff))})`}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Chi: không so (đang lọc chỉ khoản thu)</span>
+            )}
           </>
         )}
 
-        {/* 3) Engine chia cổ đông */}
-        {visualState !== "UNAVAILABLE" && v?.fa && (
-          faOk ? (
-            <span className="text-emerald-700">Khớp engine chia cổ đông ±0 ✓</span>
+        {/* 3) Engine chia cổ đông — "Khớp" chỉ trên phần ĐÃ DUYỆT, cùng tập phiếu. */}
+        {visualState !== "UNAVAILABLE" && visualState !== "LOADING" && (
+          v?.fa ? (
+            faOk ? (
+              <span className="text-emerald-700">Khớp engine (phần đã duyệt) ±0 ✓</span>
+            ) : (
+              <span className="text-red-600 font-medium">
+                LỆCH engine chia cổ đông (phần đã duyệt):{" "}
+                {[
+                  sides.income ? `thu ${fmt(faDiffIncome)}` : null,
+                  sides.expense ? `chi ${fmt(faDiffExpense)}` : null,
+                ].filter(Boolean).join(" / ")}
+              </span>
+            )
           ) : (
-            <span className="text-red-600 font-medium">
-              LỆCH engine chia cổ đông: thu {fmt(faDiffIncome)} / chi {fmt(faDiffExpense)}
+            <span
+              className="text-amber-700"
+              title="Engine chia cổ đông chỉ đối chiếu ở chế độ Dồn tích + chỉ khoản KQKD"
+            >
+              Chưa đối chiếu engine
+              {!(accrualMode && pnlOnly) && " (chỉ có ở Dồn tích + chỉ KQKD)"}
             </span>
           )
         )}
@@ -193,15 +279,67 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
         </div>
       )}
 
-      {/* Hàng 2b: đã loại gì khỏi P&L (luôn hiện khi có) */}
+      {/* Cảnh báo từ ngoài thanh (vd bộ dò thiếu chi cố định) — đẩy trạng thái lên WARNING. */}
+      {warnings.length > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-amber-700">
+          <span className="font-medium">Cần xem lại:</span>
+          {warnings.map((w) => (
+            <span key={w}>{w}</span>
+          ))}
+        </div>
+      )}
+
+      {/* F06: khoản phát sinh sau chốt — engine vẫn tính, trang không cộng vào tháng đã chốt. */}
+      {engineExclusions.count > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-amber-700">
+          <span className="font-medium">Đối chiếu engine đã trừ:</span>
+          <span>
+            <b className="tabular-nums">{engineExclusions.count}</b> khoản phát sinh sau chốt
+            {" "}(thu {fmt(engineExclusions.income)} · chi {fmt(engineExclusions.expense)}) — engine vẫn tính,
+            tháng đã chốt không cộng
+          </span>
+        </div>
+      )}
+
+      {/* Hàng 2b: đã loại gì khỏi P&L (luôn hiện khi có). F34: nêu rõ cơ sở — theo
+          ngày phiếu, chỉ phiếu đã duyệt; ở dồn tích thì KHÁC cơ sở của tổng nên chỉ
+          để tham khảo (ẩn dòng sẽ giấu mất khoản cọc/ngoài-KQKD lớn). */}
       {anyExcluded && (
         <div className="px-3 pb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
           <span className="font-medium text-slate-600">Không nằm trong tổng:</span>
-          {pnlOnly && (v?.nonKqkdIncome ?? 0) + (v?.nonKqkdExpense ?? 0) > 0 && (
-            <span title="Item tiền cọc, phiếu đánh dấu không hạch toán, bút toán nội bộ (cấn cọc…)">
-              ngoài-KQKD: thu {fmt(v!.nonKqkdIncome)} · chi {fmt(v!.nonKqkdExpense)}
+          <span title="Item tiền cọc, phiếu đánh dấu không hạch toán, bút toán nội bộ (cấn cọc…)">
+            ngoài-KQKD (theo ngày phiếu, đã duyệt):{" "}
+            {[
+              sides.income ? `thu ${fmt(v!.nonKqkdIncome)}` : null,
+              sides.expense ? `chi ${fmt(v!.nonKqkdExpense)}` : null,
+            ].filter(Boolean).join(" · ")}
+          </span>
+          {accrualMode && (
+            <span className="text-[12px]">
+              (tham khảo — tổng ở trên tính theo kỳ áp dụng nên không cộng/trừ trực tiếp được)
             </span>
           )}
+          {nonKqkdNegative && (
+            <span className="text-[12px] text-amber-700">
+              Số âm: phần KQKD lớn hơn tổng mọi khoản — cần kiểm tra dữ liệu phiếu.
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* F36: phiếu đã huỷ — không để biến mất khỏi trang không dấu vết. */}
+      {showCancelled && v?.cancelled && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+          <span className="font-medium text-slate-600">
+            Đã huỷ trong kỳ (theo ngày phiếu, phần tính KQKD):
+          </span>
+          <span>
+            {[
+              sides.income ? `thu ${fmt(v.cancelled.income)}` : null,
+              sides.expense ? `chi ${fmt(v.cancelled.expense)}` : null,
+            ].filter(Boolean).join(" · ")}
+            {" "}— không nằm trong tổng
+          </span>
         </div>
       )}
 
@@ -243,14 +381,28 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
           )}
           {v?.fa && !faOk && (
             <div className="text-red-600">
-              Lệch theo toà (client − engine):{" "}
-              {[...v.fa.byBuilding.entries()]
-                .map(([name]) => name)
-                .slice(0, 8)
-                .join(", ")}{" "}
-              — mở Phân tích tài chính để đối chiếu chi tiết.
+              Lệch theo toà (trang − engine, phần đã duyệt):{" "}
+              {buildingDiffs === null
+                ? "trang chưa cung cấp số theo toà nên chưa chỉ được toà lệch"
+                : buildingDiffs.length === 0
+                  ? "không toà nào lệch từng toà (lệch nằm ở phần không gắn toà hoặc do làm tròn)"
+                  : buildingDiffs
+                      .slice(0, 8)
+                      .map((b) =>
+                        `${b.name} (${[
+                          sides.income ? `thu ${fmt(b.incomeDiff)}` : null,
+                          sides.expense ? `chi ${fmt(b.expenseDiff)}` : null,
+                        ].filter(Boolean).join(" / ")})`,
+                      )
+                      .join(", ")}
+              {buildingDiffs && buildingDiffs.length > 8 && ` … và ${buildingDiffs.length - 8} toà khác`}
+              {" "}— mở Phân tích tài chính để đối chiếu chi tiết.
             </div>
           )}
+          <div className="text-[12px]">
+            Khớp engine chỉ chứng minh trang bằng engine trên CÙNG tập phiếu đã duyệt;
+            không chứng minh đã nhập đủ phiếu (thiếu phiếu thì cả hai cùng thiếu).
+          </div>
           <div className="text-[12px]">
             Số đối chiếu được tính trên toàn bộ phiếu khớp bộ lọc.
             {!accrualMode && " Chế độ tiền mặt: tổng thẻ theo ngày phiếu trong tháng."}

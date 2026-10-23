@@ -26344,6 +26344,84 @@ export type Database = {
         Returns: boolean
       }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
+      landlord_ihome_profit_v1: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
+      landlord_operation_options_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_operation_upsert_v1: {
+        Args: {
+          p_building_id: string
+          p_effective_from: string
+          p_expected_updated_at?: string
+          p_is_active?: boolean
+          p_landlord_account_ids: string[]
+          p_landlord_name: string
+          p_manager_percent: number
+          p_note?: string
+          p_opening_balance?: number
+          p_opening_confirmed?: boolean
+          p_opening_seen_pre_start?: number
+          p_terms_from?: string
+        }
+        Returns: Json
+      }
+      landlord_operations_list_v1: { Args: never; Returns: Json }
+      landlord_settlement_add_payment_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_direction: string
+          p_idempotency_key: string
+          p_note: string
+          p_paid_on: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_close_v1: {
+        Args: {
+          p_building_id: string
+          p_expected_hash: string
+          p_month: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      landlord_settlement_month_v1: {
+        Args: { p_building_id: string; p_month: string }
+        Returns: Json
+      }
+      landlord_settlement_overview_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      landlord_settlement_public_v1: {
+        Args: { p_month?: string; p_token: string }
+        Returns: Json
+      }
+      landlord_settlement_reopen_v1: {
+        Args: { p_building_id: string; p_month: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_settlement_void_payment_v1: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: Json
+      }
+      landlord_share_link_create_v1: {
+        Args: { p_building_id: string; p_label?: string }
+        Returns: Json
+      }
+      landlord_share_link_revoke_v1: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      landlord_share_links_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
       lifecycle_reminder_org_ids_v1: { Args: never; Returns: string[] }
@@ -27741,6 +27819,10 @@ export type Database = {
       }
       profit_my_share_v1: {
         Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: Json
+      }
+      profit_post_lock_vouchers_v1: {
+        Args: { p_building_ids?: string[]; p_from: string; p_to: string }
         Returns: Json
       }
       profit_reclose_v2: {
