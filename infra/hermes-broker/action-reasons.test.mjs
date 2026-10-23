@@ -14,10 +14,12 @@ const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-$
 
 // Mã riêng của từng trang (Đợt 2), mỗi trang một khối; trang gộp sau thêm khối của mình.
 const PAGE_REJECT_REASONS = { expense: ['system_voucher', 'evidence_required'], task: ['task_quota_user', 'task_quota_pair'],
-  invoice: ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required'] };
+  invoice: ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+    'meter_used_by_invoice', 'meter_has_later_reading'] };
 const PAGE_CODES = Object.values(PAGE_REJECT_REASONS).flat();
-// Hoá đơn Mốc 3: ba mã dạng needs_input (hỏi lại người dùng, không phải lỗi).
-const PAGE_INPUT_REASONS = { invoice: ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice'] };
+// Hoá đơn Mốc 3–4: mã dạng needs_input (hỏi lại người dùng, không phải lỗi).
+const PAGE_INPUT_REASONS = { invoice: ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'meter_not_found', 'meter_ambiguous',
+  'meter_duplicate_month', 'meter_lower_than_previous'] };
 const PAGE_INPUT_CODES = Object.values(PAGE_INPUT_REASONS).flat();
 
 test('danh sách đóng: 20 mã chung + mã riêng của trang, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {

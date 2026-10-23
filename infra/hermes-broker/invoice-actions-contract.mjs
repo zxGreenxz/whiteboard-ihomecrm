@@ -5,7 +5,7 @@
 //   invoice.collect — ghi nhận khách đã trả bằng chuyển khoản (TK) hoặc thanh toán (TT — sổ POS của toà, nhãn như web), một phòng hoặc lô
 //                     ≤ 10 phòng cùng toà cho MỘT lần đồng ý; luôn xem trước (money). Tiền mặt (TM) bị từ chối, chỉ đường /thu-tien (Q13). Bản xem trước = chạy thử
 //                     record_invoice_collection_v5 trong khối con rồi lùi; khách trả dư chưa chọn ⇒ bản xem trước hỏi (choiceRequired).
-// Ghi chỉ số, điều chỉnh, xác nhận kiểm tra, huỷ/khôi phục thêm ở Mốc 4–5 (khoá meter_readings.create / invoices.* đã seed TẮT).
+// Điều chỉnh, xác nhận kiểm tra, huỷ/khôi phục thêm ở Mốc 5 (khoá invoices.* đã seed TẮT).
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 
 export const INVOICE_RPC = 'hermes_invoice_action_v1';
@@ -29,5 +29,21 @@ export const INVOICE_COLLECT = defineAction({ id: 'invoice.collect', page: 'invo
     'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required', 'period_locked', 'cashbook_not_held', 'not_allowed',
     'state_changed', 'date_out_of_range', 'amount_out_of_range', 'web_only'] });
 
-export const INVOICE_ACTIONS = Object.freeze([INVOICE_COLLECT]);
+// Mốc 4 (mục 4.2, 6.2): ghi chỉ số tháng qua hàm dùng chung với form web (record_meter_readings_v2); khoá meter_readings.create (seed TẮT ở
+// 20261021134531, quyền CRM cùng tên; "sửa" cần thêm meter_readings.edit). Ngày chốt theo Q16 = a: tháng trống/tháng này ⇒ hôm nay, tháng
+// đã qua ⇒ ngày cuối tháng đó. Dòng không ghi được (trùng tháng, nhỏ hơn số đầu, nhiều công tơ…) bị loại và nêu ở bản xem trước.
+export const INVOICE_METER_KEY = 'meter_readings.create';
+export const INVOICE_METER_MAX_ROWS = 60;
+export const INVOICE_METER_RECORD = defineAction({ id: 'invoice.meter_record', page: 'invoice', key: INVOICE_METER_KEY, class: 'money', rpc: INVOICE_RPC,
+  title: 'Ghi chỉ số điện/nước tháng cho 1 hoặc nhiều phòng cùng toà (≤ 60 dòng); tháng đã có thì chỉ thay khi người dùng nói sửa',
+  params: {
+    buildingName: param.name('building'),
+    readings: param.list(param.record({ roomName: param.name('room'), value: param.int(0, 99_999_999), meterCode: param.text(1, 40, { optional: true }) }),
+      { max: INVOICE_METER_MAX_ROWS, ceiling: INVOICE_METER_MAX_ROWS }),
+    meterType: param.oneOf(['dien', 'nuoc'], { optional: true }), month: param.month({ optional: true }), replace: param.bool({ optional: true }),
+  },
+  reasons: ['meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous', 'meter_used_by_invoice', 'meter_has_later_reading',
+    'not_allowed', 'state_changed', 'date_out_of_range', 'invalid_params'] });
+
+export const INVOICE_ACTIONS = Object.freeze([INVOICE_COLLECT, INVOICE_METER_RECORD]);
 export const invoiceCatalog = () => createActionCatalog(INVOICE_ACTIONS);

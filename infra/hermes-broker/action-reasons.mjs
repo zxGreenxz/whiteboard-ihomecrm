@@ -49,6 +49,13 @@ export const ACTION_REASONS = Object.freeze({
   credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
   receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
   reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
+  // Hoá đơn Mốc 4 — ghi chỉ số (mục 5): bốn mã hỏi lại người dùng, hai mã chỉ đường web.
+  meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),
+  meter_ambiguous: reason('needs_input', 'fix', 'Phòng có nhiều công tơ cùng loại; hỏi mã công tơ.'),
+  meter_duplicate_month: reason('needs_input', 'fix', 'Tháng này đã có chỉ số; chỉ thay khi người dùng nói rõ "sửa" (replace=true).'),
+  meter_lower_than_previous: reason('needs_input', 'fix', 'Chỉ số mới nhỏ hơn chỉ số đầu; hỏi lại số trên công tơ.'),
+  meter_used_by_invoice: reason('rejected', 'never', 'Chỉ số tháng này đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web.'),
+  meter_has_later_reading: reason('rejected', 'never', 'Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (trang Ghi chỉ số).'),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

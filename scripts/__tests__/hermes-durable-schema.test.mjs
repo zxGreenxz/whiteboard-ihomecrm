@@ -468,7 +468,9 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   // Đợt 3 Hoá đơn Mốc 3 (20261022075230): vỏ invoice.* gắn OID guard (đã có ở trên), tra cứu (INVOKER) và bước ghi (DEFINER; khoá hoá đơn
   // NOWAIT dưới khoá công ty của guard, rồi quyền thu của v5); ánh xạ lý do chỉ bước ghi gọi (owner-only).
   'app_private.hermes_invoice_lookup_core_v1(uuid,uuid[],text,jsonb)',
-  'app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)', 'public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
+  'app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)', 'public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  // Mốc 4 (20261022183445): vỏ chuyển invoice.meter_record sang tra cứu chỉ số (INVOKER) + bước ghi chỉ số (DEFINER); hàm số chỉ số owner-only.
+  'app_private.hermes_invoice_meter_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
 // Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
 // wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
 // building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
@@ -962,7 +964,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twenty-eight reviewed forward migrations and their 104 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all twenty-nine reviewed forward migrations and their 107 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -974,9 +976,9 @@ test('all twenty-eight reviewed forward migrations and their 104 latest definiti
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 28);
-  assert.equal(FORWARD_FUNCTIONS.length, 104);
-  assert.equal(FORWARD_BY_NAME.size, 104, 'one live definition per reviewed name');
+  assert.equal(paths.length, 29);
+  assert.equal(FORWARD_FUNCTIONS.length, 107);
+  assert.equal(FORWARD_BY_NAME.size, 107, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
