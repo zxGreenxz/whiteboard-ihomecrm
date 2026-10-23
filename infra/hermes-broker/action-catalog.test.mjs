@@ -81,8 +81,12 @@ test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ
   for (const bad of [() => defineAction({ ...base, id: 'probe.rec', params: { r: item } }), () => param.list(param.list(param.bool(), { max: 2 }), { max: 2 }),
     () => param.list(param.attachments(), { max: 2 }), () => param.record({}), () => param.list(param.bool({ optional: true }), { max: 2 }),
     () => param.list(param.bool(), { max: 21 }), () => param.list(param.bool(), { min: 0, max: 2 }), () => param.list(param.bool(), { min: 3, max: 2 }),
-    () => param.record(Object.fromEntries(Array.from({ length: 13 }, (_, n) => [`f${n}`, param.bool()]))), () => param.record({ 'bad-name': param.bool() })])
+    () => param.record(Object.fromEntries(Array.from({ length: 13 }, (_, n) => [`f${n}`, param.bool()]))), () => param.record({ 'bad-name': param.bool() }),
+    // HDN7: trần riêng theo khuôn ≤ 60, không thấp hơn trần chung; max vẫn phải ≤ trần đã khai.
+    () => param.list(param.bool(), { max: 61, ceiling: 60 }), () => param.list(param.bool(), { max: 30, ceiling: 61 }),
+    () => param.list(param.bool(), { max: 5, ceiling: 10 }), () => param.list(param.bool(), { max: 30, ceiling: 25.5 })])
     assert.throws(bad, /invalid_action_catalog/);
+  assert.deepEqual([param.list(param.bool(), { max: 60, ceiling: 60 }).max, param.list(param.bool(), { max: 20 }).max], [60, 20]);
   assert.equal(param.name('category').hint, 'tên hạng mục như người dùng nói');
   assert.equal(param.name('cashbook').hint, 'tên sổ quỹ như người dùng nói');
   assert.deepEqual(validateActionParams(batch, { items: [{ building_name: ' A ', amount: '350000' }, { buildingName: 'B', amount: 1, note: '' }] }),

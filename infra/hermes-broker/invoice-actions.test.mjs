@@ -9,7 +9,7 @@ import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { HERMES_ACTION_CAPABILITIES, HERMES_ACTION_FOUNDATION_KEYS } from './capability-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
-import { INVOICE_ACTIONS, INVOICE_COLLECT, INVOICE_COLLECT_KEY, INVOICE_RPC, invoiceCatalog } from './invoice-actions-contract.mjs';
+import { INVOICE_ACTIONS, INVOICE_COLLECT, INVOICE_COLLECT_KEY, INVOICE_METER_KEY, INVOICE_METER_RECORD, INVOICE_RPC, invoiceCatalog } from './invoice-actions-contract.mjs';
 
 // Danh mục trang HOÁ ĐƠN (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 3–4) qua broker + lõi chạy thật, cổng dịch vụ giả: khuôn tham số
 // (một phòng hoặc lô ≤ 10), sàn xác nhận (luôn xem trước), câu hỏi giữ lại/trả lại ở bản xem trước (choiceRequired) ⇒ lượt 2 hỏi lại,
@@ -45,8 +45,9 @@ const RESOLVED = { buildingId: id('f'), buildingName: '44TL', method: 'TK', item
 const preview = (extra = {}) => ({ kind: 'preview', basis: 'b'.repeat(32), resolved: RESOLVED, confirm: 'required', warnings: [],
   preview: { summary: 'Sẽ ghi THU 3.650.000đ chuyển khoản ngày 22/10/2026 (thứ Năm, hôm nay) vào sổ «VCB ***» cho hoá đơn INV-1.', ...extra } });
 
-test('danh mục Hoá đơn: một thao tác thu tiền, một RPC, khoá riêng Hermes trong hợp đồng; một phòng hoặc lô ≤ 10', () => {
-  assert.deepEqual(INVOICE_ACTIONS.map(action => [action.id, action.key, action.class, action.rpc]), [['invoice.collect', 'thu_tien.collect_transfer', 'money', INVOICE_RPC]]);
+test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong hợp đồng; thu một phòng hoặc lô ≤ 10', () => {
+  assert.deepEqual(INVOICE_ACTIONS.map(action => [action.id, action.key, action.class, action.rpc]),
+    [['invoice.collect', 'thu_tien.collect_transfer', 'money', INVOICE_RPC], ['invoice.meter_record', 'meter_readings.create', 'money', INVOICE_RPC]]);
   assert.ok(HERMES_ACTION_CAPABILITIES.includes(INVOICE_COLLECT_KEY));
   assert.ok(!HERMES_ACTION_FOUNDATION_KEYS.includes(INVOICE_COLLECT_KEY) && !HERMES_ACTION_CAPABILITIES.includes('thu_tien.collect'), 'không bao giờ là thu_tien.collect');
   const [collect] = invoiceCatalog().listing({ action: [INVOICE_COLLECT_KEY] });
@@ -60,6 +61,19 @@ test('danh mục Hoá đơn: một thao tác thu tiền, một RPC, khoá riêng
   for (const params of [{ ...ONE, method: 'CK' }, { ...ONE, amount: 0 }, { ...ONE, overpay: 'refund' }, { ...ONE, date: '22/10/2026' }, { ...ONE, month: '2026-13' },
     { buildingName: '44TL', method: 'TK', items: Array.from({ length: 11 }, (_, i) => ({ roomName: String(101 + i) })) }, { ...ONE, invoiceId: id('1') }])
     assert.equal(validateActionParams(INVOICE_COLLECT, params).ok, false, JSON.stringify(params).slice(0, 80));
+  // Mốc 4: chỉ số — readings tới 60 dòng (trần riêng HDN7), khoá nền meter_readings.create (đã có trong hợp đồng).
+  assert.ok(HERMES_ACTION_FOUNDATION_KEYS.includes(INVOICE_METER_KEY));
+  const [meter] = invoiceCatalog().listing({ action: [INVOICE_METER_KEY] });
+  assert.deepEqual([meter.action, meter.confirm, Object.keys(meter.params), meter.params.readings.max], ['invoice.meter_record', 'always',
+    ['buildingName', 'readings', 'meterType', 'month', 'replace'], 60]);
+  assert.deepEqual(validateActionParams(INVOICE_METER_RECORD, { building_name: 'Toà A', readings: [{ room_name: '101', value: '1234' },
+    { roomName: '104', value: 7, meterCode: 'DH-104B' }], replace: true }),
+    { ok: true, value: { buildingName: 'Toà A', readings: [{ roomName: '101', value: 1234 }, { roomName: '104', value: 7, meterCode: 'DH-104B' }], replace: true } });
+  for (const params of [{ buildingName: 'A', readings: [] }, { buildingName: 'A', readings: Array.from({ length: 61 }, (_, i) => ({ roomName: String(i), value: 1 })) },
+    { buildingName: 'A', readings: [{ roomName: '1', value: -1 }] }, { buildingName: 'A', readings: [{ roomName: '1', value: 1.5 }] },
+    { buildingName: 'A', readings: [{ roomName: '1', value: 1 }], meterType: 'gas' }, { buildingName: 'A', readings: [{ roomName: '1', value: 1 }], meterId: id('2') }])
+    assert.equal(validateActionParams(INVOICE_METER_RECORD, params).ok, false, JSON.stringify(params).slice(0, 80));
+  assert.equal(validateActionParams(INVOICE_METER_RECORD, { buildingName: 'A', readings: Array.from({ length: 60 }, (_, i) => ({ roomName: String(i), value: i })) }).ok, true);
   // Hai trang cùng một danh mục production (server.mjs): không trùng mã, không khoá ngoài hợp đồng.
   assert.deepEqual([...createActionCatalog([...EXPENSE_ACTIONS, ...INVOICE_ACTIONS]).pages], ['expense', 'invoice']);
 });

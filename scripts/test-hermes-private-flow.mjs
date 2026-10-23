@@ -563,6 +563,10 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261023013109_hermes_expense_approve_v1.sql',
     statementSha256: '6534eda19a29a4e86d6a89fe7d2e3319c65f78b44cd03a51eb443743cf5ca3b6' },
+  // Mốc 4 (20261022183445): tra cứu plpgsql INVOKER của invoice.meter_record — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_meter_lookup_v1',
+    sourcePath: 'supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql',
+    statementSha256: '0119a90d9ac05ec7a3bceeb835b83c4f36353b03c1f7b0e4be719c937d2d6ff4' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

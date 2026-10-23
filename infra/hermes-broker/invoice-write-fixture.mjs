@@ -171,7 +171,79 @@ const SEED = `INSERT INTO public.rooms VALUES('${ROOM2}','${ORG}','${BUILDING}',
       '[{"type":"invoice","id":"${INV_D9}","amount":1000000}]');
   INSERT INTO public.invoice_items(invoice_id,type,description,amount,accounting_class) VALUES('${INV_E}','OTHER','Phí nội bộ',5000,'NON_PNL');`;
 
-export async function invoiceSetup(t, { database } = {}) {
+// Mốc 4 (chỉ số, meter: true): bảng meters, cột còn thiếu của meter_readings / invoice_items, sổ idempotency canonical_write_operations,
+// quyền web (is_super_admin, my_org_ids, buildings_for_v3 theo bảng RIÊNG fixture_meter_acl — tách khỏi quyền v3 của guard như production)
+// và năm trigger BEFORE INSERT của production chạy NGUYÊN VĂN (meter-trigger-bodies.json; md5 hai thân ghim ở $requires$ của migration).
+const METER_A = file('meter_readings_v2'), METER_PAGE = file('hermes_invoice_meter_v1');
+const TRIGGERS = JSON.parse(readFileSync(new URL('./meter-trigger-bodies.json', import.meta.url), 'utf8'));
+const trigger = (name, secdef = false) => `CREATE OR REPLACE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql${secdef ? ' SECURITY DEFINER' : ''}
+  SET search_path=public AS $tg$${TRIGGERS[name]}$tg$;`;
+export const [ROOM6, M1, M2, M3, M4A, M4B, M5, M6, M7, SERVICE_E] = [815, 841, 842, 843, 844, 845, 846, 847, 848, 849].map(uid);
+const METER = `INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('meter_readings.create','action',false) ON CONFLICT(capability) DO NOTHING;
+  CREATE TABLE public.meters(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,code text NOT NULL CHECK(char_length(code)>0),building_id uuid,room_id uuid,
+    service_id uuid,meter_type text,name text,initial_reading numeric(10,2) DEFAULT 0,status text DEFAULT 'ACTIVE',deleted_at timestamptz,organization_id uuid,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp());
+  ALTER TABLE public.meter_readings ALTER COLUMN id SET DEFAULT gen_random_uuid(),ALTER COLUMN status SET DEFAULT 'UNAPPROVED',
+    ADD COLUMN user_id uuid,ADD COLUMN meter_id uuid,ADD COLUMN contract_id uuid,ADD COLUMN service_id uuid,ADD COLUMN approved_by uuid,ADD COLUMN approved_at timestamptz,
+    ADD COLUMN recorded_by uuid,ADD COLUMN boundary_id uuid,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    ADD COLUMN updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    ADD CONSTRAINT meter_readings_current_gte_previous CHECK (current_reading>=previous_reading);
+  CREATE UNIQUE INDEX idx_meter_readings_code ON public.meter_readings(reading_code) WHERE reading_code IS NOT NULL;
+  ALTER TABLE public.invoice_items ADD COLUMN IF NOT EXISTS service_id uuid,ADD COLUMN IF NOT EXISTS previous_reading numeric(10,2),
+    ADD COLUMN IF NOT EXISTS current_reading numeric(10,2);
+  CREATE TABLE app_private.canonical_write_operations(organization_id uuid NOT NULL,operation text NOT NULL,subject_scope text NOT NULL,actor_id uuid NOT NULL,
+    idempotency_key text NOT NULL,payload_hash text NOT NULL CHECK(char_length(payload_hash)=32),subject_id uuid,response_payload jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),completed_at timestamptz,PRIMARY KEY(organization_id,operation,subject_scope,actor_id,idempotency_key),
+    CHECK(((completed_at IS NULL)=(response_payload IS NULL)) AND ((completed_at IS NULL)=(subject_id IS NULL))));
+  CREATE FUNCTION app_private.guard_canonical_write_operation() RETURNS trigger LANGUAGE plpgsql AS $g$ BEGIN
+    IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Canonical operation ledger is append-only' USING ERRCODE='55000'; END IF;
+    IF OLD.completed_at IS NOT NULL OR NEW.completed_at IS NULL THEN RAISE EXCEPTION 'Canonical operation can only transition once to completed' USING ERRCODE='55000'; END IF;
+    RETURN NEW; END $g$;
+  CREATE TRIGGER canonical_write_operations_immutable BEFORE DELETE OR UPDATE ON app_private.canonical_write_operations FOR EACH ROW
+    EXECUTE FUNCTION app_private.guard_canonical_write_operation();
+  CREATE TABLE public.fixture_meter_acl(permission text,building_id uuid);
+  CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT EXISTS(SELECT 1 FROM public.super_admins WHERE user_id=auth.uid()) $f$;
+  CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT COALESCE(array_agg(organization_id),'{}') FROM public.organization_memberships WHERE user_id=auth.uid() AND status='ACTIVE' $f$;
+  CREATE OR REPLACE FUNCTION app_private.buildings_for_v3(p_permission text) RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS
+    $f$ SELECT COALESCE(array_agg(a.building_id),'{}') FROM public.fixture_meter_acl a WHERE a.permission=p_permission AND auth.uid()='${USER}' $f$;
+  GRANT EXECUTE ON FUNCTION public.is_super_admin(),public.my_org_ids() TO authenticated;
+  GRANT SELECT ON public.meters,public.meter_readings TO authenticated;
+  ${trigger('public.auto_populate_meter_reading_fields')}
+  ${trigger('public.auto_populate_previous_reading')}
+  ${trigger('public.auto_generate_reading_code', true)}
+  ${trigger('public.set_user_id_from_auth', true)}
+  CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS $u$ BEGIN NEW.updated_at:=clock_timestamp(); RETURN NEW; END $u$;
+  CREATE TRIGGER meter_readings_set_user_id_audit BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.set_user_id_from_auth();
+  CREATE TRIGGER trigger_auto_generate_reading_code BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_generate_reading_code();
+  CREATE TRIGGER trigger_auto_populate_meter_reading_fields BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_populate_meter_reading_fields();
+  CREATE TRIGGER trigger_auto_populate_previous_reading BEFORE INSERT ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.auto_populate_previous_reading();
+  CREATE TRIGGER trigger_update_meter_reading_updated_at BEFORE UPDATE ON public.meter_readings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();`;
+// Công tơ ĐIỆN (toà A trừ M6): M1 P101 có chỉ số tháng 9; M2 P102 ba kỳ 100 kWh (trung bình 3 kỳ); M3 P103 đã có chỉ số tháng 10 và đã lên
+// hoá đơn INV_C; M4A/M4B hai công tơ ở P104; M5 P105 chưa có chỉ số nào, chỉ số ban đầu 2.210; M7 P106 có chỉ số chốt trả phòng TLY tháng 10;
+// M6 P201 toà B. Chỉ số lịch sử chèn trực tiếp (trigger điền số đầu như production).
+const METER_SEED = `INSERT INTO public.rooms VALUES('${ROOM6}','${ORG}','${BUILDING}','P106','OCCUPIED',null);
+  INSERT INTO public.meters(id,user_id,code,building_id,room_id,service_id,meter_type,initial_reading,organization_id) VALUES
+    ('${M1}','${USER}','DH-101','${BUILDING}','${ROOM}','${SERVICE_E}','ELECTRICITY',1000,'${ORG}'),
+    ('${M2}','${USER}','DH-102','${BUILDING}','${ROOM2}','${SERVICE_E}','ELECTRICITY',400,'${ORG}'),
+    ('${M3}','${USER}','DH-103','${BUILDING}','${ROOM3}','${SERVICE_E}','ELECTRICITY',300,'${ORG}'),
+    ('${M4A}','${USER}','DH-104A','${BUILDING}','${ROOM4}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M4B}','${USER}','DH-104B','${BUILDING}','${ROOM4}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M5}','${USER}','DH-105','${BUILDING}','${ROOM5}','${SERVICE_E}','ELECTRICITY',2210,'${ORG}'),
+    ('${M6}','${USER}','DH-201','${OTHER_BUILDING}','${OTHER_ROOM}','${SERVICE_E}','ELECTRICITY',0,'${ORG}'),
+    ('${M7}','${USER}','DH-106','${BUILDING}','${ROOM6}','${SERVICE_E}','ELECTRICITY',100,'${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M1}','2026-09-30',1200,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-07-31',500,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-08-31',600,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M2}','2026-09-30',700,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES('${M3}','2026-10-10',350,'APPROVED','${ORG}');
+  INSERT INTO public.meter_readings(meter_id,reading_code,reading_date,current_reading,status,organization_id) VALUES('${M7}','TLY2610001','2026-10-05',150,'APPROVED','${ORG}');
+  INSERT INTO public.invoice_items(invoice_id,type,description,amount,current_reading,previous_reading) VALUES('${INV_C}','SERVICE','Tiền điện (300 → 350)',175000,350,300);
+  INSERT INTO public.fixture_meter_acl VALUES('meter_readings.create','${BUILDING}'),('meter_readings.create','${OTHER_BUILDING}'),
+    ('meter_readings.edit','${BUILDING}'),('meter_readings.edit','${OTHER_BUILDING}');`;
+
+export async function invoiceSetup(t, { database, meter = false } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   const exec = async (label, sql) => { try { await db.exec(sql); } catch (error) { error.message = `${label}: ${error.message}`; throw error; } };
@@ -186,6 +258,16 @@ export async function invoiceSetup(t, { database } = {}) {
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='thu_tien.collect_transfer'");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,'thu_tien.collect_transfer')`);
+  if (meter) {
+    await exec('meter fixture', METER);
+    for (const [label, sql] of [['meter v2', METER_A], ['meter v2#2', METER_A], ['meter page', METER_PAGE], ['meter page#2', METER_PAGE]]) await exec(label, sql);
+    await exec('meter seed', METER_SEED);
+    await db.query("INSERT INTO public.fixture_acl(permission,building_ids) VALUES('meter_readings.create',$1) ON CONFLICT(permission) DO UPDATE SET building_ids=excluded.building_ids,allowed=true", [[BUILDING, OTHER_BUILDING]]);
+    assert.equal((await db.query("SELECT enabled FROM app_private.hermes_capabilities WHERE capability='meter_readings.create'")).rows[0].enabled, false);
+    await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='meter_readings.create'");
+    for (const table of ['hermes_org_policies', 'hermes_connections'])
+      await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,'meter_readings.create')`);
+  }
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
     [JSON.stringify(binding), extra.action ?? 'invoice.collect', phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null]);
@@ -194,5 +276,7 @@ export async function invoiceSetup(t, { database } = {}) {
     (SELECT count(*)::int FROM public.fixture_v5_ops) ops,(SELECT count(*)::int FROM app_private.hermes_action_receipts) receipts,
     (SELECT COALESCE(sum(paid_amount),0)::bigint::text FROM public.invoices) paid`)).rows[0];
   const one = (extra = {}) => ({ buildingName: 'toa a', roomName: 'p101', method: 'TK', ...extra });
-  return { ...f, exec, run, applyWith, trace, one };
+  const meterRun = (phase, requestId, params, extra = {}) => run(phase, requestId, params, { ...extra, action: 'invoice.meter_record' });
+  const meterApply = (requestId, params, preview) => meterRun('apply', requestId, params, { resolved: preview.resolved, basis: preview.basis });
+  return { ...f, exec, run, applyWith, trace, one, meterRun, meterApply };
 }

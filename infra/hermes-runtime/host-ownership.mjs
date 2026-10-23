@@ -41,7 +41,9 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   // Trang Công việc (Đợt 2b).
   'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
-  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required']);
+  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+  // Hoá đơn (Mốc 4, ghi chỉ số).
+  'meter_used_by_invoice', 'meter_has_later_reading']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {

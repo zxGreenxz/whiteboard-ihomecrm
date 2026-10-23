@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T03:28:22.338Z",
+  "generatedAt": "2026-10-23T03:19:35.323Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 840,
-    "unknown": 81,
-    "catalog-proven": 207,
+    "unknown": 84,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13049,16 +13049,31 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql",
-      "version": "20261022075102",
-      "name": "hermes_expense_edit_cancel_v1",
+      "path": "supabase/migrations/20261022075219_invoice_collection_plan_v1.sql",
+      "version": "20261022075219",
+      "name": "invoice_collection_plan_v1",
       "scheme": "timestamp14",
-      "sha256": "e42ed628bb109d71ded4957066c67387a022894a25e0eba1f25b1992c7a46d91",
+      "sha256": "3e38bf42127d04d5a40122d8cc433f6eaf34f29b2989d2183be0d17ef829e25e",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "table:app_private.hermes_action_flags",
-        "function:app_private.hermes_expense_manual_v1"
+        "function:public.invoice_collection_plan_core_v1",
+        "function:public.invoice_collection_plan_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022075230_hermes_invoice_action_v1.sql",
+      "version": "20261022075230",
+      "name": "hermes_invoice_action_v1",
+      "scheme": "timestamp14",
+      "sha256": "6a5db142adb069ec6129bcaf4ac83aea72b222d928e17af1922614283103df82",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_invoice_reason_v1",
+        "function:app_private.hermes_invoice_lookup_core_v1",
+        "function:app_private.hermes_invoice_action_step_v1",
+        "function:public.hermes_invoice_action_v1"
       ]
     },
     {
@@ -13117,26 +13132,31 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261023013109_hermes_expense_approve_v1.sql",
-      "version": "20261023013109",
-      "name": "hermes_expense_approve_v1",
+      "path": "supabase/migrations/20261022183026_meter_readings_v2.sql",
+      "version": "20261022183026",
+      "name": "meter_readings_v2",
       "scheme": "timestamp14",
-      "sha256": "286e212c69439cef05e6faaaa4460f6823c46221465f96caaf13c3b10d06377f",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.hermes_expense_resolve_core_v1",
-        "catalog:function:app_private.hermes_expense_write_step_v1"
+      "sha256": "fa75c146353affdc10ccef7b681fe1a52c38af76ad04dbad5ba196b615b81f71",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.meter_readings_plan_v1",
+        "function:public.record_meter_readings_v2"
       ]
     },
     {
-      "path": "supabase/migrations/20261023031258_hermes_expense_row_locks_nowait_v1.sql",
-      "version": "20261023031258",
-      "name": "hermes_expense_row_locks_nowait_v1",
+      "path": "supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql",
+      "version": "20261022183445",
+      "name": "hermes_invoice_meter_v1",
       "scheme": "timestamp14",
-      "sha256": "a7dde2449d5e433dd1ce49046da09132831cf7de962997713dc28fd66f4cb154",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.hermes_expense_write_step_v1"
+      "sha256": "52535735f77ac21191f626e2fdeb94cc0d90b5e0dd264d2052e101e7d40ec8e3",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_invoice_reading_text_v1",
+        "function:app_private.hermes_invoice_meter_lookup_v1",
+        "function:app_private.hermes_invoice_meter_step_v1",
+        "function:public.hermes_invoice_action_v1"
       ]
     },
     {

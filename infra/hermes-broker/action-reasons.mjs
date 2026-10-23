@@ -39,7 +39,7 @@ export const ACTION_REASONS = Object.freeze({
   ...contractReasons(),
   // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 2.4). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...taskReasons(),
-  // Trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 5) — thu tiền. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
+  // Trang Hoá đơn (Đợt 3 Mốc 3 thu tiền + Mốc 4 ghi chỉ số, HOA-DON-THAO-TAC-GHI.md mục 5). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...invoiceReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
@@ -86,9 +86,10 @@ function taskReasons() {
     batch_too_large: reason('needs_input', 'fix', 'Tối đa 20 việc một lần giao; chia thành nhiều lô (mỗi lô tối đa 20 việc) hoặc tạo trên web.'),
   };
 }
-// Trang Hoá đơn (Đợt 3 Mốc 3): thu tiền chuyển khoản / TT-POS qua bot.
+// Trang Hoá đơn: Mốc 3 thu tiền + Mốc 4 ghi chỉ số.
 function invoiceReasons() {
   return {
+    // Mốc 3 — thu tiền.
     cash_collection_web_only: reason('rejected', 'never', 'Tiền mặt ghi trên web ở trang Thu tiền (/thu-tien); trợ lý chỉ ghi khoản chuyển khoản hoặc thanh toán (TT/POS).'),
     nothing_to_collect: reason('needs_input', 'fix', 'Hoá đơn này không còn số phải thu; hỏi lại người dùng phòng hoặc kỳ.'),
     debt_carried: reason('needs_input', 'fix', 'Nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau (hỏi lại kỳ).'),
@@ -97,6 +98,13 @@ function invoiceReasons() {
     credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
     receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
     reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
+    // Mốc 4 — ghi chỉ số: bốn mã hỏi lại người dùng, hai mã chỉ đường web.
+    meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),
+    meter_ambiguous: reason('needs_input', 'fix', 'Phòng có nhiều công tơ cùng loại; hỏi mã công tơ.'),
+    meter_duplicate_month: reason('needs_input', 'fix', 'Tháng này đã có chỉ số; chỉ thay khi người dùng nói rõ "sửa" (replace=true).'),
+    meter_lower_than_previous: reason('needs_input', 'fix', 'Chỉ số mới nhỏ hơn chỉ số đầu; hỏi lại số trên công tơ.'),
+    meter_used_by_invoice: reason('rejected', 'never', 'Chỉ số tháng này đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web.'),
+    meter_has_later_reading: reason('rejected', 'never', 'Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (trang Ghi chỉ số).'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));
