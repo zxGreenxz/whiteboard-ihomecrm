@@ -152,7 +152,7 @@ BEGIN
     END IF;
   ELSIF to_regprocedure(v_moi) IS NOT NULL THEN
     v_md5 := md5(pg_get_functiondef(v_moi::regprocedure));
-    IF v_md5 <> 'bd06a10bd48ab937499939c9a4b11037' THEN
+    IF v_md5 <> '2c9ac7ef7337009736ac5aa55245a883' THEN
       RAISE EXCEPTION '% KHÁC bản của file này (md5 %) — DỪNG.', v_moi, v_md5 USING ERRCODE = '55000';
     END IF;
   ELSE
@@ -1526,11 +1526,14 @@ BEGIN
   END IF;
 
   -- số dư đầu kỳ. Dấu xác nhận:
-  --   · giữ nguyên khi số dư, tháng áp dụng VÀ cọc trước kỳ ở sổ chủ nhà đều y như lúc xác nhận;
+  --   · giữ nguyên khi số dư, tháng áp dụng, cọc trước kỳ (gợi ý) VÀ người giữ cọc đều y như lúc xác nhận;
   --   · xác nhận MỚI chỉ nhận khi cơ sở KHÔNG đổi trong chính lần lưu này (không phải tạo mới, không
-  --     dời tháng áp dụng, không đổi sổ của điều khoản đầu) VÀ số cọc trước kỳ người dùng đã thấy
-  --     (p_opening_seen_pre_start) bằng đúng số hiện tại — không ai "xác nhận" một con số chưa từng thấy;
+  --     dời tháng áp dụng, không đổi sổ của điều khoản đầu, không đổi người giữ cọc) VÀ số cọc trước kỳ
+  --     người dùng đã thấy (p_opening_seen_pre_start) bằng đúng số hiện tại — không ai "xác nhận" một con
+  --     số chưa từng thấy;
   --   · còn lại bỏ dấu, báo màn mở lại để đối chiếu (opening_needs_reconfirm).
+  -- Đổi người giữ cọc đổi nghĩa của số dư đầu kỳ (cọc trước kỳ bên nào bàn giao cho bên nào) ⇒ luôn phải đối
+  -- chiếu lại, kể cả khi gợi ý tình cờ ra cùng một số ở hai chế độ (vd cả hai bằng 0).
   v_pre := app_private.landlord_pre_start_deposits_v1(p_building_id);
   SELECT t.landlord_account_ids INTO v_first_ids_after
     FROM app_private.landlord_operation_terms t
@@ -1541,10 +1544,12 @@ BEGIN
     IF v_exists AND v_old.opening_confirmed_at IS NOT NULL
        AND v_old.opening_balance = v_opening
        AND v_old.opening_confirmed_from = v_from
-       AND v_old.opening_confirmed_pre_start = v_pre THEN
+       AND v_old.opening_confirmed_pre_start = v_pre
+       AND v_old.deposit_holder = v_holder THEN
       NULL;  -- xác nhận cũ còn nguyên hiệu lực
     ELSIF v_exists AND v_old.effective_from = v_from
           AND v_first_ids_before IS NOT DISTINCT FROM v_first_ids_after
+          AND v_old.deposit_holder = v_holder
           AND p_opening_seen_pre_start IS NOT DISTINCT FROM v_pre THEN
       UPDATE app_private.landlord_operations
          SET opening_confirmed_at = clock_timestamp(), opening_confirmed_by = v_actor,

@@ -1891,6 +1891,8 @@ describe("v3: người giữ cọc", () => {
         expect((await thang(TOA_A, m)).statement).toMatchObject({ deposit_holder: "LANDLORD" });
       }
       expect((await giuCoc("MANAGER")).terms_from).toBeNull();
+      // đổi người giữ cọc ⇒ phải đối chiếu lại số dư đầu kỳ: lưu lại (không đổi gì) với đúng gợi ý đã thấy
+      expect((await giuCoc("MANAGER")).opening_needs_confirm).toBe(false);
       expect((await chot("2025-02-01")).status).toBe("CLOSED");
       // đã chốt một tháng: cả hai chiều, từ tháng nào cũng bị chặn; tháng đã chốt giữ nguyên số
       await expectLoi(`SELECT ${UPSERT_GIU_COC}`, [TOA_A, [SO_CHU_NHA], null, "LANDLORD"], "55000");
@@ -1928,6 +1930,26 @@ describe("v3: người giữ cọc", () => {
           p_opening_confirmed => true, p_opening_seen_pre_start => -300000)`, [TOA_A, [SO_CHU_NHA]]);
       expect([xn.opening_needs_reconfirm, xn.opening_needs_confirm]).toEqual([false, false]);
       expect((await thang(TOA_A, "2025-02-01")).close_blockers).not.toContain("OPENING_UNCONFIRMED");
+    });
+  });
+
+  it("đổi người giữ cọc luôn bỏ xác nhận số dư đầu kỳ — kể cả khi gợi ý ở hai chế độ trùng số (cả hai 0), gọi RPC thẳng", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      // bỏ cọc trước kỳ 700k ở sổ chủ nhà ⇒ gợi ý = 0 ở CẢ hai chế độ
+      await db.query("UPDATE public.income_expenses SET deleted_at = now() WHERE building_id = $1 AND voucher_date < '2025-01-01'", [TOA_A]);
+      await asUser(CHU_A);
+      const UPSERT_SO_DU = `public.landlord_operation_upsert_v1(p_building_id => $1, p_landlord_name => 'Chủ nhà A', p_manager_percent => 30,
+        p_effective_from => '2025-01-01'::date, p_landlord_account_ids => $2::uuid[], p_opening_balance => 500000,
+        p_opening_confirmed => true, p_opening_seen_pre_start => 0, p_deposit_holder => $3::text)`;
+      // xác nhận số dư 500k ở chế độ quản lý giữ cọc
+      expect((await rpc<Json>(UPSERT_SO_DU, [TOA_A, [SO_CHU_NHA], "MANAGER"])).opening_needs_confirm).toBe(false);
+      // đổi người giữ cọc, vẫn gửi "đã đối chiếu" + đúng gợi ý 0 ⇒ server KHÔNG giữ / cấp xác nhận
+      const doi = await rpc<Json>(UPSERT_SO_DU, [TOA_A, [SO_CHU_NHA], "LANDLORD"]);
+      expect([doi.opening_needs_reconfirm, doi.opening_needs_confirm]).toEqual([true, true]);
+      expect(((await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A])).current as Json).opening_confirmed_at).toBeNull();
+      // đối chiếu lại (không đổi gì nữa) thì nhận
+      expect((await rpc<Json>(UPSERT_SO_DU, [TOA_A, [SO_CHU_NHA], "LANDLORD"])).opening_needs_confirm).toBe(false);
     });
   });
 

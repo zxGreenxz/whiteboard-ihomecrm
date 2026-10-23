@@ -198,6 +198,24 @@ it('Bàn giao — admin sửa ghi chú sau khi chốt: gửi đúng revision c�
   expect(m.note).toHaveBeenCalledWith({ buildingId: 'toa-1', month: '2026-10-01', revision: 3, note: 'Ghi chú mới' });
 });
 
+it('Bàn giao — admin: người khác chốt lại (lần chốt mới, ghi chú mới) ⇒ chưa gõ gì thì ô nạp ghi chú mới; đã gõ thì giữ chữ đang gõ', () => {
+  const ve2 = (month: ReturnType<typeof closedMonth>) => (
+    <SettlementScreen mode="admin" buildingName="Toà A" landlordName="Chủ nhà A" month={month} overview={overviewV3()}
+      months={['2026-11', '2026-10', '2026-09', '2026-08']} selectedMonth="2026-10" onSelectMonth={vi.fn()} buildingId="toa-1" />
+  );
+  const chotLai = (note: string) => closedMonth({ closed: { ...closedMonth().closed!, revision: 5, note } });
+  const o = () => screen.getByLabelText('Ghi chú bàn giao của quản lý') as HTMLTextAreaElement;
+  const { rerender } = render(ve2(closedMonth()));
+  fireEvent.click(tab(/Bàn giao/));
+  rerender(ve2(chotLai('Ghi chú lần chốt lại')));
+  expect(o().value).toBe('Ghi chú lần chốt lại');
+  // không còn "đã sửa" giả ⇒ nút lưu tắt
+  expect((screen.getByRole('button', { name: 'Lưu ghi chú' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(o(), { target: { value: 'Tôi đang gõ dở' } });
+  rerender(ve2(chotLai('Ghi chú khác của người khác')));
+  expect(o().value).toBe('Tôi đang gõ dở');
+});
+
 it('nút gạt người giữ cọc (admin): toà chưa chốt tháng nào ⇒ bấm lựa chọn khác chỉ báo lên trang; toà đã chốt tháng ⇒ tắt; link chủ nhà chỉ thấy chip', () => {
   const doi = vi.fn();
   const ov = overviewV3();

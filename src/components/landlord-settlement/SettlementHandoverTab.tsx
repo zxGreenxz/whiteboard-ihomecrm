@@ -25,6 +25,13 @@ const errCode = (e: unknown) => (e && typeof e === 'object' ? (e as { code?: unk
 function AdminNoteEditor({ month, buildingId, revision }: { month: SettlementMonth; buildingId: string; revision: number }) {
   const saved = month.closed?.note ?? '';
   const [draft, setDraft] = useState(saved);
+  // ghi chú server mà ô đang dựa vào: người khác chốt lại / sửa ghi chú (lần chốt đổi) ⇒ chưa gõ gì thì nạp
+  // ghi chú mới, đã gõ thì giữ chữ đang gõ (không âm thầm ghi đè ghi chú mới bằng ghi chú cũ)
+  const [base, setBase] = useState(saved);
+  if (saved !== base) {
+    setBase(saved);
+    if (draft === base) setDraft(saved);
+  }
   const [error, setError] = useState<string | null>(null);
   const save = useUpdateLandlordHandoverNote();
   const changed = draft.trim() !== saved.trim();
