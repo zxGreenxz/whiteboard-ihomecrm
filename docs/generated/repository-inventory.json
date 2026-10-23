@@ -2,16 +2,16 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1638,
-  "soFileDocBangFs": 428,
-  "tongLoiGoi": 1064,
+  "soFileDocBangFs": 426,
+  "tongLoiGoi": 1061,
   "khongPhanLoaiDuoc": 468,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 61,
+      "soFile": 60,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 61,
+      "soFile": 60,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 174,
+      "soFile": 172,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -85,7 +85,6 @@
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
-    "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
     "src/lib/quickEntry/__tests__/models.test.ts",
     "src/pages/phong-trong/__tests__/exportRoomListImage.test.ts",
     "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx"
@@ -552,6 +551,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 2,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/name-directory-sql.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -740,15 +748,6 @@
       "soGoi": 3,
       "loai": {},
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 1,
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/org-policy-sql.test.mjs",
@@ -1021,16 +1020,6 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 1,
-        "ma-nguon": 1,
-        "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -3232,14 +3221,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/quickEntry/__tests__/categoryRules.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/quickEntry/__tests__/models.test.ts",

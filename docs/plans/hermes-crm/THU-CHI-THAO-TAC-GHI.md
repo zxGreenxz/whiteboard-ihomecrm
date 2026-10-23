@@ -971,3 +971,55 @@ Luật chung: trước khi gọi hàm web, bước ghi khoá NOWAIT mọi dòng 
 1. Áp `20261023031258` qua `migrate:forward`, sau `20261022075102` và `20261023013109`. Provenance có thể xếp file là `catalog-proven` giả (hàm đã có tên) ⇒ áp đích danh.
 2. Không đổi connector. 55P03 vốn đã được đổi thành `state_changed`.
 3. Bản vá này phải lên trước khi bật bất kỳ khoá Thu chi nào (`income_expenses.create` cho note / create, `.edit`, `.cancel`, `.approve_vouchers`).
+
+## 22. Mốc 6 — web Báo chi nhanh dùng hai hàm SQL chung (23/10/2026)
+
+Nhánh `claude/hermes-thu-chi-moc6-20261023`, xếp chồng trên #293 (`1c069ddb6`).
+
+**Không có migration mới.** Web gọi đúng hai hàm mà bot đang dùng: `ie_category_suggest_v1` và `ie_default_cashbook_v1`. Cả hai nằm trong `20261022024045`, đã áp production ở Mốc 2. Đo production 23/10 (chỉ đọc): hai hàm có mặt và `authenticated` được `EXECUTE`.
+
+### 22.1 Đổi gì
+
+- **Gợi ý hạng mục**
+  - `compose.ts` nhận `ctx.suggestCategory` thay cho `suggestCategory` TypeScript; hai chỗ gọi giữ nguyên.
+  - Feed ghép thẻ hai lượt quanh một lần gọi RPC (`sharedRules.composeWithSuggestions`):
+    - lượt 1 gom các câu cần gợi ý;
+    - mỗi chiều thu/chi gọi `ie_category_suggest_v1` một lần (≤ 100 câu mỗi lần);
+    - lượt 2 ghép thẻ với kết quả.
+  - Kết quả RPC được kiểm khuôn: hạng mục phải nằm trong danh sách dùng được của đúng chiều, lý do phải là lý do đã biết. Sai khuôn ⇒ coi như không gợi ý.
+  - RPC lỗi ⇒ ghép thẻ không có gợi ý (AI hoặc người dùng chọn), tin vẫn ra thẻ.
+  - Đã xoá `categoryRules.ts`, phần đoán của `categorySuggest.ts` (`suggestCategory`, cụm phí, từ dừng), cùng các test chỉ dành cho bản TypeScript.
+- **Sổ chọn sẵn**
+  - `useQuickEntryRefs` nạp sẵn `ie_default_cashbook_v1` cho thẻ chưa có toà và cho từng toà trong phạm vi, kèm sổ nhớ ở máy. Production có tối đa 19 toà mỗi công ty ⇒ ≤ 20 lời gọi song song lúc mở trang.
+  - `defaultAccountFor` vẫn đồng bộ: đọc bảng đã nạp, chỉ nhận sổ trong danh sách sổ đang giữ.
+  - Đã xoá `pickDefaultAccount`.
+  - Lỗi ⇒ không chọn sẵn sổ (người dùng chọn tay), không chặn trang.
+- **Nhãn:** khoá `income_expenses.approve_vouchers` ghi "Duyệt, hoặc duyệt và chi, phiếu CHI lập tay (Hermes, tối đa 10 phiếu, luôn xem trước)", khớp Mốc 5.
+
+### 22.2 Thao tác người dùng
+
+Thao tác giữ nguyên, và kết quả gợi ý giống hệt bản cũ: hàm SQL khớp TypeScript trên cả 610 ca vàng. Có hai khác biệt nhỏ nhìn thấy được:
+- thẻ hiện ra sau một lượt RPC thay vì ngay lập tức;
+- khung xương lúc mở trang chờ thêm bảng sổ mặc định.
+
+Trên TEST, thẻ hiện cùng lúc với tin gửi đi (vòng RPC khoảng 0,2 s).
+
+### 22.3 Kiểm
+
+- **Bảng đứng thay SQL trong vitest:** `__tests__/fixtures/goi-y-hang-muc-test.json`, gồm 7 bộ hạng mục và 87 câu.
+  - Bảng sinh một lần từ bản TypeScript cũ trên chính các câu test, trước khi xoá TypeScript.
+  - `infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs` khoá bảng này khớp đúng `ie_category_suggest_v1` trên PostgreSQL 17 (87/87), cùng 610 ca vàng.
+  - Nhờ đó, test compose / feed / page chạy trên kết quả thật của database.
+- **vitest:** quick entry + Hermes 916 test đạt; thêm `sharedRules.test.ts` và `useQuickEntryRefs.sharedRules.test.tsx` (13 test). Đảo strict 0 lỗi, `typecheck:baseline` khớp, eslint 0 lỗi.
+- **Trình duyệt thật trên TEST** (Chromium, vite của worktree trỏ TEST; chặn mọi origin Supabase khác và chặn AI; không bấm Lưu), khổ desktop 1366 px và mobile 390 px:
+  - mở trang ⇒ 20 lời gọi `ie_default_cashbook_v1`, tất cả HTTP 200;
+  - gửi "102LVT tiền điện tháng 10 1tr2; mua sơn cửa 300k" ⇒ đúng một lời gọi `ie_category_suggest_v1` cho 2 câu, kết quả `rule` / không gợi ý;
+  - thẻ: sổ "Tâm Thu" chọn sẵn, dòng 1 "Đóng tiền điện", dòng 2 "Chọn hạng mục" (chờ AI);
+  - không cuộn ngang; console chỉ có lỗi của lời gọi AI bị chặn.
+
+### 22.4 Phát hành
+
+1. Web không phụ thuộc migration chưa áp. Mã Mốc 6 cũng không dùng gì của #278 / #289 / #293; PR chỉ xếp chồng để giữ một dòng nhánh.
+2. Thứ tự đề xuất: gộp theo dòng nhánh (#278 → #289 → #293 → Mốc 6) sau khi phiên chính áp các migration của từng PR.
+3. Muốn phát hành web sớm hơn thì cherry-pick commit Mốc 6 lên `main`: chỉ đụng web, tài liệu và một test SQL.
+4. Connector không đổi.
