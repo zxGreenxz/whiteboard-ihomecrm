@@ -712,3 +712,66 @@ bosshuy giao lô bị `needs_input` `jobType` `not_visible`: tài khoản này k
 4. `180359` dựng từ thân có `contracts.view` (#270 đã áp production). Gộp main có #270 thì `wave2-kit.mjs` / test dải nền sẽ xung đột nhẹ: giữ cả hai khoá và cả hai file trong dải.
 
 Rollback: chạy lại câu lệnh hàm của file trước (`074741`, `20261015130000`, thân production của reused keys / catalog / reader gói C); `$requires$` của mỗi file nhận cả thân cũ lẫn thân mới. `public.jobs_board_v1` để lại không hại (không ai gọi ngoài nhánh mới).
+
+## 22. Mốc 5 — việc định kỳ (23/10)
+
+**Phạm vi:** mục 5 (Q39 = b, CV9). Đây là tính năng CRM mới: web chưa có bảng hay hàm định kỳ cho việc (chỉ có phiếu định kỳ của Thu chi). Phần dùng chung đặt trong DB để web gọi lại sau (Q40 = b, chưa làm giao diện). Không thêm tool vào `tools/list`: bốn thao tác nằm trong `crm_action_list`, báo cáo nằm trong `crm_read_report`. Năm migration mới, đều chưa áp.
+
+**Khoá để TẮT:** không file nào chèn dòng chính sách `task.recurring_*`. Khi không có dòng chính sách, danh mục thao tác sống không có bốn thao tác ⇒ connector không quảng bá và guard từ chối. Bảng, hàm ghi CRM, bộ sinh và báo cáo vẫn có (bảng rỗng ⇒ bộ sinh không làm gì). Vai API gọi thẳng được bốn hàm ghi CRM qua PostgREST, với đúng quyền `tasks.create` / `tasks.edit` / `tasks.delete` như web; giao diện web chưa có. Phiên chính bật bằng một migration riêng, sau khi connector có Mốc 5 và chủ đồng ý:
+
+```sql
+INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,action_class,confirm,private_only) VALUES
+  ('task.recurring_create','tasks.create','tasks.create','reversible','always',true),
+  ('task.recurring_update','tasks.edit','tasks.edit','reversible','always',true),
+  ('task.recurring_pause','tasks.edit','tasks.edit','reversible','always',true),
+  ('task.recurring_delete','tasks.delete','tasks.delete','reversible','always',true)
+  ON CONFLICT(action) DO NOTHING;
+```
+
+`task.recurring_delete` dùng khoá `tasks.delete`, mà khoá này đang tắt ở production (#259) ⇒ xoá quy tắc chỉ chạy khi khoá đó đã bật lại.
+
+**`20261023042424_job_recurrence_v1`** (CRM dùng chung; nội dung không có chữ `hermes_`):
+
+| Phần | Luật |
+| --- | --- |
+| `public.job_recurrence_rules` | Việc mẫu (toà bắt buộc, phòng, loại, tiêu đề, mô tả, người nhận, ưu tiên) + lịch: `daily` / `weekly` / `monthly`, mỗi N (1–12), thứ ISO 1–7, ngày -1–31 (-1 = cuối tháng), từ / tới ngày, hạn = ngày sinh + N ngày (0–30). Mã `DK-NNNN` theo công ty. Xoá mềm. Tạm dừng có lý do (`user` / `permission_lost` / `membership_lost` / `target_deleted`). `version` tăng khi cột người dùng thấy đổi; bộ sinh cập nhật `last_generated_date` thì không tăng |
+| `public.job_recurrence_occurrences` | Khoá `(quy tắc, ngày)` ⇒ không bao giờ sinh hai việc cho một ngày. Việc bị xoá ⇒ `job_id` về NULL, lần sinh còn (không sinh lại) |
+| RLS | Soi gương policy `jobs` đọc 23/10: SELECT như `jobs_select_rbac`; INSERT đòi `tasks.create` ở toà; UPDATE đòi `tasks.edit` hoặc `tasks.delete` (qua `app_private.buildings_for_v3`) + ranh giới công ty. Vai API chỉ có quyền cột ghi được, không DELETE; bảng lần sinh chỉ SELECT |
+| Trigger (DEFINER, `WHEN current_user` là vai API) | Xoá mềm đòi đúng `tasks.delete`, đổi khác đòi `tasks.edit` (`authorize_tenant_action_v3`); cột bất biến; ngày bắt đầu không ở quá khứ; trần 100 quy tắc đang chạy mỗi công ty (lỗi 54000); mã cấp dưới khoá tư vấn theo công ty; chuẩn hoá lịch (weekly mặc định thứ của ngày bắt đầu, monthly mặc định ngày của ngày bắt đầu); chạy lại không bù các ngày đã dừng. Trigger thứ hai (vai hệ thống) chỉ chuẩn hoá + tăng `version` |
+| `public.job_recurrence_dates_v1` | Thuần. Tháng tính từ tháng neo, không cộng dồn (29–31 rơi vào tháng thiếu ⇒ cuối tháng đó, tháng sau trở lại đúng ngày). Tuần neo theo tuần ISO của ngày bắt đầu. Tối đa 400 ngày một lần gọi |
+| `public.job_recurrence_schedule_text_v1` | "hằng ngày", "mỗi thứ Hai, thứ Năm", "mỗi 2 tuần vào Chủ nhật", "ngày cuối tháng hằng tháng", "ngày 15, mỗi 3 tháng" |
+| Bốn hàm ghi (INVOKER, `search_path=''`) | `job_recurrence_create_v1` / `_update_v1` (khoá = tên cột) / `_set_paused_v1` / `_delete_v1`, CAS theo `version`. Lỗi: 42501 không quyền, 22023 dữ liệu sai, P0002 không thấy, 40001 version lệch, 54000 vượt trần |
+
+**`20261023042431_hermes_task_recurrence_generate_v1`:** bộ sinh `app_private.hermes_task_recurrence_generate_v1(p_today)` (DEFINER), cron `job-recurrence-daily` lúc 17:10 UTC (00:10 giờ VN).
+- Mỗi quy tắc đang chạy: các ngày đến hạn trong (`last_generated_date`, hôm nay theo giờ công ty], bù tối đa 7 ngày.
+- Dòng quy tắc khoá `FOR NO KEY UPDATE SKIP LOCKED`: đang bị sửa ⇒ bỏ lượt này, lượt sau bù.
+- INSERT lần sinh `ON CONFLICT DO NOTHING`; chỉ ngày vừa chèn được mới sinh việc.
+- Kiểm lại: người tạo còn ACTIVE + còn `tasks.create` ở toà, toà / phòng / loại còn sống, người nhận còn là thành viên. Hỏng ⇒ tạm dừng kèm lý do, lần sinh `skipped`, audit `JOB_RECURRENCE_PAUSED`.
+- Việc sinh ra là việc thường: `user_id` = người tạo quy tắc (trigger chỉ điền khi trống ⇒ không cần đặt claims; thông báo E4 ghi người giao là "hệ thống"), hạn cuối ngày (ngày sinh + N), mô tả có "(định kỳ DK-NNNN)". Sổ `hermes_task_jobs` ghi `source = recurrence` (không tính hạn mức Q37).
+- Mỗi quy tắc một khối con. Không khoá dòng công ty.
+
+**`20261023042436_hermes_task_recurring_v1`** (áp SAU `164201` và `042424`): thay thân bốn tầng vỏ `hermes_task_action_v1`, dựng từ thân `164201` và ghim md5. Thêm `app_private.hermes_task_recurring_prepare_v1` / `_finish_v1` (DEFINER, không cấp cho vai API).
+
+| Thao tác | Khoá | Luật |
+| --- | --- | --- |
+| `task.recurring_create` | `tasks.create` | Đi chung nhánh một mục của `task.create` (toà / phòng / loại / người nhận / tiêu đề như web, Q31 đề xuất người quản lý). Lịch chuẩn hoá như trigger CRM; ngày bắt đầu quá khứ / kết thúc trước bắt đầu / lịch không ra ngày nào ⇒ `date_out_of_range`; tham số lịch sai ⇒ `invalid_params`. Trần 100 ⇒ `recurrence_quota` ngay ở bản xem trước |
+| `task.recurring_update` | `tasks.edit` | Lịch, người nhận (luật như `task.update`), nội dung, mô tả, ưu tiên, từ / tới ngày, hạn sau N ngày. Chỉ cột thật sự đổi vào kế hoạch; không đổi gì ⇒ `recurrence_unchanged`. Việc đã sinh không đổi |
+| `task.recurring_pause` | `tasks.edit` | `resume=true` = chạy lại; trạng thái đã đúng ⇒ `recurrence_unchanged`. Chạy lại không bù các ngày đã dừng |
+| `task.recurring_delete` | `tasks.delete` | Xoá mềm; việc đã sinh giữ nguyên |
+| Chung | — | Tìm quy tắc: mã `DK-NNNN` (chấp nhận "dk3", "DK 0003") hoặc nội dung bỏ dấu, dưới RLS người hỏi, trong phạm vi toà của khoá; mơ hồ ⇒ hỏi lại kèm "mã · nội dung (phòng, lịch)" + toà, không tự chọn. Chính sách `always` ⇒ luôn xem trước kèm lịch dạng chữ và ba lần tới. Lượt 2: basis = bản đã giải (tạo) hoặc id + `version` + thay đổi; khoá dòng quy tắc `FOR UPDATE NOWAIT` (bận ⇒ 55P03 ⇒ `state_changed`); ghi qua đúng bốn hàm ghi CRM; chốt đối chiếu dòng, audit `HERMES_TASK_RECURRING_CREATED/UPDATED/PAUSED/RESUMED/DELETED` |
+
+**Báo cáo `task_recurrences`** (gói C): `20261023042445` hàm dùng chung `public.job_recurrences_list_v1` (INVOKER) → `20261023042450` catalog + hàm đọc gói C dựng từ thân `180402` và ghim md5. Khoá `tasks.view`, phạm vi `rls_buildings`. Lọc `status` ACTIVE / PAUSED / ENDED, `query` (mã, nội dung, tên người nhận bỏ dấu), `buildingId`. Mỗi hàng có lịch dạng chữ và lần sinh kế tiếp. `summary` = tổng / đang chạy / tạm dừng / đã kết thúc.
+
+**Connector:** `TASK_RECURRING_CREATE/UPDATE/PAUSE/DELETE` (tham số 14 / 12 / 2 / 1; `weekdays` là danh sách `oneOf` MON…SUN); `param.name('recurrence')` (nhãn "việc định kỳ"); lý do `recurrence_quota` (rejected), `recurrence_unchanged` (needs_input); báo cáo `task_recurrences` trong W2 gói C (22 báo cáo).
+
+**Soát 40P01:** guard khoá dòng công ty (`FOR NO KEY UPDATE`) rồi mới khoá dòng quy tắc. Không đường nào khoá dòng quy tắc rồi mới khoá công ty: bộ sinh và hàm ghi CRM không khoá công ty, trigger CRM chỉ lấy khoá tư vấn theo công ty khi INSERT (không xung đột khoá dòng). Vậy không có vòng. Hermes vẫn lấy dòng quy tắc bằng NOWAIT để không đứng chờ bộ sinh.
+
+**Test:**
+- PGlite `task-recurring-sql`: bảng ngày (31, tháng 2, năm nhuận, mỗi 2 tuần, cuối tháng, tới ngày); hàm ghi CRM dưới RLS + trigger (mã, mặc định, cột bất biến, CAS, xoá cần `tasks.delete`, quyền cột, trần 100); bốn thao tác Hermes (xem trước một lần + ba lần tới, Q31, phát lại, audit, lịch sai ⇒ hỏi lại, mơ hồ ⇒ hỏi lại, đổi giữa hai lượt ⇒ `state_changed`, không có dòng chính sách ⇒ guard từ chối); bộ sinh (một lần mỗi ngày, chạy lại an toàn, bù ≤ 7 ngày, người tạo đứng tên, hạn cuối ngày + N, mất quyền / thành viên / loại ⇒ tạm dừng có lý do); 3 đột biến (bỏ kiểm quyền người tạo ở bộ sinh, xoá chỉ cần `tasks.edit`, lõi tự chọn khi mơ hồ) đều bị bắt.
+- PG17 `task-recurring-race-pg`: hai lượt sinh song song ⇒ lượt sau bỏ qua dòng đang bị giữ, đúng một việc; Hermes tạm dừng lúc bộ sinh giữ dòng ⇒ 55P03 ngay.
+- `wave2-c-task-recurrences`: hàng, lịch, lần kế tiếp, trạng thái, summary, Toàn tổ chức, RLS giấu toà không xem được, rào broker.
+- Tầng 2 trên TEST (ROLLBACK; nạp năm file trong giao dịch, bật tạm bốn dòng chính sách + `tasks.delete`; chủ / joey / bosshuy): chủ tạo "mỗi thứ Hai" ⇒ xem trước có lịch chữ + 26/10, 02/11, 09/11 ⇒ `DK-0001`; "ngày cuối tháng" ⇒ 31/10, 30/11, 31/12; lịch sai / bắt đầu hôm qua ⇒ hỏi lại; joey tạo, tạm dừng theo mã, chạy lại theo nội dung không dấu; chủ sửa lịch + người nhận ⇒ xem trước đúng hai thay đổi + cảnh báo người nhận thiếu quyền ở toà; nội dung khớp hai quy tắc ⇒ hỏi lại kèm 2 ứng viên; bosshuy gọi quy tắc ở toà ngoài phạm vi ⇒ `not_visible`; bộ sinh hôm nay 1 việc, chạy lại 0, tới +7 thêm 5 (đúng lịch), người tạo đứng tên, hạn cuối ngày; xoá ⇒ báo cáo bỏ quy tắc đã xoá; 7 biên nhận, 7 audit.
+
+**Thứ tự áp (phiên chính):** `042424` → `042431` → `042436` (sau `164201`) → `042445` → `042450`. `042450` bị provenance xếp `catalog-proven` dù chưa áp (thay hàm đã có) ⇒ áp đích danh. Connector Mốc 5 phát hành trước hay sau migration đều an toàn: không có dòng chính sách thì thao tác ẩn; báo cáo chỉ hiện khi catalog SQL có. Cuối cùng mới bật bốn dòng chính sách bằng migration riêng.
+
+Rollback: chạy lại câu lệnh hàm của `164201` / `180402` (`$requires$` nhận cả hai thân); xoá lịch cron `job-recurrence-daily`; bảng mới để lại không hại.

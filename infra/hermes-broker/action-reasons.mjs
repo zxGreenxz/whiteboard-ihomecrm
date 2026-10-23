@@ -84,6 +84,10 @@ function taskReasons() {
     task_not_open: reason('rejected', 'never', 'Việc đã hoàn thành, không còn mở; không sửa hay huỷ qua bot được (xem trên web, link kèm theo).'),
     // Mốc 4 (task.create_batch, 20261022164201): tối đa 20 việc MỘT lần đồng ý (Q37) — dạng needs_input: hỏi chia lô.
     batch_too_large: reason('needs_input', 'fix', 'Tối đa 20 việc một lần giao; chia thành nhiều lô (mỗi lô tối đa 20 việc) hoặc tạo trên web.'),
+    // Mốc 5 (việc định kỳ, 20261023042424 / 20261023042436): trần 100 quy tắc đang chạy mỗi công ty (trigger CRM); trạng thái đã đúng
+    // như yêu cầu (tạm dừng cái đang dừng, sửa mà không đổi gì) ⇒ hỏi lại, không ghi.
+    recurrence_quota: reason('rejected', 'never', 'Công ty đã có 100 việc định kỳ đang chạy; tạm dừng hoặc xoá bớt trước khi tạo thêm.'),
+    recurrence_unchanged: reason('needs_input', 'fix', 'Việc định kỳ này đã đúng như yêu cầu (đang chạy / đang tạm dừng, lịch không đổi); không cần ghi gì.'),
   };
 }
 // Trang Hoá đơn (Đợt 3 Mốc 3): thu tiền chuyển khoản / TT-POS qua bot.

@@ -1026,6 +1026,103 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 2 trang Hợp đồng 22/10/2026",
       "sha256": "8104e94881a234ee74471010dfbe2f50f88c2322f90a58de4f99310213bbde27"
+    },
+    "supabase/migrations/20261023042424_job_recurrence_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042424_job_recurrence_v1.sql",
+          "trich_doan": "CREATE TABLE public.job_recurrence_rules / public.job_recurrence_occurrences (RLS soi gương jobs), trigger app_private.job_recurrence_guard_v1, hàm ngày / câu lịch / bốn hàm ghi CRM dùng chung (INVOKER)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 22 (Mốc 5): bảng việc định kỳ, RLS, trigger, hàm ghi dùng chung, thứ tự áp"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 5: việc định kỳ — tính năng CRM mới, web dùng lại về sau), chưa đi qua lane apply — bảng và hàm vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023042431 / 20261023042436 / 20261023042445. Bằng chứng: PGlite task-recurring-sql (ngày sinh, hàm ghi dưới RLS + trigger, trần 100) + wave2-c-task-recurrences.",
+      "missingObjects": [
+        "table:public.job_recurrence_rules",
+        "table:public.job_recurrence_occurrences",
+        "function:app_private.job_recurrence_guard_v1",
+        "function:public.job_recurrence_dates_v1",
+        "function:public.job_recurrence_schedule_text_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
+      "sha256": "94cd4579924420ec61705b1331d542ac01a0d4ba6c06714946418dc08f292f65"
+    },
+    "supabase/migrations/20261023042431_hermes_task_recurrence_generate_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042431_hermes_task_recurrence_generate_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_task_recurrence_generate_v1 (mới, DEFINER) + cron job-recurrence-daily"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 22 (Mốc 5): bộ sinh việc định kỳ chống trùng, tạm dừng khi mất quyền, thứ tự áp"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 5: bộ sinh việc định kỳ), chưa đi qua lane apply — hàm mới vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023042424. Bằng chứng: PGlite task-recurring-sql (một lần mỗi (quy tắc, ngày), bù ≤ 7 ngày, mất quyền ⇒ tạm dừng) + PG17 task-recurring-race-pg (hai lượt song song ⇒ một việc).",
+      "missingObjects": [
+        "function:app_private.hermes_task_recurrence_generate_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
+      "sha256": "316e38d2327638e86ffaf2810fc9d047d4f963069c65d94dba03807c7c41d6e6"
+    },
+    "supabase/migrations/20261023042436_hermes_task_recurring_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042436_hermes_task_recurring_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_task_recurring_prepare_v1 / hermes_task_recurring_finish_v1 (mới) + bốn tầng của vỏ hermes_task_action_v1 (ghim md5 thân của 164201); KHÔNG chèn dòng chính sách (khoá để TẮT)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 22 (Mốc 5): task.recurring_create / _update / _pause / _delete, test, tầng 2 trên TEST, thứ tự áp, cách bật"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 5: thao tác việc định kỳ trên vỏ dùng chung), chưa đi qua lane apply — hai hàm mới vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261022164201 và 20261023042424. Bằng chứng: PGlite task-recurring-sql (xem trước một lần, phát lại, mơ hồ ⇒ hỏi lại, version lượt 2) + PG17 (NOWAIT).",
+      "missingObjects": [
+        "function:app_private.hermes_task_recurring_prepare_v1",
+        "function:app_private.hermes_task_recurring_finish_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
+      "sha256": "9d6fa47e92e1bfc687beb92b14501418aceb12839c3453ca6307ffb2db190614"
+    },
+    "supabase/migrations/20261023042445_hermes_w2c_task_recurrences_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023042445_hermes_w2c_task_recurrences_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.job_recurrences_list_v1 (mới, INVOKER, search_path rỗng) + GRANT EXECUTE TO authenticated"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 23/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
+          "trich_doan": "mục 22 (Mốc 5): báo cáo W2 task_recurrences, thứ tự áp 20261023042445 → 20261023042450"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 23/10/2026 (Hermes Đợt 2b, Mốc 5: hàm danh sách việc định kỳ dùng chung cho báo cáo W2 task_recurrences), chưa đi qua lane apply — hàm mới vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023042424, TRƯỚC 20261023042450. Bằng chứng: PGlite wave2-c-task-recurrences (RLS, phạm vi rls_buildings, rào broker).",
+      "missingObjects": [
+        "function:public.job_recurrences_list_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 2b Công việc, Mốc 5 (23/10/2026)",
+      "sha256": "53d88bde95a696bba585f70b06059e2998143d7fbd9bd28b4cc844a300035a75"
     }
   }
 }

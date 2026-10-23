@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T03:04:21.824Z",
+  "generatedAt": "2026-10-23T04:54:47.120Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 840,
-    "unknown": 87,
-    "catalog-proven": 210,
+    "unknown": 91,
+    "catalog-proven": 211,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13246,6 +13246,71 @@
       "name": "hermes_w2c_tasks_board_v1",
       "scheme": "timestamp14",
       "sha256": "16d862ef0ab0c341e746656878bd13e7f88682cce6c3dcd4339401b8141ea272",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2c_catalog_v1",
+        "catalog:function:app_private.hermes_w2c_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042424_job_recurrence_v1.sql",
+      "version": "20261023042424",
+      "name": "job_recurrence_v1",
+      "scheme": "timestamp14",
+      "sha256": "94cd4579924420ec61705b1331d542ac01a0d4ba6c06714946418dc08f292f65",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.job_recurrence_rules",
+        "table:public.job_recurrence_occurrences",
+        "function:app_private.job_recurrence_guard_v1",
+        "function:public.job_recurrence_dates_v1",
+        "function:public.job_recurrence_schedule_text_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042431_hermes_task_recurrence_generate_v1.sql",
+      "version": "20261023042431",
+      "name": "hermes_task_recurrence_generate_v1",
+      "scheme": "timestamp14",
+      "sha256": "316e38d2327638e86ffaf2810fc9d047d4f963069c65d94dba03807c7c41d6e6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_recurrence_generate_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042436_hermes_task_recurring_v1.sql",
+      "version": "20261023042436",
+      "name": "hermes_task_recurring_v1",
+      "scheme": "timestamp14",
+      "sha256": "9d6fa47e92e1bfc687beb92b14501418aceb12839c3453ca6307ffb2db190614",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_recurring_prepare_v1",
+        "function:app_private.hermes_task_recurring_finish_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042445_hermes_w2c_task_recurrences_shared_v1.sql",
+      "version": "20261023042445",
+      "name": "hermes_w2c_task_recurrences_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "53d88bde95a696bba585f70b06059e2998143d7fbd9bd28b4cc844a300035a75",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.job_recurrences_list_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023042450_hermes_w2c_task_recurrences_v1.sql",
+      "version": "20261023042450",
+      "name": "hermes_w2c_task_recurrences_v1",
+      "scheme": "timestamp14",
+      "sha256": "526b1a0cbe62bb7afb7337c3e2161fd0b27256831718e58528a36c2c74c41f04",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_w2c_catalog_v1",
