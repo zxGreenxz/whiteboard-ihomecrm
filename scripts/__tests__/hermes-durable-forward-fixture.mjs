@@ -1,4 +1,4 @@
-// Frozen contracts for thirty forward migrations (eight of 20261019, the B2
+// Frozen contracts for thirty-one forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -22,7 +22,8 @@
 // scope = guard ∩ the web writer's own check 20261022044123,
 // the Đợt 2b task.create page RPC 20261022031548 and the assignee-visible jobs rule
 // 20261022031600, and the Mốc 2c job type inference 20261022065634, which replaces
-// the 031548 resolve core and prepare bodies); source review covers each pin.
+// the 031548 resolve core and prepare bodies, and the Mốc 6 renew batch 20261023030305 — a new INVOKER
+// batch lookup, a new DEFINER batch step and the wrapper rebuilt from the 074815 body); source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -123,7 +124,6 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_contract_action_lookup_v1","sourcePath":"supabase/migrations/20261022061813_hermes_contract_return_v1.sql","sha256":"86cb8f9b6aedcac9fa9e8b75468ad8104368cbefede6c0c64f8ef0aaa2b3f316","args":"p_organization_id uuid,p_room_id uuid"},
   {"name":"public.hermes_contract_party_lookup_v1","sourcePath":"supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql","sha256":"0913c22652a8f24a2917c555813f9c30cc0284eda3beefed40e011d2e6f7f179","args":"p_organization_id uuid,p_room_id uuid,p_action text,p_params jsonb"},
   {"name":"app_private.hermes_contract_action_step_v1","sourcePath":"supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql","sha256":"f21e2f671269dcedd64f1d1f08f0ef9e7caaf0966e03a97410c2b4f50b4340fe","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_lookup jsonb"},
-  {"name":"public.hermes_contract_action_v1","sourcePath":"supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql","sha256":"320ae4d12b494228b7afecebe30bc775486ee603d5b11a3a5fd8a54308c1dbc0","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"c81b96d93376fa8126ee1812d150162f8aa4a39f488c13be5fed4cd5ad5244fa","args":""},
   {"name":"app_private.hermes_expense_reason_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"0ee4db61c217067454a72c3a8dba54299560eb57960944afcd163bd65f433290","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
   {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"f547ef46d57b0ba9c163e16450c8b67fd74e04aec92709efc046dff1726f14ca","args":"p_org uuid,p_params jsonb,p_resolved jsonb,p_key_prefix text"},
@@ -147,7 +147,10 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_task_action_finish_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"74cfb02f7ce2af0f34187a3867f73bf741aa31a1304b0a75ee030c6f0db34be6","args":"p_binding jsonb,p_action text,p_plan jsonb"},
   {"name":"public.hermes_task_action_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"b1578aac8d6203f4cc21debc5589617af818e95993585be28477a0ff7f187807","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"public.job_visible_as_assignee_v1","sourcePath":"supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql","sha256":"586a82af37f147ea9e948ef43f7a3cb7b3b8f8b58aeaf6c7737aaafa9a2d434b","args":"p_assignee_id uuid"},
-  {"name":"public.hermes_task_follow_read_v1","sourcePath":"supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql","sha256":"39c8690c66ebb866be7798dbe3f3dffa2dae259f4efb8c41d81f64e03a29ab07","args":"p_binding jsonb,p_input jsonb"}
+  {"name":"public.hermes_task_follow_read_v1","sourcePath":"supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql","sha256":"39c8690c66ebb866be7798dbe3f3dffa2dae259f4efb8c41d81f64e03a29ab07","args":"p_binding jsonb,p_input jsonb"},
+  {"name":"public.hermes_contract_batch_lookup_v1","sourcePath":"supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql","sha256":"e2a644ea8cd3647cfa734ac3d6374edcf5e5c67140529cfe73b88661452dd561","args":"p_organization_id uuid,p_building_ids uuid[],p_building_id uuid,p_end_month date"},
+  {"name":"app_private.hermes_contract_batch_step_v1","sourcePath":"supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql","sha256":"1c0c059b9585d23e139f169f392c24e9e5ca44320c039ff098e84e0509e11b61","args":"p_binding jsonb,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_lookup jsonb"},
+  {"name":"public.hermes_contract_action_v1","sourcePath":"supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql","sha256":"889502680cfe6fbefd24c8855aa85e6b7e8143561aa9be2b18574477c4786d9d","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.
@@ -182,7 +185,8 @@ export const FORWARD_SUPERSEDED = [
   {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"e077e9d4616a756e3093e4fd27fcf06c62ec895f043ff9a7adf051ddd06a6dab"},
   {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"ea938fbc1876c3116d30cf321d9e56a7cedbe404bd2375597732ddbc241a44f0"},
   {"name":"app_private.hermes_contract_action_step_v1","sourcePath":"supabase/migrations/20261022061813_hermes_contract_return_v1.sql","sha256":"49b6ea7df236e72b17235d56bd95a485c0fa7ea70841282224162d333f156738"},
-  {"name":"public.hermes_contract_action_v1","sourcePath":"supabase/migrations/20261022022951_hermes_contract_action_v1.sql","sha256":"5241f5902426b44c35678b78375c443268ac95b450b0bbff1196f219b5138be6"}
+  {"name":"public.hermes_contract_action_v1","sourcePath":"supabase/migrations/20261022022951_hermes_contract_action_v1.sql","sha256":"5241f5902426b44c35678b78375c443268ac95b450b0bbff1196f219b5138be6"},
+  {"name":"public.hermes_contract_action_v1","sourcePath":"supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql","sha256":"320ae4d12b494228b7afecebe30bc775486ee603d5b11a3a5fd8a54308c1dbc0"}
 ];
 
 export const INHERITED_CRM_ACL = [

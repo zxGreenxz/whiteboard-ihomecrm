@@ -543,6 +543,11 @@ for (const spec of [
   { name: 'public.hermes_contract_party_lookup_v1',
     sourcePath: 'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
     statementSha256: '4d9c7d8d0de7c484c833dcba263f91d024103f48e4fa1ab8986d2343e6c79cbe' },
+  // Renew batch (20261023030305): INVOKER batch lookup under the caller's RLS ∩ the connection's buildings — ACTIVE contracts ending in
+  // one month, ids + move-out flag + counts only (no names, no customer data); schema-qualified public/auth objects only.
+  { name: 'public.hermes_contract_batch_lookup_v1',
+    sourcePath: 'supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql',
+    statementSha256: 'abc42f34682088fec505d7103d3102d6793b24a66181d80135dbe4ca79bee97e' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

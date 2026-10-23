@@ -23,9 +23,10 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
     'amount_out_of_range', 'date_out_of_range', 'not_found']);
   assert.equal(ACTION_REJECT_REASONS.filter(code => !page.has(code)).length, 13);
   assert.ok(shared.every(code => !page.has(code)));
-  // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 5 mã needs_input + 7 mã rejected.
+  // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 7 mã needs_input (gồm renew_batch_empty của Mốc 6) + 7 mã rejected.
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'needs_input'),
-    ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract', 'return_date_future']);
+    ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract', 'return_date_future',
+    'renew_batch_empty']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'rejected'),
     ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative']);
   // Thu chi (THU-CHI-THAO-TAC-GHI.md mục 2.3): 2 mã, đều là lỗi thật (dạng rejected).
@@ -34,10 +35,10 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   // Công việc (CONG-VIEC-THAO-TAC-GHI.md mục 2.4): 2 mã hạn mức giao việc, đều là lỗi thật (dạng rejected).
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.task.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Công việc là lỗi thật (dạng rejected)');
-  // Đúng ba khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 2 Công việc.
+  // Đúng ba khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 2 Công việc.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 2);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 6);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 2);
+  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7);
   assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 2);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();

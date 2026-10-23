@@ -71,6 +71,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql',
   statementSha256:'4f6e55f7823b2cfa3458b37866c323e478b1d60b5ac6493e9f55140adf1b20b9',
  },
+ // Mốc 6 dựng lại vỏ trang (nhánh gia hạn lô: giải tên toà, tra lô INVOKER, chuyển sang bước ghi lô DEFINER).
+ {
+  name:'public.hermes_contract_action_v1',
+  sourcePath:'supabase/migrations/20261023030305_hermes_contract_renew_batch_v1.sql',
+  statementSha256:'8068e6728d9577cd2517283ea2737c56b5d1d280a150a8435bcfb2bb58728612',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
