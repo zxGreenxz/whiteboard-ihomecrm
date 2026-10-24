@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { localCluster } from './crm-shared-read-sql-fixture.mjs';
 import { SESSION } from './finance-fixture.mjs';
-import { expenseSetup, FIXES, LOCK_SITES, IMAGE, rid, binding, ORG, USER, BUILDING, ROOM, CATEGORY, CASHBOOK } from './expense-write-fixture.mjs';
+import { expenseSetup, ROUND1, LOCK_SITES, IMAGE, rid, binding, ORG, USER, BUILDING, ROOM, CATEGORY, CASHBOOK } from './expense-write-fixture.mjs';
 
 // Thu chi Mốc 4b + 5 + lượt 8: thứ tự khoá của bước ghi expense.* trên PostgreSQL thật (hai kết nối; PGlite chỉ có một). Cùng fixture với
 // expense-write-sql.test.mjs; bản port hàm web khoá như hàm thật: dòng nghiệp vụ (phiếu, sổ, phòng, yêu cầu duyệt) rồi mới khoá công ty.
@@ -28,8 +28,9 @@ const WEB = {
   emergencyApprove: 'SELECT public.fixture_emergency_approve($1) r',
 };
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
-// Thân bước ghi đang sống sau toàn chuỗi (lượt 11 dựng lại từ thân lượt 8, câu khoá giữ nguyên) — đối chứng bỏ NOWAIT dựng trên thân này.
-const STEP = FIXES.replaceAll('\r\n', '\n').match(/CREATE OR REPLACE FUNCTION app_private\.hermes_expense_write_step_v1\([\s\S]*?END \$fn\$;/)[0];
+// Thân bước ghi đang sống sau toàn chuỗi (lượt 14 dựng lại từ thân lượt 13, lượt 13 từ lượt 11, lượt 11 từ lượt 8; câu khoá giữ nguyên) —
+// đối chứng bỏ NOWAIT dựng trên thân này.
+const STEP = ROUND1.replaceAll('\r\n', '\n').match(/CREATE OR REPLACE FUNCTION app_private\.hermes_expense_write_step_v1\([\s\S]*?END \$fn\$;/)[0];
 const dropNowait = anchor => anchor.replace(' NOWAIT;', ';');
 const CREATE = { items: [{ buildingName: 'Toà A', amount: 350000, content: 'mua vòi nước', category: 'sửa chữa', cashbook: 'Quỹ VCB 0123456789' }] };
 const CREATE_ROOM = { items: [{ ...CREATE.items[0], roomName: 'P101', cashbook: 'Tiền mặt toà A' }] };
@@ -121,6 +122,23 @@ test('PG17 hai kết nối: web khoá dòng nghiệp vụ rồi mới khoá côn
     }
     await hermes.query('ROLLBACK'); await hermes.query('RESET ROLE');
     for (const [action, params, kind] of results) assert.equal(kind, 'preview', `${action} ${params}`);
+  });
+
+  // Lượt 14 (nghiệm thu 24/10: lượt đồng ý ra action_outcome_unknown khi chờ quá trần lời gọi): bước ghi đặt lock_timeout 3 s cho phần còn lại
+  // của giao dịch — chờ khoá (khoá tư vấn của bộ máy chi, dòng hàm web khoá không NOWAIT) quá 3 s ⇒ 55P03 ⇒ state_changed. Khoá tư vấn giữ ở kết
+  // nối web ⇒ lời gọi thử lấy cùng khoá từ phiên Hermes sau bước ghi ngã 55P03 sau ~3 s, không treo.
+  await t.test('lượt 14: bước ghi đặt lock_timeout 3 s cho cả giao dịch; chờ khoá quá hạn ⇒ 55P03 (không treo)', async () => {
+    await web.query('BEGIN'); await web.query('SELECT pg_advisory_xact_lock(4242)');
+    await hermes.query('BEGIN'); await claims(hermes); await hermes.query('SET LOCAL ROLE authenticated');
+    assert.equal((await hermes.query(RPC, preview('expense.create', rid(95), CREATE))).rows[0].result.kind, 'preview');
+    const setting = (await hermes.query("SELECT current_setting('lock_timeout') v")).rows[0].v;
+    const started = Date.now();
+    const waited = await outcome(hermes.query('SELECT pg_advisory_xact_lock(4242)'));
+    const elapsed = Date.now() - started;
+    await hermes.query('ROLLBACK'); await hermes.query('RESET ROLE'); await web.query('ROLLBACK');
+    assert.equal(setting, '3s');
+    assert.equal(waited.error?.code, '55P03');
+    assert.ok(elapsed >= 2500 && elapsed < 6000, `chờ ${elapsed} ms`);
   });
 
   // Đối chứng: đột biến bỏ NOWAIT (chờ dòng khi đang giữ công ty) ⇒ đúng một bên 40P01. Mọi vị trí còn lại đo bằng đột biến ở scratchpad.

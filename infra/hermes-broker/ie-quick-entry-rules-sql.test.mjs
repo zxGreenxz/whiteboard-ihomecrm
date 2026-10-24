@@ -18,7 +18,11 @@ const read = slug => {
   assert.equal(files.length, 1, slug);
   return readFileSync(`supabase/migrations/${files[0]}`, 'utf8').replaceAll('\r\n', '\n');
 };
-const sql = read('ie_quick_entry_shared_rules_v1'), sql2 = read('ie_quick_entry_shared_rules_v2');
+// Lượt 14 (nghiệm thu vòng 1, 24/10): ie_quick_entry_shared_rules_v3 thêm từ vựng nội thất / điện máy / ăn uống / bỏ rác, mở rộng dụng cụ / vật
+// tư điện nước, và "Chi khác" không bao giờ thắng trùng chữ tên; áp lên thân v2. Bộ vàng đổi đúng 32 ca (soát tay: không ra gì / trùng chữ sai ⇒
+// khoá cứng đúng hạng mục; "chi phí …" ⇒ không còn ra "Chi khác") và thêm 60 câu (nệm, giường, tủ, kệ, quạt, ấm đun, cơm, pizza … cả ca phải ra
+// null hoặc giữ nguyên: "mua nem", "sửa tủ", "vận chuyển giường", "giặt rèm", "mua bàn chải").
+const sql = read('ie_quick_entry_shared_rules_v1'), sql2 = read('ie_quick_entry_shared_rules_v2'), sql3 = read('ie_quick_entry_shared_rules_v3');
 const golden = JSON.parse(readFileSync('src/lib/quickEntry/__tests__/fixtures/goi-y-hang-muc-vang.json', 'utf8'));
 const spec = JSON.parse(readFileSync('supabase/migrations/20261003151608_danh_muc_chi_du_lieu.sql', 'utf8').split('$spec$')[1]);
 const lit = value => value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
@@ -63,7 +67,7 @@ async function schema(pool) {
       ('${USER}','${CB_BUILDING}',4),('${USER}','${CB_LAST}',5),('${USER}','${CB_DEFAULT}',6);`);
 }
 
-test('ie_quick_entry_shared_rules_v1 + v2: gợi ý hạng mục == vàng; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
+test('ie_quick_entry_shared_rules_v1 + v2 + v3: gợi ý hạng mục == vàng; lọc công ty/hạn chế; sổ mặc định; đầu vào sai; idempotent', { timeout: 240000 }, async t => {
   const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
   t.after(async () => { await pool.end(); cleanup(); });
   await schema(pool);
@@ -75,6 +79,13 @@ test('ie_quick_entry_shared_rules_v1 + v2: gợi ý hạng mục == vàng; lọc
   await assert.rejects(pool.query(sql2), error => error.message === 'ie_quick_entry_rules_v2_body_drift');
   await pool.query('ROLLBACK');
   await pool.query(sql2); await pool.query(sql2); // Áp lên thân v1, rồi áp lại.
+  // v3 ghim md5 thân v2 hoặc thân của chính nó: thân lạ ⇒ dừng, không thay.
+  await pool.query('BEGIN');
+  await pool.query(`CREATE OR REPLACE FUNCTION public.ie_category_suggest_v1(p_organization_id uuid,p_items jsonb,p_type text DEFAULT 'expense',
+    p_include_restricted boolean DEFAULT false) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $f$ SELECT '[]'::jsonb $f$`);
+  await assert.rejects(pool.query(sql3), error => error.message === 'ie_quick_entry_rules_v3_body_drift');
+  await pool.query('ROLLBACK');
+  await pool.query(sql3); await pool.query(sql3); // Áp lên thân v2, rồi áp lại.
   const suggest = (items, { org = ORG, type = 'expense', restricted = false } = {}) => jwt(pool, async c =>
     (await c.query('SELECT public.ie_category_suggest_v1($1::uuid,$2::jsonb,$3,$4) value', [org, JSON.stringify(items), type, restricted])).rows[0].value);
   const keyOf = new Map([...typeId].map(([key, value]) => [value, key]));

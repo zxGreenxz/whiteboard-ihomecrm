@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T09:06:32.737Z",
+  "generatedAt": "2026-10-24T12:32:46.237Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 881,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 210,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13552,6 +13552,77 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-24T09:06:17.462Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql",
+      "version": "20261024094809",
+      "name": "hermes_expense_system_flow_block_v1",
+      "scheme": "timestamp14",
+      "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.hermes_expense_system_flow_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024095547_hermes_w2b_expense_pending_days_v1.sql",
+      "version": "20261024095547",
+      "name": "hermes_w2b_expense_pending_days_v1",
+      "scheme": "timestamp14",
+      "sha256": "1bb1545e8f376cf8878ea93a2f0f11535315f30e021f011802624bc63a9b5844",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2b_catalog_v1",
+        "catalog:function:app_private.hermes_w2b_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024120207_ie_quick_entry_shared_rules_v3.sql",
+      "version": "20261024120207",
+      "name": "ie_quick_entry_shared_rules_v3",
+      "scheme": "timestamp14",
+      "sha256": "e886129e523f1be77ff95246bd985d5c0052438feb753a4464efd1d7d1a9c3c5",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.ie_category_suggest_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024120208_hermes_w2_max_amount_param_v1.sql",
+      "version": "20261024120208",
+      "name": "hermes_w2_max_amount_param_v1",
+      "scheme": "timestamp14",
+      "sha256": "257e8f1d9ad69c043cd13d2f480f1036728d5d4e87be1691d8b054ce94bf440b",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2_param_names_v1",
+        "catalog:function:app_private.hermes_w2_params_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024120210_hermes_w2b_expense_max_amount_v1.sql",
+      "version": "20261024120210",
+      "name": "hermes_w2b_expense_max_amount_v1",
+      "scheme": "timestamp14",
+      "sha256": "faae3b4b21fe5864366b5a26eae220dccb552143f7d1f34cfdc5c203508aeaea",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2b_catalog_v1",
+        "catalog:function:app_private.hermes_w2b_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql",
+      "version": "20261024120211",
+      "name": "hermes_expense_acceptance_round1_v1",
+      "scheme": "timestamp14",
+      "sha256": "64031f040179c3d0074cd2bda3b4583e89b3f3bd1c5d0ec19a0d989d17bd8b48",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_expense_category_pick_v1",
+        "catalog:function:app_private.hermes_expense_resolve_core_v1"
       ]
     },
     {

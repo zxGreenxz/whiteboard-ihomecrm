@@ -32,12 +32,13 @@ test('token dùng một lần: khớp thì trả payload một lần; trình l�
   assert.match(issued.token, CONFIRM_TOKEN);
   assert.equal(issued.expiresAt, new Date(START + CONFIRM_TTL_MS).toISOString());
   assert.deepEqual(guard.redeem(issued.token, A), { ok: true, payload: { resolved: { roomId: 'r1' }, basis: 'b1' }, issuedAt: START });
-  assert.deepEqual(guard.redeem(issued.token, A), { ok: false }, 'đã dùng');
-  // Sai khoá (khác kết nối/nội dung): từ chối, và token cũng mất — không thử lại được bằng khoá đúng.
-  const other = guard.issue(A);
-  assert.deepEqual(guard.redeem(other.token, B), { ok: false });
-  assert.deepEqual(guard.redeem(other.token, A), { ok: false }, 'trình ra là mất');
-  for (const bad of [undefined, null, 'cf_short', `cf_${'x'.repeat(42)}!`, `hc_${'x'.repeat(43)}`]) assert.deepEqual(guard.redeem(bad, A), { ok: false });
+  assert.deepEqual(guard.redeem(issued.token, A), { ok: false, why: 'unknown' }, 'đã dùng');
+  // Sai khoá (khác kết nối/nội dung): từ chối, và token cũng mất — không thử lại được bằng khoá đúng. Lượt 14: kèm lý do + payload của bản
+  // ghi chờ (người gọi nói đúng phần lệch; payload không tới mô hình).
+  const other = guard.issue(A, { requestId: 'r-1' });
+  assert.deepEqual(guard.redeem(other.token, B), { ok: false, why: 'mismatch', payload: { requestId: 'r-1' } });
+  assert.deepEqual(guard.redeem(other.token, A), { ok: false, why: 'unknown' }, 'trình ra là mất');
+  for (const bad of [undefined, null, 'cf_short', `cf_${'x'.repeat(42)}!`, `hc_${'x'.repeat(43)}`]) assert.deepEqual(guard.redeem(bad, A), { ok: false, why: 'unknown' });
   assert.equal(guard.size, 0);
 });
 
@@ -47,7 +48,7 @@ test('TTL 10 phút: còn hạn tới đúng trước 10 phút; đúng 10 phút h
   clock.now = START + CONFIRM_TTL_MS - 1;
   assert.equal(guard.redeem(near.token, A).ok, true);
   clock.now = START + CONFIRM_TTL_MS;
-  assert.equal(guard.redeem(edge.token, A).ok, false);
+  assert.deepEqual(guard.redeem(edge.token, A), { ok: false, why: 'expired' });
   clock.now = START - 1;
   assert.equal(guard.redeem(back.token, A).ok, false, 'đồng hồ lùi');
   // `now` của người gọi thắng đồng hồ của sổ (một lần đọc đồng hồ cho cả lượt).

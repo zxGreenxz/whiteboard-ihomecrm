@@ -37,11 +37,12 @@ export const READ_MISUSE_HINTS = Object.freeze({
   invoices: Object.freeze({ when: args => dated(args) || word(args, 'status') !== '',
     hint: 'crm_read_invoices không lọc kỳ/trạng thái. Tổng một kỳ: crm_read_invoice_report report=stats month=YYYY-MM; theo kỳ/trạng thái: report=search; còn nợ: crm_read_receivables.' }),
   // Câu 31/33/34/35 (3 lời gọi type:"expense" ở full50c): không có tham số type; dòng mang trường type, summary.byType (R2a) gom sẵn.
-  income_expenses: Object.freeze({ when: args => sent(args, 'type', 'kind'),
-    hint: 'crm_read_income_expenses không có tham số type: thu/chi ở trường type từng dòng (summary.byType khi có); lọc bằng status, fromDate/toDate, buildingName.' }),
+  // Thu chi lượt 13 (24/10): "chờ duyệt quá N ngày" — tool này không lọc tuổi (trả cả 58 phiếu); báo cáo W2 expense_vouchers có days.
+  income_expenses: Object.freeze({ when: args => sent(args, 'type', 'kind', 'days', 'olderThanDays', 'minDays', 'pendingDays', 'minPendingDays'),
+    hint: 'crm_read_income_expenses không có tham số type hay tuổi phiếu: thu/chi ở trường type từng dòng (summary.byType khi có); lọc bằng status, fromDate/toDate, buildingName. Phiếu CHI chờ duyệt quá N ngày: crm_read_report report=expense_vouchers days=N.' }),
   // Câu 32/36: hộp duyệt của chính người hỏi không lọc toà/trạng thái/kỳ; "phiếu chờ duyệt" là miền thu chi.
-  pending_approvals: Object.freeze({ when: args => sent(args, 'buildingName', 'buildingId', 'roomName', 'status', 'fromDate', 'toDate'),
-    hint: 'crm_read_pending_approvals chỉ là việc chờ CHÍNH người hỏi duyệt, không lọc toà/trạng thái. Phiếu chờ duyệt (cả theo toà): crm_read_income_expenses status=UNAPPROVED (+buildingName).' }),
+  pending_approvals: Object.freeze({ when: args => sent(args, 'buildingName', 'buildingId', 'roomName', 'status', 'fromDate', 'toDate', 'days'),
+    hint: 'crm_read_pending_approvals chỉ là việc chờ CHÍNH người hỏi duyệt, không lọc toà/trạng thái. Phiếu chờ duyệt (cả theo toà): crm_read_income_expenses status=UNAPPROVED (+buildingName); phiếu CHI quá N ngày: crm_read_report report=expense_vouchers days=N.' }),
   // Câu 73: xe không phải tài sản; báo cáo vehicles của crm_read_report.
   assets: Object.freeze({ when: args => VEHICLE_QUERY.test(dataText(args, 'query').normalize('NFC')),
     hint: 'Xe không phải tài sản: crm_read_report report=vehicles (params.buildingName).' }),

@@ -218,7 +218,8 @@ export function createHermesBackend(configuration = {}) {
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
+    // applyBudgetMs: lượt đồng ý chỉ gửi lệnh ghi khi trần cả lời gọi còn đủ (action-runtime.mjs APPLY_MIN_REMAINING_SHARE).
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive, applyBudgetMs: limits.callTimeoutMs,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
