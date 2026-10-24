@@ -960,6 +960,26 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_lookup_core_v2 / hermes_invoice_action_step_v2 (bản chép tầng thu tiền v1, md5 ghim), public.hermes_invoice_action_v1 (vỏ SQL-standard thay vỏ 20261023042723)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là hai hàm v2 — sinh 24/10/2026 trên nhánh sửa nghiệm thu Hoá đơn (lượt 8)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (Hermes Đợt 3 trang Hoá đơn, lượt 8 sửa theo nghiệm thu bot trên TEST: thu tiền tách lý do sổ nhận receiving_book_not_held / receiving_book_missing, câu làm tròn và \"ĐÃ THANH TOÁN ĐỦ\" nói đúng trạng thái, nhãn hoá đơn thanh lý), chưa đi qua lane apply — hai hàm v2 vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-write-sql.test.mjs), PG17 hai kết nối (invoice-write-race-sql.test.mjs: vẫn NOWAIT, đột biến bỏ NOWAIT ⇒ 40P01), connector (invoice-actions.test.mjs), tầng 2 trên TEST trong ROLLBACK. Áp qua npm run migrate:forward SAU khi connector biết mã receiving_book_not_held; khoá thu_tien.collect_transfer vẫn TẮT ở production nên không đổi quyền của ai.",
+      "missingObjects": [
+        "function:app_private.hermes_invoice_lookup_core_v2",
+        "function:app_private.hermes_invoice_action_step_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn lượt 8 24/10/2026",
+      "sha256": "c82fc622f9cc4a876224350262151b276cd3d92a6bd90442dc12043f03261eda"
     }
   }
 }

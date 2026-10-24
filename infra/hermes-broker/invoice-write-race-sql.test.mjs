@@ -10,7 +10,8 @@ import { invoiceSetup, rid, binding, ORG, USER, INV_B, TK1 } from './invoice-wri
 // invoice-write-sql.test.mjs; bản port record_invoice_collection_v5 khoá như v5 thật: hoá đơn FOR UPDATE → công ty FOR SHARE → lock_org.
 // Guard dùng chung của Hermes khoá dòng công ty NGAY ĐẦU giao dịch (hermes_private_command_connection_v1), nên Hermes và web khoá theo hai
 // thứ tự ngược nhau; bước ghi khoá dòng hoá đơn NOWAIT nên Hermes không bao giờ chờ web ⇒ không có vòng chờ. Ca đối chứng đột biến bỏ NOWAIT
-// để chứng minh phép đo bắt được 40P01 (đúng lỗi Mốc 3 cũ: chờ hoá đơn trong khi giữ công ty).
+// để chứng minh phép đo bắt được 40P01 (đúng lỗi Mốc 3 cũ: chờ hoá đơn trong khi giữ công ty). Lượt 8: vỏ chuyển thu tiền sang tầng v2
+// (hermes_invoice_collect_v2) — đo đúng bước ghi đang chạy.
 const adapter = client => {
   let released = false;
   return { exec: sql => client.query(sql), query: (sql, params) => client.query(sql, params),
@@ -24,9 +25,9 @@ const rpcArgs = (phase, requestId, params, preview) => [JSON.stringify(binding),
 const V5 = "SELECT public.record_invoice_collection_v5($1,'2026-10-22',$2::jsonb,'REJECT',false,null,null,$3,$4) r";
 const tender = amount => JSON.stringify([{ payment_method: 'TK', gross_amount: amount, account_id: TK1 }]);
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
-const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_action_v1\.sql$/.test(n))}`, 'utf8')
+const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_collect_v2\.sql$/.test(n))}`, 'utf8')
   .replaceAll('\r\n', '\n');
-const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_action_step_v1\([\s\S]*?\$fn\$;/)[0];
+const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_action_step_v2\([\s\S]*?\$fn\$;/)[0];
 
 test('PG17 hai kết nối: web v5 và Hermes cùng thu một hoá đơn không deadlock; cùng requestId ở hai kết nối ⇒ phát lại', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
@@ -37,7 +38,7 @@ test('PG17 hai kết nối: web v5 và Hermes cùng thu một hoá đơn không 
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
   t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
-  const { run, applyWith, one } = await invoiceSetup(t, { database: db });
+  const { run, applyWith, one } = await invoiceSetup(t, { database: db, l8: true });
   const [hermesPid, webPid] = await Promise.all([hermes, web].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   // Kết nối đang chờ khoá; trả các bảng có khoá dòng (tuple) nó đang xếp hàng.
   const blocked = async pid => {
@@ -87,7 +88,7 @@ test('PG17 hai kết nối: web v5 và Hermes cùng thu một hoá đơn không 
     await web.query('ROLLBACK'); await hermes.query('ROLLBACK'); await hermes.query('RESET ROLE');
     assert.equal([webResult, hermesCall].filter(r => r.error?.code === '40P01').length, 1, JSON.stringify([webResult.error?.message, hermesCall.error?.message]));
     assert.equal(await paid(), '300000');
-    assert.match((await watch.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure")).rows[0].prosrc,
+    assert.match((await watch.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_action_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure")).rows[0].prosrc,
       /FOR UPDATE NOWAIT/, 'đột biến đã lùi');
   });
 

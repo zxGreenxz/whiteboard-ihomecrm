@@ -165,6 +165,11 @@ test('lý do của trang: tiền mặt / hoá đơn huỷ / thiếu sổ nhận 
   outcome = { kind: 'rejected', reason: 'Hóa đơn không còn số tiền có thể thu' };
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'invoice.collect', params: ONE }),
     error => error.code === 'action_rejected' && error.reason === 'crm_refused', 'chuỗi lạ ⇒ crm_refused, không lọt câu SQL');
+  // Lượt 8: toà đã cài sổ nhận mà người hỏi không giữ/biết sổ nào — câu riêng, không chỉ sang "cài sổ" (kết nối mới: hạn mức 10 lời gọi/phút).
+  const fresh = setup(t, { respond: () => ({ kind: 'rejected', reason: 'receiving_book_not_held' }) });
+  await assert.rejects(fresh.broker.callTool(TOKEN, 'crm_action_run', { action: 'invoice.collect', params: ONE }), error =>
+    error.code === 'action_rejected' && error.reason === 'receiving_book_not_held' && error.detail === ACTION_REASONS.receiving_book_not_held.text);
+  assert.doesNotMatch(ACTION_REASONS.receiving_book_not_held.text, /cài/);
 });
 
 test('kết nối không giữ thu_tien.collect_transfer (khoá TẮT ở production) ⇒ không hiện tool, gọi ⇒ tool_not_available; mục lục trang ≤ 8 KB', async t => {
