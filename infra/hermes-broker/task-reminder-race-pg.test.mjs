@@ -17,8 +17,12 @@ const DUE = `${vnNgay()} 23:59:59.999+07`, OVER2 = `${vnNgay(2)} 23:59:59.999+07
 
 test('PostgreSQL: concurrent enqueue is busy-skipped and deduplicated; concurrent claims are disjoint; reaping never waits on a live send', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as invoice-write-race-sql.test.mjs / trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const main = await pool.connect(), a = await pool.connect(), b = await pool.connect();
-  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); cleanup(); });
+  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
   const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
   const f = await setupReminders(t, { database });
   await f.enable();

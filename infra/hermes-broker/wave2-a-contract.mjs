@@ -145,7 +145,7 @@ export const W2A_REPORTS = Object.freeze({
     summary: { rooms: count, invoices: count, debtTotal: amount, overdueRooms: count, overdueInvoices: count, overdueTotal: amount,
       minOverdueDays: nullable(count) } }),
   invoice_reminders: w2Report({ permission: 'invoices.view', source: 'crm.invoice_open_debts_v1', scope: 'rows',
-    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn, tổng nợ thực gộp sẵn (toàn bộ nợ của phòng); publicPath = đường dẫn tra hoá đơn công khai, ghép sau địa chỉ web CRM (chỉ khi được xem khách). days = chỉ phòng quá hạn ≥ N ngày.',
+    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn (đã kèm link), tổng nợ thực gộp sẵn; publicLink = link tra hoá đơn công khai, gửi nguyên văn; null ⇒ không có link, không tự ghép tên miền (chỉ khi được xem khách). days = chỉ phòng quá hạn ≥ N ngày.',
     params: ['buildingId', 'roomId', 'days'], scopeKeys: CUSTOMER, private: true,
     fields: { buildingId: id, buildingName, roomId: nullable(id), roomName, customerName: personName, debtTotal: amount, invoiceCount: count,
       oldestDueDate: nullable(date), maxOverdueDays: nullable(count), details: longText(600), publicPath: nullable(longText(60)),

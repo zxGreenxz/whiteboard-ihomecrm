@@ -5,6 +5,8 @@ import { sharedW2a, BUILDING, ORG, FOREIGN, USER, ROOM, ROOM2, ROOM3, ROOM4, INV
   INV_C_UNPAID, INV_C_REV, CONTRACT_A, CONTRACT_FULL, CONTRACT_FI, ADJ_PENDING, ADJ_OLD } from './wave2-a-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
+import { REMINDER_LINK_SENTENCE } from './public-link.mjs';
+import { finishDomainResult } from './domain-mount.mjs';
 
 // Đợt 3 trang Hoá đơn — đọc bù (a)–(f) + soạn tin nhắc nợ (docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 7). MỘT PGlite gói A cho
 // cả file (sharedW2a: dải a + z, gồm hai migration 20261022051118 / 20261022051620), mỗi ca BEGIN … ROLLBACK. Số liệu tính tay từ fixture
@@ -174,6 +176,23 @@ test('invoice_reminders (Q18): tin soạn sẵn theo phòng, tổng nợ thực 
   assert.deepEqual([p102.publicPath, p102.messageText.includes('link')], [null, false], 'không HĐ hiệu lực ⇒ không đường dẫn');
   assert.deepEqual(value.summary, { rooms: 4, debtTotal: '11900000.00', withLink: 1 });
   assert.deepEqual((await direct(env, 'invoice_reminders', { days: 31 })).rows.map(row => row.roomName), ['P102']);
+}));
+
+// Lượt 12 (kiểm khói C3 trên TEST): dòng SQL thật qua bước cuối của đường đọc miền (domain-mount finishDomainResult): publicLink tuyệt đối
+// theo origin host thay publicPath, tin kèm link thành một khối; vắng origin ⇒ tin không hứa link. Câu SQL "link kèm theo" phải đúng hằng
+// connector bỏ đi (đổi câu ở SQL mà quên connector ⇒ đỏ). Mã công khai thật: 6 chữ/số (production 24/10: 472/472).
+test('invoice_reminders lượt 12: dòng SQL thật ⇒ publicLink theo origin host, tin kèm link; vắng origin ⇒ không link, tin không hứa link', () => inCase(async env => {
+  await env.db.exec("UPDATE public.contracts SET public_code='Ab12Cd' WHERE public_code='PUBLIC-CODE-A'");
+  const value = await direct(env, 'invoice_reminders', { roomId: ROOM });
+  const result = { report: 'invoice_reminders', source: W2A_REPORTS.invoice_reminders.source, unavailable: null, summary: value.summary, items: value.rows,
+    offset: 0, nextOffset: null, sourceCapped: false };
+  assert.ok(value.rows[0].messageText.includes(REMINDER_LINK_SENTENCE), 'câu SQL = hằng của connector');
+  const [linked] = finishDomainResult(structuredClone(result), 'https://app.example.vn').items;
+  assert.deepEqual([linked.publicLink, Object.hasOwn(linked, 'publicPath')], ['https://app.example.vn/c/Ab12Cd', false]);
+  assert.match(linked.messageText, /Chi tiết hoá đơn xem ở link kèm theo\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!\nhttps:\/\/app\.example\.vn\/c\/Ab12Cd$/);
+  const bare = finishDomainResult(structuredClone(result), undefined);
+  assert.deepEqual([bare.items[0].publicLink, bare.items[0].messageText.includes('link'), bare.summary.withLink], [null, false, 0]);
+  assert.match(bare.items[0].messageText, /\)\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!$/, 'câu còn lại liền mạch');
 }));
 
 // Review #273 (Mốc 2b).

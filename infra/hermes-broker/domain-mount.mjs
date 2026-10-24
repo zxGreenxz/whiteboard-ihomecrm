@@ -5,7 +5,7 @@ import { createSupabaseDomainReads } from './domain-adapter.mjs';
 import { CACHED_READ_OPERATIONS, completeListSummary, domainExact, domainId, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { createSupabaseDomainFastReads, domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver, DIRECTORY_RPCS } from './read-name-resolution.mjs';
-import { publicWebOrigin as isPublicWebOrigin, withPublicLink } from './public-link.mjs';
+import { publicWebOrigin as isPublicWebOrigin, withPublicLink, withReportPublicLinks } from './public-link.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
 import { BrokerError } from './broker.mjs';
 const fail = code => { throw new BrokerError(code); };
@@ -59,10 +59,15 @@ function createContextDirectory({ connectionStore, crypto, resolver, clock }) {
     },
   });
 }
+/** Kết quả cuối của mọi đọc miền (đã kiểm): báo cáo phân trang đã trọn mà summary null ⇒ {count}; lượt 11 (D-HĐ9): chi tiết HĐ đã kiểm
+ * (publicPath) ⇒ publicLink tuyệt đối theo origin host, vắng origin ⇒ null; lượt 12 Hoá đơn: dòng báo cáo W2 có publicPath
+ * (invoice_reminders) ⇒ cùng cơ chế, tin nhắc nợ kèm link thành một khối. */
+export const finishDomainResult = (result, publicWebOrigin) =>
+  withReportPublicLinks(withPublicLink(completeListSummary(result), publicWebOrigin), publicWebOrigin);
+
 export function createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, clock = Date.now, readAuthority, publicWebOrigin } = {}) {
   if (publicWebOrigin !== undefined && !isPublicWebOrigin(publicWebOrigin)) throw new TypeError('invalid_public_web_origin');
-  // Lượt 11 (D-HĐ9): chi tiết HĐ đã kiểm (publicPath) ⇒ publicLink tuyệt đối theo origin host; vắng origin ⇒ publicLink null.
-  const finish = result => withPublicLink(completeListSummary(result), publicWebOrigin);
+  const finish = result => finishDomainResult(result, publicWebOrigin);
   const reads = createSupabaseDomainReads({ ...supabase, dependencyScope, fetch });
   const resolver = createReadNameResolver({ rpc: createBoundUserRpcTransport({ ...supabase, dependencyScope, fetch, allowedNames: [...DIRECTORY_RPCS] }), clock });
   const resolveFor = lane => request => resolver.resolve({ ...request, lane });

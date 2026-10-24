@@ -1548,6 +1548,7 @@
         "supabase/migrations/*_hermes_user_display_name_v1.sql",
         "infra/hermes-broker/read-name-resolution.mjs",
         "infra/hermes-broker/domain-mount.mjs",
+        "infra/hermes-broker/public-link.mjs",
         "infra/hermes-broker/broker.mjs"
       ],
       "suiteId": "node-native",
@@ -1555,7 +1556,9 @@
         "infra/hermes-broker/name-directory-sql.test.mjs",
         "infra/hermes-broker/read-name-resolution.test.mjs",
         "infra/hermes-broker/broker.test.mjs",
-        "infra/hermes-broker/server.test.mjs"
+        "infra/hermes-broker/server.test.mjs",
+        "infra/hermes-broker/public-link.test.mjs",
+        "infra/hermes-broker/wave2-a-hoa-don.test.mjs"
       ]
     },
     {

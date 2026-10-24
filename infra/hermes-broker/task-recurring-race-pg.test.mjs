@@ -15,8 +15,12 @@ const today = VN(new Date());
 
 test('PostgreSQL: concurrent generator runs make exactly one job per (rule, day); Hermes pause during a run fails fast with 55P03', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as invoice-write-race-sql.test.mjs / trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const main = await pool.connect(), a = await pool.connect(), b = await pool.connect();
-  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); cleanup(); });
+  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
   const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
   const f = await setupRecurring(t, { database });
   await main.query("UPDATE app_private.hermes_org_policies SET action_capabilities=action_capabilities||ARRAY['tasks.edit']");

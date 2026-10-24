@@ -18,3 +18,26 @@ export function withPublicLink(result, origin) {
   const { publicPath, ...item } = result.item;
   return { ...result, item: { ...item, publicLink: publicLink(origin, publicPath) } };
 }
+
+// Câu SQL thêm vào messageText khi dòng có publicPath (20261022051620, invoice_reminders): tin hứa có link kèm theo.
+export const REMINDER_LINK_SENTENCE = ' Chi tiết hoá đơn xem ở link kèm theo.';
+
+/** Kết quả cuối của crm_read_report (lượt 12, HOA-DON-THAO-TAC-GHI.md mục 4.6): mỗi dòng có publicPath ⇒ publicLink tuyệt đối hoặc null,
+ * cùng chỗ trong dòng; mô hình chỉ thấy publicLink. Tin soạn sẵn (messageText) thành MỘT khối chép nguyên văn: có link ⇒ link xuống dòng ở
+ * cuối tin (như link công khai web chép riêng: origin + /c/<mã>); không ghép được (vắng origin) ⇒ bỏ câu hứa link, không bao giờ để mô hình
+ * tự điền tên miền. summary.withLink đếm dòng thật sự có link. Báo cáo không có publicPath giữ nguyên. */
+export function withReportPublicLinks(result, origin) {
+  if (result === null || typeof result !== 'object' || typeof result.report !== 'string' || !Array.isArray(result.items) ||
+      !result.items.some(row => row !== null && typeof row === 'object' && Object.hasOwn(row, 'publicPath'))) return result;
+  const items = result.items.map(row => {
+    if (row === null || typeof row !== 'object' || !Object.hasOwn(row, 'publicPath')) return row;
+    const link = publicLink(origin, row.publicPath), next = {};
+    for (const [key, value] of Object.entries(row)) next[key === 'publicPath' ? 'publicLink' : key] = key === 'publicPath' ? link : value;
+    if (typeof next.messageText === 'string')
+      next.messageText = link === null ? next.messageText.replace(REMINDER_LINK_SENTENCE, '') : `${next.messageText}\n${link}`;
+    return next;
+  });
+  const summary = result.summary !== null && typeof result.summary === 'object' && Object.hasOwn(result.summary, 'withLink') && !publicWebOrigin(origin)
+    ? { ...result.summary, withLink: 0 } : result.summary;
+  return { ...result, items, summary };
+}

@@ -54,9 +54,13 @@ const RUN = process.env.ONLY_CASE ? CASES.filter(c => c[5] === process.env.ONLY_
 
 test('PG17 hai kết nối: web khoá dòng nghiệp vụ rồi mới khoá công ty, bước ghi expense.* của Hermes không bao giờ chờ ⇒ không deadlock', { timeout: 600000 }, async t => {
   const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as invoice-write-race-sql.test.mjs / trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
-  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); cleanup(); });
+  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
   await expenseSetup(t, { database: db });
   for (const [name, anchor] of Object.entries(LOCK_SITES)) assert.equal(STEP.split(anchor).length, 2, `${name}: câu khoá đúng một chỗ`);
   const insert = async (code, extra) => (await hermes.query(`INSERT INTO public.income_expenses(organization_id,user_id,code,type,name,building_id,account_id,voucher_date,
