@@ -131,14 +131,19 @@ function CategoryBlock({ cats, total, filter, kind, open, onToggle }: {
 function VoucherRow({ v, mode, periodMonth }: { v: SettlementVoucher; mode: 'admin' | 'public'; periodMonth: string }) {
   const name = settlementVoucherName(v, mode);
   const lines = v.lines ?? [];
-  const tile = v.room_name || initialsOf(lines[0]?.category);
+  // Khoản chi: ô đầu dòng là BÊN CHI (chủ nhắn 24/10/2026) — CN = chủ nhà chi, QL = quản lý (vận hành) chi.
+  // Khoản thu: tên phòng (không có phòng thì chữ viết tắt hạng mục).
+  const tile = v.type === 'EXPENSE'
+    ? (v.side === 'LANDLORD' ? 'CN' : 'QL')
+    : v.room_name || initialsOf(lines[0]?.category);
+  const tileTitle = v.type === 'EXPENSE' ? (v.side === 'LANDLORD' ? 'Chủ nhà chi' : 'Quản lý (vận hành) chi') : tile;
   const note = voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth).replace(/^ · /, '');
   const income = v.type === 'INCOME';
   return (
     <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
       data-testid="settlement-cash-row">
       {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng, không cắt chữ */}
-      <span title={tile}
+      <span title={tileTitle} data-testid="settlement-row-tile"
         className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
           v.side === 'LANDLORD'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
@@ -198,7 +203,7 @@ function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats }: {
       ) : (
         <>
           <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-            <span>{income ? 'Phòng' : 'Loại'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
+            <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
           </div>
           <ul>{rows.map((v, i) => <VoucherRow key={`${v.code ?? 'phieu'}-${i}`} v={v} mode={mode} periodMonth={st.period_month} />)}</ul>
         </>

@@ -84,6 +84,23 @@ it('link chủ nhà: không lộ người chốt, đối chiếu Báo cáo LN ha
   expect(screen.getByTestId('chip-bridge').textContent).toBe('Khớp Báo cáo LN · 18.000.000 đ');
 });
 
+it('Khoản chi: ô đầu dòng là bên chi — QL (quản lý / vận hành chi), CN (chủ nhà chi); cột ghi "Bên chi"', () => {
+  ve();
+  const chi = within(screen.getByTestId('settlement-expense-card'));
+  expect(chi.getByText('Bên chi')).toBeTruthy();
+  const o = chi.getAllByTestId('settlement-row-tile');
+  expect(o.map((x) => x.textContent)).toEqual(o.map(() => 'QL'));
+  expect(o[0]?.getAttribute('title')).toBe('Quản lý (vận hành) chi');
+  cleanup();
+  const st = monthV3().statement!;
+  const chuNhaChi = { ...st.vouchers.find((v) => v.type === 'EXPENSE')!, side: 'LANDLORD' as const };
+  ve({ month: { ...monthV3(), statement: { ...st, vouchers: [...st.vouchers, chuNhaChi] } } });
+  const tiles = within(screen.getByTestId('settlement-expense-card')).getAllByTestId('settlement-row-tile').map((x) => x.textContent);
+  expect(tiles).toContain('CN');
+  // khoản thu vẫn ghi tên phòng
+  expect(within(screen.getByTestId('settlement-income-card')).getAllByTestId('settlement-row-tile').every((x) => !['CN', 'QL'].includes(x.textContent ?? ''))).toBe(true);
+});
+
 it('"Theo hạng mục" mặc định THU GỌN ở cả hai thẻ (hai cột thẳng hàng); bấm ở một thẻ thì mở / đóng CẢ HAI', () => {
   ve();
   const the = (id: string) => within(screen.getByTestId(id));
