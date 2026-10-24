@@ -88,12 +88,13 @@ const khoaPhien = (slug: string) => `landlord-portal-session:${slug}`;
 
 /** Phiên đã lưu (trình duyệt chặn bộ nhớ / chế độ riêng tư ⇒ null, trang hỏi PIN như bình thường). */
 export function readPortalSession(slug: string): string | null {
+  let v: string | null = null;
   try {
-    const v = globalThis.localStorage.getItem(khoaPhien(slug));
-    return v && /^[A-Za-z0-9_-]{43}$/.test(v) ? v : null;
+    v = globalThis.localStorage.getItem(khoaPhien(slug));
   } catch {
-    return null;
+    /* đọc localStorage bị chặn (chế độ riêng tư) — coi như chưa đăng nhập, trang hỏi PIN */
   }
+  return v && /^[A-Za-z0-9_-]{43}$/.test(v) ? v : null;
 }
 
 export function writePortalSession(slug: string, session: string | null): void {

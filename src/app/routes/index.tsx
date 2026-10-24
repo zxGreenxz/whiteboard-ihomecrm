@@ -41,7 +41,7 @@ export function AppRoutes() {
   // Tên miền riêng của link chủ nhà (cgiang/agiang.chillhome.io.vn): MỌI đường dẫn đều là trang link đó — cùng
   // trang công khai với route /cn/:slug đã khai ở publicRoutes (vào bằng PIN, server chống dò). Không mở được
   // màn CRM nào khác trên các tên miền này.
-  const portalSlug = landlordPortalSlugFromHost(window.location.hostname);
+  const portalSlug = landlordPortalSlugFromHost(typeof window === "undefined" ? null : window.location.hostname);
   if (portalSlug) {
     return (
       <>

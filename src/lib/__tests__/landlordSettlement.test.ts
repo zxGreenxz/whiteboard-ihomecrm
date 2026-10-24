@@ -341,7 +341,7 @@ describe('hợp đồng dữ liệu v3 (bàn giao, người giữ cọc, hạng 
     expect(st.categories?.income[0]?.landlord_amount).toBe(10_000_000);
     expect(st.vouchers[0]!.lines).toEqual([{ category: 'Tiền phòng', amount: 10_000_000 }]);
     expect(m.closed!.note_updated_at).toBe('2025-02-02T00:00:00Z');
-    expect(m.confirmation).toEqual({ confirmed_at: '2025-02-03T00:00:00Z', note: null });
+    expect(m.confirmation).toEqual({ confirmed_at: '2025-02-03T00:00:00Z', note: null, by: null });
 
     const o = settlementOverviewSchema.parse({
       ...overviewCu,
