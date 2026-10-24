@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T06:11:39.149Z",
+  "generatedAt": "2026-10-24T06:20:27.584Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 873,
-    "unknown": 81,
+    "ledger-applied": 874,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13472,10 +13472,9 @@
       "name": "quyet_toan_du_lieu_phong_chua_dong",
       "scheme": "timestamp14",
       "sha256": "60c4a02e697eb12909b60ce8091f1d3c13c96c352050b784c7ad2c9522e94b93",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.landlord_room_data_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T06:20:10.452Z|bien-nhan-backup"
       ]
     },
     {
