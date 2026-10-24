@@ -11,7 +11,7 @@
 // (src/components/landlord-settlement/SettlementScreen.tsx), các nút quản trị nằm ở đầu trang.
 // =============================================================================
 import { useState } from 'react';
-import { Building2, Check, ChevronDown, Handshake, Link2, Lock, Plus, Settings2, Unlock, Wallet } from 'lucide-react';
+import { Building2, Check, ChevronDown, Globe, Handshake, Link2, Lock, Plus, Settings2, Unlock, Wallet } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import EmptyState from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import { SettlementOverviewCard } from '@/components/landlord-settlement/Settlem
 import { HeroButton } from '@/components/landlord-settlement/SettlementHero';
 import { SettlementScreen } from '@/components/landlord-settlement/SettlementScreen';
 import { ShareLinkDialog } from '@/components/landlord-settlement/ShareLinkDialog';
+import { LandlordPortalDialog } from '@/components/landlord-settlement/LandlordPortalDialog';
 import {
   CloseMonthDialog,
   PaymentDialog,
@@ -102,6 +103,7 @@ export default function LandlordSettlementPage() {
   const [savedMonth, setSavedMonth] = usePersistedState<string | null>('flt:quyet-toan-van-hanh:thang', null);
   const [config, setConfig] = useState<ConfigTarget | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [portalOpen, setPortalOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -140,6 +142,9 @@ export default function LandlordSettlementPage() {
       </HeroButton>
       <HeroButton onClick={() => setShareOpen(true)} disabled={!buildingId}>
         <Link2 className="h-3.5 w-3.5 text-white/55" aria-hidden />Link cho chủ nhà
+      </HeroButton>
+      <HeroButton onClick={() => setPortalOpen(true)}>
+        <Globe className="h-3.5 w-3.5 text-white/55" aria-hidden />Link tên miền
       </HeroButton>
       <HeroButton onClick={() => setConfig({ buildingId })} disabled={!buildingId}>
         <Settings2 className="h-3.5 w-3.5 text-white/55" aria-hidden />Cài đặt toà
@@ -212,6 +217,7 @@ export default function LandlordSettlementPage() {
         )}
       </QueryRegion>
 
+      <LandlordPortalDialog open={portalOpen} onOpenChange={setPortalOpen} operations={operations} />
       {config && ops.data && (
         <OperationConfigDialog
           open={!!config}
