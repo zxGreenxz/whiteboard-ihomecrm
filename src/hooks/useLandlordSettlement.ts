@@ -10,6 +10,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
+  bookCodesReceiptSchema,
   closeReceiptSchema,
   confirmReceiptSchema,
   landlordIhomeProfitSchema,
@@ -375,6 +376,33 @@ export const useUpdateLandlordHandoverNote = () => {
       return receipt;
     },
     // 40001 (vừa mở chốt / chốt lại) cũng phải nạp lại để thấy lần chốt mới
+    onSettled: () => invalidate(),
+  });
+};
+
+// ─────────────────────────────── ký hiệu sổ ───────────────────────────────
+
+export interface SetLandlordBookCodesInput {
+  buildingId: string;
+  /** null = mặc định CN / QL. */
+  landlordCode: string | null;
+  managerCode: string | null;
+}
+
+/** Đặt ký hiệu sổ của toà (chủ nhắn 24/10/2026) — server chuẩn hoá, ghi sổ thay đổi. */
+export const useSetLandlordBookCodes = () => {
+  const invalidate = useInvalidateLandlord();
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: SetLandlordBookCodesInput) => {
+      const { data, error } = await goiRpcQuyetToan('landlord_operation_book_codes_v1', {
+        p_building_id: input.buildingId,
+        p_landlord_code: input.landlordCode,
+        p_manager_code: input.managerCode,
+      });
+      if (error) throw error;
+      return bookCodesReceiptSchema.parse(data);
+    },
     onSettled: () => invalidate(),
   });
 };

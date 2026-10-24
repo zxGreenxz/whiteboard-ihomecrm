@@ -20,16 +20,20 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { SkeletonBar } from '@/components/loading/LoadingState';
-import { useLandlordOperationOptions, useUpsertLandlordOperation } from '@/hooks/useLandlordSettlement';
+import { useLandlordOperationOptions, useSetLandlordBookCodes, useUpsertLandlordOperation } from '@/hooks/useLandlordSettlement';
 import {
+  BOOK_CODE_MAX,
+  DEFAULT_BOOK_CODE,
   DEPOSIT_HOLDERS,
   DEPOSIT_HOLDER_LABEL,
+  bookCodesError,
   describeOperationChange,
   landlordErrorMessage,
   managerTermsLabel,
   monthKey,
   monthShort,
   monthToDate,
+  normalizeBookCode,
   sameIdSet,
   termsAt,
   type DepositHolder,
@@ -53,6 +57,9 @@ interface Draft {
   accountIds: string[];
   /** Người giữ cọc (bên hoàn cọc cho khách) của TOÀ — áp mọi tháng, chỉ đổi khi chưa chốt tháng nào. */
   depositHolder: DepositHolder;
+  /** Ký hiệu sổ (ô trống = CN / QL) — lưu bằng RPC riêng, không theo tháng. */
+  landlordCode: string;
+  managerCode: string;
   /** Tháng mà % / tiền cố định / sổ đang hiện được NẠP tự động từ đó — khác điều khoản của tháng này = người dùng đã sửa. */
   pctFrom: string;
   fixedFrom: string;
@@ -65,6 +72,7 @@ interface Draft {
 
 const EMPTY: Draft = {
   landlordName: '', month: '', termsMonth: '', percent: 0, fixed: 0, accountIds: [], depositHolder: 'MANAGER',
+  landlordCode: '', managerCode: '',
   pctFrom: '', fixedFrom: '', idsFrom: '',
   note: '', isActive: true, openingBalance: 0, openingConfirmed: false,
 };
@@ -97,6 +105,8 @@ export function OperationConfigDialog({
   // updated_at của cấu hình lúc NẠP nháp (không phải bản cache mới nhất) — gửi kèm khi lưu để server từ
   // chối nếu người khác đã lưu sau đó, thay vì ghi đè số của họ bằng số cũ đang hiện trên hộp
   const [seenUpdatedAt, setSeenUpdatedAt] = useState<string | null>(null);
+  // ký hiệu sổ lúc nạp nháp (RPC riêng, không có kiểm updated_at) — chỉ gửi khi người dùng đã sửa
+  const [seenCodes, setSeenCodes] = useState<{ landlord: string | null; manager: string | null }>({ landlord: null, manager: null });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -111,6 +121,7 @@ export function OperationConfigDialog({
 
   const options = useLandlordOperationOptions(open ? buildingId : null);
   const save = useUpsertLandlordOperation();
+  const saveCodes = useSetLandlordBookCodes();
   const cur = options.data?.current ?? null;
   const terms: readonly Terms[] = useMemo(() => cur?.terms ?? [], [cur]);
 
@@ -131,6 +142,8 @@ export function OperationConfigDialog({
         accountIds: dk?.landlord_account_ids ?? c.landlord_account_ids,
         // chọn sẵn từ nút gạt = người dùng đã sửa (khác người giữ cọc của toà thì hộp nêu thay đổi)
         depositHolder: initialDepositHolder ?? c.deposit_holder,
+        landlordCode: c.landlord_book_code ?? '',
+        managerCode: c.manager_book_code ?? '',
         pctFrom: thang,
         fixedFrom: thang,
         idsFrom: thang,
@@ -145,6 +158,7 @@ export function OperationConfigDialog({
       setDraft({ ...EMPTY, month: thang, termsMonth: thang, depositHolder: initialDepositHolder ?? 'MANAGER' });
     }
     setSeenUpdatedAt(c ? c.updated_at : null);
+    setSeenCodes({ landlord: c?.landlord_book_code ?? null, manager: c?.manager_book_code ?? null });
     setLoadedFor(buildingId);
   }, [buildingId, options.data, options.isFetching, loadedFor, initialTermsMonth, initialDepositHolder]);
 
@@ -254,6 +268,8 @@ export function OperationConfigDialog({
     if (holderChanged && firstClosed) {
       e.holder = `Toà đã chốt tháng ${monthShort(firstClosed)} — người giữ cọc chỉ đổi được khi chưa chốt tháng nào.`;
     }
+    const loiKyHieu = bookCodesError(normalizeBookCode(draft.landlordCode), normalizeBookCode(draft.managerCode));
+    if (loiKyHieu) e.codes = loiKyHieu;
     if (draft.note.trim().length > 500) e.note = 'Ghi chú tối đa 500 ký tự.';
     if (!Number.isFinite(draft.openingBalance) || !Number.isInteger(draft.openingBalance)) e.opening = 'Nhập số tiền nguyên đồng (âm nếu quản lý còn nợ chủ nhà).';
     return e;
@@ -264,6 +280,9 @@ export function OperationConfigDialog({
     setErrors(e);
     setServerError(null);
     if (Object.keys(e).length > 0 || !buildingId) return;
+    const kyHieu = { landlordCode: normalizeBookCode(draft.landlordCode), managerCode: normalizeBookCode(draft.managerCode) };
+    // so với ký hiệu LÚC NẠP hộp (không với cache mới nhất): không đụng ô thì không đè ký hiệu người khác vừa đổi
+    const doiKyHieu = kyHieu.landlordCode !== seenCodes.landlord || kyHieu.managerCode !== seenCodes.manager;
     try {
       const r = await save.mutateAsync({
         buildingId,
@@ -285,6 +304,14 @@ export function OperationConfigDialog({
         // người giữ cọc của toà (áp mọi tháng); server từ chối đổi khi đã chốt tháng nào
         depositHolder: draft.depositHolder,
       });
+      // ký hiệu lưu SAU khi cài đặt đã lưu (toà mới phải có cài đặt trước; lỗi ở đây không làm hỏng phần đã lưu)
+      if (doiKyHieu) {
+        try {
+          await saveCodes.mutateAsync({ buildingId, ...kyHieu });
+        } catch (err) {
+          toast.warning(`Đã lưu cài đặt toà, nhưng chưa lưu được ký hiệu sổ: ${landlordErrorMessage(err, 'lỗi không rõ')} — mở lại Cài đặt để đặt.`);
+        }
+      }
       // trạng thái SAU khi lưu do server tính (cọc trước kỳ theo tháng / sổ mới), không đoán theo số cũ trên màn
       if (r.opening_needs_reconfirm || r.opening_needs_confirm) {
         toast.warning('Đã lưu. Còn phải đối chiếu số dư đầu kỳ với chủ nhà (mở lại Cài đặt toà) thì mới chốt được tháng.');
@@ -437,6 +464,28 @@ export function OperationConfigDialog({
                 )}
               </div>
 
+              <div className="space-y-1.5" data-testid="landlord-book-codes">
+                <Label>Ký hiệu sổ</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="lo-code-landlord" className="text-xs font-normal text-muted-foreground">Sổ chủ nhà</Label>
+                    <Input id="lo-code-landlord" value={draft.landlordCode} maxLength={BOOK_CODE_MAX} autoComplete="off"
+                      placeholder={DEFAULT_BOOK_CODE.LANDLORD} className="uppercase"
+                      onChange={(ev) => setDraft((d) => ({ ...d, landlordCode: ev.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="lo-code-manager" className="text-xs font-normal text-muted-foreground">Sổ quản lý</Label>
+                    <Input id="lo-code-manager" value={draft.managerCode} maxLength={BOOK_CODE_MAX} autoComplete="off"
+                      placeholder={DEFAULT_BOOK_CODE.MANAGER} className="uppercase"
+                      onChange={(ev) => setDraft((d) => ({ ...d, managerCode: ev.target.value }))} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tối đa {BOOK_CODE_MAX} ký tự, hiện ở nút lọc theo sổ và ô đầu dòng Khoản chi (cả link chủ nhà). Để trống = {DEFAULT_BOOK_CODE.LANDLORD} / {DEFAULT_BOOK_CODE.MANAGER}.
+                </p>
+                {errors.codes && <p className="text-xs text-destructive">{errors.codes}</p>}
+              </div>
+
               <div className="space-y-1.5" data-testid="landlord-holder">
                 <Label id="lo-holder-label">Người giữ cọc</Label>
                 <RadioGroup aria-labelledby="lo-holder-label" className="flex flex-wrap gap-4" value={draft.depositHolder}
@@ -564,8 +613,8 @@ export function OperationConfigDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
-          <Button type="button" onClick={submit} disabled={save.isPending || !buildingId || loading}>
-            {save.isPending ? 'Đang lưu…' : 'Lưu cài đặt'}
+          <Button type="button" onClick={submit} disabled={save.isPending || saveCodes.isPending || !buildingId || loading}>
+            {save.isPending || saveCodes.isPending ? 'Đang lưu…' : 'Lưu cài đặt'}
           </Button>
         </DialogFooter>
       </DialogContent>

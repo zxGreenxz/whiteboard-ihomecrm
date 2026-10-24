@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1695,
   "soFileDocBangFs": 439,
-  "tongLoiGoi": 1095,
-  "khongPhanLoaiDuoc": 485,
+  "tongLoiGoi": 1098,
+  "khongPhanLoaiDuoc": 488,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
@@ -134,6 +134,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
+      "soGoi": 14,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 13
+    },
+    {
       "file": "scripts/__tests__/check-external-controls.test.mjs",
       "soGoi": 13,
       "loai": {
@@ -186,14 +194,6 @@
       "soGoi": 11,
       "loai": {},
       "khongPhanLoaiDuoc": 11
-    },
-    {
-      "file": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
-      "soGoi": 11,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 10
     },
     {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
