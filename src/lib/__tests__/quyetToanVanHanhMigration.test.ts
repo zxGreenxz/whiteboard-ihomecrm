@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   bookCodesReceiptSchema, confirmReceiptSchema, describeOperationChange, noteUpdateReceiptSchema,
@@ -10,6 +11,9 @@ import {
 } from "@/lib/landlordSettlement";
 import { getInvoiceTitle, invoiceTitlePartsOf } from "@/lib/invoiceUtils";
 import { settlementRoomNoteRows } from "@/lib/settlementRoomNotes";
+import {
+  isWeakPin, portalLoginSchema, portalPayloadSchema, portalsSchema, portalViewerAddReceiptSchema,
+} from "@/lib/landlordPortal";
 import type { InvoiceWithRelations } from "@/types/invoice";
 
 /**
@@ -52,7 +56,8 @@ const [ORG_A, ORG_B, CHU_A, NHAN_VIEN_A, CHU_B, SUPER] = [1, 2, 3, 4, 5, 6].map(
 const [TOA_A, TOA_B, TOA_AO, TOA_C] = [11, 12, 13, 14].map(id);
 const [SO_CHU_NHA, SO_QUAN_LY, SO_AO, SO_CONG_TY_B, SO_CHU_NHA_C] = [21, 22, 23, 24, 25].map(id);
 const [LOAI_THU, LOAI_DIEN, LOAI_TU_LANH] = [31, 32, 33].map(id);
-const db = new PGlite();
+// pgcrypto thật cho PIN link tên miền (bcrypt) — migration 20261024072823
+const db = new PGlite({ extensions: { pgcrypto } });
 
 type Json = Record<string, unknown>;
 
@@ -226,6 +231,35 @@ const PROD_MD5_KY_HIEU: Record<string, string> = {
 let md5GocKyHieu: Record<string, string> = {};
 let md5LuotMotKyHieu: Record<string, string> = {};
 let hashSauKyHieu: string[] = [];
+/**
+ * Migration 20261024072823 — link tên miền cho chủ nhà vào bằng PIN (chủ nhắn 24/10/2026: cgiang / agiang).
+ */
+const FILE_PORTAL = process.env.QTPORTAL_MIGRATION_FILE
+  ?? "supabase/migrations/20261024072823_quyet_toan_link_ten_mien_pin.sql";
+const CONFIRM_CU = "public.landlord_settlement_confirm_v1(text,date,integer,text)";
+/** md5(pg_get_functiondef) production 24/10/2026 (đọc chỉ đọc, sau khi áp 20261024063027). */
+const PROD_MD5_PORTAL: Record<string, string> = {
+  [GOI_THANG]: "55c57c02dea842cf444b16428a13634c",
+  [GOI_TONG_QUAN]: "ba626299fe37535cd64776d0a9722944",
+  "app_private.landlord_actor_can_manage_v1(uuid)": "ee1362cb1858a7f9d4f39b31e842a5ca",
+  [CONFIRM_CU]: "f79f67bb4bc1b801e739b9e13dfdd7de",
+};
+const HAM_PORTAL_MOI = [
+  "app_private.landlord_portal_viewer_v1(text,text)",
+  "app_private.landlord_portal_buildings_v1(text)",
+  "public.landlord_portal_login_v1(text,text)",
+  "public.landlord_portal_v1(text,text,text,date)",
+  "public.landlord_portal_confirm_v1(text,text,text,date,integer,text)",
+  "public.landlord_portal_logout_v1(text,text)",
+  "public.landlord_portals_v1()",
+  "public.landlord_portal_save_v1(text,uuid[])",
+  "public.landlord_portal_viewer_add_v1(text,text)",
+  "public.landlord_portal_viewer_revoke_v1(uuid)",
+  "public.landlord_portal_unlock_v1(text)",
+];
+let md5GocPortal: Record<string, string> = {};
+let md5LuotMotPortal: Record<string, string> = {};
+let hashSauPortal: string[] = [];
 /** source_hash của các tháng có dữ liệu (đọc thẳng công thức, vai postgres). */
 async function hashCacThang(): Promise<string[]> {
   const r = await db.query<{ h: string }>(
@@ -401,6 +435,21 @@ beforeAll(async () => {
   md5LuotMotKyHieu = await md5Cua([GOI_TONG_QUAN, OPTIONS_V1, DAT_KY_HIEU]);
   await chay(sqlKyHieu);
   hashSauKyHieu = await hashCacThang();
+
+  // 20261024072823 (link tên miền + PIN): bcrypt THẬT (pgcrypto ở schema riêng; extensions.crypt / gen_salt gọi
+  // qua như Supabase — extensions.gen_random_bytes giả ở trên giữ nguyên), áp sau 063027 như production, HAI lượt.
+  await chay(`
+    CREATE SCHEMA pgc;
+    CREATE EXTENSION pgcrypto WITH SCHEMA pgc;
+    CREATE FUNCTION extensions.crypt(text, text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT pgc.crypt($1, $2) $$;
+    CREATE FUNCTION extensions.gen_salt(text, integer) RETURNS text LANGUAGE sql VOLATILE AS $$ SELECT pgc.gen_salt($1, $2) $$;
+  `);
+  md5GocPortal = await md5Cua(Object.keys(PROD_MD5_PORTAL));
+  const sqlPortal = readFileSync(FILE_PORTAL, "utf8");
+  await chay(sqlPortal);
+  md5LuotMotPortal = await md5Cua([GOI_THANG, ...HAM_PORTAL_MOI]);
+  await chay(sqlPortal);
+  hashSauPortal = await hashCacThang();
 }, 60000);
 afterAll(() => db.close());
 
@@ -2164,7 +2213,7 @@ describe("v3: chủ nhà xác nhận đã xem số liệu", () => {
       // anon không đọc/ghi thẳng bảng
       await expectLoi("SELECT * FROM app_private.landlord_settlement_confirmations", [], "42501");
       const pub = await rpc<Json>("public.landlord_settlement_public_v1($1, '2025-02-01'::date)", [token]);
-      expect((pub.month as Json).confirmation).toEqual({ confirmed_at: x1.confirmed_at, note: "Số liệu khớp sổ của tôi" });
+      expect((pub.month as Json).confirmation).toEqual({ confirmed_at: x1.confirmed_at, note: "Số liệu khớp sổ của tôi", by: null });
       const febPub = ((pub.overview as Json).months as Json[]).find((m) => String(m.period_month).startsWith("2025-02"))!;
       expect([febPub.close_revision, febPub.confirmed_at]).toEqual([1, x1.confirmed_at]);
 
@@ -2458,6 +2507,303 @@ describe("ký hiệu sổ (20261024063027): đặt và hiển thị", () => {
         await expectLoi(`SELECT ${DAT}`, [TOA_A, l, q], "22023");
       }
       await expectLoi(`SELECT ${DAT}`, [TOA_C, "CG", "ET"], "P0002");
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20261024072823 — link tên miền cho chủ nhà vào bằng PIN (chủ nhắn 24/10/2026). Tên giả; PIN do server sinh.
+// ─────────────────────────────────────────────────────────────────────────────
+const LUU_LINK = "public.landlord_portal_save_v1($1, $2::uuid[])";
+const THEM_NGUOI = "public.landlord_portal_viewer_add_v1($1, $2)";
+const DANG_NHAP = "public.landlord_portal_login_v1($1, $2)";
+const TRANG = "public.landlord_portal_v1($1, $2, $3, $4::date)";
+const MO_KHOA = "public.landlord_portal_unlock_v1($1)";
+/** PIN chắc chắn sai: khác PIN đúng (server sinh, không bao giờ lặp một số). */
+const PIN_SAI = "000000";
+
+/** Quản trị hệ thống tạo link 'agiang' gồm toà A; chủ công ty A thêm một người xem; trả phiên của người đó. */
+async function linkVaPhien() {
+  await asUser(SUPER);
+  await rpc(LUU_LINK, ["agiang", [TOA_A]]);
+  await asUser(CHU_A);
+  const nguoi = portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", "Người xem A"]));
+  await asUser(null);
+  const r = portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin]));
+  if (r.status !== "OK") throw new Error(`đăng nhập: ${r.status}`);
+  return { nguoi, phien: r.session };
+}
+
+describe("link tên miền (20261024072823): migration", () => {
+  it("thân production tái lập đúng md5 trước khi áp (cả hàm chỉ đọc được ghim)", () => {
+    expect(md5GocPortal).toEqual(PROD_MD5_PORTAL);
+  });
+
+  it("md5 lượt hai được tiền kiểm nhận đúng bằng thân của chính file", () => {
+    const sql = readFileSync(FILE_PORTAL, "utf8");
+    expect(sql).toContain(`'${PROD_MD5_PORTAL[GOI_THANG]}', '${md5LuotMotPortal[GOI_THANG]}'`);
+    for (const s of HAM_PORTAL_MOI) {
+      expect(md5LuotMotPortal[s]).toMatch(/^[0-9a-f]{32}$/);
+      expect(sql).toContain(`('${s}', ARRAY['${md5LuotMotPortal[s]}'])`);
+    }
+  });
+
+  it.each([
+    ["gói tháng", "CREATE OR REPLACE FUNCTION app_private.landlord_settlement_month_payload_v1(p_building_id uuid, p_month date, p_public boolean) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm chỉ đọc (xác nhận link /qt)", "CREATE OR REPLACE FUNCTION public.landlord_settlement_confirm_v1(p_token text, p_month date, p_revision integer, p_note text DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm mới (đăng nhập, lượt hai)", "CREATE OR REPLACE FUNCTION public.landlord_portal_login_v1(p_slug text, p_pin text) RETURNS jsonb LANGUAGE sql AS $x$ SELECT '{}'::jsonb $x$"],
+  ])("thân lạ ở %s ⇒ dừng 55000", async (_ten, gia) => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await chay(gia);
+      const block = readFileSync(FILE_PORTAL, "utf8").replace(/^BEGIN;$/m, "").replace(/^COMMIT;$/m, "");
+      await expect(db.exec(block)).rejects.toMatchObject({ code: "55000" });
+    });
+  });
+
+  it("không đổi số; anon chỉ gọi được 4 RPC của link, không vai nào đọc thẳng bảng link / người xem / phiên", async () => {
+    expect(hashSauPortal).toEqual(hashTruoc);
+    const q = async (vai: string, sig: string) => (await db.query<{ c: boolean }>(
+      "SELECT has_function_privilege($1, $2, 'EXECUTE') AS c", [vai, sig])).rows[0].c;
+    for (const s of HAM_PORTAL_MOI.filter((x) => x.startsWith("public."))) {
+      const cong = /login|portal_v1\(|confirm|logout/.test(s);
+      expect(await q("anon", s), s).toBe(cong);
+      expect(await q("authenticated", s), s).toBe(true);
+    }
+    for (const s of HAM_PORTAL_MOI.filter((x) => x.startsWith("app_private."))) {
+      expect(await q("anon", s), s).toBe(false);
+      expect(await q("authenticated", s), s).toBe(false);
+    }
+    for (const bang of ["landlord_portals", "landlord_portal_users", "landlord_portal_sessions", "landlord_portal_login_failures"]) {
+      for (const vai of ["anon", "authenticated", "service_role"]) {
+        const r = await db.query<{ c: boolean }>("SELECT has_table_privilege($1, $2, 'SELECT') AS c", [vai, `app_private.${bang}`]);
+        expect(r.rows[0].c, `${vai} ${bang}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("link tên miền (20261024072823): quản trị gộp toà và người xem", () => {
+  it("quản trị hệ thống tạo link; chủ công ty gộp toà + thêm người xem (PIN server sinh, không dễ đoán, khác nhau); danh sách không lộ PIN", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(SUPER);
+      expect(await rpc(LUU_LINK, ["agiang", [TOA_A, TOA_A]])).toEqual({ slug: "agiang", building_ids: [TOA_A] });
+      await asUser(CHU_A);
+      const a = portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", " Người xem A "]));
+      const b = portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", "Người nhà"]));
+      expect(a.label).toBe("Người xem A");
+      for (const p of [a.pin, b.pin]) {
+        expect(p).toMatch(/^\d{6}$/);
+        expect(isWeakPin(p)).toBe(false);
+      }
+      expect(b.pin).not.toBe(a.pin);
+      const tho = await rpc("public.landlord_portals_v1()");
+      const ds = portalsSchema.parse(tho);
+      expect(ds.portals.map((p) => [p.slug, p.building_ids, p.viewers.map((v) => v.label), p.failures_24h, p.locked]))
+        .toEqual([["agiang", [TOA_A], ["Người xem A", "Người nhà"], 0, false]]);
+      // kiểm gói THÔ (zod bỏ khoá thừa nên không bắt được trường lộ thêm)
+      const json = JSON.stringify(tho);
+      expect(json).not.toContain(a.pin);
+      expect(json).not.toContain("$2");
+      await asPostgres();
+      const h = await db.query<{ pin_hash: string }>("SELECT pin_hash FROM app_private.landlord_portal_users WHERE label = 'Người xem A'");
+      expect(h.rows[0].pin_hash).toMatch(/^\$2a\$08\$/);
+    });
+  });
+
+  it("chặn: chủ công ty không tạo link MỚI (chống chiếm tên miền); công ty khác / nhân viên 42501; toà không quản lý 42501; tối đa 10 người xem", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_A]], "42501");
+      await asUser(SUPER);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", []], "22023");
+      await expectLoi(`SELECT ${LUU_LINK}`, ["Agiang!", [TOA_A]], "22023");
+      await rpc(LUU_LINK, ["agiang", [TOA_A]]);
+      await asUser(NHAN_VIEN_A);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_A]], "42501");
+      await asUser(CHU_A);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_B]], "42501");
+      // link đã có: chủ công ty sở hữu sửa được toà
+      expect(await rpc(LUU_LINK, ["agiang", [TOA_A]])).toEqual({ slug: "agiang", building_ids: [TOA_A] });
+      // toà ảo (không quản lý được) cùng công ty, kể cả có cài vận hành ⇒ không gộp được
+      await asPostgres();
+      await db.query(`INSERT INTO app_private.landlord_operations
+          (building_id, organization_id, landlord_name, effective_from, created_by, updated_by)
+        VALUES ($1, $2, 'Chủ ảo', '2025-01-01', $3, $3)`, [TOA_AO, ORG_A, CHU_A]);
+      await asUser(CHU_A);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_A, TOA_AO]], "42501");
+      await expectLoi(`SELECT ${THEM_NGUOI}`, ["agiang", ""], "22023");
+      await expectLoi(`SELECT ${THEM_NGUOI}`, ["khong-co", "X"], "P0002");
+      const nguoi = portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", "Người xem 1"]));
+      for (let i = 2; i <= 10; i += 1) await rpc(THEM_NGUOI, ["agiang", `Người xem ${i}`]);
+      await expectLoi(`SELECT ${THEM_NGUOI}`, ["agiang", "Người xem 11"], "22023");
+      await asUser(CHU_B);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_B]], "42501");
+      await expectLoi(`SELECT ${LUU_LINK}`, ["moi", [TOA_A]], "42501");
+      await expectLoi(`SELECT ${THEM_NGUOI}`, ["agiang", "Lạ"], "42501");
+      await expectLoi("SELECT public.landlord_portal_viewer_revoke_v1($1)", [nguoi.id], "42501");
+      await expectLoi("SELECT public.landlord_portal_viewer_revoke_v1($1)", [id(1)], "42501");
+      await expectLoi(`SELECT ${MO_KHOA}`, ["agiang"], "42501");
+      expect(portalsSchema.parse(await rpc("public.landlord_portals_v1()")).portals).toEqual([]);
+      // thu hồi một người ⇒ thêm được người mới
+      await asUser(CHU_A);
+      await rpc("public.landlord_portal_viewer_revoke_v1($1)", [nguoi.id]);
+      expect(portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", "Người xem 11"])).label).toBe("Người xem 11");
+    });
+  });
+});
+
+describe("link tên miền (20261024072823): đăng nhập PIN và xem", () => {
+  it("PIN đúng ⇒ phiên + tên người xem; trang trả danh sách toà + gói quyết toán như link /qt, không lộ id", async () => {
+    await trongGiaoDich(async () => {
+      const { phien } = await linkVaPhien();
+      expect(phien).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      const p = portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, null, "2025-01-01"]));
+      expect(p.viewer).toBe("Người xem A");
+      expect(p.buildings.map((b) => b.building_name)).toEqual(["44TA"]);
+      expect(p.selected).toBe(p.buildings[0]!.key);
+      expect(p.month?.period_month).toBe("2025-01-01");
+      expect(p.overview?.building_name).toBe("44TA");
+      expect(JSON.stringify(p)).not.toContain(TOA_A);
+      expect(portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, "khong-co", null])).selected).toBe(p.selected);
+      expect(await rpc(TRANG, ["cgiang", phien, null, null])).toBeNull();
+      expect(await rpc(TRANG, ["agiang", "x".repeat(43), null, null])).toBeNull();
+      expect(await rpc(TRANG, ["agiang", null, null, null])).toBeNull();
+      expect(portalLoginSchema.parse(await rpc(DANG_NHAP, ["khong-co", PIN_SAI]))).toEqual({ status: "NOT_FOUND" });
+    });
+  });
+
+  it("chống dò: sai 10 lần trong 15 phút ⇒ khoá cả PIN đúng; bản ghi lần sai CÒN (RETURN, không RAISE); hết 15 phút mở lại", async () => {
+    await trongGiaoDich(async () => {
+      const { nguoi } = await linkVaPhien();
+      await asUser(null);
+      for (let i = 0; i < 10; i += 1) {
+        const r = portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", PIN_SAI]));
+        expect(r).toEqual({ status: "INVALID", attempts_left: 9 - i });
+      }
+      const khoa = portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin]));
+      expect(khoa.status).toBe("LOCKED");
+      await asPostgres();
+      const n = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM app_private.landlord_portal_login_failures WHERE portal_slug = 'agiang'");
+      expect(n.rows[0].n).toBe(10);
+      await chay("UPDATE app_private.landlord_portal_login_failures SET failed_at = failed_at - interval '16 minutes'");
+      await asUser(null);
+      expect(portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin])).status).toBe("OK");
+    });
+  });
+
+  it("chống dò dài ngày: 30 lần sai trong 24 giờ ⇒ khoá tới hết 24 giờ; quản trị thấy và mở khoá được", async () => {
+    await trongGiaoDich(async () => {
+      const { nguoi } = await linkVaPhien();
+      await asPostgres();
+      await chay(`INSERT INTO app_private.landlord_portal_login_failures (portal_slug, failed_at)
+                  SELECT 'agiang', now() - interval '1 hour' - (g || ' minutes')::interval FROM generate_series(1, 30) g`);
+      await asUser(null);
+      const khoa = portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin]));
+      expect(khoa.status).toBe("LOCKED");
+      if (khoa.status === "LOCKED") expect(khoa.retry_after_seconds).toBeGreaterThan(20 * 3600);
+      await asUser(CHU_A);
+      const ds = portalsSchema.parse(await rpc("public.landlord_portals_v1()"));
+      expect([ds.portals[0]!.failures_24h, ds.portals[0]!.locked]).toEqual([30, true]);
+      expect(await rpc(MO_KHOA, ["agiang"])).toEqual({ status: "UNLOCKED", cleared: 30 });
+      await asUser(null);
+      expect(portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin])).status).toBe("OK");
+      // còn ít hơn 30 trong ngày: số lần thử còn lại tính theo trần ngày khi nó nhỏ hơn
+      await asPostgres();
+      await chay(`INSERT INTO app_private.landlord_portal_login_failures (portal_slug, failed_at)
+                  SELECT 'agiang', now() - interval '2 hours' FROM generate_series(1, 27)`);
+      await asUser(null);
+      expect(portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", PIN_SAI]))).toEqual({ status: "INVALID", attempts_left: 2 });
+    });
+  });
+
+  it("toà chỉ hiện khi đang áp dụng và cùng công ty với link (kể cả dữ liệu bị chèn tay)", async () => {
+    await trongGiaoDich(async () => {
+      const { phien } = await linkVaPhien();
+      await asPostgres();
+      await db.query(`INSERT INTO app_private.landlord_operations
+          (building_id, organization_id, landlord_name, effective_from, created_by, updated_by)
+        VALUES ($1, $2, 'Chủ B', '2025-01-01', $3, $3)`, [TOA_B, ORG_B, CHU_B]);
+      await db.query("UPDATE app_private.landlord_portals SET building_ids = building_ids || $1::uuid WHERE slug = 'agiang'", [TOA_B]);
+      await asUser(null);
+      const ds = () => rpc<Json>(TRANG, ["agiang", phien, null, null])
+        .then((x) => portalPayloadSchema.parse(x).buildings.map((b) => b.building_name));
+      expect(await ds()).toEqual(["44TA"]);
+      await asPostgres();
+      await db.query("UPDATE app_private.landlord_operations SET is_active = false WHERE building_id = $1", [TOA_A]);
+      await asUser(null);
+      expect(await ds()).toEqual([]);
+    });
+  });
+
+  it("phiên quá hạn 180 ngày ⇒ hết hiệu lực", async () => {
+    await trongGiaoDich(async () => {
+      const { phien } = await linkVaPhien();
+      await asPostgres();
+      await chay("UPDATE app_private.landlord_portal_sessions SET expires_at = now() - interval '1 second'");
+      await asUser(null);
+      expect(await rpc(TRANG, ["agiang", phien, null, null])).toBeNull();
+    });
+  });
+
+  it("thu hồi người xem ⇒ phiên cũ chết, PIN không vào được, mọi phiên của người đó bị huỷ; thoát ⇒ phiên đó chết", async () => {
+    await trongGiaoDich(async () => {
+      const { nguoi, phien } = await linkVaPhien();
+      const lai = portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin]));
+      if (lai.status !== "OK") throw new Error("đăng nhập lại");
+      expect(await rpc("public.landlord_portal_logout_v1($1, $2)", ["agiang", lai.session])).toEqual({ status: "LOGGED_OUT" });
+      expect(await rpc(TRANG, ["agiang", lai.session, null, null])).toBeNull();
+      expect(await rpc(TRANG, ["agiang", phien, null, null])).not.toBeNull();
+      await asUser(CHU_A);
+      expect(await rpc("public.landlord_portal_viewer_revoke_v1($1)", [nguoi.id])).toEqual({ status: "REVOKED" });
+      await asUser(null);
+      expect(await rpc(TRANG, ["agiang", phien, null, null])).toBeNull();
+      expect(portalLoginSchema.parse(await rpc(DANG_NHAP, ["agiang", nguoi.pin])).status).toBe("INVALID");
+      await asPostgres();
+      const conSong = await db.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM app_private.landlord_portal_sessions WHERE user_id = $1 AND revoked_at IS NULL", [nguoi.id]);
+      expect(conSong.rows[0].n).toBe(0);
+    });
+  });
+
+  it("người xem bị thu hồi thì phiên còn mở cũng chết (kiểm người xem, kể cả khi phiên chưa bị huỷ)", async () => {
+    await trongGiaoDich(async () => {
+      const { nguoi, phien } = await linkVaPhien();
+      await asPostgres();
+      await db.query("UPDATE app_private.landlord_portal_users SET revoked_at = now(), revoked_by = $2 WHERE id = $1", [nguoi.id, CHU_A]);
+      await asUser(null);
+      expect(await rpc(TRANG, ["agiang", phien, null, null])).toBeNull();
+    });
+  });
+
+  it("xác nhận đã xem số liệu ghi ĐÚNG người xem (tên hiện ở gói tháng); toà rời link ⇒ P0002; phiên chết ⇒ P0002", async () => {
+    await trongGiaoDich(async () => {
+      const { nguoi, phien } = await linkVaPhien();
+      await asUser(CHU_A);
+      await chotCoGhiChu("2025-02-01", null);
+      await asUser(null);
+      const p = portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, null, "2025-02-01"]));
+      const rev = p.month!.closed!.revision;
+      const r = confirmReceiptSchema.parse(await rpc("public.landlord_portal_confirm_v1($1, $2, $3, $4::date, $5, $6)",
+        ["agiang", phien, p.selected, "2025-02-01", rev, "đã xem"]));
+      expect(r.status).toBe("CONFIRMED");
+      const sau = portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, null, "2025-02-01"]));
+      expect(sau.month?.confirmation).toMatchObject({ by: "Người xem A", note: "đã xem" });
+      await asUser(CHU_A);
+      expect(settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01")).confirmation?.by).toBe("Người xem A");
+      await asPostgres();
+      const k = await db.query<{ u: string; t: string | null }>(
+        "SELECT portal_user_id::text AS u, share_token AS t FROM app_private.landlord_settlement_confirmations WHERE period_month = '2025-02-01'");
+      expect(k.rows).toEqual([{ u: nguoi.id, t: null }]);
+      await asUser(CHU_A);
+      await rpc(LUU_LINK, ["agiang", []]);
+      await asUser(null);
+      await expectLoi("SELECT public.landlord_portal_confirm_v1($1, $2, $3, $4::date, $5, $6)",
+        ["agiang", phien, p.selected, "2025-02-01", rev, null], "P0002");
+      await expectLoi("SELECT public.landlord_portal_confirm_v1($1, $2, $3, $4::date, $5, $6)",
+        ["agiang", "x".repeat(43), p.selected, "2025-02-01", rev, null], "P0002");
+      expect(portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, null, null])))
+        .toMatchObject({ buildings: [], selected: null, overview: null, month: null });
     });
   });
 });

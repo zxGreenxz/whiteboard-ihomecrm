@@ -46,6 +46,8 @@ describe("camera tab", () => {
     const { container } = render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
     await screen.findByText("Đầu ghi kết nối");
     expect(screen.getByText("Có kết nối")).toBeTruthy();
+    expect(screen.getByText("Sảnh DEMO", { selector: "strong" })).toBeTruthy();
+    expect(screen.getByText("Hành lang DEMO", { selector: "strong" })).toBeTruthy();
     expect(screen.getByText("Mất kết nối")).toBeTruthy();
     expect(screen.getByText("Kênh chưa gắn camera")).toBeTruthy();
     expect(screen.getByText("Chưa xác định")).toBeTruthy();

@@ -130,6 +130,7 @@ export const ProfilePage = lazy(() => import("../pages/account/ProfilePage"));
 export const SubscriptionPage = lazy(() => import("../pages/account/SubscriptionPage"));
 export const PublicContractInvoicePage = lazy(() => import("../pages/public/PublicContractInvoicePage"));
 export const LandlordSettlementPublicPage = lazy(() => import("../pages/public/LandlordSettlementPublicPage"));
+export const LandlordPortalPage = lazy(() => import("../pages/public/LandlordPortalPage"));
 export const FaqPage = lazy(() => import("../pages/FaqPage"));
 export const ChangelogPage = lazy(() => import("../pages/ChangelogPage"));
 export const AppGuidePage = lazy(() => import("../pages/AppGuidePage"));

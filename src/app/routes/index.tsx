@@ -4,12 +4,13 @@
 // GATE scripts/check-route-guards.mjs QUÉT CẢ THƯ MỤC NÀY, nên mọi route ở đây
 // vẫn phải nằm dưới một guard đã biết hoặc được khai TƯỜNG MINH là công khai —
 // y như khi chúng còn ở App.tsx.
-import { useLayoutEffect } from "react";
+import { Suspense, useLayoutEffect } from "react";
 import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { hideAppSplash } from "@/lib/appSplash";
+import { landlordPortalSlugFromHost } from "@/lib/landlordPortalHost";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
-import { ChatZaloPage, LuckyDrawAdminPage } from "../lazyPages";
+import { ChatZaloPage, LandlordPortalPage, LuckyDrawAdminPage } from "../lazyPages";
 import NotFound from "../../pages/NotFound";
 import { publicRoutes } from "./publicRoutes";
 import { quickTrackRoutes } from "./quickTrackRoutes";
@@ -37,6 +38,20 @@ const RouteTreeCommit = (): null => {
 };
 
 export function AppRoutes() {
+  // Tên miền riêng của link chủ nhà (cgiang/agiang.chillhome.io.vn): MỌI đường dẫn đều là trang link đó — cùng
+  // trang công khai với route /cn/:slug đã khai ở publicRoutes (vào bằng PIN, server chống dò). Không mở được
+  // màn CRM nào khác trên các tên miền này.
+  const portalSlug = landlordPortalSlugFromHost(typeof window === "undefined" ? null : window.location.hostname);
+  if (portalSlug) {
+    return (
+      <>
+        <Suspense fallback={null}>
+          <LandlordPortalPage slug={portalSlug} />
+        </Suspense>
+        <RouteTreeCommit />
+      </>
+    );
+  }
   return (
     <>
       <Routes>
