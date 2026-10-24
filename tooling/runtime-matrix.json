@@ -51,7 +51,8 @@
       "node": "24.18.0",
       "note": "Runtime ghim cho CI app và gate; thay đổi phải kiểm dependency và gate:runtime-matrix.",
       "noteDeno": "Deno chạy suite llm-proxy; test-matrix.json sở hữu phạm vi test.",
-      "deno": "2.9.4"
+      "deno": "2.9.4",
+      "python": "3.12.10"
     },
     {
       "path": ".github/workflows/network-center-validation.yml",
@@ -88,12 +89,20 @@
       "node": null,
       "deno": null,
       "note": "Uses preinstalled JDK17/Android35; Gradle8.11.1 distribution checksum is pinned in the wrapper. No Node or Deno setup."
+    },
+    {
+      "path": ".github/workflows/meter-capture-runtime.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "Linux Docker smoke of pinned Python/PaddleOCR/FFmpeg runtime; synthetic data only, no deployment or secrets."
     }
   ],
   "otherRuntimes": {
     "postgres": "17.6",
     "deno": "2.9.4",
-    "denoNote": "Pin runtime Deno cho các workflow khai deno; deno.lock của từng function khoá dependency."
+    "denoNote": "Pin runtime Deno cho các workflow khai deno; deno.lock của từng function khoá dependency.",
+    "meterCapturePython": "3.12.10",
+    "meterCapturePythonNote": "Worker fixture runner verifies exact Python version; ci-gates installs setup-python only when meter-capture-python is selected. Production Linux image pins the same Python version and digest."
   },
   "howToSwitch": "Máy dev nên dùng volta/fnm/nvm-windows. Chạy gate của package nào thì đổi sang Node của package đó trước — đọc bảng trên, đừng đoán từ root engines."
 }

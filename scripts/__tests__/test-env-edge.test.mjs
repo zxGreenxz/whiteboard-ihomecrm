@@ -8,7 +8,7 @@ import { CHUA_CO_O_PRODUCTION, chanSecretCam, DANH_SACH, main, tepFunction } fro
 const REF = 'abcdefghijklmnopqrst';
 const SECRETS_SACH = ['OPENROUTER_API_KEY', 'CRON_SECRET', 'DEMO_RESET_SECRET', 'SUPABASE_URL'];
 
-function gia({ truoc = SECRETS_SACH, sau = truoc } = {}) {
+function gia({ truoc = SECRETS_SACH, sau = truoc, functions = [], responseVerifyJwt } = {}) {
   const thuTu = [];
   const deploy = [];
   let lanDocSecret = 0;
@@ -18,14 +18,14 @@ function gia({ truoc = SECRETS_SACH, sau = truoc } = {}) {
     if (method === 'GET' && path === `/v1/projects/${REF}/secrets`) {
       return (lanDocSecret++ === 0 ? truoc : sau).map((name) => ({ name }));
     }
-    if (method === 'GET' && path.endsWith('/functions')) return [];
+    if (method === 'GET' && path.endsWith('/functions')) return functions;
     if (method === 'POST' && path.endsWith('/secrets')) return {};
     throw new Error(`mgmt lạ: ${method} ${path}`);
   };
   const guiDeploy = async (url, init) => {
     thuTu.push(`DEPLOY ${new URL(url).searchParams.get('slug')}`);
     deploy.push({ url, init });
-    return new Response(JSON.stringify({ version: 1, verify_jwt: true }), { status: 201 });
+    return new Response(JSON.stringify({ version: 1, verify_jwt: responseVerifyJwt ?? JSON.parse(init.body.get('metadata')).verify_jwt }), { status: 201 });
   };
   const phuThuoc = {
     layCredential: () => ({ testPat: 'fake-test-pat', testRef: REF }),
@@ -50,6 +50,34 @@ describe('test-env edge: secret cấm trên TEST', () => {
   it('door-access nằm trong danh sách deploy TEST với verify_jwt khai sẵn', () => {
     expect(DANH_SACH).toContain('door-access');
     expect(CHUA_CO_O_PRODUCTION['door-access']).toEqual({ verify_jwt: true });
+  });
+
+  it('meter worker deploys the exact locked bundle with handler authentication and no copied worker/AI credential', async () => {
+    expect(DANH_SACH).toContain('meter-capture-worker');
+    expect(CHUA_CO_O_PRODUCTION['meter-capture-worker']).toEqual({ verify_jwt: false });
+    const { phuThuoc, thuTu, deploy } = gia({truoc:['SUPABASE_URL']});
+    phuThuoc.docKhoa=()=>{throw new Error('Meter-only deploy must not read generic AI/provider vault secrets');};
+    await expect(main(argv('meter-capture-worker'), phuThuoc)).resolves.toBe(0);
+    expect(deploy).toHaveLength(1);
+    expect(deploy[0].url).toBe(`https://api.supabase.com/v1/projects/${REF}/functions/deploy?slug=meter-capture-worker`);
+    expect(JSON.parse(deploy[0].init.body.get('metadata'))).toEqual({ name:'meter-capture-worker', entrypoint_path:'index.ts', verify_jwt:false, import_map_path:'deno.json' });
+    expect(deploy[0].init.body.getAll('file').map(f=>f.name).sort()).toEqual(['deno.json','deno.lock','index.ts']);
+    expect(thuTu.some(call=>call.startsWith('POST '))).toBe(false);
+  });
+
+  it('meter worker rejects gateway JWT enforcement drift before deploy and rejects wrong readback', async () => {
+    const drift = gia({ functions:[{slug:'meter-capture-worker',verify_jwt:true}] });
+    await expect(main(argv('meter-capture-worker'),drift.phuThuoc)).rejects.toThrow(/verify_jwt=false/);
+    expect(drift.deploy).toHaveLength(0);
+    const readback = gia({ responseVerifyJwt:true });
+    await expect(main(argv('meter-capture-worker'),readback.phuThuoc)).rejects.toThrow(/verify_jwt TEST=true/);
+  });
+
+  it('a production reference supplied as TEST stops before any network request', async () => {
+    const { phuThuoc, thuTu } = gia();
+    phuThuoc.layCredential=()=>({testPat:'fake-test-pat',testRef:'tryymsxyyckgbrmmvozx'});
+    await expect(main(argv('meter-capture-worker'),phuThuoc)).rejects.toThrow(/từ chối production/);
+    expect(thuTu).toEqual([]);
   });
 
   for (const cam of ['TUYA_ACCESS_ID', 'TUYA_BASE_URL', 'VAPID_PRIVATE_KEY']) {

@@ -1,4 +1,5 @@
 import {QueryRegion} from '@/components/errors/QueryRegion';
+import { MeterEvidenceThumb } from '@/components/meter-readings/MeterEvidenceThumb';
 import { InlineSkeleton } from '@/components/loading/LoadingState';
 import {invoiceFailureMessage} from '@/lib/invoiceFeedback';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -104,7 +105,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     const revision = ++loadRevision.current;
     setLoaded(false);
     try {
-      const src = await fetchExcelInvoiceSource(buildingId);
+      const src = await fetchExcelInvoiceSource(buildingId, { month: billingMonth, readingDate: submitContext.toDate });
       if (revision !== loadRevision.current) return;
       if (src.dupRoomNames.length > 0) {
         toast({
@@ -288,7 +289,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 const month = e.target.value;
                 loadRevision.current++;
                 setBillingMonth(month);
-                if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
+                // Reload period-bound meter sources. Rooms without meters keep their
+                // manual discounts and the existing recovery flow for an unknown write.
+                if (rows.some(row => row.meter_id || row.meter_billing?.length)) invalidateRows();
+                else if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
               }}
             />
             {!submitContext && <p role="alert" className="text-xs text-red-700">Kỳ thanh toán không hợp lệ. Vui lòng chọn tháng.</p>}
@@ -368,7 +372,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         onCheckedChange={(v) => updateRow(i, { selected: !!v })}
                       />
                     </td>
-                    <td className="p-1 border font-medium">{r.room_name}</td>
+                    <td className="p-1 border font-medium">{r.room_name}{r.meter_billing_error && <p role="alert" className="text-xs text-destructive">{r.meter_billing_error}</p>}</td>
                     <td className="p-1 border">
                       <CurrencyInput
                         className="h-7 text-right"
@@ -385,7 +389,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                       />
                     </td>
                     <td className="p-1 border">
-                      {r.meter_id ? (
+                      {r.meter_billing?.some(source => source.end) ? <div className="space-y-2">{r.meter_billing.map(source => <div key={source.meterId} className="flex items-center justify-end gap-2">
+                        <span className="text-xs">{r.meter_billing!.length > 1 && <span className="block text-muted-foreground">{source.meterName}</span>}{source.start ? Number(source.start.value).toLocaleString('vi-VN') : 'Chưa có'}</span>
+                        <MeterEvidenceThumb captureId={source.start?.captureId} label={`Số đầu ${source.meterName}`} />
+                      </div>)}</div> : r.meter_id ? (
                         r.prev_reading_overridden ? (
                           <div className="relative">
                             <NumberInput
@@ -416,23 +423,27 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                       )}
                     </td>
                     <td className="p-1 border">
-                      <NumberInput
+                      {r.meter_billing?.some(source => source.end) ? <div className="space-y-2">{r.meter_billing.map(source => <div key={source.meterId} className="flex items-center justify-end gap-2">
+                        <span className="text-xs">{r.meter_billing!.length > 1 && <span className="block text-muted-foreground">{source.meterName}</span>}{source.end ? Number(source.end.value).toLocaleString('vi-VN') : 'Chưa chốt'}</span>
+                        <MeterEvidenceThumb captureId={source.end?.captureId} label={`Số cuối ${source.meterName}`} />
+                      </div>)}</div> : <NumberInput
                         className="h-7 text-right"
                         disabled={!r.meter_id}
                         allowDecimal
                         value={r.current_reading === '' ? null : r.current_reading}
                         onChange={(v) =>
                           updateRow(i, {
-                            current_reading: v === 0 ? '' : v,
+                            current_reading: v,
                           })
                         }
-                      />
+                      />}
                     </td>
                     <td className="p-1 border">
                       <CurrencyInput
                         className="h-7 text-right"
                         suffix={false}
                         value={Math.round(r.electric_amount)}
+                        disabled={r.meter_billing?.some(source => !!source.end)}
                         onChange={(v) =>
                           updateRow(i, {
                             electric_amount: v,
