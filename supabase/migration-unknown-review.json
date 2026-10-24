@@ -940,7 +940,7 @@
       ]
     },
     "supabase/migrations/20261023150206_meter_capture_correction_chain.sql": {
-      "sha256": "2c6c00404811adad5c8c4832d11d902151735a0c62081a5650eac57b43723ac5",
+      "sha256": "349953548bb4aadeb816bdd0ecbcbf576149a5170307b3a9ab1f7756bd808e91",
       "missingObjects": [
         "function:app_private.meter_capture_is_retirement_v1",
         "function:app_private.meter_capture_approved_writer_v1",

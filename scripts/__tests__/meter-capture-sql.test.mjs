@@ -26,7 +26,9 @@ async function fixture(source = sql) {
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.actor',true),'')::uuid $$;
  CREATE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$ SELECT ARRAY['${org}']::uuid[] $$;
  CREATE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS bigint LANGUAGE sql AS $$ SELECT 1::bigint $$;
- CREATE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid) RETURNS TABLE(allowed boolean) LANGUAGE sql STABLE AS $$ SELECT $1=auth.uid() AND current_setting('test.access',true)='yes' AND $4='${building}' $$;
+ CREATE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid) RETURNS TABLE(allowed boolean) LANGUAGE sql STABLE AS $$ SELECT $1=auth.uid() AND current_setting('test.access',true)='yes' AND $4='${building}'
+  AND $3=ANY(ARRAY['meter_readings.view','meter_readings.create','meter_readings.edit','meters.edit','invoices.view','invoices.create','contracts.view','contracts.edit'])
+  AND $3 IS DISTINCT FROM nullif(current_setting('test.denied_permission',true),'') $$;
  CREATE TABLE buildings(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
  CREATE TABLE rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,name text);
  CREATE TABLE meters(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,room_id uuid,service_id uuid,meter_type text DEFAULT 'ELECTRICITY',code text DEFAULT 'D1',name text DEFAULT 'Điện',serial_number text DEFAULT 'S1',status text DEFAULT 'ACTIVE',deleted_at timestamptz);
@@ -125,6 +127,22 @@ test('QR history/CAS, exact organization and building authorization; client cann
  await assert.rejects(db.query('SELECT meter_capture_claim_v1($1)', ['bad-client']), { code: '42501' });
  await assert.rejects(db.query('SELECT * FROM app_private.meter_captures'), { code: '42501' });
  await db.exec('RESET ROLE');
+});
+
+test('confirmation uses canonical edit permission and rejects a capture-only actor without changing facts', async t => {
+ const db = await fixture(); t.after(() => db.close()); await register(db);
+ const ready = await upload(db, await start(db));
+ await db.exec("SELECT set_config('test.denied_permission','meter_readings.edit',false)");
+ assert.equal((await rpc(db,'getCapture',{captureId:ready.capture.id})).capture.status,ready.capture.status);
+ await assert.rejects(confirm(db,ready.capture),{code:'42501'});
+ assert.equal((await db.query('SELECT count(*)::int n FROM meter_readings')).rows[0].n,0);
+ assert.deepEqual((await rpc(db,'getCapture',{captureId:ready.capture.id})).capture,ready.capture);
+ await db.exec("SELECT set_config('test.denied_permission','',false)");
+ const done=await confirm(db,ready.capture);
+ assert.equal(done.capture.status,'CONFIRMED');
+ assert.equal((await db.query('SELECT count(*)::int n FROM meter_readings')).rows[0].n,1);
+ await db.exec("SELECT set_config('test.denied_permission','meter_readings.edit',false)");
+ await assert.rejects(confirm(db,ready.capture),{code:'42501'});
 });
 
 test('persisted original receipt, idempotent retry and CAS; confirm overrides unsafe latest autofill and never autoapproves', async t => {

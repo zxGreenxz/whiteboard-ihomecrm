@@ -74,6 +74,10 @@ const dynamicBlocks = sql => [...stripComments(sql).matchAll(/\bDO\s+(?:LANGUAGE
 // both the filename and complete source; an edited or later override is not a
 // new package permission, and cannot reconcile an unrelated shared function.
 const REVIEWED_SUCCESSORS = new Map([
+  ['20261023150607_cash_flow_real_external_receipts_v1.sql', {
+    sha256: '24828e95c7898fe55ddde00dddfa8374e183bb62a8664ca10c82f30a467bb1ba',
+    functions: ['public.cashbook_cash_flow_v1'],
+  }],
   ['20261019034254_hermes_metadata_read_snapshot_v1.sql', {
     sha256: '1375fe0532047d9925a951c8dddbd2f3cf9496cdc9e16990d2958b686133bd94',
     functions: ['public.hermes_domain_capabilities_v3'],

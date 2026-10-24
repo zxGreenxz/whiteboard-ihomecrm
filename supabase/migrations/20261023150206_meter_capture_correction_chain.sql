@@ -268,7 +268,9 @@ BEGIN
    IF p_action='getCapture' AND p_payload->>'captureId' IS NULL THEN RETURN jsonb_build_object('capture',NULL); END IF;
    RAISE EXCEPTION 'Meter capture not found' USING ERRCODE='42501';
   END IF;
-  PERFORM app_private.meter_capture_scope_v1(p_organization_id,c.building_id,CASE p_action WHEN 'confirmCapture' THEN 'meter_readings.approve' WHEN 'finalizeCapture' THEN 'meter_readings.create' ELSE 'meter_readings.view' END);
+  -- Approval uses the same permission as approve_meter_reading_v1; there is no
+  -- separate meter_readings.approve action in the authorization catalog.
+  PERFORM app_private.meter_capture_scope_v1(p_organization_id,c.building_id,CASE p_action WHEN 'confirmCapture' THEN 'meter_readings.edit' WHEN 'finalizeCapture' THEN 'meter_readings.create' ELSE 'meter_readings.view' END);
   IF p_action='evidence' THEN
    RETURN jsonb_build_object('evidence',jsonb_build_object('captureId',c.id,
     'imageObjectKey',CASE WHEN c.mime_type LIKE 'image/%' THEN c.object_key ELSE app_private.meter_capture_selected_frame_v1(c.id)->>'objectKey' END,
