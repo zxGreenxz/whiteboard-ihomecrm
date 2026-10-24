@@ -45,6 +45,24 @@ export function parseCameraStates(value: unknown): CameraChannelObservation[] {
   });
 }
 
+export function parseCameraNames(text: string): Map<number, string> {
+  const names = new Map<number, string>();
+  const seen = new Set<number>();
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^table\.ChannelTitle\[(\d+)\]\.Name=(.*)$/u.exec(line);
+    if (!match) continue;
+    const index = Number(match[1]);
+    const rawName = match[2]!;
+    if (!Number.isInteger(index) || index < 0 || index > 255 || seen.has(index)
+      || [...rawName].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new CameraClientError("INVALID_RESPONSE");
+    seen.add(index);
+    const name = [...rawName.trim()].slice(0, 128).join("");
+    if (name) names.set(index + 1, name);
+  }
+  if (seen.size === 0) throw new CameraClientError("INVALID_RESPONSE");
+  return names;
+}
+
 export function parseCameraStorage(text: string): CameraDiskObservation[] {
   const rows = new Map<string, Map<string, string>>();
   for (const line of text.split(/\r?\n/u)) {
@@ -252,11 +270,20 @@ export class DahuaClient {
     } finally { clearTimeout(timer); }
   }
 
+  async readChannelNames(): Promise<Map<number, string>> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.digestGet("/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle", controller.signal);
+      return parseCameraNames(await this.boundedBody(response));
+    } finally { clearTimeout(timer); }
+  }
+
   async poll(): Promise<CameraSnapshot> {
     const snapshot: CameraSnapshot = { observedAt: this.now().toISOString(), status: "UNKNOWN", channels: [], storage: [], eventCoverage: "STATE_POLLING_ONLY", issues: [] };
     let session: string | number | undefined;
     let loggedIn = false;
-    let phase: "login" | "channels" | "storage" = "login";
+    let phase: "login" | "channels" | "storage" | "names" = "login";
     try {
       session = await this.login();
       loggedIn = true;
@@ -271,6 +298,18 @@ export class DahuaClient {
       }
       phase = "storage";
       snapshot.storage = await this.readStorage();
+      phase = "names";
+      try {
+        const names = await this.readChannelNames();
+        snapshot.channels = snapshot.channels.map((channel) => {
+          const name = names.get(channel.channel);
+          return name ? { ...channel, name } : channel;
+        });
+      } catch (error) {
+        if (error instanceof CameraClientError && error.code === "AUTH_DENIED") throw error;
+        // Optional labels must not erase measured channel/storage health.
+        snapshot.issues.push("DEVICE_RESPONSE_INVALID");
+      }
       snapshot.status = "ONLINE";
       if (snapshot.channels.some((channel) => channel.state === "UNKNOWN")) {
         snapshot.issues.push("CHANNEL_STATUS_UNAVAILABLE");

@@ -9,6 +9,8 @@ export type CameraIssue = (typeof CAMERA_ISSUES)[number];
 export interface CameraChannelObservation {
   /** User-facing number. Device indexes are converted exactly once at the boundary. */
   channel: number;
+  /** Recorder-configured ChannelTitle, bounded to the ingestion label limit. */
+  name?: string;
   state: CameraChannelState;
 }
 
