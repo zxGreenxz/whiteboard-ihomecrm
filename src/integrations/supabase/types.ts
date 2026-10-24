@@ -25661,6 +25661,14 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_expense_category_pick_v1: {
+        Args: {
+          p_category: string
+          p_content: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       hermes_expense_write_v1: {
         Args: {
           p_action: string
@@ -26745,6 +26753,10 @@ export type Database = {
           title: string
         }[]
       }
+      job_type_building_like_v1: {
+        Args: { p_name: string; p_organization_id: string }
+        Returns: boolean
+      }
       job_types_list_v1: {
         Args: { p_organization_id: string }
         Returns: {
@@ -27418,6 +27430,57 @@ export type Database = {
           total_quantity: number
           usage_date: string
         }[]
+      }
+      meter_capture_claim_v1: { Args: { p_worker_id: string }; Returns: Json }
+      meter_capture_complete_v1: {
+        Args: { p_job_id: string; p_lease_token: string; p_result: Json }
+        Returns: Json
+      }
+      meter_capture_evidence_receipt_v1: {
+        Args: {
+          p_job_id: string
+          p_lease_token: string
+          p_object_key: string
+          p_sha256: string
+          p_timestamp_seconds: number
+        }
+        Returns: undefined
+      }
+      meter_capture_exit_v1: {
+        Args: {
+          p_arguments: Json
+          p_organization_id: string
+          p_rpc_name: string
+          p_sources: Json
+        }
+        Returns: Json
+      }
+      meter_capture_invoice_v1: {
+        Args: { p_arguments: Json; p_organization_id: string; p_sources: Json }
+        Returns: Json
+      }
+      meter_capture_media_receipt_v1: {
+        Args: {
+          p_capture_id: string
+          p_duration_seconds?: number
+          p_mime_type: string
+          p_object_key: string
+          p_sha256: string
+          p_size_bytes: number
+        }
+        Returns: Json
+      }
+      meter_capture_storage_allowed_v1: {
+        Args: { p_name: string; p_write?: boolean }
+        Returns: boolean
+      }
+      meter_capture_v1: {
+        Args: { p_action: string; p_organization_id: string; p_payload?: Json }
+        Returns: Json
+      }
+      meter_capture_worker_context_v1: {
+        Args: { p_job_id: string; p_lease_token: string }
+        Returns: Json
       }
       meter_readings_plan_v1: {
         Args: {
