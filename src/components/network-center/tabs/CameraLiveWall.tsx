@@ -23,7 +23,7 @@ function LiveTile({ recorderId, channel, name }: { recorderId: string; channel: 
     <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm"><strong>{name}</strong><span aria-live="polite">{state === "playing" ? "● Trực tiếp" : state === "connecting" ? "Đang kết nối" : "Chưa có hình"}</span></div>
     <div className="relative aspect-video group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 group-[:fullscreen]/live-wall:aspect-auto">
       <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${state === "playing" ? "" : "invisible"}`} aria-label={`Video ${name}`} />
-      {state !== "playing" && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black p-3 text-center text-sm"><p>{message || "Đang kết nối camera…"}</p>{state === "error" && <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Xem lại</Button>}</div>}
+      {state !== "playing" && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black p-3 text-center text-sm"><p>{message || "Đang kết nối camera…"}</p>{state === "error" && <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Kết nối lại</Button>}</div>}
     </div>
   </article>;
 }

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { z } from "zod";
+import { pipeline } from "node:stream/promises";
+import type { Readable } from "node:stream";
+import type { ArchiveJobs } from "./cameraArchive.js";
+import { validateCameraOrigin } from "./cameraConfig.js";
 
 const uuid = z.string().uuid();
 export const liveConfigSchema = z.object({
@@ -12,9 +16,16 @@ export const liveConfigSchema = z.object({
     channels: z.array(z.number().int().min(1).max(64)).min(1).max(64),
     rtspOrigin: z.string().regex(/^rtsp:\/\/(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}):\d{1,5}$/u),
     username: z.string().min(1).max(128), password: z.string().min(1).max(512),
+    archiveEnabled: z.boolean().optional(),
+    archiveOrigin: z.string().optional(),
   }).strict()).min(1).max(32),
 }).strict().superRefine((config, ctx) => {
   if (new Set(config.recorders.map((r) => r.id)).size !== config.recorders.length) ctx.addIssue({ code: "custom", message: "Duplicate recorder" });
+  for (const recorder of config.recorders) {
+    try {
+      if (recorder.archiveEnabled || recorder.archiveOrigin !== undefined) validateCameraOrigin(recorder.archiveOrigin ?? "");
+    } catch { ctx.addIssue({ code: "custom", message: "Private archive origin required" }); }
+  }
   for (const origin of config.origins) {
     const u = new URL(origin);
     if (u.origin !== origin || u.protocol !== "https:") ctx.addIssue({ code: "custom", message: "HTTPS origins required" });
@@ -174,8 +185,9 @@ function reply(response: ServerResponse, status: number, data: unknown) {
   response.end(JSON.stringify(data));
 }
 
-export function createLiveServer(config: LiveConfig, dependencies: LiveDependencies) {
+export function createLiveServer(config: LiveConfig, dependencies: LiveDependencies, archive?: { jobs: ArchiveJobs; open(id: string): Readable }) {
   const sessions = new LiveSessions(dependencies);
+  const downloads = new Set<string>();
   let pending = 0; let windowStart = Date.now(); let requests = 0;
   const server = createServer({ maxHeaderSize: 12288, requestTimeout: 20_000, headersTimeout: 10_000 }, async (request, response) => {
     if (Date.now() - windowStart >= 10_000) { windowStart = Date.now(); requests = 0; }
@@ -192,13 +204,52 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       const path = request.url ?? "";
       const recorderRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})(?:\/channels\/(\d+)\/sessions)?$/u.exec(path);
       const sessionRoute = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})(\/renew)?$/u.exec(path);
+      const archiveCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/archive$/u.exec(path);
+      const archiveJob = /^\/camera-live\/v1\/archive\/([a-f0-9-]{36})(\/file)?$/u.exec(path);
+      if (archiveCreate || archiveJob) {
+        if (!archive) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
+        if (archiveCreate && request.method === "POST") {
+          if (request.headers["content-type"] !== "application/json") throw new LiveError(415, "JSON_REQUIRED");
+          const recorder = config.recorders.find((r) => r.id === archiveCreate[1]);
+          if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
+          let value: unknown;
+          try { value = JSON.parse(await requestBody(request)); } catch { throw new LiveError(400, "INVALID_ARCHIVE_RANGE"); }
+          const actor = await dependencies.authorize(token, recorder);
+          const job = await archive.jobs.create(actor, recorder, Number(archiveCreate[2]), value);
+          if (response.destroyed) { await archive.jobs.stop(job.id, token); return; }
+          reply(response, 202, job); return;
+        }
+        if (archiveJob) {
+          const id = archiveJob[1]!;
+          if (request.method === "GET" && !archiveJob[2]) { reply(response, 200, await archive.jobs.get(id, token)); return; }
+          if (request.method === "DELETE" && !archiveJob[2]) { await archive.jobs.stop(id, token); reply(response, 200, { stopped: true }); return; }
+          if (request.method === "GET" && archiveJob[2]) {
+            if (downloads.size >= 2 || downloads.has(id)) throw new LiveError(429, "ARCHIVE_BUSY");
+            downloads.add(id);
+            const abort = new AbortController();
+            const disconnected = () => abort.abort(); response.once("close", disconnected);
+            let checking = false;
+            const check = setInterval(() => {
+              if (checking) return; checking = true;
+              void archive.jobs.get(id, token).catch(() => abort.abort()).finally(() => { checking = false; });
+            }, 25000);
+            try {
+              const job = await archive.jobs.file(id, token);
+              response.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": job.bytes!, "Content-Disposition": `attachment; filename="${job.filename}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+              await pipeline(archive.open(id), response, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(120_000)]) });
+            } finally { clearInterval(check); response.removeListener("close", disconnected); downloads.delete(id); }
+            return;
+          }
+        }
+        throw new LiveError(404, "NOT_FOUND");
+      }
       if (recorderRoute) {
         const recorder = config.recorders.find((r) => r.id === recorderRoute[1]);
         if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
           await dependencies.authorize(token, recorder);
-          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000 }); return;
+          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, archive: Boolean(archive && recorder.archiveEnabled) }); return;
         }
         if (channel && request.method === "POST") {
           if (request.headers["content-type"] !== "application/sdp") throw new LiveError(415, "SDP_REQUIRED");
@@ -216,10 +267,11 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       throw new LiveError(404, "NOT_FOUND");
     } catch (error) {
       if (!response.headersSent && !response.destroyed) reply(response, error instanceof LiveError ? error.status : 503, { code: error instanceof LiveError ? error.code : "CAMERA_UNAVAILABLE" });
+      else if (!response.destroyed) response.destroy();
     } finally { pending--; }
   });
   server.maxConnections = 96; server.keepAliveTimeout = 5000;
-  const timer = setInterval(() => { void sessions.expire(); }, 1000); timer.unref();
-  server.on("close", () => { clearInterval(timer); void sessions.closeAll(); });
+  const timer = setInterval(() => { void sessions.expire(); void archive?.jobs.expire(); }, 1000); timer.unref();
+  server.on("close", () => { clearInterval(timer); void sessions.closeAll(); void archive?.jobs.closeAll(); });
   return { server, sessions };
 }
