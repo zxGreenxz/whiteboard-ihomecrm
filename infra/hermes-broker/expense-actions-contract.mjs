@@ -49,7 +49,8 @@ export const EXPENSE_CANCEL = defineAction({ id: 'expense.cancel', page: 'expens
 // income_expenses.approve (Q25). post mặc định true; chưa có ảnh / không giữ sổ ⇒ SQL hạ "chỉ duyệt" và nói rõ trong bản xem trước (TC4).
 export const EXPENSE_APPROVE_MAX = 10;
 export const EXPENSE_APPROVE = defineAction({ id: 'expense.approve', page: 'expense', key: 'income_expenses.approve_vouchers', class: 'money', rpc: EXPENSE_RPC,
-  title: 'Duyệt phiếu CHI (≤ 10 mã; post=false chỉ duyệt, mặc định duyệt và chi)',
+  // Lượt 14: mã trùng giữa các toà ⇒ dùng voucherId của dòng báo cáo expense_vouchers (SQL 20261024120211 nhận UUID).
+  title: 'Duyệt phiếu CHI (≤ 10 mã hoặc voucherId của báo cáo expense_vouchers; post=false chỉ duyệt, mặc định duyệt và chi)',
   params: { voucherCodes: param.list(param.name('voucher'), { min: 1, max: EXPENSE_APPROVE_MAX }), post: param.bool({ optional: true }) },
   reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'evidence_required', 'cashbook_not_held', 'period_locked', 'not_allowed', 'state_changed'] });
 

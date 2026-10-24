@@ -17,11 +17,13 @@ import { randomUUID } from 'node:crypto';
 import { BrokerError, actionItem, actionRejected, itemDetail, ACTION_WEB_LINK } from './broker.mjs';
 import { ACTION_ID, canonicalJson, validateActionParams } from './action-catalog.mjs';
 import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
-import { ACTION_TOOL_SHAPE, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired, listedActionTools,
-  nameUnresolvedDetail, needsInput } from './action-contract.mjs';
+import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired,
+  listedActionTools, nameUnresolvedDetail, needsInput } from './action-contract.mjs';
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
 
 const fail = code => { throw new BrokerError(code); };
+// confirmation_invalid kèm câu tĩnh nói phần nào lệch (Thu chi lượt 14; action-contract.mjs CONFIRM_INVALID_DETAILS).
+const invalidConfirm = why => { const error = new BrokerError('confirmation_invalid'); error.detail = CONFIRM_INVALID_DETAILS[why]; throw error; };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const data = value => plain(value) && Reflect.ownKeys(value).every(key => typeof key === 'string' &&
@@ -37,10 +39,18 @@ const candidatesOf = value => Array.isArray(value) && value.length <= 8 && value
 // cỡ (trần mặc định 16 384 B) — kết cục "đã ghi" luôn tới được mô hình.
 export const APPLIED_RESULT_MAX_BYTES = 8_192;
 const fitsApplied = result => Buffer.byteLength(JSON.stringify(result)) <= APPLIED_RESULT_MAX_BYTES;
+// Thu chi lượt 14 (nghiệm thu 24/10, TEST): lượt đồng ý gửi lệnh ghi khi trần cả lời gọi (callTimeoutMs) đã gần cạn — xác thực / dựng
+// quyền chậm 5,6–8,4 s ⇒ lệnh ghi bị cắt giữa chừng ⇒ action_outcome_unknown dù SQL lùi. Lượt đồng ý chỉ gửi khi còn ít nhất phần này
+// của trần (15 s ⇒ 11,25 s: đủ cho kiểm quyền lần hai + statement_timeout 8 s của vai authenticated, để lỗi SQL — 57014 / 55P03, giao dịch
+// đã lùi — về trước khi broker tự cắt); không đủ ⇒ timeout TRƯỚC khi đổi token (chưa gửi gì, token còn dùng lại được trong hạn).
+export const APPLY_MIN_REMAINING_SHARE = 0.75;
 
-export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live } = {}) {
+export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live, applyBudgetMs } = {}) {
   if (!catalog || typeof catalog.get !== 'function' || ['prepareAction', 'finalizeAction'].some(key => typeof service?.[key] !== 'function') ||
-      typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function')) throw new TypeError('invalid_action_runtime');
+      typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function') ||
+      !(applyBudgetMs === undefined || (Number.isSafeInteger(applyBudgetMs) && applyBudgetMs >= 1000 && applyBudgetMs <= 30_000))) throw new TypeError('invalid_action_runtime');
+  // applyBudgetMs (lượt 14): trần cả lời gọi của broker; không truyền ⇒ không chặn theo thời gian (như cũ).
+  const applyTooLate = plan => applyBudgetMs !== undefined && clock() - plan.startedAt > applyBudgetMs * (1 - APPLY_MIN_REMAINING_SHARE);
   // live (Đợt 2b): danh mục thao tác SỐNG phía SQL (createActionLiveCatalog). Có thì thao tác chỉ được quảng bá / chạy khi SQL đã có
   // dòng của nó (connector mới + DB cũ ⇒ không hiện, không nghỉ hưu tool cũ); không truyền ⇒ như cũ (mọi thao tác của danh mục).
   const alive = id => live === undefined || live.has(id);
@@ -78,7 +88,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     knows: id => catalog.get(id) !== null && alive(id),
     /** Đồng bộ, trước admission: tách confirmToken (chỉ ở run) và kiểm phong bì. Không đọc gì của CRM. */
     begin(route, args) {
-      const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null };
+      const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null, startedAt: clock() };
       let rest = args;
       if (route.op === 'run') {
         const split = splitConfirmField(args);
@@ -91,7 +101,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     async handle(plan, token, identity, signal) {
       if (!anyUsable(identity.effective)) fail('tool_not_available');
       if (plan.invalid) fail('invalid_request');
-      if (plan.tokenInvalid) fail('confirmation_invalid');
+      if (plan.tokenInvalid) invalidConfirm('unknown');
       if (plan.op === 'list') return content({ organizationId: identity.row.organizationId, fetchedAt: new Date(clock()).toISOString(),
         items: catalog.listing(identity.effective, plan.page).filter(item => alive(item.action)) });
       if (plan.op === 'status') {
@@ -108,9 +118,11 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       plan.params = checked.value; plan.class = action.class;
       let request;
       if (plan.confirmToken !== undefined) {
-        if (plan.requestId === undefined) fail('confirmation_invalid');
+        if (plan.requestId === undefined) invalidConfirm('missing_request');
+        if (applyTooLate(plan)) fail('timeout');
         const redeemed = confirms.redeem(plan.confirmToken, binding(identity.row.id, action.id, plan.params, plan.requestId));
-        if (!redeemed.ok) fail('confirmation_invalid');
+        if (!redeemed.ok) invalidConfirm(redeemed.why === 'expired' ? 'expired' : redeemed.why !== 'mismatch' ? 'unknown'
+          : redeemed.payload?.requestId !== plan.requestId ? 'request' : redeemed.payload?.params !== canonicalJson(plan.params) ? 'params' : 'unknown');
         plan.phase = 'apply';
         request = { op: 'run', action: action.id, phase: 'apply', requestId: plan.requestId, params: plan.params,
           resolved: redeemed.payload.resolved, basis: redeemed.payload.basis };
@@ -160,7 +172,8 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // 'auto' chỉ trả bản xem trước khi cần xác nhận (không cần thì SQL đã ghi và trả applied).
         if (plan.phase === 'auto' && outcome.confirm !== 'required') fail('backend_unavailable');
         const issued = confirms.issue(binding(identity.row.id, plan.action, plan.params, plan.requestId),
-          { resolved: structuredClone(outcome.resolved), basis: outcome.basis });
+          // requestId / params (lượt 14): chỉ để nói phần lệch khi token bị trình sai (không gửi xuống SQL, không tới mô hình).
+          { resolved: structuredClone(outcome.resolved), basis: outcome.basis, requestId: plan.requestId, params: canonicalJson(plan.params) });
         return known(content(confirmationRequired({ action: plan.action, requestId: plan.requestId, preview: outcome.preview, warnings: outcome.warnings ?? [],
           confirmToken: issued.token, expiresAt: issued.expiresAt })));
       }

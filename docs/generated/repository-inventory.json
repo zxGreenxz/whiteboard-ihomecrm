@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1698,
   "soFileDocBangFs": 439,
-  "tongLoiGoi": 1102,
+  "tongLoiGoi": 1103,
   "khongPhanLoaiDuoc": 491,
   "theoLoai": {
     "ma-nguon": {
@@ -196,6 +196,14 @@
       "khongPhanLoaiDuoc": 11
     },
     {
+      "file": "infra/hermes-broker/wave2-b.test.mjs",
+      "soGoi": 10,
+      "loai": {
+        "sql": 9
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
       "soGoi": 10,
       "loai": {
@@ -219,14 +227,6 @@
         "sql": 8
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "infra/hermes-broker/wave2-b.test.mjs",
-      "soGoi": 9,
-      "loai": {
-        "sql": 8
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
