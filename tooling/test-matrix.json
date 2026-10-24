@@ -1075,6 +1075,8 @@
         "supabase/migrations/*_meter_readings_v2.sql",
         "supabase/migrations/*_hermes_invoice_edit_v1.sql",
         "supabase/migrations/*_invoice_adjustment_build_v1.sql",
+        "supabase/migrations/*_meter_readings_plan_previous_period_v1.sql",
+        "supabase/migrations/*_hermes_invoice_collect_v2.sql",
         "supabase/migrations/*_hermes_w2a_invoice_shared_v1.sql",
         "infra/hermes-broker/meter-trigger-bodies.json",
         "infra/hermes-broker/invoice-writer-bodies.json",

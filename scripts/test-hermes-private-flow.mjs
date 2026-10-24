@@ -534,6 +534,14 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v2',
     sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
     statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
+  // Hợp đồng lượt 11 / 11b (nghiệm thu 24/10, 20261024040001): lõi giải tên v1 dựng lại từ thân 20261023185114 (danh xưng, #304), lõi v2
+  // từ thân production 044120, cả hai + bậc khớp token số nhà + tên đường ở khối toà; vẫn plpgsql INVOKER, chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: '5465cf77e24ae039c9efa6c9d2034a11d6a812db30204abc0b1ae858d90d0f8c' },
+  { name: 'app_private.hermes_write_name_resolve_core_v2',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: '0c74fb34de4f13ca7553fd50fc16c50ffafce1b6893734aad191547cf6ab3950' },
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
     statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
@@ -590,6 +598,10 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql',
     statementSha256: '24330ef538886274f374bad58928bef6fbfeb3e43afe9faed8c435f323f61164' },
+  // Lượt 8 (20261024041712): tra cứu thu tiền v2 = bản chép v1 (nhãn hoá đơn thanh lý) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_lookup_core_v2',
+    sourcePath: 'supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql',
+    statementSha256: '43e2ca0758249dd50413475c4bb0e361a7bf57c677730df9164067fe7159567e' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

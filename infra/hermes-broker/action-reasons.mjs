@@ -21,6 +21,8 @@ export const ACTION_REASONS = Object.freeze({
   date_out_of_range: reason('needs_input', 'fix', 'Ngày không hợp lệ (ngoài khoảng cho phép hoặc ở tương lai); hỏi lại người dùng ngày.'),
   not_found: reason('needs_input', 'fix', 'Không tìm thấy đối tượng này trong phạm vi quyền của anh/chị; hỏi lại người dùng.'),
   action_disabled: reason('rejected', 'never', 'Thao tác này chưa được bật cho kết nối.'),
+  // Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối nhưng người dùng chưa được cấp quyền CRM tương ứng (khác action_disabled).
+  forbidden: reason('rejected', 'never', 'Anh/chị chưa có quyền CRM cho thao tác này; nhờ chủ hoặc quản trị cấp quyền trong Phân quyền rồi thử lại.'),
   not_allowed: reason('rejected', 'never', 'Anh/chị không có quyền làm thao tác này ở toà này.'),
   private_chat_only: reason('rejected', 'never', 'Lệnh ghi chỉ nhận trong chat riêng.'),
   state_changed: reason('rejected', 'preview', 'Dữ liệu vừa đổi sau bản xem trước; cần xem trước lại.'),
@@ -102,7 +104,9 @@ function invoiceReasons() {
     overpay_needs_choice: reason('needs_input', 'fix', 'Khách trả dư; hỏi người dùng giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return).'),
     invoice_not_collectible: reason('rejected', 'never', 'Hoá đơn nháp hoặc đã huỷ, không thu tiền được.'),
     credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
-    receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
+    receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này (chuyển khoản / POS); nhờ chủ cài ở Sổ nhận tiền trên web.'),
+    // Lượt 8 (nghiệm thu 24/10): toà ĐÃ cài sổ nhận mà người hỏi không giữ/biết sổ nào — luật giữ sổ của hàm thu web, không phải thiếu cài đặt.
+    receiving_book_not_held: reason('rejected', 'never', 'Anh/chị chưa được giao (giữ hoặc biết) sổ nhận chuyển khoản / POS nào của toà này nên chưa ghi thu được; nhờ chủ giao sổ, hoặc để người giữ sổ ghi.'),
     reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
     // Mốc 4 — ghi chỉ số: bốn mã hỏi lại người dùng, hai mã chỉ đường web.
     meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),

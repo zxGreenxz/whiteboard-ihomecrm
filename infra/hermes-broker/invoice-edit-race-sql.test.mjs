@@ -36,7 +36,7 @@ test('PG17 hai kết nối: bốn hàm ghi web và Hermes trên cùng hoá đơn
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
   t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); cleanup(); });
-  const { editRun, editApply } = await invoiceSetup(t, { database: db, edit: true });
+  const { editRun, editApply } = await invoiceSetup(t, { database: db, edit: true, l8: true });
   const [hermesPid, webPid] = await Promise.all([hermes, web].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   // Kết nối đang chờ khoá; trả các bảng có khoá dòng (tuple) nó đang xếp hàng.
   const blocked = async pid => {

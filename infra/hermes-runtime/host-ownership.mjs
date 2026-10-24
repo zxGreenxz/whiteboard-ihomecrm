@@ -31,7 +31,7 @@ export const AUDIT_CODES = Object.freeze([...CODES]);
 // audit chỉ nhận trường reason khi code = action_rejected và reason thuộc tập này; audit-codes.test.mjs khoá tập bằng
 // ACTION_REJECT_REASONS cả hai chiều (thiếu mã ⇒ audit đỏ ⇒ broker đóng an toàn thành backend_unavailable — đúng lớp
 // sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
-const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
+const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
   // Thu chi (Đợt 2).
   'system_voucher', 'evidence_required',
@@ -41,7 +41,7 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   // Trang Công việc (Đợt 2b).
   'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
-  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
   // Hoá đơn (Mốc 4, ghi chỉ số).
   'meter_used_by_invoice', 'meter_has_later_reading',
   // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).
