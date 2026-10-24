@@ -18,12 +18,12 @@ export function mediaConfiguration(config: LiveConfig) {
   return {
     logLevel: "error", logDestinations: ["stdout"], dumpPackets: false,
     rtsp: false, rtmp: false, hls: false, srt: false, moq: false, playback: false,
-    api: false, metrics: false, pprof: false,
+    api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], metrics: false, pprof: false,
     webrtc: true, webrtcAddress: "127.0.0.1:18889", webrtcAllowOrigins: [],
     webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false,
     webrtcICEServers2: [{ url: "stun:stun.l.google.com:19302" }],
     webrtcHandshakeTimeout: "15s", webrtcSTUNGatherTimeout: "5s",
-    authInternalUsers: [{ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }] }],
+    authInternalUsers: [{ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }] }],
     paths,
   };
 }
