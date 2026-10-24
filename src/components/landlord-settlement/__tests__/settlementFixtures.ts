@@ -70,6 +70,26 @@ export function monthV3(over: Obj = {}, st: Obj = {}): SettlementMonth {
   });
 }
 
+const hd = (id: string, room: string): Obj => ({
+  id, room_id: room, status: 'ACTIVE', start_date: '2026-01-01', start_billing_date: null, end_date: null, actual_end_date: null,
+  contract_number: null,
+});
+const hoaDon = (id: string, contract: string, total: number, paid: number): Obj => ({
+  id, contract_id: contract, status: paid >= total ? 'PAID' : 'APPROVED', kind: 'MONTHLY', total_amount: total,
+  paid_amount: paid, remaining_amount: total - paid, is_overdue: false,
+});
+/** Dữ liệu phòng thô (mã tạm như server): 101, 102 đã đóng; PARIS 2 có hoá đơn chưa thu; MB trống. */
+export const ROOM_DATA_V3: Obj = {
+  rooms: [
+    { id: 'p1', name: '101', status: 'OCCUPIED' }, { id: 'p2', name: '102', status: 'OCCUPIED' },
+    { id: 'p3', name: 'PARIS 2', status: 'OCCUPIED' }, { id: 'p4', name: 'MB', status: 'AVAILABLE' },
+  ],
+  contracts: [hd('h1', 'p1'), hd('h2', 'p2'), hd('h3', 'p3')],
+  invoices: [hoaDon('d1', 'h1', 12_000_000, 12_000_000), hoaDon('d2', 'h2', 8_000_000, 8_000_000), hoaDon('d3', 'h3', 4_500_000, 0)],
+  terminations: [],
+  transfers: [],
+};
+
 export const closedMonth = (over: Obj = {}, st: Obj = {}) => monthV3({ status: 'CLOSED', closed: CLOSED_V3, can_close: false, ...over }, st);
 
 const thangTk = (period: string, p: Obj = {}): Obj => ({

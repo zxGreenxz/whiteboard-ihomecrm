@@ -15,7 +15,7 @@ vi.mock('@/hooks/useLandlordSettlement', () => ({
 vi.mock('sonner', () => ({ toast: { success: m.success, info: m.info, error: vi.fn(), warning: vi.fn() } }));
 
 import { SettlementScreen } from '../SettlementScreen';
-import { closedMonth, monthV3, overviewV3 } from './settlementFixtures';
+import { ROOM_DATA_V3, closedMonth, monthV3, overviewV3 } from './settlementFixtures';
 
 type Props = ComponentProps<typeof SettlementScreen>;
 const ve = (p: Partial<Props> = {}) => render(
@@ -99,6 +99,35 @@ it('Khoản chi: ô đầu dòng là bên chi — QL (quản lý / vận hành c
   expect(tiles).toContain('CN');
   // khoản thu vẫn ghi tên phòng
   expect(within(screen.getByTestId('settlement-income-card')).getAllByTestId('settlement-row-tile').every((x) => !['CN', 'QL'].includes(x.textContent ?? ''))).toBe(true);
+});
+
+it('Khoản thu hiện đủ phòng như Báo cáo LN: xếp MB → số → chữ, PARIS 2 "Chưa đóng", MB "Phòng trống"; lọc theo sổ thì ẩn ghi chú', () => {
+  for (const mode of ['admin', 'public'] as const) {
+    const p = mode === 'public' ? { buildingId: undefined, token: 'tok' } : {};
+    ve({ mode, ...p, month: monthV3({ room_data: ROOM_DATA_V3 }) });
+    const thu = within(screen.getByTestId('settlement-income-card'));
+    expect(thu.getAllByTestId('settlement-row-tile').map((x) => x.textContent)).toEqual(['MB', '101', '102', '103', 'PARIS 2']);
+    const ghiChu = thu.getAllByTestId('settlement-room-note');
+    expect(ghiChu.map((x) => x.getAttribute('data-tone'))).toEqual(['vacant', 'unpaid']);
+    expect(tien(ghiChu[0])).toMatch(/Phòng trống.*Trống phòng/);
+    expect(tien(ghiChu[1])).toMatch(/Chưa đóng.*Có hoá đơn, chưa thu 4\.500\.000 đ/);
+    // ghi chú không phải phiếu: số khoản và tổng giữ nguyên
+    expect(thu.getByText('3 khoản')).toBeTruthy();
+    expect(tien(thu.getByTestId('settlement-list-total'))).toBe('23.000.000 đ');
+    fireEvent.click(screen.getByRole('button', { name: /Chủ nhà nhận/ }));
+    expect(within(screen.getByTestId('settlement-income-card')).queryAllByTestId('settlement-room-note')).toHaveLength(0);
+    cleanup();
+  }
+  // server cũ (không có room_data) ⇒ như trước, không ghi chú
+  ve();
+  expect(within(screen.getByTestId('settlement-income-card')).queryAllByTestId('settlement-room-note')).toHaveLength(0);
+  cleanup();
+  // tháng đã chốt: khớp ảnh chốt thì vẫn ghi; có phiếu đổi sau chốt (ghi chú sống lệch ảnh chốt) thì ẩn
+  ve({ month: closedMonth({ room_data: ROOM_DATA_V3 }) });
+  expect(within(screen.getByTestId('settlement-income-card')).getAllByTestId('settlement-room-note')).toHaveLength(2);
+  cleanup();
+  ve({ month: closedMonth({ room_data: ROOM_DATA_V3, is_stale: true }) });
+  expect(within(screen.getByTestId('settlement-income-card')).queryAllByTestId('settlement-room-note')).toHaveLength(0);
 });
 
 it('"Theo hạng mục" mặc định THU GỌN ở cả hai thẻ (hai cột thẳng hàng); bấm ở một thẻ thì mở / đóng CẢ HAI', () => {

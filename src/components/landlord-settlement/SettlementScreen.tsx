@@ -127,7 +127,11 @@ export function SettlementScreen({
       <>
         {stale}
         <div role="tabpanel" id={PANEL_ID} aria-labelledby={`${PANEL_ID}-${tab}`} className="min-w-0">
-          {tab === 'thuchi' && <SettlementCashTab key={monthKey(month.period_month)} st={st} mode={mode} narrow={narrow} />}
+          {tab === 'thuchi' && (
+            // ghi chú phòng là dữ liệu sống: tháng đã chốt mà phiếu đổi sau chốt thì không khớp ảnh chốt ⇒ ẩn
+            <SettlementCashTab key={monthKey(month.period_month)} st={st} mode={mode} narrow={narrow}
+              roomData={month.status === 'CLOSED' && month.is_stale ? null : month.room_data} />
+          )}
           {tab === 'quyettoan' && (
             <SettlementStatementCard month={month} mode={mode} onRequestDepositHolder={onRequestDepositHolder}
               holderLockedSince={overview.months.find((m) => m.status === 'CLOSED')?.period_month ?? null}

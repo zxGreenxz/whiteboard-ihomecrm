@@ -265,6 +265,51 @@ export const kqkdBridgeSchema = z.object({
 });
 export type KqkdBridge = z.infer<typeof kqkdBridgeSchema>;
 
+/**
+ * Dữ liệu THÔ cho ghi chú phòng (phòng chưa đóng / trống / HĐ chưa thanh lý) của toà × tháng — server chép bộ
+ * lọc của useVacantRoomNotes, id thay bằng mã tạm trong gói; luật ở src/lib/vacantRoomNotes.ts. Sống (không vào
+ * ảnh chốt); server cũ / tháng chưa áp dụng ⇒ null.
+ */
+const amountLike = z.union([z.number(), z.string()]).nullable();
+export const settlementRoomDataSchema = z.object({
+  rooms: z.array(z.object({ id: z.string(), name: z.string().nullable(), status: z.string().nullable() })),
+  contracts: z.array(z.object({
+    id: z.string(),
+    room_id: z.string().nullable(),
+    status: z.string(),
+    start_date: z.string().nullable(),
+    start_billing_date: z.string().nullable(),
+    end_date: z.string().nullable(),
+    actual_end_date: z.string().nullable(),
+    /** Link chủ nhà: null. */
+    contract_number: z.string().nullable(),
+  })),
+  invoices: z.array(z.object({
+    id: z.string(),
+    contract_id: z.string(),
+    status: z.string(),
+    kind: z.string().nullable(),
+    total_amount: amountLike,
+    paid_amount: amountLike,
+    remaining_amount: amountLike,
+    is_overdue: z.boolean().nullable(),
+  })),
+  terminations: z.array(z.object({
+    contract_id: z.string(),
+    termination_type: z.string().nullable(),
+    termination_date: z.string().nullable(),
+    actual_move_out_date: z.string().nullable(),
+    status: z.string().nullable(),
+  })),
+  transfers: z.array(z.object({
+    old_room_id: z.string().nullable(),
+    transfer_type: z.string().nullable(),
+    transfer_date: z.string().nullable(),
+    status: z.string().nullable(),
+  })),
+});
+export type SettlementRoomData = z.infer<typeof settlementRoomDataSchema>;
+
 export const settlementMonthSchema = z.object({
   building_name: z.string(),
   landlord_name: z.string(),
@@ -293,6 +338,7 @@ export const settlementMonthSchema = z.object({
    * tháng OPEN / server cũ ⇒ null = CHƯA xác nhận.
    */
   confirmation: z.object({ confirmed_at: z.string(), note: newText }).nullish().transform((v) => v ?? null),
+  room_data: settlementRoomDataSchema.nullish().transform((v) => v ?? null),
 });
 export type SettlementMonth = z.infer<typeof settlementMonthSchema>;
 
