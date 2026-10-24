@@ -177,6 +177,11 @@ export function createHandler(dependencies: Dependencies = {}) {
       const organizationId = requiredString(body.organizationId, UUID);
       if (body.action === 'rpc') {
         const action = requiredString(body.rpcAction); if (!USER_ACTIONS.has(action) || !object(body.payload)) throw new RequestError(400, 'unsupported_action');
+        // Do not activate evidence-only meters before their decoder is configured.
+        // Existing evidence and financial readers remain available during rollout.
+        if (['catalog', 'profile', 'rotateQr', 'startCapture'].includes(action) && (env('METER_CAPTURE_WORKER_TOKEN') ?? '').length < 32) {
+          throw new RequestError(503, 'meter_capture_reader_not_enabled');
+        }
         return response(200, await enrich(await userRpc(action, organizationId, body.payload)));
       }
       if (body.action === 'invoice' || body.action === 'exit') {

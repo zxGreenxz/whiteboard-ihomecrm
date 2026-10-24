@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T01:37:31.858Z",
+  "generatedAt": "2026-10-24T03:23:08.992Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 869,
-    "unknown": 84,
+    "ledger-applied": 873,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13142,14 +13142,9 @@
       "name": "meter_capture_evidence_v1",
       "scheme": "timestamp14",
       "sha256": "c94769291a2234b0fa7a47045b3d735a6d6b71101ca9756ad56768267e8827d2",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.meter_capture_profiles",
-        "table:app_private.meter_capture_profile_history",
-        "table:app_private.meter_captures",
-        "table:app_private.meter_capture_jobs",
-        "table:app_private.meter_capture_results"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T03:13:27.734Z|bien-nhan-backup"
       ]
     },
     {
@@ -13433,13 +13428,9 @@
       "name": "meter_capture_sol_review",
       "scheme": "timestamp14",
       "sha256": "9776dc5f420b1b6baef66459ed58e71a3e7bfdb13e3d67ab8c7063970ec50434",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.meter_capture_previous_value_v1",
-        "function:app_private.meter_capture_evidence_frames_v1",
-        "function:app_private.meter_capture_json_v1",
-        "function:public.meter_capture_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T03:16:34.379Z|bien-nhan-backup"
       ]
     },
     {
@@ -13448,14 +13439,9 @@
       "name": "meter_capture_invoice_facts_guard",
       "scheme": "timestamp14",
       "sha256": "8bb763093eccb416e2941ab36197642aa8460e2ce5f874ccfdeedef2b79d2547",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.meter_capture_invoice_facts",
-        "function:app_private.meter_capture_invoice_scope_v1",
-        "function:app_private.meter_capture_invoice_line_v1",
-        "function:app_private.meter_capture_snapshot_invoice_link_v1",
-        "function:app_private.meter_capture_assert_invoice_facts_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T03:19:39.200Z|bien-nhan-backup"
       ]
     },
     {
@@ -13464,14 +13450,9 @@
       "name": "meter_capture_correction_chain",
       "scheme": "timestamp14",
       "sha256": "349953548bb4aadeb816bdd0ecbcbf576149a5170307b3a9ab1f7756bd808e91",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.meter_capture_is_retirement_v1",
-        "function:app_private.meter_capture_approved_writer_v1",
-        "function:app_private.meter_capture_reading_guard_v1",
-        "function:app_private.meter_capture_replacement_v1",
-        "function:app_private.meter_capture_previous_value_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T03:22:04.523Z|bien-nhan-backup"
       ]
     },
     {

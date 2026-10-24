@@ -14,6 +14,11 @@ const capture = { id: id(5), clientId: input.clientId, orgId: input.orgId, meter
 const reply = (data: unknown) => ({ data, error: null });
 beforeEach(() => { vi.resetAllMocks(); });
 describe('media receipt boundary', () => {
+  it('explains a staged rollout without uploading or activating a capture', async () => {
+    io.invoke.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ error: 'meter_capture_reader_not_enabled' }), { status: 503 }) } });
+    await expect(submitMeterCapture(input)).rejects.toThrow('Tiếp tục ghi chỉ số theo cách hiện tại');
+    expect(io.upload).not.toHaveBeenCalled();
+  });
   it('keeps zero-usage settlement evidence even when no charge line exists on the invoice', async () => {
     io.invoke.mockResolvedValueOnce(reply({ sources: [{ meterId: id(3), meterName: 'Điện phòng A', sortOrder: null,
       startCaptureId: id(4), endCaptureId: id(5), previousReading: '120.25', currentReading: '120.25' }] }));

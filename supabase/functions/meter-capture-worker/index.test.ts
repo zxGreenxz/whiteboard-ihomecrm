@@ -32,6 +32,24 @@ Deno.test('worker bearer is separate from user JWT and bad bearer never touches 
   equal((await handler(request({ workerId: 'cpu1' }, '/worker/claim'))).status, 403);
   equal(calls.length, 0);
 });
+Deno.test('staged rollout blocks new registration and collection before any RPC when decoder is unconfigured', async () => {
+  for (const token of ['', 'too-short']) {
+    let calls = 0;
+    const handler = createHandler({ env: key => key === 'METER_CAPTURE_WORKER_TOKEN' ? token : values[key], fetch: () => { calls++; throw new Error('must not call'); } });
+    for (const rpcAction of ['catalog', 'profile', 'rotateQr', 'startCapture']) {
+      const result = await handler(request({ action: 'rpc', organizationId: ORG, rpcAction, payload: {} }));
+      equal(result.status, 503); equal(await result.json(), { error: 'meter_capture_reader_not_enabled' });
+    }
+    equal(calls, 0);
+  }
+});
+Deno.test('staged rollout still authorizes existing evidence reads with the user JWT', async () => {
+  const handler = createHandler({ env: key => key === 'METER_CAPTURE_WORKER_TOKEN' ? undefined : values[key], fetch: (_input, init) => {
+    equal(new Headers(init?.headers).get('authorization'), 'Bearer user-jwt');
+    return Promise.resolve(json({ code: '42501' }, 403));
+  } });
+  equal((await handler(request({ action: 'rpc', organizationId: ORG, rpcAction: 'getCapture', payload: { captureId: CAPTURE } }))).status, 403);
+});
 Deno.test('worker claim reaches only scoped RPC; empty queue stays null', async () => {
   const { handler, calls } = harness(call => { assert(call.url.endsWith('/rpc/meter_capture_claim_v1')); equal(call.auth, 'Bearer fixture-service-role'); return json(null); });
   const result = await handler(request({ workerId: 'cpu1' }, '/worker/claim', WORKER));

@@ -57,7 +57,10 @@ export function useMeterCaptureDesk(month: string) {
       setLoadedView(target);
       await saveCaptureCatalog(identity, catalog);
     } catch (cause) {
-      if (currentView.current === target) setError(cause instanceof Error ? cause.message : 'Chưa tải được danh sách đồng hồ.');
+      if (currentView.current === target) {
+        if (cause && typeof cause === 'object' && 'code' in cause && cause.code === 'meter_capture_reader_not_enabled') setCatalogReady(false);
+        setError(cause instanceof Error ? cause.message : 'Chưa tải được danh sách đồng hồ.');
+      }
     }
   }, [user?.id, orgId, month]);
 

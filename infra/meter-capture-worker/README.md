@@ -15,6 +15,8 @@ Worker CPU kéo một tác vụ mỗi lần qua Edge `meter-capture-worker`. Kh�
 
 Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử: `docker compose build`, rồi `docker compose up -d`. Container tự khởi động lại sau lỗi hoặc khi máy khởi động; dừng chủ động bằng `docker compose stop` thì giữ trạng thái dừng. Log được xoay vòng tối đa ba tệp 10 MB. Ảnh đã tải và chỉ số vẫn ở hệ thống. Việc chạy thật cần cấu hình secret từ vault, không lưu `.env` vào Git.
 
+Khi phát hành web/database trước lúc nâng VPS, giữ `METER_CAPTURE_WORKER_TOKEN` chưa cấu hình trên production Edge. Gateway sẽ chặn tải danh mục thu thập, đăng ký QR và tạo lượt mới; web báo chưa bật bộ đọc và tiếp tục dùng ghi chỉ số hiện tại. Điều này tránh kích hoạt hồ sơ QR (vốn khóa cách duyệt cũ) khi chưa có máy giải mã chứng cứ. Chỉ cấu hình bearer production sau khi máy đủ tài nguyên, image đã kiểm và worker sẵn sàng khởi động. Bearer có mặt là điều kiện bật thu thập, không phải phép kiểm worker đang khỏe; phải kiểm worker/queue thực tế trước khi hướng dẫn quản lý dùng.
+
 Image Python ghim digest Docker Hub; Debian dùng snapshot cố định; 63 wheel Python trong `requirements.lock` ghim phiên bản và SHA-256 cho CPython 3.12/Linux x86_64. Hai model từ tài khoản PaddlePaddle chính thức trên HuggingFace ghim revision, trọng số kiểm SHA-256. Model tải lúc build, không đổi âm thầm khi chạy.
 
 ## Hành vi nhận dạng

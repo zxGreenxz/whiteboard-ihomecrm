@@ -100,7 +100,7 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
         {desk.captures.filter(row => !buildingId || desk.meters.some(item => item.id === row.meterId && item.buildingId === buildingId)).map(row => <MeterCaptureReview key={`${row.id}:${row.version}`} capture={row} meter={desk.meters.find(item => item.id === row.meterId)} onChanged={desk.changed} />)}
         {!desk.captures.length && <p className="text-sm text-muted-foreground">Chưa có lượt đọc trên server trong kỳ này.</p>}
       </TabsContent>
-      <TabsContent value="registry">{desk.online ? <MeterCaptureRegistry orgId={desk.owner.orgId} meters={filtered} onChanged={desk.refresh} /> : <p>Cần có mạng để đăng ký, in hoặc thu hồi tem.</p>}</TabsContent>
+      <TabsContent value="registry">{desk.online && desk.catalogReady ? <MeterCaptureRegistry orgId={desk.owner.orgId} meters={filtered} onChanged={desk.refresh} /> : <p>Cần tải được danh mục đồng hồ và bộ đọc đã được bật trước khi đăng ký tem.</p>}</TabsContent>
     </Tabs>
     {notice && <p role="status" className="text-sm text-green-700">{notice}</p>}
     {desk.error && <p role="alert" className="text-sm text-destructive">{desk.error}</p>}

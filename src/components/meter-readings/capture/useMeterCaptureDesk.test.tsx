@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -22,6 +22,18 @@ import { useMeterCaptureDesk } from './useMeterCaptureDesk';
 afterEach(() => { cleanup(); vi.resetAllMocks(); state.org = 'org-a'; state.pending.mockResolvedValue([]); });
 const meter = (orgId: string): MeterCaptureMeter => ({ id: `meter-${orgId}`, orgId, buildingId: 'building', buildingName: orgId,
   roomId: null, roomName: null, code: orgId, qrText: null, profile: null });
+it('closes registration and camera readiness when a previously enabled reader is disabled', async () => {
+  state.catalog.mockResolvedValue([meter('org-a')]); state.captures.mockResolvedValue([]);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = renderHook(() => useMeterCaptureDesk('2026-10'), {
+    wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+  await waitFor(() => expect(view.result.current.catalogReady).toBe(true));
+  state.catalog.mockRejectedValue(Object.assign(new Error('Chưa bật bộ đọc'), { code: 'meter_capture_reader_not_enabled' }));
+  await act(() => view.result.current.refresh());
+  expect(view.result.current.catalogReady).toBe(false);
+  expect(view.result.current.error).toBe('Chưa bật bộ đọc');
+});
 it('hides previous organization media immediately and ignores its late response', async () => {
   let resolveOld!: (value: MeterCaptureMeter[]) => void;
   const old = new Promise<MeterCaptureMeter[]>(resolve => { resolveOld = resolve; });

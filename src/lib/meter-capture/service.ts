@@ -30,6 +30,7 @@ async function gateway(body: Record<string, unknown>): Promise<unknown> {
   return data;
 }
 function meterGatewayMessage(code: string): string {
+  if (code === 'meter_capture_reader_not_enabled') return 'Đọc đồng hồ bằng ảnh/clip chưa được bật. Tiếp tục ghi chỉ số theo cách hiện tại; đăng ký QR sẽ mở khi bộ đọc sẵn sàng.';
   if (code === '42501' || code === 'worker_forbidden') return 'Bạn chưa có quyền thực hiện thao tác này.';
   if (code === 'PT409' || code === '23505') return 'Dữ liệu đã thay đổi hoặc đã được lưu. Tải lại để đối chiếu trước khi tiếp tục.';
   if (code === 'PT422') return 'Chỉ số đã dùng cho thanh lý đã hoàn tất. Cần kế toán và quản lý hợp đồng xử lý điều chỉnh trước; chứng từ cũ được giữ nguyên.';
