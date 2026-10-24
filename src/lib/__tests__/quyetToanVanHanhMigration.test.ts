@@ -2625,6 +2625,13 @@ describe("link tên miền (20261024072823): quản trị gộp toà và ngườ
       await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_B]], "42501");
       // link đã có: chủ công ty sở hữu sửa được toà
       expect(await rpc(LUU_LINK, ["agiang", [TOA_A]])).toEqual({ slug: "agiang", building_ids: [TOA_A] });
+      // toà ảo (không quản lý được) cùng công ty, kể cả có cài vận hành ⇒ không gộp được
+      await asPostgres();
+      await db.query(`INSERT INTO app_private.landlord_operations
+          (building_id, organization_id, landlord_name, effective_from, created_by, updated_by)
+        VALUES ($1, $2, 'Chủ ảo', '2025-01-01', $3, $3)`, [TOA_AO, ORG_A, CHU_A]);
+      await asUser(CHU_A);
+      await expectLoi(`SELECT ${LUU_LINK}`, ["agiang", [TOA_A, TOA_AO]], "42501");
       await expectLoi(`SELECT ${THEM_NGUOI}`, ["agiang", ""], "22023");
       await expectLoi(`SELECT ${THEM_NGUOI}`, ["khong-co", "X"], "P0002");
       const nguoi = portalViewerAddReceiptSchema.parse(await rpc(THEM_NGUOI, ["agiang", "Người xem 1"]));

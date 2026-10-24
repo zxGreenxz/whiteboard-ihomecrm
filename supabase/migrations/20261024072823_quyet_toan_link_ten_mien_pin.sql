@@ -543,6 +543,8 @@ $fn$;
 -- bị dò hết trong vài ngày). PIN không trùng BẤT KỲ người xem nào của link, kể cả đã thu hồi (cấp lại PIN cũ thì người
 -- bị thu hồi vào được dưới tên người mới); không lặp một số / dãy liên tiếp. Tối đa 10 người xem còn hiệu lực mỗi link
 -- (mỗi PIN thêm làm tăng xác suất dò trúng). Trả PIN đúng MỘT lần để quản lý gửi cho người xem.
+-- bản nháp trước review nhận PIN tự chọn (3 tham số) — gỡ nếu có (môi trường thử), production chưa từng có
+DROP FUNCTION IF EXISTS public.landlord_portal_viewer_add_v1(text, text, text);
 CREATE OR REPLACE FUNCTION public.landlord_portal_viewer_add_v1(p_slug text, p_label text)
 RETURNS jsonb
 LANGUAGE plpgsql

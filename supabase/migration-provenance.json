@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T08:21:13.140Z",
+  "generatedAt": "2026-10-24T08:25:17.042Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13548,7 +13548,7 @@
       "version": "20261024072823",
       "name": "quyet_toan_link_ten_mien_pin",
       "scheme": "timestamp14",
-      "sha256": "3223cda1c77c6398dc9c3a2c4e022b888cbc066b13f6ee9e104b16aff6046807",
+      "sha256": "328433cb1f5901a1380a24c0dbbfc61b1f75f26a38794fb6ca94964f982576f4",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
