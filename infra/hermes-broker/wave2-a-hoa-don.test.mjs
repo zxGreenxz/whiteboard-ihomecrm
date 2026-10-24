@@ -5,6 +5,9 @@ import { sharedW2a, BUILDING, ORG, FOREIGN, USER, ROOM, ROOM2, ROOM3, ROOM4, INV
   INV_C_UNPAID, INV_C_REV, CONTRACT_A, CONTRACT_FULL, CONTRACT_FI, ADJ_PENDING, ADJ_OLD } from './wave2-a-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
+import { REMINDER_LINK_SENTENCE } from './public-link.mjs';
+import { finishDomainResult } from './domain-mount.mjs';
+import { W2 } from './wave2-registry.mjs';
 
 // Đợt 3 trang Hoá đơn — đọc bù (a)–(f) + soạn tin nhắc nợ (docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 7). MỘT PGlite gói A cho
 // cả file (sharedW2a: dải a + z, gồm hai migration 20261022051118 / 20261022051620), mỗi ca BEGIN … ROLLBACK. Số liệu tính tay từ fixture
@@ -174,6 +177,51 @@ test('invoice_reminders (Q18): tin soạn sẵn theo phòng, tổng nợ thực 
   assert.deepEqual([p102.publicPath, p102.messageText.includes('link')], [null, false], 'không HĐ hiệu lực ⇒ không đường dẫn');
   assert.deepEqual(value.summary, { rooms: 4, debtTotal: '11900000.00', withLink: 1 });
   assert.deepEqual((await direct(env, 'invoice_reminders', { days: 31 })).rows.map(row => row.roomName), ['P102']);
+}));
+
+// Lượt 12 (kiểm khói C3 trên TEST): dòng SQL thật qua bước cuối của đường đọc miền (domain-mount finishDomainResult): publicLink tuyệt đối
+// theo origin host thay publicPath, tin kèm link thành một khối; vắng origin ⇒ tin không hứa link. Câu SQL "link kèm theo" phải đúng hằng
+// connector bỏ đi (đổi câu ở SQL mà quên connector ⇒ đỏ). Mã công khai thật: 6 chữ/số (production 24/10: 472/472).
+test('invoice_reminders lượt 12: dòng SQL thật ⇒ publicLink theo origin host, tin kèm link; vắng origin ⇒ không link, tin không hứa link', () => inCase(async env => {
+  await env.db.exec("UPDATE public.contracts SET public_code='Ab12Cd' WHERE public_code='PUBLIC-CODE-A'");
+  const value = await direct(env, 'invoice_reminders', { roomId: ROOM });
+  const result = { report: 'invoice_reminders', source: W2A_REPORTS.invoice_reminders.source, unavailable: null, summary: value.summary, items: value.rows,
+    offset: 0, nextOffset: null, sourceCapped: false };
+  assert.ok(value.rows[0].messageText.includes(REMINDER_LINK_SENTENCE), 'câu SQL = hằng của connector');
+  const [linked] = finishDomainResult(structuredClone(result), 'https://app.example.vn').items;
+  assert.deepEqual([linked.publicLink, Object.hasOwn(linked, 'publicPath')], ['https://app.example.vn/c/Ab12Cd', false]);
+  assert.match(linked.messageText, /Chi tiết hoá đơn xem ở link kèm theo\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!\nhttps:\/\/app\.example\.vn\/c\/Ab12Cd$/);
+  const bare = finishDomainResult(structuredClone(result), undefined);
+  assert.deepEqual([bare.items[0].publicLink, bare.items[0].messageText.includes('link'), bare.summary.withLink], [null, false, 0]);
+  assert.match(bare.items[0].messageText, /\)\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!$/, 'câu còn lại liền mạch');
+}));
+
+// Lượt 12 Hợp đồng (nghiệm thu C3 24/10): "gửi link tra hoá đơn phòng … cho khách" ⇒ invoice_room_detail. 20261024160002 thêm
+// summary.publicPath = /c/<mã> của HĐ của hoá đơn (luật QR web: mã 6–8 chữ/số, HĐ không TERMINATED / DRAFT; chỉ khi xem được khách, như
+// invoice_reminders) ⇒ connector ghép origin thành summary.publicLink. Rào broker nhận summary SQL cũ (thiếu khoá, tolerant) và vẫn từ chối khoá lạ.
+test('invoice_room_detail lượt 12: summary.publicPath của HĐ ⇒ publicLink theo origin host; không xem được khách / thanh lý / không hoá đơn ⇒ null', () => inCase(async env => {
+  await env.db.exec("UPDATE public.contracts SET public_code='Ab12Cd' WHERE public_code='PUBLIC-CODE-A'");
+  const value = await direct(env, 'invoice_room_detail', { roomId: ROOM });
+  assert.equal(value.summary.publicPath, '/c/Ab12Cd');
+  const result = { report: 'invoice_room_detail', source: W2A_REPORTS.invoice_room_detail.source, unavailable: null, summary: value.summary, items: value.rows,
+    offset: 0, nextOffset: null, sourceCapped: false };
+  const linked = finishDomainResult(structuredClone(result), 'https://app.example.vn');
+  assert.deepEqual([linked.summary.publicLink, Object.hasOwn(linked.summary, 'publicPath'), linked.summary.invoiceId], ['https://app.example.vn/c/Ab12Cd', false, INVOICE_A]);
+  assert.equal(finishDomainResult(structuredClone(result), undefined).summary.publicLink, null, 'vắng origin ⇒ không link, không tự ghép tên miền');
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM }, { scopes: {} })).summary.publicPath, null, 'không xem được khách');
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM, month: '2026-05' })).summary.publicPath, null, 'không có hoá đơn');
+  // Rào khuôn của broker (wave2-registry runResult) trên chính kết quả này: thiếu khoá (SQL trước 160002) ⇒ null; khoá lạ ⇒ từ chối.
+  const envelope = summary => ({ ...result, summary, items: value.rows.map(({ organizationId, ...row }) => row),
+    fence: { buildings: [BUILDING], cashbooks: [], orgWide: false } });
+  const identity = { effective: { read: ['invoices.view'] }, scopesByPermission: { 'invoices.view': { buildingIds: [BUILDING] } } };
+  const input = W2.reads.report.input({ report: 'invoice_room_detail', params: params('invoice_room_detail', { roomId: ROOM }), limit: 50 });
+  const { publicPath, ...older } = value.summary;
+  assert.equal(W2.reads.report.result(envelope(older), identity, input).summary.publicPath, null, 'SQL cũ (chưa 160002) vẫn qua');
+  assert.equal(W2.reads.report.result(envelope(value.summary), identity, input).summary.publicPath, publicPath);
+  assert.throws(() => W2.reads.report.result(envelope({ ...value.summary, other: 1 }), identity, input), 'khoá lạ vẫn hỏng');
+  assert.throws(() => W2.reads.report.result(envelope({ ...value.summary, publicPath: 1 }), identity, input), 'publicPath sai kiểu vẫn hỏng');
+  await env.db.exec("UPDATE public.contracts SET status='TERMINATED' WHERE public_code='Ab12Cd'");
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM })).summary.publicPath, null, 'HĐ đã thanh lý ⇒ không link (như QR web)');
 }));
 
 // Review #273 (Mốc 2b).

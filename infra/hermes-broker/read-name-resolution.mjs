@@ -53,12 +53,23 @@ const room = row => domainExact(row, ['id', 'name', 'code', 'floor', 'buildingId
   (row.floor === null || Number.isSafeInteger(row.floor)) && canonical(row.buildingId);
 const matches = (entry, needle) => foldName(entry.name) === needle || (entry.code !== null && foldName(entry.code) === needle);
 const contains = (entry, needle) => foldName(entry.name).includes(needle) || (entry.code !== null && foldName(entry.code).includes(needle));
-/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường lẫn dấu) trước; không có thì chứa. Mô hình hay gửi "Toà 44TL": tên
- * bắt đầu bằng "toa " (sau khi bỏ dấu) được thử thêm KHÔNG có tiền tố đó — sau dạng đầy đủ ở cùng bậc (toà có tên thật
- * "Toà A" vẫn khớp bằng trước), nên luật bằng-trước-rồi-chứa giữ nguyên. */
+// Lượt 11 (nghiệm thu 24/10): khớp TOKEN số nhà + tên đường, cùng luật bậc 5–6 của lõi giải tên SQL (20261024040001): "/" và dấu câu
+// là khoảng trắng mềm; bằng sau khi làm mềm, hoặc (chuỗi có số nhà + chữ, ≥ 2 token) token của tên / từng mã chứa MỌI token đã gõ.
+// "45 Hoa Mai" ⇒ "45/3 Hoa Mai"; nhiều toà cùng khớp ⇒ hỏi lại (resolve nêu tên), không tự chọn.
+const soft = value => value.replace(/[^a-z0-9]+/g, ' ').trim();
+const tokens = (entry, needle) => {
+  const wanted = soft(needle), parts = wanted.split(' ');
+  if (!wanted) return false;
+  const loose = /[a-z]/.test(wanted) && parts.length >= 2 && parts.some(part => /^[0-9]+$/.test(part));
+  return [entry.name, ...(entry.code === null ? [] : entry.code.split(','))].map(value => soft(foldName(value))).filter(Boolean)
+    .some(have => have === wanted || loose && parts.every(part => have.split(' ').includes(part)));
+};
+/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường lẫn dấu) trước; không có thì chứa; không có nữa thì khớp token (số nhà +
+ * tên đường). Mô hình hay gửi "Toà 44TL": tên bắt đầu bằng "toa " (sau khi bỏ dấu) được thử thêm KHÔNG có tiền tố đó — sau dạng
+ * đầy đủ ở cùng bậc (toà có tên thật "Toà A" vẫn khớp bằng trước), nên luật bằng-trước-rồi-chứa giữ nguyên. */
 export function matchBuildings(directory, name) {
   const folded = foldName(name), needles = folded.startsWith('toa ') && folded.length > 4 ? [folded, folded.slice(4)] : [folded];
-  for (const test of [matches, contains]) for (const needle of needles) {
+  for (const test of [matches, contains, tokens]) for (const needle of needles) {
     const found = directory.filter(entry => test(entry, needle));
     if (found.length) return found;
   }

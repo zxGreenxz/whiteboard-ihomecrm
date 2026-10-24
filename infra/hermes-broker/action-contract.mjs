@@ -18,8 +18,10 @@ const freeze = value => {
 const annotations = (write) => write
   ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const RUN_GUIDANCE = 'Kết quả confirmation_required = CHƯA ghi: đọc preview cho người dùng, chỉ khi họ đồng ý rõ mới gọi lại y nguyên kèm requestId và confirmToken. ' +
-  'needs_input = CHƯA ghi: hỏi lại người dùng theo detail. action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
+// Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được đòi thêm consentText = nguyên văn lời đồng ý ở lượt xác nhận.
+const RUN_GUIDANCE = 'confirmation_required = CHƯA ghi: đọc preview cho người dùng, chỉ khi họ đồng ý rõ mới gọi lại y nguyên kèm requestId, confirmToken ' +
+  '(+consentText khi huongDan đòi). ' +
+  'needs_input = CHƯA ghi: hỏi lại theo detail. action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
   'action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
 
 export const ACTION_LIST_TOOL = freeze({
@@ -35,7 +37,7 @@ export const ACTION_RUN_TOOL = freeze({
     'action, params đúng như crm_action_list; toà/phòng bằng tên, tiền là số nguyên VND. ' + RUN_GUIDANCE,
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', pattern: ACTION_ID.source }, params: { type: 'object' },
-    requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' } } },
+    requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' }, consentText: { type: 'string' } } },
   annotations: annotations(true),
 });
 export const ACTION_STATUS_TOOL = freeze({
@@ -59,7 +61,8 @@ export function pageActionTool(page, operations) {
     name: `crm_${page}_action`,
     description: `${PAGE_LABELS[page]}. ${RUN_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['operation'], properties: {
-      operation: { enum: [...operations] }, params: { type: 'object' }, requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' } } },
+      operation: { enum: [...operations] }, params: { type: 'object' }, requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' },
+      consentText: { type: 'string' } } },
     annotations: annotations(true),
   });
 }
@@ -110,9 +113,18 @@ export function actionEnvelope(route, args) {
   }
   if (route?.op !== 'run') throw new TypeError('invalid_action_envelope');
   const selector = route.page === undefined ? 'action' : 'operation';
-  if (!onlyKeys(args, [selector, 'params', 'requestId']) || typeof args[selector] !== 'string') throw new TypeError('invalid_action_envelope');
+  if (!onlyKeys(args, [selector, 'params', 'requestId', 'consentText']) || typeof args[selector] !== 'string') throw new TypeError('invalid_action_envelope');
   const action = route.page === undefined ? args[selector].trim() : `${route.page}.${args[selector].trim()}`;
-  return { action, params: paramsOf(args.params), requestId: requestIdOf(args.requestId) };
+  const consentText = consentTextOf(args.consentText);
+  return { action, params: paramsOf(args.params), requestId: requestIdOf(args.requestId), ...(consentText === undefined ? {} : { consentText }) };
+}
+// consentText (lượt 12 Hợp đồng): chỉ lượt xác nhận của thao tác không lùi được mới đọc; vắng / null / trống = không gửi. Không vào params
+// hay khoá binding của token (người dùng đáp "ok" sau một câu chưa rõ vẫn xác nhận được đúng bản xem trước đó). Dài quá trần thì rào đồng ý
+// trả consent_unclear, không phải lỗi phong bì.
+function consentTextOf(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || value.length > 4000) throw new TypeError('invalid_action_envelope');
+  return value;
 }
 // Mô hình đôi khi gửi params là chuỗi JSON: đọc nếu ra object thuần (≤ 4 000 ký tự); còn lại để validator trả needs_input.
 function paramsOf(value) {
@@ -122,17 +134,33 @@ function paramsOf(value) {
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
+const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
+  'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';
+// Bản xem trước của thao tác không lùi được (lượt 12 Hợp đồng): nói trước rằng lượt xác nhận phải kèm consentText.
+const CONSENT_CONFIRM_NOTE = ' Thao tác KHÔNG lùi được: lượt xác nhận phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp; họ chỉ bổ sung chi tiết (chưa nói ' +
+  'đồng ý) thì hỏi lại "anh/chị đồng ý ghi không?", không gửi xác nhận.';
 const CONFIRM_GUIDANCE = 'CHƯA ghi. Đọc preview cho người dùng (toà, phòng, số tiền, ngày…); chỉ khi họ đồng ý rõ ràng SAU khi xem mới gọi lại crm_action_run ' +
   'y nguyên action, params, requestId kèm confirmToken. Token dùng một lần, hết hạn sau 10 phút; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại. ' +
   'Lỗi confirmation_invalid: gọi lại không kèm confirmToken để lấy bản xem trước mới.';
+// Thu chi lượt 14 (nghiệm thu 24/10: xác nhận bị confirmation_invalid rồi bot ra bản xem trước mới, lặp): câu TĨNH nói phần nào lệch — danh
+// sách đóng, mcp-http chỉ chuyển đúng các câu này (không chứa giá trị đã gửi).
+export const CONFIRM_INVALID_DETAILS = Object.freeze({
+  request: 'Token thuộc bản xem trước có requestId khác: xác nhận bằng ĐÚNG requestId mà bản xem trước trả về; gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  params: 'Params khác bản xem trước: gửi y nguyên params đã xem; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại.',
+  expired: 'Token xác nhận đã quá 10 phút: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  unknown: 'Token xác nhận đã dùng (mỗi token một lần) hoặc không đúng: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  missing_request: 'Thiếu requestId: xác nhận phải gửi kèm requestId của bản xem trước.',
+});
+export const CONFIRM_INVALID_TEXTS = Object.freeze(Object.values(CONFIRM_INVALID_DETAILS));
 /** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). */
 export function needsInput({ action, reason, detail, candidates }) {
   if (!ACTION_INPUT_REASONS.includes(reason)) throw new TypeError('invalid_needs_input_reason');
   return { outcome: 'needs_input', applied: false, action, reason, detail: typeof detail === 'string' && detail ? detail : ACTION_REASONS[reason].text,
-    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE : INPUT_GUIDANCE };
+    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE : reason === 'consent_unclear' ? CONSENT_GUIDANCE : INPUT_GUIDANCE };
 }
-export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt }) {
-  return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt, huongDan: CONFIRM_GUIDANCE };
+export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt, consent = false }) {
+  return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt,
+    huongDan: consent ? `${CONFIRM_GUIDANCE}${CONSENT_CONFIRM_NOTE}` : CONFIRM_GUIDANCE };
 }
 
 export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook', 'job',

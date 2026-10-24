@@ -27,10 +27,14 @@ const P101 = { buildingName: 'Toà A', readings: [{ roomName: 'P101', value: 123
 
 test('PG17 hai kết nối: chỉ số Hermes không chờ khoá toà của form web, chờ được khoá mã của luồng hoá đơn, không 40P01; cùng requestId ⇒ phát lại', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as invoice-write-race-sql.test.mjs / trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
-  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); cleanup(); });
-  const { meterRun, meterApply } = await invoiceSetup(t, { database: db, meter: true });
+  t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
+  const { meterRun, meterApply } = await invoiceSetup(t, { database: db, meter: true, l8: true });
   const [hermesPid] = await Promise.all([hermes].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   const blocked = async pid => {
     for (let i = 0; i < 400; i++) {

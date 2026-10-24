@@ -553,6 +553,15 @@ test('actionPages: host opt-in per page on top of the production Thu chi catalog
   assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
 });
 
+// Lượt 11 (D-HĐ9): origin web để ghép link công khai của HĐ (crm_read_contract_detail publicLink); chỉ https, đúng dạng origin.
+test('publicWebOrigin: optional https origin for the contract public link; anything else is refused', async t => {
+  const f = fakeBackend();
+  for (const publicWebOrigin of ['http://app.example.vn', 'https://app.example.vn/', 'app.example.vn', '', null, 1])
+    assert.throws(() => createHermesBackend({ ...f.configuration, publicWebOrigin }), error => error.message === 'invalid_backend_config', JSON.stringify(publicWebOrigin));
+  const http = await listening(t, { ...f.configuration, publicWebOrigin: 'https://app.example.vn' });
+  assert.equal(typeof (await http.connect()).body.token, 'string');
+});
+
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {
   const f = fakeBackend(), original = f.configuration.fetch; let maps = 0;
   f.configuration.audit = async event => { f.audits.push(event); if (event.outcome === 'prepared' && maps === 1) f.read().joined.connection.state = 'revoked'; };

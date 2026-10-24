@@ -79,3 +79,24 @@ test('the real audit sink records action_rejected with every reason and refuses 
   const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(rows.map(row => row.reason ?? null), [...ACTION_REJECT_REASONS, null]);
 });
+
+// Lượt 12 Hợp đồng (rào đồng ý, infra/hermes-broker/consent-guard.mjs): dòng prepared của lượt xác nhận một thao tác không lùi được mang
+// consent {action, requestId, text}; mọi chỗ khác hay khuôn khác đều bị từ chối (đóng an toàn như mã lỗi).
+test('the real audit sink records the consent sentence only on a tools/call prepared row, in its fixed shape', async t => {
+  const root = await auditRoot(t);
+  const sink = createHostAudit({ directory: root });
+  const consent = { action: 'contract.return', requestId: '30000000-0000-4000-8000-000000000003', text: 'Ok em, ghi đi' };
+  await sink.write({ ...EVENT, outcome: 'prepared', consent });
+  await sink.write({ ...EVENT, outcome: 'prepared', consent: { ...consent, text: 'đ'.repeat(300) } });
+  for (const bad of [{ outcome: 'denied', code: 'action_rejected', consent }, { outcome: 'prepared', operation: 'tools/list', consent },
+    { outcome: 'prepared', consent: { ...consent, extra: 1 } }, { outcome: 'prepared', consent: { action: consent.action, requestId: consent.requestId } },
+    { outcome: 'prepared', consent: { ...consent, text: '' } }, { outcome: 'prepared', consent: { ...consent, text: 'đ'.repeat(301) } },
+    { outcome: 'prepared', consent: { ...consent, text: 'ok\nghi' } }, { outcome: 'prepared', consent: { ...consent, text: 'ok ghi' } },
+    { outcome: 'prepared', consent: { ...consent, requestId: 'not-a-uuid' } }, { outcome: 'prepared', consent: { ...consent, action: 'Contract Return' } },
+    { outcome: 'prepared', consent: 'ok' }, { outcome: 'prepared', consent: null }])
+    await assert.rejects(sink.write({ ...EVENT, ...bad }), /host_audit_invalid/, JSON.stringify(bad));
+  await sink.close();
+  const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => row.consent?.text.length), [consent.text.length, 300]);
+  assert.deepEqual(rows[0], { ...EVENT, outcome: 'prepared', consent });
+});

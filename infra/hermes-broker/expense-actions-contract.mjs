@@ -22,7 +22,9 @@ export const EXPENSE_CREATE = defineAction({ id: 'expense.create', page: 'expens
     content: param.text(1, 200), category: param.name('category', { optional: true }), payee: param.text(1, 100, { optional: true }),
     voucherDate: param.date({ optional: true }), period: param.month({ optional: true }), cashbook: param.name('cashbook', { optional: true }),
   }), { min: 1, max: EXPENSE_CREATE_MAX_ITEMS }) },
-  reasons: ['system_voucher', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
+  // Lượt 13 (20261024094809): khoản thuộc luồng hệ thống (hoa hồng, thanh lý / trả tiền thừa cho khách, cọc, lương, chia lợi nhuận, chuyển
+  // nội bộ) ⇒ web_only + link màn gốc. Connector cũ vẫn chuyển mã này (mọi mã rejected toàn cục), danh sách ở đây chỉ để crm_action_list nói đúng.
+  reasons: ['system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
 
 export const EXPENSE_NOTE = defineAction({ id: 'expense.note', page: 'expense', key: EXPENSE_CREATE_KEY, class: 'reversible', rpc: EXPENSE_RPC,
   title: 'Ghi chú vào phiếu thu chi (ghi thẳng)',
@@ -47,7 +49,8 @@ export const EXPENSE_CANCEL = defineAction({ id: 'expense.cancel', page: 'expens
 // income_expenses.approve (Q25). post mặc định true; chưa có ảnh / không giữ sổ ⇒ SQL hạ "chỉ duyệt" và nói rõ trong bản xem trước (TC4).
 export const EXPENSE_APPROVE_MAX = 10;
 export const EXPENSE_APPROVE = defineAction({ id: 'expense.approve', page: 'expense', key: 'income_expenses.approve_vouchers', class: 'money', rpc: EXPENSE_RPC,
-  title: 'Duyệt phiếu CHI (≤ 10 mã; post=false chỉ duyệt, mặc định duyệt và chi)',
+  // Lượt 14: mã trùng giữa các toà ⇒ dùng voucherId của dòng báo cáo expense_vouchers (SQL 20261024120211 nhận UUID).
+  title: 'Duyệt phiếu CHI (≤ 10 mã hoặc voucherId của báo cáo expense_vouchers; post=false chỉ duyệt, mặc định duyệt và chi)',
   params: { voucherCodes: param.list(param.name('voucher'), { min: 1, max: EXPENSE_APPROVE_MAX }), post: param.bool({ optional: true }) },
   reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'evidence_required', 'cashbook_not_held', 'period_locked', 'not_allowed', 'state_changed'] });
 

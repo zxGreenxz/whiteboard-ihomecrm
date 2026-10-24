@@ -12,23 +12,24 @@ import { createMcpHttpServer } from './mcp-http.mjs';
 // hình; thiếu/mơ hồ đầu vào là kết quả needs_input (không phải lỗi — rào 3 lần bị từ chối của Hermes, ca thử 21/10).
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 
-test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {
+test('danh sách đóng: 22 mã chung + khối riêng từng trang, mỗi mã một dạng/chỉ dẫn hợp lệ và một câu tĩnh không chứa số liệu hay ID', () => {
   assert.ok(Object.isFrozen(ACTION_REASONS) && ACTION_REASON_CODES.every(code => Object.isFrozen(ACTION_REASONS[code])));
-  // Mã của trang chỉ vào qua khối của trang (ACTION_PAGE_REASON_BLOCKS), nối sau 20 mã chung, không trùng nhau.
+  // Mã của trang chỉ vào qua khối của trang (ACTION_PAGE_REASON_BLOCKS), nối sau 22 mã chung (lượt 11 thêm forbidden, lượt 12 Hợp đồng thêm consent_unclear), không trùng nhau.
   const pages = Object.values(ACTION_PAGE_REASON_BLOCKS).flat();
   assert.equal(new Set(pages).size, pages.length, 'mã trang không trùng');
-  assert.deepEqual(ACTION_REASON_CODES.slice(20), pages);
-  const shared = ACTION_REASON_CODES.slice(0, 20), page = new Set(pages);
+  assert.deepEqual(ACTION_REASON_CODES.slice(22), pages);
+  const shared = ACTION_REASON_CODES.slice(0, 22), page = new Set(pages);
   assert.deepEqual(ACTION_INPUT_REASONS.filter(code => !page.has(code)), ['unknown_action', 'invalid_params', 'name_unresolved', 'reason_required',
-    'amount_out_of_range', 'date_out_of_range', 'not_found']);
-  assert.equal(ACTION_REJECT_REASONS.filter(code => !page.has(code)).length, 13);
+    'amount_out_of_range', 'date_out_of_range', 'not_found', 'consent_unclear']);
+  assert.equal(ACTION_REJECT_REASONS.filter(code => !page.has(code)).length, 14);
   assert.ok(shared.every(code => !page.has(code)));
-  // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 7 mã needs_input (gồm renew_batch_empty của Mốc 6) + 7 mã rejected.
+  // Trang Hợp đồng (HOP-DONG-THAO-TAC-GHI.md mục 5): 7 mã needs_input (gồm renew_batch_empty của Mốc 6) + 8 mã rejected (lượt 12: room_has_new_contract).
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'needs_input'),
     ['room_has_no_active_contract', 'notice_date_past', 'renew_reason_ask', 'notice_choice_required', 'occupant_not_on_contract', 'return_date_future',
     'renew_batch_empty']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.contract.filter(code => ACTION_REASONS[code].form === 'rejected'),
-    ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative']);
+    ['already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock', 'cannot_remove_representative',
+      'room_has_new_contract']);
   // Thu chi (THU-CHI-THAO-TAC-GHI.md mục 2.3): 2 mã, đều là lỗi thật (dạng rejected).
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.expense], ['system_voucher', 'evidence_required']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.expense.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Thu chi là lỗi thật (dạng rejected)');
@@ -39,20 +40,20 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
     'recurrence_quota', 'recurrence_unchanged']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large', 'recurrence_unchanged']);
   // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5): Mốc 3 thu tiền + Mốc 4 ghi chỉ số + Mốc 5 điều chỉnh/kiểm tra/huỷ/khôi phục — 9 mã needs_input
-  // + 17 mã rejected.
+  // + 18 mã rejected (lượt 8: receiving_book_not_held tách khỏi receiving_book_missing).
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
     ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous',
       'adjust_no_change', 'nothing_to_check']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'rejected'),
-    ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+    ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
       'meter_used_by_invoice', 'meter_has_later_reading', 'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried',
       'adjust_below_collected', 'adjustment_self_check_web_only', 'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict',
       'invoice_already_cancelled', 'invoice_not_cancelled']);
-  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 20 chung + 2 Thu chi + 14 Hợp đồng + 7 Công việc + 26 Hoá đơn.
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 22 chung + 2 Thu chi + 15 Hợp đồng + 7 Công việc + 27 Hoá đơn.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 14 + 7 + 26);
-  assert.equal(ACTION_INPUT_REASONS.length, 7 + 7 + 2 + 9);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 5 + 17);
+  assert.equal(ACTION_REASON_CODES.length, 22 + 2 + 15 + 7 + 27);
+  assert.equal(ACTION_INPUT_REASONS.length, 8 + 7 + 2 + 9);
+  assert.equal(ACTION_REJECT_REASONS.length, 14 + 2 + 8 + 5 + 18);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {

@@ -125,10 +125,11 @@ function authorization(value, before, now) {
  * window (maintenance, renewal, runtime) every call is fully fresh. Auth and CRM
  * authorization are read concurrently; their checks keep the sequential order.
  */
-export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000 } = {}) {
+export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000, permissionGaps } = {}) {
   if (typeof connectionStore?.readConnection !== 'function' || typeof crypto?.open !== 'function' ||
       typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function' || typeof clock !== 'function' ||
-      !positive(timeoutMs) || timeoutMs > 30000) throw new TypeError('invalid_durable_authority_config');
+      !positive(timeoutMs) || timeoutMs > 30000 || (permissionGaps !== undefined && typeof permissionGaps?.observe !== 'function'))
+    throw new TypeError('invalid_durable_authority_config');
   const issued = new WeakSet(), owner = Object.freeze({});
   const now = () => { const value = clock(); if (!positive(value)) malformed(); return value; };
   // One-shot hand-over inside a single broker checkpoint (authority-request-scope).
@@ -213,6 +214,9 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       const assistantScopeIds = after.policy.scopeIds.filter(id => row.scopeIds.includes(id));
       const policyEpoch = fingerprint({ crmEpoch: current.epoch, membership: after.membership, policy: after.policy });
       const contextVersion = fingerprint({ database: after, authorization: current, effective, assistantScopeIds });
+      // Lượt 11: khoá thao tác đã bật ở công ty + chính sách trợ lý + kết nối mà người dùng thiếu quyền CRM (crm-permission-gaps.mjs).
+      permissionGaps?.observe(contextVersion, current.companyCeilings.action.filter(key => after.policy.action.includes(key) &&
+        row.restrictions.action.includes(key) && !current.permissions.action.includes(key)));
       const result = freeze({ row: { id: row.id, assistantId: row.assistantId, userId: row.userId, organizationId: row.organizationId,
         state: row.state, epoch: row.epoch, expiresAt: row.expiresAt, restrictions: row.restrictions },
       effective, policyEpoch, isSuperadmin: current.isSuperadmin, assistantScopeIds,

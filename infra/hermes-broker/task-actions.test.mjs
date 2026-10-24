@@ -79,6 +79,21 @@ test('params: time HH:MM only; snake_case accepted; content required; static hin
   assert.equal(validateActionParams(TASK_CREATE, { buildingName: 'Toà A' }).ok, false, 'thiếu content');
 });
 
+test('batch over 20 items (lượt 13): batch_too_large with the count instead of the generic invalid_params; SQL is never called', async () => {
+  const item = { roomName: '101', content: 'sửa vòi' };
+  const items = n => Array.from({ length: n }, () => item);
+  assert.deepEqual(validateActionParams(TASK_CREATE_BATCH, { buildingName: 'Toà A', items: items(40) }),
+    { ok: false, overflow: { reason: 'batch_too_large', path: 'items', count: 40, max: TASK_BATCH_MAX } });
+  assert.equal(validateActionParams(TASK_CREATE_BATCH, { buildingName: 'Toà A', items: items(TASK_BATCH_MAX) }).ok, true);
+  const service = { async prepareAction() { throw new Error('không được gọi SQL'); }, async finalizeAction() { throw new Error('không được gọi SQL'); } };
+  const runtime = createActionRuntime({ catalog: createActionCatalog(TASK_ACTIONS), service });
+  const identity = { row: { id: '00000000-0000-4000-8000-000000000001', organizationId: '00000000-0000-4000-8000-000000000002' }, effective };
+  const plan = runtime.begin(runtime.route('crm_action_run'), { action: 'task.create_batch', params: { buildingName: 'Toà A', items: items(40) } });
+  const out = content(await runtime.finish(plan, 'token', await runtime.handle(plan, 'token', identity), identity));
+  assert.deepEqual([out.outcome, out.reason], ['needs_input', 'batch_too_large']);
+  assert.equal(out.detail, `${ACTION_REASONS.batch_too_large.text} Đã gửi 40 mục ở items (tối đa 20).`);
+});
+
 test('quota reasons: static texts carry the seeded limits of hermes_task_limits (change seed ⇒ change text)', () => {
   const seed = seedSql().match(/VALUES\(NULL,'member',(\d+),(\d+)\),\(NULL,'owner',(\d+),(\d+)\)/);
   assert.ok(seed, 'seed hạn mức có trong migration');
@@ -109,7 +124,7 @@ test('why unspecified (Q31): detail lists suggestions or asks plainly; non-empty
   outcomes.push({ kind: 'needs_input', reason: 'name_unresolved', field: 'person', wanted: 'Nathan', why: 'unspecified', candidates: [], more: false });
   await assert.rejects(run({ buildingName: 'Toà B', content: 'khoá cửa' }), error => error.code === 'backend_unavailable');
   outcomes.push({ kind: 'applied', result: { text: 'Đã tạo việc' }, link: '/tasks?job=00000000-0000-4000-8000-000000000009' });
-  assert.equal(content(await run({ buildingName: 'Toà A', content: 'sửa vòi', assigneeName: 'tôi' })).outcome, 'applied', 'reversible tự giao: một lượt');
+  assert.equal(content(await run({ buildingName: 'Toà A', content: 'sửa vòi', assigneeName: 'tôi' })).outcome, 'applied', 'connector chuyển nguyên kết quả applied của máy chủ (xem trước do máy chủ quyết: lượt 13 tự giao luôn xem trước)');
 });
 
 test('broker: live task.create retires crm_task_create/status/input_options; live task.update / task.cancel retire crm_task_progress / crm_task_cancel; follow tools stay', async t => {
