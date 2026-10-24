@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T09:06:32.737Z",
+  "generatedAt": "2026-10-24T10:25:46.924Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 881,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 210,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13533,6 +13533,64 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql",
+      "version": "20261024040001",
+      "name": "hermes_write_name_resolve_house_number_v1",
+      "scheme": "timestamp14",
+      "sha256": "bb0a194155178d190f25476b823cf6646d75f7bb858304e8b69565b397473913",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_write_name_resolve_core_v1",
+        "catalog:function:app_private.hermes_write_name_resolve_core_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024040002_hermes_contract_return_preview_v1.sql",
+      "version": "20261024040002",
+      "name": "hermes_contract_return_preview_v1",
+      "scheme": "timestamp14",
+      "sha256": "4c627edfd07794c0bcfc54ec0e06b0f9e5adecce41e1b42d5aebb0b4da54111c",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_contract_action_step_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024040003_hermes_w2_contract_detail_public_path_v1.sql",
+      "version": "20261024040003",
+      "name": "hermes_w2_contract_detail_public_path_v1",
+      "scheme": "timestamp14",
+      "sha256": "16705a6a048c9d76a1e5ccb78174795abf24e5474d449e80bd5f7093c47fe7dc",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v3"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024041049_meter_readings_plan_previous_period_v1.sql",
+      "version": "20261024041049",
+      "name": "meter_readings_plan_previous_period_v1",
+      "scheme": "timestamp14",
+      "sha256": "39cc9eb6c2b37bbe1a40a8b4a5ae7194a55cc37c107c33785408e17067aad4a0",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.meter_readings_plan_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql",
+      "version": "20261024041712",
+      "name": "hermes_invoice_collect_v2",
+      "scheme": "timestamp14",
+      "sha256": "c82fc622f9cc4a876224350262151b276cd3d92a6bd90442dc12043f03261eda",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_invoice_lookup_core_v2",
+        "function:app_private.hermes_invoice_action_step_v2"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261024063027_quyet_toan_ky_hieu_so.sql",
       "version": "20261024063027",
       "name": "quyet_toan_ky_hieu_so",
@@ -13552,6 +13610,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-24T09:06:17.462Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024091500_hermes_task_nghiem_thu_2_v1.sql",
+      "version": "20261024091500",
+      "name": "hermes_task_nghiem_thu_2_v1",
+      "scheme": "timestamp14",
+      "sha256": "d180cbb57d42815f2f8b66a133035411456d9a5f4467a07aab538d167b68f362",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_task_resolve_core_v1",
+        "catalog:function:app_private.hermes_task_action_prepare_v1"
       ]
     },
     {

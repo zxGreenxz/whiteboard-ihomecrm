@@ -982,7 +982,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all forty-eight reviewed forward migrations and their 130 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all forty-nine reviewed forward migrations and their 130 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -998,8 +998,9 @@ test('all forty-eight reviewed forward migrations and their 130 latest definitio
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
   // C1 (#309 = #304 Công việc + #305 Thu chi lượt 11): 48 file / 130 hàm. Hợp đồng lượt 11 (#308): lõi giải tên v1 (dựng trên thân
   // 185114) và v2 ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (+2 file; thân cũ thành ghim superseded). Hoá đơn lượt 8 (#312):
-  // tra cứu + bước ghi thu tiền _v2 và vỏ trang ở 20261024041712 (+1 file, +2 hàm; vỏ 042723 thành ghim superseded).
-  assert.equal(paths.length, 51);
+  // tra cứu + bước ghi thu tiền _v2 và vỏ trang ở 20261024041712 (+1 file, +2 hàm; vỏ 042723 thành ghim superseded). Công việc lượt 12
+  // (#318): lõi giải tên + bước chuẩn bị của task dựng lại ở 20261024091500 (+1 file, cùng tên; thân 185116 thành ghim superseded).
+  assert.equal(paths.length, 52);
   assert.equal(FORWARD_FUNCTIONS.length, 132);
   assert.equal(FORWARD_BY_NAME.size, 132, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
