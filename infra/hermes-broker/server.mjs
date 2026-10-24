@@ -8,6 +8,8 @@ import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
 import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { publicWebOrigin as isPublicWebOrigin } from './public-link.mjs';
+import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
 import { createScheduleAuthAdapter, createSupabaseScheduleReads } from './schedule-adapter.mjs';
@@ -122,7 +124,7 @@ function backendLimits(value) {
  * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages', 'publicWebOrigin'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -141,6 +143,8 @@ export function createHermesBackend(configuration = {}) {
       (Object.hasOwn(configuration, 'actionPages') && (!Array.isArray(configuration.actionPages) ||
         configuration.actionPages.some(page => typeof page !== 'string' || !Object.hasOwn(ACTION_PAGE_CATALOGS, page)) ||
         new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
+      // Lượt 11 (D-HĐ9): origin web (https) để ghép link công khai của HĐ; vắng = crm_read_contract_detail trả publicLink null.
+      (Object.hasOwn(configuration, 'publicWebOrigin') && !isPublicWebOrigin(configuration.publicWebOrigin)) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -192,7 +196,10 @@ export function createHermesBackend(configuration = {}) {
     const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
     const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
       createFromActions: actionCatalog.keys.includes(TASK_ACTION), actionIds: actionCatalog.ids, live: actionLive });
-    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
+    // Lượt 11: khoá thao tác bật cho kết nối + công ty mà người dùng thiếu quyền CRM (theo ảnh chụp quyền) ⇒ runtime báo forbidden thay
+    // vì action_disabled. Chỉ authority đầy đủ ghi (thao tác ghi không đi đường đọc nhanh).
+    const permissionGaps = createCrmPermissionGaps();
+    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock, permissionGaps });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
         auth: createDomainAuthAdapter({ baseAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) }) }) }) : undefined;
@@ -214,11 +221,12 @@ export function createHermesBackend(configuration = {}) {
     // Same composed auth: chat_zalo.view/send (group) and manage_automation (schedule).
     const zaloBroadcasts = createZaloBroadcastService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
-    const domains = createDomainMount({ auth, authority, readAuthority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
+    const domains = createDomainMount({ auth, authority, readAuthority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request,
+      ...(configuration.publicWebOrigin === undefined ? {} : { publicWebOrigin: configuration.publicWebOrigin }) }).createService();
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive, permissionGaps,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });

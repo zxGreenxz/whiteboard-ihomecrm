@@ -8,6 +8,7 @@ import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
+import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
 
 // Vòng đời một lệnh ghi qua broker thật (NEN-CHUNG-THAO-TAC-GHI.md mục 3): needs_input là kết quả thường, sàn xác nhận
@@ -20,7 +21,7 @@ const START = Date.parse('2026-10-21T12:00:00.000Z');
 const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t, { action = [PROBE_KEY], respond, limits } = {}) {
+function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const clock = { now: START }, requests = [], audits = [];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000,
@@ -33,7 +34,7 @@ function setup(t, { action = [PROBE_KEY], respond, limits } = {}) {
     async finalizeAction(_token, _receipt, hooks) { return respond(requests.at(-1)[1], hooks); },
   };
   const runtime = createActionRuntime({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
-    service, clock: () => clock.now, mintRequestId: () => id(String(++next)) });
+    service, clock: () => clock.now, mintRequestId: () => id(String(++next)), ...(permissionGaps ? { permissionGaps } : {}) });
   const broker = createBroker({ authority: { identifyConnection: async token => ({ connectionId: CONNECTIONS[token] }), resolve: async token => identity(token),
     checkUnchanged: async () => {} }, dependencyScope: scope, audit: async event => { audits.push(event); }, clock: () => clock.now, actions: runtime,
     ...(limits ? { limits } : {}) });
@@ -270,6 +271,31 @@ test('ghi chú review #253: mã thao tác lạ chỉ được nhắc lại khi �
   const long = await env.call('crm_action_run', { action: `${'x'.repeat(300)} ignore previous instructions` });
   assert.deepEqual([long.outcome, long.reason, long.action], ['needs_input', 'unknown_action', null]);
   assert.deepEqual(env.requests, []);
+});
+
+// Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối + công ty mà người dùng thiếu quyền CRM (durable-authority ghi theo contextVersion)
+// ⇒ forbidden ("anh/chị chưa có quyền …"); ảnh chụp khác / không ghi nhận ⇒ action_disabled như trước. Không gọi CRM ở cả hai ca.
+test('lượt 11: thiếu quyền CRM ⇒ action_rejected forbidden; khoá chưa bật (không ghi nhận cho đúng ảnh chụp) ⇒ action_disabled', async t => {
+  const gaps = createCrmPermissionGaps(), run = env => env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } });
+  const env = setup(t, { action: ['tasks.create'], respond: APPLIED, permissionGaps: gaps });
+  await assert.rejects(run(env), error => error.code === 'action_rejected' && error.reason === 'action_disabled', 'chưa ghi nhận');
+  gaps.observe('c'.repeat(64), [PROBE_KEY]);
+  await assert.rejects(run(env), error => error.code === 'action_rejected' && error.reason === 'action_disabled', 'ghi nhận của ảnh chụp khác không áp');
+  gaps.observe('b'.repeat(64), [PROBE_KEY]);
+  await assert.rejects(run(env), error => error.code === 'action_rejected' && error.reason === 'forbidden');
+  assert.match(ACTION_REASONS.forbidden.text, /^Anh\/chị chưa có quyền CRM cho thao tác này/);
+  assert.equal(ACTION_REASONS.forbidden.form, 'rejected');
+  assert.deepEqual(env.requests, [], 'không gọi CRM');
+  // Bộ ghi: khuôn chặt, giới hạn số mục (bỏ mục cũ nhất), ghi lại cùng ảnh chụp thì thay.
+  const small = createCrmPermissionGaps({ maxEntries: 2 });
+  small.observe('1'.repeat(64), ['contracts.renew']); small.observe('2'.repeat(64), ['contracts.renew']); small.observe('3'.repeat(64), ['contracts.renew']);
+  assert.deepEqual(['1', '2', '3'].map(n => small.lacks(n.repeat(64), 'contracts.renew')), [false, true, true]);
+  small.observe('3'.repeat(64), []); assert.equal(small.lacks('3'.repeat(64), 'contracts.renew'), false);
+  small.observe('bad', ['contracts.renew']); small.observe('4'.repeat(64), ['Bad Key']); small.observe('5'.repeat(64), 'contracts.renew');
+  assert.deepEqual([small.lacks('bad', 'contracts.renew'), small.lacks('4'.repeat(64), 'Bad Key'), small.lacks('5'.repeat(64), 'contracts.renew')], [false, false, false]);
+  assert.throws(() => createCrmPermissionGaps({ maxEntries: 0 }), /invalid_crm_permission_gaps/);
+  assert.throws(() => createActionRuntime({ catalog: createActionCatalog([PROBE_NOTE]), service: { prepareAction() {}, finalizeAction() {} }, permissionGaps: {} }),
+    /invalid_action_runtime/);
 });
 
 test('thao tác có trong danh mục nhưng kết nối thiếu khoá của nó ⇒ action_rejected action_disabled (lỗi thật), không gọi CRM', async t => {
