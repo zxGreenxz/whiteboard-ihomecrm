@@ -994,7 +994,9 @@ test('all forty-eight reviewed forward migrations and their 130 latest definitio
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 48);
+  // C1 (#309 = #304 Công việc + #305 Thu chi lượt 11): 48 file / 130 hàm. Hợp đồng lượt 11 (#308): lõi giải tên v1 (dựng trên thân
+  // 185114) và v2 ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (+2 file; thân cũ thành ghim superseded).
+  assert.equal(paths.length, 50);
   assert.equal(FORWARD_FUNCTIONS.length, 130);
   assert.equal(FORWARD_BY_NAME.size, 130, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
