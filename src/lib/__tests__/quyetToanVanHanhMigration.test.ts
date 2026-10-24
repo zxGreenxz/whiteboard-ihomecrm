@@ -9,6 +9,7 @@ import {
   settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
 } from "@/lib/landlordSettlement";
 import { getInvoiceTitle, invoiceTitlePartsOf } from "@/lib/invoiceUtils";
+import { settlementRoomNoteRows } from "@/lib/settlementRoomNotes";
 import type { InvoiceWithRelations } from "@/types/invoice";
 
 /**
@@ -188,6 +189,23 @@ const HAM_THAY_V3 = HAM_GHIM_V3.filter((k) => !KHONG_THAY_V3.has(k));
 let md5GocV3: Record<string, string> = {};
 let md5LuotMotV3: Record<string, string> = {};
 let hashSauV3: string[] = [];
+/**
+ * Migration 20261024035114 — gói tháng thêm dữ liệu phòng thô cho ghi chú "chưa đóng / trống" ở thẻ Khoản thu
+ * (chủ nhắn 24/10/2026). Đường dẫn đổi được qua env để kiểm đột biến trên bản sao.
+ */
+const FILE_PHONG = process.env.QTPHONG_MIGRATION_FILE
+  ?? "supabase/migrations/20261024035114_quyet_toan_du_lieu_phong_chua_dong.sql";
+const GOI_THANG = "app_private.landlord_settlement_month_payload_v1(uuid,date,boolean)";
+const DU_LIEU_PHONG = "app_private.landlord_room_data_v1(uuid,date,boolean)";
+/** md5(pg_get_functiondef) production sau khi áp 20261023142407 (đọc chỉ đọc 24/10/2026). */
+const PROD_MD5_PHONG: Record<string, string> = {
+  [GOI_THANG]: "c172acff6a3488ae6d26c1b71d9f8693",
+  "public.landlord_settlement_public_v1(text,date)": "1c3a19568446c14b0ab694e75e235c76",
+  "public.landlord_settlement_month_v1(uuid,date)": "94ff223a4cf13641bb1427b17b6a8bed",
+};
+let md5GocPhong: Record<string, string> = {};
+let md5LuotMotPhong: Record<string, string> = {};
+let hashSauPhong: string[] = [];
 /** source_hash của các tháng có dữ liệu (đọc thẳng công thức, vai postgres). */
 async function hashCacThang(): Promise<string[]> {
   const r = await db.query<{ h: string }>(
@@ -331,6 +349,30 @@ beforeAll(async () => {
   md5LuotMotV3 = await md5Cua([...HAM_THAY_V3, UPSERT_V3]);
   await chay(sqlV3);
   hashSauV3 = await hashCacThang();
+
+  // 20261024035114 (dữ liệu phòng): bảng giả thêm đủ cột production mà hàm mới đọc, rồi áp HAI lượt.
+  await chay(`
+    ALTER TABLE public.rooms ADD COLUMN building_id uuid, ADD COLUMN status text, ADD COLUMN deleted_at timestamptz;
+    ALTER TABLE public.contracts ADD COLUMN room_id uuid, ADD COLUMN status text, ADD COLUMN start_date date,
+      ADD COLUMN end_date date, ADD COLUMN actual_end_date date, ADD COLUMN contract_number text,
+      ADD COLUMN deleted_at timestamptz;
+    ALTER TABLE public.invoices ADD COLUMN status text, ADD COLUMN total_amount numeric, ADD COLUMN paid_amount numeric,
+      ADD COLUMN remaining_amount numeric, ADD COLUMN due_date date;
+    -- như production: is_overdue là cột suy PostgREST (hàm nhận dòng hoá đơn), không phải cột
+    CREATE FUNCTION public.is_overdue(public.invoices) RETURNS boolean LANGUAGE sql STABLE
+      AS $$ SELECT $1.due_date IS NOT NULL AND $1.deleted_at IS NULL AND $1.status NOT IN ('PAID', 'CANCELLED')
+              AND COALESCE($1.paid_amount, 0) < COALESCE($1.total_amount, 0) AND $1.due_date < current_date $$;
+    CREATE TABLE public.contract_terminations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), contract_id uuid,
+      termination_type text, termination_date date, actual_move_out_date date, status text);
+    CREATE TABLE public.contract_transfers(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), old_room_id uuid,
+      transfer_type text, transfer_date date, status text);
+  `);
+  md5GocPhong = await md5Cua(Object.keys(PROD_MD5_PHONG));
+  const sqlPhong = readFileSync(FILE_PHONG, "utf8");
+  await chay(sqlPhong);
+  md5LuotMotPhong = await md5Cua([GOI_THANG, DU_LIEU_PHONG]);
+  await chay(sqlPhong);
+  hashSauPhong = await hashCacThang();
 }, 60000);
 afterAll(() => db.close());
 
@@ -2153,6 +2195,144 @@ describe("v3: gói RPC thật parse được bằng schema zod của web", () =>
       expect(ov.deposit_holder).toBe("LANDLORD");
       const opt = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
       expect(opt.current?.deposit_holder).toBe("LANDLORD");
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20261024035114 — thẻ Khoản thu hiện đủ phòng như Báo cáo LN (chủ nhắn 24/10/2026: "paris 2 chưa đóng tiền mà
+// không thấy hiện"). Phòng / HĐ / hoá đơn giả, toà A tháng 01/2025.
+// ─────────────────────────────────────────────────────────────────────────────
+const [P_NO, P_DU, P_CHUA_HD, P_TRONG, P_BAO_TRI, P_XOA, P_CHUYEN, P_TOA_B] = [61, 62, 63, 64, 65, 66, 67, 68].map(id);
+const [H_NO, H_DU, H_CHUA_HD, H_TRONG, H_XOA, H_CHUYEN, H_TOA_B] = [71, 72, 73, 74, 75, 76, 77].map(id);
+const FIXTURE_IDS = [P_NO, P_DU, P_CHUA_HD, P_TRONG, P_BAO_TRI, P_XOA, P_CHUYEN, P_TOA_B,
+  H_NO, H_DU, H_CHUA_HD, H_TRONG, H_XOA, H_CHUYEN, H_TOA_B];
+
+/** Toà A: PARIS 2 nợ (quá hạn), 101 đã đóng, G1 chưa có hoá đơn, MB trống (thanh lý), 205 bảo trì, 999 đã xoá,
+ *  L2 trống (chuyển phòng) + một phòng của toà B. Kèm các dòng PHẢI bị lọc (huỷ, xoá, kỳ khác, chưa duyệt). */
+async function phongThangMot() {
+  await db.query(`INSERT INTO public.rooms(id, name, building_id, status, deleted_at) VALUES
+    ($1,'PARIS 2',$9,'OCCUPIED',null), ($2,'101',$9,'OCCUPIED',null), ($3,'G1',$9,'OCCUPIED',null),
+    ($4,'MB',$9,'AVAILABLE',null), ($5,'205',$9,'MAINTENANCE',null), ($6,'999',$9,'AVAILABLE',now()),
+    ($7,'L2',$9,'AVAILABLE',null), ($8,'B-1',$10,'OCCUPIED',null)`,
+    [P_NO, P_DU, P_CHUA_HD, P_TRONG, P_BAO_TRI, P_XOA, P_CHUYEN, P_TOA_B, TOA_A, TOA_B]);
+  await db.query(`INSERT INTO public.contracts(id, room_id, status, start_date, start_billing_date, end_date,
+      actual_end_date, contract_number, deleted_at) VALUES
+    ($1,$8,'ACTIVE','2024-06-01','2024-06-01','2025-06-01',null,'HD-GIA-1',null),
+    ($2,$9,'ACTIVE','2024-06-01',null,'2025-06-01',null,'HD-GIA-2',null),
+    ($3,$10,'ACTIVE','2024-09-01',null,null,null,'HD-GIA-3',null),
+    ($4,$11,'TERMINATED','2024-03-01',null,'2025-03-01','2024-12-15','HD-GIA-4',null),
+    ($5,$11,'ACTIVE','2024-01-01',null,null,null,'HD-GIA-XOA',now()),
+    ($6,$12,'TERMINATED','2024-03-01',null,'2025-03-01','2024-12-20','HD-GIA-6',null),
+    ($7,$13,'ACTIVE','2024-03-01',null,null,null,'HD-GIA-B',null)`,
+    [H_NO, H_DU, H_CHUA_HD, H_TRONG, H_XOA, H_CHUYEN, H_TOA_B, P_NO, P_DU, P_CHUA_HD, P_TRONG, P_CHUYEN, P_TOA_B]);
+  await db.query(`INSERT INTO public.invoices(id, contract_id, billing_month, kind, status, total_amount, paid_amount,
+      remaining_amount, due_date, deleted_at) VALUES
+    ($1,$7,'2025-01','MONTHLY','OVERDUE',3500000,0,3500000,'2025-01-10',null),
+    ($2,$8,'2025-01','MONTHLY','PAID',3000000,3000000,0,'2025-01-10',null),
+    ($3,$9,'2025-01','MONTHLY','CANCELLED',2000000,2000000,0,null,null),
+    ($4,$9,'2025-01','MONTHLY','PAID',2000000,2000000,0,null,now()),
+    ($5,$9,'2025-02','MONTHLY','PAID',2000000,2000000,0,null,null),
+    ($6,$10,'2025-01','MONTHLY','PAID',4000000,4000000,0,null,null)`,
+    [id(81), id(82), id(83), id(84), id(85), id(86), H_NO, H_DU, H_CHUA_HD, H_TOA_B]);
+  await db.query(`INSERT INTO public.contract_terminations(contract_id, termination_type, termination_date,
+      actual_move_out_date, status) VALUES
+    ($1,'EARLY','2024-12-15','2024-12-15','COMPLETED'), ($2,'EARLY','2024-12-01','2024-12-01','COMPLETED')`,
+    [H_TRONG, H_TOA_B]);
+  await db.query(`INSERT INTO public.contract_transfers(old_room_id, transfer_type, transfer_date, status) VALUES
+    ($1,'ROOM_CHANGE','2024-12-20','COMPLETED'), ($1,'ROOM_CHANGE','2025-01-05','PENDING'),
+    ($2,'ROOM_CHANGE','2024-12-20','COMPLETED')`, [P_CHUYEN, P_TOA_B]);
+}
+
+describe("dữ liệu phòng (20261024035114): migration", () => {
+  it("thân production tái lập đúng md5 trước khi áp", () => {
+    expect(md5GocPhong).toEqual(PROD_MD5_PHONG);
+  });
+
+  it("md5 lượt hai được tiền kiểm nhận đúng bằng thân của chính file", () => {
+    const sql = readFileSync(FILE_PHONG, "utf8");
+    expect(md5LuotMotPhong[GOI_THANG]).toMatch(/^[0-9a-f]{32}$/);
+    expect(sql).toContain(`'${PROD_MD5_PHONG[GOI_THANG]}', '${md5LuotMotPhong[GOI_THANG]}'`);
+    expect(sql).toContain(`IF v_md5 <> '${md5LuotMotPhong[DU_LIEU_PHONG]}' THEN`);
+  });
+
+  it.each([
+    ["gói tháng", "CREATE OR REPLACE FUNCTION app_private.landlord_settlement_month_payload_v1(p_building_id uuid, p_month date, p_public boolean) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm chỉ đọc (tháng admin)", "CREATE OR REPLACE FUNCTION public.landlord_settlement_month_v1(p_building_id uuid, p_month date) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm dữ liệu phòng (lượt hai)", "CREATE OR REPLACE FUNCTION app_private.landlord_room_data_v1(p_building_id uuid, p_month date, p_public boolean) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+  ])("thân lạ ở %s ⇒ dừng 55000", async (_ten, gia) => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await chay(gia);
+      const block = readFileSync(FILE_PHONG, "utf8").replace(/^BEGIN;$/m, "").replace(/^COMMIT;$/m, "");
+      await expect(db.exec(block)).rejects.toMatchObject({ code: "55000" });
+    });
+  });
+
+  it("không đổi số (source_hash y như trước); hàm dữ liệu phòng không vai nào gọi thẳng được", async () => {
+    expect(hashSauPhong).toEqual(hashTruoc);
+    for (const vai of ["anon", "authenticated", "service_role"]) {
+      const r = await db.query<{ c: boolean }>("SELECT has_function_privilege($1, $2, 'EXECUTE') AS c", [vai, DU_LIEU_PHONG]);
+      expect(r.rows[0].c, vai).toBe(false);
+    }
+  });
+});
+
+describe("dữ liệu phòng (20261024035114): gói tháng", () => {
+  it("chép bộ lọc của Báo cáo LN: phòng chưa xoá của toà, HĐ chưa xoá, hoá đơn kỳ chưa huỷ/xoá, chuyển phòng đã duyệt", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongThangMot();
+      await asUser(CHU_A);
+      const m = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      const d = m.room_data!;
+      expect(d.rooms.map((r) => r.name).sort()).toEqual(["101", "205", "G1", "L2", "MB", "PARIS 2"]);
+      expect(d.contracts.map((c) => c.contract_number).sort()).toEqual(["HD-GIA-1", "HD-GIA-2", "HD-GIA-3", "HD-GIA-4", "HD-GIA-6"]);
+      expect(d.invoices.map((i) => [i.status, Number(i.total_amount)]).sort()).toEqual([["OVERDUE", 3_500_000], ["PAID", 3_000_000]]);
+      expect(d.terminations).toHaveLength(1);
+      expect(d.transfers.map((t) => t.status)).toEqual(["COMPLETED"]);
+      // mã tạm khớp được phòng ↔ HĐ ↔ hoá đơn, không lộ id thật
+      const roomIds = new Set(d.rooms.map((r) => r.id));
+      expect(d.contracts.every((c) => c.room_id !== null && roomIds.has(c.room_id))).toBe(true);
+      const contractIds = new Set(d.contracts.map((c) => c.id));
+      expect(d.invoices.every((i) => contractIds.has(i.contract_id))).toBe(true);
+      const json = JSON.stringify(d);
+      for (const x of FIXTURE_IDS) expect(json).not.toContain(x);
+      expect(json).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    });
+  });
+
+  it("link chủ nhà: cùng dữ liệu nhưng không có số HĐ; tháng chưa áp dụng ⇒ null", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongThangMot();
+      await asUser(CHU_A);
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asUser(null);
+      const pub = settlementPublicSchema.parse(await rpc("public.landlord_settlement_public_v1($1, '2025-01-01'::date)", [token]));
+      expect(pub.month.room_data?.rooms).toHaveLength(6);
+      expect(pub.month.room_data?.contracts.every((c) => c.contract_number === null)).toBe(true);
+      await asUser(CHU_A);
+      const truoc = settlementMonthSchema.parse(await thang(TOA_A, "2024-12-01"));
+      expect(truoc.status).toBe("NOT_APPLICABLE");
+      expect(truoc.room_data).toBeNull();
+    });
+  });
+
+  it("web dựng ghi chú như Báo cáo LN: PARIS 2 'Chưa đóng' (quá hạn), G1 chưa có hoá đơn, MB/L2 trống; 101 đã đóng và 205 bảo trì không ghi", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phongThangMot();
+      await asUser(CHU_A);
+      const m = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      const thu = m.statement!.vouchers.filter((v) => v.type === "INCOME" && v.group === "PNL" && v.status === "APPROVED");
+      const rows = settlementRoomNoteRows(m.room_data, m.period_month, thu, "2026-10-24");
+      expect(Object.fromEntries(rows.map((r) => [r.roomName, r.label]))).toEqual({
+        "PARIS 2": "Chưa đóng", G1: "Chưa đóng", MB: "Phòng trống", L2: "Phòng trống",
+      });
+      expect(rows.find((r) => r.roomName === "PARIS 2")?.text).toMatch(/^Có hoá đơn, chưa thu .* — quá hạn$/);
+      expect(rows.find((r) => r.roomName === "G1")?.text).toBe("Chưa có hoá đơn tháng này");
+      expect(rows.find((r) => r.roomName === "MB")?.text).toMatch(/^Trống \d+ ngày từ 15\/12\/2024/);
     });
   });
 });
