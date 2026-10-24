@@ -280,6 +280,9 @@ export function SettlementOverviewCard({
     <div className="flex flex-col gap-3" data-testid="settlement-overview">
       <StatsTable overview={overview} mode={mode} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} narrow={narrow} />
 
+      {/* "Tổng quyết toán" (còn lại, gồm tạm tính, hai bên đã trả nhau) chỉ ở màn quản trị — chủ nhắn 24/10/2026:
+          link chủ nhà bỏ khối này. Màn quản trị giữ để xem / huỷ khoản thanh toán đã ghi. */}
+      {mode === 'admin' && (
       <SectionCard title="Tổng quyết toán"
         description={<>Từ {monthLabel(overview.effective_from).toLowerCase()} · số dương là chủ nhà trả quản lý, số âm là quản lý trả lại chủ nhà.</>}>
         <div className="space-y-4 px-4 pb-4">
@@ -358,6 +361,7 @@ export function SettlementOverviewCard({
           </div>
         </div>
       </SectionCard>
+      )}
     </div>
   );
 }
