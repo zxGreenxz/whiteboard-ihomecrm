@@ -64,6 +64,9 @@ export const portalsSchema = z.object({
     slug: z.string(),
     building_ids: z.array(z.string().uuid()),
     updated_at: z.string(),
+    /** Lần nhập PIN sai trong 24 giờ và link có đang tạm khoá (10 lần / 15 phút hoặc 30 lần / 24 giờ). */
+    failures_24h: z.number().int().nonnegative(),
+    locked: z.boolean(),
     viewers: z.array(portalViewerSchema),
   })),
 });
@@ -73,8 +76,9 @@ export const portalSaveReceiptSchema = z.object({ slug: z.string(), building_ids
 /** PIN trả về đúng MỘT lần lúc thêm người xem. */
 export const portalViewerAddReceiptSchema = z.object({ id: z.string().uuid(), label: z.string(), pin: z.string().regex(PORTAL_PIN) });
 export const portalViewerRevokeReceiptSchema = z.object({ status: z.enum(['REVOKED', 'ALREADY_REVOKED']) });
+export const portalUnlockReceiptSchema = z.object({ status: z.literal('UNLOCKED'), cleared: z.number().int().nonnegative() });
 
-/** PIN dễ đoán (server cũng chặn): lặp một số hoặc dãy liên tiếp tăng / giảm. */
+/** PIN dễ đoán (server không bao giờ sinh): lặp một số hoặc dãy liên tiếp tăng / giảm. */
 export const isWeakPin = (pin: string): boolean =>
   /^(\d)\1{5}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin);
 

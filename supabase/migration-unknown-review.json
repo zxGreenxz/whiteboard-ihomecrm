@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261024072823_quyet_toan_link_ten_mien_pin.sql": {
-      "sha256": "3a0a7532fee7866e841c5eacf146145419c4de725dcfa8fb57d61bb08d1ff81a",
+      "sha256": "3223cda1c77c6398dc9c3a2c4e022b888cbc066b13f6ee9e104b16aff6046807",
       "missingObjects": [
         "table:app_private.landlord_portals",
         "table:app_private.landlord_portal_users",

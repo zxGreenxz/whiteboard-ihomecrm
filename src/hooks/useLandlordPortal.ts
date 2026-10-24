@@ -4,7 +4,7 @@
 // Như useLandlordSettlement: lỗi THROW để màn báo, gói đi qua zod (src/lib/landlordPortal.ts). Server là hàng rào
 // thật — chống dò PIN, phiên hết hạn / bị thu hồi ⇒ landlord_portal_v1 trả NULL.
 // =============================================================================
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { confirmReceiptSchema } from '@/lib/landlordSettlement';
 import {
@@ -12,6 +12,7 @@ import {
   portalPayloadSchema,
   portalSaveReceiptSchema,
   portalsSchema,
+  portalUnlockReceiptSchema,
   portalViewerAddReceiptSchema,
   portalViewerRevokeReceiptSchema,
 } from '@/lib/landlordPortal';
@@ -51,7 +52,8 @@ export const useLandlordPortal = (slug: string, session: string | null, building
   useQuery({
     queryKey: landlordPortalKeys.page(slug, session, building, month),
     enabled: !!session,
-    placeholderData: keepPreviousData,
+    // giữ số đang xem khi đổi toà / tháng — nhưng KHÔNG mang số của phiên khác (thoát rồi vào PIN người khác)
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[3] === session ? prev : undefined),
     queryFn: async () => {
       const { data, error } = await goiRpc('landlord_portal_v1', {
         p_slug: slug, p_session: session, p_building: building, p_month: month,
@@ -132,10 +134,25 @@ export const useAddLandlordPortalViewer = () => {
   const invalidate = useInvalidateAdmin();
   return useMutation({
     meta: { handlesFeedback: true },
-    mutationFn: async (input: { slug: string; label: string; pin: string | null }) => {
-      const { data, error } = await goiRpc('landlord_portal_viewer_add_v1', { p_slug: input.slug, p_label: input.label, p_pin: input.pin });
+    // PIN luôn do server sinh (PIN tự chọn quá dễ dò) — trả về đúng một lần
+    mutationFn: async (input: { slug: string; label: string }) => {
+      const { data, error } = await goiRpc('landlord_portal_viewer_add_v1', { p_slug: input.slug, p_label: input.label });
       if (error) throw error;
       return portalViewerAddReceiptSchema.parse(data);
+    },
+    onSettled: () => invalidate(),
+  });
+};
+
+/** Mở khoá link bị khoá vì nhập PIN sai nhiều lần. */
+export const useUnlockLandlordPortal = () => {
+  const invalidate = useInvalidateAdmin();
+  return useMutation({
+    meta: { handlesFeedback: true },
+    mutationFn: async (input: { slug: string }) => {
+      const { data, error } = await goiRpc('landlord_portal_unlock_v1', { p_slug: input.slug });
+      if (error) throw error;
+      return portalUnlockReceiptSchema.parse(data);
     },
     onSettled: () => invalidate(),
   });

@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
-// Hộp "Link tên miền cho chủ nhà": hai link cố định; tick toà rồi lưu (link mới phải có toà); thêm người xem (PIN tự
-// chọn bị chặn khi sai dạng / dễ đoán trước khi gửi; PIN hiện đúng một lần); thu hồi phải bấm hai lần. Tên giả.
+// Hộp "Link tên miền cho chủ nhà": hai link cố định; tick toà rồi lưu (link mới phải có toà); thêm người xem chỉ cần
+// tên — PIN do hệ thống tạo, hiện đúng một lần; link bị khoá vì nhập sai thì có nút mở khoá; thu hồi phải bấm hai lần.
+// Tên giả.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LandlordOperation } from '@/lib/landlordSettlement';
 
-const m = vi.hoisted(() => ({ save: vi.fn(), add: vi.fn(), revoke: vi.fn(), data: null as unknown }));
+const m = vi.hoisted(() => ({ save: vi.fn(), add: vi.fn(), revoke: vi.fn(), unlock: vi.fn(), data: null as unknown }));
 vi.mock('@/hooks/useLandlordPortal', () => ({
   useLandlordPortals: () => ({ data: m.data, isLoading: false, isError: false, error: null }),
   useSaveLandlordPortal: () => ({ isPending: false, mutateAsync: m.save }),
   useAddLandlordPortalViewer: () => ({ isPending: false, mutateAsync: m.add }),
   useRevokeLandlordPortalViewer: () => ({ isPending: false, mutateAsync: m.revoke }),
+  useUnlockLandlordPortal: () => ({ isPending: false, mutateAsync: m.unlock }),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
@@ -23,12 +25,16 @@ const op = (n: number, ten: string): LandlordOperation => ({
 const OPS = [op(1, 'Toà A'), op(2, 'Toà B'), op(3, 'Toà C')];
 const nguoi = (n: number, label: string, revoked: string | null = null) =>
   ({ id: id(100 + n), label, created_at: '2026-10-24T00:00:00Z', last_login_at: null, revoked_at: revoked });
+const link = (p: Record<string, unknown> = {}) => ({
+  slug: 'agiang', building_ids: [id(1)], updated_at: 'x', failures_24h: 0, locked: false,
+  viewers: [nguoi(1, 'Người xem A'), nguoi(2, 'Cũ', '2026-10-20T00:00:00Z')], ...p,
+});
 
 const ve = () => render(<LandlordPortalDialog open onOpenChange={vi.fn()} operations={OPS} />);
 const the = (slug: string) => within(screen.getByTestId(`portal-${slug}`));
 
 beforeEach(() => {
-  m.data = { portals: [{ slug: 'agiang', building_ids: [id(1)], updated_at: 'x', viewers: [nguoi(1, 'Người xem A'), nguoi(2, 'Cũ', '2026-10-20T00:00:00Z')] }] };
+  m.data = { portals: [link()] };
   m.save.mockResolvedValue({ slug: 'agiang', building_ids: [id(1), id(2)] });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -49,25 +55,38 @@ it('hai link cố định; gộp thêm toà rồi lưu; link chưa có thì ph�
   expect(tao.disabled).toBe(false);
 });
 
-it('người xem: PIN sai dạng / dễ đoán chặn trước khi gửi; để trống ⇒ server tạo, PIN hiện một lần', async () => {
+it('thêm người xem chỉ cần tên (không có ô PIN); PIN hệ thống tạo hiện đúng một lần', async () => {
   m.add.mockResolvedValue({ id: id(103), label: 'Người xem B', pin: '730518' });
   ve();
   const a = the('agiang');
-  expect(a.getAllByTestId('portal-viewer-row').map((r) => r.textContent)).toEqual([
-    expect.stringContaining('Người xem A'), expect.stringContaining('Cũ'),
-  ]);
-  fireEvent.change(a.getByLabelText('Tên người xem'), { target: { value: 'Người xem B' } });
-  fireEvent.change(a.getByLabelText('PIN 6 số (để trống: tự tạo)'), { target: { value: '123456' } });
+  expect(a.queryByLabelText(/PIN/)).toBeNull();
   fireEvent.click(a.getByRole('button', { name: /Thêm/ }));
-  expect(a.getByRole('alert').textContent).toMatch(/quá dễ đoán/);
-  fireEvent.change(a.getByLabelText('PIN 6 số (để trống: tự tạo)'), { target: { value: '123' } });
-  fireEvent.click(a.getByRole('button', { name: /Thêm/ }));
-  expect(a.getByRole('alert').textContent).toMatch(/đúng 6 chữ số/);
+  expect(a.getByRole('alert').textContent).toMatch(/Nhập tên người xem/);
   expect(m.add).not.toHaveBeenCalled();
-  fireEvent.change(a.getByLabelText('PIN 6 số (để trống: tự tạo)'), { target: { value: '' } });
+  fireEvent.change(a.getByLabelText('Tên người xem'), { target: { value: ' Người xem B ' } });
   fireEvent.click(a.getByRole('button', { name: /Thêm/ }));
-  await waitFor(() => expect(m.add).toHaveBeenCalledWith({ slug: 'agiang', label: 'Người xem B', pin: null }));
+  await waitFor(() => expect(m.add).toHaveBeenCalledWith({ slug: 'agiang', label: 'Người xem B' }));
   expect(a.getByTestId('portal-new-pin').textContent).toMatch(/Người xem B.*730518/);
+});
+
+it('link đang khoá vì nhập sai ⇒ báo số lần + nút Mở khoá; chưa khoá mà có lần sai ⇒ chỉ báo', async () => {
+  m.unlock.mockResolvedValue({ status: 'UNLOCKED', cleared: 30 });
+  m.data = { portals: [link({ failures_24h: 30, locked: true })] };
+  ve();
+  const khoa = the('agiang').getByTestId('portal-agiang-lock');
+  expect(khoa.textContent).toMatch(/đang tạm khoá.*30 lần trong 24 giờ/);
+  fireEvent.click(within(khoa).getByRole('button', { name: 'Mở khoá' }));
+  await waitFor(() => expect(m.unlock).toHaveBeenCalledWith({ slug: 'agiang' }));
+  cleanup();
+  m.data = { portals: [link({ failures_24h: 3, locked: false })] };
+  ve();
+  const bao = the('agiang').getByTestId('portal-agiang-lock');
+  expect(bao.textContent).toMatch(/Có lần nhập PIN sai — 3 lần/);
+  expect(within(bao).queryByRole('button')).toBeNull();
+  cleanup();
+  m.data = { portals: [link()] };
+  ve();
+  expect(the('agiang').queryByTestId('portal-agiang-lock')).toBeNull();
 });
 
 it('thu hồi phải bấm hai lần; người đã thu hồi không có nút', async () => {

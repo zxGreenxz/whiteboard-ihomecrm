@@ -84,6 +84,11 @@ function PortalLogin({ slug, onLoggedIn }: { slug: string; onLoggedIn: (session:
 export default function LandlordPortalPage({ slug: slugProp }: { slug?: string }) {
   const params = useParams<{ slug: string }>();
   const slug = (slugProp ?? params.slug ?? '').toLowerCase();
+  // đổi link (/cn/agiang → /cn/cgiang) ⇒ dựng lại từ đầu với phiên đã lưu của ĐÚNG link đó
+  return <PortalView key={slug} slug={slug} />;
+}
+
+function PortalView({ slug }: { slug: string }) {
   const [session, setSessionState] = useState<string | null>(() => readPortalSession(slug));
   const setSession = (s: string | null) => {
     writePortalSession(slug, s);

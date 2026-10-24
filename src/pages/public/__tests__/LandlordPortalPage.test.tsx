@@ -91,6 +91,17 @@ it('đã nhớ phiên: vào thẳng; link nhiều toà ⇒ ô chọn toà (đổ
   expect(screen.getByTestId('portal-login')).toBeTruthy();
 });
 
+it('đổi tên link (agiang → cgiang) ⇒ dựng lại với phiên của đúng link; phiên link kia giữ nguyên', () => {
+  localStorage.setItem(KHOA, PHIEN);
+  m.portal = query(goi());
+  const { rerender } = ve();
+  expect(screen.getByTestId('portal-viewer')).toBeTruthy();
+  rerender(<MemoryRouter><LandlordPortalPage slug="cgiang" /></MemoryRouter>);
+  expect(screen.getByTestId('portal-login')).toBeTruthy();
+  expect(localStorage.getItem(KHOA)).toBe(PHIEN);
+  expect(m.args.some((a) => a[0] === 'cgiang' && a[1] === PHIEN)).toBe(false);
+});
+
 it('một toà ⇒ không có ô chọn toà; phiên chết (server trả NULL) ⇒ xoá phiên, hỏi lại PIN', async () => {
   localStorage.setItem(KHOA, PHIEN);
   m.portal = query(goi({ buildings: [{ key: 'k1', building_name: 'Toà A', landlord_name: 'Chủ A' }] }));

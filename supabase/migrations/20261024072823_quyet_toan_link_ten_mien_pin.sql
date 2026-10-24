@@ -8,7 +8,7 @@
 -- =============================================================================
 -- VÌ SAO KHÔNG CHỈ DÙNG TÊN MIỀN
 --   Tên miền phụ không bí mật (mọi chứng chỉ HTTPS đều lên nhật ký công khai) ⇒ PIN là thứ giữ số liệu. PIN 6 số
---   chỉ có 10^6 giá trị ⇒ chặn dò ở SERVER: mỗi link tối đa 10 lần sai / 15 phút (sai thì GHI lỗi rồi RETURN, không
+--   chỉ có 10^6 giá trị ⇒ chặn dò ở SERVER: mỗi link tối đa 10 lần sai / 15 phút và 30 lần / 24 giờ, PIN luôn do server sinh (sai thì GHI lỗi rồi RETURN, không
 --   RAISE — RAISE sẽ rollback luôn bản ghi lỗi, bài học từ 20260903150311_copilot_step_up_pin_v1). PIN băm bcrypt
 --   (extensions.crypt), không lưu thô; phiên đăng nhập là chuỗi ngẫu nhiên 32 byte, server chỉ giữ sha256.
 --
@@ -20,7 +20,8 @@
 --   3. RPC công khai (anon): landlord_portal_login_v1, landlord_portal_v1 (danh sách toà + gói quyết toán của toà
 --      đang chọn, chỉ đọc), landlord_portal_confirm_v1, landlord_portal_logout_v1.
 --   4. RPC quản trị (chủ công ty / super admin): landlord_portals_v1, landlord_portal_save_v1 (gộp toà),
---      landlord_portal_viewer_add_v1 (tên + PIN; để trống PIN thì server sinh), landlord_portal_viewer_revoke_v1.
+--      landlord_portal_viewer_add_v1 (tên; PIN server sinh), landlord_portal_viewer_revoke_v1,
+--      landlord_portal_unlock_v1 (mở khoá khi bị dò).
 --   5. app_private.landlord_settlement_month_payload_v1 (DỰNG TỪ THÂN production md5 55c57c02…, file
 --      20261024035114): confirmation thêm 'by' = tên người xem đã xác nhận (link /qt cũ: null).
 --   Không đổi: công thức, ảnh chốt, chuỗi băm, link /qt/:token cũ.
@@ -76,14 +77,15 @@ BEGIN
     SELECT x.sig, x.ghim FROM (VALUES
       ('app_private.landlord_portal_viewer_v1(text,text)', ARRAY['dafb5efde8341322c80cc4e0106eab10']),
       ('app_private.landlord_portal_buildings_v1(text)', ARRAY['49f995c6c0b19b2f120d61f058ef1195']),
-      ('public.landlord_portal_login_v1(text,text)', ARRAY['44d8ea5a5399dcdc109b6ce12bb14e75']),
+      ('public.landlord_portal_login_v1(text,text)', ARRAY['3488d3218cbd6a94efcad763c84c42ec']),
       ('public.landlord_portal_v1(text,text,text,date)', ARRAY['db9c3bf958ae49b85abad8ad5e84dc6b']),
       ('public.landlord_portal_confirm_v1(text,text,text,date,integer,text)', ARRAY['589a42ff1fa32ef44b9e9479d61c302b']),
       ('public.landlord_portal_logout_v1(text,text)', ARRAY['72d6980c61eb383b895e2affb1b9d85c']),
-      ('public.landlord_portals_v1()', ARRAY['a4ba48105bd8305f7b7a9f0ca7c47431']),
-      ('public.landlord_portal_save_v1(text,uuid[])', ARRAY['a648b2639b80ba7e3c0ddcff5c78d27f']),
-      ('public.landlord_portal_viewer_add_v1(text,text,text)', ARRAY['29ecaa36e687d0c1e289763550e23faa']),
-      ('public.landlord_portal_viewer_revoke_v1(uuid)', ARRAY['3af551f0d39235fb5d4c41684fe46059'])
+      ('public.landlord_portals_v1()', ARRAY['25870775add18bacc1363ba5ee306aa7']),
+      ('public.landlord_portal_save_v1(text,uuid[])', ARRAY['ce8d1da2b924206e3af11b5f057cffd1']),
+      ('public.landlord_portal_viewer_add_v1(text,text)', ARRAY['d5906236eba8c4b6f59d79fa61a60033']),
+      ('public.landlord_portal_viewer_revoke_v1(uuid)', ARRAY['3af551f0d39235fb5d4c41684fe46059']),
+      ('public.landlord_portal_unlock_v1(text)', ARRAY['ad4dc7c0e9db538c43c32d3e4532b8e1'])
     ) AS x(sig, ghim)
   LOOP
     IF to_regprocedure(v_sig) IS NOT NULL THEN
@@ -145,7 +147,7 @@ CREATE INDEX IF NOT EXISTS landlord_portal_login_failures_link
   ON app_private.landlord_portal_login_failures (portal_slug, failed_at DESC);
 
 REVOKE ALL ON app_private.landlord_portals, app_private.landlord_portal_users, app_private.landlord_portal_sessions,
-  app_private.landlord_portal_login_failures FROM PUBLIC, anon, authenticated;
+  app_private.landlord_portal_login_failures FROM PUBLIC, anon, authenticated, service_role;
 
 -- xác nhận "đã xem số liệu" qua link tên miền: ghi người xem thay cho token link /qt
 ALTER TABLE app_private.landlord_settlement_confirmations ALTER COLUMN share_token DROP NOT NULL;
@@ -209,6 +211,8 @@ REVOKE ALL ON FUNCTION app_private.landlord_portal_buildings_v1(text) FROM PUBLI
 -- 3. RPC công khai (link tên miền).
 
 -- Đăng nhập bằng PIN. KHÔNG RAISE khi sai: ghi lần sai rồi RETURN (RAISE rollback luôn bản ghi ⇒ hết chống dò).
+-- Khoá theo link: 10 lần sai / 15 phút VÀ 30 lần sai / 24 giờ (review chéo: chỉ khoá 15 phút thì người dò kiên
+-- nhẫn vẫn thử ~960 lần/ngày). Người đã đăng nhập vẫn xem được trong lúc khoá; quản trị thấy số lần sai và mở khoá.
 CREATE OR REPLACE FUNCTION public.landlord_portal_login_v1(p_slug text, p_pin text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -220,6 +224,9 @@ DECLARE
   v_slug  text := lower(btrim(COALESCE(p_slug, '')));
   v_fail  integer;
   v_first timestamptz;
+  v_ngay  integer;
+  v_dau   timestamptz;
+  v_mo    timestamptz;
   v_user  uuid;
   v_label text;
   v_token text;
@@ -232,12 +239,17 @@ BEGIN
   -- một lượt đăng nhập của một link tại một thời điểm: đếm lần sai không bị hai lượt song song vượt qua
   PERFORM pg_advisory_xact_lock(hashtextextended('landlord_portal_login:' || v_slug, 0));
 
-  SELECT count(*)::integer, min(f.failed_at) INTO v_fail, v_first
+  SELECT count(*) FILTER (WHERE f.failed_at > clock_timestamp() - interval '15 minutes')::integer,
+         min(f.failed_at) FILTER (WHERE f.failed_at > clock_timestamp() - interval '15 minutes'),
+         count(*)::integer, min(f.failed_at)
+    INTO v_fail, v_first, v_ngay, v_dau
     FROM app_private.landlord_portal_login_failures f
-   WHERE f.portal_slug = v_slug AND f.failed_at > clock_timestamp() - interval '15 minutes';
-  IF v_fail >= 10 THEN
+   WHERE f.portal_slug = v_slug AND f.failed_at > clock_timestamp() - interval '24 hours';
+  IF v_fail >= 10 OR v_ngay >= 30 THEN
+    v_mo := GREATEST(CASE WHEN v_fail >= 10 THEN v_first + interval '15 minutes' END,
+                     CASE WHEN v_ngay >= 30 THEN v_dau + interval '24 hours' END);
     RETURN jsonb_build_object('status', 'LOCKED',
-      'retry_after_seconds', GREATEST(1, ceil(extract(epoch FROM (v_first + interval '15 minutes' - clock_timestamp())))::integer));
+      'retry_after_seconds', GREATEST(1, ceil(extract(epoch FROM (v_mo - clock_timestamp())))::integer));
   END IF;
 
   IF p_pin IS NOT NULL AND p_pin ~ '^[0-9]{6}$' THEN
@@ -253,8 +265,8 @@ BEGIN
   IF v_user IS NULL THEN
     INSERT INTO app_private.landlord_portal_login_failures (portal_slug) VALUES (v_slug);
     DELETE FROM app_private.landlord_portal_login_failures f
-     WHERE f.portal_slug = v_slug AND f.failed_at < clock_timestamp() - interval '1 day';
-    RETURN jsonb_build_object('status', 'INVALID', 'attempts_left', GREATEST(0, 9 - v_fail));
+     WHERE f.portal_slug = v_slug AND f.failed_at < clock_timestamp() - interval '2 days';
+    RETURN jsonb_build_object('status', 'INVALID', 'attempts_left', GREATEST(0, LEAST(9 - v_fail, 29 - v_ngay)));
   END IF;
 
   v_token := rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');
@@ -440,6 +452,9 @@ BEGIN
              'slug', p.slug,
              'building_ids', to_jsonb(p.building_ids),
              'updated_at', p.updated_at,
+             -- lần nhập PIN sai gần đây và link có đang khoá không (cùng ngưỡng với landlord_portal_login_v1)
+             'failures_24h', sai.ngay,
+             'locked', sai.phut >= 10 OR sai.ngay >= 30,
              'viewers', COALESCE((
                SELECT jsonb_agg(jsonb_build_object(
                         'id', u.id, 'label', u.label, 'created_at', u.created_at,
@@ -448,6 +463,11 @@ BEGIN
                  FROM app_private.landlord_portal_users u WHERE u.portal_slug = p.slug), '[]'::jsonb))
              ORDER BY p.slug)
       FROM app_private.landlord_portals p
+     CROSS JOIN LATERAL (
+       SELECT (count(*) FILTER (WHERE f.failed_at > now() - interval '15 minutes'))::integer AS phut,
+              count(*)::integer AS ngay
+         FROM app_private.landlord_portal_login_failures f
+        WHERE f.portal_slug = p.slug AND f.failed_at > now() - interval '24 hours') sai
      WHERE public.is_super_admin() OR app_private.ie_actor_is_company_owner_v1(p.organization_id, v_actor)), '[]'::jsonb));
 END
 $fn$;
@@ -504,6 +524,10 @@ BEGIN
        SET building_ids = v_ids, updated_by = v_actor, updated_at = clock_timestamp()
      WHERE p.slug = v_slug;
   ELSE
+    -- tạo link MỚI chỉ quản trị hệ thống (review chéo: chủ công ty khác tạo trước thì chiếm luôn tên miền agiang/cgiang)
+    IF NOT public.is_super_admin() THEN
+      RAISE EXCEPTION 'Chỉ quản trị hệ thống tạo được link tên miền mới' USING ERRCODE = '42501';
+    END IF;
     IF cardinality(v_orgs) = 0 THEN
       RAISE EXCEPTION 'Chọn ít nhất một toà cho link' USING ERRCODE = '22023';
     END IF;
@@ -515,9 +539,11 @@ BEGIN
 END
 $fn$;
 
--- Thêm người xem: tên + PIN 6 số (trống ⇒ server sinh). PIN không trùng người xem khác của cùng link (PIN là danh
--- tính), không quá dễ đoán. Trả PIN đúng MỘT lần để quản lý gửi cho người xem.
-CREATE OR REPLACE FUNCTION public.landlord_portal_viewer_add_v1(p_slug text, p_label text, p_pin text DEFAULT NULL)
+-- Thêm người xem: tên do quản lý nhập, PIN 6 số LUÔN do server sinh (review chéo: PIN tự chọn kiểu 123123, ngày sinh
+-- bị dò hết trong vài ngày). PIN không trùng BẤT KỲ người xem nào của link, kể cả đã thu hồi (cấp lại PIN cũ thì người
+-- bị thu hồi vào được dưới tên người mới); không lặp một số / dãy liên tiếp. Tối đa 10 người xem còn hiệu lực mỗi link
+-- (mỗi PIN thêm làm tăng xác suất dò trúng). Trả PIN đúng MỘT lần để quản lý gửi cho người xem.
+CREATE OR REPLACE FUNCTION public.landlord_portal_viewer_add_v1(p_slug text, p_label text)
 RETURNS jsonb
 LANGUAGE plpgsql
 VOLATILE
@@ -528,7 +554,7 @@ DECLARE
   v_actor uuid := auth.uid();
   v_slug  text := lower(btrim(COALESCE(p_slug, '')));
   v_label text := btrim(COALESCE(p_label, ''));
-  v_pin   text := NULLIF(btrim(COALESCE(p_pin, '')), '');
+  v_pin   text;
   v_org   uuid;
   v_id    uuid;
   v_try   integer := 0;
@@ -549,34 +575,53 @@ BEGIN
 
   PERFORM pg_advisory_xact_lock(hashtextextended('landlord_portal:' || v_slug, 0));
 
-  IF v_pin IS NOT NULL THEN
-    IF v_pin !~ '^[0-9]{6}$' THEN
-      RAISE EXCEPTION 'PIN phải đúng 6 chữ số' USING ERRCODE = '22023';
-    END IF;
-    IF v_pin ~ '^([0-9])\1{5}$' OR position(v_pin IN '0123456789') > 0 OR position(v_pin IN '9876543210') > 0 THEN
-      RAISE EXCEPTION 'PIN quá dễ đoán (lặp một số hoặc dãy liên tiếp) — chọn PIN khác' USING ERRCODE = '22023';
-    END IF;
-    IF EXISTS (SELECT 1 FROM app_private.landlord_portal_users u
-                WHERE u.portal_slug = v_slug AND u.revoked_at IS NULL AND u.pin_hash = extensions.crypt(v_pin, u.pin_hash)) THEN
-      RAISE EXCEPTION 'PIN này đã dùng cho người xem khác của link — chọn PIN khác' USING ERRCODE = '23505';
-    END IF;
-  ELSE
-    LOOP
-      v_try := v_try + 1;
-      v_pin := lpad(((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint % 1000000))::text, 6, '0');
-      EXIT WHEN NOT (v_pin ~ '^([0-9])\1{5}$' OR position(v_pin IN '0123456789') > 0 OR position(v_pin IN '9876543210') > 0)
-        AND NOT EXISTS (SELECT 1 FROM app_private.landlord_portal_users u
-                         WHERE u.portal_slug = v_slug AND u.revoked_at IS NULL AND u.pin_hash = extensions.crypt(v_pin, u.pin_hash));
-      IF v_try >= 20 THEN
-        RAISE EXCEPTION 'Chưa sinh được PIN — thử lại' USING ERRCODE = '55000';
-      END IF;
-    END LOOP;
+  IF (SELECT count(*) FROM app_private.landlord_portal_users u WHERE u.portal_slug = v_slug AND u.revoked_at IS NULL) >= 10 THEN
+    RAISE EXCEPTION 'Mỗi link tối đa 10 người xem — thu hồi người không còn dùng trước' USING ERRCODE = '22023';
   END IF;
+
+  LOOP
+    v_try := v_try + 1;
+    v_pin := lpad(((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint % 1000000))::text, 6, '0');
+    EXIT WHEN NOT (v_pin ~ '^([0-9])\1{5}$' OR position(v_pin IN '0123456789') > 0 OR position(v_pin IN '9876543210') > 0)
+      AND NOT EXISTS (SELECT 1 FROM app_private.landlord_portal_users u
+                       WHERE u.portal_slug = v_slug AND u.pin_hash = extensions.crypt(v_pin, u.pin_hash));
+    IF v_try >= 20 THEN
+      RAISE EXCEPTION 'Chưa sinh được PIN — thử lại' USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
 
   INSERT INTO app_private.landlord_portal_users (portal_slug, label, pin_hash, created_by)
   VALUES (v_slug, v_label, extensions.crypt(v_pin, extensions.gen_salt('bf', 8)), v_actor)
   RETURNING id INTO v_id;
   RETURN jsonb_build_object('id', v_id, 'label', v_label, 'pin', v_pin);
+END
+$fn$;
+
+-- Mở khoá link (xoá lần nhập PIN sai) — khi người lạ cố dò làm link khoá, chủ nhà thật không vào được.
+CREATE OR REPLACE FUNCTION public.landlord_portal_unlock_v1(p_slug text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public', 'app_private'
+AS $fn$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_slug  text := lower(btrim(COALESCE(p_slug, '')));
+  v_org   uuid;
+  v_n     integer;
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Chỉ chủ công ty hoặc quản trị hệ thống được xem và quyết toán toà vận hành' USING ERRCODE = '42501';
+  END IF;
+  SELECT p.organization_id INTO v_org FROM app_private.landlord_portals p WHERE p.slug = v_slug;
+  IF v_org IS NULL OR NOT (public.is_super_admin() OR app_private.ie_actor_is_company_owner_v1(v_org, v_actor)) THEN
+    RAISE EXCEPTION 'Chỉ chủ công ty hoặc quản trị hệ thống được xem và quyết toán toà vận hành' USING ERRCODE = '42501';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('landlord_portal_login:' || v_slug, 0));
+  DELETE FROM app_private.landlord_portal_login_failures f WHERE f.portal_slug = v_slug;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN jsonb_build_object('status', 'UNLOCKED', 'cleared', v_n);
 END
 $fn$;
 
@@ -620,7 +665,8 @@ REVOKE ALL ON FUNCTION public.landlord_portal_confirm_v1(text, text, text, date,
 REVOKE ALL ON FUNCTION public.landlord_portal_logout_v1(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.landlord_portals_v1() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_portal_save_v1(text, uuid[]) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.landlord_portal_viewer_add_v1(text, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.landlord_portal_viewer_add_v1(text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.landlord_portal_unlock_v1(text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_portal_viewer_revoke_v1(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.landlord_portal_login_v1(text, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_portal_v1(text, text, text, date) TO anon, authenticated;
@@ -628,7 +674,8 @@ GRANT EXECUTE ON FUNCTION public.landlord_portal_confirm_v1(text, text, text, da
 GRANT EXECUTE ON FUNCTION public.landlord_portal_logout_v1(text, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_portals_v1() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_portal_save_v1(text, uuid[]) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.landlord_portal_viewer_add_v1(text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.landlord_portal_viewer_add_v1(text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.landlord_portal_unlock_v1(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_portal_viewer_revoke_v1(uuid) TO authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -775,7 +822,8 @@ BEGIN
     RAISE EXCEPTION 'Thiếu bảng link tên miền' USING ERRCODE = 'XX000';
   END IF;
   FOREACH v_sig IN ARRAY ARRAY['public.landlord_portals_v1()', 'public.landlord_portal_save_v1(text,uuid[])',
-                               'public.landlord_portal_viewer_add_v1(text,text,text)', 'public.landlord_portal_viewer_revoke_v1(uuid)']
+                               'public.landlord_portal_viewer_add_v1(text,text)', 'public.landlord_portal_viewer_revoke_v1(uuid)',
+                               'public.landlord_portal_unlock_v1(text)']
   LOOP
     IF has_function_privilege('anon', v_sig, 'EXECUTE') THEN
       RAISE EXCEPTION 'anon gọi được %', v_sig USING ERRCODE = 'XX000';

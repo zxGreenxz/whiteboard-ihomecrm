@@ -1,6 +1,7 @@
 // Link tên miền cho chủ nhà (chủ nhắn 24/10/2026): tên link cố định (src/lib/landlordPortal.ts) — ở đây chỉ GỘP TOÀ
-// vào link và quản lý người xem (tên + PIN 6 số; mỗi PIN là một người, thao tác trên trang ghi theo người đó).
-// PIN chỉ hiện đúng một lần lúc thêm; server không lưu PIN thô. Server kiểm quyền và chống dò PIN.
+// vào link và quản lý người xem (tên; PIN 6 số do hệ thống tạo; mỗi PIN là một người, thao tác trên trang ghi theo
+// người đó). PIN chỉ hiện đúng một lần lúc thêm; server không lưu PIN thô. Server kiểm quyền và chống dò PIN; link bị
+// khoá vì nhập sai nhiều lần thì mở khoá ở đây. Tạo link mới (lần đầu gộp toà) chỉ quản trị hệ thống làm được.
 import { useEffect, useState } from 'react';
 import { Copy, KeyRound, UserPlus, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,8 +18,9 @@ import {
   useLandlordPortals,
   useRevokeLandlordPortalViewer,
   useSaveLandlordPortal,
+  useUnlockLandlordPortal,
 } from '@/hooks/useLandlordPortal';
-import { LANDLORD_PORTAL_LINKS, PORTAL_PIN, isWeakPin, landlordPortalUrl, type LandlordPortals } from '@/lib/landlordPortal';
+import { LANDLORD_PORTAL_LINKS, landlordPortalUrl, type LandlordPortals } from '@/lib/landlordPortal';
 import { landlordErrorMessage, sameIdSet, vnDateTime, type LandlordOperation } from '@/lib/landlordSettlement';
 
 async function copyText(text: string, done = 'Đã sao chép') {
@@ -46,8 +48,8 @@ function PortalSection({ slug, host, portal, operations }: {
     setBase(goc);
     if (sameIdSet(ids, base)) setIds(goc);
   }
+  const unlock = useUnlockLandlordPortal();
   const [label, setLabel] = useState('');
-  const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [newPin, setNewPin] = useState<{ label: string; pin: string } | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
@@ -68,15 +70,21 @@ function PortalSection({ slug, host, portal, operations }: {
     const ten = label.trim();
     if (!ten) { setError('Nhập tên người xem.'); return; }
     if (ten.length > 60) { setError('Tên người xem tối đa 60 ký tự.'); return; }
-    if (pin && !PORTAL_PIN.test(pin)) { setError('PIN phải đúng 6 chữ số (hoặc để trống để hệ thống tạo).'); return; }
-    if (pin && isWeakPin(pin)) { setError('PIN quá dễ đoán (lặp một số hoặc dãy liên tiếp) — chọn PIN khác.'); return; }
     try {
-      const r = await add.mutateAsync({ slug, label: ten, pin: pin || null });
+      const r = await add.mutateAsync({ slug, label: ten });
       setNewPin({ label: r.label, pin: r.pin });
       setLabel('');
-      setPin('');
     } catch (err) {
       setError(landlordErrorMessage(err, 'Chưa thêm được người xem'));
+    }
+  };
+  const onUnlock = async () => {
+    setError(null);
+    try {
+      await unlock.mutateAsync({ slug });
+      toast.success(`Đã mở khoá ${host}`);
+    } catch (err) {
+      setError(landlordErrorMessage(err, 'Chưa mở khoá được'));
     }
   };
   const onRevoke = async (viewerId: string) => {
@@ -122,6 +130,22 @@ function PortalSection({ slug, host, portal, operations }: {
         )}
       </div>
 
+      {portal && (portal.locked || portal.failures_24h > 0) && (
+        <div role="status" data-testid={`portal-${slug}-lock`}
+          className={portal.locked
+            ? 'flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive'
+            : 'text-xs text-muted-foreground'}>
+          <span>
+            {portal.locked ? 'Link đang tạm khoá vì nhập PIN sai nhiều lần' : 'Có lần nhập PIN sai'} — {portal.failures_24h} lần trong 24 giờ.
+          </span>
+          {portal.locked && (
+            <Button type="button" size="sm" variant="outline" onClick={() => void onUnlock()} disabled={unlock.isPending}>
+              {unlock.isPending ? 'Đang mở…' : 'Mở khoá'}
+            </Button>
+          )}
+        </div>
+      )}
+
       {portal && (
         <div className="space-y-1.5">
           <Label>Người xem ({conHieuLuc.length})</Label>
@@ -158,11 +182,10 @@ function PortalSection({ slug, host, portal, operations }: {
               </Button>
             </div>
           )}
-          <div className="grid gap-2 sm:grid-cols-[1fr_110px_auto]">
-            <Input aria-label="Tên người xem" placeholder="Tên người xem (vd Chị Giang)" value={label} maxLength={60}
+          {/* PIN luôn do hệ thống tạo ngẫu nhiên — PIN tự chọn (ngày sinh, 123123…) bị dò ra rất nhanh */}
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <Input aria-label="Tên người xem" placeholder="Tên người xem (PIN tự tạo)" value={label} maxLength={60}
               onChange={(e) => setLabel(e.target.value)} />
-            <Input aria-label="PIN 6 số (để trống: tự tạo)" placeholder="PIN (tự tạo)" inputMode="numeric" value={pin} maxLength={6}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             <Button type="button" onClick={onAdd} disabled={add.isPending}>
               <UserPlus className="mr-1 h-4 w-4" />{add.isPending ? 'Đang thêm…' : 'Thêm'}
             </Button>
