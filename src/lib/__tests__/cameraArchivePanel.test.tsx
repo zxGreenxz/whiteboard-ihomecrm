@@ -22,6 +22,8 @@ describe("camera archive manager workflow", () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Xem khoảng thời gian" }).hasAttribute("disabled")).toBe(false));
     expect(mocks.prepare).not.toHaveBeenCalled(); setWindow();
+    expect(screen.getByRole("option", { name: "Sảnh DEMO" }).getAttribute("value")).toBe("1");
+    expect(screen.getByRole("option", { name: "Hành lang DEMO" }).getAttribute("value")).toBe("2");
     fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); await screen.findByLabelText(/^Video xem lại/);
     expect(mocks.prepare.mock.calls[0]?.[0]).toMatchObject({ start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T01:10:00.000Z", purpose: "preview" });
     fireEvent.click(screen.getByRole("button", { name: "Đoạn sau" })); await waitFor(() => expect(mocks.prepare).toHaveBeenCalledTimes(2)); await screen.findByLabelText(/^Video xem lại/);

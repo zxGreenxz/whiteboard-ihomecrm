@@ -15,6 +15,7 @@ import {
   monthLabel,
   monthToDate,
   vnDateTime,
+  type ConfirmReceipt,
   type SettlementMonth,
 } from '@/lib/landlordSettlement';
 import { Eyebrow, SectionCard } from './SettlementParts';
@@ -71,23 +72,28 @@ function AdminNoteEditor({ month, buildingId, revision }: { month: SettlementMon
   );
 }
 
+/** Gửi xác nhận "đã xem số liệu" của lần chốt `revision` (link /qt theo token, hoặc link tên miền theo người xem). */
+export type LandlordConfirmSubmit = (input: { month: string; revision: number; note: string | null }) =>
+  Promise<ConfirmReceipt>;
+
 /** Link chủ nhà, tháng đã chốt chưa xác nhận: ghi chú (không bắt buộc) + nút xác nhận. */
-function LandlordConfirmForm({ month, token, revision, disabled }: {
-  month: SettlementMonth; token: string; revision: number; disabled: boolean;
+function LandlordConfirmForm({ month, submitConfirm, revision, disabled }: {
+  month: SettlementMonth; submitConfirm: LandlordConfirmSubmit; revision: number; disabled: boolean;
 }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const confirm = useConfirmLandlordMonth();
-  // chặn bấm đôi trước khi isPending kịp vẽ lại
+  const [pending, setPending] = useState(false);
+  // chặn bấm đôi trước khi pending kịp vẽ lại
   const dangGui = useRef(false);
   const tooLong = note.trim().length > LANDLORD_CONFIRM_NOTE_MAX;
 
   const submit = async () => {
     if (dangGui.current || tooLong || disabled) return;
     dangGui.current = true;
+    setPending(true);
     setError(null);
     try {
-      const r = await confirm.mutateAsync({ token, month: monthToDate(month.period_month), revision, note: note.trim() || null });
+      const r = await submitConfirm({ month: monthToDate(month.period_month), revision, note: note.trim() || null });
       // đã xác nhận từ trước (máy khác / bấm lại): server giữ xác nhận đầu, ghi chú lần này KHÔNG lưu — nói rõ
       if (r.status === 'ALREADY_CONFIRMED') {
         toast.info(`Tháng này đã được xác nhận trước đó lúc ${vnDateTime(r.confirmed_at)} — ghi chú lần này không được lưu.`);
@@ -100,6 +106,7 @@ function LandlordConfirmForm({ month, token, revision, disabled }: {
         : landlordErrorMessage(e, 'Chưa xác nhận được'));
     } finally {
       dangGui.current = false;
+      setPending(false);
     }
   };
 
@@ -114,8 +121,8 @@ function LandlordConfirmForm({ month, token, revision, disabled }: {
           onChange={(e) => setNote(e.target.value)} placeholder="Ví dụ: phòng 302 đã trả tiền mặt cho tôi" />
         <p className="text-[11px] text-muted-foreground">Bên quản lý đọc được ghi chú này cùng lúc với xác nhận.</p>
       </div>
-      <Button type="button" size="lg" onClick={submit} disabled={confirm.isPending || tooLong || disabled}>
-        {confirm.isPending ? 'Đang gửi…' : 'Xác nhận đã xem số liệu'}
+      <Button type="button" size="lg" onClick={submit} disabled={pending || tooLong || disabled}>
+        {pending ? 'Đang gửi…' : 'Xác nhận đã xem số liệu'}
       </Button>
       <p className="text-[11px] text-muted-foreground">Có điểm chưa đúng? Ghi vào ô trên hoặc báo bên quản lý trước khi xác nhận.</p>
       {error && <p role="alert" className="w-full rounded-md border border-destructive/40 p-2 text-sm text-destructive">{error}</p>}
@@ -123,19 +130,24 @@ function LandlordConfirmForm({ month, token, revision, disabled }: {
   );
 }
 
-export function SettlementHandoverTab({ month, mode, buildingId, token, busy = false }: {
+export function SettlementHandoverTab({ month, mode, buildingId, token, onConfirm, busy = false }: {
   month: SettlementMonth;
   mode: 'admin' | 'public';
   /** Màn quản trị. */
   buildingId?: string;
-  /** Link chủ nhà. */
+  /** Link chủ nhà /qt/:token. */
   token?: string;
+  /** Link tên miền (PIN): gửi xác nhận theo người xem — thay cho token. */
+  onConfirm?: LandlordConfirmSubmit;
   /** Đang đổi tháng (số đang hiện là của tháng trước) — tạm khoá xác nhận. */
   busy?: boolean;
 }) {
   const closed = month.status === 'CLOSED' ? month.closed : null;
   const conf = closed ? month.confirmation : null;
   const thang = monthLabel(month.period_month).toLowerCase();
+  const confirmByToken = useConfirmLandlordMonth();
+  const submitConfirm: LandlordConfirmSubmit | null = onConfirm
+    ?? (token ? (a) => confirmByToken.mutateAsync({ token, ...a }) : null);
 
   return (
     <SectionCard title={`Bàn giao ${thang}`} testId="settlement-handover"
@@ -177,7 +189,8 @@ export function SettlementHandoverTab({ month, mode, buildingId, token, busy = f
               data-testid="settlement-confirmed">
               <CheckCircle2 className="mt-px h-[18px] w-[18px] shrink-0" aria-hidden />
               <div className="min-w-0">
-                <p className="text-[13px] font-bold">{month.landlord_name} đã xác nhận đã xem số liệu {thang}</p>
+                {/* link tên miền ghi đúng người xem (tên gắn với PIN); link /qt cũ không có tên ⇒ tên chủ nhà */}
+                <p className="text-[13px] font-bold">{conf.by ?? month.landlord_name} đã xác nhận đã xem số liệu {thang}</p>
                 <p className="mt-0.5 text-xs">Lúc {vnDateTime(conf.confirmed_at)}</p>
                 {conf.note && (
                   <div className="mt-2 rounded-lg border border-green-500/30 bg-card px-2.5 py-2 text-[12.5px] leading-normal text-foreground">
@@ -187,9 +200,9 @@ export function SettlementHandoverTab({ month, mode, buildingId, token, busy = f
                 )}
               </div>
             </div>
-          ) : mode === 'public' && token ? (
+          ) : mode === 'public' && submitConfirm ? (
             // key theo THÁNG: bên quản lý chốt lại (40001) thì form giữ ghi chú đang gõ, gửi lại với lần chốt mới
-            <LandlordConfirmForm key={month.period_month} month={month} token={token} revision={closed.revision} disabled={busy} />
+            <LandlordConfirmForm key={month.period_month} month={month} submitConfirm={submitConfirm} revision={closed.revision} disabled={busy} />
           ) : (
             <p className="flex items-start gap-2.5 rounded-[9px] border bg-slate-50 px-3 py-2.5 text-[12.5px] leading-normal text-slate-700 dark:bg-slate-900 dark:text-slate-300"
               data-testid="settlement-not-confirmed">

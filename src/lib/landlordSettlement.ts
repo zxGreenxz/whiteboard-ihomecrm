@@ -337,7 +337,12 @@ export const settlementMonthSchema = z.object({
    * v3: chủ nhà xác nhận đã xem số liệu cho ĐÚNG lần chốt hiện tại (closed.revision). Mở chốt / chốt lại /
    * tháng OPEN / server cũ ⇒ null = CHƯA xác nhận.
    */
-  confirmation: z.object({ confirmed_at: z.string(), note: newText }).nullish().transform((v) => v ?? null),
+  confirmation: z.object({
+    confirmed_at: z.string(),
+    note: newText,
+    /** Tên người xem đã xác nhận qua link tên miền (PIN); link /qt cũ / server cũ ⇒ null. */
+    by: newText,
+  }).nullish().transform((v) => v ?? null),
   room_data: settlementRoomDataSchema.nullish().transform((v) => v ?? null),
 });
 export type SettlementMonth = z.infer<typeof settlementMonthSchema>;
@@ -549,6 +554,7 @@ export const confirmReceiptSchema = z.object({
   status: z.enum(['CONFIRMED', 'ALREADY_CONFIRMED']),
   confirmed_at: z.string(),
 });
+export type ConfirmReceipt = z.infer<typeof confirmReceiptSchema>;
 /** landlord_operation_book_codes_v1 — đặt ký hiệu sổ của toà (đã chuẩn hoá; null = mặc định). */
 export const bookCodesReceiptSchema = z.object({
   status: z.enum(['UPDATED', 'UNCHANGED']),

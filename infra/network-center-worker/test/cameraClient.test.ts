@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { DahuaClient, parseCameraStates, parseCameraStorage } from "../src/camera/dahuaClient.js";
+import { DahuaClient, parseCameraNames, parseCameraStates, parseCameraStorage } from "../src/camera/dahuaClient.js";
 import { CameraMultipartParser, parseCameraEvent } from "../src/camera/eventParser.js";
 import { CAMERA_ISSUES } from "../src/camera/types.js";
 
@@ -15,6 +15,7 @@ const challenge = () => rpc({ result: false, session: 91, params: { realm: "fixt
 const session = () => rpc({ result: true, session: 92 });
 const states = () => rpc({ result: true, params: { states: [{ channel: 0, connectionState: "Connected" }, { channel: 1, connectionState: "Empty" }] } });
 const success = () => rpc({ result: true });
+const titles = () => new Response("table.ChannelTitle[1].Name=Hành lang\r\ntable.ChannelTitle[0].Name=Cổng trước\r\n");
 const fixedNow = () => new Date("2026-01-01T00:00:00.000Z");
 
 function fixture(responses: Array<() => Response>, overrides: Partial<ConstructorParameters<typeof DahuaClient>[0]> = {}) {
@@ -29,6 +30,17 @@ function fixture(responses: Array<() => Response>, overrides: Partial<Constructo
 }
 
 describe("camera boundary parsers", () => {
+  it("maps recorder titles by device index, preserves Vietnamese and bounds labels for ingestion", () => {
+    const names = parseCameraNames("table.ChannelTitle[15].Name=\r\ntable.ChannelTitle[2].Name= Sảnh = tầng 3 \r\ntable.ChannelTitle[0].Name=" + "ắ".repeat(140));
+    expect([...names]).toEqual([[3, "Sảnh = tầng 3"], [1, "ắ".repeat(128)]]);
+    expect(parseCameraNames("table.ChannelTitle[0].Name=" + "🚪".repeat(80)).get(1)).toBe("🚪".repeat(64));
+    expect(parseCameraNames("table.ChannelTitle[0].Name=" + "A".repeat(127) + "🚪").get(1)).toBe("A".repeat(127));
+  });
+
+  it.each(["Error", "table.ChannelTitle[256].Name=Invalid", "table.ChannelTitle[0].Name=A\ntable.ChannelTitle[0].Name=B", "table.ChannelTitle[0].Name=Bad\u0000name"])("rejects ambiguous or malformed titles: %j", (text) => {
+    expect(() => parseCameraNames(text)).toThrow("INVALID_RESPONSE");
+  });
+
   it("converts index zero exactly once and does not make empty slots offline", () => {
     expect(parseCameraStates([{ channel: 0, connectionState: "Connected" }, { channel: 15, connectionState: "Empty" }])).toEqual([
       { channel: 1, state: "CONNECTED" }, { channel: 16, state: "EMPTY" },
@@ -94,12 +106,15 @@ describe("Dahua authenticated read-only polling", () => {
     const { client, calls } = fixture([
       challenge, session, states,
       () => new Response("", { status: 401, headers: { "www-authenticate": 'Digest realm="fixture", nonce="nonce", qop="auth", algorithm=MD5' } }),
-      () => new Response(disk), success,
+      () => new Response(disk), titles, success,
     ]);
     const snapshot = await client.poll();
     expect(snapshot.status).toBe("ONLINE");
     expect(snapshot.eventCoverage).toBe("STATE_POLLING_ONLY");
     expect(snapshot.channels[1]?.state).toBe("EMPTY");
+    expect(snapshot.channels).toEqual([{ channel: 1, state: "CONNECTED", name: "Cổng trước" }, { channel: 2, state: "EMPTY", name: "Hành lang" }]);
+    expect(snapshot.issues).toEqual([]);
+    expect(calls[5]?.url).toBe("http://192.0.2.10/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle");
     const login = JSON.parse(String(calls[1]?.init?.body));
     const hash = (value: string) => createHash("md5").update(value).digest("hex").toUpperCase();
     expect(login.params.password).toBe(hash(`fixture-user:random-challenge:${hash("fixture-user:fixture:fixture-secret")}`));
@@ -109,6 +124,29 @@ describe("Dahua authenticated read-only polling", () => {
     expect(new Headers(calls[4]?.init?.headers).get("Authorization")).toContain("Digest ");
     expect(calls.every((call) => call.init?.redirect === "error" && !call.url.includes("fixture-secret"))).toBe(true);
     expect(JSON.stringify(snapshot)).not.toContain("fixture-secret");
+  });
+
+  it("authenticates the title read and never shifts missing names onto another camera", async () => {
+    const { client, calls } = fixture([challenge, session, states, () => new Response(disk),
+      () => new Response("", { status: 401, headers: { "www-authenticate": 'Digest realm="fixture", nonce="nonce", qop="auth", algorithm=MD5' } }),
+      () => new Response("table.ChannelTitle[1].Name=Cổng sau\ntable.ChannelTitle[15].Name=Unused"), success]);
+    expect((await client.poll()).channels).toEqual([{ channel: 1, state: "CONNECTED" }, { channel: 2, state: "EMPTY", name: "Cổng sau" }]);
+    expect(new Headers(calls[5]?.init?.headers).get("Authorization")).toContain("Digest ");
+  });
+
+  it.each([
+    () => new Response("Not supported", { status: 404 }),
+    () => new Response("invalid titles"),
+    () => new Response("x".repeat(1025)),
+  ])("keeps measured health and reports unavailable titles without leaking the device response", async (unavailable) => {
+    const { client, calls } = fixture([challenge, session, states, () => new Response(disk), unavailable, success], { maxResponseBytes: 1024 });
+    expect(await client.poll()).toMatchObject({ status: "ONLINE", channels: [{ channel: 1, state: "CONNECTED" }, { channel: 2, state: "EMPTY" }], issues: ["DEVICE_RESPONSE_INVALID"] });
+    expect(JSON.parse(String(calls.at(-1)?.init?.body)).method).toBe("global.logout");
+  });
+
+  it("preserves authentication denial when the title endpoint refuses access", async () => {
+    const { client } = fixture([challenge, session, states, () => new Response(disk), () => new Response("private", { status: 403 }), success]);
+    expect(await client.poll()).toMatchObject({ status: "AUTH_DENIED", issues: ["AUTHENTICATION_FAILED"] });
   });
 
   it("does not retry login after denial or mislabel it offline", async () => {
@@ -201,7 +239,7 @@ describe("Dahua authenticated read-only polling", () => {
     const failure = () => new Response("private response", { status });
     const responses = phase === "channels" ? [challenge, session, failure, success]
       : phase === "storage" ? [challenge, session, states, failure, success]
-      : [challenge, session, states, () => new Response(disk), failure];
+      : [challenge, session, states, () => new Response(disk), titles, failure];
     const { client } = fixture(responses);
     const snapshot = await client.poll();
     expect(snapshot.issues).toContain(issue);
