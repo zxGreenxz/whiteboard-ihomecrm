@@ -1,4 +1,4 @@
-// Frozen contracts for forty-four forward migrations (eight of 20261019, the B2
+// Frozen contracts for forty-five forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -35,7 +35,8 @@
 // and the web writer's own thu_tien.collect check), and its Mốc 4 meter_record branch 20261022183445 (shell
 // dispatches by action; per-building advisory lock taken NOWAIT on the second turn), its Mốc 5 adjust/check/cancel/restore branch
 // 20261023042723 (shell dispatches four more actions; contract → invoice (→ adjustment) rows FOR UPDATE NOWAIT under the guard's org
-// lock, web writers dry-run in a subtransaction), and the Mốc 6 renew batch 20261023030305 — a new INVOKER batch lookup, a new
+// lock, web writers dry-run in a subtransaction), the lượt 8 collect fix 20261024041712 (new _v2 lookup/step copied from the
+// 075230 bodies — receiving-book reason split, truthful rounding text — and the shell rebuilt from the 042723 body), and the Mốc 6 renew batch 20261023030305 — a new INVOKER batch lookup, a new
 // DEFINER batch step and the contract wrapper rebuilt from the 074815 body —, and the Mốc 5 recurring tasks: the generator
 // 20261023042431 (a new DEFINER, cron job-recurrence-daily), task.recurring_* 20261023042436 — it replaces the four 164201 steps
 // the task wrapper binds and adds two definer steps — and the task_recurrences report of W2 package C 20261023042450, rebuilt
@@ -183,16 +184,19 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_invoice_edit_reason_v1","sourcePath":"supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql","sha256":"adccc1a60f56434416a3b74fb30f9d26c6614ba5e946d08750793303359cf9e6","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
   {"name":"app_private.hermes_invoice_edit_lookup_v1","sourcePath":"supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql","sha256":"9bd9b3c6b217bcdfa483dc07b782ea8e5970135c2bccc44b2c7e4f9511aa207d","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_invoice_edit_step_v1","sourcePath":"supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql","sha256":"1e855eb2b3192214d3338e306252d1e21f809bee121259f0c9c405965688b140","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
-  {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql","sha256":"99296283be4aebb18da7e47ab7eee5d6d197b914eb147ae22192d789908c66b0","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_task_recurrence_generate_v1","sourcePath":"supabase/migrations/20261023042431_hermes_task_recurrence_generate_v1.sql","sha256":"a130edeade44ce34c45dac6fa78ef3d0c3ce316d9a7a38a3bd15141a7ea3ba4a","args":"p_today date DEFAULT NULL"},
   {"name":"app_private.hermes_task_recurring_prepare_v1","sourcePath":"supabase/migrations/20261023042436_hermes_task_recurring_v1.sql","sha256":"a30bee41c7e9b309bdd901599cae095a183264a16e4408186e0d91b5d39fd3cb","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_managers jsonb"},
-  {"name":"app_private.hermes_task_recurring_finish_v1","sourcePath":"supabase/migrations/20261023042436_hermes_task_recurring_v1.sql","sha256":"2519efb56ba81918143bd3e505604aee884dcfe5fd0ced818ea35520b8d33eb4","args":"p_binding jsonb,p_action text,p_plan jsonb"}
+  {"name":"app_private.hermes_task_recurring_finish_v1","sourcePath":"supabase/migrations/20261023042436_hermes_task_recurring_v1.sql","sha256":"2519efb56ba81918143bd3e505604aee884dcfe5fd0ced818ea35520b8d33eb4","args":"p_binding jsonb,p_action text,p_plan jsonb"},
+  {"name":"app_private.hermes_invoice_lookup_core_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"5facda5f7c6421f6748ae1fa14b4b73a1c294aab60a9cf384ec167c777dc0814","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_invoice_action_step_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"60bb54c30bd74be664cda74131f0b710328b85d0f13285cf98638b2b054dcd84","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"4dc86faaedd2cd1e93a966ed93f8a9f49efd3b26467d154c10ede243681c40a7","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql","sha256":"99296283be4aebb18da7e47ab7eee5d6d197b914eb147ae22192d789908c66b0","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"72dd1e855e5a8d4b113b6a2e751563500945a0061ab1b4a8c113408cf3279e5d"},
   {"name":"app_private.hermes_task_action_prepare_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"ec10afb7ed4719f617a1441853414f2fe586d629b826cbe2fc0babad90765ff0"},
   {"name":"app_private.hermes_task_action_write_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"f2896c1e57b6b3e7e4dd6a1bca7ab73dbfdf0c098b4a9339071277a8259a5c66"},

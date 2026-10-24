@@ -26,7 +26,7 @@ export const INVOICE_COLLECT = defineAction({ id: 'invoice.collect', page: 'invo
     note: param.text(1, 200, { optional: true }),
   },
   reasons: ['cash_collection_web_only', 'nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'invoice_not_collectible',
-    'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required', 'period_locked', 'cashbook_not_held', 'not_allowed',
+    'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required', 'period_locked', 'cashbook_not_held', 'not_allowed',
     'state_changed', 'date_out_of_range', 'amount_out_of_range', 'web_only'] });
 
 // Mốc 4 (mục 4.2, 6.2): ghi chỉ số tháng qua hàm dùng chung với form web (record_meter_readings_v2); khoá meter_readings.create (seed TẮT ở

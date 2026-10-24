@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-23T17:30:46.293Z",
+  "generatedAt": "2026-10-24T04:50:25.916Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 869,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13420,6 +13420,30 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-23T15:52:15.586Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024041049_meter_readings_plan_previous_period_v1.sql",
+      "version": "20261024041049",
+      "name": "meter_readings_plan_previous_period_v1",
+      "scheme": "timestamp14",
+      "sha256": "39cc9eb6c2b37bbe1a40a8b4a5ae7194a55cc37c107c33785408e17067aad4a0",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.meter_readings_plan_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql",
+      "version": "20261024041712",
+      "name": "hermes_invoice_collect_v2",
+      "scheme": "timestamp14",
+      "sha256": "c82fc622f9cc4a876224350262151b276cd3d92a6bd90442dc12043f03261eda",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_invoice_lookup_core_v2",
+        "function:app_private.hermes_invoice_action_step_v2"
       ]
     },
     {
