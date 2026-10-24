@@ -76,6 +76,20 @@ describe("camera boundary parsers", () => {
 });
 
 describe("Dahua authenticated read-only polling", () => {
+  it("downloads native recordings with Digest and percent-encoded wall-clock times", async () => {
+    const {client,calls}=fixture([
+      ()=>new Response("",{status:401,headers:{"www-authenticate":'Digest realm="fixture", nonce="nonce", qop="auth", algorithm=MD5'}}),
+      ()=>new Response(new Uint8Array(40)),
+    ]);
+    const signal=new AbortController().signal;
+    const response=await client.recording(1,"2026-10-24 09:50:05","2026-10-24 09:50:10",signal);
+    expect((await response.arrayBuffer()).byteLength).toBe(40);
+    expect(calls[1]?.url).toContain("startTime=2026-10-24%2009%3A50%3A05");
+    expect(calls[1]?.url).not.toMatch(/fixture-secret|\+/u);
+    expect(calls[1]?.init?.redirect).toBe("error");
+    expect(calls[1]?.init?.signal).toBe(signal);
+    await expect(client.recording(0,"2026-10-24 09:50:05","2026-10-24 09:50:10",signal)).rejects.toMatchObject({code:"INVALID_RESPONSE"});
+  });
   it("uses challenge hashing, Digest disk reads, bounded private-origin requests and logout", async () => {
     const { client, calls } = fixture([
       challenge, session, states,
