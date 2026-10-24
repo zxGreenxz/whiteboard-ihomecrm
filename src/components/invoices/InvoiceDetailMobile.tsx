@@ -24,6 +24,7 @@ import { useDragScroll } from "@/components/contracts/detail/useDragScroll";
 import type { InvoiceWithRelations } from "@/types/invoice";
 
 import InvoiceAdjustmentHistory from './InvoiceAdjustmentHistory';
+import { InvoiceMeterEvidence } from './InvoiceMeterEvidence';
 
 interface RelatedVoucher {
   id: string;
@@ -369,6 +370,7 @@ export function InvoiceDetailMobile({
               </div>
             </div>
 
+            <InvoiceMeterEvidence invoiceId={invoice.id} />
             <InvoiceAdjustmentHistory invoice={invoice} />
 
             {/* Tóm tắt thanh toán */}

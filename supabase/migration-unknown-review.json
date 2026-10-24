@@ -873,6 +873,93 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql": {
+      "sha256": "c94769291a2234b0fa7a47045b3d735a6d6b71101ca9756ad56768267e8827d2",
+      "missingObjects": [
+        "table:app_private.meter_capture_profiles",
+        "table:app_private.meter_capture_profile_history",
+        "table:app_private.meter_captures",
+        "table:app_private.meter_capture_jobs",
+        "table:app_private.meter_capture_results"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của chức năng ghi chỉ số bằng QR/ảnh/clip, chưa áp dụng production. Catalog production chưa có các bảng này là đúng trạng thái triển khai. Đã chạy dry-run ROLLBACK trên TEST hzulujxgonszuleqticb bằng apply-reviewed-migration và bộ kiểm PGlite có quyền, receipt, CAS, đối chiếu hóa đơn/thanh lý. Chỉ đưa tính năng vào sử dụng sau lane apply được review, backup và triển khai worker. Hồ sơ này không chứng minh production đã có tính năng.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_profiles"
+        },
+        {
+          "duong_dan": "scripts/__tests__/meter-capture-sql.test.mjs",
+          "trich_doan": "test('billing resolver uses exact contract/period and wrapper atomically links sources, rejects stale values and duplicate retry'"
+        }
+      ]
+    },
+    "supabase/migrations/20261023142638_meter_capture_sol_review.sql": {
+      "sha256": "9776dc5f420b1b6baef66459ed58e71a3e7bfdb13e3d67ab8c7063970ec50434",
+      "missingObjects": [
+        "function:app_private.meter_capture_previous_value_v1",
+        "function:app_private.meter_capture_evidence_frames_v1",
+        "function:app_private.meter_capture_json_v1",
+        "function:public.meter_capture_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_previous_value_v1(p_id uuid)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql": {
+      "sha256": "8bb763093eccb416e2941ab36197642aa8460e2ce5f874ccfdeedef2b79d2547",
+      "missingObjects": [
+        "table:app_private.meter_capture_invoice_facts",
+        "function:app_private.meter_capture_invoice_scope_v1",
+        "function:app_private.meter_capture_invoice_line_v1",
+        "function:app_private.meter_capture_snapshot_invoice_link_v1",
+        "function:app_private.meter_capture_assert_invoice_facts_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_invoice_facts ("
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023150206_meter_capture_correction_chain.sql": {
+      "sha256": "349953548bb4aadeb816bdd0ecbcbf576149a5170307b3a9ab1f7756bd808e91",
+      "missingObjects": [
+        "function:app_private.meter_capture_is_retirement_v1",
+        "function:app_private.meter_capture_approved_writer_v1",
+        "function:app_private.meter_capture_reading_guard_v1",
+        "function:app_private.meter_capture_replacement_v1",
+        "function:app_private.meter_capture_previous_value_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_is_retirement_v1(p_old public.meter_readings,p_new public.meter_readings)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
     }
   }
 }

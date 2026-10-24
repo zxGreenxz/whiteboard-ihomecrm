@@ -3,12 +3,23 @@ import { toast } from 'sonner';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { exitWithMeterSources } from '@/lib/meter-capture/service';
+import { meterSourceReferenceSchema } from '@/lib/meter-capture/types';
 import { createContractTransferLink,readContractTransferLinks,cancelContractTransferLink,finalizeContractTransferExit,
   createContractTransferCommission,transferErrorMessage,type TransferInvoker,type TransferFilter,type CreateContractTransferInput,
   type CancelTransferInput,type FinalizeTransferInput,type CreateTransferCommissionInput } from '@/lib/contract-lifecycle/transfers';
 
 type Functions=Database['public']['Functions'];
 const invoke:TransferInvoker=(name,args)=>{
+  const settlement = args.p_settlement;
+  if (name === 'finalize_contract_transfer_exit_v1' && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
+    const charges = settlement.extra_charges;
+    const sources = Array.isArray(charges) ? charges.flatMap(charge => {
+      if (!charge || typeof charge !== 'object' || Array.isArray(charge) || !charge.meter_source) return [];
+      return [meterSourceReferenceSchema.parse(charge.meter_source)];
+    }) : [];
+    if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
+  }
   switch(name){
     case 'create_contract_transfer_link_v1':return supabase.rpc('create_contract_transfer_link_v1',args as Functions['create_contract_transfer_link_v1']['Args']);
     case 'read_contract_transfer_links_v1':return supabase.rpc('read_contract_transfer_links_v1',args as Functions['read_contract_transfer_links_v1']['Args']);

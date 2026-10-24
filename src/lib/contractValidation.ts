@@ -1,5 +1,6 @@
 import { supportPlanInputSchema } from './rentSupport';
 import { z } from 'zod';
+import { meterSourceReferenceSchema } from './meter-capture/types';
 import { validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
 import { contractBillingBoundMessages } from '@/lib/contractBillingBounds';
 
@@ -90,6 +91,7 @@ export const transferContractFormSchema = z.object({
 //  - CLEANING: tiền vệ sinh (mặc định 200k).
 //  - CUSTOM:   khoản tuỳ ý {tên, số tiền}.
 export const extraChargeItemSchema = z.object({
+  meter_source: meterSourceReferenceSchema.optional(),
   kind: z.enum(['PRORATED', 'ELECTRIC', 'CLEANING', 'CUSTOM']),
   description: z.string().min(1, 'Tên khoản thu không được để trống'),
   amount: z.number().min(0, 'Số tiền không được âm'),

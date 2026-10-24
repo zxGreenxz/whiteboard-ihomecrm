@@ -184,9 +184,13 @@
         ".github/workflows/migration-restore-drill.yml"
       ],
       "suiteId": "app-unit",
-      "testPatterns": ["scripts/__tests__/restore-hermes-drill.test.mjs"],
+      "testPatterns": [
+        "scripts/__tests__/restore-hermes-drill.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/migration-restore-drill.yml",
-      "jobs": ["restore-drill"]
+      "jobs": [
+        "restore-drill"
+      ]
     },
     {
       "id": "migration-target-native",
@@ -204,6 +208,8 @@
       "suiteId": "node-native",
       "testPatterns": [
         "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
@@ -874,9 +880,14 @@
         "package.json"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs", "worker/deploy/**/*.test.mjs"],
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs",
+        "worker/deploy/**/*.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/hermes-runtime.yml",
-      "jobs": ["native-upstream"]
+      "jobs": [
+        "native-upstream"
+      ]
     },
     {
       "id": "hermes-native-deployment",
@@ -891,7 +902,9 @@
         ".github/workflows/hermes-runtime.yml"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["worker/deploy/**/*.test.mjs"]
+      "testPatterns": [
+        "worker/deploy/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-transport",
@@ -904,7 +917,9 @@
         "worker/index.js"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs"]
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-caller",
@@ -1297,7 +1312,9 @@
         "src/hermes/HermesOrgPolicySettings.test.tsx",
         "src/pages/settings/HermesConnectionsPage.test.tsx"
       ],
-      "viewports": ["affected"]
+      "viewports": [
+        "affected"
+      ]
     },
     {
       "id": "hermes-room-pass-actions",
@@ -1549,6 +1566,59 @@
         "infra/hermes-broker/copied-text-parity-sql.test.mjs",
         "infra/hermes-broker/full-read-*.test.mjs"
       ]
+    },
+    {
+      "id": "meter-capture-worker",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**"
+      ],
+      "suiteId": "meter-capture-python",
+      "testPatterns": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-edge",
+      "sourcePaths": [
+        "supabase/functions/meter-capture-worker/**"
+      ],
+      "suiteId": "edge-deno-meter-capture",
+      "testPatterns": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ]
+    },
+    {
+      "id": "meter-capture-sql",
+      "sourcePaths": [
+        "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+        "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+        "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+        "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-runtime",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**",
+        ".github/workflows/meter-capture-runtime.yml",
+        "tooling/runtime-matrix.json",
+        "tooling/test-matrix.json"
+      ],
+      "suiteId": "meter-capture-runtime",
+      "testPatterns": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "jobs": [
+        "cpu-runtime"
+      ]
     }
   ],
   "notes": [
@@ -1628,6 +1698,10 @@
         "infra/**",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
         "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -1967,6 +2041,10 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
@@ -2166,6 +2244,72 @@
       "environment": "ci",
       "timeoutMinutes": 35,
       "note": "Every connected Android instrumentation test must run, and setup/status screenshots must exist. Compiling test APK is not accepted as execution."
+    },
+    {
+      "id": "meter-capture-python",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "node --test",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "node --test infra/meter-capture-worker/worker.test.mjs",
+      "runtime": "node 24.18.0 + python 3.12.10",
+      "risk": "normal",
+      "includes": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ],
+      "note": "Node entrypoint discovers every test_*.py, requires exact Python runtime and fails on zero tests or skips. Synthetic fixtures only; no OCR model, Docker, credentials or paid AI calls.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "edge-deno-meter-capture",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/meter-capture-worker/deno.json supabase/functions/meter-capture-worker/index.test.ts --allow-env",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ],
+      "note": "Gateway fixtures cover user JWT/worker bearer separation, scoped leases, original media receipts, private evidence and server-side hashing. No production access.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "meter-capture-runtime",
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "runner": "node --test",
+      "ciJob": "Meter capture CPU runtime / cpu-runtime",
+      "command": "node --test infra/meter-capture-worker/runtime.test.mjs",
+      "runtime": "node 24.18.0 + Linux Docker + pinned Python 3.12.10 image",
+      "risk": "infrastructure",
+      "includes": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/meter-capture-runtime.yml",
+          "job": "cpu-runtime"
+        }
+      ],
+      "ciCommandStep": "Build pinned worker and verify synthetic OCR and clip decoding offline",
+      "environment": "ci",
+      "timeoutMinutes": 25,
+      "note": "Build the pinned CPU image and run actual PaddleOCR/OpenCV/FFmpeg against synthetic JPEG and H.264 fixtures without network, credentials or AI calls. This is runtime integration evidence, not a real-meter accuracy benchmark."
     }
   ],
   "ignore": [

@@ -2,7 +2,7 @@
 // thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu) và khối "Khoản khác" (thanh lý, cọc,
 // chờ duyệt, không tính). Mọi tổng là số server trả; tỷ trọng hạng mục chỉ chia để hiển thị.
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { cn, formatVND } from '@/lib/utils';
 import {
   barPercent,
@@ -79,32 +79,51 @@ function CellButton({ label, count, amount, sub, kind, selected, onClick }: {
   );
 }
 
-function CategoryBlock({ cats, total, filter, kind }: {
-  cats: readonly SettlementCategory[]; total: number; filter: Filter; kind: Kind;
+/**
+ * "Theo hạng mục" — mặc định THU GỌN (chủ nhắn 24/10/2026: thu và chi khác số hạng mục làm hai cột lệch nhau):
+ * gọn chỉ còn dòng tiêu đề + thanh tỷ trọng, cao bằng nhau ở hai thẻ; bấm ở thẻ nào cũng mở CẢ HAI (trạng
+ * thái dùng chung ở tab). Thẻ không có hạng mục vẫn giữ dòng tiêu đề để hai cột không lệch.
+ */
+function CategoryBlock({ cats, total, filter, kind, open, onToggle }: {
+  cats: readonly SettlementCategory[]; total: number; filter: Filter; kind: Kind; open: boolean; onToggle: () => void;
 }) {
   const colors = kind === 'INCOME' ? INCOME_COLORS : EXPENSE_COLORS;
   const shown = cats
     .map((c) => ({ name: c.name, amount: amountOf(c, filter) }))
     .filter((c) => c.amount !== 0)
     .sort((a, b) => b.amount - a.amount);
-  if (shown.length === 0) return null;
+  const listId = `settlement-categories-list-${kind === 'INCOME' ? 'income' : 'expense'}`;
   return (
-    <div className="border-b px-3.5 pb-3 pt-2.5" data-testid={`settlement-categories-${kind === 'INCOME' ? 'income' : 'expense'}`}>
-      <div className="flex justify-between"><Eyebrow>Theo hạng mục</Eyebrow><Eyebrow>Tỷ trọng</Eyebrow></div>
-      <div className="mt-2 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
+    <div className="border-b px-3.5 pb-3 pt-2" data-testid={`settlement-categories-${kind === 'INCOME' ? 'income' : 'expense'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-controls={listId}
+          disabled={shown.length === 0}
+          className="-ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent">
+          <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+            Theo hạng mục{shown.length > 0 ? ` (${shown.length})` : ' · không có'}
+          </span>
+          {shown.length > 0 && (
+            <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
+          )}
+        </button>
+        {open && shown.length > 0 && <Eyebrow>Tỷ trọng</Eyebrow>}
+      </div>
+      <div className="mt-1.5 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
         {/* server gom theo tên + cờ hạn chế ⇒ hai dòng có thể cùng tên: key kèm thứ tự */}
         {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, total)}%` }} />)}
       </div>
-      <ul className="mt-2.5 flex flex-col gap-1.5">
-        {shown.map((c, i) => (
-          <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
-            <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
-            <span className="truncate text-foreground/75">{c.name}</span>
-            <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
-            <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{shareText(c.amount, total) ?? ''}</span>
-          </li>
-        ))}
-      </ul>
+      {open && shown.length > 0 && (
+        <ul id={listId} className="mt-2.5 flex flex-col gap-1.5">
+          {shown.map((c, i) => (
+            <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
+              <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
+              <span className="truncate text-foreground/75">{c.name}</span>
+              <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
+              <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{shareText(c.amount, total) ?? ''}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -112,14 +131,19 @@ function CategoryBlock({ cats, total, filter, kind }: {
 function VoucherRow({ v, mode, periodMonth }: { v: SettlementVoucher; mode: 'admin' | 'public'; periodMonth: string }) {
   const name = settlementVoucherName(v, mode);
   const lines = v.lines ?? [];
-  const tile = v.room_name || initialsOf(lines[0]?.category);
+  // Khoản chi: ô đầu dòng là BÊN CHI (chủ nhắn 24/10/2026) — CN = chủ nhà chi, QL = quản lý (vận hành) chi.
+  // Khoản thu: tên phòng (không có phòng thì chữ viết tắt hạng mục).
+  const tile = v.type === 'EXPENSE'
+    ? (v.side === 'LANDLORD' ? 'CN' : 'QL')
+    : v.room_name || initialsOf(lines[0]?.category);
+  const tileTitle = v.type === 'EXPENSE' ? (v.side === 'LANDLORD' ? 'Chủ nhà chi' : 'Quản lý (vận hành) chi') : tile;
   const note = voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth).replace(/^ · /, '');
   const income = v.type === 'INCOME';
   return (
     <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
       data-testid="settlement-cash-row">
       {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng, không cắt chữ */}
-      <span title={tile}
+      <span title={tileTitle} data-testid="settlement-row-tile"
         className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
           v.side === 'LANDLORD'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
@@ -149,7 +173,9 @@ function VoucherRow({ v, mode, periodMonth }: { v: SettlementVoucher; mode: 'adm
   );
 }
 
-function ListCard({ kind, st, filter, mode }: { kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public' }) {
+function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats }: {
+  kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public'; catsOpen: boolean; onToggleCats: () => void;
+}) {
   const t = st.totals;
   const income = kind === 'INCOME';
   const rows = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === kind
@@ -171,13 +197,13 @@ function ListCard({ kind, st, filter, mode }: { kind: Kind; st: SettlementStatem
           {formatVND(total)}
         </span>
       </div>
-      {cats && <CategoryBlock cats={cats} total={total} filter={filter} kind={kind} />}
+      {cats && <CategoryBlock cats={cats} total={total} filter={filter} kind={kind} open={catsOpen} onToggle={onToggleCats} />}
       {rows.length === 0 ? (
         <p className="px-4 py-7 text-center text-[12.5px] text-muted-foreground">Không có khoản {income ? 'thu' : 'chi'} nào{sideText} trong tháng.</p>
       ) : (
         <>
           <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-            <span>{income ? 'Phòng' : 'Loại'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
+            <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
           </div>
           <ul>{rows.map((v, i) => <VoucherRow key={`${v.code ?? 'phieu'}-${i}`} v={v} mode={mode} periodMonth={st.period_month} />)}</ul>
         </>
@@ -214,6 +240,9 @@ function cellSub(st: SettlementStatement, kind: Kind, side: Side, count: number)
 export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatement; mode: 'admin' | 'public'; narrow: boolean }) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [list, setList] = useState<Kind>('INCOME');
+  // "Theo hạng mục" của HAI thẻ mở / đóng cùng nhau (mặc định đóng — hai cột thẳng hàng)
+  const [catsOpen, setCatsOpen] = useState(false);
+  const toggleCats = () => setCatsOpen((v) => !v);
   const t = st.totals;
   const pnl = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL');
   const count = (kind: Kind, side: Side) => pnl.filter((v) => v.type === kind && v.side === side).length;
@@ -297,8 +326,12 @@ export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatemen
       )}
 
       <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
-        {(!narrow || list === 'INCOME') && <ListCard kind="INCOME" st={st} filter={filter} mode={mode} />}
-        {(!narrow || list === 'EXPENSE') && <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} />}
+        {(!narrow || list === 'INCOME') && (
+          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} />
+        )}
+        {(!narrow || list === 'EXPENSE') && (
+          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} />
+        )}
       </div>
 
       {hasOther && (
