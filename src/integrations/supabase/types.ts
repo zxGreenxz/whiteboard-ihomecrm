@@ -25661,6 +25661,14 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_expense_category_pick_v1: {
+        Args: {
+          p_category: string
+          p_content: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       hermes_expense_write_v1: {
         Args: {
           p_action: string
@@ -26744,6 +26752,10 @@ export type Database = {
           status: string
           title: string
         }[]
+      }
+      job_type_building_like_v1: {
+        Args: { p_name: string; p_organization_id: string }
+        Returns: boolean
       }
       job_types_list_v1: {
         Args: { p_organization_id: string }
