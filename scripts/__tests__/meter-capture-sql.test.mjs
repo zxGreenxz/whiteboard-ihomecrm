@@ -696,3 +696,39 @@ test('generated consumption regression detects the former BEFORE-trigger compari
  const pending=(await upload(db,await start(db,{clientId:id(902),sha256:'c'.repeat(64)}))).capture;
  await assert.rejects(rpc(db,'confirmCapture',correctionPayload(pending)),{code:'55000'});
 });
+
+
+test('anonymous Storage helper denies private meter media even under a broad legacy policy', async t => {
+ const db = await fixture(); t.after(() => db.close()); await register(db); const cap = await start(db);
+ await db.query('INSERT INTO storage.objects(bucket_id,name) VALUES($1,$2)', ['meter-capture-media', cap.uploadPath]);
+ await db.exec(`INSERT INTO storage.objects(bucket_id,name) VALUES('other-media','anonymous-sentinel');
+ GRANT SELECT,INSERT,UPDATE,DELETE ON storage.objects TO anon;
+ CREATE POLICY legacy_anon_permissive ON storage.objects FOR ALL TO anon USING(true) WITH CHECK(true);`);
+ for (const signature of ['public.meter_capture_v1(uuid,text,jsonb)', 'public.meter_capture_invoice_v1(uuid,jsonb,jsonb)',
+  'public.meter_capture_exit_v1(uuid,text,jsonb,jsonb)', 'public.meter_capture_claim_v1(text)',
+  'public.meter_capture_complete_v1(uuid,uuid,jsonb)']) {
+  assert.equal((await db.query("SELECT has_function_privilege('anon',$1,'EXECUTE') AS allowed", [signature])).rows[0].allowed, false);
+ }
+ assert.equal((await db.query("SELECT has_function_privilege('anon','public.meter_capture_storage_allowed_v1(text,boolean)','EXECUTE') AS allowed")).rows[0].allowed, true);
+ // An anonymous request must return before consulting tenant permissions.
+ await db.exec(`CREATE OR REPLACE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
+ RETURNS TABLE(allowed boolean) LANGUAGE plpgsql VOLATILE AS $$ BEGIN RAISE EXCEPTION 'Anonymous request reached tenant permission lookup'; END $$;
+ SELECT set_config('test.actor','',false); SET ROLE anon;`);
+ assert.equal((await db.query('SELECT auth.uid() AS actor')).rows[0].actor, null);
+ for (const objectPath of [profilePath, cap.uploadPath, 'malformed', null]) {
+  for (const write of [false, true, null]) {
+   assert.equal((await db.query('SELECT public.meter_capture_storage_allowed_v1($1,$2) AS allowed', [objectPath, write])).rows[0].allowed, false);
+  }
+ }
+ assert.deepEqual((await db.query('SELECT bucket_id,name FROM storage.objects')).rows, [{ bucket_id: 'other-media', name: 'anonymous-sentinel' }]);
+ await assert.rejects(db.query('INSERT INTO storage.objects(bucket_id,name) VALUES($1,$2)', ['meter-capture-media', `${org}/profiles/${meter}/${actor}/${id(901)}`]), { code: '42501' });
+ assert.equal((await db.query("UPDATE storage.objects SET metadata='{}' WHERE bucket_id='meter-capture-media' RETURNING id")).rows.length, 0);
+ assert.equal((await db.query("DELETE FROM storage.objects WHERE bucket_id='meter-capture-media' RETURNING id")).rows.length, 0);
+ // The same anonymous grants/policy work on another bucket: the negative meter
+ // assertions above cannot pass merely because table access is missing.
+ assert.equal((await db.query("INSERT INTO storage.objects(bucket_id,name) VALUES('other-media','anonymous-write') RETURNING id")).rows.length, 1);
+ assert.equal((await db.query("UPDATE storage.objects SET metadata='{}' WHERE name='anonymous-write' RETURNING id")).rows.length, 1);
+ assert.equal((await db.query("DELETE FROM storage.objects WHERE name='anonymous-write' RETURNING id")).rows.length, 1);
+ await db.exec('RESET ROLE');
+ assert.equal((await db.query("SELECT count(*)::int n FROM storage.objects WHERE bucket_id='meter-capture-media'")).rows[0].n, 2);
+});
