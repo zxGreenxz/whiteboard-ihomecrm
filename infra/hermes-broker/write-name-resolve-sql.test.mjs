@@ -80,8 +80,7 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
     (await c.query('SELECT public.hermes_write_name_resolve_v1($1::uuid,$2::uuid[],$3::jsonb) value', [org, ids, JSON.stringify(names)])).rows[0].value, user);
   const nameOf = key => [...vectors.buildings, ...vectors.rooms, ...vectors.jobTypes, ...vectors.people].find(x => x.key === key).name;
 
-  await t.test('every case of name-match-vectors.json', async () => {
-    assert.ok(vectors.cases.length >= 40);
+  const everyVector = async () => {
     for (const vector of vectors.cases) {
       const names = vector.field === 'room' && vector.building ? { building: nameOf(vector.building), room: vector.wanted } : { [vector.field]: vector.wanted };
       const got = await resolve(names), label = JSON.stringify(vector);
@@ -96,6 +95,10 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
         assert.equal(got.more, false, label);
       }
     }
+  };
+  await t.test('every case of name-match-vectors.json', async () => {
+    assert.ok(vectors.cases.length >= 40);
+    await everyVector();
   });
 
   await t.test('combined names: building then room then job type then person; room alone implies its building', async () => {
@@ -167,5 +170,26 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
     assert.deepEqual(await fold('PD1'), { v: 'pd1', k: 'pd1' }, 'tiền tố chỉ bỏ khi ngay sau là chữ số');
     // NFD input (combining marks) folds like NFC.
     assert.equal((await fold('Lế Văn')).v, 'le van');
+  });
+
+  // Lượt 11 / 11b Công việc (20261023185114) thay thân lõi dùng chung của ba trang ghi: mọi vector chung phải giữ nguyên kết quả;
+  // danh xưng chỉ đổi chuỗi CÓ danh xưng; loại việc trùng tên / mã toà không được nhận.
+  await t.test('20261023185114: every shared vector holds on the replaced core; honorific rules; building-named job types refused', async () => {
+    const next = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(name => /^\d{14}_hermes_name_resolve_honorific_v1\.sql$/.test(name))}`, 'utf8')
+      .replaceAll('\r\n', '\n');
+    await pool.query(next); await pool.query(next);
+    await everyVector();
+    const [THANH, TRAN, TYPE_KV] = [id(890), id(891), id(892)];
+    await pool.query(`INSERT INTO public.profiles(id,full_name,hidden) VALUES('${THANH}','Thanh Huy',false),('${TRAN}','Trần Văn Huy',false);
+      INSERT INTO public.organization_memberships(organization_id,user_id,status) VALUES('${ORG}','${THANH}','ACTIVE'),('${ORG}','${TRAN}','ACTIVE');
+      INSERT INTO public.job_types(id,organization_id,name,is_active) VALUES('${TYPE_KV}','${ORG}','15KV',true);`);
+    const huy = await resolve({ person: 'anh Huy' });
+    assert.deepEqual([huy.status, huy.why, huy.candidates.map(c => c.name).sort()], ['unresolved', 'ambiguous', ['Thanh Huy', 'Trần Văn Huy']],
+      '"anh huy" nằm trong "thanh huy" nhưng không được chọn một người');
+    assert.deepEqual((await resolve({ person: 'chị Bình' })).person, { id: uuidOf('p2'), name: 'Trần Thị Bình' });
+    assert.deepEqual((await resolve({ person: 'anh Thanh Huy' })).person, { id: THANH, name: 'Thanh Huy' });
+    assert.equal((await resolve({ person: 'anh Hu' })).why, 'not_visible', 'nửa từ không phải tên');
+    assert.deepEqual([(await resolve({ jobType: '15KV' })).why, (await resolve({ jobType: '15 kv' })).why], ['not_visible', 'not_visible'], 'loại việc trùng mã toà');
+    assert.deepEqual((await resolve({ jobType: 'sửa' })).jobType, { id: uuidOf('t1'), name: 'Sửa' });
   });
 });

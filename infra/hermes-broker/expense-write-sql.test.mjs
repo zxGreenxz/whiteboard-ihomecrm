@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, IMAGE, VIRTUAL, rid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -102,9 +102,10 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     // Gợi ý KHÔNG khoá cứng (trùng chữ tên "sửa") ⇒ không tự nhận; hỏi lại, gợi ý đứng đầu ứng viên.
     const weak = await run('expense.create', 'preview', rid(17), { items: [item({ category: undefined, content: 'sửa vòi' })] });
     assert.deepEqual([weak.kind, weak.field, weak.candidates[0]?.name], ['needs_input', 'category', 'Sửa chữa']);
+    // Lượt 11 (nghiệm thu): chưa nêu hạng mục mà nội dung không trùng hạng mục nào ⇒ why unspecified, KHÔNG nêu ứng viên (trước đây nêu 8 hạng
+    // mục đầu bảng — tiền nhà, điện, nước… — không liên quan).
     const vague = await run('expense.create', 'preview', rid(9), { items: [item({ category: undefined, content: 'đồ lặt vặt' })] });
-    assert.deepEqual([vague.kind, vague.field, vague.why], ['needs_input', 'category', 'ambiguous']);
-    assert.ok(vague.candidates.length > 0 && !vague.candidates.some(c => c.name === 'Hoa hồng môi giới'), 'không đề xuất hạng mục hệ thống');
+    assert.deepEqual([vague.kind, vague.field, vague.why, vague.wanted, vague.candidates], ['needs_input', 'category', 'unspecified', '', []]);
     assert.deepEqual(await run('expense.create', 'preview', rid(10), { items: [item({ category: 'hoa hồng' })] }),
       { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: 'hoa hồng', why: 'not_visible', candidates: [], more: false });
     assert.deepEqual(await run('expense.create', 'preview', rid(11), { items: [item({ buildingName: 'Toà B' })] }),
@@ -120,6 +121,14 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     assert.match(water.preview.items[0].willBe, /^CHỜ DUYỆT: vượt cam kết chi còn lại của kỳ/);
     assert.ok(water.warnings.some(w => w === 'Khoản 1: cam kết "Đóng tiền nước" tháng 10/2026 là 3.000.000đ, còn 3.000.000đ trước khoản này — khoản này VƯỢT phần còn lại'), water.warnings.join('\n'));
     assert.equal(water.preview.items[0].period, 'tháng 10/2026');
+    // Lượt 11 (Q12, nghiệm thu): câu cam kết NGAY trong khoản và trong tóm tắt — cam kết, đã chi/giữ, còn, vượt bao nhiêu.
+    const commitment = 'Cam kết "Đóng tiền nước" tháng 10/2026: 3.000.000đ; đã chi/giữ 0đ; còn 3.000.000đ trước khoản này — khoản này VƯỢT phần còn lại 200.000đ';
+    assert.equal(water.preview.items[0].commitment, commitment);
+    assert.equal(water.preview.summary, `Ghi 1 phiếu chi, tổng 3.200.000đ. Khoản 1: ${commitment}.`);
+    // Không có cam kết của kỳ ⇒ vẫn nói rõ, không im lặng.
+    const none = await run('expense.create', 'preview', rid(18), { items: [item({ category: 'đóng tiền nước', content: 'tiền nước tháng 9', amount: 300000, period: '2026-09', roomName: undefined })] });
+    assert.equal(none.preview.items[0].commitment, 'Chưa có cam kết chi "Đóng tiền nước" tháng 09/2026 ở toà này');
+    assert.equal(defaulted.preview.items[0].commitment, undefined, 'hạng mục không gắn phí cam kết ⇒ không có câu cam kết');
   });
 
   await t.test('lượt 2 đưa bản đã giải ngoài phạm vi ⇒ not_allowed, không mở biên nhận', async () => {
@@ -319,9 +328,11 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       assert.deepEqual(await run('expense.edit', 'preview', rid(66), { voucherCode: 'PC2610502', reason: 'không đổi gì cả' }), { kind: 'rejected', reason: 'invalid_params' });
       assert.deepEqual(await run('expense.edit', 'preview', rid(67), { voucherCode: 'PC2610502', content: 'mua bóng đèn' }), { kind: 'rejected', reason: 'invalid_params' });
       assert.equal((await run('expense.edit', 'preview', rid(68), { voucherCode: 'PC2610502', buildingName: 'Toà B', reason: 'nhầm toà rồi' })).why, 'outside_scope');
-      // Phiếu đã duyệt ⇒ hàm web từ chối khi chạy thử ⇒ not_pending; phiếu nhiều dòng hạng mục ⇒ đổi tiền làm trên web, đổi nội dung vẫn được.
-      await voucher('PC2610503', { status: 'APPROVED', posting: 'POSTED' });
-      assert.deepEqual(await run('expense.edit', 'preview', rid(69), { voucherCode: 'PC2610503', content: 'x y z' }), { kind: 'rejected', reason: 'not_pending' });
+      // Phiếu đã duyệt ⇒ not_pending kèm link trang phiếu (lượt 11: trước khi khoá / chạy thử); phiếu nhiều dòng hạng mục ⇒ đổi tiền làm trên
+      // web, đổi nội dung vẫn được.
+      const approved = await voucher('PC2610503', { status: 'APPROVED', posting: 'POSTED' });
+      assert.deepEqual(await run('expense.edit', 'preview', rid(69), { voucherCode: 'PC2610503', content: 'x y z' }),
+        { kind: 'rejected', reason: 'not_pending', link: `/income-expense/voucher/${approved}` });
       await voucher('PC2610504', { amount: 500000, lines: [300000, 200000] });
       assert.deepEqual(await run('expense.edit', 'preview', rid(70), { voucherCode: 'PC2610504', amount: 450000, reason: 'ghi nhầm số tiền' }), { kind: 'rejected', reason: 'web_only' });
       assert.equal((await run('expense.edit', 'preview', rid(71), { voucherCode: 'PC2610504', content: 'hai món' })).kind, 'preview');
@@ -364,7 +375,7 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       assert.deepEqual((await row(posted)).approval_status, 'CANCELLED');
       assert.deepEqual((await db.query('SELECT kind,amount::bigint::text amount FROM public.fixture_postings WHERE voucher_id=$1', [posted])).rows, [{ kind: 'REVERSAL', amount: '350000' }]);
       assert.deepEqual(await step('expense.cancel', rid(75), params, preview), applied, 'phát lại y nguyên');
-      assert.deepEqual(await run('expense.cancel', 'preview', rid(76), params), { kind: 'rejected', reason: 'not_pending' }, 'đã huỷ');
+      assert.deepEqual(await run('expense.cancel', 'preview', rid(76), params), { kind: 'rejected', reason: 'not_pending', link: `/income-expense/voucher/${posted}` }, 'đã huỷ');
       // Chưa vào sổ ⇒ câu khác; phiếu cha lặp lại ⇒ cảnh báo các kỳ sau không tự lập.
       await voucher('PC2610512', { cycle: 'MONTH' });
       const unposted = await run('expense.cancel', 'preview', rid(77), { voucherCode: 'PC2610512', reason: 'không mua nữa' });
@@ -627,6 +638,101 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     });
   });
 
+  // ---- Lượt 11 (nghiệm thu bot thật trên TEST, 24/10): hạng mục suy từ nội dung, mã phiếu dùng lại giữa các toà, mở lại phiếu.
+  let n11 = 400;
+  const preview11 = params => run('expense.create', 'preview', rid(n11++), params);
+  await t.test('Lượt 11 hạng mục: món điện nước / sửa chữa / vệ sinh / văn phòng phẩm ra đúng hạng mục; mơ hồ ⇒ ít ứng viên đúng nghĩa; tên nhóm; lô nói khoản số mấy', async () => {
+    await f.rollbackCase(async () => {
+      // Danh mục chuẩn (rút gọn): 4 khoản cố định đứng ĐẦU BẢNG như production — trước đây chính chúng bị đưa ra làm "ứng viên".
+      const catalog = [['Tiền nhà', 'Cố định hằng tháng', 'tien_nha', ['tiền nhà', 'thuê nhà'], 'tien_nha'], ['Đóng tiền điện', 'Cố định hằng tháng', 'dien', ['tiền điện'], 'dien'],
+        ['Đóng tiền internet', 'Cố định hằng tháng', 'internet', ['tiền mạng'], 'internet'], ['Tiền rác', 'Cố định hằng tháng', 'rac', ['tiền rác'], 'rac'],
+        ['Sửa điện', 'Sửa chữa – bảo trì', 'sua_dien', ['sửa điện', 'thợ điện'], null], ['Sửa nước, máy bơm', 'Sửa chữa – bảo trì', 'sua_nuoc_may_bom', ['sửa máy bơm', 'thông cống'], null],
+        ['Mua đồ điện nước', 'Mua sắm', 'vat_tu_dien_nuoc', ['bóng đèn', 'ổ điện'], null], ['Dọn vệ sinh theo lượt', 'Vệ sinh phát sinh', 'don_ve_sinh', ['dọn phòng', 'lau hành lang'], null],
+        ['Văn phòng, phần mềm', 'Hành chính – pháp lý', 'van_phong', ['văn phòng', 'phần mềm'], null]];
+      for (const [j, [name, group, key, keywords, fee]] of catalog.entries())
+        await db.query(`INSERT INTO public.income_expense_types(id,organization_id,type,name,category,rule_key,keywords,fee_category,sort_order) VALUES($1,$2,'expense',$3,$4,$5,$6,$7,$8)`,
+          [uid(620 + j), ORG, name, group, key, keywords, fee, j - 10]);
+      const chosen = async (content, category) => {
+        const out = await preview11({ items: [item({ content, category })] });
+        return out.kind === 'preview' ? [out.preview.items[0].category, out.preview.items[0].categoryAuto ?? null] : out;
+      };
+      const AUTO = 'tự chọn theo nội dung — sửa nếu sai';
+      for (const [content, expected] of [['mua vòi nước', 'Mua đồ điện nước'], ['mua ốc vít', 'Mua đồ điện nước'], ['thay ổ cắm phòng 101', 'Mua đồ điện nước'],
+        ['mua dây điện', 'Mua đồ điện nước'], ['thợ sửa ổ cắm', 'Sửa điện'], ['thông cống phòng 101', 'Sửa nước, máy bơm'], ['sửa bồn cầu', 'Sửa nước, máy bơm'],
+        ['dọn vệ sinh hành lang', 'Dọn vệ sinh theo lượt'], ['mua giấy in', 'Văn phòng, phần mềm'], ['tiền nhà tháng 10', 'Tiền nhà']])
+        assert.deepEqual(await chosen(content, undefined), [expected, AUTO], content);
+      // Gợi ý không khoá cứng ⇒ hỏi lại (unspecified) với ứng viên đúng nghĩa, gợi ý đứng đầu — không bao giờ các khoản cố định đầu bảng.
+      const vague = await chosen('sửa chữa linh tinh', undefined);
+      assert.deepEqual([vague.kind, vague.field, vague.why, vague.wanted], ['needs_input', 'category', 'unspecified', '']);
+      assert.deepEqual(vague.candidates.map(c => c.name), ['Sửa chữa', 'Sửa điện', 'Sửa nước, máy bơm']);
+      for (const content of ['mua vòi nước', 'đồ lặt vặt', 'sửa chữa linh tinh', 'mua chổi lau nhà'])
+        for (const out of [await chosen(content, undefined)])
+          if (out.kind) assert.ok(!out.candidates.some(c => ['Tiền nhà', 'Đóng tiền điện', 'Đóng tiền internet', 'Tiền rác'].includes(c.name)), content);
+      assert.deepEqual((await chosen('mua chổi lau nhà', undefined)).candidates.map(c => c.name), ['Dọn vệ sinh theo lượt'], 'trùng từ "lau" với cụm hay nói');
+      // Nêu tên nhóm ("Sửa chữa/bảo trì" — nghiệm thu từng báo "không thấy … trong phạm vi quyền"): đủ từ trong tên + nhóm ⇒ cả nhóm; nội dung
+      // chỉ đúng một hạng mục trong nhóm ⇒ nhận nó; không thì hỏi lại đúng các hạng mục của nhóm.
+      assert.deepEqual(await chosen('sửa máy bơm', 'Sửa chữa/bảo trì'), ['Sửa nước, máy bơm', AUTO]);
+      const group = await chosen('việc linh tinh', 'Sửa chữa/bảo trì');
+      assert.deepEqual([group.why, group.wanted, group.candidates.map(c => c.name)], ['ambiguous', 'Sửa chữa/bảo trì', ['Sửa điện', 'Sửa nước, máy bơm']]);
+      assert.deepEqual(await chosen('việc linh tinh', 'đồ điện nước'), ['Mua đồ điện nước', null], 'tên chứa chuỗi đã nêu');
+      assert.deepEqual(await chosen('mua vòi nước', 'điện'), ['Mua đồ điện nước', AUTO], '"điện" khớp ba hạng mục; nội dung chọn đúng một');
+      assert.deepEqual((await chosen('mua vòi nước', 'bảo hiểm lạ')), { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: 'bảo hiểm lạ',
+        why: 'not_visible', candidates: [], more: false });
+      // Lô: khoản cần hỏi lại mang số khoản.
+      const batch = await preview11({ items: [item(), item({ category: undefined, content: 'đồ lặt vặt' })] });
+      assert.deepEqual([batch.kind, batch.field, batch.why, batch.item], ['needs_input', 'category', 'unspecified', 2]);
+      const room = await preview11({ items: [item(), item({ roomName: 'P999' })] });
+      assert.deepEqual([room.kind, room.field, room.item], ['needs_input', 'room', 2]);
+      // Hàm chọn hạng mục: INVOKER dưới RLS người hỏi; đầu vào sai ⇒ 22023.
+      await assert.rejects(f.call('SELECT public.hermes_expense_category_pick_v1($1,NULL,NULL) r', [ORG]), code('22023'));
+      const list = sql => /c_money_flow CONSTANT text\[\]:=ARRAY\[([^\]]+)\]/.exec(sql)?.[1];
+      assert.equal(list(FIXES), list(RULES), 'danh sách dòng tiền của hàm chọn hạng mục = của gợi ý dùng chung');
+    });
+  });
+
+  await t.test('Lượt 11 mã phiếu: khớp đúng mã đầy đủ trước; mã dùng lại giữa các toà ⇒ hỏi lại kèm ngày/toà; gợi ý ngày/toà chọn đúng phiếu; mã ngắn chỉ là ứng viên; mở lại phiếu ⇒ web', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("INSERT INTO public.buildings VALUES($1,$2,'Kho Văn Phòng Chung',true,null)", [VIRTUAL, ORG]);
+      await db.query("INSERT INTO public.fixture_building_access VALUES($1)", [VIRTUAL]);
+      await db.query("INSERT INTO public.fixture_staff_assignments VALUES($1,$2)", [USER, VIRTUAL]);
+      for (const permission of ['income_expenses.create', 'buildings.view'])
+        await db.query("UPDATE public.fixture_acl SET building_ids=building_ids||$1::uuid WHERE permission=$2", [VIRTUAL, permission]);
+      await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
+      // Cùng mã ở ba phiếu: hai ngày khác nhau ở Toà A, một phiếu ở toà ảo cùng ngày 12/10 (đo production 24/10: 1 788 phiếu chi, 1 059 mã).
+      const early = await voucher('PC2610777', { date: '2026-10-05' });
+      const late = await voucher('PC2610777', { date: '2026-10-12' });
+      await voucher('PC2610777', { date: '2026-10-12', building: VIRTUAL, amount: 150000 });
+      const note = (voucherCode, n) => run('expense.note', 'auto', rid(n), { voucherCode, note: 'đã lấy hoá đơn' });
+      const noted = async n => (await db.query('SELECT voucher_id FROM public.fixture_supplements WHERE idempotency_key=$1', ['hermes-note:' + rid(n)])).rows[0]?.voucher_id;
+      const all = await note('PC2610777', 430);
+      assert.deepEqual([all.kind, all.field, all.why, all.candidates.map(c => c.name)], ['needs_input', 'voucher', 'ambiguous',
+        ['PC2610777 · 12/10/2026 · Kho Văn Phòng Chung · 150.000đ', 'PC2610777 · 12/10/2026 · Toà A · 400.000đ', 'PC2610777 · 05/10/2026 · Toà A · 400.000đ']]);
+      assert.deepEqual((await note('pc2610777 ngày 12/10', 431)).candidates.length, 2, 'ngày còn hai phiếu ⇒ vẫn hỏi lại');
+      const byDate = await note('PC2610777 05/10', 432);
+      assert.deepEqual([byDate.kind, await noted(432)], ['applied', early], 'ngày chọn đúng một phiếu');
+      const byBuilding = await note('PC2610777 12/10/2026 toà a', 433);
+      assert.deepEqual([byBuilding.kind, await noted(433)], ['applied', late], 'ngày + toà chọn đúng một phiếu');
+      const byLabel = await note(all.candidates[0].name, 434);
+      assert.equal(byLabel.kind, 'applied', 'chép lại nhãn ứng viên là đủ');
+      assert.deepEqual((await note('PC2610777 30/01', 435)).candidates.length, 3, 'gợi ý không khớp phiếu nào ⇒ bỏ qua, hỏi lại đủ ứng viên');
+      // Mã ngắn / thiếu: chỉ là ứng viên (ghi chú ghi thẳng ⇒ không bao giờ tự chọn), kể cả khi chỉ một phiếu khớp.
+      await voucher('PC2610888');
+      const short = await note('PC888', 436);
+      assert.deepEqual([short.kind, short.why, short.candidates.map(c => c.name.split(' · ')[0])], ['needs_input', 'ambiguous', ['PC2610888']]);
+      assert.equal((await note('PC2610999999', 437)).why, 'not_visible');
+      // Duyệt: mỗi mã giải như trên.
+      const approve = await run('expense.approve', 'preview', rid(438), { voucherCodes: ['PC2610777 05/10', 'PC2610888'] });
+      assert.equal(approve.kind, 'preview');
+      assert.deepEqual(approve.resolved.vouchers.map(v => v.voucherCode), ['PC2610777', 'PC2610888']);
+      // "Mở lại phiếu" (hoàn tác huỷ) không phải thao tác của bot: sửa phiếu đã huỷ ⇒ web_only kèm link trang phiếu, không chạy thử hàm web.
+      const cancelled = await voucher('PC2610889', { status: 'CANCELLED' });
+      const before = await trace4();
+      assert.deepEqual(await run('expense.edit', 'preview', rid(439), { voucherCode: 'PC2610889', cashbook: 'tiền mặt' }),
+        { kind: 'rejected', reason: 'web_only', link: `/income-expense/voucher/${cancelled}` });
+      assert.deepEqual(await trace4(), before);
+    });
+  });
+
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='expense.create'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run('expense.create', phase, rid(30), { items: [item()] }), code('22023'));
@@ -653,6 +759,7 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       ['app_private.hermes_expense_create_run_v1', true, false, false, false], ['app_private.hermes_expense_manual_v1', true, false, false, false],
       ['app_private.hermes_expense_reason_v1', false, false, false, false],
       ['app_private.hermes_expense_resolve_core_v1', false, false, true, false], ['app_private.hermes_expense_scope_v1', true, false, true, false],
-      ['app_private.hermes_expense_write_step_v1', true, false, true, false], ['hermes_expense_write_v1', false, true, true, false]]);
+      ['app_private.hermes_expense_write_step_v1', true, false, true, false], ['hermes_expense_category_pick_v1', false, false, true, false],
+      ['hermes_expense_write_v1', false, true, true, false]]);
   });
 });

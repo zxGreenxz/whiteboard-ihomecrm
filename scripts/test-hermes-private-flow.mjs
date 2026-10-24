@@ -576,6 +576,20 @@ for (const spec of [
   { name: 'app_private.hermes_invoice_edit_lookup_v1',
     sourcePath: 'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
     statementSha256: 'd1c7b73a8705caca8a84b24ded68016cd93dd23062f3b71f76f571bb6c144e27' },
+  // Lượt 11 Công việc (20261023185114): lõi giải tên v1 thay thân — bỏ danh xưng khi khớp người, không nhận loại việc trùng tên toà
+  // (gọi public.job_type_building_like_v1 đủ schema). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql',
+    statementSha256: 'ca38182f3eb344c198b52f335ea422f8316465bf87ac02efbae1f4313353d8d3' },
+  // Thu chi lượt 11 (20261023210634): chọn hạng mục INVOKER dưới RLS người hỏi (bảng hạng mục + public.ie_category_suggest_v1 /
+  // public.hermes_name_fold_v1) và lõi giải tên dựng lại (mã phiếu khớp đúng mã đầy đủ trước + gợi ý ngày / toà; hạng mục qua hàm trên) —
+  // chỉ tên public đủ schema, không gọi app_private theo tên.
+  { name: 'public.hermes_expense_category_pick_v1',
+    sourcePath: 'supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql',
+    statementSha256: 'fa69cd469147ce08b8910883b2db847fe7e81e2c989d56cf80fe5eda7ae79f31' },
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql',
+    statementSha256: '24330ef538886274f374bad58928bef6fbfeb3e43afe9faed8c435f323f61164' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
