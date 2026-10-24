@@ -4,6 +4,7 @@ import { z } from "zod";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { ArchiveJobs } from "./cameraArchive.js";
+import { validateCameraOrigin } from "./cameraConfig.js";
 
 const uuid = z.string().uuid();
 export const liveConfigSchema = z.object({
@@ -16,9 +17,15 @@ export const liveConfigSchema = z.object({
     rtspOrigin: z.string().regex(/^rtsp:\/\/(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}):\d{1,5}$/u),
     username: z.string().min(1).max(128), password: z.string().min(1).max(512),
     archiveEnabled: z.boolean().optional(),
+    archiveOrigin: z.string().optional(),
   }).strict()).min(1).max(32),
 }).strict().superRefine((config, ctx) => {
   if (new Set(config.recorders.map((r) => r.id)).size !== config.recorders.length) ctx.addIssue({ code: "custom", message: "Duplicate recorder" });
+  for (const recorder of config.recorders) {
+    try {
+      if (recorder.archiveEnabled || recorder.archiveOrigin !== undefined) validateCameraOrigin(recorder.archiveOrigin ?? "");
+    } catch { ctx.addIssue({ code: "custom", message: "Private archive origin required" }); }
+  }
   for (const origin of config.origins) {
     const u = new URL(origin);
     if (u.origin !== origin || u.protocol !== "https:") ctx.addIssue({ code: "custom", message: "HTTPS origins required" });

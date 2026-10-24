@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { ArchiveJobs, parseArchiveRange, type ArchiveDependencies } from "../src/cameraArchive.js";
 import { liveConfigSchema, LiveError } from "../src/cameraLive.js";
-import { archiveArguments, playbackUrl } from "../src/cameraArchiveMedia.js";
+import { archiveArguments, recorderTime, recordingStart, ArchiveFrameCoverage, saveRecording } from "../src/cameraArchiveMedia.js";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const recorder = liveConfigSchema.parse({
   supabaseUrl: "https://tryymsxyyckgbrmmvozx.supabase.co", publishableKey: "fixture-publishable-key", origins: ["https://crm.example.test"],
-  recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1], rtspOrigin: "rtsp://10.0.0.1:554", username: "fixture", password: "fixture-secret", archiveEnabled: true }],
+  recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1], rtspOrigin: "rtsp://10.0.0.1:554", archiveOrigin: "http://10.0.0.1:80", username: "fixture", password: "fixture-secret", archiveEnabled: true }],
 }).recorders[0]!;
 const input = { start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T08:01:00+07:00", purpose: "export" as const };
 const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: Date.parse("2026-10-24T12:00:00Z") };
@@ -19,13 +22,45 @@ function setup() {
   return { dependencies, jobs: new ArchiveJobs(dependencies), advance: (ms: number) => { now += ms; } };
 }
 describe("camera archive range and authorization", () => {
-  it("requests the selected channel and recorder-local times without putting credentials in process arguments", () => {
+  it("requires an explicit private HTTP origin before enabling archive access", () => {
+    for (const archiveOrigin of [undefined,"http://example.com","http://127.0.0.1","http://10.0.0.1@public.example","http://10.0.0.1/other"]) {
+      expect(liveConfigSchema.safeParse({supabaseUrl:"https://tryymsxyyckgbrmmvozx.supabase.co",publishableKey:"fixture-publishable-key",origins:["https://crm.example.test"],recorders:[{...recorder,archiveOrigin}]}).success).toBe(false);
+    }
+  });
+  it("trims absolute native timestamps without resetting a missing prefix or leaking credentials", () => {
     const range = parseArchiveRange(input, Date.parse("2026-10-24T00:00:00Z"));
-    const url = new URL(playbackUrl(recorder, 1, range));
-    expect(url.pathname).toBe("/cam/playback"); expect(url.searchParams.get("starttime")).toBe("2026_10_20_08_00_00");
-    expect(url.searchParams.get("endtime")).toBe("2026_10_20_08_01_00"); expect(url.searchParams.get("channel")).toBe("1");
-    const args = archiveArguments("/private/input.url", "/private/video.mp4", range);
-    expect(args).toContain("concat"); expect(args).toContain("60"); expect(args.join(" ")).not.toContain("fixture-secret");
+    expect(recorderTime(range.start)).toBe("2026-10-20 08:00:00");
+    expect(recordingStart(range)).toBe("2026-10-20 07:59:55");
+    const args = archiveArguments("/private/source.dav", "/private/video.mp4", range);
+    expect(args).toContain("dhav"); expect(args).toContain("-copyts"); expect(args).toContain("60");
+    expect(args[args.indexOf("-vf")+1]).toContain(`setpts=PTS-${Date.parse("2026-10-20T08:00:00Z")/1000}/TB`);
+    expect(args.join(" ")).not.toMatch(/STARTPTS|fixture-secret|rtsp:|http:/u);
+  });
+  it("rejects decoded missing prefixes, trailing video and internal timeline gaps", () => {
+    const make = (times: number[]) => {
+      const coverage = new ArchiveFrameCoverage();
+      coverage.accept("[Parsed_showinfo_2 @ fixed] config in time_base: 1/1000, frame_rate: 25/1");
+      times.forEach((time,index) => coverage.accept(`[Parsed_showinfo_2 @ fixed] n: ${index} pts: ${Math.round(time*1000)} pts_time:${time} duration: 1`));
+      return coverage;
+    };
+    const complete = Array.from({length:125},(_,index)=>index/25);
+    expect(make(complete).assertComplete(5)).toBe(5);
+    expect(()=>make(complete.slice(25)).assertComplete(5)).toThrow("ARCHIVE_INCOMPLETE");
+    expect(()=>make(complete.slice(0,100)).assertComplete(5)).toThrow("ARCHIVE_INCOMPLETE");
+    expect(()=>make(complete.filter(t=>t<2||t>=3)).assertComplete(5)).toThrow("ARCHIVE_INCOMPLETE");
+    expect(()=>make([1792835405,1792835406]).assertComplete(5)).toThrow("ARCHIVE_INCOMPLETE");
+  });
+  it("bounds native recording bytes even without a Content-Length and closes the file on abort", async () => {
+    const directory=await mkdtemp(join(tmpdir(),"camera-native-"));
+    try {
+      const controller=new AbortController();
+      const bytes=new Uint8Array(48).fill(7);
+      await saveRecording(new Response(bytes),join(directory,"ok.dav"),controller.signal,64);
+      expect(await readFile(join(directory,"ok.dav"))).toEqual(Buffer.from(bytes));
+      await expect(saveRecording(new Response(new Uint8Array(65)),join(directory,"large.dav"),controller.signal,64)).rejects.toMatchObject({code:"ARCHIVE_TOO_LARGE"});
+      controller.abort();
+      await expect(saveRecording(new Response(bytes),join(directory,"abort.dav"),controller.signal,64)).rejects.toThrow();
+    } finally { await rm(directory,{recursive:true,force:true}); }
   });
   it("normalizes explicit offsets and rejects invalid, future, oversized or extra input", () => {
     expect(parseArchiveRange(input, Date.parse("2026-10-24T00:00:00Z"))).toMatchObject({ start: "2026-10-20T01:00:00.000Z", durationSeconds: 60 });

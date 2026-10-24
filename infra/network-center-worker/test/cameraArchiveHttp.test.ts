@@ -5,7 +5,7 @@ import { createLiveServer, LiveError, liveConfigSchema, type LiveDependencies } 
 
 const config = liveConfigSchema.parse({
   supabaseUrl: "https://tryymsxyyckgbrmmvozx.supabase.co", publishableKey: "fixture-publishable-key", origins: ["https://crm.example.test"],
-  recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1], rtspOrigin: "rtsp://10.0.0.1:554", username: "fixture", password: "fixture-secret", archiveEnabled: true }],
+  recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1], rtspOrigin: "rtsp://10.0.0.1:554", archiveOrigin: "http://10.0.0.1:80", username: "fixture", password: "fixture-secret", archiveEnabled: true }],
 });
 const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 3600_000 };
 const input = { start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T08:01:00+07:00", purpose: "export" };

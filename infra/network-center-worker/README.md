@@ -2,6 +2,10 @@
 
 ## Camera: xem lại và xuất đoạn MP4
 
+Host camera hiện dùng mục **VPS Minh (NAT)** trong vault. Lấy endpoint và mật khẩu
+qua `scripts/lib/vault.mjs`, đối chiếu host key đã ghim; không suy ra host SSH từ
+tên miền `crm-hermes` hoặc alias `hermes-vps` cũ. Không in credential ra log.
+
 Gateway camera có thêm API `/camera-live/v1/recorders/:id/channels/:channel/archive`
 và `/camera-live/v1/archive/:id[/file]`. Dùng cùng JWT, kiểm quyền theo đầu ghi/tòa
 ở mỗi thao tác. Không cần migration hay mở thêm ingress. Tác vụ phải được poll
@@ -9,28 +13,34 @@ trong 75 giây; file sẵn sàng tự hết hạn sau 15 phút và được xóa
 duyệt tải xong. Dừng gateway cũng dừng bộ chuyển mã trong cùng systemd control group.
 
 Mặc định xem lại tắt. Trong credential `live-config.json`, chỉ đặt
-`archiveEnabled: true` cho đầu ghi Dahua/KBVISION đã kiểm được RTSP
-`/cam/playback?channel=…&starttime=YYYY_MM_DD_HH_mm_SS&endtime=…` và có đồng hồ
-UTC+7. Giữ nguyên credential và `rtspOrigin` của đầu ghi. Video cũ có thể đã bị
+`archiveEnabled: true` cùng `archiveOrigin` (HTTP/HTTPS IP private, cổng quản trị
+qua WireGuard) cho đầu ghi Dahua/KBVISION hỗ trợ `loadfile.cgi?action=startLoad`
+và bản ghi DHAV có timestamp theo đồng hồ UTC+7. Giữ nguyên credential và
+`rtspOrigin` của đầu ghi. Video cũ có thể đã bị
 ghi đè; lỗi lấy bản ghi không được diễn giải thành “không có sự việc”.
 
-Release gateway phải chứa binary FFmpeg đã kiểm SHA-256, hỗ trợ concat demuxer
-(đọc URL từ manifest riêng tư, tránh lộ mật khẩu trong process argv), RTSP/TCP,
-H.264/libx264 và AAC.
+Release gateway phải chứa binary FFmpeg đã kiểm SHA-256, hỗ trợ DHAV demuxer,
+trim/atrim/setpts/asetpts/showinfo, H.264/libx264 và AAC. Gateway tải bản gốc qua
+HTTP Digest vào file riêng tư có giới hạn dung lượng rồi cắt theo timestamp
+tuyệt đối; lấy thêm 5 giây trước điểm cắt để giải mã đủ khung ở biên tải xuống,
+nhưng không dịch khoảng giờ người dùng chọn. Không dùng RTSP để cắt vì đầu ghi có thể nhảy tới keyframe kế tiếp,
+làm mất phần đầu. Credential không đi vào URL/argv/log của FFmpeg.
 Ghim binary bất biến trong `/opt/ihome-camera-live/releases/<sha>/`, khai báo
 `CAMERA_FFMPEG_BINARY` và `CAMERA_FFMPEG_SHA256` trong runtime.env. Không lấy binary
 latest lúc khởi động. Gateway xác minh digest trước khi mở listener. Unit mới
 cấp `StateDirectory=ihome-camera-live` (0700), giới hạn RAM 768 MiB và CPU 150%.
-Chỉ có một tác vụ chuyển mã cùng lúc, tối đa bốn file tạm, mỗi file dưới 256 MiB;
+Chỉ có một tác vụ chuyển mã cùng lúc, tối đa bốn file kết quả, mỗi file dưới 256 MiB;
+bản DHAV đang xử lý cũng bị giới hạn dưới 256 MiB và xóa khi kết thúc tác vụ;
 dành tối thiểu 2 GiB đĩa cho thư mục state. Không đặt video ở public webroot.
 
 UI cho chọn khoảng tìm tối đa 24 giờ, tải từng đoạn xem trước tối đa 10 phút,
 tua và tốc độ 0.5–8×. Xuất tối đa 30 phút/file, giữ kích thước hình gốc và chuyển
 mã H.264/AAC. Không phải bản bitstream gốc. File thông tin bàn giao chứa camera,
-khoảng giờ yêu cầu, thời lượng nhận được và SHA-256; không chứng nhận đồng hồ đầu
-ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway từ chối video
-thiếu hơn 2 giây so với khoảng yêu cầu; vẫn cần kiểm thực tế firmware và khoảng
-có gián đoạn, vì thời lượng đầu ra không tự chứng minh mọi khung hình nguồn.
+khoảng giờ yêu cầu, thời lượng video theo timestamp khung hình và SHA-256; không chứng nhận đồng hồ đầu
+ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway kiểm thời lượng
+và timestamp khung hình đầu/cuối, từ chối khoảng rỗng giữa các khung hình lớn hơn
+0,5 giây (hoặc hai chu kỳ khung hình với camera FPS thấp). Vẫn cần kiểm thực tế
+firmware và gián đoạn vì thời lượng không tự chứng minh mọi khung hình nguồn.
 
 Trước bật trên host: giữ bản release/config/unit cũ; kiểm file MP4 có hình, tua,
 thời lượng, dấu giờ và hash trên đầu ghi được cấp quyền; thử hủy, hết hạn và người
