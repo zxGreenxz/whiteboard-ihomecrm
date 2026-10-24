@@ -26820,6 +26820,14 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
+      landlord_operation_book_codes_v1: {
+        Args: {
+          p_building_id: string
+          p_landlord_code: string
+          p_manager_code: string
+        }
+        Returns: Json
+      }
       landlord_operation_options_v1: {
         Args: { p_building_id: string }
         Returns: Json

@@ -73,11 +73,14 @@ it('đầu trang: Doanh thu − Chi phí = Lợi nhuận, phần quản lý, chi
   expect(chon).toHaveBeenCalledWith('2026-10');
 });
 
-it('link chủ nhà: không lộ người chốt, đối chiếu Báo cáo LN hay lý do chưa chốt', () => {
+it('link chủ nhà: đầu trang chỉ còn Doanh thu / Chi phí / Lợi nhuận (chủ nhắn 24/10/2026); không lộ người chốt hay đối chiếu', () => {
   const bridge = { kqkd_profit: 18_000_000, settlement_profit: 18_000_000, rows: [] };
   ve({ mode: 'public', buildingId: undefined, token: 'tok', month: closedMonth({ kqkd_bridge: bridge }) });
-  expect(screen.getByTestId('chip-status').textContent).toBe('Đã chốt lúc 08:30 · 01/11/2026');
-  expect(screen.queryByTestId('chip-bridge')).toBeNull();
+  expect(tien(screen.getByTestId('settlement-hero-kpis'))).toMatch(/Doanh thu\s*23\.000\.000 đ.*Lợi nhuận\s*18\.000\.000 đ/);
+  for (const id of ['settlement-manager-bar', 'settlement-hero-net', 'chip-status', 'chip-pending', 'chip-bridge']) {
+    expect(screen.queryByTestId(id), id).toBeNull();
+  }
+  expect(within(screen.getByTestId('settlement-hero')).queryByText(/Quản lý nhận/)).toBeNull();
   cleanup();
   ve({ month: closedMonth({ kqkd_bridge: bridge }) });
   expect(screen.getByTestId('chip-status').textContent).toBe('Đã chốt lúc 08:30 · 01/11/2026 bởi Quản trị A');
@@ -373,6 +376,49 @@ it('tháng đã chốt mà phiếu đổi sau khi chốt: vẫn cảnh báo (adm
   expect(screen.getByTestId('chip-status').textContent).toBe('Phiếu đã đổi sau khi chốt');
   cleanup();
   ve({ mode: 'public', buildingId: undefined, token: 'tok', month: closedMonth({ is_stale: true }) });
+  // link chủ nhà không còn chip trạng thái ở đầu trang — dòng báo ở thân trang vẫn nói rõ
   expect(screen.getByTestId('settlement-stale').textContent).toMatch(/bên quản lý sẽ chốt lại/);
-  expect(screen.getByTestId('chip-status').textContent).toBe('Đã chốt — đang chờ chốt lại');
+  expect(screen.queryByTestId('chip-status')).toBeNull();
+});
+
+it('ký hiệu sổ của toà: ô đầu dòng Khoản chi + 2 nút lọc trên dòng tiêu đề thẻ (bấm lại bỏ lọc); chưa đặt ⇒ CN / QL', () => {
+  ve({ overview: overviewV3({ landlord_book_code: 'CG', manager_book_code: 'ET' }) });
+  const chi = () => within(screen.getByTestId('settlement-expense-card'));
+  expect(chi().getAllByTestId('settlement-row-tile').map((x) => x.textContent)).toEqual(['ET']);
+  const thu = () => within(screen.getByTestId('settlement-income-card'));
+  const nut = (s: 'LANDLORD' | 'MANAGER') => thu().getByTestId(`settlement-book-filter-${s}`);
+  expect([nut('LANDLORD').textContent, nut('MANAGER').textContent]).toEqual(['CG', 'ET']);
+  expect(thu().getAllByTestId('settlement-cash-row')).toHaveLength(3);
+  fireEvent.click(nut('MANAGER'));
+  expect(nut('MANAGER').getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByTestId('settlement-filter-bar').textContent).toMatch(/sổ quản lý/);
+  expect(thu().getAllByTestId('settlement-cash-row')).toHaveLength(1);
+  expect(tien(thu().getByTestId('settlement-list-total'))).toBe('3.000.000 đ');
+  // hai thẻ cùng một bộ lọc
+  expect(chi().getByTestId('settlement-book-filter-MANAGER').getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(nut('MANAGER'));
+  expect(screen.queryByTestId('settlement-filter-bar')).toBeNull();
+  expect(thu().getAllByTestId('settlement-cash-row')).toHaveLength(3);
+  cleanup();
+  ve({ mode: 'public', buildingId: undefined, token: 'tok', overview: overviewV3({ landlord_book_code: 'CG', manager_book_code: 'ET' }) });
+  expect(within(screen.getByTestId('settlement-income-card')).getByTestId('settlement-book-filter-LANDLORD').textContent).toBe('CG');
+  cleanup();
+  ve();
+  expect(within(screen.getByTestId('settlement-income-card')).getByTestId('settlement-book-filter-LANDLORD').textContent).toBe('CN');
+});
+
+it('tab Thu chi: bảng "Ai thu, ai chi" nằm DƯỚI CÙNG; "Khoản khác" chỉ ở màn quản trị', () => {
+  ve();
+  const grid = screen.getByTestId('settlement-who-grid');
+  const other = screen.getByTestId('settlement-other-vouchers');
+  const lists = screen.getByTestId('settlement-expense-card');
+  expect(lists.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(other.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // bấm ô ở bảng cuối vẫn lọc danh sách phía trên
+  fireEvent.click(screen.getByRole('button', { name: /Chủ nhà nhận/ }));
+  expect(screen.getByTestId('settlement-filter-bar').textContent).toMatch(/sổ chủ nhà/);
+  cleanup();
+  ve({ mode: 'public', buildingId: undefined, token: 'tok' });
+  expect(screen.queryByTestId('settlement-other-vouchers')).toBeNull();
+  expect(screen.getByTestId('settlement-who-grid')).toBeTruthy();
 });
