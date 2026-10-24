@@ -10,6 +10,7 @@ import { ACTION_PAGE_REASON_BLOCKS, ACTION_REASONS } from './action-reasons.mjs'
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { probeCatalog, PROBE_KEY } from './action-probe-contract.mjs';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
+import { CONSENT_HINT } from './consent-guard.mjs';
 import { CONTRACT_ACTIONS, CONTRACT_DRAFT, CONTRACT_NOTICE_CANCEL, CONTRACT_NOTICE_SET, CONTRACT_OCCUPANT_ADD, CONTRACT_RENEW, CONTRACT_RENEW_BATCH,
   CONTRACT_RETURN, CONTRACT_ROOM_LOCK, CONTRACT_ROOM_UNLOCK }
   from './contract-action-contract.mjs';
@@ -21,7 +22,7 @@ const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-$
 const TOKEN = `hc_${'A'.repeat(43)}`;
 const KEYS = ['contracts.terminate', 'sale_phong.lock_room', 'contracts.renew', 'contracts.edit', 'contracts.create'];
 
-function setup(t, { action = KEYS, respond } = {}) {
+function setup(t, { action = KEYS, respond, audits } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const requests = [];
   const identity = () => ({ row: { id: id('a'), assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 86_400_000,
@@ -35,7 +36,7 @@ function setup(t, { action = KEYS, respond } = {}) {
   };
   const runtime = createActionRuntime({ catalog: createActionCatalog([...CONTRACT_ACTIONS]), service, mintRequestId: () => id(String(++next)) });
   const broker = createBroker({ authority: { identifyConnection: async () => ({ connectionId: id('a') }), resolve: async () => identity(), checkUnchanged: async () => {} },
-    dependencyScope: scope, audit: async () => {}, actions: runtime });
+    dependencyScope: scope, audit: async event => { audits?.push(structuredClone(event)); }, actions: runtime });
   const call = async (name, args) => { const result = await broker.callTool(TOKEN, name, args); assert.equal(result.isError, false); return JSON.parse(result.content[0].text); };
   return { broker, requests, call };
 }
@@ -141,7 +142,7 @@ test('gia hạn: lượt 1 luôn xem trước (phase preview) dù không có con
   assert.equal(env.requests.at(-1).phase, 'preview', 'irreversible: không bao giờ auto');
   assert.equal(first.outcome, 'confirmation_required'); assert.deepEqual(first.warnings, ['HĐ vừa được gia hạn lúc …']);
   const done = await env.call('crm_action_run', { action: 'contract.renew', params: { ...place, months: 6, noReason: true },
-    requestId: first.requestId, confirmToken: first.confirmToken });
+    requestId: first.requestId, confirmToken: first.confirmToken, consentText: 'Ok em, gia hạn đi' });
   assert.equal(done.outcome, 'applied');
   assert.deepEqual([env.requests.at(-1).phase, env.requests.at(-1).requestId, env.requests.at(-1).resolved, env.requests.at(-1).basis],
     ['apply', first.requestId, { contractId: id('9') }, 'b'.repeat(32)]);
@@ -160,7 +161,7 @@ test('trả phòng: lượt 1 luôn xem trước; đồng ý ⇒ apply đúng re
   assert.deepEqual([future.outcome, future.reason, future.detail], ['needs_input', 'return_date_future', ACTION_REASONS.return_date_future.text]);
   const first = await env.call('crm_action_run', { action: 'contract.return', params });
   assert.equal(env.requests.at(-1).phase, 'preview', 'irreversible: không bao giờ auto'); assert.equal(first.outcome, 'confirmation_required');
-  const done = await env.call('crm_action_run', { action: 'contract.return', params, requestId: first.requestId, confirmToken: first.confirmToken });
+  const done = await env.call('crm_action_run', { action: 'contract.return', params, requestId: first.requestId, confirmToken: first.confirmToken, consentText: 'đồng ý' });
   assert.deepEqual([done.outcome, done.result.nextStep], ['applied', 'Quyết toán trên web: /contracts/x']);
   assert.deepEqual([env.requests.at(-1).phase, env.requests.at(-1).resolved, env.requests.at(-1).basis], ['apply', { contractId: id('8') }, 'c'.repeat(32)]);
 });
@@ -181,7 +182,7 @@ test('gia hạn lô: lượt 1 luôn xem trước dạng bảng (một lần đ�
   const first = await env.call('crm_action_run', { action: 'contract.renew_batch', params });
   assert.equal(env.requests.at(-1).phase, 'preview', 'irreversible: không bao giờ auto');
   assert.deepEqual([first.outcome, first.preview.rows.length, first.preview.more, first.warnings.length], ['confirmation_required', 20, 2, 2]);
-  const done = await env.call('crm_action_run', { action: 'contract.renew_batch', params, requestId: first.requestId, confirmToken: first.confirmToken });
+  const done = await env.call('crm_action_run', { action: 'contract.renew_batch', params, requestId: first.requestId, confirmToken: first.confirmToken, consentText: 'chốt' });
   assert.deepEqual([done.outcome, done.result.renewed, done.result.failed, done.result.rows[0].reason], ['applied', 19, 1, 'crm_refused']);
   assert.deepEqual([env.requests.at(-1).phase, env.requests.at(-1).resolved, env.requests.at(-1).basis],
     ['apply', { buildingId: id('f'), buildingName: 'Toà A', count: 20 }, 'd'.repeat(32)]);
@@ -207,4 +208,53 @@ test('tools/list: danh mục Hợp đồng không thêm byte so với danh mục
   // Mục lục của trang nằm trong KẾT QUẢ crm_action_list: giữ gọn.
   const listing = createActionCatalog([...CONTRACT_ACTIONS]).listing({ action: KEYS });
   assert.ok(Buffer.byteLength(JSON.stringify(listing)) <= 8_192, 'mục lục trang ≤ 8 KB');
+});
+
+// Lượt 12 (rào đồng ý, consent-guard.mjs; nghiệm thu 24/10 — ghi sai thật lần 3): bot gọi lại contract.return kèm confirmToken khi người dùng
+// CHỈ bổ sung chi tiết. Lượt xác nhận của thao tác không lùi được nay phải kèm consentText = nguyên văn câu người dùng; không phải lời đồng ý rõ
+// ⇒ needs_input consent_unclear, chưa gửi lệnh ghi, token chưa tiêu. Đột biến bỏ kiểm (hoặc kiểm SAU khi đổi token) ⇒ các khẳng định dưới đỏ.
+test('rào đồng ý: trả phòng chỉ ghi khi consentText là lời đồng ý rõ; chỉ chi tiết / "ok nhưng khoan đã" / vắng ⇒ consent_unclear, token còn dùng', async t => {
+  const audits = [];
+  const env = setup(t, { audits, respond: request => request.phase === 'preview' ? { kind: 'preview', preview: { text: 'Sẽ ghi nhận khách TRẢ PHÒNG … KHÔNG lùi được …' },
+    basis: 'c'.repeat(32), resolved: { contractId: id('8') }, confirm: 'required', warnings: [] }
+    : request.phase === 'apply' ? { kind: 'applied', result: { text: 'Đã ghi nhận khách trả phòng …' }, link: '/contracts/x' } : { kind: 'rejected', reason: 'crm_refused' } });
+  const params = { buildingName: '950', roomName: 'LONDON 4', date: '2026-10-12', note: 'Trả sớm, quyết toán sau' };
+  const first = await env.call('crm_action_run', { action: 'contract.return', params });
+  assert.equal(first.outcome, 'confirmation_required');
+  assert.match(first.huongDan, /phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp/);
+  const confirm = { action: 'contract.return', params, requestId: first.requestId, confirmToken: first.confirmToken };
+  const sent = env.requests.length;
+  for (const consentText of [undefined, null, '', 'Trả sớm, quyết toán sau, khách đã trả chìa rồi', 'ok nhưng khoan đã', 'khách đồng ý trả sớm', 'ok?',
+    'Người dùng đồng ý', 'ok '.repeat(101)]) {
+    const unclear = await env.call('crm_action_run', { ...confirm, ...(consentText === undefined ? {} : { consentText }) });
+    assert.deepEqual([unclear.outcome, unclear.applied, unclear.reason, unclear.detail], ['needs_input', false, 'consent_unclear', ACTION_REASONS.consent_unclear.text],
+      String(consentText));
+    assert.match(unclear.huongDan, /token xác nhận chưa dùng, còn hạn thì dùng lại được/);
+  }
+  assert.equal(env.requests.length, sent, 'chưa gửi lệnh ghi nào xuống SQL');
+  assert.ok(audits.every(event => !Object.hasOwn(event, 'consent')), 'câu chưa qua rào không vào sổ audit');
+  // Token chưa bị tiêu: người dùng đáp "ok" ⇒ cùng token ghi được; consentText không xuống SQL, vào dòng prepared của sổ audit.
+  const done = await env.call('crm_action_run', { ...confirm, consentText: 'Ok em,\nghi đi' });
+  assert.equal(done.outcome, 'applied');
+  assert.deepEqual(Object.keys(env.requests.at(-1)).sort(), ['action', 'basis', 'op', 'params', 'phase', 'requestId', 'resolved']);
+  assert.equal(env.requests.at(-1).phase, 'apply');
+  assert.deepEqual(audits.filter(event => Object.hasOwn(event, 'consent')).map(event => [event.outcome, event.consent]),
+    [['prepared', { action: 'contract.return', requestId: first.requestId, text: 'Ok em, ghi đi' }]]);
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { ...confirm, consentText: 'ok' }), error => error.code === 'confirmation_invalid', 'token dùng một lần');
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { ...confirm, consentText: 42 }), error => error.code === 'invalid_request', 'consentText phải là chuỗi');
+});
+
+test('rào đồng ý chỉ áp thao tác không lùi được: thao tác thường xác nhận không cần consentText; mục lục nói rõ thao tác nào cần', async t => {
+  const listing = createActionCatalog([...CONTRACT_ACTIONS]).listing({ action: KEYS });
+  assert.deepEqual(listing.filter(item => Object.hasOwn(item, 'consentText')).map(item => item.action), ['contract.renew', 'contract.return', 'contract.renew_batch']);
+  assert.ok(listing.filter(item => Object.hasOwn(item, 'consentText')).every(item => item.consentText === CONSENT_HINT && item.confirm === 'always'));
+  // contract.notice_set (reversible) mà SQL đòi xác nhận ở lượt auto: lượt xác nhận không kèm consentText vẫn ghi.
+  const env = setup(t, { respond: request => request.phase === 'auto' ? { kind: 'preview', preview: { text: 'Sẽ báo trả …' }, basis: 'e'.repeat(32),
+    resolved: { contractId: id('7') }, confirm: 'required', warnings: [] } : { kind: 'applied', result: { text: 'Đã báo trả' }, link: '/contracts/y' } });
+  const params = { buildingName: 'Toà A', roomName: '302', date: '2026-11-30' };
+  const first = await env.call('crm_action_run', { action: 'contract.notice_set', params });
+  assert.equal(first.outcome, 'confirmation_required');
+  assert.doesNotMatch(first.huongDan, /consentText/);
+  const done = await env.call('crm_action_run', { action: 'contract.notice_set', params, requestId: first.requestId, confirmToken: first.confirmToken });
+  assert.deepEqual([done.outcome, env.requests.at(-1).phase], ['applied', 'apply']);
 });

@@ -20,6 +20,7 @@ import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './a
 import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired,
   listedActionTools, nameUnresolvedDetail, needsInput } from './action-contract.mjs';
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
+import { consentAuditText, consentClear, consentRequired } from './consent-guard.mjs';
 
 const fail = code => { throw new BrokerError(code); };
 // confirmation_invalid kèm câu tĩnh nói phần nào lệch (Thu chi lượt 14; action-contract.mjs CONFIRM_INVALID_DETAILS).
@@ -90,7 +91,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     knows: id => catalog.get(id) !== null && alive(id),
     /** Đồng bộ, trước admission: tách confirmToken (chỉ ở run) và kiểm phong bì. Không đọc gì của CRM. */
     begin(route, args) {
-      const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null, startedAt: clock() };
+      const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null, startedAt: clock(), consent: null };
       let rest = args;
       if (route.op === 'run') {
         const split = splitConfirmField(args);
@@ -132,6 +133,13 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       let request;
       if (plan.confirmToken !== undefined) {
         if (plan.requestId === undefined) invalidConfirm('missing_request');
+        // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được chỉ đổi token khi consentText là lời đồng ý rõ của người
+        // dùng; không thì needs_input consent_unclear TRƯỚC khi đổi token (người dùng đáp "ok" thì token còn hạn vẫn dùng được). Câu đã qua
+        // rào vào sổ audit của host cùng dòng prepared của lượt ghi.
+        if (consentRequired(action)) {
+          if (!consentClear(plan.consentText)) { plan.immediate = needsInput({ action: action.id, reason: 'consent_unclear' }); return Object.freeze({}); }
+          plan.consent = Object.freeze({ action: action.id, requestId: plan.requestId, text: consentAuditText(plan.consentText) });
+        }
         if (applyTooLate(plan)) fail('timeout');
         const redeemed = confirms.redeem(plan.confirmToken, binding(identity.row.id, action.id, plan.params, plan.requestId));
         if (!redeemed.ok) invalidConfirm(redeemed.why === 'expired' ? 'expired' : redeemed.why !== 'mismatch' ? 'unknown'
@@ -188,7 +196,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
           // requestId / params (lượt 14): chỉ để nói phần lệch khi token bị trình sai (không gửi xuống SQL, không tới mô hình).
           { resolved: structuredClone(outcome.resolved), basis: outcome.basis, requestId: plan.requestId, params: canonicalJson(plan.params) });
         return known(content(confirmationRequired({ action: plan.action, requestId: plan.requestId, preview: outcome.preview, warnings: outcome.warnings ?? [],
-          confirmToken: issued.token, expiresAt: issued.expiresAt })));
+          confirmToken: issued.token, expiresAt: issued.expiresAt, consent: consentRequired(catalog.get(plan.action)) })));
       }
       if (outcome.kind === 'applied') {
         if (plan.phase === 'preview' || !exact(outcome, ['kind', 'result'], ['link']) || !data(outcome.result) ||
@@ -202,6 +210,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       }
       fail('backend_unavailable');
     },
-    context: plan => plan.op === 'list' ? {} : { mutationUncertain: () => plan.uncertain, mutationCode: 'action_outcome_unknown', mutationRequestId: () => plan.requestId },
+    context: plan => plan.op === 'list' ? {} : { mutationUncertain: () => plan.uncertain, mutationCode: 'action_outcome_unknown', mutationRequestId: () => plan.requestId,
+      auditConsent: () => plan.consent },
   });
 }

@@ -128,7 +128,8 @@ test('Mốc 4: sửa/huỷ luôn xem trước (money/irreversible) kể cả khi
     ['expense.cancel', { voucherCode: 'PC2610001', reason: 'lập trùng phiếu' }]]) {
     const first = await env.call({ action, params });
     assert.deepEqual([first.outcome, env.requests.at(-1).phase], ['confirmation_required', 'preview'], action);
-    const applied = await env.call({ action, params, requestId: first.requestId, confirmToken: first.confirmToken });
+    // expense.cancel không lùi được ⇒ lượt xác nhận kèm consentText (lượt 12 Hợp đồng, rào đồng ý); expense.edit (money) không cần.
+    const applied = await env.call({ action, params, requestId: first.requestId, confirmToken: first.confirmToken, ...(action === 'expense.cancel' ? { consentText: 'ok huỷ đi' } : {}) });
     assert.equal(applied.outcome, 'applied');
     assert.deepEqual(env.requests.at(-1), { op: 'run', action, phase: 'apply', requestId: first.requestId, params, resolved, basis: 'c'.repeat(32) });
   }

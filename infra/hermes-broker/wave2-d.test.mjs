@@ -243,6 +243,18 @@ test('Hợp đồng — nháp chưa ký (contract_drafts): chỉ nháp còn sử
   assert.deepEqual((await run(env, 'contract_drafts', { buildingId: BUILDING })).items.map(row => row.draftId), [D.DRAFT_A], 'lọc toà');
   await db.query("UPDATE public.contract_drafts SET status='SIGNED' WHERE id=$1", [D.DRAFT_B]);
   assert.equal((await run(env, 'contract_drafts')).summary.total, 1, 'ký rồi thì không còn chờ');
+  // Lượt 12 (nghiệm thu C3 24/10, backend_unavailable trên TEST): nháp do contract.draft của Hermes tạo có id md5('draft:'||requestId)::uuid
+  // — không đúng bit phiên bản/biến thể RFC. Báo cáo vẫn phải qua rào khuôn của broker trên kết quả SQL thật.
+  const hermesDraft = (await db.query("SELECT md5('draft:00000000-0000-4000-8000-000000000123')::uuid::text id")).rows[0].id;
+  await db.query(`INSERT INTO public.contract_drafts(id,organization_id,building_id,room_id,payload,status,created_at,updated_at)
+    SELECT $1::uuid,organization_id,building_id,room_id,payload,'EDITABLE',created_at,clock_timestamp() FROM public.contract_drafts WHERE id=$2`, [hermesDraft, D.DRAFT_A]);
+  const withHermes = await run(env, 'contract_drafts');
+  assert.ok(withHermes.items.some(row => row.draftId === hermesDraft));
+  assert.doesNotThrow(() => fence('contract_drafts', withHermes), 'id nháp kiểu md5 qua được rào khuôn');
+  // Đột biến: khuôn id chuẩn RFC (bản trước lượt 12) từ chối đúng dòng đó.
+  assert.equal(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(hermesDraft), false, 'id md5 này lệch bit RFC (ca thật)');
+  const draftId = W2D_REPORTS.contract_drafts.fields.draftId;
+  for (const bad of [hermesDraft.toUpperCase(), 'not-a-uuid', `${hermesDraft}0`, hermesDraft.replaceAll('-', ''), null]) assert.equal(draftId(bad), false, String(bad));
 }));
 
 // Mốc 3 (vai quản lý): đếm phòng theo toà bằng khoá xem phòng, khớp từng số với báo cáo rooms (cùng rooms_list_v1, cùng phạm vi).

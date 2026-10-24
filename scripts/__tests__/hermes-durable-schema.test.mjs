@@ -1006,7 +1006,9 @@ test('all fifty-five reviewed forward migrations and their 134 latest definition
   // Thu chi lượt 13 (#319): luồng hệ thống 20261024094809 (+1 file, +2 tên: hàm phân loại luồng mới, kiểm lại hạng mục; chọn hạng mục +
   // bước ghi dựng lại, thân 210634 thành ghim superseded). Thu chi lượt 14 (#319): chọn hạng mục + bước ghi + lõi giải tên dựng lại ở
   // 20261024120211 (+1 file, cùng tên; thân 094809 / 210634 thành ghim superseded).
-  assert.equal(paths.length, 55);
+  // Hợp đồng lượt 12: bước ghi Hợp đồng dựng lại ở 20261024160001, hàm đọc gói A ở 20261024160002 (+2 file, cùng tên; thân 040002 / 051620
+  // thành ghim superseded).
+  assert.equal(paths.length, 57);
   assert.equal(FORWARD_FUNCTIONS.length, 134);
   assert.equal(FORWARD_BY_NAME.size, 134, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);

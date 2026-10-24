@@ -37,7 +37,7 @@ const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private
   'system_voucher', 'evidence_required',
   // Trang Hợp đồng (Đợt 2).
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
-  'cannot_remove_representative',
+  'cannot_remove_representative', 'room_has_new_contract',
   // Trang Công việc (Đợt 2b).
   'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
@@ -149,8 +149,20 @@ export async function acquireHostOwnership(options) {
   });
 }
 
+// Lượt 12 Hợp đồng (rào đồng ý, infra/hermes-broker/consent-guard.mjs): dòng prepared của lượt xác nhận một thao tác KHÔNG lùi được mang
+// consent = {action, requestId, text} — text là câu đồng ý mô hình trích từ người dùng (một dòng, ≤ 300 ký tự), ngoại lệ DUY NHẤT
+// của luật "không chữ thô" dưới đây: để lần lại lời đồng ý khi có ghi sai.
+const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
+const consentEvent = value => {
+  const consent = data(value, ['action', 'requestId', 'text']);
+  if (!ACTION_ID.test(consent.action) || typeof consent.requestId !== 'string' || !UUID.test(consent.requestId) || typeof consent.text !== 'string' ||
+    !consent.text || [...consent.text].length > 300 || /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(consent.text)) fail('host_audit_invalid');
+  return consent;
+};
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason']);
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent']);
+  if (Object.hasOwn(event, 'consent') && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
+  if (Object.hasOwn(event, 'consent')) event.consent = consentEvent(event.consent);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {
@@ -162,7 +174,8 @@ function auditEvent(raw) {
 }
 
 /** Host-only bounded append sink for the broker's actual fixed event protocol.
- * No raw request, text, provider error, token or caller-selected filename.
+ * No raw request, text, provider error, token or caller-selected filename (sole exception: the bounded
+ * consent sentence of an irreversible action's confirmation, consentEvent above).
  * Caller must own the enclosing host lock. Successful write includes fdatasync;
  * close waits actual queued filesystem work even if a broker deadline elapsed.
  * One 16MiB file; reaching capacity requires explicit host maintenance, never

@@ -589,6 +589,18 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 - `contract_extensions.user_id` = `contracts.user_id` (người tạo HĐ), ở cả web (`renew_contract_impl`) lẫn Hermes (cùng hàm web) — không phải người gia hạn; người thao tác nằm ở `hermes_action_receipts.user_id` và `contract_notice_transition_events.actor_id`. Không đổi.
 - Thứ tự áp: `20261023185114` (#304, đợt C1) → `040001` (ghim md5 thân 185114 `081243f1…`; áp trước 185114 thì dừng; sau khi áp, chạy lại 185114 dừng ở `$requires$` của nó ⇒ cần ngoại lệ pinned); `040002` bất kỳ lúc nào; `040003` chỉ sau khi connector lượt 11 lên. Cả ba chỉ thay hàm có sẵn ⇒ catalog-proven giả, áp đích danh.
 
+**Lượt 12 — sửa theo nghiệm thu lượt cuối C3 (24/10).** Hai migration MỚI, chưa áp; mỗi file ghim md5 thân đang chạy:
+- `contract_drafts` → `backend_unavailable`: id nháp do `contract.draft` tạo là `md5('draft:'||requestId)::uuid` — không đúng bit phiên bản/biến thể RFC nên khuôn `id` của connector từ chối cả báo cáo. Sửa ở connector (`draftId` nhận mọi UUID dạng chuẩn 8-4-4-4-12 chữ thường). Tám báo cáo Hợp đồng khác khớp khuôn trên dữ liệu TEST thật.
+- `20261024160001_hermes_contract_return_twice_v1` — `contract.return` với ngày trước ngày bắt đầu HĐ hiện hành (phòng đã có HĐ mới; HĐ trước đã ghi trả / thanh lý) ⇒ `rejected` `room_has_new_contract` + link `/contracts/<HĐ trước>` (không có ⇒ HĐ hiện hành), kiểm TRƯỚC khoảng ngày (trước đây `date_out_of_range`). Dựng từ thân `040002`; `$requires$` nhận cả thân production `074815`.
+- `20261024160002_hermes_w2a_invoice_room_detail_link_v1` — `invoice_room_detail` thêm `summary.publicPath` (`/c/<mã>` của HĐ của hoá đơn, luật QR web, chỉ khi xem được khách như `invoice_reminders`); connector ghép thành `summary.publicLink`. Khoá `summary` mới khai `tolerant` (W2 kit): connector nhận cả SQL cũ.
+- Vai chỉ xem (tkh): capability SQL `allowed=false` mọi khoá Hợp đồng ⇒ thao tác không vào quyền hiệu lực, không hiện ở `crm_action_list`; gọi thẳng ⇒ `forbidden`. Có quyền ở vài toà ⇒ toà ngoài phạm vi ⇒ `name_unresolved` `outside_scope` ("không làm được ở đó, báo người dùng"). Không đổi.
+- Rào đồng ý ở máy chủ (connector, không SQL; `infra/hermes-broker/consent-guard.mjs`). Lý do: ghi sai thật lần 3, `contract.return` được xác nhận khi người dùng chỉ bổ sung chi tiết.
+  - Phạm vi: mọi thao tác lớp `irreversible` — `contract.renew`, `contract.renew_batch`, `contract.return`, `expense.cancel`, `invoice.adjustment_check`, `task.cancel`. `invoice.cancel` (money) khôi phục được bằng `invoice.restore` nên không thuộc rào.
+  - Lượt xác nhận phải kèm `consentText` = nguyên văn tin mới nhất của người dùng. `consentText` nằm ngoài `params` và ngoài khoá binding của token.
+  - Câu phải có dấu hiệu đồng ý ở đầu một vế và không có dấu hiệu chưa đồng ý nào. Nếu không ⇒ `needs_input` `consent_unclear`, chưa gửi lệnh ghi, token chưa tiêu (người dùng đáp "ok" thì dùng lại được trong hạn).
+  - Câu đã qua rào vào dòng `prepared` của sổ audit host (`consent`).
+  - `crm_action_list` có `consentText` (gợi ý tĩnh) ở đúng các thao tác này. `huongDan` của `confirmation_required` và của `consent_unclear` nói cách gọi lại.
+
 ## 16. Chưa xác minh
 
 - RLS thật của `contracts` / `customers` với vai không có `customers.view`: kết luận từ đọc mã. Tầng 2 sẽ đo.

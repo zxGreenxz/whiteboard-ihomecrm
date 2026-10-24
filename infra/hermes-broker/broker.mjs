@@ -710,7 +710,9 @@ export function createBroker({
         // admission: their SQL compares session and binding live) complete on
         // the initial admission; shared group/writer paths retain their
         // post-audit authority check.
-        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' }));
+        // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): lượt xác nhận của thao tác không lùi được mang câu đồng ý đã qua rào.
+        const consent = context.auditConsent?.() ?? null;
+        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared', ...(consent ? { consent } : {}) }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
           await timed('checkMs', async () => {

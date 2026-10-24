@@ -6,6 +6,7 @@
 // khuôn (tên tham số + mô tả kiểu), không bao giờ nhắc lại giá trị mô hình gửi.
 import { ACTION_INPUT_REASONS, ACTION_REASON_CODES } from './action-reasons.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
+import { CONSENT_HINT, consentRequired } from './consent-guard.mjs';
 
 export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'probe']);
 // money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB.
@@ -150,6 +151,8 @@ export function createActionCatalog(actions, { keys = HERMES_ACTION_CAPABILITIES
       return ids.map(id => byId[id]).filter(action => granted(effective, action) && (page === null || action.page === page)).map(action => ({
         action: action.id, page: action.page, title: action.title,
         confirm: action.class === 'reversible' ? 'if_required' : 'always',
+        // Lượt 12 Hợp đồng (rào đồng ý): thao tác không lùi được nói rõ lượt xác nhận phải kèm consentText (ngoài params).
+        ...(consentRequired(action) ? { consentText: CONSENT_HINT } : {}),
         params: Object.fromEntries(Object.entries(action.params).map(([name, value]) => [name, listedParam(value)])),
       }));
     },

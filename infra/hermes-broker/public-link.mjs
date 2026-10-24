@@ -25,10 +25,15 @@ export const REMINDER_LINK_SENTENCE = ' Chi tiết hoá đơn xem ở link kèm 
 /** Kết quả cuối của crm_read_report (lượt 12, HOA-DON-THAO-TAC-GHI.md mục 4.6): mỗi dòng có publicPath ⇒ publicLink tuyệt đối hoặc null,
  * cùng chỗ trong dòng; mô hình chỉ thấy publicLink. Tin soạn sẵn (messageText) thành MỘT khối chép nguyên văn: có link ⇒ link xuống dòng ở
  * cuối tin (như link công khai web chép riêng: origin + /c/<mã>); không ghép được (vắng origin) ⇒ bỏ câu hứa link, không bao giờ để mô hình
- * tự điền tên miền. summary.withLink đếm dòng thật sự có link. Báo cáo không có publicPath giữ nguyên. */
+ * tự điền tên miền. summary.withLink đếm dòng thật sự có link. Lượt 12 Hợp đồng: summary có publicPath (invoice_room_detail, một phòng)
+ * ⇒ summary.publicLink cùng luật, cùng chỗ. Báo cáo không có publicPath giữ nguyên. */
+const relink = (record, link) => Object.fromEntries(Object.entries(record).map(([key, value]) => key === 'publicPath' ? ['publicLink', link] : [key, value]));
 export function withReportPublicLinks(result, origin) {
-  if (result === null || typeof result !== 'object' || typeof result.report !== 'string' || !Array.isArray(result.items) ||
-      !result.items.some(row => row !== null && typeof row === 'object' && Object.hasOwn(row, 'publicPath'))) return result;
+  if (result === null || typeof result !== 'object' || typeof result.report !== 'string' || !Array.isArray(result.items)) return result;
+  const rowLinks = result.items.some(row => row !== null && typeof row === 'object' && Object.hasOwn(row, 'publicPath'));
+  const summaryLink = result.summary !== null && typeof result.summary === 'object' && Object.hasOwn(result.summary, 'publicPath');
+  if (!rowLinks && !summaryLink) return result;
+  if (!rowLinks) return { ...result, summary: relink(result.summary, publicLink(origin, result.summary.publicPath)) };
   const items = result.items.map(row => {
     if (row === null || typeof row !== 'object' || !Object.hasOwn(row, 'publicPath')) return row;
     const link = publicLink(origin, row.publicPath), next = {};

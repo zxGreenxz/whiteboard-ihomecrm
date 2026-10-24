@@ -20,6 +20,8 @@ export const ACTION_REASONS = Object.freeze({
   amount_out_of_range: reason('needs_input', 'fix', 'Số tiền ngoài giới hạn cho phép; hỏi lại người dùng số tiền.'),
   date_out_of_range: reason('needs_input', 'fix', 'Ngày không hợp lệ (ngoài khoảng cho phép hoặc ở tương lai); hỏi lại người dùng ngày.'),
   not_found: reason('needs_input', 'fix', 'Không tìm thấy đối tượng này trong phạm vi quyền của anh/chị; hỏi lại người dùng.'),
+  // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): lượt xác nhận của thao tác không lùi được thiếu consentText hoặc câu không phải lời đồng ý rõ.
+  consent_unclear: reason('needs_input', 'fix', 'Chưa thấy lời đồng ý rõ cho thao tác KHÔNG lùi được; hỏi lại người dùng có đồng ý ghi không.'),
   action_disabled: reason('rejected', 'never', 'Thao tác này chưa được bật cho kết nối.'),
   // Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối nhưng người dùng chưa được cấp quyền CRM tương ứng (khác action_disabled).
   forbidden: reason('rejected', 'never', 'Anh/chị chưa có quyền CRM cho thao tác này; nhờ chủ hoặc quản trị cấp quyền trong Phân quyền rồi thử lại.'),
@@ -75,6 +77,8 @@ function contractReasons() {
     room_already_locked: reason('rejected', 'never', 'Phòng đang được khoá tạm; gỡ khoá cũ trước nếu muốn khoá lại.'),
     no_open_lock: reason('rejected', 'never', 'Phòng này không có khoá tạm nào đang mở.'),
     cannot_remove_representative: reason('rejected', 'never', 'Không bỏ được người đại diện hợp đồng qua bot; đổi người đại diện trên web trước.'),
+    // Lượt 12 (nghiệm thu C3 24/10): ngày trả rơi trước HĐ hiện hành ⇒ phòng đã có HĐ mới; không ghi trả lần hai (kèm link HĐ trước).
+    room_has_new_contract: reason('rejected', 'never', 'Phòng đã có HĐ mới sau ngày này; HĐ trước đã ghi trả phòng (chờ quyết toán) hoặc đã thanh lý, không ghi lần hai. Xem HĐ trước ở link.'),
   };
 }
 // Trang Công việc: hạn mức giao việc qua bot (Q37). Số trong câu là seed của app_private.hermes_task_limits (20261022031548);
