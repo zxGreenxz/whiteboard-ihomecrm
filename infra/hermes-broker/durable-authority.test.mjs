@@ -44,7 +44,7 @@ function fixture(t, options = {}) {
     readAuthorization: async input => { calls.push({ operation: 'authorize', ...input }); return options.authorize ? options.authorize(state, input) : structuredClone(state.auth); },
   };
   const authority = createDurableAuthority({ connectionStore, crypto: options.crypto ?? crypto, auth,
-    clock: () => state.clock, timeoutMs: options.timeoutMs ?? 10000 });
+    clock: () => state.clock, timeoutMs: options.timeoutMs ?? 10000, ...(options.permissionGaps ? { permissionGaps: options.permissionGaps } : {}) });
   return { authority, state, calls, crypto, controller, resolve: () => authority.resolve(token, { signal: controller.signal }) };
 }
 
@@ -150,6 +150,24 @@ test('effective permissions intersect all four sources with independent read/act
   assert.deepEqual((await f.resolve()).effective, { read: ['assistant.context.read'], action: ['action.common'] });
   f.state.reply.connection.restrictions = { read: [], action: [] };
   assert.deepEqual((await f.resolve()).effective, { read: [], action: [] });
+});
+
+// Lượt 11 (nghiệm thu 24/10): phần "khoá đã bật mà người dùng thiếu quyền CRM" = trần công ty ∩ chính sách trợ lý ∩ khoá kết nối \ quyền
+// CRM, ghi theo đúng contextVersion của identity trả ra (runtime báo forbidden thay vì action_disabled; crm-permission-gaps.mjs).
+test('permissionGaps gets the action keys on the ceiling, assistant policy and connection that CRM permissions lack, under the identity contextVersion', async t => {
+  const seen = [], scope = { buildingIds: [], cashbookIds: [] };
+  const f = fixture(t, { permissionGaps: { observe: (version, keys) => seen.push([version, keys]) } });
+  const action = ['action.held', 'action.lacking', 'action.no_ceiling', 'action.no_policy', 'action.no_connection'];
+  f.state.auth.permissions = { read: ['assistant.context.read'], action: ['action.held'] };
+  f.state.auth.companyCeilings = { read: ['assistant.context.read'], action: action.filter(key => key !== 'action.no_ceiling') };
+  f.state.reply.policy = { ...f.state.reply.policy, action: action.filter(key => key !== 'action.no_policy') };
+  f.state.reply.connection.restrictions = { read: ['assistant.context.read'], action: action.filter(key => key !== 'action.no_connection') };
+  f.state.auth.scopesByPermission = { 'assistant.context.read': scope, 'action.held': scope };
+  const identity = await f.resolve();
+  assert.deepEqual(identity.effective.action, ['action.held']);
+  assert.deepEqual(seen, [[identity.contextVersion, ['action.lacking']]]);
+  assert.throws(() => createDurableAuthority({ connectionStore: { readConnection() {} }, crypto: { open() {} }, auth: { verifySession() {}, readAuthorization() {} },
+    permissionGaps: {} }), /invalid_durable_authority_config/);
 });
 
 test('CRM per-permission resource scopes and SQL assistant-scope IDs remain separate, without unions or wildcard empty lists', async t => {

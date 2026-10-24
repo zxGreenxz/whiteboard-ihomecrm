@@ -38,9 +38,10 @@ const candidatesOf = value => Array.isArray(value) && value.length <= 8 && value
 export const APPLIED_RESULT_MAX_BYTES = 8_192;
 const fitsApplied = result => Buffer.byteLength(JSON.stringify(result)) <= APPLIED_RESULT_MAX_BYTES;
 
-export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live } = {}) {
+export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live, permissionGaps } = {}) {
   if (!catalog || typeof catalog.get !== 'function' || ['prepareAction', 'finalizeAction'].some(key => typeof service?.[key] !== 'function') ||
-      typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function')) throw new TypeError('invalid_action_runtime');
+      typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function') ||
+      (permissionGaps !== undefined && typeof permissionGaps?.lacks !== 'function')) throw new TypeError('invalid_action_runtime');
   // live (Đợt 2b): danh mục thao tác SỐNG phía SQL (createActionLiveCatalog). Có thì thao tác chỉ được quảng bá / chạy khi SQL đã có
   // dòng của nó (connector mới + DB cũ ⇒ không hiện, không nghỉ hưu tool cũ); không truyền ⇒ như cũ (mọi thao tác của danh mục).
   const alive = id => live === undefined || live.has(id);
@@ -102,7 +103,10 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       const action = catalog.get(plan.action);
       // Mã lạ: chỉ nhắc lại khi đúng mẫu mã thao tác (không phản chiếu chuỗi tuỳ ý của mô hình).
       if (action === null) { plan.immediate = needsInput({ action: ACTION_ID.test(plan.action) ? plan.action : null, reason: 'unknown_action' }); return Object.freeze({}); }
-      if (!usable(identity.effective, action.id)) throw actionRejected('action_disabled');
+      // Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối + công ty mà người dùng thiếu quyền CRM ⇒ forbidden ("anh/chị chưa có quyền
+      // …"); còn lại (khoá chưa bật, SQL chưa có dòng của thao tác, không có ảnh chụp) ⇒ action_disabled như trước.
+      if (!usable(identity.effective, action.id))
+        throw actionRejected(alive(action.id) && permissionGaps?.lacks(identity.contextVersion, action.key) === true ? 'forbidden' : 'action_disabled');
       const checked = validateActionParams(action, plan.params);
       if (!checked.ok) { plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: checked.detail }); return Object.freeze({}); }
       plan.params = checked.value; plan.class = action.class;

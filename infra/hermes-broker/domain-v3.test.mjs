@@ -6,6 +6,7 @@ import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, su
 import { readFileSync } from 'node:fs';
 import { W2_WITHOUT_CONTRACT_FILE, OTHER_ROOM } from './full-read-sql-fixture.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
+import { publicWebOrigin, withPublicLink } from './public-link.mjs';
 import { randomBytes } from 'node:crypto';
 import { ASSISTANT, token } from './finance-fixture.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
@@ -202,7 +203,8 @@ test('SQL customer_detail: the /customers/:id fields in full, never images, bank
 test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; no file, public code or bank data', { timeout: 90000 }, t => inCase(async env => {
   const { db, read3 } = env;
   const result = await read3('contract_detail', { contractId: CONTRACT_A }), item = result.item;
-  assert.deepEqual(Object.keys(item).sort(), Object.keys(CONTRACT_DETAIL_FIELDS).sort());
+  // Thân 063453 (production trước lượt 11) chưa có publicPath: connector điền null (khoá tolerant); test lượt 11 bên dưới chạy 040003.
+  assert.deepEqual(Object.keys(item).sort(), Object.keys(CONTRACT_DETAIL_FIELDS).filter(key => key !== 'publicPath').sort());
   assert.deepEqual([item.number, item.status, item.rentPrice, item.paymentCycle, item.totalDeposit, item.depositPaid, item.depositRemaining, item.depositDebtMode],
     ['HD-A', 'ACTIVE', '3500000.00', 'MONTHLY', '6000000', '4000000', '2000000', 'DEBT']);
   assert.equal(item.buildingAddress, '12 Lê Lợi, Phường 1, Quận 3, TP HCM'); assert.equal(item.notes, 'Hợp đồng A\ndòng 2');
@@ -212,7 +214,7 @@ test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; 
   const raw = JSON.stringify(result);
   for (const secret of ['contracts/secret-file.pdf', 'PUBLIC-CODE-A', SECRET_IMAGE, BANK_A]) assert.equal(raw.includes(secret), false, secret);
   const input = domainInput('contract_detail', { contractId: CONTRACT_A });
-  assert.deepEqual(domainResult('contract_detail', result, identity(['contracts.view', 'customers.view']), input), result);
+  assert.deepEqual(domainResult('contract_detail', result, identity(['contracts.view', 'customers.view']), input), { ...result, item: { ...item, publicPath: null } });
   assert.throws(() => domainResult('contract_detail', result, identity('contracts.view'), input), 'P3-8: tenants without a customers.view scope are refused');
   assert.throws(() => domainResult('contract_detail', { ...result, item: { ...item, contractFileUrl: 'x' } }, identity('contracts.view'), input));
   for (const hidden of [CONTRACT_B, CONTRACT_F, CUSTOMER_A]) assert.equal((await read3('contract_detail', { contractId: hidden })).item, null, hidden);
@@ -221,6 +223,43 @@ test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; 
   assert.equal((await read3('contract_detail', { contractId: CONTRACT_B })).item.id, CONTRACT_B, 'Toàn tổ chức overlay ∩ CRM buildings');
   await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='contracts.view'`);
   assert.equal((await read3('contract_detail', { contractId: CONTRACT_B })).item, null, 'CRM building scope still applies');
+}));
+
+// Lượt 11 (nghiệm thu 24/10, D-HĐ9): 20261024040003 dựng v3 từ thân 063453 (md5 ghim ở $requires$) + publicPath '/c/<public_code>' đúng
+// luật nút QR của web (có mã đúng khuôn, HĐ không TERMINATED / DRAFT); connector ghép origin host thành publicLink, vắng origin ⇒ null.
+test('SQL contract_detail lượt 11: publicPath like the web QR link; connector publicLink from the host origin (20261024040003)', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3 } = env;
+  const lf = text => text.replaceAll('\r\n', '\n'), plain = text => text.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
+  const source = name => lf(readFileSync(`supabase/migrations/${name}.sql`, 'utf8'));
+  // Thân production (LF như lane áp từ git) rồi file lượt 11, hai lần (idempotent).
+  await db.exec(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3[\s\S]*?END \$fn\$;/.exec(source(W2_WITHOUT_CONTRACT_FILE))[0]);
+  const PUBLIC_PATH_SQL = plain(source('20261024040003_hermes_w2_contract_detail_public_path_v1'));
+  await db.exec(PUBLIC_PATH_SQL); await db.exec(PUBLIC_PATH_SQL);
+  const detail = async () => (await read3('contract_detail', { contractId: CONTRACT_A })).item;
+  assert.deepEqual(Object.keys(await detail()).sort(), Object.keys(CONTRACT_DETAIL_FIELDS).sort());
+  assert.equal((await detail()).publicPath, null, "mã fixture 'PUBLIC-CODE-A' sai khuôn 6–8 chữ/số ⇒ không link (và không lộ mã)");
+  await db.query("UPDATE public.contracts SET public_code='Ab12Cd' WHERE id=$1", [CONTRACT_A]);
+  const result = await read3('contract_detail', { contractId: CONTRACT_A });
+  assert.equal(result.item.publicPath, '/c/Ab12Cd');
+  for (const status of ['TERMINATED', 'DRAFT']) {
+    await db.query('UPDATE public.contracts SET status=$2 WHERE id=$1', [CONTRACT_A, status]);
+    assert.equal((await detail()).publicPath, null, status);
+  }
+  await db.query("UPDATE public.contracts SET status='ACTIVE' WHERE id=$1", [CONTRACT_A]);
+  // Ngoài phạm vi: HĐ toà khác vẫn item=null (không link).
+  assert.equal((await read3('contract_detail', { contractId: CONTRACT_B })).item, null);
+  // Connector: khuôn nhận publicPath, đổi thành publicLink theo origin host (https, đúng dạng origin); vắng origin ⇒ null.
+  const projected = domainResult('contract_detail', result, identity(['contracts.view', 'customers.view']), domainInput('contract_detail', { contractId: CONTRACT_A }));
+  assert.equal(projected.item.publicPath, '/c/Ab12Cd');
+  assert.equal(withPublicLink(projected, 'https://app.example.vn').item.publicLink, 'https://app.example.vn/c/Ab12Cd');
+  assert.equal(Object.hasOwn(withPublicLink(projected, 'https://app.example.vn').item, 'publicPath'), false, 'mô hình chỉ thấy publicLink');
+  assert.equal(withPublicLink(projected, undefined).item.publicLink, null);
+  for (const bad of ['http://app.example.vn', 'https://app.example.vn/', 'https://user@app.example.vn', 'app.example.vn']) assert.equal(publicWebOrigin(bad), false, bad);
+  assert.throws(() => domainResult('contract_detail', { ...result, item: { ...result.item, publicPath: 'https://evil.example/c/Ab12Cd' } }, identity(['contracts.view', 'customers.view']),
+    domainInput('contract_detail', { contractId: CONTRACT_A })), 'publicPath chỉ là đường /c/<mã>');
+  // $requires$: thân v3 khác production (và khác thân file này) ⇒ dừng.
+  await db.exec(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3[\s\S]*?END \$fn\$;/.exec(source(W2_WITHOUT_CONTRACT_FILE))[0].replace("ELSIF p_domain='contract_detail' THEN\n    --", "ELSIF p_domain='contract_detail' THEN\n    -- (thân lạ)"));
+  await assert.rejects(db.exec(PUBLIC_PATH_SQL), /hermes_w2_contract_public_path_dependency_invalid/);
 }));
 
 test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, caller, session and binding versions', { timeout: 90000 }, t => inCase(async env => {

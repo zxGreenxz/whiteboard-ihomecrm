@@ -19,6 +19,22 @@ const uuidOf = key => { if (!KEYS.has(key)) KEYS.set(key, id(800 + KEYS.size)); 
 const [USER2, MEMBER2, BINDING2, SCOPE2] = [30, 31, 32, 33].map(id);
 const lit = value => value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
 const code = expected => error => error.code === expected;
+const migration = slug => { const found = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
+  assert.equal(found.length, 1, slug); return readFileSync(`supabase/migrations/${found[0]}`, 'utf8').replaceAll('\r\n', '\n'); };
+async function expectVector(resolve, vector, nameOf) {
+  const names = vector.field === 'room' && vector.building ? { building: nameOf(vector.building), room: vector.wanted } : { [vector.field]: vector.wanted };
+  const got = await resolve(names), label = JSON.stringify(vector);
+  if (vector.expect) {
+    assert.equal(got.status, 'resolved', label);
+    assert.deepEqual(got[vector.field], { id: uuidOf(vector.expect), name: nameOf(vector.expect),
+      ...(vector.field === 'room' ? { buildingId: uuidOf(vectors.rooms.find(x => x.key === vector.expect).building) } : {}) }, label);
+  } else {
+    assert.equal(got.status, 'unresolved', label);
+    assert.deepEqual([got.field, got.wanted, got.why], [vector.field, vector.wanted, vector.why], label);
+    assert.deepEqual(got.candidates.map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name), vector.candidates ?? [], label);
+    assert.equal(got.more, false, label);
+  }
+}
 
 async function seed(pool) {
   const b = vectors.buildings, r = vectors.rooms;
@@ -82,20 +98,10 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
 
   await t.test('every case of name-match-vectors.json', async () => {
     assert.ok(vectors.cases.length >= 40);
-    for (const vector of vectors.cases) {
-      const names = vector.field === 'room' && vector.building ? { building: nameOf(vector.building), room: vector.wanted } : { [vector.field]: vector.wanted };
-      const got = await resolve(names), label = JSON.stringify(vector);
-      if (vector.expect) {
-        assert.equal(got.status, 'resolved', label);
-        assert.deepEqual(got[vector.field], { id: uuidOf(vector.expect), name: nameOf(vector.expect),
-          ...(vector.field === 'room' ? { buildingId: uuidOf(vectors.rooms.find(x => x.key === vector.expect).building) } : {}) }, label);
-      } else {
-        assert.equal(got.status, 'unresolved', label);
-        assert.deepEqual([got.field, got.wanted, got.why], [vector.field, vector.wanted, vector.why], label);
-        assert.deepEqual(got.candidates.map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name), vector.candidates ?? [], label);
-        assert.equal(got.more, false, label);
-      }
-    }
+    for (const vector of vectors.cases.filter(entry => !entry.tokens)) await expectVector(resolve, vector, nameOf);
+    // Ca tokens=true chỉ đúng sau 20261024040001 (test riêng dưới): lõi gốc không thấy ⇒ not_visible (đúng lỗi nghiệm thu 24/10).
+    for (const vector of vectors.cases.filter(entry => entry.tokens))
+      assert.equal((await resolve({ [vector.field]: vector.wanted })).why, 'not_visible', JSON.stringify(vector));
   });
 
   await t.test('combined names: building then room then job type then person; room alone implies its building', async () => {
@@ -167,5 +173,66 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
     assert.deepEqual(await fold('PD1'), { v: 'pd1', k: 'pd1' }, 'tiền tố chỉ bỏ khi ngay sau là chữ số');
     // NFD input (combining marks) folds like NFC.
     assert.equal((await fold('Lế Văn')).v, 'le van');
+  });
+});
+
+// Lượt 11 (nghiệm thu 24/10): 20261024040001 thêm bậc khớp TOKEN số nhà + tên đường vào CẢ HAI lõi (v1 dùng chung, v2 Thu chi nhận toà
+// ảo), dựng từ thân production 132433 / 044120 (md5 ghim ở $requires$). Mọi ca của bộ vector (cũ + tokens) phải đúng trên lõi mới, qua vỏ v1
+// và vỏ v2 (include_virtual=false cho cùng kết quả; =true chỉ thêm toà ảo).
+test('write name resolve: house-number token step on both cores (20261024040001)', { timeout: 240000 }, async t => {
+  const VIRTUAL = migration('hermes_name_directory_virtual_v1'), HOUSE = migration('hermes_write_name_resolve_house_number_v1');
+  const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
+  t.after(async () => { await pool.end(); cleanup(); });
+  await setup(pool);
+  await seed(pool);
+  for (const file of [sql, VIRTUAL, HOUSE]) { await pool.query(file); await pool.query(file); } // Idempotent re-apply.
+  await pool.query('REVOKE USAGE ON SCHEMA app_private FROM authenticated, PUBLIC');
+  const scope = vectors.buildings.filter(x => x.inScope).map(x => uuidOf(x.key));
+  const nameOf = key => [...vectors.buildings, ...vectors.rooms, ...vectors.jobTypes, ...vectors.people].find(x => x.key === key).name;
+  const v1 = (names, { ids = scope, user = USER } = {}) => jwt(pool, async c =>
+    (await c.query('SELECT public.hermes_write_name_resolve_v1($1::uuid,$2::uuid[],$3::jsonb) value', [ORG, ids, JSON.stringify(names)])).rows[0].value, user);
+  const v2 = virtual => (names, { ids = scope, user = USER } = {}) => jwt(pool, async c =>
+    (await c.query('SELECT public.hermes_write_name_resolve_v2($1::uuid,$2::uuid[],$3::jsonb,$4) value', [ORG, ids, JSON.stringify(names), virtual])).rows[0].value, user);
+
+  await t.test('every case of name-match-vectors.json (old + tokens) through the v1 wrapper; v2 without virtual gives the same', async () => {
+    assert.ok(vectors.cases.filter(entry => entry.tokens).length >= 6);
+    for (const vector of vectors.cases) await expectVector(v1, vector, nameOf);
+    for (const vector of vectors.cases) await expectVector(v2(false), vector, nameOf);
+    // v2 with virtual: only the virtual building changes (Thu chi); the token step is the same.
+    assert.equal((await v2(true)({ building: 'Kho Ảo' })).building.id, uuidOf('bv'));
+    assert.equal((await v2(true)({ building: '45 Hoa Mai' })).building.id, uuidOf('b9'));
+  });
+
+  await t.test('token step is after equal/contains and never guesses: exact name wins, outside scope names nobody, RLS-hidden is not_visible', async () => {
+    // Bằng vẫn thắng: có toà "45 Hoa Mai" thật thì không nhảy sang "45/3 Hoa Mai".
+    const exact = id(950);
+    await pool.query(`INSERT INTO public.buildings(id,organization_id,user_id,name,name_sort,code,is_virtual) VALUES('${exact}','${ORG}','${USER}','45 Hoa Mai','45 hoa mai',NULL,false)`);
+    try {
+      assert.deepEqual((await v1({ building: '45 Hoa Mai' }, { ids: [...scope, exact] })).building, { id: exact, name: '45 Hoa Mai' });
+      // Toà khớp bằng nằm ngoài phạm vi ghi ⇒ outside_scope, KHÔNG trượt sang toà khớp token trong phạm vi.
+      assert.equal((await v1({ building: '45 Hoa Mai' })).why, 'outside_scope');
+    } finally { await pool.query(`DELETE FROM public.buildings WHERE id='${exact}'`); }
+    assert.deepEqual(await v1({ building: '45 Hoa Mai' }, { ids: [uuidOf('b1')] }), { status: 'unresolved', field: 'building', wanted: '45 Hoa Mai',
+      why: 'outside_scope', candidates: [], more: false });
+    const hidden = await v1({ building: '45 Hoa Mai' }, { user: USER2 });
+    assert.deepEqual([hidden.why, hidden.candidates], ['not_visible', []]);
+    // Khớp lỏng cần số nhà + chữ, ≥ 2 token: chuỗi chỉ có số ("45 3") không đi bậc token lỏng; chỉ tên đường thì bậc "chứa" cũ đã giải.
+    assert.equal((await v1({ building: '45 3' })).why, 'not_visible');
+    assert.deepEqual((await v1({ building: 'hoa mai' })).building, { id: uuidOf('b9'), name: '45/3 Hoa Mai' }, 'chứa (bậc cũ)');
+    // Toà + phòng vẫn đi cùng: phòng chỉ tìm trong toà đã giải.
+    assert.equal((await v1({ building: '45 Hoa Mai', room: '201' })).field, 'room');
+  });
+
+  await t.test('$requires$: a core body other than the production one (or this file) stops the file; pins match Postgres', async () => {
+    const pins = [...HOUSE.matchAll(/md5\(prosrc\) FROM pg_proc WHERE oid='([^']+)'::regprocedure\)<>'([0-9a-f]{32})'/g)].map(match => [match[1], match[2]]);
+    assert.equal(pins.length, 2);
+    for (const [fn, pin] of pins) assert.equal((await pool.query('SELECT md5(prosrc) m FROM pg_proc WHERE oid=$1::regprocedure', [fn])).rows[0].m, pin, fn);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const original = /CREATE OR REPLACE FUNCTION app_private\.hermes_write_name_resolve_core_v1[\s\S]*?END \$fn\$;/.exec(sql)[0];
+      await client.query(original.replace('-- Toà: bằng', '-- Toà (thân lạ): bằng'));
+      await assert.rejects(client.query(HOUSE.replace(/^BEGIN;|^COMMIT;/gm, '')), /hermes_write_name_house_number_dependency_invalid/);
+    } finally { await client.query('ROLLBACK'); client.release(); }
   });
 });

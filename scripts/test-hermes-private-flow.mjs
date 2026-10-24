@@ -534,6 +534,14 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v2',
     sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
     statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
+  // Hợp đồng lượt 11 (nghiệm thu 24/10, 20261024040001): cả hai lõi giải tên ghi dựng lại từ thân production (132433 / 044120) + bậc khớp
+  // token số nhà + tên đường ở khối toà; vẫn plpgsql INVOKER, chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: 'bfb162a02ea24d8829d6c762866a568b39bfde7fb7e812946ec2b48db17e6d54' },
+  { name: 'app_private.hermes_write_name_resolve_core_v2',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: '0c74fb34de4f13ca7553fd50fc16c50ffafce1b6893734aad191547cf6ab3950' },
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
     statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },

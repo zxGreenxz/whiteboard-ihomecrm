@@ -5,6 +5,7 @@ import { createSupabaseDomainReads } from './domain-adapter.mjs';
 import { CACHED_READ_OPERATIONS, completeListSummary, domainExact, domainId, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { createSupabaseDomainFastReads, domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver, DIRECTORY_RPCS } from './read-name-resolution.mjs';
+import { publicWebOrigin as isPublicWebOrigin, withPublicLink } from './public-link.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
 import { BrokerError } from './broker.mjs';
 const fail = code => { throw new BrokerError(code); };
@@ -58,7 +59,10 @@ function createContextDirectory({ connectionStore, crypto, resolver, clock }) {
     },
   });
 }
-export function createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, clock = Date.now, readAuthority } = {}) {
+export function createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, clock = Date.now, readAuthority, publicWebOrigin } = {}) {
+  if (publicWebOrigin !== undefined && !isPublicWebOrigin(publicWebOrigin)) throw new TypeError('invalid_public_web_origin');
+  // Lượt 11 (D-HĐ9): chi tiết HĐ đã kiểm (publicPath) ⇒ publicLink tuyệt đối theo origin host; vắng origin ⇒ publicLink null.
+  const finish = result => withPublicLink(completeListSummary(result), publicWebOrigin);
   const reads = createSupabaseDomainReads({ ...supabase, dependencyScope, fetch });
   const resolver = createReadNameResolver({ rpc: createBoundUserRpcTransport({ ...supabase, dependencyScope, fetch, allowedNames: [...DIRECTORY_RPCS] }), clock });
   const resolveFor = lane => request => resolver.resolve({ ...request, lane });
@@ -68,7 +72,7 @@ export function createDomainMount({ authority, connectionStore, crypto, auth, su
     const contextPort = createContextDirectory({ connectionStore, crypto, resolver, clock });
     // Kết quả cuối (đã kiểm, đã gộp trang lọc phòng): báo cáo phân trang offset đã trọn mà summary null ⇒ {count} (completeListSummary).
     if (!readAuthority) return Object.freeze({ prepareDomain: service.prepare,
-      finalizeDomain: async (token, receipt, options) => completeListSummary(await service.finalize(token, receipt, options)), ...contextPort });
+      finalizeDomain: async (token, receipt, options) => finish(await service.finalize(token, receipt, options)), ...contextPort });
     const fast = createBoundUserOperationService({ authority: readAuthority, connectionStore, crypto, auth,
       reads: createSupabaseDomainFastReads({ ...supabase, dependencyScope, fetch }),
       mayUse: mayUseDomain, validateInput: domainInput, validateResult: domainFastResult, clock, admission: 'initialRead', resolveInput: resolveFor('fast') });
@@ -86,7 +90,7 @@ export function createDomainMount({ authority, connectionStore, crypto, auth, su
       async finalizeDomain(token, receipt, options) {
         const selected = issued.get(receipt); issued.delete(receipt);
         if (!selected) throw new TypeError('invalid_domain_receipt');
-        return completeListSummary(await selected.finalize(token, receipt, options));
+        return finish(await selected.finalize(token, receipt, options));
       } });
   } });
 }

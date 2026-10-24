@@ -990,7 +990,8 @@ test('all forty-four reviewed forward migrations and their 128 latest definition
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 44);
+  // Lượt 11 (24/10): lõi giải tên v1/v2 dựng lại ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (thân cũ thành ghim superseded).
+  assert.equal(paths.length, 46);
   assert.equal(FORWARD_FUNCTIONS.length, 128);
   assert.equal(FORWARD_BY_NAME.size, 128, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);

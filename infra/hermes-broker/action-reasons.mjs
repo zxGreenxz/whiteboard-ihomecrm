@@ -21,6 +21,8 @@ export const ACTION_REASONS = Object.freeze({
   date_out_of_range: reason('needs_input', 'fix', 'Ngày không hợp lệ (ngoài khoảng cho phép hoặc ở tương lai); hỏi lại người dùng ngày.'),
   not_found: reason('needs_input', 'fix', 'Không tìm thấy đối tượng này trong phạm vi quyền của anh/chị; hỏi lại người dùng.'),
   action_disabled: reason('rejected', 'never', 'Thao tác này chưa được bật cho kết nối.'),
+  // Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối nhưng người dùng chưa được cấp quyền CRM tương ứng (khác action_disabled).
+  forbidden: reason('rejected', 'never', 'Anh/chị chưa có quyền CRM cho thao tác này; nhờ chủ hoặc quản trị cấp quyền trong Phân quyền rồi thử lại.'),
   not_allowed: reason('rejected', 'never', 'Anh/chị không có quyền làm thao tác này ở toà này.'),
   private_chat_only: reason('rejected', 'never', 'Lệnh ghi chỉ nhận trong chat riêng.'),
   state_changed: reason('rejected', 'preview', 'Dữ liệu vừa đổi sau bản xem trước; cần xem trước lại.'),
