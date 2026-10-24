@@ -105,6 +105,8 @@ export function OperationConfigDialog({
   // updated_at của cấu hình lúc NẠP nháp (không phải bản cache mới nhất) — gửi kèm khi lưu để server từ
   // chối nếu người khác đã lưu sau đó, thay vì ghi đè số của họ bằng số cũ đang hiện trên hộp
   const [seenUpdatedAt, setSeenUpdatedAt] = useState<string | null>(null);
+  // ký hiệu sổ lúc nạp nháp (RPC riêng, không có kiểm updated_at) — chỉ gửi khi người dùng đã sửa
+  const [seenCodes, setSeenCodes] = useState<{ landlord: string | null; manager: string | null }>({ landlord: null, manager: null });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -156,6 +158,7 @@ export function OperationConfigDialog({
       setDraft({ ...EMPTY, month: thang, termsMonth: thang, depositHolder: initialDepositHolder ?? 'MANAGER' });
     }
     setSeenUpdatedAt(c ? c.updated_at : null);
+    setSeenCodes({ landlord: c?.landlord_book_code ?? null, manager: c?.manager_book_code ?? null });
     setLoadedFor(buildingId);
   }, [buildingId, options.data, options.isFetching, loadedFor, initialTermsMonth, initialDepositHolder]);
 
@@ -278,12 +281,9 @@ export function OperationConfigDialog({
     setServerError(null);
     if (Object.keys(e).length > 0 || !buildingId) return;
     const kyHieu = { landlordCode: normalizeBookCode(draft.landlordCode), managerCode: normalizeBookCode(draft.managerCode) };
-    const doiKyHieu = kyHieu.landlordCode !== (cur?.landlord_book_code ?? null)
-      || kyHieu.managerCode !== (cur?.manager_book_code ?? null);
+    // so với ký hiệu LÚC NẠP hộp (không với cache mới nhất): không đụng ô thì không đè ký hiệu người khác vừa đổi
+    const doiKyHieu = kyHieu.landlordCode !== seenCodes.landlord || kyHieu.managerCode !== seenCodes.manager;
     try {
-      // toà đã cài: lưu ký hiệu TRƯỚC (RPC riêng, không đổi updated_at nên không vướng kiểm "người khác đã lưu")
-      // — lỗi thì chưa ghi gì ở phần cài đặt; toà mới: phải có cài đặt rồi mới đặt được ký hiệu
-      if (cur && doiKyHieu) await saveCodes.mutateAsync({ buildingId, ...kyHieu });
       const r = await save.mutateAsync({
         buildingId,
         landlordName: draft.landlordName.trim(),
@@ -304,7 +304,8 @@ export function OperationConfigDialog({
         // người giữ cọc của toà (áp mọi tháng); server từ chối đổi khi đã chốt tháng nào
         depositHolder: draft.depositHolder,
       });
-      if (!cur && doiKyHieu) {
+      // ký hiệu lưu SAU khi cài đặt đã lưu (toà mới phải có cài đặt trước; lỗi ở đây không làm hỏng phần đã lưu)
+      if (doiKyHieu) {
         try {
           await saveCodes.mutateAsync({ buildingId, ...kyHieu });
         } catch (err) {

@@ -88,17 +88,18 @@ export function SettlementScreen({
   const narrow = useIsNarrow(rootRef);
   const [tab, setTab] = useState<SettlementTab>('thuchi');
 
-  // chọn tab khi đã cuộn quá thanh tab ⇒ đưa đầu thân trang về ngay dưới thanh tab (thanh dính)
+  // đã cuộn quá thanh tab ⇒ đưa đầu thân trang về ngay dưới thanh tab (thanh dính, có thể dưới thanh đầu app)
+  const revealBody = () => nextFrame(() => {
+    const body = bodyRef.current;
+    const bar = barRef.current;
+    if (!body || !bar) return;
+    const barBottom = bar.getBoundingClientRect().bottom;
+    const top = body.getBoundingClientRect().top;
+    if (top < barBottom - 1) window.scrollBy({ top: top - barBottom });
+  });
   const selectTab = (next: SettlementTab) => {
     setTab(next);
-    nextFrame(() => {
-      const body = bodyRef.current;
-      const bar = barRef.current;
-      if (!body || !bar) return;
-      const barBottom = bar.getBoundingClientRect().bottom;
-      const top = body.getBoundingClientRect().top;
-      if (top < barBottom - 1) window.scrollBy({ top: top - barBottom });
-    });
+    revealBody();
   };
 
   const st = month?.statement ?? null;
@@ -132,7 +133,7 @@ export function SettlementScreen({
             // ghi chú phòng là dữ liệu sống: tháng đã chốt mà phiếu đổi sau chốt thì không khớp ảnh chốt ⇒ ẩn
             <SettlementCashTab key={monthKey(month.period_month)} st={st} mode={mode} narrow={narrow}
               roomData={month.status === 'CLOSED' && month.is_stale ? null : month.room_data}
-              bookCodes={bookCodesOf(overview)} />
+              bookCodes={bookCodesOf(overview)} onRevealLists={revealBody} />
           )}
           {tab === 'quyettoan' && (
             <SettlementStatementCard month={month} mode={mode} onRequestDepositHolder={onRequestDepositHolder}

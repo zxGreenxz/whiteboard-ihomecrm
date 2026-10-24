@@ -1,7 +1,8 @@
-// Tab "Thu chi" của Quyết toán vận hành v3: ô 2×2 "Ai thu, ai chi trong tháng" (bấm để lọc theo sổ),
-// thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu) và khối "Khoản khác" (thanh lý, cọc,
-// chờ duyệt, không tính). Mọi tổng là số server trả; tỷ trọng hạng mục chỉ chia để hiển thị.
-import { useRef, useState } from 'react';
+// Tab "Thu chi" của Quyết toán vận hành v3: thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu,
+// nút lọc theo ký hiệu sổ), khối "Khoản khác" (thanh lý, cọc, chờ duyệt, không tính — chỉ màn quản trị) và
+// cuối cùng ô 2×2 "Ai thu, ai chi trong tháng" (bấm để lọc theo sổ). Mọi tổng là số server trả; tỷ trọng hạng
+// mục chỉ chia để hiển thị.
+import { useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { cn, formatVND } from '@/lib/utils';
 import {
@@ -244,9 +245,10 @@ function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats, notes, bookC
   const sideText = filter === 'LANDLORD' ? ' ở sổ chủ nhà' : filter === 'MANAGER' ? ' ở sổ quản lý' : '';
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card" data-testid={income ? 'settlement-income-card' : 'settlement-expense-card'}>
-      <div className={cn('flex items-center gap-2 border-b px-3.5 py-2.5',
+      {/* ký hiệu sổ dài 4 ký tự + số khoản lớn ở 390px ⇒ cho xuống dòng thay vì cắt tổng tiền */}
+      <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3.5 py-2.5',
         income ? 'bg-emerald-50/70 dark:bg-emerald-950/30' : 'bg-orange-50/60 dark:bg-orange-950/20')}>
-        <h3 className="text-[13.5px] font-bold">{income ? 'Khoản thu' : 'Khoản chi'}</h3>
+        <h3 className="whitespace-nowrap text-[13.5px] font-bold">{income ? 'Khoản thu' : 'Khoản chi'}</h3>
         <span className={cn('whitespace-nowrap rounded-full px-2 py-px text-[11px] font-semibold',
           income ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200')}>
           {rows.length} khoản
@@ -257,9 +259,10 @@ function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats, notes, bookC
             const on = filter === s;
             return (
               <button key={s} type="button" aria-pressed={on} onClick={() => onToggleSide(s)}
+                aria-label={`Lọc ${s === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'} (${bookCodes[s]})`}
                 title={on ? 'Bỏ lọc, xem tất cả' : `Chỉ xem khoản của ${s === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'}`}
                 data-testid={`settlement-book-filter-${s}`}
-                className={cn('min-w-[28px] rounded-md border px-1.5 py-px text-[10.5px] font-bold leading-[18px]',
+                className={cn('min-h-6 min-w-[28px] rounded-md border px-1.5 text-[10.5px] font-bold',
                   on
                     ? (s === 'LANDLORD' ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-orange-600 bg-orange-600 text-white')
                     : (s === 'LANDLORD'
@@ -319,10 +322,12 @@ function cellSub(st: SettlementStatement, kind: Kind, side: Side, count: number)
   return [prefix, names].filter(Boolean).join(' — ') || null;
 }
 
-export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes = DEFAULT_BOOK_CODE }: {
+export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes = DEFAULT_BOOK_CODE, onRevealLists }: {
   st: SettlementStatement; mode: 'admin' | 'public'; narrow: boolean; roomData?: SettlementRoomData | null;
   /** Ký hiệu sổ của toà (chưa đặt ⇒ CN / QL). */
   bookCodes?: BookCodes;
+  /** Đưa đầu tab về dưới thanh tab dính (khung trang cung cấp). */
+  onRevealLists?: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [list, setList] = useState<Kind>('INCOME');
@@ -332,12 +337,12 @@ export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes
   const t = st.totals;
   const pnl = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL');
   const count = (kind: Kind, side: Side) => pnl.filter((v) => v.type === kind && v.side === side).length;
-  // bảng "Ai thu, ai chi" nằm cuối tab ⇒ bấm ô thì lọc rồi cuộn lên danh sách
-  const listsRef = useRef<HTMLDivElement>(null);
+  // bảng "Ai thu, ai chi" nằm cuối tab ⇒ bấm ô thì lọc rồi đưa đầu tab (nút chọn danh sách, thanh "Đang xem
+  // khoản của…") về ngay dưới thanh tab dính — khung trang biết chiều cao các thanh dính
   const pick = (side: Side, kind: Kind) => {
     setFilter((f) => (f === side ? 'ALL' : side));
     setList(kind);
-    listsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    onRevealLists?.();
   };
   // nút lọc theo sổ ở dòng tiêu đề thẻ: chỉ đổi bộ lọc (giữ danh sách đang xem)
   const toggleSide = (side: Side) => setFilter((f) => (f === side ? 'ALL' : side));
@@ -424,7 +429,7 @@ export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes
         </div>
       )}
 
-      <div ref={listsRef} className="grid scroll-mt-3 items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
+      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
         {(!narrow || list === 'INCOME') && (
           <ListCard kind="INCOME" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} notes={roomNotes}
             bookCodes={bookCodes} onToggleSide={toggleSide} />

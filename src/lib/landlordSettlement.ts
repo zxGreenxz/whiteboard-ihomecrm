@@ -1067,7 +1067,8 @@ export function describeOperationChange(
   if (giuCocTruoc && giuCocSau && giuCocTruoc !== giuCocSau) {
     out.push(`Người giữ cọc: ${DEPOSIT_HOLDER_LABEL[giuCocTruoc]} → ${DEPOSIT_HOLDER_LABEL[giuCocSau]}`);
   }
-  // ký hiệu sổ: chỉ dòng do landlord_operation_book_codes_v1 ghi mới có hai trường
+  // ký hiệu sổ: dòng nhật ký trước 24/10/2026 không có hai trường (không nói gì); từ đó mọi ảnh đều có
+  // (landlord_operation_state_v1 chụp cả dòng) — chỉ báo khi giá trị đổi
   if ('landlord_book_code' in after && (diff('landlord_book_code') || diff('manager_book_code'))) {
     const kh = (x: Record<string, unknown>) => {
       const c = bookCodesOf({

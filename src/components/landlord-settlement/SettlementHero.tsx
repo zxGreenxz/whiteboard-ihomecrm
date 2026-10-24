@@ -241,6 +241,13 @@ function StatusChips({ month, mode, narrow, isFetching }: {
   return <div className={cn('flex flex-wrap items-center', narrow ? 'mt-2.5 gap-1.5' : 'mt-4 gap-2')}>{chips}</div>;
 }
 
+/** Link chủ nhà không còn chip trạng thái ⇒ đổi tháng mà số cũ còn hiện thì báo đang nạp. */
+function FetchingNote({ show }: { show: boolean }) {
+  return show
+    ? <p className="mt-2 text-[11px] text-white/60" role="status" data-testid="settlement-fetching">Đang cập nhật…</p>
+    : null;
+}
+
 function TermsLine({ month, st }: { month: SettlementMonth; st: SettlementStatement }) {
   const note = st.manager_percent <= 0 ? '' : st.manager_fixed_amount > 0 ? ' · phần % lỗ thì không tính' : ' · lỗ không tính';
   return (
@@ -277,7 +284,7 @@ export function SettlementHero({
   // link chủ nhà chỉ còn Doanh thu / Chi phí / Lợi nhuận (chủ nhắn 24/10/2026): bỏ thanh % quản lý, thẻ quyết
   // toán tháng, chip trạng thái và dòng điều khoản — số quyết toán xem ở tab Quyết toán
   const full = mode === 'admin';
-  const sub =buildingName ? `${buildingName}${landlordName ? ` · Chủ nhà: ${landlordName}` : ''}` : null;
+  const sub = buildingName ? `${buildingName}${landlordName ? ` · Chủ nhà: ${landlordName}` : ''}` : null;
   const pnl = st ? st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL') : [];
   const soThu = pnl.filter((v) => v.type === 'INCOME').length;
   const soChi = pnl.filter((v) => v.type === 'EXPENSE').length;
@@ -329,6 +336,7 @@ export function SettlementHero({
               {full && <NetCard month={month} st={st} narrow onShowCalc={onShowCalc} />}
             </>
           )}
+          {!full && <FetchingNote show={isFetching} />}
           {month && full && (
             <>
               <StatusChips month={month} mode={mode} narrow isFetching={isFetching} />
@@ -372,6 +380,7 @@ export function SettlementHero({
               {full && <NetCard month={month} st={st} narrow={false} onShowCalc={onShowCalc} />}
             </div>
           )}
+          {!full && <FetchingNote show={isFetching} />}
           {month && full && (
             <>
               <StatusChips month={month} mode={mode} narrow={false} isFetching={isFetching} />

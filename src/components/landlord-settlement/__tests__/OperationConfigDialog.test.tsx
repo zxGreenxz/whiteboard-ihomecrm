@@ -150,7 +150,7 @@ it('mở bình thường: người giữ cọc của toà, lưu gửi lại đú
   expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', termsFrom: '2026-12-01' });
 });
 
-it('ký hiệu sổ: nạp sẵn, đổi thì gửi RPC riêng (chuẩn hoá chữ hoa) TRƯỚC khi lưu cài đặt; không đổi thì không gọi', async () => {
+it('ký hiệu sổ: nạp sẵn, đổi thì gửi RPC riêng (chuẩn hoá chữ hoa) SAU khi lưu cài đặt; không đổi thì không gọi', async () => {
   m.options = options([dk('2026-10-01', 30, 0)], { codes: ['CN', null] });
   render(hop());
   await waitFor(() => expect(o('Sổ chủ nhà').value).toBe('CN'));
@@ -160,8 +160,8 @@ it('ký hiệu sổ: nạp sẵn, đổi thì gửi RPC riêng (chuẩn hoá ch�
   fireEvent.change(o('Sổ quản lý'), { target: { value: 'et' } });
   luu();
   await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
-  expect(m.codes).toHaveBeenCalledWith({ buildingId: TOA, landlordCode: 'CG', managerCode: 'ET' });
-  expect(m.codes.mock.invocationCallOrder[0]).toBeLessThan(m.save.mock.invocationCallOrder[0]);
+  await waitFor(() => expect(m.codes).toHaveBeenCalledWith({ buildingId: TOA, landlordCode: 'CG', managerCode: 'ET' }));
+  expect(m.save.mock.invocationCallOrder[0]).toBeLessThan(m.codes.mock.invocationCallOrder[0]);
   cleanup();
   vi.clearAllMocks();
   m.save.mockResolvedValue({ building_id: TOA, created: false, terms_from: '2026-11-01', opening_needs_reconfirm: false, opening_needs_confirm: false });
@@ -173,7 +173,7 @@ it('ký hiệu sổ: nạp sẵn, đổi thì gửi RPC riêng (chuẩn hoá ch�
   expect(m.codes).not.toHaveBeenCalled();
 });
 
-it('ký hiệu sổ sai (trùng ký hiệu đang hiện, quá 4 ký tự) ⇒ báo lỗi, không gửi gì; RPC ký hiệu lỗi ⇒ không lưu cài đặt', async () => {
+it('ký hiệu sổ sai (trùng ký hiệu đang hiện, quá 4 ký tự) ⇒ báo lỗi, không gửi gì; RPC ký hiệu lỗi ⇒ cài đặt vẫn lưu, báo riêng', async () => {
   m.options = options([dk('2026-10-01', 30, 0)]);
   render(hop());
   await waitFor(() => expect(o('Sổ chủ nhà').value).toBe(''));
@@ -188,6 +188,6 @@ it('ký hiệu sổ sai (trùng ký hiệu đang hiện, quá 4 ký tự) ⇒ b�
   m.codes.mockRejectedValueOnce({ code: '42501', message: 'Chỉ chủ công ty hoặc quản trị hệ thống được xem và quyết toán toà vận hành' });
   fireEvent.change(o('Sổ chủ nhà'), { target: { value: 'CG' } });
   luu();
-  expect(await screen.findByText(/Chỉ chủ công ty hoặc quản trị hệ thống/)).toBeTruthy();
-  expect(m.save).not.toHaveBeenCalled();
+  await waitFor(() => expect(m.warning).toHaveBeenCalledWith(expect.stringMatching(/chưa lưu được ký hiệu sổ: Chỉ chủ công ty/)));
+  expect(m.save).toHaveBeenCalledTimes(1);
 });
