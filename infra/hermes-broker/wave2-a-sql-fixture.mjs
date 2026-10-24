@@ -56,7 +56,10 @@ const TABLES = `
     ADD COLUMN active_posting_id_v2 uuid;
   ALTER TABLE public.contract_customers ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
   CREATE TABLE public.payments(id uuid PRIMARY KEY,organization_id uuid,invoice_id uuid,receipt_number text,amount numeric,payment_method text,
-    payment_date date,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),reversed_at timestamptz,receipt_image_url text);
+    payment_date date,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),reversed_at timestamptz,receipt_image_url text,retained_amount numeric);
+  -- Lượt 14: dòng thu đang hiệu lực tối giản (thật: lần thu ACTIVE + thanh toán cũ chưa hoàn tác); số giữ lại = retained_amount, trống thì amount.
+  CREATE VIEW public.active_payment_receipts WITH (security_invoker=true) AS SELECT p.id,p.organization_id,p.invoice_id,p.payment_method,p.payment_date,
+    COALESCE(p.retained_amount,p.amount) collected_amount FROM public.payments p WHERE p.reversed_at IS NULL;
   CREATE TABLE public.invoice_adjustments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,invoice_id uuid,review_status text,
     before_snapshot jsonb);
   -- Đợt 3 Hoá đơn (20261022051118): cột điều chỉnh bất biến, tên nhân viên dưới RLS profiles, cột suy is_overdue. Bản port is_overdue cùng

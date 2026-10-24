@@ -999,6 +999,27 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Thu chi lượt 13, 24/10/2026",
       "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7"
+    },
+    "supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_invoice_lookup_core_v3 / hermes_invoice_action_step_v3 (bản chép tầng thu tiền v2 của 20261024041712, md5 ghim), app_private.hermes_invoice_edit_step_v2 (bản chép bước ghi 20261023042723, md5 ghim), public.hermes_invoice_action_v1 (vỏ SQL-standard thay vỏ 20261024041712)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là ba hàm mới — sinh 25/10/2026 trên nhánh sửa nghiệm thu Hoá đơn (lượt 14)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 25/10/2026 (Hermes Đợt 3 trang Hoá đơn, lượt 14 sửa theo nghiệm thu lượt cuối C3c trên TEST: ngày thu ở tháng đã chốt lợi nhuận ⇒ period_closed trước kế hoạch; sổ nhận người dùng nêu tìm ở cả sổ TK lẫn TT của toà, hình thức theo sổ, bản xem trước mở đầu bằng sổ nhận; điều chỉnh/huỷ/khôi phục đòi lý do sau kiểm cứng, tổng mới < đã thu kèm số đã thu), chưa đi qua lane apply — ba hàm mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (invoice-write-sql / invoice-edit-sql), PG17 hai kết nối (vẫn NOWAIT, đột biến bỏ NOWAIT ⇒ 40P01), connector, 16 đột biến bị bắt, tầng 2 trên TEST trong ROLLBACK, đo chạy lại trên TEST. Áp qua npm run migrate:forward SAU 20261024041712 và SAU connector lượt 14 (mã period_closed, facts); các khoá invoices.* / thu_tien.collect_transfer vẫn TẮT ở production nên không đổi quyền của ai.",
+      "missingObjects": [
+        "function:app_private.hermes_invoice_lookup_core_v3",
+        "function:app_private.hermes_invoice_action_step_v3",
+        "function:app_private.hermes_invoice_edit_step_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn lượt 14 25/10/2026",
+      "sha256": "e8e8e4d4b0f7704aa73fb92139c20bc89a4e5cff908358b1b3e7a1d1cbafe68e"
     }
   }
 }

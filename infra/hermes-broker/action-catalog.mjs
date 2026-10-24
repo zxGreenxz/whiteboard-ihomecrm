@@ -41,27 +41,35 @@ const dataArray = value => Array.isArray(value) && Object.getPrototypeOf(value) 
 
 // ---- Khuôn tham số. Mỗi khuôn: { kind, optional, hint, ...giới hạn } đông cứng. hint là câu tĩnh cho mô hình.
 const spec = (kind, optional, hint, extra = {}) => Object.freeze({ kind, optional: optional === true, hint, ...extra });
+// Lượt 14 Hoá đơn (nghiệm thu C3c: tên sổ nhận rơi vào note, chỉ số điện bị hiểu là tiền): câu gợi ý riêng của MỘT tham số thay câu theo kiểu.
+const hintOf = (custom, fallback) => {
+  if (custom === undefined) return fallback;
+  if (typeof custom !== 'string' || !custom.trim() || custom.length > 160 || CONTROL.test(custom)) fail();
+  return custom;
+};
 export const param = Object.freeze({
-  text: (min, max, { optional = false } = {}) => {
+  text: (min, max, { optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 1 || max < min || max > 4000) fail();
-    return spec('text', optional, `chữ ${min}–${max} ký tự`, { min, max });
+    return spec('text', optional, hintOf(hint, `chữ ${min}–${max} ký tự`), { min, max });
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
-  name: (of, { optional = false } = {}) => {
+  // alias (lượt 14): tên phụ mô hình hay dùng cho cùng tham số (vd cashbook của expense.create cho cashbookName của invoice.collect).
+  name: (of, { optional = false, hint, alias } = {}) => {
     if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job' && of !== 'recurrence') fail();
+    if (alias !== undefined && (typeof alias !== 'string' || !PARAM.test(alias))) fail();
     // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
     // recurrence (Mốc 5): mã việc định kỳ DK-… hoặc nội dung — SQL tìm đúng một quy tắc, mơ hồ thì hỏi lại.
-    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
-      : of === 'recurrence' ? 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
-      { of, min: 1, max: 120 });
+    return spec('name', optional, hintOf(hint, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
+      : of === 'recurrence' ? 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`),
+      { of, min: 1, max: 120, ...(alias === undefined ? {} : { alias }) });
   },
-  int: (min, max, { optional = false } = {}) => {
+  int: (min, max, { optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();
-    return spec('int', optional, `số nguyên ${min}–${max}`, { min, max });
+    return spec('int', optional, hintOf(hint, `số nguyên ${min}–${max}`), { min, max });
   },
-  vnd: ({ min = 1, max = MAX_VND, optional = false } = {}) => {
+  vnd: ({ min = 1, max = MAX_VND, optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 0 || max < min || max > MAX_VND) fail();
-    return spec('vnd', optional, 'số nguyên VND (3tr5 = 3500000)', { min, max });
+    return spec('vnd', optional, hintOf(hint, 'số nguyên VND (3tr5 = 3500000)'), { min, max });
   },
   date: ({ optional = false } = {}) => spec('date', optional, 'ngày YYYY-MM-DD (giờ Việt Nam)'),
   month: ({ optional = false } = {}) => spec('month', optional, 'tháng YYYY-MM'),
@@ -111,6 +119,8 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
     if (value.kind === 'list' && value.overflow !== undefined && !reasons.includes(value.overflow)) fail();
   }
+  const aliases = Object.values(params).map(value => value.alias).filter(alias => alias !== undefined);
+  if (aliases.some(alias => Object.hasOwn(params, alias)) || new Set(aliases).size !== aliases.length) fail();
   const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
   DEFINED.add(action);
   return action;
@@ -212,8 +222,10 @@ export function validateActionParams(action, raw) {
 function checkFields(fields, raw, prefix) {
   const input = {};
   let unknown = false, duplicate = null;
+  const aliases = Object.fromEntries(Object.entries(fields).filter(([, spec]) => spec.alias !== undefined).map(([name, spec]) => [spec.alias, name]));
   for (const [supplied, value] of Object.entries(raw)) {
-    const name = Object.hasOwn(fields, supplied) ? supplied : snakeToCamel(supplied);
+    const camel = Object.hasOwn(fields, supplied) ? supplied : snakeToCamel(supplied);
+    const name = Object.hasOwn(fields, camel) ? camel : Object.hasOwn(aliases, camel) ? aliases[camel] : camel;
     if (!Object.hasOwn(fields, name)) { unknown = true; continue; }
     if (Object.hasOwn(input, name)) { duplicate ??= name; continue; }
     input[name] = value;

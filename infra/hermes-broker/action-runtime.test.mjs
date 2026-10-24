@@ -326,6 +326,23 @@ test('lượt 11: thiếu quyền CRM ⇒ action_rejected forbidden; khoá chưa
     /invalid_action_runtime/);
 });
 
+// Lượt 14 Hoá đơn (nghiệm thu C3c, đối tác thiếu meter_readings.create ⇒ bot nói "chưa hỗ trợ ghi chỉ số"): crm_action_list nêu gọn thao tác
+// ẩn vì THIẾU QUYỀN CRM (notPermitted, không params), cùng điều kiện forbidden của crm_action_run; khoá chưa bật / ảnh chụp khác ⇒ không nêu.
+test('lượt 14: crm_action_list kèm notPermitted cho thao tác thiếu quyền CRM; chưa ghi nhận / ảnh chụp khác không nêu; lọc theo page', async t => {
+  const gaps = createCrmPermissionGaps();
+  const env = setup(t, { action: ['tasks.create'], respond: APPLIED, permissionGaps: gaps });
+  assert.equal(Object.hasOwn(await env.call('crm_action_list', {}), 'notPermitted'), false, 'chưa ghi nhận');
+  gaps.observe('c'.repeat(64), [PROBE_KEY]);
+  assert.equal(Object.hasOwn(await env.call('crm_action_list', {}), 'notPermitted'), false, 'ghi nhận của ảnh chụp khác không áp');
+  gaps.observe('b'.repeat(64), [PROBE_KEY, 'tasks.create']);
+  const listing = await env.call('crm_action_list', {});
+  assert.deepEqual(listing.items.map(item => item.action), ['task.create'], 'thao tác làm được vẫn ở items');
+  assert.deepEqual(listing.notPermitted, [{ action: 'probe.note', title: PROBE_NOTE.title, reason: 'forbidden' },
+    { action: 'probe.confirm', title: PROBE_CONFIRM.title, reason: 'forbidden' }]);
+  assert.equal(Object.hasOwn(await env.call('crm_action_list', { page: 'task' }), 'notPermitted'), false, 'lọc theo page như items');
+  assert.deepEqual(env.requests, [], 'mục lục không gọi CRM');
+});
+
 test('thao tác có trong danh mục nhưng kết nối thiếu khoá của nó ⇒ action_rejected action_disabled (lỗi thật), không gọi CRM', async t => {
   const env = setup(t, { action: ['tasks.create'], respond: APPLIED });
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),

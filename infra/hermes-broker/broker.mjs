@@ -122,18 +122,39 @@ export const ACTION_WEB_LINK = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,299}$/;
 /** Số thứ tự khoản trong lô (1–20) mà SQL báo kèm lý do; câu tới mô hình = "Khoản N: " + câu tĩnh của lý do. */
 export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && value <= 20;
 export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
+// Lượt 14 Hoá đơn (nghiệm thu C3c): dữ kiện SQL kèm lý do từ chối, danh sách ĐÓNG theo mã, mỗi trường một khuôn (không chuỗi tự do):
+// tháng đã chốt (YYYY-MM), số đã thu / tổng sau điều chỉnh (chuỗi chữ số VND). Câu tới mô hình = câu tĩnh + câu ghép từ dữ kiện.
+const FACT_MONTH = /^20\d{2}-(0[1-9]|1[0-2])$/, FACT_VND = /^(0|[1-9]\d{0,13})$/;
+const vndFact = value => `${value.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+const ACTION_REJECT_FACTS = Object.freeze({
+  period_closed: { required: ['month'], test: { month: FACT_MONTH }, text: f => ` Tháng đã chốt: ${f.month.slice(5)}/${f.month.slice(0, 4)}.` },
+  adjust_below_collected: { required: ['collected'], optional: ['totalAfter'], test: { collected: FACT_VND, totalAfter: FACT_VND },
+    text: f => ` Đã thu ${vndFact(f.collected)}${f.totalAfter === undefined ? '' : `; tổng sau điều chỉnh ${vndFact(f.totalAfter)}`}.` },
+});
+/** Dữ kiện hợp khuôn của mã (bản chép đông cứng) hoặc undefined. */
+export function actionFacts(code, value) {
+  const spec = Object.hasOwn(ACTION_REJECT_FACTS, code) ? ACTION_REJECT_FACTS[code] : null;
+  if (spec === null || value === null || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
+  const keys = Object.keys(value);
+  if (!spec.required.every(key => keys.includes(key)) || !keys.every(key => Object.hasOwn(spec.test, key) && typeof value[key] === 'string' &&
+      spec.test[key].test(value[key]))) return undefined;
+  return Object.freeze({ ...value });
+}
+export const rejectedDetail = (code, item, facts) => itemDetail(item, ACTION_REASONS[code].text) +
+  (facts === undefined ? '' : ACTION_REJECT_FACTS[code].text(facts));
 
 /** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. Phần kèm theo, nhận theo kiểu:
  * số = khoản số mấy của lô (Thu chi Mốc 4, 1–20); chuỗi = link (CV12, Công việc Mốc 3): đường dẫn web tới đúng đối tượng để người
- * dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot). Sai khuôn ⇒ bỏ. */
+ * dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot); object = dữ kiện của mã (lượt 14 Hoá đơn, actionFacts). Sai khuôn ⇒ bỏ. */
 export function actionRejected(code, ...extras) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
   for (const extra of extras) {
     if (actionItem(extra)) error.item = extra;
     else if (typeof extra === 'string' && ACTION_WEB_LINK.test(extra)) error.link = extra;
+    else if (actionFacts(error.reason, extra) !== undefined) error.facts = actionFacts(error.reason, extra);
   }
-  error.detail = itemDetail(error.item, ACTION_REASONS[error.reason].text);
+  error.detail = rejectedDetail(error.reason, error.item, error.facts);
   return error;
 }
 

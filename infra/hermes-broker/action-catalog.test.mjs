@@ -106,6 +106,16 @@ test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ
   assert.deepEqual([param.list(param.bool(), { max: 60, ceiling: 60 }).max, param.list(param.bool(), { max: 20 }).max], [60, 20]);
   assert.equal(param.name('category').hint, 'tên hạng mục như người dùng nói');
   assert.equal(param.name('cashbook').hint, 'tên sổ quỹ như người dùng nói');
+  // Lượt 14: câu gợi ý riêng (≤ 160 ký tự, không ký tự điều khiển) và tên phụ của tham số tên (không trùng tham số / tên phụ khác).
+  assert.equal(param.int(0, 9, { hint: 'chỉ số công tơ' }).hint, 'chỉ số công tơ');
+  for (const bad of [() => param.text(1, 2, { hint: 'x'.repeat(161) }), () => param.vnd({ hint: '' }), () => param.name('room', { hint: 'a\nb' }),
+    () => param.name('room', { alias: 'bad-alias' }), () => param.name('room', { alias: 7 })]) assert.throws(bad, /invalid_action_catalog/);
+  const aliased = { id: 'probe.alias', page: 'probe', key: PROBE_KEY, class: 'money', rpc: 'hermes_action_probe_v1', title: 'Tên phụ' };
+  assert.throws(() => defineAction({ ...aliased, params: { bookName: param.name('cashbook', { alias: 'book' }), book: param.text(1, 5) } }), /invalid_action_catalog/);
+  assert.throws(() => defineAction({ ...aliased, params: { a: param.name('cashbook', { alias: 'book' }), b: param.name('room', { alias: 'book' }) } }), /invalid_action_catalog/);
+  const withAlias = defineAction({ ...aliased, params: { bookName: param.name('cashbook', { optional: true, alias: 'book' }) } });
+  assert.deepEqual([validateActionParams(withAlias, { book: 'HKD' }).value, validateActionParams(withAlias, { book_name: 'HKD' }).value], [{ bookName: 'HKD' }, { bookName: 'HKD' }]);
+  assert.equal(validateActionParams(withAlias, { book: 'A', bookName: 'B' }).ok, false);
   assert.deepEqual(validateActionParams(batch, { items: [{ building_name: ' A ', amount: '350000' }, { buildingName: 'B', amount: 1, note: '' }] }),
     { ok: true, value: { items: [{ buildingName: 'A', amount: 350_000 }, { buildingName: 'B', amount: 1 }] } });
   assert.deepEqual(validateActionParams(batch, { items: [{ buildingName: 'A', amount: 1 }], codes: [' PC2610001 '] }).value.codes, ['PC2610001']);

@@ -101,6 +101,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql',
   statementSha256:'860a465d4723e85e91f379c566dafc8358ffd4408f78ec194a6c6e65e5e54358',
  },
+ // Hoá đơn lượt 14: vỏ invoice.* dựng lại từ vỏ lượt 8 — tra cứu + bước ghi thu tiền v3, bước ghi sửa/huỷ/khôi phục v2.
+ {
+  name:'public.hermes_invoice_action_v1',
+  sourcePath:'supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql',
+  statementSha256:'3623819da96f61c281236c52c4dfaa594ce7ad73db00c031737c4e64f0f903ae',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

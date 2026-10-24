@@ -26,6 +26,12 @@ const RUNTIME_PORT = `DO $port$ BEGIN
   IF to_regprocedure('public.is_overdue(public.invoices)') IS NULL THEN
     CREATE FUNCTION public.is_overdue(public.invoices) RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';
   END IF;
+  -- Hoá đơn lượt 14 (20261024185815): hàm đọc thu theo hình thức đọc view dòng thu đang hiệu lực; gói khác nhận view rỗng.
+  IF to_regclass('public.active_payment_receipts') IS NULL THEN
+    CREATE VIEW public.active_payment_receipts AS SELECT NULL::uuid AS id,NULL::uuid AS organization_id,NULL::uuid AS invoice_id,NULL::text AS payment_method,
+      NULL::date AS payment_date,0::numeric AS collected_amount WHERE false;
+    GRANT SELECT ON public.active_payment_receipts TO authenticated;
+  END IF;
 END $port$;`;
 
 /** packages: gói đợt 2 cần nạp ('a'..'d','z'); before(db): trước migration đợt 2 (bảng mà hàm LANGUAGE sql

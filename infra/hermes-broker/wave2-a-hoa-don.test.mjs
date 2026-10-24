@@ -118,6 +118,28 @@ test('collection_by_method (c): đã thu theo NGÀY THU tách TM/TK như trang T
   assert.deepEqual((await direct(env, 'collection_by_method', { fromDate: '2026-10-16', toDate: '2026-10-16' })).summary.total, '2000000', 'hôm nay');
 }));
 
+// Lượt 14 (nghiệm thu C3c: "tổng thu tháng này theo hình thức" thiếu TM, cộng cả cấn trừ): hàm đọc thay ở file dải gói A — tiền = số GIỮ LẠI
+// collected_amount của public.active_payment_receipts (áp vào hoá đơn + tiền dư khách để lại, trừ tiền thối; nguồn thẻ Đã thu / TM / TK / TT /
+// Cấn trừ của trang Hoá đơn), vẫn theo NGÀY THU; cấn trừ CT có số giữ lại 0. View ở đây tối giản trên payments (view thật đo ở tầng 2).
+const L14_PATH = 'supabase/migrations/20261024185815_hermes_w2a_invoice_collection_retained_v1.sql';
+test('lượt 14 collection_by_method: số giữ lại gồm tiền dư khách để lại, cấn trừ không cộng vào tổng; đã hoàn tác vẫn bỏ', () => inCase(async env => {
+  const l14 = readFileSync(L14_PATH, 'utf8').replaceAll('\r\n', '\n');
+  const fn = l14.match(/CREATE OR REPLACE FUNCTION public\.invoice_collection_by_method_v1\([\s\S]*?\$fn\$;/);
+  assert.ok(fn, 'hàm đọc trong migration lượt 14');
+  assert.doesNotMatch(l14.replace(/--[^\n]*/g, ''), /hermes_|\bDROP\b|\bGRANT\b|\bREVOKE\b|INSERT |UPDATE |DELETE /i, 'file dùng chung: không hàm trợ lý, không đổi quyền, không ghi');
+  // Fixture gói A nạp mọi file dải A (kể cả file lượt 14) trên view dòng thu tối giản (wave2-a-sql-fixture.mjs): số giữ lại = retained_amount.
+  assert.match((await env.db.query("SELECT prosrc FROM pg_proc WHERE oid='public.invoice_collection_by_method_v1(uuid,uuid[],date,date)'::regprocedure")).rows[0].prosrc,
+    /FROM public.active_payment_receipts p/, 'thân sống là thân lượt 14');
+  await env.db.exec(`    UPDATE public.payments SET retained_amount=1050000 WHERE receipt_number='PT-A1';
+    INSERT INTO public.payments(id,organization_id,invoice_id,receipt_number,amount,payment_method,payment_date,created_at,retained_amount) VALUES
+      ('0a0a0a0a-0000-4000-8000-000000000150','${ORG}','${INV_C_UNPAID}','PT-CT',300000,'CT','2026-10-10','2026-10-10T03:00:00Z',0);`);
+  const value = await direct(env, 'collection_by_method');
+  assert.deepEqual(pick(value.rows, ['method', 'label', 'paymentCount', 'amount']), [['CT', 'Cấn trừ', 1, '0'], ['TK', 'Chuyển khoản', 1, '2000000'],
+    ['TM', 'Tiền mặt', 1, '1050000']]);
+  assert.deepEqual(value.summary, { fromDate: '2026-10-01', toDate: '2026-10-31', total: '3050000', tm: '1050000', tk: '2000000', tt: '0', ct: '0', paymentCount: 3 });
+  assert.equal((await direct(env, 'collection_by_method', { fromDate: '2026-10-06', toDate: '2026-10-06' })).summary.total, '0', 'lần thu đã hoàn tác không tính');
+}));
+
 test('invoice_adjustments (d): chờ kiểm = phiên bản hiện hành PENDING; bản cũ bị thay không kiểm được; lý do theo hồ sơ khách nhìn thấy', () => inCase(async env => {
   const value = await direct(env, 'invoice_adjustments');
   assert.deepEqual(pick(value.rows, ['adjustmentId', 'reviewStatus', 'current', 'delta', 'adjustedBy', 'adjustedDate']), [

@@ -4,6 +4,9 @@ import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
 
 // Ngân sách tools/list khi họ thao tác ghi dùng chung hiện (NEN-CHUNG-THAO-TAC-GHI.md mục 10). Trần chung 64 000 B
@@ -19,6 +22,18 @@ test('danh mục rỗng: ba tool không hiện, tools/list y như không có h�
   const empty = fullGrantBroker(t, undefined, { actions: createActionRuntime({ catalog: createActionCatalog([], { keys: [] }), service }), actionKeys: [PROBE_KEY] });
   const before = (await plain.broker.listTools(plain.token)).tools, after = (await empty.broker.listTools(empty.token)).tools;
   assert.deepEqual(after, before);
+});
+
+// Lượt 14 Hoá đơn: mục notPermitted ({action, title, reason}) của mỗi thao tác nhỏ hơn mục items của chính nó ⇒ kết quả crm_action_list có
+// notPermitted không bao giờ lớn hơn bản đủ quyền của cùng trang; tools/list không đổi (mô tả tool giữ nguyên).
+test('lượt 14: mục notPermitted của mỗi thao tác production nhỏ hơn mục items của nó', () => {
+  const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
+  const items = catalog.listing({ read: [], action: catalog.keys });
+  assert.equal(items.length, catalog.ids.length);
+  for (const item of items) {
+    const entry = { action: item.action, title: item.title, reason: 'forbidden' };
+    assert.ok(Buffer.byteLength(JSON.stringify(entry)) < Buffer.byteLength(JSON.stringify(item)), item.action);
+  }
 });
 
 test('danh mục Thu chi (production): khoá income_expenses.create ⇒ ba tool chung hiện, họ phiếu chi cũ không còn; tools/list ≤ 64 000 B', async t => {

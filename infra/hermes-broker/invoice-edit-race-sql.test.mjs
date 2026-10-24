@@ -24,9 +24,9 @@ const RPC = 'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5:
 const rpcArgs = (action, phase, requestId, params, preview) => [JSON.stringify(binding), action, phase, requestId, JSON.stringify(params),
   preview ? JSON.stringify(preview.resolved) : null, preview?.basis ?? null];
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
-const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_edit_v1\.sql$/.test(n))}`, 'utf8')
+const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_period_closed_reason_order_v1\.sql$/.test(n))}`, 'utf8')
   .replaceAll('\r\n', '\n');
-const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_edit_step_v1\([\s\S]*?\$fn\$;/)[0];
+const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_edit_step_v2\([\s\S]*?\$fn\$;/)[0];
 const INVOICE_NOWAIT = 'SELECT * INTO inv FROM public.invoices i WHERE i.id=v_invoice FOR UPDATE NOWAIT;';
 const CONTRACT_NOWAIT = '(SELECT i.contract_id FROM public.invoices i WHERE i.id=v_invoice)\n    FOR UPDATE NOWAIT;';
 const room = (roomName, extra = {}) => ({ buildingName: 'toa a', roomName, reason: 'Khách báo sai tiền, sửa lại cho đúng', ...extra });
@@ -40,7 +40,7 @@ test('PG17 hai kết nối: bốn hàm ghi web và Hermes trên cùng hoá đơn
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
   t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
-  const { editRun, editApply } = await invoiceSetup(t, { database: db, edit: true, l8: true });
+  const { editRun, editApply } = await invoiceSetup(t, { database: db, edit: true, l14: true });
   const [hermesPid, webPid] = await Promise.all([hermes, web].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   // Kết nối đang chờ khoá; trả các bảng có khoá dòng (tuple) nó đang xếp hàng.
   const blocked = async pid => {
@@ -171,7 +171,7 @@ test('PG17 hai kết nối: bốn hàm ghi web và Hermes trên cùng hoá đơn
         await web.query('ROLLBACK');
       }
     }
-    assert.match((await one("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_edit_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure")).prosrc,
+    assert.match((await one("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_edit_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure")).prosrc,
       /FOR UPDATE NOWAIT;\n  SELECT \* INTO inv/, 'đột biến đã lùi');
   });
 

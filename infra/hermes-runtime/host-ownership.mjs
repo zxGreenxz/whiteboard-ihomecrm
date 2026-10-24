@@ -42,6 +42,7 @@ const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private
   'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
   'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
+  'period_closed',
   // Hoá đơn (Mốc 4, ghi chỉ số).
   'meter_used_by_invoice', 'meter_has_later_reading',
   // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).

@@ -14,7 +14,7 @@
 // Cổng dịch vụ (service) là adapter SQL (Mốc 6): prepareAction(token, request, {signal}) ⇒ biên nhận rỗng đông cứng;
 // finalizeAction(token, receipt, {signal, onDispatch, onRejected}) ⇒ outcome (khuôn kiểm ở dưới).
 import { randomUUID } from 'node:crypto';
-import { BrokerError, actionItem, actionRejected, itemDetail, ACTION_WEB_LINK } from './broker.mjs';
+import { BrokerError, actionFacts, actionItem, actionRejected, itemDetail, ACTION_WEB_LINK } from './broker.mjs';
 import { ACTION_ID, canonicalJson, validateActionParams } from './action-catalog.mjs';
 import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired,
@@ -105,8 +105,15 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       if (!anyUsable(identity.effective)) fail('tool_not_available');
       if (plan.invalid) fail('invalid_request');
       if (plan.tokenInvalid) invalidConfirm('unknown');
-      if (plan.op === 'list') return content({ organizationId: identity.row.organizationId, fetchedAt: new Date(clock()).toISOString(),
-        items: catalog.listing(identity.effective, plan.page).filter(item => alive(item.action)) });
+      if (plan.op === 'list') {
+        // Lượt 14 Hoá đơn (nghiệm thu C3c): thao tác ẩn vì người dùng THIẾU QUYỀN CRM (cùng điều kiện forbidden của crm_action_run) vào
+        // notPermitted gọn, không params ⇒ bot nói "anh/chị chưa có quyền …", khác thao tác chưa có trên bot. Khoá chưa bật ⇒ vẫn không nêu.
+        const notPermitted = catalog.ids.map(catalog.get).filter(action => (plan.page === null || action.page === plan.page) && alive(action.id) &&
+          !usable(identity.effective, action.id) && permissionGaps?.lacks(identity.contextVersion, action.key) === true)
+          .map(action => ({ action: action.id, title: action.title, reason: 'forbidden' }));
+        return content({ organizationId: identity.row.organizationId, fetchedAt: new Date(clock()).toISOString(),
+          items: catalog.listing(identity.effective, plan.page).filter(item => alive(item.action)), ...(notPermitted.length ? { notPermitted } : {}) });
+      }
       if (plan.op === 'status') {
         const receipt = await service.prepareAction(token, Object.freeze({ op: 'status', requestId: plan.requestId }), { signal });
         if (!emptyReceipt(receipt)) fail('backend_unavailable');
@@ -177,14 +184,16 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       if (outcome.kind === 'needs_input') return known(content(needsFromOutcome(plan, outcome)));
       if (outcome.kind === 'rejected') {
         // CV12 (Công việc Mốc 3): từ chối có thể kèm link web tới đúng đối tượng; item: khoản số mấy của lô bị từ chối (Thu chi Mốc 4)
-        // — số nguyên 1–20, không bao giờ chuỗi tự do. Sai khuôn ⇒ khuôn lệch.
-        if (!exact(outcome, ['kind', 'reason'], ['link', 'item'])
+        // — số nguyên 1–20, không bao giờ chuỗi tự do; facts (lượt 14 Hoá đơn): dữ kiện của đúng mã theo khuôn đóng (actionFacts). Sai khuôn
+        // ⇒ khuôn lệch.
+        if (!exact(outcome, ['kind', 'reason'], ['link', 'item', 'facts'])
           || !(outcome.link === undefined || (typeof outcome.link === 'string' && ACTION_WEB_LINK.test(outcome.link)))
-          || !(outcome.item === undefined || actionItem(outcome.item))) fail('backend_unavailable');
+          || !(outcome.item === undefined || actionItem(outcome.item))
+          || !(outcome.facts === undefined || actionFacts(outcome.reason, outcome.facts) !== undefined)) fail('backend_unavailable');
         // Lý do dạng needs_input từ SQL (vd thiếu lý do lúc ghi) vẫn là kết quả thường, không phải lỗi.
         if (ACTION_INPUT_REASONS.includes(outcome.reason) && outcome.reason !== 'name_unresolved') return known(content(needsInput({ action: plan.action, reason: outcome.reason,
           detail: outcome.item === undefined ? undefined : itemDetail(outcome.item, ACTION_REASONS[outcome.reason].text) })));
-        throw rejected(outcome.reason, outcome.item, outcome.link);
+        throw rejected(outcome.reason, outcome.item, outcome.link, outcome.facts);
       }
       if (outcome.kind === 'preview') {
         if (plan.phase === 'apply' || !exact(outcome, ['kind', 'preview', 'basis', 'resolved', 'confirm'], ['warnings']) || !data(outcome.preview) ||

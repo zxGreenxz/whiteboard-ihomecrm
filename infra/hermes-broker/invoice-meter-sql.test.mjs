@@ -11,7 +11,7 @@ import { invoiceSetup, rid, uid, BUILDING, OTHER_BUILDING, ORG, USER, M1, M2, M3
 const code = expected => error => error.code === expected;
 
 test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)', { timeout: 300000 }, async t => {
-  const f = await invoiceSetup(t, { meter: true, l8: true });
+  const f = await invoiceSetup(t, { meter: true, l14: true });
   const { db, call, meterRun, meterApply } = f;
   const writer = (rows, { date = '2026-10-22', replace = false, key = null, building = BUILDING, actor = USER } = {}) => call(
     'SELECT public.record_meter_readings_v2($1::uuid,$2::date,$3::jsonb,$4,$5) result', [building, date, JSON.stringify(rows), replace, key], { actor });

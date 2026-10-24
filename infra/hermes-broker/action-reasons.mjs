@@ -112,6 +112,8 @@ function invoiceReasons() {
     // Lượt 8 (nghiệm thu 24/10): toà ĐÃ cài sổ nhận mà người hỏi không giữ/biết sổ nào — luật giữ sổ của hàm thu web, không phải thiếu cài đặt.
     receiving_book_not_held: reason('rejected', 'never', 'Anh/chị chưa được giao (giữ hoặc biết) sổ nhận chuyển khoản / POS nào của toà này nên chưa ghi thu được; nhờ chủ giao sổ, hoặc để người giữ sổ ghi.'),
     reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
+    // Lượt 14 (nghiệm thu C3c): ngày thu rơi vào tháng toà đã chốt lợi nhuận (luật trigger phiếu của web) — kiểm TRƯỚC khi tìm hoá đơn kỳ sau.
+    period_closed: reason('rejected', 'never', 'Ngày thu thuộc tháng toà đã chốt lợi nhuận: không ghi thu với ngày đó, không tự đổi ngày; báo người dùng (chủ mở khoá tháng ở tab Chốt LN, hoặc nói ngày khác).'),
     // Mốc 4 — ghi chỉ số: bốn mã hỏi lại người dùng, hai mã chỉ đường web.
     meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),
     meter_ambiguous: reason('needs_input', 'fix', 'Phòng có nhiều công tơ cùng loại; hỏi mã công tơ.'),

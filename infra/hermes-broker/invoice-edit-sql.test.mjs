@@ -14,7 +14,7 @@ const md5 = text => createHash('md5').update(text.replaceAll('\r', ''), 'utf8').
 const reason = 'Khách báo sai tiền phòng, giảm lại';
 
 test('hàm dựng dòng điều chỉnh dùng chung (web + trợ lý): luật dòng giữ nguyên, khoá dòng, thao tác, chặn nợ cũ/thanh lý', { timeout: 300000 }, async t => {
-  const { db, call } = await invoiceSetup(t, { edit: true, l8: true });
+  const { db, call } = await invoiceSetup(t, { edit: true, l14: true });
   const build = (invoice, ops = {}) => call('SELECT public.invoice_adjustment_build_v1($1::uuid,$2::jsonb) result', [invoice, JSON.stringify(ops)]);
   const item = (b, id) => b.before.items.find(i => i.id === id);
 
@@ -75,7 +75,7 @@ test('hàm dựng dòng điều chỉnh dùng chung (web + trợ lý): luật d�
 });
 
 test('invoice.adjust: chạy thử adjust_invoice_v2, ghi, phát lại, khớp dòng theo mô tả, dòng khoá, lý do lỗi của hàm ghi', { timeout: 300000 }, async t => {
-  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l8: true });
+  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l14: true });
   const adjust = (extra = {}) => ({ buildingName: 'toa a', roomName: 'p101', reason, ...extra });
   const run = (phase, requestId, params, extra) => editRun('invoice.adjust', phase, requestId, params, extra);
   const state = async (invoice = INV_A) => (await db.query(`SELECT i.total_amount::bigint::text total,i.discount_amount::bigint::text discount,i.adjustment_revision::int rev,
@@ -161,6 +161,27 @@ test('invoice.adjust: chạy thử adjust_invoice_v2, ghi, phát lại, khớp d
     await db.query('UPDATE public.fixture_edit SET rejected_message=null,reject_state=null');
   });
 
+  // Lượt 14 (nghiệm thu C3c: giảm 300k hoá đơn đã thu đủ, bot hỏi lý do trước nên không thấy chặn): chưa có lý do ⇒ kiểm cứng + chạy thử hàm ghi
+  // TRƯỚC (lý do tạm, khối con lùi); tổng mới < đã thu ⇒ adjust_below_collected kèm số đã thu + tổng sau; qua hết mới reason_required.
+  await t.test('lượt 14: thiếu lý do — tổng mới < đã thu (kèm facts), dòng khoá, nợ đã kéo báo trước; qua hết ⇒ reason_required; không dấu vết', async () => {
+    const noReason = extra => { const params = adjust(extra); delete params.reason; return params; };
+    const before = await state(INV_C);
+    const below = await run('preview', rid(108), noReason({ roomName: 'P103', discount: 100000 }));
+    // Tổng sau tính lại từ DÒNG như hàm ghi (fixture INV_C chỉ có dòng điện 175.000 dù tổng lưu 1.500.000): 175.000 − 100.000 = 75.000.
+    assert.deepEqual(below, { kind: 'rejected', reason: 'adjust_below_collected', facts: { collected: '1500000', totalAfter: '75000' } });
+    assert.deepEqual(await state(INV_C), before, 'chạy thử với lý do tạm không để lại điều chỉnh hay biên nhận');
+    await reject(noReason({ setItems: [{ match: 'tiền điện', amount: 1000 }] }), 'adjust_meter_line_web_only');
+    await reject(noReason({ roomName: 'P104', month: '2026-09', discount: 10000 }), 'adjust_debt_carried');
+    await reject(noReason({ roomName: 'P102', discount: 1000 }), 'reason_required');
+    await reject(adjust({ roomName: 'P102', discount: 1000, reason: 'ngắn' }), 'reason_required');
+    // Lượt 2 thiếu lý do (không thể có bản xem trước cùng params) ⇒ reason_required ngay, không chạm hàm ghi.
+    const preview = await run('preview', rid(109), adjust({ roomName: 'P102', discount: 1000 }));
+    assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+    const apply = await editApply('invoice.adjust', rid(109), noReason({ roomName: 'P102', discount: 1000 }), preview);
+    assert.deepEqual([apply.kind, apply.reason], ['rejected', 'reason_required']);
+    assert.equal((await db.query('SELECT count(*)::int n FROM app_private.hermes_action_receipts WHERE request_id=$1', [rid(109)])).rows[0].n, 0);
+  });
+
   await t.test('quyền = biểu thức của hàm ghi ngay ở bản xem trước (guard cho, hàm ghi không): not_allowed; ngoài phạm vi guard / phòng sai ⇒ hỏi lại', async () => {
     const outside = await run('preview', rid(107), { buildingName: 'toa b', roomName: 'p201', reason, discount: 1000 });
     assert.deepEqual([outside.kind, outside.field, outside.why], ['needs_input', 'building', 'outside_scope']);
@@ -172,7 +193,7 @@ test('invoice.adjust: chạy thử adjust_invoice_v2, ghi, phát lại, khớp d
 });
 
 test('invoice.adjustment_check: xác nhận điều chỉnh do người khác làm, không tự kiểm (HDN6), không có gì để kiểm', { timeout: 300000 }, async t => {
-  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l8: true });
+  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l14: true });
   const run = (phase, requestId, params, extra) => editRun('invoice.adjustment_check', phase, requestId, params, extra);
   const check = (room = 'p107', extra = {}) => ({ buildingName: 'toa a', roomName: room, ...extra });
   const row = async (id = ADJ_P) => (await db.query('SELECT review_status s,checked_by,(SELECT adjustment_review_status FROM public.invoices WHERE id=a.invoice_id) inv FROM public.invoice_adjustments a WHERE id=$1', [id])).rows[0];
@@ -213,7 +234,7 @@ test('invoice.adjustment_check: xác nhận điều chỉnh do người khác l�
 });
 
 test('invoice.cancel / invoice.restore: luật hàm ghi web, tiền dư đã cấn, nợ cũ đang gánh, trùng kỳ khi khôi phục', { timeout: 300000 }, async t => {
-  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l8: true });
+  const { db, editRun, editApply } = await invoiceSetup(t, { edit: true, l14: true });
   const cancel = (room, extra = {}) => ({ buildingName: 'toa a', roomName: room, reason: 'Lập nhầm hoá đơn, sẽ lập lại', ...extra });
   const status = async id => (await db.query('SELECT status FROM public.invoices WHERE id=$1', [id])).rows[0].status;
   const reject = async (action, params, expected) => { const r = await editRun(action, 'preview', rid(299), params);
@@ -250,6 +271,11 @@ test('invoice.cancel / invoice.restore: luật hàm ghi web, tiền dư đã c�
     await reject('invoice.cancel', cancel('p101'), 'cancel_has_payment');
     await db.query('UPDATE public.fixture_edit SET reject_action=null');
     await reject('invoice.cancel', cancel('p101', { reason: 'ngắn' }), 'reason_required');
+    // Lượt 14: chưa có lý do ⇒ luật hàm ghi trước (đã thu, quá hạn), qua hết mới reason_required.
+    const bare = room => { const params = cancel(room); delete params.reason; return params; };
+    await reject('invoice.cancel', bare('p103'), 'cancel_has_payment');
+    await reject('invoice.cancel', { ...bare('p104'), month: '2026-09' }, 'cancel_overdue_web_only');
+    await reject('invoice.cancel', bare('p101'), 'reason_required');
   });
 
   await t.test('khôi phục: hạn đã qua ⇒ cảnh báo, tiền dư cấn lại; trùng kỳ cùng HĐ ⇒ restore_conflict; đang hiệu lực ⇒ invoice_not_cancelled; thiếu quyền', async () => {
@@ -263,6 +289,11 @@ test('invoice.cancel / invoice.restore: luật hàm ghi web, tiền dư đã c�
     assert.equal((await db.query('SELECT count(*)::int n FROM public.customer_credit_applications WHERE invoice_id=$1 AND restored_at IS NOT NULL', [INV_X])).rows[0].n, 1);
     await reject('invoice.restore', cancel('p107'), 'restore_conflict');
     await reject('invoice.restore', cancel('p101'), 'invoice_not_cancelled');
+    // Lượt 14: chưa có lý do ⇒ trùng kỳ / đang hiệu lực báo trước, qua hết (P102 đã huỷ ở ca đầu) mới reason_required.
+    const bare = room => { const params = cancel(room); delete params.reason; return params; };
+    await reject('invoice.restore', bare('p107'), 'restore_conflict');
+    await reject('invoice.restore', bare('p101'), 'invoice_not_cancelled');
+    await reject('invoice.restore', bare('p102'), 'reason_required');
     await db.query("DELETE FROM public.fixture_invoice_acl WHERE permission='invoices.cancel'");
     await reject('invoice.restore', cancel('p107'), 'not_allowed');
     await reject('invoice.cancel', cancel('p101'), 'not_allowed');
@@ -270,7 +301,7 @@ test('invoice.cancel / invoice.restore: luật hàm ghi web, tiền dư đã c�
 });
 
 test('phạm vi bản đã giải, basis, ACL và nguồn thân production của fixture', { timeout: 300000 }, async t => {
-  const { db, editRun } = await invoiceSetup(t, { edit: true, l8: true });
+  const { db, editRun } = await invoiceSetup(t, { edit: true, l14: true });
   const params = { buildingName: 'toa a', roomName: 'p101', reason, discount: 1000 };
   const preview = await editRun('invoice.adjust', 'preview', rid(140), params);
   assert.equal(preview.kind, 'preview', JSON.stringify(preview));

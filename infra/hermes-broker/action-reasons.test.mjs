@@ -40,20 +40,20 @@ test('danh sách đóng: 22 mã chung + khối riêng từng trang, mỗi mã m�
     'recurrence_quota', 'recurrence_unchanged']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.task.filter(code => ACTION_REASONS[code].form === 'needs_input'), ['batch_too_large', 'recurrence_unchanged']);
   // Hoá đơn (HOA-DON-THAO-TAC-GHI.md mục 5): Mốc 3 thu tiền + Mốc 4 ghi chỉ số + Mốc 5 điều chỉnh/kiểm tra/huỷ/khôi phục — 9 mã needs_input
-  // + 18 mã rejected (lượt 8: receiving_book_not_held tách khỏi receiving_book_missing).
+  // + 19 mã rejected (lượt 8: receiving_book_not_held tách khỏi receiving_book_missing; lượt 14: period_closed — ngày thu ở tháng đã chốt LN).
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'needs_input'),
     ['nothing_to_collect', 'debt_carried', 'overpay_needs_choice', 'meter_not_found', 'meter_ambiguous', 'meter_duplicate_month', 'meter_lower_than_previous',
       'adjust_no_change', 'nothing_to_check']);
   assert.deepEqual(ACTION_PAGE_REASON_BLOCKS.invoice.filter(code => ACTION_REASONS[code].form === 'rejected'),
     ['cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
-      'meter_used_by_invoice', 'meter_has_later_reading', 'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried',
+      'period_closed', 'meter_used_by_invoice', 'meter_has_later_reading', 'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried',
       'adjust_below_collected', 'adjustment_self_check_web_only', 'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict',
       'invoice_already_cancelled', 'invoice_not_cancelled']);
-  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 22 chung + 2 Thu chi + 15 Hợp đồng + 7 Công việc + 27 Hoá đơn.
+  // Đúng bốn khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc, Hoá đơn); tổng = 22 chung + 2 Thu chi + 15 Hợp đồng + 7 Công việc + 28 Hoá đơn.
   assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task', 'invoice']);
-  assert.equal(ACTION_REASON_CODES.length, 22 + 2 + 15 + 7 + 27);
+  assert.equal(ACTION_REASON_CODES.length, 22 + 2 + 15 + 7 + 28);
   assert.equal(ACTION_INPUT_REASONS.length, 8 + 7 + 2 + 9);
-  assert.equal(ACTION_REJECT_REASONS.length, 14 + 2 + 8 + 5 + 18);
+  assert.equal(ACTION_REJECT_REASONS.length, 14 + 2 + 8 + 5 + 19);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {
@@ -121,6 +121,19 @@ test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ
     ['3', `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`], [undefined, `Khoản 3: ${ACTION_REASONS.cashbook_not_held.text}`]]) {
     problem = Object.assign(forged('cashbook_not_held', detail), item === undefined ? {} : { item });
     assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(item));
+  }
+  // Lượt 14 Hoá đơn: dữ kiện đúng khuôn của mã ⇒ câu tĩnh + câu ghép (facts không tự đi ra ngoài); facts giả / câu không khớp facts ⇒ bỏ hết.
+  problem = actionRejected('period_closed', { month: '2026-08' });
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'period_closed', detail: `${ACTION_REASONS.period_closed.text} Tháng đã chốt: 08/2026.` });
+  problem = actionRejected('adjust_below_collected', { collected: '7300000', totalAfter: '7000000' });
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'adjust_below_collected',
+    detail: `${ACTION_REASONS.adjust_below_collected.text} Đã thu 7.300.000đ; tổng sau điều chỉnh 7.000.000đ.` });
+  assert.equal(Object.hasOwn(actionRejected('period_locked', { month: '2026-08' }), 'facts'), false, 'mã không khai facts');
+  assert.equal(actionRejected('period_closed', { month: 'tok-PRIVATE' }).detail, ACTION_REASONS.period_closed.text);
+  for (const [facts, detail] of [[{ month: 'tok-PRIVATE' }, `${ACTION_REASONS.period_closed.text} Tháng đã chốt: tok-PRIVATE.`],
+    [{ month: '2026-08' }, `${ACTION_REASONS.period_closed.text} Tháng đã chốt: 09/2026.`], [undefined, `${ACTION_REASONS.period_closed.text} Tháng đã chốt: 08/2026.`]]) {
+    problem = Object.assign(forged('period_closed', detail), facts === undefined ? {} : { facts });
+    assert.deepEqual(await invoke(), { error: 'action_rejected' }, JSON.stringify(facts));
   }
   // Câu tĩnh của action_rejected không đi theo mã khác.
   problem = Object.assign(new BrokerError('forbidden'), { reason: 'not_allowed', detail: ACTION_REASONS.not_allowed.text });

@@ -119,7 +119,7 @@ export const W2A_REPORTS = Object.freeze({
     summary: { fromDate: date, toDate: date, invoiceCount: count, lateCount: count, openLateCount: count, avgDaysLate: amount, rooms: count,
       lateRooms: count, topLateRooms: nullable(longText(600)) } }),
   collection_by_method: w2Report({ permission: 'thu_tien.view', source: 'crm.invoice_collection_by_method_v1', scope: 'rows',
-    title: 'Đã thu theo hình thức (TM tiền mặt, TK chuyển khoản, TT thanh toán, CT cấn trừ) theo NGÀY THU, số áp vào hoá đơn như trang Thu tiền (khác thẻ thống kê trang Hoá đơn): month = cả tháng, hoặc fromDate–toDate; mặc định tháng này.',
+    title: 'Đã thu theo hình thức (TM tiền mặt, TK chuyển khoản, TT thanh toán) theo NGÀY THU: số giữ lại = áp vào hoá đơn + tiền dư khách để lại, trừ tiền thối (nguồn thẻ Đã thu trang Hoá đơn, thẻ lọc theo kỳ); CT cấn trừ không phải tiền thu (= 0). month = cả tháng, hoặc fromDate–toDate; mặc định tháng này.',
     params: ['month', 'buildingId', 'fromDate', 'toDate'], scopeKeys: CUSTOMER, private: true,
     fields: { buildingId: id, buildingName, method: code, label: longText(40), paymentCount: count, invoiceCount: count, amount },
     summary: { fromDate: date, toDate: date, total: amount, tm: amount, tk: amount, tt: amount, ct: amount, paymentCount: count } }),
