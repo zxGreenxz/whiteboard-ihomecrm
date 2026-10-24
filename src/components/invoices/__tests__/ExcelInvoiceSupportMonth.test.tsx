@@ -22,9 +22,19 @@ it('discards an in-flight Excel load when the user changes billing month', async
   fireEvent.keyDown(screen.getAllByRole('combobox')[0], { key: 'ArrowDown' });
   fireEvent.keyDown(screen.getByRole('option', { name: 'Building' }), { key: 'Enter' });
   fireEvent.click(screen.getByRole('button', { name: 'Tải dữ liệu' }));
-  await waitFor(() => expect(source.load).toHaveBeenCalledWith('b1'));
+  await waitFor(() => expect(source.load).toHaveBeenCalledWith('b1', expect.objectContaining({ month: expect.stringMatching(/^\d{4}-\d{2}$/), readingDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) })));
   fireEvent.change(document.querySelector('input[type="month"]')!, { target: { value: '2026-12' } });
   await act(async () => resolve({ dupRoomNames: [], contracts: [{ id: 'c1', room_id: 'r1', room: { name: 'OLD-MONTH-ROOM' }, rent_price: 1000000, rent_support: { revision: 1, schedule: { version: 2, start_billing_month: '2026-09', segments: [{ month_count: 12, monthly_amount: '300000' }] } } }],
     meterByRoom: new Map(), lastReading: new Map(), creditByContract: new Map(), invoiceCountByContract: new Map(), previousDebtByContract: new Map() }));
   expect(screen.queryByText('OLD-MONTH-ROOM')).toBeNull();
+});
+it('clears already loaded meter endpoints when the billing month changes', async () => {
+ vi.stubGlobal('PointerEvent', MouseEvent);
+ HTMLElement.prototype.scrollIntoView=vi.fn(); HTMLElement.prototype.hasPointerCapture=vi.fn(()=>false); HTMLElement.prototype.releasePointerCapture=vi.fn();
+ source.load.mockResolvedValue({dupRoomNames:[],contracts:[{id:'c1',room_id:'r1',room:{name:'SOURCE-MONTH-ROOM'},rent_price:1000000}],meterByRoom:new Map([['r1','meter-1']]),lastReading:new Map([['meter-1',120]]),creditByContract:new Map(),invoiceCountByContract:new Map(),previousDebtByContract:new Map()});
+ render(<QueryClientProvider client={new QueryClient()}><ExcelInvoiceDialog open onOpenChange={()=>{}} /></QueryClientProvider>);
+ fireEvent.keyDown(screen.getAllByRole('combobox')[0],{key:'ArrowDown'});fireEvent.keyDown(screen.getByRole('option',{name:'Building'}),{key:'Enter'});
+ fireEvent.click(screen.getByRole('button',{name:'Tải dữ liệu'}));await screen.findByText('SOURCE-MONTH-ROOM');
+ fireEvent.change(document.querySelector('input[type="month"]')!,{target:{value:'2027-01'}});
+ expect(screen.queryByText('SOURCE-MONTH-ROOM')).toBeNull();
 });

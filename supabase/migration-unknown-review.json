@@ -874,51 +874,92 @@
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     },
-    "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.job_type_building_like_v1 (mới, INVOKER) + thân mới của app_private.hermes_write_name_resolve_core_v1 (ghim md5 thân 20261021132433: bỏ danh xưng khi khớp người, không nhận loại việc trùng tên toà)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 24/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 24 (lượt 11 + 11b): lỗi 2 + 4, thứ tự áp, ghim chéo"
-        }
+    "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql": {
+      "sha256": "c94769291a2234b0fa7a47045b3d735a6d6b71101ca9756ad56768267e8827d2",
+      "missingObjects": [
+        "table:app_private.meter_capture_profiles",
+        "table:app_private.meter_capture_profile_history",
+        "table:app_private.meter_captures",
+        "table:app_private.meter_capture_jobs",
+        "table:app_private.meter_capture_results"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — hàm dùng chung mới vắng trên production vì migration CHƯA CHẠY. Áp TRƯỚC 20261023185116. Bằng chứng: PGlite task-nghiem-thu-sql (danh xưng — thứ tự khớp sửa ở 11b, loại trùng tên toà, đột biến) + write-name-resolve-sql PG17 (mọi vector dùng chung chạy lại trên thân mới) + tầng 2 TEST chỉ đọc.",
-      "missingObjects": [
-        "function:public.job_type_building_like_v1"
-      ],
-      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu + 11b sửa theo review (24/10/2026)",
-      "sha256": "8db2875d73f2c340324529626e09962c7bef19f6206617e31b5e88ff8fc11763"
+      "lyLe": "Migration mới của chức năng ghi chỉ số bằng QR/ảnh/clip, chưa áp dụng production. Catalog production chưa có các bảng này là đúng trạng thái triển khai. Đã chạy dry-run ROLLBACK trên TEST hzulujxgonszuleqticb bằng apply-reviewed-migration và bộ kiểm PGlite có quyền, receipt, CAS, đối chiếu hóa đơn/thanh lý. Chỉ đưa tính năng vào sử dụng sau lane apply được review, backup và triển khai worker. Hồ sơ này không chứng minh production đã có tính năng.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_profiles"
+        },
+        {
+          "duong_dan": "scripts/__tests__/meter-capture-sql.test.mjs",
+          "trich_doan": "test('billing resolver uses exact contract/period and wrapper atomically links sources, rejects stale values and duplicate retry'"
+        }
+      ]
     },
-    "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql",
-          "trich_doan": "CREATE TABLE app_private.hermes_task_assignee_offers (mới, RLS bật, không cấp vai nào) + thân mới của lõi giải tên và bước chuẩn bị của vỏ hermes_task_action_v1 (ghim md5 hai thân 20261023042436)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng như dưới — sinh 24/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": "docs/plans/hermes-crm/CONG-VIEC-THAO-TAC-GHI.md",
-          "trich_doan": "mục 24 (lượt 11 + 11b): lỗi 1 + 2 + 3, thứ tự áp, ghim chéo"
-        }
+    "supabase/migrations/20261023142638_meter_capture_sol_review.sql": {
+      "sha256": "9776dc5f420b1b6baef66459ed58e71a3e7bfdb13e3d67ab8c7063970ec50434",
+      "missingObjects": [
+        "function:app_private.meter_capture_previous_value_v1",
+        "function:app_private.meter_capture_evidence_frames_v1",
+        "function:app_private.meter_capture_json_v1",
+        "function:public.meter_capture_v1"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (sửa theo nghiệm thu bot thật trên TEST), chưa đi qua lane apply — bảng lời mời chọn người nhận vắng trên production vì migration CHƯA CHẠY. Áp SAU 20261023185114. Bằng chứng: PGlite task-nghiem-thu-sql (lựa chọn Q31 = đồng ý, gợi ý loại, tìm việc kèm phòng / toà, 13 đột biến — mỗi rào lời mời một đột biến) + task-nghiem-thu-race-pg PG17 (hai lượt song song ghi một việc) + tầng 2 TEST chỉ đọc.",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_previous_value_v1(p_id uuid)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql": {
+      "sha256": "8bb763093eccb416e2941ab36197642aa8460e2ce5f874ccfdeedef2b79d2547",
       "missingObjects": [
-        "table:app_private.hermes_task_assignee_offers"
+        "table:app_private.meter_capture_invoice_facts",
+        "function:app_private.meter_capture_invoice_scope_v1",
+        "function:app_private.meter_capture_invoice_line_v1",
+        "function:app_private.meter_capture_snapshot_invoice_link_v1",
+        "function:app_private.meter_capture_assert_invoice_facts_v1"
       ],
-      "raSoatBoi": "Claude Code — Hermes trang Công việc, lượt 11 sửa theo nghiệm thu + 11b sửa theo review (24/10/2026)",
-      "sha256": "1ec64aa5fb4873e460879840557b051d6f551306940996febfbe4f1cf18c5074"
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_invoice_facts ("
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
+    },
+    "supabase/migrations/20261023150206_meter_capture_correction_chain.sql": {
+      "sha256": "349953548bb4aadeb816bdd0ecbcbf576149a5170307b3a9ab1f7756bd808e91",
+      "missingObjects": [
+        "function:app_private.meter_capture_is_retirement_v1",
+        "function:app_private.meter_capture_approved_writer_v1",
+        "function:app_private.meter_capture_reading_guard_v1",
+        "function:app_private.meter_capture_replacement_v1",
+        "function:app_private.meter_capture_previous_value_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration của luồng đồng hồ QR/ảnh/clip chưa áp dụng production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Các file chạy sau 20261022144130_meter_capture_evidence_v1.sql theo thứ tự timestamp. Kiểm logic dùng PGlite và giao diện; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_is_retirement_v1(p_old public.meter_readings,p_new public.meter_readings)"
+        },
+        {
+          "duong_dan": "infra/meter-capture-worker/README.md",
+          "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
+        }
+      ]
     }
   }
 }
