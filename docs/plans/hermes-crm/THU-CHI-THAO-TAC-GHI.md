@@ -1149,3 +1149,26 @@ Nghiệm thu lượt cuối C3d trên TEST (connector `66df91e7`, SOUL v4.23): v
 2. Connector KHÔNG cần lên trước: khuôn đọc không đổi; `web_only` + link đã là lý do của `expense.create` (lượt 13).
 3. Provenance: `193001` tạo hàm mới ⇒ `unknown` (hồ sơ "chưa áp"); `193002` thay hàm chưa có trên production (do `094809` chưa áp) ⇒ `unknown`.
 4. Ghim chéo sau khi áp: chạy lại `20261021185540` ngã `hermes_receivables_effective_requires_reviewed_v2: af47eb16c1227abfb46c7f16ba6476f5` (ngoài diff ⇒ CI không đỏ). `193002` không làm file nào mất khả năng chạy lại.
+
+## 27. Lượt 16 — requestId theo token, mã phiếu trùng giữa các toà (24/10/2026)
+
+Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
+
+### 27.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc | Sửa |
+| --- | --- | --- |
+| Lượt xác nhận gửi `requestId` thiếu một ký tự (35/36) kèm `confirmToken` đúng ⇒ `invalid_request`; `crm_action_status` hỏng theo vì bot dùng lại mã sai | Phong bì kiểm `requestId` theo khuôn UUID TRƯỚC khi xét token ⇒ lỗi chung, không nói phần nào sai; khoá của token gồm `requestId` mô hình gửi | Connector (khung chung `crm_action_*`, mọi trang): lượt có `confirmToken` lấy `requestId` theo bản ghi của token — khoá vẫn là [kết nối, thao tác, params chuẩn hoá, requestId lúc cấp] nên token của kết nối / thao tác / params khác vẫn bị từ chối; `requestId` mô hình gửi thiếu / sai khuôn / khác / bỏ trống ⇒ dùng của token, kết quả trả `requestId` đó, dòng audit prepared ghi `requestIdFix` {action, requestId, supplied: missing / malformed / different} (không ghi chuỗi mô hình gửi). `requestId` sai khuôn ở lượt không có token (xem trước, `crm_action_status`) ⇒ `invalid_request` kèm câu tĩnh "requestId không đúng khuôn UUID (N ký tự, cần 36) — chép NGUYÊN VĂN …" |
+| Mã phiếu dùng lại giữa các toà (TEST: PC2609115 ở 1392QT và 950NK; PC2609114 ở 102LVT và 950NK): người dùng đã nêu toà nhưng `expense.approve` vẫn hỏi chọn phiếu | Lõi giải chỉ lấy gợi ý toà từ chính chuỗi mã | `20261024210500` (lõi giải dựng từ thân `120211`): `expense.approve` / `note` / `edit` / `cancel` đọc `buildingName` tuỳ chọn = toà của phiếu (approve: một toà cho cả lô; edit: đã có — toà nêu đúng toà của phiếu ⇒ không chuyển toà). Chọn phiếu cùng mã của toà đó (khớp đúng tên đã bỏ dấu, bỏ "toà"/"nhà"; không có thì tên chứa chuỗi ≥ 3 ký tự), xét trên mọi phiếu thấy được: phiếu của toà nêu chỉ ngoài phạm vi khoá ⇒ `outside_scope` (trước đây mã còn đúng một phiếu trong phạm vi thì lặng lẽ chọn phiếu đó dù người dùng nói toà khác); không khớp toà nào ⇒ như cũ. Connector khai `buildingName` cho approve / note / cancel và nói trong tiêu đề thao tác |
+
+### 27.2 Kiểm
+
+- Connector: `action-runtime.test.mjs` 19/19 (ca lượt 16: chép thiếu / khác / bỏ trống / đúng ⇒ ghi đúng `requestId` của token + `requestIdFix`; `crm_action_status` / xem trước với mã sai khuôn ⇒ `invalid_request` có câu; token của params / thao tác / kết nối khác vẫn bị từ chối; đột biến bỏ lấy theo token ⇒ ca thiếu ký tự đỏ), `action-contract`, `confirm-guard` (khoá dạng hàm), `mcp-http` (chỉ chuyển đúng câu dựng sẵn), `audit-codes` (`requestIdFix` chỉ ở dòng prepared, đúng khuôn).
+- PGlite `expense-write-sql.test.mjs` 28/28: ca lượt 16 (mã ở Toà A + toà ảo: không nêu toà ⇒ hỏi; nêu đúng / bỏ dấu / chứa chuỗi / "toà nhà …" ⇒ đúng phiếu; toà lạ ⇒ hỏi lại đủ; duyệt cả lô một toà; huỷ / sửa đúng phiếu, sửa không chuyển toà; toà nêu chỉ ngoài phạm vi khoá duyệt ⇒ `outside_scope`; đột biến thân `120211` ⇒ hỏi lại và lặng lẽ chọn phiếu Toà A; chạy lại `120211` ngã đúng câu).
+- Tầng 2 TEST — CHỈ đọc thuần (chuỗi nghiệm thu đang chạy; hàm lệnh / hàm ghi khoá dòng công ty kể cả khi ROLLBACK): dựng lại phép lọc của lõi mới bằng một câu SELECT trên hai mã của đề — "1392QT" / "toà 1392QT" ⇒ phiếu 1392QT, "950NK" / "toà nhà 950NK" ⇒ 950NK, "102LVT" / "102" ⇒ 102LVT, toà không có phiếu ⇒ bỏ qua. KHÔNG áp file trên TEST, không gọi lõi giải thật hay lệnh duyệt trên TEST.
+
+### 27.3 Phát hành
+
+1. `20261024210500` áp SAU `20261024120211` (ghim md5 thân lõi giải `fefd5791…` của 120211 = TEST). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
+2. Connector độc lập với SQL: `buildingName` gửi tới SQL cũ thì bị bỏ qua (vẫn hỏi chọn phiếu); phần `requestId` theo token không cần SQL.
+3. Ghim chéo sau khi áp: chạy lại `20261024120211` ngã `hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` — 120211 NẰM TRONG diff của C3 ⇒ thiếu ngoại lệ pinned thì CI main đỏ. Câu lỗi của `210634` / `013109` / `075102` không đổi (không kèm md5).

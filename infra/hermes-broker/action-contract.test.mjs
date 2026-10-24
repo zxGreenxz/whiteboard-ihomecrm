@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { advertisedTool } from './tool-argument-shape.mjs';
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL, ACTION_TOOL_SHAPE, actionEnvelope, actionToolRoute, actionTools, listedActionTools,
-  nameUnresolvedDetail, needsInput, pageActionTool } from './action-contract.mjs';
+  nameUnresolvedDetail, needsInput, pageActionTool, RequestIdShapeError, isRequestIdShapeDetail, requestIdShapeDetail } from './action-contract.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { PROBE_KEY, probeCatalog } from './action-probe-contract.mjs';
 
@@ -69,6 +69,23 @@ test('phong bì đối số: sai kiểu ⇒ TypeError (invalid_request); mã tha
     [{ op: 'run' }, { action: 'probe.note', requestId: 'not-a-uuid' }], [{ op: 'run', page: 'task' }, { action: 'task.create' }], [{ op: 'status' }, {}],
     [{ op: 'status' }, { requestId: RID, x: 1 }], [{ op: 'list' }, { page: 'payroll' }], [{ op: 'nope' }, {}], [{ op: 'run' }, null]])
     assert.throws(() => actionEnvelope(route, args), /invalid_action_envelope/, JSON.stringify(args));
+  // Lượt 16: requestId sai khuôn ⇒ RequestIdShapeError mang số ký tự (không mang chuỗi); lượt xác nhận (confirming) không ném — requestId lấy
+  // theo token — nhưng mọi lỗi phong bì khác vẫn ném.
+  const short = RID.slice(0, -1);
+  assert.throws(() => actionEnvelope({ op: 'run' }, { action: 'probe.note', requestId: short }), error => error instanceof RequestIdShapeError && error.length === 35 &&
+    !String(error.message).includes(short));
+  assert.throws(() => actionEnvelope({ op: 'status' }, { requestId: short }), error => error instanceof RequestIdShapeError && error.length === 35);
+  assert.throws(() => actionEnvelope({ op: 'run' }, { action: 'probe.note', requestId: 7 }), error => error instanceof RequestIdShapeError && error.length === null);
+  assert.deepEqual(actionEnvelope({ op: 'run' }, { action: 'probe.note', requestId: short }, { confirming: true }),
+    { action: 'probe.note', params: undefined, requestId: undefined, requestIdMalformed: true });
+  assert.deepEqual(actionEnvelope({ op: 'run' }, { action: 'probe.note', requestId: RID }, { confirming: true }),
+    { action: 'probe.note', params: undefined, requestId: RID.toLowerCase() });
+  assert.throws(() => actionEnvelope({ op: 'run' }, { action: 'probe.note', extra: 1, requestId: short }, { confirming: true }), /invalid_action_envelope/);
+  assert.equal(requestIdShapeDetail(35).includes(short), false);
+  assert.equal(isRequestIdShapeDetail(requestIdShapeDetail(35)), true);
+  assert.equal(isRequestIdShapeDetail(requestIdShapeDetail(null)), true);
+  for (const bad of [null, '', 'requestId không đúng khuôn UUID (35 ký tự, cần 36)', requestIdShapeDetail(35).replace('35', '3a'), `${requestIdShapeDetail(1)}.`])
+    assert.equal(isRequestIdShapeDetail(bad), false, String(bad));
 });
 
 test('needs_input là kết quả thường có huongDan; detail tên chỉ nêu chuỗi mô hình gửi + ứng viên trong phạm vi quyền', () => {

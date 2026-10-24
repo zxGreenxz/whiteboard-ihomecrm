@@ -100,3 +100,22 @@ test('the real audit sink records the consent sentence only on a tools/call prep
   assert.deepEqual(rows.map(row => row.consent?.text.length), [consent.text.length, 300]);
   assert.deepEqual(rows[0], { ...EVENT, outcome: 'prepared', consent });
 });
+
+// Thu chi lượt 16 (infra/hermes-broker/action-runtime.mjs): lượt xác nhận dùng requestId của token khi requestId mô hình gửi lệch — dòng
+// prepared mang requestIdFix {action, requestId của token, supplied}; chuỗi mô hình gửi không bao giờ vào sổ; chỗ khác / khuôn khác bị từ chối.
+test('the real audit sink records requestIdFix only on a tools/call prepared row, without the supplied string', async t => {
+  const root = await auditRoot(t);
+  const sink = createHostAudit({ directory: root });
+  const fix = { action: 'expense.approve', requestId: '30000000-0000-4000-8000-000000000003', supplied: 'malformed' };
+  await sink.write({ ...EVENT, outcome: 'prepared', requestIdFix: fix });
+  await sink.write({ ...EVENT, outcome: 'prepared', requestIdFix: { ...fix, supplied: 'different' }, consent: { action: fix.action, requestId: fix.requestId, text: 'đồng ý' } });
+  for (const bad of [{ outcome: 'denied', code: 'action_rejected', requestIdFix: fix }, { outcome: 'prepared', operation: 'tools/list', requestIdFix: fix },
+    { outcome: 'prepared', requestIdFix: { ...fix, supplied: '30000000-0000-4000-8000-00000000000' } }, { outcome: 'prepared', requestIdFix: { ...fix, value: 'x' } },
+    { outcome: 'prepared', requestIdFix: { action: fix.action, requestId: fix.requestId } }, { outcome: 'prepared', requestIdFix: { ...fix, requestId: 'short' } },
+    { outcome: 'prepared', requestIdFix: { ...fix, action: 'Expense Approve' } }, { outcome: 'prepared', requestIdFix: 'malformed' }, { outcome: 'prepared', requestIdFix: null }])
+    await assert.rejects(sink.write({ ...EVENT, ...bad }), /host_audit_invalid/, JSON.stringify(bad));
+  await sink.close();
+  const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => row.requestIdFix?.supplied), ['malformed', 'different']);
+  assert.deepEqual(rows[0], { ...EVENT, outcome: 'prepared', requestIdFix: fix });
+});

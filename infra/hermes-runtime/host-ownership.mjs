@@ -160,10 +160,19 @@ const consentEvent = value => {
     !consent.text || [...consent.text].length > 300 || /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(consent.text)) fail('host_audit_invalid');
   return consent;
 };
+// Thu chi lượt 16 (infra/hermes-broker/action-runtime.mjs): lượt xác nhận dùng requestId của token khi requestId mô hình gửi lệch — dòng
+// prepared mang requestIdFix = {action, requestId của token, supplied: different | malformed | missing}; chuỗi mô hình gửi KHÔNG vào sổ.
+const REQUEST_ID_FIXES = new Set(['different', 'malformed', 'missing']);
+const requestIdFixEvent = value => {
+  const fix = data(value, ['action', 'requestId', 'supplied']);
+  if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId) || !REQUEST_ID_FIXES.has(fix.supplied)) fail('host_audit_invalid');
+  return fix;
+};
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent']);
-  if (Object.hasOwn(event, 'consent') && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent', 'requestIdFix']);
+  if ((Object.hasOwn(event, 'consent') || Object.hasOwn(event, 'requestIdFix')) && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
   if (Object.hasOwn(event, 'consent')) event.consent = consentEvent(event.consent);
+  if (Object.hasOwn(event, 'requestIdFix')) event.requestIdFix = requestIdFixEvent(event.requestIdFix);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {

@@ -628,6 +628,10 @@ for (const spec of [
   { name: 'public.hermes_expense_system_flow_v1',
     sourcePath: 'supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql',
     statementSha256: 'ebe046399a8d9cf8acff153d3124ca8082b8c0f2292ac8912c7bdd84fb954234' },
+  // Thu chi lượt 16 (20261024210500): lõi giải dựng lại (buildingName chọn phiếu khi mã trùng giữa các toà) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql',
+    statementSha256: '62c571999d7c75cd3bbaa0d754c137708384183632bfaa3547a524091869b3c6' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

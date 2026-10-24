@@ -67,6 +67,8 @@
 // Thu chi lượt 15 (24/10): the domain reader v2 rebuilt from the 185540 body, taking the connection through a new lock-free DEFINER read
 // helper (the command connection's checks without the org writer lock and FOR SHARE rows) 20261024193001, and the system-flow classifier
 // rebuilt from the 094809 body with the income branch (expense.create of a THU voucher ⇒ web_only /income-expense) 20261024193002.
+// Thu chi lượt 16 (24/10): the expense resolve core rebuilt from the 120211 body — buildingName picks the voucher of that building when a code is
+// reused across buildings, outside_scope when only an out-of-scope building has it — 20261024210500.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -179,7 +181,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_expense_manual_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"94cf6ad0ec05de95e51ee0983f66156057b583ad2239a8d7f6aa8d64239b2a4e","args":"p_voucher uuid"},
   {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"b61b3e5251eb67b3bc4853a45cb765f622aee00e84bb3e1a0c16f69ec1a269ce","args":"p_org uuid,p_params jsonb,p_resolved jsonb,p_key_prefix text"},
-  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"29d989d8b140a9e791a5e3bb57906e8b722fb22c73b3a30d48dabf17cc87b446","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql","sha256":"a648f8c81b793b5feea4ce9677189cf8cbc685abb41fc6fecf617bdf8e311ac5","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"fc2d080200edd5f353392427883a1c34b53d365ff18da088939230424a0e8df5","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_expense_category_pick_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"2baea09a4cbbbedb3953adc3e3613a6cd685795fbbf4f246e770badc7b31906a","args":"p_organization_id uuid,p_category text,p_content text"},
   {"name":"public.hermes_expense_system_flow_v1","sourcePath":"supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql","sha256":"7224814bcf2558ea067032a45329189f0de68916cde09a7fc7b526a71a557b62","args":"p_text text,p_rule_key text DEFAULT NULL"},
@@ -308,7 +310,8 @@ export const FORWARD_SUPERSEDED = [
   {"name":"app_private.hermes_contract_action_step_v1","sourcePath":"supabase/migrations/20261024040002_hermes_contract_return_preview_v1.sql","sha256":"8150bcd90c809cdf54924256bbbf440fcf6d0ac5f3395a7c2bbdf984d05732f9"},
   {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"5d077dfc2f77982a00fab70034b26d5d58431c9b64c17893456c31999d85bc4c"},
   {"name":"public.hermes_domain_read_v2","sourcePath":"supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql","sha256":"c8090c0ba9a7500b052d54ae9cd57c1cd3c5a7366f7ae4ac88a5c83e26466c0e"},
-  {"name":"public.hermes_expense_system_flow_v1","sourcePath":"supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql","sha256":"d658c547184ade36c7e23099eaacd1226a559c674ce30aa496577fa59e97200a"}
+  {"name":"public.hermes_expense_system_flow_v1","sourcePath":"supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql","sha256":"d658c547184ade36c7e23099eaacd1226a559c674ce30aa496577fa59e97200a"},
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"29d989d8b140a9e791a5e3bb57906e8b722fb22c73b3a30d48dabf17cc87b446"}
 ];
 
 export const INHERITED_CRM_ACL = [

@@ -42,6 +42,21 @@ test('token dùng một lần: khớp thì trả payload một lần; trình l�
   assert.equal(guard.size, 0);
 });
 
+test('lượt 16: khoá dạng hàm dựng từ payload của bản ghi chờ — vẫn phải trùng đúng khoá lúc cấp; hàm ném / trả không phải chuỗi ⇒ lệch', () => {
+  const { guard } = store();
+  const key = requestId => confirmBinding(['conn', 'probe.confirm', '{"amount":1}', requestId]);
+  const issued = guard.issue(key('r-1'), { requestId: 'r-1' });
+  assert.deepEqual(guard.redeem(issued.token, payload => key(payload.requestId)), { ok: true, payload: { requestId: 'r-1' }, issuedAt: START });
+  const wrong = guard.issue(key('r-1'), { requestId: 'r-1' });
+  assert.deepEqual(guard.redeem(wrong.token, payload => confirmBinding(['conn', 'probe.confirm', '{"amount":2}', payload.requestId])),
+    { ok: false, why: 'mismatch', payload: { requestId: 'r-1' } }, 'phần mô hình gửi lệch ⇒ lệch');
+  for (const fn of [() => { throw new Error('x'); }, () => null, () => 42]) {
+    const token = guard.issue(key('r-1'), { requestId: 'r-1' }).token;
+    assert.equal(guard.redeem(token, fn).why, 'mismatch');
+  }
+  assert.equal(guard.size, 0);
+});
+
 test('TTL 10 phút: còn hạn tới đúng trước 10 phút; đúng 10 phút hoặc đồng hồ lùi là hết hạn', () => {
   const { clock, guard } = store();
   const near = guard.issue(A), edge = guard.issue(A), back = guard.issue(A);

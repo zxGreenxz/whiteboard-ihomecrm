@@ -2,12 +2,12 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1704,
-  "soFileDocBangFs": 441,
-  "tongLoiGoi": 1112,
-  "khongPhanLoaiDuoc": 495,
+  "soFileDocBangFs": 442,
+  "tongLoiGoi": 1114,
+  "khongPhanLoaiDuoc": 496,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 61,
+      "soFile": 62,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -29,6 +29,7 @@
   },
   "testDocMaNguon": [
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
+    "infra/hermes-broker/action-runtime.test.mjs",
     "infra/hermes-broker/action-shared-keys.test.mjs",
     "infra/hermes-broker/confirm-guard.test.mjs",
     "infra/hermes-broker/read-catalog-authority.test.mjs",
@@ -586,6 +587,12 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-runtime/audit-codes.test.mjs",
+      "soGoi": 4,
+      "loai": {},
+      "khongPhanLoaiDuoc": 4
+    },
+    {
       "file": "infra/hermes-zalo-native/binding-provisioning.test.mjs",
       "soGoi": 4,
       "loai": {},
@@ -822,12 +829,6 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-runtime/audit-codes.test.mjs",
-      "soGoi": 3,
-      "loai": {},
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
@@ -1850,6 +1851,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/action-runtime.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/action-shared-keys.test.mjs",

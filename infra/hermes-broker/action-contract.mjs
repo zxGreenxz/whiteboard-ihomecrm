@@ -93,14 +93,28 @@ export function listedActionTools(catalog, effective, shape = ACTION_TOOL_SHAPE)
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const onlyKeys = (value, keys) => plain(value) && Object.keys(value).every(key => keys.includes(key));
+// Thu chi lượt 16 (nghiệm thu C3d: bot chép requestId thiếu một ký tự ⇒ invalid_request chung, crm_action_status hỏng theo): requestId sai
+// khuôn UUID là lỗi riêng mang số ký tự đã gửi (không bao giờ chuỗi đã gửi) để broker nói rõ.
+export class RequestIdShapeError extends TypeError {
+  constructor(length) { super('invalid_action_envelope'); this.length = length; }
+}
 const requestIdOf = value => {
   if (value === undefined || value === null || value === '') return undefined;
-  if (typeof value !== 'string' || !UUID.test(value)) throw new TypeError('invalid_action_envelope');
+  if (typeof value !== 'string' || !UUID.test(value)) throw new RequestIdShapeError(typeof value === 'string' ? Math.min([...value].length, 999) : null);
   return value.toLowerCase();
 };
+/** Câu tĩnh của invalid_request khi requestId sai khuôn (mcp-http chỉ chuyển đúng câu dựng bằng hàm này). */
+export const requestIdShapeDetail = length => `requestId không đúng khuôn UUID (${Number.isSafeInteger(length) ? `${length} ký tự, cần 36` : 'không phải chuỗi'}) — ` +
+  'chép NGUYÊN VĂN requestId mà bản xem trước / lệnh gốc trả về; lượt xác nhận kèm confirmToken thì requestId lấy theo token.';
+export const isRequestIdShapeDetail = text => {
+  if (typeof text !== 'string') return false;
+  const count = /^requestId không đúng khuôn UUID \((\d{1,3}) ký tự, cần 36\)/.exec(text);
+  return text === requestIdShapeDetail(count ? Number(count[1]) : null);
+};
 /** Phong bì đối số (đã tách confirmToken). Sai kiểu ở cấp phong bì ⇒ TypeError (invalid_request); mã thao tác lạ
- * KHÔNG lỗi ở đây — broker trả needs_input unknown_action. */
-export function actionEnvelope(route, args) {
+ * KHÔNG lỗi ở đây — broker trả needs_input unknown_action. confirming (lượt 16): lượt có confirmToken — requestId sai khuôn không làm hỏng
+ * phong bì (requestIdMalformed), vì requestId của lượt xác nhận lấy theo bản ghi của token. */
+export function actionEnvelope(route, args, { confirming = false } = {}) {
   if (route?.op === 'list') {
     if (!onlyKeys(args, ['page']) || !(args.page === undefined || args.page === null || LISTED_PAGES.includes(args.page) || args.page === 'probe')) throw new TypeError('invalid_action_envelope');
     return { page: args.page ?? null };
@@ -116,7 +130,9 @@ export function actionEnvelope(route, args) {
   if (!onlyKeys(args, [selector, 'params', 'requestId', 'consentText']) || typeof args[selector] !== 'string') throw new TypeError('invalid_action_envelope');
   const action = route.page === undefined ? args[selector].trim() : `${route.page}.${args[selector].trim()}`;
   const consentText = consentTextOf(args.consentText);
-  return { action, params: paramsOf(args.params), requestId: requestIdOf(args.requestId), ...(consentText === undefined ? {} : { consentText }) };
+  let requestId, requestIdMalformed = false;
+  try { requestId = requestIdOf(args.requestId); } catch (error) { if (!(confirming && error instanceof RequestIdShapeError)) throw error; requestIdMalformed = true; }
+  return { action, params: paramsOf(args.params), requestId, ...(requestIdMalformed ? { requestIdMalformed } : {}), ...(consentText === undefined ? {} : { consentText }) };
 }
 // consentText (lượt 12 Hợp đồng): chỉ lượt xác nhận của thao tác không lùi được mới đọc; vắng / null / trống = không gửi. Không vào params
 // hay khoá binding của token (người dùng đáp "ok" sau một câu chưa rõ vẫn xác nhận được đúng bản xem trước đó). Dài quá trần thì rào đồng ý

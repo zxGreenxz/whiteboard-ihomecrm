@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, BUILDING16, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -870,8 +870,11 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       assert(caught(seen), `${label}: bị bắt ${JSON.stringify(seen)}`);
     }
     assert.deepEqual(await check('sau đột biến'), { label: 'sau đột biến', miss: [], hit: [], deposit: ['deposit', 'deposit'] }, 'ROLLBACK trả thân của file');
-    // Ghim chéo: không file nào ghim thân bộ phân luồng — chạy lại 120211 sau file vẫn qua; 094809 ngã đúng câu đã có từ 120211 (bộ chọn).
-    await f.rollbackCase(async () => { await db.exec(ROUND1); });
+    // Ghim chéo: không file nào ghim thân bộ phân luồng — chạy lại 120211 ngã ở ghim LÕI GIẢI (do 20261024210500 lượt 16), không phải ở bộ phân
+    // luồng; 094809 ngã đúng câu đã có từ 120211 (bộ chọn).
+    await f.rollbackCase(async () => {
+      await assert.rejects(db.exec(ROUND1), error => error.message === 'hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+    });
     await f.rollbackCase(async () => {
       await assert.rejects(db.exec(FLOW), error => error.message === 'hermes_expense_system_flow_body_drift: public.hermes_expense_category_pick_v1(uuid,text,text)');
     });
@@ -919,6 +922,72 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       const missing = await run('expense.approve', 'preview', rid(n14++), { voucherCodes: [uid(699)] });
       assert.deepEqual([missing.kind, missing.field, missing.why], ['needs_input', 'voucher', 'not_visible']);
       assert.equal((await run('expense.edit', 'preview', rid(n14++), { voucherCode: mine, content: 'mua bóng đèn LED' })).kind, 'preview', 'sửa theo voucherId');
+    });
+  });
+
+  let n16 = 760;
+  await t.test('Lượt 16: mã trùng giữa các toà + buildingName ⇒ đúng phiếu của toà đó (approve / note / edit / cancel); không khớp ⇒ hỏi như cũ; đột biến bị bắt', async () => {
+    await f.rollbackCase(async () => {
+      // Hai toà trong phạm vi (như ca lượt 11): Toà A và toà ảo "Kho Văn Phòng Chung"; mã PC2610555 / PC2610556 ở cả hai (TEST: PC2609115 ở 1392QT và 950NK).
+      await db.query("INSERT INTO public.buildings VALUES($1,$2,'Kho Văn Phòng Chung',true,null)", [VIRTUAL, ORG]);
+      await db.query("INSERT INTO public.fixture_building_access VALUES($1)", [VIRTUAL]);
+      await db.query("INSERT INTO public.fixture_staff_assignments VALUES($1,$2)", [USER, VIRTUAL]);
+      await db.query("UPDATE public.fixture_acl SET building_ids=building_ids||$1::uuid WHERE NOT ($1::uuid=ANY(building_ids))", [VIRTUAL]);
+      await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
+      const a5 = await voucher('PC2610555'), v5 = await voucher('PC2610555', { building: VIRTUAL, amount: 150000 });
+      const a6 = await voucher('PC2610556'), v6 = await voucher('PC2610556', { building: VIRTUAL, amount: 160000 });
+      const only = await voucher('PC2610557');
+      const note = (voucherCode, buildingName, n) => run('expense.note', 'auto', rid(n), { voucherCode, note: 'đã lấy hoá đơn', ...(buildingName === undefined ? {} : { buildingName }) });
+      const noted = async n => (await db.query('SELECT voucher_id FROM public.fixture_supplements WHERE idempotency_key=$1', ['hermes-note:' + rid(n)])).rows[0]?.voucher_id;
+      const ask = await note('PC2610555', undefined, n16);
+      assert.deepEqual([ask.kind, ask.why, ask.candidates.length], ['needs_input', 'ambiguous', 2], 'không nêu toà ⇒ hỏi như cũ');
+      for (const [label, building, expected] of [['đúng tên', 'Toà A', a5], ['bỏ dấu, có chữ toà', 'toa a', a5], ['chứa ≥ 3 ký tự', 'kho văn phòng', v5],
+        ['toà nhà + tên', 'toà nhà Kho Văn Phòng Chung', v5]]) {
+        const n = ++n16;
+        const done = await note('PC2610555', building, n);
+        assert.deepEqual([done.kind, await noted(n)], ['applied', expected], label);
+      }
+      const unknown = await note('PC2610555', 'Toà Z', ++n16);
+      assert.deepEqual([unknown.kind, unknown.why, unknown.candidates.length], ['needs_input', 'ambiguous', 2], 'toà không khớp phiếu nào ⇒ bỏ qua, hỏi lại đủ');
+      const short = await note('PC2610555', 'a', ++n16);
+      assert.equal(short.kind, 'applied', 'tên toà ngắn chỉ khớp đúng tên (Toà A)');
+      const n = ++n16;
+      assert.deepEqual([(await note('PC2610557', 'Kho Văn Phòng Chung', n)).kind, await noted(n)], ['applied', only], 'mã chỉ một phiếu ⇒ không đổi gì');
+      // Duyệt cả lô của một toà (câu nghiệm thu): một buildingName cho mọi mã.
+      const lot = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555', 'PC2610556'], buildingName: 'Kho Văn Phòng Chung' });
+      assert.equal(lot.kind, 'preview', JSON.stringify(lot));
+      assert.deepEqual(lot.resolved.vouchers.map(v => v.voucherId), [v5, v6], JSON.stringify({ lot: lot.resolved, a5, v5, a6, v6, only }));
+      const lotAsk = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555', 'PC2610556'] });
+      assert.deepEqual([lotAsk.kind, lotAsk.why], ['needs_input', 'ambiguous']);
+      // Huỷ / sửa: đúng phiếu; sửa nêu đúng toà của phiếu ⇒ không chuyển toà.
+      const cancel = await run('expense.cancel', 'preview', rid(++n16), { voucherCode: 'PC2610556', reason: 'lập trùng phiếu', buildingName: 'Toà A' });
+      assert.equal(cancel.kind, 'preview', JSON.stringify(cancel));
+      assert.equal(cancel.resolved.voucherId, a6);
+      const edit = await run('expense.edit', 'preview', rid(++n16), { voucherCode: 'PC2610556', buildingName: 'Kho Văn Phòng Chung', content: 'mua bóng đèn LED' });
+      assert.equal(edit.kind, 'preview', JSON.stringify(edit));
+      assert.equal(edit.resolved.voucherId, v6);
+      assert.equal(JSON.stringify(edit.preview).includes('"toà"'), false, 'không đổi toà');
+      // Toà nêu chỉ có phiếu NGOÀI phạm vi khoá duyệt ⇒ outside_scope (trước đây lặng lẽ chọn phiếu cùng mã ở Toà A); không nêu toà ⇒ như cũ.
+      await db.query("UPDATE public.fixture_acl SET building_ids=array_remove(building_ids,$1::uuid) WHERE permission='income_expenses.approve'", [VIRTUAL]);
+      const outside = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555'], buildingName: 'Kho Văn Phòng Chung' });
+      assert.deepEqual([outside.kind, outside.field, outside.why], ['needs_input', 'voucher', 'outside_scope'], JSON.stringify(outside));
+      const plain = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555'] });
+      assert.deepEqual([plain.kind, plain.resolved?.vouchers.map(v => v.voucherId)], ['preview', [a5]], 'không nêu toà ⇒ hành vi cũ');
+      const inScope = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555'], buildingName: 'Toà A' });
+      assert.deepEqual(inScope.resolved?.vouchers.map(v => v.voucherId), [a5]);
+      // Đột biến: thân lõi giải của lượt 14 (trước file) ⇒ nêu toà vẫn hỏi chọn phiếu (ca nghiệm thu đỏ).
+      const core = sql => { const start = sql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_expense_resolve_core_v1(');
+        return sql.slice(start, sql.indexOf('\nEND $fn$;', start) + '\nEND $fn$;'.length); };
+      await db.exec(core(ROUND1));
+      const before = await note('PC2610556', 'Kho Văn Phòng Chung', ++n16);
+      assert.deepEqual([before.kind, before.why], ['needs_input', 'ambiguous'], 'đột biến: thân 120211 bỏ qua buildingName');
+      const silent = await run('expense.approve', 'preview', rid(++n16), { voucherCodes: ['PC2610555'], buildingName: 'Kho Văn Phòng Chung' });
+      assert.deepEqual(silent.resolved?.vouchers.map(v => v.voucherId), [a5], 'đột biến: thân 120211 lặng lẽ chọn phiếu Toà A dù nêu toà khác');
+      await db.exec(core(BUILDING16));
+      // Ghim chéo: chạy lại 120211 sau file ngã đúng khối $requires$ (ngoại lệ pinned sau áp; 120211 nằm trong diff của C3).
+      await db.exec('SAVEPOINT rerun');
+      await assert.rejects(db.exec(ROUND1), error => error.message === 'hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+      await db.exec('ROLLBACK TO SAVEPOINT rerun');
     });
   });
 

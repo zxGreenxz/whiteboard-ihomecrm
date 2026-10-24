@@ -733,7 +733,10 @@ export function createBroker({
         // post-audit authority check.
         // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): lượt xác nhận của thao tác không lùi được mang câu đồng ý đã qua rào.
         const consent = context.auditConsent?.() ?? null;
-        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared', ...(consent ? { consent } : {}) }));
+        // Thu chi lượt 16: lượt xác nhận mà requestId mô hình gửi lệch / thiếu / sai khuôn ⇒ dùng requestId của token, dòng prepared ghi lại.
+        const requestIdFix = context.auditRequestIdFix?.() ?? null;
+        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared', ...(consent ? { consent } : {}),
+          ...(requestIdFix ? { requestIdFix } : {}) }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
           await timed('checkMs', async () => {

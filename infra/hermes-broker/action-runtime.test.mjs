@@ -7,7 +7,8 @@ import { createDependencyScope } from './dependency-scope.mjs';
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
-import { CONFIRM_INVALID_DETAILS } from './action-contract.mjs';
+import { readFileSync } from 'node:fs';
+import { CONFIRM_INVALID_DETAILS, isRequestIdShapeDetail, requestIdShapeDetail } from './action-contract.mjs';
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
 import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
@@ -22,7 +23,7 @@ const START = Date.parse('2026-10-21T12:00:00.000Z');
 const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, applyBudgetMs, slowResolve } = {}) {
+function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, applyBudgetMs, slowResolve, factory = createActionRuntime } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const clock = { now: START }, requests = [], audits = [];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000,
@@ -34,7 +35,7 @@ function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, apply
     async prepareAction(token, request) { requests.push([CONNECTIONS[token], structuredClone(request)]); return Object.freeze({}); },
     async finalizeAction(_token, _receipt, hooks) { return respond(requests.at(-1)[1], hooks); },
   };
-  const runtime = createActionRuntime({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
+  const runtime = factory({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
     service, clock: () => clock.now, mintRequestId: () => id(String(++next)), ...(permissionGaps ? { permissionGaps } : {}),
     ...(applyBudgetMs ? { applyBudgetMs } : {}) });
   // slowResolve: dựng quyền chậm (đồng hồ giả tiến thêm) — ca nghiệm thu 24/10 trên TEST.
@@ -122,20 +123,20 @@ test('lượt 14: lượt đồng ý tới khi trần cả lời gọi đã tiê
     applyBudgetMs: 500 }), /invalid_action_runtime/);
 });
 
-test('lượt 2 lệch bất cứ gì đã xem ⇒ confirmation_invalid, không ghi: nội dung, requestId, thiếu requestId, kết nối khác, quá 10 phút, token sai dạng', async t => {
+test('lượt 2 lệch bất cứ gì đã xem ⇒ confirmation_invalid, không ghi: nội dung, thao tác khác, kết nối khác, quá 10 phút, token sai dạng', async t => {
   const env = setup(t, { respond: request => request.phase === 'apply' ? APPLIED(request) : PREVIEW(request) });
   const base = { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' } };
   const fresh = async () => env.call('crm_action_run', base);
+  // Lượt 16: requestId khác / thiếu không còn ở đây — lượt xác nhận lấy requestId theo token (test lượt 16 bên dưới).
   const cases = [
     first => [TOKEN_A, { ...base, params: { amount: 2000, buildingName: 'Toà A' }, requestId: first.requestId, confirmToken: first.confirmToken }],
-    first => [TOKEN_A, { ...base, requestId: id('e'), confirmToken: first.confirmToken }],
-    first => [TOKEN_A, { ...base, confirmToken: first.confirmToken }],
+    first => [TOKEN_A, { action: 'probe.note', params: { note: 'ghi chú' }, requestId: first.requestId, confirmToken: first.confirmToken }],
     first => [TOKEN_B, { ...base, requestId: first.requestId, confirmToken: first.confirmToken }],
     first => { env.clock.now += CONFIRM_TTL_MS; return [TOKEN_A, { ...base, requestId: first.requestId, confirmToken: first.confirmToken }]; },
     first => [TOKEN_A, { ...base, requestId: first.requestId, confirmToken: 'cf_short' }],
   ];
-  // Lượt 14: câu tĩnh nói phần lệch (params / requestId / thiếu requestId / kết nối khác ⇒ không có token của nó / hết hạn / sai dạng).
-  const why = ['params', 'request', 'missing_request', 'unknown', 'expired', 'unknown'];
+  // Lượt 14: câu tĩnh nói phần lệch (params / thao tác khác hoặc kết nối khác ⇒ không có token của nó / hết hạn / sai dạng).
+  const why = ['params', 'unknown', 'unknown', 'expired', 'unknown'];
   for (const [index, build] of cases.entries()) {
     const [token, args] = build(await fresh());
     const before = env.requests.length;
@@ -144,6 +145,73 @@ test('lượt 2 lệch bất cứ gì đã xem ⇒ confirmation_invalid, không 
     assert.equal(env.requests.filter(([, request]) => request.phase === 'apply').length, 0, `ca ${index}: không lượt apply nào`);
     assert.equal(env.requests.length, before, `ca ${index}: không gọi CRM`);
   }
+});
+
+// Lượt 16 (nghiệm thu C3d): bot chép requestId thiếu một ký tự (35/36) kèm confirmToken đúng ⇒ invalid_request; crm_action_status hỏng theo.
+const shortId = value => value.slice(0, -1);
+async function requestIdFromToken(t, factory) {
+  const env = setup(t, { respond: request => request.phase === 'apply' ? APPLIED(request) : PREVIEW(request), factory });
+  const base = { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' } };
+  const out = [];
+  for (const supplied of ['malformed', 'different', 'missing', 'same']) {
+    const first = await env.call('crm_action_run', base);
+    const requestId = { malformed: shortId(first.requestId), different: id('e'), missing: undefined, same: first.requestId }[supplied];
+    const audits = env.audits.length;
+    const done = await env.broker.callTool(TOKEN_A, 'crm_action_run', { ...base, ...(requestId === undefined ? {} : { requestId }), confirmToken: first.confirmToken })
+      .then(result => JSON.parse(result.content[0].text), error => ({ error: error.code, detail: error.detail }));
+    out.push({ supplied, done, issued: first.requestId, applyRequestId: env.requests.at(-1)[1].phase === 'apply' ? env.requests.at(-1)[1].requestId : null,
+      fix: env.audits.slice(audits).find(event => event.outcome === 'prepared')?.requestIdFix ?? null });
+  }
+  return { env, out };
+}
+
+test('lượt 16: lượt xác nhận lấy requestId theo token — chép thiếu / sai khuôn / khác / bỏ trống vẫn ghi đúng requestId của bản xem trước; audit ghi requestIdFix', async t => {
+  const { env, out } = await requestIdFromToken(t, createActionRuntime);
+  for (const row of out) {
+    assert.equal(row.done.outcome, 'applied', `${row.supplied}: ${JSON.stringify(row.done)}`);
+    assert.equal(row.done.requestId, row.issued, `${row.supplied}: kết quả mang requestId của bản xem trước (để tra trạng thái)`);
+    assert.equal(row.applyRequestId, row.issued, `${row.supplied}: lệnh ghi gửi requestId của token`);
+    assert.deepEqual(row.fix, row.supplied === 'same' ? null : { action: 'probe.confirm', requestId: row.issued, supplied: row.supplied }, `${row.supplied}: audit`);
+  }
+  // Tra trạng thái bằng requestId của kết quả chạy được; bằng mã chép thiếu ⇒ invalid_request nói rõ số ký tự (không phải lỗi chung).
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_status', { requestId: shortId(out[0].issued) }),
+    error => error.code === 'invalid_request' && error.detail === requestIdShapeDetail(35));
+  // Lượt xem trước (không token) với requestId sai khuôn ⇒ invalid_request + câu rõ; không gọi CRM.
+  const before = env.requests.length;
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' }, requestId: 'abc' }),
+    error => error.code === 'invalid_request' && error.detail === requestIdShapeDetail(3));
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' }, requestId: 12 }),
+    error => error.code === 'invalid_request' && error.detail === requestIdShapeDetail(null));
+  assert.equal(env.requests.length, before);
+  assert.equal(isRequestIdShapeDetail(requestIdShapeDetail(35)), true);
+  assert.equal(isRequestIdShapeDetail(`${requestIdShapeDetail(35)} x`), false, 'mcp-http chỉ chuyển đúng câu dựng sẵn');
+  // Rào cũ giữ nguyên: token của params / thao tác / kết nối khác vẫn bị từ chối dù requestId chép sai hay đúng.
+  const base = { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' } };
+  for (const [label, token, args, why] of [
+    ['params khác + requestId thiếu ký tự', TOKEN_A, first => ({ ...base, params: { amount: 2000, buildingName: 'Toà A' }, requestId: shortId(first.requestId) }), 'params'],
+    ['thao tác khác', TOKEN_A, first => ({ action: 'probe.note', params: { note: 'x' }, requestId: shortId(first.requestId) }), 'unknown'],
+    ['kết nối khác', TOKEN_B, first => ({ ...base, requestId: shortId(first.requestId) }), 'unknown']]) {
+    const first = await env.call('crm_action_run', base);
+    const applies = env.requests.filter(([, request]) => request.phase === 'apply').length;
+    await assert.rejects(env.broker.callTool(token, 'crm_action_run', { ...args(first), confirmToken: first.confirmToken }),
+      error => error.code === 'confirmation_invalid' && error.detail === CONFIRM_INVALID_DETAILS[why], label);
+    assert.equal(env.requests.filter(([, request]) => request.phase === 'apply').length, applies, `${label}: không lệnh ghi`);
+  }
+});
+
+test('lượt 16 đột biến: bỏ lấy requestId theo token (khoá dựng từ requestId mô hình gửi, rào cũ) ⇒ ca chép thiếu một ký tự đỏ', async t => {
+  const source = readFileSync(new URL('./action-runtime.mjs', import.meta.url), 'utf8');
+  const fromToken = 'payload => binding(identity.row.id, action.id, plan.params, payload?.requestId)';
+  assert.equal(source.split(fromToken).length, 2, 'đúng một chỗ lấy theo token');
+  const mutant = source.replace(fromToken, () => 'binding(identity.row.id, action.id, plan.params, plan.requestId)')
+    .replace("actionEnvelope(route, rest, { confirming: plan.confirmToken !== undefined })", () => 'actionEnvelope(route, rest)')
+    .replaceAll(/from '\.\/([a-z0-9-]+\.mjs)'/g, (_, file) => `from '${new URL(`./${file}`, import.meta.url).href}'`);
+  assert.notEqual(mutant, source);
+  const { createActionRuntime: mutated } = await import(`data:text/javascript;base64,${Buffer.from(mutant).toString('base64')}`);
+  const { out } = await requestIdFromToken(t, mutated);
+  assert.deepEqual(out.find(row => row.supplied === 'malformed').done.error, 'invalid_request', 'đột biến: chép thiếu ký tự ⇒ hỏng (ca nghiệm thu)');
+  assert.deepEqual(out.find(row => row.supplied === 'different').done.error, 'confirmation_invalid', 'đột biến: requestId khác ⇒ hỏng');
+  assert.equal(out.find(row => row.supplied === 'same').done.outcome, 'applied', 'đối chứng: đúng requestId vẫn ghi');
 });
 
 test('reversible: phase auto ⇒ SQL ghi thẳng (applied) hoặc đòi xác nhận (preview); money mà SQL ghi ở lượt xem trước ⇒ backend_unavailable', async t => {
