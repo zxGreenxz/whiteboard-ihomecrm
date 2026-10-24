@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { ArchiveJobs } from "./cameraArchive.js";
 import { validateCameraOrigin } from "./cameraConfig.js";
+import { playbackRange, playbackSources, type PlaybackRange } from "./cameraPlayback.js";
 
 const uuid = z.string().uuid();
 export const liveConfigSchema = z.object({
@@ -47,7 +48,7 @@ export interface LiveActor { id: string; expiresAt: number }
 export interface LiveMediaSession { location: string; answer: string }
 export interface LiveDependencies {
   authorize(token: string, recorder: LiveRecorder): Promise<LiveActor>;
-  start(recorder: LiveRecorder, channel: number, offer: string): Promise<LiveMediaSession>;
+  start(recorder: LiveRecorder, channel: number, offer: string, playback?: PlaybackRange): Promise<LiveMediaSession>;
   stop(location: string): Promise<void>;
   /** Must terminate the media process as well as the gateway on uncertain cleanup. */
   fatal(): void;
@@ -69,6 +70,20 @@ async function boundedText(response: Response, max = BODY_MAX): Promise<string> 
 }
 
 export function createLiveDependencies(config: LiveConfig, fatal: () => void, request: typeof fetch = fetch): LiveDependencies {
+  const sources = playbackSources(request, fatal);
+  const playbackPaths = new Map<string, string>();
+  const startMedia = async (name: string, offer: string) => {
+    const path = `/${name}/whep`;
+    let response: Response;
+    try { response = await request(mediaOrigin + path, { method: "POST", headers: { "Content-Type": "application/sdp" }, body: offer, redirect: "error", signal: AbortSignal.timeout(15_000) }); }
+    catch { fatal(); throw new LiveError(502, "MEDIA_START_UNCERTAIN"); }
+    if (response.status !== 201) { await response.body?.cancel(); throw new LiveError(502, response.status === 400 ? "CODEC_UNSUPPORTED" : "CAMERA_UNAVAILABLE"); }
+    try {
+      const location = response.headers.get("location"); const parsed = location ? new URL(location, mediaOrigin) : undefined;
+      if (!parsed || parsed.origin !== mediaOrigin || parsed.search || parsed.hash || !new RegExp(`^${path}/[a-f0-9-]{36}$`, "u").test(parsed.pathname)) throw new Error("Invalid media location");
+      return { location: parsed.href, answer: await boundedText(response) };
+    } catch { fatal(); throw new LiveError(502, "UPSTREAM_INVALID"); }
+  };
   return {
     fatal,
     async authorize(token, recorder) {
@@ -88,24 +103,19 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
       if (!found || recorder.channels.some((c) => c > found.channel_count)) throw new LiveError(403, "CAMERA_ACCESS_DENIED");
       return { id: actor.id, expiresAt: claims.exp * 1000 };
     },
-    async start(recorder, channel, offer) {
-      const path = `/${streamName(recorder, channel)}/whep`;
-      let response: Response;
-      try { response = await request(mediaOrigin + path, { method: "POST", headers: { "Content-Type": "application/sdp" }, body: offer, redirect: "error", signal: AbortSignal.timeout(15_000) }); }
-      catch { fatal(); throw new LiveError(502, "MEDIA_START_UNCERTAIN"); }
-      if (response.status !== 201) { await response.body?.cancel(); throw new LiveError(502, response.status === 400 ? "CODEC_UNSUPPORTED" : "CAMERA_UNAVAILABLE"); }
+    async start(recorder, channel, offer, playback) {
+      if (!playback) return startMedia(streamName(recorder, channel), offer);
+      const name = await sources.add(recorder, channel, playback);
       try {
-        const location = response.headers.get("location");
-        const parsed = location ? new URL(location, mediaOrigin) : undefined;
-        if (!parsed || parsed.origin !== mediaOrigin || parsed.search || parsed.hash || !new RegExp(`^${path}/[a-f0-9-]{36}$`, "u").test(parsed.pathname)) throw new Error("Invalid media location");
-        return { location: parsed.href, answer: await boundedText(response) };
-      }
-      catch { fatal(); throw new LiveError(502, "UPSTREAM_INVALID"); }
+        const media = await startMedia(name, offer); playbackPaths.set(media.location, name); return media;
+      } catch (error) { await sources.remove(name); throw error; }
     },
     async stop(location) {
       const response = await request(location, { method: "DELETE", redirect: "error", signal: AbortSignal.timeout(3000) });
       await response.body?.cancel();
       if (response.status !== 200 && response.status !== 204 && response.status !== 404) throw new LiveError(502, "MEDIA_CLEANUP_FAILED");
+      const name = playbackPaths.get(location);
+      if (name) { await sources.remove(name); playbackPaths.delete(location); }
     },
   };
 }
@@ -120,23 +130,27 @@ export function validateOffer(offer: string) {
 }
 
 interface Session {
-  id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean;
+  id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean; playbackUntil?: number | undefined;
 }
 export class LiveSessions {
   private readonly sessions = new Map<string, Session>();
   private readonly now: () => number;
   constructor(private readonly dependencies: LiveDependencies) { this.now = dependencies.now ?? Date.now; }
   get size() { return this.sessions.size; }
-  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string) {
+  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange) {
     validateOffer(offer);
+    const playback = range ? playbackRange(range, this.now()) : undefined;
+    if (playback && !recorder.archiveEnabled) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
     if (!recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
+    if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
-    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt), closed: false };
+    const playbackUntil = playback ? this.now() + Date.parse(playback.end) - Date.parse(playback.start) + 30_000 : undefined;
+    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil };
     this.sessions.set(session.id, session);
     try {
-      const media = await this.dependencies.start(recorder, channel, offer);
+      const media = await this.dependencies.start(recorder, channel, offer, playback);
       session.location = media.location;
       if (session.closed || session.expiresAt <= this.now()) { await this.close(session); throw new LiveError(401, "SESSION_EXPIRED"); }
       return { id: session.id, answer: media.answer, expiresAt: session.expiresAt };
@@ -149,7 +163,7 @@ export class LiveSessions {
     const actor = await this.dependencies.authorize(token, session.recorder);
     if (session.actorId !== actor.id) throw new LiveError(403, "SESSION_OWNER_MISMATCH");
     if (session.closed || session.expiresAt <= this.now() || actor.expiresAt <= this.now()) { await this.close(session); throw new LiveError(401, "SESSION_EXPIRED"); }
-    session.expiresAt = Math.min(this.now() + LEASE_MS, actor.expiresAt);
+    session.expiresAt = Math.min(this.now() + LEASE_MS, actor.expiresAt, session.playbackUntil ?? Infinity);
     return session.expiresAt;
   }
   async stop(id: string, token: string) {
@@ -206,6 +220,20 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       const sessionRoute = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})(\/renew)?$/u.exec(path);
       const archiveCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/archive$/u.exec(path);
       const archiveJob = /^\/camera-live\/v1\/archive\/([a-f0-9-]{36})(\/file)?$/u.exec(path);
+      const playbackCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/playback$/u.exec(path);
+      if (playbackCreate && request.method === "POST") {
+        if (request.headers["content-type"] !== "application/json") throw new LiveError(415, "JSON_REQUIRED");
+        const recorder = config.recorders.find((r) => r.id === playbackCreate[1]);
+        if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
+        let input;
+        try { input = z.object({ offer: z.string(), start: z.string(), end: z.string() }).strict().parse(JSON.parse(await requestBody(request))); }
+        catch { throw new LiveError(400, "INVALID_PLAYBACK_RANGE"); }
+        const range = playbackRange({ start: input.start, end: input.end }); validateOffer(input.offer);
+        const actor = await dependencies.authorize(token, recorder);
+        const result = await sessions.start(actor, recorder, Number(playbackCreate[2]), input.offer, range);
+        if (response.destroyed) { await sessions.stop(result.id, token); return; }
+        reply(response, 201, result); return;
+      }
       if (archiveCreate || archiveJob) {
         if (!archive) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
         if (archiveCreate && request.method === "POST") {
@@ -249,7 +277,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
           await dependencies.authorize(token, recorder);
-          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, archive: Boolean(archive && recorder.archiveEnabled) }); return;
+          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled) }); return;
         }
         if (channel && request.method === "POST") {
           if (request.headers["content-type"] !== "application/sdp") throw new LiveError(415, "SDP_REQUIRED");

@@ -103,11 +103,11 @@ describe("camera live upstream authorization", () => {
     request.mockResolvedValue(new Response(offer, { status: 201, headers: { Location: "http://[malformed" } }));
     await expect(createLiveDependencies(config, fatal, request).start(recorder, 1, offer)).rejects.toMatchObject({ code: "UPSTREAM_INVALID" }); expect(fatal).toHaveBeenCalledTimes(3);
   });
-  it("only binds signaling to loopback and disables recording, publish endpoints and admin API", () => {
+  it("only binds signaling and path control to loopback and disables recording and publish endpoints", () => {
     const media = mediaConfiguration(config);
-    expect(media).toMatchObject({ rtsp: false, rtmp: false, hls: false, srt: false, moq: false, api: false, playback: false, webrtcAddress: "127.0.0.1:18889", webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false });
+    expect(media).toMatchObject({ rtsp: false, rtmp: false, hls: false, srt: false, moq: false, api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], playback: false, webrtcAddress: "127.0.0.1:18889", webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false });
     expect(Object.values(media.paths).every((path) => path.record === false && path.sourceOnDemand === true)).toBe(true);
-    expect(media.authInternalUsers[0]?.permissions).toEqual([{ action: "read" }]);
+    expect(media.authInternalUsers[0]).toEqual({ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }] });
   });
 });
 

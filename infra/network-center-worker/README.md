@@ -491,3 +491,20 @@ thể xác nhận hoạt động liên tục; không dùng unit test thay bằng
 Rollback collector: stop service, chuyển `current` về artifact có hash đã xác
 minh rồi start; giữ nguyên state/outbox và credentials. Không drop schema hoặc
 xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI sẽ hết độ mới.
+
+### Phát lại trực tiếp và trích xuất
+
+Xem lại dùng RTSP `/cam/playback` (luồng ghi chính), chuyển nguyên video sang
+WebRTC như xem trực tiếp; không tạo job MP4 hoặc lưu thêm video. Trình duyệt phải
+hỗ trợ codec của bản ghi (đầu ghi 950NK dùng H.265). Mỗi lần tìm/tua tạo path UUID
+riêng; dừng, hết lease hoặc hết khoảng xem sẽ xóa phiên WHEP và path đó.
+
+- Gateway kiểm JWT và quyền tòa nhà trước mở; renew/delete giữ ràng buộc chủ phiên.
+- Khoảng xem tối đa 24 giờ, không giờ tương lai; tối đa 4 phiên phát lại toàn gateway.
+- MediaMTX Control API chỉ nghe `127.0.0.1:18897`, chỉ quyền API từ loopback; không
+  reverse proxy hoặc mở firewall cho cổng này. RTSP gốc và mật khẩu chỉ ở máy chủ.
+- Thanh thời gian phát lại là ước tính theo RTSP. Không tự lấy mốc này điền trích xuất;
+  đối chiếu đồng hồ trên hình rồi chọn khoảng xuất. Export vẫn dùng DHAV/kiểm coverage,
+  HD 720p mặc định, tải về máy và xóa file tạm, không upload Supabase Storage.
+- Khi rollout gateway, giữ artifact/config trước đó và kiểm stop/rollback; canary
+  cần xác nhận hình giải mã thật, đóng phiên xóa path và export hoạt động độc lập.
