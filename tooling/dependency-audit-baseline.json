@@ -20,6 +20,11 @@
       "vanTay": "co-the-vao-bundle|react-router|high",
       "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
       "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "co-the-vao-bundle|zod|high",
+      "lyDo": "GHSA-mrhx-c7xc-m3w5 (CVSS 7.5, CWE-770, công bố 01/10, vào bộ audit ~23/10 20:00 UTC): zod < 4.6.6 cạn bộ nhớ khi parse mảng rất lớn với schema mảng không giới hạn độ dài. Bản vá duy nhất là zod 4.6.6+ — ĐỔI MAJOR, 141 file import zod (form web, edge function, connector). Phía web: zod chạy trong trình duyệt của chính người gửi ⇒ chỉ tự làm treo máy mình. Phía server (edge function, connector Hermes) là DoS chứ không lộ dữ liệu. Chủ chốt 24/10: miễn trừ 14 ngày, CHƯA nâng; nâng zod 4 làm việc riêng sau đợt Hermes.",
+      "hetHan": "2026-11-07"
     }
   ]
 }
