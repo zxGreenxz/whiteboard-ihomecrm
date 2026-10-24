@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T08:25:17.042Z",
+  "generatedAt": "2026-10-24T09:06:32.737Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 880,
-    "unknown": 81,
+    "ledger-applied": 881,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13549,14 +13549,9 @@
       "name": "quyet_toan_link_ten_mien_pin",
       "scheme": "timestamp14",
       "sha256": "328433cb1f5901a1380a24c0dbbfc61b1f75f26a38794fb6ca94964f982576f4",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.landlord_portals",
-        "table:app_private.landlord_portal_users",
-        "table:app_private.landlord_portal_sessions",
-        "table:app_private.landlord_portal_login_failures",
-        "function:app_private.landlord_portal_viewer_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-24T09:06:17.462Z|bien-nhan-backup"
       ]
     },
     {

@@ -960,28 +960,6 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
-    },
-    "supabase/migrations/20261024072823_quyet_toan_link_ten_mien_pin.sql": {
-      "sha256": "328433cb1f5901a1380a24c0dbbfc61b1f75f26a38794fb6ca94964f982576f4",
-      "missingObjects": [
-        "table:app_private.landlord_portals",
-        "table:app_private.landlord_portal_users",
-        "table:app_private.landlord_portal_sessions",
-        "table:app_private.landlord_portal_login_failures",
-        "function:app_private.landlord_portal_viewer_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (chủ nhắn: link tên miền cho chủ nhà cgiang / agiang.chillhome.io.vn vào bằng PIN 6 số của từng người xem, máy nhớ đăng nhập, thao tác ghi theo người xem), CHƯA đi qua lane apply — các bảng và hàm landlord_portal_* vắng mặt vì migration chưa chạy, không phải bị DROP (tên MỚI, chưa từng có). Bằng chứng: chạy trên TEST (test-env:thu-sql ROLLBACK, --ghi, rồi lượt hai ROLLBACK; tiền kiểm md5 nhận thân của chính file) + bộ PGlite 125 ca chạy hai lượt trên thân production đã ghim md5 (bcrypt thật qua pgcrypto) + 16 đột biến. Khi apply, provenance chuyển ledger-applied và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261024072823_quyet_toan_link_ten_mien_pin.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.landlord_portal_login_v1(p_slug text, p_pin text)"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
-          "trich_doan": "describe(\"link tên miền (20261024072823): migration\", () => {\n  it(\"thân production tái lập đúng md5 trước khi áp (cả hàm chỉ đọc được ghim)\", () => {"
-        }
-      ]
     }
   }
 }

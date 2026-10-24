@@ -26852,6 +26852,48 @@ export type Database = {
         Returns: Json
       }
       landlord_operations_list_v1: { Args: never; Returns: Json }
+      landlord_portal_confirm_v1: {
+        Args: {
+          p_building: string
+          p_month: string
+          p_note?: string
+          p_revision: number
+          p_session: string
+          p_slug: string
+        }
+        Returns: Json
+      }
+      landlord_portal_login_v1: {
+        Args: { p_pin: string; p_slug: string }
+        Returns: Json
+      }
+      landlord_portal_logout_v1: {
+        Args: { p_session: string; p_slug: string }
+        Returns: Json
+      }
+      landlord_portal_save_v1: {
+        Args: { p_building_ids: string[]; p_slug: string }
+        Returns: Json
+      }
+      landlord_portal_unlock_v1: { Args: { p_slug: string }; Returns: Json }
+      landlord_portal_v1: {
+        Args: {
+          p_building?: string
+          p_month?: string
+          p_session: string
+          p_slug: string
+        }
+        Returns: Json
+      }
+      landlord_portal_viewer_add_v1: {
+        Args: { p_label: string; p_slug: string }
+        Returns: Json
+      }
+      landlord_portal_viewer_revoke_v1: {
+        Args: { p_viewer_id: string }
+        Returns: Json
+      }
+      landlord_portals_v1: { Args: never; Returns: Json }
       landlord_settlement_add_payment_v1: {
         Args: {
           p_amount: number
