@@ -7,10 +7,12 @@
 -- toà ngoài phạm vi) ⇒ mọi ca đang ra resolved / ambiguous / outside_scope giữ nguyên; chỉ ca not_visible có thể đổi. Nhiều toà cùng
 -- khớp ⇒ ambiguous (ứng viên trong phạm vi được ghi) — không tự chọn. Phòng, loại việc, người: không đổi.
 -- Connector (đọc): infra/hermes-broker/read-name-resolution.mjs matchBuildings thêm cùng bậc (cùng phát hành, không phụ thuộc thứ tự).
--- Dựng từ thân production (md5 đọc 24/10 bằng db:query, khớp file gốc): core_v1 dfb062cf84bc9486e64a2e7b493a7233, core_v2 10982efd43b237a096213dbe8f4e1bc1.
+-- Lượt 11b: core_v1 dựng từ thân của 20261023185114 (#304 Công việc lượt 11: danh xưng người + loại việc trùng tên toà; md5
+-- 081243f1965abdde1431607e762be438) — file đó áp TRƯỚC file này (cùng đợt tích hợp C1, thứ tự tên); core_v2 dựng từ thân production 20261022044120 (md5
+-- 10982efd43b237a096213dbe8f4e1bc1, đọc 24/10 bằng db:query).
 -- Vỏ public.hermes_write_name_resolve_v1 / _v2 gắn OID lõi lúc tạo; CREATE OR REPLACE giữ OID ⇒ vỏ không đổi. Không DROP, không ghi dữ liệu.
--- CHÚ Ý thứ tự: PR #304 (Công việc lượt 11, 20261023185114) cũng thay core_v1 từ cùng thân production. File nào áp SAU phải dựng lại trên
--- thân của file kia ($requires$ dưới đây chỉ nhận thân production hoặc thân của chính file này ⇒ áp sai thứ tự thì dừng, không gỡ bản vá).
+-- THỨ TỰ: 20261023185114 → file này. $requires$ chỉ nhận thân của 185114 (hoặc thân của chính file này khi chạy lại) ⇒ áp trước 185114
+-- thì dừng, không xoá bản sửa danh xưng; sau khi áp file này, chạy lại 185114 sẽ dừng ở $requires$ của nó (cần ngoại lệ pinned).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
@@ -20,20 +22,22 @@ BEGIN
   IF to_regprocedure('public.hermes_name_fold_v1(text)') IS NULL
     OR to_regprocedure('public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)') IS NULL
     OR to_regprocedure('public.hermes_write_name_resolve_v2(uuid,uuid[],jsonb,boolean)') IS NULL
-    -- Thân đang chạy phải đúng thân production đã đọc (hoặc đúng thân của file này khi chạy lại).
-    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure) NOT IN ('dfb062cf84bc9486e64a2e7b493a7233','8d1a6074191a895878490860d39d8700')
+    -- Thân 185114 gọi hàm dùng chung loại việc trùng tên toà của chính file đó.
+    OR to_regprocedure('public.job_type_building_like_v1(uuid,text)') IS NULL
+    -- core_v1 phải đúng thân 185114, core_v2 đúng thân production (hoặc đúng thân của file này khi chạy lại).
+    OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure) NOT IN ('081243f1965abdde1431607e762be438','4d1fa5e0274db7e22fff70a08d7143fa')
     OR (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid='app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)'::regprocedure) NOT IN ('10982efd43b237a096213dbe8f4e1bc1','6deb5d8e8c56882bc0201a062788aee1') THEN
     RAISE EXCEPTION 'hermes_write_name_house_number_dependency_invalid'; END IF;
 END $requires$;
 
--- 1. Lõi giải tên cho thao tác ghi (thân 20261021132433 + bậc token ở khối toà).
+-- 1. Lõi giải tên cho thao tác ghi (thân 20261023185114 + bậc token ở khối toà).
 CREATE OR REPLACE FUNCTION app_private.hermes_write_name_resolve_core_v1(p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_member_ids uuid[],
   p_caller_member boolean)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE
   v_entry record; v_value text;
   v_building text; v_room text; v_job text; v_person text;
-  v_needles text[]; v_needle text; v_attempt int; v_found jsonb; v_in jsonb; v_out jsonb;
+  v_needles text[]; v_needle text; v_attempt int; v_found jsonb; v_in jsonb; v_out jsonb; v_honor boolean:=false;
   v_soft text; v_tokens text[]; v_loose boolean;
   r_building jsonb; r_room jsonb; r_job jsonb; r_person jsonb;
 BEGIN
@@ -128,13 +132,14 @@ BEGIN
     IF r_building IS NULL THEN r_building:=jsonb_build_object('id',v_found->0->'buildingId','name',v_found->0->'buildingName'); END IF;
   END IF;
 
-  -- Loại việc: bằng rồi chứa, bỏ dấu; loại đã tắt không nhận.
+  -- Loại việc: bằng rồi chứa, bỏ dấu; loại đã tắt không nhận; loại trùng tên một toà (nhập nhầm) không nhận.
   IF v_job IS NOT NULL THEN
     v_needle:=public.hermes_name_fold_v1(v_job);
     FOR v_attempt IN 1..2 LOOP
       CONTINUE WHEN v_attempt=2 AND char_length(v_needle)<2;
       SELECT COALESCE(jsonb_agg(jsonb_build_object('id',j.id,'name',j.name) ORDER BY j.name,j.id),'[]'::jsonb) INTO v_found
         FROM public.job_types j WHERE j.organization_id=p_organization_id AND COALESCE(j.is_active,true)
+          AND NOT public.job_type_building_like_v1(p_organization_id,j.name)
           AND CASE WHEN v_attempt=1 THEN public.hermes_name_fold_v1(j.name)=v_needle ELSE strpos(public.hermes_name_fold_v1(j.name),v_needle)>0 END;
       EXIT WHEN jsonb_array_length(v_found)>0;
     END LOOP;
@@ -148,14 +153,29 @@ BEGIN
     r_job:=v_found->0;
   END IF;
 
-  -- Người: hồ sơ thấy được qua RLS + thành viên ACTIVE (cùng helper của hàm tạo việc); bằng rồi chứa, bỏ dấu.
+  -- Người: hồ sơ thấy được qua RLS + thành viên ACTIVE (cùng helper của hàm tạo việc); bằng rồi chứa, bỏ dấu. Danh xưng + tên
+  -- ("anh Huy", "chị Lan", "e Hoa"; review lượt 11b): (1) bằng NGUYÊN chuỗi (tên thật mở đầu bằng "Anh" như "Anh Tú"), (2) bằng tên đã
+  -- bỏ danh xưng, (3) tên đã bỏ danh xưng là TRỌN TỪ trong tên (bỏ dấu câu: "B.Huy" = "b huy"). Không bao giờ "chứa" nguyên chuỗi có
+  -- danh xưng: "anh huy" nằm trong "thanh huy", "e hoa" nằm trong "le hoa" — khớp nhầm. Danh xưng đứng một mình ("anh", "em") không
+  -- phải tên: đi luật cũ (bằng rồi chứa) như mọi chuỗi không có danh xưng.
   IF v_person IS NOT NULL THEN
-    v_needle:=public.hermes_name_fold_v1(v_person);
-    FOR v_attempt IN 1..2 LOOP
-      CONTINUE WHEN v_attempt=2 AND char_length(v_needle)<2;
+    v_needles:=ARRAY[public.hermes_name_fold_v1(v_person)];
+    v_honor:=v_needles[1] ~ '^(anh|chi|em|co|chu|bac|ong|ba|thay|di|cau|a|c|e) +[a-z0-9]';
+    IF v_honor THEN
+      v_needles:=v_needles||btrim(regexp_replace(regexp_replace(v_needles[1],'^[a-z]+ +',''),'[^a-z0-9]+',' ','g'));
+    END IF;
+    v_found:='[]'::jsonb;
+    FOR v_attempt IN 1..3 LOOP
+      CONTINUE WHEN v_attempt=3 AND NOT v_honor;
+      CONTINUE WHEN v_attempt=2 AND NOT v_honor AND char_length(v_needles[1])<2;
       SELECT COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'name',p.full_name) ORDER BY p.full_name,p.id),'[]'::jsonb) INTO v_found
         FROM public.profiles p WHERE p.full_name IS NOT NULL AND p.id=ANY(COALESCE(p_member_ids,'{}'::uuid[]))
-          AND CASE WHEN v_attempt=1 THEN public.hermes_name_fold_v1(p.full_name)=v_needle ELSE strpos(public.hermes_name_fold_v1(p.full_name),v_needle)>0 END;
+          AND CASE
+            WHEN v_attempt=1 THEN public.hermes_name_fold_v1(p.full_name)=v_needles[1]
+            -- Không danh xưng: chứa như cũ (ba trang ghi cùng dùng).
+            WHEN NOT v_honor THEN strpos(public.hermes_name_fold_v1(p.full_name),v_needles[1])>0
+            WHEN v_attempt=2 THEN btrim(regexp_replace(public.hermes_name_fold_v1(p.full_name),'[^a-z0-9]+',' ','g'))=v_needles[2]
+            ELSE position(' '||v_needles[2]||' ' IN ' '||btrim(regexp_replace(public.hermes_name_fold_v1(p.full_name),'[^a-z0-9]+',' ','g'))||' ')>0 END;
       EXIT WHEN jsonb_array_length(v_found)>0;
     END LOOP;
     IF jsonb_array_length(v_found)<>1 THEN
@@ -334,7 +354,7 @@ BEGIN
       OR NOT has_function_privilege('authenticated',fn,'EXECUTE') THEN
       RAISE EXCEPTION 'hermes_write_name_house_number_catalog_invalid: %',fn; END IF;
   END LOOP;
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure)<>'8d1a6074191a895878490860d39d8700'
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure)<>'4d1fa5e0274db7e22fff70a08d7143fa'
     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid='app_private.hermes_write_name_resolve_core_v2(uuid,uuid[],jsonb,uuid[],boolean,boolean)'::regprocedure)<>'6deb5d8e8c56882bc0201a062788aee1'
     -- Vỏ vẫn là thân SQL-standard gắn OID lõi (không tra app_private lúc chạy).
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)'::regprocedure AND prosqlbody IS NOT NULL)

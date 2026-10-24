@@ -534,11 +534,11 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v2',
     sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
     statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
-  // Hợp đồng lượt 11 (nghiệm thu 24/10, 20261024040001): cả hai lõi giải tên ghi dựng lại từ thân production (132433 / 044120) + bậc khớp
-  // token số nhà + tên đường ở khối toà; vẫn plpgsql INVOKER, chỉ tên public đủ schema.
+  // Hợp đồng lượt 11 / 11b (nghiệm thu 24/10, 20261024040001): lõi giải tên v1 dựng lại từ thân 20261023185114 (danh xưng, #304), lõi v2
+  // từ thân production 044120, cả hai + bậc khớp token số nhà + tên đường ở khối toà; vẫn plpgsql INVOKER, chỉ tên public đủ schema.
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
-    statementSha256: 'bfb162a02ea24d8829d6c762866a568b39bfde7fb7e812946ec2b48db17e6d54' },
+    statementSha256: '5465cf77e24ae039c9efa6c9d2034a11d6a812db30204abc0b1ae858d90d0f8c' },
   { name: 'app_private.hermes_write_name_resolve_core_v2',
     sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
     statementSha256: '0c74fb34de4f13ca7553fd50fc16c50ffafce1b6893734aad191547cf6ab3950' },
@@ -584,6 +584,11 @@ for (const spec of [
   { name: 'app_private.hermes_invoice_edit_lookup_v1',
     sourcePath: 'supabase/migrations/20261023042723_hermes_invoice_edit_v1.sql',
     statementSha256: 'd1c7b73a8705caca8a84b24ded68016cd93dd23062f3b71f76f571bb6c144e27' },
+  // Lượt 11 Công việc (20261023185114): lõi giải tên v1 thay thân — bỏ danh xưng khi khớp người, không nhận loại việc trùng tên toà
+  // (gọi public.job_type_building_like_v1 đủ schema). Vẫn chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql',
+    statementSha256: 'ca38182f3eb344c198b52f335ea422f8316465bf87ac02efbae1f4313353d8d3' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T03:12:24.990Z",
+  "generatedAt": "2026-10-24T04:29:54.620Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 869,
-    "unknown": 80,
-    "catalog-proven": 208,
+    "unknown": 82,
+    "catalog-proven": 209,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13423,11 +13423,46 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql",
+      "version": "20261023185114",
+      "name": "hermes_name_resolve_honorific_v1",
+      "scheme": "timestamp14",
+      "sha256": "8db2875d73f2c340324529626e09962c7bef19f6206617e31b5e88ff8fc11763",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.job_type_building_like_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql",
+      "version": "20261023185116",
+      "name": "hermes_task_nghiem_thu_v1",
+      "scheme": "timestamp14",
+      "sha256": "1ec64aa5fb4873e460879840557b051d6f551306940996febfbe4f1cf18c5074",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_task_assignee_offers"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261023185118_hermes_task_follow_read_total_v1.sql",
+      "version": "20261023185118",
+      "name": "hermes_task_follow_read_total_v1",
+      "scheme": "timestamp14",
+      "sha256": "fd1f288587922e6deede448c09d8b6784dbd5b99e42bdbe92547d31453aff01c",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_task_follow_read_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql",
       "version": "20261024040001",
       "name": "hermes_write_name_resolve_house_number_v1",
       "scheme": "timestamp14",
-      "sha256": "eff359f2cf19bcf065d84e8360b9337ee1563a375a4baa0207844f012b6a582d",
+      "sha256": "bb0a194155178d190f25476b823cf6646d75f7bb858304e8b69565b397473913",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_write_name_resolve_core_v1",

@@ -581,13 +581,13 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
   - phát lại y nguyên; lô sau không lặp HĐ; một biên nhận;
   - B.Huy không có khoá ghi.
 
-**Lượt 11 — sửa theo nghiệm thu bot thật trên TEST (24/10).** Ba migration MỚI, chưa áp, mỗi file dựng từ thân production (md5 đọc bằng `db:query`, ghim ở `$requires$`):
+**Lượt 11 — sửa theo nghiệm thu bot thật trên TEST (24/10).** Ba migration MỚI, chưa áp, mỗi file dựng từ thân đang chạy / sẽ chạy ngay trước nó (md5 ghim ở `$requires$`; lõi v1 của `040001` dựng trên thân của #304 `20261023185114`, lượt 11b):
 - `20261024040001_hermes_write_name_resolve_house_number_v1` — lõi giải tên ghi dùng chung (v1 + bản toà ảo v2 của Thu chi) thêm bậc khớp TOKEN số nhà + tên đường SAU bằng / chứa: "/" và dấu câu là khoảng trắng mềm; bằng sau khi làm mềm, hoặc (chuỗi có số nhà + chữ, ≥ 2 token) token của tên / mã / tên thường gọi chứa mọi token đã gõ. Bậc mới chỉ chạy khi bốn bậc cũ không thấy toà nào ⇒ mọi ca cũ giữ nguyên; nhiều toà ⇒ `ambiguous`. Đường đọc (`matchBuildings` của connector) cùng luật, cùng bộ vector (`name-match-vectors.json`, ca `tokens` / `read`).
 - `20261024040002_hermes_contract_return_preview_v1` — nhánh `contract.return` của bước ghi: câu xem trước "… TRẢ PHÒNG … vào NGÀY thứ Ba 20/10/2026 (2 ngày trước); loại: …", trường `preview.returnDateLabel`; cảnh báo "NGÀY TRẢ KHÁC NGÀY BÁO TRẢ" (hai ngày kèm thứ) và "NGÀY TRẢ ĐÃ QUA N NGÀY" (> 7 ngày). Luật xác nhận, basis, biên nhận, NOWAIT không đổi.
 - `20261024040003_hermes_w2_contract_detail_public_path_v1` — chỗ nối `publicLink` (D-HĐ9) đã làm: nhánh `contract_detail` của `hermes_domain_read_v3` trả `publicPath` `/c/<public_code>` đúng luật nút QR của web (có mã 6–8 chữ/số, HĐ không `TERMINATED` / `DRAFT`); connector ghép `publicWebOrigin` của host thành `publicLink` (vắng ⇒ null). Nháp (`contract_drafts`) không có link công khai ở web.
 - Connector (không migration): thao tác bị từ chối vì người dùng thiếu quyền CRM mà khoá đã bật cho kết nối + công ty ⇒ lý do mới `forbidden` ("Anh/chị chưa có quyền CRM…"); khoá chưa bật ⇒ vẫn `action_disabled`.
 - `contract_extensions.user_id` = `contracts.user_id` (người tạo HĐ), ở cả web (`renew_contract_impl`) lẫn Hermes (cùng hàm web) — không phải người gia hạn; người thao tác nằm ở `hermes_action_receipts.user_id` và `contract_notice_transition_events.actor_id`. Không đổi.
-- Thứ tự áp: `040001` sau #304 (`20261023185114`, cùng thay lõi v1 — file áp sau phải dựng lại trên thân file kia); `040002` bất kỳ lúc nào; `040003` chỉ sau khi connector lượt 11 lên. Cả ba chỉ thay hàm có sẵn ⇒ catalog-proven giả, áp đích danh.
+- Thứ tự áp: `20261023185114` (#304, đợt C1) → `040001` (ghim md5 thân 185114 `081243f1…`; áp trước 185114 thì dừng; sau khi áp, chạy lại 185114 dừng ở `$requires$` của nó ⇒ cần ngoại lệ pinned); `040002` bất kỳ lúc nào; `040003` chỉ sau khi connector lượt 11 lên. Cả ba chỉ thay hàm có sẵn ⇒ catalog-proven giả, áp đích danh.
 
 ## 16. Chưa xác minh
 

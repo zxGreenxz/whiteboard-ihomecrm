@@ -23,6 +23,8 @@ const PARTY_SQL = file('hermes_contract_party_draft_v1');
 const BATCH_SQL = file('hermes_contract_renew_batch_v1');
 // Lượt 11 (nghiệm thu 24/10): lõi giải tên dùng chung thêm bậc token số nhà (cần bản v2 của Thu chi để dựng cả hai lõi) + bản xem
 // trước contract.return nêu ngày kèm thứ / cảnh báo; bước ghi dựng từ thân 074815 (md5 ghim ở $requires$).
+// Lượt 11b: lõi v1 của 040001 dựng trên thân 20261023185114 (#304, danh xưng) ⇒ chuỗi phải có 185114 trước.
+const HONORIFIC_SQL = file('hermes_name_resolve_honorific_v1');
 const VIRTUAL_SQL = file('hermes_name_directory_virtual_v1'), HOUSE_SQL = file('hermes_write_name_resolve_house_number_v1');
 const RETURN_PREVIEW_SQL = file('hermes_contract_return_preview_v1');
 const plain = sql => sql.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
@@ -1202,10 +1204,10 @@ test('PG hai phiên: hàm ghi web khoá dòng HĐ / phòng trước công ty ⇒
 
 // Lượt 11 — sửa theo nghiệm thu bot thật trên TEST (24/10): contract.return nêu NGÀY TRẢ kèm THỨ ở đầu bản xem trước + cảnh báo lệch
 // ngày báo trả / đã qua > 7 ngày (20261024040002, bước ghi dựng từ thân 074815); tên toà gõ thiếu "/3" giải được qua lõi dùng chung
-// (20261024040001). Chuỗi file như production: Mốc 4 → 5 → 6 → bản v2 của Thu chi → hai file lượt 11.
+// (20261024040001). Chuỗi file như production sau C1: Mốc 4 → 5 → 6 → lõi danh xưng 185114 (#304) → bản v2 của Thu chi → hai file lượt 11.
 test('trang Hợp đồng — lượt 11: ngày trả kèm thứ + cảnh báo, tên toà số nhà (20261024040001/040002)', { timeout: 300000 }, async t => {
   const { f, db, run, receipts } = await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`,
-    migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL, VIRTUAL_SQL, HOUSE_SQL, RETURN_PREVIEW_SQL] });
+    migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL, HONORIFIC_SQL, VIRTUAL_SQL, HOUSE_SQL, RETURN_PREVIEW_SQL] });
   await db.query("UPDATE public.contracts SET deposit_paid=4500000,total_deposit=4500000 WHERE id=$1", [CONTRACT]);
   const base = { ...P101, date: '2026-10-20', note: 'Khách trả phòng, bàn giao đủ' };
   const passed = text => /^NGÀY TRẢ ĐÃ QUA/.test(text), differs = text => /^NGÀY TRẢ KHÁC NGÀY BÁO TRẢ/.test(text);
