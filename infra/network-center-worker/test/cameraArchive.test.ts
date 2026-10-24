@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ArchiveJobs, parseArchiveRange, type ArchiveDependencies } from "../src/cameraArchive.js";
 import { liveConfigSchema, LiveError } from "../src/cameraLive.js";
-import { archiveArguments, recorderTime, recordingStart, ArchiveFrameCoverage, saveRecording } from "../src/cameraArchiveMedia.js";
+import { archiveArguments, recorderTime, recordingStart, recordingEnd, ArchiveFrameCoverage, saveRecording } from "../src/cameraArchiveMedia.js";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +31,8 @@ describe("camera archive range and authorization", () => {
     const range = parseArchiveRange(input, Date.parse("2026-10-24T00:00:00Z"));
     expect(recorderTime(range.start)).toBe("2026-10-20 08:00:00");
     expect(recordingStart(range)).toBe("2026-10-20 07:59:55");
+    expect(recordingEnd(range)).toBe("2026-10-20 08:01:05");
+    expect(recordingEnd({ ...range, end: "2026-10-20T16:59:58.000Z" })).toBe("2026-10-21 00:00:03");
     const args = archiveArguments("/private/source.dav", "/private/video.mp4", range);
     expect(args).toContain("dhav"); expect(args).toContain("-copyts"); expect(args).toContain("60");
     expect(args[args.indexOf("-vf")+1]).toContain(`setpts=PTS-${Date.parse("2026-10-20T08:00:00Z")/1000}/TB`);

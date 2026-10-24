@@ -12,6 +12,9 @@ export const recorderTime = (value: string) => new Date(Date.parse(value) + 7 * 
 // Some recorders omit interframes at the download boundary. Fetch preroll, then
 // trim using the preserved absolute clock; never shift the requested interval.
 export const recordingStart = (range: ArchiveRange) => recorderTime(new Date(Date.parse(range.start) - 5000).toISOString());
+// The recorder's HTTP end boundary can precede its last video PTS by a fraction
+// of a second. Fetch a suffix too; trim and coverage checks still use the exact range.
+export const recordingEnd = (range: ArchiveRange) => recorderTime(new Date(Date.parse(range.end) + 5000).toISOString());
 export function archiveArguments(inputFile: string, outputFile: string, range: ArchiveRange) {
   // DHAV preserves recorder wall-clock dates as UTC-shaped PTS. Keep those PTS
   // until trimming; resetting to STARTPTS would hide a missing first second.
@@ -100,7 +103,7 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
       let seconds = 0; let frames = 0;
       try {
         const client = new DahuaClient({ baseUrl: validateCameraOrigin(recorder.archiveOrigin ?? ""), username: recorder.username, password: recorder.password });
-        const response = await client.recording(channel, recordingStart(range), recorderTime(range.end), workSignal);
+        const response = await client.recording(channel, recordingStart(range), recordingEnd(range), workSignal);
         await saveRecording(response, input, workSignal);
         if (workSignal.aborted) throw new LiveError(410, "ARCHIVE_EXPIRED");
         const coverage = new ArchiveFrameCoverage();
