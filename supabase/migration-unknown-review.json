@@ -873,6 +873,24 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261024035114_quyet_toan_du_lieu_phong_chua_dong.sql": {
+      "sha256": "60c4a02e697eb12909b60ce8091f1d3c13c96c352050b784c7ad2c9522e94b93",
+      "missingObjects": [
+        "function:app_private.landlord_room_data_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (chủ nhắn: thẻ Khoản thu của Quyết toán vận hành hiện đủ phòng như Báo cáo LN), CHƯA đi qua lane apply — hàm app_private.landlord_room_data_v1 vắng mặt vì migration chưa chạy, không phải bị DROP (hàm MỚI, chưa từng có tên này). Bằng chứng: chạy trên TEST (test-env:thu-sql --ghi rồi lượt hai ROLLBACK, tiền kiểm md5 nhận thân của chính file) + bộ PGlite 102 ca chạy hai lượt trên thân production đã ghim md5 + 11 đột biến. Khi apply, provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024035114_quyet_toan_du_lieu_phong_chua_dong.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.landlord_room_data_v1(\n  p_building_id uuid,\n  p_month       date,\n  p_public      boolean\n)\nRETURNS jsonb\nLANGUAGE sql\nSTABLE\nSET search_path TO ''"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
+          "trich_doan": "describe(\"dữ liệu phòng (20261024035114): migration\", () => {\n  it(\"thân production tái lập đúng md5 trước khi áp\", () => {"
+        }
+      ]
     }
   }
 }
