@@ -5,7 +5,10 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { InlineSkeleton } from "@/components/loading/LoadingState";
-import { supabase } from "@/integrations/supabase/client";
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { resolveMeterBilling } from '@/lib/meter-capture/service';
+import { meterSourceReference, type MeterBillingSource } from '@/lib/meter-capture/types';
+import { MeterEvidenceThumb } from '@/components/meter-readings/MeterEvidenceThumb';
 import { useBuildingServices } from "@/hooks/useBuildingServices";
 import { resolveInvoicePricing } from "@/lib/contractServicePricing";
 import { prorateAmount, calcProratedDays } from "@/lib/prorateCalculation";
@@ -18,6 +21,7 @@ interface TerminationExtraChargesProps {
   chargeDate?: string;
   /** Emit mảng khoản thu thêm đã chuẩn hoá mỗi khi có thay đổi. */
   onChange: (items: ExtraChargeItem[]) => void;
+  onValidityChange?: (valid: boolean) => void;
 }
 
 let customRowSeq = 0;
@@ -46,6 +50,7 @@ export function TerminationExtraCharges({
   contract,
   chargeDate,
   onChange,
+  onValidityChange,
 }: TerminationExtraChargesProps) {
   const buildingId = contract.room?.building_id || "";
   const { data: bldSvc } = useBuildingServices(buildingId);
@@ -91,74 +96,31 @@ export function TerminationExtraCharges({
     [rent, occupants, pricing],
   );
 
-  // ── Meter điện: lấy meter_id + chỉ số đầu (latest APPROVED) ──────────────
-  // Số chốt chỉ ghi vào đồng hồ ACTIVE (mốc trả phòng chỉ khép theo đồng hồ đang chạy). Phòng mà đồng
-  // hồ điện duy nhất đã ngừng: vẫn lấy số đầu từ đồng hồ đó để tiền điện không tính từ số nhận phòng,
-  // nhưng không gửi meter_id (không ghi số chốt vào đồng hồ đã ngừng).
-  const [meterId, setMeterId] = useState<string | null>(null);
-  // error: không đọc được đồng hồ (không ghi số chốt); reading-error: có đồng hồ nhưng không đọc được số đầu.
-  const [meterLookup, setMeterLookup] = useState<"loading" | "ready" | "error" | "reading-error">("loading");
-  const [previousReading, setPreviousReading] = useState<number>(0);
+  const { selectedOrganizationId: orgId } = useOrganization();
+  const [meterSources, setMeterSources] = useState<MeterBillingSource[]>([]);
+  const [meterLookup, setMeterLookup] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [meterError, setMeterError] = useState('');
+  const [reload, setReload] = useState(0);
+  const [currentReading, setCurrentReading] = useState<number | null>(null);
   useEffect(() => {
-    const roomId = contract.room_id;
-    if (!roomId) {
-      setMeterId(null);
-      setPreviousReading(Number(contract.initial_electricity_reading) || 0);
-      setMeterLookup("ready");
+    let cancelled = false;
+    setMeterSources([]); setCurrentReading(null); setMeterError(''); setMeterLookup('loading');
+    onValidityChange?.(false);
+    if (!orgId || !chargeDate) {
+      setMeterLookup('error'); setMeterError('Cần chọn tổ chức và ngày thanh lý để đối chiếu chỉ số.');
       return;
     }
-    let cancelled = false;
-    setMeterLookup("loading");
-    (async () => {
-      const { data: meters, error: metersError } = await supabase
-        .from("meters")
-        .select("id, status")
-        .eq("room_id", roomId)
-        .eq("meter_type", "ELECTRICITY")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      if (cancelled) return;
-      // Lỗi đọc: không lặng lẽ coi như phòng không có đồng hồ; số đầu giữ số theo hợp đồng và báo rõ.
-      if (metersError) { setMeterId(null); setPreviousReading(Number(contract.initial_electricity_reading) || 0); setMeterLookup("error"); return; }
-      const rows = (meters as { id: string; status: string | null }[] | null) ?? [];
-      const active = rows.find((row) => row.status === "ACTIVE") ?? null;
-      const source = active ?? rows.find((row) => row.status !== "REMOVED") ?? null;
-      setMeterId(active?.id ?? null);
-      if (source) {
-        const { data: readings, error: readingsError } = await supabase
-          .from("meter_readings")
-          .select("current_reading")
-          .eq("meter_id", source.id)
-          .eq("status", "APPROVED")
-          .is("deleted_at", null)
-          .order("reading_date", { ascending: false })
-          .limit(1);
-        if (cancelled) return;
-        if (readingsError) { setPreviousReading(Number(contract.initial_electricity_reading) || 0); setMeterLookup("reading-error"); return; }
-        const prev = Number((readings as { current_reading: number | string | null }[] | null)?.[0]?.current_reading);
-        setPreviousReading(
-          Number.isFinite(prev) && prev > 0
-            ? prev
-            : Number(contract.initial_electricity_reading) || 0,
-        );
-      } else {
-        setPreviousReading(Number(contract.initial_electricity_reading) || 0);
-      }
-      setMeterLookup("ready");
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contract.room_id]);
+    resolveMeterBilling(orgId, { contractId: contract.id, month: chargeDate.slice(0, 7), readingDate: chargeDate, purpose: 'MOVE_OUT' })
+      .then(sources => { if (!cancelled) { setMeterSources(sources); setMeterLookup('ready'); } })
+      .catch(cause => { if (!cancelled) { setMeterLookup('error'); setMeterError(cause instanceof Error ? cause.message : 'Không tải được nguồn chỉ số. Tải lại trước khi quyết toán.'); } });
+    return () => { cancelled = true; };
+  }, [orgId, contract.id, chargeDate, reload, onValidityChange]);
 
   // ── State các dòng mặc định + dòng tuỳ ý ────────────────────────────────
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>(() => chargeDate || "");
   const [proratedAmount, setProratedAmount] = useState(0);
   const [proratedTouched, setProratedTouched] = useState(false);
-  const [currentReading, setCurrentReading] = useState<number | null>(null);
   const [cleaningAmount, setCleaningAmount] = useState(200000);
   const [customRows, setCustomRows] = useState<CustomRow[]>([]);
 
@@ -170,23 +132,36 @@ export function TerminationExtraCharges({
     if (!proratedTouched) setProratedAmount(autoProrated);
   }, [autoProrated, proratedTouched]);
 
-  // Tiền điện = (cuối − đầu) × đơn giá điện (chỉ hiển thị, auto).
-  const consumption =
-    currentReading != null && currentReading > previousReading
-      ? currentReading - previousReading
-      : 0;
-  const electricAmount = Math.round(consumption * (pricing.elec || 0));
-  // Server chỉ ghi số chốt (và tự khép mốc trả phòng) khi có dòng tiền điện > 0 gắn đồng hồ đang chạy.
-  const electricReadingNote = meterLookup === "error"
-    ? "Không tải được đồng hồ điện: kiểm tra lại số đầu; số cuối sẽ không ghi làm chỉ số lúc trả phòng."
-    : meterLookup === "reading-error"
-    ? (meterId ? "Không tải được số đầu: kiểm tra lại số đầu; số cuối vẫn ghi làm chỉ số lúc trả phòng."
-      : "Không tải được số đầu: kiểm tra lại số đầu; số cuối không ghi làm chỉ số lúc trả phòng.")
-    : !meterId
-    ? "Phòng chưa có đồng hồ điện đang dùng: số cuối không ghi làm chỉ số lúc trả phòng."
-    : currentReading != null && electricAmount <= 0
-      ? "Không phát sinh tiền điện nên số này không được ghi; sau khi quyết toán, bổ sung ở mục Chỉ số lúc trả phòng."
-      : "Số cuối ghi luôn làm chỉ số lúc trả phòng.";
+  const onlySource = meterSources.length === 1 ? meterSources[0] : undefined;
+  const manualSource = onlySource?.start && !onlySource.end
+    && !onlySource.registerCode.trim()
+    && onlySource.issues.every(issue => issue === 'MISSING_END') ? onlySource : null;
+  const previousReading = manualSource?.start ? Number(manualSource.start.value) : null;
+  const manualConsumption = currentReading != null && previousReading != null ? currentReading - previousReading : 0;
+  const manualInvalid = !!manualSource && currentReading != null && (!Number.isFinite(currentReading) || manualConsumption < 0);
+  const unresolvedSources = meterSources.some(source => source !== manualSource && (!source.start || !source.end || source.issues.length > 0 || Number(source.end.value) < Number(source.start.value)));
+  const electricValid = meterLookup === 'ready' && !unresolvedSources && !manualInvalid;
+  useEffect(() => { onValidityChange?.(electricValid); }, [electricValid, onValidityChange]);
+  const electricItems = useMemo<ExtraChargeItem[]>(() => {
+    if (meterLookup !== 'ready' || !chargeDate) return [];
+    return meterSources.flatMap(source => {
+      if (source.start && source.end?.readingId && !source.issues.length) {
+        const previous = Number(source.start.value), current = Number(source.end.value);
+        if (current < previous) return [];
+        return [{ kind: 'ELECTRIC' as const, description: `Tiền điện ${source.meterName} (${formatVND(previous)} → ${formatVND(current)})`,
+          amount: Math.round((current - previous) * (pricing.elec || 0)), previous_reading: previous, current_reading: current,
+          unit_price: pricing.elec || 0, meter_id: source.meterId,
+          meter_source: meterSourceReference(source, { contractId: contract.id, month: chargeDate.slice(0, 7), readingDate: chargeDate, purpose: 'MOVE_OUT', sortOrder: 0 }) }];
+      }
+      if (source === manualSource && currentReading != null && previousReading != null && manualConsumption > 0) {
+        return [{ kind: 'ELECTRIC' as const, description: `Tiền điện ${source.meterName} (${formatVND(previousReading)} → ${formatVND(currentReading)})`,
+          amount: Math.round(manualConsumption * (pricing.elec || 0)), previous_reading: previousReading, current_reading: currentReading,
+          unit_price: pricing.elec || 0, meter_id: source.meterId }];
+      }
+      return [];
+    });
+  }, [meterLookup, meterSources, chargeDate, pricing.elec, contract.id, manualSource, currentReading, previousReading, manualConsumption]);
+  const electricAmount = electricItems.reduce((sum, item) => sum + item.amount, 0);
 
   // ── Emit mảng ExtraChargeItem chuẩn hoá lên cha ─────────────────────────
   useEffect(() => {
@@ -202,17 +177,7 @@ export function TerminationExtraCharges({
         unit_price: proratedBase,
       });
     }
-    if (electricAmount > 0 && currentReading != null) {
-      items.push({
-        kind: "ELECTRIC",
-        description: `Tiền điện (${formatVND(previousReading)} → ${formatVND(currentReading)})`,
-        amount: electricAmount,
-        previous_reading: previousReading,
-        current_reading: currentReading,
-        unit_price: pricing.elec || 0,
-        meter_id: meterId,
-      });
-    }
+    for (const item of electricItems) items.push({ ...item, ...(item.meter_source ? { meter_source: { ...item.meter_source, sortOrder: items.length } } : {}) });
     if (cleaningAmount > 0) {
       items.push({
         kind: "CLEANING",
@@ -238,9 +203,7 @@ export function TerminationExtraCharges({
     toDate,
     proratedBase,
     electricAmount,
-    currentReading,
-    previousReading,
-    meterId,
+    electricItems,
     cleaningAmount,
     customRows,
   ]);
@@ -317,56 +280,32 @@ export function TerminationExtraCharges({
           </div>
         </div>
 
-        {/* Dòng 2: Tiền điện (chốt số) — bọc cùng dòng nhắc để divide-y không kẻ vạch giữa hai dòng */}
-        <div>
-        <div className="flex items-center gap-2 px-3.5 py-3">
-          <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium shrink-0">Tiền điện</span>
-          <div className="flex items-center gap-1.5 ml-2 flex-wrap">
-            <Input
-              type="number"
-              min={0}
-              inputMode="numeric"
-              className="h-9 w-[86px] text-sm"
-              title="Số điện đầu"
-              value={previousReading === 0 ? "" : previousReading}
-              onChange={(e) =>
-                setPreviousReading(Math.max(0, Number(e.target.value) || 0))
-              }
-            />
-            <span className="text-xs text-muted-foreground">→</span>
-            <Input
-              type="number"
-              min={0}
-              inputMode="numeric"
-              className="h-9 w-[86px] text-sm"
-              placeholder="Số cuối"
-              title="Số điện cuối"
-              value={currentReading == null ? "" : currentReading}
-              onChange={(e) => {
-                const raw = e.target.value;
-                setCurrentReading(raw === "" ? null : Math.max(0, Number(raw) || 0));
-              }}
-            />
-            {consumption > 0 && (
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {formatVND(consumption)} kWh
-              </span>
-            )}
-          </div>
-          <div className="ml-auto flex h-9 w-36 items-center justify-end rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold tabular-nums">
-            {formatVND(electricAmount)}
-            <span className="ml-1 font-normal text-muted-foreground">đ</span>
-          </div>
-          <div className="w-9 shrink-0" />
-        </div>
-        {/* Chỗ DUY NHẤT nhập số điện cuối khi thanh lý (chủ chốt 08/10/2026): server ghi số chốt và mốc
-            trả phòng từ dòng tiền điện. Không có dòng tiền điện thì số không được ghi — nói thật điều đó. */}
-        {/* Đang tìm đồng hồ: khối xám, không chữ (chủ chốt 02/10/2026). */}
-        <p className={`-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs ${meterLookup === "error" || meterLookup === "reading-error" ? "text-destructive" : "text-muted-foreground"}`}
-          role={meterLookup === "error" || meterLookup === "reading-error" ? "alert" : undefined}>
-          {meterLookup === "loading" ? <InlineSkeleton label="đồng hồ điện của phòng" width="16rem" /> : electricReadingNote}
-        </p>
+        {/* Each physical meter retains its own reading source and internal evidence. */}
+        <div className="space-y-3 px-3.5 py-3">
+          <div className="flex gap-2 items-center"><Zap className="h-4 w-4" /><span className="text-sm font-medium">Tiền điện (chốt số)</span></div>
+          {meterLookup === 'loading' && <InlineSkeleton label="nguồn chỉ số đúng hợp đồng và ngày thanh lý" width="16rem" />}
+          {meterLookup === 'error' && <p role="alert" className="text-xs text-destructive">{meterError} <button type="button" className="underline" onClick={() => setReload(value => value + 1)}>Tải lại nguồn chỉ số</button></p>}
+          {meterLookup === 'ready' && meterSources.length === 0 && <p className="text-xs text-muted-foreground">Phòng chưa có đồng hồ điện đang dùng. Đăng ký đồng hồ tại Ghi chỉ số nếu cần chốt điện.</p>}
+          {meterSources.map(source => <div key={source.meterId} className="space-y-2 border-t pt-2">
+            <p className="text-sm">{source.meterName} · {source.registerCode || 'kWh'}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input title={`Số điện đầu ${source.meterName}`} type="number" className="h-9 w-28" value={source.start?.value ?? ''} readOnly placeholder="Thiếu số đầu" />
+              <MeterEvidenceThumb captureId={source.start?.captureId} label={`Ảnh số đầu ${source.meterName}`} />
+              <span>→</span>
+              <Input title={`Số điện cuối ${source.meterName}`} type="number" inputMode="decimal" min={0} step="0.01" className="h-9 w-28" placeholder="Số cuối"
+                value={source === manualSource ? currentReading ?? '' : source.end?.value ?? ''}
+                readOnly={source !== manualSource} disabled={meterLookup !== 'ready'}
+                onChange={event => setCurrentReading(event.target.value === '' ? null : Number(event.target.value))} />
+              <MeterEvidenceThumb captureId={source.end?.captureId} label={`Ảnh số cuối ${source.meterName}`} />
+              <span className="text-sm font-semibold">{formatVND(electricItems.find(item => item.meter_id === source.meterId)?.amount ?? 0)} đ</span>
+            </div>
+            {source.end && source.start && !source.issues.length ? <p className="text-xs text-muted-foreground">Liên kết chỉ số đã chốt và chứng cứ khi quyết toán, kể cả 0 kWh.</p>
+              : source === manualSource ? <p className={`text-xs ${manualInvalid ? 'text-destructive' : 'text-muted-foreground'}`} role={manualInvalid ? 'alert' : undefined}>{manualInvalid ? 'Số cuối không được nhỏ hơn số đầu.' : currentReading != null && manualConsumption === 0 ? 'Số nhập tay 0 kWh chưa được lưu làm chứng cứ. Chốt bằng ảnh tại Ghi chỉ số để lưu mốc này.' : 'Chưa có ảnh đã chốt: có thể nhập số cuối thủ công. Số đầu lấy đúng kỳ/hợp đồng.'}</p>
+              : <p role="alert" className="text-xs text-destructive">{source.issues.includes('BILLED_READING_REPLACED')
+                ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi thanh lý; chứng từ cũ không tự đổi.'
+                : <>Thiếu nguồn hợp lệ cho đồng hồ này. {source.registerCode.trim() && !source.end ? 'Đồng hồ đã đăng ký đọc bằng QR/ảnh: cần chốt số cuối tại Ghi chỉ số, kể cả khi không dùng thêm điện, rồi tải lại trước khi thanh lý.' : 'Chốt đủ chỉ số tại Ghi chỉ số rồi tải lại.'}</>}</p>}
+          </div>)}
+          {meterLookup === 'ready' && <Button type="button" variant="outline" size="sm" onClick={() => setReload(value => value + 1)}>Tải lại chỉ số đã chốt</Button>}
         </div>
 
         {/* Dòng 3: Tiền vệ sinh */}

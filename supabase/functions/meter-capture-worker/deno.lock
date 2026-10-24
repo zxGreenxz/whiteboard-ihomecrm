@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@noble/hashes@1.8.0": "1.8.0"
+  },
+  "npm": {
+    "@noble/hashes@1.8.0": {
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@noble/hashes@1.8.0"
+    ]
+  }
+}

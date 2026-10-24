@@ -119,6 +119,7 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
 /** Mã của PostgREST (không phải SQLSTATE) — nằm cùng trường `code`. */
 const MA_POSTGREST: Readonly<Record<string, ErrorCategory>> = {
   PT409: "conflict", // stale domain snapshot: reload; never retry the unchanged request
+  PT422: "conflict", // finalized settlement meter source requires accounting/contract adjustment first
   // Kết quả đọc quá trần kích thước (20261017033630_hermes_full_read_owner_scope_v1): phải
   // thu hẹp truy vấn (limit nhỏ hơn / bộ lọc hẹp hơn); gọi lại y hệt sẽ quá trần y hệt.
   PT413: "validation",

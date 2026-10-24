@@ -16,9 +16,12 @@ import { getInvoiceTitle } from "@/lib/invoiceUtils";
 import type { InvoiceFormData, PreviousDebtSource } from "@/types/invoice";
 import { previewInvoiceRentSupport, invoiceRentSupportContextSchema } from './invoiceRentSupport';
 import type { SupportCustomerSchedule } from './rentSupport';
+import { meterSourceReference, type MeterBillingSource } from './meter-capture/types';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 export interface ExcelRowData {
+  meter_billing?: MeterBillingSource[];
+  meter_billing_error?: string;
   support_schedule?: SupportCustomerSchedule;
   support_organization_id?: string;
   support_error?: string;
@@ -254,6 +257,7 @@ export function buildInvoiceCountByContract(
 
 // ── 7. Ghép contract → RowData (kèm khuyến mãi slot, credit, nợ cũ, pricing) ─
 export function buildExcelRows(args: {
+  billingSourcesByContract?: Map<string, MeterBillingSource[]>;
   billingMonth?: string;
   contracts: RawContract[];
   meterByRoom: Map<string, string>;
@@ -271,7 +275,16 @@ export function buildExcelRows(args: {
     .map((c): ExcelRowData => {
       const occupants = c.contract_customers?.length ?? 1;
       const meterId = meterByRoom.get(c.room_id) ?? null;
-      const prev = meterId ? lastReading.get(meterId) ?? 0 : 0;
+      const sources = args.billingSourcesByContract?.get(c.id);
+      const firstSource = sources?.[0];
+      const prev = sources ? Number(firstSource?.start?.value ?? 0) : meterId ? lastReading.get(meterId) ?? 0 : 0;
+      const current = sources?.length === 1 && firstSource?.end ? Number(firstSource.end.value) : '' as const;
+      const sourceError = (sources?.some(source => source.issues.includes('BILLED_READING_REPLACED'))
+        ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi lập tiếp; chứng từ cũ không tự đổi.'
+        : sources?.some(source => source.issues.some(issue => issue !== 'MISSING_END')) ? 'Nguồn chỉ số cần đối chiếu. Kiểm tra tại Ghi chỉ số trước khi tạo hóa đơn.' : undefined)
+        || (sources?.some(source => !source.start) ? 'Thiếu chỉ số đầu trong hợp đồng; cần đối soát.' : undefined)
+        || (sources?.some(source => source.registerCode.trim() && !source.end) ? 'Đồng hồ đã đăng ký QR/ảnh: chốt số cuối tại Ghi chỉ số, kể cả 0 kWh, rồi tải lại trước khi tạo hóa đơn.' : undefined)
+        || (sources && sources.length > 1 && sources.some(source => !source.end) ? 'Chưa chốt đủ đồng hồ của phòng. Bổ sung tại Ghi chỉ số.' : undefined);
       const credit = Math.max(0, creditByContract.get(c.id) || 0);
       const debtEntry = previousDebtByContract.get(c.id);
       const previousDebt = debtEntry?.total ?? 0;
@@ -308,11 +321,12 @@ export function buildExcelRows(args: {
         room_name: c.room?.name ?? "?",
         rent_price: Number(c.rent_price) || 0,
         occupants,
-        meter_id: meterId,
+        meter_id: firstSource?.meterId ?? meterId,
+        ...(sources ? { meter_billing: sources, meter_billing_error: sourceError } : {}),
         prev_reading: prev,
         prev_reading_overridden: false,
-        current_reading: "" as const,
-        electric_amount: 0,
+        current_reading: current,
+        electric_amount: sources?.reduce((total, source) => total + (source.start && source.end ? Math.max(0, Number(source.end.value) - Number(source.start.value)) * pricing.elec : 0), 0) ?? 0,
         electric_overridden: false,
         water_amount: pricing.waterApplicable ? occupants * pricing.water : 0,
         water_overridden: false,
@@ -351,6 +365,7 @@ export function reresolveRowPricing(
   return {
     ...r,
     elec_rate: p.elec,
+    ...(r.meter_billing?.some(source => source.end) && !r.electric_overridden ? { electric_amount: r.meter_billing.reduce((total, source) => total + (source.start && source.end ? Math.max(0, Number(source.end.value) - Number(source.start.value)) * p.elec : 0), 0) } : {}),
     elec_service_id: p.elecServiceId,
     water_rate: p.water,
     water_service_id: p.waterServiceId,
@@ -428,7 +443,20 @@ export function buildInvoiceItems(
     to_date: useProrate ? itemToDate : undefined,
     sort_order: order++,
   });
-  if (row.electric_amount > 0) {
+  if (row.meter_billing?.some(source => source.end)) {
+    if (row.meter_billing_error || row.meter_billing.some(source => !source.start || !source.end)) throw new Error(row.meter_billing_error || 'Chưa chốt đủ đồng hồ điện của phòng.');
+    for (const source of row.meter_billing) {
+      const sortOrder = order++;
+      const ref = meterSourceReference(source, { contractId: row.contract_id, month: ctx.billingMonth, readingDate: ctx.toDate, purpose: 'MONTHLY', sortOrder });
+      if (row.meter_billing.length === 1 && (Number(row.current_reading) !== Number(ref.currentReading) || row.prev_reading !== Number(ref.previousReading))) throw new Error('Chỉ số đã thay đổi so với ảnh; xác nhận lại tại Ghi chỉ số.');
+      const quantity = Number(ref.currentReading) - Number(ref.previousReading);
+      if (quantity < 0) throw new Error('Chỉ số điện cuối thấp hơn số đầu.');
+      if (row.electric_overridden) throw new Error('Tiền điện có chứng cứ phải tính theo chỉ số đã chốt.');
+      items.push({ service_id: source.serviceId ?? row.elec_service_id, type: 'SERVICE', description: `Tiền điện ${source.meterName} (${ref.previousReading} → ${ref.currentReading})`,
+        unit_price: row.elec_rate, quantity, coefficient: 1, previous_reading: Number(ref.previousReading), current_reading: Number(ref.currentReading),
+        from_date: ctx.fromDate, to_date: ctx.toDate, sort_order: sortOrder, meter_source: ref });
+    }
+  } else if (row.electric_amount > 0) {
     const cons = Math.max(consumption, 0);
     items.push({
       service_id: row.elec_service_id,
@@ -484,6 +512,7 @@ export function buildInvoiceFormData(
   );
   if (row.support_plan_revision && row.support_billing_month !== ctx.billingMonth) throw new Error('Tháng hóa đơn đã đổi; tải lại lịch hỗ trợ.');
   if (row.support_error) throw new Error(row.support_error);
+  if (row.meter_billing_error) throw new Error(row.meter_billing_error);
   const supportContext = row.support_plan_revision ? invoiceRentSupportContextSchema.parse({
     version: 1, expected_plan_revision: row.support_plan_revision,
     manual_discount_amount: String(row.discount - (row.invoice_support_amount ?? 0) - appliedCredit), request_id: requestId ?? globalThis.crypto.randomUUID(),

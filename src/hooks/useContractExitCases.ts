@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { exitWithMeterSources } from '@/lib/meter-capture/service';
+import { meterSourceReferenceSchema } from '@/lib/meter-capture/types';
 import {
   confirmContractReturn,finalizeContractExitCase,getContractExitCase,listContractExitCases,updateContractExitKind,contractExitErrorMessage,
   type ContractExitCaseFilters,type ContractExitRpcInvoker,type ConfirmContractReturnInput,
@@ -12,6 +14,15 @@ import {
 type Functions=Database['public']['Functions'];
 // Literal RPC names preserve the normal generated-client boundary.
 const invoke:ContractExitRpcInvoker=(name,args)=>{
+  const settlement = args.p_settlement;
+  if ((name === 'confirm_contract_return_v1' || name === 'finalize_contract_exit_case_v1') && settlement && typeof settlement === 'object' && !Array.isArray(settlement)) {
+    const charges = settlement.extra_charges;
+    const sources = Array.isArray(charges) ? charges.flatMap(charge => {
+      if (!charge || typeof charge !== 'object' || Array.isArray(charge) || !charge.meter_source) return [];
+      return [meterSourceReferenceSchema.parse(charge.meter_source)];
+    }) : [];
+    if (sources.length) return exitWithMeterSources(String(args.p_organization_id), name, args, sources).then(data => ({ data, error: null }));
+  }
   switch(name){
     case 'confirm_contract_return_v1': return supabase.rpc('confirm_contract_return_v1',args as Functions['confirm_contract_return_v1']['Args']);
     case 'finalize_contract_exit_case_v1': return supabase.rpc('finalize_contract_exit_case_v1',args as Functions['finalize_contract_exit_case_v1']['Args']);

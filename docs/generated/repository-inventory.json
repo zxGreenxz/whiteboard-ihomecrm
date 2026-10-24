@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1669,
-  "soFileDocBangFs": 433,
-  "tongLoiGoi": 1082,
-  "khongPhanLoaiDuoc": 478,
+  "tongSoFileTest": 1687,
+  "soFileDocBangFs": 437,
+  "tongLoiGoi": 1089,
+  "khongPhanLoaiDuoc": 480,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 61,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 61,
+      "soFile": 62,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 177,
+      "soFile": 179,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -888,6 +888,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -1397,6 +1405,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/meter-capture-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/migration-target.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1795,6 +1811,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": ".e2e-fleet/specs/meter-capture-live.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": ".e2e-fleet/specs/payment-collection-regression.spec.ts",
       "soGoi": 1,
       "loai": {
@@ -2083,6 +2105,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/meter-capture-worker/worker.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",

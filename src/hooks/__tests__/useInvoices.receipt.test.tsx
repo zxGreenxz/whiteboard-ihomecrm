@@ -6,7 +6,8 @@ import type { PropsWithChildren } from 'react';
 import type { InvoiceFormData } from '@/types/invoice';
 import { useCreateInvoice } from '../useInvoices';
 
-const api = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), toast: vi.fn() }));
+const api = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), toast: vi.fn(), meterCreate:vi.fn() }));
+vi.mock('@/lib/meter-capture/service', async original => ({...await original<typeof import('@/lib/meter-capture/service')>(),createInvoiceWithMeterSources:api.meterCreate}));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: api }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor', email: 'synthetic@example.invalid' }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org' }) }));
@@ -57,4 +58,12 @@ it.each([{}, { invoice_id: invoiceId, id: 'different-invoice' }])('keeps invalid
  expect(api.rpc.mock.calls.filter(call => call[0] === 'create_invoice_v1')).toHaveLength(1);
  expect(api.toast).toHaveBeenCalledTimes(1);
  expect(api.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive', description: expect.stringContaining('Chưa xác nhận được kết quả') }));
+});
+it('source invoice calls only the atomic wrapper and preserves retry identity on a rejected receipt',async()=>{
+ const source={meterId:'meter',contractId:'contract',month:'2026-12',readingDate:'2026-12-31',purpose:'MONTHLY' as const,startReadingId:null,startVersion:'1',endReadingId:'reading',endVersion:'1',previousReading:'100',currentReading:'100',sortOrder:0};
+ const sourced:InvoiceFormData={...form,rent_support_context:undefined,discount_amount:0,meter_capture_request_id:'meter-invoice-stable-key',items:[{type:'SERVICE',description:'Điện',unit_price:3500,quantity:0,coefficient:1,sort_order:0,previous_reading:100,current_reading:100,meter_source:source}]};
+ api.meterCreate.mockRejectedValue({code:'PT409',message:'stale source'});const {result}=createHook();
+ await act(async()=>{await expect(result.current.mutateAsync(sourced)).rejects.toMatchObject({code:'PT409'});});
+ expect(api.meterCreate).toHaveBeenCalledWith('org',expect.objectContaining({p_idempotency_key:'meter-invoice-stable-key',p_items:[expect.objectContaining({meter_source:source,quantity:0})]}),[source]);
+ expect(api.rpc).not.toHaveBeenCalled();expect(api.from).not.toHaveBeenCalled();
 });
