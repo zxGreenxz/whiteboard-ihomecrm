@@ -960,24 +960,6 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
-    },
-    "supabase/migrations/20261024063027_quyet_toan_ky_hieu_so.sql": {
-      "sha256": "3790ba89d7450c6b639c32e1716911459cbcb8563c58c42a9bfbc7863cb249b4",
-      "missingObjects": [
-        "function:public.landlord_operation_book_codes_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 24/10/2026 (chủ nhắn: ký hiệu sổ của toà cài trong trang quản trị — 950NK sổ chủ nhà \"CG\", sổ quản lý \"ET\" — và nút lọc theo sổ), CHƯA đi qua lane apply — object vắng mặt vì migration chưa chạy, không phải bị DROP (hàm/cột MỚI, chưa từng có tên này). Bằng chứng: chạy trên TEST (test-env:thu-sql ROLLBACK, --ghi, rồi lượt hai ROLLBACK; tiền kiểm md5 nhận thân của chính file) + bộ PGlite 110 ca chạy hai lượt trên thân production đã ghim md5 + 10 đột biến. Khi apply, provenance chuyển ledger-applied và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261024063027_quyet_toan_ky_hieu_so.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.landlord_operation_book_codes_v1(\n  p_building_id   uuid,\n  p_landlord_code text,\n  p_manager_code  text\n)"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
-          "trich_doan": "describe(\"ký hiệu sổ (20261024063027): migration\", () => {\n  it(\"thân production tái lập đúng md5 trước khi áp (cả hàm chỉ đọc được ghim)\", () => {"
-        }
-      ]
     }
   }
 }
