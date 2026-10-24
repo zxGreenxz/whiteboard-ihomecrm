@@ -63,7 +63,7 @@ export const TASK_CREATE_BATCH = defineAction({ id: 'task.create_batch', page: '
       content: param.text(1, 200, { optional: true }), jobType: param.name('jobType', { optional: true }),
       assigneeName: param.name('person', { optional: true }), deadline: param.date({ optional: true }),
       deadlineTime: param.time({ optional: true }), priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
-    }), { min: 1, max: TASK_BATCH_MAX, optional: true }),
+    }), { min: 1, max: TASK_BATCH_MAX, optional: true, overflow: 'batch_too_large' }),
     buildingsManagedBy: param.name('person', { optional: true }),
     buildingName: param.name('building', { optional: true }),
     jobType: param.name('jobType', { optional: true }),

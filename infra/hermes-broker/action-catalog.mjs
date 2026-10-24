@@ -4,7 +4,7 @@
 // chạy). Thêm thao tác KHÔNG tốn byte tools/list: khuôn tham số nằm trong KẾT QUẢ của crm_action_list.
 // Hermes không tự kiểm được `params` (object tự do) nên connector kiểm theo khuôn ở đây và trả gợi ý TĨNH dựng từ
 // khuôn (tên tham số + mô tả kiểu), không bao giờ nhắc lại giá trị mô hình gửi.
-import { ACTION_REASON_CODES } from './action-reasons.mjs';
+import { ACTION_INPUT_REASONS, ACTION_REASON_CODES } from './action-reasons.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 
 export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'probe']);
@@ -85,11 +85,13 @@ export const param = Object.freeze({
     return spec('record', false, `{${Object.entries(fields).map(([name, value]) => `${name}${value.optional ? '' : '*'} (${value.hint})`).join('; ')}}`,
       { fields: Object.freeze({ ...fields }) });
   },
-  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false } = {}) => {
+  // overflow (Công việc lượt 13): lý do needs_input riêng khi danh sách DÀI HƠN max (vd batch_too_large "chia lô"), thay cho
+  // invalid_params chung; thao tác phải khai lý do đó trong reasons. Không đổi khuôn liệt kê ở crm_action_list.
+  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false, overflow } = {}) => {
     if (!plain(item) || !Object.isFrozen(item) || ![...SCALARS, 'record'].includes(item.kind) || item.optional ||
         !Number.isSafeInteger(min) || !Number.isSafeInteger(max) || !Number.isSafeInteger(ceiling) || ceiling < MAX_LIST || ceiling > MAX_LIST_CEILING ||
-        min < 1 || max < min || max > ceiling) fail();
-    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max });
+        min < 1 || max < min || max > ceiling || !(overflow === undefined || ACTION_INPUT_REASONS.includes(overflow))) fail();
+    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max, ...(overflow ? { overflow } : {}) });
   },
 });
 const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
@@ -106,6 +108,7 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
   for (const [name, value] of Object.entries(params)) {
     if (!PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !KINDS.includes(value.kind)) fail();
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
+    if (value.kind === 'list' && value.overflow !== undefined && !reasons.includes(value.overflow)) fail();
   }
   const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
   DEFINED.add(action);
@@ -180,13 +183,19 @@ function checkValue(spec, raw) {
   }
 }
 
-/** Kiểm + chuẩn hoá params theo khuôn. {ok:true, value} | {ok:false, detail}. detail chỉ dựng từ khuôn. */
+/** Kiểm + chuẩn hoá params theo khuôn. {ok:true, value} | {ok:false, detail} | {ok:false, overflow:{reason,path,count,max}} (danh sách
+ * cấp ngoài khai overflow dài hơn max). detail chỉ dựng từ khuôn. */
 export function validateActionParams(action, raw) {
   const accepted = Object.keys(action.params);
   const shape = () => accepted.length ? accepted.map(name => `${name}${action.params[name].optional ? '' : '*'} (${action.params[name].hint})`).join('; ') : 'không có tham số';
   const refuse = (problem) => ({ ok: false, detail: `${problem} Khuôn ${action.id}: ${shape()}. (* = bắt buộc)` });
   if (raw === undefined || raw === null) raw = {};
   if (!dataRecord(raw)) return refuse('params phải là object.');
+  for (const [name, spec] of Object.entries(action.params)) {
+    const supplied = raw[name] ?? raw[name.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
+    if (spec.kind === 'list' && spec.overflow && dataArray(supplied) && supplied.length > spec.max)
+      return { ok: false, overflow: { reason: spec.overflow, path: name, count: supplied.length, max: spec.max } };
+  }
   const checked = checkFields(action.params, raw, '');
   if (checked.unknown) return refuse('Có tham số không nhận.');
   if (checked.duplicate) return refuse(`Tham số ${checked.duplicate} gửi hai lần.`);

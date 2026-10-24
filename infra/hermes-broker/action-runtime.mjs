@@ -119,7 +119,15 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       if (!usable(identity.effective, action.id))
         throw actionRejected(alive(action.id) && permissionGaps?.lacks(identity.contextVersion, action.key) === true ? 'forbidden' : 'action_disabled');
       const checked = validateActionParams(action, plan.params);
-      if (!checked.ok) { plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: checked.detail }); return Object.freeze({}); }
+      // Lượt 13 Công việc: danh sách khai overflow dài quá ⇒ lý do riêng (vd batch_too_large "chia lô") kèm số mục đã gửi, không phải
+      // invalid_params chung (mô hình đọc thành "thiếu tham số" rồi thử lại y như cũ).
+      if (!checked.ok) {
+        const over = checked.overflow;
+        plan.immediate = over ? needsInput({ action: action.id, reason: over.reason,
+          detail: `${ACTION_REASONS[over.reason].text} Đã gửi ${over.count} mục ở ${over.path} (tối đa ${over.max}).` })
+          : needsInput({ action: action.id, reason: 'invalid_params', detail: checked.detail });
+        return Object.freeze({});
+      }
       plan.params = checked.value; plan.class = action.class;
       let request;
       if (plan.confirmToken !== undefined) {

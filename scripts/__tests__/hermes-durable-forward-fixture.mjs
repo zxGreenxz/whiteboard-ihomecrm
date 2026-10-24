@@ -1,4 +1,4 @@
-// Frozen contracts for fifty-four forward migrations (eight of 20261019, the B2
+// Frozen contracts for fifty-five forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -54,7 +54,9 @@
 // through the same offers table, the listed job label resolves by its code), and the Thu chi system-flow block 20261024094809 (a new
 // pure IMMUTABLE flow classifier, the category pick and write step rebuilt from the 210634 bodies, the category recheck rebuilt from the
 // 20261015120100 body), and the Thu chi acceptance round 1 20261024120211 (category pick and write step rebuilt from the 094809 bodies,
-// the resolve core rebuilt from the 210634 body)); source review covers each pin.
+// the resolve core rebuilt from the 210634 body), and the Công việc lượt 13 guard 20261024145100 (task resolve core and prepare rebuilt
+// from the 091500 bodies, batch prepare from the 164201 body: self-assignment always previews, a bare honorific asks who)); source
+// review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -176,8 +178,8 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_task_building_managers_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"65f6f435d65d44576157a544e1fb097ff5c83199c871a50812ee21ee3682898d","args":"p_organization_id uuid,p_building_id uuid"},
   {"name":"app_private.hermes_task_quota_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"1cbfc46d52570013b196836578b1cb8a5af0019a72582406777ae1bf53bc5987","args":"p_organization_id uuid,p_actor uuid,p_assignees uuid[]"},
   {"name":"app_private.hermes_task_when_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"5ef8269caf452d35a66ab0d21ccfa2bd8ec1a90a391b397d52f2b12e5716cc52","args":"p_organization_id uuid,p_deadline timestamptz,p_defaulted boolean"},
-  {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261024091500_hermes_task_nghiem_thu_2_v1.sql","sha256":"a926609e5751c0cb34cedcde780d5cd158c3b26f2152d6241d2abad0e8652756","args":"p_ctx jsonb,p_action text,p_params jsonb"},
-  {"name":"app_private.hermes_task_action_prepare_v1","sourcePath":"supabase/migrations/20261024091500_hermes_task_nghiem_thu_2_v1.sql","sha256":"4ad1c93cbb451b0d40e213aff6e806e1917c60c00f44bf6dad6a463cad4c9822","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_managers jsonb"},
+  {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261024145100_hermes_task_self_assign_guard_v1.sql","sha256":"02f3d8cc82fa327cbc83ab82babe10e4bdf0d4b898a85f2682387d56a8858274","args":"p_ctx jsonb,p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_task_action_prepare_v1","sourcePath":"supabase/migrations/20261024145100_hermes_task_self_assign_guard_v1.sql","sha256":"371a88574844369ae462b5f99705bb9eb0caae2c3a61c2b99dff4f2802cd6bd6","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_managers jsonb"},
   {"name":"app_private.hermes_task_action_write_v1","sourcePath":"supabase/migrations/20261023042436_hermes_task_recurring_v1.sql","sha256":"c395fd98699850a09f624cc4d1122a4d669ad73a1b7d0057757a5f0d8d638a93","args":"p_plan jsonb"},
   {"name":"app_private.hermes_task_action_finish_v1","sourcePath":"supabase/migrations/20261023042436_hermes_task_recurring_v1.sql","sha256":"cd96fd8ff53a9656d5f327ff2d7201d143bd01844751a971b27d9e3bdf4486e1","args":"p_binding jsonb,p_action text,p_plan jsonb"},
   {"name":"public.hermes_task_action_v1","sourcePath":"supabase/migrations/20261022031548_hermes_task_action_create_v1.sql","sha256":"b1578aac8d6203f4cc21debc5589617af818e95993585be28477a0ff7f187807","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
@@ -186,7 +188,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_task_edit_prepare_v1","sourcePath":"supabase/migrations/20261022074741_hermes_task_action_edit_v1.sql","sha256":"c0e51a6bfd8cd60d3c2cc2da0d630baaecd05d235bdf20bc1d661c77b1579d03","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_task_edit_finish_v1","sourcePath":"supabase/migrations/20261022074741_hermes_task_action_edit_v1.sql","sha256":"a15feafada342f62ffb821dfc2806177f0935664387acf438ba0b40f397fc391","args":"p_binding jsonb,p_action text,p_plan jsonb"},
   {"name":"app_private.hermes_task_managed_buildings_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"d6f2103a9554e8144bb0c3cd46729ecb92925b6fb3028149ad86ae1f238431ae","args":"p_organization_id uuid,p_person uuid,p_building_ids uuid[]"},
-  {"name":"app_private.hermes_task_batch_prepare_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"e0065138f9615d8a63a28afaf44915b2dfdca6feddcdf99ba5f2feaef4d145c8","args":"p_binding jsonb,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"app_private.hermes_task_batch_prepare_v1","sourcePath":"supabase/migrations/20261024145100_hermes_task_self_assign_guard_v1.sql","sha256":"2d61e5402ef1a2591db18c69320d80283a9d32f43a6802f2904aaf3f348f0894","args":"p_binding jsonb,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_task_batch_finish_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"22ddf14a16d104db36150bba90f2b7902ea7cbee76f7ca5c1507938aca8d3204","args":"p_binding jsonb,p_plan jsonb"},
   {"name":"app_private.hermes_w2c_catalog_v1","sourcePath":"supabase/migrations/20261023042450_hermes_w2c_task_recurrences_v1.sql","sha256":"b15c24a2fc77d25c55098d1c5e8773a55b75b1e4ec16dac16ff73aa000821443","args":""},
   {"name":"app_private.hermes_invoice_reason_v1","sourcePath":"supabase/migrations/20261022075230_hermes_invoice_action_v1.sql","sha256":"1a5d37a10230a1b652ec466b460abdb79ac47d5be8a6001c5cde48be0b6c2f99","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
@@ -214,6 +216,9 @@ export const FORWARD_FUNCTIONS = [
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261024091500_hermes_task_nghiem_thu_2_v1.sql","sha256":"a926609e5751c0cb34cedcde780d5cd158c3b26f2152d6241d2abad0e8652756"},
+  {"name":"app_private.hermes_task_action_prepare_v1","sourcePath":"supabase/migrations/20261024091500_hermes_task_nghiem_thu_2_v1.sql","sha256":"4ad1c93cbb451b0d40e213aff6e806e1917c60c00f44bf6dad6a463cad4c9822"},
+  {"name":"app_private.hermes_task_batch_prepare_v1","sourcePath":"supabase/migrations/20261022164201_hermes_task_batch_v1.sql","sha256":"e0065138f9615d8a63a28afaf44915b2dfdca6feddcdf99ba5f2feaef4d145c8"},
   {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql","sha256":"1d325227dc5d640f1bfc4926b6296740d25e9a3ea49d35271c77d6ee042a8d89"},
   {"name":"app_private.hermes_task_action_prepare_v1","sourcePath":"supabase/migrations/20261023185116_hermes_task_nghiem_thu_v1.sql","sha256":"e4781d84a64faba22dac3b1b6f35daef03ffbf34ddf8917ccdd69fcb4dff68a0"},
   {"name":"app_private.hermes_write_name_resolve_core_v1","sourcePath":"supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql","sha256":"227f0df7bbbc8d01f94584f7e4d3b1f1ad10674ed0a5a890b0068f7900a38161"},
