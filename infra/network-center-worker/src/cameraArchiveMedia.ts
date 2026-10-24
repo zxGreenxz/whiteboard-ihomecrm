@@ -16,10 +16,13 @@ export function archiveArguments(inputFile: string, outputFile: string, range: A
   // DHAV preserves recorder wall-clock dates as UTC-shaped PTS. Keep those PTS
   // until trimming; resetting to STARTPTS would hide a missing first second.
   const start = Date.parse(range.start) / 1000 + 7 * 3600; const end = start + range.durationSeconds;
+  const resolution = range.purpose === "preview" ? "720p" : range.resolution;
+  const bounds = resolution === "1080p" ? [1920, 1080] : [1280, 720];
+  const scale = resolution === "original" ? "" : `scale=w='min(${bounds[0]},iw)':h='min(${bounds[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,`;
   return ["-hide_banner", "-loglevel", "info", "-nostdin", "-y", "-threads", "1",
     "-copyts", "-f", "dhav", "-protocol_whitelist", "file", "-i", inputFile, "-t", String(range.durationSeconds), "-map", "0:v:0", "-map", "0:a:0?",
     "-c:v", "libx264", "-threads", "1", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-    "-vf", `trim=start=${start}:end=${end},setpts=PTS-${start}/TB,${range.purpose === "preview" ? "scale=w='min(1280,iw)':h=-2," : ""}showinfo`,
+    "-vf", `trim=start=${start}:end=${end},setpts=PTS-${start}/TB,${scale}showinfo`,
     "-af", `atrim=start=${start}:end=${end},asetpts=PTS-${start}/TB`,
     "-fps_mode", "vfr", "-c:a", "aac", "-b:a", "96k", "-map_metadata", "-1",
     "-movflags", "+faststart", "-fs", String(ARCHIVE_MAX_BYTES), "-progress", "pipe:1", "-nostats", outputFile];

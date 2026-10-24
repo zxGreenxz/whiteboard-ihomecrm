@@ -3,7 +3,7 @@ import { Download, History, Loader2, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CameraRecorder } from "@/lib/network-center/cameraContracts";
 import { cameraLiveCapabilities } from "@/lib/network-center/cameraLive";
-import { cameraTimeLabel, prepareCameraArchive, validateCameraWindow, vietnamCameraInput, type CameraArchiveReady } from "@/lib/network-center/cameraArchive";
+import { cameraTimeLabel, cameraResolutionLabel, prepareCameraArchive, validateCameraWindow, vietnamCameraInput, type CameraArchiveReady, type CameraArchiveResolution } from "@/lib/network-center/cameraArchive";
 
 interface Prepared { job: CameraArchiveReady; url: string }
 const fieldClass = "min-w-0 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
@@ -21,6 +21,7 @@ export default function CameraArchivePanel({ recorder, buildingName }: { recorde
   const [window, setWindow] = useState<{ from: number; to: number }>(); const [page, setPage] = useState(0);
   const [preview, setPreview] = useState<Prepared>(); const [exported, setExported] = useState<Prepared>();
   const [clipFrom, setClipFrom] = useState(""); const [clipTo, setClipTo] = useState("");
+  const [resolution, setResolution] = useState<CameraArchiveResolution>("720p");
   const [cursor, setCursor] = useState(0); const [speed, setSpeed] = useState(1);
   const [busy, setBusy] = useState<"preview" | "export">(); const [progress, setProgress] = useState(0); const [error, setError] = useState("");
   const channelName = (value: number) => recorder.snapshot?.channels.find((row) => row.channel === value)?.name || `Kênh ${value}`;
@@ -43,7 +44,7 @@ export default function CameraArchivePanel({ recorder, buildingName }: { recorde
     if (purpose === "preview") { discard(preview); setPreview(undefined); }
     else { discard(exported); setExported(undefined); }
     try {
-      const result = await prepareCameraArchive({ recorderId: recorder.id, channel, start: new Date(start).toISOString(), end: new Date(end).toISOString(), purpose }, abort.signal, (job) => { if (!abort.signal.aborted) setProgress(job.progress); });
+      const result = await prepareCameraArchive({ recorderId: recorder.id, channel, start: new Date(start).toISOString(), end: new Date(end).toISOString(), purpose, resolution: purpose === "preview" ? "720p" : resolution }, abort.signal, (job) => { if (!abort.signal.aborted) setProgress(job.progress); });
       if (abort.signal.aborted) return;
       const url = URL.createObjectURL(result.blob); urls.current.add(url); const item = { job: result.job, url };
       if (purpose === "preview") { setPreview(item); setCursor(start); } else setExported(item);
@@ -109,13 +110,14 @@ export default function CameraArchivePanel({ recorder, buildingName }: { recorde
       </div>}
       {window && <div className="space-y-3 border-t pt-4">
         <h4 className="flex items-center gap-2 font-bold"><Scissors className="h-4 w-4" />Cắt đoạn để tải xuống</h4>
-        <p className="text-sm text-muted-foreground">Mỗi file tối đa 30 phút. Bản xuất giữ kích thước hình gốc và chuyển mã MP4 để dễ mở; đối chiếu giờ trên hình trước khi bàn giao.</p>
+        <p className="text-sm text-muted-foreground">Mỗi file tối đa 30 phút. Mặc định HD 720p để xử lý và tải nhanh hơn; có thể chọn chất lượng cao hơn khi cần. Đối chiếu giờ trên hình trước khi bàn giao.</p>
+        <label className="block max-w-sm space-y-1 text-sm" htmlFor={`${uid}-resolution`}><span>Độ phân giải video xuất</span><select id={`${uid}-resolution`} className={fieldClass} value={resolution} disabled={Boolean(busy)} onChange={(event) => { const value = event.target.value; if (value === "720p" || value === "1080p" || value === "original") { discard(exported); setExported(undefined); setResolution(value); } }}><option value="720p">HD 720p · Mặc định</option><option value="1080p">Full HD 1080p</option><option value="original">Độ phân giải gốc · File lớn hơn</option></select></label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-sm" htmlFor={`${uid}-clip-from`}><span>Bắt đầu đoạn cắt</span><input id={`${uid}-clip-from`} className={fieldClass} type="datetime-local" step="1" value={clipFrom} disabled={Boolean(busy)} onChange={(event) => { discard(exported); setExported(undefined); setClipFrom(event.target.value); }} /></label>
           <label className="space-y-1 text-sm" htmlFor={`${uid}-clip-to`}><span>Kết thúc đoạn cắt</span><input id={`${uid}-clip-to`} className={fieldClass} type="datetime-local" step="1" value={clipTo} disabled={Boolean(busy)} onChange={(event) => { discard(exported); setExported(undefined); setClipTo(event.target.value); }} /></label>
         </div>
         <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={!preview || Boolean(busy)} onClick={() => mark(false)}>Lấy vị trí xem làm bắt đầu</Button><Button variant="outline" disabled={!preview || Boolean(busy)} onClick={() => mark(true)}>Lấy vị trí xem làm kết thúc</Button><Button disabled={Boolean(busy)} onClick={exportClip}><Scissors className="mr-2 h-4 w-4" />Tạo đoạn MP4</Button></div>
-        {exported && <div className="space-y-2 rounded-md border border-green-300 bg-green-50 p-3" role="status"><p className="text-sm">Đã tạo: {cameraTimeLabel(exported.job.start)} – {cameraTimeLabel(exported.job.end)} · {(exported.job.bytes / 1024 / 1024).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><Button asChild><a href={exported.url} download={exported.job.filename}><Download className="mr-2 h-4 w-4" />Tải video MP4</a></Button><Button variant="outline" onClick={receipt}>Tải thông tin bàn giao</Button></div><p className="break-all text-xs">SHA-256: {exported.job.sha256}</p></div>}
+        {exported && <div className="space-y-2 rounded-md border border-green-300 bg-green-50 p-3" role="status"><p className="text-sm">Đã tạo: {cameraTimeLabel(exported.job.start)} – {cameraTimeLabel(exported.job.end)} · {cameraResolutionLabel(exported.job.resolution)} · {(exported.job.bytes / 1024 / 1024).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><Button asChild><a href={exported.url} download={exported.job.filename}><Download className="mr-2 h-4 w-4" />Tải video MP4</a></Button><Button variant="outline" onClick={receipt}>Tải thông tin bàn giao</Button></div><p className="break-all text-xs">SHA-256: {exported.job.sha256}</p></div>}
       </div>}
     </div>
   </section>;

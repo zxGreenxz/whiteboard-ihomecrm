@@ -36,6 +36,20 @@ describe("camera archive range and authorization", () => {
     expect(args[args.indexOf("-vf")+1]).toContain(`setpts=PTS-${Date.parse("2026-10-20T08:00:00Z")/1000}/TB`);
     expect(args.join(" ")).not.toMatch(/STARTPTS|fixture-secret|rtsp:|http:/u);
   });
+  it("defaults to HD, bounds both dimensions without upscaling and only accepts known resolutions", () => {
+    const now = Date.parse("2026-10-24T00:00:00Z");
+    const filter = (resolution?: string, purpose = "export") => {
+      const range = parseArchiveRange({ ...input, purpose, ...(resolution ? { resolution } : {}) }, now);
+      const args = archiveArguments("/private/source.dav", "/private/video.mp4", range);
+      return { range, filter: args[args.indexOf("-vf") + 1]! };
+    };
+    expect(filter().range.resolution).toBe("720p");
+    expect(filter().filter).toContain("scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2");
+    expect(filter("1080p").filter).toContain("min(1920,iw)':h='min(1080,ih)");
+    expect(filter("original").filter).not.toContain("scale=");
+    expect(filter("original", "preview").range.resolution).toBe("720p");
+    expect(() => filter("720p,untrusted-filter")).toThrow("INVALID_ARCHIVE_RANGE");
+  });
   it("rejects decoded missing prefixes, trailing video and internal timeline gaps", () => {
     const make = (times: number[]) => {
       const coverage = new ArchiveFrameCoverage();

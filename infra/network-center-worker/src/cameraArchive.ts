@@ -5,18 +5,19 @@ import { LiveError, type LiveActor, type LiveRecorder } from "./cameraLive.js";
 const rangeSchema = z.object({
   start: z.string().datetime({ offset: true }), end: z.string().datetime({ offset: true }),
   purpose: z.enum(["preview", "export"]),
+  resolution: z.enum(["720p", "1080p", "original"]).default("720p"),
 }).strict();
 export const ARCHIVE_MAX_BYTES = 256 * 1024 * 1024;
 export const ARCHIVE_LEASE_MS = 75_000;
 const RETAIN_MS = 15 * 60_000;
-export interface ArchiveRange { start: string; end: string; purpose: "preview" | "export"; durationSeconds: number }
+export interface ArchiveRange { start: string; end: string; purpose: "preview" | "export"; resolution: "720p" | "1080p" | "original"; durationSeconds: number }
 export function parseArchiveRange(value: unknown, now = Date.now()): ArchiveRange {
   const parsed = rangeSchema.safeParse(value);
   if (!parsed.success) throw new LiveError(400, "INVALID_ARCHIVE_RANGE");
-  const { start, end, purpose } = parsed.data;
+  const { start, end, purpose, resolution } = parsed.data;
   const from = Date.parse(start); const to = Date.parse(end); const durationSeconds = (to - from) / 1000;
   if (!Number.isInteger(durationSeconds) || from % 1000 !== 0 || to % 1000 !== 0 || durationSeconds < 1 || durationSeconds > (purpose === "preview" ? 600 : 1800) || to > now || from < Date.UTC(2000, 0, 1)) throw new LiveError(400, "INVALID_ARCHIVE_RANGE");
-  return { start: new Date(from).toISOString(), end: new Date(to).toISOString(), purpose, durationSeconds };
+  return { start: new Date(from).toISOString(), end: new Date(to).toISOString(), purpose, resolution: purpose === "preview" ? "720p" : resolution, durationSeconds };
 }
 export interface ArchiveResult { bytes: number; durationSeconds: number; sha256: string }
 export interface ArchiveDependencies {
@@ -50,7 +51,7 @@ export class ArchiveJobs {
     return this.publicJob(job);
   }
   private publicJob(job: ArchiveJob) {
-    return { id: job.id, recorderId: job.recorder.id, channel: job.channel, start: job.range.start, end: job.range.end, purpose: job.range.purpose, state: job.state, progress: job.progress, expiresAt: job.expiresAt, ...(job.code ? { code: job.code } : {}), ...(job.result ? { ...job.result, filename: `camera-${job.recorder.id}-ch${job.channel}-${job.range.start.replace(/[:.]/gu, "-")}.mp4` } : {}) };
+    return { id: job.id, recorderId: job.recorder.id, channel: job.channel, start: job.range.start, end: job.range.end, purpose: job.range.purpose, resolution: job.range.resolution, state: job.state, progress: job.progress, expiresAt: job.expiresAt, ...(job.code ? { code: job.code } : {}), ...(job.result ? { ...job.result, filename: `camera-${job.recorder.id}-ch${job.channel}-${job.range.start.replace(/[:.]/gu, "-")}-${job.range.resolution}.mp4` } : {}) };
   }
   private async run(job: ArchiveJob) {
     try {

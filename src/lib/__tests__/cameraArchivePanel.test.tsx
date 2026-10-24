@@ -29,8 +29,12 @@ describe("camera archive manager workflow", () => {
     fireEvent.change(screen.getByLabelText("Bắt đầu đoạn cắt"), { target: { value: "2026-10-20T08:12:00" } });
     fireEvent.change(screen.getByLabelText("Kết thúc đoạn cắt"), { target: { value: "2026-10-20T08:14:30" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); await screen.findByRole("link", { name: "Tải video MP4" });
-    expect(mocks.prepare.mock.calls[2]?.[0]).toMatchObject({ purpose: "export", start: "2026-10-20T01:12:00.000Z", end: "2026-10-20T01:14:30.000Z" });
+    expect(mocks.prepare.mock.calls[2]?.[0]).toMatchObject({ purpose: "export", resolution: "720p", start: "2026-10-20T01:12:00.000Z", end: "2026-10-20T01:14:30.000Z" });
     expect(screen.getByRole("button", { name: "Tải thông tin bàn giao" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Độ phân giải video xuất"), { target: { value: "original" } });
+    expect(screen.queryByRole("link", { name: "Tải video MP4" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); await screen.findByRole("link", { name: "Tải video MP4" });
+    expect(mocks.prepare.mock.calls[3]?.[0]).toMatchObject({ resolution: "original" });
   });
   it("rejects invalid ranges without starting a job and clears old media on camera change", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />);

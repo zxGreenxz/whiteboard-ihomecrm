@@ -34,8 +34,9 @@ bản DHAV đang xử lý cũng bị giới hạn dưới 256 MiB và xóa khi k
 dành tối thiểu 2 GiB đĩa cho thư mục state. Không đặt video ở public webroot.
 
 UI cho chọn khoảng tìm tối đa 24 giờ, tải từng đoạn xem trước tối đa 10 phút,
-tua và tốc độ 0.5–8×. Xuất tối đa 30 phút/file, giữ kích thước hình gốc và chuyển
-mã H.264/AAC. Không phải bản bitstream gốc. File thông tin bàn giao chứa camera,
+tua và tốc độ 0.5–8×. Xuất tối đa 30 phút/file, mặc định HD 720p; có thể chọn
+Full HD 1080p hoặc kích thước hình gốc, luôn giữ tỷ lệ và không phóng lớn nguồn.
+Video chuyển mã H.264/AAC, không phải bản bitstream gốc. File bàn giao chứa độ phân giải, camera,
 khoảng giờ yêu cầu, thời lượng video theo timestamp khung hình và SHA-256; không chứng nhận đồng hồ đầu
 ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway kiểm thời lượng
 và timestamp khung hình đầu/cuối, từ chối khoảng rỗng giữa các khung hình lớn hơn
