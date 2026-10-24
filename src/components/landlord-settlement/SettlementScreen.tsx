@@ -13,7 +13,7 @@ import {
   type SettlementPayment,
 } from '@/lib/landlordSettlement';
 import { SettlementCashTab } from './SettlementCashTab';
-import { SettlementHandoverTab } from './SettlementHandoverTab';
+import { SettlementHandoverTab, type LandlordConfirmSubmit } from './SettlementHandoverTab';
 import { SettlementHero } from './SettlementHero';
 import { SettlementOverviewCard } from './SettlementOverviewCard';
 import { SettlementStatementCard } from './SettlementStatementCard';
@@ -52,7 +52,7 @@ const nextFrame = (cb: () => void) => {
 export function SettlementScreen({
   mode, buildingName, landlordName, month, overview, months, selectedMonth, onSelectMonth,
   buildingPicker, actions, notice, emptyBody, wrapBody, stickyClassName, loading = false, isFetching = false, busy = false,
-  buildingId, token, onVoidPayment, onRequestDepositHolder,
+  buildingId, token, onConfirm, onVoidPayment, onRequestDepositHolder,
 }: {
   mode: 'admin' | 'public';
   buildingName: string | null;
@@ -79,6 +79,8 @@ export function SettlementScreen({
   busy?: boolean;
   buildingId?: string;
   token?: string;
+  /** Link tên miền (PIN): xác nhận đã xem số liệu theo người xem — thay cho token. */
+  onConfirm?: LandlordConfirmSubmit;
   onVoidPayment?: (payment: SettlementPayment) => void;
   onRequestDepositHolder?: (holder: DepositHolder) => void;
 }) {
@@ -140,7 +142,9 @@ export function SettlementScreen({
               holderLockedSince={overview.months.find((m) => m.status === 'CLOSED')?.period_month ?? null}
               onGoHandover={() => selectTab('bangiao')} />
           )}
-          {tab === 'bangiao' && <SettlementHandoverTab month={month} mode={mode} buildingId={buildingId} token={token} busy={busy} />}
+          {tab === 'bangiao' && (
+            <SettlementHandoverTab month={month} mode={mode} buildingId={buildingId} token={token} onConfirm={onConfirm} busy={busy} />
+          )}
           {tab === 'thongke' && (
             <SettlementOverviewCard overview={overview} mode={mode} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth}
               onVoidPayment={onVoidPayment} narrow={narrow} />

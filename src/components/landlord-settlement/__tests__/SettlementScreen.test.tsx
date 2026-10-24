@@ -256,6 +256,11 @@ it('Bàn giao — nút xác nhận KHÔNG có ở màn quản trị; tháng mở
   expect(ok).toMatch(/Chủ nhà A đã xác nhận đã xem số liệu tháng 10\/2026/);
   expect(ok).toMatch(/Lúc 09:12 · 03\/11\/2026/);
   expect(ok).toMatch(/Khớp sổ/);
+  cleanup();
+  // link tên miền: xác nhận ghi theo người xem (tên gắn với PIN) ⇒ hiện đúng người đó
+  ve({ month: closedMonth({ confirmation: { confirmed_at: '2026-11-03T02:12:00Z', note: null, by: 'Người xem A' } }) });
+  fireEvent.click(tab(/Bàn giao/));
+  expect(tien(screen.getByTestId('settlement-confirmed'))).toMatch(/Người xem A đã xác nhận đã xem số liệu tháng 10\/2026/);
 });
 
 it('Bàn giao — admin sửa ghi chú sau khi chốt: gửi đúng revision của lần chốt đang hiện', async () => {

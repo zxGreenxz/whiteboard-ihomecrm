@@ -133,6 +133,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/network-center/intentRegistry.ts": "nhat-ky-chong-ghi-trung",
   "src/integrations/supabase/client.ts": "phien-dang-nhap",
   "src/hooks/useAuth.ts": "phien-dang-nhap",
+  // Phiên link tên miền của chủ nhà (PIN) — khoá theo link, không gắn tài khoản CRM; Thoát trên trang link xoá.
+  "src/lib/landlordPortal.ts": "phien-dang-nhap",
   "src/lib/authSession.ts": "chi-chu-thich",
   "src/copilot/confirmationStore.ts": "chi-chu-thich",
   // Chỉ chú thích "mật khẩu tạm không ghi localStorage".
