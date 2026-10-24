@@ -1,10 +1,10 @@
 {
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
-    "source": 12,
-    "deployed": 11,
-    "invoked": 2,
-    "publiclyCallable": 4
+    "source": 13,
+    "deployed": 12,
+    "invoked": 3,
+    "publiclyCallable": 5
   },
   "sourceWithoutDeployment": [
     "network-watchdog"
@@ -16,7 +16,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 31,
+      "version": 32,
       "verifyJwt": true,
       "callers": []
     },
@@ -24,7 +24,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 6,
+      "version": 7,
       "verifyJwt": true,
       "callers": [
         "src/lib/bank-events/service.ts"
@@ -34,7 +34,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 7,
+      "version": 8,
       "verifyJwt": false,
       "callers": []
     },
@@ -42,7 +42,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 27,
+      "version": 28,
       "verifyJwt": false,
       "callers": []
     },
@@ -50,7 +50,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 4,
       "verifyJwt": true,
       "callers": []
     },
@@ -58,7 +58,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 9,
+      "version": 10,
       "verifyJwt": true,
       "callers": []
     },
@@ -66,15 +66,25 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 41,
+      "version": 42,
       "verifyJwt": true,
       "callers": []
+    },
+    "meter-capture-worker": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 1,
+      "verifyJwt": false,
+      "callers": [
+        "src/lib/meter-capture/service.ts"
+      ]
     },
     "network-center-worker": {
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 17,
+      "version": 18,
       "verifyJwt": false,
       "callers": []
     },
@@ -90,7 +100,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 9,
+      "version": 10,
       "verifyJwt": true,
       "callers": []
     },
@@ -98,7 +108,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 32,
+      "version": 33,
       "verifyJwt": false,
       "callers": []
     },
@@ -106,7 +116,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 33,
+      "version": 34,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",

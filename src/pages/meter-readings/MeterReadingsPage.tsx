@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Gauge, Plus, FileSpreadsheet } from "lucide-react";
+import { Gauge, Plus, FileSpreadsheet, Camera } from "lucide-react";
 import { MeterReadingStats } from "@/components/meter-readings/MeterReadingStats";
 import {
   MeterReadingFiltersBar,
@@ -32,6 +32,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
+const MeterCaptureDialog = lazy(() => import('@/components/meter-readings/capture/MeterCaptureDialog'));
 
 const MeterReadingsDesktop = () => {
   // --- Filters ---
@@ -49,6 +50,8 @@ const MeterReadingsDesktop = () => {
   // --- Dialogs ---
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isCaptureOpen, setIsCaptureOpen] = useState(false);
+  const [hasCaptureOpened, setHasCaptureOpened] = useState(false);
   const [editingReading, setEditingReading] =
     useState<MeterReadingDetailed | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -121,6 +124,9 @@ const MeterReadingsDesktop = () => {
       <div className="space-y-4">
         {/* Header: Action buttons */}
         <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" onClick={() => { setHasCaptureOpened(true); setIsCaptureOpen(true); }}>
+            <Camera className="h-4 w-4 mr-2" />Chụp đồng hồ / QR
+          </Button>
           <Button variant="outline" onClick={() => setIsImportOpen(true)}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Import
@@ -162,6 +168,7 @@ const MeterReadingsDesktop = () => {
       </div>
 
       {/* Form Dialog */}
+      {hasCaptureOpened && <Suspense fallback={null}><MeterCaptureDialog open={isCaptureOpen} onOpenChange={setIsCaptureOpen} month={filters.month} /></Suspense>}
       <MeterReadingForm
         open={isFormOpen}
         onOpenChange={handleFormClose}

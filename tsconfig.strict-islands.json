@@ -1790,7 +1790,21 @@
     "src/lib/__tests__/khoaKyThangDaChotLnMigration.test.ts",
     "src/hooks/useProfitPostLock.ts",
     "src/hooks/__tests__/useProfitPostLock.test.tsx",
-    "src/components/reports/ProfitPostLockNotice.tsx"
+    "src/components/reports/ProfitPostLockNotice.tsx",
+    "src/components/invoices/InvoiceMeterEvidence.tsx",
+    "src/components/meter-readings/MeterEvidenceThumb.tsx",
+    "src/components/meter-readings/capture/MeterCamera.tsx",
+    "src/components/meter-readings/capture/MeterCaptureDialog.tsx",
+    "src/components/meter-readings/capture/MeterCaptureRegistry.tsx",
+    "src/components/meter-readings/capture/MeterCaptureReview.tsx",
+    "src/components/meter-readings/capture/useMeterCaptureDesk.ts",
+    "src/lib/meter-capture/feedback.ts",
+    "src/lib/meter-capture/media.ts",
+    "src/lib/meter-capture/offlineQueue.ts",
+    "src/lib/meter-capture/qrLabel.ts",
+    "src/lib/meter-capture/service.ts",
+    "src/lib/meter-capture/types.ts",
+    "src/components/meter-readings/MeterEvidenceViewer.tsx"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

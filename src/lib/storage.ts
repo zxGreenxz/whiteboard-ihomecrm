@@ -16,7 +16,7 @@ export { sanitizeStorageFileName } from "./storageKey";
  * - `evidence`: ảnh chứng từ tiền — ảnh chụp màn hình điện thoại (bill chuyển
  *   khoản) nén mạnh hơn, ảnh camera giữ mức thường (xem imageCompress).
  */
-export type UploadImagePolicy = 'default' | 'identity-original' | 'evidence';
+export type UploadImagePolicy = 'default' | 'identity-original' | 'evidence' | 'meter-original';
 
 export interface UploadFileOptions {
   imagePolicy?: UploadImagePolicy;
@@ -141,7 +141,7 @@ export async function uploadFileDetailed(
   // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key. Ảnh
   // giấy tờ được kiểm tra rồi lưu đúng bytes gốc để không làm mất chi tiết QR.
   const compressStarted = Date.now();
-  const toUpload = options.imagePolicy === 'identity-original'
+  const toUpload = options.imagePolicy === 'meter-original' ? file : options.imagePolicy === 'identity-original'
     ? identityOriginal(file)
     : await compressImage(file, {
         ...(options.imagePolicy === 'evidence' ? { profile: 'evidence' as const } : {}),

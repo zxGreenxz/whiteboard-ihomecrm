@@ -29,8 +29,10 @@ import {
 } from "@/lib/excelInvoiceRows";
 import type { PreviousDebtSource } from "@/types/invoice";
 import { readInvoiceRentSupportPlan, readSavedInvoiceSupportRequest } from '@/lib/invoiceRentSupport';
+import { meterInvoiceRequestId, readSavedMeterInvoiceRequest, resolveMeterBilling, type MeterBillingSource } from '@/lib/meter-capture/service';
 
 export interface ExcelInvoiceSource {
+  billingSourcesByContract?: Map<string, MeterBillingSource[]>;
   /** HĐ ACTIVE của toà, đã gom 1 phòng 1 HĐ (giữ HĐ mới nhất). */
   contracts: RawContract[];
   /** Tên các phòng có >1 HĐ ACTIVE (dữ liệu lỗi — cần thanh lý HĐ cũ). */
@@ -43,7 +45,7 @@ export interface ExcelInvoiceSource {
 }
 
 /** Tải 5 nguồn dữ liệu lập hoá đơn cho 1 toà (thứ tự query giữ như bản cũ). */
-export async function fetchExcelInvoiceSource(buildingId: string): Promise<ExcelInvoiceSource> {
+export async function fetchExcelInvoiceSource(buildingId: string, period?: { month: string; readingDate: string }): Promise<ExcelInvoiceSource> {
   // 1) Active contracts (lọc theo building qua room → building).
   const { data: contracts, error: e1 } = await supabase
     .from("contracts")
@@ -88,7 +90,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
   // 3) Chỉ số APPROVED mới nhất per meter.
   const meterIds = financialReadRows(meters).map((m) => m.id);
   let lastReading = new Map<string, number>();
-  if (meterIds.length > 0) {
+  if (!period && meterIds.length > 0) {
     const { data: readings, error: e3 } = await supabase
       .from("meter_readings")
       .select("meter_id, current_reading, reading_date")
@@ -102,6 +104,16 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
   }
 
   const contractIds = buildingContracts.map((c) => c.id);
+  const billingSourcesByContract = period ? new Map<string, MeterBillingSource[]>() : undefined;
+  if (period && billingSourcesByContract) {
+    for (let offset = 0; offset < buildingContracts.length; offset += 6) {
+      await Promise.all(buildingContracts.slice(offset, offset + 6).map(async contract => {
+        if (!contract.organization_id) throw new Error('Hợp đồng thiếu tổ chức.');
+        const sources = await resolveMeterBilling(contract.organization_id, { contractId: contract.id, month: period.month, readingDate: period.readingDate, purpose: 'MONTHLY' });
+        billingSourcesByContract.set(contract.id, sources);
+      }));
+    }
+  }
 
   // 4) Credit (excess_amounts) per contract.
   let creditByContract = new Map<string, number>();
@@ -149,6 +161,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
   }
 
   return {
+    billingSourcesByContract,
     contracts: buildingContracts,
     dupRoomNames,
     meterByRoom,
@@ -184,7 +197,7 @@ export interface SubmitExcelResult {
 export function useSubmitExcelInvoices() {
   const createInvoice = useCreateInvoice({silent:true});
   const { selectedOrganizationId } = useOrganization();
-  const intents = useRef(new Map<string, { fingerprint: string; requestId: string; organizationId: string; completed: boolean; readingSaved: boolean; recoveryOnly: boolean; invoiceId?: string }>());
+  const intents = useRef(new Map<string, { fingerprint: string; requestId: string; organizationId: string; billingMonth: string; meterLinked: boolean; completed: boolean; readingSaved: boolean; recoveryOnly: boolean; invoiceId?: string }>());
 
   const submit = async (rows: ExcelRowData[], ctx: SubmitContext): Promise<SubmitExcelResult> => {
     let ok = 0;
@@ -201,7 +214,9 @@ export function useSubmitExcelInvoices() {
         const old = intents.current.get(row.contract_id);
         if (old && !old.completed) {
           readingSaved = old.readingSaved;
-          const saved = await readSavedInvoiceSupportRequest(old.organizationId, row.contract_id, old.requestId);
+          const saved = old.meterLinked
+            ? await readSavedMeterInvoiceRequest(old.organizationId, old.requestId)
+            : await readSavedInvoiceSupportRequest(old.organizationId, row.contract_id, old.requestId);
           if (saved) {
             old.completed = true;
             old.invoiceId = saved.id;
@@ -212,7 +227,8 @@ export function useSubmitExcelInvoices() {
             } catch {
               // A stale month/quote cannot establish that the current edits were saved.
             }
-            recovered.push({ contractId: row.contract_id, billingMonth: saved.billing_month, invoiceNumber: saved.invoice_number || saved.id, matchesCurrentIntent });
+            if (old.meterLinked) readingSaved = true;
+            recovered.push({ contractId: row.contract_id, billingMonth: typeof saved.billing_month === 'string' ? saved.billing_month : old.billingMonth, invoiceNumber: typeof saved.invoice_number === 'string' ? saved.invoice_number : saved.id, matchesCurrentIntent });
             results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:saved.id,readingSaved});
             continue;
           }
@@ -220,20 +236,24 @@ export function useSubmitExcelInvoices() {
         }
         const payload = buildInvoiceFormData(row, ctx, '00000000-0000-4000-8000-000000000001');
         const fingerprint = JSON.stringify([selectedOrganizationId, payload]);
-        if (payload.rent_support_context) {
+        const linkedSources = payload.items.some(item => item.meter_source);
+        if (payload.rent_support_context || linkedSources) {
           if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
           if (old?.completed && old.fingerprint === fingerprint) {
             results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:old.invoiceId,readingSaved:old.readingSaved});
             ok++; continue;
           }
-          const intent = old?.fingerprint === fingerprint ? old : { fingerprint, requestId: globalThis.crypto.randomUUID(), organizationId: selectedOrganizationId, completed: false, readingSaved: false, recoveryOnly: false };
+          const intent = old?.fingerprint === fingerprint ? old : { fingerprint,
+            requestId: linkedSources && !payload.rent_support_context ? await meterInvoiceRequestId(selectedOrganizationId, payload) : globalThis.crypto.randomUUID(),
+            organizationId: selectedOrganizationId, billingMonth: ctx.billingMonth, meterLinked: linkedSources, completed: false, readingSaved: false, recoveryOnly: false };
           intents.current.set(row.contract_id, intent);
-          payload.rent_support_context.request_id = intent.requestId;
+          if (payload.rent_support_context) payload.rent_support_context.request_id = intent.requestId;
+          if (linkedSources) payload.meter_capture_request_id = intent.requestId;
         }
         // 1) Chốt chỉ số điện để CHỈ SỐ ĐẦU tháng sau nối tiếp đúng.
         const consumption =
           (Number(row.current_reading) || 0) - (Number(row.prev_reading) || 0);
-        if (row.meter_id && row.current_reading !== "" && consumption >= 0) {
+        if (!linkedSources && row.meter_id && row.current_reading !== "" && consumption >= 0) {
           const user = await getSessionUser();
           if (user) {
             const { error: readingErr } = await supabase.from("meter_readings").insert(withOrg({
@@ -262,6 +282,7 @@ export function useSubmitExcelInvoices() {
         const receipt=await createInvoice.mutateAsync(payload);
         const id=(receipt as {id?:string}|null)?.id;
         if(!id) throw new TypeError("Missing invoice creation receipt");
+        if (linkedSources) readingSaved = true;
         results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:id,readingSaved});
         const intent = intents.current.get(row.contract_id);
         if (intent) { intent.completed = true; intent.invoiceId = id; intent.readingSaved = readingSaved; }
@@ -272,7 +293,7 @@ export function useSubmitExcelInvoices() {
         const intent = intents.current.get(row.contract_id);
         if (intent && !intent.completed) {
           intent.readingSaved = readingSaved;
-          intent.recoveryOnly ||= readingSaved || err instanceof InvoicePartialError || voucherOutcomeUnknown(err);
+          intent.recoveryOnly ||= (!intent.meterLinked && readingSaved) || err instanceof InvoicePartialError || voucherOutcomeUnknown(err);
         }
         const message = `${readingSaved?"Đã lưu chỉ số điện nhưng chưa tạo xong hoá đơn. ":""}${invoiceFailureMessage(err,"tạo hoá đơn")}`;
         results.push({contractId:row.contract_id,roomName:row.room_name,invoiceId:err instanceof InvoicePartialError?err.invoiceId:undefined,readingSaved,error:message,outcomeUnknown:voucherOutcomeUnknown(err),supportRecoveryPending:!!intent && !intent.completed && intent.recoveryOnly});
