@@ -1729,6 +1729,7 @@
     "src/lib/settlementRoomNotes.ts",
     "src/lib/__tests__/settlementRoomNotes.test.ts",
     "src/lib/landlordPortal.ts",
+    "src/lib/landlordPortalHost.ts",
     "src/lib/__tests__/landlordPortal.test.ts",
     "src/hooks/useLandlordPortal.ts",
     "src/pages/public/LandlordPortalPage.tsx",

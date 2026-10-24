@@ -9,23 +9,10 @@
 import { z } from 'zod';
 import { settlementMonthSchema, settlementOverviewSchema } from '@/lib/landlordSettlement';
 
-/** Link cố định: tên miền riêng ⇒ tên link. Link nào cũng mở được ở /cn/<tên link> trên tên miền chính. */
-export const LANDLORD_PORTAL_LINKS = [
-  { slug: 'cgiang', host: 'cgiang.chillhome.io.vn' },
-  { slug: 'agiang', host: 'agiang.chillhome.io.vn' },
-] as const;
-export type LandlordPortalSlug = typeof LANDLORD_PORTAL_LINKS[number]['slug'];
-
-/** Tên link theo tên miền đang mở (không phải tên miền link ⇒ null). */
-export function landlordPortalSlugFromHost(hostname: string | null | undefined): LandlordPortalSlug | null {
-  const h = (hostname ?? '').toLowerCase().replace(/\.$/, '');
-  return LANDLORD_PORTAL_LINKS.find((l) => l.host === h)?.slug ?? null;
-}
-
-export const landlordPortalUrl = (slug: string): string => {
-  const l = LANDLORD_PORTAL_LINKS.find((x) => x.slug === slug);
-  return l ? `https://${l.host}` : `https://chillhome.io.vn/cn/${slug}`;
-};
+// tên link cố định + ánh xạ tên miền ở module nhỏ (cây route trong chunk đầu dùng mà không kéo zod)
+export {
+  LANDLORD_PORTAL_LINKS, landlordPortalSlugFromHost, landlordPortalUrl, type LandlordPortalSlug,
+} from '@/lib/landlordPortalHost';
 
 export const PORTAL_PIN = /^\d{6}$/;
 

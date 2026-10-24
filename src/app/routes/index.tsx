@@ -7,7 +7,7 @@
 import { Suspense, useLayoutEffect } from "react";
 import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { hideAppSplash } from "@/lib/appSplash";
-import { landlordPortalSlugFromHost } from "@/lib/landlordPortal";
+import { landlordPortalSlugFromHost } from "@/lib/landlordPortalHost";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
 import { ChatZaloPage, LandlordPortalPage, LuckyDrawAdminPage } from "../lazyPages";
