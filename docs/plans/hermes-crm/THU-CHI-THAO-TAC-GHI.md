@@ -1095,3 +1095,31 @@ Không dùng từ đơn đã bỏ dấu vì trùng nghĩa: "coc" = cọc / cốc
 1. Áp `20261024094809` (provenance `unknown`: hàm mới `hermes_expense_system_flow_v1`) và `20261024095547` (thay thân hai hàm gói B ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh). Hai file độc lập; thứ tự tên.
 2. Connector không cần trước `094809` (`web_only` + `link` đã qua connector đang chạy). Với `095547`: SQL TRƯỚC connector (connector mới quảng bá `days`).
 3. Ghim chéo: sau khi áp, `20261023210634` (ghim thân bước ghi `15183dce…`) và `20261022051032` (ghim thân catalog / đọc gói B) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 25. Lượt 14 — sửa phần ghi theo nghiệm thu vòng 1 (24/10/2026)
+
+Nghiệm thu vòng 1 trên TEST (SOUL v4.19 + connector C1): phần ghi đạt 25/41 (trước 14/41), có một lần GHI SAI thật. Luật SOUL do phiên chính sửa riêng.
+
+### 25.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc (đã tra) | Sửa |
+| --- | --- | --- |
+| GHI SAI: "Mua nệm" phòng 202 vào "Chi khác (ghi rõ)" (`PC2610225`, đã vào sổ) | Biên nhận: chính bot gửi `category: "Chi khác (ghi rõ)"`. Máy chủ không gợi ý "Chi khác" cho câu này, nhưng hàm dùng chung không ra gì (nệm, giường, tủ … không có trong cụm "hay nói"), và bộ chọn của bot chỉ nêu một ứng viên là "Bỏ rác phát sinh" (trùng chữ với cụm "đổ nệm cũ"). Đo 90 ngày production (683 phiếu CHI lập tay): hàm dùng chung trả "Chi khác" theo trùng chữ ở 14 phiếu ("chi phí …", "ghi chú …"); các phiếu người lập chọn "Chi khác" mà đáng ra là nội thất, điện máy, ăn uống, dụng cụ … | `20261024120207` (hàm dùng chung v3, web đổi cùng lúc): từ vựng nội thất / điện máy / ăn uống / bỏ rác, mở rộng dụng cụ / vật tư điện nước; "Chi khác" không bao giờ thắng trùng chữ tên. `20261024120211`: hạng mục "khác" không bao giờ là ứng viên, gợi ý hay tự nhận của bot; chỉ nhận khi người dùng nêu tên có chữ "khác"; "Chi khác" mà nội dung khớp cứng hạng mục khác ⇒ cảnh báo trong bản xem trước |
+| "Đóng tiền nước" 1,2 triệu (hạng mục bắt buộc duyệt) vào sổ ngay (`PC2610230`) | ĐÚNG luật web: hạng mục chi theo trần (`spend_mode` TRAN), 1,2 triệu dưới trần 1,5 triệu / phiếu của toà ⇒ bộ máy chi `UNDER_CEILING` ⇒ duyệt + vào sổ; `force_approval` chỉ xét ở hạng mục TỪNG PHIẾU. Web cùng người, hạng mục, số tiền cũng vào sổ ngay | Không đổi luật (phiên chính chỉnh đáp án). Bản xem trước nêu trần: "VÀO SỔ NGAY khi ghi (dưới trần chi 1.500.000đ một phiếu)"; dòng cam kết của hạng mục TRAN đổi thành "chi theo trần, không trừ cam kết: trần … một phiếu — khoản này trong / VƯỢT trần" (trước đây nói "còn … sau khoản này còn 0" dù cam kết không bị trừ) |
+| Xác nhận bị `confirmation_invalid` rồi ra bản xem trước mới, lặp | Journal connector TEST: đúng MỘT `confirmation_invalid` (10:22:30 UTC), từ chối ngay ở connector sau 1,75 s, KHÔNG gọi SQL ⇒ basis không đổi (không có `state_changed`); token lệch `params` / `requestId` hoặc đã dùng / hết hạn. Basis của bản xem trước không chứa gì phụ thuộc thời gian | Connector: `confirmation_invalid` mang câu tĩnh nói phần lệch (`requestId` khác bản xem trước, `params` khác, quá 10 phút, đã dùng, thiếu `requestId`) — bot biết gửi lại đúng gì. Không nới rào token |
+| Đồng ý "tiền nhà" 158PVC 36,75 triệu ⇒ `action_outcome_unknown`, trạng thái "không tìm thấy" | Journal: hai lượt `action_outcome_unknown` (10:11:42, 10:32:23 UTC) đều dừng ở trần 15 s của lời gọi (`callTimeoutMs`). DB TEST chậm: bước dựng quyền mất 5,6 s / 8,4 s (thường 1–1,5 s), lệnh ghi bị cắt giữa chừng. Lượt 10:11 thật ra ĐÃ ghi (`PC2610236`, biên nhận xong 9 ms sau khi connector cắt); lượt 10:32 (`b9e9148a…`) không ghi | Connector: lượt đồng ý chỉ gửi lệnh ghi khi trần còn ≥ 75 % (15 s ⇒ 11,25 s), không đủ ⇒ `timeout` TRƯỚC khi đổi token (chưa gửi gì, gọi lại y nguyên được); 57014 (statement_timeout, giao dịch đã lùi) ⇒ `state_changed`. SQL: bước ghi đặt `lock_timeout` 3 s (chờ khoá tư vấn của bộ máy chi / dòng không NOWAIT ⇒ 55P03 ⇒ `state_changed`) |
+| "Duyệt hết phiếu chờ toà … dưới 1 triệu" ⇒ `invalid_request`; `status=UNAPPROVED` không ngày chỉ ra phiếu tháng này (thấy 1/4) | Khuôn `expense_vouchers` chỉ có `minAmount`; cửa sổ mặc định tháng này | `20261024120208` (nền W2): tham số `maxAmount`. `20261024120210`: `expense_vouchers` nhận `maxAmount` (chỉ phiếu NHỎ HƠN HẲN số này), `status=UNAPPROVED` không ngày ⇒ 366 ngày tới hôm nay. `20261024120211`: `voucherCode(s)` nhận `voucherId` (UUID) của dòng báo cáo — mã phiếu bị dùng lại giữa các toà nên mã trơn có thể mơ hồ |
+
+### 25.2 Kiểm
+
+- PGlite `expense-write-sql.test.mjs` 26/26 (ba ca lượt 14: "Chi khác", `voucherId`, trần TRAN).
+- PG17 `expense-write-race-sql.test.mjs` 19/19 (ca `lock_timeout`: chờ khoá tư vấn ngã 55P03 sau ~3 s).
+- `ie-quick-entry-rules-sql.test.mjs`: 707 ca vàng (đổi đúng 32 ca đã soát, thêm 60 câu), bảng đứng thay của vitest 87/87, ghim md5.
+- `wave2-b.test.mjs` 64/64 (ca `maxAmount` / UNAPPROVED 366 ngày, ghim chéo 044126 / 051032 / 095547, hai đột biến mới bị bắt).
+- Connector: `action-runtime` (chốt trần thời gian, câu `confirmation_invalid`), `action-adapter` (57014), `confirm-guard`, `mcp-http`.
+
+### 25.3 Phát hành
+
+1. Thứ tự áp = thứ tự tên: `20261024094809` → `20261024095547` (lượt 13) → `20261024120207` → `20261024120208` → `20261024120210` → `20261024120211`. Ghim bắt buộc thứ tự đó: `120210` đòi thân `095547` và tên `maxAmount` của `120208`; `120211` đòi thân `094809`. `120207` và `120210` chỉ thay thân hàm đã có ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh; `120208` cũng vậy.
+2. Connector: phát hành SAU `120208` + `120210` (connector mới gửi `maxAmount`). Phần còn lại (chốt thời gian, 57014, câu `confirmation_invalid`) độc lập với SQL.
+3. Ghim chéo sau khi áp: `20261022044126` (thân nền W2), `20261024095547` (thân gói B), `20261024094809` (thân bộ chọn + bước ghi), `20261023210634` (thân lõi giải) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.

@@ -795,7 +795,11 @@ const EXPENSE_SHARED = readFileSync('supabase/migrations/20261022051029_hermes_w
 // Thu chi lượt 13 (24/10): catalog + nhánh đọc dựng lại từ 20261022051032, thêm tham số days (chờ duyệt từ N ngày trở lên).
 const EXPENSE_DAYS_PATH = 'supabase/migrations/20261024095547_hermes_w2b_expense_pending_days_v1.sql';
 const EXPENSE_DAYS = readFileSync(EXPENSE_DAYS_PATH, 'utf8');
-const expenseSql = [EXPENSE_SHARED, readFileSync('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql', 'utf8'), EXPENSE_DAYS].join('\n');
+// Thu chi lượt 14 (24/10): tham số nền maxAmount + gói B dựng lại từ thân 095547 (maxAmount, UNAPPROVED không ngày ⇒ 366 ngày).
+const EXPENSE_MAXP_PATH = 'supabase/migrations/20261024120208_hermes_w2_max_amount_param_v1.sql';
+const EXPENSE_AMOUNT_PATH = 'supabase/migrations/20261024120210_hermes_w2b_expense_max_amount_v1.sql';
+const EXPENSE_AMOUNT = readFileSync(EXPENSE_AMOUNT_PATH, 'utf8');
+const expenseSql = [EXPENSE_SHARED, readFileSync('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql', 'utf8'), EXPENSE_DAYS, EXPENSE_AMOUNT].join('\n');
 const IE = 'income_expenses.view', EX = n => `0b0b0b0b-0000-4000-8000-00000000${String(900 + n).padStart(4, '0')}`;
 async function expenseSetup(env) {
   const { db } = env;
@@ -879,8 +883,22 @@ test('Thu chi lượt 13 — expense_vouchers days: chỉ phiếu chờ duyệt 
   assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, days: 7 })), ['PC-405'], 'khoảng ngày nêu rõ vẫn áp');
   assert.deepEqual(codes(await all(env, 'expense_vouchers', { days: 1, minAmount: 500000 })), ['PC-911', 'PC-405'], 'ngưỡng tiền vẫn áp');
   await assert.rejects(run(env, 'expense_vouchers', { days: 7, status: 'APPROVED' }), code('22023'), 'days chỉ cho phiếu chờ duyệt');
-  // Không days ⇒ như cũ (tháng này, đã duyệt + chờ duyệt).
+  // Khoảng ngày nêu rõ ⇒ như cũ.
   assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, status: 'UNAPPROVED' })), ['PC-405', 'PC-912']);
+}));
+
+test('Thu chi lượt 14 — expense_vouchers maxAmount (nhỏ hơn hẳn: "dưới 1 triệu") và status=UNAPPROVED không ngày ⇒ 366 ngày tới hôm nay', { timeout: 120000 }, () => inCase(async env => {
+  await expenseSetup(env);
+  await pendingRows(env.db);
+  const pending = await all(env, 'expense_vouchers', { status: 'UNAPPROVED' });
+  assert.deepEqual([codes(pending), pending.summary.fromDate, pending.summary.toDate], [['PC-405', 'PC-911', 'PC-912'], '2025-10-15', '2026-10-16'],
+    'phiếu chờ từ tháng trước có (trước đây chỉ tháng này)');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { status: 'UNAPPROVED', maxAmount: 1000000 })), ['PC-911', 'PC-912'], 'dưới 1 triệu');
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { status: 'UNAPPROVED', maxAmount: 700000 })), ['PC-912'], 'nhỏ hơn hẳn: 700.000 không tính');
+  const month = await all(env, 'expense_vouchers', OCT);
+  const band = month.items.filter(row => num(row.totalAmount) >= 500000 && num(row.totalAmount) < 1000000).map(row => row.code);
+  assert.deepEqual(codes(await all(env, 'expense_vouchers', { ...OCT, minAmount: 500000, maxAmount: 1000000 })), band, 'từ minAmount tới dưới maxAmount');
+  assert.equal((await all(env, 'expense_vouchers', { status: 'APPROVED' })).summary.fromDate, '2026-10-01', 'trạng thái khác: vẫn mặc định tháng này');
 }));
 
 test('Thu chi Mốc 3 — expense_categories: tổng CHI theo hạng mục × toà và cả phạm vi (summary.categories), cùng bộ lọc phiếu với expense_vouchers', { timeout: 120000 }, () => inCase(async env => {
@@ -925,18 +943,28 @@ test('Mốc 3b — ghim thân đang chạy: $requires$ dừng khi thân lệch, 
   const PARAM = requiresOf('supabase/migrations/20261022044126_hermes_w2_min_amount_param_v1.sql');
   const READS = requiresOf('supabase/migrations/20261022051032_hermes_w2b_expense_reports_v1.sql');
   const DAYS = requiresOf(EXPENSE_DAYS_PATH);
-  await db.exec(PARAM); await db.exec(DAYS); // fixture đã áp các file: thân của chính file ⇒ qua
-  // Ghim chéo (lượt 13): 051032 ghim thân trước lượt 13 ⇒ chạy lại trên thân của 20261024095547 ngã đúng khối $requires$ (cần ngoại lệ pinned).
-  await db.exec('SAVEPOINT crossed');
-  const crossed = await db.exec(READS).then(() => null, error => error);
-  await db.exec('ROLLBACK TO SAVEPOINT crossed; RELEASE SAVEPOINT crossed');
-  assert.match(crossed?.message ?? '', /^hermes_w2b_expense_reports_body_drift: app_private\.hermes_w2b_catalog_v1$/);
-  const cases = [[PARAM, 'app_private.hermes_w2_param_names_v1()', 'hermes_w2_min_amount_param_body_drift'],
+  const MAXP = requiresOf(EXPENSE_MAXP_PATH), AMOUNT = requiresOf(EXPENSE_AMOUNT_PATH);
+  await db.exec(MAXP); await db.exec(AMOUNT); // fixture đã áp các file: thân của chính file ⇒ qua
+  // Ghim chéo: file trước ghim thân mà file sau đã thay ⇒ chạy lại trên thân hiện tại ngã đúng khối $requires$ (cần ngoại lệ pinned) — 051032 bị
+  // 095547 thay (lượt 13), 044126 bị 120208 thay, 095547 bị 120210 thay (lượt 14).
+  for (const [guard, message] of [[PARAM, /^hermes_w2_min_amount_param_body_drift: app_private\.hermes_w2_param_names_v1$/],
+    [READS, /^hermes_w2b_expense_reports_body_drift: app_private\.hermes_w2b_catalog_v1$/],
+    [DAYS, /^hermes_w2b_expense_pending_days_body_drift: app_private\.hermes_w2b_catalog_v1$/]]) {
+    await db.exec('SAVEPOINT crossed');
+    const crossed = await db.exec(guard).then(() => null, error => error);
+    await db.exec('ROLLBACK TO SAVEPOINT crossed; RELEASE SAVEPOINT crossed');
+    assert.match(crossed?.message ?? '', message);
+  }
+  const cases = [[MAXP, 'app_private.hermes_w2_param_names_v1()', 'hermes_w2_max_amount_param_body_drift: app_private.hermes_w2_param_names_v1'],
+    [MAXP, 'app_private.hermes_w2_params_v1(jsonb,jsonb)', 'hermes_w2_max_amount_param_body_drift: app_private.hermes_w2_params_v1'],
+    [AMOUNT, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_max_amount_body_drift: app_private.hermes_w2b_catalog_v1'],
+    [AMOUNT, 'app_private.hermes_w2b_read_v1(text,jsonb,jsonb)', 'hermes_w2b_expense_max_amount_body_drift: app_private.hermes_w2b_read_v1'],
+    [PARAM, 'app_private.hermes_w2_param_names_v1()', 'hermes_w2_min_amount_param_body_drift'],
     [PARAM, 'app_private.hermes_w2_params_v1(jsonb,jsonb)', 'hermes_w2_min_amount_param_body_drift'],
     [READS, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_reports_body_drift'],
     [READS, 'app_private.hermes_w2b_read_v1(text,jsonb,jsonb)', 'hermes_w2b_expense_reports_body_drift'],
-    [DAYS, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_pending_days_body_drift: app_private.hermes_w2b_catalog_v1'],
-    [DAYS, 'app_private.hermes_w2b_read_v1(text,jsonb,jsonb)', 'hermes_w2b_expense_pending_days_body_drift: app_private.hermes_w2b_read_v1']];
+    // 095547 (lượt 13) đã bị 120210 thay thân ⇒ ngã ở catalog trước (khẳng định ở trên); câu theo từng hàm của nó chỉ còn ý nghĩa với bản production.
+    [DAYS, 'app_private.hermes_w2b_catalog_v1()', 'hermes_w2b_expense_pending_days_body_drift']];
   for (const [guard, signature, message] of cases) {
     await db.exec('SAVEPOINT drift');
     const definition = (await db.query('SELECT pg_get_functiondef($1::regprocedure) d', [signature])).rows[0].d;
@@ -952,7 +980,10 @@ test('Mốc 3b — ghim thân đang chạy: $requires$ dừng khi thân lệch, 
       ['20261018000000_hermes_w2_foundation_v1', 'app_private.hermes_w2_params_v1']]],
     [READS, [['20261018020200_hermes_w2b_finance_read_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261018080200_hermes_w2z_finance_fail_closed_v1', 'app_private.hermes_w2b_read_v1']]],
     // Lượt 13: bản production 24/10 = thân của 051032.
-    [DAYS, [['20261022051032_hermes_w2b_expense_reports_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261022051032_hermes_w2b_expense_reports_v1', 'app_private.hermes_w2b_read_v1']]]]) {
+    [DAYS, [['20261022051032_hermes_w2b_expense_reports_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261022051032_hermes_w2b_expense_reports_v1', 'app_private.hermes_w2b_read_v1']]],
+    // Lượt 14: nền = thân 044126 (production 24/10); gói B = thân 095547 (lượt 13, chưa áp lúc viết).
+    [MAXP, [['20261022044126_hermes_w2_min_amount_param_v1', 'app_private.hermes_w2_param_names_v1'], ['20261022044126_hermes_w2_min_amount_param_v1', 'app_private.hermes_w2_params_v1']]],
+    [AMOUNT, [['20261024095547_hermes_w2b_expense_pending_days_v1', 'app_private.hermes_w2b_catalog_v1'], ['20261024095547_hermes_w2b_expense_pending_days_v1', 'app_private.hermes_w2b_read_v1']]]]) {
     await db.exec('SAVEPOINT production');
     for (const [file, name] of pairs) await db.exec(definitionOf(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'), name));
     await db.exec(guard);
@@ -960,8 +991,8 @@ test('Mốc 3b — ghim thân đang chạy: $requires$ dừng khi thân lệch, 
   }
 }));
 
-// Đột biến trên hàng rào riêng của hai báo cáo (bản sống = 20261022051029 + 20261024095547; 051032 đã bị file lượt 13 thay thân).
-const expenseLive = [...[EXPENSE_SHARED, EXPENSE_DAYS].join('\n').matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)].map(match => match[0]).join('\n\n');
+// Đột biến trên hàng rào riêng của hai báo cáo (bản sống = 20261022051029 + 20261024120210; 051032 / 095547 đã bị file sau thay thân).
+const expenseLive = [...[EXPENSE_SHARED, EXPENSE_AMOUNT].join('\n').matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)].map(match => match[0]).join('\n\n');
 const expenseMutate = (from, to) => replaceExactly(expenseLive, from, to);
 // Web thấy phiếu hạn chế (CRM restricted_view ở toà B: can_view_restricted_ie đúng ở bất kỳ đâu) nhưng Read của kết nối không phủ mọi toà
 // ⇒ chỉ hàng rào của Hermes ẩn PC-402 (RLS không che hộ).
@@ -986,8 +1017,13 @@ const expenseProbes = [
   { name: 'tổng trên MỌI phiếu (không phải trang)', sql: expenseMutate(`        INTO v_rows,v_capped,v_summary FROM v;`, `        INTO v_rows,v_capped,v_summary FROM (SELECT * FROM v WHERE v.ord<=3) v;`),
     run: async env => (await run(env, 'expense_vouchers', OCT, { limit: 3 })).summary.count !== 8 },
   // Lượt 13: days lọc theo tuổi (không chỉ sắp xếp) và chỉ phiếu chờ duyệt.
-  { name: 'days lọc tuổi phiếu chờ duyệt', sql: expenseMutate(`WHERE v_days IS NULL OR GREATEST(v_today-(e.created_at AT TIME ZONE v_tz)::date,0)>=v_days)`, `WHERE true)`),
+  { name: 'days lọc tuổi phiếu chờ duyệt', sql: expenseMutate(`(v_days IS NULL OR GREATEST(v_today-(e.created_at AT TIME ZONE v_tz)::date,0)>=v_days)`, `(true)`),
     run: async env => { await pendingRows(env.db); return codes(await all(env, 'expense_vouchers', { days: 7 })).includes('PC-912'); } },
+  // Lượt 14: maxAmount lọc (nhỏ hơn hẳn) và UNAPPROVED không ngày ⇒ 366 ngày.
+  { name: 'maxAmount lọc trần tiền', sql: expenseMutate(`AND (p_params->>'maxAmount' IS NULL OR e.total_amount<(p_params->>'maxAmount')::numeric))`, `AND true)`),
+    run: async env => codes(await all(env, 'expense_vouchers', { ...OCT, maxAmount: 1000000 })).includes('PC-405') },
+  { name: 'UNAPPROVED không ngày ⇒ 366 ngày', sql: expenseMutate(`(v_days IS NOT NULL OR (p_report='expense_vouchers' AND p_params->>'status'='UNAPPROVED'))`, `v_days IS NOT NULL`),
+    run: async env => { await pendingRows(env.db); return !codes(await all(env, 'expense_vouchers', { status: 'UNAPPROVED' })).includes('PC-911'); } },
   { name: 'days chỉ phiếu chờ duyệt', sql: expenseMutate(`CASE WHEN v_days IS NOT NULL THEN 'UNAPPROVED' ELSE p_params->>'status' END`, `p_params->>'status'`),
     run: async env => { await pendingRows(env.db); return codes(await all(env, 'expense_vouchers', { days: 7 })).includes('PC-913'); } },
 ];

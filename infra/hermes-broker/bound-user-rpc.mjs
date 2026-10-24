@@ -30,6 +30,8 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
   // action: RPC của thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md §6.2). Lỗi tạm của SQL (40001/40P01/55P03: câu lệnh
   // lỗi ⇒ giao dịch đã lùi, chưa ghi gì) là kết cục ĐÃ BIẾT ⇒ action_rejected state_changed (xem trước lại, thử lại được),
   // không bao giờ "chưa rõ"; hàm trang chưa áp (PGRST202) ⇒ action_rejected action_disabled, không phải "CRM tạm lỗi".
+  // Thu chi lượt 14: 57014 (statement_timeout của vai authenticated, 8 s, huỷ CÂU LỆNH trước khi PostgREST commit ⇒ giao dịch
+  // đã lùi) cũng là kết cục đã biết; trước đây ra action_outcome_unknown.
   async function rpc(name, accessToken, args, { signal, onDispatch, onRejected } = {}, { write = false, optional = false, action = false } = {}) {
     if (!names.has(name) || !jwt(accessToken) || !(signal instanceof AbortSignal) || (write && [onDispatch, onRejected].some(fn => typeof fn !== 'function'))) fail('invalid_request');
     if (signal.aborted) fail('timeout');
@@ -41,7 +43,7 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
       const data = await json(response, signal);
       const error = exact(data, ['code', 'message', 'details', 'hint']) && typeof data.code === 'string' && typeof data.message === 'string' &&
         [data.details, data.hint].every(v => v === null || typeof v === 'string');
-      const transient = action && error && ['40001', '40P01', '55P03'].includes(data.code);
+      const transient = action && error && ['40001', '40P01', '55P03', '57014'].includes(data.code);
       const rejected = error && (response.status === 401 || response.status === 403 && data.code === '42501' ||
         response.status === 409 && data.code === 'PT409' || response.status === 400 && data.code === '22023' || response.status === 404 && data.code === 'PGRST202' || transient);
       if (write && rejected) onRejected();

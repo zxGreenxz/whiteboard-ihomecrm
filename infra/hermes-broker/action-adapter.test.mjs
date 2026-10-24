@@ -61,7 +61,9 @@ test('review #253 mục 4 + 6: lỗi SQL của RPC trang ⇒ kết cục đã bi
   const pgError = code => ({ code, message: 'm', details: null, hint: null });
   const write = { op: 'run', action: 'probe.note', phase: 'auto', requestId: id(7), params: { note: 'x' } };
   for (const [status, code, expect] of [[500, '40001', ['action_rejected', 'state_changed']], [500, '40P01', ['action_rejected', 'state_changed']],
-    [500, '55P03', ['action_rejected', 'state_changed']], [404, 'PGRST202', ['action_rejected', 'action_disabled']],
+    [500, '55P03', ['action_rejected', 'state_changed']],
+    // Thu chi lượt 14: statement_timeout huỷ câu lệnh trước khi commit ⇒ đã lùi (nghiệm thu 24/10: trước đây action_outcome_unknown).
+    [500, '57014', ['action_rejected', 'state_changed']], [404, 'PGRST202', ['action_rejected', 'action_disabled']],
     [403, '42501', ['forbidden']], [409, 'PT409', ['context_changed']]]) {
     const { reads: r } = reads(t, probeCatalog(), () => json(status, pgError(code)));
     const seen = hooks();

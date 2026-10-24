@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -809,6 +809,70 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     assert.notEqual(shared?.typeId, SYSTEM);
     const list = sql => /c_money_flow CONSTANT text\[\]:=ARRAY\[([^\]]+)\]/.exec(sql)?.[1];
     assert.equal(list(FLOW), list(RULES), 'danh sách dòng tiền của hàm chọn hạng mục (lượt 13) = của gợi ý dùng chung');
+    assert.equal(list(ROUND1), list(RULES), 'danh sách dòng tiền của hàm chọn hạng mục (lượt 14) = của gợi ý dùng chung');
+  });
+
+  let n14 = 600;
+  await t.test('Lượt 14: "Chi khác" không bao giờ là ứng viên / gợi ý, chỉ nhận khi người dùng nêu (cảnh báo nếu nội dung giống hạng mục khác); nội thất tự nhận', async () => {
+    await f.rollbackCase(async () => {
+      for (const [j, [name, group, key]] of [['Chi khác (ghi rõ)', 'Khác', 'chi_khac'], ['Nội thất, decor', 'Mua sắm', 'noi_that_decor']].entries())
+        await db.query(`INSERT INTO public.income_expense_types(id,organization_id,type,name,category,rule_key,sort_order) VALUES($1,$2,'expense',$3,$4,$5,$6)`,
+          [uid(660 + j), ORG, name, group, key, 70 + j]);
+      const create = items => run('expense.create', 'preview', rid(n14++), { items });
+      // Nghiệm thu: "mua nệm cho phòng 202" từng vào "Chi khác" (ứng viên duy nhất là "Bỏ rác phát sinh"); nay gợi ý dùng chung v3 khoá cứng.
+      const bed = await create([item({ category: undefined, content: 'mua nệm cho phòng 202' })]);
+      assert.deepEqual([bed.kind, bed.preview?.items[0].category, bed.preview?.items[0].categoryAuto], ['preview', 'Nội thất, decor', 'tự chọn theo nội dung — sửa nếu sai'],
+        JSON.stringify(bed));
+      for (const content of ['đồ lặt vặt', 'khoản khác', 'chi phí khác']) {
+        const out = await create([item({ category: undefined, content })]);
+        assert.equal(out.kind, 'needs_input', content);
+        assert.ok(!out.candidates.some(c => /khác/i.test(c.name)), `${content}: ${JSON.stringify(out.candidates)}`);
+      }
+      // Người dùng nêu tên có chữ "khác" ⇒ nhận; nội dung khớp cứng hạng mục khác ⇒ cảnh báo (không chặn).
+      const other = await create([item({ category: 'chi khác', content: 'mua nệm cho phòng 202' })]);
+      assert.equal(other.preview.items[0].category, 'Chi khác (ghi rõ)');
+      assert.ok(other.warnings.includes('Khoản 1: nội dung giống hạng mục "Nội thất, decor" — "Chi khác (ghi rõ)" chỉ dùng khi không mục nào hợp; đổi hạng mục nếu đúng'),
+        other.warnings.join('\n'));
+      const plain = await create([item({ category: 'Chi khác (ghi rõ)', content: 'khoản linh tinh' })]);
+      assert.equal(plain.preview.items[0].category, 'Chi khác (ghi rõ)');
+      assert.ok(!plain.warnings.some(w => w.includes('nội dung giống')), 'không khớp cứng ⇒ không cảnh báo');
+      assert.equal((await create([item({ category: 'khác', content: 'khoản linh tinh' })])).preview.items[0].category, 'Chi khác (ghi rõ)');
+      const chi = await create([item({ category: 'chi', content: 'khoản linh tinh' })]);
+      assert.ok(chi.kind !== 'preview' || chi.preview.items[0].category !== 'Chi khác (ghi rõ)', 'không có chữ "khác" ⇒ không ra "Chi khác"');
+    });
+  });
+
+  await t.test('Lượt 14: voucherCode(s) nhận voucherId (UUID) của báo cáo — đúng phiếu dù mã trùng; ngoài phạm vi ⇒ outside_scope; không có ⇒ not_visible', async () => {
+    await f.rollbackCase(async () => {
+      const mine = await voucher('PC2610971'), elsewhere = await voucher('PC2610971', { building: OTHER_BUILDING });
+      const byId = await run('expense.approve', 'preview', rid(n14++), { voucherCodes: [mine] });
+      assert.equal(byId.kind, 'preview', JSON.stringify(byId));
+      assert.deepEqual(byId.resolved.vouchers.map(v => v.voucherId), [mine]);
+      const outside = await run('expense.approve', 'preview', rid(n14++), { voucherCodes: [elsewhere] });
+      assert.deepEqual([outside.kind, outside.field, outside.why], ['needs_input', 'voucher', 'outside_scope']);
+      const missing = await run('expense.approve', 'preview', rid(n14++), { voucherCodes: [uid(699)] });
+      assert.deepEqual([missing.kind, missing.field, missing.why], ['needs_input', 'voucher', 'not_visible']);
+      assert.equal((await run('expense.edit', 'preview', rid(n14++), { voucherCode: mine, content: 'mua bóng đèn LED' })).kind, 'preview', 'sửa theo voucherId');
+    });
+  });
+
+  await t.test('Lượt 14: hạng mục chi theo trần (TRAN) ⇒ bản xem trước nêu trần một phiếu, trong / VƯỢT trần, không nói "cam kết còn lại"', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.income_expense_types SET spend_mode='TRAN' WHERE id=$1", [WATER]);
+      await db.query("INSERT INTO public.fixture_commitments VALUES($1,'nuoc','2026-10-01',1200000)", [BUILDING]);
+      const water = amount => run('expense.create', 'preview', rid(n14++), { items: [item({ category: 'đóng tiền nước', content: 'tiền nước tháng 10', amount, period: '2026-10', roomName: undefined })] });
+      const none = await water(1200000);
+      assert.equal(none.preview.items[0].commitment, 'Hạng mục "Đóng tiền nước" chi theo trần, không trừ cam kết: chủ chưa công bố trần cho hạng mục này');
+      await db.query(`INSERT INTO app_private.utility_ceiling_versions(organization_id,building_id,utility_type,ceiling_amount,effective_from_month) VALUES
+        ($1,NULL,'WATER',900000,'2026-01-01'),($1,$2,'WATER',1500000,'2026-09-01'),($1,$2,'WATER',2000000,'2026-11-01'),($1,$2,'ELECTRIC',100,'2026-09-01')`, [ORG, BUILDING]);
+      const within = await water(1200000);
+      assert.equal(within.preview.items[0].commitment, 'Hạng mục "Đóng tiền nước" chi theo trần, không trừ cam kết: trần 1.500.000đ một phiếu — khoản này trong trần',
+        'trần theo toà thắng trần cả công ty; bản tháng sau chưa hiệu lực');
+      assert.ok(!within.warnings.some(w => w.includes('cam kết')), within.warnings.join('\n'));
+      const over = await water(1800000);
+      assert.equal(over.preview.items[0].commitment, 'Hạng mục "Đóng tiền nước" chi theo trần, không trừ cam kết: trần 1.500.000đ một phiếu — khoản này VƯỢT trần 300.000đ');
+      assert.ok(over.warnings.includes('Khoản 1: vượt trần chi "Đóng tiền nước" 1.500.000đ một phiếu'), over.warnings.join('\n'));
+    });
   });
 
   await t.test('rào: sàn money không nới được; action/phase NULL; catalog và quyền thực thi', async () => {

@@ -155,6 +155,8 @@ export const W2_PARAMS = Object.freeze({
   lowStock: Object.freeze({ type: 'bool', hint: 'true|false' }),
   // Thu chi Mốc 3 (22/10, 20261022044126_hermes_w2_min_amount_param_v1): ngưỡng tiền của báo cáo phiếu chi.
   minAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0, vd 10000000' }),
+  // Thu chi lượt 14 (20261024120208): trần tiền — chỉ phiếu NHỎ HƠN HẲN số này ("dưới 1 triệu" ⇒ 1000000).
+  maxAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0; chỉ phiếu nhỏ hơn số này, vd dưới 1 triệu ⇒ 1000000' }),
   buildingId: uuidParam('ID toà (không phải ID công ty)'),
   areaId: uuidParam('ID khu'),
   roomId: uuidParam('ID phòng'),

@@ -3,6 +3,7 @@ import { BrokerError, REQUEST_RECEIPT_UNKNOWN, ACTION_WEB_LINK, actionItem, item
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
 import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
+import { CONFIRM_INVALID_TEXTS } from './action-contract.mjs';
 import { vietnamToolResult } from './vietnam-time.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
@@ -127,6 +128,8 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           // R2b: invalid_request của tool đọc gọi sai cách mang MỘT trong các hint tĩnh của read-misuse-hints.mjs (danh sách
           // đóng, chỉ nêu tool/tham số đúng); chuỗi nào khác — kể cả gán nhầm vào detail — không tới mô hình.
           : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail }
+          // Thu chi lượt 14: confirmation_invalid của thao tác ghi dùng chung mang MỘT câu tĩnh nói phần nào lệch (CONFIRM_INVALID_TEXTS).
+          : safe.code === 'confirmation_invalid' && CONFIRM_INVALID_TEXTS.includes(safe.detail) ? { detail: safe.detail }
           // Đợt 1 nền chung: lỗi thật của thao tác ghi mang MỘT lý do dạng rejected của danh sách đóng action-reasons.mjs
           // cùng đúng câu tĩnh của nó; reason/detail nào khác (kể cả gán nhầm) không tới mô hình.
           // Thu chi Mốc 4: lỗi của một khoản trong lô kèm item (1–20) và câu "Khoản N: " + đúng câu tĩnh đó. CV12 (Công việc Mốc 3): kèm

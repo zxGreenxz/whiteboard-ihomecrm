@@ -125,6 +125,16 @@ const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng m�
 const CONFIRM_GUIDANCE = 'CHƯA ghi. Đọc preview cho người dùng (toà, phòng, số tiền, ngày…); chỉ khi họ đồng ý rõ ràng SAU khi xem mới gọi lại crm_action_run ' +
   'y nguyên action, params, requestId kèm confirmToken. Token dùng một lần, hết hạn sau 10 phút; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại. ' +
   'Lỗi confirmation_invalid: gọi lại không kèm confirmToken để lấy bản xem trước mới.';
+// Thu chi lượt 14 (nghiệm thu 24/10: xác nhận bị confirmation_invalid rồi bot ra bản xem trước mới, lặp): câu TĨNH nói phần nào lệch — danh
+// sách đóng, mcp-http chỉ chuyển đúng các câu này (không chứa giá trị đã gửi).
+export const CONFIRM_INVALID_DETAILS = Object.freeze({
+  request: 'Token thuộc bản xem trước có requestId khác: xác nhận bằng ĐÚNG requestId mà bản xem trước trả về; gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  params: 'Params khác bản xem trước: gửi y nguyên params đã xem; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại.',
+  expired: 'Token xác nhận đã quá 10 phút: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  unknown: 'Token xác nhận đã dùng (mỗi token một lần) hoặc không đúng: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  missing_request: 'Thiếu requestId: xác nhận phải gửi kèm requestId của bản xem trước.',
+});
+export const CONFIRM_INVALID_TEXTS = Object.freeze(Object.values(CONFIRM_INVALID_DETAILS));
 /** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). */
 export function needsInput({ action, reason, detail, candidates }) {
   if (!ACTION_INPUT_REASONS.includes(reason)) throw new TypeError('invalid_needs_input_reason');
