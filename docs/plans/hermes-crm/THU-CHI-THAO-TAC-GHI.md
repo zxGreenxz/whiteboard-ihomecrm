@@ -1023,3 +1023,34 @@ Trên TEST, thẻ hiện cùng lúc với tin gửi đi (vòng RPC khoảng 0,2 
 2. Thứ tự đề xuất: gộp theo dòng nhánh (#278 → #289 → #293 → Mốc 6) sau khi phiên chính áp các migration của từng PR.
 3. Muốn phát hành web sớm hơn thì cherry-pick commit Mốc 6 lên `main`: chỉ đụng web, tài liệu và một test SQL.
 4. Connector không đổi.
+
+## 23. Lượt 11 — sửa phía máy chủ theo nghiệm thu bot thật trên TEST (24/10/2026)
+
+Nghiệm thu bot thật trên TEST (SOUL v4.15, khoá ghi Thu chi bật trên TEST) tìm ra năm lỗi phía máy chủ / connector. Luật SOUL do phiên chính sửa riêng.
+
+### 23.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc | Sửa |
+| --- | --- | --- |
+| "mua vòi nước", "mua ốc vít", "thay ổ cắm" ⇒ "khớp nhiều" với tiền nhà, điện, nước, internet, rác… | (a) `ie_category_suggest_v1` không ra gì cho các món này (cụm "hay nói" của danh mục chuẩn không có; trùng chữ tên hoà); (b) gợi ý không khoá cứng ⇒ lõi giải tên trả **8 hạng mục đầu bảng** làm ứng viên | (a) `20261023210633`: lớp (3b) từ vựng vật tư / sửa chữa / văn phòng phẩm trong hàm dùng chung (web Báo chi nhanh đổi cùng lúc); (b) `20261023210634`: hàm `public.hermes_expense_category_pick_v1`, hỏi lại `why=unspecified` với ≤ 5 ứng viên trùng từ, không trùng gì thì không nêu ứng viên |
+| "không thấy hạng mục 'Sửa chữa/bảo trì' trong phạm vi quyền" | tên hạng mục chỉ khớp nguyên chuỗi / chuỗi con | khớp thêm "đủ từ trong tên + nhóm" (cả nhóm "Sửa chữa – bảo trì"); nhiều hạng mục mà gợi ý theo nội dung rơi vào một ⇒ nhận; connector: hạng mục không có ⇒ "không có trong danh mục chi dùng được qua bot", không nói "phạm vi quyền" |
+| Bản xem trước tiền nhà / tiền điện không nêu cam kết (Q12) | câu cam kết chỉ nằm trong `warnings` | thêm `commitment` vào từng khoản và vào `summary`: cam kết của kỳ, đã chi/giữ, còn trước khoản này, trong / VƯỢT bao nhiêu, phiếu cùng kỳ; không có cam kết ⇒ nói rõ |
+| Tìm phiếu theo mã hỏng khi mã thuộc dãy trùng | mã bị dùng lại giữa các toà (đo production 24/10: 1 788 phiếu chi, 1 059 mã); chỉ có `voucherCode` nên hỏi lại xong vẫn mơ hồ | khớp ĐÚNG mã đầy đủ trước; phần còn lại của `voucherCode` là gợi ý ngày `dd/mm[/yyyy]` và tên toà (chép lại nhãn ứng viên là đủ); mã ngắn / thiếu ⇒ chỉ ứng viên, không tự chọn; connector hướng dẫn gọi lại kèm ngày / toà |
+| Toà ngoài phạm vi ⇒ "không tìm thấy, xác nhận tên toà" | đúng thiết kế: thấy dưới RLS mà ngoài phạm vi khoá ⇒ `outside_scope` (câu từ chối tĩnh); RLS không cho thấy ⇒ `not_visible` — hàm INVOKER không phân biệt "không có" với "không có quyền", không được lộ | giữ nguyên |
+| "Mở lại phiếu" bị làm thành "đổi sổ" | bot gọi `expense.edit` kèm `cashbook`; máy chủ chỉ biết khi chạy thử hàm web | sửa phiếu đã huỷ ⇒ `web_only`; sửa phiếu đã duyệt / vào sổ, huỷ phiếu đã huỷ ⇒ `not_pending` — cả ba kèm `link` trang phiếu, trước khi khoá / chạy thử |
+
+Lô nhiều khoản: kết quả hỏi lại mang `item` (connector nói "Mục #n: …").
+
+### 23.2 Kiểm
+
+- PGlite `expense-write-sql.test.mjs` 22/22 (hai ca lượt 11: hạng mục — món điện nước / sửa chữa / vệ sinh / văn phòng phẩm, ứng viên đúng nghĩa, tên nhóm, lô; mã phiếu — ba phiếu cùng mã, gợi ý ngày / toà / nhãn, mã ngắn, duyệt, mở lại phiếu; Q12 trong ca tiền nước).
+- PG17 `expense-write-race-sql.test.mjs` 18/18 (đối chứng bỏ NOWAIT dựng trên thân bước ghi mới).
+- `ie-quick-entry-rules-sql.test.mjs`: 647 ca vàng (đổi đúng 15 ca đã soát tay, thêm 37 câu chi thường gặp), bảng đứng thay của vitest 87/87, ghim md5 (thân lạ ⇒ dừng).
+- Tầng 2 trên TEST (một giao dịch ROLLBACK, không đụng kết nối / registry / fixture, không dùng nick chủ / joey / bosshuy): áp hai file lên thân thật (ghim md5 khớp), dưới RLS của một chủ công ty khác — câu nghiệm thu ra đúng hạng mục; mã trùng thật chọn đúng phiếu khi kèm nhãn hoặc ngày + toà; mã ngắn chỉ là ứng viên.
+
+### 23.3 Phát hành
+
+1. Áp `20261023210633` (provenance xếp `catalog-proven` GIẢ ⇒ áp đích danh) rồi `20261023210634` (`$requires$` đòi lớp từ vựng đã có).
+2. Connector không cần trước: SQL dùng đúng khuôn kết quả cũ (`why=unspecified` đã có từ trang Công việc, `item`, `link`). Connector mới chỉ đổi hai câu hướng dẫn (mã phiếu trùng, hạng mục không có).
+3. Web Báo chi nhanh đổi gợi ý cùng lúc với `20261023210633` (không phát hành web).
+4. Sau khi áp, `20261023013109` và `20261023031258` mất khả năng chạy lại (thân bị thay) — cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.

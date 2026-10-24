@@ -199,7 +199,18 @@ test('needs_input từ SQL: hạng mục / sổ / mã phiếu không giải đư
   assert.match((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, /^Không thấy sổ quỹ 'quỹ lạ' trong phạm vi quyền/);
   outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609001', why: 'ambiguous',
     candidates: [{ name: 'PC2609001 · 03/09 · 1392QT · 350.000đ' }, { name: 'PC2609001 · 12/09 · 44TL · 1.200.000đ' }] };
-  assert.match((await env.call({ action: 'expense.note', params: { voucherCode: 'PC2609001', note: 'x' } })).detail, /^Phiếu 'PC2609001' khớp nhiều/);
+  // Lượt 11 (nghiệm thu): mã dùng lại giữa các toà ⇒ hướng dẫn gọi lại kèm ngày / toà hoặc chép nhãn ứng viên.
+  assert.equal((await env.call({ action: 'expense.note', params: { voucherCode: 'PC2609001', note: 'x' } })).detail,
+    "Phiếu 'PC2609001' khớp nhiều: PC2609001 · 03/09 · 1392QT · 350.000đ, PC2609001 · 12/09 · 44TL · 1.200.000đ — hỏi người dùng chọn một, rồi gọi lại với " +
+    "voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.");
+  // Hạng mục: danh mục của cả công ty ⇒ không nói "trong phạm vi quyền"; chưa nêu hạng mục ⇒ gợi ý đúng nghĩa, mục số mấy của lô.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: 'bảo hiểm lạ', why: 'not_visible', candidates: [], more: false };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
+    "Không có hạng mục 'bảo hiểm lạ' trong danh mục chi dùng được qua bot (hạng mục hệ thống, hạn chế, cọc, chuyển nội bộ chỉ lập trên web); hỏi người dùng nêu hạng mục khác.");
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified',
+    candidates: [{ name: 'Sửa chữa' }, { name: 'Sửa điện' }], more: false, item: 2 };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM, ITEM] } })).detail,
+    'Mục #2: Chưa nêu hạng mục; gợi ý: Sửa chữa, Sửa điện — hỏi người dùng chọn một, không tự chọn.');
   outcome = { kind: 'rejected', reason: 'not_found' };
   assert.deepEqual((await env.call({ action: 'expense.note', params: { voucherCode: 'PC0000000', note: 'x' } })).reason, 'not_found');
 });
