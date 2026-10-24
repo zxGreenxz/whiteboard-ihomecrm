@@ -56,7 +56,12 @@ export function parseCameraNames(text: string): Map<number, string> {
     if (!Number.isInteger(index) || index < 0 || index > 255 || seen.has(index)
       || [...rawName].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new CameraClientError("INVALID_RESPONSE");
     seen.add(index);
-    const name = [...rawName.trim()].slice(0, 128).join("");
+    // Edge validation counts UTF-16 units; retain whole Unicode code points.
+    let name = "";
+    for (const char of rawName.trim()) {
+      if (name.length + char.length > 128) break;
+      name += char;
+    }
     if (name) names.set(index + 1, name);
   }
   if (seen.size === 0) throw new CameraClientError("INVALID_RESPONSE");

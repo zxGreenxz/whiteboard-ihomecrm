@@ -33,6 +33,8 @@ describe("camera boundary parsers", () => {
   it("maps recorder titles by device index, preserves Vietnamese and bounds labels for ingestion", () => {
     const names = parseCameraNames("table.ChannelTitle[15].Name=\r\ntable.ChannelTitle[2].Name= Sảnh = tầng 3 \r\ntable.ChannelTitle[0].Name=" + "ắ".repeat(140));
     expect([...names]).toEqual([[3, "Sảnh = tầng 3"], [1, "ắ".repeat(128)]]);
+    expect(parseCameraNames("table.ChannelTitle[0].Name=" + "🚪".repeat(80)).get(1)).toBe("🚪".repeat(64));
+    expect(parseCameraNames("table.ChannelTitle[0].Name=" + "A".repeat(127) + "🚪").get(1)).toBe("A".repeat(127));
   });
 
   it.each(["Error", "table.ChannelTitle[256].Name=Invalid", "table.ChannelTitle[0].Name=A\ntable.ChannelTitle[0].Name=B", "table.ChannelTitle[0].Name=Bad\u0000name"])("rejects ambiguous or malformed titles: %j", (text) => {
