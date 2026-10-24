@@ -98,17 +98,49 @@ function buildingAllowed(identity, permission, buildingId) {
   return !Array.isArray(buildings) || buildings.includes(buildingId);
 }
 
+// Lượt 11 (nghiệm thu 23–24/10, 20261023185118): SQL thêm total + summary của cả tập lọc và tên toà / phòng của từng dòng. Cửa sổ phát
+// hành: connector này nhận cả khuôn cũ (không có) lẫn mới (có đủ cặp), kiểm chặt khi có; áp migration sau khi connector đã lên.
+const LIST_KEYS = ['organizationId', 'role', 'status', 'readAt', 'items', 'offset', 'nextOffset'];
+const ITEM_KEYS = ['id', 'code', 'title', 'status', 'buildingId', 'roomId', 'deadline', 'overdue', 'assigneeId', 'assigneeName', 'createdBy',
+  'progressNote', 'progressDigest', 'follows'];
+const placeName = value => value === '' || label(value, 120);
+function listSummary(value, identity, input) {
+  const { total, summary } = value, count = integer => Number.isSafeInteger(integer) && integer >= 0;
+  // Trang có dòng ⇒ tổng ≥ mọi dòng tới hết trang; trang cuối (không còn nextOffset, thiếu dòng) ⇒ đúng bằng. Trang rỗng (offset vượt tổng) hợp lệ.
+  const filled = value.items.length > 0;
+  if (!count(total) || (filled && total < value.offset + value.items.length) ||
+    (filled && value.nextOffset === null && value.items.length < input.limit && total !== value.offset + value.items.length) ||
+    !domainExact(summary, ['total', 'open', 'overdue', 'completed', 'byBuilding']) || summary.total !== total || !count(summary.open) ||
+    !count(summary.completed) || !count(summary.overdue) || summary.open + summary.completed !== total || summary.overdue > summary.open ||
+    (input.status === 'open' && summary.completed !== 0) || (input.status === 'completed' && summary.open !== 0) ||
+    !Array.isArray(summary.byBuilding) || summary.byBuilding.length > 50) fail();
+  const seen = new Set();
+  summary.byBuilding.forEach((group, index) => {
+    if (!domainExact(group, ['buildingId', 'buildingName', 'count', 'overdue']) || !nullable(domainId)(group.buildingId) || seen.has(group.buildingId) ||
+      !placeName(group.buildingName) || !Number.isSafeInteger(group.count) || group.count < 1 || !count(group.overdue) || group.overdue > group.count ||
+      (index > 0 && summary.byBuilding[index - 1].count < group.count) ||
+      (group.buildingId !== null && input.role !== 'assigned_to_me' && !buildingAllowed(identity, TASK_FOLLOW_READ, group.buildingId))) fail();
+    seen.add(group.buildingId);
+  });
+  const counted = summary.byBuilding.reduce((sum, group) => sum + group.count, 0), late = summary.byBuilding.reduce((sum, group) => sum + group.overdue, 0);
+  if (counted > total || late > summary.overdue || (summary.byBuilding.length < 50 && (counted !== total || late !== summary.overdue))) fail();
+}
+
 export function taskFollowResult(operation, value, identity, input) {
   const me = identity.row.userId;
   if (operation === 'list') {
-    if (!domainExact(value, ['organizationId', 'role', 'status', 'readAt', 'items', 'offset', 'nextOffset']) || value.organizationId !== identity.row.organizationId ||
+    const totals = domainExact(value, [...LIST_KEYS, 'total', 'summary']);
+    if (!(totals || domainExact(value, LIST_KEYS)) || value.organizationId !== identity.row.organizationId ||
       value.organizationId !== input.organizationId || value.role !== input.role || value.status !== input.status || !instant(value.readAt) ||
       !Array.isArray(value.items) || value.items.length > input.limit || value.offset !== input.offset ||
       !(value.nextOffset === null || (value.items.length === input.limit && value.nextOffset === input.offset + input.limit && value.nextOffset <= 200))) fail();
+    if (totals) listSummary(value, identity, input);
     const seen = new Set();
     for (const item of value.items) {
-      if (!domainExact(item, ['id', 'code', 'title', 'status', 'buildingId', 'roomId', 'deadline', 'overdue', 'assigneeId', 'assigneeName', 'createdBy',
-        'progressNote', 'progressDigest', 'follows']) || !domainId(item.id) || seen.has(item.id) || !label(item.code, 64) || !label(item.title, 200) ||
+      const named = domainExact(item, [...ITEM_KEYS, 'buildingName', 'roomName']);
+      if (!(named || domainExact(item, ITEM_KEYS)) || (named !== totals) ||
+        (named && (!placeName(item.buildingName) || !nullable(v => label(v, 120))(item.roomName) || (item.roomName !== null && item.roomId === null))) ||
+        !domainId(item.id) || seen.has(item.id) || !label(item.code, 64) || !label(item.title, 200) ||
         !['IN_PROGRESS', 'COMPLETED'].includes(item.status) || !domainId(item.buildingId) || !nullable(domainId)(item.roomId) ||
         !nullable(instant)(item.deadline) || typeof item.overdue !== 'boolean' || (item.overdue && (item.status !== 'IN_PROGRESS' || item.deadline === null)) ||
         !nullable(domainId)(item.assigneeId) || !nullable(v => label(v, 120))(item.assigneeName) || !domainId(item.createdBy) ||
