@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-24T07:30:53.455Z",
+  "generatedAt": "2026-10-24T10:26:14.812Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 880,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13541,6 +13541,30 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-24T07:30:35.397Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql",
+      "version": "20261024094809",
+      "name": "hermes_expense_system_flow_block_v1",
+      "scheme": "timestamp14",
+      "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.hermes_expense_system_flow_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024095547_hermes_w2b_expense_pending_days_v1.sql",
+      "version": "20261024095547",
+      "name": "hermes_w2b_expense_pending_days_v1",
+      "scheme": "timestamp14",
+      "sha256": "1bb1545e8f376cf8878ea93a2f0f11535315f30e021f011802624bc63a9b5844",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2b_catalog_v1",
+        "catalog:function:app_private.hermes_w2b_read_v1"
       ]
     },
     {

@@ -425,8 +425,10 @@ export const WEB8 = `CREATE TABLE public.approval_requests(id uuid PRIMARY KEY D
 
 // Lượt 11 (nghiệm thu 24/10): gợi ý hạng mục có lớp từ vựng (hàm dùng chung) + chọn hạng mục / khớp mã phiếu / cam kết Q12 / mở lại phiếu.
 export const RULES2 = file('ie_quick_entry_shared_rules_v2'), FIXES = file('hermes_expense_acceptance_fixes_v1');
+// Lượt 13 (nghiệm thu 24/10): chặn luồng hệ thống (hoa hồng, thanh lý / trả tiền thừa, cọc, lương, chia lợi nhuận, chuyển nội bộ).
+export const FLOW = file('hermes_expense_system_flow_block_v1');
 
-export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS, fixes = FIXES } = {}) {
+export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS, fixes = FIXES, flow = FLOW } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
@@ -440,6 +442,8 @@ export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE
   await db.exec(WEB8); await db.exec(locks); await db.exec(locks);
   // Lượt 11 áp lên thân lượt 8 (lõi giải tên của Mốc 5, bước ghi của lượt 8); gợi ý có từ vựng phải áp trước.
   await db.exec(RULES2); await db.exec(RULES2); await db.exec(fixes); await db.exec(fixes);
+  // Lượt 13 áp lên thân lượt 11 (bộ chọn hạng mục, bước ghi) và thân Mốc 2 (kiểm lại hạng mục).
+  if (flow) { await db.exec(flow); await db.exec(flow); }
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers')");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers']`);

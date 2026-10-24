@@ -960,6 +960,25 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_expense_system_flow_v1 (MỚI, sql IMMUTABLE, INVOKER, search_path rỗng, thuần chữ); thay thân public.hermes_expense_category_pick_v1 và app_private.hermes_expense_write_step_v1 (ghim md5 thân 20261023210634) và app_private.hermes_expense_category_ok_v1 (ghim md5 thân 20261015120100)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng function:public.hermes_expense_system_flow_v1 — sinh 24/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (Hermes Thu chi lượt 13 — chặn luồng hệ thống phía máy chủ theo nghiệm thu bot thật trên TEST: hoa hồng, thanh lý / trả tiền thừa cho khách, cọc, lương, chia lợi nhuận, chuyển nội bộ ⇒ expense.create / expense.edit trả web_only + link màn gốc; hạng mục luồng hệ thống không còn là ứng viên của bot), chưa đi qua lane apply — hàm public.hermes_expense_system_flow_v1 vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (expense-write-sql.test.mjs 23/23, đột biến 7/7 bị bắt), PG17 hai kết nối (expense-write-race-sql.test.mjs 18/18), sổ hợp đồng durable / private-flow, và tầng 2 trên TEST trong một giao dịch ROLLBACK: áp file này lên thân thật (ghim md5 khớp), chạy bộ chọn hạng mục / lõi giải tên dưới RLS một chủ công ty khác (chỉ đọc) — câu nghiệm thu ra web_only + đúng link, khoản chi thật không bị chặn; production chỉ đọc: tập dùng được chỉ mất hai hạng mục dòng tiền, 90 ngày phiếu chi lập tay không có ca chặn nhầm. Áp qua npm run migrate:forward SAU 20261023210634; không đổi quyền của ai (khoá ghi Thu chi vẫn như registry).",
+      "missingObjects": [
+        "function:public.hermes_expense_system_flow_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Thu chi lượt 13, 24/10/2026",
+      "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7"
     }
   }
 }
