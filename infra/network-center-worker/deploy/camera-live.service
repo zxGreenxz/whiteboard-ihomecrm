@@ -13,6 +13,8 @@ EnvironmentFile=/opt/ihome-camera-live/config/runtime.env
 LoadCredential=live-config.json:/opt/ihome-camera-live/secrets/live-config.json
 RuntimeDirectory=ihome-camera-live
 RuntimeDirectoryMode=0700
+StateDirectory=ihome-camera-live
+StateDirectoryMode=0700
 Environment=NODE_OPTIONS=--max-old-space-size=128
 ExecStartPre=/bin/sh -c 'test "$(/usr/bin/node --version)" = "v22.23.2"'
 ExecStart=/usr/bin/node /opt/ihome-camera-live/current/cameraLiveMain.mjs
@@ -20,7 +22,8 @@ Restart=on-failure
 RestartSec=10
 KillMode=control-group
 TimeoutStopSec=10
-MemoryMax=320M
+MemoryMax=768M
+CPUQuota=150%
 TasksMax=128
 NoNewPrivileges=yes
 CapabilityBoundingSet=

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 
-const endpoint = "https://crm-hermes.chillhome.io.vn/camera-live/v1";
+export const cameraVideoEndpoint = "https://crm-hermes.chillhome.io.vn/camera-live/v1";
+const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().uuid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive() });
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false) });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",
@@ -14,6 +15,15 @@ const messages: Record<string, string> = {
   CAMERA_BUSY: "Hệ thống đang bận. Vui lòng thử lại.",
   CODEC_UNSUPPORTED: "Trình duyệt chưa hỗ trợ định dạng của camera. Hãy thử Chrome hoặc Edge mới trên máy có hỗ trợ H.265.",
   CAMERA_UNAVAILABLE: "Chưa nhận được video từ đầu ghi. Vui lòng thử lại.",
+  ARCHIVE_NOT_CONFIGURED: "Đầu ghi chưa được bật dịch vụ xem lại và xuất video. Cần cấu hình dịch vụ camera trên máy chủ.",
+  INVALID_ARCHIVE_RANGE: "Khoảng thời gian chưa hợp lệ. Xem mỗi đoạn tối đa 10 phút; xuất mỗi file tối đa 30 phút và không chọn giờ tương lai.",
+  ARCHIVE_BUSY: "Đang có tác vụ xử lý video. Hãy chờ hoàn tất hoặc hủy tác vụ đang chạy rồi thử lại.",
+  RECORDING_UNAVAILABLE: "Không lấy được bản ghi trong khoảng này. Có thể video đã bị ghi đè, đầu ghi mất kết nối hoặc không hỗ trợ xem lại. Hãy thử khoảng ngắn hơn.",
+  ARCHIVE_INCOMPLETE: "Đầu ghi trả về thiếu thời lượng đã chọn. Hãy thu hẹp khoảng thời gian; chưa tạo file để tránh cung cấp đoạn bị thiếu.",
+  ARCHIVE_TOO_LARGE: "Đoạn video vượt giới hạn dung lượng. Hãy chia thành các đoạn ngắn hơn.",
+  ARCHIVE_EXPIRED: "Đoạn video tạm đã hết hạn. Hãy chọn xem hoặc xuất lại.",
+  ARCHIVE_ENCODER_FAILED: "Dịch vụ xử lý video chưa hoạt động. Vui lòng báo người quản trị.",
+  ARCHIVE_DOWNLOAD_INVALID: "File tải về không khớp bản trích xuất. Vui lòng thử lại.",
 };
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
