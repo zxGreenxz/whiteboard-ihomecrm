@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLiveDependencies, createLiveServer, liveConfigSchema, streamName, type LiveConfig } from "./cameraLive.js";
+import { ArchiveJobs } from "./cameraArchive.js";
+import { createArchiveMedia, prepareArchiveDirectory } from "./cameraArchiveMedia.js";
 
 export const MEDIA_VERSION = "1.21.2";
 export const MEDIA_ARCHIVE_SHA256 = "121be6e00397e473a95d83c75f4fcd3819a6af3b0e1a50889cba43ab4fab6a27";
@@ -34,6 +36,16 @@ async function main() {
   if (!credentialDirectory || !runtimeDirectory || !binary?.startsWith("/opt/ihome-camera-live/releases/") || !expectedDigest?.match(/^[a-f0-9]{64}$/u)) throw new Error("LIVE_RUNTIME_INVALID");
   if (createHash("sha256").update(await readFile(binary)).digest("hex") !== expectedDigest) throw new Error("LIVE_BINARY_DIGEST_MISMATCH");
   const config = liveConfigSchema.parse(JSON.parse(await readFile(join(credentialDirectory, "live-config.json"), "utf8")));
+  const archiveBinary = process.env.CAMERA_FFMPEG_BINARY;
+  const archiveDigest = process.env.CAMERA_FFMPEG_SHA256;
+  const stateDirectory = process.env.STATE_DIRECTORY;
+  let archiveMedia: ReturnType<typeof createArchiveMedia> | undefined;
+  if (config.recorders.some((recorder) => recorder.archiveEnabled)) {
+    if (!archiveBinary?.startsWith("/opt/ihome-camera-live/releases/") || !archiveDigest?.match(/^[a-f0-9]{64}$/u) || stateDirectory !== "/var/lib/ihome-camera-live") throw new Error("ARCHIVE_RUNTIME_INVALID");
+    if (createHash("sha256").update(await readFile(archiveBinary)).digest("hex") !== archiveDigest) throw new Error("ARCHIVE_BINARY_DIGEST_MISMATCH");
+    const directory = join(stateDirectory, "archive"); await prepareArchiveDirectory(directory);
+    archiveMedia = createArchiveMedia(archiveBinary, directory);
+  }
   const mediaConfig = join(runtimeDirectory, "mediamtx.json");
   await writeFile(mediaConfig, JSON.stringify(mediaConfiguration(config)), { mode: 0o600 });
   // Media logs can contain recorder URLs. Never forward them to the application journal.
@@ -46,7 +58,9 @@ async function main() {
     console.error("CAMERA_LIVE_STOPPED");
     server.close(); server.closeAllConnections();
   };
-  const { server } = createLiveServer(config, createLiveDependencies(config, fatal));
+  const dependencies = createLiveDependencies(config, fatal);
+  const archive = archiveMedia ? { jobs: new ArchiveJobs({ ...archiveMedia, authorize: dependencies.authorize, fatal, audit: (event, details) => console.log(JSON.stringify({ event, ...details })) }), open: archiveMedia.open } : undefined;
+  const { server } = createLiveServer(config, dependencies, archive);
   media.once("error", fatal); media.once("exit", fatal); server.on("error", fatal);
   process.once("SIGTERM", fatal); process.once("SIGINT", fatal);
   server.listen(18751, "127.0.0.1", () => console.log("CAMERA_LIVE_READY"));
