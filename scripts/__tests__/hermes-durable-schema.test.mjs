@@ -477,7 +477,9 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   'app_private.hermes_invoice_meter_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   // Mốc 5 (20261023042723): vỏ chuyển điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục sang tra cứu (INVOKER) + bước ghi (DEFINER; hợp đồng →
   // hoá đơn → điều chỉnh NOWAIT dưới khoá công ty của guard); ánh xạ lý do của nhánh này owner-only.
-  'app_private.hermes_invoice_edit_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_edit_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
+  'app_private.hermes_invoice_edit_lookup_v1(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_edit_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
+  // Lượt 8 (20261024041712): vỏ chuyển thu tiền sang tra cứu v2 (INVOKER) + bước ghi v2 (DEFINER; vẫn NOWAIT); tầng v1 giữ quyền, không còn được gọi.
+  'app_private.hermes_invoice_lookup_core_v2(uuid,uuid[],text,jsonb)', 'app_private.hermes_invoice_action_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'];
 // Contract page write RPC (20261022022951): the caller executes the SQL-standard wrapper and the two functions it binds (the
 // RLS lookup, the DEFINER step); the Vietnamese date label and the page reason map stay owner-only.
 const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uuid)',
@@ -995,10 +997,11 @@ test('all forty-eight reviewed forward migrations and their 130 latest definitio
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
   // C1 (#309 = #304 Công việc + #305 Thu chi lượt 11): 48 file / 130 hàm. Hợp đồng lượt 11 (#308): lõi giải tên v1 (dựng trên thân
-  // 185114) và v2 ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (+2 file; thân cũ thành ghim superseded).
-  assert.equal(paths.length, 50);
-  assert.equal(FORWARD_FUNCTIONS.length, 130);
-  assert.equal(FORWARD_BY_NAME.size, 130, 'one live definition per reviewed name');
+  // 185114) và v2 ở 20261024040001, bước ghi Hợp đồng ở 20261024040002 (+2 file; thân cũ thành ghim superseded). Hoá đơn lượt 8 (#312):
+  // tra cứu + bước ghi thu tiền _v2 và vỏ trang ở 20261024041712 (+1 file, +2 hàm; vỏ 042723 thành ghim superseded).
+  assert.equal(paths.length, 51);
+  assert.equal(FORWARD_FUNCTIONS.length, 132);
+  assert.equal(FORWARD_BY_NAME.size, 132, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

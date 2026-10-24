@@ -598,6 +598,10 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql',
     statementSha256: '24330ef538886274f374bad58928bef6fbfeb3e43afe9faed8c435f323f61164' },
+  // Lượt 8 (20261024041712): tra cứu thu tiền v2 = bản chép v1 (nhãn hoá đơn thanh lý) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_lookup_core_v2',
+    sourcePath: 'supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql',
+    statementSha256: '43e2ca0758249dd50413475c4bb0e361a7bf57c677730df9164067fe7159567e' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

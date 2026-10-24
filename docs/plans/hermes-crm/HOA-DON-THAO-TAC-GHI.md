@@ -102,9 +102,9 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 - `overpay = return` ⇒ chỉ ghi đúng số còn nợ; bản xem trước nói "phần dư X đ KHÔNG ghi vào CRM, anh/chị tự chuyển trả khách";
 - thiếu `overpay` ⇒ **bản xem trước có câu hỏi**: "Khách trả 3.700.000đ, còn nợ 3.650.000đ, dư 50.000đ. CHƯA chọn: giữ lại cho kỳ sau (`overpay=keep`) hay trả lại khách (`overpay=return`)?" kèm `preview.choiceRequired:'overpay'`. Token phát ra gắn params không có `overpay`, nên lượt 2 với token đó bị bước ghi trả `needs_input overpay_needs_choice`, không ghi. Cách này cho mô hình đọc được con số mà không phải đổi runtime (lý do dạng `needs_input` của trang chỉ mang câu tĩnh) (HDN4).
 
-**Thiếu < 10.000đ (Q15).** Kế hoạch bật `allow_rounding` khi `0 < thiếu < 10.000` (ngưỡng cứng trong v5), sổ làm tròn = sổ ảo "Làm tròn tiền thiếu" của công ty (như web). Bản xem trước: "làm tròn bỏ qua 5.000đ, hoá đơn thành ĐÃ THANH TOÁN". Thiếu ≥ 10.000đ ⇒ thu một phần, nói rõ còn nợ.
+**Thiếu < 10.000đ (Q15).** Kế hoạch bật `allow_rounding` khi `0 < thiếu < 10.000` (ngưỡng cứng trong v5), sổ làm tròn = sổ ảo "Làm tròn tiền thiếu" của công ty (như web). Bản xem trước (lượt 8): "… → 5.000đ: ĐÃ THANH TOÁN nhờ làm tròn như web — 5.000đ số lẻ KHÔNG thu, ghi vào sổ «Làm tròn tiền thiếu»; cột còn nợ của hoá đơn vẫn hiện 5.000đ", kèm trường `rounding`. Không bao giờ nói "ĐỦ" khi còn số lẻ: `remaining_amount` là cột GENERATED tổng − đã thu, nên vẫn mang số làm tròn dù hoá đơn `PAID` (báo cáo nợ chỉ tính `APPROVED`/`PARTIAL_PAID`/`OVERDUE`). Thiếu ≥ 10.000đ ⇒ thu một phần, nói rõ còn nợ.
 
-**Sổ nhận.** `get_receiving_cashbooks_v1(org, toà)`: TK/TT = sổ mặc định của toà rồi sổ phụ, giao với sổ người gọi giữ/biết. Không có sổ ⇒ `receiving_book_missing`. Nhiều sổ: mặc định sổ đầu (như web), bản xem trước nêu tên; `cashbookName` chọn sổ khác trong đúng danh sách đó.
+**Sổ nhận.** `get_receiving_cashbooks_v1(org, toà)`: TK/TT = sổ mặc định của toà rồi sổ phụ, giao với sổ người gọi giữ/biết. Không có sổ ⇒ lượt 8 tách hai mã: toà ĐÃ cài sổ cho hình thức đó (`app_private.receiving_cashbook_ids_v1(org, toà, hình thức, NULL)` — mọi sổ, không lọc người giữ) mà người hỏi không giữ/biết sổ nào ⇒ `receiving_book_not_held` (luật giữ sổ của v5, web cũng không cho); toà chưa cài ⇒ `receiving_book_missing`. Nhiều sổ: mặc định sổ đầu (như web), bản xem trước nêu tên; `cashbookName` chọn sổ khác trong đúng danh sách đó.
 
 **Lô (`items` ≤ 10, cùng toà, cùng hình thức).** Một requestId, một biên nhận, một lần đồng ý.
 - Lỗi tên hoặc kỳ mơ hồ ở bất kỳ mục nào ⇒ cả lô `needs_input`, `wanted` chỉ ra phòng nào.
@@ -141,7 +141,13 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
 
 **Trùng lặp.** (1) biên nhận Hermes theo requestId; (2) khoá idempotency v5 + băm nội dung (lớp thứ hai); (3) `p_expected_paid_amount` = số đã thu đọc dưới khoá dòng hoá đơn (lệch ⇒ v5 PT409, bước ghi ném lại nguyên mã, connector trả `context_changed`; trong cùng giao dịch không xảy ra), người khác vừa thu giữa hai lượt ⇒ `basis` lệch ⇒ `state_changed`; (4) cảnh báo `possible_duplicate` của kế hoạch: đã có lần thu ACTIVE cùng hoá đơn, cùng số tiền trong 30 phút (luật `duplicateCollection.ts`), bản xem trước nêu giờ và người thu.
 
-**Kết quả.** "Đã ghi thu 3.650.000đ bằng chuyển khoản cho hoá đơn INV-2026-01234 (44TL/201, kỳ 10/2026). Còn nợ 0đ — ĐÃ THANH TOÁN." + `applied`, `credit`, `rounding`, `remainingAfter`, `statusAfter`, `link`.
+**Kết quả.** "Đã ghi thu 3.650.000đ bằng chuyển khoản cho hoá đơn INV-2026-01234 (44TL/201, kỳ 10/2026). Hết nợ — ĐÃ THANH TOÁN ĐỦ." + `applied`, `credit`, `rounding`, `remainingAfter`, `statusAfter`, `link`. Lượt 8: làm tròn ⇒ "ĐÃ THANH TOÁN nhờ làm tròn: 5.000đ số lẻ không thu, ghi vào sổ «Làm tròn tiền thiếu»; cột còn nợ của hoá đơn vẫn hiện 5.000đ."; thu một phần ⇒ "Còn nợ X."; giữ dư ⇒ thêm "Dư X giữ lại cho kỳ sau (tiền dư của khách)."; trả dư ⇒ "Phần dư X KHÔNG ghi vào CRM; anh/chị tự chuyển trả khách."
+
+**Lượt 8 (24/10, sửa theo nghiệm thu bot trên TEST; migration `20261024041712_hermes_invoice_collect_v2`).** Tầng thu tiền v2 = bản chép NGUYÊN v1 (md5 ghim), vỏ chuyển `invoice.collect` sang v2:
+- hoá đơn thanh lý (`kind = 'SETTLEMENT'`, HĐ đã kết thúc, khách cũ) KHÔNG bị loại theo thiết kế — tầng 2 trên TEST xem trước được với người giữ sổ nhận. Lý do bot "chỉ sang web" là `receiving_book_missing` cho người không giữ sổ nhận nào của toà (toà đã cài sổ) ⇒ nay `receiving_book_not_held`, câu không nói "cài sổ";
+- ứng viên / dòng xem trước / câu đã ghi gọi "hoá đơn thanh lý" như web (trước đây ứng viên ghi chữ `settlement`);
+- sổ người dùng nêu không còn trong danh sách ở lượt 2 ⇒ `state_changed` (xem trước lại nói đúng lý do);
+- câu làm tròn / "ĐỦ" như trên.
 
 ### 4.2 Ghi chỉ số điện nước (`invoice.meter_record`, Mốc 4)
 
@@ -178,6 +184,14 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
   - tháng đã có chỉ số ⇒ cả lô bị từ chối; form nêu lỗi ở thông báo và ở đúng dòng, không ghi dòng thứ hai;
   - khoá idempotency = `requestKey` của workflow; tải lại trang rồi gửi lại đúng nội dung ⇒ hàm ghi trả kết quả cũ, không ghi lần hai.
   - Nhập Excel (`bulk_create_meter_readings`) và INSERT chỉ số cuối kỳ của luồng lập hoá đơn KHÔNG đổi.
+
+**Lượt 8 (24/10, sửa theo nghiệm thu; migration dùng chung `20261024041049_meter_readings_plan_previous_period_v1`, form web nhận cùng bản sửa).**
+- **Vì sao "ghi chỉ số tháng này" gần như luôn bị từ chối.** Lập hoá đơn tháng Excel ghi số cuối kỳ của kỳ M lúc lập hoá đơn (cuối tháng M−1) với `reading_date` = ngày cuối kỳ M (ngày tương lai) ⇒ trigger đặt `settlement_month = M`. Đo production 24/10 (chỉ đọc): 258 chỉ số kỳ 10/2026 tạo 29–30/09 mang ngày 31/10; gần như mọi chỉ số kỳ 08–10 như vậy. Ghi chỉ số đọc hôm nay ⇒ thấy dòng kỳ 10 đó ⇒ `duplicate_month`; "sửa" ⇒ dòng đó đã lên hoá đơn ⇒ `used_by_invoice`; bỏ qua được trùng thì 31/10 > hôm nay ⇒ `has_later_reading`.
+- **Chỉ số chốt kỳ trước ghi trước ngày** = tạo (giờ công ty) TRƯỚC ngày chốt mới VÀ `reading_date` SAU ngày chốt mới: không tính vào trùng tháng, không bị thay. Số đầu của dòng mới vẫn theo trigger (= chính chỉ số chốt đó).
+- **Không loại dòng mang ngày ≤ ngày chốt, kể cả đã lên hoá đơn** (quy ước `GenerateInvoiceDialog`: `reading_date` = ngày phát hành). Loại thì dòng mới thành "APPROVED mới nhất theo `reading_date`" = số đầu của hoá đơn kỳ sau (cả hai luồng lập hoá đơn) ⇒ phần tiêu thụ trước nó không vào hoá đơn nào. Cùng lý do, ngày chốt = đúng ngày của chỉ số chốt (31/10) vẫn chặn.
+- **`has_later_reading` theo ngày đọc thật** `LEAST(reading_date, ngày tạo)`: chỉ chỉ số đọc thật SAU ngày chốt mới chặn; `laterReadingDate` là ngày đọc thật.
+- **Chỉ số tháng đã lên hoá đơn ⇒ `used_by_invoice` ngay**, không qua `duplicate_month` ("nói sửa" rồi mới từ chối là câu sai). "Sửa" khi tháng chỉ còn chỉ số chốt đã lên hoá đơn cùng kỳ ⇒ `used_by_invoice`; chưa lên hoá đơn ⇒ ghi dòng mới. Ghi đè chỉ với chỉ số tháng chưa lên hoá đơn (luật cũ).
+- **Chưa đổi (đề xuất, ngoài phạm vi):** hai luồng lập hoá đơn không điền sẵn số cuối từ chỉ số đã ghi (người lập gõ lại); bộ lọc "phòng chưa ghi chỉ số" của web lọc theo `settlement_month` nên coi phòng đã có chỉ số chốt kỳ trước là "đã ghi".
 
 ### 4.3 Điều chỉnh hoá đơn (`invoice.adjust`, Mốc 5)
 
@@ -238,11 +252,12 @@ Khối "Hoá đơn" riêng trong `action-reasons.mjs`; mã dạng `rejected` và
 | `overpay_needs_choice` | needs_input | Khách trả dư; hỏi giữ lại (`overpay=keep`) hay trả lại (`overpay=return`) | lượt 2 thiếu `overpay`; `22023 Số thu vượt còn phải thu` |
 | `invoice_not_collectible` | rejected | Hoá đơn nháp/đã huỷ, không thu được | `55000 Trạng thái hóa đơn không cho phép thu tiền` |
 | `credit_requires_contract` | rejected | Hoá đơn không gắn HĐ nên không giữ phần dư được; chọn trả lại | `22023 Không thể giữ credit…` |
-| `receiving_book_missing` | rejected | Toà chưa cài sổ nhận TK/TT, hoặc anh/chị không giữ/biết sổ nào của toà | kế hoạch; `42501 Toà % chưa cài sổ nhận tiền`, `Sổ "%" không nằm trong danh sách…` |
+| `receiving_book_missing` | rejected | Toà chưa cài sổ nhận cho hình thức này (TK/POS); nhờ chủ cài ở Sổ nhận tiền trên web | kế hoạch (toà chưa cài sổ); `42501 Toà % chưa cài sổ nhận tiền`, `Sổ "%" không nằm trong danh sách…` |
+| `receiving_book_not_held` | rejected | Anh/chị chưa được giao (giữ/biết) sổ nhận TK/POS nào của toà; nhờ chủ giao sổ hoặc để người giữ sổ ghi (lượt 8, mới) | kế hoạch chặn sổ nhận mà toà đã cài sổ |
 | `reconciliation_required` | rejected | Hoá đơn có cơ cấu/bút toán chưa đối soát; nhờ kế toán kiểm trên web | các câu 55000 "đối soát", "semantic", "phân bổ" của v5 và `adjust_invoice_v2` |
 | `meter_not_found` | needs_input | Phòng không có công tơ đang dùng loại này; hỏi lại phòng/loại | kế hoạch chỉ số |
 | `meter_ambiguous` | needs_input | Phòng có nhiều công tơ cùng loại; hỏi mã công tơ | kế hoạch chỉ số |
-| `meter_duplicate_month` | needs_input | Tháng này đã có chỉ số; người dùng nói "sửa" mới thay | kế hoạch chỉ số (Q16) |
+| `meter_duplicate_month` | needs_input | Tháng này đã có chỉ số (chưa lên hoá đơn); người dùng nói "sửa" mới thay | kế hoạch chỉ số (Q16; lượt 8: không tính chỉ số chốt kỳ trước ghi trước ngày) |
 | `meter_lower_than_previous` | needs_input | Chỉ số mới nhỏ hơn số đầu; hỏi lại số | 23514 `meter_readings_current_gte_previous` |
 | `meter_used_by_invoice` | rejected | Chỉ số đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web | kế hoạch chỉ số |
 | `meter_has_later_reading` | rejected | Công tơ đã có chỉ số ngày sau ngày chốt; sửa chuỗi chỉ số trên web (Mốc 4, mới) | kế hoạch chỉ số |
@@ -272,6 +287,8 @@ Mốc 5 thêm 12 mã (10 của bảng trên + hai mã mới cho trạng thái "�
 - dạng `rejected` (cũng vào `host-ownership.mjs`): `adjust_meter_line_web_only`, `adjust_has_rounding_or_credit`, `adjust_debt_carried`, `adjust_below_collected`, `adjustment_self_check_web_only`, `cancel_has_payment`, `cancel_overdue_web_only`, `restore_conflict`, `invoice_already_cancelled`, `invoice_not_cancelled`.
 
 Ánh xạ câu lỗi của bốn hàm ghi web nằm ở `app_private.hermes_invoice_edit_reason_v1`, rơi về `hermes_invoice_reason_v1` của Mốc 3.
+
+Lượt 8 thêm 1 mã dạng `rejected` (cũng vào `host-ownership.mjs`): `receiving_book_not_held`. Connector phải biết mã TRƯỚC khi áp migration thu tiền v2 (mã lạ ⇒ `crm_refused`).
 
 ## 6. Hàm dùng chung mới (luật 17/10)
 
@@ -364,6 +381,8 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng; chỉ
 | 4 | `20261022183445_hermes_invoice_meter_v1` | tra cứu + bước ghi `invoice.meter_record`, THAY vỏ RPC trang (chuyển theo thao tác), dòng chính sách | `075230`, dòng trên |
 | 5 | `20261023042242_invoice_adjustment_build_v1` | hàm dựng dòng dùng chung (file không chứa hàm trợ lý); form Điều chỉnh web gọi | — |
 | 5 | `20261023042723_hermes_invoice_edit_v1` | lý do, tra cứu, bước ghi `adjust` / `adjustment_check` / `cancel` / `restore`, THAY vỏ RPC trang (thân thu tiền + chỉ số md5 ghim), bốn dòng chính sách | `183445`, dòng trên |
+| lượt 8 | `20261024041049_meter_readings_plan_previous_period_v1` | THAY thân `meter_readings_plan_v1` (cùng chữ ký; md5 thân `183026` + hai trigger ghim): chỉ số chốt kỳ trước ghi trước ngày không còn là trùng tháng / ngày sau; đã lên hoá đơn ⇒ `used_by_invoice` ngay (mục 4.2). File không chứa hàm trợ lý. Hàm đã có trên production ⇒ provenance coi là catalog-proven dù CHƯA áp: áp đích danh | `183026` |
+| lượt 8 | `20261024041712_hermes_invoice_collect_v2` | tra cứu + bước ghi thu tiền `_v2` (bản chép `075230`, md5 ghim), THAY vỏ RPC trang (thu tiền sang v2, nhánh khác giữ nguyên) | `042723`; connector biết `receiving_book_not_held` |
 | 6 | `invoice_month_quote_v1` | nếu P7 được duyệt | — |
 
 **Thứ tự áp (cửa idempotent của CI main chạy từng migration trên trạng thái production):** #267 → M1/M2/M5 (đã áp) → migration Mốc 2 → Mốc 3 → Mốc 4 → Mốc 5; mỗi cái áp TEST rồi production **trước khi gộp** PR. Khoá `thu_tien.collect_transfer` seed TẮT cùng lần promote web có khoá trong `capability-contract.mjs` + nhãn (bài học 19/10). Bật khoá bằng migration riêng sau nghiệm thu. Không migration nào được seed `thu_tien.collect`: khối kiểm của M2 `20261021134531` đòi khoá đó vắng.

@@ -11,7 +11,7 @@ import { invoiceSetup, rid, uid, BUILDING, OTHER_BUILDING, ORG, USER, M1, M2, M3
 const code = expected => error => error.code === expected;
 
 test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)', { timeout: 300000 }, async t => {
-  const f = await invoiceSetup(t, { meter: true });
+  const f = await invoiceSetup(t, { meter: true, l8: true });
   const { db, call, meterRun, meterApply } = f;
   const writer = (rows, { date = '2026-10-22', replace = false, key = null, building = BUILDING, actor = USER } = {}) => call(
     'SELECT public.record_meter_readings_v2($1::uuid,$2::date,$3::jsonb,$4,$5) result', [building, date, JSON.stringify(rows), replace, key], { actor });
@@ -26,7 +26,8 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
   await t.test('kế hoạch (INVOKER): số đầu theo trigger, số đầu hoá đơn, trùng tháng bỏ TLY, ghi lùi ngày, nhiều công tơ, cảnh báo', async () => {
     const p = await plan([{ meterId: M1, value: 1234 }, { meterId: M2, value: 1100 }, { meterId: M3, value: 360 }, { roomId: uid(813), value: 10 },
       { meterId: M5, value: 2000 }, { meterId: M5, value: 2300 }, { meterId: M7, value: 170 }, { roomId: uid(813), meterCode: 'dh-104b', value: 10 }]);
-    assert.deepEqual(p.rows.map(r => [r.n, r.status]), [[1, 'ok'], [2, 'ok'], [3, 'duplicate_month'], [4, 'meter_ambiguous'], [5, 'lower_than_previous'],
+    // P103: chỉ số tháng 10 đã lên hoá đơn INV_C ⇒ nói ngay used_by_invoice (lượt 8; trước đây duplicate_month gợi ý "nói sửa").
+    assert.deepEqual(p.rows.map(r => [r.n, r.status]), [[1, 'ok'], [2, 'ok'], [3, 'used_by_invoice'], [4, 'meter_ambiguous'], [5, 'lower_than_previous'],
       [6, 'duplicate_in_batch'], [7, 'ok'], [8, 'ok']]);
     assert.deepEqual([p.ok, p.settlementMonth, p.counts], [false, '2026-10', { ok: 4, replace: 0, blocked: 4 }]);
     assert.deepEqual([p.rows[0].previous, p.rows[0].approvedStart, p.rows[0].consumption, p.rows[0].roomName], [1200, 1200, 34, 'P101']);
@@ -48,8 +49,8 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
     await f.rollbackCase(async () => {
       const before = await readings(M1);
       await assert.rejects(writer([{ meterId: M1, value: 1234 }, { meterId: M3, value: 360 }], { key: 'web-00000001' }), error => {
-        assert.equal(error.code, '22023'); assert.equal(error.message, 'meter_readings_rejected'); assert.equal(error.hint, 'duplicate_month');
-        assert.deepEqual(JSON.parse(error.detail), [{ n: 2, status: 'duplicate_month', roomName: 'P103', meterCode: 'DH-103', previous: 350, existingValue: 350 }]);
+        assert.equal(error.code, '22023'); assert.equal(error.message, 'meter_readings_rejected'); assert.equal(error.hint, 'used_by_invoice');
+        assert.deepEqual(JSON.parse(error.detail), [{ n: 2, status: 'used_by_invoice', roomName: 'P103', meterCode: 'DH-103', previous: 350, existingValue: 350 }]);
         return true;
       });
       assert.deepEqual(await readings(M1), before, 'cả lô lùi');
@@ -96,6 +97,43 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
     });
   });
 
+  await t.test('lượt 8 — chỉ số chốt kỳ trước ghi trước ngày (lập hoá đơn Excel: tạo 29/09, ngày 31/10, kỳ 10) không phải trùng tháng / ngày sau', async () => {
+    await f.rollbackCase(async () => {
+      // P101: số cuối kỳ 10 đã lên hoá đơn INV-A-10 (dòng điện 1.200 → 1.250); P105: số cuối kỳ 10 chưa lên hoá đơn nào.
+      const closing = (meter, value) => db.query(`INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id,created_at)
+        VALUES($1,'2026-10-31',$2,'APPROVED',$3,'2026-09-29 03:00:00+00')`, [meter, value, ORG]);
+      await closing(M1, 1250); await closing(M5, 2300);
+      const p = await plan([{ meterId: M1, value: 1290 }, { meterId: M5, value: 2350 }]);
+      assert.deepEqual(p.rows.map(r => [r.status, r.previous, r.approvedStart, r.consumption, r.existing]),
+        [['ok', 1250, 1250, 40, undefined], ['ok', 2300, 2300, 50, undefined]], 'số đầu = chỉ số chốt kỳ trước (đúng trigger)');
+      // "Sửa" khi tháng chỉ còn chỉ số chốt đã lên hoá đơn = sửa số trên hoá đơn ⇒ điều chỉnh hoá đơn trên web; chưa lên hoá đơn ⇒ ghi mới.
+      assert.deepEqual((await plan([{ meterId: M1, value: 1290 }, { meterId: M5, value: 2350 }], { replace: true })).rows.map(r => r.status), ['used_by_invoice', 'ok']);
+      assert.deepEqual(await meterRun('preview', rid(84), { buildingName: 'Toà A', readings: [{ roomName: 'P101', value: 1290 }], replace: true }),
+        { kind: 'rejected', reason: 'meter_used_by_invoice' });
+      // Ngày chốt = chính ngày của chỉ số chốt: dòng mới sẽ thành "APPROVED mới nhất" (số đầu hoá đơn kỳ sau) ⇒ vẫn chặn như cũ.
+      assert.deepEqual((await plan([{ meterId: M1, value: 1290 }], { date: '2026-10-31' })).rows.map(r => r.status), ['used_by_invoice']);
+      // Chỉ số đọc THẬT sau ngày chốt mới vẫn chặn: số chốt P105 đọc 29/09 > 20/09.
+      assert.deepEqual((await plan([{ meterId: M5, value: 2250 }], { date: '2026-09-20' })).rows.map(r => [r.status, r.laterReadingDate]),
+        [['has_later_reading', '2026-09-29']]);
+      // Bot ghi chỉ số tháng này (ca nghiệm thu 24/10): xem trước, ghi, trigger điền số đầu đúng kế hoạch.
+      const params = { buildingName: 'Toà A', readings: [{ roomName: 'P101', value: 1290 }] };
+      const preview = await meterRun('preview', rid(85), params);
+      assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+      assert.deepEqual(preview.preview.items.map(i => i.text), ['P101: 1.250 → 1.290 (40 kWh)']);
+      const applied = await meterApply(rid(85), params, preview);
+      assert.equal(applied.kind, 'applied', JSON.stringify(applied));
+      assert.deepEqual((await readings(M1)).map(r => [r.d, r.p, r.c, r.m]),
+        [['2026-09-30', 1000, 1200, '2026-09'], ['2026-10-22', 1250, 1290, '2026-10'], ['2026-10-31', 1200, 1250, '2026-10']]);
+      // Đã có chỉ số tháng thật (chưa lên hoá đơn) ⇒ trùng tháng; "sửa" thay đúng dòng đó, giữ số đầu đã lưu.
+      assert.deepEqual(await meterRun('preview', rid(86), { ...params, readings: [{ roomName: 'P101', value: 1300 }] }), { kind: 'rejected', reason: 'meter_duplicate_month' });
+      const fix = await meterRun('preview', rid(87), { ...params, readings: [{ roomName: 'P101', value: 1300 }], replace: true });
+      assert.deepEqual(fix.preview.items.map(i => i.text), ['P101: THAY số cũ 1.290; 1.250 → 1.300 (50 kWh)']);
+      // Đường web (cùng hàm ghi): P105 ghi được ngay.
+      const web = await writer([{ meterId: M5, value: 2350 }], { key: 'web-00000009' });
+      assert.deepEqual(web.created.map(r => [r.previous, r.value]), [[2300, 2350]]);
+    });
+  });
+
   await t.test('Hermes: lô xem trước nêu dòng sẽ ghi, dòng bị loại, cảnh báo; lượt 2 ghi đúng tập đã xem; phát lại; khác nội dung', async () => {
     await f.rollbackCase(async () => {
       const preview = await meterRun('preview', rid(70), batch());
@@ -103,7 +141,7 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
       assert.equal(preview.preview.summary, 'Sẽ ghi 2 chỉ số ĐIỆN toà Toà A, ngày chốt 22/10/2026 (thứ Năm, hôm nay), tháng 10/2026.');
       assert.deepEqual(preview.preview.items.map(i => i.text), ['P101: 1.200 → 1.234 (34 kWh)', 'P102: 700 → 1.100 (400 kWh)']);
       assert.deepEqual(preview.preview.excluded, [
-        'P103: tháng 10/2026 đã có chỉ số 350 (người dùng nói "sửa" mới thay) — không ghi',
+        'P103: chỉ số tháng này đã lên hoá đơn; sửa bằng điều chỉnh hoá đơn trên web — không ghi',
         'P104: phòng có nhiều công tơ điện (DH-104A, DH-104B); nêu mã công tơ — không ghi',
         'P105: chỉ số 2.000 nhỏ hơn số đầu 2.210 — không ghi']);
       assert.deepEqual(preview.warnings, ['P102: tiêu thụ 400 kWh, gấp 4,0 lần trung bình 3 kỳ (100 kWh) — đọc lại số cho người dùng.']);
@@ -124,13 +162,16 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
   await t.test('Hermes: không còn dòng ghi được ⇒ lý do của dòng đầu; sửa; ngày chốt Q16; loại công tơ; chỉ số đầu hoá đơn; TLY', async () => {
     await f.rollbackCase(async () => {
       const only = readings => ({ buildingName: 'Toà A', readings });
-      for (const [rows, reason] of [[[{ roomName: 'P103', value: 360 }], 'meter_duplicate_month'], [[{ roomName: 'P104', value: 1 }], 'meter_ambiguous'],
+      // P102 có chỉ số tháng 10 thật (đọc 15/10, chưa lên hoá đơn) ⇒ trùng tháng, "sửa" mới thay.
+      await db.query("INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES($1,'2026-10-15',750,'APPROVED',$2)", [M2, ORG]);
+      for (const [rows, reason] of [[[{ roomName: 'P102', value: 800 }], 'meter_duplicate_month'], [[{ roomName: 'P104', value: 1 }], 'meter_ambiguous'],
         [[{ roomName: 'P105', value: 2000 }], 'meter_lower_than_previous']]) {
         assert.deepEqual(await meterRun('preview', rid(72), only(rows)), { kind: 'rejected', reason }, reason);
         assert.ok(ACTION_INPUT_REASONS.includes(reason), reason);
       }
       assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P101', value: 5 }]), meterType: 'nuoc' }), { kind: 'rejected', reason: 'meter_not_found' });
-      assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P103', value: 360 }]), replace: true }), { kind: 'rejected', reason: 'meter_used_by_invoice' });
+      for (const replace of [false, true])
+        assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P103', value: 360 }]), replace }), { kind: 'rejected', reason: 'meter_used_by_invoice' });
       assert.ok(ACTION_REASON_CODES.includes('meter_used_by_invoice') && !ACTION_INPUT_REASONS.includes('meter_used_by_invoice'));
       assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P106', value: 120 }]), month: '2026-09' }), { kind: 'rejected', reason: 'meter_has_later_reading' });
       assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P101', value: 1300 }]), month: '2026-11' }), { kind: 'rejected', reason: 'date_out_of_range' });
