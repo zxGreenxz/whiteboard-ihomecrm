@@ -84,6 +84,26 @@ it('link chủ nhà: không lộ người chốt, đối chiếu Báo cáo LN ha
   expect(screen.getByTestId('chip-bridge').textContent).toBe('Khớp Báo cáo LN · 18.000.000 đ');
 });
 
+it('"Theo hạng mục" mặc định THU GỌN ở cả hai thẻ (hai cột thẳng hàng); bấm ở một thẻ thì mở / đóng CẢ HAI', () => {
+  ve();
+  const the = (id: string) => within(screen.getByTestId(id));
+  const nut = (id: string) => the(id).getByRole('button', { name: /Theo hạng mục/ });
+  for (const id of ['settlement-income-card', 'settlement-expense-card']) {
+    expect(nut(id).getAttribute('aria-expanded')).toBe('false');
+  }
+  expect(document.getElementById('settlement-categories-list-income')).toBeNull();
+  expect(document.getElementById('settlement-categories-list-expense')).toBeNull();
+  fireEvent.click(nut('settlement-expense-card'));
+  for (const id of ['settlement-income-card', 'settlement-expense-card']) {
+    expect(nut(id).getAttribute('aria-expanded')).toBe('true');
+  }
+  expect(document.getElementById('settlement-categories-list-income')).not.toBeNull();
+  expect(document.getElementById('settlement-categories-list-expense')).not.toBeNull();
+  fireEvent.click(nut('settlement-income-card'));
+  expect(document.getElementById('settlement-categories-list-income')).toBeNull();
+  expect(document.getElementById('settlement-categories-list-expense')).toBeNull();
+});
+
 it('ô sổ: bấm "Chủ nhà nhận" lọc danh sách theo sổ chủ nhà (tổng = số server), bấm lại bỏ lọc', () => {
   ve();
   const thu = () => within(screen.getByTestId('settlement-income-card'));
@@ -93,7 +113,8 @@ it('ô sổ: bấm "Chủ nhà nhận" lọc danh sách theo sổ chủ nhà (t�
   expect(screen.getByTestId('settlement-filter-bar').textContent).toMatch(/sổ chủ nhà/);
   expect(thu().getAllByTestId('settlement-cash-row')).toHaveLength(2);
   expect(tien(thu().getByTestId('settlement-list-total'))).toBe('20.000.000 đ');
-  // hạng mục theo bên sổ: phần chủ nhà của "Tiền phòng" là 18tr
+  // hạng mục theo bên sổ: phần chủ nhà của "Tiền phòng" là 18tr (mở khối "Theo hạng mục" — mặc định thu gọn)
+  fireEvent.click(thu().getByRole('button', { name: /Theo hạng mục/ }));
   expect(tien(thu().getByTestId('settlement-categories-income'))).toMatch(/Tiền phòng\s*18\.000\.000 đ\s*90%/);
   // sổ chủ nhà không chi gì ⇒ thẻ chi rỗng
   expect(within(screen.getByTestId('settlement-expense-card')).queryAllByTestId('settlement-cash-row')).toHaveLength(0);
@@ -286,9 +307,18 @@ it('Thống kê: chọn năm, trạng thái xác nhận từng tháng, mở "Cá
   expect(trangThai('2025-12')).toBe('Chưa xác nhận');
   fireEvent.click(screen.getByTestId('settlement-stat-net'));
   expect(within(screen.getByTestId('settlement-stat-calc')).getAllByTestId('calc-row').map((r) => r.getAttribute('data-key'))).toEqual(['share']);
-  // phần cộng dồn và thanh toán vẫn còn
+  // màn quản trị: phần cộng dồn và thanh toán (xem / huỷ khoản đã ghi) vẫn còn
   expect(screen.getByTestId('settlement-balance')).toBeTruthy();
   expect(screen.getByText('Hai bên đã trả nhau')).toBeTruthy();
+});
+
+it('Thống kê — link chủ nhà: KHÔNG có khối "Tổng quyết toán" (chủ nhắn 24/10/2026), bảng thống kê vẫn có', () => {
+  ve({ mode: 'public', buildingId: undefined, token: 'tok' });
+  fireEvent.click(tab(/Thống kê/));
+  expect(screen.getAllByTestId('settlement-stat-row').length).toBeGreaterThan(0);
+  expect(screen.queryByText('Tổng quyết toán')).toBeNull();
+  expect(screen.queryByTestId('settlement-balance')).toBeNull();
+  expect(screen.queryByText('Hai bên đã trả nhau')).toBeNull();
 });
 
 it('tháng đã chốt mà phiếu đổi sau khi chốt: vẫn cảnh báo (admin đỏ, link chủ nhà trung tính)', () => {
