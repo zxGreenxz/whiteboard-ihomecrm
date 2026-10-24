@@ -1,5 +1,55 @@
 # iHomeCRM Network Center worker
 
+## Camera: xem lại và xuất đoạn MP4
+
+Host camera hiện dùng mục **VPS Minh (NAT)** trong vault. Lấy endpoint và mật khẩu
+qua `scripts/lib/vault.mjs`, đối chiếu host key đã ghim; không suy ra host SSH từ
+tên miền `crm-hermes` hoặc alias `hermes-vps` cũ. Không in credential ra log.
+
+Gateway camera có thêm API `/camera-live/v1/recorders/:id/channels/:channel/archive`
+và `/camera-live/v1/archive/:id[/file]`. Dùng cùng JWT, kiểm quyền theo đầu ghi/tòa
+ở mỗi thao tác. Không cần migration hay mở thêm ingress. Tác vụ phải được poll
+trong 75 giây; file sẵn sàng tự hết hạn sau 15 phút và được xóa ngay sau khi trình
+duyệt tải xong. Dừng gateway cũng dừng bộ chuyển mã trong cùng systemd control group.
+
+Mặc định xem lại tắt. Trong credential `live-config.json`, chỉ đặt
+`archiveEnabled: true` cùng `archiveOrigin` (HTTP/HTTPS IP private, cổng quản trị
+qua WireGuard) cho đầu ghi Dahua/KBVISION hỗ trợ `loadfile.cgi?action=startLoad`
+và bản ghi DHAV có timestamp theo đồng hồ UTC+7. Giữ nguyên credential và
+`rtspOrigin` của đầu ghi. Video cũ có thể đã bị
+ghi đè; lỗi lấy bản ghi không được diễn giải thành “không có sự việc”.
+
+Release gateway phải chứa binary FFmpeg đã kiểm SHA-256, hỗ trợ DHAV demuxer,
+trim/atrim/setpts/asetpts/showinfo, H.264/libx264 và AAC. Gateway tải bản gốc qua
+HTTP Digest vào file riêng tư có giới hạn dung lượng rồi cắt theo timestamp
+tuyệt đối; lấy thêm 5 giây trước điểm cắt để giải mã đủ khung ở biên tải xuống,
+nhưng không dịch khoảng giờ người dùng chọn. Không dùng RTSP để cắt vì đầu ghi có thể nhảy tới keyframe kế tiếp,
+làm mất phần đầu. Credential không đi vào URL/argv/log của FFmpeg.
+Ghim binary bất biến trong `/opt/ihome-camera-live/releases/<sha>/`, khai báo
+`CAMERA_FFMPEG_BINARY` và `CAMERA_FFMPEG_SHA256` trong runtime.env. Không lấy binary
+latest lúc khởi động. Gateway xác minh digest trước khi mở listener. Unit mới
+cấp `StateDirectory=ihome-camera-live` (0700), giới hạn RAM 768 MiB và CPU 150%.
+Chỉ có một tác vụ chuyển mã cùng lúc, tối đa bốn file kết quả, mỗi file dưới 256 MiB;
+bản DHAV đang xử lý cũng bị giới hạn dưới 256 MiB và xóa khi kết thúc tác vụ;
+dành tối thiểu 2 GiB đĩa cho thư mục state. Không đặt video ở public webroot.
+
+UI cho chọn khoảng tìm tối đa 24 giờ, tải từng đoạn xem trước tối đa 10 phút,
+tua và tốc độ 0.5–8×. Xuất tối đa 30 phút/file, mặc định HD 720p; có thể chọn
+Full HD 1080p hoặc kích thước hình gốc, luôn giữ tỷ lệ và không phóng lớn nguồn.
+Video chuyển mã H.264/AAC, không phải bản bitstream gốc. File bàn giao chứa độ phân giải, camera,
+khoảng giờ yêu cầu, thời lượng video theo timestamp khung hình và SHA-256; không chứng nhận đồng hồ đầu
+ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway kiểm thời lượng
+và timestamp khung hình đầu/cuối, từ chối khoảng rỗng giữa các khung hình lớn hơn
+0,5 giây (hoặc hai chu kỳ khung hình với camera FPS thấp). Vẫn cần kiểm thực tế
+firmware và gián đoạn vì thời lượng không tự chứng minh mọi khung hình nguồn.
+
+Trước bật trên host: giữ bản release/config/unit cũ; kiểm file MP4 có hình, tua,
+thời lượng, dấu giờ và hash trên đầu ghi được cấp quyền; thử hủy, hết hạn và người
+không có quyền. Kiểm các ô live vẫn hoạt động khi xuất. Rollback về đúng artifact,
+config và unit cũ, dừng process group trước đổi release; không ghi/xóa bản gốc
+trên đầu ghi. Dọn file tạm chỉ trong StateDirectory đã xác minh. Chưa có các bằng
+chứng đó thì chưa đánh dấu runtime production đã sẵn sàng.
+
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,

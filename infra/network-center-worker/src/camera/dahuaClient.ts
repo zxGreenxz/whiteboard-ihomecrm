@@ -233,6 +233,16 @@ export class DahuaClient {
     return response;
   }
 
+  /** Stream the native recording with absolute DHAV timestamps; caller bounds bytes and lifetime. */
+  async recording(channel: number, start: string, end: string, signal: AbortSignal): Promise<Response> {
+    if (!Number.isInteger(channel) || channel < 1 || channel > 256 ||
+        !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u.test(start) ||
+        !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u.test(end)) throw new CameraClientError("INVALID_RESPONSE");
+    // These recorders do not interpret '+' as a space in time parameters.
+    const query = new URLSearchParams({ action: "startLoad", channel: String(channel), startTime: start, endTime: end, subtype: "0" });
+    return this.digestGet(`/cgi-bin/loadfile.cgi?${query.toString().replace(/\+/gu, "%20")}`, signal);
+  }
+
   async readStorage(): Promise<CameraDiskObservation[]> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);

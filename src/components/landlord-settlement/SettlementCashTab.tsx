@@ -11,9 +11,17 @@ import {
   shareText,
   voucherRowNote,
   type SettlementCategory,
+  type SettlementRoomData,
   type SettlementStatement,
   type SettlementVoucher,
 } from '@/lib/landlordSettlement';
+import {
+  compareRoomOrNone,
+  settlementRoomNoteRows,
+  type SettlementRoomNoteRow,
+  type SettlementRoomNoteTone,
+} from '@/lib/settlementRoomNotes';
+import { vnTodayISO } from '@/lib/vnDate';
 import { Eyebrow, SectionCard } from './SettlementParts';
 import { VoucherBreakdown, type GroupKey } from './VoucherBreakdown';
 
@@ -173,13 +181,60 @@ function VoucherRow({ v, mode, periodMonth }: { v: SettlementVoucher; mode: 'adm
   );
 }
 
-function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats }: {
+const NOTE_TONE: Record<SettlementRoomNoteTone, { row: string; tile: string; label: string }> = {
+  unpaid: {
+    row: 'bg-red-50/60 dark:bg-red-950/20',
+    tile: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
+    label: 'text-red-700 dark:text-red-400',
+  },
+  ended: {
+    row: 'bg-red-50/60 dark:bg-red-950/20',
+    tile: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
+    label: 'text-red-700 dark:text-red-400',
+  },
+  vacant: {
+    row: 'bg-amber-50/60 dark:bg-amber-950/20',
+    tile: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300',
+    label: 'text-amber-700 dark:text-amber-400',
+  },
+};
+
+/** Dòng ghi chú phòng (không cộng vào tổng): chưa đóng / phòng trống / HĐ chưa thanh lý — như Báo cáo LN. */
+function RoomNoteRow({ note }: { note: SettlementRoomNoteRow }) {
+  const tone = NOTE_TONE[note.tone];
+  return (
+    <li className={cn('grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2', tone.row)}
+      data-testid="settlement-room-note" data-tone={note.tone}>
+      <span title={note.roomName} data-testid="settlement-row-tile"
+        className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]', tone.tile)}>
+        <span className="line-clamp-2 text-center">{note.roomName}</span>
+      </span>
+      <span className={cn('min-w-0 truncate text-[13px] font-bold', tone.label)}>{note.label}</span>
+      <span className="whitespace-nowrap text-right text-[13.5px] font-bold text-muted-foreground" aria-hidden>—</span>
+      <p className="col-span-2 col-start-2 min-w-0 text-[11.5px] text-muted-foreground">{note.text}</p>
+    </li>
+  );
+}
+
+type ListItem = { key: string; room: string | null; desc: string }
+  & ({ v: SettlementVoucher; note?: undefined } | { note: SettlementRoomNoteRow; v?: undefined });
+
+function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats, notes }: {
   kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public'; catsOpen: boolean; onToggleCats: () => void;
+  notes: readonly SettlementRoomNoteRow[];
 }) {
   const t = st.totals;
   const income = kind === 'INCOME';
   const rows = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === kind
     && (filter === 'ALL' || v.side === filter));
+  // Khoản thu xếp theo phòng như Báo cáo LN, xen dòng ghi chú phòng (chủ nhắn 24/10/2026); khoản chi giữ thứ tự.
+  const items: ListItem[] = rows.map((v, i) => ({
+    key: `${v.code ?? 'phieu'}-${i}`, room: v.room_name ?? null, desc: settlementVoucherName(v, mode), v,
+  }));
+  if (income) {
+    for (const n of notes) items.push({ key: `ghi-chu-${n.key}`, room: n.roomName, desc: n.label, note: n });
+    items.sort((a, b) => compareRoomOrNone(a.room, b.room) || a.desc.localeCompare(b.desc, 'vi'));
+  }
   const total = serverTotal(t, kind, filter);
   const cats = st.categories ? (income ? st.categories.income : st.categories.expense) : null;
   const sideText = filter === 'LANDLORD' ? ' ở sổ chủ nhà' : filter === 'MANAGER' ? ' ở sổ quản lý' : '';
@@ -198,14 +253,18 @@ function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats }: {
         </span>
       </div>
       {cats && <CategoryBlock cats={cats} total={total} filter={filter} kind={kind} open={catsOpen} onToggle={onToggleCats} />}
-      {rows.length === 0 ? (
+      {items.length === 0 ? (
         <p className="px-4 py-7 text-center text-[12.5px] text-muted-foreground">Không có khoản {income ? 'thu' : 'chi'} nào{sideText} trong tháng.</p>
       ) : (
         <>
           <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
             <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
           </div>
-          <ul>{rows.map((v, i) => <VoucherRow key={`${v.code ?? 'phieu'}-${i}`} v={v} mode={mode} periodMonth={st.period_month} />)}</ul>
+          <ul>
+            {items.map((it) => (it.v
+              ? <VoucherRow key={it.key} v={it.v} mode={mode} periodMonth={st.period_month} />
+              : <RoomNoteRow key={it.key} note={it.note} />))}
+          </ul>
         </>
       )}
       <div className="mt-auto flex flex-wrap justify-between gap-x-3 gap-y-1 border-t bg-muted/30 px-3.5 py-2 text-[11.5px] text-muted-foreground">
@@ -237,7 +296,9 @@ function cellSub(st: SettlementStatement, kind: Kind, side: Side, count: number)
   return [prefix, names].filter(Boolean).join(' — ') || null;
 }
 
-export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatement; mode: 'admin' | 'public'; narrow: boolean }) {
+export function SettlementCashTab({ st, mode, narrow, roomData = null }: {
+  st: SettlementStatement; mode: 'admin' | 'public'; narrow: boolean; roomData?: SettlementRoomData | null;
+}) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [list, setList] = useState<Kind>('INCOME');
   // "Theo hạng mục" của HAI thẻ mở / đóng cùng nhau (mặc định đóng — hai cột thẳng hàng)
@@ -253,6 +314,10 @@ export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatemen
   const hasOther = st.vouchers.some((v) => v.source !== null || v.group !== 'PNL' || v.status === 'UNAPPROVED');
   const incCount = pnl.filter((v) => v.type === 'INCOME' && (filter === 'ALL' || v.side === filter)).length;
   const expCount = pnl.filter((v) => v.type === 'EXPENSE' && (filter === 'ALL' || v.side === filter)).length;
+  // ghi chú phòng không thuộc sổ nào ⇒ chỉ hiện khi xem tất cả
+  const roomNotes = filter === 'ALL'
+    ? settlementRoomNoteRows(roomData, st.period_month, pnl.filter((v) => v.type === 'INCOME'), vnTodayISO())
+    : [];
 
   return (
     <div className="flex flex-col gap-3">
@@ -327,10 +392,10 @@ export function SettlementCashTab({ st, mode, narrow }: { st: SettlementStatemen
 
       <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
         {(!narrow || list === 'INCOME') && (
-          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} />
+          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} notes={roomNotes} />
         )}
         {(!narrow || list === 'EXPENSE') && (
-          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} />
+          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} notes={[]} />
         )}
       </div>
 
