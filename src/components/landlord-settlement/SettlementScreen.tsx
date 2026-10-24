@@ -5,6 +5,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { cn } from '@/lib/utils';
 import {
+  bookCodesOf,
   monthKey,
   type DepositHolder,
   type SettlementMonth,
@@ -130,7 +131,8 @@ export function SettlementScreen({
           {tab === 'thuchi' && (
             // ghi chú phòng là dữ liệu sống: tháng đã chốt mà phiếu đổi sau chốt thì không khớp ảnh chốt ⇒ ẩn
             <SettlementCashTab key={monthKey(month.period_month)} st={st} mode={mode} narrow={narrow}
-              roomData={month.status === 'CLOSED' && month.is_stale ? null : month.room_data} />
+              roomData={month.status === 'CLOSED' && month.is_stale ? null : month.room_data}
+              bookCodes={bookCodesOf(overview)} />
           )}
           {tab === 'quyettoan' && (
             <SettlementStatementCard month={month} mode={mode} onRequestDepositHolder={onRequestDepositHolder}

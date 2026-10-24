@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  confirmReceiptSchema, noteUpdateReceiptSchema,
+  bookCodesReceiptSchema, confirmReceiptSchema, describeOperationChange, noteUpdateReceiptSchema,
   ihomeProfitOf, invoicePartsOfSettlement, landlordIhomeProfitSchema, landlordOperationOptionsSchema,
   landlordOperationsListSchema, settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema,
   settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
@@ -206,6 +206,26 @@ const PROD_MD5_PHONG: Record<string, string> = {
 let md5GocPhong: Record<string, string> = {};
 let md5LuotMotPhong: Record<string, string> = {};
 let hashSauPhong: string[] = [];
+/**
+ * Migration 20261024063027 — ký hiệu sổ của toà (chủ nhắn 24/10/2026: 950NK sổ chủ nhà "CG", sổ quản lý "ET").
+ */
+const FILE_KY_HIEU = process.env.QTKYHIEU_MIGRATION_FILE
+  ?? "supabase/migrations/20261024063027_quyet_toan_ky_hieu_so.sql";
+const GOI_TONG_QUAN = "app_private.landlord_settlement_overview_payload_v1(uuid,boolean)";
+const OPTIONS_V1 = "public.landlord_operation_options_v1(uuid)";
+const DAT_KY_HIEU = "public.landlord_operation_book_codes_v1(uuid,text,text)";
+/** md5(pg_get_functiondef) production 24/10/2026 (đọc chỉ đọc, sau khi áp 20261024035114). */
+const PROD_MD5_KY_HIEU: Record<string, string> = {
+  [GOI_TONG_QUAN]: "6e24b6cf619f18b062f4779531544998",
+  [OPTIONS_V1]: "d21beaf97052e2efa08e2d53b65b68b7",
+  "public.landlord_settlement_overview_v1(uuid)": "975e91aecde63bc5dc6a67c5f235bf2b",
+  "public.landlord_settlement_public_v1(text,date)": "1c3a19568446c14b0ab694e75e235c76",
+  "app_private.landlord_operation_state_v1(uuid)": "fb8fecf22a102dc96e9d2937d4247b49",
+  "app_private.landlord_actor_can_manage_v1(uuid)": "ee1362cb1858a7f9d4f39b31e842a5ca",
+};
+let md5GocKyHieu: Record<string, string> = {};
+let md5LuotMotKyHieu: Record<string, string> = {};
+let hashSauKyHieu: string[] = [];
 /** source_hash của các tháng có dữ liệu (đọc thẳng công thức, vai postgres). */
 async function hashCacThang(): Promise<string[]> {
   const r = await db.query<{ h: string }>(
@@ -373,6 +393,14 @@ beforeAll(async () => {
   md5LuotMotPhong = await md5Cua([GOI_THANG, DU_LIEU_PHONG]);
   await chay(sqlPhong);
   hashSauPhong = await hashCacThang();
+
+  // 20261024063027 (ký hiệu sổ): áp sau 035114 như production, HAI lượt.
+  md5GocKyHieu = await md5Cua(Object.keys(PROD_MD5_KY_HIEU));
+  const sqlKyHieu = readFileSync(FILE_KY_HIEU, "utf8");
+  await chay(sqlKyHieu);
+  md5LuotMotKyHieu = await md5Cua([GOI_TONG_QUAN, OPTIONS_V1, DAT_KY_HIEU]);
+  await chay(sqlKyHieu);
+  hashSauKyHieu = await hashCacThang();
 }, 60000);
 afterAll(() => db.close());
 
@@ -2333,6 +2361,103 @@ describe("dữ liệu phòng (20261024035114): gói tháng", () => {
       expect(rows.find((r) => r.roomName === "PARIS 2")?.text).toMatch(/^Có hoá đơn, chưa thu .* — quá hạn$/);
       expect(rows.find((r) => r.roomName === "G1")?.text).toBe("Chưa có hoá đơn tháng này");
       expect(rows.find((r) => r.roomName === "MB")?.text).toMatch(/^Trống \d+ ngày từ 15\/12\/2024/);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20261024063027 — ký hiệu sổ của toà (chủ nhắn 24/10/2026: sổ chủ nhà "CG", sổ quản lý "ET"; nút lọc theo sổ).
+// ─────────────────────────────────────────────────────────────────────────────
+const DAT = "public.landlord_operation_book_codes_v1($1, $2, $3)";
+const OPTIONS_SQL = "public.landlord_operation_options_v1($1)";
+
+describe("ký hiệu sổ (20261024063027): migration", () => {
+  it("thân production tái lập đúng md5 trước khi áp (cả hàm chỉ đọc được ghim)", () => {
+    expect(md5GocKyHieu).toEqual(PROD_MD5_KY_HIEU);
+  });
+
+  it("md5 lượt hai được tiền kiểm nhận đúng bằng thân của chính file", () => {
+    const sql = readFileSync(FILE_KY_HIEU, "utf8");
+    for (const s of [GOI_TONG_QUAN, OPTIONS_V1]) {
+      expect(md5LuotMotKyHieu[s]).toMatch(/^[0-9a-f]{32}$/);
+      expect(sql).toContain(`'${PROD_MD5_KY_HIEU[s]}', '${md5LuotMotKyHieu[s]}'`);
+    }
+    expect(sql).toContain(`IF v_md5 <> '${md5LuotMotKyHieu[DAT_KY_HIEU]}' THEN`);
+  });
+
+  it.each([
+    ["gói tổng quan", "CREATE OR REPLACE FUNCTION app_private.landlord_settlement_overview_payload_v1(p_building_id uuid, p_public boolean) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm chỉ đọc (tổng quan admin)", "CREATE OR REPLACE FUNCTION public.landlord_settlement_overview_v1(p_building_id uuid) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm đặt ký hiệu (lượt hai)", "CREATE OR REPLACE FUNCTION public.landlord_operation_book_codes_v1(p_building_id uuid, p_landlord_code text, p_manager_code text) RETURNS jsonb LANGUAGE sql AS $x$ SELECT '{}'::jsonb $x$"],
+  ])("thân lạ ở %s ⇒ dừng 55000", async (_ten, gia) => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await chay(gia);
+      const block = readFileSync(FILE_KY_HIEU, "utf8").replace(/^BEGIN;$/m, "").replace(/^COMMIT;$/m, "");
+      await expect(db.exec(block)).rejects.toMatchObject({ code: "55000" });
+    });
+  });
+
+  it("không đổi số; anon không gọi được hàm đặt ký hiệu; cột chặn ký hiệu sai", async () => {
+    expect(hashSauKyHieu).toEqual(hashTruoc);
+    const quyen = async (vai: string) => (await db.query<{ c: boolean }>(
+      "SELECT has_function_privilege($1, $2, 'EXECUTE') AS c", [vai, DAT_KY_HIEU])).rows[0].c;
+    expect(await quyen("anon")).toBe(false);
+    expect(await quyen("authenticated")).toBe(true);
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      for (const sai of ["cg", "ABCDE", "A B", ""]) {
+        await expectLoi("UPDATE app_private.landlord_operations SET landlord_book_code = $2 WHERE building_id = $1", [TOA_A, sai], "23514");
+        await expectLoi("UPDATE app_private.landlord_operations SET manager_book_code = $2 WHERE building_id = $1", [TOA_A, sai], "23514");
+      }
+    });
+  });
+});
+
+describe("ký hiệu sổ (20261024063027): đặt và hiển thị", () => {
+  it("chủ công ty đặt ' cg ' / 'et' ⇒ CG / ET ở gói tổng quan (quản trị + link chủ nhà) và hộp cài đặt; nhật ký ghi lại; không đổi updated_at", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const truoc = landlordOperationOptionsSchema.parse(await rpc(OPTIONS_SQL, [TOA_A]));
+      expect(truoc.current?.landlord_book_code).toBeNull();
+      expect(bookCodesReceiptSchema.parse(await rpc(DAT, [TOA_A, " cg ", "et"])))
+        .toEqual({ status: "UPDATED", landlord_book_code: "CG", manager_book_code: "ET" });
+      expect(bookCodesReceiptSchema.parse(await rpc(DAT, [TOA_A, "CG", "ET"])).status).toBe("UNCHANGED");
+
+      const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect([ov.landlord_book_code, ov.manager_book_code]).toEqual(["CG", "ET"]);
+      const sau = landlordOperationOptionsSchema.parse(await rpc(OPTIONS_SQL, [TOA_A]));
+      expect([sau.current?.landlord_book_code, sau.current?.manager_book_code]).toEqual(["CG", "ET"]);
+      expect(sau.current?.updated_at).toBe(truoc.current?.updated_at);
+      expect(sau.history.length).toBe(truoc.history.length + 1);
+      const h = sau.history[0]!;
+      expect(describeOperationChange(h.before, h.after, String)).toEqual(["Ký hiệu sổ (chủ nhà/quản lý): CN/QL → CG/ET"]);
+
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asUser(null);
+      const pub = settlementPublicSchema.parse(await rpc("public.landlord_settlement_public_v1($1, '2025-01-01'::date)", [token]));
+      expect([pub.overview.landlord_book_code, pub.overview.manager_book_code]).toEqual(["CG", "ET"]);
+
+      // ô trống ⇒ về mặc định
+      await asUser(CHU_A);
+      expect(bookCodesReceiptSchema.parse(await rpc(DAT, [TOA_A, "", null])))
+        .toEqual({ status: "UPDATED", landlord_book_code: null, manager_book_code: null });
+      const lai = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect([lai.landlord_book_code, lai.manager_book_code]).toEqual([null, null]);
+    });
+  });
+
+  it("chặn: nhân viên / anon 42501; quá 4 ký tự, có khoảng trắng, trùng ký hiệu đang hiện 22023; toà chưa cài P0002", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(NHAN_VIEN_A);
+      await expectLoi(`SELECT ${DAT}`, [TOA_A, "CG", "ET"], "42501");
+      await asUser(null);
+      await expectLoi(`SELECT ${DAT}`, [TOA_A, "CG", "ET"], "42501");
+      await asUser(CHU_A);
+      for (const [l, q] of [["ABCDE", null], ["A B", null], ["QL", null], [null, "CN"], ["X", "x"]]) {
+        await expectLoi(`SELECT ${DAT}`, [TOA_A, l, q], "22023");
+      }
+      await expectLoi(`SELECT ${DAT}`, [TOA_C, "CG", "ET"], "P0002");
     });
   });
 });

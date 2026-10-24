@@ -11,10 +11,11 @@ import type { DepositHolder, LandlordOperationOptions } from '@/lib/landlordSett
 const TOA = '00000000-0000-4000-8000-000000000011';
 const SO = '00000000-0000-4000-8000-000000000021';
 
-const m = vi.hoisted(() => ({ save: vi.fn(), success: vi.fn(), warning: vi.fn(), options: null as unknown }));
+const m = vi.hoisted(() => ({ save: vi.fn(), codes: vi.fn(), success: vi.fn(), warning: vi.fn(), options: null as unknown }));
 vi.mock('@/hooks/useLandlordSettlement', () => ({
   useLandlordOperationOptions: () => ({ data: m.options, isFetching: false, isLoading: false, isError: false, error: null }),
   useUpsertLandlordOperation: () => ({ isPending: false, mutateAsync: m.save }),
+  useSetLandlordBookCodes: () => ({ isPending: false, mutateAsync: m.codes }),
 }));
 vi.mock('sonner', () => ({ toast: { success: m.success, warning: m.warning, error: vi.fn() } }));
 
@@ -24,14 +25,15 @@ const dk = (valid_from: string, manager_percent: number, manager_fixed_amount: n
   ({ valid_from, manager_percent, manager_fixed_amount, landlord_account_ids: [SO] });
 
 /** Mặc định: toà đã chốt tháng 10/2026, quản lý giữ cọc. `chot: null` = chưa chốt tháng nào. */
-function options(terms: ReturnType<typeof dk>[], { holder = 'MANAGER', chot = '2026-10-01' }: {
-  holder?: DepositHolder; chot?: string | null;
+function options(terms: ReturnType<typeof dk>[], { holder = 'MANAGER', chot = '2026-10-01', codes = [null, null] }: {
+  holder?: DepositHolder; chot?: string | null; codes?: [string | null, string | null];
 } = {}): LandlordOperationOptions {
   const last = terms[terms.length - 1]!;
   return {
     current: {
       landlord_name: 'Chủ nhà A', manager_percent: last.manager_percent, manager_fixed_amount: last.manager_fixed_amount,
-      landlord_account_ids: [SO], deposit_holder: holder, terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
+      landlord_account_ids: [SO], deposit_holder: holder, landlord_book_code: codes[0], manager_book_code: codes[1],
+      terms_from: last.valid_from, effective_from: '2026-10-01', note: null, is_active: true,
       opening_balance: 0, opening_confirmed_at: '2026-10-20T00:00:00Z', opening_confirmation_stale: false,
       opening_confirmed_pre_start: 0, pre_start_landlord_deposits: 0, first_closed_month: chot,
       last_closed_month: chot, next_terms_month: chot ? '2026-11-01' : '2026-10-01', terms, updated_at: '2026-10-22T00:00:00Z',
@@ -56,6 +58,7 @@ const guiLan = (i: number) => m.save.mock.calls[i]?.[0] as Record<string, unknow
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   m.save.mockResolvedValue({ building_id: TOA, created: false, terms_from: '2026-11-01', opening_needs_reconfirm: false, opening_needs_confirm: false });
+  m.codes.mockResolvedValue({ status: 'UPDATED', landlord_book_code: 'CG', manager_book_code: 'ET' });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
@@ -145,4 +148,46 @@ it('mở bình thường: người giữ cọc của toà, lưu gửi lại đú
   luu();
   await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
   expect(guiLan(0)).toMatchObject({ depositHolder: 'LANDLORD', termsFrom: '2026-12-01' });
+});
+
+it('ký hiệu sổ: nạp sẵn, đổi thì gửi RPC riêng (chuẩn hoá chữ hoa) TRƯỚC khi lưu cài đặt; không đổi thì không gọi', async () => {
+  m.options = options([dk('2026-10-01', 30, 0)], { codes: ['CN', null] });
+  render(hop());
+  await waitFor(() => expect(o('Sổ chủ nhà').value).toBe('CN'));
+  expect(o('Sổ quản lý').value).toBe('');
+  expect(o('Sổ quản lý').placeholder).toBe('QL');
+  fireEvent.change(o('Sổ chủ nhà'), { target: { value: ' cg ' } });
+  fireEvent.change(o('Sổ quản lý'), { target: { value: 'et' } });
+  luu();
+  await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
+  expect(m.codes).toHaveBeenCalledWith({ buildingId: TOA, landlordCode: 'CG', managerCode: 'ET' });
+  expect(m.codes.mock.invocationCallOrder[0]).toBeLessThan(m.save.mock.invocationCallOrder[0]);
+  cleanup();
+  vi.clearAllMocks();
+  m.save.mockResolvedValue({ building_id: TOA, created: false, terms_from: '2026-11-01', opening_needs_reconfirm: false, opening_needs_confirm: false });
+  m.options = options([dk('2026-10-01', 30, 0)], { codes: ['CG', 'ET'] });
+  render(hop());
+  await waitFor(() => expect(o('Sổ chủ nhà').value).toBe('CG'));
+  luu();
+  await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
+  expect(m.codes).not.toHaveBeenCalled();
+});
+
+it('ký hiệu sổ sai (trùng ký hiệu đang hiện, quá 4 ký tự) ⇒ báo lỗi, không gửi gì; RPC ký hiệu lỗi ⇒ không lưu cài đặt', async () => {
+  m.options = options([dk('2026-10-01', 30, 0)]);
+  render(hop());
+  await waitFor(() => expect(o('Sổ chủ nhà').value).toBe(''));
+  fireEvent.change(o('Sổ chủ nhà'), { target: { value: 'ql' } });
+  luu();
+  expect(await screen.findByText('Ký hiệu sổ chủ nhà và sổ quản lý phải khác nhau.')).toBeTruthy();
+  fireEvent.change(o('Sổ chủ nhà'), { target: { value: 'CHUNHA' } });
+  luu();
+  expect(await screen.findByText('Ký hiệu sổ tối đa 4 ký tự, không có khoảng trắng.')).toBeTruthy();
+  expect(m.codes).not.toHaveBeenCalled();
+  expect(m.save).not.toHaveBeenCalled();
+  m.codes.mockRejectedValueOnce({ code: '42501', message: 'Chỉ chủ công ty hoặc quản trị hệ thống được xem và quyết toán toà vận hành' });
+  fireEvent.change(o('Sổ chủ nhà'), { target: { value: 'CG' } });
+  luu();
+  expect(await screen.findByText(/Chỉ chủ công ty hoặc quản trị hệ thống/)).toBeTruthy();
+  expect(m.save).not.toHaveBeenCalled();
 });

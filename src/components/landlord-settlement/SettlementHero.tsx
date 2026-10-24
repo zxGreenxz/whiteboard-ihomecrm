@@ -274,7 +274,10 @@ export function SettlementHero({
 }) {
   const st = month?.statement ?? null;
   const t = st?.totals;
-  const sub = buildingName ? `${buildingName}${landlordName ? ` · Chủ nhà: ${landlordName}` : ''}` : null;
+  // link chủ nhà chỉ còn Doanh thu / Chi phí / Lợi nhuận (chủ nhắn 24/10/2026): bỏ thanh % quản lý, thẻ quyết
+  // toán tháng, chip trạng thái và dòng điều khoản — số quyết toán xem ở tab Quyết toán
+  const full = mode === 'admin';
+  const sub =buildingName ? `${buildingName}${landlordName ? ` · Chủ nhà: ${landlordName}` : ''}` : null;
   const pnl = st ? st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL') : [];
   const soThu = pnl.filter((v) => v.type === 'INCOME').length;
   const soChi = pnl.filter((v) => v.type === 'EXPENSE').length;
@@ -322,11 +325,11 @@ export function SettlementHero({
                   </div>
                 ))}
               </div>
-              <ManagerBar st={st} narrow />
-              <NetCard month={month} st={st} narrow onShowCalc={onShowCalc} />
+              {full && <ManagerBar st={st} narrow />}
+              {full && <NetCard month={month} st={st} narrow onShowCalc={onShowCalc} />}
             </>
           )}
-          {month && (
+          {month && full && (
             <>
               <StatusChips month={month} mode={mode} narrow isFetching={isFetching} />
               {st && <p className="mt-1.5"><TermsLine month={month} st={st} /></p>}
@@ -362,14 +365,14 @@ export function SettlementHero({
                   <Op>=</Op>
                   <div className="min-w-0">
                     <Kpi label="Lợi nhuận" value={t.profit} tone={t.profit < 0 ? 'text-orange-200' : 'text-white'} big />
-                    <ManagerBar st={st} narrow={false} />
+                    {full && <ManagerBar st={st} narrow={false} />}
                   </div>
                 </div>
               </div>
-              <NetCard month={month} st={st} narrow={false} onShowCalc={onShowCalc} />
+              {full && <NetCard month={month} st={st} narrow={false} onShowCalc={onShowCalc} />}
             </div>
           )}
-          {month && (
+          {month && full && (
             <>
               <StatusChips month={month} mode={mode} narrow={false} isFetching={isFetching} />
               {st && <p className="mt-2"><TermsLine month={month} st={st} /></p>}

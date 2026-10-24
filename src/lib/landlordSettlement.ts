@@ -400,6 +400,9 @@ export const settlementOverviewSchema = z.object({
   })),
   /** v3: người giữ cọc của điều khoản MỚI NHẤT; server cũ ⇒ null. */
   deposit_holder: z.enum(DEPOSIT_HOLDERS).nullish().transform((v) => v ?? null),
+  /** Ký hiệu sổ của toà (24/10/2026); chưa đặt / server cũ ⇒ null = CN / QL. */
+  landlord_book_code: newText,
+  manager_book_code: newText,
   payments: z.array(settlementPaymentSchema),
   totals: z.object({
     opening_balance: money,
@@ -454,6 +457,9 @@ export const landlordOperationOptionsSchema = z.object({
      * chủ chốt 23/10/2026); thiếu ⇒ "MANAGER".
      */
     deposit_holder: depositHolderOrManager,
+    /** Ký hiệu sổ của toà; chưa đặt / server cũ ⇒ null. */
+    landlord_book_code: newText,
+    manager_book_code: newText,
     terms_from: isoDate,
     effective_from: isoDate,
     note: z.string().nullable(),
@@ -543,6 +549,37 @@ export const confirmReceiptSchema = z.object({
   status: z.enum(['CONFIRMED', 'ALREADY_CONFIRMED']),
   confirmed_at: z.string(),
 });
+/** landlord_operation_book_codes_v1 — đặt ký hiệu sổ của toà (đã chuẩn hoá; null = mặc định). */
+export const bookCodesReceiptSchema = z.object({
+  status: z.enum(['UPDATED', 'UNCHANGED']),
+  landlord_book_code: z.string().nullable(),
+  manager_book_code: z.string().nullable(),
+});
+
+/**
+ * Ký hiệu sổ (chủ nhắn 24/10/2026: 950NK sổ chủ nhà "CG", sổ quản lý "ET") — hiện ở ô đầu dòng Khoản chi và
+ * nút lọc theo sổ. Chưa đặt ⇒ CN / QL. Server chuẩn hoá y như normalizeBookCode.
+ */
+export const DEFAULT_BOOK_CODE = { LANDLORD: 'CN', MANAGER: 'QL' } as const;
+export type BookCodes = Record<DepositHolder, string>;
+export const BOOK_CODE_MAX = 4;
+export const normalizeBookCode = (s: string | null | undefined): string | null => {
+  const v = (s ?? '').trim().toUpperCase();
+  return v === '' ? null : v;
+};
+export const bookCodesOf = (src: { landlord_book_code?: string | null; manager_book_code?: string | null } | null | undefined): BookCodes => ({
+  LANDLORD: src?.landlord_book_code || DEFAULT_BOOK_CODE.LANDLORD,
+  MANAGER: src?.manager_book_code || DEFAULT_BOOK_CODE.MANAGER,
+});
+/** Lỗi nhập ký hiệu (null = hợp lệ) — cùng luật server (22023). */
+export function bookCodesError(landlord: string | null, manager: string | null): string | null {
+  for (const c of [landlord, manager]) {
+    if (c !== null && (c.length > BOOK_CODE_MAX || /\s/.test(c))) return `Ký hiệu sổ tối đa ${BOOK_CODE_MAX} ký tự, không có khoảng trắng.`;
+  }
+  const shown = bookCodesOf({ landlord_book_code: landlord, manager_book_code: manager });
+  return shown.LANDLORD === shown.MANAGER ? 'Ký hiệu sổ chủ nhà và sổ quản lý phải khác nhau.' : null;
+}
+
 /** Giới hạn server (22023 khi vượt). */
 export const HANDOVER_NOTE_MAX = 1000;
 export const LANDLORD_CONFIRM_NOTE_MAX = 500;
@@ -1029,6 +1066,17 @@ export function describeOperationChange(
   const giuCocSau = holderOf(after.deposit_holder);
   if (giuCocTruoc && giuCocSau && giuCocTruoc !== giuCocSau) {
     out.push(`Người giữ cọc: ${DEPOSIT_HOLDER_LABEL[giuCocTruoc]} → ${DEPOSIT_HOLDER_LABEL[giuCocSau]}`);
+  }
+  // ký hiệu sổ: chỉ dòng do landlord_operation_book_codes_v1 ghi mới có hai trường
+  if ('landlord_book_code' in after && (diff('landlord_book_code') || diff('manager_book_code'))) {
+    const kh = (x: Record<string, unknown>) => {
+      const c = bookCodesOf({
+        landlord_book_code: typeof x.landlord_book_code === 'string' ? x.landlord_book_code : null,
+        manager_book_code: typeof x.manager_book_code === 'string' ? x.manager_book_code : null,
+      });
+      return `${c.LANDLORD}/${c.MANAGER}`;
+    };
+    out.push(`Ký hiệu sổ (chủ nhà/quản lý): ${kh(before)} → ${kh(after)}`);
   }
   if (diff('opening_balance')) {
     out.push(`Số dư đầu kỳ: ${formatMoney(Number(before.opening_balance ?? 0))} → ${formatMoney(Number(after.opening_balance ?? 0))}`);
