@@ -1054,3 +1054,44 @@ Lô nhiều khoản: kết quả hỏi lại mang `item` (connector nói "Mục 
 2. Connector không cần trước: SQL dùng đúng khuôn kết quả cũ (`why=unspecified` đã có từ trang Công việc, `item`, `link`). Connector mới chỉ đổi hai câu hướng dẫn (mã phiếu trùng, hạng mục không có).
 3. Web Báo chi nhanh đổi gợi ý cùng lúc với `20261023210633` (không phát hành web).
 4. Sau khi áp, `20261023013109` và `20261023031258` mất khả năng chạy lại (thân bị thay) — cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 24. Lượt 13 — chặn luồng hệ thống ở máy chủ, lọc tuổi phiếu chờ duyệt (24/10/2026)
+
+Nghiệm thu bot thật trên TEST (SOUL v4.19 + connector C1 `f6c8019a`). Luật SOUL do phiên chính sửa riêng.
+
+### 24.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc | Sửa |
+| --- | --- | --- |
+| Bot lập được phiếu CHI cho hoa hồng, bỏ / hoàn / trả cọc, thanh lý / trả tiền thừa cho khách, lương; máy chủ còn hỏi lại kèm "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách", "Bỏ rác phát sinh" ⇒ chọn một là thành phiếu chi lách quy trình (cặp phiếu thanh lý) | Tập hạng mục dùng được của bot chỉ bỏ cờ `system_only` / ẩn / hạn chế / cọc / chuyển nội bộ; "Bổ sung hoàn cọc" và "Trả lại tiền thừa cho khách" không mang cờ nào (web cho lập tay); không lớp nào xét NỘI DUNG | `20261024094809`: `public.hermes_expense_system_flow_v1` (thuần chữ) nhận luồng theo `rule_key` của danh mục chuẩn, rồi theo cụm từ bỏ dấu. `expense.create` / `expense.edit` ⇒ `web_only` + `link` màn gốc, chặn TRƯỚC khi hỏi lại toà / hạng mục; lượt 2 kiểm lại. Luật khoá cứng của web xếp nội dung vào hạng mục luồng hệ thống ("tiền phòng 5 ngày") ⇒ cũng chặn. Hạng mục luồng hệ thống không bao giờ là ứng viên / gợi ý. Sửa phiếu đang mang hạng mục đó (lập trên web) ⇒ `web_only` + link trang phiếu |
+| Hỏi "phiếu chờ duyệt quá 7 ngày" ⇒ trả cả 58 phiếu | Không tool nào lọc tuổi: `crm_read_income_expenses` chỉ lọc ngày phiếu; W2 `expense_vouchers` `kind=oldest` chỉ sắp xếp, cửa sổ mặc định là tháng này | `20261024095547`: `expense_vouchers` nhận `days` = phiếu CHI chờ duyệt từ N ngày trở lên (`pendingDays ≥ N`), lâu nhất trước, không nêu ngày ⇒ 366 ngày tới hôm nay, summary chỉ trên các phiếu đó; trạng thái khác UNAPPROVED ⇒ sai tham số. Mô tả `crm_read_income_expenses` và gợi ý gọi nhầm chỉ sang `expense_vouchers days=N` |
+| (Kiểm) Thiếu quyền duyệt bị báo "thao tác duyệt chưa bật" | Connector đang chạy loại thao tác khỏi tập dùng được khi thiếu quyền CRM ⇒ `action_disabled` trước khi gọi SQL | Không sửa SQL. Bản sửa `forbidden` ≠ `action_disabled` nằm ở connector của #315 (C2) |
+
+Luồng và link:
+
+| Luồng | Nhận theo | Link |
+| --- | --- | --- |
+| Hoa hồng / thưởng sale | `hoa_hong_moi_gioi`, `hhmg`, `thuong_nong_sale`; "hoa hồng", "HHMG", "thưởng nóng", "thưởng sale", "môi giới" | `/contracts` |
+| Thanh lý / trả tiền thừa cho khách | `tra_tien_thua_khach`; "thanh lý", "tiền thừa", "tiền thối", "thối tiền", "đóng dư", "hoàn tiền phòng", "trả (lại) (tiền) (cho) khách / người thuê" (không "khách sạn") | `/contracts` |
+| Cọc | `bo_sung_hoan_coc`; "hoàn / trả / bỏ / mất / cấn / bổ sung … cọc", "cọc phòng / khách / hợp đồng / giữ chỗ", "giữ chỗ" | `/deposits` |
+| Lương | `luong_quan_ly`, `ung_luong`, `luong_dieu_hanh`; "tiền / trả / ứng / chi / bảng / phát / quỹ / tăng lương", "lương tháng / quản lý / nhân viên / T10 …" | `/finance/salary` |
+| Chia lợi nhuận | `chia_loi_nhuan`; "chia lợi nhuận", "lợi nhuận cổ đông", "cổ tức" | `/finance/shareholder-profit` |
+| Chuyển nội bộ | `noi_bo`; "chuyển (tiền) nội bộ", "bàn giao tiền", "chuyển quỹ" | `/finance/cashbooks` |
+
+Không dùng từ đơn đã bỏ dấu vì trùng nghĩa: "coc" = cọc / cốc; "luong" = lương / lượng (số lượng, chất lượng); "hoan tien" = hoàn cho khách / hoàn tạm ứng nhân viên. Đặt cọc cho thợ / nhà cung cấp là khoản chi thật nên không chặn.
+
+**Parity với web:** web chặn lập tay hạng mục CHI `system_only` ở máy chủ (`ie_system_only_manual_blocked`: hoa hồng môi giới, thưởng nóng sale, các mục cọc / thanh lý của hệ thống). Web KHÔNG chặn lập tay ba hạng mục "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách", "Chuyển tiền nội bộ" (không cờ). Người có `restricted_create` vẫn lập tay được "HHMG", "Lương …", "Chia lợi nhuận cổ đông" (Báo chi nhanh chỉ ẩn ở ô chọn). Hermes chặn cả các mục này; có nên chặn ở web không là câu hỏi cho chủ. Hàm gợi ý dùng chung `ie_category_suggest_v1` giữ nguyên.
+
+### 24.2 Kiểm
+
+- PGlite `expense-write-sql.test.mjs` 23/23 (ca lượt 13: câu đúng / câu trùng chữ, `rule_key` trước chữ của nhóm, lập / sửa bị chặn kèm link, lô nói khoản số mấy, chặn trước khi hỏi toà, không bao giờ là ứng viên, lượt 2, bản đã giải giả). Đột biến 7/7 bị bắt (bỏ từng chỗ chặn), đối chứng không đột biến 23/23.
+- PG17 `expense-write-race-sql.test.mjs` 18/18 (đối chứng bỏ NOWAIT dựng trên thân bước ghi mới).
+- `wave2-b.test.mjs` 61/61: ca `days`, ghim (thân production = 051032, ghim chéo 051032 ngã đúng câu), hai đột biến mới (bỏ lọc tuổi, bỏ ép UNAPPROVED) bị bắt.
+- Tầng 2 trên TEST (một giao dịch ROLLBACK, không đụng kết nối / registry / fixture, không dùng nick chủ / joey / bosshuy): áp hai file lên thân thật, dưới RLS một chủ công ty khác. Câu nghiệm thu ⇒ `web_only` + đúng link; khoản thật ("mua vòi nước", "đặt cọc thợ sửa máy lạnh") như cũ; tập dùng được mất đúng 2 hạng mục × 2 công ty; `days=7` ⇒ 154 phiếu = đếm trực tiếp 154 (không `days`, tháng này: 59).
+- Production chỉ đọc: tập dùng được chỉ mất "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách". 90 ngày qua có 683 phiếu CHI lập tay, trong đó 15 phiếu có nội dung luồng hệ thống, tất cả đúng là luồng hệ thống: 10 phiếu đúng hạng mục, 5 phiếu ghi "Chi khác" (thưởng sale, hoa hồng, trả lại cọc, lương). Không thấy chặn nhầm.
+
+### 24.3 Phát hành
+
+1. Áp `20261024094809` (provenance `unknown`: hàm mới `hermes_expense_system_flow_v1`) và `20261024095547` (thay thân hai hàm gói B ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh). Hai file độc lập; thứ tự tên.
+2. Connector không cần trước `094809` (`web_only` + `link` đã qua connector đang chạy). Với `095547`: SQL TRƯỚC connector (connector mới quảng bá `days`).
+3. Ghim chéo: sau khi áp, `20261023210634` (ghim thân bước ghi `15183dce…`) và `20261022051032` (ghim thân catalog / đọc gói B) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.

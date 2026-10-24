@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { localCluster } from './crm-shared-read-sql-fixture.mjs';
 import { SESSION } from './finance-fixture.mjs';
-import { expenseSetup, FIXES, LOCK_SITES, IMAGE, rid, binding, ORG, USER, BUILDING, ROOM, CATEGORY, CASHBOOK } from './expense-write-fixture.mjs';
+import { expenseSetup, FLOW, LOCK_SITES, IMAGE, rid, binding, ORG, USER, BUILDING, ROOM, CATEGORY, CASHBOOK } from './expense-write-fixture.mjs';
 
 // Thu chi Mốc 4b + 5 + lượt 8: thứ tự khoá của bước ghi expense.* trên PostgreSQL thật (hai kết nối; PGlite chỉ có một). Cùng fixture với
 // expense-write-sql.test.mjs; bản port hàm web khoá như hàm thật: dòng nghiệp vụ (phiếu, sổ, phòng, yêu cầu duyệt) rồi mới khoá công ty.
@@ -28,8 +28,9 @@ const WEB = {
   emergencyApprove: 'SELECT public.fixture_emergency_approve($1) r',
 };
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
-// Thân bước ghi đang sống sau toàn chuỗi (lượt 11 dựng lại từ thân lượt 8, câu khoá giữ nguyên) — đối chứng bỏ NOWAIT dựng trên thân này.
-const STEP = FIXES.replaceAll('\r\n', '\n').match(/CREATE OR REPLACE FUNCTION app_private\.hermes_expense_write_step_v1\([\s\S]*?END \$fn\$;/)[0];
+// Thân bước ghi đang sống sau toàn chuỗi (lượt 13 dựng lại từ thân lượt 11, lượt 11 từ thân lượt 8; câu khoá giữ nguyên) — đối chứng bỏ
+// NOWAIT dựng trên thân này.
+const STEP = FLOW.replaceAll('\r\n', '\n').match(/CREATE OR REPLACE FUNCTION app_private\.hermes_expense_write_step_v1\([\s\S]*?END \$fn\$;/)[0];
 const dropNowait = anchor => anchor.replace(' NOWAIT;', ';');
 const CREATE = { items: [{ buildingName: 'Toà A', amount: 350000, content: 'mua vòi nước', category: 'sửa chữa', cashbook: 'Quỹ VCB 0123456789' }] };
 const CREATE_ROOM = { items: [{ ...CREATE.items[0], roomName: 'P101', cashbook: 'Tiền mặt toà A' }] };

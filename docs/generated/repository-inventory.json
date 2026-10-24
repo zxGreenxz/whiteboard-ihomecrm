@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1699,
   "soFileDocBangFs": 440,
-  "tongLoiGoi": 1104,
+  "tongLoiGoi": 1105,
   "khongPhanLoaiDuoc": 492,
   "theoLoai": {
     "ma-nguon": {
@@ -221,6 +221,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/wave2-b.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "sql": 8
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
       "soGoi": 9,
       "loai": {
@@ -250,14 +258,6 @@
         "ma-nguon": 3
       },
       "khongPhanLoaiDuoc": 6
-    },
-    {
-      "file": "infra/hermes-broker/wave2-b.test.mjs",
-      "soGoi": 8,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",

@@ -22,7 +22,9 @@ export const EXPENSE_CREATE = defineAction({ id: 'expense.create', page: 'expens
     content: param.text(1, 200), category: param.name('category', { optional: true }), payee: param.text(1, 100, { optional: true }),
     voucherDate: param.date({ optional: true }), period: param.month({ optional: true }), cashbook: param.name('cashbook', { optional: true }),
   }), { min: 1, max: EXPENSE_CREATE_MAX_ITEMS }) },
-  reasons: ['system_voucher', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
+  // Lượt 13 (20261024094809): khoản thuộc luồng hệ thống (hoa hồng, thanh lý / trả tiền thừa cho khách, cọc, lương, chia lợi nhuận, chuyển
+  // nội bộ) ⇒ web_only + link màn gốc. Connector cũ vẫn chuyển mã này (mọi mã rejected toàn cục), danh sách ở đây chỉ để crm_action_list nói đúng.
+  reasons: ['system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
 
 export const EXPENSE_NOTE = defineAction({ id: 'expense.note', page: 'expense', key: EXPENSE_CREATE_KEY, class: 'reversible', rpc: EXPENSE_RPC,
   title: 'Ghi chú vào phiếu thu chi (ghi thẳng)',

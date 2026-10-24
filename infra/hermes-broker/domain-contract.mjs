@@ -115,7 +115,7 @@ export const DOMAIN_READS = Object.freeze({
   // duyệt cá nhân crm_read_pending_approvals (mô tả bên đó chỉ ngược về đây; hint khi gọi nhầm ở read-misuse-hints.mjs).
   // Câu đầu ≤ 60 ký tự mang cụm phân biệt (danh sách tool_search chỉ hiện chừng đó); tên tool kia trong mô tả cũng đưa
   // các từ "pending approvals" vào chỉ mục BM25 của tool này.
-  income_expenses: define('income_expenses.view', 'Phiếu thu/chi; chờ duyệt: status=UNAPPROVED (cả theo toà). Không dùng crm_read_pending_approvals cho phiếu. Lọc ngày phiếu, trạng thái duyệt, toà. Không gồm phiếu hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Tiền là chuỗi VND', {
+  income_expenses: define('income_expenses.view', 'Phiếu thu/chi; chờ duyệt: status=UNAPPROVED (cả theo toà). Không dùng crm_read_pending_approvals cho phiếu. Lọc ngày phiếu, trạng thái duyệt, toà. Không gồm phiếu hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Tiền là chuỗi VND. Phiếu CHI chờ duyệt quá N ngày: crm_read_report report=expense_vouchers days=N', {
     id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, buildingName: text, roomId: nullable(domainId),
     roomName: nullable(text), voucherDate: date, totalAmount: amount, approvalStatus: oneOf(['UNAPPROVED', 'APPROVED', 'CANCELLED']) },
   ['UNAPPROVED', 'APPROVED', 'CANCELLED'], { family: 'v2', dated: true, source: 'crm.income_expenses' }),

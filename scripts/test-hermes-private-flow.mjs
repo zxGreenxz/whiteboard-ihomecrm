@@ -602,6 +602,14 @@ for (const spec of [
   { name: 'app_private.hermes_invoice_lookup_core_v2',
     sourcePath: 'supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql',
     statementSha256: '43e2ca0758249dd50413475c4bb0e361a7bf57c677730df9164067fe7159567e' },
+  // Thu chi lượt 13 (20261024094809): luồng hệ thống — sql IMMUTABLE thuần chữ (chỉ public.hermes_name_fold_v1, không đọc bảng); chọn hạng
+  // mục dựng lại (chặn luồng hệ thống, bỏ hạng mục luồng hệ thống khỏi tập dùng được) — chỉ tên public đủ schema, không gọi app_private.
+  { name: 'public.hermes_expense_system_flow_v1',
+    sourcePath: 'supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql',
+    statementSha256: '67be91769502bcd77d9a3028434424d181c22b2bba0b20e33b4257beb39a9a63' },
+  { name: 'public.hermes_expense_category_pick_v1',
+    sourcePath: 'supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql',
+    statementSha256: '1d5c9eb77b06cf27fbc2d38d6928b0f71d0ec30462f381dd596cf2b996b2189d' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
