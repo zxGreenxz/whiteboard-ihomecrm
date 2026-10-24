@@ -435,7 +435,10 @@ export const WEB14 = `ALTER TABLE public.income_expense_types ADD COLUMN IF NOT 
   CREATE TABLE IF NOT EXISTS app_private.utility_ceiling_versions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL,building_id uuid,
     utility_type text NOT NULL,ceiling_amount numeric,max_ratio_to_billed numeric,effective_from_month date NOT NULL,status text NOT NULL DEFAULT 'PUBLISHED');`;
 
-export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS, fixes = FIXES, flow = FLOW, round1 = ROUND1 } = {}) {
+// Lượt 15 (nghiệm thu lượt cuối C3d): "thu 200k giữ xe" qua expense.create ⇒ web_only + link /income-expense (bộ phân luồng thêm khoản THU).
+export const INCOME15 = file('hermes_expense_income_flow_block_v1');
+
+export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS, fixes = FIXES, flow = FLOW, round1 = ROUND1, income = INCOME15 } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
@@ -454,6 +457,8 @@ export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE
   // Lượt 14 áp lên thân lượt 13 (bộ chọn, bước ghi) và thân lượt 11 (lõi giải); gợi ý dùng chung v3 áp lên v2.
   await db.exec(WEB14);
   if (round1) { await db.exec(RULES3); await db.exec(RULES3); await db.exec(round1); await db.exec(round1); }
+  // Lượt 15 áp lên thân bộ phân luồng của lượt 13 (không file nào khác ghim thân đó).
+  if (flow && income) { await db.exec(income); await db.exec(income); }
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers')");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers']`);

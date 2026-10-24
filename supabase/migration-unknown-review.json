@@ -1020,6 +1020,44 @@
       ],
       "raSoatBoi": "Claude Code — Hermes Đợt 3 trang Hoá đơn lượt 14 25/10/2026",
       "sha256": "e8e8e4d4b0f7704aa73fb92139c20bc89a4e5cff908358b1b3e7a1d1cbafe68e"
+    },
+    "supabase/migrations/20261024193001_hermes_domain_read_nolock_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024193001_hermes_domain_read_nolock_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_read_connection_v1 (MỚI, plpgsql STABLE, DEFINER, search_path pg_catalog,public,app_private, không quyền gọi trực tiếp): phần kiểm của hàm lệnh (thân 20261019034850, ghim md5 0a2c941d…) không khoá dòng; thay thân public.hermes_domain_read_v2 (ghim md5 thân 20261021185540 cf03a9fc… = production) — hai lời gọi lấy / kiểm lại kết nối đổi sang bản đọc"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng function:app_private.hermes_read_connection_v1 — sinh 24/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (Hermes Thu chi lượt 15 — nghiệm thu lượt cuối C3d trên TEST: crm_read_income_expenses không lọc toà hết giờ 8 s vì bộ đọc miền v2 lấy kết nối theo giao thức người ghi — khoá dòng công ty FOR NO KEY UPDATE và FOR SHARE phiên / kết nối / token / trợ lý / chính sách — nên xếp hàng sau mọi giao dịch ghi của cùng công ty), chưa đi qua lane apply — hàm app_private.hermes_read_connection_v1 vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PG17 hai kết nối (domain-read-nolock-sql.test.mjs: thân cũ chờ tới 57014 khi giao dịch khác giữ khoá công ty / phiên / kết nối, thân mới trả ngay; bản đọc = hàm lệnh ở 12 trạng thái × 3 digest; đột biến bị bắt; $requires$ từ chối thân lạ), sổ hợp đồng durable / private-flow, và tầng 2 trên TEST trong một giao dịch ROLLBACK: áp file lên thân thật (ghim md5 khớp), đọc thu chi toàn công ty bằng đúng kết nối nghiệm thu — cùng 50 dòng, cùng summary, cùng cursor với thân cũ. Áp qua npm run migrate:forward SAU 20261021185540; không đổi quyền của ai, khuôn đọc không đổi.",
+      "missingObjects": [
+        "function:app_private.hermes_read_connection_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Thu chi lượt 15, 24/10/2026",
+      "sha256": "531b383dee7f483139973263bd645e63a7a8bf86db63870a65a0e2a18613e600"
+    },
+    "supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_expense_system_flow_v1 (thay thân 20261024094809, ghim md5 8e827574…; vẫn sql IMMUTABLE, INVOKER, search_path rỗng, thuần chữ): thêm nhánh thu cọc ⇒ cọc và khoản THU ⇒ web_only + /income-expense"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng function:public.hermes_expense_system_flow_v1 — hàm do 20261024094809 tạo, file đó cũng chưa áp production"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 24/10/2026 (Hermes Thu chi lượt 15 — nghiệm thu lượt cuối C3d trên TEST: \"thu 200k giữ xe\" qua expense.create bị máy chủ hỏi hạng mục chi; phiếu thu lập tay không qua bot), chưa đi qua lane apply — hàm public.hermes_expense_system_flow_v1 vắng mặt trên production vì 20261024094809 (tạo hàm) và file này CHƯA CHẠY, không phải vì bị DROP. Bằng chứng: PGlite (expense-write-sql.test.mjs 27/27, sáu đột biến bị bắt), PG17 hai kết nối (expense-write-race-sql.test.mjs), sổ hợp đồng durable / private-flow, tầng 2 trên TEST trong một giao dịch ROLLBACK (áp lên thân thật, ghim md5 khớp; 717 phiếu CHI lập tay + 186 hạng mục không đổi luồng; bộ chọn trả web_only + /income-expense cho câu nghiệm thu) và production chỉ đọc (1.309 phiếu CHI lập tay, 186 hạng mục: 0 dính luật mới). Áp qua npm run migrate:forward SAU 20261024094809; không đổi quyền của ai.",
+      "missingObjects": [
+        "function:public.hermes_expense_system_flow_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes Thu chi lượt 15, 24/10/2026",
+      "sha256": "96ccfed92a31bd145932a78dbacd04b04745cb715ad6f7c6f973c450256a7b6a"
     }
   }
 }

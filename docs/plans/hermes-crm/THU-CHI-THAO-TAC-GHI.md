@@ -1123,3 +1123,29 @@ Nghiệm thu vòng 1 trên TEST (SOUL v4.19 + connector C1): phần ghi đạt 2
 1. Thứ tự áp = thứ tự tên: `20261024094809` → `20261024095547` (lượt 13) → `20261024120207` → `20261024120208` → `20261024120210` → `20261024120211`. Ghim bắt buộc thứ tự đó: `120210` đòi thân `095547` và tên `maxAmount` của `120208`; `120211` đòi thân `094809`. `120207` và `120210` chỉ thay thân hàm đã có ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh; `120208` cũng vậy.
 2. Connector: phát hành SAU `120208` + `120210` (connector mới gửi `maxAmount`). Phần còn lại (chốt thời gian, 57014, câu `confirmation_invalid`) độc lập với SQL.
 3. Ghim chéo sau khi áp: `20261022044126` (thân nền W2), `20261024095547` (thân gói B), `20261024094809` (thân bộ chọn + bước ghi), `20261023210634` (thân lõi giải) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 26. Lượt 15 — đọc không xếp hàng sau người ghi, khoản THU qua bot (24/10/2026)
+
+Nghiệm thu lượt cuối C3d trên TEST (connector `66df91e7`, SOUL v4.23): vòng 1 phần a đạt 26/34, 0 ghi sai. Hai lỗi máy chủ.
+
+### 26.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc (đã tra) | Sửa |
+| --- | --- | --- |
+| `crm_read_income_expenses {status: UNAPPROVED, limit: 50}` không lọc toà ⇒ `backend_unavailable` hai lần (TEST 18:42:44–18:43:12 UTC); có lọc toà thì chạy | Journal connector: `handlerMs` ~110, `finalizeMs` 8457 / 8562 = trần `statement_timeout` 8 s của vai `authenticated` ⇒ câu SQL HẾT GIỜ, không phải bước kiểm khuôn. Lượt trước / sau của cùng kết nối (gồm `crm_read_report`) chạy 1–2 s. Tái hiện tầng 2 (TEST, ROLLBACK, đúng kết nối và phiên): cùng lời gọi 154–899 ms (50 dòng / 162 phiếu, 15 toà), có lọc toà 197 ms; rào khuôn thật của connector nhận cả bốn kết quả ⇒ câu không chậm, dữ liệu không lạ — nó CHỜ. Bộ đọc miền v2 lấy kết nối (đầu hàm và lần kiểm lại cuối hàm) qua hàm lệnh dùng chung, mà hàm đó theo giao thức NGƯỜI GHI: khoá dòng công ty `FOR NO KEY UPDATE` (`lock_org_for_decision_v1`) và `FOR SHARE` phiên / kết nối / token / trợ lý / chính sách ⇒ mọi giao dịch ghi khác của cùng công ty (web, Hermes ghi, lượt đọc Hermes khác, phép đo ROLLBACK dài trên TEST dùng chung công ty fixture) giữ khoá đó thì lượt đọc xếp hàng tới hết 8 s ⇒ 57014 ⇒ `backend_unavailable`. Không xác định được giao dịch nào giữ khoá lúc 18:42 (TEST tắt `track_commit_timestamp`, khoá TEST không lưu lịch sử) | `20261024193001`: bản đọc kết nối MỚI (`app_private`, DEFINER, STABLE) — chép đúng phần kiểm của hàm lệnh (thân `20261019034850`), không khoá dòng nào; bộ đọc miền v2 (income_expenses, receivables, meter_readings, deposits_held, building_profit) gọi bản đọc ở cả hai chỗ, mọi dòng khác byte-identical với thân `20261021185540`. Các thao tác ghi giữ nguyên giao thức người ghi. Bộ đọc v1 / v3 / W2 chưa đổi (ngoài phạm vi Thu chi) |
+| "Thu 200k giữ xe" ⇒ bot gọi `expense.create`, máy chủ hỏi hạng mục chi | Bộ phân luồng hệ thống (lượt 13) chỉ nhận luồng CHI | `20261024193002`: bộ phân luồng thêm hai nhánh SAU mọi nhánh cũ — "thu (tiền) cọc" ⇒ luồng cọc (`/deposits`); khoản THU ⇒ `web_only` + link `/income-expense` (phiếu thu lập tay không qua bot). Chữ bỏ dấu "thu" trùng thứ / thử / thủ / thư / thù ⇒ chỉ cụm có ngữ cảnh: ĐẦU nội dung "tiền / khoản / phiếu thu" (trừ thủ tục, thù lao, thủ quỹ, thu hộ, thu gom, thu mua, thu âm …), "thu tiền", "thu <số tiền>" (có đơn vị hoặc ≥ 3 chữ số ⇒ "thứ 7" không dính), "thu phí / nợ / lãi / giữ xe / rác / điện / nước …"; hoặc "thu … giữ xe / rác / điện nước … của khách / phòng" (không sau "chi" / "phí", không phải thu gom / hộ / mua / âm / lao). Bộ chọn hạng mục, bước ghi (hai lượt), kiểm lại hạng mục và sửa phiếu đều gọi bộ phân luồng theo tên ⇒ không dựng lại hàm nào khác |
+
+Đo trên production (chỉ đọc): 1.309 phiếu CHI lập tay (690 trong 90 ngày) và 186 hạng mục chi — 0 dính luật THU; 25 phiếu có chữ "thu" (bỏ dấu) đều là chi thật ("thu chi điện lạnh – vệ sinh máy lạnh", "Hoàn tác thu tiền", "7 phòng thu hộ", "deal thứ 3", sổ quỹ tên người) và không dính. TEST: 717 phiếu CHI lập tay 90 ngày + 186 hạng mục — luồng không đổi ở phiếu / hạng mục nào.
+
+### 26.2 Kiểm
+
+- PG17 `domain-read-nolock-sql.test.mjs` (MỚI): dữ liệu toàn công ty (ba toà, toà công ty khác, phiếu hạn chế / lương / xoá) đọc không lọc toà qua đủ trang = tập web, qua rào khuôn của connector; thân `185540` CHỜ tới 57014 khi giao dịch khác giữ khoá công ty / phiên / kết nối (tái hiện), sau file trả ngay; bản đọc kết nối = hàm lệnh (mã + câu) ở 12 trạng thái × 3 digest; đột biến (thân v2 cũ, thêm lại `FOR SHARE`, bỏ kiểm `revoked_at`) bị bắt; `$requires$` từ chối thân v2 / hàm lệnh / bản đọc lạ; chạy lại `185540` sau file ngã đúng câu kèm md5.
+- PGlite `expense-write-sql.test.mjs` 27/27: ca lượt 15 (13 câu THU, 21 câu chi có chữ "thu", lập / lô / lượt 2 / sửa phiếu ⇒ `web_only` + `/income-expense`; sáu đột biến bị bắt; chạy lại `120211` qua, `094809` ngã đúng câu cũ).
+- Tầng 2 TEST (ROLLBACK; nghiệm thu đang chạy nên KHÔNG giữ khoá công ty / phiên trên TEST): áp hai file; đọc toàn công ty bằng thân mới = thân cũ (50 dòng, summary, cursor), 166 ms so với 580 ms; bộ chọn trả `web_only` + `/income-expense` cho "Thu 200k giữ xe".
+
+### 26.3 Phát hành
+
+1. Thứ tự áp: sau mọi file Thu chi của C3, theo tên: `20261024193001` (cần thân v2 `cf03a9fc…` = production = TEST, thân hàm lệnh `0a2c941d…`) rồi `20261024193002` (cần thân bộ phân luồng của `094809`). Hai file độc lập nhau.
+2. Connector KHÔNG cần lên trước: khuôn đọc không đổi; `web_only` + link đã là lý do của `expense.create` (lượt 13).
+3. Provenance: `193001` tạo hàm mới ⇒ `unknown` (hồ sơ "chưa áp"); `193002` thay hàm chưa có trên production (do `094809` chưa áp) ⇒ `unknown`.
+4. Ghim chéo sau khi áp: chạy lại `20261021185540` ngã `hermes_receivables_effective_requires_reviewed_v2: af47eb16c1227abfb46c7f16ba6476f5` (ngoài diff ⇒ CI không đỏ). `193002` không làm file nào mất khả năng chạy lại.

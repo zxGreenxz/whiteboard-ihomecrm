@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -810,6 +810,72 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
     const list = sql => /c_money_flow CONSTANT text\[\]:=ARRAY\[([^\]]+)\]/.exec(sql)?.[1];
     assert.equal(list(FLOW), list(RULES), 'danh sách dòng tiền của hàm chọn hạng mục (lượt 13) = của gợi ý dùng chung');
     assert.equal(list(ROUND1), list(RULES), 'danh sách dòng tiền của hàm chọn hạng mục (lượt 14) = của gợi ý dùng chung');
+  });
+
+  let n15 = 680;
+  await t.test('Lượt 15: khoản THU qua expense.create ("thu 200k giữ xe") ⇒ web_only + link /income-expense; khoản chi có chữ "thu" (bỏ dấu) không dính; đột biến bị bắt', async () => {
+    const flowOf = async text => (await db.query('SELECT public.hermes_expense_system_flow_v1($1) f', [text])).rows[0].f;
+    const INCOME = ['Thu 200k giữ xe', 'thu 200k giu xe', 'thu 200.000 giữ xe tháng 10', 'tiền thu giữ xe phòng 201', 'Khoản thu điện nước tháng 10', 'Phiếu thu tiền internet',
+      'thu tiền rác tháng 10', 'thu phí giữ xe', 'thu nợ phòng 101', 'thu 2tr tiền phòng', 'thu 1,5tr tiền điện', 'đã thu 150k giữ xe của khách P201', 'Thu tiền phòng 101'];
+    // Âm: phiếu CHI lập tay thật của production có chữ "thu" (bỏ dấu trùng thứ / thử / thủ / thư / thù), và cụm cấm của đề.
+    const EXPENSE = ['chi thu gom rác', 'phí thu hộ tiền điện', 'tiền thuê nhà tháng 10', 'mua thuốc diệt côn trùng', 'mua thùng rác', 'thu âm quảng cáo', 'tiền thù lao CTV',
+      'tiền thủ tục tạm trú', 'thứ 7 mua nước uống', 'thử máy bơm nước', 'thu chi điện lạnh - vệ sinh máy lạnh', 'Hoàn tác thu tiền',
+      'anh A lấy lại tiền mặt 7 phòng thu hộ', 'Thưởng deal chương trình - deal thứ 3', 'thu gom rác tháng 10', 'thu mua phế liệu', 'Kết sổ quỹ chị Thu T5 + T6',
+      'nộp tiền điện nước đã thu của khách cho EVN', 'chi thu gom rác phòng của khách', 'mua vòi nước', 'thu hộ tiền điện cho chủ nhà'];
+    const check = async label => {
+      const miss = [], hit = [];
+      for (const text of INCOME) if (JSON.stringify(await flowOf(text)) !== JSON.stringify({ flow: 'income', link: '/income-expense' })) miss.push(text);
+      for (const text of EXPENSE) if (await flowOf(text) !== null) hit.push(text);
+      return { label, miss, hit, deposit: [(await flowOf('thu tiền cọc phòng 101'))?.flow, (await flowOf('thu cọc khách P202'))?.flow] };
+    };
+    assert.deepEqual(await check('sau file'), { label: 'sau file', miss: [], hit: [], deposit: ['deposit', 'deposit'] });
+
+    await f.rollbackCase(async () => {
+      await voucher('PC2610961');
+      const before = await trace4();
+      const create = items => run('expense.create', 'preview', rid(n15++), { items });
+      const web = { kind: 'rejected', reason: 'web_only', link: '/income-expense' };
+      assert.deepEqual(await create([item({ category: undefined, content: 'Thu 200k giữ xe' })]), web, 'nghiệm thu: trước cả khi hỏi hạng mục');
+      assert.deepEqual(await create([item({ content: 'tiền thu giữ xe phòng 201' })]), web, 'nêu hạng mục chi vẫn chặn');
+      assert.deepEqual(await create([item({ category: 'Thu tiền giữ xe', content: 'tháng 10' })]), web, 'hạng mục nêu là khoản thu');
+      assert.deepEqual(await create([item({ buildingName: 'Toà Z', content: 'thu 200k giữ xe' })]), web, 'trước khi hỏi lại toà');
+      assert.deepEqual(await create([item(), item({ content: 'thu 150k giữ xe' })]), { ...web, item: 2 }, 'lô nói khoản số mấy');
+      assert.equal((await create([item({ content: 'chi thu gom rác tháng 10' })])).kind, 'preview', 'khoản chi có chữ "thu" vẫn lập được');
+      // Lượt 2 kiểm lại cùng luật; sửa phiếu sang nội dung khoản thu ⇒ chặn.
+      const p = await create([item()]);
+      assert.equal(p.kind, 'preview');
+      assert.deepEqual(await run('expense.create', 'apply', rid(n15++), { items: [item({ content: 'thu 200k giữ xe' })] }, { resolved: p.resolved, basis: p.basis }), web);
+      assert.deepEqual(await run('expense.edit', 'preview', rid(n15++), { voucherCode: 'PC2610961', content: 'thu 200k giữ xe' }), web);
+      assert.deepEqual(await trace4(), before, 'không phiếu, không biên nhận');
+    });
+
+    // Đột biến (mỗi cái trong giao dịch ROLLBACK): thân lượt 13 (trước file) ⇒ khoản thu lọt; bỏ từng nhánh / rào ⇒ đúng ca tương ứng đỏ.
+    const statement = sql => { const start = sql.indexOf('CREATE OR REPLACE FUNCTION public.hermes_expense_system_flow_v1(');
+      return sql.slice(start, sql.indexOf('\n$fn$;', start) + '\n$fn$;'.length); };
+    const live = statement(INCOME15);
+    const MUTANTS = [
+      ['thân lượt 13', statement(FLOW), r => r.miss.length === INCOME.length],
+      ['bỏ nhánh "thu <số tiền>"', live.replace(" OR s.f ~ '^ thu ([0-9]{3,}|[0-9]+ ?(k|tr|trieu|nghin|ngan|d|dong|vnd)|[0-9]+ [0-9]+ ?(k|tr|trieu)) '", ''),
+        r => r.miss.includes('Thu 200k giữ xe') && r.miss.includes('thu 2tr tiền phòng')],
+      ['bỏ loại trừ sau "tiền / khoản / phiếu thu"', live.replace('(?!(tuc|cong|lao|quy|kho|ky|vien|y|nghiem|am|mua|gom|ho|thuat|tuong|cung|moi|tu|dong|ong|chi)( |$))', ''),
+        r => r.hit.includes('tiền thủ tục tạm trú') && r.hit.includes('tiền thù lao CTV')],
+      ['bỏ rào "chi / phí thu"', live.replace("\n          AND s.f !~ ' (chi|phi) thu | thu (gom|ho|mua|am|lao|chi) '", ''), r => r.hit.includes('chi thu gom rác phòng của khách')],
+      ['"thu" + số không đòi đơn vị', live.replace('([0-9]{3,}|[0-9]+ ?(k|tr|trieu|nghin|ngan|d|dong|vnd)|', '([0-9]+|'), r => r.hit.includes('thứ 7 mua nước uống')],
+      ['link khác', live.replace("WHEN 'income' THEN '/income-expense'", "WHEN 'income' THEN '/finance/cashbooks'"), r => r.miss.length === INCOME.length],
+    ];
+    for (const [label, sql, caught] of MUTANTS) {
+      assert.notEqual(sql, live, `${label}: đột biến đổi được thân`);
+      let seen;
+      await f.rollbackCase(async () => { await db.exec(sql); seen = await check(label); });
+      assert(caught(seen), `${label}: bị bắt ${JSON.stringify(seen)}`);
+    }
+    assert.deepEqual(await check('sau đột biến'), { label: 'sau đột biến', miss: [], hit: [], deposit: ['deposit', 'deposit'] }, 'ROLLBACK trả thân của file');
+    // Ghim chéo: không file nào ghim thân bộ phân luồng — chạy lại 120211 sau file vẫn qua; 094809 ngã đúng câu đã có từ 120211 (bộ chọn).
+    await f.rollbackCase(async () => { await db.exec(ROUND1); });
+    await f.rollbackCase(async () => {
+      await assert.rejects(db.exec(FLOW), error => error.message === 'hermes_expense_system_flow_body_drift: public.hermes_expense_category_pick_v1(uuid,text,text)');
+    });
+    assert.deepEqual(await check('sau chạy lại'), { label: 'sau chạy lại', miss: [], hit: [], deposit: ['deposit', 'deposit'] });
   });
 
   let n14 = 600;
