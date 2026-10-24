@@ -12,7 +12,10 @@ type Evidence={id:string;previousValue:string|null;evidenceFrames:Array<{timesta
  * media responses are forwarded unchanged after validating the fixture scope. */
 export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture,created:{clientIds:string[];captureIds:string[]},appOrigin:string){
  const blocked:string[]=[],errors:string[]=[],writes:string[]=[];
- const readers=new Set([...readRpcAllowlist('dashboard'),'get_meter_reading_stats']);
+ // useUnrecordedMeters reads this list when /meter-readings opens and refetches.
+ // The legacy VOLATILE wrapper and its delegated function only SELECT (verified
+ // on TEST and in 20260528000002 / 20250130000004); this does not allow a writer.
+ const readers=new Set([...readRpcAllowlist('dashboard'),'get_meter_reading_stats','get_meters_without_readings_v2']);
  const state={sha:'',size:0,started:null as Started|null,confirmation:null as Record<string,unknown>|null};
  page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
