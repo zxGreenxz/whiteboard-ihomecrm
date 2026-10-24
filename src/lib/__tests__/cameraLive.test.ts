@@ -34,6 +34,14 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const options = () => ({ recorderId: "20000000-0000-4000-8000-000000000001", channel: 1, onStream: vi.fn(), onState: vi.fn() });
 
 describe("live camera browser lifecycle", () => {
+  it("uses recording signaling for playback and keeps the same authenticated lease lifecycle", async () => {
+    const playback = { start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z" };
+    const connection = new CameraLiveConnection({ ...options(), playback }); await connection.start();
+    expect(String(request.mock.calls[0]?.[0])).toMatch(/\/channels\/1\/playback$/u);
+    expect(request.mock.calls[0]?.[1]).toMatchObject({ headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...playback, offer: Peer.instances[0]!.localDescription.sdp }) });
+    connection.stop(); await vi.advanceTimersByTimeAsync(1);
+    expect(request.mock.calls.at(-1)?.[1]?.method).toBe("DELETE");
+  });
   it("only marks video live after decoded frames advance, then hides frozen pictures", async () => {
     const callbacks = options(); const connection = new CameraLiveConnection(callbacks); await connection.start();
     expect(callbacks.onState).not.toHaveBeenCalledWith("playing");
