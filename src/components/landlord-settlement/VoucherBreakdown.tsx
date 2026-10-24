@@ -1,19 +1,20 @@
 // Danh sách phiếu đứng sau từng con số của bảng quyết toán, chia theo nhóm để chủ
 // nhà và quản lý đối chiếu được với sổ của mình. Mọi dòng server trả về đều thuộc ít
 // nhất một tab — kể cả dòng không tính (nội bộ, tắt KQKD) — để không khoản nào biến mất.
+// Giao diện v3: bốn nhóm thu/chi hiện ở thẻ Khoản thu / Khoản chi (tab Thu chi); các nhóm còn lại
+// (thanh lý, cọc, chờ duyệt, không tính) hiện ở khối "Khoản khác" bằng chính thành phần này (`only`).
 import { useMemo, useState } from 'react';
 import { formatVND } from '@/lib/utils';
 import {
-  EXCLUDED_REASON_LABEL,
-  VOUCHER_SOURCE_LABEL,
   settlementVoucherName,
+  voucherRowNote,
+  type DepositHolder,
   type SettlementStatement,
   type SettlementVoucher,
+  type VoucherGroupKey,
 } from '@/lib/landlordSettlement';
 
-type GroupKey =
-  | 'landlord_in' | 'manager_in' | 'landlord_out' | 'manager_out'
-  | 'termination' | 'deposit' | 'pending' | 'excluded';
+export type GroupKey = VoucherGroupKey;
 
 /** Dòng "Cộng" lấy đúng số tổng server đã tính — client không cộng tiền. */
 const SERVER_TOTAL: Partial<Record<GroupKey, keyof SettlementStatement['totals']>> = {
@@ -23,7 +24,10 @@ const SERVER_TOTAL: Partial<Record<GroupKey, keyof SettlementStatement['totals']
   manager_out: 'manager_paid',
 };
 
-const GROUPS: { key: GroupKey; label: string; match: (v: SettlementVoucher) => boolean }[] = [
+/** Bên sổ có cọc tính vào quyết toán: quản lý giữ cọc ⇒ cọc ở sổ chủ nhà phải bàn giao, và ngược lại. */
+const countedDepositSide = (holder: DepositHolder): SettlementVoucher['side'] => (holder === 'MANAGER' ? 'LANDLORD' : 'MANAGER');
+
+const GROUPS: { key: GroupKey; label: string; match: (v: SettlementVoucher, holder: DepositHolder) => boolean }[] = [
   { key: 'landlord_in', label: 'Chủ nhà thu', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'INCOME' && v.side === 'LANDLORD' },
   { key: 'manager_in', label: 'Quản lý thu', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'INCOME' && v.side === 'MANAGER' },
   { key: 'landlord_out', label: 'Chủ nhà chi', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'EXPENSE' && v.side === 'LANDLORD' },
@@ -32,7 +36,8 @@ const GROUPS: { key: GroupKey; label: string; match: (v: SettlementVoucher) => b
   { key: 'termination', label: 'Thanh lý', match: (v) => v.source !== null },
   { key: 'deposit', label: 'Cọc & trả thừa', match: (v) => v.group === 'DEPOSIT' },
   // Đúng tập server đếm ở "phiếu chờ duyệt" (chặn chốt).
-  { key: 'pending', label: 'Chờ duyệt', match: (v) => v.status === 'UNAPPROVED' && (v.group === 'PNL' || (v.group === 'DEPOSIT' && v.side === 'LANDLORD')) },
+  { key: 'pending', label: 'Chờ duyệt', match: (v, holder) => v.status === 'UNAPPROVED'
+    && (v.group === 'PNL' || (v.group === 'DEPOSIT' && v.side === countedDepositSide(holder))) },
   { key: 'excluded', label: 'Không tính', match: (v) => v.group === 'EXCLUDED' },
 ];
 
@@ -44,47 +49,34 @@ const fmtDay = (iso: string) => {
 /** Link chủ nhà: tên sổ đã là nhãn bên giữ tiền ('Sổ chủ nhà' / 'Sổ quản lý' / 'Cấn trừ cọc') — in nguyên. */
 const accountText = (name: string, mode: 'admin' | 'public') => (mode === 'public' ? name : `sổ ${name}`);
 
-function rowNote(v: SettlementVoucher, key: GroupKey, mode: 'admin' | 'public', periodMonth: string): string {
-  const parts: string[] = [];
-  // dòng lãi lỗ xếp tháng THEO KỲ trên hạng mục: phiếu lập tháng khác vẫn có thể thuộc tháng này (vd thu
-  // trước tiền phòng tháng sau). Số tiền là phần của kỳ tháng này.
-  if (v.group === 'PNL' && v.voucher_date.slice(0, 7) !== periodMonth.slice(0, 7)) {
-    parts.push(`tính theo kỳ tháng ${periodMonth.slice(5, 7)}/${periodMonth.slice(0, 4)}`);
-  }
-  if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);
-  if (key === 'termination' || key === 'deposit' || key === 'pending' || key === 'excluded') {
-    if (v.group === 'DEPOSIT') parts.push(v.type === 'INCOME' ? 'thu cọc/trả thừa' : 'hoàn/cấn cọc');
-    else if (v.group === 'PNL') parts.push(v.type === 'INCOME' ? 'doanh thu' : 'chi phí');
-    // link chủ nhà: tên sổ đã là nhãn bên giữ tiền thì không nhắc lại
-    if (mode === 'admin' || !v.account_name) parts.push(v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý');
-  }
-  if (v.excluded_reason) parts.push(`không tính: ${EXCLUDED_REASON_LABEL[v.excluded_reason]}`);
-  if (v.cash_reversed) parts.push('bút toán sổ quỹ đã bị đảo');
-  if (v.cash_unposted) parts.push('chưa ghi sổ quỹ');
-  if (v.foreign_landlord_account) parts.push('sổ chủ nhà của toà khác — chặn chốt');
-  if (v.status === 'UNAPPROVED') parts.push('chờ duyệt');
-  return parts.length ? ` · ${parts.join(' · ')}` : '';
-}
-
-export function VoucherBreakdown({ vouchers, totals, mode, periodMonth }: {
+export function VoucherBreakdown({
+  vouchers, totals, mode, periodMonth, only, depositHolder = 'MANAGER', title = 'Phiếu trong tháng',
+}: {
   vouchers: SettlementVoucher[];
   totals: SettlementStatement['totals'];
   mode: 'admin' | 'public';
   /** 'YYYY-MM-DD' — tháng của bảng quyết toán (để ghi chú phiếu lập tháng khác mà tính theo kỳ tháng này). */
   periodMonth: string;
+  /** Chỉ hiện các nhóm này (mặc định: mọi nhóm). */
+  only?: readonly GroupKey[];
+  /** Người giữ cọc của tháng — quyết định cọc chờ duyệt ở sổ nào thuộc nhóm "Chờ duyệt". */
+  depositHolder?: DepositHolder;
+  title?: string;
 }) {
   const grouped = useMemo(
-    () => GROUPS.map((g) => ({ ...g, rows: vouchers.filter(g.match) })),
-    [vouchers],
+    () => GROUPS.filter((g) => !only || only.includes(g.key))
+      .map((g) => ({ ...g, rows: vouchers.filter((v) => g.match(v, depositHolder)) })),
+    [vouchers, only, depositHolder],
   );
-  const firstNonEmpty = grouped.find((g) => g.rows.length > 0)?.key ?? 'landlord_in';
+  const firstNonEmpty = grouped.find((g) => g.rows.length > 0)?.key ?? grouped[0]?.key ?? 'landlord_in';
   const [active, setActive] = useState<GroupKey | null>(null);
   const current = grouped.find((g) => g.key === (active ?? firstNonEmpty)) ?? grouped[0];
+  if (!current) return null;
   const totalKey = SERVER_TOTAL[current.key];
 
   return (
     <div>
-      <p className="mb-2 text-sm font-medium">Phiếu trong tháng</p>
+      <p className="mb-2 text-sm font-medium">{title}</p>
       <div role="tablist" aria-label="Nhóm phiếu" className="mb-2 flex flex-wrap gap-1.5">
         {grouped.map((g) => (
           <button
@@ -118,7 +110,7 @@ export function VoucherBreakdown({ vouchers, totals, mode, periodMonth }: {
               <span className="text-right font-medium tabular-nums">{formatVND(v.amount)}</span>
               <span className="text-xs text-muted-foreground">
                 {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · ${accountText(v.account_name, mode)}` : ''}
-                {rowNote(v, current.key, mode, periodMonth)}
+                {voucherRowNote(v, current.key, mode, periodMonth)}
               </span>
               <span />
             </div>

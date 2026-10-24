@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  barPercent,
+  calcLines,
+  confirmReceiptSchema,
+  depositAdjustmentLine,
+  initialsOf,
+  landlordOperationOptionsSchema,
+  monthConfirmState,
+  noteUpdateReceiptSchema,
+  settlementOverviewSchema,
+  settlementYears,
+  shareText,
+  vnDate,
+  vnDateTime,
   describeNet,
   describeOperationChange,
   ihomeLineOf,
@@ -264,5 +277,166 @@ describe('câu báo lỗi', () => {
   it('lỗi thô của Postgres đi qua friendlyError, không lộ câu tiếng Anh', () => {
     const out = landlordErrorMessage({ code: '42501', message: 'permission denied for function landlord_settlement_month_v1' }, 'Chưa tải được');
     expect(out).not.toMatch(/permission denied/);
+  });
+});
+
+describe('hợp đồng dữ liệu v3 (bàn giao, người giữ cọc, hạng mục)', () => {
+  const overviewCu = {
+    building_name: 'Toà A', landlord_name: 'Chủ nhà A', manager_percent: 30, effective_from: '2025-01-01',
+    is_active: true, opening_confirmed: true, current_month: '2025-02-01',
+    months: [{
+      period_month: '2025-01-01', status: 'CLOSED', is_stale: false, is_current_month: false, manager_percent: 30,
+      revenue: 1, expense: 0, profit: 1, manager_share: 0, landlord_owes_manager: 0, pending_count: 0,
+    }],
+    payments: [],
+    totals: { opening_balance: 0, closed_month_count: 1, closed_net: 0, open_net: 0, paid_by_landlord: 0, paid_by_manager: 0, balance_closed: 0, balance_with_open: 0 },
+  };
+
+  it('gói CŨ (thiếu mọi trường mới): mặc định đúng hợp đồng, không tự tính số', () => {
+    const m = settlementMonthSchema.parse({
+      ...month,
+      status: 'CLOSED',
+      closed: { revision: 2, closed_at: '2025-02-01T00:00:00Z', note: null, closed_by_name: null },
+      statement: { ...statement, totals: { ...statement.totals, landlord_held_deposits: 250_000 } },
+    });
+    const st = m.statement!;
+    expect(st.deposit_holder).toBe('MANAGER');
+    // thiếu deposit_adjustment ⇒ CHÉP landlord_held_deposits; cọc sổ quản lý không biết ⇒ null
+    expect(st.totals.deposit_adjustment).toBe(250_000);
+    expect(st.totals.manager_held_deposits).toBeNull();
+    expect([st.deposits.manager_received, st.deposits.manager_paid_out]).toEqual([null, null]);
+    expect(st.pending.deposit).toBe(st.pending.landlord_deposit);
+    expect(st.categories).toBeNull();
+    expect(st.vouchers[0]!.lines).toBeNull();
+    expect(m.closed!.note_updated_at).toBeNull();
+    expect(m.confirmation).toBeNull();
+
+    const o = settlementOverviewSchema.parse(overviewCu);
+    expect(o.deposit_holder).toBeNull();
+    const t = o.months[0]!;
+    expect([t.manager_fixed_share, t.manager_percent_share, t.manager_paid, t.manager_collected, t.deposit_holder,
+      t.deposit_adjustment, t.extra_cash, t.close_revision, t.confirmed_at]).toEqual([null, null, null, null, null, null, null, null, null]);
+  });
+
+  it('gói MỚI: lấy nguyên các trường server trả', () => {
+    const m = settlementMonthSchema.parse({
+      ...month,
+      status: 'CLOSED',
+      closed: { revision: 2, closed_at: '2025-02-01T00:00:00Z', note: 'Ghi chú', closed_by_name: 'A', note_updated_at: '2025-02-02T00:00:00Z' },
+      confirmation: { confirmed_at: '2025-02-03T00:00:00Z', note: null },
+      statement: {
+        ...statement,
+        deposit_holder: 'LANDLORD',
+        totals: { ...statement.totals, manager_held_deposits: 3_000_000, deposit_adjustment: -3_000_000 },
+        deposits: { ...statement.deposits, manager_received: 3_000_000, manager_paid_out: 0 },
+        pending: { ...statement.pending, deposit: -500_000 },
+        categories: { income: [{ name: 'Tiền phòng', amount: 10_000_000, landlord_amount: 10_000_000, manager_amount: 0 }], expense: [] },
+        vouchers: [{ ...statement.vouchers[0], lines: [{ category: 'Tiền phòng', amount: 10_000_000 }] }],
+      },
+    });
+    const st = m.statement!;
+    expect(st.deposit_holder).toBe('LANDLORD');
+    expect([st.totals.manager_held_deposits, st.totals.deposit_adjustment]).toEqual([3_000_000, -3_000_000]);
+    expect(st.pending.deposit).toBe(-500_000);
+    expect(st.categories?.income[0]?.landlord_amount).toBe(10_000_000);
+    expect(st.vouchers[0]!.lines).toEqual([{ category: 'Tiền phòng', amount: 10_000_000 }]);
+    expect(m.closed!.note_updated_at).toBe('2025-02-02T00:00:00Z');
+    expect(m.confirmation).toEqual({ confirmed_at: '2025-02-03T00:00:00Z', note: null });
+
+    const o = settlementOverviewSchema.parse({
+      ...overviewCu,
+      deposit_holder: 'LANDLORD',
+      months: [{ ...overviewCu.months[0], manager_paid: 1, manager_collected: 2, deposit_holder: 'LANDLORD', deposit_adjustment: -3, extra_cash: 0, close_revision: 2, confirmed_at: '2025-02-03T00:00:00Z' }],
+    });
+    expect(o.deposit_holder).toBe('LANDLORD');
+    expect(o.months[0]!.confirmed_at).toBe('2025-02-03T00:00:00Z');
+    expect(o.months[0]!.deposit_adjustment).toBe(-3);
+  });
+
+  it('trường mới sai hình thì ném (không đoán)', () => {
+    expect(() => settlementMonthSchema.parse({ ...month, statement: { ...statement, deposit_holder: 'TENANT' } })).toThrow();
+    expect(() => settlementMonthSchema.parse({ ...month, statement: { ...statement, totals: { ...statement.totals, deposit_adjustment: '1' } } })).toThrow();
+    expect(() => settlementMonthSchema.parse({ ...month, confirmation: { note: 'x' } })).toThrow();
+  });
+
+  it('cài đặt toà: người giữ cọc thiếu ⇒ "MANAGER" (luật cũ)', () => {
+    const o = landlordOperationOptionsSchema.parse({
+      current: {
+        landlord_name: 'A', manager_percent: 30, landlord_account_ids: [], terms_from: '2025-01-01', effective_from: '2025-01-01',
+        note: null, is_active: true, opening_balance: 0, opening_confirmed_at: null, opening_confirmation_stale: false,
+        opening_confirmed_pre_start: null, pre_start_landlord_deposits: 0, first_closed_month: null, last_closed_month: null,
+        next_terms_month: '2025-01-01', terms: [{ valid_from: '2025-01-01', manager_percent: 30, landlord_account_ids: [] }],
+        updated_at: '2025-01-01T00:00:00Z',
+      },
+      accounts: [], history: [],
+    });
+    expect(o.current?.deposit_holder).toBe('MANAGER');
+    // người giữ cọc là cài đặt của toà, không có ở từng điều khoản tháng
+    expect(o.current?.terms[0]).not.toHaveProperty('deposit_holder');
+  });
+
+  it('biên nhận ghi chú / xác nhận: thiếu trường là chưa xác nhận', () => {
+    expect(noteUpdateReceiptSchema.safeParse({ status: 'UPDATED', revision: 2, updated_at: 'x' }).success).toBe(true);
+    expect(noteUpdateReceiptSchema.safeParse({ status: 'UPDATED' }).success).toBe(false);
+    expect(confirmReceiptSchema.safeParse({ status: 'ALREADY_CONFIRMED', confirmed_at: 'x' }).success).toBe(true);
+    expect(confirmReceiptSchema.safeParse({ status: 'CONFIRMED' }).success).toBe(false);
+  });
+
+  it('dòng cọc theo người giữ cọc và dấu của deposit_adjustment', () => {
+    expect(depositAdjustmentLine('MANAGER', 300_000)).toEqual({ label: '+ Cọc của khách ở sổ chủ nhà', sub: 'quản lý giữ cọc → chủ nhà bàn giao cho quản lý', amount: 300_000 });
+    expect(depositAdjustmentLine('MANAGER', -200_000).label).toBe('− Cọc chủ nhà đã chi trả khách thay quản lý');
+    expect(depositAdjustmentLine('LANDLORD', -5_400_000)).toEqual({ label: '− Cọc của khách ở sổ quản lý', sub: 'chủ nhà giữ cọc → quản lý bàn giao cho chủ nhà', amount: 5_400_000 });
+    expect(depositAdjustmentLine('LANDLORD', 0).sub).toBe('chủ nhà giữ cọc · tháng này sổ quản lý không có cọc');
+  });
+
+  it('tỷ lệ chỉ để vẽ / hiển thị: kẹp 0–100, tổng ≤ 0 thì không có', () => {
+    expect(barPercent(2_700_000, 18_000_000)).toBe(15);
+    expect(barPercent(5_000_000, 1_000_000)).toBe(100);
+    expect(barPercent(5_000_000, -2_000_000)).toBe(0);
+    expect(shareText(18, 20)).toBe('90%');
+    expect(shareText(1, 12)).toBe('8,3%');
+    expect(shareText(1, 0)).toBeNull();
+  });
+
+  it('giờ Việt Nam, năm, trạng thái xác nhận, chữ viết tắt', () => {
+    expect(vnDateTime('2026-11-01T01:30:00Z')).toBe('08:30 · 01/11/2026');
+    expect(vnDate('2026-10-31T18:00:00Z')).toBe('01/11/2026');
+    expect(settlementYears([{ period_month: '2025-12-01' }, { period_month: '2026-01-01' }, { period_month: '2026-02-01' }])).toEqual(['2026', '2025']);
+    expect(monthConfirmState({ status: 'OPEN', is_current_month: true, confirmed_at: null }, true)).toEqual({ kind: 'OPEN', text: 'Đang chạy' });
+    expect(monthConfirmState({ status: 'CLOSED', is_current_month: false, confirmed_at: null }, true)).toEqual({ kind: 'WAITING', text: 'Chờ xác nhận' });
+    expect(monthConfirmState({ status: 'CLOSED', is_current_month: false, confirmed_at: null }, false)).toEqual({ kind: 'WAITING', text: 'Chưa xác nhận' });
+    expect(monthConfirmState({ status: 'CLOSED', is_current_month: false, confirmed_at: 'x' }, false)).toEqual({ kind: 'CONFIRMED', at: 'x' });
+    expect([initialsOf('Tiền điện'), initialsOf('Internet'), initialsOf(null)]).toEqual(['TĐ', 'IN', '—']);
+  });
+
+  it('lịch sử cài đặt: nói được đổi người giữ cọc của toà; ảnh cũ (trước v3) không có trường thì im', () => {
+    const vnd = (n: number) => `${n}đ`;
+    const terms = [{ valid_from: '2025-01-01', manager_percent: 30, landlord_account_ids: ['s1'] }];
+    expect(describeOperationChange({ deposit_holder: 'MANAGER', terms }, { deposit_holder: 'LANDLORD', terms }, vnd))
+      .toEqual(['Người giữ cọc: Quản lý → Chủ nhà']);
+    // ảnh chụp trước v3 không có trường ⇒ không đoán là "đổi"
+    expect(describeOperationChange({ terms }, { deposit_holder: 'MANAGER', terms }, vnd))
+      .toEqual(['Lưu lại, không đổi nội dung']);
+  });
+});
+
+describe('dòng "Cách tính"', () => {
+  const vnd = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
+  const base = {
+    managerPercent: 30, managerFixedAmount: 0, managerShare: 3_000_000, fixedShare: 0, percentShare: 3_000_000, profit: 10_000_000,
+    managerPaid: 1, managerCollected: 2, depositHolder: 'LANDLORD' as const, depositAdjustment: -5, extraCash: 7,
+  };
+  it('đủ trường: phần quản lý, chi hộ, thu hộ, cọc theo người giữ, tiền thối', () => {
+    expect(calcLines(base, vnd).map((l) => [l.key, l.label, l.amount])).toEqual([
+      ['share', 'Phần quản lý', 3_000_000], ['paid', '+ Quản lý đã chi hộ', 1], ['collected', '− Quản lý đã thu hộ', 2],
+      ['deposit', '− Cọc của khách ở sổ quản lý', 5], ['extra', '+ Tiền thối của khách nằm ở sổ chủ nhà', 7],
+    ]);
+  });
+  it('tháng cũ thiếu số tách mà điều khoản có tiền cố định: một dòng, chữ phụ là thoả thuận; trường null thì ẩn', () => {
+    const l = calcLines({
+      ...base, managerFixedAmount: 5_000_000, fixedShare: null, percentShare: null, managerPaid: null,
+      managerCollected: null, depositHolder: null, depositAdjustment: null, extraCash: null,
+    }, vnd);
+    expect(l).toEqual([{ key: 'share', label: 'Phần quản lý', sub: '5.000.000 đ/tháng + 30% lợi nhuận', amount: 3_000_000, muted: false }]);
   });
 });

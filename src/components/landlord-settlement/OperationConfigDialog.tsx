@@ -1,9 +1,8 @@
 // Cài đặt một toà vận hành cho chủ nhà: tên chủ nhà, phần quản lý theo thoả thuận (tiền cố định/tháng
 // và/hoặc % lợi nhuận — chủ chốt 23/10/2026), tháng bắt đầu, sổ quỹ nào là của chủ nhà, số dư đầu kỳ.
 // Server kiểm lại mọi thứ.
-// %, tiền cố định và sổ chủ nhà theo phiên bản tháng: chọn "sửa từ tháng X" thì ô %, ô tiền cố định và
-// danh sách sổ hiện đúng điều khoản đang áp ở tháng X; lưu thì server chỉ ghi TRƯỜNG đã đổi cho tháng X
-// và các mốc sau.
+// %, tiền cố định, sổ chủ nhà và người giữ cọc (v3) theo phiên bản tháng: chọn "sửa từ tháng X" thì các ô
+// hiện đúng điều khoản đang áp ở tháng X; lưu thì server chỉ ghi TRƯỜNG đã đổi cho tháng X và các mốc sau.
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -16,12 +15,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MonthInput } from '@/components/ui/month-input';
 import { NumberInput } from '@/components/ui/number-input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { SkeletonBar } from '@/components/loading/LoadingState';
 import { useLandlordOperationOptions, useUpsertLandlordOperation } from '@/hooks/useLandlordSettlement';
 import {
+  DEPOSIT_HOLDERS,
+  DEPOSIT_HOLDER_LABEL,
   describeOperationChange,
   landlordErrorMessage,
   managerTermsLabel,
@@ -30,6 +32,7 @@ import {
   monthToDate,
   sameIdSet,
   termsAt,
+  type DepositHolder,
   type LandlordOperationOptions,
   type LandlordOperationsList,
 } from '@/lib/landlordSettlement';
@@ -48,6 +51,8 @@ interface Draft {
   /** Tiền cố định/tháng (đồng). Ô trống = 0; NaN = đang gõ sai. */
   fixed: number;
   accountIds: string[];
+  /** Người giữ cọc (bên hoàn cọc cho khách) của TOÀ — áp mọi tháng, chỉ đổi khi chưa chốt tháng nào. */
+  depositHolder: DepositHolder;
   /** Tháng mà % / tiền cố định / sổ đang hiện được NẠP tự động từ đó — khác điều khoản của tháng này = người dùng đã sửa. */
   pctFrom: string;
   fixedFrom: string;
@@ -59,7 +64,8 @@ interface Draft {
 }
 
 const EMPTY: Draft = {
-  landlordName: '', month: '', termsMonth: '', percent: 0, fixed: 0, accountIds: [], pctFrom: '', fixedFrom: '', idsFrom: '',
+  landlordName: '', month: '', termsMonth: '', percent: 0, fixed: 0, accountIds: [], depositHolder: 'MANAGER',
+  pctFrom: '', fixedFrom: '', idsFrom: '',
   note: '', isActive: true, openingBalance: 0, openingConfirmed: false,
 };
 const MAX_SO_CHU_NHA = 20;
@@ -70,6 +76,8 @@ export function OperationConfigDialog({
   onOpenChange,
   candidates,
   initialBuildingId,
+  initialTermsMonth = null,
+  initialDepositHolder = null,
   onSaved,
 }: {
   open: boolean;
@@ -77,6 +85,10 @@ export function OperationConfigDialog({
   candidates: LandlordOperationsList['candidate_buildings'];
   /** null = thêm toà mới (chọn trong hộp thoại). */
   initialBuildingId: string | null;
+  /** 'YYYY-MM' — mở sẵn ở tháng áp điều khoản này. */
+  initialTermsMonth?: string | null;
+  /** Chọn sẵn người giữ cọc này (nút gạt ở tab Quyết toán; khác người giữ cọc của toà ⇒ là thay đổi). */
+  initialDepositHolder?: DepositHolder | null;
   onSaved?: (buildingId: string) => void;
 }) {
   const [buildingId, setBuildingId] = useState<string | null>(initialBuildingId);
@@ -108,7 +120,7 @@ export function OperationConfigDialog({
     if (!buildingId || !options.data || options.isFetching || loadedFor === buildingId) return;
     const c = options.data.current;
     if (c) {
-      const thang = monthKey(c.next_terms_month);
+      const thang = initialTermsMonth && THANG_HOP_LE.test(initialTermsMonth) ? initialTermsMonth : monthKey(c.next_terms_month);
       const dk = termsAt(c.terms, thang);
       setDraft({
         landlordName: c.landlord_name,
@@ -117,6 +129,8 @@ export function OperationConfigDialog({
         percent: dk?.manager_percent ?? c.manager_percent,
         fixed: dk?.manager_fixed_amount ?? c.manager_fixed_amount,
         accountIds: dk?.landlord_account_ids ?? c.landlord_account_ids,
+        // chọn sẵn từ nút gạt = người dùng đã sửa (khác người giữ cọc của toà thì hộp nêu thay đổi)
+        depositHolder: initialDepositHolder ?? c.deposit_holder,
         pctFrom: thang,
         fixedFrom: thang,
         idsFrom: thang,
@@ -128,11 +142,11 @@ export function OperationConfigDialog({
       });
     } else {
       const thang = vnYmOf();
-      setDraft({ ...EMPTY, month: thang, termsMonth: thang });
+      setDraft({ ...EMPTY, month: thang, termsMonth: thang, depositHolder: initialDepositHolder ?? 'MANAGER' });
     }
     setSeenUpdatedAt(c ? c.updated_at : null);
     setLoadedFor(buildingId);
-  }, [buildingId, options.data, options.isFetching, loadedFor]);
+  }, [buildingId, options.data, options.isFetching, loadedFor, initialTermsMonth, initialDepositHolder]);
 
   const buildingOptions = useMemo(
     () => candidates.map((c) => ({ value: c.building_id, label: c.configured ? `${c.building_name} (đã cài)` : c.building_name })),
@@ -153,12 +167,18 @@ export function OperationConfigDialog({
   const fixedChanged = !!base && draft.fixed !== base.manager_fixed_amount;
   const idsChanged = !!base && !sameIdSet(draft.accountIds, base.landlord_account_ids);
   const termsChanged = pctChanged || fixedChanged || idsChanged;
+  // người giữ cọc là cài đặt của TOÀ (chủ chốt 23/10/2026): đổi giữa chừng thì cọc đang giữ không tự bàn giao
+  // ⇒ chỉ đổi được khi toà chưa chốt tháng nào (server chặn 55000 y như vậy)
+  const holderChanged = !!cur && draft.depositHolder !== cur.deposit_holder;
+  const holderLocked = !!firstClosed;
   const laterTerms = cur ? terms.filter((t) => monthKey(t.valid_from) > draft.termsMonth) : [];
   // cơ sở của số dư đầu kỳ (tháng áp dụng + sổ của điều khoản đầu) đổi ngay trong lần lưu này ⇒ chưa thể
   // đối chiếu: cọc trước kỳ theo cơ sở mới chỉ tính ra sau khi lưu
   const basisChanging = !cur
     || draft.month !== monthKey(cur.effective_from)
-    || (idsChanged && draft.termsMonth <= draft.month);
+    || (idsChanged && draft.termsMonth <= draft.month)
+    // gợi ý cọc trước kỳ tính theo người giữ cọc ⇒ đổi thì chỉ biết số mới sau khi lưu
+    || holderChanged;
 
   // đổi tháng sửa ⇒ trường nào người dùng đã sửa (khác điều khoản của tháng mà nó được nạp từ đó) thì
   // giữ, trường còn lại nạp theo điều khoản đang áp ở tháng mới; khung vàng so lại với tháng mới. So với
@@ -231,6 +251,9 @@ export function OperationConfigDialog({
         e.termsMonth = `Đã chốt tới tháng ${monthShort(lastClosed)} — chọn từ tháng sau đó, hoặc mở chốt trước.`;
       }
     }
+    if (holderChanged && firstClosed) {
+      e.holder = `Toà đã chốt tháng ${monthShort(firstClosed)} — người giữ cọc chỉ đổi được khi chưa chốt tháng nào.`;
+    }
     if (draft.note.trim().length > 500) e.note = 'Ghi chú tối đa 500 ký tự.';
     if (!Number.isFinite(draft.openingBalance) || !Number.isInteger(draft.openingBalance)) e.opening = 'Nhập số tiền nguyên đồng (âm nếu quản lý còn nợ chủ nhà).';
     return e;
@@ -259,6 +282,8 @@ export function OperationConfigDialog({
         termsFrom: cur ? monthToDate(draft.termsMonth) : null,
         openingSeenPreStart: cur ? preStart : null,
         expectedUpdatedAt: seenUpdatedAt,
+        // người giữ cọc của toà (áp mọi tháng); server từ chối đổi khi đã chốt tháng nào
+        depositHolder: draft.depositHolder,
       });
       // trạng thái SAU khi lưu do server tính (cọc trước kỳ theo tháng / sổ mới), không đoán theo số cũ trên màn
       if (r.opening_needs_reconfirm || r.opening_needs_confirm) {
@@ -412,15 +437,49 @@ export function OperationConfigDialog({
                 )}
               </div>
 
+              <div className="space-y-1.5" data-testid="landlord-holder">
+                <Label id="lo-holder-label">Người giữ cọc</Label>
+                <RadioGroup aria-labelledby="lo-holder-label" className="flex flex-wrap gap-4" value={draft.depositHolder}
+                  disabled={holderLocked}
+                  onValueChange={(v) => {
+                    const h = DEPOSIT_HOLDERS.find((x) => x === v);
+                    if (h) setDraft((d) => ({ ...d, depositHolder: h }));
+                  }}>
+                  {DEPOSIT_HOLDERS.map((h) => (
+                    <label key={h} htmlFor={`lo-holder-${h}`}
+                      className={`flex items-center gap-2 text-sm ${holderLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                      <RadioGroupItem id={`lo-holder-${h}`} value={h} />
+                      {DEPOSIT_HOLDER_LABEL[h]}
+                    </label>
+                  ))}
+                </RadioGroup>
+                <p className="text-[11px] text-muted-foreground">
+                  Bên giữ cọc là bên hoàn cọc cho khách khi trả phòng; cọc nằm ở sổ của bên kia thì bên đó bàn giao lại trong quyết toán tháng.
+                  Áp cho mọi tháng từ tháng bắt đầu.
+                </p>
+                {holderLocked && firstClosed ? (
+                  <p className="text-xs text-muted-foreground">
+                    Toà đã chốt tháng {monthShort(firstClosed)} nên không đổi được nữa — đổi giữa chừng thì tiền cọc đang giữ không tự bàn giao.
+                  </p>
+                ) : cur && holderChanged ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {DEPOSIT_HOLDER_LABEL[cur.deposit_holder]} → {DEPOSIT_HOLDER_LABEL[draft.depositHolder]}: áp lại cho mọi tháng từ {monthShort(cur.effective_from)}; chốt tháng đầu rồi thì không đổi được nữa.
+                  </p>
+                ) : null}
+                {errors.holder && <p className="text-xs text-destructive">{errors.holder}</p>}
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="lo-opening">Số dư đầu kỳ</Label>
                 <p className="text-xs text-muted-foreground">
-                  Khoản chủ nhà còn phải trả quản lý từ trước tháng áp dụng (âm nếu ngược lại) — vd cọc khách đã chuyển vào sổ chủ nhà mà quản lý phải hoàn.
+                  Khoản chủ nhà còn phải trả quản lý từ trước tháng áp dụng (âm nếu ngược lại) — vd cọc khách nộp trước tháng áp dụng vào sổ của bên không giữ cọc.
                 </p>
                 <CurrencyInput id="lo-opening" allowNegative value={draft.openingBalance} onChange={setOpening} />
                 {cur && !basisChanging && preStart !== 0 && (
                   <p className="text-xs">
-                    Gợi ý: cọc/tiền khách trả thừa đang nằm ở sổ chủ nhà trước tháng {monthShort(cur.effective_from)} là{' '}
+                    {cur.deposit_holder === 'LANDLORD'
+                      ? <>Gợi ý (chủ nhà giữ cọc): cọc/tiền khách trả thừa nằm ở sổ quản lý trước tháng {monthShort(cur.effective_from)}, quản lý bàn giao cho chủ nhà:{' '}</>
+                      : <>Gợi ý (quản lý giữ cọc): cọc/tiền khách trả thừa nằm ở sổ chủ nhà trước tháng {monthShort(cur.effective_from)}, chủ nhà bàn giao cho quản lý:{' '}</>}
                     <b>{formatVND(preStart)}</b>.{' '}
                     {draft.openingBalance !== preStart && (
                       <button type="button" className="text-primary underline underline-offset-2" onClick={() => setOpening(preStart)}>
@@ -432,7 +491,7 @@ export function OperationConfigDialog({
                 {basisChanging ? (
                   <p className="text-xs text-amber-700 dark:text-amber-400">
                     {cur
-                      ? 'Đang đổi tháng áp dụng hoặc sổ chủ nhà của tháng đầu nên cọc trước kỳ sẽ tính lại — lưu trước, rồi mở lại để đối chiếu số dư đầu kỳ.'
+                      ? 'Đang đổi tháng áp dụng, sổ chủ nhà của tháng đầu hoặc người giữ cọc nên cọc trước kỳ sẽ tính lại — lưu trước, rồi mở lại để đối chiếu số dư đầu kỳ.'
                       : 'Lưu cài đặt trước, rồi mở lại hộp này để xem cọc đang nằm ở sổ chủ nhà trước tháng áp dụng và đối chiếu số dư đầu kỳ.'}
                   </p>
                 ) : (
@@ -444,8 +503,8 @@ export function OperationConfigDialog({
                 )}
                 {cur?.opening_confirmation_stale && (
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Xác nhận trước đã hết hiệu lực: lúc xác nhận cọc trước kỳ ở sổ chủ nhà là {formatVND(cur.opening_confirmed_pre_start ?? 0)},
-                    nay là {formatVND(preStart)} (hoặc đã dời tháng áp dụng). Đối chiếu lại rồi đánh dấu.
+                    Xác nhận trước đã hết hiệu lực: lúc xác nhận gợi ý cọc trước kỳ là {formatVND(cur.opening_confirmed_pre_start ?? 0)},
+                    nay là {formatVND(preStart)} (hoặc đã dời tháng áp dụng / đổi người giữ cọc). Đối chiếu lại rồi đánh dấu.
                   </p>
                 )}
                 {needsConfirm && !basisChanging && !draft.openingConfirmed && (
@@ -471,7 +530,9 @@ export function OperationConfigDialog({
                   <p className="font-medium">Điều khoản theo tháng</p>
                   <ul className="space-y-0.5 text-muted-foreground">
                     {terms.map((t) => (
-                      <li key={t.valid_from}>Từ {monthShort(t.valid_from)}: {managerTermsLabel(t, formatVND)} · {t.landlord_account_ids.length} sổ chủ nhà</li>
+                      <li key={t.valid_from}>
+                        Từ {monthShort(t.valid_from)}: {managerTermsLabel(t, formatVND)} · {t.landlord_account_ids.length} sổ chủ nhà
+                      </li>
                     ))}
                   </ul>
                 </div>

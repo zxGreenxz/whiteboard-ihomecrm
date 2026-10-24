@@ -26815,6 +26815,7 @@ export type Database = {
       landlord_operation_upsert_v1: {
         Args: {
           p_building_id: string
+          p_deposit_holder?: string
           p_effective_from: string
           p_expected_updated_at?: string
           p_is_active?: boolean
@@ -26851,8 +26852,26 @@ export type Database = {
         }
         Returns: Json
       }
+      landlord_settlement_confirm_v1: {
+        Args: {
+          p_month: string
+          p_note?: string
+          p_revision: number
+          p_token: string
+        }
+        Returns: Json
+      }
       landlord_settlement_month_v1: {
         Args: { p_building_id: string; p_month: string }
+        Returns: Json
+      }
+      landlord_settlement_note_update_v1: {
+        Args: {
+          p_building_id: string
+          p_month: string
+          p_note: string
+          p_revision: number
+        }
         Returns: Json
       }
       landlord_settlement_overview_v1: {
