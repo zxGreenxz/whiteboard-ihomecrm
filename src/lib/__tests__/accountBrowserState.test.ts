@@ -54,6 +54,7 @@ describe("clearAccountBrowserState", () => {
       "ihome:financial-pending:v1:ns:user-a:org-1:key": "{}",
       "ihome:quick-entry:models:user-a": "{}",
       "ihomecrm.selectedOrganizationId:user-a": "{}",
+      "ihomecrm.camera-quality:user-a:playback": '{"quality":"hd"}',
       "pwa-install-hint-dismissed": "1",
     });
 
@@ -63,6 +64,7 @@ describe("clearAccountBrowserState", () => {
       "ihome:financial-pending:v1:ns:user-a:org-1:key",
       "ihome:pending-collection:v1:user-a:org-1:inv-1",
       "ihome:quick-entry:models:user-a",
+      "ihomecrm.camera-quality:user-a:playback",
       "ihomecrm.selectedOrganizationId:user-a",
       "pwa-install-hint-dismissed",
       "sb-tryymsxyyckgbrmmvozx-auth-token",
@@ -111,6 +113,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/accountBrowserState.ts": "tai-khoan",
   "src/components/layout/useSidebarState.ts": "gan-nguoi-dung",
   "src/lib/companyPreference.ts": "gan-nguoi-dung",
+  // Chất lượng camera: khoá theo userId và loại xem/xuất, không sang tài khoản khác.
+  "src/hooks/network-center/useCameraQuality.ts": "gan-nguoi-dung",
   "src/hooks/quick-entry/useQuickEntryFeed.ts": "gan-nguoi-dung",
   "src/lib/quickEntry/models.ts": "gan-nguoi-dung",
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",
