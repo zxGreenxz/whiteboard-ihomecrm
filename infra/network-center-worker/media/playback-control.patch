@@ -1,0 +1,518 @@
+diff --git a/internal/conf/path.go b/internal/conf/path.go
+index e6668ae..5159a68 100644
+--- a/internal/conf/path.go
++++ b/internal/conf/path.go
+@@ -270,6 +270,7 @@ type Path struct {
+ 	RTSPRangeType          RTSPRangeType  `json:"rtspRangeType"`
+ 	RTSPRangeStart         string         `json:"rtspRangeStart"`
+ 	RTSPScale              string         `json:"rtspScale"`
++	RTSPPlaybackRevision   string         `json:"rtspPlaybackRevision"`
+ 	RTSPUDPReadBufferSize  *uint          `json:"rtspUDPReadBufferSize,omitempty" deprecated:"true"`
+ 	RTSPUDPSourcePortRange []uint         `json:"rtspUDPSourcePortRange"`
+ 
+diff --git a/internal/core/path_manager.go b/internal/core/path_manager.go
+index 31c1546..ee97104 100644
+--- a/internal/core/path_manager.go
++++ b/internal/core/path_manager.go
+@@ -25,6 +25,10 @@ func pathConfCanBeUpdated(oldPathConf *conf.Path, newPathConf *conf.Path) bool {
+ 	clone.Name = newPathConf.Name
+ 	clone.Regexp = newPathConf.Regexp
+ 	clone.Forward = newPathConf.Forward
++	clone.RTSPRangeType = newPathConf.RTSPRangeType
++	clone.RTSPRangeStart = newPathConf.RTSPRangeStart
++	clone.RTSPScale = newPathConf.RTSPScale
++	clone.RTSPPlaybackRevision = newPathConf.RTSPPlaybackRevision
+ 
+ 	clone.Record = newPathConf.Record
+ 	clone.RecordPath = newPathConf.RecordPath
+diff --git a/internal/core/path_manager_test.go b/internal/core/path_manager_test.go
+index 698ab02..d50a3cf 100644
+--- a/internal/core/path_manager_test.go
++++ b/internal/core/path_manager_test.go
+@@ -19,6 +19,18 @@ import (
+ 
+ type dummyPublisher struct{}
+ 
++func TestIHomePlaybackUpdatePreservesPath(t *testing.T) {
++	old := &conf.Path{Source: "rtsp://example/recording", RTSPPlaybackRevision: "initial"}
++	next := old.Clone()
++	next.RTSPRangeType = conf.RTSPRangeTypeNPT
++	next.RTSPRangeStart = "120s"
++	next.RTSPScale = "8"
++	next.RTSPPlaybackRevision = "seek"
++	require.True(t, pathConfCanBeUpdated(old, next))
++	next.Source = "rtsp://different/recording"
++	require.False(t, pathConfCanBeUpdated(old, next))
++}
++
+ func (d *dummyPublisher) Close() {}
+ 
+ func (d *dummyPublisher) Log(_ logger.Level, _ string, _ ...any) {}
+diff --git a/internal/defs/api_static_source.go b/internal/defs/api_static_source.go
+index fda9323..61e199c 100644
+--- a/internal/defs/api_static_source.go
++++ b/internal/defs/api_static_source.go
+@@ -30,8 +30,9 @@ func (*APIStaticSourceTypeSpecificRTMP) apiStaticSourceTypeSpecific() {}
+ 
+ // APIStaticSourceTypeSpecificRTSP contains type-specific state of RTSP static sources.
+ type APIStaticSourceTypeSpecificRTSP struct {
+-	RemoteAddr string `json:"remoteAddr"`
+-	Transport  string `json:"transport"`
++	PlaybackRevision string `json:"playbackRevision"`
++	RemoteAddr       string `json:"remoteAddr"`
++	Transport        string `json:"transport"`
+ 
+ 	// inbound bytes
+ 	InboundBytes uint64 `json:"inboundBytes"`
+diff --git a/internal/protocols/rtsp/to_stream.go b/internal/protocols/rtsp/to_stream.go
+index d96221e..6664f71 100644
+--- a/internal/protocols/rtsp/to_stream.go
++++ b/internal/protocols/rtsp/to_stream.go
+@@ -29,6 +29,29 @@ type rtspSource interface {
+ 	OnPacketRTP(*description.Media, format.Format, gortsplib.OnPacketRTPFunc)
+ }
+ 
++type playbackRTPClock struct {
++	initialized          bool
++	inputTimestamp, ssrc uint32
++	outputTimestamp      int64
++	sequence             uint16
++	origin               time.Time
++}
++
++func (c *playbackRTPClock) normalize(pkt *rtp.Packet, now time.Time, rate int) (*rtp.Packet, int64) {
++	if !c.initialized {
++		c.initialized = true
++		c.origin = now
++		c.inputTimestamp, c.ssrc, c.sequence = pkt.Timestamp, pkt.SSRC, pkt.SequenceNumber
++	} else if c.inputTimestamp != pkt.Timestamp {
++		c.inputTimestamp = pkt.Timestamp
++		c.outputTimestamp = max(c.outputTimestamp+1, int64(now.Sub(c.origin).Seconds()*float64(rate)))
++	}
++	pkt = pkt.Clone()
++	pkt.Timestamp, pkt.SequenceNumber, pkt.SSRC = uint32(c.outputTimestamp), c.sequence, c.ssrc
++	c.sequence++
++	return pkt, c.outputTimestamp
++}
++
+ // ToStream maps a RTSP stream to a MediaMTX stream.
+ func ToStream(
+ 	source rtspSource,
+@@ -43,6 +66,9 @@ func ToStream(
+ 			cforma := forma
+ 
+ 			var ntpStat ntpState
++			// Controlled playback can jump backwards and reset recorder RTP state.
++			// Keep the downstream decoder on a monotonic receive clock and sequence.
++			var playbackClock playbackRTPClock
+ 
+ 			if !pathConf.UseAbsoluteTimestamp {
+ 				ntpStat = ntpStateReplace
+@@ -83,6 +109,9 @@ func ToStream(
+ 				if !ok {
+ 					return
+ 				}
++				if pathConf.RTSPPlaybackRevision != "" {
++					pkt, pts = playbackClock.normalize(pkt, time.Now(), cforma.ClockRate())
++				}
+ 
+ 				(*subStream).WriteUnit(cmedi, cforma, &unit.Unit{
+ 					PTS:        pts,
+diff --git a/internal/protocols/rtsp/to_stream_test.go b/internal/protocols/rtsp/to_stream_test.go
+new file mode 100644
+index 0000000..5c83950
+--- /dev/null
++++ b/internal/protocols/rtsp/to_stream_test.go
+@@ -0,0 +1,30 @@
++package rtsp
++
++import (
++	"testing"
++	"time"
++
++	"github.com/pion/rtp"
++	"github.com/stretchr/testify/require"
++)
++
++func TestIHomePlaybackRTPContinuity(t *testing.T) {
++	var clock playbackRTPClock
++	origin := time.Now()
++	packet := &rtp.Packet{Header: rtp.Header{Timestamp: 900000, SequenceNumber: 65535, SSRC: 123}}
++	first, pts := clock.normalize(packet, origin, 90000)
++	require.Equal(t, int64(0), pts)
++	require.Equal(t, uint32(900000), packet.Timestamp)                 // Source packet is not mutated.
++	packet.Timestamp, packet.SequenceNumber, packet.SSRC = 100, 9, 999 // Recorder resets on backward seek.
++	next, pts := clock.normalize(packet, origin.Add(time.Second), 90000)
++	require.Equal(t, int64(90000), pts)
++	require.Equal(t, first.SSRC, next.SSRC)
++	require.Equal(t, uint16(0), next.SequenceNumber)
++	sameFrame, samePTS := clock.normalize(packet, origin.Add(1100*time.Millisecond), 90000)
++	require.Equal(t, pts, samePTS)
++	require.Equal(t, next.Timestamp, sameFrame.Timestamp)
++	packet.Timestamp++
++	afterWrap, pts := clock.normalize(packet, origin.Add(14*time.Hour), 90000)
++	require.Greater(t, pts, int64(1<<32)) // Unit PTS remains 64-bit across RTP's 13.3-hour wrap.
++	require.Equal(t, uint32(pts), afterWrap.Timestamp)
++}
+diff --git a/internal/servers/rtsp/session.go b/internal/servers/rtsp/session.go
+index e4b686e..e2c7439 100644
+--- a/internal/servers/rtsp/session.go
++++ b/internal/servers/rtsp/session.go
+@@ -333,6 +333,7 @@ func (s *session) onSetup(c *conn, ctx *gortsplib.ServerHandlerOnSetupCtx,
+ // onPlay is called by rtspServer.
+ func (s *session) onPlay(_ *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
+ 	h := make(base.Header)
++	s.stream.NotifyRTSPReader()
+ 
+ 	if s.rsession.State() == gortsplib.ServerSessionStatePrePlay {
+ 		s.Log(logger.Info, "is reading from path '%s', with %s, %s",
+diff --git a/internal/staticsources/rtsp/source.go b/internal/staticsources/rtsp/source.go
+index f77e484..ada1ef4 100644
+--- a/internal/staticsources/rtsp/source.go
++++ b/internal/staticsources/rtsp/source.go
+@@ -86,8 +86,9 @@ type Source struct {
+ 	UDPReadBufferSize uint
+ 	Parent            parent
+ 
+-	mutex  sync.RWMutex
+-	client *gortsplib.Client
++	mutex            sync.RWMutex
++	client           *gortsplib.Client
++	playbackRevision string
+ }
+ 
+ // Log implements logger.Writer.
+@@ -118,6 +119,7 @@ func (s *Source) Info() defs.StaticSourceInfo {
+ 
+ 	return defs.StaticSourceInfo{
+ 		TypeSpecific: &defs.APIStaticSourceTypeSpecificRTSP{
++			PlaybackRevision:          s.playbackRevision,
+ 			RemoteAddr:                remoteAddr,
+ 			Transport:                 transport,
+ 			InboundBytes:              stats.InboundBytes,
+@@ -177,6 +179,8 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
+ 		udpReadBufferSize = *params.Conf.RTSPUDPReadBufferSize
+ 	}
+ 
++	var playbackConf atomic.Pointer[conf.Path]
++	playbackConf.Store(params.Conf)
+ 	c := &gortsplib.Client{
+ 		Protocol:          params.Conf.RTSPTransport.Protocol,
+ 		ReadTimeout:       time.Duration(s.ReadTimeout),
+@@ -189,11 +193,12 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
+ 			uint16(params.Conf.RTSPUDPSourcePortRange[1]),
+ 		},
+ 		OnRequest: func(req *base.Request) {
+-			if params.Conf.RTSPScale != "" && req.Method == base.Play {
++			current := playbackConf.Load()
++			if current.RTSPScale != "" && req.Method == base.Play {
+ 				if req.Header == nil {
+ 					req.Header = base.Header{}
+ 				}
+-				req.Header["Scale"] = base.HeaderValue{params.Conf.RTSPScale}
++				req.Header["Scale"] = base.HeaderValue{current.RTSPScale}
+ 			}
+ 
+ 			s.Log(logger.Debug, "[c->s] %s", rtsp.RequestForLog(req))
+@@ -280,6 +285,7 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
+ 
+ 	s.mutex.Lock()
+ 	s.client = c
++	s.playbackRevision = ""
+ 	s.mutex.Unlock()
+ 
+ 	defer func() {
+@@ -289,16 +295,69 @@ func (s *Source) Run(params defs.StaticSourceRunParams) error {
+ 	}()
+ 
+ 	readErr := make(chan error)
++	initialReady := make(chan struct{})
+ 	go func() {
+-		readErr <- s.runInner(params.Context, c, u, params.Conf, decodeErrors)
++		readErr <- s.runInner(params.Context, c, u, params.Conf, decodeErrors, initialReady)
+ 	}()
+ 
++	var reload <-chan *conf.Path
+ 	for {
+ 		select {
+ 		case err = <-readErr:
+ 			return err
+ 
+-		case <-params.ReloadConf:
++		case <-initialReady:
++			initialReady = nil
++			reload = params.ReloadConf
++			s.mutex.Lock()
++			s.playbackRevision = params.Conf.RTSPPlaybackRevision
++			s.mutex.Unlock()
++
++		case next := <-reload:
++			if next == nil {
++				continue
++			}
++			previous := playbackConf.Load()
++			if next.RTSPRangeType == previous.RTSPRangeType && next.RTSPRangeStart == previous.RTSPRangeStart && next.RTSPScale == previous.RTSPScale && next.RTSPPlaybackRevision == previous.RTSPPlaybackRevision {
++				continue
++			}
++			controlDone := make(chan error, 1)
++			go func() {
++				rangeHeader, controlErr := createRangeHeader(next)
++				if controlErr == nil {
++					_, controlErr = c.Pause()
++				}
++				if controlErr == nil {
++					playbackConf.Store(next)
++					_, controlErr = c.Play(rangeHeader)
++				}
++				controlDone <- controlErr
++			}()
++			var controlErr error
++			timer := time.NewTimer(3 * time.Second)
++			select {
++			case controlErr = <-controlDone:
++				timer.Stop()
++			case <-timer.C:
++				c.Close()
++				<-controlDone
++				<-readErr
++				return fmt.Errorf("playback control timed out")
++			case <-params.Context.Done():
++				timer.Stop()
++				c.Close()
++				<-controlDone
++				<-readErr
++				return nil
++			}
++			if controlErr != nil {
++				c.Close()
++				<-readErr
++				return fmt.Errorf("playback control failed: %w", controlErr)
++			}
++			s.mutex.Lock()
++			s.playbackRevision = next.RTSPPlaybackRevision
++			s.mutex.Unlock()
+ 
+ 		case <-params.Context.Done():
+ 			c.Close()
+@@ -314,6 +373,7 @@ func (s *Source) runInner(
+ 	u *base.URL,
+ 	pathConf *conf.Path,
+ 	decodeErrors *errordumper.Dumper,
++	initialReady chan<- struct{},
+ ) error {
+ 	desc, _, err := c.Describe(u)
+ 	if err != nil {
+@@ -323,7 +383,7 @@ func (s *Source) runInner(
+ 	var medias []*description.Media
+ 
+ 	for _, m := range desc.Medias {
+-		if !m.IsBackChannel {
++		if !m.IsBackChannel && (pathConf.RTSPPlaybackRevision == "" || m.Type == description.MediaTypeVideo) {
+ 			_, err = c.Setup(desc.BaseURL, m, 0, 0)
+ 			if err != nil {
+ 				return err
+@@ -410,6 +470,11 @@ func (s *Source) runInner(
+ 		defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
+ 
+ 		subStream = res.SubStream
++		if pathConf.RTSPPlaybackRevision != "" {
++			if err := subStream.Stream.WaitForPlaybackReader(ctx); err != nil {
++				return nil
++			}
++		}
+ 	}
+ 
+ 	rangeHeader, err := createRangeHeader(pathConf)
+@@ -421,6 +486,7 @@ func (s *Source) runInner(
+ 	if err != nil {
+ 		return err
+ 	}
++	close(initialReady)
+ 
+ 	if demuxer != nil {
+ 		demuxerErr := demuxer.Wait(ctx)
+diff --git a/internal/staticsources/rtsp/source_test.go b/internal/staticsources/rtsp/source_test.go
+index 1d07681..891c722 100644
+--- a/internal/staticsources/rtsp/source_test.go
++++ b/internal/staticsources/rtsp/source_test.go
+@@ -6,6 +6,7 @@ import (
+ 	"context"
+ 	"crypto/tls"
+ 	"sync"
++	"sync/atomic"
+ 	"testing"
+ 	"time"
+ 
+@@ -32,6 +33,90 @@ type testServer struct {
+ 	onPlay     func(*gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error)
+ }
+ 
++func (*testServer) OnPause(*gortsplib.ServerHandlerOnPauseCtx) (*base.Response, error) {
++	return &base.Response{StatusCode: base.StatusOK}, nil
++}
++
++func TestIHomePlaybackControl(t *testing.T) {
++	var strm *gortsplib.ServerStream
++	var plays atomic.Int32
++	var describes atomic.Int32
++	playEntered := make(chan struct{})
++	acceptPlay := make(chan struct{})
++	var session *gortsplib.ServerSession
++	server := &gortsplib.Server{RTSPAddress: "127.0.0.1:8555", Handler: &testServer{
++		onDescribe: func(*gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
++			describes.Add(1)
++			return &base.Response{StatusCode: base.StatusOK}, strm, nil
++		},
++		onSetup: func(*gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
++			return &base.Response{StatusCode: base.StatusOK}, strm, nil
++		},
++		onPlay: func(ctx *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
++			switch plays.Add(1) {
++			case 1:
++				session = ctx.Session
++			case 2:
++				require.Same(t, session, ctx.Session)
++				require.Equal(t, base.HeaderValue{"npt=120-"}, ctx.Request.Header["Range"])
++				require.Equal(t, base.HeaderValue{"8"}, ctx.Request.Header["Scale"])
++				close(playEntered)
++				<-acceptPlay
++			case 3:
++				require.Same(t, session, ctx.Session)
++				require.Empty(t, ctx.Request.Header["Scale"])
++			}
++			return &base.Response{StatusCode: base.StatusOK}, nil
++		},
++	}}
++	require.NoError(t, server.Start())
++	defer server.Close()
++	strm = &gortsplib.ServerStream{Server: server, Desc: &description.Session{Medias: []*description.Media{test.UniqueMediaH264()}}}
++	require.NoError(t, strm.Initialize())
++	defer strm.Close()
++	parent := &test.StaticSourceParent{}
++	parent.Initialize()
++	defer parent.Close()
++	source := &rtsp.Source{ReadTimeout: conf.Duration(3 * time.Second), WriteTimeout: conf.Duration(3 * time.Second), WriteQueueSize: 512, Parent: parent}
++	cnf := &conf.Path{RTSPUDPSourcePortRange: []uint{32768, 60999}, RTSPPlaybackRevision: "initial"}
++	require.NoError(t, cnf.RTSPTransport.UnmarshalJSON([]byte(`"tcp"`)))
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan error, 1)
++	reload := make(chan *conf.Path)
++	go func() {
++		done <- source.Run(defs.StaticSourceRunParams{Context: ctx, ResolvedSource: "rtsp://127.0.0.1:8555/test", Conf: cnf, ReloadConf: reload})
++	}()
++	defer func() { cancel(); require.NoError(t, <-done) }()
++	revision := func() string {
++		info := source.Info()
++		if specific, ok := info.TypeSpecific.(*defs.APIStaticSourceTypeSpecificRTSP); ok {
++			return specific.PlaybackRevision
++		}
++		return ""
++	}
++	require.Eventually(t, func() bool { return revision() == "initial" }, 3*time.Second, 10*time.Millisecond)
++	next := cnf.Clone()
++	next.RTSPRangeType = conf.RTSPRangeTypeNPT
++	next.RTSPRangeStart = "120s"
++	next.RTSPScale = "8"
++	next.RTSPPlaybackRevision = "seek"
++	reload <- next
++	select {
++	case <-playEntered:
++	case <-time.After(3 * time.Second):
++		t.Fatal("missing PLAY")
++	}
++	require.Equal(t, "initial", revision())
++	close(acceptPlay)
++	require.Eventually(t, func() bool { return revision() == "seek" }, time.Second, 10*time.Millisecond)
++	normal := next.Clone()
++	normal.RTSPScale = ""
++	normal.RTSPPlaybackRevision = "normal"
++	reload <- normal
++	require.Eventually(t, func() bool { return revision() == "normal" }, time.Second, 10*time.Millisecond)
++	require.EqualValues(t, 1, describes.Load())
++}
++
+ func (sh *testServer) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx,
+ ) (*base.Response, *gortsplib.ServerStream, error) {
+ 	return sh.onDescribe(ctx)
+diff --git a/internal/stream/stream.go b/internal/stream/stream.go
+index 671c2f0..f93e321 100644
+--- a/internal/stream/stream.go
++++ b/internal/stream/stream.go
+@@ -2,6 +2,7 @@
+ package stream
+ 
+ import (
++	"context"
+ 	"os"
+ 	"reflect"
+ 	"sync"
+@@ -542,6 +543,27 @@ func (s *Stream) WaitForReaders() {
+ 	<-s.hasReaders
+ }
+ 
++// NotifyRTSPReader wakes sources waiting for their first downstream PLAY.
++func (s *Stream) NotifyRTSPReader() {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++	select {
++	case <-s.hasReaders:
++	default:
++		close(s.hasReaders)
++	}
++}
++
++// WaitForPlaybackReader avoids losing the first recorded keyframe before a reader joins.
++func (s *Stream) WaitForPlaybackReader(ctx context.Context) error {
++	select {
++	case <-s.hasReaders:
++		return nil
++	case <-ctx.Done():
++		return ctx.Err()
++	}
++}
++
+ // OutDescCopy returns a copy of the output description.
+ func (s *Stream) OutDescCopy() *description.Session {
+ 	s.outDescMutex.RLock()
+diff --git a/internal/stream/stream_test.go b/internal/stream/stream_test.go
+index a41196c..63d00b0 100644
+--- a/internal/stream/stream_test.go
++++ b/internal/stream/stream_test.go
+@@ -1,10 +1,12 @@
+ package stream
+ 
+ import (
++	"context"
+ 	"os"
+ 	"sync"
+ 	"sync/atomic"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/bluenviron/gortsplib/v5/pkg/description"
+ 	"github.com/bluenviron/gortsplib/v5/pkg/format"
+@@ -19,6 +21,24 @@ import (
+ 	"github.com/bluenviron/mediamtx/internal/unit"
+ )
+ 
++func TestIHomePlaybackReaderBarrier(t *testing.T) {
++	s := &Stream{hasReaders: make(chan struct{})}
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan error, 1)
++	go func() { done <- s.WaitForPlaybackReader(ctx) }()
++	select {
++	case <-done:
++		t.Fatal("recording must not start before downstream PLAY")
++	case <-time.After(20 * time.Millisecond):
++	}
++	s.NotifyRTSPReader()
++	s.NotifyRTSPReader() // Multiple readers must not close the channel twice.
++	require.NoError(t, <-done)
++	cancel()
++	s = &Stream{hasReaders: make(chan struct{})}
++	require.ErrorIs(t, s.WaitForPlaybackReader(ctx), context.Canceled)
++}
++
+ type nilLogger struct{}
+ 
+ func (nilLogger) Log(logger.Level, string, ...any) {

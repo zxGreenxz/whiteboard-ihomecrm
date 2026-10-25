@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { PlaybackClock, PlaybackPreviews } from "@/lib/network-center/cameraPlayback";
+import { PlaybackClock, PlaybackControls, PlaybackPreviews } from "@/lib/network-center/cameraPlayback";
 
 describe("recording position", () => {
+  it("resets the fallback clock when the same video element seeks", () => { const clock = new PlaybackClock(8, 8, 40); expect(clock.frame(undefined, 41)).toBe(8); });
   it("uses source RTP time instead of the real-time WebRTC clock, including timestamp wrap", () => {
     const clock = new PlaybackClock(8);
     expect(clock.seconds(10)).toBe(80);
@@ -21,6 +22,15 @@ describe("recording position", () => {
     expect(clock.frame(90000 * 11, 10)).toBe(80);
     expect(clock.frame(90000 * 10, 11)).toBe(80);
     expect(clock.frame(90000 * 12, 11)).toBe(88);
+  });
+});
+
+describe("persistent playback commands", () => {
+  it("coalesces rapid seeks and never applies stale acknowledgements or callbacks after stop", async () => {
+    const finish: Array<() => void> = []; const apply = vi.fn(async () => new Promise<void>((resolve) => finish.push(resolve))); const done = vi.fn(); const failed = vi.fn();
+    const queue = new PlaybackControls(apply,done,failed); queue.request(1000,1); queue.request(2000,4); queue.request(3000,8);
+    expect(apply).toHaveBeenCalledOnce(); finish[0]!(); await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(2)); expect(done).not.toHaveBeenCalled(); expect(apply).toHaveBeenLastCalledWith(3000,8);
+    finish[1]!(); await vi.waitFor(() => expect(done).toHaveBeenCalledWith(3000,8)); queue.request(4000,1); queue.cancel(); finish[2]!(); await Promise.resolve(); expect(done).toHaveBeenCalledOnce(); expect(failed).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,38 @@
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { playbackThumbnail } from "../src/cameraPreview.js";
+import type { playbackSources } from "../src/cameraPlayback.js";
+import type { LiveRecorder } from "../src/cameraLive.js";
+const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
+vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
+const recorder = { password: "secret", username: "private", rtspOrigin: "rtsp://10.0.0.1" } as LiveRecorder;
+const start = "2026-10-20T01:00:00Z", end = "2026-10-20T01:00:20Z";
+let child: EventEmitter & { stdout: PassThrough; kill: ReturnType<typeof vi.fn> };
+const add = vi.fn(), remove = vi.fn();
+const sources = { add, remove } as unknown as ReturnType<typeof playbackSources>;
+beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); add.mockResolvedValue("playback-fixture"); remove.mockResolvedValue(undefined); child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), kill: vi.fn() }); mocks.spawn.mockReturnValue(child); });
+afterEach(() => vi.useRealTimers());
+it("returns only a bounded JPEG in memory and keeps credentials out of process arguments", async () => {
+  const pending = playbackThumbnail(sources, "/opt/ffmpeg", recorder, 1, start, end, new AbortController().signal);
+  await vi.advanceTimersByTimeAsync(0);
+  child.stdout.write(Buffer.from([255, 216, 1, 2, 255, 217])); child.emit("close", 0);
+  expect(await pending).toBe("/9gBAv/Z"); expect(remove).toHaveBeenCalledWith("playback-fixture");
+  expect(add.mock.calls[0]?.[3]).toBe(true);
+  const args = JSON.stringify(mocks.spawn.mock.calls[0]); expect(args).not.toContain("secret"); expect(args).not.toContain("10.0.0.1"); expect(args).toContain("pipe:1");
+});
+it.each(["abort", "timeout", "oversize", "invalid", "spawn-error"])("releases the source after child exit on %s", async (reason) => {
+  const abort = new AbortController();
+  const pending = playbackThumbnail(sources, "/opt/ffmpeg", recorder, 1, start, end, abort.signal);
+  const rejected = expect(pending).rejects.toMatchObject({ code: "RECORDING_UNAVAILABLE" });
+  await vi.advanceTimersByTimeAsync(0);
+  if (reason === "abort") abort.abort();
+  else if (reason === "timeout") await vi.advanceTimersByTimeAsync(5000);
+  else if (reason === "oversize") child.stdout.write(Buffer.alloc(131073));
+  else if (reason === "spawn-error") child.emit("error", new Error("spawn"));
+  else child.stdout.write(Buffer.from("not jpeg"));
+  expect(remove).not.toHaveBeenCalled();
+  if (["abort", "timeout", "oversize"].includes(reason)) expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+  child.emit("close", reason === "invalid" ? 0 : 1); await rejected;
+  expect(remove).toHaveBeenCalledOnce();
+});
