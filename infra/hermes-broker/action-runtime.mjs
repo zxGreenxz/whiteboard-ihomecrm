@@ -22,6 +22,7 @@ import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, Req
   confirmationRequired, listedActionTools, nameUnresolvedDetail, needsInput, requestIdShapeDetail } from './action-contract.mjs';
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
 import { consentAuditText, consentClear, consentRequired } from './consent-guard.mjs';
+import { applyDatePhrases } from './vn-relative-date.mjs';
 
 const fail = code => { throw new BrokerError(code); };
 // confirmation_invalid kèm câu tĩnh nói phần nào lệch (Thu chi lượt 14; action-contract.mjs CONFIRM_INVALID_DETAILS).
@@ -148,6 +149,16 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         return Object.freeze({});
       }
       plan.params = checked.value; plan.class = action.class;
+      // Lượt 15 (vn-relative-date.mjs): cụm ngày NGUYÊN VĂN (deadlinePhrase / datePhrase) ⇒ connector tự quy đổi theo giờ VN, tuần bắt
+      // đầu thứ Hai, ghi đè ngày mô hình tự tính; SQL nhận params đã đổi (không còn cụm), token vẫn gắn params mô hình gửi (hai lượt
+      // gửi y nguyên ⇒ cùng khoá, cùng kết quả đổi). Không hiểu cụm ⇒ hỏi lại ngày, không đoán.
+      const dated = applyDatePhrases(action.id, plan.params, clock());
+      if (dated.unclear !== null) {
+        plan.immediate = needsInput({ action: action.id, reason: 'date_out_of_range',
+          detail: `Chưa hiểu ngày "${dated.unclear}"; hỏi lại người dùng ngày cụ thể (vd thứ Sáu 30/10).` });
+        return Object.freeze({});
+      }
+      plan.sqlParams = dated.params; plan.dateNotes = dated.notes;
       let request;
       if (plan.confirmToken !== undefined) {
         // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được chỉ đổi token khi consentText là lời đồng ý rõ của người
@@ -170,12 +181,12 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         plan.requestId = issuedRequestId;
         if (consenting) plan.consent = Object.freeze({ action: action.id, requestId: plan.requestId, text: consentAuditText(plan.consentText) });
         plan.phase = 'apply';
-        request = { op: 'run', action: action.id, phase: 'apply', requestId: plan.requestId, params: plan.params,
+        request = { op: 'run', action: action.id, phase: 'apply', requestId: plan.requestId, params: plan.sqlParams,
           resolved: redeemed.payload.resolved, basis: redeemed.payload.basis };
       } else {
         plan.requestId ??= mint();
         plan.phase = action.class === 'reversible' ? 'auto' : 'preview';
-        request = { op: 'run', action: action.id, phase: plan.phase, requestId: plan.requestId, params: plan.params };
+        request = { op: 'run', action: action.id, phase: plan.phase, requestId: plan.requestId, params: plan.sqlParams };
       }
       const receipt = await service.prepareAction(token, Object.freeze(request), { signal });
       if (!emptyReceipt(receipt)) fail('backend_unavailable');
@@ -223,7 +234,9 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
           // requestId / params (lượt 14), action (lượt 16): để nói phần lệch khi token bị trình sai; requestId còn là requestId của lượt xác nhận
           // (lượt 16). Không gửi xuống SQL, không tới mô hình.
           { resolved: structuredClone(outcome.resolved), basis: outcome.basis, requestId: plan.requestId, params: canonicalJson(plan.params), action: plan.action });
-        return known(content(confirmationRequired({ action: plan.action, requestId: plan.requestId, preview: outcome.preview, warnings: outcome.warnings ?? [],
+        // Câu "Hiểu '…' là thứ … dd/mm/yyyy" của cụm ngày (lượt 15) đứng đầu cảnh báo để bot đọc lại cho người dùng.
+        const warnings = [...(plan.dateNotes ?? []), ...(outcome.warnings ?? [])].slice(0, 10);
+        return known(content(confirmationRequired({ action: plan.action, requestId: plan.requestId, preview: outcome.preview, warnings,
           confirmToken: issued.token, expiresAt: issued.expiresAt, consent: consentRequired(catalog.get(plan.action)) })));
       }
       if (outcome.kind === 'applied') {
@@ -234,7 +247,7 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // requestId mới ⇒ ghi trùng (như họ phiếu chi cũ, broker.mjs). Kết quả quá cỡ ⇒ applied gọn.
         const fits = fitsApplied(outcome.result);
         return content({ outcome: 'applied', applied: true, action: plan.action, requestId: plan.requestId, result: fits ? outcome.result : null,
-          ...(fits ? {} : { resultOmitted: true }), link: outcome.link ?? null });
+          ...(fits ? {} : { resultOmitted: true }), link: outcome.link ?? null, ...(plan.dateNotes?.length ? { notes: plan.dateNotes } : {}) });
       }
       fail('backend_unavailable');
     },

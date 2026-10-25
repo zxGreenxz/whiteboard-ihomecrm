@@ -12,7 +12,7 @@ const place = () => ({ buildingName: param.name('building'), roomName: param.nam
 
 export const CONTRACT_NOTICE_SET = defineAction({ id: 'contract.notice_set', page: 'contract', key: 'contracts.terminate', class: 'reversible', rpc: RPC,
   title: 'Báo trả phòng / dời ngày báo trả: ngày khách dự kiến dọn đi (khác ngày hết hạn HĐ); ghi thẳng',
-  params: { ...place(), date: param.date(), note: param.text(3, 500, { optional: true }) },
+  params: { ...place(), date: param.date(), datePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày người dùng nói ("thứ hai tuần trước", "cuối tháng"); connector tự đổi ra ngày, ghi đè date' }), note: param.text(3, 500, { optional: true }) },
   reasons: ['room_has_no_active_contract', 'notice_date_past', 'already_returned'] });
 export const CONTRACT_NOTICE_CANCEL = defineAction({ id: 'contract.notice_cancel', page: 'contract', key: 'contracts.terminate', class: 'reversible', rpc: RPC,
   title: 'Huỷ báo trả phòng (khách ở tiếp); cần lý do; ghi thẳng',
@@ -41,7 +41,7 @@ export const CONTRACT_RENEW = defineAction({ id: 'contract.renew', page: 'contra
 // suy từ ngày (D-HĐ6); forfeit=true chỉ khi người dùng nói bỏ cọc. note = nội dung thanh lý (hàm web bắt buộc).
 export const CONTRACT_RETURN = defineAction({ id: 'contract.return', page: 'contract', key: 'contracts.terminate', class: 'irreversible', rpc: RPC,
   title: 'Ghi nhận khách ĐÃ trả phòng, quyết toán sau trên web; không lùi được; forfeit=true chỉ khi người dùng nói bỏ cọc',
-  params: { ...place(), date: param.date(), note: param.text(3, 1000), forfeit: param.bool({ optional: true }) },
+  params: { ...place(), date: param.date(), datePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày người dùng nói ("thứ hai tuần trước", "cuối tháng"); connector tự đổi ra ngày, ghi đè date' }), note: param.text(3, 1000), forfeit: param.bool({ optional: true }) },
   reasons: ['room_has_no_active_contract', 'already_returned', 'return_date_future'] });
 
 // Mốc 5 (Q22 = a; migration 20261022074815): thêm / bớt người ở (khoá contracts.edit, ghi thẳng; không bỏ được người đại diện) và
