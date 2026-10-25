@@ -7,6 +7,7 @@ import { BrokerError, actionRejected } from './broker.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT } from './read-misuse-hints.mjs';
+import { CONFIRM_INVALID_TEXTS, requestIdShapeDetail } from './action-contract.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -181,6 +182,22 @@ test('invalid_request forwards only a static read-misuse hint as detail, nothing
     problem = Object.assign(new BrokerError('invalid_request'), { detail: hint, args: { query: 'PRIVATE' } });
     assert.deepEqual(await invoke('crm_read_contracts', { fromDate: '2026-10-21' }), { error: 'invalid_request', detail: hint });
   }
+  // Thu chi lượt 14: confirmation_invalid chỉ mang một câu tĩnh của CONFIRM_INVALID_TEXTS (phần nào lệch); chuỗi khác — kể cả câu đọc — không tới.
+  for (const text of CONFIRM_INVALID_TEXTS) {
+    problem = Object.assign(new BrokerError('confirmation_invalid'), { detail: text });
+    assert.deepEqual(await invoke('crm_action_run', {}), { error: 'confirmation_invalid', detail: text });
+  }
+  for (const detail of ['requestId PRIVATE khác', READ_MISUSE_HINTS.contracts.hint, null]) {
+    problem = Object.assign(new BrokerError('confirmation_invalid'), { detail });
+    assert.deepEqual(await invoke('crm_action_run', {}), { error: 'confirmation_invalid' }, JSON.stringify(detail));
+  }
+  // Thu chi lượt 16: invalid_request của requestId sai khuôn mang đúng câu dựng bằng requestIdShapeDetail (số ký tự, không chuỗi đã gửi).
+  for (const length of [35, 0, null]) {
+    problem = Object.assign(new BrokerError('invalid_request'), { detail: requestIdShapeDetail(length) });
+    assert.deepEqual(await invoke('crm_action_status', {}), { error: 'invalid_request', detail: requestIdShapeDetail(length) });
+  }
+  problem = Object.assign(new BrokerError('invalid_request'), { detail: `${requestIdShapeDetail(35)} PRIVATE` });
+  assert.deepEqual(await invoke('crm_action_status', {}), { error: 'invalid_request' });
   assert.ok(READ_MISUSE_HINT_TEXTS.includes(READ_MISUSE_HINTS.pending_approvals.hint) && READ_MISUSE_HINT_TEXTS.includes(BUILDING_ID_HINT));
   for (const detail of [`${READ_MISUSE_HINTS.contracts.hint} PRIVATE`, 'buildingId PRIVATE không hợp lệ', '', { hint: READ_MISUSE_HINTS.contracts.hint }, null]) {
     problem = Object.assign(new BrokerError('invalid_request'), { detail });

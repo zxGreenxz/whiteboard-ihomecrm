@@ -20,7 +20,11 @@ export const ACTION_REASONS = Object.freeze({
   amount_out_of_range: reason('needs_input', 'fix', 'Số tiền ngoài giới hạn cho phép; hỏi lại người dùng số tiền.'),
   date_out_of_range: reason('needs_input', 'fix', 'Ngày không hợp lệ (ngoài khoảng cho phép hoặc ở tương lai); hỏi lại người dùng ngày.'),
   not_found: reason('needs_input', 'fix', 'Không tìm thấy đối tượng này trong phạm vi quyền của anh/chị; hỏi lại người dùng.'),
+  // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): lượt xác nhận của thao tác không lùi được thiếu consentText hoặc câu không phải lời đồng ý rõ.
+  consent_unclear: reason('needs_input', 'fix', 'Chưa thấy lời đồng ý rõ cho thao tác KHÔNG lùi được; hỏi lại người dùng có đồng ý ghi không.'),
   action_disabled: reason('rejected', 'never', 'Thao tác này chưa được bật cho kết nối.'),
+  // Lượt 11 (nghiệm thu 24/10): khoá đã bật cho kết nối nhưng người dùng chưa được cấp quyền CRM tương ứng (khác action_disabled).
+  forbidden: reason('rejected', 'never', 'Anh/chị chưa có quyền CRM cho thao tác này; nhờ chủ hoặc quản trị cấp quyền trong Phân quyền rồi thử lại.'),
   not_allowed: reason('rejected', 'never', 'Anh/chị không có quyền làm thao tác này ở toà này.'),
   private_chat_only: reason('rejected', 'never', 'Lệnh ghi chỉ nhận trong chat riêng.'),
   state_changed: reason('rejected', 'preview', 'Dữ liệu vừa đổi sau bản xem trước; cần xem trước lại.'),
@@ -73,6 +77,8 @@ function contractReasons() {
     room_already_locked: reason('rejected', 'never', 'Phòng đang được khoá tạm; gỡ khoá cũ trước nếu muốn khoá lại.'),
     no_open_lock: reason('rejected', 'never', 'Phòng này không có khoá tạm nào đang mở.'),
     cannot_remove_representative: reason('rejected', 'never', 'Không bỏ được người đại diện hợp đồng qua bot; đổi người đại diện trên web trước.'),
+    // Lượt 12 (nghiệm thu C3 24/10): ngày trả rơi trước HĐ hiện hành ⇒ phòng đã có HĐ mới; không ghi trả lần hai (kèm link HĐ trước).
+    room_has_new_contract: reason('rejected', 'never', 'Phòng đã có HĐ mới sau ngày này; HĐ trước đã ghi trả phòng (chờ quyết toán) hoặc đã thanh lý, không ghi lần hai. Xem HĐ trước ở link.'),
   };
 }
 // Trang Công việc: hạn mức giao việc qua bot (Q37). Số trong câu là seed của app_private.hermes_task_limits (20261022031548);
@@ -102,8 +108,12 @@ function invoiceReasons() {
     overpay_needs_choice: reason('needs_input', 'fix', 'Khách trả dư; hỏi người dùng giữ lại cho kỳ sau (overpay=keep) hay trả lại khách (overpay=return).'),
     invoice_not_collectible: reason('rejected', 'never', 'Hoá đơn nháp hoặc đã huỷ, không thu tiền được.'),
     credit_requires_contract: reason('rejected', 'never', 'Hoá đơn không gắn hợp đồng nên không giữ phần dư được; chỉ trả lại khách.'),
-    receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này, hoặc anh/chị không giữ/biết sổ nào của toà; cài ở Sổ nhận tiền trên web.'),
+    receiving_book_missing: reason('rejected', 'never', 'Toà chưa cài sổ nhận cho hình thức này (chuyển khoản / POS); nhờ chủ cài ở Sổ nhận tiền trên web.'),
+    // Lượt 8 (nghiệm thu 24/10): toà ĐÃ cài sổ nhận mà người hỏi không giữ/biết sổ nào — luật giữ sổ của hàm thu web, không phải thiếu cài đặt.
+    receiving_book_not_held: reason('rejected', 'never', 'Anh/chị chưa được giao (giữ hoặc biết) sổ nhận chuyển khoản / POS nào của toà này nên chưa ghi thu được; nhờ chủ giao sổ, hoặc để người giữ sổ ghi.'),
     reconciliation_required: reason('rejected', 'never', 'Hoá đơn có bút toán/cơ cấu chưa đối soát; nhờ kế toán kiểm trên web.'),
+    // Lượt 14 (nghiệm thu C3c): ngày thu rơi vào tháng toà đã chốt lợi nhuận (luật trigger phiếu của web) — kiểm TRƯỚC khi tìm hoá đơn kỳ sau.
+    period_closed: reason('rejected', 'never', 'Ngày thu thuộc tháng toà đã chốt lợi nhuận: không ghi thu với ngày đó, không tự đổi ngày; báo người dùng (chủ mở khoá tháng ở tab Chốt LN, hoặc nói ngày khác).'),
     // Mốc 4 — ghi chỉ số: bốn mã hỏi lại người dùng, hai mã chỉ đường web.
     meter_not_found: reason('needs_input', 'fix', 'Phòng không có công tơ đang dùng loại này; hỏi lại phòng hoặc loại (điện/nước).'),
     meter_ambiguous: reason('needs_input', 'fix', 'Phòng có nhiều công tơ cùng loại; hỏi mã công tơ.'),

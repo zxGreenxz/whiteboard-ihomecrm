@@ -5,6 +5,9 @@ import { sharedW2a, BUILDING, ORG, FOREIGN, USER, ROOM, ROOM2, ROOM3, ROOM4, INV
   INV_C_UNPAID, INV_C_REV, CONTRACT_A, CONTRACT_FULL, CONTRACT_FI, ADJ_PENDING, ADJ_OLD } from './wave2-a-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
+import { REMINDER_LINK_SENTENCE } from './public-link.mjs';
+import { finishDomainResult } from './domain-mount.mjs';
+import { W2 } from './wave2-registry.mjs';
 
 // Đợt 3 trang Hoá đơn — đọc bù (a)–(f) + soạn tin nhắc nợ (docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 7). MỘT PGlite gói A cho
 // cả file (sharedW2a: dải a + z, gồm hai migration 20261022051118 / 20261022051620), mỗi ca BEGIN … ROLLBACK. Số liệu tính tay từ fixture
@@ -115,6 +118,28 @@ test('collection_by_method (c): đã thu theo NGÀY THU tách TM/TK như trang T
   assert.deepEqual((await direct(env, 'collection_by_method', { fromDate: '2026-10-16', toDate: '2026-10-16' })).summary.total, '2000000', 'hôm nay');
 }));
 
+// Lượt 14 (nghiệm thu C3c: "tổng thu tháng này theo hình thức" thiếu TM, cộng cả cấn trừ): hàm đọc thay ở file dải gói A — tiền = số GIỮ LẠI
+// collected_amount của public.active_payment_receipts (áp vào hoá đơn + tiền dư khách để lại, trừ tiền thối; nguồn thẻ Đã thu / TM / TK / TT /
+// Cấn trừ của trang Hoá đơn), vẫn theo NGÀY THU; cấn trừ CT có số giữ lại 0. View ở đây tối giản trên payments (view thật đo ở tầng 2).
+const L14_PATH = 'supabase/migrations/20261024185815_hermes_w2a_invoice_collection_retained_v1.sql';
+test('lượt 14 collection_by_method: số giữ lại gồm tiền dư khách để lại, cấn trừ không cộng vào tổng; đã hoàn tác vẫn bỏ', () => inCase(async env => {
+  const l14 = readFileSync(L14_PATH, 'utf8').replaceAll('\r\n', '\n');
+  const fn = l14.match(/CREATE OR REPLACE FUNCTION public\.invoice_collection_by_method_v1\([\s\S]*?\$fn\$;/);
+  assert.ok(fn, 'hàm đọc trong migration lượt 14');
+  assert.doesNotMatch(l14.replace(/--[^\n]*/g, ''), /hermes_|\bDROP\b|\bGRANT\b|\bREVOKE\b|INSERT |UPDATE |DELETE /i, 'file dùng chung: không hàm trợ lý, không đổi quyền, không ghi');
+  // Fixture gói A nạp mọi file dải A (kể cả file lượt 14) trên view dòng thu tối giản (wave2-a-sql-fixture.mjs): số giữ lại = retained_amount.
+  assert.match((await env.db.query("SELECT prosrc FROM pg_proc WHERE oid='public.invoice_collection_by_method_v1(uuid,uuid[],date,date)'::regprocedure")).rows[0].prosrc,
+    /FROM public.active_payment_receipts p/, 'thân sống là thân lượt 14');
+  await env.db.exec(`    UPDATE public.payments SET retained_amount=1050000 WHERE receipt_number='PT-A1';
+    INSERT INTO public.payments(id,organization_id,invoice_id,receipt_number,amount,payment_method,payment_date,created_at,retained_amount) VALUES
+      ('0a0a0a0a-0000-4000-8000-000000000150','${ORG}','${INV_C_UNPAID}','PT-CT',300000,'CT','2026-10-10','2026-10-10T03:00:00Z',0);`);
+  const value = await direct(env, 'collection_by_method');
+  assert.deepEqual(pick(value.rows, ['method', 'label', 'paymentCount', 'amount']), [['CT', 'Cấn trừ', 1, '0'], ['TK', 'Chuyển khoản', 1, '2000000'],
+    ['TM', 'Tiền mặt', 1, '1050000']]);
+  assert.deepEqual(value.summary, { fromDate: '2026-10-01', toDate: '2026-10-31', total: '3050000', tm: '1050000', tk: '2000000', tt: '0', ct: '0', paymentCount: 3 });
+  assert.equal((await direct(env, 'collection_by_method', { fromDate: '2026-10-06', toDate: '2026-10-06' })).summary.total, '0', 'lần thu đã hoàn tác không tính');
+}));
+
 test('invoice_adjustments (d): chờ kiểm = phiên bản hiện hành PENDING; bản cũ bị thay không kiểm được; lý do theo hồ sơ khách nhìn thấy', () => inCase(async env => {
   const value = await direct(env, 'invoice_adjustments');
   assert.deepEqual(pick(value.rows, ['adjustmentId', 'reviewStatus', 'current', 'delta', 'adjustedBy', 'adjustedDate']), [
@@ -174,6 +199,51 @@ test('invoice_reminders (Q18): tin soạn sẵn theo phòng, tổng nợ thực 
   assert.deepEqual([p102.publicPath, p102.messageText.includes('link')], [null, false], 'không HĐ hiệu lực ⇒ không đường dẫn');
   assert.deepEqual(value.summary, { rooms: 4, debtTotal: '11900000.00', withLink: 1 });
   assert.deepEqual((await direct(env, 'invoice_reminders', { days: 31 })).rows.map(row => row.roomName), ['P102']);
+}));
+
+// Lượt 12 (kiểm khói C3 trên TEST): dòng SQL thật qua bước cuối của đường đọc miền (domain-mount finishDomainResult): publicLink tuyệt đối
+// theo origin host thay publicPath, tin kèm link thành một khối; vắng origin ⇒ tin không hứa link. Câu SQL "link kèm theo" phải đúng hằng
+// connector bỏ đi (đổi câu ở SQL mà quên connector ⇒ đỏ). Mã công khai thật: 6 chữ/số (production 24/10: 472/472).
+test('invoice_reminders lượt 12: dòng SQL thật ⇒ publicLink theo origin host, tin kèm link; vắng origin ⇒ không link, tin không hứa link', () => inCase(async env => {
+  await env.db.exec("UPDATE public.contracts SET public_code='Ab12Cd' WHERE public_code='PUBLIC-CODE-A'");
+  const value = await direct(env, 'invoice_reminders', { roomId: ROOM });
+  const result = { report: 'invoice_reminders', source: W2A_REPORTS.invoice_reminders.source, unavailable: null, summary: value.summary, items: value.rows,
+    offset: 0, nextOffset: null, sourceCapped: false };
+  assert.ok(value.rows[0].messageText.includes(REMINDER_LINK_SENTENCE), 'câu SQL = hằng của connector');
+  const [linked] = finishDomainResult(structuredClone(result), 'https://app.example.vn').items;
+  assert.deepEqual([linked.publicLink, Object.hasOwn(linked, 'publicPath')], ['https://app.example.vn/c/Ab12Cd', false]);
+  assert.match(linked.messageText, /Chi tiết hoá đơn xem ở link kèm theo\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!\nhttps:\/\/app\.example\.vn\/c\/Ab12Cd$/);
+  const bare = finishDomainResult(structuredClone(result), undefined);
+  assert.deepEqual([bare.items[0].publicLink, bare.items[0].messageText.includes('link'), bare.summary.withLink], [null, false, 0]);
+  assert.match(bare.items[0].messageText, /\)\. Anh\/chị vui lòng thanh toán giúp\. Cảm ơn anh\/chị!$/, 'câu còn lại liền mạch');
+}));
+
+// Lượt 12 Hợp đồng (nghiệm thu C3 24/10): "gửi link tra hoá đơn phòng … cho khách" ⇒ invoice_room_detail. 20261024160002 thêm
+// summary.publicPath = /c/<mã> của HĐ của hoá đơn (luật QR web: mã 6–8 chữ/số, HĐ không TERMINATED / DRAFT; chỉ khi xem được khách, như
+// invoice_reminders) ⇒ connector ghép origin thành summary.publicLink. Rào broker nhận summary SQL cũ (thiếu khoá, tolerant) và vẫn từ chối khoá lạ.
+test('invoice_room_detail lượt 12: summary.publicPath của HĐ ⇒ publicLink theo origin host; không xem được khách / thanh lý / không hoá đơn ⇒ null', () => inCase(async env => {
+  await env.db.exec("UPDATE public.contracts SET public_code='Ab12Cd' WHERE public_code='PUBLIC-CODE-A'");
+  const value = await direct(env, 'invoice_room_detail', { roomId: ROOM });
+  assert.equal(value.summary.publicPath, '/c/Ab12Cd');
+  const result = { report: 'invoice_room_detail', source: W2A_REPORTS.invoice_room_detail.source, unavailable: null, summary: value.summary, items: value.rows,
+    offset: 0, nextOffset: null, sourceCapped: false };
+  const linked = finishDomainResult(structuredClone(result), 'https://app.example.vn');
+  assert.deepEqual([linked.summary.publicLink, Object.hasOwn(linked.summary, 'publicPath'), linked.summary.invoiceId], ['https://app.example.vn/c/Ab12Cd', false, INVOICE_A]);
+  assert.equal(finishDomainResult(structuredClone(result), undefined).summary.publicLink, null, 'vắng origin ⇒ không link, không tự ghép tên miền');
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM }, { scopes: {} })).summary.publicPath, null, 'không xem được khách');
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM, month: '2026-05' })).summary.publicPath, null, 'không có hoá đơn');
+  // Rào khuôn của broker (wave2-registry runResult) trên chính kết quả này: thiếu khoá (SQL trước 160002) ⇒ null; khoá lạ ⇒ từ chối.
+  const envelope = summary => ({ ...result, summary, items: value.rows.map(({ organizationId, ...row }) => row),
+    fence: { buildings: [BUILDING], cashbooks: [], orgWide: false } });
+  const identity = { effective: { read: ['invoices.view'] }, scopesByPermission: { 'invoices.view': { buildingIds: [BUILDING] } } };
+  const input = W2.reads.report.input({ report: 'invoice_room_detail', params: params('invoice_room_detail', { roomId: ROOM }), limit: 50 });
+  const { publicPath, ...older } = value.summary;
+  assert.equal(W2.reads.report.result(envelope(older), identity, input).summary.publicPath, null, 'SQL cũ (chưa 160002) vẫn qua');
+  assert.equal(W2.reads.report.result(envelope(value.summary), identity, input).summary.publicPath, publicPath);
+  assert.throws(() => W2.reads.report.result(envelope({ ...value.summary, other: 1 }), identity, input), 'khoá lạ vẫn hỏng');
+  assert.throws(() => W2.reads.report.result(envelope({ ...value.summary, publicPath: 1 }), identity, input), 'publicPath sai kiểu vẫn hỏng');
+  await env.db.exec("UPDATE public.contracts SET status='TERMINATED' WHERE public_code='Ab12Cd'");
+  assert.equal((await direct(env, 'invoice_room_detail', { roomId: ROOM })).summary.publicPath, null, 'HĐ đã thanh lý ⇒ không link (như QR web)');
 }));
 
 // Review #273 (Mốc 2b).

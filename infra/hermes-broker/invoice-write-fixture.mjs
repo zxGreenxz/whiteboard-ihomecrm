@@ -85,6 +85,11 @@ const WEB = `ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS contract_id uu
         JOIN public.accounts a ON a.id=r.account_id WHERE r.method='TT' AND r.building_id=p_building_id
           AND EXISTS(SELECT 1 FROM public.fixture_possession p WHERE p.user_id=auth.uid() AND p.account_id=a.id))) $f$;
   GRANT EXECUTE ON FUNCTION public.get_receiving_cashbooks_v1(uuid,uuid,uuid) TO authenticated;
+  -- Bản port app_private.receiving_cashbook_ids_v1 (20260925082815) cho lượt 8: membership NULL ⇒ MỌI sổ nhận đã cài của toà (không lọc người giữ).
+  CREATE FUNCTION app_private.receiving_cashbook_ids_v1(p_org uuid,p_building uuid,p_method text,p_membership uuid) RETURNS uuid[] LANGUAGE sql STABLE
+    SECURITY DEFINER SET search_path=pg_catalog,public AS $f$ SELECT COALESCE(array_agg(r.account_id ORDER BY r.ord),'{}'::uuid[]) FROM public.fixture_receiving r
+      WHERE p_method IN ('TK','TT') AND r.method=p_method AND r.building_id=p_building AND p_membership IS NULL $f$;
+  REVOKE ALL ON FUNCTION app_private.receiving_cashbook_ids_v1(uuid,uuid,text,uuid) FROM PUBLIC;
   -- Bản port record_invoice_collection_v5 (20260925083655): cùng chữ ký; câu lỗi như mục 5; quyền thu theo toà + sổ phải giữ/biết + sổ trong
   -- danh sách sổ nhận; khoá lạc quan; idempotency theo (khoá, người) + băm; làm tròn < 10.000đ cần sổ ảo; dòng NON_PNL/cọc chặn làm tròn.
   CREATE FUNCTION public.record_invoice_collection_v5(p_invoice_id uuid,p_collection_date date,p_tenders jsonb,p_overpay_action text,p_allow_rounding boolean,
@@ -417,7 +422,22 @@ const EDIT_SEED = `INSERT INTO public.rooms VALUES('${ROOM7}','${ORG}','${BUILDI
   INSERT INTO public.customer_credit_applications(organization_id,invoice_id,amount,reversed_at) VALUES('${ORG}','${INV_X}',50000,'2026-10-16 03:00:00+00');
   INSERT INTO public.fixture_invoice_acl VALUES('invoices.edit','${BUILDING}'),('invoices.approve','${BUILDING}'),('invoices.cancel','${BUILDING}');`;
 
-export async function invoiceSetup(t, { database, meter = false, edit = false } = {}) {
+// Lượt 8 (l8: true — kéo theo meter + edit, đúng chuỗi production sau khi áp): kế hoạch chỉ số dùng chung bản sửa (chỉ số chốt kỳ trước ghi
+// trước ngày) và vỏ trang chuyển thu tiền sang tầng v2 (lý do sổ nhận, câu làm tròn / thanh lý).
+const PLAN8 = file('meter_readings_plan_previous_period_v1'), COLLECT8 = file('hermes_invoice_collect_v2');
+// Lượt 14 (l14: true — kéo theo l8): tra cứu + bước ghi thu tiền v3 (sổ nhận ở cả TK + TT, tháng đã chốt lợi nhuận ⇒ period_closed trước kế
+// hoạch), sửa/huỷ/khôi phục v2 (lý do đòi sau kiểm cứng). Hàm khoá tháng là thân THẬT của 20260925073251 (bảng profit_monthly tối giản).
+const L14 = file('hermes_invoice_period_closed_reason_order_v1');
+const PROFIT_LOCK = (() => { const sql = file('khoa_thang_loi_nhuan_tuyet_doi');
+  const match = sql.match(/CREATE OR REPLACE FUNCTION app_private\.profit_month_locked_v1\([\s\S]*?\$function\$;/); assert.ok(match, 'profit_month_locked_v1');
+  return match[0]; })();
+const L14_SUPPORT = `CREATE TABLE IF NOT EXISTS public.profit_monthly(building_id uuid NOT NULL,period_month date NOT NULL,locked_at timestamptz,PRIMARY KEY(building_id,period_month));
+  ${PROFIT_LOCK}
+  REVOKE ALL ON FUNCTION app_private.profit_month_locked_v1(uuid,date) FROM PUBLIC,anon,authenticated,service_role;`;
+
+export async function invoiceSetup(t, { database, meter = false, edit = false, l8 = false, l14 = false } = {}) {
+  if (l14) l8 = true;
+  if (l8) meter = edit = true;
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   const exec = async (label, sql) => { try { await db.exec(sql); } catch (error) { error.message = `${label}: ${error.message}`; throw error; } };
@@ -455,6 +475,8 @@ export async function invoiceSetup(t, { database, meter = false, edit = false } 
         await db.query(`UPDATE app_private.${table} SET action_capabilities=array_append(action_capabilities,$1)`, [key]);
     }
   }
+  if (l8) for (const [label, sql] of [['plan l8', PLAN8], ['plan l8#2', PLAN8], ['collect v2', COLLECT8], ['collect v2#2', COLLECT8]]) await exec(label, sql);
+  if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14]]) await exec(label, sql);
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
     [JSON.stringify(binding), extra.action ?? 'invoice.collect', phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null]);

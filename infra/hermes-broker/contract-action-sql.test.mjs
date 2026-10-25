@@ -21,6 +21,14 @@ const RETURN_SQL = file('hermes_contract_return_v1');
 const PARTY_SQL = file('hermes_contract_party_draft_v1');
 // Mốc 6: file MỚI — hàm tra lô INVOKER, bước ghi lô DEFINER, vỏ dựng lại; md5 thân bước ghi 074815 ghim ở $requires$.
 const BATCH_SQL = file('hermes_contract_renew_batch_v1');
+// Lượt 11 (nghiệm thu 24/10): lõi giải tên dùng chung thêm bậc token số nhà (cần bản v2 của Thu chi để dựng cả hai lõi) + bản xem
+// trước contract.return nêu ngày kèm thứ / cảnh báo; bước ghi dựng từ thân 074815 (md5 ghim ở $requires$).
+// Lượt 11b: lõi v1 của 040001 dựng trên thân 20261023185114 (#304, danh xưng) ⇒ chuỗi phải có 185114 trước.
+const HONORIFIC_SQL = file('hermes_name_resolve_honorific_v1');
+const VIRTUAL_SQL = file('hermes_name_directory_virtual_v1'), HOUSE_SQL = file('hermes_write_name_resolve_house_number_v1');
+const RETURN_PREVIEW_SQL = file('hermes_contract_return_preview_v1');
+// Lượt 12 (nghiệm thu C3 24/10): trả phòng lần hai trên phòng đã có HĐ mới ⇒ room_has_new_contract (dựng từ thân 040002, nhận cả thân 074815).
+const TWICE_SQL = file('hermes_contract_return_twice_v1');
 const plain = sql => sql.replace(/^BEGIN;|^COMMIT;|^NOTIFY pgrst[^\n]*/gm, '');
 const u = n => `00000000-0000-4000-8000-${String(500 + n).padStart(12, '0')}`;
 const CONTRACT = u(1), CUSTOMER = u(2), EMPTY_ROOM = u(3), RETURNED_ROOM = u(4), OLD_CONTRACT = u(5), OTHER_USER = u(6);
@@ -1193,5 +1201,128 @@ test('PG hai phiên: hàm ghi web khoá dòng HĐ / phòng trước công ty ⇒
     await web.query('SELECT app_private.lock_org_for_decision_v1($1::uuid)', [ORG]);
     await web.query('ROLLBACK');
     assert.equal((await main.query('SELECT count(*)::int n FROM public.contract_customers WHERE contract_id=$1 AND customer_id=$2', [CONTRACT, GUEST])).rows[0].n, 1);
+  });
+});
+
+// Lượt 11 — sửa theo nghiệm thu bot thật trên TEST (24/10): contract.return nêu NGÀY TRẢ kèm THỨ ở đầu bản xem trước + cảnh báo lệch
+// ngày báo trả / đã qua > 7 ngày (20261024040002, bước ghi dựng từ thân 074815); tên toà gõ thiếu "/3" giải được qua lõi dùng chung
+// (20261024040001). Chuỗi file như production sau C1: Mốc 4 → 5 → 6 → lõi danh xưng 185114 (#304) → bản v2 của Thu chi → hai file lượt 11.
+test('trang Hợp đồng — lượt 11: ngày trả kèm thứ + cảnh báo, tên toà số nhà (20261024040001/040002)', { timeout: 300000 }, async t => {
+  const { f, db, run, receipts } = await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`,
+    migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL, HONORIFIC_SQL, VIRTUAL_SQL, HOUSE_SQL, RETURN_PREVIEW_SQL] });
+  await db.query("UPDATE public.contracts SET deposit_paid=4500000,total_deposit=4500000 WHERE id=$1", [CONTRACT]);
+  const base = { ...P101, date: '2026-10-20', note: 'Khách trả phòng, bàn giao đủ' };
+  const passed = text => /^NGÀY TRẢ ĐÃ QUA/.test(text), differs = text => /^NGÀY TRẢ KHÁC NGÀY BÁO TRẢ/.test(text);
+
+  await t.test('xem trước: NGÀY TRẢ kèm thứ ở đầu câu + returnDateLabel; không cảnh báo khi ≤ 7 ngày và không có báo trả', async () => {
+    await f.rollbackCase(async () => {
+      const preview = await run('contract.return', 'auto', rid(500), base);
+      assert.deepEqual([preview.kind, preview.confirm], ['preview', 'required'], 'luật xác nhận không đổi: luôn xem trước');
+      assert.equal(preview.preview.text, 'Sẽ ghi nhận khách TRẢ PHÒNG phòng P101 toà Toà A (HĐ HĐ-THU-001, khách Khách Thử) vào NGÀY thứ Ba ' +
+        '20/10/2026 (2 ngày trước); loại: trả sớm. Sau khi ghi: HĐ chuyển Đã thanh lý, phòng thành trống, KHÔNG lùi được. Quyết toán (hoàn cọc, ' +
+        'trừ tiền, chỉ số chốt) làm trên web. Cọc đã thu 4.500.000đ; hoá đơn chưa thu: không có; chỉ số điện nước khi trả: chưa ghi. ' +
+        'Nội dung thanh lý: "Khách trả phòng, bàn giao đủ".');
+      assert.deepEqual([preview.preview.returnDate, preview.preview.returnDateLabel], ['2026-10-20', 'thứ Ba 20/10/2026 (2 ngày trước)']);
+      assert.equal(preview.warnings.some(text => passed(text) || differs(text)), false, JSON.stringify(preview.warnings));
+      // Đúng 7 ngày trước: chưa cảnh báo.
+      assert.equal((await run('contract.return', 'preview', rid(501), { ...base, date: '2026-10-15' })).warnings.some(passed), false);
+    });
+  });
+
+  await t.test('cảnh báo: đã qua > 7 ngày; khác ngày báo trả (cả hai ngày kèm thứ); ghi vẫn theo đúng bản xem trước', async () => {
+    await f.rollbackCase(async () => {
+      const old = await run('contract.return', 'preview', rid(510), { ...base, date: '2026-10-14' });
+      assert.ok(old.warnings.includes('NGÀY TRẢ ĐÃ QUA 8 NGÀY: thứ Tư 14/10/2026 (8 ngày trước). Kiểm lại ngày với người dùng; ghi rồi không lùi được.'),
+        JSON.stringify(old.warnings));
+      assert.match(old.preview.text, /vào NGÀY thứ Tư 14\/10\/2026 \(8 ngày trước\); loại: trả sớm\./);
+      await db.query("UPDATE public.contracts SET expected_move_out_date='2026-10-25' WHERE id=$1", [CONTRACT]);
+      const preview = await run('contract.return', 'preview', rid(511), base);
+      assert.ok(preview.warnings.includes('NGÀY TRẢ KHÁC NGÀY BÁO TRẢ: báo trả Chủ nhật 25/10/2026 (còn 3 ngày), ngày trả sẽ ghi thứ Ba 20/10/2026 ' +
+        '(2 ngày trước). Hỏi lại người dùng ngày nào đúng trước khi đồng ý.'), JSON.stringify(preview.warnings));
+      // Cảnh báo không vào basis: đồng ý bản xem trước này ghi đúng ngày đã nêu.
+      const applied = await run('contract.return', 'apply', rid(511), base, preview);
+      assert.equal(applied.kind, 'applied');
+      assert.match(applied.result.text, /^Đã ghi nhận khách trả phòng phòng P101 toà Toà A \(HĐ HĐ-THU-001, khách Khách Thử\): ngày trả thứ Ba 20\/10\/2026/);
+      assert.deepEqual((await db.query('SELECT status,actual_end_date::text d FROM public.contracts WHERE id=$1', [CONTRACT])).rows[0], { status: 'TERMINATED', d: '2026-10-20' });
+      assert.deepEqual((await receipts()).filter(row => row.request_id === rid(511)).map(row => row.state), ['applied']);
+    });
+  });
+
+  await t.test('tên toà gõ thiếu "/3": "45 Hoa Mai" ⇒ "45/3 Hoa Mai"; toà khớp ngoài phạm vi ghi không được chọn, không bị nêu tên', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.buildings SET name='45/3 Hoa Mai' WHERE id=$1", [BUILDING]);
+      const params = { buildingName: '45 Hoa Mai', roomName: 'P101', date: '2026-10-30' };
+      const preview = await run('contract.notice_set', 'preview', rid(520), params);
+      assert.deepEqual([preview.kind, preview.resolved.buildingName, preview.resolved.roomName], ['preview', '45/3 Hoa Mai', 'P101']);
+      // Toà B (ngoài overlay của kết nối fixture) cũng khớp token: luật cũ của lõi — chỉ ứng viên trong phạm vi ghi được tính — giữ nguyên.
+      // Hai toà TRONG phạm vi cùng khớp ⇒ ambiguous (test SQL dùng chung "12 Hoa Sứ").
+      await db.query("UPDATE public.buildings SET name='45/5 Hoa Mai' WHERE id=$1", [OTHER_BUILDING]);
+      assert.equal((await run('contract.notice_set', 'preview', rid(521), params)).resolved.buildingName, '45/3 Hoa Mai');
+      await db.query("UPDATE public.buildings SET name='Toà A' WHERE id=$1", [BUILDING]);
+      const outside = await run('contract.notice_set', 'preview', rid(522), params);
+      assert.deepEqual([outside.kind, outside.reason, outside.why, outside.candidates], ['needs_input', 'name_unresolved', 'outside_scope', []]);
+    });
+  });
+
+  await t.test('$requires$: bước ghi khác thân 074815 (và khác thân file này) ⇒ dừng; md5 ghim khớp Postgres', async () => {
+    const pin = /md5\(p\.prosrc\)<>'([0-9a-f]{32})'/.exec(RETURN_PREVIEW_SQL)[1];
+    const live = (await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].m;
+    assert.equal(live, pin);
+    const original = /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?END \$fn\$;/.exec(PARTY_SQL)[0];
+    await f.rollbackCase(async () => {
+      await db.exec(original.replace('-- Lượt preview chỉ đọc', '-- Lượt preview (thân lạ) chỉ đọc'));
+      await assert.rejects(db.exec(plain(RETURN_PREVIEW_SQL)), /hermes_contract_return_preview_dependency_invalid/);
+    });
+  });
+});
+
+// Lượt 12 — nghiệm thu lượt cuối C3 (24/10): ghi nhận trả phòng LẦN HAI cho phòng đã trả và đã có khách mới. Tra cứu trang lấy HĐ HIỆN HÀNH
+// (HĐ mới) ⇒ ngày trả của HĐ cũ rơi trước ngày bắt đầu ⇒ trước đây needs_input date_out_of_range (bot hỏi lại ngày như gõ sai). Nay:
+// rejected room_has_new_contract + link HĐ trước, kiểm TRƯỚC khoảng ngày (20261024160001, dựng từ thân 040002).
+test('trang Hợp đồng — lượt 12: trả phòng lần hai trên phòng đã có HĐ mới ⇒ room_has_new_contract + link HĐ trước (20261024160001)', { timeout: 300000 }, async t => {
+  const { f, db, run, receipts } = await pageSetup(t, { support: `${RETURN_SUPPORT}\n${PARTY_SUPPORT}`,
+    migrations: [RETURN_SQL, PARTY_SQL, BATCH_SQL, HONORIFIC_SQL, VIRTUAL_SQL, HOUSE_SQL, RETURN_PREVIEW_SQL, TWICE_SQL] });
+  const PREVIOUS = u(40);
+  const base = { ...P101, note: 'Khách cũ đã trả phòng' };
+  // HĐ trước của phòng P101: đã ghi trả (TERMINATED) + hồ sơ chờ quyết toán; HĐ hiện hành (fixture) bắt đầu 01/03/2026.
+  const seedPrevious = () => db.exec(`INSERT INTO public.contracts(id,organization_id,room_id,status,contract_number,start_date,end_date,actual_end_date)
+      VALUES('${PREVIOUS}','${ORG}','${ROOM}','TERMINATED','HĐ-CU-001','2025-03-01','2026-02-28','2026-02-20');
+    INSERT INTO public.contract_exit_cases(organization_id,contract_id,state) VALUES('${ORG}','${PREVIOUS}','PENDING');`);
+
+  await t.test('ngày trả trước HĐ hiện hành ⇒ rejected room_has_new_contract + link HĐ trước; không mở biên nhận, không đổi HĐ nào', async () => {
+    await f.rollbackCase(async () => {
+      await seedPrevious();
+      for (const [phase, request] of [['auto', rid(600)], ['preview', rid(601)]])
+        assert.deepEqual(await run('contract.return', phase, request, { ...base, date: '2026-02-20' }),
+          { kind: 'rejected', reason: 'room_has_new_contract', link: `/contracts/${PREVIOUS}` }, phase);
+      // Không có HĐ trước phủ ngày đó (trước cả HĐ cũ) ⇒ link HĐ hiện hành; vẫn không phải date_out_of_range.
+      assert.deepEqual(await run('contract.return', 'preview', rid(602), { ...base, date: '2025-01-15' }),
+        { kind: 'rejected', reason: 'room_has_new_contract', link: `/contracts/${CONTRACT}` });
+      assert.deepEqual(await receipts(), [], 'không mở biên nhận');
+      assert.deepEqual((await db.query('SELECT status,actual_end_date::text d FROM public.contracts WHERE id=ANY($1) ORDER BY id', [[CONTRACT, PREVIOUS]])).rows
+        .map(row => [row.status, row.d]).sort(), [['ACTIVE', null], ['TERMINATED', '2026-02-20']].sort());
+    });
+  });
+
+  await t.test('kiểm phòng có HĐ mới đứng TRƯỚC khoảng ngày; ngày hợp lệ của HĐ hiện hành vẫn xem trước như cũ; ngày tương lai vẫn hỏi lại', async () => {
+    await f.rollbackCase(async () => {
+      await seedPrevious();
+      const preview = await run('contract.return', 'preview', rid(610), { ...base, date: '2026-10-20' });
+      assert.deepEqual([preview.kind, preview.preview.returnDate], ['preview', '2026-10-20'], 'HĐ hiện hành: như lượt 11');
+      assert.deepEqual(await run('contract.return', 'preview', rid(611), { ...base, date: '2026-10-23' }), { kind: 'needs_input', reason: 'return_date_future' });
+      assert.deepEqual(await run('contract.return', 'preview', rid(612), { ...base, date: '20/02/2026' }), { kind: 'needs_input', reason: 'invalid_params' });
+    });
+  });
+
+  await t.test('$requires$: nhận thân production 074815 và thân 040002 (C2), từ chối thân lạ; md5 ghim khớp Postgres', async () => {
+    const pin = /md5\(p\.prosrc\)<>'([0-9a-f]{32})'/.exec(TWICE_SQL)[1];
+    assert.equal((await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].m, pin);
+    const stepOf = sql => /CREATE OR REPLACE FUNCTION app_private\.hermes_contract_action_step_v1[\s\S]*?END \$fn\$;/.exec(sql)[0];
+    for (const [label, sql] of [['production 074815', PARTY_SQL], ['C2 040002', RETURN_PREVIEW_SQL]])
+      await f.rollbackCase(async () => { await db.exec(stepOf(sql)); await db.exec(plain(TWICE_SQL)); assert.ok(true, label); });
+    await f.rollbackCase(async () => {
+      await db.exec(stepOf(RETURN_PREVIEW_SQL).replace('-- Lượt preview chỉ đọc', '-- Lượt preview (thân lạ) chỉ đọc'));
+      await assert.rejects(db.exec(plain(TWICE_SQL)), /hermes_contract_return_twice_dependency_invalid/);
+    });
   });
 });

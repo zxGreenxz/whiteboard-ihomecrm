@@ -433,6 +433,261 @@
       "why": "File 031600 (Công việc Q35, #272) ghim md5 thân public.hermes_task_follow_read_v1; 185118 (C1) thay thân đó. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 24/10.",
       "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 24/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
       "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261021185540_hermes_receivables_effective_outstanding_v1.sql",
+      "sha256": "4963a826ea6166db734c9657aa79f88545666703397407e71a43c9307a0a3db4",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_receivables_effective_requires_reviewed_v2: af47eb16c1227abfb46c7f16ba6476f5",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261021185540_hermes_receivables_effective_outstanding_v1.json",
+      "supersededBy": {
+        "file": "20261024193001_hermes_domain_read_nolock_v1.sql",
+        "sha256": "531b383dee7f483139973263bd645e63a7a8bf86db63870a65a0e2a18613e600",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024193001_hermes_domain_read_nolock_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261021185540 ghim md5 thân hàm mà 20261024193001 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022044126_hermes_w2_min_amount_param_v1.sql",
+      "sha256": "b70ef5d0e7c1be4b93f0713815c2a4eab21b0b3000ccbb06f442ed1c301ae43b",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_w2_min_amount_param_body_drift: app_private.hermes_w2_param_names_v1",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022044126_hermes_w2_min_amount_param_v1.json",
+      "supersededBy": {
+        "file": "20261024120208_hermes_w2_max_amount_param_v1.sql",
+        "sha256": "257e8f1d9ad69c043cd13d2f480f1036728d5d4e87be1691d8b054ce94bf440b",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120208_hermes_w2_max_amount_param_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261022044126 ghim md5 thân hàm mà 20261024120208 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022051032_hermes_w2b_expense_reports_v1.sql",
+      "sha256": "bf98233cb332a9f9bbfc572b32282fbd7bd71a292ab1113062b2faa0d9b20b72",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_w2b_expense_reports_body_drift: app_private.hermes_w2b_catalog_v1",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022051032_hermes_w2b_expense_reports_v1.json",
+      "supersededBy": {
+        "file": "20261024095547_hermes_w2b_expense_pending_days_v1.sql",
+        "sha256": "1bb1545e8f376cf8878ea93a2f0f11535315f30e021f011802624bc63a9b5844",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024095547_hermes_w2b_expense_pending_days_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261022051032 ghim md5 thân hàm mà 20261024095547 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261022153345_hermes_domain_tasks_assignee_v1.sql",
+      "sha256": "685a34685a2e1d8bcf8864d0c736250eb7e43d0f4e98169c8eac07f386a7c040",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_domain_tasks_assignee_requires_063452_body",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261022153345_hermes_domain_tasks_assignee_v1.json",
+      "supersededBy": {
+        "file": "20261025003100_hermes_task_given_per_room_v1.sql",
+        "sha256": "98ff0520eaaa0aa2ee7d9566a53f183153e3fc062c0ed175eb5738fde4fb2e31",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261025003100_hermes_task_given_per_room_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261022153345 ghim md5 thân hàm mà 20261025003100 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023030305_hermes_contract_renew_batch_v1.sql",
+      "sha256": "be39ecb5b2c50d6e8c3abaa83df6bc61b668b6b9f6493a18adbab56ed4ac1286",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_contract_batch_base_changed",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023030305_hermes_contract_renew_batch_v1.json",
+      "supersededBy": {
+        "file": "20261024040002_hermes_contract_return_preview_v1.sql",
+        "sha256": "4c627edfd07794c0bcfc54ec0e06b0f9e5adecce41e1b42d5aebb0b4da54111c",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024040002_hermes_contract_return_preview_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023030305 ghim md5 thân hàm mà 20261024040002 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023185114_hermes_name_resolve_honorific_v1.sql",
+      "sha256": "8db2875d73f2c340324529626e09962c7bef19f6206617e31b5e88ff8fc11763",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_name_resolve_honorific_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023185114_hermes_name_resolve_honorific_v1.json",
+      "supersededBy": {
+        "file": "20261024040001_hermes_write_name_resolve_house_number_v1.sql",
+        "sha256": "bb0a194155178d190f25476b823cf6646d75f7bb858304e8b69565b397473913",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024040001_hermes_write_name_resolve_house_number_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023185114 ghim md5 thân hàm mà 20261024040001 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023185116_hermes_task_nghiem_thu_v1.sql",
+      "sha256": "1ec64aa5fb4873e460879840557b051d6f551306940996febfbe4f1cf18c5074",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_nghiem_thu_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023185116_hermes_task_nghiem_thu_v1.json",
+      "supersededBy": {
+        "file": "20261024091500_hermes_task_nghiem_thu_2_v1.sql",
+        "sha256": "d180cbb57d42815f2f8b66a133035411456d9a5f4467a07aab538d167b68f362",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024091500_hermes_task_nghiem_thu_2_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023185116 ghim md5 thân hàm mà 20261024091500 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023210633_ie_quick_entry_shared_rules_v2.sql",
+      "sha256": "b1826c1460072e6bb9f71567c076b75527b4626cde3a9ab2812c47c3e759e052",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "ie_quick_entry_rules_v2_body_drift",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023210633_ie_quick_entry_shared_rules_v2.json",
+      "supersededBy": {
+        "file": "20261024120207_ie_quick_entry_shared_rules_v3.sql",
+        "sha256": "e886129e523f1be77ff95246bd985d5c0052438feb753a4464efd1d7d1a9c3c5",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120207_ie_quick_entry_shared_rules_v3.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023210633 ghim md5 thân hàm mà 20261024120207 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261023210634_hermes_expense_acceptance_fixes_v1.sql",
+      "sha256": "0983ce02d4c641365a54df12309849f505237e11454af5ec91d20da43e60dffb",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_acceptance_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023210634_hermes_expense_acceptance_fixes_v1.json",
+      "supersededBy": {
+        "file": "20261024120211_hermes_expense_acceptance_round1_v1.sql",
+        "sha256": "64031f040179c3d0074cd2bda3b4583e89b3f3bd1c5d0ec19a0d989d17bd8b48",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120211_hermes_expense_acceptance_round1_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023210634 ghim md5 thân hàm mà 20261024120211 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024040002_hermes_contract_return_preview_v1.sql",
+      "sha256": "4c627edfd07794c0bcfc54ec0e06b0f9e5adecce41e1b42d5aebb0b4da54111c",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_contract_return_preview_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024040002_hermes_contract_return_preview_v1.json",
+      "supersededBy": {
+        "file": "20261024160001_hermes_contract_return_twice_v1.sql",
+        "sha256": "b1c7fa7c71f2b10c13ea6ddf9424ccd01e3bb578a08479a378203e218b2b5e31",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024160001_hermes_contract_return_twice_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024040002 ghim md5 thân hàm mà 20261024160001 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024091500_hermes_task_nghiem_thu_2_v1.sql",
+      "sha256": "d180cbb57d42815f2f8b66a133035411456d9a5f4467a07aab538d167b68f362",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_nghiem_thu_2_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024091500_hermes_task_nghiem_thu_2_v1.json",
+      "supersededBy": {
+        "file": "20261024145100_hermes_task_self_assign_guard_v1.sql",
+        "sha256": "2a69b9458d6bc88961a5eb440c944fef9b597c9bc30b929c4ce0601b89d69fa0",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024145100_hermes_task_self_assign_guard_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024091500 ghim md5 thân hàm mà 20261024145100 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024094809_hermes_expense_system_flow_block_v1.sql",
+      "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_system_flow_body_drift: public.hermes_expense_category_pick_v1(uuid,text,text)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024094809_hermes_expense_system_flow_block_v1.json",
+      "supersededBy": {
+        "file": "20261024120211_hermes_expense_acceptance_round1_v1.sql",
+        "sha256": "64031f040179c3d0074cd2bda3b4583e89b3f3bd1c5d0ec19a0d989d17bd8b48",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120211_hermes_expense_acceptance_round1_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024094809 ghim md5 thân hàm mà 20261024120211 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024095547_hermes_w2b_expense_pending_days_v1.sql",
+      "sha256": "1bb1545e8f376cf8878ea93a2f0f11535315f30e021f011802624bc63a9b5844",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_w2b_expense_pending_days_body_drift: app_private.hermes_w2b_catalog_v1",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024095547_hermes_w2b_expense_pending_days_v1.json",
+      "supersededBy": {
+        "file": "20261024120210_hermes_w2b_expense_max_amount_v1.sql",
+        "sha256": "faae3b4b21fe5864366b5a26eae220dccb552143f7d1f34cfdc5c203508aeaea",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120210_hermes_w2b_expense_max_amount_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024095547 ghim md5 thân hàm mà 20261024120210 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024120211_hermes_expense_acceptance_round1_v1.sql",
+      "sha256": "64031f040179c3d0074cd2bda3b4583e89b3f3bd1c5d0ec19a0d989d17bd8b48",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024120211_hermes_expense_acceptance_round1_v1.json",
+      "supersededBy": {
+        "file": "20261024210500_hermes_expense_voucher_building_v1.sql",
+        "sha256": "5f2c11836d2a1fa8d629fa689230cd05b4a5cb01e11ea2db722a89368c483237",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024210500_hermes_expense_voucher_building_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024120211 ghim md5 thân hàm mà 20261024210500 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024145100_hermes_task_self_assign_guard_v1.sql",
+      "sha256": "2a69b9458d6bc88961a5eb440c944fef9b597c9bc30b929c4ce0601b89d69fa0",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_self_assign_guard_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024145100_hermes_task_self_assign_guard_v1.json",
+      "supersededBy": {
+        "file": "20261025003100_hermes_task_given_per_room_v1.sql",
+        "sha256": "98ff0520eaaa0aa2ee7d9566a53f183153e3fc062c0ed175eb5738fde4fb2e31",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261025003100_hermes_task_given_per_room_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/320",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024145100 ghim md5 thân hàm mà 20261025003100 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

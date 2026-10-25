@@ -4,8 +4,9 @@
 // chạy). Thêm thao tác KHÔNG tốn byte tools/list: khuôn tham số nằm trong KẾT QUẢ của crm_action_list.
 // Hermes không tự kiểm được `params` (object tự do) nên connector kiểm theo khuôn ở đây và trả gợi ý TĨNH dựng từ
 // khuôn (tên tham số + mô tả kiểu), không bao giờ nhắc lại giá trị mô hình gửi.
-import { ACTION_REASON_CODES } from './action-reasons.mjs';
+import { ACTION_INPUT_REASONS, ACTION_REASON_CODES } from './action-reasons.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
+import { CONSENT_HINT, consentRequired } from './consent-guard.mjs';
 
 export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'probe']);
 // money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB.
@@ -40,27 +41,35 @@ const dataArray = value => Array.isArray(value) && Object.getPrototypeOf(value) 
 
 // ---- Khuôn tham số. Mỗi khuôn: { kind, optional, hint, ...giới hạn } đông cứng. hint là câu tĩnh cho mô hình.
 const spec = (kind, optional, hint, extra = {}) => Object.freeze({ kind, optional: optional === true, hint, ...extra });
+// Lượt 14 Hoá đơn (nghiệm thu C3c: tên sổ nhận rơi vào note, chỉ số điện bị hiểu là tiền): câu gợi ý riêng của MỘT tham số thay câu theo kiểu.
+const hintOf = (custom, fallback) => {
+  if (custom === undefined) return fallback;
+  if (typeof custom !== 'string' || !custom.trim() || custom.length > 160 || CONTROL.test(custom)) fail();
+  return custom;
+};
 export const param = Object.freeze({
-  text: (min, max, { optional = false } = {}) => {
+  text: (min, max, { optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 1 || max < min || max > 4000) fail();
-    return spec('text', optional, `chữ ${min}–${max} ký tự`, { min, max });
+    return spec('text', optional, hintOf(hint, `chữ ${min}–${max} ký tự`), { min, max });
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
-  name: (of, { optional = false } = {}) => {
+  // alias (lượt 14): tên phụ mô hình hay dùng cho cùng tham số (vd cashbook của expense.create cho cashbookName của invoice.collect).
+  name: (of, { optional = false, hint, alias } = {}) => {
     if (!Object.hasOwn(NAME_LABELS, of) && of !== 'job' && of !== 'recurrence') fail();
+    if (alias !== undefined && (typeof alias !== 'string' || !PARAM.test(alias))) fail();
     // job (Công việc Mốc 3): mã việc đầy đủ, 3–4 số cuối, "vừa giao" hoặc tiêu đề — SQL tìm đúng một việc, mơ hồ thì hỏi lại.
     // recurrence (Mốc 5): mã việc định kỳ DK-… hoặc nội dung — SQL tìm đúng một quy tắc, mơ hồ thì hỏi lại.
-    return spec('name', optional, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
-      : of === 'recurrence' ? 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`,
-      { of, min: 1, max: 120 });
+    return spec('name', optional, hintOf(hint, of === 'job' ? 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói'
+      : of === 'recurrence' ? 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói' : `tên ${NAME_LABELS[of]} như người dùng nói`),
+      { of, min: 1, max: 120, ...(alias === undefined ? {} : { alias }) });
   },
-  int: (min, max, { optional = false } = {}) => {
+  int: (min, max, { optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();
-    return spec('int', optional, `số nguyên ${min}–${max}`, { min, max });
+    return spec('int', optional, hintOf(hint, `số nguyên ${min}–${max}`), { min, max });
   },
-  vnd: ({ min = 1, max = MAX_VND, optional = false } = {}) => {
+  vnd: ({ min = 1, max = MAX_VND, optional = false, hint } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 0 || max < min || max > MAX_VND) fail();
-    return spec('vnd', optional, 'số nguyên VND (3tr5 = 3500000)', { min, max });
+    return spec('vnd', optional, hintOf(hint, 'số nguyên VND (3tr5 = 3500000)'), { min, max });
   },
   date: ({ optional = false } = {}) => spec('date', optional, 'ngày YYYY-MM-DD (giờ Việt Nam)'),
   month: ({ optional = false } = {}) => spec('month', optional, 'tháng YYYY-MM'),
@@ -71,7 +80,7 @@ export const param = Object.freeze({
         new Set(values).size !== values.length) fail();
     return spec('oneOf', optional, `một trong: ${values.join(', ')}`, { values: Object.freeze([...values]) });
   },
-  bool: ({ optional = false } = {}) => spec('bool', optional, 'true hoặc false'),
+  bool: ({ optional = false, hint } = {}) => spec('bool', optional, hintOf(hint, 'true hoặc false')),
   // Dự phòng câu 11: tham chiếu ảnh đã tải lên (không phải ảnh thô). Chưa có luồng ảnh ⇒ defineAction từ chối.
   attachments: ({ max = 5, optional = true } = {}) => {
     if (!Number.isSafeInteger(max) || max < 1 || max > 10) fail();
@@ -85,11 +94,13 @@ export const param = Object.freeze({
     return spec('record', false, `{${Object.entries(fields).map(([name, value]) => `${name}${value.optional ? '' : '*'} (${value.hint})`).join('; ')}}`,
       { fields: Object.freeze({ ...fields }) });
   },
-  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false } = {}) => {
+  // overflow (Công việc lượt 13): lý do needs_input riêng khi danh sách DÀI HƠN max (vd batch_too_large "chia lô"), thay cho
+  // invalid_params chung; thao tác phải khai lý do đó trong reasons. Không đổi khuôn liệt kê ở crm_action_list.
+  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false, overflow } = {}) => {
     if (!plain(item) || !Object.isFrozen(item) || ![...SCALARS, 'record'].includes(item.kind) || item.optional ||
         !Number.isSafeInteger(min) || !Number.isSafeInteger(max) || !Number.isSafeInteger(ceiling) || ceiling < MAX_LIST || ceiling > MAX_LIST_CEILING ||
-        min < 1 || max < min || max > ceiling) fail();
-    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max });
+        min < 1 || max < min || max > ceiling || !(overflow === undefined || ACTION_INPUT_REASONS.includes(overflow))) fail();
+    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max, ...(overflow ? { overflow } : {}) });
   },
 });
 const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
@@ -106,7 +117,10 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
   for (const [name, value] of Object.entries(params)) {
     if (!PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !KINDS.includes(value.kind)) fail();
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
+    if (value.kind === 'list' && value.overflow !== undefined && !reasons.includes(value.overflow)) fail();
   }
+  const aliases = Object.values(params).map(value => value.alias).filter(alias => alias !== undefined);
+  if (aliases.some(alias => Object.hasOwn(params, alias)) || new Set(aliases).size !== aliases.length) fail();
   const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
   DEFINED.add(action);
   return action;
@@ -147,6 +161,8 @@ export function createActionCatalog(actions, { keys = HERMES_ACTION_CAPABILITIES
       return ids.map(id => byId[id]).filter(action => granted(effective, action) && (page === null || action.page === page)).map(action => ({
         action: action.id, page: action.page, title: action.title,
         confirm: action.class === 'reversible' ? 'if_required' : 'always',
+        // Lượt 12 Hợp đồng (rào đồng ý): thao tác không lùi được nói rõ lượt xác nhận phải kèm consentText (ngoài params).
+        ...(consentRequired(action) ? { consentText: CONSENT_HINT } : {}),
         params: Object.fromEntries(Object.entries(action.params).map(([name, value]) => [name, listedParam(value)])),
       }));
     },
@@ -180,13 +196,19 @@ function checkValue(spec, raw) {
   }
 }
 
-/** Kiểm + chuẩn hoá params theo khuôn. {ok:true, value} | {ok:false, detail}. detail chỉ dựng từ khuôn. */
+/** Kiểm + chuẩn hoá params theo khuôn. {ok:true, value} | {ok:false, detail} | {ok:false, overflow:{reason,path,count,max}} (danh sách
+ * cấp ngoài khai overflow dài hơn max). detail chỉ dựng từ khuôn. */
 export function validateActionParams(action, raw) {
   const accepted = Object.keys(action.params);
   const shape = () => accepted.length ? accepted.map(name => `${name}${action.params[name].optional ? '' : '*'} (${action.params[name].hint})`).join('; ') : 'không có tham số';
   const refuse = (problem) => ({ ok: false, detail: `${problem} Khuôn ${action.id}: ${shape()}. (* = bắt buộc)` });
   if (raw === undefined || raw === null) raw = {};
   if (!dataRecord(raw)) return refuse('params phải là object.');
+  for (const [name, spec] of Object.entries(action.params)) {
+    const supplied = raw[name] ?? raw[name.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
+    if (spec.kind === 'list' && spec.overflow && dataArray(supplied) && supplied.length > spec.max)
+      return { ok: false, overflow: { reason: spec.overflow, path: name, count: supplied.length, max: spec.max } };
+  }
   const checked = checkFields(action.params, raw, '');
   if (checked.unknown) return refuse('Có tham số không nhận.');
   if (checked.duplicate) return refuse(`Tham số ${checked.duplicate} gửi hai lần.`);
@@ -200,8 +222,10 @@ export function validateActionParams(action, raw) {
 function checkFields(fields, raw, prefix) {
   const input = {};
   let unknown = false, duplicate = null;
+  const aliases = Object.fromEntries(Object.entries(fields).filter(([, spec]) => spec.alias !== undefined).map(([name, spec]) => [spec.alias, name]));
   for (const [supplied, value] of Object.entries(raw)) {
-    const name = Object.hasOwn(fields, supplied) ? supplied : snakeToCamel(supplied);
+    const camel = Object.hasOwn(fields, supplied) ? supplied : snakeToCamel(supplied);
+    const name = Object.hasOwn(fields, camel) ? camel : Object.hasOwn(aliases, camel) ? aliases[camel] : camel;
     if (!Object.hasOwn(fields, name)) { unknown = true; continue; }
     if (Object.hasOwn(input, name)) { duplicate ??= name; continue; }
     input[name] = value;

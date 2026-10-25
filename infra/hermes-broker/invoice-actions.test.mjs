@@ -56,7 +56,12 @@ test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong
   const [collect] = invoiceCatalog().listing({ action: [INVOICE_COLLECT_KEY] });
   assert.equal(collect.confirm, 'always');
   assert.deepEqual(Object.keys(collect.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'items', 'method', 'amount', 'date', 'overpay', 'cashbookName', 'note']);
-  assert.deepEqual(Object.entries(collect.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'method']);
+  // Lượt 14: toà tuỳ chọn (máy chủ giải theo phòng); sổ nhận nhận cả tên phụ cashbook (như expense.create), gửi cả hai tên ⇒ sai.
+  assert.deepEqual(Object.entries(collect.params).filter(([, spec]) => spec.required).map(([name]) => name), ['method']);
+  assert.match(collect.params.cashbookName.hint, /^sổ\/tài khoản NHẬN tiền người dùng nêu .*không ghi vào note/);
+  assert.deepEqual(validateActionParams(INVOICE_COLLECT, { roomName: 'Paris 2', method: 'TK', cashbook: 'HKD Tâm', amount: 350000 }),
+    { ok: true, value: { roomName: 'Paris 2', method: 'TK', amount: 350000, cashbookName: 'HKD Tâm' } });
+  assert.equal(validateActionParams(INVOICE_COLLECT, { ...ONE, cashbook: 'HKD Tâm', cashbookName: 'MB' }).ok, false, 'hai tên của cùng tham số');
   assert.deepEqual([collect.params.items.max, collect.params.method.values, collect.params.overpay.values], [10, ['TK', 'TT', 'TM'], ['keep', 'return']]);
   assert.deepEqual(validateActionParams(INVOICE_COLLECT, { building_name: '44TL', room_name: '201', method: 'TK', amount: '3650000', cashbook_name: 'mb' }),
     { ok: true, value: { buildingName: '44TL', roomName: '201', method: 'TK', amount: 3650000, cashbookName: 'mb' } });
@@ -81,16 +86,18 @@ test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong
   assert.deepEqual([...createActionCatalog([...EXPENSE_ACTIONS, ...INVOICE_ACTIONS]).pages], ['expense', 'invoice']);
 });
 
-test('Mốc 5: điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục — khuôn tham số, lý do bắt buộc, luôn xem trước (kể cả irreversible)', () => {
+// Lượt 14 (nghiệm thu C3c): lý do TUỲ CHỌN ở khuôn tham số — máy chủ kiểm chặn (tổng mới < đã thu, đã thu nên không huỷ…) rồi mới đòi lý do
+// (reason_required, dạng needs_input); có thì vẫn 8–1000 / 8–500 ký tự.
+test('Mốc 5: điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục — khuôn tham số, lý do tuỳ chọn, luôn xem trước (kể cả irreversible)', () => {
   const listed = invoiceCatalog().listing({ action: ['invoices.edit', 'invoices.approve', 'invoices.cancel'] });
   assert.deepEqual(listed.map(item => [item.action, item.confirm]), [['invoice.adjust', 'always'], ['invoice.adjustment_check', 'always'],
     ['invoice.cancel', 'always'], ['invoice.restore', 'always']]);
   const [adjust, check, cancel] = listed;
   assert.deepEqual(Object.keys(adjust.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'reason', 'discount', 'addItems', 'setItems']);
-  assert.deepEqual(Object.entries(adjust.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName', 'reason']);
+  assert.deepEqual(Object.entries(adjust.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName']);
   assert.deepEqual([adjust.params.addItems.max, adjust.params.setItems.max], [5, 5]);
   assert.deepEqual(Object.keys(check.params), ['buildingName', 'roomName', 'month', 'invoiceNumber']);
-  assert.deepEqual(Object.entries(cancel.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName', 'reason']);
+  assert.deepEqual(Object.entries(cancel.params).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'roomName']);
   const [ADJUST, , CANCEL] = INVOICE_ACTIONS.slice(2);
   const base = { buildingName: '44TL', roomName: '201', reason: 'Khách báo sai tiền phòng' };
   assert.deepEqual(validateActionParams(ADJUST, { ...base, discount: '100000', set_items: [{ match: 'tiền phòng', amount: 0 }],
@@ -101,6 +108,9 @@ test('Mốc 5: điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục �
     assert.equal(validateActionParams(ADJUST, params).ok, false, JSON.stringify(params).slice(0, 80));
   assert.equal(validateActionParams(CANCEL, { ...base, reason: 'x'.repeat(501) }).ok, false);
   assert.equal(validateActionParams(CANCEL, { ...base, month: '2026-10', invoiceNumber: 'INV-1' }).ok, true);
+  assert.deepEqual(validateActionParams(ADJUST, { buildingName: '44TL', roomName: '201', discount: 300000 }),
+    { ok: true, value: { buildingName: '44TL', roomName: '201', discount: 300000 } }, 'chưa có lý do vẫn gọi được');
+  assert.equal(validateActionParams(CANCEL, { buildingName: '44TL', roomName: '201' }).ok, true);
 });
 
 test('Mốc 5 qua runtime: không đổi gì / không có gì để kiểm là câu hỏi lại; tự kiểm, đã thu, trùng kỳ là lỗi có câu tĩnh', async t => {
@@ -116,6 +126,34 @@ test('Mốc 5 qua runtime: không đổi gì / không có gì để kiểm là c
         error.code === 'action_rejected' && error.reason === reasonCode && error.detail === ACTION_REASONS[reasonCode].text, reasonCode);
     }
   }
+});
+
+// Lượt 14 (nghiệm thu C3c): từ chối kèm dữ kiện đúng khuôn của mã (facts) ⇒ câu tĩnh + câu ghép (tháng đã chốt; số đã thu, tổng sau); dữ kiện
+// lệch khuôn hay gắn vào mã không khai ⇒ khuôn lệch (backend_unavailable). Thiếu lý do sau kiểm cứng ⇒ needs_input reason_required.
+test('lượt 14: period_closed kèm tháng đã chốt, adjust_below_collected kèm số đã thu; facts lệch khuôn ⇒ backend_unavailable', async t => {
+  const run = async (respond, args) => {
+    const { broker } = setup(t, { action: [INVOICE_COLLECT_KEY, 'invoices.edit'], respond });
+    return broker.callTool(TOKEN, 'crm_action_run', args);
+  };
+  const collect = { action: 'invoice.collect', params: { ...ONE, date: '2026-08-31' } };
+  const adjust = { action: 'invoice.adjust', params: { buildingName: '44TL', roomName: '201', discount: 300000 } };
+  await assert.rejects(run(() => ({ kind: 'rejected', reason: 'period_closed', facts: { month: '2026-08' } }), collect), error =>
+    error.code === 'action_rejected' && error.reason === 'period_closed' && error.detail === `${ACTION_REASONS.period_closed.text} Tháng đã chốt: 08/2026.`);
+  await assert.rejects(run(() => ({ kind: 'rejected', reason: 'period_closed' }), collect), error =>
+    error.reason === 'period_closed' && error.detail === ACTION_REASONS.period_closed.text, 'không facts ⇒ câu tĩnh');
+  await assert.rejects(run(() => ({ kind: 'rejected', reason: 'adjust_below_collected', facts: { collected: '7300000', totalAfter: '7000000' } }), adjust), error =>
+    error.reason === 'adjust_below_collected' && error.detail === `${ACTION_REASONS.adjust_below_collected.text} Đã thu 7.300.000đ; tổng sau điều chỉnh 7.000.000đ.`);
+  await assert.rejects(run(() => ({ kind: 'rejected', reason: 'adjust_below_collected', facts: { collected: '7300000' } }), adjust), error =>
+    error.detail === `${ACTION_REASONS.adjust_below_collected.text} Đã thu 7.300.000đ.`);
+  for (const facts of [{ month: '2026-13' }, { month: '08/2026' }, { month: '2026-08', extra: '1' }, {}, { collected: '7300000' }, ['2026-08'], 'x'])
+    await assert.rejects(run(() => ({ kind: 'rejected', reason: 'period_closed', facts }), collect), error => error.code === 'backend_unavailable', JSON.stringify(facts));
+  for (const facts of [{ collected: '-1' }, { collected: '7.300.000' }, { collected: 7300000 }, { totalAfter: '1' }, { collected: '0012' }])
+    await assert.rejects(run(() => ({ kind: 'rejected', reason: 'adjust_below_collected', facts }), adjust), error => error.code === 'backend_unavailable', JSON.stringify(facts));
+  await assert.rejects(run(() => ({ kind: 'rejected', reason: 'cancel_has_payment', facts: { collected: '1' } }), adjust), error => error.code === 'backend_unavailable',
+    'mã không khai facts');
+  const { call } = setup(t, { action: ['invoices.edit'], respond: () => ({ kind: 'rejected', reason: 'reason_required' }) });
+  const out = await call(adjust);
+  assert.deepEqual([out.outcome ?? out.kind, out.reason], ['needs_input', 'reason_required']);
 });
 
 test('invoice.collect: luôn xem trước (sàn money) kể cả khi SQL nói không cần; lượt 2 gửi đúng bản đã giải + basis', async t => {
@@ -165,6 +203,11 @@ test('lý do của trang: tiền mặt / hoá đơn huỷ / thiếu sổ nhận 
   outcome = { kind: 'rejected', reason: 'Hóa đơn không còn số tiền có thể thu' };
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'invoice.collect', params: ONE }),
     error => error.code === 'action_rejected' && error.reason === 'crm_refused', 'chuỗi lạ ⇒ crm_refused, không lọt câu SQL');
+  // Lượt 8: toà đã cài sổ nhận mà người hỏi không giữ/biết sổ nào — câu riêng, không chỉ sang "cài sổ" (kết nối mới: hạn mức 10 lời gọi/phút).
+  const fresh = setup(t, { respond: () => ({ kind: 'rejected', reason: 'receiving_book_not_held' }) });
+  await assert.rejects(fresh.broker.callTool(TOKEN, 'crm_action_run', { action: 'invoice.collect', params: ONE }), error =>
+    error.code === 'action_rejected' && error.reason === 'receiving_book_not_held' && error.detail === ACTION_REASONS.receiving_book_not_held.text);
+  assert.doesNotMatch(ACTION_REASONS.receiving_book_not_held.text, /cài/);
 });
 
 test('kết nối không giữ thu_tien.collect_transfer (khoá TẮT ở production) ⇒ không hiện tool, gọi ⇒ tool_not_available; mục lục trang ≤ 8 KB', async t => {

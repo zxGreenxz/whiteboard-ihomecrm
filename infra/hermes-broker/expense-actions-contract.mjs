@@ -22,16 +22,20 @@ export const EXPENSE_CREATE = defineAction({ id: 'expense.create', page: 'expens
     content: param.text(1, 200), category: param.name('category', { optional: true }), payee: param.text(1, 100, { optional: true }),
     voucherDate: param.date({ optional: true }), period: param.month({ optional: true }), cashbook: param.name('cashbook', { optional: true }),
   }), { min: 1, max: EXPENSE_CREATE_MAX_ITEMS }) },
-  reasons: ['system_voucher', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
+  // Lượt 13 (20261024094809): khoản thuộc luồng hệ thống (hoa hồng, thanh lý / trả tiền thừa cho khách, cọc, lương, chia lợi nhuận, chuyển
+  // nội bộ) ⇒ web_only + link màn gốc. Connector cũ vẫn chuyển mã này (mọi mã rejected toàn cục), danh sách ở đây chỉ để crm_action_list nói đúng.
+  reasons: ['system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed', 'date_out_of_range', 'amount_out_of_range'] });
 
+// Lượt 16 (nghiệm thu C3d): mã phiếu bị dùng lại giữa các toà ⇒ buildingName (tuỳ chọn) = toà của phiếu, SQL 20261024210500 dùng để chọn đúng
+// phiếu khi mã trùng (approve: một toà cho cả lô). SQL cũ bỏ qua khoá này (vẫn hỏi chọn phiếu như trước) ⇒ không phụ thuộc thứ tự phát hành.
 export const EXPENSE_NOTE = defineAction({ id: 'expense.note', page: 'expense', key: EXPENSE_CREATE_KEY, class: 'reversible', rpc: EXPENSE_RPC,
-  title: 'Ghi chú vào phiếu thu chi (ghi thẳng)',
-  params: { voucherCode: param.name('voucher'), note: param.text(1, 1000) },
+  title: 'Ghi chú vào phiếu thu chi (ghi thẳng; mã trùng giữa các toà ⇒ kèm buildingName)',
+  params: { voucherCode: param.name('voucher'), note: param.text(1, 1000), buildingName: param.name('building', { optional: true }) },
   reasons: ['not_found', 'not_allowed'] });
 
 // Mốc 4: chỉ khuôn tham số đã có (name/vnd/text/date) — không thêm byte tools/list (khuôn nằm trong kết quả crm_action_list).
 export const EXPENSE_EDIT = defineAction({ id: 'expense.edit', page: 'expense', key: 'income_expenses.edit', class: 'money', rpc: EXPENSE_RPC,
-  title: 'Sửa phiếu CHI chờ duyệt (nêu ít nhất một trường đổi)',
+  title: 'Sửa phiếu CHI chờ duyệt (nêu ≥ 1 trường đổi; buildingName = toà của phiếu khi mã trùng, toà khác ⇒ chuyển toà)',
   params: { voucherCode: param.name('voucher'), amount: param.vnd({ optional: true }), category: param.name('category', { optional: true }),
     content: param.text(1, 200, { optional: true }), payee: param.text(1, 100, { optional: true }), voucherDate: param.date({ optional: true }),
     cashbook: param.name('cashbook', { optional: true }), buildingName: param.name('building', { optional: true }),
@@ -39,16 +43,18 @@ export const EXPENSE_EDIT = defineAction({ id: 'expense.edit', page: 'expense', 
   reasons: ['not_found', 'not_pending', 'reason_required', 'system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed'] });
 
 export const EXPENSE_CANCEL = defineAction({ id: 'expense.cancel', page: 'expense', key: 'income_expenses.cancel', class: 'irreversible', rpc: EXPENSE_RPC,
-  title: 'Huỷ phiếu CHI lập tay (bắt lý do; đã vào sổ ⇒ bút toán đảo)',
-  params: { voucherCode: param.name('voucher'), reason: param.text(8, 1000) },
+  title: 'Huỷ phiếu CHI lập tay (bắt lý do; đã vào sổ ⇒ bút toán đảo; mã trùng giữa các toà ⇒ kèm buildingName)',
+  params: { voucherCode: param.name('voucher'), reason: param.text(8, 1000), buildingName: param.name('building', { optional: true }) },
   reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'strict_mode', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed'] });
 
 // Mốc 5: duyệt / duyệt + chi ≤ 10 phiếu (Q8). Khoá Hermes income_expenses.approve_vouchers (seed TẮT), quyền CRM giao vào
 // income_expenses.approve (Q25). post mặc định true; chưa có ảnh / không giữ sổ ⇒ SQL hạ "chỉ duyệt" và nói rõ trong bản xem trước (TC4).
 export const EXPENSE_APPROVE_MAX = 10;
 export const EXPENSE_APPROVE = defineAction({ id: 'expense.approve', page: 'expense', key: 'income_expenses.approve_vouchers', class: 'money', rpc: EXPENSE_RPC,
-  title: 'Duyệt phiếu CHI (≤ 10 mã; post=false chỉ duyệt, mặc định duyệt và chi)',
-  params: { voucherCodes: param.list(param.name('voucher'), { min: 1, max: EXPENSE_APPROVE_MAX }), post: param.bool({ optional: true }) },
+  // Lượt 14: mã trùng giữa các toà ⇒ dùng voucherId của dòng báo cáo expense_vouchers (SQL 20261024120211 nhận UUID).
+  title: 'Duyệt phiếu CHI (≤ 10 mã / voucherId của báo cáo; mã trùng ⇒ buildingName; post=false chỉ duyệt, mặc định duyệt và chi)',
+  params: { voucherCodes: param.list(param.name('voucher'), { min: 1, max: EXPENSE_APPROVE_MAX }), post: param.bool({ optional: true }),
+    buildingName: param.name('building', { optional: true }) },
   reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'evidence_required', 'cashbook_not_held', 'period_locked', 'not_allowed', 'state_changed'] });
 
 export const EXPENSE_ACTIONS = Object.freeze([EXPENSE_CREATE, EXPENSE_NOTE, EXPENSE_EDIT, EXPENSE_CANCEL, EXPENSE_APPROVE]);

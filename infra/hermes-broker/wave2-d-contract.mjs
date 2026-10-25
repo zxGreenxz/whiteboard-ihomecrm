@@ -30,6 +30,10 @@ const BUILDING_SUMMARY = { total: count, active: count, inactive: count };
 const ROOM_ROW = { roomId: id, name: text(100), code: text(100), buildingId: id, buildingName: text(200), floor: nullable(int), area: nullable(amount),
   rentPrice: amount, depositAmount: amount, maxOccupants: nullable(int), status: code, displayStatus: code };
 const TOTAL = { total: count };
+// Lượt 12 (nghiệm thu C3 trên TEST 24/10): id nháp KHÔNG luôn là UUID chuẩn RFC — contract.draft của Hermes đặt id = md5('draft:'||
+// requestId)::uuid (20261022074815), bit phiên bản/biến thể tuỳ ý ⇒ `id` (đòi [1-8] / [89ab]) từ chối cả báo cáo (backend_unavailable).
+// Nhận mọi UUID dạng chuẩn 8-4-4-4-12 chữ thường (Postgres in uuid như vậy); vẫn là id, không phải chuỗi tự do.
+const anyUuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
 const RANGE = 'Không truyền ngày: như mặc định của trang web.';
 
 export const W2D_REPORTS = Object.freeze({
@@ -102,7 +106,7 @@ export const W2D_REPORTS = Object.freeze({
   contract_drafts: w2Report({ permission: 'contracts.view', source: 'crm.list_contract_drafts', scope: 'rows', private: true,
     title: 'Nháp HĐ chưa ký (tab Nháp trang Hợp đồng): phòng, ngày bắt đầu/kết thúc, giá, cọc, số khách, đã xuất chưa, số ngày chờ. Dùng cho "còn HĐ nào chưa ký / nháp chờ ký".',
     params: ['buildingId'],
-    fields: { draftId: id, ...ROOM, startDate: nullable(date), endDate: nullable(date), rentPrice: amount, totalDeposit: amount, customerCount: count,
+    fields: { draftId: anyUuid, ...ROOM, startDate: nullable(date), endDate: nullable(date), rentPrice: amount, totalDeposit: amount, customerCount: count,
       hasRepresentative: bool, documentCount: count, createdOn: date, updatedOn: date, daysOpen: int },
     summary: { total: count, exported: count, withoutCustomer: count, oldestDays: nullable(int) } }),
   re_expense_ratio: w2Report({ permission: 'reports_real_estate.expense_ratio', source: 'crm.real_estate_expense_ratio_v1', scope: 'rows', private: true,

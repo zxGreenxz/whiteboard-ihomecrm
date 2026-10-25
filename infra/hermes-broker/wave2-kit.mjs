@@ -32,6 +32,9 @@
 //  5. Chữ tự do gắn hợp đồng (ghi chú, người nộp, tên phiếu) chỉ khi MỌI khách của HĐ nhìn thấy dưới RLS customers.
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';
 export { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT };
+/** Lượt 12: khoá MỚI thêm vào summary của một báo cáo đã phát hành, trong một bản phát hành (connector lên trước migration). Vắng ⇒ SQL
+ * chưa áp ⇒ broker điền null rồi kiểm như thường; có mặt ⇒ kiểm đúng `check`; khoá lạ vẫn bị từ chối (wave2-registry runResult). */
+export const tolerant = check => Object.assign(value => check(value), { tolerant: true });
 
 const fail = () => { throw new TypeError('invalid_w2_contract'); };
 export const w2Record = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value)) &&
@@ -155,6 +158,8 @@ export const W2_PARAMS = Object.freeze({
   lowStock: Object.freeze({ type: 'bool', hint: 'true|false' }),
   // Thu chi Mốc 3 (22/10, 20261022044126_hermes_w2_min_amount_param_v1): ngưỡng tiền của báo cáo phiếu chi.
   minAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0, vd 10000000' }),
+  // Thu chi lượt 14 (20261024120208): trần tiền — chỉ phiếu NHỎ HƠN HẲN số này ("dưới 1 triệu" ⇒ 1000000).
+  maxAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0; chỉ phiếu nhỏ hơn số này, vd dưới 1 triệu ⇒ 1000000' }),
   buildingId: uuidParam('ID toà (không phải ID công ty)'),
   areaId: uuidParam('ID khu'),
   roomId: uuidParam('ID phòng'),

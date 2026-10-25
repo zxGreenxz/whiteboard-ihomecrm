@@ -52,13 +52,21 @@ export function createConfirmStore({ clock, ttlMs = CONFIRM_TTL_MS, maxPending =
       pending.set(digest(token), { binding, payload, issuedAt: at });
       return { token, issuedAt: at, expiresAt: new Date(at + ttlMs).toISOString() };
     },
-    // Trình ra là dùng: khớp hay không token cũng không còn.
+    // Trình ra là dùng: khớp hay không token cũng không còn. why (Thu chi lượt 14): unknown (sai dạng / đã dùng / không có), expired, mismatch
+    // (lệch binding — kèm payload của bản ghi chờ để người gọi nói đúng phần lệch; payload không bao giờ tới mô hình).
+    // binding là chuỗi, hoặc (Thu chi lượt 16) hàm payload ⇒ chuỗi: người gọi dựng khoá từ phần của bản ghi chờ mà mô hình hay chép sai
+    // (requestId) cùng phần còn lại mô hình gửi — khoá vẫn phải trùng đúng khoá lúc cấp, nên không nới gì ngoài phần lấy từ bản ghi.
     redeem(token, binding, now) {
       const at = instant(now);
-      if (typeof token !== 'string' || !CONFIRM_TOKEN.test(token)) return { ok: false };
+      if (typeof token !== 'string' || !CONFIRM_TOKEN.test(token)) return { ok: false, why: 'unknown' };
       const key = digest(token), entry = pending.get(key);
       pending.delete(key);
-      return entry && entry.binding === binding && live(entry, at) ? { ok: true, payload: entry.payload, issuedAt: entry.issuedAt } : { ok: false };
+      if (!entry) return { ok: false, why: 'unknown' };
+      if (!live(entry, at)) return { ok: false, why: 'expired' };
+      let expected = binding;
+      if (typeof binding === 'function') { try { expected = binding(entry.payload); } catch { expected = null; } }
+      if (typeof expected !== 'string' || entry.binding !== expected) return { ok: false, why: 'mismatch', payload: entry.payload };
+      return { ok: true, payload: entry.payload, issuedAt: entry.issuedAt };
     },
     get size() { return pending.size; },
   });

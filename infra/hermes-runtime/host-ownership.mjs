@@ -31,17 +31,18 @@ export const AUDIT_CODES = Object.freeze([...CODES]);
 // audit chỉ nhận trường reason khi code = action_rejected và reason thuộc tập này; audit-codes.test.mjs khoá tập bằng
 // ACTION_REJECT_REASONS cả hai chiều (thiếu mã ⇒ audit đỏ ⇒ broker đóng an toàn thành backend_unavailable — đúng lớp
 // sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
-const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
+const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
   // Thu chi (Đợt 2).
   'system_voucher', 'evidence_required',
   // Trang Hợp đồng (Đợt 2).
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
-  'cannot_remove_representative',
+  'cannot_remove_representative', 'room_has_new_contract',
   // Trang Công việc (Đợt 2b).
   'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
   // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
-  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'reconciliation_required',
+  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
+  'period_closed',
   // Hoá đơn (Mốc 4, ghi chỉ số).
   'meter_used_by_invoice', 'meter_has_later_reading',
   // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).
@@ -149,8 +150,29 @@ export async function acquireHostOwnership(options) {
   });
 }
 
+// Lượt 12 Hợp đồng (rào đồng ý, infra/hermes-broker/consent-guard.mjs): dòng prepared của lượt xác nhận một thao tác KHÔNG lùi được mang
+// consent = {action, requestId, text} — text là câu đồng ý mô hình trích từ người dùng (một dòng, ≤ 300 ký tự), ngoại lệ DUY NHẤT
+// của luật "không chữ thô" dưới đây: để lần lại lời đồng ý khi có ghi sai.
+const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
+const consentEvent = value => {
+  const consent = data(value, ['action', 'requestId', 'text']);
+  if (!ACTION_ID.test(consent.action) || typeof consent.requestId !== 'string' || !UUID.test(consent.requestId) || typeof consent.text !== 'string' ||
+    !consent.text || [...consent.text].length > 300 || /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(consent.text)) fail('host_audit_invalid');
+  return consent;
+};
+// Thu chi lượt 16 (infra/hermes-broker/action-runtime.mjs): lượt xác nhận dùng requestId của token khi requestId mô hình gửi lệch — dòng
+// prepared mang requestIdFix = {action, requestId của token, supplied: different | malformed | missing}; chuỗi mô hình gửi KHÔNG vào sổ.
+const REQUEST_ID_FIXES = new Set(['different', 'malformed', 'missing']);
+const requestIdFixEvent = value => {
+  const fix = data(value, ['action', 'requestId', 'supplied']);
+  if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId) || !REQUEST_ID_FIXES.has(fix.supplied)) fail('host_audit_invalid');
+  return fix;
+};
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason']);
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent', 'requestIdFix']);
+  if ((Object.hasOwn(event, 'consent') || Object.hasOwn(event, 'requestIdFix')) && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
+  if (Object.hasOwn(event, 'consent')) event.consent = consentEvent(event.consent);
+  if (Object.hasOwn(event, 'requestIdFix')) event.requestIdFix = requestIdFixEvent(event.requestIdFix);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {
@@ -162,7 +184,8 @@ function auditEvent(raw) {
 }
 
 /** Host-only bounded append sink for the broker's actual fixed event protocol.
- * No raw request, text, provider error, token or caller-selected filename.
+ * No raw request, text, provider error, token or caller-selected filename (sole exception: the bounded
+ * consent sentence of an irreversible action's confirmation, consentEvent above).
  * Caller must own the enclosing host lock. Successful write includes fdatasync;
  * close waits actual queued filesystem work even if a broker deadline elapsed.
  * One 16MiB file; reaching capacity requires explicit host maintenance, never

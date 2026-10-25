@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
-import { BrokerError, REQUEST_RECEIPT_UNKNOWN, ACTION_WEB_LINK, actionItem, itemDetail } from './broker.mjs';
+import { BrokerError, REQUEST_RECEIPT_UNKNOWN, ACTION_WEB_LINK, actionFacts, actionItem, rejectedDetail } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
-import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
+import { ACTION_REJECT_REASONS } from './action-reasons.mjs';
+import { CONFIRM_INVALID_TEXTS, isRequestIdShapeDetail } from './action-contract.mjs';
 import { vietnamToolResult } from './vietnam-time.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
@@ -127,12 +128,18 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           // R2b: invalid_request của tool đọc gọi sai cách mang MỘT trong các hint tĩnh của read-misuse-hints.mjs (danh sách
           // đóng, chỉ nêu tool/tham số đúng); chuỗi nào khác — kể cả gán nhầm vào detail — không tới mô hình.
           : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail }
+          // Thu chi lượt 16: requestId sai khuôn UUID ⇒ câu tĩnh kèm số ký tự đã gửi (requestIdShapeDetail), không bao giờ chuỗi đã gửi.
+          : safe.code === 'invalid_request' && isRequestIdShapeDetail(safe.detail) ? { detail: safe.detail }
+          // Thu chi lượt 14: confirmation_invalid của thao tác ghi dùng chung mang MỘT câu tĩnh nói phần nào lệch (CONFIRM_INVALID_TEXTS).
+          : safe.code === 'confirmation_invalid' && CONFIRM_INVALID_TEXTS.includes(safe.detail) ? { detail: safe.detail }
           // Đợt 1 nền chung: lỗi thật của thao tác ghi mang MỘT lý do dạng rejected của danh sách đóng action-reasons.mjs
           // cùng đúng câu tĩnh của nó; reason/detail nào khác (kể cả gán nhầm) không tới mô hình.
           // Thu chi Mốc 4: lỗi của một khoản trong lô kèm item (1–20) và câu "Khoản N: " + đúng câu tĩnh đó. CV12 (Công việc Mốc 3): kèm
-          // link web khi đúng khuôn đường dẫn tương đối (không bao giờ chuỗi khác).
+          // link web khi đúng khuôn đường dẫn tương đối (không bao giờ chuỗi khác). Lượt 14 Hoá đơn: câu ghép từ dữ kiện đúng khuôn của mã
+          // (tháng đã chốt, số đã thu — actionFacts) đứng sau câu tĩnh; dữ kiện lệch khuôn ⇒ cả câu không tới mô hình.
           : safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) && (safe.item === undefined || actionItem(safe.item)) &&
-            safe.detail === itemDetail(safe.item, ACTION_REASONS[safe.reason].text)
+            (safe.facts === undefined || actionFacts(safe.reason, safe.facts) !== undefined) &&
+            safe.detail === rejectedDetail(safe.reason, safe.item, safe.facts)
             ? { reason: safe.reason, detail: safe.detail, ...(safe.item === undefined ? {} : { item: safe.item }),
               ...(typeof safe.link === 'string' && ACTION_WEB_LINK.test(safe.link) ? { link: safe.link } : {}) } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {

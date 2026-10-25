@@ -24,7 +24,7 @@ Căn cứ, theo thứ tự ưu tiên:
    - thêm 3 báo cáo: HĐ kết thúc trong khoảng ngày, báo trả theo khoảng ngày, hồ sơ trả phòng chờ quyết toán;
    - sửa tiêu đề 2 báo cáo: `re_terminations` (kỳ đúng tháng, đếm bỏ cọc), `held_deposits` ("chưa thu đủ cọc" = `SHORT` + `FIRST_INVOICE`, không có status `OWING`);
    - Mốc 3: báo cáo `rooms_occupancy` (số phòng theo toà, khoá `rooms.view`) và ba báo cáo hợp đồng chuyển sang khoá `contracts.view`, để Quản lý toà hỏi được;
-   - `publicLink` của chi tiết HĐ: chưa làm (mục 6).
+   - `publicLink` của chi tiết HĐ: làm ở lượt 11 (`20261024040003`, chưa áp; mục 15).
 
    Nguyên nhân của (d) và (e) đã đo được (mục 6). Đáp án "2 HĐ thiếu cọc" của ma trận đúng với TEST: `SHORT` 1 + `FIRST_INVOICE` 1, đo ở tầng 2 ngày 22/10. Production lúc đo có 17 HĐ ACTIVE chưa thu đồng cọc nào, cộng 1 HĐ ở chế độ `FIRST_INVOICE`; chênh lệch là dữ liệu production khác bản chép TEST, không phải đáp án sai. Đo lại trên TEST ở Mốc 3 (D-HĐ11): tổ chức chính có 282 HĐ hiệu lực, đúng 2 HĐ còn thiếu ≥ 10.000đ (= `SHORT` ∪ `FIRST_INVOICE`), 0 HĐ thiếu trong khoảng 0–10.000đ, 9 HĐ cọc 0; 16 HĐ "chưa thu đồng nào" khác thuộc tổ chức thử thứ hai.
 6. **Rào bất biến nằm trong bước ghi.**
@@ -264,9 +264,9 @@ Báo cáo W2 mới không thêm tool: chúng nằm trong kết quả `crm_read_r
 | (f) | Quản lý toà: "toà X còn phòng trống?", "đang cho thuê bao nhiêu phòng?" (ma trận lượt 2) | `re_vacant_rooms` cần khoá báo cáo BĐS ⇒ `forbidden`; `crm_read_occupancy` cần `reports_real_estate.occupancy`, kết nối quản lý không có tool này, mà mô tả `crm_available_rooms` lại chỉ sang nó. Web: Quản lý toà xem trang Phòng bằng `rooms.view` theo toà | **Đã làm (Mốc 3):** báo cáo W2D `rooms_occupancy` (`rooms.view`, nguồn `crm.rooms_list_v1` như trang Phòng): mỗi toà một dòng tổng / đang cho thuê (OCCUPIED + EXPIRING_SOON) / sắp hết hạn / trống / giữ chỗ / bảo trì. Danh sách phòng trống = báo cáo `rooms` có sẵn (`displayStatus AVAILABLE`). Mô tả `crm_available_rooms` chỉ thêm đường "không quyền BĐS: `rooms_occupancy` / `rooms`" (+48 B `tools/list`) |
 | (g) | "Tháng 2 năm sau toà 80 có mấy HĐ hết hạn?" (quản lý; bot ra 13, đúng 11) | Bot tự lọc tay danh sách; `re_contracts_ending` dùng khoá báo cáo BĐS nên quản lý không gọi được | **Đã làm (Mốc 3):** ba báo cáo hợp đồng (`re_contracts_ending`, `re_move_out_notices`, `re_exit_cases_pending`) chuyển sang khoá `contracts.view`, thêm vào tập khoá dùng lại của W2. `re_contracts_ending` vốn nhận tháng tương lai + `buildingId`; tầng 2 ra đúng 11 |
 | (h) | "Còn HĐ nào chưa ký / nháp chờ ký?" (Mốc 5) | Chưa có báo cáo | **Đã làm (Mốc 5):** báo cáo W2D `contract_drafts` (`contracts.view`, file `20261022075119`, dựng từ thân `043617`, ghim md5) gọi đúng RPC web `list_contract_drafts`; chỉ nháp EDITABLE trong tập toà; KHÔNG trả dữ liệu khách của nháp (chỉ số khách, có đại diện chưa, số bản đã xuất, số ngày chờ). Không phụ thuộc file trang Mốc 5 |
-| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Chưa làm (không gọn, xem "Chỗ nối `publicLink`" ngay dưới).** Phải dựng lại `hermes_domain_read_v3` (thân ~300 dòng, ghim md5 thân production), đổi khuôn kiểm khít của connector và thêm cấu hình host; SQL lên trước connector thì mọi lần đọc chi tiết HĐ hỏng |
+| — | Link công khai tra hoá đơn | `hermes_domain_read_v3` cố ý không trả `public_code` | **Làm ở lượt 11** (`20261024040003`, chưa áp; "Chỗ nối `publicLink`" ngay dưới). Phải dựng lại `hermes_domain_read_v3` (thân ~300 dòng, ghim md5 thân production), đổi khuôn kiểm khít của connector và thêm cấu hình host; SQL lên trước connector thì mọi lần đọc chi tiết HĐ hỏng |
 
-**Chỗ nối `publicLink` (D-HĐ9; dùng chung với phiên Hoá đơn — chưa hiện thực).**
+**Chỗ nối `publicLink` (D-HĐ9; dùng chung với phiên Hoá đơn — hiện thực ở lượt 11 cho chi tiết HĐ; luật link theo web: không TERMINATED / DRAFT).**
 - **Đường web:** `/c/:code` (`src/app/routes/publicRoutes.tsx`) là trang công khai của HĐ, liệt kê cả hoá đơn của HĐ đó; `code` = `contracts.public_code` (6–8 ký tự, unique). Link hoá đơn công khai của phiên Hoá đơn cũng là `/c/<public_code của HĐ>`, không có đường riêng cho từng hoá đơn.
 - **SQL** chỉ trả đường tương đối `publicPath` (`'/c/'||public_code`, chỉ khi HĐ ACTIVE), không bao giờ trả URL tuyệt đối: nhánh `contract_detail` của `hermes_domain_read_v3` (file mới, ghim md5 thân production như các bản dựng lại khác); báo cáo hoá đơn của phiên kia thêm cùng trường từ HĐ của hoá đơn.
 - **Cấu hình host:** khoá tuỳ chọn `publicWebOrigin` cạnh `actionPages` trong `infra/hermes-runtime/host-config.mjs` (`new URL(x).origin === x`, chỉ `https:`); `infra/hermes-broker/server.mjs` thêm vào danh sách `optional` và truyền vào broker. Vắng ⇒ không có link, hành vi như cũ.
@@ -321,7 +321,7 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` lúc viết. Mỗi migr
 | 5 ✓ | `20261022074815_hermes_contract_party_draft_v1` (MỚI) | Hàm tra khách INVOKER mới; thay vỏ (thân `022951` + tra khách) và bước ghi (thân `061813`, ghim md5); 3 dòng chính sách người ở + nháp. Áp SAU `061813` |
 | 5 ✓ | `20261022075119_hermes_w2d_contract_drafts_v1` (MỚI) | Báo cáo `contract_drafts` (dựng từ thân `043617`, ghim md5). Tách phát hành sớm được |
 | 6 ✓ | `20261023030305_hermes_contract_renew_batch_v1` (MỚI) | Hàm tra lô INVOKER + bước ghi lô DEFINER mới; thay vỏ (thân `074815` + nhánh lô); 1 dòng chính sách `contract.renew_batch`. md5 bước ghi chung `074815` ghim ở `$requires$`. Áp SAU `074815` |
-| — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: chưa làm (mục 6, "Chỗ nối `publicLink`") |
+| — | `hermes_contract_detail_public_link_v1` (tạm) | `publicLink` của chi tiết HĐ: làm ở lượt 11 bằng `20261024040003` (dựng lại `hermes_domain_read_v3`, không cần hàm tạm) |
 | 4–6 | (gộp vào migration trang nếu chưa merge, hoặc `_v2` mới) | Nhánh trả phòng; người ở + nháp; lô |
 
 Nếu phát hành Mốc 2–4 cùng một lần thì gộp thành một migration trang (D-HĐ10). Migration đã merge là bất biến, nên mốc sau phải dùng migration mới.
@@ -520,7 +520,7 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
 *Ghi nhận trả phòng, quyết toán sau (mục 4.4).*
 - `contract.return` (khoá `contracts.terminate`, irreversible / always) gọi `confirm_contract_return_v1` chế độ DEFERRED, khoá idempotency `hermes:<requestId>`.
 - Tra cứu thêm hoá đơn chưa thu (quyền xem hoá đơn theo toà + hàm dùng chung `invoice_effective_outstanding_v1`); lý do mới `return_date_future`.
-- `publicLink`: chưa làm, chỗ nối ở mục 6.
+- `publicLink`: làm ở lượt 11 (mục 15), chỗ nối ở mục 6.
 
 *Kiểm.*
 - PGlite trang 21/21 (thêm test Mốc 4 + test `$requires$`: thân lạ bị từ chối, thân `022951` được nhận — md5 Postgres khớp số ghim); đột biến Mốc 4 14/14, trang 23/23, review 4/4.
@@ -580,6 +580,26 @@ Không đổi: `capability-contract.mjs` (khoá đã có), `action-catalog.mjs`,
   - chủ (2 kết nối) và joey: xem trước 20 dòng; ghi 20/20 HĐ (đúng ngày mới theo hàm dùng chung, không phiếu / hoá đơn mới) trong 0,86–1,47 giây, dưới trần 8 giây;
   - phát lại y nguyên; lô sau không lặp HĐ; một biên nhận;
   - B.Huy không có khoá ghi.
+
+**Lượt 11 — sửa theo nghiệm thu bot thật trên TEST (24/10).** Ba migration MỚI, chưa áp, mỗi file dựng từ thân đang chạy / sẽ chạy ngay trước nó (md5 ghim ở `$requires$`; lõi v1 của `040001` dựng trên thân của #304 `20261023185114`, lượt 11b):
+- `20261024040001_hermes_write_name_resolve_house_number_v1` — lõi giải tên ghi dùng chung (v1 + bản toà ảo v2 của Thu chi) thêm bậc khớp TOKEN số nhà + tên đường SAU bằng / chứa: "/" và dấu câu là khoảng trắng mềm; bằng sau khi làm mềm, hoặc (chuỗi có số nhà + chữ, ≥ 2 token) token của tên / mã / tên thường gọi chứa mọi token đã gõ. Bậc mới chỉ chạy khi bốn bậc cũ không thấy toà nào ⇒ mọi ca cũ giữ nguyên; nhiều toà ⇒ `ambiguous`. Đường đọc (`matchBuildings` của connector) cùng luật, cùng bộ vector (`name-match-vectors.json`, ca `tokens` / `read`).
+- `20261024040002_hermes_contract_return_preview_v1` — nhánh `contract.return` của bước ghi: câu xem trước "… TRẢ PHÒNG … vào NGÀY thứ Ba 20/10/2026 (2 ngày trước); loại: …", trường `preview.returnDateLabel`; cảnh báo "NGÀY TRẢ KHÁC NGÀY BÁO TRẢ" (hai ngày kèm thứ) và "NGÀY TRẢ ĐÃ QUA N NGÀY" (> 7 ngày). Luật xác nhận, basis, biên nhận, NOWAIT không đổi.
+- `20261024040003_hermes_w2_contract_detail_public_path_v1` — chỗ nối `publicLink` (D-HĐ9) đã làm: nhánh `contract_detail` của `hermes_domain_read_v3` trả `publicPath` `/c/<public_code>` đúng luật nút QR của web (có mã 6–8 chữ/số, HĐ không `TERMINATED` / `DRAFT`); connector ghép `publicWebOrigin` của host thành `publicLink` (vắng ⇒ null). Nháp (`contract_drafts`) không có link công khai ở web.
+- Connector (không migration): thao tác bị từ chối vì người dùng thiếu quyền CRM mà khoá đã bật cho kết nối + công ty ⇒ lý do mới `forbidden` ("Anh/chị chưa có quyền CRM…"); khoá chưa bật ⇒ vẫn `action_disabled`.
+- `contract_extensions.user_id` = `contracts.user_id` (người tạo HĐ), ở cả web (`renew_contract_impl`) lẫn Hermes (cùng hàm web) — không phải người gia hạn; người thao tác nằm ở `hermes_action_receipts.user_id` và `contract_notice_transition_events.actor_id`. Không đổi.
+- Thứ tự áp: `20261023185114` (#304, đợt C1) → `040001` (ghim md5 thân 185114 `081243f1…`; áp trước 185114 thì dừng; sau khi áp, chạy lại 185114 dừng ở `$requires$` của nó ⇒ cần ngoại lệ pinned); `040002` bất kỳ lúc nào; `040003` chỉ sau khi connector lượt 11 lên. Cả ba chỉ thay hàm có sẵn ⇒ catalog-proven giả, áp đích danh.
+
+**Lượt 12 — sửa theo nghiệm thu lượt cuối C3 (24/10).** Hai migration MỚI, chưa áp; mỗi file ghim md5 thân đang chạy:
+- `contract_drafts` → `backend_unavailable`: id nháp do `contract.draft` tạo là `md5('draft:'||requestId)::uuid` — không đúng bit phiên bản/biến thể RFC nên khuôn `id` của connector từ chối cả báo cáo. Sửa ở connector (`draftId` nhận mọi UUID dạng chuẩn 8-4-4-4-12 chữ thường). Tám báo cáo Hợp đồng khác khớp khuôn trên dữ liệu TEST thật.
+- `20261024160001_hermes_contract_return_twice_v1` — `contract.return` với ngày trước ngày bắt đầu HĐ hiện hành (phòng đã có HĐ mới; HĐ trước đã ghi trả / thanh lý) ⇒ `rejected` `room_has_new_contract` + link `/contracts/<HĐ trước>` (không có ⇒ HĐ hiện hành), kiểm TRƯỚC khoảng ngày (trước đây `date_out_of_range`). Dựng từ thân `040002`; `$requires$` nhận cả thân production `074815`.
+- `20261024160002_hermes_w2a_invoice_room_detail_link_v1` — `invoice_room_detail` thêm `summary.publicPath` (`/c/<mã>` của HĐ của hoá đơn, luật QR web, chỉ khi xem được khách như `invoice_reminders`); connector ghép thành `summary.publicLink`. Khoá `summary` mới khai `tolerant` (W2 kit): connector nhận cả SQL cũ.
+- Vai chỉ xem (tkh): capability SQL `allowed=false` mọi khoá Hợp đồng ⇒ thao tác không vào quyền hiệu lực, không hiện ở `crm_action_list`; gọi thẳng ⇒ `forbidden`. Có quyền ở vài toà ⇒ toà ngoài phạm vi ⇒ `name_unresolved` `outside_scope` ("không làm được ở đó, báo người dùng"). Không đổi.
+- Rào đồng ý ở máy chủ (connector, không SQL; `infra/hermes-broker/consent-guard.mjs`). Lý do: ghi sai thật lần 3, `contract.return` được xác nhận khi người dùng chỉ bổ sung chi tiết.
+  - Phạm vi: mọi thao tác lớp `irreversible` — `contract.renew`, `contract.renew_batch`, `contract.return`, `expense.cancel`, `invoice.adjustment_check`, `task.cancel`. `invoice.cancel` (money) khôi phục được bằng `invoice.restore` nên không thuộc rào.
+  - Lượt xác nhận phải kèm `consentText` = nguyên văn tin mới nhất của người dùng. `consentText` nằm ngoài `params` và ngoài khoá binding của token.
+  - Câu phải có dấu hiệu đồng ý ở đầu một vế và không có dấu hiệu chưa đồng ý nào. Nếu không ⇒ `needs_input` `consent_unclear`, chưa gửi lệnh ghi, token chưa tiêu (người dùng đáp "ok" thì dùng lại được trong hạn).
+  - Câu đã qua rào vào dòng `prepared` của sổ audit host (`consent`).
+  - `crm_action_list` có `consentText` (gợi ý tĩnh) ở đúng các thao tác này. `huongDan` của `confirmation_required` và của `consent_unclear` nói cách gọi lại.
 
 ## 16. Chưa xác minh
 

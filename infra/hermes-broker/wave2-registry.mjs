@@ -134,7 +134,10 @@ export function createW2Registry(packages) {
           value.items.length || value.summary !== null || value.nextOffset !== null) fail();
       return { report: value.report, source: value.source, unavailable: value.unavailable, summary: null, items: [], offset: value.offset, nextOffset: null, sourceCapped: false };
     }
-    if (!(spec.summary === null ? value.summary === null : shaped(value.summary, spec.summary))) fail();
+    // Khoá tolerant (wave2-kit) vắng ⇒ null: connector mới chạy được với SQL cũ một bản phát hành; khoá lạ vẫn hỏng.
+    const summary = spec.summary !== null && w2Record(value.summary) ? { ...Object.fromEntries(Object.entries(spec.summary)
+      .filter(([key, check]) => check.tolerant === true && !Object.hasOwn(value.summary, key)).map(([key]) => [key, null])), ...value.summary } : value.summary;
+    if (!(spec.summary === null ? summary === null : shaped(summary, spec.summary))) fail();
     const inFence = item => id(item) && fence.buildings.includes(item);
     for (const row of value.items) {
       if (!shaped(row, spec.fields)) fail();
@@ -147,7 +150,7 @@ export function createW2Registry(packages) {
           spec.scope === 'cashbooks' && !fence.orgWide && Object.hasOwn(row, 'cashbookId') &&
             !(id(row.cashbookId) && fence.cashbooks.includes(row.cashbookId))) fail();
     }
-    return structuredClone({ report: value.report, source: value.source, unavailable: null, summary: value.summary, items: value.items,
+    return structuredClone({ report: value.report, source: value.source, unavailable: null, summary, items: value.items,
       offset: value.offset, nextOffset: value.nextOffset, sourceCapped: value.sourceCapped });
   }
   const define = (toolName, description, inputSchema, input, resultKeys, outputKeys, result, mayUse) => Object.freeze({ family: 'w2', permission: null,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTION_REASON_CODES, ACTION_INPUT_REASONS } from './action-reasons.mjs';
-import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, ORG, INV_A, INV_A9, INV_B, INV_D10, TK1, TK2, TT1, ROUNDING, CONTRACT, STRANGER }
+import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, ORG, USER, INV_A, INV_A9, INV_B, INV_D10, TK1, TK2, TT1, ROUNDING, CONTRACT, STRANGER }
   from './invoice-write-fixture.mjs';
 
 // RPC trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 2–5, 4.1) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -10,9 +10,12 @@ import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CAS
 // chữ ký, cùng câu lỗi đã liệt kê ở mục 5, idempotency theo khoá + băm, khoá lạc quan p_expected_paid_amount) — nó chứng minh logic của
 // bước ghi Hermes (chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, lý do, phạm vi), KHÔNG chứng minh v5 thật: phần đó đo ở tầng 2.
 const code = expected => error => error.code === expected;
+// Lượt 14 (nghiệm thu C3c, "ck vào HKD Tâm" ghi vào sổ mặc định chuyển khoản): chưa nêu sổ mà toà còn sổ nhận khác ⇒ cảnh báo đứng đầu.
+const DEFAULT_BOOK_WARNING = 'Chưa nêu sổ nhận nên dùng sổ mặc định «VCB toà A ***» (TK). Toà còn sổ nhận «MB toà A» (TK), «POS toà A» (TT). Người dùng đã nói '
+  + 'sổ/tài khoản nhận khác thì gọi lại kèm cashbookName (máy chủ chọn hình thức theo sổ), KHÔNG xác nhận bản này.';
 
 test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy thử không để lại dấu vết, lô cả-hoặc-không, basis, lý do, phạm vi', { timeout: 300000 }, async t => {
-  const f = await invoiceSetup(t);
+  const f = await invoiceSetup(t, { l14: true });
   const { db, run, applyWith, trace, one } = f;
 
   await t.test('tiền mặt ⇒ cash_collection_web_only trước mọi tra cứu, cả lượt 2', async () => {
@@ -25,7 +28,8 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
     const preview = await run('preview', rid(2), one());
     assert.equal(preview.kind, 'preview', JSON.stringify(preview)); assert.equal(preview.confirm, 'required');
     assert.equal(preview.resolved.items[0].invoiceId, INV_A, 'kỳ 09 đã thu đủ ⇒ chọn kỳ 10');
-    assert.match(preview.preview.summary, /^Sẽ ghi THU 3\.650\.000đ bằng chuyển khoản ngày 22\/10\/2026 \(thứ Năm, hôm nay\) vào sổ «VCB toà A \*\*\*» cho hoá đơn INV-A-10\.$/);
+    assert.match(preview.preview.summary, /^Sổ nhận: «VCB toà A \*\*\*» — chuyển khoản, sổ mặc định của toà \(người dùng chưa nêu sổ\)\. Sẽ ghi THU 3\.650\.000đ ngày 22\/10\/2026 \(thứ Năm, hôm nay\) cho hoá đơn INV-A-10\.$/);
+    assert.deepEqual([preview.preview.receivingBook, preview.preview.method], ['VCB toà A ***', 'TK']);
     assert.deepEqual([preview.preview.items[0].amount, preview.preview.items[0].remainingBefore, preview.preview.items[0].remainingAfter, preview.preview.items[0].statusAfter],
       ['3650000', '3650000', '0', 'PAID']);
     assert.match(preview.preview.items[0].text, /Phòng P101 toà Toà A, kỳ 10\/2026 \(INV-A-10\): thu 3\.650\.000đ; còn nợ 3\.650\.000đ → 0đ: ĐÃ THANH TOÁN ĐỦ\./);
@@ -34,7 +38,8 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
     assert.equal(applied.kind, 'applied', JSON.stringify(applied));
     assert.equal(applied.link, `/invoices/${INV_A}`);
     assert.deepEqual([applied.result.invoices[0].applied, applied.result.invoices[0].statusAfter, applied.result.applied], ['3650000', 'PAID', '3650000']);
-    const row = (await db.query('SELECT idempotency_key,tenders FROM public.invoice_payment_collections WHERE invoice_id=$1', [INV_A])).rows[0];
+    assert.match(applied.result.invoices[0].text, /^Đã ghi thu 3\.650\.000đ bằng chuyển khoản cho hoá đơn INV-A-10 \(Toà A\/P101, kỳ 10\/2026\)\. Hết nợ — ĐÃ THANH TOÁN ĐỦ\.$/);
+    const row =(await db.query('SELECT idempotency_key,tenders FROM public.invoice_payment_collections WHERE invoice_id=$1', [INV_A])).rows[0];
     assert.equal(row.idempotency_key, `hermes-inv:${rid(2)}`);
     assert.deepEqual(row.tenders, [{ payment_method: 'TK', gross_amount: 3650000, account_id: TK1 }]);
     assert.deepEqual(await applyWith(rid(2), one(), preview), applied, 'phát lại y nguyên');
@@ -52,6 +57,34 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
     assert.deepEqual(await run('preview', rid(5), one({ roomName: 'P104', month: '2026-09' })), { kind: 'rejected', reason: 'debt_carried' });
   });
 
+  // Lượt 14 (nghiệm thu C3c: thu tiền điện tháng cũ, ngày thu 31/08, tháng 08 của toà đã chốt LN ⇒ máy chủ hỏi "kỳ sau" rồi kẹt): ngày thu thuộc
+  // tháng đã chốt ⇒ period_closed + facts.month NGAY sau phạm vi — trước nợ đã kéo (debt_carried), sổ nhận, khoá, kế hoạch; cả lượt 2, cả lô.
+  // Cùng hàm khoá tháng của trigger phiếu web (thân thật 20260925073251); toà khác / tháng chưa khoá không bị chặn.
+  await t.test('lượt 14: ngày thu ở tháng đã chốt lợi nhuận ⇒ period_closed trước debt_carried / sổ / kế hoạch; lượt 2 và lô cũng vậy', async () => {
+    await f.rollbackCase(async () => {
+      const before = await trace();
+      await db.query("INSERT INTO public.profit_monthly(building_id,period_month,locked_at) VALUES($1,'2026-08-01',now()),($2,'2026-10-01',now())", [BUILDING, OTHER_BUILDING]);
+      const closed = { kind: 'rejected', reason: 'period_closed', facts: { month: '2026-08' } };
+      assert.deepEqual(await run('preview', rid(40), one({ roomName: 'P104', month: '2026-09', date: '2026-08-31' })), closed, 'trước debt_carried');
+      assert.deepEqual(await run('preview', rid(41), one({ date: '2026-08-01', cashbookName: 'không có sổ này' })), { kind: 'needs_input', reason: 'name_unresolved',
+        field: 'cashbook', wanted: 'không có sổ này', why: 'not_visible', candidates: [{ name: 'VCB toà A *** — chuyển khoản (TK)' }, { name: 'MB toà A — chuyển khoản (TK)' },
+          { name: 'POS toà A — thanh toán (TT)' }], more: false },
+        'sổ người dùng nêu là tra cứu (trước bước ghi)');
+      assert.deepEqual(await run('preview', rid(42), { buildingName: 'toa a', method: 'TT', items: [{ roomName: 'p101' }, { roomName: 'p104' }], date: '2026-08-15' }), closed);
+      assert.deepEqual(await run('preview', rid(43), one({ roomName: 'P104', month: '2026-09', date: '2026-09-01' })), { kind: 'rejected', reason: 'debt_carried' },
+        'tháng 09 chưa chốt');
+      assert.deepEqual(await run('preview', rid(44), one({ date: '2026-10-23' })), { kind: 'rejected', reason: 'date_out_of_range' }, 'ngày tương lai vẫn trước');
+      const preview = await run('preview', rid(45), one({ roomName: 'P104', date: '2026-10-20' }));
+      assert.equal(preview.kind, 'preview', 'toà A tháng 10 chưa chốt (khoá tháng 10 là của toà B)');
+      await db.query("INSERT INTO public.profit_monthly(building_id,period_month,locked_at) VALUES($1,'2026-10-01',now())", [BUILDING]);
+      assert.deepEqual(await applyWith(rid(45), one({ roomName: 'P104', date: '2026-10-20' }), preview), { kind: 'rejected', reason: 'period_closed', facts: { month: '2026-10' } },
+        'chốt giữa hai lượt ⇒ lượt 2 từ chối, không ghi');
+      await db.query("UPDATE public.profit_monthly SET locked_at=NULL WHERE building_id=$1 AND period_month='2026-10-01'", [BUILDING]);
+      assert.equal((await run('preview', rid(46), one({ roomName: 'P104', date: '2026-10-20' }))).kind, 'preview', 'mở khoá (locked_at NULL) ⇒ thu được');
+      assert.deepEqual(await trace(), before, 'không lần thu, biên nhận hay tiền nào');
+    });
+  });
+
   await t.test('khách trả dư: chưa chọn ⇒ bản xem trước HỎI (choiceRequired), lượt 2 không ghi; keep / return', async () => {
     await f.rollbackCase(async () => {
       const params = one({ roomName: 'P104', amount: 2600000 });
@@ -65,6 +98,7 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       assert.match(keep.preview.items[0].text, /dư 100\.000đ giữ lại cho kỳ sau/);
       const applied = await applyWith(rid(7), { ...params, overpay: 'keep' }, keep);
       assert.deepEqual([applied.result.invoices[0].applied, applied.result.invoices[0].credit], ['2500000', '100000']);
+      assert.match(applied.result.invoices[0].text, /\. Hết nợ — ĐÃ THANH TOÁN ĐỦ\. Dư 100\.000đ giữ lại cho kỳ sau \(tiền dư của khách\)\.$/);
       // Không gắn hợp đồng ⇒ chỉ trả lại khách được; return ⇒ chỉ ghi đúng số còn nợ.
       const noContract = await run('preview', rid(8), one({ roomName: 'P102', amount: 2100000 }));
       assert.match(noContract.preview.summary, /chỉ trả lại khách được \(overpay=return\)/);
@@ -77,10 +111,15 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
 
   await t.test('thiếu < 10.000đ làm tròn như web; v5 chặn làm tròn (NON_PNL) ⇒ xem trước lại KHÔNG làm tròn, nói rõ', async () => {
     await f.rollbackCase(async () => {
+      // Lượt 8: làm tròn ⇒ hoá đơn ĐÃ THANH TOÁN nhưng cột còn nợ (tổng − đã thu) vẫn 5.000đ — không bao giờ nói "ĐỦ" (nghiệm thu 24/10).
       const round = await run('preview', rid(11), one({ roomName: 'P102', amount: 1995000 }));
-      assert.match(round.preview.items[0].text, /\(làm tròn bỏ qua 5\.000đ\)/);
+      assert.equal(round.preview.items[0].text, 'Phòng P102 toà Toà A, kỳ 10/2026 (INV-B-10): thu 1.995.000đ; còn nợ 2.000.000đ → 5.000đ: ĐÃ THANH TOÁN nhờ làm tròn'
+        + ' như web — 5.000đ số lẻ KHÔNG thu, ghi vào sổ «Làm tròn tiền thiếu»; cột còn nợ của hoá đơn vẫn hiện 5.000đ.');
+      assert.deepEqual([round.preview.items[0].remainingAfter, round.preview.items[0].statusAfter, round.preview.items[0].rounding], ['5000', 'PAID', '5000']);
       const applied = await applyWith(rid(11), one({ roomName: 'P102', amount: 1995000 }), round);
-      assert.deepEqual([applied.result.invoices[0].rounding, applied.result.invoices[0].statusAfter], ['5000', 'PAID']);
+      assert.deepEqual([applied.result.invoices[0].rounding, applied.result.invoices[0].statusAfter, applied.result.invoices[0].remainingAfter], ['5000', 'PAID', '5000']);
+      assert.match(applied.result.invoices[0].text, /\. ĐÃ THANH TOÁN nhờ làm tròn: 5\.000đ số lẻ không thu, ghi vào sổ «Làm tròn tiền thiếu»; cột còn nợ của hoá đơn vẫn hiện 5\.000đ\.$/);
+      assert.doesNotMatch(applied.result.invoices[0].text, /ĐỦ/);
       assert.deepEqual((await db.query('SELECT tenders FROM public.invoice_payment_collections WHERE invoice_id=$1', [INV_B])).rows[0].tenders,
         [{ payment_method: 'TK', gross_amount: 1995000, account_id: TK1, rounding_account_id: ROUNDING }]);
       const blocked = await run('preview', rid(12), one({ roomName: 'P105', amount: 1000000 }));
@@ -89,6 +128,30 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       assert.ok(blocked.warnings.some(w => /không làm tròn được phần thiếu 5\.000đ \(phần thiếu là tiền cọc\)/.test(w)), blocked.warnings.join('\n'));
       const done = await applyWith(rid(12), one({ roomName: 'P105', amount: 1000000 }), blocked);
       assert.deepEqual([done.kind, done.result.invoices[0].statusAfter, done.result.invoices[0].remainingAfter], ['applied', 'PARTIAL_PAID', '5000']);
+      assert.match(done.result.invoices[0].text, /\. Còn nợ 5\.000đ\.$/);
+      assert.equal(blocked.preview.items[0].rounding, undefined);
+    });
+  });
+
+  await t.test('lượt 8 — sổ nhận: toà đã cài sổ mà người hỏi không giữ/biết ⇒ receiving_book_not_held; toà chưa cài ⇒ receiving_book_missing', async () => {
+    await f.rollbackCase(async () => {
+      await db.query('DELETE FROM public.fixture_possession WHERE account_id=ANY($1)', [[TK1, TK2]]);
+      assert.deepEqual(await run('preview', rid(52), one({ roomName: 'P102', amount: 100000 })), { kind: 'rejected', reason: 'receiving_book_not_held' });
+      assert.equal((await run('preview', rid(53), one({ roomName: 'P102', amount: 100000, method: 'TT' }))).kind, 'preview', 'sổ POS vẫn giữ');
+      await db.query("DELETE FROM public.fixture_receiving WHERE building_id=$1 AND method='TK'", [BUILDING]);
+      assert.deepEqual(await run('preview', rid(54), one({ roomName: 'P102', amount: 100000 })), { kind: 'rejected', reason: 'receiving_book_missing' });
+      for (const reason of ['receiving_book_not_held', 'receiving_book_missing'])
+        assert.ok(ACTION_REASON_CODES.includes(reason) && !ACTION_INPUT_REASONS.includes(reason), reason);
+    });
+  });
+
+  await t.test('lượt 8 — hoá đơn thanh lý (SETTLEMENT, HĐ đã kết thúc) thu như hoá đơn tháng; dòng xem trước / câu đã ghi nói rõ', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.invoices SET kind='SETTLEMENT' WHERE id=$1", [INV_B]);
+      const preview = await run('preview', rid(55), one({ roomName: 'P102', amount: 2000000 }));
+      assert.equal(preview.preview.items[0].text, 'Phòng P102 toà Toà A, kỳ 10/2026 (INV-B-10) — hoá đơn thanh lý: thu 2.000.000đ; còn nợ 2.000.000đ → 0đ: ĐÃ THANH TOÁN ĐỦ.');
+      const applied = await applyWith(rid(55), one({ roomName: 'P102', amount: 2000000 }), preview);
+      assert.match(applied.result.invoices[0].text, /^Đã ghi thu 2\.000\.000đ bằng chuyển khoản cho hoá đơn INV-B-10 \(thanh lý\) \(Toà A\/P102, kỳ 10\/2026\)\. Hết nợ — ĐÃ THANH TOÁN ĐỦ\.$/);
     });
   });
 
@@ -99,7 +162,7 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       assert.equal(preview.kind, 'preview', JSON.stringify(preview));
       assert.deepEqual(preview.preview.items.map(i => [i.room, i.amount]), [['P102', '2000000'], ['P104', '2500000']]);
       assert.deepEqual(preview.preview.excluded, ['P103: hoá đơn không còn số phải thu — bỏ khỏi lần ghi này']);
-      assert.match(preview.preview.summary, /^Sẽ ghi THU 4\.500\.000đ bằng thanh toán \(TT\/POS\) ngày .* vào sổ «POS toà A» cho 2 hoá đơn\.$/);
+      assert.match(preview.preview.summary, /^Sổ nhận: «POS toà A» — thanh toán \(TT\/POS\), sổ mặc định của toà \(người dùng chưa nêu sổ\)\. Sẽ ghi THU 4\.500\.000đ ngày .* cho 2 hoá đơn\.$/);
       const before = await trace();
       // Một hoá đơn bị v5 từ chối ở lượt 2 (sau khi lượt 1 chạy thử qua) ⇒ không hoá đơn nào được ghi, biên nhận lùi theo.
       await db.query('UPDATE public.fixture_v5 SET rejected_message=$1,reject_state=$2,reject_invoice=$3', ['[PROFIT_LOCKED] tháng đã chốt', 'P0001', INV_D10]);
@@ -161,7 +224,7 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       const ask = await run('preview', rid(48), params);
       assert.deepEqual([ask.kind, ask.preview.choiceRequired], ['preview', 'overpay']);
       const keep = await run('preview', rid(49), { ...params, overpay: 'keep' });
-      assert.match(keep.preview.summary, /^Sẽ ghi THU 2\.600\.000đ bằng thanh toán \(TT\/POS\) ngày .* vào sổ «POS toà A» cho hoá đơn INV-D-10\.$/);
+      assert.match(keep.preview.summary, /^Sổ nhận: «POS toà A» — thanh toán \(TT\/POS\), sổ mặc định của toà \(người dùng chưa nêu sổ\)\. Sẽ ghi THU 2\.600\.000đ ngày .* cho hoá đơn INV-D-10\.$/);
       const applied = await applyWith(rid(49), { ...params, overpay: 'keep' }, keep);
       assert.deepEqual([applied.result.invoices[0].applied, applied.result.invoices[0].credit, applied.result.invoices[0].statusAfter], ['2500000', '100000', 'PAID']);
       assert.match(applied.result.invoices[0].text, /^Đã ghi thu 2\.600\.000đ bằng thanh toán \(TT\/POS\) cho hoá đơn INV-D-10/);
@@ -183,7 +246,7 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       const preview = await run('preview', rid(51), one({ roomName: 'P102', amount: 100500, date: '2026-10-10' }));
       assert.equal(preview.kind, 'preview', JSON.stringify(preview));
       assert.ok(preview.warnings.every(w => typeof w === 'string'), JSON.stringify(preview.warnings));
-      assert.deepEqual(preview.warnings, ['Ngày thu lùi 12 ngày so với hôm nay.', 'Phòng P102: số tiền không tròn nghìn — kiểm lại đơn vị.']);
+      assert.deepEqual(preview.warnings, [DEFAULT_BOOK_WARNING, 'Ngày thu lùi 12 ngày so với hôm nay.', 'Phòng P102: số tiền không tròn nghìn — kiểm lại đơn vị.']);
     });
   });
 
@@ -200,6 +263,10 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       const same = await run('preview', rid(40), one({ month: '2026-10' }));
       assert.deepEqual([same.kind, same.why, same.candidates.map(c => c.name)],
         ['needs_input', 'ambiguous', ['kỳ 10/2026 · INV-A-10 (còn 3.650.000đ)', 'kỳ 10/2026 · INV-A-10B (còn 500.000đ, extra)']]);
+      // Lượt 8: hoá đơn thanh lý (khách cũ, HĐ đã kết thúc) cùng phòng/kỳ với hoá đơn tháng của khách mới — ứng viên gọi đúng tên như web.
+      await db.query("UPDATE public.invoices SET kind='SETTLEMENT' WHERE id=$1", [uid(829)]);
+      assert.deepEqual((await run('preview', rid(39), one({ month: '2026-10' }))).candidates.map(c => c.name),
+        ['kỳ 10/2026 · INV-A-10 (còn 3.650.000đ)', 'kỳ 10/2026 · INV-A-10B (còn 500.000đ, hoá đơn thanh lý)']);
       const picked = await run('preview', rid(41), one({ month: '2026-10', invoiceNumber: 'inv-a-10b ' }));
       assert.deepEqual([picked.kind, picked.resolved.items[0].invoiceId, picked.preview.items[0].amount], ['preview', uid(829), '500000']);
       assert.match(picked.preview.summary, /cho hoá đơn INV-A-10B\.$/);
@@ -210,10 +277,11 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
     });
     const named = await run('preview', rid(20), one({ roomName: 'P102', amount: 100000, cashbookName: 'mb' }));
     assert.equal(named.resolved.accountId, TK2);
-    assert.match(named.preview.summary, /vào sổ «MB toà A»/);
+    assert.match(named.preview.summary, /^Sổ nhận: «MB toà A» — chuyển khoản, theo sổ người dùng nêu\. Sẽ ghi THU 100\.000đ /);
+    assert.deepEqual(named.warnings, [], 'đã nêu sổ ⇒ không cảnh báo sổ mặc định');
     const wrongBook = await run('preview', rid(21), one({ roomName: 'P102', amount: 100000, cashbookName: 'quỹ lạ' }));
     assert.deepEqual([wrongBook.kind, wrongBook.field, wrongBook.why, wrongBook.candidates.map(c => c.name)],
-      ['needs_input', 'cashbook', 'not_visible', ['VCB toà A ***', 'MB toà A']]);
+      ['needs_input', 'cashbook', 'not_visible', ['VCB toà A *** — chuyển khoản (TK)', 'MB toà A — chuyển khoản (TK)', 'POS toà A — thanh toán (TT)']]);
     for (const bad of [{ buildingName: 'Toà A', method: 'TK' }, { ...one(), items: [{ roomName: 'P102' }] },
       { buildingName: 'Toà A', method: 'TK', amount: 1000, items: [{ roomName: 'P102' }] }, { buildingName: 'Toà A', method: 'TK', items: [{ roomName: 'P102' }, { roomName: 'p102' }] },
       { buildingName: 'Toà A', method: 'TK', invoiceNumber: 'INV-B-10', items: [{ roomName: 'P102' }] }])
@@ -221,25 +289,80 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
     assert.deepEqual(await run('preview', rid(23), one({ date: '2026-10-23' })), { kind: 'rejected', reason: 'date_out_of_range' });
   });
 
+  // Lượt 14 (nghiệm thu C3c, GHI SAI: "ck vào HKD Tâm" ⇒ bot để tên sổ ở note, máy chủ ghi TK vào sổ mặc định; đúng là TT vào HKDTAM): sổ người
+  // dùng nêu tìm ở CẢ hai danh sách sổ nhận TK + TT của toà, bỏ dấu / hoa thường / khoảng trắng; sổ chỉ thuộc một hình thức ⇒ ghi theo hình thức
+  // của sổ (câu đầu nói rõ); không khớp / nhiều sổ ⇒ hỏi lại sổ, không rơi về sổ mặc định; chưa nêu sổ ⇒ cảnh báo kèm ghi chú giống tên sổ.
+  await t.test('lượt 14: sổ nhận theo tên ở cả TK + TT ⇒ hình thức theo sổ (TK nói "POS toà A" ⇒ TT); mơ hồ / không thấy ⇒ hỏi; ghi chú giống tên sổ ⇒ cảnh báo', async () => {
+    await f.rollbackCase(async () => {
+      const params = one({ roomName: 'P102', amount: 350000, cashbookName: 'Pos Toa-A' });
+      const preview = await run('preview', rid(60), params);
+      assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+      assert.deepEqual([preview.resolved.method, preview.resolved.methodFromBook, preview.resolved.accountId], ['TT', true, TT1]);
+      assert.equal(preview.preview.summary, 'Sổ nhận: «POS toà A» — thanh toán (TT/POS), theo sổ người dùng nêu (sổ này nhận thanh toán (TT/POS), không nhận chuyển khoản ở '
+        + 'toà này). Sẽ ghi THU 350.000đ ngày 22/10/2026 (thứ Năm, hôm nay) cho hoá đơn INV-B-10.');
+      assert.deepEqual([preview.preview.receivingBook, preview.preview.method, preview.warnings], ['POS toà A', 'TT', []]);
+      const applied = await applyWith(rid(60), params, preview);
+      assert.equal(applied.kind, 'applied', JSON.stringify(applied));
+      assert.match(applied.result.invoices[0].text, /^Đã ghi thu 350\.000đ bằng thanh toán \(TT\/POS\) cho hoá đơn INV-B-10/);
+      assert.deepEqual((await db.query('SELECT tenders FROM public.invoice_payment_collections WHERE idempotency_key=$1', [`hermes-inv:${rid(60)}`])).rows[0].tenders,
+        [{ payment_method: 'TT', gross_amount: 350000, account_id: TT1 }], 'ghi THẬT là TT vào sổ người dùng nêu');
+      // Chiều ngược: nói TT mà sổ chỉ nhận chuyển khoản ⇒ TK; sổ thuộc đúng hình thức đã nói ⇒ giữ, không methodFromBook.
+      const back = await run('preview', rid(61), one({ roomName: 'P104', method: 'TT', amount: 100000, cashbookName: 'mb' }));
+      assert.deepEqual([back.resolved.method, back.resolved.methodFromBook, back.resolved.accountId], ['TK', true, TK2]);
+      const same = await run('preview', rid(62), one({ roomName: 'P104', amount: 100000, cashbookName: 'MB toà A' }));
+      assert.deepEqual([same.resolved.method, same.resolved.methodFromBook, same.resolved.accountId], ['TK', undefined, TK2]);
+      // Tên bỏ khoảng trắng / dấu câu khớp ĐÚNG trước khi xét "chứa": thêm sổ «POS-toà A 2» thì "Pos Toa-A" vẫn là «POS toà A», không mơ hồ.
+      await db.query("INSERT INTO public.accounts(id,organization_id,user_id,name,account_number,is_virtual) VALUES($1,$2,$3,'POS-toà A 2',null,false)", [uid(870), ORG, USER]);
+      await db.query("INSERT INTO public.fixture_receiving VALUES($1,'TT',$2,1)", [BUILDING, uid(870)]);
+      await db.query('INSERT INTO public.fixture_possession VALUES($1,$2)', [USER, uid(870)]);
+      assert.equal((await run('preview', rid(69), params)).resolved.accountId, TT1);
+      // Nhiều sổ khớp ⇒ hỏi lại sổ (ứng viên kèm hình thức), KHÔNG dùng sổ mặc định.
+      const vague = await run('preview', rid(63), one({ roomName: 'P104', amount: 100000, cashbookName: 'toà a' }));
+      assert.deepEqual([vague.kind, vague.field, vague.why, vague.candidates.map(c => c.name)], ['needs_input', 'cashbook', 'ambiguous',
+        ['VCB toà A *** — chuyển khoản (TK)', 'MB toà A — chuyển khoản (TK)', 'POS toà A — thanh toán (TT)', 'POS-toà A 2 — thanh toán (TT)']]);
+      // Lượt 2 mang bản đã giải hình thức theo sổ: chỉ hợp lệ khi sổ còn trong danh sách của hình thức đó.
+      await db.query('DELETE FROM public.fixture_receiving WHERE account_id=$1', [TT1]);
+      assert.deepEqual(await applyWith(rid(64), params, preview), { kind: 'rejected', reason: 'state_changed' });
+    });
+    await f.rollbackCase(async () => {
+      // Chưa nêu sổ, tên sổ nằm trong ghi chú ⇒ vẫn sổ mặc định nhưng cảnh báo đầu nêu ghi chú giống tên sổ khác.
+      const noted = await run('preview', rid(65), one({ roomName: 'P104', amount: 100000, note: 'POS' }));
+      assert.equal(noted.warnings[0], DEFAULT_BOOK_WARNING + ' Ghi chú «POS» giống tên sổ «POS toà A».');
+      assert.match(noted.preview.summary, /^Sổ nhận: «VCB toà A \*\*\*» — chuyển khoản, sổ mặc định của toà \(người dùng chưa nêu sổ\)\./);
+    });
+  });
+
+  // Lượt 14: toà KHÔNG nêu ⇒ một phòng giải trong cả phạm vi (phòng duy nhất quyết định toà); không thấy phòng ⇒ hỏi toà; lô không nêu toà ⇒ hỏi toà.
+  await t.test('lượt 14: không nêu toà — phòng duy nhất trong phạm vi quyết định toà; không thấy ⇒ hỏi toà (unspecified); lô cần toà', async () => {
+    const solo = await run('preview', rid(66), { roomName: 'p104', method: 'TK', amount: 100000 });
+    assert.equal(solo.kind, 'preview', JSON.stringify(solo));
+    assert.deepEqual([solo.resolved.buildingId, solo.resolved.buildingName, solo.resolved.items[0].roomName], [BUILDING, 'Toà A', 'P104']);
+    const unspecified = { kind: 'needs_input', reason: 'name_unresolved', field: 'building', wanted: '', why: 'unspecified', candidates: [], more: false };
+    assert.deepEqual(await run('preview', rid(67), { roomName: 'Paris 2', method: 'TK', amount: 100000 }), unspecified);
+    assert.deepEqual(await run('preview', rid(68), { method: 'TK', items: [{ roomName: 'P104' }] }), unspecified);
+  });
+
   await t.test('phạm vi = guard ∩ quyền thu của v5 (kiểm SAU khoá hoá đơn → công ty, thứ tự v5): toà guard cho mà v5 không cho ⇒ not_allowed ngay ở bản xem trước; bản đã giải giả ⇒ not_allowed', async () => {
     await f.rollbackCase(async () => {
       await db.query("INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id) VALUES($1,$2,'INV-OB-10','APPROVED',$3,$4,'2026-10','2026-10-30',900000,0,$5)",
         [uid(828), ORG, OTHER_BUILDING, OTHER_ROOM, CONTRACT]);
       await db.query("UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=NULL WHERE organization_id=$1 AND scope_type='BUILDING'", [ORG]);
-      const ok = await run('preview', rid(24), { buildingName: 'Toà B', roomName: 'P201', method: 'TK' });
+      // P201 còn hoá đơn INV-O-10 của fixture Mốc 5 ⇒ chọn đích danh.
+      const b = { buildingName: 'Toà B', roomName: 'P201', method: 'TK', invoiceNumber: 'INV-OB-10' };
+      const ok = await run('preview', rid(24), b);
       assert.equal(ok.kind, 'preview', 'toà B: cả guard lẫn v5 cho');
       await db.query('DELETE FROM public.fixture_collect_acl WHERE building_id=$1', [OTHER_BUILDING]);
-      assert.deepEqual(await run('preview', rid(25), { buildingName: 'Toà B', roomName: 'P201', method: 'TK' }), { kind: 'rejected', reason: 'not_allowed' });
+      assert.deepEqual(await run('preview', rid(25), b), { kind: 'rejected', reason: 'not_allowed' });
       // Lượt 2 đưa bản đã giải sang toà B ⇒ not_allowed TRƯỚC biên nhận.
       const before = await trace();
-      assert.deepEqual(await run('apply', rid(24), { buildingName: 'Toà B', roomName: 'P201', method: 'TK' }, { resolved: ok.resolved, basis: ok.basis }),
-        { kind: 'rejected', reason: 'not_allowed' });
+      assert.deepEqual(await run('apply', rid(24), b, { resolved: ok.resolved, basis: ok.basis }), { kind: 'rejected', reason: 'not_allowed' });
       const a = await run('preview', rid(26), one({ roomName: 'P102', amount: 1000 }));
       for (const forged of [{ ...a.resolved, items: [{ ...a.resolved.items[0], roomId: ROOM }] }, { ...a.resolved, items: [{ ...a.resolved.items[0], invoiceId: uid(828) }] },
         { ...a.resolved, method: 'TT' }])
         assert.deepEqual(await run('apply', rid(26), one({ roomName: 'P102', amount: 1000 }), { resolved: forged, basis: a.basis }), { kind: 'rejected', reason: 'not_allowed' }, JSON.stringify(forged));
+      // Sổ của bản đã giải không còn trong danh sách sổ nhận ở lượt 2 ⇒ dữ liệu đổi sau bản xem trước (lượt 8; xem trước lại nói đúng lý do).
       assert.deepEqual(await run('apply', rid(26), one({ roomName: 'P102', amount: 1000 }), { resolved: { ...a.resolved, accountId: CASHBOOK }, basis: a.basis }),
-        { kind: 'rejected', reason: 'receiving_book_missing' });
+        { kind: 'rejected', reason: 'state_changed' });
       assert.deepEqual(await trace(), before);
     });
   });
@@ -280,16 +403,21 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
   await t.test('rào: sàn money; action/phase NULL; khoá tắt; catalog và quyền thực thi; không seed thu_tien.collect', async () => {
     await assert.rejects(db.query("UPDATE app_private.hermes_action_policies SET confirm='never' WHERE action='invoice.collect'"), code('23514'));
     for (const phase of [null, 'write']) await assert.rejects(run(phase, rid(30), one()), code('22023'));
-    await assert.rejects(run('preview', rid(31), one(), { action: 'invoice.adjust' }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
+    await assert.rejects(run('preview', rid(31), one(), { action: 'invoice.refund' }), code('42501'), 'chưa có dòng chính sách ⇒ không tồn tại');
     await f.rollbackCase(async () => {
       await db.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='thu_tien.collect_transfer'");
       await assert.rejects(run('preview', rid(32), one()), code('42501'));
     });
     assert.equal((await db.query("SELECT count(*)::int n FROM app_private.hermes_capabilities WHERE capability='thu_tien.collect'")).rows[0].n, 0);
     const acl = (await db.query(`SELECT p.oid::regprocedure::text fn,p.prosecdef,p.prosqlbody IS NOT NULL standard,has_function_privilege('authenticated',p.oid,'EXECUTE') auth,
-      has_function_privilege('anon',p.oid,'EXECUTE') anon FROM pg_proc p WHERE p.proname LIKE 'hermes_invoice_%' OR p.proname LIKE 'invoice_collection_plan%' ORDER BY 1`)).rows;
+      has_function_privilege('anon',p.oid,'EXECUTE') anon FROM pg_proc p WHERE (p.proname LIKE 'hermes_invoice_%' AND p.proname !~ '(meter|edit|reading)')
+      OR p.proname LIKE 'invoice_collection_plan%' ORDER BY 1`)).rows;
+    // Tầng v1/v2 (vỏ cũ) còn nguyên quyền nhưng vỏ không còn gọi (lượt 8: thu tiền đi tầng v2; lượt 14: bước ghi v3).
     assert.deepEqual(acl.map(r => [r.fn.replace(/\(.*/, ''), r.prosecdef, r.standard, r.auth, r.anon]), [
-      ['app_private.hermes_invoice_action_step_v1', true, false, true, false], ['app_private.hermes_invoice_lookup_core_v1', false, false, true, false],
+      ['app_private.hermes_invoice_action_step_v1', true, false, true, false], ['app_private.hermes_invoice_action_step_v2', true, false, true, false],
+      ['app_private.hermes_invoice_action_step_v3', true, false, true, false],
+      ['app_private.hermes_invoice_lookup_core_v1', false, false, true, false], ['app_private.hermes_invoice_lookup_core_v2', false, false, true, false],
+      ['app_private.hermes_invoice_lookup_core_v3', false, false, true, false],
       ['app_private.hermes_invoice_reason_v1', false, false, false, false],
       ['hermes_invoice_action_v1', false, true, true, false], ['invoice_collection_plan_core_v1', false, false, true, false],
       ['invoice_collection_plan_v1', false, false, true, false]]);

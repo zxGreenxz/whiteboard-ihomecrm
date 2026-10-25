@@ -127,4 +127,9 @@ export const ACTION_PLAN_CASES = Object.freeze([
   { when: 'confirmation_required', next: 'không tự gọi lượt 2', source: 'confirmation_required', match: /chỉ khi họ đồng ý rõ ràng SAU khi xem/ },
   { when: 'action_rejected state_changed (lỗi tạm, dữ liệu đổi)', next: 'crm_action_run không kèm confirmToken', source: 'run',
     match: /detail bảo xem trước lại thì gọi lại không kèm confirmToken/ },
+  // Lượt 12 Hợp đồng (rào đồng ý): thao tác không lùi được, câu người dùng chưa phải lời đồng ý ⇒ hỏi lại, cùng token khi họ đồng ý.
+  { when: 'needs_input consent_unclear', next: 'hỏi lại người dùng; đồng ý rõ ⇒ crm_action_run cùng token kèm consentText', source: 'consent_unclear',
+    match: /token xác nhận chưa dùng, còn hạn thì dùng lại được\. Hỏi người dùng có đồng ý ghi không/ },
+  { when: 'confirmation_required của thao tác không lùi được', next: 'lượt xác nhận kèm consentText', source: 'consent_confirm',
+    match: /phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp/ },
 ].map(entry => Object.freeze(entry)));

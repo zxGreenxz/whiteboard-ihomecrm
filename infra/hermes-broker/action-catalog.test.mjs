@@ -74,6 +74,23 @@ test('validateActionParams: chuẩn hoá snake_case, số dạng chuỗi chữ s
     { m: '2026-10', k: 'EARLY', b: true, n: 6.5 }]) assert.equal(validateActionParams(kinds, raw).ok, false, JSON.stringify(raw));
 });
 
+test('list overflow (Công việc lượt 13): a declared needs_input reason replaces invalid_params only when the list is LONGER than max', () => {
+  const item = param.record({ buildingName: param.name('building') });
+  const action = defineAction({ ...base, id: 'probe.over', reasons: ['batch_too_large'], params: { items: param.list(item, { max: 2, overflow: 'batch_too_large' }) } });
+  assert.deepEqual(validateActionParams(action, { items: [1, 2, 3].map(() => ({ buildingName: 'A' })) }),
+    { ok: false, overflow: { reason: 'batch_too_large', path: 'items', count: 3, max: 2 } });
+  assert.equal(validateActionParams(action, { items: [{ buildingName: 'A' }, { buildingName: 'B' }] }).ok, true);
+  assert.match(validateActionParams(action, { items: [] }).detail, /items \(danh sách 1–2 mục\)/, 'ngắn hơn min vẫn là invalid_params');
+  assert.match(validateActionParams(action, { items: [{ buildingName: 'A' }, {}] }).detail, /items#2\.buildingName/);
+  // Mảng có lỗ dài quá max vẫn là sai khuôn (không đếm như một lô hợp lệ).
+  const holey = [{ buildingName: 'A' }, , { buildingName: 'B' }]; // eslint-disable-line no-sparse-arrays
+  assert.match(validateActionParams(action, { items: holey }).detail, /items \(danh sách/);
+  // Khai sai: lý do lạ, lý do loại rejected, thao tác không khai lý do đó trong reasons.
+  for (const bad of [() => param.list(item, { max: 2, overflow: 'nope' }), () => param.list(item, { max: 2, overflow: 'crm_refused' }),
+    () => defineAction({ ...base, id: 'probe.over2', params: { items: param.list(item, { max: 2, overflow: 'batch_too_large' }) } })])
+    assert.throws(bad, /invalid_action_catalog/);
+});
+
 test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ): khai sai ⇒ lỗi nạp; kiểm từng phần tử với đường dẫn tĩnh', () => {
   const item = param.record({ buildingName: param.name('building'), amount: param.vnd(), note: param.text(1, 20, { optional: true }) });
   const batch = defineAction({ ...base, id: 'probe.batch', params: { items: param.list(item, { max: 3 }), codes: param.list(param.name('voucher'), { max: 2, optional: true }) } });
@@ -89,6 +106,16 @@ test('list/record (Đợt 2: lô Thu chi ≤ 5 khoản, Hợp đồng ≤ 20 HĐ
   assert.deepEqual([param.list(param.bool(), { max: 60, ceiling: 60 }).max, param.list(param.bool(), { max: 20 }).max], [60, 20]);
   assert.equal(param.name('category').hint, 'tên hạng mục như người dùng nói');
   assert.equal(param.name('cashbook').hint, 'tên sổ quỹ như người dùng nói');
+  // Lượt 14: câu gợi ý riêng (≤ 160 ký tự, không ký tự điều khiển) và tên phụ của tham số tên (không trùng tham số / tên phụ khác).
+  assert.equal(param.int(0, 9, { hint: 'chỉ số công tơ' }).hint, 'chỉ số công tơ');
+  for (const bad of [() => param.text(1, 2, { hint: 'x'.repeat(161) }), () => param.vnd({ hint: '' }), () => param.name('room', { hint: 'a\nb' }),
+    () => param.name('room', { alias: 'bad-alias' }), () => param.name('room', { alias: 7 })]) assert.throws(bad, /invalid_action_catalog/);
+  const aliased = { id: 'probe.alias', page: 'probe', key: PROBE_KEY, class: 'money', rpc: 'hermes_action_probe_v1', title: 'Tên phụ' };
+  assert.throws(() => defineAction({ ...aliased, params: { bookName: param.name('cashbook', { alias: 'book' }), book: param.text(1, 5) } }), /invalid_action_catalog/);
+  assert.throws(() => defineAction({ ...aliased, params: { a: param.name('cashbook', { alias: 'book' }), b: param.name('room', { alias: 'book' }) } }), /invalid_action_catalog/);
+  const withAlias = defineAction({ ...aliased, params: { bookName: param.name('cashbook', { optional: true, alias: 'book' }) } });
+  assert.deepEqual([validateActionParams(withAlias, { book: 'HKD' }).value, validateActionParams(withAlias, { book_name: 'HKD' }).value], [{ bookName: 'HKD' }, { bookName: 'HKD' }]);
+  assert.equal(validateActionParams(withAlias, { book: 'A', bookName: 'B' }).ok, false);
   assert.deepEqual(validateActionParams(batch, { items: [{ building_name: ' A ', amount: '350000' }, { buildingName: 'B', amount: 1, note: '' }] }),
     { ok: true, value: { items: [{ buildingName: 'A', amount: 350_000 }, { buildingName: 'B', amount: 1 }] } });
   assert.deepEqual(validateActionParams(batch, { items: [{ buildingName: 'A', amount: 1 }], codes: [' PC2610001 '] }).value.codes, ['PC2610001']);

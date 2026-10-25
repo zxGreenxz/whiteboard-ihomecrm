@@ -63,8 +63,11 @@ export const TASK_CREATE_BATCH = defineAction({ id: 'task.create_batch', page: '
       content: param.text(1, 200, { optional: true }), jobType: param.name('jobType', { optional: true }),
       assigneeName: param.name('person', { optional: true }), deadline: param.date({ optional: true }),
       deadlineTime: param.time({ optional: true }), priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
-    }), { min: 1, max: TASK_BATCH_MAX, optional: true }),
+    }), { min: 1, max: TASK_BATCH_MAX, optional: true, overflow: 'batch_too_large' }),
     buildingsManagedBy: param.name('person', { optional: true }),
+    // Lượt 14: "toà X, mỗi phòng một việc" ⇒ perRoom=true + buildingName (không items): máy chủ dựng mỗi phòng một mục; > 20 phòng ⇒
+    // batch_too_large kèm số phòng thật.
+    perRoom: param.bool({ optional: true, hint: 'true = mỗi phòng của buildingName một việc (không gửi items); > 20 phòng ⇒ chia lô' }),
     buildingName: param.name('building', { optional: true }),
     jobType: param.name('jobType', { optional: true }),
     content: param.text(1, 200, { optional: true }),

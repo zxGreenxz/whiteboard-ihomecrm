@@ -10,7 +10,7 @@
 // Tên khách (không SĐT): chỉ khi customers.view ở đúng toà của hàng và chủ hồ sơ thuộc công ty. Chữ chép trên phiếu
 // (người nộp, ghi chú, tên phiếu) và ghi chú hoá đơn: chỉ khi nối được hồ sơ khách nhìn thấy dưới RLS, cùng công ty,
 // đủ customers.view ở toà; không nối được ⇒ null (phiếu cọc giữ chỗ/quyết toán: luôn null).
-import { w2Report, id, nullable, longText, code, amount, bool, count, date } from './wave2-kit.mjs';
+import { w2Report, id, nullable, longText, code, amount, bool, count, date, tolerant } from './wave2-kit.mjs';
 
 const oneOf = values => value => values.includes(value);
 const buildingName = nullable(longText(200)), roomName = nullable(longText(100)), personName = nullable(longText(200));
@@ -100,7 +100,7 @@ export const W2A_REPORTS = Object.freeze({
   // ---- Đợt 3 trang Hoá đơn: đọc bù (a)–(f) + soạn tin nhắc nợ Q18 (docs/plans/hermes-crm/HOA-DON-THAO-TAC-GHI.md mục 7). Hàm dùng chung
   // 20261022051118, hàm đọc + bảng báo cáo 20261022051620. Nợ = nợ thực invoice_effective_outstanding_v1; quá hạn = is_overdue (hạn < hôm nay).
   invoice_room_detail: w2Report({ permission: 'invoices.view', source: 'crm.invoice_room_invoices_v1', scope: 'rows',
-    title: 'Hoá đơn của MỘT phòng theo kỳ (roomName + month, mặc định tháng này): hạn đóng, ngày trả đủ, quá hạn mấy ngày, nợ thực; hàng = từng khoản (tiền phòng, điện/nước có số đầu–cuối và số tiêu thụ, dịch vụ) và các lần thu (hình thức, ngày). Không có ⇒ found=false.',
+    title: 'Hoá đơn của MỘT phòng theo kỳ (roomName + month, mặc định tháng này): hạn đóng, ngày trả đủ, quá hạn mấy ngày, nợ thực; hàng = từng khoản (tiền phòng, điện/nước có số đầu–cuối và số tiêu thụ, dịch vụ) và các lần thu (hình thức, ngày). Không có ⇒ found=false. Link gửi khách: summary.publicLink.',
     params: ['roomId', 'month'], required: ['roomId'], scopeKeys: CUSTOMER, private: true,
     fields: { kind: oneOf(['item', 'payment']), id, buildingId: id, code: number, label: nullable(longText(300)), category: nullable(longText(40)), amount,
       unitPrice: nullable(amount), quantity: nullable(amount), previousReading: nullable(amount), currentReading: nullable(amount),
@@ -109,7 +109,8 @@ export const W2A_REPORTS = Object.freeze({
       issueDate: nullable(date), dueDate: nullable(date), paidDate: nullable(date), isOverdue: bool, overdueDays: nullable(count),
       buildingId: nullable(id), buildingName, roomId: nullable(id), roomName, customerName: personName, totalAmount: nullable(amount),
       paidAmount: nullable(amount), remainingAmount: nullable(amount), effectiveOutstanding: nullable(amount), carriedOutAmount: nullable(amount),
-      otherInvoices: count } }),
+      // Lượt 12 Hợp đồng (20261024160002): /c/<mã> của HĐ (luật QR web, chỉ khi xem được khách); connector đổi thành publicLink. Vắng ⇒ SQL cũ.
+      otherInvoices: count, publicPath: tolerant(nullable(longText(60))) } }),
   invoice_lateness: w2Report({ permission: 'invoices.view', source: 'crm.invoice_lateness_v1', scope: 'rows',
     title: 'Đóng trễ ("ai hay trả trễ"): hoá đơn có hạn trong fromDate–toDate (mặc định 90 ngày qua, tối đa 366 ngày), ngày trả đủ, số ngày trễ (còn nợ = trễ tới hôm nay); summary gộp sẵn theo phòng (topLateRooms) — dùng số này, không tự đếm.',
     params: ['buildingId', 'roomId', 'fromDate', 'toDate'], scopeKeys: CUSTOMER, private: true,
@@ -118,7 +119,7 @@ export const W2A_REPORTS = Object.freeze({
     summary: { fromDate: date, toDate: date, invoiceCount: count, lateCount: count, openLateCount: count, avgDaysLate: amount, rooms: count,
       lateRooms: count, topLateRooms: nullable(longText(600)) } }),
   collection_by_method: w2Report({ permission: 'thu_tien.view', source: 'crm.invoice_collection_by_method_v1', scope: 'rows',
-    title: 'Đã thu theo hình thức (TM tiền mặt, TK chuyển khoản, TT thanh toán, CT cấn trừ) theo NGÀY THU, số áp vào hoá đơn như trang Thu tiền (khác thẻ thống kê trang Hoá đơn): month = cả tháng, hoặc fromDate–toDate; mặc định tháng này.',
+    title: 'Đã thu theo hình thức (TM tiền mặt, TK chuyển khoản, TT thanh toán) theo NGÀY THU: số giữ lại = áp vào hoá đơn + tiền dư khách để lại, trừ tiền thối (nguồn thẻ Đã thu trang Hoá đơn, thẻ lọc theo kỳ); CT cấn trừ không phải tiền thu (= 0). month = cả tháng, hoặc fromDate–toDate; mặc định tháng này.',
     params: ['month', 'buildingId', 'fromDate', 'toDate'], scopeKeys: CUSTOMER, private: true,
     fields: { buildingId: id, buildingName, method: code, label: longText(40), paymentCount: count, invoiceCount: count, amount },
     summary: { fromDate: date, toDate: date, total: amount, tm: amount, tk: amount, tt: amount, ct: amount, paymentCount: count } }),
@@ -145,7 +146,7 @@ export const W2A_REPORTS = Object.freeze({
     summary: { rooms: count, invoices: count, debtTotal: amount, overdueRooms: count, overdueInvoices: count, overdueTotal: amount,
       minOverdueDays: nullable(count) } }),
   invoice_reminders: w2Report({ permission: 'invoices.view', source: 'crm.invoice_open_debts_v1', scope: 'rows',
-    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn, tổng nợ thực gộp sẵn (toàn bộ nợ của phòng); publicPath = đường dẫn tra hoá đơn công khai, ghép sau địa chỉ web CRM (chỉ khi được xem khách). days = chỉ phòng quá hạn ≥ N ngày.',
+    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn (đã kèm link), tổng nợ thực gộp sẵn; publicLink = link tra hoá đơn công khai, gửi nguyên văn; null ⇒ không có link, không tự ghép tên miền (chỉ khi được xem khách). days = chỉ phòng quá hạn ≥ N ngày.',
     params: ['buildingId', 'roomId', 'days'], scopeKeys: CUSTOMER, private: true,
     fields: { buildingId: id, buildingName, roomId: nullable(id), roomName, customerName: personName, debtTotal: amount, invoiceCount: count,
       oldestDueDate: nullable(date), maxOverdueDays: nullable(count), details: longText(600), publicPath: nullable(longText(60)),

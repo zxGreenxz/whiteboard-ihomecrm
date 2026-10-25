@@ -1054,3 +1054,121 @@ Lô nhiều khoản: kết quả hỏi lại mang `item` (connector nói "Mục 
 2. Connector không cần trước: SQL dùng đúng khuôn kết quả cũ (`why=unspecified` đã có từ trang Công việc, `item`, `link`). Connector mới chỉ đổi hai câu hướng dẫn (mã phiếu trùng, hạng mục không có).
 3. Web Báo chi nhanh đổi gợi ý cùng lúc với `20261023210633` (không phát hành web).
 4. Sau khi áp, `20261023013109` và `20261023031258` mất khả năng chạy lại (thân bị thay) — cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 24. Lượt 13 — chặn luồng hệ thống ở máy chủ, lọc tuổi phiếu chờ duyệt (24/10/2026)
+
+Nghiệm thu bot thật trên TEST (SOUL v4.19 + connector C1 `f6c8019a`). Luật SOUL do phiên chính sửa riêng.
+
+### 24.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc | Sửa |
+| --- | --- | --- |
+| Bot lập được phiếu CHI cho hoa hồng, bỏ / hoàn / trả cọc, thanh lý / trả tiền thừa cho khách, lương; máy chủ còn hỏi lại kèm "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách", "Bỏ rác phát sinh" ⇒ chọn một là thành phiếu chi lách quy trình (cặp phiếu thanh lý) | Tập hạng mục dùng được của bot chỉ bỏ cờ `system_only` / ẩn / hạn chế / cọc / chuyển nội bộ; "Bổ sung hoàn cọc" và "Trả lại tiền thừa cho khách" không mang cờ nào (web cho lập tay); không lớp nào xét NỘI DUNG | `20261024094809`: `public.hermes_expense_system_flow_v1` (thuần chữ) nhận luồng theo `rule_key` của danh mục chuẩn, rồi theo cụm từ bỏ dấu. `expense.create` / `expense.edit` ⇒ `web_only` + `link` màn gốc, chặn TRƯỚC khi hỏi lại toà / hạng mục; lượt 2 kiểm lại. Luật khoá cứng của web xếp nội dung vào hạng mục luồng hệ thống ("tiền phòng 5 ngày") ⇒ cũng chặn. Hạng mục luồng hệ thống không bao giờ là ứng viên / gợi ý. Sửa phiếu đang mang hạng mục đó (lập trên web) ⇒ `web_only` + link trang phiếu |
+| Hỏi "phiếu chờ duyệt quá 7 ngày" ⇒ trả cả 58 phiếu | Không tool nào lọc tuổi: `crm_read_income_expenses` chỉ lọc ngày phiếu; W2 `expense_vouchers` `kind=oldest` chỉ sắp xếp, cửa sổ mặc định là tháng này | `20261024095547`: `expense_vouchers` nhận `days` = phiếu CHI chờ duyệt từ N ngày trở lên (`pendingDays ≥ N`), lâu nhất trước, không nêu ngày ⇒ 366 ngày tới hôm nay, summary chỉ trên các phiếu đó; trạng thái khác UNAPPROVED ⇒ sai tham số. Mô tả `crm_read_income_expenses` và gợi ý gọi nhầm chỉ sang `expense_vouchers days=N` |
+| (Kiểm) Thiếu quyền duyệt bị báo "thao tác duyệt chưa bật" | Connector đang chạy loại thao tác khỏi tập dùng được khi thiếu quyền CRM ⇒ `action_disabled` trước khi gọi SQL | Không sửa SQL. Bản sửa `forbidden` ≠ `action_disabled` nằm ở connector của #315 (C2) |
+
+Luồng và link:
+
+| Luồng | Nhận theo | Link |
+| --- | --- | --- |
+| Hoa hồng / thưởng sale | `hoa_hong_moi_gioi`, `hhmg`, `thuong_nong_sale`; "hoa hồng", "HHMG", "thưởng nóng", "thưởng sale", "môi giới" | `/contracts` |
+| Thanh lý / trả tiền thừa cho khách | `tra_tien_thua_khach`; "thanh lý", "tiền thừa", "tiền thối", "thối tiền", "đóng dư", "hoàn tiền phòng", "trả (lại) (tiền) (cho) khách / người thuê" (không "khách sạn") | `/contracts` |
+| Cọc | `bo_sung_hoan_coc`; "hoàn / trả / bỏ / mất / cấn / bổ sung … cọc", "cọc phòng / khách / hợp đồng / giữ chỗ", "giữ chỗ" | `/deposits` |
+| Lương | `luong_quan_ly`, `ung_luong`, `luong_dieu_hanh`; "tiền / trả / ứng / chi / bảng / phát / quỹ / tăng lương", "lương tháng / quản lý / nhân viên / T10 …" | `/finance/salary` |
+| Chia lợi nhuận | `chia_loi_nhuan`; "chia lợi nhuận", "lợi nhuận cổ đông", "cổ tức" | `/finance/shareholder-profit` |
+| Chuyển nội bộ | `noi_bo`; "chuyển (tiền) nội bộ", "bàn giao tiền", "chuyển quỹ" | `/finance/cashbooks` |
+
+Không dùng từ đơn đã bỏ dấu vì trùng nghĩa: "coc" = cọc / cốc; "luong" = lương / lượng (số lượng, chất lượng); "hoan tien" = hoàn cho khách / hoàn tạm ứng nhân viên. Đặt cọc cho thợ / nhà cung cấp là khoản chi thật nên không chặn.
+
+**Parity với web:** web chặn lập tay hạng mục CHI `system_only` ở máy chủ (`ie_system_only_manual_blocked`: hoa hồng môi giới, thưởng nóng sale, các mục cọc / thanh lý của hệ thống). Web KHÔNG chặn lập tay ba hạng mục "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách", "Chuyển tiền nội bộ" (không cờ). Người có `restricted_create` vẫn lập tay được "HHMG", "Lương …", "Chia lợi nhuận cổ đông" (Báo chi nhanh chỉ ẩn ở ô chọn). Hermes chặn cả các mục này; có nên chặn ở web không là câu hỏi cho chủ. Hàm gợi ý dùng chung `ie_category_suggest_v1` giữ nguyên.
+
+### 24.2 Kiểm
+
+- PGlite `expense-write-sql.test.mjs` 23/23 (ca lượt 13: câu đúng / câu trùng chữ, `rule_key` trước chữ của nhóm, lập / sửa bị chặn kèm link, lô nói khoản số mấy, chặn trước khi hỏi toà, không bao giờ là ứng viên, lượt 2, bản đã giải giả). Đột biến 7/7 bị bắt (bỏ từng chỗ chặn), đối chứng không đột biến 23/23.
+- PG17 `expense-write-race-sql.test.mjs` 18/18 (đối chứng bỏ NOWAIT dựng trên thân bước ghi mới).
+- `wave2-b.test.mjs` 61/61: ca `days`, ghim (thân production = 051032, ghim chéo 051032 ngã đúng câu), hai đột biến mới (bỏ lọc tuổi, bỏ ép UNAPPROVED) bị bắt.
+- Tầng 2 trên TEST (một giao dịch ROLLBACK, không đụng kết nối / registry / fixture, không dùng nick chủ / joey / bosshuy): áp hai file lên thân thật, dưới RLS một chủ công ty khác. Câu nghiệm thu ⇒ `web_only` + đúng link; khoản thật ("mua vòi nước", "đặt cọc thợ sửa máy lạnh") như cũ; tập dùng được mất đúng 2 hạng mục × 2 công ty; `days=7` ⇒ 154 phiếu = đếm trực tiếp 154 (không `days`, tháng này: 59).
+- Production chỉ đọc: tập dùng được chỉ mất "Bổ sung hoàn cọc", "Trả lại tiền thừa cho khách". 90 ngày qua có 683 phiếu CHI lập tay, trong đó 15 phiếu có nội dung luồng hệ thống, tất cả đúng là luồng hệ thống: 10 phiếu đúng hạng mục, 5 phiếu ghi "Chi khác" (thưởng sale, hoa hồng, trả lại cọc, lương). Không thấy chặn nhầm.
+
+### 24.3 Phát hành
+
+1. Áp `20261024094809` (provenance `unknown`: hàm mới `hermes_expense_system_flow_v1`) và `20261024095547` (thay thân hai hàm gói B ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh). Hai file độc lập; thứ tự tên.
+2. Connector không cần trước `094809` (`web_only` + `link` đã qua connector đang chạy). Với `095547`: SQL TRƯỚC connector (connector mới quảng bá `days`).
+3. Ghim chéo: sau khi áp, `20261023210634` (ghim thân bước ghi `15183dce…`) và `20261022051032` (ghim thân catalog / đọc gói B) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 25. Lượt 14 — sửa phần ghi theo nghiệm thu vòng 1 (24/10/2026)
+
+Nghiệm thu vòng 1 trên TEST (SOUL v4.19 + connector C1): phần ghi đạt 25/41 (trước 14/41), có một lần GHI SAI thật. Luật SOUL do phiên chính sửa riêng.
+
+### 25.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc (đã tra) | Sửa |
+| --- | --- | --- |
+| GHI SAI: "Mua nệm" phòng 202 vào "Chi khác (ghi rõ)" (`PC2610225`, đã vào sổ) | Biên nhận: chính bot gửi `category: "Chi khác (ghi rõ)"`. Máy chủ không gợi ý "Chi khác" cho câu này, nhưng hàm dùng chung không ra gì (nệm, giường, tủ … không có trong cụm "hay nói"), và bộ chọn của bot chỉ nêu một ứng viên là "Bỏ rác phát sinh" (trùng chữ với cụm "đổ nệm cũ"). Đo 90 ngày production (683 phiếu CHI lập tay): hàm dùng chung trả "Chi khác" theo trùng chữ ở 14 phiếu ("chi phí …", "ghi chú …"); các phiếu người lập chọn "Chi khác" mà đáng ra là nội thất, điện máy, ăn uống, dụng cụ … | `20261024120207` (hàm dùng chung v3, web đổi cùng lúc): từ vựng nội thất / điện máy / ăn uống / bỏ rác, mở rộng dụng cụ / vật tư điện nước; "Chi khác" không bao giờ thắng trùng chữ tên. `20261024120211`: hạng mục "khác" không bao giờ là ứng viên, gợi ý hay tự nhận của bot; chỉ nhận khi người dùng nêu tên có chữ "khác"; "Chi khác" mà nội dung khớp cứng hạng mục khác ⇒ cảnh báo trong bản xem trước |
+| "Đóng tiền nước" 1,2 triệu (hạng mục bắt buộc duyệt) vào sổ ngay (`PC2610230`) | ĐÚNG luật web: hạng mục chi theo trần (`spend_mode` TRAN), 1,2 triệu dưới trần 1,5 triệu / phiếu của toà ⇒ bộ máy chi `UNDER_CEILING` ⇒ duyệt + vào sổ; `force_approval` chỉ xét ở hạng mục TỪNG PHIẾU. Web cùng người, hạng mục, số tiền cũng vào sổ ngay | Không đổi luật (phiên chính chỉnh đáp án). Bản xem trước nêu trần: "VÀO SỔ NGAY khi ghi (dưới trần chi 1.500.000đ một phiếu)"; dòng cam kết của hạng mục TRAN đổi thành "chi theo trần, không trừ cam kết: trần … một phiếu — khoản này trong / VƯỢT trần" (trước đây nói "còn … sau khoản này còn 0" dù cam kết không bị trừ) |
+| Xác nhận bị `confirmation_invalid` rồi ra bản xem trước mới, lặp | Journal connector TEST: đúng MỘT `confirmation_invalid` (10:22:30 UTC), từ chối ngay ở connector sau 1,75 s, KHÔNG gọi SQL ⇒ basis không đổi (không có `state_changed`); token lệch `params` / `requestId` hoặc đã dùng / hết hạn. Basis của bản xem trước không chứa gì phụ thuộc thời gian | Connector: `confirmation_invalid` mang câu tĩnh nói phần lệch (`requestId` khác bản xem trước, `params` khác, quá 10 phút, đã dùng, thiếu `requestId`) — bot biết gửi lại đúng gì. Không nới rào token |
+| Đồng ý "tiền nhà" 158PVC 36,75 triệu ⇒ `action_outcome_unknown`, trạng thái "không tìm thấy" | Journal: hai lượt `action_outcome_unknown` (10:11:42, 10:32:23 UTC) đều dừng ở trần 15 s của lời gọi (`callTimeoutMs`). DB TEST chậm: bước dựng quyền mất 5,6 s / 8,4 s (thường 1–1,5 s), lệnh ghi bị cắt giữa chừng. Lượt 10:11 thật ra ĐÃ ghi (`PC2610236`, biên nhận xong 9 ms sau khi connector cắt); lượt 10:32 (`b9e9148a…`) không ghi | Connector: lượt đồng ý chỉ gửi lệnh ghi khi trần còn ≥ 75 % (15 s ⇒ 11,25 s), không đủ ⇒ `timeout` TRƯỚC khi đổi token (chưa gửi gì, gọi lại y nguyên được); 57014 (statement_timeout, giao dịch đã lùi) ⇒ `state_changed`. SQL: bước ghi đặt `lock_timeout` 3 s (chờ khoá tư vấn của bộ máy chi / dòng không NOWAIT ⇒ 55P03 ⇒ `state_changed`) |
+| "Duyệt hết phiếu chờ toà … dưới 1 triệu" ⇒ `invalid_request`; `status=UNAPPROVED` không ngày chỉ ra phiếu tháng này (thấy 1/4) | Khuôn `expense_vouchers` chỉ có `minAmount`; cửa sổ mặc định tháng này | `20261024120208` (nền W2): tham số `maxAmount`. `20261024120210`: `expense_vouchers` nhận `maxAmount` (chỉ phiếu NHỎ HƠN HẲN số này), `status=UNAPPROVED` không ngày ⇒ 366 ngày tới hôm nay. `20261024120211`: `voucherCode(s)` nhận `voucherId` (UUID) của dòng báo cáo — mã phiếu bị dùng lại giữa các toà nên mã trơn có thể mơ hồ |
+
+### 25.2 Kiểm
+
+- PGlite `expense-write-sql.test.mjs` 26/26 (ba ca lượt 14: "Chi khác", `voucherId`, trần TRAN).
+- PG17 `expense-write-race-sql.test.mjs` 19/19 (ca `lock_timeout`: chờ khoá tư vấn ngã 55P03 sau ~3 s).
+- `ie-quick-entry-rules-sql.test.mjs`: 707 ca vàng (đổi đúng 32 ca đã soát, thêm 60 câu), bảng đứng thay của vitest 87/87, ghim md5.
+- `wave2-b.test.mjs` 64/64 (ca `maxAmount` / UNAPPROVED 366 ngày, ghim chéo 044126 / 051032 / 095547, hai đột biến mới bị bắt).
+- Connector: `action-runtime` (chốt trần thời gian, câu `confirmation_invalid`), `action-adapter` (57014), `confirm-guard`, `mcp-http`.
+
+### 25.3 Phát hành
+
+1. Thứ tự áp = thứ tự tên: `20261024094809` → `20261024095547` (lượt 13) → `20261024120207` → `20261024120208` → `20261024120210` → `20261024120211`. Ghim bắt buộc thứ tự đó: `120210` đòi thân `095547` và tên `maxAmount` của `120208`; `120211` đòi thân `094809`. `120207` và `120210` chỉ thay thân hàm đã có ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh; `120208` cũng vậy.
+2. Connector: phát hành SAU `120208` + `120210` (connector mới gửi `maxAmount`). Phần còn lại (chốt thời gian, 57014, câu `confirmation_invalid`) độc lập với SQL.
+3. Ghim chéo sau khi áp: `20261022044126` (thân nền W2), `20261024095547` (thân gói B), `20261024094809` (thân bộ chọn + bước ghi), `20261023210634` (thân lõi giải) mất khả năng chạy lại ⇒ cần ngoại lệ pinned nếu cửa idempotent đo lại chúng.
+
+## 26. Lượt 15 — đọc không xếp hàng sau người ghi, khoản THU qua bot (24/10/2026)
+
+Nghiệm thu lượt cuối C3d trên TEST (connector `66df91e7`, SOUL v4.23): vòng 1 phần a đạt 26/34, 0 ghi sai. Hai lỗi máy chủ.
+
+### 26.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc (đã tra) | Sửa |
+| --- | --- | --- |
+| `crm_read_income_expenses {status: UNAPPROVED, limit: 50}` không lọc toà ⇒ `backend_unavailable` hai lần (TEST 18:42:44–18:43:12 UTC); có lọc toà thì chạy | Journal connector: `handlerMs` ~110, `finalizeMs` 8457 / 8562 = trần `statement_timeout` 8 s của vai `authenticated` ⇒ câu SQL HẾT GIỜ, không phải bước kiểm khuôn. Lượt trước / sau của cùng kết nối (gồm `crm_read_report`) chạy 1–2 s. Tái hiện tầng 2 (TEST, ROLLBACK, đúng kết nối và phiên): cùng lời gọi 154–899 ms (50 dòng / 162 phiếu, 15 toà), có lọc toà 197 ms; rào khuôn thật của connector nhận cả bốn kết quả ⇒ câu không chậm, dữ liệu không lạ — nó CHỜ. Bộ đọc miền v2 lấy kết nối (đầu hàm và lần kiểm lại cuối hàm) qua hàm lệnh dùng chung, mà hàm đó theo giao thức NGƯỜI GHI: khoá dòng công ty `FOR NO KEY UPDATE` (`lock_org_for_decision_v1`) và `FOR SHARE` phiên / kết nối / token / trợ lý / chính sách ⇒ mọi giao dịch ghi khác của cùng công ty (web, Hermes ghi, lượt đọc Hermes khác, phép đo ROLLBACK dài trên TEST dùng chung công ty fixture) giữ khoá đó thì lượt đọc xếp hàng tới hết 8 s ⇒ 57014 ⇒ `backend_unavailable`. Không xác định được giao dịch nào giữ khoá lúc 18:42 (TEST tắt `track_commit_timestamp`, khoá TEST không lưu lịch sử) | `20261024193001`: bản đọc kết nối MỚI (`app_private`, DEFINER, STABLE) — chép đúng phần kiểm của hàm lệnh (thân `20261019034850`), không khoá dòng nào; bộ đọc miền v2 (income_expenses, receivables, meter_readings, deposits_held, building_profit) gọi bản đọc ở cả hai chỗ, mọi dòng khác byte-identical với thân `20261021185540`. Các thao tác ghi giữ nguyên giao thức người ghi. Bộ đọc v1 / v3 / W2 chưa đổi (ngoài phạm vi Thu chi) |
+| "Thu 200k giữ xe" ⇒ bot gọi `expense.create`, máy chủ hỏi hạng mục chi | Bộ phân luồng hệ thống (lượt 13) chỉ nhận luồng CHI | `20261024193002`: bộ phân luồng thêm hai nhánh SAU mọi nhánh cũ — "thu (tiền) cọc" ⇒ luồng cọc (`/deposits`); khoản THU ⇒ `web_only` + link `/income-expense` (phiếu thu lập tay không qua bot). Chữ bỏ dấu "thu" trùng thứ / thử / thủ / thư / thù ⇒ chỉ cụm có ngữ cảnh: ĐẦU nội dung "tiền / khoản / phiếu thu" (trừ thủ tục, thù lao, thủ quỹ, thu hộ, thu gom, thu mua, thu âm …), "thu tiền", "thu <số tiền>" (có đơn vị hoặc ≥ 3 chữ số ⇒ "thứ 7" không dính), "thu phí / nợ / lãi / giữ xe / rác / điện / nước …"; hoặc "thu … giữ xe / rác / điện nước … của khách / phòng" (không sau "chi" / "phí", không phải thu gom / hộ / mua / âm / lao). Bộ chọn hạng mục, bước ghi (hai lượt), kiểm lại hạng mục và sửa phiếu đều gọi bộ phân luồng theo tên ⇒ không dựng lại hàm nào khác |
+
+Đo trên production (chỉ đọc): 1.309 phiếu CHI lập tay (690 trong 90 ngày) và 186 hạng mục chi — 0 dính luật THU; 25 phiếu có chữ "thu" (bỏ dấu) đều là chi thật ("thu chi điện lạnh – vệ sinh máy lạnh", "Hoàn tác thu tiền", "7 phòng thu hộ", "deal thứ 3", sổ quỹ tên người) và không dính. TEST: 717 phiếu CHI lập tay 90 ngày + 186 hạng mục — luồng không đổi ở phiếu / hạng mục nào.
+
+### 26.2 Kiểm
+
+- PG17 `domain-read-nolock-sql.test.mjs` (MỚI): dữ liệu toàn công ty (ba toà, toà công ty khác, phiếu hạn chế / lương / xoá) đọc không lọc toà qua đủ trang = tập web, qua rào khuôn của connector; thân `185540` CHỜ tới 57014 khi giao dịch khác giữ khoá công ty / phiên / kết nối (tái hiện), sau file trả ngay; bản đọc kết nối = hàm lệnh (mã + câu) ở 12 trạng thái × 3 digest; đột biến (thân v2 cũ, thêm lại `FOR SHARE`, bỏ kiểm `revoked_at`) bị bắt; `$requires$` từ chối thân v2 / hàm lệnh / bản đọc lạ; chạy lại `185540` sau file ngã đúng câu kèm md5.
+- PGlite `expense-write-sql.test.mjs` 27/27: ca lượt 15 (13 câu THU, 21 câu chi có chữ "thu", lập / lô / lượt 2 / sửa phiếu ⇒ `web_only` + `/income-expense`; sáu đột biến bị bắt; chạy lại `120211` qua, `094809` ngã đúng câu cũ).
+- Tầng 2 TEST (ROLLBACK; nghiệm thu đang chạy nên KHÔNG giữ khoá công ty / phiên trên TEST): áp hai file; đọc toàn công ty bằng thân mới = thân cũ (50 dòng, summary, cursor), 166 ms so với 580 ms; bộ chọn trả `web_only` + `/income-expense` cho "Thu 200k giữ xe".
+
+### 26.3 Phát hành
+
+1. Thứ tự áp: sau mọi file Thu chi của C3, theo tên: `20261024193001` (cần thân v2 `cf03a9fc…` = production = TEST, thân hàm lệnh `0a2c941d…`) rồi `20261024193002` (cần thân bộ phân luồng của `094809`). Hai file độc lập nhau.
+2. Connector KHÔNG cần lên trước: khuôn đọc không đổi; `web_only` + link đã là lý do của `expense.create` (lượt 13).
+3. Provenance: `193001` tạo hàm mới ⇒ `unknown` (hồ sơ "chưa áp"); `193002` thay hàm chưa có trên production (do `094809` chưa áp) ⇒ `unknown`.
+4. Ghim chéo sau khi áp: chạy lại `20261021185540` ngã `hermes_receivables_effective_requires_reviewed_v2: af47eb16c1227abfb46c7f16ba6476f5` (ngoài diff ⇒ CI không đỏ). `193002` không làm file nào mất khả năng chạy lại.
+
+## 27. Lượt 16 — requestId theo token, mã phiếu trùng giữa các toà (24/10/2026)
+
+Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
+
+### 27.1 Đổi gì
+
+| Lỗi nghiệm thu | Gốc | Sửa |
+| --- | --- | --- |
+| Lượt xác nhận gửi `requestId` thiếu một ký tự (35/36) kèm `confirmToken` đúng ⇒ `invalid_request`; `crm_action_status` hỏng theo vì bot dùng lại mã sai | Phong bì kiểm `requestId` theo khuôn UUID TRƯỚC khi xét token ⇒ lỗi chung, không nói phần nào sai; khoá của token gồm `requestId` mô hình gửi | Connector (khung chung `crm_action_*`, mọi trang): lượt có `confirmToken` lấy `requestId` theo bản ghi của token — khoá vẫn là [kết nối, thao tác, params chuẩn hoá, requestId lúc cấp] nên token của kết nối / thao tác / params khác vẫn bị từ chối; `requestId` mô hình gửi thiếu / sai khuôn / khác / bỏ trống ⇒ dùng của token, kết quả trả `requestId` đó, dòng audit prepared ghi `requestIdFix` {action, requestId, supplied: missing / malformed / different} (không ghi chuỗi mô hình gửi). `requestId` sai khuôn ở lượt không có token (xem trước, `crm_action_status`) ⇒ `invalid_request` kèm câu tĩnh "requestId không đúng khuôn UUID (N ký tự, cần 36) — chép NGUYÊN VĂN …" |
+| Mã phiếu dùng lại giữa các toà (TEST: PC2609115 ở 1392QT và 950NK; PC2609114 ở 102LVT và 950NK): người dùng đã nêu toà nhưng `expense.approve` vẫn hỏi chọn phiếu | Lõi giải chỉ lấy gợi ý toà từ chính chuỗi mã | `20261024210500` (lõi giải dựng từ thân `120211`): `expense.approve` / `note` / `edit` / `cancel` đọc `buildingName` tuỳ chọn = toà của phiếu (approve: một toà cho cả lô; edit: đã có — toà nêu đúng toà của phiếu ⇒ không chuyển toà). Chọn phiếu cùng mã của toà đó (khớp đúng tên đã bỏ dấu, bỏ "toà"/"nhà"; không có thì tên chứa chuỗi ≥ 3 ký tự), xét trên mọi phiếu thấy được: phiếu của toà nêu chỉ ngoài phạm vi khoá ⇒ `outside_scope` (trước đây mã còn đúng một phiếu trong phạm vi thì lặng lẽ chọn phiếu đó dù người dùng nói toà khác); không khớp toà nào ⇒ như cũ. Connector khai `buildingName` cho approve / note / cancel và nói trong tiêu đề thao tác |
+
+### 27.2 Kiểm
+
+- Connector: `action-runtime.test.mjs` 19/19 (ca lượt 16: chép thiếu / khác / bỏ trống / đúng ⇒ ghi đúng `requestId` của token + `requestIdFix`; `crm_action_status` / xem trước với mã sai khuôn ⇒ `invalid_request` có câu; token của params / thao tác / kết nối khác vẫn bị từ chối; đột biến bỏ lấy theo token ⇒ ca thiếu ký tự đỏ), `action-contract`, `confirm-guard` (khoá dạng hàm), `mcp-http` (chỉ chuyển đúng câu dựng sẵn), `audit-codes` (`requestIdFix` chỉ ở dòng prepared, đúng khuôn).
+- PGlite `expense-write-sql.test.mjs` 28/28: ca lượt 16 (mã ở Toà A + toà ảo: không nêu toà ⇒ hỏi; nêu đúng / bỏ dấu / chứa chuỗi / "toà nhà …" ⇒ đúng phiếu; toà lạ ⇒ hỏi lại đủ; duyệt cả lô một toà; huỷ / sửa đúng phiếu, sửa không chuyển toà; toà nêu chỉ ngoài phạm vi khoá duyệt ⇒ `outside_scope`; đột biến thân `120211` ⇒ hỏi lại và lặng lẽ chọn phiếu Toà A; chạy lại `120211` ngã đúng câu).
+- Tầng 2 TEST — CHỈ đọc thuần (chuỗi nghiệm thu đang chạy; hàm lệnh / hàm ghi khoá dòng công ty kể cả khi ROLLBACK): dựng lại phép lọc của lõi mới bằng một câu SELECT trên hai mã của đề — "1392QT" / "toà 1392QT" ⇒ phiếu 1392QT, "950NK" / "toà nhà 950NK" ⇒ 950NK, "102LVT" / "102" ⇒ 102LVT, toà không có phiếu ⇒ bỏ qua. KHÔNG áp file trên TEST, không gọi lõi giải thật hay lệnh duyệt trên TEST.
+
+### 27.3 Phát hành
+
+1. `20261024210500` áp SAU `20261024120211` (ghim md5 thân lõi giải `fefd5791…` của 120211 = TEST). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
+2. Connector độc lập với SQL: `buildingName` gửi tới SQL cũ thì bị bỏ qua (vẫn hỏi chọn phiếu); phần `requestId` theo token không cần SQL.
+3. Ghim chéo sau khi áp: chạy lại `20261024120211` ngã `hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` — 120211 NẰM TRONG diff của C3 ⇒ thiếu ngoại lệ pinned thì CI main đỏ. Câu lỗi của `210634` / `013109` / `075102` không đổi (không kèm md5).

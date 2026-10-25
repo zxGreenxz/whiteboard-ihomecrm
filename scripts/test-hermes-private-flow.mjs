@@ -534,6 +534,14 @@ for (const spec of [
   { name: 'app_private.hermes_write_name_resolve_core_v2',
     sourcePath: 'supabase/migrations/20261022044120_hermes_name_directory_virtual_v1.sql',
     statementSha256: '1fc89a8af790a6669fc73f0883783327a780913dbce27e6266983ebd2ce4305d' },
+  // Hợp đồng lượt 11 / 11b (nghiệm thu 24/10, 20261024040001): lõi giải tên v1 dựng lại từ thân 20261023185114 (danh xưng, #304), lõi v2
+  // từ thân production 044120, cả hai + bậc khớp token số nhà + tên đường ở khối toà; vẫn plpgsql INVOKER, chỉ tên public đủ schema.
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: '5465cf77e24ae039c9efa6c9d2034a11d6a812db30204abc0b1ae858d90d0f8c' },
+  { name: 'app_private.hermes_write_name_resolve_core_v2',
+    sourcePath: 'supabase/migrations/20261024040001_hermes_write_name_resolve_house_number_v1.sql',
+    statementSha256: '0c74fb34de4f13ca7553fd50fc16c50ffafce1b6893734aad191547cf6ab3950' },
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261022044123_hermes_expense_scope_v1.sql',
     statementSha256: 'e5f59a97d1fc3036d7c03efccbc24921f1d2b784e8ac092ba32ed101f4f1bbf8' },
@@ -590,6 +598,40 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261023210634_hermes_expense_acceptance_fixes_v1.sql',
     statementSha256: '24330ef538886274f374bad58928bef6fbfeb3e43afe9faed8c435f323f61164' },
+  // Lượt 8 (20261024041712): tra cứu thu tiền v2 = bản chép v1 (nhãn hoá đơn thanh lý) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_lookup_core_v2',
+    sourcePath: 'supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql',
+    statementSha256: '43e2ca0758249dd50413475c4bb0e361a7bf57c677730df9164067fe7159567e' },
+  // Thu chi lượt 13 (20261024094809): luồng hệ thống — sql IMMUTABLE thuần chữ (chỉ public.hermes_name_fold_v1, không đọc bảng); chọn hạng
+  // mục dựng lại (chặn luồng hệ thống, bỏ hạng mục luồng hệ thống khỏi tập dùng được) — chỉ tên public đủ schema, không gọi app_private.
+  { name: 'public.hermes_expense_system_flow_v1',
+    sourcePath: 'supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql',
+    statementSha256: '67be91769502bcd77d9a3028434424d181c22b2bba0b20e33b4257beb39a9a63' },
+  { name: 'public.hermes_expense_category_pick_v1',
+    sourcePath: 'supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql',
+    statementSha256: '1d5c9eb77b06cf27fbc2d38d6928b0f71d0ec30462f381dd596cf2b996b2189d' },
+  // Thu chi lượt 14 (20261024120211): bộ chọn hạng mục dựng lại (bỏ hạng mục "khác") và lõi giải dựng lại (voucherId) — chỉ tên public đủ
+  // schema, không gọi app_private theo tên.
+  { name: 'public.hermes_expense_category_pick_v1',
+    sourcePath: 'supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql',
+    statementSha256: 'de72008404f31a5ca814e222264fc726faf1ef233873749a28819084a8ae8a6e' },
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql',
+    statementSha256: 'b14bc3fc2ad1346005a39f3f6972df3aad2b1d45730dc30d4bc977e1288d1eae' },
+  // Hoá đơn lượt 14 (20261024181440): tra cứu thu tiền v3 = bản chép v2 (sổ nhận ở cả TK + TT, hỏi toà khi không thấy phòng) — chỉ tên public
+  // đủ schema.
+  { name: 'app_private.hermes_invoice_lookup_core_v3',
+    sourcePath: 'supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql',
+    statementSha256: 'b6f1e1572e35c701451a7a14106e4e5937c624aaafb6e605a9bc1902faaceff3' },
+  // Thu chi lượt 15 (20261024193002): bộ phân luồng thêm khoản THU (thu cọc ⇒ cọc; "thu 200k giữ xe" ⇒ income) — vẫn sql IMMUTABLE thuần
+  // chữ, chỉ public.hermes_name_fold_v1.
+  { name: 'public.hermes_expense_system_flow_v1',
+    sourcePath: 'supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql',
+    statementSha256: 'ebe046399a8d9cf8acff153d3124ca8082b8c0f2292ac8912c7bdd84fb954234' },
+  // Thu chi lượt 16 (20261024210500): lõi giải dựng lại (buildingName chọn phiếu khi mã trùng giữa các toà) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql',
+    statementSha256: '62c571999d7c75cd3bbaa0d754c137708384183632bfaa3547a524091869b3c6' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

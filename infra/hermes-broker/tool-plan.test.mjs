@@ -251,7 +251,9 @@ test('broker: hint chỉ đi kèm lời gọi validator đã từ chối; có t�
 
 test('§12.1 ca khung họ thao tác ghi: mỗi kết quả dẫn tới đúng lời gọi kế tiếp bằng câu hướng dẫn tĩnh', () => {
   const sources = { run: ACTION_RUN_TOOL.description, unknown_action: needsInput({ action: null, reason: 'unknown_action' }).huongDan,
-    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan };
+    confirmation_required: confirmationRequired({ action: 'probe.confirm', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null }).huongDan,
+    consent_unclear: needsInput({ action: 'contract.return', reason: 'consent_unclear' }).huongDan,
+    consent_confirm: confirmationRequired({ action: 'contract.return', requestId: null, preview: {}, warnings: [], confirmToken: null, expiresAt: null, consent: true }).huongDan };
   assert.ok(ACTION_PLAN_CASES.length >= 4);
   for (const entry of ACTION_PLAN_CASES) assert.match(sources[entry.source], entry.match, entry.when);
 });
