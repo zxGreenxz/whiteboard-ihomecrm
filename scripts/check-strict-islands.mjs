@@ -50,9 +50,9 @@ export const DAO = [
     baseline: join("tooling", "strict-islands-baseline.json"),
     /**
      * Sàn chống rỗng-vô-nghĩa: "0 lỗi strict" trên 3 file là câu đúng mà vô
-     * nghĩa. Mức đã đo (1023) trừ biên cho vài file bị xoá/đổi tên hợp lệ.
+     * nghĩa. Giữ sàn sát phạm vi đã khóa, chừa biên cho đổi tên hợp lệ.
      */
-    toiThieu: 900,
+    toiThieu: 1700,
     coThem: [],
     conCua: null,
   },
