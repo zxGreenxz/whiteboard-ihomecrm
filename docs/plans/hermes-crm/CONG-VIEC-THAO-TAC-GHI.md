@@ -899,3 +899,15 @@ Rollback: chạy lại câu lệnh hàm của `20261022153345` (bộ đọc v1) 
 **Phát hành:** chỉ connector, KHÔNG có migration; connector cũ không nhận tham số mới (mô hình gửi ⇒ invalid_params) nên SOUL v4.27 (dặn gửi cụm) lên CÙNG connector.
 
 **Test:** `vn-relative-date.test.mjs` (bảng vàng ~60 cụm với hôm nay là Chủ nhật / thứ Bảy / thứ Hai / cuối tháng / cuối năm / gần nửa đêm UTC; hai ca ghi sai thật; ca không hiểu); `action-runtime-date-phrase.test.mjs` (qua broker thật: SQL nhận 30/10 thay 06/11, câu đọc lại, lượt đồng ý gửi y nguyên vẫn khớp và gửi đúng ngày, cụm không hiểu ⇒ không gửi gì). Đột biến bằng tay: bỏ ghi đè (SQL nhận params mô hình) ⇒ ca đầu đỏ.
+
+## 29. Lượt 16 — phòng trùng nhiều toà: việc khớp chọn toà (C3k, 26/10)
+
+**Vì sao:** nghiệm thu C3h CV-H04 "Huỷ giúp anh việc sửa khoá cửa phòng 302" — `task.cancel` / `task.update` chỉ nêu phòng, phòng 302 có ở ~20 toà ⇒ máy chủ hỏi chọn toà trong 8 toà đầu theo tên (thiếu đúng 417LVT có việc); bot không nêu được ứng viên đúng, người dùng phải tự nhớ toà.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261026014500_hermes_task_room_by_job_v1.sql` | Dựng lại `app_private.hermes_task_resolve_core_v1` từ thân 003100 (md5 `adea03b2…` ⇒ `3ca074bb…`), chỉ nhánh tìm việc của `task.update` / `task.cancel`: chưa nêu toà mà phòng trùng nhiều toà ⇒ lọc việc theo khoá phòng (luật của bộ giải tên: tên hoặc bí danh, toà thật chưa xoá) ở mọi toà trong phạm vi khoá. Một việc khớp ⇒ xem trước việc đó (nêu toà); nhiều ⇒ hỏi chọn VIỆC kèm toà, không tự chọn; không việc nào ⇒ hỏi toà như cũ. Nêu toà ⇒ như cũ. |
+
+**Phát hành:** chỉ SQL (dạng trả về như cũ, không cần connector mới). Chạy lại 003100 sau file này ném `hermes_task_given_per_room_dependency_invalid` (ghim md5 chéo) ⇒ ngoại lệ pinned 003100⇐014500 ở commit sau-áp.
+
+**Test:** `task-luot16-sql.test.mjs` (PGlite, mỗi file hai lượt): phòng "201" trùng Toà A / Toà B; một việc khớp ⇒ xem trước đúng việc ở toà B (việc cùng tên ở phòng khác không tính), sửa ghi vào đúng việc; hai việc ⇒ hỏi chọn việc, ứng viên kèm hai toà; không việc nào ⇒ câu hỏi toà như cũ; nêu toà vẫn thu hẹp. Đột biến: tắt nhánh, bỏ lọc khoá phòng, bỏ câu hỏi toà khi không khớp ⇒ mỗi cái làm một ca đỏ.
