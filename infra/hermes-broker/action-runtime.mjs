@@ -23,6 +23,7 @@ import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, Req
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
 import { consentAuditText, consentClear, consentRequired } from './consent-guard.mjs';
 import { applyDatePhrases } from './vn-relative-date.mjs';
+import { collectGuard, unpaidNoteDetail } from './collect-guard.mjs';
 
 const fail = code => { throw new BrokerError(code); };
 // confirmation_invalid kèm câu tĩnh nói phần nào lệch (Thu chi lượt 14; action-contract.mjs CONFIRM_INVALID_DETAILS).
@@ -159,6 +160,14 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         return Object.freeze({});
       }
       plan.sqlParams = dated.params; plan.dateNotes = dated.notes;
+      // C3j (collect-guard.mjs): lần thu mà ghi chú nói khoản đó CHƯA trả ⇒ hỏi lại, không gửi gì xuống SQL; tên sổ là nhãn ứng viên
+      // ("HKDHUY — thanh toán (TT)") ⇒ phần mã. Áp cho cả hai lượt (lượt đồng ý gửi y nguyên ⇒ cùng kết quả).
+      const guarded = collectGuard(action.id, plan.sqlParams);
+      if (guarded.unpaid !== null) {
+        plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: unpaidNoteDetail(guarded.unpaid) });
+        return Object.freeze({});
+      }
+      plan.sqlParams = guarded.params;
       let request;
       if (plan.confirmToken !== undefined) {
         // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được chỉ đổi token khi consentText là lời đồng ý rõ của người
