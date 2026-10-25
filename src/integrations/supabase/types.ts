@@ -25669,6 +25669,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_expense_system_flow_v1: {
+        Args: { p_rule_key?: string; p_text: string }
+        Returns: Json
+      }
       hermes_expense_write_v1: {
         Args: {
           p_action: string

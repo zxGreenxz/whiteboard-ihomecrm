@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-25T00:49:25.021Z",
+  "generatedAt": "2026-10-25T14:22:12.596Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 881,
-    "unknown": 85,
-    "catalog-proven": 221,
+    "ledger-applied": 902,
+    "unknown": 80,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13538,10 +13538,9 @@
       "name": "hermes_write_name_resolve_house_number_v1",
       "scheme": "timestamp14",
       "sha256": "bb0a194155178d190f25476b823cf6646d75f7bb858304e8b69565b397473913",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_write_name_resolve_core_v1",
-        "catalog:function:app_private.hermes_write_name_resolve_core_v2"
+        "receipt:2026-10-25T13:57:33.081Z|bien-nhan-backup"
       ]
     },
     {
@@ -13550,9 +13549,9 @@
       "name": "hermes_contract_return_preview_v1",
       "scheme": "timestamp14",
       "sha256": "4c627edfd07794c0bcfc54ec0e06b0f9e5adecce41e1b42d5aebb0b4da54111c",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_contract_action_step_v1"
+        "receipt:2026-10-25T14:00:32.691Z|bien-nhan-backup"
       ]
     },
     {
@@ -13561,9 +13560,9 @@
       "name": "hermes_w2_contract_detail_public_path_v1",
       "scheme": "timestamp14",
       "sha256": "16705a6a048c9d76a1e5ccb78174795abf24e5474d449e80bd5f7093c47fe7dc",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_domain_read_v3"
+        "receipt:2026-10-25T14:02:55.215Z|bien-nhan-backup"
       ]
     },
     {
@@ -13572,9 +13571,9 @@
       "name": "meter_readings_plan_previous_period_v1",
       "scheme": "timestamp14",
       "sha256": "39cc9eb6c2b37bbe1a40a8b4a5ae7194a55cc37c107c33785408e17067aad4a0",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.meter_readings_plan_v1"
+        "receipt:2026-10-25T14:05:51.616Z|bien-nhan-backup"
       ]
     },
     {
@@ -13583,11 +13582,9 @@
       "name": "hermes_invoice_collect_v2",
       "scheme": "timestamp14",
       "sha256": "c82fc622f9cc4a876224350262151b276cd3d92a6bd90442dc12043f03261eda",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_invoice_lookup_core_v2",
-        "function:app_private.hermes_invoice_action_step_v2"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-25T14:09:01.496Z|bien-nhan-backup"
       ]
     },
     {
@@ -13618,10 +13615,9 @@
       "name": "hermes_task_nghiem_thu_2_v1",
       "scheme": "timestamp14",
       "sha256": "d180cbb57d42815f2f8b66a133035411456d9a5f4467a07aab538d167b68f362",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_task_resolve_core_v1",
-        "catalog:function:app_private.hermes_task_action_prepare_v1"
+        "receipt:2026-10-25T13:23:50.503Z|bien-nhan-backup"
       ]
     },
     {
@@ -13630,10 +13626,9 @@
       "name": "hermes_expense_system_flow_block_v1",
       "scheme": "timestamp14",
       "sha256": "62c182af649347f80862ecaf3c6fb188affd2875740e6ac02872980cd93634c7",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_expense_system_flow_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-25T13:26:49.468Z|bien-nhan-backup"
       ]
     },
     {
@@ -13642,10 +13637,9 @@
       "name": "hermes_w2b_expense_pending_days_v1",
       "scheme": "timestamp14",
       "sha256": "1bb1545e8f376cf8878ea93a2f0f11535315f30e021f011802624bc63a9b5844",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_w2b_catalog_v1",
-        "catalog:function:app_private.hermes_w2b_read_v1"
+        "receipt:2026-10-25T13:29:51.697Z|bien-nhan-backup"
       ]
     },
     {
@@ -13654,9 +13648,9 @@
       "name": "ie_quick_entry_shared_rules_v3",
       "scheme": "timestamp14",
       "sha256": "e886129e523f1be77ff95246bd985d5c0052438feb753a4464efd1d7d1a9c3c5",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.ie_category_suggest_v1"
+        "receipt:2026-10-25T13:32:45.772Z|bien-nhan-backup"
       ]
     },
     {
@@ -13665,10 +13659,9 @@
       "name": "hermes_w2_max_amount_param_v1",
       "scheme": "timestamp14",
       "sha256": "257e8f1d9ad69c043cd13d2f480f1036728d5d4e87be1691d8b054ce94bf440b",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_w2_param_names_v1",
-        "catalog:function:app_private.hermes_w2_params_v1"
+        "receipt:2026-10-25T13:35:00.686Z|bien-nhan-backup"
       ]
     },
     {
@@ -13677,10 +13670,9 @@
       "name": "hermes_w2b_expense_max_amount_v1",
       "scheme": "timestamp14",
       "sha256": "faae3b4b21fe5864366b5a26eae220dccb552143f7d1f34cfdc5c203508aeaea",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_w2b_catalog_v1",
-        "catalog:function:app_private.hermes_w2b_read_v1"
+        "receipt:2026-10-25T13:37:29.128Z|bien-nhan-backup"
       ]
     },
     {
@@ -13689,10 +13681,9 @@
       "name": "hermes_expense_acceptance_round1_v1",
       "scheme": "timestamp14",
       "sha256": "64031f040179c3d0074cd2bda3b4583e89b3f3bd1c5d0ec19a0d989d17bd8b48",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_expense_category_pick_v1",
-        "catalog:function:app_private.hermes_expense_resolve_core_v1"
+        "receipt:2026-10-25T13:40:21.183Z|bien-nhan-backup"
       ]
     },
     {
@@ -13701,10 +13692,9 @@
       "name": "hermes_task_self_assign_guard_v1",
       "scheme": "timestamp14",
       "sha256": "2a69b9458d6bc88961a5eb440c944fef9b597c9bc30b929c4ce0601b89d69fa0",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_task_resolve_core_v1",
-        "catalog:function:app_private.hermes_task_action_prepare_v1"
+        "receipt:2026-10-25T13:42:45.618Z|bien-nhan-backup"
       ]
     },
     {
@@ -13713,9 +13703,9 @@
       "name": "hermes_contract_return_twice_v1",
       "scheme": "timestamp14",
       "sha256": "b1c7fa7c71f2b10c13ea6ddf9424ccd01e3bb578a08479a378203e218b2b5e31",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_contract_action_step_v1"
+        "receipt:2026-10-25T14:11:32.778Z|bien-nhan-backup"
       ]
     },
     {
@@ -13724,9 +13714,9 @@
       "name": "hermes_w2a_invoice_room_detail_link_v1",
       "scheme": "timestamp14",
       "sha256": "d57471779af32e4431556a3385a7a7023cfd07d4f2b033bcddb42f5bc370cb26",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_w2a_read_v1"
+        "receipt:2026-10-25T14:13:57.378Z|bien-nhan-backup"
       ]
     },
     {
@@ -13735,12 +13725,9 @@
       "name": "hermes_invoice_period_closed_reason_order_v1",
       "scheme": "timestamp14",
       "sha256": "e8e8e4d4b0f7704aa73fb92139c20bc89a4e5cff908358b1b3e7a1d1cbafe68e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_invoice_lookup_core_v3",
-        "function:app_private.hermes_invoice_action_step_v3",
-        "function:app_private.hermes_invoice_edit_step_v2"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-25T14:17:00.222Z|bien-nhan-backup"
       ]
     },
     {
@@ -13749,9 +13736,9 @@
       "name": "hermes_w2a_invoice_collection_retained_v1",
       "scheme": "timestamp14",
       "sha256": "108b789918bab8d7b15c2b7381a6268eb0754706965b3c49b8ddf015016e63f3",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.invoice_collection_by_method_v1"
+        "receipt:2026-10-25T14:20:09.056Z|bien-nhan-backup"
       ]
     },
     {
@@ -13760,10 +13747,9 @@
       "name": "hermes_domain_read_nolock_v1",
       "scheme": "timestamp14",
       "sha256": "531b383dee7f483139973263bd645e63a7a8bf86db63870a65a0e2a18613e600",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_read_connection_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-25T13:45:42.609Z|bien-nhan-backup"
       ]
     },
     {
@@ -13772,10 +13758,9 @@
       "name": "hermes_expense_income_flow_block_v1",
       "scheme": "timestamp14",
       "sha256": "96ccfed92a31bd145932a78dbacd04b04745cb715ad6f7c6f973c450256a7b6a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_expense_system_flow_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-25T13:48:36.007Z|bien-nhan-backup"
       ]
     },
     {
@@ -13784,9 +13769,9 @@
       "name": "hermes_expense_voucher_building_v1",
       "scheme": "timestamp14",
       "sha256": "5f2c11836d2a1fa8d629fa689230cd05b4a5cb01e11ea2db722a89368c483237",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_expense_resolve_core_v1"
+        "receipt:2026-10-25T13:51:31.037Z|bien-nhan-backup"
       ]
     },
     {
@@ -13795,10 +13780,9 @@
       "name": "hermes_task_given_per_room_v1",
       "scheme": "timestamp14",
       "sha256": "98ff0520eaaa0aa2ee7d9566a53f183153e3fc062c0ed175eb5738fde4fb2e31",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_domain_read_v1",
-        "catalog:function:app_private.hermes_task_resolve_core_v1"
+        "receipt:2026-10-25T13:53:59.504Z|bien-nhan-backup"
       ]
     },
     {
