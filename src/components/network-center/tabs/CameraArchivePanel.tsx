@@ -17,7 +17,7 @@ export default function CameraArchivePanel({ recorder, buildingName }: { recorde
   if (!capabilities) return <p role="status" className="p-4">Đang kiểm tra dịch vụ xem lại…</p>;
   return <>
     {!capabilities.playback && <p role="alert">Đầu ghi chưa được bật dịch vụ phát lại trực tiếp.</p>}
-    <CameraPlaybackPanel key={`playback-${recorder.id}`} recorder={recorder} channels={capabilities.channels} available={capabilities.playback} speeds={capabilities.playbackSpeeds} />
+    <CameraPlaybackPanel key={`playback-${recorder.id}`} recorder={recorder} channels={capabilities.channels} available={capabilities.playback} speeds={capabilities.playbackSpeeds} qualities={capabilities.playbackQualities} />
     {!capabilities.archive && <p role="alert">Đầu ghi chưa được bật dịch vụ trích xuất video.</p>}
     <CameraExportPanel key={`export-${recorder.id}`} recorder={recorder} buildingName={buildingName} channels={capabilities.channels} available={capabilities.archive} />
   </>;

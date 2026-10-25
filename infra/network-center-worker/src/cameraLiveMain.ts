@@ -10,20 +10,20 @@ export const MEDIA_VERSION = "1.21.2";
 export const MEDIA_ARCHIVE_SHA256 = "121be6e00397e473a95d83c75f4fcd3819a6af3b0e1a50889cba43ab4fab6a27";
 
 export function mediaConfiguration(config: LiveConfig) {
-  const paths = Object.fromEntries(config.recorders.flatMap((recorder) => recorder.channels.map((channel) => {
-    const source = new URL(`/cam/realmonitor?channel=${channel}&subtype=1`, recorder.rtspOrigin);
+  const paths = Object.fromEntries(config.recorders.flatMap((recorder) => recorder.channels.flatMap((channel) => (["sd", "hd"] as const).map((quality) => {
+    const source = new URL(`/cam/realmonitor?channel=${channel}&subtype=${quality === "sd" ? 1 : 0}`, recorder.rtspOrigin);
     source.username = recorder.username; source.password = recorder.password;
-    return [streamName(recorder, channel), { source: source.href, sourceOnDemand: true, sourceOnDemandStartTimeout: "8s", sourceOnDemandCloseAfter: "5s", rtspTransport: "tcp", record: false, maxReaders: 24 }];
-  })));
+    return [streamName(recorder, channel, quality), { source: source.href, sourceOnDemand: true, sourceOnDemandStartTimeout: "8s", sourceOnDemandCloseAfter: "5s", rtspTransport: "tcp", record: false, maxReaders: 24 }];
+  }))));
   return {
     logLevel: "error", logDestinations: ["stdout"], dumpPackets: false,
-    rtsp: false, rtmp: false, hls: false, srt: false, moq: false, playback: false,
+    rtsp: true, rtspAddress: "127.0.0.1:18895", rtspTransports: ["tcp"], rtmp: false, hls: false, srt: false, moq: false, playback: false,
     api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], metrics: false, pprof: false,
     webrtc: true, webrtcAddress: "127.0.0.1:18889", webrtcAllowOrigins: [],
     webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false,
     webrtcICEServers2: [{ url: "stun:stun.l.google.com:19302" }],
     webrtcHandshakeTimeout: "15s", webrtcSTUNGatherTimeout: "5s",
-    authInternalUsers: [{ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }] }],
+    authInternalUsers: [{ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }, { action: "publish", path: "~^playback-[a-f0-9-]{36}$" }] }],
     paths,
   };
 }
@@ -58,7 +58,7 @@ async function main() {
     console.error("CAMERA_LIVE_STOPPED");
     server.close(); server.closeAllConnections();
   };
-  const dependencies = createLiveDependencies(config, fatal);
+  const dependencies = createLiveDependencies(config, fatal, fetch, archiveMedia ? archiveBinary : undefined);
   const archive = archiveMedia ? { jobs: new ArchiveJobs({ ...archiveMedia, authorize: dependencies.authorize, fatal, audit: (event, details) => console.log(JSON.stringify({ event, ...details })) }), open: archiveMedia.open } : undefined;
   const { server } = createLiveServer(config, dependencies, archive);
   media.once("error", fatal); media.once("exit", fatal); server.on("error", fatal);

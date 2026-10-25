@@ -1,17 +1,17 @@
-import { CameraLiveConnection } from "./cameraLive";
+import { CameraLiveConnection, type CameraPlaybackQuality } from "./cameraLive";
 
 /** WebRTC mediaTime advances at wall-clock speed. RTP advances at the recorder's speed. */
 export class PlaybackClock {
   private previous: number | undefined;
   private elapsed = 0;
-  constructor(private readonly speed: number) {}
+  constructor(private readonly speed: number, private readonly rtpSpeed = 1) {}
   seconds(mediaTime: number) { return this.previous === undefined ? mediaTime * this.speed : this.elapsed; }
   frame(timestamp: number | undefined, mediaTime: number) {
     if (timestamp === undefined) return this.seconds(mediaTime);
     if (this.previous !== undefined) {
       const delta = (timestamp - this.previous + 2 ** 32) % 2 ** 32;
       if (delta > 2 ** 31) return this.elapsed; // Ignore reordered frames; accept a 32-bit wrap.
-      this.elapsed += delta / 90000;
+      this.elapsed += delta / 90000 * this.rtpSpeed;
     }
     this.previous = timestamp;
     return this.elapsed;
@@ -30,7 +30,7 @@ export function cameraFrame(video: HTMLVideoElement | null, width = 960): string
 }
 
 /** A single authenticated, unrecorded stream lives only until its first decoded frame. */
-export async function capturePlaybackFrame(recorderId: string, channel: number, time: number, end: number, signal: AbortSignal): Promise<string> {
+export async function capturePlaybackFrame(recorderId: string, channel: number, time: number, end: number, signal: AbortSignal, quality?: CameraPlaybackQuality): Promise<string> {
   if (signal.aborted) throw new Error("cancelled");
   const video = document.createElement("video"); video.muted = true; video.playsInline = true;
   let resolve!: (image: string) => void; let reject!: (error: Error) => void;
@@ -38,7 +38,7 @@ export async function capturePlaybackFrame(recorderId: string, channel: number, 
   const abort = () => reject(new Error("cancelled"));
   const capture = () => { const frame = cameraFrame(video, 320); if (frame) resolve(frame); };
   let frameCallback: number | undefined;
-  const connection = new CameraLiveConnection({ recorderId, channel, playback: { start: new Date(time).toISOString(), end: new Date(Math.min(time + 20_000, end)).toISOString() },
+  const connection = new CameraLiveConnection({ recorderId, channel, playback: { start: new Date(time).toISOString(), end: new Date(Math.min(time + 20_000, end)).toISOString(), ...(quality ? { quality } : {}) },
     onStream(stream) {
       if (signal.aborted || !stream) return;
       video.srcObject = stream;

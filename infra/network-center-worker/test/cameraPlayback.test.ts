@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLiveDependencies, createLiveServer, LiveError, LiveSessions, liveConfigSchema, type LiveDependencies } from "../src/cameraLive.js";
-import { playbackRange } from "../src/cameraPlayback.js";
+import { playbackRange, playbackSources } from "../src/cameraPlayback.js";
 
 const config = liveConfigSchema.parse({ supabaseUrl: "https://tryymsxyyckgbrmmvozx.supabase.co", publishableKey: "fixture-publishable-key", origins: ["https://crm.example.test"], recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1, 2], rtspOrigin: "rtsp://10.0.0.1:18554", username: "fixture", password: "fixture-password", archiveEnabled: true, archiveOrigin: "http://10.0.0.1:18080" }] });
 const recorder = config.recorders[0]!;
@@ -10,6 +10,32 @@ const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: Date.now(
 const fixture = (): LiveDependencies => ({ authorize: vi.fn(async () => actor), start: vi.fn(async () => ({ location: "fixture", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn() });
 
 describe("direct recording playback", () => {
+  it("validates quality and creates a bounded, credential-free encoder between private paths", async () => {
+    const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
+    for (const quality of ["sd", "hd"] as const) {
+      expect(playbackRange({ ...range, quality }).quality).toBe(quality);
+      const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({}));
+      const sources = playbackSources(request, vi.fn(), encoder);
+      const name = await sources.add(recorder, 1, { ...range, quality, speed: 8 });
+      const source = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+      const output = JSON.parse(String(request.mock.calls[1]?.[1]?.body));
+      expect(source.rtspScale).toBe("8"); expect(output).toMatchObject({ record: false, maxReaders: 1, runOnDemandRestart: false, runOnDemandCloseAfter: "1s" });
+      expect(output.runOnDemand).toContain(quality === "sd" ? "min(854,iw)" : "min(1280,iw)");
+      expect(output.runOnDemand).toContain("'-g' '1'"); expect(output.runOnDemand).toContain("'passthrough'"); expect(output.runOnDemand).toContain("'1:90000'");
+      expect(output.runOnDemand).toContain("setpts=(RTCTIME-RTCSTART)/(TB*1000000)");
+      expect(output.runOnDemand).not.toContain(recorder.password); expect(output.runOnDemand).not.toContain("10.0.0.1");
+      await sources.remove(name);
+      expect(request.mock.calls.slice(2).map(([url]) => String(url))).toEqual([`http://127.0.0.1:18897/v3/config/paths/delete/${name}`, `http://127.0.0.1:18897/v3/config/paths/delete/${name.replace("playback-", "playback-source-")}`]);
+    }
+    for (const quality of ["original", "SD", "480p;command", null]) expect(() => playbackRange({ ...range, quality })).toThrow("INVALID_PLAYBACK_RANGE");
+    expect(() => playbackSources(fetch, vi.fn(), "/tmp/ffmpeg;command")).toThrow("PLAYBACK_ENCODER_INVALID");
+    await expect(playbackSources(fetch, vi.fn()).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "PLAYBACK_QUALITY_UNAVAILABLE" });
+  });
+  it("cleans both paths when creating an encoded output fails", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({})).mockResolvedValueOnce(new Response(null, { status: 400 })).mockImplementation(async () => Response.json({}));
+    await expect(playbackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "RECORDING_UNAVAILABLE" });
+    expect(request.mock.calls.slice(2).map(([, init]) => init?.method)).toEqual(["DELETE", "DELETE"]);
+  });
   it("accepts only the recorder's supported speeds", () => {
     for (const speed of [1, 2, 4, 6, 8]) expect(playbackRange({ ...range, speed })).toEqual({ ...range, speed });
     for (const speed of [0, -1, 3, 16, 1.5, "8", null]) expect(() => playbackRange({ ...range, speed })).toThrow("INVALID_PLAYBACK_RANGE");

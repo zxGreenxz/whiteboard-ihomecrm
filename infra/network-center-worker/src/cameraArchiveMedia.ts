@@ -20,7 +20,7 @@ export function archiveArguments(inputFile: string, outputFile: string, range: A
   // until trimming; resetting to STARTPTS would hide a missing first second.
   const start = Date.parse(range.start) / 1000 + 7 * 3600; const end = start + range.durationSeconds;
   const resolution = range.purpose === "preview" ? "720p" : range.resolution;
-  const bounds = resolution === "1080p" ? [1920, 1080] : [1280, 720];
+  const bounds = resolution === "480p" ? [854, 480] : resolution === "1080p" ? [1920, 1080] : [1280, 720];
   const scale = resolution === "original" ? "" : `scale=w='min(${bounds[0]},iw)':h='min(${bounds[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,`;
   return ["-hide_banner", "-loglevel", "info", "-nostdin", "-y", "-threads", "1",
     "-copyts", "-f", "dhav", "-protocol_whitelist", "file", "-i", inputFile, "-t", String(range.durationSeconds), "-map", "0:v:0", "-map", "0:a:0?",
