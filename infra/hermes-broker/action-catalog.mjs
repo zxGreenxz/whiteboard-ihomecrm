@@ -80,7 +80,7 @@ export const param = Object.freeze({
         new Set(values).size !== values.length) fail();
     return spec('oneOf', optional, `một trong: ${values.join(', ')}`, { values: Object.freeze([...values]) });
   },
-  bool: ({ optional = false } = {}) => spec('bool', optional, 'true hoặc false'),
+  bool: ({ optional = false, hint } = {}) => spec('bool', optional, hintOf(hint, 'true hoặc false')),
   // Dự phòng câu 11: tham chiếu ảnh đã tải lên (không phải ảnh thô). Chưa có luồng ảnh ⇒ defineAction từ chối.
   attachments: ({ max = 5, optional = true } = {}) => {
     if (!Number.isSafeInteger(max) || max < 1 || max > 10) fail();

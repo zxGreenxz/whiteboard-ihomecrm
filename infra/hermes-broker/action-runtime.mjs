@@ -69,9 +69,15 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
 
   function needsFromOutcome(plan, outcome) {
     // item (Công việc Mốc 4, lô task.create_batch): số mục 1–20 của MỤC ĐẦU TIÊN chưa ổn; câu chi tiết nêu "Mục #n: …".
-    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more', 'item']) || !ACTION_INPUT_REASONS.includes(outcome.reason) ||
-        !(outcome.item === undefined || Number.isSafeInteger(outcome.item) && outcome.item >= 1 && outcome.item <= 20)) fail('backend_unavailable');
+    // rooms (Công việc lượt 14, perRoom): số phòng thật của toà khi batch_too_large — chỉ đi với lý do đó.
+    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more', 'item', 'rooms']) || !ACTION_INPUT_REASONS.includes(outcome.reason) ||
+        !(outcome.item === undefined || Number.isSafeInteger(outcome.item) && outcome.item >= 1 && outcome.item <= 20) ||
+        !(outcome.rooms === undefined || outcome.reason === 'batch_too_large' && Number.isSafeInteger(outcome.rooms) && outcome.rooms > 20 && outcome.rooms <= 100_000)) fail('backend_unavailable');
     const mark = text => outcome.item === undefined ? text : `Mục #${outcome.item}: ${text}`;
+    if (outcome.rooms !== undefined) {
+      return needsInput({ action: plan.action, reason: 'batch_too_large',
+        detail: `Toà có ${outcome.rooms} phòng; tối đa 20 việc một lần — chia lô (vd theo tầng, gửi items từng phòng) hoặc tạo trên web.` });
+    }
     if (outcome.reason !== 'name_unresolved') {
       return needsInput({ action: plan.action, reason: outcome.reason, ...(outcome.item === undefined ? {} : { detail: mark(ACTION_REASONS[outcome.reason].text) }) });
     }

@@ -17,10 +17,12 @@ const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 // (20261021044801) dates the asset rows (createdAt) and names the latest asset in the summary; R2d (20261021063452) counts
 // the latest import batch (summary.latestCount) and lets a service whose only active links point to soft-deleted buildings
 // be company-wide again; Mốc 3b Công việc (20261022153345) gives task rows their assignee (assigneeName), lets query match the
-// assignee name too and adds summary.byBuilding/byAssignee/givenByMe. The applied v1 file runs with that latest body swapped in, so
-// every v1 test measures the newest definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
+// assignee name too and adds summary.byBuilding/byAssignee/givenByMe; Công việc lượt 14 (20261025003100) adds the tasks-only input
+// flag givenByMe (rows and the whole summary on what the asker gave to someone else). The applied v1 file runs with that latest body
+// swapped in, so every v1 test measures the newest definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
 const R2D_V1_PATH = 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
-const LIVE_V1_PATH = 'supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql';
+const MOC3B_V1_PATH = 'supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql';
+const LIVE_V1_PATH = 'supabase/migrations/20261025003100_hermes_task_given_per_room_v1.sql';
 const NAME_FOLD = readFileSync('supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql', 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_name_fold_v1\([\s\S]*?\$fn\$;/)[0];
 const v1Block = src => src.match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v1\([\s\S]*?\$fn\$;/)[0];
 const candidate = process.env.HERMES_DOMAIN_SQL ? readFileSync(process.env.HERMES_DOMAIN_SQL, 'utf8') : (applied => applied.replace(v1Block(applied), () => v1Block(readFileSync(LIVE_V1_PATH, 'utf8'))))(
@@ -387,6 +389,36 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       // Mutants of the tasks branch: only the expected value sees some; the connector refuses the others.
       const all=(from,to)=>{assert.ok(live.includes(from),`anchor: ${from}`);return live.replaceAll(from,()=>to);};
       const second=(from,to)=>{const at=live.indexOf(from,live.indexOf(from)+1);assert.ok(at>0&&live.indexOf(from,at+1)<0,`second anchor: ${from}`);return live.slice(0,at)+to+live.slice(at+from.length);};
+      const first=(from,to)=>{const at=live.indexOf(from);assert.ok(at>0,`first anchor: ${from}`);return live.slice(0,at)+to+live.slice(at+from.length);};
+      // Lượt 14 (20261025003100; "việc anh giao cho người khác mà chưa xong"): givenByMe ⇒ only what the asker gave to someone else
+      // (created by the asker, assignee another person or nobody) — the rows AND the whole summary, so byBuilding / byAssignee name
+      // exactly those tasks (the answer needs the assignees). Every page carries that set's summary.
+      const given=await rpc('tasks',{givenByMe:true});
+      assert.deepEqual(codes(given),['J1','J2','J5','J6','J7']);
+      const givenSummary={count:5,byStatus:{IN_PROGRESS:4,COMPLETED:1},sum:{},overdue:1,
+        byBuilding:[group(BUILDING,'Allowed',3,1),group(OTHER_BUILDING,'Denied',2,0)],
+        byAssignee:[person('Nguyễn Văn Ánh',2,1),person('Chị Hoa',1,0),person('NATHAN',1,0),person('Tên cũ',1,0)],givenByMe:{count:5,overdue:1}};
+      assert.deepEqual(given.summary,givenSummary,'self-assigned (J4) and another creator\'s (J3) tasks are outside the set and its groups');
+      domainResult('tasks',given,both,domainInput('tasks',{givenByMe:true}));
+      const open=await rpc('tasks',{givenByMe:true,status:'IN_PROGRESS'});
+      assert.deepEqual(open.summary.byAssignee,[person('Chị Hoa',1,0),person('NATHAN',1,0),person('Nguyễn Văn Ánh',1,1),person('Tên cũ',1,0)],'given and not done yet');
+      const pageOne=await rpc('tasks',{givenByMe:true,limit:2});
+      assert.deepEqual([pageOne.items.length,pageOne.summary],[2,givenSummary]);
+      assert.deepEqual(codes(await rpc('tasks',{givenByMe:true,limit:2,cursor:pageOne.nextCursor})),['J5','J6']);
+      // SQL: the key exists only for tasks and only as a boolean; the five-key input of an older connector still works.
+      const raw=input=>sqlCall('read',[JSON.stringify(binding),input.domain,JSON.stringify({query:'',limit:20,cursor:null,buildingId:null,status:null,...input.extra})],'authenticated',USER,SESSION);
+      await assert.rejects(raw({domain:'customers',extra:{givenByMe:true}}),code('22023'));
+      await assert.rejects(raw({domain:'tasks',extra:{givenByMe:'yes'}}),code('22023'));
+      assert.equal((await raw({domain:'tasks',extra:{givenByMe:false}})).summary.count,8,'false = no filter');
+      assert.equal((await raw({domain:'tasks',extra:{}})).summary.count,8);
+      const givenLine='\n        AND (NOT v_given OR (job.user_id=c.user_id AND job.assignee_id IS DISTINCT FROM job.user_id))';
+      for(const [label,mutant,check] of [
+        ['given rows filter dropped',first(givenLine,''),async()=>assert.deepEqual(codes(await rpc('tasks',{givenByMe:true})),['J1','J2','J5','J6','J7'])],
+        ['given summary filter dropped',second(givenLine,''),async()=>domainResult('tasks',await rpc('tasks',{givenByMe:true}),both,domainInput('tasks',{givenByMe:true}))],
+      ]){
+        await db.exec(mutant);
+        try{await assert.rejects(check(),`${label}: caught`);}finally{await db.exec(live);}
+      }
       const nameMatch=`\n          OR position(public.hermes_name_fold_v1(query) IN public.hermes_name_fold_v1(COALESCE(NULLIF(person.full_name,''),job.assignee_name)))>0)`;
       // probe null ⇒ the connector refuses the mutant's result.
       for(const [label,mutant,probe] of [
@@ -408,7 +440,7 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
         assert.deepEqual((await rpc('tasks')).summary,expected,`${label}: reviewed body restored`);
       }
       // The migration file itself: accepts the running 063452 body, then its own (re-run); any other body stops it.
-      const file=readFileSync(LIVE_V1_PATH,'utf8'),md5=async()=>(await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='public.hermes_domain_read_v1(jsonb,text,jsonb)'::regprocedure")).rows[0].m;
+      const file=readFileSync(MOC3B_V1_PATH,'utf8'),md5=async()=>(await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='public.hermes_domain_read_v1(jsonb,text,jsonb)'::regprocedure")).rows[0].m;
       await db.exec(v1Block(readFileSync(R2D_V1_PATH,'utf8')));
       assert.equal(await md5(),'b0d16d1af0b2ce453b2ea53fdf919098','the 063452 body running on TEST and production');
       await db.exec(file);await db.exec(file);

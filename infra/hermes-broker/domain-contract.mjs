@@ -48,9 +48,11 @@ const instant = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:
 // đã gỡ 21/10 sau khi prod áp đủ 3 migration B5c. R2c phần 2 (assets.createdAt, 20261021044801) cũng đã gỡ ở bản R2d:
 // production áp đủ bốn migration R2c 21/10 (13:16–13:31 giờ VN). Mốc 3b Công việc (22/10): tasks.assigneeName
 // (20261022153345) — connector lên TRƯỚC migration; gỡ ở bản connector kế tiếp sau khi production áp.
+// flags (Công việc lượt 14): khoá boolean THÊM của riêng một miền, chỉ gửi SQL khi true ⇒ input năm khoá của SQL cũ không đổi khi
+// không dùng; { tên: mô tả trong tools/list }.
 const define = (permission, label, fields, statuses = [], options = {}) => Object.freeze({ family: 'v1', permission, label,
   fields: Object.freeze(fields), statuses: Object.freeze(statuses), dated: false, requiresDates: false, perBuilding: false, source: null, ...options,
-  tolerant: Object.freeze([...(options.tolerant ?? [])]) });
+  tolerant: Object.freeze([...(options.tolerant ?? [])]), flags: Object.freeze({ ...(options.flags ?? {}) }) });
 
 // Family = one reviewed SQL pair. v1 is the applied 20261014081902 contract and
 // keeps its exact 5-key input/4-key result; v2 adds date range, source and time.
@@ -104,10 +106,13 @@ export const DOMAIN_READS = Object.freeze({
     id: domainId, name: text, code: nullable(text), unit: nullable(text), unitPrice: amount, buildingIds: ids }),
   // Mốc 3b (ma trận Công việc 22/10, CV-R03/R04): assigneeName = tên người nhận như web /tasks (null = chưa giao); query
   // khớp thêm tên người nhận (bỏ dấu) — lọc theo người không thêm khoá input (20261022153345). Cửa sổ một bản: tolerant.
-  tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành', {
+  // Lượt 14 (nghiệm thu C3f): givenByMe=true ⇒ dòng VÀ mọi phần summary (byBuilding, byAssignee, overdue) chỉ gồm việc người hỏi giao
+  // cho người khác (20261025003100); không lọc thì summary.givenByMe chỉ là số đếm.
+  tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành; việc anh/chị giao cho người khác: givenByMe=true', {
     id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), deadline: nullable(text),
     assigneeName: nullable(text) },
-  ['IN_PROGRESS', 'COMPLETED'], { tolerant: ['assigneeName'] }),
+  ['IN_PROGRESS', 'COMPLETED'], { tolerant: ['assigneeName'],
+    flags: { givenByMe: 'true = chỉ việc anh/chị giao cho người khác (đếm theo toà/người nhận cũng chỉ trên tập đó)' } }),
   // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
   occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
     id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
@@ -270,8 +275,13 @@ export function domainInput(operation, input) {
   const definition = DOMAIN_READS[operation], family = domainFamily(operation);
   // Đọc đầy đủ (v3): mỗi thao tác chi tiết/báo cáo có schema riêng trong full-read-contract.
   if (typeof definition.input === 'function') { try { return definition.input(input); } catch { fail(); } }
-  if (!domainRecord(input) || Object.keys(input).some(key => !family.inputKeys.includes(key))) fail();
-  const result = { ...Object.fromEntries(family.inputKeys.map(key => [key, null])), query: '', limit: 20, ...input };
+  const flags = Object.keys(definition.flags ?? {});
+  if (!domainRecord(input) || Object.keys(input).some(key => !family.inputKeys.includes(key) && !flags.includes(key)) ||
+      flags.some(key => !(input[key] === undefined || input[key] === null || typeof input[key] === 'boolean'))) fail();
+  // Khoá cờ chỉ đi SQL khi true (SQL cũ vẫn nhận đúng năm khoá khi không dùng).
+  const on = Object.fromEntries(flags.filter(key => input[key] === true).map(key => [key, true]));
+  const plain = Object.fromEntries(Object.entries(input).filter(([key]) => !flags.includes(key)));
+  const result = { ...Object.fromEntries(family.inputKeys.map(key => [key, null])), query: '', limit: 20, ...plain };
   if (!text(result.query) || !Number.isInteger(result.limit) || result.limit < 1 || result.limit > 50 ||
       !nullable(domainId)(result.cursor) || !nullable(domainId)(result.buildingId) ||
       !(result.status === null || definition.statuses.includes(result.status))) fail();
@@ -281,7 +291,7 @@ export function domainInput(operation, input) {
         fromDate !== null && toDate !== null && toDate < fromDate ||
         definition.requiresDates && (fromDate === null || toDate === null || Date.parse(toDate) - Date.parse(fromDate) > 366 * 86_400_000)) fail();
   }
-  return { ...result, query: result.query.trim() };
+  return { ...result, query: result.query.trim(), ...on };
 }
 export function domainResult(operation, value, identity, input) {
   const definition = DOMAIN_READS[operation], family = domainFamily(operation);
@@ -361,6 +371,9 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
       input.status && shape.statusKey !== null && Object.keys(summary.byStatus).some(key => key !== input.status))) fail();
   if (operation === 'tasks') {
     if (!within(summary.overdue)) fail();
+    // Lượt 14: lọc givenByMe ⇒ cả tập là việc người hỏi giao ⇒ givenByMe trùng count / overdue (SQL cũ không lọc ⇒ lệch ⇒ từ chối).
+    if (input?.givenByMe === true && (summary.givenByMe === null || summary.givenByMe === undefined ||
+        summary.givenByMe.count !== summary.count || summary.givenByMe.overdue !== summary.overdue)) fail();
     // Mốc 3b (vắng trong cửa sổ): mỗi nhóm ≥1 việc, quá hạn ≤ số việc, không trùng khoá, nhiều việc trước; cộng các nhóm không
     // vượt tổng — dưới 50 nhóm (không bị cắt) thì bằng đúng count và overdue.
     for (const [key, name] of [['byBuilding', 'buildingId'], ['byAssignee', 'assigneeName']]) {
@@ -620,6 +633,7 @@ export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([ope
     query: { type: 'string', maxLength: 200, description: READ_QUERY_HINTS[operation] }, limit: { type: 'integer', minimum: 1, maximum: 50 },
     cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid', description: DOMAIN_BUILDING_HINT },
     ...readNameProperties(operation), status: { enum: [null, ...definition.statuses] },
+    ...Object.fromEntries(Object.entries(definition.flags ?? {}).map(([key, description]) => [key, { type: 'boolean', description }])),
     ...(definition.dated ? { fromDate: dateSchema(definition.requiresDates), toDate: dateSchema(definition.requiresDates) } : {}),
   } }, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 })));
