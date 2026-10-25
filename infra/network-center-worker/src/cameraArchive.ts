@@ -5,12 +5,12 @@ import { LiveError, type LiveActor, type LiveRecorder } from "./cameraLive.js";
 const rangeSchema = z.object({
   start: z.string().datetime({ offset: true }), end: z.string().datetime({ offset: true }),
   purpose: z.enum(["preview", "export"]),
-  resolution: z.enum(["720p", "1080p", "original"]).default("720p"),
+  resolution: z.enum(["480p", "720p", "1080p", "original"]).default("480p"),
 }).strict();
 export const ARCHIVE_MAX_BYTES = 256 * 1024 * 1024;
 export const ARCHIVE_LEASE_MS = 75_000;
 const RETAIN_MS = 15 * 60_000;
-export interface ArchiveRange { start: string; end: string; purpose: "preview" | "export"; resolution: "720p" | "1080p" | "original"; durationSeconds: number }
+export interface ArchiveRange { start: string; end: string; purpose: "preview" | "export"; resolution: "480p" | "720p" | "1080p" | "original"; durationSeconds: number }
 export function parseArchiveRange(value: unknown, now = Date.now()): ArchiveRange {
   const parsed = rangeSchema.safeParse(value);
   if (!parsed.success) throw new LiveError(400, "INVALID_ARCHIVE_RANGE");

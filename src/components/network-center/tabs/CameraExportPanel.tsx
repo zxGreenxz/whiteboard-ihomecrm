@@ -11,7 +11,7 @@ export default function CameraExportPanel({ recorder, buildingName, channels, av
   const [channel, setChannel] = useState(channels[0] ?? 1);
   const [from, setFrom] = useState(() => vietnamCameraInput(Date.now() - 300_000));
   const [to, setTo] = useState(() => vietnamCameraInput(Date.now() - 1000));
-  const [resolution, setResolution] = useState<CameraArchiveResolution>("720p");
+  const [resolution, setResolution] = useState<CameraArchiveResolution>("480p");
   const [exported, setExported] = useState<Prepared>(); const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0); const [error, setError] = useState("");
   useEffect(() => { const current = urls.current; return () => { abortRef.current?.abort(); current.forEach(URL.revokeObjectURL); current.clear(); }; }, []);
@@ -37,10 +37,10 @@ export default function CameraExportPanel({ recorder, buildingName, channels, av
   return <section className="nc-panel" aria-label={`Trích xuất ${recorder.display_name}`}>
     <div className="nc-panel-heading"><h3 className="flex items-center gap-2"><Scissors className="h-5 w-5" />Trích xuất video · {recorder.display_name}</h3></div>
     <div className="space-y-3 p-4">
-      <p className="text-sm text-muted-foreground">Cắt đoạn để tải về máy, mỗi file tối đa 30 phút. Mặc định HD 720p để xử lý nhanh hơn. Có thể trích xuất mà không cần mở xem lại.</p>
+      <p className="text-sm text-muted-foreground">Cắt đoạn để tải về máy, mỗi file tối đa 30 phút. Mặc định SD 480p để xử lý nhanh hơn. Có thể trích xuất mà không cần mở xem lại.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1 text-sm" htmlFor={`${uid}-channel`}><span>Camera trích xuất</span><select id={`${uid}-channel`} className={cameraFieldClass} value={channel} disabled={busy || !available} onChange={(event) => { discard(); setChannel(Number(event.target.value)); }}>{channels.map((value) => <option key={value} value={value}>{cameraChannelName(recorder, value)}</option>)}</select></label>
-        <label className="space-y-1 text-sm" htmlFor={`${uid}-resolution`}><span>Độ phân giải video xuất</span><select id={`${uid}-resolution`} className={cameraFieldClass} value={resolution} disabled={busy} onChange={(event) => { const value = event.target.value; if (value === "720p" || value === "1080p" || value === "original") { discard(); setResolution(value); } }}><option value="720p">HD 720p · Mặc định</option><option value="1080p">Full HD 1080p</option><option value="original">Độ phân giải gốc · File lớn hơn</option></select></label>
+        <label className="space-y-1 text-sm" htmlFor={`${uid}-resolution`}><span>Độ phân giải video xuất</span><select id={`${uid}-resolution`} className={cameraFieldClass} value={resolution} disabled={busy} onChange={(event) => { const value = event.target.value; if (value === "480p" || value === "720p" || value === "1080p" || value === "original") { discard(); setResolution(value); } }}><option value="480p">SD 480p · Mặc định</option><option value="720p">HD 720p</option><option value="1080p">Full HD 1080p</option><option value="original">Độ phân giải gốc · File lớn hơn</option></select></label>
         <label className="space-y-1 text-sm" htmlFor={`${uid}-from`}><span>Bắt đầu đoạn cắt</span><input id={`${uid}-from`} className={cameraFieldClass} type="datetime-local" step="1" value={from} disabled={busy} onChange={(event) => { discard(); setFrom(event.target.value); }} /></label>
         <label className="space-y-1 text-sm" htmlFor={`${uid}-to`}><span>Kết thúc đoạn cắt</span><input id={`${uid}-to`} className={cameraFieldClass} type="datetime-local" step="1" value={to} disabled={busy} onChange={(event) => { discard(); setTo(event.target.value); }} /></label>
       </div>

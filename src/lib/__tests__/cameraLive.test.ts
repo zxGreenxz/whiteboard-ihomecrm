@@ -34,6 +34,14 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const options = () => ({ recorderId: "20000000-0000-4000-8000-000000000001", channel: 1, onStream: vi.fn(), onState: vi.fn() });
 
 describe("live camera browser lifecycle", () => {
+  it("uses the default live substream and only requests the main stream for HD", async () => {
+    const sd = new CameraLiveConnection({ ...options(), liveQuality: "sd" }); await sd.start(); await sd.stop();
+    expect(request.mock.calls[0]?.[0]).toMatch(/\/sessions$/u);
+    request.mockClear();
+    const hd = new CameraLiveConnection({ ...options(), liveQuality: "hd" }); await hd.start(); await hd.stop();
+    expect(request.mock.calls[0]?.[0]).toMatch(/\/sessions\?quality=hd$/u);
+    expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({ "Content-Type": "application/sdp" });
+  });
   it("uses recording signaling for playback and keeps the same authenticated lease lifecycle", async () => {
     const playback = { start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z" };
     const connection = new CameraLiveConnection({ ...options(), playback }); await connection.start();
@@ -74,6 +82,20 @@ describe("live camera browser lifecycle", () => {
     resolve(Response.json({ id: sessionId, answer: "v=0\r\nanswer", expiresAt: Date.now() + 75000 }));
     await started; await vi.advanceTimersByTimeAsync(1);
     expect(request.mock.calls.some(([url, init]) => String(url).endsWith(`/sessions/${sessionId}`) && init?.method === "DELETE")).toBe(true);
+    expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
+  });
+  it("waits for an in-flight create and its deletion before releasing a preview slot", async () => {
+    let created!: (value: Response) => void; let deleted!: (value: Response) => void;
+    request.mockImplementationOnce(() => new Promise((resolve) => { created = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { deleted = resolve; }));
+    const connection = new CameraLiveConnection(options()); void connection.start();
+    await vi.advanceTimersByTimeAsync(1);
+    let released = false; const stopped = connection.stop().then(() => { released = true; });
+    expect(request.mock.calls[0]?.[1]?.signal?.aborted).toBe(false); expect(released).toBe(false);
+    created(Response.json({ id: sessionId, answer: "v=0\\r\\nanswer", expiresAt: Date.now() + 75000 }));
+    await vi.advanceTimersByTimeAsync(1); expect(released).toBe(false);
+    expect(request.mock.calls[1]?.[1]?.method).toBe("DELETE");
+    deleted(Response.json({ stopped: true })); await stopped; expect(released).toBe(true);
     expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
   });
   it("sends credentials in the authorization header only, with a video receive-only offer", async () => {

@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 export const cameraVideoEndpoint = "https://crm-hermes.chillhome.io.vn/camera-live/v1";
 const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().uuid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false) });
+export type CameraPlaybackQuality = "sd" | "hd";
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd"])).optional().default(["sd"]) });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",
@@ -26,6 +27,7 @@ const messages: Record<string, string> = {
   ARCHIVE_DOWNLOAD_INVALID: "File tải về không khớp bản trích xuất. Vui lòng thử lại.",
   INVALID_PLAYBACK_RANGE: "Chọn khoảng xem lại tối đa 24 giờ, không chọn giờ tương lai.",
   PLAYBACK_BUSY: "Đang có nhiều phiên xem lại. Hãy dừng bớt cửa sổ hoặc thử lại sau.",
+  PLAYBACK_QUALITY_UNAVAILABLE: "Dịch vụ chưa hỗ trợ chất lượng đã chọn. Hãy tải lại trang để cập nhật.",
 };
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
@@ -55,8 +57,8 @@ export async function cameraLiveCapabilities(recorderId: string, signal: AbortSi
 
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
-  recorderId: string; channel: number;
-  playback?: { start: string; end: string };
+  recorderId: string; channel: number; liveQuality?: "sd" | "hd";
+  playback?: { start: string; end: string; speed?: number; quality?: CameraPlaybackQuality };
   onStream(stream: MediaStream | null): void;
   onState(state: CameraLiveState, message?: string): void;
 }
@@ -69,9 +71,12 @@ export class CameraLiveConnection {
   private stopped = false;
   private renewing = false;
   private checking = false;
+  private starting: Promise<void> | undefined;
+  private releasing: Promise<void> | undefined;
   constructor(private readonly options: CameraLiveOptions) {}
 
-  async start() {
+  start() { return this.starting ??= this.connect(); }
+  private async connect() {
     try {
       z.string().uuid().parse(this.options.recorderId);
       z.number().int().min(1).max(64).parse(this.options.channel);
@@ -93,7 +98,9 @@ export class CameraLiveConnection {
       const offer = peer.localDescription?.sdp;
       if (!offer) throw new CameraLiveError("CAMERA_UNAVAILABLE");
       const playback = this.options.playback;
-      const session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : "sessions"}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, this.abort.signal, playback ? "application/json" : "application/sdp"));
+      // Keep creation's bounded request alive after stop so its id can be deleted before the next preview.
+      // Aborting fetch alone leaves an unknown server-side reservation until WHEP finishes.
+      const session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality === "hd" ? "?quality=hd" : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
       this.sessionId = session.id;
       if (this.stopped) { void this.releaseSession(); return; }
       await peer.setRemoteDescription({ type: "answer", sdp: session.answer });
@@ -124,16 +131,17 @@ export class CameraLiveConnection {
     finally { this.renewing = false; }
   }
   private fail(message: string) { this.stop(); this.options.onState("error", message); }
-  private async releaseSession() {
+  private releaseSession(): Promise<void> {
     const id = this.sessionId; this.sessionId = undefined;
-    if (!id) return;
-    try { await liveRequest(`/sessions/${id}`, "DELETE"); }
-    catch { /* The server independently expires the lease within 75 seconds. */ }
+    if (id) this.releasing = liveRequest(`/sessions/${id}`, "DELETE").then(() => {}).catch(() => { /* The server independently expires the lease within 75 seconds. */ });
+    return this.releasing ?? Promise.resolve();
   }
   stop() {
+    if (this.stopped) return this.starting?.then(() => this.releaseSession()) ?? this.releaseSession();
     this.stopped = true; this.abort.abort();
     clearInterval(this.renewTimer); clearInterval(this.statsTimer);
     this.peer?.close(); this.peer = undefined; this.options.onStream(null);
     void this.releaseSession();
+    return this.starting?.then(() => this.releaseSession()) ?? this.releaseSession();
   }
 }

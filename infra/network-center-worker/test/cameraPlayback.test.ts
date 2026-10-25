@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLiveDependencies, createLiveServer, LiveError, LiveSessions, liveConfigSchema, type LiveDependencies } from "../src/cameraLive.js";
-import { playbackRange } from "../src/cameraPlayback.js";
+import { playbackRange, playbackSources } from "../src/cameraPlayback.js";
 
 const config = liveConfigSchema.parse({ supabaseUrl: "https://tryymsxyyckgbrmmvozx.supabase.co", publishableKey: "fixture-publishable-key", origins: ["https://crm.example.test"], recorders: [{ id: "10000000-0000-4000-8000-000000000001", organizationId: "20000000-0000-4000-8000-000000000001", buildingId: "30000000-0000-4000-8000-000000000001", channels: [1, 2], rtspOrigin: "rtsp://10.0.0.1:18554", username: "fixture", password: "fixture-password", archiveEnabled: true, archiveOrigin: "http://10.0.0.1:18080" }] });
 const recorder = config.recorders[0]!;
@@ -10,6 +10,41 @@ const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: Date.now(
 const fixture = (): LiveDependencies => ({ authorize: vi.fn(async () => actor), start: vi.fn(async () => ({ location: "fixture", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn() });
 
 describe("direct recording playback", () => {
+  it("validates quality and creates a bounded, credential-free encoder between private paths", async () => {
+    const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
+    for (const quality of ["sd", "hd"] as const) {
+      expect(playbackRange({ ...range, quality }).quality).toBe(quality);
+      const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({}));
+      const sources = playbackSources(request, vi.fn(), encoder);
+      const name = await sources.add(recorder, 1, { ...range, quality, speed: 8 });
+      const source = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+      const output = JSON.parse(String(request.mock.calls[1]?.[1]?.body));
+      expect(source.rtspScale).toBe("8"); expect(output).toMatchObject({ record: false, maxReaders: 1, runOnDemandRestart: false, runOnDemandCloseAfter: "1s" });
+      expect(output.runOnDemand).toContain(quality === "sd" ? "min(854,iw)" : "min(1280,iw)");
+      expect(output.runOnDemand).toContain("'-g' '1'"); expect(output.runOnDemand).toContain("'passthrough'"); expect(output.runOnDemand).toContain("'1:90000'");
+      expect(output.runOnDemand).toContain("setpts=(RTCTIME-RTCSTART)/(TB*1000000)");
+      expect(output.runOnDemand).not.toContain(recorder.password); expect(output.runOnDemand).not.toContain("10.0.0.1");
+      await sources.remove(name);
+      expect(request.mock.calls.slice(2).map(([url]) => String(url))).toEqual([`http://127.0.0.1:18897/v3/config/paths/delete/${name}`, `http://127.0.0.1:18897/v3/config/paths/delete/${name.replace("playback-", "playback-source-")}`]);
+    }
+    for (const quality of ["original", "SD", "480p;command", null]) expect(() => playbackRange({ ...range, quality })).toThrow("INVALID_PLAYBACK_RANGE");
+    expect(() => playbackSources(fetch, vi.fn(), "/tmp/ffmpeg;command")).toThrow("PLAYBACK_ENCODER_INVALID");
+    await expect(playbackSources(fetch, vi.fn()).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "PLAYBACK_QUALITY_UNAVAILABLE" });
+  });
+  it("cleans both paths when creating an encoded output fails", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({})).mockResolvedValueOnce(new Response(null, { status: 400 })).mockImplementation(async () => Response.json({}));
+    await expect(playbackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "RECORDING_UNAVAILABLE" });
+    expect(request.mock.calls.slice(2).map(([, init]) => init?.method)).toEqual(["DELETE", "DELETE"]);
+  });
+  it("accepts only the recorder's supported speeds", () => {
+    for (const speed of [1, 2, 4, 6, 8]) expect(playbackRange({ ...range, speed })).toEqual({ ...range, speed });
+    for (const speed of [0, -1, 3, 16, 1.5, "8", null]) expect(() => playbackRange({ ...range, speed })).toThrow("INVALID_PLAYBACK_RANGE");
+  });
+  it("expires accelerated playback at the scaled recording end", async () => {
+    let now = Date.now(); const deps = { ...fixture(), now: () => now }; const sessions = new LiveSessions(deps);
+    await sessions.start(actor, recorder, 1, offer, { ...range, end: "2026-10-20T01:04:00Z", speed: 8 });
+    now += 61_000; await sessions.expire(); expect(deps.stop).toHaveBeenCalledOnce(); expect(sessions.size).toBe(0);
+  });
   it("rejects future, excessive, fractional, injected and reversed intervals", () => {
     for (const invalid of [{ ...range, start: range.end }, { ...range, end: "2999-01-01T00:00:00Z" }, { ...range, end: "2026-10-22T00:00:00Z" }, { ...range, start: "2026-10-20T01:00:00.001Z" }, { ...range, source: "rtsp://outside" }, { ...range, start: "bad" }]) expect(() => playbackRange(invalid)).toThrow("INVALID_PLAYBACK_RANGE");
     expect(playbackRange({ start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T09:00:00+07:00" })).toEqual(range);
@@ -39,9 +74,9 @@ describe("direct recording playback", () => {
       if (init?.method === "POST") return new Response(offer, { status: 201, headers: { Location: `/${name}/whep/50000000-0000-4000-8000-000000000001` } });
       return Response.json({ status: "ok" });
     });
-    const deps = createLiveDependencies(config, vi.fn(), request); const media = await deps.start(recorder, 2, offer, range);
+    const deps = createLiveDependencies(config, vi.fn(), request); const media = await deps.start(recorder, 2, offer, { ...range, speed: 6 });
     const path = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
-    expect(path).toMatchObject({ record: false, sourceOnDemand: true, maxReaders: 1, rtspTransport: "tcp" });
+    expect(path).toMatchObject({ record: false, sourceOnDemand: true, maxReaders: 1, rtspTransport: "tcp", rtspScale: "6" });
     const source = new URL(path.source); expect(source.hostname).toBe("10.0.0.1"); expect(source.searchParams.get("channel")).toBe("2"); expect(source.searchParams.get("starttime")).toBe("2026_10_20_08_00_00");
     expect(JSON.stringify(media)).not.toContain(recorder.password);
     await deps.stop(media.location); expect(request.mock.calls.at(-1)?.[0]).toBe(`http://127.0.0.1:18897/v3/config/paths/delete/${name}`);
@@ -66,8 +101,11 @@ describe("direct recording playback", () => {
       vi.mocked(deps.authorize).mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
       expect((await fetch(url, { method: "POST", headers, body })).status).toBe(403); expect(deps.start).not.toHaveBeenCalled();
       expect((await fetch(url, { method: "POST", headers, body: JSON.stringify({ ...range, offer: offer.replace("recvonly", "sendrecv") }) })).status).toBe(400);
+      expect((await fetch(url, { method: "POST", headers, body: JSON.stringify({ ...range, offer, speed: 16 }) })).status).toBe(400);
       const response = await fetch(url, { method: "POST", headers, body }); expect(response.status).toBe(201);
       expect(deps.start).toHaveBeenCalledWith(recorder, 1, offer, range); expect(sessions.size).toBe(1);
+      expect((await fetch(url, { method: "POST", headers, body: JSON.stringify({ ...range, offer, speed: 8 }) })).status).toBe(201);
+      expect(deps.start).toHaveBeenLastCalledWith(recorder, 1, offer, { ...range, speed: 8 });
     } finally { await sessions.closeAll(); await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 });

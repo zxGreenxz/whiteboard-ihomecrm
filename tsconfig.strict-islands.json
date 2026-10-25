@@ -23,6 +23,8 @@
     "src/components/network-center/tabs/CameraPlaybackPanel.tsx",
     "src/lib/network-center/cameraArchive.ts",
     "src/lib/network-center/cameraLive.ts",
+    "src/lib/network-center/cameraPlayback.ts",
+    "src/lib/__tests__/cameraPlayback.test.ts",
     "src/components/network-center/tabs/CamerasTab.tsx",
     "src/hooks/network-center/useBuildingCameras.ts",
     "src/lib/network-center/cameraContracts.ts",
