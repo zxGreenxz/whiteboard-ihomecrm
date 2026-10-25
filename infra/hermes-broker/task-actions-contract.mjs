@@ -6,6 +6,11 @@
 // giờ công ty (Q30). Khoá tasks.create: lớp quyền khung chung là nguồn duy nhất của khoá này khi danh mục có task.create (CV1).
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 
+// Lượt 15 (nghiệm thu C3h: mô hình tự tính ngày sai — "thứ sáu tuần sau" hôm Chủ nhật): cụm hạn NGUYÊN VĂN, connector tự quy đổi
+// (vn-relative-date.mjs) và ghi đè deadline / deadlineTime trước khi gửi SQL; cụm không xuống SQL.
+const DEADLINE_PHRASE = () => param.text(1, 80, { optional: true,
+  hint: 'NGUYÊN VĂN cụm hạn người dùng nói ("thứ sáu tuần sau", "cuối tháng", "9h sáng mai"); connector tự đổi ra ngày, ghi đè deadline' });
+
 export const TASK_CREATE = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1',
   title: "Tạo/giao việc: toà, phòng ('cả toà'), loại, nội dung, người nhận ('tôi' = mình), hạn trống = hết ngày mai",
   params: {
@@ -17,6 +22,7 @@ export const TASK_CREATE = defineAction({ id: 'task.create', page: 'task', key: 
     assigneeName: param.name('person', { optional: true }),
     deadline: param.date({ optional: true }),
     deadlineTime: param.time({ optional: true }),
+    deadlinePhrase: DEADLINE_PHRASE(),
     priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
   },
   reasons: ['task_quota_user', 'task_quota_pair'] });
@@ -32,6 +38,7 @@ export const TASK_UPDATE = defineAction({ id: 'task.update', page: 'task', key: 
     note: param.text(1, 1000, { optional: true }),
     deadline: param.date({ optional: true }),
     deadlineTime: param.time({ optional: true }),
+    deadlinePhrase: DEADLINE_PHRASE(),
     assigneeName: param.name('person', { optional: true }),
     priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
     content: param.text(1, 200, { optional: true }),
@@ -62,7 +69,7 @@ export const TASK_CREATE_BATCH = defineAction({ id: 'task.create_batch', page: '
       buildingName: param.name('building', { optional: true }), roomName: param.name('room', { optional: true }),
       content: param.text(1, 200, { optional: true }), jobType: param.name('jobType', { optional: true }),
       assigneeName: param.name('person', { optional: true }), deadline: param.date({ optional: true }),
-      deadlineTime: param.time({ optional: true }), priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
+      deadlineTime: param.time({ optional: true }), deadlinePhrase: DEADLINE_PHRASE(), priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
     }), { min: 1, max: TASK_BATCH_MAX, optional: true, overflow: 'batch_too_large' }),
     buildingsManagedBy: param.name('person', { optional: true }),
     // Lượt 14: "toà X, mỗi phòng một việc" ⇒ perRoom=true + buildingName (không items): máy chủ dựng mỗi phòng một mục; > 20 phòng ⇒
@@ -75,6 +82,7 @@ export const TASK_CREATE_BATCH = defineAction({ id: 'task.create_batch', page: '
     assigneeName: param.name('person', { optional: true }),
     deadline: param.date({ optional: true }),
     deadlineTime: param.time({ optional: true }),
+    deadlinePhrase: DEADLINE_PHRASE(),
     priority: param.oneOf(['NORMAL', 'URGENT', 'LOW'], { optional: true }),
   },
   reasons: ['task_quota_user', 'task_quota_pair', 'batch_too_large'] });

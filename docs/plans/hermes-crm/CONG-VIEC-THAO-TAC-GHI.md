@@ -885,3 +885,17 @@ Rollback: chạy lại câu lệnh ba hàm của `20261024091500` / `20261022164
 **Test:** connector `task-luot14-contract` (cờ chỉ ở tasks, chỉ gửi khi true, bất biến givenByMe = count khi lọc; `perRoom` + câu `rooms`, `rooms` sai lý do / ≤ 20 / sai kiểu ⇒ từ chối), nhóm connector đọc + thao tác 244/244 (tools/list ≤ 64 000 B). SQL: `domain-composition` (thân v1 mới: tập givenByMe = J1, J2, J5, J6, J7, summary đủ phần trên tập đó, phân trang, khoá lạ / sai kiểu ⇒ 22023, false = không lọc; 2 đột biến lọc dòng / lọc summary), `task-luot14-sql` PGlite (4 ca + 4 đột biến: mỗi phòng một mục + ghi, phòng đã xoá không tính, 26 phòng ⇒ `batch_too_large` rooms 26, dùng sai ⇒ invalid_params, lô items > 20 vẫn không kèm số phòng). Tầng 2 TEST CHỈ ĐỌC (nghiệm thu đang chạy, không gọi hàm lệnh / hàm ghi): với nick chủ, tập "đã giao cho người khác, chưa xong" = NATHAN 39, JOEY 34 trên 17 toà; toà 102LVT có 40 phòng ⇒ perRoom sẽ trả `batch_too_large` rooms 40.
 
 Rollback: chạy lại câu lệnh hàm của `20261022153345` (bộ đọc v1) và `20261024145100` (lõi, chuẩn bị lô).
+
+## 28. Lượt 15 — connector tự quy đổi cụm ngày tiếng Việt (25/10)
+
+**Vì sao:** ba ghi sai thật cùng gốc — mô hình tự tính ngày: "cuối tháng" không truyền hạn (v4.15), "thứ hai tuần trước" chạy thứ Bảy rồi Chủ nhật (HD-T22: ghi trả phòng 19/10, đúng 12/10), "thứ sáu tuần sau" chạy Chủ nhật 25/10 (CV-T12: hạn 06/11, đúng 30/10). SOUL đã có luật bốn bước kèm ví dụ đúng ngày đó mà mô hình vẫn tính sai.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `infra/hermes-broker/vn-relative-date.mjs` (mới) | Quy đổi cụm ngày theo giờ VN (UTC+7), tuần bắt đầu thứ Hai: hôm nay / mai / mốt / N ngày nữa / hôm qua; thứ X (trần, "tới", tuần này / sau / sau nữa / trước, cả khi cụm tuần đứng trước thứ); chủ nhật; cuối tuần (sau); đầu tuần sau; cuối / đầu / giữa tháng; dd/mm(/yyyy), "ngày N"; giờ ("9h sáng", "14h30", "2 giờ chiều", "7 giờ tối"). Hai lựa chọn, ngày sai, thứ lệch ngày ⇒ không hiểu |
+| Tham số mới | `deadlinePhrase` cho `task.create`, `task.update`, `task.create_batch` (chung và từng mục); `datePhrase` cho `contract.return` (ngày đã xảy ra: "thứ X" trần = lần gần nhất tới hôm nay) và `contract.notice_set` |
+| `action-runtime.mjs` | Có cụm ⇒ connector tự đổi và GHI ĐÈ `deadline` / `deadlineTime` / `date` mô hình gửi; SQL nhận params đã đổi (cụm không xuống SQL); token vẫn gắn params mô hình gửi. Xem trước: câu "Hiểu '…' là thứ … dd/mm/yyyy (không phải … như đã tính)" đứng đầu `warnings`; ghi thẳng: `notes`. Không hiểu ⇒ `needs_input date_out_of_range` "Chưa hiểu ngày '…'", không gửi gì xuống SQL |
+
+**Phát hành:** chỉ connector, KHÔNG có migration; connector cũ không nhận tham số mới (mô hình gửi ⇒ invalid_params) nên SOUL v4.27 (dặn gửi cụm) lên CÙNG connector.
+
+**Test:** `vn-relative-date.test.mjs` (bảng vàng ~60 cụm với hôm nay là Chủ nhật / thứ Bảy / thứ Hai / cuối tháng / cuối năm / gần nửa đêm UTC; hai ca ghi sai thật; ca không hiểu); `action-runtime-date-phrase.test.mjs` (qua broker thật: SQL nhận 30/10 thay 06/11, câu đọc lại, lượt đồng ý gửi y nguyên vẫn khớp và gửi đúng ngày, cụm không hiểu ⇒ không gửi gì). Đột biến bằng tay: bỏ ghi đè (SQL nhận params mô hình) ⇒ ca đầu đỏ.
