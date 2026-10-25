@@ -15,6 +15,13 @@ describe("recording position", () => {
     const clock = new PlaybackClock(6);
     expect(clock.frame(undefined, 2)).toBe(12); expect(clock.seconds(3)).toBe(18);
   });
+  it("scales realtime SD/HD RTP while ignoring stale frames", () => {
+    const clock = new PlaybackClock(8, 8);
+    expect(clock.frame(90000, 0)).toBe(0);
+    expect(clock.frame(90000 * 11, 10)).toBe(80);
+    expect(clock.frame(90000 * 10, 11)).toBe(80);
+    expect(clock.frame(90000 * 12, 11)).toBe(88);
+  });
 });
 
 describe("scrub preview queue", () => {

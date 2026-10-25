@@ -19,7 +19,7 @@ function setClip() {
 }
 async function ready() { await waitFor(() => expect(screen.queryByText("Đang kiểm tra dịch vụ xem lại…")).toBeNull()); }
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8] });
+  vi.clearAllMocks(); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd"] });
   mocks.frame.mockReturnValue("data:image/jpeg;base64,previous"); mocks.capture.mockResolvedValue("data:image/jpeg;base64,preview");
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   mocks.prepare.mockImplementation(async (input) => ({ blob: new Blob(["fixture"]), job: { ...input, id: "job", state: "ready", bytes: 7, durationSeconds: (Date.parse(input.end) - Date.parse(input.start)) / 1000, sha256: "a".repeat(64), filename: "camera-fixture.mp4" } }));
@@ -27,6 +27,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("separate playback and export", () => {
+  it("defaults playback to SD, switches quality at the current time and preserves the selected speed", async () => {
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    expect((screen.getByLabelText("Chất lượng xem lại") as HTMLSelectElement).value).toBe("sd");
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    expect(mocks.connections.at(-1)?.playback?.quality).toBe("sd");
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "4" } });
+    const video = screen.getByLabelText(/^Video xem lại/);
+    Object.defineProperties(video, { currentTime: { value: 10 }, readyState: { value: 4 } }); fireEvent.timeUpdate(video);
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "hd" } });
+    expect(mocks.connections.at(-1)?.playback).toMatchObject({ start: "2026-10-20T01:00:40.000Z", quality: "hd", speed: 4 });
+    expect(mocks.prepare).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByLabelText("Thanh thời gian xem lại"), { pointerType: "touch" });
+    fireEvent.change(screen.getByLabelText("Thanh thời gian xem lại"), { target: { value: "120" } });
+    fireEvent.pointerCancel(screen.getByLabelText("Thanh thời gian xem lại"));
+    expect(screen.queryByText("Đang lấy ảnh xem trước…")).toBeNull();
+    expect((screen.getByLabelText("Thanh thời gian xem lại") as HTMLInputElement).value).toBe("40");
+  });
   it("preserves the last frame on seek/pause and requests native speeds while updating the timeline", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
     fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
@@ -54,7 +71,7 @@ describe("separate playback and export", () => {
     fireEvent.pointerDown(slider); fireEvent.change(slider, { target: { value: "120" } });
     expect(screen.getByText("Đang lấy ảnh xem trước…")).toBeTruthy();
     await screen.findByAltText(/Ảnh xem trước/);
-    expect(mocks.capture).toHaveBeenCalledWith(recorder.id, 1, Date.parse("2026-10-20T01:02:00Z"), Date.parse("2026-10-20T02:00:00Z"), expect.any(AbortSignal));
+    expect(mocks.capture).toHaveBeenCalledWith(recorder.id, 1, Date.parse("2026-10-20T01:02:00Z"), Date.parse("2026-10-20T02:00:00Z"), expect.any(AbortSignal), "sd");
     expect(mocks.connections).toHaveLength(1);
     fireEvent.pointerUp(slider); expect(mocks.connections.at(-1)?.playback?.start).toBe("2026-10-20T01:02:00.000Z");
     expect(screen.queryByAltText(/Ảnh xem trước/)).toBeNull();
@@ -82,11 +99,11 @@ describe("separate playback and export", () => {
     fireEvent.change(screen.getByLabelText("Camera cần tìm"), { target: { value: "2" } });
     expect(screen.queryByLabelText(/^Video xem lại/)).toBeNull(); expect(mocks.stop).toHaveBeenCalledTimes(3);
   });
-  it("exports without opening playback, defaults to HD and retains independent channel controls", async () => {
+  it("exports without opening playback, defaults to SD and retains independent channel controls", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setClip();
     fireEvent.change(screen.getByLabelText("Camera trích xuất"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); await screen.findByRole("link", { name: "Tải video MP4" });
-    expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.prepare.mock.calls[0]?.[0]).toMatchObject({ channel: 2, purpose: "export", resolution: "720p", start: "2026-10-20T01:12:00.000Z", end: "2026-10-20T01:14:30.000Z" });
+    expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.prepare.mock.calls[0]?.[0]).toMatchObject({ channel: 2, purpose: "export", resolution: "480p", start: "2026-10-20T01:12:00.000Z", end: "2026-10-20T01:14:30.000Z" });
     expect((screen.getByLabelText("Camera cần tìm") as HTMLSelectElement).value).toBe("1");
     fireEvent.change(screen.getByLabelText("Độ phân giải video xuất"), { target: { value: "original" } });
     expect(screen.queryByRole("link", { name: "Tải video MP4" })).toBeNull(); expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:fixture");

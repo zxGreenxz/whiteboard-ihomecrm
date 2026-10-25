@@ -2,9 +2,9 @@ import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { CameraLiveError, cameraVideoEndpoint } from "./cameraLive";
 
-const resolutionSchema = z.enum(["720p", "1080p", "original"]);
+const resolutionSchema = z.enum(["480p", "720p", "1080p", "original"]);
 export type CameraArchiveResolution = z.infer<typeof resolutionSchema>;
-export const cameraResolutionLabel = (value: CameraArchiveResolution) => ({ "720p": "HD 720p", "1080p": "Full HD 1080p", original: "Độ phân giải gốc" })[value];
+export const cameraResolutionLabel = (value: CameraArchiveResolution) => ({ "480p": "SD 480p", "720p": "HD 720p", "1080p": "Full HD 1080p", original: "Độ phân giải gốc" })[value];
 const base = z.object({ id: z.string().uuid(), recorderId: z.string().uuid(), channel: z.number().int().positive(), start: z.string().datetime(), end: z.string().datetime(), purpose: z.enum(["preview", "export"]), resolution: resolutionSchema, progress: z.number().min(0).max(100), expiresAt: z.number() });
 const readySchema = base.extend({ state: z.literal("ready"), bytes: z.number().int().positive().max(256 * 1024 * 1024), durationSeconds: z.number().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/u), filename: z.string().regex(/^[a-zA-Z0-9_.-]+\.mp4$/u) });
 const jobSchema = z.discriminatedUnion("state", [base.extend({ state: z.literal("processing") }), base.extend({ state: z.literal("failed"), code: z.string() }), readySchema]);
@@ -72,7 +72,7 @@ async function download(job: CameraArchiveReady, signal: AbortSignal) {
 }
 export async function prepareCameraArchive(input: CameraArchiveRequest, signal: AbortSignal, onProgress: (job: CameraArchiveJob) => void) {
   z.string().uuid().parse(input.recorderId); z.number().int().min(1).max(64).parse(input.channel);
-  const resolution = resolutionSchema.parse(input.purpose === "preview" ? "720p" : input.resolution ?? "720p");
+  const resolution = resolutionSchema.parse(input.purpose === "preview" ? "720p" : input.resolution ?? "480p");
   let id: string | undefined;
   try {
     let job = jobSchema.parse(await (await request(`/recorders/${input.recorderId}/channels/${input.channel}/archive`, "POST", signal, { start: input.start, end: input.end, purpose: input.purpose, resolution })).json());

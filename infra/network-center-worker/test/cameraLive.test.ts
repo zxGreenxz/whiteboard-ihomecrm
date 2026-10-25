@@ -103,15 +103,32 @@ describe("camera live upstream authorization", () => {
     request.mockResolvedValue(new Response(offer, { status: 201, headers: { Location: "http://[malformed" } }));
     await expect(createLiveDependencies(config, fatal, request).start(recorder, 1, offer)).rejects.toMatchObject({ code: "UPSTREAM_INVALID" }); expect(fatal).toHaveBeenCalledTimes(3);
   });
-  it("only binds signaling and path control to loopback and disables recording and publish endpoints", () => {
+  it("only binds signaling and path control to loopback and restricts publishing to generated playback paths", () => {
     const media = mediaConfiguration(config);
-    expect(media).toMatchObject({ rtsp: false, rtmp: false, hls: false, srt: false, moq: false, api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], playback: false, webrtcAddress: "127.0.0.1:18889", webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false });
+    expect(media).toMatchObject({ rtsp: true, rtspAddress: "127.0.0.1:18895", rtspTransports: ["tcp"], rtmp: false, hls: false, srt: false, moq: false, api: true, apiAddress: "127.0.0.1:18897", apiAllowOrigins: [], playback: false, webrtcAddress: "127.0.0.1:18889", webrtcLocalUDPAddress: "", webrtcLocalTCPAddress: "", webrtcIPsFromInterfaces: false });
     expect(Object.values(media.paths).every((path) => path.record === false && path.sourceOnDemand === true)).toBe(true);
-    expect(media.authInternalUsers[0]).toEqual({ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }] });
+    expect(new URL(media.paths[`camera-${recorder.id}-1`]!.source).searchParams.get("subtype")).toBe("1");
+    expect(new URL(media.paths[`camera-${recorder.id}-1-hd`]!.source).searchParams.get("subtype")).toBe("0");
+    expect(media.authInternalUsers[0]).toEqual({ user: "any", ips: ["127.0.0.1"], permissions: [{ action: "read" }, { action: "api" }, { action: "publish", path: "~^playback-[a-f0-9-]{36}$" }] });
   });
 });
 
 describe("camera live HTTP boundary", () => {
+  it("keeps recorder authorization on HD requests and rejects arbitrary quality or channel paths", async () => {
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}/channels/1/sessions`;
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp" };
+    try {
+      vi.mocked(dependencies.authorize).mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+      expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(403); expect(dependencies.start).not.toHaveBeenCalled();
+      expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(201);
+      expect(dependencies.start).toHaveBeenLastCalledWith(recorder, 1, offer, undefined, "hd");
+      expect((await fetch(base + "?quality=outside", { method: "POST", headers, body: offer })).status).toBe(404);
+      expect((await fetch(base.replace("channels/1/", "channels/99/") + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(404);
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
   it("requires allowed origin and bearer token and does not expose upstream configuration", async () => {
     const { dependencies } = setup(); const { server } = createLiveServer(config, dependencies);
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));

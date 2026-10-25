@@ -33,9 +33,10 @@ Chỉ có một tác vụ chuyển mã cùng lúc, tối đa bốn file kết qu
 bản DHAV đang xử lý cũng bị giới hạn dưới 256 MiB và xóa khi kết thúc tác vụ;
 dành tối thiểu 2 GiB đĩa cho thư mục state. Không đặt video ở public webroot.
 
-UI cho chọn khoảng tìm tối đa 24 giờ, tải từng đoạn xem trước tối đa 10 phút,
-tua và tốc độ 0.5–8×. Xuất tối đa 30 phút/file, mặc định HD 720p; có thể chọn
-Full HD 1080p hoặc kích thước hình gốc, luôn giữ tỷ lệ và không phóng lớn nguồn.
+UI cho chọn khoảng tìm tối đa 24 giờ, phát WebRTC, kéo tua có ảnh xem trước và
+tốc độ 1×/2×/4×/6×/8×. Xem lại mặc định SD 480p, tùy chọn HD 720p. Xuất tối đa
+30 phút/file, mặc định SD 480p; có thể chọn HD 720p, Full HD 1080p hoặc kích thước
+hình gốc, luôn giữ tỷ lệ và không phóng lớn nguồn.
 Video chuyển mã H.264/AAC, không phải bản bitstream gốc. File bàn giao chứa độ phân giải, camera,
 khoảng giờ yêu cầu, thời lượng video theo timestamp khung hình và SHA-256; không chứng nhận đồng hồ đầu
 ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway kiểm thời lượng
@@ -494,10 +495,20 @@ xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI
 
 ### Phát lại trực tiếp và trích xuất
 
-Xem lại dùng RTSP `/cam/playback` (luồng ghi chính), chuyển nguyên video sang
-WebRTC như xem trực tiếp; không tạo job MP4 hoặc lưu thêm video. Trình duyệt phải
-hỗ trợ codec của bản ghi (đầu ghi 950NK dùng H.265). Mỗi lần tìm/tua tạo path UUID
-riêng; dừng, hết lease hoặc hết khoảng xem sẽ xóa phiên WHEP và path đó.
+Xem trực tiếp mặc định dùng luồng phụ SD, có lựa chọn HD để nhận luồng chính
+(độ phân giải theo cấu hình camera). Xem lại dùng RTSP `/cam/playback` từ bản ghi
+chính. Khi chọn SD/HD, FFmpeg đã ghim chuyển mã ngay sang H.264 tối đa 854×480 /
+1280×720; không tạo job MP4 hoặc lưu thêm video. Client cũ không gửi chất lượng
+vẫn nhận codec/kích thước gốc. Mỗi lần tìm/tua tạo path UUID riêng; dừng, hết lease
+hoặc hết khoảng xem sẽ xóa phiên WHEP, output và input, đồng thời dừng encoder.
+
+MediaMTX cho encoder đọc/publish qua RTSP TCP chỉ tại `127.0.0.1:18895`; quyền
+publish chỉ nhận tên `playback-<uuid>`. FFmpeg chỉ nhận URL loopback không chứa
+credential, một thread giải mã/mã hóa và không tự khởi động lại. RTCP của đầu ghi
+khi tăng tốc có thể làm timestamp FFmpeg nhảy ngược; luồng chuyển mã dùng đồng hồ
+thực để phát ổn định, UI nhân theo tốc độ để ước tính vị trí. Dấu giờ trên hình
+vẫn là giờ đầu ghi. Luồng gốc dùng timestamp RTP gốc. Giới hạn bốn phiên xem lại
+bao gồm cả phiên chụp ảnh trước; ảnh trước luôn dùng SD và chỉ giữ trong bộ nhớ.
 
 - Gateway kiểm JWT và quyền tòa nhà trước mở; renew/delete giữ ràng buộc chủ phiên.
 - Khoảng xem tối đa 24 giờ, không giờ tương lai; tối đa 4 phiên phát lại toàn gateway.
@@ -505,6 +516,6 @@ riêng; dừng, hết lease hoặc hết khoảng xem sẽ xóa phiên WHEP và 
   reverse proxy hoặc mở firewall cho cổng này. RTSP gốc và mật khẩu chỉ ở máy chủ.
 - Thanh thời gian phát lại là ước tính theo RTSP. Không tự lấy mốc này điền trích xuất;
   đối chiếu đồng hồ trên hình rồi chọn khoảng xuất. Export vẫn dùng DHAV/kiểm coverage,
-  HD 720p mặc định, tải về máy và xóa file tạm, không upload Supabase Storage.
+  SD 480p mặc định, tải về máy và xóa file tạm, không upload Supabase Storage.
 - Khi rollout gateway, giữ artifact/config trước đó và kiểm stop/rollback; canary
   cần xác nhận hình giải mã thật, đóng phiên xóa path và export hoạt động độc lập.
