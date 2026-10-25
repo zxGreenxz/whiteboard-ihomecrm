@@ -1172,3 +1172,16 @@ Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
 1. `20261024210500` áp SAU `20261024120211` (ghim md5 thân lõi giải `fefd5791…` của 120211 = TEST). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
 2. Connector độc lập với SQL: `buildingName` gửi tới SQL cũ thì bị bỏ qua (vẫn hỏi chọn phiếu); phần `requestId` theo token không cần SQL.
 3. Ghim chéo sau khi áp: chạy lại `20261024120211` ngã `hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` — 120211 NẰM TRONG diff của C3 ⇒ thiếu ngoại lệ pinned thì CI main đỏ. Câu lỗi của `210634` / `013109` / `075102` không đổi (không kèm md5).
+
+## 28. Lượt 17 (C3l) — ngày phiếu chi nói bằng lời (26/10/2026)
+
+**Vì sao:** nghiệm thu C3d TC-A04 (Chủ nhật 25/10) "Thứ hai tuần trước anh có chi 2 củ sơn lại tường phòng 302 toà 65, ghi bù giúp anh" ⇒ mô hình tự tính 19/10 (đúng là 12/10: Chủ nhật thuộc tuần bắt đầu thứ Hai 19/10). Cùng lớp lỗi với CV-T12 / HD-T22 đã sửa ở C3i cho Công việc / Hợp đồng; phiếu chi chưa có cụm ngày.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `expense-actions-contract.mjs` | `voucherDatePhrase` (tuỳ chọn, ≤ 80 ký tự) cho từng mục `expense.create` và cho `expense.edit` |
+| `vn-relative-date.mjs` | `DATE_PHRASE_FIELDS`: `expense.create` (từng mục) / `expense.edit` — hướng QUÁ KHỨ ("thứ sáu" trần = thứ Sáu gần nhất tới hôm nay); connector ghi đè `voucherDate`, cụm không xuống SQL, xem trước nêu "Mục #n: Hiểu '…' là …"; cụm không hiểu ⇒ needs_input |
+
+**Phát hành:** chỉ connector (cùng PR với tên sổ trùng tên phòng của Hoá đơn); connector cũ không nhận tham số mới ⇒ SOUL v4.30 (dặn gửi `voucherDatePhrase`) lên CÙNG connector.
+
+**Test:** `vn-relative-date.test.mjs` (Chủ nhật / thứ Hai: "thứ hai tuần trước", "hôm qua", "cuối tháng trước", "thứ sáu", "hôm kia"; cụm không hiểu; `expense.edit`); `expense-actions.test.mjs` (khuôn trường). Đột biến bằng tay: bỏ ánh xạ `expense.create` ⇒ ca đỏ.
