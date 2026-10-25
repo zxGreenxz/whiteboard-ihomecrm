@@ -20,7 +20,8 @@ export const EXPENSE_CREATE = defineAction({ id: 'expense.create', page: 'expens
   params: { items: param.list(param.record({
     buildingName: param.name('building'), roomName: param.name('room', { optional: true }), amount: param.vnd(),
     content: param.text(1, 200), category: param.name('category', { optional: true }), payee: param.text(1, 100, { optional: true }),
-    voucherDate: param.date({ optional: true }), period: param.month({ optional: true }), cashbook: param.name('cashbook', { optional: true }),
+    voucherDate: param.date({ optional: true }), voucherDatePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày chi người dùng nói ("thứ hai tuần trước", "cuối tháng trước", "hôm qua"); connector tự đổi ra ngày, ghi đè voucherDate' }),
+    period: param.month({ optional: true }), cashbook: param.name('cashbook', { optional: true }),
   }), { min: 1, max: EXPENSE_CREATE_MAX_ITEMS }) },
   // Lượt 13 (20261024094809): khoản thuộc luồng hệ thống (hoa hồng, thanh lý / trả tiền thừa cho khách, cọc, lương, chia lợi nhuận, chuyển
   // nội bộ) ⇒ web_only + link màn gốc. Connector cũ vẫn chuyển mã này (mọi mã rejected toàn cục), danh sách ở đây chỉ để crm_action_list nói đúng.
@@ -38,6 +39,7 @@ export const EXPENSE_EDIT = defineAction({ id: 'expense.edit', page: 'expense', 
   title: 'Sửa phiếu CHI chờ duyệt (nêu ≥ 1 trường đổi; buildingName = toà của phiếu khi mã trùng, toà khác ⇒ chuyển toà)',
   params: { voucherCode: param.name('voucher'), amount: param.vnd({ optional: true }), category: param.name('category', { optional: true }),
     content: param.text(1, 200, { optional: true }), payee: param.text(1, 100, { optional: true }), voucherDate: param.date({ optional: true }),
+    voucherDatePhrase: param.text(1, 80, { optional: true, hint: 'NGUYÊN VĂN cụm ngày chi người dùng nói ("thứ hai tuần trước", "cuối tháng trước", "hôm qua"); connector tự đổi ra ngày, ghi đè voucherDate' }),
     cashbook: param.name('cashbook', { optional: true }), buildingName: param.name('building', { optional: true }),
     roomName: param.name('room', { optional: true }), reason: param.text(8, 1000, { optional: true }) },
   reasons: ['not_found', 'not_pending', 'reason_required', 'system_voucher', 'web_only', 'period_locked', 'cashbook_not_held', 'not_allowed', 'state_changed'] });

@@ -19,6 +19,16 @@ export const unpaidNoteDetail = note => `Ghi chú "${note}" nói khoản này CH
 export function collectGuard(actionId, params) {
   if (actionId !== 'invoice.collect' || params === null || typeof params !== 'object') return { params, unpaid: null };
   if (typeof params.note === 'string' && UNPAID.test(foldVn(params.note))) return { params, unpaid: params.note };
+  // C3l (nghiệm thu C3j TC-A07 "Toà 80 phòng MB ck 2tr796"): mô hình gửi cả roomName "MB" lẫn cashbookName "MB" ⇒ máy chủ hỏi sổ.
+  // Tên sổ trùng tên một phòng của chính lệnh (kể cả items[]) là tên phòng, không phải sổ ⇒ bỏ cashbookName, máy chủ dùng sổ mặc định.
+  if (typeof params.cashbookName === 'string') {
+    const book = foldVn(params.cashbookName).trim();
+    const rooms = [params.roomName, ...(Array.isArray(params.items) ? params.items.map(item => item?.roomName) : [])];
+    if (book && rooms.some(room => typeof room === 'string' && foldVn(room).trim() === book)) {
+      const { cashbookName: _room, ...rest } = params;
+      return { params: rest, unpaid: null };
+    }
+  }
   if (typeof params.cashbookName === 'string' && LABEL_TAIL.test(params.cashbookName)) {
     const code = params.cashbookName.replace(LABEL_TAIL, '').trim();
     if (code) return { params: { ...params, cashbookName: code }, unpaid: null };

@@ -20,6 +20,16 @@ test('collectGuard: ghi chú nói chưa trả ⇒ unpaid; ghi chú thường gi�
   assert.deepEqual(collectGuard('expense.create', { note: 'chưa thanh toán' }), { params: { note: 'chưa thanh toán' }, unpaid: null }, 'chỉ áp cho invoice.collect');
 });
 
+// C3l (nghiệm thu C3j TC-A07): tên sổ trùng tên phòng của chính lệnh ⇒ bỏ cashbookName. Đột biến bằng tay: bỏ nhánh ⇒ hai ca đầu đỏ.
+test('collectGuard: cashbookName trùng tên phòng (roomName hoặc items[].roomName) ⇒ bỏ; sổ thật giữ nguyên', () => {
+  assert.deepEqual(collectGuard('invoice.collect', { buildingName: '80', roomName: 'MB', method: 'TK', cashbookName: 'MB' }).params,
+    { buildingName: '80', roomName: 'MB', method: 'TK' });
+  assert.deepEqual(collectGuard('invoice.collect', { items: [{ roomName: 'Paris 2', amount: 1 }], cashbookName: 'paris 2' }).params,
+    { items: [{ roomName: 'Paris 2', amount: 1 }] });
+  assert.deepEqual(collectGuard('invoice.collect', { roomName: 'MB', cashbookName: 'MBHIEP' }).params, { roomName: 'MB', cashbookName: 'MBHIEP' });
+  assert.deepEqual(collectGuard('invoice.collect', { roomName: '203', cashbookName: 'HKDHUY — thanh toán (TT)' }).params, { roomName: '203', cashbookName: 'HKDHUY' });
+});
+
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const TOKEN = `hc_${'A'.repeat(43)}`;
 const NOW = Date.parse('2026-10-25T17:09:00.000Z');

@@ -54,7 +54,7 @@ test('danh mục Thu chi: năm thao tác, một RPC, khoá trong hợp đồng; 
   assert.deepEqual([...catalog.keys], ['income_expenses.approve_vouchers', 'income_expenses.cancel', EXPENSE_CREATE_KEY, 'income_expenses.edit']);
   const [create, note] = catalog.listing({ action: [EXPENSE_CREATE_KEY] });
   assert.deepEqual([create.confirm, note.confirm], ['always', 'if_required']);
-  assert.deepEqual(Object.keys(create.params.items.item.fields), ['buildingName', 'roomName', 'amount', 'content', 'category', 'payee', 'voucherDate', 'period', 'cashbook']);
+  assert.deepEqual(Object.keys(create.params.items.item.fields), ['buildingName', 'roomName', 'amount', 'content', 'category', 'payee', 'voucherDate', 'voucherDatePhrase', 'period', 'cashbook']);
   assert.deepEqual(Object.entries(create.params.items.item.fields).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'amount', 'content']);
   assert.equal(create.params.items.max, 5);
   assert.deepEqual(validateActionParams(EXPENSE_CREATE, { items: [{ ...ITEM, amount: '350000', voucher_date: '2026-10-21', period: '2026-10' }] }),
