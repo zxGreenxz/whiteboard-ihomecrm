@@ -12,7 +12,7 @@ export function playbackRange(value: unknown, now = Date.now()): PlaybackRange {
   if (!parsed.success) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
   const start = Date.parse(parsed.data.start); const end = Date.parse(parsed.data.end);
   if (start < Date.UTC(2000, 0, 1) || end <= start || end > now || end - start > 86400_000 || start % 1000 || end % 1000) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
-  return { ...parsed.data, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+  return { start: new Date(start).toISOString(), end: new Date(end).toISOString(), ...(parsed.data.speed === undefined ? {} : { speed: parsed.data.speed }), ...(parsed.data.quality === undefined ? {} : { quality: parsed.data.quality }) };
 }
 const deviceTime = (iso: string) => new Date(Date.parse(iso) + 7 * 3600_000).toISOString().slice(0, 19).replace(/[-:T]/gu, "_");
 const api = "http://127.0.0.1:18897/v3/config/paths";
