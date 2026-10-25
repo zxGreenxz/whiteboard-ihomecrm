@@ -76,6 +76,20 @@ describe("live camera browser lifecycle", () => {
     expect(request.mock.calls.some(([url, init]) => String(url).endsWith(`/sessions/${sessionId}`) && init?.method === "DELETE")).toBe(true);
     expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
   });
+  it("waits for an in-flight create and its deletion before releasing a preview slot", async () => {
+    let created!: (value: Response) => void; let deleted!: (value: Response) => void;
+    request.mockImplementationOnce(() => new Promise((resolve) => { created = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { deleted = resolve; }));
+    const connection = new CameraLiveConnection(options()); void connection.start();
+    await vi.advanceTimersByTimeAsync(1);
+    let released = false; const stopped = connection.stop().then(() => { released = true; });
+    expect(request.mock.calls[0]?.[1]?.signal?.aborted).toBe(false); expect(released).toBe(false);
+    created(Response.json({ id: sessionId, answer: "v=0\\r\\nanswer", expiresAt: Date.now() + 75000 }));
+    await vi.advanceTimersByTimeAsync(1); expect(released).toBe(false);
+    expect(request.mock.calls[1]?.[1]?.method).toBe("DELETE");
+    deleted(Response.json({ stopped: true })); await stopped; expect(released).toBe(true);
+    expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
+  });
   it("sends credentials in the authorization header only, with a video receive-only offer", async () => {
     const connection = new CameraLiveConnection(options()); await connection.start();
     expect(Peer.instances[0]!.addTransceiver).toHaveBeenCalledWith("video", { direction: "recvonly" });

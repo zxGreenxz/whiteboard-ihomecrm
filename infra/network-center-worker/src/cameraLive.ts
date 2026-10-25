@@ -5,7 +5,7 @@ import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { ArchiveJobs } from "./cameraArchive.js";
 import { validateCameraOrigin } from "./cameraConfig.js";
-import { playbackRange, playbackSources, type PlaybackRange } from "./cameraPlayback.js";
+import { playbackRange, playbackSources, playbackSpeeds, playbackSpeedSchema, type PlaybackRange } from "./cameraPlayback.js";
 
 const uuid = z.string().uuid();
 export const liveConfigSchema = z.object({
@@ -146,7 +146,7 @@ export class LiveSessions {
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
-    const playbackUntil = playback ? this.now() + Date.parse(playback.end) - Date.parse(playback.start) + 30_000 : undefined;
+    const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;
     const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil };
     this.sessions.set(session.id, session);
     try {
@@ -226,9 +226,9 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const recorder = config.recorders.find((r) => r.id === playbackCreate[1]);
         if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
         let input;
-        try { input = z.object({ offer: z.string(), start: z.string(), end: z.string() }).strict().parse(JSON.parse(await requestBody(request))); }
+        try { input = z.object({ offer: z.string(), start: z.string(), end: z.string(), speed: playbackSpeedSchema.optional() }).strict().parse(JSON.parse(await requestBody(request))); }
         catch { throw new LiveError(400, "INVALID_PLAYBACK_RANGE"); }
-        const range = playbackRange({ start: input.start, end: input.end }); validateOffer(input.offer);
+        const range = playbackRange({ start: input.start, end: input.end, ...(input.speed === undefined ? {} : { speed: input.speed }) }); validateOffer(input.offer);
         const actor = await dependencies.authorize(token, recorder);
         const result = await sessions.start(actor, recorder, Number(playbackCreate[2]), input.offer, range);
         if (response.destroyed) { await sessions.stop(result.id, token); return; }
@@ -277,7 +277,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
           await dependencies.authorize(token, recorder);
-          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled) }); return;
+          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [] }); return;
         }
         if (channel && request.method === "POST") {
           if (request.headers["content-type"] !== "application/sdp") throw new LiveError(415, "SDP_REQUIRED");
