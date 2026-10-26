@@ -680,11 +680,15 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     const showDesc = !split || !!fd;
     const adjust = split ? invoiceAdjustmentsText(split) : "";
 
+    // khoản thu có phòng: xem nhiều toà thì tên toà nằm ở ô phòng, lọc một toà thì đã biết toà ⇒ dòng phụ không
+    // ghi toà (chủ nhắn 26/10/2026)
+    const bldInTag = isIncome && !!r.room && buildingIds.length !== 1 && !!r.building && r.building !== "—";
+    const bldInMeta = !(isIncome && r.room);
     const meta = r.isMissingExpense
       ? `Hạng mục cố định · ${r.building}`
       : r.isNote
-        ? r.building
-        : `${r.type} · ${r.building}${accrualMode && r.period ? ` · Kỳ ${r.period}` : ""}`;
+        ? (bldInMeta ? r.building : "")
+        : [r.type, bldInMeta ? r.building : null, accrualMode && r.period ? `Kỳ ${r.period}` : null].filter(Boolean).join(" · ");
 
     // chạm thẻ hoá đơn là xem hoá đơn luôn (chủ nhắn 26/10/2026); chạm số tiền xem các lần thu
     const onTap = r.isMissingExpense
@@ -704,6 +708,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           {r.room && (
             <span className="shrink-0 font-mono font-bold text-[11.5px] text-[#1b1813] bg-[#faf8f4] border border-[#e7e3da] px-[7px] py-0.5 rounded-[7px]">
               {r.room}
+              {bldInTag && <span className="ml-1 text-[10px] font-semibold text-[#8d8678]" data-testid="profit-tag-building">{r.building}</span>}
             </span>
           )}
           {showDesc ? (
@@ -734,7 +739,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             <IncomePartsGrid parts={split} />
           </div>
         )}
-        {(showDesc || noteText) && (
+        {((showDesc && meta) || noteText) && (
           <div className="mt-1 flex items-baseline justify-between gap-2">
             <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
               {showDesc ? meta : ""}

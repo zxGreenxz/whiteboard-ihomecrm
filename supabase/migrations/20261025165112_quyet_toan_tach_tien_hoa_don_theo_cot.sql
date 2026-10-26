@@ -25,15 +25,16 @@
 --        (cọc, NON_PNL — thu ở dòng phiếu khác). Số tiền phiếu bằng phần đó (lệch dưới 1 đồng vẫn tính là bằng)
 --        ⇒ các cột lấy nguyên số trên hoá đơn, discount = −giảm trừ, debt = nợ cũ, rounding = phần làm tròn.
 --        Khác ⇒ mọi phần nhân cùng tỷ lệ (làm tròn tới đồng), phần lẻ dồn vào rounding; partial = true. Cộng
---        mọi phần luôn đúng bằng số tiền phiếu. Phần doanh thu ≤ 0 hoặc không có dòng doanh thu dương ⇒ NULL.
+--        mọi phần luôn đúng bằng số tiền phiếu. Phần doanh thu ≤ 0, không có dòng doanh thu dương, hoặc tổng hoá
+--        đơn không dựng lại được từ các cột − giảm trừ + nợ cũ (lệch ≥ 1.000đ, vd hoá đơn thanh lý) ⇒ NULL.
 --   3. public.invoice_amount_parts_for_v1(hoá đơn, số tiền) — INVOKER, đường DUY NHẤT gom dòng hoá đơn (bỏ dòng
 --        DISCOUNT) rồi gọi mục 2. Gói quyết toán và RPC Báo cáo LN cùng gọi.
 --   4. public.income_voucher_splittable_v1(phiếu) — INVOKER, điều kiện DUY NHẤT để tách một phiếu: phiếu thu có
---        hoá đơn, không hạn chế (link chủ nhà không lộ hoá đơn), không do thanh lý sinh (system_source
+--        hoá đơn, tính KQKD, không hạn chế (link chủ nhà không lộ hoá đơn), không do thanh lý sinh (system_source
 --        termination.*), dòng lãi lỗ thuộc đúng MỘT hạng mục.
 --   5. public.invoice_amount_parts_v1(p_rows jsonb) — RPC MỚI cho Báo cáo LN: INVOKER + RLS, từ chối khi
---        current_user ≠ authenticated. Nhận [{key, invoice_id, amount, voucher_ids}] (một dòng báo cáo có thể gộp
---        nhiều phiếu cùng hoá đơn) — chỉ tách khi MỌI phiếu thuộc đúng hoá đơn đó và qua mục 4; trả [{key, rent,
+--        current_user ≠ authenticated. Nhận ≤ 3000 dòng [{key, invoice_id, amount, voucher_ids (≤ 200)}] (một dòng
+--        báo cáo có thể gộp nhiều phiếu cùng hoá đơn) — chỉ tách khi MỌI phiếu thuộc đúng hoá đơn đó và qua mục 4; trả [{key, rent,
 --        electric, water, service, other, discount, debt, rounding, invoice_amount, partial}].
 --   6. app_private.landlord_settlement_compute_v1 (DỰNG TỪ THÂN production md5 4aeced8e…, file
 --      20261023142407) — thêm, CHỈ ĐỂ HIỂN THỊ (không vào chuỗi băm, không đổi tổng nào):
@@ -89,10 +90,10 @@ BEGIN
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
       ('public.invoice_item_column_v1(text,text,text)', ARRAY['05ea03aaab1bd1b9da1a32d6c7b93b40']),
-      ('public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)', ARRAY['9f6ea48c08523cb162050d4be6b5dc92']),
+      ('public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)', ARRAY['3cf044d71f29b83be69aef5d6a6459c3']),
       ('public.invoice_amount_parts_for_v1(uuid,numeric)', ARRAY['1b9df4d01a87ad96fa35d2cd9ee1f249']),
-      ('public.income_voucher_splittable_v1(uuid)', ARRAY['41447857b2c1edc1e599cee704b5a871']),
-      ('public.invoice_amount_parts_v1(jsonb)', ARRAY['205ff5d713ace4fe04967babdf698662'])
+      ('public.income_voucher_splittable_v1(uuid)', ARRAY['21cfad2d7e6d07cd371860a68e8618b8']),
+      ('public.invoice_amount_parts_v1(jsonb)', ARRAY['c1b0c04c38b95727dca410443bf4a7d1'])
     ) AS x(sig, ghim)
   LOOP
     IF to_regprocedure(v_sig) IS NOT NULL THEN
@@ -163,6 +164,10 @@ AS $fn$
     SELECT b.*, pg_catalog.abs(p_amount - b.phai_thu) < 1 AS du
       FROM b
      WHERE p_amount IS NOT NULL AND b.phai_thu > 0 AND b.r + b.e + b.w + b.s + b.o > 0
+       -- tổng hoá đơn phải dựng lại được từ các cột − giảm trừ + nợ cũ (chỉ lệch phần làm tròn tới nghìn); lệch
+       -- hơn (vd hoá đơn thanh lý có khoản trừ không nằm trong giảm trừ) ⇒ không tách, kẻo "làm tròn" (không hiện
+       -- ở dòng) nuốt cả khoản lớn
+       AND pg_catalog.abs(b.phai_thu - (b.r + b.e + b.w + b.s + b.o + b.d + b.n)) < 1000
   ),
   -- trả đủ phần doanh thu ⇒ lấy nguyên số trên hoá đơn; khác ⇒ mọi phần nhân cùng tỷ lệ
   c AS (
@@ -245,6 +250,7 @@ SET search_path TO ''
 AS $fn$
   SELECT v.type::text = 'INCOME'
      AND v.invoice_id IS NOT NULL
+     AND v.business_result_accounting IS DISTINCT FROM false
      AND NOT COALESCE(v.has_restricted_item, false)
      AND COALESCE(v.system_source, '') NOT LIKE 'termination.%'
      AND (SELECT count(DISTINCT i.income_expense_type_id)
@@ -278,7 +284,8 @@ BEGIN
   END IF;
   IF p_rows IS NULL OR pg_catalog.jsonb_typeof(p_rows) <> 'array' OR pg_catalog.jsonb_array_length(p_rows) > 3000
      OR EXISTS (SELECT 1 FROM pg_catalog.jsonb_array_elements(p_rows) AS e(v)
-                 WHERE pg_catalog.jsonb_typeof(e.v->'voucher_ids') IS DISTINCT FROM 'array') THEN
+                 WHERE pg_catalog.jsonb_typeof(e.v->'voucher_ids') IS DISTINCT FROM 'array'
+                    OR pg_catalog.jsonb_array_length(e.v->'voucher_ids') > 200) THEN
     RAISE EXCEPTION 'invoice_amount_parts_invalid' USING ERRCODE = '22023';
   END IF;
   RETURN COALESCE((

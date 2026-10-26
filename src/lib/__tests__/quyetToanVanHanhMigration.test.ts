@@ -9,7 +9,7 @@ import {
   landlordOperationsListSchema, settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema,
   settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
 } from "@/lib/landlordSettlement";
-import { INVOICE_PART_CATEGORIES, invoiceAmountPartsRowsSchema } from "@/lib/invoiceAmountParts";
+import { INVOICE_PART_CATEGORIES, invoiceAmountPartsRowsSchema, type InvoiceAmountParts } from "@/lib/invoiceAmountParts";
 import { getInvoiceTitle, invoiceTitlePartsOf } from "@/lib/invoiceUtils";
 import { settlementRoomNoteRows } from "@/lib/settlementRoomNotes";
 import {
@@ -2959,11 +2959,14 @@ describe("tách tiền hoá đơn (20261025165112): hai hàm thuần", () => {
     expect(await chia(1_000, 1_000, 0, 0, 0, 0, 0, 0, 0, 0)).toBeNull();
     expect(await chia(1_000, 1_000, null, null, null, null, null, null, null, null)).toBeNull();
     expect(await chia(null, 1_000, 0, 0, 0, 1_000, 0, 0, 0, 0)).toBeNull();
+    // tổng hoá đơn không dựng lại được từ các cột (lệch ≥ 1.000đ — vd hoá đơn thanh lý có khoản trừ ngoài giảm
+    // trừ) ⇒ không tách; lệch dưới 1.000đ là làm tròn ⇒ vẫn tách
+    expect(await chia(1_000_000, 1_000_000, 0, 0, 0, 3_000_000, 500_000, 0, 0, 0)).toBeNull();
+    expect(await chia(3_500_000, 3_500_000, 0, 0, 0, 3_000_000, 500_999, 0, 0, 0)).toMatchObject({ rounding: -999 });
   });
 });
 
-const tongPhan = (x: { rent: number; electric: number; water: number; service: number; other: number;
-  discount: number; debt: number; rounding: number }) =>
+const tongPhan = (x: InvoiceAmountParts) =>
   x.rent + x.electric + x.water + x.service + x.other + x.discount + x.debt + x.rounding;
 
 /**
@@ -3019,7 +3022,9 @@ async function duLieuThang4() {
     "INSERT INTO public.income_expense_items(income_expense_id, amount, accounting_class, income_expense_type_id) VALUES ($1, 555, 'PNL', $2)",
     [haiHangMuc, LOAI_THU]);
   await db.query("UPDATE public.income_expenses SET total_amount = 999 WHERE id = $1", [haiHangMuc]);
-  return { du, lan1, lan2, giam, khongTach: [hanChe, thanhLy, chiCoc, haiHangMuc] };
+  // phiếu tắt tính KQKD: gói quyết toán xếp "không tính"; RPC Báo cáo LN cũng không tách
+  const tatKqkd = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-13", hoaDon: HD_DU, kqkd: false, dong: [{ lop: "PNL", tien: 666 }] });
+  return { du, lan1, lan2, giam, tatKqkd, khongTach: [hanChe, thanhLy, chiCoc, haiHangMuc] };
 }
 
 describe("tách tiền hoá đơn (20261025165112): gói quyết toán", () => {
@@ -3116,6 +3121,7 @@ describe("tách tiền hoá đơn (20261025165112): RPC Báo cáo LN", () => {
       { key: "g", invoice_id: HD_DU, amount: 3_000_000, voucher_ids: [p.lan1] },
       { key: "h", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [] },
       { key: "i", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [p.du, hanChe] },
+      { key: "j", invoice_id: HD_DU, amount: 666, voucher_ids: [p.tatKqkd] },
     ]);
   };
 
@@ -3146,6 +3152,8 @@ describe("tách tiền hoá đơn (20261025165112): RPC Báo cáo LN", () => {
       await asUser(CHU_A);
       await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify({ key: "a" })], "22023");
       await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify([{ key: "a", invoice_id: HD_DU, amount: 1 }])], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`,
+        [JSON.stringify([{ key: "a", invoice_id: HD_DU, amount: 1, voucher_ids: Array.from({ length: 201 }, () => p.du) }])], "22023");
       await expectLoi(`SELECT ${RPC_TACH}`,
         [JSON.stringify(Array.from({ length: 3001 }, (_, i) => ({ key: String(i), voucher_ids: [] })))], "22023");
     });

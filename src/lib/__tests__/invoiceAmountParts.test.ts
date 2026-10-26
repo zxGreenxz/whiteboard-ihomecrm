@@ -30,6 +30,7 @@ describe("invoiceAmountParts", () => {
     expect(invoiceAdjustmentsText(phan({ discount: 0, rounding: -800 }))).toBe("");
     expect(signedShortVnd(-1_250_000)).toBe("−1,3tr");
     expect(signedShortVnd(500)).toBe("+500đ");
+    expect(signedShortVnd(999_950)).toBe("+1tr");
   });
 
   it("chia tỷ lệ: nói rõ thu một phần hay thu nhiều hơn hoá đơn; trả đủ thì không ghi", () => {

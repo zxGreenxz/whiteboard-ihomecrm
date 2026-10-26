@@ -1008,10 +1008,13 @@ function ProfitDistributionDesktop() {
   // Dòng phụ dưới mô tả — gộp các cột đang bật (bảng 3 cột của bản thiết kế
   // không còn cột riêng, thông tin "Tháng · Toà · Phòng · Phân loại · Kỳ" dồn
   // xuống đây). Cột đã nằm ở ô mã bên trái thì không lặp lại.
+  // Xem nhiều toà: ô phòng cột Thu ghi thêm toà (vd "L04 / 1392QT") ⇒ dòng phụ không lặp tên toà; lọc một toà
+  // thì đã biết toà, không ghi ở đâu cả (chủ nhắn 26/10/2026).
+  const buildingInTag = buildingIds.length !== 1;
   const subParts = (r: DisplayRow, side: "income" | "expense", hasTag: boolean): string[] => {
     const out: string[] = [];
     if (visible("thang")) out.push(r.monthLabel);
-    if (visible("toa_nha") && r.buildingName) out.push(r.buildingName);
+    if (visible("toa_nha") && r.buildingName && !(side === "income" && hasTag)) out.push(r.buildingName);
     if (visible("phong") && !(side === "income" && hasTag) && r.roomName) out.push(r.roomName);
     if (visible("phan_loai") && r.typeName && r.typeName !== "—") out.push(r.typeName);
     if (visible("ky") && r.periodLabel && r.periodLabel !== "—") out.push(r.periodLabel);
@@ -1028,14 +1031,17 @@ function ProfitDistributionDesktop() {
     // Ô mã 40×32 đầu dòng: cột Thu là SỐ PHÒNG, cột Chi là mã hạng mục — theo
     // đúng toggle cột tương ứng nên popover "Cột" vẫn điều khiển được.
     const hasTag = side === "income" ? visible("phong") : visible("phan_loai");
+    // ô phòng có thêm dòng tên toà ⇒ rộng hơn
+    const tagBld = side === "income" && hasTag && buildingInTag;
+    const tagCol = tagBld ? "60px" : "44px";
     // Khoản thu theo hoá đơn: bảng Tiền phòng · Điện · Nước · PDV · Tổng (như Quyết toán vận hành)
     const table = side === "income" && incomeTable;
     const gridStyle = table
       ? {
-          gridTemplateColumns: `${hasTag ? "44px " : ""}repeat(4, minmax(0, 1fr)) minmax(92px, auto)`,
+          gridTemplateColumns: `${hasTag ? `${tagCol} ` : ""}repeat(4, minmax(0, 1fr)) minmax(92px, auto)`,
           columnGap: 8,
         }
-      : { gridTemplateColumns: hasTag ? "44px 1fr auto" : "1fr auto" };
+      : { gridTemplateColumns: hasTag ? `${tagCol} 1fr auto` : "1fr auto" };
     // dòng không tách / dòng mô tả dưới các cột: trải từ sau ô phòng tới hết
     const spanCells = { gridColumn: hasTag ? "2 / span 4" : "1 / span 4" };
     const spanBelow = { gridColumn: hasTag ? "2 / -1" : "1 / -1" };
@@ -1145,6 +1151,12 @@ function ProfitDistributionDesktop() {
                   data-testid={side === "income" ? "profit-income-row" : undefined}
                   data-layout={table ? (parts ? "table" : "table-other") : undefined}
                   onClick={onRowClick}
+                  // dòng hoá đơn bấm được bằng bàn phím (đã bỏ nút tên hoá đơn)
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onKeyDown={clickable ? (e) => {
+                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick?.(); }
+                  } : undefined}
                   title={
                     r.isMissingExpense && canCreate
                       ? "Bấm để tạo phiếu chi cho hạng mục này"
@@ -1158,8 +1170,8 @@ function ProfitDistributionDesktop() {
                     (side === "income" && r.roomId ? (
                       <button
                         type="button"
-                        className="ph-tag ph-tag--btn"
-                        title={`Xem vòng đời hợp đồng phòng ${r.roomName ?? ""} năm ${yyyy}`}
+                        className={`ph-tag ph-tag--btn${tagBld ? " ph-tag--bld" : ""}`}
+                        title={`Xem vòng đời hợp đồng phòng ${r.roomName ?? ""}${tagBld && r.buildingName ? ` — ${r.buildingName}` : ""} năm ${yyyy}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setLifecycleRoom({
@@ -1170,14 +1182,16 @@ function ProfitDistributionDesktop() {
                         }}
                         onDoubleClick={(e) => e.stopPropagation()}
                       >
-                        {r.roomName ?? "—"}
+                        <span>{r.roomName ?? "—"}</span>
+                        {tagBld && r.buildingName && <span className="ph-tag__bld" data-testid="profit-tag-building">{r.buildingName}</span>}
                       </button>
                     ) : (
                       <div
-                        className={`ph-tag${side === "expense" ? " ph-tag--code" : ""}`}
-                        title={side === "income" ? r.roomName ?? "—" : r.typeName}
+                        className={`ph-tag${side === "expense" ? " ph-tag--code" : ""}${tagBld ? " ph-tag--bld" : ""}`}
+                        title={side === "income" ? `${r.roomName ?? "—"}${tagBld && r.buildingName ? ` — ${r.buildingName}` : ""}` : r.typeName}
                       >
-                        {side === "income" ? r.roomName ?? "—" : typeCode(r.typeName)}
+                        <span>{side === "income" ? r.roomName ?? "—" : typeCode(r.typeName)}</span>
+                        {tagBld && r.buildingName && <span className="ph-tag__bld" data-testid="profit-tag-building">{r.buildingName}</span>}
                       </div>
                     ))}
 

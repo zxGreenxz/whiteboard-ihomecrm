@@ -74,10 +74,11 @@ const NUM = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
 /** Số gọn có dấu: −200k · +17k · −1,2tr (lẻ tới một chữ số để không làm mất tiền lẻ kiểu 200,7k). */
 export function signedShortVnd(n: number): string {
   const a = Math.abs(n);
-  const body = a >= 1e6
+  const k = Math.round(a / 100) / 10; // nghìn, lẻ một chữ số
+  const body = a >= 1e6 || k >= 1000
     ? `${(a / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}tr`
     : a >= 1e3
-      ? `${(a / 1e3).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}k`
+      ? `${k.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}k`
       : `${NUM.format(a)}đ`;
   return `${n < 0 ? '−' : '+'}${body}`;
 }

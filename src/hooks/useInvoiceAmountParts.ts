@@ -6,7 +6,7 @@
 // màn báo, không nuốt thành rỗng.
 // =============================================
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invoiceAmountPartsRowsSchema, type InvoiceAmountParts } from '@/lib/invoiceAmountParts';
 
@@ -29,6 +29,8 @@ export function useInvoiceAmountParts(rows: readonly InvoicePartsRequest[], enab
     queryKey: ['invoice-amount-parts', payload],
     enabled: enabled && payload.length > 0,
     staleTime: 60_000,
+    // đổi bộ lọc: giữ phần tách cũ tới khi có số mới — bảng không tắt / bật nhấp nháy (key lạ thì dòng hiện kiểu cũ)
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<Map<string, InvoiceAmountParts>> => {
       const out = new Map<string, InvoiceAmountParts>();
       for (let i = 0; i < payload.length; i += CHUNK) {
