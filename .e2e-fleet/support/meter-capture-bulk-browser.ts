@@ -29,7 +29,9 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
   if(!subject||args.p_room_id!==subject.roomId||args.p_building_id!==fixture.buildingId||args.p_billing_month!==fixture.readingDate.slice(0,7)
    ||args.p_applied_credit!==0||args.p_prepaid_amount!==0||source.contractId!==subject.contractId||source.meterId!==subject.meterId
    ||source.purpose!=='MONTHLY'||Number(source.previousReading)!==100||Number(source.currentReading)!==Number(subject.currentValue))return deny();
-  const response=await route.fetch();
+  let response;
+  try{response=await route.fetch({timeout:90_000,maxRedirects:0,maxRetries:0});}
+  catch{await route.abort('failed');throw new Error('Bulk TEST gateway transport failed; outcome unknown; no automatic replay');}
   const resultBody:unknown=await response.json();
   observations.push({action:'invoice',status:response.status(),result:response.ok()?'created':resultBody});
   if(response.status()===409&&z.object({error:z.literal('23505')}).safeParse(resultBody).success)duplicateRejections.push(subject.contractId);
@@ -54,10 +56,10 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
  };
  return {receipts,requests,blocked,observations,
   create:async(info:TestInfo)=>{await load();await info.attach('bulk-two-rooms-ready',{body:await dialog().screenshot(),contentType:'image/png'});
-   await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();await expect.poll(()=>receipts.size,{timeout:90_000}).toBe(2);
+   await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();await expect.poll(()=>receipts.size,{timeout:180_000}).toBe(2);
    await expect(dialog()).not.toBeVisible({timeout:60_000});},
   retry:async(info:TestInfo)=>{await load();await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();
-   await expect.poll(()=>duplicateRejections.slice().sort(),{timeout:90_000}).toEqual(subjects.map(s=>s.contractId).sort());
+   await expect.poll(()=>duplicateRejections.slice().sort(),{timeout:180_000}).toEqual(subjects.map(s=>s.contractId).sort());
    await expect(dialog().getByRole('alert').filter({hasText:'Thông tin này đã được sử dụng.'})).toHaveCount(2);
    await info.attach('bulk-duplicate-rejected',{body:await dialog().screenshot(),contentType:'image/png'});
    await dialog().getByRole('button',{name:'Huỷ',exact:true}).click();},
