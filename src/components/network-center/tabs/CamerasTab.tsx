@@ -1,5 +1,5 @@
 import { AlertTriangle, Camera, Clock3, HardDrive, Radio, RefreshCw, ShieldAlert } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -97,6 +97,7 @@ export function CamerasTab({ site, controller }: {
     canView: controller.canView, mode: controller.mode,
   });
   const { snapshotQuery, eventsQuery } = cameras;
+  const [refreshKey, setRefreshKey] = useState(0);
   if (!controller.canView) return <p role="alert" className="nc-empty-copy">Bạn không có quyền xem camera của tòa nhà này.</p>;
   if (!cameras.enabled) return <p role="alert" className="nc-empty-copy">Chưa xác định được phạm vi camera của tòa nhà.</p>;
   const keepSnapshot = snapshotQuery.isError && snapshotQuery.data !== undefined && isTemporaryCameraError(snapshotQuery.error);
@@ -108,9 +109,9 @@ export function CamerasTab({ site, controller }: {
       {keepSnapshot && <div className="space-y-2"><CameraError error={snapshotQuery.error} retry={() => void snapshotQuery.refetch()} /><p className="text-sm">Đang giữ trạng thái ghi nhận trước đó. Đoạn đang xem và video đã cắt vẫn được giữ trong trang này.</p></div>}
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
-        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { void snapshotQuery.refetch(); void eventsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
+        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
       </div>
-      {controller.isDemo ? <p className="nc-empty-copy">DEMO chỉ mô phỏng trạng thái; không kết nối video thật.</p> : cameras.recorders.map((recorder) => <Suspense key={`${controller.actor.id}:${organizationId}:${recorder.id}`} fallback={<LoadingState label="trình xem camera" variant="cards" rows={1} />}><CameraLiveWall recorder={recorder} /><CameraArchivePanel recorder={recorder} buildingName={site.buildingName} /></Suspense>)}
+      {controller.isDemo ? <p className="nc-empty-copy">DEMO chỉ mô phỏng trạng thái; không kết nối video thật.</p> : cameras.recorders.map((recorder) => <Suspense key={`${controller.actor.id}:${organizationId}:${recorder.id}`} fallback={<LoadingState label="trình xem camera" variant="cards" rows={1} />}><CameraLiveWall recorder={recorder} refreshKey={refreshKey} /><CameraArchivePanel recorder={recorder} buildingName={site.buildingName} /></Suspense>)}
       {cameras.recorders.length === 0 ? <section className="nc-panel p-6"><h3>Chưa cấu hình đầu ghi</h3><p>Tòa nhà chưa có đầu ghi được đăng ký theo dõi.</p></section>
         : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} />)}
       <section className="nc-panel" aria-labelledby="camera-events-title">

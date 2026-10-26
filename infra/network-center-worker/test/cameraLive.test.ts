@@ -17,6 +17,51 @@ function setup() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("camera live session boundaries", () => {
+  it("reclaims only the previous document's HD encoders before starting the new group after F5", async () => {
+    const { sessions } = setup();
+    const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
+    const view = "50000000-0000-4000-8000-000000000001";
+    const otherView = "50000000-0000-4000-8000-000000000002";
+    await Promise.all([1, 2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "hd", view)));
+    const other = await sessions.start(actor, wide, 1, offer, undefined, "sd", otherView);
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await sessions.closeView(actor, wide, view);
+    expect(sessions.size).toBe(1); expect(sessions.find(other.id)).toBeTruthy();
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd", otherView)).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "hd", view)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+  });
+  it("fences delayed POSTs, awaits pending media cleanup, and keeps reservations until cleanup is confirmed", async () => {
+    const { sessions, dependencies } = setup();
+    const view = "50000000-0000-4000-8000-000000000001";
+    let finish!: (value: { location: string; answer: string }) => void;
+    let removed!: () => void;
+    vi.mocked(dependencies.start).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(dependencies.stop).mockImplementationOnce(() => new Promise((resolve) => { removed = resolve; }));
+    const pending = sessions.start(actor, recorder, 1, offer, undefined, "fullhd", view);
+    const rejection = expect(pending).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    let closed = false;
+    const closing = sessions.closeView(actor, recorder, view).then(() => { closed = true; });
+    await expect(sessions.start(actor, recorder, 2, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await expect(sessions.start(actor, recorder, 1, offer, undefined, "hd", view)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+    finish({ location: "pending-media", answer: offer }); await vi.waitFor(() => expect(dependencies.stop).toHaveBeenCalled());
+    expect(closed).toBe(false); expect(sessions.size).toBe(1);
+    removed(); await Promise.all([closing, rejection]); expect(sessions.size).toBe(0);
+  });
+  it("isolates view cleanup by verified actor and recorder, including a cancel arriving before POST", async () => {
+    const { sessions, dependencies, advance } = setup();
+    const view = "50000000-0000-4000-8000-000000000001";
+    await sessions.start(actor, recorder, 1, offer, undefined, "hd", view);
+    await sessions.closeView({ ...actor, id: "other-user" }, recorder, view);
+    await sessions.closeView(actor, { ...recorder, id: "10000000-0000-4000-8000-000000000002" }, view);
+    expect(sessions.size).toBe(1); expect(dependencies.stop).not.toHaveBeenCalled();
+    const next = "50000000-0000-4000-8000-000000000002";
+    await sessions.closeView(actor, recorder, next);
+    await expect(sessions.start(actor, recorder, 2, offer, undefined, "hd", next)).rejects.toMatchObject({ code: "LIVE_VIEW_CLOSED" });
+    await sessions.closeView(actor, recorder, view); await sessions.closeView(actor, recorder, view);
+    expect(dependencies.stop).toHaveBeenCalledOnce();
+    advance(120_001); await sessions.closeView(actor, recorder, next);
+    await expect(sessions.start(actor, recorder, 1, offer, undefined, "hd", view)).resolves.toHaveProperty("id");
+  });
   it("accepts one receive-only audio track but rejects publishing and duplicate tracks", () => {
     const audio = "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=recvonly\r\na=rtpmap:111 opus/48000/2\r\n";
     expect(() => validateOffer(offer + audio)).not.toThrow();
@@ -156,6 +201,27 @@ describe("camera live upstream authorization", () => {
 });
 
 describe("camera live HTTP boundary", () => {
+  it("authenticates reload cleanup, scopes it to the actor's view, and rejects delayed creation", async () => {
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}`;
+    const view = "50000000-0000-4000-8000-000000000001";
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp", "X-Camera-View-Id": view };
+    try {
+      const post = () => fetch(base + "/channels/1/sessions?quality=hd", { method: "POST", headers, body: offer });
+      expect((await post()).status).toBe(201);
+      const url = base + `/live-views/${view}`;
+      expect((await fetch(url, { method: "DELETE", headers: { Origin: config.origins[0]! } })).status).toBe(401);
+      vi.mocked(dependencies.authorize).mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+      expect((await fetch(url, { method: "DELETE", headers })).status).toBe(403); expect(sessions.size).toBe(1);
+      expect((await fetch(url, { method: "DELETE", headers })).status).toBe(200); expect(sessions.size).toBe(0);
+      expect((await post()).status).toBe(409);
+      expect((await fetch(base + "/channels/1/sessions", { method: "POST", headers: { ...headers, "X-Camera-View-Id": "invalid" }, body: offer })).status).toBe(400);
+      const cors = await fetch(base, { method: "OPTIONS", headers });
+      expect(cors.headers.get("access-control-allow-headers")).toContain("X-Camera-View-Id");
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
   it("keeps recorder authorization on HD requests and rejects arbitrary quality or channel paths", async () => {
     const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));

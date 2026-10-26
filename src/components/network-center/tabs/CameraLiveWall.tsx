@@ -2,11 +2,11 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useCameraQuality } from "@/hooks/network-center/useCameraQuality";
 import { ArrowLeft, Expand, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CameraLiveConnection, cameraLiveCapabilities, type CameraLiveState, type CameraLiveQuality } from "@/lib/network-center/cameraLive";
+import { CameraLiveConnection, cameraLiveCapabilities, prepareCameraLiveView, type CameraLiveState, type CameraLiveQuality } from "@/lib/network-center/cameraLive";
 import type { CameraRecorder } from "@/lib/network-center/cameraContracts";
 import CameraAudioButton from "./CameraAudioButton";
 
-function LiveTile({ recorderId, channel, name, quality, hidden, audible, pendingStops, onFocus, onAudio }: { recorderId: string; channel: number; name: string; quality: CameraLiveQuality; hidden: boolean; audible: boolean; pendingStops: MutableRefObject<Promise<void>>; onFocus(): void; onAudio(): void }) {
+function LiveTile({ recorderId, channel, name, quality, hidden, audible, pendingStops, viewId, refreshKey, onFocus, onAudio }: { recorderId: string; channel: number; name: string; quality: CameraLiveQuality; hidden: boolean; audible: boolean; pendingStops: MutableRefObject<Promise<void>>; viewId: string; refreshKey: number; onFocus(): void; onAudio(): void }) {
   const video = useRef<HTMLVideoElement>(null);
   const [state, setState] = useState<CameraLiveState>("connecting");
   const [message, setMessage] = useState("");
@@ -16,7 +16,7 @@ function LiveTile({ recorderId, channel, name, quality, hidden, audible, pending
     let active = true;
     setState("connecting"); setMessage(""); setHasAudio(false);
     const element = video.current;
-    const connection = new CameraLiveConnection({ recorderId, channel, liveQuality: quality,
+    const connection = new CameraLiveConnection({ recorderId, channel, liveQuality: quality, viewId,
       onStream(stream) { if (active && video.current) video.current.srcObject = stream; },
       onAudio(available) { if (active) setHasAudio(available); },
       onState(next, detail) { if (active) { setState(next); setMessage(detail ?? ""); } },
@@ -25,7 +25,7 @@ function LiveTile({ recorderId, channel, name, quality, hidden, audible, pending
     // so a slow sibling DELETE cannot collide with Full HD's exclusive transcoding reservation.
     void Promise.resolve().then(() => pendingStops.current).then(() => { if (active) return connection.start(); });
     return () => { active = false; pendingStops.current = Promise.all([pendingStops.current, connection.stop()]).then(() => undefined); if (element) element.srcObject = null; };
-  }, [recorderId, channel, attempt, quality, pendingStops]);
+  }, [recorderId, channel, attempt, quality, pendingStops, viewId, refreshKey]);
   return <article hidden={hidden} tabIndex={hidden ? -1 : 0} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === "Enter") onFocus(); }} onDoubleClick={(event) => { if (!(event.target instanceof Element) || !event.target.closest("button")) onFocus(); }} className={`${hidden ? "hidden" : "flex"} min-h-0 touch-manipulation flex-col overflow-hidden border-2 border-black bg-black text-white`} aria-label={`Trực tiếp ${name}`} title="Bấm đôi để xem riêng camera">
     <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm"><strong>{name}</strong><span aria-live="polite">{state === "playing" ? "● Trực tiếp" : state === "connecting" ? "Đang kết nối" : "Chưa có hình"}</span></div>
     <div className="relative aspect-video group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 group-[:fullscreen]/live-wall:aspect-auto">
@@ -36,13 +36,14 @@ function LiveTile({ recorderId, channel, name, quality, hidden, audible, pending
   </article>;
 }
 
-export default function CameraLiveWall({ recorder }: { recorder: CameraRecorder }) {
+export default function CameraLiveWall({ recorder, refreshKey = 0 }: { recorder: CameraRecorder; refreshKey?: number }) {
   const container = useRef<HTMLElement>(null);
   const pendingStops = useRef<Promise<void>>(Promise.resolve());
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [channels, setChannels] = useState<number[]>([]);
+  const [viewId, setViewId] = useState("");
   const [count, setCount] = useState(4);
   const [quality, setQuality, qualityNotice] = useCameraQuality("live"); const [qualities, setQualities] = useState<CameraLiveQuality[]>(["sd"]);
   const [focused, setFocused] = useState<number>(); const [audible, setAudible] = useState<number>();
@@ -53,8 +54,8 @@ export default function CameraLiveWall({ recorder }: { recorder: CameraRecorder 
     abortRef.current?.abort(); const abort = new AbortController(); abortRef.current = abort;
     setLoading(true); setError("");
     try {
-      const result = await cameraLiveCapabilities(recorder.id, abort.signal);
-      if (!abort.signal.aborted) { setQualities(result.liveQualities); setChannels(result.channels); setPage(0); setFocused(undefined); setAudible(undefined); setRunning(true); }
+      const [result, id] = await Promise.all([cameraLiveCapabilities(recorder.id, abort.signal), prepareCameraLiveView(recorder.id)]);
+      if (!abort.signal.aborted) { setViewId(id); setQualities(result.liveQualities); setChannels(result.channels); setPage(0); setFocused(undefined); setAudible(undefined); setRunning(true); }
     } catch (cause) { if (!abort.signal.aborted) setError(cause instanceof Error ? cause.message : "Không thể kết nối camera."); }
     finally { if (!abort.signal.aborted) setLoading(false); }
   };
@@ -79,7 +80,7 @@ export default function CameraLiveWall({ recorder }: { recorder: CameraRecorder 
     {running && qualityLimited && <p role="status" className="px-4 py-2 text-sm">Đang dùng SD cho lưới nhiều camera. Bấm đôi một ô hoặc chọn tối đa {qualityTileLimit} ô để xem {quality === "hd" ? "HD" : "Full HD"}.</p>}
     {running ? <>
       <div className={`grid gap-2 bg-neutral-900 p-2 group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 ${visibleCount === 1 ? "grid-cols-1 group-[:fullscreen]/live-wall:grid-rows-1" : visibleCount === 4 ? "grid-cols-1 sm:grid-cols-2 group-[:fullscreen]/live-wall:grid-cols-2 group-[:fullscreen]/live-wall:grid-rows-2" : visibleCount === 9 ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 group-[:fullscreen]/live-wall:grid-cols-3 group-[:fullscreen]/live-wall:grid-rows-3" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 group-[:fullscreen]/live-wall:grid-cols-4 group-[:fullscreen]/live-wall:grid-rows-4"}`}>
-        {displayed.map((channel) => <LiveTile key={channel} recorderId={recorder.id} channel={channel} quality={!qualityLimited && !(count > qualityTileLimit && focused !== channel) && qualities.includes(quality) ? quality : "sd"} hidden={focused !== undefined && focused !== channel} audible={audible === channel} pendingStops={pendingStops} onFocus={() => { setFocused(channel); if (audible !== channel) setAudible(undefined); }} onAudio={() => setAudible(audible === channel ? undefined : channel)} name={recorder.snapshot?.channels.find((row) => row.channel === channel)?.name || `Kênh ${channel}`} />)}
+        {displayed.map((channel) => <LiveTile key={channel} recorderId={recorder.id} channel={channel} viewId={viewId} refreshKey={refreshKey} quality={!qualityLimited && !(count > qualityTileLimit && focused !== channel) && qualities.includes(quality) ? quality : "sd"} hidden={focused !== undefined && focused !== channel} audible={audible === channel} pendingStops={pendingStops} onFocus={() => { setFocused(channel); if (audible !== channel) setAudible(undefined); }} onAudio={() => setAudible(audible === channel ? undefined : channel)} name={recorder.snapshot?.channels.find((row) => row.channel === channel)?.name || `Kênh ${channel}`} />)}
       </div>
       {focused === undefined && channels.length > count && <div className="flex shrink-0 items-center justify-center gap-3 p-3"><Button variant="outline" disabled={page === 0} onClick={() => { setPage((value) => value - 1); setAudible(undefined); }}>Nhóm trước</Button><span>{page + 1} / {Math.ceil(channels.length / count)}</span><Button variant="outline" disabled={(page + 1) * count >= channels.length} onClick={() => { setPage((value) => value + 1); setAudible(undefined); }}>Nhóm sau</Button></div>}
     </> : <p className="p-4 text-sm">Bấm xem để kết nối. Video không được lưu thêm tại CRM. Khả năng phát phụ thuộc định dạng camera và trình duyệt; đường truyền hạn chế có thể cần thử mạng khác.</p>}

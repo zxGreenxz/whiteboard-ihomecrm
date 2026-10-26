@@ -6,12 +6,39 @@ import { createDemoCameraRecorder } from "@/lib/network-center/cameraDemo";
 const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), start: vi.fn(), stop: vi.fn(), callbacks: [] as Array<{ liveQuality?: string; onStream(stream: MediaStream | null): void; onAudio(available: boolean): void; onState(state: string, detail?: string): void }> }));
 vi.mock("@/lib/network-center/cameraLive", () => ({
   cameraLiveCapabilities: mocks.capabilities,
+  prepareCameraLiveView: vi.fn(async () => "50000000-0000-4000-8000-000000000001"),
   CameraLiveConnection: class { constructor(callbacks: typeof mocks.callbacks[number]) { mocks.callbacks.push(callbacks); } start = mocks.start; stop = mocks.stop; },
 }));
 const recorder = { ...createDemoCameraRecorder({ organizationId: "a0000000-0000-4000-8000-000000000001", buildingId: "b0000000-0000-4000-8000-000000000001" }), channel_count: 16 };
 beforeEach(() => { vi.clearAllMocks(); mocks.callbacks = []; mocks.capabilities.mockResolvedValue({ channels: Array.from({ length: 16 }, (_, i) => i + 1), maxView: 16, liveQualities: ["sd", "hd"] }); });
 afterEach(cleanup);
 describe("live camera wall", () => {
+  it("reconnects the selected group on refresh after releasing old tiles, without changing quality, page, focus or count", async () => {
+    const view = render(<CameraLiveWall recorder={recorder} refreshKey={0} />);
+    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "hd" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(4));
+    fireEvent.click(screen.getByRole("button", { name: "Nhóm sau" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(8));
+    fireEvent.doubleClick(screen.getAllByRole("article")[1]!);
+    act(() => mocks.callbacks.slice(-4).forEach((callback) => callback.onState("error", "Phiên xem cũ")));
+    const release: Array<() => void> = [];
+    mocks.stop.mockImplementation(() => new Promise<void>((resolve) => release.push(resolve)));
+    view.rerender(<CameraLiveWall recorder={recorder} refreshKey={1} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.start).toHaveBeenCalledTimes(8);
+    expect(screen.queryByText("Phiên xem cũ")).toBeNull();
+    await act(async () => release.forEach((resolve) => resolve()));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(12));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe("hd");
+    fireEvent.click(screen.getByRole("button", { name: "Quay về 4 camera" }));
+    expect(screen.getByText("2 / 4")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Dừng xem" }));
+    view.rerender(<CameraLiveWall recorder={recorder} refreshKey={2} />);
+    expect(screen.queryByRole("button", { name: "Dừng xem" })).toBeNull();
+    mocks.stop.mockReset();
+  });
   it("shows the first decoded picture immediately without waiting for the stats poll or audio", async () => {
     const view = render(<CameraLiveWall recorder={recorder} />);
     fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" })); await screen.findByRole("button", { name: "Dừng xem" });

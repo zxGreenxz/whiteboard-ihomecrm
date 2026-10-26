@@ -15,6 +15,7 @@ const messages: Record<string, string> = {
   CAMERA_NOT_CONFIGURED: "Đầu ghi chưa được cấu hình xem trực tiếp.",
   CAMERA_LIMIT: "Đã đạt giới hạn số camera đang xem. Hãy dừng bớt cửa sổ khác.",
   CAMERA_BUSY: "Hệ thống đang bận. Vui lòng thử lại.",
+  LIVE_VIEW_CLOSED: "Phiên xem cũ đã đóng. Bấm Làm mới camera để kết nối lại.",
   CAMERA_QUALITY_LIMIT: "Đang có luồng chất lượng cao khác. Hãy chọn SD, độ phân giải gốc hoặc dừng bớt luồng HD/Full HD.",
   CODEC_UNSUPPORTED: "Trình duyệt chưa hỗ trợ định dạng của camera. Hãy thử Chrome hoặc Edge mới trên máy có hỗ trợ H.265.",
   CAMERA_UNAVAILABLE: "Chưa nhận được video từ đầu ghi. Vui lòng thử lại.",
@@ -37,13 +38,13 @@ const messages: Record<string, string> = {
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
 }
-async function liveRequest(path: string, method: string, body?: string, signal?: AbortSignal, contentType = "application/sdp") {
+async function liveRequest(path: string, method: string, body?: string, signal?: AbortSignal, contentType = "application/sdp", viewId?: string) {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) throw new CameraLiveError("LOGIN_REQUIRED");
   let response: Response;
   try {
     response = await fetch(endpoint + path, {
-      method, headers: { Authorization: `Bearer ${data.session.access_token}`, ...(body ? { "Content-Type": contentType } : {}) },
+      method, headers: { Authorization: `Bearer ${data.session.access_token}`, ...(body ? { "Content-Type": contentType } : {}), ...(viewId ? { "X-Camera-View-Id": viewId } : {}) },
       ...(body ? { body } : {}), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000),
       credentials: "omit", redirect: "error", cache: "no-store",
     });
@@ -54,6 +55,55 @@ async function liveRequest(path: string, method: string, body?: string, signal?:
     throw new CameraLiveError(parsed.success ? parsed.data.code : "CAMERA_UNAVAILABLE");
   }
   return result;
+}
+const liveViews = new Map<string, { id: string; previous?: string; preparing?: Promise<void>; ready?: boolean }>();
+const viewLocks = new Map<string, Promise<boolean>>();
+function claimLiveView(id: string): Promise<boolean> {
+  let claimed = viewLocks.get(id);
+  if (!claimed) {
+    claimed = new Promise<boolean>((resolve) => {
+      if (!navigator.locks) { resolve(false); return; }
+      // The browser releases this lock when the document dies, including a reload/crash.
+      // An inherited sessionStorage UUID alone is not proof that its tab has closed.
+      void navigator.locks.request(`camera-live-view:${id}`, { ifAvailable: true }, (lock) => {
+        resolve(Boolean(lock));
+        if (lock) return new Promise<void>(() => {});
+      }).catch(() => resolve(false));
+    });
+    viewLocks.set(id, claimed);
+  }
+  return claimed;
+}
+export async function prepareCameraLiveView(recorderId: string) {
+  z.string().uuid().parse(recorderId);
+  let view = liveViews.get(recorderId);
+  if (!view) {
+    let previous: string | undefined;
+    const key = `camera-live-view:${recorderId}`;
+    try {
+      // A duplicated/new tab can inherit sessionStorage; it must not close its opener's video.
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (navigation?.type === "reload" || navigation?.type === "back_forward") {
+        const stored = z.string().uuid().safeParse(sessionStorage.getItem(key));
+        if (stored.success) previous = stored.data;
+      }
+    } catch { /* Storage can be unavailable; the server still enforces short leases. */ }
+    view = { id: crypto.randomUUID(), ...(previous ? { previous } : {}) };
+    liveViews.set(recorderId, view);
+  }
+  const current = view;
+  if (!current.ready) {
+    current.preparing ??= (async () => {
+      // An active tab owns its lock, even if a duplicate tab reloads before opening video.
+      if (current.previous && await claimLiveView(current.previous)) await liveRequest(`/recorders/${recorderId}/live-views/${current.previous}`, "DELETE");
+      await claimLiveView(current.id);
+      delete current.previous;
+      try { sessionStorage.setItem(`camera-live-view:${recorderId}`, current.id); } catch { /* Optional recovery storage. */ }
+      current.ready = true;
+    })().finally(() => { delete current.preparing; });
+    await current.preparing;
+  }
+  return current.id;
 }
 export async function cameraLiveCapabilities(recorderId: string, signal: AbortSignal) {
   z.string().uuid().parse(recorderId);
@@ -68,7 +118,7 @@ export async function cameraPlaybackThumbnail(recorderId: string, channel: numbe
 
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
-  recorderId: string; channel: number; liveQuality?: CameraLiveQuality; audio?: boolean;
+  recorderId: string; channel: number; liveQuality?: CameraLiveQuality; audio?: boolean; viewId?: string;
   playback?: { start: string; end: string; position?: string; speed?: number; quality?: CameraPlaybackQuality };
   onStream(stream: MediaStream | null): void;
   onAudio?(available: boolean): void;
@@ -128,7 +178,7 @@ export class CameraLiveConnection {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (this.stopped) return;
         try {
-          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality && this.options.liveQuality !== "sd" ? `?quality=${this.options.liveQuality}` : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
+          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality && this.options.liveQuality !== "sd" ? `?quality=${this.options.liveQuality}` : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp", playback ? undefined : this.options.viewId));
           break;
         } catch (error) {
           if (!playback || attempt === 2 || !(error instanceof CameraLiveError) || !["CAMERA_UNAVAILABLE", "RECORDING_UNAVAILABLE"].includes(error.code)) throw error;

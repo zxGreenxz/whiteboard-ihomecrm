@@ -153,14 +153,16 @@ export function validateOffer(offer: string) {
 interface Session {
   id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean; playbackUntil?: number | undefined;
   encodedLiveKey?: string;
+  viewId?: string; pending?: Promise<void>; closing?: Promise<void>;
   playback?: PlaybackRange; controlling?: boolean; abort: AbortController;
 }
 export class LiveSessions {
   private readonly sessions = new Map<string, Session>();
+  private readonly cancelledViews = new Map<string, { actorId: string; expiresAt: number }>();
   private readonly now: () => number;
   constructor(private readonly dependencies: LiveDependencies) { this.now = dependencies.now ?? Date.now; }
   get size() { return this.sessions.size; }
-  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange, liveQuality?: PlaybackQuality) {
+  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange, liveQuality?: PlaybackQuality, viewId?: string) {
     validateOffer(offer);
     if (liveQuality !== undefined && !playbackQualitySchema.safeParse(liveQuality).success) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
     if (liveQuality && this.dependencies.liveQualities && !this.dependencies.liveQualities.includes(liveQuality)) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
@@ -168,6 +170,8 @@ export class LiveSessions {
     if (playback && !recorder.archiveEnabled) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
     if (!recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
+    if (viewId !== undefined && (!uuid.safeParse(viewId).success || playback)) throw new LiveError(400, "INVALID_LIVE_VIEW");
+    if (viewId && this.cancelledViews.has(`${actor.id}/${recorder.id}/${viewId}`)) throw new LiveError(409, "LIVE_VIEW_CLOSED");
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
     const encodedLiveKey = !playback && (liveQuality === "hd" || liveQuality === "fullhd") ? `${recorder.id}/${channel}/${liveQuality}` : undefined;
     const encoders = new Set([...this.sessions.values()].flatMap((s) => s.encodedLiveKey ? [s.encodedLiveKey] : []));
@@ -178,14 +182,28 @@ export class LiveSessions {
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
     const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.position ?? playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;
-    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
+    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(viewId ? { viewId } : {}), ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
     this.sessions.set(session.id, session);
+    let settled!: () => void;
+    session.pending = new Promise<void>((resolve) => { settled = resolve; });
     try {
       const media = liveQuality ? await this.dependencies.start(recorder, channel, offer, playback, liveQuality) : await this.dependencies.start(recorder, channel, offer, playback);
       session.location = media.location;
       if (session.closed || session.expiresAt <= this.now()) { await this.close(session); throw new LiveError(401, "SESSION_EXPIRED"); }
       return { id: session.id, answer: media.answer, expiresAt: session.expiresAt };
     } catch (error) { this.sessions.delete(session.id); throw error; }
+    finally { settled(); delete session.pending; }
+  }
+  async closeView(actor: LiveActor, recorder: LiveRecorder, viewId: string) {
+    if (!uuid.safeParse(viewId).success) throw new LiveError(400, "INVALID_LIVE_VIEW");
+    if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
+    for (const [key, value] of this.cancelledViews) if (value.expiresAt <= this.now()) this.cancelledViews.delete(key);
+    const key = `${actor.id}/${recorder.id}/${viewId}`;
+    if (!this.cancelledViews.has(key) && (this.cancelledViews.size >= 256 || [...this.cancelledViews.values()].filter((value) => value.actorId === actor.id).length >= 32)) throw new LiveError(429, "CAMERA_BUSY");
+    // Fence delayed POSTs from the old document, including ones still authorizing.
+    this.cancelledViews.set(key, { actorId: actor.id, expiresAt: this.now() + 120_000 });
+    const owned = [...this.sessions.values()].filter((session) => session.actorId === actor.id && session.recorder.id === recorder.id && session.viewId === viewId);
+    await Promise.all(owned.map(async (session) => { await this.close(session); await session.pending; }));
   }
   find(id: string) { const session = this.sessions.get(id); if (!session) throw new LiveError(404, "SESSION_NOT_FOUND"); return session; }
   async control(id: string, token: string, value: unknown) {
@@ -227,9 +245,16 @@ export class LiveSessions {
   async expire() { await Promise.all([...this.sessions.values()].filter((s) => s.expiresAt <= this.now()).map((s) => this.close(s))); }
   async closeAll() { await Promise.all([...this.sessions.values()].map((s) => this.close(s))); }
   private async close(session: Session) {
-    session.closed = true; session.abort.abort(); this.sessions.delete(session.id);
+    session.closed = true; session.abort.abort();
+    if (session.closing) return session.closing;
     const location = session.location; delete session.location;
-    if (location) { try { await this.dependencies.stop(location); } catch { this.dependencies.fatal(); } }
+    if (location) {
+      session.closing = (async () => {
+        try { await this.dependencies.stop(location); } catch { this.dependencies.fatal(); }
+        finally { this.sessions.delete(session.id); }
+      })();
+      await session.closing;
+    } else if (!session.pending) this.sessions.delete(session.id);
   }
 }
 
@@ -265,18 +290,26 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       if (!origin || !config.origins.includes(origin)) throw new LiveError(403, "ORIGIN_DENIED");
       response.setHeader("Access-Control-Allow-Origin", origin); response.setHeader("Vary", "Origin");
       response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-      response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+      response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Camera-View-Id");
       if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
       const token = tokenOf(request);
       const path = request.url ?? "";
       const recorderRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})(?:\/channels\/(\d+)\/sessions(?:\?quality=(sd|hd|fullhd|original))?)?$/u.exec(path);
       const sessionRoute = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})(\/renew)?$/u.exec(path);
+      const liveView = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/live-views\/([a-f0-9-]{36})$/u.exec(path);
       const archiveCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/archive$/u.exec(path);
       const archiveJob = /^\/camera-live\/v1\/archive\/([a-f0-9-]{36})(\/file)?$/u.exec(path);
       const archiveRestore = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/archive(?:\/requests\/([a-f0-9-]{36}))?$/u.exec(path);
       const playbackCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/playback$/u.exec(path);
       const playbackControl = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})\/playback$/u.exec(path);
       const previewRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/preview$/u.exec(path);
+      if (liveView && request.method === "DELETE") {
+        const recorder = config.recorders.find((candidate) => candidate.id === liveView[1]);
+        if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
+        const actor = await dependencies.authorize(token, recorder);
+        await sessions.closeView(actor, recorder, liveView[2]!);
+        reply(response, 200, { stopped: true }); return;
+      }
       if (playbackControl && request.method === "POST") {
         if (request.headers["content-type"] !== "application/json") throw new LiveError(415, "JSON_REQUIRED");
         let value: unknown; try { value = JSON.parse(await requestBody(request)); } catch { throw new LiveError(400, "INVALID_PLAYBACK_RANGE"); }
@@ -375,7 +408,9 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
           const offer = await requestBody(request); validateOffer(offer);
           const actor = await dependencies.authorize(token, recorder);
           const quality = recorderRoute[3] ? playbackQualitySchema.parse(recorderRoute[3]) : undefined;
-          const result = await sessions.start(actor, recorder, Number(channel), offer, undefined, quality);
+          const viewHeader = request.headers["x-camera-view-id"];
+          if (viewHeader !== undefined && (typeof viewHeader !== "string" || !uuid.safeParse(viewHeader).success)) throw new LiveError(400, "INVALID_LIVE_VIEW");
+          const result = await sessions.start(actor, recorder, Number(channel), offer, undefined, quality, viewHeader);
           if (response.destroyed) { await sessions.stop(result.id, token); return; }
           reply(response, 201, result); return;
         }

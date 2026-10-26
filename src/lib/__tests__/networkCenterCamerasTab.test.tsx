@@ -11,6 +11,7 @@ import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository
 import { NetworkCenterRepositoryError } from "@/lib/network-center/supabaseRepository";
 
 const mocks = vi.hoisted(() => ({
+  liveStart: vi.fn(async () => {}), liveStop: vi.fn(async () => {}),
   getBuilding: vi.fn<(scope: CameraScope) => Promise<{ recorders: CameraRecorder[] }>>(),
   listEvents: vi.fn<() => Promise<CameraEventPage>>(),
 }));
@@ -18,7 +19,9 @@ vi.mock("@/lib/network-center/cameraRepository", () => ({ supabaseCameraReposito
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
 vi.mock("@/lib/network-center/cameraLive", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/network-center/cameraLive")>(),
-  cameraLiveCapabilities: vi.fn(async () => ({ channels: [1, 2, 3, 4], maxView: 4, leaseSeconds: 75, archive: true })),
+  cameraLiveCapabilities: vi.fn(async () => ({ channels: [1, 2, 3, 4], maxView: 4, leaseSeconds: 75, archive: true, liveQualities: ["sd", "hd"] })),
+  prepareCameraLiveView: vi.fn(async () => "50000000-0000-4000-8000-000000000001"),
+  CameraLiveConnection: class { start = mocks.liveStart; stop = mocks.liveStop; },
 }));
 const scope: BuildingCameraScope = {
   organizationId: "a0000000-0000-4000-8000-000000000001",
@@ -42,6 +45,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); });
 
 describe("camera tab", () => {
+  it("refreshes active video as well as metadata while preserving the archive form", async () => {
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    const from = await screen.findByLabelText<HTMLInputElement>("Từ ngày giờ", {}, { timeout: 5000 });
+    fireEvent.change(from, { target: { value: "2026-10-24T13:20:05" } });
+    const selectedTime = from.value;
+    fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" }));
+    await waitFor(() => expect(mocks.liveStart).toHaveBeenCalledTimes(4));
+    fireEvent.click(screen.getByRole("button", { name: "Làm mới camera" }));
+    await waitFor(() => expect(mocks.liveStart).toHaveBeenCalledTimes(8));
+    expect(mocks.liveStop).toHaveBeenCalledTimes(4);
+    expect(screen.getByLabelText("Từ ngày giờ")).toBe(from);
+    expect(from.value).toBe(selectedTime);
+    expect(mocks.getBuilding.mock.calls.length).toBeGreaterThan(1);
+  });
   it("renders each measured channel state, storage, history coverage and no fake player", async () => {
     const { container } = render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
     await screen.findByText("Đầu ghi kết nối");
@@ -53,7 +70,7 @@ describe("camera tab", () => {
     expect(screen.getByText("Chưa xác định")).toBeTruthy();
     expect(screen.getByText("Bình thường")).toBeTruthy();
     expect(screen.getByText("Theo lần kiểm tra")).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Xem trực tiếp" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Xem trực tiếp" }, { timeout: 5000 })).toBeTruthy();
     expect(container.querySelector("video,iframe")).toBeNull();
   });
 
