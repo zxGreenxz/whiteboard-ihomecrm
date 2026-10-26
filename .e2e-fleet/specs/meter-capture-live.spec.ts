@@ -192,8 +192,10 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     expect(ui.writes).toEqual(expect.arrayContaining(['startCapture','storageUpload','finalize','confirmCapture']));
     await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,bulkInvoicesThroughUi:true,bulkInvoiceCount:2,bulkRetryDuplicateBlocked:true,secondInvoiceId,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
     expect(ui.blocked).toEqual([]);expect(ui.errors).toEqual([]);
+    expect(ui.deniedMaintenance.every(name=>name==='mark_overdue_invoices_v1')).toBe(true);
   } finally {
     await testInfo.attach('bulk-gateway-observations',{body:JSON.stringify({blocked:bulk.blocked,events:bulk.observations}),contentType:'application/json'});
+    await testInfo.attach('denied-org-maintenance',{body:JSON.stringify({actions:ui.deniedMaintenance,reason:'Outside owned TEST fixture; aging is not covered by this test'}),contentType:'application/json'});
     const retired=await lifecycle.retireFixture(fixture,created);
     expect(retired).toEqual({fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true});
   }

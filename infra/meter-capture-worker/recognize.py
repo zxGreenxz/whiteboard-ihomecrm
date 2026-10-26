@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from domain import MAX_AI_FRAMES, MAX_SECONDS, VERSION, InvalidInput, ai_prompt, ocr_reading, parse_ai, stable_reading
+from domain import MAX_AI_FRAMES, MAX_SECONDS, VERSION, InvalidInput, ai_prompt, ocr_reading, ocr_candidates, parse_ai, stable_reading
 
 AI_MODEL = "cx/gpt-6.1-sol"
 AI_REASONING = "medium"
@@ -170,7 +170,18 @@ class PaddleReader:
         image = cv2.imread(str(path))
         if image is None:
             raise InvalidInput("no_decodable_frames")
-        regions = lcd_regions(image) or [(0, 0, image.shape[1], image.shape[0])]
+        regions = lcd_regions(image)
+        self.can_fallback = len(regions) == 1
+        return self._read_regions(image, regions or [(0, 0, image.shape[1], image.shape[0])])
+
+    def read_full_frame(self, path: Path) -> list[dict]:
+        import cv2
+        image = cv2.imread(str(path))
+        if image is None:
+            raise InvalidInput("no_decodable_frames")
+        return self._read_regions(image, [(0, 0, image.shape[1], image.shape[0])])
+
+    def _read_regions(self, image, regions) -> list[dict]:
         output = []
         for region, (x, y, width, height) in enumerate(regions):
             for result in self.engine.predict(input=image[y:y+height, x:x+width]):
@@ -184,6 +195,16 @@ class PaddleReader:
                     output.append({"text": text, "score": float(score), "region": region,
                                    "box": [min(xs), min(ys), max(xs), max(ys)]})
         return output
+
+
+def read_ocr_frame(reader, path: Path, timestamp: float, meter: dict, deadline: float):
+    tokens = reader.read(path)
+    args = (meter["registerCode"], meter["decimalPlaces"], meter.get("serialNumber"))
+    # Retry missing context, never a multiple-panel or conflicting reading. The
+    # full frame must independently provide digits, decimal, register and unit.
+    if not ocr_candidates(tokens, *args) and reader.can_fallback and deadline-time.monotonic() >= OCR_FRAME_RESERVE_SECONDS:
+        tokens = reader.read_full_frame(path)
+    return ocr_reading(tokens, timestamp, *args)
 
 
 def lcd_regions(image) -> list[tuple[int, int, int, int]]:
@@ -295,7 +316,7 @@ def recognize(job: dict, path: Path, directory: Path) -> dict[str, Any]:
                             issues.append("server_time_budget_exhausted")
                             break
                         reader = reader or PaddleReader()
-                        reading = ocr_reading(reader.read(frame["path"]), frame["timestamp"], meter["registerCode"], meter["decimalPlaces"], meter.get("serialNumber"))
+                        reading = read_ocr_frame(reader, frame["path"], frame["timestamp"], meter, deadline)
                         server_seen.add(frame["timestamp"])
                         if reading:
                             server_readings.append(reading)

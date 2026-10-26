@@ -7,10 +7,10 @@ import io
 import json
 import unittest
 import urllib.error
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from domain import InvalidInput, Reading
-from recognize import read_ai, recognize, request_json, require_cpu_avx
+from recognize import read_ai, recognize, request_json, require_cpu_avx, read_ocr_frame
 from worker import Gateway
 
 
@@ -29,6 +29,29 @@ def tokens(value):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_full_frame_recovers_missing_labels_without_combining_token_sets(self):
+        reader=Mock(can_fallback=True)
+        reader.read.return_value=tokens("0012.3")[1:]
+        reader.read_full_frame.return_value=tokens("0012.3")
+        self.assertEqual(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")).value,"0012.3")
+        reader.read_full_frame.return_value=[tokens("0012.3")[0],{"text":"kWh","score":.99,"box":[100,20,150,40]}]
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")))
+        reader.read_full_frame.return_value=tokens("00123")
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")))
+        reader.read_full_frame.return_value=[{**t,"text":t["text"].replace("kWh","V")} for t in tokens("0012.3")]
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")))
+
+    def test_fallback_never_discards_conflicting_candidates_multiple_panels_or_deadline(self):
+        reader=Mock(can_fallback=True)
+        reader.read.return_value=tokens("0012.3")+[{"text":"0013.3 kWh","score":.99,"box":[0,80,150,100]}]
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")))
+        reader.read_full_frame.assert_not_called()
+        reader.read.return_value=[];reader.can_fallback=False
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,float("inf")))
+        reader.can_fallback=True
+        self.assertIsNone(read_ocr_frame(reader,Path("fixture"),0,METER,0))
+        reader.read_full_frame.assert_not_called()
+
     def test_linux_cpu_preflight_fails_before_loading_native_ocr(self):
         with patch("recognize.sys.platform", "linux"), patch("recognize.Path.read_text") as read:
             for cpu in ("flags : sse sse2", "flags : avx2", "flags : avx\nflags : sse2", ""):
@@ -52,6 +75,7 @@ class PipelineTests(unittest.TestCase):
                 patch("recognize.PaddleReader") as reader, \
                 patch("recognize.read_ai", return_value=(ai_readings, not multiple, "fixture-model")) as ai:
             reader.return_value.read.side_effect = [tokens(value) if value is not None else [] for value in server_values]
+            reader.return_value.can_fallback=False
             output = recognize(job, Path("fixture.mp4"), Path(directory))
             return output, ai.call_args[0][0]
 

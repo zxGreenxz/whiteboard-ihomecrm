@@ -11,7 +11,7 @@ type Evidence={id:string;previousValue:string|null;evidenceFrames:Array<{timesta
  * The only fulfilled fake is unrelated UI preference persistence; gateway and
  * media responses are forwarded unchanged after validating the fixture scope. */
 export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture,created:{clientIds:string[];captureIds:string[]},appOrigin:string){
- const blocked:string[]=[],errors:string[]=[],writes:string[]=[];
+ const blocked:string[]=[],errors:string[]=[],writes:string[]=[],deniedMaintenance:string[]=[];
  // useUnrecordedMeters reads this list when /meter-readings opens and refetches.
  // The legacy VOLATILE wrapper and its delegated function only SELECT (verified
  // on TEST and in 20260528000002 / 20250130000004); this does not allow a writer.
@@ -27,6 +27,11 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   const preference=uiPreferenceFakeBody(request,fixture.organizationId);
   if(preference)return route.fulfill({status:200,contentType:'application/json',body:preference});
   const rpcName=url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
+  // The invoices page schedules org-wide aging. It is outside the two owned
+  // fixture contracts: reject it explicitly, never fake a successful write.
+  if(rpcName==='mark_overdue_invoices_v1'){
+   deniedMaintenance.push(rpcName);return route.abort('blockedbyclient');
+  }
   if(rpcName&&readers.has(rpcName))return route.continue();
   if(url.pathname==='/functions/v1/meter-capture-worker'&&method==='POST'){
    const body=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.unknown()).optional(),captureId:z.string().optional()}).parse(request.postDataJSON());
@@ -94,7 +99,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   await expect.poll(()=>video.evaluate(node=>(node as HTMLVideoElement).currentTime)).toBeCloseTo(capture.evidenceFrames[index].timestampSeconds,1);
   await row.getByRole('button',{name:'Xem ảnh chốt',exact:true}).click();return row;
  };
- return {blocked,errors,writes,
+ return {blocked,errors,writes,deniedMaintenance,
   upload:async(clip:Buffer,sha:string)=>{
    state.sha=sha;state.size=clip.length;
    await page.getByRole('button',{name:'Chụp đồng hồ / QR'}).click();

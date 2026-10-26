@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from domain import ocr_reading, stable_reading
-from recognize import PaddleReader, extract_frames, inspect_frames, lcd_regions, probe_media, run_process
+from recognize import PaddleReader, extract_frames, inspect_frames, lcd_regions, probe_media, run_process, read_ocr_frame
 
 
 QR = "ihome-meter:11111111-1111-4111-8111-111111111111"
@@ -65,6 +65,18 @@ def main():
         photo_tokens = reader.read(photo_frames[0][1])
         photo_reading = ocr_reading(photo_tokens, 0, REGISTER, 2, None)
         assert photo_reading is not None and photo_reading.value == VALUE, json.dumps(photo_tokens)
+
+        outside=panel()
+        cv2.rectangle(outside,(340,190),(1220,510),(245,245,245),-1)
+        cv2.rectangle(outside,(340,190),(1000,510),(130,155,135),-1)
+        cv2.putText(outside,REGISTER,(390,285),cv2.FONT_HERSHEY_SIMPLEX,1.8,(15,15,15),3,cv2.LINE_AA)
+        cv2.putText(outside,VALUE,(390,420),cv2.FONT_HERSHEY_SIMPLEX,2.6,(15,15,15),4,cv2.LINE_AA)
+        cv2.putText(outside,"kWh",(1040,420),cv2.FONT_HERSHEY_SIMPLEX,1.5,(15,15,15),3,cv2.LINE_AA)
+        outside_path=directory/"outside-unit.png";assert cv2.imwrite(str(outside_path),outside)
+        assert len(lcd_regions(outside))==1
+        assert ocr_reading(reader.read(outside_path),0,REGISTER,2,None) is None
+        restored=read_ocr_frame(reader,outside_path,0,{"registerCode":REGISTER,"decimalPlaces":2},float("inf"))
+        assert restored is not None and restored.value==VALUE,"Full-frame fallback must retain outside unit labels"
 
         # One second of voltage, then two seconds of the configured kWh register.
         # FFmpeg encodes and the production extractor decodes an actual H.264 MP4.
