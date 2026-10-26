@@ -124,7 +124,8 @@ test('C3n redeemNear: đúng một bản ghi chờ cùng khoá + 8 ký tự đ�
   const near = issued.token.slice(0, 33);
   for (const [label, supplied, binding] of [
     ['khác khoá', near, () => B], ['hàm khoá ném', near, () => { throw new Error('x'); }], ['khoá không phải hàm', near, A],
-    ['8 ký tự đầu khác', `cf_${issued.token[3] === 'Q' ? 'R' : 'Q'}${issued.token.slice(4, 30)}`, () => A],
+    // Ký tự thay phải khác cả khi so không phân biệt hoa/thường (token ngẫu nhiên có thể mở đầu bằng 'q').
+    ['8 ký tự đầu khác', `cf_${issued.token[3].toLowerCase() === 'q' ? 'R' : 'Q'}${issued.token.slice(4, 30)}`, () => A],
     ['quá ngắn', issued.token.slice(0, 10), () => A], ['không phải token', `hc_${issued.token.slice(3, 30)}`, () => A], ['không phải chuỗi', 42, () => A]]) {
     assert.deepEqual(guard.redeemNear(supplied, binding), { ok: false, why: 'unknown' }, label);
     assert.equal(guard.size, 1, `${label}: bản ghi chờ giữ nguyên`);

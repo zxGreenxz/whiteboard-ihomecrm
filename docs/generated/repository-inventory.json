@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1718,
   "soFileDocBangFs": 445,
-  "tongLoiGoi": 1123,
-  "khongPhanLoaiDuoc": 503,
+  "tongLoiGoi": 1125,
+  "khongPhanLoaiDuoc": 504,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 62,
@@ -433,6 +433,12 @@
       "khongPhanLoaiDuoc": 5
     },
     {
+      "file": "infra/hermes-runtime/audit-codes.test.mjs",
+      "soGoi": 5,
+      "loai": {},
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentAssets.test.ts",
       "soGoi": 5,
       "loai": {},
@@ -585,12 +591,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "infra/hermes-runtime/audit-codes.test.mjs",
-      "soGoi": 4,
-      "loai": {},
-      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "infra/hermes-zalo-native/binding-provisioning.test.mjs",
@@ -1093,6 +1093,14 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/action-runtime.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/available-rooms-page-parity.test.mjs",
@@ -1851,14 +1859,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/action-runtime.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/action-shared-keys.test.mjs",

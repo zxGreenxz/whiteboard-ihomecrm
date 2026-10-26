@@ -255,7 +255,7 @@ test('C3n: token chép lệch (thiếu / hoa-thường / thừa ký tự) của 
   for (const [label, token, args] of [
     ['params khác', TOKEN_A, first => ({ ...base, params: { amount: 2000, buildingName: 'Toà A' }, confirmToken: first.confirmToken.slice(0, 33) })],
     ['kết nối khác', TOKEN_B, first => ({ ...base, confirmToken: first.confirmToken.slice(0, 33) })],
-    ['đầu token khác', TOKEN_A, first => ({ ...base, confirmToken: `cf_${first.confirmToken[3] === 'Q' ? 'R' : 'Q'}${first.confirmToken.slice(4, 36)}` })],
+    ['đầu token khác', TOKEN_A, first => ({ ...base, confirmToken: `cf_${first.confirmToken[3].toLowerCase() === 'q' ? 'R' : 'Q'}${first.confirmToken.slice(4, 36)}` })],
     ['quá ngắn', TOKEN_A, first => ({ ...base, confirmToken: first.confirmToken.slice(0, 9) })]]) {
     const first = await env.call('crm_action_run', base);
     const applies = env.requests.filter(([, request]) => request.phase === 'apply').length;
