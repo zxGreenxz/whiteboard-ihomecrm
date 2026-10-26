@@ -17,6 +17,13 @@ function setup() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("camera live session boundaries", () => {
+  it("accepts one receive-only audio track but rejects publishing and duplicate tracks", () => {
+    const audio = "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=recvonly\r\na=rtpmap:111 opus/48000/2\r\n";
+    expect(() => validateOffer(offer + audio)).not.toThrow();
+    for (const invalid of [offer + audio + audio, offer + audio.replace("recvonly", "sendrecv"), offer + audio.replace("recvonly", "sendonly"), offer.replace("recvonly", "sendonly") + audio]) {
+      expect(() => validateOffer(invalid)).toThrow("INVALID_VIDEO_OFFER");
+    }
+  });
   it("rejects unconfigured channels, publishers, extra audio/data tracks and oversized SDP before opening media", async () => {
     const { sessions, dependencies } = setup();
     await expect(sessions.start(actor, recorder, 3, offer)).rejects.toMatchObject({ status: 404 });
@@ -33,6 +40,24 @@ describe("camera live session boundaries", () => {
     await expect(sessions.start(actor, recorder, 1, offer)).rejects.toMatchObject({ code: "CAMERA_LIMIT" });
     expect(dependencies.start).toHaveBeenCalledTimes(16);
     resolve.forEach((done) => done({ location: "private-session", answer: offer })); await Promise.all(pending);
+  });
+  it("bounds distinct live encoders even during pending creates and shares a profile between viewers", async () => {
+    const { sessions, dependencies } = setup();
+    const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
+    const finish: Array<(value: { location: string; answer: string }) => void> = [];
+    vi.mocked(dependencies.start).mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+    const pending = [1, 2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "hd"));
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    pending.push(sessions.start(actor, wide, 1, offer, undefined, "hd"));
+    expect(dependencies.start).toHaveBeenCalledTimes(5);
+    finish.forEach((resolve) => resolve({ location: "shared", answer: offer })); await Promise.all(pending);
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "fullhd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await sessions.closeAll();
+    vi.mocked(dependencies.start).mockResolvedValue({ location: "next", answer: offer });
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "fullhd")).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 5, offer, undefined, "fullhd")).resolves.toHaveProperty("id");
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "fullhd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
+    await expect(sessions.start(actor, wide, 1, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
   });
   it("binds renew and delete to the verified owner, without letting another user extend or close a session", async () => {
     const { sessions, dependencies, advance } = setup();
@@ -76,6 +101,19 @@ describe("camera live session boundaries", () => {
 });
 
 describe("camera live upstream authorization", () => {
+  it("shares on-demand live profiles, preserves original video and converts optional audio to Opus without exposing credentials", () => {
+    const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
+    const media = mediaConfiguration(config, encoder);
+    const paths = media.paths as Record<string, { source: string; runOnDemand?: string }>;
+    for (const suffix of ["", "-hd", "-fullhd", "-original"]) {
+      const path = paths[`camera-${recorder.id}-1${suffix}`]!;
+      expect(path.source).toBe("publisher"); expect(path.runOnDemand).toContain("libopus"); expect(path.runOnDemand).toContain("0:a:0?");
+      expect(path.runOnDemand).not.toContain(recorder.password); expect(path.runOnDemand).not.toContain(recorder.rtspOrigin);
+      expect(path.runOnDemand).toContain(suffix === "-hd" ? "1280" : suffix === "-fullhd" ? "1920" : "'copy'");
+    }
+    expect(new URL(paths[`camera-source-${recorder.id}-1-sd`]!.source).searchParams.get("subtype")).toBe("1");
+    expect(() => mediaConfiguration(config, "/tmp/unverified-ffmpeg")).toThrow("LIVE_ENCODER_INVALID");
+  });
   const id = actor.id;
   const token = `test.${Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url")}.signature`;
   const allowed = { recorders: [{ id: recorder.id, organization_id: recorder.organizationId, building_id: recorder.buildingId, enabled: true, channel_count: 16 }] };
@@ -125,6 +163,11 @@ describe("camera live HTTP boundary", () => {
       expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(403); expect(dependencies.start).not.toHaveBeenCalled();
       expect((await fetch(base + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(201);
       expect(dependencies.start).toHaveBeenLastCalledWith(recorder, 1, offer, undefined, "hd");
+      await sessions.closeAll();
+      for (const quality of ["fullhd", "original"]) {
+        expect((await fetch(base + `?quality=${quality}`, { method: "POST", headers, body: offer })).status).toBe(201);
+        expect(dependencies.start).toHaveBeenLastCalledWith(recorder, 1, offer, undefined, quality);
+      }
       expect((await fetch(base + "?quality=outside", { method: "POST", headers, body: offer })).status).toBe(404);
       expect((await fetch(base.replace("channels/1/", "channels/99/") + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(404);
     } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }

@@ -17,6 +17,7 @@
   "include": [],
   "files": [
     "src/hooks/useCashFlowReport.ts",
+    "src/components/network-center/tabs/CameraAudioButton.tsx",
     "src/components/network-center/tabs/CameraLiveWall.tsx",
     "src/components/network-center/tabs/CameraArchivePanel.tsx",
     "src/components/network-center/tabs/CameraExportPanel.tsx",

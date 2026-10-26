@@ -167,7 +167,7 @@ index e4b686e..e2c7439 100644
  	if s.rsession.State() == gortsplib.ServerSessionStatePrePlay {
  		s.Log(logger.Info, "is reading from path '%s', with %s, %s",
 diff --git a/internal/staticsources/rtsp/source.go b/internal/staticsources/rtsp/source.go
-index f77e484..ada1ef4 100644
+index f77e484..7c3ab39 100644
 --- a/internal/staticsources/rtsp/source.go
 +++ b/internal/staticsources/rtsp/source.go
 @@ -86,8 +86,9 @@ type Source struct {
@@ -302,15 +302,6 @@ index f77e484..ada1ef4 100644
  ) error {
  	desc, _, err := c.Describe(u)
  	if err != nil {
-@@ -323,7 +383,7 @@ func (s *Source) runInner(
- 	var medias []*description.Media
- 
- 	for _, m := range desc.Medias {
--		if !m.IsBackChannel {
-+		if !m.IsBackChannel && (pathConf.RTSPPlaybackRevision == "" || m.Type == description.MediaTypeVideo) {
- 			_, err = c.Setup(desc.BaseURL, m, 0, 0)
- 			if err != nil {
- 				return err
 @@ -410,6 +470,11 @@ func (s *Source) runInner(
  		defer s.Parent.SetNotReady(defs.PathSourceStaticSetNotReadyReq{})
  
@@ -332,7 +323,7 @@ index f77e484..ada1ef4 100644
  	if demuxer != nil {
  		demuxerErr := demuxer.Wait(ctx)
 diff --git a/internal/staticsources/rtsp/source_test.go b/internal/staticsources/rtsp/source_test.go
-index 1d07681..891c722 100644
+index 1d07681..02ee210 100644
 --- a/internal/staticsources/rtsp/source_test.go
 +++ b/internal/staticsources/rtsp/source_test.go
 @@ -6,6 +6,7 @@ import (
@@ -343,7 +334,7 @@ index 1d07681..891c722 100644
  	"testing"
  	"time"
  
-@@ -32,6 +33,90 @@ type testServer struct {
+@@ -32,6 +33,93 @@ type testServer struct {
  	onPlay     func(*gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error)
  }
  
@@ -355,6 +346,7 @@ index 1d07681..891c722 100644
 +	var strm *gortsplib.ServerStream
 +	var plays atomic.Int32
 +	var describes atomic.Int32
++	var setups atomic.Int32
 +	playEntered := make(chan struct{})
 +	acceptPlay := make(chan struct{})
 +	var session *gortsplib.ServerSession
@@ -364,6 +356,7 @@ index 1d07681..891c722 100644
 +			return &base.Response{StatusCode: base.StatusOK}, strm, nil
 +		},
 +		onSetup: func(*gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
++			setups.Add(1)
 +			return &base.Response{StatusCode: base.StatusOK}, strm, nil
 +		},
 +		onPlay: func(ctx *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
@@ -385,7 +378,7 @@ index 1d07681..891c722 100644
 +	}}
 +	require.NoError(t, server.Start())
 +	defer server.Close()
-+	strm = &gortsplib.ServerStream{Server: server, Desc: &description.Session{Medias: []*description.Media{test.UniqueMediaH264()}}}
++	strm = &gortsplib.ServerStream{Server: server, Desc: &description.Session{Medias: []*description.Media{test.UniqueMediaH264(), test.UniqueMediaMPEG4Audio()}}}
 +	require.NoError(t, strm.Initialize())
 +	defer strm.Close()
 +	parent := &test.StaticSourceParent{}
@@ -429,6 +422,7 @@ index 1d07681..891c722 100644
 +	reload <- normal
 +	require.Eventually(t, func() bool { return revision() == "normal" }, time.Second, 10*time.Millisecond)
 +	require.EqualValues(t, 1, describes.Load())
++	require.EqualValues(t, 2, setups.Load()) // Audio and video survive seek/speed changes on the same connection.
 +}
 +
  func (sh *testServer) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx,

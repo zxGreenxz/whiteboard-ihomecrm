@@ -34,6 +34,23 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const options = () => ({ recorderId: "20000000-0000-4000-8000-000000000001", channel: 1, onStream: vi.fn(), onState: vi.fn() });
 
 describe("live camera browser lifecycle", () => {
+  it("receives camera audio without microphone access and preserves video when audio arrives later", async () => {
+    class Stream { constructor(readonly tracks: unknown[]) {} }
+    vi.stubGlobal("MediaStream", Stream);
+    const callbacks = { ...options(), onAudio: vi.fn() }; const connection = new CameraLiveConnection(callbacks); await connection.start();
+    const peer = Peer.instances[0]!;
+    expect(peer.addTransceiver).toHaveBeenCalledWith("audio", { direction: "recvonly" });
+    const video = { id: "v", kind: "video" }, audio = Object.assign(new EventTarget(), { id: "a", kind: "audio", readyState: "live", muted: true });
+    peer.ontrack!({ track: video }); peer.ontrack!({ track: audio });
+    expect(callbacks.onStream.mock.calls.at(-1)?.[0].tracks).toEqual([video, audio]);
+    expect(callbacks.onAudio).toHaveBeenLastCalledWith(false);
+    audio.muted = false; audio.dispatchEvent(new Event("unmute")); expect(callbacks.onAudio).toHaveBeenLastCalledWith(true);
+    await connection.stop();
+  });
+  it.each(["fullhd", "original"] as const)("requests the selected %s live profile", async (quality) => {
+    const connection = new CameraLiveConnection({ ...options(), liveQuality: quality }); await connection.start();
+    expect(String(request.mock.calls[0]?.[0])).toContain(`?quality=${quality}`); await connection.stop();
+  });
   it("automatically recovers a transient 8x startup failure without another peer or manual retry", async () => {
     request.mockResolvedValueOnce(Response.json({ code: "CAMERA_UNAVAILABLE" }, { status: 502 }));
     const callbacks = options(); const connection = new CameraLiveConnection({ ...callbacks, playback: { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", quality: "sd", speed: 8 } });

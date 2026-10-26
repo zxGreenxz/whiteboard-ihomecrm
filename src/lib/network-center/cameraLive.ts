@@ -5,7 +5,8 @@ export const cameraVideoEndpoint = "https://crm-hermes.chillhome.io.vn/camera-li
 const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().uuid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
 export type CameraPlaybackQuality = "sd" | "hd" | "fullhd" | "original";
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd"])).optional().default(["sd"]) });
+export type CameraLiveQuality = CameraPlaybackQuality;
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]) });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",
@@ -14,6 +15,7 @@ const messages: Record<string, string> = {
   CAMERA_NOT_CONFIGURED: "Đầu ghi chưa được cấu hình xem trực tiếp.",
   CAMERA_LIMIT: "Đã đạt giới hạn số camera đang xem. Hãy dừng bớt cửa sổ khác.",
   CAMERA_BUSY: "Hệ thống đang bận. Vui lòng thử lại.",
+  CAMERA_QUALITY_LIMIT: "Đang có luồng chất lượng cao khác. Hãy chọn SD, độ phân giải gốc hoặc dừng bớt luồng HD/Full HD.",
   CODEC_UNSUPPORTED: "Trình duyệt chưa hỗ trợ định dạng của camera. Hãy thử Chrome hoặc Edge mới trên máy có hỗ trợ H.265.",
   CAMERA_UNAVAILABLE: "Chưa nhận được video từ đầu ghi. Vui lòng thử lại.",
   ARCHIVE_NOT_CONFIGURED: "Đầu ghi chưa được bật dịch vụ xem lại và xuất video. Cần cấu hình dịch vụ camera trên máy chủ.",
@@ -63,9 +65,10 @@ export async function cameraPlaybackThumbnail(recorderId: string, channel: numbe
 
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
-  recorderId: string; channel: number; liveQuality?: "sd" | "hd";
+  recorderId: string; channel: number; liveQuality?: CameraLiveQuality; audio?: boolean;
   playback?: { start: string; end: string; position?: string; speed?: number; quality?: CameraPlaybackQuality };
   onStream(stream: MediaStream | null): void;
+  onAudio?(available: boolean): void;
   onState(state: CameraLiveState, message?: string): void;
 }
 export class CameraLiveConnection {
@@ -90,7 +93,15 @@ export class CameraLiveConnection {
       this.options.onState("connecting");
       const peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
       this.peer = peer; peer.addTransceiver("video", { direction: "recvonly" });
-      peer.ontrack = (event) => { if (!this.stopped) this.options.onStream(new MediaStream([event.track])); };
+      if (this.options.audio !== false) peer.addTransceiver("audio", { direction: "recvonly" });
+      const tracks = new Map<string, MediaStreamTrack>();
+      const audioState = () => { if (!this.stopped) this.options.onAudio?.([...tracks.values()].some((track) => track.kind === "audio" && track.readyState === "live" && !track.muted)); };
+      peer.ontrack = (event) => {
+        if (this.stopped) return;
+        tracks.set(event.track.id, event.track);
+        if (event.track.kind === "audio") for (const name of ["unmute", "mute", "ended"]) event.track.addEventListener(name, audioState);
+        this.options.onStream(new MediaStream([...tracks.values()])); audioState();
+      };
       peer.onconnectionstatechange = () => {
         if (peer.connectionState === "failed" && !this.stopped) this.fail("Không thiết lập được đường truyền video. Hãy thử lại hoặc đổi mạng.");
       };
@@ -111,7 +122,7 @@ export class CameraLiveConnection {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (this.stopped) return;
         try {
-          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality === "hd" ? "?quality=hd" : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
+          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality && this.options.liveQuality !== "sd" ? `?quality=${this.options.liveQuality}` : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
           break;
         } catch (error) {
           if (!playback || attempt === 2 || !(error instanceof CameraLiveError) || !["CAMERA_UNAVAILABLE", "RECORDING_UNAVAILABLE"].includes(error.code)) throw error;
@@ -168,7 +179,7 @@ export class CameraLiveConnection {
     if (this.stopped) return this.starting?.then(() => this.releaseSession()) ?? this.releaseSession();
     this.stopped = true; this.abort.abort();
     clearInterval(this.renewTimer); clearInterval(this.statsTimer);
-    this.peer?.close(); this.peer = undefined; this.options.onStream(null);
+    this.peer?.close(); this.peer = undefined; this.options.onStream(null); this.options.onAudio?.(false);
     void this.releaseSession();
     return this.starting?.then(() => this.releaseSession()) ?? this.releaseSession();
   }

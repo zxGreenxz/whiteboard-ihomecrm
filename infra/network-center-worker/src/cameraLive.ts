@@ -35,7 +35,7 @@ export const liveConfigSchema = z.object({
 });
 export type LiveConfig = z.infer<typeof liveConfigSchema>;
 export type LiveRecorder = LiveConfig["recorders"][number];
-export const streamName = (recorder: LiveRecorder, channel: number, quality: "sd" | "hd" = "sd") => `camera-${recorder.id}-${channel}${quality === "hd" ? "-hd" : ""}`;
+export const streamName = (recorder: LiveRecorder, channel: number, quality: PlaybackQuality = "sd") => `camera-${recorder.id}-${channel}${quality === "sd" ? "" : `-${quality}`}`;
 const mediaOrigin = "http://127.0.0.1:18889";
 const LEASE_MS = 75_000;
 const MAX_SESSIONS = 24;
@@ -48,11 +48,12 @@ export class LiveError extends Error {
 export interface LiveActor { id: string; expiresAt: number }
 export interface LiveMediaSession { location: string; answer: string }
 export interface LiveDependencies {
+  liveQualities?: PlaybackQuality[];
   playbackQualities?: PlaybackQuality[];
   control?(location: string, offset: number, speed: number, signal: AbortSignal): Promise<void>;
   preview?(recorder: LiveRecorder, channel: number, start: string, end: string, signal: AbortSignal): Promise<string>;
   authorize(token: string, recorder: LiveRecorder): Promise<LiveActor>;
-  start(recorder: LiveRecorder, channel: number, offer: string, playback?: PlaybackRange, liveQuality?: "sd" | "hd"): Promise<LiveMediaSession>;
+  start(recorder: LiveRecorder, channel: number, offer: string, playback?: PlaybackRange, liveQuality?: PlaybackQuality): Promise<LiveMediaSession>;
   stop(location: string): Promise<void>;
   /** Must terminate the media process as well as the gateway on uncertain cleanup. */
   fatal(): void;
@@ -93,6 +94,7 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
   };
   return {
     fatal,
+    liveQualities: encoder ? ["sd", "hd", "fullhd", "original"] : ["sd", "hd"],
     playbackQualities: encoder ? ["sd", "hd", "fullhd", "original"] : [],
     async control(location, offset, speed, signal) {
       const name = playbackPaths.get(location);
@@ -139,15 +141,18 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
 
 export function validateOffer(offer: string) {
   const lines = offer.split(/\r?\n/u);
-  const media = lines.filter((line) => line.startsWith("m="));
-  const directions = lines.filter((line) => /^a=(?:sendrecv|sendonly|recvonly|inactive)$/u.test(line));
-  if (Buffer.byteLength(offer) > BODY_MAX || !offer.startsWith("v=0\r\n") || media.length !== 1 || !/^m=video \d+ UDP\/TLS\/RTP\/SAVPF [\d ]+$/u.test(media[0] ?? "") || directions.length !== 1 || directions[0] !== "a=recvonly" || lines.some((line) => line.startsWith("a=ice-server"))) {
+  const sections = offer.split(/\r?\n(?=m=)/u);
+  const tracks = sections.slice(1);
+  const direction = /^a=(?:sendrecv|sendonly|recvonly|inactive)$/u;
+  const kinds = tracks.map((section) => section.match(/^m=(video|audio) \d+ UDP\/TLS\/RTP\/SAVPF [\d ]+\r?\n/u)?.[1]);
+  if (Buffer.byteLength(offer) > BODY_MAX || !offer.startsWith("v=0\r\n") || ![1, 2].includes(tracks.length) || kinds.filter((kind) => kind === "video").length !== 1 || kinds.some((kind) => !kind) || new Set(kinds).size !== kinds.length || sections[0]!.split(/\r?\n/u).some((line) => direction.test(line)) || tracks.some((section) => { const directions = section.split(/\r?\n/u).filter((line) => direction.test(line)); return directions.length !== 1 || directions[0] !== "a=recvonly"; }) || lines.some((line) => line.startsWith("a=ice-server"))) {
     throw new LiveError(400, "INVALID_VIDEO_OFFER");
   }
 }
 
 interface Session {
   id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean; playbackUntil?: number | undefined;
+  encodedLiveKey?: string;
   playback?: PlaybackRange; controlling?: boolean; abort: AbortController;
 }
 export class LiveSessions {
@@ -155,18 +160,25 @@ export class LiveSessions {
   private readonly now: () => number;
   constructor(private readonly dependencies: LiveDependencies) { this.now = dependencies.now ?? Date.now; }
   get size() { return this.sessions.size; }
-  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange, liveQuality?: "sd" | "hd") {
+  async start(actor: LiveActor, recorder: LiveRecorder, channel: number, offer: string, range?: PlaybackRange, liveQuality?: PlaybackQuality) {
     validateOffer(offer);
-    if (liveQuality !== undefined && liveQuality !== "sd" && liveQuality !== "hd") throw new LiveError(400, "INVALID_VIDEO_QUALITY");
+    if (liveQuality !== undefined && !playbackQualitySchema.safeParse(liveQuality).success) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
+    if (liveQuality && this.dependencies.liveQualities && !this.dependencies.liveQualities.includes(liveQuality)) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
     const playback = range ? playbackRange(range, this.now()) : undefined;
     if (playback && !recorder.archiveEnabled) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
     if (!recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
+    const encodedLiveKey = !playback && (liveQuality === "hd" || liveQuality === "fullhd") ? `${recorder.id}/${channel}/${liveQuality}` : undefined;
+    const encoders = new Set([...this.sessions.values()].flatMap((s) => s.encodedLiveKey ? [s.encodedLiveKey] : []));
+    // Full HD exclusively reserves the live transcoding group; this is a capacity policy, not a CPU ratio.
+    const encoderCost = (key: string) => key.endsWith("/fullhd") ? 4 : 1;
+    const reservedCost = [...encoders].reduce((sum, key) => sum + encoderCost(key), 0);
+    if (encodedLiveKey && !encoders.has(encodedLiveKey) && reservedCost + encoderCost(encodedLiveKey) > 4) throw new LiveError(429, "CAMERA_QUALITY_LIMIT");
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
     const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.position ?? playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;
-    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(playback ? { playback } : {}), abort: new AbortController() };
+    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
     this.sessions.set(session.id, session);
     try {
       const media = liveQuality ? await this.dependencies.start(recorder, channel, offer, playback, liveQuality) : await this.dependencies.start(recorder, channel, offer, playback);
@@ -257,7 +269,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
       const token = tokenOf(request);
       const path = request.url ?? "";
-      const recorderRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})(?:\/channels\/(\d+)\/sessions(?:\?quality=(sd|hd))?)?$/u.exec(path);
+      const recorderRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})(?:\/channels\/(\d+)\/sessions(?:\?quality=(sd|hd|fullhd|original))?)?$/u.exec(path);
       const sessionRoute = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})(\/renew)?$/u.exec(path);
       const archiveCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/archive$/u.exec(path);
       const archiveJob = /^\/camera-live\/v1\/archive\/([a-f0-9-]{36})(\/file)?$/u.exec(path);
@@ -346,13 +358,13 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
           await dependencies.authorize(token, recorder);
-          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? dependencies.playbackQualities ?? [] : [] }); return;
+          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? dependencies.playbackQualities ?? [] : [] }); return;
         }
         if (channel && request.method === "POST") {
           if (request.headers["content-type"] !== "application/sdp") throw new LiveError(415, "SDP_REQUIRED");
           const offer = await requestBody(request); validateOffer(offer);
           const actor = await dependencies.authorize(token, recorder);
-          const quality = recorderRoute[3] ? z.enum(["sd", "hd"]).parse(recorderRoute[3]) : undefined;
+          const quality = recorderRoute[3] ? playbackQualitySchema.parse(recorderRoute[3]) : undefined;
           const result = await sessions.start(actor, recorder, Number(channel), offer, undefined, quality);
           if (response.destroyed) { await sessions.stop(result.id, token); return; }
           reply(response, 201, result); return;

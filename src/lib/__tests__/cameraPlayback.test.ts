@@ -35,6 +35,34 @@ describe("persistent playback commands", () => {
 });
 
 describe("scrub preview queue", () => {
+  it("preloads a bounded overview and shows nearby cached frames immediately with their own timestamp", async () => {
+    const capture = vi.fn(async (time: number) => String(time));
+    const queue = new PlaybackPreviews(capture); const show = vi.fn();
+    queue.warm(0, 32001);
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(33));
+    queue.show(15500, show);
+    expect(show).toHaveBeenLastCalledWith({ time: 15500, image: "16000", imageTime: 16000 });
+    const before = capture.mock.calls.length; queue.show(3000, show);
+    expect(show).toHaveBeenLastCalledWith({ time: 3000, image: "3000" });
+    expect(capture).toHaveBeenCalledTimes(before); queue.clear();
+  });
+  it("prioritizes the latest scrub over background work, does not restart on every move, and aborts on disposal", async () => {
+    const finish: Array<(image: string) => void> = []; const signals: AbortSignal[] = [];
+    const capture = vi.fn((_time: number, signal: AbortSignal) => { signals.push(signal); return new Promise<string>((resolve) => finish.push(resolve)); });
+    const queue = new PlaybackPreviews(capture); const show = vi.fn(); queue.warm(0, 100001);
+    queue.show(5000, show); queue.request(5000, show); queue.request(7000, show);
+    expect(capture).toHaveBeenCalledOnce(); expect(signals[0]!.aborted).toBe(false);
+    finish[0]!("overview"); await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
+    expect(capture.mock.calls[1]![0]).toBe(7000);
+    expect(show).toHaveBeenLastCalledWith({ time: 7000, image: "overview", imageTime: 0 });
+    queue.clear(); expect(signals[1]!.aborted).toBe(true); finish[1]!("late"); await Promise.resolve();
+    expect(capture).toHaveBeenCalledTimes(2); expect(show).not.toHaveBeenCalledWith(expect.objectContaining({ image: "late" }));
+  });
+  it("stops speculative captures after repeated failures", async () => {
+    const capture = vi.fn(async () => { throw new Error("unavailable"); });
+    const queue = new PlaybackPreviews(capture); queue.warm(0, 100000);
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(3)); queue.clear();
+  });
   it("serializes capture and cleanup, coalesces requests, rejects stale frames and caches the latest result", async () => {
     const finish: Array<(value: string) => void> = []; const signals: AbortSignal[] = [];
     const capture = vi.fn((_time: number, signal: AbortSignal) => { signals.push(signal); return new Promise<string>((resolve) => finish.push(resolve)); });

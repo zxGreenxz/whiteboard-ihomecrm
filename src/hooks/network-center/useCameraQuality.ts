@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { companySessionToken } from "@/lib/companyPreferenceRemote";
 
 export const cameraQualityChoices = {
-  live: ["sd", "hd"], playback: ["sd", "hd", "fullhd", "original"], export: ["480p", "720p", "1080p", "original"],
+  live: ["sd", "hd", "fullhd", "original"], playback: ["sd", "hd", "fullhd", "original"], export: ["480p", "720p", "1080p", "original"],
 } as const;
 type Kind = keyof typeof cameraQualityChoices;
 type Quality<K extends Kind> = typeof cameraQualityChoices[K][number];

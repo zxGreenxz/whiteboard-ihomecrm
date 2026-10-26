@@ -39,7 +39,7 @@ export async function capturePlaybackFrame(recorderId: string, channel: number, 
   const abort = () => reject(new Error("cancelled"));
   const capture = () => { const frame = cameraFrame(video, 320); if (frame) resolve(frame); };
   let frameCallback: number | undefined;
-  const connection = new CameraLiveConnection({ recorderId, channel, playback: { start: new Date(time).toISOString(), end: new Date(Math.min(time + 20_000, end)).toISOString(), ...(quality ? { quality } : {}) },
+  const connection = new CameraLiveConnection({ recorderId, channel, audio: false, playback: { start: new Date(time).toISOString(), end: new Date(Math.min(time + 20_000, end)).toISOString(), ...(quality ? { quality } : {}) },
     onStream(stream) {
       if (signal.aborted || !stream) return;
       video.srcObject = stream;
@@ -83,40 +83,72 @@ export class PlaybackControls {
   }
 }
 
-export interface PlaybackPreview { time: number; image?: string; error?: boolean }
+export interface PlaybackPreview { time: number; image?: string; imageTime?: number; error?: boolean }
 type PreviewRequest = { time: number; show: (preview: PlaybackPreview) => void; version: number };
-/** Coalesce rapid dragging; never start another capture before the previous lease is released. */
+/** Prefetch in order, show cached images synchronously, and prioritize the latest scrub target. */
 export class PlaybackPreviews {
   private readonly cache = new Map<number, string>();
   private pending: PreviewRequest | undefined;
   private active: AbortController | undefined;
   private running = false;
   private version = 0;
+  private overview: number[] = [];
+  private warmed = false;
+  private watching: { time: number; show: PreviewRequest["show"] } | undefined;
+  private progress: ((ready: number, total: number) => void) | undefined;
+  private overviewTimes: number[] = [];
   constructor(private readonly capture: (time: number, signal: AbortSignal) => Promise<string>) {}
+  /** Coarse-to-fine coverage is prepared while watching, with one bounded capture at a time. */
+  warm(from: number, to: number, progress?: (ready: number, total: number) => void) {
+    if (this.warmed) return;
+    this.warmed = true; this.progress = progress;
+    const last = Math.max(from, Math.floor((to - 1) / 1000) * 1000);
+    const times = [from, last];
+    for (let divisions = 2; divisions <= 32; divisions *= 2) for (let i = 1; i < divisions; i += 2) times.push(Math.floor((from + (last - from) * i / divisions) / 1000) * 1000);
+    this.overviewTimes = [...new Set(times)]; this.overview = [...this.overviewTimes];
+    void this.run();
+  }
+  show(time: number, show: PreviewRequest["show"]) { this.watching = { time, show }; show(this.nearest(time)); }
+  private nearest(time: number): PlaybackPreview {
+    let imageTime: number | undefined; let image: string | undefined;
+    for (const [at, frame] of this.cache) if (imageTime === undefined || Math.abs(at - time) < Math.abs(imageTime - time)) { imageTime = at; image = frame; }
+    return { time, ...(image ? { image, ...(imageTime !== time ? { imageTime } : {}) } : {}) };
+  }
+  remember(time: number, image: string) {
+    this.cache.set(time, image);
+    if (this.cache.size > (this.warmed ? 96 : 24)) this.cache.delete(this.cache.keys().next().value!);
+    if (this.watching) this.watching.show(this.nearest(this.watching.time));
+    this.progress?.(this.overviewTimes.filter((at) => this.cache.has(at)).length, this.overviewTimes.length);
+  }
   request(time: number, show: PreviewRequest["show"]) {
     const version = ++this.version;
-    this.active?.abort(); this.pending = undefined;
+    if (!this.warmed) this.active?.abort(); this.pending = undefined;
     const image = this.cache.get(time);
-    show({ time, ...(image ? { image } : {}) });
+    if (this.warmed) this.show(time, show); else show({ time, ...(image ? { image } : {}) });
     if (image) return;
     this.pending = { time, show, version }; void this.run();
   }
-  clear() { ++this.version; this.pending = undefined; this.active?.abort(); this.cache.clear(); }
-  cancel() { ++this.version; this.pending = undefined; this.active?.abort(); }
+  clear() { ++this.version; this.pending = undefined; this.overview = []; this.overviewTimes = []; this.warmed = false; this.progress = undefined; this.watching = undefined; this.active?.abort(); this.cache.clear(); }
+  cancel() { ++this.version; this.pending = undefined; this.watching = undefined; if (!this.warmed) this.active?.abort(); }
   private async run() {
     if (this.running) return;
     this.running = true;
     try {
-      while (this.pending) {
-        const next = this.pending; this.pending = undefined; const abort = new AbortController(); this.active = abort;
+      let failures = 0;
+      while (this.pending || this.overview.length) {
+        const next = this.pending ?? { time: this.overview.shift()!, show: () => {}, version: -1 }; this.pending = undefined;
+        if (this.cache.has(next.time)) continue;
+        const abort = new AbortController(); this.active = abort;
         try {
           const image = await this.capture(next.time, abort.signal);
-          if (!abort.signal.aborted && next.version === this.version) {
-            this.cache.set(next.time, image);
-            if (this.cache.size > 24) this.cache.delete(this.cache.keys().next().value!);
-            next.show({ time: next.time, image });
+          if (!abort.signal.aborted && (this.warmed || next.version === this.version)) {
+            failures = 0; this.remember(next.time, image);
+            if (next.version === this.version) next.show({ time: next.time, image });
           }
-        } catch { if (!abort.signal.aborted && next.version === this.version) next.show({ time: next.time, error: true }); }
+        } catch {
+          if (++failures >= 3) this.overview = [];
+          if (!abort.signal.aborted && next.version === this.version) next.show({ ...(this.warmed ? this.nearest(next.time) : { time: next.time }), error: true });
+        }
         finally { if (this.active === abort) this.active = undefined; }
       }
     } finally { this.running = false; }
