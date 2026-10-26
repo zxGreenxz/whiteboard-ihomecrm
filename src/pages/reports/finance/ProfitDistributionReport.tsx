@@ -46,7 +46,7 @@ import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
-import { categorySharesOf, invoicePartsNote } from "@/lib/invoiceAmountParts";
+import { categorySharesOf, invoiceAdjustmentsText } from "@/lib/invoiceAmountParts";
 import { CategoryShareBlock, IncomePartCells } from "@/components/reports/IncomeBreakdown";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -110,6 +110,10 @@ interface DisplayRow {
   invoiceId?: string | null;
   // Số lần thu được gộp (>1 ⇒ hiện "(N lần)").
   groupCount?: number;
+  // id các phiếu làm nên dòng — server xét phiếu nào được tách tiền theo hoá đơn (như quyết toán vận hành).
+  voucherIds?: string[];
+  // Số tiền dòng gồm cả phần ngoài KQKD (cọc) — tắt "Chỉ KQKD" ở chế độ ngày phiếu ⇒ không tách theo hoá đơn.
+  mixedDeposit?: boolean;
   // Σ khoản THANH LÝ/BỎ CỌC gắn CÙNG hoá đơn nhưng đã tách sang dòng riêng —
   // trừ khỏi mệnh giá HĐ khi so thiếu/thừa (mệnh giá HĐ quyết toán đã cộng cả
   // phần phụ thu thanh lý mà phiếu "Doanh thu thanh lý" thanh toán).
@@ -430,6 +434,7 @@ function ProfitDistributionDesktop() {
           typeId: r.typeId ?? null,
           notKqkd: r.countsInBusinessResult === false,
           monthLabel,
+          voucherIds: r.voucherId ? [r.voucherId as string] : [],
         };
         if (r.income > 0)
           rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
@@ -450,6 +455,7 @@ function ProfitDistributionDesktop() {
           category: null as string | null,
           notKqkd: kqkd <= 0,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
+          voucherIds: [r.id as string],
         };
         const items = (r.items || []) as any[];
         // Item cọc bị loại khỏi P&L trừ khi phiếu ép TRUE (khớp kqkd_amount DB).
@@ -469,6 +475,7 @@ function ProfitDistributionDesktop() {
             typeName,
             amount: pnlOnly ? kqkd : Number(r.total_amount),
             invoiceId: r.invoice_id,
+            mixedDeposit: !pnlOnly && Math.abs(kqkd - Number(r.total_amount)) >= 1,
           });
           continue;
         }
@@ -537,6 +544,8 @@ function ProfitDistributionDesktop() {
           amount: list.reduce((s, x) => s + x.amount, 0),
           notKqkd: list.some((x) => x.notKqkd),
           groupCount: list.length,
+          voucherIds: Array.from(new Set(list.flatMap((x) => x.voucherIds ?? []))),
+          mixedDeposit: list.some((x) => x.mixedDeposit),
           ...extra,
         });
       }
@@ -746,12 +755,14 @@ function ProfitDistributionDesktop() {
   const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
 
   // Tách tiền phòng / điện / nước / PDV của khoản thu theo hoá đơn (chủ chốt 25/10/2026 — như Quyết toán vận
-  // hành; server chia). Không tách: dòng thanh lý / bỏ cọc, dòng gồm khoản ngoài KQKD (cọc khi tắt "Chỉ KQKD").
+  // hành; server chia và xét phiếu nào được tách). Không gửi: dòng thanh lý / bỏ cọc (nhóm riêng), dòng gồm khoản
+  // ngoài KQKD (cọc khi tắt "Chỉ KQKD").
   const partsRequests = useMemo(
     () =>
       shownIncomeRows
-        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !isLiquidationRow(r) && r.amount > 0)
-        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount })),
+        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !r.mixedDeposit && !isLiquidationRow(r)
+          && r.amount > 0 && (r.voucherIds?.length ?? 0) > 0)
+        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount, voucherIds: r.voucherIds! })),
     [shownIncomeRows]
   );
   const {
@@ -759,8 +770,9 @@ function ProfitDistributionDesktop() {
     isError: partsError,
     refetch: retryParts,
   } = useInvoiceAmountParts(partsRequests, !loading);
-  // Bảng cột Tiền phòng · Điện · Nước · PDV khi tháng có khoản thu theo hoá đơn.
-  const incomeTable = partsRequests.length > 0;
+  // Bảng cột Tiền phòng · Điện · Nước · PDV chỉ khi có dòng đã tách — chưa tách được (đang tải, lỗi, server cũ)
+  // thì giữ danh sách cũ, không hiện cột trống.
+  const incomeTable = (incomeParts?.size ?? 0) > 0;
 
   // "Theo hạng mục" của hai cột (dòng đang hiện, bỏ dòng ghi chú). Khoản thu đã tách ⇒ cộng theo cột hoá đơn
   // (tên trùng hạng mục của quyết toán vận hành); còn lại theo hạng mục của dòng. Chỉ để hiển thị tỷ trọng.
@@ -1044,7 +1056,7 @@ function ProfitDistributionDesktop() {
             kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen}
             onToggle={() => setCatsOpen((v) => !v)} testId="profit-categories" />
         )}
-        {table && partsError && (
+        {side === "income" && partsError && (
           <button type="button" className="ph-panel__foot" style={{ width: "100%", borderTop: 0 }} onClick={() => retryParts()}>
             Chưa tách được tiền phòng / điện / nước — bấm để thử lại
           </button>
@@ -1112,8 +1124,16 @@ function ProfitDistributionDesktop() {
               const detailBlock = fd || (!fd && rp);
               const sub = subParts(r, side, hasTag);
               const parts = table ? incomeParts?.get(r.key) : undefined;
-              const partsNote = parts ? invoicePartsNote(parts, r.amount) : "";
-              if (partsNote) sub.push(partsNote);
+              // dòng đã tách: bỏ dòng mô tả "TIỀN PHÒNG - 10/2026 · … · Thu tiền hoá đơn", chỉ giữ ở hoá đơn tháng
+              // đầu (chủ nhắn 26/10/2026) — mô tả vẫn có khi rê chuột
+              const showMain = !parts || !!fd;
+              // giảm trừ / nợ cũ: ngay dưới tổng tiền, chỉ số gọn (chủ nhắn 26/10/2026)
+              const adjust = parts ? invoiceAdjustmentsText(parts) : "";
+              const invTitle = displayDescription(r, side) + (r.roomName ? ` — ${r.roomName}` : "");
+              // bấm vào dòng là xem hoá đơn luôn (chủ nhắn 26/10/2026); bấm số tiền vẫn xem các lần thu
+              const onRowClick = clickable
+                ? () => openInvoiceModal(r.invoiceId!, invTitle)
+                : r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined;
 
               return (
                 <div
@@ -1124,15 +1144,13 @@ function ProfitDistributionDesktop() {
                   }${parts ? " ph-row--parts" : ""}${state ? ` ${state}` : ""}`}
                   data-testid={side === "income" ? "profit-income-row" : undefined}
                   data-layout={table ? (parts ? "table" : "table-other") : undefined}
-                  onClick={
-                    r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined
-                  }
-                  onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
+                  onClick={onRowClick}
                   title={
                     r.isMissingExpense && canCreate
                       ? "Bấm để tạo phiếu chi cho hạng mục này"
                       : clickable
-                        ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu"
+                        ? `Bấm vào dòng: xem hoá đơn · bấm số tiền: xem các lần thu${
+                            showMain ? "" : ` — ${[displayDescription(r, side), ...sub].join(" · ")}`}`
                         : undefined
                   }
                 >
@@ -1164,28 +1182,11 @@ function ProfitDistributionDesktop() {
                     ))}
 
                   {parts && <IncomePartCells parts={parts} />}
-                  {/* có phần tách: mô tả (tên hoá đơn bấm được, chi tiết HĐ tháng đầu…) xuống dòng dưới các cột */}
-                  <div className={`ph-row__main${parts ? " ph-row__main--below" : ""}`}
+                  {/* có phần tách: chỉ HĐ tháng đầu còn mô tả + chi tiết, xuống dòng dưới các cột */}
+                  {showMain && <div className={`ph-row__main${parts ? " ph-row__main--below" : ""}`}
                     style={parts ? { ...spanBelow, gridRow: 2 } : table ? spanCells : undefined}>
                     <div className="ph-row__desc">
-                      {clickable ? (
-                        // Bấm tên HĐ → chi tiết hoá đơn (như trang /invoices).
-                        <button
-                          type="button"
-                          className="ph-row__link"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openInvoiceModal(
-                              r.invoiceId!,
-                              displayDescription(r, side) + (r.roomName ? ` — ${r.roomName}` : "")
-                            );
-                          }}
-                        >
-                          {displayDescription(r, side)}
-                        </button>
-                      ) : (
-                        displayDescription(r, side)
-                      )}
+                      {displayDescription(r, side)}
                       {fd && <span className="ph-inline ph-inline--first">HĐ tháng đầu</span>}
                       {r.isMissingInvoice && <span className="ph-inline ph-inline--alert">Còn hợp đồng</span>}
                       {r.isMissingExpense && <span className="ph-inline ph-inline--soft"> (chưa có phiếu)</span>}
@@ -1234,7 +1235,7 @@ function ProfitDistributionDesktop() {
                         Tiền phòng tính từ: {fmtDay(rp.rentFrom)} → {fmtDay(rp.rentTo)}
                       </div>
                     )}
-                  </div>
+                  </div>}
 
                   {r.isMissingExpense && canCreate ? (
                     <div style={{ textAlign: "right" }}>
@@ -1259,6 +1260,7 @@ function ProfitDistributionDesktop() {
                       ) : (
                         formatCurrency(r.amount)
                       )}
+                      {adjust && <div className="ph-row__note ph-row__note--adj" data-testid="profit-row-adjust">{adjust}</div>}
                       {note && (
                         <div
                           className={`ph-row__note ${

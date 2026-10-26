@@ -275,8 +275,10 @@ const PROD_MD5_TACH: Record<string, string> = {
   "app_private.landlord_strip_public_v1(jsonb)": "5ba02b4cd662bfdbf24b1e688de4f519",
 };
 const HAM_TACH_MOI = [
-  "public.invoice_item_column_v1(text,text)",
+  "public.invoice_item_column_v1(text,text,text)",
   "public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)",
+  "public.invoice_amount_parts_for_v1(uuid,numeric)",
+  "public.income_voucher_splittable_v1(uuid)",
   "public.invoice_amount_parts_v1(jsonb)",
 ];
 let md5GocTach: Record<string, string> = {};
@@ -482,13 +484,19 @@ beforeAll(async () => {
       ADD COLUMN description text, ADD COLUMN amount numeric,
       ADD COLUMN accounting_class text NOT NULL DEFAULT 'REVENUE';
     CREATE TABLE public.services(id uuid PRIMARY KEY, organization_id uuid, name text);
-    GRANT SELECT ON public.invoices, public.invoice_items, public.services TO authenticated;
+    GRANT SELECT ON public.invoices, public.invoice_items, public.services, public.income_expenses,
+      public.income_expense_items TO authenticated;
     ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
     ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
     ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.income_expenses ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.income_expense_items ENABLE ROW LEVEL SECURITY;
     CREATE POLICY cong_ty ON public.invoices FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
     CREATE POLICY cong_ty ON public.invoice_items FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
     CREATE POLICY cong_ty ON public.services FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.income_expenses FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.income_expense_items FOR SELECT TO authenticated
+      USING (EXISTS (SELECT 1 FROM public.income_expenses v WHERE v.id = income_expense_id));
   `);
   md5GocTach = await md5Cua(Object.keys(PROD_MD5_TACH));
   const sqlTach = readFileSync(FILE_TACH, "utf8");
@@ -2894,27 +2902,29 @@ describe("tách tiền hoá đơn (20261025165112): migration", () => {
 });
 
 describe("tách tiền hoá đơn (20261025165112): hai hàm thuần", () => {
-  const cot = async (loai: string, nhan: string | null) =>
-    rpc<string>("public.invoice_item_column_v1($1, $2)", [loai, nhan]);
+  const cot = async (loai: string, dichVu: string | null, moTa: string | null) =>
+    rpc<string>("public.invoice_item_column_v1($1, $2, $3)", [loai, dichVu, moTa]);
   const chia = async (...so: (number | null)[]) =>
     rpc<Json | null>("public.invoice_amount_split_v1($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", so);
 
-  it("xếp cột theo loại dòng + tên dịch vụ / mô tả, không phân biệt dấu và chữ hoa", async () => {
-    const ca: [string, string | null, string][] = [
-      ["RENT", "Tiền thuê phòng 103 (10/2026)", "RENT"],
-      ["SERVICE", "Điện 3k8 Tiền điện (1.111 → 1.216)", "ELECTRIC"],
-      ["SERVICE", "TIỀN ĐIỆN", "ELECTRIC"],
-      ["SERVICE", "Tien dien (10 → 46)", "ELECTRIC"],
-      ["SERVICE", "Nước Nước (10 ngày)", "WATER"],
-      ["SERVICE", "NƯỚC", "WATER"],
-      ["SERVICE", "Tiền nước (2 người)", "WATER"],
-      ["SERVICE", "PDV Phí dịch vụ (28/30 ngày)", "SERVICE"],
-      ["SERVICE", "Phí Dịch Vụ TL", "SERVICE"],
-      ["SERVICE", null, "SERVICE"],
-      ["OTHER", "khách đưa thêm tiền nước", "OTHER"],
-      ["PENALTY", "Phí phạt khách bỏ cọc", "OTHER"],
+  it("xếp cột theo loại dòng; tên dịch vụ trước, không có dịch vụ mới xét mô tả; không phân biệt dấu và chữ hoa", async () => {
+    const ca: [string, string | null, string | null, string][] = [
+      ["RENT", null, "Tiền thuê phòng 103 (10/2026)", "RENT"],
+      ["SERVICE", "Điện 3k8", "Tiền điện (1.111 → 1.216)", "ELECTRIC"],
+      ["SERVICE", null, "TIỀN ĐIỆN", "ELECTRIC"],
+      ["SERVICE", "  ", "Tien dien (10 → 46)", "ELECTRIC"],
+      ["SERVICE", "Nước", "Nước (10 ngày)", "WATER"],
+      ["SERVICE", null, "NƯỚC", "WATER"],
+      ["SERVICE", null, "Tiền nước (2 người)", "WATER"],
+      // dòng gắn dịch vụ chỉ xét tên dịch vụ: mô tả "điện tử" của dòng nước không thành điện
+      ["SERVICE", "Nước", "đồng hồ điện tử", "WATER"],
+      ["SERVICE", "PDV", "Phí dịch vụ (28/30 ngày)", "SERVICE"],
+      ["SERVICE", "Phí Dịch Vụ TL", "Phí Dịch Vụ TL (10 ngày)", "SERVICE"],
+      ["SERVICE", null, null, "SERVICE"],
+      ["OTHER", null, "khách đưa thêm tiền nước", "OTHER"],
+      ["PENALTY", null, "Phí phạt khách bỏ cọc", "OTHER"],
     ];
-    for (const [loai, nhan, ky_vong] of ca) expect(await cot(loai, nhan), `${loai} ${nhan}`).toBe(ky_vong);
+    for (const [loai, dichVu, moTa, kyVong] of ca) expect(await cot(loai, dichVu, moTa), `${loai} ${dichVu} ${moTa}`).toBe(kyVong);
   });
 
   it("trả đúng phần doanh thu ⇒ cột đúng số hoá đơn, giảm trừ / nợ cũ / làm tròn tách riêng; cọc không tính", async () => {
@@ -2981,6 +2991,8 @@ async function duLieuThang4() {
       ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_DIEN}','Tiền điện (1 → 400)',1727700,'REVENUE'),
       ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_NUOC}','Nước',300000,'REVENUE'),
       ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_PDV}','PDV',200000,'REVENUE'),
+      -- chi tiết của discount_amount (không nằm trong subtotal) — không được trừ lần hai
+      ('${HD_GIAM}','${ORG_A}','DISCOUNT',null,'Giảm trừ gia hạn 12 tháng',200000,'REVENUE'),
       ('${HD_DU}','${ORG_A}','RENT',null,'Tiền thuê phòng 103 (04/2025)',6200000,'REVENUE'),
       ('${HD_DU}','${ORG_A}','SERVICE','${DV_DIEN}','Tiền điện (1.111 → 1.216)',827000,'REVENUE'),
       ('${HD_DU}','${ORG_A}','SERVICE','${DV_NUOC}','Nước',200000,'REVENUE'),
@@ -3087,38 +3099,55 @@ describe("tách tiền hoá đơn (20261025165112): gói quyết toán", () => {
 
 describe("tách tiền hoá đơn (20261025165112): RPC Báo cáo LN", () => {
   const RPC_TACH = "public.invoice_amount_parts_v1($1::jsonb)";
-  const dong = () => JSON.stringify([
-    { key: "a", invoice_id: HD_DU, amount: 7_627_000 },
-    { key: "b", invoice_id: HD_HAI_LAN, amount: 3_000_000 },
-    { key: "c", invoice_id: HD_CHI_COC, amount: 5 },
-  ]);
+  type DuLieu = Awaited<ReturnType<typeof duLieuThang4>>;
+  const dong = (p: DuLieu) => {
+    const [hanChe, thanhLy, chiCoc, haiHangMuc] = p.khongTach;
+    return JSON.stringify([
+      { key: "a", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [p.du] },
+      { key: "b", invoice_id: HD_HAI_LAN, amount: 3_000_000, voucher_ids: [p.lan1] },
+      // dòng báo cáo gộp hai phiếu cùng hoá đơn ⇒ trả đủ, không "thu một phần"
+      { key: "b2", invoice_id: HD_HAI_LAN, amount: 6_300_000, voucher_ids: [p.lan1, p.lan2] },
+      // KHÔNG tách, đúng như gói quyết toán: hoá đơn chỉ có cọc, phiếu hạn chế, phiếu thanh lý, phiếu hai hạng mục,
+      // phiếu của hoá đơn khác, dòng không kèm phiếu
+      { key: "c", invoice_id: HD_CHI_COC, amount: 333, voucher_ids: [chiCoc] },
+      { key: "d", invoice_id: HD_DU, amount: 111, voucher_ids: [hanChe] },
+      { key: "e", invoice_id: HD_DU, amount: 222, voucher_ids: [thanhLy] },
+      { key: "f", invoice_id: HD_DU, amount: 999, voucher_ids: [haiHangMuc] },
+      { key: "g", invoice_id: HD_DU, amount: 3_000_000, voucher_ids: [p.lan1] },
+      { key: "h", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [] },
+      { key: "i", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [p.du, hanChe] },
+    ]);
+  };
 
-  it("trả đúng phần như gói quyết toán cho hoá đơn đọc được; hoá đơn không có dòng REVENUE ⇒ bỏ", async () => {
+  it("trả đúng phần như gói quyết toán; chỉ tách khi mọi phiếu của dòng thuộc hoá đơn đó và qua cùng điều kiện tách", async () => {
     await trongGiaoDich(async () => {
       const p = await duLieuThang4();
       await asUser(CHU_A);
-      const rows = invoiceAmountPartsRowsSchema.parse(await rpc(RPC_TACH, [dong()]));
-      expect(rows.map((r) => r.key)).toEqual(["a", "b"]);
+      const rows = invoiceAmountPartsRowsSchema.parse(await rpc(RPC_TACH, [dong(p)]));
+      expect(rows.map((r) => r.key)).toEqual(["a", "b", "b2"]);
       const st = settlementMonthSchema.parse(await thang(TOA_A, "2025-04-01")).statement!;
       const { key: _a, ...a } = rows[0];
       const { key: _b, ...b } = rows[1];
       expect(a).toEqual(st.vouchers.find((v) => v.id === p.du && v.group === "PNL")!.parts);
       expect(b).toEqual(st.vouchers.find((v) => v.id === p.lan1)!.parts);
+      expect(rows[2]).toMatchObject({ rent: 5_000_000, electric: 1_000_001, water: 300_000, rounding: -1, partial: false });
     });
   });
 
   it("RLS: công ty khác không thấy gì; anon / vai postgres / đầu vào sai bị từ chối", async () => {
     await trongGiaoDich(async () => {
-      await duLieuThang4();
+      const p = await duLieuThang4();
       await asUser(CHU_B);
-      expect(await rpc(RPC_TACH, [dong()])).toEqual([]);
+      expect(await rpc(RPC_TACH, [dong(p)])).toEqual([]);
       await asUser(null);
-      await expectLoi(`SELECT ${RPC_TACH}`, [dong()], "42501");
+      await expectLoi(`SELECT ${RPC_TACH}`, [dong(p)], "42501");
       await asPostgres();
-      await expectLoi(`SELECT ${RPC_TACH}`, [dong()], "42501");
+      await expectLoi(`SELECT ${RPC_TACH}`, [dong(p)], "42501");
       await asUser(CHU_A);
       await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify({ key: "a" })], "22023");
-      await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify(Array.from({ length: 3001 }, (_, i) => ({ key: String(i) })))], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify([{ key: "a", invoice_id: HD_DU, amount: 1 }])], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`,
+        [JSON.stringify(Array.from({ length: 3001 }, (_, i) => ({ key: String(i), voucher_ids: [] })))], "22023");
     });
   });
 });

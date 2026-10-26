@@ -140,8 +140,9 @@ it('Khoản thu (thiết kế v2): màn rộng là bảng Tiền phòng · Đi�
   const parts = { ...khong, rent: 6_200_000, electric: 827_000, water: 0, service: 300_000, other: 100_000,
     discount: -200_000, rounding: -700, invoice_amount: 7_226_300, partial: false };
   const vouchers = st.vouchers.map((v) => (v.code === 'PT2' ? { ...v, amount: 7_226_300, parts }
-    : v.code === 'PT3' ? { ...v, parts: { ...khong, rent: 2_000_000, electric: 700_000, water: 300_000, service: 0, other: 0,
-      invoice_amount: 6_000_000, partial: true } } : v));
+    // PT3 lập tháng trước nhưng tính theo kỳ tháng này — khoản thu không ghi "tính theo kỳ" nữa (chủ nhắn 26/10/2026)
+    : v.code === 'PT3' ? { ...v, voucher_date: '2026-09-28', parts: { ...khong, rent: 2_000_000, electric: 700_000, water: 300_000,
+      service: 0, other: 0, invoice_amount: 6_000_000, partial: true } } : v));
   ve({ month: { ...monthV3(), statement: { ...st, vouchers } } });
   const thu = within(screen.getByTestId('settlement-income-card'));
   expect(thu.getByText('Tiền phòng')).toBeTruthy();
@@ -151,11 +152,14 @@ it('Khoản thu (thiết kế v2): màn rộng là bảng Tiền phòng · Đi�
   const o = within(dong[1]).getAllByTestId('income-part-cell');
   expect(o.map((x) => x.textContent)).toEqual(['6.200.000', '827.000', '—', '400.000']);
   expect(o[3]?.getAttribute('title')).toBe('Phí dịch vụ 300.000 + khoản khác trên hoá đơn 100.000');
-  expect(tien(dong[1])).toMatch(/7\.226\.300 đ\s*Giảm trừ −200\.000$/);
-  expect(tien(dong[1])).not.toMatch(/làm tròn|700/i);
+  // giảm trừ ngay dưới tổng tiền, chỉ "−200k" (chủ nhắn 26/10/2026); làm tròn không ghi
+  expect(within(dong[1]).getByTestId('settlement-row-adjust').textContent).toBe('−200k');
+  expect(tien(dong[1])).toMatch(/7\.226\.300 đ\s*−200k$/);
+  expect(tien(dong[1])).not.toMatch(/Giảm trừ|làm tròn|700/i);
   // ngày · mã · sổ không còn trên dòng — nằm ở tooltip
   expect(dong[1]?.getAttribute('title')).toMatch(/05\/10\/2026 · PT2 · Sổ chủ nhà$/);
   expect(tien(dong[2])).toMatch(/thu một phần \(hoá đơn 6\.000\.000\) — chia theo tỷ lệ/);
+  expect(tien(dong[2])).not.toMatch(/tính theo kỳ/);
   expect(within(dong[2]).getByTestId('settlement-row-book').textContent).toBe('QL');
   // phiếu chưa tách (ảnh chốt cũ / không theo hoá đơn): tên + chi tiết hạng mục trải qua bốn cột
   expect(within(dong[0]).getByTestId('settlement-voucher-name').textContent).toBeTruthy();
@@ -166,7 +170,7 @@ it('Khoản thu (thiết kế v2): màn rộng là bảng Tiền phòng · Đi�
   ve({ month: { ...monthV3(), statement: { ...st, vouchers } } });
   const hep = within(screen.getByTestId('settlement-income-card')).getAllByTestId('settlement-cash-row');
   expect(hep.map((r) => r.getAttribute('data-layout'))).toEqual(['list', 'stack', 'stack']);
-  expect(tien(hep[1])).toMatch(/^.*Tổng thu\s*7\.226\.300 đ.*Tiền phòng\s*6\.200\.000.*PDV\s*400\.000.*Giảm trừ −200\.000/);
+  expect(tien(hep[1])).toMatch(/^.*Tổng thu\s*7\.226\.300 đ\s*−200k.*Tiền phòng\s*6\.200\.000.*PDV\s*400\.000/);
 });
 
 it('"Theo hạng mục" mặc định THU GỌN ở cả hai thẻ (hai cột thẳng hàng); bấm ở một thẻ thì mở / đóng CẢ HAI', () => {

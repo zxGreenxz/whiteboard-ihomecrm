@@ -32,6 +32,9 @@ export function CategoryShareBlock({ cats, total, kind, open, onToggle, testId, 
 }) {
   const colors = kind === 'INCOME' ? INCOME_COLORS : EXPENSE_COLORS;
   const shown = cats.filter((c) => c.amount !== 0).sort((a, b) => b.amount - a.amount);
+  // thanh vẽ theo tổng các khoản dương: khoản âm (giảm trừ, làm tròn) không có đoạn, và các đoạn dương không
+  // vượt 100% (đã đo: lấy tổng thu làm nền thì đoạn cuối bị cắt)
+  const barTotal = shown.reduce((s, c) => s + Math.max(0, c.amount), 0);
   const slug = kind === 'INCOME' ? 'income' : 'expense';
   const listId = `${testId ?? 'categories'}-list-${slug}`;
   return (
@@ -49,7 +52,7 @@ export function CategoryShareBlock({ cats, total, kind, open, onToggle, testId, 
       </div>
       <div className="mt-1.5 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
         {/* hai dòng có thể cùng tên (server gom theo tên + cờ hạn chế): key kèm thứ tự */}
-        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, total)}%` }} />)}
+        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, barTotal)}%` }} />)}
       </div>
       {open && shown.length > 0 && (
         <ul id={listId} className="mt-2.5 flex flex-col gap-1.5">

@@ -17,7 +17,7 @@ import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
-import { categorySharesOf, invoicePartsNote } from "@/lib/invoiceAmountParts";
+import { categorySharesOf, invoiceAdjustmentsText } from "@/lib/invoiceAmountParts";
 import { CategoryShareBlock, IncomePartsGrid } from "@/components/reports/IncomeBreakdown";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { profitReportRowDescription } from "@/lib/voucherDisplayName";
@@ -96,6 +96,10 @@ interface MRow {
   typeId?: string | null;
   // Số khoản thu gộp cùng 1 hoá đơn (>1 ⇒ "(N lần)").
   groupCount?: number;
+  // id các phiếu làm nên dòng — server xét phiếu nào được tách tiền theo hoá đơn.
+  voucherIds?: string[];
+  // Số tiền dòng gồm cả phần ngoài KQKD (cọc) ⇒ không tách theo hoá đơn.
+  mixedDeposit?: boolean;
   // Σ khoản thanh lý cùng HĐ đã tách dòng riêng — bù khi so thiếu/thừa.
   liqSiblingAmount?: number;
   // Dòng doanh thu thanh lý/bỏ cọc → nền vàng cam.
@@ -252,6 +256,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           category: r.category ?? null,
           typeId: r.typeId ?? null,
           notKqkd: r.countsInBusinessResult === false,
+          voucherIds: r.voucherId ? [r.voucherId as string] : [],
         };
         if (r.income > 0) rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
         else if (r.expense > 0) exp.push({ ...base, key: r.itemId, amount: r.expense, invoiceId: null });
@@ -269,6 +274,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           category: null as string | null,
           typeId: null as string | null,
           notKqkd: kqkd <= 0,
+          voucherIds: [r.id as string],
         };
         const items = (r.items || []) as any[];
         const skipDeposit = (it: any) =>
@@ -282,6 +288,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             ...base, key: r.id, type: typeName,
             amount: pnlOnly ? kqkd : Number(r.total_amount) || 0,
             invoiceId: r.invoice_id,
+            mixedDeposit: !pnlOnly && Math.abs(kqkd - (Number(r.total_amount) || 0)) >= 1,
           });
           continue;
         }
@@ -337,6 +344,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           notKqkd: list.some((x) => x.notKqkd),
           groupCount: list.length,
           isLiq,
+          voucherIds: Array.from(new Set(list.flatMap((x) => x.voucherIds ?? []))),
+          mixedDeposit: list.some((x) => x.mixedDeposit),
           ...extra,
         });
     }
@@ -445,12 +454,14 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
 
   // Tách tiền phòng / điện / nước / PDV của khoản thu theo hoá đơn (chủ chốt 25/10/2026 — như desktop và
-  // Quyết toán vận hành; server chia). Không tách dòng thanh lý / bỏ cọc, dòng gồm khoản ngoài KQKD.
+  // Quyết toán vận hành; server chia và xét phiếu nào được tách). Không gửi dòng thanh lý / bỏ cọc, dòng gồm
+  // khoản ngoài KQKD.
   const partsRequests = useMemo(
     () =>
       shownIncomeRows
-        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !r.isLiq && r.amount > 0)
-        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount })),
+        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !r.mixedDeposit && !r.isLiq && r.amount > 0
+          && (r.voucherIds?.length ?? 0) > 0)
+        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount, voucherIds: r.voucherIds! })),
     [shownIncomeRows],
   );
   const { data: incomeParts, isError: partsError, refetch: retryParts } = useInvoiceAmountParts(partsRequests, !loading);
@@ -664,8 +675,10 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       if (r.notKqkd) parts.push("không KQKD");
       noteText = parts.join(" · ");
     }
-    // giảm trừ / nợ cũ / chia theo tỷ lệ: ghi dưới bốn ô (không chen vào ghi chú thiếu / thừa bên phải)
-    const partialNote = split ? invoicePartsNote(split, r.amount) : "";
+    // dòng đã tách: bỏ mô tả "TIỀN PHÒNG - 10/2026" + "Thu tiền hoá đơn · toà · kỳ", chỉ giữ ở hoá đơn tháng đầu
+    // (chủ nhắn 26/10/2026); giảm trừ / nợ cũ ngay dưới tổng tiền, chỉ số gọn
+    const showDesc = !split || !!fd;
+    const adjust = split ? invoiceAdjustmentsText(split) : "";
 
     const meta = r.isMissingExpense
       ? `Hạng mục cố định · ${r.building}`
@@ -673,10 +686,11 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         ? r.building
         : `${r.type} · ${r.building}${accrualMode && r.period ? ` · Kỳ ${r.period}` : ""}`;
 
+    // chạm thẻ hoá đơn là xem hoá đơn luôn (chủ nhắn 26/10/2026); chạm số tiền xem các lần thu
     const onTap = r.isMissingExpense
       ? (canCreate ? () => openCreateMissingExpense(r) : undefined)
       : r.invoiceId
-        ? () => setDetailInvoiceId(r.invoiceId)
+        ? () => setInvoiceModal({ id: r.invoiceId!, title: displayDescription(r) + (r.room ? ` — ${r.room}` : "") })
         : undefined;
 
     return (
@@ -686,53 +700,52 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         className={`rounded-xl px-[11px] py-[9px] shadow-[0_1px_2px_rgba(27,24,19,.04)] border ${dashed ? "border-dashed" : ""} ${onTap ? "cursor-pointer active:opacity-80" : ""}`}
         style={{ background: bg, borderColor: line }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-start gap-2 min-w-0">
           {r.room && (
             <span className="shrink-0 font-mono font-bold text-[11.5px] text-[#1b1813] bg-[#faf8f4] border border-[#e7e3da] px-[7px] py-0.5 rounded-[7px]">
               {r.room}
             </span>
           )}
-          <span
-            className="flex-1 min-w-0 text-[12.5px] font-bold truncate"
-            style={{ color: descColor }}
-            onClick={
-              r.invoiceId
-                ? (e) => {
-                    e.stopPropagation();
-                    setInvoiceModal({
-                      id: r.invoiceId!,
-                      title: displayDescription(r) + (r.room ? ` — ${r.room}` : ""),
-                    });
-                  }
-                : undefined
-            }
-          >
-            {displayDescription(r)}
-            {r.isMissingExpense && <span className="ml-1 text-[11px]">(chưa có phiếu)</span>}
-          </span>
-          <span
-            className="shrink-0 font-mono font-bold text-[13px] tracking-[-0.3px] whitespace-nowrap"
-            style={{ color: amtColor }}
-          >
-            {r.isNote ? "—" : fmtShort(r.amount)}
+          {showDesc ? (
+            <span className="flex-1 min-w-0 text-[12.5px] font-bold truncate leading-6" style={{ color: descColor }}>
+              {displayDescription(r)}
+              {r.isMissingExpense && <span className="ml-1 text-[11px]">(chưa có phiếu)</span>}
+            </span>
+          ) : (
+            <span className="flex-1" />
+          )}
+          <span className="shrink-0 flex flex-col items-end">
+            <span
+              className="font-mono font-bold text-[13px] leading-6 tracking-[-0.3px] whitespace-nowrap"
+              style={{ color: amtColor }}
+              onClick={r.invoiceId && !r.isNote ? (e) => { e.stopPropagation(); setDetailInvoiceId(r.invoiceId); } : undefined}
+            >
+              {r.isNote ? "—" : fmtShort(r.amount)}
+            </span>
+            {adjust && (
+              <span className="font-mono text-[10.5px] font-bold text-[#8d8678] whitespace-nowrap" data-testid="profit-mobile-adjust">
+                {adjust}
+              </span>
+            )}
           </span>
         </div>
         {split && (
           <div className="mt-1.5" data-testid="profit-mobile-parts">
             <IncomePartsGrid parts={split} />
-            {partialNote && <p className="mt-0.5 text-[10.5px] font-semibold text-[#1d4ed8]">{partialNote}</p>}
           </div>
         )}
-        <div className="mt-1 flex items-baseline justify-between gap-2">
-          <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
-            {meta}
-          </span>
-          {noteText && (
-            <span className="shrink-0 text-[10.5px] font-bold whitespace-nowrap" style={{ color: noteColor }}>
-              {noteText}
+        {(showDesc || noteText) && (
+          <div className="mt-1 flex items-baseline justify-between gap-2">
+            <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
+              {showDesc ? meta : ""}
             </span>
-          )}
-        </div>
+            {noteText && (
+              <span className="shrink-0 text-[10.5px] font-bold whitespace-nowrap" style={{ color: noteColor }}>
+                {noteText}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };

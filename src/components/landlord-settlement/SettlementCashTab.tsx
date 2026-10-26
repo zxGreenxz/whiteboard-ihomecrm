@@ -17,7 +17,7 @@ import {
   type SettlementStatement,
   type SettlementVoucher,
 } from '@/lib/landlordSettlement';
-import { invoicePartsNote } from '@/lib/invoiceAmountParts';
+import { invoiceAdjustmentsText, invoicePartialNote } from '@/lib/invoiceAmountParts';
 import {
   compareRoomOrNone,
   settlementRoomNoteRows,
@@ -134,17 +134,23 @@ function VoucherRow({ v, mode, periodMonth, bookCodes, layout }: {
   const name = settlementVoucherName(v, mode);
   const lines = v.lines ?? [];
   const income = v.type === 'INCOME';
+  // khoản thu không còn ghi ngày phiếu ⇒ bỏ "tính theo kỳ tháng …" (chủ nhắn 26/10/2026)
   const note = [
-    voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth).replace(/^ · /, ''),
-    v.parts ? invoicePartsNote(v.parts, v.amount) : '',
+    voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth, { skipPeriod: income }).replace(/^ · /, ''),
+    v.parts ? invoicePartialNote(v.parts, v.amount) : '',
   ].filter(Boolean).join(' · ');
   const meta = `${lines.length === 1 ? `${lines[0].category} · ` : ''}${fmtDay(v.voucher_date)}${v.code ? ` · ${v.code}` : ''}`;
   // khoản thu (thiết kế v2) không còn dòng ngày · mã · sổ — rê chuột vào dòng để xem
   const rowTitle = income ? `${mode === 'admin' ? (v.name ?? name) : name} — ${meta} · ${SIDE_LABEL[v.side]}` : undefined;
+  // giảm trừ / nợ cũ của hoá đơn: ngay dưới tổng tiền, chỉ số gọn (chủ nhắn 26/10/2026)
+  const adjust = v.parts ? invoiceAdjustmentsText(v.parts) : '';
   const amount = (
-    <span className={cn('whitespace-nowrap text-right text-[13.5px] font-bold tabular-nums',
-      income ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-700 dark:text-orange-400')}>
-      {formatVND(v.amount)}
+    <span className="whitespace-nowrap text-right tabular-nums">
+      <span className={cn('block text-[13.5px] font-bold',
+        income ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-700 dark:text-orange-400')}>
+        {formatVND(v.amount)}
+      </span>
+      {adjust && <span className="block text-[11px] font-semibold text-muted-foreground" data-testid="settlement-row-adjust">{adjust}</span>}
     </span>
   );
   const nameEl = (className?: string) => (
@@ -178,8 +184,8 @@ function VoucherRow({ v, mode, periodMonth, bookCodes, layout }: {
       <li className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 border-t px-3.5 py-2 tabular-nums"
         data-testid="settlement-cash-row" data-layout="stack" title={rowTitle}>
         <RowTile v={v} bookCodes={bookCodes} className={noteEl ? 'row-span-3' : 'row-span-2'} />
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[11.5px] text-muted-foreground">Tổng thu</span>
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-[11.5px] leading-5 text-muted-foreground">Tổng thu</span>
           {amount}
         </div>
         <IncomePartsGrid parts={v.parts} />
@@ -255,7 +261,8 @@ function ListCard({ kind, st, filter, mode, narrow, catsOpen, onToggleCats, note
 }) {
   const t = st.totals;
   const income = kind === 'INCOME';
-  const table = income && !narrow;
+  // bảng tách cột chỉ khi gói có phần tách (ảnh chốt cũ / server cũ không có ⇒ danh sách cũ, không cột trống)
+  const table = income && !narrow && st.vouchers.some((v) => v.parts != null);
   const layoutOf = (v: SettlementVoucher): RowLayout => (table ? 'table' : income && v.parts ? 'stack' : 'list');
   const rows = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === kind
     && (filter === 'ALL' || v.side === filter));
@@ -461,8 +468,9 @@ export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes
         </div>
       )}
 
-      {/* bảng Khoản thu 6 cột cần ≥ 420px mỗi thẻ (thiết kế v2) — hẹp hơn thì hai thẻ xếp chồng */}
-      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))]">
+      {/* bảng Khoản thu 6 cột cần ≥ 480px mỗi thẻ (thiết kế v2 ghi 420 — đo: 420 chỉ còn ~51px mỗi cột tiền,
+          "8.594.067" tràn sang cột bên) — hẹp hơn thì hai thẻ xếp chồng */}
+      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))]">
         {(!narrow || list === 'INCOME') && (
           <ListCard kind="INCOME" st={st} filter={filter} mode={mode} narrow={narrow} catsOpen={catsOpen} onToggleCats={toggleCats}
             notes={roomNotes} bookCodes={bookCodes} onToggleSide={toggleSide} />

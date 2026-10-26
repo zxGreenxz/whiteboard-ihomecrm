@@ -70,22 +70,32 @@ export const INVOICE_PART_CATEGORIES: Readonly<Record<CategoryKey, string>> = {
 };
 
 const NUM = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
-const signed = (v: number) => `${v < 0 ? '−' : '+'}${NUM.format(Math.abs(v))}`;
+
+/** Số gọn có dấu: −200k · +17k · −1,2tr (lẻ tới một chữ số để không làm mất tiền lẻ kiểu 200,7k). */
+export function signedShortVnd(n: number): string {
+  const a = Math.abs(n);
+  const body = a >= 1e6
+    ? `${(a / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}tr`
+    : a >= 1e3
+      ? `${(a / 1e3).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}k`
+      : `${NUM.format(a)}đ`;
+  return `${n < 0 ? '−' : '+'}${body}`;
+}
 
 /**
- * Ghi chú dưới dòng: giảm trừ / nợ cũ của hoá đơn và phiếu chia theo tỷ lệ. Làm tròn KHÔNG ghi (chủ chốt
- * 25/10/2026 "làm tròn thì bỏ qua").
+ * Giảm trừ / nợ cũ của hoá đơn, đặt NGAY DƯỚI tổng tiền, chỉ số gọn ("−200k", "+17k") — chủ nhắn 26/10/2026.
+ * Làm tròn KHÔNG ghi (chủ chốt 25/10/2026 "làm tròn thì bỏ qua").
  */
-export function invoicePartsNote(p: InvoiceAmountParts, amount: number): string {
-  const out: string[] = [];
-  if (p.discount !== 0) out.push(`Giảm trừ ${signed(p.discount)}`);
-  if (p.debt !== 0) out.push(`Nợ cũ ${signed(p.debt)}`);
-  if (p.partial) {
-    out.push(amount < p.invoice_amount
-      ? `thu một phần (hoá đơn ${NUM.format(p.invoice_amount)}) — chia theo tỷ lệ`
-      : `thu nhiều hơn hoá đơn (${NUM.format(p.invoice_amount)}) — chia theo tỷ lệ`);
-  }
-  return out.join(' · ');
+export function invoiceAdjustmentsText(p: InvoiceAmountParts): string {
+  return [p.discount, p.debt].filter((v) => v !== 0).map(signedShortVnd).join(' · ');
+}
+
+/** Ghi chú khi số tiền phiếu khác phần doanh thu của hoá đơn (các cột là phần chia theo tỷ lệ). */
+export function invoicePartialNote(p: InvoiceAmountParts, amount: number): string {
+  if (!p.partial) return '';
+  return amount < p.invoice_amount
+    ? `thu một phần (hoá đơn ${NUM.format(p.invoice_amount)}) — chia theo tỷ lệ`
+    : `thu nhiều hơn hoá đơn (${NUM.format(p.invoice_amount)}) — chia theo tỷ lệ`;
 }
 
 /** Một dòng đưa vào "Theo hạng mục": key để tra phần tách; dòng ghi chú bỏ qua. */

@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-26T01:09:29.350Z",
+  "generatedAt": "2026-10-26T01:40:21.649Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13790,12 +13790,14 @@
       "version": "20261025165112",
       "name": "quyet_toan_tach_tien_hoa_don_theo_cot",
       "scheme": "timestamp14",
-      "sha256": "4264ff15d8e60f08b06293d2d9953f8c96f3f027558ab855dffea263d49efec8",
+      "sha256": "8f351539dad4e128c2d46ab68ea35efa0a540e8e75907e36ddc86291d3d756a2",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "function:public.invoice_item_column_v1",
         "function:public.invoice_amount_split_v1",
+        "function:public.invoice_amount_parts_for_v1",
+        "function:public.income_voucher_splittable_v1",
         "function:public.invoice_amount_parts_v1"
       ]
     },

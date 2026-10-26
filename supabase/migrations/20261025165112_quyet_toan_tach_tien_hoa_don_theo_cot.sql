@@ -5,8 +5,8 @@
 -- VÌ SAO
 --   Phiếu thu tiền hoá đơn chỉ có MỘT dòng hạng mục ("Thu tiền hoá đơn") ⇒ thẻ Khoản thu và khối "Theo hạng
 --   mục" không cho thấy tiền phòng, điện, nước, phí dịch vụ. Phần tách nằm ở dòng hoá đơn (invoice_items).
---   Tổng hoá đơn = làm tròn(tổng dòng − giảm trừ + nợ cũ) (app_private.round_invoice_total_v1) ⇒ phiếu trả đủ
---   vẫn khác tổng các dòng (giảm trừ, nợ cũ, vài trăm đồng làm tròn).
+--   Tổng hoá đơn = làm tròn(subtotal − giảm trừ + nợ cũ) (app_private.round_invoice_total_v1); dòng DISCOUNT chỉ
+--   là chi tiết của invoices.discount_amount (không nằm trong subtotal) ⇒ phiếu trả đủ vẫn khác tổng các dòng.
 --   Chủ chốt 25/10/2026:
 --   · 4 cột = ĐÚNG số trên hoá đơn; giảm trừ / nợ cũ ghi riêng dưới dòng; làm tròn bỏ qua (không hiện ở dòng —
 --     chỉ có một dòng nhỏ ở "Theo hạng mục" để tổng hạng mục khớp doanh thu);
@@ -14,36 +14,41 @@
 --   · dòng hoá đơn không phải phòng/điện/nước/phí dịch vụ (chìa khoá, rác, phạt…) ⇒ cột PDV gộp, khối hạng mục
 --     tách riêng "Thu khác".
 --
--- LÀM GÌ
---   1. public.invoice_item_column_v1(type, nhãn) — hàm THUẦN xếp một dòng hoá đơn vào cột:
---        RENT ⇒ RENT; SERVICE có chữ "điện" ⇒ ELECTRIC, có chữ "nước" ⇒ WATER, còn lại ⇒ SERVICE;
---        loại khác (OTHER, PENALTY…) ⇒ OTHER. Nhãn = tên dịch vụ + mô tả dòng, so không dấu (public.nrm_vn):
+-- LÀM GÌ (mọi hàm public mới: search_path rỗng, chỉ authenticated EXECUTE; INVOKER ⇒ đọc theo RLS người gọi)
+--   1. public.invoice_item_column_v1(loại, tên dịch vụ, mô tả) — THUẦN, xếp một dòng hoá đơn vào cột:
+--        RENT ⇒ RENT; SERVICE có chữ "điện" ⇒ ELECTRIC, "nước" ⇒ WATER, còn lại ⇒ SERVICE; loại khác (OTHER,
+--        PENALTY…) ⇒ OTHER. Xét TÊN DỊCH VỤ trước (dòng có dịch vụ thì chỉ theo tên — mô tả "đồng hồ điện tử" của
+--        dòng nước không thành điện); dòng không gắn dịch vụ mới xét mô tả. So không dấu (public.nrm_vn);
 --        services.type không phân biệt điện/nước (dịch vụ điện giá cố định cũng là FIXED).
 --   2. public.invoice_amount_split_v1(số tiền, tổng hoá đơn, dòng không phải doanh thu, giảm trừ, nợ cũ, phòng,
---        điện, nước, PDV, khác) — hàm THUẦN. Phần doanh thu phải thu = tổng hoá đơn − dòng không phải doanh thu
---        (cọc, NON_PNL — thu ở dòng phiếu khác). Số tiền phiếu bằng đúng phần đó ⇒ các cột lấy nguyên số trên
---        hoá đơn, discount = −giảm trừ, debt = nợ cũ, rounding = phần làm tròn của hoá đơn. Khác ⇒ mọi phần nhân
---        cùng tỷ lệ (làm tròn tới đồng), phần lẻ dồn vào rounding; partial = true. Cộng mọi phần luôn đúng bằng
---        số tiền phiếu. Phần doanh thu ≤ 0 hoặc không có dòng doanh thu dương ⇒ NULL (không tách).
---   3. public.invoice_amount_parts_v1(p_rows jsonb) — RPC MỚI cho Báo cáo LN: SECURITY INVOKER + RLS
---        (authenticated), nhận [{key, invoice_id, amount}] trả [{key, rent, electric, water, service, other,
---        discount, debt, rounding, invoice_amount, partial}] cho các hoá đơn người gọi đọc được.
---   4. app_private.landlord_settlement_compute_v1 (DỰNG TỪ THÂN production md5 4aeced8e…, file
+--        điện, nước, PDV, khác) — THUẦN. Phần doanh thu phải thu = tổng hoá đơn − dòng không phải doanh thu
+--        (cọc, NON_PNL — thu ở dòng phiếu khác). Số tiền phiếu bằng phần đó (lệch dưới 1 đồng vẫn tính là bằng)
+--        ⇒ các cột lấy nguyên số trên hoá đơn, discount = −giảm trừ, debt = nợ cũ, rounding = phần làm tròn.
+--        Khác ⇒ mọi phần nhân cùng tỷ lệ (làm tròn tới đồng), phần lẻ dồn vào rounding; partial = true. Cộng
+--        mọi phần luôn đúng bằng số tiền phiếu. Phần doanh thu ≤ 0 hoặc không có dòng doanh thu dương ⇒ NULL.
+--   3. public.invoice_amount_parts_for_v1(hoá đơn, số tiền) — INVOKER, đường DUY NHẤT gom dòng hoá đơn (bỏ dòng
+--        DISCOUNT) rồi gọi mục 2. Gói quyết toán và RPC Báo cáo LN cùng gọi.
+--   4. public.income_voucher_splittable_v1(phiếu) — INVOKER, điều kiện DUY NHẤT để tách một phiếu: phiếu thu có
+--        hoá đơn, không hạn chế (link chủ nhà không lộ hoá đơn), không do thanh lý sinh (system_source
+--        termination.*), dòng lãi lỗ thuộc đúng MỘT hạng mục.
+--   5. public.invoice_amount_parts_v1(p_rows jsonb) — RPC MỚI cho Báo cáo LN: INVOKER + RLS, từ chối khi
+--        current_user ≠ authenticated. Nhận [{key, invoice_id, amount, voucher_ids}] (một dòng báo cáo có thể gộp
+--        nhiều phiếu cùng hoá đơn) — chỉ tách khi MỌI phiếu thuộc đúng hoá đơn đó và qua mục 4; trả [{key, rent,
+--        electric, water, service, other, discount, debt, rounding, invoice_amount, partial}].
+--   6. app_private.landlord_settlement_compute_v1 (DỰNG TỪ THÂN production md5 4aeced8e…, file
 --      20261023142407) — thêm, CHỈ ĐỂ HIỂN THỊ (không vào chuỗi băm, không đổi tổng nào):
---      · mỗi phiếu thu lãi lỗ theo hoá đơn có parts (như mục 3) = phần KỲ tháng này của phiếu chia theo hoá đơn
---        (hai hàm thuần ở trên — cùng đường với Báo cáo LN);
+--      · mỗi phiếu thu lãi lỗ qua mục 4 có parts = phần KỲ tháng này của phiếu chia theo hoá đơn (mục 3);
 --      · categories.income: phiếu đã tách thay dòng hạng mục của nó bằng "Tiền phòng", "Tiền điện", "Tiền
 --        nước", "Phí dịch vụ", "Thu khác", "Giảm trừ hoá đơn", "Nợ cũ", "Làm tròn hoá đơn" (tên trùng hạng mục
 --        có sẵn thì gộp chung).
---      Không tách: phiếu hạn chế (link chủ nhà không lộ hoá đơn — landlord_strip_public_v1 KHÔNG cần đổi vì
---      phiếu hạn chế không bao giờ có parts), phiếu thanh lý (system_source termination.*), phiếu có từ hai
---      hạng mục trở lên trong kỳ.
+--      landlord_strip_public_v1 KHÔNG đổi: phiếu hạn chế không bao giờ có parts (mục 4).
 --   Ảnh chốt cũ không có parts ⇒ web hiện kiểu cũ (danh sách). Tháng đã chốt không đổi chuỗi băm.
 --
 -- ĐƯỜNG LÙI
 --   CREATE OR REPLACE app_private.landlord_settlement_compute_v1 bằng thân của 20261023142407; DROP FUNCTION
---   public.invoice_amount_parts_v1(jsonb), public.invoice_amount_split_v1(numeric, numeric, numeric, numeric,
---   numeric, numeric, numeric, numeric, numeric, numeric), public.invoice_item_column_v1(text, text).
+--   public.invoice_amount_parts_v1(jsonb), public.invoice_amount_parts_for_v1(uuid, numeric),
+--   public.income_voucher_splittable_v1(uuid), public.invoice_amount_split_v1(numeric, numeric, numeric, numeric,
+--   numeric, numeric, numeric, numeric, numeric, numeric), public.invoice_item_column_v1(text, text, text).
 --
 -- Chạy được hai lượt liên tiếp và trên DB rỗng của Restore Drill (không đòi dữ liệu).
 -- =============================================================================
@@ -63,7 +68,7 @@ BEGIN
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
       ('app_private.landlord_settlement_compute_v1(uuid,date)',
-       ARRAY['4aeced8e78010313db6de24f910b88cd', '30b1ada662e8174dd337629b1e588b81']),
+       ARRAY['4aeced8e78010313db6de24f910b88cd', 'f3e5e427f0a7eca206950b5f20e681ad']),
       -- hàm KHÔNG thay — compute gọi / link chủ nhà dựa vào; đổi thì rà lại trước khi áp
       ('public.nrm_vn(text)',
        ARRAY['01e25fe96aaac1f69d03feadb155c2fd']),
@@ -83,9 +88,11 @@ BEGIN
   -- hàm mới: lượt hai phải đúng bản của file này
   FOR v_sig, v_ghim IN
     SELECT x.sig, x.ghim FROM (VALUES
-      ('public.invoice_item_column_v1(text,text)', ARRAY['a671cf9b5c48d5b5ae6338dc2e5c7c6b']),
-      ('public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)', ARRAY['00cd7300cff487ddc12b68a595347382']),
-      ('public.invoice_amount_parts_v1(jsonb)', ARRAY['f15a46fa8f023eacd5c8cbc35a6e71e4'])
+      ('public.invoice_item_column_v1(text,text,text)', ARRAY['05ea03aaab1bd1b9da1a32d6c7b93b40']),
+      ('public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)', ARRAY['9f6ea48c08523cb162050d4be6b5dc92']),
+      ('public.invoice_amount_parts_for_v1(uuid,numeric)', ARRAY['1b9df4d01a87ad96fa35d2cd9ee1f249']),
+      ('public.income_voucher_splittable_v1(uuid)', ARRAY['41447857b2c1edc1e599cee704b5a871']),
+      ('public.invoice_amount_parts_v1(jsonb)', ARRAY['205ff5d713ace4fe04967babdf698662'])
     ) AS x(sig, ghim)
   LOOP
     IF to_regprocedure(v_sig) IS NOT NULL THEN
@@ -99,9 +106,9 @@ END
 $truoc$;
 
 -- ---------------------------------------------------------------------------
--- 1. Cột của một dòng hoá đơn. Nhãn so KHÔNG DẤU (nrm_vn bỏ dấu + chữ thường ASCII); 'Đ' giữ trong mẫu vì
---    lower() chỉ chắc với chữ ASCII ở mọi locale. Ranh giới chữ để "điện" không khớp giữa một từ khác.
-CREATE OR REPLACE FUNCTION public.invoice_item_column_v1(p_type text, p_label text)
+-- 1. Cột của một dòng hoá đơn. So KHÔNG DẤU (nrm_vn bỏ dấu + chữ thường ASCII); 'Đ' giữ trong mẫu vì lower()
+--    chỉ chắc với chữ ASCII ở mọi locale. Ranh giới chữ để "điện" không khớp giữa một từ khác.
+CREATE OR REPLACE FUNCTION public.invoice_item_column_v1(p_type text, p_service_name text, p_description text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
@@ -110,18 +117,19 @@ SET search_path TO ''
 AS $fn$
   SELECT CASE
     WHEN p_type = 'RENT' THEN 'RENT'
-    WHEN p_type = 'SERVICE' AND public.nrm_vn(p_label) ~ '(^|[^a-z])[dĐ]ien([^a-z]|$)' THEN 'ELECTRIC'
-    WHEN p_type = 'SERVICE' AND public.nrm_vn(p_label) ~ '(^|[^a-z])nuoc([^a-z]|$)' THEN 'WATER'
-    WHEN p_type = 'SERVICE' THEN 'SERVICE'
-    ELSE 'OTHER'
-  END;
+    WHEN p_type <> 'SERVICE' OR p_type IS NULL THEN 'OTHER'
+    WHEN x.ten ~ '(^|[^a-z])[dĐ]ien([^a-z]|$)' THEN 'ELECTRIC'
+    WHEN x.ten ~ '(^|[^a-z])nuoc([^a-z]|$)' THEN 'WATER'
+    ELSE 'SERVICE'
+  END
+    FROM (SELECT public.nrm_vn(COALESCE(NULLIF(pg_catalog.btrim(p_service_name), ''), p_description)) AS ten) x;
 $fn$;
 
-COMMENT ON FUNCTION public.invoice_item_column_v1(text, text) IS
-  'Cột của một dòng hoá đơn khi tách tiền phiếu thu: RENT | ELECTRIC | WATER | SERVICE | OTHER. Nhãn = tên dịch vụ + mô tả dòng. Chủ chốt 25/10/2026.';
+COMMENT ON FUNCTION public.invoice_item_column_v1(text, text, text) IS
+  'Cột của một dòng hoá đơn khi tách tiền phiếu thu: RENT | ELECTRIC | WATER | SERVICE | OTHER. Xét tên dịch vụ trước, không có dịch vụ mới xét mô tả. Chủ chốt 25/10/2026.';
 
-REVOKE ALL ON FUNCTION public.invoice_item_column_v1(text, text) FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.invoice_item_column_v1(text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.invoice_item_column_v1(text, text, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.invoice_item_column_v1(text, text, text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2. Chia số tiền phiếu theo hoá đơn (chủ chốt 25/10/2026). Cộng mọi phần luôn đúng bằng p_amount.
@@ -151,11 +159,12 @@ AS $fn$
            COALESCE(p_invoice_total, 0) - COALESCE(p_non_revenue, 0) AS phai_thu
   ),
   t AS (
-    SELECT b.*, p_amount = b.phai_thu AS du
+    -- lệch dưới 1 đồng (số lẻ khi cộng phân bổ kỳ) vẫn là trả đủ
+    SELECT b.*, pg_catalog.abs(p_amount - b.phai_thu) < 1 AS du
       FROM b
      WHERE p_amount IS NOT NULL AND b.phai_thu > 0 AND b.r + b.e + b.w + b.s + b.o > 0
   ),
-  -- trả đúng phần doanh thu ⇒ lấy nguyên số trên hoá đơn; khác ⇒ mọi phần nhân cùng tỷ lệ
+  -- trả đủ phần doanh thu ⇒ lấy nguyên số trên hoá đơn; khác ⇒ mọi phần nhân cùng tỷ lệ
   c AS (
     SELECT t.du, t.phai_thu,
            CASE WHEN t.du THEN t.r ELSE pg_catalog.round(p_amount * t.r / NULLIF(t.phai_thu, 0)) END AS r,
@@ -184,8 +193,78 @@ REVOKE ALL ON FUNCTION public.invoice_amount_split_v1(numeric, numeric, numeric,
 GRANT EXECUTE ON FUNCTION public.invoice_amount_split_v1(numeric, numeric, numeric, numeric, numeric, numeric, numeric, numeric, numeric, numeric) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3. RPC cho Báo cáo LN: INVOKER + RLS — hoá đơn người gọi không đọc được ⇒ không có dòng trả về (web hiện
---    kiểu cũ). Nhận tối đa 3000 dòng mỗi lần gọi.
+-- 3. Tách một số tiền theo MỘT hoá đơn — đường duy nhất gom dòng hoá đơn (gói quyết toán + RPC Báo cáo LN).
+--    INVOKER: người gọi chỉ thấy hoá đơn / dòng / dịch vụ RLS cho phép; hàm DEFINER gọi thì đọc như owner.
+CREATE OR REPLACE FUNCTION public.invoice_amount_parts_for_v1(p_invoice_id uuid, p_amount numeric)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $fn$
+  SELECT public.invoice_amount_split_v1(p_amount, inv.total_amount,
+           sum(d.tien) FILTER (WHERE d.cot IS NULL), inv.discount_amount, inv.previous_debt,
+           sum(d.tien) FILTER (WHERE d.cot = 'RENT'),
+           sum(d.tien) FILTER (WHERE d.cot = 'ELECTRIC'),
+           sum(d.tien) FILTER (WHERE d.cot = 'WATER'),
+           sum(d.tien) FILTER (WHERE d.cot = 'SERVICE'),
+           sum(d.tien) FILTER (WHERE d.cot = 'OTHER'))
+    FROM public.invoices inv
+    LEFT JOIN LATERAL (
+      -- cot NULL = dòng không phải doanh thu (cọc, NON_PNL). Dòng DISCOUNT chỉ là chi tiết của discount_amount
+      -- (không nằm trong subtotal) ⇒ bỏ, kẻo trừ giảm trừ hai lần.
+      SELECT CASE WHEN ii.accounting_class = 'REVENUE'
+                  THEN public.invoice_item_column_v1(ii.type::text, s.name, ii.description)
+             END AS cot,
+             COALESCE(ii.amount, 0) AS tien
+        FROM public.invoice_items ii
+        LEFT JOIN public.services s ON s.id = ii.service_id
+       WHERE ii.invoice_id = inv.id
+         AND ii.type::text <> 'DISCOUNT'
+    ) d ON true
+   WHERE inv.id = p_invoice_id
+     AND inv.deleted_at IS NULL
+   GROUP BY inv.id, inv.total_amount, inv.discount_amount, inv.previous_debt;
+$fn$;
+
+COMMENT ON FUNCTION public.invoice_amount_parts_for_v1(uuid, numeric) IS
+  'Tách một số tiền thu theo một hoá đơn (gom dòng hoá đơn + invoice_amount_split_v1). INVOKER. Chủ chốt 25/10/2026.';
+
+REVOKE ALL ON FUNCTION public.invoice_amount_parts_for_v1(uuid, numeric) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.invoice_amount_parts_for_v1(uuid, numeric) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Điều kiện tách một phiếu (đường duy nhất). Dòng lãi lỗ = cùng vị ngữ KQKD với landlord_kqkd_lines_v2 (phiếu
+--    ép tính KQKD thì mọi dòng; không thì dòng PNL). Phiếu không thấy được (RLS) ⇒ NULL ⇒ không tách.
+CREATE OR REPLACE FUNCTION public.income_voucher_splittable_v1(p_voucher_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO ''
+AS $fn$
+  SELECT v.type::text = 'INCOME'
+     AND v.invoice_id IS NOT NULL
+     AND NOT COALESCE(v.has_restricted_item, false)
+     AND COALESCE(v.system_source, '') NOT LIKE 'termination.%'
+     AND (SELECT count(DISTINCT i.income_expense_type_id)
+            FROM public.income_expense_items i
+           WHERE i.income_expense_id = v.id
+             AND (v.business_result_accounting IS TRUE OR i.accounting_class = 'PNL')) = 1
+    FROM public.income_expenses v
+   WHERE v.id = p_voucher_id
+     AND v.deleted_at IS NULL;
+$fn$;
+
+COMMENT ON FUNCTION public.income_voucher_splittable_v1(uuid) IS
+  'Phiếu thu có được tách theo hoá đơn không: có hoá đơn, không hạn chế, không do thanh lý sinh, dòng lãi lỗ đúng một hạng mục. INVOKER. Chủ chốt 25/10/2026.';
+
+REVOKE ALL ON FUNCTION public.income_voucher_splittable_v1(uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.income_voucher_splittable_v1(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. RPC cho Báo cáo LN: INVOKER + RLS — hoá đơn / phiếu người gọi không đọc được ⇒ không có dòng trả về (web
+--    hiện kiểu cũ). Nhận tối đa 3000 dòng mỗi lần gọi.
 CREATE OR REPLACE FUNCTION public.invoice_amount_parts_v1(p_rows jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -197,47 +276,39 @@ BEGIN
   IF current_user <> 'authenticated' OR auth.uid() IS NULL THEN
     RAISE EXCEPTION 'invoice_amount_parts_denied' USING ERRCODE = '42501';
   END IF;
-  IF p_rows IS NULL OR pg_catalog.jsonb_typeof(p_rows) <> 'array' OR pg_catalog.jsonb_array_length(p_rows) > 3000 THEN
+  IF p_rows IS NULL OR pg_catalog.jsonb_typeof(p_rows) <> 'array' OR pg_catalog.jsonb_array_length(p_rows) > 3000
+     OR EXISTS (SELECT 1 FROM pg_catalog.jsonb_array_elements(p_rows) AS e(v)
+                 WHERE pg_catalog.jsonb_typeof(e.v->'voucher_ids') IS DISTINCT FROM 'array') THEN
     RAISE EXCEPTION 'invoice_amount_parts_invalid' USING ERRCODE = '22023';
   END IF;
   RETURN COALESCE((
     SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('key', r.k) || x.phan ORDER BY r.ord)
       FROM (
-        SELECT e.ord, e.v->>'key' AS k, (e.v->>'invoice_id')::uuid AS hoa_don, (e.v->>'amount')::numeric AS so_tien
+        SELECT e.ord, e.v->>'key' AS k, (e.v->>'invoice_id')::uuid AS hoa_don, (e.v->>'amount')::numeric AS so_tien,
+               ARRAY(SELECT p.id::uuid FROM pg_catalog.jsonb_array_elements_text(e.v->'voucher_ids') AS p(id)) AS phieu
           FROM pg_catalog.jsonb_array_elements(p_rows) WITH ORDINALITY AS e(v, ord)
       ) r
-      JOIN public.invoices inv ON inv.id = r.hoa_don AND inv.deleted_at IS NULL
-      CROSS JOIN LATERAL (
-        SELECT public.invoice_amount_split_v1(r.so_tien, inv.total_amount,
-                 sum(d.tien) FILTER (WHERE d.cot IS NULL), inv.discount_amount, inv.previous_debt,
-                 sum(d.tien) FILTER (WHERE d.cot = 'RENT'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'ELECTRIC'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'WATER'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'SERVICE'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'OTHER')) AS phan
-          FROM (
-            -- cot NULL = dòng không phải doanh thu (cọc, NON_PNL)
-            SELECT CASE WHEN ii.accounting_class = 'REVENUE'
-                        THEN public.invoice_item_column_v1(ii.type::text, pg_catalog.concat_ws(' ', s.name, ii.description))
-                   END AS cot,
-                   COALESCE(ii.amount, 0) AS tien
-              FROM public.invoice_items ii
-              LEFT JOIN public.services s ON s.id = ii.service_id
-             WHERE ii.invoice_id = inv.id
-          ) d
-      ) x
-     WHERE x.phan IS NOT NULL), '[]'::jsonb);
+      CROSS JOIN LATERAL (SELECT public.invoice_amount_parts_for_v1(r.hoa_don, r.so_tien) AS phan) x
+     WHERE x.phan IS NOT NULL
+       AND pg_catalog.cardinality(r.phieu) > 0
+       -- mọi phiếu của dòng thuộc đúng hoá đơn này và qua điều kiện tách (như gói quyết toán)
+       AND NOT EXISTS (
+         SELECT 1
+           FROM pg_catalog.unnest(r.phieu) AS p(id)
+          WHERE NOT COALESCE(public.income_voucher_splittable_v1(p.id), false)
+             OR NOT EXISTS (SELECT 1 FROM public.income_expenses v WHERE v.id = p.id AND v.invoice_id = r.hoa_don))
+  ), '[]'::jsonb);
 END
 $fn$;
 
 COMMENT ON FUNCTION public.invoice_amount_parts_v1(jsonb) IS
-  'Báo cáo LN: tách số tiền thu theo hoá đơn. [{key, invoice_id, amount}] ⇒ [{key, rent, electric, water, service, other, discount, debt, rounding, invoice_amount, partial}]. INVOKER + RLS. Chủ chốt 25/10/2026.';
+  'Báo cáo LN: tách số tiền thu theo hoá đơn. [{key, invoice_id, amount, voucher_ids}] ⇒ [{key, rent, electric, water, service, other, discount, debt, rounding, invoice_amount, partial}]. INVOKER + RLS. Chủ chốt 25/10/2026.';
 
 REVOKE ALL ON FUNCTION public.invoice_amount_parts_v1(jsonb) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.invoice_amount_parts_v1(jsonb) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4. CÔNG THỨC — thân production (20261023142407, md5 4aeced8e…) + tách tiền phiếu thu theo hoá đơn (chỉ
+-- 6. CÔNG THỨC — thân production (20261023142407, md5 4aeced8e…) + tách tiền phiếu thu theo hoá đơn (chỉ
 --    hiển thị). Không kiểm quyền: chỉ các hàm SECURITY DEFINER gọi.
 CREATE OR REPLACE FUNCTION app_private.landlord_settlement_compute_v1(
   p_building_id uuid,
@@ -373,37 +444,16 @@ AS $fn$
       LEFT JOIN public.income_expense_types t ON t.id = l.type_id
   ),
   -- TÁCH TIỀN PHIẾU THU THEO HOÁ ĐƠN (chủ chốt 25/10/2026; chỉ hiển thị — không vào chuỗi băm, không đổi tổng):
-  -- phần KỲ tháng này của phiếu chia theo hoá đơn bằng hai hàm thuần dùng chung với Báo cáo LN. Không tách
-  -- phiếu hạn chế (link chủ nhà không lộ hoá đơn), phiếu thanh lý, phiếu có từ hai hạng mục.
+  -- phần KỲ tháng này của phiếu chia theo hoá đơn — điều kiện tách và phép tách là hai hàm dùng chung với Báo cáo
+  -- LN (income_voucher_splittable_v1, invoice_amount_parts_for_v1).
   tach AS (
     SELECT x.id, x.approval_status, x.phan
       FROM (
-        SELECT ct.id, ct.approval_status,
-               public.invoice_amount_split_v1(ct.so_tien, inv.total_amount,
-                 sum(d.tien) FILTER (WHERE d.cot IS NULL), inv.discount_amount, inv.previous_debt,
-                 sum(d.tien) FILTER (WHERE d.cot = 'RENT'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'ELECTRIC'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'WATER'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'SERVICE'),
-                 sum(d.tien) FILTER (WHERE d.cot = 'OTHER')) AS phan
+        SELECT ct.id, ct.approval_status, public.invoice_amount_parts_for_v1(ct.invoice_id, ct.so_tien) AS phan
           FROM ct
-          JOIN public.invoices inv ON inv.id = ct.invoice_id AND inv.deleted_at IS NULL
-          CROSS JOIN LATERAL (
-            -- cot NULL = dòng không phải doanh thu (cọc, NON_PNL)
-            SELECT CASE WHEN ii.accounting_class = 'REVENUE'
-                        THEN public.invoice_item_column_v1(ii.type::text, pg_catalog.concat_ws(' ', s.name, ii.description))
-                   END AS cot,
-                   COALESCE(ii.amount, 0) AS tien
-              FROM public.invoice_items ii
-              LEFT JOIN public.services s ON s.id = ii.service_id
-             WHERE ii.invoice_id = inv.id
-          ) d
          WHERE ct.nhom = 'KQKD'
-           AND ct.loai = 'INCOME'
-           AND NOT ct.han_che
-           AND ct.nguon NOT LIKE 'termination.%'
-           AND (SELECT count(DISTINCT h.ten) FROM lai_lo_hang_muc h WHERE h.id = ct.id) = 1
-         GROUP BY ct.id, ct.approval_status, ct.so_tien, inv.total_amount, inv.discount_amount, inv.previous_debt
+           AND ct.invoice_id IS NOT NULL
+           AND public.income_voucher_splittable_v1(ct.id)
       ) x
      WHERE x.phan IS NOT NULL
   ),
