@@ -154,6 +154,8 @@ export const DATE_PHRASE_FIELDS = Object.freeze({
   // C3l (nghiệm thu C3d TC-A04 "thứ hai tuần trước anh có chi 2 củ… ghi bù"): ngày phiếu chi là ngày ĐÃ xảy ra.
   'expense.create': Object.freeze([{ phrase: 'voucherDatePhrase', date: 'voucherDate', time: null, direction: 'past', items: true }]),
   'expense.edit': Object.freeze([{ phrase: 'voucherDatePhrase', date: 'voucherDate', time: null, direction: 'past' }]),
+  // C3m (nghiệm thu c3k HĐn D04 "Thứ hai tuần trước phòng 205 toà 1392 ck 82k mà anh quên ghi"): ngày khách trả là ngày ĐÃ xảy ra.
+  'invoice.collect': Object.freeze([{ phrase: 'datePhrase', date: 'date', time: null, direction: 'past' }]),
 });
 
 function applyOne(record, spec, nowMs, prefix) {

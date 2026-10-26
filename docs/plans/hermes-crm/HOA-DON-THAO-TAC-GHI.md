@@ -658,3 +658,16 @@ Kiểm:
 **Phát hành:** chỉ connector, không migration. Đi cùng SOUL v4.30 (đồng ý bản xem trước = ghi đúng sổ mặc định, không hỏi lại sổ; khách cũ trả "tiền quyết toán" ⇒ `invoice.collect`; chỉ số nhỏ hơn đầu kỳ ⇒ nêu số đầu kỳ).
 
 **Test:** `collect-guard.test.mjs` thêm ca đơn vị (phòng "MB", `items[]` "Paris 2", sổ thật giữ nguyên). Đột biến bằng tay: tắt nhánh ⇒ ca đỏ.
+
+## Lượt C3m — ngày thu tiền nói bằng lời (27/10)
+
+**Vì sao:** nghiệm thu c3k (TEST, 26/10) TC-D04 "Thứ hai tuần trước phòng 205 toà 1392 ck 82k mà anh quên ghi" ⇒ ngày khách trả do mô hình tự tính (cùng lớp lỗi CV-T12 / HD-T22 / TC-A04 đã sửa ở C3i, C3l).
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `invoice-actions-contract.mjs` | `datePhrase` (tuỳ chọn, ≤ 80 ký tự) cho `invoice.collect` |
+| `vn-relative-date.mjs` | `DATE_PHRASE_FIELDS['invoice.collect']`: hướng QUÁ KHỨ, connector ghi đè `date`, cụm không xuống SQL, xem trước nêu "Hiểu '…' là …" |
+
+**Phát hành:** chỉ connector; SOUL v4.33 (dặn gửi `datePhrase` cho thu tiền) lên cùng.
+
+**Test:** `vn-relative-date.test.mjs` (Chủ nhật / thứ Hai, "hôm qua", cụm không hiểu), `invoice-actions.test.mjs` (khuôn trường). Đột biến bằng tay: bỏ ánh xạ ⇒ ca đỏ.
