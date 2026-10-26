@@ -14,7 +14,7 @@ import urllib.request
 import uuid
 
 from domain import MAX_BYTES, VERSION, InvalidInput, validate_job
-from recognize import NoRedirect, https_base, recognize, request_headers, request_json
+from recognize import NoRedirect, https_base, recognize, request_headers, request_json, require_cpu_avx
 
 
 class Gateway:
@@ -123,6 +123,7 @@ def process(gateway: Gateway, job: dict):
 
 
 def main():
+    require_cpu_avx()
     gateway = Gateway()
     worker_id = os.environ.get("METER_CAPTURE_WORKER_ID", "meter-" + str(uuid.uuid4()))
     while True:

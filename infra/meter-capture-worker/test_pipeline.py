@@ -10,7 +10,7 @@ import urllib.error
 from unittest.mock import patch
 
 from domain import InvalidInput, Reading
-from recognize import read_ai, recognize, request_json
+from recognize import read_ai, recognize, request_json, require_cpu_avx
 from worker import Gateway
 
 
@@ -29,6 +29,18 @@ def tokens(value):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_linux_cpu_preflight_fails_before_loading_native_ocr(self):
+        with patch("recognize.sys.platform", "linux"), patch("recognize.Path.read_text") as read:
+            for cpu in ("flags : sse sse2", "flags : avx2", "flags : avx\nflags : sse2", ""):
+                read.return_value = cpu
+                with self.assertRaisesRegex(InvalidInput, "ocr_cpu_avx_required"):
+                    require_cpu_avx()
+            read.return_value = "flags : sse2 avx avx2\nflags : avx"
+            require_cpu_avx()
+            read.side_effect = OSError("unavailable")
+            with self.assertRaisesRegex(InvalidInput, "ocr_cpu_capability_unknown"):
+                require_cpu_avx()
+
     def run_case(self, source=None, server_values=None, ai_readings=None, multiple=False):
         source = source or frames()
         server_values = server_values or ["0012.3"] * 3

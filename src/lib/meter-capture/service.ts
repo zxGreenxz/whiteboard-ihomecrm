@@ -117,7 +117,11 @@ export async function readDocumentEvidence(orgId: string, documentId: string, ki
     .parse(await call(orgId, 'documentEvidence', { documentId, kind })).sources;
 }
 export async function createInvoiceWithMeterSources(orgId: string, args: Record<string, unknown>, sources: MeterSourceReference[]) {
-  return gateway({ action: 'invoice', organizationId: orgId, arguments: args, sources });
+  // The JSON document adapter preserves JSON null, whereas the optional writer
+  // context uses SQL NULL to mean "no rent support". Omission uses that default.
+  const argumentsForWriter = { ...args };
+  if (argumentsForWriter.p_rent_support_context == null) delete argumentsForWriter.p_rent_support_context;
+  return gateway({ action: 'invoice', organizationId: orgId, arguments: argumentsForWriter, sources });
 }
 /** Content-derived key survives remounts; a changed intent receives a different key. */
 export async function meterInvoiceRequestId(orgId: string, intent: unknown): Promise<string> {

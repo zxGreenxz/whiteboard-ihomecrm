@@ -6,11 +6,12 @@ import {METER_TEST_URL,type MeterLiveFixture} from './meter-capture-live-fixture
 /** Only two disposable contracts may be written, through the real application gateway. */
 export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture){
  const subjects=[fixture,{...fixture,...fixture.bulkRoom}],receipts=new Map<string,string>();
- const requests:unknown[]=[],blocked:string[]=[];
+ const requests:unknown[]=[],blocked:string[]=[],observations:unknown[]=[];
+ page.on('console',message=>{if(message.type()==='error'&&message.text().startsWith('Create invoice failed for E2E-METER-'))observations.push({consoleError:message.text().slice(0,1600)});});
  await page.route(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,async route=>{
   const raw:unknown=route.request().postDataJSON();
   const envelope=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.unknown()).optional()}).safeParse(raw);
-  const deny=()=>{blocked.push('Unscoped bulk gateway request');return route.abort('blockedbyclient');};
+  const deny=()=>{blocked.push('Unscoped bulk gateway request');observations.push({deniedAction:envelope.success?envelope.data.action:'invalid-envelope'});return route.abort('blockedbyclient');};
   if(!envelope.success||envelope.data.organizationId!==fixture.organizationId)return deny();
   const body=envelope.data;
   if(body.action==='rpc'){
@@ -28,8 +29,10 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
    ||args.p_applied_credit!==0||args.p_prepaid_amount!==0||source.contractId!==subject.contractId||source.meterId!==subject.meterId
    ||source.purpose!=='MONTHLY'||Number(source.previousReading)!==100||Number(source.currentReading)!==Number(subject.currentValue))return deny();
   const response=await route.fetch();
+  const resultBody:unknown=await response.json();
+  observations.push({action:'invoice',status:response.status(),result:response.ok()?'created':resultBody});
   if(response.ok()){
-   const result=z.object({invoice_id:z.string().uuid()}).parse(await response.json());
+   const result=z.object({invoice_id:z.string().uuid()}).parse(resultBody);
    receipts.set(subject.contractId,result.invoice_id);requests.push(raw);
   }
   return route.fulfill({response});
@@ -47,7 +50,7 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
   }
   await expect(dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true})).toBeEnabled({timeout:60_000});
  };
- return {receipts,requests,blocked,
+ return {receipts,requests,blocked,observations,
   create:async(info:TestInfo)=>{await load();await info.attach('bulk-two-rooms-ready',{body:await dialog().screenshot(),contentType:'image/png'});
    await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();await expect.poll(()=>receipts.size,{timeout:90_000}).toBe(2);
    await expect(dialog()).not.toBeVisible({timeout:60_000});},

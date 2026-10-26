@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 from typing import Any
 import urllib.error
@@ -132,8 +133,22 @@ def representatives(frames: list[dict], maximum: int = MAX_AI_FRAMES) -> list[di
     return chosen
 
 
+def require_cpu_avx():
+    """Pinned Linux Paddle wheels need AVX; reject before a native SIGILL or claim."""
+    if sys.platform != "linux":
+        return
+    try:
+        flags = [line.split(":", 1)[1].split() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                 if line.split(":", 1)[0].strip() == "flags"]
+    except OSError as error:
+        raise InvalidInput("ocr_cpu_capability_unknown") from error
+    if not flags or any("avx" not in core for core in flags):
+        raise InvalidInput("ocr_cpu_avx_required")
+
+
 class PaddleReader:
     def __init__(self):
+        require_cpu_avx()
         from paddleocr import PaddleOCR
         model_root = Path(os.environ.get("METER_OCR_MODELS", "/opt/models"))
         det = model_root / "PP-OCRv5_mobile_det"

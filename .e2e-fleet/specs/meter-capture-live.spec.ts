@@ -193,6 +193,7 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,bulkInvoicesThroughUi:true,bulkInvoiceCount:2,bulkRetryRecovered:true,secondInvoiceId,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
     expect(ui.blocked).toEqual([]);expect(ui.errors).toEqual([]);
   } finally {
+    await testInfo.attach('bulk-gateway-observations',{body:JSON.stringify({blocked:bulk.blocked,events:bulk.observations}),contentType:'application/json'});
     const retired=await lifecycle.retireFixture(fixture,created);
     expect(retired).toEqual({fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true});
   }
