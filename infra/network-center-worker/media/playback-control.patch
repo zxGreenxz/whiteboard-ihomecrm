@@ -510,3 +510,99 @@ index a41196c..63d00b0 100644
  type nilLogger struct{}
  
  func (nilLogger) Log(logger.Level, string, ...any) {
+diff --git a/internal/core/ihome_on_demand_test.go b/internal/core/ihome_on_demand_test.go
+new file mode 100644
+index 0000000..884bd5b
+--- /dev/null
++++ b/internal/core/ihome_on_demand_test.go
+@@ -0,0 +1,73 @@
++package core
++
++import (
++	"testing"
++
++	"github.com/bluenviron/gortsplib/v5/pkg/description"
++	"github.com/stretchr/testify/require"
++
++	"github.com/bluenviron/mediamtx/internal/conf"
++	"github.com/bluenviron/mediamtx/internal/defs"
++	"github.com/bluenviron/mediamtx/internal/forward"
++	"github.com/bluenviron/mediamtx/internal/logger"
++	"github.com/bluenviron/mediamtx/internal/test"
++)
++
++type ihomePathParent struct{}
++
++func (*ihomePathParent) Log(logger.Level, string, ...any) {}
++func (*ihomePathParent) setPathReady(*path)               {}
++func (*ihomePathParent) setPathNotReady(*path)            {}
++func (*ihomePathParent) closePathIfIdle(*path)            {}
++func (*ihomePathParent) removePath(*path)                 {}
++func (*ihomePathParent) AddReader(defs.PathAddReaderReq) (*defs.PathAddReaderRes, error) {
++	panic("unexpected parent reader")
++}
++
++type ihomeDelayedPublisher struct {
++	dummyPublisher
++	closed bool
++}
++
++// Close deliberately does not report RemovePublisher yet, like a draining encoder.
++func (p *ihomeDelayedPublisher) Close() { p.closed = true }
++
++func TestIHomeOnDemandReconnectExcludesDrainingPublisher(t *testing.T) {
++	pa := &path{
++		conf: &conf.Path{Source: "publisher"}, parent: &ihomePathParent{},
++		readers: make(map[defs.Reader]struct{}), writeQueueSize: 16, rtpMaxPayloadSize: 1472,
++		onDemandPublisherCloseTimer: emptyTimer(), onDemandPublisherReadyTimer: emptyTimer(),
++	}
++	pa.forwardManager = &forward.Manager{Parent: pa}
++	pa.forwardManager.Initialize()
++	defer pa.forwardManager.Stop()
++	publish := func(publisher *ihomeDelayedPublisher) {
++		req := defs.PathAddPublisherReq{Author: publisher,
++			Desc: &description.Session{Medias: []*description.Media{test.UniqueMediaH264()}},
++			Res:  make(chan defs.PathAddPublisherRes, 1)}
++		pa.doAddPublisher(req)
++		require.NoError(t, (<-req.Res).Err)
++	}
++	old := &ihomeDelayedPublisher{}
++	publish(old)
++	previous := pa.stream
++	pa.onDemandPublisherState = pathOnDemandStateClosing
++	stops := 0
++	pa.onUnDemandHook = func(string) { stops++ }
++	pa.doOnDemandPublisherCloseTimer()
++	require.True(t, old.closed)
++	require.Nil(t, pa.stream, "new viewers must not attach to the draining stream")
++	require.Nil(t, pa.source)
++	require.Equal(t, 1, stops)
++	require.Equal(t, pathOnDemandStateInitial, pa.onDemandPublisherState)
++
++	next := &ihomeDelayedPublisher{}
++	publish(next)
++	require.NotSame(t, previous, pa.stream)
++	current := pa.stream
++	pa.doRemovePublisher(defs.PathRemovePublisherReq{Author: old, Res: make(chan struct{})})
++	require.Same(t, current, pa.stream, "late teardown of the old encoder must preserve the new stream")
++	require.Same(t, next, pa.source)
++	require.False(t, next.closed)
++	pa.doRemovePublisher(defs.PathRemovePublisherReq{Author: next, Res: make(chan struct{})})
++}
+diff --git a/internal/core/path.go b/internal/core/path.go
+index 83e4e6d..7df0bd5 100644
+--- a/internal/core/path.go
++++ b/internal/core/path.go
+@@ -443,6 +443,12 @@ func (pa *path) doOnDemandPublisherReadyTimer() {
+ }
+ 
+ func (pa *path) doOnDemandPublisherCloseTimer() {
++	// The command stops asynchronously. Detach its publisher before accepting a
++	// new reader, otherwise a reconnect can attach to the encoder being stopped.
++	if pa.source != nil {
++		pa.source.(defs.Publisher).Close()
++		pa.executeRemovePublisher()
++	}
+ 	pa.onDemandPublisherStop("not needed by anyone")
+ }
+ 

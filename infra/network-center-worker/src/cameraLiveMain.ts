@@ -8,7 +8,7 @@ import { createArchiveMedia, prepareArchiveDirectory } from "./cameraArchiveMedi
 
 // Build from the pinned upstream revision plus media/playback-control.patch.
 // Runtime verifies the release's binary digest before executing it.
-export const MEDIA_VERSION = "1.21.2-ihome-playback1";
+export const MEDIA_VERSION = "1.21.2-ihome-playback2";
 
 export function mediaConfiguration(config: LiveConfig, encoder?: string) {
   if (encoder && !/^\/opt\/ihome-camera-live\/releases\/[a-f0-9]{40}\/ffmpeg$/u.test(encoder)) throw new Error("LIVE_ENCODER_INVALID");

@@ -24,7 +24,7 @@ if (process.argv.includes("--test")) {
   run("go", ["test", "-p", "2", ...(process.platform === "linux" ? ["-race"] : []), "./internal/staticsources/rtsp", "./internal/core", "./internal/stream", "./internal/protocols/rtsp", "-run", "^TestIHome", "-count=1"]);
 } else {
   const output = fileURLToPath(new URL("../camera-dist/", import.meta.url)); await mkdir(output, { recursive: true });
-  await writeFile(join(checkout, "internal/core/VERSION"), "v1.21.2-ihome-playback1\n");
+  await writeFile(join(checkout, "internal/core/VERSION"), "v1.21.2-ihome-playback2\n");
   run("go", ["build", "-p", "2", "-trimpath", "-buildvcs=false", "-o", join(output, "mediamtx"), "."], { GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" });
   const binarySha256 = createHash("sha256").update(await readFile(join(output, "mediamtx"))).digest("hex");
   await writeFile(join(output, "mediamtx-LICENSE"), await readFile(join(checkout, "LICENSE")));
