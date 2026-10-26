@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "failed",
+  "commit": "45fa8a34abb62a4c6c8aa6f9f888e317cb9c3901",
+  "fleetTree": "0c0017857b339207ad8dea2091273f9ade1a65e6",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5199"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "45fa8a34abb62a4c6c8aa6f9f888e317cb9c3901",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "codex"
+  },
+  "reportSha256": "e8b89f4f8168d38d8ba2a16e9860a7f5518f97ab4f5f6d2254a1f6e5450bba8a",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "e8c7e168-3c8c-4184-be43-9fd5a42bbbdb",
+  "startedAt": "2026-10-26T18:20:28.642Z",
+  "completedAt": "2026-10-26T18:24:18.520Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/meter-capture-live.spec.ts",
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

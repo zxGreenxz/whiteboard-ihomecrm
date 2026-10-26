@@ -7,6 +7,7 @@ import {METER_TEST_URL,type MeterLiveFixture} from './meter-capture-live-fixture
 export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture){
  const subjects=[fixture,{...fixture,...fixture.bulkRoom}],receipts=new Map<string,string>();
  const requests:unknown[]=[],blocked:string[]=[],observations:unknown[]=[];
+ const duplicateRejections:string[]=[];
  page.on('console',message=>{if(message.type()==='error'&&message.text().startsWith('Create invoice failed for E2E-METER-'))observations.push({consoleError:message.text().slice(0,1600)});});
  await page.route(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,async route=>{
   const raw:unknown=route.request().postDataJSON();
@@ -31,6 +32,7 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
   const response=await route.fetch();
   const resultBody:unknown=await response.json();
   observations.push({action:'invoice',status:response.status(),result:response.ok()?'created':resultBody});
+  if(response.status()===409&&z.object({error:z.literal('23505')}).safeParse(resultBody).success)duplicateRejections.push(subject.contractId);
   if(response.ok()){
    const result=z.object({invoice_id:z.string().uuid()}).parse(resultBody);
    receipts.set(subject.contractId,result.invoice_id);requests.push(raw);
@@ -55,8 +57,9 @@ export async function installMeterBulkBrowser(page:Page,fixture:MeterLiveFixture
    await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();await expect.poll(()=>receipts.size,{timeout:90_000}).toBe(2);
    await expect(dialog()).not.toBeVisible({timeout:60_000});},
   retry:async(info:TestInfo)=>{await load();await dialog().getByRole('button',{name:'Tạo 2 hoá đơn',exact:true}).click();
-   await expect(page.getByText('Đã tìm thấy kết quả lần tạo trước',{exact:true}).first()).toBeVisible({timeout:90_000});
-   await info.attach('bulk-retry-recovered',{body:await dialog().screenshot(),contentType:'image/png'});
+   await expect.poll(()=>duplicateRejections.slice().sort(),{timeout:90_000}).toEqual(subjects.map(s=>s.contractId).sort());
+   await expect(dialog().getByRole('alert').filter({hasText:'Thông tin này đã được sử dụng.'})).toHaveCount(2);
+   await info.attach('bulk-duplicate-rejected',{body:await dialog().screenshot(),contentType:'image/png'});
    await dialog().getByRole('button',{name:'Huỷ',exact:true}).click();},
  };
 }

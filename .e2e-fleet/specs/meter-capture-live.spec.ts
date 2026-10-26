@@ -190,7 +190,7 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     await page.goto('/meter-readings');await page.getByRole('button',{name:'Chụp đồng hồ / QR'}).click();
     await ui.showZeroMoveOut(moveOut,testInfo);
     expect(ui.writes).toEqual(expect.arrayContaining(['startCapture','storageUpload','finalize','confirmCapture']));
-    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,bulkInvoicesThroughUi:true,bulkInvoiceCount:2,bulkRetryRecovered:true,secondInvoiceId,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
+    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,bulkInvoicesThroughUi:true,bulkInvoiceCount:2,bulkRetryDuplicateBlocked:true,secondInvoiceId,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
     expect(ui.blocked).toEqual([]);expect(ui.errors).toEqual([]);
   } finally {
     await testInfo.attach('bulk-gateway-observations',{body:JSON.stringify({blocked:bulk.blocked,events:bulk.observations}),contentType:'application/json'});
