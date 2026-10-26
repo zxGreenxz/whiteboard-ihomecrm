@@ -212,6 +212,14 @@ test('needs_input từ SQL: hạng mục / sổ / mã phiếu không giải đư
     candidates: [{ name: 'Sửa chữa' }, { name: 'Sửa điện' }], more: false, item: 2 };
   assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM, ITEM] } })).detail,
     'Mục #2: Chưa nêu hạng mục; gợi ý: Sửa chữa, Sửa điện — hỏi người dùng chọn một, không tự chọn.');
+  // C3n (TC A14): đúng MỘT gợi ý ⇒ xem trước ngay với gợi ý đó, hỏi đồng ý một lần; có `more` (còn gợi ý khác) ⇒ vẫn hỏi chọn.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified', candidates: [{ name: 'Khoá cơ, chìa khoá' }], more: false };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
+    'Chưa nêu hạng mục; gợi ý duy nhất: Khoá cơ, chìa khoá — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần ' +
+    '(nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.');
+  outcome = { ...outcome, more: true };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
+    'Chưa nêu hạng mục; gợi ý: Khoá cơ, chìa khoá, … — hỏi người dùng chọn một, không tự chọn.');
   outcome = { kind: 'rejected', reason: 'not_found' };
   assert.deepEqual((await env.call({ action: 'expense.note', params: { voucherCode: 'PC0000000', note: 'x' } })).reason, 'not_found');
 });
