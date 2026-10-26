@@ -9,6 +9,7 @@ import {
   landlordOperationsListSchema, settlementMonthSchema, settlementOverviewSchema, settlementPublicSchema,
   settlementVoucherName, shareLinksSchema, upsertReceiptSchema, type SettlementVoucher,
 } from "@/lib/landlordSettlement";
+import { INVOICE_PART_CATEGORIES, invoiceAmountPartsRowsSchema, type InvoiceAmountParts } from "@/lib/invoiceAmountParts";
 import { getInvoiceTitle, invoiceTitlePartsOf } from "@/lib/invoiceUtils";
 import { settlementRoomNoteRows } from "@/lib/settlementRoomNotes";
 import {
@@ -260,6 +261,29 @@ const HAM_PORTAL_MOI = [
 let md5GocPortal: Record<string, string> = {};
 let md5LuotMotPortal: Record<string, string> = {};
 let hashSauPortal: string[] = [];
+/**
+ * Migration 20261025165112 — tách tiền phiếu thu theo hoá đơn thành phòng / điện / nước / PDV (chủ chốt
+ * 25/10/2026). Đường dẫn đổi được qua env để kiểm đột biến trên bản sao.
+ */
+const FILE_TACH = process.env.QTTACH_MIGRATION_FILE
+  ?? "supabase/migrations/20261025165112_quyet_toan_tach_tien_hoa_don_theo_cot.sql";
+const CONG_THUC = "app_private.landlord_settlement_compute_v1(uuid,date)";
+/** md5(pg_get_functiondef) production (= TEST), đọc chỉ đọc 25/10/2026, sau khi áp 20261024072823. */
+const PROD_MD5_TACH: Record<string, string> = {
+  [CONG_THUC]: "4aeced8e78010313db6de24f910b88cd",
+  "public.nrm_vn(text)": "01e25fe96aaac1f69d03feadb155c2fd",
+  "app_private.landlord_strip_public_v1(jsonb)": "5ba02b4cd662bfdbf24b1e688de4f519",
+};
+const HAM_TACH_MOI = [
+  "public.invoice_item_column_v1(text,text,text)",
+  "public.invoice_amount_split_v1(numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric,numeric)",
+  "public.invoice_amount_parts_for_v1(uuid,numeric)",
+  "public.income_voucher_splittable_v1(uuid)",
+  "public.invoice_amount_parts_v1(jsonb)",
+];
+let md5GocTach: Record<string, string> = {};
+let md5LuotMotTach: Record<string, string> = {};
+let hashSauTach: string[] = [];
 /** source_hash của các tháng có dữ liệu (đọc thẳng công thức, vai postgres). */
 async function hashCacThang(): Promise<string[]> {
   const r = await db.query<{ h: string }>(
@@ -450,6 +474,36 @@ beforeAll(async () => {
   md5LuotMotPortal = await md5Cua([GOI_THANG, ...HAM_PORTAL_MOI]);
   await chay(sqlPortal);
   hashSauPortal = await hashCacThang();
+
+  // 20261025165112 (tách tiền phiếu thu theo hoá đơn): bảng giả thêm đủ cột production mà hàm mới đọc; RLS theo
+  // công ty như production cho hoá đơn / dòng / dịch vụ (RPC của Báo cáo LN là INVOKER), rồi áp HAI lượt.
+  await chay(`
+    ALTER TABLE public.invoices ADD COLUMN organization_id uuid, ADD COLUMN discount_amount numeric DEFAULT 0,
+      ADD COLUMN previous_debt numeric DEFAULT 0;
+    ALTER TABLE public.invoice_items ADD COLUMN organization_id uuid, ADD COLUMN service_id uuid,
+      ADD COLUMN description text, ADD COLUMN amount numeric,
+      ADD COLUMN accounting_class text NOT NULL DEFAULT 'REVENUE';
+    CREATE TABLE public.services(id uuid PRIMARY KEY, organization_id uuid, name text);
+    GRANT SELECT ON public.invoices, public.invoice_items, public.services, public.income_expenses,
+      public.income_expense_items TO authenticated;
+    ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.income_expenses ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.income_expense_items ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY cong_ty ON public.invoices FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.invoice_items FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.services FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.income_expenses FOR SELECT TO authenticated USING (organization_id = ANY (public.my_org_ids()));
+    CREATE POLICY cong_ty ON public.income_expense_items FOR SELECT TO authenticated
+      USING (EXISTS (SELECT 1 FROM public.income_expenses v WHERE v.id = income_expense_id));
+  `);
+  md5GocTach = await md5Cua(Object.keys(PROD_MD5_TACH));
+  const sqlTach = readFileSync(FILE_TACH, "utf8");
+  await chay(sqlTach);
+  md5LuotMotTach = await md5Cua([CONG_THUC, ...HAM_TACH_MOI]);
+  await chay(sqlTach);
+  hashSauTach = await hashCacThang();
 }, 60000);
 afterAll(() => db.close());
 
@@ -2804,6 +2858,304 @@ describe("link tên miền (20261024072823): đăng nhập PIN và xem", () => {
         ["agiang", "x".repeat(43), p.selected, "2025-02-01", rev, null], "P0002");
       expect(portalPayloadSchema.parse(await rpc(TRANG, ["agiang", phien, null, null])))
         .toMatchObject({ buildings: [], selected: null, overview: null, month: null });
+    });
+  });
+});
+
+describe("tách tiền hoá đơn (20261025165112): migration", () => {
+  it("thân production tái lập đúng md5 trước khi áp (cả hàm chỉ đọc được ghim)", () => {
+    expect(md5GocTach).toEqual(PROD_MD5_TACH);
+  });
+
+  it("md5 lượt hai được tiền kiểm nhận đúng bằng thân của chính file", () => {
+    const sql = readFileSync(FILE_TACH, "utf8");
+    expect(md5LuotMotTach[CONG_THUC]).toMatch(/^[0-9a-f]{32}$/);
+    expect(sql).toContain(`'${PROD_MD5_TACH[CONG_THUC]}', '${md5LuotMotTach[CONG_THUC]}'`);
+    for (const s of HAM_TACH_MOI) {
+      expect(md5LuotMotTach[s]).toMatch(/^[0-9a-f]{32}$/);
+      expect(sql).toContain(`('${s}', ARRAY['${md5LuotMotTach[s]}'])`);
+    }
+  });
+
+  it.each([
+    ["công thức", "CREATE OR REPLACE FUNCTION app_private.landlord_settlement_compute_v1(p_building_id uuid, p_month date) RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT '{}'::jsonb $x$"],
+    ["hàm chỉ đọc (gói link chủ nhà)", "CREATE OR REPLACE FUNCTION app_private.landlord_strip_public_v1(p_statement jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $x$ SELECT p_statement $x$"],
+    ["hàm mới (chia, lượt hai)", "CREATE OR REPLACE FUNCTION public.invoice_amount_split_v1(p_amount numeric, p_invoice_total numeric, p_non_revenue numeric, p_discount numeric, p_debt numeric, p_rent numeric, p_electric numeric, p_water numeric, p_service numeric, p_other numeric) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $x$ SELECT NULL::jsonb $x$"],
+  ])("thân lạ ở %s ⇒ dừng 55000", async (_ten, gia) => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await chay(gia);
+      const block = readFileSync(FILE_TACH, "utf8").replace(/^BEGIN;$/m, "").replace(/^COMMIT;$/m, "");
+      await expect(db.exec(block)).rejects.toMatchObject({ code: "55000" });
+    });
+  });
+
+  it("không đổi số, không đổi chuỗi băm tháng đã có; hàm thuần chỉ authenticated gọi được", async () => {
+    expect(hashSauTach).toEqual(hashTruoc);
+    for (const s of HAM_TACH_MOI) {
+      for (const [vai, duoc] of [["authenticated", true], ["anon", false], ["service_role", false]] as const) {
+        const r = await db.query<{ c: boolean }>("SELECT has_function_privilege($1, $2, 'EXECUTE') AS c", [vai, s]);
+        expect(r.rows[0].c, `${vai} ${s}`).toBe(duoc);
+      }
+    }
+  });
+});
+
+describe("tách tiền hoá đơn (20261025165112): hai hàm thuần", () => {
+  const cot = async (loai: string, dichVu: string | null, moTa: string | null) =>
+    rpc<string>("public.invoice_item_column_v1($1, $2, $3)", [loai, dichVu, moTa]);
+  const chia = async (...so: (number | null)[]) =>
+    rpc<Json | null>("public.invoice_amount_split_v1($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", so);
+
+  it("xếp cột theo loại dòng; tên dịch vụ trước, không có dịch vụ mới xét mô tả; không phân biệt dấu và chữ hoa", async () => {
+    const ca: [string, string | null, string | null, string][] = [
+      ["RENT", null, "Tiền thuê phòng 103 (10/2026)", "RENT"],
+      ["SERVICE", "Điện 3k8", "Tiền điện (1.111 → 1.216)", "ELECTRIC"],
+      ["SERVICE", null, "TIỀN ĐIỆN", "ELECTRIC"],
+      ["SERVICE", "  ", "Tien dien (10 → 46)", "ELECTRIC"],
+      ["SERVICE", "Nước", "Nước (10 ngày)", "WATER"],
+      ["SERVICE", null, "NƯỚC", "WATER"],
+      ["SERVICE", null, "Tiền nước (2 người)", "WATER"],
+      // dòng gắn dịch vụ chỉ xét tên dịch vụ: mô tả "điện tử" của dòng nước không thành điện
+      ["SERVICE", "Nước", "đồng hồ điện tử", "WATER"],
+      ["SERVICE", "PDV", "Phí dịch vụ (28/30 ngày)", "SERVICE"],
+      ["SERVICE", "Phí Dịch Vụ TL", "Phí Dịch Vụ TL (10 ngày)", "SERVICE"],
+      ["SERVICE", null, null, "SERVICE"],
+      ["OTHER", null, "khách đưa thêm tiền nước", "OTHER"],
+      ["PENALTY", null, "Phí phạt khách bỏ cọc", "OTHER"],
+    ];
+    for (const [loai, dichVu, moTa, kyVong] of ca) expect(await cot(loai, dichVu, moTa), `${loai} ${dichVu} ${moTa}`).toBe(kyVong);
+  });
+
+  it("trả đúng phần doanh thu ⇒ cột đúng số hoá đơn, giảm trừ / nợ cũ / làm tròn tách riêng; cọc không tính", async () => {
+    // (số tiền, tổng HĐ, dòng không phải doanh thu, giảm trừ, nợ cũ, phòng, điện, nước, PDV, khác)
+    expect(await chia(7_627_000, 13_627_000, 6_000_000, 0, 0, 6_200_000, 827_000, 200_000, 300_000, 100_000)).toEqual({
+      rent: 6_200_000, electric: 827_000, water: 200_000, service: 300_000, other: 100_000,
+      discount: 0, debt: 0, rounding: 0, invoice_amount: 7_627_000, partial: false,
+    });
+    // 7.727.700 − 200.000 + 17.000 = 7.544.700 ⇒ hoá đơn làm tròn 7.544.000
+    expect(await chia(7_544_000, 7_544_000, 0, 200_000, 17_000, 5_500_000, 1_727_700, 300_000, 200_000, 0)).toEqual({
+      rent: 5_500_000, electric: 1_727_700, water: 300_000, service: 200_000, other: 0,
+      discount: -200_000, debt: 17_000, rounding: -700, invoice_amount: 7_544_000, partial: false,
+    });
+  });
+
+  it("thu khác phần doanh thu ⇒ mọi phần nhân cùng tỷ lệ, phần lẻ vào làm tròn, cộng đúng số phiếu", async () => {
+    const p = (await chia(3_000_000, 6_300_000, 0, 0, 0, 5_000_000, 1_000_001, 300_000, 0, 0))!;
+    const [phong, dien, nuoc] = [5_000_000, 1_000_001, 300_000].map((x) => Math.round(3_000_000 * x / 6_300_000));
+    expect(p).toEqual({
+      rent: phong, electric: dien, water: nuoc, service: 0, other: 0, discount: 0, debt: 0,
+      rounding: 3_000_000 - phong - dien - nuoc, invoice_amount: 6_300_000, partial: true,
+    });
+    // giảm trừ cũng nhân tỷ lệ: 100 / 99 ⇒ 51 + 51 − 1, lẻ −1 vào làm tròn
+    expect(await chia(100, 99, 0, 1, 0, 50, 50, 0, 0, 0)).toEqual({
+      rent: 51, electric: 51, water: 0, service: 0, other: 0, discount: -1, debt: 0, rounding: -1, invoice_amount: 99, partial: true,
+    });
+  });
+
+  it("phần doanh thu ≤ 0, không có dòng doanh thu dương hoặc thiếu số tiền ⇒ NULL (không tách)", async () => {
+    expect(await chia(1_000, 0, 0, 0, 0, 1_000, 0, 0, 0, 0)).toBeNull();
+    expect(await chia(1_000, 2_000, 2_000, 0, 0, 1_000, 0, 0, 0, 0)).toBeNull();
+    expect(await chia(1_000, 1_000, 0, 0, 0, 0, 0, 0, 0, 0)).toBeNull();
+    expect(await chia(1_000, 1_000, null, null, null, null, null, null, null, null)).toBeNull();
+    expect(await chia(null, 1_000, 0, 0, 0, 1_000, 0, 0, 0, 0)).toBeNull();
+    // tổng hoá đơn không dựng lại được từ các cột (lệch ≥ 1.000đ — vd hoá đơn thanh lý có khoản trừ ngoài giảm
+    // trừ) ⇒ không tách; lệch dưới 1.000đ là làm tròn ⇒ vẫn tách
+    expect(await chia(1_000_000, 1_000_000, 0, 0, 0, 3_000_000, 500_000, 0, 0, 0)).toBeNull();
+    expect(await chia(3_500_000, 3_500_000, 0, 0, 0, 3_000_000, 500_999, 0, 0, 0)).toMatchObject({ rounding: -999 });
+  });
+});
+
+const tongPhan = (x: InvoiceAmountParts) =>
+  x.rent + x.electric + x.water + x.service + x.other + x.discount + x.debt + x.rounding;
+
+/**
+ * Tháng 04/2025 (trong giao dịch — không ảnh hưởng ca khác): hoá đơn đủ cột trả một lần (có cọc); hoá đơn có
+ * giảm trừ + nợ cũ + làm tròn trả một lần; hoá đơn trả hai lần (một phiếu sổ quản lý); và các phiếu KHÔNG tách.
+ */
+const [LOAI_HOA_DON, HD_DU, HD_HAI_LAN, HD_CHI_COC, HD_GIAM, DV_DIEN, DV_NUOC, DV_PDV] =
+  [34, 41, 42, 43, 44, 51, 52, 53].map(id);
+async function duLieuThang4() {
+  await asPostgres();
+  await chay(`
+    INSERT INTO public.income_expense_types(id, organization_id, name, category, fee_category, type)
+    VALUES ('${LOAI_HOA_DON}','${ORG_A}','Thu tiền hoá đơn',null,null,'income');
+    INSERT INTO public.services(id, organization_id, name) VALUES
+      ('${DV_DIEN}','${ORG_A}','Điện 3k8'),('${DV_NUOC}','${ORG_A}','Nước'),('${DV_PDV}','${ORG_A}','PDV');
+    -- tổng hoá đơn = làm tròn(tổng dòng − giảm trừ + nợ cũ), như app_private.round_invoice_total_v1
+    INSERT INTO public.invoices(id, organization_id, billing_month, kind, issue_date, notes, total_amount,
+      discount_amount, previous_debt) VALUES
+      ('${HD_DU}','${ORG_A}','2025-04','MONTHLY','2025-04-01',null,13627000,0,0),
+      ('${HD_HAI_LAN}','${ORG_A}','2025-04','MONTHLY','2025-04-01',null,6300000,0,0),
+      ('${HD_CHI_COC}','${ORG_A}','2025-04','MONTHLY','2025-04-01',null,2000000,0,0),
+      ('${HD_GIAM}','${ORG_A}','2025-04','MONTHLY','2025-04-01',null,7544000,200000,17000);
+    INSERT INTO public.invoice_items(invoice_id, organization_id, type, service_id, description, amount, accounting_class) VALUES
+      ('${HD_GIAM}','${ORG_A}','RENT',null,'Tiền thuê phòng 105 (04/2025)',5500000,'REVENUE'),
+      ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_DIEN}','Tiền điện (1 → 400)',1727700,'REVENUE'),
+      ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_NUOC}','Nước',300000,'REVENUE'),
+      ('${HD_GIAM}','${ORG_A}','SERVICE','${DV_PDV}','PDV',200000,'REVENUE'),
+      -- chi tiết của discount_amount (không nằm trong subtotal) — không được trừ lần hai
+      ('${HD_GIAM}','${ORG_A}','DISCOUNT',null,'Giảm trừ gia hạn 12 tháng',200000,'REVENUE'),
+      ('${HD_DU}','${ORG_A}','RENT',null,'Tiền thuê phòng 103 (04/2025)',6200000,'REVENUE'),
+      ('${HD_DU}','${ORG_A}','SERVICE','${DV_DIEN}','Tiền điện (1.111 → 1.216)',827000,'REVENUE'),
+      ('${HD_DU}','${ORG_A}','SERVICE','${DV_NUOC}','Nước',200000,'REVENUE'),
+      ('${HD_DU}','${ORG_A}','SERVICE','${DV_PDV}','PDV',300000,'REVENUE'),
+      ('${HD_DU}','${ORG_A}','OTHER',null,'Tiền cọc',6000000,'DEPOSIT'),
+      ('${HD_DU}','${ORG_A}','OTHER',null,'đánh chìa khoá',100000,'REVENUE'),
+      ('${HD_HAI_LAN}','${ORG_A}','RENT',null,'Tiền thuê phòng 104 (04/2025)',5000000,'REVENUE'),
+      ('${HD_HAI_LAN}','${ORG_A}','SERVICE',null,'Tiền điện (10 → 46)',1000001,'REVENUE'),
+      ('${HD_HAI_LAN}','${ORG_A}','SERVICE',null,'Tiền nước (2 người)',300000,'REVENUE'),
+      ('${HD_CHI_COC}','${ORG_A}','OTHER',null,'Tiền cọc',2000000,'DEPOSIT');
+  `);
+  const hd = { loai: "INCOME" as const, loaiHangMuc: LOAI_HOA_DON };
+  const du = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-07", hoaDon: HD_DU,
+    dong: [{ lop: "PNL", tien: 7_627_000 }, { lop: "DEPOSIT", tien: 6_000_000 }] });
+  const lan1 = await phieu({ ...hd, so: SO_QUAN_LY, thang: "2025-04-08", hoaDon: HD_HAI_LAN, dong: [{ lop: "PNL", tien: 3_000_000 }] });
+  const lan2 = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-20", hoaDon: HD_HAI_LAN, dong: [{ lop: "PNL", tien: 3_300_000 }] });
+  const giam = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-21", hoaDon: HD_GIAM, dong: [{ lop: "PNL", tien: 7_544_000 }] });
+  // KHÔNG tách: phiếu hạn chế, phiếu thanh lý, hoá đơn chỉ có cọc, phiếu hai hạng mục
+  const hanChe = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-09", hoaDon: HD_DU, hanChe: true, dong: [{ lop: "PNL", tien: 111 }] });
+  const thanhLy = await phieu({ ...hd, so: SO_AO, thang: "2025-04-10", hoaDon: HD_DU, nguon: "termination.revenue", dong: [{ lop: "PNL", tien: 222 }] });
+  const chiCoc = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-11", hoaDon: HD_CHI_COC, dong: [{ lop: "PNL", tien: 333 }] });
+  const haiHangMuc = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-12", hoaDon: HD_DU, dong: [{ lop: "PNL", tien: 444 }] });
+  await db.query(
+    "INSERT INTO public.income_expense_items(income_expense_id, amount, accounting_class, income_expense_type_id) VALUES ($1, 555, 'PNL', $2)",
+    [haiHangMuc, LOAI_THU]);
+  await db.query("UPDATE public.income_expenses SET total_amount = 999 WHERE id = $1", [haiHangMuc]);
+  // phiếu tắt tính KQKD: gói quyết toán xếp "không tính"; RPC Báo cáo LN cũng không tách
+  const tatKqkd = await phieu({ ...hd, so: SO_CHU_NHA, thang: "2025-04-13", hoaDon: HD_DU, kqkd: false, dong: [{ lop: "PNL", tien: 666 }] });
+  return { du, lan1, lan2, giam, tatKqkd, khongTach: [hanChe, thanhLy, chiCoc, haiHangMuc] };
+}
+
+describe("tách tiền hoá đơn (20261025165112): gói quyết toán", () => {
+  it("phiếu thu theo hoá đơn có parts (cột đúng số hoá đơn + giảm trừ / nợ cũ / làm tròn); thu hai lần chia theo tỷ lệ; phiếu không đủ điều kiện ⇒ null", async () => {
+    await trongGiaoDich(async () => {
+      const p = await duLieuThang4();
+      await asUser(CHU_A);
+      const st = settlementMonthSchema.parse(await thang(TOA_A, "2025-04-01")).statement!;
+      const cua = (pid: string) => st.vouchers.find((v) => v.id === pid && v.group === "PNL")!;
+      expect(cua(p.du).parts).toEqual({
+        rent: 6_200_000, electric: 827_000, water: 200_000, service: 300_000, other: 100_000,
+        discount: 0, debt: 0, rounding: 0, invoice_amount: 7_627_000, partial: false,
+      });
+      expect(cua(p.giam).parts).toEqual({
+        rent: 5_500_000, electric: 1_727_700, water: 300_000, service: 200_000, other: 0,
+        discount: -200_000, debt: 17_000, rounding: -700, invoice_amount: 7_544_000, partial: false,
+      });
+      const a = cua(p.lan1).parts!;
+      const b = cua(p.lan2).parts!;
+      expect([a.partial, b.partial, a.invoice_amount]).toEqual([true, true, 6_300_000]);
+      expect(tongPhan(a)).toBe(3_000_000);
+      expect(tongPhan(b)).toBe(3_300_000);
+      expect(a.electric).toBe(Math.round(3_000_000 * 1_000_001 / 6_300_000));
+      for (const pid of p.khongTach) expect(cua(pid).parts, pid).toBeNull();
+      // phiếu cọc (nhóm DEPOSIT) của cùng phiếu không có parts
+      expect(st.vouchers.find((v) => v.id === p.du && v.group === "DEPOSIT")?.parts).toBeNull();
+    });
+  });
+
+  it("theo hạng mục: phiếu đã tách thay 'Thu tiền hoá đơn' bằng các cột (tên trùng nhãn web), tổng vẫn bằng doanh thu", async () => {
+    await trongGiaoDich(async () => {
+      const p = await duLieuThang4();
+      await asUser(CHU_A);
+      const st = settlementMonthSchema.parse(await thang(TOA_A, "2025-04-01")).statement!;
+      const thu = st.categories!.income;
+      const ten = (n: string) => thu.find((c) => c.name === n);
+      const a = st.vouchers.find((v) => v.id === p.lan1)!.parts!;
+      const b = st.vouchers.find((v) => v.id === p.lan2)!.parts!;
+      // + 555 của phiếu hai hạng mục (hạng mục có sẵn tên "Tiền phòng" — trùng tên thì gộp chung)
+      expect(ten("Tiền phòng")).toMatchObject({
+        amount: 6_200_000 + 5_500_000 + a.rent + b.rent + 555,
+        landlord_amount: 6_200_000 + 5_500_000 + b.rent + 555, manager_amount: a.rent,
+      });
+      expect(ten("Tiền điện")?.amount).toBe(827_000 + 1_727_700 + a.electric + b.electric);
+      expect(ten("Tiền nước")?.amount).toBe(200_000 + 300_000 + a.water + b.water);
+      expect(ten("Phí dịch vụ")?.amount).toBe(300_000 + 200_000);
+      expect(ten("Thu khác")?.amount).toBe(100_000);
+      expect(ten("Giảm trừ hoá đơn")?.amount).toBe(-200_000);
+      expect(ten("Nợ cũ")?.amount).toBe(17_000);
+      expect(ten("Làm tròn hoá đơn")?.amount).toBe(-700 + a.rounding + b.rounding);
+      // phiếu không tách giữ hạng mục của nó (phiếu hạn chế: link chủ nhà gộp "Khoản hạn chế" theo cờ hạng mục)
+      expect(ten("Thu tiền hoá đơn")?.amount).toBe(111 + 222 + 333 + 444);
+      expect(thu.reduce((s, c) => s + c.amount, 0)).toBe(st.totals.revenue);
+      // tên server = nhãn hạng mục web dùng cho Báo cáo LN
+      const tenTach = thu.map((c) => c.name).filter((n) => Object.values(INVOICE_PART_CATEGORIES).includes(n));
+      expect(new Set(tenTach)).toEqual(new Set(Object.values(INVOICE_PART_CATEGORIES)));
+    });
+  });
+
+  it("link chủ nhà: phiếu thường giữ parts, phiếu hạn chế không có", async () => {
+    await trongGiaoDich(async () => {
+      await duLieuThang4();
+      await asUser(CHU_A);
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asUser(null);
+      const pub = settlementPublicSchema.parse(await rpc("public.landlord_settlement_public_v1($1, '2025-04-01'::date)", [token]));
+      const vs = pub.month!.statement!.vouchers;
+      const coParts = vs.filter((v) => v.parts !== null);
+      expect(coParts.map((v) => v.amount).sort((x, y) => x - y)).toEqual([3_000_000, 3_300_000, 7_544_000, 7_627_000]);
+      expect(coParts.find((v) => v.amount === 7_627_000)?.parts).toMatchObject({ rent: 6_200_000, other: 100_000 });
+      const hanChe = vs.filter((v) => v.restricted);
+      expect(hanChe.length).toBeGreaterThan(0);
+      expect(hanChe.every((v) => v.parts === null)).toBe(true);
+    });
+  });
+});
+
+describe("tách tiền hoá đơn (20261025165112): RPC Báo cáo LN", () => {
+  const RPC_TACH = "public.invoice_amount_parts_v1($1::jsonb)";
+  type DuLieu = Awaited<ReturnType<typeof duLieuThang4>>;
+  const dong = (p: DuLieu) => {
+    const [hanChe, thanhLy, chiCoc, haiHangMuc] = p.khongTach;
+    return JSON.stringify([
+      { key: "a", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [p.du] },
+      { key: "b", invoice_id: HD_HAI_LAN, amount: 3_000_000, voucher_ids: [p.lan1] },
+      // dòng báo cáo gộp hai phiếu cùng hoá đơn ⇒ trả đủ, không "thu một phần"
+      { key: "b2", invoice_id: HD_HAI_LAN, amount: 6_300_000, voucher_ids: [p.lan1, p.lan2] },
+      // KHÔNG tách, đúng như gói quyết toán: hoá đơn chỉ có cọc, phiếu hạn chế, phiếu thanh lý, phiếu hai hạng mục,
+      // phiếu của hoá đơn khác, dòng không kèm phiếu
+      { key: "c", invoice_id: HD_CHI_COC, amount: 333, voucher_ids: [chiCoc] },
+      { key: "d", invoice_id: HD_DU, amount: 111, voucher_ids: [hanChe] },
+      { key: "e", invoice_id: HD_DU, amount: 222, voucher_ids: [thanhLy] },
+      { key: "f", invoice_id: HD_DU, amount: 999, voucher_ids: [haiHangMuc] },
+      { key: "g", invoice_id: HD_DU, amount: 3_000_000, voucher_ids: [p.lan1] },
+      { key: "h", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [] },
+      { key: "i", invoice_id: HD_DU, amount: 7_627_000, voucher_ids: [p.du, hanChe] },
+      { key: "j", invoice_id: HD_DU, amount: 666, voucher_ids: [p.tatKqkd] },
+    ]);
+  };
+
+  it("trả đúng phần như gói quyết toán; chỉ tách khi mọi phiếu của dòng thuộc hoá đơn đó và qua cùng điều kiện tách", async () => {
+    await trongGiaoDich(async () => {
+      const p = await duLieuThang4();
+      await asUser(CHU_A);
+      const rows = invoiceAmountPartsRowsSchema.parse(await rpc(RPC_TACH, [dong(p)]));
+      expect(rows.map((r) => r.key)).toEqual(["a", "b", "b2"]);
+      const st = settlementMonthSchema.parse(await thang(TOA_A, "2025-04-01")).statement!;
+      const { key: _a, ...a } = rows[0];
+      const { key: _b, ...b } = rows[1];
+      expect(a).toEqual(st.vouchers.find((v) => v.id === p.du && v.group === "PNL")!.parts);
+      expect(b).toEqual(st.vouchers.find((v) => v.id === p.lan1)!.parts);
+      expect(rows[2]).toMatchObject({ rent: 5_000_000, electric: 1_000_001, water: 300_000, rounding: -1, partial: false });
+    });
+  });
+
+  it("RLS: công ty khác không thấy gì; anon / vai postgres / đầu vào sai bị từ chối", async () => {
+    await trongGiaoDich(async () => {
+      const p = await duLieuThang4();
+      await asUser(CHU_B);
+      expect(await rpc(RPC_TACH, [dong(p)])).toEqual([]);
+      await asUser(null);
+      await expectLoi(`SELECT ${RPC_TACH}`, [dong(p)], "42501");
+      await asPostgres();
+      await expectLoi(`SELECT ${RPC_TACH}`, [dong(p)], "42501");
+      await asUser(CHU_A);
+      await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify({ key: "a" })], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`, [JSON.stringify([{ key: "a", invoice_id: HD_DU, amount: 1 }])], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`,
+        [JSON.stringify([{ key: "a", invoice_id: HD_DU, amount: 1, voucher_ids: Array.from({ length: 201 }, () => p.du) }])], "22023");
+      await expectLoi(`SELECT ${RPC_TACH}`,
+        [JSON.stringify(Array.from({ length: 3001 }, (_, i) => ({ key: String(i), voucher_ids: [] })))], "22023");
     });
   });
 });

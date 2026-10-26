@@ -364,11 +364,29 @@ button.ph-chip:hover { filter: brightness(1.12); }
 .is-missing-expense .ph-tag { background: #fef3c7; border-color: #f1d48a; color: var(--ph-amber-d); }
 .is-first-due .ph-tag { background: #fbe3e9; border-color: #f6cbd6; color: #9f1239; }
 .is-prorate .ph-tag { background: #e2f3e8; border-color: #c8e8d3; color: var(--ph-green-d); }
+/* Xem nhiều toà: ô phòng cột Thu ghi thêm tên toà ở dòng dưới (chủ nhắn 26/10/2026). */
+.ph-tag--bld { width: 56px; height: 34px; flex-direction: column; justify-content: center; line-height: 1.15; }
+.ph-tag__bld {
+  max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 9px; font-weight: 600; opacity: 0.75;
+}
 /* Ô số phòng cột Thu là NÚT mở panel vòng đời hợp đồng. */
 .ph-tag--btn { padding: 0; font-family: inherit; cursor: pointer; }
 .ph-tag--btn:hover, .ph-tag--btn:focus-visible { box-shadow: 0 0 0 2px var(--ph-green); color: var(--ph-green-d); outline: none; }
 
 .ph-row__main { min-width: 0; }
+/* Khoản thu theo hoá đơn (bảng Tiền phòng · Điện · Nước · PDV): mô tả xuống dòng dưới các cột, chữ nhỏ. */
+.ph-row--parts { row-gap: 2px; padding-top: 7px; padding-bottom: 7px; }
+.ph-row__main--below { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.ph-row__main--below .ph-row__desc { font-size: 11.5px; font-weight: 600; color: var(--ph-ink-3); }
+.ph-row__main--below .ph-row__sub { margin-top: 0; }
+.ph-row__main--below .ph-row__detail { flex-basis: 100%; }
+/* Panel Khoản thu hẹp (màn ~900–1150px, hai panel cạnh nhau): chữ ô tiền nhỏ lại để "12.500.000" không tràn sang
+   cột bên. */
+.ph-panel--income { container-type: inline-size; }
+@container (max-width: 520px) {
+  .ph-row--parts > [data-col] { font-size: 10.5px; }
+}
 .ph-row__desc { font-size: 13px; font-weight: 600; color: var(--ph-ink); }
 .ph-row__link { background: 0; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .ph-row__link:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ph-green-d); }
@@ -385,6 +403,8 @@ button.ph-chip:hover { filter: brightness(1.12); }
 .ph-row__note { font-size: 11px; font-weight: 600; }
 .ph-row__note--short { color: var(--ph-amber-d); }
 .ph-row__note--over { color: #e11d48; }
+/* giảm trừ / nợ cũ của hoá đơn ngay dưới tổng tiền (chủ nhắn 26/10/2026) */
+.ph-row__note--adj { color: var(--ph-ink-3); }
 .ph-money-ok { color: var(--ph-green-6); font-weight: 600; }
 .ph-money-bad { color: var(--ph-red); font-weight: 600; }
 

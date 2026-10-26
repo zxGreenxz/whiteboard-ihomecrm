@@ -17,9 +17,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 387 |
-| Hàm trong catalog (public + api) | 1591 |
-| File mã nguồn đã quét | 2814 |
+| RPC được gọi từ mã nguồn | 388 |
+| Hàm trong catalog (public + api) | 1596 |
+| File mã nguồn đã quét | 2818 |
 | SECURITY DEFINER | 363 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
@@ -28,10 +28,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 283 | còn lại |
-| tiền | 103 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 104 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 103 RPC chạm TIỀN
+## 104 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -84,6 +84,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `intervene_commission_v1` | ✔ | hooks/income-expenses/commissionIntervention.ts |
 | `invoice_adjustment_build_v1` |  | hooks/useInvoices.ts |
+| `invoice_amount_parts_v1` |  | hooks/useInvoiceAmountParts.ts |
 | `invoice_list_v1` |  | hooks/useInvoices.ts |
 | `invoice_statistics_v3` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |

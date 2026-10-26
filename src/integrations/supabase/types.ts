@@ -26147,6 +26147,10 @@ export type Database = {
           type_id: string
         }[]
       }
+      income_voucher_splittable_v1: {
+        Args: { p_voucher_id: string }
+        Returns: boolean
+      }
       intervene_commission_v1: {
         Args: {
           p_payload: Json
@@ -26209,6 +26213,26 @@ export type Database = {
           room_id: string
         }[]
       }
+      invoice_amount_parts_for_v1: {
+        Args: { p_amount: number; p_invoice_id: string }
+        Returns: Json
+      }
+      invoice_amount_parts_v1: { Args: { p_rows: Json }; Returns: Json }
+      invoice_amount_split_v1: {
+        Args: {
+          p_amount: number
+          p_debt: number
+          p_discount: number
+          p_electric: number
+          p_invoice_total: number
+          p_non_revenue: number
+          p_other: number
+          p_rent: number
+          p_service: number
+          p_water: number
+        }
+        Returns: Json
+      }
       invoice_collection_by_method_v1: {
         Args: {
           p_building_ids?: string[]
@@ -26251,6 +26275,10 @@ export type Database = {
           invoice_id: string
           remaining_amount: number
         }[]
+      }
+      invoice_item_column_v1: {
+        Args: { p_description: string; p_service_name: string; p_type: string }
+        Returns: string
       }
       invoice_lateness_v1: {
         Args: {

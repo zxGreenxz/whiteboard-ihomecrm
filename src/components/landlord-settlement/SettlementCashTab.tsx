@@ -1,16 +1,15 @@
-// Tab "Thu chi" của Quyết toán vận hành v3: thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu,
+// Tab "Thu chi" của Quyết toán vận hành: thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu,
 // nút lọc theo ký hiệu sổ), khối "Khoản khác" (thanh lý, cọc, chờ duyệt, không tính — chỉ màn quản trị) và
 // cuối cùng ô 2×2 "Ai thu, ai chi trong tháng" (bấm để lọc theo sổ). Mọi tổng là số server trả; tỷ trọng hạng
-// mục chỉ chia để hiển thị.
+// mục chỉ chia để hiển thị. Khoản thu theo thiết kế v2 (chủ chốt 25/10/2026): màn rộng là bảng Phòng · Tiền
+// phòng · Điện · Nước · PDV · Tổng, màn hẹp xếp bốn ô dưới "Tổng thu" — phần tách do server chia (parts).
 import { useState } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn, formatVND } from '@/lib/utils';
 import {
   DEFAULT_BOOK_CODE,
-  barPercent,
   initialsOf,
   settlementVoucherName,
-  shareText,
   voucherRowNote,
   type BookCodes,
   type SettlementCategory,
@@ -18,6 +17,7 @@ import {
   type SettlementStatement,
   type SettlementVoucher,
 } from '@/lib/landlordSettlement';
+import { invoiceAdjustmentsText, invoicePartialNote } from '@/lib/invoiceAmountParts';
 import {
   compareRoomOrNone,
   settlementRoomNoteRows,
@@ -25,18 +25,23 @@ import {
   type SettlementRoomNoteTone,
 } from '@/lib/settlementRoomNotes';
 import { vnTodayISO } from '@/lib/vnDate';
+import {
+  CategoryShareBlock,
+  IncomePartCells,
+  IncomePartsGrid,
+  IncomePartsHeader,
+  PARTS_GRID,
+} from '@/components/reports/IncomeBreakdown';
 import { Eyebrow, SectionCard } from './SettlementParts';
 import { VoucherBreakdown, type GroupKey } from './VoucherBreakdown';
 
 type Side = SettlementVoucher['side'];
 type Filter = 'ALL' | Side;
 type Kind = 'INCOME' | 'EXPENSE';
+/** table: màn rộng thẻ Khoản thu · stack: màn hẹp, khoản thu có phần tách · list: còn lại. */
+type RowLayout = 'table' | 'stack' | 'list';
 
 const OTHER_GROUPS: readonly GroupKey[] = ['termination', 'deposit', 'pending', 'excluded'];
-
-const INCOME_COLORS = ['bg-emerald-700', 'bg-emerald-500', 'bg-emerald-300', 'bg-emerald-200', 'bg-teal-200', 'bg-emerald-100', 'bg-teal-100', 'bg-slate-200'];
-const EXPENSE_COLORS = ['bg-orange-700', 'bg-orange-600', 'bg-orange-500', 'bg-orange-400', 'bg-orange-300', 'bg-orange-200', 'bg-orange-100', 'bg-amber-100'];
-const colorAt = (list: readonly string[], i: number) => list[Math.min(i, list.length - 1)];
 
 const fmtDay = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-');
@@ -90,95 +95,116 @@ function CellButton({ label, count, amount, sub, kind, selected, onClick }: {
   );
 }
 
+const TILE_GREEN = 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300';
+const TILE_ORANGE = 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300';
+
 /**
- * "Theo hạng mục" — mặc định THU GỌN (chủ nhắn 24/10/2026: thu và chi khác số hạng mục làm hai cột lệch nhau):
- * gọn chỉ còn dòng tiêu đề + thanh tỷ trọng, cao bằng nhau ở hai thẻ; bấm ở thẻ nào cũng mở CẢ HAI (trạng
- * thái dùng chung ở tab). Thẻ không có hạng mục vẫn giữ dòng tiêu đề để hai cột không lệch.
+ * Ô đầu dòng. Khoản chi: BÊN CHI = ký hiệu sổ của toà (chủ nhắn 24/10/2026; mặc định CN = chủ nhà chi, QL =
+ * quản lý / vận hành chi). Khoản thu: tên phòng (không có phòng thì chữ viết tắt hạng mục), luôn xanh; tiền vào
+ * sổ quản lý thì gắn thêm ký hiệu sổ quản lý (thiết kế v2).
  */
-function CategoryBlock({ cats, total, filter, kind, open, onToggle }: {
-  cats: readonly SettlementCategory[]; total: number; filter: Filter; kind: Kind; open: boolean; onToggle: () => void;
-}) {
-  const colors = kind === 'INCOME' ? INCOME_COLORS : EXPENSE_COLORS;
-  const shown = cats
-    .map((c) => ({ name: c.name, amount: amountOf(c, filter) }))
-    .filter((c) => c.amount !== 0)
-    .sort((a, b) => b.amount - a.amount);
-  const listId = `settlement-categories-list-${kind === 'INCOME' ? 'income' : 'expense'}`;
+function RowTile({ v, bookCodes, className }: { v: SettlementVoucher; bookCodes: BookCodes; className?: string }) {
+  const income = v.type === 'INCOME';
+  const label = income ? v.room_name || initialsOf(v.lines?.[0]?.category) : bookCodes[v.side];
+  const tag = income && v.side === 'MANAGER' ? bookCodes.MANAGER : null;
+  const title = !income
+    ? (v.side === 'LANDLORD' ? 'Chủ nhà chi' : 'Quản lý (vận hành) chi')
+    : tag ? `${label} · tiền vào sổ quản lý (${tag})` : label;
   return (
-    <div className="border-b px-3.5 pb-3 pt-2" data-testid={`settlement-categories-${kind === 'INCOME' ? 'income' : 'expense'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={onToggle} aria-expanded={open} aria-controls={listId}
-          disabled={shown.length === 0}
-          className="-ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent">
-          <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-            Theo hạng mục{shown.length > 0 ? ` (${shown.length})` : ' · không có'}
+    <span title={title} data-testid="settlement-row-tile"
+      className={cn('flex h-9 w-[54px] items-center justify-center overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
+        income || v.side === 'LANDLORD' ? TILE_GREEN : TILE_ORANGE, className)}>
+      <span className="flex min-w-0 flex-col items-center">
+        {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng; có ký hiệu sổ thì 1 dòng */}
+        <span className={cn('text-center', tag ? 'line-clamp-1' : 'line-clamp-2')}>{label}</span>
+        {tag && (
+          <span data-testid="settlement-row-book"
+            className="mt-0.5 rounded bg-blue-100 px-1 text-[9px] font-extrabold leading-[13px] tracking-[0.03em] text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+            {tag}
           </span>
-          {shown.length > 0 && (
-            <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
-          )}
-        </button>
-        {open && shown.length > 0 && <Eyebrow>Tỷ trọng</Eyebrow>}
-      </div>
-      <div className="mt-1.5 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
-        {/* server gom theo tên + cờ hạn chế ⇒ hai dòng có thể cùng tên: key kèm thứ tự */}
-        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, total)}%` }} />)}
-      </div>
-      {open && shown.length > 0 && (
-        <ul id={listId} className="mt-2.5 flex flex-col gap-1.5">
-          {shown.map((c, i) => (
-            <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
-              <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
-              <span className="truncate text-foreground/75">{c.name}</span>
-              <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
-              <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{shareText(c.amount, total) ?? ''}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        )}
+      </span>
+    </span>
   );
 }
 
-function VoucherRow({ v, mode, periodMonth, bookCodes }: {
-  v: SettlementVoucher; mode: 'admin' | 'public'; periodMonth: string; bookCodes: BookCodes;
+function VoucherRow({ v, mode, periodMonth, bookCodes, layout }: {
+  v: SettlementVoucher; mode: 'admin' | 'public'; periodMonth: string; bookCodes: BookCodes; layout: RowLayout;
 }) {
   const name = settlementVoucherName(v, mode);
   const lines = v.lines ?? [];
-  // Khoản chi: ô đầu dòng là BÊN CHI = ký hiệu sổ của toà (chủ nhắn 24/10/2026; mặc định CN = chủ nhà chi,
-  // QL = quản lý / vận hành chi). Khoản thu: tên phòng (không có phòng thì chữ viết tắt hạng mục).
-  const tile = v.type === 'EXPENSE' ? bookCodes[v.side] : v.room_name || initialsOf(lines[0]?.category);
-  const tileTitle = v.type === 'EXPENSE' ? (v.side === 'LANDLORD' ? 'Chủ nhà chi' : 'Quản lý (vận hành) chi') : tile;
-  const note = voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth).replace(/^ · /, '');
   const income = v.type === 'INCOME';
-  return (
-    <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
-      data-testid="settlement-cash-row">
-      {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng, không cắt chữ */}
-      <span title={tileTitle} data-testid="settlement-row-tile"
-        className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
-          v.side === 'LANDLORD'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
-            : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300')}>
-        <span className="line-clamp-2 text-center">{tile}</span>
-      </span>
-      <span className="min-w-0 truncate text-[13px] font-semibold" title={mode === 'admin' ? (v.name ?? '') : name} data-testid="settlement-voucher-name">
-        {name}
-      </span>
-      <span className={cn('whitespace-nowrap text-right text-[13.5px] font-bold tabular-nums',
+  // khoản thu không còn ghi ngày phiếu ⇒ bỏ "tính theo kỳ tháng …" (chủ nhắn 26/10/2026)
+  const note = [
+    voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth, { skipPeriod: income }).replace(/^ · /, ''),
+    v.parts ? invoicePartialNote(v.parts, v.amount) : '',
+  ].filter(Boolean).join(' · ');
+  const meta = `${lines.length === 1 ? `${lines[0].category} · ` : ''}${fmtDay(v.voucher_date)}${v.code ? ` · ${v.code}` : ''}`;
+  // khoản thu (thiết kế v2) không còn dòng ngày · mã · sổ — rê chuột vào dòng để xem
+  const rowTitle = income ? `${mode === 'admin' ? (v.name ?? name) : name} — ${meta} · ${SIDE_LABEL[v.side]}` : undefined;
+  // giảm trừ / nợ cũ của hoá đơn: ngay dưới tổng tiền, chỉ số gọn (chủ nhắn 26/10/2026)
+  const adjust = v.parts ? invoiceAdjustmentsText(v.parts) : '';
+  const amount = (
+    <span className="whitespace-nowrap text-right tabular-nums">
+      <span className={cn('block text-[13.5px] font-bold',
         income ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-700 dark:text-orange-400')}>
         {formatVND(v.amount)}
       </span>
-      <div className="col-span-2 col-start-2 min-w-0">
-        <p className="text-[11.5px] text-muted-foreground">
-          {lines.length === 1 ? `${lines[0].category} · ` : ''}{fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}
-          <SideBadge side={v.side} />
-        </p>
-        {lines.length > 1 && (
-          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground" data-testid="settlement-voucher-lines">
-            {lines.map((l) => `${l.category} ${formatVND(l.amount)}`).join(' · ')}
-          </p>
+      {adjust && <span className="block text-[11px] font-semibold text-muted-foreground" data-testid="settlement-row-adjust">{adjust}</span>}
+    </span>
+  );
+  const nameEl = (className?: string) => (
+    <span className={cn('min-w-0 truncate text-[13px] font-semibold', className)}
+      title={mode === 'admin' ? (v.name ?? '') : name} data-testid="settlement-voucher-name">
+      {name}
+    </span>
+  );
+  const linesEl = lines.length > 1 && (
+    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground" data-testid="settlement-voucher-lines">
+      {lines.map((l) => `${l.category} ${formatVND(l.amount)}`).join(' · ')}
+    </p>
+  );
+  const noteEl = note && <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">{note}</p>;
+
+  if (layout === 'table') {
+    return (
+      <li className={cn(PARTS_GRID, 'items-center gap-y-0.5 border-t px-3.5 py-[7px] hover:bg-muted/30')}
+        data-testid="settlement-cash-row" data-layout={v.parts ? 'table' : 'table-other'} title={rowTitle}>
+        <RowTile v={v} bookCodes={bookCodes} />
+        {v.parts ? <IncomePartCells parts={v.parts} /> : nameEl('col-span-4')}
+        {amount}
+        {(noteEl || (!v.parts && linesEl)) && (
+          <div className="min-w-0 [grid-column:2/-1]">{!v.parts && linesEl}{noteEl}</div>
         )}
-        {note && <p className="mt-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-300">{note}</p>}
+      </li>
+    );
+  }
+  if (layout === 'stack' && v.parts) {
+    return (
+      <li className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 border-t px-3.5 py-2 tabular-nums"
+        data-testid="settlement-cash-row" data-layout="stack" title={rowTitle}>
+        <RowTile v={v} bookCodes={bookCodes} className={noteEl ? 'row-span-3' : 'row-span-2'} />
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-[11.5px] leading-5 text-muted-foreground">Tổng thu</span>
+          {amount}
+        </div>
+        <IncomePartsGrid parts={v.parts} />
+        {noteEl}
+      </li>
+    );
+  }
+  return (
+    <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
+      data-testid="settlement-cash-row" data-layout="list" title={rowTitle}>
+      <RowTile v={v} bookCodes={bookCodes} className="row-span-2 self-start" />
+      {nameEl()}
+      {amount}
+      <div className="col-span-2 col-start-2 min-w-0">
+        {!income && (
+          <p className="text-[11.5px] text-muted-foreground">{meta}<SideBadge side={v.side} /></p>
+        )}
+        {linesEl}
+        {noteEl && <div className="mt-0.5">{noteEl}</div>}
       </div>
     </li>
   );
@@ -202,19 +228,23 @@ const NOTE_TONE: Record<SettlementRoomNoteTone, { row: string; tile: string; lab
   },
 };
 
-/** Dòng ghi chú phòng (không cộng vào tổng): chưa đóng / phòng trống / HĐ chưa thanh lý — như Báo cáo LN. */
-function RoomNoteRow({ note }: { note: SettlementRoomNoteRow }) {
+/**
+ * Dòng ghi chú phòng (không cộng vào tổng): chưa đóng / phòng trống / HĐ chưa thanh lý — như Báo cáo LN. Màn
+ * rộng nằm trong bảng Khoản thu: nhãn trải qua bốn cột tiền.
+ */
+function RoomNoteRow({ note, table }: { note: SettlementRoomNoteRow; table: boolean }) {
   const tone = NOTE_TONE[note.tone];
   return (
-    <li className={cn('grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2', tone.row)}
+    <li className={cn(table ? PARTS_GRID : 'grid grid-cols-[56px_minmax(0,1fr)_auto] gap-x-2.5',
+      'items-center gap-y-px border-t px-3.5 py-2', tone.row)}
       data-testid="settlement-room-note" data-tone={note.tone}>
       <span title={note.roomName} data-testid="settlement-row-tile"
         className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]', tone.tile)}>
         <span className="line-clamp-2 text-center">{note.roomName}</span>
       </span>
-      <span className={cn('min-w-0 truncate text-[13px] font-bold', tone.label)}>{note.label}</span>
+      <span className={cn('min-w-0 truncate text-[13px] font-bold', tone.label, table && 'col-span-4')}>{note.label}</span>
       <span className="whitespace-nowrap text-right text-[13.5px] font-bold text-muted-foreground" aria-hidden>—</span>
-      <p className="col-span-2 col-start-2 min-w-0 text-[11.5px] text-muted-foreground">{note.text}</p>
+      <p className={cn('min-w-0 text-[11.5px] text-muted-foreground', table ? '[grid-column:2/-1]' : 'col-span-2 col-start-2')}>{note.text}</p>
     </li>
   );
 }
@@ -222,14 +252,18 @@ function RoomNoteRow({ note }: { note: SettlementRoomNoteRow }) {
 type ListItem = { key: string; room: string | null; desc: string }
   & ({ v: SettlementVoucher; note?: undefined } | { note: SettlementRoomNoteRow; v?: undefined });
 
-function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats, notes, bookCodes, onToggleSide }: {
-  kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public'; catsOpen: boolean; onToggleCats: () => void;
+function ListCard({ kind, st, filter, mode, narrow, catsOpen, onToggleCats, notes, bookCodes, onToggleSide }: {
+  kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public'; narrow: boolean;
+  catsOpen: boolean; onToggleCats: () => void;
   notes: readonly SettlementRoomNoteRow[];
   bookCodes: BookCodes;
   onToggleSide: (side: Side) => void;
 }) {
   const t = st.totals;
   const income = kind === 'INCOME';
+  // bảng tách cột chỉ khi gói có phần tách (ảnh chốt cũ / server cũ không có ⇒ danh sách cũ, không cột trống)
+  const table = income && !narrow && st.vouchers.some((v) => v.parts != null);
+  const layoutOf = (v: SettlementVoucher): RowLayout => (table ? 'table' : income && v.parts ? 'stack' : 'list');
   const rows = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === kind
     && (filter === 'ALL' || v.side === filter));
   // Khoản thu xếp theo phòng như Báo cáo LN, xen dòng ghi chú phòng (chủ nhắn 24/10/2026); khoản chi giữ thứ tự.
@@ -278,18 +312,23 @@ function ListCard({ kind, st, filter, mode, catsOpen, onToggleCats, notes, bookC
           {formatVND(total)}
         </span>
       </div>
-      {cats && <CategoryBlock cats={cats} total={total} filter={filter} kind={kind} open={catsOpen} onToggle={onToggleCats} />}
+      {cats && (
+        <CategoryShareBlock cats={cats.map((c) => ({ name: c.name, amount: amountOf(c, filter) }))} total={total}
+          kind={kind} open={catsOpen} onToggle={onToggleCats} testId="settlement-categories" />
+      )}
       {items.length === 0 ? (
         <p className="px-4 py-7 text-center text-[12.5px] text-muted-foreground">Không có khoản {income ? 'thu' : 'chi'} nào{sideText} trong tháng.</p>
       ) : (
         <>
-          <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-            <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
-          </div>
+          {table ? <IncomePartsHeader /> : (
+            <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
+            </div>
+          )}
           <ul>
             {items.map((it) => (it.v
-              ? <VoucherRow key={it.key} v={it.v} mode={mode} periodMonth={st.period_month} bookCodes={bookCodes} />
-              : <RoomNoteRow key={it.key} note={it.note} />))}
+              ? <VoucherRow key={it.key} v={it.v} mode={mode} periodMonth={st.period_month} bookCodes={bookCodes} layout={layoutOf(it.v)} />
+              : <RoomNoteRow key={it.key} note={it.note} table={table} />))}
           </ul>
         </>
       )}
@@ -429,14 +468,16 @@ export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes
         </div>
       )}
 
-      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
+      {/* bảng Khoản thu 6 cột cần ≥ 480px mỗi thẻ (thiết kế v2 ghi 420 — đo: 420 chỉ còn ~51px mỗi cột tiền,
+          "8.594.067" tràn sang cột bên) — hẹp hơn thì hai thẻ xếp chồng */}
+      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))]">
         {(!narrow || list === 'INCOME') && (
-          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} notes={roomNotes}
-            bookCodes={bookCodes} onToggleSide={toggleSide} />
+          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} narrow={narrow} catsOpen={catsOpen} onToggleCats={toggleCats}
+            notes={roomNotes} bookCodes={bookCodes} onToggleSide={toggleSide} />
         )}
         {(!narrow || list === 'EXPENSE') && (
-          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} catsOpen={catsOpen} onToggleCats={toggleCats} notes={[]}
-            bookCodes={bookCodes} onToggleSide={toggleSide} />
+          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} narrow={narrow} catsOpen={catsOpen} onToggleCats={toggleCats}
+            notes={[]} bookCodes={bookCodes} onToggleSide={toggleSide} />
         )}
       </div>
 

@@ -1,18 +1,18 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2814,
-    "catalogFunctions": 1591,
+    "sourceCallSites": 2818,
+    "catalogFunctions": 1596,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 387,
+    "calledRpcs": 388,
     "byRisk": {
       "normal": 283,
-      "financial": 103,
+      "financial": 104,
       "infrastructure": 1
     },
     "securityDefiner": 363
@@ -3626,6 +3626,25 @@
       ],
       "callers": [
         "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_amount_parts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_rows jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoiceAmountParts.ts"
       ],
       "risk": "financial"
     },

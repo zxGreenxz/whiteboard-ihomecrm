@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { friendlyError } from '@/lib/friendlyError';
+import { invoiceAmountPartsSchema } from '@/lib/invoiceAmountParts';
 import type { InvoiceTitleParts } from '@/lib/invoiceUtils';
 import { voucherDisplayName } from '@/lib/voucherDisplayName';
 
@@ -76,6 +77,11 @@ export const settlementVoucherSchema = z.object({
    * Ảnh chốt trước v3 không có; link chủ nhà: phiếu hạn chế ⇒ null.
    */
   lines: z.array(z.object({ category: z.string(), amount: money })).nullish().transform((v) => v ?? null),
+  /**
+   * Phiếu thu lãi lỗ theo hoá đơn: phần KỲ tháng này chia theo dòng hoá đơn (phòng / điện / nước / PDV / khác —
+   * chủ chốt 25/10/2026). Phiếu khác, phiếu hạn chế, ảnh chốt trước ngày đó ⇒ null.
+   */
+  parts: invoiceAmountPartsSchema.nullish().transform((v) => v ?? null),
 });
 export type SettlementVoucher = z.infer<typeof settlementVoucherSchema>;
 
@@ -887,11 +893,15 @@ export type VoucherGroupKey =
   | 'termination' | 'deposit' | 'pending' | 'excluded';
 
 /** Ghi chú phụ của một dòng phiếu (kỳ khác, thanh lý, không tính, sổ quỹ…) — dạng " · a · b" hoặc "". */
-export function voucherRowNote(v: SettlementVoucher, key: VoucherGroupKey, mode: 'admin' | 'public', periodMonth: string): string {
+export function voucherRowNote(
+  v: SettlementVoucher, key: VoucherGroupKey, mode: 'admin' | 'public', periodMonth: string,
+  opts: { skipPeriod?: boolean } = {},
+): string {
   const parts: string[] = [];
   // dòng lãi lỗ xếp tháng THEO KỲ trên hạng mục: phiếu lập tháng khác vẫn có thể thuộc tháng này (vd thu
-  // trước tiền phòng tháng sau). Số tiền là phần của kỳ tháng này.
-  if (v.group === 'PNL' && v.voucher_date.slice(0, 7) !== periodMonth.slice(0, 7)) {
+  // trước tiền phòng tháng sau). Số tiền là phần của kỳ tháng này. Thẻ Khoản thu không còn ghi ngày phiếu nên
+  // bỏ ghi chú này (chủ nhắn 26/10/2026).
+  if (!opts.skipPeriod && v.group === 'PNL' && v.voucher_date.slice(0, 7) !== periodMonth.slice(0, 7)) {
     parts.push(`tính theo kỳ tháng ${periodMonth.slice(5, 7)}/${periodMonth.slice(0, 4)}`);
   }
   if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);

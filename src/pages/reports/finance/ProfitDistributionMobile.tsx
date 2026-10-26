@@ -16,6 +16,9 @@ import {
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
+import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
+import { categorySharesOf, invoiceAdjustmentsText } from "@/lib/invoiceAmountParts";
+import { CategoryShareBlock, IncomePartsGrid } from "@/components/reports/IncomeBreakdown";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { profitReportRowDescription } from "@/lib/voucherDisplayName";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -93,6 +96,10 @@ interface MRow {
   typeId?: string | null;
   // Số khoản thu gộp cùng 1 hoá đơn (>1 ⇒ "(N lần)").
   groupCount?: number;
+  // id các phiếu làm nên dòng — server xét phiếu nào được tách tiền theo hoá đơn.
+  voucherIds?: string[];
+  // Số tiền dòng gồm cả phần ngoài KQKD (cọc) ⇒ không tách theo hoá đơn.
+  mixedDeposit?: boolean;
   // Σ khoản thanh lý cùng HĐ đã tách dòng riêng — bù khi so thiếu/thừa.
   liqSiblingAmount?: number;
   // Dòng doanh thu thanh lý/bỏ cọc → nền vàng cam.
@@ -249,6 +256,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           category: r.category ?? null,
           typeId: r.typeId ?? null,
           notKqkd: r.countsInBusinessResult === false,
+          voucherIds: r.voucherId ? [r.voucherId as string] : [],
         };
         if (r.income > 0) rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
         else if (r.expense > 0) exp.push({ ...base, key: r.itemId, amount: r.expense, invoiceId: null });
@@ -266,6 +274,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           category: null as string | null,
           typeId: null as string | null,
           notKqkd: kqkd <= 0,
+          voucherIds: [r.id as string],
         };
         const items = (r.items || []) as any[];
         const skipDeposit = (it: any) =>
@@ -279,6 +288,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             ...base, key: r.id, type: typeName,
             amount: pnlOnly ? kqkd : Number(r.total_amount) || 0,
             invoiceId: r.invoice_id,
+            mixedDeposit: !pnlOnly && Math.abs(kqkd - (Number(r.total_amount) || 0)) >= 1,
           });
           continue;
         }
@@ -334,6 +344,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           notKqkd: list.some((x) => x.notKqkd),
           groupCount: list.length,
           isLiq,
+          voucherIds: Array.from(new Set(list.flatMap((x) => x.voucherIds ?? []))),
+          mixedDeposit: list.some((x) => x.mixedDeposit),
           ...extra,
         });
     }
@@ -440,6 +452,28 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: invoiceTotals } = useInvoiceTotalsByIds(invoiceIds);
   const { data: firstInvoiceDetails } = useFirstInvoiceDetails(invoiceIds);
   const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
+
+  // Tách tiền phòng / điện / nước / PDV của khoản thu theo hoá đơn (chủ chốt 25/10/2026 — như desktop và
+  // Quyết toán vận hành; server chia và xét phiếu nào được tách). Không gửi dòng thanh lý / bỏ cọc, dòng gồm
+  // khoản ngoài KQKD.
+  const partsRequests = useMemo(
+    () =>
+      shownIncomeRows
+        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !r.mixedDeposit && !r.isLiq && r.amount > 0
+          && (r.voucherIds?.length ?? 0) > 0)
+        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount, voucherIds: r.voucherIds! })),
+    [shownIncomeRows],
+  );
+  const { data: incomeParts, isError: partsError, refetch: retryParts } = useInvoiceAmountParts(partsRequests, !loading);
+  // "Theo hạng mục" của danh sách đang xem (chỉ để hiển thị tỷ trọng)
+  const cats = useMemo(
+    () =>
+      side === "income"
+        ? categorySharesOf(shownIncomeRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote })), incomeParts)
+        : categorySharesOf(shownExpenseRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote }))),
+    [side, shownIncomeRows, shownExpenseRows, incomeParts],
+  );
+  const [catsOpen, setCatsOpen] = useState(false);
 
   // Toà đang lọc (đúng 1 toà) — đọc has_elevator + hidden_fixed_expenses cho placeholder.
   const singleBuilding = useMemo(
@@ -605,6 +639,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   // ===== Render 1 thẻ dòng (layout Option C: dòng 1 phòng+mô tả+tiền, dòng 2 meta+note) =====
   const renderRow = (r: MRow) => {
     const isIncome = side === "income";
+    const split = isIncome ? incomeParts?.get(r.key) : undefined;
     const fd = isIncome && r.invoiceId && !r.isLiq ? firstInvoiceDetails?.get(r.invoiceId) : null;
     const rp = isIncome && r.invoiceId && !r.isLiq ? rentPeriods?.get(r.invoiceId) : null;
     const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
@@ -640,17 +675,26 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       if (r.notKqkd) parts.push("không KQKD");
       noteText = parts.join(" · ");
     }
+    // dòng đã tách: bỏ mô tả "TIỀN PHÒNG - 10/2026" + "Thu tiền hoá đơn · toà · kỳ", chỉ giữ ở hoá đơn tháng đầu
+    // (chủ nhắn 26/10/2026); giảm trừ / nợ cũ ngay dưới tổng tiền, chỉ số gọn
+    const showDesc = !split || !!fd;
+    const adjust = split ? invoiceAdjustmentsText(split) : "";
 
+    // khoản thu có phòng: xem nhiều toà thì tên toà nằm ở ô phòng, lọc một toà thì đã biết toà ⇒ dòng phụ không
+    // ghi toà (chủ nhắn 26/10/2026)
+    const bldInTag = isIncome && !!r.room && buildingIds.length !== 1 && !!r.building && r.building !== "—";
+    const bldInMeta = !(isIncome && r.room);
     const meta = r.isMissingExpense
       ? `Hạng mục cố định · ${r.building}`
       : r.isNote
-        ? r.building
-        : `${r.type} · ${r.building}${accrualMode && r.period ? ` · Kỳ ${r.period}` : ""}`;
+        ? (bldInMeta ? r.building : "")
+        : [r.type, bldInMeta ? r.building : null, accrualMode && r.period ? `Kỳ ${r.period}` : null].filter(Boolean).join(" · ");
 
+    // chạm thẻ hoá đơn là xem hoá đơn luôn (chủ nhắn 26/10/2026); chạm số tiền xem các lần thu
     const onTap = r.isMissingExpense
       ? (canCreate ? () => openCreateMissingExpense(r) : undefined)
       : r.invoiceId
-        ? () => setDetailInvoiceId(r.invoiceId)
+        ? () => setInvoiceModal({ id: r.invoiceId!, title: displayDescription(r) + (r.room ? ` — ${r.room}` : "") })
         : undefined;
 
     return (
@@ -660,47 +704,53 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         className={`rounded-xl px-[11px] py-[9px] shadow-[0_1px_2px_rgba(27,24,19,.04)] border ${dashed ? "border-dashed" : ""} ${onTap ? "cursor-pointer active:opacity-80" : ""}`}
         style={{ background: bg, borderColor: line }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-start gap-2 min-w-0">
           {r.room && (
             <span className="shrink-0 font-mono font-bold text-[11.5px] text-[#1b1813] bg-[#faf8f4] border border-[#e7e3da] px-[7px] py-0.5 rounded-[7px]">
               {r.room}
+              {bldInTag && <span className="ml-1 text-[10px] font-semibold text-[#8d8678]" data-testid="profit-tag-building">{r.building}</span>}
             </span>
           )}
-          <span
-            className="flex-1 min-w-0 text-[12.5px] font-bold truncate"
-            style={{ color: descColor }}
-            onClick={
-              r.invoiceId
-                ? (e) => {
-                    e.stopPropagation();
-                    setInvoiceModal({
-                      id: r.invoiceId!,
-                      title: displayDescription(r) + (r.room ? ` — ${r.room}` : ""),
-                    });
-                  }
-                : undefined
-            }
-          >
-            {displayDescription(r)}
-            {r.isMissingExpense && <span className="ml-1 text-[11px]">(chưa có phiếu)</span>}
-          </span>
-          <span
-            className="shrink-0 font-mono font-bold text-[13px] tracking-[-0.3px] whitespace-nowrap"
-            style={{ color: amtColor }}
-          >
-            {r.isNote ? "—" : fmtShort(r.amount)}
-          </span>
-        </div>
-        <div className="mt-1 flex items-baseline justify-between gap-2">
-          <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
-            {meta}
-          </span>
-          {noteText && (
-            <span className="shrink-0 text-[10.5px] font-bold whitespace-nowrap" style={{ color: noteColor }}>
-              {noteText}
+          {showDesc ? (
+            <span className="flex-1 min-w-0 text-[12.5px] font-bold truncate leading-6" style={{ color: descColor }}>
+              {displayDescription(r)}
+              {r.isMissingExpense && <span className="ml-1 text-[11px]">(chưa có phiếu)</span>}
             </span>
+          ) : (
+            <span className="flex-1" />
           )}
+          <span className="shrink-0 flex flex-col items-end">
+            <span
+              className="font-mono font-bold text-[13px] leading-6 tracking-[-0.3px] whitespace-nowrap"
+              style={{ color: amtColor }}
+              onClick={r.invoiceId && !r.isNote ? (e) => { e.stopPropagation(); setDetailInvoiceId(r.invoiceId); } : undefined}
+            >
+              {r.isNote ? "—" : fmtShort(r.amount)}
+            </span>
+            {adjust && (
+              <span className="font-mono text-[10.5px] font-bold text-[#8d8678] whitespace-nowrap" data-testid="profit-mobile-adjust">
+                {adjust}
+              </span>
+            )}
+          </span>
         </div>
+        {split && (
+          <div className="mt-1.5" data-testid="profit-mobile-parts">
+            <IncomePartsGrid parts={split} />
+          </div>
+        )}
+        {((showDesc && meta) || noteText) && (
+          <div className="mt-1 flex items-baseline justify-between gap-2">
+            <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
+              {showDesc ? meta : ""}
+            </span>
+            {noteText && (
+              <span className="shrink-0 text-[10.5px] font-bold whitespace-nowrap" style={{ color: noteColor }}>
+                {noteText}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -906,6 +956,19 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
               </button>
             )}
           </div>
+
+          {/* Theo hạng mục của danh sách đang xem (như Quyết toán vận hành) */}
+          {!loading && (
+            <CategoryShareBlock cats={cats} total={side === "income" ? shownIncomeSum : shownExpenseSum}
+              kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen} onToggle={() => setCatsOpen((v) => !v)}
+              testId="profit-categories" className="rounded-xl border border-[#e7e3da] bg-white" />
+          )}
+          {side === "income" && partsError && (
+            <button type="button" onClick={() => void retryParts()}
+              className="rounded-lg border border-[#e7e3da] bg-[#faf8f4] px-3 py-2 text-left text-[11.5px] font-semibold text-[#8d8678]">
+              Chưa tách được tiền phòng / điện / nước — bấm để thử lại
+            </button>
+          )}
 
           {/* Danh sách khoản */}
           <div className="flex flex-col gap-1.5">
