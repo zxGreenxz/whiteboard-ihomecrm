@@ -83,6 +83,14 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   return block();
  });
  const dialog=()=>page.getByRole('dialog',{name:'Ghi điện bằng QR, ảnh / clip'});
+ const reviewScreenshot=async()=>{
+  // A tall article screenshot uses Chromium captureBeyondViewport and can
+  // trigger responsive media-query events. Capture the visible viewport only.
+  await expect(dialog()).toBeVisible();
+  const snapshot=await page.screenshot({fullPage:false});
+  await expect(dialog()).toBeVisible();
+  return snapshot;
+ };
  const article=(purpose:'MONTHLY'|'MOVE_OUT')=>dialog().locator('article').filter({hasText:fixture.meterCode}).filter({hasText:purpose==='MONTHLY'?'Kỳ tháng':'Thanh lý'});
  const review=async(purpose:'MONTHLY'|'MOVE_OUT',capture:Evidence)=>{
   await dialog().getByRole('tab',{name:/Đối chiếu/}).click();
@@ -127,7 +135,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
    await row.getByLabel(/Lý do xác nhận thủ công|Ghi chú đối chiếu/).fill('E2E synthetic: verified exact rendered digits and register');
    await expect(row.getByRole('button',{name:'Xác nhận chốt chỉ số',exact:true})).toBeDisabled();
    await row.getByRole('checkbox',{name:/Tôi đã đối chiếu ảnh\/clip/}).check();
-   await info.attach('monthly-qr-review-ui',{body:await row.screenshot(),contentType:'image/png'});
+   await info.attach('monthly-qr-review-ui',{body:await reviewScreenshot(),contentType:'image/png'});
    await row.getByRole('button',{name:'Xác nhận chốt chỉ số',exact:true}).click();
    await expect(row).toContainText(`Chỉ số đã chốt: ${fixture.currentValue} kWh`,{timeout:60_000});
    if(!state.confirmation)throw new Error('Browser did not submit confirmation through the real gateway');return state.confirmation;
@@ -135,7 +143,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   showZeroMoveOut:async(capture:Evidence,info:TestInfo)=>{
    const row=await review('MOVE_OUT',capture);await expect(row).toContainText('Chênh lệch: 0 kWh');
    await expect(row).toContainText(`Chỉ số đã chốt: ${fixture.currentValue} kWh`);
-   await info.attach('zero-kwh-move-out-ui',{body:await row.screenshot(),contentType:'image/png'});
+   await info.attach('zero-kwh-move-out-ui',{body:await reviewScreenshot(),contentType:'image/png'});
   },
  };
 }
