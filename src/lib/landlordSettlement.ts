@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { friendlyError } from '@/lib/friendlyError';
+import { invoiceAmountPartsSchema } from '@/lib/invoiceAmountParts';
 import type { InvoiceTitleParts } from '@/lib/invoiceUtils';
 import { voucherDisplayName } from '@/lib/voucherDisplayName';
 
@@ -76,6 +77,11 @@ export const settlementVoucherSchema = z.object({
    * Ảnh chốt trước v3 không có; link chủ nhà: phiếu hạn chế ⇒ null.
    */
   lines: z.array(z.object({ category: z.string(), amount: money })).nullish().transform((v) => v ?? null),
+  /**
+   * Phiếu thu lãi lỗ theo hoá đơn: phần KỲ tháng này chia theo dòng hoá đơn (phòng / điện / nước / PDV / khác —
+   * chủ chốt 25/10/2026). Phiếu khác, phiếu hạn chế, ảnh chốt trước ngày đó ⇒ null.
+   */
+  parts: invoiceAmountPartsSchema.nullish().transform((v) => v ?? null),
 });
 export type SettlementVoucher = z.infer<typeof settlementVoucherSchema>;
 

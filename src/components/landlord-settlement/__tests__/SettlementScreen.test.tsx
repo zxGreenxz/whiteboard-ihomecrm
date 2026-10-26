@@ -109,7 +109,8 @@ it('Khoản thu hiện đủ phòng như Báo cáo LN: xếp MB → số → ch�
     const p = mode === 'public' ? { buildingId: undefined, token: 'tok' } : {};
     ve({ mode, ...p, month: monthV3({ room_data: ROOM_DATA_V3 }) });
     const thu = within(screen.getByTestId('settlement-income-card'));
-    expect(thu.getAllByTestId('settlement-row-tile').map((x) => x.textContent)).toEqual(['MB', '101', '102', '103', 'PARIS 2']);
+    // 103 thu vào sổ quản lý ⇒ ô phòng gắn thêm ký hiệu sổ quản lý (thiết kế v2)
+    expect(thu.getAllByTestId('settlement-row-tile').map((x) => x.textContent)).toEqual(['MB', '101', '102', '103QL', 'PARIS 2']);
     const ghiChu = thu.getAllByTestId('settlement-room-note');
     expect(ghiChu.map((x) => x.getAttribute('data-tone'))).toEqual(['vacant', 'unpaid']);
     expect(tien(ghiChu[0])).toMatch(/Phòng trống.*Trống phòng/);
@@ -131,6 +132,41 @@ it('Khoản thu hiện đủ phòng như Báo cáo LN: xếp MB → số → ch�
   cleanup();
   ve({ month: closedMonth({ room_data: ROOM_DATA_V3, is_stale: true }) });
   expect(within(screen.getByTestId('settlement-income-card')).queryAllByTestId('settlement-room-note')).toHaveLength(0);
+});
+
+it('Khoản thu (thiết kế v2): màn rộng là bảng Tiền phòng · Điện · Nước · PDV · Tổng; PDV gộp khoản khác; giảm trừ / thu một phần có ghi chú, làm tròn không; phiếu chưa tách ghi tên', () => {
+  const st = monthV3().statement!;
+  const khong = { discount: 0, debt: 0, rounding: 0 };
+  const parts = { ...khong, rent: 6_200_000, electric: 827_000, water: 0, service: 300_000, other: 100_000,
+    discount: -200_000, rounding: -700, invoice_amount: 7_226_300, partial: false };
+  const vouchers = st.vouchers.map((v) => (v.code === 'PT2' ? { ...v, amount: 7_226_300, parts }
+    : v.code === 'PT3' ? { ...v, parts: { ...khong, rent: 2_000_000, electric: 700_000, water: 300_000, service: 0, other: 0,
+      invoice_amount: 6_000_000, partial: true } } : v));
+  ve({ month: { ...monthV3(), statement: { ...st, vouchers } } });
+  const thu = within(screen.getByTestId('settlement-income-card'));
+  expect(thu.getByText('Tiền phòng')).toBeTruthy();
+  expect(thu.getByText('PDV')).toBeTruthy();
+  const dong = thu.getAllByTestId('settlement-cash-row');
+  expect(dong.map((r) => r.getAttribute('data-layout'))).toEqual(['table-other', 'table', 'table']);
+  const o = within(dong[1]).getAllByTestId('income-part-cell');
+  expect(o.map((x) => x.textContent)).toEqual(['6.200.000', '827.000', '—', '400.000']);
+  expect(o[3]?.getAttribute('title')).toBe('Phí dịch vụ 300.000 + khoản khác trên hoá đơn 100.000');
+  expect(tien(dong[1])).toMatch(/7\.226\.300 đ\s*Giảm trừ −200\.000$/);
+  expect(tien(dong[1])).not.toMatch(/làm tròn|700/i);
+  // ngày · mã · sổ không còn trên dòng — nằm ở tooltip
+  expect(dong[1]?.getAttribute('title')).toMatch(/05\/10\/2026 · PT2 · Sổ chủ nhà$/);
+  expect(tien(dong[2])).toMatch(/thu một phần \(hoá đơn 6\.000\.000\) — chia theo tỷ lệ/);
+  expect(within(dong[2]).getByTestId('settlement-row-book').textContent).toBe('QL');
+  // phiếu chưa tách (ảnh chốt cũ / không theo hoá đơn): tên + chi tiết hạng mục trải qua bốn cột
+  expect(within(dong[0]).getByTestId('settlement-voucher-name').textContent).toBeTruthy();
+  expect(within(dong[0]).getByTestId('settlement-voucher-lines').textContent).toBe('Tiền phòng 10.000.000 đ · Tiền điện 2.000.000 đ');
+  cleanup();
+  // màn hẹp: phiếu có phần tách xếp bốn ô dưới "Tổng thu"; phiếu chưa tách giữ kiểu danh sách
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+  ve({ month: { ...monthV3(), statement: { ...st, vouchers } } });
+  const hep = within(screen.getByTestId('settlement-income-card')).getAllByTestId('settlement-cash-row');
+  expect(hep.map((r) => r.getAttribute('data-layout'))).toEqual(['list', 'stack', 'stack']);
+  expect(tien(hep[1])).toMatch(/^.*Tổng thu\s*7\.226\.300 đ.*Tiền phòng\s*6\.200\.000.*PDV\s*400\.000.*Giảm trừ −200\.000/);
 });
 
 it('"Theo hạng mục" mặc định THU GỌN ở cả hai thẻ (hai cột thẳng hàng); bấm ở một thẻ thì mở / đóng CẢ HAI', () => {

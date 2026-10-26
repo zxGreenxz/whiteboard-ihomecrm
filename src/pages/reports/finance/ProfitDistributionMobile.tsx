@@ -16,6 +16,9 @@ import {
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
+import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
+import { categorySharesOf, invoicePartsNote } from "@/lib/invoiceAmountParts";
+import { CategoryShareBlock, IncomePartsGrid } from "@/components/reports/IncomeBreakdown";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { profitReportRowDescription } from "@/lib/voucherDisplayName";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -441,6 +444,26 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: firstInvoiceDetails } = useFirstInvoiceDetails(invoiceIds);
   const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
 
+  // Tách tiền phòng / điện / nước / PDV của khoản thu theo hoá đơn (chủ chốt 25/10/2026 — như desktop và
+  // Quyết toán vận hành; server chia). Không tách dòng thanh lý / bỏ cọc, dòng gồm khoản ngoài KQKD.
+  const partsRequests = useMemo(
+    () =>
+      shownIncomeRows
+        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !r.isLiq && r.amount > 0)
+        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount })),
+    [shownIncomeRows],
+  );
+  const { data: incomeParts, isError: partsError, refetch: retryParts } = useInvoiceAmountParts(partsRequests, !loading);
+  // "Theo hạng mục" của danh sách đang xem (chỉ để hiển thị tỷ trọng)
+  const cats = useMemo(
+    () =>
+      side === "income"
+        ? categorySharesOf(shownIncomeRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote })), incomeParts)
+        : categorySharesOf(shownExpenseRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote }))),
+    [side, shownIncomeRows, shownExpenseRows, incomeParts],
+  );
+  const [catsOpen, setCatsOpen] = useState(false);
+
   // Toà đang lọc (đúng 1 toà) — đọc has_elevator + hidden_fixed_expenses cho placeholder.
   const singleBuilding = useMemo(
     () => (buildingIds.length === 1 ? (buildings as any[]).find((b) => b.id === buildingIds[0]) ?? null : null),
@@ -605,6 +628,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   // ===== Render 1 thẻ dòng (layout Option C: dòng 1 phòng+mô tả+tiền, dòng 2 meta+note) =====
   const renderRow = (r: MRow) => {
     const isIncome = side === "income";
+    const split = isIncome ? incomeParts?.get(r.key) : undefined;
     const fd = isIncome && r.invoiceId && !r.isLiq ? firstInvoiceDetails?.get(r.invoiceId) : null;
     const rp = isIncome && r.invoiceId && !r.isLiq ? rentPeriods?.get(r.invoiceId) : null;
     const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
@@ -640,6 +664,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       if (r.notKqkd) parts.push("không KQKD");
       noteText = parts.join(" · ");
     }
+    // giảm trừ / nợ cũ / chia theo tỷ lệ: ghi dưới bốn ô (không chen vào ghi chú thiếu / thừa bên phải)
+    const partialNote = split ? invoicePartsNote(split, r.amount) : "";
 
     const meta = r.isMissingExpense
       ? `Hạng mục cố định · ${r.building}`
@@ -691,6 +717,12 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             {r.isNote ? "—" : fmtShort(r.amount)}
           </span>
         </div>
+        {split && (
+          <div className="mt-1.5" data-testid="profit-mobile-parts">
+            <IncomePartsGrid parts={split} />
+            {partialNote && <p className="mt-0.5 text-[10.5px] font-semibold text-[#1d4ed8]">{partialNote}</p>}
+          </div>
+        )}
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <span className="text-[10.5px] font-semibold text-[#8d8678] whitespace-nowrap overflow-hidden text-ellipsis">
             {meta}
@@ -906,6 +938,19 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
               </button>
             )}
           </div>
+
+          {/* Theo hạng mục của danh sách đang xem (như Quyết toán vận hành) */}
+          {!loading && (
+            <CategoryShareBlock cats={cats} total={side === "income" ? shownIncomeSum : shownExpenseSum}
+              kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen} onToggle={() => setCatsOpen((v) => !v)}
+              testId="profit-categories" className="rounded-xl border border-[#e7e3da] bg-white" />
+          )}
+          {side === "income" && partsError && (
+            <button type="button" onClick={() => void retryParts()}
+              className="rounded-lg border border-[#e7e3da] bg-[#faf8f4] px-3 py-2 text-left text-[11.5px] font-semibold text-[#8d8678]">
+              Chưa tách được tiền phòng / điện / nước — bấm để thử lại
+            </button>
+          )}
 
           {/* Danh sách khoản */}
           <div className="flex flex-col gap-1.5">

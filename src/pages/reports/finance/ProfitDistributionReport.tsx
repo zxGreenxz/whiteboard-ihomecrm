@@ -45,6 +45,9 @@ import { useLandlordIhomeProfit } from "@/hooks/useLandlordSettlement";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
+import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
+import { categorySharesOf, invoicePartsNote } from "@/lib/invoiceAmountParts";
+import { CategoryShareBlock, IncomePartCells } from "@/components/reports/IncomeBreakdown";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
@@ -742,6 +745,36 @@ function ProfitDistributionDesktop() {
   // Kỳ tiền phòng của hoá đơn KHÔNG đủ ngày (prorate) — tô xanh lá + ghi chú kỳ.
   const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
 
+  // Tách tiền phòng / điện / nước / PDV của khoản thu theo hoá đơn (chủ chốt 25/10/2026 — như Quyết toán vận
+  // hành; server chia). Không tách: dòng thanh lý / bỏ cọc, dòng gồm khoản ngoài KQKD (cọc khi tắt "Chỉ KQKD").
+  const partsRequests = useMemo(
+    () =>
+      shownIncomeRows
+        .filter((r) => r.invoiceId && !r.isNote && !r.notKqkd && !isLiquidationRow(r) && r.amount > 0)
+        .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount })),
+    [shownIncomeRows]
+  );
+  const {
+    data: incomeParts,
+    isError: partsError,
+    refetch: retryParts,
+  } = useInvoiceAmountParts(partsRequests, !loading);
+  // Bảng cột Tiền phòng · Điện · Nước · PDV khi tháng có khoản thu theo hoá đơn.
+  const incomeTable = partsRequests.length > 0;
+
+  // "Theo hạng mục" của hai cột (dòng đang hiện, bỏ dòng ghi chú). Khoản thu đã tách ⇒ cộng theo cột hoá đơn
+  // (tên trùng hạng mục của quyết toán vận hành); còn lại theo hạng mục của dòng. Chỉ để hiển thị tỷ trọng.
+  const incomeCats = useMemo(
+    () => categorySharesOf(shownIncomeRows.map((r) => ({ key: r.key, name: r.typeName, amount: r.amount, isNote: r.isNote })), incomeParts),
+    [shownIncomeRows, incomeParts]
+  );
+  const expenseCats = useMemo(
+    () => categorySharesOf(shownExpenseRows.map((r) => ({ key: r.key, name: r.typeName, amount: r.amount, isNote: r.isNote }))),
+    [shownExpenseRows]
+  );
+  // mở / đóng "Theo hạng mục" ở hai cột cùng lúc (mặc định thu gọn — như quyết toán vận hành)
+  const [catsOpen, setCatsOpen] = useState(false);
+
   // Chi tiết các lần thu của 1 hoá đơn (nhấp đôi vào dòng) — dùng lại dialog
   // "Các lần thanh toán" (hiện số tiền + ngày giờ từng lần).
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
@@ -983,8 +1016,19 @@ function ProfitDistributionDesktop() {
     // Ô mã 40×32 đầu dòng: cột Thu là SỐ PHÒNG, cột Chi là mã hạng mục — theo
     // đúng toggle cột tương ứng nên popover "Cột" vẫn điều khiển được.
     const hasTag = side === "income" ? visible("phong") : visible("phan_loai");
-    const gridStyle = { gridTemplateColumns: hasTag ? "44px 1fr auto" : "1fr auto" };
+    // Khoản thu theo hoá đơn: bảng Tiền phòng · Điện · Nước · PDV · Tổng (như Quyết toán vận hành)
+    const table = side === "income" && incomeTable;
+    const gridStyle = table
+      ? {
+          gridTemplateColumns: `${hasTag ? "44px " : ""}repeat(4, minmax(0, 1fr)) minmax(92px, auto)`,
+          columnGap: 8,
+        }
+      : { gridTemplateColumns: hasTag ? "44px 1fr auto" : "1fr auto" };
+    // dòng không tách / dòng mô tả dưới các cột: trải từ sau ô phòng tới hết
+    const spanCells = { gridColumn: hasTag ? "2 / span 4" : "1 / span 4" };
+    const spanBelow = { gridColumn: hasTag ? "2 / -1" : "1 / -1" };
     const realCount = data.filter((r) => !r.isNote).length;
+    const cats = side === "income" ? incomeCats : expenseCats;
 
     return (
       <div className={`ph-panel ph-panel--${side}`}>
@@ -995,10 +1039,33 @@ function ProfitDistributionDesktop() {
           {!hideTotals && <div className="ph-panel__total">{formatCurrency(total)}</div>}
         </div>
 
+        {!loading && (
+          <CategoryShareBlock cats={cats} total={side === "income" ? shownIncomeSum : shownExpenseSum}
+            kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen}
+            onToggle={() => setCatsOpen((v) => !v)} testId="profit-categories" />
+        )}
+        {table && partsError && (
+          <button type="button" className="ph-panel__foot" style={{ width: "100%", borderTop: 0 }} onClick={() => retryParts()}>
+            Chưa tách được tiền phòng / điện / nước — bấm để thử lại
+          </button>
+        )}
+
         <div className="ph-row ph-row--head" style={gridStyle}>
           {hasTag && <div>{side === "income" ? "Phòng" : "Loại"}</div>}
-          <div>Mô tả</div>
-          <div style={{ textAlign: "right" }}>Số tiền</div>
+          {table ? (
+            <>
+              <div style={{ textAlign: "right" }}>Tiền phòng</div>
+              <div style={{ textAlign: "right" }}>Điện</div>
+              <div style={{ textAlign: "right" }}>Nước</div>
+              <div style={{ textAlign: "right" }}>PDV</div>
+              <div style={{ textAlign: "right" }}>Tổng</div>
+            </>
+          ) : (
+            <>
+              <div>Mô tả</div>
+              <div style={{ textAlign: "right" }}>Số tiền</div>
+            </>
+          )}
         </div>
 
         <div className="ph-panel__scroll">
@@ -1044,14 +1111,19 @@ function ProfitDistributionDesktop() {
               const rowClickable = clickable || (r.isMissingExpense && canCreate);
               const detailBlock = fd || (!fd && rp);
               const sub = subParts(r, side, hasTag);
+              const parts = table ? incomeParts?.get(r.key) : undefined;
+              const partsNote = parts ? invoicePartsNote(parts, r.amount) : "";
+              if (partsNote) sub.push(partsNote);
 
               return (
                 <div
                   key={r.key}
                   style={gridStyle}
-                  className={`ph-row${detailBlock ? " ph-row--tall" : ""}${
+                  className={`ph-row${detailBlock && !parts ? " ph-row--tall" : ""}${
                     rowClickable ? " ph-row--click" : ""
-                  }${state ? ` ${state}` : ""}`}
+                  }${parts ? " ph-row--parts" : ""}${state ? ` ${state}` : ""}`}
+                  data-testid={side === "income" ? "profit-income-row" : undefined}
+                  data-layout={table ? (parts ? "table" : "table-other") : undefined}
                   onClick={
                     r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined
                   }
@@ -1091,7 +1163,10 @@ function ProfitDistributionDesktop() {
                       </div>
                     ))}
 
-                  <div className="ph-row__main">
+                  {parts && <IncomePartCells parts={parts} />}
+                  {/* có phần tách: mô tả (tên hoá đơn bấm được, chi tiết HĐ tháng đầu…) xuống dòng dưới các cột */}
+                  <div className={`ph-row__main${parts ? " ph-row__main--below" : ""}`}
+                    style={parts ? { ...spanBelow, gridRow: 2 } : table ? spanCells : undefined}>
                     <div className="ph-row__desc">
                       {clickable ? (
                         // Bấm tên HĐ → chi tiết hoá đơn (như trang /invoices).
