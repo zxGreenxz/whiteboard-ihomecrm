@@ -11,6 +11,6 @@ RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requireme
 COPY fetch_models.py ./
 RUN python fetch_models.py && useradd --uid 10001 --create-home meter
 COPY domain.py recognize.py worker.py ./
-ENV PYTHONUNBUFFERED=1 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 METER_OCR_MODELS=/opt/models HOME=/tmp
+ENV PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 METER_OCR_MODELS=/opt/models HOME=/tmp
 USER 10001:10001
 CMD ["python", "worker.py"]

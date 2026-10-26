@@ -144,22 +144,62 @@ class PaddleReader:
             text_detection_model_name="PP-OCRv5_mobile_det", text_detection_model_dir=str(det),
             text_recognition_model_name="en_PP-OCRv5_mobile_rec", text_recognition_model_dir=str(rec),
             use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False,
-            device="cpu", enable_mkldnn=False, cpu_threads=2,
+            device="cpu", enable_mkldnn=False, cpu_threads=1,
         )
 
     def read(self, path: Path) -> list[dict]:
-        # OCR's text detector selects ROIs, preserving the unit/register and full original for evidence.
+        # A full portrait frame downsamples the tiny LCD labels too much. Locate
+        # complete LCD panels using pixels only, retaining their unit/register.
+        # AI still receives the independent full frames, never these OCR tokens.
+        import cv2
+        image = cv2.imread(str(path))
+        if image is None:
+            raise InvalidInput("no_decodable_frames")
+        regions = lcd_regions(image) or [(0, 0, image.shape[1], image.shape[0])]
         output = []
-        for result in self.engine.predict(input=str(path)):
-            values = result.json
-            if isinstance(values, str):
-                values = json.loads(values)
-            data = values.get("res", values)
-            for text, score, polygon in zip(data.get("rec_texts", []), data.get("rec_scores", []), data.get("rec_polys", [])):
-                xs = [float(point[0]) for point in polygon]
-                ys = [float(point[1]) for point in polygon]
-                output.append({"text": text, "score": float(score), "box": [min(xs), min(ys), max(xs), max(ys)]})
+        for region, (x, y, width, height) in enumerate(regions):
+            for result in self.engine.predict(input=image[y:y+height, x:x+width]):
+                values = result.json
+                if isinstance(values, str):
+                    values = json.loads(values)
+                data = values.get("res", values)
+                for text, score, polygon in zip(data.get("rec_texts", []), data.get("rec_scores", []), data.get("rec_polys", [])):
+                    xs = [x + float(point[0]) for point in polygon]
+                    ys = [y + float(point[1]) for point in polygon]
+                    output.append({"text": text, "score": float(score), "region": region,
+                                   "box": [min(xs), min(ys), max(xs), max(ys)]})
         return output
+
+
+def lcd_regions(image) -> list[tuple[int, int, int, int]]:
+    """Bounded, geometry-only LCD crops. Never locate digits or insert a decimal.
+
+    Keep all candidate panels: selecting just the clearest could hide a second
+    meter. Grey/mechanical or ambiguous geometry falls back to the full image.
+    Originals and evidence are never rewritten by this preprocessing.
+    """
+    import cv2
+    import numpy as np
+    height, width = image.shape[:2]
+    scale = min(1.0, 1280 / max(height, width))
+    small = cv2.resize(image, None, fx=scale, fy=scale) if scale < 1 else image
+    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, np.array([20, 15, 25]), np.array([100, 180, 235]))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 11), np.uint8))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    found = []
+    sh, sw = small.shape[:2]
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if not (2 < w / max(h, 1) < 9 and w > sw * .2 and h > sh * .02
+                and w*h < sw*sh*.3 and cv2.contourArea(contour)/(w*h) > .55):
+            continue
+        # Margin preserves the complete display boundary and small label edges.
+        pad = max(3, round(h * .08))
+        left, top = max(0, int((x-pad)/scale)), max(0, int((y-pad)/scale))
+        right, bottom = min(width, int((x+w+pad)/scale)), min(height, int((y+h+pad)/scale))
+        found.append((left, top, right-left, bottom-top))
+    return sorted(found) if len(found) <= 2 else []
 
 
 def read_ai(frames: list[dict], meter: dict, *, timeout: float = 90) -> tuple[list, bool, str]:

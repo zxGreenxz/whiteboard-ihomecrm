@@ -51,6 +51,25 @@ class RecognitionRules(unittest.TestCase):
         self.assertIsNone(ocr_reading([token("123 kWh", [0, 0, 90, 30], .91)], 0, "total", 0, None))
         self.assertEqual(ocr_reading(values[:1], 0, "total", 0, None).value, "123")
 
+    def test_lcd_unit_above_fraction_still_requires_visible_decimal(self):
+        values = [token("E", [0, 20, 10, 40]), token("0123.4", [30, 20, 150, 60]),
+                  token("kWh", [125, 5, 150, 25])]
+        self.assertEqual(ocr_reading(values, 0, "E", 1, None).value, "0123.4")
+        values[1]["text"] = "01234"
+        self.assertIsNone(ocr_reading(values, 0, "E", 1, None))
+        values[1]["text"] = "0123.4"
+        values[2]["text"] = "A"
+        self.assertIsNone(ocr_reading(values, 0, "E", 1, None))
+
+    def test_panel_tokens_cannot_borrow_register_or_unit_from_another_panel(self):
+        values = [dict(token("E", [0, 20, 10, 40]), region=0),
+                  dict(token("0123.4", [30, 20, 150, 60]), region=1),
+                  dict(token("kWh", [155, 22, 180, 38]), region=1)]
+        self.assertIsNone(ocr_reading(values, 0, "E", 1, None))
+        values[0]["region"] = 1
+        values[2]["region"] = 0
+        self.assertIsNone(ocr_reading(values, 0, "E", 1, None))
+
     def test_ocr_rejects_a_confident_tail_beside_weak_integer_digits(self):
         values = [token("4967", [0, 20, 70, 40], .6), token("0.4", [73, 20, 100, 40]), token("kWh", [110, 22, 140, 38])]
         self.assertIsNone(ocr_reading(values, 0, "total", 1, None))

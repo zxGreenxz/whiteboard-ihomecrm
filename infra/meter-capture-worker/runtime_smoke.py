@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from domain import ocr_reading, stable_reading
-from recognize import PaddleReader, extract_frames, inspect_frames, probe_media, run_process
+from recognize import PaddleReader, extract_frames, inspect_frames, lcd_regions, probe_media, run_process
 
 
 QR = "ihome-meter:11111111-1111-4111-8111-111111111111"
@@ -43,6 +43,14 @@ def main():
     assert version("paddlepaddle") == "3.1.1"
     assert version("paddlex") == "3.2.0"
     assert cv2.__version__ == "4.10.0"
+    layout = np.full((1400, 900, 3), 245, dtype=np.uint8)
+    cv2.rectangle(layout, (100, 200), (750, 360), (130, 155, 135), -1)
+    crops = lcd_regions(layout)
+    assert len(crops) == 1 and crops[0][0] < 100 and crops[0][1] < 200
+    assert crops[0][0]+crops[0][2] > 750 and crops[0][1]+crops[0][3] > 360
+    cv2.rectangle(layout, (100, 700), (750, 860), (130, 155, 135), -1)
+    assert len(lcd_regions(layout)) == 2, "Second meter panel must not be discarded"
+    assert lcd_regions(np.full_like(layout, 220)) == [], "Grey frames retain whole-frame OCR"
     with TemporaryDirectory(prefix="meter-runtime-") as tmp:
         directory = Path(tmp)
         image = directory / "meter.jpg"

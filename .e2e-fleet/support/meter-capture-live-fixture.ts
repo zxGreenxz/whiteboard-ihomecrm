@@ -16,6 +16,8 @@ const manifestSchema = z.object({
   meterCode: z.string().regex(/^E2E-METER-[A-Za-z0-9-]+$/), serial: z.string().regex(/^E2E-METER-[A-Za-z0-9-]+$/),
   qrText: z.string().regex(/^ihome-meter:[0-9a-f-]{36}$/), registerCode: z.literal('1.8.0'),
   previousValue: value, currentValue: value, readingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  bulkRoom: z.object({roomId:uuid,meterId:uuid,contractId:uuid,customerId:uuid,marker:z.string().regex(/^E2E-METER-[a-f0-9-]+-B$/),
+    meterCode:z.string(),serial:z.string(),previousValue:z.literal('100.00'),currentValue:z.literal('140.50'),qrText:z.string().regex(/^ihome-meter:[0-9a-f-]{36}$/)}),
   expectedBuildSha: z.string().regex(/^[a-f0-9]{40}$/),
   lifecycle: z.object({ modulePath: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/), retainImmutableAudit: z.literal(true) }),
 });
