@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CameraArchivePanel from "@/components/network-center/tabs/CameraArchivePanel";
 import { createDemoCameraRecorder } from "@/lib/network-center/cameraDemo";
 import type { CameraLiveOptions } from "@/lib/network-center/cameraLive";
-const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), start: vi.fn(), stop: vi.fn(), capture: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
+vi.mock("@/hooks/network-center/useCameraQuality", async () => { const { useState } = await import("react"); return { useCameraQuality: (kind: string) => [...useState(kind === "export" ? "480p" : "sd"), ""] }; });
+const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), capture: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
 vi.mock("@/lib/network-center/cameraPlayback", async (original) => ({ ...await original<typeof import("../network-center/cameraPlayback")>(), capturePlaybackFrame: mocks.capture, cameraFrame: mocks.frame }));
-vi.mock("@/lib/network-center/cameraLive", async (original) => ({ ...await original<typeof import("../network-center/cameraLive")>(), cameraLiveCapabilities: mocks.capabilities, CameraLiveConnection: class { constructor(options: CameraLiveOptions) { mocks.connections.push(options); } start = mocks.start; stop = mocks.stop; } }));
+vi.mock("@/lib/network-center/cameraLive", async (original) => ({ ...await original<typeof import("../network-center/cameraLive")>(), cameraLiveCapabilities: mocks.capabilities, CameraLiveConnection: class { constructor(options: CameraLiveOptions) { mocks.connections.push(options); } start = mocks.start; stop = mocks.stop; seek = mocks.seek; } }));
 vi.mock("@/lib/network-center/cameraArchive", async (original) => ({ ...await original<typeof import("../network-center/cameraArchive")>(), prepareCameraArchive: mocks.prepare }));
 const recorder = createDemoCameraRecorder({ organizationId: "a0000000-0000-4000-8000-000000000001", buildingId: "b0000000-0000-4000-8000-000000000001" });
 function setWindow() {
@@ -19,7 +20,7 @@ function setClip() {
 }
 async function ready() { await waitFor(() => expect(screen.queryByText("Đang kiểm tra dịch vụ xem lại…")).toBeNull()); }
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd"] });
+  vi.clearAllMocks(); mocks.stop.mockResolvedValue(undefined); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd"] });
   mocks.frame.mockReturnValue("data:image/jpeg;base64,previous"); mocks.capture.mockResolvedValue("data:image/jpeg;base64,preview");
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   mocks.prepare.mockImplementation(async (input) => ({ blob: new Blob(["fixture"]), job: { ...input, id: "job", state: "ready", bytes: 7, durationSeconds: (Date.parse(input.end) - Date.parse(input.start)) / 1000, sha256: "a".repeat(64), filename: "camera-fixture.mp4" } }));
@@ -27,6 +28,39 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("separate playback and export", () => {
+  it("waits for the original cleanup when quality changes twice before a pending connection can start", async () => {
+    let released!: () => void;
+    mocks.stop.mockImplementationOnce(() => new Promise<void>((resolve) => { released = resolve; }));
+    mocks.capabilities.mockResolvedValue({ channels: [1], archive: true, playback: true, playbackControl: true, playbackQualities: ["sd", "hd", "fullhd"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "hd" } });
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "fullhd" } });
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.start).toHaveBeenCalledOnce(); expect(mocks.connections).toHaveLength(3);
+    await act(async () => released());
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2));
+    expect(mocks.connections.at(-1)?.playback?.quality).toBe("fullhd");
+  });
+  it("reuses one connection for seeking and 8x, but preserves the whole seekable window on Full HD restart", async () => {
+    mocks.seek.mockResolvedValue(undefined);
+    mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackControl: true, playbackPreview: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd", "fullhd", "original"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    const video = screen.getByLabelText(/^Video xem lại/);
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "8" } });
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledWith(Date.parse("2026-10-20T01:00:00Z"), 8));
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    await waitFor(() => expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T01:00:10Z"), 8));
+    expect(mocks.connections).toHaveLength(1); expect(screen.getByLabelText(/^Video xem lại/)).toBe(video);
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "fullhd" } });
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2));
+    expect(mocks.connections[1]?.playback).toMatchObject({ start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z", position: "2026-10-20T01:00:10.000Z", quality: "fullhd", speed: 8 });
+    fireEvent.click(screen.getByRole("button", { name: "Lùi 10 giây" }));
+    await waitFor(() => expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T01:00:00Z"), 8));
+    expect(mocks.connections).toHaveLength(2);
+  });
   it("defaults playback to SD, switches quality at the current time and preserves the selected speed", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
     expect((screen.getByLabelText("Chất lượng xem lại") as HTMLSelectElement).value).toBe("sd");
@@ -71,7 +105,7 @@ describe("separate playback and export", () => {
     fireEvent.pointerDown(slider); fireEvent.change(slider, { target: { value: "120" } });
     expect(screen.getByText("Đang lấy ảnh xem trước…")).toBeTruthy();
     await screen.findByAltText(/Ảnh xem trước/);
-    expect(mocks.capture).toHaveBeenCalledWith(recorder.id, 1, Date.parse("2026-10-20T01:02:00Z"), Date.parse("2026-10-20T02:00:00Z"), expect.any(AbortSignal), "sd");
+    expect(mocks.capture).toHaveBeenCalledWith(recorder.id, 1, Date.parse("2026-10-20T01:02:00Z"), Date.parse("2026-10-20T02:00:00Z"), expect.any(AbortSignal), "sd", false);
     expect(mocks.connections).toHaveLength(1);
     fireEvent.pointerUp(slider); expect(mocks.connections.at(-1)?.playback?.start).toBe("2026-10-20T01:02:00.000Z");
     expect(screen.queryByAltText(/Ảnh xem trước/)).toBeNull();
@@ -114,7 +148,7 @@ describe("separate playback and export", () => {
     mocks.prepare.mockImplementation(() => new Promise(() => {}));
     const view = render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow(); setClip();
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" }));
-    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); expect(mocks.start).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Hủy trích xuất" })); expect(mocks.prepare.mock.calls[0]?.[1].aborted).toBe(true); expect(mocks.stop).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); view.unmount();
     expect(mocks.prepare.mock.calls[1]?.[1].aborted).toBe(true); expect(mocks.stop).toHaveBeenCalledOnce();

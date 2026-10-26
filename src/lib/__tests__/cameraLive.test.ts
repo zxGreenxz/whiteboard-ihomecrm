@@ -34,6 +34,29 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const options = () => ({ recorderId: "20000000-0000-4000-8000-000000000001", channel: 1, onStream: vi.fn(), onState: vi.fn() });
 
 describe("live camera browser lifecycle", () => {
+  it("automatically recovers a transient 8x startup failure without another peer or manual retry", async () => {
+    request.mockResolvedValueOnce(Response.json({ code: "CAMERA_UNAVAILABLE" }, { status: 502 }));
+    const callbacks = options(); const connection = new CameraLiveConnection({ ...callbacks, playback: { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", quality: "sd", speed: 8 } });
+    const started = connection.start(); await vi.advanceTimersByTimeAsync(401); await started;
+    expect(request).toHaveBeenCalledTimes(2); expect(Peer.instances).toHaveLength(1); expect(Peer.instances[0]!.setRemoteDescription).toHaveBeenCalledOnce();
+    expect(callbacks.onState.mock.calls.some(([state]) => state === "error")).toBe(false); await connection.stop();
+  });
+  it("bounds retries, cancels retry on stop, and never retries permission or uncertain network failures", async () => {
+    const playback = { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", speed: 8 };
+    request.mockImplementation(async () => Response.json({ code: "CAMERA_UNAVAILABLE" }, { status: 502 }));
+    const failed = new CameraLiveConnection({ ...options(), playback }); const done = failed.start(); await vi.advanceTimersByTimeAsync(2000); await done;
+    expect(request).toHaveBeenCalledTimes(3);
+    request.mockClear(); const stopped = new CameraLiveConnection({ ...options(), playback }); void stopped.start(); await vi.advanceTimersByTimeAsync(1); await stopped.stop(); await vi.advanceTimersByTimeAsync(2000); expect(request).toHaveBeenCalledOnce();
+    for (const failure of [() => Promise.resolve(Response.json({ code: "CAMERA_ACCESS_DENIED" }, { status: 403 })), () => Promise.reject(new Error("network"))]) {
+      request.mockClear().mockImplementation(failure); await new CameraLiveConnection({ ...options(), playback }).start(); expect(request).toHaveBeenCalledOnce();
+    }
+  });
+  it("seeks on the existing authenticated session without replacing WebRTC", async () => {
+    const connection = new CameraLiveConnection({ ...options(), playback: { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", quality: "sd" } }); await connection.start();
+    request.mockResolvedValueOnce(Response.json({ time: "2026-10-20T01:10:00.000Z", speed: 8, expiresAt: Date.now()+75000 }));
+    await connection.seek(Date.parse("2026-10-20T01:10:00Z"),8);
+    expect(request.mock.calls[1]?.[0]).toContain(`/sessions/${sessionId}/playback`); expect(Peer.instances).toHaveLength(1); expect(Peer.instances[0]!.close).not.toHaveBeenCalled(); await connection.stop();
+  });
   it("uses the default live substream and only requests the main stream for HD", async () => {
     const sd = new CameraLiveConnection({ ...options(), liveQuality: "sd" }); await sd.start(); await sd.stop();
     expect(request.mock.calls[0]?.[0]).toMatch(/\/sessions$/u);

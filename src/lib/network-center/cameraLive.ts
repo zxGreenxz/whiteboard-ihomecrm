@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 export const cameraVideoEndpoint = "https://crm-hermes.chillhome.io.vn/camera-live/v1";
 const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().uuid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
-export type CameraPlaybackQuality = "sd" | "hd";
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd"])).optional().default(["sd"]) });
+export type CameraPlaybackQuality = "sd" | "hd" | "fullhd" | "original";
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd"])).optional().default(["sd"]) });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",
@@ -42,7 +42,7 @@ async function liveRequest(path: string, method: string, body?: string, signal?:
       ...(body ? { body } : {}), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000),
       credentials: "omit", redirect: "error", cache: "no-store",
     });
-  } catch { throw new CameraLiveError("CAMERA_UNAVAILABLE"); }
+  } catch { throw new CameraLiveError("VIDEO_NETWORK_ERROR"); }
   const result: unknown = await response.json();
   if (!response.ok) {
     const parsed = z.object({ code: z.string() }).safeParse(result);
@@ -54,11 +54,17 @@ export async function cameraLiveCapabilities(recorderId: string, signal: AbortSi
   z.string().uuid().parse(recorderId);
   return capabilitiesSchema.parse(await liveRequest(`/recorders/${recorderId}`, "GET", undefined, signal));
 }
+export async function cameraPlaybackThumbnail(recorderId: string, channel: number, time: number, end: number, signal: AbortSignal) {
+  z.string().uuid().parse(recorderId); z.number().int().min(1).max(64).parse(channel);
+  const start = new Date(time).toISOString();
+  const result = z.object({ time: z.literal(start), image: z.string().min(4).max(174764).regex(/^[A-Za-z0-9+/]+={0,2}$/u) }).parse(await liveRequest(`/recorders/${recorderId}/channels/${channel}/preview`, "POST", JSON.stringify({ start, end: new Date(Math.min(time + 20_000, end)).toISOString() }), signal, "application/json"));
+  return `data:image/jpeg;base64,${result.image}`;
+}
 
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
   recorderId: string; channel: number; liveQuality?: "sd" | "hd";
-  playback?: { start: string; end: string; speed?: number; quality?: CameraPlaybackQuality };
+  playback?: { start: string; end: string; position?: string; speed?: number; quality?: CameraPlaybackQuality };
   onStream(stream: MediaStream | null): void;
   onState(state: CameraLiveState, message?: string): void;
 }
@@ -77,6 +83,7 @@ export class CameraLiveConnection {
 
   start() { return this.starting ??= this.connect(); }
   private async connect() {
+    if (this.stopped) return;
     try {
       z.string().uuid().parse(this.options.recorderId);
       z.number().int().min(1).max(64).parse(this.options.channel);
@@ -100,7 +107,20 @@ export class CameraLiveConnection {
       const playback = this.options.playback;
       // Keep creation's bounded request alive after stop so its id can be deleted before the next preview.
       // Aborting fetch alone leaves an unknown server-side reservation until WHEP finishes.
-      const session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality === "hd" ? "?quality=hd" : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
+      let session: z.infer<typeof sessionSchema> | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (this.stopped) return;
+        try {
+          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality === "hd" ? "?quality=hd" : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp"));
+          break;
+        } catch (error) {
+          if (!playback || attempt === 2 || !(error instanceof CameraLiveError) || !["CAMERA_UNAVAILABLE", "RECORDING_UNAVAILABLE"].includes(error.code)) throw error;
+          if (this.stopped) return;
+          this.options.onState("connecting", "Đang kết nối lại bản ghi…");
+          await new Promise<void>((resolve) => { const timer = setTimeout(done, 400 * (attempt + 1)); const signal = this.abort.signal; function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); } signal.addEventListener("abort", done, { once: true }); });
+        }
+      }
+      if (!session) return;
       this.sessionId = session.id;
       if (this.stopped) { void this.releaseSession(); return; }
       await peer.setRemoteDescription({ type: "answer", sdp: session.answer });
@@ -122,6 +142,14 @@ export class CameraLiveConnection {
     } catch (error) {
       if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Không thể phát video trên trình duyệt này.");
     }
+  }
+  async seek(time: number, speed: number) {
+    await this.starting;
+    if (this.stopped || !this.sessionId) throw new CameraLiveError("SESSION_EXPIRED");
+    const iso = new Date(time).toISOString();
+    const result = z.object({ time: z.literal(iso), speed: z.literal(speed), expiresAt: z.number() }).parse(await liveRequest(`/sessions/${this.sessionId}/playback`, "POST", JSON.stringify({ time: iso, speed }), this.abort.signal, "application/json"));
+    if (this.stopped) throw new CameraLiveError("SESSION_EXPIRED");
+    return result;
   }
   private async renew() {
     if (this.renewing || !this.sessionId || this.stopped) return;

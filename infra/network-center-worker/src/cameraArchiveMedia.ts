@@ -7,6 +7,7 @@ import { ARCHIVE_MAX_BYTES, type ArchiveDependencies, type ArchiveRange } from "
 import { LiveError } from "./cameraLive.js";
 import { DahuaClient } from "./camera/dahuaClient.js";
 import { validateCameraOrigin } from "./cameraConfig.js";
+import { recordingFetch } from "./cameraRecordingFetch.js";
 
 export const recorderTime = (value: string) => new Date(Date.parse(value) + 7 * 3600_000).toISOString().slice(0, 19).replace("T", " ");
 // Some recorders omit interframes at the download boundary. Fetch preroll, then
@@ -102,7 +103,8 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
       const workSignal = AbortSignal.any([signal, timeout.signal]);
       let seconds = 0; let frames = 0;
       try {
-        const client = new DahuaClient({ baseUrl: validateCameraOrigin(recorder.archiveOrigin ?? ""), username: recorder.username, password: recorder.password });
+        const baseUrl = validateCameraOrigin(recorder.archiveOrigin ?? "");
+        const client = new DahuaClient({ baseUrl, username: recorder.username, password: recorder.password, fetch: recordingFetch(baseUrl) });
         const response = await client.recording(channel, recordingStart(range), recordingEnd(range), workSignal);
         await saveRecording(response, input, workSignal);
         if (workSignal.aborted) throw new LiveError(410, "ARCHIVE_EXPIRED");

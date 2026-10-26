@@ -688,6 +688,23 @@
       "why": "File 20261024145100 ghim md5 thân hàm mà 20261025003100 (tích hợp C3, #320) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 25/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
       "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 25/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
       "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261025003100_hermes_task_given_per_room_v1.sql",
+      "sha256": "98ff0520eaaa0aa2ee7d9566a53f183153e3fc062c0ed175eb5738fde4fb2e31",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_task_given_per_room_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261025003100_hermes_task_given_per_room_v1.json",
+      "supersededBy": {
+        "file": "20261026014500_hermes_task_room_by_job_v1.sql",
+        "sha256": "aef43366e54bf86fa6289eb7990b642a5ebe8bd280d4a986b7d5f015d8989388",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261026014500_hermes_task_room_by_job_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/329",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261025003100 ghim md5 thân app_private.hermes_task_resolve_core_v1 mà 20261026014500 (C3k, #329) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 26/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
+      "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 26/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

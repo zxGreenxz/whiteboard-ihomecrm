@@ -6,8 +6,9 @@ import { createLiveDependencies, createLiveServer, liveConfigSchema, streamName,
 import { ArchiveJobs } from "./cameraArchive.js";
 import { createArchiveMedia, prepareArchiveDirectory } from "./cameraArchiveMedia.js";
 
-export const MEDIA_VERSION = "1.21.2";
-export const MEDIA_ARCHIVE_SHA256 = "121be6e00397e473a95d83c75f4fcd3819a6af3b0e1a50889cba43ab4fab6a27";
+// Build from the pinned upstream revision plus media/playback-control.patch.
+// Runtime verifies the release's binary digest before executing it.
+export const MEDIA_VERSION = "1.21.2-ihome-playback1";
 
 export function mediaConfiguration(config: LiveConfig) {
   const paths = Object.fromEntries(config.recorders.flatMap((recorder) => recorder.channels.flatMap((channel) => (["sd", "hd"] as const).map((quality) => {

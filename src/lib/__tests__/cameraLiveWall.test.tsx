@@ -66,3 +66,4 @@ describe("live camera wall", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("không có quyền"); expect(mocks.start).not.toHaveBeenCalled();
   });
 });
+vi.mock("@/hooks/network-center/useCameraQuality", async () => { const { useState } = await import("react"); return { useCameraQuality: () => [...useState("sd"), ""] }; });

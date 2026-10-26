@@ -497,18 +497,33 @@ xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI
 
 Xem trực tiếp mặc định dùng luồng phụ SD, có lựa chọn HD để nhận luồng chính
 (độ phân giải theo cấu hình camera). Xem lại dùng RTSP `/cam/playback` từ bản ghi
-chính. Khi chọn SD/HD, FFmpeg đã ghim chuyển mã ngay sang H.264 tối đa 854×480 /
-1280×720; không tạo job MP4 hoặc lưu thêm video. Client cũ không gửi chất lượng
-vẫn nhận codec/kích thước gốc. Mỗi lần tìm/tua tạo path UUID riêng; dừng, hết lease
-hoặc hết khoảng xem sẽ xóa phiên WHEP, output và input, đồng thời dừng encoder.
+chính. FFmpeg chuyển mã ngay sang H.264: SD tối đa 854×480, HD 1280×720,
+Full HD 1920×1080 hoặc kích thước gốc (không nâng độ phân giải nguồn). Không tạo
+job MP4 khi xem lại. Lựa chọn trực tiếp/xem lại/xuất được lưu riêng trong
+profiles.ui_preferences theo tài khoản qua RPC set_my_ui_preference; SD cho
+người chưa chọn, bộ nhớ máy hỗ trợ khi mất mạng. Không ghi đè các preference khác.
+Tua/đổi tốc độ dùng lại RTSP, encoder và WHEP; chỉ đổi chất lượng/khoảng/kênh mới
+tạo phiên khác. Dừng, hết lease hoặc hết khoảng xem xóa cả output/input/encoder.
+
+Build media bằng `node infra/network-center-worker/scripts/build-camera-media.mjs`
+(Go bootstrap cần có trong PATH). Script kiểm commit upstream v1.21.2, áp dụng
+`media/playback-control.patch`, dùng Go 1.27.0 và xuất mediamtx, LICENSE cùng
+MEDIA-PROVENANCE.json vào camera-dist. `npm test` của worker kiểm cả patch Go.
+Triển khai cả gateway và binary này vào cùng release; đối chiếu hash provenance,
+ghim CAMERA_MEDIA_SHA256. Không dùng binary upstream chưa vá cho gateway này.
+Rollback chuyển đồng thời gateway, binary và runtime.env về release đã xác minh.
 
 MediaMTX cho encoder đọc/publish qua RTSP TCP chỉ tại `127.0.0.1:18895`; quyền
 publish chỉ nhận tên `playback-<uuid>`. FFmpeg chỉ nhận URL loopback không chứa
 credential, một thread giải mã/mã hóa và không tự khởi động lại. RTCP của đầu ghi
 khi tăng tốc có thể làm timestamp FFmpeg nhảy ngược; luồng chuyển mã dùng đồng hồ
 thực để phát ổn định, UI nhân theo tốc độ để ước tính vị trí. Dấu giờ trên hình
-vẫn là giờ đầu ghi. Luồng gốc dùng timestamp RTP gốc. Giới hạn bốn phiên xem lại
-bao gồm cả phiên chụp ảnh trước; ảnh trước luôn dùng SD và chỉ giữ trong bộ nhớ.
+vẫn là giờ đầu ghi. Luồng client cũ không chuyển mã dùng RTP gốc. Media chờ reader
+PLAY trước khi yêu cầu bản ghi, tránh mất keyframe đầu. Lệnh tua được xác nhận
+sau PLAY thành công, timeout 3 giây; về 1× bỏ hẳn Scale vì firmware đầu ghi trả
+quá ít khung hình nếu gửi Scale: 1. Giới hạn bốn phiên xem lại. Ảnh trước dùng
+một JPEG 320px trong bộ nhớ, tối đa 128KiB/5 giây xử lý, hai yêu cầu toàn gateway
+và một yêu cầu/tài khoản; hủy phải đợi tiến trình thoát trước khi nhả chỗ.
 
 - Gateway kiểm JWT và quyền tòa nhà trước mở; renew/delete giữ ràng buộc chủ phiên.
 - Khoảng xem tối đa 24 giờ, không giờ tương lai; tối đa 4 phiên phát lại toàn gateway.

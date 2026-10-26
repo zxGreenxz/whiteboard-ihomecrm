@@ -633,3 +633,28 @@ Kiểm:
 - Thời gian trả lời của bot với 7 báo cáo mới và việc bot chọn đúng báo cáo (tầng 3, phiên chính).
 
 **Đã đọc production 22/10 (chỉ đọc, `npm run -s db:query`):** registry có `invoices.view`, `thu_tien.view`, `meter_readings.view` BẬT; `meter_readings.create`, `invoices.edit`, `invoices.cancel`, `invoices.approve` TẮT; không có `thu_tien.collect`. `invoice_effective_outstanding_v1` chưa có (#267 chưa áp). `authenticated` không có EXECUTE trên `app_private.round_invoice_total_v1` (nên mục 6.3 lấy tổng từ chạy thử hàm ghi).
+
+## Lượt C3j — lưới an toàn thu tiền khi ghi chú nói "chưa trả" (26/10)
+
+**Vì sao:** nghiệm thu C3i (TEST, 26/10) có ghi sai thật TC-A03 — người dùng nói "1392: phòng 205 với 306 ck đủ phần còn thiếu tháng 10 rồi, L06 thì chưa nha"; mô hình gọi THÊM `invoice.collect` cho L06 với ghi chú "Chưa thanh toán phần còn thiếu tháng 10" rồi xác nhận ⇒ ghi thu 3.970.000đ cho khoản khách chưa trả. Lần thu đó đã hoàn tác trên TEST.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `infra/hermes-broker/collect-guard.mjs` (mới) | `invoice.collect` có `note` nói "chưa thanh toán / chưa trả / chưa đóng / chưa chuyển / chưa ck / không trả…" (bỏ dấu) ⇒ `needs_input invalid_params` kèm câu "thu tiền chỉ ghi khoản khách ĐÃ trả…", không gửi gì xuống SQL. `cashbookName` là nhãn ứng viên của máy chủ ("HKDHUY — thanh toán (TT)", TC-A06) ⇒ phần mã trước dấu gạch |
+| `action-runtime.mjs` | áp sau bước quy đổi cụm ngày, cho cả hai lượt (lượt đồng ý gửi y nguyên ⇒ cùng kết quả) |
+
+**Phát hành:** chỉ connector, không migration; SOUL v4.28 (không thu phòng "thì chưa", khách cũ trả hoá đơn thanh lý ⇒ `invoice.collect`, tên phòng "MB"/"Paris 2", chỉ số công tơ) lên cùng.
+
+**Test:** `collect-guard.test.mjs` (đơn vị + vòng đời qua broker thật). Đột biến bằng tay: tắt nhánh "chưa trả" ⇒ ca L06 đỏ.
+
+## Lượt C3l — tên sổ trùng tên phòng (26/10)
+
+**Vì sao:** nghiệm thu C3j (TEST, 26/10) TC-A07 "Toà 80 phòng MB ck 2tr796 tiền tháng 10": mô hình gửi cả `roomName` "MB" lẫn `cashbookName` "MB" ⇒ máy chủ không thấy sổ "MB", hỏi chọn TK939/HKDHUY; người dùng "ok" ⇒ bot hỏi lại, không ghi. SOUL v4.28 đã dặn "phòng MB" là tên phòng, mô hình vẫn lẫn.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `infra/hermes-broker/collect-guard.mjs` | `invoice.collect`: `cashbookName` (bỏ dấu, bỏ khoảng trắng hai đầu) trùng `roomName` hoặc một `items[].roomName` của chính lệnh ⇒ bỏ `cashbookName`, máy chủ dùng sổ mặc định theo phương thức; sổ thật ("MBHIEP"…) và nhãn ứng viên "X — …" giữ luật cũ |
+
+**Phát hành:** chỉ connector, không migration. Đi cùng SOUL v4.30 (đồng ý bản xem trước = ghi đúng sổ mặc định, không hỏi lại sổ; khách cũ trả "tiền quyết toán" ⇒ `invoice.collect`; chỉ số nhỏ hơn đầu kỳ ⇒ nêu số đầu kỳ).
+
+**Test:** `collect-guard.test.mjs` thêm ca đơn vị (phòng "MB", `items[]` "Paris 2", sổ thật giữ nguyên). Đột biến bằng tay: tắt nhánh ⇒ ca đỏ.

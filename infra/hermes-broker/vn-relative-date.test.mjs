@@ -111,3 +111,19 @@ test('applyDatePhrases: ghi đè ngày bot tính, bỏ cụm trước khi gửi 
   assert.equal(applyDatePhrases('task.create', none, SUN).params.deadline, '2026-10-30');
   assert.deepEqual(applyDatePhrases('expense.create', { items: [] }, SUN).notes, []);
 });
+
+// C3l (nghiệm thu C3d TC-A04 "Thứ hai tuần trước anh có chi 2 củ sơn lại tường… ghi bù"): ngày phiếu chi là ngày ĐÃ xảy ra ⇒ hướng quá khứ,
+// ghi đè voucherDate từng mục (expense.create) và của phiếu (expense.edit); cụm không xuống SQL.
+test('expense.create / expense.edit: voucherDatePhrase hướng quá khứ ghi đè voucherDate', () => {
+  const one = (now, phrase) => applyDatePhrases('expense.create', { items: [{ content: 'sơn lại tường', voucherDate: '2026-10-01', voucherDatePhrase: phrase }] }, now);
+  for (const [now, phrase, want] of [[SUN, 'thứ hai tuần trước', '2026-10-12'], [MON, 'thứ hai tuần trước', '2026-10-19'], [MON, 'hôm qua', '2026-10-25'],
+    [MON, 'cuối tháng trước', '2026-09-30'], [MON, 'thứ sáu', '2026-10-23'], [MON, 'hôm kia', '2026-10-24']]) {
+    const r = one(now, phrase);
+    assert.equal(r.params.items[0].voucherDate, want, phrase);
+    assert.ok(!Object.hasOwn(r.params.items[0], 'voucherDatePhrase'));
+    assert.match(r.notes[0], /^Mục #1: Hiểu "/);
+  }
+  assert.equal(one(MON, 'sớm nhất có thể').unclear, 'sớm nhất có thể');
+  assert.deepEqual(applyDatePhrases('expense.edit', { voucherCode: 'PC2610001', voucherDatePhrase: 'hôm qua' }, MON).params,
+    { voucherCode: 'PC2610001', voucherDate: '2026-10-25' });
+});
