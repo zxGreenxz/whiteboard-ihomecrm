@@ -127,3 +127,14 @@ test('expense.create / expense.edit: voucherDatePhrase hướng quá khứ ghi �
   assert.deepEqual(applyDatePhrases('expense.edit', { voucherCode: 'PC2610001', voucherDatePhrase: 'hôm qua' }, MON).params,
     { voucherCode: 'PC2610001', voucherDate: '2026-10-25' });
 });
+
+// C3m (nghiệm thu c3k HĐn D04 "Thứ hai tuần trước phòng 205 toà 1392 ck 82k mà anh quên ghi"): ngày khách trả hướng quá khứ, ghi đè `date`.
+test('invoice.collect: datePhrase hướng quá khứ ghi đè date', () => {
+  for (const [now, phrase, want] of [[SUN, 'thứ hai tuần trước', '2026-10-12'], [MON, 'thứ hai tuần trước', '2026-10-19'], [MON, 'hôm qua', '2026-10-25']]) {
+    const r = applyDatePhrases('invoice.collect', { roomName: '205', amount: 82000, method: 'TK', date: '2026-10-01', datePhrase: phrase }, now);
+    assert.equal(r.params.date, want, phrase);
+    assert.ok(!Object.hasOwn(r.params, 'datePhrase'));
+    assert.match(r.notes[0], /^Hiểu "/);
+  }
+  assert.equal(applyDatePhrases('invoice.collect', { roomName: '205', method: 'TK', datePhrase: 'hôm nào đó' }, MON).unclear, 'hôm nào đó');
+});

@@ -55,7 +55,7 @@ test('danh mục Hoá đơn: thu tiền + ghi chỉ số, một RPC, khoá trong
   assert.ok(!HERMES_ACTION_FOUNDATION_KEYS.includes(INVOICE_COLLECT_KEY) && !HERMES_ACTION_CAPABILITIES.includes('thu_tien.collect'), 'không bao giờ là thu_tien.collect');
   const [collect] = invoiceCatalog().listing({ action: [INVOICE_COLLECT_KEY] });
   assert.equal(collect.confirm, 'always');
-  assert.deepEqual(Object.keys(collect.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'items', 'method', 'amount', 'date', 'overpay', 'cashbookName', 'note']);
+  assert.deepEqual(Object.keys(collect.params), ['buildingName', 'roomName', 'month', 'invoiceNumber', 'items', 'method', 'amount', 'date', 'datePhrase', 'overpay', 'cashbookName', 'note']);
   // Lượt 14: toà tuỳ chọn (máy chủ giải theo phòng); sổ nhận nhận cả tên phụ cashbook (như expense.create), gửi cả hai tên ⇒ sai.
   assert.deepEqual(Object.entries(collect.params).filter(([, spec]) => spec.required).map(([name]) => name), ['method']);
   assert.match(collect.params.cashbookName.hint, /^sổ\/tài khoản NHẬN tiền người dùng nêu .*không ghi vào note/);
