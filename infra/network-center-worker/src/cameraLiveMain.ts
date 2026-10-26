@@ -27,7 +27,9 @@ export function mediaConfiguration(config: LiveConfig, encoder?: string) {
       for (const quality of ["hd", "fullhd"] as const) {
         const output = streamName(recorder, channel, quality); const input = mainInput;
         const size = quality === "hd" ? [1280, 720] : [1920, 1080];
-        const video = ["-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "25", "-maxrate", quality === "hd" ? "2500k" : "4500k", "-bufsize", "9000k", "-pix_fmt", "yuv420p", "-g", "25", "-vf", `scale=w='min(${size[0]},iw)':h='min(${size[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`];
+        // Bound work before scaling so a live encoder keeps pace with the recorder.
+        const fps = quality === "hd" ? 15 : 10;
+        const video = ["-c:v", "libx264", "-threads", quality === "fullhd" ? "2" : "1", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "25", "-maxrate", quality === "hd" ? "2500k" : "4500k", "-bufsize", "9000k", "-pix_fmt", "yuv420p", "-g", String(fps), "-vf", `fps=${fps},scale=w='min(${size[0]},iw)':h='min(${size[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=fast_bilinear`];
         const command = [encoder, "-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-filter_threads", "1", "-rtsp_transport", "tcp", "-timeout", "10000000", "-probesize", "32768", "-analyzeduration", "1", "-i", `rtsp://127.0.0.1:18895/${input}`, "-map", "0:v:0", "-map", "0:a:0?", ...video, "-c:a", "libopus", "-ar", "48000", "-ac", "1", "-b:a", "32k", "-f", "rtsp", "-rtsp_transport", "tcp", "-muxdelay", "0.05", `rtsp://127.0.0.1:18895/${output}`].map((arg) => `'${arg.replace(/'/gu, `'\\''`)}'`).join(" ");
         // Shared on-demand outputs: one encoder per camera/quality, not per viewer.
         Object.assign(paths, { [output]: { source: "publisher", runOnDemand: command, runOnDemandRestart: false, runOnDemandStartTimeout: "10s", runOnDemandCloseAfter: "1s", record: false, maxReaders: 24 } });

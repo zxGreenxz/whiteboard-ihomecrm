@@ -22,7 +22,8 @@ describe("camera live session boundaries", () => {
     const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
     const view = "50000000-0000-4000-8000-000000000001";
     const otherView = "50000000-0000-4000-8000-000000000002";
-    await Promise.all([1, 2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "hd", view)));
+    await sessions.start(actor, wide, 1, offer, undefined, "hd", view);
+    await Promise.all([2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "sd", view)));
     const other = await sessions.start(actor, wide, 1, offer, undefined, "sd", otherView);
     await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
     await sessions.closeView(actor, wide, view);
@@ -91,10 +92,13 @@ describe("camera live session boundaries", () => {
     const wide = { ...recorder, channels: [1, 2, 3, 4, 5] };
     const finish: Array<(value: { location: string; answer: string }) => void> = [];
     vi.mocked(dependencies.start).mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
-    const pending = [1, 2, 3, 4].map((channel) => sessions.start(actor, wide, channel, offer, undefined, "hd"));
+    const pending = [sessions.start(actor, wide, 1, offer, undefined, "hd")];
+    await expect(sessions.start({ ...actor, id: "other-viewer" }, wide, 2, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
     await expect(sessions.start(actor, wide, 5, offer, undefined, "hd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
     pending.push(sessions.start(actor, wide, 1, offer, undefined, "hd"));
-    expect(dependencies.start).toHaveBeenCalledTimes(5);
+    pending.push(sessions.start(actor, wide, 2, offer, undefined, "sd"));
+    pending.push(sessions.start(actor, wide, 3, offer, undefined, "original"));
+    expect(dependencies.start).toHaveBeenCalledTimes(4);
     finish.forEach((resolve) => resolve({ location: "shared", answer: offer })); await Promise.all(pending);
     await expect(sessions.start(actor, wide, 1, offer, undefined, "fullhd")).rejects.toMatchObject({ code: "CAMERA_QUALITY_LIMIT" });
     await sessions.closeAll();
@@ -155,6 +159,9 @@ describe("camera live upstream authorization", () => {
       expect(path.source).toBe("publisher"); expect(path.runOnDemand).toContain("libopus"); expect(path.runOnDemand).toContain("0:a:0?");
       expect(path.runOnDemand).not.toContain(recorder.password); expect(path.runOnDemand).not.toContain(recorder.rtspOrigin);
       expect(path.runOnDemand).toContain(suffix === "-hd" ? "1280" : "1920");
+      expect(path.runOnDemand).toContain(suffix === "-hd" ? "fps=15,scale=" : "fps=10,scale=");
+      expect(path.runOnDemand).toContain("flags=fast_bilinear");
+      expect(path.runOnDemand).toContain(`'libx264' '-threads' '${suffix === "-fullhd" ? 2 : 1}'`);
       expect(path.runOnDemand).toContain(`camera-${recorder.id}-1-original`);
     }
     for (const suffix of ["", "-original"]) {

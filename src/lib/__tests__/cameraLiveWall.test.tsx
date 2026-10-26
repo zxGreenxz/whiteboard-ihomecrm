@@ -14,8 +14,9 @@ beforeEach(() => { vi.clearAllMocks(); mocks.callbacks = []; mocks.capabilities.
 afterEach(cleanup);
 describe("live camera wall", () => {
   it("reconnects the selected group on refresh after releasing old tiles, without changing quality, page, focus or count", async () => {
+    mocks.capabilities.mockResolvedValue({ channels: Array.from({ length: 16 }, (_, i) => i + 1), liveQualities: ["sd", "hd", "fullhd", "original"] });
     const view = render(<CameraLiveWall recorder={recorder} refreshKey={0} />);
-    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "hd" } });
+    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "original" } });
     fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" }));
     await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(4));
     fireEvent.click(screen.getByRole("button", { name: "Nhóm sau" }));
@@ -31,7 +32,7 @@ describe("live camera wall", () => {
     await act(async () => release.forEach((resolve) => resolve()));
     await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(12));
     expect(screen.getAllByRole("article")).toHaveLength(1);
-    expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe("hd");
+    expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe("original");
     fireEvent.click(screen.getByRole("button", { name: "Quay về 4 camera" }));
     expect(screen.getByText("2 / 4")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Dừng xem" }));
@@ -63,17 +64,19 @@ describe("live camera wall", () => {
     expect(screen.queryByRole("button", { name: "Xem riêng" })).toBeNull();
     play.mockRestore();
   });
-  it.each([4, 9])("uses SD for a %i-tile wall and applies Full HD only to the focused tile", async (count) => {
+  it.each([[4, "hd"], [9, "hd"], [4, "fullhd"], [9, "fullhd"]] as const)("uses SD for a %i-tile wall and applies %s only to the focused tile", async (count, quality) => {
     mocks.capabilities.mockResolvedValue({ channels: Array.from({ length: 16 }, (_, i) => i + 1), liveQualities: ["sd", "hd", "fullhd", "original"] });
     render(<CameraLiveWall recorder={recorder} />);
     fireEvent.change(screen.getByLabelText("Số camera cùng lúc"), { target: { value: String(count) } });
-    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "fullhd" } });
+    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: quality } });
     fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(count));
     expect(mocks.callbacks.every((c) => c.liveQuality === "sd")).toBe(true);
     fireEvent.doubleClick(screen.getAllByRole("article")[1]!); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(count + 1));
-    expect(mocks.callbacks.at(-1)!.liveQuality).toBe("fullhd");
+    expect(mocks.callbacks.at(-1)!.liveQuality).toBe(quality);
     fireEvent.click(screen.getByRole("button", { name: `Quay về ${count} camera` }));
-    expect(screen.getAllByRole("article")).toHaveLength(count); expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe("fullhd");
+    expect(screen.getAllByRole("article")).toHaveLength(count); expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe(quality);
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(count + 2));
+    expect(mocks.callbacks.at(-1)!.liveQuality).toBe("sd");
   });
   it("focuses the double-clicked camera without reconnecting and restores the previous page and count", async () => {
     render(<CameraLiveWall recorder={recorder} />);
@@ -90,12 +93,13 @@ describe("live camera wall", () => {
   it("starts in SD and releases each old stream when switching to HD and back", async () => {
     render(<CameraLiveWall recorder={recorder} />);
     expect((screen.getByLabelText("Chất lượng trực tiếp") as HTMLSelectElement).value).toBe("sd");
+    fireEvent.change(screen.getByLabelText("Số camera cùng lúc"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" })); await screen.findByRole("button", { name: "Dừng xem" });
     expect(mocks.callbacks.every((value) => value.liveQuality === "sd")).toBe(true);
     fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "hd" } });
-    expect(mocks.stop).toHaveBeenCalledTimes(4); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(8)); expect(mocks.callbacks.slice(-4).every((value) => value.liveQuality === "hd")).toBe(true);
+    expect(mocks.stop).toHaveBeenCalledTimes(1); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2)); expect(mocks.callbacks.at(-1)!.liveQuality).toBe("hd");
     fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "sd" } });
-    expect(mocks.stop).toHaveBeenCalledTimes(8); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(12)); expect(mocks.callbacks.slice(-4).every((value) => value.liveQuality === "sd")).toBe(true);
+    expect(mocks.stop).toHaveBeenCalledTimes(2); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(3)); expect(mocks.callbacks.at(-1)!.liveQuality).toBe("sd");
   });
   it("waits for old leases at the 16-camera limit and skips obsolete quality switches", async () => {
     mocks.capabilities.mockResolvedValue({ channels: Array.from({ length: 16 }, (_, i) => i + 1), liveQualities: ["sd", "hd", "fullhd", "original"] });
@@ -111,12 +115,12 @@ describe("live camera wall", () => {
     expect(mocks.start).toHaveBeenCalledTimes(32); expect(mocks.callbacks.slice(-16).every((value) => value.liveQuality === "sd")).toBe(true);
     mocks.stop.mockReset();
   });
-  it("waits for every old profile before switching HD and Full HD in either direction", async () => {
+  it("releases the native grid before Full HD and waits for the focused profile before switching to HD", async () => {
     mocks.capabilities.mockResolvedValue({ channels: [1, 2, 3, 4], liveQualities: ["sd", "hd", "fullhd", "original"] });
     const release: Array<() => void> = [];
     mocks.stop.mockImplementation(() => new Promise<void>((resolve) => release.push(resolve)));
     render(<CameraLiveWall recorder={recorder} />);
-    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "hd" } });
+    fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "original" } });
     fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(4));
     fireEvent.doubleClick(screen.getAllByRole("article")[0]!);
     fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "fullhd" } });
@@ -125,10 +129,10 @@ describe("live camera wall", () => {
     await act(async () => { release[1]!(); });
     expect(mocks.start).toHaveBeenCalledTimes(8); expect(mocks.callbacks.slice(-4).map((c) => c.liveQuality)).toEqual(["fullhd", "sd", "sd", "sd"]);
     fireEvent.change(screen.getByLabelText("Chất lượng trực tiếp"), { target: { value: "hd" } });
-    await act(async () => { release[5]!(); release[6]!(); release[7]!(); });
+    await act(async () => { await Promise.resolve(); });
     expect(mocks.start).toHaveBeenCalledTimes(8);
     await act(async () => { release[4]!(); });
-    expect(mocks.start).toHaveBeenCalledTimes(12); expect(mocks.callbacks.slice(-4).every((c) => c.liveQuality === "hd")).toBe(true);
+    expect(mocks.start).toHaveBeenCalledTimes(9); expect(mocks.callbacks.at(-1)!.liveQuality).toBe("hd");
     mocks.stop.mockReset();
   });
   it("does not connect automatically and cleans up every active tile when stopped", async () => {

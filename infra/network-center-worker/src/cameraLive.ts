@@ -175,10 +175,9 @@ export class LiveSessions {
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
     const encodedLiveKey = !playback && (liveQuality === "hd" || liveQuality === "fullhd") ? `${recorder.id}/${channel}/${liveQuality}` : undefined;
     const encoders = new Set([...this.sessions.values()].flatMap((s) => s.encodedLiveKey ? [s.encodedLiveKey] : []));
-    // Full HD exclusively reserves the live transcoding group; this is a capacity policy, not a CPU ratio.
-    const encoderCost = (key: string) => key.endsWith("/fullhd") ? 4 : 1;
-    const reservedCost = [...encoders].reduce((sum, key) => sum + encoderCost(key), 0);
-    if (encodedLiveKey && !encoders.has(encodedLiveKey) && reservedCost + encoderCost(encodedLiveKey) > 4) throw new LiveError(429, "CAMERA_QUALITY_LIMIT");
+    // Resizing one main stream already consumes a CPU core on the camera host.
+    // Share that profile across viewers, but keep multi-camera walls on native streams.
+    if (encodedLiveKey && !encoders.has(encodedLiveKey) && encoders.size >= 1) throw new LiveError(429, "CAMERA_QUALITY_LIMIT");
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
     const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.position ?? playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;

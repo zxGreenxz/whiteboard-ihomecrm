@@ -61,7 +61,7 @@ export default function CameraLiveWall({ recorder, refreshKey = 0 }: { recorder:
   };
   const displayed = channels.slice(page * count, (page + 1) * count);
   const visibleCount = focused === undefined ? count : 1;
-  const qualityTileLimit = quality === "fullhd" ? 1 : quality === "hd" ? 4 : 16;
+  const qualityTileLimit = quality === "fullhd" || quality === "hd" ? 1 : 16;
   const qualityLimited = visibleCount > qualityTileLimit;
   return <section ref={container} className="nc-panel group/live-wall bg-white [&:fullscreen]:flex [&:fullscreen]:h-screen [&:fullscreen]:flex-col [&:fullscreen]:overflow-hidden" aria-label={`Xem trực tiếp ${recorder.display_name}`}>
     <div className="nc-panel-heading shrink-0 flex-wrap gap-3">
@@ -77,6 +77,7 @@ export default function CameraLiveWall({ recorder, refreshKey = 0 }: { recorder:
     </div>
     {error && <p role="alert" className="p-4 text-red-700">{error}</p>}
     {qualityNotice && <p role="status" className="px-4 py-2 text-sm">{qualityNotice}</p>}
+    {running && !qualityLimited && (quality === "hd" || quality === "fullhd") && <p className="px-4 py-2 text-sm text-slate-600">{quality === "hd" ? "HD: 15" : "Full HD: 10"} hình/giây. Chọn độ phân giải gốc để giữ nguyên tốc độ khung hình của camera.</p>}
     {running && qualityLimited && <p role="status" className="px-4 py-2 text-sm">Đang dùng SD cho lưới nhiều camera. Bấm đôi một ô hoặc chọn tối đa {qualityTileLimit} ô để xem {quality === "hd" ? "HD" : "Full HD"}.</p>}
     {running ? <>
       <div className={`grid gap-2 bg-neutral-900 p-2 group-[:fullscreen]/live-wall:min-h-0 group-[:fullscreen]/live-wall:flex-1 ${visibleCount === 1 ? "grid-cols-1 group-[:fullscreen]/live-wall:grid-rows-1" : visibleCount === 4 ? "grid-cols-1 sm:grid-cols-2 group-[:fullscreen]/live-wall:grid-cols-2 group-[:fullscreen]/live-wall:grid-rows-2" : visibleCount === 9 ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 group-[:fullscreen]/live-wall:grid-cols-3 group-[:fullscreen]/live-wall:grid-rows-3" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 group-[:fullscreen]/live-wall:grid-cols-4 group-[:fullscreen]/live-wall:grid-rows-4"}`}>
