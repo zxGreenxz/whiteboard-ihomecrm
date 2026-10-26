@@ -87,7 +87,11 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
  const review=async(purpose:'MONTHLY'|'MOVE_OUT',capture:Evidence)=>{
   await dialog().getByRole('tab',{name:/Đối chiếu/}).click();
   await dialog().getByRole('button',{name:'Tải lại kết quả'}).click();
-  const row=article(purpose);await expect(row).toHaveCount(1);await row.getByRole('button',{name:'Xem / xác nhận',exact:true}).click();
+  const row=article(purpose);await expect(row).toHaveCount(1);
+  // Refresh replaces the review component when the capture version changes.
+  // Wait for the worker/confirmation result before expanding the new component.
+  await expect(row).toContainText(purpose==='MONTHLY'?'Chờ xác nhận':'Đã chốt');
+  await row.getByRole('button',{name:'Xem / xác nhận',exact:true}).click();
   const image=row.getByAltText('Ảnh đối chiếu đồng hồ nội bộ');await expect(image).toBeVisible();await image.scrollIntoViewIfNeeded();
   await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
   const frames=row.getByRole('button',{name:/^Ảnh tại /});expect(await frames.count()).toBeGreaterThanOrEqual(2);
