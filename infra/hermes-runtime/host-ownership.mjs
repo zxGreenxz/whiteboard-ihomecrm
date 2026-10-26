@@ -170,11 +170,19 @@ const requestIdFixEvent = value => {
   if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId) || !REQUEST_ID_FIXES.has(fix.supplied)) fail('host_audit_invalid');
   return fix;
 };
+// C3n (confirm-guard.mjs redeemNear): lượt xác nhận khớp token GẦN ĐÚNG ⇒ dòng prepared mang confirmTokenFix = {action, requestId của
+// bản xem trước}; chuỗi token mô hình gửi KHÔNG vào sổ.
+const confirmTokenFixEvent = value => {
+  const fix = data(value, ['action', 'requestId']);
+  if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId)) fail('host_audit_invalid');
+  return fix;
+};
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent', 'requestIdFix']);
-  if ((Object.hasOwn(event, 'consent') || Object.hasOwn(event, 'requestIdFix')) && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent', 'requestIdFix', 'confirmTokenFix']);
+  if (['consent', 'requestIdFix', 'confirmTokenFix'].some(key => Object.hasOwn(event, key)) && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
   if (Object.hasOwn(event, 'consent')) event.consent = consentEvent(event.consent);
   if (Object.hasOwn(event, 'requestIdFix')) event.requestIdFix = requestIdFixEvent(event.requestIdFix);
+  if (Object.hasOwn(event, 'confirmTokenFix')) event.confirmTokenFix = confirmTokenFixEvent(event.confirmTokenFix);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {

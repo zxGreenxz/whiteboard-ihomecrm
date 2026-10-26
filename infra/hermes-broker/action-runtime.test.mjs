@@ -214,6 +214,70 @@ test('lượt 16 đột biến: bỏ lấy requestId theo token (khoá dựng t�
   assert.equal(out.find(row => row.supplied === 'same').done.outcome, 'applied', 'đối chứng: đúng requestId vẫn ghi');
 });
 
+// C3n (nghiệm thu TC c3m 27/10: TC-E02 chép thiếu 13 ký tự, TC-A12 đổi hoa/thường, HĐ G21 thừa một ký tự — params y nguyên): token lệch
+// khớp GẦN ĐÚNG với bản xem trước duy nhất cùng khoá binding + 8 ký tự đầu (confirm-guard.mjs redeemNear).
+const swapCase = text => text.replace(/[a-z]/gi, c => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+const GARBLES = [['thiếu ký tự', token => token.slice(0, 33)], ['hoa/thường', token => `cf_${swapCase(token.slice(3))}`], ['thừa ký tự', token => `${token}x`]];
+async function nearConfirm(t, factory) {
+  const env = setup(t, { respond: request => request.phase === 'apply' ? APPLIED(request) : PREVIEW(request), factory });
+  const base = { action: 'probe.confirm', params: { amount: 1000, buildingName: 'Toà A' } };
+  const out = [];
+  for (const [label, garble] of GARBLES) {
+    const first = await env.call('crm_action_run', base);
+    const audits = env.audits.length, applies = env.requests.filter(([, request]) => request.phase === 'apply').length;
+    const done = await env.broker.callTool(TOKEN_A, 'crm_action_run', { ...base, requestId: first.requestId, confirmToken: garble(first.confirmToken) })
+      .then(result => JSON.parse(result.content[0].text), error => ({ error: error.code, detail: error.detail }));
+    out.push({ label, done, first, applied: env.requests.filter(([, request]) => request.phase === 'apply').length - applies,
+      applyRequestId: env.requests.at(-1)[1].phase === 'apply' ? env.requests.at(-1)[1].requestId : null,
+      fix: env.audits.slice(audits).find(event => event.outcome === 'prepared')?.confirmTokenFix ?? null });
+  }
+  return { env, base, out };
+}
+
+test('C3n: token chép lệch (thiếu / hoa-thường / thừa ký tự) của bản xem trước duy nhất cùng khoá ⇒ ghi đúng một lần, requestId của bản xem trước; audit confirmTokenFix', async t => {
+  const { env, base, out } = await nearConfirm(t, createActionRuntime);
+  for (const row of out) {
+    assert.equal(row.done.outcome, 'applied', `${row.label}: ${JSON.stringify(row.done)}`);
+    assert.equal(row.done.requestId, row.first.requestId, `${row.label}: requestId của bản xem trước`);
+    assert.equal(row.applied, 1, `${row.label}: đúng một lệnh ghi`);
+    assert.equal(row.applyRequestId, row.first.requestId, row.label);
+    assert.deepEqual(row.fix, { action: 'probe.confirm', requestId: row.first.requestId }, `${row.label}: audit không mang chuỗi mô hình gửi`);
+    // Bản ghi chờ đã dùng: token đúng hay lệch đều không ghi lần hai.
+    for (const token of [row.first.confirmToken, row.first.confirmToken.slice(0, 33)])
+      await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { ...base, requestId: row.first.requestId, confirmToken: token }),
+        error => error.code === 'confirmation_invalid' && error.detail === CONFIRM_INVALID_DETAILS.unknown, `${row.label}: đã dùng`);
+  }
+  // Token đúng ⇒ không có confirmTokenFix.
+  const exact = await env.call('crm_action_run', base), audits = env.audits.length;
+  assert.equal((await env.call('crm_action_run', { ...base, requestId: exact.requestId, confirmToken: exact.confirmToken })).outcome, 'applied');
+  assert.equal(env.audits.slice(audits).find(event => event.outcome === 'prepared')?.confirmTokenFix, undefined);
+  // Rào giữ nguyên: params khác / kết nối khác / 8 ký tự đầu khác / quá ngắn ⇒ confirmation_invalid, không ghi, bản ghi chờ còn dùng được.
+  for (const [label, token, args] of [
+    ['params khác', TOKEN_A, first => ({ ...base, params: { amount: 2000, buildingName: 'Toà A' }, confirmToken: first.confirmToken.slice(0, 33) })],
+    ['kết nối khác', TOKEN_B, first => ({ ...base, confirmToken: first.confirmToken.slice(0, 33) })],
+    ['đầu token khác', TOKEN_A, first => ({ ...base, confirmToken: `cf_${first.confirmToken[3] === 'Q' ? 'R' : 'Q'}${first.confirmToken.slice(4, 36)}` })],
+    ['quá ngắn', TOKEN_A, first => ({ ...base, confirmToken: first.confirmToken.slice(0, 9) })]]) {
+    const first = await env.call('crm_action_run', base);
+    const applies = env.requests.filter(([, request]) => request.phase === 'apply').length;
+    await assert.rejects(env.broker.callTool(token, 'crm_action_run', args(first)),
+      error => error.code === 'confirmation_invalid' && error.detail === CONFIRM_INVALID_DETAILS.unknown, label);
+    assert.equal(env.requests.filter(([, request]) => request.phase === 'apply').length, applies, `${label}: không lệnh ghi`);
+    assert.equal((await env.call('crm_action_run', { ...base, requestId: first.requestId, confirmToken: first.confirmToken })).outcome, 'applied',
+      `${label}: bản xem trước vẫn còn cho token đúng`);
+  }
+});
+
+test('C3n đột biến: bỏ khớp gần đúng ⇒ cả ba ca chép lệch của nghiệm thu đỏ (confirmation_invalid)', async t => {
+  const source = readFileSync(new URL('./action-runtime.mjs', import.meta.url), 'utf8');
+  const nearCall = 'const near = confirms.redeemNear(plan.confirmToken, bound);';
+  assert.equal(source.split(nearCall).length, 2, 'đúng một chỗ khớp gần đúng');
+  const mutant = source.replace(nearCall, () => 'const near = { ok: false };')
+    .replaceAll(/from '\.\/([a-z0-9-]+\.mjs)'/g, (_, file) => `from '${new URL(`./${file}`, import.meta.url).href}'`);
+  const { createActionRuntime: mutated } = await import(`data:text/javascript;base64,${Buffer.from(mutant).toString('base64')}`);
+  const { out } = await nearConfirm(t, mutated);
+  for (const row of out) assert.equal(row.done.error, 'confirmation_invalid', `đột biến: ${row.label} ⇒ hỏng (ca nghiệm thu)`);
+});
+
 test('reversible: phase auto ⇒ SQL ghi thẳng (applied) hoặc đòi xác nhận (preview); money mà SQL ghi ở lượt xem trước ⇒ backend_unavailable', async t => {
   let mode = 'apply';
   const env = setup(t, { respond: request => mode === 'apply' ? APPLIED(request) : PREVIEW(request) });

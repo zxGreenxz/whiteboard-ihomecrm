@@ -103,11 +103,12 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     /** Đồng bộ, trước admission: tách confirmToken (chỉ ở run) và kiểm phong bì. Không đọc gì của CRM. */
     begin(route, args) {
       const plan = { op: route.op, invalid: false, invalidDetail: null, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null,
-        startedAt: clock(), consent: null, requestIdFix: null };
+        startedAt: clock(), consent: null, requestIdFix: null, confirmTokenFix: null };
       let rest = args;
       if (route.op === 'run') {
         const split = splitConfirmField(args);
-        rest = split.args; plan.confirmToken = split.confirmToken; plan.tokenInvalid = split.invalid;
+        // C3n: chuỗi "giống token" sai khuôn (chép thiếu/thừa ký tự) vẫn là lượt xác nhận — handle thử khớp gần đúng (redeemNear).
+        rest = split.args; plan.confirmToken = split.confirmToken ?? split.near; plan.tokenInvalid = split.invalid && split.near === undefined;
       }
       try { Object.assign(plan, actionEnvelope(route, rest, { confirming: plan.confirmToken !== undefined })); }
       catch (error) { plan.invalid = true; if (error instanceof RequestIdShapeError) plan.invalidDetail = requestIdShapeDetail(error.length); }
@@ -180,7 +181,14 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // lượt xác nhận lấy theo bản ghi của token. Khoá vẫn là [kết nối, thao tác, params chuẩn hoá, requestId lúc cấp] — token của kết nối /
         // thao tác / params khác vẫn lệch như trước; chỉ requestId mô hình chép (thiếu, sai khuôn, khác) không còn làm hỏng lượt đồng ý. Lệch ⇒
         // dùng requestId của token và ghi requestIdFix vào dòng audit prepared.
-        const redeemed = confirms.redeem(plan.confirmToken, payload => binding(identity.row.id, action.id, plan.params, payload?.requestId));
+        const bound = payload => binding(identity.row.id, action.id, plan.params, payload?.requestId);
+        let redeemed = confirms.redeem(plan.confirmToken, bound);
+        // C3n (nghiệm thu TC c3m 27/10): token không có trong sổ (mô hình chép lệch) ⇒ khớp gần đúng với bản xem trước DUY NHẤT cùng khoá
+        // binding + 8 ký tự đầu (confirm-guard.mjs redeemNear); khớp ⇒ dòng audit prepared ghi confirmTokenFix (chuỗi mô hình gửi không vào sổ).
+        if (!redeemed.ok && redeemed.why === 'unknown') {
+          const near = confirms.redeemNear(plan.confirmToken, bound);
+          if (near.ok) { redeemed = near; plan.confirmTokenFix = Object.freeze({ action: action.id, requestId: near.payload?.requestId }); }
+        }
         if (!redeemed.ok) invalidConfirm(redeemed.why === 'expired' ? 'expired' : redeemed.why !== 'mismatch' || redeemed.payload?.action !== action.id ? 'unknown'
           : redeemed.payload?.params !== canonicalJson(plan.params) ? 'params' : 'unknown');
         const issuedRequestId = redeemed.payload?.requestId;
@@ -261,6 +269,6 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       fail('backend_unavailable');
     },
     context: plan => plan.op === 'list' ? {} : { mutationUncertain: () => plan.uncertain, mutationCode: 'action_outcome_unknown', mutationRequestId: () => plan.requestId,
-      auditConsent: () => plan.consent, auditRequestIdFix: () => plan.requestIdFix },
+      auditConsent: () => plan.consent, auditRequestIdFix: () => plan.requestIdFix, auditConfirmTokenFix: () => plan.confirmTokenFix },
   });
 }
