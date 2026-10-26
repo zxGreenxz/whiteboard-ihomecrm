@@ -17,6 +17,7 @@ import { probeTarget, verifyTestTarget } from '../lib/e2e-fleet-runner.mjs';
 import { assertTestLease, withTestCleanup, withTestLock } from './lock.mjs';
 import { inspectFixture, METER_TEST_REF, newFixture, provisionFixture, retireFixture, verifyFixture } from './meter-capture-fixture.mjs';
 import { MeterTestHttpError, withMeterReadRetry } from './meter-capture-readiness.mjs';
+import {inspectBulkRoom,provisionBulkRoom,retireBulkRoom} from './meter-capture-bulk-fixture.mjs';
 
 const exec = promisify(execFile), TEST_ORIGIN=`https://${METER_TEST_REF}.supabase.co`;
 const git=(...args)=>execFileSync('git',args,{cwd:repoRoot,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -107,10 +108,11 @@ async function main(){
   const clean=async()=>{
    if(retired)return {fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true};
    await inflight;
-   const receipt=await withTestCleanup(lease,test,cleanupLease=>retireFixture(cleanupLease,test,fixture,created));retired=true;return receipt;
+   const receipt=await withTestCleanup(lease,test,async cleanupLease=>{await retireBulkRoom(cleanupLease,test,fixture);return retireFixture(cleanupLease,test,fixture,created);});retired=true;return receipt;
   };
   try{
    await provisionFixture(lease,test,fixture);
+   await provisionBulkRoom(lease,test,fixture);
    const password=matKhauTest(cred.passwordSeed,actorEmail);
    const session=await json(`${TEST_ORIGIN}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:cred.testPublishableKey,'content-type':'application/json'},body:JSON.stringify({email:actorEmail,password})});
    assert.equal(session.user?.id,fixture.actorId);assert.equal(typeof session.access_token,'string');
@@ -127,14 +129,17 @@ async function main(){
    };
    // Probe through the real user's gateway after fixture DDL, before profile writes.
    await catalogReady();
-   const reference=resolve(directory,'synthetic-reference.png');
+   for(const subject of [fixture,{...fixture,...fixture.bulkRoom}]){
+   const reference=resolve(directory,`synthetic-reference-${subject.meterId}.png`);
    await exec(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=white:s=1280x720',
-    '-vf',`drawtext=text='${fixture.currentValue}  kWh  1.8.0':x=140:y=220:fontsize=70:fontcolor=black,drawtext=text='${fixture.serial}':x=100:y=400:fontsize=25:fontcolor=black`,'-frames:v','1',reference],{timeout:30_000,windowsHide:true});
+    '-vf',`drawtext=text='${subject.currentValue}  kWh  1.8.0':x=140:y=220:fontsize=70:fontcolor=black,drawtext=text='${subject.serial}':x=100:y=400:fontsize=25:fontcolor=black`,'-frames:v','1',reference],{timeout:30_000,windowsHide:true});
    await assertTestLease(lease,test);
-   const referencePath=`${fixture.organizationId}/profiles/${fixture.meterId}/${fixture.actorId}/${randomUUID()}.png`;
+   const referencePath=`${fixture.organizationId}/profiles/${subject.meterId}/${fixture.actorId}/${randomUUID()}.png`;
    await json(`${TEST_ORIGIN}/storage/v1/object/meter-capture-media/${referencePath}`,{method:'POST',headers:{...headers,'content-type':'image/png','x-upsert':'false'},body:await readFile(reference)});
-   const profile=await json(`${TEST_ORIGIN}/functions/v1/meter-capture-worker`,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({action:'rpc',organizationId:fixture.organizationId,rpcAction:'profile',payload:{meterId:fixture.meterId,serial:fixture.serial,registerCode:'1.8.0',decimalPlaces:2,displayKind:'DIGITAL',verified:true,expectedVersion:0,referencePath}})});
-   assert.match(profile.qrText??'',/^ihome-meter:[0-9a-f-]{36}$/);fixture.qrText=profile.qrText;
+   const profile=await json(`${TEST_ORIGIN}/functions/v1/meter-capture-worker`,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({action:'rpc',organizationId:fixture.organizationId,rpcAction:'profile',payload:{meterId:subject.meterId,serial:subject.serial,registerCode:'1.8.0',decimalPlaces:2,displayKind:'DIGITAL',verified:true,expectedVersion:0,referencePath}})});
+   assert.match(profile.qrText??'',/^ihome-meter:[0-9a-f-]{36}$/);
+   if(subject.meterId===fixture.meterId)fixture.qrText=profile.qrText;else fixture.bulkRoom.qrText=profile.qrText;
+   }
    const modulePath=await realpath(resolve(repoRoot,'.e2e-fleet/support/meter-capture-lifecycle.mjs'));
    fixture.lifecycle={modulePath,sha256:createHash('sha256').update(await readFile(modulePath)).digest('hex'),retainImmutableAudit:true};
    await assertTestLease(lease,test);
@@ -155,10 +160,13 @@ async function main(){
      }
      const work=async()=>{
       await assertTestLease(lease,test);
-      if(payload.action==='verify')return verifyFixture(lease,test,fixture);
+      if(payload.action==='verify'){const bulk=inspectBulkRoom(test,fixture);assert.equal(bulk.captures,0);assert.equal(bulk.invoices,0);return verifyFixture(lease,test,fixture);}
       assert.equal(payload.action,'process');const id=payload.created?.captureId;assert.match(id??'',uuid);
       const ownership=inspectFixture(test,fixture);assert.equal(ownership?.state,'ACTIVE');assert.equal(ownership?.active,true);
-      const [capture]=psqlJson(test,`SELECT id,client_id FROM app_private.meter_captures WHERE id=${lit(id)} AND organization_id=${lit(fixture.organizationId)} AND meter_id=${lit(fixture.meterId)} AND contract_id=${lit(fixture.contractId)} AND actor_id=${lit(fixture.actorId)} AND status='QUEUED' AND media_received`);assert.equal(capture?.id,id,'Worker capture scope mismatch');
+      assert.equal(inspectBulkRoom(test,fixture).retired,false);
+      const subjects=[fixture,{...fixture,...fixture.bulkRoom}];
+      const pairs=subjects.map(s=>`(meter_id=${lit(s.meterId)} AND contract_id=${lit(s.contractId)})`).join(' OR ');
+      const [capture]=psqlJson(test,`SELECT id,client_id FROM app_private.meter_captures WHERE id=${lit(id)} AND organization_id=${lit(fixture.organizationId)} AND (${pairs}) AND actor_id=${lit(fixture.actorId)} AND status='QUEUED' AND media_received`);assert.equal(capture?.id,id,'Worker capture scope mismatch');
       if(!created.captureIds.includes(id))created.captureIds.push(id);if(!created.clientIds.includes(capture.client_id))created.clientIds.push(capture.client_id);
       // Only this exact capture is passed to the reviewed one-job launcher.
       activeWorker=child(process.execPath,[launcher,'--capture',id],process.env);

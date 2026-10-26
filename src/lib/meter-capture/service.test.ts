@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const io = vi.hoisted(() => ({ invoke: vi.fn(), upload: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { functions: { invoke: io.invoke } } }));
 vi.mock('@/lib/storage', () => ({ uploadFileDetailed: io.upload }));
-import { submitMeterCapture, meterInvoiceRequestId, readDocumentEvidence } from './service';
+import { submitMeterCapture, meterInvoiceRequestId, readDocumentEvidence, createInvoiceWithMeterSources } from './service';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hash = 'a'.repeat(64);
 const input = { clientId: id(1), orgId: id(2), meterId: id(3), qrText: 'ihome-meter:' + id(4), purpose: 'MONTHLY' as const,
@@ -14,6 +14,16 @@ const capture = { id: id(5), clientId: input.clientId, orgId: input.orgId, meter
 const reply = (data: unknown) => ({ data, error: null });
 beforeEach(() => { vi.resetAllMocks(); });
 describe('media receipt boundary', () => {
+  it('uses the SQL default for absent rent support without mutating the invoice intent or discarding a real support context', async () => {
+    io.invoke.mockResolvedValue(reply({invoice_id:id(8)}));
+    const args={p_idempotency_key:'meter-invoice-fixture',p_rent_support_context:null,p_previous_debt_sources:[]};
+    await createInvoiceWithMeterSources(id(2),args,[]);
+    expect(io.invoke.mock.calls[0][1].body.arguments).toEqual({p_idempotency_key:args.p_idempotency_key,p_previous_debt_sources:[]});
+    expect(args).toHaveProperty('p_rent_support_context',null);
+    const context={version:1,expected_plan_revision:2,manual_discount_amount:'0',request_id:id(9)};
+    await createInvoiceWithMeterSources(id(2),{...args,p_rent_support_context:context},[]);
+    expect(io.invoke.mock.calls[1][1].body.arguments.p_rent_support_context).toEqual(context);
+  });
   it('explains a staged rollout without uploading or activating a capture', async () => {
     io.invoke.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ error: 'meter_capture_reader_not_enabled' }), { status: 503 }) } });
     await expect(submitMeterCapture(input)).rejects.toThrow('Tiếp tục ghi chỉ số theo cách hiện tại');

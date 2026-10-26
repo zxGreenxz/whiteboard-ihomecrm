@@ -4,7 +4,7 @@ Worker CPU kéo một tác vụ mỗi lần qua Edge `meter-capture-worker`. Kh�
 
 ## Cấu hình máy chạy
 
-- Linux x86_64, Docker Compose, 2 CPU, 4 GB RAM; tối đa 1 GB thư mục tạm. Không mở cổng nghe.
+- Linux x86_64, CPU có AVX hiển thị trong `/proc/cpuinfo` (khuyến nghị AVX2), Docker Compose, 2 CPU, 4 GB RAM; tối đa 1 GB thư mục tạm. Không mở cổng nghe. Worker kiểm AVX trước khi nhận việc; VPS dùng CPU ảo kiểu KVM cũ có thể thiếu AVX dù đã tăng RAM. Cần nhà cung cấp cấp CPU phù hợp hoặc bật host CPU passthrough; không tự thay cấu hình máy chủ ảo hóa.
 - VPS dùng chung với các dịch vụ hiện có: đề xuất 4 vCPU, 8 GB RAM và SSD 80 GB cho một worker thí điểm. Dành tối thiểu 4 GB RAM khả dụng trước khi khởi động worker và 15 GB đĩa trống cho image/build/log. Đây là cấu hình triển khai ban đầu, chưa phải cam kết thông lượng. Nếu chạy hai worker đồng thời, dùng 8 vCPU/16 GB RAM và đo lại hàng đợi, chi phí AI, RAM thực tế. Sol chạy qua 9router, không cần GPU tại VPS. Ảnh/clip gốc lưu ở Supabase riêng tư, không giữ lâu dài trên ổ VPS.
 - Kho Supabase production Pro cần global `fileSizeLimit` tối thiểu 104857600 byte và bucket `meter-capture-media` cùng giới hạn 100 MiB. Tăng global limit không thay ACL hoặc công khai bucket. TEST Free vẫn thử được luồng bằng clip dưới 50 MiB; ca tải trên 50 MiB cần môi trường cho phép kích thước tương ứng. Giới hạn gói và bucket: https://supabase.com/docs/guides/storage/uploads/file-limits.
 - `METER_CAPTURE_API_BASE_URL`: URL HTTPS đầy đủ của Edge function, kết thúc `/functions/v1/meter-capture-worker`.

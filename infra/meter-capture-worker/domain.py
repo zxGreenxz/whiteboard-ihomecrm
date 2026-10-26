@@ -9,7 +9,7 @@ from typing import Any
 MAX_BYTES = 100 * 1024 * 1024
 MAX_SECONDS = 60
 MAX_AI_FRAMES = 16
-VERSION = "meter-capture/2;paddleocr/3.2.0;PP-OCRv5_mobile"
+VERSION = "meter-capture/4;paddleocr/3.2.0;PP-OCRv5_mobile;lcd-roi-context"
 
 
 class InvalidInput(ValueError):
@@ -109,12 +109,18 @@ def ai_prompt(register: str, decimals: int) -> str:
 
 def ocr_reading(tokens: list[dict[str, Any]], timestamp: float, register: str, decimals: int, serial: str | None) -> Reading | None:
     """Require one complete token beside kWh; never join or accept split numeric fragments."""
+    candidates = ocr_candidates(tokens, register, decimals, serial)
+    return Reading(candidates[0], register, timestamp) if len(candidates) == 1 else None
+
+
+def ocr_candidates(tokens: list[dict[str, Any]], register: str, decimals: int, serial: str | None) -> list[str]:
+    """Retain ambiguity so a different crop cannot erase conflicting candidates."""
     confident = [token for token in tokens if float(token.get("score", 0)) >= 0.92]
     labels = {str(token["text"]).strip() for token in confident}
     if register != "total" and register not in labels:
-        return None
+        return []
     if not any(re.search(r"\bkwh\b", str(token["text"]), re.I) for token in confident):
-        return None
+        return []
     candidates: list[str] = []
     units = [token for token in confident if re.fullmatch(r"kwh", str(token["text"]).strip(), re.I)]
     registers = [token for token in confident if str(token["text"]).strip() == register]
@@ -132,19 +138,25 @@ def ocr_reading(tokens: list[dict[str, Any]], timestamp: float, register: str, d
         height = max(1.0, y2 - y1)
         # A label on a distant neighbouring meter must not authorize this row.
         matching_register = register == "total" or any(
+            label.get("region") == token.get("region") and
             abs((label["box"][1] + label["box"][3]) / 2 - (y1 + y2) / 2) <= height * 6
             and label["box"][2] >= x1 - height * 2 and label["box"][0] <= x2 + height * 2
             for label in registers
         )
         beside = any(
+            unit.get("region") == token.get("region") and
             abs((unit["box"][1] + unit["box"][3]) / 2 - (y1 + y2) / 2) <= height * 1.5
-            and 0 <= unit["box"][0] - x2 <= height * 6
+            and (0 <= unit["box"][0] - x2 <= height * 6 or
+                 # LCD units may sit above the fractional digit. Both the full
+                 # number (including its decimal) and unit must still be read.
+                 (unit["box"][0] >= (x1+x2)/2 and unit["box"][2] <= x2+height
+                  and y1-height <= unit["box"][3] <= y1+height*.45))
             for unit in units
         )
         # Use all detected tokens here, including weak OCR: a weak integer
         # beside a confident fractional tail is evidence of an incomplete read.
         split_digits = any(
-            other is not token and re.search(r"[0-9]", str(other.get("text", "")))
+            other is not token and other.get("region") == token.get("region") and re.search(r"[0-9]", str(other.get("text", "")))
             and str(other["text"]).strip() != register
             and abs((other["box"][1] + other["box"][3]) / 2 - (y1 + y2) / 2) <= height * 0.65
             and other["box"][2] >= x1 - height * 2.5 and other["box"][0] <= x2 + height * 2.5
@@ -152,9 +164,7 @@ def ocr_reading(tokens: list[dict[str, Any]], timestamp: float, register: str, d
         )
         if matching_register and not split_digits and (inline or beside):
             candidates.append(value)
-    if len(candidates) != 1:
-        return None
-    return Reading(candidates[0], register, timestamp)
+    return candidates
 
 
 def validate_job(job: Any) -> dict[str, Any]:

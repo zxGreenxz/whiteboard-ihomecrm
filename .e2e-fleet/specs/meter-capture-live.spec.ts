@@ -8,7 +8,8 @@ import QRCode from 'qrcode';
 import { z } from 'zod';
 import { loadMeterLiveFixture, METER_TEST_REF, METER_TEST_URL, type MeterLiveFixture } from '../support/meter-capture-live-fixture';
 import { meterBillingSourceSchema } from '../../src/lib/meter-capture/types';
-import { assertMonthlyInvoice, assertZeroMoveOut, financialSource, monthlyInvoiceRequest, zeroMoveOutRequest } from '../support/meter-capture-financial';
+import { assertMonthlyInvoice, assertZeroMoveOut, financialSource, zeroMoveOutRequest } from '../support/meter-capture-financial';
+import { installMeterBulkBrowser } from '../support/meter-capture-bulk-browser';
 import { installMeterLiveBrowser } from '../support/meter-capture-live-browser';
 import { MeterTestHttpError, withMeterReadRetry } from '../../scripts/test-env/meter-capture-readiness.mjs';
 
@@ -73,6 +74,7 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
   expect(fixture.expectedBuildSha).toBe(process.env.EXPECTED_SOURCE_SHA);
   const created = { clientIds: [] as string[], captureIds: [] as string[] };
   const ui=await installMeterLiveBrowser(page,fixture,created,appOrigin);
+  const bulk=await installMeterBulkBrowser(page,fixture);
   try {
     if (!process.env.FLEET_METER_FFMPEG || !process.env.TEST_SUPABASE_PUBLISHABLE_KEY) throw new Error('Missing TEST publishable key or pinned FFmpeg; no capture has been created.');
     const password=process.env.FLEET_PASS_TEST_CHU;if(!password)throw new Error('Missing private TEST actor password');
@@ -115,17 +117,18 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     const resolve = async (purpose:'MONTHLY'|'MOVE_OUT') => sourcesSchema.parse(await call('resolveBilling',{contractId:fixture.contractId,month,readingDate:fixture.readingDate,purpose})).meters;
     const initial = await resolve('MONTHLY');
     expect(initial).toHaveLength(1);expect(initial[0].meterId).toBe(fixture.meterId);expect(Number(initial[0].start?.value)).toBe(Number(fixture.previousValue));expect(initial[0].end).toBeNull();
-    const collect = async (purpose:'MONTHLY'|'MOVE_OUT',tag:string): Promise<Capture> => {
-      const clip = await syntheticClip(testInfo.outputDir,fixture,tag), sha256=createHash('sha256').update(clip).digest('hex');
+    const collect = async (purpose:'MONTHLY'|'MOVE_OUT',tag:string, subject:MeterLiveFixture=fixture): Promise<Capture> => {
+      const clip = await syntheticClip(testInfo.outputDir,subject,tag), sha256=createHash('sha256').update(clip).digest('hex');
       let started:{capture:Capture;uploadPath:string};
-      if(purpose==='MONTHLY'){
+      const throughUi=purpose==='MONTHLY'&&subject.meterId===fixture.meterId;
+      if(throughUi){
         const browserStarted=await ui.upload(clip,sha256);
         let uploaded:Capture|null=null;
         await expect.poll(async()=>{uploaded=z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:browserStarted.capture.id})).capture;return uploaded.mediaReceived;},{timeout:90_000}).toBe(true);
         started={capture:z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:browserStarted.capture.id})).capture,uploadPath:browserStarted.uploadPath};
       }else{
         const clientId=randomUUID();created.clientIds.push(clientId);
-        started=z.object({capture:captureSchema,uploadPath:z.string()}).parse(await call('startCapture',{clientId,meterId:fixture.meterId,contractId:fixture.contractId,qrText:fixture.qrText,purpose,readingDate:fixture.readingDate,month,capturedAt:new Date().toISOString(),sha256,durationSeconds:4,mimeType:'video/mp4',sizeBytes:clip.length}));
+        started=z.object({capture:captureSchema,uploadPath:z.string()}).parse(await call('startCapture',{clientId,meterId:subject.meterId,contractId:subject.contractId,qrText:subject.qrText,purpose,readingDate:fixture.readingDate,month,capturedAt:new Date().toISOString(),sha256,durationSeconds:4,mimeType:'video/mp4',sizeBytes:clip.length}));
         created.captureIds.push(started.capture.id);
         const upload=await request.post(`${METER_TEST_URL}/storage/v1/object/meter-capture-media/${started.uploadPath}`,{headers:{...headers,'content-type':'video/mp4','x-upsert':'false'},data:clip});expect(upload.ok()).toBe(true);
         const finalized=await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,{headers,data:{action:'finalize',organizationId:fixture.organizationId,captureId:started.capture.id}});expect(finalized.ok()).toBe(true);
@@ -135,15 +138,15 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
       let capture=started.capture;
       await expect.poll(async()=>{capture=z.object({capture:captureSchema}).parse(await call('getCapture',{captureId:started.capture.id})).capture;return capture.status;},{timeout:6*60_000,intervals:[3000,5000,10000]}).toBe('REVIEW');
       expect(capture.mediaReceived).toBe(true);expect(capture.mediaValidated).toBe(true);expect(capture.sha256).toBe(sha256);
-      expect(capture.aiResult?.status).toBe('ok');expect(Number(capture.aiResult?.value)).toBe(Number(fixture.currentValue));expect(capture.serverResult).not.toBeNull();
+      expect(capture.aiResult?.status).toBe('ok');expect(Number(capture.aiResult?.value)).toBe(Number(subject.currentValue));expect(capture.serverResult).not.toBeNull();
       expect(new Set(capture.evidenceFrames.map(frame=>frame.timestampSeconds)).size).toBeGreaterThanOrEqual(2);
       const denied=await request.post(`${METER_TEST_URL}/functions/v1/meter-capture-worker`,{headers,data:{action:'rpc',organizationId:randomUUID(),rpcAction:'evidence',payload:{captureId:capture.id}}});expect(denied.status()).toBe(403);
       const evidence=z.object({evidence:z.object({imageUrl:z.string(),videoUrl:z.string(),evidenceFrames:z.array(z.object({imageUrl:z.string(),timestampSeconds:z.number()}))})}).parse(await call('evidence',{captureId:capture.id})).evidence;
       for (const url of [evidence.imageUrl,evidence.videoUrl]) {expect(new URL(url).origin).toBe(METER_TEST_URL);expect((await request.get(url)).ok()).toBe(true);}
       const privateUrl=`${METER_TEST_URL}/storage/v1/object/authenticated/meter-capture-media/${started.uploadPath}`;
       expect((await request.get(privateUrl)).ok()).toBe(false);
-      const payload=purpose==='MONTHLY'?await ui.confirm(capture,testInfo):{captureId:capture.id,expectedVersion:capture.version,expectedPreviousValue:capture.previousValue,value:fixture.currentValue,reason:`E2E synthetic ${tag}: exact rendered digits verified`};
-      const confirmed=z.object({capture:captureSchema}).parse(await call(purpose==='MONTHLY'?'getCapture':'confirmCapture',purpose==='MONTHLY'?{captureId:capture.id}:payload)).capture;
+      const payload=throughUi?await ui.confirm(capture,testInfo):{captureId:capture.id,expectedVersion:capture.version,expectedPreviousValue:capture.previousValue,value:subject.currentValue,reason:`E2E synthetic ${tag}: exact rendered digits verified`};
+      const confirmed=z.object({capture:captureSchema}).parse(await call(throughUi?'getCapture':'confirmCapture',throughUi?{captureId:capture.id}:payload)).capture;
       expect(confirmed.status).toBe('CONFIRMED');expect(confirmed.confirmedReadingId).not.toBeNull();
       const repeated=z.object({capture:captureSchema}).parse(await call('confirmCapture',payload)).capture;
       expect(repeated.confirmedReadingId).toBe(confirmed.confirmedReadingId);
@@ -151,9 +154,21 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     };
     const monthly=await collect('MONTHLY','monthly');
     const billed=(await resolve('MONTHLY'))[0];expect(Number(billed.start?.value)).toBe(Number(fixture.previousValue));expect(billed.end?.readingId).toBe(monthly.confirmedReadingId);expect(billed.end?.captureId).toBe(monthly.id);expect(billed.issues).toEqual([]);
-    const invoiceRequest=monthlyInvoiceRequest(fixture,financialSource(fixture,billed,'MONTHLY'));
-    const invoiceReceipt=z.object({invoice_id:z.string().uuid()}).parse(await financial(invoiceRequest));
-    expect(z.object({invoice_id:z.string().uuid()}).parse(await financial(invoiceRequest)).invoice_id).toBe(invoiceReceipt.invoice_id);
+    const second={...fixture,...fixture.bulkRoom};
+    const secondMonthly=await collect('MONTHLY','monthly-second',second);
+    await bulk.create(testInfo);
+    const invoiceReceipt={invoice_id:bulk.receipts.get(fixture.contractId)};
+    expect(invoiceReceipt.invoice_id).toBeTruthy();
+    const secondInvoiceId=bulk.receipts.get(second.contractId);expect(secondInvoiceId).toBeTruthy();
+    const secondEvidence=z.object({sources:z.array(z.object({meterId:z.string(),endCaptureId:z.string().nullable(),previousReading:z.string(),currentReading:z.string()}))}).parse(await call('documentEvidence',{kind:'INVOICE',documentId:secondInvoiceId}));
+    expect(secondEvidence.sources).toHaveLength(1);expect(secondEvidence.sources[0]).toMatchObject({meterId:second.meterId,endCaptureId:secondMonthly.id});
+    expect(Number(secondEvidence.sources[0].previousReading)).toBe(100);expect(Number(secondEvidence.sources[0].currentReading)).toBe(140.50);
+    const secondBills=z.array(z.unknown()).parse(await read('invoices',{select:'id,organization_id,contract_id,building_id,room_id,billing_month,kind,status,subtotal,total_amount,paid_amount',id:`eq.${secondInvoiceId}`}));
+    expect(secondBills).toHaveLength(1);assertMonthlyInvoice(second,secondBills[0]);
+    await bulk.retry(testInfo);
+    expect(bulk.requests).toHaveLength(2);expect(bulk.blocked).toEqual([]);
+    expect(z.array(z.unknown()).parse(await read('invoices',{select:'id',contract_id:`eq.${second.contractId}`}))).toHaveLength(1);
+    expect(z.array(z.unknown()).parse(await read('meter_readings',{select:'id',meter_id:`in.(${fixture.meterId},${second.meterId})`}))).toHaveLength(2);
     const invoices=z.array(z.unknown()).parse(await read('invoices',{select:'id,organization_id,contract_id,building_id,room_id,billing_month,kind,status,subtotal,total_amount,paid_amount',id:`eq.${invoiceReceipt.invoice_id}`}));expect(invoices).toHaveLength(1);
     const invoice=assertMonthlyInvoice(fixture,invoices[0]);
     const invoiceEvidence=z.object({sources:z.array(z.object({meterId:z.string(),endCaptureId:z.string().nullable(),previousReading:z.string(),currentReading:z.string()}))}).parse(await call('documentEvidence',{kind:'INVOICE',documentId:invoice.id}));
@@ -172,11 +187,15 @@ test('TEST: QR clip through real UI, worker evidence, invoice and zero-kWh settl
     expect(z.array(z.unknown()).parse(await read('payments',{select:'id',invoice_id:`eq.${invoice.id}`}))).toEqual([]);
     expect(z.array(z.unknown()).parse(await read('income_expenses',{select:'id',contract_id:`eq.${fixture.contractId}`}))).toEqual([]);
     expect(z.array(z.unknown()).parse(await read('invoices',{select:'id',contract_id:`eq.${fixture.contractId}`}))).toHaveLength(1);
+    await page.goto('/meter-readings');await page.getByRole('button',{name:'Chụp đồng hồ / QR'}).click();
     await ui.showZeroMoveOut(moveOut,testInfo);
     expect(ui.writes).toEqual(expect.arrayContaining(['startCapture','storageUpload','finalize','confirmCapture']));
-    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
+    await testInfo.attach('meter-live-observations',{body:JSON.stringify({fixtureId:fixture.fixtureId,projectRef:METER_TEST_REF,monthlyCaptureId:monthly.id,moveOutCaptureId:moveOut.id,monthlyThroughUi:true,bulkInvoicesThroughUi:true,bulkInvoiceCount:2,bulkRetryDuplicateBlocked:true,secondInvoiceId,uiWrites:ui.writes,zeroUsageCapture:true,invoiceId:invoice.id,exitId:finalizedExit.id,invoiceCreated:true,exitFinalized:true,noPayment:true}),contentType:'application/json'});
     expect(ui.blocked).toEqual([]);expect(ui.errors).toEqual([]);
+    expect(ui.deniedMaintenance.every(name=>name==='mark_overdue_invoices_v1')).toBe(true);
   } finally {
+    await testInfo.attach('bulk-gateway-observations',{body:JSON.stringify({blocked:bulk.blocked,events:bulk.observations}),contentType:'application/json'});
+    await testInfo.attach('denied-org-maintenance',{body:JSON.stringify({actions:ui.deniedMaintenance,reason:'Outside owned TEST fixture; aging is not covered by this test'}),contentType:'application/json'});
     const retired=await lifecycle.retireFixture(fixture,created);
     expect(retired).toEqual({fixtureId:fixture.fixtureId,state:'RETIRED',retainedImmutableAudit:true});
   }

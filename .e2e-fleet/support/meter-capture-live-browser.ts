@@ -11,11 +11,13 @@ type Evidence={id:string;previousValue:string|null;evidenceFrames:Array<{timesta
  * The only fulfilled fake is unrelated UI preference persistence; gateway and
  * media responses are forwarded unchanged after validating the fixture scope. */
 export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture,created:{clientIds:string[];captureIds:string[]},appOrigin:string){
- const blocked:string[]=[],errors:string[]=[],writes:string[]=[];
+ const blocked:string[]=[],errors:string[]=[],writes:string[]=[],deniedMaintenance:string[]=[];
  // useUnrecordedMeters reads this list when /meter-readings opens and refetches.
  // The legacy VOLATILE wrapper and its delegated function only SELECT (verified
  // on TEST and in 20260528000002 / 20250130000004); this does not allow a writer.
- const readers=new Set([...readRpcAllowlist('dashboard'),'get_meter_reading_stats','get_meters_without_readings_v2']);
+ // The app also loads voucher details in its shared income/expense UI. Use the
+ // existing read-only registry (read_income_expense_details_v1 is STABLE).
+ const readers=new Set([...readRpcAllowlist('dashboard','invoices','rentSupport','incomeExpense'),'get_meter_reading_stats','get_meters_without_readings_v2']);
  const state={sha:'',size:0,started:null as Started|null,confirmation:null as Record<string,unknown>|null};
  page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
@@ -27,6 +29,11 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   const preference=uiPreferenceFakeBody(request,fixture.organizationId);
   if(preference)return route.fulfill({status:200,contentType:'application/json',body:preference});
   const rpcName=url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
+  // The invoices page schedules org-wide aging. It is outside the two owned
+  // fixture contracts: reject it explicitly, never fake a successful write.
+  if(rpcName==='mark_overdue_invoices_v1'){
+   deniedMaintenance.push(rpcName);return route.abort('blockedbyclient');
+  }
   if(rpcName&&readers.has(rpcName))return route.continue();
   if(url.pathname==='/functions/v1/meter-capture-worker'&&method==='POST'){
    const body=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.unknown()).optional(),captureId:z.string().optional()}).parse(request.postDataJSON());
@@ -78,11 +85,23 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   return block();
  });
  const dialog=()=>page.getByRole('dialog',{name:'Ghi điện bằng QR, ảnh / clip'});
+ const reviewScreenshot=async()=>{
+  // A tall article screenshot uses Chromium captureBeyondViewport and can
+  // trigger responsive media-query events. Capture the visible viewport only.
+  await expect(dialog()).toBeVisible();
+  const snapshot=await page.screenshot({fullPage:false});
+  await expect(dialog()).toBeVisible();
+  return snapshot;
+ };
  const article=(purpose:'MONTHLY'|'MOVE_OUT')=>dialog().locator('article').filter({hasText:fixture.meterCode}).filter({hasText:purpose==='MONTHLY'?'Kỳ tháng':'Thanh lý'});
  const review=async(purpose:'MONTHLY'|'MOVE_OUT',capture:Evidence)=>{
   await dialog().getByRole('tab',{name:/Đối chiếu/}).click();
   await dialog().getByRole('button',{name:'Tải lại kết quả'}).click();
-  const row=article(purpose);await expect(row).toHaveCount(1);await row.getByRole('button',{name:'Xem / xác nhận',exact:true}).click();
+  const row=article(purpose);await expect(row).toHaveCount(1);
+  // Refresh replaces the review component when the capture version changes.
+  // Wait for the worker/confirmation result before expanding the new component.
+  await expect(row).toContainText(purpose==='MONTHLY'?'Chờ xác nhận':'Đã chốt');
+  await row.getByRole('button',{name:'Xem / xác nhận',exact:true}).click();
   const image=row.getByAltText('Ảnh đối chiếu đồng hồ nội bộ');await expect(image).toBeVisible();await image.scrollIntoViewIfNeeded();
   await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
   const frames=row.getByRole('button',{name:/^Ảnh tại /});expect(await frames.count()).toBeGreaterThanOrEqual(2);
@@ -94,7 +113,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   await expect.poll(()=>video.evaluate(node=>(node as HTMLVideoElement).currentTime)).toBeCloseTo(capture.evidenceFrames[index].timestampSeconds,1);
   await row.getByRole('button',{name:'Xem ảnh chốt',exact:true}).click();return row;
  };
- return {blocked,errors,writes,
+ return {blocked,errors,writes,deniedMaintenance,
   upload:async(clip:Buffer,sha:string)=>{
    state.sha=sha;state.size=clip.length;
    await page.getByRole('button',{name:'Chụp đồng hồ / QR'}).click();
@@ -118,7 +137,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
    await row.getByLabel(/Lý do xác nhận thủ công|Ghi chú đối chiếu/).fill('E2E synthetic: verified exact rendered digits and register');
    await expect(row.getByRole('button',{name:'Xác nhận chốt chỉ số',exact:true})).toBeDisabled();
    await row.getByRole('checkbox',{name:/Tôi đã đối chiếu ảnh\/clip/}).check();
-   await info.attach('monthly-qr-review-ui',{body:await row.screenshot(),contentType:'image/png'});
+   await info.attach('monthly-qr-review-ui',{body:await reviewScreenshot(),contentType:'image/png'});
    await row.getByRole('button',{name:'Xác nhận chốt chỉ số',exact:true}).click();
    await expect(row).toContainText(`Chỉ số đã chốt: ${fixture.currentValue} kWh`,{timeout:60_000});
    if(!state.confirmation)throw new Error('Browser did not submit confirmation through the real gateway');return state.confirmation;
@@ -126,7 +145,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   showZeroMoveOut:async(capture:Evidence,info:TestInfo)=>{
    const row=await review('MOVE_OUT',capture);await expect(row).toContainText('Chênh lệch: 0 kWh');
    await expect(row).toContainText(`Chỉ số đã chốt: ${fixture.currentValue} kWh`);
-   await info.attach('zero-kwh-move-out-ui',{body:await row.screenshot(),contentType:'image/png'});
+   await info.attach('zero-kwh-move-out-ui',{body:await reviewScreenshot(),contentType:'image/png'});
   },
  };
 }

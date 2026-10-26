@@ -447,14 +447,18 @@ export function buildInvoiceItems(
     if (row.meter_billing_error || row.meter_billing.some(source => !source.start || !source.end)) throw new Error(row.meter_billing_error || 'Chưa chốt đủ đồng hồ điện của phòng.');
     for (const source of row.meter_billing) {
       const sortOrder = order++;
-      const ref = meterSourceReference(source, { contractId: row.contract_id, month: ctx.billingMonth, readingDate: ctx.toDate, purpose: 'MONTHLY', sortOrder });
+      // A reading collected before month end is billed through its actual date.
+      // Using the month end hides that billed boundary from an earlier move-out.
+      const readingDate = source.end?.readingDate;
+      if (!readingDate || !/^\d{4}-\d{2}-\d{2}$/.test(readingDate) || readingDate < ctx.fromDate || readingDate > ctx.toDate) throw new Error('Ngày chốt đồng hồ ngoài kỳ hóa đơn; tải lại nguồn chỉ số.');
+      const ref = meterSourceReference(source, { contractId: row.contract_id, month: ctx.billingMonth, readingDate, purpose: 'MONTHLY', sortOrder });
       if (row.meter_billing.length === 1 && (Number(row.current_reading) !== Number(ref.currentReading) || row.prev_reading !== Number(ref.previousReading))) throw new Error('Chỉ số đã thay đổi so với ảnh; xác nhận lại tại Ghi chỉ số.');
       const quantity = Number(ref.currentReading) - Number(ref.previousReading);
       if (quantity < 0) throw new Error('Chỉ số điện cuối thấp hơn số đầu.');
       if (row.electric_overridden) throw new Error('Tiền điện có chứng cứ phải tính theo chỉ số đã chốt.');
       items.push({ service_id: source.serviceId ?? row.elec_service_id, type: 'SERVICE', description: `Tiền điện ${source.meterName} (${ref.previousReading} → ${ref.currentReading})`,
         unit_price: row.elec_rate, quantity, coefficient: 1, previous_reading: Number(ref.previousReading), current_reading: Number(ref.currentReading),
-        from_date: ctx.fromDate, to_date: ctx.toDate, sort_order: sortOrder, meter_source: ref });
+        from_date: ctx.fromDate, to_date: readingDate, sort_order: sortOrder, meter_source: ref });
     }
   } else if (row.electric_amount > 0) {
     const cons = Math.max(consumption, 0);

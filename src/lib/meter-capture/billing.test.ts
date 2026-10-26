@@ -16,6 +16,18 @@ function row(sources = [source()]) {
     previousDebtByContract: new Map(), billingSourcesByContract: new Map([[id(6), sources]]), defaults, billingMonth: '2026-10' })[0];
 }
 describe('nguồn chỉ số của hóa đơn nhanh', () => {
+  it('giữ ngày chốt thực tế trước cuối tháng để thanh lý cùng ngày thấy phần điện đã lập hóa đơn', () => {
+    const early=source({end:{...source().end!,readingDate:'2026-10-27'}});
+    const items=buildInvoiceItems(row([early]),ctx);
+    const electric=items.find(item=>item.meter_source)!;
+    expect(electric.meter_source?.readingDate).toBe('2026-10-27');
+    expect(electric.to_date).toBe('2026-10-27');
+    expect(electric.current_reading).toBe(145.5);
+    expect(items.find(item=>item.type==='RENT')?.unit_price).toBe(1000000);
+    for(const readingDate of ['2026-09-30','2026-11-01','invalid']){
+      expect(()=>buildInvoiceItems(row([source({end:{...source().end!,readingDate}})]),ctx)).toThrow('ngoài kỳ');
+    }
+  });
   it('số đã chụp tháng này điền số cuối, không lấy latest làm số đầu', () => {
     const result = row();
     expect(result.prev_reading).toBe(123.45); expect(result.current_reading).toBe(145.5);
