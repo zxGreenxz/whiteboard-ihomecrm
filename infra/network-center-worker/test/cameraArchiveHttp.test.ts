@@ -10,6 +10,35 @@ const config = liveConfigSchema.parse({
 const actor = { id: "40000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 3600_000 };
 const input = { start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T08:01:00+07:00", purpose: "export" };
 describe("camera archive HTTP workflow", () => {
+  it("scopes reload discovery and pre-POST cancellation to the authorized owner and recorder", async () => {
+    const authorize = vi.fn(async () => actor);
+    const archive: ArchiveDependencies = { authorize, encode: vi.fn(async () => ({ bytes: 2048, durationSeconds: 60, sha256: "a".repeat(64) })), remove: vi.fn(), audit: vi.fn(), fatal: vi.fn() };
+    const jobs = new ArchiveJobs(archive);
+    const { server } = createLiveServer(config, { authorize, start: vi.fn(), stop: vi.fn(), fatal: vi.fn() }, { jobs, open: () => Readable.from([]) });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const root = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${config.recorders[0]!.id}`;
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer fixture-token-long-enough", "Content-Type": "application/json" };
+    const requestId = "50000000-0000-4000-8000-000000000001";
+    try {
+      expect((await fetch(`${root}/archive`, { headers: { Origin: headers.Origin } })).status).toBe(401);
+      const body = JSON.stringify({ ...input, requestId });
+      const job = await (await fetch(`${root}/channels/1/archive`, { method: "POST", headers, body })).json() as { id: string };
+      const duplicate = await fetch(`${root}/channels/1/archive`, { method: "POST", headers, body });
+      expect(await duplicate.json()).toMatchObject({ id: job.id }); expect(archive.encode).toHaveBeenCalledOnce();
+      expect(await (await fetch(`${root}/archive`, { headers })).json()).toMatchObject({ job: { id: job.id } });
+      authorize.mockResolvedValueOnce({ ...actor, id: "other" });
+      expect(await (await fetch(`${root}/archive`, { headers })).json()).toEqual({ job: null });
+      authorize.mockResolvedValueOnce({ ...actor, id: "other" });
+      expect((await fetch(`${root}/archive/requests/${requestId}`, { method: "DELETE", headers })).status).toBe(200);
+      expect(archive.remove).not.toHaveBeenCalled();
+      authorize.mockRejectedValueOnce(new LiveError(403, "CAMERA_ACCESS_DENIED"));
+      expect((await fetch(`${root}/archive/requests/${requestId}`, { method: "DELETE", headers })).status).toBe(403);
+      expect((await fetch(`${root}/archive/requests/${requestId}`, { method: "DELETE", headers })).status).toBe(200);
+      expect((await fetch(`${root}/channels/1/archive`, { method: "POST", headers, body })).status).toBe(410);
+      expect(archive.encode).toHaveBeenCalledOnce();
+    } finally { await new Promise<void>((done) => server.close(() => done())); await jobs.closeAll(); }
+  });
   it("creates, polls, downloads and deletes with scoped authentication on every operation", async () => {
     const authorize = vi.fn(async () => actor);
     const live: LiveDependencies = { authorize, start: vi.fn(), stop: vi.fn(), fatal: vi.fn() };

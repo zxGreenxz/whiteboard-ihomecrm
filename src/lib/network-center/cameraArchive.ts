@@ -5,12 +5,12 @@ import { CameraLiveError, cameraVideoEndpoint } from "./cameraLive";
 const resolutionSchema = z.enum(["480p", "720p", "1080p", "original"]);
 export type CameraArchiveResolution = z.infer<typeof resolutionSchema>;
 export const cameraResolutionLabel = (value: CameraArchiveResolution) => ({ "480p": "SD 480p", "720p": "HD 720p", "1080p": "Full HD 1080p", original: "Độ phân giải gốc" })[value];
-const base = z.object({ id: z.string().uuid(), recorderId: z.string().uuid(), channel: z.number().int().positive(), start: z.string().datetime(), end: z.string().datetime(), purpose: z.enum(["preview", "export"]), resolution: resolutionSchema, progress: z.number().min(0).max(100), expiresAt: z.number() });
+const base = z.object({ id: z.string().uuid(), requestId: z.string().uuid().optional(), recorderId: z.string().uuid(), channel: z.number().int().positive(), start: z.string().datetime(), end: z.string().datetime(), purpose: z.enum(["preview", "export"]), resolution: resolutionSchema, progress: z.number().min(0).max(100), expiresAt: z.number(), phase: z.enum(["source", "encoding", "verifying", "ready"]).optional(), sourceBytes: z.number().nonnegative().optional(), sourceTotalBytes: z.number().positive().optional() });
 const readySchema = base.extend({ state: z.literal("ready"), bytes: z.number().int().positive().max(256 * 1024 * 1024), durationSeconds: z.number().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/u), filename: z.string().regex(/^[a-zA-Z0-9_.-]+\.mp4$/u) });
 const jobSchema = z.discriminatedUnion("state", [base.extend({ state: z.literal("processing") }), base.extend({ state: z.literal("failed"), code: z.string() }), readySchema]);
 export type CameraArchiveJob = z.infer<typeof jobSchema>;
 export type CameraArchiveReady = z.infer<typeof readySchema>;
-export interface CameraArchiveRequest { recorderId: string; channel: number; start: string; end: string; purpose: "preview" | "export"; resolution?: CameraArchiveResolution }
+export interface CameraArchiveRequest { recorderId: string; channel: number; start: string; end: string; purpose: "preview" | "export"; resolution?: CameraArchiveResolution; requestId?: string }
 export function vietnamCameraInput(ms: number) { return new Date(ms + 7 * 3600_000).toISOString().slice(0, 19); }
 export function cameraInputTime(value: string) {
   const seconds = value.replace(/\.0+$/u, "");
@@ -52,16 +52,18 @@ async function pause(signal: AbortSignal) {
     signal.addEventListener("abort", abort, { once: true }); if (signal.aborted) abort();
   });
 }
-async function download(job: CameraArchiveReady, signal: AbortSignal) {
+async function download(job: CameraArchiveReady, signal: AbortSignal, onBytes?: (bytes: number, total: number) => void) {
   const response = await request(`/archive/${job.id}/file`, "GET", signal);
   if (!response.headers.get("content-type")?.startsWith("video/mp4") || !response.body) { await response.body?.cancel(); throw new CameraLiveError("ARCHIVE_DOWNLOAD_INVALID"); }
   const chunks: Uint8Array<ArrayBuffer>[] = []; const reader = response.body.getReader(); let bytes = 0;
+  onBytes?.(0, job.bytes);
   try {
     for (;;) {
       const part = await reader.read(); if (part.done) break;
       bytes += part.value.byteLength;
       if (bytes > job.bytes) throw new CameraLiveError("ARCHIVE_DOWNLOAD_INVALID");
       chunks.push(new Uint8Array(part.value));
+      onBytes?.(bytes, job.bytes);
     }
   } finally { await reader.cancel(); }
   const blob = new Blob(chunks, { type: "video/mp4" });
@@ -70,26 +72,31 @@ async function download(job: CameraArchiveReady, signal: AbortSignal) {
   if ([...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("") !== job.sha256) throw new CameraLiveError("ARCHIVE_DOWNLOAD_INVALID");
   return blob;
 }
-export async function prepareCameraArchive(input: CameraArchiveRequest, signal: AbortSignal, onProgress: (job: CameraArchiveJob) => void) {
+export async function findCameraArchive(recorderId: string, signal: AbortSignal, requestId?: string) {
+  z.string().uuid().parse(recorderId);
+  const suffix = requestId ? `/requests/${z.string().uuid().parse(requestId)}` : "";
+  const result = z.object({ job: jobSchema.nullable() }).parse(await (await request(`/recorders/${recorderId}/archive${suffix}`, "GET", signal)).json());
+  if (result.job && result.job.recorderId !== recorderId) throw new CameraLiveError("ARCHIVE_DOWNLOAD_INVALID");
+  return result.job;
+}
+export async function cancelCameraArchive(input: CameraArchiveRequest, signal: AbortSignal, jobId?: string) {
+  z.string().uuid().parse(input.recorderId);
+  const path = input.requestId ? `/recorders/${input.recorderId}/archive/requests/${z.string().uuid().parse(input.requestId)}` : `/archive/${z.string().uuid().parse(jobId)}`;
+  await request(path, "DELETE", signal);
+}
+export async function prepareCameraArchive(input: CameraArchiveRequest, signal: AbortSignal, onProgress: (job: CameraArchiveJob) => void, options: { resumeId?: string; onDownloadProgress?(bytes: number, total: number): void } = {}) {
   z.string().uuid().parse(input.recorderId); z.number().int().min(1).max(64).parse(input.channel);
   const resolution = resolutionSchema.parse(input.purpose === "preview" ? "720p" : input.resolution ?? "480p");
-  let id: string | undefined;
-  try {
-    let job = jobSchema.parse(await (await request(`/recorders/${input.recorderId}/channels/${input.channel}/archive`, "POST", signal, { start: input.start, end: input.end, purpose: input.purpose, resolution })).json());
-    id = job.id;
+  if (input.requestId) z.string().uuid().parse(input.requestId);
+  const resumeId = options.resumeId && z.string().uuid().parse(options.resumeId);
+  let job = jobSchema.parse(await (await (resumeId ? request(`/archive/${resumeId}`, "GET", signal) : request(`/recorders/${input.recorderId}/channels/${input.channel}/archive`, "POST", signal, { start: input.start, end: input.end, purpose: input.purpose, resolution, ...(input.requestId ? { requestId: input.requestId } : {}) }))).json());
     for (;;) {
       signal.throwIfAborted();
       if (job.recorderId !== input.recorderId || job.channel !== input.channel || Date.parse(job.start) !== Date.parse(input.start) || Date.parse(job.end) !== Date.parse(input.end) || job.purpose !== input.purpose || job.resolution !== resolution) throw new CameraLiveError("ARCHIVE_DOWNLOAD_INVALID");
       onProgress(job);
       if (job.state === "failed") throw new CameraLiveError(job.code);
-      if (job.state === "ready") return { job, blob: await download(job, signal) };
+      if (job.state === "ready") return { job, blob: await download(job, signal, options.onDownloadProgress) };
       await pause(signal);
-      job = jobSchema.parse(await (await request(`/archive/${id}`, "GET", signal)).json());
+      job = jobSchema.parse(await (await request(`/archive/${job.id}`, "GET", signal)).json());
     }
-  } finally {
-    if (id) {
-      try { await request(`/archive/${id}`, "DELETE", AbortSignal.timeout(10_000)); }
-      catch { /* The gateway independently expires abandoned jobs and removes their files. */ }
-    }
-  }
 }

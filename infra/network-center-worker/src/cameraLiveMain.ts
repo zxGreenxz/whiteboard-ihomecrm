@@ -19,13 +19,15 @@ export function mediaConfiguration(config: LiveConfig, encoder?: string) {
   }))));
   if (encoder) {
     for (const recorder of config.recorders) for (const channel of recorder.channels) {
-      const sd = streamName(recorder, channel); const main = streamName(recorder, channel, "hd");
-      const sdInput = `camera-source-${recorder.id}-${channel}-sd`; const mainInput = `camera-source-${recorder.id}-${channel}-original`;
-      paths[sdInput] = paths[sd]!; paths[mainInput] = paths[main]!;
-      for (const quality of ["sd", "hd", "fullhd", "original"] as const) {
-        const output = streamName(recorder, channel, quality); const input = quality === "sd" ? sdInput : mainInput;
+      const main = streamName(recorder, channel, "hd");
+      const mainInput = streamName(recorder, channel, "original");
+      // Native SD/main video and G.711 audio pass straight through MediaMTX.
+      // Only resized profiles need an encoder before the first picture.
+      paths[mainInput] = paths[main]!;
+      for (const quality of ["hd", "fullhd"] as const) {
+        const output = streamName(recorder, channel, quality); const input = mainInput;
         const size = quality === "hd" ? [1280, 720] : [1920, 1080];
-        const video = quality === "sd" || quality === "original" ? ["-c:v", "copy"] : ["-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "25", "-maxrate", quality === "hd" ? "2500k" : "4500k", "-bufsize", "9000k", "-pix_fmt", "yuv420p", "-g", "25", "-vf", `scale=w='min(${size[0]},iw)':h='min(${size[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`];
+        const video = ["-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "25", "-maxrate", quality === "hd" ? "2500k" : "4500k", "-bufsize", "9000k", "-pix_fmt", "yuv420p", "-g", "25", "-vf", `scale=w='min(${size[0]},iw)':h='min(${size[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`];
         const command = [encoder, "-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-filter_threads", "1", "-rtsp_transport", "tcp", "-timeout", "10000000", "-probesize", "32768", "-analyzeduration", "1", "-i", `rtsp://127.0.0.1:18895/${input}`, "-map", "0:v:0", "-map", "0:a:0?", ...video, "-c:a", "libopus", "-ar", "48000", "-ac", "1", "-b:a", "32k", "-f", "rtsp", "-rtsp_transport", "tcp", "-muxdelay", "0.05", `rtsp://127.0.0.1:18895/${output}`].map((arg) => `'${arg.replace(/'/gu, `'\\''`)}'`).join(" ");
         // Shared on-demand outputs: one encoder per camera/quality, not per viewer.
         Object.assign(paths, { [output]: { source: "publisher", runOnDemand: command, runOnDemandRestart: false, runOnDemandStartTimeout: "10s", runOnDemandCloseAfter: "1s", record: false, maxReaders: 24 } });

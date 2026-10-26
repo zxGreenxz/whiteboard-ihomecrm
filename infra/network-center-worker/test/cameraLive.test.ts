@@ -101,17 +101,21 @@ describe("camera live session boundaries", () => {
 });
 
 describe("camera live upstream authorization", () => {
-  it("shares on-demand live profiles, preserves original video and converts optional audio to Opus without exposing credentials", () => {
+  it("passes native SD/main video and audio directly, sharing encoders only for resized profiles", () => {
     const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
     const media = mediaConfiguration(config, encoder);
     const paths = media.paths as Record<string, { source: string; runOnDemand?: string }>;
-    for (const suffix of ["", "-hd", "-fullhd", "-original"]) {
+    for (const suffix of ["-hd", "-fullhd"]) {
       const path = paths[`camera-${recorder.id}-1${suffix}`]!;
       expect(path.source).toBe("publisher"); expect(path.runOnDemand).toContain("libopus"); expect(path.runOnDemand).toContain("0:a:0?");
       expect(path.runOnDemand).not.toContain(recorder.password); expect(path.runOnDemand).not.toContain(recorder.rtspOrigin);
-      expect(path.runOnDemand).toContain(suffix === "-hd" ? "1280" : suffix === "-fullhd" ? "1920" : "'copy'");
+      expect(path.runOnDemand).toContain(suffix === "-hd" ? "1280" : "1920");
+      expect(path.runOnDemand).toContain(`camera-${recorder.id}-1-original`);
     }
-    expect(new URL(paths[`camera-source-${recorder.id}-1-sd`]!.source).searchParams.get("subtype")).toBe("1");
+    for (const suffix of ["", "-original"]) {
+      const path = paths[`camera-${recorder.id}-1${suffix}`]!;
+      expect(path.runOnDemand).toBeUndefined(); expect(new URL(path.source).searchParams.get("subtype")).toBe(suffix ? "0" : "1");
+    }
     expect(() => mediaConfiguration(config, "/tmp/unverified-ffmpeg")).toThrow("LIVE_ENCODER_INVALID");
   });
   const id = actor.id;

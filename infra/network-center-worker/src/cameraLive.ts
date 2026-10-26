@@ -273,6 +273,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       const sessionRoute = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})(\/renew)?$/u.exec(path);
       const archiveCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/archive$/u.exec(path);
       const archiveJob = /^\/camera-live\/v1\/archive\/([a-f0-9-]{36})(\/file)?$/u.exec(path);
+      const archiveRestore = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/archive(?:\/requests\/([a-f0-9-]{36}))?$/u.exec(path);
       const playbackCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/playback$/u.exec(path);
       const playbackControl = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})\/playback$/u.exec(path);
       const previewRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/preview$/u.exec(path);
@@ -315,8 +316,16 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (response.destroyed) { await sessions.stop(result.id, token); return; }
         reply(response, 201, result); return;
       }
-      if (archiveCreate || archiveJob) {
+      if (archiveCreate || archiveJob || archiveRestore) {
         if (!archive) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
+        if (archiveRestore) {
+          const recorder = config.recorders.find((r) => r.id === archiveRestore[1]);
+          if (!recorder || !recorder.archiveEnabled) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
+          const actor = await dependencies.authorize(token, recorder);
+          if (request.method === "GET") { reply(response, 200, { job: await archive.jobs.find(actor, recorder, archiveRestore[2]) }); return; }
+          if (request.method === "DELETE" && archiveRestore[2]) { await archive.jobs.cancelRequest(actor, recorder, archiveRestore[2]); reply(response, 200, { stopped: true }); return; }
+          throw new LiveError(404, "NOT_FOUND");
+        }
         if (archiveCreate && request.method === "POST") {
           if (request.headers["content-type"] !== "application/json") throw new LiveError(415, "JSON_REQUIRED");
           const recorder = config.recorders.find((r) => r.id === archiveCreate[1]);
@@ -325,7 +334,8 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
           try { value = JSON.parse(await requestBody(request)); } catch { throw new LiveError(400, "INVALID_ARCHIVE_RANGE"); }
           const actor = await dependencies.authorize(token, recorder);
           const job = await archive.jobs.create(actor, recorder, Number(archiveCreate[2]), value);
-          if (response.destroyed) { await archive.jobs.stop(job.id, token); return; }
+          // A lost POST response is recoverable by requestId; disconnect is not cancellation.
+          if (response.destroyed) return;
           reply(response, 202, job); return;
         }
         if (archiveJob) {
@@ -346,7 +356,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
               const job = await archive.jobs.file(id, token);
               response.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": job.bytes!, "Content-Disposition": `attachment; filename="${job.filename}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
               await pipeline(archive.open(id), response, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(120_000)]) });
-            } finally { clearInterval(check); response.removeListener("close", disconnected); downloads.delete(id); }
+            } finally { clearInterval(check); response.removeListener("close", disconnected); downloads.delete(id); archive.jobs.finishDownload(id); }
             return;
           }
         }

@@ -8,9 +8,15 @@ tên miền `crm-hermes` hoặc alias `hermes-vps` cũ. Không in credential ra 
 
 Gateway camera có thêm API `/camera-live/v1/recorders/:id/channels/:channel/archive`
 và `/camera-live/v1/archive/:id[/file]`. Dùng cùng JWT, kiểm quyền theo đầu ghi/tòa
-ở mỗi thao tác. Không cần migration hay mở thêm ingress. Tác vụ phải được poll
-trong 75 giây; file sẵn sàng tự hết hạn sau 15 phút và được xóa ngay sau khi trình
-duyệt tải xong. Dừng gateway cũng dừng bộ chuyển mã trong cùng systemd control group.
+ở mỗi thao tác. Không cần migration hay mở thêm ingress. Client lưu `requestId`
+theo tài khoản/đầu ghi trước POST; GET `/recorders/:id/archive[/requests/:requestId]`
+khôi phục tác vụ, DELETE theo requestId hủy được cả trước khi POST trả về. Retry
+cùng mã/khoảng cắt dùng lại tác vụ; khác chủ không thể tìm hay hủy tác vụ đó.
+Tác vụ mới tồn tại tối đa `2 × thời lượng + 120 giây`, kể cả khi đóng trang; client
+cũ không gửi requestId vẫn dùng lease 75 giây. File sẵn sàng giữ 15 phút để tải lại,
+mỗi lần tải đã bắt đầu có tối đa 120 giây hoàn tất. F5 chỉ tra tác vụ cũ; khi không
+xác minh được hoặc gateway đã khởi động lại, cần người dùng bấm tạo lại. Dừng
+gateway cũng dừng bộ chuyển mã trong cùng systemd control group.
 
 Mặc định xem lại tắt. Trong credential `live-config.json`, chỉ đặt
 `archiveEnabled: true` cùng `archiveOrigin` (HTTP/HTTPS IP private, cổng quản trị
@@ -495,8 +501,11 @@ xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI
 
 ### Phát lại trực tiếp và trích xuất
 
-Xem trực tiếp mặc định dùng luồng phụ SD, có lựa chọn HD để nhận luồng chính
-(độ phân giải theo cấu hình camera). Xem lại dùng RTSP `/cam/playback` từ bản ghi
+Xem trực tiếp mặc định dùng luồng phụ SD; SD và gốc đi trực tiếp qua MediaMTX,
+giữ video và âm thanh tương thích WebRTC (đã kiểm G.711/PCMA trên đầu ghi).
+HD 720p và Full HD 1080p dùng encoder chung theo kênh/chất lượng, H.264/Opus.
+Trình duyệt giữ một MediaStream khi track âm thanh đến sau và hiện ngay khung hình
+đầu tiên đã giải mã. Xem lại dùng RTSP `/cam/playback` từ bản ghi
 chính. FFmpeg chuyển mã ngay sang H.264: SD tối đa 854×480, HD 1280×720,
 Full HD 1920×1080 hoặc kích thước gốc (không nâng độ phân giải nguồn). Không tạo
 job MP4 khi xem lại. Lựa chọn trực tiếp/xem lại/xuất được lưu riêng trong
@@ -531,6 +540,10 @@ và một yêu cầu/tài khoản; hủy phải đợi tiến trình thoát trư
   reverse proxy hoặc mở firewall cho cổng này. RTSP gốc và mật khẩu chỉ ở máy chủ.
 - Thanh thời gian phát lại là ước tính theo RTSP. Không tự lấy mốc này điền trích xuất;
   đối chiếu đồng hồ trên hình rồi chọn khoảng xuất. Export vẫn dùng DHAV/kiểm coverage,
-  SD 480p mặc định, tải về máy và xóa file tạm, không upload Supabase Storage.
+  SD 480p mặc định, tải về máy; file tạm xóa khi hủy/hết hạn, không upload Supabase Storage.
+  Bộ xuất dùng hai thread giải mã, một thread filter/mã hóa; tắt checksum từng frame
+  trong showinfo nhưng vẫn kiểm PTS/coverage/gap và SHA-256 của file hoàn chỉnh.
+  Giới hạn một bộ xuất gồm cả giai đoạn dọn dẹp, ngân sách nguồn + đầu ra 1 GiB và
+  giữ tối thiểu 2 GiB đĩa trống. Tiến độ phân biệt lấy nguồn, mã hóa, kiểm file và tải.
 - Khi rollout gateway, giữ artifact/config trước đó và kiểm stop/rollback; canary
   cần xác nhận hình giải mã thật, đóng phiên xóa path và export hoạt động độc lập.

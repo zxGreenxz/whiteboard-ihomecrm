@@ -23,9 +23,11 @@ class Peer {
   constructor() { Peer.instances.push(this); }
 }
 const request = vi.fn<typeof fetch>();
+class Stream { readonly tracks: unknown[] = []; addTrack(track: unknown) { this.tracks.push(track); } }
 beforeEach(() => {
   vi.useFakeTimers(); Peer.instances = []; vi.clearAllMocks();
   vi.stubGlobal("RTCPeerConnection", Peer);
+  vi.stubGlobal("MediaStream", Stream);
   vi.stubGlobal("fetch", request);
   auth.getSession.mockResolvedValue({ data: { session: { access_token: "user-token" } }, error: null });
   request.mockImplementation(async (_url, options) => options?.method === "POST" && options.body ? Response.json({ id: sessionId, answer: "v=0\r\nanswer", expiresAt: Date.now() + 75000 }) : Response.json({ stopped: true }));
@@ -34,15 +36,16 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 const options = () => ({ recorderId: "20000000-0000-4000-8000-000000000001", channel: 1, onStream: vi.fn(), onState: vi.fn() });
 
 describe("live camera browser lifecycle", () => {
-  it("receives camera audio without microphone access and preserves video when audio arrives later", async () => {
-    class Stream { constructor(readonly tracks: unknown[]) {} }
-    vi.stubGlobal("MediaStream", Stream);
+  it.each(["video", "audio"])("attaches one stable stream when %s arrives first, without microphone access", async (first) => {
     const callbacks = { ...options(), onAudio: vi.fn() }; const connection = new CameraLiveConnection(callbacks); await connection.start();
     const peer = Peer.instances[0]!;
     expect(peer.addTransceiver).toHaveBeenCalledWith("audio", { direction: "recvonly" });
     const video = { id: "v", kind: "video" }, audio = Object.assign(new EventTarget(), { id: "a", kind: "audio", readyState: "live", muted: true });
-    peer.ontrack!({ track: video }); peer.ontrack!({ track: audio });
-    expect(callbacks.onStream.mock.calls.at(-1)?.[0].tracks).toEqual([video, audio]);
+    const tracks = first === "video" ? [video, audio] : [audio, video];
+    for (const track of tracks) peer.ontrack!({ track });
+    peer.ontrack!({ track: video });
+    expect(callbacks.onStream).toHaveBeenCalledOnce();
+    expect(callbacks.onStream.mock.calls[0]?.[0].tracks).toEqual(tracks);
     expect(callbacks.onAudio).toHaveBeenLastCalledWith(false);
     audio.muted = false; audio.dispatchEvent(new Event("unmute")); expect(callbacks.onAudio).toHaveBeenLastCalledWith(true);
     await connection.stop();

@@ -25,6 +25,9 @@ const messages: Record<string, string> = {
   ARCHIVE_INCOMPLETE: "Đầu ghi trả về thiếu thời lượng đã chọn. Hãy thu hẹp khoảng thời gian; chưa tạo file để tránh cung cấp đoạn bị thiếu.",
   ARCHIVE_TOO_LARGE: "Đoạn video vượt giới hạn dung lượng. Hãy chia thành các đoạn ngắn hơn.",
   ARCHIVE_EXPIRED: "Đoạn video tạm đã hết hạn. Hãy chọn xem hoặc xuất lại.",
+  ARCHIVE_CANCELLED: "Yêu cầu trích xuất đã được hủy. Có thể tạo đoạn video mới.",
+  ARCHIVE_REQUEST_CONFLICT: "Yêu cầu đã tồn tại với khoảng thời gian khác. Hãy tạo yêu cầu mới.",
+  ARCHIVE_STORAGE_FULL: "Máy chủ chưa đủ dung lượng tạm để trích xuất. Hãy thử lại sau khi các đoạn cũ được dọn.",
   ARCHIVE_ENCODER_FAILED: "Dịch vụ xử lý video chưa hoạt động. Vui lòng báo người quản trị.",
   ARCHIVE_DOWNLOAD_INVALID: "File tải về không khớp bản trích xuất. Vui lòng thử lại.",
   INVALID_PLAYBACK_RANGE: "Chọn khoảng xem lại tối đa 24 giờ, không chọn giờ tương lai.",
@@ -95,12 +98,15 @@ export class CameraLiveConnection {
       this.peer = peer; peer.addTransceiver("video", { direction: "recvonly" });
       if (this.options.audio !== false) peer.addTransceiver("audio", { direction: "recvonly" });
       const tracks = new Map<string, MediaStreamTrack>();
+      const stream = new MediaStream(); let delivered = false;
       const audioState = () => { if (!this.stopped) this.options.onAudio?.([...tracks.values()].some((track) => track.kind === "audio" && track.readyState === "live" && !track.muted)); };
       peer.ontrack = (event) => {
         if (this.stopped) return;
-        tracks.set(event.track.id, event.track);
+        if (tracks.has(event.track.id)) return;
+        tracks.set(event.track.id, event.track); stream.addTrack(event.track);
         if (event.track.kind === "audio") for (const name of ["unmute", "mute", "ended"]) event.track.addEventListener(name, audioState);
-        this.options.onStream(new MediaStream([...tracks.values()])); audioState();
+        if (!delivered) { delivered = true; this.options.onStream(stream); }
+        audioState();
       };
       peer.onconnectionstatechange = () => {
         if (peer.connectionState === "failed" && !this.stopped) this.fail("Không thiết lập được đường truyền video. Hãy thử lại hoặc đổi mạng.");

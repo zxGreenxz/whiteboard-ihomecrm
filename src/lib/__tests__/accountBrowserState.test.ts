@@ -115,6 +115,8 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/lib/companyPreference.ts": "gan-nguoi-dung",
   // Chất lượng camera: khoá theo userId và loại xem/xuất, không sang tài khoản khác.
   "src/hooks/network-center/useCameraQuality.ts": "gan-nguoi-dung",
+  // Mã tác vụ trích xuất theo tài khoản + đầu ghi; giữ để đúng chủ có thể khôi phục sau F5.
+  "src/hooks/network-center/useCameraExport.ts": "gan-nguoi-dung",
   "src/hooks/quick-entry/useQuickEntryFeed.ts": "gan-nguoi-dung",
   "src/lib/quickEntry/models.ts": "gan-nguoi-dung",
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",

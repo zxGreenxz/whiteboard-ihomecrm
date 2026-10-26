@@ -5,10 +5,11 @@ import CameraArchivePanel from "@/components/network-center/tabs/CameraArchivePa
 import { createDemoCameraRecorder } from "@/lib/network-center/cameraDemo";
 import type { CameraLiveOptions } from "@/lib/network-center/cameraLive";
 vi.mock("@/hooks/network-center/useCameraQuality", async () => { const { useState } = await import("react"); return { useCameraQuality: (kind: string) => [...useState(kind === "export" ? "480p" : "sd"), ""] }; });
-const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), capture: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
+const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), find: vi.fn(), cancel: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), capture: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "40000000-0000-4000-8000-000000000001" } }) }));
 vi.mock("@/lib/network-center/cameraPlayback", async (original) => ({ ...await original<typeof import("../network-center/cameraPlayback")>(), capturePlaybackFrame: mocks.capture, cameraFrame: mocks.frame }));
 vi.mock("@/lib/network-center/cameraLive", async (original) => ({ ...await original<typeof import("../network-center/cameraLive")>(), cameraLiveCapabilities: mocks.capabilities, CameraLiveConnection: class { constructor(options: CameraLiveOptions) { mocks.connections.push(options); } start = mocks.start; stop = mocks.stop; seek = mocks.seek; } }));
-vi.mock("@/lib/network-center/cameraArchive", async (original) => ({ ...await original<typeof import("../network-center/cameraArchive")>(), prepareCameraArchive: mocks.prepare }));
+vi.mock("@/lib/network-center/cameraArchive", async (original) => ({ ...await original<typeof import("../network-center/cameraArchive")>(), prepareCameraArchive: mocks.prepare, findCameraArchive: mocks.find, cancelCameraArchive: mocks.cancel }));
 const recorder = createDemoCameraRecorder({ organizationId: "a0000000-0000-4000-8000-000000000001", buildingId: "b0000000-0000-4000-8000-000000000001" });
 function setWindow() {
   fireEvent.change(screen.getByLabelText("Từ ngày giờ"), { target: { value: "2026-10-20T08:00:00" } });
@@ -20,6 +21,7 @@ function setClip() {
 }
 async function ready() { await waitFor(() => expect(screen.queryByText("Đang kiểm tra dịch vụ xem lại…")).toBeNull()); }
 beforeEach(() => {
+  localStorage.clear(); mocks.find.mockResolvedValue(null); mocks.cancel.mockResolvedValue(undefined);
   vi.clearAllMocks(); mocks.stop.mockResolvedValue(undefined); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd"] });
   mocks.frame.mockReturnValue("data:image/jpeg;base64,previous"); mocks.capture.mockResolvedValue("data:image/jpeg;base64,preview");
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -150,6 +152,7 @@ describe("separate playback and export", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" }));
     fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Hủy trích xuất" })); expect(mocks.prepare.mock.calls[0]?.[1].aborted).toBe(true); expect(mocks.stop).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tạo đoạn MP4" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); view.unmount();
     expect(mocks.prepare.mock.calls[1]?.[1].aborted).toBe(true); expect(mocks.stop).toHaveBeenCalledOnce();
   });

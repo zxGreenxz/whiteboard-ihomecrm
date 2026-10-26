@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, rm, stat, statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ARCHIVE_MAX_BYTES, type ArchiveDependencies, type ArchiveRange } from "./cameraArchive.js";
 import { LiveError } from "./cameraLive.js";
@@ -23,10 +23,10 @@ export function archiveArguments(inputFile: string, outputFile: string, range: A
   const resolution = range.purpose === "preview" ? "720p" : range.resolution;
   const bounds = resolution === "480p" ? [854, 480] : resolution === "1080p" ? [1920, 1080] : [1280, 720];
   const scale = resolution === "original" ? "" : `scale=w='min(${bounds[0]},iw)':h='min(${bounds[1]},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,`;
-  return ["-hide_banner", "-loglevel", "info", "-nostdin", "-y", "-threads", "1",
+  return ["-hide_banner", "-loglevel", "info", "-nostdin", "-y", "-threads", "2", "-filter_threads", "1",
     "-copyts", "-f", "dhav", "-protocol_whitelist", "file", "-i", inputFile, "-t", String(range.durationSeconds), "-map", "0:v:0", "-map", "0:a:0?",
     "-c:v", "libx264", "-threads", "1", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-    "-vf", `trim=start=${start}:end=${end},setpts=PTS-${start}/TB,${scale}showinfo`,
+    "-vf", `trim=start=${start}:end=${end},setpts=PTS-${start}/TB,${scale}showinfo=checksum=0`,
     "-af", `atrim=start=${start}:end=${end},asetpts=PTS-${start}/TB`,
     "-fps_mode", "vfr", "-c:a", "aac", "-b:a", "96k", "-map_metadata", "-1",
     "-movflags", "+faststart", "-fs", String(ARCHIVE_MAX_BYTES), "-progress", "pipe:1", "-nostats", outputFile];
@@ -60,7 +60,7 @@ export class ArchiveFrameCoverage {
   }
 }
 
-export async function saveRecording(response: Response, path: string, signal: AbortSignal, maximumBytes = ARCHIVE_MAX_BYTES) {
+export async function saveRecording(response: Response, path: string, signal: AbortSignal, maximumBytes = ARCHIVE_MAX_BYTES, onBytes?: (bytes: number, totalBytes?: number) => void) {
   const reader = response.body?.getReader();
   if (!reader) throw new LiveError(502, "RECORDING_UNAVAILABLE");
   let file: Awaited<ReturnType<typeof open>> | undefined; let bytes = 0;
@@ -73,6 +73,8 @@ export async function saveRecording(response: Response, path: string, signal: Ab
       bytes += part.value.byteLength;
       if (bytes >= maximumBytes) throw new LiveError(502, "ARCHIVE_TOO_LARGE");
       await file.writeFile(part.value);
+      const total = Number(response.headers.get("content-length"));
+      onBytes?.(bytes, Number.isSafeInteger(total) && total > 0 ? total : undefined);
     }
     if (bytes < 32) throw new LiveError(502, "RECORDING_UNAVAILABLE");
   } finally {
@@ -97,6 +99,8 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
     open(id) { return createReadStream(join(jobDirectory(id), "video.mp4")); },
     async remove(id) { await rm(jobDirectory(id), { recursive: true, force: true }); },
     async encode(id, recorder, channel, range, signal, progress) {
+      const disk = await statfs(directory);
+      if (disk.bavail * disk.bsize < 2 * 1024 ** 3 + 2 * ARCHIVE_MAX_BYTES) throw new LiveError(507, "ARCHIVE_STORAGE_FULL");
       const folder = jobDirectory(id); await mkdir(folder, { mode: 0o700 });
       const input = join(folder, "source.dav"); const output = join(folder, "video.mp4");
       const timeout = new AbortController(); const deadline = setTimeout(() => timeout.abort(), (range.durationSeconds * 2 + 90) * 1000);
@@ -106,9 +110,10 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
         const baseUrl = validateCameraOrigin(recorder.archiveOrigin ?? "");
         const client = new DahuaClient({ baseUrl, username: recorder.username, password: recorder.password, fetch: recordingFetch(baseUrl) });
         const response = await client.recording(channel, recordingStart(range), recordingEnd(range), workSignal);
-        await saveRecording(response, input, workSignal);
+        await saveRecording(response, input, workSignal, ARCHIVE_MAX_BYTES, (bytes, totalBytes) => progress({ phase: "source", bytes, ...(totalBytes ? { totalBytes } : {}) }));
         if (workSignal.aborted) throw new LiveError(410, "ARCHIVE_EXPIRED");
         const coverage = new ArchiveFrameCoverage();
+        progress({ phase: "encoding", seconds: 0 });
         await new Promise<void>((resolve, reject) => {
           // FFmpeg reads only a private local file; credentials never enter argv or its logs.
           const child = spawn(binary, archiveArguments(input, output, range), { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: { PATH: "/usr/bin:/bin" } });
@@ -121,7 +126,7 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
             const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
             for (const line of lines) {
               const time = /^out_time_us=(\d+)\r?$/u.exec(line); const frame = /^frame=(\d+)\r?$/u.exec(line);
-              if (time) { seconds = Number(time[1]) / 1_000_000; progress(seconds); }
+              if (time) { seconds = Number(time[1]) / 1_000_000; progress({ phase: "encoding", seconds }); }
               if (frame) frames = Number(frame[1]);
             }
           });
@@ -136,6 +141,7 @@ export function createArchiveMedia(binary: string, directory: string): Pick<Arch
           child.once("close", (code) => { cleanup(); if (!failed && code === 0 && frames > 0) resolve(); else reject(new LiveError(502, "RECORDING_UNAVAILABLE")); });
         });
         const durationSeconds = coverage.assertComplete(range.durationSeconds);
+        progress({ phase: "verifying" });
         const info = await stat(output); const hash = createHash("sha256");
         for await (const chunk of createReadStream(output)) hash.update(chunk);
         return { bytes: info.size, durationSeconds, sha256: hash.digest("hex") };

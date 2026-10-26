@@ -36,7 +36,7 @@ async function auditRoot(t) {
     t.mock.method(fs, 'open', async (name, flags, mode) => {
       const info = await fs.lstat(name).catch(() => null);
       if (info?.isDirectory() && flags === (constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0))) {
-        return { stat: () => fs.lstat(name), sync: async () => {}, close: async () => {} };
+        return { stat: options => fs.lstat(name, options), sync: async () => {}, close: async () => {} };
       }
       return open(name, flags, mode);
     });

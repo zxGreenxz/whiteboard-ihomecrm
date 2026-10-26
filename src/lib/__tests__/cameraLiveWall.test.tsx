@@ -12,6 +12,15 @@ const recorder = { ...createDemoCameraRecorder({ organizationId: "a0000000-0000-
 beforeEach(() => { vi.clearAllMocks(); mocks.callbacks = []; mocks.capabilities.mockResolvedValue({ channels: Array.from({ length: 16 }, (_, i) => i + 1), maxView: 16, liveQualities: ["sd", "hd"] }); });
 afterEach(cleanup);
 describe("live camera wall", () => {
+  it("shows the first decoded picture immediately without waiting for the stats poll or audio", async () => {
+    const view = render(<CameraLiveWall recorder={recorder} />);
+    fireEvent.click(screen.getByRole("button", { name: "Xem trực tiếp" })); await screen.findByRole("button", { name: "Dừng xem" });
+    const video = view.container.querySelector("video")!;
+    fireEvent.loadedData(video); expect(video.className).toContain("invisible");
+    Object.defineProperties(video, { readyState: { value: 2 }, videoWidth: { value: 704 }, videoHeight: { value: 576 } });
+    fireEvent.loadedData(video); expect(video.className).not.toContain("invisible"); expect(screen.getByText("● Trực tiếp")).toBeTruthy();
+    act(() => mocks.callbacks[0]!.onState("stalled")); expect(video.className).toContain("invisible");
+  });
   it("only unmutes the chosen camera and keeps cameras without audio disabled", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const view = render(<CameraLiveWall recorder={recorder} />);

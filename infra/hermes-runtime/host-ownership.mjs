@@ -75,20 +75,22 @@ function rootOption(options, key) {
 }
 function privateInfo(info, directory) {
   if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
-    (!directory && info.nlink !== 1) || (process.platform !== 'win32' &&
-      (info.uid !== process.getuid() || info.gid !== process.getgid() ||
-        (info.mode & 0o777) !== (directory ? 0o700 : 0o600)))) fail('host_path_refused');
+    (!directory && info.nlink !== 1n) || (process.platform !== 'win32' &&
+      (info.uid !== BigInt(process.getuid()) || info.gid !== BigInt(process.getgid()) ||
+        (info.mode & 0o777n) !== (directory ? 0o700n : 0o600n)))) fail('host_path_refused');
 }
+// File IDs can exceed Number's exact integer range (notably on NTFS).
+// Every identity below must originate from a BigInt stat, before any rounding.
 const sameFile = (a, b) => a.dev === b.dev && a.ino === b.ino;
 async function privateDirectory(root) {
-  const observed = await fs.lstat(root); privateInfo(observed, true);
+  const observed = await fs.lstat(root, { bigint: true }); privateInfo(observed, true);
   if (await fs.realpath(root) !== root) fail('host_path_refused');
   const handle = await fs.open(root, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0));
   try {
-    const held = await handle.stat(); privateInfo(held, true);
+    const held = await handle.stat({ bigint: true }); privateInfo(held, true);
     if (!sameFile(observed, held)) fail('host_path_refused');
     const check = async () => {
-      const current = await fs.lstat(root); privateInfo(current, true);
+      const current = await fs.lstat(root, { bigint: true }); privateInfo(current, true);
       if (!sameFile(held, current) || await fs.realpath(root) !== root) fail('host_path_refused');
     };
     await check(); return { handle, check };
@@ -109,11 +111,11 @@ export async function acquireHostOwnership(options) {
     directory = await privateDirectory(root);
     try { handle = await fs.open(filename, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600); }
     catch (error) { if (error.code === 'EEXIST') fail('host_already_owned'); throw error; }
-    created = true; held = await handle.stat(); privateInfo(held, false);
+    created = true; held = await handle.stat({ bigint: true }); privateInfo(held, false);
     await handle.writeFile(content); await handle.datasync(); await directory.check(); await directory.handle.sync();
-    const named = await fs.lstat(filename), opened = await handle.stat();
+    const named = await fs.lstat(filename, { bigint: true }), opened = await handle.stat({ bigint: true });
     privateInfo(named, false); privateInfo(opened, false);
-    if (!sameFile(held, named) || !sameFile(held, opened) || named.size !== content.length || opened.size !== content.length) fail('host_lock_changed');
+    if (!sameFile(held, named) || !sameFile(held, opened) || named.size !== BigInt(content.length) || opened.size !== BigInt(content.length)) fail('host_lock_changed');
     await directory.check();
   } catch (error) {
     await Promise.allSettled([handle?.close(), directory?.handle.close()]);
@@ -132,12 +134,12 @@ export async function acquireHostOwnership(options) {
         try {
           await directory.check();
           checkHandle = await fs.open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-          const current = await checkHandle.stat(); privateInfo(current, false);
-          if (!sameFile(held, current) || current.size !== content.length || !(await checkHandle.readFile()).equals(content)) fail('host_lock_changed');
+          const current = await checkHandle.stat({ bigint: true }); privateInfo(current, false);
+          if (!sameFile(held, current) || current.size !== BigInt(content.length) || !(await checkHandle.readFile()).equals(content)) fail('host_lock_changed');
           await checkHandle.close(); checkHandle = undefined;
           await directory.check();
-          const final = await fs.lstat(filename); privateInfo(final, false);
-          if (!sameFile(held, final) || final.size !== content.length) fail('host_lock_changed');
+          const final = await fs.lstat(filename, { bigint: true }); privateInfo(final, false);
+          if (!sameFile(held, final) || final.size !== BigInt(content.length)) fail('host_lock_changed');
           await fs.unlink(filename); removed = true; await directory.handle.sync();
           await handle.close(); await directory.handle.close();
         } catch {
@@ -202,9 +204,9 @@ export function createHostAudit(options) {
     let created = false;
     try { file = await fs.open(filename, constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600); created = true; }
     catch (error) { if (error.code !== 'EEXIST') throw error; file = await fs.open(filename, constants.O_RDWR | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0)); }
-    held = await file.stat(); privateInfo(held, false);
-    if (!Number.isSafeInteger(held.size) || held.size < 0 || held.size > MAX_AUDIT_BYTES) fail('host_audit_capacity');
-    expectedSize = held.size;
+    held = await file.stat({ bigint: true }); privateInfo(held, false);
+    if (held.size < 0n || held.size > BigInt(MAX_AUDIT_BYTES)) fail('host_audit_capacity');
+    expectedSize = Number(held.size);
     if (expectedSize) {
       const last = Buffer.alloc(1); const { bytesRead } = await file.read(last, 0, 1, expectedSize - 1);
       if (bytesRead !== 1 || last[0] !== 10) fail('host_audit_incomplete');
@@ -224,15 +226,15 @@ export function createHostAudit(options) {
         let appended = false;
         try {
           await initialize(); await directory.check();
-          const current = await fs.lstat(filename); privateInfo(current, false);
-          const opened = await file.stat(); privateInfo(opened, false);
-          if (!sameFile(held, current) || !sameFile(held, opened) || current.size !== expectedSize || opened.size !== expectedSize) fail('host_audit_changed');
+          const current = await fs.lstat(filename, { bigint: true }); privateInfo(current, false);
+          const opened = await file.stat({ bigint: true }); privateInfo(opened, false);
+          if (!sameFile(held, current) || !sameFile(held, opened) || current.size !== BigInt(expectedSize) || opened.size !== BigInt(expectedSize)) fail('host_audit_changed');
           if (expectedSize + bytes.length > MAX_AUDIT_BYTES) fail('host_audit_capacity');
           appended = true; await file.writeFile(bytes); await file.datasync();
           expectedSize += bytes.length;
-          const after = await file.stat(), named = await fs.lstat(filename);
+          const after = await file.stat({ bigint: true }), named = await fs.lstat(filename, { bigint: true });
           privateInfo(after, false); privateInfo(named, false);
-          if (!sameFile(held, after) || !sameFile(held, named) || after.size !== expectedSize || named.size !== expectedSize) fail('host_audit_changed');
+          if (!sameFile(held, after) || !sameFile(held, named) || after.size !== BigInt(expectedSize) || named.size !== BigInt(expectedSize)) fail('host_audit_changed');
           await directory.check();
         } catch (error) {
           failure = new HostOwnershipError(appended ? 'host_audit_unknown' : error instanceof HostOwnershipError ? error.code : 'host_audit_unavailable');
