@@ -15,6 +15,13 @@ test('PostgreSQL: two concurrent calls answering the same Q31 offer write exactl
   pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   const main = await pool.connect(), a = await pool.connect(), b = await pool.connect();
   t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
+  // This tiny fixture checks locks/MVCC, not LLVM compilation. Keep compilation
+  // overhead out of the query budget on Linux CI, without relaxing the 10s limit.
+  for (const client of [main, a, b]) {
+    await client.query('SET jit = off');
+    assert.deepEqual((await client.query("SELECT current_setting('jit') jit, current_setting('statement_timeout') statement_timeout")).rows[0],
+      { jit: 'off', statement_timeout: '10s' });
+  }
   const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
   const f = await setupNghiemThu(t, { database });
   const base = { buildingName: 'Toà A', roomName: 'P101', jobType: 'sửa', content: 'thay bóng đèn hành lang' };
