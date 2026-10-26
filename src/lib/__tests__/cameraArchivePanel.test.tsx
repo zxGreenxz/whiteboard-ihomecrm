@@ -5,9 +5,9 @@ import CameraArchivePanel from "@/components/network-center/tabs/CameraArchivePa
 import { createDemoCameraRecorder } from "@/lib/network-center/cameraDemo";
 import type { CameraLiveOptions } from "@/lib/network-center/cameraLive";
 vi.mock("@/hooks/network-center/useCameraQuality", async () => { const { useState } = await import("react"); return { useCameraQuality: (kind: string) => [...useState(kind === "export" ? "480p" : "sd"), ""] }; });
-const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), find: vi.fn(), cancel: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), capture: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
+const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), find: vi.fn(), cancel: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "40000000-0000-4000-8000-000000000001" } }) }));
-vi.mock("@/lib/network-center/cameraPlayback", async (original) => ({ ...await original<typeof import("../network-center/cameraPlayback")>(), capturePlaybackFrame: mocks.capture, cameraFrame: mocks.frame }));
+vi.mock("@/lib/network-center/cameraPlayback", async (original) => ({ ...await original<typeof import("../network-center/cameraPlayback")>(), cameraFrame: mocks.frame }));
 vi.mock("@/lib/network-center/cameraLive", async (original) => ({ ...await original<typeof import("../network-center/cameraLive")>(), cameraLiveCapabilities: mocks.capabilities, CameraLiveConnection: class { constructor(options: CameraLiveOptions) { mocks.connections.push(options); } start = mocks.start; stop = mocks.stop; seek = mocks.seek; } }));
 vi.mock("@/lib/network-center/cameraArchive", async (original) => ({ ...await original<typeof import("../network-center/cameraArchive")>(), prepareCameraArchive: mocks.prepare, findCameraArchive: mocks.find, cancelCameraArchive: mocks.cancel }));
 const recorder = createDemoCameraRecorder({ organizationId: "a0000000-0000-4000-8000-000000000001", buildingId: "b0000000-0000-4000-8000-000000000001" });
@@ -23,7 +23,7 @@ async function ready() { await waitFor(() => expect(screen.queryByText("Đang ki
 beforeEach(() => {
   localStorage.clear(); mocks.find.mockResolvedValue(null); mocks.cancel.mockResolvedValue(undefined);
   vi.clearAllMocks(); mocks.stop.mockResolvedValue(undefined); mocks.connections.length = 0; mocks.capabilities.mockResolvedValue({ channels: [1, 2], archive: true, playback: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd"] });
-  mocks.frame.mockReturnValue("data:image/jpeg;base64,previous"); mocks.capture.mockResolvedValue("data:image/jpeg;base64,preview");
+  mocks.frame.mockReturnValue("data:image/jpeg;base64,previous");
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   mocks.prepare.mockImplementation(async (input) => ({ blob: new Blob(["fixture"]), job: { ...input, id: "job", state: "ready", bytes: 7, durationSeconds: (Date.parse(input.end) - Date.parse(input.start)) / 1000, sha256: "a".repeat(64), filename: "camera-fixture.mp4" } }));
 });
@@ -100,21 +100,25 @@ describe("separate playback and export", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tiếp tục xem" }));
     expect(mocks.connections.at(-1)?.playback).toMatchObject({ start: "2026-10-20T01:01:20.000Z", speed: 8 });
   });
-  it("shows an actual thumbnail while dragging without seeking the main stream, then commits the target", async () => {
+  it("does not fetch thumbnails or open extra streams while playing and scrubbing a long window", async () => {
+    mocks.capabilities.mockResolvedValue({ channels: [1], archive: true, playback: true, playbackPreview: true, playbackControl: true, playbackQualities: ["sd", "original"] });
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.change(screen.getByLabelText("Đến ngày giờ"), { target: { value: "2026-10-20T13:00:00" } });
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "original" } });
     fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    act(() => mocks.connections[0]!.onState("playing"));
     const slider = screen.getByLabelText("Thanh thời gian xem lại");
-    fireEvent.pointerDown(slider); fireEvent.change(slider, { target: { value: "120" } });
-    expect(screen.getByText("Đang lấy ảnh xem trước…")).toBeTruthy();
-    await screen.findByAltText(/Ảnh xem trước/);
-    expect(mocks.capture).toHaveBeenCalledWith(recorder.id, 1, Date.parse("2026-10-20T01:02:00Z"), Date.parse("2026-10-20T02:00:00Z"), expect.any(AbortSignal), "sd", false);
-    expect(mocks.connections).toHaveLength(1);
-    fireEvent.pointerUp(slider); expect(mocks.connections.at(-1)?.playback?.start).toBe("2026-10-20T01:02:00.000Z");
-    expect(screen.queryByAltText(/Ảnh xem trước/)).toBeNull();
-    fireEvent.pointerDown(slider); fireEvent.change(slider, { target: { value: "130" } });
-    fireEvent.change(screen.getByLabelText("Camera cần tìm"), { target: { value: "2" } });
+    fireEvent.pointerDown(slider, { pointerType: "touch" });
+    for (const value of [120, 10000, 15000]) fireEvent.change(slider, { target: { value: String(value) } });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
-    expect(mocks.capture).toHaveBeenCalledTimes(1); expect(screen.queryByAltText(/Ảnh xem trước/)).toBeNull();
+    expect(screen.queryByText(/Đang lấy ảnh xem trước|Ảnh xem trước:/)).toBeNull();
+    expect(screen.queryByAltText(/Ảnh xem trước/)).toBeNull();
+    expect(mocks.connections).toHaveLength(1); expect(mocks.seek).not.toHaveBeenCalled(); expect(mocks.prepare).not.toHaveBeenCalled();
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T05:10:00Z"), 1));
+    expect(mocks.connections).toHaveLength(1);
+    expect(mocks.connections[0]!.playback).toMatchObject({ start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T06:00:00.000Z", quality: "original" });
   });
   it("opens a direct recording stream without creating or downloading an archive, and seeks by replacing the stream", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();

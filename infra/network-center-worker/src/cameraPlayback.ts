@@ -63,7 +63,7 @@ export function playbackSources(request: typeof fetch, fatal: () => void, encode
       throw new LiveError(502, "PLAYBACK_CONTROL_FAILED");
     },
     async add(recorder: LiveRecorder, channel: number, range: PlaybackRange, thumbnail = false) {
-      if (range.quality && !encoder) throw new LiveError(503, "PLAYBACK_QUALITY_UNAVAILABLE");
+      if (range.quality && range.quality !== "original" && !encoder) throw new LiveError(503, "PLAYBACK_QUALITY_UNAVAILABLE");
       const name = `playback-${randomUUID()}`;
       const input = range.quality ? name.replace("playback-", "playback-source-") : name;
       if (range.quality) inputs.set(name, input);
@@ -72,10 +72,15 @@ export function playbackSources(request: typeof fetch, fatal: () => void, encode
       source.search = new URLSearchParams({ channel: String(channel), subtype: "0", starttime: deviceTime(range.start), endtime: deviceTime(range.end) }).toString();
       try {
         await addPath(input, { source: source.href, sourceOnDemand: true, sourceOnDemandStartTimeout: "8s", sourceOnDemandCloseAfter: "1s", rtspTransport: "tcp", ...(range.quality || thumbnail ? { rtspPlaybackRevision: randomUUID() } : {}), ...(range.position ? { rtspRangeType: "npt", rtspRangeStart: `${(Date.parse(range.position) - Date.parse(range.start)) / 1000}s` } : {}), ...(range.speed && range.speed !== 1 ? { rtspScale: String(range.speed) } : {}), record: false, maxReaders: 1 });
-        if (range.quality && encoder) {
-          const profiles = { sd: [854, 480, 1800], hd: [1280, 720, 3000], fullhd: [1920, 1080, 4500], original: [0, 0, 6500] } as const;
+        if (range.quality === "original") {
+          // Preserve the recorder's codec and audio. The local reader starts playback only
+          // once WHEP connects, and keeps the same source/session across RTSP seeks.
+          // No encoder queue can retain minutes of old frames after a long-range seek.
+          await addPath(name, { source: `rtsp://127.0.0.1:18895/${input}`, sourceOnDemand: true, sourceOnDemandStartTimeout: "8s", sourceOnDemandCloseAfter: "1s", rtspTransport: "tcp", record: false, maxReaders: 1 });
+        } else if (range.quality && encoder) {
+          const profiles = { sd: [854, 480, 1800], hd: [1280, 720, 3000], fullhd: [1920, 1080, 4500] } as const;
           const [width, height, bitrate] = profiles[range.quality];
-          const scale = width ? `,scale=w='min(${width},iw)':h='min(${height},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2` : ",scale=trunc(iw/2)*2:trunc(ih/2)*2";
+          const scale = `,scale=w='min(${width},iw)':h='min(${height},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`;
           // Time-based keyframes stay frequent at every recorder speed without making all
           // normal-speed frames I-frames (which starves quality under a bounded bitrate).
           // Only generated UUIDs, a verified binary path and fixed options enter this command.

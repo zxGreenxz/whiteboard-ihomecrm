@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { PlaybackClock, PlaybackControls, PlaybackPreviews } from "@/lib/network-center/cameraPlayback";
+import { PlaybackClock, PlaybackControls } from "@/lib/network-center/cameraPlayback";
 
 describe("recording position", () => {
   it("resets the fallback clock when the same video element seeks", () => { const clock = new PlaybackClock(8, 8, 40); expect(clock.frame(undefined, 41)).toBe(8); });
@@ -31,57 +31,5 @@ describe("persistent playback commands", () => {
     const queue = new PlaybackControls(apply,done,failed); queue.request(1000,1); queue.request(2000,4); queue.request(3000,8);
     expect(apply).toHaveBeenCalledOnce(); finish[0]!(); await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(2)); expect(done).not.toHaveBeenCalled(); expect(apply).toHaveBeenLastCalledWith(3000,8);
     finish[1]!(); await vi.waitFor(() => expect(done).toHaveBeenCalledWith(3000,8)); queue.request(4000,1); queue.cancel(); finish[2]!(); await Promise.resolve(); expect(done).toHaveBeenCalledOnce(); expect(failed).not.toHaveBeenCalled();
-  });
-});
-
-describe("scrub preview queue", () => {
-  it("preloads a bounded overview and shows nearby cached frames immediately with their own timestamp", async () => {
-    const capture = vi.fn(async (time: number) => String(time));
-    const queue = new PlaybackPreviews(capture); const show = vi.fn();
-    queue.warm(0, 32001);
-    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(33));
-    queue.show(15500, show);
-    expect(show).toHaveBeenLastCalledWith({ time: 15500, image: "16000", imageTime: 16000 });
-    const before = capture.mock.calls.length; queue.show(3000, show);
-    expect(show).toHaveBeenLastCalledWith({ time: 3000, image: "3000" });
-    expect(capture).toHaveBeenCalledTimes(before); queue.clear();
-  });
-  it("prioritizes the latest scrub over background work, does not restart on every move, and aborts on disposal", async () => {
-    const finish: Array<(image: string) => void> = []; const signals: AbortSignal[] = [];
-    const capture = vi.fn((_time: number, signal: AbortSignal) => { signals.push(signal); return new Promise<string>((resolve) => finish.push(resolve)); });
-    const queue = new PlaybackPreviews(capture); const show = vi.fn(); queue.warm(0, 100001);
-    queue.show(5000, show); queue.request(5000, show); queue.request(7000, show);
-    expect(capture).toHaveBeenCalledOnce(); expect(signals[0]!.aborted).toBe(false);
-    finish[0]!("overview"); await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
-    expect(capture.mock.calls[1]![0]).toBe(7000);
-    expect(show).toHaveBeenLastCalledWith({ time: 7000, image: "overview", imageTime: 0 });
-    queue.clear(); expect(signals[1]!.aborted).toBe(true); finish[1]!("late"); await Promise.resolve();
-    expect(capture).toHaveBeenCalledTimes(2); expect(show).not.toHaveBeenCalledWith(expect.objectContaining({ image: "late" }));
-  });
-  it("stops speculative captures after repeated failures", async () => {
-    const capture = vi.fn(async () => { throw new Error("unavailable"); });
-    const queue = new PlaybackPreviews(capture); queue.warm(0, 100000);
-    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(3)); queue.clear();
-  });
-  it("serializes capture and cleanup, coalesces requests, rejects stale frames and caches the latest result", async () => {
-    const finish: Array<(value: string) => void> = []; const signals: AbortSignal[] = [];
-    const capture = vi.fn((_time: number, signal: AbortSignal) => { signals.push(signal); return new Promise<string>((resolve) => finish.push(resolve)); });
-    const queue = new PlaybackPreviews(capture); const show = vi.fn();
-    queue.request(1000, show); queue.request(2000, show); queue.request(3000, show);
-    expect(capture).toHaveBeenCalledTimes(1); expect(signals[0]?.aborted).toBe(true);
-    finish[0]!("stale"); await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
-    expect(capture.mock.calls[1]?.[0]).toBe(3000); expect(show).not.toHaveBeenCalledWith(expect.objectContaining({ image: "stale" }));
-    finish[1]!("latest"); await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ time: 3000, image: "latest" }));
-    queue.request(3000, show); expect(capture).toHaveBeenCalledTimes(2); expect(show).toHaveBeenLastCalledWith({ time: 3000, image: "latest" });
-    queue.clear(); queue.request(3000, show); expect(capture).toHaveBeenCalledTimes(3); queue.clear();
-    finish[2]!("after-dispose"); await Promise.resolve(); expect(show).not.toHaveBeenCalledWith(expect.objectContaining({ image: "after-dispose" }));
-  });
-  it("bounds the cache and reports failures without mislabeling another time's image", async () => {
-    const capture = vi.fn(async (time: number) => { if (time === 99) throw new Error("busy"); return String(time); });
-    const queue = new PlaybackPreviews(capture); const show = vi.fn();
-    for (let time = 0; time < 25; time++) { queue.request(time, show); await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ time, image: String(time) })); }
-    queue.request(0, show); await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(26));
-    queue.request(99, show); await vi.waitFor(() => expect(show).toHaveBeenLastCalledWith({ time: 99, error: true }));
-    queue.clear();
   });
 });

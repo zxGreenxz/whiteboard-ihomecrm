@@ -109,13 +109,6 @@ export async function cameraLiveCapabilities(recorderId: string, signal: AbortSi
   z.string().uuid().parse(recorderId);
   return capabilitiesSchema.parse(await liveRequest(`/recorders/${recorderId}`, "GET", undefined, signal));
 }
-export async function cameraPlaybackThumbnail(recorderId: string, channel: number, time: number, end: number, signal: AbortSignal) {
-  z.string().uuid().parse(recorderId); z.number().int().min(1).max(64).parse(channel);
-  const start = new Date(time).toISOString();
-  const result = z.object({ time: z.literal(start), image: z.string().min(4).max(174764).regex(/^[A-Za-z0-9+/]+={0,2}$/u) }).parse(await liveRequest(`/recorders/${recorderId}/channels/${channel}/preview`, "POST", JSON.stringify({ start, end: new Date(Math.min(time + 20_000, end)).toISOString() }), signal, "application/json"));
-  return `data:image/jpeg;base64,${result.image}`;
-}
-
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
   recorderId: string; channel: number; liveQuality?: CameraLiveQuality; audio?: boolean; viewId?: string;

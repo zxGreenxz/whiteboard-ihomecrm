@@ -4,51 +4,32 @@ import { Button } from "@/components/ui/button";
 import { CameraLiveConnection, CameraLiveError, type CameraLiveState, type CameraPlaybackQuality } from "@/lib/network-center/cameraLive";
 import { cameraTimeLabel, validateCameraWindow, vietnamCameraInput } from "@/lib/network-center/cameraArchive";
 import type { CameraRecorder } from "@/lib/network-center/cameraContracts";
-import { cameraFrame, capturePlaybackFrame, PlaybackClock, PlaybackControls, PlaybackPreviews, type PlaybackPreview } from "@/lib/network-center/cameraPlayback";
+import { cameraFrame, PlaybackClock, PlaybackControls } from "@/lib/network-center/cameraPlayback";
 import { useCameraQuality } from "@/hooks/network-center/useCameraQuality";
 import CameraAudioButton from "./CameraAudioButton";
 
 export const cameraFieldClass = "min-h-11 min-w-0 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 export function cameraChannelName(recorder: CameraRecorder, channel: number) { return recorder.snapshot?.channels.find((row) => row.channel === channel)?.name || `Kênh ${channel}`; }
 interface Window { from: number; to: number }
-export default function CameraPlaybackPanel({ recorder, channels, available, speeds = [1], qualities = [], controlAvailable = false, previewAvailable = false }: { recorder: CameraRecorder; channels: number[]; available: boolean; speeds?: number[]; qualities?: CameraPlaybackQuality[]; controlAvailable?: boolean; previewAvailable?: boolean }) {
+export default function CameraPlaybackPanel({ recorder, channels, available, speeds = [1], qualities = [], controlAvailable = false }: { recorder: CameraRecorder; channels: number[]; available: boolean; speeds?: number[]; qualities?: CameraPlaybackQuality[]; controlAvailable?: boolean }) {
   const uid = useId(); const video = useRef<HTMLVideoElement>(null); const dragging = useRef(false); const generation = useRef(0);
   const [channel, setChannel] = useState(channels[0] ?? 1);
   const [from, setFrom] = useState(() => vietnamCameraInput(Date.now() - 3600_000));
   const [to, setTo] = useState(() => vietnamCameraInput(Date.now() - 1000));
   const [window, setWindow] = useState<Window>(); const [selection, setSelection] = useState<Window & { generation: number; speed: number; quality?: CameraPlaybackQuality }>();
-  const [quality, setQuality, qualityNotice] = useCameraQuality("playback"); const previewQuality = qualities.includes("sd") ? "sd" : undefined;
-  const supportedQuality = qualities.includes(quality) ? quality : previewQuality;
+  const [quality, setQuality, qualityNotice] = useCameraQuality("playback");
+  const supportedQuality = qualities.includes(quality) ? quality : qualities.includes("sd") ? "sd" : undefined;
   const [cursor, setCursor] = useState(0); const [slider, setSlider] = useState(0);
   const [speed, setSpeed] = useState(1); const [poster, setPoster] = useState<string>();
-  const [preview, setPreview] = useState<PlaybackPreview>();
-  const [previewReady, setPreviewReady] = useState({ ready: 0, total: 0 });
   const [hasAudio, setHasAudio] = useState(false); const [audible, setAudible] = useState(false);
-  const previews = useRef<PlaybackPreviews>(); const previewTimer = useRef<ReturnType<typeof setTimeout>>();
   const clock = useRef(new PlaybackClock(1));
   const position = useRef<Window>(); const controls = useRef<PlaybackControls>(); const switching = useRef(false);
   const released = useRef(Promise.resolve()); const recoveries = useRef(0);
   const [state, setState] = useState<CameraLiveState>("stopped"); const [message, setMessage] = useState("");
   useEffect(() => {
-    if (!window) return;
-    setPreviewReady({ ready: 0, total: 0 });
-    const queue = new PlaybackPreviews((time, signal) => capturePlaybackFrame(recorder.id, channel, time, window.to, signal, previewQuality, previewAvailable)); previews.current = queue;
-    return () => { clearTimeout(previewTimer.current); queue.clear(); if (previews.current === queue) previews.current = undefined; };
-  }, [recorder.id, channel, window, previewQuality, previewAvailable]);
-  useEffect(() => {
-    if (window && state === "playing" && previewAvailable) {
-      previews.current?.warm(window.from, window.to, (ready, total) => setPreviewReady({ ready, total }));
-      const image = cameraFrame(video.current, 320);
-      if (image) previews.current?.remember(Math.floor(cursor / 1000) * 1000, image);
-    }
-    if (state === "error") { previews.current?.clear(); setPreview(undefined); }
-    // Seed once when playback starts or resumes; do not capture on each clock update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [window, state, previewAvailable]);
-  useEffect(() => {
     if (!selection) return;
     let active = true; const element = video.current; setHasAudio(false);
-    // SD/HD has realtime RTP timestamps; the recorder still supplies accelerated content.
+    // Controlled playback has realtime RTP timestamps; the recorder still supplies accelerated content.
     clock.current = new PlaybackClock(selection.speed, selection.quality ? selection.speed : 1); position.current = selection; switching.current = false;
     let callback: number | undefined; let lastUpdate = 0;
     const frame: VideoFrameRequestCallback = (now, metadata) => {
@@ -83,12 +64,12 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
     // updatePosition uses the window paired with this selection; a new window always replaces the selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorder.id, channel, selection, controlAvailable]);
-  const hidePreview = () => { clearTimeout(previewTimer.current); previews.current?.cancel(); setPreview(undefined); dragging.current = false; };
-  const reset = () => { hidePreview(); setAudible(false); setPoster(undefined); setSelection(undefined); setWindow(undefined); setState("stopped"); setMessage(""); };
+  const finishScrub = () => { dragging.current = false; };
+  const reset = () => { finishScrub(); setAudible(false); setPoster(undefined); setSelection(undefined); setWindow(undefined); setState("stopped"); setMessage(""); };
   const holdFrame = () => { const image = cameraFrame(video.current); if (image) setPoster(image); };
   const seek = (value: number, selected = window, nextSpeed = speed, nextQuality = supportedQuality) => {
     if (!selected) return;
-    holdFrame(); hidePreview();
+    holdFrame(); finishScrub();
     const time = Math.max(selected.from, Math.min(selected.to - 1000, Math.floor(value / 1000) * 1000));
     setCursor(time); setSlider((time - selected.from) / 1000); setState("connecting"); setMessage("");
     if (controlAvailable && selection && selected === window && selection.quality === nextQuality && state !== "error" && controls.current) {
@@ -103,7 +84,7 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
     if (!window) return;
     const time = Math.min(current.to, current.from + seconds * 1000);
     setCursor(time); if (!dragging.current) setSlider((time - window.from) / 1000);
-    if (time >= current.to) { holdFrame(); hidePreview(); setSelection(undefined); setState("stopped"); setMessage("Đã hết khoảng thời gian đã chọn."); }
+    if (time >= current.to) { holdFrame(); finishScrub(); setSelection(undefined); setState("stopped"); setMessage("Đã hết khoảng thời gian đã chọn."); }
   };
   const updateTime = (element: HTMLVideoElement) => {
     if (element !== video.current || !selection || !position.current || switching.current || element.readyState < 2) return;
@@ -112,9 +93,6 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
   const scrub = (value: number) => {
     if (!window) return;
     dragging.current = true; setSlider(value);
-    const time = window.from + value * 1000;
-    clearTimeout(previewTimer.current); previews.current?.cancel(); previews.current?.show(time, setPreview);
-    previewTimer.current = setTimeout(() => previews.current?.request(time, setPreview), 180);
   };
   return <section className="nc-panel" aria-label={`Xem lại ${recorder.display_name}`}>
     <div className="nc-panel-heading"><div><p className="nc-eyebrow">Tìm đồ cho khách</p><h3 className="flex items-center gap-2"><History className="h-5 w-5" />Xem lại · {recorder.display_name}</h3></div></div>
@@ -126,7 +104,8 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
         <label className="space-y-1 text-sm" htmlFor={`${uid}-to`}><span>Đến ngày giờ</span><input id={`${uid}-to`} className={cameraFieldClass} type="datetime-local" step="1" required value={to} onChange={(event) => { reset(); setTo(event.target.value); }} /></label>
         <Button type="submit" disabled={!available || !recorder.enabled}><History className="mr-2 h-4 w-4" />Xem khoảng thời gian</Button>
       </form>
-      {qualities.length > 0 && <label className="block max-w-sm space-y-1 text-sm"><span>Chất lượng xem lại</span><select className={cameraFieldClass} value={supportedQuality} onChange={(event) => { const next = event.target.value as CameraPlaybackQuality; if (qualities.includes(next)) { setQuality(next); if (selection) seek(cursor, window, speed, next); } }}>{qualities.map((value) => <option key={value} value={value}>{{ sd: "SD 480p", hd: "HD 720p", fullhd: "Full HD 1080p", original: "Độ phân giải gốc · Cao nhất đầu ghi có" }[value]}</option>)}</select></label>}
+      {qualities.length > 0 && <label className="block max-w-sm space-y-1 text-sm"><span>Chất lượng xem lại</span><select className={cameraFieldClass} value={supportedQuality} onChange={(event) => { const next = event.target.value as CameraPlaybackQuality; if (qualities.includes(next)) { setQuality(next); if (selection) seek(cursor, window, speed, next); } }}>{qualities.map((value) => <option key={value} value={value}>{{ sd: "SD 480p", hd: "HD 720p", fullhd: "Full HD 1080p", original: "Gốc · Ưu tiên tua nhanh" }[value]}</option>)}</select></label>}
+      {qualities.includes("original") && <p className="text-xs text-muted-foreground">Chọn Gốc để ưu tiên tua nhanh, giữ nguyên hình từ đầu ghi. SD/HD cần xử lý thêm trên máy chủ; dùng khi mạng yếu hoặc trình duyệt không phát được bản gốc.</p>}
       {message && <p role={state === "error" ? "alert" : "status"} className="text-sm">{message}</p>}
       {qualityNotice && <p role="status" className="text-sm">{qualityNotice}</p>}
       {window && <div className="space-y-3">
@@ -139,21 +118,16 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
           {!selection && poster && <p className="absolute inset-x-0 bottom-0 bg-black/70 p-2 text-center text-sm text-white">Đã tạm dừng</p>}
         </div>
         <div className="relative">
-          {preview && <div role="status" className="pointer-events-none absolute bottom-full z-10 mb-2 w-56 max-w-full overflow-hidden rounded-md border bg-background p-1 shadow-lg" style={{ left: `clamp(0px, calc(${(preview.time - window.from) / (window.to - window.from) * 100}% - 7rem), max(0px, calc(100% - 14rem)))` }}>
-            {preview.image ? <img src={preview.image} alt={`Ảnh xem trước · ${cameraTimeLabel(preview.imageTime ?? preview.time)}`} className="aspect-video w-full object-contain" /> : <p className="flex aspect-video items-center justify-center bg-muted p-2 text-center text-xs">{preview.error ? "Chưa lấy được ảnh. Thả thanh tua để xem mốc này." : "Đang lấy ảnh xem trước…"}</p>}
-            <p className="p-1 text-center text-xs">{preview.imageTime !== undefined ? `Ảnh gần mốc · ${cameraTimeLabel(preview.imageTime)}` : cameraTimeLabel(preview.time)}</p>
-          </div>}
-          <label className="block space-y-1 text-sm">Thanh thời gian · {cameraTimeLabel(window.from + slider * 1000)}<input aria-label="Thanh thời gian xem lại" className="h-11 w-full touch-none" type="range" min="0" max={Math.max(0, (window.to - window.from) / 1000 - 1)} step="1" value={slider} onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); dragging.current = true; }} onChange={(event) => scrub(Number(event.target.value))} onPointerUp={(event) => seek(window.from + Number(event.currentTarget.value) * 1000)} onPointerCancel={() => { hidePreview(); setSlider((cursor - window.from) / 1000); }} onBlur={hidePreview} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) seek(window.from + Number(event.currentTarget.value) * 1000); }} /></label>
+          <label className="block space-y-1 text-sm">Thanh thời gian · {cameraTimeLabel(window.from + slider * 1000)}<input aria-label="Thanh thời gian xem lại" className="h-11 w-full touch-none" type="range" min="0" max={Math.max(0, (window.to - window.from) / 1000 - 1)} step="1" value={slider} onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); dragging.current = true; }} onChange={(event) => scrub(Number(event.target.value))} onPointerUp={(event) => seek(window.from + Number(event.currentTarget.value) * 1000)} onPointerCancel={() => { finishScrub(); setSlider((cursor - window.from) / 1000); }} onBlur={finishScrub} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) seek(window.from + Number(event.currentTarget.value) * 1000); }} /></label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-auto text-sm">Vị trí ước tính: {cameraTimeLabel(cursor)}</span>
           <label className="flex items-center gap-2 text-sm"><span>Tốc độ xem lại</span><select className={cameraFieldClass} value={speed} onChange={(event) => { const next = Number(event.target.value); setSpeed(next); if (selection) seek(cursor, window, next); }}>{speeds.map((value) => <option key={value} value={value}>{value}×{value === 1 ? " · Bình thường" : ""}</option>)}</select></label>
           <Button variant="outline" onClick={() => seek(cursor - 10_000)}>Lùi 10 giây</Button><Button variant="outline" onClick={() => seek(cursor + 10_000)}>Tới 10 giây</Button>
-          {selection && state !== "error" ? <Button variant="outline" onClick={() => { holdFrame(); hidePreview(); setSelection(undefined); setState("stopped"); }}><Pause className="mr-2 h-4 w-4" />Tạm dừng</Button> : <Button variant="outline" onClick={() => seek(cursor)}><Play className="mr-2 h-4 w-4" />{state === "error" ? "Thử lại" : "Tiếp tục xem"}</Button>}
+          {selection && state !== "error" ? <Button variant="outline" onClick={() => { holdFrame(); finishScrub(); setSelection(undefined); setState("stopped"); }}><Pause className="mr-2 h-4 w-4" />Tạm dừng</Button> : <Button variant="outline" onClick={() => seek(cursor)}><Play className="mr-2 h-4 w-4" />{state === "error" ? "Thử lại" : "Tiếp tục xem"}</Button>}
           <Button variant="outline" onClick={reset}><Square className="mr-2 h-4 w-4" />Dừng xem lại</Button>
           <Button variant="outline" onClick={() => { void video.current?.requestFullscreen().catch(() => setMessage("Trình duyệt chưa cho phép toàn màn hình.")); }}><Expand className="mr-2 h-4 w-4" />Toàn màn hình</Button>
         </div>
-        {previewReady.total > 0 && <p className="text-xs text-muted-foreground" role="status">Ảnh xem trước: {previewReady.ready}/{previewReady.total} mốc đã nạp. Kéo để xem ngay ảnh gần nhất; giữ tại một mốc để lấy ảnh đúng mốc đó.</p>}
         <p className="text-xs text-muted-foreground">Thả thanh tua để chuyển. Tốc độ áp dụng trực tiếp trên đầu ghi. Vị trí trên thanh thời gian là ước tính; đối chiếu ngày giờ trên hình khi trích xuất.</p>
       </div>}
     </div>

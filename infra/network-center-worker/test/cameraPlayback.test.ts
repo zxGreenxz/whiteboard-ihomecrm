@@ -38,7 +38,7 @@ describe("direct recording playback", () => {
   });
   it("validates quality and creates a bounded, credential-free encoder between private paths", async () => {
     const encoder = `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`;
-    for (const quality of ["sd", "hd", "fullhd", "original"] as const) {
+    for (const quality of ["sd", "hd", "fullhd"] as const) {
       expect(playbackRange({ ...range, quality }).quality).toBe(quality);
       const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({}));
       const sources = playbackSources(request, vi.fn(), encoder);
@@ -46,7 +46,7 @@ describe("direct recording playback", () => {
       const source = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
       const output = JSON.parse(String(request.mock.calls[1]?.[1]?.body));
       expect(source.rtspScale).toBe("8"); expect(output).toMatchObject({ record: false, maxReaders: 1, runOnDemandRestart: false, runOnDemandCloseAfter: "1s" });
-      expect(output.runOnDemand).toContain({ sd: "min(854,iw)", hd: "min(1280,iw)", fullhd: "min(1920,iw)", original: "trunc(iw/2)*2" }[quality]);
+      expect(output.runOnDemand).toContain({ sd: "min(854,iw)", hd: "min(1280,iw)", fullhd: "min(1920,iw)" }[quality]);
       expect(output.runOnDemand).toContain("'expr:gte(t,n_forced*0.5)'"); expect(output.runOnDemand).toContain("'passthrough'"); expect(output.runOnDemand).toContain("'1:90000'");
       expect(output.runOnDemand).toContain("setpts=(RTCTIME-RTCSTART)/(TB*1000000)");
       expect(output.runOnDemand).not.toContain(recorder.password); expect(output.runOnDemand).not.toContain("10.0.0.1");
@@ -57,9 +57,22 @@ describe("direct recording playback", () => {
     expect(() => playbackSources(fetch, vi.fn(), "/tmp/ffmpeg;command")).toThrow("PLAYBACK_ENCODER_INVALID");
     await expect(playbackSources(fetch, vi.fn()).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "PLAYBACK_QUALITY_UNAVAILABLE" });
   });
-  it("cleans both paths when creating an encoded output fails", async () => {
+  it("relays original video and audio without an encoder, preserving seek position and private credentials", async () => {
+    const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({}));
+    const sources = playbackSources(request, vi.fn());
+    const name = await sources.add(recorder, 1, { ...range, end: "2026-10-20T06:00:00Z", position: "2026-10-20T05:00:00Z", quality: "original", speed: 8 });
+    const input = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+    const output = JSON.parse(String(request.mock.calls[1]?.[1]?.body));
+    expect(input).toMatchObject({ rtspRangeType: "npt", rtspRangeStart: "14400s", rtspScale: "8", rtspPlaybackRevision: expect.any(String) });
+    expect(output).toEqual({ source: 'rtsp://127.0.0.1:18895/' + name.replace("playback-", "playback-source-"), sourceOnDemand: true, sourceOnDemandStartTimeout: "8s", sourceOnDemandCloseAfter: "1s", rtspTransport: "tcp", record: false, maxReaders: 1 });
+    expect(JSON.stringify(output)).not.toContain(recorder.password);
+    await sources.remove(name);
+    expect(request.mock.calls.slice(2).map(([url]) => String(url).split("/").at(-1))).toEqual([name, name.replace("playback-", "playback-source-")]);
+    await expect(sources.control(name, 10, 1, new AbortController().signal)).rejects.toMatchObject({ code: "PLAYBACK_CONTROL_UNAVAILABLE" });
+  });
+  it.each(["sd", "original"] as const)("cleans both paths when creating a %s output fails", async (quality) => {
     const request = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({})).mockResolvedValueOnce(new Response(null, { status: 400 })).mockImplementation(async () => Response.json({}));
-    await expect(playbackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`).add(recorder, 1, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "RECORDING_UNAVAILABLE" });
+    await expect(playbackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`).add(recorder, 1, { ...range, quality })).rejects.toMatchObject({ code: "RECORDING_UNAVAILABLE" });
     expect(request.mock.calls.slice(2).map(([, init]) => init?.method)).toEqual(["DELETE", "DELETE"]);
   });
   it("accepts only the recorder's supported speeds", () => {
@@ -133,7 +146,7 @@ describe("direct recording playback", () => {
     await sessions.stop(session.id, "token"); complete();
     await expect(pending).rejects.toMatchObject({ code: "SESSION_EXPIRED" }); expect(sessions.size).toBe(0);
   });
-  it("waits for the recorder acknowledgement and omits Scale when returning to normal speed", async () => {
+  it.each(["sd", "original"] as const)("controls the same %s input, waits for acknowledgement and omits Scale at normal speed", async (quality) => {
     let revision = ""; let polls = 0;
     const request = vi.fn<typeof fetch>(async (_url, init) => {
       if (init?.method === "PATCH") revision = JSON.parse(String(init.body)).rtspPlaybackRevision;
@@ -141,7 +154,7 @@ describe("direct recording playback", () => {
       return Response.json({});
     });
     const sources = playbackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`);
-    const name = await sources.add(recorder, 1, { ...range, quality: "sd" });
+    const name = await sources.add(recorder, 1, { ...range, quality });
     await sources.control(name, 120, 1, new AbortController().signal);
     expect(polls).toBe(2); expect(JSON.parse(String(request.mock.calls.find(([, init]) => init?.method === "PATCH")?.[1]?.body))).toMatchObject({ rtspScale: "", rtspRangeStart: "120s" });
     await sources.remove(name);

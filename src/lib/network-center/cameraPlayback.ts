@@ -1,5 +1,3 @@
-import { CameraLiveConnection, cameraPlaybackThumbnail, type CameraPlaybackQuality } from "./cameraLive";
-
 /** WebRTC mediaTime advances at wall-clock speed. RTP advances at the recorder's speed. */
 export class PlaybackClock {
   private previous: number | undefined;
@@ -29,39 +27,6 @@ export function cameraFrame(video: HTMLVideoElement | null, width = 960): string
   } catch { return; }
 }
 
-/** A single authenticated, unrecorded stream lives only until its first decoded frame. */
-export async function capturePlaybackFrame(recorderId: string, channel: number, time: number, end: number, signal: AbortSignal, quality?: CameraPlaybackQuality, direct = false): Promise<string> {
-  if (signal.aborted) throw new Error("cancelled");
-  if (direct) return cameraPlaybackThumbnail(recorderId, channel, time, end, signal);
-  const video = document.createElement("video"); video.muted = true; video.playsInline = true;
-  let resolve!: (image: string) => void; let reject!: (error: Error) => void;
-  const image = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
-  const abort = () => reject(new Error("cancelled"));
-  const capture = () => { const frame = cameraFrame(video, 320); if (frame) resolve(frame); };
-  let frameCallback: number | undefined;
-  const connection = new CameraLiveConnection({ recorderId, channel, audio: false, playback: { start: new Date(time).toISOString(), end: new Date(Math.min(time + 20_000, end)).toISOString(), ...(quality ? { quality } : {}) },
-    onStream(stream) {
-      if (signal.aborted || !stream) return;
-      video.srcObject = stream;
-      void video.play().catch(() => reject(new Error("playback")));
-    },
-    onState(state) { if (state === "error") reject(new Error("playback")); },
-  });
-  video.addEventListener("loadeddata", capture); video.addEventListener("timeupdate", capture);
-  if (video.requestVideoFrameCallback) frameCallback = video.requestVideoFrameCallback(capture);
-  const timeout = setTimeout(() => reject(new Error("timeout")), 12_000);
-  signal.addEventListener("abort", abort, { once: true });
-  void connection.start();
-  try { return await image; }
-  finally {
-    clearTimeout(timeout); signal.removeEventListener("abort", abort);
-    video.removeEventListener("loadeddata", capture); video.removeEventListener("timeupdate", capture);
-    if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback);
-    video.pause(); video.srcObject = null;
-    await connection.stop();
-  }
-}
-
 /** Finish an in-flight recorder command, then apply only the latest requested position. */
 export class PlaybackControls {
   private pending: { time: number; speed: number; version: number } | undefined;
@@ -78,78 +43,6 @@ export class PlaybackControls {
         const next = this.pending; this.pending = undefined;
         try { await this.apply(next.time, next.speed); if (next.version === this.version) this.done(next.time, next.speed); }
         catch (error) { if (next.version === this.version) this.failed(error, next.time, next.speed); }
-      }
-    } finally { this.running = false; }
-  }
-}
-
-export interface PlaybackPreview { time: number; image?: string; imageTime?: number; error?: boolean }
-type PreviewRequest = { time: number; show: (preview: PlaybackPreview) => void; version: number };
-/** Prefetch in order, show cached images synchronously, and prioritize the latest scrub target. */
-export class PlaybackPreviews {
-  private readonly cache = new Map<number, string>();
-  private pending: PreviewRequest | undefined;
-  private active: AbortController | undefined;
-  private running = false;
-  private version = 0;
-  private overview: number[] = [];
-  private warmed = false;
-  private watching: { time: number; show: PreviewRequest["show"] } | undefined;
-  private progress: ((ready: number, total: number) => void) | undefined;
-  private overviewTimes: number[] = [];
-  constructor(private readonly capture: (time: number, signal: AbortSignal) => Promise<string>) {}
-  /** Coarse-to-fine coverage is prepared while watching, with one bounded capture at a time. */
-  warm(from: number, to: number, progress?: (ready: number, total: number) => void) {
-    if (this.warmed) return;
-    this.warmed = true; this.progress = progress;
-    const last = Math.max(from, Math.floor((to - 1) / 1000) * 1000);
-    const times = [from, last];
-    for (let divisions = 2; divisions <= 32; divisions *= 2) for (let i = 1; i < divisions; i += 2) times.push(Math.floor((from + (last - from) * i / divisions) / 1000) * 1000);
-    this.overviewTimes = [...new Set(times)]; this.overview = [...this.overviewTimes];
-    void this.run();
-  }
-  show(time: number, show: PreviewRequest["show"]) { this.watching = { time, show }; show(this.nearest(time)); }
-  private nearest(time: number): PlaybackPreview {
-    let imageTime: number | undefined; let image: string | undefined;
-    for (const [at, frame] of this.cache) if (imageTime === undefined || Math.abs(at - time) < Math.abs(imageTime - time)) { imageTime = at; image = frame; }
-    return { time, ...(image ? { image, ...(imageTime !== time ? { imageTime } : {}) } : {}) };
-  }
-  remember(time: number, image: string) {
-    this.cache.set(time, image);
-    if (this.cache.size > (this.warmed ? 96 : 24)) this.cache.delete(this.cache.keys().next().value!);
-    if (this.watching) this.watching.show(this.nearest(this.watching.time));
-    this.progress?.(this.overviewTimes.filter((at) => this.cache.has(at)).length, this.overviewTimes.length);
-  }
-  request(time: number, show: PreviewRequest["show"]) {
-    const version = ++this.version;
-    if (!this.warmed) this.active?.abort(); this.pending = undefined;
-    const image = this.cache.get(time);
-    if (this.warmed) this.show(time, show); else show({ time, ...(image ? { image } : {}) });
-    if (image) return;
-    this.pending = { time, show, version }; void this.run();
-  }
-  clear() { ++this.version; this.pending = undefined; this.overview = []; this.overviewTimes = []; this.warmed = false; this.progress = undefined; this.watching = undefined; this.active?.abort(); this.cache.clear(); }
-  cancel() { ++this.version; this.pending = undefined; this.watching = undefined; if (!this.warmed) this.active?.abort(); }
-  private async run() {
-    if (this.running) return;
-    this.running = true;
-    try {
-      let failures = 0;
-      while (this.pending || this.overview.length) {
-        const next = this.pending ?? { time: this.overview.shift()!, show: () => {}, version: -1 }; this.pending = undefined;
-        if (this.cache.has(next.time)) continue;
-        const abort = new AbortController(); this.active = abort;
-        try {
-          const image = await this.capture(next.time, abort.signal);
-          if (!abort.signal.aborted && (this.warmed || next.version === this.version)) {
-            failures = 0; this.remember(next.time, image);
-            if (next.version === this.version) next.show({ time: next.time, image });
-          }
-        } catch {
-          if (++failures >= 3) this.overview = [];
-          if (!abort.signal.aborted && next.version === this.version) next.show({ ...(this.warmed ? this.nearest(next.time) : { time: next.time }), error: true });
-        }
-        finally { if (this.active === abort) this.active = undefined; }
       }
     } finally { this.running = false; }
   }
