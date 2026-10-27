@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, BUILDING16, CASHBOOK19, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, BUILDING16, CASHBOOK19, PICK20, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -1047,6 +1047,82 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       await db.exec('ROLLBACK TO SAVEPOINT rerun');
       await db.exec(core(ROUND1));
       await assert.rejects(db.exec(CASHBOOK19), error => error.message === 'hermes_expense_cashbook_first_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+      await db.exec('ROLLBACK TO SAVEPOINT rerun');
+    });
+  });
+
+  let n20 = 960;
+  await t.test('Lượt 20 (G02): expense.approve — mã trùng chỉ giữ phiếu chờ duyệt; nhiều mã mơ hồ ⇒ MỘT needs_input cho tất cả; nhãn / "MÃ dd/mm/yyyy" nhận; sửa / huỷ / ghi chú không đổi', async () => {
+    await f.rollbackCase(async () => {
+      // Ca nghiệm thu c3q (TEST, toà 331PHI): mã dùng lại TRONG CÙNG toà — PC2609052 một phiếu đã duyệt + đã chi và một phiếu chờ duyệt;
+      // PC2609064 hai phiếu cùng chờ duyệt (bộ lọc "dưới 1 triệu" của người dùng chọn được phiếu 45.000đ).
+      await voucher('PC2609052', staff({ date: '2026-09-01', amount: 1500000, status: 'APPROVED', posting: 'POSTED' }));
+      const pending52 = await voucher('PC2609052', staff({ date: '2026-09-29', amount: 800000 }));
+      const only112 = await voucher('PC2609112', staff({ date: '2026-09-25', amount: 400000 }));
+      const only022 = await voucher('PC2609022', staff({ date: '2026-09-07', amount: 150000 }));
+      await voucher('PC2609064', staff({ date: '2026-09-01', amount: 4410400 }));
+      const small64 = await voucher('PC2609064', staff({ date: '2026-09-13', amount: 45000 }));
+      const approve = (voucherCodes, extra = {}) => run('expense.approve', 'preview', rid(n20++), { voucherCodes, ...extra });
+      const ids = out => out.resolved?.vouchers.map(v => v.voucherId);
+      const ask = (wanted, names, more = false) => ({ kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted, why: 'ambiguous', more,
+        candidates: names.map(name => ({ name })) });
+      const lot = ['PC2609052', 'PC2609112', 'PC2609022', 'PC2609064'];
+      // (1) PC2609052 còn đúng một phiếu chờ duyệt ⇒ nhận luôn; PC2609064 hai phiếu cùng chờ ⇒ chỉ mã này hỏi lại.
+      assert.deepEqual(await approve(lot), ask('PC2609064', ['PC2609064 · 13/09/2026 · Toà A · 45.000đ', 'PC2609064 · 01/09/2026 · Toà A · 4.410.400đ']));
+      // Bot chọn theo bộ lọc vừa đọc rồi gọi lại NGAY với "MÃ dd/mm/yyyy" ⇒ bản xem trước cả lô (người dùng đồng ý một lần).
+      const preview = await approve([...lot.slice(0, 3), 'PC2609064 13/09/2026']);
+      assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+      assert.deepEqual(ids(preview), [pending52, only112, only022, small64]);
+      // (3) Hai dạng bot hay gửi lại: nhãn ứng viên chép nguyên và "MÃ dd/mm/yyyy". Chọn rõ phiếu ĐÃ duyệt ⇒ không lọc, lý do cũ (not_pending).
+      for (const code of ['PC2609052 · 29/09/2026 · Toà A · 800.000đ', 'PC2609052 29/09/2026', 'pc2609052 29/09'])
+        assert.deepEqual(ids(await approve([code])), [pending52], code);
+      for (const code of ['PC2609052 · 01/09/2026 · Toà A · 1.500.000đ', 'PC2609052 01/09/2026'])
+        assert.deepEqual(await approve([code]), { kind: 'rejected', reason: 'not_pending' }, code);
+      // (2) Nhiều mã mơ hồ trong lô ⇒ MỘT needs_input: wanted nối các mã, ứng viên theo từng mã (thứ tự lô, mới trước).
+      await voucher('PC2609077', staff({ date: '2026-09-10', amount: 300000 }));
+      await voucher('PC2609077', staff({ date: '2026-09-20', amount: 600000 }));
+      const all = ['PC2609064 · 13/09/2026 · Toà A · 45.000đ', 'PC2609064 · 01/09/2026 · Toà A · 4.410.400đ', 'PC2609077 · 20/09/2026 · Toà A · 600.000đ',
+        'PC2609077 · 10/09/2026 · Toà A · 300.000đ'];
+      assert.deepEqual(await approve(['PC2609064', 'PC2609112', 'PC2609077']), ask('PC2609064, PC2609077', all));
+      // Lỗi khác đứng TRƯỚC mã mơ hồ đầu tiên ⇒ trả ngay như cũ; đứng sau (không thấy, trùng phiếu) ⇒ để lượt sau.
+      assert.deepEqual(await approve(['PC0000000', 'PC2609064']), { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC0000000',
+        why: 'not_visible', candidates: [], more: false });
+      assert.deepEqual(await approve(['PC2609064', 'PC0000000', 'PC2609077', 'PC2609112', ' pc2609112']), ask('PC2609064, PC2609077', all));
+      // Trần 8 ứng viên của connector: lấy TRỌN từng mã theo thứ tự lô; mã không vừa chưa nêu (more = true, lượt sau nêu tiếp).
+      for (const day of [1, 2, 3, 4, 5]) await voucher('PC2609090', staff({ date: `2026-09-0${day}`, amount: 100000 * day }));
+      for (const day of [1, 2, 3, 4]) await voucher('PC2609091', staff({ date: `2026-09-0${day}`, amount: 10000 * day }));
+      const capped = await approve(['PC2609090', 'PC2609091', 'PC2609064']);
+      assert.deepEqual([capped.kind, capped.wanted, capped.more, capped.candidates?.map(c => c.name.slice(0, 22))], ['needs_input', 'PC2609090, PC2609091, PC2609064', true,
+        ['05', '04', '03', '02', '01'].map(day => `PC2609090 · ${day}/09/2026`)]);
+      // Không còn phiếu nào làm được (hai phiếu đã duyệt) ⇒ như cũ: hỏi lại đủ ứng viên.
+      await voucher('PC2609115', staff({ date: '2026-09-02', status: 'APPROVED', posting: 'POSTED' }));
+      await voucher('PC2609115', staff({ date: '2026-09-03', status: 'APPROVED', posting: 'POSTED' }));
+      const approvedOnly = await approve(['PC2609115']);
+      assert.deepEqual([approvedOnly.kind, approvedOnly.why, approvedOnly.candidates?.length], ['needs_input', 'ambiguous', 2]);
+      // Gợi ý người dùng nêu mà không khớp phiếu nào (ngày / toà) ⇒ không lọc trạng thái, hỏi lại như cũ; toà nêu đúng ⇒ lọc như thường.
+      const both52 = ['PC2609052 · 29/09/2026 · Toà A · 800.000đ', 'PC2609052 · 01/09/2026 · Toà A · 1.500.000đ'];
+      assert.deepEqual(await approve(['PC2609052 30/01']), ask('PC2609052 30/01', both52));
+      assert.deepEqual(await approve(['PC2609052'], { buildingName: 'Toà Z' }), ask('PC2609052', both52));
+      assert.deepEqual(ids(await approve(['PC2609052'], { buildingName: 'Toà A' })), [pending52]);
+      // Sửa / huỷ / ghi chú dùng chung bộ giải nhưng KHÔNG lọc trạng thái: mã trùng vẫn hỏi đủ ứng viên như cũ.
+      for (const [action, phase, params] of [['expense.note', 'auto', { voucherCode: 'PC2609052', note: 'đã lấy hoá đơn' }],
+        ['expense.edit', 'preview', { voucherCode: 'PC2609052', content: 'mua bóng đèn LED' }], ['expense.cancel', 'preview', { voucherCode: 'PC2609052', reason: 'lập trùng phiếu' }]])
+        assert.deepEqual(await run(action, phase, rid(n20++), params), ask('PC2609052', both52), action);
+
+      // Đột biến: thân lõi giải của lượt 19 (trước file) ⇒ không lọc trạng thái, trả mã mơ hồ ĐẦU TIÊN (ca nghiệm thu c3q đỏ).
+      const core = sql => { const start = sql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_expense_resolve_core_v1(');
+        return sql.slice(start, sql.indexOf('\nEND $fn$;', start) + '\nEND $fn$;'.length); };
+      await db.exec(core(CASHBOOK19));
+      assert.deepEqual(await approve(lot), ask('PC2609052', both52), 'đột biến: thân 074419');
+      assert.deepEqual(await approve(['PC2609064', 'PC2609077']), ask('PC2609064', all.slice(0, 2)), 'đột biến: thân 074419 hỏi từng mã một');
+      await db.exec(core(PICK20));
+      assert.deepEqual(await approve(lot), ask('PC2609064', all.slice(0, 2)));
+      // Ghim chéo: chạy lại 074419 sau file ngã đúng khối $requires$ (ngoại lệ pinned sau áp; 074419 ngoài diff). Thân lạ (210500) ⇒ file từ chối.
+      await db.exec('SAVEPOINT rerun');
+      await assert.rejects(db.exec(CASHBOOK19), error => error.message === 'hermes_expense_cashbook_first_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+      await db.exec('ROLLBACK TO SAVEPOINT rerun');
+      await db.exec(core(BUILDING16));
+      await assert.rejects(db.exec(PICK20), error => error.message === 'hermes_expense_approve_code_pick_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
       await db.exec('ROLLBACK TO SAVEPOINT rerun');
     });
   });

@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 907,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13850,6 +13850,17 @@
       "evidence": [
         "catalog:function:app_private.hermes_w2a_catalog_v1",
         "catalog:function:app_private.hermes_w2a_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027140949_hermes_expense_approve_code_pick_v1.sql",
+      "version": "20261027140949",
+      "name": "hermes_expense_approve_code_pick_v1",
+      "scheme": "timestamp14",
+      "sha256": "0a201c9a62418152f8bddc6992f892986c3759b0760c4f3130f0530d7ce8186e",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_expense_resolve_core_v1"
       ]
     },
     {

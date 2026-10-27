@@ -111,3 +111,33 @@ test('needs_input là kết quả thường có huongDan; detail tên chỉ nêu
   for (const why of ['outside_scope', 'ambiguous', 'not_visible', undefined]) assert.doesNotMatch(nameUnresolvedDetail({ field: 'room', wanted: 'x', why }), /không có/);
   assert.throws(() => nameUnresolvedDetail({ field: 'room', wanted: 'x', why: 'missing' }), /invalid_name_detail/);
 });
+
+test('Thu chi lượt 20: hạng mục chi chưa nêu có NHIỀU gợi ý ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất; trường khác giữ "không tự chọn"; mã mơ hồ của tham số danh sách ⇒ "MÃ dd/mm/yyyy"', () => {
+  const two = [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }];
+  // A04: chỉ hạng mục (category). Người (assignee), toà, phòng, sổ, khách, loại việc: vẫn hỏi người dùng chọn một, không tự chọn.
+  assert.equal(nameUnresolvedDetail({ field: 'category', wanted: '', why: 'unspecified', candidates: two }),
+    'Chưa nêu hạng mục; gợi ý: Sửa chữa xây dựng, Mua đồ điện máy (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản ' +
+    'xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.');
+  for (const field of ['person', 'building', 'room', 'cashbook', 'customer', 'jobType'])
+    assert.equal(nameUnresolvedDetail({ field, wanted: '', why: 'unspecified', candidates: [{ name: 'A' }, { name: 'B' }] }).endsWith('— hỏi người dùng chọn một, không tự chọn.'), true, field);
+  // Hạng mục MỘT gợi ý (C3n) giữ câu riêng; hạng mục đã nêu mà mơ hồ ⇒ câu cũ (hỏi người dùng nêu rõ).
+  assert.match(nameUnresolvedDetail({ field: 'category', wanted: '', why: 'unspecified', candidates: two.slice(0, 1) }), /^Chưa nêu hạng mục; gợi ý duy nhất: Sửa chữa xây dựng — /);
+  assert.equal(nameUnresolvedDetail({ field: 'category', wanted: 'sửa', why: 'ambiguous', candidates: two }),
+    "Hạng mục 'sửa' khớp nhiều: Sửa chữa xây dựng, Mua đồ điện máy — hỏi người dùng nêu rõ.");
+  // G02: mã phiếu mơ hồ thuộc tham số DANH SÁCH (listParam — runtime chỉ truyền khi thao tác luôn xem trước) ⇒ câu gọi lại theo từng mã; không
+  // listParam (note / edit / cancel) ⇒ câu cũ. wanted nhiều mã không bị cắt ở 60 ký tự.
+  const codes = 'PC2609064, PC2609077, PC2609090, PC2609091, PC2609092, PC2609093';
+  const lot = nameUnresolvedDetail({ field: 'voucher', wanted: codes, why: 'ambiguous', candidates: [{ name: 'PC2609064 · 13/09/2026 · 331PHI · 45.000đ' }], listParam: 'voucherCodes' });
+  assert.ok(lot.startsWith(`Mã phiếu '${codes}' khớp nhiều phiếu: PC2609064 · 13/09/2026 · 331PHI · 45.000đ — mỗi mã trên chọn MỘT phiếu rồi gọi lại voucherCodes`), lot);
+  assert.match(lot, /'MÃ dd\/mm\/yyyy'/); assert.match(lot, /gọi lại NGAY/); assert.doesNotMatch(lot, /Còn ứng viên chưa nêu/);
+  assert.match(nameUnresolvedDetail({ field: 'voucher', wanted: 'PC1', why: 'ambiguous', candidates: [{ name: 'PC1 · x' }], more: true, listParam: 'voucherCodes' }),
+    / Còn ứng viên chưa nêu: mã chưa có ứng viên ở trên sẽ được nêu ở lượt gọi sau;/);
+  assert.match(nameUnresolvedDetail({ field: 'voucher', wanted: 'PC2609052', why: 'ambiguous', candidates: [{ name: 'PC2609052 · 29/09/2026' }] }),
+    /— hỏi người dùng chọn một, rồi gọi lại với voucherCode kèm ngày hoặc toà/);
+  // listParam chỉ đổi câu mã phiếu mơ hồ: không thấy / ngoài phạm vi / trường khác giữ nguyên.
+  assert.equal(nameUnresolvedDetail({ field: 'voucher', wanted: 'PC0000000', why: 'not_visible', listParam: 'voucherCodes' }),
+    "Không thấy phiếu 'PC0000000' trong phạm vi quyền của anh/chị; hỏi lại người dùng.");
+  assert.equal(nameUnresolvedDetail({ field: 'room', wanted: '201', why: 'ambiguous', candidates: [{ name: '201' }, { name: '201 ' }], listParam: 'rooms' }),
+    "Phòng '201' khớp nhiều: 201, 201 — hỏi người dùng nêu rõ.");
+  for (const listParam of ['', 'voucher codes', 7, '1x']) assert.throws(() => nameUnresolvedDetail({ field: 'voucher', wanted: 'x', listParam }), /invalid_name_detail/, String(listParam));
+});

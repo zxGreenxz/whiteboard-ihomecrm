@@ -208,20 +208,70 @@ test('needs_input từ SQL: hạng mục / sổ / mã phiếu không giải đư
   outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: 'bảo hiểm lạ', why: 'not_visible', candidates: [], more: false };
   assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
     "Không có hạng mục 'bảo hiểm lạ' trong danh mục chi dùng được qua bot (hạng mục hệ thống, hạn chế, cọc, chuyển nội bộ chỉ lập trên web); hỏi người dùng nêu hạng mục khác.");
+  // Lượt 20 (A04): NHIỀU gợi ý hạng mục ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất (trước: "hỏi người dùng chọn một, không tự chọn").
   outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified',
     candidates: [{ name: 'Sửa chữa' }, { name: 'Sửa điện' }], more: false, item: 2 };
-  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM, ITEM] } })).detail,
-    'Mục #2: Chưa nêu hạng mục; gợi ý: Sửa chữa, Sửa điện — hỏi người dùng chọn một, không tự chọn.');
-  // C3n (TC A14): đúng MỘT gợi ý ⇒ xem trước ngay với gợi ý đó, hỏi đồng ý một lần; có `more` (còn gợi ý khác) ⇒ vẫn hỏi chọn.
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM, ITEM] } })).detail, `Mục #2: ${severalCategories('Sửa chữa, Sửa điện')}`);
+  // C3n (TC A14): đúng MỘT gợi ý ⇒ xem trước ngay với gợi ý đó, hỏi đồng ý một lần; còn gợi ý khác (`more`) ⇒ câu nhiều gợi ý của lượt 20.
   outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified', candidates: [{ name: 'Khoá cơ, chìa khoá' }], more: false };
   assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
     'Chưa nêu hạng mục; gợi ý duy nhất: Khoá cơ, chìa khoá — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần ' +
     '(nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.');
   outcome = { ...outcome, more: true };
-  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
-    'Chưa nêu hạng mục; gợi ý: Khoá cơ, chìa khoá, … — hỏi người dùng chọn một, không tự chọn.');
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, severalCategories('Khoá cơ, chìa khoá, …'));
   outcome = { kind: 'rejected', reason: 'not_found' };
   assert.deepEqual((await env.call({ action: 'expense.note', params: { voucherCode: 'PC0000000', note: 'x' } })).reason, 'not_found');
+});
+
+// Lượt 20 (A04): câu của hạng mục chưa nêu có NHIỀU gợi ý (xếp theo độ khớp).
+const severalCategories = list => `Chưa nêu hạng mục; gợi ý: ${list} (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản ` +
+  'xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.';
+
+test('Lượt 20 (A04): hạng mục chưa nêu có NHIỀU gợi ý ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất, bản xem trước nêu hạng mục đã chọn + gợi ý còn lại; không gợi ý ⇒ hỏi', async t => {
+  let outcome;
+  const env = setup(t, { respond: () => outcome });
+  // Ca nghiệm thu c3q (TEST): "Thứ hai tuần trước anh có chi 2 củ sơn lại tường phòng 302 toà 65, ghi bù giúp anh" ⇒ SQL trả hai gợi ý; câu cũ
+  // "hỏi người dùng chọn một, không tự chọn" ⇒ người dùng đáp "ok" (không chọn), bot hỏi mãi. Người dùng vẫn quyết trên bản xem trước.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified',
+    candidates: [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }], more: false };
+  const a04 = await env.call({ action: 'expense.create', params: { items: [{ ...ITEM, buildingName: '65NTG', roomName: '302', amount: 2_000_000, content: 'sơn lại tường phòng 302' }] } });
+  assert.deepEqual([a04.outcome, a04.reason, a04.detail, a04.candidates], ['needs_input', 'name_unresolved', severalCategories('Sửa chữa xây dựng, Mua đồ điện máy'),
+    [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }]]);
+  // Không gợi ý nào ⇒ hỏi người dùng (không đổi).
+  outcome = { ...outcome, candidates: [] };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, 'Chưa nêu hạng mục; hỏi người dùng.');
+});
+
+test('Lượt 20 (G02): mã mơ hồ của expense.approve (lô, luôn xem trước) ⇒ một câu cho mọi mã: gọi lại voucherCodes "MÃ dd/mm/yyyy", chọn theo bộ lọc vừa đọc; sửa / huỷ / ghi chú giữ câu cũ', async t => {
+  let outcome;
+  const env = setup(t, { action: ['income_expenses.approve_vouchers', 'income_expenses.edit', 'income_expenses.cancel', EXPENSE_CREATE_KEY], respond: () => outcome });
+  const lot = (wanted, list, more = false) => `Mã phiếu '${wanted}' khớp nhiều phiếu: ${list} — mỗi mã trên chọn MỘT phiếu rồi gọi lại voucherCodes (mã khác ` +
+    "giữ nguyên), ghi mã đó dạng 'MÃ dd/mm/yyyy' (vd 'PC2610777 05/10/2026') hoặc chép nguyên nhãn ứng viên. Nếu vừa đọc danh sách theo bộ lọc người dùng " +
+    'nêu (vd "dưới 1 triệu", toà, ngày) thì chọn phiếu khớp bộ lọc và gọi lại NGAY — bản xem trước nêu từng phiếu để người dùng đồng ý một lần; chỉ hỏi ' +
+    'người dùng chọn khi không suy ra được.' + (more ? ' Còn ứng viên chưa nêu: mã chưa có ứng viên ở trên sẽ được nêu ở lượt gọi sau; phiếu cần chọn không ' +
+    'có trong danh sách thì ghi kèm ngày / toà.' : '');
+  const names = ['PC2609064 · 13/09/2026 · 331PHI · 45.000đ', 'PC2609064 · 01/09/2026 · 331PHI · 4.410.400đ', 'PC2609077 · 20/09/2026 · 331PHI · 600.000đ',
+    'PC2609077 · 10/09/2026 · 331PHI · 300.000đ'];
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609064', why: 'ambiguous', candidates: names.slice(0, 2).map(name => ({ name })), more: false };
+  const one = await env.call({ action: 'expense.approve', params: { voucherCodes: ['PC2609052', 'PC2609112', 'PC2609022', 'PC2609064'] } });
+  assert.deepEqual([one.outcome, one.reason, one.detail, one.candidates], ['needs_input', 'name_unresolved', lot('PC2609064', names.slice(0, 2).join(', ')),
+    names.slice(0, 2).map(name => ({ name }))]);
+  // Nhiều mã mơ hồ trong MỘT kết quả (SQL 20261027140949): wanted nối các mã, ứng viên theo từng mã; còn ứng viên chưa nêu ⇒ nói lượt sau nêu tiếp.
+  outcome = { ...outcome, wanted: 'PC2609064, PC2609077', candidates: names.map(name => ({ name })), more: true };
+  assert.equal((await env.call({ action: 'expense.approve', params: { voucherCodes: ['PC2609064', 'PC2609077', 'PC2609090'] } })).detail,
+    lot('PC2609064, PC2609077', `${names.join(', ')}, …`, true));
+  // Trần 8 ứng viên của connector giữ nguyên (khuôn đóng): 9 ứng viên ⇒ khuôn lệch.
+  outcome = { ...outcome, candidates: Array.from({ length: 9 }, (_, i) => ({ name: `PC2609090 · 0${i + 1}/09/2026 · 331PHI · 100.000đ` })) };
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.approve', params: { voucherCodes: ['PC2609090'] } }),
+    error => error.code === 'backend_unavailable');
+  // Sửa / huỷ / ghi chú (một mã; ghi chú ghi thẳng không xem trước) ⇒ câu cũ: hỏi người dùng chọn một.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609052', why: 'ambiguous',
+    candidates: [{ name: 'PC2609052 · 29/09/2026 · 331PHI · 800.000đ' }, { name: 'PC2609052 · 01/09/2026 · 331PHI · 1.500.000đ' }], more: false };
+  const old = "Phiếu 'PC2609052' khớp nhiều: PC2609052 · 29/09/2026 · 331PHI · 800.000đ, PC2609052 · 01/09/2026 · 331PHI · 1.500.000đ — hỏi người dùng chọn " +
+    "một, rồi gọi lại với voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.";
+  for (const [action, params] of [['expense.note', { voucherCode: 'PC2609052', note: 'đã lấy hoá đơn' }], ['expense.edit', { voucherCode: 'PC2609052', amount: 1000 }],
+    ['expense.cancel', { voucherCode: 'PC2609052', reason: 'lập trùng phiếu' }]])
+    assert.equal((await env.call({ action, params })).detail, old, action);
 });
 
 test('lý do riêng Thu chi tới mô hình đúng câu tĩnh; lý do lạ ⇒ crm_refused', async t => {

@@ -441,9 +441,11 @@ export const INCOME15 = file('hermes_expense_income_flow_block_v1');
 export const BUILDING16 = file('hermes_expense_voucher_building_v1');
 // Lượt 19 (nghiệm thu J06): sổ người dùng nêu được giải TRƯỚC câu hỏi hạng mục (lõi giải dựng từ thân 210500).
 export const CASHBOOK19 = file('hermes_expense_cashbook_first_v1');
+// Lượt 20 (nghiệm thu c3q, G02): expense.approve — mã trùng chỉ giữ phiếu chờ duyệt; nhiều mã mơ hồ ⇒ một needs_input (lõi giải dựng từ thân 074419).
+export const PICK20 = file('hermes_expense_approve_code_pick_v1');
 
 export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE, locks = LOCKS, fixes = FIXES, flow = FLOW, round1 = ROUND1, income = INCOME15,
-  building = BUILDING16, cashbookFirst = CASHBOOK19 } = {}) {
+  building = BUILDING16, cashbookFirst = CASHBOOK19, approvePick = PICK20 } = {}) {
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
   const { db, call } = f;
   await db.exec(FOUNDATION); await db.exec(WEB);
@@ -468,6 +470,8 @@ export async function expenseSetup(t, { database, edit = EDIT, approve = APPROVE
   if (round1 && building) { await db.exec(building); await db.exec(building); }
   // Lượt 19 áp lên thân lõi giải của lượt 16.
   if (round1 && building && cashbookFirst) { await db.exec(cashbookFirst); await db.exec(cashbookFirst); }
+  // Lượt 20 áp lên thân lõi giải của lượt 19.
+  if (round1 && building && cashbookFirst && approvePick) { await db.exec(approvePick); await db.exec(approvePick); }
   await db.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers')");
   for (const table of ['hermes_org_policies', 'hermes_connections'])
     await db.query(`UPDATE app_private.${table} SET action_capabilities=action_capabilities||ARRAY['income_expenses.edit','income_expenses.cancel','income_expenses.approve_vouchers']`);

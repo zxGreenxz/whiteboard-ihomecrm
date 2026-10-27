@@ -186,12 +186,15 @@ export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visib
 const LABELS = Object.freeze({ building: 'toà', room: 'phòng', jobType: 'loại việc', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn',
   category: 'hạng mục', cashbook: 'sổ quỹ', job: 'việc', recurrence: 'việc định kỳ' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/gu;
-const quoted = value => `'${String(value).replace(CONTROL, ' ').trim().slice(0, 60)}'`;
+const quoted = (value, max = 60) => `'${String(value).replace(CONTROL, ' ').trim().slice(0, max)}'`;
+const LIST_PARAM = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** detail của name_unresolved từ kết quả hàm giải tên SQL (hermes_write_name_resolve_v1): chỉ chuỗi mô hình gửi + ứng viên mà
  * RLS của người hỏi đã cho thấy. why: ambiguous (≥ 2 trong phạm vi được ghi) / outside_scope (thấy nhưng ngoài phạm vi toà của
- * khoá ghi) / not_visible. Không bao giờ nói "không có": hàm INVOKER không biết điều đó (RLS có thể ẩn đối tượng có thật). */
-export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more = false }) {
-  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates) || !(why === undefined || NAME_WHYS.includes(why))) throw new TypeError('invalid_name_detail');
+ * khoá ghi) / not_visible. Không bao giờ nói "không có": hàm INVOKER không biết điều đó (RLS có thể ẩn đối tượng có thật).
+ * listParam (Thu chi lượt 20): tên tham số DANH SÁCH chứa các tên này, chỉ khi thao tác luôn xem trước (runtime suy từ danh mục). */
+export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more = false, listParam }) {
+  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates) || !(why === undefined || NAME_WHYS.includes(why)) ||
+      !(listParam === undefined || (typeof listParam === 'string' && LIST_PARAM.test(listParam)))) throw new TypeError('invalid_name_detail');
   const label = LABELS[field], Label = `${label[0].toUpperCase()}${label.slice(1)}`;
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
   const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
@@ -200,9 +203,24 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   // MỘT lần — người dùng vẫn quyết trên bản xem trước; hỏi riêng "chọn hạng mục X?" rồi mới xem trước làm thừa một lượt hỏi.
   if (kind === 'unspecified' && field === 'category' && names.length === 1 && !more)
     return `Chưa nêu ${label}; gợi ý duy nhất: ${list} — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần (nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.`;
+  // Thu chi lượt 20 (nghiệm thu c3q A04: "sơn lại tường phòng 302" ⇒ gợi ý "Sửa chữa xây dựng, Mua đồ điện máy", câu "hỏi người dùng chọn một"
+  // ⇒ người dùng đáp "ok", bot hỏi mãi): NHIỀU gợi ý hạng mục ⇒ như C3n — xem trước ngay với gợi ý hợp nội dung nhất, bản xem trước nêu hạng mục
+  // đã chọn và gợi ý còn lại, người dùng vẫn quyết trên bản xem trước. Gợi ý xếp theo độ khớp (gợi ý của hàm dùng chung, rồi số từ nội dung
+  // trùng, bằng nhau thì thứ tự danh mục — public.hermes_expense_category_pick_v1). CHỈ hạng mục: người, toà, phòng, sổ, khách … vẫn hỏi chọn.
+  if (kind === 'unspecified' && field === 'category' && names.length)
+    return `Chưa nêu ${label}; gợi ý: ${list} (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.`;
   if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
+  // Thu chi lượt 20 (nghiệm thu c3q G02: lô duyệt 4 mã, mã trùng ⇒ hỏi người dùng từng mã một): mã phiếu mơ hồ của một tham số DANH SÁCH ở thao
+  // tác luôn xem trước (expense.approve) — SQL 20261027140949 gom mọi mã mơ hồ của lô vào MỘT kết quả (wanted nối các mã, ứng viên theo từng mã).
+  // Bản xem trước nêu từng phiếu ⇒ tự chọn theo bộ lọc người dùng vừa nêu rồi gọi lại ngay là an toàn; chỉ hỏi khi không suy ra được.
+  if (kind === 'ambiguous' && names.length && field === 'voucher' && listParam !== undefined)
+    return `Mã phiếu ${quoted(wanted, 200)} khớp nhiều phiếu: ${list} — mỗi mã trên chọn MỘT phiếu rồi gọi lại ${listParam} (mã khác giữ nguyên), ghi mã đó dạng ` +
+      `'MÃ dd/mm/yyyy' (vd 'PC2610777 05/10/2026') hoặc chép nguyên nhãn ứng viên. Nếu vừa đọc danh sách theo bộ lọc người dùng nêu (vd "dưới 1 triệu", ` +
+      'toà, ngày) thì chọn phiếu khớp bộ lọc và gọi lại NGAY — bản xem trước nêu từng phiếu để người dùng đồng ý một lần; chỉ hỏi người dùng chọn khi ' +
+      `không suy ra được.${more || candidates.length > 8 ? ' Còn ứng viên chưa nêu: mã chưa có ứng viên ở trên sẽ được nêu ở lượt gọi sau; phiếu cần chọn ' +
+        'không có trong danh sách thì ghi kèm ngày / toà.' : ''}`;
   // Thu chi lượt 11 (nghiệm thu): mã phiếu bị dùng lại giữa các toà ⇒ chỉ mã thì không chọn được; SQL nhận mã kèm ngày / toà (hoặc nguyên nhãn
   // ứng viên). Hạng mục là danh mục của cả công ty (không theo toà) ⇒ "không thấy" nghĩa là không có trong danh mục chi dùng được qua bot.
   if (kind === 'ambiguous' && names.length && field === 'voucher')

@@ -1,4 +1,4 @@
-// Frozen contracts for sixty-seven forward migrations (eight of 20261019, the B2
+// Frozen contracts for sixty-eight forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -84,6 +84,9 @@
 // Hoá đơn H03 + F06 (27/10): the package A catalog rebuilt from the 051620 body (invoice_reminders also takes month) and the package A reader
 // rebuilt from the 160002 body (invoice_reminders month keeps only rooms owing on that period, the message still lists every debt;
 // invoice_adjustments summary.oldestPending = the oldest current PENDING adjustment by (adjusted_at, id)) — 20261027131639.
+// Thu chi lượt 20 (27/10, G02): the expense resolve core rebuilt from the 074419 body — expense.approve keeps only UNAPPROVED vouchers when a
+// code still matches several (none left ⇒ unchanged; a user hint that matched nothing ⇒ no filter), and every ambiguous code of a batch comes
+// back in ONE unresolved result (codes joined in wanted, whole codes within the 8-candidate cap); note / edit / cancel unchanged — 20261027140949.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -196,7 +199,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_expense_write_v1","sourcePath":"supabase/migrations/20261022044123_hermes_expense_scope_v1.sql","sha256":"858ff2a7ca631d3617ac62adca244dbf68fce10b9163ea18ba7abb3571ef4205","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
   {"name":"app_private.hermes_expense_manual_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"94cf6ad0ec05de95e51ee0983f66156057b583ad2239a8d7f6aa8d64239b2a4e","args":"p_voucher uuid"},
   {"name":"app_private.hermes_expense_create_run_v1","sourcePath":"supabase/migrations/20261022075102_hermes_expense_edit_cancel_v1.sql","sha256":"b61b3e5251eb67b3bc4853a45cb765f622aee00e84bb3e1a0c16f69ec1a269ce","args":"p_org uuid,p_params jsonb,p_resolved jsonb,p_key_prefix text"},
-  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql","sha256":"eaf267a833f706be0b34cabddd2d3f15101af5de7022c8b5e3837f3a1ea11d8d","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261027140949_hermes_expense_approve_code_pick_v1.sql","sha256":"b8b0aad13faf005fcc49513367716ee0e50f5269780f1a4bca4211babcd2acc7","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_expense_write_step_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"fc2d080200edd5f353392427883a1c34b53d365ff18da088939230424a0e8df5","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_expense_category_pick_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"2baea09a4cbbbedb3953adc3e3613a6cd685795fbbf4f246e770badc7b31906a","args":"p_organization_id uuid,p_category text,p_content text"},
   {"name":"public.hermes_expense_system_flow_v1","sourcePath":"supabase/migrations/20261024193002_hermes_expense_income_flow_block_v1.sql","sha256":"7224814bcf2558ea067032a45329189f0de68916cde09a7fc7b526a71a557b62","args":"p_text text,p_rule_key text DEFAULT NULL"},
@@ -247,6 +250,7 @@ export const FORWARD_FUNCTIONS = [
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql","sha256":"eaf267a833f706be0b34cabddd2d3f15101af5de7022c8b5e3837f3a1ea11d8d"},
   {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261024160002_hermes_w2a_invoice_room_detail_link_v1.sql","sha256":"5d4fbc1507280c3daa1af9a91dfd1d36e6df05de3db2f37760d56464c4abf5fa"},
   {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"c81b96d93376fa8126ee1812d150162f8aa4a39f488c13be5fed4cd5ad5244fa"},
   {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"5efa650390f7e9f04d122acc50146d9f378317ac8fa27ccdb5867986b55216b6","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
