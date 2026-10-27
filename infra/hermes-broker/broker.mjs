@@ -124,12 +124,22 @@ export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && 
 export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
 // Lượt 14 Hoá đơn (nghiệm thu C3c): dữ kiện SQL kèm lý do từ chối, danh sách ĐÓNG theo mã, mỗi trường một khuôn (không chuỗi tự do):
 // tháng đã chốt (YYYY-MM), số đã thu / tổng sau điều chỉnh (chuỗi chữ số VND). Câu tới mô hình = câu tĩnh + câu ghép từ dữ kiện.
-const FACT_MONTH = /^20\d{2}-(0[1-9]|1[0-2])$/, FACT_VND = /^(0|[1-9]\d{0,13})$/;
+// E03 (nghiệm thu 27/10): chỉ số công tơ (chuỗi số trơn như trim_scale của SQL: tối đa 4 chữ số lẻ, không số 0 thừa) và tên phòng / mã
+// công tơ của đúng dòng người dùng đang ghi (tên trong phạm vi quyền như ứng viên của name_unresolved: không ký tự điều khiển, có trần độ dài).
+const FACT_MONTH = /^20\d{2}-(0[1-9]|1[0-2])$/, FACT_VND = /^(0|[1-9]\d{0,13})$/, FACT_READING = /^(0|[1-9]\d{0,11})(\.\d{0,3}[1-9])?$/;
+const FACT_ROOM = /^[^\x00-\x1f\x7f]{1,120}$/, FACT_METER_CODE = /^[^\x00-\x1f\x7f]{1,40}$/;
 const vndFact = value => `${value.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+// Số chỉ số kiểu Việt như app_private.hermes_invoice_reading_text_v1: phân nghìn '.', thập phân ','.
+const readingFact = value => { const [whole, fraction] = value.split('.'); return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${fraction ? `,${fraction}` : ''}`; };
+// whole: câu ghép THAY câu tĩnh (mã dạng needs_input mà SQL trả qua kind 'rejected'); không thì câu tĩnh + câu ghép.
 const ACTION_REJECT_FACTS = Object.freeze({
   period_closed: { required: ['month'], test: { month: FACT_MONTH }, text: f => ` Tháng đã chốt: ${f.month.slice(5)}/${f.month.slice(0, 4)}.` },
   adjust_below_collected: { required: ['collected'], optional: ['totalAfter'], test: { collected: FACT_VND, totalAfter: FACT_VND },
     text: f => ` Đã thu ${vndFact(f.collected)}${f.totalAfter === undefined ? '' : `; tổng sau điều chỉnh ${vndFact(f.totalAfter)}`}.` },
+  meter_lower_than_previous: { required: ['value', 'previous'], optional: ['room', 'meterCode'],
+    test: { value: FACT_READING, previous: FACT_READING, room: FACT_ROOM, meterCode: FACT_METER_CODE }, whole: true,
+    text: f => `Chỉ số mới ${readingFact(f.value)} nhỏ hơn chỉ số đầu ${readingFact(f.previous)}${f.room === undefined ? '' : ` (phòng ${f.room}${
+      f.meterCode === undefined ? '' : `, công tơ ${f.meterCode}`})`}; hỏi lại số trên công tơ.` },
 });
 /** Dữ kiện hợp khuôn của mã (bản chép đông cứng) hoặc undefined. */
 export function actionFacts(code, value) {
@@ -140,8 +150,9 @@ export function actionFacts(code, value) {
       spec.test[key].test(value[key]))) return undefined;
   return Object.freeze({ ...value });
 }
-export const rejectedDetail = (code, item, facts) => itemDetail(item, ACTION_REASONS[code].text) +
-  (facts === undefined ? '' : ACTION_REJECT_FACTS[code].text(facts));
+export const rejectedDetail = (code, item, facts) => facts !== undefined && ACTION_REJECT_FACTS[code].whole
+  ? itemDetail(item, ACTION_REJECT_FACTS[code].text(facts))
+  : itemDetail(item, ACTION_REASONS[code].text) + (facts === undefined ? '' : ACTION_REJECT_FACTS[code].text(facts));
 
 /** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. Phần kèm theo, nhận theo kiểu:
  * số = khoản số mấy của lô (Thu chi Mốc 4, 1–20); chuỗi = link (CV12, Công việc Mốc 3): đường dẫn web tới đúng đối tượng để người

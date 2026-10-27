@@ -15,7 +15,7 @@
 // Cổng dịch vụ (service) là adapter SQL (Mốc 6): prepareAction(token, request, {signal}) ⇒ biên nhận rỗng đông cứng;
 // finalizeAction(token, receipt, {signal, onDispatch, onRejected}) ⇒ outcome (khuôn kiểm ở dưới).
 import { randomUUID } from 'node:crypto';
-import { BrokerError, actionFacts, actionItem, actionRejected, itemDetail, ACTION_WEB_LINK } from './broker.mjs';
+import { BrokerError, actionFacts, actionItem, actionRejected, rejectedDetail, ACTION_WEB_LINK } from './broker.mjs';
 import { ACTION_ID, canonicalJson, validateActionParams } from './action-catalog.mjs';
 import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, RequestIdShapeError, actionEnvelope, actionToolRoute, actionTools,
@@ -236,9 +236,11 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
           || !(outcome.link === undefined || (typeof outcome.link === 'string' && ACTION_WEB_LINK.test(outcome.link)))
           || !(outcome.item === undefined || actionItem(outcome.item))
           || !(outcome.facts === undefined || actionFacts(outcome.reason, outcome.facts) !== undefined)) fail('backend_unavailable');
-        // Lý do dạng needs_input từ SQL (vd thiếu lý do lúc ghi) vẫn là kết quả thường, không phải lỗi.
+        // Lý do dạng needs_input từ SQL (vd thiếu lý do lúc ghi) vẫn là kết quả thường, không phải lỗi. E03: facts đúng khuôn của mã (vd chỉ số
+        // nhỏ hơn số đầu: số mới, số đầu, phòng) ⇒ câu ghép từ dữ kiện để bot nói ngay con số, không phải tự tra thêm.
         if (ACTION_INPUT_REASONS.includes(outcome.reason) && outcome.reason !== 'name_unresolved') return known(content(needsInput({ action: plan.action, reason: outcome.reason,
-          detail: outcome.item === undefined ? undefined : itemDetail(outcome.item, ACTION_REASONS[outcome.reason].text) })));
+          detail: outcome.item === undefined && outcome.facts === undefined ? undefined
+            : rejectedDetail(outcome.reason, outcome.item, actionFacts(outcome.reason, outcome.facts)) })));
         throw rejected(outcome.reason, outcome.item, outcome.link, outcome.facts);
       }
       if (outcome.kind === 'preview') {

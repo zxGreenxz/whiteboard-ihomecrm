@@ -25,7 +25,8 @@ const rpcArgs = (phase, requestId, params, preview) => [JSON.stringify(binding),
 const V5 = "SELECT public.record_invoice_collection_v5($1,'2026-10-22',$2::jsonb,'REJECT',false,null,null,$3,$4) r";
 const tender = amount => JSON.stringify([{ payment_method: 'TK', gross_amount: amount, account_id: TK1 }]);
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
-const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_period_closed_reason_order_v1\.sql$/.test(n))}`, 'utf8')
+// C07: thân đang chạy của bước ghi thu tiền v3 là của hermes_invoice_collect_commit_checks_v1 (thân lượt 14 + ép kiểm hoãn) — đột biến đúng thân đó.
+const page = readFileSync(`supabase/migrations/${readdirSync('supabase/migrations').find(n => /^\d{14}_hermes_invoice_collect_commit_checks_v1\.sql$/.test(n))}`, 'utf8')
   .replaceAll('\r\n', '\n');
 const STEP = page.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_action_step_v3\([\s\S]*?\$fn\$;/)[0];
 

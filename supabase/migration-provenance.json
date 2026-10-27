@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-26T02:26:22.756Z",
+  "generatedAt": "2026-10-27T00:22:05.735Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 904,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13805,6 +13805,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-26T00:58:37.669Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261026234255_hermes_invoice_collect_commit_checks_v1.sql",
+      "version": "20261026234255",
+      "name": "hermes_invoice_collect_commit_checks_v1",
+      "scheme": "timestamp14",
+      "sha256": "af8049e12e84d8515cd9ee50a1f2b20de7a3634e40fe4a0987db0c48514296c7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_invoice_action_step_v3"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql",
+      "version": "20261027074419",
+      "name": "hermes_expense_cashbook_first_v1",
+      "scheme": "timestamp14",
+      "sha256": "ed0649a6ede2f949f4f6ade7494cdbc02103b9a22ad989f2354d5c5b1cc2fd6d",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_expense_resolve_core_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027093517_hermes_invoice_meter_lower_facts_v1.sql",
+      "version": "20261027093517",
+      "name": "hermes_invoice_meter_lower_facts_v1",
+      "scheme": "timestamp14",
+      "sha256": "a479c49c326f49f3ac82171eab7a2d8af14f2cfb07fee88908fe749cb4ff61a0",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_invoice_meter_step_v1"
       ]
     },
     {

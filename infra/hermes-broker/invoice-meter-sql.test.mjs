@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTION_REASON_CODES, ACTION_INPUT_REASONS } from './action-reasons.mjs';
-import { invoiceSetup, rid, uid, BUILDING, OTHER_BUILDING, ORG, USER, M1, M2, M3, M4B, M5, M6, M7, STRANGER } from './invoice-write-fixture.mjs';
+import { invoiceSetup, E03_SQL, rid, uid, BUILDING, OTHER_BUILDING, ORG, USER, M1, M2, M3, M4B, M5, M6, M7, STRANGER } from './invoice-write-fixture.mjs';
 
 // Đợt 3 Hoá đơn Mốc 4 (HOA-DON-THAO-TAC-GHI.md mục 4.2, 6.2) trên PGlite: hàm dùng chung public.meter_readings_plan_v1 +
 // public.record_meter_readings_v2 (migration THẬT, mỗi file hai lượt) với năm trigger BEFORE INSERT của production chạy nguyên văn; và nhánh
@@ -11,7 +11,7 @@ import { invoiceSetup, rid, uid, BUILDING, OTHER_BUILDING, ORG, USER, M1, M2, M3
 const code = expected => error => error.code === expected;
 
 test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)', { timeout: 300000 }, async t => {
-  const f = await invoiceSetup(t, { meter: true, l14: true });
+  const f = await invoiceSetup(t, { meter: true, e03: true });
   const { db, call, meterRun, meterApply } = f;
   const writer = (rows, { date = '2026-10-22', replace = false, key = null, building = BUILDING, actor = USER } = {}) => call(
     'SELECT public.record_meter_readings_v2($1::uuid,$2::date,$3::jsonb,$4,$5) result', [building, date, JSON.stringify(rows), replace, key], { actor });
@@ -164,10 +164,12 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
       const only = readings => ({ buildingName: 'Toà A', readings });
       // P102 có chỉ số tháng 10 thật (đọc 15/10, chưa lên hoá đơn) ⇒ trùng tháng, "sửa" mới thay.
       await db.query("INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES($1,'2026-10-15',750,'APPROVED',$2)", [M2, ORG]);
-      for (const [rows, reason] of [[[{ roomName: 'P102', value: 800 }], 'meter_duplicate_month'], [[{ roomName: 'P104', value: 1 }], 'meter_ambiguous'],
-        [[{ roomName: 'P105', value: 2000 }], 'meter_lower_than_previous']]) {
-        assert.deepEqual(await meterRun('preview', rid(72), only(rows)), { kind: 'rejected', reason }, reason);
-        assert.ok(ACTION_INPUT_REASONS.includes(reason), reason);
+      // E03 (nghiệm thu 27/10): nhỏ hơn số đầu ⇒ kèm dữ kiện của đúng dòng (phòng, số mới, số đầu) để bot nói số đầu ngay lượt đó.
+      for (const [rows, expected] of [[[{ roomName: 'P102', value: 800 }], { kind: 'rejected', reason: 'meter_duplicate_month' }],
+        [[{ roomName: 'P104', value: 1 }], { kind: 'rejected', reason: 'meter_ambiguous' }],
+        [[{ roomName: 'P105', value: 2000 }], { kind: 'rejected', reason: 'meter_lower_than_previous', facts: { room: 'P105', value: '2000', previous: '2210' } }]]) {
+        assert.deepEqual(await meterRun('preview', rid(72), only(rows)), expected, expected.reason);
+        assert.ok(ACTION_INPUT_REASONS.includes(expected.reason), expected.reason);
       }
       assert.deepEqual(await meterRun('preview', rid(72), { ...only([{ roomName: 'P101', value: 5 }]), meterType: 'nuoc' }), { kind: 'rejected', reason: 'meter_not_found' });
       for (const replace of [false, true])
@@ -189,6 +191,32 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
       assert.match(done.result.text, /; thay 1 dòng cũ\.$/);
       await db.query("DELETE FROM public.fixture_meter_acl WHERE permission='meter_readings.edit'");
       assert.deepEqual(await meterRun('preview', rid(76), { ...only([{ roomName: 'P101', value: 1300 }]), replace: true }), { kind: 'rejected', reason: 'not_allowed' });
+    });
+  });
+
+  // E03 (nghiệm thu 27/10, "Điện phòng 102 toà 15 tháng này 8500" ⇒ máy chủ chỉ nói "nhỏ hơn chỉ số đầu", không có số đầu): lý do kèm
+  // facts của ĐÚNG dòng quyết định lý do (dòng bị loại đầu tiên); mã công tơ chỉ khi người dùng nêu mã; số đầu lẻ giữ nguyên.
+  await t.test('E03 — nhỏ hơn số đầu: dữ kiện của đúng dòng (lô), mã công tơ khi người dùng nêu, số đầu lẻ; lô còn dòng ghi được ⇒ xem trước như cũ', async () => {
+    await f.rollbackCase(async () => {
+      const only = readings => ({ buildingName: 'Toà A', readings });
+      const lower = facts => ({ kind: 'rejected', reason: 'meter_lower_than_previous', facts });
+      // Hai dòng đều nhỏ hơn số đầu: dữ kiện của dòng 1 (P101, số đầu 1.200,5), không lẫn số của dòng 2 (P105).
+      await db.query('UPDATE public.meter_readings SET current_reading=1200.5 WHERE meter_id=$1', [M1]);
+      assert.deepEqual(await meterRun('preview', rid(88), only([{ roomName: 'P101', value: 1200 }, { roomName: 'P105', value: 2000 }])),
+        lower({ room: 'P101', value: '1200', previous: '1200.5' }));
+      assert.deepEqual(await meterRun('preview', rid(88), only([{ roomName: 'P105', value: 2000 }, { roomName: 'P101', value: 1200 }])),
+        lower({ room: 'P105', value: '2000', previous: '2210' }));
+      // Người dùng nêu mã công tơ ⇒ kèm mã thật của công tơ (như nhãn dòng ở bản xem trước).
+      await db.query("INSERT INTO public.meter_readings(meter_id,reading_date,current_reading,status,organization_id) VALUES($1,'2026-09-30',50,'APPROVED',$2)", [M4B, ORG]);
+      assert.deepEqual(await meterRun('preview', rid(89), only([{ roomName: 'P104', meterCode: 'dh-104b', value: 7 }])),
+        lower({ room: 'P104', value: '7', previous: '50', meterCode: 'DH-104B' }));
+      // Lô còn dòng ghi được ⇒ bản xem trước nêu đúng dòng lệch kèm số đầu ở excluded (như cũ).
+      const mixed = await meterRun('preview', rid(90), only([{ roomName: 'P102', value: 750 }, { roomName: 'P105', value: 2000 }]));
+      assert.equal(mixed.kind, 'preview', JSON.stringify(mixed));
+      assert.deepEqual(mixed.preview.excluded, ['P105: chỉ số 2.000 nhỏ hơn số đầu 2.210 — không ghi']);
+      // Người dùng sửa số ⇒ xem trước bình thường.
+      const fixed = await meterRun('preview', rid(91), only([{ roomName: 'P105', value: 2300 }]));
+      assert.deepEqual(fixed.preview.items.map(i => i.text), ['P105: 2.210 → 2.300 (90 kWh)']);
     });
   });
 
@@ -225,5 +253,17 @@ test('chỉ số tháng: hàm dùng chung (web) + invoice.meter_record (Hermes)'
       ['app_private.hermes_invoice_reading_text_v1', false, false, false], ['meter_readings_plan_v1', false, true, false], ['record_meter_readings_v2', true, true, false]]);
     assert.deepEqual((await db.query("SELECT app_private.hermes_invoice_reading_text_v1(x) t FROM unnest('{0,7,1234,1234567.5,12.25}'::numeric[]) x")).rows.map(r => r.t),
       ['0', '7', '1.234', '1.234.567,5', '12,25']);
+  });
+
+  // E03: file đã chạy hai lượt ở fixture (sau chuỗi l14); lượt ba trên chính thân của nó vẫn qua; thân đang chạy lạ (không phải 183445 / thân
+  // của file) ⇒ $requires$ từ chối, không gỡ bản vá khác.
+  await t.test('E03 — migration chạy lại trên thân của nó; thân đang chạy lạ ⇒ từ chối', async () => {
+    const sql = E03_SQL.replace(/^BEGIN;|^COMMIT;/gm, '');
+    await f.rollbackCase(async () => {
+      await db.exec(sql);
+      await db.exec(`CREATE OR REPLACE FUNCTION app_private.hermes_invoice_meter_step_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
+        p_resolved jsonb,p_expected_basis text,p_resolution jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $x$ BEGIN RETURN '{}'::jsonb; END $x$`);
+      await assert.rejects(db.exec(sql), /hermes_invoice_meter_lower_facts_dependency_invalid/);
+    });
   });
 });

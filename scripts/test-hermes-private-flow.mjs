@@ -632,6 +632,10 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql',
     statementSha256: '62c571999d7c75cd3bbaa0d754c137708384183632bfaa3547a524091869b3c6' },
+  // Thu chi lượt 19 (20261027074419, J06): lõi giải dựng lại (sổ người dùng nêu giải trước câu hỏi hạng mục) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_expense_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql',
+    statementSha256: '5e03486a4b1a261de14eb4980abba6d76b7eaead61e69f076c1aa150c5366153' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

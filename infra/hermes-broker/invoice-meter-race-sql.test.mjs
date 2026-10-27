@@ -34,7 +34,7 @@ test('PG17 hai kết nối: chỉ số Hermes không chờ khoá toà của form
   const hermes = await pool.connect(), web = await pool.connect(), watch = await pool.connect();
   const db = adapter(hermes);
   t.after(async () => { db.close(); web.release(); watch.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
-  const { meterRun, meterApply } = await invoiceSetup(t, { database: db, meter: true, l14: true });
+  const { meterRun, meterApply } = await invoiceSetup(t, { database: db, meter: true, e03: true });
   const [hermesPid] = await Promise.all([hermes].map(async c => (await c.query('SELECT pg_backend_pid() pid')).rows[0].pid));
   const blocked = async pid => {
     for (let i = 0; i < 400; i++) {

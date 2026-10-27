@@ -153,7 +153,22 @@ const WEB = `ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS contract_id uu
       INSERT INTO public.fixture_v5_ops VALUES(p_idempotency_key,auth.uid(),v_hash,v_resp);
       RETURN v_resp;
     END $w$;
-  GRANT EXECUTE ON FUNCTION public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text) TO authenticated;`;
+  GRANT EXECUTE ON FUNCTION public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text) TO authenticated;
+  -- C07 (nghiệm thu 26–27/10): kiểm LÚC COMMIT của lần thu (constraint trigger DEFERRABLE INITIALLY DEFERRED). Thật trên các bảng v5 ghi:
+  -- phân bổ thành phần hoá đơn (finance_invoice_component_allocate_from_accounting → allocate_finance_collection_components_v1, 55000
+  -- "Phân bổ thành phần không đủ…"), chứng cứ đồng hồ (meter_capture_invoice_header_consistent, 55000), cọc phải có phòng (23514), biên nhận
+  -- Hermes chưa chốt (P0001). Bản port: lần thu của hoá đơn nằm trong fixture_commit_reject ⇒ lỗi lúc COMMIT; trống ⇒ không làm gì. Chạy thử
+  -- trong khối con rồi lùi thì sự kiện hoãn bị bỏ cùng khối — bản xem trước KHÔNG thấy lỗi này nếu không ép kiểm ngay trong khối.
+  CREATE TABLE public.fixture_commit_reject(invoice_id uuid PRIMARY KEY,message text NOT NULL,state text NOT NULL DEFAULT '55000');
+  CREATE FUNCTION app_private.fixture_collection_commit_check_v1() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $c$
+    DECLARE r public.fixture_commit_reject;
+    BEGIN
+      SELECT * INTO r FROM public.fixture_commit_reject WHERE invoice_id=NEW.invoice_id;
+      IF FOUND THEN RAISE EXCEPTION '%',r.message USING ERRCODE=r.state; END IF;
+      RETURN NULL;
+    END $c$;
+  CREATE CONSTRAINT TRIGGER fixture_collection_commit_check AFTER INSERT ON public.invoice_payment_collections DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION app_private.fixture_collection_commit_check_v1();`;
 const SEED = `INSERT INTO public.rooms VALUES('${ROOM2}','${ORG}','${BUILDING}','P102','OCCUPIED',null),('${ROOM3}','${ORG}','${BUILDING}','P103','OCCUPIED',null),
     ('${ROOM4}','${ORG}','${BUILDING}','P104','OCCUPIED',null),('${ROOM5}','${ORG}','${BUILDING}','P105','OCCUPIED',null);
   INSERT INTO public.accounts(id,organization_id,user_id,name,account_number,is_virtual) VALUES('${TK1}','${ORG}','${USER}','VCB toà A 0123456789','0123456789',false),
@@ -428,14 +443,20 @@ const PLAN8 = file('meter_readings_plan_previous_period_v1'), COLLECT8 = file('h
 // Lượt 14 (l14: true — kéo theo l8): tra cứu + bước ghi thu tiền v3 (sổ nhận ở cả TK + TT, tháng đã chốt lợi nhuận ⇒ period_closed trước kế
 // hoạch), sửa/huỷ/khôi phục v2 (lý do đòi sau kiểm cứng). Hàm khoá tháng là thân THẬT của 20260925073251 (bảng profit_monthly tối giản).
 const L14 = file('hermes_invoice_period_closed_reason_order_v1');
+// C07 (chạy cùng l14 — đúng chuỗi production sau khi áp): bước ghi thu tiền v3 thay thân, ép kiểm hoãn (constraint trigger DEFERRED) chạy trong
+// khối con ở chạy thử và ở lượt ghi (sau khi chốt biên nhận).
+const C07 = file('hermes_invoice_collect_commit_checks_v1');
 const PROFIT_LOCK = (() => { const sql = file('khoa_thang_loi_nhuan_tuyet_doi');
   const match = sql.match(/CREATE OR REPLACE FUNCTION app_private\.profit_month_locked_v1\([\s\S]*?\$function\$;/); assert.ok(match, 'profit_month_locked_v1');
   return match[0]; })();
 const L14_SUPPORT = `CREATE TABLE IF NOT EXISTS public.profit_monthly(building_id uuid NOT NULL,period_month date NOT NULL,locked_at timestamptz,PRIMARY KEY(building_id,period_month));
   ${PROFIT_LOCK}
   REVOKE ALL ON FUNCTION app_private.profit_month_locked_v1(uuid,date) FROM PUBLIC,anon,authenticated,service_role;`;
+// E03 (e03: true — kéo theo l14, đúng chuỗi production sau khi áp): bước ghi chỉ số dựng lại từ thân 183445, nhỏ hơn số đầu ⇒ kèm facts.
+export const E03_SQL = file('hermes_invoice_meter_lower_facts_v1');
 
-export async function invoiceSetup(t, { database, meter = false, edit = false, l8 = false, l14 = false } = {}) {
+export async function invoiceSetup(t, { database, meter = false, edit = false, l8 = false, l14 = false, e03 = false } = {}) {
+  if (e03) l14 = true;
   if (l14) l8 = true;
   if (l8) meter = edit = true;
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
@@ -476,7 +497,8 @@ export async function invoiceSetup(t, { database, meter = false, edit = false, l
     }
   }
   if (l8) for (const [label, sql] of [['plan l8', PLAN8], ['plan l8#2', PLAN8], ['collect v2', COLLECT8], ['collect v2#2', COLLECT8]]) await exec(label, sql);
-  if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14]]) await exec(label, sql);
+  if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14], ['c07', C07], ['c07#2', C07]]) await exec(label, sql);
+  if (e03) for (const [label, sql] of [['e03', E03_SQL], ['e03#2', E03_SQL]]) await exec(label, sql); // Idempotent.
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
     [JSON.stringify(binding), extra.action ?? 'invoice.collect', phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null]);
