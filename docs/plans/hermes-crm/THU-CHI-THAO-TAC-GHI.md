@@ -1223,3 +1223,5 @@ Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
 1. `20261027074419` áp SAU `20261024210500` (đã áp production 25/10; `$requires$` ghim md5 thân `4e29591f…` hoặc thân của chính file). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
 2. Connector / SOUL không cần đổi; không phụ thuộc thứ tự phát hành.
 3. Ghim chéo sau khi áp: chạy lại `20261024210500` ngã `hermes_expense_voucher_building_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` ⇒ thêm ngoại lệ pinned `210500` ⇐ `074419` (210500 ngoài diff ⇒ CI không đỏ). Câu lỗi của `120211` / `210634` / `013109` / `075102` không đổi (không kèm md5).
+
+**Phát hành (27/10/2026):** lane production áp `20261027074419` (dry-run xanh, backup 698 bảng) sau TEST (11:01); ngoại lệ pinned `20261024210500` ⇐ `20261027074419` (`hermes_expense_voucher_building_body_drift: …`, đo ROLLBACK). Nghiệm thu TEST c3p: lượt 1 trả `cashbook_not_held` đúng.

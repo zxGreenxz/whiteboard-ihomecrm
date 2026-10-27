@@ -705,6 +705,36 @@
       "why": "File 20261025003100 ghim md5 thân app_private.hermes_task_resolve_core_v1 mà 20261026014500 (C3k, #329) thay. Chạy lại file gốc trên trạng thái production gặp thân mới nên khối kiểm ném đúng thiết kế. Đo production 26/10 bằng check-forward-migration-idempotent --file (ROLLBACK).",
       "heQua": "Mục này ghim file gốc và migration thay thế đã áp production (biên nhận backup 26/10); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
       "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
+    },
+    {
+      "file": "20261024210500_hermes_expense_voucher_building_v1.sql",
+      "sha256": "5f2c11836d2a1fa8d629fa689230cd05b4a5cb01e11ea2db722a89368c483237",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_expense_voucher_building_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261024210500_hermes_expense_voucher_building_v1.json",
+      "supersededBy": {
+        "file": "20261027074419_hermes_expense_cashbook_first_v1.sql",
+        "sha256": "ed0649a6ede2f949f4f6ade7494cdbc02103b9a22ad989f2354d5c5b1cc2fd6d",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261027074419_hermes_expense_cashbook_first_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/343",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261024210500 ghim md5 thân app_private.hermes_expense_resolve_core_v1 mà 20261027074419 (C3o J06 — sổ người dùng nêu kiểm trước hạng mục, #343) thay. Chạy lại file gốc trên production đã áp 074419 thì khối kiểm thân ném đúng câu này. Đo 27/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
+    },
+    {
+      "file": "20261023042723_hermes_invoice_edit_v1.sql",
+      "sha256": "b230f2d3004bd8fa2095886d477bcb54d1db52d7b45e7e2bb4a1918fc28b2d0f",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_invoice_edit_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261023042723_hermes_invoice_edit_v1.json",
+      "supersededBy": {
+        "file": "20261027093517_hermes_invoice_meter_lower_facts_v1.sql",
+        "sha256": "a479c49c326f49f3ac82171eab7a2d8af14f2cfb07fee88908fe749cb4ff61a0",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261027093517_hermes_invoice_meter_lower_facts_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/343",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261023042723 ghim md5 thân app_private.hermes_invoice_meter_step_v1 (phụ thuộc của vỏ trang) mà 20261027093517 (C3o E03 — facts cho meter_lower_than_previous, #343) thay. Chạy lại file gốc trên production đã áp 093517 thì khối kiểm phụ thuộc ném đúng câu này. Đo 27/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
