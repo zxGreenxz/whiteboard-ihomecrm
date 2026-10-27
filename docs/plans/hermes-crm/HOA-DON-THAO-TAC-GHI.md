@@ -685,3 +685,19 @@ Kiểm:
 **Phát hành:** chỉ migration, áp đích danh qua lane (provenance catalog-proven giả vì hàm đã có), TEST rồi production; connector / SOUL không đổi.
 
 **Test:** `invoice-write-sql.test.mjs` ca C07 (đỏ trước sửa: bản xem trước "ghi được", lượt ghi ném 55000 lúc COMMIT); bốn đột biến (bỏ ép ở chạy thử / bỏ tập dượt / tập dượt không tự lùi / tập dượt trước khi chốt biên nhận) đều bị bắt.
+
+## Lượt E03 — chỉ số nhỏ hơn số đầu nêu kèm số đầu (27/10)
+
+**Vì sao:** nghiệm thu (trượt lặp nhiều vòng) "Điện phòng 102 toà 15 tháng này 8500" ⇒ `invoice.meter_record` trả `needs_input meter_lower_than_previous` với câu tĩnh "Chỉ số mới nhỏ hơn chỉ số đầu; hỏi lại số trên công tơ." — không có số đầu 8.580. SOUL dặn tự tra báo cáo lấy số đầu nhưng mô hình không làm. Người dùng sửa "8750" thì xem trước lại bình thường (đã đúng).
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261027093517_hermes_invoice_meter_lower_facts_v1` | bước ghi chỉ số dựng lại từ thân `183445` (md5 `bcaeccc8…` ⇒ `a1ffa3cf…`): không còn dòng ghi được ở lượt xem trước mà dòng quyết định lý do (dòng bị loại đầu tiên) là `lower_than_previous` ⇒ `rejected meter_lower_than_previous` kèm `facts {room, value, previous, meterCode?}` (tên phòng bỏ ký tự điều khiển ≤ 120; số trơn `trim_scale`; mã công tơ chỉ khi người dùng nêu mã). Mọi nhánh khác giữ từng byte; lô còn dòng ghi được vẫn ra bản xem trước nêu dòng lệch ở `excluded` |
+| `broker.mjs` | khuôn đóng `meter_lower_than_previous` trong `ACTION_REJECT_FACTS` (cờ `whole`: câu ghép THAY câu tĩnh) ⇒ "Chỉ số mới 8.500 nhỏ hơn chỉ số đầu 8.580 (phòng 102); hỏi lại số trên công tơ." (có mã: "(phòng P104, công tơ DH-104B)"); số kiểu Việt như `hermes_invoice_reading_text_v1` |
+| `action-runtime.mjs` | lý do dạng `needs_input` SQL trả qua `rejected` nhận `facts` đúng khuôn ⇒ câu ghép; không facts ⇒ câu tĩnh như trước |
+
+**Phạm vi dữ liệu:** số đầu là của chính công tơ người dùng đang ghi, sau kiểm phạm vi guard + quyền ghi `meter_readings.create` của toà (cùng chỗ bản xem trước đã nêu số đó ở `excluded`); không đọc thêm gì.
+
+**Phát hành:** connector TRƯỚC, rồi migration (lane `migrate:forward`). Connector mới + SQL cũ: không facts ⇒ câu tĩnh như hôm nay. Connector cũ + SQL mới: facts lạ với mã này ⇒ khuôn lệch ⇒ `backend_unavailable` (tệ hơn hôm nay) — không áp migration trước connector. Sau khi áp: `20261023042723` ghim md5 thân `183445` của hàm này ⇒ chạy lại đơn lẻ file đó trên production ném `hermes_invoice_edit_dependency_invalid` đúng thiết kế ⇒ cần ngoại lệ pinned trong `migration-policy.json` (kèm biên nhận áp), như các cặp ghim md5 chéo trước.
+
+**Test:** PGlite `invoice-meter-sql.test.mjs` (chuỗi `e03`: một dòng, lô hai dòng cùng nhỏ hơn — dữ kiện của dòng 1 —, số đầu lẻ, mã công tơ, lô còn dòng ghi được, sửa số; chạy lại + thân lạ bị từ chối) đỏ trước — xanh sau; `invoice-actions.test.mjs` (câu ghép, không facts ⇒ câu tĩnh, facts lệch khuôn / mã không khai ⇒ `backend_unavailable`). Đột biến bằng tay: SQL bỏ `previous` / lấy dòng cuối / luôn kèm mã; connector bỏ nhánh facts / bỏ `whole` / bỏ số đầu / bỏ phân nghìn / nới khuôn phòng ⇒ đều đỏ.

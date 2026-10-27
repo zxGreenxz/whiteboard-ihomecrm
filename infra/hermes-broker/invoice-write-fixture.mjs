@@ -452,8 +452,11 @@ const PROFIT_LOCK = (() => { const sql = file('khoa_thang_loi_nhuan_tuyet_doi');
 const L14_SUPPORT = `CREATE TABLE IF NOT EXISTS public.profit_monthly(building_id uuid NOT NULL,period_month date NOT NULL,locked_at timestamptz,PRIMARY KEY(building_id,period_month));
   ${PROFIT_LOCK}
   REVOKE ALL ON FUNCTION app_private.profit_month_locked_v1(uuid,date) FROM PUBLIC,anon,authenticated,service_role;`;
+// E03 (e03: true — kéo theo l14, đúng chuỗi production sau khi áp): bước ghi chỉ số dựng lại từ thân 183445, nhỏ hơn số đầu ⇒ kèm facts.
+export const E03_SQL = file('hermes_invoice_meter_lower_facts_v1');
 
-export async function invoiceSetup(t, { database, meter = false, edit = false, l8 = false, l14 = false } = {}) {
+export async function invoiceSetup(t, { database, meter = false, edit = false, l8 = false, l14 = false, e03 = false } = {}) {
+  if (e03) l14 = true;
   if (l14) l8 = true;
   if (l8) meter = edit = true;
   const f = await setup(t, { action: `${readFileSync(ACTION_PATH, 'utf8')}\n${SUPPORT}\n${RESOLVE}`, database });
@@ -495,6 +498,7 @@ export async function invoiceSetup(t, { database, meter = false, edit = false, l
   }
   if (l8) for (const [label, sql] of [['plan l8', PLAN8], ['plan l8#2', PLAN8], ['collect v2', COLLECT8], ['collect v2#2', COLLECT8]]) await exec(label, sql);
   if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14], ['c07', C07], ['c07#2', C07]]) await exec(label, sql);
+  if (e03) for (const [label, sql] of [['e03', E03_SQL], ['e03#2', E03_SQL]]) await exec(label, sql); // Idempotent.
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
     [JSON.stringify(binding), extra.action ?? 'invoice.collect', phase, requestId, JSON.stringify(params), extra.resolved ? JSON.stringify(extra.resolved) : null, extra.basis ?? null]);

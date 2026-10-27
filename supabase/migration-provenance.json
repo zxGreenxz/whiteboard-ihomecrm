@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 904,
     "unknown": 80,
-    "catalog-proven": 207,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13827,6 +13827,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_expense_resolve_core_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027093517_hermes_invoice_meter_lower_facts_v1.sql",
+      "version": "20261027093517",
+      "name": "hermes_invoice_meter_lower_facts_v1",
+      "scheme": "timestamp14",
+      "sha256": "a479c49c326f49f3ac82171eab7a2d8af14f2cfb07fee88908fe749cb4ff61a0",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_invoice_meter_step_v1"
       ]
     },
     {
