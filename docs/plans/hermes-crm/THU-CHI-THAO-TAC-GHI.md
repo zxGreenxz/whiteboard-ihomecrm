@@ -1287,6 +1287,8 @@ Không lọc theo `system_source` (vd `PC2609064` 01/09 `termination.refund`):
    - A04 chỉ cần connector.
 3. Ngoại lệ pinned cần thêm SAU khi áp: chạy lại `20261027074419` ngã `hermes_expense_cashbook_first_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)`. Thêm ngoại lệ `074419` ⇐ `140949`, đo bằng `check-forward-migration-idempotent.mjs --file` (ROLLBACK). 074419 ngoài diff ⇒ CI không đỏ. Ngoại lệ `210500` ⇐ `074419` đã có, câu lỗi không đổi. Câu lỗi của `120211` / `210634` / `013109` / `075102` cũng không đổi.
 
+**Trạng thái (27/10):** connector production `3bd1313b` (23:13) rồi `20261027140949` áp production 23:18 qua lane (dry-run xanh, backup, biên nhận `5a4d2f97cc20c79b`; md5 thân sau áp khớp thân của chính file). Ngoại lệ pinned đã thêm: `20261027074419` ⇐ `20261027140949` (`hermes_expense_cashbook_first_body_drift`), đo production bằng `check-forward-migration-idempotent.mjs --file` (ROLLBACK). TEST: connector `3bd1313b` đã lên; migration CHƯA áp — DB TEST quá tải (pooler ECHECKOUTTIMEOUT, pg_dump backup lỗi) 22:25–23:00, áp lại khi TEST hồi.
+
 **Vì sao "Mua đồ điện máy" lọt vào gợi ý (A04, chỉ báo cáo; KHÔNG đổi `ie_category_suggest_v1`).** Đọc TEST 27/10, công ty fixture, toà "65" = 65NTG.
 1. Hàm dùng chung `ie_category_suggest_v1` trả `null` cho "sơn lại tường phòng 302" và cả "sơn lại tường".
    - Lớp từ vựng `sua_xay_dung` (v3) chỉ có cụm liền "sơn tường", "sơn nước", "thùng sơn", "mua sơn" …; chữ "lại" chen giữa làm hỏng cụm.
