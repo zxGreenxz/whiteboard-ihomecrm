@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, BUILDING16, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
+import { expenseSetup, RULES, EDIT, APPROVE, FIXES, FLOW, ROUND1, INCOME15, BUILDING16, CASHBOOK19, WATER, IMAGE, VIRTUAL, rid, uid, code, PCCC, SYSTEM, CB2, STRANGER, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, ORG, USER } from './expense-write-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // RPC trang Thu chi (Đợt 2 Mốc 2, THU-CHI-THAO-TAC-GHI.md mục 3) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
@@ -987,6 +987,66 @@ test('hermes_expense_write_v1: chạy thử không để lại dấu vết, lô 
       // Ghim chéo: chạy lại 120211 sau file ngã đúng khối $requires$ (ngoại lệ pinned sau áp; 120211 nằm trong diff của C3).
       await db.exec('SAVEPOINT rerun');
       await assert.rejects(db.exec(ROUND1), error => error.message === 'hermes_expense_round1_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+      await db.exec('ROLLBACK TO SAVEPOINT rerun');
+    });
+  });
+
+  let n19 = 860;
+  await t.test('Lượt 19 (J06): sổ người dùng nêu giải TRƯỚC câu hỏi hạng mục — không giữ ⇒ cashbook_not_held, không thấy / mơ hồ ⇒ hỏi sổ; không nêu sổ ⇒ như cũ; luồng hệ thống vẫn thắng; đột biến bị bắt', async () => {
+    await f.rollbackCase(async () => {
+      // Ca nghiệm thu: quản lý toà chỉ "biết sổ" Chung (thấy, không giữ) và giữ sổ TK939.
+      await db.query(`INSERT INTO public.accounts VALUES('${uid(691)}',$1,$2,'Chung','',false,null,null,false),('${uid(692)}',$1,$3,'TK939','939',false,null,null,false)`, [ORG, STRANGER, USER]);
+      const create = items => run('expense.create', 'preview', rid(n19++), { items });
+      const ask = { category: undefined, content: 'sửa khoá cửa' };
+      const plain = await create([item(ask)]);
+      assert.deepEqual([plain.kind, plain.field], ['needs_input', 'category'], `không nêu sổ ⇒ hỏi hạng mục như cũ ${JSON.stringify(plain)}`);
+      const notHeld = { kind: 'rejected', reason: 'cashbook_not_held' };
+      assert.deepEqual(await create([item({ ...ask, cashbook: 'Chung' })]), notHeld, 'nghiệm thu: báo không giữ sổ ngay lượt đầu, trước câu hỏi hạng mục');
+      assert.deepEqual(await create([item({ ...ask, cashbook: 'chung' })]), notHeld, 'chữ thường');
+      // Lượt sau của kịch bản ("vậy lấy sổ TK939"): sổ giữ ⇒ mới hỏi hạng mục; nêu cả hạng mục ⇒ xem trước trừ đúng sổ đó.
+      const held = await create([item({ ...ask, cashbook: 'TK939' })]);
+      assert.deepEqual([held.kind, held.field], ['needs_input', 'category'], JSON.stringify(held));
+      const done = await create([item({ ...ask, category: 'sửa chữa', cashbook: 'TK939' })]);
+      assert.deepEqual([done.kind, done.preview?.items[0].cashbook, done.resolved?.items[0].cashbookId], ['preview', 'TK939', uid(692)], JSON.stringify(done));
+      // Sổ không thấy / mơ hồ ⇒ hỏi sổ trước hạng mục (ứng viên = sổ đang giữ khớp tên, như cũ).
+      assert.deepEqual(await create([item({ ...ask, cashbook: 'sổ zzz' })]),
+        { kind: 'needs_input', reason: 'name_unresolved', field: 'cashbook', wanted: 'sổ zzz', why: 'not_visible', candidates: [], more: false });
+      assert.deepEqual(await create([item({ ...ask, cashbook: 'quỹ' })]),
+        { kind: 'needs_input', reason: 'name_unresolved', field: 'cashbook', wanted: 'quỹ', why: 'ambiguous', candidates: [{ name: 'Quỹ VCB 0123456789' }], more: false },
+        'hai sổ khớp, chỉ sổ đang giữ là ứng viên');
+      // Lô: khoản nói số mấy; khoản trước còn thiếu hạng mục (không nêu sổ) ⇒ vẫn hỏi khoản đó trước (thứ tự khoản không đổi).
+      assert.deepEqual(await create([item(), item({ ...ask, cashbook: 'Chung' })]), { ...notHeld, item: 2 });
+      const first = await create([item(ask), item({ cashbook: 'Chung' })]);
+      assert.deepEqual([first.kind, first.field, first.item], ['needs_input', 'category', 1], JSON.stringify(first));
+      // Luồng hệ thống / khoản THU vẫn thắng sổ không giữ (không làm qua bot dù sổ nào): theo chữ (bước ghi chặn trước lõi giải) và theo
+      // rule_key của hạng mục nêu tên (chỉ bộ chọn hạng mục thấy — rào web_only đứng trước sổ trong lõi giải).
+      assert.deepEqual(await create([item({ category: 'hoa hồng', cashbook: 'Chung' })]), { kind: 'rejected', reason: 'web_only', link: '/contracts' });
+      assert.deepEqual(await create([item({ category: undefined, content: 'Thu 200k giữ xe', cashbook: 'Chung' })]), { kind: 'rejected', reason: 'web_only', link: '/income-expense' });
+      await db.query("INSERT INTO public.income_expense_types(id,organization_id,type,name,rule_key,sort_order) VALUES($1,$2,'expense','Đối tác giới thiệu','hhmg',90)", [uid(693), ORG]);
+      assert.equal((await db.query("SELECT public.hermes_expense_system_flow_v1('Đối tác giới thiệu') f")).rows[0].f, null, 'chữ không phải luồng — chỉ rule_key');
+      assert.deepEqual(await create([item({ category: 'đối tác giới thiệu', content: 'khoản tháng 10', cashbook: 'Chung' })]),
+        { kind: 'rejected', reason: 'web_only', link: '/contracts' });
+      // Không nêu sổ và không giữ sổ nào: thiếu hạng mục ⇒ vẫn hỏi hạng mục trước; đủ hạng mục ⇒ cashbook_not_held (như cũ).
+      await db.query('UPDATE public.accounts SET deleted_at=now() WHERE user_id=$1', [USER]);
+      const none = await create([item(ask)]);
+      assert.deepEqual([none.kind, none.field], ['needs_input', 'category'], JSON.stringify(none));
+      assert.deepEqual(await create([item()]), notHeld);
+      await db.query('UPDATE public.accounts SET deleted_at=NULL WHERE user_id=$1', [USER]);
+
+      // Đột biến: thân lõi giải của lượt 16 (trước file) ⇒ hỏi hạng mục, không nói gì về sổ (ca nghiệm thu đỏ).
+      const core = sql => { const start = sql.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_expense_resolve_core_v1(');
+        return sql.slice(start, sql.indexOf('\nEND $fn$;', start) + '\nEND $fn$;'.length); };
+      await db.exec(core(BUILDING16));
+      const before = await create([item({ ...ask, cashbook: 'Chung' })]);
+      assert.deepEqual([before.kind, before.field], ['needs_input', 'category'], 'đột biến: thân 210500 hỏi hạng mục trước sổ');
+      await db.exec(core(CASHBOOK19));
+      assert.deepEqual(await create([item({ ...ask, cashbook: 'Chung' })]), notHeld);
+      // Ghim chéo: chạy lại 210500 sau file ngã đúng khối $requires$ (ngoại lệ pinned sau áp; 210500 ngoài diff). Thân lạ ⇒ file từ chối.
+      await db.exec('SAVEPOINT rerun');
+      await assert.rejects(db.exec(BUILDING16), error => error.message === 'hermes_expense_voucher_building_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
+      await db.exec('ROLLBACK TO SAVEPOINT rerun');
+      await db.exec(core(ROUND1));
+      await assert.rejects(db.exec(CASHBOOK19), error => error.message === 'hermes_expense_cashbook_first_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)');
       await db.exec('ROLLBACK TO SAVEPOINT rerun');
     });
   });

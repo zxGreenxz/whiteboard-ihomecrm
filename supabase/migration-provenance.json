@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 904,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13816,6 +13816,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_invoice_action_step_v3"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql",
+      "version": "20261027074419",
+      "name": "hermes_expense_cashbook_first_v1",
+      "scheme": "timestamp14",
+      "sha256": "ed0649a6ede2f949f4f6ade7494cdbc02103b9a22ad989f2354d5c5b1cc2fd6d",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_expense_resolve_core_v1"
       ]
     },
     {

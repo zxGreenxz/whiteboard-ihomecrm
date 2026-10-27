@@ -259,7 +259,7 @@ Dùng `public.hermes_write_name_resolve_v1` (D7) cho từng khoản, trong phạ
 - **Thứ tự chọn.** Đúng `pickDefaultAccount` của `cashbook.ts`: sổ gắn toà (`quick_default_building_id`) → `p_last_used` nếu còn dùng được → sổ `is_default` → sổ đầu tiên. Tập sổ = `list_cashbooks_for_expense_v2()` ∩ công ty, bỏ sổ ảo.
 - **Web.** Truyền id "sổ dùng lần trước" đang giữ trong localStorage, nên hành vi web không đổi.
 - **Hermes.** Truyền sổ của phiếu CHI lập tay gần nhất của chính người dùng. Xem trước luôn nêu tên sổ.
-- **Sổ nêu tên.** Giải trong cùng tập sổ (bỏ dấu, bằng rồi chứa duy nhất). Sổ thấy được nhưng không dùng được (không giữ) ⇒ `cashbook_not_held` ngay ở lượt 1.
+- **Sổ nêu tên.** Giải trong cùng tập sổ (bỏ dấu, bằng rồi chứa duy nhất). Sổ thấy được nhưng không dùng được (không giữ) ⇒ `cashbook_not_held` ngay ở lượt 1, TRƯỚC câu hỏi hạng mục (lượt 19, mục 30).
 
 ### 4.4 Mã phiếu
 
@@ -1201,3 +1201,25 @@ Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
 **Phát hành:** chỉ connector, không SQL, không đổi SOUL.
 
 **Test:** `confirm-guard.test.mjs` (ba kiểu chép lệch ⇒ khớp một lần; khác khoá / hàm khoá ném / 8 ký tự đầu khác / quá ngắn / không phải token / hết hạn ⇒ unknown, bản ghi giữ nguyên; `splitConfirmField` `near`); `action-runtime.test.mjs` (ba ca nghiệm thu ⇒ applied đúng một lệnh, requestId của bản xem trước, audit `confirmTokenFix`; params khác / kết nối khác / đầu token khác / quá ngắn ⇒ không ghi, bản xem trước còn dùng được bằng token đúng; đột biến bỏ khớp gần đúng ⇒ cả ba ca đỏ); `audit-codes.test.mjs` (sổ thật nhận `confirmTokenFix` chỉ ở dòng prepared tools/call, khuôn khác bị từ chối).
+
+## 30. Lượt 19 (J06) — sổ người dùng nêu được kiểm trước câu hỏi hạng mục (27/10/2026)
+
+**Vì sao:** nghiệm thu bot Thu chi, ca J06 trượt lặp lại. Quản lý toà chỉ "biết sổ" Chung (thấy sổ, không giữ ⇒ không chi được từ sổ đó) nhắn "Chi 300k sửa khoá cửa phòng 201 toà 80, lấy tiền sổ Chung". Bot gọi `expense.create` `{items:[{buildingName:"80", roomName:"201", amount:300000, content:"sửa khoá cửa", cashbook:"Chung"}]}`. Máy chủ trả `name_unresolved` field `category` (chưa nêu hạng mục, kèm gợi ý), không nói gì về sổ ⇒ bot hỏi hạng mục; người dùng (theo kịch bản) đáp "vậy lấy sổ TK939" vì kỳ vọng bot đã báo sổ Chung không chi được.
+
+**Gốc:** lõi giải (thân `210500`) xét toà/phòng → hạng mục → sổ, nên sổ nêu tên chỉ được giải khi hạng mục đã rõ. `list_cashbooks_for_expense_v2` chỉ nhận người GIỮ sổ (CUSTODIAN); "biết sổ" là thấy mà không giữ ⇒ `cashbook_not_held` (đúng luật §4.3) nhưng tới muộn một lượt.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261027074419` (lõi giải dựng từ thân `210500`, md5 `4e29591f…` ⇒ `9636ab61…`) | `expense.create`, thứ tự mới: toà/phòng → luồng hệ thống / khoản THU của bộ chọn hạng mục (`web_only` + link, vẫn thắng mọi kiểm sau: không làm qua bot dù sổ nào) → sổ NGƯỜI DÙNG NÊU (không giữ ⇒ `cashbook_not_held`; không thấy ⇒ `name_unresolved` field `cashbook` `not_visible`; khớp nhiều ⇒ `ambiguous`, ứng viên = sổ đang giữ khớp tên, như cũ) → câu hỏi hạng mục → sổ mặc định. Không nêu sổ ⇒ như cũ (hỏi hạng mục trước; không giữ sổ nào ⇒ `cashbook_not_held` sau hạng mục). Lô: thứ tự khoản không đổi (khoản trước thiếu hạng mục vẫn được hỏi trước). `expense.edit` / `approve` / `note` / `cancel` và mọi dòng khác byte-identical với thân `210500` |
+| Connector | Không đổi: mã và khuôn đã có. `cashbook_not_held` KHÔNG kèm gợi ý sổ đang giữ vì khuôn `rejected` không có ứng viên (`facts` chỉ nhận dữ kiện khuôn đóng, không tên tự do). Muốn bot nêu "vd TK939" ngay lượt đầu cần khuôn mới (vd `needs_input` field `cashbook` với why riêng + câu tĩnh + SOUL) — chưa làm |
+
+**Kiểm:**
+- PGlite `expense-write-sql.test.mjs` 29/29. Ca lượt 19: sổ Chung của người khác + sổ TK939 của người hỏi; không nêu sổ ⇒ hỏi hạng mục; nêu "Chung" / "chung" ⇒ `cashbook_not_held` ngay lượt đầu; "TK939" ⇒ mới hỏi hạng mục, đủ hạng mục ⇒ xem trước trừ TK939; sổ lạ ⇒ hỏi sổ `not_visible`; "quỹ" ⇒ `ambiguous` chỉ nêu sổ đang giữ; lô nói khoản số mấy; hoa hồng / "Thu 200k giữ xe" / hạng mục luồng hệ thống theo `rule_key` + sổ không giữ ⇒ vẫn `web_only`; không giữ sổ nào mà không nêu sổ ⇒ như cũ. Đỏ trước (thân `210500`: `needs_input` category `unspecified`, gợi ý "Sửa chữa") — xanh sau. Đột biến trong test: nạp lại thân `210500` ⇒ hỏi hạng mục trước sổ. Chạy lại `210500` sau file ngã đúng câu; thân lạ (`120211`) ⇒ file từ chối.
+- Đột biến bằng tay (ngoài repo), mỗi cái bị đúng một ca bắt: bỏ rào `web_only` trước sổ ⇒ ca `rule_key`; hỏi hạng mục trước sổ nêu ⇒ ca nghiệm thu; sổ mặc định đè sổ nêu ⇒ ca TK939; sổ mặc định trước hạng mục khi không nêu sổ ⇒ ca "không giữ sổ nào".
+- Chạy lại `075102` / `013109` / `210634` / `120211` sau file: câu lỗi trùng `expectedMessage` của ngoại lệ pinned đã có. `expense-write-race-sql` 19/19, `wave2-b` 64/64, sổ durable (forward 64 file) 100/100, `hermes-private-flow` 131/131.
+- Tầng 2 TEST: CHƯA (phiên này không chạy gì trên TEST/production).
+
+**Phát hành:**
+1. `20261027074419` áp SAU `20261024210500` (đã áp production 25/10; `$requires$` ghim md5 thân `4e29591f…` hoặc thân của chính file). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
+2. Connector / SOUL không cần đổi; không phụ thuộc thứ tự phát hành.
+3. Ghim chéo sau khi áp: chạy lại `20261024210500` ngã `hermes_expense_voucher_building_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` ⇒ thêm ngoại lệ pinned `210500` ⇐ `074419` (210500 ngoài diff ⇒ CI không đỏ). Câu lỗi của `120211` / `210634` / `013109` / `075102` không đổi (không kèm md5).
