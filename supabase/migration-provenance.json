@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 907,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13838,6 +13838,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-27T11:31:21.675Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027131639_hermes_w2a_invoice_reminders_month_oldest_pending_v1.sql",
+      "version": "20261027131639",
+      "name": "hermes_w2a_invoice_reminders_month_oldest_pending_v1",
+      "scheme": "timestamp14",
+      "sha256": "4d641c176e879d244bcc12d9d5a83dce21f35fbc8bd069630b2ab3848e084806",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2a_catalog_v1",
+        "catalog:function:app_private.hermes_w2a_read_v1"
       ]
     },
     {

@@ -10,12 +10,15 @@
 // Tên khách (không SĐT): chỉ khi customers.view ở đúng toà của hàng và chủ hồ sơ thuộc công ty. Chữ chép trên phiếu
 // (người nộp, ghi chú, tên phiếu) và ghi chú hoá đơn: chỉ khi nối được hồ sơ khách nhìn thấy dưới RLS, cùng công ty,
 // đủ customers.view ở toà; không nối được ⇒ null (phiếu cọc giữ chỗ/quyết toán: luôn null).
-import { w2Report, id, nullable, longText, code, amount, bool, count, date, tolerant } from './wave2-kit.mjs';
+import { w2Report, id, nullable, longText, code, amount, bool, count, date, tolerant, shaped } from './wave2-kit.mjs';
 
 const oneOf = values => value => values.includes(value);
 const buildingName = nullable(longText(200)), roomName = nullable(longText(100)), personName = nullable(longText(200));
 const number = nullable(longText(100));
 const CUSTOMER = ['customers.view'];
+// invoice_adjustments summary.oldestPending: cùng kiểu với trường hàng; không lý do / người / khách.
+const OLDEST_PENDING = Object.freeze({ invoiceNumber: number, buildingName, roomName, billingMonth: nullable(longText(20)), adjustedDate: date,
+  adjustedTime: nullable(longText(5)), beforeTotal: amount, afterTotal: amount, delta: amount, revision: count });
 
 export const W2A_REPORTS = Object.freeze({
   // /reports/finance/payment-schedule (financeReports.ts:17-65; PaymentScheduleReport.tsx:36-69).
@@ -124,14 +127,15 @@ export const W2A_REPORTS = Object.freeze({
     fields: { buildingId: id, buildingName, method: code, label: longText(40), paymentCount: count, invoiceCount: count, amount },
     summary: { fromDate: date, toDate: date, total: amount, tm: amount, tk: amount, tt: amount, ct: amount, paymentCount: count } }),
   invoice_adjustments: w2Report({ permission: 'invoices.view', source: 'crm.invoice_adjustments_list_v1', scope: 'rows',
-    title: 'Điều chỉnh hoá đơn (bỏ hoá đơn huỷ) và xác nhận kiểm tra: tổng trước/sau, chênh, lý do, người/lúc điều chỉnh, người/lúc kiểm; mặc định 366 ngày qua. status PENDING = chờ kiểm (chỉ phiên bản current kiểm được), CHECKED = đã kiểm. summary.pendingCount = số đang chờ kiểm.',
+    title: 'Điều chỉnh hoá đơn (bỏ hoá đơn huỷ) + xác nhận kiểm tra: tổng trước/sau, chênh, lý do, người/lúc điều chỉnh, người/lúc kiểm; mặc định 366 ngày qua, mới trước. status PENDING = chờ kiểm (chỉ bản current kiểm được), CHECKED = đã kiểm. summary.pendingCount; chờ kiểm lâu nhất = summary.oldestPending.',
     params: ['buildingId', 'roomId', 'status', 'fromDate', 'toDate'], statuses: ['PENDING', 'CHECKED'], scopeKeys: CUSTOMER, private: true,
     fields: { adjustmentId: id, invoiceId: id, invoiceNumber: number, buildingId: id, buildingName, roomId: nullable(id), roomName,
       billingMonth: nullable(longText(20)), revision: count, current: bool, beforeTotal: amount, afterTotal: amount, delta: amount,
       reason: nullable(longText(1000)), adjustedBy: personName, adjustedDate: date, adjustedTime: nullable(longText(5)), reviewStatus: code,
       checkedBy: personName, checkedDate: nullable(date) },
     summary: { fromDate: date, toDate: date, count, pendingCount: count, checkedCount: count, oldestPendingDate: nullable(date),
-      oldestPendingDays: nullable(count) } }),
+      // Nghiệm thu F06 (20261027131639): mục chờ kiểm cũ nhất theo (lúc điều chỉnh, id) trên đúng tập hàng; khuôn đóng. Vắng ⇒ SQL cũ.
+      oldestPendingDays: nullable(count), oldestPending: tolerant(nullable(value => shaped(value, OLDEST_PENDING))) } }),
   invoice_missing: w2Report({ permission: 'invoices.view', source: 'crm.invoice_missing_v1', scope: 'rows',
     title: 'Phòng có hợp đồng hiệu lực mà CHƯA có hoá đơn tháng kỳ month (bỏ hoá đơn huỷ/xoá); summary: số phòng và theo toà. Khác "phòng chưa đóng tiền" (báo cáo collection).',
     params: ['month', 'buildingId'], required: ['month'], scopeKeys: CUSTOMER, private: true,
@@ -146,8 +150,9 @@ export const W2A_REPORTS = Object.freeze({
     summary: { rooms: count, invoices: count, debtTotal: amount, overdueRooms: count, overdueInvoices: count, overdueTotal: amount,
       minOverdueDays: nullable(count) } }),
   invoice_reminders: w2Report({ permission: 'invoices.view', source: 'crm.invoice_open_debts_v1', scope: 'rows',
-    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn (đã kèm link), tổng nợ thực gộp sẵn; publicLink = link tra hoá đơn công khai, gửi nguyên văn; null ⇒ không có link, không tự ghép tên miền (chỉ khi được xem khách). days = chỉ phòng quá hạn ≥ N ngày.',
-    params: ['buildingId', 'roomId', 'days'], scopeKeys: CUSTOMER, private: true,
+    title: 'Soạn tin nhắc nợ theo phòng (người dùng tự bấm gửi): messageText chép nguyên văn (đã kèm link), tổng nợ thực gộp sẵn; publicLink = link tra hoá đơn công khai, gửi nguyên văn; null ⇒ không link, không tự ghép tên miền. month = phòng còn nợ kỳ đó; days = phòng quá hạn ≥ N ngày (tin vẫn đủ mọi kỳ).',
+    // Nghiệm thu H03 (20261027131639): month. Bộ kiểm SQL đòi đúng tập tên ⇒ đổi cùng lượt với migration (connector trước, áp ngay sau).
+    params: ['buildingId', 'roomId', 'days', 'month'], scopeKeys: CUSTOMER, private: true,
     fields: { buildingId: id, buildingName, roomId: nullable(id), roomName, customerName: personName, debtTotal: amount, invoiceCount: count,
       oldestDueDate: nullable(date), maxOverdueDays: nullable(count), details: longText(600), publicPath: nullable(longText(60)),
       messageText: longText(1000) },

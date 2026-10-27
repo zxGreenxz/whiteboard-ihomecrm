@@ -1,4 +1,4 @@
-// Frozen contracts for sixty-six forward migrations (eight of 20261019, the B2
+// Frozen contracts for sixty-seven forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -81,6 +81,9 @@
 // named ⇒ unchanged — 20261027074419.
 // Hoá đơn E03 (27/10): the meter_record write step rebuilt from the 183445 body — no writable row left and the deciding row is lower than
 // its previous reading ⇒ meter_lower_than_previous carries closed-shape facts {room, value, previous, meterCode?} — 20261027093517.
+// Hoá đơn H03 + F06 (27/10): the package A catalog rebuilt from the 051620 body (invoice_reminders also takes month) and the package A reader
+// rebuilt from the 160002 body (invoice_reminders month keeps only rooms owing on that period, the message still lists every debt;
+// invoice_adjustments summary.oldestPending = the oldest current PENDING adjustment by (adjusted_at, id)) — 20261027131639.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -154,7 +157,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_domain_read_scope_fast_v1","sourcePath":"supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql","sha256":"707972d60c46a64f9ac724d1caf32af28b21c9102267c5440932c500b2c98915","args":"p_binding jsonb,p_domain text,p_input jsonb,p_caller text"},
   {"name":"public.hermes_domain_read_fast_v1","sourcePath":"supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql","sha256":"f8fc12df82b311bf2faa6c19d7f2c4899be22315612a16147069fc725c30db45","args":"p_binding jsonb,p_domain text,p_input jsonb"},
   {"name":"app_private.hermes_w2_scope_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"f7bebd70baf4d6f10efbf91aa7c2dcf55aef56abcea6ed588aa0f04377505ed5","args":"p_binding jsonb,p_domain text,p_input jsonb,p_caller text"},
-  {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261024160002_hermes_w2a_invoice_room_detail_link_v1.sql","sha256":"5d4fbc1507280c3daa1af9a91dfd1d36e6df05de3db2f37760d56464c4abf5fa","args":"p_report text,p_params jsonb,p_ctx jsonb"},
+  {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261027131639_hermes_w2a_invoice_reminders_month_oldest_pending_v1.sql","sha256":"492e94ea3173ac0b51737498fa3b3ed9a571ad449e86687231a5789f288465f4","args":"p_report text,p_params jsonb,p_ctx jsonb"},
   {"name":"public.vehicles_list_core_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"cdba4d0740e806c95b69b5abafcd1563d2c6d91d7ef2d5b36765f465bcc6a6ed","args":"p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL, p_customer_building_ids uuid[] DEFAULT NULL,p_include_unassigned boolean DEFAULT true,p_query text DEFAULT NULL, p_vehicle_type text DEFAULT NULL,p_room_id uuid DEFAULT NULL,p_customer_id uuid DEFAULT NULL,p_limit integer DEFAULT NULL,p_offset integer DEFAULT 0,p_allow_copied_owner boolean DEFAULT true"},
   {"name":"public.vehicles_list_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"5b1a6e3ee7e86c7702b08717ff5c8e7c7f917b7b93ef63854da024678844b0c0","args":"p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL, p_customer_building_ids uuid[] DEFAULT NULL,p_include_unassigned boolean DEFAULT true,p_query text DEFAULT NULL, p_vehicle_type text DEFAULT NULL,p_room_id uuid DEFAULT NULL,p_customer_id uuid DEFAULT NULL,p_limit integer DEFAULT NULL,p_offset integer DEFAULT 0"},
   {"name":"app_private.hermes_w2c_read_v1","sourcePath":"supabase/migrations/20261023042450_hermes_w2c_task_recurrences_v1.sql","sha256":"997d986ecc2e379d46a3da4e11fb724c7beac18c2ec23202b60f389261e61014","args":"p_report text,p_params jsonb,p_ctx jsonb"},
@@ -182,7 +185,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_contract_action_lookup_v1","sourcePath":"supabase/migrations/20261022061813_hermes_contract_return_v1.sql","sha256":"86cb8f9b6aedcac9fa9e8b75468ad8104368cbefede6c0c64f8ef0aaa2b3f316","args":"p_organization_id uuid,p_room_id uuid"},
   {"name":"public.hermes_contract_party_lookup_v1","sourcePath":"supabase/migrations/20261022074815_hermes_contract_party_draft_v1.sql","sha256":"0913c22652a8f24a2917c555813f9c30cc0284eda3beefed40e011d2e6f7f179","args":"p_organization_id uuid,p_room_id uuid,p_action text,p_params jsonb"},
   {"name":"app_private.hermes_contract_action_step_v1","sourcePath":"supabase/migrations/20261024160001_hermes_contract_return_twice_v1.sql","sha256":"e3109b28a7a24a56df9d29e4bb7641dcfef32bded661cfde1ad585a6440aaa80","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb,p_lookup jsonb"},
-  {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"c81b96d93376fa8126ee1812d150162f8aa4a39f488c13be5fed4cd5ad5244fa","args":""},
+  {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261027131639_hermes_w2a_invoice_reminders_month_oldest_pending_v1.sql","sha256":"9b7aaf414e1863d91887de784acb7a167a6a80c10d7eaa6ee65c3a67be9cf05b","args":""},
   {"name":"app_private.hermes_expense_reason_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"0ee4db61c217067454a72c3a8dba54299560eb57960944afcd163bd65f433290","args":"p_sqlstate text,p_message text,p_constraint text DEFAULT NULL"},
   {"name":"app_private.hermes_vnd_text_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"f3d53abc220bf885264299cfd2c3c150e2bb790e65c50437dc84984d1373a5ee","args":"p_amount numeric"},
   {"name":"app_private.hermes_vn_date_text_v1","sourcePath":"supabase/migrations/20261022024834_hermes_expense_write_v1.sql","sha256":"e2dbda633f3385f4bf6d36386282fd8d12019be0d32802a8cf249041453ca044","args":"p_date date,p_today date"},
@@ -244,6 +247,8 @@ export const FORWARD_FUNCTIONS = [
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261024160002_hermes_w2a_invoice_room_detail_link_v1.sql","sha256":"5d4fbc1507280c3daa1af9a91dfd1d36e6df05de3db2f37760d56464c4abf5fa"},
+  {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"c81b96d93376fa8126ee1812d150162f8aa4a39f488c13be5fed4cd5ad5244fa"},
   {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"5efa650390f7e9f04d122acc50146d9f378317ac8fa27ccdb5867986b55216b6","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_domain_read_v1","sourcePath":"supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql","sha256":"1ebe9a9e992c48938f64d109869b3e07408fb694ec15378b422b6d813c016ce4"},
   {"name":"app_private.hermes_invoice_meter_step_v1","sourcePath":"supabase/migrations/20261022183445_hermes_invoice_meter_v1.sql","sha256":"a0d43068e1a11de6cda3af8e0d48ac4edb6fd501fde5c51d232518ebc473d204"},
