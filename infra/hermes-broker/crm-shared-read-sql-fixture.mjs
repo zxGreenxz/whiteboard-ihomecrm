@@ -134,8 +134,10 @@ async function localCluster(t, { initdbArgs = [] } = {}) {
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
+    // statement_timeout chỉ để chặn treo trên PG cục bộ (không mô phỏng production). 10 s làm đỏ giả write-name-resolve-sql "every shared
+    // vector" khi runner CI tải nặng (57014 ở CI main #2149 và #2161, 27/10) ⇒ 30 s.
     const pool = new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
-      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' });
+      connectionTimeoutMillis: 5000, options: '-c statement_timeout=30000' });
     return { pool, cleanup };
   } catch (error) { cleanup(); throw error; }
 }
