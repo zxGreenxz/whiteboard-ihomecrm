@@ -423,3 +423,60 @@ test('hermes_invoice_action_v1 (invoice.collect): tiền mặt chặn, chạy th
       ['invoice_collection_plan_v1', false, false, true, false]]);
   });
 });
+
+// C07 (nghiệm thu TEST 26/10 và 27/10, 3/3 lần): chuyển khoản MỘT PHẦN hoá đơn kỳ 08 của phòng còn 4 hoá đơn mở (07 số kiểu cũ, 08, 09 quá
+// hạn; 10 có 4 điều chỉnh PENDING) — số liệu dưới là số dựng. Bản xem trước đúng; lượt xác nhận ⇒ connector action_outcome_unknown (finalize
+// 3,3–3,8 s, resultBytes 0, không hết giờ), crm_action_status ⇒ not_found. Bước ghi bắt MỌI lỗi của hàm ghi web trong khối con, nên
+// lỗi tới được PostgREST chỉ có thể nổ SAU khi hàm đã trả applied: kiểm hoãn (constraint trigger DEFERRED) của các bảng v5 ghi chạy LÚC
+// COMMIT, ngoài mọi khối EXCEPTION ⇒ PostgREST trả lỗi mã lạ (55000 ⇒ HTTP 500, 23514 / P0001 ⇒ 400) ⇒ connector giữ cờ "chưa rõ"; giao dịch
+// lùi cả biên nhận. Chạy thử của bản xem trước lùi khối con nên sự kiện hoãn bị bỏ — không bao giờ thấy. Ở đây fixture_commit_reject đóng vai
+// kiểm hoãn đó (lỗi theo DỮ LIỆU của hoá đơn: kỳ 10 cùng phòng vẫn ghi được). Sửa: bước ghi ép kiểm hoãn NGAY trong khối con (SET CONSTRAINTS
+// ALL IMMEDIATE) ở chạy thử và ở lượt ghi (sau khi chốt biên nhận) ⇒ bản xem trước nói đúng lý do, lượt ghi lùi thành state_changed.
+test('C07: kiểm hoãn lúc COMMIT của hàm ghi web chạy trong khối con — bản xem trước nói lý do, lượt ghi không nổ lúc COMMIT', { timeout: 300000 }, async t => {
+  const f = await invoiceSetup(t, { l14: true });
+  const { db, run, applyWith, trace } = f;
+  const ROOM_C07 = uid(880), [I07, I08, I09, I10] = [881, 882, 883, 884].map(uid);
+  await db.query("INSERT INTO public.rooms VALUES($1,$2,$3,'P301','OCCUPIED',null)", [ROOM_C07, ORG, BUILDING]);
+  await db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,
+      created_at,adjustment_revision) VALUES
+    ($1,$5,'INV-202606-000001','OVERDUE',$6,$7,'2026-07','2026-07-31',1800000,0,$8,'2026-07-01',0),
+    ($2,$5,'INV-2026-C0708','OVERDUE',$6,$7,'2026-08','2026-08-31',2000000,0,$8,'2026-08-01',0),
+    ($3,$5,'INV-2026-C0709','OVERDUE',$6,$7,'2026-09','2026-09-30',1900000,0,$8,'2026-09-01',0),
+    ($4,$5,'INV-2026-C0710','APPROVED',$6,$7,'2026-10','2026-10-30',1700000,0,$8,'2026-10-01',4)`, [I07, I08, I09, I10, ORG, BUILDING, ROOM_C07, CONTRACT]);
+  for (let revision = 1; revision <= 4; revision++)
+    await db.query(`INSERT INTO public.invoice_adjustments(organization_id,invoice_id,revision,idempotency_key,reason,before_snapshot,after_snapshot,before_total,after_total,
+      delta,adjusted_by) VALUES($1,$2,$3,$4,'Điều chỉnh chờ kiểm','{}','{}',1700000,1700000,0,$5)`, [ORG, I10, revision, `c07-adjustment-${revision}`, USER]);
+  const params = { buildingName: 'toa a', roomName: 'p301', month: '2026-08', method: 'TK', amount: 1500000 };
+  const clean = await run('preview', rid(80), params);
+  assert.equal(clean.kind, 'preview', JSON.stringify(clean));
+  assert.deepEqual([clean.resolved.items[0].invoiceId, clean.preview.items[0].remainingBefore, clean.preview.items[0].remainingAfter, clean.preview.items[0].statusAfter],
+    [I08, '2000000', '500000', 'PARTIAL_PAID'], 'kỳ 08 dù kỳ 07 cũ hơn chưa trả; thu một phần');
+  await db.query('INSERT INTO public.fixture_commit_reject(invoice_id,message) VALUES($1,$2)', [I08, 'Phân bổ thành phần không đủ; cần đối soát các lần thu trước']);
+  const before = await trace();
+
+  await t.test('bản xem trước: chạy thử ép kiểm hoãn trong khối con ⇒ lý do đóng, không phải bản xem trước "ghi được"; không để lại dấu vết', async () => {
+    assert.deepEqual(await run('preview', rid(81), params), { kind: 'rejected', reason: 'reconciliation_required' });
+    assert.deepEqual(await run('preview', rid(82), { ...params, amount: 2000000 }), { kind: 'rejected', reason: 'reconciliation_required' },
+      'thu đủ kỳ 08 cũng vậy: lỗi theo dữ liệu hoá đơn, không theo "một phần"');
+    const october = await run('preview', rid(83), { ...params, month: '2026-10' });
+    assert.deepEqual([october.kind, october.resolved?.items[0].invoiceId], ['preview', I10], 'kỳ 10 cùng phòng (điều chỉnh PENDING) không vướng');
+    assert.deepEqual(await trace(), before);
+  });
+
+  await t.test('lượt xác nhận với bản xem trước đã cấp: kết cục ĐÃ BIẾT (state_changed), không nổ lúc COMMIT; không lần thu, không biên nhận', async () => {
+    // Trước bản sửa: applied trong hàm rồi 55000 lúc COMMIT ⇒ HTTP 500 mã lạ ⇒ action_outcome_unknown, status not_found.
+    assert.deepEqual(await applyWith(rid(80), params, clean), { kind: 'rejected', reason: 'state_changed' });
+    assert.deepEqual(await trace(), before, 'không lần thu, khoá idempotency, biên nhận (crm_action_status ⇒ not_found) hay tiền');
+  });
+
+  await t.test('hết lỗi hoãn: cùng requestId ghi thật, COMMIT qua (ép kiểm sau khi chốt biên nhận nên rào biên nhận chưa chốt không vướng); phát lại', async () => {
+    await db.query('DELETE FROM public.fixture_commit_reject');
+    const applied = await applyWith(rid(80), params, clean);
+    assert.equal(applied.kind, 'applied', JSON.stringify(applied));
+    assert.deepEqual([applied.result.invoices[0].invoiceNumber, applied.result.invoices[0].remainingAfter, applied.result.invoices[0].statusAfter],
+      ['INV-2026-C0708', '500000', 'PARTIAL_PAID']);
+    const after = await trace();
+    assert.deepEqual([after.collections - before.collections, after.receipts - before.receipts, after.ops - before.ops], [1, 1, 1]);
+    assert.deepEqual(await applyWith(rid(80), params, clean), applied, 'phát lại y nguyên');
+  });
+});

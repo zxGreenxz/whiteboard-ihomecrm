@@ -405,6 +405,7 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng; chỉ
 | lượt 8 | `20261024041712_hermes_invoice_collect_v2` | tra cứu + bước ghi thu tiền `_v2` (bản chép `075230`, md5 ghim), THAY vỏ RPC trang (thu tiền sang v2, nhánh khác giữ nguyên) | `042723`; connector biết `receiving_book_not_held` |
 | lượt 14 | `20261024181440_hermes_invoice_period_closed_reason_order_v1` | tra cứu + bước ghi thu tiền `_v3` (bản chép `041712`, md5 ghim: tháng đã chốt LN ⇒ `period_closed`, sổ nhận ở cả TK + TT, hình thức theo sổ, câu đầu "Sổ nhận", hỏi toà khi không thấy phòng), bước ghi sửa/huỷ/khôi phục `_v2` (bản chép `042723`: lý do đòi sau kiểm cứng, `facts` số đã thu), THAY vỏ RPC trang | `041712`; connector lượt 14 (mã `period_closed`, `facts`, `reason` / `buildingName` tuỳ chọn, tên phụ `cashbook`) |
 | lượt 14 | `20261024185815_hermes_w2a_invoice_collection_retained_v1` | THAY thân hàm đọc dùng chung `invoice_collection_by_method_v1` (dải gói A; thân production `7a752b9f…` ghim): số giữ lại `active_payment_receipts.collected_amount` | — (khuôn báo cáo không đổi; áp trước hay sau connector đều được) |
+| C07 | `20261026234255_hermes_invoice_collect_commit_checks_v1` | THAY thân bước ghi thu tiền `_v3` (thân `181440` md5 `79e1bc11…` ghim): ép kiểm hoãn (constraint trigger DEFERRED) chạy trong khối con — cuối chạy thử và tập dượt tự lùi sau khi chốt biên nhận | `181440`; không mã mới (connector nào cũng được). Hàm đã có trên production ⇒ provenance catalog-proven giả, áp đích danh |
 | 6 | `invoice_month_quote_v1` | nếu P7 được duyệt | — |
 
 **Thứ tự áp (cửa idempotent của CI main chạy từng migration trên trạng thái production):** #267 → M1/M2/M5 (đã áp) → migration Mốc 2 → Mốc 3 → Mốc 4 → Mốc 5; mỗi cái áp TEST rồi production **trước khi gộp** PR. Khoá `thu_tien.collect_transfer` seed TẮT cùng lần promote web có khoá trong `capability-contract.mjs` + nhãn (bài học 19/10). Bật khoá bằng migration riêng sau nghiệm thu. Không migration nào được seed `thu_tien.collect`: khối kiểm của M2 `20261021134531` đòi khoá đó vắng.
@@ -671,3 +672,16 @@ Kiểm:
 **Phát hành:** chỉ connector; SOUL v4.33 (dặn gửi `datePhrase` cho thu tiền) lên cùng.
 
 **Test:** `vn-relative-date.test.mjs` (Chủ nhật / thứ Hai, "hôm qua", cụm không hiểu), `invoice-actions.test.mjs` (khuôn trường). Đột biến bằng tay: bỏ ánh xạ ⇒ ca đỏ.
+
+## Lượt C07 — lần thu bị từ chối lúc COMMIT ra action_outcome_unknown (27/10)
+
+**Vì sao:** nghiệm thu TEST 26/10 và 27/10 (3/3 lần): chuyển khoản một phần hoá đơn kỳ 08 của phòng còn 4 hoá đơn mở (kỳ 07 cũ hơn chưa trả, kỳ 10 có điều chỉnh chờ kiểm): bản xem trước đúng, lượt xác nhận ⇒ `action_outcome_unknown` (finalize 3,3–3,8 s, `resultBytes` 0, không hết giờ), `crm_action_status` ⇒ `not_found`. Bước ghi bắt mọi lỗi của `record_invoice_collection_v5` trong khối con, nên lỗi tới PostgREST chỉ có thể nổ SAU khi hàm trả `applied`: kiểm hoãn (constraint trigger `DEFERRABLE INITIALLY DEFERRED`) của các bảng v5 ghi chạy lúc COMMIT ⇒ mã lạ (55000 ⇒ HTTP 500) ⇒ connector giữ cờ "chưa rõ"; giao dịch lùi cả biên nhận. Chạy thử của bản xem trước lùi khối con nên sự kiện hoãn bị bỏ — không bao giờ thấy. Trigger cụ thể trên TEST CHƯA xác minh (ứng viên: phân bổ thành phần `allocate_finance_collection_components_v1` "Phân bổ thành phần không đủ…", chứng cứ đồng hồ `meter_capture_assert_invoice_facts_v1`, cọc có phòng 23514).
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261026234255_hermes_invoice_collect_commit_checks_v1` | `hermes_invoice_action_step_v3` thân `181440` + `SET CONSTRAINTS ALL IMMEDIATE` cuối chạy thử (lỗi ⇒ lý do đóng, vd `reconciliation_required`) và khối con tập dượt tự lùi (HC001) sau khi chốt biên nhận (lỗi ⇒ `state_changed`; sự kiện hoãn chạy lại lúc COMMIT như cũ, chế độ ràng buộc không rò) |
+| `invoice-write-fixture.mjs` | kiểm hoãn giả `fixture_collection_commit_check` (bảng `fixture_commit_reject`, trống ⇒ không làm gì); chuỗi `l14` nạp thêm file C07 |
+
+**Phát hành:** chỉ migration, áp đích danh qua lane (provenance catalog-proven giả vì hàm đã có), TEST rồi production; connector / SOUL không đổi.
+
+**Test:** `invoice-write-sql.test.mjs` ca C07 (đỏ trước sửa: bản xem trước "ghi được", lượt ghi ném 55000 lúc COMMIT); bốn đột biến (bỏ ép ở chạy thử / bỏ tập dượt / tập dượt không tự lùi / tập dượt trước khi chốt biên nhận) đều bị bắt.

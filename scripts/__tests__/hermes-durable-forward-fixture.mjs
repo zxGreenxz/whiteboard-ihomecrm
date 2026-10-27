@@ -1,4 +1,4 @@
-// Frozen contracts for sixty-three forward migrations (eight of 20261019, the B2
+// Frozen contracts for sixty-four forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -73,6 +73,9 @@
 // reused across buildings, outside_scope when only an out-of-scope building has it — 20261024210500.
 // Công việc lượt 16 (26/10): the task resolve core rebuilt from the 003100 body — a room named in several buildings and no building given ⇒ the
 // matching open job picks the building (one ⇒ preview, several ⇒ ask which job, none ⇒ the building question) — 20261026014500.
+// Hoá đơn C07 (27/10): the collect step _v3 rebuilt from the 181440 body — deferred (commit-time) constraint triggers of the web writer forced
+// inside the dry run and rehearsed in a self-rolled-back block after the receipt is finished, so a commit-time refusal is a known outcome
+// (reason in the preview, state_changed on apply) instead of an error after the function returned — 20261026234255.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -227,7 +230,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_invoice_lookup_core_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"5facda5f7c6421f6748ae1fa14b4b73a1c294aab60a9cf384ec167c777dc0814","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_invoice_action_step_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"60bb54c30bd74be664cda74131f0b710328b85d0f13285cf98638b2b054dcd84","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_invoice_lookup_core_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"fab7b30b657a12e6dbf2c240b49c58dfba1ece43c3f2c9c874aec290afd9a3e6","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
-  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"5efa650390f7e9f04d122acc50146d9f378317ac8fa27ccdb5867986b55216b6","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261026234255_hermes_invoice_collect_commit_checks_v1.sql","sha256":"dda48c3783a2f6720f2d4bb679910667d46252d83326b1da0c36e72f862c167a","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_invoice_edit_step_v2","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"fd80609b12520e3ce7561ab61fa49f75debc6fc8488f11d6a2472dc347e87d2c","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"4057a692dc3e1124521a120164a97996e114d3b68ca047befb0682de4355151d","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
@@ -236,6 +239,7 @@ export const FORWARD_FUNCTIONS = [
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"5efa650390f7e9f04d122acc50146d9f378317ac8fa27ccdb5867986b55216b6","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_domain_read_v1","sourcePath":"supabase/migrations/20261022153345_hermes_domain_tasks_assignee_v1.sql","sha256":"1ebe9a9e992c48938f64d109869b3e07408fb694ec15378b422b6d813c016ce4"},
   {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261025003100_hermes_task_given_per_room_v1.sql","sha256":"22e095e50fe38b19a2a05a10d1fae75ad4cf3468e99de09b0d0f5798f15cc863"},
   {"name":"app_private.hermes_task_resolve_core_v1","sourcePath":"supabase/migrations/20261024145100_hermes_task_self_assign_guard_v1.sql","sha256":"02f3d8cc82fa327cbc83ab82babe10e4bdf0d4b898a85f2682387d56a8858274"},
