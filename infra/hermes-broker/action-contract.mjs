@@ -196,6 +196,10 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
   const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
   const kind = why ?? (candidates.length ? 'ambiguous' : 'not_visible');
+  // C3n (nghiệm thu TC c3m/c3n A14): hạng mục chi có ĐÚNG MỘT gợi ý ⇒ xem trước ngay với gợi ý đó (bản xem trước nêu hạng mục) rồi hỏi đồng ý
+  // MỘT lần — người dùng vẫn quyết trên bản xem trước; hỏi riêng "chọn hạng mục X?" rồi mới xem trước làm thừa một lượt hỏi.
+  if (kind === 'unspecified' && field === 'category' && names.length === 1 && !more)
+    return `Chưa nêu ${label}; gợi ý duy nhất: ${list} — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần (nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.`;
   if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;

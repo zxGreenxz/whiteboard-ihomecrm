@@ -11,6 +11,11 @@ import { createHash, randomBytes } from 'node:crypto';
 export const CONFIRM_TTL_MS = 10 * 60_000;
 export const CONFIRM_MAX_PENDING = 1024;
 export const CONFIRM_TOKEN = /^cf_[A-Za-z0-9_-]{43}$/;
+// C3n (nghiệm thu TC c3m 27/10: 3/131 lượt xác nhận mô hình chép token lệch — thiếu ký tự, đổi hoa/thường, thừa một ký tự — params
+// vẫn y nguyên): chuỗi "giống token" mà không đúng khuôn/không có trong sổ được thử khớp GẦN ĐÚNG (redeemNear).
+export const CONFIRM_TOKEN_NEAR = /^cf_[A-Za-z0-9_-]{8,64}$/;
+const NEAR_HEAD = 8;
+const headOf = token => token.slice(3, 3 + NEAR_HEAD).toLowerCase();
 const digest = value => createHash('sha256').update(value).digest('hex');
 /** Khoá binding: sha256 của JSON các phần (thứ tự do người gọi cố định). */
 export const confirmBinding = parts => digest(JSON.stringify(parts));
@@ -28,7 +33,9 @@ export function splitConfirmField(args) {
     if (!supplied.enumerable || !Object.hasOwn(supplied, 'value')) return { args: rest, confirmToken: undefined, invalid: true };
     const value = typeof supplied.value === 'string' ? supplied.value.trim() : supplied.value;
     if (value === null || value === '') return { args: rest, confirmToken: undefined, invalid: false };
-    return typeof value === 'string' && CONFIRM_TOKEN.test(value) ? { args: rest, confirmToken: value, invalid: false } : { args: rest, confirmToken: undefined, invalid: true };
+    if (typeof value === 'string' && CONFIRM_TOKEN.test(value)) return { args: rest, confirmToken: value, invalid: false };
+    // C3n: sai khuôn nhưng "giống token" ⇒ vẫn invalid; near mang chuỗi để người gọi nào dùng redeemNear thử khớp gần đúng.
+    return { args: rest, confirmToken: undefined, invalid: true, ...(typeof value === 'string' && CONFIRM_TOKEN_NEAR.test(value) ? { near: value } : {}) };
   } catch { return { args, confirmToken: undefined, invalid: true }; }
 }
 
@@ -49,7 +56,7 @@ export function createConfirmStore({ clock, ttlMs = CONFIRM_TTL_MS, maxPending =
       for (const [key, entry] of pending) if (!live(entry, at)) pending.delete(key);
       if (pending.size >= maxPending) pending.delete(pending.keys().next().value);
       const token = `cf_${randomBytes(32).toString('base64url')}`;
-      pending.set(digest(token), { binding, payload, issuedAt: at });
+      pending.set(digest(token), { binding, payload, issuedAt: at, head: headOf(token) });
       return { token, issuedAt: at, expiresAt: new Date(at + ttlMs).toISOString() };
     },
     // Trình ra là dùng: khớp hay không token cũng không còn. why (Thu chi lượt 14): unknown (sai dạng / đã dùng / không có), expired, mismatch
@@ -67,6 +74,25 @@ export function createConfirmStore({ clock, ttlMs = CONFIRM_TTL_MS, maxPending =
       if (typeof binding === 'function') { try { expected = binding(entry.payload); } catch { expected = null; } }
       if (typeof expected !== 'string' || entry.binding !== expected) return { ok: false, why: 'mismatch', payload: entry.payload };
       return { ok: true, payload: entry.payload, issuedAt: entry.issuedAt };
+    },
+    // C3n: CHỈ gọi sau khi redeem trả unknown (token chép lệch). Nhận khi có ĐÚNG MỘT bản ghi chờ còn hạn mà khoá binding trùng hẳn
+    // (cùng kết nối + thao tác + params chuẩn hoá + requestId lúc cấp — binding là hàm payload như redeem) VÀ 8 ký tự đầu sau "cf_" trùng
+    // (không phân biệt hoa/thường). Không nới gì về nội dung: vẫn phải có bản xem trước thật với đúng params đó, vẫn dùng một lần. 0 hoặc
+    // ≥ 2 bản khớp ⇒ unknown (không đoán), bản ghi chờ giữ nguyên.
+    redeemNear(supplied, binding, now) {
+      const at = instant(now);
+      if (typeof supplied !== 'string' || !CONFIRM_TOKEN_NEAR.test(supplied) || typeof binding !== 'function') return { ok: false, why: 'unknown' };
+      const head = headOf(supplied), hits = [];
+      for (const [key, entry] of pending) {
+        if (entry.head !== head || !live(entry, at)) continue;
+        let expected;
+        try { expected = binding(entry.payload); } catch { expected = null; }
+        if (typeof expected === 'string' && entry.binding === expected) hits.push(key);
+      }
+      if (hits.length !== 1) return { ok: false, why: 'unknown' };
+      const entry = pending.get(hits[0]);
+      pending.delete(hits[0]);
+      return { ok: true, payload: entry.payload, issuedAt: entry.issuedAt, near: true };
     },
     get size() { return pending.size; },
   });

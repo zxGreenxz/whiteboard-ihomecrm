@@ -119,3 +119,23 @@ test('the real audit sink records requestIdFix only on a tools/call prepared row
   assert.deepEqual(rows.map(row => row.requestIdFix?.supplied), ['malformed', 'different']);
   assert.deepEqual(rows[0], { ...EVENT, outcome: 'prepared', requestIdFix: fix });
 });
+
+// C3n (infra/hermes-broker/confirm-guard.mjs redeemNear): lượt xác nhận khớp token gần đúng — dòng prepared mang confirmTokenFix
+// {action, requestId của bản xem trước}; token mô hình gửi không bao giờ vào sổ; chỗ khác / khuôn khác bị từ chối.
+test('the real audit sink records confirmTokenFix only on a tools/call prepared row, without the supplied token', async t => {
+  const root = await auditRoot(t);
+  const sink = createHostAudit({ directory: root });
+  const fix = { action: 'expense.create', requestId: '30000000-0000-4000-8000-000000000004' };
+  await sink.write({ ...EVENT, outcome: 'prepared', confirmTokenFix: fix });
+  await sink.write({ ...EVENT, outcome: 'prepared', confirmTokenFix: fix, requestIdFix: { ...fix, supplied: 'missing' } });
+  for (const bad of [{ outcome: 'denied', code: 'action_rejected', confirmTokenFix: fix }, { outcome: 'prepared', operation: 'tools/list', confirmTokenFix: fix },
+    { outcome: 'prepared', confirmTokenFix: { ...fix, token: 'cf_x' } }, { outcome: 'prepared', confirmTokenFix: { action: fix.action } },
+    { outcome: 'prepared', confirmTokenFix: { ...fix, requestId: 'short' } }, { outcome: 'prepared', confirmTokenFix: { ...fix, action: 'Expense Create' } },
+    { outcome: 'prepared', confirmTokenFix: 'near' }, { outcome: 'prepared', confirmTokenFix: null }])
+    await assert.rejects(sink.write({ ...EVENT, ...bad }), /host_audit_invalid/, JSON.stringify(bad));
+  await sink.close();
+  const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows[0], { ...EVENT, outcome: 'prepared', confirmTokenFix: fix });
+  assert.deepEqual(rows[1].confirmTokenFix, fix);
+  assert.equal(rows.length, 2);
+});

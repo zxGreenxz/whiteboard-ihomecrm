@@ -735,8 +735,10 @@ export function createBroker({
         const consent = context.auditConsent?.() ?? null;
         // Thu chi lượt 16: lượt xác nhận mà requestId mô hình gửi lệch / thiếu / sai khuôn ⇒ dùng requestId của token, dòng prepared ghi lại.
         const requestIdFix = context.auditRequestIdFix?.() ?? null;
+        // C3n: lượt xác nhận khớp token GẦN ĐÚNG (mô hình chép lệch confirmToken) ⇒ dòng prepared ghi {action, requestId của bản xem trước}.
+        const confirmTokenFix = context.auditConfirmTokenFix?.() ?? null;
         await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared', ...(consent ? { consent } : {}),
-          ...(requestIdFix ? { requestIdFix } : {}) }));
+          ...(requestIdFix ? { requestIdFix } : {}), ...(confirmTokenFix ? { confirmTokenFix } : {}) }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
           await timed('checkMs', async () => {

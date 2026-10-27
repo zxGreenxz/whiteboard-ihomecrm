@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { CONFIRM_MAX_PENDING, CONFIRM_TOKEN, CONFIRM_TTL_MS, confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
+import { CONFIRM_MAX_PENDING, CONFIRM_TOKEN, CONFIRM_TOKEN_NEAR, CONFIRM_TTL_MS, confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
 
 // Rào xác nhận hai lượt dùng chung (Đợt 1 nền chung, NEN-CHUNG-THAO-TAC-GHI.md mục 3.1). Rào chữ công khai của
 // crm_room_pass_upsert đi qua đúng module này (public-text-guard.test.mjs giữ hành vi cũ); thao tác ghi dùng chung
@@ -103,6 +103,39 @@ test('tách confirmToken trước validator: giữ descriptor khoá khác; null/
   const withGetter = Object.defineProperty({ confirmToken: token }, 'roomId', { enumerable: true, get: () => 'r' });
   const split = splitConfirmField(withGetter);
   assert.equal(typeof Object.getOwnPropertyDescriptor(split.args, 'roomId').get, 'function');
+});
+
+// C3n (nghiệm thu TC c3m 27/10): mô hình chép lệch token (thiếu ký tự, đổi hoa/thường, thừa ký tự) với params y nguyên.
+test('C3n redeemNear: đúng một bản ghi chờ cùng khoá + 8 ký tự đầu (không phân biệt hoa/thường) ⇒ khớp, dùng một lần; còn lại unknown và bản ghi giữ nguyên', () => {
+  const swap = text => text.replace(/[a-z]/gi, c => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+  for (const [label, garble] of [['thiếu', token => token.slice(0, 33)], ['hoa/thường', token => `cf_${swap(token.slice(3))}`], ['thừa', token => `${token}x`]]) {
+    const { guard } = store();
+    const issued = guard.issue(A, { requestId: 'r-1' });
+    const near = garble(issued.token);
+    assert.match(near, CONFIRM_TOKEN_NEAR, label);
+    assert.deepEqual(guard.redeem(near, A), { ok: false, why: 'unknown' }, `${label}: khớp chính xác không thấy`);
+    assert.equal(guard.size, 1, `${label}: token lệch không làm mất bản ghi chờ`);
+    assert.deepEqual(guard.redeemNear(near, () => A), { ok: true, payload: { requestId: 'r-1' }, issuedAt: START, near: true }, label);
+    assert.deepEqual(guard.redeemNear(near, () => A), { ok: false, why: 'unknown' }, `${label}: dùng một lần`);
+    assert.deepEqual(guard.redeem(issued.token, A), { ok: false, why: 'unknown' }, `${label}: token đúng cũng hết`);
+  }
+  const { guard, clock } = store();
+  const issued = guard.issue(A, { requestId: 'r-1' });
+  const near = issued.token.slice(0, 33);
+  for (const [label, supplied, binding] of [
+    ['khác khoá', near, () => B], ['hàm khoá ném', near, () => { throw new Error('x'); }], ['khoá không phải hàm', near, A],
+    // Ký tự thay phải khác cả khi so không phân biệt hoa/thường (token ngẫu nhiên có thể mở đầu bằng 'q').
+    ['8 ký tự đầu khác', `cf_${issued.token[3].toLowerCase() === 'q' ? 'R' : 'Q'}${issued.token.slice(4, 30)}`, () => A],
+    ['quá ngắn', issued.token.slice(0, 10), () => A], ['không phải token', `hc_${issued.token.slice(3, 30)}`, () => A], ['không phải chuỗi', 42, () => A]]) {
+    assert.deepEqual(guard.redeemNear(supplied, binding), { ok: false, why: 'unknown' }, label);
+    assert.equal(guard.size, 1, `${label}: bản ghi chờ giữ nguyên`);
+  }
+  clock.now += CONFIRM_TTL_MS;
+  assert.deepEqual(guard.redeemNear(near, () => A), { ok: false, why: 'unknown' }, 'hết hạn');
+  // splitConfirmField: chuỗi "giống token" sai khuôn ⇒ invalid kèm near (người gọi khác bỏ qua near, hành vi cũ giữ nguyên).
+  assert.deepEqual(splitConfirmField({ a: 1, confirmToken: near }), { args: { a: 1 }, confirmToken: undefined, invalid: true, near });
+  for (const bad of ['cf_short', 'abc', `cf_${'x'.repeat(65)}`]) assert.equal(Object.hasOwn(splitConfirmField({ confirmToken: bad }), 'near'), false, bad);
+  assert.equal(Object.hasOwn(splitConfirmField({ confirmToken: issued.token }), 'near'), false, 'token đúng khuôn không mang near');
 });
 
 test('rào chữ công khai đi qua module chung: không còn sổ token hay bộ sinh token riêng', () => {

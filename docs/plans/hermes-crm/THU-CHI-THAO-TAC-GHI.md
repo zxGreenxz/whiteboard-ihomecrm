@@ -1185,3 +1185,19 @@ Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
 **Phát hành:** chỉ connector (cùng PR với tên sổ trùng tên phòng của Hoá đơn); connector cũ không nhận tham số mới ⇒ SOUL v4.30 (dặn gửi `voucherDatePhrase`) lên CÙNG connector.
 
 **Test:** `vn-relative-date.test.mjs` (Chủ nhật / thứ Hai: "thứ hai tuần trước", "hôm qua", "cuối tháng trước", "thứ sáu", "hôm kia"; cụm không hiểu; `expense.edit`); `expense-actions.test.mjs` (khuôn trường). Đột biến bằng tay: bỏ ánh xạ `expense.create` ⇒ ca đỏ.
+
+## 29. Lượt 18 (C3n) — token xác nhận chép lệch (27/10/2026)
+
+**Vì sao:** nghiệm thu TC c3m vòng 1 (C3m + SOUL v4.33): 3/131 lượt xác nhận của ba trang (TC-E02, TC-A12, HĐ G21) mô hình chép `confirmToken` lệch — thiếu 13 ký tự (33/46), đổi hoa/thường giữa chuỗi, thừa một ký tự — trong khi `action`, `params`, `requestId` y nguyên ⇒ `confirmation_invalid` (unknown) ⇒ bot xem trước lại và hỏi lại ⇒ ca trượt "không ghi". ~2 % mỗi lượt xác nhận ⇒ mỗi trang hơn 100 lượt xác nhận qua 3 vòng ⇒ một mình lỗi này đủ kéo trang dưới 95 %.
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `confirm-guard.mjs` | Bản ghi chờ giữ 8 ký tự đầu sau `cf_` (chữ thường). `redeemNear(supplied, binding)`: CHỈ sau khi `redeem` trả unknown; nhận khi có ĐÚNG MỘT bản ghi chờ còn hạn mà khoá binding trùng hẳn (kết nối + thao tác + params chuẩn hoá + requestId lúc cấp) VÀ 8 ký tự đầu trùng (không phân biệt hoa/thường); 0 hoặc ≥ 2 ⇒ unknown, bản ghi giữ nguyên. `splitConfirmField` trả thêm `near` cho chuỗi "giống token" sai khuôn (`cf_` + 8–64 ký tự) |
+| `action-runtime.mjs` | Chuỗi `near` vẫn là lượt xác nhận; `redeem` unknown ⇒ `redeemNear`; khớp ⇒ ghi bình thường (requestId của bản xem trước, rào `consentText` giữ nguyên) và dòng audit prepared mang `confirmTokenFix` |
+| `broker.mjs`, `host-ownership.mjs` | Trường audit `confirmTokenFix = {action, requestId}` chỉ trên dòng `prepared` của `tools/call`; chuỗi token mô hình gửi KHÔNG vào sổ |
+
+**Không nới gì về nội dung:** vẫn phải có bản xem trước thật với đúng params đó của đúng kết nối, token vẫn dùng một lần, hết hạn 10 phút; params / kết nối / 8 ký tự đầu khác ⇒ `confirmation_invalid` như cũ. Rào chữ công khai (`public-text-guard.mjs`) không dùng khớp gần đúng.
+
+**Phát hành:** chỉ connector, không SQL, không đổi SOUL.
+
+**Test:** `confirm-guard.test.mjs` (ba kiểu chép lệch ⇒ khớp một lần; khác khoá / hàm khoá ném / 8 ký tự đầu khác / quá ngắn / không phải token / hết hạn ⇒ unknown, bản ghi giữ nguyên; `splitConfirmField` `near`); `action-runtime.test.mjs` (ba ca nghiệm thu ⇒ applied đúng một lệnh, requestId của bản xem trước, audit `confirmTokenFix`; params khác / kết nối khác / đầu token khác / quá ngắn ⇒ không ghi, bản xem trước còn dùng được bằng token đúng; đột biến bỏ khớp gần đúng ⇒ cả ba ca đỏ); `audit-codes.test.mjs` (sổ thật nhận `confirmTokenFix` chỉ ở dòng prepared tools/call, khuôn khác bị từ chối).
