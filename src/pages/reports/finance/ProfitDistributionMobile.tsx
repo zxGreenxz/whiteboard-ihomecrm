@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft, ChevronRight, CalendarDays, SlidersHorizontal, Building2, X, Check,
@@ -19,6 +19,14 @@ import { useVacantRoomNotes } from "@/hooks/useReports";
 import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
 import { categorySharesOf, invoiceAdjustmentsText } from "@/lib/invoiceAmountParts";
 import { CategoryShareBlock, IncomePartsGrid } from "@/components/reports/IncomeBreakdown";
+import { ProfitFilterBar, ProfitRowSearchInput } from "@/components/reports/ProfitRowFilters";
+import {
+  NO_CATEGORIES,
+  filterProfitRows,
+  pruneSideSelections,
+  toggleCategorySelection,
+  type ProfitViewRow,
+} from "@/lib/profitReportFilters";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { profitReportRowDescription } from "@/lib/voucherDisplayName";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -57,6 +65,11 @@ import { useFeeConfigMatrix } from "@/hooks/useFeeConfigMatrix";
 import { useLandlordIhomeProfit } from "@/hooks/useLandlordSettlement";
 import { MobileHeader, fmtShort } from "@/components/shareholders/profitMobileShared";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+
+// Chạm khoản chi → hộp phiếu của Thu chi (adapter, xem file; nhánh bottom-sheet của chính hộp đó) — chỉ tải khi mở.
+const ProfitVoucherViewer = lazy(() => import("@/components/reports/ProfitVoucherViewer"));
+
+type Side = "income" | "expense";
 
 // Giao diện MOBILE tab "BC Thu Chi" của Báo cáo Lợi Nhuận — import từ thiết kế
 // ProfitMobileC (mobile-app-finance-interface-design): header có pill tháng +
@@ -98,6 +111,8 @@ interface MRow {
   groupCount?: number;
   // id các phiếu làm nên dòng — server xét phiếu nào được tách tiền theo hoá đơn.
   voucherIds?: string[];
+  // Mã phiếu (PC…/PT…) — chỉ để ô tìm tìm theo mã.
+  voucherCode?: string | null;
   // Số tiền dòng gồm cả phần ngoài KQKD (cọc) ⇒ không tách theo hoá đơn.
   mixedDeposit?: boolean;
   // Σ khoản thanh lý cùng HĐ đã tách dòng riêng — bù khi so thiếu/thừa.
@@ -257,6 +272,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           typeId: r.typeId ?? null,
           notKqkd: r.countsInBusinessResult === false,
           voucherIds: r.voucherId ? [r.voucherId as string] : [],
+          voucherCode: r.voucherCode ?? null,
         };
         if (r.income > 0) rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
         else if (r.expense > 0) exp.push({ ...base, key: r.itemId, amount: r.expense, invoiceId: null });
@@ -275,6 +291,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           typeId: null as string | null,
           notKqkd: kqkd <= 0,
           voucherIds: [r.id as string],
+          voucherCode: r.code ?? null,
         };
         const items = (r.items || []) as any[];
         const skipDeposit = (it: any) =>
@@ -345,6 +362,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           groupCount: list.length,
           isLiq,
           voucherIds: Array.from(new Set(list.flatMap((x) => x.voucherIds ?? []))),
+          // tìm theo mã: mọi phiếu thu của hoá đơn đều khớp được
+          voucherCode: Array.from(new Set(list.map((x) => x.voucherCode).filter(Boolean))).join(" ") || null,
           mixedDeposit: list.some((x) => x.mixedDeposit),
           ...extra,
         });
@@ -464,16 +483,50 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         .map((r) => ({ key: r.key, invoiceId: r.invoiceId!, amount: r.amount, voucherIds: r.voucherIds! })),
     [shownIncomeRows],
   );
-  const { data: incomeParts, isError: partsError, refetch: retryParts } = useInvoiceAmountParts(partsRequests, !loading);
-  // "Theo hạng mục" của danh sách đang xem (chỉ để hiển thị tỷ trọng)
-  const cats = useMemo(
-    () =>
-      side === "income"
-        ? categorySharesOf(shownIncomeRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote })), incomeParts)
-        : categorySharesOf(shownExpenseRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote }))),
-    [side, shownIncomeRows, shownExpenseRows, incomeParts],
+  const {
+    data: incomeParts, isError: partsError, refetch: retryParts,
+    isPlaceholderData: partsPlaceholder, isFetching: partsFetching,
+  } = useInvoiceAmountParts(partsRequests, !loading);
+  // "Theo hạng mục" của danh sách đang xem (chỉ để hiển thị tỷ trọng). Tính cả hai bên để ô tích bên kia cũng tự
+  // bỏ hạng mục không còn khi đổi tháng/toà.
+  const incomeCats = useMemo(
+    () => categorySharesOf(shownIncomeRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote })), incomeParts),
+    [shownIncomeRows, incomeParts],
   );
+  const expenseCats = useMemo(
+    () => categorySharesOf(shownExpenseRows.map((r) => ({ key: r.key, name: r.type, amount: r.amount, isNote: r.isNote }))),
+    [shownExpenseRows],
+  );
+  const cats = side === "income" ? incomeCats : expenseCats;
   const [catsOpen, setCatsOpen] = useState(false);
+
+  // Ô tìm + ô tích "Theo hạng mục" (chủ chốt 28/10/2026, đồng bộ desktop) — CHỈ lọc danh sách đang xem; dải tổng,
+  // tỷ trọng và số đưa vào thanh kiểm chứng vẫn tính trên toàn bộ dòng. Không lưu qua F5.
+  const [rowSearch, setRowSearch] = useState<Record<Side, string>>({ income: "", expense: "" });
+  const [catPick, setCatPick] = useState<Record<Side, ReadonlySet<string>>>({
+    income: NO_CATEGORIES,
+    expense: NO_CATEGORIES,
+  });
+  // Tên hạng mục thu đến từ phần tách hoá đơn: lúc phần tách còn là số của lần trước (giữ tạm khi đổi tháng/toà),
+  // đang tải hay lỗi thì tên chưa chốt ⇒ đừng bỏ tích oan; danh sách lỗi tải (rỗng) cũng không bỏ gì (đồng bộ desktop).
+  const incomeNamesUnsettled = partsRequests.length > 0 && (partsPlaceholder || partsFetching || partsError);
+  const listError = accrualMode ? accrualError : cashError;
+  useEffect(() => {
+    if (loading || listError) return;
+    const namesOf = (list: { name: string; amount: number }[]) => list.filter((c) => c.amount !== 0).map((c) => c.name);
+    setCatPick((p) => pruneSideSelections(p, {
+      income: incomeNamesUnsettled ? null : namesOf(incomeCats),
+      expense: namesOf(expenseCats),
+    }));
+  }, [loading, listError, incomeNamesUnsettled, incomeCats, expenseCats]);
+  const clearRowFilters = (s: Side) => {
+    setRowSearch((p) => ({ ...p, [s]: "" }));
+    setCatPick((p) => ({ ...p, [s]: NO_CATEGORIES }));
+  };
+
+  // Chạm khoản chi → hộp phiếu của Thu chi (ProfitVoucherViewer).
+  const [voucherView, setVoucherView] = useState<string | null>(null);
+  const closeVoucherView = useCallback(() => setVoucherView(null), []);
 
   // Toà đang lọc (đúng 1 toà) — đọc has_elevator + hidden_fixed_expenses cho placeholder.
   const singleBuilding = useMemo(
@@ -484,6 +537,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
   const canEditBuildings = canUse(perms, "buildings", "edit");
+  // chạm khoản chi mở phiếu: chỉ người xem được Thu chi (đồng bộ desktop)
+  const canViewVoucher = canUse(perms, "income_expenses", "view");
   // tải cho mọi người: bộ dò chi cố định khớp hạng mục theo khoá fee_category (đồng bộ desktop)
   const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense");
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
@@ -602,9 +657,31 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       { invoice: r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.titleParts : null, month: ym.m },
     );
 
-  const rows = side === "income" ? shownIncomeRows : displayExpenseRows;
+  // Danh sách đang xem sau ô tìm / ô tích — chỉ bên đang mở (mô tả hiển thị phụ thuộc bên). Tên hạng mục TRÙNG
+  // khối "Theo hạng mục"; chữ để tìm gồm mô tả đang hiện + tên/mã phiếu + hạng mục + phòng + toà.
+  const view = useMemo(
+    () =>
+      filterProfitRows(
+        side === "income" ? shownIncomeRows : displayExpenseRows,
+        (r): ProfitViewRow => ({
+          key: r.key,
+          name: r.type,
+          amount: r.amount,
+          isNote: r.isNote,
+          room: r.room,
+          texts: [displayDescription(r), r.desc, r.voucherCode, r.type, r.room, r.building],
+        }),
+        { search: rowSearch[side], categories: catPick[side] },
+        side === "income" ? incomeParts : undefined,
+      ),
+    // displayDescription chỉ đọc side + invoiceTotals + tháng
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [side, shownIncomeRows, displayExpenseRows, rowSearch, catPick, incomeParts, invoiceTotals, ym.m],
+  );
+  const rows = view.rows;
   const nInc = shownIncomeRows.filter((r) => !r.isNote).length;
   const nExp = shownExpenseRows.filter((r) => !r.isNote).length;
+  const sideCount = side === "income" ? nInc : nExp;
 
   const toggleBuilding = (id: string) =>
     setBuildingIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -690,17 +767,23 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         ? (bldInMeta ? r.building : "")
         : [r.type, bldInMeta ? r.building : null, accrualMode && r.period ? `Kỳ ${r.period}` : null].filter(Boolean).join(" · ");
 
-    // chạm thẻ hoá đơn là xem hoá đơn luôn (chủ nhắn 26/10/2026); chạm số tiền xem các lần thu
+    // chạm thẻ hoá đơn là xem hoá đơn luôn (chủ nhắn 26/10/2026); chạm số tiền xem các lần thu; chạm khoản chi thật
+    // mở phiếu của Thu chi (chủ chốt 28/10/2026)
+    const voucherId = !isIncome && !r.isNote && canViewVoucher ? r.voucherIds?.[0] ?? null : null;
     const onTap = r.isMissingExpense
       ? (canCreate ? () => openCreateMissingExpense(r) : undefined)
       : r.invoiceId
         ? () => setInvoiceModal({ id: r.invoiceId!, title: displayDescription(r) + (r.room ? ` — ${r.room}` : "") })
-        : undefined;
+        : voucherId
+          ? () => setVoucherView(voucherId)
+          : undefined;
 
     return (
       <div
         key={r.key}
         onClick={onTap}
+        data-testid={`profit-mobile-row-${side}`}
+        title={voucherId ? `Chạm để xem phiếu chi${r.voucherCode ? ` ${r.voucherCode}` : ""}` : undefined}
         className={`rounded-xl px-[11px] py-[9px] shadow-[0_1px_2px_rgba(27,24,19,.04)] border ${dashed ? "border-dashed" : ""} ${onTap ? "cursor-pointer active:opacity-80" : ""}`}
         style={{ background: bg, borderColor: line }}
       >
@@ -957,11 +1040,25 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             )}
           </div>
 
-          {/* Theo hạng mục của danh sách đang xem (như Quyết toán vận hành) */}
+          {/* Ô tìm của bên đang mở — tên/mã phiếu, mã phòng (như ô tìm Thu chi) */}
+          <ProfitRowSearchInput side={side} variant="mobile" value={rowSearch[side]}
+            onChange={(value) => setRowSearch((p) => ({ ...p, [side]: value }))} />
+
+          {/* Theo hạng mục của danh sách đang xem (như Quyết toán vận hành) + ô tích lọc */}
           {!loading && (
             <CategoryShareBlock cats={cats} total={side === "income" ? shownIncomeSum : shownExpenseSum}
               kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen} onToggle={() => setCatsOpen((v) => !v)}
-              testId="profit-categories" className="rounded-xl border border-[#e7e3da] bg-white" />
+              testId="profit-categories" className="rounded-xl border border-[#e7e3da] bg-white"
+              selected={catPick[side]}
+              onToggleSelect={(name) => setCatPick((p) => ({ ...p, [side]: toggleCategorySelection(p[side], name) }))} />
+          )}
+          {!loading && view.active && (
+            <ProfitFilterBar side={side} categories={[...catPick[side]]} search={rowSearch[side].trim()}
+              shown={view.count} total={sideCount}
+              amount={catPick[side].size > 0 ? view.selectedAmount : view.total}
+              amountLabel={catPick[side].size > 0 ? "phần hạng mục đã chọn" : "tổng"}
+              onClear={() => clearRowFilters(side)}
+              className="rounded-xl border border-[#e7e3da] bg-[#faf8f4] px-3 py-2" />
           )}
           {side === "income" && partsError && (
             <button type="button" onClick={() => void retryParts()}
@@ -982,8 +1079,16 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
                   <BarChart3 className="h-[22px] w-[22px]" />
                 </div>
                 <p className="m-0 text-[12.5px] font-semibold text-[#8d8678] max-w-[230px] leading-relaxed">
-                  Không có khoản nào trong tháng {monthLabel} phù hợp bộ lọc.
+                  {view.active
+                    ? "Không có khoản nào khớp ô tìm / hạng mục đã chọn."
+                    : `Không có khoản nào trong tháng ${monthLabel} phù hợp bộ lọc.`}
                 </p>
+                {view.active && (
+                  <button type="button" onClick={() => clearRowFilters(side)} data-testid={`profit-filter-empty-${side}`}
+                    className="rounded-lg border border-[#e7e3da] bg-white px-3 py-1.5 text-[12px] font-bold text-[#514c42]">
+                    Bỏ lọc
+                  </button>
+                )}
               </div>
             ) : (
               rows.map(renderRow)
@@ -1141,6 +1246,18 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         defaultType="EXPENSE"
         defaultPrefill={expensePrefill}
       />
+
+      {/* Chạm khoản chi → hộp phiếu + Sửa (phiếu chờ duyệt) / Bổ sung chứng từ của Thu chi */}
+      {voucherView && (
+        <Suspense fallback={null}>
+          <ProfitVoucherViewer
+            key={voucherView}
+            voucherId={voucherView}
+            organizationId={selectedOrganizationId ?? null}
+            onClose={closeVoucherView}
+          />
+        </Suspense>
+      )}
 
       {/* Bánh răng → tắt/bật cảnh báo "chưa có phiếu" theo toà */}
       <MissingExpenseSettingsDialog
