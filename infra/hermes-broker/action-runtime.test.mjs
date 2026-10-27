@@ -23,7 +23,7 @@ const START = Date.parse('2026-10-21T12:00:00.000Z');
 const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, applyBudgetMs, slowResolve, factory = createActionRuntime } = {}) {
+function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, applyBudgetMs, slowResolve, factory = createActionRuntime, catalog } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const clock = { now: START }, requests = [], audits = [];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000,
@@ -35,7 +35,7 @@ function setup(t, { action = [PROBE_KEY], respond, limits, permissionGaps, apply
     async prepareAction(token, request) { requests.push([CONNECTIONS[token], structuredClone(request)]); return Object.freeze({}); },
     async finalizeAction(_token, _receipt, hooks) { return respond(requests.at(-1)[1], hooks); },
   };
-  const runtime = factory({ catalog: createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
+  const runtime = factory({ catalog: catalog ?? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM, OTHER], { keys: [PROBE_KEY, 'tasks.create'] }),
     service, clock: () => clock.now, mintRequestId: () => id(String(++next)), ...(permissionGaps ? { permissionGaps } : {}),
     ...(applyBudgetMs ? { applyBudgetMs } : {}) });
   // slowResolve: dựng quyền chậm (đồng hồ giả tiến thêm) — ca nghiệm thu 24/10 trên TEST.
@@ -341,6 +341,37 @@ test('Công việc Mốc 4: needs_input may carry item (1–20) ⇒ detail start
     reply = { kind: 'needs_input', reason: 'date_out_of_range', item };
     await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
       error => error.code === 'action_outcome_unknown', `item ${JSON.stringify(item)} sai khuôn`);
+  }
+});
+
+test('Thu chi lượt 20 (G02): mã mơ hồ của tham số DANH SÁCH ở thao tác luôn xem trước ⇒ câu gọi lại "MÃ dd/mm/yyyy" nêu đúng tên tham số; ghi thẳng / một mã ⇒ câu cũ; khuôn đóng giữ nguyên', async t => {
+  // Thao tác thử: lô mã của thao tác tiền (luôn xem trước), cùng lô đó ở thao tác ghi thẳng (reversible), một mã ở thao tác không lùi được.
+  const LOT = defineAction({ id: 'probe.batch', page: 'probe', key: PROBE_KEY, class: 'money', rpc: 'hermes_action_probe_v1', title: 'Duyệt lô thử',
+    params: { codes: param.list(param.name('voucher'), { max: 10 }) } });
+  const TAG = defineAction({ id: 'probe.tag', page: 'probe', key: PROBE_KEY, class: 'reversible', rpc: 'hermes_action_probe_v1', title: 'Gắn nhãn lô thử',
+    params: { codes: param.list(param.name('voucher'), { max: 10 }) } });
+  const VOID = defineAction({ id: 'probe.void', page: 'probe', key: PROBE_KEY, class: 'irreversible', rpc: 'hermes_action_probe_v1', title: 'Huỷ thử',
+    params: { code: param.name('voucher') } });
+  let reply;
+  const env = setup(t, { catalog: createActionCatalog([LOT, TAG, VOID], { keys: [PROBE_KEY] }), respond: () => reply });
+  const names = ['PC2609064 · 13/09/2026 · 331PHI · 45.000đ', 'PC2609064 · 01/09/2026 · 331PHI · 4.410.400đ', 'PC2609077 · 20/09/2026 · 331PHI · 600.000đ'];
+  reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609064, PC2609077', why: 'ambiguous', candidates: names.map(name => ({ name })), more: true };
+  const lot = await env.call('crm_action_run', { action: 'probe.batch', params: { codes: ['PC2609064', 'PC2609077'] } });
+  assert.deepEqual([lot.outcome, lot.reason, lot.candidates], ['needs_input', 'name_unresolved', names.map(name => ({ name }))]);
+  assert.ok(lot.detail.startsWith(`Mã phiếu 'PC2609064, PC2609077' khớp nhiều phiếu: ${names.join(', ')}, … — mỗi mã trên chọn MỘT phiếu rồi gọi lại codes (mã khác`), lot.detail);
+  assert.match(lot.detail, /gọi lại NGAY — bản xem trước nêu từng phiếu/);
+  assert.match(lot.detail, /Còn ứng viên chưa nêu/);
+  // Ghi thẳng (không có bản xem trước) hoặc một mã ⇒ câu cũ, không bao giờ "gọi lại NGAY".
+  for (const [action, params] of [['probe.tag', { codes: ['PC2609064'] }], ['probe.void', { code: 'PC2609064' }]]) {
+    const old = await env.call('crm_action_run', { action, params });
+    assert.match(old.detail, /— hỏi người dùng chọn một, rồi gọi lại với voucherCode kèm ngày hoặc toà/, action);
+    assert.doesNotMatch(old.detail, /NGAY/, action);
+  }
+  // Khuôn đóng giữ nguyên: 9 ứng viên / ứng viên mang thêm trường ⇒ khuôn lệch, không chuyển tiếp.
+  for (const candidates of [Array.from({ length: 9 }, (_, i) => ({ name: `PC260909${i} · x` })), [{ name: names[0], wanted: 'PC2609064' }]]) {
+    reply = { ...reply, candidates };
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.batch', params: { codes: ['PC2609064'] } }),
+      error => error.code === 'backend_unavailable', JSON.stringify(candidates).slice(0, 60));
   }
 });
 

@@ -265,6 +265,8 @@ Dùng `public.hermes_write_name_resolve_v1` (D7) cho từng khoản, trong phạ
 
 Lõi giải tên tìm `income_expenses.code` trong công ty, dưới RLS `income_expenses` của người hỏi. Mã cũ có thể trùng giữa các dãy (trước 25/09), nên khớp ≥ 2 phiếu ⇒ `needs_input` (`field: 'voucher'`). Mỗi ứng viên ghi "mã · ngày · toà · số tiền". Không có ứng viên ⇒ `not_found`.
 
+Duyệt (lượt 20, mục 31): mã còn ≥ 2 phiếu ⇒ chỉ giữ phiếu chờ duyệt; lô còn nhiều mã mơ hồ ⇒ MỘT `needs_input` cho mọi mã. Ghi chú / sửa / huỷ không đổi.
+
 ### 4.5 "Lập tay" và loại phiếu
 
 Phiếu lập tay theo đúng allow-list của `app_private.assert_manual_voucher_v1` (`B:2440`):
@@ -1225,3 +1227,77 @@ Nghiệm thu C3d trên TEST, vòng 1: 54/75, 0 ghi sai. Hai lỗi máy chủ.
 3. Ghim chéo sau khi áp: chạy lại `20261024210500` ngã `hermes_expense_voucher_building_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)` ⇒ thêm ngoại lệ pinned `210500` ⇐ `074419` (210500 ngoài diff ⇒ CI không đỏ). Câu lỗi của `120211` / `210634` / `013109` / `075102` không đổi (không kèm md5).
 
 **Phát hành (27/10/2026):** lane production áp `20261027074419` (dry-run xanh, backup 698 bảng) sau TEST (11:01); ngoại lệ pinned `20261024210500` ⇐ `20261027074419` (`hermes_expense_voucher_building_body_drift: …`, đo ROLLBACK). Nghiệm thu TEST c3p: lượt 1 trả `cashbook_not_held` đúng.
+
+## 31. Lượt 20: G02 + A04 — duyệt lô có mã trùng, hạng mục nhiều gợi ý (27/10/2026)
+
+**Vì sao.** Nghiệm thu bot Thu chi lượt c3q trên TEST còn hai ca trượt do máy chủ / connector. Không đổi SOUL.
+- **G02** "Duyệt và chi hết phiếu chờ toà 331PHI dưới 1 triệu". Bot đọc `expense_vouchers` (UNAPPROVED, 331PHI, `maxAmount` 1.000.000), được 4 phiếu, rồi gọi `expense.approve` với `voucherCodes` `PC2609052, PC2609112, PC2609022, PC2609064`. Máy chủ trả `name_unresolved` "Phiếu 'PC2609052' khớp nhiều …", bot hỏi người dùng. Lượt sau lại vướng `PC2609064`. Ca chỉ có 2 lượt (yêu cầu, "ok") nên trượt.
+- **A04** "Thứ hai tuần trước anh có chi 2 củ sơn lại tường phòng 302 toà 65, ghi bù giúp anh" → "ok" → "ok". `expense.create` trả "Chưa nêu hạng mục; gợi ý: Sửa chữa xây dựng, Mua đồ điện máy — hỏi người dùng chọn một, không tự chọn." Người dùng đáp "ok", bot hỏi mãi.
+
+**Gốc (đọc TEST 27/10, chỉ đọc).**
+- G02: mã trùng TRONG CÙNG toà là dữ liệu thật ở 331PHI:
+  - `PC2609052`: 01/09 1.500.000 APPROVED/POSTED và 29/09 800.000 UNAPPROVED (phiếu hoa hồng, `system_source` `contract.commission`);
+  - `PC2609064`: 01/09 4.410.400 UNAPPROVED (`termination.refund`) và 13/09 45.000 UNAPPROVED.
+
+  Lõi giải (thân 074419) không xét trạng thái và trả kết quả ở mã mơ hồ ĐẦU TIÊN.
+- Bước ghi duyệt (thân 120211, = TEST): `approval_status` khác UNAPPROVED ⇒ `not_pending`, cho cả duyệt lẫn duyệt + chi. Luồng hiện có không chi phiếu đã duyệt ⇒ "làm được" chỉ là UNAPPROVED.
+- A04: xem "Vì sao 'Mua đồ điện máy' lọt vào gợi ý" ở dưới.
+
+**Đổi gì.**
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261027140949_hermes_expense_approve_code_pick_v1` (lõi giải dựng từ thân 074419, md5 `9636ab61…` ⇒ `4bd5eb7c…`) | Chỉ nhánh mã phiếu, mọi nhánh khác byte-identical. (1) `expense.approve`: mã (không phải UUID) còn ≥ 2 phiếu sau gợi ý toà / ngày / chữ toà ⇒ chỉ giữ phiếu UNAPPROVED. Còn một ⇒ nhận; không còn ⇒ như cũ (hỏi lại đủ ứng viên, chọn rồi kế hoạch nói `not_pending`). Gợi ý người dùng nêu mà không khớp phiếu nào (vd "PC… 30/01", `buildingName` lạ) ⇒ không lọc, hỏi như cũ. Chọn rõ phiếu đã duyệt (nhãn / ngày) ⇒ lý do cũ `not_pending`. (2) Lô còn nhiều mã mơ hồ ⇒ MỘT `unresolved`: `wanted` = các mã nối ", " (≤ 200), ứng viên "mã · ngày · toà · tiền" theo từng mã (thứ tự lô, mới trước), lấy TRỌN từng mã trong trần 8 ứng viên của connector, `more` = còn ứng viên chưa nêu. Lỗi khác (không thấy, ngoài phạm vi, hai mã cùng phiếu) đứng trước mã mơ hồ đầu tiên ⇒ trả ngay như cũ; đứng sau ⇒ để lượt sau. Một mã ⇒ kết quả y như cũ. `expense.note` / `edit` / `cancel` dùng chung bộ giải nhưng không lọc (kết quả giữ nguyên) |
+| Connector `action-contract.mjs` / `action-runtime.mjs` | (a) G02: runtime suy `listParam` = tham số DANH SÁCH chứa tên đó (`voucherCodes`), chỉ khi thao tác luôn xem trước (money / irreversible). Mã phiếu mơ hồ ⇒ detail "Mã phiếu '…' khớp nhiều phiếu: … — mỗi mã trên chọn MỘT phiếu rồi gọi lại voucherCodes (mã khác giữ nguyên), ghi mã đó dạng 'MÃ dd/mm/yyyy' … hoặc chép nguyên nhãn ứng viên. Nếu vừa đọc danh sách theo bộ lọc người dùng nêu (vd "dưới 1 triệu", toà, ngày) thì chọn phiếu khớp bộ lọc và gọi lại NGAY — bản xem trước nêu từng phiếu để người dùng đồng ý một lần; chỉ hỏi người dùng chọn khi không suy ra được." `wanted` nhiều mã không cắt ở 60 ký tự. Ghi chú (ghi thẳng), sửa, huỷ (một mã) ⇒ câu cũ. (b) A04: hạng mục chi chưa nêu có NHIỀU gợi ý (hoặc `more`) ⇒ "Chưa nêu hạng mục; gợi ý: A, B (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại." Một gợi ý giữ câu C3n. Người (assignee), toà, phòng, sổ, khách, loại việc vẫn "hỏi người dùng chọn một, không tự chọn". Khuôn đóng (`needsFromOutcome`, `candidatesOf` ≤ 8, sổ audit) không đổi |
+
+Thứ tự gợi ý hạng mục (`public.hermes_expense_category_pick_v1`, thân 120211 = TEST): gợi ý của hàm dùng chung đứng đầu, rồi số từ nội dung trùng (tên + nhóm + cụm "hay nói"), bằng nhau thì theo thứ tự danh mục. Vì vậy câu nói "gợi ý đầu khớp nhất" nhưng để bot chọn "gợi ý hợp nội dung nhất".
+
+Sau lượt 20, trên dữ liệu TEST của G02 (dựng lại phép lọc bằng SELECT, chỉ đọc), xét toà 331PHI:
+- `PC2609052` ⇒ phiếu 29/09;
+- `PC2609112`, `PC2609022` ⇒ một phiếu mỗi mã;
+- `PC2609064` ⇒ vẫn hai phiếu chờ ⇒ một `needs_input` chỉ nêu mã này. Bot chọn 13/09 45.000đ theo "dưới 1 triệu" rồi gọi lại.
+
+Bản xem trước sẽ ghi `PC2609052` 29/09 là "không làm: phiếu hệ thống", vì đó là phiếu hoa hồng (`hermes_expense_manual_v1`). Đáp án G02 cần tính điều này.
+
+Không lọc theo `system_source` (vd `PC2609064` 01/09 `termination.refund`):
+- đề chỉ định lọc theo trạng thái;
+- lõi giải INVOKER không gọi được `app_private.hermes_expense_manual_v1`;
+- `system_source` chỉ là một phần allow-list "lập tay".
+
+**Kiểm.**
+- PGlite `expense-write-sql.test.mjs` 30/30. Ca lượt 20:
+  - lô nghiệm thu: chỉ `PC2609064` hỏi lại; gọi lại "PC2609064 13/09/2026" ⇒ xem trước cả lô;
+  - nhãn ứng viên / "MÃ dd/mm/yyyy" / "mã dd/mm" ⇒ đúng phiếu chờ; nhãn phiếu đã duyệt ⇒ `not_pending`;
+  - hai mã mơ hồ ⇒ một `needs_input`; lỗi trước / sau mã mơ hồ; trần 8 trọn từng mã + `more`;
+  - hai phiếu đã duyệt ⇒ như cũ; gợi ý ngày / toà không khớp ⇒ không lọc; toà đúng ⇒ lọc;
+  - note / edit / cancel ⇒ hỏi đủ ứng viên như cũ.
+
+  Đỏ trước với thân 074419 (trả `PC2609052` trước), xanh sau. Đột biến trong test: nạp lại thân 074419 ⇒ hỏi `PC2609052` trước và từng mã một. Chạy lại 074419 sau file ngã đúng câu; thân lạ (210500) ⇒ file từ chối.
+- Đột biến SQL bằng tay (ngoài repo), 6/6 bị bắt: bỏ lọc trạng thái; gộp một mã (thoát ở mã mơ hồ đầu); bỏ rào gợi ý không khớp; lọc cho mọi lệnh; bỏ trần trọn từng mã; lỗi sau mã mơ hồ trả ngay.
+- Connector: `action-contract` (câu hạng mục nhiều gợi ý, trường khác giữ câu cũ, câu mã phiếu theo `listParam`, `listParam` sai khuôn ⇒ lỗi), `action-runtime` (suy `listParam` theo tham số danh sách + lớp thao tác; ghi thẳng / một mã ⇒ câu cũ; 9 ứng viên hoặc ứng viên thêm trường ⇒ khuôn lệch), `expense-actions` (A04, G02 qua danh mục thật; note / edit / cancel giữ câu cũ). Đột biến connector bằng tay 5/5 bị bắt: bỏ câu nhiều gợi ý; không truyền `listParam`; `listParam` cả thao tác ghi thẳng; câu nhiều gợi ý cho mọi trường; cắt `wanted` ở 60 ký tự.
+- Bộ liên quan: PG17 `expense-write-race-sql` 19/19 (file mới áp hai lần trên PostgreSQL 17 thật); `wave2-b` + `write-name-resolve-sql` + `copied-text-parity-sql` + `action-foundation-sql` + `expense-write-sql` 121/121; 25 file broker / runtime offline (action-*, expense-actions, task-actions, invoice/contract/customer/sale actions, broker, mcp-http, confirm / consent / collect guard, audit-codes …) 228/228; sổ durable (forward 68 file) 100/100; `hermes-private-flow` offline 131/131 (thân mới có `search_path=''` ⇒ ghim `REVIEWED_EMPTY_SEARCH_PATH`).
+- Gate tĩnh: provenance (catalog-proven 207), doc-counts (1194 file), docs-views, repository-inventory, hermes-crm-inventory, migration-test-liveness, web-parity, unknown-review, error-swallow, docs, no-auto-apply, test-matrix, money-table-dml, management-api-writes đạt. Gate live (idempotent / rpc-surface / definer trên production): CHƯA chạy.
+- Tầng 2 TEST (áp file trong giao dịch ROLLBACK), bot thật: CHƯA (phiên này không ghi gì lên TEST / production).
+
+**Phát hành.**
+1. `20261027140949` áp SAU `20261027074419` (đã áp production 27/10; `$requires$` ghim md5 thân `9636ab61…` = TEST hoặc thân của chính file). Thay hàm đã có trên production ⇒ provenance `catalog-proven` GIẢ ⇒ áp đích danh.
+2. Connector và SQL độc lập (khuôn kết quả không đổi), nên phát hành connector TRƯỚC hoặc cùng lúc:
+   - SQL mới + connector cũ: kết quả gộp vẫn qua, kèm câu cũ "hỏi người dùng chọn một";
+   - connector mới + SQL cũ: mã mơ hồ đầu tiên đã có câu "MÃ dd/mm/yyyy" + chọn theo bộ lọc.
+   - A04 chỉ cần connector.
+3. Ngoại lệ pinned cần thêm SAU khi áp: chạy lại `20261027074419` ngã `hermes_expense_cashbook_first_body_drift: app_private.hermes_expense_resolve_core_v1(uuid,uuid[],text,jsonb)`. Thêm ngoại lệ `074419` ⇐ `140949`, đo bằng `check-forward-migration-idempotent.mjs --file` (ROLLBACK). 074419 ngoài diff ⇒ CI không đỏ. Ngoại lệ `210500` ⇐ `074419` đã có, câu lỗi không đổi. Câu lỗi của `120211` / `210634` / `013109` / `075102` cũng không đổi.
+
+**Vì sao "Mua đồ điện máy" lọt vào gợi ý (A04, chỉ báo cáo; KHÔNG đổi `ie_category_suggest_v1`).** Đọc TEST 27/10, công ty fixture, toà "65" = 65NTG.
+1. Hàm dùng chung `ie_category_suggest_v1` trả `null` cho "sơn lại tường phòng 302" và cả "sơn lại tường".
+   - Lớp từ vựng `sua_xay_dung` (v3) chỉ có cụm liền "sơn tường", "sơn nước", "thùng sơn", "mua sơn" …; chữ "lại" chen giữa làm hỏng cụm.
+   - Đối chứng: "sơn tường phòng 302" ⇒ `rule` `sua_xay_dung`, bộ chọn tự nhận "Sửa chữa xây dựng".
+2. Bộ chọn của Hermes (`hermes_expense_category_pick_v1`) rơi xuống nhánh trùng từ.
+   - Từ của nội dung sau khi bỏ từ dừng ("lại", "phòng") và số = {sơn, tường}. Hạng mục nào trùng ≥ nửa số từ đều thành gợi ý.
+   - "Sửa chữa xây dựng" có cụm "trét tường"; "Mua đồ điện máy" có cụm "quạt treo tường". Cả hai trùng đúng một từ "tường" (1/2); không hạng mục nào có "sơn".
+   - Hai gợi ý bằng điểm ⇒ xếp theo thứ tự danh mục (140 trước 170).
+
+   Từ "tường" tách khỏi cụm "quạt treo tường" kéo hạng mục điện máy vào.
+
+Hướng sửa có thể làm sau (chưa làm):
+- thêm "sơn lại tường" / "sơn (lại) tường" vào lớp từ vựng của hàm dùng chung (đổi cả web, cần parity);
+- hoặc bộ chọn chỉ tính cụm "hay nói" khi trùng NGUYÊN cụm (không tách từ).

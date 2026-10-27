@@ -90,8 +90,13 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         !candidatesOf(outcome.candidates ?? []) || !(outcome.more === undefined || typeof outcome.more === 'boolean')) fail('backend_unavailable');
     // outside_scope không bao giờ kèm tên (SQL không trả tên ngoài phạm vi được ghi; review #253): bỏ mọi tên nếu có.
     const candidates = outcome.why === 'outside_scope' ? [] : outcome.candidates ?? [];
+    // Thu chi lượt 20 (G02): tên thuộc một tham số DANH SÁCH (vd voucherCodes của expense.approve) của thao tác LUÔN xem trước (money /
+    // irreversible) ⇒ câu riêng (gọi lại "MÃ dd/mm/yyyy", chọn theo bộ lọc vừa đọc); thao tác ghi thẳng (reversible) không bao giờ nhận câu đó.
+    const action = catalog.get(plan.action);
+    const listParam = action === null || action.class === 'reversible' ? undefined : Object.entries(action.params)
+      .find(([, spec]) => spec.kind === 'list' && spec.item.kind === 'name' && spec.item.of === outcome.field)?.[0];
     return needsInput({ action: plan.action, reason: 'name_unresolved', candidates,
-      detail: mark(nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, why: outcome.why, candidates, more: outcome.more === true })) });
+      detail: mark(nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, why: outcome.why, candidates, more: outcome.more === true, listParam })) });
   }
 
   return Object.freeze({
