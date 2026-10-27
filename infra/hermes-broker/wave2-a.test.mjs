@@ -36,6 +36,9 @@ const invoiceReads = readFileSync(INVOICE_READS_PATH, 'utf8');
 // Lượt 12 Hợp đồng (24/10): thân sống cuối = thân Đợt 3 Hoá đơn + summary.publicPath của invoice_room_detail (wave2-a-hoa-don.test.mjs).
 const ROOM_LINK_PATH = 'supabase/migrations/20261024160002_hermes_w2a_invoice_room_detail_link_v1.sql';
 const roomLink = readFileSync(ROOM_LINK_PATH, 'utf8');
+// Nghiệm thu Hoá đơn 27/10 (H03 + F06): thân sống cuối = thân lượt 12 + month của invoice_reminders + summary.oldestPending (wave2-a-hoa-don.test.mjs).
+const REMINDERS_MONTH_PATH = 'supabase/migrations/20261027131639_hermes_w2a_invoice_reminders_month_oldest_pending_v1.sql';
+const remindersMonth = readFileSync(REMINDERS_MONTH_PATH, 'utf8');
 const READ_HEAD = 'CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(';
 const readBodyOf = sql => sql.slice(sql.indexOf(READ_HEAD)).split('$fn$')[1];
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
@@ -104,7 +107,9 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   assert.doesNotMatch(readBodyOf(fixed), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(fixed, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   assert.equal((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc,
-    readBodyOf(roomLink), 'thân sống = bản lượt 12 Hợp đồng (Đợt 3 Hoá đơn + publicPath của invoice_room_detail), thay bản Đợt 3 (051620)');
+    readBodyOf(remindersMonth), 'thân sống = bản nghiệm thu H03 + F06 (lượt 12 + month nhắc nợ + oldestPending), thay bản lượt 12 (160002)');
+  assert.notEqual(readBodyOf(remindersMonth), readBodyOf(roomLink), 'bản H03 + F06 thay thân bản lượt 12');
+  assert.doesNotMatch(readBodyOf(remindersMonth.replace(/--[^\n]*/g, '')), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.notEqual(readBodyOf(roomLink), readBodyOf(invoiceReads), 'bản lượt 12 thay thân bản Đợt 3');
   assert.doesNotMatch(readBodyOf(roomLink.replace(/--[^\n]*/g, '')), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.notEqual(readBodyOf(invoiceReads), readBodyOf(postFix), 'bản Đợt 3 thay thân bản sau phát hành');
