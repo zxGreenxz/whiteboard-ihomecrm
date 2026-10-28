@@ -10,6 +10,12 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const MAX_FRAME = 3 * 1024 * 1024;
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Cache-Control': 'no-store' };
 const USER_ACTIONS = new Set(['catalog', 'profile', 'resolveQr', 'rotateQr', 'revokeQr', 'startCapture', 'getCapture', 'listCaptures', 'confirmCapture', 'resolveBilling', 'evidence', 'documentReceipt', 'documentEvidence']);
+// Panel ("cả bảng"): one original surveyed for several meters; matches become ordinary child captures.
+const PANEL_ACTIONS = new Set(['startPanel', 'getPanel', 'listPanels', 'assignDetection', 'panelEvidence']);
+const WORKER_RPC = {
+  capture: { claim: 'meter_capture_claim_v1', context: 'meter_capture_worker_context_v1', receipt: 'meter_capture_evidence_receipt_v1', complete: 'meter_capture_complete_v1' },
+  panel: { claim: 'meter_capture_panel_claim_v1', context: 'meter_capture_panel_worker_context_v1', receipt: 'meter_capture_panel_evidence_receipt_v1', complete: 'meter_capture_panel_complete_v1' },
+} as const;
 class RequestError extends Error { constructor(readonly status: number, readonly code: string) { super(code); } }
 function object(value: unknown): value is Json { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function requiredString(value: unknown, regex?: RegExp): string {
@@ -79,7 +85,8 @@ export function createHandler(dependencies: Dependencies = {}) {
       const auth = request.headers.get('authorization') ?? '';
       if (!/^Bearer \S+$/.test(auth)) throw new RequestError(401, 'unauthorized');
       const body = await boundedJson(request);
-      const worker = new URL(request.url).pathname.match(/\/worker\/(claim|media|evidence|complete)$/)?.[1];
+      const route = new URL(request.url).pathname.match(/\/worker\/(?:(panel)\/)?(claim|media|evidence|complete)$/);
+      const worker = route?.[2]; const workerRpc = WORKER_RPC[route?.[1] === 'panel' ? 'panel' : 'capture'];
       const call = async (url: string, init: RequestInit = {}, token = service, apiKey = service): Promise<Response> => fetcher(url, {
         ...init, redirect: 'error', signal: AbortSignal.timeout(90_000),
         headers: { Authorization: 'Bearer ' + token, apikey: apiKey, ...init.headers },
@@ -97,6 +104,7 @@ export function createHandler(dependencies: Dependencies = {}) {
       };
       const original = (key: string) => call(base + '/storage/v1/object/authenticated/' + BUCKET + '/' + pathFor(key));
       const userRpc = (action: string, organizationId: string, payload: Json) => rpc('meter_capture_v1', { p_organization_id: organizationId, p_action: action, p_payload: payload }, true);
+      const panelRpc = (action: string, organizationId: string, payload: Json) => rpc('meter_capture_panel_v1', { p_organization_id: organizationId, p_action: action, p_payload: payload }, true);
       const signed = async (key: unknown): Promise<string | null> => {
         if (key === null || key === undefined) return null;
         const value = requiredString(key);
@@ -129,25 +137,33 @@ export function createHandler(dependencies: Dependencies = {}) {
           // no bearer token and remain private; listing 500 captures must not make 1000 sign calls.
           return { ...capture, evidenceUrl: privateReference(capture.imageObjectKey), videoUrl: privateReference(capture.videoObjectKey), evidenceFrames: evidenceFrames(capture.evidenceFrames) };
         };
+        // Panel crops are private references too; the UI signs one only when its row is opened.
+        const panelReferences = (panel: unknown) => {
+          if (!object(panel)) return panel;
+          if (!Array.isArray(panel.detections) || panel.detections.length > 40) throw new RequestError(502, 'invalid_panel_detections');
+          return { ...panel, detections: panel.detections.map(detection => object(detection) ? { ...detection, cropUrl: privateReference(detection.cropObjectKey) } : detection) };
+        };
         if (object(value.evidence)) return { ...value, evidence: { ...value.evidence, imageUrl: await signed(value.evidence.imageObjectKey), videoUrl: await signed(value.evidence.videoObjectKey), evidenceFrames: evidenceFrames(value.evidence.evidenceFrames) } };
         if ('capture' in value) return { ...value, capture: captureReferences(value.capture) };
         if (Array.isArray(value.captures)) {
           return { ...value, captures: value.captures.map(captureReferences) };
         }
+        if ('panel' in value) return { ...value, panel: panelReferences(value.panel) };
+        if (Array.isArray(value.panels)) return { ...value, panels: value.panels.map(panelReferences) };
         return value;
       };
       if (worker) {
         if (!await secretMatches(auth.slice(7), env('METER_CAPTURE_WORKER_TOKEN') ?? '')) throw new RequestError(403, 'worker_forbidden');
         if (worker === 'claim') {
           const workerId = requiredString(body.workerId); if (workerId.length > 100) throw new RequestError(400, 'invalid_worker_id');
-          return response(200, await rpc('meter_capture_claim_v1', { p_worker_id: workerId }));
+          return response(200, await rpc(workerRpc.claim, { p_worker_id: workerId }));
         }
         const jobId = requiredString(body.jobId, UUID); const leaseToken = requiredString(body.leaseToken, UUID);
         if (worker === 'complete') {
           if (!object(body.result)) throw new RequestError(400, 'invalid_result');
-          return response(200, await rpc('meter_capture_complete_v1', { p_job_id: jobId, p_lease_token: leaseToken, p_result: body.result }));
+          return response(200, await rpc(workerRpc.complete, { p_job_id: jobId, p_lease_token: leaseToken, p_result: body.result }));
         }
-        const context = await rpc('meter_capture_worker_context_v1', { p_job_id: jobId, p_lease_token: leaseToken });
+        const context = await rpc(workerRpc.context, { p_job_id: jobId, p_lease_token: leaseToken });
         if (!object(context) || !Array.isArray(context.media)) throw new RequestError(502, 'invalid_job_receipt');
         if (worker === 'media') {
           const mediaId = requiredString(body.mediaId, UUID);
@@ -163,14 +179,15 @@ export function createHandler(dependencies: Dependencies = {}) {
         if (encoded.length > MAX_FRAME * 4 / 3 + 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new RequestError(413, 'evidence_too_large');
         let bytes: Uint8Array<ArrayBuffer>; try { bytes = Uint8Array.from(atob(encoded), value => value.charCodeAt(0)); } catch { throw new RequestError(400, 'invalid_evidence'); }
         if (bytes.length > MAX_FRAME || !mimeMatches(bytes, 'image/jpeg') || hex(sha256(bytes)) !== digest) throw new RequestError(400, 'invalid_evidence_digest');
-        const key = requiredString(context.organizationId, UUID) + '/meter-captures/' + requiredString(context.captureId, UUID) + '/evidence/' + digest + '.jpg';
+        const key = requiredString(context.organizationId, UUID) + (workerRpc === WORKER_RPC.panel
+          ? '/meter-panels/' + requiredString(context.panelId, UUID) : '/meter-captures/' + requiredString(context.captureId, UUID)) + '/evidence/' + digest + '.jpg';
         const uploaded = await call(base + '/storage/v1/object/' + BUCKET + '/' + pathFor(key), { method: 'POST', headers: { 'Content-Type': 'image/jpeg', 'x-upsert': 'false', 'cache-control': 'private, no-store' }, body: bytes });
         if (!uploaded.ok) {
           if (![400, 409].includes(uploaded.status)) throw new RequestError(502, 'evidence_upload_failed');
           const existing = await digestStream(await original(key), MAX_FRAME);
           if (existing.sha256 !== digest || existing.sizeBytes !== bytes.length) throw new RequestError(409, 'evidence_conflict');
         }
-        await rpc('meter_capture_evidence_receipt_v1', { p_job_id: jobId, p_lease_token: leaseToken, p_object_key: key, p_sha256: digest, p_timestamp_seconds: body.timestampSeconds });
+        await rpc(workerRpc.receipt, { p_job_id: jobId, p_lease_token: leaseToken, p_object_key: key, p_sha256: digest, p_timestamp_seconds: body.timestampSeconds });
         return response(200, { objectKey: key });
       }
       // User routes never execute user-selected operations with the service role.
@@ -190,27 +207,39 @@ export function createHandler(dependencies: Dependencies = {}) {
         if (body.action === 'exit') args.p_rpc_name = requiredString(body.rpcName);
         return response(200, await rpc(body.action === 'invoice' ? 'meter_capture_invoice_v1' : 'meter_capture_exit_v1', args, true));
       }
-      if (body.action !== 'finalize') throw new RequestError(400, 'unsupported_action');
-      const captureId = requiredString(body.captureId, UUID);
-      const snapshot = await userRpc('getCapture', organizationId, { captureId });
-      if (!object(snapshot) || !object(snapshot.capture)) throw new RequestError(403, 'capture_not_accessible');
-      const capture = snapshot.capture; const key = requiredString(capture.objectKey);
-      const mime = requiredString(capture.mimeType);
+      if (body.action === 'panelRpc') {
+        const action = requiredString(body.rpcAction); if (!PANEL_ACTIONS.has(action) || !object(body.payload)) throw new RequestError(400, 'unsupported_action');
+        if (action === 'startPanel' && (env('METER_CAPTURE_WORKER_TOKEN') ?? '').length < 32) throw new RequestError(503, 'meter_capture_reader_not_enabled');
+        return response(200, await enrich(await panelRpc(action, organizationId, body.payload)));
+      }
+      if (body.action !== 'finalize' && body.action !== 'finalizePanel') throw new RequestError(400, 'unsupported_action');
+      // Re-hash the stored original with the service role only after the user's own read authorized it.
+      const panel = body.action === 'finalizePanel';
+      const id = requiredString(panel ? body.panelId : body.captureId, UUID);
+      const snapshot = panel ? await panelRpc('getPanel', organizationId, { panelId: id }) : await userRpc('getCapture', organizationId, { captureId: id });
+      const subject = object(snapshot) ? (panel ? snapshot.panel : snapshot.capture) : null;
+      if (!object(subject)) throw new RequestError(403, panel ? 'panel_not_accessible' : 'capture_not_accessible');
+      const key = requiredString(subject.objectKey);
+      const mime = requiredString(subject.mimeType);
       const persisted = await original(key);
       if (!persisted.ok && body.allowMissing === true && [400, 404].includes(persisted.status)) {
         const missing: unknown = await persisted.json().catch(() => null);
         if (persisted.status === 404 || (object(missing) && String(missing.statusCode) === '404')) {
-          return response(200, { capture: null, needsUpload: true });
+          return response(200, panel ? { panel: null, needsUpload: true } : { capture: null, needsUpload: true });
         }
         throw new RequestError(502, 'original_unavailable');
       }
       const actual = await digestStream(persisted);
-      if (actual.sha256 !== capture.sha256 || actual.sizeBytes !== capture.sizeBytes || !mimeMatches(actual.prefix, mime)) throw new RequestError(422, 'original_receipt_mismatch');
+      if (actual.sha256 !== subject.sha256 || actual.sizeBytes !== subject.sizeBytes || !mimeMatches(actual.prefix, mime)) throw new RequestError(422, 'original_receipt_mismatch');
+      if (panel) {
+        await rpc('meter_capture_panel_media_receipt_v1', { p_panel_id: id, p_object_key: key, p_sha256: actual.sha256, p_size_bytes: actual.sizeBytes, p_mime_type: mime, p_duration_seconds: null });
+        return response(200, await enrich(await panelRpc('finalizePanel', organizationId, { panelId: id, sha256: actual.sha256, sizeBytes: actual.sizeBytes })));
+      }
       await rpc('meter_capture_media_receipt_v1', {
-        p_capture_id: captureId, p_object_key: key, p_sha256: actual.sha256, p_size_bytes: actual.sizeBytes,
+        p_capture_id: id, p_object_key: key, p_sha256: actual.sha256, p_size_bytes: actual.sizeBytes,
         p_mime_type: mime, p_duration_seconds: null,
       });
-      return response(200, await enrich(await userRpc('finalizeCapture', organizationId, { captureId, sha256: actual.sha256, sizeBytes: actual.sizeBytes })));
+      return response(200, await enrich(await userRpc('finalizeCapture', organizationId, { captureId: id, sha256: actual.sha256, sizeBytes: actual.sizeBytes })));
     } catch (error) {
       if (error instanceof RequestError) return response(error.status, { error: error.code });
       return response(502, { error: 'meter_capture_gateway_failed' });

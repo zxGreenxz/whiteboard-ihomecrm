@@ -8,7 +8,8 @@ const path = 'supabase/migrations/20261022144130_meter_capture_evidence_v1.sql';
 const reviewPath = 'supabase/migrations/20261023142638_meter_capture_sol_review.sql';
 const guardPath = 'supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql';
 const correctionPath = 'supabase/migrations/20261023150206_meter_capture_correction_chain.sql';
-const readSql = () => [path,reviewPath,guardPath,correctionPath].map(p=>readFileSync(p,'utf8')).join('\n');
+const panelPath = 'supabase/migrations/20261028034144_meter_capture_panel_v1.sql';
+const readSql = () => [path,reviewPath,guardPath,correctionPath,panelPath].map(p=>readFileSync(p,'utf8')).join('\n');
 const terminationSql = readFileSync('supabase/migrations/20260627000001_termination_extra_charges.sql','utf8');
 const terminationStart = terminationSql.indexOf('CREATE OR REPLACE FUNCTION public._termination_apply_extra_charges(');
 const terminationHelper = terminationSql.slice(terminationStart,terminationSql.indexOf('END $$;',terminationStart)+'END $$;'.length);
@@ -30,7 +31,7 @@ async function fixture(source = sql) {
   AND $3=ANY(ARRAY['meter_readings.view','meter_readings.create','meter_readings.edit','meters.edit','invoices.view','invoices.create','contracts.view','contracts.edit'])
   AND $3 IS DISTINCT FROM nullif(current_setting('test.denied_permission',true),'') $$;
  CREATE TABLE buildings(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
- CREATE TABLE rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,name text);
+ CREATE TABLE rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,name text,code text,deleted_at timestamptz);
  CREATE TABLE meters(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,room_id uuid,service_id uuid,meter_type text DEFAULT 'ELECTRICITY',code text DEFAULT 'D1',name text DEFAULT 'Điện',serial_number text DEFAULT 'S1',status text DEFAULT 'ACTIVE',deleted_at timestamptz);
  CREATE TABLE contracts(id uuid PRIMARY KEY,organization_id uuid,room_id uuid,status text DEFAULT 'ACTIVE',start_date date DEFAULT '2026-10-01',end_date date DEFAULT '2027-12-31',actual_end_date date,initial_electricity_reading numeric DEFAULT 100,updated_at timestamptz DEFAULT '2026-10-01',deleted_at timestamptz);
  CREATE TABLE meter_readings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,organization_id uuid,meter_id uuid,contract_id uuid,building_id uuid,room_id uuid,service_id uuid,meter_type text,reading_code text,reading_date date,previous_reading numeric(10,2),current_reading numeric(10,2),consumption numeric(10,2) GENERATED ALWAYS AS (current_reading-previous_reading) STORED,status text,approved_by uuid,approved_at timestamptz,recorded_by uuid,notes text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT clock_timestamp(),deleted_at timestamptz,CHECK(current_reading>=previous_reading));
@@ -731,4 +732,174 @@ test('anonymous Storage helper denies private meter media even under a broad leg
  assert.equal((await db.query("DELETE FROM storage.objects WHERE name='anonymous-write' RETURNING id")).rows.length, 1);
  await db.exec('RESET ROLE');
  assert.equal((await db.query("SELECT count(*)::int n FROM storage.objects WHERE bucket_id='meter-capture-media'")).rows[0].n, 2);
+});
+
+// Panel ("cả bảng"): one survey of several meters becomes ordinary child captures.
+const [room2, meter2, contract2] = [id(60), id(61), id(62)];
+const profile2Path = `${org}/profiles/${meter2}/${actor}/${id(63)}`;
+const panelSha = 'b'.repeat(64);
+const panelRpc = async (db, action, payload = {}, organization = org) =>
+ (await db.query('SELECT public.meter_capture_panel_v1($1,$2,$3) AS result', [organization, action, JSON.stringify(payload)])).rows[0].result;
+const panelStart = (db, changes = {}) => panelRpc(db, 'startPanel', { clientId: id(200), buildingId: building, purpose: 'MONTHLY', readingDate: '2026-10-31', month: '2026-10',
+ capturedAt: '2026-10-31T01:00:00Z', sha256: panelSha, mimeType: 'image/jpeg', sizeBytes: 500, ...changes });
+async function panelFixture() {
+ const db = await fixture();
+ await db.exec(`INSERT INTO rooms(id,organization_id,building_id,name) VALUES('${room2}','${org}','${building}','1.02');
+  INSERT INTO meters(id,organization_id,building_id,room_id,service_id,code) VALUES('${meter2}','${org}','${building}','${room2}','${service}','D2');
+  INSERT INTO contracts(id,organization_id,room_id) VALUES('${contract2}','${org}','${room2}');
+  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('meter-capture-media','${profile2Path}','{"mimetype":"image/jpeg"}');`);
+ await register(db);
+ const second = await rpc(db, 'profile', { meterId: meter2, expectedVersion: 0, serial: 'S2', displayKind: 'MECHANICAL', decimalPlaces: 1, registerCode: 'total', referencePath: profile2Path, verified: true });
+ return { db, qr2: second.qrText };
+}
+async function panelReceive(db, started) {
+ const p = started.panel;
+ await db.query('INSERT INTO storage.objects(bucket_id,name,metadata) VALUES($1,$2,$3)', ['meter-capture-media', started.uploadPath, { mimetype: p.mimeType }]);
+ await db.query('SELECT meter_capture_panel_media_receipt_v1($1,$2,$3,$4,$5,$6)', [p.id, started.uploadPath, p.sha256, p.sizeBytes, p.mimeType, p.durationSeconds ?? null]);
+ await panelRpc(db, 'finalizePanel', { panelId: p.id, sha256: p.sha256, sizeBytes: p.sizeBytes });
+ return (await db.query("SELECT meter_capture_panel_claim_v1('panel-worker') AS result")).rows[0].result;
+}
+async function panelClaimed(db, changes = {}) {
+ const started = await panelStart(db, changes);
+ return { started, panel: started.panel, job: await panelReceive(db, started) };
+}
+async function panelEvidence(db, job, n, ts = 0) {
+ const digest = String(n).padStart(2, '0').repeat(32), key = `${org}/meter-panels/${job.panelId}/evidence/${digest}.jpg`;
+ await db.query('INSERT INTO storage.objects(bucket_id,name,metadata) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', ['meter-capture-media', key, { mimetype: 'image/jpeg' }]);
+ await db.query('SELECT meter_capture_panel_evidence_receipt_v1($1,$2,$3,$4,$5)', [job.jobId, job.leaseToken, key, digest, ts]);
+ return { objectKey: key, sha256: digest, sizeBytes: 1000 + n, timestampSeconds: ts };
+}
+const detection = (index, crop, frame, extra = {}) => ({ index, label: null, registerCode: null, display: 'mechanical', value: null, clear: false, qrTokens: [], crop,
+ frames: [{ objectKey: frame.objectKey, timestampSeconds: frame.timestampSeconds }], ...extra });
+const surveyed = detections => ({ mediaValidated: true, durationSeconds: null, issues: [], ai: { status: 'ok', version: 'fixture-ai;panel/1' }, detections });
+const completePanel = async (db, job, result) => (await db.query('SELECT meter_capture_panel_complete_v1($1,$2,$3) AS result', [job.jobId, job.leaseToken, result])).rows[0].result;
+
+test('panel survey matches QR first, then room label; children reuse reason-required review, confirmation and billing', async t => {
+ const { db, qr2 } = await panelFixture(); t.after(() => db.close());
+ const { panel, job } = await panelClaimed(db);
+ assert.equal(job.kind, 'panel'); assert.equal(job.media[0].id, panel.id); assert.equal(job.media[0].kind, 'image');
+ assert.equal((await panelRpc(db, 'getPanel', { panelId: panel.id })).panel.status, 'PROCESSING');
+ const frame = await panelEvidence(db, job, 1), cropA = await panelEvidence(db, job, 2), cropB = await panelEvidence(db, job, 3), cropC = await panelEvidence(db, job, 4);
+ // Room "101" matches label "1.01"; the second meter is found by its QR token even without a label.
+ const done = await completePanel(db, job, surveyed([
+  detection(0, cropA, frame, { label: '1.01', registerCode: '1.8.0', display: 'digital', value: '120.50', clear: true }),
+  detection(1, cropB, frame, { registerCode: 'total', value: '0200.5', clear: true, qrTokens: [qr2] }),
+  detection(2, cropC, frame, { label: '9.99' }),
+ ]));
+ assert.equal(done.matched, 2);
+ const view = (await panelRpc(db, 'getPanel', { panelId: panel.id })).panel;
+ assert.equal(view.status, 'REVIEW'); assert.equal(view.aiStatus, 'ok');
+ assert.deepEqual(view.detections.map(d => [d.index, d.state, d.matchKind, d.meterId, d.roomName]),
+  [[0, 'MATCHED', 'LABEL', meter, '101'], [1, 'MATCHED', 'QR', meter2, '1.02'], [2, 'UNMATCHED', null, null, null]]);
+ const childA = (await rpc(db, 'getCapture', { captureId: view.detections[0].captureId })).capture;
+ const childB = (await rpc(db, 'getCapture', { captureId: view.detections[1].captureId })).capture;
+ assert.equal(childA.status, 'REVIEW'); assert.equal(childA.proposedValue, '120.50'); assert.equal(childA.mediaValidated, true);
+ assert.equal(childA.imageObjectKey, cropA.objectKey); assert.equal(childA.mimeType, 'image/jpeg'); assert.equal(childA.contractId, contract);
+ assert.ok(childA.issues.includes('PANEL_SINGLE_READER') && childA.issues.includes('IDENTITY_UNVERIFIED'));
+ assert.ok(childB.issues.includes('PANEL_SINGLE_READER') && !childB.issues.includes('IDENTITY_UNVERIFIED'));
+ assert.ok(childB.evidenceFrames.some(f => f.objectKey === frame.objectKey));
+ // One reader is never enough on its own: confirmation without a reason is refused.
+ await assert.rejects(rpc(db, 'confirmCapture', { captureId: childA.id, expectedVersion: childA.version, expectedPreviousValue: childA.previousValue, value: '120.50' }), { code: '22023' });
+ const confirmed = (await confirm(db, childA, '120.50')).capture;
+ assert.equal(confirmed.status, 'CONFIRMED');
+ assert.equal((await source(db)).endReadingId, confirmed.readingId);
+ assert.equal((await panelRpc(db, 'listPanels', { month: '2026-10' })).panels.length, 1);
+});
+
+test('panel storage policy: actor uploads only its pending original; reads need a receipt and building access', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ const allowed = async (name, write = false) => (await db.query('SELECT public.meter_capture_storage_allowed_v1($1,$2) AS ok', [name, write])).rows[0].ok;
+ const started = await panelStart(db);
+ assert.equal(await allowed(started.uploadPath, true), true);
+ assert.equal(await allowed(`${org}/meter-panels/${started.panel.id}/evidence/${'1'.repeat(64)}.jpg`, true), false);
+ await db.exec(`SELECT set_config('test.actor','${id(99)}',false)`);
+ assert.equal(await allowed(started.uploadPath, true), false);
+ await db.exec(`SELECT set_config('test.actor','${actor}',false)`);
+ const job = await panelReceive(db, started);
+ assert.equal(await allowed(started.uploadPath, true), false);
+ assert.equal(await allowed(started.uploadPath), true);
+ const crop = await panelEvidence(db, job, 5);
+ assert.equal(await allowed(crop.objectKey), true);
+ assert.equal(await allowed(`${org}/meter-panels/${job.panelId}/evidence/${'6'.repeat(64)}.jpg`), false);
+ await db.exec("SELECT set_config('test.access','no',false)");
+ assert.equal(await allowed(crop.objectKey), false);
+ await db.exec("SELECT set_config('test.access','yes',false)");
+ assert.equal(await allowed(`${foreignOrg}/meter-panels/${job.panelId}/original`), false);
+});
+
+test('panel duplicates stay unassigned; manual assignment is scoped, single per meter and permissioned', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ const { panel, job } = await panelClaimed(db);
+ const frame = await panelEvidence(db, job, 1), cropA = await panelEvidence(db, job, 2), cropB = await panelEvidence(db, job, 3), cropC = await panelEvidence(db, job, 4);
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 2, meterId: meter2 }), { code: '55000' });
+ await completePanel(db, job, surveyed([
+  detection(0, cropA, frame, { label: '101', registerCode: '1.8.0', value: '130.00', clear: true }),
+  detection(1, cropB, frame, { label: '1.01', registerCode: '1.8.0', value: '131.00', clear: true }),
+  detection(2, cropC, frame, { label: 'P.9', registerCode: 'total', value: '0201.0', clear: true }),
+ ]));
+ let view = (await panelRpc(db, 'getPanel', { panelId: panel.id })).panel;
+ assert.deepEqual(view.detections.map(d => d.state), ['DUPLICATE', 'DUPLICATE', 'UNMATCHED']);
+ assert.equal((await db.query('SELECT count(*)::int n FROM app_private.meter_captures WHERE panel_id=$1', [panel.id])).rows[0].n, 0);
+ await db.exec("SELECT set_config('test.denied_permission','meter_readings.create',false)");
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 0, meterId: meter }), { code: '42501' });
+ await db.exec("SELECT set_config('test.denied_permission','',false)");
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 2, meterId: foreignMeter }), { code: '42501' });
+ // Same organization, other building: a panel never writes outside the building it was started for.
+ const [otherBuilding, otherRoom, otherMeter] = [id(70), id(71), id(72)];
+ await db.exec(`INSERT INTO buildings VALUES('${otherBuilding}','${org}','C',NULL);INSERT INTO rooms(id,organization_id,building_id,name) VALUES('${otherRoom}','${org}','${otherBuilding}','101');
+  INSERT INTO meters(id,organization_id,building_id,room_id,service_id,code) VALUES('${otherMeter}','${org}','${otherBuilding}','${otherRoom}','${service}','D9');
+  INSERT INTO app_private.meter_capture_profiles(meter_id,organization_id,serial_number,display_kind,decimal_places,register_code,verified_by)
+   VALUES('${otherMeter}','${org}','S9','MECHANICAL',1,'total','${actor}');
+  INSERT INTO contracts(id,organization_id,room_id) VALUES('${id(73)}','${org}','${otherRoom}');`);
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 2, meterId: otherMeter }), { code: '42501' });
+ view = (await panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 0, meterId: meter })).panel;
+ assert.equal(view.detections[0].state, 'MATCHED'); assert.equal(view.detections[0].matchKind, 'MANUAL');
+ const child = (await rpc(db, 'getCapture', { captureId: view.detections[0].captureId })).capture;
+ assert.ok(child.issues.includes('IDENTITY_UNVERIFIED'));
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 1, meterId: meter }), { code: '23505' });
+ await assert.rejects(panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 0, meterId: meter2 }), { code: '23505' });
+ view = (await panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 2, meterId: meter2 })).panel;
+ assert.equal(view.detections[2].matchKind, 'MANUAL');
+ await assert.rejects(db.query("UPDATE app_private.meter_capture_panel_detections SET value='999' WHERE panel_id=$1 AND detection_index=1", [panel.id]), { code: '55000' });
+});
+
+test('panel worker output is strict, idempotent and retried only for AI errors; clients cannot act as the worker', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ const started = await panelStart(db);
+ assert.equal((await panelStart(db)).panel.id, started.panel.id);
+ await assert.rejects(panelStart(db, { sizeBytes: 501 }), { code: '23505' });
+ await assert.rejects(panelRpc(db, 'getPanel', { panelId: started.panel.id }, foreignOrg), { code: '42501' });
+ const job = await panelReceive(db, started);
+ const frame = await panelEvidence(db, job, 1), crop = await panelEvidence(db, job, 2);
+ await assert.rejects(completePanel(db, job, surveyed([detection(0, { ...crop, objectKey: `${org}/meter-panels/${job.panelId}/evidence/${'7'.repeat(64)}.jpg` }, frame)])), { code: '22023' });
+ await assert.rejects(completePanel(db, job, surveyed([detection(0, { ...crop, sha256: 'c'.repeat(64) }, frame)])), { code: '22023' });
+ await assert.rejects(completePanel(db, job, surveyed([detection(0, crop, frame, { value: '120.00', clear: false })])), { code: '22023' });
+ await assert.rejects(completePanel(db, job, surveyed([detection(0, crop, frame), detection(0, crop, frame)])), { code: '22023' });
+ const failed = { mediaValidated: true, durationSeconds: null, issues: ['ai_transport_failed'], ai: { status: 'error', version: 'fixture-ai;panel/1' }, detections: [] };
+ await completePanel(db, job, failed);
+ assert.equal((await completePanel(db, job, failed)).ok, true);
+ await assert.rejects(completePanel(db, job, { ...failed, issues: [] }), { code: '23505' });
+ const jobs = (await db.query('SELECT generation,state FROM app_private.meter_capture_panel_jobs WHERE panel_id=$1 ORDER BY generation', [job.panelId])).rows;
+ assert.deepEqual(jobs, [{ generation: 1, state: 'DONE' }, { generation: 2, state: 'QUEUED' }]);
+ assert.equal((await panelRpc(db, 'getPanel', { panelId: job.panelId })).panel.status, 'REVIEW');
+ await db.exec('SET ROLE authenticated');
+ await assert.rejects(db.query("SELECT meter_capture_panel_claim_v1('bad-client')"), { code: '42501' });
+ await assert.rejects(db.query('SELECT * FROM app_private.meter_capture_panels'), { code: '42501' });
+ await db.exec('RESET ROLE');
+});
+
+test('panel QR token of a meter in another building of the same organization is reported, never matched', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ const [otherBuilding, otherRoom, otherMeter] = [id(70), id(71), id(72)];
+ await db.exec(`INSERT INTO buildings VALUES('${otherBuilding}','${org}','C',NULL);INSERT INTO rooms(id,organization_id,building_id,name) VALUES('${otherRoom}','${org}','${otherBuilding}','777');
+  INSERT INTO meters(id,organization_id,building_id,room_id,service_id,code) VALUES('${otherMeter}','${org}','${otherBuilding}','${otherRoom}','${service}','D9');
+  INSERT INTO app_private.meter_capture_profiles(meter_id,organization_id,serial_number,display_kind,decimal_places,register_code,verified_by)
+   VALUES('${otherMeter}','${org}','S9','MECHANICAL',1,'total','${actor}');`);
+ const token = 'ihome-meter:' + (await db.query('SELECT qr_token::text t FROM app_private.meter_capture_profiles WHERE meter_id=$1', [otherMeter])).rows[0].t;
+ const { panel, job } = await panelClaimed(db);
+ const frame = await panelEvidence(db, job, 1), crop = await panelEvidence(db, job, 2);
+ assert.equal((await completePanel(db, job, surveyed([detection(0, crop, frame, { label: '101', registerCode: 'total', value: '0300.0', clear: true, qrTokens: [token] })]))).matched, 0);
+ const view = (await panelRpc(db, 'getPanel', { panelId: panel.id })).panel;
+ assert.equal(view.detections[0].state, 'OTHER_BUILDING'); assert.equal(view.detections[0].captureId, null);
+ assert.equal((await db.query('SELECT count(*)::int n FROM app_private.meter_captures WHERE meter_id=$1', [otherMeter])).rows[0].n, 0);
 });

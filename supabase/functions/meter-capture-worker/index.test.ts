@@ -225,3 +225,78 @@ Deno.test('malformed frame metadata is rejected and pending uploads expose no fr
   const result = await handler(request({ action: 'rpc', rpcAction: 'getCapture', organizationId: ORG, payload: { captureId: CAPTURE } }));
   equal((await result.json()).capture.evidenceFrames, []);
 });
+
+// Panel ("cả bảng") routes reuse the same bearer, signing and hashing rules as single captures.
+const PANEL = '55555555-5555-4555-8555-555555555555';
+const PANEL_ORIGINAL = `${ORG}/meter-panels/${PANEL}/original`;
+function panelContext() { return { kind: 'panel', jobId: JOB, panelId: PANEL, organizationId: ORG, leaseToken: LEASE, media: [{ id: PANEL, objectKey: PANEL_ORIGINAL, mimeType: 'image/jpeg', sizeBytes: JPEG.length }] }; }
+Deno.test('panel worker routes need the worker bearer and reach only panel RPCs', async () => {
+  const { handler, calls } = harness(call => {
+    if (call.url.endsWith('/rpc/meter_capture_panel_claim_v1')) { equal(call.auth, 'Bearer fixture-service-role'); return json(panelContext()); }
+    if (call.url.endsWith('/rpc/meter_capture_panel_complete_v1')) return json({ ok: true });
+    throw new Error('unexpected ' + call.url);
+  });
+  equal((await handler(request({ workerId: 'cpu1' }, '/worker/panel/claim'))).status, 403);
+  equal(calls.length, 0);
+  equal(await (await handler(request({ workerId: 'cpu1' }, '/worker/panel/claim', WORKER))).json(), panelContext());
+  equal((await handler(request({ jobId: JOB, leaseToken: LEASE, result: { detections: [] } }, '/worker/panel/complete', WORKER))).status, 200);
+  equal(calls.map(call => call.url.split('/rpc/')[1]), ['meter_capture_panel_claim_v1', 'meter_capture_panel_complete_v1']);
+});
+Deno.test('panel evidence key is derived from the panel context and receipted by the panel RPC', async () => {
+  const digest = (await digestStream(new Response(JPEG))).sha256;
+  const { handler, calls } = harness(call => call.url.endsWith('/rpc/meter_capture_panel_worker_context_v1') ? json(panelContext()) : json({}));
+  const result = await handler(request({ jobId: JOB, leaseToken: LEASE, timestampSeconds: 1.5, sha256: digest, dataBase64: btoa(String.fromCharCode(...JPEG)) }, '/worker/panel/evidence', WORKER));
+  equal(result.status, 200); equal(await result.json(), { objectKey: `${ORG}/meter-panels/${PANEL}/evidence/${digest}.jpg` });
+  assert(calls[1].url.endsWith(`/meter-panels/${PANEL}/evidence/${digest}.jpg`));
+  assert(calls[2].url.endsWith('/rpc/meter_capture_panel_evidence_receipt_v1'));
+  equal((calls[2].body as Record<string, unknown>).p_timestamp_seconds, 1.5);
+});
+Deno.test('panel worker cannot download media outside its panel', async () => {
+  const { handler, calls } = harness(() => json(panelContext()));
+  equal((await handler(request({ jobId: JOB, leaseToken: LEASE, mediaId: CAPTURE }, '/worker/panel/media', WORKER))).status, 403);
+  equal(calls.length, 1);
+});
+Deno.test('panel user actions run under the user JWT, stay allowlisted and expose crops only as private references', async () => {
+  const { handler, calls } = harness(call => {
+    equal(call.auth, 'Bearer user-jwt'); assert(call.url.endsWith('/rpc/meter_capture_panel_v1'));
+    return json({ panel: { id: PANEL, detections: [{ index: 0, cropObjectKey: `${ORG}/meter-panels/${PANEL}/evidence/${'a'.repeat(64)}.jpg`, captureId: null }] } });
+  });
+  equal((await handler(request({ action: 'panelRpc', organizationId: ORG, rpcAction: 'confirmCapture', payload: {} }))).status, 400);
+  equal((await handler(request({ action: 'panelRpc', organizationId: ORG, rpcAction: 'getPanel', payload: null }))).status, 400);
+  equal(calls.length, 0);
+  const result = await (await handler(request({ action: 'panelRpc', organizationId: ORG, rpcAction: 'getPanel', payload: { panelId: PANEL } }))).json();
+  equal(result.panel.detections[0].cropUrl, `https://database.test/storage/v1/object/authenticated/meter-capture-media/${ORG}/meter-panels/${PANEL}/evidence/${'a'.repeat(64)}.jpg`);
+  equal((calls[0].body as Record<string, unknown>).p_action, 'getPanel');
+});
+Deno.test('panel collection stays blocked until the reader is configured', async () => {
+  let calls = 0;
+  const handler = createHandler({ env: key => key === 'METER_CAPTURE_WORKER_TOKEN' ? 'short' : values[key], fetch: () => { calls++; throw new Error('must not call'); } });
+  const result = await handler(request({ action: 'panelRpc', organizationId: ORG, rpcAction: 'startPanel', payload: {} }));
+  equal(result.status, 503); equal(calls, 0);
+});
+Deno.test('finalizePanel hashes the stored original, records the panel receipt, then queues under the user JWT', async () => {
+  const data = { id: PANEL, objectKey: PANEL_ORIGINAL, mimeType: 'image/jpeg', sizeBytes: JPEG.length, sha256: (await digestStream(new Response(JPEG))).sha256, detections: [] };
+  const { handler, calls } = harness(call => {
+    if (call.url.includes('/rpc/meter_capture_panel_v1')) {
+      equal(call.auth, 'Bearer user-jwt');
+      return json({ panel: (call.body as Record<string, unknown>).p_action === 'getPanel' ? data : { ...data, status: 'QUEUED' } });
+    }
+    equal(call.auth, 'Bearer fixture-service-role');
+    if (call.url.includes('/storage/')) { assert(call.url.endsWith(PANEL_ORIGINAL)); return new Response(JPEG); }
+    assert(call.url.endsWith('/rpc/meter_capture_panel_media_receipt_v1'));
+    return json({ mediaReceived: true });
+  });
+  const result = await handler(request({ action: 'finalizePanel', organizationId: ORG, panelId: PANEL }));
+  equal(result.status, 200); equal((await result.json()).panel.status, 'QUEUED');
+  equal(calls.length, 4);
+  equal((calls[0].body as Record<string, unknown>).p_action, 'getPanel');
+  assert(calls[1].url.endsWith(PANEL_ORIGINAL));
+  assert(calls[2].url.endsWith('/rpc/meter_capture_panel_media_receipt_v1'));
+  equal((calls[3].body as Record<string, unknown>).p_action, 'finalizePanel');
+});
+Deno.test('tampered panel original never records a receipt', async () => {
+  const data = { id: PANEL, objectKey: PANEL_ORIGINAL, mimeType: 'image/jpeg', sizeBytes: JPEG.length, sha256: 'f'.repeat(64), detections: [] };
+  const { handler, calls } = harness(call => call.url.includes('/storage/') ? new Response(JPEG) : json({ panel: data }));
+  equal((await handler(request({ action: 'finalizePanel', organizationId: ORG, panelId: PANEL }))).status, 422);
+  assert(!calls.some(call => call.url.endsWith('/rpc/meter_capture_panel_media_receipt_v1')));
+});
