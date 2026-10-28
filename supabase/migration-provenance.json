@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 909,
-    "unknown": 80,
+    "unknown": 84,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13860,6 +13860,54 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-27T16:18:41.526Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027234335_hermes_contract_actions_activation_v1.sql",
+      "version": "20261027234335",
+      "name": "hermes_contract_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "116675684ce75ceaa1b904dbe2b9bf83988fb41a4131445bf882661b86b55d0e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027234414_hermes_expense_actions_activation_v1.sql",
+      "version": "20261027234414",
+      "name": "hermes_expense_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "0fbb1d92cbca12f3772277688bc2713f6c81cf295a4191e7d84625e43bab285d",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027234454_hermes_invoice_actions_activation_v1.sql",
+      "version": "20261027234454",
+      "name": "hermes_invoice_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "8ea22d0c84c7d51cf0eb4459aa72ec182179e8868ba9f5e7fced6fdecd3c5dad",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261027234537_hermes_task_actions_activation_v1.sql",
+      "version": "20261027234537",
+      "name": "hermes_task_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "263fee11576f3d68fc897ef28e4367df475a8c5af05e374303bec1ab713d425e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

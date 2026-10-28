@@ -469,6 +469,7 @@ Thứ tự theo bài học R2a/B5c: connector chịu được cả bản cũ l�
 3. **Migration M2** (seed khoá TẮT + hook options) **cùng một lần promote web** có khoá trong `capability-contract.mjs` và nhãn. Chủ tạo lại kết nối một lần nếu đang là `legacy_allowlist` (mục 8.3).
 4. **Trên TEST:** bật `assistant.action_probe` bằng script TEST (không phải migration bật trên production), rồi chạy bộ ca bot (mục 12.5).
 5. **Từng trang về sau:** SQL của trang → connector khai thao tác → migration bật khoá → SOUL bản 5 nêu luật hai lượt → canary có chủ duyệt.
+   - Bốn migration bật (HĐ, TC, HĐn, CV), file lùi và runbook production (28/10, chưa áp): [BAT-KHOA-GHI-4-TRANG.md](BAT-KHOA-GHI-4-TRANG.md).
 
 ## 12. Kế hoạch test
 
