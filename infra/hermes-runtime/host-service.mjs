@@ -111,6 +111,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
         ...(configuration.actionProbe === undefined ? {} : { actionProbe: configuration.actionProbe }),
         ...(configuration.actionPages === undefined ? {} : { actionPages: [...configuration.actionPages] }),
         ...(configuration.publicWebOrigin === undefined ? {} : { publicWebOrigin: configuration.publicWebOrigin }),
+        ...(configuration.authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs: configuration.authorityCacheTtlMs }),
         ...(callLog ? { callLog } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.

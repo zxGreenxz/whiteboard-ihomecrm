@@ -103,6 +103,21 @@ test('public web origin is an optional https origin, absent by default', async t
   }
 });
 
+// 28/10: hạn nhớ quyền CRM (ms) cho ping/tools/list/gia hạn; vắng = backend dùng mặc định 30 phút, 0 = tắt, còn lại 1–60 phút.
+test('authority cache TTL is an optional integer: 0 disables, 1–60 minutes, absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'authorityCacheTtlMs'), false); } finally { baseline.dispose(); }
+  for (const authorityCacheTtlMs of [0, 60_000, 1_800_000, 3_600_000]) {
+    await f.save({ ...f.input, authorityCacheTtlMs });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.equal(config.authorityCacheTtlMs, authorityCacheTtlMs); } finally { config.dispose(); }
+  }
+  for (const authorityCacheTtlMs of [null, -1, 1, 59_999, 3_600_001, 1.5, '1800000', true, {}]) {
+    await f.save({ ...f.input, authorityCacheTtlMs }); await assert.rejects(loadHostConfiguration(f.configPath), refused, JSON.stringify(authorityCacheTtlMs));
+  }
+});
+
 test('room read source accepts only legacy|page, is absent by default and never coerces', async t => {
   const f = await fixture(t);
   const baseline = await loadHostConfiguration(f.configPath);
