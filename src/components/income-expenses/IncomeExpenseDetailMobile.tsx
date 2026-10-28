@@ -378,13 +378,14 @@ function IncomeExpenseDetailMobileContent({
                 <Undo2 size={15} />
               </button>
             )}
+            {/* Máy chủ chặn vì khoá sổ / chốt lãi… thì VẪN cho chạm: hộp xác nhận nói rõ "Không huỷ
+                được: …" (điện thoại không có tooltip để đọc lý do trên nút mờ). */}
             {can.cancel.show && onCancel && (
               <button
                 className="vd-act"
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ"
                 title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}` : undefined}
-                disabled={can.cancel.disabled}
                 onClick={() => {
                   onCancel(v.id, v.type);
                   onClose();

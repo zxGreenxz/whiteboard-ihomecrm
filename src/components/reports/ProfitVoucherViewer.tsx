@@ -55,9 +55,12 @@ export default function ProfitVoucherViewer({ voucherId, organizationId, onClose
     },
   };
 
+  // Chi nhanh chạy trong hook của CHÍNH màn này (Thu chi giữ ở cấp trang): đóng hộp lúc đang chạy là gỡ
+  // màn, hàng đợi dừng giữa chừng và kết quả mất. Đang chạy thì không cho đóng hộp (review 28/10/2026).
+  const quickRunning = quick.busy || quick.collecting;
   // Hộp chi tiết gọi onApprove/onCancel… RỒI mới đóng — cùng một lượt cập nhật nên hộp xác nhận đã
   // mở trước khi xét "còn gì đang mở"; chỉ khi mọi hộp đã đóng mới trả quyền về báo cáo.
-  const open = detailOpen || actions.anyOpen;
+  const open = detailOpen || actions.anyOpen || quickRunning;
   useEffect(() => {
     if (!open) onClose();
   }, [open, onClose]);
@@ -66,7 +69,7 @@ export default function ProfitVoucherViewer({ voucherId, organizationId, onClose
     <>
       <IncomeExpenseDetailDialog
         open={detailOpen}
-        onOpenChange={(next) => { if (!next) setDetailOpen(false); }}
+        onOpenChange={(next) => { if (!next && !quickRunning) setDetailOpen(false); }}
         voucher={null}
         voucherId={voucherId}
         organizationIdHint={organizationId}

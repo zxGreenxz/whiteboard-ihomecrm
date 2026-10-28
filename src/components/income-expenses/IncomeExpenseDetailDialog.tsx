@@ -408,13 +408,14 @@ function IncomeExpenseDetailDialogContent({
                   <Undo2 className="h-4 w-4 text-white" />
                 </Button>
               )}
+              {/* Máy chủ chặn vì khoá sổ / chốt lãi… thì VẪN cho bấm: hộp xác nhận nói rõ "Không huỷ
+                  được: …" và khoá nút xác nhận (nút mờ không hiện được lý do — review 28/10/2026). */}
               {can.cancel.show && onCancel && (
                 <Button
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-orange-500 hover:bg-orange-600"
                   title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}` : "Huỷ phiếu"}
-                  disabled={can.cancel.disabled}
                   onClick={() => {
                     onCancel(voucher.id, voucher.type);
                     onOpenChange(false);

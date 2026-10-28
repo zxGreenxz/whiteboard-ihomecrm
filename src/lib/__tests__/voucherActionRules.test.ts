@@ -82,6 +82,11 @@ describe("Huỷ — theo câu trả lời từng phiếu của máy chủ", () =
     expect(voucherActionAvailability(thu, viewer(), state({ incomeEligibility: income({ eligible: true, mode: "MANUAL" }) })).cancel.show).toBe(true);
     expect(voucherActionAvailability(thu, viewer({ perms: scoped("cancel") }), state({ incomeEligibility: income({ reason_code: "NOT_OWNER" }) })).cancel.show).toBe(false);
   });
+  it("phiếu thu chưa có câu trả lời của máy chủ ⇒ theo quyền huỷ", () => {
+    const thu = phieu({ type: "INCOME", approval_status: "APPROVED", posting_status: "POSTED" });
+    expect(voucherActionAvailability(thu, viewer({ perms: scoped("cancel") }), state()).cancel.show).toBe(true);
+    expect(voucherActionAvailability(thu, viewer(), state()).cancel.show).toBe(false);
+  });
   it("phiếu thu bị chặn theo thứ tự thu ⇒ mờ, nêu đúng phiếu phải huỷ trước", () => {
     const thu = phieu({ type: "INCOME", approval_status: "APPROVED", posting_status: "POSTED" });
     const a = voucherActionAvailability(thu, viewer(), state({ incomeEligibility: income({ reason_code: "LIFO_ORDER", blocking_voucher_code: "PT01" }) })).cancel;
@@ -109,6 +114,15 @@ describe("Chi phiếu đã duyệt / Hoàn tác", () => {
     expect(voucherActionAvailability(daChi, viewer({ perms: scoped("reverse") }), state()).reverse).toBe(true);
     expect(voucherActionAvailability(daChi, viewer(), state()).reverse).toBe(false);
     expect(voucherActionAvailability(daChi, viewer({ perms: scoped("reverse") }), state({ canonicalRead: false })).reverse).toBe(false);
+  });
+  it("Hoàn tác: quyền hoàn tác ở toà KHÁC không tính", () => {
+    const daChiToaKhac = phieu({ approval_status: "APPROVED", posting_status: "POSTED", building_id: "b2" });
+    expect(voucherActionAvailability(daChiToaKhac, viewer({ perms: scoped("reverse") }), state()).reverse).toBe(false);
+  });
+  it("chân cọc không phải hoàn cọc (vd bỏ cọc) ⇒ không Hoàn tác ở đây", () => {
+    const boCoc = phieu({ approval_status: "APPROVED", posting_status: "POSTED", system_source: "reservation.forfeit_offset" });
+    const s = state({ monetaryActionsAllowed: false, canReverseSettlementRefund: false });
+    expect(voucherActionAvailability(boCoc, viewer({ perms: scoped("reverse") }), s).reverse).toBe(false);
   });
   it("chân hoàn cọc giữ chỗ đã có hồ sơ xử lý vẫn hoàn tác được", () => {
     const hoanCoc = phieu({ approval_status: "APPROVED", posting_status: "POSTED", system_source: "reservation.refund" });
@@ -140,6 +154,7 @@ describe("Huỷ duyệt / Khôi phục / Bản sao / Đã kiểm / Dừng lặp 
     expect(voucherActionAvailability(goc, viewer({ perms: scoped("edit") }), state()).stopRecurring).toBe(true);
     expect(voucherActionAvailability(goc, viewer(), state()).stopRecurring).toBe(false);
     expect(voucherActionAvailability({ ...goc, repeat_parent_id: "p" }, viewer({ perms: scoped("edit") }), state()).stopRecurring).toBe(false);
+    expect(voucherActionAvailability({ ...goc, building_id: "b2" }, viewer({ perms: scoped("edit") }), state()).stopRecurring).toBe(false);
   });
   it("Sửa: phiếu chờ duyệt lập tay; chân xử lý cọc thì không", () => {
     expect(voucherActionAvailability(phieu(), viewer(), state()).edit.show).toBe(true);

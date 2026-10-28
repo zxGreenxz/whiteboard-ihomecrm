@@ -122,7 +122,10 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const reviseMutation = useReviseIncomeExpense();
   const stopRecurringMutation = useStopRecurring();
 
-  const { data: accounts = [] } = useAccounts();
+  // Mảng rỗng CỐ ĐỊNH khi sổ quỹ chưa về: `= []` mới mỗi lần render làm effect nạp hộp Duyệt chạy lại
+  // liên tục, xoá cả lý do người dùng đang gõ (review độc lập 28/10/2026).
+  const { data: accountsData } = useAccounts();
+  const accounts = useMemo(() => accountsData ?? [], [accountsData]);
   const { data: authUser } = useAuth();
   // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu rồi nhận nó làm chứng từ — nhờ vậy ảnh
   // hiện luôn ở dòng thu chi (chủ báo 27/08/2026).
@@ -219,10 +222,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   }, []);
   const restore = useCallback((id: string) => { setRestoreTarget(id); }, []);
   const cancelBatch = useCallback((batchId: string) => { setCancelBatchTarget(batchId); }, []);
-  const { mutate: stopRecurringMutate } = stopRecurringMutation;
+  // Ghi ngay (không hộp xác nhận, như danh sách). Chờ promise chứ không dùng onSuccess của lượt gọi:
+  // hộp chi tiết đóng ngay sau bấm nên màn gọi (vd Báo cáo LN) có thể đã gỡ, TanStack bỏ callback đó.
+  // Lỗi đã được hook báo bằng toast.
+  const { mutateAsync: stopRecurringAsync } = stopRecurringMutation;
   const stopRecurring = useCallback((id: string) => {
-    stopRecurringMutate(id, { onSuccess: changed });
-  }, [stopRecurringMutate, changed]);
+    void stopRecurringAsync(id).then(changed, () => undefined);
+  }, [stopRecurringAsync, changed]);
 
   // ── Xác nhận ──────────────────────────────────────────────────────────────
 

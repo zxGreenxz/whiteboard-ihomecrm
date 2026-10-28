@@ -9,7 +9,8 @@
 //  - Huỷ: câu trả lời từng phiếu của máy chủ. Phiếu CHI: can_flex_cancel_v1 (super admin, chủ tổ
 //    chức, NGƯỜI TẠO PHIẾU, hoặc quyền huỷ ở toà + giữ sổ). Phiếu THU: can_cancel_income_voucher_v1
 //    (chính người đã thu, chủ tổ chức, super admin — không đòi quyền "Huỷ thu chi"). Máy chủ nói
-//    không có quyền ⇒ ẩn; bị chặn vì khoá sổ / chốt lợi nhuận / thứ tự thu… ⇒ hiện mờ kèm lý do.
+//    không có quyền ⇒ ẩn; bị chặn vì khoá sổ / chốt lợi nhuận / thứ tự thu… ⇒ `disabled` kèm lý do
+//    (dòng danh sách hiện mờ; hộp / tấm chi tiết vẫn cho bấm để hộp xác nhận nói rõ "Không huỷ được").
 //    Chưa có câu trả lời, hoặc đường huỷ cũ (Chuẩn kế toán, phiếu do luồng khác lập — máy chủ chưa
 //    xét quyền ở bước hỏi trước) ⇒ theo quyền income_expenses.cancel như danh sách trước nay.
 //  - Hoàn tác / Mở lại (reverse_posted_income_expense_v2): quyền income_expenses.reverse ở toà

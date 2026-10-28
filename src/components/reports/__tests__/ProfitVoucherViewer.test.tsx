@@ -13,7 +13,8 @@ const seen = vi.hoisted(() => ({
   dialogs: [] as unknown[],
   options: [] as Array<{ vouchers: readonly Voucher[]; onChanged?: () => void }>,
   controllers: [] as Array<Record<string, unknown>>,
-  quickRun: vi.fn(async () => {}),
+  quickRun: vi.fn(async (_rows: unknown) => {}),
+  quickBusy: false,
 }));
 
 vi.mock('@/components/income-expenses/IncomeExpenseDetailDialog', () => ({
@@ -40,7 +41,7 @@ vi.mock('@/hooks/income-expenses/detailRead', () => ({
   useIncomeExpenseDetail: () => ({ data: { id: 'v-1' } }),
 }));
 vi.mock('@/hooks/income-expenses/useQuickExpense', () => ({
-  useQuickExpense: () => ({ run: seen.quickRun, busy: false, collecting: false }),
+  useQuickExpense: () => ({ run: seen.quickRun, busy: seen.quickBusy, collecting: false }),
 }));
 vi.mock('@/hooks/income-expenses/useVoucherActions', () => ({
   useVoucherActions: (options: { vouchers: readonly Voucher[]; onChanged?: () => void }) => {
@@ -69,7 +70,9 @@ beforeEach(() => {
   seen.dialogs.length = 0;
   seen.options.length = 0;
   seen.controllers.length = 0;
-  seen.quickRun.mockClear();
+  seen.quickRun.mockReset();
+  seen.quickRun.mockResolvedValue(undefined);
+  seen.quickBusy = false;
 });
 
 const EXTRA_KEYS = [
@@ -135,11 +138,27 @@ describe('ProfitVoucherViewer — Báo cáo LN dùng đúng bộ thao tác của
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it('Chi nhanh chạy xong (kể cả lỗi) ⇒ làm mới số báo cáo', async () => {
+  it('Chi nhanh chạy xong ⇒ làm mới số báo cáo', async () => {
     const { invalidate } = setup();
     const quick = seen.detail.at(-1)!.quickExpense as { run: (rows: Voucher[]) => Promise<void> };
     await act(async () => { await quick.run([{ id: 'v-1' }]); });
     expect(seen.quickRun).toHaveBeenCalledWith([{ id: 'v-1' }]);
     expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual(EXTRA_KEYS);
+  });
+
+  it('Chi nhanh lỗi giữa chừng ⇒ vẫn làm mới số (có thể đã duyệt mà chưa chi)', async () => {
+    seen.quickRun.mockRejectedValue(new Error('mạng rớt'));
+    const { invalidate } = setup();
+    const quick = seen.detail.at(-1)!.quickExpense as { run: (rows: Voucher[]) => Promise<void> };
+    await act(async () => { await quick.run([{ id: 'v-1' }]).catch(() => undefined); });
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual(EXTRA_KEYS);
+  });
+
+  it('đang Chi nhanh ⇒ KHÔNG đóng được hộp (đóng là gỡ màn, hàng đợi chi dừng giữa chừng)', () => {
+    seen.quickBusy = true;
+    const { onClose } = setup();
+    fireEvent.click(screen.getByText('dong'));
+    expect(screen.getByTestId('detail')).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

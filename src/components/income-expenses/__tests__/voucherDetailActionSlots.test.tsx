@@ -117,15 +117,20 @@ describe("hộp chi tiết máy tính — chỗ cắm mới", () => {
     expect(screen.getByTitle("Duyệt phiếu")).toBeTruthy();
   });
 
-  it("Huỷ theo máy chủ: không có quyền ⇒ ẩn; tháng đã chốt ⇒ mờ kèm lý do; người tạo được huỷ ⇒ hiện", () => {
+  it("Huỷ theo máy chủ: không có quyền ⇒ ẩn; tháng đã chốt ⇒ vẫn bấm được để hộp xác nhận nói lý do; người tạo được huỷ ⇒ hiện", () => {
     detail.data = phieu();
     env.perms = scoped("cancel");
     render(desktop(handlers(), { cancelEligibility: { v: { id: "v", eligible: false, reason_code: "NO_PERMISSION" } } }));
     expect(screen.queryByTitle(/^Huỷ phiếu/)).toBeNull();
     cleanup();
-    render(desktop(handlers(), { cancelEligibility: { v: { id: "v", eligible: false, reason_code: "PROFIT_LOCKED" } } }));
+    const h = handlers();
+    render(desktop(h, { cancelEligibility: { v: { id: "v", eligible: false, reason_code: "PROFIT_LOCKED" } } }));
+    // nút mờ không đọc được lý do (máy tính: không hiện tooltip; điện thoại: không có hover) ⇒ cho bấm,
+    // hộp xác nhận chung hiện "Không huỷ được: …" và khoá nút xác nhận
     const khoa = screen.getByTitle(/^Huỷ phiếu — Tháng đã chốt lợi nhuận/);
-    expect(khoa.matches(":disabled")).toBe(true);
+    expect(khoa.matches(":disabled")).toBe(false);
+    fireEvent.click(khoa);
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE");
     cleanup();
     env.perms = {};
     render(desktop(handlers(), { cancelEligibility: { v: { id: "v", eligible: true, reason_code: null } } }));
@@ -173,6 +178,17 @@ describe("tấm chi tiết điện thoại — đủ nút như máy tính", () =
     for (const name of ["Đánh dấu đã kiểm tra", "Xem lịch sử phiếu", "Dừng lặp lại"]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();
     }
+  });
+
+  it("Huỷ bị máy chủ chặn vì khoá sổ: tấm điện thoại vẫn cho chạm (không có tooltip để đọc lý do)", () => {
+    detail.data = phieu();
+    env.perms = scoped("cancel");
+    const h = handlers();
+    render(mobile(h, { cancelEligibility: { v: { id: "v", eligible: false, reason_code: "CASHBOOK_CLOSED" } } }));
+    const huy = screen.getByRole("button", { name: "Huỷ" });
+    expect(huy.matches(":disabled")).toBe(false);
+    fireEvent.click(huy);
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE");
   });
 
   it("Duyệt / Huỷ cùng luật với máy tính", () => {

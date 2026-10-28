@@ -15,7 +15,7 @@ const m = vi.hoisted(() => ({
   routes: { readSemantics: 'CANONICAL', workflow: 'CANONICAL', posting: 'CANONICAL', access: 'CANONICAL', accountingStandardStrict: false },
   flexRows: {} as Record<string, unknown>,
   incomeRows: {} as Record<string, unknown>,
-  accounts: [] as Array<{ id: string; name: string; is_virtual: boolean }>,
+  accounts: [] as Array<{ id: string; name: string; is_virtual: boolean }> | undefined,
 }));
 const mutation = (fn: ReturnType<typeof vi.fn>) => ({ mutateAsync: fn, mutate: fn, isPending: false });
 
@@ -230,11 +230,81 @@ describe('Huỷ duyệt / Khôi phục / đóng form / Dừng lặp', () => {
     expect(onChanged).toHaveBeenCalledTimes(4);
   });
 
-  it('dừng lặp lại ghi ngay (như danh sách), xong ⇒ báo làm mới', () => {
-    m.stopRecurring.mockImplementation((_id: string, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+  it('dừng lặp lại ghi ngay (như danh sách); báo làm mới khi máy chủ XÁC NHẬN, lỗi thì không', async () => {
+    let xong: (v: unknown) => void = () => {};
+    m.stopRecurring.mockImplementation(() => new Promise((resolve) => { xong = resolve; }));
     const { result, onChanged } = setup([phieu()]);
     act(() => result.current.stopRecurring('v-1'));
-    expect(m.stopRecurring).toHaveBeenCalledWith('v-1', expect.anything());
+    expect(m.stopRecurring).toHaveBeenCalledWith('v-1');
+    expect(onChanged).not.toHaveBeenCalled();
+    await act(async () => { xong({ id: 'v-1', changed: true }); });
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    m.stopRecurring.mockRejectedValue(new Error('hết quyền'));
+    await act(async () => { result.current.stopRecurring('v-1'); });
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('sổ quỹ chưa tải: hộp Duyệt KHÔNG xoá lý do người dùng đang gõ khi render lại', () => {
+    m.accounts = undefined;
+    const { result, rerender } = setup([phieu()]);
+    act(() => result.current.approve(phieu()));
+    act(() => result.current.dialogs.approve.setReason('lý do đang gõ dở'));
+    rerender();
+    rerender();
+    expect(result.current.dialogs.approve.reason).toBe('lý do đang gõ dở');
+  });
+});
+
+describe('Hoàn tác / Duyệt và Chi / Chi phiếu đã duyệt / Huỷ cả đợt', () => {
+  it('hoàn tác: gửi đúng sổ của bút toán + lý do; phiếu hoa hồng thì bắt lý do 8–2000 ký tự', async () => {
+    const daChi = phieu({ approval_status: 'APPROVED', posting_status: 'POSTED' });
+    const { result, onChanged } = setup([daChi]);
+    act(() => result.current.reverse(daChi));
+    act(() => result.current.dialogs.reverse.setReason('chi nhầm sổ'));
+    await act(async () => { await result.current.dialogs.reverse.confirm(); });
+    expect(m.reverse).toHaveBeenCalledWith({ voucherId: 'v-1', cashbookId: 'acc-1', reason: 'chi nhầm sổ', isCommission: false });
+    expect(onChanged).toHaveBeenCalledTimes(1);
+
+    const hoaHong = phieu({ approval_status: 'APPROVED', posting_status: 'POSTED', system_source: 'contract.commission' });
+    act(() => result.current.reverse(hoaHong));
+    await act(async () => { await result.current.dialogs.reverse.confirm(); });
+    expect(m.reverse).toHaveBeenCalledTimes(1);
+    expect(result.current.dialogs.actionError).toMatch(/lý do hoàn tác hoa hồng/);
+  });
+
+  it('Duyệt và Chi (hộp ghi sổ) xong ⇒ đóng cả hộp duyệt lẫn hộp ghi sổ, báo làm mới', async () => {
+    const { result, onChanged } = setup([phieu()]);
+    act(() => result.current.approve(phieu()));
+    await act(async () => { await result.current.dialogs.approve.openApproveAndPost(); });
+    expect(result.current.dialogs.approveAndPost.open).toBe(true);
+    const input = { subjectId: 'v-1' } as Parameters<typeof result.current.dialogs.approveAndPost.submit>[0];
+    await act(async () => { await result.current.dialogs.approveAndPost.submit(input); });
+    expect(m.approveAndPost).toHaveBeenCalledWith(input);
+    expect(result.current.dialogs.approveAndPost.open).toBe(false);
+    expect(result.current.anyOpen).toBe(false);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('Chi phiếu đã duyệt: lỗi máy chủ để hộp ghi sổ tự báo (không nuốt), không báo làm mới', async () => {
+    const daDuyet = phieu({ approval_status: 'APPROVED' });
+    m.postApproved.mockRejectedValue(new Error('không giữ sổ'));
+    const { result, onChanged } = setup([daDuyet]);
+    act(() => result.current.postApproved(daDuyet));
+    const input = { subjectId: 'v-1' } as Parameters<typeof result.current.dialogs.postApproved.submit>[0];
+    await expect(result.current.dialogs.postApproved.submit(input)).rejects.toThrow('không giữ sổ');
+    expect(result.current.anyOpen).toBe(true);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('huỷ cả đợt chưa xong hết ⇒ báo số phiếu, khoá thao tác tiếp trên đợt, vẫn báo làm mới', async () => {
+    m.cancelBatch.mockResolvedValue({ count: 2, failures: [{ id: 'x' }] });
+    const { result, onChanged } = setup([]);
+    act(() => result.current.cancelBatch('b-1'));
+    act(() => result.current.dialogs.cancelBatch.setReason('nhập trùng cả đợt'));
+    await act(async () => { await result.current.dialogs.cancelBatch.confirm(); });
+    expect(m.cancelBatch).toHaveBeenCalledWith({ batchId: 'b-1', reason: 'nhập trùng cả đợt' });
+    expect(result.current.dialogs.actionError).toMatch(/Đã huỷ 2 phiếu; 1 phiếu chưa hoàn tất/);
+    expect(result.current.dialogs.blockedVoucherId).toBe('b-1');
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 });
