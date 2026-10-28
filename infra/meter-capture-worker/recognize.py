@@ -16,7 +16,7 @@ import urllib.request
 
 from domain import MAX_AI_FRAMES, MAX_SECONDS, VERSION, InvalidInput, ai_prompt, ocr_reading, ocr_candidates, parse_ai, stable_reading
 
-AI_MODEL = "cx/gpt-6.1-sol"
+AI_MODEL = "cx/gpt-6.1-terra"
 AI_REASONING = "medium"
 AI_DETAIL = "original"
 RECOGNITION_BUDGET_SECONDS = 240
