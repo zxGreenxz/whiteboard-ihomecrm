@@ -207,9 +207,16 @@ BEGIN
   PERFORM app_private.meter_capture_scope_v1(p_organization_id,v_building,'meter_readings.create');
   IF p_payload->>'readingDate' IS NULL OR p_payload->>'readingDate' !~ '^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$'
     OR p_payload->>'capturedAt' IS NULL OR p_payload->>'capturedAt' !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$'
-    OR (p_payload->>'durationSeconds' IS NOT NULL AND p_payload->>'durationSeconds' !~ '^\d{1,2}(\.\d{1,6})?$') THEN
+    -- Browsers report clip duration as an unrounded ratio (e.g. Safari 21.446666666666665).
+    OR (p_payload->>'durationSeconds' IS NOT NULL AND p_payload->>'durationSeconds' !~ '^\d{1,2}(\.\d+)?$') THEN
    RAISE EXCEPTION 'Invalid panel period/media' USING ERRCODE='22023'; END IF;
-  v_date:=(p_payload->>'readingDate')::date;v_month:=p_payload->>'month';
+  BEGIN
+   v_date:=(p_payload->>'readingDate')::date;
+   PERFORM (p_payload->>'capturedAt')::timestamptz;
+  EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
+   RAISE EXCEPTION 'Invalid panel period/media' USING ERRCODE='22023';
+  END;
+  v_month:=p_payload->>'month';
   -- A whole-building survey is a monthly reading; move-out stays a per-meter decision.
   IF v_date IS NULL OR v_month IS DISTINCT FROM to_char(v_date,'YYYY-MM') OR p_payload->>'purpose' IS DISTINCT FROM 'MONTHLY'
     OR p_payload->>'mimeType' IS NULL OR p_payload->>'mimeType' NOT IN ('image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime')
@@ -357,8 +364,11 @@ BEGIN
    OR NULLIF(p_result#>>'{ai,version}','') IS NULL OR length(p_result#>>'{ai,version}')>200
    OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_result->'issues') x WHERE jsonb_typeof(x)<>'string' OR length(x#>>'{}')>64) THEN
   RAISE EXCEPTION 'Invalid panel worker output' USING ERRCODE='22023'; END IF;
- -- Server-set flags (DUPLICATE_MEDIA at start, WORKER_LEASE_EXHAUSTED) survive every worker result.
- v_issues:=(SELECT COALESCE(jsonb_agg(DISTINCT x),'[]'::jsonb) FROM jsonb_array_elements(pn.issues||(p_result->'issues')) x);
+ -- Server-set flags (DUPLICATE_MEDIA at start, WORKER_LEASE_EXHAUSTED) survive every worker result;
+ -- codes from an earlier worker attempt do not outlive a successful retry.
+ v_issues:=(SELECT COALESCE(jsonb_agg(DISTINCT x),'[]'::jsonb) FROM jsonb_array_elements(
+  (SELECT COALESCE(jsonb_agg(f),'[]'::jsonb) FROM jsonb_array_elements(pn.issues) f WHERE f#>>'{}' IN ('DUPLICATE_MEDIA','WORKER_LEASE_EXHAUSTED'))
+  ||(p_result->'issues')) x);
  IF p_result->>'mediaValidated' IS DISTINCT FROM 'true' THEN v_issues:=v_issues||'"MEDIA_VALIDATION_FAILED"'::jsonb; END IF;
  IF pn.mime_type LIKE 'video/%' AND (p_result->>'mediaValidated' IS DISTINCT FROM 'true' OR jsonb_typeof(p_result->'durationSeconds') IS DISTINCT FROM 'number'
    OR (p_result->>'durationSeconds')::numeric<=0 OR (p_result->>'durationSeconds')::numeric>60) THEN
@@ -456,7 +466,8 @@ BEGIN
    v_matched:=v_matched+1;
   END LOOP;
  END IF;
- IF p_result#>>'{ai,status}' IN ('ok','unreadable') AND jsonb_array_length(p_result->'detections')=0 AND NOT v_issues ? 'NO_METERS_DETECTED' THEN
+ IF p_result#>>'{ai,status}' IN ('ok','unreadable') AND jsonb_array_length(p_result->'detections')=0 AND NOT v_issues ? 'NO_METERS_DETECTED'
+   AND NOT v_issues ? 'worker_result_rejected' THEN
   v_issues:=v_issues||'"NO_METERS_DETECTED"'::jsonb; END IF;
  UPDATE app_private.meter_capture_panel_jobs SET state='DONE',lease_until=NULL WHERE id=j.id;
  UPDATE app_private.meter_capture_panels SET issues=v_issues,media_validated=NOT v_issues ? 'MEDIA_VALIDATION_FAILED',version=version+1,status='REVIEW' WHERE id=pn.id;

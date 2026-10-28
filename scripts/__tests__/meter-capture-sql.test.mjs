@@ -949,3 +949,20 @@ test('panel video receipts tolerate the browser-measured duration by one second 
  await assert.rejects(panelRpc(db, 'getPanel', { panelId: 'not-a-uuid' }), { code: '22023' });
  await assert.rejects(panelStart(db, { clientId: id(204), readingDate: '2026-13-01' }), { code: '22023' });
 });
+
+test('panel accepts browser-ratio clip durations, rejects impossible dates, and a successful retry drops stale worker codes', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ await assert.rejects(panelStart(db, { clientId: id(205), readingDate: '2026-02-30', month: '2026-02' }), { code: '22023' });
+ // Safari reports duration as an unrounded ratio; the panel must still start.
+ const { job } = await panelClaimed(db, { mimeType: 'video/mp4', durationSeconds: 21.446666666666665 });
+ assert.equal(job.media[0].kind, 'video');
+ await completePanel(db, job, { mediaValidated: true, durationSeconds: 21.4, issues: ['ai_reader_error'], ai: { status: 'error', version: 'fixture-ai;panel/1' }, detections: [] });
+ await db.query("UPDATE app_private.meter_capture_panel_jobs SET created_at=clock_timestamp()-interval '1 second' WHERE panel_id=$1 AND generation=2", [job.panelId]);
+ const retry = (await db.query("SELECT meter_capture_panel_claim_v1('panel-worker') AS result")).rows[0].result;
+ assert.equal(retry.panelId, job.panelId);
+ const frame = await panelEvidence(db, retry, 1, 2), crop = await panelEvidence(db, retry, 2, 2);
+ await completePanel(db, retry, { ...surveyed([detection(0, crop, frame, { label: '1.02', registerCode: 'total', value: '0230.0', clear: true })]), durationSeconds: 21.4 });
+ const view = (await panelRpc(db, 'getPanel', { panelId: job.panelId })).panel;
+ assert.ok(!view.issues.includes('ai_reader_error')); assert.equal(view.aiStatus, 'ok');
+ assert.deepEqual(view.detections.map(d => d.state), ['MATCHED']);
+});
