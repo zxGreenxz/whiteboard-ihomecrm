@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "reviewedGitSha": "fec78143fc030a25e4b23c18bc5f25150aef3ac5",
+  "reviewedGitSha": "f3e5dd21a0b5afa9caf662fb77ea6c6981326a2e",
   "lockName": "ihomecrm:network-center-rollout:v1",
   "preflight": {
     "required": [
@@ -11139,7 +11139,7 @@
     {
       "ordinal": 30,
       "path": "supabase/migrations/20261028153038_network_center_ensure_partitions_bo_qua_alter_lap.sql",
-      "sha256": "77de430edeb16c655ca24c1b5a01343f0f7bfed92b53867c434431c7902ae4b0",
+      "sha256": "91fcc7fdcd15754cb473d6bc3314ca6818e29b192413fc94a1ac2b72f9f98325",
       "postApply": {
         "required": [
           "column:public.network_audit_events:request_hash",
