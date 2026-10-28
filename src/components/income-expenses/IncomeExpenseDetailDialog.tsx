@@ -27,6 +27,8 @@ import {
   RotateCcw,
   History,
   CopyPlus,
+  BadgeCheck,
+  CalendarX,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -42,8 +44,11 @@ import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
-import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
-import { AUDIT_TONE_CLASSES, auditActionLabel, voucherEditAction } from "@/lib/incomeExpenseRevision";
+import { AUDIT_TONE_CLASSES, auditActionLabel } from "@/lib/incomeExpenseRevision";
+import { voucherActionAvailability } from "@/lib/voucherActionRules";
+import { useFinanceV2Routes, isCanonicalRead } from "@/lib/financeV2Route";
+import type { FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
+import type { IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
 import { RevisionHistory, VoucherRevisionBadges } from "@/components/income-expenses/RevisionSummary";
 import { CollectionMethodAction } from "@/components/income-expenses/CollectionMethodAction";
@@ -82,6 +87,22 @@ interface Props {
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
   onCopy?: (voucher: IncomeExpenseWithRelations) => void;
+  // Các nút dưới đây trước 28/10/2026 chỉ có ở dòng danh sách Thu chi máy tính (tấm chi tiết
+  // điện thoại đã có Chi / Hoàn tác). Màn nào truyền thì hộp hiện nút — luật hiện chung ở
+  // src/lib/voucherActionRules.ts.
+  /** Thu / Chi phiếu đã duyệt (kể cả thu / chi lại sau hoàn tác). */
+  onPostApproved?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Hoàn tác / Mở lại phiếu đã ghi sổ. */
+  onReversePosting?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Đánh dấu đã kiểm tra. */
+  onVerify?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Lịch sử phiếu (mốc lập / duyệt / huỷ + thay đổi). */
+  onHistory?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Dừng lặp lại phiếu gốc đang lặp (ghi ngay, như ở danh sách). */
+  onStopRecurring?: (id: string) => void;
+  /** Câu trả lời trước của máy chủ cho nút Huỷ (can_flex_cancel_v1 / can_cancel_income_voucher_v1). */
+  cancelEligibility?: Record<string, FlexCancelEligibility>;
+  incomeCancelEligibility?: Record<string, IncomeCancelEligibility>;
 }
 
 // "2026-05" → "05/2026" (nhãn kỳ hoá đơn)
@@ -143,6 +164,13 @@ function IncomeExpenseDetailDialogContent({
   onUnapprove,
   onRestore,
   onCopy,
+  onPostApproved,
+  onReversePosting,
+  onVerify,
+  onHistory,
+  onStopRecurring,
+  cancelEligibility,
+  incomeCancelEligibility,
   locked = false,
 }: Props & { locked?: boolean }) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -163,6 +191,7 @@ function IncomeExpenseDetailDialogContent({
   const { data: isCompanyOwner = false } = useIsCompanyOwner();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+  const v2Routes = useFinanceV2Routes();
 
   // Nhật ký thao tác (huỷ / khôi phục) — chỉ tải khi mở dialog.
   const historyQuery = useIncomeExpenseHistory(
@@ -213,19 +242,23 @@ function IncomeExpenseDetailDialogContent({
   const isCancelled = voucher.approval_status === "CANCELLED";
   const isUnapproved = voucher.approval_status === "UNAPPROVED";
   const isExpense = voucher.type === "EXPENSE";
-  const isCreator =
-    !!currentUserId && voucher.user_id === currentUserId;
-  // Đợt 1 sửa phiếu: chỉ phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ đổi cờ
-  // KQKD phiếu bỏ cọc; bỏ "Sửa phiếu (Super Admin)" trên phiếu đã duyệt/đã huỷ.
-  const editAction = voucherEditAction(voucher, { isAdmin, isCompanyOwner });
-  const showFullEdit = monetaryActionsAllowed && !!onEdit && editAction.show;
-  const showQuickEdit = canShowAnnotateAction({
-    hasHandler: !!onQuickEdit,
-    isUnapproved,
-    isAdmin,
-    isCreator,
-    canEdit: canUse(perms, "income_expenses", "edit"),
-  });
+  // Nút nào hiện: MỘT bảng luật dùng chung với dòng danh sách và tấm điện thoại
+  // (src/lib/voucherActionRules.ts — đối chiếu hàm SQL thật). Sửa: chỉ phiếu Chờ duyệt sửa
+  // được (có lưu vết) hoặc chế độ đổi cờ KQKD phiếu bỏ cọc.
+  const can = voucherActionAvailability(
+    voucher,
+    { perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId },
+    {
+      canonicalRead: isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)),
+      monetaryActionsAllowed,
+      canReverseSettlementRefund: voucher.system_source === "reservation.refund" && settlement.isSuccess && !!settlement.data,
+      flexEligibility: cancelEligibility?.[voucher.id],
+      incomeEligibility: incomeCancelEligibility?.[voucher.id],
+    },
+  );
+  const showFullEdit = !!onEdit && can.edit.show;
+  const showQuickEdit = !!onQuickEdit && can.annotate;
+  const isVerified = !!voucher.verified_at;
   const canSettleReservation = monetaryActionsAllowed && voucher.type === "INCOME" && !voucher.contract_id &&
     voucher.approval_status === "APPROVED" && voucher.items.some((item) => item.is_deposit) &&
     canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
@@ -281,7 +314,7 @@ function IncomeExpenseDetailDialogContent({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title={editAction.title}
+                  title={can.edit.title}
                   onClick={() => {
                     onEdit!(voucher);
                     onOpenChange(false);
@@ -305,7 +338,7 @@ function IncomeExpenseDetailDialogContent({
                   <FilePlus2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {monetaryActionsAllowed && isUnapproved && onApprove && (
+              {can.approve && onApprove && (
                 <Button
                   size="icon"
                   variant="default"
@@ -320,7 +353,48 @@ function IncomeExpenseDetailDialogContent({
                 </Button>
               )}
               {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={voucher} quick={quickExpense} />}
-              {monetaryActionsAllowed && isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+              {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (giữ sổ, không cần quyền duyệt);
+                  phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
+              {can.postApproved && onPostApproved && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-blue-600 hover:bg-blue-700"
+                  title={
+                    voucher.posting_status === "REVERSED"
+                      ? (voucher.type === "INCOME"
+                          ? "Thu LẠI vào sổ (bút toán mới sau hoàn tác)"
+                          : "Chi LẠI từ sổ (bút toán mới sau hoàn tác)")
+                      : voucher.type === "INCOME"
+                        ? "Thu tiền vào sổ (phiếu đã duyệt)"
+                        : "Chi tiền từ sổ (phiếu đã duyệt)"
+                  }
+                  onClick={() => {
+                    onPostApproved(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <Banknote className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ, phiếu chờ Chi lại hoặc Huỷ). */}
+              {can.reverse && onReversePosting && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-violet-600 hover:bg-violet-700"
+                  title={voucher.type === "INCOME"
+                    ? "Mở lại (tiền rời sổ, rồi thu lại hoặc huỷ)"
+                    : "Mở lại (tiền về sổ, rồi chi lại hoặc huỷ)"}
+                  onClick={() => {
+                    onReversePosting(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {can.unapprove && onUnapprove && (
                 <Button
                   size="icon"
                   variant="default"
@@ -334,12 +408,13 @@ function IncomeExpenseDetailDialogContent({
                   <Undo2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {monetaryActionsAllowed && !isCancelled && onCancel && (
+              {can.cancel.show && onCancel && (
                 <Button
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-orange-500 hover:bg-orange-600"
-                  title="Huỷ phiếu"
+                  title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}` : "Huỷ phiếu"}
+                  disabled={can.cancel.disabled}
                   onClick={() => {
                     onCancel(voucher.id, voucher.type);
                     onOpenChange(false);
@@ -348,7 +423,7 @@ function IncomeExpenseDetailDialogContent({
                   <Ban className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {isCancelled && isSuperAdmin && onRestore && (
+              {can.restore && onRestore && (
                 <Button
                   size="icon"
                   variant="default"
@@ -363,7 +438,7 @@ function IncomeExpenseDetailDialogContent({
                 </Button>
               )}
               {/* Tạo bản sao: phiếu đã huỷ → form tạo mới prefill toàn bộ */}
-              {isCancelled && onCopy && (
+              {can.copy && onCopy && (
                 <Button
                   size="icon"
                   variant="default"
@@ -375,6 +450,50 @@ function IncomeExpenseDetailDialogContent({
                   }}
                 >
                   <CopyPlus className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {can.verify && onVerify && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className={isVerified ? "h-8 w-8 bg-emerald-600 hover:bg-emerald-700" : "h-8 w-8 bg-zinc-400 hover:bg-emerald-600"}
+                  title={isVerified
+                    ? `Đã kiểm bởi ${voucher.verified_by_name ?? ""}${voucher.verified_note ? " — " + voucher.verified_note : ""}`
+                    : "Đánh dấu đã kiểm tra"}
+                  onClick={() => {
+                    onVerify(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <BadgeCheck className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {onHistory && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-slate-500 hover:bg-slate-600"
+                  title="Xem lịch sử phiếu (mốc lập/duyệt/huỷ + thay đổi)"
+                  onClick={() => {
+                    onHistory(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <History className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {can.stopRecurring && onStopRecurring && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-zinc-500 hover:bg-zinc-600"
+                  title="Dừng lặp lại (giữ phiếu + các phiếu đã sinh)"
+                  onClick={() => {
+                    onStopRecurring(voucher.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <CalendarX className="h-4 w-4 text-white" />
                 </Button>
               )}
               <Button
