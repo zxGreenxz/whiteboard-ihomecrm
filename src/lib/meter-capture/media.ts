@@ -42,6 +42,19 @@ async function loadVideo(file: Blob): Promise<{ video: HTMLVideoElement; dispose
   } catch (error) { dispose(); throw error; }
 }
 
+/** Panel originals carry many meters, so no QR is picked here; the server matches each meter. Only admission is checked. */
+export async function inspectPanelMedia(file: File, recordedDurationSeconds?: number): Promise<{ durationSeconds?: number }> {
+  validateCaptureMedia(file);
+  if (!file.type.startsWith('video/')) return {};
+  const { video, dispose } = await loadVideo(file);
+  try {
+    const duration = Number.isFinite(video.duration) ? video.duration : recordedDurationSeconds;
+    if (duration === undefined) throw new Error('Không đọc được thời lượng clip. Quay lại trong web hoặc chọn clip MP4.');
+    validateCaptureMedia(file, duration);
+    return { durationSeconds: duration };
+  } finally { dispose(); }
+}
+
 /** Browser hints never authorize identity: the server checks originals again. */
 export async function inspectCaptureMedia(file: File, recordedDurationSeconds?: number): Promise<{ qrText: string | null; durationSeconds?: number }> {
   validateCaptureMedia(file);

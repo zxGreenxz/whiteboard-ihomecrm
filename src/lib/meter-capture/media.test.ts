@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { MAX_CAPTURE_BYTES, singleCaptureQr, validateCaptureMedia } from './media';
+import { describe, expect, it, vi } from 'vitest';
+const qr = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock('@/lib/qr/client', () => ({ createQrScanner: qr.create }));
+import { MAX_CAPTURE_BYTES, inspectPanelMedia, singleCaptureQr, validateCaptureMedia } from './media';
 
 describe('meter media admission', () => {
   it('accepts a 60 second 100 MB clip and camera codec suffix', () => {
@@ -15,5 +17,13 @@ describe('meter media admission', () => {
     expect(singleCaptureQr([])).toBeNull();
     expect(singleCaptureQr(['same', 'same'])).toBe('same');
     expect(() => singleCaptureQr(['meter-a', 'meter-b'])).toThrow('nhiều mã QR');
+  });
+  it('admits a panel photo without choosing one QR among the many meters on it', async () => {
+    await expect(inspectPanelMedia(new File(['panel'], 'panel.jpg', { type: 'image/jpeg' }))).resolves.toEqual({});
+    expect(qr.create).not.toHaveBeenCalled();
+  });
+  it('rejects an unsupported panel original before any upload', async () => {
+    await expect(inspectPanelMedia(new File(['<html>'], 'panel.html', { type: 'text/html' }))).rejects.toThrow('Chọn ảnh JPEG/PNG/WebP');
+    await expect(inspectPanelMedia(new File([], 'empty.jpg', { type: 'image/jpeg' }))).rejects.toThrow('Tệp trống');
   });
 });

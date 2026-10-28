@@ -1,12 +1,17 @@
 /** Originals stay in IndexedDB until an authenticated server receipt confirms them. */
 export interface CaptureOwner { userId: string; orgId: string }
 export interface PendingMeterCapture extends CaptureOwner {
+  /** Absent on originals saved before panel capture existed: those are single-meter captures. */
+  kind?: 'meter' | 'panel';
   clientId: string;
   file: Blob;
   fileName: string;
   sha256: string;
   durationSeconds?: number;
+  /** '' for a panel original: the server matches each meter on the panel. */
   meterId: string;
+  /** Panel originals only: the one building whose meter panel was filmed. */
+  buildingId?: string;
   qrText: string | null;
   purpose: 'MONTHLY' | 'MOVE_OUT';
   readingDate: string;
@@ -52,8 +57,14 @@ export async function readCaptureCatalog<T>(owner: CaptureOwner): Promise<{ mete
   return result ?? null;
 }
 
+/** Panel and single-meter originals share one store (same key, same DB version); old records have no kind. */
+export function isPanelCapture(item: Pick<PendingMeterCapture, 'kind'>): boolean {
+  return item.kind === 'panel';
+}
+
 export async function savePendingCapture(capture: PendingMeterCapture): Promise<void> {
   if (!capture.userId || !capture.orgId || !capture.clientId || capture.file.size === 0) throw new Error('Thiếu tài khoản, tổ chức hoặc ảnh cần giữ.');
+  if (isPanelCapture(capture) && !capture.buildingId) throw new Error('Chọn tòa trước khi giữ ảnh/clip cả bảng.');
   await transact('readwrite', store => store.add(capture));
 }
 

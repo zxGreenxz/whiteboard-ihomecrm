@@ -7,17 +7,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MeterCamera } from './MeterCamera';
 import { MeterCaptureReview } from './MeterCaptureReview';
 import { MeterCaptureRegistry } from './MeterCaptureRegistry';
+import { MeterPanelReview } from './MeterPanelReview';
 import { useMeterCaptureDesk } from './useMeterCaptureDesk';
-import { inspectCaptureMedia, sha256Media } from '@/lib/meter-capture/media';
-import { savePendingCapture } from '@/lib/meter-capture/offlineQueue';
+import { inspectCaptureMedia, inspectPanelMedia, sha256Media } from '@/lib/meter-capture/media';
+import { isPanelCapture, savePendingCapture } from '@/lib/meter-capture/offlineQueue';
+import { panelChildCaptureIds } from '@/lib/meter-capture/panel';
 import { resolveCaptureQr } from '@/lib/meter-capture/service';
 import { vnTodayISO } from '@/lib/vnDate';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useAuth } from '@/hooks/useAuth';
 
+const PANEL_HINT = 'Quay chậm lần lượt từng đồng hồ, dừng 2–3 giây ở mỗi đồng hồ cho rõ nhãn phòng hoặc tem QR và mặt số; bảng nhỏ có thể chụp một ảnh. Tối đa 60 giây / 100 MB.';
+
 function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (month: string) => void; desk: ReturnType<typeof useMeterCaptureDesk> }) {
   const [readingDate, setReadingDate] = useState(vnTodayISO());
   const [purpose, setPurpose] = useState<'MONTHLY' | 'MOVE_OUT'>('MONTHLY');
+  const [mode, setMode] = useState<'meter' | 'panel'>('meter');
   const [meterId, setMeterId] = useState('');
   const [buildingId, setBuildingId] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -28,6 +33,38 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
   const meter = desk.meters.find(item => item.id === meterId);
   const buildings = [...new Map(desk.meters.map(item => [item.buildingId, item.buildingName])).entries()];
   const filtered = desk.meters.filter(item => !buildingId || item.buildingId === buildingId);
+  const buildingName = buildings.find(([id]) => id === buildingId)?.[1];
+  // Panel children are reviewed inside their panel card, never twice in the flat list.
+  const panelChildren = panelChildCaptureIds(desk.panels);
+  const singleCaptures = desk.captures.filter(row => !panelChildren.has(row.id));
+
+  const switchMode = (next: 'meter' | 'panel') => {
+    if (next === mode) return;
+    setMode(next); desk.setError(''); setNotice(''); setVerified(false); setFile(null); setDetails(null); setMeterId('');
+  };
+  const receivePanelFile = async (nextFile: File, recordedDurationSeconds?: number) => {
+    setBusy(true); desk.setError(''); setNotice(''); setVerified(false); setFile(null); setDetails(null);
+    try {
+      const inspected = await inspectPanelMedia(nextFile, recordedDurationSeconds);
+      setFile(nextFile); setDetails({ qrText: null, durationSeconds: inspected.durationSeconds });
+    } catch (cause) { desk.setError(cause instanceof Error ? cause.message : 'Chưa đọc được tệp. Chọn hoặc quay lại.'); }
+    finally { setBusy(false); }
+  };
+  const keepPanel = async () => {
+    if (!file || !details || !buildingId || !desk.owner || !verified) return;
+    setBusy(true); desk.setError(''); setNotice('');
+    try {
+      if (!month || !readingDate) throw new Error('Chọn kỳ tháng và ngày chốt.');
+      await savePendingCapture({ ...desk.owner, kind: 'panel', buildingId, clientId: crypto.randomUUID(), file, fileName: file.name,
+        sha256: await sha256Media(file), durationSeconds: details.durationSeconds, meterId: '', qrText: null,
+        purpose, readingDate, month, capturedAt: new Date().toISOString() });
+      setNotice('Đã giữ ảnh/clip cả bảng trên máy. Bạn có thể quay bảng tiếp theo.');
+      setFile(null); setDetails(null); setVerified(false);
+      await desk.refresh();
+      void desk.sync();
+    } catch (cause) { desk.setError(cause instanceof Error ? cause.message : 'Chưa giữ được ảnh trên máy. Kiểm tra dung lượng và thử lại.'); }
+    finally { setBusy(false); }
+  };
 
   const receiveFile = async (nextFile: File, recordedDurationSeconds?: number) => {
     setBusy(true); desk.setError(''); setNotice(''); setVerified(false); setFile(null); setDetails(null); setMeterId('');
@@ -66,16 +103,29 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
     <p className="text-xs text-muted-foreground">Mở màn này khi có mạng để tải danh mục trước chuyến đi. Giữ màn Ghi chỉ số mở để tải tiếp, có thể đóng hộp chụp. Ảnh chưa tải xong vẫn ở thiết bị này. Ảnh/clip chỉ dùng nội bộ.</p>
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1"><Label htmlFor="capture-month">Kỳ chốt</Label><Input id="capture-month" type="month" value={month} onChange={event => setMonth(event.target.value)} disabled={busy} /></div>
-      <div className="space-y-1"><Label htmlFor="capture-building">Tòa</Label><select id="capture-building" className="h-10 w-full rounded border bg-background px-2" value={buildingId} onChange={event => setBuildingId(event.target.value)}><option value="">Tất cả tòa</option>{buildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div>
+      <div className="space-y-1"><Label htmlFor="capture-building">Tòa</Label><select id="capture-building" className="h-10 w-full rounded border bg-background px-2" value={buildingId} onChange={event => { setBuildingId(event.target.value); if (mode === 'panel') setVerified(false); }}><option value="">Tất cả tòa</option>{buildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div>
     </div>
     <Tabs defaultValue="capture">
-      <TabsList className="w-full"><TabsTrigger value="capture">Chụp / quay</TabsTrigger><TabsTrigger value="review">Đối chiếu ({desk.captures.length})</TabsTrigger><TabsTrigger value="registry">Tem QR</TabsTrigger></TabsList>
+      <TabsList className="w-full"><TabsTrigger value="capture">Chụp / quay</TabsTrigger><TabsTrigger value="review">Đối chiếu ({singleCaptures.length + desk.panels.length})</TabsTrigger><TabsTrigger value="registry">Tem QR</TabsTrigger></TabsList>
       <TabsContent value="capture" className="space-y-4">
+        <div role="group" aria-label="Cách ghi" className="grid grid-cols-2 gap-2">
+          <Button type="button" variant={mode === 'meter' ? 'default' : 'outline'} aria-pressed={mode === 'meter'} disabled={busy} onClick={() => switchMode('meter')}>Một đồng hồ</Button>
+          <Button type="button" variant={mode === 'panel' ? 'default' : 'outline'} aria-pressed={mode === 'panel'} disabled={busy} onClick={() => switchMode('panel')}>Cả bảng đồng hồ</Button>
+        </div>
         <div className="grid grid-cols-2 gap-3"><div className="space-y-1"><Label htmlFor="capture-purpose">Mục đích</Label><select id="capture-purpose" className="h-10 w-full rounded border bg-background px-2" value={purpose} onChange={event => setPurpose(event.target.value === 'MOVE_OUT' ? 'MOVE_OUT' : 'MONTHLY')}><option value="MONTHLY">Chốt kỳ tháng</option><option value="MOVE_OUT">Chốt thanh lý</option></select></div><div className="space-y-1"><Label htmlFor="capture-date">Ngày chốt</Label><Input id="capture-date" type="date" value={readingDate} onChange={event => setReadingDate(event.target.value)} /></div></div>
         {!desk.catalogReady && <p role="status" className="text-sm">Chưa tải xong danh mục đồng hồ; cần kết nối mạng trước khi chụp.</p>}
-        <MeterCamera onFile={(next, duration) => void receiveFile(next, duration)} disabled={busy || !desk.catalogReady} />
+        {mode === 'panel' && desk.catalogReady && !buildingId && <p className="text-sm text-amber-700">Chọn tòa ở ô Tòa phía trên trước khi quay cả bảng.</p>}
+        <MeterCamera onFile={(next, duration) => void (mode === 'panel' ? receivePanelFile(next, duration) : receiveFile(next, duration))}
+          disabled={busy || !desk.catalogReady} hint={mode === 'panel' ? PANEL_HINT : undefined} />
         {busy && <p role="status" className="text-sm">Đang kiểm tra / giữ tệp…</p>}
-        {file && <div className="space-y-3 rounded border p-3">
+        {file && mode === 'panel' && <div className="space-y-3 rounded border p-3">
+          <p className="text-sm">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB{details?.durationSeconds ? ` · ${Math.ceil(details.durationSeconds)} giây` : ''}</p>
+          <p className="text-sm">Bảng đồng hồ của tòa: <strong>{buildingName ?? 'Chưa chọn tòa'}</strong></p>
+          <p className="text-sm text-amber-700">Mỗi đồng hồ đọc được thành một lượt riêng; người có quyền vẫn đối chiếu ảnh và ghi lý do khi chốt.</p>
+          <label className="flex gap-2 text-sm"><input type="checkbox" checked={verified} disabled={!buildingId} onChange={event => setVerified(event.target.checked)} />Đã chọn đúng tòa; quay lần lượt từng đồng hồ, thấy rõ nhãn phòng hoặc tem QR.</label>
+          <Button disabled={busy || !verified || !buildingId} onClick={() => void keepPanel()}>Giữ và gửi đọc cả bảng</Button>
+        </div>}
+        {file && mode === 'meter' && <div className="space-y-3 rounded border p-3">
           <p className="text-sm">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB{details?.durationSeconds ? ` · ${Math.ceil(details.durationSeconds)} giây` : ''}</p>
           <Label htmlFor="capture-meter">{details?.qrText ? 'Đồng hồ xác định từ QR' : 'Chưa đọc được QR — chọn đồng hồ để đối chiếu thủ công'}</Label>
           <select id="capture-meter" className="h-10 w-full rounded border bg-background px-2" value={meterId} disabled={!!details?.qrText} onChange={event => { setMeterId(event.target.value); setVerified(false); }}><option value="">Chọn đúng đồng hồ</option>{filtered.map(item => <option key={item.id} value={item.id}>{item.buildingName} · {item.roomName} · {item.code}</option>)}</select>
@@ -91,14 +141,16 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
             const label = local ? 'Đang giữ trên máy' : rows.some(row => row.status === 'CONFIRMED') ? 'Đã chốt' : rows.some(row => ['REVIEW', 'FAILED'].includes(row.status)) ? 'Cần đối chiếu' : rows.length ? 'Đang đọc' : 'Chưa chụp';
             return <div key={item.id} className="flex justify-between gap-2 border-b py-1 text-sm"><span>{item.roomName ?? 'Chưa gán phòng'} · {item.code}</span><span>{label}</span></div>;
           })}
-          {desk.pending.map(item => <p key={item.clientId} className="text-xs text-muted-foreground">Đang giữ: {item.fileName} · {item.month} · {item.readingDate}</p>)}
+          {desk.pending.map(item => <p key={item.clientId} className="text-xs text-muted-foreground">Đang giữ: {item.fileName} · {item.month} · {item.readingDate}{isPanelCapture(item) ? ' · cả bảng' : ''}</p>)}
         </div>
       </TabsContent>
       <TabsContent value="review" className="space-y-3">
         <p className="text-sm text-muted-foreground">Server và AI đọc độc lập. Mọi lượt đều cần người có quyền kiểm tra chứng cứ và xác nhận trước khi tính tiền.</p>
         <Button variant="outline" size="sm" onClick={() => void desk.refresh()}>Tải lại kết quả</Button>
-        {desk.captures.filter(row => !buildingId || desk.meters.some(item => item.id === row.meterId && item.buildingId === buildingId)).map(row => <MeterCaptureReview key={`${row.id}:${row.version}`} capture={row} meter={desk.meters.find(item => item.id === row.meterId)} onChanged={desk.changed} />)}
-        {!desk.captures.length && <p className="text-sm text-muted-foreground">Chưa có lượt đọc trên server trong kỳ này.</p>}
+        {desk.panelError && <p role="alert" className="text-sm text-destructive">{desk.panelError}</p>}
+        {desk.panels.filter(panel => !buildingId || panel.buildingId === buildingId).map(panel => <MeterPanelReview key={panel.id} panel={panel} captures={desk.captures} meters={desk.meters} onChanged={desk.changed} />)}
+        {singleCaptures.filter(row => !buildingId || desk.meters.some(item => item.id === row.meterId && item.buildingId === buildingId)).map(row => <MeterCaptureReview key={`${row.id}:${row.version}`} capture={row} meter={desk.meters.find(item => item.id === row.meterId)} onChanged={desk.changed} />)}
+        {!desk.captures.length && !desk.panels.length && <p className="text-sm text-muted-foreground">Chưa có lượt đọc trên server trong kỳ này.</p>}
       </TabsContent>
       <TabsContent value="registry">{desk.online && desk.catalogReady ? <MeterCaptureRegistry orgId={desk.owner.orgId} meters={filtered} onChanged={desk.refresh} /> : <p>Cần tải được danh mục đồng hồ và bộ đọc đã được bật trước khi đăng ký tem.</p>}</TabsContent>
     </Tabs>

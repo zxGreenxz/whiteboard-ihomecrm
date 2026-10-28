@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Camera, Video, Square, Upload } from 'lucide-react';
 import { MAX_CAPTURE_BYTES, MAX_CLIP_SECONDS } from '@/lib/meter-capture/media';
 
-export function MeterCamera({ onFile, disabled }: { onFile: (file: File, durationSeconds?: number) => void; disabled?: boolean }) {
+const SINGLE_METER_HINT = 'Lấy QR và mặt số trong cùng ảnh. Với màn nháy: quay 15–30 giây hết một vòng, thấy QR lúc đầu, giữ một đồng hồ liên tục. Tối đa 60 giây / 100 MB.';
+
+export function MeterCamera({ onFile, disabled, hint = SINGLE_METER_HINT }: { onFile: (file: File, durationSeconds?: number) => void; disabled?: boolean; hint?: string }) {
   const preview = useRef<HTMLVideoElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -86,7 +88,7 @@ export function MeterCamera({ onFile, disabled }: { onFile: (file: File, duratio
   };
 
   return <div className="space-y-2">
-    <p className="text-sm text-muted-foreground">Lấy QR và mặt số trong cùng ảnh. Với màn nháy: quay 15–30 giây hết một vòng, thấy QR lúc đầu, giữ một đồng hồ liên tục. Tối đa 60 giây / 100 MB.</p>
+    <p className="text-sm text-muted-foreground">{hint}</p>
     <video ref={preview} muted playsInline className={cameraOn ? 'w-full max-h-64 rounded bg-black object-contain' : 'hidden'} />
     <div className="flex flex-wrap gap-2">
       {!cameraOn && <Button type="button" variant="outline" disabled={disabled} onClick={() => void openCamera()}><Camera className="mr-2 h-4 w-4" />Mở camera</Button>}

@@ -3,8 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { uploadFileDetailed } from '@/lib/storage';
 import { confirmedInvoiceReceipt } from '@/lib/invoiceFeedback';
 import { meterBillingSourceSchema, meterCaptureMeterSchema, meterCaptureSchema, meterEvidenceSchema,
-  type MeterCapture, type MeterSourceReference } from './types';
-export type { MeterCapture, MeterCaptureMeter, MeterCaptureProfile, EngineResult, MeterBillingSource, MeterSourceReference, MeterEvidence } from './types';
+  meterPanelEvidenceSchema, meterPanelSchema, type MeterCapture, type MeterPanel, type MeterPanelEvidence, type MeterSourceReference } from './types';
+export type { MeterCapture, MeterCaptureMeter, MeterCaptureProfile, EngineResult, MeterBillingSource, MeterSourceReference, MeterEvidence,
+  MeterPanel, MeterPanelDetection, MeterPanelEvidence } from './types';
 
 const uuid = z.string().uuid();
 async function gateway(body: Record<string, unknown>): Promise<unknown> {
@@ -35,6 +36,7 @@ function meterGatewayMessage(code: string): string {
   if (code === 'PT409' || code === '23505') return 'Dữ liệu đã thay đổi hoặc đã được lưu. Tải lại để đối chiếu trước khi tiếp tục.';
   if (code === 'PT422') return 'Chỉ số đã dùng cho thanh lý đã hoàn tất. Cần kế toán và quản lý hợp đồng xử lý điều chỉnh trước; chứng từ cũ được giữ nguyên.';
   if (code === '55000' || code === '22023') return 'Chỉ số hoặc chứng cứ chưa đủ điều kiện. Tải lại và kiểm tra đồng hồ, kỳ chốt.';
+  if (code === 'unsupported_action') return 'Máy chủ chưa hỗ trợ thao tác này. Bản trên điện thoại vẫn được giữ; thử lại sau khi hệ thống cập nhật.';
   return 'Chưa xử lý được yêu cầu ghi chỉ số. Giữ bản trên điện thoại và thử lại.';
 }
 async function call(orgId: string, rpcAction: string, payload: Record<string, unknown> = {}): Promise<unknown> {
@@ -87,6 +89,68 @@ export async function confirmMeterCapture(input: { orgId: string; captureId: str
   supersedesCaptureId?: string; expectedSupersededVersion?: number; value: string; reason?: string }) {
   const { orgId, ...payload } = input;
   return z.object({ capture: meterCaptureSchema }).parse(await call(orgId, 'confirmCapture', payload)).capture;
+}
+
+type PanelRpcAction = 'startPanel' | 'getPanel' | 'listPanels' | 'assignDetection' | 'panelEvidence';
+async function panelCall(orgId: string, rpcAction: PanelRpcAction, payload: Record<string, unknown>): Promise<unknown> {
+  return gateway({ action: 'panelRpc', organizationId: uuid.parse(orgId), rpcAction, payload });
+}
+export interface StartMeterPanelInput {
+  clientId: string; buildingId: string; purpose: 'MONTHLY' | 'MOVE_OUT'; readingDate: string; month: string;
+  capturedAt: string; sha256: string; mimeType: string; sizeBytes: number; durationSeconds?: number;
+}
+/** Idempotent per clientId; the same clientId with different facts is rejected by the server. */
+export async function startMeterPanel(orgId: string, input: StartMeterPanelInput) {
+  return z.object({ panel: meterPanelSchema, uploadPath: z.string(), bucket: z.string().default('meter-capture-media') })
+    .parse(await panelCall(orgId, 'startPanel', { ...input }));
+}
+export async function finalizeMeterPanel(orgId: string, panelId: string, options: { allowMissing?: boolean } = {}) {
+  return z.object({ panel: meterPanelSchema.nullable(), needsUpload: z.boolean().optional() })
+    .parse(await gateway({ action: 'finalizePanel', organizationId: uuid.parse(orgId), panelId: uuid.parse(panelId), ...(options.allowMissing ? { allowMissing: true } : {}) }));
+}
+export async function getMeterPanel(orgId: string, ref: { panelId: string } | { clientId: string }): Promise<MeterPanel | null> {
+  const payload = 'panelId' in ref ? { panelId: ref.panelId } : { clientId: ref.clientId };
+  return z.object({ panel: meterPanelSchema.nullable() }).parse(await panelCall(orgId, 'getPanel', payload)).panel;
+}
+export async function listMeterPanels(orgId: string, month: string): Promise<MeterPanel[]> {
+  return z.object({ panels: z.array(meterPanelSchema) }).parse(await panelCall(orgId, 'listPanels', { month })).panels;
+}
+/** Creates the child capture for one detection; the reading itself still needs a separate confirmation. */
+export async function assignPanelDetection(input: { orgId: string; panelId: string; detectionIndex: number; meterId: string; contractId?: string | null }): Promise<MeterPanel> {
+  const { orgId, contractId, ...payload } = input;
+  return z.object({ panel: meterPanelSchema }).parse(await panelCall(orgId, 'assignDetection', { ...payload, ...(contractId ? { contractId } : {}) })).panel;
+}
+export async function getPanelEvidence(orgId: string, panelId: string): Promise<MeterPanelEvidence> {
+  return z.object({ evidence: meterPanelEvidenceSchema }).parse(await panelCall(orgId, 'panelEvidence', { panelId })).evidence;
+}
+export interface SubmitMeterPanelInput {
+  clientId: string; orgId: string; buildingId: string; purpose: 'MONTHLY' | 'MOVE_OUT'; readingDate: string; month: string;
+  capturedAt: string; file: File; sha256: string; durationSeconds?: number; onProgress?: (percent: number) => void;
+}
+/** Same receipt boundary as submitMeterCapture: the offline copy is only released for a matching server receipt. */
+export async function submitMeterPanel(input: SubmitMeterPanelInput): Promise<MeterPanel> {
+  const { file, orgId, onProgress } = input;
+  if (!/^[a-f0-9]{64}$/.test(input.sha256) || file.size > 100 * 1024 * 1024 || !file.size) throw new Error('Tệp không hợp lệ hoặc vượt 100 MB.');
+  const started = await startMeterPanel(orgId, { clientId: input.clientId, buildingId: input.buildingId, purpose: input.purpose,
+    readingDate: input.readingDate, month: input.month, capturedAt: input.capturedAt, sha256: input.sha256,
+    mimeType: file.type, sizeBytes: file.size, durationSeconds: input.durationSeconds });
+  const receiptMatches = (panel: MeterPanel) => panel.sha256 === input.sha256 && panel.clientId === input.clientId && panel.orgId === orgId && panel.buildingId === input.buildingId;
+  if (!receiptMatches(started.panel)) throw new Error('Biên nhận không khớp ảnh trên máy.');
+  if (started.panel.mediaReceived && started.panel.status !== 'UPLOADING') return started.panel;
+  // Reconcile before retry: a previous upload can have succeeded even if its response was lost.
+  const reconciled = await finalizeMeterPanel(orgId, started.panel.id, { allowMissing: true });
+  if (reconciled.panel?.mediaReceived) {
+    if (!receiptMatches(reconciled.panel)) throw new Error('Biên nhận tải lại không khớp ảnh trên máy.');
+    return reconciled.panel;
+  }
+  if (!started.uploadPath.startsWith(`${orgId}/meter-panels/${started.panel.id}/`)) throw new Error('Đường dẫn tải lên không khớp bảng đồng hồ; vẫn giữ bản trên điện thoại.');
+  await uploadFileDetailed(started.bucket, started.uploadPath, file, {
+    imagePolicy: 'meter-original', maxBytes: 100 * 1024 * 1024,
+    resilient: onProgress ? { onProgress: (progress) => onProgress(progress.total ? progress.loaded / progress.total * 100 : 0) } : {},
+  });
+  const done = await finalizeMeterPanel(orgId, started.panel.id);
+  if (!done.panel?.mediaReceived || !receiptMatches(done.panel)) throw new Error('Chưa xác minh được ảnh trên máy chủ; vẫn giữ bản trên điện thoại.');
+  return done.panel;
 }
 export interface SaveMeterCaptureProfileInput {
   orgId: string; meterId: string; serial: string; displayKind: 'DIGITAL' | 'MECHANICAL'; decimalPlaces: number;

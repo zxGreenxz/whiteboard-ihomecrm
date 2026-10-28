@@ -42,6 +42,34 @@ export const meterEvidenceSchema = z.object({
   evidenceFrames: z.array(meterEvidenceFrameSchema).default([]),
 });
 export type MeterEvidence = z.infer<typeof meterEvidenceSchema>;
+
+/** One meter the worker found on a panel photo/clip. Matching and child captures are server decisions. */
+export const meterPanelDetectionSchema = z.object({
+  index: z.number().int().nonnegative(), label: z.string().nullable(), registerCode: z.string().nullable().default(null),
+  display: z.string().nullable().default(null), value: meterValueSchema.nullable(), clear: z.boolean(),
+  state: z.enum(['MATCHED', 'UNMATCHED', 'AMBIGUOUS', 'DUPLICATE', 'NO_PROFILE', 'NO_CONTRACT', 'OTHER_BUILDING']),
+  matchKind: z.enum(['QR', 'LABEL', 'MANUAL']).nullable(), meterId: uuid.nullable(), roomId: uuid.nullable(),
+  roomName: z.string().nullable(), meterCode: z.string().nullable(), captureId: uuid.nullable(),
+  // Private storage reference; StorageImage signs it only when the panel is opened.
+  cropUrl: z.string().nullable().default(null), timestampSeconds: z.number().finite().nonnegative().nullable().default(null),
+});
+export type MeterPanelDetection = z.infer<typeof meterPanelDetectionSchema>;
+export const meterPanelSchema = z.object({
+  id: uuid, clientId: uuid, orgId: uuid, buildingId: uuid, buildingName: z.string(),
+  purpose: z.enum(['MONTHLY', 'MOVE_OUT']), readingDate: z.string(), month: z.string(), capturedAt: z.string(),
+  status: z.enum(['UPLOADING', 'QUEUED', 'PROCESSING', 'REVIEW']), version: z.number().int(),
+  mimeType: z.string(), sizeBytes: z.number().int().nonnegative(), sha256: z.string(),
+  durationSeconds: z.number().nonnegative().nullable().default(null),
+  mediaReceived: z.boolean(), mediaValidated: z.boolean().nullable().default(null),
+  issues: z.array(z.string()).default([]), createdAt: z.string(),
+  aiStatus: z.enum(['ok', 'unreadable', 'error']).nullable().default(null),
+  detections: z.array(meterPanelDetectionSchema).default([]),
+});
+export type MeterPanel = z.infer<typeof meterPanelSchema>;
+export const meterPanelEvidenceSchema = z.object({
+  imageUrl: z.string().nullable(), videoUrl: z.string().nullable(), frames: z.array(meterEvidenceFrameSchema).default([]),
+});
+export type MeterPanelEvidence = z.infer<typeof meterPanelEvidenceSchema>;
 export const meterPointSchema = z.object({
   readingId: uuid.nullable(), value: z.union([meterValueSchema, z.number().finite().nonnegative()]).transform(String),
   version: z.union([z.string(), z.number()]).transform(String), captureId: uuid.nullable(),

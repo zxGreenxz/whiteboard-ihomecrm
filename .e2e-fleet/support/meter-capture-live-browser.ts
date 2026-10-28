@@ -39,6 +39,8 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
    const body=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.unknown()).optional(),captureId:z.string().optional()}).parse(request.postDataJSON());
    if(body.organizationId!==fixture.organizationId)return block();
    if(body.action==='finalize'&&created.captureIds.includes(body.captureId??'')){writes.push('finalize');return route.continue();}
+   // The capture desk also lists whole-panel results for the same month (read-only); this flow never creates a panel.
+   if(body.action==='panelRpc'&&body.rpcAction==='listPanels'&&body.payload?.month===fixture.readingDate.slice(0,7))return route.continue();
    if(body.action!=='rpc')return block();
    const payload=body.payload??{};
    if(body.rpcAction==='catalog'||(body.rpcAction==='listCaptures'&&payload.month===fixture.readingDate.slice(0,7)))return route.continue();

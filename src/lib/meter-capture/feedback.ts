@@ -27,6 +27,9 @@ const labels: Record<string, string> = {
   media_size_limit: 'Dung lượng tệp vượt giới hạn',
   no_decodable_frames: 'Không tìm thấy khung hình đọc được',
   worker_processing_failed: 'Xử lý ảnh bị gián đoạn; cần kiểm tra lại',
+  PANEL_SINGLE_READER: 'Đọc từ clip cả bảng (một bộ đọc AI); cần đối chiếu',
+  NO_METERS_DETECTED: 'Không phát hiện đồng hồ nào',
+  qr_outside_meters: 'Có tem QR không nằm trên đồng hồ nào',
 };
 
 export function captureIssueLabel(issue: string): string {
