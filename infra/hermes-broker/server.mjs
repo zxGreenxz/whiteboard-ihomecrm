@@ -27,6 +27,7 @@ import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createSupabaseDurableAuthAdapter } from './supabase-durable-auth-adapter.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
+import { AUTHORITY_CONTEXT_CACHE, DEFAULT_AUTHORITY_CACHE_TTL_MS, createAuthorityContextCache, validAuthorityCacheTtl } from './authority-context-cache.mjs';
 import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createConnectionControlPlane, createSupabaseAssistantSignIn, createSupabaseConnectionPreparation } from './connection-control-plane.mjs';
 import { createConnectionManagement, createSupabaseConnectionManagementReads } from './connection-management.mjs';
@@ -122,9 +123,13 @@ function backendLimits(value) {
  * Optional `callLog(record)`: one tool_call_timing record per broker invocation
  * (phase durations, result size, outcome; never arguments, results or tokens).
  * The host owns the sink; this composition still has no logger of its own.
+ * Optional `authorityCacheTtlMs` (default 30 min, 0 = off, else 1–60 min): how long
+ * authenticate/ping, tools/list and the host renewal lane may reuse a connection's
+ * last CRM authorization read (authority-context-cache.mjs); tools/call never does.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages', 'publicWebOrigin'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages', 'publicWebOrigin',
+    'authorityCacheTtlMs'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -145,6 +150,8 @@ export function createHermesBackend(configuration = {}) {
         new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
       // Lượt 11 (D-HĐ9): origin web (https) để ghép link công khai của HĐ; vắng = crm_read_contract_detail trả publicLink null.
       (Object.hasOwn(configuration, 'publicWebOrigin') && !isPublicWebOrigin(configuration.publicWebOrigin)) ||
+      // 28/10: hạn nhớ quyền CRM cho ping/tools/list/gia hạn; vắng = 30 phút, 0 = tắt (đọc quyền thật mọi lượt như trước).
+      (Object.hasOwn(configuration, 'authorityCacheTtlMs') && !validAuthorityCacheTtl(configuration.authorityCacheTtlMs)) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -199,16 +206,25 @@ export function createHermesBackend(configuration = {}) {
     // Lượt 11: khoá thao tác bật cho kết nối + công ty mà người dùng thiếu quyền CRM (theo ảnh chụp quyền) ⇒ runtime báo forbidden thay
     // vì action_disabled. Chỉ authority đầy đủ ghi (thao tác ghi không đi đường đọc nhanh).
     const permissionGaps = createCrmPermissionGaps();
-    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock, permissionGaps });
+    // Nhớ quyền (28/10): một bộ nhớ cho authority đầy đủ của tiến trình. Chỉ lời gọi mang AUTHORITY_CONTEXT_CACHE
+    // (ping/initialize, tools/list của broker và làn gia hạn của host dưới đây) được dùng lại phần đọc quyền CRM.
+    const contextCache = createAuthorityContextCache({ ttlMs: configuration.authorityCacheTtlMs ?? DEFAULT_AUTHORITY_CACHE_TTL_MS, clock });
+    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock, permissionGaps, contextCache });
+    // Làn gia hạn/refresh của host: không trả dữ liệu CRM, chỉ giữ token sống; SQL gia hạn (hermes_store_renew_connection_v1) tự
+    // kiểm thành viên, chính sách và giới hạn kết nối mỗi lần. Mọi tools/call vẫn kiểm quyền thật trước khi đọc/ghi.
+    const withContext = options => ({ ...(options ?? {}), [AUTHORITY_CONTEXT_CACHE]: true });
+    const contextAuthority = Object.freeze({ identifyConnection: authority.identifyConnection,
+      resolve: (token, options) => authority.resolve(token, withContext(options)),
+      checkUnchanged: (token, receipt, options) => authority.checkUnchanged(token, receipt, withContext(options)) });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
         auth: createDomainAuthAdapter({ baseAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) }) }) }) : undefined;
     const workMemory = createWorkMemoryService({ authority, connectionStore, crypto, auth, reads: memoryReads, clock });
-    const renewal = createConnectionRenewal({ authority, connectionStore, clock });
+    const renewal = createConnectionRenewal({ authority: contextAuthority, connectionStore, clock });
     const refreshProvider = createSupabaseRefreshProvider({ ...supabase, fetch: request, clock, dependencyScope });
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
       provider: refreshProvider, crypto, clock, dependencyScope });
-    const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
+    const maintenance = createConnectionMaintenance({ authority: contextAuthority, connectionStore, refreshManager, renewal, clock, dependencyScope });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group
@@ -234,7 +250,7 @@ export function createHermesBackend(configuration = {}) {
     const salePolicies = createSalePolicyService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
     const saleBulk = createSaleBulkService({ authority, saleActions });
     const broker = createBroker({ tasks, roomPass, customers, actions, saleActions, salePolicies, saleBulk, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
+      observe: health.record, callLog, authorityCache: contextCache, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
@@ -305,7 +321,8 @@ export function createHermesBackend(configuration = {}) {
       const work = Promise.resolve().then(async () => {
         // Scope only the finite authority lookup. Preserve the 16-call limit
         // when a SQL/Auth observer aborts before its actual transport settles.
-        const lookup = dependencyScope.begin(() => authority.resolve(token, { signal: combined }));
+        // Vòng bảo trì của connector hỏi mỗi 30 s khi tới hạn gia hạn: chỉ cần chủ/hạn kết nối ⇒ dùng quyền CRM đã nhớ.
+        const lookup = dependencyScope.begin(() => authority.resolve(token, { signal: combined, [AUTHORITY_CONTEXT_CACHE]: true }));
         let context;
         try { context = await lookup.result; } finally { await lookup.drained; }
         if (closing || combined.aborted) throw new BrokerError('backend_unavailable');

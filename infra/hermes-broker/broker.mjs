@@ -19,6 +19,7 @@ import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
 import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
+import { AUTHORITY_CONTEXT_CACHE, forgetsAuthorityContext } from './authority-context-cache.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { readMisuseHint } from './read-misuse-hints.mjs';
@@ -378,9 +379,12 @@ export function createBroker({
   audit,
   observe,
   callLog,
+  authorityCache,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
   if (callLog !== undefined && typeof callLog !== 'function') throw new TypeError('invalid_call_log');
+  // Nhớ quyền 30 phút (authority-context-cache.mjs): broker chỉ cần bỏ mục nhớ khi một lượt gặp lỗi quyền.
+  if (authorityCache !== undefined && typeof authorityCache?.forget !== 'function') throw new TypeError('invalid_authority_cache');
   const definitions = toolDefinitions();
   let injectedAuthority;
   if (authority !== undefined) {
@@ -700,6 +704,8 @@ export function createBroker({
     let comparisonReceipt;
     const requestId = randomUUID();
     const selectedAuthority = context.authority ?? injectedAuthority;
+    // Chỉ authenticate (ping/initialize) và tools/list được dùng lại quyền CRM đã nhớ; tools/call không bao giờ đặt cờ này.
+    const contextOption = context.cachedContext === true && operation !== 'tools/call' ? { [AUTHORITY_CONTEXT_CACHE]: true } : {};
     const maxBytes = operation === 'tools/list' ? limits.maxToolsListBytes : limits.maxResultBytes;
     let connectionId;
     const startedAt = performance.now();
@@ -728,7 +734,7 @@ export function createBroker({
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId, operation);
         if (selectedAuthority) {
-          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
+          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true, ...contextOption }));
           identity = authorityIdentity(comparisonReceipt, clock());
         } else identity = await timed('resolveMs', () => authorize(presentedToken, signal));
         if (signal.aborted) fail('timeout');
@@ -754,7 +760,7 @@ export function createBroker({
           advanceAuthorityRequest();
           await timed('checkMs', async () => {
             if (selectedAuthority) {
-              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
+              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true, ...contextOption });
               if (checked !== undefined) fail('backend_unavailable');
               if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
             } else await checkUnchanged(presentedToken, identity, signal);
@@ -779,6 +785,10 @@ export function createBroker({
       if (REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
       // A quota/concurrency rejection is attributable to the identified connection.
       report(identity?.row.id ?? connectionId, operation, safe.code);
+      // Lỗi quyền SAU khi đã nhận diện kết nối (42501/401 của RPC, PT409, khoá thao tác tắt hay thiếu quyền) ⇒ bỏ quyền đã nhớ
+      // của token: ping/tools/list sau đó đọc lại quyền thật thay vì chờ hết 30 phút. Lỗi ở pha nhận diện/dựng authority do
+      // chính authority bỏ (token lạ không làm xáo bộ nhớ của kết nối khác).
+      if (authorityCache && identity && forgetsAuthorityContext(safe)) { try { authorityCache.forget(presentedToken); } catch { /* never changes the outcome */ } }
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
       // D9: lý do của action_rejected vào sổ audit (danh sách đóng; host-ownership.mjs REASONS nhận đúng tập này).
       const reason = safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) ? { reason: safe.reason } : {};
@@ -956,14 +966,16 @@ export function createBroker({
       }
       if (!await connectionStore.replace(id, row.epoch, { ...row, restrictions, epoch: row.epoch + 1 })) fail('context_changed');
     },
+    // ping/initialize (keepalive 180 s của MCP client Hermes) và tools/list chỉ trả siêu dữ liệu kết nối / danh mục tool:
+    // được dùng quyền CRM đã nhớ (cachedContext). Mọi tools/call vẫn dựng authority thật.
     async authenticate(presentedToken) {
-      return invoke(presentedToken, 'authenticate', (identity) => safeConnection(identity.row));
+      return invoke(presentedToken, 'authenticate', (identity) => safeConnection(identity.row), undefined, { cachedContext: true });
     },
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => {
         const tools = grantedTools(identity);
         return { tools: [...tools, ...(mayIssueRequestId(identity) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
-      }, undefined, external ? { authority: external.authority } : {});
+      }, undefined, { ...(external ? { authority: external.authority } : {}), cachedContext: true });
     },
     async callTool(presentedToken, name, args) {
       const publicName = name;

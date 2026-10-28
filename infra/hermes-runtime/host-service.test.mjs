@@ -17,6 +17,7 @@ function fixture(t, changes = {}) {
     http: {}, mode: 'connector', limits: connectorLimits, listenPort: 0,
     ...(changes.readFastPath === undefined ? {} : { readFastPath: changes.readFastPath }),
     ...(changes.roomRead === undefined ? {} : { roomRead: changes.roomRead }),
+    ...(changes.authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs: changes.authorityCacheTtlMs }),
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -34,6 +35,8 @@ function fixture(t, changes = {}) {
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
       assert.equal(options.readFastPath, changes.readFastPath);
       assert.equal(options.roomRead, changes.roomRead);
+      assert.equal(Object.hasOwn(options, 'authorityCacheTtlMs'), changes.authorityCacheTtlMs !== undefined);
+      assert.equal(options.authorityCacheTtlMs, changes.authorityCacheTtlMs);
       assert.equal(typeof options.callLog, changes.callLogOff ? 'undefined' : 'function'); callLog = options.callLog;
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createNativeBindingReconciler(options) {
@@ -86,6 +89,12 @@ test('host forwards the explicit private read rollout flag to the backend', asyn
 test('host forwards the explicit room read source flag to the backend and omits it by default', async t => {
   for (const roomRead of [undefined, 'legacy', 'page']) {
     const f = fixture(t, roomRead === undefined ? {} : { roomRead }); await f.host.start(); await f.host.close();
+  }
+});
+
+test('host forwards an explicit authority cache TTL (28/10) and omits it by default so the backend keeps 30 minutes', async t => {
+  for (const authorityCacheTtlMs of [undefined, 0, 600_000]) {
+    const f = fixture(t, authorityCacheTtlMs === undefined ? {} : { authorityCacheTtlMs }); await f.host.start(); await f.host.close();
   }
 });
 
