@@ -73,6 +73,11 @@ const STAGE_28 =
   "supabase/migrations/20260829010000_network_center_h196a_downstream.sql";
 const STAGE_29 =
   "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql";
+// Stage 30 (28/10/2026): chỉ thay thân app_private.network_center_ensure_raw_partitions_v1,
+// không thêm descriptor nào. Lúc đo (03/08/2026) production giữ thân 20260729020000, tức thân
+// lệch so với stage sở hữu cuối cùng — ghi ở MEASURED_STALE_BODIES như các hàm cũ khác.
+const STAGE_30 =
+  "supabase/migrations/20261028153038_network_center_ensure_partitions_bo_qua_alter_lap.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -150,6 +155,7 @@ const MEASURED_STALE_BODIES = [
   "app_private.network_center_worker_inventory_legacy_impl_v1",
   "public.network_center_admin_set_rollout_v1",
   "public.network_center_watchdog_liveness_v1",
+  "app_private.network_center_ensure_raw_partitions_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
   "public.camera_building_events_v1",
@@ -213,16 +219,17 @@ test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
   assert.equal(every.length, 485);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 29);
+  assert.equal(manifest.migrations.length, 30);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   assert.equal(manifest.migrations[28].path, STAGE_29);
+  assert.equal(manifest.migrations[29].path, STAGE_30);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 18);
+  assert.equal(classification.bodyMismatches.length, 19);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });

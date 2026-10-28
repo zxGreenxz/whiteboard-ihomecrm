@@ -128,6 +128,20 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     + "schema production ngày 28/08/2026 (nạp 5 thiết bị, trễ ba lượt trước khi "
     + "gọi OFFLINE, gộp trùng stableKey, chặn MAC ngẫu nhiên, và ba ràng buộc "
     + "chỉ-để-nhìn / phải-có-cha / một-MikroTik-một-toà)",
+  "20261028153038_network_center_ensure_partitions_bo_qua_alter_lap.sql":
+    "cùng lớp với 20260729147000: chỉ thay thân "
+    + "app_private.network_center_ensure_raw_partitions_v1, hàm của bề mặt nạp "
+    + "telemetry (bảng phân mảnh network_device_samples / network_interface_samples) "
+    + "mà bootstrap này không dựng, nên chốt đầu của nó ngã ở `thieu "
+    + "…ensure_raw_partitions_v1` chứ không phải vì migration sai. Độ phủ thay thế: "
+    + "scripts/__tests__/nc-raw-partitions-sql.test.mjs (PGlite: trước vá khoá + ghi "
+    + "lại pg_class, sau vá không; tự vá RLS/quyền bảng/quyền cột cho cả bốn bên "
+    + "nhận; 13 đột biến; chạy trong job vitest của CI Gates), hai bước của "
+    + "network-center-validation.yml replay mọi migration Network Center thật theo "
+    + "glob trên PostgreSQL thật qua runDisposableLocalClusterMatrix "
+    + "(verify-network-center-managed-resources.mjs --local-cluster và "
+    + "test-cross-tenant.mjs --local-cluster), và bộ sinh manifest rollout replay "
+    + "đủ 30 stage trên cụm dùng-một-lần mỗi lần sinh lại (cục bộ)",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {
