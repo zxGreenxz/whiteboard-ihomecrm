@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assertCaptureReceipt, belongsToCaptureOwner, savePendingCapture, syncPendingCapture, syncPendingCaptureBatch, type PendingMeterCapture } from './offlineQueue';
+import { assertCaptureReceipt, belongsToCaptureOwner, isPanelCapture, listPendingCaptures, savePendingCapture, syncPendingCapture, syncPendingCaptureBatch,
+  type PendingMeterCapture } from './offlineQueue';
 
 const item: PendingMeterCapture = {
   userId: 'user-a', orgId: 'org-a', clientId: 'client-a', file: new Blob(['original']), fileName: 'meter.jpg',
@@ -70,5 +71,72 @@ describe('meter original retention', () => {
     await outcome;
     expect(reportedSaved).toBe(false);
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+/** Minimal in-memory IndexedDB: one database, keyPath [userId, orgId, clientId], commit after the request. */
+function memoryQueue(initial: PendingMeterCapture[]) {
+  const key = (row: PendingMeterCapture) => JSON.stringify([row.userId, row.orgId, row.clientId]);
+  const rows = new Map(initial.map(row => [key(row), row]));
+  const opened: Array<[string, number | undefined]> = [];
+  const stores: string[] = [];
+  const db = {
+    close: () => undefined,
+    transaction: (storeName: string) => {
+      stores.push(storeName);
+      const tx = { oncomplete: null as (() => void) | null, onabort: null as (() => void) | null, onerror: null as (() => void) | null, error: null };
+      const request = <T,>(result: T) => { queueMicrotask(() => tx.oncomplete?.()); return { result }; };
+      return Object.assign(tx, { objectStore: () => ({
+        add: (row: PendingMeterCapture) => { if (rows.has(key(row))) throw new Error('ConstraintError'); rows.set(key(row), row); return request(row.clientId); },
+        getAll: (range: { owner: unknown[] }) => request([...rows.values()].filter(row => row.userId === range.owner[0] && row.orgId === range.owner[1])),
+      }) });
+    },
+  };
+  vi.stubGlobal('indexedDB', { open: (name: string, version?: number) => {
+    opened.push([name, version]);
+    const open = { result: db, onsuccess: null as (() => void) | null };
+    queueMicrotask(() => open.onsuccess?.());
+    return open;
+  } });
+  vi.stubGlobal('IDBKeyRange', { bound: (lower: unknown[]) => ({ owner: lower }) });
+  return { rows, opened, stores };
+}
+
+const panelItem: PendingMeterCapture = { ...item, kind: 'panel', clientId: 'client-panel', fileName: 'panel.mp4', sha256: 'hash-panel',
+  meterId: '', buildingId: 'building-a', qrText: null, capturedAt: '2026-10-22T09:00:00Z' };
+describe('panel originals in the same offline queue', () => {
+  it('treats records saved before panel capture as single-meter captures', () => {
+    const legacy: PendingMeterCapture = { ...item };
+    delete legacy.kind;
+    expect(isPanelCapture(legacy)).toBe(false);
+    expect(isPanelCapture({ kind: 'meter' })).toBe(false);
+    expect(isPanelCapture(panelItem)).toBe(true);
+  });
+  it('stores a panel original next to an old record in the version 1 store and reads both back', async () => {
+    const legacy: PendingMeterCapture = { ...item };
+    delete legacy.kind;
+    const queue = memoryQueue([legacy]);
+    await savePendingCapture(panelItem);
+    const listed = await listPendingCaptures({ userId: 'user-a', orgId: 'org-a' });
+    expect(queue.opened.every(([name, version]) => name === 'ihome-meter-captures-v1' && version === 1)).toBe(true);
+    expect(queue.stores).toEqual(['pending', 'pending']);
+    expect(listed.map(row => [row.clientId, isPanelCapture(row)])).toEqual([['client-panel', true], ['client-a', false]]);
+    expect(listed[0]).toMatchObject({ kind: 'panel', buildingId: 'building-a', meterId: '', qrText: null });
+    expect(listed[1].meterId).toBe('meter-a');
+  });
+  it('does not keep a panel original that has no building', async () => {
+    const queue = memoryQueue([]);
+    await expect(savePendingCapture({ ...panelItem, buildingId: undefined })).rejects.toThrow('Chọn tòa');
+    expect(queue.opened).toEqual([]);
+  });
+  it('releases a panel original only for a matching receipt after reconciling by client ID', async () => {
+    const receiptFor = { clientId: panelItem.clientId, orgId: panelItem.orgId, sha256: panelItem.sha256, mediaReceived: true };
+    const reconcile = vi.fn().mockResolvedValue(null), upload = vi.fn().mockResolvedValue(receiptFor), acknowledge = vi.fn();
+    await syncPendingCapture(panelItem, { reconcile, upload, acknowledge });
+    expect(reconcile).toHaveBeenCalledWith(panelItem); expect(upload).toHaveBeenCalledWith(panelItem);
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith(panelItem, receiptFor);
+    const keep = vi.fn();
+    await expect(syncPendingCapture(panelItem, { reconcile, upload: vi.fn().mockResolvedValue({ ...receiptFor, sha256: 'other-panel' }), acknowledge: keep })).rejects.toThrow();
+    expect(keep).not.toHaveBeenCalled();
   });
 });

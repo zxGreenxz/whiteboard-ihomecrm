@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const io = vi.hoisted(() => ({ invoke: vi.fn(), upload: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { functions: { invoke: io.invoke } } }));
 vi.mock('@/lib/storage', () => ({ uploadFileDetailed: io.upload }));
-import { submitMeterCapture, meterInvoiceRequestId, readDocumentEvidence, createInvoiceWithMeterSources } from './service';
+import { submitMeterCapture, meterInvoiceRequestId, readDocumentEvidence, createInvoiceWithMeterSources,
+  submitMeterPanel, getMeterPanel, listMeterPanels, assignPanelDetection, getPanelEvidence } from './service';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hash = 'a'.repeat(64);
 const input = { clientId: id(1), orgId: id(2), meterId: id(3), qrText: 'ihome-meter:' + id(4), purpose: 'MONTHLY' as const,
@@ -73,5 +74,94 @@ describe('media receipt boundary', () => {
     expect(first).toBe(await meterInvoiceRequestId(id(2), { reading: id(5) }));
     expect(first).not.toBe(await meterInvoiceRequestId(id(3), { reading: id(5) }));
     expect(first).not.toBe(await meterInvoiceRequestId(id(2), { reading: id(6) }));
+  });
+});
+
+const panelFile = new File(['synthetic panel clip'], 'panel.mp4', { type: 'video/mp4' });
+const panelInput = { clientId: id(11), orgId: id(2), buildingId: id(12), purpose: 'MONTHLY' as const, readingDate: '2026-10-22',
+  month: '2026-10', capturedAt: '2026-10-22T10:00:00Z', sha256: hash, durationSeconds: 12, file: panelFile };
+const panel = { id: id(10), clientId: panelInput.clientId, orgId: panelInput.orgId, buildingId: panelInput.buildingId, buildingName: 'Tòa mẫu',
+  purpose: 'MONTHLY', readingDate: panelInput.readingDate, month: panelInput.month, capturedAt: panelInput.capturedAt, status: 'UPLOADING',
+  version: 1, mimeType: 'video/mp4', sizeBytes: panelFile.size, sha256: hash, durationSeconds: 12, mediaReceived: false, mediaValidated: null,
+  issues: [], createdAt: '2026-10-22T10:00:01Z', aiStatus: null, detections: [] };
+const panelPath = `${panelInput.orgId}/meter-panels/${panel.id}/original`;
+const detection = { index: 0, label: 'P101', registerCode: '1.8.0', display: 'digital', value: '1234.5', clear: true, state: 'MATCHED',
+  matchKind: 'QR', meterId: id(3), roomId: id(13), roomName: '101', meterCode: 'E-101', captureId: id(14),
+  cropUrl: 'https://example.supabase.co/storage/v1/object/authenticated/meter-capture-media/crop.jpg', timestampSeconds: 3.5 };
+describe('panel media receipt boundary', () => {
+  it('starts through the panel gateway, uploads the original only after reconciliation finds it missing, then finalizes', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panel, uploadPath: panelPath, bucket: 'meter-capture-media' }))
+      .mockResolvedValueOnce(reply({ panel: null, needsUpload: true }))
+      .mockResolvedValueOnce(reply({ panel: { ...panel, mediaReceived: true, status: 'QUEUED' } }));
+    expect((await submitMeterPanel(panelInput)).status).toBe('QUEUED');
+    const bodies = io.invoke.mock.calls.map(call => call[1].body);
+    expect(io.invoke.mock.calls[0][0]).toBe('meter-capture-worker');
+    expect(bodies[0]).toEqual({ action: 'panelRpc', organizationId: panelInput.orgId, rpcAction: 'startPanel', payload: {
+      clientId: panelInput.clientId, buildingId: panelInput.buildingId, purpose: 'MONTHLY', readingDate: '2026-10-22', month: '2026-10',
+      capturedAt: panelInput.capturedAt, sha256: hash, mimeType: 'video/mp4', sizeBytes: panelFile.size, durationSeconds: 12 } });
+    expect(bodies[1]).toEqual({ action: 'finalizePanel', organizationId: panelInput.orgId, panelId: panel.id, allowMissing: true });
+    expect(bodies[2]).toEqual({ action: 'finalizePanel', organizationId: panelInput.orgId, panelId: panel.id });
+    expect(io.upload).toHaveBeenCalledExactlyOnceWith('meter-capture-media', panelPath, panelFile, expect.objectContaining({ imagePolicy: 'meter-original' }));
+  });
+  it('reconciles an already uploaded panel original instead of uploading it again', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panel, uploadPath: panelPath }))
+      .mockResolvedValueOnce(reply({ panel: { ...panel, mediaReceived: true, status: 'QUEUED' } }));
+    expect((await submitMeterPanel(panelInput)).mediaReceived).toBe(true);
+    expect(io.upload).not.toHaveBeenCalled(); expect(io.invoke).toHaveBeenCalledTimes(2);
+  });
+  it('returns a received and queued panel without another finalize call', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panel: { ...panel, mediaReceived: true, status: 'PROCESSING' }, uploadPath: panelPath }));
+    expect((await submitMeterPanel(panelInput)).status).toBe('PROCESSING');
+    expect(io.invoke).toHaveBeenCalledOnce(); expect(io.upload).not.toHaveBeenCalled();
+  });
+  it.each(['sha256', 'orgId', 'clientId', 'buildingId'])('does not accept a mismatched panel reconciliation %s', async key => {
+    io.invoke.mockResolvedValueOnce(reply({ panel, uploadPath: panelPath }))
+      .mockResolvedValueOnce(reply({ panel: { ...panel, [key]: key === 'sha256' ? 'b'.repeat(64) : id(99), mediaReceived: true, status: 'QUEUED' } }));
+    await expect(submitMeterPanel(panelInput)).rejects.toThrow('không khớp'); expect(io.upload).not.toHaveBeenCalled();
+  });
+  it.each(['sha256', 'orgId', 'clientId', 'buildingId'])('does not upload against a mismatched start receipt %s', async key => {
+    io.invoke.mockResolvedValueOnce(reply({ panel: { ...panel, [key]: key === 'sha256' ? 'b'.repeat(64) : id(99) }, uploadPath: panelPath }));
+    await expect(submitMeterPanel(panelInput)).rejects.toThrow('không khớp');
+    expect(io.invoke).toHaveBeenCalledOnce(); expect(io.upload).not.toHaveBeenCalled();
+  });
+  it('retains the original when the final receipt after upload names another original', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panel, uploadPath: panelPath })).mockResolvedValueOnce(reply({ panel: null, needsUpload: true }))
+      .mockResolvedValueOnce(reply({ panel: { ...panel, sha256: 'c'.repeat(64), mediaReceived: true, status: 'QUEUED' } }));
+    await expect(submitMeterPanel(panelInput)).rejects.toThrow('Chưa xác minh được ảnh trên máy chủ'); expect(io.upload).toHaveBeenCalledOnce();
+  });
+  it('refuses to upload a panel original outside its own server path', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panel, uploadPath: `${panelInput.orgId}/meter-captures/${panel.id}/original` }))
+      .mockResolvedValueOnce(reply({ panel: null, needsUpload: true }));
+    await expect(submitMeterPanel(panelInput)).rejects.toThrow('Đường dẫn tải lên'); expect(io.upload).not.toHaveBeenCalled();
+  });
+  it('rejects an invalid original before reserving a panel', async () => {
+    await expect(submitMeterPanel({ ...panelInput, sha256: 'not-a-hash' })).rejects.toThrow('Tệp không hợp lệ');
+    expect(io.invoke).not.toHaveBeenCalled();
+  });
+  it('keeps the server code when the gateway does not support panels yet', async () => {
+    io.invoke.mockResolvedValueOnce({ data: null, error: { context: new Response(JSON.stringify({ error: 'unsupported_action' }), { status: 400 }) } });
+    await expect(listMeterPanels(id(2), '2026-10')).rejects.toMatchObject({ code: 'unsupported_action', message: expect.stringContaining('Máy chủ chưa hỗ trợ') });
+  });
+  it('reads, lists, assigns and opens panel evidence through typed panel actions', async () => {
+    const reviewed = { ...panel, status: 'REVIEW', mediaReceived: true, mediaValidated: true, aiStatus: 'ok', detections: [detection] };
+    io.invoke.mockResolvedValueOnce(reply({ panel: null })).mockResolvedValueOnce(reply({ panels: [reviewed] }))
+      .mockResolvedValueOnce(reply({ panel: reviewed })).mockResolvedValueOnce(reply({ panel: reviewed }))
+      .mockResolvedValueOnce(reply({ evidence: { imageUrl: null, videoUrl: 'https://signed/clip', frames: [{ timestampSeconds: 2, imageUrl: 'https://signed/frame' }] } }));
+    expect(await getMeterPanel(id(2), { clientId: panel.clientId })).toBeNull();
+    const [listed] = await listMeterPanels(id(2), '2026-10');
+    expect(listed.detections[0]).toMatchObject({ state: 'MATCHED', matchKind: 'QR', captureId: id(14), cropUrl: detection.cropUrl, timestampSeconds: 3.5 });
+    await assignPanelDetection({ orgId: id(2), panelId: panel.id, detectionIndex: 1, meterId: id(3) });
+    await assignPanelDetection({ orgId: id(2), panelId: panel.id, detectionIndex: 2, meterId: id(3), contractId: id(15) });
+    expect((await getPanelEvidence(id(2), panel.id)).frames).toEqual([{ timestampSeconds: 2, imageUrl: 'https://signed/frame' }]);
+    expect(io.invoke.mock.calls.map(call => [call[1].body.rpcAction, call[1].body.payload])).toEqual([
+      ['getPanel', { clientId: panel.clientId }], ['listPanels', { month: '2026-10' }],
+      ['assignDetection', { panelId: panel.id, detectionIndex: 1, meterId: id(3) }],
+      ['assignDetection', { panelId: panel.id, detectionIndex: 2, meterId: id(3), contractId: id(15) }],
+      ['panelEvidence', { panelId: panel.id }]]);
+    expect(io.invoke.mock.calls.every(call => call[1].body.action === 'panelRpc' && call[1].body.organizationId === id(2))).toBe(true);
+  });
+  it('rejects a panel listing whose detection state is outside the contract instead of guessing', async () => {
+    io.invoke.mockResolvedValueOnce(reply({ panels: [{ ...panel, status: 'REVIEW', detections: [{ ...detection, state: 'MAYBE' }] }] }));
+    await expect(listMeterPanels(id(2), '2026-10')).rejects.toThrow();
   });
 });

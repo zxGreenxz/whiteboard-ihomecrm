@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useQueryClient } from '@tanstack/react-query';
-import { listCaptureCatalog, listMeterCaptures, getMeterCaptureByClientId, submitMeterCapture } from '@/lib/meter-capture/service';
-import type { MeterCapture, MeterCaptureMeter } from '@/lib/meter-capture/types';
-import { listPendingCaptures, saveCaptureCatalog, readCaptureCatalog, syncPendingCaptureBatch, type CaptureUploadReceipt, type PendingMeterCapture } from '@/lib/meter-capture/offlineQueue';
+import { listCaptureCatalog, listMeterCaptures, getMeterCaptureByClientId, submitMeterCapture, getMeterPanel, listMeterPanels, submitMeterPanel } from '@/lib/meter-capture/service';
+import type { MeterCapture, MeterCaptureMeter, MeterPanel } from '@/lib/meter-capture/types';
+import { isPanelCapture, listPendingCaptures, saveCaptureCatalog, readCaptureCatalog, syncPendingCaptureBatch, type CaptureUploadReceipt, type PendingMeterCapture } from '@/lib/meter-capture/offlineQueue';
 
-function uploadReceipt(capture: MeterCapture): CaptureUploadReceipt {
-  const { clientId, orgId, sha256, mediaReceived } = capture;
-  if (!clientId || !orgId || !sha256 || !mediaReceived || capture.status === 'UPLOADING') {
+function uploadReceipt(record: Pick<MeterCapture | MeterPanel, 'clientId' | 'orgId' | 'sha256' | 'mediaReceived' | 'status'>): CaptureUploadReceipt {
+  const { clientId, orgId, sha256, mediaReceived } = record;
+  if (!clientId || !orgId || !sha256 || !mediaReceived || record.status === 'UPLOADING') {
     throw new Error('Chưa nhận đủ biên nhận hoàn tất. Bản gốc vẫn được giữ trên máy.');
   }
   return { clientId, orgId, sha256, mediaReceived };
@@ -29,6 +29,8 @@ export function useMeterCaptureDesk(month: string) {
   const syncing = useRef(false);
   const [meters, setMeters] = useState<MeterCaptureMeter[]>([]);
   const [captures, setCaptures] = useState<MeterCapture[]>([]);
+  const [panels, setPanels] = useState<MeterPanel[]>([]);
+  const [panelError, setPanelError] = useState('');
   const [pending, setPending] = useState<PendingMeterCapture[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
   const [busy, setBusy] = useState(false);
@@ -49,10 +51,14 @@ export function useMeterCaptureDesk(month: string) {
         if (cached) { setMeters(cached.meters); setCatalogReady(true); setLoadedView(target); }
         return;
       }
-      const [catalog, collected] = await Promise.all([listCaptureCatalog(orgId), listMeterCaptures(orgId, month)]);
+      // A panel listing failure must not hide single-meter captures; it is reported on its own.
+      const [catalog, collected, panelResult] = await Promise.all([listCaptureCatalog(orgId), listMeterCaptures(orgId, month),
+        Promise.resolve().then(() => listMeterPanels(orgId, month)).then(rows => ({ rows }), (cause: unknown) => ({ cause }))]);
       if (currentView.current !== target) return;
       setMeters(catalog);
       setCaptures(collected);
+      if ('rows' in panelResult) { setPanels(panelResult.rows); setPanelError(''); }
+      else setPanelError(`Chưa tải được kết quả đọc cả bảng. ${panelResult.cause instanceof Error ? panelResult.cause.message : 'Bấm Tải lại kết quả.'}`);
       setCatalogReady(true);
       setLoadedView(target);
       await saveCaptureCatalog(identity, catalog);
@@ -74,12 +80,19 @@ export function useMeterCaptureDesk(month: string) {
       const rows = await listPendingCaptures({ userId: user.id, orgId });
       const failed = await syncPendingCaptureBatch(rows, {
           reconcile: async saved => {
-            const existing = await getMeterCaptureByClientId(saved.clientId, saved.orgId);
+            const existing = isPanelCapture(saved)
+              ? await getMeterPanel(saved.orgId, { clientId: saved.clientId })
+              : await getMeterCaptureByClientId(saved.clientId, saved.orgId);
             return existing?.mediaReceived && existing.status !== 'UPLOADING' ? uploadReceipt(existing) : null;
           },
           upload: async saved => {
             if (currentScope.current !== target) throw new Error('Tài khoản hoặc tổ chức đã thay đổi. Ảnh vẫn được giữ trên máy.');
-            return uploadReceipt(await submitMeterCapture({ ...saved, file: new File([saved.file], saved.fileName, { type: saved.file.type }) }));
+            const file = new File([saved.file], saved.fileName, { type: saved.file.type });
+            if (!isPanelCapture(saved)) return uploadReceipt(await submitMeterCapture({ ...saved, file }));
+            if (!saved.buildingId) throw new Error('Bản quay cả bảng thiếu tòa. Ảnh vẫn được giữ trên máy.');
+            return uploadReceipt(await submitMeterPanel({ clientId: saved.clientId, orgId: saved.orgId, buildingId: saved.buildingId,
+              purpose: saved.purpose, readingDate: saved.readingDate, month: saved.month, capturedAt: saved.capturedAt,
+              file, sha256: saved.sha256, durationSeconds: saved.durationSeconds }));
           },
       }, () => currentScope.current === target && navigator.onLine);
       if (currentScope.current === target && failed.length) setError(failed.map(item => `${item.fileName}: ${item.error}`).join(' · '));
@@ -93,7 +106,7 @@ export function useMeterCaptureDesk(month: string) {
 
   useEffect(() => {
     currentScope.current = scope;
-    setMeters([]); setCaptures([]); setPending([]); setError(''); setCatalogReady(false);
+    setMeters([]); setCaptures([]); setPanels([]); setPanelError(''); setPending([]); setError(''); setCatalogReady(false);
     void refresh();
     return () => { currentScope.current = ''; };
   }, [refresh, scope]);
@@ -112,5 +125,6 @@ export function useMeterCaptureDesk(month: string) {
     for (const queryKey of [['meter-readings'], ['meters'], ['unrecorded-meters']]) void queryClient.invalidateQueries({ queryKey });
   };
   const visible = loadedView === view;
-  return { owner, meters: visible ? meters : [], captures: visible ? captures : [], pending: visible ? pending : [], online, busy, error, setError, catalogReady: visible && catalogReady, refresh, sync, changed };
+  return { owner, meters: visible ? meters : [], captures: visible ? captures : [], panels: visible ? panels : [], panelError: visible ? panelError : '',
+    pending: visible ? pending : [], online, busy, error, setError, catalogReady: visible && catalogReady, refresh, sync, changed };
 }
