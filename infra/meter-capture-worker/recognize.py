@@ -80,9 +80,10 @@ def probe_media(path: Path, is_video: bool) -> float:
     return duration
 
 
-def extract_frames(path: Path, output: Path, is_video: bool, fps: int) -> list[tuple[float, Path]]:
+def extract_frames(path: Path, output: Path, is_video: bool, fps: int,
+                   scale: str = "scale=w='min(1600,iw)':h=-2") -> list[tuple[float, Path]]:
     output.mkdir(exist_ok=True)
-    filter_value = (f"fps={fps}," if is_video else "") + "scale=w='min(1600,iw)':h=-2"
+    filter_value = (f"fps={fps}," if is_video else "") + scale
     run_process([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file",
         "-threads", "1", "-i", str(path), "-map", "0:v:0", "-an", "-sn", "-dn", "-t", str(MAX_SECONDS),

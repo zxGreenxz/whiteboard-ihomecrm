@@ -50,6 +50,11 @@ test('pinned CPU image loads Paddle models and reads JPEG/H.264 synthetic meter 
     assert.equal(receipt.photoValue, '12345.67');
     assert.equal(receipt.clipValue, '12345.67');
     assert.equal(new Set(receipt.evidenceTimestamps).size, 2);
+    // Panel survey with a fixed model reply: QR stays with its own meter, the wall QR is reported,
+    // and the motion-blurred meter is cropped from its only sharp frame.
+    assert.deepEqual(receipt.panel?.photoQrTokens, [1, 1]);
+    assert.deepEqual(receipt.panel?.photoIssues, ['qr_outside_meters']);
+    assert.equal(receipt.panel?.clipCropTimestamp, 1.5);
   } finally {
     if (created) docker(['rm', '--force', '--volumes', container]);
     if (built) docker(['image', 'rm', image]);

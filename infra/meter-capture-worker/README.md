@@ -30,14 +30,31 @@ Image Python ghim digest Docker Hub; Debian dùng snapshot cố định; 63 whee
 - Mỗi tác vụ có lease; quá 300 giây dừng tiến trình xử lý. Ngân sách mềm 240 giây giúp giữ kết quả AI đã có khi CPU chậm: không bắt đầu thêm khung OCR nếu còn dưới 20 giây, không bắt đầu lượt 10 fps nếu không đủ dự trù trích ảnh và đọc tiếp. Timeout AI tối đa 90 giây, giảm theo thời gian còn lại; shutdown không đợi thêm request bị treo. Hết ngân sách phải xem lại, không coi bộ đọc còn thiếu là đã đồng ý. Một lần giải mã/nhận dạng đang chạy vẫn do giới hạn cứng bảo vệ. Lỗi không ghi nội dung ảnh, thông tin khách hoặc secret vào log. Worker không chốt chỉ số, hoá đơn hay thanh lý.
 - Yêu cầu HTTPS gửi nhận dạng `User-Agent: ihome-meter-capture/1` cùng bearer. Cổng AI hiện tại từ chối nhận dạng mặc định của Python; khóa, HTTPS và cơ chế chặn chuyển hướng vẫn được kiểm như cũ.
 
+## Chế độ cả bảng (nhiều đồng hồ)
+
+Một ảnh hoặc clip (tối đa 60 giây) chụp cả bảng điện của một toà. Worker luôn nhận lượt chụp một đồng hồ trước (`/worker/claim`); chỉ khi không còn lượt nào mới nhận tác vụ bảng (`/worker/panel/claim`), cả hai trống thì nghỉ 5 giây. Edge cần có các route `/worker/panel/*` trước khi chạy image này, nếu không mỗi vòng rảnh sẽ báo lỗi worker và nghỉ 10 giây (lượt chụp đơn vẫn chạy).
+
+- Original tải qua `/worker/panel/media`, kiểm kích thước và SHA-256 như lượt chụp đơn; giải mã trong tiến trình con cùng giới hạn CPU/file, trần cứng 300 giây, ngân sách mềm 240 giây. Giới hạn kích thước, thời lượng, số stream và pixel giống lượt chụp đơn.
+- Clip trích 2 fps rồi chọn tối đa 12 khung trải đều theo thời gian, mỗi đoạn lấy khung nét nhất (phương sai Laplacian), không chọn theo chữ số; ảnh chỉ có một khung. Cạnh dài tối đa 2560 px, không phóng to.
+- Một lượt AI duy nhất: `METER_CAPTURE_AI_MODEL` (mặc định `cx/gpt-6.1-terra`), reasoning medium, ảnh `detail: original`, JSON object, timeout tối đa 120 giây và không vượt ngân sách còn lại. AI chỉ nhận khung ảnh và prompt cố định, không nhận tên phòng, mã đồng hồ, chỉ số kỳ trước hay bất kỳ dữ liệu CRM nào. Prompt cấm làm theo chữ trong ảnh và cấm đoán; một đồng hồ thấy ở nhiều khung là MỘT đồng hồ; không mượn nhãn của đồng hồ bên cạnh; `clear=true` chỉ khi mọi chữ số kể cả phần thập phân rõ trong một khung.
+- Parser chặt: đúng bộ khoá, tối đa 40 đồng hồ, nhãn tối đa 20 ký tự, thanh ghi tối đa 40, giá trị dạng `^\d{1,8}([.,]\d{1,2})?$` (đổi dấu phẩy thành dấu chấm, giữ số 0 đầu), khung có thật và toạ độ ô 0–1000 hợp lệ. `clear=false` thì bỏ giá trị AI đưa kèm. Sai schema hoặc lỗi cổng AI ⇒ `ai.status=error`, chỉ lưu mã lỗi, không lưu văn bản AI; không thấy đồng hồ nào ⇒ `unreadable`.
+- QR: giải mã mọi khung đã chọn. Mã `ihome-meter:<uuid>` thuộc đồng hồ có ô chứa tâm QR trong cùng khung; chỉ khi không ô nào chứa mới xét ô nới rộng 10%. Một mã rơi vào nhiều ô được giữ cho tất cả để máy chủ và người duyệt thấy sự mơ hồ. QR ngoài mọi đồng hồ ⇒ cảnh báo `qr_outside_meters`, không gán. QR khác định dạng bị bỏ qua và không ghi log.
+- Mỗi đồng hồ: ảnh cắt lấy từ khung mà ô của chính đồng hồ đó nét nhất (khung mờ do rung tay không được chọn), thêm lề 6% khung, JPEG chất lượng 90, tối đa 3 MB; kèm tối đa 3 khung đầy đủ nét nhất, đúng bytes AI đã đọc. Mỗi JPEG khác nhau chỉ tải một lần qua `/worker/panel/evidence`; kết quả chỉ trích objectKey gateway trả về trong chính tác vụ.
+- Ảnh cắt là chứng cứ dẫn xuất từ khung đã giải mã, không thay original: original giữ nguyên trong bucket riêng tư, khung đầy đủ đi kèm để đối chiếu.
+- Máy chủ ghép từng đồng hồ với CRM (QR trước, sau đó nhãn phòng trong toà); đồng hồ ghép được thành lượt chụp con ở trạng thái REVIEW. Người duyệt xác nhận từng chỉ số và bắt buộc ghi lý do vì chỉ có một bộ đọc, hoặc gán tay đồng hồ chưa ghép. Worker không chốt chỉ số, hoá đơn hay thanh lý.
+- Lỗi xử lý gửi kết quả lỗi theo hợp đồng (`detections: []`, `ai.status=error`, một mã lỗi). Kết quả bị máy chủ từ chối (HTTP 422) được ghi đúng một lần thành lỗi `worker_result_rejected`; lỗi mạng không tự gửi lại.
+- Giới hạn: thử khả thi trên mẫu thật nhỏ (vài ảnh/clip) chưa phải tỷ lệ chính xác. Trong mẫu đó AI để trống nhiều đồng hồ khó đọc và có trường hợp đọc khác số người đọc ở một đồng hồ trong clip, vì vậy mọi chỉ số phải được người xác nhận. QR nhỏ trong ảnh rộng có thể không giải mã được; khi đó chỉ còn nhãn phòng và người duyệt.
+
 ## Kiểm thử và phần chưa xác minh
 
-Chạy unit/pipeline fixture không cài mô hình, không gọi API trả phí:
+Chạy unit/pipeline fixture không cài mô hình, không gọi API trả phí (không cần numpy/OpenCV; CI chạy trên Python trần):
 
 ```text
 cd infra/meter-capture-worker
-python -B -m unittest -v test_domain.py test_pipeline.py
+python -B -m unittest -v test_domain.py test_pipeline.py test_panel.py
 ```
+
+Phần xử lý điểm ảnh của chế độ cả bảng (giới hạn cạnh 2560 px, giải mã QR thật, chọn khung nét, ảnh cắt) chạy bằng FFmpeg/OpenCV thật trong `runtime_smoke.py` với câu trả lời AI cố định. Máy có FFmpeg trong PATH và OpenCV có thể chạy riêng phần này: `python -B runtime_smoke.py --panel-only`.
 
 Kiểm Edge từ thư mục repo:
 
