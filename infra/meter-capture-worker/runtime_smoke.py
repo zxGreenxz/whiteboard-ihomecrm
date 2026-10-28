@@ -106,7 +106,9 @@ def panel_smoke(directory: Path) -> dict:
     ], 45)
     (directory / "panel-clip").mkdir()
     with patch.dict(os.environ, environment), patch("panel.request_json", return_value=panel_reply(range(6))) as ai:
-        clip_result = meter_panel.survey({"media": [{"mimeType": "video/mp4"}]}, clip, directory / "panel-clip")
+        # The browser-declared duration bounds receipt timestamps (+1 s); real frames of a 3 s clip all stay.
+        clip_result = meter_panel.survey({"media": [{"mimeType": "video/mp4", "durationSeconds": 3.0}]}, clip,
+                                         directory / "panel-clip")
     assert len([item for item in ai.call_args.args[2]["messages"][0]["content"] if item["type"] == "image_url"]) == 6
     assert 2.8 <= clip_result["durationSeconds"] <= 3.2, clip_result
     first, second = clip_result["detections"]

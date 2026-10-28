@@ -43,9 +43,10 @@ def ai_version() -> str:
     return f"{ai_model()};reasoning={AI_REASONING};detail={AI_DETAIL};panel/1"
 
 
-def failed_result(code: str, media_validated: bool = False, duration: float | None = None) -> dict[str, Any]:
+def failed_result(code: str, media_validated: bool = False, duration: float | None = None,
+                  status: str = "error") -> dict[str, Any]:
     return {"mediaValidated": media_validated, "durationSeconds": duration, "issues": [code],
-            "ai": {"status": "error", "version": ai_version()}, "detections": []}
+            "ai": {"status": status, "version": ai_version()}, "detections": []}
 
 
 def _cv2():
@@ -176,7 +177,7 @@ def associate_qr(meters: list[dict], codes: list[list[tuple[str, float, float]]]
     return tokens, seen - placed
 
 
-def read_panel_ai(frames: list[dict], *, timeout: float) -> list[dict]:
+def read_panel_ai(frames: list[dict], *, timeout: float) -> tuple[list[dict], list[str]]:
     base = os.environ.get("METER_CAPTURE_AI_BASE_URL", "").strip()
     key = os.environ.get("METER_CAPTURE_AI_KEY", "").strip()
     if not base or not key:
@@ -217,7 +218,7 @@ def detect(frames: list[dict], directory: Path, deadline: float) -> dict[str, An
         # Local QR decoding overlaps the provider call; neither sees the other's output.
         codes = [qr_codes(image) for image in images]
         try:
-            meters = pending.result(timeout=max(0, deadline - EVIDENCE_RESERVE_SECONDS - time.monotonic()))
+            meters, parse_issues = pending.result(timeout=max(0, deadline - EVIDENCE_RESERVE_SECONDS - time.monotonic()))
         except FutureTimeoutError:
             return error("ai_reader_error" if pending.done() else "ai_time_budget_exhausted")
         except InvalidInput as failure:
@@ -229,7 +230,7 @@ def detect(frames: list[dict], directory: Path, deadline: float) -> dict[str, An
         # Do not let a stuck provider extend the job; the parent terminates a live child.
         executor.shutdown(wait=False, cancel_futures=True)
     tokens, outside = associate_qr(meters, codes)
-    issues = {"qr_outside_meters"} if outside else set()
+    issues = set(parse_issues) | ({"qr_outside_meters"} if outside else set())
     evidence = directory / "panel-evidence"
     evidence.mkdir(exist_ok=True)
     frame_files: dict[int, Path] = {}
@@ -266,7 +267,13 @@ def survey(job: dict, path: Path, directory: Path) -> dict[str, Any]:
     deadline = time.monotonic() + PANEL_BUDGET_SECONDS
     is_video = job["media"][0]["mimeType"].startswith("video/")
     duration = probe_media(path, is_video)
-    frames = select_frames(extract_frames(path, directory / "panel-frames", is_video, PANEL_FPS, scale=PANEL_SCALE))
+    extracted = extract_frames(path, directory / "panel-frames", is_video, PANEL_FPS, scale=PANEL_SCALE)
+    declared = job["media"][0].get("durationSeconds")
+    if declared is not None:
+        # The evidence receipt accepts timestamps up to the browser-declared duration + 1 s: such later
+        # frames are never shown to the model, so they can never be cited or uploaded.
+        extracted = [(timestamp, frame) for timestamp, frame in extracted if timestamp <= declared + 1]
+    frames = select_frames(extracted)
     media = {"mediaValidated": True, "durationSeconds": duration if is_video else None}
     try:
         return {**media, **detect(frames, directory, deadline)}

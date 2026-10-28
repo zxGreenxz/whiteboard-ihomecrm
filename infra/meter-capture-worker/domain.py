@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 import re
 from typing import Any
 
@@ -195,19 +196,21 @@ def panel_prompt() -> str:
     )
 
 
-def _panel_text(value: Any, limit: int) -> str | None:
+def _panel_text(value: Any, limit: int) -> tuple[str | None, bool]:
+    """(text, too_long). Control characters and line breaks become single spaces; an over-long text
+    is dropped for that meter only, never failing the whole survey."""
     if value is None:
-        return None
+        return None, False
     if not isinstance(value, str):
         raise InvalidInput("invalid_ai_schema")
-    text = value.strip()
-    if len(text) > limit or re.search(r"[\x00-\x1f\x7f]", text):
-        raise InvalidInput("invalid_ai_schema")
-    return text or None
+    text = " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", value).split())
+    if len(text) > limit:
+        return None, True
+    return text or None, False
 
 
-def parse_panel_ai(text: str, frame_count: int) -> list[dict[str, Any]]:
-    """Strict panel survey schema. An unclear reading never keeps a value; boxes are normalised 0-1000."""
+def parse_panel_ai(text: str, frame_count: int) -> tuple[list[dict[str, Any]], list[str]]:
+    """Strict panel survey schema -> (meters, issues). An unclear reading never keeps a value; boxes are 0-1000."""
     if type(frame_count) is not int or frame_count < 1:
         raise InvalidInput("invalid_ai_frame_count")
     try:
@@ -218,6 +221,7 @@ def parse_panel_ai(text: str, frame_count: int) -> list[dict[str, Any]]:
             or len(parsed["meters"]) > MAX_PANEL_METERS:
         raise InvalidInput("invalid_ai_schema")
     meters: list[dict[str, Any]] = []
+    issues: set[str] = set()
     for item in parsed["meters"]:
         if not isinstance(item, dict) or set(item) != PANEL_METER_KEYS or type(item["clear"]) is not bool \
                 or item["display"] not in (None, "mechanical", "digital"):
@@ -251,10 +255,13 @@ def parse_panel_ai(text: str, frame_count: int) -> list[dict[str, Any]]:
             if box[0] >= box[2] or box[1] >= box[3]:
                 raise InvalidInput("invalid_ai_schema")
             boxes.append({"frameIndex": index, "box": tuple(box)})
-        meters.append({"label": _panel_text(item["label"], 20), "registerCode": _panel_text(item["registerCode"], 40),
-                       "display": item["display"], "value": value, "clear": value is not None,
-                       "observations": boxes})
-    return meters
+        label, long_label = _panel_text(item["label"], 20)
+        register, long_register = _panel_text(item["registerCode"], 40)
+        if long_label or long_register:
+            issues.add("label_too_long")
+        meters.append({"label": label, "registerCode": register, "display": item["display"], "value": value,
+                       "clear": value is not None, "observations": boxes})
+    return meters, sorted(issues)
 
 
 def validate_panel_job(job: Any) -> dict[str, Any]:
@@ -277,6 +284,10 @@ def validate_panel_job(job: Any) -> dict[str, Any]:
         raise InvalidInput("invalid_media_kind")
     if not re.fullmatch(r"[0-9a-f]{64}", str(item.get("sha256", ""))):
         raise InvalidInput("invalid_media_digest")
+    # Browser-declared duration bounds which frame timestamps the evidence receipt accepts.
+    declared = item.get("durationSeconds")
+    if declared is not None and (type(declared) not in (int, float) or not math.isfinite(declared) or declared < 0):
+        raise InvalidInput("invalid_media_duration")
     return job
 
 

@@ -148,11 +148,15 @@ def upload_panel_evidence(gateway: Gateway, job: dict, result: dict, directory: 
     """Upload each distinct JPEG once (by SHA-256) and cite only objectKeys this job's gateway returned."""
     root = directory.resolve()
     uploaded: dict[str, tuple[str, float]] = {}
+    declared = job["media"][0].get("durationSeconds")
 
     def upload(item: dict) -> dict:
         local = Path(item["localPath"])
         if not local.resolve().is_relative_to(root):
             raise InvalidInput("invalid_evidence_path")
+        # The receipt accepts timestamps up to the declared duration + 1 s; the survey already drops later frames.
+        if declared is not None and item["timestampSeconds"] > declared + 1:
+            raise InvalidInput("evidence_after_declared_duration")
         image = local.read_bytes()
         if not 0 < len(image) <= MAX_EVIDENCE_BYTES or image[:3] != b"\xff\xd8\xff":
             raise InvalidInput("invalid_evidence")
@@ -201,12 +205,13 @@ def process_panel(gateway: Gateway, job: dict):
         try:
             gateway.post("panel/complete", {**lease, "result": result})
         except urllib.error.HTTPError as error:
-            # A result the server rejects (422) would be rejected again on every lease: record one failure instead.
+            # A result the server rejects (422) would be rejected again on every lease: record it once instead,
+            # as "unreadable" because the server retries "error" with further paid AI calls.
             # Network failures and other statuses are NOT replayed.
             if error.code != 422 or result["ai"]["status"] == "error":
                 raise
             gateway.post("panel/complete", {**lease, "result": failed_panel_result(
-                "worker_result_rejected", result["mediaValidated"], result["durationSeconds"])})
+                "worker_result_rejected", result["mediaValidated"], result["durationSeconds"], status="unreadable")})
 
 
 def work_once(gateway: Gateway, worker_id: str) -> bool:
