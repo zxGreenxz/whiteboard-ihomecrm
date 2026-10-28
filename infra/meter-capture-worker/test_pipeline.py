@@ -273,7 +273,7 @@ class HttpBoundaryTests(unittest.TestCase):
             opener.return_value.open.side_effect = lambda request, timeout: self.gateway_response(request, timeout, b'{"ok":true}')
             self.assertEqual(request_json("https://gateway.invalid/chat/completions", "fixture-key", {}), {"ok": True})
 
-    def test_ai_uses_measured_sol_settings_and_receives_only_images_and_configuration(self):
+    def test_ai_uses_measured_terra_settings_and_receives_only_images_and_configuration(self):
         response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"singleMeter": True, "readings": [
             {"frameIndex": 0, "value": "0012.3", "registerCode": "1.8.0", "unit": "kWh", "clear": True},
         ]})}}]}
@@ -285,14 +285,14 @@ class HttpBoundaryTests(unittest.TestCase):
             readings, single, version = read_ai([{"timestamp": 0, "path": path, "ocr": "do-not-send"}],
                                                {**METER, "previousReading": "do-not-send"})
             payload = gateway.call_args.args[2]
-            self.assertEqual(payload["model"], "cx/gpt-6.1-sol")
+            self.assertEqual(payload["model"], "cx/gpt-6.1-terra")
             self.assertEqual(payload["reasoning_effort"], "medium")
             self.assertEqual(gateway.call_args.kwargs["timeout"], 90)
             self.assertEqual(payload["messages"][0]["content"][2]["image_url"]["detail"], "original")
             self.assertNotIn("do-not-send", json.dumps(payload))
             self.assertEqual(readings, [Reading("0012.3", "1.8.0", 0)])
             self.assertTrue(single)
-            self.assertEqual(version, "cx/gpt-6.1-sol;reasoning=medium;detail=original")
+            self.assertEqual(version, "cx/gpt-6.1-terra;reasoning=medium;detail=original")
 
     def test_original_download_uses_the_same_identity_and_keeps_digest_validation(self):
         original = b"fixture-original"
