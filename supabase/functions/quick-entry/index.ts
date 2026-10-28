@@ -53,7 +53,7 @@ export const READ_MODEL_CHOICES = [
   "cx/gpt-6-astra",
   "cx/gpt-6-sol",
   "cx/gpt-6-luna",
-  "cx/gpt-5.6-terra",
+  "cx/gpt-6.1-terra",
   "cx/gpt-5.6-luna",
 ];
 export const READ_EFFORTS = ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
@@ -61,8 +61,9 @@ export const READ_UNSUPPORTED = ["cx/gpt-6-astra(minimal)"];
 /** 9router, đo 02/10/2026 trên 421 câu chi thật, từng mô hình chạy riêng, câu lệnh chỉ hỏi hạng mục:
  *  cx/gpt-5.6-terra(low) đúng 98,6%, trung vị 2,7 s, không câu nào quá 5 s; cx/gpt-6-luna(low) đúng 97,6%,
  *  trung vị 1,8 s (dự phòng). Cả hai cũng đọc đúng bill có giảm giá (đo 01/10). ag/* (Gemini miễn phí)
- *  không đưa vào chuỗi: không gửi chứng từ thật qua gói miễn phí, và p90 chậm (6–28 s). */
-export const READ_MODELS_MAC_DINH = ["cx/gpt-5.6-terra(low)", "cx/gpt-6-luna(low)"];
+ *  không đưa vào chuỗi: không gửi chứng từ thật qua gói miễn phí, và p90 chậm (6–28 s).
+ *  28/10/2026 (9router 0.5.111): thay Terra 5.6 bằng bản kế nhiệm cx/gpt-6.1-terra — chưa đo lại trên bộ 421 câu (thử 10 câu mẫu: đúng hạng mục 10/10, trung vị 2,1 s; câu nhiều món chung một số tiền đôi khi tách món không kèm tiền, chỉ có total_vnd). */
+export const READ_MODELS_MAC_DINH = ["cx/gpt-6.1-terra(low)", "cx/gpt-6-luna(low)"];
 export const LUOT_NGAY_MAC_DINH = 150;
 /** Âm thanh tối đa (560 KB) hoặc ảnh bill đã nén (≤360 KB) sau base64 + JSON vẫn dưới trần này. */
 export const TRAN_BODY_BYTES = 768 * 1024;

@@ -310,7 +310,7 @@ describe("useQuickEntryFeed — tin chữ", () => {
 
   it("thẻ đủ tiền + toà, chỉ thiếu hạng mục ⇒ câu lệnh RÚT GỌN theo mô tả từng dòng, kèm 'dùng cho'", async () => {
     h.readCategoriesWithAi.mockReset();
-    h.readCategoriesWithAi.mockResolvedValue({ ok: true, value: ["c1"], model: "9router:cx/gpt-5.6-terra(low)" });
+    h.readCategoriesWithAi.mockResolvedValue({ ok: true, value: ["c1"], model: "9router:cx/gpt-6.1-terra(low)" });
     const r = refs({
       categories: [
         { id: "t-vt", name: "Vật tư", category: "Bảo Trì", type: "expense", organization_id: ORG, description: "sơn, keo, ốc vít", keywords: ["sơn"] },
@@ -318,18 +318,18 @@ describe("useQuickEntryFeed — tin chữ", () => {
       ],
     });
     const { result } = renderHook(() =>
-      useQuickEntryFeed({ refs: r, userId: USER, today: "2026-10-01", models: { read: "cx/gpt-5.6-terra(low)" } }),
+      useQuickEntryFeed({ refs: r, userId: USER, today: "2026-10-01", models: { read: "cx/gpt-6.1-terra(low)" } }),
     );
     await act(async () => result.current.submitText("102LVT sơn 300k", "company"));
     expect(h.readWithAi).not.toHaveBeenCalled();
     const call = h.readCategoriesWithAi.mock.calls[0][0];
-    expect(call).toMatchObject({ lineCount: 1, categoryCount: 2, model: "cx/gpt-5.6-terra(low)" });
+    expect(call).toMatchObject({ lineCount: 1, categoryCount: 2, model: "cx/gpt-6.1-terra(low)" });
     const sent = JSON.stringify(call.messages);
     expect(sent).toContain("1. 102LVT sơn");
     expect(sent).toContain("dùng cho: sơn, keo, ốc vít");
     const [c] = cardsOf(result);
     expect(c.state.draft.lines[0]).toMatchObject({ amount: 300_000, categoryId: "t-vt" });
-    expect(c.aiModel).toBe("9router:cx/gpt-5.6-terra(low)");
+    expect(c.aiModel).toBe("9router:cx/gpt-6.1-terra(low)");
   });
 
   it("câu lệnh rút gọn về sau khi người dùng đã thêm dòng ⇒ bỏ kết quả", async () => {
