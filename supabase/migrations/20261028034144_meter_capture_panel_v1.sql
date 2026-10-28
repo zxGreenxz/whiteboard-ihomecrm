@@ -150,6 +150,7 @@ BEGIN
  SELECT r.result#>>'{ai,version}' INTO v_version FROM app_private.meter_capture_panel_results r WHERE r.job_id=d.job_id;
  SELECT count(DISTINCT x->>'timestampSeconds') INTO v_frames FROM jsonb_array_elements(d.frames) x;
  IF p_match_kind<>'QR' THEN v_issues:=v_issues||'["IDENTITY_UNVERIFIED"]'::jsonb; END IF;
+ IF pn.issues ? 'DUPLICATE_MEDIA' THEN v_issues:=v_issues||'["DUPLICATE_MEDIA"]'::jsonb; END IF;
  IF d.value IS NULL THEN v_issues:=v_issues||'["ENGINE_INCOMPLETE"]'::jsonb;
  ELSE
   IF d.register_code IS DISTINCT FROM prof.register_code THEN v_issues:=v_issues||'["WRONG_REGISTER_OR_VALUE"]'::jsonb; END IF;
@@ -159,7 +160,7 @@ BEGIN
  INSERT INTO app_private.meter_captures(id,organization_id,building_id,room_id,meter_id,contract_id,actor_id,client_id,request_hash,purpose,reading_date,month,
   captured_at,received_at,profile_snapshot,qr_text,status,mime_type,size_bytes,sha256,duration_seconds,object_key,media_received,media_validated,issues,
   panel_id,panel_detection_index)
- VALUES(v_id,pn.organization_id,m.building_id,m.room_id,m.id,ct.id,pn.actor_id,md5(pn.id::text||':'||p_index::text)::uuid,
+ VALUES(v_id,pn.organization_id,m.building_id,m.room_id,m.id,ct.id,pn.actor_id,gen_random_uuid(),
   md5(pn.id::text||':'||p_index::text||':'||m.id::text||':'||ct.id::text),pn.purpose,pn.reading_date,pn.month,pn.captured_at,clock_timestamp(),
   jsonb_build_object('qrToken','ihome-meter:'||prof.qr_token,'version',prof.version,'serialNumber',prof.serial_number,'displayKind',prof.display_kind,
    'decimalPlaces',prof.decimal_places,'registerCode',prof.register_code),
@@ -176,7 +177,8 @@ BEGIN
   'ai',jsonb_build_object('status',CASE WHEN d.value IS NULL THEN 'unreadable' ELSE 'ok' END,'value',d.value,'registerCode',d.register_code,'unit','kWh',
    'version',COALESCE(v_version,'panel/1'),'frames',d.frames),
   'identity',jsonb_build_object('qrTokens',d.qr_tokens,'ambiguous',p_match_kind<>'QR'),'issues',v_issues,'mediaValidated',true,'durationSeconds',NULL,
-  'evidence',d.frames,'panel',jsonb_build_object('panelId',pn.id,'detectionIndex',p_index,'label',d.label,'matchKind',p_match_kind)));
+  'evidence',d.frames,'panel',jsonb_build_object('panelId',pn.id,'detectionIndex',p_index,'label',d.label,'matchKind',p_match_kind,
+   'assignedBy',CASE WHEN p_match_kind='MANUAL' THEN auth.uid() END)));
  UPDATE app_private.meter_capture_panel_detections SET state='MATCHED',match_kind=p_match_kind,meter_id=m.id,capture_id=v_id
   WHERE panel_id=pn.id AND detection_index=p_index AND job_id=d.job_id;
  RETURN v_id;
@@ -203,8 +205,13 @@ BEGIN
    RAISE EXCEPTION 'Invalid panel building/client' USING ERRCODE='22023'; END IF;
   v_building:=(p_payload->>'buildingId')::uuid;
   PERFORM app_private.meter_capture_scope_v1(p_organization_id,v_building,'meter_readings.create');
+  IF p_payload->>'readingDate' IS NULL OR p_payload->>'readingDate' !~ '^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$'
+    OR p_payload->>'capturedAt' IS NULL OR p_payload->>'capturedAt' !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$'
+    OR (p_payload->>'durationSeconds' IS NOT NULL AND p_payload->>'durationSeconds' !~ '^\d{1,2}(\.\d{1,6})?$') THEN
+   RAISE EXCEPTION 'Invalid panel period/media' USING ERRCODE='22023'; END IF;
   v_date:=(p_payload->>'readingDate')::date;v_month:=p_payload->>'month';
-  IF v_date IS NULL OR v_month IS DISTINCT FROM to_char(v_date,'YYYY-MM') OR p_payload->>'purpose' IS NULL OR p_payload->>'purpose' NOT IN ('MONTHLY','MOVE_OUT')
+  -- A whole-building survey is a monthly reading; move-out stays a per-meter decision.
+  IF v_date IS NULL OR v_month IS DISTINCT FROM to_char(v_date,'YYYY-MM') OR p_payload->>'purpose' IS DISTINCT FROM 'MONTHLY'
     OR p_payload->>'mimeType' IS NULL OR p_payload->>'mimeType' NOT IN ('image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime')
     OR p_payload->>'sha256' IS NULL OR p_payload->>'sha256' !~ '^[a-f0-9]{64}$'
     OR p_payload->>'sizeBytes' IS NULL OR p_payload->>'sizeBytes' !~ '^\d{1,9}$' OR (p_payload->>'sizeBytes')::bigint NOT BETWEEN 1 AND 104857600
@@ -230,6 +237,9 @@ BEGIN
   RETURN jsonb_build_object('panel',app_private.meter_capture_panel_json_v1(v_id),'uploadPath',p_organization_id::text||'/meter-panels/'||v_id::text||'/original','bucket','meter-capture-media');
  END IF;
  IF p_action NOT IN ('getPanel','finalizePanel','assignDetection','panelEvidence') THEN RAISE EXCEPTION 'Unsupported panel action' USING ERRCODE='22023'; END IF;
+ IF (p_payload->>'panelId' IS NOT NULL AND p_payload->>'panelId' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+   OR (p_payload->>'panelId' IS NULL AND COALESCE(p_payload->>'clientId','') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN
+  RAISE EXCEPTION 'Invalid panel reference' USING ERRCODE='22023'; END IF;
  SELECT * INTO pn FROM app_private.meter_capture_panels WHERE organization_id=p_organization_id AND
   ((p_payload->>'panelId' IS NOT NULL AND id=(p_payload->>'panelId')::uuid) OR
    (p_payload->>'panelId' IS NULL AND client_id=(p_payload->>'clientId')::uuid AND actor_id=auth.uid())) FOR UPDATE;
@@ -316,7 +326,8 @@ BEGIN
  PERFORM public.meter_capture_panel_worker_context_v1(p_job_id,p_lease_token);
  SELECT p.* INTO pn FROM app_private.meter_capture_panels p JOIN app_private.meter_capture_panel_jobs j ON j.panel_id=p.id WHERE j.id=p_job_id;
  IF p_sha256 IS NULL OR p_sha256 !~ '^[a-f0-9]{64}$' OR p_object_key IS DISTINCT FROM pn.organization_id::text||'/meter-panels/'||pn.id::text||'/evidence/'||p_sha256||'.jpg'
-  OR p_timestamp_seconds IS NULL OR p_timestamp_seconds<0 OR p_timestamp_seconds>COALESCE(pn.duration_seconds,0)
+  -- The declared clip duration is browser-measured; allow the same 1 s tolerance as the media receipt.
+  OR p_timestamp_seconds IS NULL OR p_timestamp_seconds<0 OR p_timestamp_seconds>COALESCE(pn.duration_seconds+1,0)
   OR NOT EXISTS(SELECT 1 FROM storage.objects WHERE bucket_id='meter-capture-media' AND name=p_object_key) THEN RAISE EXCEPTION 'Evidence frame scope/persistence mismatch' USING ERRCODE='22023'; END IF;
  INSERT INTO app_private.meter_capture_panel_frame_receipts(object_key,panel_id,job_id,sha256,timestamp_seconds)
  VALUES(p_object_key,pn.id,p_job_id,p_sha256,p_timestamp_seconds) ON CONFLICT(job_id,object_key,timestamp_seconds) DO NOTHING;
@@ -346,7 +357,8 @@ BEGIN
    OR NULLIF(p_result#>>'{ai,version}','') IS NULL OR length(p_result#>>'{ai,version}')>200
    OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_result->'issues') x WHERE jsonb_typeof(x)<>'string' OR length(x#>>'{}')>64) THEN
   RAISE EXCEPTION 'Invalid panel worker output' USING ERRCODE='22023'; END IF;
- v_issues:=p_result->'issues';
+ -- Server-set flags (DUPLICATE_MEDIA at start, WORKER_LEASE_EXHAUSTED) survive every worker result.
+ v_issues:=(SELECT COALESCE(jsonb_agg(DISTINCT x),'[]'::jsonb) FROM jsonb_array_elements(pn.issues||(p_result->'issues')) x);
  IF p_result->>'mediaValidated' IS DISTINCT FROM 'true' THEN v_issues:=v_issues||'"MEDIA_VALIDATION_FAILED"'::jsonb; END IF;
  IF pn.mime_type LIKE 'video/%' AND (p_result->>'mediaValidated' IS DISTINCT FROM 'true' OR jsonb_typeof(p_result->'durationSeconds') IS DISTINCT FROM 'number'
    OR (p_result->>'durationSeconds')::numeric<=0 OR (p_result->>'durationSeconds')::numeric>60) THEN
@@ -388,30 +400,37 @@ BEGIN
   FOR d IN SELECT * FROM app_private.meter_capture_panel_detections WHERE panel_id=pn.id AND job_id=j.id ORDER BY detection_index LOOP
    v_meter:=NULL;v_kind:=NULL;v_state:='UNMATCHED';
    SELECT array_agg(x) INTO v_tokens FROM jsonb_array_elements_text(d.qr_tokens) x;
+   -- The room the label names in this building (exactly one), if any.
+   v_room:=NULL;
+   IF app_private.meter_capture_panel_norm_v1(d.label) IS NOT NULL THEN
+    SELECT count(*),min(r.id::text) INTO v_n,v_text FROM public.rooms r WHERE r.organization_id=pn.organization_id AND r.building_id=pn.building_id
+     AND r.deleted_at IS NULL AND app_private.meter_capture_panel_norm_v1(r.name)=app_private.meter_capture_panel_norm_v1(d.label);
+    IF v_n=1 THEN v_room:=v_text::uuid; ELSIF v_n>1 THEN v_state:='AMBIGUOUS'; END IF;
+   END IF;
    IF COALESCE(array_length(v_tokens,1),0)>0 THEN
     SELECT count(DISTINCT pr.meter_id),min(pr.meter_id::text) INTO v_n,v_text FROM app_private.meter_capture_profiles pr
      WHERE pr.organization_id=pn.organization_id AND pr.revoked_at IS NULL AND 'ihome-meter:'||pr.qr_token::text=ANY(v_tokens);
     IF v_n=1 THEN
      IF EXISTS(SELECT 1 FROM public.meters m WHERE m.id=v_text::uuid AND m.organization_id=pn.organization_id AND m.building_id=pn.building_id
        AND m.deleted_at IS NULL AND m.status='ACTIVE' AND m.meter_type::text='ELECTRICITY' AND m.room_id IS NOT NULL) THEN
-      v_meter:=v_text::uuid;v_kind:='QR';v_state:='MATCHED';
-     ELSE v_state:='OTHER_BUILDING'; END IF;
+      -- A QR sticker never silently overrides a room label that names a different room.
+      IF v_room IS NOT NULL AND v_room IS DISTINCT FROM (SELECT m.room_id FROM public.meters m WHERE m.id=v_text::uuid) THEN v_state:='AMBIGUOUS';
+      ELSE v_meter:=v_text::uuid;v_kind:='QR';v_state:='MATCHED'; END IF;
+     ELSIF EXISTS(SELECT 1 FROM public.meters m WHERE m.id=v_text::uuid AND m.organization_id=pn.organization_id AND m.building_id IS DISTINCT FROM pn.building_id) THEN
+      v_state:='OTHER_BUILDING';
+     END IF;
     ELSIF v_n>1 THEN v_state:='AMBIGUOUS'; END IF;
    END IF;
-   IF v_state='UNMATCHED' AND app_private.meter_capture_panel_norm_v1(d.label) IS NOT NULL THEN
-    SELECT count(*),min(r.id::text) INTO v_n,v_text FROM public.rooms r WHERE r.organization_id=pn.organization_id AND r.building_id=pn.building_id
-     AND r.deleted_at IS NULL AND app_private.meter_capture_panel_norm_v1(r.name)=app_private.meter_capture_panel_norm_v1(d.label);
-    IF v_n>1 THEN v_state:='AMBIGUOUS';
-    ELSIF v_n=1 THEN
-     v_room:=v_text::uuid;
-     SELECT count(*),count(pr.meter_id),min(CASE WHEN pr.meter_id IS NOT NULL THEN m.id::text END) INTO v_total,v_profiled,v_text
-      FROM public.meters m LEFT JOIN app_private.meter_capture_profiles pr ON pr.meter_id=m.id AND pr.organization_id=m.organization_id AND pr.revoked_at IS NULL
-      WHERE m.organization_id=pn.organization_id AND m.building_id=pn.building_id AND m.room_id=v_room AND m.deleted_at IS NULL
-       AND m.status='ACTIVE' AND m.meter_type::text='ELECTRICITY';
-     IF v_profiled=1 THEN v_meter:=v_text::uuid;v_kind:='LABEL';v_state:='MATCHED';
-     ELSIF v_profiled>1 THEN v_state:='AMBIGUOUS';
-     ELSIF v_total>0 THEN v_state:='NO_PROFILE'; END IF;
-    END IF;
+   IF v_state='UNMATCHED' AND v_kind IS NULL AND v_room IS NOT NULL THEN
+    -- Only a room with exactly one active electricity meter is unambiguous; a sub-meter must not
+    -- be billed as the room's registered meter.
+    SELECT count(*),count(pr.meter_id),min(CASE WHEN pr.meter_id IS NOT NULL THEN m.id::text END) INTO v_total,v_profiled,v_text
+     FROM public.meters m LEFT JOIN app_private.meter_capture_profiles pr ON pr.meter_id=m.id AND pr.organization_id=m.organization_id AND pr.revoked_at IS NULL
+     WHERE m.organization_id=pn.organization_id AND m.building_id=pn.building_id AND m.room_id=v_room AND m.deleted_at IS NULL
+      AND m.status='ACTIVE' AND m.meter_type::text='ELECTRICITY';
+    IF v_total=1 AND v_profiled=1 THEN v_meter:=v_text::uuid;v_kind:='LABEL';v_state:='MATCHED';
+    ELSIF v_total>1 THEN v_state:='AMBIGUOUS';
+    ELSIF v_total=1 THEN v_state:='NO_PROFILE'; END IF;
    END IF;
    UPDATE app_private.meter_capture_panel_detections SET state=v_state,match_kind=v_kind,meter_id=v_meter
     WHERE panel_id=pn.id AND job_id=j.id AND detection_index=d.detection_index;
@@ -436,8 +455,9 @@ BEGIN
    PERFORM app_private.meter_capture_panel_child_v1(pn.id,d.detection_index,d.meter_id,NULL,d.match_kind);
    v_matched:=v_matched+1;
   END LOOP;
-  IF jsonb_array_length(p_result->'detections')=0 THEN v_issues:=v_issues||'"NO_METERS_DETECTED"'::jsonb; END IF;
  END IF;
+ IF p_result#>>'{ai,status}' IN ('ok','unreadable') AND jsonb_array_length(p_result->'detections')=0 AND NOT v_issues ? 'NO_METERS_DETECTED' THEN
+  v_issues:=v_issues||'"NO_METERS_DETECTED"'::jsonb; END IF;
  UPDATE app_private.meter_capture_panel_jobs SET state='DONE',lease_until=NULL WHERE id=j.id;
  UPDATE app_private.meter_capture_panels SET issues=v_issues,media_validated=NOT v_issues ? 'MEDIA_VALIDATION_FAILED',version=version+1,status='REVIEW' WHERE id=pn.id;
  IF p_result#>>'{ai,status}'='error' AND j.generation<3 AND NOT v_issues ? 'MEDIA_VALIDATION_FAILED' THEN

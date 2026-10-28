@@ -903,3 +903,49 @@ test('panel QR token of a meter in another building of the same organization is 
  assert.equal(view.detections[0].state, 'OTHER_BUILDING'); assert.equal(view.detections[0].captureId, null);
  assert.equal((await db.query('SELECT count(*)::int n FROM app_private.meter_captures WHERE meter_id=$1', [otherMeter])).rows[0].n, 0);
 });
+
+test('panel matching refuses multi-meter rooms and contradicting stickers; server flags reach children; panels are monthly only', async t => {
+ const { db, qr2 } = await panelFixture(); t.after(() => db.close());
+ await assert.rejects(panelStart(db, { clientId: id(201), purpose: 'MOVE_OUT' }), { code: '22023' });
+ // Room "101" gains an unregistered sub-meter; "1.03" has one unregistered meter; "1.04" has a registered meter but no contract.
+ await db.exec(`INSERT INTO meters(id,organization_id,building_id,room_id,service_id,code) VALUES('${id(80)}','${org}','${building}','${room}','${service}','D1-AC');
+  INSERT INTO rooms(id,organization_id,building_id,name) VALUES('${id(81)}','${org}','${building}','1.03'),('${id(83)}','${org}','${building}','1.04');
+  INSERT INTO meters(id,organization_id,building_id,room_id,service_id,code) VALUES('${id(82)}','${org}','${building}','${id(81)}','${service}','D3'),('${id(84)}','${org}','${building}','${id(83)}','${service}','D4');
+  INSERT INTO app_private.meter_capture_profiles(meter_id,organization_id,serial_number,display_kind,decimal_places,register_code,verified_by)
+   VALUES('${id(84)}','${org}','S4','MECHANICAL',1,'total','${actor}');`);
+ await panelStart(db, { clientId: id(202) });
+ const { panel, job } = await panelClaimed(db, { clientId: id(203) });
+ assert.ok(panel.issues.includes('DUPLICATE_MEDIA'));
+ const frame = await panelEvidence(db, job, 1);
+ const crops = []; for (const n of [2, 3, 4, 5, 6]) crops.push(await panelEvidence(db, job, n));
+ await completePanel(db, job, surveyed([
+  detection(0, crops[0], frame, { label: '101', registerCode: '1.8.0', value: '125.00', clear: true }),
+  detection(1, crops[1], frame, { label: '101', registerCode: 'total', value: '0210.0', clear: true, qrTokens: [qr2] }),
+  detection(2, crops[2], frame, { label: '1.03', registerCode: 'total', value: '0300.0', clear: true }),
+  detection(3, crops[3], frame, { label: '1.04', registerCode: 'total', value: '0400.0', clear: true }),
+  detection(4, crops[4], frame, { label: '1.02', registerCode: 'total', value: '0220.0', clear: true }),
+ ]));
+ const view = (await panelRpc(db, 'getPanel', { panelId: panel.id })).panel;
+ assert.deepEqual(view.detections.map(d => d.state), ['AMBIGUOUS', 'AMBIGUOUS', 'NO_PROFILE', 'NO_CONTRACT', 'MATCHED']);
+ assert.ok(view.issues.includes('DUPLICATE_MEDIA'));
+ const child = (await rpc(db, 'getCapture', { captureId: view.detections[4].captureId })).capture;
+ assert.ok(child.issues.includes('DUPLICATE_MEDIA'));
+ assert.match(child.clientId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+ const assigned = (await panelRpc(db, 'assignDetection', { panelId: panel.id, detectionIndex: 0, meterId: meter })).panel;
+ const result = (await db.query('SELECT r.result FROM app_private.meter_capture_results r WHERE r.capture_id=$1', [assigned.detections[0].captureId])).rows[0].result;
+ assert.equal(result.panel.assignedBy, actor); assert.equal(result.panel.matchKind, 'MANUAL');
+});
+
+test('panel video receipts tolerate the browser-measured duration by one second only; empty surveys say no meters', async t => {
+ const { db } = await panelFixture(); t.after(() => db.close());
+ const { job } = await panelClaimed(db, { mimeType: 'video/mp4', durationSeconds: 4 });
+ assert.equal(job.media[0].kind, 'video');
+ await panelEvidence(db, job, 1, 4.5);
+ await assert.rejects(panelEvidence(db, job, 2, 5.5), { code: '22023' });
+ await completePanel(db, job, { mediaValidated: true, durationSeconds: 4.2, issues: [], ai: { status: 'unreadable', version: 'fixture-ai;panel/1' }, detections: [] });
+ const view = (await panelRpc(db, 'getPanel', { panelId: job.panelId })).panel;
+ assert.ok(view.issues.includes('NO_METERS_DETECTED')); assert.equal(view.status, 'REVIEW');
+ assert.equal((await db.query('SELECT count(*)::int n FROM app_private.meter_capture_panel_jobs WHERE panel_id=$1', [job.panelId])).rows[0].n, 1);
+ await assert.rejects(panelRpc(db, 'getPanel', { panelId: 'not-a-uuid' }), { code: '22023' });
+ await assert.rejects(panelStart(db, { clientId: id(204), readingDate: '2026-13-01' }), { code: '22023' });
+});
