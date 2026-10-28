@@ -125,13 +125,16 @@ const healsRls = async (body) => {
   const r = await probe({ body, setup: 'ALTER TABLE public.network_device_samples_20261101 DISABLE ROW LEVEL SECURITY' });
   return ok(r.state, EXISTING);
 };
+// Đủ bốn bên nhận mà REVOKE cũ thu (service_role có BYPASSRLS nên sót nó là lộ), mỗi bên một bảng con.
+const GRANTEES = ['PUBLIC', 'anon', 'authenticated', 'service_role'];
 const healsTableGrant = async (body) => {
-  const r = await probe({ body, setup: `GRANT SELECT ON public.network_interface_samples_20261102 TO anon;
-    GRANT INSERT ON public.network_device_samples_20261104 TO PUBLIC` });
+  const setup = GRANTEES.map((grantee, i) => `GRANT SELECT ON public.${EXISTING[i]} TO ${grantee}`).join(';\n');
+  const r = await probe({ body, setup });
   return ok(r.state, EXISTING);
 };
 const healsColumnGrant = async (body) => {
-  const r = await probe({ body, setup: 'GRANT SELECT (note) ON public.network_device_samples_20261103 TO authenticated' });
+  const setup = GRANTEES.map((grantee, i) => `GRANT SELECT (note) ON public.${EXISTING[i + 4]} TO ${grantee}`).join(';\n');
+  const r = await probe({ body, setup });
   return ok(r.state, EXISTING);
 };
 
@@ -170,7 +173,23 @@ test('đột biến: bỏ từng vế của phép kiểm thì vị từ tương 
     return create.slice(0, start) + create.slice(end);
   };
   const mutate = (from, to) => { if (!create.includes(from)) throw new Error(`không thấy ${from}`); return create.replace(from, to); };
+  // Đột biến trong đúng một vế: lần xuất hiện đầu tiên của `from` sau mốc `anchor`.
+  const mutateIn = (anchor, from, to) => {
+    const at = create.indexOf(from, create.indexOf(anchor));
+    if (create.indexOf(anchor) < 0 || at < 0) throw new Error(`không thấy ${from} sau ${anchor}`);
+    return create.slice(0, at) + to + create.slice(at + from.length);
+  };
+  const TABLE = 'FROM aclexplode(c.relacl)';
+  const COLUMN = 'FROM pg_attribute att';
   const mutants = [
+    ['bảng: sót PUBLIC', mutateIn(TABLE, 'acl.grantee = 0\n                 OR ', ''), healsTableGrant],
+    ['bảng: sót anon', mutateIn(TABLE, "'anon', ", ''), healsTableGrant],
+    ['bảng: sót authenticated', mutateIn(TABLE, "'authenticated', ", ''), healsTableGrant],
+    ['bảng: sót service_role', mutateIn(TABLE, ", 'service_role'", ''), healsTableGrant],
+    ['cột: sót PUBLIC', mutateIn(COLUMN, 'acl.grantee = 0\n                     OR ', ''), healsColumnGrant],
+    ['cột: sót anon', mutateIn(COLUMN, "'anon', ", ''), healsColumnGrant],
+    ['cột: sót authenticated', mutateIn(COLUMN, "'authenticated', ", ''), healsColumnGrant],
+    ['cột: sót service_role', mutateIn(COLUMN, ", 'service_role'", ''), healsColumnGrant],
     ['luôn chạy ba lệnh như cũ', mutate('IF NOT EXISTS (', 'IF true OR NOT EXISTS ('), skipsReady],
     ['bỏ vế RLS', mutate('AND c.relrowsecurity', ''), healsRls],
     ['bỏ vế quyền bảng', cut('AND NOT EXISTS (\n             SELECT 1\n               FROM aclexplode(c.relacl)', "'service_role'))\n           )"), healsTableGrant],
