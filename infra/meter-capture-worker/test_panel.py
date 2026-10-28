@@ -39,7 +39,7 @@ def meter(**changes):
 
 
 def parse(*meters, frames=1):
-    return parse_panel_ai(json.dumps({"meters": list(meters)}), frames)
+    return parse_panel_ai(json.dumps({"meters": list(meters)}), frames)[0]
 
 
 def reply(*meters, finish="stop"):
@@ -82,8 +82,7 @@ class PanelParserTests(unittest.TestCase):
     def test_rejects_extra_missing_or_mistyped_fields(self):
         bad = [meter(serial="77"), {key: value for key, value in meter().items() if key != "observations"},
                meter(clear="true"), meter(clear=1), meter(display="lcd"), meter(value=14243.3), meter(label=105),
-               meter(label="x" * 21), meter(registerCode="r" * 41), meter(label="1.0\n5"),
-               meter(observations=[{"frameIndex": 0, "box": BOX_A, "value": "1"}])]
+               meter(registerCode=["E"]), meter(observations=[{"frameIndex": 0, "box": BOX_A, "value": "1"}])]
         for item in bad:
             with self.assertRaisesRegex(InvalidInput, "invalid_ai_schema", msg=str(item)):
                 parse(item)
@@ -91,6 +90,17 @@ class PanelParserTests(unittest.TestCase):
             with self.assertRaisesRegex(InvalidInput, "invalid_ai_schema"):
                 parse_panel_ai(json.dumps(top), 1)
         self.assertEqual(parse(meter(label="x" * 20, registerCode="r" * 40))[0]["label"], "x" * 20)
+
+    def test_overlong_label_or_register_drops_only_that_text_and_flags_it(self):
+        meters, issues = parse_panel_ai(json.dumps({"meters": [
+            meter(label="x" * 21), meter(registerCode="r" * 41), meter(label="1.06")]}), 1)
+        self.assertEqual([(item["label"], item["registerCode"]) for item in meters],
+                         [(None, "total"), ("1.05", None), ("1.06", "total")])
+        self.assertEqual([item["value"] for item in meters], ["14243.3"] * 3)
+        self.assertEqual(issues, ["label_too_long"])
+        self.assertEqual(parse_panel_ai(json.dumps({"meters": [meter(label="x" * 20, registerCode="r" * 40)]}), 1)[1], [])
+        # A two-line sticker or a stray control character never fails the survey either.
+        self.assertEqual(parse(meter(label=" P.\n105\x00 "))[0]["label"], "P. 105")
 
     def test_rejects_values_that_are_not_complete_kwh_strings(self):
         for value in ["123456789", "1.234", "1e3", "-12.3", "12 .3", "١٢٣", "12.", ".5", "1,234.5"]:
@@ -156,6 +166,10 @@ class PanelJobTests(unittest.TestCase):
             ("unsupported_media", lambda job: job["media"][0].update(mimeType="image/heic")),
             ("invalid_media_kind", lambda job: job["media"][0].update(kind="image")),
             ("invalid_media_digest", lambda job: job["media"][0].update(sha256="A" * 64)),
+            ("invalid_media_duration", lambda job: job["media"][0].update(durationSeconds="3")),
+            ("invalid_media_duration", lambda job: job["media"][0].update(durationSeconds=True)),
+            ("invalid_media_duration", lambda job: job["media"][0].update(durationSeconds=-1)),
+            ("invalid_media_duration", lambda job: job["media"][0].update(durationSeconds=float("nan"))),
         ]
         for code, change in cases:
             job = panel_job()
@@ -164,6 +178,13 @@ class PanelJobTests(unittest.TestCase):
                 validate_panel_job(job)
         with self.assertRaisesRegex(InvalidInput, "invalid_job"):
             validate_panel_job(None)
+        for declared in (None, 0, 2.5):
+            job = panel_job()
+            job["media"][0]["durationSeconds"] = declared
+            self.assertIs(validate_panel_job(job), job)
+        job = panel_job("image/jpeg")
+        del job["media"][0]["durationSeconds"]
+        self.assertIs(validate_panel_job(job), job)
 
 
 class PanelGeometryTests(unittest.TestCase):
@@ -213,7 +234,7 @@ class PanelSurveyTests(unittest.TestCase):
     """Orchestration with fake pixels: image objects are labels such as "image-03" for extracted frame 3."""
 
     def run_survey(self, response, *, count=3, mime="video/mp4", quality=None, sharpness=None, codes=None,
-                   environment=AI_ENV, clock=None, crop_error=None):
+                   environment=AI_ENV, clock=None, crop_error=None, declared=None):
         crops = {}
 
         def save_crop(image, box, destination):
@@ -240,7 +261,9 @@ class PanelSurveyTests(unittest.TestCase):
                     patch("panel.save_crop", side_effect=save_crop), \
                     patch("panel.request_json", side_effect=responses) as ai, \
                     patch("panel.time.monotonic", side_effect=clock or (lambda: 0.0)):
-                output = survey(panel_job(mime), directory / "original.media", directory)
+                job = panel_job(mime)
+                job["media"][0]["durationSeconds"] = declared
+                output = survey(job, directory / "original.media", directory)
             names = [[Path(frame["localPath"]).name for frame in detection["frames"]] for detection in output["detections"]]
             return SimpleNamespace(output=output, ai=ai, crops=crops, extract=extract, probe=probe, frame_names=names)
 
@@ -310,6 +333,28 @@ class PanelSurveyTests(unittest.TestCase):
         self.assertEqual(run.output["issues"], ["qr_outside_meters"])
         self.assertEqual(set(first["crop"]), {"localPath", "timestampSeconds"})
         self.assertEqual(run.frame_names, [["source-00.jpg"], ["source-00.jpg"]])
+
+    def test_overlong_label_keeps_the_meter_and_flags_the_survey(self):
+        run = self.run_survey(reply(meter(label="Phòng 105 (dán đè nhãn cũ)"), meter(label="1.06")), count=1)
+        first, second = run.output["detections"]
+        self.assertEqual((first["label"], first["value"], first["clear"]), (None, "14243.3", True))
+        self.assertEqual(second["label"], "1.06")
+        self.assertEqual(run.output["issues"], ["label_too_long"])
+        self.assertEqual(run.output["ai"]["status"], "ok")
+
+    def test_frames_after_declared_duration_plus_one_second_are_never_sent_or_cited(self):
+        # Later frames are sharper, so only the declared bound can keep them out.
+        scores = {f"image-{index:02d}": index for index in range(10)}
+        observations = [{"frameIndex": index, "box": list(BOX_A)} for index in range(7)]
+        run = self.run_survey(reply(meter(observations=observations)), count=10, declared=2.0,
+                              quality=scores, sharpness=lambda image, box: scores[image])
+        self.assertEqual(self.sent_frames(run.ai), [str(index) for index in range(7)])
+        detection = run.output["detections"][0]
+        self.assertEqual(detection["crop"]["timestampSeconds"], 3.0)
+        self.assertEqual([frame["timestampSeconds"] for frame in detection["frames"]], [2.0, 2.5, 3.0])
+        # No declared duration keeps the previous behaviour: every extracted frame is eligible.
+        run = self.run_survey(reply(), count=10, quality=scores)
+        self.assertEqual(self.sent_frames(run.ai), [str(index) for index in range(10)])
 
     def test_more_than_four_qr_tokens_in_one_box_are_capped_and_flagged(self):
         tokens = [f"ihome-meter:{digit * 8}-{digit * 4}-4{digit * 3}-8{digit * 3}-{digit * 12}" for digit in "12345"]
@@ -521,12 +566,40 @@ class PanelWorkerTests(unittest.TestCase):
             gateway = FakeGateway(complete_errors=[rejected(422)])
             worker.process_panel(gateway, panel_job())
             self.assertEqual(gateway.actions(), ["panel/evidence", "panel/complete", "panel/complete"])
-            self.assertEqual(gateway.posts[-1][1]["result"], worker.failed_panel_result("worker_result_rejected", True, 2.5))
+            # "unreadable", not "error": the server retries "error" with two more paid AI calls.
+            self.assertEqual(gateway.posts[-1][1]["result"], {
+                "mediaValidated": True, "durationSeconds": 2.5, "issues": ["worker_result_rejected"],
+                "ai": {"status": "unreadable", "version": VERSION}, "detections": []})
             for errors in ([rejected(500)], [rejected(422), rejected(422)]):
                 gateway = FakeGateway(complete_errors=list(errors))
                 with self.assertRaises(urllib.error.HTTPError):
                     worker.process_panel(gateway, panel_job())
                 self.assertEqual(gateway.actions().count("panel/complete"), len(errors))
+        # An error result is never rewritten as unreadable: that would suppress the server's own retry.
+        with patch("worker.isolated", return_value={"failure": "recognition_timeout"}):
+            gateway = FakeGateway(complete_errors=[rejected(422)])
+            with self.assertRaises(urllib.error.HTTPError):
+                worker.process_panel(gateway, panel_job())
+            self.assertEqual(gateway.actions(), ["panel/complete"])
+
+    def test_evidence_after_declared_duration_is_never_uploaded(self):
+        with TemporaryDirectory() as temporary:
+            job = panel_job()
+            job["media"][0]["durationSeconds"] = 2.0
+
+            def result(name, timestamp):
+                return survey_result([detection(0, {"localPath": self.write(temporary, name, name.encode()),
+                                                    "timestampSeconds": timestamp}, [])])
+
+            gateway = FakeGateway()
+            with self.assertRaisesRegex(InvalidInput, "evidence_after_declared_duration"):
+                worker.upload_panel_evidence(gateway, job, result("late.jpg", 3.5), Path(temporary))
+            self.assertEqual(gateway.actions(), [])
+            worker.upload_panel_evidence(gateway, job, result("edge.jpg", 3.0), Path(temporary))
+            self.assertEqual(gateway.actions(), ["panel/evidence"])
+            job["media"][0]["durationSeconds"] = None
+            worker.upload_panel_evidence(gateway, job, result("undeclared.jpg", 59.5), Path(temporary))
+            self.assertEqual(gateway.actions(), ["panel/evidence", "panel/evidence"])
 
     def test_capture_jobs_win_and_a_panel_is_claimed_only_when_no_capture_waits(self):
         capture = {"jobId": JOB, "captureId": JOB, "organizationId": ORG, "leaseToken": LEASE,
