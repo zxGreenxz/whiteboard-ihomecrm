@@ -121,7 +121,7 @@ export function MeterPanelReview({ panel, captures, meters, onChanged }: {
     {showOriginal && (original.isError
       ? <p role="alert" className="text-sm text-destructive">Không tải được ảnh/clip gốc. {messageOf(original.error, '')} <button type="button" className="underline" onClick={() => void original.refetch()}>Thử lại</button></p>
       : original.data
-        ? <MeterEvidenceViewer imageUrl={original.data.imageUrl} videoUrl={original.data.videoUrl} evidenceFrames={original.data.frames} label="Ảnh cả bảng đồng hồ nội bộ" />
+        ? <MeterEvidenceViewer imageUrl={original.data.imageUrl} videoUrl={original.data.videoUrl} evidenceFrames={original.data.evidenceFrames} label="Ảnh cả bảng đồng hồ nội bộ" />
         : <LoadingState label="ảnh/clip cả bảng" rows={2} />)}
     {expanded && <>
       <ol className="space-y-2">

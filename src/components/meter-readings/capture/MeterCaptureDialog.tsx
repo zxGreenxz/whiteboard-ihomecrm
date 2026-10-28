@@ -57,7 +57,8 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
       if (!month || !readingDate) throw new Error('Chọn kỳ tháng và ngày chốt.');
       await savePendingCapture({ ...desk.owner, kind: 'panel', buildingId, clientId: crypto.randomUUID(), file, fileName: file.name,
         sha256: await sha256Media(file), durationSeconds: details.durationSeconds, meterId: '', qrText: null,
-        purpose, readingDate, month, capturedAt: new Date().toISOString() });
+        // The server only accepts monthly panels; move-out readings are captured meter by meter.
+        purpose: 'MONTHLY', readingDate, month, capturedAt: new Date().toISOString() });
       setNotice('Đã giữ ảnh/clip cả bảng trên máy. Bạn có thể quay bảng tiếp theo.');
       setFile(null); setDetails(null); setVerified(false);
       await desk.refresh();
@@ -112,8 +113,9 @@ function CaptureDesk({ month, setMonth, desk }: { month: string; setMonth: (mont
           <Button type="button" variant={mode === 'meter' ? 'default' : 'outline'} aria-pressed={mode === 'meter'} disabled={busy} onClick={() => switchMode('meter')}>Một đồng hồ</Button>
           <Button type="button" variant={mode === 'panel' ? 'default' : 'outline'} aria-pressed={mode === 'panel'} disabled={busy} onClick={() => switchMode('panel')}>Cả bảng đồng hồ</Button>
         </div>
-        <div className="grid grid-cols-2 gap-3"><div className="space-y-1"><Label htmlFor="capture-purpose">Mục đích</Label><select id="capture-purpose" className="h-10 w-full rounded border bg-background px-2" value={purpose} onChange={event => setPurpose(event.target.value === 'MOVE_OUT' ? 'MOVE_OUT' : 'MONTHLY')}><option value="MONTHLY">Chốt kỳ tháng</option><option value="MOVE_OUT">Chốt thanh lý</option></select></div><div className="space-y-1"><Label htmlFor="capture-date">Ngày chốt</Label><Input id="capture-date" type="date" value={readingDate} onChange={event => setReadingDate(event.target.value)} /></div></div>
+        <div className="grid grid-cols-2 gap-3"><div className="space-y-1"><Label htmlFor="capture-purpose">Mục đích</Label><select id="capture-purpose" className="h-10 w-full rounded border bg-background px-2" value={mode === 'panel' ? 'MONTHLY' : purpose} disabled={mode === 'panel'} onChange={event => setPurpose(event.target.value === 'MOVE_OUT' ? 'MOVE_OUT' : 'MONTHLY')}><option value="MONTHLY">Chốt kỳ tháng</option><option value="MOVE_OUT">Chốt thanh lý</option></select></div><div className="space-y-1"><Label htmlFor="capture-date">Ngày chốt</Label><Input id="capture-date" type="date" value={readingDate} onChange={event => setReadingDate(event.target.value)} /></div></div>
         {!desk.catalogReady && <p role="status" className="text-sm">Chưa tải xong danh mục đồng hồ; cần kết nối mạng trước khi chụp.</p>}
+        {mode === 'panel' && <p className="text-xs text-muted-foreground">Cả bảng chỉ dùng chốt kỳ tháng; chốt thanh lý chụp từng đồng hồ.</p>}
         {mode === 'panel' && desk.catalogReady && !buildingId && <p className="text-sm text-amber-700">Chọn tòa ở ô Tòa phía trên trước khi quay cả bảng.</p>}
         <MeterCamera onFile={(next, duration) => void (mode === 'panel' ? receivePanelFile(next, duration) : receiveFile(next, duration))}
           disabled={busy || !desk.catalogReady} hint={mode === 'panel' ? PANEL_HINT : undefined} />

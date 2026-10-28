@@ -66,8 +66,9 @@ export const meterPanelSchema = z.object({
   detections: z.array(meterPanelDetectionSchema).default([]),
 });
 export type MeterPanel = z.infer<typeof meterPanelSchema>;
+// Same field name as capture evidence; frame imageUrls are private references signed on display.
 export const meterPanelEvidenceSchema = z.object({
-  imageUrl: z.string().nullable(), videoUrl: z.string().nullable(), frames: z.array(meterEvidenceFrameSchema).default([]),
+  imageUrl: z.string().nullable(), videoUrl: z.string().nullable(), evidenceFrames: z.array(meterEvidenceFrameSchema).default([]),
 });
 export type MeterPanelEvidence = z.infer<typeof meterPanelEvidenceSchema>;
 export const meterPointSchema = z.object({

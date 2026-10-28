@@ -135,14 +135,16 @@ it('asks for the acknowledgement again when polling changes an eligible reading'
 
 it('opens the original panel photo or clip only on request and reports an inaccessible original', async () => {
   api.evidence.mockRejectedValueOnce(new Error('Bạn chưa có quyền thực hiện thao tác này.'))
-    .mockResolvedValueOnce({ imageUrl: '/private/panel-frame', videoUrl: '/private/panel-clip', frames: [{ imageUrl: '/private/panel-frame', timestampSeconds: 4 }] });
+    .mockResolvedValueOnce({ imageUrl: null, videoUrl: '/private/panel-clip', evidenceFrames: [{ imageUrl: '/private/panel-frame', timestampSeconds: 4 }] });
   show({ ...basePanel, detections: [det(0, { label: 'P105' })] });
   expect(api.evidence).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Xem ảnh/clip gốc' }));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Không tải được ảnh/clip gốc. Bạn chưa có quyền'));
   expect(api.evidence).toHaveBeenCalledWith('org-a', 'panel-a');
   fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
-  expect(await screen.findByAltText('Ảnh cả bảng đồng hồ nội bộ')).toBeTruthy();
+  // With no single image, the viewer shows the clip's first evidence frame and seeks the clip to it.
+  expect((await screen.findByAltText('Ảnh cả bảng đồng hồ nội bộ')).getAttribute('src')).toBe('/private/panel-frame');
+  expect(screen.getByRole('button', { name: 'Ảnh tại 0:04.0' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Xem clip tại 0:04.0' })).toBeTruthy();
 });
 
