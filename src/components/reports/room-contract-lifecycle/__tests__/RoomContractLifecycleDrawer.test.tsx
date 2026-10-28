@@ -124,6 +124,62 @@ describe('RoomContractLifecycleDrawer', () => {
   });
 });
 
+describe('RPC mới — một nguồn tiền, hoa hồng là mốc (số giả)', () => {
+  const tien = (o: { roomCount?: number } = {}) => {
+    const s = { issued: 7_900_000, paidCash: 7_900_000, offset: 0, debt: 0, overpaid: 0, invoiceCount: 2, roomCount: 1, depositOnInvoices: 0 };
+    return { contract: { ...s, roomCount: o.roomCount ?? 1, paidCash: 12_000_000, debt: 300_000 }, room: s, refund: null };
+  };
+  const phieu = (type: string, code: string) => ({
+    type, date: '2026-08-12', contractId: 'B', amount: 1_000_000, trusted: false,
+    meta: { voucherId: `v-${code}`, code, name: 'Phiếu giả', kind: type.startsWith('SALE') ? 'sale' : 'broker', link: 'direct', legacyDup: false },
+  });
+  const voi = (events: LifecyclePayload['events'], o: { roomCount?: number } = {}): LifecyclePayload => ({
+    ...payload,
+    contracts: payload.contracts.map((c) => (c.id === 'B' ? { ...c, originalEndDate: '2026-11-09', money: tien(o) } : c)),
+    events: [...payload.events, ...events],
+  });
+  const moChiTiet = () => {
+    render(<RoomContractLifecycleDrawer roomId="r204" roomName="204" initialYear={2026} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('Ngô Phương Anh'));
+  };
+  const kpi = (label: string) => screen.getByText(label).parentElement!.textContent!;
+
+  it('phiếu chờ duyệt chấm rỗng, phiếu đã đảo gạch ngang số tiền; dòng Ký HĐ in hạn gốc', () => {
+    H.payload = voi([phieu('SALE_BONUS_PENDING', 'PC-GIA-1'), phieu('COMMISSION_REVERSED', 'PC-GIA-2')]);
+    moChiTiet();
+    const dong = (title: string) => screen.getByText(title).closest('.rcl-ev') as HTMLElement;
+    const cho = dong('Thưởng Sale');
+    expect((cho.querySelector('.rcl-ev__dot') as HTMLElement).style.background).toMatch(/#fff|rgb\(255, 255, 255\)/);
+    expect(cho.textContent).toContain('Chờ duyệt');
+    const dao = dong('Hoa hồng môi giới');
+    expect((dao.querySelector('.rcl-ev__amt > div') as HTMLElement).style.textDecoration).toBe('line-through');
+    expect(dao.textContent).toContain('Đã đảo');
+    expect(screen.getByText('HĐ-B · thời hạn 10/08/2026 → 09/11/2026 · gia hạn tới 09/02/2027')).toBeTruthy();
+  });
+
+  it('ô ĐÃ THU đọc money theo phòng, chữ phụ mới, KHÔNG đổi khi có phiếu hoa hồng', () => {
+    H.payload = voi([]);
+    moChiTiet();
+    const khong = [kpi('ĐÃ THU'), kpi('KHÁCH CÒN NỢ')];
+    expect(khong[0]).toContain('7.900.000 đ');
+    expect(khong[0]).toContain('Khách đã nộp · không gồm cọc, không gồm cấn trừ');
+    cleanup();
+    H.payload = voi([phieu('COMMISSION_PAID', 'PC-GIA-3'), phieu('SALE_BONUS_UNPOSTED', 'PC-GIA-4')]);
+    moChiTiet();
+    expect([kpi('ĐÃ THU'), kpi('KHÁCH CÒN NỢ')]).toEqual(khong);
+  });
+
+  it('HĐ có hoá đơn ở ≥ 2 phòng ⇒ dòng nhỏ "Cả HĐ" dưới 3 số tổng; một phòng thì không', () => {
+    H.payload = voi([], { roomCount: 2 });
+    moChiTiet();
+    expect(screen.getByText('Cả HĐ (2 phòng): đã nộp 12.000.000 đ · còn nợ 300.000 đ')).toBeTruthy();
+    cleanup();
+    H.payload = voi([]);
+    moChiTiet();
+    expect(document.querySelector('.rcl-kpis__note')).toBeNull();
+  });
+});
+
 it('does not expose raw money diagnostics and shows a retry for missing extra sources',()=>{
  H.lifecycle={data:undefined,isError:true,error:new Error('SQL SELECT public.internal')};
  H.extras={data:undefined,isError:true,refetch:vi.fn()};

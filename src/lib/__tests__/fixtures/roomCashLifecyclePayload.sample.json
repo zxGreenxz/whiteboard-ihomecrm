@@ -1,0 +1,524 @@
+{
+  "note": "Đầu ra get_room_cash_lifecycle_v1 (20261028203816_vong_doi_tien_phong_mot_nguon.sql) trên fixture PGlite của scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs — số, mã, id đều GIẢ. labels: id → nhãn trong fixture. Ghi lại bằng GHI_PAYLOAD_MAU=1; test SQL đó đỏ khi tệp lệch RPC.",
+  "rooms": {
+    "A": "00000000-0000-4000-8000-000000000101",
+    "B": "00000000-0000-4000-8000-000000000102",
+    "C": "00000000-0000-4000-8000-000000000103",
+    "D1": "00000000-0000-4000-8000-000000000104",
+    "D2": "00000000-0000-4000-8000-000000000105",
+    "F": "00000000-0000-4000-8000-000000000106",
+    "G": "00000000-0000-4000-8000-000000000107",
+    "R": "00000000-0000-4000-8000-000000000108",
+    "K": "00000000-0000-4000-8000-000000000109",
+    "L": "00000000-0000-4000-8000-000000000110",
+    "P": "00000000-0000-4000-8000-000000000111"
+  },
+  "labels": {
+    "00000000-0000-4000-8000-000000000201": "A",
+    "00000000-0000-4000-8000-000000000202": "B",
+    "00000000-0000-4000-8000-000000000203": "C",
+    "00000000-0000-4000-8000-000000000204": "D",
+    "00000000-0000-4000-8000-000000000205": "F",
+    "00000000-0000-4000-8000-000000000206": "G",
+    "00000000-0000-4000-8000-000000000207": "R",
+    "00000000-0000-4000-8000-000000000208": "RB",
+    "00000000-0000-4000-8000-000000000209": "K",
+    "00000000-0000-4000-8000-000000000210": "L",
+    "00000000-0000-4000-8000-000000000211": "P1",
+    "00000000-0000-4000-8000-000000000212": "P6",
+    "00000000-0000-4000-8000-000000000213": "P2",
+    "00000000-0000-4000-8000-000000000301": "A1",
+    "00000000-0000-4000-8000-000000000302": "A2",
+    "00000000-0000-4000-8000-000000000303": "A3",
+    "00000000-0000-4000-8000-000000000304": "A4",
+    "00000000-0000-4000-8000-000000000305": "A5",
+    "00000000-0000-4000-8000-000000000306": "A6",
+    "00000000-0000-4000-8000-000000000307": "A7",
+    "00000000-0000-4000-8000-000000000308": "B1",
+    "00000000-0000-4000-8000-000000000309": "B2",
+    "00000000-0000-4000-8000-000000000310": "B3",
+    "00000000-0000-4000-8000-000000000311": "B4",
+    "00000000-0000-4000-8000-000000000312": "B5",
+    "00000000-0000-4000-8000-000000000313": "BX",
+    "00000000-0000-4000-8000-000000000314": "B6",
+    "00000000-0000-4000-8000-000000000315": "C1",
+    "00000000-0000-4000-8000-000000000316": "C2",
+    "00000000-0000-4000-8000-000000000317": "C3",
+    "00000000-0000-4000-8000-000000000318": "C4",
+    "00000000-0000-4000-8000-000000000319": "C5",
+    "00000000-0000-4000-8000-000000000320": "C6",
+    "00000000-0000-4000-8000-000000000321": "D1",
+    "00000000-0000-4000-8000-000000000322": "D2",
+    "00000000-0000-4000-8000-000000000323": "D3",
+    "00000000-0000-4000-8000-000000000324": "F1",
+    "00000000-0000-4000-8000-000000000325": "F2",
+    "00000000-0000-4000-8000-000000000326": "G1",
+    "00000000-0000-4000-8000-000000000327": "G2",
+    "00000000-0000-4000-8000-000000000328": "G3",
+    "00000000-0000-4000-8000-000000000329": "L1",
+    "00000000-0000-4000-8000-000000000330": "L2",
+    "00000000-0000-4000-8000-000000000331": "L3",
+    "00000000-0000-4000-8000-000000000332": "P1a",
+    "00000000-0000-4000-8000-000000000333": "P6a",
+    "00000000-0000-4000-8000-000000000334": "P6b",
+    "00000000-0000-4000-8000-000000000335": "P2a",
+    "00000000-0000-4000-8000-000000000336": "P2b",
+    "00000000-0000-4000-8000-000000000337": "G4",
+    "00000000-0000-4000-8000-000000000338": "G5",
+    "00000000-0000-4000-8000-000000000501": "pA1a",
+    "00000000-0000-4000-8000-000000000502": "pA1b",
+    "00000000-0000-4000-8000-000000000503": "pA1c",
+    "00000000-0000-4000-8000-000000000504": "pA2a",
+    "00000000-0000-4000-8000-000000000505": "pA2b",
+    "00000000-0000-4000-8000-000000000506": "pA3",
+    "00000000-0000-4000-8000-000000000507": "pA4",
+    "00000000-0000-4000-8000-000000000508": "pA7",
+    "00000000-0000-4000-8000-000000000509": "pC1",
+    "00000000-0000-4000-8000-000000000510": "pC2",
+    "00000000-0000-4000-8000-000000000511": "pC3",
+    "00000000-0000-4000-8000-000000000512": "pC5",
+    "00000000-0000-4000-8000-000000000513": "pC6",
+    "00000000-0000-4000-8000-000000000514": "pD1",
+    "00000000-0000-4000-8000-000000000515": "pD2",
+    "00000000-0000-4000-8000-000000000516": "pD3",
+    "00000000-0000-4000-8000-000000000517": "pF1",
+    "00000000-0000-4000-8000-000000000518": "pF2",
+    "00000000-0000-4000-8000-000000000519": "pG1",
+    "00000000-0000-4000-8000-000000000520": "pG3",
+    "00000000-0000-4000-8000-000000000521": "pL1",
+    "00000000-0000-4000-8000-000000000522": "pP1a",
+    "00000000-0000-4000-8000-000000000523": "pP6a",
+    "00000000-0000-4000-8000-000000000524": "pP2a",
+    "00000000-0000-4000-8000-000000000525": "pP2b",
+    "00000000-0000-4000-8000-000000000526": "pG4",
+    "00000000-0000-4000-8000-000000000527": "pG5",
+    "00000000-0000-4000-8000-000000000701": "depA",
+    "00000000-0000-4000-8000-000000000702": "offA",
+    "00000000-0000-4000-8000-000000000703": "E1",
+    "00000000-0000-4000-8000-000000000704": "E2",
+    "00000000-0000-4000-8000-000000000705": "E4",
+    "00000000-0000-4000-8000-000000000706": "E5",
+    "00000000-0000-4000-8000-000000000707": "rroD",
+    "00000000-0000-4000-8000-000000000708": "offF",
+    "00000000-0000-4000-8000-000000000709": "forG",
+    "00000000-0000-4000-8000-000000000710": "R1",
+    "00000000-0000-4000-8000-000000000711": "R2",
+    "00000000-0000-4000-8000-000000000712": "R3",
+    "00000000-0000-4000-8000-000000000713": "R4",
+    "00000000-0000-4000-8000-000000000714": "R5",
+    "00000000-0000-4000-8000-000000000715": "R6",
+    "00000000-0000-4000-8000-000000000716": "R7",
+    "00000000-0000-4000-8000-000000000717": "DEP1",
+    "00000000-0000-4000-8000-000000000718": "DEP2",
+    "00000000-0000-4000-8000-000000000719": "DEP3",
+    "00000000-0000-4000-8000-000000000720": "DEP4",
+    "00000000-0000-4000-8000-000000000721": "K1",
+    "00000000-0000-4000-8000-000000000722": "K2",
+    "00000000-0000-4000-8000-000000000723": "K3",
+    "00000000-0000-4000-8000-000000000724": "K4",
+    "00000000-0000-4000-8000-000000000725": "K5",
+    "00000000-0000-4000-8000-000000000726": "K6",
+    "00000000-0000-4000-8000-000000000727": "K7",
+    "00000000-0000-4000-8000-000000000728": "K8",
+    "00000000-0000-4000-8000-000000000729": "K9",
+    "00000000-0000-4000-8000-000000000730": "K10",
+    "00000000-0000-4000-8000-000000000731": "K11",
+    "00000000-0000-4000-8000-000000000732": "K12",
+    "00000000-0000-4000-8000-000000000733": "K13",
+    "00000000-0000-4000-8000-000000000734": "K14",
+    "00000000-0000-4000-8000-000000000735": "K15",
+    "00000000-0000-4000-8000-000000000736": "K16",
+    "00000000-0000-4000-8000-000000000737": "RL",
+    "00000000-0000-4000-8000-000000000738": "DEP5",
+    "00000000-0000-4000-8000-000000000739": "DEP6",
+    "00000000-0000-4000-8000-000000000601": "TERM1",
+    "00000000-0000-4000-8000-000000000602": "TERM2",
+    "00000000-0000-4000-8000-000000000603": "TERM3",
+    "00000000-0000-4000-8000-000000000604": "TERM4",
+    "00000000-0000-4000-8000-000000000605": "TERM5",
+    "00000000-0000-4000-8000-000000000606": "TERM6",
+    "00000000-0000-4000-8000-000000000607": "TERM7"
+  },
+  "payloads": {
+    "A": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000101",
+        "name": "P-A",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2025-12-28","meta":{"code":"PC-GIA-depA","voucherId":"00000000-0000-4000-8000-000000000701"},"type":"DEPOSIT_RECEIVED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-01-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-01-01","meta":{"kind":"MONTHLY","total":3000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000301","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-01","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-01-07","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000301","depositPaid":0,"billingMonth":"2026-01"},"type":"INVOICE_COLLECTION_POSTED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-02-01","meta":{"kind":"MONTHLY","total":3000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000302","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-02","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-02-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000302","depositPaid":0,"billingMonth":"2026-02"},"type":"INVOICE_COLLECTION_POSTED","amount":2700000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-01","meta":{"kind":"MONTHLY","total":3000000,"status":"PARTIAL_PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000303","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":2000000,"billingMonth":"2026-03","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000303","depositPaid":0,"billingMonth":"2026-03"},"type":"INVOICE_COLLECTION_POSTED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"kind":"SETTLEMENT","total":500000,"status":"PAID","penalty":200000,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000304","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-03","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"via":"MOVE_OUT","kind":"MONTHLY","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000302","billingMonth":"2026-02","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":300000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"via":"MOVE_OUT","kind":"SETTLEMENT","penalty":200000,"invoiceId":"00000000-0000-4000-8000-000000000304","billingMonth":"2026-03","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"code":"PC-GIA-offA","voucherId":"00000000-0000-4000-8000-000000000702"},"type":"SETTLEMENT_OFFSET_POSTED","amount":800000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"},
+        {"date":"2026-03-31","meta":{"type":"EARLY_TENANT","status":"APPROVED","terminationId":"00000000-0000-4000-8000-000000000601"},"type":"TERMINATION_REQUESTED","amount":1200000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000201"}
+      ],
+      "segments": [
+        {"toDate":"2026-03-31","trusted":true,"fromDate":"2026-01-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000201","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-A"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000201","money":{"room":{"debt":2000000,"issued":9500000,"offset":800000,"overpaid":0,"paidCash":6700000,"roomCount":1,"invoiceCount":4,"depositOnInvoices":0},"refund":{"owed":1200000,"offbook":0,"otherDue":0,"warnings":[],"otherPaid":0,"depositDue":1200000,"depositPaid":0,"depositOnVouchers":0},"contract":{"debt":2000000,"issued":9500000,"offset":800000,"overpaid":0,"paidCash":6700000,"roomCount":1,"invoiceCount":4,"depositOnInvoices":0}},"number":"HD-GIA-A","status":"TERMINATED","endDate":"2026-12-31","rentPrice":3000000,"startDate":"2026-01-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-03-31","originalEndDate":"2026-06-30"}
+      ],
+      "vacancies": [
+        {"days":212,"toDate":null,"fromDate":"2026-03-31"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "B": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000102",
+        "name": "P-B",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":1000000,"status":"OVERDUE","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000308","carriedOpen":1000000,"carriedPaid":0,"depositPart":0,"outstanding":1000000,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":2100000,"status":"OVERDUE","penalty":0,"carriedIn":1000000,"invoiceId":"00000000-0000-4000-8000-000000000309","carriedOpen":2100000,"carriedPaid":0,"depositPart":0,"outstanding":1100000,"billingMonth":"2026-06","sourceInvoiceIds":["00000000-0000-4000-8000-000000000308"]},"type":"INVOICE_ISSUED","amount":1100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-07-01","meta":{"kind":"MONTHLY","total":3300000,"status":"OVERDUE","penalty":0,"carriedIn":2100000,"invoiceId":"00000000-0000-4000-8000-000000000310","carriedOpen":3300000,"carriedPaid":0,"depositPart":0,"outstanding":1200000,"billingMonth":"2026-07","sourceInvoiceIds":["00000000-0000-4000-8000-000000000309"]},"type":"INVOICE_ISSUED","amount":1200000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-08-01","meta":{"kind":"MONTHLY","total":4600000,"status":"APPROVED","penalty":0,"carriedIn":3300000,"invoiceId":"00000000-0000-4000-8000-000000000311","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":1300000,"billingMonth":"2026-08","sourceInvoiceIds":["00000000-0000-4000-8000-000000000310"]},"type":"INVOICE_ISSUED","amount":1300000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-09-01","meta":{"kind":"MONTHLY","total":1500000,"status":"OVERDUE","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000312","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":1500000,"billingMonth":"2026-09","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"},
+        {"date":"2026-10-01","meta":{"kind":"MONTHLY","total":1200000,"status":"APPROVED","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000314","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":1200000,"billingMonth":"2026-10","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1200000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000202"}
+      ],
+      "segments": [
+        {"toDate":null,"trusted":true,"fromDate":"2026-05-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000202","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-B"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000202","money":{"room":{"debt":7300000,"issued":7300000,"offset":0,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":6,"depositOnInvoices":0},"refund":null,"contract":{"debt":7300000,"issued":7300000,"offset":0,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":6,"depositOnInvoices":0}},"number":"HD-GIA-B","status":"ACTIVE","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":null,"originalEndDate":null}
+      ],
+      "vacancies": [],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "C": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000103",
+        "name": "P-C",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":2000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000315","carriedOpen":0,"carriedPaid":1000000,"depositPart":0,"outstanding":0,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-05-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000315","depositPaid":0,"billingMonth":"2026-05"},"type":"INVOICE_COLLECTION_POSTED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":3000000,"status":"PAID","penalty":0,"carriedIn":1000000,"invoiceId":"00000000-0000-4000-8000-000000000316","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":["00000000-0000-4000-8000-000000000315"]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-06-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000316","depositPaid":0,"billingMonth":"2026-06"},"type":"INVOICE_COLLECTION_POSTED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-07-01","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000317","depositPaid":3000000,"billingMonth":"2026-07"},"type":"INVOICE_COLLECTION_POSTED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-07-01","meta":{"kind":"MONTHLY","total":6000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000317","carriedOpen":0,"carriedPaid":0,"depositPart":3000000,"outstanding":0,"billingMonth":"2026-07","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-08-01","meta":{"kind":"MONTHLY","total":4000000,"status":"OVERDUE","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000318","carriedOpen":0,"carriedPaid":0,"depositPart":1000000,"outstanding":3000000,"billingMonth":"2026-08","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-09-01","meta":{"kind":"MONTHLY","total":3005000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000319","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-09","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3005000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-09-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000319","depositPaid":0,"billingMonth":"2026-09"},"type":"INVOICE_COLLECTION_POSTED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-10-01","meta":{"kind":"MONTHLY","total":2000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000320","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":-500,"billingMonth":"2026-10","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"},
+        {"date":"2026-10-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000320","depositPaid":0,"billingMonth":"2026-10"},"type":"INVOICE_COLLECTION_POSTED","amount":2000500,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000203"}
+      ],
+      "segments": [
+        {"toDate":null,"trusted":true,"fromDate":"2026-05-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000203","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-C"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000203","money":{"room":{"debt":2999500,"issued":15005000,"offset":0,"overpaid":0,"paidCash":12000500,"roomCount":1,"invoiceCount":6,"depositOnInvoices":4000000},"refund":null,"contract":{"debt":2999500,"issued":15005000,"offset":0,"overpaid":0,"paidCash":12000500,"roomCount":1,"invoiceCount":6,"depositOnInvoices":4000000}},"number":"HD-GIA-C","status":"ACTIVE","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":null,"originalEndDate":null}
+      ],
+      "vacancies": [],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "D1": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000104",
+        "name": "P-D1",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":2000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000321","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-05-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000321","depositPaid":0,"billingMonth":"2026-05"},"type":"INVOICE_COLLECTION_POSTED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-06-01","meta":{"segIndex":0},"type":"ROOM_CHANGED_OUT","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"code":"PC-GIA-E4","invoiceId":null,"voucherId":"00000000-0000-4000-8000-000000000705","billingMonth":null},"type":"TERMINATION_EXTRA_RECEIPT_POSTED","amount":500,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"code":"PC-GIA-rroD","voucherId":"00000000-0000-4000-8000-000000000707"},"type":"TERMINATION_REFUND_OFFSET_POSTED","amount":20000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"}
+      ],
+      "segments": [
+        {"toDate":"2026-06-01","trusted":true,"fromDate":null,"segIndex":0,"contractId":"00000000-0000-4000-8000-000000000204","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-D"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000204","money":{"room":{"debt":0,"issued":2000000,"offset":0,"overpaid":0,"paidCash":2000500,"roomCount":1,"invoiceCount":1,"depositOnInvoices":0},"refund":null,"contract":{"debt":0,"issued":5200000,"offset":549500,"overpaid":0,"paidCash":4650500,"roomCount":2,"invoiceCount":3,"depositOnInvoices":0}},"number":"HD-GIA-D","status":"TERMINATED","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-07-31","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":150,"toDate":null,"fromDate":"2026-06-01"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "D2": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000105",
+        "name": "P-D2",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":2500000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000322","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-06-01","meta":{"segIndex":1,"sourcePath":"TRIGGER_APPROVED"},"type":"ROOM_CHANGED_IN","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-06-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000322","depositPaid":0,"billingMonth":"2026-06"},"type":"INVOICE_COLLECTION_POSTED","amount":2500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"segIndex":1},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"kind":"SETTLEMENT","total":700000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000323","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-07","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":700000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"via":"MOVE_OUT","kind":"SETTLEMENT","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000323","billingMonth":"2026-07","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":700000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"code":"PC-GIA-E1","invoiceId":"00000000-0000-4000-8000-000000000323","voucherId":"00000000-0000-4000-8000-000000000703","billingMonth":"2026-07"},"type":"TERMINATION_EXTRA_RECEIPT_POSTED","amount":100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"code":"PC-GIA-E2","invoiceId":null,"voucherId":"00000000-0000-4000-8000-000000000704","billingMonth":null},"type":"TERMINATION_EXTRA_RECEIPT_POSTED","amount":50000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000204"},
+        {"date":"2026-07-31","meta":{"code":"PC-GIA-rroD","voucherId":"00000000-0000-4000-8000-000000000707"},"type":"TERMINATION_REFUND_OFFSET_POSTED","amount":20000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000204"}
+      ],
+      "segments": [
+        {"toDate":"2026-07-31","trusted":true,"fromDate":"2026-06-01","segIndex":1,"contractId":"00000000-0000-4000-8000-000000000204","diagnostic":null,"sourcePath":"TRIGGER_APPROVED","contractNumber":"HD-GIA-D"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000204","money":{"room":{"debt":0,"issued":3200000,"offset":550000,"overpaid":0,"paidCash":2650000,"roomCount":1,"invoiceCount":2,"depositOnInvoices":0},"refund":null,"contract":{"debt":0,"issued":5200000,"offset":549500,"overpaid":0,"paidCash":4650500,"roomCount":2,"invoiceCount":3,"depositOnInvoices":0}},"number":"HD-GIA-D","status":"TERMINATED","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-07-31","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":90,"toDate":null,"fromDate":"2026-07-31"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "F": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000106",
+        "name": "P-F",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":1000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000324","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":2000000,"status":"PAID","penalty":0,"carriedIn":1000000,"invoiceId":"00000000-0000-4000-8000-000000000325","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":["00000000-0000-4000-8000-000000000324"]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-06-30","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-06-30","meta":{"via":"MOVE_OUT","kind":"MONTHLY","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000324","billingMonth":"2026-05","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-06-30","meta":{"via":"MOVE_OUT","kind":"MONTHLY","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000325","billingMonth":"2026-06","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"},
+        {"date":"2026-06-30","meta":{"code":"PC-GIA-offF","voucherId":"00000000-0000-4000-8000-000000000708"},"type":"SETTLEMENT_OFFSET_POSTED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000205"}
+      ],
+      "segments": [
+        {"toDate":"2026-06-30","trusted":true,"fromDate":"2026-05-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000205","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-F"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000205","money":{"room":{"debt":0,"issued":2000000,"offset":3000000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":2,"depositOnInvoices":0},"refund":null,"contract":{"debt":0,"issued":2000000,"offset":3000000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":2,"depositOnInvoices":0}},"number":"HD-GIA-F","status":"TERMINATED","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-06-30","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":121,"toDate":null,"fromDate":"2026-06-30"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "G": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000107",
+        "name": "P-G",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":1500000,"status":"CANCELLED","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000326","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-05-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000326","depositPaid":0,"billingMonth":"2026-05"},"type":"INVOICE_COLLECTION_POSTED","amount":1500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":1000000,"status":"CANCELLED","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000337","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":["00000000-0000-4000-8000-000000000326"]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-01","meta":{"kind":"MONTHLY","total":1500000,"status":"CANCELLED","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000338","carriedOpen":0,"carriedPaid":0,"depositPart":500000,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000337","depositPaid":0,"billingMonth":"2026-06"},"type":"INVOICE_COLLECTION_POSTED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000338","depositPaid":500000,"billingMonth":"2026-06"},"type":"INVOICE_COLLECTION_POSTED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-15","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-15","meta":{"code":"PC-GIA-forG","voucherId":"00000000-0000-4000-8000-000000000709"},"type":"DEPOSIT_FORFEIT_POSTED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-15","meta":{"kind":"SETTLEMENT","total":3000000,"status":"PAID","penalty":3000000,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000328","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-06","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-15","meta":{"via":"FORFEIT","kind":"SETTLEMENT","penalty":3000000,"invoiceId":"00000000-0000-4000-8000-000000000328","billingMonth":"2026-06","depositOffset":0},"type":"INVOICE_TERMINATION_OFFSET","amount":3000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"},
+        {"date":"2026-06-15","meta":{"type":"FORFEIT","status":"APPROVED","terminationId":"00000000-0000-4000-8000-000000000602"},"type":"TERMINATION_REQUESTED","amount":0,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000206"}
+      ],
+      "segments": [
+        {"toDate":"2026-06-15","trusted":true,"fromDate":"2026-05-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000206","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-G"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000206","money":{"room":{"debt":0,"issued":6500000,"offset":3000000,"overpaid":0,"paidCash":3500000,"roomCount":1,"invoiceCount":4,"depositOnInvoices":500000},"refund":{"owed":0,"offbook":0,"otherDue":0,"warnings":[],"otherPaid":0,"depositDue":0,"depositPaid":0,"depositOnVouchers":0},"contract":{"debt":0,"issued":6500000,"offset":3000000,"overpaid":0,"paidCash":3500000,"roomCount":1,"invoiceCount":4,"depositOnInvoices":500000}},"number":"HD-GIA-G","status":"TERMINATED","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-06-15","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":136,"toDate":null,"fromDate":"2026-06-15"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "R": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000108",
+        "name": "P-R",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-01-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-06-01","meta":{"type":"EARLY_TENANT","status":"COMPLETED","terminationId":"00000000-0000-4000-8000-000000000603"},"type":"TERMINATION_REQUESTED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-06-30","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-06-30","meta":{"type":"EARLY_TENANT","status":"APPROVED","terminationId":"00000000-0000-4000-8000-000000000604"},"type":"TERMINATION_REQUESTED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-07-01","meta":{"code":"PC-GIA-R1","offbook":false,"voucherId":"00000000-0000-4000-8000-000000000710"},"type":"CUSTOMER_REFUND_POSTED","amount":400000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-07-01","meta":{"code":"PC-GIA-R1","offbook":false,"voucherId":"00000000-0000-4000-8000-000000000710"},"type":"DEPOSIT_REFUND_POSTED","amount":1500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-07-02","meta":{"code":"PC-GIA-R2","offbook":true,"voucherId":"00000000-0000-4000-8000-000000000711"},"type":"DEPOSIT_REFUND_POSTED","amount":500000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-07-15","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000208"},
+        {"date":"2026-07-15","meta":{"type":"EARLY_TENANT","status":"REJECTED","terminationId":"00000000-0000-4000-8000-000000000605"},"type":"TERMINATION_REQUESTED","amount":9999000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-07-20","meta":{"type":"EARLY_TENANT","status":"PENDING","terminationId":"00000000-0000-4000-8000-000000000606"},"type":"TERMINATION_REQUESTED","amount":null,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000207"},
+        {"date":"2026-08-05","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000208"},
+        {"date":"2026-08-05","meta":{"type":"EARLY_TENANT","status":"PENDING","terminationId":"00000000-0000-4000-8000-000000000607"},"type":"TERMINATION_REQUESTED","amount":700000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000208"},
+        {"date":"2026-08-10","meta":{"code":"PC-GIA-R7","offbook":false,"voucherId":"00000000-0000-4000-8000-000000000716"},"type":"DEPOSIT_REFUND_POSTED","amount":700000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000208"}
+      ],
+      "segments": [
+        {"toDate":"2026-06-30","trusted":true,"fromDate":"2026-01-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000207","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-R"},
+        {"toDate":"2026-08-05","trusted":true,"fromDate":"2026-07-15","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000208","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-RB"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000207","money":{"room":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0},"refund":{"owed":200000,"offbook":500000,"otherDue":600000,"warnings":["DEPOSIT_LINE_MISMATCH"],"otherPaid":400000,"depositDue":2000000,"depositPaid":2000000,"depositOnVouchers":2500000},"contract":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0}},"number":"HD-GIA-R","status":"TERMINATED","endDate":"2026-12-31","rentPrice":3000000,"startDate":"2026-01-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-06-30","originalEndDate":null},
+        {"id":"00000000-0000-4000-8000-000000000208","money":{"room":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0},"refund":{"owed":null,"offbook":0,"otherDue":0,"warnings":["NO_EFFECTIVE_TERMINATION"],"otherPaid":0,"depositDue":null,"depositPaid":700000,"depositOnVouchers":700000},"contract":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0}},"number":"HD-GIA-RB","status":"TERMINATED","endDate":"2027-07-14","rentPrice":3000000,"startDate":"2026-07-15","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-08-05","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":15,"toDate":"2026-07-15","fromDate":"2026-06-30"},
+        {"days":85,"toDate":null,"fromDate":"2026-08-05"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "K": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000109",
+        "name": "P-K",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-01-15","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-15","meta":{"code":"PC-GIA-DEP1","voucherId":"00000000-0000-4000-8000-000000000717"},"type":"DEPOSIT_RECEIVED","amount":100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-16","meta":{"code":"PC-GIA-DEP2","voucherId":"00000000-0000-4000-8000-000000000718"},"type":"DEPOSIT_RECEIVED","amount":100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-17","meta":{"code":"PC-GIA-DEP3","voucherId":"00000000-0000-4000-8000-000000000719"},"type":"DEPOSIT_RECEIVED","amount":100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-18","meta":{"code":"PC-GIA-DEP4","voucherId":"00000000-0000-4000-8000-000000000720"},"type":"DEPOSIT_RECEIVED","amount":100000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-20","meta":{"code":"PC-GIA-DEP5","voucherId":"00000000-0000-4000-8000-000000000738"},"type":"DEPOSIT_RECEIVED","amount":50000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-01-20","meta":{"code":"PC-GIA-DEP6","voucherId":"00000000-0000-4000-8000-000000000739"},"type":"DEPOSIT_RECEIVED","amount":60000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-01","meta":{"code":"PC-GIA-K1","kind":"broker","link":"direct","name":"Phiếu giả K1","stage":"PAID","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000721","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"COMMISSION_PAID","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-02","meta":{"code":"PC-GIA-K2","kind":"broker","link":"direct","name":"Phiếu giả K2","stage":"PENDING","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000722","postingStatus":"UNPOSTED","approvalStatus":"UNAPPROVED"},"type":"COMMISSION_PENDING","amount":900000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-03","meta":{"code":"PC-GIA-K3","kind":"broker","link":"direct","name":"Phiếu giả K3","stage":"REVERSED","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000723","postingStatus":"REVERSED","approvalStatus":"APPROVED"},"type":"COMMISSION_REVERSED","amount":800000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-04","meta":{"code":"PC-GIA-K4","kind":"broker","link":"direct","name":"Phiếu giả K4","stage":"OFFBOOK","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000724","postingStatus":"NOT_APPLICABLE","approvalStatus":"APPROVED"},"type":"COMMISSION_OFFBOOK","amount":700000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-05","meta":{"code":"PC-GIA-K5","kind":"sale","link":"direct","name":"Phiếu giả K5","stage":"UNPOSTED","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000725","postingStatus":"UNPOSTED","approvalStatus":"APPROVED"},"type":"SALE_BONUS_UNPOSTED","amount":600000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-06","meta":{"code":"PC-GIA-K6","kind":"broker","link":"direct","name":"Phiếu giả K6","stage":"UNPOSTED","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000726","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"COMMISSION_UNPOSTED","amount":500000,"trusted":false,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-07","meta":{"code":"PC-GIA-K7","kind":"sale","link":"deposit_claim","name":"Phiếu giả K7","stage":"PAID","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000727","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"SALE_BONUS_PAID","amount":400000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-08","meta":{"code":"PC-GIA-K8","kind":"sale","link":"direct","name":"Phiếu giả K8","stage":"PAID","legacyDup":false,"voucherId":"00000000-0000-4000-8000-000000000728","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"SALE_BONUS_PAID","amount":300000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-10","meta":{"code":"PC-GIA-K13","kind":"broker","link":"direct","name":"Phiếu giả K13","stage":"PAID","legacyDup":true,"voucherId":"00000000-0000-4000-8000-000000000733","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"COMMISSION_PAID","amount":200000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"},
+        {"date":"2026-02-10","meta":{"code":"PC-GIA-K14","kind":"broker","link":"direct","name":"Phiếu giả K14","stage":"PAID","legacyDup":true,"voucherId":"00000000-0000-4000-8000-000000000734","postingStatus":"POSTED","approvalStatus":"APPROVED"},"type":"COMMISSION_PAID","amount":200000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000209"}
+      ],
+      "segments": [
+        {"toDate":null,"trusted":true,"fromDate":"2026-01-15","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000209","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-K"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000209","money":{"room":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0},"refund":null,"contract":{"debt":0,"issued":0,"offset":0,"overpaid":0,"paidCash":0,"roomCount":0,"invoiceCount":0,"depositOnInvoices":0}},"number":"HD-GIA-K","status":"ACTIVE","endDate":"2027-01-14","rentPrice":3000000,"startDate":"2026-01-15","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":null,"originalEndDate":null}
+      ],
+      "vacancies": [],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "L": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000110",
+        "name": "P-L",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-01-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000210"},
+        {"date":"2026-03-01","meta":{"kind":"MONTHLY","total":2000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000329","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-03","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000210"},
+        {"date":"2026-03-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000329","depositPaid":0,"billingMonth":"2026-03"},"type":"INVOICE_COLLECTION_POSTED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000210"},
+        {"date":"2026-04-30","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000210"},
+        {"date":"2026-04-30","meta":{"code":"PC-GIA-RL","offbook":false,"voucherId":"00000000-0000-4000-8000-000000000737"},"type":"DEPOSIT_REFUND_POSTED","amount":2800000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000210"}
+      ],
+      "segments": [
+        {"toDate":"2026-04-30","trusted":true,"fromDate":"2026-01-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000210","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-L"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000210","money":{"room":{"debt":0,"issued":2000000,"offset":0,"overpaid":0,"paidCash":2000000,"roomCount":1,"invoiceCount":1,"depositOnInvoices":0},"refund":{"owed":null,"offbook":0,"otherDue":0,"warnings":["NO_EFFECTIVE_TERMINATION"],"otherPaid":0,"depositDue":null,"depositPaid":2800000,"depositOnVouchers":2800000},"contract":{"debt":0,"issued":2000000,"offset":0,"overpaid":0,"paidCash":2000000,"roomCount":1,"invoiceCount":1,"depositOnInvoices":0}},"number":"HD-GIA-L","status":"TERMINATED","endDate":"2026-12-31","rentPrice":3000000,"startDate":"2026-01-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-04-30","originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":182,"toDate":null,"fromDate":"2026-04-30"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    },
+    "P": {
+      "room": {
+        "id": "00000000-0000-4000-8000-000000000111",
+        "name": "P-P",
+        "buildingId": "00000000-0000-4000-8000-000000000011",
+        "buildingName": "Toà giả"
+      },
+      "range": {
+        "to": null,
+        "from": null
+      },
+      "events": [
+        {"date":"2026-05-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000211"},
+        {"date":"2026-05-01","meta":{"kind":"MONTHLY","total":4000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000332","carriedOpen":0,"carriedPaid":0,"depositPart":3000000,"outstanding":0,"billingMonth":"2026-05","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000211"},
+        {"date":"2026-06-30","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000211"},
+        {"date":"2026-06-30","meta":{"via":"MOVE_OUT","kind":"MONTHLY","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000332","billingMonth":"2026-05","depositOffset":3000000},"type":"INVOICE_TERMINATION_OFFSET","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000211"},
+        {"date":"2026-07-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000212"},
+        {"date":"2026-07-01","meta":{"kind":"MONTHLY","total":4000000,"status":"PARTIAL_PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000333","carriedOpen":0,"carriedPaid":0,"depositPart":3000000,"outstanding":500000,"billingMonth":"2026-07","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000212"},
+        {"date":"2026-08-01","meta":{"kind":"MONTHLY","total":2000000,"status":"OVERDUE","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000334","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":2000000,"billingMonth":"2026-08","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000212"},
+        {"date":"2026-08-31","meta":{"segIndex":0},"type":"CONTRACT_CLOSED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000212"},
+        {"date":"2026-08-31","meta":{"via":"MOVE_OUT","kind":"MONTHLY","penalty":0,"invoiceId":"00000000-0000-4000-8000-000000000333","billingMonth":"2026-07","depositOffset":3000000},"type":"INVOICE_TERMINATION_OFFSET","amount":500000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000212"},
+        {"date":"2026-09-01","meta":{"segIndex":0,"sourcePath":"CONTRACT_START"},"type":"CONTRACT_OPENED","amount":null,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000213"},
+        {"date":"2026-09-01","meta":{"kind":"MONTHLY","total":4000000,"status":"PAID","penalty":0,"carriedIn":0,"invoiceId":"00000000-0000-4000-8000-000000000335","carriedOpen":0,"carriedPaid":2000000,"depositPart":3000000,"outstanding":0,"billingMonth":"2026-09","sourceInvoiceIds":[]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000213"},
+        {"date":"2026-10-01","meta":{"kind":"MONTHLY","total":3000000,"status":"PAID","penalty":0,"carriedIn":2000000,"invoiceId":"00000000-0000-4000-8000-000000000336","carriedOpen":0,"carriedPaid":0,"depositPart":0,"outstanding":0,"billingMonth":"2026-10","sourceInvoiceIds":["00000000-0000-4000-8000-000000000335"]},"type":"INVOICE_ISSUED","amount":1000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000213"},
+        {"date":"2026-10-05","meta":{"kind":"MONTHLY","invoiceId":"00000000-0000-4000-8000-000000000336","depositPaid":1000000,"billingMonth":"2026-10"},"type":"INVOICE_COLLECTION_POSTED","amount":2000000,"trusted":true,"contractId":"00000000-0000-4000-8000-000000000213"}
+      ],
+      "segments": [
+        {"toDate":"2026-06-30","trusted":true,"fromDate":"2026-05-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000211","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-P1"},
+        {"toDate":"2026-08-31","trusted":true,"fromDate":"2026-07-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000212","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-P6"},
+        {"toDate":null,"trusted":true,"fromDate":"2026-09-01","segIndex":0,"contractId":"00000000-0000-4000-8000-000000000213","diagnostic":null,"sourcePath":"CONTRACT_START","contractNumber":"HD-GIA-P2"}
+      ],
+      "contracts": [
+        {"id":"00000000-0000-4000-8000-000000000211","money":{"room":{"debt":0,"issued":1000000,"offset":1000000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":1,"depositOnInvoices":3000000},"refund":null,"contract":{"debt":0,"issued":1000000,"offset":1000000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":1,"depositOnInvoices":3000000}},"number":"HD-GIA-P1","status":"TERMINATED","endDate":"2027-04-30","rentPrice":3000000,"startDate":"2026-05-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-06-30","originalEndDate":null},
+        {"id":"00000000-0000-4000-8000-000000000212","money":{"room":{"debt":2500000,"issued":3000000,"offset":500000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":2,"depositOnInvoices":3000000},"refund":null,"contract":{"debt":2500000,"issued":3000000,"offset":500000,"overpaid":0,"paidCash":0,"roomCount":1,"invoiceCount":2,"depositOnInvoices":3000000}},"number":"HD-GIA-P6","status":"TERMINATED","endDate":"2027-06-30","rentPrice":3000000,"startDate":"2026-07-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":"2026-08-31","originalEndDate":null},
+        {"id":"00000000-0000-4000-8000-000000000213","money":{"room":{"debt":0,"issued":2000000,"offset":0,"overpaid":0,"paidCash":2000000,"roomCount":1,"invoiceCount":2,"depositOnInvoices":3000000},"refund":null,"contract":{"debt":0,"issued":2000000,"offset":0,"overpaid":0,"paidCash":2000000,"roomCount":1,"invoiceCount":2,"depositOnInvoices":3000000}},"number":"HD-GIA-P2","status":"ACTIVE","endDate":"2027-08-31","rentPrice":3000000,"startDate":"2026-09-01","tenantName":"Khách Giả","totalDeposit":2000000,"actualEndDate":null,"originalEndDate":null}
+      ],
+      "vacancies": [
+        {"days":1,"toDate":"2026-07-01","fromDate":"2026-06-30"},
+        {"days":1,"toDate":"2026-09-01","fromDate":"2026-08-31"}
+      ],
+      "generatedAt": "2026-10-29T00:00:00+07:00"
+    }
+  }
+}
