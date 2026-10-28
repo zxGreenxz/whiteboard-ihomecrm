@@ -136,9 +136,12 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     + "…ensure_raw_partitions_v1` chứ không phải vì migration sai. Độ phủ thay thế: "
     + "scripts/__tests__/nc-raw-partitions-sql.test.mjs (PGlite: trước vá khoá + ghi "
     + "lại pg_class, sau vá không; tự vá RLS/quyền bảng/quyền cột cho cả bốn bên "
-    + "nhận; 13 đột biến), scripts/test-network-center-action-path-disposable.mjs "
-    + "(replay mọi migration thật bằng glob trên PostgreSQL 17 thật) và bộ sinh "
-    + "manifest rollout replay đủ 30 stage trên cụm dùng-một-lần",
+    + "nhận; 13 đột biến; chạy trong job vitest của CI Gates), hai bước của "
+    + "network-center-validation.yml replay mọi migration Network Center thật theo "
+    + "glob trên PostgreSQL thật qua runDisposableLocalClusterMatrix "
+    + "(verify-network-center-managed-resources.mjs --local-cluster và "
+    + "test-cross-tenant.mjs --local-cluster), và bộ sinh manifest rollout replay "
+    + "đủ 30 stage trên cụm dùng-một-lần mỗi lần sinh lại (cục bộ)",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {
