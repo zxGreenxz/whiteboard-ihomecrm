@@ -114,11 +114,12 @@ test('needs_input là kết quả thường có huongDan; detail tên chỉ nêu
 
 test('Thu chi lượt 20: hạng mục chi chưa nêu có NHIỀU gợi ý ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất; trường khác giữ "không tự chọn"; mã mơ hồ của tham số danh sách ⇒ "MÃ dd/mm/yyyy"', () => {
   const two = [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }];
-  // A04: chỉ hạng mục (category). Người (assignee), toà, phòng, sổ, khách, loại việc: vẫn hỏi người dùng chọn một, không tự chọn.
+  // A04: hạng mục (category); loại việc (jobType) theo cùng hướng từ nghiệm thu c3s CV-B01 (câu riêng, xem task-actions.test.mjs).
+  // Người (assignee), toà, phòng, sổ, khách: vẫn hỏi người dùng chọn một, không tự chọn.
   assert.equal(nameUnresolvedDetail({ field: 'category', wanted: '', why: 'unspecified', candidates: two }),
     'Chưa nêu hạng mục; gợi ý: Sửa chữa xây dựng, Mua đồ điện máy (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản ' +
     'xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.');
-  for (const field of ['person', 'building', 'room', 'cashbook', 'customer', 'jobType'])
+  for (const field of ['person', 'building', 'room', 'cashbook', 'customer'])
     assert.equal(nameUnresolvedDetail({ field, wanted: '', why: 'unspecified', candidates: [{ name: 'A' }, { name: 'B' }] }).endsWith('— hỏi người dùng chọn một, không tự chọn.'), true, field);
   // Hạng mục MỘT gợi ý (C3n) giữ câu riêng; hạng mục đã nêu mà mơ hồ ⇒ câu cũ (hỏi người dùng nêu rõ).
   assert.match(nameUnresolvedDetail({ field: 'category', wanted: '', why: 'unspecified', candidates: two.slice(0, 1) }), /^Chưa nêu hạng mục; gợi ý duy nhất: Sửa chữa xây dựng — /);

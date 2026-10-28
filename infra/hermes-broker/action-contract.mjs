@@ -209,6 +209,11 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   // trùng, bằng nhau thì thứ tự danh mục — public.hermes_expense_category_pick_v1). CHỈ hạng mục: người, toà, phòng, sổ, khách … vẫn hỏi chọn.
   if (kind === 'unspecified' && field === 'category' && names.length)
     return `Chưa nêu ${label}; gợi ý: ${list} (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.`;
+  // Công việc (nghiệm thu c3s 28/10 CV-B01: "kiểm đồng hồ điện các toà Nathan quản lý" ⇒ gợi ý loại việc "check, checkin, decor, giặt, làm", câu
+  // "hỏi người dùng chọn một" ⇒ người dùng đáp "ok", thừa hai lượt): loại việc cũng là phân loại như hạng mục ⇒ xem trước ngay với loại hợp nội
+  // dung nhất, bản xem trước nêu loại việc, người dùng vẫn quyết trên bản xem trước. Gợi ý loại việc KHÔNG xếp theo độ khớp ⇒ không nói "gợi ý đầu".
+  if (kind === 'unspecified' && field === 'jobType' && names.length)
+    return `Chưa nêu ${label}; gợi ý: ${list} — gọi lại NGAY với jobType = gợi ý hợp nội dung việc nhất để lấy bản xem trước, nêu rõ loại việc đã chọn; người dùng muốn loại khác thì xem trước lại.`;
   if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
