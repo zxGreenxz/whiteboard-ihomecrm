@@ -146,13 +146,15 @@ describe('panel media receipt boundary', () => {
     const reviewed = { ...panel, status: 'REVIEW', mediaReceived: true, mediaValidated: true, aiStatus: 'ok', detections: [detection] };
     io.invoke.mockResolvedValueOnce(reply({ panel: null })).mockResolvedValueOnce(reply({ panels: [reviewed] }))
       .mockResolvedValueOnce(reply({ panel: reviewed })).mockResolvedValueOnce(reply({ panel: reviewed }))
-      .mockResolvedValueOnce(reply({ evidence: { imageUrl: null, videoUrl: 'https://signed/clip', frames: [{ timestampSeconds: 2, imageUrl: 'https://signed/frame' }] } }));
+      .mockResolvedValueOnce(reply({ evidence: { imageUrl: null, videoUrl: 'https://signed/clip',
+        evidenceFrames: [{ timestampSeconds: 2, imageUrl: 'https://example.supabase.co/storage/v1/object/authenticated/meter-capture-media/frame.jpg' }] } }));
     expect(await getMeterPanel(id(2), { clientId: panel.clientId })).toBeNull();
     const [listed] = await listMeterPanels(id(2), '2026-10');
     expect(listed.detections[0]).toMatchObject({ state: 'MATCHED', matchKind: 'QR', captureId: id(14), cropUrl: detection.cropUrl, timestampSeconds: 3.5 });
     await assignPanelDetection({ orgId: id(2), panelId: panel.id, detectionIndex: 1, meterId: id(3) });
     await assignPanelDetection({ orgId: id(2), panelId: panel.id, detectionIndex: 2, meterId: id(3), contractId: id(15) });
-    expect((await getPanelEvidence(id(2), panel.id)).frames).toEqual([{ timestampSeconds: 2, imageUrl: 'https://signed/frame' }]);
+    expect((await getPanelEvidence(id(2), panel.id)).evidenceFrames)
+      .toEqual([{ timestampSeconds: 2, imageUrl: 'https://example.supabase.co/storage/v1/object/authenticated/meter-capture-media/frame.jpg' }]);
     expect(io.invoke.mock.calls.map(call => [call[1].body.rpcAction, call[1].body.payload])).toEqual([
       ['getPanel', { clientId: panel.clientId }], ['listPanels', { month: '2026-10' }],
       ['assignDetection', { panelId: panel.id, detectionIndex: 1, meterId: id(3) }],

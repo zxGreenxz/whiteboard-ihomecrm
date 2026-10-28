@@ -76,8 +76,14 @@ it('keeps a whole-panel original for the chosen building on the device, then sta
   state.inspectPanel.mockResolvedValue({ durationSeconds: 21.4 });
   state.sha.mockResolvedValue('a'.repeat(64));
   state.save.mockResolvedValue(undefined);
+  // A move-out choice made in single-meter mode must not leak into a panel: panels are monthly only.
+  fireEvent.change(screen.getByLabelText('Mục đích'), { target: { value: 'MOVE_OUT' } });
   fireEvent.click(screen.getByRole('button', { name: 'Cả bảng đồng hồ' }));
   expect(screen.getByRole('button', { name: 'Cả bảng đồng hồ' }).getAttribute('aria-pressed')).toBe('true');
+  const purpose = () => screen.getByLabelText('Mục đích') as HTMLSelectElement;
+  expect(purpose().value).toBe('MONTHLY');
+  expect(purpose().disabled).toBe(true);
+  expect(screen.getByText('Cả bảng chỉ dùng chốt kỳ tháng; chốt thanh lý chụp từng đồng hồ.')).toBeTruthy();
   expect(screen.getByText('Chọn tòa ở ô Tòa phía trên trước khi quay cả bảng.')).toBeTruthy();
   expect(screen.getByText(/Quay chậm lần lượt từng đồng hồ/)).toBeTruthy();
   const clip = new File(['panel clip'], 'bang-dong-ho.mp4', { type: 'video/mp4' });
@@ -104,4 +110,8 @@ it('keeps a whole-panel original for the chosen building on the device, then sta
   await waitFor(() => expect(desk.sync).toHaveBeenCalledOnce());
   expect(desk.refresh).toHaveBeenCalledOnce();
   expect(screen.queryByRole('button', { name: 'Giữ và gửi đọc cả bảng' })).toBeNull();
+  // Single-meter mode keeps its own choice, including move-out.
+  fireEvent.click(screen.getByRole('button', { name: 'Một đồng hồ' }));
+  expect(purpose().disabled).toBe(false);
+  expect(purpose().value).toBe('MOVE_OUT');
 });
