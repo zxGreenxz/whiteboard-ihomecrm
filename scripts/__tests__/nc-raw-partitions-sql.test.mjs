@@ -99,6 +99,15 @@ test('chốt đầu từ chối thân lạ (không phải 20260729020000 hay b�
 test('migration chạy hai lượt (idempotent), giữ definer/volatile/config và không mở EXECUTE', async () => {
   await db.exec(FIX);
   await db.exec(FIX);
+  // Như database dựng từ baseline (restore drill): baseline không mang GRANT/REVOKE nên hàm có ACL mặc định
+  // (PUBLIC được EXECUTE). File phải tự khẳng định lại ACL, không dựa vào ACL cũ còn sót.
+  await db.exec(`GRANT EXECUTE ON FUNCTION ${ENSURE}(date, date) TO PUBLIC, anon, authenticated, service_role`);
+  // Đột biến: bỏ REVOKE thì nghiệm thu của chính file phải chặn.
+  const noRevoke = FIX.replace(/^REVOKE ALL ON FUNCTION .*$/m, '');
+  expect(noRevoke).not.toBe(FIX);
+  await expect(db.exec(noRevoke)).rejects.toThrow(/khong duoc mo EXECUTE/);
+  await db.exec('ROLLBACK');
+  await db.exec(FIX);
   const { rows } = await db.query(`SELECT md5(replace(p.prosrc, chr(13), '')) AS md5, p.prosecdef, p.provolatile, p.proconfig,
       has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,

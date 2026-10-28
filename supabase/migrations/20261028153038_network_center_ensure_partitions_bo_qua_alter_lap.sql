@@ -22,8 +22,8 @@
 --     anon/authenticated/service_role, nên bảng mới luôn đi qua REVOKE), và tự vá khi ai đó tắt RLS hoặc
 --     cấp lại quyền.
 --
--- Chạy lại được: CREATE OR REPLACE; chốt đầu nhận đúng thân 20260729020000 hoặc thân mới này (md5 prosrc).
--- Nghiệm thu chỉ đọc catalog.
+-- Chạy lại được: CREATE OR REPLACE + REVOKE (khẳng định lại ACL, không đổi gì trên production); chốt đầu
+-- nhận đúng thân 20260729020000 hoặc thân mới này (md5 prosrc). Nghiệm thu chỉ đọc catalog.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
@@ -114,6 +114,10 @@ BEGIN
   END LOOP;
 END;
 $fn$;
+
+-- CREATE OR REPLACE giữ ACL sẵn có ({postgres=X/postgres} trên production). Khẳng định lại y như
+-- 20260729020000:960 để file tự đứng vững cả trên database dựng từ baseline (baseline không mang GRANT/REVOKE).
+REVOKE ALL ON FUNCTION app_private.network_center_ensure_raw_partitions_v1(date, date) FROM PUBLIC, anon, authenticated, service_role;
 
 DO $nghiem_thu$
 DECLARE v_src text; v_secdef boolean; v_vol "char"; v_cfg text[]; v_oid oid;

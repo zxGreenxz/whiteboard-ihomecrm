@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-28T15:36:37.236Z",
+  "generatedAt": "2026-10-28T16:26:29.241Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13867,7 +13867,7 @@
       "version": "20261028153038",
       "name": "network_center_ensure_partitions_bo_qua_alter_lap",
       "scheme": "timestamp14",
-      "sha256": "77de430edeb16c655ca24c1b5a01343f0f7bfed92b53867c434431c7902ae4b0",
+      "sha256": "91fcc7fdcd15754cb473d6bc3314ca6818e29b192413fc94a1ac2b72f9f98325",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.network_center_ensure_raw_partitions_v1"
