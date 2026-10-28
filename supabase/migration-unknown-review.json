@@ -960,6 +960,28 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261028034144_meter_capture_panel_v1.sql": {
+      "sha256": "142d17e7aacc53635383086bdf5e06d401fd5ef9a54350cc41bd9022ee515680",
+      "missingObjects": [
+        "table:app_private.meter_capture_panels",
+        "table:app_private.meter_capture_panel_jobs",
+        "table:app_private.meter_capture_panel_results",
+        "table:app_private.meter_capture_panel_frame_receipts",
+        "table:app_private.meter_capture_panel_detections"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration chế độ ghi đồng hồ cả bảng (một ảnh/clip nhiều đồng hồ) chưa áp dụng production. Bảng vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Chạy sau 20261023150206_meter_capture_correction_chain.sql; guard $requires$ ghim md5 thân meter_capture_storage_allowed_v1 đang chạy. Đã áp TEST qua lane --env test (idempotent hai lượt, backup) và nghiệm thu bằng clip thật ngày 28/10/2026; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run, backup hoặc nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261028034144_meter_capture_panel_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.meter_capture_panels ("
+        },
+        {
+          "duong_dan": "supabase/migrations/20261028034144_meter_capture_panel_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.meter_capture_panel_v1(p_organization_id uuid,p_action text,p_payload jsonb DEFAULT '{}')"
+        }
+      ]
     }
   }
 }
