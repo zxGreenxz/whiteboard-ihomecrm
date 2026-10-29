@@ -47,6 +47,7 @@
     "src/hooks/income-expenses/commissionIntervention.ts",
     "src/hooks/useCommissionAudit.ts",
     "src/hooks/useCommissionVoucherFacts.ts",
+    "src/hooks/useSalaryJobPhotos.ts",
     "src/lib/commissionAudit.ts",
     "src/lib/commissionCreationPolicy.ts",
     "src/lib/commissionIntervention.ts",
