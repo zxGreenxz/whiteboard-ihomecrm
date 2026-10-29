@@ -89,7 +89,7 @@ const orNull = (f: (v: unknown) => boolean) => (v: unknown) => v === null || f(v
 const oneOf = (...xs: string[]) => (v: unknown) => typeof v === 'string' && xs.includes(v);
 
 const keysOf = (o: object) => Object.keys(o).sort();
-const MONEY_KEYS = ['issued', 'paidCash', 'offset', 'debt', 'overpaid', 'invoiceCount', 'roomCount', 'depositOnInvoices'];
+const MONEY_KEYS = ['issued', 'paidCash', 'offset', 'debt', 'overpaid', 'invoiceCount', 'roomCount', 'depositOnInvoices', 'creditUsed'];
 const REFUND_KEYS = ['depositDue', 'depositPaid', 'depositOnVouchers', 'otherDue', 'otherPaid', 'owed', 'offbook', 'warnings'];
 const CONTRACT_KEYS = ['id', 'number', 'status', 'startDate', 'endDate', 'actualEndDate', 'rentPrice', 'totalDeposit', 'tenantName',
   'originalEndDate', 'money'];
@@ -106,7 +106,7 @@ const META_KEYS: Record<LifecycleEventType, readonly string[]> = {
   TERMINATION_EXTRA_RECEIPT_POSTED: ['voucherId', 'code', 'invoiceId', 'billingMonth'],
   TERMINATION_REFUND_OFFSET_POSTED: ['voucherId', 'code'],
   INVOICE_ISSUED: ['invoiceId', 'billingMonth', 'status', 'kind', 'total', 'carriedIn', 'depositPart', 'penalty', 'outstanding',
-    'carriedOpen', 'carriedPaid', 'sourceInvoiceIds'],
+    'carriedOpen', 'carriedPaid', 'sourceInvoiceIds', 'creditUsed'],
   INVOICE_COLLECTION_POSTED: ['invoiceId', 'billingMonth', 'kind', 'depositPaid'],
   INVOICE_TERMINATION_OFFSET: ['invoiceId', 'billingMonth', 'kind', 'via', 'penalty', 'depositOffset'],
   ...COMMISSION_META_KEYS,
@@ -119,7 +119,7 @@ const META_VALUE: Record<string, (v: unknown, type: string) => boolean> = {
   billingMonth: (v, type) => (type === 'TERMINATION_EXTRA_RECEIPT_POSTED' ? orNull(isMonth)(v) : isMonth(v)),
   kind: (v, type) => (commissionEventOf(type) ? oneOf('broker', 'sale')(v) : oneOf('MONTHLY', 'SETTLEMENT')(v)),
   total: isNum, carriedIn: isNum, depositPart: isNum, penalty: isNum, outstanding: isNum, carriedOpen: isNum, carriedPaid: isNum,
-  depositPaid: isNum, depositOffset: isNum,
+  depositPaid: isNum, depositOffset: isNum, creditUsed: (v) => isNum(v) && (v as number) >= 0,
   sourceInvoiceIds: (v) => Array.isArray(v) && v.every(isUuid),
   via: oneOf('MOVE_OUT', 'FORFEIT'),
   offbook: (v) => typeof v === 'boolean', legacyDup: (v) => typeof v === 'boolean',
@@ -145,7 +145,7 @@ describe('payload thật khớp kiểu TS (roomLifecycle.ts) và hợp đồng p
         for (const scope of [m!.contract, m!.room]) {
           expect(keysOf(scope), tag).toEqual([...MONEY_KEYS].sort());
           expect(Object.values(scope).every(isNum), tag).toBe(true);
-          expect([scope.offset, scope.debt, scope.overpaid].every((x) => x >= 0), tag).toBe(true);
+          expect([scope.offset, scope.debt, scope.overpaid, scope.creditUsed ?? Number.NaN].every((x) => x >= 0), tag).toBe(true);
         }
         expect(m!.room.roomCount, tag).toBeLessThanOrEqual(1);
         const r = m!.refund;
@@ -212,6 +212,8 @@ describe('ngăn kéo Báo cáo LN đọc payload thật', () => {
     expect(t).toMatchObject({ 'Hoá đơn phát sinh': fmtMoney(m.room.issued), 'Khách đã nộp': fmtMoney(m.room.paidCash) });
     expect(t['Cấn trừ khi thanh lý']).toBe(m.room.offset > 0 ? fmtMoney(m.room.offset) : undefined);
     expect(t['Thu dư']).toBe(m.room.overpaid > 0 ? fmtMoney(m.room.overpaid) : undefined);
+    const credit = m.room.creditUsed ?? 0;
+    expect(t['Tiền thừa đã trừ kỳ sau / khi thanh lý']).toBe(credit > 0 ? fmtMoney(credit) : undefined);
     expect(d.tiles[3].sub).toContain(`${m.room.invoiceCount} hoá đơn`);
     expect(d.kpiNote).toBe(m.contract.roomCount > 1
       ? `Cả HĐ (${m.contract.roomCount} phòng): đã nộp ${fmtMoney(m.contract.paidCash)} · còn nợ ${fmtMoney(m.contract.debt)}`
@@ -257,7 +259,8 @@ describe('ngăn kéo Báo cáo LN đọc payload thật', () => {
     const count = Object.fromEntries(STAYS.map(([room, label]) => [`${room}/${label}`, detail(room, label).events.filter((e) => e.kind === 'offset').length]));
     expect(count).toEqual({
       'A/A': 1, 'B/B': 0, 'C/C': 0, 'D1/D': 0, 'D2/D': 1, 'F/F': 1, 'G/G': 0, 'R/R': 0, 'R/RB': 0, 'K/K': 0, 'L/L': 0,
-      'P/P1': 1, 'P/P6': 1, 'P/P2': 0,
+      'P/P1': 1, 'P/P6': 1, 'P/P2': 0, 'T/T1': 0, 'T/T2': 0, 'T/T3': 0, 'T/T4': 0, 'T/T5': 0, 'T/T6': 0, 'T/T7': 0,
+      'T/T8': 0, 'T/T9': 0,
     });
 
     const a = detail('A', 'A');
@@ -294,6 +297,34 @@ describe('ngăn kéo Báo cáo LN đọc payload thật', () => {
     expect(table(p1.balances.tenantRows)['Thu dư']).toBeUndefined();
     expect(detail('P', 'P6').kpis[1].value).toBe('2.500.000 đ');
     expect(p1.events.some((e) => e.note === 'Trừ vào cọc')).toBe(false);
+  });
+
+  it('thu dư của writer cũ đã trừ kỳ sau / khi thanh lý (phòng T): ĐÃ THU là tiền thật, không còn "Thu dư" ảo, nợ thật không bị che', () => {
+    const t1 = detail('T', 'T1');
+    expect(t1.kpis[0].value).toBe('2.000.000 đ');
+    expect(t1.balances.invoiceDebt).toBe(1_000_000);
+    expect(table(t1.balances.tenantRows)).toMatchObject({
+      'Hoá đơn phát sinh': '2.998.000 đ', 'Khách đã nộp': '2.000.000 đ', 'Tiền thừa đã trừ kỳ sau / khi thanh lý': '2.000 đ', 'Khách còn nợ': '1.000.000 đ',
+    });
+    expect(table(t1.balances.tenantRows)['Thu dư']).toBeUndefined();
+    expect(rowOf(t1, 'Tiền phòng tháng đầu tiên – 03/2025')).toMatchObject({
+      sub: 'Hoá đơn kỳ 03/2025 · thu ngày 05/03/2025 · thừa 2.000 đ đã trừ kỳ sau / khi thanh lý', note: 'Đã thu',
+    });
+    // Áp một phần: phần chưa áp vẫn là thu dư, đứng cạnh dòng thừa đã trừ.
+    const t2 = table(detail('T', 'T2').balances.tenantRows);
+    expect([t2['Thu dư'], t2['Tiền thừa đã trừ kỳ sau / khi thanh lý']]).toEqual(['3.000 đ', '2.000 đ']);
+    // Áp vào hoá đơn đã huỷ / đã xoá: chưa dùng ⇒ không có dòng mới, thu dư vẫn bù nợ kỳ khác.
+    const t4 = detail('T', 'T4');
+    expect(table(t4.balances.tenantRows)['Tiền thừa đã trừ kỳ sau / khi thanh lý']).toBeUndefined();
+    expect(t4.balances.invoiceDebt).toBe(299_200);
+    expect(t4.events.some((e) => e.sub.includes('đã trừ kỳ sau / khi thanh lý'))).toBe(false);
+    // Lượt áp trỏ chính hoá đơn nguồn (bút toán bù huỷ lô trùng) không phải đã dùng: lô kia đã quay về ACTIVE ⇒ thu dư
+    // còn nguyên; lô kia còn áp ⇒ đúng một phần thừa đã trừ.
+    const t8 = detail('T', 'T8');
+    expect([table(t8.balances.tenantRows)['Thu dư'], table(t8.balances.tenantRows)['Tiền thừa đã trừ kỳ sau / khi thanh lý']]).toEqual(['2.000 đ', undefined]);
+    expect(t8.events.some((e) => e.sub.includes('đã trừ kỳ sau / khi thanh lý'))).toBe(false);
+    const t9 = table(detail('T', 'T9').balances.tenantRows);
+    expect([t9['Thu dư'], t9['Tiền thừa đã trừ kỳ sau / khi thanh lý']]).toEqual([undefined, '2.000 đ']);
   });
 
   it('thanh lý kiểu cũ (hoá đơn tổng âm + phiếu hoàn gắn hoá đơn): khoản hoàn chỉ ở mục hoàn, ĐÃ THU không bị trừ', () => {

@@ -365,8 +365,10 @@ export function buildBalances(a: {
   });
   const oweTone = (v: Money): Tone => (v !== null && v > 0 ? 'red' : 'green');
 
+  // Thừa đã trừ kỳ sau / khi thanh lý: nằm trong "Khách đã nộp" (tiền thật) nhưng không còn là thu dư. Vắng ở payload cũ ⇒ 0.
+  const creditUsed = m ? num(m.room.creditUsed) ?? 0 : 0;
   const tenantRows: BalanceRow[] = m
-    // F2 trên phòng đang xem: phát sinh ≈ đã nộp + cấn trừ + còn nợ − thu dư.
+    // F2 trên phòng đang xem: phát sinh ≈ đã nộp + cấn trừ + còn nợ − thu dư − thừa đã trừ kỳ sau / khi thanh lý.
     ? [
         row('Cọc theo HĐ', committed),
         row('Cọc đã đóng (thực thu)', depositPaid, { tone: depositShort && depositShort > 0 ? 'red' : 'green' }),
@@ -374,6 +376,7 @@ export function buildBalances(a: {
         row('Khách đã nộp', m.room.paidCash, { tone: 'green' }),
         ...(m.room.offset > 0 ? [row('Cấn trừ khi thanh lý', m.room.offset, { tone: 'purple' })] : []),
         ...(m.room.overpaid > 0 ? [row('Thu dư', m.room.overpaid, { tone: 'green' })] : []),
+        ...(creditUsed > 0 ? [row('Tiền thừa đã trừ kỳ sau / khi thanh lý', creditUsed, { tone: 'neutral' })] : []),
         ...(kind === 'forfeit' ? [row('Hoá đơn còn nợ khi bỏ cọc', 'Đã huỷ', { tone: 'neutral' })] : []),
         row('Khách còn nợ', tenantOwe, { strong: true, tone: oweTone(tenantOwe) }),
       ]
@@ -803,6 +806,8 @@ interface InvoiceLine {
   carriedOpen: number;
   carriedPaid: number;
   sourceIds: string[];
+  /** Phần khách trả thừa trên hoá đơn này đã trừ kỳ sau / khi thanh lý (lô tín dụng). */
+  creditUsed: number;
   cash: number;
   cashDate: string | null;
   offset: number;
@@ -827,7 +832,7 @@ function invoiceRows(events: LifecycleEvent[], leave: string | null, hasMerged: 
     const moi: InvoiceLine = {
       id, month: metaStr(e, 'billingMonth') ?? e.date.slice(0, 7), kind: 'MONTHLY', status: '',
       date: e.date.slice(0, 10), issued: false, amount: 0, carriedIn: 0, depositPart: 0, penalty: 0,
-      outstanding: 0, carriedOpen: 0, carriedPaid: 0, sourceIds: [], cash: 0, cashDate: null, offset: 0, forfeit: false,
+      outstanding: 0, carriedOpen: 0, carriedPaid: 0, sourceIds: [], creditUsed: 0, cash: 0, cashDate: null, offset: 0, forfeit: false,
     };
     byId.set(id, moi);
     return moi;
@@ -850,6 +855,7 @@ function invoiceRows(events: LifecycleEvent[], leave: string | null, hasMerged: 
       g.outstanding = num(e.meta?.outstanding) ?? 0;
       g.carriedOpen = num(e.meta?.carriedOpen) ?? 0;
       g.carriedPaid = num(e.meta?.carriedPaid) ?? 0;
+      g.creditUsed = num(e.meta?.creditUsed) ?? 0;
       const src = e.meta?.sourceInvoiceIds;
       g.sourceIds = Array.isArray(src) ? src.filter((x): x is string => typeof x === 'string') : [];
     } else if (e.type === 'INVOICE_COLLECTION_POSTED') {
@@ -895,7 +901,8 @@ function invoiceRows(events: LifecycleEvent[], leave: string | null, hasMerged: 
       + (g.status === 'CANCELLED' ? ' · huỷ khi bỏ cọc, giữ tiền đã thu' : '')
       + (g.carriedIn > 0.5 ? ` · kèm nợ cũ ${fmtMoney(g.carriedIn)}` : '')
       + (g.depositPart > 0.5 ? ` · kèm cọc ${fmtMoney(g.depositPart)} (tính ở mục cọc)` : '')
-      + (g.cash > 0.5 && g.cashDate ? ` · thu ngày ${fmtNgay(g.cashDate)}` : '');
+      + (g.cash > 0.5 && g.cashDate ? ` · thu ngày ${fmtNgay(g.cashDate)}` : '')
+      + (g.creditUsed > 0.5 ? ` · thừa ${fmtMoney(g.creditUsed)} đã trừ kỳ sau / khi thanh lý` : '');
     const carrier = carrierOf(g.id);
     const st: Pick<DetailEvent, 'note' | 'noteTone' | 'kind'> =
       g.outstanding > 0.5

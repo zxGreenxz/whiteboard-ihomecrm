@@ -17,6 +17,12 @@
 //   P  dòng cọc trên hoá đơn tất toán KHÔNG bằng tiền thật: cấn trừ gạch hết / gạch một phần, hoá đơn gánh trả hộ.
 //   R  phiếu hoàn: dòng cọc / dòng khác × duyệt, ghi sổ, sổ ảo, huỷ, đảo, xoá; HĐ có phiếu mà không có thanh lý.
 //   K  hoa hồng / thưởng: mọi stage, HHMG, thưởng từ phiếu cọc, trùng cũ, các phiếu phải vắng; hai phiếu cọc cùng ngày.
+//   T  thu dư của writer cũ (payment GỒM tiền thừa ⇒ nguồn PAID âm) thành lô tín dụng rồi được dùng — mỗi HĐ một ca:
+//      T1 lô áp hết vào hoá đơn sau + một hoá đơn còn nợ (nợ không bị che); T2 áp một phần; T3 dùng khi thanh lý
+//      (MOVE_OUT, đích NULL); T4 áp vào hoá đơn huỷ / đã xoá (không tính); T5 lượt áp đảo / lô đảo / payment nguồn đảo
+//      (không tính); T6 tiền thừa kiểu mới (nguồn không âm ⇒ 0); T7 lô nối nguồn qua excess_amounts (không payment);
+//      T8 writer ghi trùng hai lô từ một payment, bút toán bù áp một lô vào CHÍNH hoá đơn nguồn (tự trỏ — không phải đã
+//      dùng), lượt áp của lô kia đã đảo khi huỷ hoá đơn đích ⇒ lô ACTIVE, thu dư phải còn; T9 như T8 nhưng lô kia còn áp.
 // Phiếu thu chi chèn theo thứ tự id GIẢM (thứ tự vật lý ≠ thứ tự id) ⇒ khoá phá hoà phải tự xếp, không nhờ heap.
 // Payload mẫu phía client (src/lib/__tests__/fixtures/roomCashLifecyclePayload.sample.json) phải bằng đúng đầu ra RPC.
 // Cuối file: đột biến — mỗi điều kiện lọc/kẹp phải làm phép kiểm đỏ.
@@ -37,7 +43,7 @@ const POLICY = JSON.parse(readFileSync(new URL('../../supabase/migration-policy.
 const SIG = 'public.get_room_cash_lifecycle_v1';
 const ACL = '{postgres=X/postgres,authenticated=X/postgres}';
 const RPC_BEFORE = { md5: 'a637b2312d020da2f7de2da01d5b6435', owner: 'postgres', acl: ACL };
-const RPC_AFTER = { md5: 'e27f4c4977eaa881b1ffc8b595dbbc45', owner: 'postgres', acl: ACL };
+const RPC_AFTER = { md5: '2d935c23943e544354506a290128cb1e', owner: 'postgres', acl: ACL };
 const HELPERS = ['app_private.invoice_lifecycle_parts_v1(uuid[])', 'app_private.contract_commission_vouchers_v1(uuid,uuid[])',
   'app_private.termination_refund_parts_v1(uuid[])'];
 
@@ -76,7 +82,7 @@ const nghiemThuOf = (sql) => sql.slice(sql.indexOf('DO $nghiem_thu$'), sql.index
 const u = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = u(1), OTHER_ORG = u(2), BUILDING = u(11), TENANT = u(21), VIEWER = u(31);
 const ROOM = { A: u(101), B: u(102), C: u(103), D1: u(104), D2: u(105), F: u(106), G: u(107), R: u(108), K: u(109), L: u(110),
-  P: u(111) };
+  P: u(111), T: u(112) };
 const LABEL = new Map();
 const ids = {};
 const idOf = (label) => { if (!ids[label]) throw new Error(`thiếu nhãn ${label}`); return ids[label]; };
@@ -101,6 +107,15 @@ const CONTRACTS = [
   ['P1', 'P', 'TERMINATED', '2026-05-01', '2027-04-30', '2026-06-30'],
   ['P6', 'P', 'TERMINATED', '2026-07-01', '2027-06-30', '2026-08-31'],
   ['P2', 'P', 'ACTIVE', '2026-09-01', '2027-08-31', null],
+  ['T1', 'T', 'TERMINATED', '2025-03-01', '2026-02-28', '2025-05-31'],
+  ['T2', 'T', 'TERMINATED', '2025-06-01', '2026-05-31', '2025-07-31'],
+  ['T3', 'T', 'TERMINATED', '2025-08-01', '2026-07-31', '2025-08-31'],
+  ['T4', 'T', 'TERMINATED', '2025-09-01', '2026-08-31', '2025-10-31'],
+  ['T5', 'T', 'TERMINATED', '2025-11-01', '2026-10-31', '2025-12-31'],
+  ['T6', 'T', 'TERMINATED', '2026-01-01', '2026-12-31', '2026-02-28'],
+  ['T7', 'T', 'ACTIVE', '2026-03-01', '2027-02-28', null],
+  ['T8', 'T', 'TERMINATED', '2024-11-01', '2025-10-31', '2024-12-31'],
+  ['T9', 'T', 'TERMINATED', '2025-01-01', '2025-12-31', '2025-02-28'],
 ];
 CONTRACTS.forEach(([label], i) => name(label, 201 + i));
 
@@ -148,6 +163,27 @@ const INVOICES = [
   ['G4', 'G', 'G', '2026-06', 'CANCELLED', 1_000_000, 1_000_000, { prev: 600_000, src: [['G1', 600_000]] }],
   // Huỷ khi bỏ cọc, thu vượt dòng doanh thu: phần vượt là cọc (V5 phân bổ doanh thu trước).
   ['G5', 'G', 'G', '2026-06', 'CANCELLED', 1_500_000, 1_500_000],
+  // Thu dư của writer cũ: paid_amount gồm tiền thừa ⇒ remaining âm; hoá đơn sau đã giảm đúng phần lô áp vào.
+  ['T1a', 'T1', 'T', '2025-03', 'PAID', 1_000_000, 1_002_000],
+  ['T1b', 'T1', 'T', '2025-04', 'PAID', 998_000, 998_000],
+  ['T1c', 'T1', 'T', '2025-05', 'OVERDUE', 1_000_000, 0],
+  ['T2a', 'T2', 'T', '2025-06', 'PAID', 1_000_000, 1_005_000],
+  ['T2b', 'T2', 'T', '2025-07', 'PAID', 998_000, 998_000],
+  ['T3a', 'T3', 'T', '2025-08', 'PAID', 1_000_000, 1_004_000],
+  ['T4a', 'T4', 'T', '2025-09', 'PAID', 1_000_000, 1_000_800],
+  ['T4b', 'T4', 'T', '2025-10', 'CANCELLED', 999_500, 0],
+  ['T4d', 'T4', 'T', '2025-10', 'PAID', 999_700, 999_700, { deleted: true }],
+  ['T4c', 'T4', 'T', '2025-10', 'OVERDUE', 300_000, 0],
+  ['T5a', 'T5', 'T', '2025-11', 'PAID', 1_000_000, 1_003_000],
+  ['T5b', 'T5', 'T', '2025-12', 'PAID', 1_000_000, 1_000_000],
+  ['T6a', 'T6', 'T', '2026-01', 'PAID', 1_000_000, 1_000_000], // kiểu mới: payment chỉ ghi phần đã áp, lô từ collection
+  ['T6b', 'T6', 'T', '2026-02', 'PAID', 994_000, 994_000],
+  ['T7a', 'T7', 'T', '2026-03', 'PAID', 1_000_000, 1_001_000],
+  ['T7b', 'T7', 'T', '2026-04', 'PAID', 999_000, 999_000],
+  ['T8a', 'T8', 'T', '2024-11', 'PAID', 1_000_000, 1_002_000],
+  ['T8b', 'T8', 'T', '2024-12', 'CANCELLED', 998_000, 0], // đích của lô LT8b; huỷ ⇒ lượt áp đã đảo
+  ['T9a', 'T9', 'T', '2025-01', 'PAID', 1_000_000, 1_002_000],
+  ['T9b', 'T9', 'T', '2025-02', 'PAID', 998_000, 998_000],
 ];
 INVOICES.forEach(([label], i) => name(label, 301 + i));
 
@@ -204,8 +240,66 @@ const PAYMENTS = [
   ['pP2b', 'P2b', 3_000_000, 3_000_000, 'TM', '2026-10-05'],
   ['pG4', 'G4', 1_000_000, 1_000_000, 'TM', '2026-06-05'],
   ['pG5', 'G5', 1_500_000, 1_500_000, 'TM', '2026-06-05'],
+  ['pT1a', 'T1a', 1_002_000, 1_002_000, 'TM', '2025-03-05'],
+  ['pT1b', 'T1b', 998_000, 998_000, 'TM', '2025-04-05'],
+  ['pT2a', 'T2a', 1_005_000, 1_005_000, 'TM', '2025-06-05'],
+  ['pT2b', 'T2b', 998_000, 998_000, 'TM', '2025-07-05'],
+  ['pT3a', 'T3a', 1_004_000, 1_004_000, 'TM', '2025-08-05'],
+  ['pT4a', 'T4a', 1_000_800, 1_000_800, 'TM', '2025-09-05'],
+  ['pT5a', 'T5a', 1_003_000, 1_003_000, 'TM', '2025-11-05'],
+  ['pT5x', 'T5a', 700, 700, 'TM', '2025-11-06', { reversed: true }],
+  ['pT5b', 'T5b', 1_000_000, 1_000_000, 'TM', '2025-12-05'],
+  ['pT6a', 'T6a', 1_000_000, 1_000_000, 'TK', '2026-01-05'],
+  ['pT6b', 'T6b', 994_000, 994_000, 'TK', '2026-02-05'],
+  ['pT7a', 'T7a', 1_001_000, 1_001_000, 'TM', '2026-03-05'],
+  ['pT7b', 'T7b', 999_000, 999_000, 'TM', '2026-04-05'],
+  ['pT8a', 'T8a', 1_002_000, 1_002_000, 'TM', '2024-11-05'],
+  ['pT9a', 'T9a', 1_002_000, 1_002_000, 'TM', '2025-01-05'],
+  ['pT9b', 'T9b', 998_000, 998_000, 'TM', '2025-02-05'],
 ];
 PAYMENTS.forEach(([label], i) => name(label, 501 + i));
+
+// Tín dụng khách (bảng thật: customer_credit_lots / customer_credit_applications / excess_amounts — cột đọc từ migrations).
+// excess: [nhãn, HĐ, tiền, hoá đơn nguồn, payment nguồn]
+const EXCESS = [['eT2', 'T2', 5_000, 'T2a', 'pT2a'], ['eT7', 'T7', 1_000, 'T7a', null]];
+EXCESS.forEach(([label], i) => name(label, 1101 + i));
+// lô: [nhãn, HĐ, payment nguồn, excess nguồn, tiền, còn lại, trạng thái, đã đảo]
+const LOTS = [
+  ['LT1', 'T1', 'pT1a', null, 2_000, 0, 'CONSUMED'],
+  ['LT2', 'T2', 'pT2a', 'eT2', 5_000, 3_000, 'ACTIVE'], // lô legacy mang cả payment lẫn excess: chỉ đếm MỘT lần
+  ['LT3', 'T3', 'pT3a', null, 4_000, 0, 'CONSUMED'],
+  ['LT4a', 'T4', 'pT4a', null, 500, 0, 'CONSUMED'],
+  ['LT4b', 'T4', 'pT4a', null, 300, 0, 'CONSUMED'],
+  ['LT5a', 'T5', 'pT5a', null, 1_000, 1_000, 'ACTIVE'],
+  ['LT5b', 'T5', 'pT5a', null, 2_000, 2_000, 'REVERSED', true],
+  ['LT5c', 'T5', 'pT5x', null, 700, 0, 'CONSUMED'], // payment nguồn đã đảo
+  ['LT6', 'T6', 'pT6a', null, 6_000, 0, 'CONSUMED'],
+  ['LT7', 'T7', null, 'eT7', 1_000, 0, 'CONSUMED'],
+  // Writer ghi HAI dòng tiền thừa từ một payment ⇒ hai lô; bút toán bù (accounting repair) huỷ lô trùng bằng lượt áp
+  // trỏ chính hoá đơn nguồn.
+  ['LT8a', 'T8', 'pT8a', null, 2_000, 0, 'CONSUMED'],
+  ['LT8b', 'T8', 'pT8a', null, 2_000, 2_000, 'ACTIVE'], // lượt áp đã đảo khi huỷ T8b ⇒ quay về ACTIVE
+  ['LT9a', 'T9', 'pT9a', null, 2_000, 0, 'CONSUMED'],
+  ['LT9b', 'T9', 'pT9a', null, 2_000, 0, 'CONSUMED'],
+];
+LOTS.forEach(([label], i) => name(label, 1001 + i));
+// lượt áp: [lô, hoá đơn đích | null, tiền, loại, đã đảo]
+const CREDIT_APPLICATIONS = [
+  ['LT1', 'T1b', 2_000, 'INVOICE_DISCOUNT'],
+  ['LT2', 'T2b', 2_000, 'INVOICE_DISCOUNT'],
+  ['LT3', null, 4_000, 'MOVE_OUT'],
+  ['LT4a', 'T4b', 500, 'INVOICE_DISCOUNT'], // đích đã huỷ
+  ['LT4b', 'T4d', 300, 'INVOICE_DISCOUNT'], // đích đã xoá
+  ['LT5a', 'T5b', 1_000, 'INVOICE_DISCOUNT', true],
+  ['LT5b', 'T5b', 2_000, 'INVOICE_DISCOUNT'],
+  ['LT5c', 'T5b', 700, 'INVOICE_DISCOUNT'],
+  ['LT6', 'T6b', 6_000, 'INVOICE_DISCOUNT'],
+  ['LT7', 'T7b', 1_000, 'LEGACY_BACKFILL'],
+  ['LT8a', 'T8a', 2_000, 'LEGACY_BACKFILL'], // tự trỏ: bút toán bù, không phải đã dùng
+  ['LT8b', 'T8b', 2_000, 'INVOICE_DISCOUNT', true],
+  ['LT9a', 'T9a', 2_000, 'LEGACY_BACKFILL'], // tự trỏ
+  ['LT9b', 'T9b', 2_000, 'INVOICE_DISCOUNT'],
+];
 
 // [nhãn, HĐ, loại, nguồn hệ thống, ngày, tiền, duyệt, ghi sổ, thêm]. Ghi sổ POSTED có active_posting_id_v2 trừ khi active: false.
 const VOUCHERS = [
@@ -327,6 +421,19 @@ beforeAll(async () => {
       deposit_voucher_id uuid, contract_id uuid, bonus_voucher_id uuid, created_at timestamptz NOT NULL);
     CREATE TABLE app_private.termination_forfeit_authorizations(revenue_voucher_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       payment_id uuid UNIQUE, contract_id uuid, invoice_id uuid);
+    -- Tín dụng khách: cột/ràng buộc theo 20250601000001 (excess_amounts), 20260721100000 + 20260721135000 (lô, lượt áp).
+    CREATE TABLE public.excess_amounts(id uuid PRIMARY KEY, contract_id uuid NOT NULL, amount numeric(15,2) NOT NULL,
+      source_invoice_id uuid, source_payment_id uuid, credit_lot_id uuid, organization_id uuid);
+    CREATE TABLE public.customer_credit_lots(id uuid PRIMARY KEY, organization_id uuid NOT NULL, contract_id uuid NOT NULL,
+      source_collection_id uuid, source_tender_id uuid, source_payment_id uuid, source_excess_amount_id uuid,
+      amount numeric(15,2) NOT NULL, remaining_amount numeric(15,2) NOT NULL, status text NOT NULL DEFAULT 'ACTIVE',
+      created_at timestamptz NOT NULL DEFAULT now(), reversed_at timestamptz,
+      CHECK (amount > 0 AND remaining_amount >= 0 AND remaining_amount <= amount),
+      CHECK (status IN ('ACTIVE', 'CONSUMED', 'REVERSED')));
+    CREATE TABLE public.customer_credit_applications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+      credit_lot_id uuid NOT NULL, invoice_id uuid, excess_amount_id uuid, amount numeric(15,2) NOT NULL CHECK (amount > 0),
+      application_kind text NOT NULL DEFAULT 'INVOICE_DISCOUNT', applied_at timestamptz NOT NULL DEFAULT now(), reversed_at timestamptz,
+      CHECK (application_kind IN ('INVOICE_DISCOUNT', 'MOVE_OUT', 'FORFEIT', 'MANUAL', 'LEGACY_BACKFILL')));
     -- Đoạn cư trú giả theo khuôn hàm thật (sự kiện tiền không phụ thuộc đoạn; payload mẫu của client cần đủ đoạn):
     -- không chuyển phòng ⇒ một đoạn ở phòng hiện tại từ start_date; có chuyển (fixture: một lượt) ⇒ đoạn 0 ở phòng
     -- cũ, mốc vào NULL như hàm thật, tới ngày chuyển; đoạn 1 ở phòng mới từ ngày chuyển.
@@ -411,6 +518,20 @@ beforeAll(async () => {
     await db.query(`INSERT INTO app_private.sale_bonus_claims(organization_id, deposit_voucher_id, bonus_voucher_id, created_at)
       VALUES ($1, $2, $3, $4)`, [ORG, idOf(deposit), idOf(bonus), at]);
   }
+  for (const [label, hd, amount, inv, pay] of EXCESS) {
+    await db.query(`INSERT INTO excess_amounts(id, contract_id, amount, source_invoice_id, source_payment_id, organization_id)
+      VALUES ($1, $2, $3, $4, $5, $6)`, [idOf(label), idOf(hd), amount, idOf(inv), pay ? idOf(pay) : null, ORG]);
+  }
+  for (const [label, hd, pay, exc, amount, remaining, status, reversed = false] of LOTS) {
+    await db.query(`INSERT INTO customer_credit_lots(id, organization_id, contract_id, source_payment_id, source_excess_amount_id, amount,
+        remaining_amount, status, reversed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [idOf(label), ORG, idOf(hd), pay ? idOf(pay) : null, exc ? idOf(exc) : null, amount, remaining, status,
+        reversed ? '2026-01-10T00:00:00Z' : null]);
+  }
+  for (const [lot, inv, amount, kind, reversed = false] of CREDIT_APPLICATIONS) {
+    await db.query(`INSERT INTO customer_credit_applications(organization_id, credit_lot_id, invoice_id, amount, application_kind, reversed_at)
+      VALUES ($1, $2, $3, $4, $5, $6)`, [ORG, idOf(lot), inv ? idOf(inv) : null, amount, kind, reversed ? '2026-01-10T00:00:00Z' : null]);
+  }
 
   // Chuỗi thân sống: witness 20260921085952 → vá 20261018052932 → file mới hai lượt (idempotent).
   await db.exec(rpcBodyOf(OLD));
@@ -448,8 +569,10 @@ function observe(out) {
     contracts: Object.fromEntries(out.contracts.map((c) => [LABEL.get(c.id), { originalEndDate: c.originalEndDate, money: c.money }])),
   };
 }
-const M = (issued, paidCash, offset, debt, overpaid, invoiceCount, roomCount, depositOnInvoices) =>
-  ({ issued, paidCash, offset, debt, overpaid, invoiceCount, roomCount, depositOnInvoices });
+const M = (issued, paidCash, offset, debt, overpaid, invoiceCount, roomCount, depositOnInvoices, creditUsed = 0) =>
+  ({ issued, paidCash, offset, debt, overpaid, invoiceCount, roomCount, depositOnInvoices, creditUsed });
+// Phòng T: phạm vi phòng = cả HĐ (mỗi HĐ một phòng).
+const T_MONEY = (m) => ({ contract: m, room: m, refund: null });
 const ZERO = M(0, 0, 0, 0, 0, 0, 0, 0);
 const refund = (depositDue, depositPaid, depositOnVouchers, otherDue, otherPaid, owed, offbook, warnings = []) =>
   ({ depositDue, depositPaid, depositOnVouchers, otherDue, otherPaid, owed, offbook, warnings });
@@ -628,6 +751,63 @@ const EXPECT = {
     ],
     contracts: { K: { originalEndDate: null, money: { contract: ZERO, room: ZERO, refund: null } } },
   },
+  T: {
+    // ĐÃ THU = tiền thật (gồm cả phần thừa); phần thừa đã dùng qua lô tín dụng ở creditUsed, không còn là thu dư.
+    events: [
+      '2024-11-01 INVOICE_ISSUED T8 1000000 T T8a',
+      '2024-11-05 INVOICE_COLLECTION_POSTED T8 1002000 T T8a',
+      '2025-01-01 INVOICE_ISSUED T9 1000000 T T9a',
+      '2025-01-05 INVOICE_COLLECTION_POSTED T9 1002000 T T9a',
+      '2025-02-01 INVOICE_ISSUED T9 998000 T T9b',
+      '2025-02-05 INVOICE_COLLECTION_POSTED T9 998000 T T9b',
+      '2025-03-01 INVOICE_ISSUED T1 1000000 T T1a',
+      '2025-03-05 INVOICE_COLLECTION_POSTED T1 1002000 T T1a',
+      '2025-04-01 INVOICE_ISSUED T1 998000 T T1b',
+      '2025-04-05 INVOICE_COLLECTION_POSTED T1 998000 T T1b',
+      '2025-05-01 INVOICE_ISSUED T1 1000000 T T1c',
+      '2025-06-01 INVOICE_ISSUED T2 1000000 T T2a',
+      '2025-06-05 INVOICE_COLLECTION_POSTED T2 1005000 T T2a',
+      '2025-07-01 INVOICE_ISSUED T2 998000 T T2b',
+      '2025-07-05 INVOICE_COLLECTION_POSTED T2 998000 T T2b',
+      '2025-08-01 INVOICE_ISSUED T3 1000000 T T3a',
+      '2025-08-05 INVOICE_COLLECTION_POSTED T3 1004000 T T3a',
+      '2025-09-01 INVOICE_ISSUED T4 1000000 T T4a',
+      '2025-09-05 INVOICE_COLLECTION_POSTED T4 1000800 T T4a',
+      '2025-10-01 INVOICE_ISSUED T4 300000 T T4c',
+      '2025-11-01 INVOICE_ISSUED T5 1000000 T T5a',
+      '2025-11-05 INVOICE_COLLECTION_POSTED T5 1003000 T T5a',
+      '2025-12-01 INVOICE_ISSUED T5 1000000 T T5b',
+      '2025-12-05 INVOICE_COLLECTION_POSTED T5 1000000 T T5b',
+      '2026-01-01 INVOICE_ISSUED T6 1000000 T T6a',
+      '2026-01-05 INVOICE_COLLECTION_POSTED T6 1000000 T T6a',
+      '2026-02-01 INVOICE_ISSUED T6 994000 T T6b',
+      '2026-02-05 INVOICE_COLLECTION_POSTED T6 994000 T T6b',
+      '2026-03-01 INVOICE_ISSUED T7 1000000 T T7a',
+      '2026-03-05 INVOICE_COLLECTION_POSTED T7 1001000 T T7a',
+      '2026-04-01 INVOICE_ISSUED T7 999000 T T7b',
+      '2026-04-05 INVOICE_COLLECTION_POSTED T7 999000 T T7b',
+    ],
+    contracts: {
+      // Thừa 2.000 đã trừ hết vào kỳ sau: không thu dư, nợ thật 1.000.000 của kỳ khác không bị che.
+      T1: { originalEndDate: null, money: T_MONEY(M(2_998_000, 2_000_000, 0, 1_000_000, 0, 3, 1, 0, 2_000)) },
+      // Lô 5.000 mới áp 2.000: thu dư còn đúng phần chưa áp.
+      T2: { originalEndDate: null, money: T_MONEY(M(1_998_000, 2_003_000, 0, 0, 3_000, 2, 1, 0, 2_000)) },
+      // Dùng khi thanh lý (MOVE_OUT, không gắn hoá đơn) vẫn là đã dùng.
+      T3: { originalEndDate: null, money: T_MONEY(M(1_000_000, 1_004_000, 0, 0, 0, 1, 1, 0, 4_000)) },
+      // Áp vào hoá đơn đã huỷ / đã xoá: chưa dùng ⇒ thu dư 800 vẫn bù nợ 300.000.
+      T4: { originalEndDate: null, money: T_MONEY(M(1_300_000, 1_000_800, 0, 299_200, 0, 2, 1, 0, 0)) },
+      // Lượt áp đảo, lô đảo, payment nguồn đảo: không tính.
+      T5: { originalEndDate: null, money: T_MONEY(M(2_000_000, 2_003_000, 0, 0, 3_000, 2, 1, 0, 0)) },
+      // Kiểu mới: nguồn không âm ⇒ kẹp về 0, không đẻ nợ ảo.
+      T6: { originalEndDate: null, money: T_MONEY(M(1_994_000, 1_994_000, 0, 0, 0, 2, 1, 0, 0)) },
+      // Lô không có payment nguồn: nối qua excess_amounts.source_invoice_id.
+      T7: { originalEndDate: null, money: T_MONEY(M(1_999_000, 2_000_000, 0, 0, 0, 2, 1, 0, 1_000)) },
+      // Lượt áp tự trỏ là bút toán bù huỷ lô trùng, không phải đã dùng; lô kia đã quay về ACTIVE ⇒ thu dư 2.000 còn.
+      T8: { originalEndDate: null, money: T_MONEY(M(1_000_000, 1_002_000, 0, 0, 2_000, 1, 1, 0, 0)) },
+      // Bỏ lượt tự trỏ, lô kia còn áp vào hoá đơn sống ⇒ đã dùng đúng 2.000 (không nhờ kẹp).
+      T9: { originalEndDate: null, money: T_MONEY(M(1_998_000, 2_000_000, 0, 0, 0, 2, 1, 0, 2_000)) },
+    },
+  },
 };
 
 // Hành vi gom lại để đột biến dùng chung: phòng nào lệch kỳ vọng.
@@ -679,10 +859,12 @@ test('chốt đầu: từ chối thân RPC lạ và thiếu nguồn dùng chung'
     await db.exec(createOf(NEW, SIG).replace('v_today := public.org_today_v1', '-- lạ\n  v_today := public.org_today_v1'));
     await db.exec(NEW);
   })).rejects.toThrow(/chot: get_room_cash_lifecycle_v1 da bi doi/);
-  await expect(tx(async () => {
-    await db.exec('ALTER TABLE public.contract_extensions RENAME TO contract_extensions_x');
-    await db.exec(NEW);
-  })).rejects.toThrow(/chot: thieu ham\/bang nguon dung chung/);
+  for (const table of ['contract_extensions', 'customer_credit_lots', 'customer_credit_applications', 'excess_amounts']) {
+    await expect(tx(async () => {
+      await db.exec(`ALTER TABLE public.${table} RENAME TO ${table}_x`);
+      await db.exec(NEW);
+    }), table).rejects.toThrow(/chot: thieu ham\/bang nguon dung chung/);
+  }
 });
 
 test('TRƯỚC (thân 20261018052932): COLLECTION là paid_amount — gồm cấn trừ, ngày trôi theo paid_date/updated_at', () => {
@@ -708,7 +890,8 @@ test('meta hoá đơn: phát sinh mới, nợ kéo, cọc, cấn trừ, ngày th
   }
   const id = (label) => idOf(label);
   expect(issued.B4).toEqual({ invoiceId: id('B4'), billingMonth: '2026-08', status: 'APPROVED', kind: 'MONTHLY', total: 4_600_000,
-    carriedIn: 3_300_000, depositPart: 0, penalty: 0, outstanding: 1_300_000, carriedOpen: 0, carriedPaid: 0, sourceInvoiceIds: [id('B3')] });
+    carriedIn: 3_300_000, depositPart: 0, penalty: 0, outstanding: 1_300_000, carriedOpen: 0, carriedPaid: 0, sourceInvoiceIds: [id('B3')],
+    creditUsed: 0 });
   expect(issued.B1).toMatchObject({ carriedIn: 0, outstanding: 1_000_000, carriedOpen: 1_000_000, sourceInvoiceIds: [] });
   expect(issued.B5).toMatchObject({ carriedIn: 0, total: 1_500_000, sourceInvoiceIds: [] }); // không khai nguồn ⇒ là phát sinh mới
   expect(issued.B6).toMatchObject({ carriedIn: 0, sourceInvoiceIds: [] }); // nguồn đã xoá ⇒ không thuộc tập
@@ -773,21 +956,22 @@ test('bất biến một nguồn (range null): Σ sự kiện = money.room; các
       expect(sum(ev, 'INVOICE_COLLECTION_POSTED') + extra, `${room} paidCash`).toBe(r.paidCash);
       expect(sum(ev, 'INVOICE_ISSUED'), `${room} issued`).toBe(r.issued);
       expect(sum(ev, 'INVOICE_ISSUED', (e) => e.meta.depositPart), `${room} cọc`).toBe(r.depositOnInvoices);
+      expect(sum(ev, 'INVOICE_ISSUED', (e) => e.meta.creditUsed), `${room} thừa đã dùng`).toBe(r.creditUsed);
       expect(ev.filter((e) => e.type === 'INVOICE_ISSUED').length, `${room} số hoá đơn`).toBe(r.invoiceCount);
       expect(Math.max(sum(ev, 'INVOICE_TERMINATION_OFFSET') - extra, 0), `${room} cấn trừ`).toBe(r.offset);
       expect([Math.max(outstanding, 0), Math.max(-outstanding, 0)], `${room} nợ/thu dư`).toEqual([r.debt, r.overpaid]);
-      // Phát sinh ≈ đã nộp + cấn trừ + còn nợ − thu dư (lẻ làm tròn ≤ 1.000/hoá đơn). Phòng F cố ý lệch: cấn trừ kép
-      // của writer khi hoá đơn gánh còn mở — dữ liệu để client cảnh báo "cấn trừ vượt các phiếu quyết toán".
-      if (room !== 'F') {
-        expect(Math.abs(r.issued - (r.paidCash + r.offset + r.debt - r.overpaid)), `${room} cân`).toBeLessThanOrEqual(1_000 * r.invoiceCount);
-      }
+      // Phát sinh ≈ đã nộp + cấn trừ + còn nợ − thu dư − thừa đã dùng (lẻ làm tròn ≤ 1.000/hoá đơn). Phòng F cố ý lệch:
+      // cấn trừ kép của writer khi hoá đơn gánh còn mở — dữ liệu để client cảnh báo "cấn trừ vượt các phiếu quyết toán".
+      const can = r.paidCash + r.offset + r.debt - r.overpaid - r.creditUsed;
+      if (room === 'T') expect(r.issued, `${room}/${LABEL.get(c.id)} cân chính xác`).toBe(can);
+      else if (room !== 'F') expect(Math.abs(r.issued - can), `${room} cân`).toBeLessThanOrEqual(1_000 * r.invoiceCount);
       const acc = byContract.get(c.id) ?? { contract: c.money.contract, rooms: [] };
       acc.rooms.push(r);
       byContract.set(c.id, acc);
     }
   }
   for (const [id, { contract, rooms }] of byContract) {
-    for (const key of ['issued', 'paidCash', 'invoiceCount', 'depositOnInvoices']) {
+    for (const key of ['issued', 'paidCash', 'invoiceCount', 'depositOnInvoices', 'creditUsed']) {
       if (rooms.length > 1 || contract.roomCount <= 1) expect(rooms.reduce((s, r) => s + r[key], 0), `${LABEL.get(id)} ${key}`).toBe(contract[key]);
     }
   }
@@ -803,7 +987,8 @@ test('H1: cash + cấn trừ = invoice_direct_paid_v1; phát sinh mới + nợ k
     FROM app_private.invoice_lifecycle_parts_v1(ARRAY(SELECT id FROM public.invoices)) p JOIN public.invoices i ON i.id = p.invoice_id`);
   const got = Object.fromEntries(rows.map((r) => [LABEL.get(r.invoice_id), r]));
   // Tập S: bỏ DRAFT, huỷ không tiền, đã xoá, tổng âm; giữ huỷ còn tiền.
-  expect(Object.keys(got).sort()).toEqual(INVOICES.map(([l]) => l).filter((l) => !['A5', 'A6', 'A7', 'BX', 'G2', 'L2', 'L3'].includes(l)).sort());
+  expect(Object.keys(got).sort()).toEqual(INVOICES.map(([l]) => l)
+    .filter((l) => !['A5', 'A6', 'A7', 'BX', 'G2', 'L2', 'L3', 'T4b', 'T4d', 'T8b'].includes(l)).sort());
   for (const [label, r] of Object.entries(got)) {
     expect(Number(r.cash) + Number(r.offset_paid), `${label} direct`).toBe(Number(r.live_direct));
     expect(Number(r.direct), label).toBe(Number(r.live_direct));
@@ -821,6 +1006,35 @@ test('H1: cash + cấn trừ = invoice_direct_paid_v1; phát sinh mới + nợ k
   // carried_paid lấy từ invoice_carried_debt_v1 (một nguồn), chỉ khi paid_amount vượt tiền trực tiếp.
   const { rows: [carried] } = await db.query(`SELECT app_private.invoice_carried_debt_v1($1) AS v`, [idOf('C1')]);
   expect(Number(got.C1.carried_paid)).toBe(Number(carried.v));
+});
+
+test('H1 credit_used: thu dư của writer cũ đã dùng qua lô tín dụng; đích đọc thẳng bảng, không phụ thuộc tập ứng viên', async () => {
+  const parts = async (labels) => {
+    const { rows } = await db.query(`SELECT p.invoice_id, p.outstanding, p.credit_used, p.rev_cash, p.effective_outstanding
+        FROM app_private.invoice_lifecycle_parts_v1(string_to_array($1, ',')::uuid[]) p`, [labels.map(idOf).join(',')]);
+    return Object.fromEntries(rows.map((r) => [LABEL.get(r.invoice_id),
+      { eff: Number(r.effective_outstanding), outstanding: Number(r.outstanding), creditUsed: Number(r.credit_used), cash: Number(r.rev_cash) }]));
+  };
+  const sources = ['T1a', 'T2a', 'T3a', 'T4a', 'T5a', 'T6a', 'T7a', 'T8a', 'T9a'];
+  // Chỉ đưa hoá đơn nguồn (đích không nằm trong ứng viên): kết quả y như khi đưa cả HĐ.
+  const alone = await parts(sources);
+  expect(alone).toEqual({
+    T1a: { eff: -2_000, outstanding: 0, creditUsed: 2_000, cash: 1_002_000 },
+    T2a: { eff: -5_000, outstanding: -3_000, creditUsed: 2_000, cash: 1_005_000 },
+    T3a: { eff: -4_000, outstanding: 0, creditUsed: 4_000, cash: 1_004_000 },
+    T4a: { eff: -800, outstanding: -800, creditUsed: 0, cash: 1_000_800 },
+    T5a: { eff: -3_000, outstanding: -3_000, creditUsed: 0, cash: 1_003_000 },
+    T6a: { eff: 0, outstanding: 0, creditUsed: 0, cash: 1_000_000 },
+    T7a: { eff: -1_000, outstanding: 0, creditUsed: 1_000, cash: 1_001_000 },
+    // Lượt áp trỏ chính hoá đơn nguồn không tính: T8 lô kia đã quay về ACTIVE ⇒ 0; T9 lô kia còn áp ⇒ 2.000.
+    T8a: { eff: -2_000, outstanding: -2_000, creditUsed: 0, cash: 1_002_000 },
+    T9a: { eff: -2_000, outstanding: 0, creditUsed: 2_000, cash: 1_002_000 },
+  });
+  const all = await parts(INVOICES.map(([l]) => l));
+  for (const label of sources) expect(all[label], label).toEqual(alone[label]);
+  // Hoá đơn không sinh lô: credit_used = 0 (kể cả hoá đơn thu dư không có lô — C6).
+  for (const [label, r] of Object.entries(all)) if (!sources.includes(label)) expect(r.creditUsed, label).toBe(0);
+  expect(all.C6.outstanding).toBe(-500);
 });
 
 test('money không phụ thuộc p_from/p_to; sự kiện lọc theo khoảng', async () => {
@@ -911,6 +1125,20 @@ const MUTANTS = {
     'cv.voucher_date, cv.contract_id, cv.total_amount, true,')],
   'NOT_APPLICABLE không tính đã hoàn': [H3, (s) => s.replace(/\s+OR v\.posting_status::text = 'NOT_APPLICABLE'\), false\) AS posted/,
     '), false) AS posted')],
+  // Thu dư đã dùng qua lô tín dụng (phòng T).
+  'tín dụng: bỏ lọc lượt áp đã đảo': [H1, (s) => s.replace(' AND a.reversed_at IS NULL', '')],
+  'tín dụng: bỏ lọc lô đã đảo': [H1, (s) => s.replaceAll("AND l.reversed_at IS NULL AND l.status <> 'REVERSED'", 'AND true')],
+  'tín dụng: lô nối payment đã đảo': [H1, (s) => s.replace('WHERE p.reversed_at IS NULL AND p.invoice_id', 'WHERE p.invoice_id')],
+  'tín dụng: bỏ lọc đích hợp lệ': [H1, (s) => s.replace(
+    /AND \(a\.invoice_id IS NULL\s+OR \(t\.id IS NOT NULL AND t\.deleted_at IS NULL AND t\.status::text NOT IN \('CANCELLED', 'DRAFT'\)\)\)/,
+    'AND true')],
+  'tín dụng: bỏ kẹp −o0': [H1, (s) => s.replace('LEAST(COALESCE(cr.amount, 0), GREATEST(-o.o0, 0)) AS credit_used',
+    'COALESCE(cr.amount, 0) AS credit_used')],
+  'tín dụng: outstanding không cộng credit_used': [H1, (s) => s.replace('m.carried_out, o.o0 + u.credit_used,', 'm.carried_out, o.o0,')],
+  'tín dụng: bỏ nối qua excess_amounts': [H1, (s) => s.replace('WHERE e.source_invoice_id IN (SELECT s.id FROM s)', 'WHERE false')],
+  'tín dụng: excess cả khi lô đã có payment': [H1, (s) => s.replace(' AND l.source_payment_id IS NULL', '')],
+  'tín dụng: tính lượt áp tự trỏ': [H1, (s) => s.replace('WHERE a.invoice_id IS DISTINCT FROM lot.invoice_id\n       AND ', 'WHERE ')],
+  'tín dụng: creditUsed không vào money': [RPC, (s) => s.replace("'creditUsed', COALESCE(sum(m.credit_used), 0)", "'creditUsed', 0")],
 };
 
 test('đột biến: bỏ từng điều kiện lọc/kẹp thì phép kiểm hành vi phải đỏ', async () => {

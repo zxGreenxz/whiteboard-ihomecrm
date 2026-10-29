@@ -467,6 +467,85 @@ describe('RPC mới — B3: chuỗi nợ kéo, mỗi đồng nợ đếm một l
   });
 });
 
+describe('RPC mới — thu dư của writer cũ đã trừ kỳ sau / khi thanh lý (creditUsed)', () => {
+  // Kỳ 05 khách nộp 3.002.000 cho hoá đơn 3.000.000; phần thừa thành tín dụng, trừ vào hoá đơn kỳ 06 (đã giảm còn
+  // 2.998.000 + thừa) — `dung` là phần đã trừ. `no` = thêm hoá đơn kỳ 07 còn nợ 3.000.000. Số giả.
+  const p = (o: { dung?: number; no?: boolean; cu?: boolean } = {}) => {
+    const dung = o.dung ?? 2_000;
+    const ky6 = 3_000_000 - dung;
+    const issued = 3_000_000 + ky6 + (o.no ? 3_000_000 : 0);
+    const net = -2_000 + dung + (o.no ? 3_000_000 : 0);
+    const money = tien({
+      issued, paidCash: 3_002_000 + ky6, debt: Math.max(net, 0), overpaid: Math.max(-net, 0), invoiceCount: o.no ? 3 : 2,
+      ...(o.cu ? {} : { creditUsed: dung }),
+    });
+    // Payload cũ: meta INVOICE_ISSUED không có khoá creditUsed.
+    const metaCu = ({ creditUsed, ...x }: Partial<InvoiceIssuedMeta>) => (o.cu ? x : { ...x, creditUsed: creditUsed ?? 0 });
+    return payload({
+      contracts: [hd('A', { startDate: '2026-05-01', endDate: '2027-04-30', money })],
+      segments: [seg('A', '2026-05-01', null)],
+      events: [
+        hdon('i5', '2026-05', '2026-05-01', 3_000_000, metaCu({ outstanding: -2_000 + dung, creditUsed: dung })),
+        thu('i5', '2026-05', '2026-05-03', 3_002_000),
+        hdon('i6', '2026-06', '2026-06-01', ky6, metaCu({})), thu('i6', '2026-06', '2026-06-03', ky6),
+        ...(o.no ? [hdon('i7', '2026-07', '2026-07-01', 3_000_000, metaCu({ status: 'OVERDUE', outstanding: 3_000_000 }))] : []),
+      ],
+    });
+  };
+  const rows = (d: ReturnType<typeof detailA>) => d.balances.tenantRows.map((r) => [r.label, r.value]);
+  const so = (v: string | undefined) => Number((v ?? '0').replace(/[^\d−-]/g, '').replace('−', '-'));
+  /** Bảng KHÁCH → CHỦ NHÀ cân: phát sinh = đã nộp + cấn trừ + còn nợ hoá đơn − thu dư − thừa đã trừ kỳ sau / khi thanh lý. */
+  const can = (d: ReturnType<typeof detailA>) => {
+    const t = Object.fromEntries(d.balances.tenantRows.map((r) => [r.label, r.value]));
+    return so(t['Hoá đơn phát sinh']) - (so(t['Khách đã nộp']) + so(t['Cấn trừ khi thanh lý']) + (d.balances.invoiceDebt ?? Number.NaN)
+      - so(t['Thu dư']) - so(t['Tiền thừa đã trừ kỳ sau / khi thanh lý']));
+  };
+
+  it('có phần thừa đã dùng: dòng "Tiền thừa đã trừ kỳ sau / khi thanh lý" (trung tính) sau "Thu dư"; nợ thật không bị che; bảng cân', () => {
+    const d = detailA(p({ no: true }));
+    expect(rows(d)).toEqual([
+      ['Cọc theo HĐ', '3.900.000 đ'],
+      ['Cọc đã đóng (thực thu)', '3.900.000 đ'],
+      ['Hoá đơn phát sinh', '8.998.000 đ'],
+      ['Khách đã nộp', '6.000.000 đ'],
+      ['Tiền thừa đã trừ kỳ sau / khi thanh lý', '2.000 đ'],
+      ['Khách còn nợ', '3.000.000 đ'],
+    ]);
+    expect(d.balances.tenantRows.find((r) => r.label === 'Tiền thừa đã trừ kỳ sau / khi thanh lý')?.tone).toBe('neutral');
+    expect(d.kpis[0].value).toBe('6.000.000 đ');
+    expect(can(d)).toBe(0);
+    expect(rowOf(d, 'Tiền phòng tháng đầu tiên – 05/2026')).toMatchObject({
+      sub: 'Hoá đơn kỳ 05/2026 · thu ngày 03/05/2026 · thừa 2.000 đ đã trừ kỳ sau / khi thanh lý', note: 'Đã thu',
+    });
+    expect(rowOf(d, 'Tiền phòng – 06/2026').sub).toBe('Hoá đơn kỳ 06/2026 · thu ngày 03/06/2026');
+  });
+
+  it('áp một phần: thu dư còn phần chưa áp, đứng ngay trước dòng thừa đã trừ; bảng cân', () => {
+    const d = detailA(p({ dung: 1_500 }));
+    expect(rows(d).slice(3)).toEqual([
+      ['Khách đã nộp', '6.000.500 đ'], ['Thu dư', '500 đ'], ['Tiền thừa đã trừ kỳ sau / khi thanh lý', '1.500 đ'], ['Khách còn nợ', '0 đ'],
+    ]);
+    expect(can(d)).toBe(0);
+  });
+
+  it('creditUsed = 0: không có dòng mới, không có chú thích', () => {
+    const d = detailA(p({ dung: 0 }));
+    expect(rows(d).map(([l]) => l)).not.toContain('Tiền thừa đã trừ kỳ sau / khi thanh lý');
+    expect(rows(d).slice(3)).toEqual([['Khách đã nộp', '6.002.000 đ'], ['Thu dư', '2.000 đ'], ['Khách còn nợ', '0 đ']]);
+    expect(can(d)).toBe(0);
+    expect(d.events.some((e) => e.sub.includes('đã trừ kỳ sau / khi thanh lý'))).toBe(false);
+  });
+
+  it('payload chưa có creditUsed (money lẫn meta): y như creditUsed = 0', () => {
+    for (const dung of [0, 2_000]) {
+      const cu = detailA(p({ dung, cu: true }));
+      expect(cu.balances.tenantRows.map((r) => r.label)).not.toContain('Tiền thừa đã trừ kỳ sau / khi thanh lý');
+      expect(cu.events.some((e) => e.sub.includes('đã trừ kỳ sau / khi thanh lý'))).toBe(false);
+    }
+    expect(detailA(p({ dung: 0, cu: true }))).toEqual(detailA(p({ dung: 0 })));
+  });
+});
+
 describe('RPC mới — B1/B2: phòng · cả HĐ · hoàn tiền (F3)', () => {
   const daThanhLy = (refund: RefundMoney, extra: LifecycleEvent[] = []) => payload({
     contracts: [hd('A', {

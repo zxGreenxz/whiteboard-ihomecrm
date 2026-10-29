@@ -63,6 +63,11 @@ beforeAll(async () => {
     CREATE TABLE app_private.sale_bonus_claims(id uuid PRIMARY KEY, organization_id uuid, deposit_voucher_id uuid, bonus_voucher_id uuid,
       created_at timestamptz);
     CREATE TABLE app_private.termination_forfeit_authorizations(payment_id uuid);
+    CREATE TABLE public.excess_amounts(id uuid PRIMARY KEY, source_invoice_id uuid);
+    CREATE TABLE public.customer_credit_lots(id uuid PRIMARY KEY, source_payment_id uuid, source_excess_amount_id uuid, status text,
+      reversed_at timestamptz);
+    CREATE TABLE public.customer_credit_applications(id uuid PRIMARY KEY, credit_lot_id uuid, invoice_id uuid, amount numeric,
+      reversed_at timestamptz);
     CREATE FUNCTION app_private.invoice_direct_paid_v1(uuid) RETURNS numeric LANGUAGE sql STABLE AS $$
       SELECT COALESCE(i.paid_amount, 0) FROM public.invoices i WHERE i.id = $1 $$;
     CREATE FUNCTION app_private.invoice_carried_debt_v1(uuid) RETURNS numeric LANGUAGE sql STABLE AS $$ SELECT 0::numeric $$;

@@ -111,6 +111,11 @@ export type InvoiceIssuedMeta = {
   carriedPaid?: number;
   /** Hoá đơn nguồn (trong tập) mà hoá đơn này gánh nợ; [] nếu không có. */
   sourceInvoiceIds?: string[];
+  /**
+   * Phần khách trả thừa trên hoá đơn này (writer cũ ghi vào payment) đã thành tín dụng và đã dùng — trừ vào
+   * hoá đơn sau hoặc khi thanh lý. Đã cộng lại vào outstanding (không còn là thu dư). Vắng ở payload cũ.
+   */
+  creditUsed?: number;
 };
 
 /** INVOICE_COLLECTION_POSTED — amount = tiền thật (không cấn trừ, không phần cọc, không nợ được gánh hộ). */
@@ -201,7 +206,7 @@ export type LifecycleEventOf<K extends LifecycleEventType> = Omit<LifecycleEvent
 /**
  * F2 — tiền của một phạm vi: cả HĐ (`contract`) hoặc phòng đang xem (`room`).
  * VND; không phụ thuộc p_from/p_to. Bất biến (lệch ≤ 1.000/hoá đơn do làm tròn):
- * issued ≈ paidCash + offset + debt − overpaid.
+ * issued ≈ paidCash + offset + debt − overpaid − creditUsed.
  */
 export interface MoneyScope {
   /** Σ phát sinh mới (không nợ kéo, không cọc). */
@@ -219,6 +224,11 @@ export interface MoneyScope {
   roomCount: number;
   /** Σ dòng cọc/NON_PNL nằm trên hoá đơn. */
   depositOnInvoices: number;
+  /**
+   * Tiền khách trả thừa (đã nằm trong paidCash) đã trừ vào hoá đơn sau / dùng khi thanh lý qua lô tín dụng —
+   * không còn là thu dư. Vắng ở payload trước khi RPC phát khoá này ⇒ coi như 0.
+   */
+  creditUsed?: number;
 }
 
 export type RefundWarning = 'NO_EFFECTIVE_TERMINATION' | 'DEPOSIT_LINE_MISMATCH';

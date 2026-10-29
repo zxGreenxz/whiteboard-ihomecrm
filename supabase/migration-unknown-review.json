@@ -965,11 +965,11 @@
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261028203816_vong_doi_tien_phong_mot_nguon.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.invoice_lifecycle_parts_v1(p_invoice_ids uuid[]) · app_private.contract_commission_vouchers_v1(p_org uuid, p_contract_ids uuid[]) · app_private.termination_refund_parts_v1(p_contract_ids uuid[]) — ba helper MỚI (sql STABLE, INVOKER, search_path rỗng, REVOKE ALL FROM PUBLIC, anon, authenticated, service_role); public.get_room_cash_lifecycle_v1 thay tại chỗ, chốt đầu ghim md5 thân 20261018052932 (a637b231…) và nghiệm thu md5 thân mới (e27f4c49…)"
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.invoice_lifecycle_parts_v1(p_invoice_ids uuid[]) · app_private.contract_commission_vouchers_v1(p_org uuid, p_contract_ids uuid[]) · app_private.termination_refund_parts_v1(p_contract_ids uuid[]) — ba helper MỚI (sql STABLE, INVOKER, search_path rỗng, REVOKE ALL FROM PUBLIC, anon, authenticated, service_role); public.get_room_cash_lifecycle_v1 thay tại chỗ, chốt đầu ghim md5 thân 20261018052932 (a637b231…) và nghiệm thu md5 thân mới (2d935c23…); H1 thêm credit_used (thu dư của writer cũ đã dùng qua customer_credit_lots/customer_credit_applications) — chốt đầu đòi thêm ba bảng tín dụng"
         },
         {
           "duong_dan": "scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs",
-          "trich_doan": "test('witness: thân mới chạy hai lượt; md5/owner/ACL khớp after; helper INVOKER/STABLE/search_path rỗng, không cho client, không khoá dòng' — PGlite chạy thật chuỗi 20260921085952 → 20261018052932 → file mới, 23/23 ca; 21 đột biến lọc/kẹp/khoá phá hoà và đột biến cấp EXECUTE helper cho authenticated đều bị bắt"
+          "trich_doan": "test('witness: thân mới chạy hai lượt; md5/owner/ACL khớp after; helper INVOKER/STABLE/search_path rỗng, không cho client, không khoá dòng' — PGlite chạy thật chuỗi 20260921085952 → 20261018052932 → file mới, 25/25 ca (gồm phòng T: thu dư đã dùng qua lô tín dụng — lượt áp tự trỏ không tính —, đồng nhất thức issued = paidCash + offset + debt − overpaid − creditUsed chính xác); 31 đột biến lọc/kẹp/khoá phá hoà/tín dụng và đột biến cấp EXECUTE helper cho authenticated đều bị bắt"
         },
         {
           "duong_dan": "supabase/migration-provenance.json",
@@ -984,7 +984,7 @@
         "function:app_private.termination_refund_parts_v1"
       ],
       "raSoatBoi": "Claude Code — vòng đời tiền phòng một nguồn, 29/10/2026",
-      "sha256": "29e8b6bdf2d4a35977b8a78f05ff7fa26280d21b512c2c2afa639f70ac40f037"
+      "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a"
     }
   }
 }

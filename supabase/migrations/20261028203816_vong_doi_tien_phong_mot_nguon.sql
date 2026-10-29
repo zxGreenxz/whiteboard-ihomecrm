@@ -16,24 +16,23 @@
 -- SỬA — ba helper app_private (LANGUAGE sql STABLE SECURITY INVOKER, search_path '', chỉ owner postgres
 -- gọi được; RPC DEFINER owner postgres là người gọi duy nhất):
 --   H1 invoice_lifecycle_parts_v1(ids)  — F0/F1: tập S và các phần tiền của từng hoá đơn:
---      S = hoá đơn chưa xoá, khác DRAFT, tổng ≥ 0, VÀ (khác CANCELLED HOẶC invoice_direct_paid_v1 > 0) — hoá
---        đơn huỷ khi bỏ cọc mà writer cố ý giữ tiền đã thu làm doanh thu vẫn là tiền khách nộp; hoá đơn tổng
---        âm (thanh lý kiểu cũ: phạt trừ vào cọc, phần còn lại hoàn qua phiếu '[Hoàn trả thanh lý]' gắn hoá
---        đơn — invoice_direct_paid_v1 trừ phiếu đó nên ra âm) là khoản TRẢ khách, đã nằm ở phiếu hoàn (H3).
---      off(p) = chưa đảo AND received_amount = 0 (so chặt, không xét phương thức; NULL = tiền thật legacy).
---      cash = invoice_direct_paid_v1 − Σ off; phần cọc (dòng accounting_class ≠ REVENUE, bỏ DISCOUNT —
---        cùng vị ngữ "cột NULL" của invoice_amount_parts_for_v1) nhận TRƯỚC: tiền thật, rồi cấn trừ, rồi phần
---        hoá đơn sau trả hộ; rev_cash = tiền thật còn lại; cấn trừ trả dòng cọc (dep_offset) không phải cấn
---        trừ doanh thu. Phần cọc nguồn do hoá đơn gánh PAID trả hộ là phần cọc trong tiền của hoá đơn gánh.
---      carried_in = LEAST(previous_debt, Σ nguồn khai trong previous_debt_sources thuộc S);
---        new_amount = total − carried_in − phần cọc.
---      Huỷ khi bỏ cọc: total đã bị writer ghi đè = tiền đã thu, dòng hoá đơn/previous_debt giữ nguyên ⇒
---        carried_in = 0 (hoá đơn gánh huỷ chưa từng trả hộ nguồn) và phần cọc chỉ là tiền vượt Σ dòng doanh
---        thu (writer thu tiền V5 phân bổ doanh thu trước) ⇒ phát sinh = tiền đã thu, không âm.
---      carried_paid = invoice_carried_debt_v1 (chỉ gọi khi paid_amount vượt direct) — một nguồn, không suy ngược.
---      outstanding = effective_outstanding (invoice_effective_outstanding_v1 gọi MỘT lần cho cả S) − phần
---        cọc chưa tất toán (không vượt phần còn mở); PAID kẹp ≤ 0 (số lẻ đã xoá không thành nợ, thu dư vẫn
---        bù kỳ khác); CANCELLED = 0.
+--      S = hoá đơn chưa xoá, khác DRAFT, tổng ≥ 0, VÀ (khác CANCELLED HOẶC invoice_direct_paid_v1 > 0): huỷ khi bỏ
+--        cọc còn giữ tiền đã thu vẫn là tiền khách nộp; tổng âm (thanh lý kiểu cũ) là khoản TRẢ khách, ở phiếu hoàn (H3).
+--      off(p) = chưa đảo AND received_amount = 0 (so chặt; NULL = tiền thật legacy); cash = direct − Σ off.
+--      Phần cọc (accounting_class ≠ REVENUE, bỏ DISCOUNT — vị ngữ của invoice_amount_parts_for_v1) nhận TRƯỚC: tiền
+--        thật, cấn trừ, phần hoá đơn sau trả hộ (phần cọc nguồn do hoá đơn gánh PAID trả là cọc trong tiền của hoá đơn
+--        gánh); rev_cash = tiền thật còn lại; cấn trừ trả dòng cọc (dep_offset) không phải cấn trừ doanh thu.
+--      carried_in = LEAST(previous_debt, Σ nguồn khai thuộc S); new_amount = total − carried_in − phần cọc. Huỷ khi
+--        bỏ cọc (total đã ghi đè = tiền đã thu): carried_in = 0, phần cọc = tiền vượt Σ dòng doanh thu.
+--      carried_paid = invoice_carried_debt_v1 (chỉ gọi khi paid_amount vượt direct).
+--      o0 = effective_outstanding (invoice_effective_outstanding_v1 MỘT lần cho cả S) − phần cọc chưa tất toán (không
+--        vượt phần còn mở); PAID kẹp ≤ 0; CANCELLED = 0.
+--      credit_used = LEAST(Σ lượt áp customer_credit_applications chưa đảo của lô chưa đảo sinh từ hoá đơn — qua
+--        payment chưa đảo, hoặc excess_amounts.source_invoice_id khi lô không có payment — có đích NULL (thanh lý)
+--        hoặc hoá đơn chưa xoá khác DRAFT/CANCELLED và khác chính nó (lượt tự trỏ = bút toán bù huỷ lô trùng của
+--        accounting repair 20260721130000), −o0): writer cũ (lô ≤ 07/2026) ghi payment GỒM tiền thừa nên
+--        nguồn PAID âm dù phần thừa đã trừ vào kỳ sau. outstanding = o0 + credit_used: thừa đã dùng không còn là thu
+--        dư, không che nợ kỳ khác; tiền thật (rev_cash) giữ nguyên.
 --   H2 contract_commission_vouchers_v1(org, ids) — F4: mọi phiếu hoa hồng/thưởng chưa huỷ/xoá của HĐ:
 --      gắn thẳng HĐ (is_commission_voucher_v1) + thưởng Sale lập từ phiếu cọc (sale_bonus_claims, chỉ phiếu
 --      chưa gắn HĐ, claim sớm nhất); stage PENDING/REVERSED/OFFBOOK/PAID/UNPOSTED xét theo thứ tự đó.
@@ -51,7 +50,8 @@
 --     (theo phòng của hoá đơn, rồi phòng của phiếu, rồi phòng của HĐ), MỚI TERMINATION_REFUND_OFFSET_POSTED;
 --     DEPOSIT_REFUND_POSTED chỉ còn dòng cọc, MỚI CUSTOMER_REFUND_POSTED cho dòng khác; 10 type
 --     {COMMISSION|SALE_BONUS}_{PENDING|UNPOSTED|PAID|OFFBOOK|REVERSED} thay COMMISSION_PAID cũ;
---   · contracts[] thêm originalEndDate và money {contract, room, refund} (không phụ thuộc p_from/p_to);
+--   · contracts[] thêm originalEndDate và money {contract, room, refund} (không phụ thuộc p_from/p_to); creditUsed
+--     (ở money và meta INVOICE_ISSUED) giữ bất biến issued ≈ paidCash + offset + debt − overpaid − creditUsed;
 --   · DEPOSIT_RECEIVED thêm meta voucherId, TERMINATION_REQUESTED thêm terminationId; events xếp thêm khoá
 --     phá hoà contractId rồi voucherId/invoiceId/terminationId — mỗi dòng có id riêng ⇒ tất định cho test và
 --     Hermes (phiếu thu thêm gắn hoá đơn xếp theo phiếu, không theo hoá đơn).
@@ -78,7 +78,7 @@ BEGIN
   IF v_md5 IS NULL THEN
     RAISE EXCEPTION 'chot: thieu public.get_room_cash_lifecycle_v1(uuid,date,date)';
   END IF;
-  IF v_md5 NOT IN ('a637b2312d020da2f7de2da01d5b6435', 'e27f4c4977eaa881b1ffc8b595dbbc45') THEN
+  IF v_md5 NOT IN ('a637b2312d020da2f7de2da01d5b6435', '2d935c23943e544354506a290128cb1e') THEN
     RAISE EXCEPTION 'chot: get_room_cash_lifecycle_v1 da bi doi (md5 %) - doc lai ban dang chay truoc khi de', v_md5;
   END IF;
   -- Nguồn dùng chung mà ba helper đọc lại (không chép logic).
@@ -88,7 +88,10 @@ BEGIN
      OR to_regprocedure('app_private.is_commission_voucher_v1(uuid)') IS NULL
      OR to_regclass('app_private.sale_bonus_claims') IS NULL
      OR to_regclass('app_private.termination_forfeit_authorizations') IS NULL
-     OR to_regclass('public.contract_extensions') IS NULL THEN
+     OR to_regclass('public.contract_extensions') IS NULL
+     OR to_regclass('public.customer_credit_lots') IS NULL
+     OR to_regclass('public.customer_credit_applications') IS NULL
+     OR to_regclass('public.excess_amounts') IS NULL THEN
     RAISE EXCEPTION 'chot: thieu ham/bang nguon dung chung cua vong doi tien phong';
   END IF;
 END
@@ -101,7 +104,7 @@ RETURNS TABLE(invoice_id uuid, contract_id uuid, room_id uuid, status text, kind
               offset_via text, cash numeric, cash_date date, non_rev numeric, dep_paid numeric,
               dep_offset numeric, dep_unpaid numeric, rev_cash numeric, carried_in numeric, new_amount numeric,
               carried_paid numeric, effective_outstanding numeric, carried_out numeric, outstanding numeric,
-              penalty numeric, source_ids uuid[])
+              penalty numeric, source_ids uuid[], credit_used numeric)
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
@@ -212,28 +215,61 @@ AS $fn$
       JOIN m x ON x.id = p.source_id AND x.dep_carried > 0
       JOIN m g ON g.id = p.carrier_id AND g.status = 'PAID'
      GROUP BY p.carrier_id
+  ),
+  lot AS (
+    -- Lô tín dụng sinh từ tiền thừa của hoá đơn: qua payment chưa đảo của chính hoá đơn, hoặc qua
+    -- excess_amounts.source_invoice_id khi lô không có payment nguồn — mỗi lô đúng một nguồn, không đếm hai lần.
+    SELECT p.invoice_id, l.id
+      FROM public.payments p
+      JOIN public.customer_credit_lots l ON l.source_payment_id = p.id
+     WHERE p.reversed_at IS NULL AND p.invoice_id IN (SELECT s.id FROM s)
+       AND l.reversed_at IS NULL AND l.status <> 'REVERSED'
+    UNION ALL
+    SELECT e.source_invoice_id, l.id
+      FROM public.excess_amounts e
+      JOIN public.customer_credit_lots l ON l.source_excess_amount_id = e.id
+     WHERE e.source_invoice_id IN (SELECT s.id FROM s) AND l.source_payment_id IS NULL
+       AND l.reversed_at IS NULL AND l.status <> 'REVERSED'
+  ),
+  cr AS (
+    -- Phần thừa ĐÃ DÙNG: lượt áp chưa đảo có đích NULL (dùng khi thanh lý) hoặc hoá đơn chưa xoá khác DRAFT/CANCELLED
+    -- (đọc thẳng bảng hoá đơn — không phụ thuộc tập ứng viên). Lượt áp trỏ CHÍNH hoá đơn nguồn là bút toán bù của
+    -- accounting repair 20260721130000 (huỷ lô ghi trùng), không phải đã dùng.
+    SELECT lot.invoice_id, sum(a.amount) AS amount
+      FROM lot
+      JOIN public.customer_credit_applications a ON a.credit_lot_id = lot.id AND a.reversed_at IS NULL
+      LEFT JOIN public.invoices t ON t.id = a.invoice_id
+     WHERE a.invoice_id IS DISTINCT FROM lot.invoice_id
+       AND (a.invoice_id IS NULL
+            OR (t.id IS NOT NULL AND t.deleted_at IS NULL AND t.status::text NOT IN ('CANCELLED', 'DRAFT')))
+     GROUP BY lot.invoice_id
   )
   SELECT m.id, m.contract_id, m.room_id, m.status, m.kind, m.billing_month, m.issue_date, m.total_amount,
          m.direct, m.off_amount, m.off_date,
          CASE WHEN m.forfeit THEN 'FORFEIT' WHEN m.off_amount > 0 THEN 'MOVE_OUT' END,
          m.cash, m.cash_date, m.dep, q.dep_paid, m.dep_offset, m.dep_unpaid, m.cash - q.dep_paid,
          m.carried_in, m.total_amount - m.carried_in - m.dep,
-         m.carried_paid, m.eff, m.carried_out,
-         -- Phần cọc chưa tất toán không vượt phần còn mở của hoá đơn: không bao giờ đẩy nợ thành âm.
-         CASE WHEN m.status = 'CANCELLED' THEN 0
-              WHEN m.status = 'PAID' THEN LEAST(m.eff, 0)
-              ELSE m.eff - LEAST(m.dep_unpaid, GREATEST(m.eff, 0)) END,
-         m.penalty, m.source_ids
+         m.carried_paid, m.eff, m.carried_out, o.o0 + u.credit_used,
+         m.penalty, m.source_ids, u.credit_used
     FROM m
     LEFT JOIN cin ON cin.carrier_id = m.id
-   CROSS JOIN LATERAL (SELECT LEAST(m.dep_paid + COALESCE(cin.dep_in, 0), GREATEST(m.cash, 0)) AS dep_paid) q;
+    LEFT JOIN cr ON cr.invoice_id = m.id
+   CROSS JOIN LATERAL (SELECT LEAST(m.dep_paid + COALESCE(cin.dep_in, 0), GREATEST(m.cash, 0)) AS dep_paid) q
+   -- Phần cọc chưa tất toán không vượt phần còn mở của hoá đơn: không bao giờ đẩy nợ thành âm.
+   CROSS JOIN LATERAL (SELECT CASE WHEN m.status = 'CANCELLED' THEN 0
+                                   WHEN m.status = 'PAID' THEN LEAST(m.eff, 0)
+                                   ELSE m.eff - LEAST(m.dep_unpaid, GREATEST(m.eff, 0)) END AS o0) o
+   -- Thu dư đã thành lô tín dụng và đã dùng: không còn là thu dư. Kẹp ≤ phần âm — tiền thừa kiểu mới không ghi vào
+   -- hoá đơn nguồn (còn 0) ⇒ 0.
+   CROSS JOIN LATERAL (SELECT LEAST(COALESCE(cr.amount, 0), GREATEST(-o.o0, 0)) AS credit_used) u;
 $fn$;
 
 COMMENT ON FUNCTION app_private.invoice_lifecycle_parts_v1(uuid[]) IS
   'Vòng đời tiền (F0/F1): lọc S từ ứng viên (chưa xoá, khác DRAFT, tổng ≥ 0, huỷ chỉ khi còn tiền trực tiếp) rồi '
   'mỗi hoá đơn một dòng: phát sinh mới, tiền thật (không cấn trừ received_amount = 0; cọc nhận trước, kể cả qua '
-  'cấn trừ/hoá đơn gánh), cấn trừ, nợ kéo, nợ thực (invoice_effective_outstanding_v1 trên cả S). Huỷ khi bỏ cọc: '
-  'không nợ kéo, doanh thu trước. INVOKER; chỉ hàm DEFINER owner postgres gọi.';
+  'cấn trừ/hoá đơn gánh), cấn trừ, nợ kéo, nợ thực (invoice_effective_outstanding_v1 trên cả S) cộng phần thu dư '
+  'đã dùng qua lô tín dụng (credit_used). Huỷ khi bỏ cọc: không nợ kéo, doanh thu trước. INVOKER; chỉ hàm DEFINER '
+  'owner postgres gọi.';
 ALTER FUNCTION app_private.invoice_lifecycle_parts_v1(uuid[]) OWNER TO postgres;
 REVOKE ALL ON FUNCTION app_private.invoice_lifecycle_parts_v1(uuid[]) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -453,13 +489,15 @@ BEGIN
   ),
   mrow AS (
     SELECT ip.contract_id, ip.room_id, ip.invoice_id, ip.new_amount AS issued, ip.rev_cash AS paid_cash,
-           ip.offset_paid - ip.dep_offset AS offset_paid, 0::numeric AS extra, ip.outstanding, ip.non_rev
+           ip.offset_paid - ip.dep_offset AS offset_paid, 0::numeric AS extra, ip.outstanding, ip.non_rev,
+           ip.credit_used
       FROM ip
     UNION ALL
-    SELECT ex.contract_id, ex.room_id, NULL, 0, ex.total_amount, 0, ex.total_amount, 0, 0
+    SELECT ex.contract_id, ex.room_id, NULL, 0, ex.total_amount, 0, ex.total_amount, 0, 0, 0
       FROM ex
   ),
   -- F2: phạm vi 'contract' = cả HĐ, 'room' = phòng đang xem; không phụ thuộc p_from/p_to.
+  -- creditUsed = thu dư (writer cũ) đã dùng qua lô tín dụng: issued ≈ paidCash + offset + debt − overpaid − creditUsed.
   ms AS (
     SELECT h.id AS contract_id, sc.scope,
            jsonb_build_object(
@@ -470,7 +508,8 @@ BEGIN
              'overpaid', GREATEST(-COALESCE(sum(m.outstanding), 0), 0),
              'invoiceCount', count(m.invoice_id),
              'roomCount', count(DISTINCT m.room_id) FILTER (WHERE m.invoice_id IS NOT NULL),
-             'depositOnInvoices', COALESCE(sum(m.non_rev), 0)) AS money
+             'depositOnInvoices', COALESCE(sum(m.non_rev), 0),
+             'creditUsed', COALESCE(sum(m.credit_used), 0)) AS money
       FROM hd h
      CROSS JOIN (VALUES ('contract'), ('room')) sc(scope)
       LEFT JOIN mrow m ON m.contract_id = h.id AND (sc.scope = 'contract' OR m.room_id = p_room_id)
@@ -539,7 +578,8 @@ BEGIN
              'status', ip.status, 'kind', ip.kind, 'total', ip.total_amount,
              'carriedIn', ip.carried_in, 'depositPart', ip.non_rev, 'penalty', ip.penalty,
              'outstanding', ip.outstanding, 'carriedOpen', ip.carried_out,
-             'carriedPaid', ip.carried_paid, 'sourceInvoiceIds', to_jsonb(ip.source_ids))
+             'carriedPaid', ip.carried_paid, 'sourceInvoiceIds', to_jsonb(ip.source_ids),
+             'creditUsed', ip.credit_used)
       FROM ip
      WHERE ip.room_id = p_room_id
     UNION ALL
@@ -704,7 +744,7 @@ BEGIN
     RAISE EXCEPTION 'nghiem_thu: get_room_cash_lifecycle_v1 thieu khoa man hinh';
   END IF;
   -- Phải đúng thân sẽ khai làm forward succession trong migration-policy.json.
-  IF v_md5 <> 'e27f4c4977eaa881b1ffc8b595dbbc45' THEN
+  IF v_md5 <> '2d935c23943e544354506a290128cb1e' THEN
     RAISE EXCEPTION 'nghiem_thu: md5 get_room_cash_lifecycle_v1 % khac ban da khai', v_md5;
   END IF;
   IF has_function_privilege('anon', v_fn, 'EXECUTE')
