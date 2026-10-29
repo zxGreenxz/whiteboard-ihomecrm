@@ -126,7 +126,7 @@ export function SelfJourney({ m }: { m: SalManager }) {
                 </span>
                 <span className="whitespace-nowrap text-right">
                   <b>{bigNum(d.gross)}</b>
-                  <span className="text-muted-foreground"> · nhận {bigNum(d.takehome)}{d.current ? " (tạm tính)" : d.paidOn ? ` · ${d.paidOn}` : ""}</span>
+                  <span className="text-muted-foreground"> · nhận {bigNum(d.takehome)}{d.current && m.status !== "LOCKED" ? " (tạm tính)" : d.paidOn ? ` · ${d.paidOn}` : ""}</span>
                 </span>
               </li>
             ))}

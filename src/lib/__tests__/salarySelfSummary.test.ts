@@ -140,7 +140,7 @@ describe("mốc chuỗi v5", () => {
   });
 
   it("tiền chuỗi khớp tổng mốc đầu (máy tính) → đạt đúng các mốc đó, mốc đỉnh = ngày công chuẩn", () => {
-    const sv = streakViewOf(plan, v5(), 600_000);
+    const sv = streakViewOf(plan, v5(), 600_000)!;
     expect(sv.steps.map((s) => s.label)).toEqual(["4", "8", "13", "22"]);
     expect(sv.steps.map((s) => s.reached)).toEqual([true, true, false, false]);
     expect(sv.reached).toBe(2);
@@ -150,18 +150,26 @@ describe("mốc chuỗi v5", () => {
   });
 
   it("chủ sửa tay khôi phục chuỗi tới mốc 13 → hiện đạt 3 mốc và ngày chuỗi không thấp hơn 13", () => {
-    const sv = streakViewOf(plan, v5(), 1_200_000);
+    const sv = streakViewOf(plan, v5(), 1_200_000)!;
     expect(sv.reached).toBe(3);
     expect(sv.days).toBe(13);
   });
 
   it("tiền không khớp mốc nào → dùng mốc máy đã ghi nhận", () => {
-    const sv = streakViewOf(plan, v5({ banked: [4] }), 777_000);
+    const sv = streakViewOf(plan, v5({ banked: [4] }), 777_000)!;
     expect(sv.steps.map((s) => s.reached)).toEqual([true, false, false, false]);
   });
 
-  it("chưa có tiền chuỗi → chưa đạt mốc nào", () => {
-    expect(streakViewOf(plan, v5({ banked: [] , streakBest: 2 }), 0).reached).toBe(0);
+  it("mốc máy ghi nhận không thuộc thang hiện hành (kỳ cũ trước khi đổi thang) → null", () => {
+    expect(streakViewOf(plan, v5({ banked: [5, 10] }), null)).toBeNull();
+    expect(streakViewOf(plan, v5({ banked: [5, 10] }), 777_000)).toBeNull();
+    // Tiền khớp thang hiện hành thì vẫn đọc theo tiền.
+    expect(streakViewOf(plan, v5({ banked: [5, 10] }), 600_000)?.reached).toBe(2);
+  });
+
+  it("chưa có tiền chuỗi → chưa đạt mốc nào, kể cả khi máy từng ghi nhận mốc", () => {
+    expect(streakViewOf(plan, v5({ banked: [] , streakBest: 2 }), 0)!.reached).toBe(0);
+    expect(streakViewOf(plan, v5({ banked: [4, 8] }), 0)!.reached).toBe(0);
   });
 
   it("đọc mốc máy đã ghi nhận từ cột JSON, bỏ phần tử sai dạng", () => {

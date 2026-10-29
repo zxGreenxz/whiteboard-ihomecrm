@@ -7,7 +7,7 @@ import type { SalLedgerRow, SalManager } from "@/lib/managerSalary";
 import { bonusDaysOf, contractRowsOf, jobRowsOf, type SelfSummary, type StreakView } from "@/lib/salarySelfSummary";
 import { INCOME_GROUP, incomeItemsOf, type IncomeItem } from "./salaryIncomeItems";
 import { StChip, type ChipTone } from "./salaryFundUi";
-import { bigNum, signedNum as money } from "./salaryFormat";
+import { bigNum, salFmt, signedNum as money } from "./salaryFormat";
 
 type GroupKey = "vh" | "dh" | "sale" | "ded";
 type Kind = "trace" | "streak" | "jobs" | "days" | "contract" | "plain";
@@ -29,6 +29,13 @@ interface Row {
 // Dòng chỉ dành cho người quản trị (ai sửa, cách đổi mức, việc cần làm) không hiện cho nhân viên.
 const ADMIN_TRACE = new Set(["Người sửa", "Đổi mức / ngừng", "Cần làm"]);
 
+// Lý do sửa tay là ghi chú nội bộ của quản trị: nhân viên chỉ thấy số máy tính và số đã điều chỉnh.
+function selfTrace(it: IncomeItem): [string, string][] {
+  return it.trace
+    .filter(([k]) => !ADMIN_TRACE.has(k))
+    .map(([k, v]): [string, string] => (it.ovr && k === "Số đã sửa tay" ? ["Số đã điều chỉnh", salFmt(it.ovr.amount)] : [k, v]));
+}
+
 function selfRow(it: IncomeItem): Row {
   const kind: Kind = it.g === "dh"
     ? "plain"
@@ -41,14 +48,14 @@ function selfRow(it: IncomeItem): Row {
     id: it.id,
     g: it.g,
     label: it.label,
-    why: it.why.replace(" — bấm để chuyển sang trả qua lương", ""),
+    why: it.ovr ? `Máy tính ${salFmt(it.ovr.computed)}` : it.why.replace(" — bấm để chuyển sang trả qua lương", ""),
     amount: it.amount,
     chip: it.ovr ? { t: "Đã điều chỉnh", tone: "tasks" } : it.chip,
     was: it.ovr ? it.ovr.computed : undefined,
     strike: it.strike,
     kind,
     jobType: kind === "jobs" ? it.id.slice("vh:job:".length) : undefined,
-    trace: it.trace.filter(([k]) => !ADMIN_TRACE.has(k)),
+    trace: selfTrace(it),
   };
 }
 

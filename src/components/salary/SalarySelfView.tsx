@@ -218,7 +218,8 @@ export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit
   const streak = useMemo(() => {
     if (!v5Plan || !m.v5 || m.v5.nchuan <= 0) return null;
     const line = m.bonusAuto.find((b) => b.icon === "Flame");
-    return streakViewOf(v5Plan, m.v5, line ? line.amount : null);
+    // Kỳ chưa chốt không có dòng chuỗi = tiền chuỗi 0; kỳ đã chốt thì tiền nằm trong số chốt.
+    return streakViewOf(v5Plan, m.v5, line ? line.amount : m.status === "LOCKED" ? null : 0);
   }, [m, v5Plan]);
   const [tab, setTab] = useState<Tab>("income");
   const locked = m.status === "LOCKED";

@@ -13,7 +13,7 @@ const job = (i: number, over: Partial<SalLedgerRow> = {}): SalLedgerRow => ({
   after_amount: 0, cash_amount: null, has_photo: true, bonus_amount: 20_000, reason: "", excluded: false, ...over,
 } as SalLedgerRow);
 
-function mgr(): SalManager {
+function mgr(over: Partial<SalManager> = {}): SalManager {
   const m: SalManager = {
     id: "s1", name: "Nhân viên A", short: "A", alias: "", role: "Quản lý vận hành", initials: "A", tone: "primary",
     workdays: 18, base: 4_000_000, roomRent: 1_500_000, incomeGoal: 0,
@@ -28,6 +28,7 @@ function mgr(): SalManager {
     paid: 0, stats: { jobs: 3, repairs: 3, afterHour: 0, workdays: 18, streak: 0 }, trend: [],
     status: "DRAFT", salaryMonthlyId: null, ledger: [job(1), job(2), job(3), job(4, { bonus_amount: 0, has_photo: false })],
     v5: { ticked: 18, nchuan: 22, streakCurrent: 3, streakBest: 8, banked: [4, 8] },
+    ...over,
   };
   m.calc = salCalc(m);
   return m;
@@ -35,8 +36,8 @@ function mgr(): SalManager {
 
 const plan: V5Plan = { attendBudget: 5_000_000, streakBudget: 2_000_000, milestones: [4, 8, 13, "n_top"], deltas: [200_000, 400_000, 600_000, 800_000] };
 
-function view() {
-  return render(<SalarySelfView m={mgr()} period={{ label: "Tháng 1", year: 2026 }} v5Plan={plan} canPrev canNext={false} />);
+function view(m = mgr()) {
+  return render(<SalarySelfView m={m} period={{ label: "Tháng 1", year: 2026 }} v5Plan={plan} canPrev canNext={false} />);
 }
 
 it("tóm tắt: tổng thu nhập − trừ khi trả = còn nhận, ghi chi tiết dưới tổng", () => {
@@ -73,6 +74,26 @@ it("bấm Thưởng việc mở đủ danh sách việc có thưởng ngay tại
   expect(within(panel).getAllByRole("row")).toHaveLength(1 + 3);
   expect(panel.textContent).toContain("việc mẫu 3");
   expect(panel.textContent).not.toContain("việc mẫu 4");
+});
+
+it("khoản sửa tay: nhân viên thấy số máy tính và số đã điều chỉnh, không thấy lý do hay người sửa", () => {
+  view(mgr({ overrides: { base: { computed: 4_200_000, amount: 4_000_000, reason: "ghi chú nội bộ mẫu", byName: "Quản trị B", at: "2026-01-20T00:00:00Z" } } }));
+  const btn = screen.getAllByRole("button").find((b) => b.textContent?.includes("Đã điều chỉnh"))!;
+  expect(btn.textContent).toContain("Máy tính 4.200.000");
+  fireEvent.click(btn);
+  const panel = document.getElementById(btn.getAttribute("aria-controls") as string)!;
+  expect(panel.textContent).toContain("Số đã điều chỉnh");
+  expect(document.body.textContent).not.toContain("ghi chú nội bộ mẫu");
+  expect(document.body.textContent).not.toContain("Quản trị B");
+});
+
+it("mốc máy ghi nhận không thuộc thang hiện hành (kỳ cũ) → ẩn thẻ mốc chuỗi, không đoán", () => {
+  view(mgr({
+    bonusAuto: [{ icon: "Flame", label: "Thưởng chuỗi (v5)", note: "", amount: 777_000 }],
+    v5: { ticked: 18, nchuan: 22, streakCurrent: 3, streakBest: 8, banked: [5, 10] },
+  }));
+  const act = screen.getByRole("region", { name: "Hoạt động tháng" });
+  expect(act.textContent).not.toContain("Mốc chuỗi");
 });
 
 it("thu nhập đồng hành chỉ hiển thị, không bấm; tòa lỗ hiện số âm", () => {

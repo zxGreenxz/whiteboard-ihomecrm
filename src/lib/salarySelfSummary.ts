@@ -152,9 +152,10 @@ export interface StreakView {
 /**
  * Mốc chuỗi của kỳ. Mốc đã đạt suy từ số tiền chuỗi đang trả khi số đó đúng bằng tổng
  * các mốc đầu (gồm cả khi chủ đã sửa tay để khôi phục chuỗi); không khớp thì dùng mốc
- * máy đã ghi nhận.
+ * máy đã ghi nhận. Mốc máy ghi nhận không nằm trong thang hiện hành (kỳ cũ trước khi
+ * đổi thang) thì trả null — không đoán số mốc đạt theo thang khác.
  */
-export function streakViewOf(plan: V5Plan, v5: SalV5Info, streakAmount: number | null): StreakView {
+export function streakViewOf(plan: V5Plan, v5: SalV5Info, streakAmount: number | null): StreakView | null {
   const eff = effectiveMilestones(plan.milestones, plan.deltas, v5.nchuan);
   let prefix = -1;
   if (streakAmount != null) {
@@ -164,6 +165,7 @@ export function streakViewOf(plan: V5Plan, v5: SalV5Info, streakAmount: number |
       if (k < eff.length) cum += eff[k].delta;
     }
   }
+  if (prefix < 0 && v5.banked.some((d) => !eff.some((e) => e.at === d))) return null;
   const steps: StreakStep[] = eff.map((e, i) => {
     const day = typeof e.at === "number" ? e.at : null;
     const reached = prefix >= 0 ? i < prefix : day != null && v5.banked.includes(day);
