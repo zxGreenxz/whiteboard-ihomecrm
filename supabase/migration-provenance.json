@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-30T11:15:56.025Z",
+  "generatedAt": "2026-10-30T11:24:01.637Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13867,7 +13867,7 @@
       "version": "20261030101812",
       "name": "meter_capture_so_dau_theo_dong_ho",
       "scheme": "timestamp14",
-      "sha256": "7b5c651b20dc8f45b11c94da55790676298d4c8c0a6b013e634bb027134314f3",
+      "sha256": "3c9a85261fe5791d49de9a967ed002328b65add33de5921e6f70cfb81561da9a",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
