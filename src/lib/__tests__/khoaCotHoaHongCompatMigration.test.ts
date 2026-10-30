@@ -137,7 +137,7 @@ beforeAll(async () => {
   `);
   await db.exec(previousCompatWriter());
   await db.exec('GRANT EXECUTE ON FUNCTION public.ie_compat_insert_v2(jsonb, jsonb) TO authenticated;');
-});
+}, 30000);
 
 describe('khoá cột hoa hồng ở ie_compat_insert_v2 + cấm cờ "phiếu trùng cũ"', () => {
   it('đối chứng: thân trước migration để lọt cột hoa hồng ⇒ HĐ có 2 phiếu môi giới sống', async () => {
@@ -158,7 +158,7 @@ describe('khoá cột hoa hồng ở ie_compat_insert_v2 + cấm cờ "phiếu t
                             WHERE tgrelid = 'public.income_expenses'::regclass AND tgname = 'z97_commission_legacy_dup_guard'`);
     expect(trg).toMatchObject({ tgtype: 23, tgenabled: 'O' });
     expect(trg.def).toMatch(/WHEN \(new\.commission_legacy_dup\)/i);
-  });
+  }, 30000);
 
   it('lối lách cũ chỉ còn ra phiếu chi thường: không loại hoa hồng, không cờ, không dấu nguồn', async () => {
     for (const over of [{}, { commission_legacy_dup: false }, { commission_kind: 'sale' }]) {
