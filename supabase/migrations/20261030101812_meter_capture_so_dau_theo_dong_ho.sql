@@ -32,11 +32,12 @@ REVOKE ALL ON FUNCTION app_private.meter_capture_has_prior_invoice_v1(uuid,uuid,
 -- * MOVE_OUT (p_at = ngày trả): đọc thật đến hết p_at. Bản dán ngày sau p_at chỉ nhận khi kỳ đó của hợp đồng còn hoá đơn.
 --   Capture của chính hợp đồng chỉ làm số đầu khi đã lên hoá đơn (như 20261023150206 lấy số cuối hoá đơn đã lập): capture
 --   tháng chưa lập hoá đơn mà làm số đầu thì phần tiêu thụ trước nó không vào hoá đơn nào.
--- Ngày đọc thật theo giờ server (giờ VN): capture lấy lúc server nhận lượt chụp (captured_at do máy khách gửi, không kiểm),
--- chỉ số ghi tay lấy lúc ghi; không muộn hơn reading_date.
+-- Ngày đọc thật (giờ VN), không muộn hơn reading_date. Chỉ số ghi tay: lúc ghi. Capture: lúc chụp do máy khách gửi (không
+-- được kiểm), kẹp trong 7 ngày trước lúc server nhận lượt chụp — hàng đợi offline đồng bộ muộn, máy lệch giờ.
 CREATE OR REPLACE FUNCTION app_private.meter_capture_reading_day_v1(p_id uuid)
 RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
- SELECT LEAST(r.reading_date,(COALESCE(cap.created_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
+ SELECT LEAST(r.reading_date,(CASE WHEN cap.id IS NULL THEN r.created_at
+  ELSE GREATEST(LEAST(cap.captured_at,cap.created_at),cap.created_at-interval '7 days') END AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
  FROM public.meter_readings r LEFT JOIN app_private.meter_captures cap ON cap.reading_id=r.id WHERE r.id=p_id
 $$;
 REVOKE ALL ON FUNCTION app_private.meter_capture_reading_day_v1(uuid) FROM PUBLIC,anon,authenticated,service_role;

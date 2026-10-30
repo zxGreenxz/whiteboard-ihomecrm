@@ -831,6 +831,23 @@ async function meterWideClientClock(db) {
  const row=await resolveFor(db,contract,'2026-11','2026-11-30','MONTHLY');
  assert.equal(row.start.readingId,saved.confirmedReadingId);assert.equal(Number(row.start.value),160);
 }
+// Chụp 31/10 dán nhãn kỳ 11 (như Mode Excel), nằm hàng đợi offline tới 05/11, đã lên hoá đơn kỳ 11; khách trả 03/11.
+// Bản chụp đọc trước ngày trả nên là số đầu thanh lý, dù server nhận sau ngày trả.
+async function meterWideLateSync(db) {
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01';
+ INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(985)}','${org}','${contract}','${building}','2026-10','2026-09-30');`
+  +seedReadings(`('${id(986)}','${org}','${meter}',NULL,'2026-10-31',100,120,'APPROVED','2026-09-30T10:00:00+07')`));
+ await register(db);
+ const late=(await upload(db,await start(db,{readingDate:'2026-11-30',month:'2026-11',capturedAt:'2026-10-31T01:00:00Z'}))).capture;
+ await db.query("UPDATE app_private.meter_captures SET created_at='2026-11-05T02:00:00Z' WHERE id=$1",[late.id]);
+ await confirm(db,(await rpc(db,'getCapture',{captureId:late.id})).capture,'150');
+ const m=await resolveFor(db,contract,'2026-11','2026-11-30','MONTHLY');
+ const s={meterId:meter,contractId:contract,month:'2026-11',readingDate:'2026-11-30',purpose:'MONTHLY',startReadingId:m.start.readingId,startVersion:m.start.version,
+  endReadingId:m.end.readingId,endVersion:m.end.version,previousReading:m.start.value,currentReading:m.end.value,sortOrder:1};
+ await invoice(db,{...invoiceArgs(s),p_billing_month:'2026-11',p_idempotency_key:'invoice-late-sync'},[s]);
+ const row=await resolveFor(db,contract,'2026-11','2026-11-03','MOVE_OUT');
+ assert.equal(row.start.readingId,m.end.readingId);assert.equal(Number(row.start.value),150);
+}
 // Số cuối thanh lý đã lên hoá đơn thanh lý vẫn không thành số đầu khi chạy lại nguồn.
 async function meterWideSettledMoveOut(db) {
  await register(db);await confirm(db,(await upload(db,await start(db))).capture);
@@ -850,8 +867,8 @@ test('later invoices start from the latest approved meter reading of any contrac
 test('move-out start: billed-ahead reading before move-out, cancelled month ignored, unbilled own captures excluded (Vietnam date)', async t => {
  for(const probe of [meterWideMoveOut,meterWideSettledMoveOut]){const db=await fixture();try{await probe(db);}finally{await db.close();}}
 });
-test('move-out of a contract that never billed electricity starts from its contract start; capture day uses server time', async () => {
- for(const probe of [db=>meterWideUnbilledMoveOut(db,{previousTenant:false}),db=>meterWideUnbilledMoveOut(db,{previousTenant:true}),meterWideClientClock]){
+test('move-out of a contract that never billed electricity starts from its contract start; capture day is clamped to server receipt', async () => {
+ for(const probe of [db=>meterWideUnbilledMoveOut(db,{previousTenant:false}),db=>meterWideUnbilledMoveOut(db,{previousTenant:true}),meterWideClientClock,meterWideLateSync]){
   const db=await fixture();try{await probe(db);}finally{await db.close();}
  }
 });
@@ -875,8 +892,9 @@ test('meter-wide start mutation sentinels', async () => {
   ['pre-tenancy reading yields to contract start','app_private.meter_capture_reading_day_v1(v_id)<c.start_date THEN',"app_private.meter_capture_reading_day_v1(v_id)<'1900-01-01' THEN",turnover({moveIn:false,powerBilled:false})],
   ['billed tenancy without reading is not guessed','v_own:=v_id IS NULL AND NOT v_power_billed;','v_own:=v_id IS NULL;',turnover({moveIn:false,powerBilled:true})],
   ['unbilled tenancy without any reading uses contract start','v_own:=v_id IS NULL AND NOT v_power_billed;','v_own:=v_pre IS NOT NULL AND NOT v_power_billed;',db=>meterWideUnbilledMoveOut(db,{previousTenant:false})],
-  ['move-out compares Vietnam date',"(COALESCE(cap.created_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",'COALESCE(cap.created_at,r.created_at)::date',meterWideMoveOut],
-  ['capture day ignores client clock','COALESCE(cap.created_at,r.created_at)','COALESCE(cap.captured_at,r.created_at)',meterWideClientClock],
+  ['move-out compares Vietnam date',"END AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",'END)::date',meterWideMoveOut],
+  ['capture day clamps a skewed client clock',"GREATEST(LEAST(cap.captured_at,cap.created_at),cap.created_at-interval '7 days')",'cap.captured_at',meterWideClientClock],
+  ['capture day survives a late offline sync',"GREATEST(LEAST(cap.captured_at,cap.created_at),cap.created_at-interval '7 days')",'cap.created_at',meterWideLateSync],
   ['reading billed ahead needs its month invoiced',"i.billing_month=to_char(r.reading_date,'YYYY-MM')",'true',meterWideMoveOut],
   ['unbilled own capture is not a move-out start','OR cap.contract_id<>p_contract OR EXISTS(','OR true OR EXISTS(',meterWideMoveOut],
   ['own move-out reading is never a start',"AND NOT COALESCE(cap.purpose='MOVE_OUT' AND cap.contract_id=p_contract,false)",'',meterWideSettledMoveOut],
