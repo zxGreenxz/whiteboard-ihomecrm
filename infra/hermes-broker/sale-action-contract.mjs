@@ -3,6 +3,14 @@ import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } 
 
 // Action-only projection: never borrow a cached reader's admission or grants.
 export const SALE_ACTIONS = Object.freeze(['rooms.edit', 'sale_phong.manage_images', 'sale_phong.lock_room', 'deposits.create', 'deposits.edit']);
+// Báo cọc / thu thêm CÓ TIỀN (crm_sale_reservation_create / _topup) ghi phiếu THU một bước: không bản xem trước, không confirmToken,
+// bộ ghi CRM có thể tự duyệt lúc sinh. Ngoài deposits.create + income_expenses.create (như cũ), hai thao tác này đòi thêm khoá riêng
+// Hermes dưới đây: bật income_expenses.create cho trang Thu chi (crm_action_*) không còn mở chúng. Khoá seed TẮT (migration
+// hermes_sale_deposit_receipt_key_v1, SQL hermes_sale_actions_v1 đòi cùng khoá: registry ∩ chính sách công ty ∩ kết nối) và chưa lớp
+// quyền nào của connector cấp. Không nằm trong SALE_ACTIONS: hermes_sale_capabilities_v1 trả đúng năm khoá trên.
+export const SALE_DEPOSIT_RECEIPT_KEY = 'deposits.create_receipt';
+const DEPOSIT_RECEIPT_OPS = Object.freeze(['reservation_create', 'reservation_topup']);
+const DEPOSIT_RECEIPT_KEYS = Object.freeze(['income_expenses.create', SALE_DEPOSIT_RECEIPT_KEY]);
 const EDIT_ACTIONS = ['rooms.edit', 'sale_phong.edit'];
 const OPTION_ACTIONS = [...SALE_ACTIONS, 'sale_phong.edit'];
 export const SALE_PATCH_FIELDS = Object.freeze(['rent_price', 'area', 'room_type', 'amenities', 'sale_note', 'sale_bonus_note', 'images', 'description']);
@@ -46,7 +54,7 @@ export function mayUseSaleAction(effective, operation, input) {
   // Without input (catalogue/service prepare), patch may be images-only.
   const keys = operation === 'patch' && !input ? [...EDIT_ACTIONS, 'sale_phong.manage_images'] : saleActionPermissions(operation, input);
   return keys.some(key => effective?.action?.includes(key)) &&
-    (!['reservation_create', 'reservation_topup'].includes(operation) || effective?.action?.includes('income_expenses.create'));
+    (!DEPOSIT_RECEIPT_OPS.includes(operation) || DEPOSIT_RECEIPT_KEYS.every(key => effective?.action?.includes(key)));
 }
 function receiptInput(input) {
   if (!domainExact(input, ['amount', 'accountId', 'voucherDate', 'name', 'description']) ||

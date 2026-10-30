@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 909,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13860,6 +13860,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-27T16:18:41.526Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030050424_hermes_sale_deposit_receipt_key_v1.sql",
+      "version": "20261030050424",
+      "name": "hermes_sale_deposit_receipt_key_v1",
+      "scheme": "timestamp14",
+      "sha256": "9f3c0ffe6e8ecfb474f0bd5d2721fa95adc620073c541c9829d0141d86f5efc6",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_sale_actions_v1"
       ]
     },
     {

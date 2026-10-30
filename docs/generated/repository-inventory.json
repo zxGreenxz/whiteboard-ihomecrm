@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1721,
-  "soFileDocBangFs": 445,
-  "tongLoiGoi": 1128,
-  "khongPhanLoaiDuoc": 504,
+  "tongSoFileTest": 1722,
+  "soFileDocBangFs": 446,
+  "tongLoiGoi": 1131,
+  "khongPhanLoaiDuoc": 506,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 62,
+      "soFile": 63,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -34,6 +34,7 @@
     "infra/hermes-broker/confirm-guard.test.mjs",
     "infra/hermes-broker/read-catalog-authority.test.mjs",
     "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
+    "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
     "scripts/__tests__/apply-reviewed-migration.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
@@ -805,6 +806,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/task-composition.test.mjs",

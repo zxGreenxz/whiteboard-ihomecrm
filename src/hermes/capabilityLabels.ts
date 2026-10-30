@@ -14,6 +14,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
   // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
   'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
+  // Khoá riêng Hermes của báo cọc / thu thêm có tiền (seed TẮT); cần cùng quyền tạo cọc và tạo thu chi.
+  'deposits.create_receipt': 'Báo cọc / thu thêm cọc có tiền (Hermes, ghi phiếu thu ngay, không có xem trước)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
@@ -27,7 +29,7 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'sale_phong.edit': 'Hermes: cập nhật thông tin Sale và chương trình có thời hạn trực tiếp; xem trước nội dung công khai',
   'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',
   'sale_phong.lock_room': 'Hermes: lock tạm 6/12/24 giờ và gỡ lock của bạn',
-  'deposits.create': 'Hermes: báo cọc/thu thêm qua phiếu CRM; cần quyền tạo thu chi và phạm vi cùng tòa',
+  'deposits.create': 'Hermes: gỡ lock phòng; báo cọc/thu thêm có tiền cần thêm khoá riêng "Báo cọc / thu thêm cọc có tiền" và quyền tạo thu chi cùng tòa',
   'deposits.edit': 'Hermes: sửa thông tin cọc hoặc gắn khách danh bạ; không hủy/hoàn tiền/ký hợp đồng',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
