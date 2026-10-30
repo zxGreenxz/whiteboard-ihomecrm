@@ -13875,18 +13875,6 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261027234414_hermes_expense_actions_activation_v1.sql",
-      "version": "20261027234414",
-      "name": "hermes_expense_actions_activation_v1",
-      "scheme": "timestamp14",
-      "sha256": "0fbb1d92cbca12f3772277688bc2713f6c81cf295a4191e7d84625e43bab285d",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
-      ]
-    },
-    {
       "path": "supabase/migrations/20261027234454_hermes_invoice_actions_activation_v1.sql",
       "version": "20261027234454",
       "name": "hermes_invoice_actions_activation_v1",
@@ -13904,6 +13892,18 @@
       "name": "hermes_task_actions_activation_v1",
       "scheme": "timestamp14",
       "sha256": "263fee11576f3d68fc897ef28e4367df475a8c5af05e374303bec1ab713d425e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030065028_hermes_expense_actions_activation_v1.sql",
+      "version": "20261030065028",
+      "name": "hermes_expense_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e70a13a4396543e684ed30356a7b9d9f084fbc551858aa10c67fc47573cb446",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

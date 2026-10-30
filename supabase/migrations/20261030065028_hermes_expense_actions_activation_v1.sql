@@ -1,10 +1,16 @@
 -- Hermes: bật thao tác ghi trang THU CHI trên production (runbook docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md mục 4–5).
 -- Thứ tự phát hành: SQL của trang đã áp (024834 → 140949), connector có danh mục Thu chi (danh mục production, có từ 3bd1313b, KHÔNG
--- cần actionPages; họ crm_expense_* cũ đã gỡ — TC1), RỒI mới áp file này; sau đó SOUL owner và canary có chủ duyệt.
+-- cần actionPages; họ crm_expense_* cũ đã gỡ — TC1), 20261030050424_hermes_sale_deposit_receipt_key_v1 đã áp và connector có
+-- SALE_DEPOSIT_RECEIPT_KEY, RỒI mới áp file này; sau đó SOUL owner và canary có chủ duyệt.
 -- Bật đúng bốn khoá registry của trang: income_expenses.create (expense.create + expense.note), income_expenses.edit (expense.edit),
 -- income_expenses.cancel (expense.cancel), income_expenses.approve_vouchers (expense.approve: duyệt / duyệt + chi).
--- income_expenses.create tắt từ 20261021113528 (Q4) để nghỉ hưu ba tool phiếu chi cũ; connector hiện hành không còn họ đó, nên bật lại
--- chỉ mở họ crm_action_*. Không đổi quyền CRM, chính sách công ty, loại trừ hay phạm vi kết nối: RPC trang vẫn giao registry ∩ trần
+-- income_expenses.create tắt từ 20261021113528 (Q4) để nghỉ hưu ba tool phiếu chi cũ (connector hiện hành không còn họ đó). Khoá này còn
+-- là điều kiện của hai tool báo cọc Sale ghi tiền một bước (crm_sale_reservation_create / _topup). Từ
+-- 20261030050424_hermes_sale_deposit_receipt_key_v1 + connector có SALE_DEPOSIT_RECEIPT_KEY, hai tool đó đòi thêm khoá riêng
+-- deposits.create_receipt (TẮT). Hai thứ đó PHẢI lên TRƯỚC file này; khi đó bật lại chỉ mở họ crm_action_* của Thu chi. Khối DO tự dừng
+-- nếu thiếu dòng registry deposits.create_receipt hoặc thân public.hermes_sale_actions_v1 không chứa chuỗi đó; connector thì kiểm theo
+-- runbook. Mốc file đặt SAU 20261030050424 để lane / dựng lại chạy đúng thứ tự (tên cũ 20261027234414, chưa áp ở đâu).
+-- Không đổi quyền CRM, chính sách công ty, loại trừ hay phạm vi kết nối: RPC trang vẫn giao registry ∩ trần
 -- công ty ∩ khoá kết nối ∩ quyền CRM thật mỗi lượt; thao tác tiền / không lùi được luôn xem trước (sàn trong mã + hermes_action_policy_floor).
 -- Trigger hermes_registry_projection_v2 chiếu lại khoá cho kết nối inherit_crm (không đổi danh tính, epoch, credential, loại trừ);
 -- kết nối legacy_allowlist giữ nguyên. Chính sách năm thao tác expense.* đã có; file này chỉ kiểm, không chèn hay sửa.
@@ -96,6 +102,18 @@ BEGIN
   IF (SELECT count(*) FROM app_private.hermes_capabilities
       WHERE capability=ANY(required_keys) AND mode='action')<>4 THEN
     RAISE EXCEPTION 'hermes_expense_activation_registry_invalid';
+  END IF;
+
+  -- Tiền điều kiện (review chéo PR #349): báo cọc Sale ghi tiền một bước phải có khoá riêng TRƯỚC khi bật income_expenses.create,
+  -- nếu không file này mở luôn crm_sale_reservation_create / _topup. Kiểm SAU khi khoá dòng registry ở trên (file lùi của
+  -- 20261030050424 giữ FOR SHARE dòng income_expenses.create nên không chen giữa được). Kiểm theo chuỗi, không ghim md5, để lượt sửa
+  -- thân hàm về sau không làm hỏng rào.
+  PERFORM 1 FROM app_private.hermes_capabilities WHERE capability='deposits.create_receipt' AND mode='action' FOR SHARE;
+  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM pg_proc p
+      WHERE p.oid=to_regprocedure('public.hermes_sale_actions_v1(jsonb,text,jsonb)')
+        AND position('deposits.create_receipt' IN p.prosrc)>0) THEN
+    RAISE EXCEPTION 'hermes_expense_activation_sale_deposit_gate_missing: áp 20261030050424_hermes_sale_deposit_receipt_key_v1 và connector có SALE_DEPOSIT_RECEIPT_KEY trước'
+      USING HINT='Thiếu chúng, bật income_expenses.create sẽ mở crm_sale_reservation_create / _topup (ghi phiếu thu một bước, không xem trước).';
   END IF;
 
   UPDATE app_private.hermes_capabilities SET enabled=true

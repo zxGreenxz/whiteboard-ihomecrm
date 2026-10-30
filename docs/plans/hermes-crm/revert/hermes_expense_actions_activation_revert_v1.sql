@@ -1,4 +1,5 @@
--- REVERT of 20261027234414_hermes_expense_actions_activation_v1.sql — prepared 28/10/2026 next to the forward file; NOT a migration
+-- REVERT of 20261030065028_hermes_expense_actions_activation_v1.sql (renamed from 20261027234414 on 30/10/2026 so it runs after
+-- 20261030050424_hermes_sale_deposit_receipt_key_v1) — prepared 28/10/2026 next to the forward file; NOT a migration
 -- (docs/plans/hermes-crm/revert/). Turns the four Thu chi registry keys back OFF: income_expenses.create, income_expenses.edit,
 -- income_expenses.cancel, income_expenses.approve_vouchers ⇒ expense.create / note / edit / cancel / approve disappear from
 -- crm_action_list for every connection (inherit_crm projection drops the keys; no epoch change). Vouchers already written stay as
