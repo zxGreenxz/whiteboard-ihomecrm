@@ -1,4 +1,4 @@
-// Frozen contracts for sixty-eight forward migrations (eight of 20261019, the B2
+// Frozen contracts for sixty-nine forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -87,6 +87,9 @@
 // Thu chi lượt 20 (27/10, G02): the expense resolve core rebuilt from the 074419 body — expense.approve keeps only UNAPPROVED vouchers when a
 // code still matches several (none left ⇒ unchanged; a user hint that matched nothing ⇒ no filter), and every ambiguous code of a batch comes
 // back in ONE unresolved result (codes joined in wanted, whole codes within the 8-candidate cap); note / edit / cancel unchanged — 20261027140949.
+// Hoá đơn J06 (30/10, HĐn TC-J06): the collect lookup _v3 rebuilt from the 181440 body and the collect step _v3 rebuilt from the 234255 body — no
+// month / invoiceNumber, two or more open invoices and the amount equal to the remaining_amount of exactly ONE of them ⇒ the lookup picks it
+// (pickedBy amount, otherOpen) and the preview says so; none / several match, or a month / number given ⇒ unchanged — 20261030045928.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -240,8 +243,8 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.job_type_building_like_v1","sourcePath":"supabase/migrations/20261023185114_hermes_name_resolve_honorific_v1.sql","sha256":"3f67de9f5126ce6bffabd0c1436a70a225805e7e7ac2ed0ae2bd37b8ac9bd47d","args":"p_organization_id uuid,p_name text"},
   {"name":"app_private.hermes_invoice_lookup_core_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"5facda5f7c6421f6748ae1fa14b4b73a1c294aab60a9cf384ec167c777dc0814","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
   {"name":"app_private.hermes_invoice_action_step_v2","sourcePath":"supabase/migrations/20261024041712_hermes_invoice_collect_v2.sql","sha256":"60bb54c30bd74be664cda74131f0b710328b85d0f13285cf98638b2b054dcd84","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
-  {"name":"app_private.hermes_invoice_lookup_core_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"fab7b30b657a12e6dbf2c240b49c58dfba1ece43c3f2c9c874aec290afd9a3e6","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
-  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261026234255_hermes_invoice_collect_commit_checks_v1.sql","sha256":"dda48c3783a2f6720f2d4bb679910667d46252d83326b1da0c36e72f862c167a","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"app_private.hermes_invoice_lookup_core_v3","sourcePath":"supabase/migrations/20261030045928_hermes_invoice_collect_amount_pick_v1.sql","sha256":"895420d90916976e3b70ef729483bee300072787db987a27845c74f79b151856","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261030045928_hermes_invoice_collect_amount_pick_v1.sql","sha256":"036dd746ad94c9d07c8e3f09a03e32f58c3655f0491296f13b9cfbb77486b065","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_invoice_edit_step_v2","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"fd80609b12520e3ce7561ab61fa49f75debc6fc8488f11d6a2472dc347e87d2c","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"public.hermes_invoice_action_v1","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"4057a692dc3e1124521a120164a97996e114d3b68ca047befb0682de4355151d","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
@@ -250,6 +253,8 @@ export const FORWARD_FUNCTIONS = [
 // The applied file is immutable, so its historical statement stays pinned here;
 // the live definition is the FORWARD_FUNCTIONS entry of the same name.
 export const FORWARD_SUPERSEDED = [
+  {"name":"app_private.hermes_invoice_lookup_core_v3","sourcePath":"supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql","sha256":"fab7b30b657a12e6dbf2c240b49c58dfba1ece43c3f2c9c874aec290afd9a3e6","args":"p_organization_id uuid,p_building_ids uuid[],p_action text,p_params jsonb"},
+  {"name":"app_private.hermes_invoice_action_step_v3","sourcePath":"supabase/migrations/20261026234255_hermes_invoice_collect_commit_checks_v1.sql","sha256":"dda48c3783a2f6720f2d4bb679910667d46252d83326b1da0c36e72f862c167a","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261027074419_hermes_expense_cashbook_first_v1.sql","sha256":"eaf267a833f706be0b34cabddd2d3f15101af5de7022c8b5e3837f3a1ea11d8d"},
   {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261024160002_hermes_w2a_invoice_room_detail_link_v1.sql","sha256":"5d4fbc1507280c3daa1af9a91dfd1d36e6df05de3db2f37760d56464c4abf5fa"},
   {"name":"app_private.hermes_w2a_catalog_v1","sourcePath":"supabase/migrations/20261022051620_hermes_w2a_invoice_reads_v1.sql","sha256":"c81b96d93376fa8126ee1812d150162f8aa4a39f488c13be5fed4cd5ad5244fa"},

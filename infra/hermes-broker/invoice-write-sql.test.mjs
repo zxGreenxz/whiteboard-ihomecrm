@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+// external-group-mount nạp broker.mjs ngược lại: nạp trước (như invoice-actions.test.mjs) — ca J06 chạy broker + runtime thật trên SQL fixture.
+import './external-group-mount.mjs';
+import { createBroker } from './broker.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
+import { createActionRuntime } from './action-runtime.mjs';
+import { INVOICE_COLLECT_KEY, invoiceCatalog } from './invoice-actions-contract.mjs';
 import { ACTION_REASON_CODES, ACTION_INPUT_REASONS } from './action-reasons.mjs';
-import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, ORG, USER, INV_A, INV_A9, INV_B, INV_D10, TK1, TK2, TT1, ROUNDING, CONTRACT, STRANGER }
-  from './invoice-write-fixture.mjs';
+import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, ORG, USER, INV_A, INV_A9, INV_B, INV_D10, TK1, TK2, TT1, ROUNDING, CONTRACT, STRANGER,
+  J06_SQL, COLLECT_BEFORE_J06 } from './invoice-write-fixture.mjs';
 
 // RPC trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 2–5, 4.1) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
 // sách thật của các migration Hermes; quyền CRM giả qua fixture_acl). Hai migration của mốc chạy THẬT (mỗi file hai lượt), hàm kế hoạch dùng
@@ -478,5 +484,182 @@ test('C07: kiểm hoãn lúc COMMIT của hàm ghi web chạy trong khối con �
     const after = await trace();
     assert.deepEqual([after.collections - before.collections, after.receipts - before.receipts, after.ops - before.ops], [1, 1, 1]);
     assert.deepEqual(await applyWith(rid(80), params, clean), applied, 'phát lại y nguyên');
+  });
+});
+
+// J06 (nghiệm thu HĐn TC-J06 trên TEST 30/10, trượt 3/3 vòng — số liệu dưới là số dựng): phòng còn hai hoá đơn mở (kỳ 10 và một kỳ cũ). Người
+// dùng nhắn "ck <đúng số còn nợ kỳ 10> rồi nha", rồi "ok ghi đi". Trước bản sửa: bản xem trước không month / invoiceNumber ⇒ name_unresolved
+// (hoá đơn mơ hồ) ⇒ bot hỏi lại kỳ, lượt "ok" mới ra bản xem trước ⇒ hai lượt không ghi. Sửa (hermes_invoice_collect_amount_pick_v1): số tiền
+// khớp ĐÚNG số còn nợ của MỘT hoá đơn mở, không hoá đơn mở nào khác khớp ⇒ tra cứu tự chọn, bản xem trước nói rõ; lượt ghi dùng đúng resolved
+// của bản xem trước (connector giữ theo confirmToken), basis băm invoiceId. Không khớp / khớp hai / đã nêu kỳ hay số hoá đơn ⇒ y như thân trước.
+test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở ⇒ tự chọn, token gắn đúng hoá đơn; khớp hai / không khớp / có kỳ ⇒ như cũ', { timeout: 300000 }, async t => {
+  const f = await invoiceSetup(t, { l14: true });
+  const { db, run, applyWith, trace } = f;
+  const ROOM_J = uid(890), [J10, J06, J11, J08, J10B] = [891, 892, 893, 894, 895].map(uid);
+  await db.query("INSERT INTO public.rooms VALUES($1,$2,$3,'P302','OCCUPIED',null)", [ROOM_J, ORG, BUILDING]);
+  const addInvoice = (id, number, status, month, due, total, kind = 'MONTHLY') => db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,
+      building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,created_at,kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12)`,
+    [id, ORG, number, status, BUILDING, ROOM_J, month, due, total, CONTRACT, `${month}-01`, kind]);
+  await addInvoice(J10, 'INV-2026-J10', 'APPROVED', '2026-10', '2026-10-30', 1150000);
+  await addInvoice(J06, 'INV-2026-J06', 'OVERDUE', '2026-06', '2026-06-30', 640500);
+  // Kỳ 11 NHÁP cùng số tiền kỳ 10: không thu được ⇒ không phải ứng viên của câu hỏi lại, không tính là "khớp".
+  await addInvoice(J11, 'INV-2026-J11', 'DRAFT', '2026-11', '2026-11-30', 1150000);
+  const params = { buildingName: 'toa a', roomName: 'p302', method: 'TK', amount: 1150000 };
+  const paid = async () => Object.fromEntries((await db.query('SELECT invoice_number n,paid_amount::bigint::text p FROM public.invoices WHERE room_id=$1 ORDER BY 1',
+    [ROOM_J])).rows.map(r => [r.n, r.p]));
+  const AUTO_J10 = 'Phòng P302: người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ 10/2026 (INV-2026-J10) vì số tiền 1.150.000đ khớp đúng số còn nợ. Nếu người dùng nói '
+    + 'kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại. Phòng còn hoá đơn chưa trả: kỳ 06/2026 · INV-2026-J06 (còn 640.500đ).';
+  const before = await trace();
+
+  await t.test('khớp đúng một (kỳ 10; kỳ 11 nháp cùng số không tính): bản xem trước tự chọn, nói rõ vì sao và hoá đơn mở còn lại; chạy thử không để lại dấu vết', async () => {
+    const preview = await run('preview', rid(90), params);
+    assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+    assert.deepEqual(preview.resolved.items, [{ invoiceId: J10, roomId: ROOM_J, roomName: 'P302', invoiceNumber: 'INV-2026-J10', billingMonth: '2026-10',
+      pickedBy: 'amount', otherOpen: 'kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)' }]);
+    assert.match(preview.preview.summary, / cho hoá đơn INV-2026-J10\. Tự chọn hoá đơn kỳ 10\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+    const [item] = preview.preview.items;
+    assert.deepEqual([item.pickedBy, item.month, item.amount, item.remainingBefore, item.remainingAfter, item.statusAfter],
+      ['amount', '10/2026', '1150000', '1150000', '0', 'PAID']);
+    assert.equal(item.text, 'Phòng P302 toà Toà A, kỳ 10/2026 (INV-2026-J10) — tự chọn vì số tiền khớp đúng số còn nợ: thu 1.150.000đ; còn nợ 1.150.000đ → 0đ: '
+      + 'ĐÃ THANH TOÁN ĐỦ.');
+    assert.deepEqual(preview.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
+    assert.deepEqual(await trace(), before, 'chạy thử không để lại lần thu, khoá idempotency, biên nhận hay tiền');
+  });
+
+  await t.test('token gắn đúng hoá đơn: tự chọn kỳ 06 (số lẻ); lượt ghi với resolved đổi sang kỳ 10 mà giữ basis của bản xem trước ⇒ state_changed, không ghi gì', async () => {
+    const odd = { ...params, amount: 640500 };
+    const preview = await run('preview', rid(91), odd);
+    assert.equal(preview.kind, 'preview', JSON.stringify(preview));
+    assert.deepEqual([preview.resolved.items[0].invoiceId, preview.resolved.items[0].pickedBy, preview.resolved.items[0].otherOpen],
+      [J06, 'amount', 'kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)']);
+    assert.match(preview.preview.summary, / cho hoá đơn INV-2026-J06\. Tự chọn hoá đơn kỳ 06\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+    const swapped = { ...preview.resolved, items: [{ ...preview.resolved.items[0], invoiceId: J10, invoiceNumber: 'INV-2026-J10', billingMonth: '2026-10' }] };
+    assert.deepEqual(await run('apply', rid(91), odd, { resolved: swapped, basis: preview.basis }), { kind: 'rejected', reason: 'state_changed' });
+    assert.deepEqual(await trace(), before, 'không lần thu, không biên nhận');
+    assert.deepEqual(await paid(), { 'INV-2026-J06': '0', 'INV-2026-J10': '0', 'INV-2026-J11': '0' });
+  });
+
+  await t.test('khớp HAI hoá đơn mở ⇒ vẫn hỏi lại, ứng viên đủ các hoá đơn mở; không tự chọn', async () => {
+    await f.rollbackCase(async () => {
+      await addInvoice(J08, 'INV-2026-J08', 'OVERDUE', '2026-08', '2026-08-31', 1150000);
+      const two = await run('preview', rid(92), params);
+      assert.deepEqual([two.kind, two.field, two.why, two.candidates.map(c => c.name)], ['needs_input', 'invoice', 'ambiguous',
+        ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)', 'kỳ 08/2026 · INV-2026-J08 (còn 1.150.000đ)', 'kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)']]);
+    });
+  });
+
+  // "Không đổi" đo bằng ĐỐI CHIẾU: cùng lời gọi, cùng dữ liệu, thân TRƯỚC J06 (tra cứu 181440 + bước ghi C07) và thân J06 phải trả y hệt. Gọi trong
+  // rollbackCase: thân cũ nạp lại trong giao dịch rồi lùi cùng ca.
+  const sameAsBefore = async cases => {
+    const outputs = async () => { const out = []; for (const [i, [, input]] of cases.entries()) out.push(await run('preview', rid(100 + i), input)); return out; };
+    const now = await outputs();
+    for (const sql of COLLECT_BEFORE_J06) await db.exec(sql);
+    const old = await outputs();
+    for (const [i, [label]] of cases.entries()) assert.deepEqual(now[i], old[i], label);
+    return now;
+  };
+  await t.test('không khớp / không số tiền / đã nêu kỳ / đã nêu số hoá đơn / phòng một hoá đơn mở / lô có kỳ ⇒ y hệt thân trước J06', async () => {
+    await f.rollbackCase(async () => {
+      const now = await sameAsBefore([
+        ['không khớp', { ...params, amount: 1000000 }],
+        ['không số tiền', { buildingName: 'toa a', roomName: 'p302', method: 'TK' }],
+        ['đã nêu kỳ', { ...params, month: '2026-10' }],
+        ['đã nêu kỳ khác (trả dư)', { ...params, month: '2026-06' }],
+        ['đã nêu số hoá đơn', { ...params, amount: 640500, invoiceNumber: 'INV-2026-J10' }],
+        ['phòng một hoá đơn mở, số tiền đúng số còn nợ', { buildingName: 'toa a', roomName: 'p102', method: 'TK', amount: 2000000 }],
+        ['lô có kỳ', { buildingName: 'toa a', method: 'TK', items: [{ roomName: 'P302', month: '2026-10', amount: 1150000 }, { roomName: 'P102', amount: 100000 }] }]]);
+      assert.deepEqual(now.map(o => o.kind), ['needs_input', 'needs_input', 'preview', 'preview', 'preview', 'preview', 'preview']);
+      assert.deepEqual([now[0].why, now[1].why], ['ambiguous', 'ambiguous'], 'không khớp / không số tiền ⇒ hỏi lại như cũ');
+      assert.ok(now.every(o => !/tự chọn|TỰ CHỌN|pickedBy/.test(JSON.stringify(o))), 'không câu "tự chọn"');
+    });
+  });
+  await t.test('đã nêu kỳ mà kỳ đó còn HAI hoá đơn mở, số tiền khớp đúng một ⇒ vẫn hỏi lại, y hệt thân trước J06', async () => {
+    await f.rollbackCase(async () => {
+      await addInvoice(J10B, 'INV-2026-J10B', 'APPROVED', '2026-10', '2026-10-30', 300000, 'EXTRA');
+      const [same] = await sameAsBefore([['cùng kỳ hai hoá đơn', { ...params, month: '2026-10' }]]);
+      assert.deepEqual([same.kind, same.why, same.candidates.map(c => c.name)], ['needs_input', 'ambiguous',
+        ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)', 'kỳ 10/2026 · INV-2026-J10B (còn 300.000đ, extra)']]);
+    });
+  });
+
+  await t.test('lô: mục không nêu kỳ, số tiền khớp đúng một ⇒ tự chọn theo mục; tóm tắt nêu phòng + kỳ; mục khác như cũ', async () => {
+    const batch = await run('preview', rid(93), { buildingName: 'toa a', method: 'TK', items: [{ roomName: 'P302', amount: 1150000 }, { roomName: 'P102', amount: 100000 }] });
+    assert.equal(batch.kind, 'preview', JSON.stringify(batch));
+    assert.deepEqual(batch.resolved.items.map(i => [i.invoiceId, i.pickedBy ?? null]), [[J10, 'amount'], [INV_B, null]]);
+    assert.deepEqual(batch.preview.items.map(i => i.pickedBy ?? null), ['amount', null]);
+    assert.match(batch.preview.summary, / cho 2 hoá đơn\. Tự chọn hoá đơn theo số tiền khớp đúng số còn nợ: phòng P302 kỳ 10\/2026\.$/);
+    assert.deepEqual(batch.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
+    assert.deepEqual(await trace(), before);
+  });
+
+  await t.test('đối chứng đột biến: bỏ điều kiện "đúng một" (khớp từ một ⇒ lấy hoá đơn đầu) ⇒ khớp hai cũng tự chọn — ca "khớp HAI" ở trên bắt được', async () => {
+    const lookup = J06_SQL.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_lookup_core_v3\([\s\S]*?\$fn\$;/)[0];
+    const exactlyOne = "IF jsonb_array_length(COALESCE(v_match,'[]'::jsonb))=1 THEN";
+    assert.equal(lookup.split(exactlyOne).length, 2, 'điều kiện "đúng một" nằm đúng một chỗ');
+    await f.rollbackCase(async () => {
+      await addInvoice(J08, 'INV-2026-J08', 'OVERDUE', '2026-08', '2026-08-31', 1150000);
+      await db.exec(lookup.replace(exactlyOne, () => "IF jsonb_array_length(COALESCE(v_match,'[]'::jsonb))>=1 THEN"));
+      const mutant = await run('preview', rid(94), params);
+      assert.deepEqual([mutant.kind, mutant.resolved?.items[0].invoiceId, mutant.resolved?.items[0].pickedBy], ['preview', J10, 'amount'],
+        'đột biến tự chọn dù hai hoá đơn cùng khớp ⇒ khẳng định "vẫn hỏi lại" của ca khớp HAI đỏ');
+    });
+    const live = (await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure")).rows[0].prosrc;
+    assert.ok(live.includes(exactlyOne), 'đột biến đã lùi: thân sống giữ điều kiện "đúng một"');
+  });
+
+  // TC-J06 qua connector: broker + runtime THẬT, cổng dịch vụ gọi đúng RPC trang trên fixture (thay adapter PostgREST). confirmToken gắn [kết nối,
+  // thao tác, params chuẩn hoá, requestId]; bản ghi chờ của token giữ resolved + basis của bản xem trước (mô hình không thấy, không gửi lại được).
+  await t.test('vòng đời qua connector: "ck … rồi nha" ⇒ xem trước tự chọn kỳ 10; "ok ghi đi" kèm confirmToken ⇒ ghi ĐÚNG hoá đơn đó; xác nhận lệch params ⇒ không ghi', async st => {
+    const scope = createDependencyScope(); st.after(() => scope.close());
+    const NOW = Date.parse('2026-10-22T03:00:00.000Z'), TOKEN = `hc_${'A'.repeat(43)}`;
+    const requests = [], previews = [], applies = [];
+    const service = {
+      async prepareAction(_token, request) { requests.push(structuredClone(request)); return Object.freeze({}); },
+      async finalizeAction() {
+        const request = requests.at(-1);
+        if (request.phase === 'apply') {
+          const out = await run('apply', request.requestId, request.params, { resolved: request.resolved, basis: request.basis });
+          applies.push(out); return out;
+        }
+        const out = await run(request.phase, request.requestId, request.params);
+        previews.push(out); return out;
+      },
+    };
+    const identity = () => ({ row: { id: uid(960), assistantId: uid(961), userId: USER, organizationId: ORG, expiresAt: NOW + 86_400_000, epoch: 1, state: 'active',
+      restrictions: { read: [], action: [INVOICE_COLLECT_KEY] } }, effective: { read: [], action: [INVOICE_COLLECT_KEY] }, isSuperadmin: false,
+    policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [uid(962)],
+    scopesByPermission: { [INVOICE_COLLECT_KEY]: { buildingIds: [BUILDING], cashbookIds: [] } } });
+    let next = 0;
+    const runtime = createActionRuntime({ catalog: invoiceCatalog(), service, clock: () => NOW, mintRequestId: () => rid(120 + ++next) });
+    const broker = createBroker({ authority: { identifyConnection: async () => ({ connectionId: uid(960) }), resolve: async () => identity(), checkUnchanged: async () => {} },
+      dependencyScope: scope, audit: async () => {}, clock: () => NOW, actions: runtime });
+    const call = async args => {
+      const result = await broker.callTool(TOKEN, 'crm_action_run', args); assert.equal(result.isError, false); return JSON.parse(result.content[0].text);
+    };
+
+    // Mô hình đổi kỳ ở lượt xác nhận (params khác bản đã xem) ⇒ token không khớp; không lệnh ghi nào xuống SQL.
+    const drafted = await call({ action: 'invoice.collect', params });
+    assert.equal(drafted.outcome, 'confirmation_required');
+    await assert.rejects(broker.callTool(TOKEN, 'crm_action_run', { action: 'invoice.collect', params: { ...params, month: '2026-06' }, requestId: drafted.requestId,
+      confirmToken: drafted.confirmToken }), error => error.code === 'confirmation_invalid');
+    assert.deepEqual(requests.map(r => r.phase), ['preview']);
+
+    // Đúng hai lượt của TC-J06.
+    const first = await call({ action: 'invoice.collect', params });
+    assert.deepEqual([first.outcome, first.applied], ['confirmation_required', false]);
+    assert.match(first.preview.summary, /Tự chọn hoá đơn kỳ 10\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+    assert.deepEqual(first.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
+    const applied = await call({ action: 'invoice.collect', params, requestId: first.requestId, confirmToken: first.confirmToken });
+    assert.equal(applied.outcome, 'applied', JSON.stringify(applied));
+    assert.deepEqual([applied.result.invoices[0].invoiceNumber, applied.result.invoices[0].month, applied.result.invoices[0].applied,
+      applied.result.invoices[0].statusAfter, applied.link], ['INV-2026-J10', '10/2026', '1150000', 'PAID', `/invoices/${J10}`]);
+    const write = requests.at(-1);
+    assert.deepEqual([write.phase, write.requestId, write.params], ['apply', first.requestId, params]);
+    assert.deepEqual([write.resolved, write.basis], [previews.at(-1).resolved, previews.at(-1).basis], 'lượt ghi mang đúng resolved + basis của bản xem trước đã đồng ý');
+    assert.equal(write.resolved.items[0].invoiceId, J10);
+    assert.deepEqual(await paid(), { 'INV-2026-J06': '0', 'INV-2026-J10': '1150000', 'INV-2026-J11': '0' });
+    const after = await trace();
+    assert.deepEqual([after.collections - before.collections, after.receipts - before.receipts], [1, 1]);
+    assert.deepEqual(await applyWith(first.requestId, params, previews.at(-1)), applies.at(-1), 'phát lại y nguyên');
   });
 });
