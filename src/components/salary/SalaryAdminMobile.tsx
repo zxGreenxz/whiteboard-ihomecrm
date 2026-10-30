@@ -18,7 +18,8 @@ import {
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
-import SalarySelfMobile from "./SalarySelfMobile";
+import SalarySelfView from "./SalarySelfView";
+import type { V5Plan } from "@/lib/salarySelfSummary";
 import { leaveActionErrorMessage, usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
 import { isUnqualifiedContractRow, type SalManager, type SalAdjustment, type SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
@@ -46,6 +47,9 @@ interface AdminMobileProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onRecompute: () => void;
+  /** Mốc chuỗi v5 của kỳ — để màn "xem như nhân viên" hiện đúng như trang Lương của tôi. */
+  selfPlan?: V5Plan | null;
+  requirePhoto?: boolean;
 }
 
 // ───────────────────────── helpers chung ─────────────────────────
@@ -342,7 +346,7 @@ function ProgressRing({ pct }: { pct: number }) {
 }
 
 // ───────────────────────── CÁ NHÂN (Member) — mở self-view y như nhân viên ─────────────────────────
-// Chạm 1 người → mở SalarySelfMobile (đúng trải nghiệm "Lương của tôi" của NV).
+// Chạm 1 người → mở SalarySelfView (đúng trải nghiệm "Lương của tôi" của NV).
 function MemberScreen({ managers, onPick }: { managers: SalManager[]; onPick: (m: SalManager) => void }) {
   const ranked = [...managers].sort((a, b) => pctOf(b) - pctOf(a));
   return (
@@ -898,8 +902,13 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
           })}
         </nav>
 
-        {/* Self-view y như nhân viên — overlay full-screen (có nav riêng Lương/Nhiệm vụ/Đầu tư) */}
-        {selfMember && <SalarySelfMobile m={selfMember} period={period} onExit={() => setSelfMember(null)} />}
+        {/* Self-view y như nhân viên — overlay full-screen (có tab riêng Thu nhập/Bảng kê/Lịch sử) */}
+        {selfMember && (
+          <div className="fixed inset-0 z-[70] overflow-y-auto bg-background">
+            <SalarySelfView m={selfMember} period={period} v5Plan={props.selfPlan ?? null} requirePhoto={props.requirePhoto}
+              phone onExit={() => setSelfMember(null)} />
+          </div>
+        )}
 
         {/* sheets */}
         {sheet?.kind === "breakdown" && (
