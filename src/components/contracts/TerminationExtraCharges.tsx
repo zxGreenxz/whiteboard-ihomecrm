@@ -150,7 +150,8 @@ export function TerminationExtraCharges({
         setMeterSources(next);
         const saved = pendingMeterRef.current;
         if (saved) {
-          if (next.length === 1 && !next[0].end && next[0].meterId === saved.meterId) {
+          const single = next.length === 1 ? next[0] : undefined;
+          if (single && !single.end && single.meterId === saved.meterId) {
             setCurrentReading(saved.currentReading);
             if (saved.startOverride !== undefined) setStartOverride(saved.startOverride);
           }
