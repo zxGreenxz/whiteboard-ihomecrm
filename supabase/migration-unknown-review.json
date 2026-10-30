@@ -962,9 +962,10 @@
       ]
     },
     "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql": {
-      "sha256": "abb00768a53bc6b2b82a2399cfea67ac3a49b499dd2c79de42f5a40c95cebea6",
+      "sha256": "71b5d0cf93d11f15f74bb70c16283d7fc33e83704c7b6d362c8de412ecb0aa44",
       "missingObjects": [
         "function:app_private.meter_capture_has_prior_invoice_v1",
+        "function:app_private.meter_capture_reading_day_v1",
         "function:app_private.meter_capture_meter_latest_v1"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
@@ -976,7 +977,7 @@
         },
         {
           "duong_dan": "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_meter_latest_v1(p_org uuid,p_meter uuid,p_before date,p_at date,p_purpose text)"
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_meter_latest_v1(p_org uuid,p_meter uuid,p_contract uuid,p_contract_start date,p_before date,p_at date,p_purpose text)"
         }
       ]
     }
