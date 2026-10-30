@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql": {
-      "sha256": "71b5d0cf93d11f15f74bb70c16283d7fc33e83704c7b6d362c8de412ecb0aa44",
+      "sha256": "7b5c651b20dc8f45b11c94da55790676298d4c8c0a6b013e634bb027134314f3",
       "missingObjects": [
         "function:app_private.meter_capture_has_prior_invoice_v1",
         "function:app_private.meter_capture_reading_day_v1",
