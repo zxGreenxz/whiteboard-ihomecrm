@@ -27,9 +27,6 @@ import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
-import { canUse } from '@/lib/permissionPages';
-import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
-import { voucherEditAction } from '@/lib/incomeExpenseRevision';
 import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
 import { RevisionCountBadges } from '@/components/income-expenses/RevisionSummary';
 import { useRevisionCounts } from '@/hooks/income-expenses/revisions';
@@ -56,14 +53,9 @@ import {
   ChevronRight,
   CornerDownRight,
 } from 'lucide-react';
-import {
-  flexCancelGate,
-  type FlexCancelEligibility,
-} from '@/hooks/income-expenses/flexMutations';
-import {
-  voucherCancelDecision,
-  type IncomeCancelEligibility,
-} from '@/hooks/income-expenses/incomeVoucherCancel';
+import type { FlexCancelEligibility } from '@/hooks/income-expenses/flexMutations';
+import type { IncomeCancelEligibility } from '@/hooks/income-expenses/incomeVoucherCancel';
+import { isReservationLeg, voucherActionAvailability } from '@/lib/voucherActionRules';
 import {
   groupReversalVouchers,
   groupNetAmount,
@@ -235,11 +227,8 @@ const IncomeExpenseList = ({
   // Finance V2 §12.1: org CANONICAL read → badge composite 4 trục (Đã Duyệt -
   // Chưa Chi / Đã Chi / Đã hoàn tác…); org LEGACY giữ nhãn cũ.
   const v2Routes = useFinanceV2Routes();
-  // Quyền chi tiết: duyệt / huỷ phiếu thu chi (fallback legacy: approve cũ,
-  // cancel rơi về edit).
-  const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
-  const canCancelVoucher = canUse(perms, 'income_expenses', 'cancel');
-  const canEditVoucher = canUse(perms, 'income_expenses', 'edit');
+  // Nút nào hiện trên dòng: MỘT bảng luật dùng chung với hộp chi tiết (src/lib/voucherActionRules.ts).
+  const viewer = { perms, isAdmin, isSuperAdmin, isCompanyOwner, currentUserId };
 
   // --- Gộp ẩn phiếu đối ứng DI SẢN vào dòng phiếu gốc (plan Đợt 5) ---
   // Trước Đợt 5 mỗi lần hoàn tác khoản thu là sinh thêm một phiếu chi riêng, nên
@@ -327,16 +316,16 @@ const IncomeExpenseList = ({
         <TableBody>
           {displayRows.map(({ voucher, reversalCount, netAmount, nested }) => {
             const isCancelled = voucher.approval_status === 'CANCELLED';
-            const isUnapproved = voucher.approval_status === 'UNAPPROVED';
-            const isCreator =
-              !!currentUserId && voucher.user_id === currentUserId;
             const isVerified = !!voucher.verified_at;
-            // Đợt 4 / ĐỢT A: server đã nói trước phiếu này huỷ được hay không.
-            // Phiếu THU hỏi reader riêng (biết LIFO + tiền thừa đã cấn đi đâu).
-            const cancelGate = voucherCancelDecision({
-              type: voucher.type,
-              income: incomeCancelEligibility?.[voucher.id],
-              flexGate: flexCancelGate(cancelEligibility?.[voucher.id]),
+            // Đợt 4 / ĐỢT A: server đã nói trước phiếu này huỷ được hay không (phiếu THU hỏi
+            // reader riêng). Danh sách không tra hồ sơ cọc từng dòng: chân xử lý cọc
+            // (reservation.*) không thao tác tiền ở đây — riêng chân hoàn cọc vẫn hoàn tác được.
+            const can = voucherActionAvailability(voucher, viewer, {
+              canonicalRead: isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)),
+              monetaryActionsAllowed: !isReservationLeg(voucher),
+              canReverseSettlementRefund: voucher.system_source === 'reservation.refund',
+              flexEligibility: cancelEligibility?.[voucher.id],
+              incomeEligibility: incomeCancelEligibility?.[voucher.id],
             });
             // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
             const layer = voucherLayer({
@@ -346,21 +335,10 @@ const IncomeExpenseList = ({
               account_is_virtual: (voucher as any).account_is_virtual,
             });
             const isInternal = layer === 'INTERNAL';
-            // Đợt 1 sửa phiếu: cây bút chỉ cho phiếu Chờ duyệt sửa được (có lưu vết)
-            // hoặc chế độ đổi cờ KQKD phiếu bỏ cọc — bỏ "Sửa phiếu (Super Admin)"
-            // trên phiếu đã duyệt/đã huỷ (bấm vào cũng không lưu được).
-            // Bổ sung chứng từ dùng thao tác riêng cho mọi trạng thái.
-            const editAction = voucherEditAction(voucher, { isAdmin, isCompanyOwner });
-            const showFullEdit = !!onEdit && editAction.show;
-            // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
-            // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
-            const showQuickEdit = canShowAnnotateAction({
-              hasHandler: !!onQuickEdit,
-              isUnapproved,
-              isAdmin,
-              isCreator,
-              canEdit: canEditVoucher,
-            });
+            // Đợt 1 sửa phiếu: cây bút chỉ cho phiếu Chờ duyệt sửa được (có lưu vết) hoặc chế độ
+            // đổi cờ KQKD phiếu bỏ cọc. Bổ sung chứng từ là thao tác riêng cho mọi trạng thái.
+            const showFullEdit = !!onEdit && can.edit.show;
+            const showQuickEdit = !!onQuickEdit && can.annotate;
 
             const rowClass = [
               isCancelled ? 'opacity-60' : '',
@@ -394,7 +372,7 @@ const IncomeExpenseList = ({
                     </Button>
 
                     {/* Đánh dấu đã kiểm */}
-                    {onVerify && !isCancelled && (
+                    {onVerify && can.verify && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -421,7 +399,7 @@ const IncomeExpenseList = ({
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onEdit!(voucher)}
-                        title={editAction.title}
+                        title={can.edit.title}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -441,8 +419,8 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Duyệt (chỉ khi nháp) */}
-                    {canApproveVoucher && isUnapproved && onApprove && (
+                    {/* Duyệt (chỉ khi nháp; quyền duyệt ở đúng toà của phiếu) */}
+                    {can.approve && onApprove && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -457,12 +435,7 @@ const IncomeExpenseList = ({
                     {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ
                         (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL.
                         Phiếu ĐÃ HOÀN TÁC cũng chi lại được (thế hệ mới, 7x). */}
-                    {onPostApproved &&
-                      !isCancelled &&
-                      voucher.approval_status === 'APPROVED' &&
-                      voucher.posting_status !== 'POSTED' &&
-                      voucher.posting_status !== 'NOT_APPLICABLE' &&
-                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                    {onPostApproved && can.postApproved && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -483,11 +456,9 @@ const IncomeExpenseList = ({
                       )}
 
                     {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ,
-                        phiếu nằm chờ Chi lại hoặc Huỷ). CUSTODIAN đúng sổ. */}
-                    {onReversePosting &&
-                      !isCancelled &&
-                      voucher.posting_status === 'POSTED' &&
-                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                        phiếu nằm chờ Chi lại hoặc Huỷ). Quyền hoàn tác ở toà; máy chủ còn đòi
+                        giữ đúng sổ. */}
+                    {onReversePosting && can.reverse && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -518,7 +489,7 @@ const IncomeExpenseList = ({
                       )}
 
                     {/* Huỷ duyệt: phiếu đã ghi nhận -> Nháp (chỉ super admin) */}
-                    {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+                    {can.unapprove && onUnapprove && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -530,23 +501,23 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Huỷ phiếu (chỉ khi chưa huỷ). Đợt 4: can_flex_cancel_v1
-                        đã trả lời trước — không bấm được thì mờ nút và NÓI RÕ
-                        vì sao, thay vì để người dùng bấm rồi ăn toast lỗi. */}
-                    {canCancelVoucher && !isCancelled && (
+                    {/* Huỷ phiếu (chỉ khi chưa huỷ). Đợt 4: máy chủ đã trả lời trước — không
+                        bấm được thì mờ nút và NÓI RÕ vì sao, thay vì để người dùng bấm rồi ăn
+                        toast lỗi; máy chủ nói không có quyền thì không bày nút. */}
+                    {can.cancel.show && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        disabled={!cancelGate.canCancel}
+                        disabled={can.cancel.disabled}
                         className={
-                          cancelGate.canCancel
+                          !can.cancel.disabled
                             ? 'h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50'
                             : 'h-8 w-8 text-zinc-300'
                         }
                         onClick={() => onCancel(voucher.id, voucher.type)}
                         title={
-                          cancelGate.reason
-                            ? `Huỷ phiếu — ${cancelGate.reason}`
+                          can.cancel.reason
+                            ? `Huỷ phiếu — ${can.cancel.reason}`
                             : 'Huỷ phiếu'
                         }
                       >
@@ -574,7 +545,7 @@ const IncomeExpenseList = ({
                         toàn bộ thông tin (kể cả hình ảnh) — sửa nhanh chỗ sai
                         rồi lưu thành phiếu mới. Thay cho "sửa" phiếu canonical
                         (bất biến sau khi tạo). */}
-                    {isCancelled && onCopy && (
+                    {can.copy && onCopy && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -587,7 +558,7 @@ const IncomeExpenseList = ({
                     )}
 
                     {/* Khôi phục phiếu đã huỷ — chỉ super admin */}
-                    {isCancelled && isSuperAdmin && onRestore && (
+                    {can.restore && onRestore && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -599,12 +570,8 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Dừng lặp lại — chỉ phiếu GỐC đang lặp, chưa huỷ */}
-                    {onStopRecurring &&
-                      voucher.repeat_cycle &&
-                      voucher.repeat_cycle !== 'NONE' &&
-                      !voucher.repeat_parent_id &&
-                      !isCancelled && (
+                    {/* Dừng lặp lại — chỉ phiếu GỐC đang lặp, chưa huỷ; quyền sửa ở toà */}
+                    {onStopRecurring && can.stopRecurring && (
                         <Button
                           variant="ghost"
                           size="icon"

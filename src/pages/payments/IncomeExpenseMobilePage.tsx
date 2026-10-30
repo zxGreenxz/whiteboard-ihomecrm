@@ -1,13 +1,5 @@
 import { usePageQuickExpense } from '@/components/income-expenses/QuickExpenseProvider';
 import { QuickExpenseButton, QuickExpenseFeedback } from '@/components/income-expenses/QuickExpenseActions';
-import { isCommissionVoucher } from "@/lib/commissionIntervention";
-import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
-import { isCommissionReasonValid } from "@/lib/commissionAudit";
-import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
-import { checkSelfApproveBeforeApprove, useSelfApproveGate } from '@/hooks/income-expenses/selfApproveGate';
-import { useQueryClient } from '@tanstack/react-query';
-import { focusFirstError } from "@/lib/formErrors";
-import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
@@ -35,47 +27,15 @@ import {
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
-import { useAccounts } from "@/hooks/useAccounts";
-import { useAuth } from "@/hooks/useAuth";
-import {
   useIncomeExpenses,
   useIncomeExpenseStats,
   useIncomeExpenseBatches,
-  useCancelIncomeExpense,
-  useRestoreIncomeExpense,
-  useApproveVoucher,
-  useCancelIncomeExpenseBatch,
   EMPTY_INCOME_EXPENSE_FILTERS,
   type IncomeExpenseWithRelations,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
-import { useReviseIncomeExpense, useRevisionCounts } from "@/hooks/income-expenses/revisions";
+import { useRevisionCounts } from "@/hooks/income-expenses/revisions";
 import { useVoucherDisplayNames } from "@/hooks/useVoucherDisplayNames";
-import { RevisionComparison } from "@/components/income-expenses/RevisionSummary";
-import {
-  accountChangeNeedsReason,
-  approvalEditPatch,
-  REVISION_REASON_MIN,
-} from "@/lib/incomeExpenseRevision";
 import { usePagination } from "@/hooks/usePagination";
 import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
@@ -90,7 +50,6 @@ import IncomeExpenseDetailMobile from "@/components/income-expenses/IncomeExpens
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
-import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
 import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExpenseBatchListMobile";
 import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
@@ -99,46 +58,15 @@ import {
   IE_APPROVAL_STATUS_PARAM_VALUES,
   IE_LAYER_PARAM_VALUES,
 } from "@/lib/notificationRoutes";
-// Finance V2 (route-aware §9.6/§12): duyệt-only / duyệt+ghi sổ atomic khi org CANONICAL.
-import {
-  useFinanceV2Routes,
-  canWriteWorkflow,
-  canWritePosting,
-  isCanonicalRead,
-} from "@/lib/financeV2Route";
+import { useFinanceV2Routes, isCanonicalRead } from "@/lib/financeV2Route";
 import {
   getVoucherDisplayState,
-  isNonCashVoucher,
   type VoucherDisplayInput,
   type VoucherTone,
 } from "@/lib/financeV2VoucherState";
-import {
-  useApproveIncomeExpenseV2,
-  useApproveAndPostIncomeExpenseV2,
-  usePostApprovedIncomeExpenseV2,
-  useReversePostingV2,
-  useCustodianCashbooksV2,
-  uploadFinanceEvidence,
-  adoptVoucherAttachmentsAsEvidence,
-  useAttachPostingEvidence,
-  useRemovePostingAttachment,
-} from "@/hooks/income-expenses/financeV2Mutations";
-import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
-import { Textarea } from "@/components/ui/textarea";
-// Đợt 4 (parity desktop): hỏi-trước can_flex_cancel_v1, writer huỷ có CAS hai
-// version, và màn lịch sử phiếu.
-import {
-  useFlexCancelEligibility,
-  useCancelVoucherFlex,
-  flexCancelGate,
-} from "@/hooks/income-expenses/flexMutations";
-// ĐỢT A (parity desktop): phiếu THU đi cửa riêng cancel_income_voucher_v1.
-import {
-  useIncomeCancelEligibility,
-  useCancelIncomeVoucher,
-  voucherCancelDecision,
-} from "@/hooks/income-expenses/incomeVoucherCancel";
-import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
+// Thao tác trên phiếu + hộp xác nhận: một bộ dùng chung với trang máy tính và Báo cáo lợi nhuận.
+import { useVoucherActions } from "@/hooks/income-expenses/useVoucherActions";
+import VoucherActionDialogs from "@/components/income-expenses/VoucherActionDialogs";
 import { groupReversalVouchers, groupNetAmount } from "@/lib/voucherReversalGrouping";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
@@ -231,74 +159,11 @@ export default function IncomeExpenseMobilePage() {
   const detailVoucher = selectedDetail.isSuccess && selectedDetail.fetchStatus === "idle" ? selectedDetail.data ?? null : null;
   const [shareVoucher, setShareVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
-  const [editingVoucher, setEditingVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  // Tạo bản sao từ phiếu đã huỷ: form TẠO MỚI prefill toàn bộ (kể cả ảnh).
-  const [copyVoucher, setCopyVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  const [quickEditVoucher, setQuickEditVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  // Đợt 4: màn đọc lại mốc lập/duyệt/huỷ + nhật ký thay đổi trước/sau.
-  const [historyVoucher, setHistoryVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isQuickOpen, setIsQuickOpen] = useState(false);
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
-  // Loại phiếu đang huỷ — phiếu mở từ CHI TIẾT ĐỢT không nằm trong danh sách lẻ
-  // nên tra ngược sẽ ra null và rơi ngược về thang huỷ CŨ.
-  const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
-  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
-  const [approveTarget, setApproveTarget] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  const approveHistoryQuery=useIncomeExpenseRevisions(approveTarget?.id);
-  const approveHistoryBlocked=!!approveTarget&&(approveHistoryQuery.isError||approveHistoryQuery.isLoading||approveHistoryQuery.data===undefined);
-  // Câu 25: hộp xác nhận là MỘT chỗ cho mọi nơi bấm Duyệt (tấm chi tiết, tấm đợt).
-  const queryClient = useQueryClient();
-  const approveSelfGate = useSelfApproveGate(approveTarget?.id, !!approveTarget);
-  // Đang hỏi lại cổng ngay trước khi lưu/duyệt ⇒ khoá các nút của hộp, không bấm hai lần lúc chờ.
-  const [selfApproveChecking, setSelfApproveChecking] = useState(false);
-  // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
-  const [approveAccountId, setApproveAccountId] = useState<string>("");
-  const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
-  // Đổi từ sổ này sang sổ khác ngay trước khi duyệt = một lần sửa phiếu ⇒ cần lý do.
-  const [approveReason, setApproveReason] = useState("");
-  // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
-  const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
-  // V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (CUSTODIAN, không cần quyền duyệt).
-  const [postApprovedTarget, setPostApprovedTarget] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  // Mô hình 2 nút: HOÀN TÁC phiếu đã ghi sổ (kèm lý do).
-  const [reverseTarget, setReverseTarget] =
-    useState<IncomeExpenseWithRelations | null>(null);
-  const [reverseReason, setReverseReason] = useState("");
-  // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
-  const [cancelReason, setCancelReason] = useState("");
-  const [reasonError, setReasonError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [blockedVoucherId, setBlockedVoucherId] = useState<string | null>(null);
-  const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
-  const [lifecycleReason, setLifecycleReason] = useState("");
-  const [batchCancelReason, setBatchCancelReason] = useState("");
-  useEffect(() => { setLifecycleReason(""); setActionError(null); }, [restoreTarget]);
-  useEffect(() => { setBatchCancelReason(""); setActionError(null); }, [cancelBatchTarget]);
-
-  // Nạp giá trị hiện tại của phiếu mỗi khi mở hộp thoại duyệt.
-  useEffect(() => {
-    if (approveTarget) {
-      setApproveAccountId(approveTarget.account_id ?? "");
-      setApproveAttachments(approveTarget.attachments ?? []);
-      setApproveReason("");
-      setActionError(null); setReasonError(null);
-    }
-  }, [approveTarget]);
-  const approveNeedsReason = !!approveTarget && (
-    accountChangeNeedsReason(approveTarget.account_id, approveAccountId) ||
-    (isCommissionVoucher(approveTarget) && Object.keys(approvalEditPatch(approveTarget, { account_id: approveAccountId, attachments: approveAttachments })).length > 0)
-  );
-  const approveReasonOk = approveReason.trim().length >= REVISION_REASON_MIN;
 
   // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
   // trật cache key); "Tải thêm" vẫn nới +50.
@@ -524,144 +389,20 @@ export default function IncomeExpenseMobilePage() {
     );
   };
 
-  const cancelMutation = useCancelIncomeExpense();
-  const flexCancelMutation = useCancelVoucherFlex();
-  const cancelIncomeMutation = useCancelIncomeVoucher();
-  const restoreMutation = useRestoreIncomeExpense();
-  const approveMutation = useApproveVoucher();
-  const reviseMutation = useReviseIncomeExpense();
-  const cancelBatchMutation = useCancelIncomeExpenseBatch();
-
-  const { data: accounts = [] } = useAccounts();
-  const { data: authUser } = useAuth();
-  // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu (xem IncomeExpensePage).
-  const attachPostingEvidence = useAttachPostingEvidence();
-  const removePostingAttachment = useRemovePostingAttachment();
-
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
 
-  // Finance V2 route-aware (§9.6): org CANONICAL → duyệt-only không đổi tồn quỹ,
-  // "Duyệt và Chi/Thu" đi qua Posting dialog atomic. Mặc định LEGACY giữ flow cũ.
+  // Route Finance V2 của tổ chức — thẻ phiếu dùng để biết phiếu có ghi sổ kiểu mới không.
   const v2Routes = useFinanceV2Routes();
-  const approveOrgRoutes = v2Routes.getOrg(
-    (approveTarget as { organization_id?: string } | null)?.organization_id ?? null,
-  );
-  const v2ApproveOnly = canWriteWorkflow(approveOrgRoutes);
-  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
-  const approveV2Mutation = useApproveIncomeExpenseV2();
-  const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
-  const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
-  const reversePostingV2Mutation = useReversePostingV2();
-  const { data: custodianBooks = [], isError: cashbookError, refetch: retryCashbooks } = useCustodianCashbooksV2(
-    approveAndPostOpen || !!postApprovedTarget,
-  );
-
-  // Đợt 4 (parity desktop) — hỏi server TRƯỚC phiếu nào huỷ được.
-  const flexCancelIds = useMemo(
-    () =>
-      vouchers
-        .filter((v) => v.approval_status !== "CANCELLED")
-        .map((v) => v.id),
-    [vouchers],
-  );
-  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
-
-  // ĐỢT A: phiếu THU hỏi reader riêng (biết LIFO đợt thu + tiền thừa đã cấn).
-  const incomeCancelIds = useMemo(
-    () =>
-      vouchers
-        .filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED")
-        .map((v) => v.id),
-    [vouchers],
-  );
-  const { data: incomeCancelEligibility } =
-    useIncomeCancelEligibility(incomeCancelIds);
-
-  // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
-  const cancelTargetVoucher = cancelTarget
-    ? vouchers.find((x) => x.id === cancelTarget) ?? null
-    : null;
-  const restoreTargetVoucher = vouchers.find(v => v.id === restoreTarget);
-  const restoreNeedsReason = !!restoreTarget && (!restoreTargetVoucher || isCommissionVoucher(restoreTargetVoucher));
-  const cancelTargetPosted =
-    (cancelTargetVoucher as { posting_status?: string | null } | null)
-      ?.posting_status === "POSTED";
-  const cancelTargetIsIncome =
-    (cancelTargetVoucher?.type ?? cancelTargetType) === "INCOME";
-  const cancelTargetGate = voucherCancelDecision({
-    type: cancelTargetVoucher?.type ?? cancelTargetType,
-    income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
-    flexGate: flexCancelGate(
-      cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
-    ),
-  });
-
-  // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước — qua
-  // cửa sửa phiếu có lưu vết (revise_pending_income_expense_v1) — rồi duyệt ĐÚNG
-  // phiên bản vừa sửa. Phiếu bị người khác sửa giữa chừng ⇒ 40001, không duyệt nhầm.
-  const handleApprove = async () => {
-    const target = approveTarget;
-    if (!target) return;
-    if (blockedVoucherId === target.id||approveHistoryBlocked) return;
-    if (!v2ApproveOnly && approveNeedsReason && !approveReasonOk) {
-      setReasonError("approveReason");
-      void focusFirstError({approveReason: "Nhập lý do thay đổi có ít nhất 8 ký tự."});
-      return;
-    }
-    setActionError(null);
-    // Câu 25: hỏi lại máy chủ NGAY TRƯỚC khi lưu đổi sổ/ảnh hay duyệt — bị chặn thì không lưu gì
-    // (bị chặn: ghi chú trong hộp tự hiện từ cache cổng; chưa kiểm được: báo lỗi ở đây).
-    setSelfApproveChecking(true);
-    const selfCheck = await checkSelfApproveBeforeApprove(queryClient, target.id);
-    setSelfApproveChecking(false);
-    if (!selfCheck.ok) {
-      if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
-      return;
-    }
-    // V2 CANONICAL: duyệt-only qua RPC canonical — KHÔNG đổi tồn quỹ, không quick-update
-    // sổ/ảnh (posting fields thuộc Posting dialog, §12.3). Không có fallback legacy.
-    if (v2ApproveOnly) {
-      try {
-        await approveV2Mutation.mutateAsync({
-          voucherId: target.id,
-          expectedApprovalVersion:
-            (target as { approval_version?: number }).approval_version ?? 1,
-        });
-        setApproveTarget(null);
-      } catch (error) {
-        setActionError(voucherFailureMessage(error, "duyệt phiếu"));
-        if (voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
-      }
-      return;
-    }
-    const patch = approvalEditPatch(target, {
-      account_id: approveAccountId || null,
-      attachments: approveAttachments,
-    });
-    let revisionSaved = false;
-    try {
-      let version = target.approval_version;
-      if (Object.keys(patch).length > 0) {
-        const revised = await reviseMutation.mutateAsync({
-          voucherId: target.id,
-          expectedApprovalVersion: version,
-          patch,
-          reason: approveReason.trim() || null,
-          silent: true,
-        });
-        version = revised.approval_version;
-        revisionSaved = revised.changed !== false;
-      }
-      await approveMutation.mutateAsync({ id: target.id, expectedApprovalVersion: version });
-      setApproveTarget(null);
-    } catch (error) {
-      setActionError(revisionSaved
-        ? `Đã lưu thay đổi của phiếu nhưng chưa hoàn tất duyệt. ${voucherFailureMessage(error, "duyệt phiếu")} Tải lại phiếu trước khi tiếp tục.`
-        : voucherFailureMessage(error, "duyệt phiếu"));
-      if (revisionSaved || voucherOutcomeUnknown(error)) setBlockedVoucherId(target.id);
-    }
-  };
+  // Mọi thao tác trên phiếu (duyệt, chi, huỷ, khôi phục…) + hộp xác nhận: một bộ dùng chung với
+  // trang máy tính và Báo cáo lợi nhuận (useVoucherActions / VoucherActionDialogs). Phiếu đang
+  // mở chi tiết cũng được hỏi máy chủ trước (nút Huỷ) dù không nằm trong trang danh sách.
+  const listVouchers = listResult?.data;
+  const actionVouchers = useMemo(() => {
+    const list = listVouchers ?? [];
+    return detailVoucher && !list.some((x) => x.id === detailVoucher.id) ? [...list, detailVoucher] : list;
+  }, [listVouchers, detailVoucher]);
+  const actions = useVoucherActions({ vouchers: actionVouchers });
 
   const activeCount = useMemo(() => countActiveFilters(filters), [filters]);
 
@@ -991,7 +732,7 @@ export default function IncomeExpenseMobilePage() {
                             aria-label="Xem lịch sử phiếu"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setHistoryVoucher(v);
+                              actions.history(v);
                             }}
                           >
                             <History size={15} />
@@ -1049,17 +790,20 @@ export default function IncomeExpenseMobilePage() {
               previewVoucher={detailPreview}
               voucher={detailVoucher ?? undefined}
               onClose={() => setDetailVoucher(null)}
-              onEdit={(v) => setEditingVoucher(v)}
-              onQuickEdit={(v) => setQuickEditVoucher(v)}
-              onApprove={(v) => setApproveTarget(v)}
-              onCancel={(id, type) => {
-                setCancelTarget(id);
-                setCancelTargetType(type ?? null);
-              }}
-              onRestore={(id) => setRestoreTarget(id)}
-              onCopy={(v) => setCopyVoucher(v)}
-              onPostApproved={(v) => setPostApprovedTarget(v)}
-              onReversePosting={(v) => setReverseTarget(v)}
+              onEdit={actions.edit}
+              onQuickEdit={actions.quickEdit}
+              onApprove={actions.approve}
+              onCancel={actions.cancel}
+              onRestore={actions.restore}
+              onCopy={actions.copy}
+              onPostApproved={actions.postApproved}
+              onReversePosting={actions.reverse}
+              onUnapprove={actions.unapprove}
+              onVerify={actions.verify}
+              onHistory={actions.history}
+              onStopRecurring={actions.stopRecurring}
+              cancelEligibility={actions.cancelEligibility}
+              incomeCancelEligibility={actions.incomeCancelEligibility}
             />
           )}
 
@@ -1069,13 +813,10 @@ export default function IncomeExpenseMobilePage() {
               quickExpense={quickExpense}
               batch={detailBatch}
               onClose={() => setDetailBatchId(null)}
-              onCancelBatch={setCancelBatchTarget}
-              onEditVoucher={(v) => setEditingVoucher(v)}
-              onCancelVoucher={(id, type) => {
-                setCancelTarget(id);
-                setCancelTargetType(type ?? null);
-              }}
-              onApproveVoucher={setApproveTarget}
+              onCancelBatch={actions.cancelBatch}
+              onEditVoucher={actions.edit}
+              onCancelVoucher={actions.cancel}
+              onApproveVoucher={actions.approve}
             />
           )}
 
@@ -1205,38 +946,6 @@ export default function IncomeExpenseMobilePage() {
         onOpenChange={setIsBatchFormOpen}
         defaultType={formType}
       />
-      <IncomeExpenseForm
-        open={!!editingVoucher}
-        onOpenChange={(o) => {
-          if (!o) setEditingVoucher(null);
-        }}
-        voucher={editingVoucher}
-      />
-      {/* Form "Tạo bản sao" từ phiếu đã huỷ — chế độ tạo mới, prefill toàn bộ */}
-      <IncomeExpenseForm
-        open={!!copyVoucher}
-        onOpenChange={(o) => {
-          if (!o) setCopyVoucher(null);
-        }}
-        voucher={null}
-        copyFrom={copyVoucher}
-        defaultType={copyVoucher?.type}
-      />
-      <IncomeExpenseQuickEditDialog
-        open={!!quickEditVoucher}
-        onOpenChange={(o) => {
-          if (!o) setQuickEditVoucher(null);
-        }}
-        voucher={quickEditVoucher}
-      />
-      {/* Đợt 4: lịch sử phiếu — dùng chung component với desktop (parity). */}
-      <VoucherHistoryDialog
-        open={!!historyVoucher}
-        onOpenChange={(o) => {
-          if (!o) setHistoryVoucher(null);
-        }}
-        voucher={historyVoucher}
-      />
       {shareVoucher && (
         <PayViaBankAppSheet
           open
@@ -1246,519 +955,9 @@ export default function IncomeExpenseMobilePage() {
           voucher={shareVoucher}
         />
       )}
-      {/* Xác nhận huỷ / duyệt */}
-      <AlertDialog
-        open={!!cancelTarget}
-        onOpenChange={(o) => {
-          if (!o) {
-            setCancelTarget(null);
-            setCancelTargetType(null);
-            setCancelReason("");
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
-            <AlertDialogDescription>
-              {cancelTargetPosted ? (
-                <>
-                  Phiếu này <b>đã {cancelTargetIsIncome ? "thu" : "chi"} tiền
-                  thật</b>. Huỷ sẽ <b>trừ thẳng khoản này khỏi tồn quỹ</b> ngay,
-                  không sinh thêm phiếu đối ứng nào trong danh sách. Phiếu
-                  chuyển <b>Đã huỷ</b> và giữ lại đầy đủ mốc lập / duyệt / huỷ
-                  cùng lý do để đối soát.
-                </>
-              ) : (
-                <>
-                  Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
-                  tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {/* ĐỢT A (giữ y hệt bản desktop): phiếu THU huỷ theo CẢ ĐỢT THU. */}
-          {cancelTargetIsIncome && cancelTargetGate.mode === "COLLECTION" && (
-            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
-              Đây là khoản thu của một hoá đơn. Huỷ sẽ gỡ <b>cả lần thu đó</b> và{" "}
-              <b>mở lại nợ trên hoá đơn</b> để thu lại.
-            </p>
-          )}
-          {cancelTargetIsIncome && cancelTargetGate.mode === "FORFEIT_PAIR" && (
-            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
-              Phiếu này là một chân của cặp cấn cọc bỏ cọc — huỷ sẽ lật{" "}
-              <b>cả hai chân</b>.
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {cancelTargetIsIncome
-              ? "Người huỷ được: chính người đã thu khoản này, chủ tổ chức, hoặc super admin."
-              : "Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của phiếu (CUSTODIAN)."}
-          </p>
-          {cancelTargetGate.reason && (
-            <p
-              className={
-                cancelTargetGate.canCancel
-                  ? "rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
-                  : "rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-700"
-              }
-            >
-              {cancelTargetGate.canCancel ? "Lưu ý: " : "Không huỷ được: "}
-              {cancelTargetGate.reason}
-            </p>
-          )}
-          {/* Đợt 4: lý do BẮT BUỘC ở mọi trạng thái — vế đánh đổi của việc cho
-              huỷ thẳng mà không sinh phiếu đối ứng. Giữ y hệt bản desktop. */}
-          <div className="space-y-1">
-            <Textarea
-              name="cancelReason"
-              aria-invalid={reasonError === "cancelReason"}
-              value={cancelReason}
-              onChange={(e) => { setCancelReason(e.target.value); setReasonError(null); }}
-              placeholder="Lý do huỷ (bắt buộc, ít nhất 8 ký tự)"
-              rows={2}
-            />
-            <p className="text-xs text-muted-foreground">
-              {reasonError === "cancelReason" && <span role="alert" className="text-destructive">Nhập lý do huỷ có ít nhất 8 ký tự. </span>}
-              Lưu cùng mốc lập / duyệt / huỷ phiếu để đối soát lại khi cần.
-            </p>
-          </div>
-          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Đóng</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={
-                blockedVoucherId === cancelTarget ||
-                !cancelTargetGate.canCancel ||
-                flexCancelMutation.isPending ||
-                cancelIncomeMutation.isPending ||
-                cancelMutation.isPending
-              }
-              onClick={async (event) => {
-                event.preventDefault();
-                if (!cancelTarget || blockedVoucherId === cancelTarget) return;
-                const reason = cancelReason.trim();
-                if (reason.length < 8) { setReasonError("cancelReason"); void focusFirstError({cancelReason:"Nhập lý do huỷ có ít nhất 8 ký tự."}); return; }
-                setActionError(null);
-                try {
-                  if (cancelTargetGate.useIncomeDoor) await cancelIncomeMutation.mutateAsync({voucherId:cancelTarget,reason});
-                  else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) await flexCancelMutation.mutateAsync({voucherId:cancelTarget,reason,expectedApprovalVersion:cancelTargetVoucher.approval_version ?? null,expectedPostingVersion:cancelTargetVoucher.posting_version ?? null});
-                  else await cancelMutation.mutateAsync({id:cancelTarget,reason});
-                  setCancelTarget(null); setCancelReason("");
-                } catch(error) {
-                  setActionError(voucherFailureMessage(error,"huỷ phiếu"));
-                  if (voucherOutcomeUnknown(error) || error instanceof VoucherPartialError) setBlockedVoucherId(cancelTarget);
-                }
-              }}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {cancelTargetPosted ? "Huỷ phiếu và cập nhật sổ quỹ" : "Huỷ phiếu"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={!!restoreTarget}
-        onOpenChange={() => setRestoreTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận khôi phục phiếu</AlertDialogTitle>
-            <AlertDialogDescription>
-              Phiếu sẽ trở lại trạng thái <b>Đã ghi nhận</b> và tính lại vào{" "}
-              <b>tồn quỹ</b>. Nếu là phiếu thu theo hoá đơn, khoản thanh toán
-              tương ứng trên hoá đơn cũng được phục hồi. Thao tác được ghi vào
-              lịch sử của phiếu.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-          {restoreNeedsReason && <CommissionReasonField id="restore-reason" label="Lý do khôi phục phiếu" value={lifecycleReason} onChange={setLifecycleReason} />}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Đóng</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={restoreMutation.isPending}
-              onClick={async event => {
-                event.preventDefault();
-                if (!restoreTarget || restoreMutation.isPending) return;
-                if (restoreNeedsReason && !isCommissionReasonValid(lifecycleReason)) { setActionError("Nhập lý do khôi phục từ 8 đến 2.000 ký tự."); return; }
-                try { await restoreMutation.mutateAsync({ id: restoreTarget, reason: restoreNeedsReason ? lifecycleReason : undefined }); setRestoreTarget(null); }
-                catch (error) { setActionError(voucherFailureMessage(error, "khôi phục phiếu")); }
-              }}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Khôi phục
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={!!approveTarget}
-        onOpenChange={(o) => {
-          if (!o) setApproveTarget(null);
-        }}
-      >
-        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
-            <AlertDialogDescription>
-              {v2ApproveOnly ? (
-                <>
-                  <b>Duyệt</b> chỉ chuyển trạng thái phê duyệt — <b>không</b> thay
-                  đổi tồn quỹ. Tiền chỉ vào/ra sổ khi thực hiện <b>Thu/Chi</b> với
-                  đủ ngày, sổ quỹ và chứng từ.
-                </>
-              ) : (
-                <>
-                  Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không còn
-                  chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          {/* Câu 25: máy chủ báo người đang xem là người lập không được tự duyệt phiếu này. */}
-          {approveSelfGate.blocked && (
-            <p
-              id="ie-self-approve-note"
-              role="note"
-              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-            >
-              {approveSelfGate.message}
-            </p>
-          )}
-
-          {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
-          {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
-
-          {!v2ApproveOnly && (
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="approve-account">Sổ quỹ</Label>
-              <Select
-                value={approveAccountId}
-                onValueChange={setApproveAccountId}
-              >
-                <SelectTrigger id="approve-account">
-                  <SelectValue placeholder="Chọn sổ quỹ" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((acc) => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Bổ sung hoặc đổi sổ quỹ ghi nhận phiếu này trước khi duyệt.
-              </p>
-            </div>
-
-            {approveNeedsReason && (
-              <div className="space-y-2">
-                <Label htmlFor="approve-reason">Lý do thay đổi trước duyệt *</Label>
-                <Textarea
-                  id="approve-reason"
-                  name="approveReason"
-                  aria-invalid={reasonError === "approveReason"}
-                  value={approveReason}
-                  onChange={(e) => { setApproveReason(e.target.value); setReasonError(null); }}
-                  rows={2}
-                  placeholder="Vì sao cần thay đổi nội dung phiếu?"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {reasonError === "approveReason" && <span role="alert" className="text-destructive">Nhập lý do thay đổi có ít nhất 8 ký tự. </span>}
-                  Đổi sổ được lưu thành một lần sửa phiếu (ít nhất {REVISION_REASON_MIN} ký tự).
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Hình ảnh đính kèm</Label>
-              <AttachmentUpload
-                attachments={approveAttachments}
-                onChange={setApproveAttachments}
-                userId={authUser?.id ?? approveTarget?.user_id ?? ""}
-              />
-            </div>
-          </div>
-          )}
-
-          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={
-                approveHistoryBlocked || approveMutation.isPending ||
-                reviseMutation.isPending ||
-                approveV2Mutation.isPending ||
-                selfApproveChecking
-              }
-            >
-              Đóng
-            </AlertDialogCancel>
-            {/* 7af: phiếu NỘI BỘ (bút toán không tiền, sổ ảo) không bao giờ được
-                chào ghi tiền vào sổ quỹ thật — chỉ còn nút "Duyệt". */}
-            {v2ApproveAndPost && !isNonCashVoucher(approveTarget) && (
-              <Button
-                variant="outline"
-                className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending || approveSelfGate.blocked || selfApproveChecking}
-                aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
-                onClick={async () => {
-                  if (!approveTarget) return;
-                  // Câu 25: kiểm trước khi mở hộp ghi sổ (hộp đó nhận chứng từ trước khi duyệt).
-                  setSelfApproveChecking(true);
-                  const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
-                  setSelfApproveChecking(false);
-                  if (!selfCheck.ok) {
-                    if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
-                    return;
-                  }
-                  setApproveAndPostOpen(true);
-                }}
-              >
-                {approveTarget?.type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
-              </Button>
-            )}
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleApprove();
-              }}
-              disabled={
-                approveMutation.isPending ||
-                reviseMutation.isPending ||
-                approveV2Mutation.isPending ||
-                blockedVoucherId === approveTarget?.id ||
-                approveSelfGate.blocked ||
-                selfApproveChecking
-              }
-              aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {approveMutation.isPending ||
-              reviseMutation.isPending ||
-              approveV2Mutation.isPending ||
-              selfApproveChecking
-                ? "Đang duyệt…"
-                : v2ApproveOnly
-                  ? "Chỉ duyệt"
-                  : "Duyệt phiếu"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Finance V2: Duyệt và Chi/Thu atomic qua Posting dialog (§12.3). */}
-      {approveTarget && (
-        <IncomeExpensePostingDialog
-          open={approveAndPostOpen}
-          onOpenChange={setApproveAndPostOpen}
-          mode="APPROVE_AND_POST"
-          voucher={{
-            subjectKind: "VOUCHER",
-            subjectId: approveTarget.id,
-            type: (approveTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
-            approvedTotal: approveTarget.total_amount ?? 0,
-            name: approveTarget.name ?? undefined,
-            defaultCashbookId: approveTarget.account_id ?? null,
-            attachments: approveTarget.attachments ?? null,
-            isCommission: isCommissionVoucher(approveTarget),
-          }}
-          capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
-          cashbookOptions={custodianBooks}
-          cashbookError={cashbookError}
-          onRetryCashbooks={retryCashbooks}
-          expectedExecutionRevision={0}
-          expectedApprovalVersion={
-            (approveTarget as { approval_version?: number }).approval_version ?? 1
-          }
-          expectedPostingVersion={
-            (approveTarget as { posting_version?: number }).posting_version ?? 1
-          }
-          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
-          onAttachEvidence={(file) =>
-            attachPostingEvidence(file, {
-              voucherId: approveTarget.id,
-              userId: authUser?.id ?? "",
-              organizationId: (approveTarget as { organization_id?: string | null })
-                .organization_id,
-            })
-          }
-          onRemoveAttachment={(url) =>
-            removePostingAttachment(approveTarget.id, url)
-          }
-          onUploadEvidence={(file) =>
-            uploadFinanceEvidence(
-              file,
-              (approveTarget as { organization_id?: string | null }).organization_id,
-            )
-          }
-          onSubmit={async (input) => {
-            await approveAndPostV2Mutation.mutateAsync(input);
-            setApproveAndPostOpen(false);
-            setApproveTarget(null);
-          }}
-          isSubmitting={approveAndPostV2Mutation.isPending}
-        />
-      )}
-
-      {/* Mô hình 2 nút: xác nhận HOÀN TÁC phiếu đã ghi sổ (kèm lý do). */}
-      <AlertDialog
-        open={!!reverseTarget}
-        onOpenChange={(o) => {
-          if (!o) {
-            setReverseTarget(null);
-            setReverseReason("");
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Hoàn tác {reverseTarget?.type === "INCOME" ? "khoản thu" : "khoản chi"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Hệ thống tạo bút toán <b>đối dấu ghi ngày hôm nay</b> — tiền{" "}
-              {reverseTarget?.type === "INCOME" ? "rời khỏi" : "trả về"} sổ{" "}
-              <b>{(reverseTarget as { account_name?: string } | null)?.account_name ?? "đã chi"}</b>,{" "}
-              <b>tồn quỹ thay đổi</b>. Phiếu chuyển sang <b>Đã hoàn tác</b> và
-              nằm chờ: có thể <b>Thu/Chi lại</b> (vd đúng sổ khác) hoặc{" "}
-              <b>Huỷ</b>. Bút toán gốc giữ nguyên trong lịch sử.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {isCommissionVoucher(reverseTarget) ? <CommissionReasonField id="reverse-reason" label="Lý do hoàn tác hoa hồng" value={reverseReason} onChange={setReverseReason} /> : <Textarea
-            value={reverseReason}
-            onChange={(e) => setReverseReason(e.target.value)}
-            placeholder="Lý do hoàn tác (ghi vào bút toán — nên nhập)"
-            rows={2}
-          />}
-          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={reversePostingV2Mutation.isPending}>
-              Đóng
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-violet-600 hover:bg-violet-700"
-              disabled={reversePostingV2Mutation.isPending}
-              onClick={async (event) => {
-                event.preventDefault();
-                if (!reverseTarget?.account_id || blockedVoucherId === reverseTarget.id) return;
-                if (isCommissionVoucher(reverseTarget) && !isCommissionReasonValid(reverseReason)) { setActionError("Nhập lý do hoàn tác hoa hồng từ 8 đến 2.000 ký tự."); return; }
-                setActionError(null);
-                try {
-                  await reversePostingV2Mutation.mutateAsync({voucherId:reverseTarget.id,cashbookId:reverseTarget.account_id,reason:reverseReason.trim() || null,isCommission:isCommissionVoucher(reverseTarget)});
-                  setReverseTarget(null); setReverseReason("");
-                } catch(error) {
-                  setActionError(voucherFailureMessage(error,"hoàn tác thu/chi"));
-                  if (voucherOutcomeUnknown(error)) setBlockedVoucherId(reverseTarget.id);
-                }
-              }}
-            >
-              Hoàn tác
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT (CUSTODIAN, không cần quyền duyệt). */}
-      {postApprovedTarget && (
-        <IncomeExpensePostingDialog
-          open={!!postApprovedTarget}
-          onOpenChange={(o) => {
-            if (!o) setPostApprovedTarget(null);
-          }}
-          mode="POST_APPROVED"
-          voucher={{
-            subjectKind: "VOUCHER",
-            subjectId: postApprovedTarget.id,
-            type: (postApprovedTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
-            approvedTotal: postApprovedTarget.total_amount ?? 0,
-            name: postApprovedTarget.name ?? undefined,
-            defaultCashbookId: postApprovedTarget.account_id ?? null,
-            attachments: postApprovedTarget.attachments ?? null,
-            isCommission: isCommissionVoucher(postApprovedTarget),
-          }}
-          capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
-          cashbookOptions={custodianBooks}
-          cashbookError={cashbookError}
-          onRetryCashbooks={retryCashbooks}
-          expectedExecutionRevision={0}
-          expectedApprovalVersion={
-            (postApprovedTarget as { approval_version?: number }).approval_version ?? 1
-          }
-          expectedPostingVersion={
-            (postApprovedTarget as { posting_version?: number }).posting_version ?? 1
-          }
-          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
-          onAttachEvidence={(file) =>
-            attachPostingEvidence(file, {
-              voucherId: postApprovedTarget.id,
-              userId: authUser?.id ?? "",
-              organizationId: (postApprovedTarget as {
-                organization_id?: string | null;
-              }).organization_id,
-            })
-          }
-          onRemoveAttachment={(url) =>
-            removePostingAttachment(postApprovedTarget.id, url)
-          }
-          onUploadEvidence={(file) =>
-            uploadFinanceEvidence(
-              file,
-              (postApprovedTarget as { organization_id?: string | null }).organization_id,
-            )
-          }
-          onSubmit={async (input) => {
-            await postApprovedV2Mutation.mutateAsync(input);
-            setPostApprovedTarget(null);
-          }}
-          isSubmitting={postApprovedV2Mutation.isPending}
-        />
-      )}
-
-      <AlertDialog
-        open={!!cancelBatchTarget}
-        onOpenChange={() => setCancelBatchTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận huỷ cả đợt</AlertDialogTitle>
-            <AlertDialogDescription>
-              Hệ thống sẽ huỷ từng phiếu trong đợt và báo số phiếu hoàn tất. Nếu một phiếu chưa huỷ được, hãy kiểm tra kết quả từng phiếu trước khi tiếp tục. Lịch sử vẫn được giữ.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
-          <CommissionReasonField id="cancel-batch-reason" label="Lý do huỷ cả đợt" value={batchCancelReason} onChange={setBatchCancelReason} />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Đóng</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async (event) => {
-                event.preventDefault();
-                if (!cancelBatchTarget || blockedVoucherId === cancelBatchTarget) return;
-                if (!isCommissionReasonValid(batchCancelReason)) { setActionError("Nhập lý do huỷ cả đợt từ 8 đến 2.000 ký tự."); return; }
-                setActionError(null);
-                try {
-                  const result = await cancelBatchMutation.mutateAsync({ batchId: cancelBatchTarget, reason: batchCancelReason });
-                  if (result.failures?.length) {
-                    setActionError(`Đã huỷ ${result.count} phiếu; ${result.failures.length} phiếu chưa hoàn tất. Kiểm tra từng phiếu trước khi thao tác tiếp.`);
-                    setBlockedVoucherId(cancelBatchTarget); return;
-                  }
-                  setCancelBatchTarget(null);
-                } catch(error) {
-                  setActionError(voucherFailureMessage(error,"huỷ đợt phiếu"));
-                  if (error instanceof VoucherPartialError || voucherOutcomeUnknown(error)) setBlockedVoucherId(cancelBatchTarget);
-                }
-              }}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Huỷ cả đợt
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Hộp xác nhận + form của mọi thao tác phiếu — một bản dùng chung với trang máy tính
+          và Báo cáo lợi nhuận (useVoucherActions). */}
+      <VoucherActionDialogs actions={actions} />
     </div>
   );
 }
