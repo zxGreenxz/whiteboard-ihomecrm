@@ -960,31 +960,6 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
-    },
-    "supabase/migrations/20261028203816_vong_doi_tien_phong_mot_nguon.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261028203816_vong_doi_tien_phong_mot_nguon.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.invoice_lifecycle_parts_v1(p_invoice_ids uuid[]) · app_private.contract_commission_vouchers_v1(p_org uuid, p_contract_ids uuid[]) · app_private.termination_refund_parts_v1(p_contract_ids uuid[]) — ba helper MỚI (sql STABLE, INVOKER, search_path rỗng, REVOKE ALL FROM PUBLIC, anon, authenticated, service_role); public.get_room_cash_lifecycle_v1 thay tại chỗ, chốt đầu ghim md5 thân 20261018052932 (a637b231…) và nghiệm thu md5 thân mới (2d935c23…); H1 thêm credit_used (thu dư của writer cũ đã dùng qua customer_credit_lots/customer_credit_applications) — chốt đầu đòi thêm ba bảng tín dụng"
-        },
-        {
-          "duong_dan": "scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs",
-          "trich_doan": "test('witness: thân mới chạy hai lượt; md5/owner/ACL khớp after; helper INVOKER/STABLE/search_path rỗng, không cho client, không khoá dòng' — PGlite chạy thật chuỗi 20260921085952 → 20261018052932 → file mới, 25/25 ca (gồm phòng T: thu dư đã dùng qua lô tín dụng — lượt áp tự trỏ không tính —, đồng nhất thức issued = paidCash + offset + debt − overpaid − creditUsed chính xác); 31 đột biến lọc/kẹp/khoá phá hoà/tín dụng và đột biến cấp EXECUTE helper cho authenticated đều bị bắt"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng ba function:app_private.* trên — sinh 29/10/2026 ngay sau khi stage file"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 28/10/2026 (vòng đời tiền phòng một nguồn: sự kiện, số tổng theo HĐ/phòng và lane Thu tiền cùng đọc ba helper), chưa đi qua lane apply — ba hàm app_private vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP; RPC public.get_room_cash_lifecycle_v1 thay tại chỗ (chữ ký, DEFINER, quyền giữ nguyên) nên không nằm trong missingObjects. Bằng chứng hiện có chỉ là PGlite (bảng, quyền, đoạn cư trú là fixture tổng hợp — KHÔNG chứng minh RLS/JWT production); CHƯA chạy test-env:thu-sql ROLLBACK trên TEST (TEST đang dành cho phiên Hermes) và chưa dry-run lane production — cả hai phải đạt trước --apply. Áp qua npm run migrate:forward SAU 20261018052932 và SAU khi web mới đã promote; sau áp merge ngay PR hồ sơ (forward succession thứ sáu của sổ retirement + ngoại lệ pinned cho 20261018052932) rồi gỡ hồ sơ này.",
-      "missingObjects": [
-        "function:app_private.invoice_lifecycle_parts_v1",
-        "function:app_private.contract_commission_vouchers_v1",
-        "function:app_private.termination_refund_parts_v1"
-      ],
-      "raSoatBoi": "Claude Code — vòng đời tiền phòng một nguồn, 29/10/2026",
-      "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a"
     }
   }
 }
