@@ -281,6 +281,9 @@ export function useSubmitExcelInvoices() {
               recorded_by: user.id,
             } as never, selectedOrganizationId));
             if (readingErr) {
+              // Đồng hồ chốt bằng QR/ảnh (trigger 55000): số tay không được lưu, tạo hoá đơn sẽ làm số đầu
+              // kỳ sau lệch và tính trùng ⇒ dừng dòng này. Lỗi khác giữ cách cũ bên dưới.
+              if (readingErr.code === '55000') throw readingErr;
               // KHÔNG chặn tạo hoá đơn, nhưng phải báo để không "mất" chỉ số âm thầm.
               console.error("Persist meter reading failed for", row.room_name, readingErr);
               readingFails.push(row.room_name);

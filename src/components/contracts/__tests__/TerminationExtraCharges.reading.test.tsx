@@ -53,11 +53,20 @@ describe('nguồn điện thanh lý đúng hợp đồng, ngày chốt và từn
     expect(electric()[0]).toMatchObject({ amount: 0, meter_source: { meterId: id(4), sortOrder: 0 } });
     expect(electric()[1]).toMatchObject({ amount: 42000, meter_source: { meterId: id(5), sortOrder: 1 } });
   });
-  it('resolver lỗi và phòng không có đồng hồ ACTIVE thì chặn quyết toán, không lấy số đầu hợp đồng làm dự phòng', async () => {
+  it('resolver lỗi và phòng không có đồng hồ ACTIVE thì như resolver trả rỗng: không có dòng điện, không lấy số đầu hợp đồng', async () => {
     api.resolve.mockRejectedValue(new Error('Không tải được nguồn chỉ số')); show();
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Không tải được nguồn'));
-    expect(valid).toHaveBeenLastCalledWith(false); expect(electric()).toEqual([]);
+    await waitFor(() => expect(screen.getByText(/Phòng chưa có đồng hồ điện đang dùng/)).toBeTruthy());
+    expect(api.meter).toHaveBeenCalledWith(id(2)); expect(screen.queryByRole('alert')).toBeNull();
+    expect(valid).toHaveBeenLastCalledWith(true); expect(electric()).toEqual([]);
     expect(screen.queryByTitle('Số điện đầu Đồng hồ 4')).toBeNull();
+  });
+  it('số đầu nhập âm bị chặn, không tính tiền điện', async () => {
+    api.resolve.mockResolvedValue([manualMeter()]); api.latest.mockResolvedValue({ value: 3931, readingDate: '2026-09-30' }); show();
+    await waitFor(() => expect((screen.getByTitle('Số điện đầu Đồng hồ 4') as HTMLInputElement).value).toBe('3931'));
+    fireEvent.change(screen.getByTitle('Số điện đầu Đồng hồ 4'), { target: { value: '-5' } });
+    fireEvent.change(screen.getByTitle('Số điện cuối Đồng hồ 4'), { target: { value: '3950' } });
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Số đầu không được âm'));
+    expect(valid).toHaveBeenLastCalledWith(false); expect(electric()).toEqual([]);
   });
   it('thiếu số một trong nhiều đồng hồ chặn quyết toán, không bỏ qua đồng hồ đó', async () => {
     api.resolve.mockResolvedValue([source(), { ...source(5), end: null, issues: ['MISSING_END'] }]); show();
