@@ -100,7 +100,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 10,
+      "version": 11,
       "verifyJwt": true,
       "callers": []
     },
