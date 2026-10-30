@@ -8,7 +8,7 @@ import { createActionRuntime } from './action-runtime.mjs';
 import { INVOICE_COLLECT_KEY, invoiceCatalog } from './invoice-actions-contract.mjs';
 import { ACTION_REASON_CODES, ACTION_INPUT_REASONS } from './action-reasons.mjs';
 import { invoiceSetup, uid, rid, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, CASHBOOK, ORG, USER, INV_A, INV_A9, INV_B, INV_D10, TK1, TK2, TT1, ROUNDING, CONTRACT, STRANGER,
-  J06_SQL, COLLECT_BEFORE_J06 } from './invoice-write-fixture.mjs';
+  ROOM4, J06_SQL, COLLECT_BEFORE_J06 } from './invoice-write-fixture.mjs';
 
 // RPC trang Hoá đơn (Đợt 3 Mốc 3, HOA-DON-THAO-TAC-GHI.md mục 2–5, 4.1) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính
 // sách thật của các migration Hermes; quyền CRM giả qua fixture_acl). Hai migration của mốc chạy THẬT (mỗi file hai lượt), hàm kế hoạch dùng
@@ -495,7 +495,7 @@ test('C07: kiểm hoãn lúc COMMIT của hàm ghi web chạy trong khối con �
 test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở ⇒ tự chọn, token gắn đúng hoá đơn; khớp hai / không khớp / có kỳ ⇒ như cũ', { timeout: 300000 }, async t => {
   const f = await invoiceSetup(t, { l14: true });
   const { db, run, applyWith, trace } = f;
-  const ROOM_J = uid(890), [J10, J06, J11, J08, J10B] = [891, 892, 893, 894, 895].map(uid);
+  const ROOM_J = uid(890), [J10, J06, J11, J08, J10B, J09, J08X, J07, D08] = [891, 892, 893, 894, 895, 896, 897, 898, 899].map(uid);
   await db.query("INSERT INTO public.rooms VALUES($1,$2,$3,'P302','OCCUPIED',null)", [ROOM_J, ORG, BUILDING]);
   const addInvoice = (id, number, status, month, due, total, kind = 'MONTHLY') => db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,
       building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,created_at,kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12)`,
@@ -507,19 +507,24 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
   const params = { buildingName: 'toa a', roomName: 'p302', method: 'TK', amount: 1150000 };
   const paid = async () => Object.fromEntries((await db.query('SELECT invoice_number n,paid_amount::bigint::text p FROM public.invoices WHERE room_id=$1 ORDER BY 1',
     [ROOM_J])).rows.map(r => [r.n, r.p]));
-  const AUTO_J10 = 'Phòng P302: người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ 10/2026 (INV-2026-J10) vì số tiền 1.150.000đ khớp đúng số còn nợ. Nếu người dùng nói '
-    + 'kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại. Phòng còn hoá đơn chưa trả: kỳ 06/2026 · INV-2026-J06 (còn 640.500đ).';
+  // Một cảnh báo cỡ cố định (nối sau cảnh báo của kế hoạch); danh sách hoá đơn mở còn lại ở câu tóm tắt / items[].otherOpen (không trần 300).
+  const AUTO_J10 = 'Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ 10/2026 (INV-2026-J10) của phòng P302 vì số tiền khớp đúng số còn nợ. Nếu người dùng nói '
+    + 'kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại.';
+  const AUTO_BATCH_1 = 'Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn theo số tiền khớp đúng số còn nợ cho 1 mục (xem tóm tắt). Nếu người dùng nói kỳ / hoá đơn '
+    + 'khác: gọi lại kèm month hoặc invoiceNumber trong mục đó để xem trước lại.';
+  const OTHERS_J10 = ['kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)'];
   const before = await trace();
 
   await t.test('khớp đúng một (kỳ 10; kỳ 11 nháp cùng số không tính): bản xem trước tự chọn, nói rõ vì sao và hoá đơn mở còn lại; chạy thử không để lại dấu vết', async () => {
     const preview = await run('preview', rid(90), params);
     assert.equal(preview.kind, 'preview', JSON.stringify(preview));
     assert.deepEqual(preview.resolved.items, [{ invoiceId: J10, roomId: ROOM_J, roomName: 'P302', invoiceNumber: 'INV-2026-J10', billingMonth: '2026-10',
-      pickedBy: 'amount', otherOpen: 'kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)' }]);
-    assert.match(preview.preview.summary, / cho hoá đơn INV-2026-J10\. Tự chọn hoá đơn kỳ 10\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+      pickedBy: 'amount', otherOpen: OTHERS_J10, otherOpenCount: 1 }]);
+    assert.ok(preview.preview.summary.endsWith(' cho hoá đơn INV-2026-J10. Tự chọn hoá đơn kỳ 10/2026 vì số tiền khớp đúng số còn nợ; phòng còn 1 hoá đơn '
+      + 'chưa trả khác: kỳ 06/2026 · INV-2026-J06 (còn 640.500đ).'), preview.preview.summary);
     const [item] = preview.preview.items;
-    assert.deepEqual([item.pickedBy, item.month, item.amount, item.remainingBefore, item.remainingAfter, item.statusAfter],
-      ['amount', '10/2026', '1150000', '1150000', '0', 'PAID']);
+    assert.deepEqual([item.pickedBy, item.otherOpen, item.otherOpenCount, item.month, item.amount, item.remainingBefore, item.remainingAfter, item.statusAfter],
+      ['amount', OTHERS_J10, 1, '10/2026', '1150000', '1150000', '0', 'PAID']);
     assert.equal(item.text, 'Phòng P302 toà Toà A, kỳ 10/2026 (INV-2026-J10) — tự chọn vì số tiền khớp đúng số còn nợ: thu 1.150.000đ; còn nợ 1.150.000đ → 0đ: '
       + 'ĐÃ THANH TOÁN ĐỦ.');
     assert.deepEqual(preview.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
@@ -530,9 +535,10 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     const odd = { ...params, amount: 640500 };
     const preview = await run('preview', rid(91), odd);
     assert.equal(preview.kind, 'preview', JSON.stringify(preview));
-    assert.deepEqual([preview.resolved.items[0].invoiceId, preview.resolved.items[0].pickedBy, preview.resolved.items[0].otherOpen],
-      [J06, 'amount', 'kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)']);
-    assert.match(preview.preview.summary, / cho hoá đơn INV-2026-J06\. Tự chọn hoá đơn kỳ 06\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+    assert.deepEqual([preview.resolved.items[0].invoiceId, preview.resolved.items[0].pickedBy, preview.resolved.items[0].otherOpen, preview.resolved.items[0].otherOpenCount],
+      [J06, 'amount', ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)'], 1]);
+    assert.ok(preview.preview.summary.endsWith(' cho hoá đơn INV-2026-J06. Tự chọn hoá đơn kỳ 06/2026 vì số tiền khớp đúng số còn nợ; phòng còn 1 hoá đơn '
+      + 'chưa trả khác: kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ).'), preview.preview.summary);
     const swapped = { ...preview.resolved, items: [{ ...preview.resolved.items[0], invoiceId: J10, invoiceNumber: 'INV-2026-J10', billingMonth: '2026-10' }] };
     assert.deepEqual(await run('apply', rid(91), odd, { resolved: swapped, basis: preview.basis }), { kind: 'rejected', reason: 'state_changed' });
     assert.deepEqual(await trace(), before, 'không lần thu, không biên nhận');
@@ -545,6 +551,34 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
       const two = await run('preview', rid(92), params);
       assert.deepEqual([two.kind, two.field, two.why, two.candidates.map(c => c.name)], ['needs_input', 'invoice', 'ambiguous',
         ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)', 'kỳ 08/2026 · INV-2026-J08 (còn 1.150.000đ)', 'kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)']]);
+    });
+  });
+
+  await t.test('hoá đơn có nợ đã kéo sang kỳ sau cùng số tiền KHÔNG tính khớp (chỉ hoá đơn còn nợ thực) ⇒ tự chọn hoá đơn mở duy nhất khớp', async () => {
+    await f.rollbackCase(async () => {
+      // P104: kỳ 09 (INV-D-09, 1.000.000) đã kéo sang kỳ 10 (INV-D-10, 2.500.000) — #267; thêm kỳ 08 còn nợ đúng 1.000.000.
+      await db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,
+        contract_id,created_at) VALUES($1,$2,'INV-D-08','OVERDUE',$3,$4,'2026-08','2026-08-31',1000000,0,$5,'2026-08-01')`, [D08, ORG, BUILDING, ROOM4, CONTRACT]);
+      const carried = await run('preview', rid(95), { buildingName: 'toa a', roomName: 'p104', method: 'TK', amount: 1000000 });
+      assert.equal(carried.kind, 'preview', JSON.stringify(carried));
+      assert.deepEqual([carried.resolved.items[0].invoiceId, carried.resolved.items[0].pickedBy, carried.resolved.items[0].otherOpen, carried.resolved.items[0].otherOpenCount],
+        [D08, 'amount', ['kỳ 10/2026 · INV-D-10 (còn 2.500.000đ)'], 1]);
+    });
+  });
+
+  await t.test('phòng 5 hoá đơn mở: otherOpen tối đa 3 nhãn (khuôn ứng viên, có loại hoá đơn) + tổng số; tóm tắt nêu "…"; cảnh báo cỡ cố định ≤ 300', async () => {
+    await f.rollbackCase(async () => {
+      await addInvoice(J09, 'INV-2026-J09', 'OVERDUE', '2026-09', '2026-09-30', 870000);
+      await addInvoice(J08X, 'INV-2026-J08X', 'OVERDUE', '2026-08', '2026-08-31', 300000, 'EXTRA');
+      await addInvoice(J07, 'INV-2026-J07', 'OVERDUE', '2026-07', '2026-07-31', 455000);
+      const many = await run('preview', rid(96), params);
+      assert.equal(many.kind, 'preview', JSON.stringify(many));
+      const others = ['kỳ 09/2026 · INV-2026-J09 (còn 870.000đ)', 'kỳ 08/2026 · INV-2026-J08X (còn 300.000đ, extra)', 'kỳ 07/2026 · INV-2026-J07 (còn 455.000đ)'];
+      assert.deepEqual([many.resolved.items[0].invoiceId, many.resolved.items[0].otherOpen, many.resolved.items[0].otherOpenCount], [J10, others, 4]);
+      assert.deepEqual([many.preview.items[0].otherOpen, many.preview.items[0].otherOpenCount], [others, 4]);
+      assert.ok(many.preview.summary.endsWith(`; phòng còn 4 hoá đơn chưa trả khác: ${others.join(', ')}, ….`), many.preview.summary);
+      assert.deepEqual(many.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
+      assert.ok(many.warnings.every(w => w.length <= 300));
     });
   });
 
@@ -567,9 +601,10 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
         ['đã nêu kỳ khác (trả dư)', { ...params, month: '2026-06' }],
         ['đã nêu số hoá đơn', { ...params, amount: 640500, invoiceNumber: 'INV-2026-J10' }],
         ['phòng một hoá đơn mở, số tiền đúng số còn nợ', { buildingName: 'toa a', roomName: 'p102', method: 'TK', amount: 2000000 }],
-        ['lô có kỳ', { buildingName: 'toa a', method: 'TK', items: [{ roomName: 'P302', month: '2026-10', amount: 1150000 }, { roomName: 'P102', amount: 100000 }] }]]);
-      assert.deepEqual(now.map(o => o.kind), ['needs_input', 'needs_input', 'preview', 'preview', 'preview', 'preview', 'preview']);
-      assert.deepEqual([now[0].why, now[1].why], ['ambiguous', 'ambiguous'], 'không khớp / không số tiền ⇒ hỏi lại như cũ');
+        ['lô có kỳ', { buildingName: 'toa a', method: 'TK', items: [{ roomName: 'P302', month: '2026-10', amount: 1150000 }, { roomName: 'P102', amount: 100000 }] }],
+        ['số hoá đơn lạ, số tiền khớp một hoá đơn', { ...params, invoiceNumber: 'INV-X-99' }]]);
+      assert.deepEqual(now.map(o => o.kind), ['needs_input', 'needs_input', 'preview', 'preview', 'preview', 'preview', 'preview', 'needs_input']);
+      assert.deepEqual([now[0].why, now[1].why, now[7].why], ['ambiguous', 'ambiguous', 'not_visible'], 'không khớp / không số tiền / số hoá đơn lạ ⇒ hỏi lại như cũ');
       assert.ok(now.every(o => !/tự chọn|TỰ CHỌN|pickedBy/.test(JSON.stringify(o))), 'không câu "tự chọn"');
     });
   });
@@ -587,8 +622,9 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     assert.equal(batch.kind, 'preview', JSON.stringify(batch));
     assert.deepEqual(batch.resolved.items.map(i => [i.invoiceId, i.pickedBy ?? null]), [[J10, 'amount'], [INV_B, null]]);
     assert.deepEqual(batch.preview.items.map(i => i.pickedBy ?? null), ['amount', null]);
+    assert.deepEqual(batch.preview.items.map(i => i.otherOpen ?? null), [OTHERS_J10, null]);
     assert.match(batch.preview.summary, / cho 2 hoá đơn\. Tự chọn hoá đơn theo số tiền khớp đúng số còn nợ: phòng P302 kỳ 10\/2026\.$/);
-    assert.deepEqual(batch.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
+    assert.deepEqual(batch.warnings, [DEFAULT_BOOK_WARNING, AUTO_BATCH_1]);
     assert.deepEqual(await trace(), before);
   });
 
@@ -647,7 +683,8 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     // Đúng hai lượt của TC-J06.
     const first = await call({ action: 'invoice.collect', params });
     assert.deepEqual([first.outcome, first.applied], ['confirmation_required', false]);
-    assert.match(first.preview.summary, /Tự chọn hoá đơn kỳ 10\/2026 vì số tiền khớp đúng số còn nợ\.$/);
+    assert.ok(first.preview.summary.endsWith('Tự chọn hoá đơn kỳ 10/2026 vì số tiền khớp đúng số còn nợ; phòng còn 1 hoá đơn chưa trả khác: '
+      + 'kỳ 06/2026 · INV-2026-J06 (còn 640.500đ).'), first.preview.summary);
     assert.deepEqual(first.warnings, [DEFAULT_BOOK_WARNING, AUTO_J10]);
     const applied = await call({ action: 'invoice.collect', params, requestId: first.requestId, confirmToken: first.confirmToken });
     assert.equal(applied.outcome, 'applied', JSON.stringify(applied));

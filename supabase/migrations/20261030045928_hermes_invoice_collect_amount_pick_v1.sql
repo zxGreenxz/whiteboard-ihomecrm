@@ -6,13 +6,15 @@
 -- (1) app_private.hermes_invoice_lookup_core_v3: THAY thân 20261024181440 (đang chạy ở TEST và production, md5 2203bcfca0c71ea443459e8ecb488d97) bằng
 --     đúng thân đó + tự chọn theo số tiền khi đủ cả bốn: không month / invoiceNumber; phòng còn từ hai hoá đơn mở (đúng tập ứng viên của
 --     câu hỏi lại: thu được, còn nợ thực, nợ chưa kéo sang kỳ sau); số tiền bằng ĐÚNG remaining_amount của một hoá đơn mở; không hoá đơn
---     mở nào khác cũng khớp. Mục đã giải mang pickedBy = amount và otherOpen (tối đa 3 hoá đơn mở còn lại, nhãn như ứng viên). Không khớp /
---     khớp từ hai ⇒ hỏi lại như cũ; đã nêu kỳ (kể cả hai hoá đơn còn nợ cùng kỳ) hay số hoá đơn ⇒ không đổi. Lô: theo amount của từng mục.
+--     mở nào khác cũng khớp. Mục đã giải mang pickedBy = amount, otherOpen (tối đa 3 nhãn hoá đơn mở còn lại, khuôn như ứng viên) và
+--     otherOpenCount. Không khớp / khớp từ hai ⇒ hỏi lại như cũ; đã nêu kỳ (kể cả hai hoá đơn còn nợ cùng kỳ) hay số hoá đơn ⇒ không đổi.
+--     Lô: theo amount của từng mục; danh sách mục giữ đúng thứ tự (WITH ORDINALITY).
 -- (2) app_private.hermes_invoice_action_step_v3: THAY thân 20261026234255 (C07, đang chạy ở TEST và production, md5 5569ec5b424476d960bc83a412a4e34a)
---     bằng đúng thân đó, chỉ đổi khối bản xem trước: mục tự chọn ⇒ nhãn dòng "— tự chọn vì số tiền khớp đúng số còn nợ", items[].pickedBy,
---     một cảnh báo (hoá đơn đã chọn, vì sao, hoá đơn mở còn lại, chọn lại bằng month / invoiceNumber) và câu tóm tắt "Tự chọn hoá đơn kỳ
---     MM/YYYY vì số tiền khớp đúng số còn nợ.". Lượt ghi không đổi và không tra cứu lại: dùng đúng resolved của bản xem trước (connector giữ
---     theo confirmToken, mô hình không gửi lại được), basis băm cả invoiceId ⇒ lượt ghi không trôi sang hoá đơn khác (lệch ⇒ state_changed).
+--     bằng đúng thân đó, chỉ đổi khối bản xem trước: mục tự chọn ⇒ nhãn dòng "— tự chọn vì số tiền khớp đúng số còn nợ", items[].pickedBy /
+--     otherOpen / otherOpenCount, câu tóm tắt "Tự chọn hoá đơn kỳ MM/YYYY vì số tiền khớp đúng số còn nợ; phòng còn N hoá đơn chưa trả khác: …"
+--     (lô: phòng + kỳ từng mục) và MỘT cảnh báo cỡ cố định (chọn lại bằng month / invoiceNumber) nối sau cảnh báo của kế hoạch. Lượt ghi không
+--     đổi và không tra cứu lại: dùng đúng resolved của bản xem trước (connector giữ theo confirmToken, mô hình không gửi lại được), basis băm
+--     cả invoiceId ⇒ lượt ghi không trôi sang hoá đơn khác (lệch ⇒ state_changed).
 -- Chữ ký, kiểu trả về, chủ, ACL, khoá NOWAIT, basis và vỏ public.hermes_invoice_action_v1 (SQL-standard, gắn OID) không đổi. Không mã / khuôn
 -- mới (preview là dữ liệu tự do, cảnh báo ≤ 300 ký tự) ⇒ áp độc lập với connector. Không ghi dữ liệu nghiệp vụ. Idempotent ($requires$ nhận
 -- thân cũ hoặc thân mới của từng hàm; CREATE OR REPLACE); khối kiểm cuối chỉ đọc catalog. Áp SAU 20261026234255.
@@ -29,9 +31,9 @@ BEGIN
     OR to_regprocedure('app_private.hermes_vnd_text_v1(numeric)') IS NULL
     -- Tra cứu lượt 14 (20261024181440) và bước ghi C07 (20261026234255) đang chạy, hoặc chính thân của file này (chạy lại); md5 bỏ CR.
     OR (SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure)
-      NOT IN ('2203bcfca0c71ea443459e8ecb488d97','85e8db6e2ad475c8d8a0b1258f083ed1')
+      NOT IN ('2203bcfca0c71ea443459e8ecb488d97','e4aa9f984d19c0f97ef9ebfef08baaa5')
     OR (SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid='app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure)
-      NOT IN ('5569ec5b424476d960bc83a412a4e34a','1d18ed834a9531f7d6f9a77b524e9a16') THEN
+      NOT IN ('5569ec5b424476d960bc83a412a4e34a','c106786943309e524b6038d6be09c6e6') THEN
     RAISE EXCEPTION 'hermes_invoice_j06_dependency_invalid'; END IF;
 END $requires$;
 
@@ -41,7 +43,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn
 DECLARE
   v_method text; v_entries jsonb; v_e jsonb; v_name jsonb; v_building uuid; v_building_name text; v_room uuid; v_room_name text; v_rows jsonb;
   v_pick jsonb; v_open jsonb; v_out jsonb:='[]'::jsonb; v_receiving jsonb; v_list jsonb; v_hits jsonb; v_account uuid; v_wanted text;
-  v_number text; v_label text; v_key text; v_book_method text; v_amount numeric; v_match jsonb; v_auto boolean; v_others text;
+  v_number text; v_label text; v_key text; v_book_method text; v_amount numeric; v_match jsonb; v_auto boolean; v_others jsonb; v_others_n int;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'hermes_invoice_lookup_denied' USING ERRCODE='42501'; END IF;
   IF p_organization_id IS NULL OR p_building_ids IS NULL OR p_action IS DISTINCT FROM 'invoice.collect' OR p_params IS NULL OR jsonb_typeof(p_params)<>'object' THEN
@@ -53,9 +55,10 @@ BEGIN
   IF v_method NOT IN ('TK','TT') OR (p_params ? 'roomName')=(p_params ? 'items') OR (p_params ? 'items' AND (p_params ? 'amount' OR p_params ? 'invoiceNumber'))
     OR (p_params ? 'items' AND (jsonb_typeof(p_params->'items')<>'array' OR jsonb_array_length(p_params->'items') NOT BETWEEN 1 AND 10)) THEN
     RETURN jsonb_build_object('status','rejected','reason','invalid_params'); END IF;
-  -- J06: số tiền của từng mục (lô: amount của mục; một phòng: amount chung) đi cùng mục để tự chọn hoá đơn theo số tiền.
-  v_entries:=CASE WHEN p_params ? 'items' THEN (SELECT jsonb_agg(jsonb_build_object('roomName',e->>'roomName','month',COALESCE(e->>'month',p_params->>'month'),
-        'invoiceNumber',e->>'invoiceNumber','amount',e->'amount')) FROM jsonb_array_elements(p_params->'items') e)
+  -- J06: số tiền của từng mục (lô: amount của mục; một phòng: amount chung) đi cùng mục để tự chọn hoá đơn theo số tiền; lô giữ đúng thứ tự
+  -- mục (bước ghi ghép amount theo chỉ số mục).
+  v_entries:=CASE WHEN p_params ? 'items' THEN (SELECT jsonb_agg(jsonb_build_object('roomName',x.e->>'roomName','month',COALESCE(x.e->>'month',p_params->>'month'),
+        'invoiceNumber',x.e->>'invoiceNumber','amount',x.e->'amount') ORDER BY x.n) FROM jsonb_array_elements(p_params->'items') WITH ORDINALITY x(e,n))
     ELSE jsonb_build_array(jsonb_build_object('roomName',p_params->>'roomName','month',p_params->>'month','invoiceNumber',p_params->>'invoiceNumber',
       'amount',p_params->'amount')) END;
   -- Lượt 14 (nghiệm thu C3c): toà KHÔNG nêu ⇒ một phòng giải trong cả phạm vi được ghi (phòng duy nhất quyết định toà); lô cần toà.
@@ -81,7 +84,7 @@ BEGIN
     SELECT jsonb_agg(r ORDER BY (r->>'row_no')::int) INTO v_open FROM jsonb_array_elements(v_rows) r
       WHERE r->>'status' IN ('APPROVED','PARTIAL_PAID','OVERDUE') AND (r->>'effective_outstanding')::numeric>0
         AND (r->>'carried_out_amount')::numeric=0;
-    v_auto:=false; v_others:=NULL;
+    v_auto:=false; v_others:='[]'::jsonb; v_others_n:=0;
     IF v_number IS NOT NULL THEN
       -- Người dùng chọn đích danh bằng số hoá đơn (từ ứng viên của lần hỏi lại).
       SELECT r INTO v_pick FROM jsonb_array_elements(v_rows) r WHERE upper(btrim(r->>'invoice_number'))=v_number LIMIT 1;
@@ -95,17 +98,20 @@ BEGIN
             AND (r->>'remaining_amount')::numeric>0 ORDER BY (r->>'row_no')::int LIMIT 1),v_rows->0) END;
       -- J06 (nghiệm thu HĐn TC-J06): còn ≥ 2 hoá đơn mở (v_pick trống — đúng tập ứng viên của câu hỏi lại), người dùng chưa nêu kỳ / số hoá
       -- đơn, số tiền khớp ĐÚNG số còn nợ (remaining_amount) của MỘT hoá đơn mở và không hoá đơn mở nào khác cũng khớp ⇒ chọn hoá đơn đó
-      -- (pickedBy amount; bản xem trước nói rõ, kèm ≤ 3 hoá đơn mở còn lại). Không khớp / khớp từ hai ⇒ hỏi lại như cũ.
+      -- (pickedBy amount; bản xem trước nói rõ). Không khớp / khớp từ hai ⇒ hỏi lại như cũ.
       v_amount:=CASE WHEN jsonb_typeof(v_e->'amount')='number' THEN (v_e->>'amount')::numeric END;
       IF v_pick IS NULL AND NULLIF(v_e->>'month','') IS NULL AND v_amount>0 THEN
         SELECT jsonb_agg(r ORDER BY (r->>'row_no')::int) INTO v_match FROM jsonb_array_elements(COALESCE(v_open,'[]'::jsonb)) r
           WHERE (r->>'remaining_amount')::numeric=v_amount;
         IF jsonb_array_length(COALESCE(v_match,'[]'::jsonb))=1 THEN
           v_pick:=v_match->0; v_auto:=true;
-          SELECT string_agg(x.label,', ' ORDER BY x.n) INTO v_others FROM (SELECT (r->>'row_no')::int n,'kỳ '||to_char(to_date(r->>'billing_month','YYYY-MM'),'MM/YYYY')
-              ||COALESCE(' · '||(r->>'invoice_number'),'')||' (còn '||replace(to_char(round((r->>'remaining_amount')::numeric),'FM999,999,999,999,999'),',','.')||'đ)' label
-            FROM jsonb_array_elements(v_open) r WHERE r->>'invoice_id' IS DISTINCT FROM v_pick->>'invoice_id' ORDER BY 1 LIMIT 3) x;
-          IF jsonb_array_length(v_open)>4 THEN v_others:=v_others||', …'; END IF;
+          -- Hoá đơn mở còn lại: tối đa 3 nhãn (khuôn như ứng viên của câu hỏi lại) + tổng số.
+          SELECT COALESCE(jsonb_agg(x.label ORDER BY x.n) FILTER (WHERE x.k<=3),'[]'::jsonb),count(*) INTO v_others,v_others_n
+            FROM (SELECT (r->>'row_no')::int n,row_number() OVER (ORDER BY (r->>'row_no')::int) k,
+                'kỳ '||to_char(to_date(r->>'billing_month','YYYY-MM'),'MM/YYYY')||COALESCE(' · '||(r->>'invoice_number'),'')||' (còn '
+                ||replace(to_char(round((r->>'remaining_amount')::numeric),'FM999,999,999,999,999'),',','.')||'đ'
+                ||CASE WHEN r->>'kind'='SETTLEMENT' THEN ', hoá đơn thanh lý' WHEN COALESCE(r->>'kind','MONTHLY')<>'MONTHLY' THEN ', '||lower(r->>'kind') ELSE '' END||')' label
+              FROM jsonb_array_elements(v_open) r WHERE r->>'invoice_id' IS DISTINCT FROM v_pick->>'invoice_id') x;
         END IF;
       END IF;
     END IF;
@@ -121,7 +127,7 @@ BEGIN
     END IF;
     v_out:=v_out||jsonb_build_array(jsonb_build_object('invoiceId',v_pick->>'invoice_id','roomId',v_room,'roomName',v_room_name,
       'invoiceNumber',v_pick->>'invoice_number','billingMonth',v_pick->>'billing_month')
-      ||CASE WHEN v_auto THEN jsonb_strip_nulls(jsonb_build_object('pickedBy','amount','otherOpen',v_others)) ELSE '{}'::jsonb END);
+      ||CASE WHEN v_auto THEN jsonb_build_object('pickedBy','amount','otherOpen',v_others,'otherOpenCount',v_others_n) ELSE '{}'::jsonb END);
   END LOOP;
   -- Một hoá đơn không được thu hai lần trong cùng lô.
   IF (SELECT count(DISTINCT x->>'invoiceId') FROM jsonb_array_elements(v_out) x)<>jsonb_array_length(v_out) THEN
@@ -171,7 +177,7 @@ DECLARE
   v_receiving jsonb; v_no_round boolean; v_try int; v_runs jsonb; v_run jsonb; v_items jsonb; v_warnings jsonb; v_choice jsonb; v_basis text;
   v_total numeric; v_first_reason text; v_label text; v_line text; v_left numeric; v_mode text; v_book text; v_key text; v_retry boolean;
   v_others text; v_note_key text; v_w jsonb; v_text text; v_reason text; v_sum_applied numeric; v_rounding_missing boolean; v_actor uuid; v_round numeric; v_st text; v_settle boolean;
-  v_res_item jsonb; v_auto boolean; v_auto_note text;
+  v_res_item jsonb; v_auto boolean; v_auto_n int:=0; v_auto_note text; v_auto_one text;
 BEGIN
   IF p_action IS DISTINCT FROM 'invoice.collect' OR p_phase IS NULL OR p_phase NOT IN ('preview','auto','apply')
     OR p_request_id IS NULL OR p_params IS NULL OR jsonb_typeof(p_params)<>'object'
@@ -325,9 +331,17 @@ BEGIN
       v_run:=(SELECT r FROM jsonb_array_elements(COALESCE(v_runs,'[]'::jsonb)) r WHERE (r->>'n')::int=(v_plan->>'n')::int);
       v_total:=v_total+COALESCE((v_plan->>'gross')::numeric,0);
       v_settle:=EXISTS(SELECT 1 FROM public.invoices i WHERE i.id=(v_plan->>'invoiceId')::uuid AND i.kind::text='SETTLEMENT');
-      -- J06: hoá đơn tra cứu TỰ CHỌN theo số tiền (pickedBy amount) ⇒ nhãn dòng, items[].pickedBy, cảnh báo và câu tóm tắt nói rõ.
+      -- J06: hoá đơn tra cứu TỰ CHỌN theo số tiền (pickedBy amount) ⇒ nhãn dòng, items[].pickedBy / otherOpen, câu tóm tắt và một cảnh báo.
       v_res_item:=v_resolved->'items'->((v_plan->>'n')::int-1);
       v_auto:=COALESCE(v_res_item->>'pickedBy'='amount',false);
+      IF v_auto THEN
+        v_auto_n:=v_auto_n+1;
+        v_auto_note:=concat_ws(', ',v_auto_note,format('phòng %s kỳ %s',v_plan->>'roomName',to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY')));
+        v_auto_one:=format(' Tự chọn hoá đơn kỳ %s vì số tiền khớp đúng số còn nợ; phòng còn %s hoá đơn chưa trả khác: %s%s.',
+          to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),COALESCE(v_res_item->>'otherOpenCount','?'),
+          COALESCE((SELECT string_agg(o.v,', ' ORDER BY o.i) FROM jsonb_array_elements_text(COALESCE(v_res_item->'otherOpen','[]'::jsonb)) WITH ORDINALITY o(v,i)),'…'),
+          CASE WHEN COALESCE((v_res_item->>'otherOpenCount')::int,0)>jsonb_array_length(COALESCE(v_res_item->'otherOpen','[]'::jsonb)) THEN ', …' ELSE '' END);
+      END IF;
       v_label:=format('Phòng %s toà %s, kỳ %s%s%s%s',v_plan->>'roomName',v_resolved->>'buildingName',
         to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),COALESCE(' ('||(v_plan->>'invoiceNumber')||')',''),
         CASE WHEN v_settle THEN ' — hoá đơn thanh lý' ELSE '' END,CASE WHEN v_auto THEN ' — tự chọn vì số tiền khớp đúng số còn nợ' ELSE '' END);
@@ -348,16 +362,11 @@ BEGIN
             ELSE '' END);
       END IF;
       v_items:=v_items||jsonb_build_array(jsonb_strip_nulls(jsonb_build_object('room',v_plan->>'roomName','month',to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),
-        'invoiceNumber',v_plan->>'invoiceNumber','pickedBy',CASE WHEN v_auto THEN 'amount' END,'amount',(v_plan->>'gross')::numeric::bigint::text,
+        'invoiceNumber',v_plan->>'invoiceNumber','pickedBy',CASE WHEN v_auto THEN 'amount' END,'otherOpen',CASE WHEN v_auto THEN v_res_item->'otherOpen' END,
+        'otherOpenCount',CASE WHEN v_auto THEN (v_res_item->>'otherOpenCount')::int END,'amount',(v_plan->>'gross')::numeric::bigint::text,
         'remainingBefore',(v_plan->>'remaining')::numeric::bigint::text,'remainingAfter',CASE WHEN v_choice IS NULL THEN v_left::bigint::text END,
         'statusAfter',CASE WHEN v_choice IS NULL THEN COALESCE(v_run->>'status',v_plan->'after'->>'status') END,
         'rounding',CASE WHEN v_choice IS NULL AND v_round>0 THEN v_round::bigint::text END,'text',v_line)));
-      IF v_auto THEN
-        v_warnings:=v_warnings||jsonb_build_array(left(format('Phòng %s: người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ %s%s vì số tiền %s khớp đúng số còn nợ. Nếu người dùng nói kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại.%s',
-          v_plan->>'roomName',to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY'),COALESCE(' ('||(v_plan->>'invoiceNumber')||')',''),
-          app_private.hermes_vnd_text_v1((v_plan->>'gross')::numeric),COALESCE(' Phòng còn hoá đơn chưa trả: '||(v_res_item->>'otherOpen')||'.','')),300));
-        v_auto_note:=concat_ws(', ',v_auto_note,format('phòng %s kỳ %s',v_plan->>'roomName',to_char(to_date(v_plan->>'billingMonth','YYYY-MM'),'MM/YYYY')));
-      END IF;
       -- Cảnh báo (≤ 10, mỗi câu ≤ 300 ký tự). Mã chưa có câu thì bỏ qua — không bao giờ nối NULL (jsonb || NULL làm mất cả mảng).
       FOR v_w IN SELECT value FROM jsonb_array_elements(COALESCE(v_plan->'warnings','[]'::jsonb)) LOOP
         v_text:=CASE v_w->>'code'
@@ -380,6 +389,15 @@ BEGIN
       IF mod((v_plan->>'gross')::numeric,1000)<>0 THEN
         v_warnings:=v_warnings||jsonb_build_array(format('Phòng %s: số tiền không tròn nghìn — kiểm lại đơn vị.',v_plan->>'roomName')); END IF;
     END LOOP;
+    -- J06: MỘT cảnh báo cho mọi mục tự chọn, nối SAU cảnh báo của kế hoạch (thu trùng, quá hạn…) để trần 10 không đẩy mất chúng; cỡ cố định —
+    -- danh sách hoá đơn mở còn lại nằm ở câu tóm tắt / items[].otherOpen (không trần 300 ký tự).
+    IF v_auto_n>0 THEN
+      v_warnings:=v_warnings||jsonb_build_array(left(CASE WHEN jsonb_array_length(v_plans)=1
+        THEN format('Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ %s%s của phòng %s vì số tiền khớp đúng số còn nợ. Nếu người dùng nói kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại.',
+          to_char(to_date(v_plans->0->>'billingMonth','YYYY-MM'),'MM/YYYY'),COALESCE(' ('||(v_plans->0->>'invoiceNumber')||')',''),v_plans->0->>'roomName')
+        ELSE format('Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn theo số tiền khớp đúng số còn nợ cho %s mục (xem tóm tắt). Nếu người dùng nói kỳ / hoá đơn khác: gọi lại kèm month hoặc invoiceNumber trong mục đó để xem trước lại.',
+          v_auto_n) END,300));
+    END IF;
     IF v_resolved->>'accountId' IS NULL AND v_choice IS NULL THEN
       v_receiving:=public.get_receiving_cashbooks_v1(v_org,v_building,NULL);
       v_note_key:=regexp_replace(public.hermes_name_fold_v1(p_params->>'note'),'[^a-z0-9]','','g');
@@ -408,8 +426,7 @@ BEGIN
                 WHEN v_resolved->>'accountId' IS NOT NULL THEN 'theo sổ người dùng nêu' ELSE 'sổ mặc định của toà (người dùng chưa nêu sổ)' END,
               app_private.hermes_vnd_text_v1(v_total),app_private.hermes_vn_date_text_v1(v_date,v_today),
               CASE WHEN jsonb_array_length(v_plans)=1 THEN 'hoá đơn '||COALESCE(v_plans->0->>'invoiceNumber','') ELSE jsonb_array_length(v_plans)||' hoá đơn' END)
-            ||CASE WHEN v_auto_note IS NULL THEN '' WHEN jsonb_array_length(v_plans)=1
-              THEN format(' Tự chọn hoá đơn kỳ %s vì số tiền khớp đúng số còn nợ.',to_char(to_date(v_plans->0->>'billingMonth','YYYY-MM'),'MM/YYYY'))
+            ||CASE WHEN v_auto_n=0 THEN '' WHEN jsonb_array_length(v_plans)=1 THEN COALESCE(v_auto_one,'')
               ELSE format(' Tự chọn hoá đơn theo số tiền khớp đúng số còn nợ: %s.',v_auto_note) END END,
         'choiceRequired',CASE WHEN v_choice IS NOT NULL THEN 'overpay' END,'receivingBook',v_book,'method',v_method,
         'items',v_items,'excluded',CASE WHEN jsonb_array_length(v_excluded)>0 THEN (SELECT jsonb_agg(e->'text' ORDER BY (e->>'n')::int) FROM jsonb_array_elements(v_excluded) e) END,
@@ -493,8 +510,8 @@ BEGIN
   SELECT * INTO l FROM pg_catalog.pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure;
   SELECT * INTO s FROM pg_catalog.pg_proc WHERE oid='app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure;
   IF l.prosecdef OR l.provolatile<>'s' OR pg_get_userbyid(l.proowner)<>'postgres'
-    OR replace(COALESCE(array_to_string(l.proconfig,','),''),'"','')<>'search_path=' OR md5(replace(l.prosrc,chr(13),''))<>'85e8db6e2ad475c8d8a0b1258f083ed1'
-    OR NOT s.prosecdef OR pg_get_userbyid(s.proowner)<>'postgres' OR md5(replace(s.prosrc,chr(13),''))<>'1d18ed834a9531f7d6f9a77b524e9a16'
+    OR replace(COALESCE(array_to_string(l.proconfig,','),''),'"','')<>'search_path=' OR md5(replace(l.prosrc,chr(13),''))<>'e4aa9f984d19c0f97ef9ebfef08baaa5'
+    OR NOT s.prosecdef OR pg_get_userbyid(s.proowner)<>'postgres' OR md5(replace(s.prosrc,chr(13),''))<>'c106786943309e524b6038d6be09c6e6'
     OR position('ORDER BY i.id FOR UPDATE NOWAIT' IN s.prosrc)=0
     OR has_function_privilege('anon','app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)','EXECUTE') OR NOT has_function_privilege('authenticated','app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)','EXECUTE')
     OR has_function_privilege('anon','app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','EXECUTE') OR NOT has_function_privilege('authenticated','app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)','EXECUTE')

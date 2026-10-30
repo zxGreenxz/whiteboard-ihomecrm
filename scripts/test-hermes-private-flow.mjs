@@ -645,7 +645,7 @@ for (const spec of [
   // một hoá đơn mở) — chỉ tên public đủ schema.
   { name: 'app_private.hermes_invoice_lookup_core_v3',
     sourcePath: 'supabase/migrations/20261030045928_hermes_invoice_collect_amount_pick_v1.sql',
-    statementSha256: '684774a2fb9be0c35a55a4723bac57ab2c7787c2e1fd779d0c234fc5d1276ddf' },
+    statementSha256: '7c0743fbebc7f0b23165fb145528a5be8daab8a9eead660e29601df4bf43ce6e' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
