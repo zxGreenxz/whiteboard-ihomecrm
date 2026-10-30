@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState, useMemo, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, LayoutGrid, MousePointerClick, Plus, Settings2 } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
@@ -48,6 +48,15 @@ import { useVacantRoomNotes } from "@/hooks/useReports";
 import { useInvoiceAmountParts } from "@/hooks/useInvoiceAmountParts";
 import { categorySharesOf, invoiceAdjustmentsText } from "@/lib/invoiceAmountParts";
 import { CategoryShareBlock, IncomePartCells } from "@/components/reports/IncomeBreakdown";
+import { ProfitFilterBar, ProfitRowSearchInput } from "@/components/reports/ProfitRowFilters";
+import {
+  NO_CATEGORIES,
+  filterProfitRows,
+  pruneSideSelections,
+  toggleCategorySelection,
+  type ProfitViewResult,
+  type ProfitViewRow,
+} from "@/lib/profitReportFilters";
 import { vacancyNoteText } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
@@ -74,6 +83,10 @@ import { formatCurrency } from "@/lib/utils";
 const RoomContractLifecycleDrawer = lazy(
   () => import("@/components/reports/room-contract-lifecycle/RoomContractLifecycleDrawer")
 );
+// Bấm khoản chi → hộp phiếu của Thu chi (adapter, xem file) — chỉ tải khi mở.
+const ProfitVoucherViewer = lazy(() => import("@/components/reports/ProfitVoucherViewer"));
+
+type Side = "income" | "expense";
 
 
 // Số tiền gọn cho dòng phụ "hoá đơn tháng đầu" (không ký hiệu ₫ rườm rà).
@@ -112,6 +125,8 @@ interface DisplayRow {
   groupCount?: number;
   // id các phiếu làm nên dòng — server xét phiếu nào được tách tiền theo hoá đơn (như quyết toán vận hành).
   voucherIds?: string[];
+  // Mã phiếu (PC…/PT…) — chỉ để ô tìm của khung tìm theo mã.
+  voucherCode?: string | null;
   // Số tiền dòng gồm cả phần ngoài KQKD (cọc) — tắt "Chỉ KQKD" ở chế độ ngày phiếu ⇒ không tách theo hoá đơn.
   mixedDeposit?: boolean;
   // Σ khoản THANH LÝ/BỎ CỌC gắn CÙNG hoá đơn nhưng đã tách sang dòng riêng —
@@ -248,6 +263,9 @@ function ProfitDistributionDesktop() {
   // Quyền sửa toà nhà — gate nút bánh răng cấu hình cảnh báo thiếu phiếu chi
   // theo toà (ghi buildings.hidden_fixed_expenses).
   const canEditBuildings = canUse(perms, "buildings", "edit");
+  // Bấm khoản chi mở phiếu: chỉ người xem được Thu chi (chủ chốt 28/10/2026) — người chỉ có quyền xem báo cáo
+  // (cổ đông) thì dòng chi không bấm được, như trước.
+  const canViewVoucher = canUse(perms, "income_expenses", "view");
   // Loại CHI trong DB — resolve dòng "chưa có phiếu" (hạng mục cố định) → đúng
   // income_expense_type_id để prefill form, và cho bộ dò chi cố định khớp hạng mục
   // theo khoá fee_category (thiếu danh sách thì bộ dò phải khớp theo tên) ⇒ tải cho mọi người.
@@ -435,6 +453,7 @@ function ProfitDistributionDesktop() {
           notKqkd: r.countsInBusinessResult === false,
           monthLabel,
           voucherIds: r.voucherId ? [r.voucherId as string] : [],
+          voucherCode: r.voucherCode ?? null,
         };
         if (r.income > 0)
           rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
@@ -456,6 +475,7 @@ function ProfitDistributionDesktop() {
           notKqkd: kqkd <= 0,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
           voucherIds: [r.id as string],
+          voucherCode: r.code ?? null,
         };
         const items = (r.items || []) as any[];
         // Item cọc bị loại khỏi P&L trừ khi phiếu ép TRUE (khớp kqkd_amount DB).
@@ -545,6 +565,8 @@ function ProfitDistributionDesktop() {
           notKqkd: list.some((x) => x.notKqkd),
           groupCount: list.length,
           voucherIds: Array.from(new Set(list.flatMap((x) => x.voucherIds ?? []))),
+          // tìm theo mã: mọi phiếu thu của hoá đơn đều khớp được
+          voucherCode: Array.from(new Set(list.map((x) => x.voucherCode).filter(Boolean))).join(" ") || null,
           mixedDeposit: list.some((x) => x.mixedDeposit),
           ...extra,
         });
@@ -769,6 +791,8 @@ function ProfitDistributionDesktop() {
     data: incomeParts,
     isError: partsError,
     refetch: retryParts,
+    isPlaceholderData: partsPlaceholder,
+    isFetching: partsFetching,
   } = useInvoiceAmountParts(partsRequests, !loading);
   // Bảng cột Tiền phòng · Điện · Nước · PDV chỉ khi có dòng đã tách — chưa tách được (đang tải, lỗi, server cũ)
   // thì giữ danh sách cũ, không hiện cột trống.
@@ -786,6 +810,35 @@ function ProfitDistributionDesktop() {
   );
   // mở / đóng "Theo hạng mục" ở hai cột cùng lúc (mặc định thu gọn — như quyết toán vận hành)
   const [catsOpen, setCatsOpen] = useState(false);
+
+  // Ô tìm + ô tích "Theo hạng mục" của từng khung (chủ chốt 28/10/2026) — CHỈ lọc danh sách đang xem: tổng thẻ,
+  // tổng khung, tỷ trọng và số đưa vào thanh kiểm chứng vẫn tính trên toàn bộ dòng. Không lưu qua F5; đổi tháng/toà
+  // giữ chữ đang tìm, hạng mục không còn trong dữ liệu mới thì tự bỏ.
+  const [rowSearch, setRowSearch] = useState<Record<Side, string>>({ income: "", expense: "" });
+  const [catPick, setCatPick] = useState<Record<Side, ReadonlySet<string>>>({
+    income: NO_CATEGORIES,
+    expense: NO_CATEGORIES,
+  });
+  // Tên hạng mục thu đến từ phần tách hoá đơn: lúc phần tách còn là số của lần trước (hook giữ tạm khi đổi
+  // tháng/toà), đang tải hay lỗi thì tên chưa chốt ⇒ đừng bỏ tích oan. Danh sách lỗi tải (rỗng) cũng không bỏ gì.
+  const incomeNamesUnsettled = partsRequests.length > 0 && (partsPlaceholder || partsFetching || partsError);
+  const listError = accrualMode ? accrualError : cashError;
+  useEffect(() => {
+    if (loading || listError) return;
+    const namesOf = (cats: { name: string; amount: number }[]) => cats.filter((c) => c.amount !== 0).map((c) => c.name);
+    setCatPick((p) => pruneSideSelections(p, {
+      income: incomeNamesUnsettled ? null : namesOf(incomeCats),
+      expense: namesOf(expenseCats),
+    }));
+  }, [loading, listError, incomeNamesUnsettled, incomeCats, expenseCats]);
+  const clearRowFilters = (side: Side) => {
+    setRowSearch((p) => ({ ...p, [side]: "" }));
+    setCatPick((p) => ({ ...p, [side]: NO_CATEGORIES }));
+  };
+
+  // Bấm khoản chi → hộp phiếu của Thu chi (ProfitVoucherViewer).
+  const [voucherView, setVoucherView] = useState<string | null>(null);
+  const closeVoucherView = useCallback(() => setVoucherView(null), []);
 
   // Chi tiết các lần thu của 1 hoá đơn (nhấp đôi vào dòng) — dùng lại dialog
   // "Các lần thanh toán" (hiện số tiền + ngày giờ từng lần).
@@ -895,6 +948,30 @@ function ProfitDistributionDesktop() {
       { isNote: !!r.isNote, side, typeName: r.typeName, description: r.description },
       { invoice: r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.titleParts : null, month: mm || 1 },
     );
+
+  // Dòng đưa vào ô tìm / ô tích: tên hạng mục TRÙNG khối "Theo hạng mục" (incomeCats/expenseCats); chữ để tìm gồm
+  // mô tả đang hiện + tên/mã phiếu + hạng mục + phòng + toà.
+  const viewRowOf = (side: Side) => (r: DisplayRow): ProfitViewRow => ({
+    key: r.key,
+    name: r.typeName,
+    amount: r.amount,
+    isNote: r.isNote,
+    room: r.roomName,
+    texts: [displayDescription(r, side), r.description, r.voucherCode, r.typeName, r.roomName, r.buildingName],
+  });
+  const incomeView = useMemo(
+    () => filterProfitRows(shownIncomeRows, viewRowOf("income"),
+      { search: rowSearch.income, categories: catPick.income }, incomeParts),
+    // displayDescription chỉ đọc invoiceTotals + tháng
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shownIncomeRows, rowSearch.income, catPick.income, incomeParts, invoiceTotals, mm],
+  );
+  const expenseView = useMemo(
+    () => filterProfitRows(displayExpenseRows, viewRowOf("expense"),
+      { search: rowSearch.expense, categories: catPick.expense }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayExpenseRows, rowSearch.expense, catPick.expense],
+  );
 
   // Mặc định ẩn/hiện cột: ẩn cột mà MỌI dòng (gộp cả 2 bên để 2 bảng đồng cột)
   // có cùng giá trị — tức cột đã bị bộ lọc ghim (tháng/toà/phòng/kỳ…).
@@ -1022,10 +1099,11 @@ function ProfitDistributionDesktop() {
   };
 
   const renderPanel = (
-    side: "income" | "expense",
+    side: Side,
     title: string,
     total: number,
     data: DisplayRow[],
+    view: ProfitViewResult<DisplayRow>,
     headerAction?: ReactNode,
   ) => {
     // Ô mã 40×32 đầu dòng: cột Thu là SỐ PHÒNG, cột Chi là mã hạng mục — theo
@@ -1047,12 +1125,20 @@ function ProfitDistributionDesktop() {
     const spanBelow = { gridColumn: hasTag ? "2 / -1" : "1 / -1" };
     const realCount = data.filter((r) => !r.isNote).length;
     const cats = side === "income" ? incomeCats : expenseCats;
+    // danh sách đang xem sau ô tìm / ô tích (chỉ lớp xem — mọi tổng ở trên vẫn tính trên `data`)
+    const rows = view.rows;
+    const picked = catPick[side];
 
     return (
       <div className={`ph-panel ph-panel--${side}`}>
         <div className="ph-panel__head">
           <div className="ph-panel__name">{title}</div>
-          <div className="ph-panel__count">{realCount} khoản</div>
+          <div className="ph-panel__count" data-testid={`profit-count-${side}`}>
+            {view.active ? `${view.count}/${realCount}` : realCount} khoản
+          </div>
+          <ProfitRowSearchInput side={side} value={rowSearch[side]}
+            onChange={(value) => setRowSearch((p) => ({ ...p, [side]: value }))}
+            className="max-w-[210px] flex-1" />
           {headerAction}
           {!hideTotals && <div className="ph-panel__total">{formatCurrency(total)}</div>}
         </div>
@@ -1060,7 +1146,17 @@ function ProfitDistributionDesktop() {
         {!loading && (
           <CategoryShareBlock cats={cats} total={side === "income" ? shownIncomeSum : shownExpenseSum}
             kind={side === "income" ? "INCOME" : "EXPENSE"} open={catsOpen}
-            onToggle={() => setCatsOpen((v) => !v)} testId="profit-categories" />
+            onToggle={() => setCatsOpen((v) => !v)} testId="profit-categories"
+            selected={picked}
+            onToggleSelect={(name) => setCatPick((p) => ({ ...p, [side]: toggleCategorySelection(p[side], name) }))} />
+        )}
+        {!loading && view.active && (
+          <ProfitFilterBar side={side} categories={[...picked]} search={rowSearch[side].trim()}
+            shown={view.count} total={realCount}
+            amount={picked.size > 0 ? view.selectedAmount : view.total}
+            amountLabel={picked.size > 0 ? "phần hạng mục đã chọn" : "tổng"}
+            onClear={() => clearRowFilters(side)}
+            className={`border-b px-3.5 py-1.5 ${side === "income" ? "bg-[#f7fcf9]" : "bg-[#fffaf5]"}`} />
         )}
         {side === "income" && partsError && (
           <button type="button" className="ph-panel__foot" style={{ width: "100%", borderTop: 0 }} onClick={() => retryParts()}>
@@ -1097,9 +1193,17 @@ function ProfitDistributionDesktop() {
             ))
           ) : data.length === 0 ? (
             <div className="ph-empty">Không có khoản nào</div>
+          ) : rows.length === 0 ? (
+            <div className="ph-empty" data-testid={`profit-filter-empty-${side}`}>
+              Không có khoản nào khớp bộ lọc —{" "}
+              <button type="button" className="underline underline-offset-2" onClick={() => clearRowFilters(side)}>Bỏ lọc</button>
+            </div>
           ) : (
-            data.map((r) => {
+            rows.map((r) => {
               const clickable = !!r.invoiceId;
+              // khoản chi thật → mở phiếu của Thu chi (chủ chốt 28/10/2026); dòng vàng "chưa có phiếu" giữ luồng tạo
+              const voucherId = side === "expense" && !r.isNote && canViewVoucher ? r.voucherIds?.[0] ?? null : null;
+              const pressable = clickable || !!voucherId;
               const note = noteFor(r);
               // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
               // & cọc đều đủ, hồng khi còn thiếu (dung sai 1đ cho làm tròn).
@@ -1126,7 +1230,7 @@ function ProfitDistributionDesktop() {
                       : fd
                         ? "is-first-due"
                         : "";
-              const rowClickable = clickable || (r.isMissingExpense && canCreate);
+              const rowClickable = pressable || (r.isMissingExpense && canCreate);
               const detailBlock = fd || (!fd && rp);
               const sub = subParts(r, side, hasTag);
               const parts = table ? incomeParts?.get(r.key) : undefined;
@@ -1139,7 +1243,9 @@ function ProfitDistributionDesktop() {
               // bấm vào dòng là xem hoá đơn luôn (chủ nhắn 26/10/2026); bấm số tiền vẫn xem các lần thu
               const onRowClick = clickable
                 ? () => openInvoiceModal(r.invoiceId!, invTitle)
-                : r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined;
+                : voucherId
+                  ? () => setVoucherView(voucherId)
+                  : r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined;
 
               return (
                 <div
@@ -1148,13 +1254,13 @@ function ProfitDistributionDesktop() {
                   className={`ph-row${detailBlock && !parts ? " ph-row--tall" : ""}${
                     rowClickable ? " ph-row--click" : ""
                   }${parts ? " ph-row--parts" : ""}${state ? ` ${state}` : ""}`}
-                  data-testid={side === "income" ? "profit-income-row" : undefined}
+                  data-testid={side === "income" ? "profit-income-row" : "profit-expense-row"}
                   data-layout={table ? (parts ? "table" : "table-other") : undefined}
                   onClick={onRowClick}
-                  // dòng hoá đơn bấm được bằng bàn phím (đã bỏ nút tên hoá đơn)
-                  role={clickable ? "button" : undefined}
-                  tabIndex={clickable ? 0 : undefined}
-                  onKeyDown={clickable ? (e) => {
+                  // dòng hoá đơn / khoản chi bấm được bằng bàn phím (đã bỏ nút tên hoá đơn)
+                  role={pressable ? "button" : undefined}
+                  tabIndex={pressable ? 0 : undefined}
+                  onKeyDown={pressable ? (e) => {
                     if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick?.(); }
                   } : undefined}
                   title={
@@ -1163,7 +1269,9 @@ function ProfitDistributionDesktop() {
                       : clickable
                         ? `Bấm vào dòng: xem hoá đơn · bấm số tiền: xem các lần thu${
                             showMain ? "" : ` — ${[displayDescription(r, side), ...sub].join(" · ")}`}`
-                        : undefined
+                        : voucherId
+                          ? `Bấm để xem phiếu chi${r.voucherCode ? ` ${r.voucherCode}` : ""}`
+                          : undefined
                   }
                 >
                   {hasTag &&
@@ -1292,8 +1400,8 @@ function ProfitDistributionDesktop() {
           )}
         </div>
 
-        {data.length > 8 && (
-          <div className="ph-panel__foot">{data.length} dòng — cuộn để xem thêm</div>
+        {rows.length > 8 && (
+          <div className="ph-panel__foot">{rows.length} dòng — cuộn để xem thêm</div>
         )}
       </div>
     );
@@ -1649,23 +1757,26 @@ function ProfitDistributionDesktop() {
             <span className="ph-legend__sw" style={{ background: "#F1FAF4", border: "1px solid #C8E8D3" }} />
             HĐ không đủ ngày / đã đủ
           </span>
-          {showThu && (
+          {(showThu || (showChi && canViewVoucher)) && (
             <span className="ph-legend__item ph-legend__hint">
               <MousePointerClick className="h-4 w-4" />
-              Bấm số phòng để xem vòng đời hợp đồng
+              {showThu ? "Bấm số phòng để xem vòng đời hợp đồng" : ""}
+              {showThu && showChi && canViewVoucher ? " · bấm khoản chi để xem phiếu" : ""}
+              {!showThu ? "Bấm khoản chi để xem phiếu" : ""}
             </span>
           )}
         </div>
 
         {/* Sổ 2 cột: Thu | Chi */}
         <div className={showThu && showChi ? "ph-grid-2" : undefined}>
-          {showThu && renderPanel("income", "Khoản thu", displayIncome, shownIncomeRows)}
+          {showThu && renderPanel("income", "Khoản thu", displayIncome, shownIncomeRows, incomeView)}
           {showChi &&
             renderPanel(
               "expense",
               "Khoản chi",
               displayExpense,
               displayExpenseRows,
+              expenseView,
               canCreate || (canEditBuildings && singleBuilding && !singleBuilding.is_virtual) ? (
                 <>
                   {canCreate && (
@@ -1781,6 +1892,18 @@ function ProfitDistributionDesktop() {
             initialYear={yyyy || now.getFullYear()}
             alignAfter={lifecycleRoom.anchor}
             onClose={() => setLifecycleRoom(null)}
+          />
+        </Suspense>
+      )}
+
+      {/* Bấm khoản chi → hộp phiếu + Sửa (phiếu chờ duyệt) / Bổ sung chứng từ của Thu chi */}
+      {voucherView && (
+        <Suspense fallback={null}>
+          <ProfitVoucherViewer
+            key={voucherView}
+            voucherId={voucherView}
+            organizationId={selectedOrganizationId ?? null}
+            onClose={closeVoucherView}
           />
         </Suspense>
       )}

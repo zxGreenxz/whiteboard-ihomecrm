@@ -3,6 +3,7 @@
 // Điện / Nước / PDV của một khoản thu theo hoá đơn. Số do server trả (src/lib/invoiceAmountParts.ts) — ở đây
 // chỉ hiển thị, tỷ trọng chỉ chia để vẽ.
 import { ChevronDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn, formatVND } from '@/lib/utils';
 import {
   INVOICE_PART_COLUMNS,
@@ -15,6 +16,10 @@ type Kind = 'INCOME' | 'EXPENSE';
 
 const INCOME_COLORS = ['bg-emerald-700', 'bg-emerald-500', 'bg-emerald-300', 'bg-emerald-200', 'bg-teal-200', 'bg-emerald-100', 'bg-teal-100', 'bg-slate-200'];
 const EXPENSE_COLORS = ['bg-orange-700', 'bg-orange-600', 'bg-orange-500', 'bg-orange-400', 'bg-orange-300', 'bg-orange-200', 'bg-orange-100', 'bg-amber-100'];
+const CHECK_COLORS: Record<Kind, string> = {
+  INCOME: 'border-emerald-600 data-[state=checked]:bg-emerald-700 data-[state=checked]:text-white',
+  EXPENSE: 'border-orange-500 data-[state=checked]:bg-orange-600 data-[state=checked]:text-white',
+};
 const colorAt = (list: readonly string[], i: number) => list[Math.min(i, list.length - 1)];
 
 const eyebrow = 'text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground';
@@ -25,13 +30,19 @@ export type CategoryShare = { name: string; amount: number };
  * "Theo hạng mục" — mặc định THU GỌN (chủ nhắn 24/10/2026: thu và chi khác số hạng mục làm hai cột lệch nhau):
  * gọn chỉ còn dòng tiêu đề + thanh tỷ trọng, cao bằng nhau ở hai thẻ; trạng thái mở do nơi dùng giữ để bấm ở
  * thẻ nào cũng mở cả hai. Không có hạng mục vẫn giữ dòng tiêu đề để hai cột không lệch.
+ * Ô tích lọc (Báo cáo LN, chủ chốt 28/10/2026): chỉ hiện khi nơi dùng truyền `onToggleSelect` (+ `selected`) —
+ * Quyết toán vận hành không truyền nên giữ y như cũ. Khối không tự lọc gì, nơi dùng lọc danh sách của nó.
  */
-export function CategoryShareBlock({ cats, total, kind, open, onToggle, testId, className }: {
+export function CategoryShareBlock({ cats, total, kind, open, onToggle, testId, className, selected, onToggleSelect }: {
   cats: readonly CategoryShare[]; total: number; kind: Kind; open: boolean; onToggle: () => void; testId?: string;
   className?: string;
+  selected?: ReadonlySet<string>;
+  onToggleSelect?: (name: string) => void;
 }) {
   const colors = kind === 'INCOME' ? INCOME_COLORS : EXPENSE_COLORS;
   const shown = cats.filter((c) => c.amount !== 0).sort((a, b) => b.amount - a.amount);
+  // đang tích ít nhất một mục ⇒ làm mờ đoạn thanh của các mục không tích
+  const anySelected = !!onToggleSelect && !!selected && selected.size > 0;
   // thanh vẽ theo tổng các khoản dương: khoản âm (giảm trừ, làm tròn) không có đoạn, và các đoạn dương không
   // vượt 100% (đã đo: lấy tổng thu làm nền thì đoạn cuối bị cắt)
   const barTotal = shown.reduce((s, c) => s + Math.max(0, c.amount), 0);
@@ -52,19 +63,38 @@ export function CategoryShareBlock({ cats, total, kind, open, onToggle, testId, 
       </div>
       <div className="mt-1.5 flex h-2 overflow-hidden rounded bg-muted" aria-hidden>
         {/* hai dòng có thể cùng tên (server gom theo tên + cờ hạn chế): key kèm thứ tự */}
-        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i))} style={{ width: `${barPercent(c.amount, barTotal)}%` }} />)}
+        {shown.map((c, i) => <div key={`${c.name}-${i}`} className={cn('h-full', colorAt(colors, i), anySelected && !selected?.has(c.name) && 'opacity-30')} style={{ width: `${barPercent(c.amount, barTotal)}%` }} />)}
       </div>
       {open && shown.length > 0 && (
         <ul id={listId} className="mt-2.5 flex flex-col gap-1.5">
-          {shown.map((c, i) => (
-            <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
-              <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
-              <span className="truncate text-foreground/75">{c.name}</span>
-              <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
-              {/* khoản âm (giảm trừ, làm tròn) không có tỷ trọng */}
-              <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{c.amount > 0 ? shareText(c.amount, total) ?? '' : ''}</span>
-            </li>
-          ))}
+          {shown.map((c, i) => {
+            if (!onToggleSelect) {
+              return (
+                <li key={`${c.name}-${i}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]">
+                  <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
+                  <span className="truncate text-foreground/75">{c.name}</span>
+                  <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
+                  {/* khoản âm (giảm trừ, làm tròn) không có tỷ trọng */}
+                  <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{c.amount > 0 ? shareText(c.amount, total) ?? '' : ''}</span>
+                </li>
+              );
+            }
+            const on = !!selected?.has(c.name);
+            const boxId = `${listId}-${i}`;
+            return (
+              <li key={`${c.name}-${i}`} className="grid grid-cols-[16px_10px_minmax(0,1fr)_auto_44px] items-center gap-2 text-[12.5px]"
+                data-testid={testId ? `${testId}-item-${slug}` : undefined} data-selected={on ? 'true' : undefined}>
+                <Checkbox id={boxId} checked={on} onCheckedChange={() => onToggleSelect(c.name)}
+                  aria-label={`Lọc ${kind === 'INCOME' ? 'khoản thu' : 'khoản chi'} theo ${c.name}`}
+                  className={cn('h-4 w-4 rounded-[4px]', CHECK_COLORS[kind])} />
+                <span className={cn('h-2.5 w-2.5 rounded-[3px]', colorAt(colors, i))} aria-hidden />
+                <label htmlFor={boxId} className={cn('cursor-pointer truncate', on ? 'font-semibold text-foreground' : 'text-foreground/75')}>{c.name}</label>
+                <span className="whitespace-nowrap font-bold tabular-nums">{formatVND(c.amount)}</span>
+                {/* khoản âm (giảm trừ, làm tròn) không có tỷ trọng */}
+                <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">{c.amount > 0 ? shareText(c.amount, total) ?? '' : ''}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

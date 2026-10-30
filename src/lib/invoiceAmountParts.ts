@@ -103,23 +103,34 @@ export function invoicePartialNote(p: InvoiceAmountParts, amount: number): strin
 export type CategoryShareInput = { key: string; name: string; amount: number; isNote?: boolean };
 
 /**
- * "Theo hạng mục" của Báo cáo LN (chỉ để hiển thị tỷ trọng): dòng có phần tách cộng theo phần của hoá đơn (tên
- * INVOICE_PART_CATEGORIES — trùng quyết toán vận hành), dòng khác theo hạng mục của nó; tên trống ⇒ "Khác".
+ * Phần tiền theo hạng mục của MỘT dòng: dòng có phần tách ⇒ các phần khác 0 của hoá đơn (tên
+ * INVOICE_PART_CATEGORIES — trùng quyết toán vận hành), dòng khác ⇒ hạng mục của nó (tên trống ⇒ "Khác"); dòng ghi
+ * chú ⇒ rỗng. Một nguồn cho cả tỷ trọng "Theo hạng mục" lẫn ô tích lọc của Báo cáo LN, để hai bên không lệch nhau.
+ */
+export function rowCategoryAmounts(
+  row: CategoryShareInput,
+  parts?: ReadonlyMap<string, InvoiceAmountParts>,
+): { name: string; amount: number }[] {
+  if (row.isNote) return [];
+  const p = parts?.get(row.key);
+  if (p) {
+    return (Object.keys(INVOICE_PART_CATEGORIES) as CategoryKey[])
+      .filter((k) => p[k] !== 0)
+      .map((k) => ({ name: INVOICE_PART_CATEGORIES[k], amount: p[k] }));
+  }
+  return row.amount !== 0 ? [{ name: row.name && row.name !== '—' ? row.name : 'Khác', amount: row.amount }] : [];
+}
+
+/**
+ * "Theo hạng mục" của Báo cáo LN (chỉ để hiển thị tỷ trọng): cộng rowCategoryAmounts của mọi dòng theo tên.
  */
 export function categorySharesOf(
   rows: readonly CategoryShareInput[],
   parts?: ReadonlyMap<string, InvoiceAmountParts>,
 ): { name: string; amount: number }[] {
   const m = new Map<string, number>();
-  const add = (name: string, v: number) => {
-    if (v !== 0) m.set(name, (m.get(name) ?? 0) + v);
-  };
   for (const r of rows) {
-    if (r.isNote) continue;
-    const p = parts?.get(r.key);
-    if (p) {
-      for (const k of Object.keys(INVOICE_PART_CATEGORIES) as CategoryKey[]) add(INVOICE_PART_CATEGORIES[k], p[k]);
-    } else add(r.name && r.name !== '—' ? r.name : 'Khác', r.amount);
+    for (const c of rowCategoryAmounts(r, parts)) m.set(c.name, (m.get(c.name) ?? 0) + c.amount);
   }
   return Array.from(m, ([name, amount]) => ({ name, amount }));
 }
