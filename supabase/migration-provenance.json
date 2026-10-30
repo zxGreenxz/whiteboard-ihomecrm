@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 913,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13871,6 +13871,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-30T16:25:51.010Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030045928_hermes_invoice_collect_amount_pick_v1.sql",
+      "version": "20261030045928",
+      "name": "hermes_invoice_collect_amount_pick_v1",
+      "scheme": "timestamp14",
+      "sha256": "fbc6c6aac6dbcc8760d7e85df8d6ac45e3c77e937496fd61014b1d163b5af0fe",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_invoice_lookup_core_v3",
+        "catalog:function:app_private.hermes_invoice_action_step_v3"
       ]
     },
     {
