@@ -140,6 +140,43 @@ describe('ContractLifecycleBand — mốc cọc', () => {
   });
 });
 
+describe('ContractLifecycleBand — một nguồn tiền với ngăn kéo (số giả)', () => {
+  const view = (o: Partial<Parameters<typeof buildLifecycleLanes>[0]>) => {
+    const ca = viewCaThat();
+    return buildLifecycleLanes({
+      organizationId: ORG, roomId: PHONG, targetContractId: HD, businessDate: NGAY, todayISO: NGAY,
+      subject: { kind: 'voucher', voucherKind: 'refund' },
+      contracts: [{
+        id: HD, organization_id: ORG, contract_number: 'HĐ-GIA', room_id: PHONG, status: 'TERMINATED',
+        signed_date: '2025-05-01', start_date: '2025-05-01', end_date: '2026-11-30', actual_end_date: '2026-09-30',
+        total_deposit: 3_300_000, rent_price: 3_300_000, customer_name: 'Khách Giả',
+      }],
+      segments: [{
+        contract_id: HD, contract_number: 'HĐ-GIA', seg_index: 0, room_id: PHONG, room_name: '401',
+        from_date: '2025-05-01', to_date: null, source_path: 'CONTRACT_START', transfer_id: null, trusted: true, diagnostic: null,
+      }],
+      terminations: [],
+      depositByContract: new Map([[HD, ca.target!.deposit!]]),
+      invoiceByContract: new Map([[HD, { paid: 18_000_000, debt: 0, offset: 350_000 }]]),
+      reads: DOC_TOT,
+      ...o,
+    });
+  };
+
+  it('"Tiền thuê / phí đã đóng" là tiền thật, cấn trừ khi thanh lý tách dòng riêng', () => {
+    H.ket = { data: view({}), isLoading: false, isError: false };
+    const html = ve(<ContractLifecycleBand {...props} />);
+    expect(html).toContain('18.000.000 đ');
+    expect(html).toContain('Cấn trừ khi thanh lý 350.000 đ');
+  });
+
+  it('A2: mốc "Ký hợp đồng" in hạn gốc khi có gia hạn', () => {
+    H.ket = { data: view({ originalEndByContract: new Map([[HD, '2025-11-30']]) }), isLoading: false, isError: false };
+    const html = ve(<ContractLifecycleBand {...props} />);
+    expect(html).toContain('Thời hạn: 01/05/2025 – 30/11/2025 · gia hạn tới 30/11/2026');
+  });
+});
+
 describe('ContractLifecycleBand — nhiều lane và chân dải', () => {
   it('vẽ đủ chuỗi lane với vai của từng hợp đồng', () => {
     const v = buildLifecycleLanes({

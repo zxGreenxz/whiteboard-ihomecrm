@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1733,
-  "soFileDocBangFs": 446,
-  "tongLoiGoi": 1132,
-  "khongPhanLoaiDuoc": 505,
+  "tongSoFileTest": 1737,
+  "soFileDocBangFs": 449,
+  "tongLoiGoi": 1137,
+  "khongPhanLoaiDuoc": 507,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 62,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 63,
+      "soFile": 65,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -934,6 +934,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
@@ -3244,6 +3252,20 @@
     },
     {
       "file": "src/lib/__tests__/reverseCollectionOrgToday.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/roomLifecycle.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
