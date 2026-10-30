@@ -14,18 +14,21 @@ import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { SALE_POLICY_CAPABILITIES } from './sale-policy-contract.mjs';
 import { SALE_TOOL } from './sale-tool-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
-import { saleSetup, ROOM, ORG } from './sale-action-sql-fixture.mjs';
+import { saleSetup, ROOM, ORG, binding } from './sale-action-sql-fixture.mjs';
 import { extract } from './room-pass-sql-fixture.mjs';
 
 // Review chéo PR #349 (phương án b): migration bật trang Thu chi bật income_expenses.create, mà khoá đó từng là điều kiện CUỐI CÙNG
 // còn đóng hai tool báo cọc Sale ghi tiền một bước (crm_sale_reservation_create / _topup: không xem trước, không confirmToken, có
 // thể tự duyệt lúc sinh). Từ migration hermes_sale_deposit_receipt_key_v1 + connector cùng đợt, hai thao tác đó đòi THÊM khoá riêng
 // deposits.create_receipt (seed TẮT; registry ∩ chính sách công ty ∩ kết nối ở SQL; effective.action ở connector).
-// Chứng minh, cả connector lẫn SQL: income_expenses.create bật (như sau 20261027234414) mà thiếu khoá riêng ⇒ chặn trước khi ghi; có
-// khoá riêng ⇒ mở; khoá riêng không thay deposits.create hay income_expenses.create (chỉ siết); thao tác Sale khác không đổi; không lớp
-// quyền nào của connector cấp khoá riêng. SQL chạy trên PGlite: fixture Sale (20261020183546) + thân production 20261021064112 + cổng
-// nhận kết nối 20261019034850 + cột / hàm / trigger chiếu lại inherit_crm THẬT của 20261019034754 + file mới nguyên văn (BEGIN / COMMIT
-// / NOTIFY). KHÔNG chứng minh bộ ghi cọc thật (stub của fixture), lane / DB thật hay connector đã triển khai.
+// Chứng minh, cả connector lẫn SQL: income_expenses.create bật (như sau file bật Thu chi hermes_expense_actions_activation_v1) mà
+// thiếu khoá riêng ⇒ chặn trước khi ghi; có khoá riêng ⇒ mở; khoá riêng không thay deposits.create hay income_expenses.create (chỉ
+// siết); thao tác Sale khác không đổi; không lớp quyền nào của connector cấp khoá riêng. Khoá cả SỰ THẬT về mức bảo vệ: production
+// không có dòng hermes_org_policies và kết nối sống là inherit_crm ⇒ chỉ lật registry là SQL mở; rào còn lại là connector. Và file lùi
+// docs/plans/hermes-crm/revert/hermes_sale_deposit_receipt_key_revert_v1.sql. SQL chạy trên PGlite: fixture Sale (20261020183546) +
+// thân production 20261021064112 + cổng nhận kết nối 20261019034850 + cột / hàm / trigger chiếu lại inherit_crm THẬT của 20261019034754 +
+// file mới nguyên văn (BEGIN / COMMIT / NOTIFY). KHÔNG chứng minh bộ ghi cọc thật (stub của fixture), lane / DB thật hay connector đã
+// triển khai.
 // Kiểm đột biến: HERMES_SALE_DEPOSIT_KEY_MUTATION=<tên trong MUTATIONS> đổi SQL / mã connector CHỈ trong bộ nhớ ⇒ test phải đỏ. Đột
 // biến đổi thân hàm thì md5 ghim của file được ghim lại theo thân đã đổi, để chỉ phép kiểm hành vi bắt được.
 const KEY = 'deposits.create_receipt';
@@ -73,6 +76,8 @@ const MUTATIONS = {
     'const DEPOSIT_RECEIPT_KEYS = Object.freeze([SALE_DEPOSIT_RECEIPT_KEY]);']],
   'connector-topup-skips-key': ['connector', ["const DEPOSIT_RECEIPT_OPS = Object.freeze(['reservation_create', 'reservation_topup']);",
     "const DEPOSIT_RECEIPT_OPS = Object.freeze(['reservation_create']);"]],
+  'revert-skip-thu-chi-guard': ['revert', ['  IF COALESCE(thu_chi_on,false) THEN', '  IF false THEN']],
+  'revert-skip-body-pin': ['revert', ['  IF body_md5 IS NULL OR body_md5 NOT IN (', '  IF false AND body_md5 NOT IN (']],
 };
 const mutation = process.env.HERMES_SALE_DEPOSIT_KEY_MUTATION;
 assert(!mutation || Object.hasOwn(MUTATIONS, mutation), `unknown mutation ${mutation}`);
@@ -87,6 +92,8 @@ const mutate = (target, text) => {
   return changed;
 };
 const FILE_SQL = mutate('sql', read(FILE_NAME));
+const REVERT_SQL = mutate('revert', readFileSync(new URL('../../docs/plans/hermes-crm/revert/hermes_sale_deposit_receipt_key_revert_v1.sql',
+  import.meta.url), 'utf8').replaceAll('\r\n', '\n'));
 const CONTRACT_URL = new URL('./sale-action-contract.mjs', import.meta.url);
 const contract = mutation && MUTATIONS[mutation][0] === 'connector'
   ? await import(`data:text/javascript,${encodeURIComponent(mutate('connector', readFileSync(CONTRACT_URL, 'utf8'))
@@ -95,7 +102,7 @@ const contract = mutation && MUTATIONS[mutation][0] === 'connector'
 
 const DEPOSIT_OPS = ['reservation_create', 'reservation_topup'];
 const OTHER_OPS = ['options', 'observe', 'patch', 'lock', 'release', 'reservation_update', 'reservation_assign', 'status'];
-// Sau 20261027234414: lớp thao tác cấp bốn khoá Thu chi của danh mục production, lớp Sale cấp năm khoá Sale (bật từ 20261022121254).
+// Sau file bật Thu chi: lớp thao tác cấp bốn khoá Thu chi của danh mục production, lớp Sale cấp năm khoá Sale (bật từ 20261022121254).
 const TC_ON = Object.freeze([...contract.SALE_ACTIONS, 'sale_phong.edit', ...createActionCatalog([...EXPENSE_ACTIONS]).keys]);
 const receipt = { amount: 2000000, accountId: null, voucherDate: '2026-10-21', name: null, description: null };
 const RESERVATION = '00000000-0000-4000-8000-000000000501';
@@ -254,7 +261,7 @@ test('SQL (thân production + file mới): income_expenses.create bật mà thi�
     assert.deepEqual([await bodyMd5(db), await keyRow(db), await connectionRows(db)], [once, { mode: 'action', enabled: false }, connectionsBefore]);
   });
 
-  await t.test('như production sau 20261027234414 (khoá Thu chi bật, khoá riêng TẮT): báo cọc + thu thêm bị chặn; Sale khác vẫn chạy', async () => {
+  await t.test('như production sau file bật Thu chi (khoá Thu chi bật, khoá riêng TẮT): báo cọc + thu thêm bị chặn; Sale khác vẫn chạy', async () => {
     await set({ registry: false, policy: false });
     assert.ok((await projected()).includes('income_expenses.create') && !(await projected()).includes(KEY));
     await deniedBoth('khoá riêng TẮT');
@@ -306,6 +313,60 @@ test('SQL (thân production + file mới): income_expenses.create bật mà thi�
     assert.ok((await projected()).includes(KEY));
     assert.equal((await rpc('reservation_create', createInput(nextId()))).outcome, 'applied');
   });
+
+  await t.test('mức bảo vệ thật: không dòng hermes_org_policies + kết nối inherit_crm ⇒ chỉ lật registry là SQL mở (rào còn lại là connector)', async () => {
+    await set();
+    const saved = (await db.query('SELECT * FROM app_private.hermes_org_policies')).rows;
+    assert.equal(saved.length, 1);
+    await db.exec('DELETE FROM app_private.hermes_org_policies');
+    const neutral = { ...binding, expectedPolicyVersion: 0 };
+    try {
+      await db.query('UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability=$1', [KEY]);
+      assert.equal((await projected()).includes(KEY), false);
+      await assert.rejects(() => rpc('reservation_create', createInput(nextId()), neutral),
+        error => error.code === '42501' && error.message === 'hermes_sale_denied', 'registry TẮT: vẫn chặn');
+      await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=$1', [KEY]);
+      assert.ok((await projected()).includes(KEY), 'trigger chiếu lại đưa khoá vào kết nối inherit_crm');
+      assert.equal((await rpc('reservation_create', createInput(nextId()), neutral)).outcome, 'applied',
+        'chính sách trung tính + kết nối inherit_crm: lật registry là cả ba lớp SQL thoả');
+    } finally {
+      for (const row of saved) await db.query(`INSERT INTO app_private.hermes_org_policies(organization_id,enabled,version,read_capabilities,
+        action_capabilities,scope_ids,updated_by,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [row.organization_id, row.enabled, row.version,
+        row.read_capabilities, row.action_capabilities, row.scope_ids, row.updated_by, row.updated_at]);
+    }
+  });
+});
+
+test('file lùi: đặt lại đúng thân 20261021064112; từ chối khi income_expenses.create đang bật hoặc thân lạ; chạy lại / bật lại được', { timeout: 120000 }, async t => {
+  assert.equal(statementOf(REVERT_SQL), statementOf(BODY_SQL), 'định nghĩa vỏ Sale nguyên văn của 20261021064112');
+  const { db, rpc } = await saleSetup(t);
+  await db.exec(BODY_SQL);
+  await db.exec(FILE_SQL);
+  const forwardBody = await bodyMd5(db), productionBody = md5(prosrc(statementOf(BODY_SQL)));
+  const refused = async message => {
+    await assert.rejects(() => db.exec(REVERT_SQL), error => String(error.message).includes(message), message);
+    await db.exec('ROLLBACK');
+  };
+  // Như sau file bật Thu chi: income_expenses.create bật ⇒ thân cũ sẽ mở báo cọc ⇒ từ chối, thân giữ nguyên.
+  assert.equal((await db.query("SELECT enabled FROM app_private.hermes_capabilities WHERE capability='income_expenses.create'")).rows[0].enabled, true);
+  await refused('hermes_sale_deposit_key_revert_blocked');
+  assert.equal(await bodyMd5(db), forwardBody);
+  // Khoá Thu chi đã tắt (đã lùi file bật Thu chi) ⇒ lùi chạy; chạy lại không đổi; dòng khoá riêng để lại; báo cọc vẫn đóng.
+  await db.exec("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='income_expenses.create'");
+  await db.exec(REVERT_SQL);
+  assert.equal(await bodyMd5(db), productionBody);
+  await db.exec(REVERT_SQL);
+  assert.deepEqual([await bodyMd5(db), await keyRow(db)], [productionBody, { mode: 'action', enabled: false }]);
+  await assert.rejects(() => rpc('reservation_create', createInput(nextId())), error => error.code === '42501');
+  // Bật lại cổng bằng file tiến (ghim nhận thân 20261021064112).
+  await db.exec(FILE_SQL);
+  assert.equal(await bodyMd5(db), forwardBody);
+  // Thân lạ (file khác đã sửa hàm) ⇒ lùi dừng, không ghi đè.
+  await db.exec(statementOf(read(migrationName('hermes_sale_actions_v1'))));
+  const foreign = await bodyMd5(db);
+  assert.ok(![forwardBody, productionBody].includes(foreign));
+  await refused('hermes_sale_deposit_key_revert_body_unexpected');
+  assert.equal(await bodyMd5(db), foreign);
 });
 
 test('SQL: thân hàm khác bản đã ghim hoặc khoá trùng tên khác mode ⇒ file dừng, không ghi gì', { timeout: 120000 }, async t => {

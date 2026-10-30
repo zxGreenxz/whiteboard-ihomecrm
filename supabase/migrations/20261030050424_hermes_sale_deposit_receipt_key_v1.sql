@@ -1,19 +1,25 @@
 -- Hermes: tách cổng báo cọc Sale khỏi khoá Thu chi income_expenses.create (review chéo PR #349, phương án b).
 -- crm_sale_reservation_create / crm_sale_reservation_topup ghi phiếu THU cọc một bước: không bản xem trước, không confirmToken, bộ
 -- ghi CRM có thể tự duyệt lúc sinh. Từ khi bật Sale (20261022121254, cố ý không bật income_expenses.*) hai thao tác này chỉ đóng
--- vì income_expenses.create TẮT; migration bật trang Thu chi (20261027234414, PR #349) bật khoá đó nên sẽ mở luôn chúng.
--- File này:
+-- vì income_expenses.create TẮT; migration bật trang Thu chi (hermes_expense_actions_activation_v1, PR #349) bật khoá đó nên sẽ mở
+-- luôn chúng. File này:
 --   1. thay public.hermes_sale_actions_v1 bằng đúng thân 20261021064112 cộng MỘT điều kiện: reservation_create / reservation_topup
---      (cả lượt đối soát status của chúng) đòi thêm khoá riêng deposits.create_receipt có mặt và bật trong registry, chính sách công ty và
---      khoá của kết nối, NGOÀI deposits.create + income_expenses.create (+ overlay duyệt) như cũ. Chỉ siết, không nới;
+--      (cả lượt đối soát status của chúng) đòi thêm khoá riêng deposits.create_receipt: dòng registry bật, khoá có trong action_capabilities
+--      của kết nối và trong chính sách công ty hiệu lực — NGOÀI deposits.create + income_expenses.create (+ overlay duyệt) như cũ.
+--      Chỉ siết, không nới;
 --   2. seed deposits.create_receipt ở trạng thái TẮT (dòng có sẵn giữ nguyên, kể cả khi đã bật; khoá TẮT không vào phép chiếu kết nối nào).
--- Connector cùng đợt (sale-action-contract.mjs) đòi cùng khoá; chưa lớp quyền nào cấp khoá đó nên hai tool vẫn ẩn.
--- Thứ tự phát hành: file này + connector có SALE_DEPOSIT_RECEIPT_KEY lên TRƯỚC 20261027234414 (tên file muộn hơn nhưng phải ÁP trước;
--- provenance catalog-proven vì hàm đã có ⇒ áp đích danh).
+-- MỨC BẢO VỆ THẬT: production có 0 dòng hermes_org_policies (chính sách trung tính của hermes_effective_org_policy_v1 = mọi khoá
+-- registry đang bật) và 6/6 kết nối sống là inherit_crm (trigger chiếu lại đưa mọi khoá registry đang bật vào kết nối). Vậy chỉ cần
+-- LẬT enabled=true cho dòng registry này là cả ba lớp SQL tự thoả. Rào còn lại duy nhất là connector: sale-action-contract.mjs đòi cùng
+-- khoá và KHÔNG lớp quyền nào của connector cấp khoá đó, nên hai tool vẫn ẩn. Kế hoạch bật sau này KHÔNG được chỉ lật registry: phải
+-- kèm dòng hermes_org_policies tường minh (trần công ty) hoặc cấp khoá theo từng kết nối, cùng lượt với connector (lớp cấp khoá +
+-- bản xem trước / confirmToken cho hai tool).
+-- Thứ tự phát hành: file này + connector có SALE_DEPOSIT_RECEIPT_KEY lên TRƯỚC file bật Thu chi hermes_expense_actions_activation_v1
+-- (provenance catalog-proven vì hàm đã có ⇒ áp đích danh).
 -- $requires$ ghim md5 thân đang chạy (bỏ CR): thân 20261021064112 hoặc thân của chính file này (chạy lại được); thân khác ⇒ dừng,
 -- không ghi đè bản vá của PR khác. Không DROP, không đổi chữ ký / kiểu trả về / quyền EXECUTE (CREATE OR REPLACE giữ ACL), không ghi
--- bảng nghiệp vụ. Lùi: chạy lại định nghĩa hàm vỏ Sale của 20261021064112 CHỈ khi income_expenses.create còn TẮT (file Thu chi chưa áp
--- hoặc đã lùi) — nếu không, lùi là mở lại hai tool báo cọc; dòng khoá TẮT để lại, vô hại.
+-- bảng nghiệp vụ. Lùi: docs/plans/hermes-crm/revert/hermes_sale_deposit_receipt_key_revert_v1.sql (đặt lại thân 20261021064112; từ
+-- chối khi income_expenses.create đang bật, vì thân cũ sẽ mở lại hai tool báo cọc; dòng khoá TẮT để lại, vô hại).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';

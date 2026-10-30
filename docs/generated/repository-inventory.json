@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1722,
   "soFileDocBangFs": 446,
-  "tongLoiGoi": 1131,
+  "tongLoiGoi": 1132,
   "khongPhanLoaiDuoc": 506,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 183,
+      "soFile": 184,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -593,6 +593,15 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -806,14 +815,6 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/task-composition.test.mjs",

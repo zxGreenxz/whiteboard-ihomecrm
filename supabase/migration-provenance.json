@@ -13867,7 +13867,7 @@
       "version": "20261030050424",
       "name": "hermes_sale_deposit_receipt_key_v1",
       "scheme": "timestamp14",
-      "sha256": "9f3c0ffe6e8ecfb474f0bd5d2721fa95adc620073c541c9829d0141d86f5efc6",
+      "sha256": "abc88d0447d80b6167df59709414fe39518410354783b607d50590682729a34c",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.hermes_sale_actions_v1"

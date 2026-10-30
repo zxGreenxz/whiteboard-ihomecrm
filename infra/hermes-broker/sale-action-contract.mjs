@@ -6,8 +6,11 @@ export const SALE_ACTIONS = Object.freeze(['rooms.edit', 'sale_phong.manage_imag
 // Báo cọc / thu thêm CÓ TIỀN (crm_sale_reservation_create / _topup) ghi phiếu THU một bước: không bản xem trước, không confirmToken,
 // bộ ghi CRM có thể tự duyệt lúc sinh. Ngoài deposits.create + income_expenses.create (như cũ), hai thao tác này đòi thêm khoá riêng
 // Hermes dưới đây: bật income_expenses.create cho trang Thu chi (crm_action_*) không còn mở chúng. Khoá seed TẮT (migration
-// hermes_sale_deposit_receipt_key_v1, SQL hermes_sale_actions_v1 đòi cùng khoá: registry ∩ chính sách công ty ∩ kết nối) và chưa lớp
-// quyền nào của connector cấp. Không nằm trong SALE_ACTIONS: hermes_sale_capabilities_v1 trả đúng năm khoá trên.
+// hermes_sale_deposit_receipt_key_v1). SQL hermes_sale_actions_v1 đòi cùng khoá ở registry, chính sách công ty và kết nối, NHƯNG
+// production có 0 dòng hermes_org_policies (chính sách trung tính = mọi khoá đang bật) và kết nối sống đều inherit_crm (tự nhận mọi
+// khoá đang bật): chỉ lật dòng registry là cả ba lớp SQL thoả. Rào còn lại là ở đây: không lớp quyền nào của connector cấp khoá này
+// nên hai thao tác luôn ẩn. Bật thật phải cùng một lượt: connector có lớp cấp khoá + xem trước / confirmToken, SQL có dòng
+// hermes_org_policies tường minh hoặc cấp theo từng kết nối. Không nằm trong SALE_ACTIONS: hermes_sale_capabilities_v1 trả đúng năm khoá.
 export const SALE_DEPOSIT_RECEIPT_KEY = 'deposits.create_receipt';
 const DEPOSIT_RECEIPT_OPS = Object.freeze(['reservation_create', 'reservation_topup']);
 const DEPOSIT_RECEIPT_KEYS = Object.freeze(['income_expenses.create', SALE_DEPOSIT_RECEIPT_KEY]);
