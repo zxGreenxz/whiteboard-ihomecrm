@@ -960,29 +960,6 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
-    },
-    "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql": {
-      "sha256": "9dd3ec7da83c1460e18d72360fe9f425928fb51b744c1332c52ae27503c2f305",
-      "missingObjects": [
-        "function:app_private.ie_commission_legacy_dup_guard_v1",
-        "trigger:public.income_expenses.z97_commission_legacy_dup_guard"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration bịt lối lập phiếu hoa hồng thứ hai qua ie_compat_insert_v2 (soát 30/10/2026), chưa áp dụng production. Hàm trigger và trigger vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Bằng chứng trước áp: PGlite chạy thật thân hàm ngay trước migration (đối chứng tái hiện lỗ) rồi áp file hai lượt, 7/7 đột biến bị bắt; trên TEST chạy trong ROLLBACK cùng bộ ca trước/sau (không còn dấu vết). Hồ sơ này chỉ giải thích object chưa triển khai, không thay review chéo, dry-run, backup hay lane apply.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.ie_commission_legacy_dup_guard_v1()"
-        },
-        {
-          "duong_dan": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
-          "trich_doan": "CREATE TRIGGER z97_commission_legacy_dup_guard"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/khoaCotHoaHongCompatMigration.test.ts",
-          "trich_doan": "const migrationFile = '20261030100148_khoa_cot_hoa_hong_ie_compat.sql';"
-        }
-      ]
     }
   }
 }
