@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Building2, Zap, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
@@ -14,6 +14,7 @@ import { useBuildingServices } from "@/hooks/useBuildingServices";
 import { resolveInvoicePricing } from "@/lib/contractServicePricing";
 import { prorateAmount, calcProratedDays } from "@/lib/prorateCalculation";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
+import type { ExtraChargesDraft } from "@/lib/contractExitSettlementDrafts";
 import type { ContractWithRelations } from "@/types/contract";
 
 interface TerminationExtraChargesProps {
@@ -23,6 +24,12 @@ interface TerminationExtraChargesProps {
   /** Emit mảng khoản thu thêm đã chuẩn hoá mỗi khi có thay đổi. */
   onChange: (items: ExtraChargeItem[]) => void;
   onValidityChange?: (valid: boolean) => void;
+  /** Bỏ cọc: không bắt buộc chốt số điện — thiếu nguồn chỉ số thì không thu tiền điện thay vì chặn quyết toán. */
+  meterOptional?: boolean;
+  /** Nháp đã lưu: điền lại các ô người dùng tự nhập lúc mở. */
+  initialDraft?: ExtraChargesDraft | null;
+  /** Emit trạng thái các ô tự nhập (để lưu nháp) mỗi khi có thay đổi. */
+  onDraftChange?: (draft: ExtraChargesDraft) => void;
 }
 
 let customRowSeq = 0;
@@ -52,6 +59,9 @@ export function TerminationExtraCharges({
   chargeDate,
   onChange,
   onValidityChange,
+  meterOptional = false,
+  initialDraft,
+  onDraftChange,
 }: TerminationExtraChargesProps) {
   const buildingId = contract.room?.building_id || "";
   const { data: bldSvc } = useBuildingServices(buildingId);
@@ -107,6 +117,9 @@ export function TerminationExtraCharges({
   const [startOverride, setStartOverride] = useState<number | null | undefined>(undefined);
   const initialReading = contract.initial_electricity_reading;
   const roomId = contract.room_id;
+  // Số điện gõ tay trong nháp chỉ điền lại sau khi tải xong nguồn chỉ số và đúng đồng hồ đó; tới lúc ấy vẫn giữ trong nháp.
+  const [pendingMeter, setPendingMeter] = useState(initialDraft?.meter ?? null);
+  const pendingMeterRef = useRef(pendingMeter);
   useEffect(() => {
     let cancelled = false;
     setMeterSources([]); setCurrentReading(null); setStartOverride(undefined); setMeterError(''); setMeterLookup('loading');
@@ -132,8 +145,18 @@ export function TerminationExtraCharges({
         const fromLatest = latest && latest.value > 0 ? latest : null;
         const start = fromLatest ? fromLatest.value : initialReading != null ? Number(initialReading) : null;
         if (cancelled) return;
-        setMeterSources(manual ? [{ ...manual, start: { readingId: null, value: start != null && Number.isFinite(start) ? String(start) : '',
-          version: 'legacy', captureId: null, readingDate: fromLatest?.readingDate ?? '', kind: 'legacy' }, end: null, issues: ['MISSING_END'] }] : sources);
+        const next: MeterBillingSource[] = manual ? [{ ...manual, start: { readingId: null, value: start != null && Number.isFinite(start) ? String(start) : '',
+          version: 'legacy', captureId: null, readingDate: fromLatest?.readingDate ?? '', kind: 'legacy' }, end: null, issues: ['MISSING_END'] }] : sources;
+        setMeterSources(next);
+        const saved = pendingMeterRef.current;
+        if (saved) {
+          const single = next.length === 1 ? next[0] : undefined;
+          if (single && !single.end && single.meterId === saved.meterId) {
+            setCurrentReading(saved.currentReading);
+            if (saved.startOverride !== undefined) setStartOverride(saved.startOverride);
+          }
+          pendingMeterRef.current = null; setPendingMeter(null);
+        }
         setMeterLookup('ready');
       })
       .catch(cause => { if (!cancelled) { setMeterLookup('error'); setMeterError(cause instanceof Error ? cause.message : 'Không tải được nguồn chỉ số. Tải lại trước khi quyết toán.'); } });
@@ -141,12 +164,13 @@ export function TerminationExtraCharges({
   }, [orgId, contract.id, chargeDate, reload, onValidityChange, initialReading, roomId]);
 
   // ── State các dòng mặc định + dòng tuỳ ý ────────────────────────────────
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>(() => chargeDate || "");
-  const [proratedAmount, setProratedAmount] = useState(0);
-  const [proratedTouched, setProratedTouched] = useState(false);
-  const [cleaningAmount, setCleaningAmount] = useState(200000);
-  const [customRows, setCustomRows] = useState<CustomRow[]>([]);
+  const [fromDate, setFromDate] = useState<string>(() => initialDraft?.fromDate ?? "");
+  const [toDate, setToDate] = useState<string>(() => initialDraft ? initialDraft.toDate : chargeDate || "");
+  const [proratedAmount, setProratedAmount] = useState(() => initialDraft?.proratedAmount ?? 0);
+  const [proratedTouched, setProratedTouched] = useState(() => initialDraft?.proratedTouched ?? false);
+  const [cleaningAmount, setCleaningAmount] = useState(() => initialDraft?.cleaningAmount ?? 200000);
+  const [customRows, setCustomRows] = useState<CustomRow[]>(() =>
+    (initialDraft?.customRows ?? []).map((row) => ({ id: ++customRowSeq, name: row.name, amount: row.amount })));
 
   const days = calcProratedDays(fromDate, toDate);
 
@@ -167,7 +191,12 @@ export function TerminationExtraCharges({
   const manualInvalid = !!manualSource && currentReading != null
     && (previousReading == null || !Number.isFinite(previousReading) || previousReading < 0 || !Number.isFinite(currentReading) || manualConsumption < 0);
   const unresolvedSources = meterSources.some(source => source !== manualSource && (!source.start || !source.end || source.issues.length > 0 || Number(source.end.value) < Number(source.start.value)));
-  const electricValid = meterLookup === 'ready' && !unresolvedSources && !manualInvalid;
+  // Bỏ cọc không bắt buộc số điện; nhưng chỉ số đã dùng cho hoá đơn mà có bản thay thế là sai lệch chứng từ cần kế toán
+  // xử lý — vẫn chặn như mọi nhánh.
+  const replacedReading = meterSources.some(source => source.issues.includes('BILLED_READING_REPLACED'));
+  const electricValid = meterOptional
+    ? meterLookup !== 'loading' && !manualInvalid && !replacedReading
+    : meterLookup === 'ready' && !unresolvedSources && !manualInvalid;
   useEffect(() => { onValidityChange?.(electricValid); }, [electricValid, onValidityChange]);
   const electricItems = useMemo<ExtraChargeItem[]>(() => {
     if (meterLookup !== 'ready' || !chargeDate) return [];
@@ -234,6 +263,15 @@ export function TerminationExtraCharges({
     cleaningAmount,
     customRows,
   ]);
+
+  const manualMeterId = manualSource?.meterId;
+  useEffect(() => {
+    if (!onDraftChange) return;
+    const meter = pendingMeter ?? (manualMeterId && (currentReading != null || startOverride !== undefined)
+      ? { meterId: manualMeterId, currentReading, ...(startOverride !== undefined ? { startOverride } : {}) } : null);
+    onDraftChange({ fromDate, toDate, proratedAmount, proratedTouched, cleaningAmount,
+      customRows: customRows.map(({ name, amount }) => ({ name, amount })), meter });
+  }, [onDraftChange, fromDate, toDate, proratedAmount, proratedTouched, cleaningAmount, customRows, pendingMeter, manualMeterId, currentReading, startOverride]);
 
   const total =
     proratedAmount +
@@ -310,8 +348,9 @@ export function TerminationExtraCharges({
         {/* Each physical meter retains its own reading source and internal evidence. */}
         <div className="space-y-3 px-3.5 py-3">
           <div className="flex gap-2 items-center"><Zap className="h-4 w-4" /><span className="text-sm font-medium">Tiền điện (chốt số)</span></div>
+          {meterOptional && <p className="text-xs text-muted-foreground">Bỏ cọc: không bắt buộc nhập số điện — để trống thì không thu tiền điện.</p>}
           {meterLookup === 'loading' && <InlineSkeleton label="nguồn chỉ số đúng hợp đồng và ngày thanh lý" width="16rem" />}
-          {meterLookup === 'error' && <p role="alert" className="text-xs text-destructive">{meterError} <button type="button" className="underline" onClick={() => setReload(value => value + 1)}>Tải lại nguồn chỉ số</button></p>}
+          {meterLookup === 'error' && <p role="alert" className="text-xs text-destructive">{meterError}{meterOptional ? ' Vẫn quyết toán được, không thu tiền điện.' : ''} <button type="button" className="underline" onClick={() => setReload(value => value + 1)}>Tải lại nguồn chỉ số</button></p>}
           {meterLookup === 'ready' && meterSources.length === 0 && <p className="text-xs text-muted-foreground">Phòng chưa có đồng hồ điện đang dùng. Đăng ký đồng hồ tại Ghi chỉ số nếu cần chốt điện.</p>}
           {meterSources.map(source => <div key={source.meterId} className="space-y-2 border-t pt-2">
             <p className="text-sm">{source.meterName} · {source.registerCode || 'kWh'}</p>
@@ -334,6 +373,7 @@ export function TerminationExtraCharges({
                 : currentReading != null && manualConsumption === 0 ? (legacyStart ? 'Không phát sinh tiền điện nên số này không được ghi; sau khi quyết toán, bổ sung ở mục Chỉ số lúc trả phòng.' : 'Số nhập tay 0 kWh chưa được lưu làm chứng cứ. Chốt bằng ảnh tại Ghi chỉ số để lưu mốc này.')
                 : legacyStart ? (autoStart == null ? 'Chưa có chỉ số đã duyệt: nhập số đầu và số cuối.' : 'Số đầu là chỉ số đã duyệt mới nhất của đồng hồ, sửa được nếu sai. Số cuối ghi luôn làm chỉ số lúc trả phòng.')
                 : 'Chưa có ảnh đã chốt: có thể nhập số cuối thủ công. Số đầu lấy đúng kỳ/hợp đồng.'}</p>
+              : meterOptional && !source.issues.includes('BILLED_READING_REPLACED') ? <p className="text-xs text-muted-foreground">Chưa có số đã chốt hợp lệ cho đồng hồ này — bỏ cọc không thu tiền điện của đồng hồ này. Muốn thu, chốt số tại Ghi chỉ số rồi tải lại.</p>
               : <p role="alert" className="text-xs text-destructive">{source.issues.includes('BILLED_READING_REPLACED')
                 ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi thanh lý; chứng từ cũ không tự đổi.'
                 : <>Thiếu nguồn hợp lệ cho đồng hồ này. {source.registerCode.trim() && !source.end ? 'Đồng hồ đã đăng ký đọc bằng QR/ảnh: cần chốt số cuối tại Ghi chỉ số, kể cả khi không dùng thêm điện, rồi tải lại trước khi thanh lý.' : 'Chốt đủ chỉ số tại Ghi chỉ số rồi tải lại.'}</>}</p>}

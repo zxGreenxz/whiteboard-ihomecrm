@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, CalendarMinus2, Undo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
@@ -8,6 +8,7 @@ import { useBuildingServices } from "@/hooks/useBuildingServices";
 import { resolveInvoicePricing } from "@/lib/contractServicePricing";
 import { prorateAmount, calcProratedDays } from "@/lib/prorateCalculation";
 import type { RefundItem } from "@/lib/contractValidation";
+import type { RefundItemsDraft } from "@/lib/contractExitSettlementDrafts";
 import type { ContractWithRelations } from "@/types/contract";
 
 interface TerminationRefundItemsProps {
@@ -16,6 +17,10 @@ interface TerminationRefundItemsProps {
   moveOutDate?: string;
   /** Emit mảng khoản hoàn đã chuẩn hoá mỗi khi có thay đổi. */
   onChange: (items: RefundItem[]) => void;
+  /** Nháp đã lưu: điền lại các ô người dùng tự nhập lúc mở. */
+  initialDraft?: RefundItemsDraft | null;
+  /** Emit trạng thái các ô tự nhập (để lưu nháp) mỗi khi có thay đổi. */
+  onDraftChange?: (draft: RefundItemsDraft) => void;
 }
 
 let customRowSeq = 0;
@@ -61,6 +66,8 @@ export function TerminationRefundItems({
   contract,
   moveOutDate,
   onChange,
+  initialDraft,
+  onDraftChange,
 }: TerminationRefundItemsProps) {
   const buildingId = contract.room?.building_id || "";
   const { data: bldSvc } = useBuildingServices(buildingId);
@@ -104,16 +111,19 @@ export function TerminationRefundItems({
   );
 
   // ── State ───────────────────────────────────────────────────────────────
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
-  const [proratedAmount, setProratedAmount] = useState(0);
-  const [proratedTouched, setProratedTouched] = useState(false);
-  const [customRows, setCustomRows] = useState<CustomRow[]>([]);
+  const [fromDate, setFromDate] = useState<string>(() => initialDraft?.fromDate ?? "");
+  const [toDate, setToDate] = useState<string>(() => initialDraft?.toDate ?? "");
+  const [proratedAmount, setProratedAmount] = useState(() => initialDraft?.proratedAmount ?? 0);
+  const [proratedTouched, setProratedTouched] = useState(() => initialDraft?.proratedTouched ?? false);
+  const [customRows, setCustomRows] = useState<CustomRow[]>(() =>
+    (initialDraft?.customRows ?? []).map((row) => ({ id: ++customRowSeq, name: row.name, amount: row.amount })));
 
   // Gợi ý khoảng "không ở": từ NGÀY SAU ngày trả phòng đến hết tháng đó. Người
-  // dùng sửa được; chỉ gợi ý khi họ chưa tự nhập.
+  // dùng sửa được; chỉ gợi ý khi họ chưa tự nhập. Mở từ nháp thì giữ đúng ngày đã
+  // lưu, kể cả ô đã xoá (xoá ngày = không hoàn tiền ngày không ở).
+  const suggestDates = useRef(!initialDraft).current;
   useEffect(() => {
-    if (!moveOutDate) return;
+    if (!moveOutDate || !suggestDates) return;
     setFromDate((cu) => {
       if (cu) return cu;
       const d = new Date(`${moveOutDate}T00:00:00Z`);
@@ -122,7 +132,7 @@ export function TerminationRefundItems({
       return d.toISOString().slice(0, 10);
     });
     setToDate((cu) => cu || cuoiThangCua(moveOutDate));
-  }, [moveOutDate]);
+  }, [moveOutDate, suggestDates]);
 
   const days = calcProratedDays(fromDate, toDate);
   const autoProrated = days > 0 ? prorateAmount(proratedBase, days) : 0;
@@ -154,6 +164,11 @@ export function TerminationRefundItems({
     onChange(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proratedAmount, days, fromDate, toDate, proratedBase, customRows]);
+
+  useEffect(() => {
+    onDraftChange?.({ fromDate, toDate, proratedAmount, proratedTouched,
+      customRows: customRows.map(({ name, amount }) => ({ name, amount })) });
+  }, [onDraftChange, fromDate, toDate, proratedAmount, proratedTouched, customRows]);
 
   const total =
     proratedAmount +

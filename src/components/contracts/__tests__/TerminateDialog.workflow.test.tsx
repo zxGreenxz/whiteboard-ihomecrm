@@ -13,6 +13,11 @@ vi.mock('@/hooks/contracts/useContractTransferLinks', () => ({
   useFinalizeContractTransferExit: () => ({ mutateAsync: transfers.finalize, isPending: false }),
 }));
 vi.mock('@/hooks/useMeters', () => ({ useMeters: () => meters }));
+vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({
+  useContractExitSettlementDraft: () => ({ data: null, isPending: false, isError: false, isSuccess: true, isFetching: false, isFetchedAfterMount: true, refetch: vi.fn() }),
+  useSaveContractExitSettlementDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDiscardContractExitSettlementDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock('@/hooks/useContractExitCases', () => ({
   useConfirmContractReturn: () => ({ mutateAsync: spies.confirm, isPending: false }),
   useFinalizeContractExitCase: () => ({ mutateAsync: spies.finalize, isPending: false }),
