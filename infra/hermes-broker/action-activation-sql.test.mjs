@@ -5,17 +5,17 @@ import { PGlite } from '@electric-sql/pglite';
 import { createActionCatalog } from './action-catalog.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
-import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 
-// Bốn migration bật thao tác ghi theo trang (HĐ / TC / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md) và bốn file lùi
-// (docs/plans/hermes-crm/revert/*_actions_activation_revert_v1.sql) trên PGlite. Fixture: bảng registry / chính sách / biên nhận
-// THẬT (câu CREATE của 20261012061447 và 20261021133823), hai hàm + hai trigger chiếu lại inherit_crm THẬT (20261019034754, md5 thân
+// Ba migration bật thao tác ghi theo trang (HĐ / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md) và ba file lùi
+// (docs/plans/hermes-crm/revert/*_actions_activation_revert_v1.sql) trên PGlite. File TC tách sang PR riêng (chạy sau split báo cọc
+// Sale); dữ liệu fixture vẫn giữ khoá / chính sách Thu chi như production để chứng minh ba file không đụng tới. Fixture: bảng registry /
+// chính sách / biên nhận THẬT (câu CREATE của 20261012061447 và 20261021133823), hai hàm + hai trigger chiếu lại inherit_crm THẬT (20261019034754, md5 thân
 // = production 28/10), dữ liệu registry + 27 dòng chính sách như production đọc 28/10 (chỉ đọc), các hàm của trang là vỏ rỗng cùng
 // chữ ký (khối kiểm phụ thuộc chỉ hỏi to_regprocedure). Chứng minh: mỗi file bật / tắt ĐÚNG khoá của trang (= khoá danh mục connector
-// của trang, trừ khoá mượn của lớp Sale), độc lập với ba trang kia, chạy lại không đổi gì, kết nối inherit_crm nhận / mất khoá mà
+// của trang, trừ khoá mượn của lớp Sale), độc lập với các trang kia, chạy lại không đổi gì, kết nối inherit_crm nhận / mất khoá mà
 // không đổi epoch, legacy / REVOKED không đổi, thiếu phụ thuộc thì dừng trước khi ghi, rào legacy của file lùi. KHÔNG chứng minh RPC
 // trang hay hàm web (đã có test riêng) và không thay lane / tầng 2 trên TEST.
 // Kiểm đột biến: HERMES_ACTIVATION_SQL_MUTATION=<tên trong MUTATIONS> đổi SQL CHỈ trong bộ nhớ của lần chạy này ⇒ test phải đỏ.
@@ -39,8 +39,7 @@ const fnStatement = (sql, name) => {
 
 const PAGES = Object.freeze({
   contract: { slug: 'hermes_contract_actions_activation_v1', prefix: 'contract.', actions: CONTRACT_ACTIONS },
-  expense: { slug: 'hermes_expense_actions_activation_v1', prefix: 'expense.', actions: EXPENSE_ACTIONS },
-  invoice: { slug: 'hermes_invoice_actions_activation_v1', prefix: 'invoice.', actions: INVOICE_ACTIONS },
+  invoice:{ slug: 'hermes_invoice_actions_activation_v1', prefix: 'invoice.', actions: INVOICE_ACTIONS },
   task: { slug: 'hermes_task_actions_activation_v1', prefix: 'task.', actions: TASK_ACTIONS },
 });
 // Bước ghi chính của mỗi trang + khung chung mà khối kiểm phụ thuộc BẮT BUỘC phải hỏi (bỏ khỏi danh sách ⇒ đỏ).
@@ -51,9 +50,7 @@ const PAGE_REQUIRED = {
   contract: ['public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
     'app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
     'app_private.hermes_contract_batch_step_v1(jsonb,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'],
-  expense: ['public.hermes_expense_write_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
-    'app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'],
-  invoice: ['public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  invoice:['public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
     'app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
     'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
     'app_private.hermes_invoice_edit_step_v2(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'],
@@ -112,12 +109,12 @@ const PROD_POLICIES = [
 // Đột biến tay (chỉ trong bộ nhớ). Mỗi mục: file đích + các cặp [chuỗi gốc phải có, chuỗi thay].
 const MUTATIONS = {
   'forward-drop-key': ['forward:contract', ["'contracts.create','contracts.edit','contracts.renew'", "'contracts.create','contracts.renew'"], ['<>4 THEN', '<>3 THEN']],
-  'forward-skip-function-check': ['forward:expense', ['IF to_regprocedure(signature) IS NULL THEN', 'IF false THEN']],
+  'forward-skip-function-check': ['forward:contract',['IF to_regprocedure(signature) IS NULL THEN', 'IF false THEN']],
   'forward-skip-projection-check': ['forward:invoice', ["AND tgenabled='O'", '']],
   'forward-skip-policy-check': ['forward:invoice', ["IF missing IS NOT NULL THEN\n    RAISE EXCEPTION 'hermes_invoice_activation_policy_missing", "IF false THEN\n    RAISE EXCEPTION 'hermes_invoice_activation_policy_missing"]],
   'forward-recurring-never': ['forward:task', ["('task.recurring_pause','tasks.edit','tasks.edit','reversible','always',true)", "('task.recurring_pause','tasks.edit','tasks.edit','reversible','never',true)"]],
   'forward-skip-recurring-check': ['forward:task', [")))<>4 THEN\n    RAISE EXCEPTION 'hermes_task_activation_recurring_policy_invalid'", ")))<0 THEN\n    RAISE EXCEPTION 'hermes_task_activation_recurring_policy_invalid'"]],
-  'revert-skip-legacy-fence': ['revert:expense', ['IF legacy>0 THEN', 'IF false THEN']],
+  'revert-skip-legacy-fence': ['revert:invoice',['IF legacy>0 THEN', 'IF false THEN']],
   'revert-touches-lock': ['revert:contract', ["ARRAY['contracts.create','contracts.edit'", "ARRAY['sale_phong.lock_room','contracts.create','contracts.edit'"], ['<>4 THEN', '<>5 THEN']],
   'revert-drops-create': ['revert:task', ["WHERE capability='tasks.delete' AND mode='action' AND enabled;", "WHERE capability IN ('tasks.delete','tasks.create') AND mode='action' AND enabled;"]],
 };
@@ -223,7 +220,7 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
     }
   });
 
-  await t.test('production 28/10: mỗi file bật đúng khoá của trang, chạy lại không đổi gì, ba trang kia giữ nguyên', async () => {
+  await t.test('production 28/10: mỗi file bật đúng khoá của trang, chạy lại không đổi gì, các trang kia giữ nguyên', async () => {
     for (const page of Object.keys(PAGES)) await inCase(async () => {
       await db.exec(plain(FORWARD[page]));
       const once = { registry: await registry(), policies: await policies(), connections: await connections() };
@@ -364,7 +361,7 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
     });
   });
 
-  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả bốn rồi lùi cả bốn ⇒ về đúng production 28/10', async () => {
+  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả ba rồi lùi cả ba ⇒ về đúng production 28/10', async () => {
     for (const page of Object.keys(PAGES)) await db.exec(FORWARD[page]);
     assert.deepEqual((await enabledActionKeys()).filter(key => !BASE.registry[key]).sort(),
       Object.keys(PAGES).flatMap(pageKeys).filter(key => !BASE.registry[key]).sort());
