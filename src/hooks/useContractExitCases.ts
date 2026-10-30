@@ -5,6 +5,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { exitWithMeterSources } from '@/lib/meter-capture/service';
 import { meterSourceReferenceSchema } from '@/lib/meter-capture/types';
+import { EXIT_SETTLEMENT_DRAFT_KEYS } from '@/hooks/useContractExitSettlementDrafts';
 import {
   confirmContractReturn,finalizeContractExitCase,getContractExitCase,listContractExitCases,updateContractExitKind,contractExitErrorMessage,
   type ContractExitCaseFilters,type ContractExitRpcInvoker,type ConfirmContractReturnInput,
@@ -47,7 +48,7 @@ function useExitMutation<Input>(mutationFn:(input:Input,organizationId:string)=>
     return mutationFn(input,selectedOrganizationId);
   },retry:false,onError:(error)=>toast.error(contractExitErrorMessage(error)),onSuccess:async(result)=>{
     toast.success(kindChange?'Đã cập nhật loại thanh lý':result.state==='PENDING'?'Đã trả phòng • Chờ quyết toán':'Đã quyết toán');
-    await Promise.all(['contract-exit-cases','contract-exit-case','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit'].map(key=>cache.invalidateQueries({queryKey:[key]})));
+    await Promise.all(['contract-exit-cases','contract-exit-case','contract-meter-boundaries','contract-meter-followups','contracts','contract','rooms','my-available-rooms','phong-trong','invoices','income-expenses','excess-amount','contract-pending-forfeit',...EXIT_SETTLEMENT_DRAFT_KEYS].map(key=>cache.invalidateQueries({queryKey:[key]})));
   }});
 }
 export function useConfirmContractReturn(){return useExitMutation((input:ConfirmContractReturnInput,org:string)=>confirmContractReturn(invoke,input,org));}
