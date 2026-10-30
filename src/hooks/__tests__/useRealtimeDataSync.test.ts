@@ -174,7 +174,8 @@ function invalidatedReportRoots() {
 // Existing domain budgets stay scoped to those domains; settlement has its own burst test.
 function originalInvalidations() {
   return harness.invalidateQueries.mock.calls.filter(([filters]) =>
-    !['contract-settlement', 'termination-refund-facts', 'commission-voucher-facts'].includes(String(filters.queryKey?.[0])));
+    !['contract-settlement', 'termination-refund-facts', 'commission-voucher-facts', 'room-cash-lifecycle']
+      .includes(String(filters.queryKey?.[0])));
 }
 
 function invalidatedRoots() {
@@ -289,6 +290,42 @@ describe("useRealtimeDataSync report invalidation", () => {
     getRealtimeHandler('contracts')();
     await vi.advanceTimersByTimeAsync(800);
     expect(starts).toBe(1);
+    unsubscribe();
+  });
+
+  it.each([
+    'invoices', 'payments', 'income_expenses', 'income_expense_items', 'contracts', 'contract_terminations', 'contract_transfers',
+  ])('%s làm mới room-cash-lifecycle (nguồn tiền của lane + ngăn kéo)', (table) => {
+    const key = ['room-cash-lifecycle', 'room-a'];
+    harness.queryClient.setQueryData(key, {});
+    useRealtimeDataSync();
+    triggerTable(table);
+    expect(harness.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+  });
+
+  it('payments: làm mới room-cash-lifecycle TRƯỚC subtype contract-settlement — lane chạy lại đọc số mới', async () => {
+    let phien = 0;
+    const tienKey = ['room-cash-lifecycle', 'room-a'];
+    // Lane đọc khối tiền qua fetchQuery với staleTime như roomCashLifecycleQuery.
+    const observer = new QueryObserver(harness.queryClient, {
+      queryKey: ['contract-settlement', 'lifecycle', 'org-a', 'room-a'],
+      queryFn: () => harness.queryClient.fetchQuery({
+        queryKey: tienKey, staleTime: 30_000, queryFn: async () => { phien += 1; return phien; },
+      }),
+    });
+    const lanNhan: unknown[] = [];
+    const unsubscribe = observer.subscribe((r) => { if (r.status === 'success') lanNhan.push(r.data); });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lanNhan.at(-1)).toBe(1);
+
+    useRealtimeDataSync();
+    getRealtimeHandler('payments')();
+    await vi.advanceTimersByTimeAsync(800);
+    const thuTu = harness.invalidateQueries.mock.calls.map(([f]) => String((f.queryKey as unknown[])[0]));
+    expect(thuTu.indexOf('room-cash-lifecycle')).toBeGreaterThanOrEqual(0);
+    expect(thuTu.indexOf('room-cash-lifecycle')).toBeLessThan(thuTu.indexOf('contract-settlement'));
+    // Không có thứ tự này, lane nhận lại bản cache cũ (1) trong 30 giây staleTime.
+    expect(lanNhan.at(-1)).toBe(2);
     unsubscribe();
   });
 

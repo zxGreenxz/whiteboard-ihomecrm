@@ -5,7 +5,8 @@ import { CONTRACT_SETTLEMENT_INVALIDATION_RULES, SETTLEMENT_FACTS_INVALIDATION_R
 
 /** Descriptor keys in this group are flushed once per burst, not per table. */
 export const isSettlementQueryKey = (key: readonly unknown[]): boolean =>
-  key[0] === 'contract-settlement' || key[0] === 'termination-refund-facts' || key[0] === 'commission-voucher-facts';
+  key[0] === 'contract-settlement' || key[0] === 'termination-refund-facts'
+  || key[0] === 'commission-voucher-facts' || key[0] === 'room-cash-lifecycle';
 
 export function createSettlementInvalidationCollector(client: QueryClient) {
   const pending = new Set<string>();
@@ -25,12 +26,14 @@ export function createSettlementInvalidationCollector(client: QueryClient) {
         timer = undefined;
         const subtypes = new Set(pending);
         pending.clear();
+        // Khoá gốc TRƯỚC: lane 'contract-settlement' đọc 'room-cash-lifecycle'
+        // qua fetchQuery — khoá đó phải đã bị đánh dấu cũ khi lane chạy lại.
+        for (const root of pendingFacts) client.invalidateQueries({ queryKey: [root] });
+        pendingFacts.clear();
         client.invalidateQueries({
           queryKey: ['contract-settlement'],
           predicate: (query) => subtypes.has(String(query.queryKey[1])),
         });
-        for (const root of pendingFacts) client.invalidateQueries({ queryKey: [root] });
-        pendingFacts.clear();
       }, delayConTrongTran(firstEvent, now));
     },
     dispose() {
