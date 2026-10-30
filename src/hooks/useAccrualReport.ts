@@ -36,6 +36,8 @@ export interface AccrualReportRow {
   itemId: string;
   voucherId: string;
   voucherName: string;
+  /** Mã phiếu (PC…/PT…) — ô tìm của Báo cáo LN tìm theo mã; null khi phiếu chưa có mã. */
+  voucherCode?: string | null;
   /** building_id của phiếu — gộp/đối chiếu theo toà bằng id (tên toà có thể trùng). */
   buildingId: string | null;
   buildingName: string | null;
@@ -339,6 +341,7 @@ export const useAccrualMonthReport = (
           itemId: it.id,
           voucherId: voucher.id,
           voucherName: voucher.name ?? "",
+          voucherCode: voucher.code || null,
           buildingId: voucher.building_id ?? voucher.building?.id ?? null,
           buildingName: voucher.building?.name ?? null,
           voucherDate: voucher.voucher_date ?? null,

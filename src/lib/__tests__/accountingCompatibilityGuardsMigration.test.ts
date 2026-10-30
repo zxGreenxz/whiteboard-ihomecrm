@@ -13,8 +13,14 @@ const payoutDialog = readFileSync(
   "src/components/shareholders/ProfitDistributeDialog.tsx",
   "utf8",
 );
-const approvalPage = readFileSync(
-  "src/pages/payments/IncomeExpensePage.tsx",
+// Hộp Duyệt đã gom về MỘT nguồn cho Thu chi máy tính/điện thoại và Báo cáo LN:
+// luật lọc sổ nằm ở hook, danh sách sổ được vẽ ở bộ hộp xác nhận dùng chung.
+const approvalActions = readFileSync(
+  "src/hooks/income-expenses/useVoucherActions.ts",
+  "utf8",
+);
+const approvalDialogs = readFileSync(
+  "src/components/income-expenses/VoucherActionDialogs.tsx",
   "utf8",
 );
 
@@ -93,10 +99,11 @@ describe("accounting compatibility migration guards", () => {
       "accounts.filter((account) => !account.is_virtual)",
     );
     expect(payoutDialog).toContain("options={payoutAccounts.map");
-    expect(approvalPage).toContain("!!approveTarget?.shareholder_id");
-    expect(approvalPage).toContain(
+    expect(approvalActions).toContain("!!approveTarget?.shareholder_id");
+    expect(approvalActions).toContain(
       "accounts.filter((account) => !account.is_virtual)",
     );
-    expect(approvalPage).toContain("approvalAccounts.map");
+    expect(approvalActions).toContain("accounts: approvalAccounts");
+    expect(approvalDialogs).toContain("approve.accounts.map");
   });
 });
