@@ -23,16 +23,25 @@
 //   · KHÔNG gọi `app_private.contract_deposit_sources_v1` — hàm private, đã
 //     REVOKE khỏi `authenticated`. Luật của nó được CHÉP sang lib thuần.
 //
+// ── TIỀN THUÊ / PHÍ: MỘT NGUỒN VỚI NGĂN KÉO VÀ HERMES ───────────────────────
+// Có phòng ⇒ đọc `money.contract` (F2: tiền thật, cấn trừ, nợ) + hạn gốc của
+// `get_room_cash_lifecycle_v1` qua CÙNG query options với panel/ngăn kéo
+// (`roomCashLifecycleQuery`): chung cache, meta inline. Chỉ lấy khối tiền, KHÔNG
+// lấy cọc từ RPC này. RPC cũ (chưa có `money`) ⇒ cộng hoá đơn thô như trước;
+// RPC lỗi (vd 42501 thiếu khoá theo toà) ⇒ vẫn cộng thô nhưng báo `partial`.
+//
 // ── ĐỌC QUA RLS CÓ THỂ CHỈ THẤY MỘT PHẦN ───────────────────────────────────
 // Mỗi nguồn có trạng thái riêng (`reads`). Nguồn nào không chứng minh được thì
 // phần đó ghi "Chưa đủ dữ liệu" — KHÔNG hiện số 0, KHÔNG kết luận phòng trống,
 // và KHÔNG đi tìm đường quyền cao hơn để bù.
 // =============================================================================
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { roomCashLifecycleQuery } from '@/hooks/useRoomCashLifecycle';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { vnTodayISO } from '@/lib/vnDate';
+import type { ContractMoney, LifecyclePayload } from '@/lib/roomLifecycle';
 import {
   buildDepositSources, buildLifecycleLanes, parseResidenceSegments, reconcilePostings,
   summariseDeposit, sumEffectiveInvoices,
@@ -92,6 +101,7 @@ const hong = (reason: string) => ({ ok: false as const, reason });
 const thieu = (reason: string) => ({ ok: 'partial' as const, reason });
 
 export function useContractLifecycle(a: ContractLifecycleArgs) {
+  const qc = useQueryClient();
   const enabled = !!a.organizationId && !!a.targetContractId;
   /**
    * HÔM NAY theo giờ VIỆT NAM, tách hẳn khỏi `businessDate`.
@@ -119,6 +129,12 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
         contracts: { ok: true }, segments: { ok: true }, transfers: { ok: true },
         deposits: { ok: true }, invoices: { ok: true }, postings: { ok: true },
       };
+
+      // Khối tiền một nguồn theo phòng — chạy song song mọi nguồn khác, lỗi
+      // được giữ lại thành giá trị (không làm sập dải, không bật toast).
+      const tienPhong: Promise<{ payload: LifecyclePayload } | { loi: unknown } | null> = roomId
+        ? qc.fetchQuery(roomCashLifecycleQuery(roomId)).then((payload) => ({ payload }), (loi: unknown) => ({ loi }))
+        : Promise.resolve(null);
 
       // ── 1. Hợp đồng ứng viên, LỌC QUA RLS theo org + phòng ───────────────
       // Phòng là trục, không phải cây hợp đồng: production không có liên kết
@@ -260,7 +276,6 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
       // Thanh lý quyết định nhãn "Đã thanh lý" và cả mốc 4. Đọc hỏng mà vẫn vẽ
       // thì một hợp đồng đã thanh lý có thể đội lốt "HĐ hiện tại" — fail-closed.
       if (ketThuc === null) throw new Error('Không đọc được bản ghi thanh lý — thử lại.');
-      if (hoaDon === null) reads.invoices = hong('Không đọc được hoá đơn của hợp đồng');
 
       // ── 4. Nguồn cọc: union trực tiếp + liên kết, khử trùng ─────────────
       let depositByContract = new Map<string, DepositFigures>();
@@ -410,13 +425,38 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
         }
       }
 
+      // ── 6. Tiền thuê / phí: `money.contract` của RPC phòng, thiếu thì dự phòng
+      const tien = await tienPhong;
+      const moneyById = new Map<string, ContractMoney>();
+      const hanGoc = new Map<string, string | null>();
+      if (tien && 'payload' in tien) {
+        for (const c of tien.payload.contracts) {
+          if (c.money) moneyById.set(c.id, c.money);
+          if (c.originalEndDate !== undefined) hanGoc.set(c.id, c.originalEndDate);
+        }
+      }
       // Cộng MỘT LƯỢT rồi tra — gọi `sumEffectiveInvoices` trong vòng lặp là
       // quét lại cả mảng hoá đơn cho từng hợp đồng.
       const tongHoaDon = hoaDon === null ? null : sumEffectiveInvoices(hoaDon, org);
-      const invoiceByContract: Map<string, InvoiceTotals> = tongHoaDon === null
-        ? new Map()
-        // Mọi hợp đồng trong chuỗi có MỘT mục: thiếu mục = "chưa đọc", khác "0".
-        : new Map(hdIds.map((id) => [id, tongHoaDon.get(id) ?? { paid: 0, debt: 0 }]));
+      // Mọi hợp đồng trong chuỗi có MỘT mục: thiếu mục = "chưa đọc", khác "0".
+      const invoiceByContract = new Map<string, InvoiceTotals>();
+      const duPhong: string[] = [];
+      for (const id of hdIds) {
+        const m = moneyById.get(id);
+        if (m) {
+          invoiceByContract.set(id, { paid: m.contract.paidCash, debt: m.contract.debt, offset: m.contract.offset });
+        } else {
+          duPhong.push(id);
+          if (tongHoaDon) invoiceByContract.set(id, tongHoaDon.get(id) ?? { paid: 0, debt: 0 });
+        }
+      }
+      if (duPhong.length > 0 && hoaDon === null) {
+        reads.invoices = hong('Không đọc được hoá đơn của hợp đồng');
+      } else if (duPhong.length > 0 && tien && 'loi' in tien) {
+        // RPC cũ trả về mà thiếu `money` thì cộng thô là đúng hành vi cũ — im
+        // lặng. RPC LỖI thì số thô đang thay cho số một nguồn: phải nói ra.
+        reads.invoices = thieu('Số theo hoá đơn thô, chưa khử cấn trừ/nợ kéo');
+      }
 
       return buildLifecycleLanes({
         organizationId: org,
@@ -430,6 +470,7 @@ export function useContractLifecycle(a: ContractLifecycleArgs) {
         terminations: ketThuc,
         depositByContract,
         invoiceByContract,
+        originalEndByContract: hanGoc,
         reads,
       });
     },

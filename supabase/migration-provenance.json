@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-27T16:19:46.277Z",
+  "generatedAt": "2026-10-30T16:27:50.395Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 909,
+    "ledger-applied": 913,
     "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
@@ -13863,6 +13863,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261028203816_vong_doi_tien_phong_mot_nguon.sql",
+      "version": "20261028203816",
+      "name": "vong_doi_tien_phong_mot_nguon",
+      "scheme": "timestamp14",
+      "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T16:25:51.010Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261030045928_hermes_invoice_collect_amount_pick_v1.sql",
       "version": "20261030045928",
       "name": "hermes_invoice_collect_amount_pick_v1",
@@ -13872,6 +13883,39 @@
       "evidence": [
         "catalog:function:app_private.hermes_invoice_lookup_core_v3",
         "catalog:function:app_private.hermes_invoice_action_step_v3"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
+      "version": "20261030100148",
+      "name": "khoa_cot_hoa_hong_ie_compat",
+      "scheme": "timestamp14",
+      "sha256": "9dd3ec7da83c1460e18d72360fe9f425928fb51b744c1332c52ae27503c2f305",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T13:10:53.684Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
+      "version": "20261030101812",
+      "name": "meter_capture_so_dau_theo_dong_ho",
+      "scheme": "timestamp14",
+      "sha256": "3c9a85261fe5791d49de9a967ed002328b65add33de5921e6f70cfb81561da9a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T11:59:51.122Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030104546_contract_exit_settlement_draft_v1.sql",
+      "version": "20261030104546",
+      "name": "contract_exit_settlement_draft_v1",
+      "scheme": "timestamp14",
+      "sha256": "69b31737e67bdfdb7e6489482db003f3eb222d895a9818db6025e8ba9e8265f0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T12:59:24.590Z|bien-nhan-backup"
       ]
     },
     {

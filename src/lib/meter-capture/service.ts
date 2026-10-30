@@ -108,6 +108,25 @@ export async function rotateMeterCaptureQr(orgId: string, meterId: string, expec
 export async function resolveMeterBilling(orgId: string, input: { contractId: string; month: string; readingDate: string; purpose: 'MONTHLY' | 'MOVE_OUT' }) {
   return z.object({ meters: z.array(meterBillingSourceSchema) }).parse(await call(orgId, 'resolveBilling', input)).meters;
 }
+/** Số đầu của đồng hồ ghi tay, như trước capture: chỉ số APPROVED mới nhất; null khi chưa có. */
+export async function readLatestApprovedReading(meterId: string) {
+  const { data, error } = await supabase.from('meter_readings').select('current_reading, reading_date')
+    .eq('meter_id', uuid.parse(meterId)).eq('status', 'APPROVED').is('deleted_at', null)
+    .order('reading_date', { ascending: false }).order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  const value = Number(row?.current_reading);
+  return row && Number.isFinite(value) ? { value, readingDate: String(row.reading_date) } : null;
+}
+/** Đồng hồ điện ACTIVE mới nhất của phòng (cách tìm trước capture); null khi phòng không có. */
+export async function readActiveElectricMeter(roomId: string) {
+  const { data, error } = await supabase.from('meters').select('id, name, code')
+    .eq('room_id', uuid.parse(roomId)).eq('meter_type', 'ELECTRICITY').eq('status', 'ACTIVE').is('deleted_at', null)
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  const meter = data?.[0];
+  return meter ? { meterId: meter.id, meterName: meter.name || meter.code || 'Đồng hồ điện' } : null;
+}
 export async function readMeterEvidence(orgId: string, captureId: string) {
   return z.object({ evidence: meterEvidenceSchema }).parse(await call(orgId, 'evidence', { captureId })).evidence;
 }

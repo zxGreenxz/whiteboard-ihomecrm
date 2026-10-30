@@ -24375,6 +24375,14 @@ export type Database = {
           voucher_id: string
         }[]
       }
+      discard_contract_exit_settlement_draft_v1: {
+        Args: {
+          p_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       distribute_shareholder_profit_v1: {
         Args: {
           p_account_id: string
@@ -24973,6 +24981,10 @@ export type Database = {
         }[]
       }
       get_contract_exit_case_v1: {
+        Args: { p_case_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      get_contract_exit_settlement_draft_v1: {
         Args: { p_case_id: string; p_organization_id: string }
         Returns: Json
       }
@@ -27098,6 +27110,10 @@ export type Database = {
           p_organization_id: string
           p_state?: string
         }
+        Returns: Json
+      }
+      list_contract_exit_settlement_drafts_v1: {
+        Args: { p_case_ids: string[]; p_organization_id: string }
         Returns: Json
       }
       list_contract_meter_followups_v1: {
@@ -29551,6 +29567,15 @@ export type Database = {
           p_request_id?: string
           p_room_id: string
           p_template_id?: string
+        }
+        Returns: Json
+      }
+      save_contract_exit_settlement_draft_v1: {
+        Args: {
+          p_case_id: string
+          p_expected_version: number
+          p_organization_id: string
+          p_payload: Json
         }
         Returns: Json
       }

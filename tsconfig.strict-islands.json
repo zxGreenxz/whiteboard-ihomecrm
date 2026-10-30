@@ -140,6 +140,10 @@
     "src/pages/PersonalTasksPage.tsx",
     "src/hooks/useContractRentSupport.ts",
     "src/lib/invoiceAmountParts.ts",
+    "src/lib/profitReportFilters.ts",
+    "src/lib/voucherActionRules.ts",
+    "src/hooks/income-expenses/useVoucherActions.ts",
+    "src/components/income-expenses/VoucherActionDialogs.tsx",
     "src/lib/invoiceRentSupport.ts",
     "src/lib/rentSupport.ts",
     "src/lib/rentSupportApi.ts",
@@ -555,6 +559,8 @@
     "src/components/reports/DateRangePicker.tsx",
     "src/components/reports/ExportButtons.tsx",
     "src/components/reports/IncomeBreakdown.tsx",
+    "src/components/reports/ProfitRowFilters.tsx",
+    "src/components/reports/ProfitVoucherViewer.tsx",
     "src/components/reports/MissingExpenseSettingsDialog.tsx",
     "src/components/reports/ProfitVerificationBar.tsx",
     "src/components/reports/ReportCard.tsx",
@@ -909,6 +915,7 @@
     "src/hooks/useContractCommissionFollowup.ts",
     "src/hooks/useContractDrafts.ts",
     "src/hooks/useContractExitCases.ts",
+    "src/hooks/useContractExitSettlementDrafts.ts",
     "src/hooks/useContractLifecycle.ts",
     "src/hooks/useContractMeterBoundaries.ts",
     "src/hooks/useContractMeterFollowups.ts",
@@ -1247,6 +1254,7 @@
     "src/lib/contractEditWorkflow.ts",
     "src/lib/contractExcelHelpers.ts",
     "src/lib/contractExitCases.ts",
+    "src/lib/contractExitSettlementDrafts.ts",
     "src/lib/contractFeedback.ts",
     "src/lib/contractImportOutcome.ts",
     "src/lib/contractInvoiceFeedback.ts",
@@ -1830,7 +1838,10 @@
     "src/lib/meter-capture/types.ts",
     "src/components/meter-readings/MeterEvidenceViewer.tsx",
     "src/hooks/network-center/useCameraExport.ts",
-    "src/hooks/__tests__/useCameraExport.test.tsx"
+    "src/hooks/__tests__/useCameraExport.test.tsx",
+    "src/components/thu-tien/room-lifecycle/__tests__/LifecycleTimeline.test.tsx",
+    "src/hooks/__tests__/useRoomContractExtras.test.ts",
+    "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }
