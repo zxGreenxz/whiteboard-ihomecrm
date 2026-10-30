@@ -1,4 +1,5 @@
 import {financialReadRows} from '@/lib/financialReadValidation';
+import { classifyDbError } from '@/lib/contracts/errors';
 import { InvoicePartialError, invoiceFailureMessage } from '@/lib/invoiceFeedback';
 import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // Data layer cho ExcelInvoiceDialog (Phase 9C) — fetch + submit orchestration.
@@ -87,10 +88,11 @@ export async function fetchExcelInvoiceSource(buildingId: string, period?: { mon
     if (m.room_id) meterByRoom.set(m.room_id, m.id);
   });
 
-  // 3) Chỉ số APPROVED mới nhất per meter.
+  // 3) Chỉ số APPROVED mới nhất per meter — số đầu của đồng hồ ghi tay, kể cả khi có kỳ
+  //    (resolver chỉ thay số đầu cho đồng hồ có chứng cứ ảnh/QR, xem isCaptureBackedSource).
   const meterIds = financialReadRows(meters).map((m) => m.id);
   let lastReading = new Map<string, number>();
-  if (!period && meterIds.length > 0) {
+  if (meterIds.length > 0) {
     const { data: readings, error: e3 } = await supabase
       .from("meter_readings")
       .select("meter_id, current_reading, reading_date")
@@ -109,8 +111,16 @@ export async function fetchExcelInvoiceSource(buildingId: string, period?: { mon
     for (let offset = 0; offset < buildingContracts.length; offset += 6) {
       await Promise.all(buildingContracts.slice(offset, offset + 6).map(async contract => {
         if (!contract.organization_id) throw new Error('Hợp đồng thiếu tổ chức.');
-        const sources = await resolveMeterBilling(contract.organization_id, { contractId: contract.id, month: period.month, readingDate: period.readingDate, purpose: 'MONTHLY' });
-        billingSourcesByContract.set(contract.id, sources);
+        let sources: MeterBillingSource[] | undefined;
+        try {
+          sources = await resolveMeterBilling(contract.organization_id, { contractId: contract.id, month: period.month, readingDate: period.readingDate, purpose: 'MONTHLY' });
+        } catch (cause) {
+          // Chụp đồng hồ là bổ trợ: thiếu quyền vẫn báo; lỗi khác của resolver (vd HĐ ACTIVE đã quá end_date
+          // ⇒ 22023, edge không phản hồi) thì dòng đó nhập tay như trước 23/10, không chặn cả toà.
+          // Đồng hồ đăng ký QR vẫn bị trigger DB chặn ghi chỉ số tay.
+          if (classifyDbError(cause) === 'permission') throw cause;
+        }
+        if (sources) billingSourcesByContract.set(contract.id, sources);
       }));
     }
   }

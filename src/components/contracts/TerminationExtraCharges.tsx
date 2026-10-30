@@ -6,8 +6,9 @@ import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { InlineSkeleton } from "@/components/loading/LoadingState";
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { resolveMeterBilling } from '@/lib/meter-capture/service';
-import { meterSourceReference, type MeterBillingSource } from '@/lib/meter-capture/types';
+import { classifyDbError } from '@/lib/contracts/errors';
+import { readActiveElectricMeter, readLatestApprovedReading, resolveMeterBilling } from '@/lib/meter-capture/service';
+import { isCaptureBackedSource, meterSourceReference, type MeterBillingSource } from '@/lib/meter-capture/types';
 import { MeterEvidenceThumb } from '@/components/meter-readings/MeterEvidenceThumb';
 import { useBuildingServices } from "@/hooks/useBuildingServices";
 import { resolveInvoicePricing } from "@/lib/contractServicePricing";
@@ -102,19 +103,42 @@ export function TerminationExtraCharges({
   const [meterError, setMeterError] = useState('');
   const [reload, setReload] = useState(0);
   const [currentReading, setCurrentReading] = useState<number | null>(null);
+  // undefined: dùng số đầu tự lấy; null: người dùng xoá ô. Chỉ đồng hồ ghi tay sửa được, như trước 23/10.
+  const [startOverride, setStartOverride] = useState<number | null | undefined>(undefined);
+  const initialReading = contract.initial_electricity_reading;
+  const roomId = contract.room_id;
   useEffect(() => {
     let cancelled = false;
-    setMeterSources([]); setCurrentReading(null); setMeterError(''); setMeterLookup('loading');
+    setMeterSources([]); setCurrentReading(null); setStartOverride(undefined); setMeterError(''); setMeterLookup('loading');
     onValidityChange?.(false);
     if (!orgId || !chargeDate) {
       setMeterLookup('error'); setMeterError('Cần chọn tổ chức và ngày thanh lý để đối chiếu chỉ số.');
       return;
     }
     resolveMeterBilling(orgId, { contractId: contract.id, month: chargeDate.slice(0, 7), readingDate: chargeDate, purpose: 'MOVE_OUT' })
-      .then(sources => { if (!cancelled) { setMeterSources(sources); setMeterLookup('ready'); } })
+      // Chụp đồng hồ là bổ trợ: resolver lỗi (vd HĐ quá hạn chưa ghi ngày trả ⇒ 22023) thì quay về đồng hồ
+      // ACTIVE của phòng như trước 23/10; thiếu quyền hoặc phòng không có đồng hồ ACTIVE thì giữ lỗi để tải lại.
+      .catch(async (cause: unknown): Promise<MeterBillingSource[]> => {
+        const meter = roomId && classifyDbError(cause) !== 'permission' ? await readActiveElectricMeter(roomId) : null;
+        if (!meter) throw cause;
+        return [{ ...meter, meterType: 'ELECTRICITY', serviceId: null, decimalPlaces: 2, registerCode: '', start: null, end: null, issues: ['MISSING_START', 'MISSING_END'] }];
+      })
+      .then(async sources => {
+        // Đồng hồ ghi tay: số đầu như trước 23/10 — chỉ số đã duyệt mới nhất, chưa có thì số đầu theo
+        // hợp đồng — và sửa được. Không biết số đầu thì để trống cho nhập, không tính từ 0.
+        const only = sources.length === 1 ? sources[0] : undefined;
+        const manual = only && !isCaptureBackedSource(only) ? only : null;
+        const latest = manual ? await readLatestApprovedReading(manual.meterId) : null;
+        const fromLatest = latest && latest.value > 0 ? latest : null;
+        const start = fromLatest ? fromLatest.value : initialReading != null ? Number(initialReading) : null;
+        if (cancelled) return;
+        setMeterSources(manual ? [{ ...manual, start: { readingId: null, value: start != null && Number.isFinite(start) ? String(start) : '',
+          version: 'legacy', captureId: null, readingDate: fromLatest?.readingDate ?? '', kind: 'legacy' }, end: null, issues: ['MISSING_END'] }] : sources);
+        setMeterLookup('ready');
+      })
       .catch(cause => { if (!cancelled) { setMeterLookup('error'); setMeterError(cause instanceof Error ? cause.message : 'Không tải được nguồn chỉ số. Tải lại trước khi quyết toán.'); } });
     return () => { cancelled = true; };
-  }, [orgId, contract.id, chargeDate, reload, onValidityChange]);
+  }, [orgId, contract.id, chargeDate, reload, onValidityChange, initialReading, roomId]);
 
   // ── State các dòng mặc định + dòng tuỳ ý ────────────────────────────────
   const [fromDate, setFromDate] = useState<string>("");
@@ -136,9 +160,12 @@ export function TerminationExtraCharges({
   const manualSource = onlySource?.start && !onlySource.end
     && !onlySource.registerCode.trim()
     && onlySource.issues.every(issue => issue === 'MISSING_END') ? onlySource : null;
-  const previousReading = manualSource?.start ? Number(manualSource.start.value) : null;
+  const legacyStart = manualSource?.start?.kind === 'legacy';
+  const autoStart = manualSource?.start?.value ? Number(manualSource.start.value) : null;
+  const previousReading = legacyStart && startOverride !== undefined ? startOverride : autoStart;
   const manualConsumption = currentReading != null && previousReading != null ? currentReading - previousReading : 0;
-  const manualInvalid = !!manualSource && currentReading != null && (!Number.isFinite(currentReading) || manualConsumption < 0);
+  const manualInvalid = !!manualSource && currentReading != null
+    && (previousReading == null || !Number.isFinite(previousReading) || !Number.isFinite(currentReading) || manualConsumption < 0);
   const unresolvedSources = meterSources.some(source => source !== manualSource && (!source.start || !source.end || source.issues.length > 0 || Number(source.end.value) < Number(source.start.value)));
   const electricValid = meterLookup === 'ready' && !unresolvedSources && !manualInvalid;
   useEffect(() => { onValidityChange?.(electricValid); }, [electricValid, onValidityChange]);
@@ -289,7 +316,10 @@ export function TerminationExtraCharges({
           {meterSources.map(source => <div key={source.meterId} className="space-y-2 border-t pt-2">
             <p className="text-sm">{source.meterName} · {source.registerCode || 'kWh'}</p>
             <div className="flex flex-wrap items-center gap-2">
-              <Input title={`Số điện đầu ${source.meterName}`} type="number" className="h-9 w-28" value={source.start?.value ?? ''} readOnly placeholder="Thiếu số đầu" />
+              <Input title={`Số điện đầu ${source.meterName}`} type="number" inputMode="decimal" min={0} step="0.01" className="h-9 w-28" placeholder="Thiếu số đầu"
+                value={source === manualSource && legacyStart ? previousReading ?? '' : source.start?.value ?? ''}
+                readOnly={!(source === manualSource && legacyStart)} disabled={meterLookup !== 'ready'}
+                onChange={event => setStartOverride(event.target.value === '' ? null : Number(event.target.value))} />
               <MeterEvidenceThumb captureId={source.start?.captureId} label={`Ảnh số đầu ${source.meterName}`} />
               <span>→</span>
               <Input title={`Số điện cuối ${source.meterName}`} type="number" inputMode="decimal" min={0} step="0.01" className="h-9 w-28" placeholder="Số cuối"
@@ -300,7 +330,10 @@ export function TerminationExtraCharges({
               <span className="text-sm font-semibold">{formatVND(electricItems.find(item => item.meter_id === source.meterId)?.amount ?? 0)} đ</span>
             </div>
             {source.end && source.start && !source.issues.length ? <p className="text-xs text-muted-foreground">Liên kết chỉ số đã chốt và chứng cứ khi quyết toán, kể cả 0 kWh.</p>
-              : source === manualSource ? <p className={`text-xs ${manualInvalid ? 'text-destructive' : 'text-muted-foreground'}`} role={manualInvalid ? 'alert' : undefined}>{manualInvalid ? 'Số cuối không được nhỏ hơn số đầu.' : currentReading != null && manualConsumption === 0 ? 'Số nhập tay 0 kWh chưa được lưu làm chứng cứ. Chốt bằng ảnh tại Ghi chỉ số để lưu mốc này.' : 'Chưa có ảnh đã chốt: có thể nhập số cuối thủ công. Số đầu lấy đúng kỳ/hợp đồng.'}</p>
+              : source === manualSource ? <p className={`text-xs ${manualInvalid ? 'text-destructive' : 'text-muted-foreground'}`} role={manualInvalid ? 'alert' : undefined}>{manualInvalid ? (previousReading == null ? 'Nhập số đầu trước khi tính tiền điện.' : 'Số cuối không được nhỏ hơn số đầu.')
+                : currentReading != null && manualConsumption === 0 ? (legacyStart ? 'Không phát sinh tiền điện nên số này không được ghi; sau khi quyết toán, bổ sung ở mục Chỉ số lúc trả phòng.' : 'Số nhập tay 0 kWh chưa được lưu làm chứng cứ. Chốt bằng ảnh tại Ghi chỉ số để lưu mốc này.')
+                : legacyStart ? (autoStart == null ? 'Chưa có chỉ số đã duyệt: nhập số đầu và số cuối.' : 'Số đầu là chỉ số đã duyệt mới nhất của đồng hồ, sửa được nếu sai. Số cuối ghi luôn làm chỉ số lúc trả phòng.')
+                : 'Chưa có ảnh đã chốt: có thể nhập số cuối thủ công. Số đầu lấy đúng kỳ/hợp đồng.'}</p>
               : <p role="alert" className="text-xs text-destructive">{source.issues.includes('BILLED_READING_REPLACED')
                 ? 'Chỉ số đã dùng cho hóa đơn hoặc thanh lý đã có bản thay thế. Cần kế toán xử lý điều chỉnh trước khi thanh lý; chứng từ cũ không tự đổi.'
                 : <>Thiếu nguồn hợp lệ cho đồng hồ này. {source.registerCode.trim() && !source.end ? 'Đồng hồ đã đăng ký đọc bằng QR/ảnh: cần chốt số cuối tại Ghi chỉ số, kể cả khi không dùng thêm điện, rồi tải lại trước khi thanh lý.' : 'Chốt đủ chỉ số tại Ghi chỉ số rồi tải lại.'}</>}</p>}

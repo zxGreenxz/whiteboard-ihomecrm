@@ -71,3 +71,13 @@ export function meterSourceReference(source: MeterBillingSource, context: {
     endReadingId: source.end.readingId, endVersion: source.end.version,
     previousReading: source.start.value, currentReading: source.end.value });
 }
+
+/**
+ * Chụp đồng hồ là bổ trợ: nguồn từ resolver chỉ thay cách nhập tay khi đồng hồ có chứng cứ
+ * (đăng ký QR, số đã chốt bằng ảnh, hoặc chứng cứ đã dùng bị thay thế). Đồng hồ ghi tay giữ
+ * số đầu như trước 23/10/2026 vì resolver chưa đọc được dữ liệu cũ (chỉ số thiếu contract_id,
+ * đồng hồ trỏ dịch vụ điện đã xoá nên không khớp dòng điện của hoá đơn).
+ */
+export function isCaptureBackedSource(source: MeterBillingSource): boolean {
+  return !!source.registerCode.trim() || !!source.end || !!source.start?.captureId || source.issues.includes('BILLED_READING_REPLACED');
+}
