@@ -539,6 +539,10 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
       [J06, 'amount', ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)'], 1]);
     assert.ok(preview.preview.summary.endsWith(' cho hoá đơn INV-2026-J06. Tự chọn hoá đơn kỳ 06/2026 vì số tiền khớp đúng số còn nợ; phòng còn 1 hoá đơn '
       + 'chưa trả khác: kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ).'), preview.preview.summary);
+    // Cảnh báo J06 nối SAU cảnh báo của kế hoạch (quá hạn, không tròn nghìn…): trần 10 cảnh báo không đẩy mất cảnh báo kế hoạch (vd thu trùng).
+    assert.deepEqual(preview.warnings, [DEFAULT_BOOK_WARNING, 'Phòng P302: hoá đơn đã quá hạn 114 ngày.', 'Phòng P302: số tiền không tròn nghìn — kiểm lại đơn vị.',
+      'Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn kỳ 06/2026 (INV-2026-J06) của phòng P302 vì số tiền khớp đúng số còn nợ. Nếu người dùng nói kỳ / hoá đơn '
+        + 'khác: gọi lại kèm month hoặc invoiceNumber để xem trước lại.']);
     const swapped = { ...preview.resolved, items: [{ ...preview.resolved.items[0], invoiceId: J10, invoiceNumber: 'INV-2026-J10', billingMonth: '2026-10' }] };
     assert.deepEqual(await run('apply', rid(91), odd, { resolved: swapped, basis: preview.basis }), { kind: 'rejected', reason: 'state_changed' });
     assert.deepEqual(await trace(), before, 'không lần thu, không biên nhận');
