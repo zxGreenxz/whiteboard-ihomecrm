@@ -632,6 +632,55 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     assert.deepEqual(await trace(), before);
   });
 
+  // Rào số tiền: chỉ số JSON > 0 mới tự chọn. Connector đã chặn amount ≤ 0 / sai kiểu (param.vnd) — đây là lớp SQL gọi thẳng RPC trang.
+  await t.test('số tiền ≤ 0 hoặc không phải số JSON ⇒ không tự chọn (hỏi lại như cũ), kể cả dữ liệu lệch "còn nợ thực mà cột còn nợ = 0"', async () => {
+    await f.rollbackCase(async () => {
+      for (const amount of [0, -640500, '1150000', 'một triệu', null]) {
+        const out = await run('preview', rid(110), { ...params, amount });
+        assert.deepEqual([out.kind, out.field, out.why], ['needs_input', 'invoice', 'ambiguous'], JSON.stringify(amount));
+      }
+      // Rào "> 0" chỉ lộ khi một hoá đơn còn nợ thực có remaining_amount ≤ 0 (dữ liệu lệch): bọc hàm đọc dùng chung để kỳ 06 báo cột còn nợ 0
+      // (nợ thực vẫn 640.500 ⇒ vẫn là ứng viên). Số tiền 0 "khớp" cột đó nhưng không bao giờ được tự chọn.
+      await db.exec(`ALTER FUNCTION public.invoice_room_invoices_v1(uuid,uuid,text,uuid[],date) RENAME TO invoice_room_invoices_real_v1;
+        CREATE FUNCTION public.invoice_room_invoices_v1(p_organization_id uuid,p_room_id uuid,p_billing_month text DEFAULT NULL,p_building_ids uuid[] DEFAULT NULL,
+          p_as_of date DEFAULT NULL) RETURNS TABLE(row_no integer,invoice_id uuid,organization_id uuid,building_id uuid,room_id uuid,contract_id uuid,invoice_number text,
+          kind text,status text,billing_month text,issue_date date,due_date date,paid_date date,total_amount numeric,paid_amount numeric,remaining_amount numeric,
+          effective_outstanding numeric,carried_out_amount numeric,carried_in_amount numeric,is_overdue boolean,overdue_days integer) LANGUAGE sql STABLE AS $f$
+          SELECT r.row_no,r.invoice_id,r.organization_id,r.building_id,r.room_id,r.contract_id,r.invoice_number,r.kind,r.status,r.billing_month,r.issue_date,
+            r.due_date,r.paid_date,r.total_amount,r.paid_amount,CASE WHEN r.invoice_id='${J06}'::uuid THEN 0::numeric ELSE r.remaining_amount END,
+            r.effective_outstanding,r.carried_out_amount,r.carried_in_amount,r.is_overdue,r.overdue_days
+          FROM public.invoice_room_invoices_real_v1(p_organization_id,p_room_id,p_billing_month,p_building_ids,p_as_of) r $f$;
+        GRANT EXECUTE ON FUNCTION public.invoice_room_invoices_v1(uuid,uuid,text,uuid[],date) TO authenticated;`);
+      const zero = await run('preview', rid(111), { ...params, amount: 0 });
+      assert.deepEqual([zero.kind, zero.why, zero.candidates.length], ['needs_input', 'ambiguous', 2], 'số tiền 0 không tự chọn hoá đơn có cột còn nợ 0');
+    });
+  });
+
+  await t.test('hoá đơn tự chọn là hoá đơn THANH LÝ ⇒ nhãn dòng "— hoá đơn thanh lý — tự chọn vì số tiền khớp đúng số còn nợ"', async () => {
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE public.invoices SET kind='SETTLEMENT' WHERE id=$1", [J10]);
+      const settle = await run('preview', rid(112), params);
+      assert.equal(settle.kind, 'preview', JSON.stringify(settle));
+      assert.deepEqual([settle.resolved.items[0].invoiceId, settle.resolved.items[0].pickedBy], [J10, 'amount']);
+      assert.ok(settle.preview.items[0].text.startsWith('Phòng P302 toà Toà A, kỳ 10/2026 (INV-2026-J10) — hoá đơn thanh lý — tự chọn vì số tiền khớp đúng số còn '
+        + 'nợ: thu 1.150.000đ;'), settle.preview.items[0].text);
+    });
+  });
+
+  await t.test('hoá đơn đã tự chọn bị web thu hết giữa bản xem trước và lượt ghi ⇒ nothing_to_collect, Hermes không ghi gì', async () => {
+    await f.rollbackCase(async () => {
+      const preview = await run('preview', rid(113), params);
+      assert.deepEqual([preview.kind, preview.resolved?.items[0].invoiceId], ['preview', J10]);
+      // Web thu đủ kỳ 10 qua hàm ghi web (bản port record_invoice_collection_v5) — đúng đường form Thu tiền.
+      await f.call("SELECT public.record_invoice_collection_v5($1,'2026-10-22',$2::jsonb,'REJECT',false,null,null,0,'web-j06-full-0001') result",
+        [J10, JSON.stringify([{ payment_method: 'TK', gross_amount: 1150000, account_id: TK1 }])]);
+      const afterWeb = await trace();
+      assert.deepEqual(await applyWith(rid(113), params, preview), { kind: 'rejected', reason: 'nothing_to_collect' });
+      assert.deepEqual(await trace(), afterWeb, 'không lần thu, khoá idempotency, biên nhận nào của Hermes');
+      assert.deepEqual(await paid(), { 'INV-2026-J06': '0', 'INV-2026-J10': '1150000', 'INV-2026-J11': '0' }, 'chỉ lần thu của web');
+    });
+  });
+
   await t.test('đối chứng đột biến: bỏ điều kiện "đúng một" (khớp từ một ⇒ lấy hoá đơn đầu) ⇒ khớp hai cũng tự chọn — ca "khớp HAI" ở trên bắt được', async () => {
     const lookup = J06_SQL.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_lookup_core_v3\([\s\S]*?\$fn\$;/)[0];
     const exactlyOne = "IF jsonb_array_length(COALESCE(v_match,'[]'::jsonb))=1 THEN";
