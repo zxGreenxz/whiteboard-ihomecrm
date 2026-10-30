@@ -27,15 +27,12 @@ interface ExtensionRow {
   extension_date: string | null;
   old_end_date: string | null;
   new_end_date: string | null;
-  status: string | null;
 }
 interface CustomerLinkRow {
   contract_id: string;
   is_representative: boolean;
   customers: { full_name: string | null; phone: string | null } | null;
 }
-
-const EXTENSION_BO = new Set(['REJECTED', 'CANCELLED']);
 
 export function useRoomContractExtras(contractIds: string[]) {
   const ids = [...new Set(contractIds)].sort();
@@ -58,8 +55,12 @@ export function useRoomContractExtras(contractIds: string[]) {
         fetchAllRows<ExtensionRow>(
           (f, t) => supabase
             .from('contract_extensions')
-            .select('id, contract_id, extension_date, old_end_date, new_end_date, status')
+            .select('id, contract_id, extension_date, old_end_date, new_end_date')
             .in('contract_id', ids)
+            // Chỉ lượt gia hạn HIỆU LỰC — cùng quy ước với useRenewedContracts
+            // và `originalEndDate` của RPC phòng. Lọc trên server: DRAFT hay
+            // trạng thái lạ không lọt thành mốc "Gia hạn hợp đồng".
+            .in('status', ['APPROVED', 'COMPLETED'])
             .order('id', { ascending: true })
             .range(f, t),
           { label: 'room-contract-extras.extensions' },
@@ -102,7 +103,6 @@ export function useRoomContractExtras(contractIds: string[]) {
           newRoomName: x.new_room_id ? roomName.get(x.new_room_id) ?? null : null,
         })),
         extensions: (extensions ?? [])
-          .filter((x) => !EXTENSION_BO.has((x.status ?? '').toUpperCase()))
           .map((x) => ({
             contractId: x.contract_id,
             date: x.extension_date,
