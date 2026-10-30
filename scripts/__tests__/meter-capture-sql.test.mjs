@@ -734,74 +734,115 @@ test('anonymous Storage helper denies private meter media even under a broad leg
  assert.equal((await db.query("SELECT count(*)::int n FROM storage.objects WHERE bucket_id='meter-capture-media'")).rows[0].n, 2);
 });
 
-// Đồng hồ thuộc phòng: từ hoá đơn thứ hai, số đầu là chỉ số APPROVED mới nhất của đồng hồ ở mọi hợp đồng,
-// kể cả chỉ số ghi tay không gắn hợp đồng. Hoá đơn đầu tiên giữ đường cũ theo hợp đồng.
+// Đồng hồ thuộc phòng: từ hoá đơn thứ hai, số đầu là chỉ số APPROVED đọc thật mới nhất của đồng hồ, kể cả chỉ số ghi tay không gắn
+// hợp đồng; hoá đơn đầu tiên giữ đường cũ theo hợp đồng. Supabase chạy phiên UTC; PGlite lấy múi giờ máy.
+const seedReadings=rows=>`SET TimeZone='UTC';ALTER TABLE meter_readings DISABLE TRIGGER trigger_auto_populate_previous_reading;
+ INSERT INTO meter_readings(id,organization_id,meter_id,contract_id,reading_date,previous_reading,current_reading,status,created_at) VALUES ${rows};
+ ALTER TABLE meter_readings ENABLE TRIGGER trigger_auto_populate_previous_reading;`;
+const resolveFor=async(db,contractId,month,readingDate,purpose)=>(await rpc(db,'resolveBilling',{contractId,month,readingDate,purpose})).meters[0];
 async function meterWideMonthly(db) {
- await db.exec(`UPDATE contracts SET start_date='2026-08-01';
- ALTER TABLE meter_readings DISABLE TRIGGER trigger_auto_populate_previous_reading;
- INSERT INTO meter_readings(id,organization_id,meter_id,contract_id,reading_date,previous_reading,current_reading,status,created_at) VALUES
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01';`+seedReadings(`
  ('${id(960)}','${org}','${meter}','${contract}','2026-08-31',120,120,'APPROVED','2026-08-31'),
- ('${id(962)}','${org}','${meter}','${id(999)}','2026-09-15',120,140,'APPROVED','2026-09-15'),
- ('${id(961)}','${org}','${meter}',NULL,'2026-09-30',140,150,'APPROVED','2026-09-30');
- ALTER TABLE meter_readings ENABLE TRIGGER trigger_auto_populate_previous_reading;`);
+ ('${id(961)}','${org}','${meter}',NULL,'2026-09-20',120,140,'APPROVED','2026-09-20'),
+ ('${id(962)}','${org}','${meter}','${id(999)}','2026-09-30',140,150,'APPROVED','2026-09-30')`));
  await register(db);
- const resolve=async()=>(await rpc(db,'resolveBilling',{contractId:contract,month:'2026-10',readingDate:'2026-10-31',purpose:'MONTHLY'})).meters[0];
- const anomaly=async c=>(await db.query('SELECT app_private.meter_capture_anomaly_v1($1,160,150) a',[c.id])).rows[0].a;
+ const resolve=()=>resolveFor(db,contract,'2026-10','2026-10-31','MONTHLY');
+ const anomaly=async c=>(await db.query('SELECT app_private.meter_capture_anomaly_v1($1,160,140) a',[c.id])).rows[0].a;
  let row=await resolve();assert.equal(row.start.readingId,id(960));assert.equal(Number(row.start.value),120);
  const pending=(await upload(db,await start(db))).capture;
  assert.equal(Number(pending.previousValue),120);assert.deepEqual(await anomaly(pending),['BASELINE_UNAVAILABLE']);
  await db.exec(`INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(963)}','${org}','${contract}','${building}','2026-09','2026-08-31')`);
- row=await resolve();assert.equal(row.start.readingId,id(961));assert.equal(Number(row.start.value),150);assert.deepEqual(row.issues,['MISSING_END']);
+ // Chỉ số không gắn hợp đồng được tính; chỉ số của hợp đồng khác đọc trong thời gian thuê của khách này thì không.
+ row=await resolve();assert.equal(row.start.readingId,id(961));assert.equal(Number(row.start.value),140);assert.deepEqual(row.issues,['MISSING_END']);
  const review=(await rpc(db,'getCapture',{captureId:pending.id})).capture;
- assert.equal(Number(review.previousValue),150);assert.deepEqual(await anomaly(review),[]);
+ assert.equal(Number(review.previousValue),140);assert.deepEqual(await anomaly(review),[]);
  await db.exec(`UPDATE invoices SET status='CANCELLED' WHERE id='${id(963)}'`);
  assert.equal((await resolve()).start.readingId,id(960));
  await db.exec(`UPDATE invoices SET status='APPROVED' WHERE id='${id(963)}'`);
- assert.equal(Number((await confirm(db,review,'160')).capture.previousValue),150);
- const s=await source(db);assert.equal(s.startReadingId,id(961));assert.equal(Number(s.previousReading),150);assert.equal(Number(s.currentReading),160);
+ assert.equal(Number((await confirm(db,review,'160')).capture.previousValue),140);
+ const s=await source(db);assert.equal(s.startReadingId,id(961));assert.equal(Number(s.previousReading),140);assert.equal(Number(s.currentReading),160);
  await invoice(db,invoiceArgs(s),[s]);
  assert.equal((await db.query("SELECT start_reading_id FROM app_private.meter_capture_evidence_links WHERE document_kind='INVOICE'")).rows[0].start_reading_id,id(961));
 }
-// Mode Excel lập kỳ M+1 vào cuối tháng M và dán reading_date cuối tháng M+1: trả phòng giữa tháng phải lấy bản đó.
+// Trả phòng 20/10. Mode Excel lập kỳ M+1 vào cuối tháng M và dán reading_date cuối tháng M+1.
 async function meterWideMoveOut(db) {
- // Supabase chạy phiên UTC; PGlite lấy múi giờ máy.
- await db.exec(`SET TimeZone='UTC';UPDATE contracts SET start_date='2026-08-01';
- ALTER TABLE meter_readings DISABLE TRIGGER trigger_auto_populate_previous_reading;
- INSERT INTO meter_readings(id,organization_id,meter_id,contract_id,reading_date,previous_reading,current_reading,status,created_at) VALUES
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01';`+seedReadings(`
  ('${id(970)}','${org}','${meter}',NULL,'2026-09-30',100,120,'APPROVED','2026-08-31T10:00:00+07'),
  ('${id(971)}','${org}','${meter}',NULL,'2026-10-31',120,150,'APPROVED','2026-09-30T10:00:00+07'),
- ('${id(972)}','${org}','${meter}',NULL,'2026-11-30',150,999,'APPROVED','2026-10-21T01:30:00+07');
- ALTER TABLE meter_readings ENABLE TRIGGER trigger_auto_populate_previous_reading;`);
+ ('${id(972)}','${org}','${meter}',NULL,'2026-10-31',150,999,'APPROVED','2026-10-21T01:30:00+07')`));
  await register(db);
- const resolve=async()=>(await rpc(db,'resolveBilling',{contractId:contract,month:'2026-10',readingDate:'2026-10-20',purpose:'MOVE_OUT'})).meters[0];
+ const resolve=()=>resolveFor(db,contract,'2026-10','2026-10-20','MOVE_OUT');
  let row=await resolve();assert.equal(row.start.kind,'contractInitial');assert.equal(Number(row.start.value),100);
- await db.exec(`INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(973)}','${org}','${contract}','${building}','2026-10','2026-09-30')`);
+ await db.exec(`INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES
+  ('${id(974)}','${org}','${contract}','${building}','2026-09','2026-08-31'),('${id(973)}','${org}','${contract}','${building}','2026-10','2026-09-30')`);
+ // Bản kỳ 10 ghi 30/09 đọc trước ngày trả; bản ghi 01:30 ngày 21/10 giờ VN (20/10 theo UTC) đọc sau ngày trả.
  row=await resolve();assert.equal(row.start.readingId,id(971));assert.equal(Number(row.start.value),150);
- const pending=(await upload(db,await start(db,{purpose:'MOVE_OUT',readingDate:'2026-10-20'}))).capture;
+ // Hoá đơn kỳ 10 bị huỷ: bản dán 31/10 chưa tính tiền, số đầu quay về bản kỳ 09.
+ await db.exec(`UPDATE invoices SET status='CANCELLED' WHERE id='${id(973)}'`);
+ assert.equal((await resolve()).start.readingId,id(970));
+ await db.exec(`UPDATE invoices SET status='APPROVED' WHERE id='${id(973)}'`);
+ // Capture tháng cùng ngày trả chưa lên hoá đơn không làm số đầu (start = end sẽ mất tiêu thụ).
+ await confirm(db,(await upload(db,await start(db,{readingDate:'2026-10-20'}))).capture,'165');
+ const pending=(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',readingDate:'2026-10-20',sha256:'c'.repeat(64)}))).capture;
  assert.equal(Number(pending.previousValue),150);
  assert.equal(Number((await confirm(db,pending,'170')).capture.previousValue),150);
  row=await resolve();assert.equal(row.start.readingId,id(971));assert.equal(Number(row.end.value),170);assert.deepEqual(row.issues,[]);
 }
+// Đổi khách giữa tháng: A trả 15/10, B nhận 16/10. Hoá đơn kỳ 10 của B có hoặc không có tiền điện.
+async function meterWideTurnover(db,{moveIn,powerBilled}) {
+ const tenant=id(500);
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01',actual_end_date='2026-10-15',status='TERMINATED';
+ INSERT INTO contracts(id,organization_id,room_id,start_date,initial_electricity_reading) VALUES('${tenant}','${org}','${room}','2026-10-16',134);
+ INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(513)}','${org}','${tenant}','${building}','2026-10','2026-10-16');
+ ${powerBilled?`INSERT INTO invoice_items(invoice_id,service_id,current_reading,to_date) VALUES('${id(513)}','${id(777)}',136,'2026-10-31');`:''}`+seedReadings(`
+ ('${id(510)}','${org}','${meter}',NULL,'2026-10-31',100,120,'APPROVED','2026-09-30T10:00:00+07'),
+ ('${id(511)}','${org}','${meter}','${contract}','2026-10-15',120,135,'APPROVED','2026-10-15T10:00:00+07')
+ ${moveIn?`,('${id(512)}','${org}','${meter}','${tenant}','2026-10-16',135,136,'APPROVED','2026-10-16T10:00:00+07')`:''}`));
+ await register(db);
+ return resolveFor(db,tenant,'2026-11','2026-11-30','MONTHLY');
+}
+async function meterWideTurnoverCases(db,variant) {
+ const row=await meterWideTurnover(db,variant);
+ // Có chỉ số nhận phòng: lấy nó, không lấy bản Excel của A dán 31/10 (đọc 30/09).
+ if(variant.moveIn){assert.equal(row.start.readingId,id(512));assert.equal(Number(row.start.value),136);}
+ // Chỉ còn chỉ số đọc trước ngày nhận phòng: chưa tính tiền điện thì dùng số đầu hợp đồng.
+ else if(!variant.powerBilled){assert.equal(row.start.kind,'contractInitial');assert.equal(Number(row.start.value),134);}
+ // Đã tính tiền điện mà không có chỉ số sau ngày nhận phòng: không đoán, bắt đối chiếu.
+ else{assert.equal(row.start,null);assert.ok(row.issues.includes('MISSING_START'));}
+}
 test('later invoices start from the latest approved meter reading of any contract; the first invoice keeps the contract path', async t => {
  const db=await fixture();t.after(()=>db.close());await meterWideMonthly(db);
 });
-test('mid-month move-out starts from the reading billed ahead before move-out, not from one recorded after it (Vietnam date)', async t => {
+test('move-out start: billed-ahead reading before move-out, cancelled month ignored, unbilled same-day capture and own end excluded (Vietnam date)', async t => {
  const db=await fixture();t.after(()=>db.close());await meterWideMoveOut(db);
+});
+test('tenant turnover: the new tenant starts from its own reading, else its contract start, else asks for reconciliation', async () => {
+ for(const variant of [{moveIn:true,powerBilled:false},{moveIn:false,powerBilled:false},{moveIn:false,powerBilled:true}]){
+  const db=await fixture();try{await meterWideTurnoverCases(db,variant);}finally{await db.close();}
+ }
 });
 test('meter-wide start mutation sentinels', async () => {
  const digest=value=>createHash('sha256').update(value).digest('hex');const before=digest(readSql());
+ const turnover=variant=>db=>meterWideTurnoverCases(db,variant);
  const mutations=[
   ['first invoice keeps contract path','IF v_prior THEN','IF true THEN',meterWideMonthly],
   ['later invoice uses meter-wide start','IF v_prior THEN','IF false THEN',meterWideMonthly],
   ['unlinked readings count','WHERE r.organization_id=p_org AND r.meter_id=p_meter AND','WHERE r.organization_id=p_org AND r.meter_id=p_meter AND r.contract_id IS NOT NULL AND',meterWideMonthly],
+  ['another contract during this tenancy is ignored','AND NOT (r.contract_id IS NOT NULL AND r.contract_id<>p_contract AND d.day>p_contract_start)','',meterWideMonthly],
   ['review baseline uses meter-wide start','IF app_private.meter_capture_has_prior_invoice_v1(c.organization_id,c.contract_id,c.month,c.purpose) THEN','IF false THEN',meterWideMonthly],
   ['anomaly uses meter history','(v_meter_wide OR r.contract_id=c.contract_id)','r.contract_id=c.contract_id',meterWideMonthly],
   ['cancelled invoice is not prior',"i.status::text<>'CANCELLED' AND (i.billing_month<p_month",'(i.billing_month<p_month',meterWideMonthly],
-  ['move-out takes reading billed ahead',"OR (p_purpose='MOVE_OUT' AND r.reading_date>p_at AND (r.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_at)",'',meterWideMoveOut],
-  ['move-out compares Vietnam date',"(r.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_at",'r.created_at::date<=p_at',meterWideMoveOut],
-  ['move-out start excludes its own end',"OR (r.reading_date=p_at AND (cap.id IS NULL OR (p_purpose='MOVE_OUT' AND cap.purpose='MONTHLY')))","OR (r.reading_date=p_at)",async db=>{
-   await register(db);await confirm(db,(await upload(db,await start(db))).capture);const monthly=await source(db);await invoice(db,invoiceArgs(monthly),[monthly]);
-   await confirm(db,(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',sha256:'c'.repeat(64)}))).capture,'125');
+  ['physical reading day orders readings','ORDER BY d.day DESC,r.reading_date DESC','ORDER BY r.reading_date DESC',turnover({moveIn:true,powerBilled:false})],
+  ['pre-tenancy reading yields to contract start','app_private.meter_capture_reading_day_v1(v_id)<c.start_date THEN',"app_private.meter_capture_reading_day_v1(v_id)<'1900-01-01' THEN",turnover({moveIn:false,powerBilled:false})],
+  ['billed tenancy without reading is not guessed','IF NOT v_power_billed THEN v_pre:=v_id; END IF;','v_pre:=v_id;',turnover({moveIn:false,powerBilled:true})],
+  ['move-out compares Vietnam date',"(COALESCE(cap.captured_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",'COALESCE(cap.captured_at,r.created_at)::date',meterWideMoveOut],
+  ['reading billed ahead needs its month invoiced',"i.billing_month=to_char(r.reading_date,'YYYY-MM')",'true',meterWideMoveOut],
+  ['unbilled same-day capture is not a start','OR cap.id IS NULL OR (cap.purpose=','OR cap.id IS NOT NULL OR (cap.purpose=',meterWideMoveOut],
+  ['own move-out reading is never a start',"AND NOT COALESCE(cap.purpose='MOVE_OUT' AND cap.contract_id=p_contract,false)",'',async db=>{
+   await register(db);await confirm(db,(await upload(db,await start(db,{readingDate:'2026-10-20',capturedAt:'2026-10-20T01:00:00Z'}))).capture);
+   const monthly=await source(db);await invoice(db,invoiceArgs(monthly),[monthly]);
+   // Capture dán ngày cuối kỳ nhưng chụp sớm hơn: ngày đọc thật của chính số cuối nằm trước ngày trả.
+   await confirm(db,(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',capturedAt:'2026-10-29T01:00:00Z',sha256:'c'.repeat(64)}))).capture,'125');
    assert.equal(Number((await source(db,'MOVE_OUT')).previousReading),120);
   }],
  ];
