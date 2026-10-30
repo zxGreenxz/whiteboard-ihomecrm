@@ -5,6 +5,7 @@ import {
   invoiceAdjustmentsText,
   invoicePartColumnAmount,
   invoicePartialNote,
+  rowCategoryAmounts,
   signedShortVnd,
   type InvoiceAmountParts,
 } from "@/lib/invoiceAmountParts";
@@ -65,6 +66,21 @@ describe("invoiceAmountParts", () => {
     expect(cats.reduce((s, c) => s + c.amount, 0)).toBe(7_527_000 + 3_500_000 + 50_000 + 1_000);
     // chưa có phần tách ⇒ theo hạng mục của dòng
     expect(categorySharesOf(rows).find((c) => c.name === "Thu tiền hoá đơn")?.amount).toBe(7_527_000);
+  });
+
+  it("phần theo hạng mục của MỘT dòng (nguồn chung của tỷ trọng và ô tích lọc)", () => {
+    const parts = new Map([["a", phan()]]);
+    expect(rowCategoryAmounts({ key: "a", name: "Thu tiền hoá đơn", amount: 7_527_000 }, parts)).toEqual([
+      { name: "Tiền phòng", amount: 5_500_000 },
+      { name: "Tiền điện", amount: 1_727_700 },
+      { name: "Tiền nước", amount: 300_000 },
+      { name: "Phí dịch vụ", amount: 200_000 },
+      { name: "Giảm trừ hoá đơn", amount: -200_000 },
+      { name: "Làm tròn hoá đơn", amount: -700 },
+    ]);
+    expect(rowCategoryAmounts({ key: "b", name: "—", amount: 50_000 })).toEqual([{ name: "Khác", amount: 50_000 }]);
+    expect(rowCategoryAmounts({ key: "c", name: "Phí giữ xe", amount: 0 })).toEqual([]);
+    expect(rowCategoryAmounts({ key: "d", name: "Phòng trống", amount: 0, isNote: true }, parts)).toEqual([]);
   });
 
   it("gói RPC sai hình (thiếu trường) thì zod ném, không đoán số", () => {

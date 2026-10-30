@@ -1,7 +1,11 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
+import { boChuThichSql } from '../../../scripts/lib/bo-chu-thich.mjs';
 import {
   timelineDomain, datePercent, buildLanes, vacancyProblems,
-  EVENT_LABEL, RPC_EVENT_TYPES,
+  COMMISSION_STAGES, EVENT_LABEL, LIFECYCLE_EVENT_TYPES, RPC_EVENT_TYPES, STAGE_TEXT,
+  commissionEventOf, eventLabel, eventLabelOf, termText,
   type LifecycleSegment, type LifecycleContract,
 } from '../roomLifecycle';
 
@@ -143,21 +147,138 @@ describe('vacancyProblems — client XÁC MINH số server, không tin mù', () 
   });
 });
 
-describe('EVENT_LABEL — bảng nhãn phủ đủ taxonomy', () => {
-  // RPC get_room_cash_lifecycle_v1 phát đúng 12 type này. Thêm type mới vào RPC
-  // mà quên thêm nhãn ⇒ test này đỏ, thay vì UI hiện mã máy cho người dùng.
-  const RPC_TYPES = [
-    'CONTRACT_OPENED', 'ROOM_CHANGED_IN', 'ROOM_CHANGED_OUT', 'CONTRACT_CLOSED',
-    'DEPOSIT_RECEIVED', 'INVOICE_ISSUED', 'INVOICE_COLLECTION_POSTED',
-    'TERMINATION_REQUESTED', 'SETTLEMENT_OFFSET_POSTED', 'DEPOSIT_FORFEIT_POSTED',
-    'DEPOSIT_REFUND_POSTED', 'COMMISSION_PAID',
-  ];
+// ── Định nghĩa SỐNG (lần CREATE cuối theo timestamp) — không ghim file migration.
+const MIG_DIR = resolve(process.cwd(), 'supabase/migrations');
+function liveDefinitionOf(schema: string, fnName: string): string | null {
+  const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`, 'i');
+  let hit: string | null = null;
+  for (const f of readdirSync(MIG_DIR).filter((x) => x.endsWith('.sql')).sort()) {
+    const sql = boChuThichSql(readFileSync(join(MIG_DIR, f), 'utf8').replace(/\r\n/g, '\n'));
+    const at = sql.search(re);
+    if (at >= 0) hit = sql.slice(at);
+  }
+  if (!hit) return null;
+  // Cắt đúng thân hàm: từ CREATE tới dollar-quote đóng thân.
+  const tag = /AS\s+(\$[a-z_]*\$)/i.exec(hit);
+  if (!tag) return null;
+  const open = hit.indexOf(tag[1]) + tag[1].length;
+  const close = hit.indexOf(tag[1], open);
+  return close > open ? hit.slice(0, close) : null;
+}
 
-  it('đủ 12 type, mỗi type có nhãn tiếng Việt + tông màu', () => {
-    for (const t of RPC_TYPES) {
+/** Biểu thức ĐẦU của mỗi nhánh UNION ALL trong CTE `ev` = cột type của sự kiện. */
+function typeLiteralsOfEvCte(body: string): string[] {
+  const start = body.search(/\bev\s+AS\s*\(/i);
+  const end = body.search(/\bev_loc\s+AS\s*\(/i);
+  expect(start, 'không thấy CTE ev').toBeGreaterThanOrEqual(0);
+  expect(end, 'không thấy CTE ev_loc').toBeGreaterThan(start);
+  const out: string[] = [];
+  for (const branch of body.slice(start, end).split(/\bUNION\s+ALL\b/i)) {
+    const sel = branch.search(/\bSELECT\b/i);
+    if (sel < 0) continue;
+    let depth = 0;
+    let expr = '';
+    for (const ch of branch.slice(sel + 'SELECT'.length)) {
+      if (ch === '(') depth += 1;
+      if (ch === ')') depth -= 1;
+      if (ch === ',' && depth === 0) break;
+      expr += ch;
+    }
+    for (const m of expr.matchAll(/'([A-Z][A-Z0-9_]*)'/g)) out.push(m[1]);
+  }
+  return out;
+}
+
+describe('EVENT_LABEL — bảng nhãn phủ đủ taxonomy', () => {
+  // Hợp đồng payload "vòng đời tiền một nguồn": đúng 25 type. Thêm type mới vào
+  // RPC mà quên thêm nhãn ⇒ test này đỏ, thay vì UI hiện mã máy cho người dùng.
+  it('đủ 25 type, mỗi type có nhãn tiếng Việt + tông màu', () => {
+    expect(LIFECYCLE_EVENT_TYPES).toHaveLength(25);
+    for (const t of LIFECYCLE_EVENT_TYPES) {
       expect(EVENT_LABEL[t], `thiếu nhãn cho ${t}`).toBeDefined();
       expect(EVENT_LABEL[t].label).not.toMatch(/^[A-Z_]+$/); // nhãn người đọc, không phải mã máy
+      expect(t.length).toBeLessThanOrEqual(40); // luật `code` của Hermes
     }
-    expect(RPC_EVENT_TYPES.sort()).toEqual(RPC_TYPES.slice().sort());
+    expect([...RPC_EVENT_TYPES].sort()).toEqual([...LIFECYCLE_EVENT_TYPES].sort());
+    expect(Object.keys(EVENT_LABEL).sort()).toEqual([...LIFECYCLE_EVENT_TYPES].sort());
+  });
+
+  it('mọi type mà THÂN SQL SỐNG của get_room_cash_lifecycle_v1 phát ra đều có nhãn', () => {
+    const body = liveDefinitionOf('public', 'get_room_cash_lifecycle_v1');
+    expect(body, 'không thấy định nghĩa sống').not.toBeNull();
+    const literals = typeLiteralsOfEvCte(body!);
+    expect(literals).toContain('CONTRACT_OPENED');
+    for (const lit of literals) {
+      if (lit.endsWith('_')) {
+        // Tiền tố ghép với trạng thái (COMMISSION_ || stage): đủ 5 trạng thái.
+        for (const st of COMMISSION_STAGES) expect(LIFECYCLE_EVENT_TYPES).toContain(`${lit}${st}`);
+      } else {
+        expect(LIFECYCLE_EVENT_TYPES, `type ${lit} của RPC không có nhãn`).toContain(lit);
+      }
+    }
+    // Trạng thái hoa hồng do helper sống phát ra phải nằm trong COMMISSION_STAGES.
+    const h2 = liveDefinitionOf('app_private', 'contract_commission_vouchers_v1');
+    if (h2) {
+      const stages = [...h2.matchAll(/\b(?:THEN|ELSE)\s+'([A-Z][A-Z_]*)'/g)].map((m) => m[1]);
+      expect(stages.length).toBeGreaterThan(0);
+      for (const st of stages) expect(COMMISSION_STAGES as readonly string[]).toContain(st);
+    }
+  });
+
+  it('10 type hoa hồng/thưởng: nhãn nói loại + trạng thái, cờ statusInLabel, tông theo trạng thái', () => {
+    expect(EVENT_LABEL.COMMISSION_REVERSED).toEqual({ label: 'Hoa hồng môi giới · đã đảo', tone: 'neutral', statusInLabel: true });
+    expect(EVENT_LABEL.SALE_BONUS_PENDING).toEqual({ label: 'Thưởng Sale · chờ duyệt', tone: 'warn', statusInLabel: true });
+    expect(EVENT_LABEL.COMMISSION_PAID.tone).toBe('out');
+    expect(EVENT_LABEL.SALE_BONUS_OFFBOOK.label).toBe('Thưởng Sale · trả ngoài sổ tiền');
+    for (const t of LIFECYCLE_EVENT_TYPES) {
+      expect(!!EVENT_LABEL[t].statusInLabel, t).toBe(commissionEventOf(t) !== null);
+    }
+    // Cấn trừ không phải tiền vào.
+    expect(EVENT_LABEL.INVOICE_TERMINATION_OFFSET.tone).toBe('neutral');
+  });
+
+  it('type lạ rơi về mã máy với tông neutral, không sập', () => {
+    expect(eventLabel('LOAI_MOI_CHUA_CO')).toEqual({ label: 'LOAI_MOI_CHUA_CO', tone: 'neutral' });
+  });
+
+  it('COMMISSION_PAID của RPC cũ (không voucherId) giữ nhãn cũ, không khẳng định "đã chi"', () => {
+    expect(eventLabelOf({ type: 'COMMISSION_PAID', meta: { code: 'PC-GIA', name: 'HH' } }))
+      .toEqual({ label: 'Hoa hồng / thưởng', tone: 'out' });
+    expect(eventLabelOf({ type: 'COMMISSION_PAID', meta: { voucherId: 'v1', code: 'PC-GIA', name: 'HH' } }).label)
+      .toBe('Hoa hồng môi giới · đã chi');
+  });
+});
+
+describe('commissionEventOf', () => {
+  it('đọc đủ 10 type, trả null cho type khác', () => {
+    let n = 0;
+    for (const t of LIFECYCLE_EVENT_TYPES) {
+      const cm = commissionEventOf(t);
+      if (!cm) continue;
+      n += 1;
+      expect(t).toBe(`${cm.kind === 'sale' ? 'SALE_BONUS' : 'COMMISSION'}_${cm.stage}`);
+      expect(STAGE_TEXT[cm.stage]).toBeTruthy();
+    }
+    expect(n).toBe(10);
+    expect(commissionEventOf('COMMISSION_APPROVED')).toBeNull();
+    expect(commissionEventOf('SALE_BONUS_')).toBeNull();
+    expect(commissionEventOf('INVOICE_ISSUED')).toBeNull();
+  });
+});
+
+describe('termText — thời hạn hợp đồng có gia hạn (A2)', () => {
+  it('không gia hạn / RPC cũ ⇒ dạng cũ', () => {
+    expect(termText('2026-05-01', null, '2026-08-30')).toBe('01/05/2026 → 30/08/2026');
+    expect(termText('2026-05-01', undefined, '2026-08-30')).toBe('01/05/2026 → 30/08/2026');
+  });
+  it('hạn gốc < hạn hiện tại ⇒ in hạn gốc kèm "gia hạn tới"', () => {
+    expect(termText('2026-05-01', '2026-08-30', '2027-02-28'))
+      .toBe('01/05/2026 → 30/08/2026 · gia hạn tới 28/02/2027');
+  });
+  it('hạn gốc ≥ hạn hiện tại (gia hạn kiểu tạo HĐ mới) ⇒ không in "gia hạn tới"', () => {
+    expect(termText('2026-05-01', '2026-08-30', '2026-08-30')).toBe('01/05/2026 → 30/08/2026');
+  });
+  it('giữ dấu nối riêng của từng màn; thiếu ngày ⇒ —', () => {
+    expect(termText('2026-05-01', null, null, ' – ')).toBe('01/05/2026 – —');
   });
 });

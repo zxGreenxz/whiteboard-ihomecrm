@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1722,
-  "soFileDocBangFs": 446,
-  "tongLoiGoi": 1132,
-  "khongPhanLoaiDuoc": 506,
+  "tongSoFileTest": 1739,
+  "soFileDocBangFs": 451,
+  "tongLoiGoi": 1144,
+  "khongPhanLoaiDuoc": 511,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 63,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 63,
+      "soFile": 65,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 184,
+      "soFile": 186,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -498,6 +498,15 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 2,
+        "ma-nguon": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
       "soGoi": 5,
       "loai": {
@@ -682,15 +691,6 @@
       "soGoi": 4,
       "loai": {
         "ma-nguon": 4
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 2,
-        "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -946,6 +946,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -975,6 +983,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractExitSettlementDraftMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/contractMeterBoundaryFinalReadingSync.test.ts",
@@ -1024,6 +1040,14 @@
     },
     {
       "file": "src/lib/__tests__/invoiceRentSupportMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/khoaCotHoaHongCompatMigration.test.ts",
       "soGoi": 3,
       "loai": {
         "sql": 1
@@ -3246,6 +3270,20 @@
     },
     {
       "file": "src/lib/__tests__/reverseCollectionOrgToday.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/roomLifecycle.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

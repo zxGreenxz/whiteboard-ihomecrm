@@ -12,7 +12,7 @@ export const COMPAT_RECEIPT_WRITER = 'public.ie_compat_insert_v2';
 // writes. Any merge/variable payload, new call, renamed guard or changed branch
 // needs review; the proof must not generalize to another caller or future body.
 const CALLER_SHA256 = 'cd1b06e48ddecc45c2af8521ad907dee2f06b2febe7b630e78cd947037ad11ab';
-const WRITER_SHA256 = 'be8078a02a54774389618c611da39f17385f81f1ea2b59f96605d5d70919a165';
+const WRITER_SHA256 = '72476364bb42483a7c31945ee2ae226b4f5cd85753b2d6dfd1ca6fb5f4d4788a';
 
 // Only used after the exact pins match. Ignore single/double quoted tokens while
 // matching nested PL/pgSQL IF/END IF. Preserve the outer ELSE (ordinary path).

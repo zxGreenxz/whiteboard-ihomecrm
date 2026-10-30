@@ -11,7 +11,7 @@
 
 import { useMemo } from 'react';
 import {
-  buildLanes, datePercent, eventLabel, timelineDomain, vacancyProblems,
+  buildLanes, datePercent, eventLabelOf, timelineDomain, vacancyProblems,
   type LifecyclePayload,
 } from '@/lib/roomLifecycle';
 import './room-lifecycle.css';
@@ -115,7 +115,7 @@ export function LifecycleTimeline({ payload }: { payload: LifecyclePayload }) {
               {payload.events
                 .filter((e) => e.contractId === lane.contractId && e.amount != null)
                 .map((e, i) => {
-                  const info = eventLabel(e.type);
+                  const info = eventLabelOf(e);
                   return (
                     <span
                       key={`${e.type}-${e.date}-${i}`}
@@ -141,7 +141,7 @@ export function LifecycleTimeline({ payload }: { payload: LifecyclePayload }) {
       {/* Chuỗi sự kiện dọc */}
       <div className="rl-feed">
         {eventsDesc.map((e, i) => {
-          const info = eventLabel(e.type);
+          const info = eventLabelOf(e);
           const contract = payload.contracts.find((c) => c.id === e.contractId);
           return (
             <div key={`${e.type}-${e.date}-${i}`} className={`rl-item tone-${info.tone}`}>
@@ -153,7 +153,9 @@ export function LifecycleTimeline({ payload }: { payload: LifecyclePayload }) {
                 {e.amount != null && e.amount !== 0 && (
                   <span className="rl-item-amount">{fmtMoney(e.amount)}</span>
                 )}
-                {!e.trusted && <span className="rl-item-warn"> · chưa vào sổ thật</span>}
+                {/* Nhãn đã nói trạng thái phiếu (chờ duyệt / đã đảo / ngoài sổ) thì
+                    hậu tố này thừa — và sai nghĩa với phiếu đã đảo. */}
+                {!e.trusted && !info.statusInLabel && <span className="rl-item-warn"> · chưa vào sổ thật</span>}
               </span>
             </div>
           );

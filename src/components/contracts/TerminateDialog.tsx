@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -30,7 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft, ReceiptText, Undo2 } from "lucide-react";
+import { Loader2, ArrowLeft, ReceiptText, Undo2, Save } from "lucide-react";
+import { toast } from "sonner";
 import { LoadingState } from "@/components/loading/LoadingState";
 import {
   AlertDialog,
@@ -74,13 +75,23 @@ import { computeTerminationSettlement } from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
 import { useContractTransferLinks, useFinalizeContractTransferExit } from '@/hooks/contracts/useContractTransferLinks';
 import { transferBrokerFeeLine, withTransferBrokerFee } from '@/lib/contract-lifecycle/transfers';
+import { useContractExitSettlementDraft, useDiscardContractExitSettlementDraft, useSaveContractExitSettlementDraft } from '@/hooks/useContractExitSettlementDrafts';
+import {
+  EXIT_SETTLEMENT_DRAFT_SCHEMA, draftSavedBy, exitSettlementDraftErrorMessage, exitSettlementDraftPayloadSchema,
+  type ExitSettlementDraftSections, type ExtraChargesDraft, type RefundItemsDraft,
+} from '@/lib/contractExitSettlementDrafts';
 
 interface TerminateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract: ContractWithRelations;
   exitCase?: ContractExitCase;
+  /** Mở từ "Mở bản nháp": điền lại form từ nháp đã lưu của hồ sơ (đọc mới lúc mở). */
+  resumeDraft?: boolean;
 }
+
+const EMPTY_DRAFT: ExitSettlementDraftSections = { extra: null, refund: null, moveOut: null };
+const EMPTY_START = { kind: null, sections: EMPTY_DRAFT };
 
 // Số điện cuối chỉ nhập MỘT lần ở bước quyết toán ("Tiền điện (chốt số)"): server ghi số chốt rồi tự
 // ghi mốc trả phòng từ số đó (20261008025958). Bước trả phòng không hỏi lại (chủ chốt 08/10/2026).
@@ -96,6 +107,7 @@ export function TerminateDialog({
   onOpenChange,
   contract,
   exitCase,
+  resumeDraft = false,
 }: TerminateDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [kind, setKind] = useState<ExitKind | null>(null);
@@ -130,6 +142,26 @@ export function TerminateDialog({
   const unpaidInvoices = invoiceQuery.data;
   const creditBalance = creditQuery.data;
 
+  // Nháp bước quyết toán — chỉ hồ sơ Chờ quyết toán (đã có exitCase). `working` giữ số đang điền của các ô tự nhập
+  // (các mục con emit lên); `initialDraft` là số để mục con khởi tạo khi gắn lại (mở nháp; quay lại bước 1 rồi tiếp tục —
+  // chỉ khi cùng nhóm loại: bỏ cọc và rời phòng tính khoản thu thêm khác nhau nên đổi nhóm là mở form mới).
+  // `baseVersion`: version nháp mà form đang dựa vào, chốt ở lần đọc mới đầu tiên sau khi mở (null = lúc mở chưa có nháp).
+  // Lưu luôn so với nó, nên ai khác lưu trong lúc mình điền thì máy chủ trả PT409 và hộp thoại hỏi ghi đè.
+  const draftQuery = useContractExitSettlementDraft(exitCase?.id, open && !!exitCase);
+  const saveDraft = useSaveContractExitSettlementDraft();
+  const discardDraft = useDiscardContractExitSettlementDraft();
+  const draft = draftQuery.data;
+  const working = useRef<ExitSettlementDraftSections>(EMPTY_DRAFT);
+  const [initialDraft, setInitialDraft] = useState<{ kind: ExitKind | null; sections: ExitSettlementDraftSections }>(EMPTY_START);
+  const [hydrated, setHydrated] = useState(false);
+  const [baseVersion, setBaseVersion] = useState<number | null | undefined>(undefined);
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [discardTarget, setDiscardTarget] = useState<number | null>(null);
+  const [discarded, setDiscarded] = useState(false);
+  const updateWorking = useCallback((patch: Partial<ExitSettlementDraftSections>) => {
+    working.current = { ...working.current, ...patch };
+  }, []);
+
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (open) {
@@ -139,14 +171,93 @@ export function TerminateDialog({
       setChangeReason('');
       setReturnNote(exitCase?.return_note ?? '');
       requestKeys.current.clear();
+      working.current = EMPTY_DRAFT;
+      setInitialDraft(EMPTY_START);
+      setHydrated(false);
+      setBaseVersion(undefined);
+      setDraftConflict(false);
+      setDiscardTarget(null);
+      setDiscarded(false);
     }
   }, [open, contract.id, exitCase?.id]);
 
+  // Mở bản nháp: chờ lần đọc mới xong (và liên kết nhượng đã rõ — bước 2 gắn lại theo liên kết sẽ mất số vừa điền) rồi
+  // điền lại loại thanh lý, lý do đổi loại và các mục tiền; đổi loại mà thiếu lý do thì dừng ở bước 1 để nhập lý do.
+  // Form và version gốc chốt từ CÙNG một lần đọc. Đọc lỗi thì không dùng bản cũ trong cache: form trống, gốc = "chưa có
+  // nháp" (null) — lưu là tạo mới, nên nếu thật ra đã có nháp thì máy chủ trả PT409 và hộp thoại hỏi trước khi ghi đè.
+  useEffect(() => {
+    if (!open || hydrated) return;
+    if (exitCase && resumeDraft) {
+      if (!draftQuery.isFetchedAfterMount || draftQuery.isFetching || transferQuery.isPending) return;
+      const read = draftQuery.isSuccess ? draftQuery.data : undefined;
+      const payload = read?.payload;
+      setBaseVersion(read ? read.version : null);
+      if (payload) {
+        const sections = { extra: payload.extra, refund: payload.refund, moveOut: payload.moveOut };
+        working.current = sections;
+        setInitialDraft({ kind: payload.kind, sections });
+        setKind(payload.kind);
+        setChangeReason(payload.changeReason);
+        setStep(payload.kind !== exitCase.current_kind && !payload.changeReason.trim() ? 1 : 2);
+      }
+    }
+    setHydrated(true);
+  }, [open, hydrated, exitCase, resumeDraft, draftQuery.isFetchedAfterMount, draftQuery.isFetching, draftQuery.isSuccess, draftQuery.data, transferQuery.isPending]);
+  // Mở form mới: gốc là bản nháp thấy ở lần đọc thành công đầu tiên (khung trên báo "Bấm Lưu nháp sẽ thay bản đó").
+  useEffect(() => {
+    if (open && exitCase && !resumeDraft && baseVersion === undefined && draftQuery.isSuccess && draftQuery.isFetchedAfterMount && !draftQuery.isFetching) {
+      setBaseVersion(draftQuery.data?.version ?? null);
+    }
+  }, [open, exitCase, resumeDraft, baseVersion, draftQuery.isSuccess, draftQuery.isFetchedAfterMount, draftQuery.isFetching, draftQuery.data]);
+
   const handleBack = () => {
+    // Chỉ hồ sơ Chờ quyết toán giữ số khi quay lại (ngày trả phòng đã chốt). Thanh lý mới cho đổi ngày ở bước 1 nên bước 2
+    // dựng lại theo ngày mới như trước — giữ số cũ sẽ gửi tiền tính theo ngày cũ.
+    if (exitCase) setInitialDraft({ kind, sections: working.current });
+    else { working.current = EMPTY_DRAFT; setInitialDraft(EMPTY_START); }
     setStep(1);
   };
+  const keepsDraft = !!initialDraft.kind && !!kind && (initialDraft.kind === 'FORFEIT') === (kind === 'FORFEIT');
+  const stepDraft = keepsDraft ? initialDraft.sections : EMPTY_DRAFT;
+  const continueToSettlement = () => {
+    if (!keepsDraft) working.current = EMPTY_DRAFT;
+    setStep(2);
+  };
 
-  const isPending = confirmReturn.isPending || finalizeExit.isPending || finalizeTransfer.isPending;
+  const draftBusy = saveDraft.isPending || discardDraft.isPending;
+  const isPending = confirmReturn.isPending || finalizeExit.isPending || finalizeTransfer.isPending || draftBusy;
+  const waitingDraft = !!exitCase && open && resumeDraft && !hydrated;
+  const draftVersionUnknown = !!exitCase && (baseVersion === undefined || draftQuery.isError);
+  const saveDraftNow = async (overwrite?: { version: number | null }) => {
+    if (!exitCase || !kind || baseVersion === undefined) return;
+    // Nháp bỏ cọc chỉ có khoản thu thêm; các mục của rời phòng (cọc hoàn, hoàn lại khách…) không áp cho bỏ cọc.
+    const sections = kind === 'FORFEIT' ? { ...EMPTY_DRAFT, extra: working.current.extra } : working.current;
+    const payload = exitSettlementDraftPayloadSchema.safeParse({ schema: EXIT_SETTLEMENT_DRAFT_SCHEMA, kind, changeReason, ...sections });
+    if (!payload.success) { toast.error(exitSettlementDraftErrorMessage(payload.error)); return; }
+    try {
+      const saved = await saveDraft.mutateAsync({ caseId: exitCase.id, expectedVersion: overwrite ? overwrite.version : baseVersion, payload: payload.data });
+      setBaseVersion(saved.version);
+      setDraftConflict(false);
+      toast.success('Đã lưu nháp quyết toán. Hồ sơ vẫn ở Chờ quyết toán, bấm "Mở bản nháp" để làm tiếp.');
+      onOpenChange(false);
+    } catch (error) {
+      // Người khác vừa lưu/bỏ nháp: đọc bản mới nhất rồi hỏi ghi đè. Ghi đè vẫn lệch (vd hồ sơ vừa quyết toán) ⇒ báo lỗi.
+      if ((error as { code?: string } | null)?.code === 'PT409' && !overwrite) { await draftQuery.refetch(); setDraftConflict(true); return; }
+      setDraftConflict(false);
+      toast.error(exitSettlementDraftErrorMessage(error));
+    }
+  };
+  // Bỏ đúng bản nháp đang hiện ở khung trên lúc bấm. Hộp thoại không đóng: số đang điền vẫn còn, muốn thì lưu nháp mới.
+  const discardDraftNow = async () => {
+    if (!exitCase || discardTarget === null) return;
+    try {
+      await discardDraft.mutateAsync({ caseId: exitCase.id, expectedVersion: discardTarget });
+      setBaseVersion(null);
+      setDiscarded(true);
+      toast.success('Đã bỏ bản nháp quyết toán. Số đang điền vẫn giữ trên màn hình.');
+    } catch (error) { toast.error(exitSettlementDraftErrorMessage(error)); }
+    finally { setDiscardTarget(null); }
+  };
   const requestKey = (intent: unknown) => {
     const value = JSON.stringify(intent);
     let key = requestKeys.current.get(value);
@@ -211,6 +322,19 @@ export function TerminateDialog({
           <DialogDescription className="sr-only">Ghi nhận ngày trả phòng và loại thanh lý; chọn quyết toán ngay hoặc xử lý hồ sơ sau.</DialogDescription>
         </DialogHeader>
 
+        {exitCase && !waitingDraft && (draftQuery.isError
+          ? <p role="alert" className="text-sm text-destructive">Không tải được bản nháp của hồ sơ. Đóng và mở lại để thử; chưa lưu nháp được lúc này.</p>
+          : draft ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900" data-testid="exit-draft-banner">
+              <span>{baseVersion !== undefined && draft.version !== baseVersion
+                ? `Có bản nháp lưu lúc ${draftSavedBy(draft)} chưa có trong form này. Bấm Lưu nháp sẽ hỏi trước khi thay bản đó.`
+                : !draft.payload ? `Bản nháp lưu lúc ${draftSavedBy(draft)} không đọc được. Lưu nháp lần này sẽ thay bản đó.`
+                  : resumeDraft ? `Đang mở bản nháp lưu lúc ${draftSavedBy(draft)}.`
+                    : `Hồ sơ đã có bản nháp lưu lúc ${draftSavedBy(draft)}. Bấm Lưu nháp sẽ thay bản đó.`}</span>
+              <Button type="button" variant="link" size="sm" className="h-auto p-0 text-sky-900" disabled={isPending} onClick={() => setDiscardTarget(draft.version)}>Bỏ nháp</Button>
+            </div>
+          : resumeDraft && draft === null && !discarded && <p role="status" className="text-sm">Bản nháp không còn (đã bị bỏ hoặc hồ sơ đã quyết toán). Đang mở form mới.</p>)}
+        {waitingDraft && <LoadingState label="bản nháp quyết toán" rows={4} />}
+
         {/* Chờ đọc: vạch/khối xám thay chữ "Đang …" (chủ chốt 02/10/2026); nút vẫn khoá như cũ
             (transferUnavailable / financeUnavailable). Câu báo lỗi giữ nguyên. */}
         {transferUnavailable && (brokerFeeUnavailable || transferQuery.isError
@@ -220,16 +344,16 @@ export function TerminateDialog({
           ? <p role="alert" className="text-sm text-destructive">Không tải được công nợ và số dư khách hàng. Vui lòng tải lại trước khi quyết toán.</p>
           : <LoadingState label="công nợ và số dư khách hàng" rows={5} />)}
 
-        {step === 1 && (
+        {step === 1 && !waitingDraft && (
           <ContractReturnStep actualDate={actualDate} onDateChange={setActualDate}
             kind={kind} onKindChange={setKind} exitCase={exitCase}
             changeReason={changeReason} onReasonChange={setChangeReason}
             returnNote={returnNote} onReturnNoteChange={setReturnNote}
             pending={isPending || transferUnavailable} physicalReady={!!exitCase || !!contract.room_id}
-            onDefer={() => void deferSettlement()} onContinue={() => setStep(2)} />
+            onDefer={() => void deferSettlement()} onContinue={continueToSettlement} />
         )}
 
-        {step === 2 && !financeUnavailable && kind === "FORFEIT" && (
+        {step === 2 && !waitingDraft && !financeUnavailable && kind === "FORFEIT" && (
           <StepForfeit
             contract={contract}
             creditBalance={creditBalance!}
@@ -239,10 +363,15 @@ export function TerminateDialog({
             isPending={isPending || transferUnavailable}
             actualDate={actualDate}
             onSettle={settle}
+            initialDraft={stepDraft}
+            onDraftChange={updateWorking}
+            onSaveDraft={exitCase ? () => void saveDraftNow() : undefined}
+            draftSaveDisabled={draftVersionUnknown}
+            draftSaving={saveDraft.isPending}
           />
         )}
 
-        {step === 2 && !financeUnavailable && kind && kind !== "FORFEIT" && (
+        {step === 2 && !waitingDraft && !financeUnavailable && kind && kind !== "FORFEIT" && (
           <StepMoveOut
             key={transfer?.id ?? 'ordinary'}
             contract={contract}
@@ -257,11 +386,62 @@ export function TerminateDialog({
             onSettle={settle}
             brokerFee={brokerFee}
             brokerDepositBase={transfer?.mode === 'BROKER' ? transfer.deposit_base : null}
+            initialDraft={stepDraft}
+            onDraftChange={updateWorking}
+            onSaveDraft={exitCase ? () => void saveDraftNow() : undefined}
+            draftSaveDisabled={draftVersionUnknown}
+            draftSaving={saveDraft.isPending}
           />
         )}
+
+        <AlertDialog open={draftConflict} onOpenChange={value => { if (!value) setDraftConflict(false); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Bản nháp vừa thay đổi</AlertDialogTitle>
+              <AlertDialogDescription>
+                {draft ? `Hồ sơ đang có bản nháp lưu lúc ${draftSavedBy(draft)}, khác với nội dung bạn đang điền.` : 'Bản nháp đã bị bỏ, hoặc hồ sơ vừa được quyết toán, trong lúc bạn đang điền.'}{' '}
+                Ghi đè bằng nội dung bạn đang điền?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Xem lại</AlertDialogCancel>
+              <AlertDialogAction disabled={isPending} onClick={() => void saveDraftNow({ version: draft?.version ?? null })}>Ghi đè nháp</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog open={discardTarget !== null} onOpenChange={value => { if (!value) setDiscardTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Bỏ bản nháp quyết toán?</AlertDialogTitle>
+              <AlertDialogDescription>Nội dung đã lưu trong nháp sẽ mất. Hồ sơ vẫn ở Chờ quyết toán.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Giữ nháp</AlertDialogCancel>
+              <AlertDialogAction disabled={isPending} onClick={() => void discardDraftNow()}>Bỏ nháp</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );
+}
+
+function SaveDraftButton({ onSaveDraft, disabled, saving }: { onSaveDraft?: () => void; disabled: boolean; saving: boolean }) {
+  if (!onSaveDraft) return null;
+  return (
+    <Button type="button" variant="outline" disabled={disabled} onClick={onSaveDraft}>
+      {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+      Lưu nháp
+    </Button>
+  );
+}
+
+interface DraftStepProps {
+  initialDraft: ExitSettlementDraftSections;
+  onDraftChange: (patch: Partial<ExitSettlementDraftSections>) => void;
+  onSaveDraft?: () => void;
+  draftSaveDisabled: boolean;
+  draftSaving: boolean;
 }
 
 // =============================================
@@ -277,6 +457,11 @@ function StepForfeit({
   isPending,
   actualDate,
   onSettle,
+  initialDraft,
+  onDraftChange,
+  onSaveDraft,
+  draftSaveDisabled,
+  draftSaving,
 }: {
   contract: ContractWithRelations;
   creditBalance: number;
@@ -286,7 +471,7 @@ function StepForfeit({
   isPending: boolean;
   actualDate: string;
   onSettle: (settlement: ExitSettlementInput) => Promise<void>;
-}) {
+} & DraftStepProps) {
   const form = useForm<TerminateForfeitFormData>({
     resolver: zodResolver(terminateForfeitFormSchema),
     defaultValues: {
@@ -297,6 +482,7 @@ function StepForfeit({
   const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const [meterValid, setMeterValid] = useState(false);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
+  const onExtraDraft = useCallback((extra: ExtraChargesDraft) => onDraftChange({ extra }), [onDraftChange]);
 
   // B4 (audit 03/07): số cọc THỰC sẽ chuyển thành doanh thu = LEAST(cọc theo HĐ,
   // cọc đã thu) — khớp công thức server; hiển thị rõ trước khi chốt.
@@ -459,11 +645,15 @@ function StepForfeit({
 
         {/* Thu thêm — tạo hoá đơn thu tiền khách RIÊNG với hoá đơn bù cọc */}
         <div className="border-t pt-4">
+          {/* Bỏ cọc không bắt buộc chốt số điện (chủ chốt 30/10/2026): không nhập vẫn quyết toán, không thu tiền điện. */}
           <TerminationExtraCharges
             contract={contract}
             chargeDate={form.watch("forfeit_date")}
             onChange={setExtraCharges}
             onValidityChange={setMeterValid}
+            meterOptional
+            initialDraft={initialDraft.extra}
+            onDraftChange={onExtraDraft}
           />
           {extraTotal > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
@@ -485,12 +675,13 @@ function StepForfeit({
           <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
+          <SaveDraftButton onSaveDraft={onSaveDraft} disabled={isPending || draftSaveDisabled} saving={draftSaving} />
           <Button
             type="submit"
             variant="destructive"
             disabled={isPending || !meterValid}
           >
-            {isPending && (
+            {isPending && !draftSaving && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             )}
             Lập hoá đơn & thanh lý
@@ -557,6 +748,11 @@ function StepMoveOut({
   onSettle,
   brokerFee,
   brokerDepositBase,
+  initialDraft,
+  onDraftChange,
+  onSaveDraft,
+  draftSaveDisabled,
+  draftSaving,
 }: {
   contract: ContractWithRelations;
   customerName: string;
@@ -570,7 +766,7 @@ function StepMoveOut({
   onSettle: (settlement: ExitSettlementInput) => Promise<void>;
   brokerFee: ExtraChargeItem | null;
   brokerDepositBase: number | null;
-}) {
+} & DraftStepProps) {
   // A1 (audit 03/07): mặc định hoàn cọc theo cọc THỰC THU (deposit_paid), không
   // phải cọc theo HĐ — server cũng kẹp LEAST(refund, deposit_paid) để không thể
   // hoàn quá số khách đã đóng.
@@ -581,9 +777,9 @@ function StepMoveOut({
     resolver: zodResolver(terminateMoveOutFormSchema),
     defaultValues: {
       move_out_date: actualDate,
-      deposit_refund: brokerDepositBase ?? Math.min(totalDeposit, depositPaid),
-      excess_rent: 0,
-      notes: "",
+      deposit_refund: brokerDepositBase ?? initialDraft.moveOut?.depositRefund ?? Math.min(totalDeposit, depositPaid),
+      excess_rent: initialDraft.moveOut?.excessRent ?? 0,
+      notes: initialDraft.moveOut?.notes ?? "",
     },
   });
 
@@ -597,16 +793,28 @@ function StepMoveOut({
   // lot đang có, còn "Thu thêm" chỉ nhận số dương.
   const [refundItems, setRefundItems] = useState<RefundItem[]>([]);
   const refundTotal = refundItems.reduce((s, it) => s + (it.amount || 0), 0);
+  const onExtraDraft = useCallback((extra: ExtraChargesDraft) => onDraftChange({ extra }), [onDraftChange]);
+  const onRefundDraft = useCallback((refund: RefundItemsDraft) => onDraftChange({ refund }), [onDraftChange]);
 
   // A5 (audit 03/07): khi quyết toán âm (khách còn phải trả), cho chọn
   // "đã trả ngay" (ghi thu) hay "ghi nợ" (giữ công nợ thật chờ thu).
-  const [shortfallMode, setShortfallMode] = useState<"PAID" | "DEBT">("PAID");
+  const [shortfallMode, setShortfallMode] = useState<"PAID" | "DEBT">(() => initialDraft.moveOut?.shortfallMode ?? "PAID");
 
   // B3 (04/07): sổ THỰC nhận tiền "khách trả thêm" — mặc định để trống,
   // server tự chọn sổ "%Thu" của người bấm. Chỉ hiện sổ tiền thật.
-  const [receiptAccountId, setReceiptAccountId] = useState<string>("");
-  const { data: allAccounts = [] } = useAccounts();
-  const realAccounts = allAccounts.filter((a) => !a.is_virtual);
+  const [receiptAccountId, setReceiptAccountId] = useState<string>(() => initialDraft.moveOut?.receiptAccountId ?? "");
+  const accountsQuery = useAccounts();
+  const realAccounts = (accountsQuery.data ?? []).filter((a) => !a.is_virtual);
+  // Sổ trong nháp (có thể do người khác lưu) không nằm trong danh sách sổ của người đang mở ⇒ về "Tự chọn", không gửi
+  // một sổ người này không thấy.
+  // Chỉ kiểm một lần khi danh sách sổ tải xong (lúc đó ô đang giữ đúng sổ của nháp); về sau không tự đổi lựa chọn.
+  const receiptListed = !receiptAccountId || realAccounts.some((a) => a.id === receiptAccountId);
+  const receiptChecked = useRef(false);
+  useEffect(() => {
+    if (receiptChecked.current || !accountsQuery.isSuccess) return;
+    receiptChecked.current = true;
+    if (!receiptListed) setReceiptAccountId("");
+  }, [accountsQuery.isSuccess, receiptListed]);
 
   // B4: xác nhận hệ quả trước khi chạy.
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -627,6 +835,11 @@ function StepMoveOut({
   // Watch values for real-time settlement calculation
   const depositRefund = form.watch("deposit_refund") || 0;
   const excessRent = form.watch("excess_rent") || 0;
+  const notesValue = form.watch("notes") || "";
+  useEffect(() => {
+    onDraftChange({ moveOut: { depositRefund: Number(depositRefund) || 0, excessRent: Number(excessRent) || 0,
+      notes: notesValue, shortfallMode, receiptAccountId } });
+  }, [onDraftChange, depositRefund, excessRent, notesValue, shortfallMode, receiptAccountId]);
 
   // Calculate outstanding debt from unpaid invoices
   const outstandingDebt = useMemo(() => {
@@ -914,6 +1127,8 @@ function StepMoveOut({
             chargeDate={form.watch("move_out_date")}
             onChange={setExtraCharges}
             onValidityChange={setMeterValid}
+            initialDraft={initialDraft.extra}
+            onDraftChange={onExtraDraft}
           />
           {extraTotal > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
@@ -935,6 +1150,8 @@ function StepMoveOut({
             contract={contract}
             moveOutDate={form.watch("move_out_date")}
             onChange={setRefundItems}
+            initialDraft={initialDraft.refund}
+            onDraftChange={onRefundDraft}
           />
           {refundTotal > 0 && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
@@ -1150,12 +1367,13 @@ function StepMoveOut({
           <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
+          <SaveDraftButton onSaveDraft={onSaveDraft} disabled={isPending || draftSaveDisabled} saving={draftSaving} />
           <Button
             type="submit"
             variant="destructive"
             disabled={isPending || !meterValid}
           >
-            {isPending && (
+            {isPending && !draftSaving && (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             )}
             Lập hoá đơn & Thanh lý
