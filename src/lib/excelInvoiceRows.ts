@@ -16,7 +16,7 @@ import { getInvoiceTitle } from "@/lib/invoiceUtils";
 import type { InvoiceFormData, PreviousDebtSource } from "@/types/invoice";
 import { previewInvoiceRentSupport, invoiceRentSupportContextSchema } from './invoiceRentSupport';
 import type { SupportCustomerSchedule } from './rentSupport';
-import { meterSourceReference, type MeterBillingSource } from './meter-capture/types';
+import { isCaptureBackedSource, meterSourceReference, type MeterBillingSource } from './meter-capture/types';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 export interface ExcelRowData {
@@ -275,7 +275,9 @@ export function buildExcelRows(args: {
     .map((c): ExcelRowData => {
       const occupants = c.contract_customers?.length ?? 1;
       const meterId = meterByRoom.get(c.room_id) ?? null;
-      const sources = args.billingSourcesByContract?.get(c.id);
+      const resolved = args.billingSourcesByContract?.get(c.id);
+      // Đồng hồ ghi tay giữ số đầu = chỉ số đã duyệt mới nhất và nhập số cuối như cũ.
+      const sources = resolved?.some(isCaptureBackedSource) ? resolved : undefined;
       const firstSource = sources?.[0];
       const prev = sources ? Number(firstSource?.start?.value ?? 0) : meterId ? lastReading.get(meterId) ?? 0 : 0;
       const current = sources?.length === 1 && firstSource?.end ? Number(firstSource.end.value) : '' as const;

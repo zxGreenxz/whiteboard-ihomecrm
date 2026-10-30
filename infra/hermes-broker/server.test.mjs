@@ -995,3 +995,60 @@ test('options disconnect cannot release the global sixteen-request budget before
     assert.equal(calls,16);assert.equal(active,16);assert.equal(peak,16);
   }finally{hold.resolve();await http.close();}
 });
+
+// Nhớ quyền 30 phút (28/10, authority-context-cache.mjs). Production đo 28/10: keepalive `ping` 180 s của Hermes (2 lần dựng authority
+// mỗi ping) + làn gia hạn ~10 phút (9–11 lần) = ~100 lần dựng/giờ, mỗi lần 15 RPC quyền CRM + /auth/v1/user.
+const PERMISSION_READ = path => /^\/rest\/v1\/rpc\/(?:get_authorization_context_v1|get_my_organizations|hermes_scope_buildings_v1|hermes_group_action_context_v1|hermes_[a-z0-9_]*capabilities(?:_v[0-9]+)?)$/.test(path);
+const INITIALIZE = { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'hermes-fixture', version: '1' } };
+
+test('nhớ quyền: ping/initialize/tools/list qua MCP không đọc lại RPC quyền CRM, tools/call vẫn đọc thật, authorityCacheTtlMs 0 giữ hành vi cũ', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true }), token = (await http.connect()).body.token;
+  const count = since => ({ permission: f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length,
+    user: f.calls.slice(since).filter(call => call.path === '/auth/v1/user').length });
+  let at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200);
+  const build = count(at).permission;
+  assert.ok(build >= 3, `one cold build reads context, directory, scope and capabilities (${build})`);
+  at = f.calls.length;
+  for (let n = 0; n < 5; n++) assert.equal((await http.mcp(token, 'ping')).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools.map(tool => tool.name), ['crm_auth_context']);
+  assert.equal((await http.mcp(token, 'initialize', INITIALIZE)).status, 200);
+  assert.deepEqual(count(at), { permission: 0, user: 14 }, 'seven warm calls: no CRM permission RPC, the Auth session still verified twice each');
+  at = f.calls.length;
+  const called = await http.mcp(token, 'tools/call', { name: 'crm_auth_context', arguments: {} });
+  assert.equal(called.body.result.isError, false);
+  assert.ok(count(at).permission >= 2 * build, 'tools/call builds the full authority at admission and after the audit');
+  // Thu hẹp kết nối (epoch mới) có hiệu lực ngay ở tools/list, không chờ hết hạn nhớ.
+  assert.equal((await http.browser('restrict', { connectionId: I.connection, expectedEpoch: 2, restrictions: { read: [], action: [] }, scopeIds: [] })).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools, []);
+  // Tắt bằng cấu hình: mỗi ping dựng authority đầy đủ hai lần như trước 28/10.
+  const g = fakeBackend(), legacy = await listening(t, { ...g.configuration, connectorOnly: true, authorityCacheTtlMs: 0 });
+  const legacyToken = (await legacy.connect()).body.token, legacyAt = g.calls.length;
+  for (let n = 0; n < 3; n++) assert.equal((await legacy.mcp(legacyToken, 'ping')).status, 200);
+  assert.equal(g.calls.slice(legacyAt).filter(call => PERMISSION_READ(call.path)).length, 3 * 2 * build);
+  t.diagnostic(`permission RPC per authority build=${build}; warm ping/tools/list/initialize=0; ttl 0: ${2 * build} per ping`);
+});
+
+test('nhớ quyền: làn gia hạn/refresh của host dùng lại quyền đã nhớ; revision phiên mới đọc lại đúng một lần', async t => {
+  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
+  const reads = since => f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length, signal = () => new AbortController().signal;
+  let at = f.calls.length; assert.equal((await http.mcp(token, 'ping')).status, 200); const build = reads(at);
+  at = f.calls.length;
+  assert.equal((await http.resolveConnection(token, { signal: signal() })).connectionId, I.connection);
+  assert.equal((await http.renewConnection(token, { signal: signal() })).status, 'renewed');
+  const plain = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await plain.result).status, 'renewed'); await plain.drained;
+  assert.equal(reads(at), 0, 'discovery, renewal and maintenance (12 authority builds) reuse the remembered CRM read');
+  f.nearSessionExpiry(); const refresh = arrangeRefresh(f);
+  at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200); // 57 min later: the 30-min entry has expired ⇒ one cold build
+  assert.equal(reads(at), build);
+  const operation = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await operation.result).status, 'renewed'); await operation.drained;
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal(reads(at), 2 * build, 'the refreshed provider session (new revision) is read once, then reused by the rest of the lane');
+  assert(f.calls.filter(call => call.path === '/auth/v1/user' && call.options.headers.authorization === `Bearer ${refresh.nextJwt}`).length >= 2);
+  for (const authorityCacheTtlMs of [-1, 1, 59_999, 3_600_001, '1800000', null, 1.5]) {
+    assert.throws(() => createHermesBackend({ ...f.configuration, authorityCacheTtlMs }), /invalid_backend_config/, JSON.stringify(authorityCacheTtlMs));
+  }
+});

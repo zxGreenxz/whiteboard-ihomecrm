@@ -765,6 +765,21 @@
       "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/347",
       "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
       "why": "File 20261027074419 ghim md5 thân app_private.hermes_expense_resolve_core_v1 mà 20261027140949 (Thu chi lượt 20 G02 — duyệt lô mã trùng chỉ giữ phiếu chờ duyệt, #347) thay. Chạy lại file gốc trên production đã áp 140949 thì khối kiểm thân ném đúng câu này. Đo 27/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
+    },
+    {
+      "file": "20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.sql",
+      "sha256": "c165eb834f8d435677ffde895a30dfed0c572faa58eac4bfba5f6a42e2c2c4c2",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "chot: get_room_cash_lifecycle_v1 da bi doi (md5 2d935c23943e544354506a290128cb1e) - doc lai ban dang chay truoc khi de",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.json",
+      "supersededBy": {
+        "file": "20261028203816_vong_doi_tien_phong_mot_nguon.sql",
+        "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261028203816_vong_doi_tien_phong_mot_nguon.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/360",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261018052932 ghim md5 thân public.get_room_cash_lifecycle_v1 (a637b231) mà 20261028203816 (vòng đời tiền phòng một nguồn: hoa hồng/thưởng Sale + sửa ngăn kéo, #360) thay bằng thân md5 2d935c23. Chạy lại file gốc trên production đã áp 203816 thì khối $chot$ ném đúng câu này. Đo 30/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
@@ -860,7 +875,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 5
+        "forwardSuccessions": 6
       },
       "witness": {
         "functions": [
@@ -1388,6 +1403,29 @@
               },
               "after": {
                 "md5": "a637b2312d020da2f7de2da01d5b6435",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20261028203816_vong_doi_tien_phong_mot_nguon.sql",
+          "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261028203816_vong_doi_tien_phong_mot_nguon.json",
+          "expectedCounts": {
+            "functions": 1
+          },
+          "functions": [
+            {
+              "signature": "public.get_room_cash_lifecycle_v1(uuid,date,date)",
+              "before": {
+                "md5": "a637b2312d020da2f7de2da01d5b6435",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+              },
+              "after": {
+                "md5": "2d935c23943e544354506a290128cb1e",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres}"
               }

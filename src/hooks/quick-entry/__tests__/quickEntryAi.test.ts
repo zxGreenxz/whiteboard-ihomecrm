@@ -80,9 +80,9 @@ describe("readCategoriesWithAi — câu lệnh rút gọn", () => {
   it("xin ít token, đúng khuôn ⇒ mã từng dòng + mô hình đã trả lời", async () => {
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, completion('{"categories":["c2",null]}'), { "x-quick-entry-model": "9router:cx/gpt-5.6-terra(low)" }));
+      .mockResolvedValueOnce(jsonResponse(200, completion('{"categories":["c2",null]}'), { "x-quick-entry-model": "9router:cx/gpt-6.1-terra(low)" }));
     const r = await readCategoriesWithAi({ messages, categoryCount: 3, lineCount: 2, fetchImpl });
-    expect(r).toEqual({ ok: true, value: ["c2", null], model: "9router:cx/gpt-5.6-terra(low)" });
+    expect(r).toEqual({ ok: true, value: ["c2", null], model: "9router:cx/gpt-6.1-terra(low)" });
     expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({
       model: "quick_entry:auto",
       max_tokens: CATEGORY_ONLY_MAX_TOKENS,

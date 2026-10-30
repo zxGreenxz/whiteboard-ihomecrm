@@ -1,27 +1,23 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-// "Lương của tôi" — trang TRỌN MÀN (QUEST), mở ở TAB MỚI khi nhân viên bấm
-// "Bảng lương" ở sidebar. Tự cô lập khỏi MainLayout: tự dựng chrome riêng (top bar
-// + nền tối tím-vàng). Desktop → SalarySelfDesktop; điện thoại → SalarySelfMobile.
+// "Lương của tôi" — trang TRỌN MÀN, mở ở TAB MỚI khi nhân viên bấm "Bảng lương" ở
+// sidebar. Tự cô lập khỏi MainLayout: SalarySelfView tự dựng thanh đầu trang, cùng
+// một component cho desktop và điện thoại (điện thoại thêm thanh tab dưới).
 // Dùng chung dữ liệu SalManager + lùi-tháng-theo-chốt với trang Bảng lương quản lý.
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { SkeletonBar } from "@/components/loading/LoadingState";
 import { useManagerSalary, useMyManagerConfig, useStaffDisplayMonth } from "@/hooks/useManagerSalary";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
-import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
-import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
+import SalarySelfView from "@/components/salary/SalarySelfView";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine } from "@/lib/managerSalary";
+import { parseV5Plan } from "@/lib/salarySelfSummary";
 import { useBonusRules } from "@/hooks/useSalaryConfig";
 
-/** Màu khối xám trên nền tối của Shell. */
-const SAL_SK = "rgba(255,255,255,.08)";
-
-// Khung trọn-màn nền tối cho trạng thái tải / chưa cấu hình (đồng bộ theme QUEST).
+// Khung trọn màn cho trạng thái tải / chưa cấu hình.
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", background: "radial-gradient(70% 50% at 50% -5%, #2a1f54 0%, transparent 55%), #15112A", color: "#EDEAF7", fontFamily: "'Be Vietnam Pro',sans-serif" }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background p-6 text-center text-foreground">
       {children}
     </div>
   );
@@ -57,29 +53,28 @@ export default function MySalaryPage() {
   const sources = [...(myMgr?.staff_id ? [displayMonthQuery] : []), managerConfigQuery, engineQuery, salaryQuery, rulesQuery];
   if (sources.some(query => query.isError)) return <Shell><QueryRegion label="bảng lương cá nhân" queries={sources}><p>Chưa tải đủ dữ liệu bảng lương.</p></QueryRegion></Shell>;
   if (sources.some(query => query.isLoading) || myLoading || (!data && isLoading)) {
-    // Chờ: khối xám tông tối thay vòng xoay + chữ (chủ chốt 02/10/2026); câu chờ chỉ cho trình đọc màn hình.
+    // Chờ: khối xám thay vòng xoay + chữ (chủ chốt 02/10/2026); câu chờ chỉ cho trình đọc màn hình.
     return <Shell>
       <div role="status" style={{ width: "100%", maxWidth: 420 }}>
         <span className="sr-only">Đang tải bảng lương…</span>
         <div className="ld-appear flex w-full flex-col gap-3" aria-hidden="true">
-          <SkeletonBar className="h-5 rounded-lg" style={{ width: "40%", background: SAL_SK }} />
-          <SkeletonBar className="h-28 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
-          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
-          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%", background: SAL_SK }} />
+          <SkeletonBar className="h-5 rounded-lg" style={{ width: "40%" }} />
+          <SkeletonBar className="h-28 rounded-2xl" style={{ width: "100%" }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%" }} />
+          <SkeletonBar className="h-16 rounded-2xl" style={{ width: "100%" }} />
         </div>
       </div>
     </Shell>;
   }
 
   const managers = data?.managers || [];
-  const period = data?.period || { label: "", year: 0 };
 
   if (!myMgr || managers.length === 0) {
     return (
       <Shell>
         <div style={{ maxWidth: 420 }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Lương của tôi</h2>
-          <p style={{ fontSize: 14, color: "#9A8FC4", lineHeight: 1.6 }}>Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập.</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập.</p>
         </div>
       </Shell>
     );
@@ -91,32 +86,24 @@ export default function MySalaryPage() {
   const canNext = effPeriod < ceiling;
   // hermes-parity:end w2c-salary-locked
 
-  if (phone) {
-    // Nhãn tháng suy TRỰC TIẾP từ effPeriod: React Query còn giữ data tháng cũ
-    // một nhịp khi đổi tháng → pill sẽ hiện sai nếu lấy label từ data.
-    const [pyNum, pmNum] = effPeriod.split("-").map((x) => parseInt(x, 10));
-    return (
-      <SalarySelfMobile
+  // Nhãn tháng suy TRỰC TIẾP từ effPeriod: React Query còn giữ data tháng cũ một nhịp
+  // khi đổi tháng → nhãn sẽ hiện sai nếu lấy từ data.
+  const [pyNum, pmNum] = effPeriod.split("-").map((x) => parseInt(x, 10));
+
+  return (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-background">
+      <SalarySelfView
         m={me}
         period={{ label: `Tháng ${pmNum}`, year: pyNum }}
-        onExit={() => window.close()}
+        v5Plan={salaryEngine === "v5" ? parseV5Plan(v5cfg) : null}
+        phone={phone}
+        onExit={phone ? () => window.close() : undefined}
         canPrev
         canNext={canNext}
+        requirePhoto={requirePhoto}
         onPrevMonth={() => setOverride(shiftMonth(effPeriod, -1))}
         onNextMonth={() => { if (canNext) setOverride(shiftMonth(effPeriod, 1)); }}
       />
-    );
-  }
-
-  return (
-    <SalarySelfDesktop
-      m={me}
-      period={period}
-      canPrev
-      canNext={canNext}
-      requirePhoto={requirePhoto}
-      onPrevMonth={() => setOverride(shiftMonth(effPeriod, -1))}
-      onNextMonth={() => { if (canNext) setOverride(shiftMonth(effPeriod, 1)); }}
-    />
+    </div>
   );
 }

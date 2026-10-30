@@ -1,9 +1,13 @@
 // Tab 2 — Bảng kê công việc (minh bạch từng dòng). Port từ kit SalaryLedger.jsx.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { ImageOff } from "lucide-react";
 import { SAL_ICONS } from "./salaryIcons";
 import { tint } from "./salaryCommon";
 import { salFmt, salShort } from "./salaryFormat";
 import { zeroBonusReason, isUnqualifiedContractRow, type SalLedgerRow, type SalManager } from "@/lib/managerSalary";
+import { useSalaryJobPhotos } from "@/hooks/useSalaryJobPhotos";
+import { StorageImage } from "@/components/ui/storage-image";
+import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 
 interface LedgerManager { id: string; short: string; alias: string; tone: "primary" | "info"; }
 
@@ -18,6 +22,33 @@ function dm(iso: string): string {
   if (!iso) return "";
   const [, m, d] = iso.split("-");
   return `${d}/${m}`;
+}
+
+// Ảnh đầu của việc, bấm để xem lớn. Chỉ ký signed URL khi dòng sắp vào màn hình —
+// bảng "Tất cả quản lý" có hàng trăm việc, ký hết một lượt là hàng trăm request.
+function LedgerPhotoThumb({ photos, onOpen }: { photos: string[]; onOpen: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [seen, setSeen] = useState(false);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (seen || !el) return;
+    if (typeof IntersectionObserver === "undefined") { setSeen(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+  const label = photos.length > 1 ? `Xem ${photos.length} ảnh công việc` : "Xem ảnh công việc";
+  return (
+    <button ref={ref} type="button" className="sal-photo-thumb" onClick={onOpen} title={label} aria-label={label}>
+      {seen && (broken
+        ? <ImageOff size={16} className="sal-photo-broken" />
+        : <StorageImage value={photos[0]} alt="" className="sal-photo-img" onError={() => setBroken(true)} />)}
+      {photos.length > 1 && <span className="sal-photo-count">+{photos.length - 1}</span>}
+    </button>
+  );
 }
 
 export default function SalaryLedger({
@@ -45,6 +76,10 @@ export default function SalaryLedger({
   const [fBld, setFBld] = useState("all");
   const [fType, setFType] = useState("all");
   const [fBonus, setFBonus] = useState<"all" | "yes" | "no">("all");
+  const [viewer, setViewer] = useState<{ photos: string[]; index: number } | null>(null);
+  const { data: jobPhotos } = useSalaryJobPhotos(
+    ledger.flatMap((r) => (r.item_type === "JOB" && r.source_id ? [r.source_id] : [])),
+  );
 
   const rowBonus = (r: SalLedgerRow): { val: number | null; note?: string | null } => {
     if (r.item_type === "CASH") return { val: null };
@@ -121,6 +156,7 @@ export default function SalaryLedger({
             {rows.map((r, i) => {
               const t = TYPE[r.item_type];
               const b = rowBonus(r);
+              const photos = r.item_type === "JOB" && r.source_id ? jobPhotos?.get(r.source_id) : undefined;
               return (
                 <tr key={i}>
                   <td><span className="sal-date">{dm(r.occurred_date)}{r.day_label ? <span className={"sal-daybadge sal-daybadge--" + (r.day_label === "Lễ" ? "le" : "cn")}>{r.day_label}</span> : null}</span></td>
@@ -134,9 +170,12 @@ export default function SalaryLedger({
                   <td className="r"><span className="sal-num" style={{ color: r.weekend_amount ? "hsl(var(--status-warning-fg))" : "" }}>{r.weekend_amount ? "+" + salShort(r.weekend_amount) : ""}</span></td>
                   <td className="r"><span className="sal-num" style={{ color: r.after_amount ? "hsl(var(--status-info-fg))" : "" }}>{r.after_amount ? "+" + salShort(r.after_amount) : ""}</span></td>
                   {/* Cảnh báo "thiếu ảnh" chỉ có nghĩa khi requirePhoto BẬT — trước đây
-                      hiện đỏ cho mọi việc, làm chủ hiểu nhầm về bằng chứng hoàn thành. */}
+                      hiện đỏ cho mọi việc, làm chủ hiểu nhầm về bằng chứng hoàn thành.
+                      Có ảnh đọc được thì hiện ảnh thu nhỏ thay dấu tích. */}
                   <td className="c">{r.item_type === "JOB"
-                    ? (r.has_photo
+                    ? (photos
+                        ? <LedgerPhotoThumb key={photos[0]} photos={photos} onOpen={() => setViewer({ photos, index: 0 })} />
+                        : r.has_photo
                         ? <I.CheckCircle size={16} className="sal-photo-ok" />
                         : requirePhoto
                           ? <I.AlertTriangle size={16} className="sal-photo-warn" />
@@ -175,6 +214,11 @@ export default function SalaryLedger({
           </tfoot>
         </table>
       </div>
+      <AttachmentLightbox
+        attachments={viewer?.photos ?? []}
+        index={viewer ? viewer.index : null}
+        onIndexChange={(index) => setViewer((v) => (v && index !== null ? { ...v, index } : null))}
+      />
     </div>
   );
 }
