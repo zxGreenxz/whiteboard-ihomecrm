@@ -7,7 +7,7 @@ BEGIN;
 DO $requires$
 DECLARE v_expected jsonb:='{"meter_capture_previous_value_v1":["615cf1a7c1a310abc0c8742e347d0deb","1a5aeb6931af9cc84ccf0d2c035e8ba3"],
  "meter_capture_anomaly_v1":["dbb94bccd38281724cfbcb2b85ffc9e2","e1e302ead1fde12e890fb6e1445900e7"],
- "meter_capture_resolve_billing_v1":["c3f0fe249f3a2f1d8284b675c2698be3","e61fb5ef57cc667968cb40e81c40f61d"]}';v_name text;
+ "meter_capture_resolve_billing_v1":["c3f0fe249f3a2f1d8284b675c2698be3","c11d5c60780aae95d8044e791f795f88"]}';v_name text;
 BEGIN
  FOR v_name IN SELECT jsonb_object_keys(v_expected) LOOP
   IF NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -29,12 +29,14 @@ REVOKE ALL ON FUNCTION app_private.meter_capture_has_prior_invoice_v1(uuid,uuid,
 -- LEAST(reading_date, ngày tạo) của meter_readings_plan_v1): Mode Excel ghi kỳ M+1 vào cuối tháng M, dán reading_date cuối tháng M+1.
 -- * Chỉ số của hợp đồng KHÁC đọc sau ngày nhận phòng của hợp đồng này không phải của khách này (khách sau nhận cùng ngày trả).
 -- * MONTHLY: reading_date < p_before; ngày p_at chỉ nhận chỉ số không có capture.
--- * MOVE_OUT (p_at = ngày trả): đọc thật đến hết p_at. Bản dán ngày sau p_at chỉ nhận khi kỳ đó của hợp đồng còn hoá đơn;
---   ngày p_at chỉ nhận chỉ số không có capture hoặc capture MONTHLY đã lên hoá đơn của chính hợp đồng (không thì start = end).
--- Ngày đọc thật: capture lấy lúc chụp, chỉ số ghi tay lấy lúc ghi (giờ VN); không muộn hơn reading_date.
+-- * MOVE_OUT (p_at = ngày trả): đọc thật đến hết p_at. Bản dán ngày sau p_at chỉ nhận khi kỳ đó của hợp đồng còn hoá đơn.
+--   Capture của chính hợp đồng chỉ làm số đầu khi đã lên hoá đơn (như 20261023150206 lấy số cuối hoá đơn đã lập): capture
+--   tháng chưa lập hoá đơn mà làm số đầu thì phần tiêu thụ trước nó không vào hoá đơn nào.
+-- Ngày đọc thật theo giờ server (giờ VN): capture lấy lúc server nhận lượt chụp (captured_at do máy khách gửi, không kiểm),
+-- chỉ số ghi tay lấy lúc ghi; không muộn hơn reading_date.
 CREATE OR REPLACE FUNCTION app_private.meter_capture_reading_day_v1(p_id uuid)
 RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
- SELECT LEAST(r.reading_date,(COALESCE(cap.captured_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
+ SELECT LEAST(r.reading_date,(COALESCE(cap.created_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
  FROM public.meter_readings r LEFT JOIN app_private.meter_captures cap ON cap.reading_id=r.id WHERE r.id=p_id
 $$;
 REVOKE ALL ON FUNCTION app_private.meter_capture_reading_day_v1(uuid) FROM PUBLIC,anon,authenticated,service_role;
@@ -50,9 +52,9 @@ RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pub
   AND CASE WHEN p_purpose='MOVE_OUT' THEN d.day<=p_at
    AND (r.reading_date<=p_at OR EXISTS(SELECT 1 FROM public.invoices i WHERE i.organization_id=p_org AND i.contract_id=p_contract
     AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND i.billing_month=to_char(r.reading_date,'YYYY-MM')))
-   AND (d.day<p_at OR cap.id IS NULL OR (cap.purpose='MONTHLY' AND cap.contract_id=p_contract AND EXISTS(SELECT 1 FROM app_private.meter_capture_evidence_links l
+   AND (cap.id IS NULL OR cap.contract_id<>p_contract OR EXISTS(SELECT 1 FROM app_private.meter_capture_evidence_links l
     JOIN public.invoices i ON i.id=l.document_id WHERE l.document_kind='INVOICE' AND l.organization_id=p_org AND l.contract_id=p_contract
-     AND l.end_reading_id=r.id AND i.organization_id=p_org AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED')))
+     AND l.end_reading_id=r.id AND i.organization_id=p_org AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED'))
   ELSE r.reading_date<p_before OR (r.reading_date=p_at AND cap.id IS NULL) END
  ORDER BY d.day DESC,r.reading_date DESC,r.created_at DESC,r.id DESC LIMIT 1
 $$;
@@ -121,7 +123,7 @@ END $$;
 CREATE OR REPLACE FUNCTION app_private.meter_capture_resolve_billing_v1(p_org uuid,p_payload jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
 DECLARE c public.contracts%ROWTYPE; m record; v_building uuid; v_from date; v_to date; v_start jsonb; v_end jsonb;
- v_id uuid; v_rows jsonb:='[]'; v_purpose text:=COALESCE(p_payload->>'purpose','MONTHLY'); v_prior boolean; v_power_billed boolean; v_pre uuid;
+ v_id uuid; v_rows jsonb:='[]'; v_purpose text:=COALESCE(p_payload->>'purpose','MONTHLY'); v_prior boolean; v_power_billed boolean; v_pre uuid; v_own boolean;
 BEGIN
  SELECT * INTO c FROM public.contracts WHERE id=(p_payload->>'contractId')::uuid AND organization_id=p_org AND deleted_at IS NULL;
  SELECT building_id INTO v_building FROM public.rooms WHERE id=c.room_id AND organization_id=p_org;
@@ -137,14 +139,14 @@ BEGIN
  FOR m IN SELECT meters.*,p.decimal_places,p.register_code FROM public.meters meters LEFT JOIN app_private.meter_capture_profiles p ON p.meter_id=meters.id
   WHERE meters.organization_id=p_org AND meters.room_id=c.room_id AND meters.building_id=v_building AND meters.deleted_at IS NULL AND meters.status='ACTIVE' AND meters.meter_type::text='ELECTRICITY' ORDER BY meters.id
  LOOP
-  v_start:=NULL;v_end:=NULL;v_pre:=NULL;
+  v_start:=NULL;v_end:=NULL;v_pre:=NULL;v_own:=false;
   IF v_prior THEN
    -- Từ hoá đơn thứ hai: chỉ số mới nhất của đồng hồ (meter_capture_meter_latest_v1). Bản đọc trước ngày nhận phòng là của khách
-   -- trước/phòng trống: hợp đồng chưa tính tiền điện thì MOVE_IN, số đầu hợp đồng đứng trước nó; đã tính thì chỉ còn các bước cũ.
+   -- trước/phòng trống. Không có chỉ số trong thời gian thuê mà hợp đồng chưa tính tiền điện lần nào: MOVE_IN, số đầu hợp đồng
+   -- đứng trước, sau cùng mới tới bản đọc trước ngày nhận phòng; đã tính tiền điện thì chỉ còn các bước cũ.
    v_id:=app_private.meter_capture_meter_latest_v1(p_org,m.id,c.id,c.start_date,v_from,CASE WHEN v_purpose='MOVE_OUT' THEN v_to END,v_purpose);
-   IF v_id IS NOT NULL AND app_private.meter_capture_reading_day_v1(v_id)<c.start_date THEN
-    IF NOT v_power_billed THEN v_pre:=v_id; END IF; v_id:=NULL;
-   END IF;
+   IF v_id IS NOT NULL AND app_private.meter_capture_reading_day_v1(v_id)<c.start_date THEN v_pre:=v_id;v_id:=NULL; END IF;
+   v_own:=v_id IS NULL AND NOT v_power_billed;
   ELSE
    SELECT r.id INTO v_id FROM public.meter_readings r WHERE r.organization_id=p_org AND r.contract_id=c.id AND r.meter_id=m.id
     AND r.status='APPROVED' AND NOT EXISTS(SELECT 1 FROM app_private.meter_captures retired WHERE retired.reading_id=r.id AND retired.superseded_by IS NOT NULL) AND r.deleted_at IS NULL AND r.reading_date>=c.start_date AND r.reading_date<v_from
@@ -177,14 +179,14 @@ BEGIN
     'captureId',NULL,'kind','boundary','readingDate',s.effective_on) INTO v_start
    FROM public.contract_meter_boundary_sets s JOIN public.contract_meter_boundaries b ON b.set_id=s.id AND b.revision=s.revision
    WHERE s.organization_id=p_org AND s.contract_id=c.id AND s.kind='MOVE_IN' AND s.state='VERIFIED' AND b.meter_id=m.id AND b.state='VERIFIED'
-    AND (v_pre IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.invoices i WHERE i.organization_id=p_org AND i.contract_id=c.id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND (i.billing_month<p_payload->>'month' OR (v_purpose='MOVE_OUT' AND i.billing_month=p_payload->>'month'))));
+    AND (v_own OR NOT EXISTS(SELECT 1 FROM public.invoices i WHERE i.organization_id=p_org AND i.contract_id=c.id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND (i.billing_month<p_payload->>'month' OR (v_purpose='MOVE_OUT' AND i.billing_month=p_payload->>'month'))));
   END IF;
   IF v_start IS NULL AND c.initial_electricity_reading IS NOT NULL AND
-   (v_pre IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.invoices i WHERE i.organization_id=p_org AND i.contract_id=c.id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND (i.billing_month<p_payload->>'month' OR (v_purpose='MOVE_OUT' AND i.billing_month=p_payload->>'month')))) AND
+   (v_own OR NOT EXISTS(SELECT 1 FROM public.invoices i WHERE i.organization_id=p_org AND i.contract_id=c.id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND (i.billing_month<p_payload->>'month' OR (v_purpose='MOVE_OUT' AND i.billing_month=p_payload->>'month')))) AND
    (SELECT count(*) FROM public.meters x WHERE x.organization_id=p_org AND x.room_id=c.room_id AND x.status='ACTIVE' AND x.deleted_at IS NULL AND x.meter_type::text='ELECTRICITY')=1 THEN
    v_start:=jsonb_build_object('readingId',NULL,'value',c.initial_electricity_reading::text,'version',c.updated_at::text,'captureId',NULL,'kind','contractInitial','readingDate',c.start_date);
   END IF;
-  IF v_start IS NULL AND v_pre IS NOT NULL THEN v_start:=app_private.meter_capture_reading_point_v1(v_pre); END IF;
+  IF v_start IS NULL AND v_own AND v_pre IS NOT NULL THEN v_start:=app_private.meter_capture_reading_point_v1(v_pre); END IF;
   SELECT r.id INTO v_id FROM public.meter_readings r JOIN app_private.meter_captures cap ON cap.reading_id=r.id
    WHERE r.organization_id=p_org AND r.contract_id=c.id AND r.meter_id=m.id AND r.status='APPROVED' AND NOT EXISTS(SELECT 1 FROM app_private.meter_captures retired WHERE retired.reading_id=r.id AND retired.superseded_by IS NOT NULL) AND r.deleted_at IS NULL
     AND r.reading_date>=v_from AND r.reading_date<=v_to AND cap.purpose=v_purpose AND cap.status='CONFIRMED'

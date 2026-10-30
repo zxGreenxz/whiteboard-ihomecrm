@@ -781,7 +781,8 @@ async function meterWideMoveOut(db) {
  await db.exec(`UPDATE invoices SET status='CANCELLED' WHERE id='${id(973)}'`);
  assert.equal((await resolve()).start.readingId,id(970));
  await db.exec(`UPDATE invoices SET status='APPROVED' WHERE id='${id(973)}'`);
- // Capture tháng cùng ngày trả chưa lên hoá đơn không làm số đầu (start = end sẽ mất tiêu thụ).
+ // Capture tháng của chính hợp đồng chưa lên hoá đơn, chụp trước hay cùng ngày trả, không làm số đầu: phần tiêu thụ trước nó mất.
+ await confirm(db,(await upload(db,await start(db,{clientId:id(102),readingDate:'2026-10-15',sha256:'d'.repeat(64)}))).capture,'160');
  await confirm(db,(await upload(db,await start(db,{readingDate:'2026-10-20'}))).capture,'165');
  const pending=(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',readingDate:'2026-10-20',sha256:'c'.repeat(64)}))).capture;
  assert.equal(Number(pending.previousValue),150);
@@ -810,11 +811,49 @@ async function meterWideTurnoverCases(db,variant) {
  // Đã tính tiền điện mà không có chỉ số sau ngày nhận phòng: không đoán, bắt đối chiếu.
  else{assert.equal(row.start,null);assert.ok(row.issues.includes('MISSING_START'));}
 }
+// Thanh lý khi hoá đơn duy nhất của hợp đồng (kỳ 10) chỉ có tiền phòng: số đầu hợp đồng, kể cả khi đồng hồ chưa có chỉ số nào
+// hoặc chỉ còn bản Excel khách trước để lại.
+async function meterWideUnbilledMoveOut(db,{previousTenant}) {
+ await db.exec(`UPDATE contracts SET start_date='2026-10-01',initial_electricity_reading=130;
+ INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(613)}','${org}','${contract}','${building}','2026-10','2026-10-01');`
+  +(previousTenant?seedReadings(`('${id(610)}','${org}','${meter}',NULL,'2026-10-31',100,120,'APPROVED','2026-09-29T10:00:00+07')`):''));
+ await register(db);
+ const row=await resolveFor(db,contract,'2026-10','2026-10-20','MOVE_OUT');
+ assert.equal(row.start?.kind,'contractInitial');assert.equal(Number(row.start.value),130);
+}
+// Máy khách lệch giờ lùi một năm: ngày đọc của capture theo giờ server, không theo captured_at máy gửi.
+async function meterWideClientClock(db) {
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01';
+ INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(980)}','${org}','${contract}','${building}','2026-09','2026-08-31');`
+  +seedReadings(`('${id(981)}','${org}','${meter}',NULL,'2026-08-31',100,120,'APPROVED','2026-08-31T10:00:00+07')`));
+ await register(db);
+ const saved=(await confirm(db,(await upload(db,await start(db,{readingDate:'2026-10-10',capturedAt:'2025-10-10T01:00:00Z'}))).capture,'160')).capture;
+ const row=await resolveFor(db,contract,'2026-11','2026-11-30','MONTHLY');
+ assert.equal(row.start.readingId,saved.confirmedReadingId);assert.equal(Number(row.start.value),160);
+}
+// Số cuối thanh lý đã lên hoá đơn thanh lý vẫn không thành số đầu khi chạy lại nguồn.
+async function meterWideSettledMoveOut(db) {
+ await register(db);await confirm(db,(await upload(db,await start(db))).capture);
+ const monthly=await source(db);await invoice(db,invoiceArgs(monthly),[monthly]);
+ await confirm(db,(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',sha256:'c'.repeat(64)}))).capture,'125');
+ // Hoá đơn thanh lý đã gắn số cuối: chạy lại nguồn (như lúc gắn chứng cứ EXIT) vẫn phải ra số đầu cũ, không ra chính số cuối.
+ const settlement=await source(db,'MOVE_OUT');assert.equal(Number(settlement.previousReading),120);
+ await db.query("INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES($1,$2,$3,$4,'2026-11','2026-10-31')",[id(990),org,contract,building]);
+ await db.query("INSERT INTO invoice_items(invoice_id,service_id,previous_reading,current_reading,sort_order,type,quantity,unit_price,coefficient,amount) VALUES($1,$2,120,125,1,'SERVICE',5,1,1,5)",[id(990),service]);
+ await db.query(`INSERT INTO app_private.meter_capture_evidence_links(organization_id,document_kind,document_id,contract_id,meter_id,source,start_reading_id,end_reading_id,linked_by)
+  VALUES($1,'INVOICE',$2,$3,$4,$5,$6,$7,$8)`,[org,id(990),contract,meter,settlement,settlement.startReadingId,settlement.endReadingId,actor]);
+ assert.equal(Number((await source(db,'MOVE_OUT')).previousReading),120);
+}
 test('later invoices start from the latest approved meter reading of any contract; the first invoice keeps the contract path', async t => {
  const db=await fixture();t.after(()=>db.close());await meterWideMonthly(db);
 });
-test('move-out start: billed-ahead reading before move-out, cancelled month ignored, unbilled same-day capture and own end excluded (Vietnam date)', async t => {
- const db=await fixture();t.after(()=>db.close());await meterWideMoveOut(db);
+test('move-out start: billed-ahead reading before move-out, cancelled month ignored, unbilled own captures excluded (Vietnam date)', async t => {
+ for(const probe of [meterWideMoveOut,meterWideSettledMoveOut]){const db=await fixture();try{await probe(db);}finally{await db.close();}}
+});
+test('move-out of a contract that never billed electricity starts from its contract start; capture day uses server time', async () => {
+ for(const probe of [db=>meterWideUnbilledMoveOut(db,{previousTenant:false}),db=>meterWideUnbilledMoveOut(db,{previousTenant:true}),meterWideClientClock]){
+  const db=await fixture();try{await probe(db);}finally{await db.close();}
+ }
 });
 test('tenant turnover: the new tenant starts from its own reading, else its contract start, else asks for reconciliation', async () => {
  for(const variant of [{moveIn:true,powerBilled:false},{moveIn:false,powerBilled:false},{moveIn:false,powerBilled:true}]){
@@ -834,17 +873,13 @@ test('meter-wide start mutation sentinels', async () => {
   ['cancelled invoice is not prior',"i.status::text<>'CANCELLED' AND (i.billing_month<p_month",'(i.billing_month<p_month',meterWideMonthly],
   ['physical reading day orders readings','ORDER BY d.day DESC,r.reading_date DESC','ORDER BY r.reading_date DESC',turnover({moveIn:true,powerBilled:false})],
   ['pre-tenancy reading yields to contract start','app_private.meter_capture_reading_day_v1(v_id)<c.start_date THEN',"app_private.meter_capture_reading_day_v1(v_id)<'1900-01-01' THEN",turnover({moveIn:false,powerBilled:false})],
-  ['billed tenancy without reading is not guessed','IF NOT v_power_billed THEN v_pre:=v_id; END IF;','v_pre:=v_id;',turnover({moveIn:false,powerBilled:true})],
-  ['move-out compares Vietnam date',"(COALESCE(cap.captured_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",'COALESCE(cap.captured_at,r.created_at)::date',meterWideMoveOut],
+  ['billed tenancy without reading is not guessed','v_own:=v_id IS NULL AND NOT v_power_billed;','v_own:=v_id IS NULL;',turnover({moveIn:false,powerBilled:true})],
+  ['unbilled tenancy without any reading uses contract start','v_own:=v_id IS NULL AND NOT v_power_billed;','v_own:=v_pre IS NOT NULL AND NOT v_power_billed;',db=>meterWideUnbilledMoveOut(db,{previousTenant:false})],
+  ['move-out compares Vietnam date',"(COALESCE(cap.created_at,r.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",'COALESCE(cap.created_at,r.created_at)::date',meterWideMoveOut],
+  ['capture day ignores client clock','COALESCE(cap.created_at,r.created_at)','COALESCE(cap.captured_at,r.created_at)',meterWideClientClock],
   ['reading billed ahead needs its month invoiced',"i.billing_month=to_char(r.reading_date,'YYYY-MM')",'true',meterWideMoveOut],
-  ['unbilled same-day capture is not a start','OR cap.id IS NULL OR (cap.purpose=','OR cap.id IS NOT NULL OR (cap.purpose=',meterWideMoveOut],
-  ['own move-out reading is never a start',"AND NOT COALESCE(cap.purpose='MOVE_OUT' AND cap.contract_id=p_contract,false)",'',async db=>{
-   await register(db);await confirm(db,(await upload(db,await start(db,{readingDate:'2026-10-20',capturedAt:'2026-10-20T01:00:00Z'}))).capture);
-   const monthly=await source(db);await invoice(db,invoiceArgs(monthly),[monthly]);
-   // Capture dán ngày cuối kỳ nhưng chụp sớm hơn: ngày đọc thật của chính số cuối nằm trước ngày trả.
-   await confirm(db,(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',capturedAt:'2026-10-29T01:00:00Z',sha256:'c'.repeat(64)}))).capture,'125');
-   assert.equal(Number((await source(db,'MOVE_OUT')).previousReading),120);
-  }],
+  ['unbilled own capture is not a move-out start','OR cap.contract_id<>p_contract OR EXISTS(','OR true OR EXISTS(',meterWideMoveOut],
+  ['own move-out reading is never a start',"AND NOT COALESCE(cap.purpose='MOVE_OUT' AND cap.contract_id=p_contract,false)",'',meterWideSettledMoveOut],
  ];
  for(const [name,needle,replacement,probe] of mutations){
   const source=readSql();assert.ok(source.includes(needle),name);
