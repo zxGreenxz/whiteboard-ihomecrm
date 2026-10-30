@@ -960,26 +960,6 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
-    },
-    "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql": {
-      "sha256": "3c9a85261fe5791d49de9a967ed002328b65add33de5921e6f70cfb81561da9a",
-      "missingObjects": [
-        "function:app_private.meter_capture_has_prior_invoice_v1",
-        "function:app_private.meter_capture_reading_day_v1",
-        "function:app_private.meter_capture_meter_latest_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration sửa số đầu của resolver chụp đồng hồ (từ hoá đơn thứ hai lấy chỉ số APPROVED mới nhất của đồng hồ, không lọc hợp đồng; hoá đơn đầu tiên giữ đường cũ) chưa áp dụng production. Hai helper vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Chạy sau 20261023150206_meter_capture_correction_chain.sql; guard $requires$ ghim md5 ba thân hàm đang chạy production. Kiểm logic bằng PGlite và kiểm đột biến; hồ sơ này chỉ giải thích object chưa triển khai, không thay independent review, dry-run hoặc backup trước phát hành.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_has_prior_invoice_v1(p_org uuid,p_contract uuid,p_month text,p_purpose text)"
-        },
-        {
-          "duong_dan": "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.meter_capture_meter_latest_v1(p_org uuid,p_meter uuid,p_contract uuid,p_contract_start date,p_before date,p_at date,p_purpose text)"
-        }
-      ]
     }
   }
 }
