@@ -62,6 +62,30 @@ export interface VoucherActionsOptions {
   onChanged?: () => void;
 }
 
+/**
+ * Hỏi máy chủ TRƯỚC phiếu nào huỷ được — MỘT chỗ cho trang Thu chi và hộp phiếu con của Phiếu
+ * tổng (phiếu con không nằm trong trang danh sách nên trang không hỏi hộ được; thiếu câu trả lời
+ * thì nút Huỷ rơi về luật quyền chung và ẩn với người lập phiếu không có quyền huỷ).
+ */
+export function useVoucherCancelEligibility(vouchers: readonly IncomeExpenseWithRelations[]) {
+  // Đợt 4 — can_flex_cancel_v1. Danh sách id phải dựng bằng useMemo: queryKey băm từ mảng đã
+  // sort, mảng mới mỗi render vẫn cùng key nhưng effect của react-query thì chạy lại vô ích.
+  const flexCancelIds = useMemo(
+    () => vouchers.filter((v) => v.approval_status !== "CANCELLED").map((v) => v.id),
+    [vouchers],
+  );
+  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
+
+  // ĐỢT A: phiếu THU hỏi reader riêng (can_cancel_income_voucher_v1) — nó biết cả thứ tự LIFO
+  // của đợt thu lẫn tiền thừa đã cấn đi đâu, những thứ reader của phiếu chi không có khái niệm.
+  const incomeCancelIds = useMemo(
+    () => vouchers.filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED").map((v) => v.id),
+    [vouchers],
+  );
+  const { data: incomeCancelEligibility } = useIncomeCancelEligibility(incomeCancelIds);
+  return { cancelEligibility, incomeCancelEligibility };
+}
+
 export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions) {
   const queryClient = useQueryClient();
   const onChangedRef = useRef(onChanged);
@@ -148,22 +172,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     approveAndPostOpen || !!postApprovedTarget,
   );
 
-  // Đợt 4 — hỏi server TRƯỚC phiếu nào huỷ được (can_flex_cancel_v1). Danh sách id phải dựng
-  // bằng useMemo: queryKey băm từ mảng đã sort, mảng mới mỗi render vẫn cùng key nhưng effect
-  // của react-query thì chạy lại vô ích.
-  const flexCancelIds = useMemo(
-    () => vouchers.filter((v) => v.approval_status !== "CANCELLED").map((v) => v.id),
-    [vouchers],
-  );
-  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
-
-  // ĐỢT A: phiếu THU hỏi reader riêng (can_cancel_income_voucher_v1) — nó biết cả thứ tự LIFO
-  // của đợt thu lẫn tiền thừa đã cấn đi đâu, những thứ reader của phiếu chi không có khái niệm.
-  const incomeCancelIds = useMemo(
-    () => vouchers.filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED").map((v) => v.id),
-    [vouchers],
-  );
-  const { data: incomeCancelEligibility } = useIncomeCancelEligibility(incomeCancelIds);
+  const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget ? vouchers.find((v) => v.id === cancelTarget) ?? null : null;
