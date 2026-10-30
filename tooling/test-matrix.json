@@ -1599,6 +1599,7 @@
         "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
         "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
         "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+        "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
         "scripts/__tests__/meter-capture-sql.test.mjs",
         "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
       ],
