@@ -8,7 +8,8 @@ const path = 'supabase/migrations/20261022144130_meter_capture_evidence_v1.sql';
 const reviewPath = 'supabase/migrations/20261023142638_meter_capture_sol_review.sql';
 const guardPath = 'supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql';
 const correctionPath = 'supabase/migrations/20261023150206_meter_capture_correction_chain.sql';
-const readSql = () => [path,reviewPath,guardPath,correctionPath].map(p=>readFileSync(p,'utf8')).join('\n');
+const meterStartPath = 'supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql';
+const readSql = () => [path,reviewPath,guardPath,correctionPath,meterStartPath].map(p=>readFileSync(p,'utf8')).join('\n');
 const terminationSql = readFileSync('supabase/migrations/20260627000001_termination_extra_charges.sql','utf8');
 const terminationStart = terminationSql.indexOf('CREATE OR REPLACE FUNCTION public._termination_apply_extra_charges(');
 const terminationHelper = terminationSql.slice(terminationStart,terminationSql.indexOf('END $$;',terminationStart)+'END $$;'.length);
@@ -731,4 +732,83 @@ test('anonymous Storage helper denies private meter media even under a broad leg
  assert.equal((await db.query("DELETE FROM storage.objects WHERE name='anonymous-write' RETURNING id")).rows.length, 1);
  await db.exec('RESET ROLE');
  assert.equal((await db.query("SELECT count(*)::int n FROM storage.objects WHERE bucket_id='meter-capture-media'")).rows[0].n, 2);
+});
+
+// Đồng hồ thuộc phòng: từ hoá đơn thứ hai, số đầu là chỉ số APPROVED mới nhất của đồng hồ ở mọi hợp đồng,
+// kể cả chỉ số ghi tay không gắn hợp đồng. Hoá đơn đầu tiên giữ đường cũ theo hợp đồng.
+async function meterWideMonthly(db) {
+ await db.exec(`UPDATE contracts SET start_date='2026-08-01';
+ ALTER TABLE meter_readings DISABLE TRIGGER trigger_auto_populate_previous_reading;
+ INSERT INTO meter_readings(id,organization_id,meter_id,contract_id,reading_date,previous_reading,current_reading,status,created_at) VALUES
+ ('${id(960)}','${org}','${meter}','${contract}','2026-08-31',120,120,'APPROVED','2026-08-31'),
+ ('${id(962)}','${org}','${meter}','${id(999)}','2026-09-15',120,140,'APPROVED','2026-09-15'),
+ ('${id(961)}','${org}','${meter}',NULL,'2026-09-30',140,150,'APPROVED','2026-09-30');
+ ALTER TABLE meter_readings ENABLE TRIGGER trigger_auto_populate_previous_reading;`);
+ await register(db);
+ const resolve=async()=>(await rpc(db,'resolveBilling',{contractId:contract,month:'2026-10',readingDate:'2026-10-31',purpose:'MONTHLY'})).meters[0];
+ const anomaly=async c=>(await db.query('SELECT app_private.meter_capture_anomaly_v1($1,160,150) a',[c.id])).rows[0].a;
+ let row=await resolve();assert.equal(row.start.readingId,id(960));assert.equal(Number(row.start.value),120);
+ const pending=(await upload(db,await start(db))).capture;
+ assert.equal(Number(pending.previousValue),120);assert.deepEqual(await anomaly(pending),['BASELINE_UNAVAILABLE']);
+ await db.exec(`INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(963)}','${org}','${contract}','${building}','2026-09','2026-08-31')`);
+ row=await resolve();assert.equal(row.start.readingId,id(961));assert.equal(Number(row.start.value),150);assert.deepEqual(row.issues,['MISSING_END']);
+ const review=(await rpc(db,'getCapture',{captureId:pending.id})).capture;
+ assert.equal(Number(review.previousValue),150);assert.deepEqual(await anomaly(review),[]);
+ await db.exec(`UPDATE invoices SET status='CANCELLED' WHERE id='${id(963)}'`);
+ assert.equal((await resolve()).start.readingId,id(960));
+ await db.exec(`UPDATE invoices SET status='APPROVED' WHERE id='${id(963)}'`);
+ assert.equal(Number((await confirm(db,review,'160')).capture.previousValue),150);
+ const s=await source(db);assert.equal(s.startReadingId,id(961));assert.equal(Number(s.previousReading),150);assert.equal(Number(s.currentReading),160);
+ await invoice(db,invoiceArgs(s),[s]);
+ assert.equal((await db.query("SELECT start_reading_id FROM app_private.meter_capture_evidence_links WHERE document_kind='INVOICE'")).rows[0].start_reading_id,id(961));
+}
+// Mode Excel lập kỳ M+1 vào cuối tháng M và dán reading_date cuối tháng M+1: trả phòng giữa tháng phải lấy bản đó.
+async function meterWideMoveOut(db) {
+ // Supabase chạy phiên UTC; PGlite lấy múi giờ máy.
+ await db.exec(`SET TimeZone='UTC';UPDATE contracts SET start_date='2026-08-01';
+ ALTER TABLE meter_readings DISABLE TRIGGER trigger_auto_populate_previous_reading;
+ INSERT INTO meter_readings(id,organization_id,meter_id,contract_id,reading_date,previous_reading,current_reading,status,created_at) VALUES
+ ('${id(970)}','${org}','${meter}',NULL,'2026-09-30',100,120,'APPROVED','2026-08-31T10:00:00+07'),
+ ('${id(971)}','${org}','${meter}',NULL,'2026-10-31',120,150,'APPROVED','2026-09-30T10:00:00+07'),
+ ('${id(972)}','${org}','${meter}',NULL,'2026-11-30',150,999,'APPROVED','2026-10-21T01:30:00+07');
+ ALTER TABLE meter_readings ENABLE TRIGGER trigger_auto_populate_previous_reading;`);
+ await register(db);
+ const resolve=async()=>(await rpc(db,'resolveBilling',{contractId:contract,month:'2026-10',readingDate:'2026-10-20',purpose:'MOVE_OUT'})).meters[0];
+ let row=await resolve();assert.equal(row.start.kind,'contractInitial');assert.equal(Number(row.start.value),100);
+ await db.exec(`INSERT INTO invoices(id,organization_id,contract_id,building_id,billing_month,issue_date) VALUES('${id(973)}','${org}','${contract}','${building}','2026-10','2026-09-30')`);
+ row=await resolve();assert.equal(row.start.readingId,id(971));assert.equal(Number(row.start.value),150);
+ const pending=(await upload(db,await start(db,{purpose:'MOVE_OUT',readingDate:'2026-10-20'}))).capture;
+ assert.equal(Number(pending.previousValue),150);
+ assert.equal(Number((await confirm(db,pending,'170')).capture.previousValue),150);
+ row=await resolve();assert.equal(row.start.readingId,id(971));assert.equal(Number(row.end.value),170);assert.deepEqual(row.issues,[]);
+}
+test('later invoices start from the latest approved meter reading of any contract; the first invoice keeps the contract path', async t => {
+ const db=await fixture();t.after(()=>db.close());await meterWideMonthly(db);
+});
+test('mid-month move-out starts from the reading billed ahead before move-out, not from one recorded after it (Vietnam date)', async t => {
+ const db=await fixture();t.after(()=>db.close());await meterWideMoveOut(db);
+});
+test('meter-wide start mutation sentinels', async () => {
+ const digest=value=>createHash('sha256').update(value).digest('hex');const before=digest(readSql());
+ const mutations=[
+  ['first invoice keeps contract path','IF v_prior THEN','IF true THEN',meterWideMonthly],
+  ['later invoice uses meter-wide start','IF v_prior THEN','IF false THEN',meterWideMonthly],
+  ['unlinked readings count','WHERE r.organization_id=p_org AND r.meter_id=p_meter AND','WHERE r.organization_id=p_org AND r.meter_id=p_meter AND r.contract_id IS NOT NULL AND',meterWideMonthly],
+  ['review baseline uses meter-wide start','IF app_private.meter_capture_has_prior_invoice_v1(c.organization_id,c.contract_id,c.month,c.purpose) THEN','IF false THEN',meterWideMonthly],
+  ['anomaly uses meter history','(v_meter_wide OR r.contract_id=c.contract_id)','r.contract_id=c.contract_id',meterWideMonthly],
+  ['cancelled invoice is not prior',"i.status::text<>'CANCELLED' AND (i.billing_month<p_month",'(i.billing_month<p_month',meterWideMonthly],
+  ['move-out takes reading billed ahead',"OR (p_purpose='MOVE_OUT' AND r.reading_date>p_at AND (r.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_at)",'',meterWideMoveOut],
+  ['move-out compares Vietnam date',"(r.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date<=p_at",'r.created_at::date<=p_at',meterWideMoveOut],
+  ['move-out start excludes its own end',"OR (r.reading_date=p_at AND (cap.id IS NULL OR (p_purpose='MOVE_OUT' AND cap.purpose='MONTHLY')))","OR (r.reading_date=p_at)",async db=>{
+   await register(db);await confirm(db,(await upload(db,await start(db))).capture);const monthly=await source(db);await invoice(db,invoiceArgs(monthly),[monthly]);
+   await confirm(db,(await upload(db,await start(db,{clientId:id(101),purpose:'MOVE_OUT',sha256:'c'.repeat(64)}))).capture,'125');
+   assert.equal(Number((await source(db,'MOVE_OUT')).previousReading),120);
+  }],
+ ];
+ for(const [name,needle,replacement,probe] of mutations){
+  const source=readSql();assert.ok(source.includes(needle),name);
+  const db=await fixture(source.replaceAll(needle,replacement));
+  try{await assert.rejects(probe(db),{code:'ERR_ASSERTION'},`mutation detector ${name}`);}finally{await db.close();}
+ }
+ assert.equal(digest(readSql()),before);
 });
