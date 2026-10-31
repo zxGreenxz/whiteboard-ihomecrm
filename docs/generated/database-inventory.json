@@ -3,14 +3,14 @@
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "serverVersion": "17.6",
-  "capturedAt": "2026-10-31T12:54:06.339Z",
-  "catalogFingerprint": "dad95d5c037919453dc49f1de0380406e9e7a98a5358ebe46f1c88c245ea93c8",
+  "capturedAt": "2026-10-31T14:08:45.476Z",
+  "catalogFingerprint": "015d20ab91852c85601a37a4839e3010e286ae1d3995115f4c5955b0b3cf7227",
   "counts": {
     "logicalTables": 292,
     "childPartitions": 92,
     "views": 12,
-    "functions": 2640,
-    "securityDefinerFunctions": 1904,
+    "functions": 2642,
+    "securityDefinerFunctions": 1906,
     "enums": 30,
     "realtimeTables": 29
   },
