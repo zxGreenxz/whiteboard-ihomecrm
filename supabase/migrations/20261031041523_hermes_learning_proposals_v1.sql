@@ -1,11 +1,11 @@
 -- Hermes học có kiểm duyệt (31/10/2026, đợt 2 kế hoạch trị tận gốc; chủ duyệt 31/10).
 -- Hermes tự học (curator sửa skill, cộng bộ nhớ). Chủ chốt "tuỳ loại": sở thích, cách nói chuyện, việc ngoài CRM tự áp dụng;
--- bài học về cách GHI dữ liệu CRM là ĐỀ XUẤT để chủ/admin xem và quyết định. Job kiểm học tập trên host VPS
--- (infra/hermes-learning-audit) phát hiện đề xuất rồi nạp vào kho này; duyệt hoặc bỏ ở Cài đặt › Hermes › "Bài học chờ duyệt".
+-- bài học về cách GHI dữ liệu CRM là ĐỀ XUẤT để chủ/admin xem và quyết định — duyệt SAU (chủ chốt 31/10): bài học có hiệu lực
+-- ngay, job kiểm học tập trên host VPS (infra/hermes-learning-audit) gom mỗi tối rồi nạp vào kho này; duyệt hoặc bỏ ở
+-- Cài đặt › Hermes › "Bài học chờ duyệt". Nội dung giữ nguyên văn (chỉ bí mật kỹ thuật bị che từ phía job), không che sau quyết định.
 --  1. Bảng app_private.hermes_learning_proposals: một dòng một đề xuất của một trợ lý (công ty, người dùng, trợ lý, hồ sơ Hermes),
 --     số thứ tự tăng dần theo công ty (cùng số cho trang web và tin Zalo tối), khoá chống trùng (công ty, dedupe_key). Quyết định
---     một lần (pending → approved | rejected). Khung che nội dung SAU quyết định (redacted_at/redacted_by, một lần); chính sách
---     xem/lưu/xoá nội dung còn chờ chủ quyết nên trigger không cấm xoá (không có RPC nào xoá). Không cấp bảng cho vai nào.
+--     một lần (pending → approved | rejected) rồi bất biến làm lịch sử; không xoá. Không cấp bảng cho vai nào.
 --  2. Đọc + duyệt cho người (JWT): giữ khoá users.edit — cùng quyền quản trị chính sách Hermes của công ty — qua require_perm_v1;
 --     lặp lại cùng requestId của cùng người trả lại kết quả cũ, khác nội dung ⇒ PT409. Đọc phân trang (20 đề xuất chờ, 20 dòng
 --     lịch sử rút gọn) để phản hồi luôn dưới 1 MiB; kèm "lần kiểm cuối" của từng hồ sơ.
@@ -68,16 +68,12 @@ CREATE TABLE IF NOT EXISTS app_private.hermes_learning_proposals (
     AND decision_note !~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]')),
   decision_via text CHECK (decision_via IS NULL OR decision_via IN ('crm_ui','hermes_connector')),
   decision_request_id uuid,
-  redacted_at timestamptz,
-  redacted_by uuid REFERENCES auth.users(id),
   UNIQUE (organization_id,dedupe_key),
   UNIQUE (organization_id,seq),
   FOREIGN KEY (assistant_id,organization_id,user_id) REFERENCES app_private.hermes_assistants(id,organization_id,user_id),
   CHECK ((status='pending')=(decided_by IS NULL AND decided_at IS NULL AND decision_via IS NULL AND decision_request_id IS NULL)),
   CHECK (status='pending' OR (decided_by IS NOT NULL AND decided_at IS NOT NULL AND decision_via IS NOT NULL AND decision_request_id IS NOT NULL)),
-  CHECK (status<>'pending' OR decision_note IS NULL),
-  CHECK ((redacted_at IS NULL)=(redacted_by IS NULL)),
-  CHECK (redacted_at IS NULL OR status<>'pending')
+  CHECK (status<>'pending' OR decision_note IS NULL)
 );
 CREATE INDEX IF NOT EXISTS hermes_learning_proposals_pending ON app_private.hermes_learning_proposals(organization_id,seq) WHERE status='pending';
 CREATE INDEX IF NOT EXISTS hermes_learning_proposals_history ON app_private.hermes_learning_proposals(organization_id,decided_at DESC,id DESC)
@@ -101,22 +97,16 @@ ALTER TABLE app_private.hermes_learning_audit_runs OWNER TO postgres;
 ALTER TABLE app_private.hermes_learning_audit_runs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE app_private.hermes_learning_audit_runs FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 
--- Quyết định chỉ đi một chiều pending → approved|rejected, đúng một lần; danh tính đề xuất không đổi. Nội dung (tiêu đề, nội dung,
--- nguồn) chỉ được che một lần SAU quyết định (redacted_at từ NULL sang có). Xoá: chưa chốt chính sách (chờ chủ) — không chặn ở đây,
--- và không có RPC nào xoá.
+-- Quyết định chỉ đi một chiều pending → approved|rejected, đúng một lần; nội dung đề xuất không bao giờ đổi (không che sau quyết
+-- định — chủ chốt 31/10: đề xuất đã quyết định giữ nguyên làm lịch sử); không xoá.
 CREATE OR REPLACE FUNCTION app_private.hermes_learning_guard_v1()
 RETURNS trigger LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
 BEGIN
-  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
-  IF (NEW.id,NEW.organization_id,NEW.user_id,NEW.assistant_id,NEW.profile,NEW.seq,NEW.kind,NEW.detected_at,NEW.ingested_at,
-      NEW.dedupe_key) IS DISTINCT FROM (OLD.id,OLD.organization_id,OLD.user_id,OLD.assistant_id,OLD.profile,OLD.seq,OLD.kind,
-      OLD.detected_at,OLD.ingested_at,OLD.dedupe_key)
-    OR (OLD.status<>'pending' AND (NEW.status,NEW.decided_by,NEW.decided_at,NEW.decision_note,NEW.decision_via,NEW.decision_request_id)
-      IS DISTINCT FROM (OLD.status,OLD.decided_by,OLD.decided_at,OLD.decision_note,OLD.decision_via,OLD.decision_request_id))
-    OR (OLD.redacted_at IS NOT NULL AND (NEW.redacted_at,NEW.redacted_by) IS DISTINCT FROM (OLD.redacted_at,OLD.redacted_by))
-    OR ((NEW.title,NEW.content,NEW.source) IS DISTINCT FROM (OLD.title,OLD.content,OLD.source)
-      AND NOT (OLD.redacted_at IS NULL AND NEW.redacted_at IS NOT NULL))
+  IF TG_OP<>'UPDATE' OR OLD.status<>'pending' OR NEW.status='pending'
+    OR (NEW.id,NEW.organization_id,NEW.user_id,NEW.assistant_id,NEW.profile,NEW.seq,NEW.kind,NEW.title,NEW.content,NEW.source,
+      NEW.detected_at,NEW.ingested_at,NEW.dedupe_key) IS DISTINCT FROM (OLD.id,OLD.organization_id,OLD.user_id,OLD.assistant_id,
+      OLD.profile,OLD.seq,OLD.kind,OLD.title,OLD.content,OLD.source,OLD.detected_at,OLD.ingested_at,OLD.dedupe_key)
     THEN RAISE EXCEPTION 'hermes_learning_immutable' USING ERRCODE='55000'; END IF;
   RETURN NEW;
 END $fn$;
@@ -136,8 +126,7 @@ SET search_path=pg_catalog,public,app_private AS $fn$
     'status',r.status,'decidedBy',r.decided_by,
     'decidedByName',(SELECT left(p.full_name,120) FROM public.profiles p WHERE p.id=r.decided_by),
     'decidedAt',to_char(r.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-    'note',r.decision_note,'via',r.decision_via,
-    'redactedAt',to_char(r.redacted_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
+    'note',r.decision_note,'via',r.decision_via)
 $fn$;
 
 -- Người đọc/duyệt: thành viên đang hoạt động, chưa nghỉ việc, giữ users.edit của đúng công ty (chủ có mọi quyền). Kiểm thành

@@ -18,7 +18,7 @@ const proposal = (id: string, seq: number, extra: Record<string, unknown> = {}):
   source: { type: 'curator_ledger', skill: 'crm-task-management', actor: 'curator', action: 'patch', sessionId: '20261017_064219_e91586aa',
     reasons: ['tool ghi crm_task_create'] },
   detectedAt: '2026-10-31T01:30:00.000000Z', status: 'pending', decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null,
-  redactedAt: null, ...extra });
+  ...extra });
 const decide = (item: Item, status: string, note: string | null, at = '2026-10-31T02:00:00.000001Z') => ({ ...item, status, note, decidedBy: USER,
   decidedByName: 'Quản trị', decidedAt: at, via: 'crm_ui' });
 // Mốc kiểm tương đối với lúc chạy test (không ghim ngày): "vừa kiểm" và "đã quá 36 giờ".
@@ -184,17 +184,17 @@ describe('Cài đặt › Hermes › Bài học chờ duyệt', () => {
     await screen.findByText('Máy chủ chưa có chức năng duyệt bài học (cơ sở dữ liệu chưa được cập nhật).');
   });
 
-  it('lịch sử phân trang bằng con trỏ của máy chủ; nội dung đã che được ghi chú', async () => {
+  it('lịch sử phân trang bằng con trỏ của máy chủ', async () => {
     pending = [];
     const first = Array.from({ length: 20 }, (_, n) => decide(proposal(`77777777-7777-4777-8777-${String(n).padStart(12, '0')}`, 100 - n), 'approved', null,
       `2026-10-30T${String(23 - n).padStart(2, '0')}:00:00.000000Z`));
-    const older = { ...decide(proposal(P1, 1), 'rejected', 'sai nghiệp vụ', '2026-10-29T01:00:00.000000Z'), redactedAt: '2026-10-29T02:00:00.000000Z' };
+    const older = decide(proposal(P1, 1), 'rejected', 'sai nghiệp vụ', '2026-10-29T01:00:00.000000Z');
     const cursor = { decidedAt: first[19]!.decidedAt, id: first[19]!.id };
     reviewReply = p => json({ ...snapshotOf(p), history: p.historyCursor ? [older] : first, nextHistoryCursor: p.historyCursor ? null : cursor });
     render(view());
     await screen.findByText(/#100 · Đã duyệt/);
     fireEvent.click(screen.getByRole('button', { name: 'Xem thêm lịch sử' }));
-    await screen.findByText(/#1 · Đã bỏ · Quản trị .* · nội dung đã che — .* — ghi chú: sai nghiệp vụ/);
+    await screen.findByText(/#1 · Đã bỏ · Quản trị .* — ghi chú: sai nghiệp vụ/);
     expect(reviews.at(-1)!.p.historyCursor).toEqual(cursor);
     expect(screen.queryByRole('button', { name: 'Xem thêm lịch sử' })).toBeNull();
   });

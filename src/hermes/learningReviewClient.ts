@@ -22,9 +22,9 @@ const proposal = z.object({
   title: bounded(200), content: bounded(4000), contentTruncated: z.boolean(),
   source: z.record(z.string(), z.unknown()), detectedAt: isoMicro, status,
   decidedBy: uuid.nullable(), decidedByName: bounded(120).nullable(), decidedAt: isoMicro.nullable(), note: bounded(500).nullable(),
-  via: z.enum(['crm_ui', 'hermes_connector']).nullable(), redactedAt: isoMicro.nullable(),
+  via: z.enum(['crm_ui', 'hermes_connector']).nullable(),
 }).strict().refine(value => (value.status === 'pending') === (value.decidedAt === null && value.decidedBy === null && value.via === null)
-  && (value.status !== 'pending' || (value.note === null && value.redactedAt === null)));
+  && (value.status !== 'pending' || value.note === null));
 const cursor = z.object({ decidedAt: isoMicro, id: uuid }).strict();
 // "Lần kiểm cuối" của từng hồ sơ trợ lý: job kiểm học tập trên máy chủ Hermes ghi mỗi lần chạy (kể cả không có đề xuất).
 const audit = z.object({ profile: profileName, userId: uuid, userName: bounded(120).nullable(), generatedAt: isoMicro, receivedAt: isoMicro }).strict();

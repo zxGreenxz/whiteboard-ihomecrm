@@ -8,10 +8,16 @@ nên bot báo "công cụ tạo việc không khả dụng" dù CRM làm đượ
 | Sở thích, cách nói chuyện, việc trợ lý ngoài CRM | Tự áp dụng (báo cáo chỉ đếm, không chép nội dung) |
 | Cách **ghi** dữ liệu CRM (tạo/sửa/huỷ/thu/chi/khoá…, `crm_action_run`, mã thao tác) | **Đề xuất**, chủ/admin xem và ghi nhận quyết định |
 
-**Hành vi hiện tại:** bài học đã có hiệu lực từ lúc curator/trợ lý tự ghi (job chỉ đọc, không chặn trước). Trang duyệt nói rõ
-điều này; "Bỏ" chỉ **ghi nhận** quyết định, gỡ bài học khỏi trợ lý làm tay (mục "Vận hành sau khi chủ quyết định"). Duyệt
-trước/sau hiệu lực, ai được xem nội dung, lưu nguyên văn hay tóm tắt, xoá/che sau quyết định: **chờ chủ quyết** — xem
-[docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md](../../docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md).
+**Chủ đã chốt (31/10, ~18:30)** — chi tiết ở [docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md](../../docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md):
+
+- **Duyệt SAU**: bài học có hiệu lực ngay từ lúc curator/trợ lý tự ghi; job kiểm 20:40 mỗi tối gom và đưa lên hàng duyệt. Không
+  cách ly định kỳ, không chặn trong lõi Hermes. Trang duyệt nói rõ điều này; "Bỏ" chỉ **ghi nhận** quyết định, gỡ bài học khỏi
+  trợ lý làm tay (mục "Vận hành sau khi chủ quyết định").
+- **Nội dung NGUYÊN VĂN**, kể cả thông tin khách (SĐT, CCCD, email, STK…): công ty nhỏ, nhân viên nội bộ dùng chung; quyền xem/duyệt
+  vẫn là người giữ `users.edit`. **Chỉ che bí mật kỹ thuật** (mật khẩu, token/JWT/Bearer, khoá API `sk-…`/`sbp_…`, khối PEM…) — vì
+  đó là **an ninh hệ thống** (ai cầm được là vào được hệ thống), không phải riêng tư của khách; chủ có thể yêu cầu bỏ sau (xoá các
+  mẫu tương ứng trong `REDACTIONS` của `learning_audit.py`).
+- **Không che sau quyết định**: đề xuất đã quyết định giữ nguyên làm lịch sử (bất biến, không xoá).
 
 Chủ duyệt ở trang CRM **Cài đặt › Hermes › "Bài học chờ duyệt"** (`/settings/hermes?tab=bai-hoc`), kèm "lần kiểm cuối" của
 từng hồ sơ (quá 36 giờ thì báo đỏ); tin Zalo mỗi tối là đợt sau (thiết kế ở tài liệu trên).
@@ -55,15 +61,18 @@ Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profi
    Skill đổi mà sổ curator không ghi nhận ⇒ cảnh báo `skill_changed_without_ledger`.
 4. **"Bó tay" 24 giờ** trên hồ sơ người dùng thật (mặc định `owner`) và kênh thật (`zalo_personal`…; phiên CLI thử như
    `full50`, `verify-*` bị loại): câu trả lời của trợ lý khớp mẫu từ chối/không làm được, kèm phiên, giờ, câu người dùng ngay
-   trước (đã che, cắt 160 ký tự). `state.db` (WAL) mở `file:…?mode=ro`; mở tại chỗ không được thì đọc **bản sao** (db + `-wal`)
+   trước (nguyên văn, cắt 160 ký tự; chỉ bí mật kỹ thuật bị che). `state.db` (WAL) mở `file:…?mode=ro`; mở tại chỗ không được thì
+   đọc **bản sao** (db + `-wal`)
    trong thư mục tạm riêng. UTF-8 hỏng trong tin nhắn ⇒ U+FFFD.
 
 ### Dữ liệu hồ sơ không được tin
 
 Hồ sơ do Hermes ghi, nên mọi chuỗi lấy từ sổ curator, `state.db`, skill, bộ nhớ, tên file đều được **làm sạch trước khi rời hồ
-sơ**: surrogate lẻ ⇒ U+FFFD, bỏ NUL và ký tự điều khiển, **che** bí mật (Bearer, JWT, `sk-…`/`rk-…`/`pk-…`, header
-`Authorization`, `password=`/`token:`/`api_key=`…, khối PEM, token GitHub/Supabase/Slack/AWS/Google) và thông tin cá nhân hiển
-nhiên (SĐT Việt Nam, CCCD/CMND, email, số tài khoản có nhãn "STK"/"số tài khoản") rồi mới cắt ngắn. Nguồn của đề xuất ≤ 2 KiB
+sơ**: surrogate lẻ ⇒ U+FFFD, bỏ NUL và ký tự điều khiển, **che bí mật kỹ thuật** (Bearer, JWT, `sk-…`/`rk-…`/`pk-…`, header
+`Authorization`, `password=`/`mật khẩu:`/`token:`/`api_key=`…, khối PEM, token GitHub/Supabase/Slack/AWS/Google) rồi mới cắt ngắn.
+**Thông tin khách (SĐT, CCCD/CMND, email, STK…) giữ nguyên văn** theo quyết định của chủ (xem đầu file). Lý do vẫn che bí mật kỹ
+thuật: đó là an ninh hệ thống — một token/mật khẩu lọt vào báo cáo hay hàng duyệt là ai đọc được cũng dùng được để vào hệ thống,
+trong khi nội dung bài học không cần chúng. Nguồn của đề xuất ≤ 2 KiB
 dạng chữ jsonb (tên tool trong lý do ≤ 64 ký tự); `detectedAt` kẹp vào [lúc chạy − 365 ngày, lúc chạy] (mốc tương lai/năm 9999
 lệch −14:00 không làm hỏng job). Mỗi đề xuất được kiểm đúng quy tắc của SQL trước khi ghi outbox (lệch ⇒ phát hiện
 `proposal_dropped`, không gửi).
@@ -80,11 +89,12 @@ Thư mục `/var/lib/ihome-hermes-learning-audit` (`StateDirectory`, 0750 nhóm 
 | Đường | Quyền | Nội dung | Ai đọc |
 |---|---|---|---|
 | `private/` | 0700 | `reports/learning-audit-<UTC>.json` (giữ 30), `latest.json`, `latest.txt` (tóm tắt tiếng Việt), `state.json` | chỉ `ihome-hermes-audit` (và root) |
-| `outbox/` | 0750 | `learning-outbox-<UTC>.json` (0640, giữ 30): **chỉ** đề xuất (đã che) + mỗi hồ sơ đã kiểm một mục (nhịp kiểm) | job nạp (`ihome-hermes`) |
+| `outbox/` | 0750 | `learning-outbox-<UTC>.json` (0640, giữ 30): **chỉ** đề xuất + mỗi hồ sơ đã kiểm một mục (nhịp kiểm) | job nạp (`ihome-hermes`) |
 
-Stdout/journal của job kiểm: **một dòng JSON đếm số** (`learning_audit`: số hồ sơ, đề xuất, phát hiện mức cao, "bó tay", lỗi) —
-không tiêu đề, không nội dung. Khoá chống trùng của đề xuất = sha256(hồ sơ | loại | nguồn | nội dung chuẩn hoá, đã che) — ổn
-định giữa các lần chạy; tiêu đề luôn một dòng.
+Báo cáo đủ giữ 0600 trong `private/` 0700 vì có trích đoạn hội thoại của người dùng (câu "bó tay", câu hỏi ngay trước) và vị trí
+các bí mật kỹ thuật đã bị che; hàng duyệt trên CRM chỉ nhận đề xuất. Stdout/journal của job kiểm: **một dòng JSON đếm số**
+(`learning_audit`: số hồ sơ, đề xuất, phát hiện mức cao, "bó tay", lỗi) — không tiêu đề, không nội dung. Khoá chống trùng của đề
+xuất = sha256(hồ sơ | loại | nguồn | nội dung chuẩn hoá) — ổn định giữa các lần chạy; tiêu đề luôn một dòng.
 
 ### Sandbox (`ihome-hermes-learning-audit.service`)
 
@@ -104,7 +114,7 @@ sổ curator — lớp chặn thứ hai. File CÓ mà bị từ chối ⇒ phát
 Thử tay (sau khi cài): `systemctl start ihome-hermes-learning-audit.service` (ghi đúng vào thư mục của job, không ghi hồ sơ),
 rồi `journalctl -u ihome-hermes-learning-audit -n 20` và `cat /var/lib/ihome-hermes-learning-audit/private/latest.txt`. Bản in
 JSON đủ ra màn hình: thêm `--stdout --no-state` vào `ExecStart` qua `systemd-run` với cùng thuộc tính — **chỉ** khi cần (bản in
-có đoạn đã che của tin nhắn).
+có trích đoạn tin nhắn của người dùng).
 
 ## Nạp vào CRM (`ingest.mjs`)
 
@@ -172,11 +182,11 @@ nạp); `2` = cấu hình/bí mật sai; `3` = outbox quá cũ (`staleAfterHours
 
 ## Giới hạn đã biết
 
-- Curator ghi skill ngay sau phiên; job chỉ phát hiện và đưa đi duyệt, **không chặn trước** hiệu lực của bài học (chặn trước cần
-  hook trong Hermes — ngoài phạm vi). Skill chuẩn ở `external_dirs` thì curator không sửa được.
-- Phân loại "ghi CRM" là heuristic thận trọng (nghi thì đưa đi duyệt); mẫu "bó tay" có thể sót câu diễn đạt lạ. Che thông tin là
-  theo mẫu (có thể sót dạng lạ, có thể che thừa một số dài giống SĐT/CCCD).
-- Tên chết chỉ kiểm khi có `catalog-names.mjs` (việc của nhánh "hướng dẫn chuẩn").
+- Duyệt SAU (chủ chốt): curator ghi skill ngay sau phiên; job chỉ phát hiện và đưa đi duyệt, **không chặn trước** hiệu lực của bài
+  học. Skill chuẩn ở `external_dirs` thì curator không sửa được.
+- Phân loại "ghi CRM" là heuristic thận trọng (nghi thì đưa đi duyệt); mẫu "bó tay" có thể sót câu diễn đạt lạ. Che bí mật kỹ thuật
+  là theo mẫu (có thể sót dạng lạ).
+- Tên chết lấy từ `catalog-names.mjs` của bản phát hành (PR #369); thiếu module ⇒ "KHÔNG KIỂM ĐƯỢC TÊN".
 - Sandbox systemd và phần đọc `state.db` trong sandbox **chưa chạy thử trên VPS** (PR chỉ viết, không cài); bước 6–7 là lần kiểm đầu.
 - Gỡ lịch: `systemctl disable --now ihome-hermes-learning-audit.timer ihome-hermes-learning-ingest.timer`; dữ liệu đề xuất ở CRM
-  giữ nguyên (chính sách xoá/che chờ chủ quyết).
+  giữ nguyên làm lịch sử (bất biến).

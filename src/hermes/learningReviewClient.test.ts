@@ -9,7 +9,7 @@ const getSession = async () => ({ data: { session: { access_token: 'header.paylo
 const item = (id = P1, extra: Record<string, unknown> = {}) => ({ id, seq: 3, kind: 'skill_crm_write', profile: 'owner', userId: USER, userName: 'Chủ',
   title: 'Skill crm-task-management: curator sửa', content: 'Dùng crm_action_run task.create', contentTruncated: false,
   source: { type: 'curator_ledger', skill: 'crm-task-management' }, detectedAt: '2026-10-31T01:30:00.123456Z', status: 'pending',
-  decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null, redactedAt: null, ...extra });
+  decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null, ...extra });
 const decidedItem = (id = P1, status = 'approved', note: string | null = null) => item(id, { status, decidedBy: USER, decidedByName: 'Chủ',
   decidedAt: '2026-10-31T02:00:00.000001Z', note, via: 'crm_ui' });
 const audit = { profile: 'owner', userId: USER, userName: 'Chủ', generatedAt: '2026-10-31T13:40:00.000000Z', receivedAt: '2026-10-31T13:41:02.123456Z' };
@@ -69,7 +69,7 @@ describe('Hermes learning review client', () => {
     fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { detectedAt: '2026-10-31T01:30:00Z' })] })));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
     fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { redactedAt: '2026-10-31T02:00:00.000001Z' })] })));
-    await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' }); // chỉ che được sau quyết định
+    await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' }); // khoá lạ (không có khung che)
     fetchMock.mockResolvedValueOnce(json(snapshot({ audits: [{ ...audit, generatedAt: 'hôm qua' }] })));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
     await expect(client().review({ decidedAt: 'hôm qua', id: P1 })).rejects.toMatchObject({ code: 'invalid_request' });

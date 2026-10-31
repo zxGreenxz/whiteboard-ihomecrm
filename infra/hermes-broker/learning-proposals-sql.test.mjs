@@ -166,7 +166,6 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
     assert.equal(view.nextPendingAfterSeq, null);
     assert.equal(view.pending[0].userName, 'Chủ trợ lý');
     assert.equal(view.pending[0].content.includes('\n'), true);
-    assert.equal(view.pending[0].redactedAt, null);
     assert.deepEqual(view.history, []);
     assert.equal(view.nextHistoryCursor, null);
     assert.deepEqual(view.audits.map(item => [item.profile, item.userName]), [['owner', 'Chủ trợ lý']]);
@@ -212,24 +211,24 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
       [JSON.stringify({ organizationId: ORG, requestId: id('c'), proposalIds: [third], decision: 'approve' })]), code('22023')); // thiếu note
   });
 
-  await t.test('quyết định một lần; nội dung chỉ được che một lần sau quyết định; xoá chưa bị trigger chặn (chờ chính sách)', async () => {
+  await t.test('quyết định một lần rồi bất biến làm lịch sử: không sửa nội dung, không quyết định lại, không xoá (cả chủ bảng)', async () => {
     const third = (await db.query('SELECT id FROM app_private.hermes_learning_proposals WHERE seq=3 AND organization_id=$1', [ORG])).rows[0].id;
-    await assert.rejects(db.query('UPDATE app_private.hermes_learning_proposals SET content=$2 WHERE id=$1', [first, 'sửa lén']), code('55000'));
-    await assert.rejects(db.query("UPDATE app_private.hermes_learning_proposals SET status='rejected' WHERE id=$1", [first]), code('55000'));
-    await assert.rejects(db.query('UPDATE app_private.hermes_learning_proposals SET title=$2 WHERE id=$1', [third, 'đổi tiêu đề']), code('55000'));
-    await assert.rejects(db.query('UPDATE app_private.hermes_learning_proposals SET seq=99 WHERE id=$1', [third]), code('55000'));
-    // Che nội dung khi còn chờ duyệt ⇒ CHECK từ chối.
-    await assert.rejects(db.query(`UPDATE app_private.hermes_learning_proposals SET content='[đã che]',redacted_at=clock_timestamp(),redacted_by=$2 WHERE id=$1`,
-      [third, ADMIN]), code('23514'));
-    await db.query(`UPDATE app_private.hermes_learning_proposals SET title='[đã che]',content='[đã che]',source='{}',redacted_at=clock_timestamp(),redacted_by=$2 WHERE id=$1`,
-      [first, ADMIN]);
-    await assert.rejects(db.query(`UPDATE app_private.hermes_learning_proposals SET content='che lần hai' WHERE id=$1`, [first]), code('55000'));
-    await assert.rejects(db.query(`UPDATE app_private.hermes_learning_proposals SET redacted_at=clock_timestamp() WHERE id=$1`, [first]), code('55000'));
-    const after = (await db.query('SELECT status,content,redacted_by FROM app_private.hermes_learning_proposals WHERE id=$1', [first])).rows[0];
-    assert.deepEqual(after, { status: 'approved', content: '[đã che]', redacted_by: ADMIN });
-    await db.exec('BEGIN');
-    try { assert.equal((await db.query('DELETE FROM app_private.hermes_learning_proposals WHERE id=$1 RETURNING id', [second])).rows.length, 1); }
-    finally { await db.exec('ROLLBACK'); }
+    for (const [query, params] of [
+      ['UPDATE app_private.hermes_learning_proposals SET content=$2 WHERE id=$1', [first, 'sửa lén']],
+      ["UPDATE app_private.hermes_learning_proposals SET title='[đã che]',content='[đã che]',source='{}' WHERE id=$1", [first]],
+      ["UPDATE app_private.hermes_learning_proposals SET status='rejected' WHERE id=$1", [first]],
+      ['UPDATE app_private.hermes_learning_proposals SET decision_note=$2 WHERE id=$1', [first, 'ghi chú sau']],
+      ['UPDATE app_private.hermes_learning_proposals SET title=$2 WHERE id=$1', [third, 'đổi tiêu đề']],
+      ['UPDATE app_private.hermes_learning_proposals SET seq=99 WHERE id=$1', [third]],
+      // Đổi nội dung ngay trong câu chuyển pending → đã quyết định cũng bị chặn.
+      [`UPDATE app_private.hermes_learning_proposals SET status='approved',decided_by=$2,decided_at=clock_timestamp(),decision_via='crm_ui',
+        decision_request_id=$3,content='đổi lúc duyệt' WHERE id=$1`, [third, ADMIN, id('7')]],
+      ['DELETE FROM app_private.hermes_learning_proposals WHERE id=$1', [second]],
+      ['DELETE FROM app_private.hermes_learning_proposals WHERE id=$1', [third]],
+    ]) await assert.rejects(db.query(query, params), code('55000'), query);
+    const after = (await db.query('SELECT status,content FROM app_private.hermes_learning_proposals WHERE id=$1', [first])).rows[0];
+    assert.equal(after.status, 'approved');
+    assert.match(after.content, /crm_action_run task\.create/);
     await assert.rejects(as('authenticated', ADMIN, 'DELETE FROM app_private.hermes_learning_proposals RETURNING 1 AS result', []), code('42501'));
   });
 

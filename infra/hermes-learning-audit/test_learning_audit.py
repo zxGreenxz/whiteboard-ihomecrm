@@ -208,6 +208,17 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(report['catalog']['status'], 'unavailable')
         self.assertIn('node thoát mã', report['catalog']['reason'])
 
+    def test_real_catalog_module_of_the_release(self):
+        """catalog-names.mjs thật (PR #369, cùng bản phát hành với job): tên tool đã nghỉ hưu của sự cố 31/10 là tên chết."""
+        module = Path(__file__).resolve().parents[1] / 'hermes-broker' / 'catalog-names.mjs'
+        catalog = la.load_catalog(self.fx.config(catalogModule=str(module)))
+        self.assertEqual(catalog['status'], 'ok', catalog.get('reason'))
+        self.assertIn('crm_action_run', catalog['tools'])
+        self.assertIn('task.create', catalog['actions'])
+        self.assertNotIn('crm_task_create', catalog['tools'])
+        self.assertEqual(la.dead_names('Rediscover crm_task_create then crm_action_run task.create.', catalog),
+                         (['crm_task_create'], []))
+
     def test_catalog_node_runs_without_inherited_node_options_or_capabilities(self):
         # NODE_OPTIONS của môi trường không được lọt vào tiến trình node (nạp mã lạ trước danh mục).
         with mock.patch.dict(os.environ, {'NODE_OPTIONS': '--require ./khong-ton-tai.cjs'}):
@@ -430,7 +441,8 @@ class LearningAuditTest(unittest.TestCase):
         dead = [f for f in profile(report, 'owner')['findings'] if f['kind'] == 'dead_tool_name']
         self.assertTrue(all(len(name) <= la.MAX_NAME for f in dead for name in f['names']))
 
-    def test_secrets_and_personal_data_are_redacted_before_leaving_the_profile(self):
+    def test_technical_secrets_are_redacted_but_customer_data_stays_verbatim(self):
+        """Chủ chốt 31/10: hiện NGUYÊN VĂN thông tin khách (SĐT, CCCD, email…), chỉ che bí mật kỹ thuật (an ninh hệ thống)."""
         fx = self.fx
         # Bí mật GIẢ dựng lúc chạy (mã nguồn không chứa chuỗi có hình dạng token — cửa quét secret quét mọi nhánh):
         # JWT = base64 của {"alg":"HS256"}.{"sub":"1234567890"}."signature-signature", khoá dạng sk-ant ghép từng khúc.
@@ -438,10 +450,9 @@ class LearningAuditTest(unittest.TestCase):
                        for part in (b'{"alg":"HS256"}', b'{"sub":"1234567890"}', b'signature-signature'))
         ant_key = 'sk' + '-ant-api03-' + 'AbCdEfGhIjKlMnOpQrStUv'
         bearer_value = 'abcdefghij' + 'klmnopqrstu'
-        raw = ['0912345678', '001203012345', 'khach.thue@example.com', bearer_value, ant_key, jwt]
         (fx.owner / 'memories' / 'MEMORY.md').write_text(
-            'Khi khách 0912 345 678 (CCCD 001203012345, khach.thue@example.com) chuyển cọc thì tạo phiếu thu bằng '
-            'crm_action_run expense.create.\nheader Authorization: ' + 'Bear' + 'er ' + bearer_value + '\n'
+            'Khi khách 0912 345 678 (CCCD 001203012345, khach.thue@example.com, STK 0071 0012 34567) chuyển cọc thì tạo phiếu '
+            'thu bằng crm_action_run expense.create.\nheader Authorization: ' + 'Bear' + 'er ' + bearer_value + '\n'
             'khoá ' + ant_key + '; ' + 'tok' + 'en=' + jwt, encoding='utf-8')
         make_state_db(fx.owner / 'state.db', [
             ('s1', 'zalo_personal', 'user', NOW.timestamp() - 120, 'Gọi lại số 0912345678 giúp anh, mã ' + jwt),
@@ -451,26 +462,27 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         written = [p.read_text(encoding='utf-8') for p in [*fx.out.rglob('*.json'), *fx.out.rglob('*.txt')]]
         everything = '\n'.join(json.dumps(json.loads(t), ensure_ascii=False) if t.lstrip().startswith('{') else t for t in written)
-        for value in raw:
-            self.assertNotIn(value, everything)
-        self.assertNotIn('912 345 678', everything)
+        for secret in (bearer_value, ant_key, jwt):
+            self.assertNotIn(secret, everything)
         report = json.loads((fx.out / 'private' / 'latest.json').read_text(encoding='ascii'))
         [prop] = profile(report, 'owner')['proposals']
-        for marker in ('[SĐT đã che]', '[số giấy tờ đã che]', '[email đã che]', 'Authorization: [đã che]', '[khoá đã che]', '[JWT đã che]'):
+        for marker in ('Authorization: [đã che]', '[khoá đã che]', '[JWT đã che]'):
             self.assertIn(marker, prop['content'])
-        self.assertIn('crm_action_run expense.create', prop['content'])  # phần bài học vẫn đọc được
+        for verbatim in ('0912 345 678', '001203012345', 'khach.thue@example.com', 'STK 0071 0012 34567', 'crm_action_run expense.create'):
+            self.assertIn(verbatim, prop['content'])
+        [box] = fx.outboxes()
+        self.assertIn('khach.thue@example.com', json.dumps(box, ensure_ascii=False))  # tới hàng duyệt nguyên văn
         item = profile(report, 'owner')['refusals']['items'][0]
-        self.assertIn('[SĐT đã che]', item['previousUser'])
+        self.assertIn('0912345678', item['previousUser'])
+        self.assertIn('[JWT đã che]', item['previousUser'])
         self.assertIn('[JWT đã che]', item['assistant'])
 
     def test_redaction_examples(self):
         r = la.redact
-        self.assertEqual(r('gọi 0912 345 678 nhé'), 'gọi [SĐT đã che] nhé')
-        self.assertEqual(r('SĐT: +84 912 345 678.'), 'SĐT: [SĐT đã che].')
-        self.assertEqual(r('số 079203001234.'), 'số [số giấy tờ đã che].')
-        self.assertEqual(r('CMND: 024123456'), 'CMND: [số giấy tờ đã che]')
-        self.assertEqual(r('STK 0071 0012 34567 Vietcombank'), 'STK [số tài khoản đã che] Vietcombank')
-        self.assertEqual(r('mail khach@example.com.vn'), 'mail [email đã che]')
+        # Thông tin khách giữ nguyên văn (chủ chốt 31/10).
+        for text in ('gọi 0912 345 678 nhé', 'SĐT: +84 912 345 678.', 'số 079203001234.', 'CMND: 024123456',
+                     'STK 0071 0012 34567 Vietcombank', 'mail khach@example.com.vn'):
+            self.assertEqual(r(text), text)
         # Đầu vào có hình dạng bí mật đều ghép lúc chạy (xem test trên).
         self.assertEqual(r('dùng ' + 'Bear' + 'er ' + 'sk' + '_live_' + '0123456789abcdefgh'), 'dùng Bearer [đã che]')
         self.assertEqual(r('mật khẩu: Abc@12345 nhé'), 'mật khẩu: [đã che] nhé')

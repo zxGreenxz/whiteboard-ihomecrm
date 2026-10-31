@@ -7,15 +7,17 @@ Quét mọi hồ sơ Hermes (skill local, bộ nhớ MEMORY.md/USER.md, sổ cur
      module thì báo "không kiểm được tên", không đoán), skill local trùng tên skill chuẩn (đè bản chuẩn), và
      bài học về GHI dữ liệu CRM ⇒ ĐỀ XUẤT chờ duyệt (sở thích/cách nói chuyện/việc ngoài CRM thì tự áp dụng — chỉ đếm,
      không chép nội dung);
-  b. số lần "bó tay" 24 giờ qua trên hồ sơ người dùng thật (kèm phiên, giờ, câu người dùng ngay trước — đã che, cắt ngắn).
+  b. số lần "bó tay" 24 giờ qua trên hồ sơ người dùng thật (kèm phiên, giờ, câu người dùng ngay trước — cắt ngắn).
 
 Đầu ra trong `outDir`:
   - private/ (0700, chỉ user của job): báo cáo đủ `reports/learning-audit-<UTC>.json`, `latest.json`, `latest.txt`, `state.json`;
-  - outbox/ (0750, nhóm ihome-hermes): `learning-outbox-<UTC>.json` CHỈ chứa đề xuất (đã che) cho job nạp CRM.
+  - outbox/ (0750, nhóm ihome-hermes): `learning-outbox-<UTC>.json` CHỈ chứa đề xuất cho job nạp CRM.
 Stdout/journal chỉ một dòng JSON đếm số.
 
-Dữ liệu hồ sơ do Hermes ghi ⇒ không tin: mọi chuỗi được làm sạch (surrogate lẻ, NUL, ký tự điều khiển), che bí mật và thông
-tin cá nhân hiển nhiên, cắt ngắn TRƯỚC khi rời hồ sơ; một mục hỏng chỉ thành phát hiện, không làm hỏng cả lần chạy.
+Dữ liệu hồ sơ do Hermes ghi ⇒ không tin: mọi chuỗi được làm sạch (surrogate lẻ, NUL, ký tự điều khiển) và cắt ngắn TRƯỚC khi
+rời hồ sơ; một mục hỏng chỉ thành phát hiện, không làm hỏng cả lần chạy. Nội dung giữ NGUYÊN VĂN, kể cả thông tin khách (SĐT,
+CCCD, email, STK — chủ chốt 31/10: công ty nhỏ, nhân viên nội bộ dùng chung); chỉ BÍ MẬT KỸ THUẬT (mật khẩu, token/JWT/Bearer,
+khoá API, khối PEM) bị che, vì đó là an ninh hệ thống chứ không phải riêng tư.
 Không ghi gì vào thư mục hồ sơ: SQLite mở `mode=ro`, file chỉ đọc. Chỉ dùng thư viện chuẩn Python 3.10+.
 """
 from __future__ import annotations
@@ -119,7 +121,9 @@ _CONTROL_TEXT = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')   # giữ \t \n 
 _CONTROL_ALL = re.compile(r'[\x00-\x1f\x7f]')
 REDACTED = '[đã che]'
 
-# Che bí mật và thông tin cá nhân hiển nhiên. Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài bất thường).
+# Chỉ che BÍ MẬT KỸ THUẬT (an ninh hệ thống: ai cầm được là vào được hệ thống). KHÔNG che thông tin khách — SĐT, CCCD, email,
+# STK giữ nguyên văn theo quyết định của chủ 31/10 (công ty nhỏ, nhân viên nội bộ dùng chung; quyền xem = users.edit).
+# Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài bất thường).
 REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r'-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]{0,8000}?-----END [A-Z ]{0,40}PRIVATE KEY-----'
                 r'|[A-Za-z0-9+/=\s]{0,8000})'), '[khoá riêng đã che]'),
@@ -133,13 +137,6 @@ REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r'(?i)\b(api[_-]?key|client[_-]?secret|secret|password|passwd|pwd|mat[ _-]?khau|mật[ _-]?khẩu|'
                 r'access[_-]?token|refresh[_-]?token|token|access[_-]?key|private[_-]?key)'
                 r'([ \t]*[:=][ \t]*)(["\']?)(?!\[)[^\s"\'<>]{4,512}'), r'\1\2\3' + REDACTED),
-    (re.compile(r'(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}'), '[email đã che]'),
-    (re.compile(r'(?i)\b(cccd|cmnd|cmt|căn cước|can cuoc|công dân|cong dan|hộ chiếu|ho chieu|passport)([^\d\n]{0,20})\d{8,12}(?!\d)'),
-     r'\1\2[số giấy tờ đã che]'),
-    (re.compile(r'(?i)\b(stk|số tk|so tk|số tài khoản|so tai khoan|tài khoản số|tai khoan so|account(?: number| no\.?)?)'
-                r'([^\d\n]{0,20})\d[\d .-]{4,28}\d'), r'\1\2[số tài khoản đã che]'),
-    (re.compile(r'(?<!\d)\d{12}(?!\d)'), '[số giấy tờ đã che]'),
-    (re.compile(r'(?<![\w.,/+])(?:\+84|84|0)(?:[ .-]?\d){8,10}(?!\d)'), '[SĐT đã che]'),
 ]
 
 
@@ -150,8 +147,8 @@ def redact(text: str) -> str:
 
 
 def clean_text(value: Any, limit: int, multiline: bool = True, hide: bool = True) -> str:
-    """Chuỗi an toàn để ghi báo cáo/gửi CRM: surrogate lẻ ⇒ U+FFFD, bỏ NUL/ký tự điều khiển, che bí mật/thông tin cá nhân
-    (`hide`), rồi cắt ≤ `limit` ký tự. Không phải chuỗi/số ⇒ rỗng."""
+    """Chuỗi an toàn để ghi báo cáo/gửi CRM: surrogate lẻ ⇒ U+FFFD, bỏ NUL/ký tự điều khiển, che bí mật kỹ thuật (`hide`;
+    thông tin khách giữ nguyên văn), rồi cắt ≤ `limit` ký tự. Không phải chuỗi/số ⇒ rỗng."""
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         return ''
     text = _SURROGATES.sub('�', str(value))
@@ -195,7 +192,7 @@ def _clean_json(value: Any, depth: int = 0) -> Any:
 
 
 def bounded_source(source: dict[str, Any]) -> dict[str, Any]:
-    """Nguồn của đề xuất: chuỗi một dòng đã che ≤ 200 ký tự, ≤ 2 KiB dạng chữ jsonb; vượt ⇒ chỉ giữ khoá nhận diện."""
+    """Nguồn của đề xuất: chuỗi một dòng (đã che bí mật kỹ thuật) ≤ 200 ký tự, ≤ 2 KiB dạng chữ jsonb; vượt ⇒ chỉ giữ khoá nhận diện."""
     out = _clean_json(source)
     if pg_json_bytes(out) > MAX_SOURCE_BYTES:
         keep = ('type', 'profile', 'ledgerId', 'file', 'entrySha256', 'at')
@@ -377,7 +374,8 @@ def _node_env() -> dict[str, str]:
 
 
 def load_catalog(cfg: dict[str, Any]) -> dict[str, Any]:
-    module = Path(cfg['catalogModule'])
+    # Đường tuyệt đối (không phân giải symlink): node chạy với cwd = thư mục của module.
+    module = Path(os.path.abspath(cfg['catalogModule']))
     base = {'module': str(module), 'tools': [], 'actions': []}
     try:
         if not module.is_file():

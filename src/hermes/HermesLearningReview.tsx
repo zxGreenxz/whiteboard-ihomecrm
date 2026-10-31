@@ -209,7 +209,7 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
       <h3 className="font-medium">Lịch sử</h3>
       {state.history.map(item => <p key={item.id} className="break-words text-muted-foreground">
         #{item.seq} · {item.status === 'approved' ? 'Đã duyệt' : 'Đã bỏ'} · {item.decidedByName ?? 'người duyệt'} · {time(item.decidedAt)}
-        {item.via === 'hermes_connector' ? ' · qua Zalo' : ''}{item.redactedAt ? ' · nội dung đã che' : ''} — {item.title}
+        {item.via === 'hermes_connector' ? ' · qua Zalo' : ''} — {item.title}
         {item.note ? ` — ghi chú: ${item.note}` : ''}</p>)}
       {state.cursor && <Button variant="outline" size="sm" disabled={state.busy} onClick={moreHistory}>Xem thêm lịch sử</Button>}
     </div>}
