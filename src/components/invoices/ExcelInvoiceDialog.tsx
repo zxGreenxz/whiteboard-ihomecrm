@@ -79,11 +79,19 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult,setSubmitResult]=useState<Awaited<ReturnType<typeof submitExcel.submit>>|null>(null);
   const [submitError,setSubmitError]=useState<string|null>(null);
-  const lockedContractsRef=useRef(new Set<string>());
+  // `${kỳ}:${hợp đồng}` → việc còn phải xử lý (lỗi, hoặc chưa lưu được chỉ số); để trống ⇒ hoá đơn đã tạo xong.
+  const lockedContractsRef=useRef(new Map<string,string|undefined>());
   const [recoveryResult, setRecoveryResult] = useState<{ billingMonth: string; rows: SubmitExcelResult['recovered'] } | null>(null);
   const [prorateRowIdx, setProrateRowIdx] = useState<number | null>(null);
   const loadRevision = useRef(0);
-  const invalidateRows = () => { loadRevision.current++; setRows([]); setLoaded(false); };
+  // Biên nhận đi cùng các dòng nó mô tả: đổi toà/kỳ hay đóng dialog (mount sẵn ở trang) đều xoá.
+  const invalidateRows = () => { loadRevision.current++; setRows([]); setLoaded(false); setSubmitResult(null); setSubmitError(null); };
+  // Phòng đã khoá ở kỳ `month` không tự chọn lại và mang theo lỗi của lần tạo trước.
+  const lockRows = (list: RowData[], month: string) => list.map(row => {
+    const key = `${month}:${row.contract_id}`;
+    return lockedContractsRef.current.has(key) ? { ...row, selected: false, submit_error: lockedContractsRef.current.get(key) } : row;
+  });
+  const isLocked = (row: RowData) => lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`);
 
   const servicesQuery = useBuildingServices(buildingId);
   const { data: bldSvc } = servicesQuery;
@@ -114,7 +122,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           description: `Phòng ${src.dupRoomNames.join(', ')} đang có 2 hợp đồng hiệu lực — đã chọn HĐ mới nhất để lập hoá đơn. Vui lòng thanh lý hợp đồng cũ.`,
         });
       }
-      setRows(buildExcelRows({ ...src, defaults, billingMonth }));
+      setRows(lockRows(buildExcelRows({ ...src, defaults, billingMonth }), billingMonth));
+      setSubmitError(null);
       setLoaded(true);
     } catch (err) {
       if (revision !== loadRevision.current) return;
@@ -198,17 +207,19 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
-  const allSelected = rows.length > 0 && rows.every((r) => r.selected);
+  // Phòng đã khoá không chọn được nên "chọn tất cả" chỉ xét các phòng còn mở.
+  const selectableRows = rows.filter((r) => !isLocked(r));
+  const allSelected = selectableRows.length > 0 && selectableRows.every((r) => r.selected);
   const toggleAll = () =>
-    setRows((prev) => prev.map((r) => ({ ...r, selected: !lockedContractsRef.current.has(`${billingMonth}:${r.contract_id}`) && !allSelected })));
+    setRows((prev) => prev.map((r) => ({ ...r, selected: !isLocked(r) && !allSelected })));
 
   const handleClose = () => {
-    loadRevision.current++;
-    setRows([]);
-    setLoaded(false);
+    invalidateRows();
     setRecoveryResult(null);
     onOpenChange(false);
   };
+  // Đang tạo thì không cho đóng: kết quả về sau khi đóng sẽ hiện lại lúc mở, lô xong trọn còn đóng mất lần mở mới.
+  const requestClose = () => { if (!submitting) handleClose(); };
 
   const handleSubmit = async () => {
     if (sourcesBlocked || !submitContext || !supportQuotes.ready) return;
@@ -220,8 +231,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       toast({ variant: 'destructive', title: 'Chưa chọn phòng nào' });
       return;
     }
-    if(selected.some(row=>lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`))) {
-      setSubmitError('Một số phòng đã tạo hoá đơn, đã lưu chỉ số hoặc chưa rõ kết quả. Kiểm tra biên nhận bên dưới trước khi thao tác tiếp.');
+    if(selected.some(isLocked)) {
+      setSubmitError('Một số phòng đã tạo hoá đơn, đã lưu chỉ số hoặc chưa rõ kết quả ở kỳ này. Bấm "Tải dữ liệu" để tải lại và xem lý do từng phòng trước khi thao tác tiếp.');
       return;
     }
     setSubmitting(true);
@@ -231,8 +242,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     try {
       const result=await submitExcel.submit(selected,submitContext);
       setSubmitResult(result);
-      result.rows.filter(row=>!row.supportRecoveryPending && !result.recovered.some(recovered=>recovered.contractId===row.contractId&&!recovered.matchesCurrentIntent) && (row.invoiceId||row.readingSaved||row.outcomeUnknown)).forEach(row=>lockedContractsRef.current.add(`${billingMonth}:${row.contractId}`));
-      setRows(previous=>previous.map(row=>({...row,selected:lockedContractsRef.current.has(`${billingMonth}:${row.contract_id}`)?false:row.selected,submit_error:result.errors.find(error=>error.contractId===row.contract_id)?.message})));
+      result.rows.filter(row=>!row.supportRecoveryPending && !result.recovered.some(recovered=>recovered.contractId===row.contractId&&!recovered.matchesCurrentIntent) && (row.invoiceId||row.readingSaved||row.outcomeUnknown)).forEach(row=>lockedContractsRef.current.set(`${billingMonth}:${row.contractId}`,row.error??(result.readingFails.includes(row.roomName)?'Đã tạo hoá đơn nhưng chưa lưu được chỉ số điện. Kiểm tra tại Ghi chỉ số.':undefined)));
+      // Áp lại khoá sau mỗi lô: dòng khoá từ lô trước giữ lý do, không bị lỗi của lô này xoá mất.
+      setRows(previous=>lockRows(previous.map(row=>({...row,submit_error:result.errors.find(error=>error.contractId===row.contract_id)?.message})),billingMonth));
       setRecoveryResult(result.recovered.length ? { billingMonth: submitContext.billingMonth, rows: result.recovered } : null);
       toast({
         variant: result.readingFails.length ? 'destructive' : 'default',
@@ -250,8 +262,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[1400px] max-h-[90vh] overflow-hidden flex flex-col">
+    <Dialog open={open} onOpenChange={requestClose}>
+      <DialogContent hideClose={submitting} className="max-w-[1400px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <TableIcon className="h-5 w-5 text-indigo-600" />
@@ -266,7 +278,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         <div className="grid grid-cols-5 gap-3 py-2">
           <div className="space-y-1 col-span-2">
             <Label>Toà nhà *</Label>
-            <Select value={buildingId} onValueChange={(value) => { setBuildingId(value); invalidateRows(); }}>
+            <Select value={buildingId} disabled={submitting} onValueChange={(value) => { setBuildingId(value); invalidateRows(); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn toà..." />
               </SelectTrigger>
@@ -284,6 +296,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             <Input
               type="month"
               value={billingMonth}
+              disabled={submitting}
               aria-invalid={!submitContext}
               onChange={(e) => {
                 const month = e.target.value;
@@ -291,8 +304,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 setBillingMonth(month);
                 // Reload period-bound meter sources. Rooms without meters keep their
                 // manual discounts and the existing recovery flow for an unknown write.
+                // Lỗi lần tạo của kỳ cũ bỏ đi; dòng khoá ở kỳ mới nhận lại lý do của kỳ đó.
                 if (rows.some(row => row.meter_id || row.meter_billing?.length)) invalidateRows();
-                else if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => previous.map(row => requoteExcelRowSupport(row, month)));
+                else if (loaded && BILLING_MONTH_PATTERN.test(month)) setRows(previous => lockRows(previous.map(row => ({ ...requoteExcelRowSupport(row, month), submit_error: undefined })), month));
               }}
             />
             {!submitContext && <p role="alert" className="text-xs text-red-700">Kỳ thanh toán không hợp lệ. Vui lòng chọn tháng.</p>}
@@ -308,7 +322,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         </div>
 
         <div className="flex items-center gap-2 pb-2">
-          <Button onClick={handleLoad} disabled={!buildingId || sourcesBlocked || !submitContext}>
+          <Button onClick={handleLoad} disabled={!buildingId || sourcesBlocked || !submitContext || submitting}>
             <Download className="h-4 w-4 mr-2" />
             Tải dữ liệu
           </Button>
@@ -321,7 +335,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           )}
         </div>
 
-        {recoveryResult && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+        {recoveryResult && <div role="status" className="max-h-32 overflow-y-auto rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
           <p className="font-medium">Đã xác minh kết quả lần tạo trước</p>
           {recoveryResult.rows.map(row => <p key={row.contractId}>
             {row.invoiceNumber} — kỳ {row.billingMonth}. {row.matchesCurrentIntent
@@ -368,11 +382,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border text-center">
                       <Checkbox
                         checked={r.selected}
-                        disabled={lockedContractsRef.current.has(`${billingMonth}:${r.contract_id}`)}
+                        disabled={isLocked(r)}
                         onCheckedChange={(v) => updateRow(i, { selected: !!v })}
                       />
                     </td>
-                    <td className="p-1 border font-medium">{r.room_name}{r.meter_billing_error && <p role="alert" className="text-xs text-destructive">{r.meter_billing_error}</p>}</td>
+                    <td className="p-1 border font-medium">{r.room_name}{r.meter_billing_error && <p role="alert" className="text-xs text-destructive">{r.meter_billing_error}</p>}{isLocked(r) && !r.submit_error && <p className="whitespace-nowrap text-xs font-normal text-muted-foreground">Đã tạo hoá đơn</p>}</td>
                     <td className="p-1 border">
                       <CurrencyInput
                         className="h-7 text-right"
@@ -594,12 +608,13 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         </div>
 
         {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
-        {submitResult && <div role="status" className="text-sm space-y-1">
+        {/* Giới hạn chiều cao: danh sách dài không được ép vùng bảng (flex-1) còn 0 px; cảnh báo chỉ số nằm ngoài để luôn thấy. */}
+        {submitResult && <div role="status" className="max-h-32 overflow-y-auto rounded-md border p-2 text-sm space-y-1">
           {submitResult.rows.map(row=><p key={row.contractId}>{row.roomName}: {row.invoiceId?<a className="text-primary underline" href={`/invoices/${row.invoiceId}`} target="_blank" rel="noreferrer">Đã tạo hoá đơn — xem biên nhận</a>:row.error}{row.readingSaved?' Chỉ số điện đã lưu.':''}</p>)}
-          {submitResult.readingFails.length>0 && <p className="text-destructive">Chưa lưu được chỉ số điện: {submitResult.readingFails.join(', ')}. Kiểm tra hoá đơn từng phòng ở trên; không tạo lại những hoá đơn đã có biên nhận.</p>}
         </div>}
+        {submitResult && submitResult.readingFails.length>0 && <p role="alert" className="text-sm text-destructive">Chưa lưu được chỉ số điện: {submitResult.readingFails.join(', ')}. Kiểm tra hoá đơn từng phòng ở trên; không tạo lại những hoá đơn đã có biên nhận.</p>}
         <DialogFooter className="pt-2">
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={requestClose} disabled={submitting}>
             Huỷ
           </Button>
           <Button
