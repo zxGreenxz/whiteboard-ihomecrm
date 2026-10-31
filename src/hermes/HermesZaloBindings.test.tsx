@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
-import { HermesZaloBindings } from './HermesZaloBindings';
+import { HermesZaloBindings, type HermesZaloSummary } from './HermesZaloBindings';
 import type { HermesConnectionMetadata } from './connectionClient';
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: { getSession: async () => ({
   data: { session: { user: { id: '11111111-1111-4111-8111-111111111111' }, access_token: 'fixture.browser.jwt' } }, error: null,
@@ -35,11 +35,11 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const view = (key = 'initial', connections = [row()]) => <HermesZaloBindings key={key} userId={USER} organizationId={ORG} currentScope={currentScope} connections={connections} disabled={false} />;
+// Một kết nối và một bot thì tự được chọn; chỉ khi có nhiều kết nối mới phải chọn trong danh sách.
 async function ready() {
-  await screen.findByRole('option', { name: 'Bot công ty · 12345' });
-  await waitFor(() => expect((screen.getByLabelText('Bot nhận tin nhắn') as HTMLSelectElement).disabled).toBe(false));
-  fireEvent.change(screen.getByLabelText('1. Chọn kết nối Hermes'), { target: { value: CONNECTION } });
-  fireEvent.change(screen.getByLabelText('Bot nhận tin nhắn'), { target: { value: BOT } });
+  await waitFor(() => { expect(calls('list').length).toBeGreaterThan(0); expect(screen.queryByText('Đang kiểm tra liên kết…')).toBe(null); });
+  const select = screen.queryByLabelText('Kết nối Hermes dùng cho Zalo');
+  if (select) fireEvent.change(select, { target: { value: CONNECTION } });
 }
 async function begin() { fireEvent.click(screen.getByRole('button', { name: 'Tạo mã liên kết Zalo' })); await screen.findByLabelText('Nội dung gửi cho bot'); }
 async function observed() { await begin(); await screen.findByText('98765'); }
@@ -86,8 +86,8 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Xem thêm liên kết' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Xem thêm liên kết' })).toBe(null));
     expect(screen.getAllByText('Nick của bạn: 98765')).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: 'Ngắt liên kết' })).toHaveLength(101);
-    expect(screen.getAllByRole('button', { name: 'Ngắt liên kết' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getByText('Liên kết đã ngắt (101)')).toBeTruthy();
+    expect(screen.queryAllByRole('button', { name: 'Ngắt liên kết' })).toHaveLength(0);
     expect(JSON.parse(calls('list')[1][1]!.body as string).afterBindingId).toBe(cursor);
     expect(calls('confirm')).toHaveLength(1);
   });
@@ -160,7 +160,8 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     await ready(); await observed();
     fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
     await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
-    fireEvent.change(screen.getByLabelText('1. Chọn kết nối Hermes'), { target: { value: next } });
+    expect(screen.queryByRole('button', { name: 'Dùng kết nối này cho trợ lý' })).toBe(null);
+    fireEvent.change(screen.getByLabelText('Kết nối Hermes dùng cho Zalo'), { target: { value: next } });
     fireEvent.click(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' }));
     await screen.findByText('Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.');
     expect(JSON.parse(calls('selectCredential')[0][1]!.body as string)).toEqual({ connectionId: next,
@@ -178,4 +179,54 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     expect(screen.getByText('Nick của bạn: 98765')).toBeTruthy();
   });
 
+  it('uses the only connection and bot without a picker and reports progress without codes or UIDs', async () => {
+    const summaries: HermesZaloSummary[] = [];
+    render(<HermesZaloBindings userId={USER} organizationId={ORG} currentScope={currentScope} connections={[row()]} disabled={false} onSummary={value => summaries.push(value)} />);
+    await ready();
+    expect(screen.queryByLabelText('Kết nối Hermes dùng cho Zalo')).toBe(null); expect(screen.queryByLabelText('Bot nhận tin nhắn')).toBe(null);
+    expect(screen.getByText('Bot công ty')).toBeTruthy();
+    await observed();
+    fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
+    await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
+    expect(JSON.parse(calls('begin')[0][1]!.body as string)).toMatchObject({ accountId: BOT, connectionId: CONNECTION, expectedConnectionEpoch: 2 });
+    expect(summaries.map(value => value.stage)).toEqual(expect.arrayContaining(['none', 'code', 'observed', 'linked']));
+    expect(summaries.at(-1)).toEqual({ bots: 1, stage: 'linked', provisioningState: null });
+    expect(JSON.stringify(summaries)).not.toContain('98765');
+  });
+  it('offers the switch on its own when the linked connection was revoked and one active connection is left', async () => {
+    const next = '77777777-7777-4777-8777-777777777777';
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ? Response.json({ ...base, status: 'listed', nextCursor: null,
+      bindings: [{ bindingId: BINDING, epoch: 1, state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '98765', provisioningState: 'pending_credential' }] })
+      : respond(path, init));
+    render(view('initial', [{ ...row(), state: 'revoked', epoch: 3 }, { ...row(), id: next }])); await ready();
+    expect(screen.queryByLabelText('Kết nối Hermes dùng cho Zalo')).toBe(null);
+    expect(screen.getByText(/Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn/).textContent).toContain('…77777777');
+    expect(screen.queryByRole('button', { name: 'Tạo mã liên kết Zalo' })).toBe(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' }));
+    await screen.findByText('Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.');
+    expect(JSON.parse(calls('selectCredential')[0][1]!.body as string)).toEqual({ connectionId: next,
+      expectedConnectionEpoch: 2, expectedActiveConnectionId: CONNECTION, organizationId: ORG });
+    expect(calls('begin')).toHaveLength(0); expect(calls('confirm')).toHaveLength(0);
+  });
+  it('walks the code steps again when linking another nick while one is already linked', async () => {
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ? Response.json({ ...base, status: 'listed', nextCursor: null,
+      bindings: [{ bindingId: BINDING, epoch: 1, state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '11111', provisioningState: 'synchronized' }] })
+      : respond(path, init));
+    render(view()); await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Liên kết nick Zalo khác' }));
+    await begin();
+    expect(screen.getByText(/Đang chờ bot nhận tin/)).toBeTruthy();
+    await screen.findByText('98765');
+    expect((screen.getByRole('button', { name: 'Ghép nick Zalo này' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText('Nick của bạn: 11111')).toBeTruthy(); expect(calls('confirm')).toHaveLength(0);
+  });
+  it('asks for a bot only when the company has several', async () => {
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/bots') ? Response.json({ ...base, status: 'listed', nextCursor: null,
+      bots: [{ accountId: BOT, name: 'Bot công ty', zaloUid: '12345' }, { accountId: CHALLENGE, name: 'Bot phụ', zaloUid: '67890' }] }) : respond(path, init));
+    render(view()); await ready();
+    expect((screen.getByRole('button', { name: 'Tạo mã liên kết Zalo' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Bot nhận tin nhắn'), { target: { value: BOT } });
+    expect((screen.getByRole('button', { name: 'Tạo mã liên kết Zalo' }) as HTMLButtonElement).disabled).toBe(false);
+    await begin(); expect(JSON.parse(calls('begin')[0][1]!.body as string)).toMatchObject({ accountId: BOT });
+  });
 });

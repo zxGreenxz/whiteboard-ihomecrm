@@ -1736,6 +1736,7 @@
     "src/hermes/useHermesConnections.ts",
     "src/hermes/zaloBindingClient.ts",
     "src/hermes/HermesZaloBindings.tsx",
+    "src/hermes/HermesSetupGuide.tsx",
     "src/hermes/HermesZaloBotSettings.tsx",
     "src/pages/settings/HermesConnectionsPage.tsx",
     "src/hermes/HermesPermissionFields.tsx",
