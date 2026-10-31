@@ -150,7 +150,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
         ...(previous.connections ?? []).filter(item => item.id !== result.connection.id)] })),
     settings: (input: HermesSettingsInput) => run('settings', signal => client.settings(input, { signal }),
       (result, previous) => ({ ...previous, connections: (previous.connections ?? []).map(item => item.id === result.connection.id ? result.connection : item),
-        message: 'Đã lưu giới hạn cho Hermes. Mở lại quyền để xem hiệu lực hiện tại.' })),
+        message: 'Đã lưu giới hạn cho Hermes. Bấm “Chỉnh quyền” để xem hiệu lực hiện tại.' })),
     restrict: (connection: HermesConnectionContext, restrictions: HermesConnectionRestrictions, scopeIds = connection.scopeIds) => {
       // UI may only narrow the last authoritative connection sets. Never infer
       // new rights or an org-wide scope from labels, company ceilings or UUIDs.
@@ -159,10 +159,10 @@ export function useHermesConnections(userId: string, organizationId: string, cur
       return run('restrict', signal => client.restrict({ connectionId: connection.id, expectedEpoch: connection.epoch,
         restrictions, scopeIds: [...scopeIds] }, { signal }),
       (result, previous) => ({ ...previous, connections: (previous.connections ?? []).map(item => item.id === result.connection.id ? result.connection : item),
-        message: 'Đã lưu giới hạn mới. Mở lại quyền để xem hiệu lực hiện tại.' }));
+        message: 'Đã lưu giới hạn mới. Bấm “Chỉnh quyền” để xem hiệu lực hiện tại.' }));
     },
     revoke: (connection: HermesConnectionMetadata) => run('revoke', signal => client.revoke({ connectionId: connection.id, expectedEpoch: connection.epoch }, { signal }),
       (result, previous) => ({ ...previous, connections: (previous.connections ?? []).map(item => item.id === result.connectionId ? { ...item, state: 'revoked' } : item),
-        message: 'Đã thu hồi kết nối.' })),
+        message: 'Đã ngắt kết nối. Muốn dùng lại, tạo kết nối mới ở bước 2.' })),
   };
 }

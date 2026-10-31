@@ -97,9 +97,9 @@ export function HermesDeliveryReconcile({ userId, organizationId, currentScope }
   }
   const items = state.snapshot?.items ?? [];
   return <section aria-label="Đối soát tin chưa rõ kết quả" className="space-y-4 rounded-xl border bg-card p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Đối soát tin chưa rõ kết quả</h2>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Tin Zalo chưa rõ đã gửi chưa</h2>
       <Button variant="outline" disabled={state.busy} onClick={reload}><RefreshCw className="h-4 w-4" />{state.opened ? 'Tải lại danh sách đối soát' : 'Kiểm tra tin chưa rõ kết quả'}</Button></div>
-    <p className="text-sm text-muted-foreground">Khi mất phản hồi sau lúc gửi, CRM không biết tin đã tới Zalo hay chưa và không tự gửi lại. Hãy xem trực tiếp trên Zalo rồi ghi nhận tại đây. Ghi nhận không gửi lại tin; muốn gửi lại, hãy tạo lệnh gửi mới.</p>
+    <p className="text-sm text-muted-foreground">Đôi khi Hermes gửi tin rồi mất phản hồi, nên CRM không biết tin đã tới Zalo chưa và không tự gửi lại. Hãy xem trực tiếp trên Zalo rồi ghi nhận tại đây. Ghi nhận không gửi lại tin; muốn gửi lại, hãy tạo lệnh gửi mới.</p>
     {state.busy && <p role="status" className="text-sm">Đang kiểm tra với máy chủ…</p>}
     {state.message && <p role="status" className="rounded-lg bg-muted p-3 text-sm">{state.message}</p>}
     {state.pending && <div className="flex flex-wrap gap-2">
