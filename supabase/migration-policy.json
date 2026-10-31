@@ -25,8 +25,8 @@
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
   "knownLimits": [
-    "55/81 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
-    "26 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
+    "55/80 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "25 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
     "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
@@ -780,6 +780,21 @@
       "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/360",
       "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
       "why": "File 20261018052932 ghim md5 thân public.get_room_cash_lifecycle_v1 (a637b231) mà 20261028203816 (vòng đời tiền phòng một nguồn: hoa hồng/thưởng Sale + sửa ngăn kéo, #360) thay bằng thân md5 2d935c23. Chạy lại file gốc trên production đã áp 203816 thì khối $chot$ ném đúng câu này. Đo 30/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
+    },
+    {
+      "file": "20261018044046_toi_uu_ham_quyen_rls_v1.sql",
+      "sha256": "e903378b1bbd35409e4eb73b81ef41d4e38f89f1f8e752443cfaa947a19fb5cd",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "income_expenses_restricted_select lệch bản đã review: ((has_restricted_item = false) OR (user_id = ( SELECT auth.uid() AS uid)) OR ( SELECT can_view_restricted_ie() AS can_view_restricted_ie) OR (account_id IN ( SELECT app_private.my_custodian_cashbook_ids_v1() AS my_custodian_cashbook_ids_v1)) OR (change_account_id IN ( SELECT app_private.my_custodian_cashbook_ids_v1() AS my_custodian_cashbook_ids_v1)) OR (rounding_account_id IN ( SELECT app_private.my_custodian_cashbook_ids_v1() AS my_custodian_cashbook_ids_v1)))",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018044046_toi_uu_ham_quyen_rls_v1.json",
+      "supersededBy": {
+        "file": "20261031120230_nguoi_giu_tien_thay_phieu_han_che.sql",
+        "sha256": "df9034c204160cef3ba8e6d95f3ba8805ef44602a7bf149cc82aa255280fb9d9",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261031120230_nguoi_giu_tien_thay_phieu_han_che.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/375",
+      "lop": "phép đo replay đơn lẻ gặp định nghĩa đã được migration sau thay thế",
+      "why": "File 20261018044046 ghim chữ policy income_expenses_restricted_select (hai bản trước và sau bọc InitPlan) mà 20261031120230 (người giữ tiền thấy phiếu hạng mục hạn chế trong sổ mình, #375) thay bằng bản có thêm nhánh my_custodian_cashbook_ids_v1. Chạy lại file gốc trên production đã áp 120230 thì khối $chot$ ném đúng câu này. Đo 31/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
