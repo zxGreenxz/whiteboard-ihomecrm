@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain, splitReadNames } from './domain-contract.mjs';
-import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
+import { SCHEDULE_RETIRED_BY, SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
@@ -57,7 +57,9 @@ const ROOM_TOOL = Object.freeze({
 // Original definitions by name: tools/list advertises advertisedTool(tool) and
 // tools/call shapes arguments against the original before any validator. Built
 // per broker, not at module load: external-group-mount imports this module back.
-function toolDefinitions() {
+// Exported for catalog-names.mjs (official skill names check); callers invoke it
+// only after every module has loaded.
+export function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
     SALE_TOOL, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
@@ -107,7 +109,7 @@ export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
-const RETIRED_SCHEDULE_OPERATIONS = Object.freeze(['create', 'update']);
+const RETIRED_SCHEDULE_OPERATIONS = Object.freeze(Object.keys(SCHEDULE_RETIRED_BY));
 
 export class BrokerError extends Error {
   constructor(code) {

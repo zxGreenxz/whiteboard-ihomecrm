@@ -65,6 +65,10 @@ test('vòng đời thật: lần thu L06 "chưa thanh toán" ⇒ needs_input, kh
     note: 'Chưa thanh toán phần còn thiếu tháng 10' } });
   assert.deepEqual([result.outcome, result.reason], ['needs_input', 'invalid_params']);
   assert.match(result.detail, /CHƯA được trả/);
+  // Review #369: hướng dẫn của lưới là HỎI LẠI người dùng, không phải "tự sửa" của invalid_params thường — bot tự bỏ câu "chưa…" rồi
+  // gọi lại là ghi thu cho phòng chưa trả (TC-A03).
+  assert.match(result.huongDan, /^CHƯA ghi\. Hỏi lại người dùng theo detail \(không đoán, không tự điền\)/);
+  assert.doesNotMatch(result.huongDan, /tự sửa/);
   assert.equal(requests.length, 0);
 });
 
