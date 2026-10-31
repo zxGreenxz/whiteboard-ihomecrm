@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-31T05:36:45.398Z",
+  "generatedAt": "2026-10-31T06:16:43.881Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -13940,11 +13940,11 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261031041018_chu_cong_ty_quyen_lock_tam_phong.sql",
-      "version": "20261031041018",
-      "name": "chu_cong_ty_quyen_lock_tam_phong",
+      "path": "supabase/migrations/20261031061232_quan_ly_toa_quyen_lock_tam_phong.sql",
+      "version": "20261031061232",
+      "name": "quan_ly_toa_quyen_lock_tam_phong",
       "scheme": "timestamp14",
-      "sha256": "c37d5fc5ba73ebd1e27c88158a95b35d76b40d35ea2d8700fe63d9795777d4e5",
+      "sha256": "12886fc18ba1996cb71d51e6b2cb88e31f1baef7d86199eae87d96d837b80537",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

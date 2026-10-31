@@ -2697,14 +2697,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "src/lib/__tests__/chuCongTyLockRoomMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/chungBuildingOrgScopeMigration.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3259,6 +3251,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/quanLyToaLockRoomMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/rentSupportContractVouchersMigration.test.ts",
