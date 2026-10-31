@@ -3,16 +3,17 @@ import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidati
 //
 // Vì sao cần trang riêng: chữ ký điện tử của nghi thức nằm trong
 // app_private.cashbook_closures, người ngoài hệ thống (chủ nhà, kiểm toán, công
-// an khu vực khi hỏi sổ) không mở app được. Kỳ đã khoá VĨNH VIỄN nên tờ giấy
-// này là bằng chứng duy nhất còn lưu hành được ngoài đời — nó phải in ra khớp
-// từng con số với bản ghi trong máy.
+// an khu vực khi hỏi sổ) không mở app được. Bản in giữ số liệu tại thời điểm
+// xác nhận, kể cả khi chủ tổ chức mở khóa sổ sau đó; từng con số phải khớp
+// biên bản gốc trong máy.
 //
 // Dữ liệu lấy từ list_cashbook_closings_v1 (RPC đã lọc theo membership). RPC đó
 // KHÔNG trả phiếu chênh lệch — confirm_cashbook_closing_v1 chỉ trả
 // difference_voucher_id một lần lúc ký rồi thôi, và bảng closures không có cột
 // neo. Nên phiếu lệch được dò lại theo đúng dấu vết hàm ghi ra:
 // system_source = 'cashbook.closing.diff' + account_id + voucher_date.
-// Dò hụt (hoặc bị RLS chặn) thì in "—", KHÔNG bịa.
+// Có thể chốt lại cùng ngày sau mở khóa. Nếu dấu vết khớp nhiều phiếu, báo rõ
+// chưa xác định được phiếu của biên bản này thay vì chọn một phiếu tùy ý.
 
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
@@ -52,6 +53,7 @@ const BASIS_LABEL: Record<string, string> = {
 interface ClosureExtras {
   cashbook_code: string | null;
   organization_name: string | null;
+  diff_voucher_ambiguous: boolean;
   diff_voucher:
     | { id: string; code: string | null; type: string | null; total_amount: number | null }
     | null;
@@ -75,6 +77,7 @@ export const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =
       const out: ClosureExtras = {
         cashbook_code: null,
         organization_name: null,
+        diff_voucher_ambiguous: false,
         diff_voucher: null,
       };
       if (!closure) return out;
@@ -106,9 +109,13 @@ export const useClosureExtras = (closure: ConfirmedClosure | null | undefined) =
           .eq("account_id", closure.cashbook_id)
           .eq("voucher_date", closure.closed_through)
           .eq("system_source", "cashbook.closing.diff")
-          .limit(1);
+          .limit(2);
         if (voucherError) throw voucherError;
         const rows=financialReadRows(ie);
+        if (rows.length > 1) {
+          out.diff_voucher_ambiguous = true;
+          return out;
+        }
         const row=rows[0];
         if(row){
           if(typeof row.id!=="string"||!row.id||!['INCOME','EXPENSE'].includes(row.type))throw new TypeError("Chưa xác nhận được phiếu chênh lệch của biên bản.");
@@ -238,7 +245,7 @@ export default function CashbookClosureRecord() {
           Về Sổ quỹ
         </button>
         <span className="ml-auto text-xs text-zinc-500">
-          Biên bản #{closure.closure_id} · kỳ đã khoá vĩnh viễn, nội dung không sửa được.
+          Biên bản #{closure.closure_id} · số liệu tại thời điểm xác nhận, nội dung được giữ nguyên.
         </span>
       </div>
 
@@ -286,6 +293,8 @@ export default function CashbookClosureRecord() {
               <td>
                 {diff === 0
                   ? "Không có (số đếm khớp sổ)"
+                  : extras?.diff_voucher_ambiguous
+                    ? "Có nhiều phiếu chênh lệch cùng ngày; chưa xác định được phiếu của biên bản này."
                   : extras?.diff_voucher
                     ? `${extras.diff_voucher.code ?? extras.diff_voucher.id} · ${
                         extras.diff_voucher.type === "INCOME" ? "Phiếu thu" : "Phiếu chi"
@@ -320,13 +329,13 @@ export default function CashbookClosureRecord() {
               tiền này kể từ thời điểm ký.
             </li>
             <li>
-              Mọi phiếu thu / chi có ngày phát sinh đến hết {fmtDate(closure.closed_through)} đã
-              được khoá vĩnh viễn: không sửa, không huỷ, không xoá và không ai mở lại được —
-              kể cả chủ tổ chức.
+              Tại thời điểm ký, kỳ thu chi đến hết {fmtDate(closure.closed_through)} được khóa.
+              Biên bản này giữ nguyên số liệu đã xác nhận tại thời điểm đó.
             </li>
             <li>
-              Sai sót phát hiện sau ngày chốt được xử lý bằng phiếu điều chỉnh ở kỳ hiện tại,
-              không sửa ngược vào kỳ đã khoá.
+              Sai sót phát hiện sau ngày chốt có thể xử lý bằng phiếu điều chỉnh ở kỳ hiện tại,
+              hoặc chủ tổ chức mở khóa sổ và ghi rõ lý do. Xem trạng thái hiện tại cùng lịch sử
+              mở khóa trong chi tiết sổ quỹ; việc mở khóa không thay đổi biên bản này.
             </li>
           </ul>
         </div>

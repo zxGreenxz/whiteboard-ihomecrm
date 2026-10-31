@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-31T09:34:32.720Z",
+  "generatedAt": "2026-10-31T12:30:52.170Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 918,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13959,6 +13959,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-30T12:59:24.590Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031121202_mo_khoa_so_quy_co_ly_do.sql",
+      "version": "20261031121202",
+      "name": "mo_khoa_so_quy_co_ly_do",
+      "scheme": "timestamp14",
+      "sha256": "f54fa3f82ac6dbd76d3c71bf4c0647cff03dd15fcf142b2e4857be8a11c01437",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.cashbook_reopenings",
+        "table:app_private.cashbook_reopen_write_context",
+        "function:app_private.normalize_cashbook_reopening_reason_v1",
+        "function:app_private.guard_cashbook_reopenings_append_only",
+        "function:app_private.cashbook_reopening_revision_v1"
       ]
     },
     {

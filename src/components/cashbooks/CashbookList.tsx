@@ -18,6 +18,7 @@ import {
 } from "@/hooks/usePagination";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { Lock, Pencil, Trash2, Wallet, Eye } from "lucide-react";
+import CashbookReopenAction from './CashbookReopenAction';
 import {
   useMyCashbookAccessV2,
   useCashbookVisibilityV2,
@@ -33,6 +34,7 @@ interface CashbookListProps {
   onDelete: (id: string) => void;
   /** Đợt 6: mở nghi thức chốt & bàn giao (thay cho khoá/mở khoá tay). */
   onClose: (acc: AccountWithBalance) => void;
+  onReopen: (acc: AccountWithBalance) => void;
 }
 
 const formatVND = (n: number) =>
@@ -47,6 +49,7 @@ const CashbookList = ({
   onEdit,
   onDelete,
   onClose,
+  onReopen,
 }: CashbookListProps) => {
   const info = useMemo(
     () =>
@@ -160,11 +163,7 @@ const CashbookList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    {/* Đợt 6: khoá sổ không còn là một nút bấm một mình. Nó là
-                        kết quả của nghi thức chốt & bàn giao hai bên. Nút "Mở
-                        khoá" đã bị gỡ hẳn: từ Đợt 3, lock_cashbook_period_v1
-                        (p_unlock) LUÔN ném [CASHBOOK_CLOSED], nên để nút đó lại
-                        là hứa một đường thoát không tồn tại. */}
+                    <CashbookReopenAction cashbookId={acc.id} locked={isLocked} onClick={() => onReopen(acc)} compact />
                     {canManage && !isLocked && (
                       <Button
                         variant="ghost"

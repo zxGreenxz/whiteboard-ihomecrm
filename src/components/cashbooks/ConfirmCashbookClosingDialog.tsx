@@ -113,12 +113,12 @@ export default function ConfirmCashbookClosingDialog({
 
           <div className="rounded-md border border-red-300 bg-red-50 p-3 space-y-1">
             <p className="text-sm font-semibold text-red-800 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" /> Ký là khoá VĨNH VIỄN
+              <AlertTriangle className="h-4 w-4" /> Ký nhận sẽ khóa kỳ
             </p>
             <p className="text-sm text-red-800">
-              Mọi phiếu có ngày ≤ {format(new Date(request.closed_through), 'dd/MM/yyyy')} sẽ không sửa, huỷ hay xoá được nữa,
-              và không ai mở lại được — kể cả chủ tổ chức. Từ lúc này bạn chịu trách nhiệm về
-              số tiền đã nhận.
+              Mọi phiếu có ngày ≤ {format(new Date(request.closed_through), 'dd/MM/yyyy')} sẽ không sửa, huỷ hay xoá được khi kỳ đang khóa.
+              Chỉ chủ tổ chức được mở khóa, phải ghi lý do và lưu lịch sử; biên bản này vẫn được giữ nguyên.
+              Từ lúc này bạn chịu trách nhiệm về số tiền đã nhận.
             </p>
           </div>
 

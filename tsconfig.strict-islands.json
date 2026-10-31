@@ -16,6 +16,10 @@
   },
   "include": [],
   "files": [
+    "src/lib/cashbookReopening.ts",
+    "src/hooks/useCashbookReopening.ts",
+    "src/components/cashbooks/CashbookReopenAction.tsx",
+    "src/components/cashbooks/ReopenCashbookDialog.tsx",
     "src/hooks/useCashFlowReport.ts",
     "src/components/network-center/tabs/CameraAudioButton.tsx",
     "src/components/network-center/tabs/CameraLiveWall.tsx",

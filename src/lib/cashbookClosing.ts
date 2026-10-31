@@ -25,7 +25,7 @@ export const PERIOD_BLOCK_SHORT: Record<PeriodBlockCode, string> = {
 /** Giải thích đầy đủ cho hộp thoại. */
 export const PERIOD_BLOCK_DETAIL: Record<PeriodBlockCode, string> = {
   CASHBOOK_CLOSED:
-    "Sổ quỹ chứa phiếu này đã được chốt và bàn giao. Mọi phiếu có ngày phát sinh trong kỳ đã chốt được khoá vĩnh viễn — kể cả chủ tổ chức cũng không mở lại được. Muốn điều chỉnh, hãy lập một phiếu mới ở kỳ hiện tại.",
+    "Sổ quỹ chứa phiếu này đã được chốt và bàn giao. Mọi phiếu có ngày phát sinh trong kỳ đã chốt bị khóa. Muốn điều chỉnh, hãy lập phiếu mới ở kỳ hiện tại hoặc nhờ chủ tổ chức mở khóa sổ, ghi rõ lý do và lưu lịch sử. Các khóa riêng của tháng lợi nhuận và phiên bàn giao vẫn có hiệu lực.",
   HANDOVER_LOCKED:
     "Phiếu đang nằm trong một phiên bàn giao tiền mặt đã xác nhận. Muốn sửa hoặc huỷ, hai bên phải huỷ phiên bàn giao đó trước.",
   // Khoá tháng lợi nhuận là TUYỆT ĐỐI (chủ chốt 25/09/2026): mọi phiếu có ngày
