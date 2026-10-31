@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-31T01:43:46.925Z",
+  "generatedAt": "2026-10-31T09:34:32.720Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 916,
-    "unknown": 81,
-    "catalog-proven": 206,
+    "ledger-applied": 918,
+    "unknown": 80,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13912,9 +13912,9 @@
       "name": "hermes_sale_deposit_receipt_key_v1",
       "scheme": "timestamp14",
       "sha256": "abc88d0447d80b6167df59709414fe39518410354783b607d50590682729a34c",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_sale_actions_v1"
+        "receipt:2026-10-31T02:00:30.530Z|bien-nhan-backup"
       ]
     },
     {
@@ -13923,10 +13923,9 @@
       "name": "hermes_expense_actions_activation_v1",
       "scheme": "timestamp14",
       "sha256": "3e70a13a4396543e684ed30356a7b9d9f084fbc551858aa10c67fc47573cb446",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T03:39:09.806Z|bien-nhan-backup"
       ]
     },
     {
