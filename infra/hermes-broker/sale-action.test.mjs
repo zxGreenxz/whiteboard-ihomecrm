@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SALE_ACTION_TOOLS, saleActionInput, saleActionResult, mayUseSaleAction } from './sale-action-contract.mjs';
+import { SALE_ACTION_TOOLS, SALE_DEPOSIT_RECEIPT_KEY, saleActionInput, saleActionResult, mayUseSaleAction } from './sale-action-contract.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
 import { createSaleActionReads } from './sale-action-adapter.mjs';
 const id = c => `${c.repeat(8)}-${c.repeat(4)}-4${c.repeat(3)}-8${c.repeat(3)}-${c.repeat(12)}`;
@@ -18,7 +18,9 @@ test('sale patch bounds and permission distinction never broadens image grant',(
  assert.equal(mayUseSaleAction(images,'patch',patch),false);
  assert.equal(mayUseSaleAction({action:['sale_phong.lock_room']},'observe'),false);
  assert.equal(mayUseSaleAction({action:['deposits.create']},'reservation_create'),false);
- assert.equal(mayUseSaleAction({action:['deposits.create','income_expenses.create']},'reservation_create'),true);
+ // Khoá Thu chi một mình không mở báo cọc có tiền (review PR #349); cần thêm khoá riêng (sale-deposit-receipt-key.test.mjs).
+ assert.equal(mayUseSaleAction({action:['deposits.create','income_expenses.create']},'reservation_create'),false);
+ assert.equal(mayUseSaleAction({action:['deposits.create','income_expenses.create',SALE_DEPOSIT_RECEIPT_KEY]},'reservation_create'),true);
 });
 test('public amenities and sale text require exact one-use confirmation; private note does not',()=>{
  const guard=createPublicTextGuard({clock:()=>1000});

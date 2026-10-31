@@ -2,7 +2,7 @@ import { TASK_ACTION } from './task-contract.mjs';
 import { ROOM_PASS_ACTION } from './room-pass-contract.mjs';
 import { DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2 } from './domain-contract.mjs';
 import { CUSTOMER_ACTIONS } from './customer-action-contract.mjs';
-import { SALE_ACTIONS } from './sale-action-contract.mjs';
+import { SALE_ACTIONS, SALE_DEPOSIT_RECEIPT_KEY } from './sale-action-contract.mjs';
 import { SALE_POLICY_CAPABILITIES } from './sale-policy-contract.mjs';
 import { W2_READ_KEYS } from './wave2-registry.mjs';
 // Implemented CRM capabilities only. This is a mode/resource contract, never a
@@ -29,9 +29,13 @@ const BEFORE_W2 = Object.freeze({
   // Gói E: thu chi, chỉ số, cọc, lãi lỗ (họ SQL v2) cùng giao scope toà.
   ...Object.fromEntries(DOMAIN_READ_CAPABILITIES_V2.map(key => [key, Object.freeze({ mode: 'read', resource: 'building' })])),
   // Phiếu chi: income_expenses.create là khoá của expense.create / expense.note (Đợt 2 Thu chi, expense-actions-contract.mjs; họ
-  // crm_expense_* cũ đã gỡ). income_expenses.approve còn là overlay cho cọc Sale khi canonical writer tự duyệt lúc sinh.
+  // crm_expense_* cũ đã gỡ); báo cọc Sale có tiền còn đòi thêm deposits.create_receipt nên khoá này một mình không mở báo cọc.
+  // income_expenses.approve còn là overlay cho cọc Sale khi canonical writer tự duyệt lúc sinh.
   ...Object.fromEntries(['income_expenses.create', 'income_expenses.approve'].map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
   ...Object.fromEntries(SALE_ACTIONS.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
+  // Khoá riêng Hermes của báo cọc / thu thêm có tiền (sale-action-contract.mjs), seed TẮT; có ở đây TRƯỚC khi bật để web và
+  // connector đọc được khoá (bài học 19/10). Không lớp quyền nào cấp ⇒ hai tool đó vẫn ẩn dù registry bật.
+  [SALE_DEPOSIT_RECEIPT_KEY]: Object.freeze({ mode: 'action', resource: 'building' }),
   ...Object.fromEntries(SALE_POLICY_CAPABILITIES.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
   // Khách/lead tạo chưa gắn toà; SQL đòi overlay scope Toàn tổ chức đã chọn.
   ...Object.fromEntries(CUSTOMER_ACTIONS.map(key => [key, Object.freeze({ mode: 'action', resource: 'organization_scope' })])),
