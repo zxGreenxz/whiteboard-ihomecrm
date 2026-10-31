@@ -1,8 +1,8 @@
-# Bật quyền GHI của Hermes trên production cho bốn trang — runbook (HĐ / HĐn / CV đã áp; TC sang PR riêng sau split)
+# Bật quyền GHI của Hermes trên production cho bốn trang — runbook (HĐ / HĐn / CV đã áp; TC ở PR riêng, đi sau split #364)
 
 Ngày 28/10/2026 (giờ Việt Nam). Soạn sẵn để phiên chính bật từng trang sau lượt kiểm cuối: Hợp đồng (HĐ), Thu chi (TC), Hoá đơn (HĐn), Công việc (CV). Chủ đã đồng ý bật trang nào đạt nghiệm thu (≥ 95 %, 0 ghi sai). Mỗi trang có một migration bật và một file lùi riêng nên bật hoặc lùi được độc lập.
 
-**Cập nhật 31/10:** CV, HĐn, HĐ đã áp production qua lane (mục 0.1). TC tách khỏi PR #349 sang PR riêng, chỉ lên sau split báo cọc Sale (mục 0.2).
+**Cập nhật 31/10:** CV, HĐn, HĐ đã áp production qua lane (mục 0.1). TC tách khỏi PR #349 sang PR riêng, chỉ lên sau split báo cọc Sale (mục 0.2). PR TC (nhánh `claude/hermes-tc-activation-after-split`) đưa file TC đổi mốc trở lại, kèm rào split và các bước 5.2.
 
 Nguồn: [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 8.3 và 11; [CONG-VIEC-THAO-TAC-GHI.md](CONG-VIEC-THAO-TAC-GHI.md) mục 19 và 22; mẫu `20261022121254_hermes_sale_action_activation_v1.sql`; mã connector ở `infra/hermes-broker/` và `infra/hermes-runtime/`. Số liệu production ở mục 2 đọc ngày 28/10 bằng `npm run db:query` (chỉ đọc).
 
@@ -13,15 +13,15 @@ Nguồn: [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 8.3 và 11
    | Trang | File | Khoá file bật | Chính sách |
    | --- | --- | --- | --- |
    | HĐ | `20261027234335_hermes_contract_actions_activation_v1` | `contracts.create`, `contracts.edit`, `contracts.renew`, `contracts.terminate` | 10 dòng `contract.*` đã có, chỉ kiểm |
-   | TC | tách khỏi PR #349 (mục 0.2); file đổi mốc `20261030065028_hermes_expense_actions_activation_v1` ở PR riêng | `income_expenses.create`, `.edit`, `.cancel`, `.approve_vouchers` | 5 dòng `expense.*` đã có, chỉ kiểm |
+   | TC | `20261030065028_hermes_expense_actions_activation_v1` (PR riêng, đi sau `20261030050424_hermes_sale_deposit_receipt_key_v1`; tên cũ `20261027234414`) | `income_expenses.create`, `.edit`, `.cancel`, `.approve_vouchers` | 5 dòng `expense.*` đã có, chỉ kiểm |
    | HĐn | `20261027234454_hermes_invoice_actions_activation_v1` | `thu_tien.collect_transfer`, `meter_readings.create`, `invoices.edit`, `invoices.approve`, `invoices.cancel` | 6 dòng `invoice.*` đã có, chỉ kiểm |
    | CV | `20261027234537_hermes_task_actions_activation_v1` | `tasks.delete` (bảo đảm thêm `tasks.create`, `tasks.edit` vốn đã bật) | chèn 4 dòng `task.recurring_*` (mục 22), kiểm 4 dòng cũ |
 
    File lùi tương ứng ở `docs/plans/hermes-crm/revert/hermes_<trang>_actions_activation_revert_v1.sql` (không phải migration; mục 6). File lùi của TC đi cùng PR riêng của TC.
-2. **Connector production `3bd1313b` đã có mã cả bốn trang.** Thu chi, Hoá đơn, Công việc nằm trong danh mục production, luôn nạp, **không cần** `actionPages`. Chỉ Hợp đồng cần `"actionPages": ["contract"]`. `"contract"` là giá trị hợp lệ DUY NHẤT: tên khác (`"expense"`, `"invoice"`, `"task"`…) qua được kiểm của host nhưng làm backend từ chối cấu hình, connector không khởi động (mục 3).
+2. **Connector production `3bd1313b` đã có mã cả bốn trang.** Thu chi, Hoá đơn, Công việc nằm trong danh mục production, luôn nạp, **không cần** `actionPages`. Chỉ Hợp đồng cần `"actionPages": ["contract"]`. Riêng TC còn cần connector có `SALE_DEPOSIT_RECEIPT_KEY` (PR #364); `3bd1313b` CHƯA có (mục 0.2, 5.2). `"contract"` là giá trị hợp lệ DUY NHẤT: tên khác (`"expense"`, `"invoice"`, `"task"`…) qua được kiểm của host nhưng làm backend từ chối cấu hình, connector không khởi động (mục 3).
 3. **Ai nhận khoá ngay khi bật:** 6 kết nối ACTIVE, đều `inherit_crm`, phạm vi toàn tổ chức, không loại trừ khoá nào, thuộc 2 tài khoản đều là chủ (OWNER) của công ty. Chỉ **một** kết nối còn token sống: kết nối của profile owner (bot Zalo production). Năm kết nối kia token chết từ sự cố 21/10, nhận khoá trong bảng chiếu nhưng không dùng được. 0 kết nối `legacy_allowlist` ACTIVE, 0 dòng chính sách công ty (trần trung tính). Vậy bật trang nào là bot owner có ngay thao tác của trang đó.
 4. **Không cần tạo lại kết nối.** Trigger chiếu lại khoá cho `inherit_crm` mà không đổi epoch. Lần TEST 23/10 phải tạo lại kết nối là do lỗi cấp trùng `sale_phong.lock_room`, đã sửa ở #300 (có trong `3bd1313b`). Lúc áp, một lời gọi đang chạy có thể nhận `context_changed` một lần (mục 7).
-5. **Phụ thuộc chéo** (mục 1.2): HĐ mượn khoá `sale_phong.lock_room` của trang Sale; riêng việc thêm `actionPages: ["contract"]` đã mở ngay `contract.room_lock` / `room_unlock`. CV đang sống một phần trên production (`task.create`, `task.create_batch`, `task.update`), file CV chỉ thêm phần huỷ và việc định kỳ. HĐn không kéo theo trang nào. TC kéo theo báo cọc của Sale (review chéo 29/10, mục 0.2).
+5. **Phụ thuộc chéo** (mục 1.2): HĐ mượn khoá `sale_phong.lock_room` của trang Sale; riêng việc thêm `actionPages: ["contract"]` đã mở ngay `contract.room_lock` / `room_unlock`. CV đang sống một phần trên production (`task.create`, `task.create_batch`, `task.update`), file CV chỉ thêm phần huỷ và việc định kỳ. HĐn không kéo theo trang nào. TC kéo theo Sale: `income_expenses.create` còn là điều kiện của `crm_sale_reservation_create` / `_topup` (báo cọc ghi phiếu thu một bước, không xem trước / confirmToken). Sau `20261030050424_hermes_sale_deposit_receipt_key_v1` + connector có `SALE_DEPOSIT_RECEIPT_KEY`, hai tool đó đòi thêm `deposits.create_receipt` (TẮT), nên TC chỉ mở `crm_action_*` — với điều kiện hai thứ đó lên trước (file TC tự dừng nếu thiếu phần SQL; connector kiểm ở 5.2; mục 0.2).
 
 ### 0.1 Trạng thái production (hồ sơ sau áp, 31/10)
 
@@ -37,11 +37,11 @@ Nguồn: [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 8.3 và 11
 ### 0.2 Thu chi tách sang PR riêng (thứ tự split → TC)
 
 - **Vì sao.** Review chéo PR #349 chỉ ra lỗi thứ tự. Lane hay dựng lại chạy theo tên file, nên file TC cũ `20261027234414` (bật `income_expenses.create`) chạy TRƯỚC split báo cọc Sale `20261030050424_hermes_sale_deposit_receipt_key_v1`. Khi đó `crm_sale_reservation_create` / `_topup` mở ngay: hai tool ghi phiếu thu cọc một bước, không xem trước.
-- **File mới.** TC đổi mốc thành `20261030065028_hermes_expense_actions_activation_v1` và có rào: thiếu split thì RAISE, không khoá nào đổi. File này cùng file lùi TC nằm ở nhánh `claude/hermes-tc-activation-after-split`, chưa áp ở đâu.
+- **File mới.** TC đổi mốc thành `20261030065028_hermes_expense_actions_activation_v1` và có rào: thiếu split thì RAISE, không khoá nào đổi. File này cùng file lùi TC nằm ở PR TC (nhánh `claude/hermes-tc-activation-after-split`, xếp chồng trên PR #364 split), chưa áp ở đâu.
 - **Thứ tự.** Rào làm cửa idempotent của CI main đỏ nếu file TC lên `main` khi split chưa áp production. Vì vậy:
   1. PR split (`claude/hermes-sale-deposit-key-split`) merge, áp production, connector có `SALE_DEPOSIT_RECEIPT_KEY`;
   2. rồi mới mở PR TC và chạy lane TC.
-- PR #349 chỉ còn ba file đã áp. Thiết kế khoá / chính sách TC ở mục 1, 5.2, 6.2 giữ lại; PR TC cập nhật runbook theo file mới.
+- PR #349 chỉ còn ba file đã áp. Thiết kế khoá / chính sách TC ở mục 1, 5.2, 6.2 giữ lại; PR TC đã cập nhật mục 0, 1.2, 4, 5.0.7, 5.2, 6.2, 8 theo file mới.
 
 ## 1. Phân khoá theo trang
 
@@ -67,8 +67,8 @@ Nguồn: danh mục connector (`contract-action-contract.mjs`, `expense-actions-
   - File CV đổi thực chất hai thứ. (1) Bật `tasks.delete` ⇒ `task.cancel` (luôn xem trước) và `task.recurring_delete`. (2) Chèn 4 dòng chính sách ⇒ `task.recurring_create` / `_update` / `_pause` sống ngay vì khoá đã bật.
   - File lùi CV đưa về đúng trạng thái này, không tắt `tasks.create` / `tasks.edit`.
   - Điều kiện của mục 19: không host nào dùng database production còn chạy connector cũ hơn Mốc 3. Production chỉ có connector `3bd1313b`; TEST dùng database riêng.
-- **TC, HĐn:** khoá riêng, không lớp quyền nào khác cấp. `test action-shared-keys` khoá bất biến "không khoá nào do hai lớp cùng cấp". Họ `crm_expense_*` cũ đã gỡ khỏi connector (TC1), nên bật lại `income_expenses.create` chỉ mở họ `crm_action_*`. **Sai với TC** (review chéo 29/10): lớp Sale có ĐỌC `income_expenses.create`, bật khoá này mở luôn hai tool báo cọc. Xem mục 0.2.
-- **`tools/list`:** ba tool `crm_action_*` đã hiện trên production vì `task.*` đang sống. Bật thêm trang không đổi byte nào: danh mục thao tác nằm trong kết quả `crm_action_list`.
+- **TC, HĐn:** không lớp quyền nào khác CẤP khoá của hai trang (`action-shared-keys.test.mjs` khoá bất biến "không khoá nào do hai lớp cùng cấp"). Nhưng lớp Sale có ĐỌC `income_expenses.create`: `mayUseSaleAction` (connector) và `hermes_sale_actions_v1` (SQL) đòi nó cho báo cọc / thu thêm có tiền. Họ `crm_expense_*` đã gỡ (TC1); hai tool báo cọc đòi thêm `deposits.create_receipt` từ `20261030050424_hermes_sale_deposit_receipt_key_v1` + connector cùng nhánh (PR #364). Vậy bật lại `income_expenses.create` chỉ mở `crm_action_*` khi hai thứ đó đã lên trước; chưa lên thì mở luôn hai tool báo cọc ghi tiền một bước. File TC tự dừng (`hermes_expense_activation_sale_deposit_gate_missing`) khi thiếu dòng registry `deposits.create_receipt` hoặc thân `public.hermes_sale_actions_v1` không chứa chuỗi đó; phần connector không kiểm được từ SQL nên kiểm ở 5.2.
+- **`tools/list`:** ba tool `crm_action_*` đã hiện trên production vì `task.*` đang sống. Bật thêm trang không đổi byte nào: danh mục thao tác nằm trong kết quả `crm_action_list`. Riêng TC còn phải giữ nguyên kết quả `crm_sale_action operation=list`: không có `reservation_create` / `reservation_topup`.
 
 ## 2. Production đọc ngày 28/10 (chỉ đọc)
 
@@ -119,10 +119,11 @@ Theo mẫu Sale `20261022121254`; mỗi file là một `DO` trong `BEGIN … COM
    - đủ khoá đang bật;
    - CV: tám thao tác đã duyệt đều trỏ khoá đang bật;
    - HĐ: báo `NOTICE` nếu `sale_phong.lock_room` tắt, không dừng.
+7. **Riêng TC, rào tiền điều kiện báo cọc Sale** (sau bước 5, khi đã khoá dòng registry): có dòng `deposits.create_receipt` mode `action` (FOR SHARE) và thân `public.hermes_sale_actions_v1` chứa chuỗi `deposits.create_receipt`; thiếu ⇒ `hermes_expense_activation_sale_deposit_gate_missing`, không khoá nào đổi. Kiểm theo chuỗi, không ghim md5, để lượt sửa thân hàm về sau không làm hỏng rào.
 
 Chạy lại không đổi gì. Không DROP, không đổi quyền CRM / chính sách công ty / loại trừ / phạm vi kết nối, không ghi bảng nghiệp vụ. Provenance: `unknown` (file chỉ DML), như mẫu `20261021162612`. Sau áp, hồ sơ chuyển sang `ledger-applied` theo biên nhận lane (HĐ / HĐn / CV đã chuyển, mục 0.1).
 
-**Cửa idempotent của CI main** dán file hai lượt lên production rồi ROLLBACK. Vì phụ thuộc đều đã áp, file chạy được dù merge trước hay sau khi áp. Lượt dán giữ khoá dòng registry và 6 dòng kết nối trong một giao dịch ngắn. File TC mới có rào split nên lượt dán đỏ khi split chưa áp production (mục 0.2).
+**Cửa idempotent của CI main** dán file hai lượt lên production rồi ROLLBACK. HĐ, HĐn, CV: phụ thuộc đều đã áp nên file chạy được dù merge trước hay sau khi áp. Lượt dán giữ khoá dòng registry và 6 dòng kết nối trong một giao dịch ngắn. **TC thì khác:** rào ở bước 7 làm lượt dán ĐỎ khi `20261030050424_hermes_sale_deposit_receipt_key_v1` chưa áp production. Vì vậy chỉ merge file TC lên `main` SAU khi split đã áp production (mục 0.2); merge sớm làm `main` đỏ cho mọi phiên.
 
 **KHÔNG** đưa bốn file vào một chuỗi áp hàng loạt. Áp đích danh từng file của trang đã đạt. File của trang chưa bật có thể nằm lại trên `main` (chưa áp, provenance `unknown`) hoặc tách khỏi PR, phiên chính chọn. Ngày 31/10 phiên chính chọn tách TC khỏi PR #349 (mục 0.2).
 
@@ -147,7 +148,7 @@ Chạy lại không đổi gì. Không DROP, không đổi quyền CRM / chính 
    - kết nối nhận khoá: `npm run db:query -- --sql "select right(id::text,8) as conn, permission_mode, array(select k from unnest(action_capabilities) k where k = any(array[<khoá trang>])) as page_keys from app_private.hermes_connections where state='ACTIVE'"`;
    - CV thêm: `select action, capability, confirm from app_private.hermes_action_policies where action like 'task.recurring_%'`.
 7. **SOUL owner.** Cài bản SOUL dùng ở lượt kiểm cuối đạt, theo quy trình cài SOUL đang dùng (backup bản cũ như các lần trước).
-   - Bản thân việc bật khoá không cần restart `hermes-owner`: `tools/list` không đổi;
+   - Bản thân việc bật khoá không cần restart `hermes-owner`: `tools/list` không đổi. Riêng TC, kiểm thêm (chỉ đọc) `crm_sale_action operation=list` của bot owner không có `reservation_create` / `reservation_topup`. Nếu có thì connector chưa mang `SALE_DEPOSIT_RECEIPT_KEY` hoặc split chưa áp ⇒ lùi TC ngay (6.2);
    - SOUL là rào mềm; rào cứng là máy chủ (xem trước + đồng ý cho tiền / không lùi được, phạm vi, quyền CRM).
 8. **Canary có chủ duyệt.** Contract §2: org thật chỉ đọc với agent, nên agent KHÔNG tự tạo dữ liệu thử trên production.
    - Chủ làm một thao tác thật qua Zalo; agent đối soát chỉ đọc: `select action, state, sqlstate, created_at, finished_at from app_private.hermes_action_receipts order by created_at desc limit 10`, sự kiện `HERMES_ACTION_*` / `HERMES_TASK_*` trong `authorization_audit_events`, và dòng nghiệp vụ trên web.
@@ -180,9 +181,12 @@ Chạy lại không đổi gì. Không DROP, không đổi quyền CRM / chính 
 
 ### 5.2 Thu chi
 
-1. **Chuyển sang PR riêng (mục 0.2).** Chỉ làm sau khi split đã áp production và connector có `SALE_DEPOSIT_RECEIPT_KEY`. Lane áp `20261030065028_hermes_expense_actions_activation_v1`; PR TC cập nhật các bước của mục này theo file mới.
-2. Kiểm sau với 4 khoá `income_expenses.*`. Thao tác tiền luôn xem trước. Phiếu vượt ngưỡng tự duyệt vẫn chờ duyệt như web.
-3. SOUL, rồi canary: một phiếu chi thật (bản xem trước nói "vào sổ ngay" hay "chờ duyệt"), một ghi chú. Duyệt / duyệt + chi chỉ khi chủ có phiếu thật cần duyệt.
+1. **Tiền điều kiện** (review chéo PR #349, mục 0.2): `20261030050424_hermes_sale_deposit_receipt_key_v1` đã áp (lane, đích danh: provenance `catalog-proven`), và connector đang chạy có `SALE_DEPOSIT_RECEIPT_KEY`. Kiểm connector (chỉ đọc, root): `readlink -f /opt/ihome-hermes/current` trỏ bản build có commit split, rồi `grep -c SALE_DEPOSIT_RECEIPT_KEY "$(readlink -f /opt/ihome-hermes/current)"/infra/hermes-broker/sale-action-contract.mjs` ≥ 1. Thiếu connector mà áp TC thì SQL vẫn chặn, nhưng bot sẽ thấy hai tool báo cọc trong danh sách rồi bị từ chối.
+2. Lane áp `20261030065028_hermes_expense_actions_activation_v1`. Thiếu split thì file tự dừng (`hermes_expense_activation_sale_deposit_gate_missing`), không khoá nào đổi.
+3. Kiểm sau với 4 khoá `income_expenses.*` (5.0.6), và dòng `deposits.create_receipt` vẫn TẮT:
+   `npm run db:query -- --sql "select capability, enabled from app_private.hermes_capabilities where capability in ('income_expenses.create','deposits.create_receipt') order by 1"`. Thao tác tiền luôn xem trước. Phiếu vượt ngưỡng tự duyệt vẫn chờ duyệt như web.
+4. **Kiểm `crm_sale_action operation=list`** của bot owner (chỉ đọc, qua chính kết nối owner): danh sách KHÔNG có `reservation_create` / `reservation_topup`. Có ⇒ lùi TC ngay (6.2) rồi kiểm connector.
+5. SOUL, rồi canary: một phiếu chi thật (bản xem trước nói "vào sổ ngay" hay "chờ duyệt"), một ghi chú. Duyệt / duyệt + chi chỉ khi chủ có phiếu thật cần duyệt.
 
 ### 5.3 Hoá đơn
 
@@ -221,7 +225,7 @@ Mỗi file lùi:
 
 Theo trang:
 - **HĐ:** tắt 4 khoá `contracts.*`, không tắt `sale_phong.lock_room`. Còn `room_lock` / `room_unlock` nếu vẫn giữ `actionPages`.
-- **TC, HĐn:** tắt 4 / 5 khoá của trang. Phiếu, lần thu, chỉ số, điều chỉnh đã ghi vẫn giữ nguyên. Bản xem trước chưa xác nhận bị từ chối ở lượt xác nhận (guard đọc lại registry).
+- **TC, HĐn:** tắt 4 / 5 khoá của trang. Phiếu, lần thu, chỉ số, điều chỉnh đã ghi vẫn giữ nguyên. Bản xem trước chưa xác nhận bị từ chối ở lượt xác nhận (guard đọc lại registry). Muốn lùi luôn cổng báo cọc của Sale (`docs/plans/hermes-crm/revert/hermes_sale_deposit_receipt_key_revert_v1.sql`, PR #364) thì lùi TC TRƯỚC: file đó từ chối khi `income_expenses.create` còn bật, vì thân cũ sẽ mở lại hai tool báo cọc.
 - **CV:** tắt `tasks.delete` và xoá 4 dòng `task.recurring_*`, đưa về đúng trạng thái trước khi bật (`task.create`, `task.create_batch`, `task.update` vẫn sống). Quy tắc định kỳ đã tạo VẪN sinh việc mỗi đêm. Web chưa có màn quản lý quy tắc, nên tạm dừng / xoá quy tắc muốn dừng TRƯỚC khi lùi (qua Hermes lúc còn bật, hoặc migration dữ liệu có review).
 
 Bật lại sau khi lùi: tạo forward migration MỚI (bản chép của file bật, tên mới). File đã áp là bất biến.
@@ -254,18 +258,20 @@ Phải tắt thêm `tasks.create` / `tasks.edit`. Mất luôn `task.create` / `t
 
 ## 8. Đã kiểm và chưa kiểm
 
-- **Đã kiểm, offline:** `infra/hermes-broker/action-activation-sql.test.mjs` (PGlite, 13 ca; từ 31/10 chỉ còn ba file HĐ / HĐn / CV, TC kiểm ở PR riêng). Fixture dùng bảng registry / chính sách / biên nhận thật, hai hàm + trigger chiếu lại thật, dữ liệu như production 28/10. Test chứng minh:
+- **Đã kiểm, offline:** `infra/hermes-broker/action-activation-sql.test.mjs` (PGlite, 14 ca; bốn file — TC thêm lại ở PR riêng, kèm ca rào thiếu split). Fixture dùng bảng registry / chính sách / biên nhận thật, hai hàm + trigger chiếu lại thật, dữ liệu như production 28/10. Test chứng minh:
   - khoá mỗi file = khoá danh mục connector của trang;
   - các trang độc lập; chạy lại không đổi gì;
   - `inherit_crm` nhận / mất khoá mà không đổi epoch; legacy / REVOKED không đổi;
   - từng hàm / bảng / trigger / dòng chính sách / dòng registry thiếu ⇒ dừng trước khi ghi;
   - CV chèn đúng bốn dòng mục 22; rào legacy của file lùi; lùi rồi bật lại;
-  - file nguyên văn chạy được rồi về đúng trạng thái 28/10.
+  - file nguyên văn chạy được rồi về đúng trạng thái 28/10;
+  - TC: thiếu split (dòng `deposits.create_receipt`, sai mode, vỏ Sale chưa có cổng hoặc vắng) ⇒ dừng trước khi ghi; có split ⇒ qua; HĐ / HĐn / CV không phụ thuộc rào này.
 
-  Kiểm đột biến bằng `HERMES_ACTIVATION_SQL_MUTATION`: 9/9 bị bắt. Ngày 31/10 hai đột biến từng nhắm file TC chuyển sang HĐ (`forward-skip-function-check`) và HĐn (`revert-skip-legacy-fence`), vẫn 9/9.
+  Kiểm đột biến bằng `HERMES_ACTIVATION_SQL_MUTATION`: 10/10 bị bắt (thêm `forward-skip-sale-deposit-guard` cho rào TC). Từ 31/10 hai đột biến từng nhắm file TC nhắm HĐ (`forward-skip-function-check`) và HĐn (`revert-skip-legacy-fence`).
 - **Đã kiểm, chỉ đọc trên production:** mục 2, gồm 81 chữ ký hàm có đủ.
 - **Chưa kiểm:**
   - cửa idempotent của CI main với ba file SAU áp. Trước áp, lane đã chạy cửa hai lượt + ROLLBACK bắt buộc cho từng file (mục 0.1);
+  - TC: file đổi mốc + rào mới chỉ chạy trên PGlite và Restore Drill; cửa idempotent của main chỉ xanh khi split đã áp production; kiểm connector + `crm_sale_action operation=list` làm lúc áp (5.2);
   - VPS: `actionPages: ["contract"]` đã thêm 30/10 (`host_ready`); bản connector `current` chưa ghi vào runbook;
   - tầng 2 trên TEST;
   - canary bot thật;
