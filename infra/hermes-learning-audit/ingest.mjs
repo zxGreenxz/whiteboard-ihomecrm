@@ -142,7 +142,8 @@ export function planBatches(reports, config, now = Date.now()) {
     skipped.set(key, { profile, reason, proposals: (skipped.get(key)?.proposals ?? 0) + count });
   };
   let invalidReports = 0;
-  for (const report of list) {
+  // Cũ trước mới sau: đề xuất gửi bù từ báo cáo cũ nhận số thứ tự theo đúng trình tự phát hiện.
+  for (const report of [...list].reverse()) {
     if (!validReport(report)) { invalidReports++; continue; }
     for (const profile of report.profiles) {
       if (!Object.hasOwn(config.profiles, profile.profile)) { if (report === list[0]) skip(profile.profile, 'no_mapping', profile.proposals.length); continue; }

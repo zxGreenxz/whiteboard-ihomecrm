@@ -89,7 +89,8 @@ test('kế hoạch nạp: lô không vượt 96 KiB; đề xuất của các bá
   assert.ok(plan.batches.every(batch => Buffer.byteLength(JSON.stringify(batch)) <= 96 * 1024));
   const older = { ...report([proposal(1), proposal(2)]), generatedAt: '2026-10-30T13:40:00Z' };
   const merged = planBatches([report([proposal(2), proposal(3)]), older, { broken: true }], config(), NOW);
-  assert.deepEqual(merged.batches.flatMap(batch => batch.proposals.map(item => item.dedupeKey)), [key(2), key(3), key(1)]);
+  // Báo cáo cũ trước: số thứ tự theo trình tự phát hiện.
+  assert.deepEqual(merged.batches.flatMap(batch => batch.proposals.map(item => item.dedupeKey)), [key(1), key(2), key(3)]);
   assert.equal(merged.invalidReports, 1);
 });
 
@@ -160,7 +161,7 @@ test('chạy trọn: đọc cấu hình + báo cáo (cả báo cáo cũ) + bí m
   assert.equal(credentials.password, password);
   assert.equal(credentials.role, 'hermes_store_host');
   assert.ok(closed);
-  assert.deepEqual(fake.calls.flatMap(call => call.proposals.map(item => item.dedupeKey)), [key(1), key(2), key(7)]);
+  assert.deepEqual(fake.calls.flatMap(call => call.proposals.map(item => item.dedupeKey)), [key(7), key(1), key(2)]);
   assert.equal(lines.length, 1);
   const summary = JSON.parse(lines[0]);
   assert.equal(summary.event, 'learning_ingest');

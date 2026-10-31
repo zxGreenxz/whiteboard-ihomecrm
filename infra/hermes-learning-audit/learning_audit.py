@@ -133,22 +133,58 @@ MAX_READ_BYTES = 4 * 1024 * 1024
 _lstat = os.lstat
 
 
-def safe_read(path: Path, root: Path, limit: int = MAX_READ_BYTES) -> Optional[str]:
-    """Đọc một FILE THƯỜNG nằm TRONG `root`. Job chạy với CAP_DAC_READ_SEARCH (đọc được mọi file trên host) trong khi
-    hồ sơ do Hermes ghi được ⇒ từ chối symlink, file đặc biệt, file quá lớn, đường thoát ra ngoài `root` (kể cả qua thư
-    mục symlink giữa đường) và file bị tráo giữa lúc kiểm và lúc mở."""
+def canonical_root(path: Path) -> Path:
+    """Gốc đã phân giải MỘT LẦN lúc bắt đầu (từ chối gốc là symlink). Mọi kiểm "nằm trong gốc" so với gốc ghim này, nên
+    Hermes tráo thư mục hồ sơ thành symlink giữa chừng cũng không kéo được việc đọc ra ngoài."""
+    if _is_link(path):
+        raise OSError(f'gốc là symlink: {path}')
+    return Path(os.path.realpath(path))
+
+
+def _is_link(path: Path) -> bool:
     try:
-        before = _lstat(path)
-        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+        return stat.S_ISLNK(_lstat(path).st_mode)
+    except OSError:
+        return False
+
+
+def _inside(root: Path, real: str) -> bool:
+    try:
+        return os.path.commonpath([os.path.normcase(str(root)), os.path.normcase(real)]) == os.path.normcase(str(root))
+    except ValueError:
+        return False
+
+
+def open_inside(path: Path, root: Path, limit: int) -> Optional[int]:
+    """Mở chỉ đọc một FILE THƯỜNG nằm TRONG `root` (gốc đã ghim). Job chạy với CAP_DAC_READ_SEARCH (đọc được mọi file
+    trên host) trong khi hồ sơ do Hermes ghi được ⇒ từ chối symlink (O_NOFOLLOW), file đặc biệt, file quá lớn, đường ra
+    ngoài gốc; sau khi mở còn so dev/ino và (Linux) đường thật của fd qua /proc — thư mục giữa đường bị tráo cũng bị bắt."""
+    before = _lstat(path)
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+        return None
+    if not _inside(root, os.path.realpath(path)):
+        return None
+    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+    try:
+        held = os.fstat(fd)
+        proc = f'/proc/self/fd/{fd}'
+        if (held.st_dev, held.st_ino) != (before.st_dev, before.st_ino) or not stat.S_ISREG(held.st_mode) \
+                or held.st_size > limit or (os.path.exists(proc) and not _inside(root, os.readlink(proc))):
+            os.close(fd)
             return None
-        real_root = os.path.realpath(root)
-        if os.path.commonpath([real_root, os.path.realpath(path)]) != real_root:
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def safe_read(path: Path, root: Path, limit: int = MAX_READ_BYTES) -> Optional[str]:
+    """Nội dung văn bản của file qua `open_inside`; None nếu bị từ chối hoặc không đọc được."""
+    try:
+        fd = open_inside(path, root, limit)
+        if fd is None:
             return None
-        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
         with os.fdopen(fd, 'rb') as handle:
-            held = os.fstat(handle.fileno())
-            if (held.st_dev, held.st_ino) != (before.st_dev, before.st_ino) or not stat.S_ISREG(held.st_mode):
-                return None
             data = handle.read(limit + 1)
         # Như đọc chế độ văn bản: CRLF ⇒ LF (mục bộ nhớ ngăn bằng "\n§\n").
         return None if len(data) > limit else data.decode('utf-8', errors='replace').replace('\r\n', '\n')
@@ -235,14 +271,14 @@ def iter_skill_files(root: Path) -> Iterable[Path]:
                 yield Path(current) / name
 
 
-def skill_package_texts(skill_md: Path, root: Path) -> list[tuple[Path, str]]:
-    """SKILL.md + các .md đi kèm trong cùng gói skill (references/…); chỉ file thường trong `root`."""
+def skill_package_texts(skill_md: Path, read) -> list[tuple[Path, str]]:
+    """SKILL.md + các .md đi kèm trong cùng gói skill (references/…), đọc qua `read` (đọc an toàn, tự ghi nhận file bị từ chối)."""
     out: list[tuple[Path, str]] = []
     for current, dirs, files in os.walk(skill_md.parent, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_SKILL_DIRS and not d.startswith('.'))
         for name in sorted(files):
             if name.endswith('.md'):
-                text = safe_read(Path(current) / name, root)
+                text = read(Path(current) / name)
                 if text is not None:
                     out.append((Path(current) / name, text))
     return out
@@ -353,8 +389,9 @@ def write_atomic(path: Path, text: str, mode: int = 0o640) -> None:
 class ProfileAudit:
     def __init__(self, name: str, root: Path, cfg: dict[str, Any], catalog: dict[str, Any], official: dict[str, Any],
                  prior: dict[str, Any], now: datetime):
+        # Gốc hồ sơ ghim một lần (không phải symlink); mọi file chỉ được đọc khi nằm trong gốc này.
         self.name, self.root, self.cfg, self.catalog, self.official, self.prior, self.now = (
-            name, root, cfg, catalog, official, prior, now)
+            name, canonical_root(root), cfg, catalog, official, prior, now)
         self.real = name in cfg['realProfiles']
         self.findings: list[dict[str, Any]] = []
         self.proposals: list[dict[str, Any]] = []
@@ -363,10 +400,24 @@ class ProfileAudit:
         self.next_state: dict[str, Any] = {}
         self.counts: dict[str, int] = {}
         self._changed_files: set[str] = set()
+        self._refused: set[str] = set()
 
     # -- tiện ích
     def finding(self, kind: str, severity: str, detail: str, **extra: Any) -> None:
         self.findings.append({'kind': kind, 'severity': severity, 'detail': detail, **extra})
+
+    def read(self, path: Path, limit: int = MAX_READ_BYTES) -> Optional[str]:
+        """Đọc an toàn trong hồ sơ. File CÓ mà bị từ chối (symlink, file đặc biệt, quá lớn, ra ngoài hồ sơ) ⇒ phát hiện mức
+        cao: không để Hermes né kiểm bằng cách biến bộ nhớ/skill thành symlink."""
+        text = safe_read(path, self.root, limit)
+        if text is None and os.path.lexists(path):
+            rel = self.rel(path)
+            if rel not in self._refused:
+                self._refused.add(rel)
+                self.finding('unsafe_profile_file', 'high',
+                             f'{rel}: không đọc an toàn được (symlink/file đặc biệt/quá lớn/ra ngoài hồ sơ) — đã bỏ qua, cần xem tay',
+                             file=rel)
+        return text
 
     def proposal(self, kind: str, title: str, content: str, source: dict[str, Any], detected_at: datetime,
                  source_ref: str) -> None:
@@ -396,7 +447,7 @@ class ProfileAudit:
         official_names = set(self.official['skills'])
         prior_hashes = self.prior.get('skillHashes', {}) if self.prior else {}
         for skill_md in iter_skill_files(skills_root):
-            texts = skill_package_texts(skill_md, self.root)
+            texts = skill_package_texts(skill_md, self.read)
             main = next((t for p, t in texts if p == skill_md), '')
             names = skill_names(skill_md, main)
             local += 1
@@ -434,7 +485,7 @@ class ProfileAudit:
         entries = 0
         for file_name in ('MEMORY.md', 'USER.md'):
             path = self.root / 'memories' / file_name
-            text = safe_read(path, self.root)
+            text = self.read(path)
             if text is None:
                 continue
             for entry in (e.strip() for e in text.split('\n§\n')):
@@ -463,7 +514,7 @@ class ProfileAudit:
 
     def scan_ledger(self) -> None:
         path = self.root / 'skills' / '.curator_ledger.jsonl'
-        text = safe_read(path, self.root, limit=32 * 1024 * 1024)
+        text = self.read(path, limit=32 * 1024 * 1024)
         prior_seen = list(self.prior.get('ledgerSeen', [])) if self.prior else []
         seen = set(prior_seen)
         if self.prior:
@@ -511,7 +562,7 @@ class ProfileAudit:
     def _blob(self, digest: Any) -> Optional[str]:
         if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
             return None
-        return safe_read(self.root / '.curator_backups' / 'blobs' / digest, self.root)
+        return self.read(self.root / '.curator_backups' / 'blobs' / digest)
 
     def _ledger_entry(self, entry: dict[str, Any], entry_id: str, ts: datetime, covered: set[str]) -> None:
         actor = str(entry.get('actor') or '')
@@ -529,18 +580,27 @@ class ProfileAudit:
 
         skills_root = self.root / 'skills'
 
+        rejected: list[str] = []
+
         def by_file(items: Any) -> dict[str, Any]:
             out: dict[str, Any] = {}
             for item in items if isinstance(items, list) else []:
-                if isinstance(item, dict) and isinstance(item.get('path'), str) and item['path'].endswith('.md') \
-                        and '/skills/' in item['path']:
-                    rel = item['path'].split('/skills/', 1)[1]
-                    # Đường lấy từ sổ (Hermes ghi được): không `..`, không tuyệt đối — bỏ mục lạ thay vì đọc ngoài hồ sơ.
-                    if safe_path(skills_root, rel) is not None:
-                        out[rel] = item.get('sha256')
+                if not (isinstance(item, dict) and isinstance(item.get('path'), str) and item['path'].endswith('.md')):
+                    continue
+                # Đường lấy từ sổ (Hermes ghi được): phải nằm dưới skills/, không `..`, không tuyệt đối — mục lạ bị bỏ
+                # thay vì đọc ngoài hồ sơ, và được báo (không mất im lặng).
+                rel = item['path'].split('/skills/', 1)[1] if '/skills/' in item['path'] else ''
+                if rel and safe_path(skills_root, rel) is not None:
+                    out[rel] = item.get('sha256')
+                else:
+                    rejected.append(clip(item['path'], 160))
             return out
 
         before, after = by_file(entry.get('before')), by_file(entry.get('after'))
+        if rejected:
+            self.finding('ledger_path_rejected', 'medium',
+                         f'sổ curator mục {entry_id}: {len(rejected)} đường file không nằm dưới skills/ hoặc có `..` — bỏ qua, cần xem tay',
+                         ledgerId=entry_id, paths=sorted(set(rejected))[:10])
         added: list[str] = []
         diff_missing = False
         for rel, digest in sorted(after.items()):
@@ -550,7 +610,7 @@ class ProfileAudit:
                 # Blob đã bị dọn: so bằng nội dung hiện tại (có thể gồm cả thay đổi sau đó) — ghi rõ trong nguồn.
                 diff_missing = True
                 current = safe_path(skills_root, rel)
-                new_text = safe_read(current, skills_root) if current is not None else None
+                new_text = self.read(current) if current is not None else None
             if rel in before:
                 old_text = self._blob(before[rel])
                 if old_text is None:
@@ -655,33 +715,46 @@ def _connect_ro(db_path: Path) -> sqlite3.Connection:
 def regular_inside(path: Path, root: Path) -> bool:
     try:
         info = _lstat(path)
-        real_root = os.path.realpath(root)
-        return stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) \
-            and os.path.commonpath([real_root, os.path.realpath(path)]) == real_root
+        return stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and _inside(root, os.path.realpath(path))
     except (OSError, ValueError):
         return False
 
 
+MAX_DB_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _copy_inside(path: Path, root: Path, target: Path) -> bool:
+    """Chép file qua fd đã kiểm bằng `open_inside` (không đi theo symlink, không ra ngoài gốc kể cả khi bị tráo giữa chừng)."""
+    fd = open_inside(path, root, MAX_DB_BYTES)
+    if fd is None:
+        return False
+    with os.fdopen(fd, 'rb') as source, open(target, 'wb') as sink:
+        shutil.copyfileobj(source, sink, 1024 * 1024)
+    return True
+
+
 def read_refusal_rows(db_path: Path, since: float, until: float, sources: list[str], root: Optional[Path] = None):
     """Đọc state.db bằng kết nối chỉ đọc. Nếu không mở được tại chỗ (vd. systemd ReadOnlyPaths làm -shm không ghi được ở
-    bản SQLite cũ) thì đọc BẢN SAO (state.db + -wal) trong thư mục tạm riêng — vẫn không ghi gì vào hồ sơ."""
+    bản SQLite cũ) thì đọc BẢN SAO (state.db + -wal, chép qua fd đã kiểm) trong thư mục tạm riêng — không ghi gì vào hồ sơ."""
+    root = root or canonical_root(db_path.parent)
     try:
         conn = _connect_ro(db_path)
         try:
-            return _query_refusals(conn, since, until, sources)
+            rows = _query_refusals(conn, since, until, sources)
         finally:
             conn.close()
+        # SQLite mở theo đường: kiểm lại sau khi đọc (file/gốc bị tráo giữa chừng ⇒ bỏ kết quả, đọc qua bản sao).
+        if regular_inside(db_path, root):
+            return rows
     except sqlite3.OperationalError:
         pass
-    root = root or db_path.parent
     with tempfile.TemporaryDirectory(prefix='hermes-learning-audit-') as tmp:
         copy = Path(tmp) / 'state.db'
-        if not regular_inside(db_path, root):
-            raise sqlite3.OperationalError('state.db không phải file thường')
-        shutil.copyfile(db_path, copy, follow_symlinks=False)
+        if not _copy_inside(db_path, root, copy):
+            raise sqlite3.OperationalError('state.db không phải file thường trong hồ sơ')
         wal = db_path.with_name(db_path.name + '-wal')
-        if os.path.lexists(wal) and regular_inside(wal, root):
-            shutil.copyfile(wal, Path(tmp) / 'state.db-wal', follow_symlinks=False)
+        if os.path.lexists(wal):
+            _copy_inside(wal, root, Path(tmp) / 'state.db-wal')
         conn = _connect_ro(copy)
         try:
             return _query_refusals(conn, since, until, sources)
@@ -745,6 +818,14 @@ def summarize(report: dict[str, Any]) -> str:
             shadows = kinds.get('shadows_official_skill', [])
             lines.append(f'  - Skill local đè skill chuẩn: {len(shadows)}'
                          + (f' ({", ".join(sorted({s["skill"] for s in shadows}))})' if shadows else ''))
+        unsafe = kinds.get('unsafe_profile_file', [])
+        if unsafe:
+            lines.append(f'  - CẢNH BÁO: {len(unsafe)} file không đọc an toàn (bị bỏ qua, cần xem tay): '
+                         + ', '.join(sorted({str(f.get("file")) for f in unsafe})[:6]))
+        for kind, label in (('ledger_path_rejected', 'mục sổ curator có đường file lạ'),
+                            ('skill_changed_without_ledger', 'skill đổi không qua sổ curator')):
+            if kinds.get(kind):
+                lines.append(f'  - Cảnh báo: {len(kinds[kind])} {label}')
         lines.append(f'  - Đề xuất mới về ghi CRM (chờ duyệt): {len(prof["proposals"])}')
         for idx, p in enumerate(prof['proposals'][:10], 1):
             lines.append(f'      {idx}. {p["title"]}')
@@ -799,7 +880,17 @@ def run_audit(cfg: dict[str, Any], now: datetime, use_state: bool = True) -> tup
         prior = dict(state.get('profiles', {}).get(root.name, {}))
         if prior:
             prior['lastRunAt'] = state.get('lastRunAt')
-        audit = ProfileAudit(root.name, root, cfg, catalog, official, prior, now)
+        try:
+            audit = ProfileAudit(root.name, root, cfg, catalog, official, prior, now)
+        except OSError as error:  # thư mục hồ sơ bị tráo thành symlink giữa lúc liệt kê và lúc kiểm
+            profiles_out.append({'profile': root.name, 'real': root.name in cfg['realProfiles'], 'counts': {},
+                                 'findings': [{'kind': 'unsafe_profile_file', 'severity': 'high', 'file': '.',
+                                               'detail': f'thư mục hồ sơ không kiểm được an toàn ({type(error).__name__})'}],
+                                 'proposals': [], 'autoApplied': [], 'refusals': None,
+                                 'errors': ['thư mục hồ sơ không kiểm được an toàn']})
+            if state.get('profiles', {}).get(root.name):
+                next_profiles[root.name] = state['profiles'][root.name]  # giữ trạng thái cũ, lần sau kiểm lại
+            continue
         profiles_out.append(audit.run())
         next_profiles[root.name] = audit.next_state
     report = {

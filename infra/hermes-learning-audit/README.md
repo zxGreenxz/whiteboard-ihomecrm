@@ -54,8 +54,10 @@ Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profi
 Khoá chống trùng của đề xuất = sha256(hồ sơ | loại | nguồn | nội dung chuẩn hoá) — ổn định giữa các lần chạy; tiêu đề luôn một dòng.
 
 Đọc an toàn: job có `CAP_DAC_READ_SEARCH` (đọc được mọi file trên host) trong khi hồ sơ do Hermes ghi được, nên mọi file của hồ sơ
-được đọc qua `safe_read`: chỉ file thường nằm trong hồ sơ, **từ chối symlink**, đường `..`/tuyệt đối lấy từ sổ curator, file quá
-lớn, file bị tráo giữa lúc kiểm và lúc mở; unit còn giấu `/etc/ihome-hermes*` và thư mục trạng thái connector.
+được đọc qua `open_inside`/`safe_read` với gốc hồ sơ ghim một lần: chỉ file thường nằm trong hồ sơ, **từ chối symlink**
+(O_NOFOLLOW), đường `..`/tuyệt đối lấy từ sổ curator, file quá lớn, file bị tráo; sau khi mở còn so dev/ino và đường thật của fd
+(`/proc/self/fd`). File CÓ mà bị từ chối ⇒ phát hiện mức cao `unsafe_profile_file` (không để Hermes né kiểm bằng symlink); đường lạ
+trong sổ ⇒ `ledger_path_rejected`. Unit còn giấu `/etc/ihome-hermes*` và thư mục trạng thái connector.
 
 Thử tay không ghi gì — chạy **trong cùng sandbox** của unit (chạy trần bằng root, SQLite có thể chạm `-shm`/`-wal` của hồ sơ):
 

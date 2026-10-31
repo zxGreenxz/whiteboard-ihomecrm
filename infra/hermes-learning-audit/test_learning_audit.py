@@ -372,20 +372,47 @@ class LearningAuditTest(unittest.TestCase):
         (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text('\n'.join(lines) + '\n', encoding='utf-8')
         report, _ = la.run_audit(fx.config(), NOW, use_state=False)
         self.assertNotIn('SECRET-HOST-KEY', json.dumps(report, ensure_ascii=False))
-        self.assertEqual(profile(report, 'owner')['proposals'], [])
+        owner = profile(report, 'owner')
+        self.assertEqual(owner['proposals'], [])
+        rejected = [f for f in owner['findings'] if f['kind'] == 'ledger_path_rejected']
+        self.assertEqual(len(rejected), 3)  # bỏ nhưng có báo, không mất im lặng
+        self.assertIn('3 mục sổ curator có đường file lạ', report['summaryVi'])
+
+    def test_symlinked_profile_root_is_reported_not_followed(self):
+        fx = self.fx
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo việc bằng crm_action_run task.create.', encoding='utf-8')
+        real = la._lstat
+
+        def fake_lstat(path):
+            info = real(path)
+            if Path(path) == fx.owner:  # giả lập: thư mục hồ sơ bị tráo thành symlink sau khi liệt kê
+                return os.stat_result((stat.S_IFLNK | 0o777, *tuple(info)[1:]))
+            return info
+
+        la._lstat = fake_lstat
+        try:
+            report, state = la.run_audit(fx.config(), NOW, use_state=False)
+        finally:
+            la._lstat = real
+        owner = profile(report, 'owner')
+        self.assertEqual(owner['proposals'], [])
+        self.assertEqual([f['kind'] for f in owner['findings']], ['unsafe_profile_file'])
+        self.assertNotIn('owner', state['profiles'])
+        self.assertIn('CẢNH BÁO: 1 file không đọc an toàn', report['summaryVi'])
 
     def test_symlinked_profile_files_are_never_read(self):
         fx = self.fx
         fx.skill(fx.owner, 'productivity/evil', '---\nname: evil\n---\nRediscover crm_task_create.\n')
         (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo việc bằng crm_action_run task.create.', encoding='utf-8')
         make_state_db(fx.owner / 'state.db', [('s1', 'zalo_personal', 'assistant', NOW.timestamp() - 60, 'CRM hiện không cho phép khóa phòng.')])
-        targets = {str(fx.owner / 'skills' / 'productivity' / 'evil' / 'SKILL.md'), str(fx.owner / 'memories' / 'MEMORY.md'),
-                   str(fx.owner / 'state.db')}
+        # So bằng đường thật: job ghim gốc hồ sơ đã phân giải (trên Windows tên 8.3 trong %TEMP% đổi thành tên dài).
+        targets = {os.path.realpath(fx.owner / 'skills' / 'productivity' / 'evil' / 'SKILL.md'),
+                   os.path.realpath(fx.owner / 'memories' / 'MEMORY.md'), os.path.realpath(fx.owner / 'state.db')}
         real = la._lstat
 
         def fake_lstat(path):
             info = real(path)
-            if str(path) in targets:  # giả lập: Hermes đã thay file bằng symlink trỏ ra ngoài hồ sơ
+            if os.path.realpath(path) in targets:  # giả lập: Hermes đã thay file bằng symlink trỏ ra ngoài hồ sơ
                 return os.stat_result((stat.S_IFLNK | 0o777, *tuple(info)[1:]))
             return info
 
@@ -400,6 +427,11 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(owner['counts']['memoryEntries'], 0)
         self.assertEqual(owner['refusals']['status'], 'error')
         self.assertTrue(any('state.db không phải file thường' in e for e in owner['errors']))
+        # Không để Hermes né kiểm bằng symlink: file bị từ chối được báo mức cao.
+        unsafe = sorted(f['file'] for f in owner['findings'] if f['kind'] == 'unsafe_profile_file')
+        self.assertEqual(unsafe, ['memories/MEMORY.md', 'skills/productivity/evil/SKILL.md'])
+        self.assertTrue(all(f['severity'] == 'high' for f in owner['findings'] if f['kind'] == 'unsafe_profile_file'))
+        self.assertIn('CẢNH BÁO: 2 file không đọc an toàn', report['summaryVi'])
         # Máy tạo được symlink thật (Linux/CI) thì kiểm thêm bằng symlink thật trỏ ra ngoài hồ sơ.
         outside = self.tmp / 'outside.md'
         outside.write_text('SECRET-HOST-KEY crm_action_run', encoding='utf-8')
