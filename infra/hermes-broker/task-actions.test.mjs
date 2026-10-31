@@ -107,6 +107,12 @@ test('why unspecified (Q31): detail lists suggestions or asks plainly; non-empty
   assert.equal(nameUnresolvedDetail({ field: 'person', wanted: '', why: 'unspecified', candidates: [{ name: 'Nathan' }, { name: 'Joey' }] }),
     'Chưa nêu người; gợi ý: Nathan, Joey — hỏi người dùng chọn một, không tự chọn.');
   assert.equal(nameUnresolvedDetail({ field: 'jobType', wanted: '', why: 'unspecified' }), 'Chưa nêu loại việc; hỏi người dùng.');
+  // Nghiệm thu c3s CV-B01: loại việc có gợi ý ⇒ xem trước ngay với loại hợp nhất (như hạng mục); người vẫn hỏi chọn, không tự chọn.
+  const jobDetail = nameUnresolvedDetail({ field: 'jobType', wanted: '', why: 'unspecified', candidates: [{ name: 'check' }, { name: 'decor' }] });
+  assert.equal(jobDetail, 'Chưa nêu loại việc; gợi ý: check, decor — gọi lại NGAY với jobType = gợi ý hợp nội dung việc nhất để lấy bản xem trước, '
+    + 'nêu rõ loại việc đã chọn; người dùng muốn loại khác thì xem trước lại.');
+  assert.doesNotMatch(jobDetail, /không tự chọn|gợi ý đầu/);
+  assert.match(nameUnresolvedDetail({ field: 'person', wanted: '', why: 'unspecified', candidates: [{ name: 'Nathan' }] }), /hỏi người dùng chọn một, không tự chọn\.$/);
   const outcomes = [];
   const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return outcomes.shift(); } };
   const runtime = createActionRuntime({ catalog: createActionCatalog(TASK_ACTIONS), service });

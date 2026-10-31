@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-27T16:19:46.277Z",
+  "generatedAt": "2026-10-31T01:42:00.169Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 909,
-    "unknown": 84,
+    "ledger-applied": 916,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13868,10 +13868,9 @@
       "name": "hermes_contract_actions_activation_v1",
       "scheme": "timestamp14",
       "sha256": "116675684ce75ceaa1b904dbe2b9bf83988fb41a4131445bf882661b86b55d0e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T15:21:13.805Z|bien-nhan-backup"
       ]
     },
     {
@@ -13880,10 +13879,9 @@
       "name": "hermes_invoice_actions_activation_v1",
       "scheme": "timestamp14",
       "sha256": "8ea22d0c84c7d51cf0eb4459aa72ec182179e8868ba9f5e7fced6fdecd3c5dad",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T13:04:17.112Z|bien-nhan-backup"
       ]
     },
     {
@@ -13892,10 +13890,20 @@
       "name": "hermes_task_actions_activation_v1",
       "scheme": "timestamp14",
       "sha256": "263fee11576f3d68fc897ef28e4367df475a8c5af05e374303bec1ab713d425e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-29T13:55:39.056Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261028203816_vong_doi_tien_phong_mot_nguon.sql",
+      "version": "20261028203816",
+      "name": "vong_doi_tien_phong_mot_nguon",
+      "scheme": "timestamp14",
+      "sha256": "90fef7b78fd6c54871c443aefadde0cf61a208e4262e0d91fd902103cf949e9a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T16:25:51.010Z|bien-nhan-backup"
       ]
     },
     {
@@ -13908,6 +13916,39 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
+      "version": "20261030100148",
+      "name": "khoa_cot_hoa_hong_ie_compat",
+      "scheme": "timestamp14",
+      "sha256": "9dd3ec7da83c1460e18d72360fe9f425928fb51b744c1332c52ae27503c2f305",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T13:10:53.684Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
+      "version": "20261030101812",
+      "name": "meter_capture_so_dau_theo_dong_ho",
+      "scheme": "timestamp14",
+      "sha256": "3c9a85261fe5791d49de9a967ed002328b65add33de5921e6f70cfb81561da9a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T11:59:51.122Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030104546_contract_exit_settlement_draft_v1.sql",
+      "version": "20261030104546",
+      "name": "contract_exit_settlement_draft_v1",
+      "scheme": "timestamp14",
+      "sha256": "69b31737e67bdfdb7e6489482db003f3eb222d895a9818db6025e8ba9e8265f0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-30T12:59:24.590Z|bien-nhan-backup"
       ]
     },
     {
