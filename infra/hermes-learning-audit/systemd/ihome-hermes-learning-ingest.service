@@ -1,10 +1,13 @@
-# Nạp đề xuất (báo cáo mới nhất của kiểm học tập) vào CRM qua cổng kho bền connector — user ihome-hermes, đọc được
-# /etc/ihome-hermes/* (0600). Không được đọc hồ sơ Hermes. Chạy sau khi kiểm học tập xong (OnSuccess) hoặc tay.
+# Nạp đề xuất bài học vào CRM — user ihome-hermes, login RIÊNG của job nạp (vai hermes_learning_ingest, mật khẩu
+# /etc/ihome-hermes/learning-store-password 0600). CHỈ đọc outbox (đề xuất đã che); không thấy báo cáo đủ (private/) hay hồ sơ
+# Hermes. Chạy ngay sau kiểm học tập (OnSuccess) và theo lịch riêng 20:55 (ihome-hermes-learning-ingest.timer): job kiểm ngừng
+# chạy thì lần nạp theo lịch vẫn gửi "lần kiểm cuối" cũ lên CRM và thoát mã 3 (outbox quá cũ) ⇒ cảnh báo OnFailure.
 [Unit]
 Description=iHome Hermes - nap de xuat bai hoc vao CRM
 Documentation=file:///opt/ihome-hermes/current/infra/hermes-learning-audit/README.md
 After=network-online.target
 Wants=network-online.target
+OnFailure=ihome-hermes-learning-alert@%n.service
 
 [Service]
 Type=oneshot
@@ -15,8 +18,8 @@ ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes/current/infra/hermes
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
-ReadOnlyPaths=/etc/ihome-hermes /var/lib/ihome-hermes-learning-audit
-InaccessiblePaths=/var/lib/ihome-hermes-profiles
+ReadOnlyPaths=/etc/ihome-hermes
+InaccessiblePaths=-/var/lib/ihome-hermes-profiles -/var/lib/ihome-hermes-learning-audit/private
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

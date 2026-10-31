@@ -1,8 +1,17 @@
 # Học có kiểm duyệt cho Hermes (đợt 2 kế hoạch trị tận gốc — chủ duyệt 31/10/2026)
 
-**Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR — **chưa áp
-migration, chưa cài trên VPS**. (3) tin Zalo 21:00 + duyệt qua Zalo: **thiết kế + khung** (mục 4), chưa nối connector, khoá chưa seed.
-Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
+**Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
+REQUEST CHANGES 31/10) — **chưa áp migration, chưa cài trên VPS**. (3) tin Zalo 21:00 + duyệt qua Zalo: **thiết kế + khung**
+(mục 4), chưa nối connector, khoá chưa seed. Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
+
+**Hành vi hiện tại (nói đúng với chủ):** bài học đã có hiệu lực từ lúc curator/trợ lý tự ghi; job chỉ phát hiện và đưa đi
+duyệt. "Duyệt" ghi nhận bài học đúng; "Bỏ" **chỉ ghi nhận** — gỡ bài học khỏi trợ lý do điều phối viên làm tay (mục 6).
+
+**Chờ chủ quyết (để khung linh hoạt, chưa chốt):**
+- Duyệt **trước** hay **sau** khi bài học có hiệu lực (trước = cần hook chặn trong Hermes; hiện là sau).
+- Ai được xem nội dung đề xuất; lưu nguyên văn hay chỉ tóm tắt; sau quyết định có xoá/che nội dung không. Hiện: lưu nội dung
+  đã che bí mật + thông tin cá nhân hiển nhiên; bảng có khung **che một lần sau quyết định** (`redacted_at/redacted_by`, chưa có
+  RPC); trigger **không** cấm xoá (chưa có RPC xoá) để chủ chọn chính sách lưu/xoá sau.
 
 ## 1. Vì sao
 
@@ -19,10 +28,11 @@ làm được. Nghiệm thu chạy trên hồ sơ TEST (skill chuẩn, phiên m�
 ```mermaid
 flowchart LR
   C[Curator / trợ lý sửa skill, bộ nhớ] --> P[(Hồ sơ Hermes trên host)]
-  P -->|20:40 VN, chỉ đọc| A[learning_audit.py]
-  A -->|latest.json| I[ingest.mjs — login kho bền, hermes_store_executor]
-  I --> T[(app_private.hermes_learning_proposals)]
-  T -->|users.edit| W[Web: Cài đặt › Hermes › Bài học chờ duyệt]
+  P -->|20:40 VN, chỉ đọc, sandbox| A[learning_audit.py — làm sạch + che trước khi rời hồ sơ]
+  A -->|private/ 0700: báo cáo đủ| R[(Chỉ user job kiểm)]
+  A -->|outbox/ 0640: chỉ đề xuất| I[ingest.mjs — login riêng ∈ hermes_learning_ingest; 20:55 VN + sau kiểm]
+  I --> T[(app_private.hermes_learning_proposals + hermes_learning_audit_runs)]
+  T -->|users.edit, phân trang, lần kiểm cuối| W[Web: Cài đặt › Hermes › Bài học chờ duyệt]
   T -.->|21:00 VN — mục 4, chưa nối| Z[Tin Zalo của bot cho chủ]
   Z -.->|"duyệt 1,3" / "bỏ 2"| D[crm_action_run learning.decide]
   W --> X[Lõi quyết định một lần]
@@ -37,13 +47,22 @@ phiên). Bài học sai vẫn được phát hiện trong ≤ 24 giờ, đi duy�
 
 | Thành phần | Ghi chú |
 |---|---|
-| `app_private.hermes_learning_proposals` | công ty, người dùng, trợ lý (FK `hermes_assistants`), hồ sơ, `seq` theo công ty, loại (`skill_crm_write`/`memory_crm_write`), tiêu đề ≤ 200, nội dung ≤ 4000, nguồn (jsonb ≤ 8 KB), lúc phát hiện, lúc nạp, khoá chống trùng `UNIQUE(công ty, dedupe_key)`, trạng thái pending/approved/rejected, người/lúc/ghi chú/kênh duyệt, `decision_request_id`. RLS bật, không cấp bảng cho vai nào; trigger: quyết định một lần, nội dung bất biến, không xoá |
-| `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ (≤ 100, theo số) + lịch sử 20 dòng/trang, con trỏ `(decidedAt µs, id)` |
+| `app_private.hermes_learning_proposals` | công ty, người dùng, trợ lý (FK `hermes_assistants`), hồ sơ, `seq` theo công ty, loại (`skill_crm_write`/`memory_crm_write`), tiêu đề ≤ 200, nội dung ≤ 4000 (có chữ, không ký tự điều khiển), nguồn (jsonb ≤ 4096 B **dạng chữ**), lúc phát hiện, lúc nạp, khoá chống trùng `UNIQUE(công ty, dedupe_key)`, trạng thái pending/approved/rejected, người/lúc/ghi chú/kênh duyệt, `decision_request_id`, khung che `redacted_at/redacted_by`. RLS bật, không cấp bảng cho vai nào; trigger: danh tính bất biến, quyết định một lần, nội dung chỉ đổi được **một lần, khi che sau quyết định**; không chặn xoá (chờ chính sách) |
+| `app_private.hermes_learning_audit_runs` | "lần kiểm cuối" theo (công ty, người dùng, hồ sơ): mốc job kiểm (giữ mốc lớn nhất) + lúc nhận; job nạp ghi mỗi lần chạy, kể cả không có đề xuất |
+| `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ 20/trang theo số (`pendingAfterSeq` → `nextPendingAfterSeq`), lịch sử 20 dòng/trang (nội dung rút còn 300 ký tự, không kèm nguồn), con trỏ `(decidedAt µs, id)`, `audits` ≤ 20. Trang luôn dưới 1 MiB (đo bằng 20 đề xuất dài tối đa) |
 | `public.hermes_learning_decide_v1(p)` | ≤ 20 đề xuất/lần, `approve`/`reject`, ghi chú tuỳ chọn ≤ 500; cùng `requestId` của cùng người ⇒ trả lại kết quả cũ (`replayed`), khác nội dung ⇒ PT409; đã quyết định ⇒ PT409; ngoài công ty ⇒ 22023 |
 | `app_private.hermes_learning_apply_v1(…, p_via)` | lõi dùng chung trang web (`crm_ui`) và thao tác connector (`hermes_connector`, mục 4) |
-| `app_private.hermes_store_learning_ingest_v1(p)` | chỉ `hermes_store_executor`; ≤ 25 đề xuất/lô; kiểm thành viên + trợ lý ACTIVE; trùng khoá bỏ qua |
+| `app_private.hermes_store_learning_ingest_v1(p)` | **chỉ** vai NOLOGIN riêng `hermes_learning_ingest` (không còn cấp cho `hermes_store_executor`); 0..25 đề xuất/lô + `auditGeneratedAt`; kiểm thành viên + trợ lý ACTIVE; trùng khoá bỏ qua, trả riêng `rejectedDuplicates` (trùng đề xuất đã bỏ) |
 
-Xác thực của job nạp: cổng kho bền connector (lý do ở README). Không `service_role`, không khoá tĩnh mới.
+Xác thực của job nạp: login riêng `hermes_store_learning` (vận hành tạo ngoài repo) chỉ thuộc `hermes_learning_ingest`;
+`store-transport.mjs` phạm vi `learning` kiểm vai trước lệnh đầu và chỉ gọi được hàm nạp (lý do ở README). Không `service_role`,
+không khoá tĩnh mới, không dùng lại login kho bền của connector.
+
+Dữ liệu rời hồ sơ: `learning_audit.py` làm sạch mọi chuỗi (surrogate lẻ, NUL, ký tự điều khiển), **che** bí mật (Bearer, JWT,
+`sk-…`, header Authorization, khoá dạng `key=value`, PEM, token GitHub/Supabase/Slack/AWS/Google) và thông tin cá nhân hiển nhiên
+(SĐT, CCCD/CMND, email, số tài khoản có nhãn) rồi mới cắt ngắn; nguồn ≤ 2 KiB; `detectedAt` trong [lúc chạy − 365 ngày, lúc
+chạy]. Báo cáo đủ (cả câu "bó tay") chỉ ở `private/` 0700; job nạp đọc `outbox/` chỉ có đề xuất; "tự áp dụng" chỉ còn đếm (băm),
+không chép nội dung bộ nhớ.
 
 ## 4. Tin Zalo 21:00 + duyệt qua Zalo (thiết kế — chưa làm)
 
@@ -114,7 +133,20 @@ nhờ ngữ cảnh cron.
 
 1. Review chéo PR (tier authorization + migration): base/head + kết luận ghi vào PR.
 2. Áp `20261031041523` qua lane trên TEST rồi production (dry-run → `--apply`, biên nhận); làm tươi provenance/surfaces.
-3. Promote web (tab "Bài học chờ duyệt"); trước khi áp, trang báo "Máy chủ chưa có chức năng duyệt bài học".
-4. Đổi release connector trên VPS sang bản có `infra/hermes-learning-audit/` (chỉ đổi symlink `current`; connector không gọi
+   Migration tạo vai NOLOGIN `hermes_learning_ingest`.
+3. Tạo login `hermes_store_learning` như mẫu `hermes_store_host` (`LOGIN INHERIT`, không đặc quyền, timeout ngắn), **chỉ**
+   `GRANT hermes_learning_ingest TO hermes_store_learning`, qua đường admin đã duyệt, ngoài repo; mật khẩu chỉ ở VPS
+   `/etc/ihome-hermes/learning-store-password`.
+   `scripts/test-env/owners.mjs` đã khai sẵn login này (TEST dựng lại NOLOGIN).
+4. Promote web (tab "Bài học chờ duyệt"); trước khi áp, trang báo "Máy chủ chưa có chức năng duyệt bài học".
+5. Đổi release connector trên VPS sang bản có `infra/hermes-learning-audit/` (chỉ đổi symlink `current`; connector không gọi
    thao tác mới nên không cần restart vì lý do này).
-5. Cài user + cấu hình + unit theo README, chạy tay một lần, kiểm báo cáo + dòng `learning_ingest`, rồi bật timer.
+6. Cài user + cấu hình + 5 unit theo README, chạy tay một lần, kiểm báo cáo + dòng `learning_ingest`, rồi bật 2 timer.
+
+## 6. Sau quyết định (làm tay, chờ chủ chốt chính sách)
+
+- **Duyệt**: điều phối viên đưa bài học vào bộ skill chuẩn `ihome-crm-*` rồi gỡ bản local.
+- **Bỏ**: gỡ khỏi trợ lý — skill: `hermes curator rollback <ledgerId>`; bộ nhớ: xoá đúng mục. Nếu trợ lý học lại đúng bài học
+  đã bỏ, SQL không đưa lại vào hàng chờ; job nạp báo riêng `rejectedDuplicates` + khoá trong journal.
+- **Che nội dung** sau quyết định (khi chủ chọn chính sách): `UPDATE … SET title/content/source = …, redacted_at, redacted_by`
+  một lần (trigger chỉ cho đúng chuyển này); RPC che/xoá chưa viết.

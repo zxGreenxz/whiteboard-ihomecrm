@@ -1,10 +1,15 @@
 {
   "version": 1,
-  "report": "/var/lib/ihome-hermes-learning-audit/latest.json",
-  "reportsDir": "/var/lib/ihome-hermes-learning-audit/reports",
+  "outboxDir": "/var/lib/ihome-hermes-learning-audit/outbox",
   "replayDays": 7,
-  "connectorConfig": "/etc/ihome-hermes/connector.json",
   "staleAfterHours": 36,
+  "store": {
+    "projectRef": "abcdefghijklmnopqrst",
+    "host": "db.abcdefghijklmnopqrst.supabase.co",
+    "role": "hermes_store_learning",
+    "passwordFile": "/etc/ihome-hermes/learning-store-password",
+    "caFile": "/etc/ihome-hermes/store-ca.pem"
+  },
   "profiles": {
     "owner": {
       "organizationId": "00000000-0000-4000-8000-000000000001",

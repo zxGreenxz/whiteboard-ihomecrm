@@ -5,25 +5,30 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { HermesCallerScope } from './connectionClient';
-import { createHermesLearningClient, HermesLearningError, type HermesLearningCursor, type HermesLearningDecideInput,
-  type HermesLearningProposal } from './learningReviewClient';
+import { createHermesLearningClient, HermesLearningError, type HermesLearningAudit, type HermesLearningCursor,
+  type HermesLearningDecideInput, type HermesLearningProposal } from './learningReviewClient';
 
 interface Props { userId: string; organizationId: string; currentScope: () => HermesCallerScope }
 type Decision = HermesLearningDecideInput['decision'];
 interface State {
   busy: boolean; loaded: boolean; message: string | null; pendingCount: number;
-  pending: HermesLearningProposal[]; history: HermesLearningProposal[]; cursor: HermesLearningCursor | null;
+  pending: HermesLearningProposal[]; pendingAfter: number | null;
+  history: HermesLearningProposal[]; cursor: HermesLearningCursor | null; audits: HermesLearningAudit[];
   selected: { item: HermesLearningProposal; decision: Decision } | null;
   // Lệnh ghi mất phản hồi: chỉ được gửi lại đúng lệnh này (cùng requestId). Giữ cả số đề xuất vì lần tải lại có thể đã gỡ
   // đề xuất khỏi danh sách chờ (máy chủ thật ra đã ghi).
   unknown: { input: HermesLearningDecideInput; seq: number } | null;
 }
-const initial = (): State => ({ busy: false, loaded: false, message: null, pendingCount: 0, pending: [], history: [], cursor: null,
-  selected: null, unknown: null });
+const initial = (): State => ({ busy: false, loaded: false, message: null, pendingCount: 0, pending: [], pendingAfter: null, history: [],
+  cursor: null, audits: [], selected: null, unknown: null });
 const kinds: Record<HermesLearningProposal['kind'], string> = { skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ' };
 const verbs: Record<Decision, string> = { approve: 'Duyệt', reject: 'Bỏ' };
+// Cùng ngưỡng "outbox quá cũ" của job nạp trên máy chủ Hermes (staleAfterHours mặc định 36).
+const STALE_AFTER_MS = 36 * 3_600_000;
 const time = (value: string | null) => value ? new Date(value).toLocaleString('vi-VN') : '';
 const text = (value: unknown, max = 80) => typeof value === 'string' && value.trim() ? Array.from(value.trim()).slice(0, max).join('') : null;
+const unique = (items: HermesLearningProposal[], more: HermesLearningProposal[]) =>
+  [...items, ...more.filter(item => !items.some(seen => seen.id === item.id))];
 
 function sourceLine(item: HermesLearningProposal) {
   const { source } = item;
@@ -62,8 +67,26 @@ function writeMessage(error: unknown) {
   return 'Chưa ghi được quyết định. Tải lại danh sách khi dịch vụ sẵn sàng.';
 }
 
-/** Cài đặt › Hermes › "Bài học chờ duyệt". Bài học về cách GHI dữ liệu CRM mà trợ lý tự học chỉ là đề xuất: chủ/admin
- * duyệt hoặc bỏ ở đây (quyền do SQL quyết định). Sở thích, cách nói chuyện, việc ngoài CRM không vào danh sách này. */
+/** "Lần kiểm cuối" của từng hồ sơ trợ lý: job kiểm học tập ngừng chạy thì bài học mới không còn tới đây — báo rõ cho chủ. */
+function AuditStatus({ audits }: { audits: HermesLearningAudit[] }) {
+  if (!audits.length) {
+    return <p className="text-sm text-destructive">Chưa có lần kiểm học tập nào được ghi nhận: job kiểm trên máy chủ Hermes chưa chạy
+      (hoặc chưa cài), nên bài học mới của trợ lý chưa được đưa vào đây.</p>;
+  }
+  const staleBefore = Date.now() - STALE_AFTER_MS;
+  return <ul aria-label="Lần kiểm cuối" className="space-y-1 text-sm text-muted-foreground">
+    {audits.map(item => {
+      const stale = Date.parse(item.generatedAt) < staleBefore;
+      return <li key={`${item.userId}:${item.profile}`} className={stale ? 'text-destructive' : undefined}>
+        Lần kiểm cuối · hồ sơ {item.profile}{item.userName ? ` (${item.userName})` : ''}: {time(item.generatedAt)}
+        {stale ? ' — đã quá 36 giờ: job kiểm học tập có thể đã ngừng, bài học mới có thể chưa được đưa vào đây.' : ''}</li>;
+    })}
+  </ul>;
+}
+
+/** Cài đặt › Hermes › "Bài học chờ duyệt". Bài học về cách GHI dữ liệu CRM mà trợ lý tự học được đưa vào đây để chủ/admin
+ * xem lại và ghi nhận quyết định (quyền do SQL quyết định). Hiện tại bài học đã có hiệu lực từ lúc trợ lý tự ghi; "Bỏ" chỉ ghi
+ * nhận quyết định, việc gỡ khỏi trợ lý làm tay. Sở thích, cách nói chuyện, việc ngoài CRM không vào danh sách này. */
 export function HermesLearningReview({ userId, organizationId, currentScope }: Props) {
   const client = useMemo(() => createHermesLearningClient({ userId, organizationId, currentScope }), [userId, organizationId, currentScope]);
   const [state, setState] = useState<State>(initial);
@@ -93,18 +116,25 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
   }
   const load = (message: string | null = null) => run(signal => client.review(null, { signal }),
     (snapshot, previous) => ({ ...previous, loaded: true, message: message ?? previous.message, pendingCount: snapshot.pendingCount,
-      pending: snapshot.pending, history: snapshot.history, cursor: snapshot.nextHistoryCursor,
+      pending: snapshot.pending, pendingAfter: snapshot.nextPendingAfterSeq, history: snapshot.history, cursor: snapshot.nextHistoryCursor,
+      audits: snapshot.audits,
       selected: previous.selected && snapshot.pending.some(item => item.id === previous.selected?.item.id) ? previous.selected : null }),
-    (error, previous) => ({ ...previous, loaded: false, pending: [], history: [], cursor: null, pendingCount: 0, selected: null,
-      message: readMessage(error) }));
+    (error, previous) => ({ ...previous, loaded: false, pending: [], pendingAfter: null, history: [], cursor: null, audits: [],
+      pendingCount: 0, selected: null, message: readMessage(error) }));
   // Tab chỉ được mount khi người dùng mở nó: đọc ngay khi hiện (một lần mỗi lần mount; tải lại bằng nút).
   const initialLoad = useRef(load); initialLoad.current = load;
   useEffect(() => { void initialLoad.current(); }, []);
-  function more() {
+  function morePending() {
+    const after = state.pendingAfter; if (after === null) return;
+    void run(signal => client.review(null, { signal, pendingAfterSeq: after }),
+      (snapshot, previous) => ({ ...previous, pending: unique(previous.pending, snapshot.pending), pendingAfter: snapshot.nextPendingAfterSeq,
+        pendingCount: snapshot.pendingCount, audits: snapshot.audits }),
+      (error, previous) => ({ ...previous, message: readMessage(error) }));
+  }
+  function moreHistory() {
     const from = state.cursor; if (!from) return;
     void run(signal => client.review(from, { signal }),
-      (snapshot, previous) => ({ ...previous, history: [...previous.history, ...snapshot.history.filter(item =>
-        !previous.history.some(seen => seen.id === item.id))], cursor: snapshot.nextHistoryCursor }),
+      (snapshot, previous) => ({ ...previous, history: unique(previous.history, snapshot.history), cursor: snapshot.nextHistoryCursor }),
       (error, previous) => ({ ...previous, message: readMessage(error) }));
   }
   function choose(item: HermesLearningProposal, decision: Decision) {
@@ -115,7 +145,8 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
   function submit(input: HermesLearningDecideInput, seq: number) {
     void run(signal => client.decide(input, { signal }),
       (result, previous) => ({ ...previous, unknown: null, selected: null,
-        message: `${result.decision === 'approve' ? 'Đã duyệt' : 'Đã bỏ'} đề xuất #${seq}.${result.replayed ? ' (Máy chủ đã ghi từ lần gửi trước.)' : ''}` }),
+        message: `${result.decision === 'approve' ? `Đã duyệt đề xuất #${seq}.`
+          : `Đã bỏ đề xuất #${seq}. Bài học vẫn còn ở trợ lý cho tới khi người vận hành gỡ.`}${result.replayed ? ' (Máy chủ đã ghi từ lần gửi trước.)' : ''}` }),
       (error, previous) => {
         const unknown = error instanceof HermesLearningError && error.outcomeUnknown;
         return { ...previous, unknown: unknown ? { input, seq } : null, selected: unknown ? previous.selected : null, message: writeMessage(error) };
@@ -128,15 +159,19 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
     submit({ requestId: crypto.randomUUID(), proposalIds: [selected.item.id], decision: selected.decision, note: value || null }, selected.item.seq);
   }
   const locked = state.busy || Boolean(state.unknown);
+  const remaining = Math.max(0, state.pendingCount - state.pending.length);
   return <section aria-label="Bài học chờ duyệt" className="space-y-4 rounded-xl border bg-card p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="font-semibold">Bài học chờ duyệt{state.loaded ? ` (${state.pendingCount})` : ''}</h2>
       <Button variant="outline" disabled={state.busy} onClick={() => { setState(previous => ({ ...previous, message: null })); void load(); }}>
         <RefreshCw className="h-4 w-4" />Tải lại</Button>
     </div>
-    <p className="text-sm text-muted-foreground">Trợ lý tự học sau các cuộc trò chuyện. Sở thích, cách nói chuyện và việc ngoài CRM được áp dụng ngay.
-      Bài học về cách <strong>ghi dữ liệu CRM</strong> chỉ là đề xuất: <strong>Duyệt</strong> để đồng ý trợ lý làm theo, <strong>Bỏ</strong> nếu bài học sai — bài học bị bỏ sẽ được gỡ khỏi trợ lý.
-      Số thứ tự dùng chung với tin nhắn Zalo buổi tối.</p>
+    <p className="text-sm text-muted-foreground">Trợ lý tự học sau các cuộc trò chuyện. Sở thích, cách nói chuyện và việc ngoài CRM được áp dụng ngay
+      và không vào danh sách này. Bài học về cách <strong>ghi dữ liệu CRM</strong> được đưa vào đây để chủ/quản trị viên xem lại.
+      Lưu ý: bài học <strong>đã có hiệu lực</strong> từ lúc trợ lý tự ghi — trợ lý không chờ duyệt. <strong>Duyệt</strong> ghi nhận bài học đúng;
+      {' '}<strong>Bỏ</strong> chỉ ghi nhận bài học sai — việc gỡ bài học khỏi trợ lý hiện do người vận hành làm tay.
+      Số # cũng dùng cho tin nhắn Zalo tổng hợp buổi tối khi tính năng đó được bật.</p>
+    {state.loaded && <AuditStatus audits={state.audits} />}
     {state.busy && <p role="status" className="text-sm">Đang làm việc với máy chủ…</p>}
     {state.message && <p role="status" className="rounded-lg bg-muted p-3 text-sm">{state.message}</p>}
     {state.unknown && <div className="flex flex-wrap gap-2">
@@ -153,6 +188,8 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
       {sourceLine(item) && <p className="break-words text-xs text-muted-foreground">{sourceLine(item)}</p>}
       {state.selected?.item.id === item.id ? <div aria-label="Xác nhận quyết định" className="space-y-2 rounded-lg border p-3">
         <h4 className="font-medium">{verbs[state.selected.decision]} đề xuất #{item.seq}</h4>
+        {state.selected.decision === 'reject' && <p className="text-xs text-muted-foreground">Bỏ chỉ ghi lại quyết định; bài học vẫn còn ở trợ lý cho tới
+          khi người vận hành gỡ tay.</p>}
         <Label htmlFor={`hermes-learning-note-${item.id}`}>Ghi chú (không bắt buộc)</Label>
         <Textarea id={`hermes-learning-note-${item.id}`} value={note} maxLength={500} disabled={locked}
           onChange={event => setNote(event.target.value)} placeholder="Ví dụ: đúng quy trình thu cọc / sai, phải dùng phiếu cọc giữ chỗ" />
@@ -166,14 +203,15 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
         <Button size="sm" variant="outline" disabled={locked} onClick={() => choose(item, 'reject')}>Bỏ</Button>
       </div>}
     </article>)}
-    {state.pendingCount > state.pending.length && <p className="text-sm text-muted-foreground">
-      Còn {state.pendingCount - state.pending.length} đề xuất mới hơn chưa hiện; duyệt bớt rồi tải lại để xem tiếp.</p>}
+    {state.pendingAfter !== null && <Button variant="outline" size="sm" disabled={state.busy} onClick={morePending}>
+      Xem thêm đề xuất{remaining ? ` (còn ${remaining})` : ''}</Button>}
     {state.history.length > 0 && <div aria-label="Lịch sử duyệt" className="space-y-2 text-sm">
       <h3 className="font-medium">Lịch sử</h3>
       {state.history.map(item => <p key={item.id} className="break-words text-muted-foreground">
         #{item.seq} · {item.status === 'approved' ? 'Đã duyệt' : 'Đã bỏ'} · {item.decidedByName ?? 'người duyệt'} · {time(item.decidedAt)}
-        {item.via === 'hermes_connector' ? ' · qua Zalo' : ''} — {item.title}{item.note ? ` — ghi chú: ${item.note}` : ''}</p>)}
-      {state.cursor && <Button variant="outline" size="sm" disabled={state.busy} onClick={more}>Xem thêm lịch sử</Button>}
+        {item.via === 'hermes_connector' ? ' · qua Zalo' : ''}{item.redactedAt ? ' · nội dung đã che' : ''} — {item.title}
+        {item.note ? ` — ghi chú: ${item.note}` : ''}</p>)}
+      {state.cursor && <Button variant="outline" size="sm" disabled={state.busy} onClick={moreHistory}>Xem thêm lịch sử</Button>}
     </div>}
   </section>;
 }

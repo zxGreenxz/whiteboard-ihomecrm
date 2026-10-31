@@ -384,13 +384,16 @@ export default function HermesConnectionsPage() {
   // vẫn hiện tab để không che công cụ quản trị; người không đủ quyền sẽ thấy câu báo thiếu quyền trong tab.
   const permissions = useMyPermissions();
   const [startTab] = useState(initialTab);
+  const [tab, setTab] = useState(startTab);
   const showLearning = startTab === LEARNING_TAB || permissions.isError || can(permissions.data, 'users', 'edit');
+  // Tab điều khiển được: mất quyền khi đang ở tab duyệt (tab bị gỡ) thì về "Cài đặt & kết nối", không để trang trắng.
+  const activeTab = showLearning && tab === LEARNING_TAB ? LEARNING_TAB : WORKSPACE_TAB;
   return <MainLayout title="Trợ lý Hermes" subtitle={`Cài và dùng Hermes${organization.organization?.name ? ` tại ${organization.organization.name}` : ''}`} icon={Bot}>
     {auth.isLoading || organization.isLoading ? <p role="status">Đang kiểm tra tài khoản và công ty…</p>
       : !ready ? <p role="alert">Chưa kiểm tra được tài khoản hoặc công ty. Hãy tải lại trang.</p>
       : !userId ? <p role="alert">Hãy đăng nhập CRM để quản lý kết nối của bạn.</p>
       : !organizationId ? <p role="status">Chọn công ty ở bộ chọn công ty trước khi quản lý Hermes.</p>
-      : <Tabs defaultValue={startTab} className="max-w-3xl space-y-4">
+      : <Tabs value={activeTab} onValueChange={setTab} className="max-w-3xl space-y-4">
         {showLearning && <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value={WORKSPACE_TAB}>Cài đặt &amp; kết nối</TabsTrigger>
           <TabsTrigger value={LEARNING_TAB}>Bài học chờ duyệt</TabsTrigger>

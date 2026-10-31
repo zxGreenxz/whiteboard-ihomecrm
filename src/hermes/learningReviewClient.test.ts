@@ -7,12 +7,14 @@ const URL = 'https://abcdefghijklmnopqrst.supabase.co';
 const scope = { userId: USER, organizationId: ORG, generation: 0 };
 const getSession = async () => ({ data: { session: { access_token: 'header.payload.signature', user: { id: USER } } }, error: null });
 const item = (id = P1, extra: Record<string, unknown> = {}) => ({ id, seq: 3, kind: 'skill_crm_write', profile: 'owner', userId: USER, userName: 'Chủ',
-  title: 'Skill crm-task-management: curator sửa', content: 'Dùng crm_action_run task.create', source: { type: 'curator_ledger', skill: 'crm-task-management' },
-  detectedAt: '2026-10-31T01:30:00.123456Z', status: 'pending', decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null, ...extra });
+  title: 'Skill crm-task-management: curator sửa', content: 'Dùng crm_action_run task.create', contentTruncated: false,
+  source: { type: 'curator_ledger', skill: 'crm-task-management' }, detectedAt: '2026-10-31T01:30:00.123456Z', status: 'pending',
+  decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null, redactedAt: null, ...extra });
 const decidedItem = (id = P1, status = 'approved', note: string | null = null) => item(id, { status, decidedBy: USER, decidedByName: 'Chủ',
   decidedAt: '2026-10-31T02:00:00.000001Z', note, via: 'crm_ui' });
+const audit = { profile: 'owner', userId: USER, userName: 'Chủ', generatedAt: '2026-10-31T13:40:00.000000Z', receivedAt: '2026-10-31T13:41:02.123456Z' };
 const snapshot = (extra: Record<string, unknown> = {}) => ({ organizationId: ORG, canDecide: true, pendingCount: 1, pending: [item()],
-  history: [decidedItem(P2, 'rejected', 'sai')], nextHistoryCursor: null, ...extra });
+  nextPendingAfterSeq: null, history: [decidedItem(P2, 'rejected', 'sai')], nextHistoryCursor: null, audits: [audit], ...extra });
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 let fetchMock: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 const client = () => createHermesLearningClient({ userId: USER, organizationId: ORG, currentScope: () => scope, getSession, fetch: fetchMock });
@@ -31,11 +33,25 @@ describe('Hermes learning review client', () => {
     expect(result.history[0]?.status).toBe('rejected');
     const [path, init] = fetchMock.mock.calls[0]!;
     expect(String(path)).toBe(`${URL}/rest/v1/rpc/hermes_learning_review_v1`);
-    expect(body()).toEqual({ p: { organizationId: ORG, historyCursor: null } });
+    expect(body()).toEqual({ p: { organizationId: ORG, historyCursor: null, pendingAfterSeq: null } });
     expect((init!.headers as Record<string, string>).authorization).toBe('Bearer header.payload.signature');
     expect(init!.redirect).toBe('error');
+    expect(result.audits).toEqual([audit]);
     await client().review({ decidedAt: '2026-10-31T02:00:00.000001Z', id: P2 });
-    expect(body(1)).toEqual({ p: { organizationId: ORG, historyCursor: { decidedAt: '2026-10-31T02:00:00.000001Z', id: P2 } } });
+    expect(body(1)).toEqual({ p: { organizationId: ORG, historyCursor: { decidedAt: '2026-10-31T02:00:00.000001Z', id: P2 }, pendingAfterSeq: null } });
+  });
+
+  it('trang đề xuất chờ tiếp theo theo số thứ tự; trang trả số không lớn hơn mốc thì bị từ chối', async () => {
+    fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { seq: 21 })], pendingCount: 21 })));
+    const next = await client().review(null, { pendingAfterSeq: 20 });
+    expect(next.pending[0]?.seq).toBe(21);
+    expect(body()).toEqual({ p: { organizationId: ORG, historyCursor: null, pendingAfterSeq: 20 } });
+    fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { seq: 20 })] })));
+    await expect(client().review(null, { pendingAfterSeq: 20 })).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(client().review(null, { pendingAfterSeq: 0 })).rejects.toMatchObject({ code: 'invalid_request' });
+    // nextPendingAfterSeq phải trỏ đúng đề xuất cuối của trang
+    fetchMock.mockResolvedValueOnce(json(snapshot({ nextPendingAfterSeq: 99 })));
+    await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('một dòng nội dung "lạ" mà SQL vẫn chấp nhận không làm hỏng cả danh sách', async () => {
@@ -51,6 +67,10 @@ describe('Hermes learning review client', () => {
     fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [decidedItem()] })));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
     fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { detectedAt: '2026-10-31T01:30:00Z' })] })));
+    await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
+    fetchMock.mockResolvedValueOnce(json(snapshot({ pending: [item(P1, { redactedAt: '2026-10-31T02:00:00.000001Z' })] })));
+    await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' }); // chỉ che được sau quyết định
+    fetchMock.mockResolvedValueOnce(json(snapshot({ audits: [{ ...audit, generatedAt: 'hôm qua' }] })));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'invalid_response' });
     await expect(client().review({ decidedAt: 'hôm qua', id: P1 })).rejects.toMatchObject({ code: 'invalid_request' });
   });

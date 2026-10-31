@@ -63,9 +63,10 @@ const all = statements.join(';\n');
 const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
   'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands',
-  'prune_work_memories', 'connection_settings',
-  // Học có kiểm duyệt (20261031041523): job kiểm học tập trên host nạp đề xuất qua login kho bền connector.
-  'learning_ingest'];
+  'prune_work_memories', 'connection_settings'];
+// Học có kiểm duyệt (20261031041523): job nạp đề xuất trên host dùng vai NOLOGIN riêng hermes_learning_ingest (không phải kho
+// bền connector); vai này chỉ được USAGE app_private và EXECUTE đúng một hàm nạp.
+const LEARNING_INGEST = ['app_private.hermes_store_learning_ingest_v1(jsonb)'];
 const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
@@ -836,6 +837,7 @@ function securityContract(sql = all, registry = functions) {
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
+    ['hermes_learning_ingest', new Set(LEARNING_INGEST)],
   ]);
   for (const statement of splitSqlStatements(sql).map(clean)) {
     const definition = /^CREATE (?:OR REPLACE )?FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
@@ -843,13 +845,13 @@ function securityContract(sql = all, registry = functions) {
       const key = signature(definition[1], definition[2], true);
       if (!acl.has(key)) acl.set(key, new Set(['PUBLIC']));
     }
-    if (/^GRANT USAGE ON SCHEMA app_private TO hermes_store_executor$/i.test(statement)) continue;
+    if (/^GRANT USAGE ON SCHEMA app_private TO (?:hermes_store_executor|hermes_learning_ingest)$/i.test(statement)) continue;
     if (!/^(?:GRANT|REVOKE)\b/i.test(statement) || !/\bON FUNCTION\b/i.test(statement)) {
       if (/^GRANT\b/i.test(statement) && !REVIEWED_TABLE_GRANTS.has(statement)) assert.fail(`Unexpected grant: ${statement}`);
       continue;
     }
     if (/^GRANT\b/i.test(statement)) {
-      const parsed = /^GRANT EXECUTE ON FUNCTION (.+) TO (authenticated|hermes_store_executor|service_role)$/i.exec(statement);
+      const parsed = /^GRANT EXECUTE ON FUNCTION (.+) TO (authenticated|hermes_store_executor|service_role|hermes_learning_ingest)$/i.exec(statement);
       assert(parsed, 'grant has explicit function targets and one supported recipient');
       const names = aclTargets(parsed[1]), role = parsed[2];
       assert(allowed.has(role), 'only exact caller, store executor or worker ingress grants may receive execute');
@@ -875,6 +877,10 @@ function securityContract(sql = all, registry = functions) {
   }
   for (const names of allowed.values()) for (const name of names) assert(acl.has(name), `Missing allowed function ${name}`);
   assert.doesNotMatch(sql, /GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|CREATE)\b[^;\n]*\bTO\s+[^;\n]*hermes_store_executor/i);
+  assert.doesNotMatch(sql, /GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|CREATE|TRUNCATE|REFERENCES|TRIGGER)\b[^;\n]*\bTO\s+[^;\n]*hermes_learning_ingest/i);
+  assert.doesNotMatch(sql, /GRANT\s+(?:hermes_store_executor|hermes_learning_ingest|authenticated|service_role|postgres)\s+TO\s+[^;\n]*hermes_learning_ingest/i);
+  assert.match(sql, /CREATE ROLE hermes_learning_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT/i);
+  assert.match(sql, /pg_auth_members WHERE member='hermes_learning_ingest'::regrole/i);
   assert.doesNotMatch(sql, /ALTER TABLE app_private\.hermes_\w+ DISABLE ROW LEVEL SECURITY|DROP (?:TABLE|FUNCTION).*hermes_/i);
 }
 
@@ -1428,6 +1434,7 @@ test('private inputs have exact keys and JSON null cannot bypass envelope algori
   assert.match(fn('hermes_request_v1'), /count\(\*\) FROM jsonb_object_keys\(p\).*cardinality\(p_keys\) OR NOT \(p \?& p_keys\)/);
   assert.match(fn('hermes_envelope_v1'), /p->'v' IS DISTINCT FROM '1'::jsonb OR p->>'algorithm' IS DISTINCT FROM 'A256GCM'/);
   for (const operation of STORE) assert.match(fn(`hermes_store_${operation}_v1`), /hermes_request_v1\(p,ARRAY\[/);
+  for (const signature of LEARNING_INGEST) assert.match(fn(signature.split('(')[0].replace(/^app_private\./, '')), /hermes_request_v1\(p,ARRAY\[/);
 });
 test('every Hermes source fits the reviewed rollback wrapper, including double-run idempotency probe', () => {
   for (const { sql } of sources) {

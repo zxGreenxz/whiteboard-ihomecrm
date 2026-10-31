@@ -13944,15 +13944,15 @@
       "version": "20261031041523",
       "name": "hermes_learning_proposals_v1",
       "scheme": "timestamp14",
-      "sha256": "31ebbb46c063b015cc166cac1598144ec4729ca40169fdf03e99848d843624b1",
+      "sha256": "2974fa72aa2822c2acac4720e02befa45b3e3fb3ae3206488e96f629dcfe00de",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "table:app_private.hermes_learning_proposals",
+        "table:app_private.hermes_learning_audit_runs",
         "function:app_private.hermes_learning_guard_v1",
         "function:app_private.hermes_learning_proposal_json_v1",
-        "function:app_private.hermes_learning_admin_v1",
-        "function:app_private.hermes_learning_result_v1"
+        "function:app_private.hermes_learning_admin_v1"
       ]
     },
     {

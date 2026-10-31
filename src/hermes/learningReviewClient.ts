@@ -13,21 +13,29 @@ const bounded = (max: number) => z.string().refine(value => codePoints(value) <=
 const kind = z.enum(['skill_crm_write', 'memory_crm_write']);
 const status = z.enum(['pending', 'approved', 'rejected']);
 const decisionValue = z.enum(['approve', 'reject']);
+const seqNumber = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER - 1);
+const profileName = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const proposal = z.object({
-  id: uuid, seq: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER - 1), kind,
-  profile: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), userId: uuid, userName: bounded(120).nullable(),
+  id: uuid, seq: seqNumber, kind, profile: profileName, userId: uuid, userName: bounded(120).nullable(),
   // Không đặt thêm luật nội dung chặt hơn CHECK của SQL: dòng đề xuất bất biến, một dòng "lạ" không được làm hỏng cả danh sách.
-  title: bounded(200), content: bounded(4000),
+  // Lịch sử trả nội dung rút gọn (≤ 300 ký tự, `contentTruncated`) và không kèm nguồn — trang đọc luôn dưới trần 1 MiB.
+  title: bounded(200), content: bounded(4000), contentTruncated: z.boolean(),
   source: z.record(z.string(), z.unknown()), detectedAt: isoMicro, status,
   decidedBy: uuid.nullable(), decidedByName: bounded(120).nullable(), decidedAt: isoMicro.nullable(), note: bounded(500).nullable(),
-  via: z.enum(['crm_ui', 'hermes_connector']).nullable(),
+  via: z.enum(['crm_ui', 'hermes_connector']).nullable(), redactedAt: isoMicro.nullable(),
 }).strict().refine(value => (value.status === 'pending') === (value.decidedAt === null && value.decidedBy === null && value.via === null)
-  && (value.status !== 'pending' || value.note === null));
+  && (value.status !== 'pending' || (value.note === null && value.redactedAt === null)));
 const cursor = z.object({ decidedAt: isoMicro, id: uuid }).strict();
+// "Lần kiểm cuối" của từng hồ sơ trợ lý: job kiểm học tập trên máy chủ Hermes ghi mỗi lần chạy (kể cả không có đề xuất).
+const audit = z.object({ profile: profileName, userId: uuid, userName: bounded(120).nullable(), generatedAt: isoMicro, receivedAt: isoMicro }).strict();
 const snapshot = z.object({
   organizationId: uuid, canDecide: z.literal(true), pendingCount: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  pending: z.array(proposal).max(100), history: z.array(proposal).max(20), nextHistoryCursor: cursor.nullable(),
-}).strict().refine(value => value.pending.every(item => item.status === 'pending') && value.history.every(item => item.status !== 'pending')
+  pending: z.array(proposal).max(20), nextPendingAfterSeq: seqNumber.nullable(),
+  history: z.array(proposal).max(20), nextHistoryCursor: cursor.nullable(), audits: z.array(audit).max(20),
+}).strict().refine(value => value.pending.every(item => item.status === 'pending' && !item.contentTruncated)
+  && value.history.every(item => item.status !== 'pending')
+  && value.pending.every((item, index) => index === 0 || item.seq > value.pending[index - 1].seq)
+  && (value.nextPendingAfterSeq === null || value.nextPendingAfterSeq === value.pending[value.pending.length - 1]?.seq)
   && new Set([...value.pending, ...value.history].map(item => item.id)).size === value.pending.length + value.history.length);
 const decided = z.object({ organizationId: uuid, decision: decisionValue, replayed: z.boolean(), proposals: z.array(proposal).min(1).max(20) }).strict();
 const note = z.string().refine(value => value.trim() !== '' && codePoints(value.trim()) <= 500 && !controls.test(value));
@@ -37,6 +45,7 @@ const decideInput = z.object({
 }).strict();
 
 export type HermesLearningProposal = z.infer<typeof proposal>;
+export type HermesLearningAudit = z.infer<typeof audit>;
 export type HermesLearningSnapshot = z.infer<typeof snapshot>;
 export type HermesLearningCursor = z.infer<typeof cursor>;
 export type HermesLearningDecision = z.infer<typeof decided>;
@@ -146,11 +155,16 @@ export function createHermesLearningClient({ userId, organizationId, currentScop
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); controller.abort(); }
   }
   return {
-    review: async (historyCursor: HermesLearningCursor | null, options?: { signal?: AbortSignal }): Promise<HermesLearningSnapshot> => {
-      if (historyCursor !== null && !cursor.safeParse(historyCursor).success) throw new HermesLearningError('invalid_request');
-      const raw = await invoke(false, { historyCursor }, options?.signal);
+    /** Trang đọc: `historyCursor` = trang lịch sử tiếp theo; `pendingAfterSeq` = các đề xuất chờ có số lớn hơn (trang chờ tiếp theo). */
+    review: async (historyCursor: HermesLearningCursor | null, options?: { signal?: AbortSignal; pendingAfterSeq?: number | null }):
+      Promise<HermesLearningSnapshot> => {
+      const pendingAfterSeq = options?.pendingAfterSeq ?? null;
+      if ((historyCursor !== null && !cursor.safeParse(historyCursor).success)
+        || (pendingAfterSeq !== null && !seqNumber.safeParse(pendingAfterSeq).success)) throw new HermesLearningError('invalid_request');
+      const raw = await invoke(false, { historyCursor, pendingAfterSeq }, options?.signal);
       const parsed = snapshot.safeParse(raw);
-      if (!parsed.success || parsed.data.organizationId !== organizationId) throw new HermesLearningError('invalid_response');
+      if (!parsed.success || parsed.data.organizationId !== organizationId
+        || (pendingAfterSeq !== null && parsed.data.pending.some(item => item.seq <= pendingAfterSeq))) throw new HermesLearningError('invalid_response');
       return parsed.data;
     },
     decide: async (input: HermesLearningDecideInput, options?: { signal?: AbortSignal }): Promise<HermesLearningDecision> => {

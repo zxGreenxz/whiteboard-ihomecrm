@@ -68,6 +68,20 @@ describe('Cài đặt › Hermes: tab Kết nối và tab Bài học chờ duy�
     expect(screen.getByRole('tab', { name: 'Bài học chờ duyệt' }).getAttribute('aria-selected')).toBe('true');
   });
 
+  it('mất quyền khi đang ở tab duyệt: tab bị gỡ và trang về "Cài đặt & kết nối" (không trang trắng)', () => {
+    const { rerender } = render(<HermesConnectionsPage />);
+    activate('Bài học chờ duyệt');
+    expect(screen.getByText(/Khối bài học của/)).toBeTruthy();
+    probe.admin = false;
+    rerender(<HermesConnectionsPage />);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByText(/Khối bài học của/)).toBeNull();
+    const panels = screen.getAllByRole('tabpanel');
+    expect(panels).toHaveLength(1);
+    expect(panels[0]!.getAttribute('data-state')).toBe('active');
+    expect(panels[0]!.childElementCount).toBeGreaterThan(0);
+  });
+
   it('link ?tab=bai-hoc (tin Zalo buổi tối) mở thẳng tab duyệt', () => {
     window.history.replaceState({}, '', '/settings/hermes?tab=bai-hoc');
     render(<HermesConnectionsPage />);
