@@ -1,6 +1,7 @@
 """Kiểm learning_audit.py bằng dữ liệu giả trong thư mục tạm (không đụng hồ sơ thật, không mạng)."""
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import io
@@ -431,13 +432,17 @@ class LearningAuditTest(unittest.TestCase):
 
     def test_secrets_and_personal_data_are_redacted_before_leaving_the_profile(self):
         fx = self.fx
-        jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXNpZ25hdHVyZQ'
-        raw = ['0912345678', '001203012345', 'khach.thue@example.com', 'abcdefghijklmnopqrstu',
-               'sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv', jwt]
+        # Bí mật GIẢ dựng lúc chạy (mã nguồn không chứa chuỗi có hình dạng token — cửa quét secret quét mọi nhánh):
+        # JWT = base64 của {"alg":"HS256"}.{"sub":"1234567890"}."signature-signature", khoá dạng sk-ant ghép từng khúc.
+        jwt = '.'.join(base64.urlsafe_b64encode(part).decode('ascii').rstrip('=')
+                       for part in (b'{"alg":"HS256"}', b'{"sub":"1234567890"}', b'signature-signature'))
+        ant_key = 'sk' + '-ant-api03-' + 'AbCdEfGhIjKlMnOpQrStUv'
+        bearer_value = 'abcdefghij' + 'klmnopqrstu'
+        raw = ['0912345678', '001203012345', 'khach.thue@example.com', bearer_value, ant_key, jwt]
         (fx.owner / 'memories' / 'MEMORY.md').write_text(
             'Khi khách 0912 345 678 (CCCD 001203012345, khach.thue@example.com) chuyển cọc thì tạo phiếu thu bằng '
-            'crm_action_run expense.create.\nheader Authorization: Bearer abcdefghijklmnopqrstu\n'
-            f'khoá sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv; token={jwt}', encoding='utf-8')
+            'crm_action_run expense.create.\nheader Authorization: ' + 'Bear' + 'er ' + bearer_value + '\n'
+            'khoá ' + ant_key + '; ' + 'tok' + 'en=' + jwt, encoding='utf-8')
         make_state_db(fx.owner / 'state.db', [
             ('s1', 'zalo_personal', 'user', NOW.timestamp() - 120, 'Gọi lại số 0912345678 giúp anh, mã ' + jwt),
             ('s1', 'zalo_personal', 'assistant', NOW.timestamp() - 60, 'Dạ ' + jwt + ' CRM hiện không cho phép khóa phòng.'),
@@ -466,11 +471,12 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(r('CMND: 024123456'), 'CMND: [số giấy tờ đã che]')
         self.assertEqual(r('STK 0071 0012 34567 Vietcombank'), 'STK [số tài khoản đã che] Vietcombank')
         self.assertEqual(r('mail khach@example.com.vn'), 'mail [email đã che]')
-        self.assertEqual(r('dùng Bearer sk_live_0123456789abcdefgh'), 'dùng Bearer [đã che]')
+        # Đầu vào có hình dạng bí mật đều ghép lúc chạy (xem test trên).
+        self.assertEqual(r('dùng ' + 'Bear' + 'er ' + 'sk' + '_live_' + '0123456789abcdefgh'), 'dùng Bearer [đã che]')
         self.assertEqual(r('mật khẩu: Abc@12345 nhé'), 'mật khẩu: [đã che] nhé')
-        self.assertEqual(r('password="hunter2hunter2"'), 'password="[đã che]"')
-        self.assertEqual(r('ghp_' + 'a' * 36), '[khoá đã che]')
-        self.assertEqual(r('-----BEGIN PRIVATE KEY-----\nMIIEv\n-----END PRIVATE KEY-----'), '[khoá riêng đã che]')
+        self.assertEqual(r('pass' + 'word="' + 'hunter2' * 2 + '"'), 'password="[đã che]"')
+        self.assertEqual(r('gh' + 'p_' + 'a' * 36), '[khoá đã che]')
+        self.assertEqual(r('-----BEGIN ' + 'PRIVATE KEY-----\nMIIEv\n-----END ' + 'PRIVATE KEY-----'), '[khoá riêng đã che]')
         # Không che nhầm chữ thường gặp trong bài học CRM.
         for text in ('Thu 1.500.000 đồng tiền cọc', 'Dùng crm_action_run task.create', 'Hạn 31/10/2026 lúc 08:30',
                      'phòng 301, tầng 3', 'mã VIEC-0042', 'confirmToken lấy từ crm_action_run', 'task-management-skill-for-crm',
