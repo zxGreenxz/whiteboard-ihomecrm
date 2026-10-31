@@ -48,8 +48,7 @@ _FIXED_OFFSET_MINUTES = {
     "gmt": 0,
 }
 _OFFSET_RE = re.compile(r"^(?:utc|gmt)?\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$", re.IGNORECASE)
-_AT_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?$")
-_MINUTES_PER_DAY = 24 * 60
+_AT_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
 def _zoneinfo_loader(name: str) -> tzinfo:
@@ -59,27 +58,18 @@ def _zoneinfo_loader(name: str) -> tzinfo:
 
 
 def parse_at(raw: Any) -> tuple[int, int]:
-    """Giờ:phút của mốc. Nhận ``"04:00"``/``"4:00"``/``"4"``, số nguyên 0–23 (giờ chẵn), và số nguyên
-    24–1439: YAML 1.1 đọc ``at: 4:00`` không ngoặc kép thành 240 (hệ cơ số 60), nên 240 nghĩa 04:00.
-    Sai thì ``ValueError``."""
+    """Giờ:phút của mốc, CHỈ từ chuỗi ``"HH:MM"`` (``"4:00"`` cũng được). Số nguyên bị từ chối: YAML
+    1.1 đọc ``4:00`` không ngoặc kép thành 240 (cơ số 60), ``0430`` thành 280 (bát phân), ``430`` là
+    430 — đoán lại giờ từ các số đó dễ sai, nên ``ValueError`` để plugin tắt và báo."""
     if raw is None:
         raw = DEFAULT_AT
-    if isinstance(raw, bool):
-        raise ValueError(f"at={raw!r} không phải giờ")
-    if isinstance(raw, int):
-        if 0 <= raw <= 23:
-            return raw, 0
-        if 24 <= raw < _MINUTES_PER_DAY:
-            hour, minute = divmod(raw, 60)
-            return hour, minute
-        raise ValueError(f"at={raw!r} ngoài 0–23 giờ")
     if isinstance(raw, str):
         match = _AT_RE.match(raw.strip())
         if match:
-            hour, minute = int(match.group(1)), int(match.group(2) or 0)
+            hour, minute = int(match.group(1)), int(match.group(2))
             if 0 <= hour <= 23 and 0 <= minute <= 59:
                 return hour, minute
-    raise ValueError(f"at={raw!r} phải có dạng HH:MM")
+    raise ValueError(f"at={raw!r} phải là chuỗi \"HH:MM\" (ghi trong ngoặc kép)")
 
 
 def resolve_timezone(name: Any, zone_loader: Optional[Callable[[str], tzinfo]] = None) -> tzinfo:
@@ -171,8 +161,9 @@ def parse_settings(
     try:
         at_hour, at_minute = parse_at(raw.get("at"))
     except ValueError as exc:
-        warnings.append(f"{exc}; dùng mặc định {DEFAULT_AT}")
+        warnings.append(f"{exc}; plugin tạm tắt cho an toàn, không đoán giờ")
         at_hour, at_minute = parse_at(DEFAULT_AT)
+        mode = MODE_OFF
     tz_raw = raw.get("timezone")
     tz_name = DEFAULT_TIMEZONE if tz_raw is None else tz_raw
     try:

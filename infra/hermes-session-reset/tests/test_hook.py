@@ -1,9 +1,12 @@
 """Hook ``pre_gateway_dispatch`` với runner/session store giả.
 
 Giả lập chỉ phần GatewayRunner mà plugin gọi (Hermes 0.22.2): ``_session_key_for_source``,
-``_is_session_running``, ``_is_user_authorized_for_source``, ``_handle_reset_command`` (xoay mục định
-tuyến như ``/new``) và ``SessionStore.lookup_by_session_key``/``set_session_metadata``. Hành vi thật của
-đường ``/new`` (finalize, xả bộ nhớ, end_reason trong state.db) chỉ kiểm được khi chạy gateway thật.
+``_is_session_running``, ``_is_user_authorized_for_source``, ``_delivery_adapter_for`` (adapter có
+``_active_sessions``/``_pending_messages``), ``_queue_depth``, ``_peek_session_state``,
+``_is_goal_continuation_event``, ``_handle_reset_command`` (xoay mục định tuyến như ``/new``) và
+``SessionStore.lookup_by_session_key``/``set_session_metadata``; các module công cụ (delegation, tiến
+trình nền, prompt chờ) qua ``probes`` giả. Hành vi thật của đường ``/new`` (finalize, xả bộ nhớ,
+end_reason trong state.db) chỉ kiểm được khi chạy gateway thật.
 """
 
 from __future__ import annotations
@@ -13,8 +16,12 @@ import dataclasses
 import inspect
 import json
 import logging
+import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 from support import PLUGIN_DIR, hook, plugin, policy
@@ -22,6 +29,7 @@ from support import PLUGIN_DIR, hook, plugin, policy
 UTC = timezone.utc
 VN = timezone(timedelta(hours=7), "Asia/Ho_Chi_Minh")
 LOGGER = "test.ihome_session_reset"
+GOAL_TEXT = "[Continuing toward your standing goal]\nGoal: dọn sổ thu chi"
 
 
 def vn(year, month, day, hour, minute=0, second=0):
@@ -42,16 +50,22 @@ class Source:
 
 @dataclasses.dataclass
 class Event:
-    """Phần ``gateway.platforms.event.MessageEvent`` liên quan: lệnh và tham số lệnh."""
+    """Phần ``gateway.platforms.event.MessageEvent`` liên quan: lệnh, tham số lệnh, ``message_id``."""
 
     text: str
     source: Optional[Source] = None
     internal: bool = False
     allow_gateway_control: bool = True
-    message_id: str = "m-1"
+    message_id: Optional[str] = "m-1"
 
     def is_command(self) -> bool:
         return self.allow_gateway_control and (self.text or "").lstrip().startswith("/")
+
+    def get_command(self) -> Optional[str]:
+        if not self.is_command():
+            return None
+        raw = self.text.lstrip().split(maxsplit=1)[0][1:].lower().split("@", 1)[0]
+        return None if "/" in raw else raw
 
     def get_command_args(self) -> str:
         if not self.is_command():
@@ -66,6 +80,7 @@ class Entry:
     session_id: str
     created_at: datetime
     chat_type: str = "dm"
+    resume_pending: bool = False
 
 
 class Clock:
@@ -89,14 +104,23 @@ class FakeStore:
         return True
 
 
+class FakeAdapter:
+    def __init__(self) -> None:
+        self._active_sessions: dict = {}
+        self._pending_messages: dict = {}
+
+
 class FakeGateway:
     def __init__(self, store: FakeStore, clock: Clock) -> None:
         self.session_store = store
         self.clock = clock
+        self.adapter = FakeAdapter()
+        self.overflow: dict[str, list] = {}
+        self.states: dict[str, SimpleNamespace] = {}
         self.running: set[str] = set()
         self.authorized = True
         self.reset_events: list[Event] = []
-        self.fail_reset = False
+        self.fail_reset: Optional[str] = None  # "before" | "after" | "noop"
         self._seq = 0
 
     def _session_key_for_source(self, source):
@@ -108,52 +132,100 @@ class FakeGateway:
     def _is_user_authorized_for_source(self, source):
         return self.authorized
 
+    def _delivery_adapter_for(self, source):
+        return self.adapter
+
+    def _queue_depth(self, key, *, adapter=None):  # như run_busy.py: overflow + slot
+        depth = len(self.overflow.get(key) or ())
+        if adapter is not None and key in adapter._pending_messages:
+            depth += 1
+        return depth
+
+    def _peek_session_state(self, key):
+        return self.states.get(key)
+
+    @staticmethod
+    def _is_goal_continuation_event(event_or_text):
+        text = getattr(event_or_text, "text", event_or_text) or ""
+        return str(text).startswith("[Continuing toward your standing goal]\nGoal:")
+
     async def _handle_reset_command(self, event):
         """Như ``/new`` của lõi: phiên mới bắt đầu lúc này; trả banner (plugin phải bỏ)."""
         self.reset_events.append(event)
-        if self.fail_reset:
+        if self.fail_reset == "before":
             raise RuntimeError("cleanup exploded")
+        if self.fail_reset == "noop":
+            return "nothing happened"
         key = self._session_key_for_source(event.source)
         old = self.session_store.entries.get(key)
         await asyncio.sleep(0)  # lõi await dọn agent cũ: nhường loop như thật
         self._seq += 1
         self.session_store.entries[key] = Entry(
             key, f"s-new-{self._seq}", self.clock(), old.chat_type if old else event.source.chat_type)
+        if self.fail_reset == "after":
+            raise RuntimeError("finalize hook exploded")
         return "✨ New session started"
 
 
-class FakeState:
-    """``ctx.state``: get/set JSON."""
-
+class FakeProbes:
     def __init__(self) -> None:
-        self.data: dict = {}
+        self.flags: dict[str, bool] = {}
+        self.broken: set[str] = set()
 
-    def get(self, key, default=None):
-        return json.loads(json.dumps(self.data.get(key, default)))
+    def _check(self, name):
+        if name in self.broken:
+            raise ImportError(f"no module for {name}")
+        return self.flags.get(name, False)
 
-    def set(self, key, value):
-        self.data[key] = json.loads(json.dumps(value))
+    def live_delegation(self, session_key, session_id):
+        return self._check("delegation")
+
+    def active_process(self, session_key):
+        return self._check("process")
+
+    def pending_clarify(self, session_key):
+        return self._check("clarify")
+
+    def pending_slash_confirm(self, session_key):
+        return self._check("slash_confirm")
+
+    def pending_approval(self, session_key):
+        return self._check("approval")
 
 
 class HookTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.audit_dir = Path(self._tmp.name) / "plugin-data"
         self.clock = Clock(vn(2026, 10, 31, 8, 0))
         self.store = FakeStore()
         self.gateway = FakeGateway(self.store, self.clock)
-        self.state = FakeState()
+        self.probes = FakeProbes()
         self.config: dict = {}
         self.handler = hook.DailySessionReset(
-            lambda: self.config, audit=self.state, profile="owner", clock=self.clock,
-            zone_loader=no_tzdata, logger=logging.getLogger(LOGGER),
+            lambda: self.config, audit=hook.AuditLog(lambda: self.audit_dir), profile="owner", clock=self.clock,
+            zone_loader=no_tzdata, probes=self.probes, logger=logging.getLogger(LOGGER),
         )
 
-    def add_session(self, source: Source, session_id: str, created_at: datetime) -> str:
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def add_session(self, source: Source, session_id: str, created_at: datetime, **fields) -> str:
         key = self.gateway._session_key_for_source(source)
-        self.store.entries[key] = Entry(key, session_id, created_at, source.chat_type)
+        self.store.entries[key] = Entry(key, session_id, created_at, source.chat_type, **fields)
         return key
+
+    def audit(self) -> list[dict]:
+        path = self.audit_dir / hook.AUDIT_FILE
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
     async def send(self, text: str, source: Source, **event_fields):
         event = Event(text, source, **event_fields)
+        return await self.send_event(event)
+
+    async def send_event(self, event):
         return await self.handler.pre_gateway_dispatch(
             event=event, gateway=self.gateway, session_store=self.store, telemetry_schema_version=1)
 
@@ -174,10 +246,11 @@ class DailyResetTest(HookTestCase):
         self.assertEqual(marker["reason"], "daily_reset_0400")
         self.assertEqual(marker["previous_session_id"], "s-17-10")
         self.assertEqual(marker["boundary"], vn(2026, 10, 31, 4).isoformat())
-        [record] = self.state.data["resets"]
+        [record] = self.audit()
         self.assertEqual(record["action"], "reset")
         self.assertEqual((record["old_session_id"], record["new_session_id"]), ("s-17-10", "s-new-1"))
         self.assertEqual((record["platform"], record["kind"], record["profile"]), ("zalo_personal", "dm", "owner"))
+        self.assertNotIn("error", record)
 
     async def test_later_messages_same_day_keep_the_new_session(self):
         src = Source()
@@ -205,7 +278,8 @@ class DailyResetTest(HookTestCase):
     async def test_container_utc_naive_created_at(self):
         # Mục định tuyến thật ghi datetime.now() không múi; container hermes-owner chạy UTC.
         handler = hook.DailySessionReset(
-            lambda: {}, clock=self.clock, naive_tz=UTC, zone_loader=no_tzdata, logger=logging.getLogger(LOGGER))
+            lambda: {}, clock=self.clock, naive_tz=UTC, zone_loader=no_tzdata, probes=self.probes,
+            logger=logging.getLogger(LOGGER))
         src = Source()
         key = self.gateway._session_key_for_source(src)
         self.store.entries[key] = Entry(key, "s-utc", datetime(2026, 10, 30, 22, 0))  # 05:00 VN 31/10
@@ -220,7 +294,7 @@ class DailyResetTest(HookTestCase):
         key = self.add_session(group, "s-group", vn(2026, 10, 30, 10))
         await self.send("anh em ơi", group)
         self.assertEqual(len(self.gateway.reset_events), 1)
-        self.assertEqual(self.state.data["resets"][0]["kind"], "group")
+        self.assertEqual(self.audit()[0]["kind"], "group")
         self.assertEqual(self.store.entries[key].session_id, "s-new-1")
 
     async def test_applies_to_dm_only_leaves_groups(self):
@@ -239,47 +313,113 @@ class DailyResetTest(HookTestCase):
         self.assertEqual(self.gateway.reset_events, [])
 
 
-class NewCommandTest(HookTestCase):
-    async def test_slash_new_is_never_intercepted(self):
+class SyntheticEventTest(HookTestCase):
+    """Mục 1: sự kiện lõi tự sinh không được coi là tin người dùng."""
+
+    async def test_retry_resend_without_message_id_does_not_rotate(self):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        for text in ("/new", "  /new", "/reset", "/new Tiêu đề", "/stop"):
-            with self.subTest(text=text):
-                self.assertIsNone(await self.send(text, src))
+        # /retry gửi lại câu hỏi bằng MessageEvent mới không có message_id (slash_commands_session.py).
+        await self.send("câu hỏi tối qua", src, message_id=None)
+        await self.send("câu hỏi tối qua", src, message_id="")
         self.assertEqual(self.gateway.reset_events, [])
 
-    async def test_slash_new_still_works_and_no_double_reset(self):
-        src = Source()
-        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        await self.send("/new", src)
-        # Lõi tự xử lý /new như mọi khi (giả lập): phiên mới bắt đầu sau mốc.
-        await self.gateway._handle_reset_command(Event("/new", src))
-        self.assertEqual(self.store.entries[key].session_id, "s-new-1")
-        await self.send("tiếp tục", src)
-        self.assertEqual(len(self.gateway.reset_events), 1)  # chỉ lần /new của người dùng
-
-    async def test_slash_new_before_boundary_also_untouched(self):
+    async def test_heartbeat_event_does_not_rotate(self):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        self.clock.now = vn(2026, 10, 31, 2, 0)
-        await self.send("/new", src)
-        await self.send("hello", src)
+        event = Event("nhắc việc định kỳ", src)
+        event._heartbeat_session_id = "s-old"
+        await self.send_event(event)
         self.assertEqual(self.gateway.reset_events, [])
 
+    async def test_goal_continuation_does_not_rotate(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        await self.send(GOAL_TEXT, src)
+        # Runner không có _is_goal_continuation_event: plugin dò tiền tố như lõi.
+        self.gateway._is_goal_continuation_event = None
+        await self.send(GOAL_TEXT, src)
+        self.assertEqual(self.gateway.reset_events, [])
 
-class GuardTest(HookTestCase):
-    async def test_running_turn_is_not_touched_then_next_idle_message_resets(self):
+    async def test_real_message_after_synthetic_events_still_rotates(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        await self.send("lặp lại", src, message_id=None)
+        await self.send("tin thật", src)
+        self.assertEqual(len(self.gateway.reset_events), 1)
+
+
+class DeferTest(HookTestCase):
+    """Mục 2: phiên còn việc dở thì để tin rảnh kế tiếp."""
+
+    async def assert_deferred_then_reset(self, key, src, clear):
+        with self.assertLogs(LOGGER, logging.INFO) as logs:
+            await self.send("tin 1", src)
+            await self.send("tin 2", src)
+        self.assertEqual(self.gateway.reset_events, [])
+        self.assertEqual(sum("để sau" in line for line in logs.output), 1)
+        clear()
+        await self.send("tin 3", src)
+        self.assertEqual(len(self.gateway.reset_events), 1)
+
+    async def test_running_turn(self):
         src = Source()
         key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
         self.gateway.running.add(key)
-        with self.assertLogs(LOGGER, logging.INFO) as logs:
-            await self.send("tin trong lúc bot đang trả lời", src)
-            await self.send("tin nữa", src)
+        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.running.discard(key))
+
+    async def test_adapter_still_holds_the_session(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.adapter._active_sessions[key] = object()
+        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.adapter._active_sessions.clear())
+
+    async def test_queued_message_in_slot(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.adapter._pending_messages[key] = Event("tin xếp hàng", src)
+        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.adapter._pending_messages.clear())
+
+    async def test_queued_messages_in_overflow(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.overflow[key] = [Event("tin mồ côi", src)]
+        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.overflow.clear())
+
+    async def test_resume_pending_after_restart(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22), resume_pending=True)
+
+        def clear():
+            self.store.entries[key].resume_pending = False
+
+        await self.assert_deferred_then_reset(key, src, clear)
+
+    async def test_pending_update_prompt(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.states[key] = SimpleNamespace(persistent=SimpleNamespace(update_prompt_pending=True))
+        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.states.clear())
+
+    async def test_delegations_processes_and_pending_prompts(self):
+        for name in ("delegation", "process", "clarify", "slash_confirm", "approval"):
+            with self.subTest(name=name):
+                self.gateway.reset_events.clear()
+                self.handler._noted.clear()
+                src = Source(chat_id=f"chat-{name}")
+                key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+                self.probes.flags[name] = True
+                await self.assert_deferred_then_reset(key, src, lambda: self.probes.flags.clear())
+
+    async def test_probe_that_cannot_run_defers_and_warns_once(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.probes.broken.add("process")
+        with self.assertLogs(LOGGER, logging.WARNING) as logs:
+            await self.send("a", src)
+            await self.send("b", src)
         self.assertEqual(self.gateway.reset_events, [])
-        self.assertEqual(sum("đang chạy lượt dở" in line for line in logs.output), 1)
-        self.gateway.running.discard(key)
-        await self.send("bot trả lời xong rồi", src)
-        self.assertEqual(len(self.gateway.reset_events), 1)
+        self.assertEqual(sum("không kiểm được process" in line for line in logs.output), 1)
 
     async def test_unauthorized_sender_does_not_rotate(self):
         src = Source()
@@ -302,6 +442,98 @@ class GuardTest(HookTestCase):
         self.assertEqual(len(self.gateway.reset_events), 1)
         self.assertEqual(self.store.entries[key].session_id, "s-new-1")
 
+
+class CommandTest(HookTestCase):
+    """Mục 9: chỉ lệnh điều khiển phiên được bỏ qua; lệnh có nội dung vẫn xét làm mới."""
+
+    async def test_session_control_commands_are_never_intercepted(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        for text in ("/new", "  /new", "/reset", "/new Tiêu đề", "/retry", "/undo", "/status", "/stop",
+                     "/compact", "/queue thêm việc", "/approve", "/resume tối qua", "/goal status"):
+            with self.subTest(text=text):
+                self.assertIsNone(await self.send(text, src))
+        self.assertEqual(self.gateway.reset_events, [])
+
+    async def test_content_commands_start_in_the_new_session(self):
+        for text in ("/plan việc hôm nay", "/ihome-crm-thu-chi chi 50k", "/model cx/gpt-6-luna"):
+            with self.subTest(text=text):
+                self.gateway.reset_events.clear()
+                src = Source(chat_id=text.split()[0])
+                self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+                await self.send(text, src)
+                self.assertEqual(len(self.gateway.reset_events), 1)
+
+    async def test_slash_new_still_works_and_no_double_reset(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        await self.send("/new", src)
+        # Lõi tự xử lý /new như mọi khi (giả lập): phiên mới bắt đầu sau mốc.
+        await self.gateway._handle_reset_command(Event("/new", src))
+        self.assertEqual(self.store.entries[key].session_id, "s-new-1")
+        await self.send("tiếp tục", src)
+        self.assertEqual(len(self.gateway.reset_events), 1)  # chỉ lần /new của người dùng
+
+    async def test_slash_new_before_boundary_also_untouched(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.clock.now = vn(2026, 10, 31, 2, 0)
+        await self.send("/new", src)
+        await self.send("hello", src)
+        self.assertEqual(self.gateway.reset_events, [])
+
+
+class FailureTest(HookTestCase):
+    """Mục 6: làm mới lỗi thì lùi lại theo session key, log từng lần, so id cả khi có ngoại lệ."""
+
+    async def test_failure_backs_off_instead_of_retrying_every_message(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.fail_reset = "before"
+        with self.assertLogs(LOGGER, logging.WARNING) as logs:
+            for index in range(5):
+                self.assertIsNone(await self.send(f"tin {index}", src))
+        self.assertEqual(len(self.gateway.reset_events), 1)
+        self.assertEqual(sum("làm mới thất bại" in line for line in logs.output), 1)
+        [record] = self.audit()
+        self.assertEqual(record["action"], "reset_failed")
+        self.assertIn("RuntimeError: cleanup exploded", record["error"])
+        self.clock.now += hook.RESET_RETRY_BACKOFF + timedelta(seconds=1)
+        with self.assertLogs(LOGGER, logging.WARNING) as logs:
+            await self.send("sau khi chờ", src)
+        self.assertEqual(len(self.gateway.reset_events), 2)
+        self.assertEqual(sum("làm mới thất bại" in line for line in logs.output), 1)  # log từng lần lỗi
+        self.gateway.fail_reset = None
+        self.clock.now += hook.RESET_RETRY_BACKOFF + timedelta(seconds=1)
+        await self.send("đã sửa", src)
+        self.assertEqual(len(self.gateway.reset_events), 3)
+        self.assertEqual(self.audit()[-1]["action"], "reset")
+
+    async def test_error_after_rotation_is_still_recorded_as_reset(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.fail_reset = "after"
+        with self.assertLogs(LOGGER, logging.WARNING) as logs:
+            self.assertIsNone(await self.send("hi", src))
+        self.assertTrue(any("đã đổi phiên" in line for line in logs.output))
+        self.assertEqual(self.store.entries[key].session_id, "s-new-1")
+        [record] = self.audit()
+        self.assertEqual((record["action"], record["new_session_id"]), ("reset", "s-new-1"))
+        self.assertIn("finalize hook exploded", record["error"])
+        self.assertIn((key, "ihome_session_reset"), self.store.metadata)
+        await self.send("tin sau", src)
+        self.assertEqual(len(self.gateway.reset_events), 1)  # phiên mới, không làm lại
+
+    async def test_core_returning_without_rotating_is_a_failure(self):
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.fail_reset = "noop"
+        with self.assertLogs(LOGGER, logging.WARNING):
+            await self.send("hi", src)
+        await self.send("hi lần 2", src)
+        self.assertEqual(len(self.gateway.reset_events), 1)
+        self.assertEqual(self.audit()[0]["action"], "reset_failed")
+
     async def test_missing_gateway_api_is_inert_and_warns_once(self):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
@@ -321,14 +553,6 @@ class GuardTest(HookTestCase):
         with self.assertLogs(LOGGER, logging.WARNING):
             await self.send("hi", src)
         self.assertEqual(self.gateway.reset_events, [])
-
-    async def test_failure_inside_reset_never_blocks_the_message(self):
-        src = Source()
-        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        self.gateway.fail_reset = True
-        with self.assertLogs(LOGGER, logging.WARNING):
-            self.assertIsNone(await self.send("hi", src))
-        self.assertEqual(self.state.data.get("resets"), None)
 
     async def test_session_store_falls_back_to_gateway_attribute(self):
         src = Source()
@@ -359,7 +583,7 @@ class ConfigTest(HookTestCase):
         self.assertEqual(self.gateway.reset_events, [])
         self.assertEqual(self.store.entries[key].session_id, "s-old")
         self.assertEqual(sum("observe" in line and "daily_reset_0400" in line for line in logs.output), 1)
-        [record] = self.state.data["resets"]
+        [record] = self.audit()
         self.assertEqual((record["action"], record["old_session_id"], record["new_session_id"]),
                          ("observe", "s-old", None))
 
@@ -372,35 +596,60 @@ class ConfigTest(HookTestCase):
         self.assertEqual(self.gateway.reset_events, [])
         self.clock.now = vn(2026, 10, 31, 6, 30)
         await self.send("hi", src)
-        self.assertEqual(self.state.data["resets"][0]["reason"], "daily_reset_0630")
+        self.assertEqual(self.audit()[0]["reason"], "daily_reset_0630")
 
-    async def test_bad_value_warns_once_per_change(self):
+    async def test_numeric_at_turns_the_plugin_off_with_one_warning(self):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        self.config = {"at": "25:00"}
+        self.config = {"at": 430}
         with self.assertLogs(LOGGER, logging.WARNING) as logs:
             await self.send("a", src)
-            self.store.entries[self.gateway._session_key_for_source(src)].created_at = vn(2026, 10, 30, 22)
             await self.send("b", src)
-        self.assertEqual(len([line for line in logs.output if "25:00" in line]), 1)
+        self.assertEqual(self.gateway.reset_events, [])
+        self.assertEqual(len([line for line in logs.output if "430" in line]), 1)
 
-    async def test_audit_keeps_last_100(self):
-        self.state.data["resets"] = [{"n": i} for i in range(100)]
-        src = Source()
-        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        await self.send("hi", src)
-        self.assertEqual(len(self.state.data["resets"]), 100)
-        self.assertEqual(self.state.data["resets"][-1]["action"], "reset")
+
+class AuditLogTest(unittest.TestCase):
+    """Mục 10: một khóa cho cả xoay vòng lẫn ghi, mỗi mục một lần write O_APPEND."""
+
+    def test_concurrent_appends_keep_every_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = hook.AuditLog(lambda: Path(tmp) / "plugin-data")
+            threads = [threading.Thread(target=lambda n=n: [audit.append({"thread": n, "i": i}) for i in range(40)])
+                       for n in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            lines = (Path(tmp) / "plugin-data" / hook.AUDIT_FILE).read_text(encoding="utf-8").splitlines()
+            records = [json.loads(line) for line in lines]
+            self.assertEqual(len(records), 320)
+            self.assertEqual({(r["thread"], r["i"]) for r in records}, {(n, i) for n in range(8) for i in range(40)})
+
+    def test_rotation_keeps_the_previous_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "plugin-data"
+            audit = hook.AuditLog(lambda: directory, max_bytes=200)
+            for i in range(10):
+                audit.append({"i": i, "pad": "x" * 30})
+            current = [json.loads(line) for line in (directory / hook.AUDIT_FILE).read_text(encoding="utf-8").splitlines()]
+            previous = [json.loads(line) for line in (directory / f"{hook.AUDIT_FILE}.1").read_text(encoding="utf-8").splitlines()]
+            self.assertLessEqual((directory / hook.AUDIT_FILE).stat().st_size, 200)
+            self.assertEqual(current[-1]["i"], 9)
+            self.assertEqual([r["i"] for r in previous + current], list(range(previous[0]["i"], 10)))
 
 
 class RegisterTest(unittest.IsolatedAsyncioTestCase):
     async def test_register_wires_one_async_gateway_hook_reading_profile_settings(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+
         class Ctx:
             profile_name = "tkt"
 
             def __init__(self) -> None:
                 self.hooks = []
-                self.state = FakeState()
+                self.state = SimpleNamespace(data_dir=Path(tmp.name) / "plugin-data" / "agent-plugin-x")
                 self.asked = []
 
             def register_hook(self, name, callback):
@@ -411,12 +660,16 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
                 return {"mode": "daily", "at": "04:00"}.get(key, default)
 
         ctx = Ctx()
-        handler = plugin.register(ctx)
+        with self.assertLogs(hook.log, logging.INFO) as logs:
+            handler = plugin.register(ctx)
+        self.assertTrue(any("đã đăng ký hook pre_gateway_dispatch (hồ sơ tkt, tiến trình khác)" in line
+                            for line in logs.output))
         [(name, callback)] = ctx.hooks
         self.assertEqual(name, "pre_gateway_dispatch")
         self.assertTrue(inspect.iscoroutinefunction(callback))
         self.assertTrue(any(p.kind is p.VAR_KEYWORD for p in inspect.signature(callback).parameters.values()))
         self.assertEqual(handler.profile, "tkt")
+        handler._probes = FakeProbes()
         store = FakeStore()
         clock = Clock(datetime.now(UTC))
         gateway = FakeGateway(store, clock)
@@ -426,7 +679,14 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
         await callback(event=Event("hi", src), gateway=gateway, session_store=store)
         self.assertEqual(len(gateway.reset_events), 1)
         self.assertEqual(set(ctx.asked), set(policy.SETTING_KEYS))
-        self.assertEqual(ctx.state.data["resets"][0]["profile"], "tkt")
+        line = (ctx.state.data_dir / hook.AUDIT_FILE).read_text(encoding="utf-8").splitlines()[0]
+        self.assertEqual(json.loads(line)["profile"], "tkt")
+
+    def test_gateway_process_detection(self):
+        self.assertTrue(hook.is_gateway_process(["hermes", "--profile", "owner", "gateway", "run"]))
+        self.assertFalse(hook.is_gateway_process(["hermes", "--profile", "owner", "plugins", "enable", "x"]))
+        self.assertFalse(hook.is_gateway_process(["hermes", "gateway", "status"]))
+        self.assertFalse(hook.is_gateway_process(["hermes", "run", "gateway"]))
 
 
 class ManifestTest(unittest.TestCase):

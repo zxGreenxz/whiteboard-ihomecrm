@@ -37,22 +37,26 @@ class SettingsTest(unittest.TestCase):
             self.assertTrue(s.active)
             self.assertEqual(s.reason, "daily_reset_0400")
 
-    def test_at_accepts_text_hour_and_yaml11_sexagesimal(self):
-        cases = {"04:00": (4, 0), "4:00": (4, 0), "4": (4, 0), 4: (4, 0), 0: (0, 0), " 05:30 ": (5, 30),
-                 "23:59": (23, 59), 240: (4, 0), 330: (5, 30), 1439: (23, 59)}
+    def test_at_accepts_only_hh_mm_strings(self):
+        cases = {"04:00": (4, 0), "4:00": (4, 0), " 05:30 ": (5, 30), "23:59": (23, 59), "00:00": (0, 0)}
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
                 s = settings(at=raw)
                 self.assertEqual((s.at_hour, s.at_minute), expected)
                 self.assertEqual(s.warnings, ())
+                self.assertEqual(s.mode, "daily")
         self.assertEqual(settings(at="05:30").reason, "daily_reset_0530")
 
-    def test_bad_at_falls_back_to_0400_with_warning(self):
-        for raw in ("25:00", "4:60", "4h", "x", True, -1, 1440, 4.5, ["04:00"]):
+    def test_numbers_and_bad_text_turn_the_plugin_off_instead_of_guessing(self):
+        # YAML 1.1: `at: 4:00` → 240 (cơ số 60), `at: 0430` → 280 (bát phân), `at: 430` → 430.
+        for raw in (4, 0, 24, 240, 280, 330, 430, 1439, True, 4.5, ["04:00"],
+                    "4", "0430", "25:00", "4:60", "4h", "x", "04:00:00", ""):
             with self.subTest(raw=raw):
                 s = settings(at=raw)
-                self.assertEqual((s.at_hour, s.at_minute), (4, 0))
+                self.assertEqual(s.mode, "off")
+                self.assertFalse(s.active)
                 self.assertEqual(len(s.warnings), 1)
+                self.assertIn("HH:MM", s.warnings[0])
 
     def test_mode_values_and_yaml_booleans(self):
         self.assertEqual(settings(mode="observe").mode, "observe")

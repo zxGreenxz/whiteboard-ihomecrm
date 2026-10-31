@@ -22,7 +22,7 @@ test('ihome-session-reset: unittest stdlib chạy đủ, không test nào bị b
   const result = spawnSync(python, ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py', '-v'], {
     cwd: fileURLToPath(new URL('.', import.meta.url)),
     encoding: 'utf8',
-    timeout: 300_000,
+    timeout: 900_000, // test_ops.py sinh nhiều tiến trình bash: Linux CI ~10 s, Windows vài phút
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
   });
   const output = result.stdout + result.stderr;
