@@ -58,7 +58,7 @@ describe('cashbook reopening boundary', () => {
     expect(h.success).not.toHaveBeenCalled();
   });
   it('a confirmed denial clears the pending marker so a corrected request can run', async () => {
-    const error = { code: '40001', message: '[REOPEN_STALE]' };
+    const error = { code: 'PT409', message: '[REOPEN_STALE]' };
     h.rpc.mockResolvedValueOnce({ data: null, error });
     const write = mutation().mutationFn;
     await expect(write(input)).rejects.toBe(error);

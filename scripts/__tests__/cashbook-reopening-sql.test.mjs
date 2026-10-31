@@ -4,6 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const read = name => readFileSync(new URL(`../../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const migration = read('20261031121202_mo_khoa_so_quy_co_ly_do.sql');
+const conflictFix = read('20261031124214_mo_khoa_so_quy_xung_dot_http_409.sql');
 const original = read('20260730130000_cashbook_lock_hardening.sql');
 function body(source, name) {
   const start = source.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
@@ -27,8 +28,9 @@ const lockDate = '2026-09-30';
 const reason = 'Sửa ngày phát sinh bị nhập nhầm';
 let db;
 
-beforeAll(async () => {
-  db = new PGlite();
+async function buildDatabase(includeOriginal = true) {
+  const db = new PGlite();
+  try {
   await db.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA auth; CREATE SCHEMA app_private;
@@ -95,8 +97,15 @@ beforeAll(async () => {
   await db.exec(`CREATE TRIGGER a00_accounts_closed_book_guard BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION public.accounts_closed_book_guard();
     CREATE TRIGGER cashbook_closures_append_only BEFORE UPDATE OR DELETE ON app_private.cashbook_closures FOR EACH ROW EXECUTE FUNCTION app_private.guard_cashbook_closures_append_only();
     CREATE TRIGGER voucher_lock BEFORE INSERT OR UPDATE OR DELETE ON income_expenses FOR EACH ROW EXECUTE FUNCTION public.income_expenses_check_lock();`);
-  await db.exec(migration);
-}, 30_000);
+  if (includeOriginal) await db.exec(migration);
+  await db.exec(conflictFix);
+  return db;
+  } catch (error) {
+    await db.close();
+    throw error;
+  }
+}
+beforeAll(async () => { db = await buildDatabase(); }, 30_000);
 afterAll(async () => { await db?.close(); });
 
 async function actor(user = owner) {
@@ -126,9 +135,13 @@ async function scenario(run, user = owner, mutant = null) {
     return await run();
   } finally { await db.exec('ROLLBACK'); }
 }
-async function rejectStep(run, pattern) {
+async function rejectStep(run, pattern, expectedCode) {
   await db.exec('SAVEPOINT denied_step');
-  try { await expect(run()).rejects.toThrow(pattern); }
+  try {
+    const attempt = run();
+    await expect(attempt).rejects.toThrow(pattern);
+    if (expectedCode) await expect(attempt).rejects.toMatchObject({ code: expectedCode });
+  }
   finally { await db.exec('ROLLBACK TO SAVEPOINT denied_step'); }
 }
 async function reclose() {
@@ -139,6 +152,7 @@ async function reclose() {
 
 test('migration chạy hai lượt; RPC volatile/definer, chỉ authenticated; private tables không có DML', async () => {
   await db.exec(migration);
+  await db.exec(conflictFix);
   const { rows } = await db.query(`SELECT p.proname, p.provolatile, p.prosecdef,
     has_function_privilege('anon',p.oid,'EXECUTE') anon,
     has_function_privilege('service_role',p.oid,'EXECUTE') service,
@@ -151,6 +165,34 @@ test('migration chạy hai lượt; RPC volatile/definer, chỉ authenticated; p
     has_function_privilege('authenticated','public.lock_cashbook_period_v1(uuid,date,boolean)','EXECUTE') legacy_unlock`);
   expect(acl.rows[0]).toEqual({ audit_write: false, context_write: false, legacy_unlock: false });
 });
+
+test('forward độc lập trên baseline chưa có tính năng, chạy lại được và trả PT409', async () => {
+  const standalone = await buildDatabase(false);
+  try {
+    await standalone.exec(conflictFix);
+    await standalone.query("SELECT set_config('request.jwt.claim.sub',$1,false)", [owner]);
+    await standalone.exec('SET ROLE authenticated');
+    const initial = (await standalone.query('SELECT public.cashbook_reopening_state_v1($1) AS value', [book])).rows[0].value;
+    expect(initial).toMatchObject({ can_reopen: true, lock_date: lockDate, history: [] });
+    await expect(standalone.query('SELECT public.reopen_cashbook_v1($1,$2,$3,$4,$5)',
+      [book, reason, lockDate, key, '0'.repeat(32)])).rejects.toMatchObject({ code: 'PT409' });
+    const result = (await standalone.query('SELECT public.reopen_cashbook_v1($1,$2,$3,$4,$5) AS value',
+      [book, reason, lockDate, key, initial.revision])).rows[0].value;
+    expect(result).toMatchObject({ status: 'REOPENED', lock_date: null, idempotency_key: key });
+    const after = (await standalone.query('SELECT public.cashbook_reopening_state_v1($1) AS value', [book])).rows[0].value;
+    expect(after.history).toEqual([expect.objectContaining({ id: result.reopening_id, reason })]);
+  } finally { await standalone.close(); }
+}, 15_000);
+
+test('chuỗi gốc rồi forward giữ nguyên lịch sử và biên nhận idempotency đã ghi', () => scenario(async () => {
+  await admin(body(migration, 'public.reopen_cashbook_v1'));
+  const before = await state();
+  const receipt = await reopen(before);
+  const after = await state();
+  await admin(conflictFix);
+  expect(await state()).toEqual(after);
+  expect(await reopen(before)).toEqual({ ...receipt, idempotent_replay: true });
+}));
 
 test('chủ vai custom mở sổ; giữ nguyên biên bản, ghi người/lý do/revision; guard phiếu hết khóa đúng sổ', () => scenario(async () => {
   const before = await state();
@@ -221,8 +263,9 @@ test.each([
 test('lý do ngắn/trống, ngày stale, revision stale, sổ mở và pending bị từ chối không tạo history', () => scenario(async () => {
   const before = await state();
   await rejectStep(() => reopen(before, { note: '  ' }), /REOPEN_REASON_REQUIRED/);
-  await rejectStep(() => reopen({ ...before, lock_date: '2026-09-29' }), /REOPEN_STALE/);
-  await rejectStep(() => reopen({ ...before, revision: '0'.repeat(32) }), /REOPEN_STALE/);
+  await rejectStep(() => reopen({ ...before, revision: null }), /REOPEN_STALE/, 'PT409');
+  await rejectStep(() => reopen({ ...before, lock_date: '2026-09-29' }), /REOPEN_STALE/, 'PT409');
+  await rejectStep(() => reopen({ ...before, revision: '0'.repeat(32) }), /REOPEN_STALE/, 'PT409');
   await admin(`INSERT INTO app_private.cashbook_closure_requests(organization_id,cashbook_id,status) VALUES ('${org}','${book}','PENDING')`);
   expect(await state()).toMatchObject({ can_reopen: true, blocked_reason: 'PENDING_CLOSURE' });
   await rejectStep(() => reopen(before), /REOPEN_PENDING_CLOSURE/);
@@ -272,7 +315,7 @@ test('chốt lại cùng ngày khóa trở lại; dialog cũ và retry cũ khôn
   expect(newState.revision).not.toBe(before.revision);
   expect((await reopen(before)).idempotent_replay).toBe(true);
   expect((await state()).lock_date).toBe(lockDate);
-  await rejectStep(() => reopen(before, { requestKey: newKey }), /REOPEN_STALE/);
+  await rejectStep(() => reopen(before, { requestKey: newKey }), /REOPEN_STALE/, 'PT409');
   await rejectStep(() => admin(`INSERT INTO income_expenses(account_id,voucher_date,total_amount) VALUES ('${book}','2026-09-01',10)`), /CASHBOOK_CLOSED/);
   await reopen(newState, { requestKey: newKey });
   expect((await state()).history).toHaveLength(2);
@@ -323,7 +366,7 @@ test('lỗi lúc cập nhật tài khoản hoàn tác cả biên nhận và cont
 }));
 
 test('đột biến: owner, org, lý do, revision, pending, phạm vi đọc và ngưỡng closure đều được phép kiểm bắt', async () => {
-  const write = body(migration, 'public.reopen_cashbook_v1');
+  const write = body(conflictFix, 'public.reopen_cashbook_v1');
   const readState = body(migration, 'public.cashbook_reopening_state_v1');
   const cutoff = body(migration, 'app_private.cashbook_closed_through_v1');
   const ownerMutant = write.replace('IF NOT COALESCE(app_private.ie_actor_is_company_owner_v1(v_account.organization_id, v_actor), false) THEN', 'IF false THEN');
@@ -374,6 +417,6 @@ test('đột biến: owner, org, lý do, revision, pending, phạm vi đọc và
   expect(cutoffMutant).not.toBe(cutoff);
   await scenario(async () => {
     const before = await state();
-    await rejectStep(() => reopen(before), /REOPEN_STALE/);
+    await rejectStep(() => reopen(before), /REOPEN_STALE/, 'PT409');
   }, owner, cutoffMutant);
 });
