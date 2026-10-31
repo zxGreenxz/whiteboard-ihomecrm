@@ -960,6 +960,29 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261031120230_nguoi_giu_tien_thay_phieu_han_che.sql": {
+      "sha256": "df9034c204160cef3ba8e6d95f3ba8805ef44602a7bf149cc82aa255280fb9d9",
+      "missingObjects": [
+        "function:app_private.my_custodian_cashbook_ids_v1",
+        "function:app_private.ie_in_my_custodian_cashbook_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration mở lớp chặn hạng mục hạn chế cho người giữ tiền (possession CUSTODIAN) của sổ; chỉ đổi policy SELECT (chủ chốt 31/10/2026, thao tác giữ theo quyền sẵn có), chưa áp dụng production. Hai hàm vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Bằng chứng trước áp: PGlite dựng bốn policy hạn chế và org_boundary nguyên văn bản sống, mô phỏng đường đọc read_income_expense_details_v1, rồi áp file hai lượt, ma trận ai-thấy-gì đúng (kể cả cách ly công ty) và 11 đột biến đều lệch; trên TEST (PostgreSQL 17) chạy trong ROLLBACK dưới JWT + role authenticated cho mọi người giữ tiền, phần thấy thêm trùng tập kỳ vọng, 0 phiếu công ty khác; đã ghi TEST và kiểm màn Thu chi bằng nick người giữ tiền (máy tính + điện thoại). Hồ sơ này chỉ giải thích object chưa triển khai, không thay review chéo, dry-run, backup hay lane apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261031120230_nguoi_giu_tien_thay_phieu_han_che.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.my_custodian_cashbook_ids_v1()"
+        },
+        {
+          "duong_dan": "supabase/migrations/20261031120230_nguoi_giu_tien_thay_phieu_han_che.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.ie_in_my_custodian_cashbook_v1(p_ie_id uuid)"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/custodianRestrictedVisibilityMigration.test.ts",
+          "trich_doan": "SAU migration: chỉ người giữ tiền còn hiệu lực thấy thêm, cả phiếu, dòng phiếu và đường chi tiết"
+        }
+      ]
     }
   }
 }
