@@ -63,7 +63,9 @@ const all = statements.join(';\n');
 const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
   'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands',
-  'prune_work_memories', 'connection_settings'];
+  'prune_work_memories', 'connection_settings',
+  // Học có kiểm duyệt (20261031041523): job kiểm học tập trên host nạp đề xuất qua login kho bền connector.
+  'learning_ingest'];
 const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
@@ -120,7 +122,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_sale_actions_v1(jsonb,text,jsonb)', 'hermes_sale_capabilities_v1(uuid)',
   'hermes_org_policy_options_v8(uuid)', 'hermes_connection_options_v8(uuid)', 'hermes_connection_context_v8(uuid)',
   'hermes_sale_policy_actions_v1(jsonb,text,jsonb)', 'hermes_sale_policy_capabilities_v1(uuid)',
-  'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)'];
+  'hermes_org_policy_options_v9(uuid)', 'hermes_connection_options_v9(uuid)', 'hermes_connection_context_v9(uuid)',
+  // Học có kiểm duyệt (20261031041523): chủ/admin (users.edit) đọc và duyệt đề xuất bài học ghi CRM.
+  'hermes_learning_review_v1(jsonb)', 'hermes_learning_decide_v1(jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -1025,9 +1029,10 @@ test('all sixty-eight reviewed forward migrations and their 138 latest definitio
   // Hoá đơn H03 + F06: bảng báo cáo + hàm đọc gói A dựng lại ở 20261027131639 (+1 file, cùng tên; bảng 051620 / hàm đọc 160002 thành ghim
   // superseded).
   // Thu chi lượt 20 (G02): lõi giải dựng lại ở 20261027140949 (+1 file, cùng tên; thân 074419 thành ghim superseded).
-  assert.equal(paths.length, 68);
-  assert.equal(FORWARD_FUNCTIONS.length, 138);
-  assert.equal(FORWARD_BY_NAME.size, 138, 'one live definition per reviewed name');
+  // Học có kiểm duyệt (31/10): kho đề xuất bài học 20261031041523 (+1 file, +8 tên mới).
+  assert.equal(paths.length, 69);
+  assert.equal(FORWARD_FUNCTIONS.length, 146);
+  assert.equal(FORWARD_BY_NAME.size, 146, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

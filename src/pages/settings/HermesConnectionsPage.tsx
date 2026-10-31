@@ -8,6 +8,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { can, useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -20,6 +21,7 @@ import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
 import { HermesDeliveryReconcile } from '@/hermes/HermesDeliveryReconcile';
 import { HermesSectionDivider, HermesSetupProgress, HermesStep, hermesConnectionNames, shortConnectionId,
   type HermesStepState } from '@/hermes/HermesSetupGuide';
+import { HermesLearningReview } from '@/hermes/HermesLearningReview';
 import type { HermesCallerScope, HermesConnectionContext, HermesConnectionMetadata, HermesConnectionRestrictions, HermesConnectionStatus,
   HermesConnectorStatus, HermesGrantOptions, HermesSettingsInput } from '@/hermes/connectionClient';
 
@@ -33,6 +35,10 @@ const errorLabels: Record<string, string> = {
 const errorLabel = (code: string) => Object.prototype.hasOwnProperty.call(errorLabels, code) ? errorLabels[code]
   : code.endsWith('_outcome_unknown') ? 'chưa xác định kết quả thao tác' : code;
 const when = (value: number) => new Date(value).toLocaleString('vi-VN');
+// Link trong tin Zalo buổi tối mở thẳng tab duyệt: /settings/hermes?tab=bai-hoc. Chỉ đọc lúc mở trang, không ghi lại URL.
+const LEARNING_TAB = 'bai-hoc', WORKSPACE_TAB = 'ket-noi';
+const initialTab = () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === LEARNING_TAB
+  ? LEARNING_TAB : WORKSPACE_TAB;
 
 function connectorSummary(status: HermesConnectorStatus | null, failed: boolean) {
   if (status) return `Dịch vụ kết nối CRM phiên bản ${status.connector.version}, chạy từ ${when(status.connector.startedAt)}. Giờ “dùng lần cuối” chỉ tính từ lần chạy này.`;
@@ -374,12 +380,30 @@ export default function HermesConnectionsPage() {
   }, []);
   const currentScope = useCallback(() => live.current ? { ...scope.current }
     : { userId: null, organizationId: null, generation: scope.current.generation }, []);
+  // Tab duyệt chỉ dành cho chủ/quản trị (users.edit) — máy chủ vẫn tự kiểm quyền. Đọc quyền lỗi hoặc mở bằng link tin Zalo thì
+  // vẫn hiện tab để không che công cụ quản trị; người không đủ quyền sẽ thấy câu báo thiếu quyền trong tab.
+  const permissions = useMyPermissions();
+  const [startTab] = useState(initialTab);
+  const showLearning = startTab === LEARNING_TAB || permissions.isError || can(permissions.data, 'users', 'edit');
   return <MainLayout title="Trợ lý Hermes" subtitle={`Cài và dùng Hermes${organization.organization?.name ? ` tại ${organization.organization.name}` : ''}`} icon={Bot}>
     {auth.isLoading || organization.isLoading ? <p role="status">Đang kiểm tra tài khoản và công ty…</p>
       : !ready ? <p role="alert">Chưa kiểm tra được tài khoản hoặc công ty. Hãy tải lại trang.</p>
       : !userId ? <p role="alert">Hãy đăng nhập CRM để quản lý kết nối của bạn.</p>
       : !organizationId ? <p role="status">Chọn công ty ở bộ chọn công ty trước khi quản lý Hermes.</p>
-      : <Workspace key={`${userId}:${organizationId}:${scope.current.generation}`} userId={userId} organizationId={organizationId}
-        email={auth.data?.email ?? ''} currentScope={currentScope} />}
+      : <Tabs defaultValue={startTab} className="max-w-3xl space-y-4">
+        {showLearning && <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value={WORKSPACE_TAB}>Cài đặt &amp; kết nối</TabsTrigger>
+          <TabsTrigger value={LEARNING_TAB}>Bài học chờ duyệt</TabsTrigger>
+        </TabsList>}
+        {/* Luôn giữ phần kết nối trong cây (chỉ ẩn khi xem tab khác): mã kết nối một lần và thao tác đang chờ không mất khi đổi tab. */}
+        <TabsContent value={WORKSPACE_TAB} forceMount className="data-[state=inactive]:hidden">
+          <Workspace key={`${userId}:${organizationId}:${scope.current.generation}`} userId={userId} organizationId={organizationId}
+            email={auth.data?.email ?? ''} currentScope={currentScope} />
+        </TabsContent>
+        {showLearning && <TabsContent value={LEARNING_TAB}>
+          <HermesLearningReview key={`${userId}:${organizationId}:${scope.current.generation}`} userId={userId} organizationId={organizationId}
+            currentScope={currentScope} />
+        </TabsContent>}
+      </Tabs>}
   </MainLayout>;
 }

@@ -24,6 +24,8 @@ const FUNCTIONS = Object.freeze({
   failPrivateCommand: 'app_private.hermes_store_fail_private_command_v1',
   prunePrivateCommands: 'app_private.hermes_store_prune_private_commands_v1',
   pruneWorkMemories: 'app_private.hermes_store_prune_work_memories_v1',
+  // Job kiểm học tập trên host (infra/hermes-learning-audit/ingest.mjs); connector không gọi thao tác này.
+  ingestLearningProposals: 'app_private.hermes_store_learning_ingest_v1',
 });
 const PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role, r.rolsuper, r.rolbypassrls,
   r.rolcreaterole, r.rolcreatedb, r.rolreplication,

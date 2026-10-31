@@ -960,6 +960,29 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql": {
+      "sha256": "31ebbb46c063b015cc166cac1598144ec4729ca40169fdf03e99848d843624b1",
+      "missingObjects": [
+        "table:app_private.hermes_learning_proposals",
+        "function:app_private.hermes_learning_guard_v1",
+        "function:app_private.hermes_learning_proposal_json_v1",
+        "function:app_private.hermes_learning_admin_v1",
+        "function:app_private.hermes_learning_result_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration học có kiểm duyệt cho Hermes (bảng đề xuất bài học + RPC đọc/duyệt users.edit + cổng nạp hermes_store_executor) chưa áp dụng TEST/production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Kiểm logic bằng PGlite (infra/hermes-broker/learning-proposals-sql.test.mjs, có kiểm đột biến) và hợp đồng duyệt hermes-durable-schema; hồ sơ này không thay review chéo, dry-run lane, backup hay nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_learning_proposals"
+        },
+        {
+          "duong_dan": "infra/hermes-broker/learning-proposals-sql.test.mjs",
+          "trich_doan": "Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọc và duyệt một lần"
+        }
+      ],
+      "raSoatBoi": "claude-code (phiên học có kiểm duyệt 31/10/2026)"
     }
   }
 }

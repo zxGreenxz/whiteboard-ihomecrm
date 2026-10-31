@@ -1,0 +1,46 @@
+# Kiểm học tập Hermes — CHỈ ĐỌC hồ sơ (/var/lib/ihome-hermes-profiles). Cài theo infra/hermes-learning-audit/README.md.
+# Người chạy riêng ihome-hermes-audit chỉ có CAP_DAC_READ_SEARCH (đọc được file 0600 của uid 10003, không ghi được);
+# thư mục hồ sơ còn được gắn chỉ đọc. Báo cáo + trạng thái nằm ở /var/lib/ihome-hermes-learning-audit (nhóm ihome-hermes đọc được).
+[Unit]
+Description=iHome Hermes - kiem hoc tap (chi doc ho so Hermes)
+Documentation=file:///opt/ihome-hermes/current/infra/hermes-learning-audit/README.md
+After=local-fs.target
+OnSuccess=ihome-hermes-learning-ingest.service
+
+[Service]
+Type=oneshot
+User=ihome-hermes-audit
+Group=ihome-hermes
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 -I -B -X utf8 /opt/ihome-hermes/current/infra/hermes-learning-audit/learning_audit.py
+StateDirectory=ihome-hermes-learning-audit
+StateDirectoryMode=0750
+UMask=0027
+ProtectSystem=strict
+ReadOnlyPaths=/var/lib/ihome-hermes-profiles
+# CAP_DAC_READ_SEARCH đọc được mọi file: giấu bí mật của connector (production + TEST) khỏi job này. Mã cũng từ chối symlink
+# và đường ra ngoài hồ sơ; đây là lớp chặn thứ hai.
+InaccessiblePaths=-/etc/ihome-hermes -/etc/ihome-hermes-test -/var/lib/ihome-hermes-connector -/var/lib/ihome-hermes-connector-test
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+MemoryMax=256M
+CPUQuota=50%
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=10min

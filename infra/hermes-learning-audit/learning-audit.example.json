@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "report": "/var/lib/ihome-hermes-learning-audit/latest.json",
+  "reportsDir": "/var/lib/ihome-hermes-learning-audit/reports",
+  "replayDays": 7,
+  "connectorConfig": "/etc/ihome-hermes/connector.json",
+  "staleAfterHours": 36,
+  "profiles": {
+    "owner": {
+      "organizationId": "00000000-0000-4000-8000-000000000001",
+      "userId": "00000000-0000-4000-8000-000000000002"
+    }
+  }
+}

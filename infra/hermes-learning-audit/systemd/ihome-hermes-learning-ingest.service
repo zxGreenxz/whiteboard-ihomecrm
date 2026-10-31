@@ -1,0 +1,30 @@
+# Nạp đề xuất (báo cáo mới nhất của kiểm học tập) vào CRM qua cổng kho bền connector — user ihome-hermes, đọc được
+# /etc/ihome-hermes/* (0600). Không được đọc hồ sơ Hermes. Chạy sau khi kiểm học tập xong (OnSuccess) hoặc tay.
+[Unit]
+Description=iHome Hermes - nap de xuat bai hoc vao CRM
+Documentation=file:///opt/ihome-hermes/current/infra/hermes-learning-audit/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ihome-hermes
+Group=ihome-hermes
+WorkingDirectory=/opt/ihome-hermes/current
+ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes/current/infra/hermes-learning-audit/ingest.mjs --config /etc/ihome-hermes/learning-audit.json
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ReadOnlyPaths=/etc/ihome-hermes /var/lib/ihome-hermes-learning-audit
+InaccessiblePaths=/var/lib/ihome-hermes-profiles
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=192M
+TimeoutStartSec=5min
