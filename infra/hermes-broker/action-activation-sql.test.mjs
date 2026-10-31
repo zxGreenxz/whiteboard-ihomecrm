@@ -399,7 +399,7 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
     });
   });
 
-  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả ba rồi lùi cả ba ⇒ về đúng production 28/10', async () => {
+  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả bốn rồi lùi cả bốn ⇒ về đúng production 28/10', async () => {
     for (const page of Object.keys(PAGES)) await db.exec(FORWARD[page]);
     assert.deepEqual((await enabledActionKeys()).filter(key => !BASE.registry[key]).sort(),
       Object.keys(PAGES).flatMap(pageKeys).filter(key => !BASE.registry[key]).sort());

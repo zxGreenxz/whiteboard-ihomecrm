@@ -271,6 +271,7 @@ Phải tắt thêm `tasks.create` / `tasks.edit`. Mất luôn `task.create` / `t
 - **Đã kiểm, chỉ đọc trên production:** mục 2, gồm 81 chữ ký hàm có đủ.
 - **Chưa kiểm:**
   - cửa idempotent của CI main với ba file SAU áp. Trước áp, lane đã chạy cửa hai lượt + ROLLBACK bắt buộc cho từng file (mục 0.1);
+  - TC: file đổi mốc + rào mới chỉ chạy trên PGlite và Restore Drill; cửa idempotent của main chỉ xanh khi split đã áp production; kiểm connector + `crm_sale_action operation=list` làm lúc áp (5.2);
   - VPS: `actionPages: ["contract"]` đã thêm 30/10 (`host_ready`); bản connector `current` chưa ghi vào runbook;
   - tầng 2 trên TEST;
   - canary bot thật;
