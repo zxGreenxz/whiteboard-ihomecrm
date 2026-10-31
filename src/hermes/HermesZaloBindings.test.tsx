@@ -193,6 +193,33 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     expect(summaries.at(-1)).toEqual({ bots: 1, stage: 'linked', provisioningState: null });
     expect(JSON.stringify(summaries)).not.toContain('98765');
   });
+  it('offers the switch on its own when the linked connection was revoked and one active connection is left', async () => {
+    const next = '77777777-7777-4777-8777-777777777777';
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ? Response.json({ ...base, status: 'listed', nextCursor: null,
+      bindings: [{ bindingId: BINDING, epoch: 1, state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '98765', provisioningState: 'pending_credential' }] })
+      : respond(path, init));
+    render(view('initial', [{ ...row(), state: 'revoked', epoch: 3 }, { ...row(), id: next }])); await ready();
+    expect(screen.queryByLabelText('Kết nối Hermes dùng cho Zalo')).toBe(null);
+    expect(screen.getByText(/Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn/).textContent).toContain('…77777777');
+    expect(screen.queryByRole('button', { name: 'Tạo mã liên kết Zalo' })).toBe(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' }));
+    await screen.findByText('Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.');
+    expect(JSON.parse(calls('selectCredential')[0][1]!.body as string)).toEqual({ connectionId: next,
+      expectedConnectionEpoch: 2, expectedActiveConnectionId: CONNECTION, organizationId: ORG });
+    expect(calls('begin')).toHaveLength(0); expect(calls('confirm')).toHaveLength(0);
+  });
+  it('walks the code steps again when linking another nick while one is already linked', async () => {
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ? Response.json({ ...base, status: 'listed', nextCursor: null,
+      bindings: [{ bindingId: BINDING, epoch: 1, state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '11111', provisioningState: 'synchronized' }] })
+      : respond(path, init));
+    render(view()); await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Liên kết nick Zalo khác' }));
+    await begin();
+    expect(screen.getByText(/Đang chờ bot nhận tin/)).toBeTruthy();
+    await screen.findByText('98765');
+    expect((screen.getByRole('button', { name: 'Ghép nick Zalo này' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText('Nick của bạn: 11111')).toBeTruthy(); expect(calls('confirm')).toHaveLength(0);
+  });
   it('asks for a bot only when the company has several', async () => {
     fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/bots') ? Response.json({ ...base, status: 'listed', nextCursor: null,
       bots: [{ accountId: BOT, name: 'Bot công ty', zaloUid: '12345' }, { accountId: CHALLENGE, name: 'Bot phụ', zaloUid: '67890' }] }) : respond(path, init));

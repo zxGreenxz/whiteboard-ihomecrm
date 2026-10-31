@@ -222,20 +222,26 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   const active = connections.filter(connection => connection.state === 'active');
   const companyOff = model.optionsState === 'ready' && model.options?.enabled === false;
   const noBot = zalo.bots === 0;
-  const companyReady = (active.length > 0 || model.options?.enabled === true) && (zalo.bots ?? 0) > 0;
+  // "Đã bật" chỉ khi vừa đọc được chính sách bật; có kết nối cũ không chứng minh công ty còn bật Hermes.
+  const companyReady = model.options?.enabled === true && (zalo.bots ?? 0) > 0;
   const linked = zalo.stage === 'linked';
   const done = [companyReady, active.length > 0, zalo.stage !== 'none', zalo.stage === 'observed' || linked, linked,
     linked && zalo.provisioningState === 'synchronized', false];
-  const current = companyOff ? 0 : [1, 2, 3, 4, 5].find(index => !done[index]) ?? null;
+  // Thiếu bot hay công ty tắt thì người dùng không tự đi tiếp được: đưa về bước 1 (việc của quản trị).
+  const current = companyOff || noBot ? 0 : [1, 2, 3, 4, 5].find(index => !done[index]) ?? null;
   const stateOf = (index: number, isDone: boolean): HermesStepState => isDone ? 'done' : index === current ? 'current' : 'todo';
   const zaloState: HermesStepState = linked ? 'done' : current !== null && current >= 2 && current <= 4 ? 'current' : 'todo';
   const companyState: HermesStepState = companyOff || noBot ? 'blocked' : stateOf(0, companyReady);
   const companySummary = companyOff ? `Công ty đang tắt Hermes. ${admin ? 'Bật lại ngay bên dưới.' : 'Nhờ quản trị công ty bật lại.'}`
     : noBot ? `Công ty chưa có bot Zalo. ${admin ? 'Chọn một nick Zalo phụ làm bot ngay bên dưới.' : 'Nhờ quản trị chọn một nick Zalo phụ làm bot.'}`
-      : companyReady ? `Đã bật, có ${zalo.bots} bot Zalo sẵn sàng.` : 'Việc của quản trị, làm một lần cho cả công ty.';
-  const activationSummary = linked
-    ? zalo.provisioningState ? provisioningText[zalo.provisioningState] : 'Chưa đọc được trạng thái kích hoạt. Bấm “Tải lại liên kết” ở bước 3.'
-    : 'Tự chạy sau khi bạn liên kết Zalo.';
+      : companyReady ? `Đã bật, có ${zalo.bots} bot Zalo sẵn sàng.`
+        : zalo.bots ? `Có ${zalo.bots} bot Zalo sẵn sàng. Bật Hermes là việc của quản trị, làm một lần cho cả công ty.`
+          : 'Việc của quản trị, làm một lần cho cả công ty.';
+  // Trạng thái kích hoạt chỉ đọc khi tải danh sách liên kết, nên nói rõ cách xem trạng thái mới.
+  const refreshHint = 'Bấm “Tải lại liên kết” ở bước 3 để xem trạng thái mới nhất.';
+  const activationSummary = !linked ? 'Tự chạy sau khi bạn liên kết Zalo.'
+    : !zalo.provisioningState ? `Chưa đọc được trạng thái kích hoạt. ${refreshHint}`
+      : zalo.provisioningState === 'synchronized' ? provisioningText.synchronized : `${provisioningText[zalo.provisioningState]} ${refreshHint}`;
 
   return <div className="max-w-3xl space-y-4">
     <HermesSetupProgress key={model.connections === null ? 'loading' : 'ready'} done={done} current={current}

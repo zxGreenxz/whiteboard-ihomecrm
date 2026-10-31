@@ -16,9 +16,10 @@ vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ sel
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: { getSession: async () => ({
   data: { session: identity.userId ? { user: { id: identity.userId }, access_token: 'browser.session.signature' } : null }, error: null,
 }) } } }));
-const permissionState = vi.hoisted(() => ({ admin: true }));
+const permissionState = vi.hoisted(() => ({ admin: true, error: false }));
 vi.mock('@/hooks/useMyPermissions', async importOriginal => ({ ...(await importOriginal<typeof import('@/hooks/useMyPermissions')>()),
-  useMyPermissions: () => ({ data: permissionState.admin ? { __superadmin: true } : {}, isError: false, isLoading: false }) }));
+  useMyPermissions: () => ({ data: permissionState.error ? undefined : permissionState.admin ? { __superadmin: true } : {},
+    isError: permissionState.error, isLoading: false }) }));
 vi.mock('@/components/layout/MainLayout', () => ({ default: ({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) =>
   <main><h1>{title}</h1><p>{subtitle}</p>{children}</main> }));
 
@@ -99,7 +100,7 @@ function submitPassword() {
 }
 beforeEach(() => {
   identity.userId = USER; identity.email = 'fixture@example.invalid'; identity.organizationId = ORG;
-  identity.authLoading = false; identity.orgLoading = false; permissionState.admin = true;
+  identity.authLoading = false; identity.orgLoading = false; permissionState.admin = true; permissionState.error = false;
   companyPolicy = { userId: USER, organizationId: ORG, membershipId: OTHER, authorizationVersion: 1, isSuperadmin: false,
     policy: { organizationId: ORG, version: 1, enabled: true, read: ['assistant.context.read', 'rooms.view'], action: [], scopeIds: [SCOPE] },
     choices: { read: ['assistant.context.read', 'rooms.view'], action: [],
@@ -654,28 +655,43 @@ describe('one-column setup guide', () => {
   const linked = (provisioningState: string) => [{ bindingId: NEW, epoch: 1, state: 'active', accountId: ASSISTANT, connectionId: CONNECTION, senderUid: '98765', provisioningState }];
 
   it('starts a new user at step 2 with the picture open, and hides company tools from non-admins', async () => {
-    rows = []; permissionState.admin = false;
+    rows = []; permissionState.admin = false; fetchMock.mockImplementation(zalo([]));
     render(<HermesConnectionsPage />);
     await screen.findByText('Chưa có kết nối Hermes trong công ty này.');
+    await screen.findByText('Có 1 bot Zalo sẵn sàng. Bật Hermes là việc của quản trị, làm một lần cho cả công ty.');
     expect(screen.getByText('Bạn đang ở bước 2: Tạo kết nối.')).toBeTruthy();
     expect(screen.getByRole('figure', { name: 'Hình hướng dẫn cài Hermes' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Chính sách Hermes của công ty' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Quản trị bot Zalo của công ty' })).toBeNull();
-    await screen.findByText('Công ty chưa có bot Zalo. Nhờ quản trị chọn một nick Zalo phụ làm bot.');
     expect(screen.getByRole('button', { name: 'Bắt đầu kết nối' })).toBeTruthy();
     expect(calls('options')).toHaveLength(0);
+  });
+  it('sends everyone back to step 1 while the company has no Zalo bot', async () => {
+    permissionState.admin = false;
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Công ty chưa có bot Zalo. Nhờ quản trị chọn một nick Zalo phụ làm bot.');
+    expect(screen.getByText('Bạn đang ở bước 1: Bật Hermes.')).toBeTruthy();
+  });
+  it('still shows company tools when the permission read fails; the server decides', async () => {
+    permissionState.admin = false; permissionState.error = true;
+    render(<HermesConnectionsPage />); await ready();
+    expect(screen.getByRole('region', { name: 'Chính sách Hermes của công ty' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Quản trị bot Zalo của công ty' })).toBeTruthy();
   });
   it('moves to the Zalo step once connected, then waits on activation, then finishes', async () => {
     fetchMock.mockImplementation(zalo([]));
     const first = render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 3: Tạo mã Zalo.');
     expect(screen.queryByRole('figure', { name: 'Hình hướng dẫn cài Hermes' })).toBeNull();
-    expect(screen.getByText('Đã bật, có 1 bot Zalo sẵn sàng.')).toBeTruthy();
+    // Kết nối còn "active" không chứng minh công ty còn bật Hermes: chỉ nói "Đã bật" sau khi đọc chính sách.
+    expect(screen.queryByText(/Đã bật/)).toBeNull();
+    await ready(); await screen.findByText('Đã bật, có 1 bot Zalo sẵn sàng.');
     first.unmount();
     fetchMock.mockImplementation(zalo(linked('restart_pending')));
     const second = render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
-    expect(screen.getAllByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toHaveLength(2);
+    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toBeTruthy();
+    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý. Bấm “Tải lại liên kết” ở bước 3 để xem trạng thái mới nhất.')).toBeTruthy();
     second.unmount();
     fetchMock.mockImplementation(zalo(linked('synchronized')));
     render(<HermesConnectionsPage />);

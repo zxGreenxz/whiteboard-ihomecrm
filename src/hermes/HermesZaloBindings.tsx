@@ -171,6 +171,8 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
   const linked = activeBindings[0] ?? null;
   const observedSender = state.challenge && state.observed?.status === 'observed' ? state.observed.senderUid : null;
   const stage: HermesZaloSummary['stage'] = linked ? 'linked' : observedSender ? 'observed' : state.challenge ? 'code' : 'none';
+  // Các bước con đi theo mã đang làm, kể cả khi đã có một nick liên kết và người dùng liên kết thêm nick khác.
+  const stepStage: HermesZaloSummary['stage'] = observedSender ? 'observed' : state.challenge ? 'code' : linked && !linkAnother ? 'linked' : 'none';
   const linkedConnectionActive = linked ? activeConnections.some(value => value.id === linked.connectionId) : false;
   const switchCredential = Boolean(linked && selectedConnectionId && selectedConnectionId !== linked.connectionId);
   const showLinkSteps = !linked || linkAnother || Boolean(state.challenge);
@@ -203,7 +205,7 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
       </select></div>}
     {activeBindings.length > 0 && <div aria-label="Nick Zalo đã liên kết" className="space-y-2">{activeBindings.map(bindingRow)}</div>}
     {linked && switchCredential && <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm">
-      <p>{linkedConnectionActive ? `Trợ lý đang dùng ${names(linked.connectionId)}.` : 'Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn.'} Chuyển sang <strong>{names(selectedConnectionId)}</strong>, nick Zalo vẫn giữ nguyên, không cần ghép lại.</p>
+      <p>{linkedConnectionActive ? `Trợ lý đang dùng ${names(linked.connectionId)}.` : 'Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn.'} Chuyển sang <strong>{names(selectedConnectionId)}</strong> (mã …{shortConnectionId(selectedConnectionId)}), nick Zalo vẫn giữ nguyên, không cần ghép lại.</p>
       <Button disabled={blocked} onClick={() => {
         const connection = activeConnections.find(value => value.id === selectedConnectionId);
         const existing = state.bindings?.find(value => value.state === 'active');
@@ -216,7 +218,7 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
     </div>}
     {linked && !showLinkSteps && <Button variant="ghost" size="sm" disabled={blocked} onClick={() => setLinkAnother(true)}>Liên kết nick Zalo khác</Button>}
     {showLinkSteps && <ol aria-label="Các bước liên kết Zalo" className="space-y-2">
-      <SubStep n={3} state={stage !== 'none' ? 'done' : activeConnections.length > 0 && (state.bots?.length ?? 0) > 0 ? 'current' : 'todo'} title="Tạo mã liên kết">
+      <SubStep n={3} state={stepStage !== 'none' ? 'done' : activeConnections.length > 0 && (state.bots?.length ?? 0) > 0 ? 'current' : 'todo'} title="Tạo mã liên kết">
         {activeConnections.length === 0 && <p className="text-sm text-muted-foreground">Làm bước 2 (tạo kết nối) trước.</p>}
         {state.bots?.length === 0 && <p className="text-sm text-muted-foreground">Công ty chưa có bot sẵn sàng. Nhờ quản trị làm bước 1 trước khi bạn liên kết.</p>}
         {state.bots?.length === 1 && <p className="text-sm">Bot của công ty: <span className="font-medium">{state.bots[0].name}</span></p>}
@@ -231,7 +233,7 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
           {linked && !state.challenge && <Button variant="ghost" disabled={state.busy} onClick={() => setLinkAnother(false)}>Đóng</Button>}
         </div>
       </SubStep>
-      <SubStep n={4} state={stage === 'code' ? 'current' : stage === 'none' ? 'todo' : 'done'} title="Nhắn mã cho bot bằng nick Zalo chính">
+      <SubStep n={4} state={stepStage === 'code' ? 'current' : stepStage === 'none' ? 'todo' : 'done'} title="Nhắn mã cho bot bằng nick Zalo chính">
         {state.challenge && <>
           <p className="text-sm">Mở Zalo trên điện thoại bằng nick chính của bạn, nhắn riêng cho bot <span className="font-medium">{botName(state.challenge.accountId)}</span> đúng nội dung dưới đây.</p>
           <Label htmlFor="hermes-zalo-code">Nội dung gửi cho bot</Label>
@@ -239,11 +241,11 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
             <Input id="hermes-zalo-code" readOnly autoComplete="off" value={'/hermes-link ' + state.challenge.challenge} className="font-mono text-xs" />
             <Button variant="outline" onClick={() => void copy()}><Copy className="h-4 w-4" />Sao chép mã Zalo</Button>
           </div>
-          {stage === 'code' && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />
+          {stepStage === 'code' && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />
             Đang chờ bot nhận tin. Mã hết hạn lúc {new Date(state.challenge.expiresAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.</p>}
         </>}
       </SubStep>
-      <SubStep n={5} state={stage === 'observed' ? 'current' : stage === 'linked' ? 'done' : 'todo'} title="Xác nhận đúng nick của bạn">
+      <SubStep n={5} state={stepStage === 'observed' ? 'current' : stepStage === 'linked' ? 'done' : 'todo'} title="Xác nhận đúng nick của bạn">
         {observedSender && <>
           <p className="break-all text-sm">Bot nhận được tin từ nick Zalo có UID <strong>{observedSender}</strong>. Nếu đúng là nick của bạn, bấm ghép.</p>
           <Button disabled={blocked} onClick={confirm}>Ghép nick Zalo này</Button>

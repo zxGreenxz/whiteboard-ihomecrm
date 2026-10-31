@@ -14,7 +14,7 @@ export const HERMES_SETUP_STEPS: readonly { title: string; hint: string; lane: L
   { title: 'Tạo mã Zalo', hint: 'Bấm sao chép mã', lane: 'page' },
   { title: 'Nhắn mã cho bot', hint: 'Từ nick Zalo chính', lane: 'zalo' },
   { title: 'Xác nhận nick', hint: 'Bấm “Ghép nick này”', lane: 'page' },
-  { title: 'Kích hoạt trợ lý', hint: 'Trang báo khi xong', lane: 'admin' },
+  { title: 'Kích hoạt trợ lý', hint: 'Bấm tải lại để xem', lane: 'admin' },
   { title: 'Nhắn bot để dùng', hint: 'Hỏi phòng, giao việc', lane: 'zalo' },
 ];
 const laneLabels: Record<Lane, string> = { admin: 'Quản trị · tự động', page: 'Trên trang này', zalo: 'Trên Zalo điện thoại' };
