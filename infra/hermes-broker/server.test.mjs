@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
+import { createActionCatalog } from './action-catalog.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
@@ -551,6 +557,85 @@ test('actionPages: host opt-in per page on top of the production Thu chi catalog
   assert(on.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`));
   assert(!listed.some(name => name.startsWith('crm_action_')), 'RPC vắng ⇒ không khoá nào ⇒ họ thao tác ẩn');
   assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+});
+
+// Chat thật 31/10 (hồ sơ owner, production): crm_action_list page=contract trả 8 thao tác, contract.room_lock / room_unlock nằm ở
+// notPermitted (forbidden); crm_sale_action list có room_release nhưng không có room_lock. Tái hiện bằng đúng chuỗi ghép của server.mjs
+// (lớp thao tác MƯỢN sale_phong.lock_room, lớp Sale cấp) với câu trả lời capability như production: registry bật, chính sách công ty
+// trung tính, kết nối inherit_crm giữ khoá — nhưng quyền CRM của tài khoản chủ (vai "Chủ công ty") THIẾU sale_phong.lock_room, nên
+// hermes_sale_capabilities_v1 trả { allowed: false, companyEnabled: true }. Có quyền CRM ⇒ hai thao tác hiện, tám thao tác kia y nguyên.
+test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp Sale — thiếu quyền CRM ⇒ forbidden, có quyền ⇒ hiện, kết nối không giữ khoá ⇒ ẩn', async t => {
+  const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
+  const CONTRACT_KEYS = ['contracts.create', 'contracts.edit', 'contracts.renew', 'contracts.terminate'];
+  const TC_KEYS = catalog.keys.filter(key => key.startsWith('income_expenses.'));
+  const f = fakeBackend(), baseFetch = f.configuration.fetch;
+  // Quyền CRM của tài khoản chủ: có contracts.*, income_expenses.*, deposits.*, rooms.edit, sale_phong.manage_images; sale_phong.lock_room
+  // tuỳ ca. Trần công ty (companyEnabled) theo chính sách công ty của fixture (joined.policy.action), như SQL: registry ∩ chính sách.
+  const state = { crmLock: false };
+  const crm = key => key === 'sale_phong.lock_room' ? state.crmLock : SALE_ACTIONS.includes(key) || CONTRACT_KEYS.includes(key) || TC_KEYS.includes(key);
+  const capability = key => {
+    const on = f.read().joined?.policy.action.includes(key) === true, allowed = on && crm(key);
+    return { allowed, companyEnabled: on, buildingIds: allowed ? [I.building] : [] };
+  };
+  const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
+  f.configuration.fetch = async (url, options) => {
+    const path = new URL(url).pathname;
+    // SQL trả mọi khoá có dòng chính sách, kể cả sale_phong.lock_room của contract.room_lock; lớp thao tác bỏ qua khoá mượn.
+    if (path === '/rest/v1/rpc/hermes_action_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(catalog.keys.map(key => [key, capability(key)])), actions: Object.fromEntries(catalog.ids.map(action => [action, {}])) });
+    if (path === '/rest/v1/rpc/hermes_sale_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(SALE_ACTIONS.map(key => [key, capability(key)])) });
+    return baseFetch(url, options);
+  };
+  const http = await listening(t, { ...f.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  // inherit_crm: khoá kết nối = mọi khoá registry đang bật; chính sách công ty trung tính (0 dòng hermes_org_policies) = cùng tập.
+  const joined = f.read().joined;
+  const project = keys => { joined.connection.restrictions.action = [...keys]; joined.policy.action = [...keys]; };
+  const beforeTc = [...new Set([...SALE_ACTIONS, 'sale_phong.edit', ...catalog.keys.filter(key => !TC_KEYS.includes(key))])].sort();
+  const call = async (name, args) => {
+    const response = await http.mcp(token, 'tools/call', { name, arguments: args });
+    assert.equal(response.body.result.isError, false, response.text);
+    return JSON.parse(response.body.result.content[0].text);
+  };
+  const contract = () => call('crm_action_list', { page: 'contract' });
+  const saleOperations = async () => (await call('crm_sale_action', { operation: 'list' })).operations.map(entry => entry.operation);
+  const EIGHT = ['contract.notice_set', 'contract.notice_cancel', 'contract.renew', 'contract.return', 'contract.occupant_add',
+    'contract.occupant_remove', 'contract.draft', 'contract.renew_batch'];
+  const LOCKS = ['contract.room_lock', 'contract.room_unlock'];
+
+  // 1. Như production 31/10 08:19–08:21 (Thu chi chưa bật): đúng hai câu trả lời bot đã nhận.
+  project(beforeTc);
+  const observed = await contract();
+  assert.deepEqual(observed.items.map(item => item.action), EIGHT);
+  assert.deepEqual(observed.notPermitted.map(item => [item.action, item.reason]), LOCKS.map(action => [action, 'forbidden']));
+  const sale = await saleOperations();
+  assert(sale.includes('room_release') && sale.includes('reservation_update') && !sale.includes('room_lock'), sale.join());
+
+  // 2. Bật Thu chi (income_expenses.* vào registry ⇒ vào kết nối + chính sách) không đụng khoá tạm: vẫn thiếu quyền CRM ⇒ vẫn forbidden.
+  project([...beforeTc, ...TC_KEYS]);
+  const withTc = await contract();
+  assert.deepEqual(withTc.items.map(item => item.action), EIGHT);
+  assert.deepEqual(withTc.notPermitted.map(item => item.action), LOCKS);
+
+  // 3. Có quyền CRM sale_phong.lock_room: hai thao tác hiện đúng chỗ, hết notPermitted, tám thao tác kia giữ nguyên từng mục.
+  state.crmLock = true;
+  const granted = await contract();
+  assert.deepEqual(granted.items.map(item => item.action), ['contract.notice_set', 'contract.notice_cancel', ...LOCKS, ...EIGHT.slice(2)]);
+  assert.equal(granted.notPermitted, undefined);
+  assert.deepEqual(granted.items.filter(item => !LOCKS.includes(item.action)), withTc.items);
+  assert((await saleOperations()).includes('room_lock'));
+
+  // 4. Kết nối loại trừ khoá (chính sách công ty tường minh vẫn có khoá) HOẶC chính sách công ty tắt khoá (SQL trả companyEnabled
+  // false): ẩn mà không báo thiếu quyền, dù người dùng có quyền CRM.
+  const all = [...beforeTc, ...TC_KEYS], without = all.filter(key => key !== 'sale_phong.lock_room');
+  for (const [restrictions, policy] of [[without, all], [all, without]]) {
+    joined.connection.restrictions.action = [...restrictions]; joined.policy.action = [...policy];
+    const hidden = await contract();
+    assert.deepEqual(hidden.items.map(item => item.action), EIGHT);
+    assert.equal(hidden.notPermitted, undefined);
+    assert(!(await saleOperations()).includes('room_lock'));
+  }
+  assert(!f.calls.some(call => /hermes_(contract_action|sale_actions)_v1$/.test(call.path)), 'chỉ liệt kê, không gọi RPC ghi');
 });
 
 // Lượt 11 (D-HĐ9): origin web để ghép link công khai của HĐ (crm_read_contract_detail publicLink); chỉ https, đúng dạng origin.
