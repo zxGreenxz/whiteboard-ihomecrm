@@ -18,11 +18,16 @@ Mọi thao tác dưới đây đi qua `crm_action_run`. Tiền ra (chi, mua, tr�
 
 Lập phiếu chi vận hành (mua đồ, sửa chữa, điện nước của toà, vệ sinh…), ghi chú / sửa / huỷ / duyệt phiếu chi, hỏi khoản chi.
 
-## Chặn trước — không gọi tool, chỉ đúng trang web
+## Chặn trước — không gọi tool nào (kể cả `crm_action_list`), trả lời một câu chỉ đúng trang web
 
-Phiếu THU (mọi khoản thu, kể cả "lập phiếu thu …"), hoa hồng sale / môi giới, cọc / hoàn cọc / bỏ cọc, lập thanh lý / quyết
-toán, trả tiền thừa cho khách, lương / thưởng, phiếu hệ thống, phiếu con định kỳ, mở lại phiếu đã huỷ: trả lời một câu chỉ đúng
-trang web. Khách trả tiền hoá đơn (kể cả hoá đơn thanh lý) KHÔNG thuộc nhóm này ⇒ `ihome-crm-hoa-don`.
+- Chi hoa hồng sale / môi giới ⇒ Hợp đồng › Duyệt hoa hồng.
+- Thu / hoàn / bỏ / trả / bổ sung cọc ⇒ Quản lý cọc / thanh lý HĐ.
+- Lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách ⇒ Hợp đồng.
+- Lương, thưởng ⇒ Lương.
+- Mọi phiếu THU (kể cả "lập phiếu thu …", câu mở đầu bằng "Thu <tiền> <khoản>" dù có phòng / toà), phiếu hệ thống, phiếu con
+  định kỳ, mở lại phiếu đã huỷ ⇒ trang Thu chi (/income-expense).
+
+Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn thanh lý / "ck tiền quyết toán", KHÔNG thuộc nhóm này ⇒ `ihome-crm-hoa-don`.
 
 ## Lập phiếu chi — `expense.create`
 

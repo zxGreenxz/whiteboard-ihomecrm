@@ -12,7 +12,7 @@ tự viết, không gắn phiên bản với connector.
 | Lớp | Ở đâu | Ai sửa | Vai trò |
 | --- | --- | --- | --- |
 | 1. Luật cứng | connector (`infra/hermes-broker`) + DB | PR + migration | Quyền, khuôn tham số, xem trước / xác nhận, tool nghỉ hưu bị ẩn và bị từ chối. Bot hiểu sai thì máy chủ chặn. |
-| 2. Hướng dẫn chuẩn | SOUL + skill trong thư mục này | PR cùng connector | Cách dùng đúng tool hiện hành. Triển khai vào `skills.external_dirs` của hồ sơ: curator chỉ đọc (Hermes `tools/skill_usage.is_curation_eligible` trả False, `tools/skill_manager_guards.py` từ chối sửa). Khác lớp 3 thì theo lớp 2. |
+| 2. Hướng dẫn chuẩn | SOUL + skill trong thư mục này | PR cùng connector | Cách dùng đúng tool hiện hành. Triển khai vào `skills.external_dirs` của hồ sơ. Curator không chọn skill ngoài để sửa / cất (`tools/skill_usage.is_curation_eligible` trả False); `tools/skill_manager_guards.py` chỉ chặn XOÁ. Bảo vệ thật là file root:root 0644 — tiến trình Hermes (uid 10003) không ghi được (`deploy.sh` từ chối `--owner` trùng uid đó). Khác lớp 3 thì theo lớp 2. |
 | 3. Tự học | curator + bộ nhớ Hermes (vẫn bật) | bot | Kinh nghiệm riêng; có thể lỗi thời. Cổng kiểm học tập đối chiếu với connector bằng `infra/hermes-broker/catalog-names.mjs`. |
 
 ## Nội dung
@@ -56,51 +56,68 @@ Việc cần làm theo loại thay đổi:
 
 ## Triển khai lên VPS
 
-Điều kiện: bản phát hành connector dựng từ cả cây git (đang làm vậy: `/opt/ihome-hermes/releases/<sha>` có `infra/`, `RELEASE_SHA`).
-Hai script chạy trên host bằng root, viết để chạy lại an toàn; đã chạy thử trên cây giả
-([`official-skills-deploy.test.mjs`](../hermes-broker/official-skills-deploy.test.mjs): chạy khô ở mọi nền tảng, ghi thật trên
-Linux/CI), chưa chạy trên VPS.
+Điều kiện: bản phát hành connector dựng từ cả cây git, có `infra/hermes-skills/` và `RELEASE_SHA` (danh sách file release ở
+[HOST_SERVICE.md](../hermes-runtime/HOST_SERVICE.md#release-package)). Hai script chạy trên host bằng root, viết để chạy lại an toàn;
+đã chạy thử trên cây giả ([`official-skills-deploy.test.mjs`](../hermes-broker/official-skills-deploy.test.mjs): chạy khô ở mọi
+nền tảng, ghi thật trên Linux/CI), chưa chạy trên VPS.
 
-1. Phát hành connector như thường lệ (đổi `/opt/ihome-hermes/current`).
+**Mỗi nhóm hồ sơ một symlink, theo đúng connector của nhóm:** `owner` (connector production 8740) dùng `--link current` với release
+`/opt/ihome-hermes/current`; hồ sơ TEST `tkt tkh tkj` (connector 8741) dùng `--link test` với release `/opt/ihome-hermes-test/current`.
+`deploy.sh` dừng nếu đổi một link mà có hồ sơ ngoài `--profiles` đang trỏ tới.
+
+1. Phát hành connector như thường lệ (đổi `/opt/ihome-hermes/current`, `/opt/ihome-hermes-test/current`).
 2. Đưa skill chuẩn vào hồ sơ — xem trước rồi làm:
 
    ```bash
-   bash /opt/ihome-hermes/current/infra/hermes-skills/deploy.sh --profiles "owner tkt tkh tkj" --dry-run
-   bash /opt/ihome-hermes/current/infra/hermes-skills/deploy.sh --profiles "owner tkt tkh tkj"
+   S=/opt/ihome-hermes/current/infra/hermes-skills
+   bash $S/deploy.sh --profiles "tkt tkh tkj" --link test --release /opt/ihome-hermes-test/current --dry-run
+   bash $S/deploy.sh --profiles "tkt tkh tkj" --link test --release /opt/ihome-hermes-test/current
+   bash $S/deploy.sh --profiles "owner" --dry-run
+   bash $S/deploy.sh --profiles "owner"
    ```
 
    Chép skill vào `/var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills/<sha>/ihome-crm/` (root:root, 0755/0644),
-   đổi symlink `current` (đích tương đối), nối `skills.external_dirs: [/home/hermes/.hermes/ihome-official-skills/current]` vào
-   `config.yaml` của từng hồ sơ (sao lưu ở `/root/ihome-hermes-skills-backups/<stamp>-<pid>/`). Kiểm hết trước khi đổi; lỗi thì không
-   đổi gì. Chạy lại cùng bản ⇒ `KHÔNG ĐỔI GÌ`.
-3. Sửa SOUL của từng hồ sơ: dòng "Skill có sẵn: `crm-room-communications` … `crm-task-management` …" phải trỏ sang các skill
-   `ihome-crm-*` (SOUL v4.41 gọi đích danh hai skill cũ). Việc này ngoài PR này.
-4. Cất hai skill tự học cũ (sau bước 2 và 3):
+   đổi symlink `<link>` (đích tương đối), nối `skills.external_dirs: [/home/hermes/.hermes/ihome-official-skills/<link>]` vào
+   `config.yaml` từng hồ sơ (kiểm YAML bằng PyYAML hoặc js-yaml của release — ghi thật mà không kiểm được thì dừng; sao lưu ở
+   `/root/ihome-hermes-skills-backups/<stamp>-<pid>/` chỉ để đối chiếu). Kiểm hết trước khi đổi; lỗi thì không đổi gì. Chạy lại
+   cùng bản ⇒ `KHÔNG ĐỔI GÌ`.
+3. SOUL v4.42 (điều phối viên làm, ngoài PR này) cho mọi hồ sơ: dòng 32 "Skill có sẵn: `crm-room-communications` …
+   `crm-task-management` …" trỏ sang `ihome-crm-*`; dòng 31 (luật cũ `crm_task_create` khi không có `task.create`) và dòng 10
+   (`crm_expense_input_options`, đã gỡ) bỏ hoặc sửa.
+4. **Mở phiên mới cho `owner`** (`/new` trong Zalo, cần `/approve`): phiên `owner` chạy từ 17/10 còn giữ system prompt với SOUL cũ
+   (gọi `skill_view crm-task-management`). Smoke NGAY trên `owner` (không chỉ hồ sơ TEST): một câu giao việc ⇒ bot gọi
+   `crm_action_list` / `crm_action_run` `task.create`; một câu giữ phòng ⇒ `contract.room_lock`.
+5. Cất hai skill tự học cũ (sau bước 2–4):
 
    ```bash
-   bash /opt/ihome-hermes/current/infra/hermes-skills/archive-stale-local.sh --profiles "owner tkt tkh tkj"          # khô
-   bash /opt/ihome-hermes/current/infra/hermes-skills/archive-stale-local.sh --profiles "owner tkt tkh tkj" --apply
+   bash $S/archive-stale-local.sh --profiles "owner tkt tkh tkj"          # khô
+   bash $S/archive-stale-local.sh --profiles "owner tkt tkh tkj" --apply
    ```
 
-   Dùng đúng lệnh Hermes `hermes --profile <p> curator archive <tên>` (qua `docker exec -u 10003:10003 hermes-owner`): thư mục vào
-   `profiles/<p>/skills/.archive/<tên>`, `.usage.json` ghi archived, sổ `.curator_ledger.jsonl` ghi lại. Sao lưu tar + manifest ở
-   `/root/ihome-hermes-skills-backups/archive-<stamp>-<pid>/` (sổ `archive-manifests.list`). Khôi phục: thêm `--restore --apply`
-   (trả về đúng `productivity/<tên>`, ghim lại nếu lần cất gần nhất ghi đang ghim).
+   `--apply` TỪ CHỐI khi `profiles/<p>/SOUL.md` còn gọi tên skill sắp cất. Dùng đúng lệnh Hermes `hermes --profile <p> curator
+   archive <tên>` (qua `docker exec -u 10003:10003 hermes-owner`): thư mục vào `profiles/<p>/skills/.archive/<tên>`, `.usage.json`
+   ghi archived, sổ `.curator_ledger.jsonl` ghi lại. Sao lưu tar + manifest ở `/root/ihome-hermes-skills-backups/archive-<stamp>-<pid>/`
+   (sổ `archive-manifests.list`). Khôi phục: thêm `--restore --apply` (trả về đúng `productivity/<tên>`, ghim lại nếu lần cất gần
+   nhất ghi đang ghim).
 
 **Khởi động lại:** KHÔNG cần (khởi động lại `hermes-owner` làm gián đoạn Zalo).
 
 - Skill: Hermes đọc `config.yaml` theo chữ ký file (mtime, size, inode, ctime) và quét lại skill ở lượt sau. Phiên đang chạy giữ
   system prompt cũ nhưng nhận ghi chú "skills changed … Now available / No longer available" ở lượt kế tiếp
   (`agent/skills_index_delta.py`).
-- Đổi bản skill sau này (symlink `current` sang sha mới): Hermes nhớ đường dẫn external_dirs ĐÃ RESOLVE (sha cũ) theo chữ ký config
-  ⇒ `deploy.sh` chạm `config.yaml` của các hồ sơ trỏ tới `current`. Bản sha cũ được giữ để lùi.
+- Đổi bản skill sau này (symlink sang sha mới): Hermes nhớ đường dẫn external_dirs ĐÃ RESOLVE (sha cũ) theo chữ ký config
+  ⇒ `deploy.sh` chạm `config.yaml` của các hồ sơ trỏ tới link đó. Bản sha cũ được giữ để lùi.
 - SOUL: phiên đang chạy dùng lại nguyên system prompt đã lưu (`agent/conversation_loop._restore_or_build_system_prompt`), chỉ dựng
   lại khi đổi model / provider / thư mục làm việc. SOUL mới vào phiên MỚI hoặc khi phiên được nén; khởi động lại container không
   giúp.
 
-**Lùi:** `deploy.sh --release /opt/ihome-hermes/releases/<sha-cũ> --profiles …` (symlink về bản cũ + chạm config); bỏ hẳn lớp 2 thì
-chép lại `config.yaml` từ thư mục sao lưu; skill cũ: `archive-stale-local.sh --restore --apply`.
+**Lùi:**
+
+- Về bản skill cũ: `deploy.sh --release <release-cũ> --profiles … [--link …]` (symlink về sha cũ + chạm config).
+- Bỏ hẳn lớp 2 của một hồ sơ: `deploy.sh --remove --profiles … [--link …]` gỡ đúng khối `skills.external_dirs` đã nối. KHÔNG chép
+  đè `config.yaml` từ sao lưu: header `Authorization` có thể đã được xoay sau đó ⇒ MCP 401, bot mất CRM.
+- Skill cũ: `archive-stale-local.sh --restore --apply`.
 
 **Kiểm sau triển khai (chỉ đọc):** `ls -la /var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills/`;
 `docker exec hermes-owner sh -c "ls /home/hermes/.hermes/ihome-official-skills/current/ihome-crm"`; khối `skills:` trong
-`config.yaml`; nhắn thử ở hồ sơ TEST một câu giao việc ⇒ bot gọi `crm_action_list` / `crm_action_run` `task.create`.
+`config.yaml`; smoke ở bước 4.

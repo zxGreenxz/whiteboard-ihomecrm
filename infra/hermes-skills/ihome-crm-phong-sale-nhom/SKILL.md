@@ -36,12 +36,17 @@ nguyên văn, đồng ý rõ mới gọi lại kèm `confirmToken`. Giờ xem ph
 `crm_room_pass_observe` (revision) → `crm_room_pass_set_active`. Mất phản hồi ⇒ `crm_room_pass_status` cùng requestId. Báo rõ
 `contactSource` (provided / representative / unchanged).
 
-## Sửa phòng trên trang Sale
+## Sửa phòng trên trang Sale — `crm_sale_action`
 
-`crm_sale_action` operation=list trước để lấy các operation và khuôn input được cấp, rồi gọi đúng operation / input đó (requestId
-từ `crm_new_request_id`; `confirmation_required` ⇒ chỉ gửi lại kèm `confirmToken` khi người dùng đồng ý; kết quả chưa rõ ⇒ tra
-operation trạng thái tương ứng, không tạo mã mới). Giữ / bỏ giữ phòng KHÔNG đi qua `crm_sale_action`: dùng `crm_action_run`
-action `contract.room_lock` / `contract.room_unlock` (`ihome-crm-hop-dong`). Giữ phòng không phải đã nhận cọc.
+Chỉ để sửa thông tin phòng / ảnh / chính sách trên trang Sale (room_options, room_observe, room_patch, policy_*, bulk_patch):
+operation=list trước để xem operation và khuôn input được cấp, rồi gọi đúng operation / input đó (requestId từ
+`crm_new_request_id`; `confirmation_required` ⇒ chỉ gửi lại kèm `confirmToken` khi người dùng đồng ý; kết quả chưa rõ ⇒ tra
+operation trạng thái tương ứng, không tạo mã mới).
+
+- KHÔNG gọi reservation_create, reservation_update, reservation_topup, reservation_assign (báo cọc, sửa / thu thêm / gán cọc).
+  Cọc có tiền và ghi thẳng: cọc, thu thêm cọc, hoàn / bỏ cọc làm trên web, trang Quản lý cọc (hoặc thanh lý HĐ) — kể cả khi list có.
+- KHÔNG gọi room_lock / room_release: giữ / bỏ giữ phòng dùng `crm_action_run` action `contract.room_lock` /
+  `contract.room_unlock` (`ihome-crm-hop-dong`). Giữ phòng không phải đã nhận cọc.
 
 ## Gửi danh sách phòng vào nhóm
 

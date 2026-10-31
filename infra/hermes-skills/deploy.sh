@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
 # Triển khai skill CRM chuẩn (infra/hermes-skills) từ MỘT bản phát hành connector vào hồ sơ Hermes trên VPS. Chạy trên HOST bằng
-# root, không chạy trong container. Mặc định ghi thật; --dry-run chỉ in kế hoạch, không ghi gì. Chạy lại cùng bản phát hành ⇒
-# không đổi gì.
+# root, không chạy trong container. Mặc định ghi thật; --dry-run chỉ in kế hoạch, không ghi gì. Chạy lại cùng bản ⇒ không đổi gì.
 #
-#   bash infra/hermes-skills/deploy.sh --profiles "owner" [--release /opt/ihome-hermes/current] [--dry-run]
+#   bash deploy.sh --profiles "owner" [--release /opt/ihome-hermes/current] [--dry-run]                 # production: link current
+#   bash deploy.sh --profiles "tkt tkh tkj" --link test --release /opt/ihome-hermes-test/current        # hồ sơ TEST: link riêng
+#   bash deploy.sh --profiles "tkt" --link test --remove [--dry-run]                                    # gỡ khối skills đã nối
 #
-# Kiểm HẾT trước (bản phát hành, cây sha đã có, symlink, config từng hồ sơ, YAML ứng viên — cả khi chạy khô), có lỗi thì dừng khi
-# chưa đổi gì; rồi:
+# Mỗi nhóm hồ sơ dùng một symlink riêng (--link): owner (connector production) = current, hồ sơ TEST (connector 8741) = test.
+# Kiểm HẾT trước (bản phát hành, cây sha đã có, symlink, hồ sơ ngoài --profiles đang dùng link, config từng hồ sơ, YAML ứng viên — cả
+# khi chạy khô), có lỗi thì dừng khi chưa đổi gì; rồi:
 #  1. Chép <release>/infra/hermes-skills/{DESCRIPTION.md,ihome-crm-*/SKILL.md} vào <root>/ihome-official-skills/<sha>/ihome-crm/
-#     (chủ --owner, mặc định root:root; thư mục 0755, file 0644). <sha> lấy từ <release>/RELEASE_SHA (thiếu thì tên thư mục). Đã
-#     có <sha> giống hệt ⇒ giữ nguyên; có mà khác ⇒ DỪNG (một sha chỉ có một nội dung).
-#  2. Đổi symlink <root>/ihome-official-skills/<link> → <sha> nguyên tử (symlink tạm + mv -T). Đích TƯƠNG ĐỐI để đọc được cả trên
-#     host lẫn trong container (host <root> = container <container-root>). Symlink có trước khi config trỏ tới nó.
-#  3. Mỗi hồ sơ chỉ định: bảo đảm profiles/<p>/config.yaml có skills.external_dirs chứa <container-root>/ihome-official-skills/<link>.
-#     Chưa có khối skills ⇒ nối thêm khối (sao lưu vào --backup-dir, giữ chủ + quyền, thay nguyên tử, kiểm YAML nếu host có
-#     python3 + PyYAML). Đã có khối skills mà thiếu đường dẫn ⇒ DỪNG, sửa tay (không đoán YAML).
-#  4. Chưa chạm config cho <sha> này (dấu <root>/ihome-official-skills/.<link>.touched khác <sha>: symlink vừa đổi, hoặc lần trước
-#     chết trước bước này) ⇒ chạm (touch) config.yaml của mọi hồ sơ đang trỏ tới <link>, rồi ghi dấu = <sha>. Hermes nhớ đường dẫn
-#     external_dirs ĐÃ RESOLVE theo chữ ký file config (agent/skill_utils.get_external_skills_dirs); chạm file thì gateway đang
-#     chạy đọc bản mới ở lượt sau.
+#     (chủ --owner, mặc định root:root; thư mục 0755, file 0644 — tiến trình Hermes uid 10003 không ghi được, đó là lớp bảo vệ thật).
+#     <sha> lấy từ <release>/RELEASE_SHA (thiếu thì tên thư mục). Đã có <sha> giống hệt ⇒ giữ nguyên; có mà khác ⇒ DỪNG.
+#  2. Đổi symlink <root>/ihome-official-skills/<link> → <sha> nguyên tử (symlink tạm + mv -T), đích TƯƠNG ĐỐI (host <root> =
+#     container <container-root>). Có hồ sơ NGOÀI --profiles đang trỏ tới <link> ⇒ DỪNG (đổi link sẽ đổi skill của hồ sơ đó).
+#  3. Mỗi hồ sơ chỉ định: bảo đảm config.yaml có skills.external_dirs chứa mục <container-root>/ihome-official-skills/<link>. Chưa có
+#     khối skills ⇒ nối thêm khối (sao lưu vào --backup-dir chỉ để đối chiếu, giữ chủ + quyền, thay nguyên tử, kiểm YAML bằng PyYAML
+#     hoặc js-yaml của bản phát hành — ghi thật mà không kiểm được thì DỪNG). Đã có khối skills mà thiếu mục ⇒ DỪNG, sửa tay.
+#  4. Chưa chạm config cho <sha> này (dấu .<link>.touched khác <sha>) ⇒ chạm (touch) config.yaml của các hồ sơ trỏ tới <link> rồi
+#     ghi dấu. Hermes nhớ đường dẫn external_dirs ĐÃ RESOLVE theo chữ ký file config (agent/skill_utils.get_external_skills_dirs).
+# --remove: gỡ đúng khối mà bước 3 đã nối (không đụng symlink / thư mục sha). Lùi bằng --remove, KHÔNG chép đè config.yaml từ sao
+# lưu: config có header Authorization có thể đã được xoay sau đó, chép đè ⇒ MCP 401, bot mất CRM.
 #
-# KHÔNG cần khởi động lại gateway hay container hermes-owner (khởi động lại làm gián đoạn Zalo): đổi config / chạm config làm Hermes
-# quét lại skill ở lượt sau, và phiên đang chạy nhận danh sách skill mới qua ghi chú "skills changed" (agent/skills_index_delta.py).
-# SOUL.md thì khác: phiên đang chạy giữ nguyên system prompt đã lưu; SOUL mới chỉ vào phiên mới hoặc khi phiên được nén.
+# KHÔNG cần khởi động lại gateway hay container hermes-owner (khởi động lại làm gián đoạn Zalo): đổi / chạm config làm Hermes quét
+# lại skill ở lượt sau, phiên đang chạy nhận danh sách skill mới qua ghi chú "skills changed" (agent/skills_index_delta.py). SOUL.md
+# thì khác: phiên đang chạy giữ system prompt đã lưu; SOUL mới chỉ vào phiên mới (/new) hoặc khi phiên được nén.
 set -euo pipefail
 umask 022
 
@@ -31,12 +33,15 @@ ROOT=/var/lib/ihome-hermes-profiles/owner/.hermes
 CROOT=/home/hermes/.hermes
 LINK_NAME=current
 OWNER=0:0
+HERMES_UID=10003
 BACKUP_DIR=/root/ihome-hermes-skills-backups
 PROFILES=''
 DRY=0
+REMOVE=0
+COMMENT='# Skill CRM chuẩn phát hành cùng connector (infra/hermes-skills/deploy.sh); Hermes chỉ đọc thư mục này.'
 
 die() { echo "LỖI: $*" >&2; exit 1; }
-usage() { sed -n '2,6p' "$0"; exit 2; }
+usage() { sed -n '2,8p' "$0"; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --release) RELEASE="${2:?}"; shift 2 ;;
@@ -45,32 +50,170 @@ while [ $# -gt 0 ]; do
     --root) ROOT="${2:?}"; shift 2 ;;
     --container-root) CROOT="${2:?}"; shift 2 ;;
     --owner) OWNER="${2:?}"; shift 2 ;;
+    --hermes-uid) HERMES_UID="${2:?}"; shift 2 ;;
     --backup-dir) BACKUP_DIR="${2:?}"; shift 2 ;;
+    --remove) REMOVE=1; shift ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage ;;
     *) die "tham số lạ: $1" ;;
   esac
 done
 
-[[ "$LINK_NAME" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "--link phải là chữ thường/số/-/_ (vd current)"
+[[ "$LINK_NAME" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "--link phải là chữ thường/số/-/_ (vd current, test)"
 [[ "$OWNER" =~ ^[0-9]+:[0-9]+$ ]] || die "--owner phải dạng UID:GID số"
+[[ "$HERMES_UID" =~ ^[0-9]+$ ]] || die "--hermes-uid phải là số"
 OWNER_UID="${OWNER%%:*}"; OWNER_GID="${OWNER##*:}"
 if [ "$DRY" = 0 ] && [ "$OWNER_UID" = 0 ] && [ "$(id -u)" != 0 ]; then die "ghi thật với chủ root:root phải chạy bằng root"; fi
+# Skill chuẩn thuộc root để tiến trình Hermes (uid $HERMES_UID) KHÔNG ghi được; chủ trùng uid Hermes thì mất lớp bảo vệ đó.
+if [ "$DRY" = 0 ] && [ "$OWNER_UID" = "$HERMES_UID" ]; then die "--owner trùng uid của Hermes ($HERMES_UID): Hermes sẽ sửa được skill chuẩn"; fi
+read -r -a REQUESTED <<< "$PROFILES"
 PROFILE_LIST=()
-for p in $PROFILES; do
+in_list() { local item; for item in "${PROFILE_LIST[@]}"; do [ "$item" = "$1" ] && return 0; done; return 1; }
+for p in "${REQUESTED[@]}"; do
   [[ "$p" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || die "tên hồ sơ không hợp lệ: $p"
   [ -f "$ROOT/profiles/$p/config.yaml" ] || die "không thấy $ROOT/profiles/$p/config.yaml"
-  case " ${PROFILE_LIST[*]} " in *" $p "*) ;; *) PROFILE_LIST+=("$p") ;; esac
+  in_list "$p" || PROFILE_LIST+=("$p")
 done
 [ "${#PROFILE_LIST[@]}" -gt 0 ] || die "thiếu --profiles (vd --profiles \"owner\")"
 
 REL="$(readlink -f -- "$RELEASE")" || die "không đọc được bản phát hành $RELEASE"
 [ -d "$REL" ] || die "bản phát hành không phải thư mục: $REL"
+BASE="$ROOT/ihome-official-skills"
+LINK="$BASE/$LINK_NAME"
+WANT="$CROOT/ihome-official-skills/$LINK_NAME"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"   # kèm PID: hai lượt cùng giây không dùng chung thư mục sao lưu
+CHANGES=()
+WORK="$(mktemp -d)"
+TEMPS=("$WORK")
+LOCK=''
+trap 'if [ -n "$LOCK" ]; then rmdir "$LOCK" 2>/dev/null || true; fi; rm -rf -- "${TEMPS[@]}"' EXIT
+# <WANT> đưa cho bộ kiểm YAML qua file, không qua đối số: Git Bash trên Windows đổi đối số "/home/..." thành "C:/.../home/...".
+printf '%s' "$WANT" > "$WORK/want"
+
+# Khối skills cấp một của config (in ra; rỗng nếu không có).
+skills_block() { awk '/^skills:/ { on = 1; print; next } on && /^[^[:space:]#]/ { exit } on { print }' "$1"; }
+# Config có MỤC danh sách = <WANT> dưới skills.external_dirs (bỏ qua dòng chú thích và mục của khoá khác, chấp nhận dấu nháy) ⇒ mã 0.
+refers_link() {
+  awk -v want="$WANT" '
+    /^skills:/ { on = 1; key = ""; next }
+    on && /^[^ \t#]/ { on = 0 }
+    on && /^[ \t]+[A-Za-z0-9_]+:/ { key = $0; sub(/^[ \t]+/, "", key); sub(/:.*/, "", key); next }
+    on && key == "external_dirs" && /^[ \t]*-[ \t]/ {
+      v = $0; sub(/^[ \t]*-[ \t]+/, "", v); sub(/[ \t]+#.*$/, "", v); sub(/[ \t]+$/, "", v)
+      if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v = substr(v, 2, length(v) - 2)
+      if (v == want) found = 1
+    }
+    END { exit found ? 0 : 1 }' "$1"
+}
+# Bộ kiểm YAML: PyYAML (đúng bộ đọc của Hermes) nếu host có, không thì js-yaml trong node_modules của bản phát hành.
+# Node: ưu tiên Node 24 của connector (node hệ điều hành có thể quá cũ cho đoạn kiểm), không có thì node trên PATH.
+if [ -x /opt/ihome-hermes/node/bin/node ]; then NODE_BIN=/opt/ihome-hermes/node/bin/node; else NODE_BIN="$(command -v node || true)"; fi
+if command -v python3 >/dev/null 2>&1 && python3 -I -c 'import yaml' >/dev/null 2>&1; then YAML_CHECKER=PyYAML
+elif [ -n "$NODE_BIN" ] && [ -f "$REL/node_modules/js-yaml/package.json" ]; then YAML_CHECKER=js-yaml
+else YAML_CHECKER=''; fi
+JS_CHECK='const [oldPath, newPath, wantPath, yamlDir] = process.argv.slice(1);
+const fs = require("fs"); const yaml = require(yamlDir); const want = fs.readFileSync(wantPath, "utf8");
+const load = p => yaml.load(fs.readFileSync(p, "utf8")) ?? {};
+const canon = v => Array.isArray(v) ? v.map(canon) : v !== null && typeof v === "object" && !(v instanceof Date)
+  ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canon(v[k])])) : v;
+const old = load(oldPath), next = load(newPath);
+const ok = old !== null && typeof old === "object" && !Array.isArray(old) && !Object.hasOwn(old, "skills") &&
+  JSON.stringify(canon(next)) === JSON.stringify(canon({ ...old, skills: { external_dirs: [want] } }));
+process.exit(ok ? 0 : 1);'
+# yaml_check <không có khối> <có khối> <nhãn>: bản "có khối" = bản kia + đúng skills.external_dirs [<WANT>]. Lỗi in câu chung, KHÔNG in
+# nội dung (config có token).
+yaml_check() {
+  local ok=1
+  case "$YAML_CHECKER" in
+    PyYAML) python3 -I - "$1" "$2" "$WORK/want" >/dev/null 2>&1 <<'PY' && ok=0
+import sys, yaml
+old_path, new_path, want_path = sys.argv[1:4]
+with open(want_path, encoding='utf-8') as fh: want = fh.read()
+with open(old_path, encoding='utf-8') as fh: old = yaml.safe_load(fh) or {}
+with open(new_path, encoding='utf-8') as fh: new = yaml.safe_load(fh) or {}
+expected = dict(old); expected['skills'] = {'external_dirs': [want]}
+sys.exit(0 if isinstance(old, dict) and 'skills' not in old and new == expected else 1)
+PY
+      ;;
+    js-yaml) "$NODE_BIN" -e "$JS_CHECK" "$1" "$2" "$WORK/want" "$REL/node_modules/js-yaml" >/dev/null 2>&1 && ok=0 ;;
+    *)
+      [ "$DRY" = 1 ] || die "$3: không có bộ kiểm YAML (python3 + PyYAML, hoặc node + js-yaml trong $REL/node_modules) — chưa đổi gì"
+      echo "  CẢNH BÁO: không có bộ kiểm YAML — chạy khô chỉ kiểm dạng chữ; ghi thật sẽ dừng." >&2; return 0 ;;
+  esac
+  [ "$ok" = 0 ] || die "$3: kiểm YAML thất bại (không in nội dung config) — chưa đổi gì"
+  echo "  Kiểm YAML ($YAML_CHECKER): đạt — $3"
+}
+take_lock() { # khoá chống chạy chồng (mkdir nguyên tử; bị giết giữa chừng thì xoá tay thư mục .deploy.lock)
+  mkdir "$BASE/.deploy.lock" 2>/dev/null || die "đang có lượt triển khai khác (hoặc khoá cũ còn): $BASE/.deploy.lock"
+  LOCK="$BASE/.deploy.lock"
+}
+# Thay config bằng bản ứng viên đã kiểm: config vẫn đúng bản lúc kiểm ⇒ sao lưu (đối chiếu) ⇒ ghi bản tạm cạnh config (giữ chủ +
+# quyền) ⇒ cmp lại ngay trước mv ⇒ mv nguyên tử.
+replace_config() { # replace_config <hồ sơ> <nhãn thay đổi>
+  local p="$1" cfg="$ROOT/profiles/$1/config.yaml" tmp
+  cmp -s -- "$cfg" "$WORK/$p.orig" || die "$p: config.yaml vừa đổi trong lúc chạy — dừng, chạy lại"
+  (umask 077 && mkdir -p -- "$BACKUP_DIR/$STAMP/$p")
+  cp -p -- "$cfg" "$BACKUP_DIR/$STAMP/$p/config.yaml"
+  tmp="$(dirname -- "$cfg")/.config.yaml.ihome-skills.$$"
+  TEMPS+=("$tmp")
+  cp -p -- "$cfg" "$tmp"
+  cat -- "$WORK/$p.new" > "$tmp"
+  cmp -s -- "$cfg" "$WORK/$p.orig" || die "$p: config.yaml vừa đổi trong lúc chạy — dừng, chạy lại"
+  mv -f -- "$tmp" "$cfg"
+  CHANGES+=("$p: $2 (sao lưu đối chiếu $BACKUP_DIR/$STAMP/$p/config.yaml)")
+}
+summary() {
+  if [ "${#CHANGES[@]}" -eq 0 ]; then echo "KHÔNG ĐỔI GÌ$1."; else
+    echo "ĐÃ ĐỔI:"; printf '  - %s\n' "${CHANGES[@]}"
+    echo "Không cần khởi động lại hermes-owner: phiên đang chạy nhận danh sách skill mới ở lượt kế tiếp."
+  fi
+}
+
+# ==== --remove: gỡ đúng khối bước 3 đã nối ====
+if [ "$REMOVE" = 1 ]; then
+  echo "Gỡ skills.external_dirs [$WANT] khỏi hồ sơ: ${PROFILE_LIST[*]}$( [ "$DRY" = 1 ] && echo ' — CHẠY KHÔ, không ghi gì')"
+  TO_REMOVE=()
+  for p in "${PROFILE_LIST[@]}"; do
+    CFG="$ROOT/profiles/$p/config.yaml"
+    rc=0
+    awk -v c="$COMMENT" -v w="    - $WANT" '
+      { line[NR] = $0 }
+      END {
+        start = 0
+        for (i = 1; i + 3 <= NR; i++) if (line[i] == c && line[i+1] == "skills:" && line[i+2] == "  external_dirs:" && line[i+3] == w) {
+          if (start) exit 4
+          if (i + 4 <= NR && line[i+4] ~ /^[ \t]/) exit 3
+          start = i
+        }
+        if (!start) exit 2
+        from = (start > 1 && line[start-1] == "") ? start - 1 : start
+        for (i = 1; i <= NR; i++) if (i < from || i > start + 3) print line[i]
+      }' "$CFG" > "$WORK/$p.new" || rc=$?
+    case "$rc" in
+      0) ;;
+      2) if refers_link "$CFG"; then die "$p: khối skills có $WANT nhưng không đúng khối deploy.sh đã nối — gỡ tay"; fi
+         echo "Giữ nguyên $p: không có khối của deploy.sh."; continue ;;
+      *) die "$p: khối skills của deploy.sh đã bị sửa hoặc lặp — gỡ tay" ;;
+    esac
+    cp -- "$CFG" "$WORK/$p.orig"
+    yaml_check "$WORK/$p.new" "$WORK/$p.orig" "$p"
+    TO_REMOVE+=("$p")
+  done
+  if [ "$DRY" = 1 ]; then
+    for p in "${TO_REMOVE[@]}"; do echo "  (khô) sẽ gỡ khối skills.external_dirs [$WANT] khỏi $ROOT/profiles/$p/config.yaml (sao lưu trước)"; done
+    echo "CHẠY KHÔ xong — không ghi gì."; exit 0
+  fi
+  if [ -d "$BASE" ]; then take_lock; fi
+  for p in "${TO_REMOVE[@]}"; do replace_config "$p" "gỡ skills.external_dirs"; done
+  summary ''
+  exit 0
+fi
+
+# ==== Triển khai ====
 SRC="$REL/infra/hermes-skills"
-[ -f "$SRC/DESCRIPTION.md" ] || die "bản phát hành thiếu infra/hermes-skills/DESCRIPTION.md: $SRC (dựng release từ cả cây git)"
+[ -f "$SRC/DESCRIPTION.md" ] || die "bản phát hành thiếu infra/hermes-skills/DESCRIPTION.md: $SRC (dựng release có infra/hermes-skills)"
 if [ -f "$REL/RELEASE_SHA" ]; then SHA="$(tr -d '[:space:]' < "$REL/RELEASE_SHA")"; else SHA="$(basename -- "$REL")"; fi
 [[ "$SHA" =~ ^[0-9a-f]{7,40}$ ]] || die "sha bản phát hành không hợp lệ: $SHA"
-
 # Danh sách skill của bản phát hành; kiểm sơ bộ frontmatter (CI kiểm đầy đủ ở infra/hermes-broker/official-skills.test.mjs).
 SKILLS=()
 for dir in "$SRC"/ihome-crm-*/; do
@@ -85,13 +228,9 @@ for dir in "$SRC"/ihome-crm-*/; do
   SKILLS+=("$name")
 done
 [ "${#SKILLS[@]}" -gt 0 ] || die "bản phát hành không có skill ihome-crm-* nào ở $SRC"
-
-BASE="$ROOT/ihome-official-skills"
 DEST="$BASE/$SHA"
-LINK="$BASE/$LINK_NAME"
-WANT="$CROOT/ihome-official-skills/$LINK_NAME"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"   # kèm PID: hai lượt cùng giây không dùng chung thư mục sao lưu
-CHANGES=()
+MARK="$BASE/.$LINK_NAME.touched"
+TOUCHED_SHA="$( [ -f "$MARK" ] && tr -d '[:space:]' < "$MARK" || true)"
 echo "Bản phát hành: $REL (sha $SHA), ${#SKILLS[@]} skill: ${SKILLS[*]}"
 echo "Đích: $DEST; symlink $LINK; external_dirs: $WANT; hồ sơ: ${PROFILE_LIST[*]}$( [ "$DRY" = 1 ] && echo ' — CHẠY KHÔ, không ghi gì')"
 
@@ -101,28 +240,8 @@ expected_files() {
   for name in "${SKILLS[@]}"; do echo "ihome-crm/$name/SKILL.md"; done
 }
 source_of() { case "$1" in ihome-crm/DESCRIPTION.md) echo "$SRC/DESCRIPTION.md" ;; ihome-crm/*) echo "$SRC/${1#ihome-crm/}" ;; esac; }
-skills_block() { awk '/^skills:/ { on = 1; print; next } on && /^[^[:space:]#]/ { exit } on { print }' "$1"; }
-refers_link() { grep -qF -- "$WANT" <<< "$(skills_block "$1")"; }
-MARK="$BASE/.$LINK_NAME.touched"
-TOUCHED_SHA="$( [ -f "$MARK" ] && tr -d '[:space:]' < "$MARK" || true)"
-yaml_check() { # yaml_check <cũ> <mới> <đường dẫn>: mới = cũ + đúng khối skills.external_dirs [đường dẫn]
-  if ! command -v python3 >/dev/null 2>&1 || ! python3 -I -c 'import yaml' >/dev/null 2>&1; then
-    echo "  CẢNH BÁO: host thiếu python3/PyYAML — chỉ kiểm dạng chữ, không kiểm YAML." >&2; return 0
-  fi
-  python3 -I - "$1" "$2" "$3" <<'PY'
-import sys, yaml
-old_path, new_path, want = sys.argv[1:4]
-with open(old_path, encoding='utf-8') as fh: old = yaml.safe_load(fh) or {}
-with open(new_path, encoding='utf-8') as fh: new = yaml.safe_load(fh) or {}
-expected = dict(old); expected['skills'] = {'external_dirs': [want]}
-sys.exit(0 if isinstance(old, dict) and 'skills' not in old and new == expected else 1)
-PY
-}
 
-# ==== KIỂM (không đổi gì; config ứng viên dựng trong thư mục tạm riêng) ====
-WORK="$(mktemp -d)"
-TEMPS=("$WORK")
-trap 'rm -rf -- "${TEMPS[@]}"' EXIT
+# ---- KIỂM (không đổi gì; config ứng viên dựng trong thư mục tạm riêng) ----
 DEST_PLAN=keep
 if [ -d "$DEST" ]; then
   actual="$(cd "$DEST" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)"
@@ -135,48 +254,41 @@ CURRENT_TARGET="$( [ -L "$LINK" ] && readlink -- "$LINK" || true)"
 APPEND=()
 for p in "${PROFILE_LIST[@]}"; do
   CFG="$ROOT/profiles/$p/config.yaml"
-  block="$(skills_block "$CFG")"
-  if grep -qF -- "$WANT" <<< "$block"; then continue; fi
-  [ -z "$block" ] || die "$p: config.yaml đã có khối skills: mà chưa có $WANT — thêm tay vào skills.external_dirs (không tự sửa YAML)"
+  if refers_link "$CFG"; then continue; fi
+  [ -z "$(skills_block "$CFG")" ] || die "$p: config.yaml đã có khối skills: mà chưa có mục $WANT — thêm tay vào skills.external_dirs (không tự sửa YAML)"
   cp -- "$CFG" "$WORK/$p.orig"
   cp -- "$CFG" "$WORK/$p.new"
   if [ -s "$WORK/$p.new" ] && [ -n "$(tail -c 1 "$WORK/$p.new")" ]; then printf '\n' >> "$WORK/$p.new"; fi
-  printf '%s\n' '' '# Skill CRM chuẩn phát hành cùng connector (infra/hermes-skills/deploy.sh); Hermes chỉ đọc thư mục này.' \
-    'skills:' '  external_dirs:' "    - $WANT" >> "$WORK/$p.new"
-  yaml_check "$WORK/$p.orig" "$WORK/$p.new" "$WANT" || die "$p: kiểm YAML sau khi nối khối skills thất bại — chưa đổi gì"
+  printf '%s\n' '' "$COMMENT" 'skills:' '  external_dirs:' "    - $WANT" >> "$WORK/$p.new"
+  yaml_check "$WORK/$p.orig" "$WORK/$p.new" "$p"
   APPEND+=("$p")
 done
+# Hồ sơ đang trỏ tới <link> (kể cả sắp nối). Link đổi / chưa chạm cho sha này mà có hồ sơ ngoài --profiles dùng link ⇒ dừng.
+REFERRING=("${APPEND[@]}")
+for CFG in "$ROOT"/profiles/*/config.yaml; do
+  [ -f "$CFG" ] || continue
+  p="$(basename -- "$(dirname -- "$CFG")")"
+  if refers_link "$CFG"; then REFERRING+=("$p"); fi
+done
+OUTSIDERS=()
+for p in "${REFERRING[@]}"; do in_list "$p" || OUTSIDERS+=("$p"); done
+if { [ "$CURRENT_TARGET" != "$SHA" ] || [ "$TOUCHED_SHA" != "$SHA" ]; } && [ "${#OUTSIDERS[@]}" -gt 0 ]; then
+  die "symlink $LINK_NAME đang được hồ sơ ngoài --profiles dùng: ${OUTSIDERS[*]} — thêm vào --profiles, hoặc dùng --link riêng cho nhóm hồ sơ này"
+fi
 
 if [ "$DRY" = 1 ]; then
   case "$DEST_PLAN" in create) echo "  (khô) sẽ tạo $DEST ($(expected_files | wc -l | tr -d ' ') file)" ;; fix) echo "  (khô) sẽ sửa chủ/quyền trong $DEST" ;;
     *) echo "Giữ nguyên $DEST (đã có, giống hệt)." ;; esac
   if [ "$CURRENT_TARGET" = "$SHA" ]; then echo "Giữ nguyên $LINK → $SHA."; else echo "  (khô) sẽ đổi $LINK: ${CURRENT_TARGET:-(chưa có)} → $SHA"; fi
-  for p in "${APPEND[@]}"; do echo "  (khô) sẽ nối khối skills.external_dirs [$WANT] vào $ROOT/profiles/$p/config.yaml (sao lưu trước; YAML ứng viên đã kiểm)"; done
-  if [ "$TOUCHED_SHA" != "$SHA" ]; then
-    for CFG in "$ROOT"/profiles/*/config.yaml; do
-      if [ -f "$CFG" ] && refers_link "$CFG"; then echo "  (khô) sẽ chạm $CFG"; fi
-    done
-  fi
+  for p in "${APPEND[@]}"; do echo "  (khô) sẽ nối khối skills.external_dirs [$WANT] vào $ROOT/profiles/$p/config.yaml (sao lưu trước)"; done
+  if [ "$TOUCHED_SHA" != "$SHA" ]; then for p in "${REFERRING[@]}"; do echo "  (khô) sẽ chạm $ROOT/profiles/$p/config.yaml"; done; fi
   echo "CHẠY KHÔ xong — không ghi gì."; exit 0
 fi
 
-# ==== LÀM ====
-# Khoá chống chạy chồng (mkdir nguyên tử; bị kẹt sau khi bị giết thì xoá tay thư mục .deploy.lock). Dọn file tạm khi thoát.
+# ---- LÀM ----
 if [ ! -d "$BASE" ]; then install -d -m 0755 -o "$OWNER_UID" -g "$OWNER_GID" "$BASE"; CHANGES+=("tạo $BASE"); fi
-LOCK="$BASE/.deploy.lock"
-mkdir "$LOCK" 2>/dev/null || die "đang có lượt triển khai khác (hoặc khoá cũ còn): $LOCK"
+take_lock
 TEMPS+=("$BASE/.stage-$SHA-$$" "$BASE/$LINK_NAME.tmp.$$" "$MARK.tmp.$$")
-trap 'rmdir "$LOCK" 2>/dev/null || true; rm -rf -- "${TEMPS[@]}"' EXIT
-
-# Config ứng viên đặt cạnh config thật (giữ chủ + quyền bằng cp -p), nội dung đúng bản đã kiểm; config đổi giữa chừng ⇒ dừng.
-for p in "${APPEND[@]}"; do
-  CFG="$ROOT/profiles/$p/config.yaml"
-  cmp -s -- "$CFG" "$WORK/$p.orig" || die "$p: config.yaml vừa đổi trong lúc chạy — chưa đổi gì, chạy lại"
-  TMP="$(dirname -- "$CFG")/.config.yaml.ihome-skills.$$"
-  TEMPS+=("$TMP")
-  cp -p -- "$CFG" "$TMP"
-  cat -- "$WORK/$p.new" > "$TMP"
-done
 
 # 1. Cây skill của sha.
 case "$DEST_PLAN" in
@@ -195,7 +307,7 @@ case "$DEST_PLAN" in
   *) echo "Giữ nguyên $DEST (đã có, giống hệt)." ;;
 esac
 
-# 2. Symlink <link> → <sha> (tương đối), đổi nguyên tử.
+# 2. Symlink <link> → <sha> (tương đối), đổi nguyên tử. Có trước khi config trỏ tới nó.
 if [ "$CURRENT_TARGET" = "$SHA" ]; then echo "Giữ nguyên $LINK → $SHA."
 else
   ln -s -- "$SHA" "$BASE/$LINK_NAME.tmp.$$"
@@ -205,30 +317,19 @@ else
   CHANGES+=("đổi $LINK: ${CURRENT_TARGET:-(chưa có)} → $SHA")
 fi
 
-# 3. skills.external_dirs: sao lưu rồi thay nguyên tử bằng config ứng viên đã kiểm.
-for p in "${APPEND[@]}"; do
-  CFG="$ROOT/profiles/$p/config.yaml"
-  (umask 077 && mkdir -p -- "$BACKUP_DIR/$STAMP/$p")
-  cp -p -- "$CFG" "$BACKUP_DIR/$STAMP/$p/config.yaml"
-  mv -f -- "$(dirname -- "$CFG")/.config.yaml.ihome-skills.$$" "$CFG"
-  CHANGES+=("$p: thêm skills.external_dirs (sao lưu $BACKUP_DIR/$STAMP/$p/config.yaml)")
-done
+# 3. skills.external_dirs của hồ sơ chưa có.
+for p in "${APPEND[@]}"; do replace_config "$p" "thêm skills.external_dirs [$WANT]"; done
 
-# 4. Chưa chạm cho <sha> này ⇒ chạm config của mọi hồ sơ trỏ tới <link>, rồi ghi dấu (ghi dấu SAU khi chạm: chết giữa chừng thì
-#    lần chạy sau chạm lại).
+# 4. Chưa chạm cho <sha> này ⇒ chạm config của mọi hồ sơ trỏ tới <link> (đều trong --profiles), rồi ghi dấu (SAU khi chạm: chết giữa
+#    chừng thì lần sau chạm lại).
 if [ "$TOUCHED_SHA" != "$SHA" ]; then
-  for CFG in "$ROOT"/profiles/*/config.yaml; do
-    if [ -f "$CFG" ] && refers_link "$CFG"; then
-      touch -c -- "$CFG"
-      CHANGES+=("$(basename -- "$(dirname -- "$CFG")"): chạm config.yaml để nạp $SHA")
-    fi
+  for p in "${REFERRING[@]}"; do
+    touch -c -- "$ROOT/profiles/$p/config.yaml"
+    CHANGES+=("$p: chạm config.yaml để nạp $SHA")
   done
   printf '%s\n' "$SHA" > "$MARK.tmp.$$"
   mv -f -- "$MARK.tmp.$$" "$MARK"
   CHANGES+=("ghi dấu $MARK = $SHA")
 fi
 
-if [ "${#CHANGES[@]}" -eq 0 ]; then echo "KHÔNG ĐỔI GÌ (đã đúng bản $SHA)."; else
-  echo "ĐÃ ĐỔI:"; printf '  - %s\n' "${CHANGES[@]}"
-  echo "Không cần khởi động lại hermes-owner: phiên đang chạy nhận skill mới ở lượt kế tiếp."
-fi
+summary " (đã đúng bản $SHA)"

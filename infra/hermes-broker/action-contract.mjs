@@ -22,8 +22,8 @@ const annotations = (write) => write
 // 31/10 (hướng dẫn chuẩn infra/hermes-skills): cách xử lý confirmation_required / needs_input nằm đủ ở huongDan của chính kết quả
 // (CONFIRM_GUIDANCE, INPUT_GUIDANCE, CONSENT_*), mô tả chỉ nhắc "làm theo huongDan" ⇒ đủ byte cho tên tool cũ + từ khoá ý định
 // mà vẫn giữ trần 2 000 B của ba tool (action-tools-budget / action-contract test).
-const RUN_GUIDANCE = 'confirmation_required, needs_input = CHƯA ghi: làm theo huongDan. ' +
-  'action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
+const RUN_GUIDANCE = 'confirmation_required/needs_input = CHƯA ghi: làm theo huongDan. ' +
+  'action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không thử lại. ' +
   'action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
 
 // Sự cố 31/10 (bot owner tìm crm_task_create đã nghỉ, tool_search rỗng ⇒ báo "không khả dụng"): mô tả nêu tên tool cũ mà họ này
@@ -39,9 +39,9 @@ export const ACTION_LIST_TOOL = freeze({
 });
 export const ACTION_RUN_TOOL = freeze({
   name: 'crm_action_run',
-  description: 'Run CRM write action (expense, invoice, contract, task). ' +
-    'Thay crm_task_create, crm_task_input_options, crm_task_progress, crm_task_cancel, crm_expense_create, crm_expense_input_options. ' +
-    'Toà/phòng bằng tên. ' + RUN_GUIDANCE,
+  description: 'Run CRM write action (expense/invoice/contract/task). ' +
+    'Thay crm_task_create/crm_task_input_options/crm_task_progress/crm_task_cancel/crm_expense_create/crm_expense_input_options. ' +
+    'params theo crm_action_list; tên toà/phòng, tiền số nguyên VND. ' + RUN_GUIDANCE,
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', pattern: ACTION_ID.source }, params: { type: 'object' },
     requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' }, consentText: { type: 'string' } } },
@@ -49,7 +49,7 @@ export const ACTION_RUN_TOOL = freeze({
 });
 export const ACTION_STATUS_TOOL = freeze({
   name: 'crm_action_status',
-  description: 'CRM write action status by requestId. Thay crm_task_status, crm_expense_status; sau action_outcome_unknown.',
+  description: 'CRM write action status by requestId. Thay crm_task_status/crm_expense_status.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: { type: 'string', format: 'uuid' } } },
   annotations: annotations(false),
 });
@@ -156,6 +156,10 @@ function paramsOf(value) {
 }
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
+// 31/10 (SOUL dòng 15, skill ihome-crm-ghi-chung): invalid_params do sai khuôn là lỗi của mô hình ⇒ tự sửa; chỉ hỏi người dùng khi
+// thiếu thông tin họ chưa nói.
+const PARAMS_GUIDANCE = 'CHƯA ghi. Sai khuôn (tên / kiểu / định dạng, tham số thừa) ⇒ tự sửa theo detail rồi gọi lại crm_action_run ngay; ' +
+  'thiếu thông tin người dùng chưa nói ⇒ hỏi lại, không tự điền.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
 const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
   'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';
@@ -179,7 +183,8 @@ export const CONFIRM_INVALID_TEXTS = Object.freeze(Object.values(CONFIRM_INVALID
 export function needsInput({ action, reason, detail, candidates }) {
   if (!ACTION_INPUT_REASONS.includes(reason)) throw new TypeError('invalid_needs_input_reason');
   return { outcome: 'needs_input', applied: false, action, reason, detail: typeof detail === 'string' && detail ? detail : ACTION_REASONS[reason].text,
-    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE : reason === 'consent_unclear' ? CONSENT_GUIDANCE : INPUT_GUIDANCE };
+    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE
+      : reason === 'consent_unclear' ? CONSENT_GUIDANCE : reason === 'invalid_params' ? PARAMS_GUIDANCE : INPUT_GUIDANCE };
 }
 export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt, consent = false }) {
   return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt,

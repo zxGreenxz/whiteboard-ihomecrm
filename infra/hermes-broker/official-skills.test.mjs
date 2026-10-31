@@ -12,7 +12,8 @@ import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { catalogActionIds, catalogReportIds, catalogToolNames, checkCatalogMentions, findCatalogMentions, retiredToolNames } from './catalog-names.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
-import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL } from './action-contract.mjs';
+import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL, needsInput } from './action-contract.mjs';
+import { SALE_ACTION_TOOLS } from './sale-action-contract.mjs';
 import { ACTION_PAGE_CATALOGS, PRODUCTION_ACTIONS } from './action-page-catalogs.mjs';
 import { W2 } from './wave2-registry.mjs';
 
@@ -111,6 +112,26 @@ test('skill chuẩn: mọi tên tool / mã thao tác / mã báo cáo nhắc tớ
   for (const dir of skillDirs().filter(name => name !== CORE_SKILL)) assert.match(texts[dir], /Hướng dẫn chuẩn, cùng connector; khác skill tự học thì theo đây/, dir);
 });
 
+test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và lock; chặn trước tiền hệ thống; if_required có thể ghi ngay', () => {
+  // Thao tác cọc của Sale có tiền và ghi thẳng (sale-action-contract.mjs) ⇒ SOUL dòng 17/20: cọc làm trên web. Mỗi operation reservation_*
+  // (kể cả thao tác mới thêm sau này) và lock / release phải nằm trên một dòng "KHÔNG" của skill phòng / Sale.
+  const sale = skillText('ihome-crm-phong-sale-nhom');
+  const operations = SALE_ACTION_TOOLS.map(tool => tool.name.slice('crm_sale_'.length));
+  const forbidden = operations.filter(operation => operation.startsWith('reservation_') || ['room_lock', 'room_release'].includes(operation));
+  assert.ok(forbidden.length >= 6, forbidden.join(','));
+  for (const operation of forbidden) assert.ok(sale.split('\n').some(line => line.includes(operation) && /KHÔNG/.test(line)), `${operation} chưa bị cấm`);
+  assert.match(sale, /Quản lý cọc/);
+  // SOUL dòng 15/20: hoa hồng, cọc, phiếu THU, lương… chặn trước — không gọi tool nào, kể cả crm_action_list.
+  const core = skillText(CORE_SKILL);
+  assert.match(core, /CHẶN TRƯỚC — không gọi tool nào, kể cả `crm_action_list`/);
+  for (const word of ['hoa hồng', 'cọc', 'phiếu THU', 'lương', 'quyết toán']) assert.ok(core.includes(word), word);
+  const expenses = skillText(PAGE_SKILLS.expense);
+  for (const page of ['Duyệt hoa hồng', 'Quản lý cọc', 'Lương', '/income-expense']) assert.ok(expenses.includes(page), page);
+  // confirm if_required + chính sách DB never ⇒ ghi ngay ở pha auto (action-runtime.mjs): ý mơ hồ thì hỏi trước khi gọi.
+  assert.match(core, /`confirm: if_required`: máy chủ có thể GHI NGAY/);
+  assert.match(core, /`confirm: always`[^\n]*luôn trả bản xem trước/);
+});
+
 test('bộ kiểm bắt được tên sai (tên đoán, tên nghỉ hưu trơn, mã thao tác / báo cáo lạ, frontmatter hỏng)', () => {
   const kinds = text => checkCatalogMentions(text).map(problem => `${problem.kind}:${problem.name}`);
   assert.deepEqual(kinds('Tạo việc bằng crm_task_create'), ['retired_without_replacement:crm_task_create']);
@@ -146,6 +167,13 @@ test('mô tả crm_action_*: nêu đủ tên tool cũ được thay + từ khoá
     covered += 1;
   }
   assert.ok(covered >= 8, `chỉ ${covered} tên cũ đi qua crm_action_*`);
+  // crm_action_list là nguồn khuôn tham số; toà / phòng bằng tên; tiền số nguyên VND (giữ trong mô tả crm_action_run).
+  assert.match(ACTION_RUN_TOOL.description, /params theo crm_action_list; tên toà\/phòng, tiền số nguyên VND/);
+  // invalid_params: tự sửa sai khuôn (SOUL dòng 15), chỉ hỏi khi thiếu thông tin; lý do khác vẫn hỏi người dùng.
+  const fix = needsInput({ action: 'task.create', reason: 'invalid_params', detail: 'Thiếu: content' }).huongDan;
+  assert.match(fix, /tự sửa theo detail rồi gọi lại crm_action_run ngay/);
+  assert.match(fix, /thiếu thông tin người dùng chưa nói ⇒ hỏi lại, không tự điền/);
+  assert.match(needsInput({ action: 'task.create', reason: 'name_unresolved' }).huongDan, /Hỏi lại người dùng theo detail/);
   const list = ACTION_LIST_TOOL.description;
   for (const phrase of ['tạo/giao/huỷ việc', 'tao giao huy viec', 'giữ/khoá phòng', 'giu khoa phong', 'gia hạn/báo trả HĐ', 'gia han bao tra hop dong',
     'phiếu chi', 'phieu chi', 'thu tiền hoá đơn', 'thu tien hoa don']) assert.ok(list.includes(phrase), `crm_action_list thiếu "${phrase}"`);

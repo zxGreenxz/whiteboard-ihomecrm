@@ -48,14 +48,22 @@ while [ $# -gt 0 ]; do
     *) die "tham số lạ: $1" ;;
   esac
 done
-uniq_words() { local out=() w; for w in $1; do case " ${out[*]} " in *" $w "*) ;; *) out+=("$w") ;; esac; done; echo "${out[*]}"; }
-PROFILES="$(uniq_words "$PROFILES")"; SKILLS="$(uniq_words "$SKILLS")"
-[ -n "$PROFILES" ] || die "thiếu --profiles (vd --profiles \"owner\")"
-for p in $PROFILES; do
-  [[ "$p" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || die "tên hồ sơ không hợp lệ: $p"
-  [ -d "$ROOT/profiles/$p/skills" ] || die "không thấy $ROOT/profiles/$p/skills"
-done
-for s in $SKILLS; do [[ "$s" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || die "tên skill không hợp lệ: $s"; done
+# Tách danh sách bằng read -a (không mở rộng glob), kiểm tên, khử trùng — chạy trong shell chính để die dừng được script.
+PROFILE_ARR=(); SKILL_ARR=()
+split_valid() { # split_valid <tên mảng đích> <nhãn> <chuỗi>
+  local -n dest="$1"; local words=() w
+  read -r -a words <<< "$3"
+  for w in "${words[@]}"; do
+    [[ "$w" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] || die "tên $2 không hợp lệ: $w"
+    case " ${dest[*]} " in *" $w "*) ;; *) dest+=("$w") ;; esac
+  done
+}
+split_valid PROFILE_ARR 'hồ sơ' "$PROFILES"
+split_valid SKILL_ARR 'skill' "$SKILLS"
+[ "${#PROFILE_ARR[@]}" -gt 0 ] || die "thiếu --profiles (vd --profiles \"owner\")"
+[ "${#SKILL_ARR[@]}" -gt 0 ] || die "thiếu --skills"
+for p in "${PROFILE_ARR[@]}"; do [ -d "$ROOT/profiles/$p/skills" ] || die "không thấy $ROOT/profiles/$p/skills"; done
+PROFILES="${PROFILE_ARR[*]}"; SKILLS="${SKILL_ARR[*]}"
 [ -n "$CLI" ] || CLI="docker exec -u $CONTAINER_USER $CONTAINER hermes"
 read -r -a CLI_ARGV <<< "$CLI"
 hermes_cli() { # hermes_cli <hồ sơ> <đối số curator…>
@@ -88,11 +96,24 @@ PY
 
 if [ "$RESTORE" = 0 ]; then
   echo "Cất skill cũ [$SKILLS] của hồ sơ [$PROFILES] — $mode"
+  # SOUL.md của hồ sơ còn gọi tên skill sắp cất (vd SOUL v4.41 dòng "Skill có sẵn: … gọi skill_view đúng hai tên này") ⇒ bot sẽ
+  # skill_view một tên không còn ⇒ TỪ CHỐI cất cho tới khi SOUL đã trỏ sang ihome-crm-*. Kiểm hết trước khi làm gì.
+  soul_refs=()
+  for p in "${PROFILE_ARR[@]}"; do
+    [ -f "$ROOT/profiles/$p/SOUL.md" ] || continue
+    for s in "${SKILL_ARR[@]}"; do
+      if grep -qE "(^|[^A-Za-z0-9_-])$s([^A-Za-z0-9_-]|\$)" "$ROOT/profiles/$p/SOUL.md"; then soul_refs+=("$p:$s"); fi
+    done
+  done
+  if [ "${#soul_refs[@]}" -gt 0 ]; then
+    [ "$APPLY" = 1 ] && die "SOUL.md còn gọi tên skill sắp cất: ${soul_refs[*]} — sửa SOUL trỏ sang ihome-crm-* trước (chưa đổi gì)"
+    echo "CẢNH BÁO: SOUL.md còn gọi tên skill sắp cất: ${soul_refs[*]} — --apply sẽ từ chối tới khi sửa SOUL."
+  fi
   STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
   OUT="$BACKUP_DIR/archive-$STAMP-$$"   # kèm PID: hai lượt cùng giây không dùng chung manifest
   done_any=0
-  for p in $PROFILES; do
-    for s in $SKILLS; do
+  for p in "${PROFILE_ARR[@]}"; do
+    for s in "${SKILL_ARR[@]}"; do
       rel="$(find_skill "$p" "$s")"
       if [ -z "$rel" ]; then
         if [ -d "$ROOT/profiles/$p/skills/.archive/$s" ]; then echo "$p/$s: đã cất trước đó — bỏ qua."; else echo "$p/$s: không có — bỏ qua."; fi
@@ -151,6 +172,7 @@ done
 echo "Khôi phục theo ${MANIFESTS[*]} cho hồ sơ [$PROFILES], skill [$SKILLS] — $mode"
 for key in "${ORDER[@]}"; do
   IFS=$'\t' read -r p s rel pinned <<< "${NEWEST[$key]}"
+  [[ "$p" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ && "$s" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ && "$pinned" =~ ^[01]$ ]] || die "dòng manifest lạ: $key"
   case " $PROFILES " in *" $p "*) ;; *) continue ;; esac
   case " $SKILLS " in *" $s "*) ;; *) continue ;; esac
   [[ "$rel" =~ ^[A-Za-z0-9._/-]+$ && "$rel" != *..* ]] || die "đường dẫn lạ trong manifest: $rel"
