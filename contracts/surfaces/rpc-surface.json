@@ -2,35 +2,22 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 2860,
-    "catalogFunctions": 1600,
+    "catalogFunctions": 1602,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 392,
+    "calledRpcs": 394,
     "byRisk": {
       "normal": 287,
-      "financial": 104,
+      "financial": 106,
       "infrastructure": 1
     },
-    "securityDefiner": 367
+    "securityDefiner": 369
   },
-  "missingOnServer": [
-    {
-      "name": "cashbook_reopening_state_v1",
-      "callers": [
-        "src/lib/cashbookReopening.ts"
-      ]
-    },
-    {
-      "name": "reopen_cashbook_v1",
-      "callers": [
-        "src/lib/cashbookReopening.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -938,6 +925,25 @@
       ],
       "callers": [
         "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_reopening_state_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },
@@ -5678,6 +5684,25 @@
       ],
       "callers": [
         "src/lib/rentSupportSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "reopen_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid, p_reason text, p_expected_lock_date date, p_idempotency_key uuid, p_expected_revision text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },

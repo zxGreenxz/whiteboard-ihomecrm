@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-31T12:30:52.170Z",
+  "generatedAt": "2026-10-31T12:53:52.026Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 918,
-    "unknown": 81,
-    "catalog-proven": 205,
+    "ledger-applied": 919,
+    "unknown": 80,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13967,14 +13967,25 @@
       "name": "mo_khoa_so_quy_co_ly_do",
       "scheme": "timestamp14",
       "sha256": "f54fa3f82ac6dbd76d3c71bf4c0647cff03dd15fcf142b2e4857be8a11c01437",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.cashbook_reopenings",
-        "table:app_private.cashbook_reopen_write_context",
-        "function:app_private.normalize_cashbook_reopening_reason_v1",
-        "function:app_private.guard_cashbook_reopenings_append_only",
-        "function:app_private.cashbook_reopening_revision_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.cashbook_reopenings",
+        "catalog:table:app_private.cashbook_reopen_write_context",
+        "catalog:function:app_private.normalize_cashbook_reopening_reason_v1",
+        "catalog:function:app_private.guard_cashbook_reopenings_append_only",
+        "catalog:index:app_private.cashbook_reopenings_book_idx",
+        "catalog:trigger:app_private.cashbook_reopenings.cashbook_reopenings_append_only"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031124214_mo_khoa_so_quy_xung_dot_http_409.sql",
+      "version": "20261031124214",
+      "name": "mo_khoa_so_quy_xung_dot_http_409",
+      "scheme": "timestamp14",
+      "sha256": "8499c294abdc23a651dfc3e912854210cbb8ee0d92aad1455a5541b0e81f5fbf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T12:53:39.793Z|bien-nhan-backup"
       ]
     },
     {

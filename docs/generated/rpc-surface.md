@@ -17,21 +17,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 392 |
-| Hàm trong catalog (public + api) | 1600 |
+| RPC được gọi từ mã nguồn | 394 |
+| Hàm trong catalog (public + api) | 1602 |
 | File mã nguồn đã quét | 2860 |
-| SECURITY DEFINER | 367 |
-| **Gọi mà server KHÔNG CÓ** | **2** |
+| SECURITY DEFINER | 369 |
+| **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 287 | còn lại |
-| tiền | 104 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 106 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 104 RPC chạm TIỀN
+## 106 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -58,6 +58,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `cashbook_closing_monthly_status_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `cashbook_opening_balance` | ✔ | hooks/useCashBook.ts |
 | `cashbook_period_totals` | ✔ | hooks/useCashBook.ts |
+| `cashbook_reopening_state_v1` | ✔ | lib/cashbookReopening.ts |
 | `cashflow_by_day` | ✔ | hooks/useCashBook.ts |
 | `change_collection_tender_method_v1` | ✔ | hooks/useReceivingCashbooks.ts |
 | `commission_manager_options_v1` | ✔ | hooks/useCommissionManager.ts |
@@ -108,6 +109,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `record_contract_commission_event_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `record_payment_gps` | ✔ | lib/v5PaymentGps.ts |
 | `rent_support_salary_bridge_required_v1` | ✔ | lib/rentSupportSalary.ts |
+| `reopen_cashbook_v1` | ✔ | lib/cashbookReopening.ts |
 | `restore_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |

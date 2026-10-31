@@ -43,21 +43,6 @@ export type CashbookReopeningState = z.infer<typeof stateSchema>;
 export type CashbookReopeningReceipt = z.infer<typeof receiptSchema>;
 export type ReopenCashbookInput = z.infer<typeof inputSchema>;
 
-// Narrow transport contract while the forward migration is awaiting deployment
-// and generated types. Both JSON responses are validated before entering cache.
-type ReopeningRpcResult = PromiseLike<{ data: unknown; error: unknown }>;
-interface ReopeningRpc {
-  (name: 'cashbook_reopening_state_v1', args: { p_cashbook: string }): ReopeningRpcResult;
-  (name: 'reopen_cashbook_v1', args: {
-    p_cashbook: string;
-    p_reason: string;
-    p_expected_lock_date: string;
-    p_expected_revision: string;
-    p_idempotency_key: string;
-  }): ReopeningRpcResult;
-}
-const client = { rpc: (supabase.rpc as unknown as ReopeningRpc).bind(supabase) };
-
 export function validateReopenCashbookInput(input: ReopenCashbookInput): ReopenCashbookInput {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) throw new FinancialWorkflowError(
@@ -67,7 +52,7 @@ export function validateReopenCashbookInput(input: ReopenCashbookInput): ReopenC
 }
 
 export async function readCashbookReopeningState(cashbookId: string): Promise<CashbookReopeningState> {
-  const { data, error } = await client.rpc('cashbook_reopening_state_v1', { p_cashbook: cashbookId });
+  const { data, error } = await supabase.rpc('cashbook_reopening_state_v1', { p_cashbook: cashbookId });
   if (error) throw error;
   const parsed = stateSchema.safeParse(data);
   if (!parsed.success || parsed.data.cashbook_id !== cashbookId) {
@@ -78,7 +63,7 @@ export async function readCashbookReopeningState(cashbookId: string): Promise<Ca
 
 export async function reopenCashbook(input: ReopenCashbookInput, requestKey: string): Promise<CashbookReopeningReceipt> {
   const checked = validateReopenCashbookInput(input);
-  const { data, error } = await client.rpc('reopen_cashbook_v1', {
+  const { data, error } = await supabase.rpc('reopen_cashbook_v1', {
     p_cashbook: checked.cashbookId,
     p_reason: checked.reason,
     p_expected_lock_date: checked.expectedLockDate,

@@ -22766,6 +22766,10 @@ export type Database = {
         }
         Returns: Json
       }
+      cashbook_reopening_state_v1: {
+        Args: { p_cashbook: string }
+        Returns: Json
+      }
       cashbook_settlement_report: {
         Args: { p_from: string; p_to: string }
         Returns: Json
@@ -29064,6 +29068,16 @@ export type Database = {
       rent_support_salary_bridge_required_v1: {
         Args: { p_period_month: string; p_staff_ids: string[] }
         Returns: boolean
+      }
+      reopen_cashbook_v1: {
+        Args: {
+          p_cashbook: string
+          p_expected_lock_date: string
+          p_expected_revision: string
+          p_idempotency_key: string
+          p_reason: string
+        }
+        Returns: Json
       }
       report_device_issue: {
         Args: { p_reason: string; p_session: string }

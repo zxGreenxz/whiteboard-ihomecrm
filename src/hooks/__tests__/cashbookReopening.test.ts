@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, renderHook } from '@testing-library/react';
 const h = vi.hoisted(() => ({ rpc: vi.fn(), invalidate: vi.fn(), success: vi.fn() }));
-vi.mock('react', async original => ({ ...await original<typeof import('react')>(), useRef: (current: unknown) => ({ current }) }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: unknown) => options, useMutation: (options: unknown) => options, useQueryClient: () => ({ invalidateQueries: h.invalidate }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: h.rpc } }));
@@ -18,15 +18,16 @@ const input: ReopenCashbookInput = { cashbookId: book, cashbookName: 'Sổ kiể
 const state = { cashbook_id: book, can_reopen: true, blocked_reason: null, lock_date: input.expectedLockDate, revision: input.expectedRevision, history: [] };
 const receipt = (requestKey = key) => ({ cashbook_id: book, reopening_id: eventId, status: 'REOPENED', lock_date: null, idempotency_key: requestKey, previous_revision: input.expectedRevision });
 const scope = { namespace: 'cashbook-reopening', userId: 'actor', organizationId: 'actor-scope', businessKey: book };
-const mutation = () => useReopenCashbook() as unknown as {
+const mutation = () => renderHook(useReopenCashbook).result.current as unknown as {
   mutationFn: (value: ReopenCashbookInput) => Promise<unknown>;
   onSuccess: (result: unknown, value: ReopenCashbookInput) => void;
 };
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); h.rpc.mockReset(); });
+afterEach(cleanup);
 
 describe('cashbook reopening boundary', () => {
   it('does not query a missing cashbook', () => {
-    expect(useCashbookReopeningState(null)).toMatchObject({ enabled: false });
+    expect(renderHook(() => useCashbookReopeningState(null)).result.current).toMatchObject({ enabled: false });
   });
   it.each([null, {}, { ...state, cashbook_id: other }, { ...state, can_reopen: 'true' }, { ...state, lock_date: '2026-02-31' }, { ...state, lock_date: null }])('does not cache an unverified permission/state response: %j', async data => {
     h.rpc.mockResolvedValue({ data, error: null });
