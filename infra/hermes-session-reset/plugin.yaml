@@ -32,6 +32,12 @@
       "default": ["dm", "group"],
       "label": "Loại chat",
       "description": "dm (1-1), group (nhóm, kênh, thread) hoặc all."
+    },
+    "process_max_age_hours": {
+      "type": "number",
+      "default": 4,
+      "label": "Tuổi tối đa của tiến trình nền chặn làm mới (giờ)",
+      "description": "Tiến trình nền của phiên cũ chạy lâu hơn số giờ này thì không còn hoãn việc làm mới (0 < giờ ≤ 168)."
     }
   }
 }

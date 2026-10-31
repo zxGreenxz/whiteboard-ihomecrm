@@ -228,6 +228,16 @@ probe() {
   check tools/slash_confirm.py 'def get_pending(session_key: str) -> Optional[dict[str, Any]]:'
   check tools/approval.py 'def has_blocking_approval(session_key: str) -> bool:'
   check hermes_cli/plugins.py 'def get_config(self, key: str, default: Any = None) -> Any:'
+  # Hook chạy trong chính task chủ phiên của adapter: guard + `_session_tasks[key]` đặt trước, task đó await
+  # thẳng handler (bọc scope, không tạo task) → `_handle_message` → `_hm_admit_event` → hook (plugin chỉ
+  # hoãn khi task chủ phiên là task KHÁC).
+  check gateway/platforms/base.py 'self._session_tasks[session_key] = task'
+  check gateway/platforms/base.py 'response = await self._message_handler(event)'
+  check gateway/run_adapters.py 'return self._standalone_scoped(self._handle_message)'
+  check gateway/run_adapters.py 'return await handler(*args)'
+  check gateway/run_inbound.py '_admitted = await self._hm_admit_event(event)'
+  check gateway/run_inbound.py 'event = await self._hm_pre_gateway_dispatch_hook(event, source)'
+  check hermes_cli/plugins_dispatch.py 'ret = await (asyncio.wait_for(ret, timeout) if use_timeout else ret)'
   # Bất biến: hook không bị cắt thời gian (chạy tới khi xong) và /new không await trước khi nhả slot.
   block="$(hx sed -n '/^_HOOK_TIMEOUT_BOUNDED_HOOKS: set\[str\] = {/,/^}/p' /opt/hermes/hermes_cli/plugins_dispatch.py)"
   if [ -n "$block" ] && ! grep -q -F 'pre_gateway_dispatch' <<<"$block"; then
@@ -311,9 +321,10 @@ restart_gateway() {
 }
 
 # `plugins enable` LUÔN gửi reload-plugins qua control socket khi gateway đang chạy: gateway nạp lại mọi
-# plugin của hồ sơ (cả ihome-zalo-native), không có cờ tắt. Chỉ coi là đã kích hoạt khi output có
-# `gateway_transforms` (hook đã vào gateway) hoặc gateway ghi dòng "đã đăng ký hook" mới; câu "Gateway
-# reloaded plugins" đơn thuần còn xuất hiện cả khi plugin KHÔNG nạp được.
+# plugin của hồ sơ (cả ihome-zalo-native), không có cờ tắt. Bằng chứng DUY NHẤT là dòng "đã đăng ký hook
+# … (hồ sơ P, tiến trình gateway)" MỚI do chính tiến trình `hermes … gateway run` ghi vào log của hồ sơ.
+# Output của lệnh enable chỉ để tham khảo: `gateway_transforms` có thể là activation của dashboard hay
+# `hermes serve` chứ không phải gateway, còn câu "Gateway reloaded plugins" có cả khi plugin KHÔNG nạp được.
 activate() {
   local cli_output="$1" before="$2" waited=0
   if ! serves_profile; then
@@ -326,22 +337,21 @@ activate() {
     restart) restart_gateway ;;
     live)
       if [ "$APPLY" != 1 ]; then
-        say "[kế hoạch] kích hoạt khi thấy gateway_transforms hoặc dòng đăng ký hook mới của gateway; không thì khởi động lại có kiểm soát"
+        say "[kế hoạch] kích hoạt khi gateway ghi dòng đăng ký hook mới (tối đa ${LIVE_TIMEOUT}s); không thì khởi động lại có kiểm soát"
         return 0
       fi
       if grep -q -F 'gateway_transforms' <<<"$cli_output"; then
-        say "Gateway đã nạp hook (gateway_transforms)."
-        return 0
+        say "Output có gateway_transforms (có thể của dashboard/hermes serve, chưa đủ): chờ dòng đăng ký hook của gateway."
       fi
       while [ "$waited" -lt "$LIVE_TIMEOUT" ]; do
         if [ "$(gateway_register_count)" -gt "$before" ]; then
-          say "Gateway đã ghi dòng đăng ký hook mới."
+          say "Gateway đã ghi dòng đăng ký hook mới (tiến trình gateway)."
           return 0
         fi
         sleep 1
         waited=$((waited + 1))
       done
-      say "Không thấy gateway nạp hook (thiếu gateway_transforms và dòng đăng ký mới); khởi động lại có kiểm soát."
+      say "Không thấy dòng đăng ký hook mới của gateway sau ${LIVE_TIMEOUT}s; khởi động lại có kiểm soát."
       restart_gateway ;;
   esac
 }

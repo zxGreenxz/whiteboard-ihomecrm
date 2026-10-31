@@ -16,13 +16,16 @@ import dataclasses
 import inspect
 import json
 import logging
+import sys
 import tempfile
 import threading
+import types
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
+from unittest import mock
 
 from support import PLUGIN_DIR, hook, plugin, policy
 
@@ -105,8 +108,11 @@ class FakeStore:
 
 
 class FakeAdapter:
+    """Phần ``BasePlatformAdapter`` liên quan: guard, task chủ phiên, slot tin xếp hàng."""
+
     def __init__(self) -> None:
         self._active_sessions: dict = {}
+        self._session_tasks: dict = {}
         self._pending_messages: dict = {}
 
 
@@ -180,7 +186,8 @@ class FakeProbes:
     def live_delegation(self, session_key, session_id):
         return self._check("delegation")
 
-    def active_process(self, session_key):
+    def active_process(self, session_key, max_age_seconds):
+        self.process_max_age = max_age_seconds
         return self._check("process")
 
     def pending_clarify(self, session_key):
@@ -221,13 +228,34 @@ class HookTestCase(unittest.IsolatedAsyncioTestCase):
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
-    async def send(self, text: str, source: Source, **event_fields):
+    async def send(self, text: str, source: Source, *, via_adapter: bool = True, **event_fields):
         event = Event(text, source, **event_fields)
-        return await self.send_event(event)
+        return await self.send_event(event, via_adapter=via_adapter)
 
-    async def send_event(self, event):
+    async def call_hook(self, event):
         return await self.handler.pre_gateway_dispatch(
             event=event, gateway=self.gateway, session_store=self.store, telemetry_schema_version=1)
+
+    async def send_event(self, event, *, via_adapter: bool = True):
+        """Như ``base.py::handle_message`` → ``_start_session_processing``: đặt guard rồi mới tạo task
+        gọi handler; task đó là ``_session_tasks[key]``. Hook vì vậy chạy khi guard của CHÍNH tin này
+        đang có. ``via_adapter=False`` gọi hook thẳng (lối inline/khác adapter)."""
+        if not via_adapter or event.source is None:
+            return await self.call_hook(event)
+        adapter = self.gateway.adapter
+        key = self.gateway._session_key_for_source(event.source)
+        assert key not in adapter._active_sessions, "adapter thật sẽ xếp hàng tin này, không gọi handler"
+        guard = asyncio.Event()
+        adapter._active_sessions[key] = guard
+        task = asyncio.create_task(self.call_hook(event))
+        adapter._session_tasks[key] = task
+        try:
+            return await task
+        finally:
+            if adapter._session_tasks.get(key) is task:
+                adapter._session_tasks.pop(key, None)
+            if adapter._active_sessions.get(key) is guard:
+                adapter._active_sessions.pop(key, None)
 
 
 class DailyResetTest(HookTestCase):
@@ -349,17 +377,64 @@ class SyntheticEventTest(HookTestCase):
         self.assertEqual(len(self.gateway.reset_events), 1)
 
 
+class AdapterGuardTest(HookTestCase):
+    """R1: guard ``_active_sessions``/``_session_tasks`` do adapter đặt cho CHÍNH tin đang chạy hook
+    (``base.py::_start_session_processing``) không được tính là "phiên bận"."""
+
+    async def test_own_guard_does_not_block_daily_reset_across_two_days(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        observed = []
+
+        async def observe_inside_handler(event):
+            # Trong lúc hook chạy, adapter đang giữ guard và task chủ phiên là task hiện tại.
+            observed.append((key in self.gateway.adapter._active_sessions,
+                             self.gateway.adapter._session_tasks.get(key) is asyncio.current_task()))
+            return await self.handler.pre_gateway_dispatch(event=event, gateway=self.gateway, session_store=self.store)
+
+        self.call_hook = observe_inside_handler
+        moments = [vn(2026, 10, 31, 8), vn(2026, 10, 31, 12), vn(2026, 10, 31, 23),
+                   vn(2026, 11, 1, 7), vn(2026, 11, 1, 9)]
+        for index, moment in enumerate(moments):
+            self.clock.now = moment
+            await self.send(f"tin {index}", src)
+        self.assertEqual(observed, [(True, True)] * 5)
+        self.assertEqual(len(self.gateway.reset_events), 2)  # sáng 31/10 và sáng 1/11
+        self.assertEqual([r["action"] for r in self.audit()], ["reset", "reset"])
+
+    async def test_own_guard_does_not_block_observe(self):
+        self.config = {"mode": "observe"}
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        await self.send("hi", src)
+        self.assertEqual([r["action"] for r in self.audit()], ["observe"])
+        self.assertEqual(self.gateway.reset_events, [])
+
+    async def test_drained_follow_up_still_resets(self):
+        """Như ``_process_message_background``: tin trong slot được lấy ra rồi mới giao cho task xả hàng."""
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        queued = Event("tin xếp hàng từ tối qua", src)
+        self.gateway.adapter._pending_messages[key] = queued
+        drained = self.gateway.adapter._pending_messages.pop(key)
+        await self.send_event(drained)
+        self.assertEqual(len(self.gateway.reset_events), 1)
+
+
 class DeferTest(HookTestCase):
     """Mục 2: phiên còn việc dở thì để tin rảnh kế tiếp."""
 
-    async def assert_deferred_then_reset(self, key, src, clear):
+    async def assert_deferred_then_reset(self, key, src, clear, *, via_adapter=True):
         with self.assertLogs(LOGGER, logging.INFO) as logs:
-            await self.send("tin 1", src)
-            await self.send("tin 2", src)
+            await self.send("tin 1", src, via_adapter=via_adapter)
+            await self.send("tin 2", src, via_adapter=via_adapter)
         self.assertEqual(self.gateway.reset_events, [])
         self.assertEqual(sum("để sau" in line for line in logs.output), 1)
+        deferred = [r for r in self.audit() if r["action"] == "deferred" and r["session_key"] == key]
+        self.assertEqual(len(deferred), 1)  # mỗi mốc một mục, kèm lý do
+        self.assertTrue(deferred[0]["detail"])
         clear()
-        await self.send("tin 3", src)
+        await self.send("tin 3", src, via_adapter=via_adapter)
         self.assertEqual(len(self.gateway.reset_events), 1)
 
     async def test_running_turn(self):
@@ -368,11 +443,34 @@ class DeferTest(HookTestCase):
         self.gateway.running.add(key)
         await self.assert_deferred_then_reset(key, src, lambda: self.gateway.running.discard(key))
 
-    async def test_adapter_still_holds_the_session(self):
+    async def test_another_live_task_holding_the_session_defers(self):
         src = Source()
         key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        self.gateway.adapter._active_sessions[key] = object()
-        await self.assert_deferred_then_reset(key, src, lambda: self.gateway.adapter._active_sessions.clear())
+        other = asyncio.create_task(asyncio.sleep(60))  # task khác đang là chủ phiên ở adapter
+        self.gateway.adapter._session_tasks[key] = other
+        self.addAsyncCleanup(self._cancel, other)
+
+        def clear():
+            self.gateway.adapter._session_tasks.pop(key, None)
+
+        await self.assert_deferred_then_reset(key, src, clear, via_adapter=False)
+
+    async def test_finished_owner_task_does_not_block(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        finished = asyncio.create_task(asyncio.sleep(0))
+        await finished
+        self.gateway.adapter._session_tasks[key] = finished
+        await self.send("hi", src, via_adapter=False)
+        self.assertEqual(len(self.gateway.reset_events), 1)
+
+    @staticmethod
+    async def _cancel(task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     async def test_queued_message_in_slot(self):
         src = Source()
@@ -411,6 +509,19 @@ class DeferTest(HookTestCase):
                 self.probes.flags[name] = True
                 await self.assert_deferred_then_reset(key, src, lambda: self.probes.flags.clear())
 
+    async def test_session_busy_across_two_boundaries_records_one_deferred_per_boundary(self):
+        src = Source()
+        key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        self.gateway.running.add(key)
+        for moment in (vn(2026, 10, 31, 8), vn(2026, 10, 31, 9), vn(2026, 11, 1, 8), vn(2026, 11, 1, 9)):
+            self.clock.now = moment
+            await self.send("hi", src)
+        records = [r for r in self.audit() if r["action"] == "deferred"]
+        self.assertEqual([r["boundary"] for r in records],
+                         [vn(2026, 10, 31, 4).isoformat(), vn(2026, 11, 1, 4).isoformat()])
+        self.assertEqual({r["detail"] for r in records}, {"đang chạy lượt"})
+        self.assertEqual(self.gateway.reset_events, [])
+
     async def test_probe_that_cannot_run_defers_and_warns_once(self):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
@@ -436,11 +547,24 @@ class DeferTest(HookTestCase):
         self.assertEqual(self.gateway.reset_events, [])
 
     async def test_two_messages_at_once_reset_only_once(self):
+        # Adapter gốc xếp hàng tin thứ hai; hai lần gọi hook đồng thời chỉ có ở lối gọi khác adapter.
         src = Source()
         key = self.add_session(src, "s-old", vn(2026, 10, 30, 22))
-        await asyncio.gather(self.send("tin A", src), self.send("tin B", src), self.send("tin C", src))
+        await asyncio.gather(*(self.send(text, src, via_adapter=False) for text in ("tin A", "tin B", "tin C")))
         self.assertEqual(len(self.gateway.reset_events), 1)
         self.assertEqual(self.store.entries[key].session_id, "s-new-1")
+
+    async def test_long_running_process_age_limit_is_passed_to_hermes(self):
+        """R2: tiến trình nền chạy lâu không chặn làm mới mãi (max_active_age, mặc định 4 giờ)."""
+        src = Source()
+        self.add_session(src, "s-old", vn(2026, 10, 30, 22))
+        await self.send("hi", src)
+        self.assertEqual(self.probes.process_max_age, 4 * 3600.0)
+        other = Source(chat_id="khac")
+        self.add_session(other, "s-old-2", vn(2026, 10, 30, 22))
+        self.config = {"process_max_age_hours": 1.5}
+        await self.send("hi", other)
+        self.assertEqual(self.probes.process_max_age, 1.5 * 3600.0)
 
 
 class CommandTest(HookTestCase):
@@ -450,13 +574,19 @@ class CommandTest(HookTestCase):
         src = Source()
         self.add_session(src, "s-old", vn(2026, 10, 30, 22))
         for text in ("/new", "  /new", "/reset", "/new Tiêu đề", "/retry", "/undo", "/status", "/stop",
-                     "/compact", "/queue thêm việc", "/approve", "/resume tối qua", "/goal status"):
+                     "/compact", "/approve", "/resume tối qua", "/goal", "/goal status", "/goal PAUSE",
+                     "/loop stop", "/proactive status", "/queue", "/queue list", "/q rm 2", "/heartbeat status",
+                     "/hb pause"):
             with self.subTest(text=text):
                 self.assertIsNone(await self.send(text, src))
         self.assertEqual(self.gateway.reset_events, [])
 
     async def test_content_commands_start_in_the_new_session(self):
-        for text in ("/plan việc hôm nay", "/ihome-crm-thu-chi chi 50k", "/model cx/gpt-6-luna"):
+        # R4: /goal, /loop, /queue, /heartbeat có tham số khởi tạo việc mới là lệnh có nội dung.
+        for text in ("/plan việc hôm nay", "/ihome-crm-thu-chi chi 50k", "/model cx/gpt-6-luna",
+                     "/goal làm báo cáo tuần", "/goal -- dọn sổ", "/loop 30m kiểm hàng tồn",
+                     "/proactive 1h nhắc chốt sổ", "/queue thêm việc", "/q gửi hoá đơn",
+                     "/heartbeat every 1h nhắc", "/hb every 2h kiểm"):
             with self.subTest(text=text):
                 self.gateway.reset_events.clear()
                 src = Source(chat_id=text.split()[0])
@@ -609,6 +739,51 @@ class ConfigTest(HookTestCase):
         self.assertEqual(len([line for line in logs.output if "430" in line]), 1)
 
 
+class HermesProbesTest(unittest.TestCase):
+    """Bản thật của ``probes`` gọi module công cụ Hermes đúng chữ ký mà ``ops.sh probe`` grep (module giả
+    trong ``sys.modules``; không có Hermes)."""
+
+    def setUp(self) -> None:
+        self.calls: list = []
+        calls = self.calls
+
+        def module(name, **attrs):
+            mod = types.ModuleType(name)
+            for attr, value in attrs.items():
+                setattr(mod, attr, value)
+            return mod
+
+        registry = SimpleNamespace(has_active_for_session=lambda key, **kw: calls.append(("process", key, kw)) or True)
+        modules = {
+            "tools": module("tools"),
+            "tools.async_delegation": module(
+                "tools.async_delegation", has_live_for_session=lambda **kw: calls.append(("delegation", kw)) or True),
+            "tools.process_registry": module("tools.process_registry", process_registry=registry),
+            "tools.clarify_gateway": module(
+                "tools.clarify_gateway", get_pending_for_session=lambda key, **kw: calls.append(("clarify", key, kw))),
+            "tools.slash_confirm": module("tools.slash_confirm", get_pending=lambda key: calls.append(("confirm", key))),
+            "tools.approval": module("tools.approval", has_blocking_approval=lambda key: calls.append(("approval", key))),
+        }
+        patcher = mock.patch.dict(sys.modules, modules)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_real_probes_pass_the_session_and_the_process_age_limit(self):
+        probes = hook.HermesProbes()
+        self.assertTrue(probes.live_delegation("k", "s-old"))
+        self.assertTrue(probes.active_process("k", 5400.0))
+        self.assertFalse(probes.pending_clarify("k"))
+        self.assertFalse(probes.pending_slash_confirm("k"))
+        self.assertFalse(probes.pending_approval("k"))
+        self.assertEqual(self.calls, [
+            ("delegation", {"session_key": "k", "parent_session_id": "s-old"}),
+            ("process", "k", {"max_active_age": 5400.0}),  # R2: tiến trình quá tuổi không chặn mãi
+            ("clarify", "k", {"include_choice_prompts": True}),
+            ("confirm", "k"),
+            ("approval", "k"),
+        ])
+
+
 class AuditLogTest(unittest.TestCase):
     """Mục 10: một khóa cho cả xoay vòng lẫn ghi, mỗi mục một lần write O_APPEND."""
 
@@ -702,6 +877,7 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(schema["at"]["default"], policy.DEFAULT_AT)
         self.assertEqual(schema["timezone"]["default"], policy.DEFAULT_TIMEZONE)
         self.assertEqual(tuple(schema["applies_to"]["default"]), policy.DEFAULT_APPLIES_TO)
+        self.assertEqual(float(schema["process_max_age_hours"]["default"]), policy.DEFAULT_PROCESS_MAX_AGE_HOURS)
         defaults = {key: spec["default"] for key, spec in schema.items()}
         self.assertEqual(policy.parse_settings(defaults, zone_loader=no_tzdata).warnings, ())
 

@@ -145,6 +145,7 @@ class OpsScriptTest(unittest.TestCase):
             FAKE_HOME_MOUNT=self.home.as_posix(), FAKE_USER=ids, FAKE_COMMIT=TESTED_COMMIT,
             FAKE_STATE=self.state.as_posix(),
             FAKE_ENABLE_OUTPUT="Gateway reloaded plugins — active in the running gateway now: gateway_transforms.",
+            FAKE_ENABLE_LOG=REGISTER_LINE,  # mặc định: gateway nạp được plugin và ghi dòng đăng ký
             IHOME_BACKUP_ROOT=self.backups.as_posix(), IHOME_IDLE_TIMEOUT="5", IHOME_READY_TIMEOUT="5",
             IHOME_LIVE_TIMEOUT="2", PYTHONIOENCODING="utf-8",
         )
@@ -253,7 +254,8 @@ class OpsScriptTest(unittest.TestCase):
         set_mode = calls.index(f"hermes --profile owner config set plugins.entries.{PLUGIN}.settings.mode observe")
         enable = calls.index(f"hermes --profile owner plugins enable {PLUGIN}")
         self.assertLess(set_mode, enable)  # mode ghi trước khi bật
-        self.assertNotIn("restart", calls)  # gateway_transforms: hook đã vào gateway
+        self.assertNotIn("restart", calls)  # gateway ghi dòng đăng ký mới: hook đã vào gateway
+        self.assertIn("Gateway đã ghi dòng đăng ký hook mới", result.stdout)
         self.assertEqual((self.mode("owner"), self.enabled("owner")), ("observe", "True"))
         self.assertIn("khớp nguồn: hook.py", result.stdout)
 
@@ -272,11 +274,21 @@ class OpsScriptTest(unittest.TestCase):
         self.assertEqual(self.mode("owner"), "daily")
 
     def test_reloaded_without_our_hook_falls_back_to_restart(self):
-        """Mục 4b: "Gateway reloaded plugins" mà không có gateway_transforms hay dòng đăng ký mới."""
+        """Mục 4b: "Gateway reloaded plugins" mà gateway không ghi dòng đăng ký mới."""
         result = self.ops("install", "--profile", "owner", "--apply",
-                          FAKE_ENABLE_OUTPUT="Gateway reloaded plugins; nothing of this plugin needs a session or restart.")
+                          FAKE_ENABLE_OUTPUT="Gateway reloaded plugins; nothing of this plugin needs a session or restart.",
+                          FAKE_ENABLE_LOG="")
         self.assert_ok(result)
-        self.assertIn("Không thấy gateway nạp hook", result.stdout)
+        self.assertIn("Không thấy dòng đăng ký hook mới của gateway", result.stdout)
+        self.assertIn("restart -t 180 hermes-owner", self.docker_calls())
+        self.assertIn("gateway chạy lại (start_time 474923409 → 474924409)", result.stdout)
+
+    def test_gateway_transforms_without_a_gateway_log_line_is_not_proof(self):
+        """R3: `gateway_transforms` có thể là activation của dashboard/`hermes serve`, không phải gateway."""
+        result = self.ops("install", "--profile", "owner", "--apply", FAKE_ENABLE_LOG="")
+        self.assert_ok(result)
+        self.assertIn("chưa đủ", result.stdout)
+        self.assertNotIn("Gateway đã ghi dòng đăng ký hook mới", result.stdout)
         self.assertIn("restart -t 180 hermes-owner", self.docker_calls())
         self.assertIn("gateway chạy lại (start_time 474923409 → 474924409)", result.stdout)
 
@@ -290,8 +302,15 @@ class OpsScriptTest(unittest.TestCase):
 
     def test_registration_line_from_another_process_does_not_count(self):
         line = REGISTER_LINE.replace("tiến trình gateway", "tiến trình khác")
-        result = self.ops("install", "--profile", "owner", "--apply",
-                          FAKE_ENABLE_OUTPUT="Restart the gateway for the plugin to take effect", FAKE_ENABLE_LOG=line)
+        result = self.ops("install", "--profile", "owner", "--apply", FAKE_ENABLE_LOG=line)
+        self.assert_ok(result)
+        self.assertIn("restart -t 180 hermes-owner", self.docker_calls())
+
+    def test_old_registration_lines_do_not_count(self):
+        """Dòng đăng ký từ lần nạp trước (đã có trong log) không chứng minh lần nạp này."""
+        with (self.owner / "logs" / "agent.log").open("a", encoding="utf-8") as handle:
+            handle.write(REGISTER_LINE + "\n")
+        result = self.ops("install", "--profile", "owner", "--apply", FAKE_ENABLE_LOG="")
         self.assert_ok(result)
         self.assertIn("restart -t 180 hermes-owner", self.docker_calls())
 
@@ -319,7 +338,7 @@ class OpsScriptTest(unittest.TestCase):
         """Mục 5, lối restart dự phòng của chế độ live và của uninstall --activate restart."""
         cli = "/usr/local/bin/hermes --profile tkh chat --query-file - -Q --continue tkh-c3"
         result = self.ops("install", "--profile", "owner", "--apply", FAKE_TOP_EXTRA=cli,
-                          FAKE_ENABLE_OUTPUT="Restart the gateway for the plugin to take effect")
+                          FAKE_ENABLE_OUTPUT="Restart the gateway for the plugin to take effect", FAKE_ENABLE_LOG="")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("còn tiến trình hermes khác", result.stderr)
         uninstall = self.ops("uninstall", "--profile", "owner", "--activate", "restart", "--apply", FAKE_TOP_EXTRA=cli)

@@ -52,6 +52,16 @@ SESSION_CONTROL_COMMANDS = frozenset({
     "proactive", "heartbeat", "hb", "yes", "no", "ok", "confirm", "always", "remember", "cancel",
     "nevermind", "start", "help", "whoami", "context", "ctx", "usage", "sethome", "set-home", "pause",
 })
+# Lệnh vừa quản lý vừa khởi tạo việc (theo args_hint của hermes_cli/commands.py 0.22.2): không tham
+# số hoặc lệnh con trong tập này là điều khiển; tham số khác (`/goal làm báo cáo`, `/loop 30m kiểm
+# hàng`, `/queue việc mới`, `/heartbeat every 1h …`) là lệnh có nội dung, được xét làm mới.
+_CONTROL_SUBCOMMANDS = {
+    "goal": frozenset({"show", "pause", "resume", "clear", "status", "wait", "unwait", "gate"}),
+    "loop": frozenset({"status", "pause", "resume", "stop"}),
+    "queue": frozenset({"list", "edit", "rm", "move", "clear"}),
+    "heartbeat": frozenset({"status", "pause", "resume", "clear"}),
+}
+_COMMAND_ALIASES = {"proactive": "loop", "q": "queue", "hb": "heartbeat"}
 
 _GATEWAY_API = (
     "_session_key_for_source", "_is_session_running", "_is_user_authorized_for_source",
@@ -63,6 +73,11 @@ _MAX_TRACKED_KEYS = 512
 
 def _iso(value: Optional[datetime]) -> Optional[str]:
     return value.isoformat() if isinstance(value, datetime) else None
+
+
+def _task_done(task: Any) -> bool:
+    done = getattr(task, "done", None)
+    return bool(callable(done) and done())
 
 
 def _error_text(error: Optional[BaseException]) -> Optional[str]:
@@ -87,14 +102,40 @@ def command_name(event: Any) -> Optional[str]:
     return None if not raw or "/" in raw else raw
 
 
+def command_args(event: Any) -> str:
+    """Phần tham số sau tên lệnh."""
+    get_args = getattr(event, "get_command_args", None)
+    if callable(get_args):
+        try:
+            return str(get_args() or "")
+        except Exception:
+            pass
+    parts = str(getattr(event, "text", "") or "").lstrip().split(maxsplit=1)
+    return parts[1] if len(parts) > 1 else ""
+
+
 def _canonical_command(name: str) -> str:
     """Tên chuẩn của lệnh theo danh mục Hermes (``compact`` → ``compress``); không có Hermes thì giữ."""
+    if name in _COMMAND_ALIASES:
+        return _COMMAND_ALIASES[name]
     try:
         from hermes_cli.commands import resolve_command
         definition = resolve_command(name)
     except Exception:
         return name
     return str(getattr(definition, "name", "") or name)
+
+
+def is_session_control(name: str, args: str) -> bool:
+    """Lệnh điều khiển hay xem phiên hiện tại (không làm mới trước nó)."""
+    canonical = _canonical_command(name)
+    if name not in SESSION_CONTROL_COMMANDS and canonical not in SESSION_CONTROL_COMMANDS:
+        return False
+    subcommands = _CONTROL_SUBCOMMANDS.get(canonical)
+    if subcommands is None:
+        return True
+    words = args.strip().split(maxsplit=1)
+    return not words or words[0].lower() in subcommands
 
 
 def _is_goal_continuation(event: Any, gateway: Any) -> bool:
@@ -126,7 +167,7 @@ def trigger_skip_reason(event: Any, gateway: Any = None) -> Optional[str]:
     if _is_goal_continuation(event, gateway):
         return "goal_continuation"
     name = command_name(event)
-    if name is not None and (name in SESSION_CONTROL_COMMANDS or _canonical_command(name) in SESSION_CONTROL_COMMANDS):
+    if name is not None and is_session_control(name, command_args(event)):
         return "session_command"
     return None
 
@@ -168,9 +209,10 @@ class HermesProbes:
         from tools.async_delegation import has_live_for_session
         return bool(has_live_for_session(session_key=session_key, parent_session_id=session_id or ""))
 
-    def active_process(self, session_key: str) -> bool:
+    def active_process(self, session_key: str, max_age_seconds: Optional[float]) -> bool:
+        # max_active_age: tiến trình chạy lâu hơn thì bị coi là cũ, không kẹt làm mới theo ngày mãi.
         from tools.process_registry import process_registry
-        return bool(process_registry.has_active_for_session(session_key))
+        return bool(process_registry.has_active_for_session(session_key, max_active_age=max_age_seconds))
 
     def pending_clarify(self, session_key: str) -> bool:
         from tools.clarify_gateway import get_pending_for_session
@@ -295,9 +337,9 @@ class DailySessionReset:
         for warning in settings.warnings:
             self._log.warning("%s: %s", PLUGIN_NAME, warning)
         self._log.info(
-            "%s: cấu hình hồ sơ %s mode=%s at=%02d:%02d timezone=%s applies_to=%s", PLUGIN_NAME,
-            self.profile or "?", settings.mode, settings.at_hour, settings.at_minute,
-            settings.timezone_name, ",".join(sorted(settings.applies_to)) or "-",
+            "%s: cấu hình hồ sơ %s mode=%s at=%02d:%02d timezone=%s applies_to=%s process_max_age_hours=%g",
+            PLUGIN_NAME, self.profile or "?", settings.mode, settings.at_hour, settings.at_minute,
+            settings.timezone_name, ",".join(sorted(settings.applies_to)) or "-", settings.process_max_age_hours,
         )
         self._settings_cache = (snapshot, settings)
         return settings
@@ -309,16 +351,23 @@ class DailySessionReset:
             now=self._clock(), naive_tz=self._naive_tz,
         )
 
-    def busy_reason(self, gateway: Any, key: str, entry: Any, source: Any) -> Optional[str]:
+    def busy_reason(self, gateway: Any, key: str, entry: Any, source: Any, settings: Settings) -> Optional[str]:
         """Lý do chưa làm mới được (phiên còn việc dở), hoặc None khi phiên rảnh. Đồng bộ, không ``await``.
 
-        Cùng điều kiện lõi dùng trước khi bắn heartbeat (``run_goals.py``: đang chạy, adapter còn giữ
-        phiên, còn tin xếp hàng), cộng những thứ đường ``/new`` sẽ xoá hay ngắt."""
+        Hook chạy BÊN TRONG lượt xử lý của chính tin hiện tại, nên không điều kiện nào được tính dấu vết
+        của tin đó: adapter gốc đặt ``_active_sessions[key]`` rồi mới tạo task gọi handler, và task đó là
+        ``_session_tasks[key]`` (``base.py::_start_session_processing``) — guard ấy luôn có, không phải
+        "bận". Vì vậy chỉ hoãn khi một task KHÁC đang giữ phiên. Tin trong slot ``_pending_messages``
+        được lấy ra trước khi task xả hàng gọi handler (``_process_message_background``/``_drain_after``),
+        nên ``_queue_depth`` > 0 là tin khác đang xếp hàng; slot runner (``_is_session_running``) chỉ
+        được giữ sau hook. Còn lại là những thứ đường ``/new`` sẽ xoá hay ngắt."""
         if gateway._is_session_running(key):
             return "đang chạy lượt"
         adapter = gateway._delivery_adapter_for(source)
-        if adapter is not None and key in (getattr(adapter, "_active_sessions", None) or {}):
-            return "adapter còn giữ phiên"
+        tasks = getattr(adapter, "_session_tasks", None) if adapter is not None else None
+        owner = tasks.get(key) if isinstance(tasks, dict) else None
+        if owner is not None and owner is not asyncio.current_task() and not _task_done(owner):
+            return "adapter đang xử lý tin khác của phiên"
         if gateway._queue_depth(key, adapter=adapter) > 0:
             return "còn tin xếp hàng"
         if getattr(entry, "resume_pending", False):
@@ -330,7 +379,7 @@ class DailySessionReset:
         session_id = getattr(entry, "session_id", None)
         checks = (
             ("delegation", "còn delegation chạy nền", lambda: self._probes.live_delegation(key, session_id)),
-            ("process", "còn tiến trình nền", lambda: self._probes.active_process(key)),
+            ("process", "còn tiến trình nền", lambda: self._probes.active_process(key, settings.process_max_age_seconds)),
             ("clarify", "còn câu hỏi clarify chờ trả lời", lambda: self._probes.pending_clarify(key)),
             ("slash_confirm", "còn lệnh chờ xác nhận", lambda: self._probes.pending_slash_confirm(key)),
             ("approval", "còn lệnh nguy hiểm chờ duyệt", lambda: self._probes.pending_approval(key)),
@@ -386,10 +435,13 @@ class DailySessionReset:
                 return
             # Từ đây tới phần đồng bộ đầu của ``_handle_reset_command`` (vô hiệu lượt, nhả slot) không có
             # ``await``: không lượt nào chen vào giữa lúc kiểm "rảnh" và lúc làm mới.
-            busy = self.busy_reason(gateway, key, entry, source)
+            busy = self.busy_reason(gateway, key, entry, source, settings)
             if busy is not None:
-                self._note_once("defer", key, decision, "%s: để sau (%s) — tin rảnh kế tiếp sẽ làm mới key=%s",
-                                PLUGIN_NAME, busy, key)
+                if self._note_once("defer", key, decision, "%s: để sau (%s) — tin rảnh kế tiếp sẽ làm mới key=%s",
+                                   PLUGIN_NAME, busy, key):
+                    # Mỗi mốc một mục, để `ops.sh status` thấy vì sao chưa làm mới.
+                    await self._record("deferred", settings, decision, source, key,
+                                       getattr(entry, "session_id", None), None, detail=busy)
                 return
             if settings.mode == MODE_OBSERVE:
                 if self._note_once(
@@ -451,6 +503,7 @@ class DailySessionReset:
     async def _record(
         self, action: str, settings: Settings, decision: Decision, source: Any, key: str,
         old_sid: Optional[str], new_sid: Optional[str], error: Optional[BaseException] = None,
+        detail: Optional[str] = None,
     ) -> None:
         if self._audit is None:
             return
@@ -462,6 +515,8 @@ class DailySessionReset:
         }
         if error is not None:
             item["error"] = _error_text(error)
+        if detail is not None:
+            item["detail"] = detail
         try:
             await asyncio.to_thread(self._audit.append, item)
         except Exception as exc:

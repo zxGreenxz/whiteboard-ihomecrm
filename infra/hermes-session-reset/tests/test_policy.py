@@ -26,13 +26,15 @@ def settings(**raw):
 
 class SettingsTest(unittest.TestCase):
     def test_missing_config_means_0400_vietnam_for_dm_and_group(self):
-        for raw in (None, {}, {"mode": None, "at": None, "timezone": None, "applies_to": None}):
+        for raw in (None, {}, {"mode": None, "at": None, "timezone": None, "applies_to": None,
+                                "process_max_age_hours": None}):
             s = policy.parse_settings(raw, zone_loader=no_tzdata)
             self.assertEqual(s.mode, "daily")
             self.assertEqual((s.at_hour, s.at_minute), (4, 0))
             self.assertEqual(s.timezone_name, "Asia/Ho_Chi_Minh")
             self.assertEqual(s.tz.utcoffset(datetime(2026, 10, 31)), timedelta(hours=7))
             self.assertEqual(s.applies_to, frozenset({"dm", "group"}))
+            self.assertEqual((s.process_max_age_hours, s.process_max_age_seconds), (4.0, 4 * 3600.0))
             self.assertEqual(s.warnings, ())
             self.assertTrue(s.active)
             self.assertEqual(s.reason, "daily_reset_0400")
@@ -88,6 +90,21 @@ class SettingsTest(unittest.TestCase):
         not_a_list = settings(applies_to=5)
         self.assertEqual(not_a_list.applies_to, frozenset({"dm", "group"}))
         self.assertEqual(len(not_a_list.warnings), 1)
+
+    def test_process_max_age_hours(self):
+        """R2: tiến trình nền cũ hơn số giờ này không còn hoãn làm mới; giá trị sai dùng mặc định 4 giờ."""
+        for raw, hours in ((1, 1.0), (1.5, 1.5), (0.25, 0.25), (168, 168.0)):
+            with self.subTest(raw=raw):
+                s = settings(process_max_age_hours=raw)
+                self.assertEqual((s.process_max_age_hours, s.process_max_age_seconds), (hours, hours * 3600.0))
+                self.assertEqual(s.warnings, ())
+        for raw in (0, -1, 168.5, 10_000, True, False, "4", float("nan"), float("inf"), [4]):
+            with self.subTest(raw=raw):
+                s = settings(process_max_age_hours=raw)
+                self.assertEqual(s.process_max_age_hours, 4.0)
+                self.assertEqual(len(s.warnings), 1)
+                self.assertIn("process_max_age_hours", s.warnings[0])
+                self.assertEqual(s.mode, "daily")  # không tắt plugin: mặc định vẫn an toàn
 
     def test_timezone_prefers_zoneinfo(self):
         sentinel = timezone(timedelta(hours=7), "from-zoneinfo")

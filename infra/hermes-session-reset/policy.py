@@ -31,8 +31,12 @@ DEFAULT_MODE = MODE_DAILY
 DEFAULT_AT = "04:00"
 DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
 DEFAULT_APPLIES_TO = KINDS
+# Tiến trình nền của phiên cũ chạy lâu hơn chừng này thì không còn chặn làm mới
+# (``process_registry.has_active_for_session(max_active_age=...)``).
+DEFAULT_PROCESS_MAX_AGE_HOURS = 4.0
+_MAX_PROCESS_MAX_AGE_HOURS = 7 * 24.0
 
-SETTING_KEYS = ("mode", "at", "timezone", "applies_to")
+SETTING_KEYS = ("mode", "at", "timezone", "applies_to", "process_max_age_hours")
 
 # Như ``_DM_CHAT_TYPES`` trong gateway/slash_commands_session.py (Hermes 0.22.2): rỗng/không rõ là DM.
 # Mọi chat_type khác (group, channel, thread, ...) tính là nhóm.
@@ -127,6 +131,16 @@ def _parse_applies_to(raw: Any, warnings: list[str]) -> frozenset[str]:
     return frozenset(kinds)
 
 
+def _parse_process_max_age(raw: Any, warnings: list[str]) -> float:
+    if raw is None:
+        return DEFAULT_PROCESS_MAX_AGE_HOURS
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not 0 < raw <= _MAX_PROCESS_MAX_AGE_HOURS:
+        warnings.append(f"process_max_age_hours={raw!r} phải là số giờ trong (0, {_MAX_PROCESS_MAX_AGE_HOURS:g}]; "
+                        f"dùng mặc định {DEFAULT_PROCESS_MAX_AGE_HOURS:g}")
+        return DEFAULT_PROCESS_MAX_AGE_HOURS
+    return float(raw)
+
+
 @dataclass(frozen=True)
 class Settings:
     """Cấu hình đã kiểm của một hồ sơ (``plugins.entries.ihome-session-reset.settings``)."""
@@ -137,7 +151,12 @@ class Settings:
     timezone_name: str = DEFAULT_TIMEZONE
     tz: tzinfo = field(default_factory=lambda: timezone(timedelta(hours=7), DEFAULT_TIMEZONE))
     applies_to: frozenset[str] = frozenset(DEFAULT_APPLIES_TO)
+    process_max_age_hours: float = DEFAULT_PROCESS_MAX_AGE_HOURS
     warnings: tuple[str, ...] = ()
+
+    @property
+    def process_max_age_seconds(self) -> float:
+        return self.process_max_age_hours * 3600.0
 
     @property
     def active(self) -> bool:
@@ -172,9 +191,10 @@ def parse_settings(
         warnings.append(f"{exc}; dùng mặc định {DEFAULT_TIMEZONE}")
         tz_name, tz = DEFAULT_TIMEZONE, resolve_timezone(DEFAULT_TIMEZONE, zone_loader)
     applies_to = _parse_applies_to(raw.get("applies_to"), warnings)
+    process_max_age_hours = _parse_process_max_age(raw.get("process_max_age_hours"), warnings)
     return Settings(
         mode=mode, at_hour=at_hour, at_minute=at_minute, timezone_name=str(tz_name), tz=tz,
-        applies_to=applies_to, warnings=tuple(warnings),
+        applies_to=applies_to, process_max_age_hours=process_max_age_hours, warnings=tuple(warnings),
     )
 
 
