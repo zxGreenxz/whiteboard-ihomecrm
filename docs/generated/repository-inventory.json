@@ -1,25 +1,25 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1746,
-  "soFileDocBangFs": 453,
-  "tongLoiGoi": 1147,
-  "khongPhanLoaiDuoc": 512,
+  "tongSoFileTest": 1749,
+  "soFileDocBangFs": 456,
+  "tongLoiGoi": 1170,
+  "khongPhanLoaiDuoc": 523,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 62,
+      "soFile": 63,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 66,
+      "soFile": 67,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 14,
+      "soFile": 16,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 186,
+      "soFile": 187,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -34,6 +34,7 @@
     "infra/hermes-broker/confirm-guard.test.mjs",
     "infra/hermes-broker/read-catalog-authority.test.mjs",
     "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
+    "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
     "scripts/__tests__/apply-reviewed-migration.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
@@ -121,6 +122,15 @@
       "soGoi": 17,
       "loai": {},
       "khongPhanLoaiDuoc": 17
+    },
+    {
+      "file": "infra/hermes-broker/official-skills-deploy.test.mjs",
+      "soGoi": 16,
+      "loai": {
+        "manifest": 2,
+        "tai-lieu": 5
+      },
+      "khongPhanLoaiDuoc": 9
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -609,6 +619,15 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -803,6 +822,14 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/official-skills.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "tai-lieu": 3
       },
       "khongPhanLoaiDuoc": 0
     },

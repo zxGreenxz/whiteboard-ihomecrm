@@ -60,4 +60,8 @@ export const EXPENSE_APPROVE = defineAction({ id: 'expense.approve', page: 'expe
   reasons: ['not_found', 'not_pending', 'system_voucher', 'web_only', 'evidence_required', 'cashbook_not_held', 'period_locked', 'not_allowed', 'state_changed'] });
 
 export const EXPENSE_ACTIONS = Object.freeze([EXPENSE_CREATE, EXPENSE_NOTE, EXPENSE_EDIT, EXPENSE_CANCEL, EXPENSE_APPROVE]);
+// Họ tool phiếu chi cũ đã gỡ khỏi connector (TC1): tên cũ → thao tác thay trên khung chung (…_status ⇒ crm_action_status, còn lại
+// ⇒ crm_action_run). Không quảng bá, gọi thẳng bị từ chối (action-tools-budget.test.mjs); catalog-names.mjs liệt kê thành tên nghỉ hưu.
+export const EXPENSE_RETIRED_TOOLS = Object.freeze({ crm_expense_input_options: EXPENSE_CREATE.id, crm_expense_create: EXPENSE_CREATE.id,
+  crm_expense_status: EXPENSE_CREATE.id });
 export const expenseCatalog = () => createActionCatalog(EXPENSE_ACTIONS);
