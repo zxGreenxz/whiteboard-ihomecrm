@@ -53,8 +53,9 @@ soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") k
 
 ## Không qua bot
 
-Cọc, hoàn cọc, bỏ cọc, quyết toán / thanh lý tiền, hoa hồng: làm trên web (trang Hợp đồng /contracts). Khách trả tiền hoá đơn
-thanh lý: `ihome-crm-hoa-don`.
+Thu / hoàn / bổ sung cọc, bỏ cọc không kèm trả phòng, quyết toán / thanh lý tiền, hoa hồng: làm trên web (trang Hợp đồng
+/contracts). Khách trả phòng kèm bỏ cọc ⇒ `contract.return` `forfeit` = true (mục trên). Khách trả tiền hoá đơn thanh lý:
+`ihome-crm-hoa-don`.
 
 ## Đọc hợp đồng
 

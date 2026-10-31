@@ -28,10 +28,12 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
 - Trước khi trả lời "không có / không hỗ trợ / làm trên web / không có quyền", gọi `crm_action_list` (một lần mỗi phiên là đủ;
   lọc được `page`: task, contract, invoice, expense). Thao tác nằm trong `items` ⇒ làm; nằm trong `notPermitted` ⇒ "anh/chị
   chưa có quyền …"; không có ở cả hai ⇒ mới nói bot chưa làm được việc này.
-- Ngoại lệ CHẶN TRƯỚC — không gọi tool nào, kể cả `crm_action_list`, trả lời một câu chỉ đúng trang web: chi hoa hồng sale / môi
-  giới; thu / hoàn / bỏ / trả / bổ sung cọc; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; mọi phiếu THU;
-  phiếu hệ thống, phiếu con định kỳ (trang web từng loại: `ihome-crm-thu-chi`). Khách trả tiền HOÁ ĐƠN (kể cả hoá đơn thanh lý)
-  không thuộc nhóm này ⇒ `ihome-crm-hoa-don`.
+- Ngoại lệ CHẶN TRƯỚC — chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây: không gọi tool nào, kể cả
+  `crm_action_list`, trả lời một câu chỉ đúng trang web: chi hoa hồng sale / môi giới; thu / hoàn / trả / bổ sung cọc, bỏ cọc không
+  kèm trả phòng; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; lập / sửa / huỷ phiếu THU; phiếu hệ thống,
+  phiếu con định kỳ (trang web từng loại: `ihome-crm-thu-chi`). KHÔNG chặn: khách trả phòng kèm bỏ cọc ⇒ `contract.return`
+  `forfeit` = true (`ihome-crm-hop-dong`); ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note`; khách trả tiền HOÁ ĐƠN (kể
+  cả hoá đơn thanh lý) ⇒ `ihome-crm-hoa-don`.
 - Kết quả đọc rỗng chỉ là "không có" khi đã lọc đúng tham số (toà `buildingName`, phòng `roomName`, kỳ, trạng thái). Tên không
   giải được (`not_visible`, "không thấy …") là không thấy trong phạm vi quyền, không phải "không tồn tại".
 
@@ -50,10 +52,11 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +
      `params` kèm `requestId` và `confirmToken` chép đủ từng ký tự; `huongDan` đòi `consentText` ⇒ thêm `consentText` = nguyên
      văn tin người dùng. Người dùng đổi nội dung ⇒ gọi lại KHÔNG kèm `confirmToken` để xem trước lại.
-   - `needs_input` = CHƯA ghi. `invalid_params` do SAI KHUÔN (tên / kiểu / định dạng tham số, tham số thừa) ⇒ tự sửa theo khuôn
-     trong `detail` rồi gọi lại ngay (lỗi của mình); THIẾU thông tin người dùng chưa nói (ngày, lý do, nội dung, số tiền…) hoặc
-     giá trị người dùng nói còn ngắn / thiếu so với khuôn (vd lý do quá ngắn) ⇒ hỏi thêm, không tự điền hay tự viết thêm. Lý do
-     khác ⇒ hỏi đúng một câu theo `detail` / `candidates`.
+   - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: chỉ tự sửa phần MÌNH chọn (tên / kiểu tham số, định dạng
+     ngày, tham số thừa) theo khuôn trong `detail` rồi gọi lại. Giá trị NGƯỜI DÙNG nói (lý do, nội dung, SĐT, số tiền…) chưa đạt
+     khuôn hoặc còn thiếu (vd lý do "đổi ý" quá ngắn) ⇒ hỏi lại người dùng, không tự viết thêm, không tự điền. `huongDan` bảo hỏi
+     lại người dùng (vd ghi chú thu tiền nói khoản CHƯA trả) ⇒ hỏi, không tự sửa params rồi gọi lại. Lý do khác ⇒ hỏi đúng một câu
+     theo `detail` / `candidates`.
    - `applied` = đã ghi ⇒ báo ngắn kết quả (mã, người, hạn, số tiền…).
    - Lỗi `action_rejected` ⇒ báo đúng `detail`; chỉ khi `detail` bảo xem trước lại (vd `state_changed`) mới gọi lại không kèm
      `confirmToken`, còn lại không tự thử lại. `forbidden` ⇒ chưa có quyền; `action_disabled` ⇒ thao tác chưa bật cho kết nối.

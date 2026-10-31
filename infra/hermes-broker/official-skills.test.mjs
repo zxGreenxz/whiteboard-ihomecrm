@@ -123,10 +123,22 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
   assert.match(sale, /Quản lý cọc/);
   // SOUL dòng 15/20: hoa hồng, cọc, phiếu THU, lương… chặn trước — không gọi tool nào, kể cả crm_action_list.
   const core = skillText(CORE_SKILL);
-  assert.match(core, /CHẶN TRƯỚC — không gọi tool nào, kể cả `crm_action_list`/);
+  assert.match(core, /CHẶN TRƯỚC — chỉ khi việc được nhờ chính là LẬP \/ GHI[\s\S]{0,120}không gọi tool nào, kể cả\s+`crm_action_list`/);
   for (const word of ['hoa hồng', 'cọc', 'phiếu THU', 'lương', 'quyết toán']) assert.ok(core.includes(word), word);
   const expenses = skillText(PAGE_SKILLS.expense);
   for (const page of ['Duyệt hoa hồng', 'Quản lý cọc', 'Lương', '/income-expense']) assert.ok(expenses.includes(page), page);
+  // Review #369 lượt 3: chặn trước CHỈ khi việc được nhờ là LẬP / GHI khoản tiền; trả phòng kèm bỏ cọc (contract.return forfeit, SOUL
+  // dòng 22) và ghi chú vào phiếu đã có (expense.note, kể cả phiếu thu) không bị chặn.
+  for (const [name, text] of [['ghi-chung', core], ['thu-chi', expenses]]) {
+    assert.match(text, /chỉ khi việc được nhờ chính là LẬP \/ GHI/i, name);
+    assert.doesNotMatch(text, /mọi phiếu THU/i, `${name}: không chặn cả ghi chú phiếu thu`);
+    assert.match(text, /KHÔNG chặn[\s\S]{0,400}`contract\.return`\s+`forfeit` = true/, `${name}: trả phòng kèm bỏ cọc`);
+    assert.match(text, /KHÔNG chặn[\s\S]{0,400}`expense\.note`/, `${name}: ghi chú phiếu`);
+  }
+  assert.match(skillText(PAGE_SKILLS.contract), /bỏ cọc không kèm trả phòng[\s\S]{0,200}`contract\.return`\s+`forfeit` = true/);
+  // Skill nói đúng huongDan invalid_params của máy chủ: chỉ tự sửa phần mình chọn; giá trị người dùng nói ⇒ hỏi lại, không viết thêm.
+  assert.match(core, /chỉ tự sửa phần MÌNH chọn \(tên \/ kiểu tham số, định dạng\s+ngày, tham số thừa\)/);
+  assert.match(core, /Giá trị NGƯỜI DÙNG nói[\s\S]{0,200}hỏi lại người dùng, không tự viết thêm/);
   // confirm if_required + chính sách DB never ⇒ ghi ngay ở pha auto (action-runtime.mjs): ý mơ hồ thì hỏi trước khi gọi.
   assert.match(core, /`confirm: if_required`: máy chủ có thể GHI NGAY/);
   assert.match(core, /`confirm: always`[^\n]*luôn trả bản xem trước/);
@@ -169,10 +181,14 @@ test('mô tả crm_action_*: nêu đủ tên tool cũ được thay + từ khoá
   assert.ok(covered >= 8, `chỉ ${covered} tên cũ đi qua crm_action_*`);
   // crm_action_list là nguồn khuôn tham số; toà / phòng bằng tên; tiền số nguyên VND (giữ trong mô tả crm_action_run).
   assert.match(ACTION_RUN_TOOL.description, /params theo crm_action_list; tên toà\/phòng, tiền số nguyên VND/);
-  // invalid_params: tự sửa sai khuôn (SOUL dòng 15), chỉ hỏi khi thiếu thông tin; lý do khác vẫn hỏi người dùng.
-  const fix = needsInput({ action: 'task.create', reason: 'invalid_params', detail: 'Thiếu: content' }).huongDan;
-  assert.match(fix, /tự sửa theo detail rồi gọi lại crm_action_run ngay/);
-  assert.match(fix, /thiếu thông tin người dùng chưa nói ⇒ hỏi lại, không tự điền/);
+  // invalid_params (SOUL dòng 15 + 22, review #369): chỉ tự sửa phần bot chọn; giá trị người dùng nói chưa đạt khuôn / còn thiếu ⇒ hỏi
+  // lại, không tự viết thêm. askUser (lưới chặn thu tiền) ⇒ câu hỏi lại, không bao giờ "tự sửa". Lý do khác vẫn hỏi người dùng.
+  const fix = needsInput({ action: 'contract.notice_cancel', reason: 'invalid_params', detail: 'Thiếu hoặc sai: reason (8–500 ký tự).' }).huongDan;
+  assert.match(fix, /Chỉ tự sửa phần do bot chọn \(tên \/ kiểu tham số, định dạng ngày, tham số thừa\)/);
+  assert.match(fix, /giá trị người dùng nói \(lý do, nội dung, SĐT, số tiền…\) chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại người dùng, không tự viết thêm, không tự điền/);
+  const ask = needsInput({ action: 'invoice.collect', reason: 'invalid_params', detail: 'Ghi chú nói CHƯA trả', askUser: true }).huongDan;
+  assert.match(ask, /^CHƯA ghi\. Hỏi lại người dùng theo detail \(không đoán, không tự điền\)/);
+  assert.doesNotMatch(ask, /tự sửa/);
   assert.match(needsInput({ action: 'task.create', reason: 'name_unresolved' }).huongDan, /Hỏi lại người dùng theo detail/);
   const list = ACTION_LIST_TOOL.description;
   for (const phrase of ['tạo/giao/huỷ việc', 'tao giao huy viec', 'giữ/khoá phòng', 'giu khoa phong', 'gia hạn/báo trả HĐ', 'gia han bao tra hop dong',

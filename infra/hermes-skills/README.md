@@ -46,7 +46,7 @@ Việc cần làm theo loại thay đổi:
 | Thay đổi | Sửa |
 | --- | --- |
 | Thêm / bớt thao tác của trang | Skill của trang (nêu mã + tham số chính). |
-| Nghỉ hưu một tool | Bảng nghỉ hưu của họ tool (`TASK_RETIRED_BY`, `EXPENSE_RETIRED_TOOLS`, `SCHEDULE_RETIRED_BY`) ⇒ `retiredToolNames()` tự có; thêm dòng ở bảng của `ihome-crm-ghi-chung`; tool thay là `crm_action_*` thì nêu tên cũ trong mô tả tool đó (giữ trần 2 000 B của ba tool). |
+| Nghỉ hưu một tool | Bảng nghỉ hưu của họ tool (`TASK_RETIRED_BY`, `EXPENSE_RETIRED_TOOLS`, `SCHEDULE_RETIRED_BY`) ⇒ `retiredToolNames()` tự có; thêm dòng ở bảng của `ihome-crm-ghi-chung`; tool thay là `crm_action_*` thì nêu tên cũ trong mô tả tool đó. **Trần 2 000 B của họ `crm_action_*` trong tools/list đã gần chạm** (31/10: ba tool 1 997 B, tính cả dấu phẩy 1 999 B — còn 1 B) ⇒ thêm một tên cũ nữa thì phải co mô tả chỗ khác trong cùng PR (`action-tools-budget.test.mjs` / `action-contract.test.mjs` đỏ nếu vượt). |
 | Trang mới có thao tác ghi | Skill `ihome-crm-<trang>` + `PAGE_SKILLS` trong test. |
 | Đổi tên / bỏ báo cáo | Dòng `report=…` trong skill. |
 
@@ -85,8 +85,12 @@ nền tảng, ghi thật trên Linux/CI), chưa chạy trên VPS.
    `crm-task-management` …" trỏ sang `ihome-crm-*`; dòng 31 (luật cũ `crm_task_create` khi không có `task.create`) và dòng 10
    (`crm_expense_input_options`, đã gỡ) bỏ hoặc sửa.
 4. **Mở phiên mới cho `owner`** (`/new` trong Zalo, cần `/approve`): phiên `owner` chạy từ 17/10 còn giữ system prompt với SOUL cũ
-   (gọi `skill_view crm-task-management`). Smoke NGAY trên `owner` (không chỉ hồ sơ TEST): một câu giao việc ⇒ bot gọi
-   `crm_action_list` / `crm_action_run` `task.create`; một câu giữ phòng ⇒ `contract.room_lock`.
+   (gọi `skill_view crm-task-management`). Smoke ngay trên `owner` nhưng **CHỈ ĐỌC** (Contract §2: org thật chỉ đọc): hỏi "em giao
+   việc được không? giữ phòng được không?" ⇒ bot gọi `crm_action_list`, trả lời theo `items` / `notPermitted` (thấy `task.create`,
+   `contract.room_lock`), **không gọi `crm_action_run`**. `task.create` và `contract.room_lock` là `confirm: if_required` với chính
+   sách DB `never` ⇒ gọi là ghi thật ngay (giao việc thật, khoá phòng thật), không có bản xem trước để dừng. Thao tác `confirm:
+   always` (vd phiếu chi) trên `owner` chỉ tới bản xem trước, **không xác nhận** (đáp "thôi"). Smoke ghi thật (giao việc, giữ / bỏ
+   giữ phòng) làm trên hồ sơ TEST `tkt` / `tkh` / `tkj` (connector 8741, DB TEST).
 5. Cất hai skill tự học cũ (sau bước 2–4):
 
    ```bash
@@ -114,8 +118,10 @@ nền tảng, ghi thật trên Linux/CI), chưa chạy trên VPS.
 **Lùi:**
 
 - Về bản skill cũ: `deploy.sh --release <release-cũ> --profiles … [--link …]` (symlink về sha cũ + chạm config).
-- Bỏ hẳn lớp 2 của một hồ sơ: `deploy.sh --remove --profiles … [--link …]` gỡ đúng khối `skills.external_dirs` đã nối. KHÔNG chép
-  đè `config.yaml` từ sao lưu: header `Authorization` có thể đã được xoay sau đó ⇒ MCP 401, bot mất CRM.
+- Bỏ hẳn lớp 2 của một hồ sơ: `deploy.sh --remove --profiles … [--link …]` gỡ khối `skills` khi nó đúng bằng
+  `{external_dirs: [/home/hermes/.hermes/ihome-official-skills/<link>]}` — kể cả khi Hermes / `yaml.dump` đã ghi lại config (mất dòng
+  chú thích, đổi thụt lề, đổi thứ tự khoá; bộ kiểm YAML xác nhận). Khối có thêm mục / khoá ⇒ dừng, gỡ tay. KHÔNG chép đè
+  `config.yaml` từ sao lưu: header `Authorization` có thể đã được xoay sau đó ⇒ MCP 401, bot mất CRM.
 - Skill cũ: `archive-stale-local.sh --restore --apply`.
 
 **Kiểm sau triển khai (chỉ đọc):** `ls -la /var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills/`;

@@ -28,7 +28,8 @@ const RUN_GUIDANCE = 'confirmation_required/needs_input = CHƯA ghi: làm theo h
 
 // Sự cố 31/10 (bot owner tìm crm_task_create đã nghỉ, tool_search rỗng ⇒ báo "không khả dụng"): mô tả nêu tên tool cũ mà họ này
 // thay (catalog-names.mjs retiredToolNames; official-skills.test.mjs đòi đủ) và từ khoá ý định có dấu + không dấu (tool_search của
-// Hermes là BM25 token ASCII, chữ có dấu bị cắt vụn — dạng không dấu mới khớp được).
+// Hermes là BM25 token ASCII, chữ có dấu bị cắt vụn — dạng không dấu mới khớp được). Trần: ba tool 1 997 B, trong tools/list kể cả dấu
+// phẩy 1 999 / 2 000 B (31/10) ⇒ thêm tên cũ nào nữa thì co mô tả chỗ khác cùng PR (infra/hermes-skills/README.md).
 export const ACTION_LIST_TOOL = freeze({
   name: 'crm_action_list',
   description: 'List CRM write actions: expense, invoice, contract, task. ' +
@@ -156,10 +157,12 @@ function paramsOf(value) {
 }
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
-// 31/10 (SOUL dòng 15, skill ihome-crm-ghi-chung): invalid_params do sai khuôn là lỗi của mô hình ⇒ tự sửa; chỉ hỏi người dùng khi
-// thiếu thông tin họ chưa nói.
-const PARAMS_GUIDANCE = 'CHƯA ghi. Sai khuôn (tên / kiểu / định dạng, tham số thừa) ⇒ tự sửa theo detail rồi gọi lại crm_action_run ngay; ' +
-  'thiếu thông tin người dùng chưa nói ⇒ hỏi lại, không tự điền.';
+// 31/10 (SOUL dòng 15 + 22, skill ihome-crm-ghi-chung; review #369): invalid_params có hai loại. Phần BOT chọn sai (tên / kiểu tham số,
+// định dạng ngày, tham số thừa) ⇒ tự sửa. Giá trị NGƯỜI DÙNG nói chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại, không tự viết thêm (vd lý do
+// "đổi ý" < 8 ký tự của contract.notice_cancel: thao tác ghi thẳng ⇒ lý do bịa vào thẳng CRM). Lưới chặn thu tiền (collect-guard) gọi
+// needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "tự sửa".
+const PARAMS_GUIDANCE = 'CHƯA ghi. Chỉ tự sửa phần do bot chọn (tên / kiểu tham số, định dạng ngày, tham số thừa) theo detail rồi gọi lại crm_action_run; ' +
+  'giá trị người dùng nói (lý do, nội dung, SĐT, số tiền…) chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại người dùng, không tự viết thêm, không tự điền.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
 const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
   'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';
@@ -179,11 +182,12 @@ export const CONFIRM_INVALID_DETAILS = Object.freeze({
   missing_request: 'Thiếu requestId: xác nhận phải gửi kèm requestId của bản xem trước.',
 });
 export const CONFIRM_INVALID_TEXTS = Object.freeze(Object.values(CONFIRM_INVALID_DETAILS));
-/** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). */
-export function needsInput({ action, reason, detail, candidates }) {
+/** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). askUser = true ⇒ luôn
+ * INPUT_GUIDANCE (hỏi lại người dùng), kể cả invalid_params — cho lưới chặn mà "tự sửa rồi gọi lại" là ghi sai (collect-guard). */
+export function needsInput({ action, reason, detail, candidates, askUser = false }) {
   if (!ACTION_INPUT_REASONS.includes(reason)) throw new TypeError('invalid_needs_input_reason');
   return { outcome: 'needs_input', applied: false, action, reason, detail: typeof detail === 'string' && detail ? detail : ACTION_REASONS[reason].text,
-    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE
+    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: askUser === true ? INPUT_GUIDANCE : reason === 'unknown_action' ? UNKNOWN_GUIDANCE
       : reason === 'consent_unclear' ? CONSENT_GUIDANCE : reason === 'invalid_params' ? PARAMS_GUIDANCE : INPUT_GUIDANCE };
 }
 export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt, consent = false }) {

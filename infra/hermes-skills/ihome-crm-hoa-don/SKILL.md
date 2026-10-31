@@ -32,7 +32,8 @@ Khách (kể cả khách cũ đã trả phòng) trả tiền phòng / điện n�
   = `month` YYYY-N, ngày thu mặc định hôm nay. Chữ sau "phòng" là tên phòng kể cả khi giống tên sổ ("phòng MB").
 - `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận ("vào HKD Tâm", "sổ HKD của anh" ⇒ "HKD"); không ghi tên sổ vào
   `note`. Không nêu sổ ⇒ không gửi, bản xem trước dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
-- Phòng người dùng nói CHƯA trả ⇒ không gọi cho phòng đó. Sửa / đổi hình thức lần thu ĐÃ ghi ⇒ web (Hoá đơn › Lịch sử thanh
+- Phòng người dùng nói CHƯA trả ⇒ không gọi cho phòng đó. Máy chủ báo ghi chú nói khoản CHƯA trả ⇒ hỏi lại người dùng phòng đó
+  đã trả chưa; không tự bỏ câu "chưa…" rồi gọi lại. Sửa / đổi hình thức lần thu ĐÃ ghi ⇒ web (Hoá đơn › Lịch sử thanh
   toán), không gọi `invoice.collect` lần nữa (thành thu trùng). `period_closed` ⇒ tháng đó toà đã chốt lợi nhuận.
 
 ## Chỉ số điện nước — `invoice.meter_record`

@@ -201,6 +201,35 @@ test('deploy.sh --remove gỡ đúng khối đã nối, giữ phần config đ�
   assert.equal(configOf(fx, 'owner'), CONFIG.replace('TOKEN-A', 'TOKEN-B'), 'owner giữ token mới, chỉ mất khối skills');
   assert.equal(statSync(cfgPath(fx, 'owner')).mode & 0o777, 0o600);
   assert.match(bash(DEPLOY, deployArgs(fx, fx.rel1, 'owner tkt', '--remove')).out, /KHÔNG ĐỔI GÌ/);
+  // Hermes / yaml.dump ghi lại config sau khi triển khai (xoay token): mất dòng chú thích + dòng trống, có thể đổi thụt lề danh sách
+  // (kiểu PyYAML) và thứ tự khoá ⇒ --remove vẫn gỡ khối skills đúng bằng {external_dirs: [WANT]} (bộ kiểm YAML xác nhận), phần còn
+  // lại giữ nguyên chữ.
+  assert.equal(bash(DEPLOY, deployArgs(fx, fx.rel1, 'owner tkt')).code, 0);
+  const rewrite = (profile, options) => {
+    const value = yaml.load(configOf(fx, profile));
+    value.mcp_servers.ihomecrm.headers.Authorization = 'Bearer TOKEN-C';
+    writeFileSync(cfgPath(fx, profile), yaml.dump(value, options));
+    const { skills, ...rest } = value;
+    assert.deepEqual(skills, { external_dirs: [want('current')] });
+    return yaml.dump(rest, options);
+  };
+  const ownerAfter = rewrite('owner', {}), tktAfter = rewrite('tkt', { noArrayIndent: true, sortKeys: true });
+  assert.doesNotMatch(configOf(fx, 'tkt'), /Skill CRM chuẩn/, 'yaml.dump bỏ dòng chú thích');
+  assert.match(configOf(fx, 'tkt'), /^skills:\n[\s\S]*\ntimezone:/m, 'khối skills nằm giữa (sortKeys)');
+  const dumped = bash(DEPLOY, deployArgs(fx, fx.rel1, 'owner tkt', '--remove'));
+  assert.equal(dumped.code, 0, dumped.out);
+  assert.match(dumped.out, YAML_PASS);
+  assert.equal(configOf(fx, 'owner'), ownerAfter);
+  assert.equal(configOf(fx, 'tkt'), tktAfter);
+  // Khối skills nhắc đường dẫn ở dạng lạ (chú thích, khoá khác) ⇒ dừng, không đoán; khối của thư mục khác ⇒ giữ nguyên.
+  const strange = bash(DEPLOY, deployArgs(fx, fx.rel1, 'note', '--remove'));
+  assert.notEqual(strange.code, 0);
+  assert.match(strange.out, /ở dạng lạ \(không phải mục của external_dirs\) — gỡ tay/);
+  assert.equal(configOf(fx, 'note'), fx.initial.note);
+  const foreign = bash(DEPLOY, deployArgs(fx, fx.rel1, 'other', '--remove'));
+  assert.equal(foreign.code, 0, foreign.out);
+  assert.match(foreign.out, /KHÔNG ĐỔI GÌ/);
+  assert.equal(configOf(fx, 'other'), fx.initial.other);
   // Khối đã bị sửa tay (thêm mục) ⇒ không tự gỡ.
   assert.equal(bash(DEPLOY, deployArgs(fx, fx.rel1, 'tkt')).code, 0);
   writeFileSync(cfgPath(fx, 'tkt'), `${configOf(fx, 'tkt')}    - /extra/dir\n`);

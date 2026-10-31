@@ -16,18 +16,25 @@ Mọi thao tác dưới đây đi qua `crm_action_run`. Tiền ra (chi, mua, tr�
 
 ## When to Use
 
-Lập phiếu chi vận hành (mua đồ, sửa chữa, điện nước của toà, vệ sinh…), ghi chú / sửa / huỷ / duyệt phiếu chi, hỏi khoản chi.
+Lập phiếu chi vận hành (mua đồ, sửa chữa, điện nước của toà, vệ sinh…), sửa / huỷ / duyệt phiếu chi, ghi chú phiếu (chi hoặc thu),
+hỏi khoản chi.
 
 ## Chặn trước — không gọi tool nào (kể cả `crm_action_list`), trả lời một câu chỉ đúng trang web
 
+Chỉ khi việc được nhờ chính là LẬP / GHI khoản tiền dưới đây:
+
 - Chi hoa hồng sale / môi giới ⇒ Hợp đồng › Duyệt hoa hồng.
-- Thu / hoàn / bỏ / trả / bổ sung cọc ⇒ Quản lý cọc / thanh lý HĐ.
+- Thu / hoàn / trả / bổ sung cọc, bỏ cọc không kèm trả phòng ⇒ Quản lý cọc / thanh lý HĐ.
 - Lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách ⇒ Hợp đồng.
 - Lương, thưởng ⇒ Lương.
-- Mọi phiếu THU (kể cả "lập phiếu thu …", câu mở đầu bằng "Thu <tiền> <khoản>" dù có phòng / toà), phiếu hệ thống, phiếu con
-  định kỳ, mở lại phiếu đã huỷ ⇒ trang Thu chi (/income-expense).
+- Lập / sửa / huỷ phiếu THU (kể cả "lập phiếu thu …", câu mở đầu bằng "Thu <tiền> <khoản>" dù có phòng / toà), phiếu hệ thống,
+  phiếu con định kỳ, mở lại phiếu đã huỷ ⇒ trang Thu chi (/income-expense).
 
-Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn thanh lý / "ck tiền quyết toán", KHÔNG thuộc nhóm này ⇒ `ihome-crm-hoa-don`.
+KHÔNG chặn:
+
+- Ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note` (mục dưới).
+- Khách trả phòng kèm bỏ cọc ⇒ `contract.return` `forfeit` = true (`ihome-crm-hop-dong`).
+- Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn thanh lý / "ck tiền quyết toán" ⇒ `ihome-crm-hoa-don`.
 
 ## Lập phiếu chi — `expense.create`
 
@@ -42,7 +49,7 @@ Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn than
 
 ## Ghi chú, sửa, huỷ, duyệt
 
-- `expense.note` {`voucherCode`, `note`, `buildingName` khi mã trùng giữa các toà}: ghi thẳng.
+- `expense.note` {`voucherCode`, `note`, `buildingName` khi mã trùng giữa các toà}: phiếu chi hoặc phiếu thu; ghi thẳng.
 - `expense.edit` {`voucherCode`, trường đổi, `reason` khi đổi tiền / hạng mục / sổ / toà}: chỉ phiếu chi chờ duyệt.
 - `expense.cancel` {`voucherCode`, `reason` 8–1000 ký tự — luôn hỏi lý do}: phiếu đã vào sổ ⇒ bút toán đảo, không khôi phục được;
   lượt xác nhận kèm `consentText`.

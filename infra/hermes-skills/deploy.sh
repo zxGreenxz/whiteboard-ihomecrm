@@ -19,8 +19,9 @@
 #     hoặc js-yaml của bản phát hành — ghi thật mà không kiểm được thì DỪNG). Đã có khối skills mà thiếu mục ⇒ DỪNG, sửa tay.
 #  4. Chưa chạm config cho <sha> này (dấu .<link>.touched khác <sha>) ⇒ chạm (touch) config.yaml của các hồ sơ trỏ tới <link> rồi
 #     ghi dấu. Hermes nhớ đường dẫn external_dirs ĐÃ RESOLVE theo chữ ký file config (agent/skill_utils.get_external_skills_dirs).
-# --remove: gỡ đúng khối mà bước 3 đã nối (không đụng symlink / thư mục sha). Lùi bằng --remove, KHÔNG chép đè config.yaml từ sao
-# lưu: config có header Authorization có thể đã được xoay sau đó, chép đè ⇒ MCP 401, bot mất CRM.
+# --remove: gỡ khối skills cấp một khi nó đúng bằng {external_dirs: [<WANT>]} (bộ kiểm YAML xác nhận; vẫn gỡ được khi config đã bị
+# Hermes / yaml.dump ghi lại, mất dòng chú thích), không đụng symlink / thư mục sha. Lùi bằng --remove, KHÔNG chép đè config.yaml từ
+# sao lưu: config có header Authorization có thể đã được xoay sau đó, chép đè ⇒ MCP 401, bot mất CRM.
 #
 # KHÔNG cần khởi động lại gateway hay container hermes-owner (khởi động lại làm gián đoạn Zalo): đổi / chạm config làm Hermes quét
 # lại skill ở lượt sau, phiên đang chạy nhận danh sách skill mới qua ghi chú "skills changed" (agent/skills_index_delta.py). SOUL.md
@@ -120,9 +121,10 @@ const old = load(oldPath), next = load(newPath);
 const ok = old !== null && typeof old === "object" && !Array.isArray(old) && !Object.hasOwn(old, "skills") &&
   JSON.stringify(canon(next)) === JSON.stringify(canon({ ...old, skills: { external_dirs: [want] } }));
 process.exit(ok ? 0 : 1);'
-# yaml_check <không có khối> <có khối> <nhãn>: bản "có khối" = bản kia + đúng skills.external_dirs [<WANT>]. Lỗi in câu chung, KHÔNG in
-# nội dung (config có token).
-yaml_check() {
+# yaml_same <không có khối> <có khối> <nhãn>: mã 0 khi bản "có khối" = bản kia + đúng skills.external_dirs [<WANT>] (so cấu trúc YAML,
+# không so chữ: thứ tự khoá, thụt lề, chú thích không tính). Không có bộ kiểm: chạy khô ⇒ cảnh báo, coi như đạt; ghi thật ⇒ dừng.
+# KHÔNG in nội dung (config có token).
+yaml_same() {
   local ok=1
   case "$YAML_CHECKER" in
     PyYAML) python3 -I - "$1" "$2" "$WORK/want" >/dev/null 2>&1 <<'PY' && ok=0
@@ -140,9 +142,10 @@ PY
       [ "$DRY" = 1 ] || die "$3: không có bộ kiểm YAML (python3 + PyYAML, hoặc node + js-yaml trong $REL/node_modules) — chưa đổi gì"
       echo "  CẢNH BÁO: không có bộ kiểm YAML — chạy khô chỉ kiểm dạng chữ; ghi thật sẽ dừng." >&2; return 0 ;;
   esac
-  [ "$ok" = 0 ] || die "$3: kiểm YAML thất bại (không in nội dung config) — chưa đổi gì"
+  [ "$ok" = 0 ] || return 1
   echo "  Kiểm YAML ($YAML_CHECKER): đạt — $3"
 }
+yaml_check() { yaml_same "$@" || die "$3: kiểm YAML thất bại (không in nội dung config) — chưa đổi gì"; }
 take_lock() { # khoá chống chạy chồng (mkdir nguyên tử; bị giết giữa chừng thì xoá tay thư mục .deploy.lock)
   mkdir "$BASE/.deploy.lock" 2>/dev/null || die "đang có lượt triển khai khác (hoặc khoá cũ còn): $BASE/.deploy.lock"
   LOCK="$BASE/.deploy.lock"
@@ -169,34 +172,36 @@ summary() {
   fi
 }
 
-# ==== --remove: gỡ đúng khối bước 3 đã nối ====
+# ==== --remove: gỡ khối skills mà bước 3 đã nối ====
+# Khối = dòng "skills:" cấp một tới trước dòng cấp một kế tiếp, kèm dòng chú thích của deploy.sh ngay trên (và một dòng trống trước nó)
+# nếu còn. KHÔNG so chữ: config có thể đã được Hermes / yaml.dump ghi lại (xoay token ⇒ mất chú thích, đổi thụt lề, đổi thứ tự khoá).
+# Bộ kiểm YAML xác nhận bản gỡ + {skills: {external_dirs: [<WANT>]}} đúng bằng config hiện tại; khối có thêm mục / khoá ⇒ dừng, gỡ tay.
 if [ "$REMOVE" = 1 ]; then
   echo "Gỡ skills.external_dirs [$WANT] khỏi hồ sơ: ${PROFILE_LIST[*]}$( [ "$DRY" = 1 ] && echo ' — CHẠY KHÔ, không ghi gì')"
   TO_REMOVE=()
   for p in "${PROFILE_LIST[@]}"; do
     CFG="$ROOT/profiles/$p/config.yaml"
+    if ! refers_link "$CFG"; then
+      case "$(skills_block "$CFG")" in *"$WANT"*) die "$p: khối skills nhắc $WANT ở dạng lạ (không phải mục của external_dirs) — gỡ tay" ;; esac
+      echo "Giữ nguyên $p: skills.external_dirs không có $WANT."; continue
+    fi
     rc=0
-    awk -v c="$COMMENT" -v w="    - $WANT" '
+    awk -v c="$COMMENT" '
       { line[NR] = $0 }
       END {
-        start = 0
-        for (i = 1; i + 3 <= NR; i++) if (line[i] == c && line[i+1] == "skills:" && line[i+2] == "  external_dirs:" && line[i+3] == w) {
-          if (start) exit 4
-          if (i + 4 <= NR && line[i+4] ~ /^[ \t]/) exit 3
-          start = i
-        }
-        if (!start) exit 2
-        from = (start > 1 && line[start-1] == "") ? start - 1 : start
-        for (i = 1; i <= NR; i++) if (i < from || i > start + 3) print line[i]
+        n = 0
+        for (i = 1; i <= NR; i++) if (line[i] ~ /^skills:/) { n++; start = i }
+        if (n != 1) exit 4
+        last = start
+        while (last < NR && (line[last + 1] ~ /^[ \t]/ || line[last + 1] == "")) last++
+        while (last > start && line[last] == "") last--
+        from = start
+        if (from > 1 && line[from - 1] == c) { from--; if (from > 1 && line[from - 1] == "") from-- }
+        for (i = 1; i <= NR; i++) if (i < from || i > last) print line[i]
       }' "$CFG" > "$WORK/$p.new" || rc=$?
-    case "$rc" in
-      0) ;;
-      2) if refers_link "$CFG"; then die "$p: khối skills có $WANT nhưng không đúng khối deploy.sh đã nối — gỡ tay"; fi
-         echo "Giữ nguyên $p: không có khối của deploy.sh."; continue ;;
-      *) die "$p: khối skills của deploy.sh đã bị sửa hoặc lặp — gỡ tay" ;;
-    esac
+    [ "$rc" = 0 ] || die "$p: config.yaml có nhiều khối skills: cấp một — gỡ tay"
     cp -- "$CFG" "$WORK/$p.orig"
-    yaml_check "$WORK/$p.new" "$WORK/$p.orig" "$p"
+    yaml_same "$WORK/$p.new" "$WORK/$p.orig" "$p" || die "$p: khối skills không chỉ gồm external_dirs [$WANT] (đã thêm mục / khoá khác) — gỡ tay"
     TO_REMOVE+=("$p")
   done
   if [ "$DRY" = 1 ]; then
