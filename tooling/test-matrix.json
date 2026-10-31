@@ -1284,6 +1284,48 @@
       ]
     },
     {
+      "id": "hermes-learning-review-ui",
+      "sourcePaths": [
+        "src/hermes/learningReviewClient.ts",
+        "src/hermes/HermesLearningReview.tsx",
+        "src/pages/settings/HermesConnectionsPage.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/learningReviewClient.test.ts",
+        "src/hermes/HermesLearningReview.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.learning.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ],
+      "viewports": [
+        "affected"
+      ]
+    },
+    {
+      "id": "hermes-learning-proposals-sql",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_learning_proposals_v1.sql",
+        "infra/hermes-broker/learning-proposals-sql.test.mjs",
+        "infra/hermes-broker/store-transport.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/learning-proposals-sql.test.mjs",
+        "infra/hermes-broker/store-transport.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-learning-audit",
+      "sourcePaths": [
+        "infra/hermes-learning-audit/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-learning-audit/**/*.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-assistant-capabilities-ui",
       "sourcePaths": [
         "supabase/migrations/*_hermes_domain_*.sql",
@@ -2124,6 +2166,7 @@
         "scripts/__tests__/hermes-cde-live.test.mjs",
         "infra/hermes-zalo-router/**/*.test.mjs",
         "infra/hermes-zalo-native/**/*.test.mjs",
+        "infra/hermes-learning-audit/**/*.test.mjs",
         "worker/deploy/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",

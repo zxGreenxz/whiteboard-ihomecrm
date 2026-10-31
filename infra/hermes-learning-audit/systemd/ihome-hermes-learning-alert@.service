@@ -1,0 +1,17 @@
+# Cảnh báo khi kiểm học tập / nạp đề xuất thất bại (OnFailure= của hai unit kia; %i = tên unit lỗi): một dòng mức err vào
+# journal, thẻ ihome-hermes-learning — không chứa nội dung đề xuất. Xem: journalctl -p err -t ihome-hermes-learning.
+# Chủ không cần SSH vẫn thấy: tab CRM "Bài học chờ duyệt" báo "lần kiểm cuối" đã cũ khi job ngừng.
+[Unit]
+Description=iHome Hermes - canh bao %i that bai
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/usr/bin/logger -p user.err -t ihome-hermes-learning "THAT BAI: %i - xem journalctl -u %i -n 50"
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX

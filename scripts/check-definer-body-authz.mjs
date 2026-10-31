@@ -152,6 +152,10 @@ export const PRIMITIVE_PHAM_VI = [
   'contract_draft_scope_allowed', //  → TRẢ boolean (không tự RAISE): auth.uid + my_org_ids + can_access_building + authorized_scope_v3 (20260928013253); caller phải RAISE khi false
   'rent_support_subject_v1', //       → rent_support_scope_v1 (cùng bộ primitive trên), tự RAISE 42501
   'rent_support_payout_lock_v1', //   → câu đầu là authorize_commission_request_v1: auth.uid + my_org_ids RAISE trước khoá tổ chức; quyền theo toà kiểm SAU khoá (chỉ cùng công ty mới tới được đó)
+  // Học có kiểm duyệt Hermes (20261031041523), MỞ RA ĐỌC ngày 31/10/2026: auth.uid() + auth.role()='authenticated', thành viên
+  // ACTIVE của đúng công ty (hermes_member_v1, đọc không khoá) và chưa nghỉ việc TRƯỚC khi đụng khoá tổ chức, rồi
+  // require_perm_v1(users.edit); RAISE 42501. review/decide gọi nó trước mọi đọc/khoá (tên người trong profiles chỉ đọc sau đó).
+  'hermes_learning_admin_v1',
 ];
 
 /**

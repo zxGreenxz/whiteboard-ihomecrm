@@ -131,6 +131,7 @@ Connector Hermes TEST (dựng 21/10/2026 để thử thao tác ghi của bot tr�
 (kết nối Hermes trên TEST mất cùng `app_private`), rồi chạy tiếp; vai nào khác bật LOGIN hay vai này có thêm quyền
 superuser/createdb/createrole/replication/bypassrls vẫn dừng như cũ. Quick check so digest vai như ngay sau đồng bộ
 (`ownersDigestTest`). Sau mỗi lần đồng bộ, người vận hành connector TEST bật lại LOGIN và tạo lại kết nối.
+Login `hermes_store_learning` (job nạp đề xuất bài học Hermes, chỉ thuộc vai `hermes_learning_ingest`) được xử lý y hệt.
 
 Bản dump chứa dữ liệu cá nhân thật: ghi ở `%USERPROFILE%/ihomecrm-backups/test-env/` (ngoài repo)
 và xoá khi xong, kể cả khi bị ngắt (SIGINT/SIGTERM). Không có kênh gửi ra ngoài nào nối vào TEST: worker Zalo và Network Center chỉ

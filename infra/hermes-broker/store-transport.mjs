@@ -24,6 +24,8 @@ const FUNCTIONS = Object.freeze({
   failPrivateCommand: 'app_private.hermes_store_fail_private_command_v1',
   prunePrivateCommands: 'app_private.hermes_store_prune_private_commands_v1',
   pruneWorkMemories: 'app_private.hermes_store_prune_work_memories_v1',
+  // Job nạp đề xuất bài học trên host (infra/hermes-learning-audit/ingest.mjs), phạm vi 'learning' bên dưới.
+  ingestLearningProposals: 'app_private.hermes_store_learning_ingest_v1',
 });
 const PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role, r.rolsuper, r.rolbypassrls,
   r.rolcreaterole, r.rolcreatedb, r.rolreplication,
@@ -32,6 +34,23 @@ const PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role
     ('postgres','service_role','authenticator','supabase_admin')
     AND pg_catalog.pg_has_role(current_user, p.oid, 'MEMBER')) AS privileged_member
   FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+// Login của job nạp bài học: dùng được quyền (USAGE = kế thừa, không cần SET ROLE) của vai NOLOGIN hermes_learning_ingest
+// (được gọi đúng một hàm nạp), KHÔNG thuộc hermes_store_executor (kho bền connector). Tra vai qua pg_roles để câu kiểm không
+// lỗi khi migration chưa áp; login NOINHERIT ⇒ bị từ chối ngay ở đây thay vì 42501 lúc gọi hàm.
+const LEARNING_PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role, r.rolsuper, r.rolbypassrls,
+  r.rolcreaterole, r.rolcreatedb, r.rolreplication,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles g WHERE g.rolname = 'hermes_learning_ingest'
+    AND pg_catalog.pg_has_role(current_user, g.oid, 'USAGE')) AS scoped,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles p WHERE p.rolname IN
+    ('postgres','service_role','authenticator','supabase_admin','hermes_store_executor')
+    AND pg_catalog.pg_has_role(current_user, p.oid, 'MEMBER')) AS privileged_member
+  FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+const LEARNING_OPERATIONS = Object.freeze(['ingestLearningProposals']);
+const SCOPES = Object.freeze({
+  executor: Object.freeze({ principalSql: PRINCIPAL_SQL,
+    operations: Object.freeze(Object.keys(FUNCTIONS).filter(operation => !LEARNING_OPERATIONS.includes(operation))) }),
+  learning: Object.freeze({ principalSql: LEARNING_PRINCIPAL_SQL, operations: LEARNING_OPERATIONS }),
+});
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export class StoreTransportError extends Error {
@@ -60,21 +79,27 @@ function knownRejection(error) {
  * session_user afterwards because this transport only sends fixed function
  * calls; failed/cancelled clients are destroyed and never reused. Role attribute
  * changes are picked up by the next physical connection (bounded pool lifetime).
+ *
+ * scope 'executor' (default) is the connector's durable store; scope 'learning' is the
+ * host learning-ingest job: a different login, a different principal check and only
+ * the ingest operation. Neither scope can call the other's functions.
  */
 export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
-  maxRequestBytes = 131_072, maxResponseBytes = 131_072, dependencyScope } = {}) {
+  maxRequestBytes = 131_072, maxResponseBytes = 131_072, dependencyScope, scope = 'executor' } = {}) {
   if (typeof pool?.connect !== 'function' || typeof expectedRole !== 'string' ||
       !/^hermes_store_[a-z0-9_]{1,40}$/.test(expectedRole) || expectedRole === 'hermes_store_executor' ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000 ||
       !Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1 || maxRequestBytes > 131_072 ||
       !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 131_072 ||
-      (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) {
+      (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function') ||
+      typeof scope !== 'string' || !Object.hasOwn(SCOPES, scope)) {
     throw new TypeError('invalid_store_transport_config');
   }
+  const { principalSql, operations } = SCOPES[scope];
   const verifiedClients = new WeakSet();
   return Object.freeze({
     async call(operation, input, { signal } = {}) {
-      if (!Object.hasOwn(FUNCTIONS, operation) || !record(input)) fail('invalid_store_request');
+      if (!Object.hasOwn(FUNCTIONS, operation) || !operations.includes(operation) || !record(input)) fail('invalid_store_request');
       let serialized;
       try { serialized = JSON.stringify(input); } catch { fail('invalid_store_request'); }
       if (Buffer.byteLength(serialized) > maxRequestBytes) fail('store_request_too_large');
@@ -103,7 +128,7 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
           client = await pool.connect();
           if (stopped) { release(true); fail('store_cancelled'); }
           if (!verifiedClients.has(client)) {
-            const check = await client.query({ text: PRINCIPAL_SQL, values: [], queryMode: 'extended' });
+            const check = await client.query({ text: principalSql, values: [], queryMode: 'extended' });
             if (stopped) fail('store_cancelled');
             const principal = check.rows?.[0];
             if (check.rows?.length !== 1 || principal?.role !== expectedRole || principal.session_role !== expectedRole || principal.scoped !== true ||

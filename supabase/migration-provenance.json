@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 916,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13937,6 +13937,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-30T12:59:24.590Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql",
+      "version": "20261031041523",
+      "name": "hermes_learning_proposals_v1",
+      "scheme": "timestamp14",
+      "sha256": "2974fa72aa2822c2acac4720e02befa45b3e3fb3ae3206488e96f629dcfe00de",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_learning_proposals",
+        "table:app_private.hermes_learning_audit_runs",
+        "function:app_private.hermes_learning_guard_v1",
+        "function:app_private.hermes_learning_proposal_json_v1",
+        "function:app_private.hermes_learning_admin_v1"
       ]
     },
     {
