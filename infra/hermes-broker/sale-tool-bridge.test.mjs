@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createBroker, BrokerError } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
-import { SALE_ACTION_TOOLS } from './sale-action-contract.mjs';
+import { SALE_ACTION_TOOLS, SALE_DEPOSIT_RECEIPT_KEY } from './sale-action-contract.mjs';
 import { SALE_POLICY_TOOLS } from './sale-policy-contract.mjs';
 import { SALE_BULK_TOOLS } from './sale-bulk-contract.mjs';
 import { SALE_TOOL, saleToolInput, saleToolOperation } from './sale-tool-contract.mjs';
 
 const all = [...SALE_ACTION_TOOLS, ...SALE_POLICY_TOOLS, ...SALE_BULK_TOOLS];
-const keys = ['rooms.edit','sale_phong.edit','sale_phong.manage_images','sale_phong.lock_room','deposits.create','deposits.edit','income_expenses.create'];
+// Báo cọc / thu thêm có tiền đòi thêm khoá riêng ngoài income_expenses.create (sale-deposit-receipt-key.test.mjs).
+const keys = ['rooms.edit','sale_phong.edit','sale_phong.manage_images','sale_phong.lock_room','deposits.create','deposits.edit','income_expenses.create',SALE_DEPOSIT_RECEIPT_KEY];
 const room=randomUUID(),requestId=randomUUID(),reservationId=randomUUID(),policyId=randomUUID();
 const revision='a'.repeat(32),receipt={amount:1000000,accountId:null,voucherDate:'2026-10-22',name:null,description:null};
 const inputs={

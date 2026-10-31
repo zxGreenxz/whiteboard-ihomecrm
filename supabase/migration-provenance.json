@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-31T06:16:43.881Z",
+  "generatedAt": "2026-10-31T10:36:45.908Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 916,
-    "unknown": 81,
+    "ledger-applied": 919,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -13907,6 +13907,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261030050424_hermes_sale_deposit_receipt_key_v1.sql",
+      "version": "20261030050424",
+      "name": "hermes_sale_deposit_receipt_key_v1",
+      "scheme": "timestamp14",
+      "sha256": "abc88d0447d80b6167df59709414fe39518410354783b607d50590682729a34c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T02:00:30.530Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030065028_hermes_expense_actions_activation_v1.sql",
+      "version": "20261030065028",
+      "name": "hermes_expense_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e70a13a4396543e684ed30356a7b9d9f084fbc551858aa10c67fc47573cb446",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T03:39:09.806Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
       "version": "20261030100148",
       "name": "khoa_cot_hoa_hong_ie_compat",
@@ -13945,10 +13967,9 @@
       "name": "quan_ly_toa_quyen_lock_tam_phong",
       "scheme": "timestamp14",
       "sha256": "12886fc18ba1996cb71d51e6b2cb88e31f1baef7d86199eae87d96d837b80537",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T06:49:32.489Z|bien-nhan-backup"
       ]
     },
     {

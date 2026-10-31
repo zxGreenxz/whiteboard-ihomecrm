@@ -91,3 +91,7 @@ cfecd4cdaa99c1a45dffc9a0d4a7201989386fd7:scripts/copilot-l4-risk-ceiling-accepta
 # kiểm validator không lặp lại giá trị lạ trong detail — chuỗi giả trong test, không phải khoá/secret thật (đã đọc giá trị).
 # gitleaks trong CI quét mọi nhánh đã đẩy (--all) nên finding ở nhánh draft làm đỏ cả main; miễn trừ đúng một dòng của commit gốc.
 a13fb3c132d01e91b59167f5b9a1800e06cf7061:infra/hermes-broker/action-catalog.test.mjs:generic-api-key:47
+# 31/10/2026: infra/hermes-learning-audit/test_learning_audit.py (nhánh claude/hermes-learning-review, PR #371) dùng JWT mẫu của jwt.io
+# (header {"alg":"HS256"}, payload {"sub":"1234567890"}, chữ ký 26 ký tự) để kiểm bộ lọc bí mật — chuỗi giả trong test, không phải khoá thật (đã giải mã header/payload).
+# CI quét --all nên finding ở nhánh draft làm đỏ cả main và mọi PR (như 21/10); miễn trừ đúng một dòng của commit gốc.
+60ed0bc0e2e0d27eb01558f0222e4b2ebdae2f61:infra/hermes-learning-audit/test_learning_audit.py:jwt:434
