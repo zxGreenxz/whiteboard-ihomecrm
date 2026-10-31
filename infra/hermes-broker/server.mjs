@@ -48,14 +48,10 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
-import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
-import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
-import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
-import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
-
-// Thao tác ghi của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng).
-const ACTION_PAGE_CATALOGS = Object.freeze({ contract: CONTRACT_ACTIONS });
+// Danh mục production + thao tác của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng); dùng chung với
+// catalog-names.mjs (kiểm hướng dẫn chuẩn infra/hermes-skills).
+import { ACTION_PAGE_CATALOGS, PRODUCTION_ACTIONS } from './action-page-catalogs.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -189,7 +185,7 @@ export function createHermesBackend(configuration = {}) {
     // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động. Đợt 3 Hoá đơn (Mốc 3–4): invoice.collect
     // (khoá thu_tien.collect_transfer) và invoice.meter_record (khoá meter_readings.create) nằm trong danh mục production như #279,
     // cả hai khoá seed TẮT ⇒ ẩn tới khi bật khoá.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS,
+    const actionCatalog = createActionCatalog([...PRODUCTION_ACTIONS,
       ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
       ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionLive = createActionLiveCatalog();

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
-import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { EXPENSE_ACTIONS, EXPENSE_RETIRED_TOOLS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
@@ -13,7 +13,7 @@ import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mj
 // (tool-argument-shape.test.mjs) giữ nguyên. Đợt 2 Thu chi: danh mục production = thao tác expense.*, họ phiếu chi cũ
 // crm_expense_* đã gỡ khỏi connector (TC1) ⇒ thêm thao tác không thêm byte: khuôn tham số nằm trong KẾT QUẢ của crm_action_list.
 const TOOLS_LIST_BUDGET = 64_000;
-const OLD_EXPENSE_TOOLS = ['crm_expense_input_options', 'crm_expense_create', 'crm_expense_status'];
+const OLD_EXPENSE_TOOLS = Object.keys(EXPENSE_RETIRED_TOOLS);
 const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
 const bytesOf = tools => Buffer.byteLength(JSON.stringify({ tools }));
 
@@ -41,6 +41,8 @@ test('danh mục Thu chi (production): khoá income_expenses.create ⇒ ba tool 
   const { broker, token } = fullGrantBroker(t, undefined, { actions: runtime });
   const listed = (await broker.listTools(token)).tools, names = listed.map(tool => tool.name);
   for (const name of ['crm_action_list', 'crm_action_run', 'crm_action_status']) assert.ok(names.includes(name), name);
+  // Bảng tên nghỉ hưu (EXPENSE_RETIRED_TOOLS) không được rỗng, không thì hai phép kiểm "đã gỡ" dưới đây xanh rỗng.
+  assert.deepEqual([...OLD_EXPENSE_TOOLS].sort(), ['crm_expense_create', 'crm_expense_input_options', 'crm_expense_status']);
   assert.deepEqual(names.filter(name => OLD_EXPENSE_TOOLS.includes(name)), [], 'họ phiếu chi cũ đã gỡ');
   for (const name of OLD_EXPENSE_TOOLS)
     await assert.rejects(broker.callTool(token, name, {}), error => error.code === 'tool_not_available', `${name} gọi thẳng cũng bị từ chối`);

@@ -1,21 +1,21 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1739,
-  "soFileDocBangFs": 451,
-  "tongLoiGoi": 1145,
-  "khongPhanLoaiDuoc": 511,
+  "tongSoFileTest": 1741,
+  "soFileDocBangFs": 453,
+  "tongLoiGoi": 1164,
+  "khongPhanLoaiDuoc": 520,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 62,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 65,
+      "soFile": 66,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 14,
+      "soFile": 16,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
@@ -121,6 +121,15 @@
       "soGoi": 17,
       "loai": {},
       "khongPhanLoaiDuoc": 17
+    },
+    {
+      "file": "infra/hermes-broker/official-skills-deploy.test.mjs",
+      "soGoi": 16,
+      "loai": {
+        "manifest": 2,
+        "tai-lieu": 5
+      },
+      "khongPhanLoaiDuoc": 9
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -803,6 +812,14 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/official-skills.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "tai-lieu": 3
       },
       "khongPhanLoaiDuoc": 0
     },

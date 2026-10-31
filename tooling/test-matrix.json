@@ -536,6 +536,18 @@
       ]
     },
     {
+      "id": "hermes-official-skills",
+      "$comment": "Skill CRM chuẩn của Hermes (infra/hermes-skills) phải khớp tool/thao tác hiện hành của connector; script triển khai chạy thử trên cây giả.",
+      "sourcePaths": [
+        "infra/hermes-skills/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/official-skills.test.mjs",
+        "infra/hermes-broker/official-skills-deploy.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-copilot-independence",
       "sourcePaths": [
         "supabase/migrations/*.sql",

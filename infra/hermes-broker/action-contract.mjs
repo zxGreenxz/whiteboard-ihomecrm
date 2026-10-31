@@ -19,22 +19,29 @@ const annotations = (write) => write
   ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được đòi thêm consentText = nguyên văn lời đồng ý ở lượt xác nhận.
-const RUN_GUIDANCE = 'confirmation_required = CHƯA ghi: đọc preview cho người dùng, chỉ khi họ đồng ý rõ mới gọi lại y nguyên kèm requestId, confirmToken ' +
-  '(+consentText khi huongDan đòi). ' +
-  'needs_input = CHƯA ghi: hỏi lại theo detail. action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
+// 31/10 (hướng dẫn chuẩn infra/hermes-skills): cách xử lý confirmation_required / needs_input nằm đủ ở huongDan của chính kết quả
+// (CONFIRM_GUIDANCE, INPUT_GUIDANCE, CONSENT_*), mô tả chỉ nhắc "làm theo huongDan" ⇒ đủ byte cho tên tool cũ + từ khoá ý định
+// mà vẫn giữ trần 2 000 B của ba tool (action-tools-budget / action-contract test).
+const RUN_GUIDANCE = 'confirmation_required, needs_input = CHƯA ghi: làm theo huongDan. ' +
+  'action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
   'action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
 
+// Sự cố 31/10 (bot owner tìm crm_task_create đã nghỉ, tool_search rỗng ⇒ báo "không khả dụng"): mô tả nêu tên tool cũ mà họ này
+// thay (catalog-names.mjs retiredToolNames; official-skills.test.mjs đòi đủ) và từ khoá ý định có dấu + không dấu (tool_search của
+// Hermes là BM25 token ASCII, chữ có dấu bị cắt vụn — dạng không dấu mới khớp được).
 export const ACTION_LIST_TOOL = freeze({
   name: 'crm_action_list',
   description: 'List CRM write actions: expense, invoice, contract, task. ' +
-    'Trả action, params, confirm của thao tác kết nối được làm; gọi khi chưa biết mã hay tham số.',
+    'Gọi trước khi từ chối: tạo/giao/huỷ việc (tao giao huy viec), giữ/khoá phòng (giu khoa phong), ' +
+    'gia hạn/báo trả HĐ (gia han bao tra hop dong), phiếu chi (phieu chi), thu tiền hoá đơn (thu tien hoa don).',
   inputSchema: { type: 'object', additionalProperties: false, properties: { page: { enum: [null, ...LISTED_PAGES] } } },
   annotations: annotations(false),
 });
 export const ACTION_RUN_TOOL = freeze({
   name: 'crm_action_run',
   description: 'Run CRM write action (expense, invoice, contract, task). ' +
-    'action, params đúng như crm_action_list; toà/phòng bằng tên, tiền là số nguyên VND. ' + RUN_GUIDANCE,
+    'Thay crm_task_create, crm_task_input_options, crm_task_progress, crm_task_cancel, crm_expense_create, crm_expense_input_options. ' +
+    'Toà/phòng bằng tên. ' + RUN_GUIDANCE,
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', pattern: ACTION_ID.source }, params: { type: 'object' },
     requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' }, consentText: { type: 'string' } } },
@@ -42,7 +49,7 @@ export const ACTION_RUN_TOOL = freeze({
 });
 export const ACTION_STATUS_TOOL = freeze({
   name: 'crm_action_status',
-  description: 'CRM write action status by requestId. Dùng sau action_outcome_unknown, đúng requestId của lệnh gốc.',
+  description: 'CRM write action status by requestId. Thay crm_task_status, crm_expense_status; sau action_outcome_unknown.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: { type: 'string', format: 'uuid' } } },
   annotations: annotations(false),
 });
