@@ -82,6 +82,7 @@
         "infra/hermes-runtime/connector-config.example.json",
         "infra/hermes-zalo-router/**",
         "infra/hermes-zalo-native/**",
+        "infra/hermes-learning-audit/**",
         "worker/deploy/**",
         "worker/Dockerfile",
         "worker/.dockerignore",

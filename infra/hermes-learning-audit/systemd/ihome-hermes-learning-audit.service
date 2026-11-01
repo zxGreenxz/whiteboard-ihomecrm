@@ -1,0 +1,63 @@
+# Kiểm học tập Hermes — CHỈ ĐỌC hồ sơ (/var/lib/ihome-hermes-profiles). Cài theo infra/hermes-learning-audit/README.md.
+# User riêng ihome-hermes-audit chỉ có CAP_DAC_READ_SEARCH (đọc được file 0600 của uid 10003, không ghi được). Sandbox CHỈ gắn
+# (chỉ đọc) đúng các đường cần đọc: skills/, memories/, .curator_backups/, state.db* của từng hồ sơ, bộ skill chuẩn, node và
+# bản phát hành. Bí mật của hồ sơ (.env, config.yaml, auth…), của Hermes (.hermes/*) và của connector không có trong sandbox.
+# Tiến trình node (đọc danh mục tên tool) chạy KHÔNG có CAP_DAC_READ_SEARCH (learning_audit.py xoá tập ambient trước exec).
+# Đầu ra /var/lib/ihome-hermes-learning-audit: private/ (0700) báo cáo đủ + trạng thái; outbox/ (0750) chỉ đề xuất cho job nạp.
+[Unit]
+Description=iHome Hermes - kiem hoc tap (chi doc ho so Hermes)
+Documentation=file:///opt/ihome-hermes/current/infra/hermes-learning-audit/README.md
+After=local-fs.target
+OnSuccess=ihome-hermes-learning-ingest.service
+OnFailure=ihome-hermes-learning-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ihome-hermes-audit
+Group=ihome-hermes
+UMask=0027
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 -I -B -X utf8 /opt/ihome-hermes/current/infra/hermes-learning-audit/learning_audit.py
+StateDirectory=ihome-hermes-learning-audit
+StateDirectoryMode=0750
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# /var/lib, /var/backups, /var/log, /opt, /srv là tmpfs rỗng chỉ đọc; chỉ các đường liệt kê dưới đây được gắn vào.
+# Tiền tố "-": đường chưa có (hồ sơ chưa có state.db, chưa cài bộ skill chuẩn…) thì bỏ qua.
+TemporaryFileSystem=/var/lib:ro /var/backups:ro /var/log:ro /opt:ro /srv:ro
+BindPaths=/var/lib/ihome-hermes-learning-audit
+BindReadOnlyPaths=/opt/ihome-hermes/node /opt/ihome-hermes/current
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/ihome-official-skills
+# Hồ sơ Hermes (owner = người dùng thật; tkt/tkh/tkj nghiệm thu; abc1/abeager3 thử cũ). Thêm hồ sơ mới = thêm một dòng
+# (README › "Thêm hồ sơ"); hồ sơ không được gắn thì job kiểm không thấy, job nạp báo "missingProfiles" nếu hồ sơ có ánh xạ.
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/state.db-shm
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkt/state.db-shm
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkh/state.db-shm
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/tkj/state.db-shm
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abc1/state.db-shm
+BindReadOnlyPaths=-/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/skills -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/memories -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/.curator_backups -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db-wal -/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/abeager3/state.db-shm
+# CAP_DAC_READ_SEARCH đọc được mọi file còn thấy: giấu bí mật của host và connector (production + TEST). Mã còn từ chối symlink
+# và đường ra ngoài hồ sơ; đây là lớp chặn thứ hai.
+InaccessiblePaths=-/etc/ihome-hermes -/etc/ihome-hermes-test -/etc/shadow -/etc/shadow- -/etc/gshadow -/etc/gshadow- -/etc/ssh -/etc/sudoers -/etc/sudoers.d -/etc/cloudflared -/etc/letsencrypt
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+MemoryMax=256M
+CPUQuota=50%
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=10min
