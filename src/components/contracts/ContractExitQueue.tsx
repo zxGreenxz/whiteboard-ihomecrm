@@ -11,6 +11,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { EXIT_KIND_LABELS } from './ContractReturnStep';
 import { TerminateDialog } from './TerminateDialog';
+import { ContractQueueSheetRow } from './ContractQueueSheetRow';
 
 // Hồ sơ có nháp: "Mở bản nháp" điền lại nháp, "Quyết toán" mở form mới (chủ chốt 30/10/2026).
 function SettleActions({ draft, disabled, onOpen }: { draft?: ExitSettlementDraftMeta; disabled: boolean; onOpen: (resume: boolean) => void }) {
@@ -23,7 +24,12 @@ function SettleActions({ draft, disabled, onOpen }: { draft?: ExitSettlementDraf
   </div>;
 }
 
-export function ContractExitQueue({ buildingIds = [], showEmpty = false }: { buildingIds?: string[]; showEmpty?: boolean }) {
+export function ContractExitQueue({ buildingIds = [], showEmpty = false, layout = 'page' }: {
+  buildingIds?: string[]; showEmpty?: boolean;
+  /** "sheet": nằm trong bảng trượt của mobile, tiêu đề do bảng trượt vẽ. */
+  layout?: 'page' | 'sheet';
+}) {
+  const sheet = layout === 'sheet';
   const [page, setPage] = useState(0);
   // resume: mở từ "Mở bản nháp" (điền lại nháp); "Quyết toán" mở form mới.
   const [selected, setSelected] = useState<{ id: string; resume: boolean } | null>(null);
@@ -50,11 +56,23 @@ export function ContractExitQueue({ buildingIds = [], showEmpty = false }: { bui
   if (!query.data?.total) return showEmpty
     ? <p className="rounded-lg border bg-background p-8 text-center text-sm text-muted-foreground">Không có hợp đồng chờ quyết toán.</p>
     : null;
-  return <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-3" aria-label="Hồ sơ chờ quyết toán">
-    <h2 className="font-semibold">Chờ quyết toán <span className="text-amber-800">({query.data.total})</span></h2>
-    <p className="mb-2 text-xs text-muted-foreground">Khách đã trả phòng. Mở đúng hồ sơ cũ để xử lý tiếp.</p>
+  return <section className={sheet ? 'cm-qlist' : 'rounded-lg border border-amber-200 bg-amber-50/50 p-3'} aria-label="Hồ sơ chờ quyết toán">
+    {!sheet && <>
+      <h2 className="font-semibold">Chờ quyết toán <span className="text-amber-800">({query.data.total})</span></h2>
+      <p className="mb-2 text-xs text-muted-foreground">Khách đã trả phòng. Mở đúng hồ sơ cũ để xử lý tiếp.</p>
+    </>}
     {drafts.isError && <p role="status" className="mb-2 text-xs text-muted-foreground">Chưa tải được dấu bản nháp. Bấm "Quyết toán" vẫn thấy nháp nếu hồ sơ có.</p>}
-    <div className="divide-y">{query.data.items.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+    <div className={sheet ? 'cm-qrows' : 'divide-y'}>{query.data.items.map(item => {
+      const draft = draftByCase.get(item.id);
+      return sheet ? <ContractQueueSheetRow key={item.id} contractId={item.contract_id} room={item.room_name} building={item.building_name}
+        tag={EXIT_KIND_LABELS[item.initial_kind]}
+        detail={`${item.customer_name || 'Khách thuê'} · Đã trả ${item.actual_move_out_on.split('-').reverse().join('/')}`}
+        code={item.contract_number || item.contract_id.slice(0, 8)}
+        note={canSettle && draft && <p className="cm-qrow-note">Có nháp · lưu {draftSavedBy(draft)}</p>}
+        actions={canSettle && <>
+          {draft && <Button className="cm-qbtn cm-qbtn-primary" disabled={!!selectedId} onClick={() => setSelected({ id: item.id, resume: true })}>Mở bản nháp</Button>}
+          <Button variant="outline" className="cm-qbtn" disabled={!!selectedId} onClick={() => setSelected({ id: item.id, resume: false })}>Quyết toán</Button>
+        </>} /> : <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
       <div className="text-sm">
         <Link to={`/contracts/${item.contract_id}`} className="font-medium underline underline-offset-2">
           {item.building_name || 'Tòa nhà'} · {item.room_name || 'Phòng'} · {item.contract_number || item.contract_id.slice(0, 8)}
@@ -62,9 +80,10 @@ export function ContractExitQueue({ buildingIds = [], showEmpty = false }: { bui
         <p>{item.customer_name || 'Khách thuê'} · Đã trả {item.actual_move_out_on.split('-').reverse().join('/')}</p>
         <p className="text-xs text-muted-foreground">Loại đã ghi: {EXIT_KIND_LABELS[item.initial_kind]}</p>
       </div>
-      {canSettle && <SettleActions draft={draftByCase.get(item.id)} disabled={!!selectedId}
+      {canSettle && <SettleActions draft={draft} disabled={!!selectedId}
         onOpen={resume => setSelected({ id: item.id, resume })} />}
-    </div>)}</div>
+    </div>;
+    })}</div>
     {query.data.total > 10 && <div className="flex items-center justify-end gap-2 pt-2 text-sm">
       <Button size="sm" variant="ghost" disabled={!page} onClick={() => setPage(value => value - 1)}>Trước</Button>
       <span>Trang {page + 1}/{Math.ceil(query.data.total / 10)}</span>
