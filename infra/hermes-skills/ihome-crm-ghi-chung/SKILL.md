@@ -13,7 +13,8 @@ metadata:
 
 **Thứ tự ưu tiên.** Nhóm skill `ihome-crm-*` là hướng dẫn CHUẨN, phát hành cùng connector CRM, chỉ đọc. Skill tự học, ghi nhớ hay
 hội thoại cũ có thể lỗi thời: chỗ nào khác nhóm này thì theo nhóm này. Tên tool và mã thao tác chỉ lấy từ kết quả
-`crm_action_list` và nhóm `ihome-crm-*`; không lấy từ trí nhớ, không tự ghép tên.
+`crm_action_list` và nhóm `ihome-crm-*`; không lấy từ trí nhớ, không tự ghép tên. Mở skill: `skill_view` với `name` là ĐÚNG MỘT
+tên trần, vd `ihome-crm-hop-dong` — không thêm dấu nháy, ngoặc, tên nhóm (`ihome-crm:`), đường dẫn hay chữ khác; mỗi lệnh một tên.
 
 ## When to Use
 
@@ -40,23 +41,27 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
 ## Vòng ghi bằng `crm_action_run`
 
 1. Lấy `action` và khuôn `params` từ `crm_action_list`. Toà, phòng, người, hạng mục, sổ: TÊN như người dùng nói (không đoán ID).
-   Tiền: số nguyên VND (3tr5 = 3500000). Ngày: YYYY-MM-DD giờ Việt Nam; người dùng nói ngày bằng lời ⇒ gửi thêm tham số
-   `…Phrase` NGUYÊN VĂN khi khuôn có (connector tự quy đổi). Tham số không có giá trị thì bỏ hẳn, không gửi chuỗi rỗng.
+   Lý do, nội dung, ghi chú: dùng NGUYÊN VĂN lời người dùng trong tin (ghép các ý họ đã nói được, vd lý do "khách ở tiếp", ghi
+   chú "quyết toán sau"); không tự đếm ký tự trước khi gọi — máy chủ kiểm khuôn. Tiền: số nguyên VND (3tr5 = 3500000). Ngày:
+   YYYY-MM-DD giờ Việt Nam; người dùng nói NGÀY bằng lời ("hôm qua", "thứ hai tuần trước") ⇒ gửi thêm tham số `…Phrase` NGUYÊN
+   VĂN khi khuôn có (connector tự quy đổi); không nói ngày ⇒ bỏ (ngày thu mặc định hôm nay). "trước" / "sau" đứng sau số tiền
+   ("ck 2 củ trước") là trả trước / trả sau, không phải ngày. Tham số không có giá trị thì bỏ hẳn, không gửi chuỗi rỗng.
 2. Gọi `crm_action_run` {action, params}. Không cần `crm_new_request_id`: connector tự cấp `requestId`.
    - `confirm: always` (tiền, không lùi được): máy chủ luôn trả bản xem trước ⇒ gọi ngay khi đủ ý, không hỏi xác nhận bằng chữ
      trước; bản xem trước là bước xác nhận.
    - `confirm: if_required`: máy chủ có thể GHI NGAY, không qua xem trước (vd báo trả, giữ / bỏ giữ phòng, thêm / bớt người ở, nháp
-     HĐ, ghi chú phiếu, sửa việc) ⇒ chỉ gọi khi ý đã rõ; ý còn mơ hồ thì hỏi một câu trước khi gọi.
+     HĐ, ghi chú phiếu, sửa việc) ⇒ lời người dùng đã đủ thì gọi luôn. Hỏi trước khi gọi CHỈ khi: nói "trả phòng" kèm ngày dọn đi
+     TƯƠNG LAI (đó là báo trả — `ihome-crm-hop-dong`), hoặc thiếu giá trị bắt buộc người dùng chưa nói. Không hỏi lại điều họ đã nói.
 3. Đọc kết quả:
    - `confirmation_required` = CHƯA ghi. Đọc nguyên văn `preview` và `warnings` (kể cả câu "Hiểu '…' là …"), chờ người dùng
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +
      `params` kèm `requestId` và `confirmToken` chép đủ từng ký tự; `huongDan` đòi `consentText` ⇒ thêm `consentText` = nguyên
      văn tin người dùng. Người dùng đổi nội dung ⇒ gọi lại KHÔNG kèm `confirmToken` để xem trước lại.
-   - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: chỉ tự sửa phần MÌNH chọn (tên / kiểu tham số, định dạng
-     ngày, tham số thừa) theo khuôn trong `detail` rồi gọi lại. Giá trị NGƯỜI DÙNG nói (lý do, nội dung, SĐT, số tiền…) chưa đạt
-     khuôn hoặc còn thiếu (vd lý do "đổi ý" quá ngắn) ⇒ hỏi lại người dùng, không tự viết thêm, không tự điền. `huongDan` bảo hỏi
-     lại người dùng (vd ghi chú thu tiền nói khoản CHƯA trả) ⇒ hỏi, không tự sửa params rồi gọi lại. Lý do khác ⇒ hỏi đúng một câu
-     theo `detail` / `candidates`.
+   - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: sửa phần MÌNH chọn (tên / kiểu tham số, định dạng ngày,
+     tham số thừa) theo khuôn trong `detail`; giá trị có trong lời người dùng ⇒ dùng / ghép nguyên văn rồi gọi lại. Chỉ hỏi lại khi
+     người dùng chưa nói giá trị cần có hoặc lời họ không đủ (vd lý do chỉ "đổi ý"); không bịa, không tự viết thêm. `huongDan` bảo
+     hỏi lại người dùng (vd ghi chú thu tiền nói khoản CHƯA trả) ⇒ hỏi, không tự sửa params rồi gọi lại. Lý do khác ⇒ hỏi đúng một
+     câu theo `detail` / `candidates`.
    - `applied` = đã ghi ⇒ báo ngắn kết quả (mã, người, hạn, số tiền…).
    - Lỗi `action_rejected` ⇒ báo đúng `detail`; chỉ khi `detail` bảo xem trước lại (vd `state_changed`) mới gọi lại không kèm
      `confirmToken`, còn lại không tự thử lại. `forbidden` ⇒ chưa có quyền; `action_disabled` ⇒ thao tác chưa bật cho kết nối.
@@ -64,8 +69,10 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
    - `confirmation_invalid` ⇒ làm theo `detail` (requestId của bản xem trước mới nhất / gửi y nguyên params / xem trước lại);
      không xem trước quá 2 lần cho cùng một việc.
    - Lượt xác nhận gặp `timeout` (không phải `action_outcome_unknown`) ⇒ máy chủ chưa gửi lệnh ghi: gọi lại đúng một lần y nguyên.
-4. Một tin có hai việc ghi ⇒ làm lần lượt, mỗi việc xem trước và đồng ý riêng. Sau bản xem trước người dùng nói "thôi / khoan /
-   khỏi" ⇒ bỏ hẳn, không gọi thao tác nào khác thay vào, nói "em chưa ghi gì".
+4. Một tin có hai việc ghi ⇒ nói làm việc nào trước rồi làm lần lượt NGAY trong lượt đó: việc ghi thẳng mà lời đã đủ thì gọi luôn
+   rồi sang việc sau; việc cần xem trước thì đưa bản xem trước và chờ đồng ý riêng (lời đồng ý chỉ xác nhận bản xem trước người
+   dùng đã thấy). Sau bản xem trước người dùng nói "thôi / khoan / khỏi" ⇒ bỏ hẳn, không gọi thao tác nào khác thay vào, nói "em
+   chưa ghi gì".
 
 ## requestId của tool ghi riêng
 

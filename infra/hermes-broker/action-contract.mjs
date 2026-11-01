@@ -157,12 +157,14 @@ function paramsOf(value) {
 }
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
-// 31/10 (SOUL dòng 15 + 22, skill ihome-crm-ghi-chung; review #369): invalid_params có hai loại. Phần BOT chọn sai (tên / kiểu tham số,
-// định dạng ngày, tham số thừa) ⇒ tự sửa. Giá trị NGƯỜI DÙNG nói chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại, không tự viết thêm (vd lý do
-// "đổi ý" < 8 ký tự của contract.notice_cancel: thao tác ghi thẳng ⇒ lý do bịa vào thẳng CRM). Lưới chặn thu tiền (collect-guard) gọi
-// needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "tự sửa".
-const PARAMS_GUIDANCE = 'CHƯA ghi. Chỉ tự sửa phần do bot chọn (tên / kiểu tham số, định dạng ngày, tham số thừa) theo detail rồi gọi lại crm_action_run; ' +
-  'giá trị người dùng nói (lý do, nội dung, SĐT, số tiền…) chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại người dùng, không tự viết thêm, không tự điền.';
+// 31/10 (SOUL dòng 15 + 22, review #369) + 01/11 (ma trận d31: bot hỏi lại lý do "khách ở tiếp", note "quyết toán sau" dù người dùng đã
+// nói): invalid_params ⇒ sửa theo detail rồi gọi lại — phần BOT chọn (tên / kiểu tham số, định dạng ngày, tham số thừa), giá trị CÓ TRONG
+// lời người dùng (dùng / ghép nguyên văn các ý họ đã nói), tham số tuỳ chọn họ không nói thì bỏ (ngày thu ⇒ hôm nay). Chỉ hỏi lại khi người
+// dùng chưa nói giá trị cần có hoặc lời họ không đủ (vd lý do chỉ "đổi ý" < 8 ký tự của contract.notice_cancel — ghi thẳng, chữ bot viết
+// thêm vào thẳng CRM). Lưới chặn thu tiền (collect-guard) gọi needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "sửa … gọi lại".
+const PARAMS_GUIDANCE = 'CHƯA ghi. Sửa theo detail rồi gọi lại crm_action_run: phần do bot chọn (tên / kiểu tham số, định dạng ngày, tham số thừa); ' +
+  'giá trị có trong chính lời người dùng (dùng hoặc ghép nguyên văn các ý họ đã nói, vd lý do "khách ở tiếp"); tham số tuỳ chọn họ không nói thì bỏ ' +
+  '(vd ngày thu ⇒ hôm nay). Chỉ hỏi lại khi người dùng chưa nói giá trị cần có hoặc lời họ không đủ (vd lý do chỉ "đổi ý"); không bịa, không tự viết thêm.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
 const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
   'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';

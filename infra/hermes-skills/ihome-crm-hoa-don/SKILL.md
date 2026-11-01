@@ -29,9 +29,13 @@ Khách (kể cả khách cũ đã trả phòng) trả tiền phòng / điện n�
 - `method`: TK = chuyển khoản; TT = thanh toán / POS / chuyển vào sổ HKD; TM (tiền mặt) bị từ chối ⇒ trang Thu tiền (/thu-tien).
   "CK", "TK", "TT", "POS", "TM" là hình thức, không phải tên toà / phòng.
 - Không nêu toà ⇒ bỏ hẳn `buildingName`; không nêu tháng ⇒ bỏ `month` (máy chủ chọn hoá đơn còn nợ, nhiều thì hỏi); "tiền tháng N"
-  = `month` YYYY-N, ngày thu mặc định hôm nay. Chữ sau "phòng" là tên phòng kể cả khi giống tên sổ ("phòng MB").
-- `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận ("vào HKD Tâm", "sổ HKD của anh" ⇒ "HKD"); không ghi tên sổ vào
-  `note`. Không nêu sổ ⇒ không gửi, bản xem trước dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
+  = `month` YYYY-N, ngày thu mặc định hôm nay — không hỏi "khách chuyển ngày nào". Chữ sau "phòng" là tên phòng kể cả khi giống
+  tên sổ ("phòng MB").
+- "ck X trước, còn lại <cuối tuần / sau>" = thu MỘT PHẦN X hôm nay ("trước" = trả trước một phần, KHÔNG phải ngày): không gửi
+  `datePhrase`, phần còn lại không ghi, không hỏi ngày.
+- `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận: chép NGUYÊN tên họ nói ("vào HKD Tâm" ⇒ "HKD Tâm", "vào TK Hiệp" ⇒
+  "TK Hiệp"); "sổ HKD của anh" (không tên riêng) ⇒ "HKD". Không ghi tên sổ vào `note`. Không nêu sổ ⇒ không gửi, bản xem trước
+  dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
 - Phòng người dùng nói CHƯA trả ⇒ không gọi cho phòng đó. Máy chủ báo ghi chú nói khoản CHƯA trả ⇒ hỏi lại người dùng phòng đó
   đã trả chưa; không tự bỏ câu "chưa…" rồi gọi lại. Sửa / đổi hình thức lần thu ĐÃ ghi ⇒ web (Hoá đơn › Lịch sử thanh
   toán), không gọi `invoice.collect` lần nữa (thành thu trùng). `period_closed` ⇒ tháng đó toà đã chốt lợi nhuận.

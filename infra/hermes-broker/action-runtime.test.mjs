@@ -87,8 +87,9 @@ test('invalid_params do GIÁ TRỊ người dùng nói (lý do "đổi ý" < 8 k
   const short = await env.call('crm_action_run', { action: 'contract.notice_cancel', params: { buildingName: 'Toà A', roomName: '101', reason: 'đổi ý' } });
   assert.deepEqual([short.outcome, short.reason, short.applied], ['needs_input', 'invalid_params', false]);
   assert.match(short.detail, /^Thiếu hoặc sai: reason \(/);
-  assert.match(short.huongDan, /giá trị người dùng nói \(lý do, nội dung, SĐT, số tiền…\) chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại người dùng, không tự viết thêm/);
-  assert.match(short.huongDan, /Chỉ tự sửa phần do bot chọn/);
+  // Lời người dùng chỉ có "đổi ý" (không đủ 8 ký tự) ⇒ hỏi lại; câu cho phép ghép chỉ dùng chữ người dùng đã nói, không bịa thêm.
+  assert.match(short.huongDan, /Chỉ hỏi lại khi người dùng chưa nói giá trị cần có hoặc lời họ không đủ \(vd lý do chỉ "đổi ý"\); không bịa, không tự viết thêm/);
+  assert.match(short.huongDan, /phần do bot chọn/);
   assert.deepEqual(env.requests, [], 'không gửi gì xuống CRM');
 });
 
