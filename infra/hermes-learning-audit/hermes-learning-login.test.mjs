@@ -25,8 +25,10 @@ function fakeClient(rows) {
 const writes = client => client.queries.filter(sql => !sql.startsWith('SELECT'));
 
 test('chỉ nhận đúng vai này và đúng tham số', () => {
-  assert.deepEqual(parseArgs(['--enable', '--verifier-file', '/x', '--apply']), { mode: 'enable', verifierFile: '/x', apply: true });
-  assert.deepEqual(parseArgs(['--disable', '--role', ROLE]), { mode: 'disable', verifierFile: null, apply: false });
+  assert.deepEqual(parseArgs(['--enable', '--verifier-file', '/x', '--apply']), { mode: 'enable', verifierFile: '/x', apply: true, terminateSessions: false });
+  assert.deepEqual(parseArgs(['--disable', '--role', ROLE]), { mode: 'disable', verifierFile: null, apply: false, terminateSessions: false });
+  assert.equal(parseArgs(['--disable', '--terminate-sessions', '--apply']).terminateSessions, true);
+  assert.throws(() => parseArgs(['--enable', '--verifier-file', '/x', '--terminate-sessions']), code('args_invalid'));
   assert.throws(() => parseArgs(['--enable', '--verifier-file', '/x', '--role', 'postgres']), code('role_refused'));
   assert.throws(() => parseArgs(['--disable', '--role', 'hermes_store_host', '--apply']), code('role_refused'));
   for (const argv of [[], ['--apply'], ['--enable'], ['--disable', '--verifier-file', '/x'], ['--enable', '--disable', '--verifier-file', '/x'], ['--sql', 'x']]) {
@@ -83,6 +85,37 @@ test('mặc định không ghi; --apply chạy đúng một câu ghi và không 
   assert.deepEqual(writes(unsafe), []);
   const stuck = fakeClient([safeRow(), safeRow()]);
   await assert.rejects(run({ mode: 'enable', verifierFile: '/x', apply: true }, { client: stuck, readVerifier: () => good, log: () => {} }), code('role_state_unexpected'));
+});
+
+test('--disable là đường lùi: chạy được cả khi vai lệch, có cảnh báo; chỉ dừng khi vai không tồn tại; ngắt phiên chỉ khi được yêu cầu', async () => {
+  for (const bad of [{ rolsuper: true }, { rolbypassrls: true }, { rolinherit: false }, { groups: ['hermes_learning_ingest', 'postgres'] }, { groups: [] }, { rolconfig: null }]) {
+    const lines = [];
+    const client = fakeClient([safeRow({ rolcanlogin: true, ...bad }), safeRow({ rolcanlogin: false, ...bad })]);
+    await run({ mode: 'disable', verifierFile: null, apply: true, terminateSessions: false }, { client, log: line => lines.push(line) });
+    assert.deepEqual(writes(client), [disableSql()], JSON.stringify(bad));
+    assert.equal(client.queries.some(sql => sql.includes('pg_terminate_backend')), false);
+    assert.equal(JSON.parse(lines[0]).event, 'hermes_learning_login_warning');
+    assert.equal(JSON.parse(lines.at(-1)).canLogin, false);
+  }
+  // Bật thì vẫn từ chối vai lệch.
+  const refuse = fakeClient([safeRow({ rolsuper: true })]);
+  await assert.rejects(run({ mode: 'enable', verifierFile: '/x', apply: true }, { client: refuse, readVerifier: () => verifier(), log: () => {} }), code('role_unsafe'));
+  assert.deepEqual(writes(refuse), []);
+  const missing = fakeClient([]);
+  await assert.rejects(run({ mode: 'disable', verifierFile: null, apply: true }, { client: missing, log: () => {} }), code('role_missing'));
+  assert.deepEqual(writes(missing), []);
+  // Mặc định --disable không ghi nếu thiếu --apply, vai lệch cũng vậy.
+  const dry = fakeClient([safeRow({ rolsuper: true })]);
+  await run({ mode: 'disable', verifierFile: null, apply: false }, { client: dry, log: () => {} });
+  assert.deepEqual(writes(dry), []);
+  // Nghi lộ mật khẩu: tắt đăng nhập trước, rồi ngắt đúng phiên của vai này.
+  const lines = [];
+  const leak = fakeClient([safeRow({ rolcanlogin: true }), safeRow(), { pid: 1 }]);
+  await run({ mode: 'disable', verifierFile: null, apply: true, terminateSessions: true }, { client: leak, log: line => lines.push(line) });
+  const terminate = leak.queries.findIndex(sql => sql.includes('pg_terminate_backend'));
+  assert.ok(terminate > leak.queries.indexOf(disableSql()));
+  assert.match(leak.queries[terminate], /usename='hermes_store_learning'/);
+  assert.equal(JSON.parse(lines.at(-1)).terminated, 1);
 });
 
 test('migration tạo vai trên PostgreSQL thật: chạy độc lập được, NOLOGIN, đúng một nhóm, chạy lại không đụng đăng nhập đã bật, thừa nhóm thì dừng', async t => {

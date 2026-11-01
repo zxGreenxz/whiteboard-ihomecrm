@@ -76,12 +76,15 @@ Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profi
 
 Hồ sơ do Hermes ghi, nên mọi chuỗi lấy từ sổ curator, `state.db`, skill, bộ nhớ, tên file đều được **làm sạch trước khi rời hồ
 sơ**: surrogate lẻ ⇒ U+FFFD, bỏ NUL và ký tự điều khiển, **che bí mật kỹ thuật** rồi mới cắt ngắn. Che gồm: Bearer, JWT, `sk-…`/`rk-…`/
-`pk-…`, header `Authorization`, khối PEM, token GitHub/Supabase/Slack/AWS/Google, token kết nối `hc_…`; nhãn + giá trị có hậu tố hoặc nháy
-(`DB_PASSWORD=`, `PGPASSWORD=`, `VERCEL_TOKEN=`, `ZALO_API_KEY=`, `"password": "x"`, `"api_key":"x"`), chuỗi kết nối
-(`postgresql://u:PASS@host`, `https://u:PASS@host`), tham số `-u`/`--user` của curl dạng tên:mật khẩu, `--password X`; tiếng Việt (`mật khẩu:`, `mật khẩu là X`, `Mật khẩu
-wifi: X`, `mã khoá`/`mã khóa`, `pass:`, `mk:`), giá trị ngắn, giá trị ở dòng ngay dưới nhãn, chữ dạng NFD. Giá trị token phải là ASCII nên
-"token: hết hạn" vẫn là câu thường. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu; nhãn kèm ≤ 3 từ rồi dấu `:` có thể che
-dư một từ ngay sau dấu `:`.
+`pk-…`, header `Authorization`, `Cookie:`, khối PEM, token GitHub/Supabase/Slack/AWS/Google/Contentful/Vercel/bot, token kết nối `hc_…`; nhãn + giá trị có hậu tố hoặc nháy
+(`DB_PASSWORD=`, `PGPASSWORD=`, `VERCEL_TOKEN=`, `ZALO_API_KEY=`, `SUPABASE_KEY=`, `"service_role_key": "x"`, `"password": "x"`, `"api_key":"x"`, `API key: x`, `Secret key: x`, `token là x`, `Token của Vercel: x`), chuỗi kết nối
+(`postgresql://u:PASS@host`, `https://u:PASS@host`), tham số `-u`/`--user` của curl dạng tên:mật khẩu, `-p` của mysql và sshpass, `--password X`; tiếng Việt (`mật khẩu:`, `mật khẩu là X`, `Mật khẩu
+wifi: X`, `mã khoá`/`mã khóa`, `pass:`, `mk:`), giá trị ngắn, giá trị ở dòng ngay dưới nhãn, chữ dạng NFD. Lưới cuối đo độ ngẫu nhiên: chuỗi ≥ 32 ký tự lẫn hoa, thường, số thì che dù không có nhãn hay tiền tố
+(bắt khoá của nhà cung cấp chưa biết; mã băm hex, UUID, đường dẫn, tên định danh không rơi vào).
+
+**Đây là lớp giảm rủi ro, không đảm bảo tuyệt đối.** Lớp bảo vệ thật là chỉ người giữ `users.edit` đọc được đề xuất, kèm thủ tục gỡ ở mục I runbook PR #371. Cố ý KHÔNG che, để không nhầm thông tin khách:
+văn tự do không nhãn (`mật khẩu X`, `tk admin mk X`, `admin/X`, `mã OTP:`, `mã PIN:`); giá trị dạng số 9–19 chữ số đứng sau nhãn tiếng Việt hoặc `pass:`/`mk:` (có thể là SĐT, CCCD, STK nên giữ, kể cả khi đó thật ra là mật khẩu);
+chữ có dấu thuần chữ cái (`mật khẩu: không đổi`). Từ giữa nhãn và dấu `:` chỉ nhận danh sách đóng (wifi, admin, cửa, phòng…), nên `Mật khẩu gửi khách SĐT: 0901…` giữ nguyên. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu.
 **Thông tin khách (SĐT, CCCD/CMND, email, STK…) giữ nguyên văn** theo quyết định của chủ (xem đầu file). Lý do vẫn che bí mật kỹ
 thuật: đó là an ninh hệ thống — một token/mật khẩu lọt vào báo cáo hay hàng duyệt là ai đọc được cũng dùng được để vào hệ thống,
 trong khi nội dung bài học không cần chúng. Nội dung dài hơn 3500 ký tự được **tách phần** (`phần i/n`, nguồn có `part`/`parts`), người duyệt
@@ -94,7 +97,8 @@ Một mục hỏng (dòng sổ lạ, skill/bộ nhớ không kiểm được, ti
 hỏng lần chạy; mục sổ được ghi "đã thấy" trước khi xử lý nên trạng thái luôn tiến. Mọi file ghi ra là JSON thuần ASCII
 (`ensure_ascii`) — không thể hỏng vì lỗi mã hoá. Lỗi hệ thống (không ghi được đầu ra, gốc hồ sơ là symlink…) ⇒ mã ≠ 0 ⇒ cảnh báo
 `OnFailure=`; gốc hồ sơ hỏng thì **không** ghi đè trạng thái. Phần việc chính không kiểm được (danh mục `catalog-names.mjs` hỏng, `state.db` của hồ sơ
-người dùng thật không đọc được hoặc vắng, một bước quét chết, bộ skill chuẩn lỗi) ⇒ báo cáo và outbox vẫn ghi, trường `degraded` nêu lý do, mã 1.
+người dùng thật không đọc được hoặc vắng, một bước quét chết, bộ skill chuẩn lỗi) ⇒ báo cáo và outbox vẫn ghi, trường `degraded` nêu lý do, mã 1, và mỗi lý do thành một cảnh báo trên trang duyệt
+(khoá cố định theo lý do nên không thêm dòng mỗi tối). Mỗi hồ sơ tối đa 20 cảnh báo một lần kiểm, phần dư gộp thành một dòng `warnings_overflow` và chỉ nằm trong báo cáo trên máy chủ: sandbox gắn sai không đổ hàng loạt dòng vào kho bất biến.
 
 ### Đầu ra
 
@@ -138,7 +142,7 @@ qua `store-transport.mjs` phạm vi `scope: 'learning'`, đăng nhập bằng lo
 - login này chỉ thuộc vai NOLOGIN `hermes_learning_ingest` (migration tạo vai; quyền được cấp riêng của vai là USAGE `app_private` + EXECUTE
   hàm nạp, không có quyền bảng), **không** thuộc `hermes_store_executor` của connector — lộ mật khẩu job nạp không mở được kho bền connector, và
   ngược lại login connector không còn quyền nạp. **Giới hạn thật:** như mọi vai, nó vẫn thừa hưởng EXECUTE của PUBLIC trên các hàm chưa thu quyền đó (đo
-  production 01/11: 405 hàm `public`, 51 hàm `app_private`); phía job, transport chỉ gửi đúng thao tác nạp, nhưng người cầm mật khẩu tự kết nối thì gọi
+  production 01/11, bỏ hàm của extension: 119 hàm `public`/`app_private`, trong đó 67 DEFINER, 52 INVOKER vô hại); phía job, transport chỉ gửi đúng thao tác nạp, nhưng người cầm mật khẩu tự kết nối thì gọi
   được các hàm đó. Thu EXECUTE khỏi PUBLIC là việc riêng sau. Transport kiểm vai trước lệnh đầu (thuộc `hermes_learning_ingest`, không thuộc
   executor/postgres/service_role, không super/bypassrls). TLS xác minh, không `service_role`, không JWT người dùng, không khoá tĩnh mới;
 - tenant nằm trong payload và SQL tự kiểm: người dùng là thành viên **đang hoạt động** của công ty và có trợ lý `ACTIVE`;
@@ -174,18 +178,17 @@ Lệnh từng bước, điểm dừng lần chạy đầu và thứ tự rollbac
 3. **Web**: promote bản có tab "Bài học chờ duyệt". **Connector release** (`/opt/ihome-hermes/current`) phải chứa
    `infra/hermes-learning-audit/` và `store-transport.mjs` có phạm vi `learning` (bản main sau khi gộp PR này).
 4. **User chạy kiểm**: `useradd --system --no-create-home --shell /usr/sbin/nologin --gid ihome-hermes ihome-hermes-audit`.
-5. **Cấu hình nạp** (ID thật của công ty + tài khoản chủ trợ lý hồ sơ `owner`, projectRef/host thật như `connector.json`, không
-   đưa vào repo): sửa từ `learning-audit.example.json`, `install -o ihome-hermes -g ihome-hermes -m 600 learning-audit.json
-   /etc/ihome-hermes/learning-audit.json`. Hồ sơ nghiệm thu `tkt/tkh/tkj` trỏ DB TEST ⇒ **không** khai ở đây.
-6. **Unit**: chép 5 file `systemd/*` vào `/etc/systemd/system/`, `systemctl daemon-reload`,
-   `systemd-analyze security ihome-hermes-learning-audit.service` để xem lại sandbox.
-7. **Chạy thử tay**: `systemctl start ihome-hermes-learning-audit.service` ⇒ `journalctl -u ihome-hermes-learning-audit -n 20`
-   (một dòng đếm), `cat /var/lib/ihome-hermes-learning-audit/private/latest.txt`, rồi `journalctl -u ihome-hermes-learning-ingest -n 5`
+5. **Unit kiểm**: chép `ihome-hermes-learning-audit.service` và `ihome-hermes-learning-alert@.service` vào `/etc/systemd/system/`, `systemctl daemon-reload`,
+   `systemd-analyze security ihome-hermes-learning-audit.service` để xem lại sandbox. **Chưa cài unit nạp**: đề xuất đã nạp là bất biến, nên lần chạy đầu phải quét outbox trước.
+6. **Chạy kiểm và quét outbox** tại chỗ (runbook mục F): `systemctl show -p LoadState --value ihome-hermes-learning-ingest.service` phải là `not-found` trước khi start.
+7. **Sau khi quét đạt mới cài phần nạp**: cấu hình (ID thật của công ty + tài khoản chủ trợ lý hồ sơ `owner`, projectRef/host thật như `connector.json`, không
+   đưa vào repo; sửa từ `learning-audit.example.json`, `install -o ihome-hermes -g ihome-hermes -m 600 learning-audit.json /etc/ihome-hermes/learning-audit.json`; hồ sơ nghiệm thu `tkt/tkh/tkj` trỏ DB TEST ⇒ **không** khai ở đây),
+   chép `ihome-hermes-learning-ingest.service` + `.timer`, `daemon-reload`, `systemctl start ihome-hermes-learning-ingest.service`, rồi `journalctl -u ihome-hermes-learning-ingest -n 5`
    (một dòng `learning_ingest`: `inserted`, `duplicates`, `rejectedDuplicates`, `dropped*`, `failures`). Kiểm trên web: tab "Bài
    học chờ duyệt" có đề xuất và dòng "Lần kiểm cuối". Nếu "Bó tay" báo không đọc được `state.db`: xem bản sao trong
    `PrivateTmp` và quyền `CAP_DAC_READ_SEARCH`. Nếu "KHÔNG KIỂM ĐƯỢC TÊN" vì node: kiểm `catalog-names.mjs` có trong bản phát
    hành và không import ngoài `/opt/ihome-hermes/current`.
-8. **Bật lịch**: `systemctl enable --now ihome-hermes-learning-audit.timer ihome-hermes-learning-ingest.timer` (20:40 và 20:55
+8. **Bật lịch**: chép `ihome-hermes-learning-audit.timer`, `systemctl enable --now ihome-hermes-learning-audit.timer ihome-hermes-learning-ingest.timer` (20:40 và 20:55
    giờ VN, `Persistent=true`). Không dùng systemd thì cron tương đương (giờ máy UTC):
    `40 13 * * * root systemctl start ihome-hermes-learning-audit.service` và `55 13 * * * root systemctl start ihome-hermes-learning-ingest.service`.
 9. **Cảnh báo**: `journalctl -p err -t ihome-hermes-learning` (dòng của `ihome-hermes-learning-alert@…`); chủ thấy trên web khi
@@ -207,7 +210,7 @@ Lệnh từng bước, điểm dừng lần chạy đầu và thứ tự rollbac
   học. Skill chuẩn ở `external_dirs` thì curator không sửa được.
 - Phân loại "ghi CRM" là heuristic thận trọng (nghi thì đưa đi duyệt); mẫu "bó tay" có thể sót câu diễn đạt lạ. Che bí mật kỹ thuật
   là theo mẫu (có thể sót dạng lạ); vì đề xuất đã nạp bất biến, lần chạy đầu có điểm dừng quét outbox tại chỗ trong runbook.
-- `hermes_member_v1` từ chối người thường thuộc từ 2 công ty trở lên (`hermes_ordinary_org_ambiguous`): chủ/admin đó không mở được tab, job không nạp được cho người đó. An toàn theo mặc định, chưa sửa vì phải đổi logic quyền (đo production 01/11: 1 người; xem việc sau trong PR).
+- `hermes_member_v1` từ chối người thường thuộc từ 2 công ty trở lên (`hermes_ordinary_org_ambiguous`); super admin không bị chặn. An toàn theo mặc định, chưa sửa vì phải đổi logic quyền (đo production 01/11: 0 người thường bị chặn; xem việc sau trong PR).
 - Tên chết lấy từ `catalog-names.mjs` của bản phát hành (PR #369); thiếu module ⇒ "KHÔNG KIỂM ĐƯỢC TÊN".
 - Sandbox systemd và phần đọc `state.db` trong sandbox **chưa chạy thử trên VPS** (PR chỉ viết, không cài); bước 6–7 là lần kiểm đầu.
 - Gỡ lịch: `systemctl disable --now ihome-hermes-learning-audit.timer ihome-hermes-learning-ingest.timer`; dữ liệu đề xuất ở CRM

@@ -27,6 +27,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -71,6 +72,8 @@ CONFIG_TYPES: dict[str, Any] = {
 MAX_TITLE = 200
 MAX_CONTENT = 3500          # một phần của đề xuất; SQL nhận tới 4000 ký tự. Dài hơn ⇒ tách phần, không cắt im lặng
 MAX_PARTS = 12              # quá số phần này mới cắt, và nguồn ghi rõ contentTruncated + omittedChars
+# Trần cảnh báo mỗi hồ sơ mỗi lần kiểm: kho duyệt bất biến, sandbox gắn sai không được đổ hàng loạt dòng vào đó.
+MAX_WARNINGS = 20
 MAX_SNIPPET = 220
 MAX_USER_SNIPPET = 160
 MAX_REFUSAL_ITEMS = 50
@@ -90,6 +93,15 @@ SURFACED_FINDINGS = {
     'ledger_path_rejected': 'sổ curator có đường file lạ', 'ledger_entry_error': 'mục sổ curator không xử lý được',
     'skill_scan_error': 'skill không kiểm được', 'memory_entry_error': 'mục bộ nhớ không kiểm được',
     'proposal_dropped': 'đề xuất lệch khuôn bị giữ lại', 'proposal_truncated': 'đề xuất quá dài bị cắt',
+}
+# Lý do "không kiểm được phần việc chính". Nội dung cố định (không có chi tiết đổi theo từng lần) nên khoá ổn định: không thêm dòng trùng mỗi tối.
+DEGRADED_LABELS = {
+    'catalog': 'không kiểm được tên tool/mã thao tác (danh mục catalog-names.mjs hỏng hoặc vắng)',
+    'official_skills': 'không đọc được bộ skill chuẩn',
+    'state_db_error': 'không đọc được state.db của hồ sơ người dùng thật, số "bó tay" không đáng tin',
+    'state_db_missing': 'hồ sơ người dùng thật không có state.db (có thể sandbox chưa gắn file)',
+    'scan_skills': 'bước quét skill bị lỗi', 'scan_memory': 'bước quét bộ nhớ bị lỗi', 'scan_ledger': 'bước quét sổ curator bị lỗi',
+    'scan_refusals': 'bước đếm "bó tay" bị lỗi',
 }
 # Thao tác curator là thay nội dung skill (tools/skill_manager_tool.py của Hermes: create, edit, patch, write_file). Mọi thao tác khác
 # (delete, remove_file, archive, rollback…, kể cả tên chưa biết) không bao giờ tự áp dụng.
@@ -143,21 +155,45 @@ REDACTED = '[đã che]'
 
 # Chỉ che BÍ MẬT KỸ THUẬT (an ninh hệ thống: ai cầm được là vào được hệ thống). KHÔNG che thông tin khách — SĐT, CCCD, email,
 # STK giữ nguyên văn theo quyết định của chủ 31/10 (công ty nhỏ, nhân viên nội bộ dùng chung; quyền xem = users.edit).
-# Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài bất thường). Đề xuất đã nạp bất biến nên thà che dư một từ hơn lọt.
+# Đây là lớp GIẢM RỦI RO, không đảm bảo tuyệt đối: văn tự do không nhãn ("mật khẩu X", "admin/X") không bắt được nếu không muốn nhầm thông
+# tin khách. Lớp bảo vệ là chỉ người giữ users.edit đọc được, kèm thủ tục gỡ. Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài).
 _NOT_MASKED_YET = r'(?!\[[^\]\n]{0,40}đã che\])'
 _NOT_LIST_ITEM = r'(?![-*•][ \t])'
 _QUOTED_VALUE = r'(?P<q>\\?["' + "'" + r'`])(?P<inner>(?:(?!(?P=q))(?:\\.|[^\n])){1,512})(?P=q)'
 # Giá trị một từ. Mật khẩu có thể có chữ có dấu; token luôn là ASCII nên "token: hết hạn" là câu thường, không phải bí mật.
 _ANY_VALUE = r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[^\s"' + "'" + r'`<>]{1,512}'
-_ASCII_VALUE = (r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[^\s"' + "'" + r'`<>\u0080-\U0010ffff]{1,512}(?=[\s"' + "'" + r'`<>]|$)')
+# Class dương theo bảng ASCII (bỏ " ' ` < >): dưới (?i), class phủ định chứa dải non-ASCII làm Python loại luôn k, s, i (U+212A, U+017F, U+0130/1).
+_ASCII_VALUE = (r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[!#-&(-;=?-_a-~]{1,512}(?=[\s"' + "'" + r'`<>]|$)')
 # Sau nhãn: dấu định dạng tuỳ chọn, ":" hoặc "=", rồi giá trị (có thể ở dòng ngay dưới).
 _SEP = r'[ \t]*[\\"' + "'" + r'`*_]{0,3}[ \t]*[:=][*_`]{0,2}[ \t]*(?:\r?\n[ \t]*){0,2}'
 _PASSWORD_WORD = r'password|passwd|pwd|passphrase'
-_TOKEN_WORD = r'api[_-]?key|client[_-]?secret|secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|access[_-]?key|private[_-]?key'
+_TOKEN_WORD = (r'api[ _-]?key|client[_-]?secret|secret[ _-]?key|secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|access[_-]?key|'
+               r'private[_-]?key')
 _LABEL_START = r'(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,40}[_-]){0,4}'   # DB_PASSWORD, ZALO_API_KEY, x-api-key
 _LABEL_END = r'(?:[_-][A-Za-z0-9]{1,40}){0,2}'
-_VI_LABEL = (r'(?<!\w)(?:mật[ _-]?khẩu|mat[ _-]?khau|mã[ _-]?kho[áa]|mã[ _-]?khóa|ma[ _-]?khoa)'
-             r'(?:[ \t]+[^\s:=,.;]{1,30}){0,3}')       # "Mật khẩu wifi tầng 3: …"
+# Hậu tố _KEY: SUPABASE_KEY=, ENCRYPTION_KEY=, "service_role_key": "X". Không gồm các khoá dữ liệu thường gặp trong bài học.
+_KEY_SUFFIX = r'(?<![A-Za-z0-9_-])(?!(?:dedupe|idempotency|primary|foreign|sort|cache|request|partition|unique|group|map)_key)[A-Za-z0-9]{1,40}(?:_[A-Za-z0-9]{1,40}){0,4}_key'
+# Từ giữa nhãn và dấu ":" chỉ nhận danh sách đóng: "Mật khẩu wifi: X", nhưng KHÔNG "Mật khẩu gửi khách SĐT: 0901…", "Quên mật khẩu thì gọi số: 0901…".
+_VI_QUALIFIER = r'(?:wifi|wi-fi|admin|root|db|database|server|vps|router|modem|camera|mail|email|gmail|zalo|crm|mạng|cửa|phòng|toà|tòa|tầng|tk|\d{1,4}[A-Za-z]{0,4})'
+_VI_LABEL = (r'(?<!\w)(?:mật[ _-]?khẩu|mat[ _-]?khau|mã[ _-]?kho[áa]|mã[ _-]?khóa|ma[ _-]?khoa)(?:[ \t]+' + _VI_QUALIFIER + r'){0,3}')
+_VI_IS = r'[ \t]+l[àa][ \t]+'
+_TRAILING_PUNCT = ',.;:!?)]}'
+# Chữ thường không dấu hay đứng sau nhãn trong câu ("mật khẩu: khong doi").
+_PLAIN_WORDS = frozenset('khong chua can moi cu doi nay gi co la cua'.split())
+
+
+def _customer_number(value: str, rest: str) -> bool:
+    """Số điện thoại, CCCD/CMND, STK đúng dạng (9–19 chữ số, có thể tách nhóm): nghi ngờ thì giữ, không che thông tin khách."""
+    tail = re.match(r'(?:[ .-]?\d{1,12}){0,6}', rest)
+    digits = re.sub(r'[ .-]', '', value + (tail.group(0) if tail else ''))
+    return re.fullmatch(r'\+?\d{9,19}', digits) is not None
+
+
+def _is_ordinary_word(value: str) -> bool:
+    """Chữ trong câu, không phải mật khẩu: "mật khẩu: không đổi", "token của khách: chưa có"."""
+    if value.lower() in _PLAIN_WORDS:
+        return True
+    return value.isalpha() and not value.isascii()
 
 
 def _mask_value(match: re.Match[str]) -> str:
@@ -165,26 +201,52 @@ def _mask_value(match: re.Match[str]) -> str:
     return match.group('label') + quote + REDACTED + quote
 
 
+def _mask_natural(match: re.Match[str]) -> str:
+    """Nhãn trong văn nói: giữ nguyên số của khách và chữ thường, che phần còn lại."""
+    value = (match.group('inner') or match.group('bare') or '').strip('"' + "'" + '`').rstrip(_TRAILING_PUNCT)
+    if _customer_number(value, match.string[match.end():]) or _is_ordinary_word(value):
+        return match.group(0)
+    return _mask_value(match)
+
+
 def _labelled(label: str, value: str) -> re.Pattern[str]:
     """Nhãn + giá trị: giá trị trong nháy (có thể có dấu cách) hoặc một từ."""
-    return re.compile(r'(?i)(?P<label>' + label + r')' + _NOT_MASKED_YET + _NOT_LIST_ITEM + r'(?:' + _QUOTED_VALUE + '|' + value + ')')
+    return re.compile(r'(?i)(?P<label>' + label + r')' + _NOT_MASKED_YET + _NOT_LIST_ITEM + r'(?:' + _QUOTED_VALUE + '|(?P<bare>' + value + '))')
+
+
+def _shannon(text: str) -> float:
+    total = len(text)
+    return -sum(n / total * math.log2(n / total) for n in (text.count(ch) for ch in set(text)))
+
+
+def _mask_random_blob(match: re.Match[str]) -> str:
+    """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi dài lẫn hoa, thường, số và ngẫu nhiên. Mã băm hex, UUID, số khách, đường dẫn,
+    tên định danh không rơi vào đây (thiếu một loại ký tự, hoặc nhiều dấu ngăn)."""
+    text = match.group(0)
+    mixed = any(c.isupper() for c in text) and any(c.islower() for c in text) and any(c.isdigit() for c in text)
+    separators = text.count('/') + text.count('-') + text.count('_')
+    return '[chuỗi lạ đã che]' if mixed and separators < 4 and _shannon(text) >= 4.0 else text
 
 
 REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
     (re.compile(r'-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]{0,8000}?-----END [A-Z ]{0,40}PRIVATE KEY-----'
                 r'|[A-Za-z0-9+/=\s]{0,8000})'), '[khoá riêng đã che]'),
-    (re.compile(r'(?i)\b((?:proxy-)?authorization)([ \t]*[:=][ \t]*)[^\n]{1,4096}'), r'\1\2' + REDACTED),
+    (re.compile(r'(?i)\b((?:proxy-)?authorization|(?:set-)?cookie)([ \t]*[:=][ \t]*)[^\n]{1,4096}'), r'\1\2' + REDACTED),
     (re.compile(r'(?i)\b(bearer)([ \t]+)[A-Za-z0-9._~+/=-]{8,4096}'), r'\1\2' + REDACTED),
     (re.compile(r'(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{6,8192}\.[A-Za-z0-9_-]{6,8192}\.[A-Za-z0-9_-]{6,8192}'), '[JWT đã che]'),
     (re.compile(r'(?<![A-Za-z0-9])(?:sk|rk|pk)[-_][A-Za-z0-9_-]{16,512}'), '[khoá đã che]'),
     (re.compile(r'(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|sbp_[A-Za-z0-9]{20,255}|'
                 r'sb_(?:secret|publishable)_[A-Za-z0-9_-]{10,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|'
-                r'AIza[0-9A-Za-z_-]{30,255}|hc_[A-Za-z0-9_-]{43,512})'), '[khoá đã che]'),
+                r'AIza[0-9A-Za-z_-]{30,255}|hc_[A-Za-z0-9_-]{43,512}|CFPAT-[A-Za-z0-9_-]{20,255}|vcp_[A-Za-z0-9_-]{20,255}|'
+                r'\d{6,12}:AA[A-Za-z0-9_-]{30,255})'), '[khoá đã che]'),
     # Chuỗi kết nối: postgresql://u:PASS@host, https://u:PASS@host, redis://:PASS@host.
     (re.compile(r'(?i)\b([a-z][a-z0-9+.-]{1,30}://[^\s/:@]{0,128}:)' + _NOT_MASKED_YET + r'[^\s/@]{1,512}(@)'), r'\1' + REDACTED + r'\2'),
     # Tham số -u / --user của curl, dạng tên:mật khẩu.
     (re.compile(r'(?<!\S)((?:-u|--user)(?:[ \t]+|=)["' + "'" + r']?[^\s:"' + "'" + r']{1,128}:)' + _NOT_MASKED_YET + r'[^\s"' + "'" + r']{1,512}'),
      r'\1' + REDACTED),
+    # Mật khẩu liền sau -p của mysql, sau -p của sshpass.
+    (re.compile(r'(?<!\S)((?:mysql|mariadb|mysqldump|mysqladmin)\b[^\n]{0,80}?[ \t]-p)' + _NOT_MASKED_YET + r'[^\s"' + "'" + r']{1,512}'), r'\1' + REDACTED),
+    (re.compile(r'(?<!\S)(sshpass[ \t]+-p[ \t]*)' + _NOT_MASKED_YET + r'[^\s"' + "'" + r']{1,512}'), r'\1' + REDACTED),
     # Tham số dòng lệnh: --password X, --api-key=X.
     (_labelled(r'(?<!\S)--?[a-z0-9-]{0,30}(?:password|passwd|secret|token|api-?key)(?:[ \t]+|=)', _ANY_VALUE), _mask_value),
     # Nhãn tiếng Anh, cả khoá JSON có nháy: "password": "x", DB_PASSWORD=x, PGPASSWORD=x, dbPassword: x.
@@ -194,13 +256,17 @@ REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
                + r'|(?-i:(?<![A-Za-z0-9_])[a-z][a-zA-Z0-9]{0,40}(?:Password|Passwd|Pwd|Passphrase)))' + _SEP, _ANY_VALUE), _mask_value),
     (_labelled(r'(?:' + _LABEL_START + r'(?:' + _TOKEN_WORD + r')' + _LABEL_END
                + r'|(?-i:(?<![A-Za-z0-9])[A-Z0-9]{1,40}(?:SECRET|TOKEN))'
-               + r'|(?-i:(?<![A-Za-z0-9_])[a-z][a-zA-Z0-9]{0,40}(?:Secret|ApiKey|Token)))' + _SEP, _ASCII_VALUE), _mask_value),
-    # "password is X".
+               + r'|(?-i:(?<![A-Za-z0-9_])[a-z][a-zA-Z0-9]{0,40}(?:Secret|ApiKey|Token))'
+               + r'|' + _KEY_SUFFIX + r')' + _SEP, _ASCII_VALUE), _mask_value),
+    # "password is X", "token là X", "Token của Vercel: X".
     (_labelled(r'(?<![A-Za-z0-9])(?:' + _PASSWORD_WORD + r')[ \t]+is[ \t]+', _ANY_VALUE), _mask_value),
-    # Nhãn ngắn: chỉ đứng riêng ("pass phòng", crm_room_pass_upsert không phải mật khẩu).
-    (_labelled(r'(?<![\w-])(?:pass|mk)(?:' + _SEP + r'|[ \t]+là[ \t]+)', _ANY_VALUE), _mask_value),
+    (_labelled(r'(?<![\w-])token(?:' + _VI_IS + r'|[ \t]+của[ \t]+[^\s:=]{1,30}' + _SEP + r')', _ASCII_VALUE), _mask_natural),
+    # Nhãn ngắn: chỉ đứng riêng và có dấu ":" hoặc "=" ("pass phòng", crm_room_pass_upsert, "mk là chủ nhà" không phải mật khẩu).
+    (_labelled(r'(?<![\w-])(?:pass|mk)' + _SEP, _ANY_VALUE), _mask_natural),
     # Nhãn tiếng Việt: mật khẩu: X, Mật khẩu wifi: X, mật khẩu là X, mã khoá/mã khóa: X.
-    (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|[ \t]+là[ \t]+)', _ANY_VALUE), _mask_value),
+    (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|' + _VI_IS + r')', _ANY_VALUE), _mask_natural),
+    # Lưới cuối, đo độ ngẫu nhiên thay vì thêm mẫu cho từng nhà cung cấp.
+    (re.compile(r'(?<![A-Za-z0-9+/_=-])[A-Za-z0-9+/_=-]{32,4096}(?![A-Za-z0-9+/_=-])'), _mask_random_blob),
 ]
 
 
@@ -262,7 +328,7 @@ def bounded_source(source: dict[str, Any]) -> dict[str, Any]:
     out = _clean_json(source)
     if pg_json_bytes(out) > MAX_SOURCE_BYTES:
         keep = ('type', 'profile', 'ledgerId', 'file', 'entrySha256', 'at', 'action', 'skill', 'finding', 'part', 'parts',
-                'contentTruncated', 'omittedChars')
+                'contentTruncated', 'omittedChars', 'reason')
         out = {key: out[key] for key in keep if key in out}
         out['truncated'] = True
     return out
@@ -711,6 +777,8 @@ class ProfileAudit:
         self.auto_applied: list[dict[str, Any]] = []
         self.errors: list[str] = []
         self.degraded: list[str] = []   # không kiểm được phần việc chính ⇒ mã thoát khác 0 để OnFailure báo
+        self._warnings = 0
+        self._warnings_over = 0
         self.next_state: dict[str, Any] = {}
         self.counts: dict[str, int] = {}
         self._changed_files: set[str] = set()
@@ -764,6 +832,12 @@ class ProfileAudit:
         pieces = split_parts(clean_text(content, 10 ** 9))
         if not pieces:
             return
+        if kind == 'audit_warning':
+            # Cảnh báo về "không kiểm được" và cảnh báo tràn luôn được ghi; còn lại dừng ở trần.
+            if self._warnings >= MAX_WARNINGS and not source_ref.startswith('degraded:'):
+                self._warnings_over += 1
+                return
+            self._warnings += 1
         kept = pieces[:MAX_PARTS]
         omitted = sum(len(piece) for piece in pieces[MAX_PARTS:])
         for index, piece in enumerate(kept, 1):
@@ -790,6 +864,27 @@ class ProfileAudit:
         if omitted:
             self.finding('proposal_truncated', 'high',
                          f'nội dung quá {MAX_PARTS} phần: {omitted} ký tự cuối không gửi lên trang duyệt, xem tại hồ sơ', ref=source_ref)
+
+    def surface_degraded(self) -> None:
+        """Phần việc chính không kiểm được phải tới trang duyệt, không chỉ thoát mã 1 trên máy chủ. Danh mục, bộ skill chuẩn là của cả lần
+        kiểm nên báo ở hồ sơ người dùng thật; nội dung cố định theo lý do nên khoá ổn định."""
+        reasons = list(self.degraded)
+        if self.real and self.catalog['status'] != 'ok':
+            reasons.append('catalog')
+        if self.real and self.official['status'] == 'error':
+            reasons.append('official_skills')
+        for reason in dict.fromkeys(reasons):
+            label = DEGRADED_LABELS.get(reason, 'một phần việc của job kiểm không chạy được')
+            self.proposal('audit_warning', f'Cảnh báo kiểm học: {label}', f'{label}. Job kiểm thoát lỗi; kết quả lần này có thể thiếu, cần người vận hành xem journal.',
+                          {'type': 'audit_finding', 'finding': 'degraded', 'severity': 'high', 'reason': reason}, self.now, f'degraded:{reason}')
+
+    def surface_overflow(self) -> None:
+        """Vượt trần cảnh báo: một dòng cố định thay cho phần dư (số lượng để ở nguồn, không vào khoá nên không thành dòng mới mỗi tối)."""
+        over = self._warnings_over
+        if over:
+            self.proposal('audit_warning', 'Cảnh báo kiểm học: quá nhiều cảnh báo trong một lần kiểm',
+                          f'Vượt trần {MAX_WARNINGS} cảnh báo một lần kiểm: phần dư chỉ nằm trong báo cáo trên máy chủ. Có thể sandbox gắn sai hoặc hồ sơ hỏng hàng loạt, cần xem tay.',
+                          {'type': 'audit_finding', 'finding': 'warnings_overflow', 'severity': 'high', 'omitted': over}, self.now, 'degraded:warnings_overflow')
 
     def surface_findings(self) -> None:
         """Phát hiện phải tới người duyệt thành cảnh báo trên trang duyệt (không chỉ nằm trong private/). Khoá theo nội dung phát
@@ -1126,7 +1221,9 @@ class ProfileAudit:
         # Hồ sơ người dùng thật mà không đọc được state.db: đếm "bó tay" = 0 là sai, phải báo.
         if refusals is not None and refusals['status'] in ('error', 'missing'):
             self.degraded.append(f'state_db_{refusals["status"]}')
+        self.surface_degraded()
         self.surface_findings()
+        self.surface_overflow()
         return {'profile': self.name, 'real': self.real, 'counts': self.counts, 'findings': self.findings,
                 'proposals': self.proposals, 'autoApplied': self.auto_applied, 'refusals': refusals, 'errors': self.errors,
                 'degraded': self.degraded}

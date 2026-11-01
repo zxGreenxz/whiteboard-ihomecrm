@@ -5,8 +5,10 @@
 //   npm run with-cred -- node scripts/hermes-learning-login.mjs --enable --verifier-file <file>            # chỉ kiểm, không ghi
 //   npm run with-cred -- node scripts/hermes-learning-login.mjs --enable --verifier-file <file> --apply    # ALTER ROLE … LOGIN PASSWORD
 //   npm run with-cred -- node scripts/hermes-learning-login.mjs --disable --apply                          # ALTER ROLE … NOLOGIN
+//   npm run with-cred -- node scripts/hermes-learning-login.mjs --disable --terminate-sessions --apply     # nghi lộ mật khẩu: ngắt thêm phiên đang mở
 //
-// Chỉ production. Mỗi lượt chạy tối đa một câu ghi, còn lại là SELECT. Không nhận tên vai nào khác, không nhận mật khẩu thô: file phải
+// Chỉ production. Mỗi lượt chạy tối đa một câu ALTER ROLE, còn lại là SELECT (ngắt phiên chỉ khi được yêu cầu). Tắt đăng nhập là đường lùi nên vẫn
+// chạy khi vai lệch (chỉ cần vai tồn tại, in cảnh báo). Bật thì vai phải đúng như migration dựng. Không nhận tên vai nào khác, không nhận mật khẩu thô: file phải
 // chứa verifier SCRAM-SHA-256 sinh trên VPS, mật khẩu gốc chỉ ở VPS. Không in verifier; lỗi chỉ in mã.
 import { lstatSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -19,6 +21,7 @@ const VERIFIER = /^SCRAM-SHA-256\$([0-9]{4,7}):[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/
 const STATE_SQL = `SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls,
   r.rolconfig, ARRAY(SELECT g.rolname::text FROM pg_auth_members m JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid ORDER BY 1) AS groups
   FROM pg_roles r WHERE r.rolname='${ROLE}'`;
+const TERMINATE_SQL = `SELECT pg_terminate_backend(pid) AS terminated FROM pg_stat_activity WHERE usename='${ROLE}'`;
 
 export class LoginError extends Error {
   constructor(code) { super(code); this.name = 'LoginError'; this.code = code; }
@@ -26,20 +29,21 @@ export class LoginError extends Error {
 const fail = code => { throw new LoginError(code); };
 
 export function parseArgs(argv) {
-  const args = { mode: null, verifierFile: null, apply: false };
+  const args = { mode: null, verifierFile: null, apply: false, terminateSessions: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--enable' || arg === '--disable') {
       if (args.mode) fail('args_invalid');
       args.mode = arg.slice(2);
     } else if (arg === '--apply') args.apply = true;
+    else if (arg === '--terminate-sessions') args.terminateSessions = true;
     else if (arg === '--verifier-file' && argv[index + 1]) { args.verifierFile = argv[index + 1]; index += 1; }
     // Chỉ nhận đúng vai này: không có đường nào đổi mật khẩu vai khác bằng script này.
     else if (arg === '--role' && argv[index + 1] === ROLE) index += 1;
     else if (arg === '--role') fail('role_refused');
     else fail('args_invalid');
   }
-  if (!args.mode || (args.mode === 'enable') !== (args.verifierFile !== null)) fail('args_invalid');
+  if (!args.mode || (args.mode === 'enable') !== (args.verifierFile !== null) || (args.terminateSessions && args.mode !== 'disable')) fail('args_invalid');
   return args;
 }
 
@@ -74,15 +78,28 @@ export const disableSql = () => `ALTER ROLE ${ROLE} NOLOGIN`;
 
 export async function run(args, { client, readVerifier = readVerifierFile, log = line => process.stdout.write(`${line}\n`) }) {
   const verifier = args.mode === 'enable' ? readVerifier(args.verifierFile) : null;
-  const before = checkRoleState((await client.query(STATE_SQL)).rows[0]);
+  const current = (await client.query(STATE_SQL)).rows[0];
+  if (!current) fail('role_missing');
+  let before = current;
+  if (args.mode === 'enable') before = checkRoleState(current);
+  else {
+    // Đường lùi không được phụ thuộc trạng thái vai: vai lệch thì càng phải tắt được.
+    try { checkRoleState(current); } catch (error) {
+      if (!(error instanceof LoginError)) throw error;
+      log(JSON.stringify({ event: 'hermes_learning_login_warning', code: error.code }));
+    }
+  }
   if (!args.apply) {
     log(JSON.stringify({ event: 'hermes_learning_login', mode: args.mode, applied: false, canLogin: before.rolcanlogin }));
     return 0;
   }
   await client.query(args.mode === 'enable' ? enableSql(verifier) : disableSql());
-  const after = checkRoleState((await client.query(STATE_SQL)).rows[0]);
+  const after = (await client.query(STATE_SQL)).rows[0];
+  if (!after) fail('role_missing');
+  if (args.mode === 'enable') checkRoleState(after);
   if (after.rolcanlogin !== (args.mode === 'enable')) fail('role_state_unexpected');
-  log(JSON.stringify({ event: 'hermes_learning_login', mode: args.mode, applied: true, canLogin: after.rolcanlogin }));
+  const terminated = args.terminateSessions ? (await client.query(TERMINATE_SQL)).rows.length : undefined;
+  log(JSON.stringify({ event: 'hermes_learning_login', mode: args.mode, applied: true, canLogin: after.rolcanlogin, terminated }));
   return 0;
 }
 

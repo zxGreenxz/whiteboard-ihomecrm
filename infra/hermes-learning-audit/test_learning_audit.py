@@ -542,6 +542,56 @@ class LearningAuditTest(unittest.TestCase):
         once = r('mk: ' + value + ' và tok' + 'en: ' + value)
         self.assertEqual(r(once), once)
 
+    def test_every_character_is_masked_through_every_label(self):
+        """Dưới (?i) Python coi k ~ U+212A, s ~ U+017F, i ~ U+0130: class phủ định chứa dải non-ASCII từng để lọt giá trị có i, k, s."""
+        tk = 'tok' + 'en'
+        pw = 'pass' + 'word'
+        labels = [tk + ': ', tk + '=', 'api_' + 'key=', 'API ' + 'key: ', 'Secret ' + 'key: ', 'VERCEL_TOK' + 'EN=', 'https://x/a?' + tk + '=', 'access_' + tk + ': ',
+                  'secret: ', 'client_' + 'secret=', 'ZALO_API_' + 'KEY=', 'SUPABASE_' + 'KEY=', 'ENCRYPTION_' + 'KEY=', tk + ' là ', 'Tok' + 'en của Vercel: ',
+                  pw + ': ', 'DB_PASS' + 'WORD=', 'PGPASS' + 'WORD=', 'mk: ', 'pass: ', 'mật khẩu: ', 'Mật khẩu wifi: ', 'mật khẩu là ', 'mã khoá: ', 'mã khóa: ',
+                  '--' + pw + ' ', '--api-' + 'key=']
+        alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~%&+/?@#$!*()'
+        for label in labels:
+            for ch in alphabet:
+                value = 'aB3' + ch + 'x9'
+                self.assertNotIn(value, la.redact(label + value + ' sau'), repr(label + value))
+                for quote in ('"', "'"):
+                    self.assertNotIn(value, la.redact(label + quote + value + quote), repr(label + value))
+            whole = 'wKs9' + 'Ti2L' + 'q8Zx'
+            self.assertNotIn(whole, la.redact(label + whole), label)
+        for label in ('"tok' + 'en": "', '"api_' + 'key":"', '"service_role_' + 'key": "', '"pass' + 'word": "'):
+            for ch in alphabet:
+                value = 'aB3' + ch + 'x9'
+                self.assertNotIn(value, la.redact(label + value + '"'), repr(label + value))
+
+    def test_clear_extra_forms_of_review_round_5(self):
+        value = 'wKs9' + 'Ti2Lq8Zx'
+        r = la.redact
+        for template in ('Coo' + 'kie: session={v}; theme=dark', 'mysql -h db -u root -p{v} crm', 'mysql -p{v}', 'sshpass -p {v} ssh root@host', 'sshpass -p{v} ssh root@host'):
+            self.assertNotIn(value, r(template.format(v=value)), template)
+        for secret in ('CFP' + 'AT-' + 'a1B2c3D4' * 4, 'vc' + 'p_' + 'a1B2c3D4' * 4, '123456789' + ':AA' + 'a1B2c3D4' * 5):
+            self.assertEqual(r('dùng ' + secret + ' nhé'), 'dùng [khoá đã che] nhé', secret[:6])
+
+    def test_random_blobs_are_masked_without_any_label(self):
+        random_blob = 'q7Xp2' + 'LmZ9vR4tYb1' + 'NsK8wE3hJc6' + 'GfU0aD5oTi'
+        self.assertEqual(la.redact('dùng ' + random_blob + ' nhé'), 'dùng [chuỗi lạ đã che] nhé')
+        for text in ('f' * 64, hashlib.sha256(b'x').hexdigest(), '3c0f7d2e-8888-4a88-8a88-000000000001', '20261031_081600_abcdef12', '0' * 40,
+                     'skills/productivity/crm-task-management/references/Quy-Trinh-2026-Thu-Tien-Chi-Tiet/SKILL', 'crm_action_run_with_a_very_long_tool_name_for_tasks_2026',
+                     '001203012345001203012345001203012345'):
+            self.assertEqual(la.redact(text), text)
+
+    def test_customer_numbers_and_words_next_to_labels_stay_verbatim(self):
+        """Lệnh của chủ: không che thông tin khách. Nghi ngờ giữa che và mất thông tin khách thì giữ số điện thoại, CCCD, STK đúng dạng."""
+        r = la.redact
+        for text in ('Đổi mật khẩu cho khách STK: 19033344445555', 'mã khoá phòng 101 CCCD: 079203001234', 'Mật khẩu gửi khách SĐT: 0901234567',
+                     'Quên mật khẩu thì gọi số: 0901234567', 'Khách muốn pass là 0901234567', 'mk là 0901234567', 'mk là chủ nhà', 'mật khẩu: không đổi',
+                     'mật khẩu: chưa có', 'mật khẩu là chủ nhà', 'mk: 0901234567', 'pass: 0912 345 678', 'mật khẩu: 079203001234', 'Khách muốn pass là 5 triệu',
+                     'tok' + 'en của khách: chưa có', 'tok' + 'en của khách: 0901234567', 'dedupe_' + 'key: abc123', 'mật khẩu: khong doi', 'Đổi mật khẩu thì báo phòng: A101'):
+            self.assertEqual(r(text), text)
+        # Không có bí mật trong câu nhưng có bí mật ngắn thì vẫn che đúng phần đó.
+        self.assertEqual(r('mã khoá: 123456'), 'mã khoá: [đã che]')
+        self.assertEqual(r('mk: abc, SĐT 0901234567'), 'mk: [đã che] SĐT 0901234567')
+
     def test_redaction_keeps_customer_data_and_ordinary_sentences(self):
         r = la.redact
         for text in ('SĐT 0912345678', 'CCCD 001203012345', 'email: khach@example.com', 'STK 0071 0012 34567 Vietcombank',
@@ -723,6 +773,43 @@ class LearningAuditTest(unittest.TestCase):
         rc, printed = run_main(fx.argv(NOW + timedelta(hours=3)))
         self.assertEqual(rc, 1)
         self.assertEqual(json.loads(printed)['degraded'], ['owner:state_db_missing'])
+
+    def test_degraded_reaches_the_reviewer_once_with_a_stable_key(self):
+        fx = self.fx
+        fx.catalog.write_text('export const nothing = 1;\n', encoding='utf-8')
+        (fx.owner / 'state.db').unlink()
+        self.assertEqual(run_main(fx.argv(NOW))[0], 1)
+        self.assertEqual(run_main(fx.argv(NOW + timedelta(days=1)))[0], 1)
+        first, second = fx.outboxes()
+        items = {item['source']['reason']: item for item in warnings(first['profiles'][0]) if item['source'].get('finding') == 'degraded'}
+        self.assertEqual(sorted(items), ['catalog', 'state_db_missing'])
+        for item in items.values():
+            self.assertTrue(la.valid_proposal(item, NOW))
+        # Tối sau cùng khoá: SQL bỏ trùng, không thêm dòng.
+        self.assertEqual({item['dedupeKey'] for item in warnings(second['profiles'][0]) if item['source'].get('finding') == 'degraded'},
+                         {item['dedupeKey'] for item in items.values()})
+        # Hồ sơ thử không phải hồ sơ thật: không nhận cảnh báo của cả lần kiểm.
+        self.assertEqual([item for item in warnings(first['profiles'][1]) if item['source'].get('finding') == 'degraded'], [])
+
+    def test_warning_flood_is_capped_with_one_stable_overflow_row(self):
+        fx = self.fx
+        make_dead = lambda n: fx.skill(fx.owner, f'productivity/x{n:03d}', f'---\nname: x{n:03d}\n---\nGọi crm_chet_{n:03d}_create.\n')  # noqa: E731
+        for n in range(40):
+            make_dead(n)
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        owner = profile(report, 'owner')
+        items = warnings(owner)
+        self.assertLessEqual(len(items), la.MAX_WARNINGS + 1)
+        overflow = [item for item in items if item['source'].get('finding') == 'warnings_overflow']
+        self.assertEqual(len(overflow), 1)
+        self.assertGreater(overflow[0]['source']['omitted'], 0)
+        # Phát hiện đủ vẫn còn trong báo cáo trên máy chủ.
+        self.assertEqual(len([f for f in owner['findings'] if f['kind'] == 'dead_tool_name']), 40)
+        for n in range(40, 45):
+            make_dead(n)
+        again, _, _ = la.run_audit(fx.config(), NOW + timedelta(days=1), use_state=False)
+        self.assertEqual([item['dedupeKey'] for item in warnings(profile(again, 'owner')) if item['source'].get('finding') == 'warnings_overflow'],
+                         [overflow[0]['dedupeKey']])
 
     def test_action_ids_do_not_match_file_names(self):
         self.assertEqual(la.ACTION_RE.findall('Xem task.md, contract.pdf, invoice.html và expense.json, task.tsx'), [])
