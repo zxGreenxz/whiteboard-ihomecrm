@@ -47,7 +47,9 @@ function fixture(t, changes = {}) {
         async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
     },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
-      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'log']); assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
+      // 10 minutes is the maximum the loop accepts: it leaves ~9 minutes of retries before the 15-minute token expires.
+      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'renewBeforeMs', 'log']); assert.equal(options.renewBeforeMs, 600000);
+      assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
   };

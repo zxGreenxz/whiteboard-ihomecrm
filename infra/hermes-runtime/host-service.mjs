@@ -119,7 +119,9 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       dispose();
       // Vòng gia hạn ghi connector_maintenance_* (đổi trạng thái, gia hạn lỗi/chưa xác nhận/khoá/hồi phục)
       // cùng kênh stdout; không token/digest/thông điệp lỗi, chỉ khi có thay đổi. HERMES_CALL_LOG không tắt nó.
-      maintenance = factories.createConnectorMaintenance({ handoff, backend, log: record => console.info(JSON.stringify(record)) });
+      // renewBeforeMs 600000 = tối đa cho phép: token 15 phút, vòng bắt đầu gia hạn khi còn 10 phút, để lịch thử lại 30/60/120/240 s
+      // (+ trần hạn - 30 s) có ~9 phút thay vì ~4 phút khi mạng chập chờn (sự cố 31/10: lỡ cửa sổ 5 phút, token chết 10:19 UTC).
+      maintenance = factories.createConnectorMaintenance({ handoff, backend, renewBeforeMs: 600000, log: record => console.info(JSON.stringify(record)) });
       if(configuration.zaloProvisioning) zaloReconciler=factories.createNativeBindingReconciler({
         configuration:configuration.zaloProvisioning,handoff,backend,
         transport:createStoreTransport({pool,expectedRole:configuration.store.role})});
