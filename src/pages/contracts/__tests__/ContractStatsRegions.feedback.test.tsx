@@ -41,6 +41,7 @@ vi.mock('@/components/contracts/ContractFormDialog',()=>({ContractFormDialog:()=
 vi.mock('@/components/contracts/RenewDialog',()=>({RenewDialog:()=>null}));
 vi.mock('@/components/contracts/TransferRoomDialog',()=>({TransferRoomDialog:()=>null}));
 vi.mock('@/components/contracts/MoveOutDialog',()=>({MoveOutDialog:()=>null}));
+vi.mock('@/components/contracts/ContractMobileQueues',()=>({ContractMobileQueues:()=>null}));
 vi.mock('@/components/contracts/MoveOutNoticeQueue',()=>({MoveOutNoticeQueue:()=>null}));
 vi.mock('@/components/contracts/ContractDraftWorkspace',()=>({ContractDraftWorkspace:()=>null}));
 vi.mock('@/components/contracts/ContractCommissionFollowupPanel',()=>({ContractCommissionFollowupPanel:()=>null}));
