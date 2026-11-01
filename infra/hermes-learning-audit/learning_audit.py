@@ -72,8 +72,12 @@ CONFIG_TYPES: dict[str, Any] = {
 MAX_TITLE = 200
 MAX_CONTENT = 3500          # một phần của đề xuất; SQL nhận tới 4000 ký tự. Dài hơn ⇒ tách phần, không cắt im lặng
 MAX_PARTS = 12              # quá số phần này mới cắt, và nguồn ghi rõ contentTruncated + omittedChars
-# Trần cảnh báo mỗi hồ sơ mỗi lần kiểm: kho duyệt bất biến, sandbox gắn sai không được đổ hàng loạt dòng vào đó.
+# Trần cảnh báo MỚI mỗi hồ sơ mỗi lần kiểm: kho duyệt bất biến, sandbox gắn sai không được đổ hàng loạt dòng vào đó. Cảnh báo đã gửi ở lần trước
+# không tính (kho đã có, SQL bỏ trùng), nên tên chết mới không bị phần cũ bỏ đói.
 MAX_WARNINGS = 20
+MAX_KNOWN_WARNINGS = 2000
+# Thứ tự vào trần (nhỏ trước): tên chết, skill đè bản chuẩn; thao tác lạ của curator, skill đổi ngoài sổ; phát hiện khác; file không đọc an toàn sau cùng.
+WARNING_RANK = {'dead_tool_name': 1, 'dead_action_id': 1, 'shadows_official_skill': 1, 'unsafe_profile_file': 4}
 MAX_SNIPPET = 220
 MAX_USER_SNIPPET = 160
 MAX_REFUSAL_ITEMS = 50
@@ -156,7 +160,8 @@ REDACTED = '[đã che]'
 # Chỉ che BÍ MẬT KỸ THUẬT (an ninh hệ thống: ai cầm được là vào được hệ thống). KHÔNG che thông tin khách — SĐT, CCCD, email,
 # STK giữ nguyên văn theo quyết định của chủ 31/10 (công ty nhỏ, nhân viên nội bộ dùng chung; quyền xem = users.edit).
 # Đây là lớp GIẢM RỦI RO, không đảm bảo tuyệt đối: văn tự do không nhãn ("mật khẩu X", "admin/X") không bắt được nếu không muốn nhầm thông
-# tin khách. Lớp bảo vệ là chỉ người giữ users.edit đọc được, kèm thủ tục gỡ. Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài).
+# tin khách. Lớp bảo vệ là chỉ người giữ users.edit đọc được, kèm thủ tục gỡ. Mọi lượng từ đều có trần, hàm thay chỉ nhìn cửa sổ ngắn sau vị
+# trí khớp (không chạy bậc hai trên chuỗi dài).
 _NOT_MASKED_YET = r'(?!\[[^\]\n]{0,40}đã che\])'
 _NOT_LIST_ITEM = r'(?![-*•][ \t])'
 _QUOTED_VALUE = r'(?P<q>\\?["' + "'" + r'`])(?P<inner>(?:(?!(?P=q))(?:\\.|[^\n])){1,512})(?P=q)'
@@ -180,6 +185,7 @@ _VI_IS = r'[ \t]+l[àa][ \t]+'
 _TRAILING_PUNCT = ',.;:!?)]}'
 # Chữ thường không dấu hay đứng sau nhãn trong câu ("mật khẩu: khong doi").
 _PLAIN_WORDS = frozenset('khong chua can moi cu doi nay gi co la cua'.split())
+_NUMBER_LOOKAHEAD = 96      # đủ cho nhóm số tách rời của SĐT, STK; không cắt cả phần còn lại của chuỗi cho từng lần khớp
 
 
 def _customer_number(value: str, rest: str) -> bool:
@@ -201,10 +207,20 @@ def _mask_value(match: re.Match[str]) -> str:
     return match.group('label') + quote + REDACTED + quote
 
 
-def _mask_natural(match: re.Match[str]) -> str:
-    """Nhãn trong văn nói: giữ nguyên số của khách và chữ thường, che phần còn lại."""
-    value = (match.group('inner') or match.group('bare') or '').strip('"' + "'" + '`').rstrip(_TRAILING_PUNCT)
-    if _customer_number(value, match.string[match.end():]) or _is_ordinary_word(value):
+def _natural_value(match: re.Match[str]) -> str:
+    return (match.group('inner') or match.group('bare') or '').strip('"' + "'" + '`').rstrip(_TRAILING_PUNCT)
+
+
+def _mask_vi_label(match: re.Match[str]) -> str:
+    """Nhãn "mật khẩu", "mã khoá" đứng ngay trước giá trị (từ giữa đã là danh sách đóng): giá trị số là mật khẩu, che; chỉ giữ chữ thường trong câu."""
+    return match.group(0) if _is_ordinary_word(_natural_value(match)) else _mask_value(match)
+
+
+def _mask_short_label(match: re.Match[str]) -> str:
+    """Nhãn ngắn, dễ nhầm ("pass", "mk", "token của khách"): nghi ngờ thì giữ nguyên số của khách và chữ thường, che phần còn lại."""
+    value = _natural_value(match)
+    rest = match.string[match.end():match.end() + _NUMBER_LOOKAHEAD]
+    if _customer_number(value, rest) or _is_ordinary_word(value):
         return match.group(0)
     return _mask_value(match)
 
@@ -214,15 +230,21 @@ def _labelled(label: str, value: str) -> re.Pattern[str]:
     return re.compile(r'(?i)(?P<label>' + label + r')' + _NOT_MASKED_YET + _NOT_LIST_ITEM + r'(?:' + _QUOTED_VALUE + '|(?P<bare>' + value + '))')
 
 
+_LONG_DIGIT_RUN = re.compile(r'\d{9}')
+
+
 def _shannon(text: str) -> float:
     total = len(text)
     return -sum(n / total * math.log2(n / total) for n in (text.count(ch) for ch in set(text)))
 
 
 def _mask_random_blob(match: re.Match[str]) -> str:
-    """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi dài lẫn hoa, thường, số và ngẫu nhiên. Mã băm hex, UUID, số khách, đường dẫn,
-    tên định danh không rơi vào đây (thiếu một loại ký tự, hoặc nhiều dấu ngăn)."""
+    """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi dài lẫn hoa, thường, số và ngẫu nhiên. Mã băm hex, UUID, đường dẫn, tên định danh
+    không rơi vào đây (thiếu một loại ký tự, hoặc nhiều dấu ngăn). Có từ 9 chữ số liền nhau trở lên thì giữ: đó là dấu hiệu SĐT, CCCD, STK nằm trong
+    tên file hay chuỗi liền ("CCCD_NguyenVanAn_079123456789_MatTruoc"); khoá ngẫu nhiên gần như không có dãy như vậy."""
     text = match.group(0)
+    if _LONG_DIGIT_RUN.search(text):
+        return text
     mixed = any(c.isupper() for c in text) and any(c.islower() for c in text) and any(c.isdigit() for c in text)
     separators = text.count('/') + text.count('-') + text.count('_')
     return '[chuỗi lạ đã che]' if mixed and separators < 4 and _shannon(text) >= 4.0 else text
@@ -260,11 +282,11 @@ REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
                + r'|' + _KEY_SUFFIX + r')' + _SEP, _ASCII_VALUE), _mask_value),
     # "password is X", "token là X", "Token của Vercel: X".
     (_labelled(r'(?<![A-Za-z0-9])(?:' + _PASSWORD_WORD + r')[ \t]+is[ \t]+', _ANY_VALUE), _mask_value),
-    (_labelled(r'(?<![\w-])token(?:' + _VI_IS + r'|[ \t]+của[ \t]+[^\s:=]{1,30}' + _SEP + r')', _ASCII_VALUE), _mask_natural),
+    (_labelled(r'(?<![\w-])token(?:' + _VI_IS + r'|[ \t]+của[ \t]+[^\s:=]{1,30}' + _SEP + r')', _ASCII_VALUE), _mask_short_label),
     # Nhãn ngắn: chỉ đứng riêng và có dấu ":" hoặc "=" ("pass phòng", crm_room_pass_upsert, "mk là chủ nhà" không phải mật khẩu).
-    (_labelled(r'(?<![\w-])(?:pass|mk)' + _SEP, _ANY_VALUE), _mask_natural),
+    (_labelled(r'(?<![\w-])(?:pass|mk)' + _SEP, _ANY_VALUE), _mask_short_label),
     # Nhãn tiếng Việt: mật khẩu: X, Mật khẩu wifi: X, mật khẩu là X, mã khoá/mã khóa: X.
-    (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|' + _VI_IS + r')', _ANY_VALUE), _mask_natural),
+    (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|' + _VI_IS + r')', _ANY_VALUE), _mask_vi_label),
     # Lưới cuối, đo độ ngẫu nhiên thay vì thêm mẫu cho từng nhà cung cấp.
     (re.compile(r'(?<![A-Za-z0-9+/_=-])[A-Za-z0-9+/_=-]{32,4096}(?![A-Za-z0-9+/_=-])'), _mask_random_blob),
 ]
@@ -722,6 +744,7 @@ def load_state(path: Optional[Path]) -> dict[str, Any]:
             continue
         hashes = prior.get('skillHashes')
         profiles[name] = {'ledgerSeen': _str_list(prior.get('ledgerSeen')), 'memoryHashes': _str_list(prior.get('memoryHashes')),
+                          'warningKeys': _str_list(prior.get('warningKeys')),
                           'skillHashes': {k: v for k, v in hashes.items() if isinstance(k, str) and isinstance(v, str)}
                           if isinstance(hashes, dict) else {}}
     last = data.get('lastRunAt')
@@ -779,6 +802,9 @@ class ProfileAudit:
         self.degraded: list[str] = []   # không kiểm được phần việc chính ⇒ mã thoát khác 0 để OnFailure báo
         self._warnings = 0
         self._warnings_over = 0
+        self._warning_queue: list[tuple[str, str, dict[str, Any], datetime, str]] = []
+        self._warning_keys: list[str] = []
+        self._flushing = False
         self.next_state: dict[str, Any] = {}
         self.counts: dict[str, int] = {}
         self._changed_files: set[str] = set()
@@ -832,12 +858,10 @@ class ProfileAudit:
         pieces = split_parts(clean_text(content, 10 ** 9))
         if not pieces:
             return
-        if kind == 'audit_warning':
-            # Cảnh báo về "không kiểm được" và cảnh báo tràn luôn được ghi; còn lại dừng ở trần.
-            if self._warnings >= MAX_WARNINGS and not source_ref.startswith('degraded:'):
-                self._warnings_over += 1
-                return
-            self._warnings += 1
+        if kind == 'audit_warning' and not self._flushing:
+            # Xếp hàng rồi mới vào trần (flush_warnings): bước quét chạy trước không được chiếm hết chỗ.
+            self._warning_queue.append((title, content, source, detected_at, source_ref))
+            return
         kept = pieces[:MAX_PARTS]
         omitted = sum(len(piece) for piece in pieces[MAX_PARTS:])
         for index, piece in enumerate(kept, 1):
@@ -846,6 +870,8 @@ class ProfileAudit:
             part_ref = source_ref if len(pieces) == 1 else f'{source_ref}|{index}'
             key = sha256_hex(f'{self.name}|{kind}|{part_ref}|{normalized}')
             if any(p['dedupeKey'] == key for p in self.proposals):
+                continue
+            if kind == 'audit_warning' and not self._warning_fits(key, title, source, source_ref):
                 continue
             extra: dict[str, Any] = {'part': index, 'parts': len(kept)} if len(kept) > 1 else {}
             if omitted and index == len(kept):
@@ -867,7 +893,8 @@ class ProfileAudit:
 
     def surface_degraded(self) -> None:
         """Phần việc chính không kiểm được phải tới trang duyệt, không chỉ thoát mã 1 trên máy chủ. Danh mục, bộ skill chuẩn là của cả lần
-        kiểm nên báo ở hồ sơ người dùng thật; nội dung cố định theo lý do nên khoá ổn định."""
+        kiểm nên báo ở hồ sơ người dùng thật. Nội dung cố định, khoá theo lý do + tháng: không thêm dòng mỗi tối, nhưng hỏng lặp lại tháng sau còn hiện
+        dù dòng cũ đã được quyết định."""
         reasons = list(self.degraded)
         if self.real and self.catalog['status'] != 'ok':
             reasons.append('catalog')
@@ -876,15 +903,54 @@ class ProfileAudit:
         for reason in dict.fromkeys(reasons):
             label = DEGRADED_LABELS.get(reason, 'một phần việc của job kiểm không chạy được')
             self.proposal('audit_warning', f'Cảnh báo kiểm học: {label}', f'{label}. Job kiểm thoát lỗi; kết quả lần này có thể thiếu, cần người vận hành xem journal.',
-                          {'type': 'audit_finding', 'finding': 'degraded', 'severity': 'high', 'reason': reason}, self.now, f'degraded:{reason}')
+                          {'type': 'audit_finding', 'finding': 'degraded', 'severity': 'high', 'reason': reason}, self.now, f'degraded:{reason}:{self._month()}')
+
+    def _warning_fits(self, key: str, title: str, source: dict[str, Any], source_ref: str) -> bool:
+        """Cảnh báo được ghi nếu đã gửi ở lần trước (không tính trần), là "không kiểm được" (luôn ghi), hoặc còn chỗ. Bị cắt thì có phát hiện trong
+        báo cáo trên máy chủ, vì mục sổ curator đã đánh dấu đã thấy sẽ không quay lại."""
+        known = key in self._known_warnings()
+        if not known and not source_ref.startswith('degraded:'):
+            if self._warnings >= MAX_WARNINGS:
+                self._warnings_over += 1
+                self.finding('warning_dropped', 'high', f'cảnh báo vượt trần, không gửi lên trang duyệt: {title}', ledgerId=source.get('ledgerId'),
+                             file=source.get('file'), skill=source.get('skill'), finding_kind=source.get('finding'), action=source.get('action'))
+                return False
+            self._warnings += 1
+        self._warning_keys.append(key)
+        return True
+
+    def _known_warnings(self) -> set[str]:
+        return set(self.prior.get('warningKeys', [])) if self.prior else set()
+
+    def flush_warnings(self) -> None:
+        """Đưa cảnh báo vào trần theo thứ tự ưu tiên, không theo thứ tự bước quét."""
+        def rank(item: tuple[str, str, dict[str, Any], datetime, str]) -> int:
+            source = item[2]
+            if item[4].startswith('degraded:'):
+                return 0
+            return WARNING_RANK.get(str(source.get('finding')), 3) if source.get('type') == 'audit_finding' else 2
+        self._flushing = True
+        try:
+            for title, content, source, detected_at, source_ref in sorted(self._warning_queue, key=rank):
+                self.proposal('audit_warning', title, content, source, detected_at, source_ref)
+            self._warning_queue = []
+            self.surface_overflow()
+        finally:
+            self._flushing = False
+        self.next_state['warningKeys'] = self._warning_keys[-MAX_KNOWN_WARNINGS:]
 
     def surface_overflow(self) -> None:
-        """Vượt trần cảnh báo: một dòng cố định thay cho phần dư (số lượng để ở nguồn, không vào khoá nên không thành dòng mới mỗi tối)."""
+        """Vượt trần cảnh báo: một dòng cố định thay cho phần dư. Số lượng để ở nguồn, không vào khoá; khoá theo tháng nên không thành dòng mới mỗi
+        tối, nhưng tháng sau còn hỏng thì hiện lại."""
         over = self._warnings_over
         if over:
             self.proposal('audit_warning', 'Cảnh báo kiểm học: quá nhiều cảnh báo trong một lần kiểm',
-                          f'Vượt trần {MAX_WARNINGS} cảnh báo một lần kiểm: phần dư chỉ nằm trong báo cáo trên máy chủ. Có thể sandbox gắn sai hoặc hồ sơ hỏng hàng loạt, cần xem tay.',
-                          {'type': 'audit_finding', 'finding': 'warnings_overflow', 'severity': 'high', 'omitted': over}, self.now, 'degraded:warnings_overflow')
+                          f'Vượt trần {MAX_WARNINGS} cảnh báo mới một lần kiểm: phần dư có phát hiện warning_dropped trong báo cáo trên máy chủ (private/latest.json). Có thể sandbox gắn sai hoặc hồ sơ hỏng hàng loạt, cần xem tay.',
+                          {'type': 'audit_finding', 'finding': 'warnings_overflow', 'severity': 'high', 'omitted': over}, self.now,
+                          f'degraded:warnings_overflow:{self._month()}')
+
+    def _month(self) -> str:
+        return self.now.astimezone(VN_TZ).strftime('%Y-%m')
 
     def surface_findings(self) -> None:
         """Phát hiện phải tới người duyệt thành cảnh báo trên trang duyệt (không chỉ nằm trong private/). Khoá theo nội dung phát
@@ -1223,7 +1289,7 @@ class ProfileAudit:
             self.degraded.append(f'state_db_{refusals["status"]}')
         self.surface_degraded()
         self.surface_findings()
-        self.surface_overflow()
+        self.flush_warnings()
         return {'profile': self.name, 'real': self.real, 'counts': self.counts, 'findings': self.findings,
                 'proposals': self.proposals, 'autoApplied': self.auto_applied, 'refusals': refusals, 'errors': self.errors,
                 'degraded': self.degraded}
@@ -1387,7 +1453,8 @@ def summarize(report: dict[str, Any]) -> str:
                             ('memory_entry_error', 'mục bộ nhớ không kiểm được'),
                             ('skill_scan_error', 'skill không kiểm được'),
                             ('proposal_dropped', 'đề xuất lệch khuôn bị giữ lại'),
-                            ('proposal_truncated', 'đề xuất quá dài bị cắt')):
+                            ('proposal_truncated', 'đề xuất quá dài bị cắt'),
+                            ('warning_dropped', 'cảnh báo vượt trần, không gửi lên trang duyệt')):
             if kinds.get(kind):
                 lines.append(f'  - Cảnh báo: {len(kinds[kind])} {label}')
         lessons = [p for p in prof['proposals'] if p['kind'] != 'audit_warning']
@@ -1494,6 +1561,8 @@ def run_audit(cfg: dict[str, Any], now: datetime,
             'proposals': sum(len(p['proposals']) for p in profiles_out),
             'proposalsReal': sum(len(p['proposals']) for p in profiles_out if p['real']),
             'warnings': sum(1 for p in profiles_out for item in p['proposals'] if item['kind'] == 'audit_warning'),
+            # Chỉ hồ sơ người dùng thật mới được nạp vào kho: ngưỡng dừng lần chạy đầu xét số này.
+            'warningsReal': sum(1 for p in profiles_out if p['real'] for item in p['proposals'] if item['kind'] == 'audit_warning'),
             'findingsHigh': sum(1 for p in profiles_out for f in p['findings'] if f['severity'] == 'high'),
             'refusalsReal': sum((p['refusals'] or {}).get('count', 0) for p in profiles_out if p['real']),
         },

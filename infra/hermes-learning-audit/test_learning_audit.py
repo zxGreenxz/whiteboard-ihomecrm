@@ -12,6 +12,7 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
 import tokenize
 import unicodedata
 import unittest
@@ -575,6 +576,10 @@ class LearningAuditTest(unittest.TestCase):
     def test_random_blobs_are_masked_without_any_label(self):
         random_blob = 'q7Xp2' + 'LmZ9vR4tYb1' + 'NsK8wE3hJc6' + 'GfU0aD5oTi'
         self.assertEqual(la.redact('dùng ' + random_blob + ' nhé'), 'dùng [chuỗi lạ đã che] nhé')
+        # Số khách trong tên file, chuỗi liền: từ 9 chữ số liền nhau trở lên thì giữ nguyên.
+        for text in ('CCCD_NguyenVanAn_079123456789_MatTruoc.jpg', 'HopDong_NguyenVanAn_079123456789_P101.pdf', 'NguyenVanAn_0901234567_Phong101Toa224VL',
+                     'anhCCCD/NguyenVanAn/079123456789/MatTruocMatSau2', 'CMND079123456789NguyenThiMinhAnhP101T224'):
+            self.assertEqual(la.redact(text), text)
         for text in ('f' * 64, hashlib.sha256(b'x').hexdigest(), '3c0f7d2e-8888-4a88-8a88-000000000001', '20261031_081600_abcdef12', '0' * 40,
                      'skills/productivity/crm-task-management/references/Quy-Trinh-2026-Thu-Tien-Chi-Tiet/SKILL', 'crm_action_run_with_a_very_long_tool_name_for_tasks_2026',
                      '001203012345001203012345001203012345'):
@@ -585,12 +590,25 @@ class LearningAuditTest(unittest.TestCase):
         r = la.redact
         for text in ('Đổi mật khẩu cho khách STK: 19033344445555', 'mã khoá phòng 101 CCCD: 079203001234', 'Mật khẩu gửi khách SĐT: 0901234567',
                      'Quên mật khẩu thì gọi số: 0901234567', 'Khách muốn pass là 0901234567', 'mk là 0901234567', 'mk là chủ nhà', 'mật khẩu: không đổi',
-                     'mật khẩu: chưa có', 'mật khẩu là chủ nhà', 'mk: 0901234567', 'pass: 0912 345 678', 'mật khẩu: 079203001234', 'Khách muốn pass là 5 triệu',
-                     'tok' + 'en của khách: chưa có', 'tok' + 'en của khách: 0901234567', 'dedupe_' + 'key: abc123', 'mật khẩu: khong doi', 'Đổi mật khẩu thì báo phòng: A101'):
+                     'mật khẩu: chưa có', 'mật khẩu là chủ nhà', 'mk: 0901234567', 'pass: 0912 345 678', 'Khách muốn pass là 5 triệu',
+                     'tok' + 'en của khách: chưa có', 'tok' + 'en của khách: 0901234567', 'dedupe_' + 'key: abc123', 'mật khẩu: khong doi', 'Đổi mật khẩu thì báo phòng: A101', 'mk: chủ nhà', 'pass: không có'):
             self.assertEqual(r(text), text)
+        # Hai chiều: "mật khẩu:", "mã khoá:" đứng ngay trước số là mật khẩu thật (từ giữa đã đóng), che; nhãn dễ nhầm pass, mk thì giữ số khách.
+        for text in ('mật khẩu: 123456789', 'mật khẩu: 0901234567', 'mã khoá: 079203001234', 'mật khẩu là 123456789', 'Mật khẩu wifi: 123456789', 'mã khóa cửa: 123456789'):
+            self.assertIn('[đã che]', r(text), text)
+            self.assertNotIn('123456789', r(text), text)
+            self.assertNotIn('0901234567', r(text), text)
+            self.assertNotIn('079203001234', r(text), text)
         # Không có bí mật trong câu nhưng có bí mật ngắn thì vẫn che đúng phần đó.
         self.assertEqual(r('mã khoá: 123456'), 'mã khoá: [đã che]')
         self.assertEqual(r('mk: abc, SĐT 0901234567'), 'mk: [đã che] SĐT 0901234567')
+
+    def test_short_label_flood_stays_linear(self):
+        """Bản cũ cắt cả phần còn lại của chuỗi cho từng lần khớp nên chạy bậc hai. Ngưỡng rộng để không chập chờn: bậc hai cần cỡ hàng giờ."""
+        for text in ('mk: ' * 700_000, 'pass: 12 ' * 300_000):
+            started = time.monotonic()
+            la.redact(text)
+            self.assertLess(time.monotonic() - started, 120)
 
     def test_redaction_keeps_customer_data_and_ordinary_sentences(self):
         r = la.redact
@@ -778,9 +796,10 @@ class LearningAuditTest(unittest.TestCase):
         fx = self.fx
         fx.catalog.write_text('export const nothing = 1;\n', encoding='utf-8')
         (fx.owner / 'state.db').unlink()
-        self.assertEqual(run_main(fx.argv(NOW))[0], 1)
-        self.assertEqual(run_main(fx.argv(NOW + timedelta(days=1)))[0], 1)
-        first, second = fx.outboxes()
+        self.assertEqual(run_main(fx.argv(NOW - timedelta(days=2)))[0], 1)
+        self.assertEqual(run_main(fx.argv(NOW - timedelta(days=1)))[0], 1)
+        self.assertEqual(run_main(fx.argv(NOW + timedelta(days=1)))[0], 1)  # đã sang tháng sau
+        first, second, next_month = fx.outboxes()
         items = {item['source']['reason']: item for item in warnings(first['profiles'][0]) if item['source'].get('finding') == 'degraded'}
         self.assertEqual(sorted(items), ['catalog', 'state_db_missing'])
         for item in items.values():
@@ -788,6 +807,10 @@ class LearningAuditTest(unittest.TestCase):
         # Tối sau cùng khoá: SQL bỏ trùng, không thêm dòng.
         self.assertEqual({item['dedupeKey'] for item in warnings(second['profiles'][0]) if item['source'].get('finding') == 'degraded'},
                          {item['dedupeKey'] for item in items.values()})
+        # Tháng sau còn hỏng thì hiện lại, dù dòng cũ đã được quyết định.
+        later = {item['source']['reason']: item['dedupeKey'] for item in warnings(next_month['profiles'][0]) if item['source'].get('finding') == 'degraded'}
+        self.assertEqual(sorted(later), ['catalog', 'state_db_missing'])
+        self.assertFalse(set(later.values()) & {item['dedupeKey'] for item in items.values()})
         # Hồ sơ thử không phải hồ sơ thật: không nhận cảnh báo của cả lần kiểm.
         self.assertEqual([item for item in warnings(first['profiles'][1]) if item['source'].get('finding') == 'degraded'], [])
 
@@ -805,11 +828,61 @@ class LearningAuditTest(unittest.TestCase):
         self.assertGreater(overflow[0]['source']['omitted'], 0)
         # Phát hiện đủ vẫn còn trong báo cáo trên máy chủ.
         self.assertEqual(len([f for f in owner['findings'] if f['kind'] == 'dead_tool_name']), 40)
+        # Mục bị cắt có phát hiện trong báo cáo trên máy chủ.
+        self.assertEqual(len([f for f in owner['findings'] if f['kind'] == 'warning_dropped']), overflow[0]['source']['omitted'])
+        self.assertTrue(any('warning_dropped' in item['content'] for item in overflow))
+        # Cùng tháng: thêm hỏng cũng không thêm dòng tràn; tháng sau hiện lại.
         for n in range(40, 45):
             make_dead(n)
-        again, _, _ = la.run_audit(fx.config(), NOW + timedelta(days=1), use_state=False)
+        again, _, _ = la.run_audit(fx.config(), NOW - timedelta(hours=1), use_state=False)
         self.assertEqual([item['dedupeKey'] for item in warnings(profile(again, 'owner')) if item['source'].get('finding') == 'warnings_overflow'],
                          [overflow[0]['dedupeKey']])
+        later, _, _ = la.run_audit(fx.config(), NOW + timedelta(days=1), use_state=False)
+        self.assertNotEqual([item['dedupeKey'] for item in warnings(profile(later, 'owner')) if item['source'].get('finding') == 'warnings_overflow'],
+                            [overflow[0]['dedupeKey']])
+
+    def test_warnings_already_sent_do_not_count_so_new_dead_names_are_not_starved(self):
+        fx = self.fx
+        for n in range(25):
+            fx.skill(fx.owner, f'productivity/x{n:03d}', f'---\nname: x{n:03d}\n---\nGọi crm_chet_{n:03d}_create.\n')
+        cfg = fx.config()
+        cfg_state = fx.state
+        report, _, state = la.run_audit(cfg, NOW, use_state=True)
+        la.write_atomic(cfg_state, la.json_bytes(state))
+        self.assertEqual(len([i for i in warnings(profile(report, 'owner')) if i['source'].get('finding') == 'dead_tool_name']), la.MAX_WARNINGS)
+        # Lần sau: 20 mục đã gửi không tính trần, 5 mục dư và tên chết mới đều tới được.
+        fx.skill(fx.owner, 'productivity/x999', '---\nname: x999\n---\nGọi crm_ten_moi_create.\n')
+        later, _, _ = la.run_audit(cfg, NOW + timedelta(hours=1), use_state=True)
+        items = warnings(profile(later, 'owner'))
+        dead = [i for i in items if i['source'].get('finding') == 'dead_tool_name']
+        self.assertEqual(len(dead), 26)
+        self.assertTrue(any('crm_ten_moi_create' in i['content'] for i in dead))
+        self.assertFalse([i for i in items if i['source'].get('finding') == 'warnings_overflow'])
+
+    def test_warning_cap_orders_by_importance_not_by_scan_step(self):
+        fx = self.fx
+        rel = 'productivity/tone/SKILL.md'
+        old, new = 'Trả lời ngắn.\n', 'Trả lời ngắn.\nDùng emoji vừa phải.\n'
+        fx.skill(fx.owner, 'productivity/tone', new)
+        entries = []
+        for n in range(30):  # sổ curator quét trước mọi phát hiện khác
+            line = json.loads(ledger_line(fx.owner, f'lif{n:09d}', NOW - timedelta(hours=1), 'archive', 'tone', rel, old, new))
+            entries.append(json.dumps(line))
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text('\n'.join(entries) + '\n', encoding='utf-8')
+        fx.skill(fx.owner, 'productivity/dead-a', '---\nname: dead-a\n---\nGọi crm_chet_a_create.\n')
+        (fx.owner / 'skills' / 'productivity' / 'dead-a' / 'evil.md').write_text('x', encoding='utf-8')
+        fake = {os.path.realpath(fx.owner / 'skills' / 'productivity' / 'dead-a' / 'evil.md')}
+        with fake_symlinks(fake):
+            report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        owner = profile(report, 'owner')
+        items = warnings(owner)
+        kinds = [i['source'].get('finding') or i['source'].get('action') for i in items]
+        self.assertIn('dead_tool_name', kinds)
+        self.assertLess(kinds.index('dead_tool_name'), kinds.index('archive'))
+        self.assertNotIn('unsafe_profile_file', kinds)  # sau cùng nên bị cắt trước
+        dropped = [f for f in owner['findings'] if f['kind'] == 'warning_dropped']
+        self.assertTrue(any(f.get('ledgerId', '').startswith('lif') for f in dropped))
+        self.assertTrue(any(f.get('finding_kind') == 'unsafe_profile_file' for f in dropped))
 
     def test_action_ids_do_not_match_file_names(self):
         self.assertEqual(la.ACTION_RE.findall('Xem task.md, contract.pdf, invoice.html và expense.json, task.tsx'), [])
