@@ -53,10 +53,10 @@ for (const [role, mobile] of [['chunha', false], ['quanly', true], ['ketoan', fa
     page.on('request', request => { if(request.url().startsWith('https://hzulujxgonszuleqticb.supabase.co/')) observedTestBackend=true; });
     await page.setViewportSize(mobile ? {width:390,height:844} : {width:1440,height:1000});
     await openContracts(page,role);
-    if(!mobile) await page.getByRole('tablist',{name:'Các mục hợp đồng'}).getByRole('tab',{name:/Hợp đồng nháp/}).click();
+    if(mobile) await page.getByRole('button',{name:/Hợp đồng nháp/}).click();
+    else await page.getByRole('tablist',{name:'Các mục hợp đồng'}).getByRole('tab',{name:/Hợp đồng nháp/}).click();
     const workspace=page.getByRole('region',{name:'Hợp đồng nháp',exact:true});
     await expect(workspace).toBeVisible();
-    if(mobile) await workspace.getByRole('button',{name:/Hợp đồng nháp/}).click();
     await expect(workspace.getByText('Đang tải bản nháp…')).toHaveCount(0);
     await expect(page.getByText('Không tải được hồ sơ chờ quyết toán.')).toHaveCount(0);
     if(role==='chunha'){
