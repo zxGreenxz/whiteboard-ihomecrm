@@ -35,15 +35,15 @@ Giao / tạo việc, giao nhiều việc, sửa hạn hay người nhận, ghi t
   bỏ trống, máy chủ đặt hết ngày mai; khi đọc xem trước nói rõ hạn mặc định (kèm thứ). Xem trước ra hạn mặc định mà người dùng
   đã nói hạn ⇒ gọi lại ngay với `deadlinePhrase` đúng.
 - Thiếu nội dung việc (chỉ có nơi + người) ⇒ hỏi "việc gì ạ?". Trả lời mở đầu "thôi / khỏi / để đó" ⇒ không tạo, nói chưa tạo
-  việc nào.
+  việc nào (trong cùng tin đã tạo việc khác ⇒ nói rõ việc nào đã tạo, việc nào chưa).
 - `applied` ⇒ báo mã việc, người nhận, hạn. Muốn theo dõi ngay ⇒ `crm_task_follow_set` với `jobId` = `result.job.jobId`.
 
 ## Giao nhiều việc — `task.create_batch`
 
 Tối đa 20 việc, một lần đồng ý cho cả lô: `items` [{buildingName, roomName, content, …}]; hoặc `buildingsManagedBy` = tên người
 (mỗi toà người đó quản lý một việc); hoặc `perRoom` = true + `buildingName` (mỗi phòng một việc, không cần xin danh sách phòng).
-`batch_too_large` ⇒ nói số phòng/việc, đề nghị chia lô. `task_quota_*` ⇒ chạm hạn mức giao việc qua bot trong một giờ, chưa tạo
-việc nào.
+`batch_too_large` ⇒ nói số phòng/việc, đề nghị chia lô. `task_quota_*` ⇒ chạm hạn mức giao việc qua bot trong một giờ, lệnh này
+chưa tạo việc nào.
 
 ## Sửa, huỷ, hoàn thành
 

@@ -29,9 +29,13 @@ Khách (kể cả khách cũ đã trả phòng) trả tiền phòng / điện n�
 - `method`: TK = chuyển khoản; TT = thanh toán / POS / chuyển vào sổ HKD; TM (tiền mặt) bị từ chối ⇒ trang Thu tiền (/thu-tien).
   "CK", "TK", "TT", "POS", "TM" là hình thức, không phải tên toà / phòng.
 - Không nêu toà ⇒ bỏ hẳn `buildingName`; không nêu tháng ⇒ bỏ `month` (máy chủ chọn hoá đơn còn nợ, nhiều thì hỏi); "tiền tháng N"
-  = `month` YYYY-N, ngày thu mặc định hôm nay. Chữ sau "phòng" là tên phòng kể cả khi giống tên sổ ("phòng MB").
-- `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận ("vào HKD Tâm", "sổ HKD của anh" ⇒ "HKD"); không ghi tên sổ vào
-  `note`. Không nêu sổ ⇒ không gửi, bản xem trước dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
+  = `month` YYYY-N, ngày thu mặc định hôm nay — không hỏi "khách chuyển ngày nào". Chữ sau "phòng" là tên phòng kể cả khi giống
+  tên sổ ("phòng MB").
+- "ck X trước, còn lại <cuối tuần / sau>" = thu MỘT PHẦN X hôm nay ("trước" = trả trước một phần, KHÔNG phải ngày): không gửi
+  `datePhrase`, phần còn lại không ghi, không hỏi ngày.
+- `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận: chép NGUYÊN tên họ nói ("vào HKD Tâm" ⇒ "HKD Tâm", "vào TK Hiệp" ⇒
+  "TK Hiệp"); "sổ HKD của anh" (không tên riêng) ⇒ "HKD". Không ghi tên sổ vào `note`. Không nêu sổ ⇒ không gửi, bản xem trước
+  dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
 - Phòng người dùng nói CHƯA trả ⇒ không gọi cho phòng đó. Máy chủ báo ghi chú nói khoản CHƯA trả ⇒ hỏi lại người dùng phòng đó
   đã trả chưa; không tự bỏ câu "chưa…" rồi gọi lại. Sửa / đổi hình thức lần thu ĐÃ ghi ⇒ web (Hoá đơn › Lịch sử thanh
   toán), không gọi `invoice.collect` lần nữa (thành thu trùng). `period_closed` ⇒ tháng đó toà đã chốt lợi nhuận.
@@ -45,8 +49,8 @@ hiện tại. Sửa số đã ghi ⇒ `replace` = true. Cảnh báo nhỏ hơn s
 ## Điều chỉnh, kiểm, huỷ, khôi phục
 
 - `invoice.adjust` {toà, phòng, `month` / `invoiceNumber`, `discount` (giảm thêm) | `addItems` | `setItems`, `reason`}: gọi ngay
-  để lấy bản xem trước (tổng cũ → mới); lời người dùng đã nói là lý do; chưa có thì hỏi sau khi máy chủ đòi. Dòng điện nước có chỉ
-  số, cọc ⇒ web.
+  để lấy bản xem trước (tổng cũ → mới); lời người dùng nêu VÌ SAO ("anh tính nhầm", "khách xin giảm") là lý do ⇒ `reason` nguyên
+  văn, không ghép câu yêu cầu hay tên thao tác cho đủ ký tự; chưa có thì hỏi sau khi máy chủ đòi. Dòng điện nước có chỉ số, cọc ⇒ web.
 - `invoice.adjustment_check`: xác nhận ĐÃ KIỂM TRA điều chỉnh do người khác làm (không phải duyệt hoá đơn); không bỏ được — lượt
   xác nhận kèm `consentText`. Điều chỉnh do chính người hỏi làm ⇒ web.
 - `invoice.cancel` (hoá đơn chưa thu đồng nào) / `invoice.restore`: gọi ngay, lý do chỉ hỏi khi máy chủ trả `reason_required`;

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1750,
   "soFileDocBangFs": 457,
-  "tongLoiGoi": 1171,
+  "tongLoiGoi": 1172,
   "khongPhanLoaiDuoc": 523,
   "theoLoai": {
     "ma-nguon": {
@@ -619,6 +619,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/official-skills.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -822,14 +830,6 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/official-skills.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "tai-lieu": 3
       },
       "khongPhanLoaiDuoc": 0
     },
