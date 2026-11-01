@@ -60,4 +60,24 @@ describe('Chờ quyết toán: hồ sơ có nháp', () => {
     expect(screen.queryByRole('button', { name: 'Mở bản nháp' })).toBeNull();
     expect(state.draftIds.every(ids => ids.length === 0)).toBe(true);
   });
+  it('trong bảng trượt mobile: dòng gọn "P.phòng · toà", vẫn đủ hai nút và mở đúng hồ sơ', () => {
+    render(<MemoryRouter><ContractExitQueue layout="sheet" showEmpty /></MemoryRouter>);
+    expect(screen.queryByRole('heading', { name: /Chờ quyết toán/ })).toBeNull();
+    const withDraft = screen.getByRole('link', { name: 'P.L06 · 1392QT' }).closest('.cm-qrow') as HTMLElement;
+    expect(within(withDraft).getByRole('link', { name: 'P.L06 · 1392QT' }).getAttribute('href')).toBe('/contracts/contract-b');
+    expect(within(withDraft).getByText(/Có nháp · lưu .* bởi Người A/)).toBeTruthy();
+    expect(within(withDraft).getByText('HD-B')).toBeTruthy();
+    fireEvent.click(within(withDraft).getByRole('button', { name: 'Mở bản nháp' }));
+    expect(state.dialog).toHaveBeenLastCalledWith('case-b', true);
+    const noDraft = screen.getByRole('link', { name: 'P.502 · 102LVT', hidden: true }).closest('.cm-qrow') as HTMLElement;
+    expect(within(noDraft).queryByRole('button', { name: 'Mở bản nháp', hidden: true })).toBeNull();
+    expect(within(noDraft).getByRole('button', { name: 'Quyết toán', hidden: true })).toBeTruthy();
+  });
+  it('trong bảng trượt mobile: không có quyền quyết toán thì chỉ xem, không nút, không dấu nháp', () => {
+    state.canSettle = false;
+    render(<MemoryRouter><ContractExitQueue layout="sheet" showEmpty /></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'P.L06 · 1392QT' })).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText(/Có nháp/)).toBeNull();
+  });
 });

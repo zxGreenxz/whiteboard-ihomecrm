@@ -30,10 +30,7 @@ import type {
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
-import { MoveOutNoticeQueue } from '@/components/contracts/MoveOutNoticeQueue';
-import { ContractDraftWorkspace } from '@/components/contracts/ContractDraftWorkspace';
-import { ContractExitQueue } from '@/components/contracts/ContractExitQueue';
-import { ContractMeterFollowupQueue } from '@/components/contracts/ContractMeterFollowupQueue';
+import { ContractMobileQueues } from '@/components/contracts/ContractMobileQueues';
 
 // Định dạng tiền gọn (khớp DepositBadge desktop): "1.250.000 đ".
 const fmtVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + ' đ';
@@ -202,10 +199,7 @@ export default function ContractsMobilePage() {
           </div>
 
           <div className="mbody">
-            <MoveOutNoticeQueue buildingIds={buildingId ? [buildingId] : []} />
-            <ContractExitQueue buildingIds={buildingId ? [buildingId] : []} />
-            <ContractMeterFollowupQueue buildingIds={buildingId ? [buildingId] : []} />
-            <ContractDraftWorkspace buildingId={buildingId || undefined} />
+            <ContractMobileQueues buildingId={buildingId || undefined} />
             {/* Chờ số: hàng chip lọc vẫn hiện (bấm được), chỗ số đếm là vạch xám — không in 0
                 (chủ chốt 02/10/2026). Đọc hỏng vẫn là thẻ báo lỗi + Tải lại. */}
             <QueryRegion label="thống kê hợp đồng" queries={[statsQuery]} loading={statChips(true)}>

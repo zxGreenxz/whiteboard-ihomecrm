@@ -263,6 +263,8 @@
     "src/components/contracts/ContractListFilters.tsx",
     "src/components/contracts/ContractListTable.tsx",
     "src/components/contracts/ContractMeterBoundaryFields.tsx",
+    "src/components/contracts/ContractMobileQueues.tsx",
+    "src/components/contracts/ContractQueueSheetRow.tsx",
     "src/components/contracts/ContractMeterBoundaryPanel.tsx",
     "src/components/contracts/__tests__/ContractMeterBoundaryPanel.test.tsx",
     "src/components/contracts/ContractMeterFollowupQueue.tsx",

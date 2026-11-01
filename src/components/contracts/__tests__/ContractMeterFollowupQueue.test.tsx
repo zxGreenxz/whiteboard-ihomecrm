@@ -34,4 +34,21 @@ describe('khung chờ chỉ số trả phòng', () => {
     show();
     expect(screen.queryByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' })).toBeNull();
   });
+  it('trong bảng trượt mobile: dòng gọn, tiêu đề do bảng trượt vẽ, vẫn nói đúng việc và mở đúng hồ sơ', () => {
+    state.data = { total: 2, limit: 10, offset: 0, items: [item(1, { state: 'MISSING' }), item(2, { state: 'REVIEW', contract_number: null })] };
+    render(<MemoryRouter><ContractMeterFollowupQueue layout="sheet" /></MemoryRouter>);
+    const region = screen.getByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' });
+    expect(within(region).queryByRole('heading')).toBeNull();
+    expect(within(region).getByRole('link', { name: 'P.P1 · Toà A' }).getAttribute('href')).toBe('/contracts/contract-1');
+    expect(within(region).getByText('Thiếu chỉ số chốt')).toBeTruthy();
+    expect(within(region).getByText('Số bổ sung chưa khớp')).toBeTruthy();
+    expect(within(region).getByText('Hợp đồng cũ')).toBeTruthy();
+    expect(within(region).getAllByText('Bàn giao 01/10/2026')).toHaveLength(2);
+    expect(within(region).getAllByRole('link', { name: 'Mở mốc bàn giao' }).map(link => link.getAttribute('href'))).toEqual(['/contracts/contract-1', '/contracts/contract-2']);
+  });
+  it('trong bảng trượt mobile: hết việc thì báo rõ, không để bảng trống', () => {
+    state.data = { total: 0, limit: 10, offset: 0, items: [] };
+    render(<MemoryRouter><ContractMeterFollowupQueue layout="sheet" /></MemoryRouter>);
+    expect(screen.getByText('Không còn hồ sơ chờ chỉ số.')).toBeTruthy();
+  });
 });
