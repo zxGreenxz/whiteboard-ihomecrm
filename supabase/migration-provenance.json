@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-30T23:24:37.656Z",
+  "generatedAt": "2026-11-01T00:10:30.405Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 916,
+    "ledger-applied": 921,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -13907,6 +13907,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261030050424_hermes_sale_deposit_receipt_key_v1.sql",
+      "version": "20261030050424",
+      "name": "hermes_sale_deposit_receipt_key_v1",
+      "scheme": "timestamp14",
+      "sha256": "abc88d0447d80b6167df59709414fe39518410354783b607d50590682729a34c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T02:00:30.530Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261030065028_hermes_expense_actions_activation_v1.sql",
+      "version": "20261030065028",
+      "name": "hermes_expense_actions_activation_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e70a13a4396543e684ed30356a7b9d9f084fbc551858aa10c67fc47573cb446",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T03:39:09.806Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261030100148_khoa_cot_hoa_hong_ie_compat.sql",
       "version": "20261030100148",
       "name": "khoa_cot_hoa_hong_ie_compat",
@@ -13937,6 +13959,55 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-30T12:59:24.590Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031061232_quan_ly_toa_quyen_lock_tam_phong.sql",
+      "version": "20261031061232",
+      "name": "quan_ly_toa_quyen_lock_tam_phong",
+      "scheme": "timestamp14",
+      "sha256": "12886fc18ba1996cb71d51e6b2cb88e31f1baef7d86199eae87d96d837b80537",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T06:49:32.489Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031120230_nguoi_giu_tien_thay_phieu_han_che.sql",
+      "version": "20261031120230",
+      "name": "nguoi_giu_tien_thay_phieu_han_che",
+      "scheme": "timestamp14",
+      "sha256": "df9034c204160cef3ba8e6d95f3ba8805ef44602a7bf149cc82aa255280fb9d9",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T14:06:05.284Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031121202_mo_khoa_so_quy_co_ly_do.sql",
+      "version": "20261031121202",
+      "name": "mo_khoa_so_quy_co_ly_do",
+      "scheme": "timestamp14",
+      "sha256": "f54fa3f82ac6dbd76d3c71bf4c0647cff03dd15fcf142b2e4857be8a11c01437",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.cashbook_reopenings",
+        "catalog:table:app_private.cashbook_reopen_write_context",
+        "catalog:function:app_private.normalize_cashbook_reopening_reason_v1",
+        "catalog:function:app_private.guard_cashbook_reopenings_append_only",
+        "catalog:index:app_private.cashbook_reopenings_book_idx",
+        "catalog:trigger:app_private.cashbook_reopenings.cashbook_reopenings_append_only"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261031124214_mo_khoa_so_quy_xung_dot_http_409.sql",
+      "version": "20261031124214",
+      "name": "mo_khoa_so_quy_xung_dot_http_409",
+      "scheme": "timestamp14",
+      "sha256": "8499c294abdc23a651dfc3e912854210cbb8ee0d92aad1455a5541b0e81f5fbf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-31T12:53:39.793Z|bien-nhan-backup"
       ]
     },
     {

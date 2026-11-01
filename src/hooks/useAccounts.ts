@@ -318,6 +318,5 @@ export const useDeleteAccount = () => {
 // xem src/hooks/useCashbookClosing.ts), và ngày khoá hiệu lực đọc từ
 // app_private.cashbook_closures chứ không từ accounts.lock_date.
 //
-// useUnlockAccount thì đã CHẾT từ Đợt 3: lock_cashbook_period_v1(p_unlock=>true)
-// LUÔN ném [CASHBOOK_CLOSED] theo quyết định #7 của chủ ("không ai mở"). Giữ một
-// nút gọi nó lại là hứa với người dùng một đường thoát không tồn tại.
+// API mở khóa cũ vẫn bị thu quyền. Mở lại có lý do và lịch sử dùng riêng
+// useReopenCashbook (useCashbookReopening.ts), chỉ chủ đúng tổ chức được phép.

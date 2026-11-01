@@ -49,7 +49,7 @@ test('sale composition full authority → public preview → bound JWT → durab
  const listed=await broker.listTools(token);assert.ok(listed.tools.some(tool=>tool.name==='crm_sale_action'));
  const operations=JSON.parse((await broker.callTool(token,'crm_sale_action',{operation:'list'})).content[0].text).operations;
  assert.ok(operations.some(item=>item.operation==='room_patch'));
- assert.ok(!operations.some(item=>item.operation==='reservation_create'),'receipt create also requires income_expenses.create');
+ assert.ok(!operations.some(item=>item.operation==='reservation_create'),'receipt create also requires income_expenses.create and deposits.create_receipt');
  const input={requestId:REQUEST,roomId:ROOM,expectedRevision:'a'.repeat(32),sale_note:'Wifi miễn phí'};
  const preview=await call('crm_sale_room_patch',input);
  assert.equal(preview.outcome,'confirmation_required');assert.equal(writes,0);

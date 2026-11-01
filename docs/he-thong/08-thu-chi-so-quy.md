@@ -343,6 +343,20 @@ SECURITY DEFINER get-or-create loại thu **"Tiền cọc"** của chính caller
 
 Helper `can_view_restricted_ie()`/`can_create_restricted_ie()` PHẢI trả true cho super_admin/admin (vì RESTRICTIVE AND cả policy admin); người tạo luôn thấy phiếu của mình. Đã bật trên prod cho hạng mục "Quản Lý".
 
+**Người giữ tiền của sổ thấy mọi phiếu trong sổ đó** (migration `20261031120230`, chủ chốt 31/10/2026). Hai policy SELECT hạn chế có thêm một nhánh: phiếu có sổ chính, sổ thối hoặc sổ làm tròn thuộc `app_private.my_custodian_cashbook_ids_v1()` (possession `CUSTODIAN` còn hiệu lực, membership ACTIVE). Dòng phiếu đi theo phiếu cha qua `app_private.ie_in_my_custodian_cashbook_v1(uuid)`. Lý do: sổ cái (trang Sổ quỹ) vốn cho người giữ tiền đọc hết, nên trước đây số dư sổ đã trừ phiếu lương còn màn Thu chi thì thiếu phiếu đó. Người chỉ được xem sổ (`KNOWER`), `OPERATOR`, chủ sổ không giữ tiền và người nhận lương không được thấy thêm. Migration chỉ đổi policy SELECT; bốn policy UPDATE/DELETE hạn chế và `ie_item_restricted_visible` giữ nguyên.
+
+Thao tác trên phiếu hạn chế người giữ tiền vừa thấy: chủ chốt 31/10/2026 giữ **theo quyền sẵn có**, không khoá thêm. Các RPC ghi là SECURITY DEFINER, mỗi RPC tự xét quyền:
+
+| Thao tác | Người giữ tiền làm được khi | Xét cờ hạn chế |
+|---|---|---|
+| Đã kiểm (`verify_income_expense_v1`, bản cũ `verify_income_expense`) | có toà của phiếu hoặc possession ở sổ | Không |
+| Ghi sổ thu/chi phiếu đã duyệt (`post_approved_income_expense_v2`) | giữ tiền đúng sổ | Không |
+| Đảo phiếu (`reverse_posted_income_expense_v2`) | có `income_expenses.reverse` ở toà (vai Quản Lý Tòa hiện có) và giữ tiền đúng sổ | Không |
+| Duyệt | có `income_expenses.approve` ở toà (vai Quản Lý Tòa hiện không có) | Không |
+| Huỷ, Sửa, Chú thích, Bổ sung chứng từ, Dừng lặp | — | Có: vẫn chặn |
+
+Các đường đọc khác vẫn theo luật cũ (ẩn hoặc che phiếu hạn chế với người giữ tiền không có `restricted_view`): danh sách phiếu khoá kỳ lợi nhuận (`profit_post_lock_vouchers_v1`, che mã và tên), `cash_flow_external_rows_v1`, `copilot_income_expense_search_v1` / `copilot_report_daily_cashbook_v1`, Báo chi nhanh (`ie_expense_vouchers_v1`), ô chọn và bộ lọc hạng mục (`income_expense_types_restricted_select`) và đường đọc của Hermes.
+
 > ⚠️ **CAVEAT**: các RPC báo cáo P&L (`fa_*`, `monthly_building_profit`…) là SECURITY DEFINER **không lọc `has_restricted_item`** → số liệu phiếu hạn chế **vẫn lộ trong con số tổng** của báo cáo Lợi nhuận/Phân tích tài chính. "Ẩn thật" chỉ áp cho danh sách/tổng trang Thu chi.
 
 ### 4.16 Hạng mục "đặc biệt" ẩn khỏi báo cáo — `hide_in_report` (migration `20260627000002`)

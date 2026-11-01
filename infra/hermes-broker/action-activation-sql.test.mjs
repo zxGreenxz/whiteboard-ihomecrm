@@ -5,19 +5,24 @@ import { PGlite } from '@electric-sql/pglite';
 import { createActionCatalog } from './action-catalog.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 
-// Ba migration bật thao tác ghi theo trang (HĐ / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md) và ba file lùi
-// (docs/plans/hermes-crm/revert/*_actions_activation_revert_v1.sql) trên PGlite. File TC tách sang PR riêng (chạy sau split báo cọc
-// Sale); dữ liệu fixture vẫn giữ khoá / chính sách Thu chi như production để chứng minh ba file không đụng tới. Fixture: bảng registry /
+// Bốn migration bật thao tác ghi theo trang (HĐ / TC / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md) và bốn file lùi
+// (docs/plans/hermes-crm/revert/*_actions_activation_revert_v1.sql) trên PGlite. HĐ / HĐn / CV đã áp production (PR #349); TC
+// (20261030065028, PR riêng) chạy sau split báo cọc Sale 20261030050424; fixture giữ khoá / chính sách Thu chi như production 28/10. Fixture: bảng registry /
 // chính sách / biên nhận THẬT (câu CREATE của 20261012061447 và 20261021133823), hai hàm + hai trigger chiếu lại inherit_crm THẬT (20261019034754, md5 thân
 // = production 28/10), dữ liệu registry + 27 dòng chính sách như production đọc 28/10 (chỉ đọc), các hàm của trang là vỏ rỗng cùng
 // chữ ký (khối kiểm phụ thuộc chỉ hỏi to_regprocedure). Chứng minh: mỗi file bật / tắt ĐÚNG khoá của trang (= khoá danh mục connector
 // của trang, trừ khoá mượn của lớp Sale), độc lập với các trang kia, chạy lại không đổi gì, kết nối inherit_crm nhận / mất khoá mà
 // không đổi epoch, legacy / REVOKED không đổi, thiếu phụ thuộc thì dừng trước khi ghi, rào legacy của file lùi. KHÔNG chứng minh RPC
 // trang hay hàm web (đã có test riêng) và không thay lane / tầng 2 trên TEST.
+// File TC (đổi mốc sang SAU 20261030050424_hermes_sale_deposit_receipt_key_v1, review chéo PR #349) có rào tiền điều kiện: thiếu dòng
+// registry deposits.create_receipt hoặc thân public.hermes_sale_actions_v1 không chứa chuỗi đó ⇒ dừng, vì bật income_expenses.create
+// khi đó mở luôn hai tool báo cọc Sale ghi tiền một bước. Fixture vì vậy dựng production SAU khi áp split: dòng khoá riêng TẮT + vỏ Sale
+// (stub) mang chuỗi đó; ca riêng chứng minh thiếu split ⇒ dừng, ba trang kia không phụ thuộc rào này.
 // Kiểm đột biến: HERMES_ACTIVATION_SQL_MUTATION=<tên trong MUTATIONS> đổi SQL CHỈ trong bộ nhớ của lần chạy này ⇒ test phải đỏ.
 const lf = text => text.replaceAll('\r\n', '\n');
 const migration = slug => {
@@ -39,6 +44,7 @@ const fnStatement = (sql, name) => {
 
 const PAGES = Object.freeze({
   contract: { slug: 'hermes_contract_actions_activation_v1', prefix: 'contract.', actions: CONTRACT_ACTIONS },
+  expense: { slug: 'hermes_expense_actions_activation_v1', prefix: 'expense.', actions: EXPENSE_ACTIONS },
   invoice:{ slug: 'hermes_invoice_actions_activation_v1', prefix: 'invoice.', actions: INVOICE_ACTIONS },
   task: { slug: 'hermes_task_actions_activation_v1', prefix: 'task.', actions: TASK_ACTIONS },
 });
@@ -50,6 +56,8 @@ const PAGE_REQUIRED = {
   contract: ['public.hermes_contract_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
     'app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
     'app_private.hermes_contract_batch_step_v1(jsonb,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'],
+  expense: ['public.hermes_expense_write_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+    'app_private.hermes_expense_write_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'],
   invoice:['public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
     'app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
     'app_private.hermes_invoice_meter_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
@@ -76,6 +84,11 @@ const PROD_REGISTRY = {
   'tasks.create': true, 'tasks.delete': false, 'tasks.edit': true, 'thu_tien.collect_transfer': false,
 };
 const PROD_READ = ['contracts.view', 'tasks.view'];
+// Trạng thái sau khi áp 20261030050424 (tiền điều kiện của file TC): dòng khoá riêng TẮT và vỏ Sale có cổng báo cọc. Vỏ là stub; rào
+// của file TC chỉ hỏi chuỗi deposits.create_receipt trong thân.
+const SPLIT_REGISTRY = { 'deposits.create_receipt': false };
+const SALE_SHELL = "CREATE OR REPLACE FUNCTION public.hermes_sale_actions_v1(jsonb,text,jsonb) RETURNS jsonb LANGUAGE sql AS $$SELECT to_jsonb('deposits.create_receipt'::text)$$";
+const SALE_SHELL_OLD = 'CREATE OR REPLACE FUNCTION public.hermes_sale_actions_v1(jsonb,text,jsonb) RETURNS jsonb LANGUAGE sql AS $$SELECT NULL::jsonb$$';
 const PROD_POLICIES = [
   ['contract.draft', 'contracts.create', 'contracts.create', 'reversible', 'never'],
   ['contract.notice_cancel', 'contracts.terminate', 'contracts.terminate', 'reversible', 'never'],
@@ -117,6 +130,7 @@ const MUTATIONS = {
   'revert-skip-legacy-fence': ['revert:invoice',['IF legacy>0 THEN', 'IF false THEN']],
   'revert-touches-lock': ['revert:contract', ["ARRAY['contracts.create','contracts.edit'", "ARRAY['sale_phong.lock_room','contracts.create','contracts.edit'"], ['<>4 THEN', '<>5 THEN']],
   'revert-drops-create': ['revert:task', ["WHERE capability='tasks.delete' AND mode='action' AND enabled;", "WHERE capability IN ('tasks.delete','tasks.create') AND mode='action' AND enabled;"]],
+  'forward-skip-sale-deposit-guard': ['forward:expense', ["RAISE EXCEPTION 'hermes_expense_activation_sale_deposit_gate_missing", "RAISE NOTICE 'hermes_expense_activation_sale_deposit_gate_missing"]],
 };
 const mutationName = process.env.HERMES_ACTIVATION_SQL_MUTATION;
 assert(!mutationName || Object.hasOwn(MUTATIONS, mutationName), `unknown mutation ${mutationName}`);
@@ -159,8 +173,9 @@ async function fixture(t) {
     ${fnStatement(INHERIT, 'app_private.hermes_refresh_registry_projection_v2')}
     ${statement(INHERIT, 'CREATE TRIGGER hermes_registry_projection_v2', ';')}
     ${[...stubs].map(signature => `CREATE FUNCTION ${signature} RETURNS jsonb LANGUAGE sql AS 'SELECT NULL::jsonb';`).join('\n    ')}
+    ${SALE_SHELL};
     INSERT INTO public.authorization_scopes(id,organization_id,scope_type) VALUES('${u(3)}','${ORG}','ORGANIZATION');`);
-  for (const [capability, enabled] of Object.entries(PROD_REGISTRY))
+  for (const [capability, enabled] of Object.entries({ ...PROD_REGISTRY, ...SPLIT_REGISTRY }))
     await db.query('INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES($1,$2,$3)', [capability, 'action', enabled]);
   for (const capability of PROD_READ)
     await db.query('INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES($1,$2,true)', [capability, 'read']);
@@ -310,6 +325,29 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
     }
   });
 
+  await t.test('TC: thiếu split (dòng deposits.create_receipt / chuỗi trong vỏ Sale) ⇒ dừng trước khi ghi; có split ⇒ qua; ba trang kia không phụ thuộc', async () => {
+    for (const [setup, label] of [
+      ["DELETE FROM app_private.hermes_capabilities WHERE capability='deposits.create_receipt'", 'thiếu dòng registry khoá riêng'],
+      ["UPDATE app_private.hermes_capabilities SET mode='read' WHERE capability='deposits.create_receipt'", 'dòng khoá riêng sai mode'],
+      [SALE_SHELL_OLD, 'vỏ Sale chưa có cổng (thân 20261021064112)'],
+      ['DROP FUNCTION public.hermes_sale_actions_v1(jsonb,text,jsonb)', 'vỏ Sale vắng'],
+    ]) await inCase(async () => {
+      await db.exec(setup);
+      await refused(plain(FORWARD.expense), 'hermes_expense_activation_sale_deposit_gate_missing');
+      assert.deepEqual(await enabledActionKeys(), Object.keys(PROD_REGISTRY).filter(key => PROD_REGISTRY[key]).sort(), `${label}: không khoá nào bật`);
+      for (const page of ['contract', 'invoice', 'task']) {
+        await db.exec('SAVEPOINT other_page');
+        await db.exec(plain(FORWARD[page]));
+        await db.exec('ROLLBACK TO SAVEPOINT other_page');
+      }
+    });
+    await inCase(async () => {
+      await db.exec(plain(FORWARD.expense));
+      for (const key of pageKeys('expense')) assert.equal((await registry())[key], true, key);
+      assert.equal((await registry())['deposits.create_receipt'], false, 'file TC không đụng khoá riêng của Sale');
+    });
+  });
+
   await t.test('CV: dòng định kỳ có sẵn khác bản đã duyệt ⇒ dừng, không nhận im lặng (ON CONFLICT giữ dòng cũ)', async () => {
     for (const [action, column, value] of [['task.recurring_pause', 'confirm', 'never'], ['task.recurring_delete', 'capability', 'tasks.edit'],
       ['task.recurring_create', 'private_only', false]]) await inCase(async () => {
@@ -361,7 +399,7 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
     });
   });
 
-  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả ba rồi lùi cả ba ⇒ về đúng production 28/10', async () => {
+  await t.test('file nguyên văn (BEGIN / COMMIT / NOTIFY): bật cả bốn rồi lùi cả bốn ⇒ về đúng production 28/10', async () => {
     for (const page of Object.keys(PAGES)) await db.exec(FORWARD[page]);
     assert.deepEqual((await enabledActionKeys()).filter(key => !BASE.registry[key]).sort(),
       Object.keys(PAGES).flatMap(pageKeys).filter(key => !BASE.registry[key]).sort());

@@ -12,6 +12,7 @@ import { CONFIRM_INVALID_DETAILS, isRequestIdShapeDetail, requestIdShapeDetail }
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
 import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
+import { CONTRACT_NOTICE_CANCEL } from './contract-action-contract.mjs';
 
 // Vòng đời một lệnh ghi qua broker thật (NEN-CHUNG-THAO-TAC-GHI.md mục 3): needs_input là kết quả thường, sàn xác nhận
 // cho money, requestId do connector cấp, token một lần gắn nội dung, lượt 2 gửi bản đã giải + basis của lượt 1,
@@ -77,6 +78,18 @@ test('thiếu/sai đầu vào là KẾT QUẢ needs_input (không phải lỗi),
   assert.equal(wrong.reason, 'invalid_params');
   assert.deepEqual(env.requests, []);
   assert.ok(env.audits.every(event => event.outcome === 'prepared'), 'không có dòng denied nào');
+});
+
+test('invalid_params do GIÁ TRỊ người dùng nói (lý do "đổi ý" < 8 ký tự, thao tác ghi thẳng) ⇒ hướng dẫn hỏi lại, không tự viết thêm; không gọi CRM', async t => {
+  // Review #369: contract.notice_cancel có chính sách never ⇒ lý do bot tự viết thêm vào thẳng CRM (trái SOUL dòng 22).
+  const env = setup(t, { action: ['contracts.terminate'], respond: APPLIED,
+    catalog: createActionCatalog([CONTRACT_NOTICE_CANCEL], { keys: ['contracts.terminate'] }) });
+  const short = await env.call('crm_action_run', { action: 'contract.notice_cancel', params: { buildingName: 'Toà A', roomName: '101', reason: 'đổi ý' } });
+  assert.deepEqual([short.outcome, short.reason, short.applied], ['needs_input', 'invalid_params', false]);
+  assert.match(short.detail, /^Thiếu hoặc sai: reason \(/);
+  assert.match(short.huongDan, /giá trị người dùng nói \(lý do, nội dung, SĐT, số tiền…\) chưa đạt khuôn hoặc còn thiếu ⇒ hỏi lại người dùng, không tự viết thêm/);
+  assert.match(short.huongDan, /Chỉ tự sửa phần do bot chọn/);
+  assert.deepEqual(env.requests, [], 'không gửi gì xuống CRM');
 });
 
 test('money: lượt 1 luôn xem trước (requestId do connector cấp) ⇒ lượt 2 gửi đúng bản đã giải + basis của lượt 1; token một lần', async t => {
