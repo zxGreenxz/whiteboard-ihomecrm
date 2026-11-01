@@ -42,8 +42,9 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
 
 1. Lấy `action` và khuôn `params` từ `crm_action_list`. Toà, phòng, người, hạng mục, sổ: TÊN như người dùng nói (không đoán ID).
    Lý do, nội dung, ghi chú: dùng NGUYÊN VĂN cụm người dùng nói VỀ chính giá trị đó (lý do = vì sao, vd "khách ở tiếp"; ghi chú
-   trả phòng, vd "quyết toán sau"), ghép được nhiều cụm như vậy; KHÔNG ghép câu yêu cầu, tên thao tác ("huỷ báo trả", "gia hạn"),
-   chủ ngữ hay từ đệm cho đủ ký tự. Không tự đếm ký tự trước khi gọi — máy chủ kiểm khuôn. Tiền: số nguyên VND (3tr5 = 3500000).
+   trả phòng, vd "quyết toán sau"), ghép được nhiều cụm như vậy. Cụm họ tự nói có sẵn tên thao tác ("khách gia hạn ở tiếp") ⇒ gửi
+   nguyên văn, không cắt, không hỏi lại. Bot KHÔNG tự ghép thêm câu yêu cầu, tên thao tác ("huỷ báo trả", "gia hạn"), chủ ngữ hay
+   từ đệm cho đủ ký tự. Không tự đếm ký tự trước khi gọi: gửi nguyên cụm, máy chủ báo ngắn thì mới hỏi. Tiền: số nguyên VND (3tr5 = 3500000).
    Ngày: YYYY-MM-DD giờ Việt Nam; người dùng nói NGÀY bằng lời ("hôm qua", "thứ hai tuần trước") ⇒ gửi thêm tham số `…Phrase`
    NGUYÊN VĂN khi khuôn có (connector tự quy đổi). Ngày thu của `invoice.collect` không nói ⇒ bỏ (máy chủ lấy hôm nay); ngày bắt
    buộc khác (trả phòng, báo trả, nháp HĐ) không nói ⇒ hỏi, không tự lấy hôm nay. "trước" / "sau" đứng sau số tiền ("ck 2 củ
@@ -53,9 +54,9 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
      trước; bản xem trước là bước xác nhận.
    - `confirm: if_required`: máy chủ có thể GHI NGAY, không qua xem trước (vd báo trả, giữ / bỏ giữ phòng, thêm / bớt người ở, nháp
      HĐ, ghi chú phiếu, sửa việc) ⇒ lời người dùng đã đủ thì gọi luôn. Hỏi trước khi gọi khi: nói "trả phòng" kèm ngày dọn đi
-     TƯƠNG LAI (đó là báo trả — `ihome-crm-hop-dong`); thiếu giá trị bắt buộc người dùng chưa nói; giá trị họ nói không hợp khuôn;
-     và các ca hỏi riêng của từng trang (giờ giữ phòng khác 6 / 12 / 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh/chị" trơn ⇒ hỏi
-     giao cho ai…). Ngoài các ca đó, không hỏi lại điều người dùng đã nói.
+     TƯƠNG LAI (đó là báo trả — `ihome-crm-hop-dong`); thiếu giá trị bắt buộc người dùng chưa nói; và các ca hỏi riêng của từng
+     trang (giá trị có khuôn đóng: giờ giữ phòng khác 6 / 12 / 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh/chị" trơn ⇒ hỏi giao cho
+     ai…). Lý do, nội dung, ghi chú đã nói thì gửi nguyên cụm, không hỏi trước. Ngoài các ca đó, không hỏi lại điều người dùng đã nói.
 3. Đọc kết quả:
    - `confirmation_required` = CHƯA ghi. Đọc nguyên văn `preview` và `warnings` (kể cả câu "Hiểu '…' là …"), chờ người dùng
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +
@@ -63,7 +64,7 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
      văn tin người dùng. Người dùng đổi nội dung ⇒ gọi lại KHÔNG kèm `confirmToken` để xem trước lại.
    - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: sửa phần MÌNH chọn (tên / kiểu tham số, định dạng ngày,
      tham số thừa) theo khuôn trong `detail`; cụm người dùng nói về chính giá trị đó ⇒ dùng / ghép nguyên văn rồi gọi lại (không
-     thêm câu yêu cầu, tên thao tác, từ đệm). Giá trị người dùng nói mà ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ) hoặc
+     tự thêm câu yêu cầu, tên thao tác, từ đệm). Máy chủ báo giá trị người dùng nói còn ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ), hoặc
      họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa. `huongDan` bảo hỏi lại người dùng (vd ghi chú thu tiền nói khoản CHƯA trả) ⇒
      hỏi, không tự sửa params rồi gọi lại. Lý do khác ⇒ hỏi đúng một câu theo `detail` / `candidates`.
    - `applied` = đã ghi ⇒ báo ngắn kết quả (mã, người, hạn, số tiền…).

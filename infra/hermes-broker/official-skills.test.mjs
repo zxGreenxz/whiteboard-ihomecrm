@@ -139,8 +139,8 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
   // Skill nói đúng huongDan invalid_params của máy chủ: sửa phần mình chọn; giá trị có trong lời người dùng ⇒ dùng / ghép nguyên văn;
   // lời không đủ (lý do chỉ "đổi ý") ⇒ hỏi lại, không bịa.
   assert.match(core, /sửa phần MÌNH chọn \(tên \/ kiểu tham số, định dạng ngày,\s+tham số thừa\)/);
-  assert.match(core, /cụm người dùng nói về chính giá trị đó ⇒ dùng \/ ghép nguyên văn rồi gọi lại \(không\s+thêm câu yêu cầu, tên thao tác, từ đệm\)/);
-  assert.match(core, /Giá trị người dùng nói mà ngắn \/ sai khuôn \(vd lý do chỉ "đổi ý", giữ phòng 8 giờ\) hoặc\s+họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
+  assert.match(core, /cụm người dùng nói về chính giá trị đó ⇒ dùng \/ ghép nguyên văn rồi gọi lại \(không\s+tự thêm câu yêu cầu, tên thao tác, từ đệm\)/);
+  assert.match(core, /Máy chủ báo giá trị người dùng nói còn ngắn \/ sai khuôn \(vd lý do chỉ "đổi ý", giữ phòng 8 giờ\), hoặc\s+họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
   // confirm if_required + chính sách DB never ⇒ ghi ngay ở pha auto (action-runtime.mjs).
   assert.match(core, /`confirm: if_required`: máy chủ có thể GHI NGAY/);
   assert.match(core, /`confirm: always`[^\n]*luôn trả bản xem trước/);
@@ -153,14 +153,21 @@ test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người 
   const tasks = skillText(PAGE_SKILLS.task);
   assert.doesNotMatch(core, /ý còn mơ hồ thì hỏi/);
   assert.match(core, /Hỏi trước khi gọi khi: nói "trả phòng" kèm ngày dọn đi\s+TƯƠNG LAI/);
-  assert.match(core, /giá trị họ nói không hợp khuôn;\s+và các ca hỏi riêng của từng trang \(giờ giữ phòng khác 6 \/ 12 \/ 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh\/chị" trơn ⇒ hỏi\s+giao cho ai…\)/);
+  assert.match(core, /và các ca hỏi riêng của từng\s+trang \(giá trị có khuôn đóng: giờ giữ phòng khác 6 \/ 12 \/ 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh\/chị" trơn ⇒ hỏi giao cho\s+ai…\)/);
+  // Gốc HD-M02: bot tự đếm rồi hỏi. Lý do / nội dung / ghi chú không nằm trong nhóm "hỏi trước"; validator chặn trước SQL nên gọi vẫn an toàn.
+  assert.doesNotMatch(core, /giá trị họ nói không hợp khuôn/);
+  assert.match(core, /Lý do, nội dung, ghi chú đã nói thì gửi nguyên cụm, không hỏi trước/);
+  for (const [name, text] of [['hop-dong', contracts], ['thu-chi', skillText(PAGE_SKILLS.expense)]]) assert.doesNotMatch(text, /ngắn hơn khuôn/, name);
   assert.match(core, /Ngoài các ca đó, không hỏi lại điều người dùng đã nói/);
   assert.match(contracts, /N giờ khác ⇒ hỏi chọn mức gần nhất, không tự đổi/);
   assert.match(tasks, /"anh\/chị" đứng một mình là\s+mơ hồ ⇒ hỏi/);
   // Lý do / nội dung: chỉ cụm người dùng nói VỀ chính giá trị đó (lý do = vì sao); không ghép câu yêu cầu, tên thao tác, chủ ngữ, từ đệm.
   assert.match(core, /dùng NGUYÊN VĂN cụm người dùng nói VỀ chính giá trị đó \(lý do = vì sao, vd "khách ở tiếp"/);
-  assert.match(core, /KHÔNG ghép câu yêu cầu, tên thao tác \("huỷ báo trả", "gia hạn"\),\s+chủ ngữ hay từ đệm cho đủ ký tự/);
-  assert.match(core, /Không tự đếm ký tự trước khi gọi — máy chủ kiểm khuôn/);
+  assert.match(core, /Bot KHÔNG tự ghép thêm câu yêu cầu, tên thao tác \("huỷ báo trả", "gia hạn"\), chủ ngữ hay\s+từ đệm cho đủ ký tự/);
+  assert.match(core, /Không tự đếm ký tự trước khi gọi: gửi nguyên cụm, máy chủ báo ngắn thì mới hỏi/);
+  // HD-N23: lý do thật có sẵn tên thao tác ⇒ gửi nguyên văn; câu cấm chỉ nhằm việc bot tự ghép.
+  assert.match(core, /Cụm họ tự nói có sẵn tên thao tác \("khách gia hạn ở tiếp"\) ⇒ gửi\s+nguyên văn, không cắt, không hỏi lại/);
+  assert.match(contracts, /Cụm họ tự nói có sẵn chữ đó \("khách gia hạn ở tiếp"\) ⇒ gửi nguyên văn, không cắt, không hỏi\s+lại/);
   // Ngày mặc định hôm nay CHỈ cho ngày thu của invoice.collect; ngày bắt buộc khác (trả phòng, báo trả, nháp HĐ) ⇒ hỏi.
   assert.doesNotMatch(core, /không nói ngày ⇒ bỏ/);
   assert.match(core, /Ngày thu của `invoice\.collect` không nói ⇒ bỏ \(máy chủ lấy hôm nay\)/);
@@ -172,16 +179,18 @@ test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người 
   assert.match(core, /lời đồng ý chỉ xác nhận bản xem trước người\s+dùng đã thấy/);
   assert.match(core, /nói rõ việc nào ĐÃ ghi \(vd báo trả đã ghi thẳng trong cùng tin\) và việc nào CHƯA ghi — chỉ nói "em chưa ghi gì" khi\s+chưa ghi việc nào/);
   // notice_cancel (SOUL dòng 22, review #377): ba lý do cấm + không ghép câu yêu cầu / tên thao tác; "đổi ý" quá ngắn ⇒ hỏi.
-  assert.match(contracts, /KHÔNG dùng "theo yêu cầu", "huỷ\s+báo trả", "khách yêu cầu"; không ghép câu yêu cầu \("302 toà 80 huỷ báo trả"\), tên thao tác hay từ đệm cho đủ ký tự/);
-  assert.match(contracts, /chỉ nêu cụm ngắn hơn khuôn\s+\(vd "đổi ý"\) ⇒ hỏi "Khách huỷ báo trả vì sao ạ\?"/);
+  assert.match(contracts, /KHÔNG dùng "theo yêu cầu", "huỷ báo trả", "khách yêu\s+cầu"; bot không tự ghép câu yêu cầu \("302 toà 80 huỷ báo trả"\), tên thao tác hay từ đệm cho đủ ký tự/);
+  assert.match(contracts, /Chưa nêu ⇒ hỏi "Khách huỷ báo trả vì sao ạ\?"/);
+  // Đáp lại vẫn quá ngắn: không lặp câu hỏi cũ, nói rõ cần chi tiết hơn.
+  assert.match(contracts, /Đã nêu ⇒ gửi nguyên cụm, không tự đếm ký tự; máy chủ báo ngắn \(vd "đổi ý"\) ⇒ không lặp câu hỏi cũ, nói rõ cần chi tiết hơn\s+\("Khách đổi ý vì sao ạ\?"\)/);
   // Cùng luật ở các chỗ khác có lý do / nội dung: gia hạn, trả phòng, điều chỉnh hoá đơn, huỷ phiếu chi.
-  assert.match(contracts, /không ghép "gia hạn" hay câu yêu cầu cho đủ ký tự/);
+  assert.match(contracts, /bot chỉ không tự ghép "gia hạn" hay câu yêu cầu cho đủ ký tự/);
   assert.match(contracts, /câu yêu cầu\s+\("ghi nhận trả phòng giúp anh"\) không phải nội dung/);
   assert.match(invoices, /lời người dùng nêu VÌ SAO \("anh tính nhầm", "khách xin giảm"\) là lý do ⇒ `reason` nguyên\s+văn, không ghép câu yêu cầu hay tên thao tác cho đủ ký tự/);
   assert.doesNotMatch(invoices, /lời người dùng đã nói là lý do/);
   const expenses = skillText(PAGE_SKILLS.expense);
   assert.doesNotMatch(expenses, /luôn hỏi lý do/);
-  assert.match(expenses, /đã nêu vì sao ⇒ truyền nguyên văn; chưa nêu hoặc ngắn hơn khuôn\s+⇒ hỏi; không ghép "huỷ phiếu", câu yêu cầu hay từ đệm cho đủ ký tự/);
+  assert.match(expenses, /đã nêu vì sao ⇒ gửi nguyên cụm, không tự đếm ký tự; chưa nêu,\s+hoặc máy chủ báo ngắn ⇒ hỏi; bot không tự ghép "huỷ phiếu", câu yêu cầu hay từ đệm cho đủ ký tự/);
   // Ngày bắt buộc từng trang: không tự lấy hôm nay (báo trả, trả phòng, nháp HĐ). "Hôm nay" chỉ có ở ngày thu của invoice.collect.
   assert.match(contracts, /không nói ngày ⇒ hỏi, không tự lấy hôm nay/);
   assert.match(contracts, /hỏi một câu\s+gộp, không tự lấy hôm nay, không bịa note/);
