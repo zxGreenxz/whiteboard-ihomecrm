@@ -952,6 +952,17 @@
       ]
     },
     {
+      "id": "hermes-session-reset",
+      "$comment": "Plugin làm mới phiên 04:00: entrypoint node:test chạy unittest stdlib (Python >= 3.11, bash) và đỏ khi 0 test hoặc có skip.",
+      "sourcePaths": [
+        "infra/hermes-session-reset/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-session-reset/**/*.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-independent-connector",
       "sourcePaths": [
         "infra/hermes-broker/connector-maintenance.mjs",
@@ -2179,6 +2190,7 @@
         "infra/hermes-zalo-router/**/*.test.mjs",
         "infra/hermes-zalo-native/**/*.test.mjs",
         "infra/hermes-learning-audit/**/*.test.mjs",
+        "infra/hermes-session-reset/**/*.test.mjs",
         "worker/deploy/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
