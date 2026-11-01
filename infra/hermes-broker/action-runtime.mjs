@@ -167,10 +167,11 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       }
       plan.sqlParams = dated.params; plan.dateNotes = dated.notes;
       // C3j (collect-guard.mjs): lần thu mà ghi chú nói khoản đó CHƯA trả ⇒ hỏi lại, không gửi gì xuống SQL; tên sổ là nhãn ứng viên
-      // ("HKDHUY — thanh toán (TT)") ⇒ phần mã. Áp cho cả hai lượt (lượt đồng ý gửi y nguyên ⇒ cùng kết quả).
+      // ("HKDHUY — thanh toán (TT)") ⇒ phần mã. Áp cho cả hai lượt (lượt đồng ý gửi y nguyên ⇒ cùng kết quả). askUser (review #369):
+      // hướng dẫn "hỏi lại người dùng", không phải "tự sửa" của invalid_params — bot tự bỏ câu "chưa…" rồi gọi lại là ghi thu sai (TC-A03).
       const guarded = collectGuard(action.id, plan.sqlParams);
       if (guarded.unpaid !== null) {
-        plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: unpaidNoteDetail(guarded.unpaid) });
+        plan.immediate = needsInput({ action: action.id, reason: 'invalid_params', detail: unpaidNoteDetail(guarded.unpaid), askUser: true });
         return Object.freeze({});
       }
       plan.sqlParams = guarded.params;

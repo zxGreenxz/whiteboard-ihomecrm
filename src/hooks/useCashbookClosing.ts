@@ -106,6 +106,7 @@ export interface MonthlyClosingStatus {
 
 /** Mọi thứ đọc được đều đổi sau một lần chốt — gom một chỗ để khỏi sót. */
 const CLOSING_KEYS = [
+  ["cashbook-reopening"],
   ["cashbook-closings"],
   ["cashbook-closing-blockers"],
   ["cashbook-closing-monthly"],

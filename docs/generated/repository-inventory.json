@@ -1,25 +1,25 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1741,
-  "soFileDocBangFs": 453,
-  "tongLoiGoi": 1150,
-  "khongPhanLoaiDuoc": 513,
+  "tongSoFileTest": 1748,
+  "soFileDocBangFs": 457,
+  "tongLoiGoi": 1171,
+  "khongPhanLoaiDuoc": 523,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 63,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 65,
+      "soFile": 66,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 14,
+      "soFile": 16,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 188,
+      "soFile": 189,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -122,6 +122,15 @@
       "soGoi": 17,
       "loai": {},
       "khongPhanLoaiDuoc": 17
+    },
+    {
+      "file": "infra/hermes-broker/official-skills-deploy.test.mjs",
+      "soGoi": 16,
+      "loai": {
+        "manifest": 2,
+        "tai-lieu": 5
+      },
+      "khongPhanLoaiDuoc": 9
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -813,6 +822,14 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/official-skills.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "tai-lieu": 3
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -2281,6 +2298,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/cashbook-reopening-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/check-copilot-page-contracts.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -2899,6 +2922,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/custodianRestrictedVisibilityMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/customerCreditApplyGateMigration.test.ts",

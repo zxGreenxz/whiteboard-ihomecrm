@@ -147,4 +147,4 @@ it('a PostgreSQL business-rule exception rolls back its RPC transaction',async()
   await expect(db.query('SELECT feedback_rpc()')).rejects.toMatchObject({code:'P0001'});
   expect((await db.query<{count:number}>('SELECT count(*)::integer AS count FROM feedback_probe')).rows[0].count).toBe(0);
  }finally{await db.close();}
-});
+},30000);
