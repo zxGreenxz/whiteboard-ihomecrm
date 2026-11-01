@@ -233,3 +233,26 @@ test('Zalo queue uses fixed read/ACK functions and only ACK uncertainty is a wri
     await assert.rejects(lost.transport.call(op,{},lost),code(expected));
   }
 });
+
+test('học có kiểm duyệt: phạm vi learning chỉ gọi đúng hàm nạp, kiểm vai riêng; kho bền connector không gọi được hàm nạp', async () => {
+  const f = setup({ scope: 'learning' });
+  assert.deepEqual(await f.transport.call('ingestLearningProposals', { proposals: [] }, f), { status: 'ok' });
+  assert.match(f.calls[0].text, /g\.rolname = 'hermes_learning_ingest'\s+AND pg_catalog\.pg_has_role\(current_user, g\.oid, 'USAGE'\)\) AS scoped/);
+  assert.match(f.calls[0].text, /'supabase_admin','hermes_store_executor'\)/);
+  assert.doesNotMatch(f.calls[0].text, /pg_has_role\(current_user, 'hermes_store_executor', 'MEMBER'\) AS scoped/);
+  assert.equal(f.calls[1].text, 'SELECT app_private.hermes_store_learning_ingest_v1($1::jsonb) AS result');
+  for (const operation of ['activate', 'readConnection', 'claimPrivateCommand', 'pruneWorkMemories']) {
+    await assert.rejects(f.transport.call(operation, {}, f), code('invalid_store_request'));
+  }
+  assert.equal(f.calls.length, 2);
+  const executor = setup();
+  await assert.rejects(executor.transport.call('ingestLearningProposals', {}, executor), code('invalid_store_request'));
+  assert.equal(executor.calls.length, 0);
+  // Login nạp còn thuộc kho bền connector (privileged_member) hoặc không thuộc vai nạp (scoped=false) ⇒ từ chối trước khi gọi hàm.
+  for (const delta of [{ scoped: false }, { privileged_member: true }, { role: 'hermes_store_executor' }]) {
+    const refused = setup({ scope: 'learning', actor: { ...principal(), ...delta } });
+    await assert.rejects(refused.transport.call('ingestLearningProposals', {}, refused), code('store_principal_refused'));
+    assert.equal(refused.calls.length, 1);
+  }
+  for (const scope of ['', 'Learning', 'constructor', 'toString', null]) assert.throws(() => setup({ scope }));
+});

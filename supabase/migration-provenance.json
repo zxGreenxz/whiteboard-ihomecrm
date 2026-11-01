@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-01T00:10:30.405Z",
+  "generatedAt": "2026-11-01T06:50:10.979Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 921,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -13962,6 +13962,22 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql",
+      "version": "20261031041523",
+      "name": "hermes_learning_proposals_v1",
+      "scheme": "timestamp14",
+      "sha256": "a5e067843e3d805b182700f5a0542674fa3b8dab1ab23079c70001920231f673",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_learning_proposals",
+        "table:app_private.hermes_learning_audit_runs",
+        "function:app_private.hermes_learning_guard_v1",
+        "function:app_private.hermes_learning_proposal_json_v1",
+        "function:app_private.hermes_learning_admin_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261031061232_quan_ly_toa_quyen_lock_tam_phong.sql",
       "version": "20261031061232",
       "name": "quan_ly_toa_quyen_lock_tam_phong",
@@ -14008,6 +14024,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-31T12:53:39.793Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261101064441_hermes_store_learning_role.sql",
+      "version": "20261101064441",
+      "name": "hermes_store_learning_role",
+      "scheme": "timestamp14",
+      "sha256": "307958fd68e4d0a82fb4613022a42cdde517fbb492e3f086bc217c4058d29d2e",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {
