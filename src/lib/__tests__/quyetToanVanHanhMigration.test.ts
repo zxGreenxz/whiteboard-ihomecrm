@@ -710,7 +710,7 @@ describe("chốt tháng", () => {
     });
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
-      await expectLoi("SELECT public.landlord_settlement_close_v1($1, date_trunc('month', now())::date, 'x', null)", [TOA_A], "55000");
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, date_trunc('month', timezone('Asia/Ho_Chi_Minh', now()))::date, 'x', null)", [TOA_A], "55000");
     });
   });
 

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 2,
+  "name": "ihome-session-reset",
+  "label": "Làm mới phiên hằng ngày",
+  "kind": "standalone",
+  "version": "1.0.0",
+  "author": "iHome",
+  "description": "Làm mới phiên gateway (chat 1-1 và nhóm, mọi platform) tại một mốc giờ mỗi ngày, mặc định 04:00 Asia/Ho_Chi_Minh, đi đúng đường /new của lõi. Tin đầu tiên sau mốc mở phiên mới; phiên đang chạy dở không bị đụng.",
+  "provides_hooks": ["pre_gateway_dispatch"],
+  "config_schema": {
+    "mode": {
+      "type": "str",
+      "default": "daily",
+      "choices": ["daily", "observe", "off"],
+      "label": "Chế độ",
+      "description": "daily: làm mới thật; observe: chỉ ghi log/sổ việc sẽ làm; off: tắt (đổi là có hiệu lực ở tin kế tiếp)."
+    },
+    "at": {
+      "type": "str",
+      "default": "04:00",
+      "label": "Mốc giờ",
+      "description": "HH:MM theo múi giờ bên dưới; trong YAML ghi trong ngoặc kép, vd. \"04:00\"."
+    },
+    "timezone": {
+      "type": "str",
+      "default": "Asia/Ho_Chi_Minh",
+      "label": "Múi giờ",
+      "description": "Tên IANA (Asia/Ho_Chi_Minh) hoặc độ lệch (+07:00); không theo giờ của container."
+    },
+    "applies_to": {
+      "type": "list",
+      "default": ["dm", "group"],
+      "label": "Loại chat",
+      "description": "dm (1-1), group (nhóm, kênh, thread) hoặc all."
+    },
+    "process_max_age_hours": {
+      "type": "number",
+      "default": 4,
+      "label": "Tuổi tối đa của tiến trình nền chặn làm mới (giờ)",
+      "description": "Tiến trình nền của phiên cũ chạy lâu hơn số giờ này thì không còn hoãn việc làm mới (0 < giờ ≤ 168)."
+    }
+  }
+}
