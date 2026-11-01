@@ -4,6 +4,7 @@
   "readFastPath": false,
   "roomRead": "legacy",
   "actionProbe": false,
+  "actionPages": [],
   "supabase": {
     "url": "https://abcdefghijklmnopqrst.supabase.co",
     "publishableKey": "sb_publishable_replace_with_project_publishable_key"

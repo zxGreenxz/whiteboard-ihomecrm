@@ -22,7 +22,7 @@ async function fixture(t, { native = false } = {}) {
     t.mock.method(fs, 'open', async (name, flags, mode) => {
       const info = await fs.lstat(name).catch(() => null);
       if (info?.isDirectory() && flags === (constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0))) {
-        return { stat: () => fs.lstat(name), sync: async () => {}, close: async () => {} };
+        return { stat: options => fs.lstat(name, options), sync: async () => {}, close: async () => {} };
       }
       return open(name, flags, mode);
     });
@@ -64,6 +64,42 @@ test('changed lock content or inode is retained and release is never retried', a
     const result = lock.release(); await assert.rejects(result, /host_lock_retained/); assert.equal(lock.release(), result);
     assert.ok(await fs.stat(filename)); await assert.rejects(acquireHostOwnership({ stateRoot: root }), /host_already_owned/);
   }
+});
+
+for (const kind of ['lock', 'audit']) test(`${kind} rejects distinct file IDs that round to the same Number`, async t => {
+  const root = await fixture(t), filename = path.join(root, kind === 'lock' ? '.hermes-host.lock' : 'broker-audit.jsonl');
+  const firstId = 2n ** 53n, replacementId = firstId + 1n;
+  assert.equal(Number(firstId), Number(replacementId));
+  let replaced = false;
+  const identity = (info, options, replacement) => {
+    info.ino = options?.bigint ? (replacement ? replacementId : firstId) : Number(replacement ? replacementId : firstId);
+    return info;
+  };
+  const lstat = fs.lstat.bind(fs);
+  t.mock.method(fs, 'lstat', async (name, options) => {
+    const info = await lstat(name, options);
+    return name === filename ? identity(info, options, replaced) : info;
+  });
+  wrapOpen(t, (handle, [name]) => {
+    if (name === filename) {
+      const stat = handle.stat.bind(handle), replacement = replaced;
+      handle.stat = async options => identity(await stat(options), options, replacement);
+    }
+    return handle;
+  });
+  const owner = kind === 'lock' ? await acquireHostOwnership({ stateRoot: root }) : createHostAudit({ directory: root });
+  if (kind === 'audit') await owner.write(EVENT);
+  const before = await fs.readFile(filename);
+  await fs.rename(filename, filename + '.old');
+  await fs.writeFile(filename, before, { mode: 0o600 });
+  replaced = true;
+  if (kind === 'lock') await assert.rejects(owner.release(), /host_lock_retained/);
+  else {
+    await assert.rejects(owner.write(EVENT), /host_audit_changed/);
+    await assert.rejects(owner.close(), /host_audit_changed/);
+  }
+  assert.deepEqual(await fs.readFile(filename), before);
+  assert.deepEqual(await fs.readFile(filename + '.old'), before);
 });
 
 test('unknown acquire sync failure leaves a crash lock rather than undoing possibly durable ownership', async t => {

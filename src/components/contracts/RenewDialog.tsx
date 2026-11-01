@@ -29,6 +29,7 @@ import type { RenewFormData } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
 import { useRenewContract } from "@/hooks/useContractOperations";
 import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
+import { fetchRenewalEndDate, RENEWAL_QUICK_MONTHS } from '@/lib/contractRenewalEndDate';
 
 interface RenewDialogProps {
   open: boolean;
@@ -40,6 +41,9 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
   const renewContract = useRenewContract();
   const [noticeChoice,setNoticeChoice]=useState<''|'KEEP'|'CANCEL'>('');
   const noticeRequest=useRef<{intent:string;id:string}|null>(null);
+  // Gia hạn nhanh: ngày mới do hàm SQL dùng chung tính (cùng luật với trợ lý Hermes), người dùng vẫn sửa được ô ngày.
+  const [quickMonths,setQuickMonths]=useState<number|null>(null);
+  const [quickError,setQuickError]=useState<string|null>(null);
 
   const form = useForm<RenewFormData>({
     resolver: zodResolver(renewFormSchema),
@@ -80,6 +84,14 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
         },
       }
     );
+  };
+
+  const pickQuickMonths=async(months:number)=>{
+    if(!contract.end_date)return;
+    setQuickMonths(months);setQuickError(null);
+    try{form.setValue('new_end_date',await fetchRenewalEndDate(contract.end_date,months),{shouldValidate:true,shouldDirty:true});}
+    catch{setQuickError('Chưa tính được ngày mới, hãy chọn ngày bằng tay.');}
+    finally{setQuickMonths(null);}
   };
 
   // Format current end date for display
@@ -124,6 +136,17 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
                       name={field.name}
                     />
                   </FormControl>
+                  <div className="flex flex-wrap gap-2">
+                    {RENEWAL_QUICK_MONTHS.map(months=>(
+                      <Button key={months} type="button" variant="outline" size="sm"
+                        disabled={quickMonths!==null||renewContract.isPending||!contract.end_date}
+                        onClick={()=>{void pickQuickMonths(months);}}>
+                        {quickMonths===months&&<Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                        +{months} tháng
+                      </Button>
+                    ))}
+                  </div>
+                  {quickError&&<p className="text-sm text-destructive">{quickError}</p>}
                   <FormMessage />
                 </FormItem>
               )}

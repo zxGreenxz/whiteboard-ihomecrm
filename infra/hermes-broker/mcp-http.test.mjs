@@ -3,9 +3,11 @@ import test from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { createFixtureBroker } from './fixture.mjs';
 import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
-import { BrokerError } from './broker.mjs';
+import { BrokerError, actionRejected } from './broker.mjs';
+import { ACTION_REASONS } from './action-reasons.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT } from './read-misuse-hints.mjs';
+import { CONFIRM_INVALID_TEXTS, requestIdShapeDetail } from './action-contract.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -139,6 +141,29 @@ test('read_name_unresolved forwards its detail string to the model and nothing e
   assert.deepEqual(await invoke(), { error: 'read_name_unresolved' });
 });
 
+// CV12 (Công việc Mốc 3): a write refusal may carry a relative web link to the very object (e.g. a job with materials that only the
+// web can cancel). Only the closed reason + its static text + a link of the relative-path shape reach the model.
+test('action_rejected forwards reason, static detail and a relative web link only', async t => {
+  let problem = null;
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw problem; } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const invoke = async () => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}` }, body: JSON.stringify(call('crm_action_run', { action: 'task.cancel' })) });
+    const body = await response.json(); assert.equal(response.status, 200); assert.equal(body.result.isError, true);
+    return JSON.parse(body.result.content[0].text);
+  };
+  const link = '/tasks?job=00000000-0000-4000-8000-000000000009';
+  problem = actionRejected('cancel_blocked', link);
+  assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cancel_blocked', detail: ACTION_REASONS.cancel_blocked.text, link });
+  for (const bad of ['https://example.invalid/x', '//example.invalid', '/tasks?job=1 OR 1=1', 42]) {
+    problem = Object.assign(actionRejected('cancel_blocked'), { link: bad });
+    assert.deepEqual(await invoke(), { error: 'action_rejected', reason: 'cancel_blocked', detail: ACTION_REASONS.cancel_blocked.text }, String(bad));
+  }
+  assert.equal(actionRejected('task_not_open', 'https://example.invalid').link, undefined, 'actionRejected bỏ link sai khuôn');
+});
+
 // R2b (21/10): a read tool called the wrong way gets invalid_request with ONE of the static routing hints of
 // read-misuse-hints.mjs as detail (it names the right tool/parameter, never data). Only those strings pass: any other
 // detail on invalid_request — a programming slip, a message carrying arguments — is dropped, and the code is unchanged.
@@ -157,6 +182,22 @@ test('invalid_request forwards only a static read-misuse hint as detail, nothing
     problem = Object.assign(new BrokerError('invalid_request'), { detail: hint, args: { query: 'PRIVATE' } });
     assert.deepEqual(await invoke('crm_read_contracts', { fromDate: '2026-10-21' }), { error: 'invalid_request', detail: hint });
   }
+  // Thu chi lượt 14: confirmation_invalid chỉ mang một câu tĩnh của CONFIRM_INVALID_TEXTS (phần nào lệch); chuỗi khác — kể cả câu đọc — không tới.
+  for (const text of CONFIRM_INVALID_TEXTS) {
+    problem = Object.assign(new BrokerError('confirmation_invalid'), { detail: text });
+    assert.deepEqual(await invoke('crm_action_run', {}), { error: 'confirmation_invalid', detail: text });
+  }
+  for (const detail of ['requestId PRIVATE khác', READ_MISUSE_HINTS.contracts.hint, null]) {
+    problem = Object.assign(new BrokerError('confirmation_invalid'), { detail });
+    assert.deepEqual(await invoke('crm_action_run', {}), { error: 'confirmation_invalid' }, JSON.stringify(detail));
+  }
+  // Thu chi lượt 16: invalid_request của requestId sai khuôn mang đúng câu dựng bằng requestIdShapeDetail (số ký tự, không chuỗi đã gửi).
+  for (const length of [35, 0, null]) {
+    problem = Object.assign(new BrokerError('invalid_request'), { detail: requestIdShapeDetail(length) });
+    assert.deepEqual(await invoke('crm_action_status', {}), { error: 'invalid_request', detail: requestIdShapeDetail(length) });
+  }
+  problem = Object.assign(new BrokerError('invalid_request'), { detail: `${requestIdShapeDetail(35)} PRIVATE` });
+  assert.deepEqual(await invoke('crm_action_status', {}), { error: 'invalid_request' });
   assert.ok(READ_MISUSE_HINT_TEXTS.includes(READ_MISUSE_HINTS.pending_approvals.hint) && READ_MISUSE_HINT_TEXTS.includes(BUILDING_ID_HINT));
   for (const detail of [`${READ_MISUSE_HINTS.contracts.hint} PRIVATE`, 'buildingId PRIVATE không hợp lệ', '', { hint: READ_MISUSE_HINTS.contracts.hint }, null]) {
     problem = Object.assign(new BrokerError('invalid_request'), { detail });

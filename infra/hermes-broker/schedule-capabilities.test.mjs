@@ -116,7 +116,8 @@ test('shared broker discovers only granted domain reads and keeps final SQL afte
   const identity={row:{id:CONNECTION,assistantId:MEMBER,userId:USER,organizationId:ORG,expiresAt:Date.now()+600000,epoch:1,state:'active',restrictions:{read:['contracts.view'],action:[]}},effective:{read:['contracts.view'],action:[]},isSuperadmin:false,policyEpoch:'a'.repeat(64),contextVersion:'b'.repeat(64),assistantScopeIds:[],scopesByPermission:{'contracts.view':{buildingIds:[],cashbookIds:[]}}};
   const broker=createBroker({authority:{identifyConnection:async()=>({connectionId:CONNECTION}),resolve:async()=>identity,checkUnchanged:async()=>{}},dependencyScope:scope,audit:async()=>events.push('audit'),
     domains:{prepareDomain:async(_t,operation)=>{assert.equal(operation,'contracts');events.push('prepare');return Object.freeze({});},finalizeDomain:async()=>{events.push('sql');return {organizationId:ORG,domain:'contracts',items:[],nextCursor:null};}}});
-  const token='hc_'+'A'.repeat(43);assert.deepEqual((await broker.listTools(token)).tools.map(t=>t.name),['crm_read_contracts','crm_read_contract_detail','crm_read_contract_search']);events.length=0;
+  // contracts.view là khoá dùng lại của sổ báo cáo W2 (Hợp đồng Đợt 2 Mốc 3) ⇒ hai tool báo cáo cũng hiện.
+  const token='hc_'+'A'.repeat(43);assert.deepEqual((await broker.listTools(token)).tools.map(t=>t.name),['crm_read_contracts','crm_read_contract_detail','crm_read_contract_search','crm_read_report_list','crm_read_report']);events.length=0;
   const result=await broker.callTool(token,'crm_read_contracts',{});assert.equal(result.isError,false);assert.deepEqual(events,['prepare','audit','sql']);
   await assert.rejects(broker.callTool(token,'crm_read_invoices',{}),/tool_not_available/);
 });

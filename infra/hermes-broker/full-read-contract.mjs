@@ -7,6 +7,8 @@
 // bản tin nhóm Zalo đi đường khác (room-read-projection) và giữ lọc công khai.
 // Module độc lập (không import domain-contract) để tránh vòng import.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+// Đường trang công khai của HĐ trên web (/c/:code, contracts.public_code 6–8 ký tự; src/app/routes/publicRoutes.tsx).
+export const PUBLIC_PATH = /^\/c\/[A-Za-z0-9]{6,8}$/;
 const fail = () => { throw new TypeError('invalid_full_read_contract'); };
 const record = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value)) &&
   Reflect.ownKeys(value).every(key => typeof key === 'string' && Object.getOwnPropertyDescriptor(value, key)?.enumerable === true &&
@@ -60,6 +62,9 @@ export const CONTRACT_DETAIL_FIELDS = Object.freeze({ id, number: nullable(longT
   rentPrice: amount, paymentCycle: nullable(code), totalDeposit: amount, depositPaid: amount, depositRemaining: amount, depositDebtMode: nullable(code),
   depositDebtReason: nullable(longText(500)), depositTopupDueDate: nullable(date), initialElectricityReading: nullable(amount),
   initialWaterReading: nullable(amount), notes: nullable(longText(2000)), parentContractId: nullable(id),
+  // Lượt 11 (D-HĐ9, 20261024040003): đường tương đối link công khai của HĐ như nút QR của web ('/c/<public_code>'; null khi đã thanh lý /
+  // nháp). Vắng = SQL chưa áp (connector lên trước) ⇒ null. domain-mount ghép origin host (publicWebOrigin) thành publicLink.
+  publicPath: nullable(value => typeof value === 'string' && PUBLIC_PATH.test(value)),
   tenantsVisible: bool, tenants: list(10, TENANT), services: list(50, SERVICE) });
 // The CRM building scope supplied earlier also fences output. Closed (P3-8): a row that names
 // a building is refused when the snapshot holds no scope for the key that granted it.
@@ -69,11 +74,13 @@ function inScope(identity, permission, buildingIds) {
 }
 // fences: [[khoá, toà của mục]] — mỗi phần chỉ được nằm trong phạm vi CRM của đúng khoá
 // đã cấp nó (người ở ⇐ customers.view, hợp đồng ⇐ contracts.view, như embed của web).
-const detail = (key, fields, fences, hidden) => (value, identity, input) => {
+// tolerant: khoá mới thêm mà SQL cũ chưa trả (một bản phát hành) — vắng ⇒ null; có mặt ⇒ kiểm như mọi khoá; khoá lạ vẫn bị từ chối.
+const detail = (key, fields, fences, hidden, tolerant = []) => (value, identity, input) => {
   if (value.item === null) return { item: null };
-  if (!shaped(value.item, fields) || value.item.id !== input[key] || hidden(value.item) ||
-      fences(value.item).some(([permission, buildings]) => !inScope(identity, permission, buildings))) fail();
-  return { item: structuredClone(value.item) };
+  const item = record(value.item) ? { ...Object.fromEntries(tolerant.map(name => [name, null])), ...value.item } : value.item;
+  if (!shaped(item, fields) || item.id !== input[key] || hidden(item) ||
+      fences(item).some(([permission, buildings]) => !inScope(identity, permission, buildings))) fail();
+  return { item: structuredClone(item) };
 };
 const define = (permission, name, description, options) => Object.freeze({ family: 'v3', permission, label: description, description, fields: Object.freeze({}),
   statuses: Object.freeze([]), dated: false, requiresDates: false, perBuilding: false, source: null, ...options, toolName: name });
@@ -218,9 +225,9 @@ export const FULL_READS = Object.freeze({
       result: detail('customerId', CUSTOMER_DETAIL_FIELDS, item => [['contracts.view', item.contracts.map(row => row.buildingId)]],
         item => !item.contractsVisible && item.contracts.length > 0) }),
   contract_detail: define('contracts.view', 'crm_read_contract_detail',
-    `Chi tiết MỘT hợp đồng như /contracts/:id: điều khoản, ngày, kỳ tính tiền, giá thuê, cọc/nợ cọc, chỉ số đầu, ghi chú, dịch vụ; người ở (≤10: SĐT, CCCD…) khi có quyền khách hàng (tenantsVisible). Không file HĐ/ảnh CCCD. contractId từ crm_read_contracts/crm_read_contract_search; item=null: ngoài phạm vi. ${PRIVATE_HINT}`,
+    `Chi tiết MỘT hợp đồng như /contracts/:id: điều khoản, ngày, kỳ tính tiền, giá thuê, cọc/nợ cọc, chỉ số đầu, ghi chú, dịch vụ; người ở (≤10: SĐT, CCCD…) khi có quyền khách hàng (tenantsVisible); publicLink = link công khai như QR web (null: đã thanh lý/nháp). Không file HĐ/ảnh CCCD. contractId từ crm_read_contracts/crm_read_contract_search; item=null: ngoài phạm vi. ${PRIVATE_HINT}`,
     { input: detailInput('contractId'), inputSchema: detailSchema('contractId'), resultKeys: DETAIL_RESULT,
       result: detail('contractId', CONTRACT_DETAIL_FIELDS, item => [['contracts.view', [item.buildingId]], ...(item.tenantsVisible ? [['customers.view', [item.buildingId]]] : [])],
-        item => !item.tenantsVisible && item.tenants.length > 0) }),
+        item => !item.tenantsVisible && item.tenants.length > 0, ['publicPath']) }),
   ...REPORT_READS,
 });

@@ -1,0 +1,19 @@
+{
+  "$comment": "Vector dùng chung cho public.contract_renewal_end_date_v1 (20261022042822): ngày cuối tháng giữ cuối tháng, còn lại giữ số ngày (kẹp cuối tháng). Dữ liệu giả.",
+  "cases": [
+    { "endDate": "2027-02-28", "months": 6, "expected": "2027-08-31", "note": "cuối tháng 2 ⇒ cuối tháng 8" },
+    { "endDate": "2026-09-30", "months": 1, "expected": "2026-10-31", "note": "30/09 là cuối tháng ⇒ 31/10" },
+    { "endDate": "2026-08-31", "months": 6, "expected": "2027-02-28", "note": "cuối tháng ⇒ cuối tháng 2 năm thường" },
+    { "endDate": "2027-08-31", "months": 6, "expected": "2028-02-29", "note": "cuối tháng ⇒ 29/02 năm nhuận" },
+    { "endDate": "2026-12-31", "months": 12, "expected": "2027-12-31", "note": "12 tháng, cuối năm" },
+    { "endDate": "2027-03-15", "months": 6, "expected": "2027-09-15", "note": "giữa tháng giữ số ngày" },
+    { "endDate": "2027-01-30", "months": 1, "expected": "2027-02-28", "note": "30/01 không phải cuối tháng ⇒ kẹp 28/02" },
+    { "endDate": "2028-01-30", "months": 1, "expected": "2028-02-29", "note": "kẹp 29/02 năm nhuận" },
+    { "endDate": "2027-01-31", "months": 1, "expected": "2027-02-28", "note": "cuối tháng 1 ⇒ cuối tháng 2" },
+    { "endDate": "2026-10-01", "months": 5, "expected": "2027-03-01", "note": "ngày 1 giữ ngày 1" },
+    { "endDate": "2026-11-29", "months": 3, "expected": "2027-02-28", "note": "29/11 ⇒ kẹp 28/02" },
+    { "endDate": "2026-04-30", "months": 60, "expected": "2031-04-30", "note": "60 tháng, cuối tháng 4 ⇒ cuối tháng 4" },
+    { "endDate": "2027-02-28", "months": 0, "expected": null, "note": "0 tháng ⇒ NULL" },
+    { "endDate": "2027-02-28", "months": 121, "expected": null, "note": "quá 120 tháng ⇒ NULL" }
+  ]
+}

@@ -30,6 +30,7 @@ import {
   type ComposeContext,
   type DraftState,
 } from "@/lib/quickEntry/compose";
+import { composeWithSuggestions, noSuggestion } from "@/lib/quickEntry/sharedRules";
 import { validateDraft, type DraftMode } from "@/lib/quickEntry/draft";
 import { classifyAiError, type AiErrorView } from "@/lib/quickEntry/errors";
 import { deserializeCards, draftsKey, otherUsersKeys, serializeCards } from "@/lib/quickEntry/feedStorage";
@@ -458,7 +459,17 @@ export function useQuickEntryFeed(opts: {
     personalWalletId:(refs.personalWallets??[]).find(w=>w.is_default)?.id??null,
     newId: () => crypto.randomUUID(),
     defaultAccountFor: refs.defaultAccountFor,
+    // Gợi ý hạng mục chỉ có trong composeShared (một lần gọi hàm SQL cho cả lô); AI bổ sung không gợi ý lại.
+    suggestCategory: noSuggestion,
   });
+
+  /** Ghép thẻ với gợi ý hạng mục của ie_category_suggest_v1 (dùng chung với Hermes). RPC lỗi (ném ngay hay trả lỗi) ⇒ ghép
+   *  không gợi ý (AI / người dùng chọn hạng mục), không chặn tin. */
+  const composeShared = <T>(ctx: ComposeContext, run: (c: ComposeContext) => T): Promise<T> =>
+    composeWithSuggestions(
+      (suggest) => run({ ...ctx, suggestCategory: suggest }),
+      (requests) => Promise.resolve().then(() => refs.suggestCategories(requests)).catch(() => new Map()),
+    );
 
   const promptCategories = (ctx: ComposeContext): PromptCategory[] =>
     ctx.categories.map((c) => ({ name: c.name, type:c.type==='income'?'INCOME':'EXPENSE', group: c.category, note: c.description, keywords: c.keywords }));
@@ -518,7 +529,8 @@ export function useQuickEntryFeed(opts: {
   const submitText = async (text: string, mode: DraftMode): Promise<void> => {
     if(!userId||scopeRef.current!==scope||mode==='company'&&!refs.canCompany||mode==='personal'&&!refs.canPersonal)return;
     const ctx = {...ctxFor(mode),sourceText:text};
-    const states = draftsFromText(text, ctx);
+    const states = await composeShared(ctx, (c) => draftsFromText(text, c));
+    if (scopeRef.current !== scope) return;
     const messageId = crypto.randomUUID();
     const mentionsBuilding =
       mode === "personal" && refs.canCompany && resolveBuildingRoom(text, refs.resolveRefs).building !== null;
@@ -646,7 +658,7 @@ export function useQuickEntryFeed(opts: {
       }
     }
 
-    const newCards: FeedCard[] = draftsFromBill(result, ctx).map(state=>({
+    const newCards: FeedCard[] = (await composeShared(ctx, (c) => draftsFromBill(result, c))).map(state=>({
       id: state.draft.id,
       state,
       status: { kind: "draft" },

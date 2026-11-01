@@ -1,8 +1,12 @@
 // Dữ liệu nền cho trang "Báo chi nhanh": quyền, toà/phòng (kèm tên thường gọi của toà cho bộ dò đọc bằng
 // lời), hạng mục chi dùng được, sổ quỹ đang giữ, mã khách hàng điện nước. Chỉ ghép các hook có sẵn. Phần
 // công ty chỉ tải khi người dùng có quyền lập phiếu chi (người chỉ có ví cá nhân không đụng dữ liệu thu chi).
+// Gợi ý hạng mục và sổ mặc định do hai hàm SQL dùng chung với Hermes tính (ie_category_suggest_v1,
+// ie_default_cashbook_v1 — sharedRules.ts); trình duyệt không còn bản luật riêng.
 
 import { useCallback, useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
@@ -14,7 +18,20 @@ import { useFeeAccounts } from "@/hooks/usePeriodFees";
 import { useUtilityAccounts } from "@/hooks/useUtilityBills";
 import { useBuildingCommonNames } from "@/hooks/useBuildingCommonNames";
 import { usableExpenseCategories, type CategoryRef } from "@/lib/quickEntry/categorySuggest";
-import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cashbook";
+import { expenseCashbooksForOrg } from "@/lib/quickEntry/cashbook";
+import {
+  SUGGEST_BATCH,
+  allowedCategoryIds,
+  cashbookKey,
+  chunks,
+  parseCashbookId,
+  parseSuggestions,
+  suggestKey,
+  type SuggestRequest,
+  type SuggestType,
+  type SuggestionMap,
+} from "@/lib/quickEntry/sharedRules";
+import type { CategorySuggestion } from "@/lib/quickEntry/categorySuggest";
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
 import { usePersonalFinance } from '@/hooks/personal-finance/usePersonalFinance';
 import { usePersonalFinancePermissions } from '@/hooks/personal-finance/usePersonalFinancePermissions';
@@ -130,25 +147,67 @@ export function useQuickEntryRefs(options?: {entrySource?:'personal_wallet'}) {
     };
   }, [buildings, rooms, feeQ.data, utilQ.meters, namesQ.data]);
 
-  const accounts = accountsQ.data;
+  // Sổ mặc định của thẻ: ie_default_cashbook_v1 cho từng toà trong phạm vi (≤ 1 lời gọi mỗi toà, nạp sẵn để thẻ chọn sổ
+  // đồng bộ như trước) và cho thẻ chưa có toà. Sổ nhớ ở máy (localStorage) đi vào khoá truy vấn: lưu phiếu bằng sổ khác thì
+  // lần sau tính lại. Lỗi ⇒ không chọn sẵn sổ (người dùng chọn tay), không chặn trang.
+  const lastUsed = lastAccount(orgId);
+  const buildingIds = useMemo(() => buildings.map((b) => b.id), [buildings]);
+  const cashbookIds = useMemo(() => cashbooks.map((c) => c.id), [cashbooks]);
+  const defaultsQ = useQuery({
+    queryKey: ["quick-entry", "default-cashbook", orgId, lastUsed, buildingIds, cashbookIds],
+    enabled: canCompany && !walletScoped && !!orgId && !!buildingsQ.data && !!cashbooksQ.data && !!accountsQ.data,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    queryFn: async (): Promise<ReadonlyMap<string, string | null>> => {
+      const usable = new Set(cashbookIds);
+      const keys: Array<string | null> = [null, ...buildingIds];
+      const rows = await Promise.all(keys.map(async (buildingId) => {
+        const { data, error } = await supabase.rpc("ie_default_cashbook_v1", {
+          p_organization_id: orgId as string,
+          ...(buildingId ? { p_building_id: buildingId } : {}),
+          ...(lastUsed ? { p_last_used: lastUsed } : {}),
+        });
+        if (error) throw error;
+        return [cashbookKey(buildingId), parseCashbookId(data, usable)] as const;
+      }));
+      return new Map(rows);
+    },
+  });
+  const defaults = defaultsQ.data;
   const defaultAccountFor = useCallback(
-    (buildingId: string | null) =>
-      walletScoped ? null : pickDefaultAccount({
-        buildingId,
-        usableIds: cashbooks.map((c) => c.id),
-        accounts: (accounts ?? []).map((a) => ({
-          id: a.id,
-          is_default: a.is_default,
-          quick_default_building_id: a.quick_default_building_id,
-        })),
-        lastUsedId: lastAccount(orgId),
-      }),
-    [cashbooks, accounts, orgId, walletScoped],
+    (buildingId: string | null) => (walletScoped ? null : defaults?.get(cashbookKey(buildingId)) ?? null),
+    [defaults, walletScoped],
   );
 
+  // Gợi ý hạng mục cho cả lô câu của một lần ghép thẻ (composeWithSuggestions): một lời gọi ie_category_suggest_v1 cho mỗi
+  // chiều thu/chi (≤ 100 câu mỗi lời gọi). Lỗi ⇒ ném; nơi gọi coi như không có gợi ý (AI / người dùng chọn).
+  const suggestCategories = useCallback(
+    async (requests: SuggestRequest[]): Promise<SuggestionMap> => {
+      const found = new Map<string, CategorySuggestion | null>();
+      if (!canCompany || !orgId) return found;
+      for (const type of ["expense", "income"] as SuggestType[]) {
+        const allowed = allowedCategoryIds(categories, type);
+        for (const part of chunks(requests.filter((r) => r.type === type), SUGGEST_BATCH)) {
+          const { data, error } = await supabase.rpc("ie_category_suggest_v1", {
+            p_organization_id: orgId,
+            p_items: part.map((r) => ({ text: r.text, feeCategory: r.feeCategory })),
+            p_type: type,
+            p_include_restricted: canRestricted,
+          });
+          if (error) throw error;
+          const parsed = parseSuggestions(data, part.length, allowed);
+          part.forEach((r, i) => found.set(suggestKey(r), parsed?.[i] ?? null));
+        }
+      }
+      return found;
+    },
+    [canCompany, orgId, categories, canRestricted],
+  );
+
+  const defaultsLoading = canCompany && !walletScoped && defaultsQ.isLoading;
   const loading =
     personalPermsQ.isPending || (!!orgId && permsQ.isPending) ||
-    (canCompany && (buildingsQ.isLoading || typesQ.isLoading || cashbooksQ.isLoading || accountsQ.isLoading));
+    (canCompany && (buildingsQ.isLoading || typesQ.isLoading || cashbooksQ.isLoading || accountsQ.isLoading || defaultsLoading));
 
   return {
     orgId,
@@ -165,7 +224,7 @@ export function useQuickEntryRefs(options?: {entrySource?:'personal_wallet'}) {
     personalWallets,
     personalCategories,
     companyWallets,
-    companyLoading:canCompany&&(buildingsQ.isLoading||typesQ.isLoading||cashbooksQ.isLoading||accountsQ.isLoading||(walletScoped&&companyWalletQ.isLoading)),
+    companyLoading:canCompany&&(buildingsQ.isLoading||typesQ.isLoading||cashbooksQ.isLoading||accountsQ.isLoading||defaultsLoading||(walletScoped&&companyWalletQ.isLoading)),
     companyError:buildingsQ.error??typesQ.error??cashbooksQ.error??accountsQ.error??(walletScoped?companyWalletQ.error:null),
     companyReady:canCompany&&!!buildingsQ.data&&!!typesQ.data&&!!cashbooksQ.data&&!!accountsQ.data&&(!walletScoped||!!companyWalletQ.data&&!companyWalletQ.error),
     canCompany,
@@ -176,6 +235,7 @@ export function useQuickEntryRefs(options?: {entrySource?:'personal_wallet'}) {
     cashbooks,
     resolveRefs,
     defaultAccountFor,
+    suggestCategories,
   };
 }
 

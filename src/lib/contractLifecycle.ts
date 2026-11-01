@@ -34,6 +34,7 @@
 // =============================================================================
 
 import { fmtMoney, fmtNgay } from '@/lib/contractSettlement';
+import { termText } from '@/lib/roomLifecycle';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 0. Hàng thô — đúng hình dạng dòng DB, để hook chỉ việc chuyền qua
@@ -602,14 +603,24 @@ export function closeResidenceSegments(
 // 5. Tiền thuê / phí và nợ theo hoá đơn hiệu lực
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface InvoiceTotals { paid: number; debt: number }
+/**
+ * `paid` = khách nộp bằng tiền thật, `debt` = còn nợ, `offset` = cấn trừ khi
+ * thanh lý (không phải tiền). Đường chính lấy `money.contract` của
+ * `get_room_cash_lifecycle_v1` (F2); đường dự phòng `sumEffectiveInvoices`
+ * không tách được cấn trừ nên không có `offset`.
+ */
+export interface InvoiceTotals { paid: number; debt: number; offset?: number }
 
 const KHONG_HIEU_LUC: ReadonlySet<string> = new Set(['CANCELLED', 'DRAFT']);
 
 /**
- * Hoá đơn KHÔNG chứa cọc (bảng `invoice_items` chỉ có RENT/SERVICE/PENALTY/
- * DISCOUNT/OTHER — không có loại DEPOSIT), nên mốc "Tiền thuê / phí đã đóng"
- * lấy từ đây là đã loại cọc theo cấu trúc chứ không nhờ lọc chuỗi.
+ * ĐƯỜNG DỰ PHÒNG (RPC cũ chưa có `money`, hoặc RPC lỗi) — gỡ ở S22.
+ *
+ * Cộng THÔ `paid_amount`/`remaining_amount`: hoá đơn CÓ THỂ mang dòng cọc
+ * (`invoice_items.accounting_class` DEPOSIT/NON_PNL), `paid_amount` gồm cả
+ * khoản cấn trừ khi thanh lý (payment received_amount = 0) lẫn nợ do hoá đơn
+ * sau gánh hộ. Số này vì thế KHÔNG phải "tiền khách nộp, không gồm cọc" — chỉ
+ * dùng khi chưa có `money.contract` (một nguồn, F1/F2).
  */
 export function sumEffectiveInvoices(
   invoices: readonly InvoiceRow[],
@@ -780,6 +791,11 @@ export interface LaneInput {
   terminations: readonly TerminationRow[];
   depositByContract: ReadonlyMap<string, DepositFigures>;
   invoiceByContract: ReadonlyMap<string, InvoiceTotals>;
+  /**
+   * Hạn gốc trước gia hạn theo hợp đồng (`originalEndDate` của RPC phòng).
+   * Vắng mục ⇒ mốc "Ký hợp đồng" in thời hạn dạng cũ.
+   */
+  originalEndByContract?: ReadonlyMap<string, string | null>;
   reads: LifecycleReads;
 }
 
@@ -931,6 +947,7 @@ export function buildLifecycleLanes(input: LaneInput): LifecycleView {
       target: laDich,
       steps: dungMoc({
         contract: c, termination: t, deposit: coc, invoice: hoaDon,
+        originalEndDate: input.originalEndByContract?.get(x.contractId) ?? null,
         isTerminated: daThanhLy,
         todayISO: input.todayISO, isTarget: laDich, reads: input.reads,
       }),
@@ -1039,6 +1056,7 @@ function dungMoc(a: {
   isTerminated: boolean;
   deposit: DepositFigures | null;
   invoice: InvoiceTotals | null;
+  originalEndDate: string | null;
   todayISO: string;
   isTarget: boolean;
   reads: LifecycleReads;
@@ -1092,6 +1110,11 @@ function dungMoc(a: {
         h: 'Tiền thuê / phí đã đóng',
         v: fmtMoney(a.invoice.paid),
         m: `Không gồm cọc · giá thuê ${fmtMoney(Number(c.rent_price) || 0)}/tháng`,
+        // Cấn trừ khi thanh lý không phải tiền khách nộp — gọi đúng tên, không
+        // cộng vào số đã đóng (F7). Chỉ đường một nguồn mới tách được số này.
+        ...(a.invoice.offset !== undefined && a.invoice.offset > 0
+          ? { m2: `Cấn trừ khi thanh lý ${fmtMoney(a.invoice.offset)}`, m2c: 'var(--ink-3)' }
+          : {}),
       };
 
   const noDuaVaoQuyetToan = t?.outstanding_debt;
@@ -1134,7 +1157,8 @@ function dungMoc(a: {
     {
       h: 'Ký hợp đồng',
       v: fmtNgay(c.signed_date),
-      m: `Thời hạn: ${fmtNgay(c.start_date)} – ${fmtNgay(c.end_date)}`,
+      // Gia hạn ghi đè end_date ⇒ in hạn gốc kèm "gia hạn tới" (F5, chung với ngăn kéo).
+      m: `Thời hạn: ${termText(c.start_date, a.originalEndDate, c.end_date, ' – ')}`,
     },
     mocCoc,
     mocThue,

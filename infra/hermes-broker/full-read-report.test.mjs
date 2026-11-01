@@ -130,13 +130,15 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     // R2a (20261021004841, dải nền hermes_w2_): v3 customers/occupancy thêm summary, báo cáo monthly_pnl thêm tổng;
     // mọi dòng khác giữ bản 20261020173819 (v3) và 20261017033630 (báo cáo).
     // R2c phần 2 (20261021044814, dải nền): v3 customers đếm tình trạng hợp đồng; báo cáo giữ bản R2a.
-    // R2d (20261021063453, dải nền): v3 customers đếm khách chưa có hợp đồng — bản cuối của v3.
+    // R2d (20261021063453, dải nền): v3 customers đếm khách chưa có hợp đồng.
+    // Hợp đồng lượt 11 (20261024040003, dải nền): chi tiết HĐ trả publicPath — bản cuối của v3.
     // Nợ thực (20261021190212): báo cáo invoice_report stats đọc nợ thực — bản cuối của báo cáo (ngoài dải nền: hàm này
     // không thuộc W2_FOUNDATION_FUNCTIONS).
     if (name === 'app_private.hermes_report_read_v2')
       assert.equal(`supabase/migrations/${last[0]}`, INVOICE_REPORT_OUTSTANDING_PATH, `${name} lives in the effective-outstanding successor`);
     if (name === 'public.hermes_domain_read_v3')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_WITHOUT_CONTRACT_PATH, `${name} lives in the R2d wave-2 successor`);
+      assert.equal(`supabase/migrations/${last[0]}`, 'supabase/migrations/20261024040003_hermes_w2_contract_detail_public_path_v1.sql',
+        `${name} lives in the contract public-path wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])

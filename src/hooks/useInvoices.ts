@@ -1,4 +1,5 @@
 import {useRef} from 'react';
+import { createInvoiceWithMeterSources, meterInvoiceRequestId } from '@/lib/meter-capture/service';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
@@ -32,7 +33,6 @@ import {
   getInvoiceEditMode,
   canCancelInvoice,
   roundInvoiceTotal,
-  getInvoiceTitle,
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
 import { invoiceListRpcArgs, invoiceStatisticsRpcArgs, readInvoiceListPayload } from '@/lib/invoiceReadArgs';
@@ -54,6 +54,7 @@ export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 export type { AdjustInvoiceInput } from '@/lib/invoiceAdjustmentRpc';
 import { adjustInvoice, reviewInvoiceAdjustment, type AdjustInvoiceInput, type ReviewAdjustmentInput } from '@/lib/invoiceAdjustmentRpc';
+import { fetchAdjustmentBuild, type AdjustmentBuildInvoker } from '@/lib/invoiceAdjustmentBuildRpc';
 
 // 15/09 (plan con B): 16 tiền tố cũ ở đây là lượt ĐÁNH THỨ NHẤT, rồi ~0,8s sau
 // hub realtime nhận event `invoices` và đánh lượt THỨ HAI trên gần đúng tập ấy
@@ -72,6 +73,14 @@ import { adjustInvoice, reviewInvoiceAdjustment, type AdjustInvoiceInput, type R
 const adjustmentAggregatePrefixes = [
   'excess-amount', 'invoice-rounding-report', 'invoice-payments-summary', 'collection-cycle',
 ];
+// Dòng giữ nguyên + lý do chặn của form Điều chỉnh từ hàm dùng chung với trợ lý (invoice_adjustment_build_v1, Hermes Mốc 5). Khoá theo
+// phiên bản + updated_at của ảnh chụp lúc mở: tải lại hoá đơn ⇒ đọc lại; không giữ bản cũ (dòng phải khớp đúng hoá đơn đang sửa).
+const adjustmentBuildInvoke: AdjustmentBuildInvoker = (_name, args) => supabase.rpc('invoice_adjustment_build_v1' as never, args as never) as never;
+export const useInvoiceAdjustmentBuild = (invoiceId: string, revision: number, updatedAt: string | null | undefined) => useQuery({
+  queryKey: ['invoice-adjustment-build', invoiceId, revision, updatedAt ?? null],
+  queryFn: () => fetchAdjustmentBuild(adjustmentBuildInvoke, invoiceId),
+  staleTime: 0, gcTime: 0, retry: 1, refetchOnWindowFocus: false,
+});
 export const useAdjustInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -253,61 +262,9 @@ export const useInvoice = (invoiceId?: string) => {
   });
 };
 
-// =============================================
-// useInvoiceTotalsByIds — lấy GỌN tổng/đã trả/còn lại của nhiều hoá đơn theo id.
-// Dùng cho báo cáo gộp khoản thu theo hoá đơn (note thiếu/thừa so với HĐ) —
-// chỉ cần vài cột số, không kéo cả quan hệ như useInvoice.
-// =============================================
-
-export interface InvoiceTotalLite {
-  id: string;
-  total_amount: number;
-  paid_amount: number;
-  remaining_amount: number;
-  // Tên hoá đơn KHÔNG kèm phòng/toà (getInvoiceTitle trên bản ghi thiếu quan hệ
-  // room/building) — cột Thu bên BC Lợi Nhuận hiện đúng tên như trang /invoices
-  // nhưng gọn (phòng đã có cột riêng). Vd "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
-  displayTitle: string;
-}
-
-export const useInvoiceTotalsByIds = (ids: string[]) => {
-  // Dedupe + sort để queryKey ổn định (không refetch oan khi thứ tự đổi).
-  const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
-  return useQuery({
-    queryKey: ['invoice-totals-by-ids', sortedIds],
-    enabled: sortedIds.length > 0,
-    queryFn: async (): Promise<Map<string, InvoiceTotalLite>> => {
-      const map = new Map<string, InvoiceTotalLite>();
-      // Chunk để tránh URL .in() quá dài (PostgREST 400 khi danh sách id lớn).
-      const CHUNK = 200;
-      for (let i = 0; i < sortedIds.length; i += CHUNK) {
-        const slice = sortedIds.slice(i, i + CHUNK);
-        const { data, error } = await supabase
-          .from('invoices')
-          .select(
-            `id, total_amount, paid_amount, remaining_amount,
-             kind, billing_month, notes, issue_date,
-             contract:contracts!invoices_contract_id_fkey (start_billing_date),
-             invoice_items (type, from_date)`,
-          )
-          .in('id', slice)
-          .is('deleted_at', null);
-        if (error) throw error;
-        for (const row of financialReadRows(data as any[] | null)) {
-          map.set(row.id, {
-            id: row.id,
-            total_amount: financialReadNumber(row.total_amount),
-            paid_amount: financialReadNumber(row.paid_amount),
-            remaining_amount: financialReadNumber(row.remaining_amount),
-            // Không select room/building → title tự rớt phần "<phòng>/<toà>".
-            displayTitle: getInvoiceTitle(row),
-          });
-        }
-      }
-      return map;
-    },
-  });
-};
+// useInvoiceTotalsByIds — tổng/đã trả/còn lại + tên của nhiều hoá đơn theo id: nay ở module riêng
+// (trang Thu chi dùng mà không kéo cả file này). Giữ đường import cũ cho nơi đang dùng.
+export { useInvoiceTotalsByIds, type InvoiceTotalLite } from '@/hooks/useInvoiceTotalsByIds';
 
 // =============================================
 // useFirstInvoiceDetails — chi tiết "hoá đơn tháng đầu" (HĐ tự sinh khi ký HĐ).
@@ -566,6 +523,7 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
       if (!user) throw new Error('Not authenticated');
 
       const { items, ...invoiceFields } = formData;
+      const meterSources = items.flatMap(item => item.meter_source ? [item.meter_source] : []);
 
       // Calculate totals from items
       const subtotal = items.reduce(
@@ -590,7 +548,9 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
       );
 
       const supportContext = invoiceFields.rent_support_context ? invoiceRentSupportContextSchema.parse(invoiceFields.rent_support_context) : undefined;
-      const request = prepareCustomerCreditRequest('invoice-create', supportContext?.request_id);
+      const meterRequest = meterSources.length && selectedOrganizationId
+        ? invoiceFields.meter_capture_request_id ?? await meterInvoiceRequestId(selectedOrganizationId, formData) : undefined;
+      const request = prepareCustomerCreditRequest('invoice-create', supportContext?.request_id ?? meterRequest);
       const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const creatorName: string =
         (typeof meta.full_name === 'string' && meta.full_name)
@@ -611,6 +571,7 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
         p_total_amount: total_amount,
         p_previous_debt: invoiceFields.previous_debt || 0,
         p_items: items.map((item) => ({
+          ...(item.meter_source ? { meter_source: item.meter_source } : {}),
           service_id: item.service_id || null,
           type: item.type,
           accounting_class: item.accounting_class,
@@ -647,6 +608,11 @@ export const useCreateInvoice = (options: {silent?:boolean} = {}) => {
             p_idempotency_key: request.idempotencyKey,
             p_applied_credit: 0,
           };
+
+      if (meterSources.length) {
+        if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
+        return confirmedInvoiceReceipt(await createInvoiceWithMeterSources(selectedOrganizationId, canonicalArgs, meterSources));
+      }
 
       // Credit invoices have one atomic path and fail closed on every RPC error.
       // Non-credit invoices retain the existing controlled legacy fallback.

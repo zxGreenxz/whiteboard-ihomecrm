@@ -31,12 +31,23 @@ export const AUDIT_CODES = Object.freeze([...CODES]);
 // audit chỉ nhận trường reason khi code = action_rejected và reason thuộc tập này; audit-codes.test.mjs khoá tập bằng
 // ACTION_REJECT_REASONS cả hai chiều (thiếu mã ⇒ audit đỏ ⇒ broker đóng an toàn thành backend_unavailable — đúng lớp
 // sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
-const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
+const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
   // Thu chi (Đợt 2).
   'system_voucher', 'evidence_required',
+  // Trang Hợp đồng (Đợt 2).
+  'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
+  'cannot_remove_representative', 'room_has_new_contract',
   // Trang Công việc (Đợt 2b).
-  'task_quota_user', 'task_quota_pair']);
+  'task_quota_user', 'task_quota_pair', 'cancel_blocked', 'task_not_open', 'recurrence_quota',
+  // Hoá đơn (Đợt 3 Mốc 3, thu tiền).
+  'cash_collection_web_only', 'invoice_not_collectible', 'credit_requires_contract', 'receiving_book_missing', 'receiving_book_not_held', 'reconciliation_required',
+  'period_closed',
+  // Hoá đơn (Mốc 4, ghi chỉ số).
+  'meter_used_by_invoice', 'meter_has_later_reading',
+  // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).
+  'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried', 'adjust_below_collected', 'adjustment_self_check_web_only',
+  'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict', 'invoice_already_cancelled', 'invoice_not_cancelled']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
@@ -64,20 +75,22 @@ function rootOption(options, key) {
 }
 function privateInfo(info, directory) {
   if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
-    (!directory && info.nlink !== 1) || (process.platform !== 'win32' &&
-      (info.uid !== process.getuid() || info.gid !== process.getgid() ||
-        (info.mode & 0o777) !== (directory ? 0o700 : 0o600)))) fail('host_path_refused');
+    (!directory && info.nlink !== 1n) || (process.platform !== 'win32' &&
+      (info.uid !== BigInt(process.getuid()) || info.gid !== BigInt(process.getgid()) ||
+        (info.mode & 0o777n) !== (directory ? 0o700n : 0o600n)))) fail('host_path_refused');
 }
+// File IDs can exceed Number's exact integer range (notably on NTFS).
+// Every identity below must originate from a BigInt stat, before any rounding.
 const sameFile = (a, b) => a.dev === b.dev && a.ino === b.ino;
 async function privateDirectory(root) {
-  const observed = await fs.lstat(root); privateInfo(observed, true);
+  const observed = await fs.lstat(root, { bigint: true }); privateInfo(observed, true);
   if (await fs.realpath(root) !== root) fail('host_path_refused');
   const handle = await fs.open(root, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0));
   try {
-    const held = await handle.stat(); privateInfo(held, true);
+    const held = await handle.stat({ bigint: true }); privateInfo(held, true);
     if (!sameFile(observed, held)) fail('host_path_refused');
     const check = async () => {
-      const current = await fs.lstat(root); privateInfo(current, true);
+      const current = await fs.lstat(root, { bigint: true }); privateInfo(current, true);
       if (!sameFile(held, current) || await fs.realpath(root) !== root) fail('host_path_refused');
     };
     await check(); return { handle, check };
@@ -98,11 +111,11 @@ export async function acquireHostOwnership(options) {
     directory = await privateDirectory(root);
     try { handle = await fs.open(filename, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600); }
     catch (error) { if (error.code === 'EEXIST') fail('host_already_owned'); throw error; }
-    created = true; held = await handle.stat(); privateInfo(held, false);
+    created = true; held = await handle.stat({ bigint: true }); privateInfo(held, false);
     await handle.writeFile(content); await handle.datasync(); await directory.check(); await directory.handle.sync();
-    const named = await fs.lstat(filename), opened = await handle.stat();
+    const named = await fs.lstat(filename, { bigint: true }), opened = await handle.stat({ bigint: true });
     privateInfo(named, false); privateInfo(opened, false);
-    if (!sameFile(held, named) || !sameFile(held, opened) || named.size !== content.length || opened.size !== content.length) fail('host_lock_changed');
+    if (!sameFile(held, named) || !sameFile(held, opened) || named.size !== BigInt(content.length) || opened.size !== BigInt(content.length)) fail('host_lock_changed');
     await directory.check();
   } catch (error) {
     await Promise.allSettled([handle?.close(), directory?.handle.close()]);
@@ -121,12 +134,12 @@ export async function acquireHostOwnership(options) {
         try {
           await directory.check();
           checkHandle = await fs.open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-          const current = await checkHandle.stat(); privateInfo(current, false);
-          if (!sameFile(held, current) || current.size !== content.length || !(await checkHandle.readFile()).equals(content)) fail('host_lock_changed');
+          const current = await checkHandle.stat({ bigint: true }); privateInfo(current, false);
+          if (!sameFile(held, current) || current.size !== BigInt(content.length) || !(await checkHandle.readFile()).equals(content)) fail('host_lock_changed');
           await checkHandle.close(); checkHandle = undefined;
           await directory.check();
-          const final = await fs.lstat(filename); privateInfo(final, false);
-          if (!sameFile(held, final) || final.size !== content.length) fail('host_lock_changed');
+          const final = await fs.lstat(filename, { bigint: true }); privateInfo(final, false);
+          if (!sameFile(held, final) || final.size !== BigInt(content.length)) fail('host_lock_changed');
           await fs.unlink(filename); removed = true; await directory.handle.sync();
           await handle.close(); await directory.handle.close();
         } catch {
@@ -139,8 +152,37 @@ export async function acquireHostOwnership(options) {
   });
 }
 
+// Lượt 12 Hợp đồng (rào đồng ý, infra/hermes-broker/consent-guard.mjs): dòng prepared của lượt xác nhận một thao tác KHÔNG lùi được mang
+// consent = {action, requestId, text} — text là câu đồng ý mô hình trích từ người dùng (một dòng, ≤ 300 ký tự), ngoại lệ DUY NHẤT
+// của luật "không chữ thô" dưới đây: để lần lại lời đồng ý khi có ghi sai.
+const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
+const consentEvent = value => {
+  const consent = data(value, ['action', 'requestId', 'text']);
+  if (!ACTION_ID.test(consent.action) || typeof consent.requestId !== 'string' || !UUID.test(consent.requestId) || typeof consent.text !== 'string' ||
+    !consent.text || [...consent.text].length > 300 || /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(consent.text)) fail('host_audit_invalid');
+  return consent;
+};
+// Thu chi lượt 16 (infra/hermes-broker/action-runtime.mjs): lượt xác nhận dùng requestId của token khi requestId mô hình gửi lệch — dòng
+// prepared mang requestIdFix = {action, requestId của token, supplied: different | malformed | missing}; chuỗi mô hình gửi KHÔNG vào sổ.
+const REQUEST_ID_FIXES = new Set(['different', 'malformed', 'missing']);
+const requestIdFixEvent = value => {
+  const fix = data(value, ['action', 'requestId', 'supplied']);
+  if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId) || !REQUEST_ID_FIXES.has(fix.supplied)) fail('host_audit_invalid');
+  return fix;
+};
+// C3n (confirm-guard.mjs redeemNear): lượt xác nhận khớp token GẦN ĐÚNG ⇒ dòng prepared mang confirmTokenFix = {action, requestId của
+// bản xem trước}; chuỗi token mô hình gửi KHÔNG vào sổ.
+const confirmTokenFixEvent = value => {
+  const fix = data(value, ['action', 'requestId']);
+  if (!ACTION_ID.test(fix.action) || typeof fix.requestId !== 'string' || !UUID.test(fix.requestId)) fail('host_audit_invalid');
+  return fix;
+};
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason']);
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason', 'consent', 'requestIdFix', 'confirmTokenFix']);
+  if (['consent', 'requestIdFix', 'confirmTokenFix'].some(key => Object.hasOwn(event, key)) && (event.outcome !== 'prepared' || event.operation !== 'tools/call')) fail('host_audit_invalid');
+  if (Object.hasOwn(event, 'consent')) event.consent = consentEvent(event.consent);
+  if (Object.hasOwn(event, 'requestIdFix')) event.requestIdFix = requestIdFixEvent(event.requestIdFix);
+  if (Object.hasOwn(event, 'confirmTokenFix')) event.confirmTokenFix = confirmTokenFixEvent(event.confirmTokenFix);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {
@@ -152,7 +194,8 @@ function auditEvent(raw) {
 }
 
 /** Host-only bounded append sink for the broker's actual fixed event protocol.
- * No raw request, text, provider error, token or caller-selected filename.
+ * No raw request, text, provider error, token or caller-selected filename (sole exception: the bounded
+ * consent sentence of an irreversible action's confirmation, consentEvent above).
  * Caller must own the enclosing host lock. Successful write includes fdatasync;
  * close waits actual queued filesystem work even if a broker deadline elapsed.
  * One 16MiB file; reaching capacity requires explicit host maintenance, never
@@ -169,9 +212,9 @@ export function createHostAudit(options) {
     let created = false;
     try { file = await fs.open(filename, constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600); created = true; }
     catch (error) { if (error.code !== 'EEXIST') throw error; file = await fs.open(filename, constants.O_RDWR | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0)); }
-    held = await file.stat(); privateInfo(held, false);
-    if (!Number.isSafeInteger(held.size) || held.size < 0 || held.size > MAX_AUDIT_BYTES) fail('host_audit_capacity');
-    expectedSize = held.size;
+    held = await file.stat({ bigint: true }); privateInfo(held, false);
+    if (held.size < 0n || held.size > BigInt(MAX_AUDIT_BYTES)) fail('host_audit_capacity');
+    expectedSize = Number(held.size);
     if (expectedSize) {
       const last = Buffer.alloc(1); const { bytesRead } = await file.read(last, 0, 1, expectedSize - 1);
       if (bytesRead !== 1 || last[0] !== 10) fail('host_audit_incomplete');
@@ -191,15 +234,15 @@ export function createHostAudit(options) {
         let appended = false;
         try {
           await initialize(); await directory.check();
-          const current = await fs.lstat(filename); privateInfo(current, false);
-          const opened = await file.stat(); privateInfo(opened, false);
-          if (!sameFile(held, current) || !sameFile(held, opened) || current.size !== expectedSize || opened.size !== expectedSize) fail('host_audit_changed');
+          const current = await fs.lstat(filename, { bigint: true }); privateInfo(current, false);
+          const opened = await file.stat({ bigint: true }); privateInfo(opened, false);
+          if (!sameFile(held, current) || !sameFile(held, opened) || current.size !== BigInt(expectedSize) || opened.size !== BigInt(expectedSize)) fail('host_audit_changed');
           if (expectedSize + bytes.length > MAX_AUDIT_BYTES) fail('host_audit_capacity');
           appended = true; await file.writeFile(bytes); await file.datasync();
           expectedSize += bytes.length;
-          const after = await file.stat(), named = await fs.lstat(filename);
+          const after = await file.stat({ bigint: true }), named = await fs.lstat(filename, { bigint: true });
           privateInfo(after, false); privateInfo(named, false);
-          if (!sameFile(held, after) || !sameFile(held, named) || after.size !== expectedSize || named.size !== expectedSize) fail('host_audit_changed');
+          if (!sameFile(held, after) || !sameFile(held, named) || after.size !== BigInt(expectedSize) || named.size !== BigInt(expectedSize)) fail('host_audit_changed');
           await directory.check();
         } catch (error) {
           failure = new HostOwnershipError(appended ? 'host_audit_unknown' : error instanceof HostOwnershipError ? error.code : 'host_audit_unavailable');

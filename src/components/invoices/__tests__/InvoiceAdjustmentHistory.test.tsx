@@ -11,6 +11,7 @@ vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {}
 vi.mock('@/lib/permissionPages', () => ({ canUse: (_: unknown, page: string, action: string) => mocks.permission && page === 'invoices' && action === 'approve' }));
 vi.mock('@/lib/storage', () => ({ createSignedUrlFromStored: vi.fn() }));
 vi.mock('@/components/contracts/detail/useDragScroll', () => ({ useDragScroll: vi.fn() }));
+vi.mock('../InvoiceMeterEvidence', () => ({ InvoiceMeterEvidence: () => null }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
 const snapshot = (description: string, amount: number) => ({ total_amount: amount, discount_amount: 0, notes: description, items: [{ description, unit_price: amount * 4, quantity: 0.5, coefficient: 0.5, amount }] });
 const revision = (n: number): InvoiceAdjustment => ({ id: `rev-${n}`, organization_id: 'org', invoice_id: 'inv', idempotency_key: `key-${n}`, adjusted_by: 'user', checked_by: null, revision: n, before_snapshot: snapshot(`Trước ${n}`, n * 1000), after_snapshot: snapshot(`Sau ${n}`, (n + 1) * 1000), before_total: n * 1000, after_total: (n + 1) * 1000, delta: 1000, reason: `Lý do ${n}`, adjusted_at: '2026-09-12T10:00:00Z', review_status: 'PENDING', checked_at: null } as InvoiceAdjustment);

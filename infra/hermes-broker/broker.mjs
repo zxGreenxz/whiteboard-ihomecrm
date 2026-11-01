@@ -1,11 +1,11 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_RETIRED_BY } from './task-actions-contract.mjs';
 import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain, splitReadNames } from './domain-contract.mjs';
-import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
+import { SCHEDULE_RETIRED_BY, SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
@@ -19,6 +19,7 @@ import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
 import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
+import { AUTHORITY_CONTEXT_CACHE, forgetsAuthorityContext } from './authority-context-cache.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { readMisuseHint } from './read-misuse-hints.mjs';
@@ -45,7 +46,7 @@ const ROOM_TOOL = Object.freeze({
   // Câu đầu ≤ 60 ký tự vì danh sách tool_search của Hermes chỉ hiện câu đầu cắt còn 60 ký tự; "price" giữ chữ tiếng Anh mà
   // chỉ mục BM25 (token ASCII) của bản cũ có cho truy vấn "available rooms … price". Bù byte cho các mô tả định tuyến mới
   // (tools/list ≤ 64 000 B, đo ở tool-argument-shape.test.mjs).
-  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; không phải trạng thái CRM. Phòng trống thật: crm_read_occupancy (số), crm_read_report re_vacant_rooms (danh sách); sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
+  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; ≠ trạng thái CRM. Phòng trống thật (số/danh sách): crm_read_occupancy, crm_read_report re_vacant_rooms; không quyền BĐS: crm_read_report rooms_occupancy/rooms; sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -56,7 +57,9 @@ const ROOM_TOOL = Object.freeze({
 // Original definitions by name: tools/list advertises advertisedTool(tool) and
 // tools/call shapes arguments against the original before any validator. Built
 // per broker, not at module load: external-group-mount imports this module back.
-function toolDefinitions() {
+// Exported for catalog-names.mjs (official skill names check); callers invoke it
+// only after every module has loaded.
+export function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
     SALE_TOOL, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
@@ -106,7 +109,7 @@ export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
-const RETIRED_SCHEDULE_OPERATIONS = Object.freeze(['create', 'update']);
+const RETIRED_SCHEDULE_OPERATIONS = Object.freeze(Object.keys(SCHEDULE_RETIRED_BY));
 
 export class BrokerError extends Error {
   constructor(code) {
@@ -117,11 +120,55 @@ export class BrokerError extends Error {
   }
 }
 
-/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
-export function actionRejected(code) {
+/** Đường dẫn web tương đối (CV12, Công việc Mốc 3): chỉ ký tự đường dẫn/truy vấn, bắt đầu bằng '/', không có '//' hay tên miền. */
+export const ACTION_WEB_LINK = /^\/(?!\/)[A-Za-z0-9/_?=&.%-]{0,299}$/;
+/** Số thứ tự khoản trong lô (1–20) mà SQL báo kèm lý do; câu tới mô hình = "Khoản N: " + câu tĩnh của lý do. */
+export const actionItem = value => Number.isSafeInteger(value) && value >= 1 && value <= 20;
+export const itemDetail = (item, text) => actionItem(item) ? `Khoản ${item}: ${text}` : text;
+// Lượt 14 Hoá đơn (nghiệm thu C3c): dữ kiện SQL kèm lý do từ chối, danh sách ĐÓNG theo mã, mỗi trường một khuôn (không chuỗi tự do):
+// tháng đã chốt (YYYY-MM), số đã thu / tổng sau điều chỉnh (chuỗi chữ số VND). Câu tới mô hình = câu tĩnh + câu ghép từ dữ kiện.
+// E03 (nghiệm thu 27/10): chỉ số công tơ (chuỗi số trơn như trim_scale của SQL: tối đa 4 chữ số lẻ, không số 0 thừa) và tên phòng / mã
+// công tơ của đúng dòng người dùng đang ghi (tên trong phạm vi quyền như ứng viên của name_unresolved: không ký tự điều khiển, có trần độ dài).
+const FACT_MONTH = /^20\d{2}-(0[1-9]|1[0-2])$/, FACT_VND = /^(0|[1-9]\d{0,13})$/, FACT_READING = /^(0|[1-9]\d{0,11})(\.\d{0,3}[1-9])?$/;
+const FACT_ROOM = /^[^\x00-\x1f\x7f]{1,120}$/, FACT_METER_CODE = /^[^\x00-\x1f\x7f]{1,40}$/;
+const vndFact = value => `${value.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+// Số chỉ số kiểu Việt như app_private.hermes_invoice_reading_text_v1: phân nghìn '.', thập phân ','.
+const readingFact = value => { const [whole, fraction] = value.split('.'); return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${fraction ? `,${fraction}` : ''}`; };
+// whole: câu ghép THAY câu tĩnh (mã dạng needs_input mà SQL trả qua kind 'rejected'); không thì câu tĩnh + câu ghép.
+const ACTION_REJECT_FACTS = Object.freeze({
+  period_closed: { required: ['month'], test: { month: FACT_MONTH }, text: f => ` Tháng đã chốt: ${f.month.slice(5)}/${f.month.slice(0, 4)}.` },
+  adjust_below_collected: { required: ['collected'], optional: ['totalAfter'], test: { collected: FACT_VND, totalAfter: FACT_VND },
+    text: f => ` Đã thu ${vndFact(f.collected)}${f.totalAfter === undefined ? '' : `; tổng sau điều chỉnh ${vndFact(f.totalAfter)}`}.` },
+  meter_lower_than_previous: { required: ['value', 'previous'], optional: ['room', 'meterCode'],
+    test: { value: FACT_READING, previous: FACT_READING, room: FACT_ROOM, meterCode: FACT_METER_CODE }, whole: true,
+    text: f => `Chỉ số mới ${readingFact(f.value)} nhỏ hơn chỉ số đầu ${readingFact(f.previous)}${f.room === undefined ? '' : ` (phòng ${f.room}${
+      f.meterCode === undefined ? '' : `, công tơ ${f.meterCode}`})`}; hỏi lại số trên công tơ.` },
+});
+/** Dữ kiện hợp khuôn của mã (bản chép đông cứng) hoặc undefined. */
+export function actionFacts(code, value) {
+  const spec = Object.hasOwn(ACTION_REJECT_FACTS, code) ? ACTION_REJECT_FACTS[code] : null;
+  if (spec === null || value === null || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
+  const keys = Object.keys(value);
+  if (!spec.required.every(key => keys.includes(key)) || !keys.every(key => Object.hasOwn(spec.test, key) && typeof value[key] === 'string' &&
+      spec.test[key].test(value[key]))) return undefined;
+  return Object.freeze({ ...value });
+}
+export const rejectedDetail = (code, item, facts) => facts !== undefined && ACTION_REJECT_FACTS[code].whole
+  ? itemDetail(item, ACTION_REJECT_FACTS[code].text(facts))
+  : itemDetail(item, ACTION_REASONS[code].text) + (facts === undefined ? '' : ACTION_REJECT_FACTS[code].text(facts));
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. Phần kèm theo, nhận theo kiểu:
+ * số = khoản số mấy của lô (Thu chi Mốc 4, 1–20); chuỗi = link (CV12, Công việc Mốc 3): đường dẫn web tới đúng đối tượng để người
+ * dùng xử lý trên web (vd việc có vật tư nên không huỷ qua bot); object = dữ kiện của mã (lượt 14 Hoá đơn, actionFacts). Sai khuôn ⇒ bỏ. */
+export function actionRejected(code, ...extras) {
   const error = new BrokerError('action_rejected');
   error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
-  error.detail = ACTION_REASONS[error.reason].text;
+  for (const extra of extras) {
+    if (actionItem(extra)) error.item = extra;
+    else if (typeof extra === 'string' && ACTION_WEB_LINK.test(extra)) error.link = extra;
+    else if (actionFacts(error.reason, extra) !== undefined) error.facts = actionFacts(error.reason, extra);
+  }
+  error.detail = rejectedDetail(error.reason, error.item, error.facts);
   return error;
 }
 
@@ -334,9 +381,12 @@ export function createBroker({
   audit,
   observe,
   callLog,
+  authorityCache,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
   if (callLog !== undefined && typeof callLog !== 'function') throw new TypeError('invalid_call_log');
+  // Nhớ quyền 30 phút (authority-context-cache.mjs): broker chỉ cần bỏ mục nhớ khi một lượt gặp lỗi quyền.
+  if (authorityCache !== undefined && typeof authorityCache?.forget !== 'function') throw new TypeError('invalid_authority_cache');
   const definitions = toolDefinitions();
   let injectedAuthority;
   if (authority !== undefined) {
@@ -487,13 +537,12 @@ export function createBroker({
     const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
-  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
-  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
-  // Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime (review Mốc 2 mục 6): connector mới + DB cũ ⇒ task.create chưa sống ⇒ tool cũ
-  // còn nguyên, không mất đường tạo việc.
-  const taskCreateRetired = () => typeof action?.knows === 'function' && action.knows('task.create');
-  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
-    !(TASK_RETIRED_OPERATIONS.includes(operation) && taskCreateRetired());
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7, 19): thao tác thay một tool cũ SỐNG ⇒ tool cũ ẩn VÀ bị từ chối, không để
+  // hai đường cùng hiện — task.create thay crm_task_create / crm_task_status / crm_task_input_options; task.update thay
+  // crm_task_progress; task.cancel thay crm_task_cancel (TASK_RETIRED_BY). Xét theo TỪNG lời gọi qua danh mục SỐNG của runtime
+  // (review Mốc 2 mục 6): connector mới + DB cũ ⇒ thao tác chưa sống ⇒ tool cũ còn nguyên. Theo dõi (follow_*) không có thao tác thay.
+  const taskRetired = operation => Object.hasOwn(TASK_RETIRED_BY, operation) && typeof action?.knows === 'function' && action.knows(TASK_RETIRED_BY[operation]);
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) && !taskRetired(operation);
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedSaleTools = identity => [
     ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
@@ -657,6 +706,8 @@ export function createBroker({
     let comparisonReceipt;
     const requestId = randomUUID();
     const selectedAuthority = context.authority ?? injectedAuthority;
+    // Chỉ authenticate (ping/initialize) và tools/list được dùng lại quyền CRM đã nhớ; tools/call không bao giờ đặt cờ này.
+    const contextOption = context.cachedContext === true && operation !== 'tools/call' ? { [AUTHORITY_CONTEXT_CACHE]: true } : {};
     const maxBytes = operation === 'tools/list' ? limits.maxToolsListBytes : limits.maxResultBytes;
     let connectionId;
     const startedAt = performance.now();
@@ -685,7 +736,7 @@ export function createBroker({
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId, operation);
         if (selectedAuthority) {
-          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
+          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true, ...contextOption }));
           identity = authorityIdentity(comparisonReceipt, clock());
         } else identity = await timed('resolveMs', () => authorize(presentedToken, signal));
         if (signal.aborted) fail('timeout');
@@ -699,12 +750,19 @@ export function createBroker({
         // admission: their SQL compares session and binding live) complete on
         // the initial admission; shared group/writer paths retain their
         // post-audit authority check.
-        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' }));
+        // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): lượt xác nhận của thao tác không lùi được mang câu đồng ý đã qua rào.
+        const consent = context.auditConsent?.() ?? null;
+        // Thu chi lượt 16: lượt xác nhận mà requestId mô hình gửi lệch / thiếu / sai khuôn ⇒ dùng requestId của token, dòng prepared ghi lại.
+        const requestIdFix = context.auditRequestIdFix?.() ?? null;
+        // C3n: lượt xác nhận khớp token GẦN ĐÚNG (mô hình chép lệch confirmToken) ⇒ dòng prepared ghi {action, requestId của bản xem trước}.
+        const confirmTokenFix = context.auditConfirmTokenFix?.() ?? null;
+        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared', ...(consent ? { consent } : {}),
+          ...(requestIdFix ? { requestIdFix } : {}), ...(confirmTokenFix ? { confirmTokenFix } : {}) }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
           await timed('checkMs', async () => {
             if (selectedAuthority) {
-              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
+              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true, ...contextOption });
               if (checked !== undefined) fail('backend_unavailable');
               if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
             } else await checkUnchanged(presentedToken, identity, signal);
@@ -729,6 +787,10 @@ export function createBroker({
       if (REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
       // A quota/concurrency rejection is attributable to the identified connection.
       report(identity?.row.id ?? connectionId, operation, safe.code);
+      // Lỗi quyền SAU khi đã nhận diện kết nối (42501/401 của RPC, PT409, khoá thao tác tắt hay thiếu quyền) ⇒ bỏ quyền đã nhớ
+      // của token: ping/tools/list sau đó đọc lại quyền thật thay vì chờ hết 30 phút. Lỗi ở pha nhận diện/dựng authority do
+      // chính authority bỏ (token lạ không làm xáo bộ nhớ của kết nối khác).
+      if (authorityCache && identity && forgetsAuthorityContext(safe)) { try { authorityCache.forget(presentedToken); } catch { /* never changes the outcome */ } }
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
       // D9: lý do của action_rejected vào sổ audit (danh sách đóng; host-ownership.mjs REASONS nhận đúng tập này).
       const reason = safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) ? { reason: safe.reason } : {};
@@ -906,14 +968,16 @@ export function createBroker({
       }
       if (!await connectionStore.replace(id, row.epoch, { ...row, restrictions, epoch: row.epoch + 1 })) fail('context_changed');
     },
+    // ping/initialize (keepalive 180 s của MCP client Hermes) và tools/list chỉ trả siêu dữ liệu kết nối / danh mục tool:
+    // được dùng quyền CRM đã nhớ (cachedContext). Mọi tools/call vẫn dựng authority thật.
     async authenticate(presentedToken) {
-      return invoke(presentedToken, 'authenticate', (identity) => safeConnection(identity.row));
+      return invoke(presentedToken, 'authenticate', (identity) => safeConnection(identity.row), undefined, { cachedContext: true });
     },
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => {
         const tools = grantedTools(identity);
         return { tools: [...tools, ...(mayIssueRequestId(identity) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
-      }, undefined, external ? { authority: external.authority } : {});
+      }, undefined, { ...(external ? { authority: external.authority } : {}), cachedContext: true });
     },
     async callTool(presentedToken, name, args) {
       const publicName = name;

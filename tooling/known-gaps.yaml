@@ -357,7 +357,10 @@ gaps:
       (2) ID toà của crm_auth_context lấy từ hermes_scope_buildings_v1('rooms.view') (tên toà giải bằng danh bạ INVOKER dưới
       RLS nên tên không lộ);
       (3) lượt theo dõi việc tạo TRƯỚC khi áp 20261021170452 ở toà web giấu: lượt nhắc (hermes_task_follow_grant_v1) chỉ kiểm
-      authorize_tenant_action_v3('tasks.create'/'tasks.view') nên vẫn báo tiến độ việc đó;
+      authorize_tenant_action_v3('tasks.create'/'tasks.view') nên vẫn báo tiến độ việc đó — ĐÃ CÓ BẢN SỬA trong repo:
+      20261022180351_hermes_task_follow_building_v1 (Công việc Mốc 4, CHƯA áp) thêm điều kiện người giao còn buildings.view ở toà
+      của việc (mất ⇒ permission_lost, lượt nhắc đóng theo dõi); test PGlite task-follow-review-fixes + đột biến. Gỡ (3) khỏi mục
+      này khi file đó đã áp production;
       (4) capabilities/guard hành động (crm_task_input_options kind=buildings liệt kê toà theo tasks.create, phiếu chi, tin
       sale) cho thao tác ở toà web giấu.
       Ghi kèm (hẹp hơn web, không lộ): phiếu của sổ quỹ người hỏi giữ ở toà NGOÀI phạm vi khoá income_expenses.view không hiện

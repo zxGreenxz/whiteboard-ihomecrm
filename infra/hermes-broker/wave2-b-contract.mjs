@@ -85,9 +85,11 @@ export const W2B_REPORTS = Object.freeze({
       itemTypes: nullable(longText(300)), totalAmount: money } }),
   // Thu chi Mốc 3 (22/10, 20261022044130_hermes_w2b_expense_reports_v1): như trang Thu chi web (income_expenses dưới RLS, mặc định
   // ALL_ACTIVE = đã duyệt + chờ duyệt), mọi toà của khoá KỂ CẢ toà ảo (chi phí chung); khoá income_expenses.view (đợt 1, đã bật).
+  // Thu chi lượt 13 (24/10, 20261024095547_hermes_w2b_expense_pending_days_v1): days = chờ duyệt từ N ngày trở lên (trước chỉ sắp xếp ⇒ "quá
+  // 7 ngày" ra cả 58 phiếu); SQL lên TRƯỚC connector. Lượt 14 (20261024120210): maxAmount (dưới X) và UNAPPROVED không ngày ⇒ 366 ngày.
   expense_vouchers: w2Report({ permission: 'income_expenses.view', source: 'crm.income_expenses', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
-    title: 'Phiếu CHI lớn trước: fromDate..toDate (mặc định tháng này), minAmount, status (trống = đã duyệt + chờ duyệt), query (tên/mã/hạng mục), toà kể cả chi phí chung. Chờ duyệt lâu nhất/quá N ngày: status=UNAPPROVED kind=oldest (pendingDays). summary: count, totalAmount, maxAmount, byBuilding.',
-    params: ['fromDate', 'toDate', 'minAmount', 'status', 'kind', 'query', 'buildingId'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], kinds: ['largest', 'oldest'],
+    title: 'Phiếu CHI lớn trước: fromDate..toDate (mặc định tháng này; UNAPPROVED/days: 366 ngày), minAmount (từ), maxAmount (dưới), status, query, toà kể cả chi phí chung. Chờ duyệt quá N ngày: days=N (lâu nhất trước). Dòng có voucherId/code/ngày/toà cho expense.approve.',
+    params: ['fromDate', 'toDate', 'minAmount', 'status', 'kind', 'query', 'buildingId', 'days', 'maxAmount'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], kinds: ['largest', 'oldest'],
     fields: { voucherId: id, code: nullable(longText(60)), voucherDate: date, name, buildingId: id, buildingName: name, roomName: nullable(longText(100)),
       categories: nullable(longText(300)), totalAmount: money, approvalStatus: code, postingStatus: nullable(code), pendingDays: nullable(count) },
     summary: { fromDate: date, toDate: date, count, totalAmount: money, maxAmount: nullable(money), restrictedIncluded: bool, buildings: count,

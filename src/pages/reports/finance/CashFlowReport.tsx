@@ -1,10 +1,11 @@
 import { QueryRegion, refetchStartedSources } from "@/components/errors/QueryRegion";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
-import { useCashFlowByDay } from "@/hooks/useCashBook";
+import { useCashFlowReport } from "@/hooks/useCashFlowReport";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { useBuildings } from "@/hooks/useBuildings";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import {
@@ -23,10 +24,11 @@ const formatCurrency = (n: number) =>
 const QUARTER_LABEL = ["I", "II", "III", "IV"];
 
 export default function CashFlowReport() {
-  // hermes-parity:begin cashbook-daily-cash-flow — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
+  const { selectedOrganizationId } = useOrganization();
+  // hermes-parity:begin cash-flow-external-report — xem infra/hermes-broker/web-parity.json
   const currentYear = new Date().getFullYear();
   const [year, setYear] = usePersistedState<number>("flt:rpt-cash-flow:year", currentYear);
-  // hermes-parity:end cashbook-daily-cash-flow
+  // hermes-parity:end cash-flow-external-report
   const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-cash-flow:buildingId", "all");
   const [series, setSeries] = useState<{
     income: boolean;
@@ -34,19 +36,22 @@ export default function CashFlowReport() {
     net: boolean;
   }>({ income: true, expense: true, net: true });
 
-  // hermes-parity:begin cashbook-daily-cash-flow
-  const startDate = `${year}-01-01`;
-  const endDate = `${year}-12-31`;
-  // hermes-parity:end cashbook-daily-cash-flow
-
+  // hermes-parity:begin cash-flow-external-report
   const buildingsQuery = useBuildings({ includeVirtual: true });
-  const { data: buildings = [] } = buildingsQuery;
-  const cashFlowByDayQuery = useCashFlowByDay(startDate, endDate, {
-    building_id: buildingId === "all" ? undefined : buildingId,
-  });
-  const { data: byDay = [], isLoading } = cashFlowByDayQuery;
+  const buildings = (buildingsQuery.data ?? []).filter((building) => building.organization_id === selectedOrganizationId);
+  const buildingSelectionReady = !!selectedOrganizationId && buildingsQuery.status === "success";
+  const invalidBuildingSelection = buildingSelectionReady && buildingId !== "all" && !buildings.some((building) => building.id === buildingId);
+  const effectiveBuildingId = invalidBuildingSelection ? "all" : buildingId;
+  useEffect(() => {
+    if (invalidBuildingSelection) setBuildingId("all");
+  }, [invalidBuildingSelection, setBuildingId]);
+  const cashFlowQuery = useCashFlowReport(
+    year,
+    buildingSelectionReady && effectiveBuildingId !== "all" ? effectiveBuildingId : undefined,
+    { enabled: buildingId === "all" || buildingSelectionReady },
+  );
+  const { data: periods = [], isLoading } = cashFlowQuery;
 
-  // hermes-parity:begin cashbook-daily-cash-flow
   // Aggregate to 12 months
   const monthly = useMemo(() => {
     const result = Array.from({ length: 12 }, (_, i) => ({
@@ -56,16 +61,16 @@ export default function CashFlowReport() {
       expense: 0,
       net: 0,
     }));
-    (byDay as any[]).forEach((d) => {
-      const m = parseInt(d.date.substring(5, 7), 10) - 1;
-      if (m >= 0 && m < 12) {
-        result[m].income += d.income || 0;
-        result[m].expense += d.expense || 0;
-      }
+    periods.forEach((period) => {
+      // RPC trả cả tháng và quý: chỉ cộng tháng, tránh tính lại dòng quý.
+      if (period.period.includes("-Q")) return;
+      const m = Number(period.period.slice(5, 7)) - 1;
+      result[m].income += period.income;
+      result[m].expense += period.expense;
     });
     result.forEach((r) => (r.net = r.income - r.expense));
     return result;
-  }, [byDay]);
+  }, [periods]);
 
   // Quarter aggregation
   const quarterly = useMemo(() => {
@@ -82,7 +87,7 @@ export default function CashFlowReport() {
     const expense = monthly.reduce((s, m) => s + m.expense, 0);
     return { income, expense, net: income - expense };
   }, [monthly]);
-  // hermes-parity:end cashbook-daily-cash-flow
+  // hermes-parity:end cash-flow-external-report
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
@@ -110,7 +115,7 @@ export default function CashFlowReport() {
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Tòa nhà</span>
             <SearchableSelect
-              value={buildingId}
+              value={effectiveBuildingId}
               onValueChange={setBuildingId}
               className="w-[220px]"
               placeholder="Chọn tòa nhà"
@@ -122,7 +127,11 @@ export default function CashFlowReport() {
           </div>
         </div>
 
-        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowByDayQuery, buildingsQuery]} loading={<ChartSkeleton label="báo cáo dòng tiền" height={360} bars={12} onRetry={() => refetchStartedSources([cashFlowByDayQuery, buildingsQuery])} />}>
+        <p className="text-sm text-muted-foreground">
+          Dòng tiền thực thu, thực chi của tổ chức đang chọn; không gồm dữ liệu DEMO, sổ ảo, bàn giao nội bộ và phiếu đã hoàn tác. Tiền cọc thực nhận vẫn được tính vào thu.
+        </p>
+
+        <QueryRegion label="báo cáo dòng tiền" queries={[cashFlowQuery, buildingsQuery]} loading={<ChartSkeleton label="báo cáo dòng tiền" height={360} bars={12} onRetry={() => refetchStartedSources([cashFlowQuery, buildingsQuery])} />}>
         <div className="rounded-md border bg-card">
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-base font-semibold">Biểu đồ dòng tiền thu chi thực tế</h3>
@@ -178,13 +187,13 @@ export default function CashFlowReport() {
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableHead className="border-r font-semibold text-center w-16">Quý</TableHead>
-                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
-                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
-                <TableHead className="border-r-2 text-right font-semibold">Lợi nhuận</TableHead>
+                <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                <TableHead className="border-r-2 text-right font-semibold">Chênh lệch</TableHead>
                 <TableHead className="border-r font-semibold text-center w-16">Tháng</TableHead>
-                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
-                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
-                <TableHead className="text-right font-semibold">Lợi nhuận</TableHead>
+                <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                <TableHead className="text-right font-semibold">Chênh lệch</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

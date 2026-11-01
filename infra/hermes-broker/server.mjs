@@ -4,9 +4,12 @@ import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createCustomerActionAuth, createCustomerActionReads, createCustomerActionService } from './customer-action-adapter.mjs';
 import { createSaleActionAuth, createSaleActionReads, createSaleActionService } from './sale-action-adapter.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { createSalePolicyAuth, createSalePolicyReads, createSalePolicyService } from './sale-policy-adapter.mjs';
 import { createSaleBulkService } from './sale-bulk-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { publicWebOrigin as isPublicWebOrigin } from './public-link.mjs';
+import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
 import { createScheduleAuthAdapter, createSupabaseScheduleReads } from './schedule-adapter.mjs';
@@ -24,6 +27,7 @@ import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createSupabaseDurableAuthAdapter } from './supabase-durable-auth-adapter.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
+import { AUTHORITY_CONTEXT_CACHE, DEFAULT_AUTHORITY_CACHE_TTL_MS, createAuthorityContextCache, validAuthorityCacheTtl } from './authority-context-cache.mjs';
 import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createConnectionControlPlane, createSupabaseAssistantSignIn, createSupabaseConnectionPreparation } from './connection-control-plane.mjs';
 import { createConnectionManagement, createSupabaseConnectionManagementReads } from './connection-management.mjs';
@@ -44,9 +48,10 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
-import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { TASK_ACTION } from './task-contract.mjs';
-import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+// Danh mục production + thao tác của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng); dùng chung với
+// catalog-names.mjs (kiểm hướng dẫn chuẩn infra/hermes-skills).
+import { ACTION_PAGE_CATALOGS, PRODUCTION_ACTIONS } from './action-page-catalogs.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -114,9 +119,13 @@ function backendLimits(value) {
  * Optional `callLog(record)`: one tool_call_timing record per broker invocation
  * (phase durations, result size, outcome; never arguments, results or tokens).
  * The host owns the sink; this composition still has no logger of its own.
+ * Optional `authorityCacheTtlMs` (default 30 min, 0 = off, else 1–60 min): how long
+ * authenticate/ping, tools/list and the host renewal lane may reuse a connection's
+ * last CRM authorization read (authority-context-cache.mjs); tools/call never does.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog', 'actionProbe', 'actionPages', 'publicWebOrigin',
+    'authorityCacheTtlMs'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -130,6 +139,15 @@ export function createHermesBackend(configuration = {}) {
       // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
       // crm_action_* không hiện, không gọi RPC nào của họ này.
       (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
+      // Đợt 2: trang có thao tác ghi thật được nạp thêm vào danh mục (vd ['contract']). Vắng/[] = chỉ danh mục production
+      // (thao tác Thu chi expense.*), không nạp thao tác của trang nào khác. Phiên chính bật sau khi migration của trang đã áp.
+      (Object.hasOwn(configuration, 'actionPages') && (!Array.isArray(configuration.actionPages) ||
+        configuration.actionPages.some(page => typeof page !== 'string' || !Object.hasOwn(ACTION_PAGE_CATALOGS, page)) ||
+        new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
+      // Lượt 11 (D-HĐ9): origin web (https) để ghép link công khai của HĐ; vắng = crm_read_contract_detail trả publicLink null.
+      (Object.hasOwn(configuration, 'publicWebOrigin') && !isPublicWebOrigin(configuration.publicWebOrigin)) ||
+      // 28/10: hạn nhớ quyền CRM cho ping/tools/list/gia hạn; vắng = 30 phút, 0 = tắt (đọc quyền thật mọi lượt như trước).
+      (Object.hasOwn(configuration, 'authorityCacheTtlMs') && !validAuthorityCacheTtl(configuration.authorityCacheTtlMs)) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -155,32 +173,54 @@ export function createHermesBackend(configuration = {}) {
     // Each optional capability RPC absent (PGRST202) leaves its keys ungranted;
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký — Thu chi (Đợt 2; họ
-    // crm_expense_* cũ đã gỡ — TC1, cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create). Thao tác chỉ hiện khi khoá
-    // registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒ action_disabled. hermes_action_capabilities_v1
-    // chưa áp ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe (connector TEST). actionLive = danh mục thao
-    // tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá tasks.create CHỈ đến từ lớp này và tool tạo việc
-    // cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES
-    // của capability-contract (mặc định của createActionCatalog): thao tác nào khai khoá ngoài hợp đồng thì danh mục từ chối nạp,
-    // connector không khởi động.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác trang Thu chi (Đợt 2; họ crm_expense_* cũ đã gỡ — TC1,
+    // cùng khoá income_expenses.create), Công việc (Đợt 2b: task.create; Mốc 3: task.update, task.cancel; Mốc 4: task.create_batch) và
+    // Hoá đơn (Đợt 3 Mốc 3: invoice.collect, khoá riêng thu_tien.collect_transfer seed TẮT ⇒ không hiện tới khi bật khoá) + thao tác
+    // của các trang host bật (actionPages, vd. Hợp đồng). Thao tác chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp;
+    // RPC trang chưa áp (PGRST202) ⇒ action_disabled. Trang đã bật mà khoá còn TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao
+    // tác ẩn; hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe
+    // (connector TEST). actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: thao tác Công việc sống ⇒ khoá
+    // của nó CHỈ đến từ lớp này và tool cũ tương ứng nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như
+    // trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào
+    // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động. Đợt 3 Hoá đơn (Mốc 3–4): invoice.collect
+    // (khoá thu_tien.collect_transfer) và invoice.meter_record (khoá meter_readings.create) nằm trong danh mục production như #279,
+    // cả hai khoá seed TẮT ⇒ ẩn tới khi bật khoá.
+    const actionCatalog = createActionCatalog([...PRODUCTION_ACTIONS,
+      ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
+      ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
     const actionLive = createActionLiveCatalog();
+    // Khoá do HAI lớp cùng cần chỉ được MỘT lớp cấp (lớp sau thấy khoá đã có ⇒ context_changed cho mọi kết nối; sự cố TEST 23/10 khi
+    // bật actionPages contract cùng sale_phong.lock_room). Khoá của lớp Sale (SALE_ACTIONS) do lớp Sale cấp như production; thao tác
+    // trang dùng chung khoá đó (contract.room_lock / room_unlock) mượn khoá, không cấp lại. tasks.* đã phối hợp riêng (live, task-adapter).
     const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
+      borrowedKeys: actionCatalog.keys.filter(key => SALE_ACTIONS.includes(key)),
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
     const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
-      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
-    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), actionIds: actionCatalog.ids, live: actionLive });
+    // Lượt 11: khoá thao tác bật cho kết nối + công ty mà người dùng thiếu quyền CRM (theo ảnh chụp quyền) ⇒ runtime báo forbidden thay
+    // vì action_disabled. Chỉ authority đầy đủ ghi (thao tác ghi không đi đường đọc nhanh).
+    const permissionGaps = createCrmPermissionGaps();
+    // Nhớ quyền (28/10): một bộ nhớ cho authority đầy đủ của tiến trình. Chỉ lời gọi mang AUTHORITY_CONTEXT_CACHE
+    // (ping/initialize, tools/list của broker và làn gia hạn của host dưới đây) được dùng lại phần đọc quyền CRM.
+    const contextCache = createAuthorityContextCache({ ttlMs: configuration.authorityCacheTtlMs ?? DEFAULT_AUTHORITY_CACHE_TTL_MS, clock });
+    const authority = createDurableAuthority({ auth, connectionStore, crypto, clock, permissionGaps, contextCache });
+    // Làn gia hạn/refresh của host: không trả dữ liệu CRM, chỉ giữ token sống; SQL gia hạn (hermes_store_renew_connection_v1) tự
+    // kiểm thành viên, chính sách và giới hạn kết nối mỗi lần. Mọi tools/call vẫn kiểm quyền thật trước khi đọc/ghi.
+    const withContext = options => ({ ...(options ?? {}), [AUTHORITY_CONTEXT_CACHE]: true });
+    const contextAuthority = Object.freeze({ identifyConnection: authority.identifyConnection,
+      resolve: (token, options) => authority.resolve(token, withContext(options)),
+      checkUnchanged: (token, receipt, options) => authority.checkUnchanged(token, receipt, withContext(options)) });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
         auth: createDomainAuthAdapter({ baseAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) }) }) }) : undefined;
     const workMemory = createWorkMemoryService({ authority, connectionStore, crypto, auth, reads: memoryReads, clock });
-    const renewal = createConnectionRenewal({ authority, connectionStore, clock });
+    const renewal = createConnectionRenewal({ authority: contextAuthority, connectionStore, clock });
     const refreshProvider = createSupabaseRefreshProvider({ ...supabase, fetch: request, clock, dependencyScope });
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
       provider: refreshProvider, crypto, clock, dependencyScope });
-    const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
+    const maintenance = createConnectionMaintenance({ authority: contextAuthority, connectionStore, refreshManager, renewal, clock, dependencyScope });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group
@@ -193,18 +233,20 @@ export function createHermesBackend(configuration = {}) {
     // Same composed auth: chat_zalo.view/send (group) and manage_automation (schedule).
     const zaloBroadcasts = createZaloBroadcastService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
-    const domains = createDomainMount({ auth, authority, readAuthority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
+    const domains = createDomainMount({ auth, authority, readAuthority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request,
+      ...(configuration.publicWebOrigin === undefined ? {} : { publicWebOrigin: configuration.publicWebOrigin }) }).createService();
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
+    // applyBudgetMs: lượt đồng ý chỉ gửi lệnh ghi khi trần cả lời gọi còn đủ (action-runtime.mjs APPLY_MIN_REMAINING_SHARE).
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive, permissionGaps, applyBudgetMs: limits.callTimeoutMs,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
     const salePolicies = createSalePolicyService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });
     const saleBulk = createSaleBulkService({ authority, saleActions });
     const broker = createBroker({ tasks, roomPass, customers, actions, saleActions, salePolicies, saleBulk, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
+      observe: health.record, callLog, authorityCache: contextCache, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
@@ -275,7 +317,8 @@ export function createHermesBackend(configuration = {}) {
       const work = Promise.resolve().then(async () => {
         // Scope only the finite authority lookup. Preserve the 16-call limit
         // when a SQL/Auth observer aborts before its actual transport settles.
-        const lookup = dependencyScope.begin(() => authority.resolve(token, { signal: combined }));
+        // Vòng bảo trì của connector hỏi mỗi 30 s khi tới hạn gia hạn: chỉ cần chủ/hạn kết nối ⇒ dùng quyền CRM đã nhớ.
+        const lookup = dependencyScope.begin(() => authority.resolve(token, { signal: combined, [AUTHORITY_CONTEXT_CACHE]: true }));
         let context;
         try { context = await lookup.result; } finally { await lookup.drained; }
         if (closing || combined.aborted) throw new BrokerError('backend_unavailable');

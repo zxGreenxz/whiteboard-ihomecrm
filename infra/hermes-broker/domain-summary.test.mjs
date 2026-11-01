@@ -34,10 +34,10 @@ const ROWS = {
     { id: id(12), name: 'Bàn', code: null, condition: 'BROKEN', ...place(2, B), quantity: '1.5', createdAt: '2026-10-15' },
     { id: id(13), name: 'Ghế', code: null, condition: null, ...place(3), quantity: '4', createdAt: '2026-10-15' }],
   services: [{ id: id(11), name: 'Điện', code: 'DIEN', unit: 'kWh', unitPrice: '3500', buildingIds: [A, B] }],
-  tasks: [{ id: id(11), title: 'Sửa vòi', code: null, status: 'IN_PROGRESS', ...place(1), deadline: '2026-10-20T03:00:00+00:00' },
-    { id: id(12), title: 'Thay đèn', code: null, status: 'IN_PROGRESS', ...place(2), deadline: '2026-10-22T03:00:00+00:00' },
-    { id: id(13), title: 'Dọn kho', code: null, status: 'COMPLETED', ...place(3, B), deadline: '2026-10-01T03:00:00+00:00' },
-    { id: id(14), title: 'Không hạn', code: null, status: 'IN_PROGRESS', ...place(4, B), deadline: null }],
+  tasks: [{ id: id(11), title: 'Sửa vòi', code: null, status: 'IN_PROGRESS', ...place(1), deadline: '2026-10-20T03:00:00+00:00', assigneeName: 'Người A' },
+    { id: id(12), title: 'Thay đèn', code: null, status: 'IN_PROGRESS', ...place(2), deadline: '2026-10-22T03:00:00+00:00', assigneeName: 'Người B' },
+    { id: id(13), title: 'Dọn kho', code: null, status: 'COMPLETED', ...place(3, B), deadline: '2026-10-01T03:00:00+00:00', assigneeName: 'Người A' },
+    { id: id(14), title: 'Không hạn', code: null, status: 'IN_PROGRESS', ...place(4, B), deadline: null, assigneeName: null }],
   occupancy: [{ id: A, buildingId: A, name: 'Toà A', total: 10, occupied: 7, available: 2 }, { id: B, buildingId: B, name: 'Toà B', total: 5, occupied: 5, available: 0 }],
   income_expenses: [{ id: id(11), code: 'PT1', type: 'INCOME', name: 'Thu phòng', ...place(1), voucherDate: '2026-10-05', totalAmount: '2500000.00', approvalStatus: 'APPROVED' },
     { id: id(12), code: 'PC1', type: 'EXPENSE', name: 'Sửa điện', ...place(2), voucherDate: '2026-10-02', totalAmount: '150000.00', approvalStatus: 'UNAPPROVED' },
@@ -179,7 +179,11 @@ test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CA
   assert.equal(summarizeRows('income_expenses', tie).byType.EXPENSE.largest.id, id(30), 'per type too');
   assert.deepEqual(summarizeRows('income_expenses', []), { count: 0, byStatus: {}, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'empty set: {} and 0, never null');
   assert.deepEqual(full('meter_readings'), { count: 3, byStatus: { APPROVED: 2, UNAPPROVED: 1 }, sum: { consumption: '53.50' }, byType: { ELECTRICITY: 1, WATER: 2 }, rooms: 1 });
-  assert.deepEqual(full('tasks'), { count: 4, byStatus: { IN_PROGRESS: 3, COMPLETED: 1 }, sum: {}, overdue: 1 }, 'past deadline and still IN_PROGRESS');
+  // Mốc 3b: nhóm theo toà / người nhận như SQL 20261022153345 (hoà ⇒ id toà tăng; chưa giao (null) cuối); dòng không mang người tạo ⇒ givenByMe null.
+  assert.deepEqual(full('tasks'), { count: 4, byStatus: { IN_PROGRESS: 3, COMPLETED: 1 }, sum: {}, overdue: 1,
+    byBuilding: [{ buildingId: A, buildingName: 'Toà A', count: 2, overdue: 1 }, { buildingId: B, buildingName: 'Toà B', count: 2, overdue: 0 }],
+    byAssignee: [{ assigneeName: 'Người A', count: 2, overdue: 1 }, { assigneeName: 'Người B', count: 1, overdue: 0 }, { assigneeName: null, count: 1, overdue: 0 }],
+    givenByMe: null }, 'past deadline and still IN_PROGRESS');
   assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' },
     latest: { id: id(12), name: 'Bàn', code: null, buildingId: B, buildingName: 'Toà B', roomName: 'P2', createdAt: '2026-10-15' }, latestCount: null },
   'condition null counts in count only; latest: the newest day, the smaller id within it (SQL orders the real instant); latestCount: rows carry no instant');
@@ -197,6 +201,10 @@ test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CA
   assert.deepEqual([capped[0].remainingAmount, capped[0].count, capped[0].buildingId, capped.at(-1).remainingAmount], ['208', 2, id(2004), '110'],
     'two rows of the top building, the five smallest (105..109) dropped');
   assert.deepEqual(summarizeRows('receivables', [{ ...ROWS.receivables[0], remainingAmount: '-1.5' }, { ...ROWS.receivables[2], remainingAmount: '1' }]).sum.remainingAmount, '-0.5');
+  // Mốc 3b: tasks.byAssignee giữ 50 nhóm nhiều việc nhất (hoà: tên theo đơn vị mã), như LIMIT 50 của SQL.
+  const people = Array.from({ length: 55 }, (_, n) => ({ ...ROWS.tasks[1], id: id(3000 + n), assigneeName: `N${String(n % 52).padStart(2, '0')}` }));
+  const top = summarizeRows('tasks', people, { now: NOW }).byAssignee;
+  assert.deepEqual([top.length, top[0], top[2].assigneeName, top[3].assigneeName, top.at(-1).assigneeName], [50, { assigneeName: 'N00', count: 2, overdue: 0 }, 'N02', 'N03', 'N49']);
   assert.throws(() => summarizeRows('customer_detail', []), 'detail tools have no summary');
 });
 

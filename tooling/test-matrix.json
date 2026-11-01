@@ -184,9 +184,13 @@
         ".github/workflows/migration-restore-drill.yml"
       ],
       "suiteId": "app-unit",
-      "testPatterns": ["scripts/__tests__/restore-hermes-drill.test.mjs"],
+      "testPatterns": [
+        "scripts/__tests__/restore-hermes-drill.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/migration-restore-drill.yml",
-      "jobs": ["restore-drill"]
+      "jobs": [
+        "restore-drill"
+      ]
     },
     {
       "id": "migration-target-native",
@@ -204,6 +208,8 @@
       "suiteId": "node-native",
       "testPatterns": [
         "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
@@ -527,6 +533,18 @@
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-official-skills",
+      "$comment": "Skill CRM chuẩn của Hermes (infra/hermes-skills) phải khớp tool/thao tác hiện hành của connector; script triển khai chạy thử trên cây giả.",
+      "sourcePaths": [
+        "infra/hermes-skills/**"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/official-skills.test.mjs",
+        "infra/hermes-broker/official-skills-deploy.test.mjs"
       ]
     },
     {
@@ -874,9 +892,14 @@
         "package.json"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs", "worker/deploy/**/*.test.mjs"],
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs",
+        "worker/deploy/**/*.test.mjs"
+      ],
       "workflowOwner": ".github/workflows/hermes-runtime.yml",
-      "jobs": ["native-upstream"]
+      "jobs": [
+        "native-upstream"
+      ]
     },
     {
       "id": "hermes-native-deployment",
@@ -891,7 +914,9 @@
         ".github/workflows/hermes-runtime.yml"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["worker/deploy/**/*.test.mjs"]
+      "testPatterns": [
+        "worker/deploy/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-transport",
@@ -904,7 +929,9 @@
         "worker/index.js"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs"]
+      "testPatterns": [
+        "infra/hermes-zalo-native/**/*.test.mjs"
+      ]
     },
     {
       "id": "hermes-native-zalo-caller",
@@ -1049,6 +1076,66 @@
         "infra/hermes-broker/tool-plan.test.mjs",
         "scripts/__tests__/hermes-durable-schema.test.mjs",
         "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-invoice-actions",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_collection_plan_v1.sql",
+        "supabase/migrations/*_hermes_invoice_action_v1.sql",
+        "supabase/migrations/*_hermes_invoice_meter_v1.sql",
+        "supabase/migrations/*_meter_readings_v2.sql",
+        "supabase/migrations/*_hermes_invoice_edit_v1.sql",
+        "supabase/migrations/*_invoice_adjustment_build_v1.sql",
+        "supabase/migrations/*_meter_readings_plan_previous_period_v1.sql",
+        "supabase/migrations/*_hermes_invoice_collect_v2.sql",
+        "supabase/migrations/*_hermes_w2a_invoice_shared_v1.sql",
+        "infra/hermes-broker/meter-trigger-bodies.json",
+        "infra/hermes-broker/invoice-writer-bodies.json",
+        "infra/hermes-broker/invoice-actions-*.mjs",
+        "infra/hermes-broker/action-catalog.mjs",
+        "infra/hermes-broker/action-reasons.mjs",
+        "infra/hermes-broker/capability-contract.mjs",
+        "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/invoice-write-fixture.mjs",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-runtime/host-ownership.mjs",
+        "scripts/hermes-task-function-contract.mjs",
+        "scripts/test-hermes-private-flow.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/invoice-actions.test.mjs",
+        "infra/hermes-broker/invoice-write-sql.test.mjs",
+        "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-sql.test.mjs",
+        "infra/hermes-broker/invoice-meter-race-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-sql.test.mjs",
+        "infra/hermes-broker/invoice-edit-race-sql.test.mjs",
+        "infra/hermes-broker/action-catalog.test.mjs",
+        "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
+        "infra/hermes-broker/action-reasons.test.mjs",
+        "infra/hermes-broker/action-tools-budget.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "invoice-collection-plan-parity",
+      "sourcePaths": [
+        "src/lib/collectPlan.ts",
+        "src/lib/collectionSettlement.ts",
+        "src/lib/duplicateCollection.ts",
+        "src/lib/changeAccounts.ts",
+        "src/lib/__tests__/fixtures/invoice-collection-plan-vectors.json",
+        "supabase/migrations/*_invoice_collection_plan_v1.sql"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceCollectionPlanVectors.test.ts"
       ]
     },
     {
@@ -1223,6 +1310,7 @@
         "infra/hermes-broker/connection-management.mjs",
         "infra/hermes-broker/customer-action-contract.mjs",
         "infra/hermes-broker/expense-actions-contract.mjs",
+        "infra/hermes-broker/invoice-actions-contract.mjs",
         "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "src/hermes/capabilityLabels.ts",
@@ -1238,7 +1326,9 @@
         "src/hermes/HermesOrgPolicySettings.test.tsx",
         "src/pages/settings/HermesConnectionsPage.test.tsx"
       ],
-      "viewports": ["affected"]
+      "viewports": [
+        "affected"
+      ]
     },
     {
       "id": "hermes-room-pass-actions",
@@ -1470,6 +1560,7 @@
         "supabase/migrations/*_hermes_user_display_name_v1.sql",
         "infra/hermes-broker/read-name-resolution.mjs",
         "infra/hermes-broker/domain-mount.mjs",
+        "infra/hermes-broker/public-link.mjs",
         "infra/hermes-broker/broker.mjs"
       ],
       "suiteId": "node-native",
@@ -1477,7 +1568,9 @@
         "infra/hermes-broker/name-directory-sql.test.mjs",
         "infra/hermes-broker/read-name-resolution.test.mjs",
         "infra/hermes-broker/broker.test.mjs",
-        "infra/hermes-broker/server.test.mjs"
+        "infra/hermes-broker/server.test.mjs",
+        "infra/hermes-broker/public-link.test.mjs",
+        "infra/hermes-broker/wave2-a-hoa-don.test.mjs"
       ]
     },
     {
@@ -1489,6 +1582,60 @@
       "testPatterns": [
         "infra/hermes-broker/copied-text-parity-sql.test.mjs",
         "infra/hermes-broker/full-read-*.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-worker",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**"
+      ],
+      "suiteId": "meter-capture-python",
+      "testPatterns": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-edge",
+      "sourcePaths": [
+        "supabase/functions/meter-capture-worker/**"
+      ],
+      "suiteId": "edge-deno-meter-capture",
+      "testPatterns": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ]
+    },
+    {
+      "id": "meter-capture-sql",
+      "sourcePaths": [
+        "supabase/migrations/20261022144130_meter_capture_evidence_v1.sql",
+        "supabase/migrations/20261023142638_meter_capture_sol_review.sql",
+        "supabase/migrations/20261023145747_meter_capture_invoice_facts_guard.sql",
+        "supabase/migrations/20261023150206_meter_capture_correction_chain.sql",
+        "supabase/migrations/20261030101812_meter_capture_so_dau_theo_dong_ho.sql",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs"
+      ]
+    },
+    {
+      "id": "meter-capture-runtime",
+      "sourcePaths": [
+        "infra/meter-capture-worker/**",
+        ".github/workflows/meter-capture-runtime.yml",
+        "tooling/runtime-matrix.json",
+        "tooling/test-matrix.json"
+      ],
+      "suiteId": "meter-capture-runtime",
+      "testPatterns": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "jobs": [
+        "cpu-runtime"
       ]
     }
   ],
@@ -1569,6 +1716,10 @@
         "infra/**",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
         "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -1908,6 +2059,10 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "scripts/__tests__/meter-capture-sql.test.mjs",
+        "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+        "scripts/__tests__/meter-capture-fixture.test.mjs",
+        "scripts/__tests__/meter-capture-readiness.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",
@@ -2107,6 +2262,72 @@
       "environment": "ci",
       "timeoutMinutes": 35,
       "note": "Every connected Android instrumentation test must run, and setup/status screenshots must exist. Compiling test APK is not accepted as execution."
+    },
+    {
+      "id": "meter-capture-python",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "node --test",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "node --test infra/meter-capture-worker/worker.test.mjs",
+      "runtime": "node 24.18.0 + python 3.12.10",
+      "risk": "normal",
+      "includes": [
+        "infra/meter-capture-worker/worker.test.mjs"
+      ],
+      "note": "Node entrypoint discovers every test_*.py, requires exact Python runtime and fails on zero tests or skips. Synthetic fixtures only; no OCR model, Docker, credentials or paid AI calls.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "edge-deno-meter-capture",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/meter-capture-worker/deno.json supabase/functions/meter-capture-worker/index.test.ts --allow-env",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/meter-capture-worker/index.test.ts"
+      ],
+      "note": "Gateway fixtures cover user JWT/worker bearer separation, scoped leases, original media receipts, private evidence and server-side hashing. No production access.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "id": "meter-capture-runtime",
+      "workflowOwner": ".github/workflows/meter-capture-runtime.yml",
+      "runner": "node --test",
+      "ciJob": "Meter capture CPU runtime / cpu-runtime",
+      "command": "node --test infra/meter-capture-worker/runtime.test.mjs",
+      "runtime": "node 24.18.0 + Linux Docker + pinned Python 3.12.10 image",
+      "risk": "infrastructure",
+      "includes": [
+        "infra/meter-capture-worker/runtime.test.mjs"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/meter-capture-runtime.yml",
+          "job": "cpu-runtime"
+        }
+      ],
+      "ciCommandStep": "Build pinned worker and verify synthetic OCR and clip decoding offline",
+      "environment": "ci",
+      "timeoutMinutes": 25,
+      "note": "Build the pinned CPU image and run actual PaddleOCR/OpenCV/FFmpeg against synthetic JPEG and H.264 fixtures without network, credentials or AI calls. This is runtime integration evidence, not a real-meter accuracy benchmark."
     }
   ],
   "ignore": [

@@ -2,6 +2,8 @@ import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useContractExitCases } from '@/hooks/useContractExitCases';
+import { useContractExitSettlementDrafts } from '@/hooks/useContractExitSettlementDrafts';
+import { draftSavedBy } from '@/lib/contractExitSettlementDrafts';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import type { ContractWithRelations } from '@/types/contract';
@@ -15,6 +17,11 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
   const query = useContractExitCases({ contractId: contract.id, limit: 1 });
   const { data: permissions } = useMyPermissions();
   const [open, setOpen] = useState(false);
+  const [resumeDraft, setResumeDraft] = useState(false);
+  const pendingCase = query.data?.items[0]?.state === 'PENDING' ? query.data.items[0] : undefined;
+  const canSettle = canUse(permissions, 'contracts', 'terminate');
+  const drafts = useContractExitSettlementDrafts(pendingCase && canSettle ? [pendingCase.id] : []);
+  const draft = pendingCase ? drafts.data?.find(item => item.caseId === pendingCase.id) : undefined;
   // Khung hồ sơ chỉ có khi hợp đồng đã có hồ sơ trả phòng — chờ thì không vẽ gì để
   // khỏi hiện rồi biến (chủ chốt 02/10/2026: không chữ "Đang tải…").
   if (query.isLoading) return <LoadingState label="hồ sơ trả phòng" variant="none" />;
@@ -25,7 +32,13 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="font-semibold">{exitCase.state === 'PENDING' ? 'Đã trả phòng · Chờ quyết toán' : 'Đã chốt quyết toán'}</h2>
         <p className="text-sm">Ngày khách trả: {exitCase.actual_move_out_on.split('-').reverse().join('/')}</p></div>
-      {exitCase.state === 'PENDING' && canUse(permissions, 'contracts', 'terminate') && <Button onClick={() => setOpen(true)}>Quyết toán hồ sơ này</Button>}
+      {exitCase.state === 'PENDING' && canSettle && <div className="flex flex-col items-end gap-1">
+        {draft && <p className="text-xs text-sky-800">Có nháp · lưu {draftSavedBy(draft)}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {draft && <Button onClick={() => { setResumeDraft(true); setOpen(true); }}>Mở bản nháp</Button>}
+          <Button variant={draft ? 'outline' : 'default'} onClick={() => { setResumeDraft(false); setOpen(true); }}>Quyết toán hồ sơ này</Button>
+        </div>
+      </div>}
     </div>
     <div className="text-sm"><p>Loại ban đầu: <strong>{EXIT_KIND_LABELS[exitCase.initial_kind]}</strong></p>
       <p>Loại hiện tại: <strong>{EXIT_KIND_LABELS[exitCase.current_kind]}</strong></p></div>
@@ -43,6 +56,6 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
     <Suspense fallback={<LoadingState label="liên kết nhượng" variant="none" />}><TransferPanel exitCase={exitCase} /></Suspense>
     <ContractMeterBoundaryPanel key={contract.id} contractId={contract.id} roomId={exitCase.room_at_handover_id}
       canEdit={canUse(permissions, 'contracts', 'edit')} exit={exitCase} />
-    {open && exitCase.state === 'PENDING' && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} />}
+    {open && exitCase.state === 'PENDING' && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} resumeDraft={resumeDraft} />}
   </section>;
 }

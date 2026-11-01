@@ -18,29 +18,39 @@ const freeze = value => {
 const annotations = (write) => write
   ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const RUN_GUIDANCE = 'Kết quả confirmation_required = CHƯA ghi: đọc preview cho người dùng, chỉ khi họ đồng ý rõ mới gọi lại y nguyên kèm requestId và confirmToken. ' +
-  'needs_input = CHƯA ghi: hỏi lại người dùng theo detail. action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
+// Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được đòi thêm consentText = nguyên văn lời đồng ý ở lượt xác nhận.
+// 31/10 (hướng dẫn chuẩn infra/hermes-skills): cách xử lý confirmation_required / needs_input nằm đủ ở huongDan của chính kết quả
+// (CONFIRM_GUIDANCE, INPUT_GUIDANCE, CONSENT_*), mô tả chỉ nhắc "làm theo huongDan" ⇒ đủ byte cho tên tool cũ + từ khoá ý định
+// mà vẫn giữ trần 2 000 B của ba tool (action-tools-budget / action-contract test).
+const RUN_GUIDANCE = 'confirmation_required/needs_input = CHƯA ghi: làm theo huongDan. ' +
+  'action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không thử lại. ' +
   'action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
 
+// Sự cố 31/10 (bot owner tìm crm_task_create đã nghỉ, tool_search rỗng ⇒ báo "không khả dụng"): mô tả nêu tên tool cũ mà họ này
+// thay (catalog-names.mjs retiredToolNames; official-skills.test.mjs đòi đủ) và từ khoá ý định có dấu + không dấu (tool_search của
+// Hermes là BM25 token ASCII, chữ có dấu bị cắt vụn — dạng không dấu mới khớp được). Trần: ba tool 1 997 B, trong tools/list kể cả dấu
+// phẩy 1 999 / 2 000 B (31/10) ⇒ thêm tên cũ nào nữa thì co mô tả chỗ khác cùng PR (infra/hermes-skills/README.md).
 export const ACTION_LIST_TOOL = freeze({
   name: 'crm_action_list',
   description: 'List CRM write actions: expense, invoice, contract, task. ' +
-    'Trả action, params, confirm của thao tác kết nối được làm; gọi khi chưa biết mã hay tham số.',
+    'Gọi trước khi từ chối: tạo/giao/huỷ việc (tao giao huy viec), giữ/khoá phòng (giu khoa phong), ' +
+    'gia hạn/báo trả HĐ (gia han bao tra hop dong), phiếu chi (phieu chi), thu tiền hoá đơn (thu tien hoa don).',
   inputSchema: { type: 'object', additionalProperties: false, properties: { page: { enum: [null, ...LISTED_PAGES] } } },
   annotations: annotations(false),
 });
 export const ACTION_RUN_TOOL = freeze({
   name: 'crm_action_run',
-  description: 'Run CRM write action (expense, invoice, contract, task). ' +
-    'action, params đúng như crm_action_list; toà/phòng bằng tên, tiền là số nguyên VND. ' + RUN_GUIDANCE,
+  description: 'Run CRM write action (expense/invoice/contract/task). ' +
+    'Thay crm_task_create/crm_task_input_options/crm_task_progress/crm_task_cancel/crm_expense_create/crm_expense_input_options. ' +
+    'params theo crm_action_list; tên toà/phòng, tiền số nguyên VND. ' + RUN_GUIDANCE,
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', pattern: ACTION_ID.source }, params: { type: 'object' },
-    requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' } } },
+    requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' }, consentText: { type: 'string' } } },
   annotations: annotations(true),
 });
 export const ACTION_STATUS_TOOL = freeze({
   name: 'crm_action_status',
-  description: 'CRM write action status by requestId. Dùng sau action_outcome_unknown, đúng requestId của lệnh gốc.',
+  description: 'CRM write action status by requestId. Thay crm_task_status/crm_expense_status.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: { type: 'string', format: 'uuid' } } },
   annotations: annotations(false),
 });
@@ -59,7 +69,8 @@ export function pageActionTool(page, operations) {
     name: `crm_${page}_action`,
     description: `${PAGE_LABELS[page]}. ${RUN_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['operation'], properties: {
-      operation: { enum: [...operations] }, params: { type: 'object' }, requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' } } },
+      operation: { enum: [...operations] }, params: { type: 'object' }, requestId: { type: 'string', format: 'uuid' }, confirmToken: { type: 'string' },
+      consentText: { type: 'string' } } },
     annotations: annotations(true),
   });
 }
@@ -90,14 +101,28 @@ export function listedActionTools(catalog, effective, shape = ACTION_TOOL_SHAPE)
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const onlyKeys = (value, keys) => plain(value) && Object.keys(value).every(key => keys.includes(key));
+// Thu chi lượt 16 (nghiệm thu C3d: bot chép requestId thiếu một ký tự ⇒ invalid_request chung, crm_action_status hỏng theo): requestId sai
+// khuôn UUID là lỗi riêng mang số ký tự đã gửi (không bao giờ chuỗi đã gửi) để broker nói rõ.
+export class RequestIdShapeError extends TypeError {
+  constructor(length) { super('invalid_action_envelope'); this.length = length; }
+}
 const requestIdOf = value => {
   if (value === undefined || value === null || value === '') return undefined;
-  if (typeof value !== 'string' || !UUID.test(value)) throw new TypeError('invalid_action_envelope');
+  if (typeof value !== 'string' || !UUID.test(value)) throw new RequestIdShapeError(typeof value === 'string' ? Math.min([...value].length, 999) : null);
   return value.toLowerCase();
 };
+/** Câu tĩnh của invalid_request khi requestId sai khuôn (mcp-http chỉ chuyển đúng câu dựng bằng hàm này). */
+export const requestIdShapeDetail = length => `requestId không đúng khuôn UUID (${Number.isSafeInteger(length) ? `${length} ký tự, cần 36` : 'không phải chuỗi'}) — ` +
+  'chép NGUYÊN VĂN requestId mà bản xem trước / lệnh gốc trả về; lượt xác nhận kèm confirmToken thì requestId lấy theo token.';
+export const isRequestIdShapeDetail = text => {
+  if (typeof text !== 'string') return false;
+  const count = /^requestId không đúng khuôn UUID \((\d{1,3}) ký tự, cần 36\)/.exec(text);
+  return text === requestIdShapeDetail(count ? Number(count[1]) : null);
+};
 /** Phong bì đối số (đã tách confirmToken). Sai kiểu ở cấp phong bì ⇒ TypeError (invalid_request); mã thao tác lạ
- * KHÔNG lỗi ở đây — broker trả needs_input unknown_action. */
-export function actionEnvelope(route, args) {
+ * KHÔNG lỗi ở đây — broker trả needs_input unknown_action. confirming (lượt 16): lượt có confirmToken — requestId sai khuôn không làm hỏng
+ * phong bì (requestIdMalformed), vì requestId của lượt xác nhận lấy theo bản ghi của token. */
+export function actionEnvelope(route, args, { confirming = false } = {}) {
   if (route?.op === 'list') {
     if (!onlyKeys(args, ['page']) || !(args.page === undefined || args.page === null || LISTED_PAGES.includes(args.page) || args.page === 'probe')) throw new TypeError('invalid_action_envelope');
     return { page: args.page ?? null };
@@ -110,9 +135,20 @@ export function actionEnvelope(route, args) {
   }
   if (route?.op !== 'run') throw new TypeError('invalid_action_envelope');
   const selector = route.page === undefined ? 'action' : 'operation';
-  if (!onlyKeys(args, [selector, 'params', 'requestId']) || typeof args[selector] !== 'string') throw new TypeError('invalid_action_envelope');
+  if (!onlyKeys(args, [selector, 'params', 'requestId', 'consentText']) || typeof args[selector] !== 'string') throw new TypeError('invalid_action_envelope');
   const action = route.page === undefined ? args[selector].trim() : `${route.page}.${args[selector].trim()}`;
-  return { action, params: paramsOf(args.params), requestId: requestIdOf(args.requestId) };
+  const consentText = consentTextOf(args.consentText);
+  let requestId, requestIdMalformed = false;
+  try { requestId = requestIdOf(args.requestId); } catch (error) { if (!(confirming && error instanceof RequestIdShapeError)) throw error; requestIdMalformed = true; }
+  return { action, params: paramsOf(args.params), requestId, ...(requestIdMalformed ? { requestIdMalformed } : {}), ...(consentText === undefined ? {} : { consentText }) };
+}
+// consentText (lượt 12 Hợp đồng): chỉ lượt xác nhận của thao tác không lùi được mới đọc; vắng / null / trống = không gửi. Không vào params
+// hay khoá binding của token (người dùng đáp "ok" sau một câu chưa rõ vẫn xác nhận được đúng bản xem trước đó). Dài quá trần thì rào đồng ý
+// trả consent_unclear, không phải lỗi phong bì.
+function consentTextOf(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || value.length > 4000) throw new TypeError('invalid_action_envelope');
+  return value;
 }
 // Mô hình đôi khi gửi params là chuỗi JSON: đọc nếu ra object thuần (≤ 4 000 ký tự); còn lại để validator trả needs_input.
 function paramsOf(value) {
@@ -121,39 +157,101 @@ function paramsOf(value) {
 }
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
+// 31/10 (SOUL dòng 15 + 22, review #369) + 01/11 (ma trận d31: bot hỏi lại lý do "khách ở tiếp", note "quyết toán sau" dù người dùng đã
+// nói; review #377): invalid_params ⇒ sửa theo detail rồi gọi lại — phần BOT chọn (tên / kiểu tham số, định dạng ngày, tham số thừa); cụm
+// người dùng nói VỀ chính tham số đó (lý do = vì sao) thì dùng / ghép nguyên văn, KHÔNG ghép câu yêu cầu, tên thao tác, chủ ngữ hay từ đệm
+// cho đủ khuôn ("302 toà 80 huỷ báo trả, đổi ý" ⇒ không thành lý do "huỷ báo trả, đổi ý" — SOUL dòng 22 cấm "huỷ báo trả", "theo yêu cầu");
+// tham số tuỳ chọn họ không nói thì bỏ (ngày thu của invoice.collect ⇒ hôm nay). Giá trị người dùng nói mà ngắn / sai khuôn (lý do chỉ
+// "đổi ý", giữ phòng 8 giờ khi chỉ có 6 / 12 / 24) hoặc chưa nói ⇒ hỏi lại, không tự đổi: thao tác ghi thẳng ⇒ chữ / số bot tự đặt vào thẳng
+// CRM. Lưới chặn thu tiền (collect-guard) gọi needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "sửa … gọi lại".
+const PARAMS_GUIDANCE = 'CHƯA ghi. Sửa theo detail rồi gọi lại crm_action_run: phần do bot chọn (tên / kiểu tham số, định dạng ngày, tham số thừa); ' +
+  'cụm người dùng nói VỀ chính tham số đó (lý do = vì sao, vd "khách ở tiếp") thì dùng hoặc ghép nguyên văn, KHÔNG ghép câu yêu cầu, tên thao tác, ' +
+  'chủ ngữ hay từ đệm cho đủ khuôn; tham số tuỳ chọn họ không nói thì bỏ (vd ngày thu của invoice.collect ⇒ hôm nay). Giá trị người dùng nói mà ' +
+  'ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
+const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
+  'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';
+// Bản xem trước của thao tác không lùi được (lượt 12 Hợp đồng): nói trước rằng lượt xác nhận phải kèm consentText.
+const CONSENT_CONFIRM_NOTE = ' Thao tác KHÔNG lùi được: lượt xác nhận phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp; họ chỉ bổ sung chi tiết (chưa nói ' +
+  'đồng ý) thì hỏi lại "anh/chị đồng ý ghi không?", không gửi xác nhận.';
 const CONFIRM_GUIDANCE = 'CHƯA ghi. Đọc preview cho người dùng (toà, phòng, số tiền, ngày…); chỉ khi họ đồng ý rõ ràng SAU khi xem mới gọi lại crm_action_run ' +
   'y nguyên action, params, requestId kèm confirmToken. Token dùng một lần, hết hạn sau 10 phút; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại. ' +
   'Lỗi confirmation_invalid: gọi lại không kèm confirmToken để lấy bản xem trước mới.';
-/** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). */
-export function needsInput({ action, reason, detail, candidates }) {
+// Thu chi lượt 14 (nghiệm thu 24/10: xác nhận bị confirmation_invalid rồi bot ra bản xem trước mới, lặp): câu TĨNH nói phần nào lệch — danh
+// sách đóng, mcp-http chỉ chuyển đúng các câu này (không chứa giá trị đã gửi).
+export const CONFIRM_INVALID_DETAILS = Object.freeze({
+  request: 'Token thuộc bản xem trước có requestId khác: xác nhận bằng ĐÚNG requestId mà bản xem trước trả về; gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  params: 'Params khác bản xem trước: gửi y nguyên params đã xem; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại.',
+  expired: 'Token xác nhận đã quá 10 phút: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  unknown: 'Token xác nhận đã dùng (mỗi token một lần) hoặc không đúng: gọi lại không kèm confirmToken để lấy bản xem trước mới.',
+  missing_request: 'Thiếu requestId: xác nhận phải gửi kèm requestId của bản xem trước.',
+});
+export const CONFIRM_INVALID_TEXTS = Object.freeze(Object.values(CONFIRM_INVALID_DETAILS));
+/** Kết quả thường "cần thêm thông tin" (KHÔNG phải lỗi MCP — tránh rào 3 lần bị từ chối của Hermes). askUser = true ⇒ luôn
+ * INPUT_GUIDANCE (hỏi lại người dùng), kể cả invalid_params — cho lưới chặn mà "tự sửa rồi gọi lại" là ghi sai (collect-guard). */
+export function needsInput({ action, reason, detail, candidates, askUser = false }) {
   if (!ACTION_INPUT_REASONS.includes(reason)) throw new TypeError('invalid_needs_input_reason');
   return { outcome: 'needs_input', applied: false, action, reason, detail: typeof detail === 'string' && detail ? detail : ACTION_REASONS[reason].text,
-    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: reason === 'unknown_action' ? UNKNOWN_GUIDANCE : INPUT_GUIDANCE };
+    ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: askUser === true ? INPUT_GUIDANCE : reason === 'unknown_action' ? UNKNOWN_GUIDANCE
+      : reason === 'consent_unclear' ? CONSENT_GUIDANCE : reason === 'invalid_params' ? PARAMS_GUIDANCE : INPUT_GUIDANCE };
 }
-export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt }) {
-  return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt, huongDan: CONFIRM_GUIDANCE };
+export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt, consent = false }) {
+  return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt,
+    huongDan: consent ? `${CONFIRM_GUIDANCE}${CONSENT_CONFIRM_NOTE}` : CONFIRM_GUIDANCE };
 }
 
-export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook']);
+export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook', 'job',
+  'recurrence']);
 // unspecified (trang Công việc, Đợt 2b): người dùng chưa nêu trường này (wanted rỗng); candidates là gợi ý để hỏi lại một câu (Q31).
 export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visible', 'unspecified']);
 const LABELS = Object.freeze({ building: 'toà', room: 'phòng', jobType: 'loại việc', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn',
-  category: 'hạng mục', cashbook: 'sổ quỹ' });
+  category: 'hạng mục', cashbook: 'sổ quỹ', job: 'việc', recurrence: 'việc định kỳ' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/gu;
-const quoted = value => `'${String(value).replace(CONTROL, ' ').trim().slice(0, 60)}'`;
+const quoted = (value, max = 60) => `'${String(value).replace(CONTROL, ' ').trim().slice(0, max)}'`;
+const LIST_PARAM = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** detail của name_unresolved từ kết quả hàm giải tên SQL (hermes_write_name_resolve_v1): chỉ chuỗi mô hình gửi + ứng viên mà
  * RLS của người hỏi đã cho thấy. why: ambiguous (≥ 2 trong phạm vi được ghi) / outside_scope (thấy nhưng ngoài phạm vi toà của
- * khoá ghi) / not_visible. Không bao giờ nói "không có": hàm INVOKER không biết điều đó (RLS có thể ẩn đối tượng có thật). */
-export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more = false }) {
-  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates) || !(why === undefined || NAME_WHYS.includes(why))) throw new TypeError('invalid_name_detail');
+ * khoá ghi) / not_visible. Không bao giờ nói "không có": hàm INVOKER không biết điều đó (RLS có thể ẩn đối tượng có thật).
+ * listParam (Thu chi lượt 20): tên tham số DANH SÁCH chứa các tên này, chỉ khi thao tác luôn xem trước (runtime suy từ danh mục). */
+export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more = false, listParam }) {
+  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates) || !(why === undefined || NAME_WHYS.includes(why)) ||
+      !(listParam === undefined || (typeof listParam === 'string' && LIST_PARAM.test(listParam)))) throw new TypeError('invalid_name_detail');
   const label = LABELS[field], Label = `${label[0].toUpperCase()}${label.slice(1)}`;
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
   const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
   const kind = why ?? (candidates.length ? 'ambiguous' : 'not_visible');
+  // C3n (nghiệm thu TC c3m/c3n A14): hạng mục chi có ĐÚNG MỘT gợi ý ⇒ xem trước ngay với gợi ý đó (bản xem trước nêu hạng mục) rồi hỏi đồng ý
+  // MỘT lần — người dùng vẫn quyết trên bản xem trước; hỏi riêng "chọn hạng mục X?" rồi mới xem trước làm thừa một lượt hỏi.
+  if (kind === 'unspecified' && field === 'category' && names.length === 1 && !more)
+    return `Chưa nêu ${label}; gợi ý duy nhất: ${list} — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần (nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.`;
+  // Thu chi lượt 20 (nghiệm thu c3q A04: "sơn lại tường phòng 302" ⇒ gợi ý "Sửa chữa xây dựng, Mua đồ điện máy", câu "hỏi người dùng chọn một"
+  // ⇒ người dùng đáp "ok", bot hỏi mãi): NHIỀU gợi ý hạng mục ⇒ như C3n — xem trước ngay với gợi ý hợp nội dung nhất, bản xem trước nêu hạng mục
+  // đã chọn và gợi ý còn lại, người dùng vẫn quyết trên bản xem trước. Gợi ý xếp theo độ khớp (gợi ý của hàm dùng chung, rồi số từ nội dung
+  // trùng, bằng nhau thì thứ tự danh mục — public.hermes_expense_category_pick_v1). CHỈ hạng mục: người, toà, phòng, sổ, khách … vẫn hỏi chọn.
+  if (kind === 'unspecified' && field === 'category' && names.length)
+    return `Chưa nêu ${label}; gợi ý: ${list} (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.`;
+  // Công việc (nghiệm thu c3s 28/10 CV-B01: "kiểm đồng hồ điện các toà Nathan quản lý" ⇒ gợi ý loại việc "check, checkin, decor, giặt, làm", câu
+  // "hỏi người dùng chọn một" ⇒ người dùng đáp "ok", thừa hai lượt): loại việc cũng là phân loại như hạng mục ⇒ xem trước ngay với loại hợp nội
+  // dung nhất, bản xem trước nêu loại việc, người dùng vẫn quyết trên bản xem trước. Gợi ý loại việc KHÔNG xếp theo độ khớp ⇒ không nói "gợi ý đầu".
+  if (kind === 'unspecified' && field === 'jobType' && names.length)
+    return `Chưa nêu ${label}; gợi ý: ${list} — gọi lại NGAY với jobType = gợi ý hợp nội dung việc nhất để lấy bản xem trước, nêu rõ loại việc đã chọn; người dùng muốn loại khác thì xem trước lại.`;
   if (kind === 'unspecified') return names.length ? `Chưa nêu ${label}; gợi ý: ${list} — hỏi người dùng chọn một, không tự chọn.` : `Chưa nêu ${label}; hỏi người dùng.`;
   // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
   if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
+  // Thu chi lượt 20 (nghiệm thu c3q G02: lô duyệt 4 mã, mã trùng ⇒ hỏi người dùng từng mã một): mã phiếu mơ hồ của một tham số DANH SÁCH ở thao
+  // tác luôn xem trước (expense.approve) — SQL 20261027140949 gom mọi mã mơ hồ của lô vào MỘT kết quả (wanted nối các mã, ứng viên theo từng mã).
+  // Bản xem trước nêu từng phiếu ⇒ tự chọn theo bộ lọc người dùng vừa nêu rồi gọi lại ngay là an toàn; chỉ hỏi khi không suy ra được.
+  if (kind === 'ambiguous' && names.length && field === 'voucher' && listParam !== undefined)
+    return `Mã phiếu ${quoted(wanted, 200)} khớp nhiều phiếu: ${list} — mỗi mã trên chọn MỘT phiếu rồi gọi lại ${listParam} (mã khác giữ nguyên), ghi mã đó dạng ` +
+      `'MÃ dd/mm/yyyy' (vd 'PC2610777 05/10/2026') hoặc chép nguyên nhãn ứng viên. Nếu vừa đọc danh sách theo bộ lọc người dùng nêu (vd "dưới 1 triệu", ` +
+      'toà, ngày) thì chọn phiếu khớp bộ lọc và gọi lại NGAY — bản xem trước nêu từng phiếu để người dùng đồng ý một lần; chỉ hỏi người dùng chọn khi ' +
+      `không suy ra được.${more || candidates.length > 8 ? ' Còn ứng viên chưa nêu: mã chưa có ứng viên ở trên sẽ được nêu ở lượt gọi sau; phiếu cần chọn ' +
+        'không có trong danh sách thì ghi kèm ngày / toà.' : ''}`;
+  // Thu chi lượt 11 (nghiệm thu): mã phiếu bị dùng lại giữa các toà ⇒ chỉ mã thì không chọn được; SQL nhận mã kèm ngày / toà (hoặc nguyên nhãn
+  // ứng viên). Hạng mục là danh mục của cả công ty (không theo toà) ⇒ "không thấy" nghĩa là không có trong danh mục chi dùng được qua bot.
+  if (kind === 'ambiguous' && names.length && field === 'voucher')
+    return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng chọn một, rồi gọi lại với voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.`;
   if (kind === 'ambiguous' && names.length) return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng nêu rõ.`;
+  if (field === 'category') return `Không có hạng mục ${quoted(wanted)} trong danh mục chi dùng được qua bot (hạng mục hệ thống, hạn chế, cọc, chuyển nội bộ chỉ lập trên web); hỏi người dùng nêu hạng mục khác.`;
   return `Không thấy ${label} ${quoted(wanted)} trong phạm vi quyền của anh/chị; hỏi lại người dùng.`;
 }

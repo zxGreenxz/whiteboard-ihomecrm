@@ -12,6 +12,9 @@ export function salFmt(n: number | null | undefined): string {
 //  SalarySelfDesktop/SalarySelfMobile về đây.)
 export const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
 
+// signedNum: như bigNum nhưng giữ dấu âm bằng "−" (U+2212) — −171.623.
+export const signedNum = (v: number) => (v < 0 ? "−" : "") + bigNum(Math.abs(v));
+
 // salShort: 5.254.000 → "5,3tr"; 20000 → "20k".
 export function salShort(n: number | null | undefined): string {
   if (n == null) return "—";

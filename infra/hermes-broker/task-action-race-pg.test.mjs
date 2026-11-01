@@ -15,9 +15,13 @@ const params = content => ({ buildingName: 'Toà A', roomName: 'P101', jobType: 
 
 test('Q36 race on PostgreSQL: the second concurrent create waits for the first and then needs a preview', { timeout: 300000 }, async t => {
   const { pool, cleanup } = await localCluster(t);
+  // pg-pool resolves end() before client sockets close; stopping the cluster then can emit a late 57P01
+  // (same fix as invoice-write-race-sql.test.mjs / trackPoolDrain in stable-binding-postgres.test.mjs).
+  const clientEnds = [];
+  pool.on('connect', client => { clientEnds.push(new Promise(resolve => client.once('end', resolve))); });
   // pool.end() chờ mọi kết nối được trả ⇒ trả cả ba rồi mới đóng cụm (một móc after duy nhất).
   const main = await pool.connect(), a = await pool.connect(), b = await pool.connect();
-  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); cleanup(); });
+  t.after(async () => { for (const client of [main, a, b]) client.release(); await pool.end(); await Promise.all(clientEnds); cleanup(); });
   const database = { exec: sql => main.query(sql), query: (sql, values) => main.query(sql, values), close: async () => {} };
   await setupTaskActions(t, { database });
   const begin = async client => {

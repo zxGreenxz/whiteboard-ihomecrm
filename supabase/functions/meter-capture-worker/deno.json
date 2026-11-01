@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "strict": true },
+  "imports": { "@noble/hashes/sha256": "npm:@noble/hashes@1.8.0/sha256" }
+}

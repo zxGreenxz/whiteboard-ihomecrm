@@ -42,6 +42,7 @@ vi.mock('@/components/contracts/RenewDialog', () => ({ RenewDialog: () => null }
 vi.mock('@/components/contracts/TransferContractDialog', () => ({ TransferContractDialog: () => null }));
 vi.mock('@/components/contracts/TransferRoomDialog', () => ({ TransferRoomDialog: () => null }));
 vi.mock('@/components/contracts/TerminateDialog', () => ({ TerminateDialog: () => null }));
+vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({ useContractExitSettlementDrafts: () => ({ data: [] }) }));
 vi.mock('@/hooks/useContractExitCases', () => ({ useContractExitCases: () => ({
   data: { items: [{ id: 'exit', state: 'FINALIZED', actual_move_out_on: '2026-09-28',
     initial_kind: 'EARLY_RETURN', current_kind: 'EARLY_RETURN', kind_history: [],

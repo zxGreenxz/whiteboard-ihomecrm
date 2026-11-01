@@ -1,0 +1,504 @@
+// Tab "Thu chi" của Quyết toán vận hành: thẻ Khoản thu / Khoản chi (tổng server, theo hạng mục, từng phiếu,
+// nút lọc theo ký hiệu sổ), khối "Khoản khác" (thanh lý, cọc, chờ duyệt, không tính — chỉ màn quản trị) và
+// cuối cùng ô 2×2 "Ai thu, ai chi trong tháng" (bấm để lọc theo sổ). Mọi tổng là số server trả; tỷ trọng hạng
+// mục chỉ chia để hiển thị. Khoản thu theo thiết kế v2 (chủ chốt 25/10/2026): màn rộng là bảng Phòng · Tiền
+// phòng · Điện · Nước · PDV · Tổng, màn hẹp xếp bốn ô dưới "Tổng thu" — phần tách do server chia (parts).
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import { cn, formatVND } from '@/lib/utils';
+import {
+  DEFAULT_BOOK_CODE,
+  initialsOf,
+  settlementVoucherName,
+  voucherRowNote,
+  type BookCodes,
+  type SettlementCategory,
+  type SettlementRoomData,
+  type SettlementStatement,
+  type SettlementVoucher,
+} from '@/lib/landlordSettlement';
+import { invoiceAdjustmentsText, invoicePartialNote } from '@/lib/invoiceAmountParts';
+import {
+  compareRoomOrNone,
+  settlementRoomNoteRows,
+  type SettlementRoomNoteRow,
+  type SettlementRoomNoteTone,
+} from '@/lib/settlementRoomNotes';
+import { vnTodayISO } from '@/lib/vnDate';
+import {
+  CategoryShareBlock,
+  IncomePartCells,
+  IncomePartsGrid,
+  IncomePartsHeader,
+  PARTS_GRID,
+} from '@/components/reports/IncomeBreakdown';
+import { Eyebrow, SectionCard } from './SettlementParts';
+import { VoucherBreakdown, type GroupKey } from './VoucherBreakdown';
+
+type Side = SettlementVoucher['side'];
+type Filter = 'ALL' | Side;
+type Kind = 'INCOME' | 'EXPENSE';
+/** table: màn rộng thẻ Khoản thu · stack: màn hẹp, khoản thu có phần tách · list: còn lại. */
+type RowLayout = 'table' | 'stack' | 'list';
+
+const OTHER_GROUPS: readonly GroupKey[] = ['termination', 'deposit', 'pending', 'excluded'];
+
+const fmtDay = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
+};
+
+const SIDE_LABEL: Record<Side, string> = { LANDLORD: 'Sổ chủ nhà', MANAGER: 'Sổ quản lý' };
+const GROUP_OF: Record<Kind, Record<Side, GroupKey>> = {
+  INCOME: { LANDLORD: 'landlord_in', MANAGER: 'manager_in' },
+  EXPENSE: { LANDLORD: 'landlord_out', MANAGER: 'manager_out' },
+};
+
+/** Tổng server cho ô / thẻ đang xem (không cộng ở client). */
+function serverTotal(t: SettlementStatement['totals'], kind: Kind, filter: Filter): number {
+  if (kind === 'INCOME') return filter === 'ALL' ? t.revenue : filter === 'LANDLORD' ? t.landlord_collected : t.manager_collected;
+  return filter === 'ALL' ? t.expense : filter === 'LANDLORD' ? t.landlord_paid : t.manager_paid;
+}
+
+const amountOf = (c: SettlementCategory, filter: Filter) =>
+  (filter === 'ALL' ? c.amount : filter === 'LANDLORD' ? c.landlord_amount : c.manager_amount);
+
+function SideBadge({ side }: { side: Side }) {
+  return (
+    <span className={cn('ml-1 whitespace-nowrap rounded px-1.5 py-px text-[10.5px] font-bold',
+      side === 'LANDLORD' ? 'bg-muted text-foreground/75' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300')}>
+      {SIDE_LABEL[side]}
+    </span>
+  );
+}
+
+function CellButton({ label, count, amount, sub, kind, selected, onClick }: {
+  label: string; count: number; amount: number; sub: string | null; kind: Kind; selected: boolean; onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected}
+      className={cn(
+        'min-w-0 rounded-[10px] border border-l-4 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/40',
+        kind === 'INCOME' ? 'border-l-emerald-600' : 'border-l-orange-600',
+        selected && 'ring-2 ring-primary',
+      )}>
+      <span className="flex items-baseline justify-between gap-1.5">
+        <span className="text-xs font-semibold text-foreground/75">{label}</span>
+        <span className="whitespace-nowrap text-[11px] text-muted-foreground">{count} khoản</span>
+      </span>
+      <span className={cn('mt-0.5 block truncate text-[17px] font-extrabold tabular-nums',
+        amount === 0 ? 'text-muted-foreground' : kind === 'INCOME' ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-700 dark:text-orange-400')}>
+        {formatVND(amount)}
+      </span>
+      {sub && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{sub}</span>}
+    </button>
+  );
+}
+
+const TILE_GREEN = 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300';
+const TILE_ORANGE = 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300';
+
+/**
+ * Ô đầu dòng. Khoản chi: BÊN CHI = ký hiệu sổ của toà (chủ nhắn 24/10/2026; mặc định CN = chủ nhà chi, QL =
+ * quản lý / vận hành chi). Khoản thu: tên phòng (không có phòng thì chữ viết tắt hạng mục), luôn xanh; tiền vào
+ * sổ quản lý thì gắn thêm ký hiệu sổ quản lý (thiết kế v2).
+ */
+function RowTile({ v, bookCodes, className }: { v: SettlementVoucher; bookCodes: BookCodes; className?: string }) {
+  const income = v.type === 'INCOME';
+  const label = income ? v.room_name || initialsOf(v.lines?.[0]?.category) : bookCodes[v.side];
+  const tag = income && v.side === 'MANAGER' ? bookCodes.MANAGER : null;
+  const title = !income
+    ? (v.side === 'LANDLORD' ? 'Chủ nhà chi' : 'Quản lý (vận hành) chi')
+    : tag ? `${label} · tiền vào sổ quản lý (${tag})` : label;
+  return (
+    <span title={title} data-testid="settlement-row-tile"
+      className={cn('flex h-9 w-[54px] items-center justify-center overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]',
+        income || v.side === 'LANDLORD' ? TILE_GREEN : TILE_ORANGE, className)}>
+      <span className="flex min-w-0 flex-col items-center">
+        {/* tên phòng thật dài ("MADRID 4", "LONDON 5") ⇒ xuống tối đa 2 dòng; có ký hiệu sổ thì 1 dòng */}
+        <span className={cn('text-center', tag ? 'line-clamp-1' : 'line-clamp-2')}>{label}</span>
+        {tag && (
+          <span data-testid="settlement-row-book"
+            className="mt-0.5 rounded bg-blue-100 px-1 text-[9px] font-extrabold leading-[13px] tracking-[0.03em] text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+            {tag}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function VoucherRow({ v, mode, periodMonth, bookCodes, layout }: {
+  v: SettlementVoucher; mode: 'admin' | 'public'; periodMonth: string; bookCodes: BookCodes; layout: RowLayout;
+}) {
+  const name = settlementVoucherName(v, mode);
+  const lines = v.lines ?? [];
+  const income = v.type === 'INCOME';
+  // khoản thu không còn ghi ngày phiếu ⇒ bỏ "tính theo kỳ tháng …" (chủ nhắn 26/10/2026)
+  const note = [
+    voucherRowNote(v, GROUP_OF[v.type][v.side], mode, periodMonth, { skipPeriod: income }).replace(/^ · /, ''),
+    v.parts ? invoicePartialNote(v.parts, v.amount) : '',
+  ].filter(Boolean).join(' · ');
+  const meta = `${lines.length === 1 ? `${lines[0].category} · ` : ''}${fmtDay(v.voucher_date)}${v.code ? ` · ${v.code}` : ''}`;
+  // khoản thu (thiết kế v2) không còn dòng ngày · mã · sổ — rê chuột vào dòng để xem
+  const rowTitle = income ? `${mode === 'admin' ? (v.name ?? name) : name} — ${meta} · ${SIDE_LABEL[v.side]}` : undefined;
+  // giảm trừ / nợ cũ của hoá đơn: ngay dưới tổng tiền, chỉ số gọn (chủ nhắn 26/10/2026)
+  const adjust = v.parts ? invoiceAdjustmentsText(v.parts) : '';
+  const amount = (
+    <span className="whitespace-nowrap text-right tabular-nums">
+      <span className={cn('block text-[13.5px] font-bold',
+        income ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-700 dark:text-orange-400')}>
+        {formatVND(v.amount)}
+      </span>
+      {adjust && <span className="block text-[11px] font-semibold text-muted-foreground" data-testid="settlement-row-adjust">{adjust}</span>}
+    </span>
+  );
+  const nameEl = (className?: string) => (
+    <span className={cn('min-w-0 truncate text-[13px] font-semibold', className)}
+      title={mode === 'admin' ? (v.name ?? '') : name} data-testid="settlement-voucher-name">
+      {name}
+    </span>
+  );
+  const linesEl = lines.length > 1 && (
+    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground" data-testid="settlement-voucher-lines">
+      {lines.map((l) => `${l.category} ${formatVND(l.amount)}`).join(' · ')}
+    </p>
+  );
+  const noteEl = note && <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">{note}</p>;
+
+  if (layout === 'table') {
+    return (
+      <li className={cn(PARTS_GRID, 'items-center gap-y-0.5 border-t px-3.5 py-[7px] hover:bg-muted/30')}
+        data-testid="settlement-cash-row" data-layout={v.parts ? 'table' : 'table-other'} title={rowTitle}>
+        <RowTile v={v} bookCodes={bookCodes} />
+        {v.parts ? <IncomePartCells parts={v.parts} /> : nameEl('col-span-4')}
+        {amount}
+        {(noteEl || (!v.parts && linesEl)) && (
+          <div className="min-w-0 [grid-column:2/-1]">{!v.parts && linesEl}{noteEl}</div>
+        )}
+      </li>
+    );
+  }
+  if (layout === 'stack' && v.parts) {
+    return (
+      <li className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 border-t px-3.5 py-2 tabular-nums"
+        data-testid="settlement-cash-row" data-layout="stack" title={rowTitle}>
+        <RowTile v={v} bookCodes={bookCodes} className={noteEl ? 'row-span-3' : 'row-span-2'} />
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-[11.5px] leading-5 text-muted-foreground">Tổng thu</span>
+          {amount}
+        </div>
+        <IncomePartsGrid parts={v.parts} />
+        {noteEl}
+      </li>
+    );
+  }
+  return (
+    <li className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-px border-t px-3.5 py-2 hover:bg-muted/30"
+      data-testid="settlement-cash-row" data-layout="list" title={rowTitle}>
+      <RowTile v={v} bookCodes={bookCodes} className="row-span-2 self-start" />
+      {nameEl()}
+      {amount}
+      <div className="col-span-2 col-start-2 min-w-0">
+        {!income && (
+          <p className="text-[11.5px] text-muted-foreground">{meta}<SideBadge side={v.side} /></p>
+        )}
+        {linesEl}
+        {noteEl && <div className="mt-0.5">{noteEl}</div>}
+      </div>
+    </li>
+  );
+}
+
+const NOTE_TONE: Record<SettlementRoomNoteTone, { row: string; tile: string; label: string }> = {
+  unpaid: {
+    row: 'bg-red-50/60 dark:bg-red-950/20',
+    tile: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
+    label: 'text-red-700 dark:text-red-400',
+  },
+  ended: {
+    row: 'bg-red-50/60 dark:bg-red-950/20',
+    tile: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
+    label: 'text-red-700 dark:text-red-400',
+  },
+  vacant: {
+    row: 'bg-amber-50/60 dark:bg-amber-950/20',
+    tile: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300',
+    label: 'text-amber-700 dark:text-amber-400',
+  },
+};
+
+/**
+ * Dòng ghi chú phòng (không cộng vào tổng): chưa đóng / phòng trống / HĐ chưa thanh lý — như Báo cáo LN. Màn
+ * rộng nằm trong bảng Khoản thu: nhãn trải qua bốn cột tiền.
+ */
+function RoomNoteRow({ note, table }: { note: SettlementRoomNoteRow; table: boolean }) {
+  const tone = NOTE_TONE[note.tone];
+  return (
+    <li className={cn(table ? PARTS_GRID : 'grid grid-cols-[56px_minmax(0,1fr)_auto] gap-x-2.5',
+      'items-center gap-y-px border-t px-3.5 py-2', tone.row)}
+      data-testid="settlement-room-note" data-tone={note.tone}>
+      <span title={note.roomName} data-testid="settlement-row-tile"
+        className={cn('row-span-2 flex h-9 w-[54px] items-center justify-center self-start overflow-hidden rounded-lg border px-0.5 text-[10px] font-bold leading-[1.15]', tone.tile)}>
+        <span className="line-clamp-2 text-center">{note.roomName}</span>
+      </span>
+      <span className={cn('min-w-0 truncate text-[13px] font-bold', tone.label, table && 'col-span-4')}>{note.label}</span>
+      <span className="whitespace-nowrap text-right text-[13.5px] font-bold text-muted-foreground" aria-hidden>—</span>
+      <p className={cn('min-w-0 text-[11.5px] text-muted-foreground', table ? '[grid-column:2/-1]' : 'col-span-2 col-start-2')}>{note.text}</p>
+    </li>
+  );
+}
+
+type ListItem = { key: string; room: string | null; desc: string }
+  & ({ v: SettlementVoucher; note?: undefined } | { note: SettlementRoomNoteRow; v?: undefined });
+
+function ListCard({ kind, st, filter, mode, narrow, catsOpen, onToggleCats, notes, bookCodes, onToggleSide }: {
+  kind: Kind; st: SettlementStatement; filter: Filter; mode: 'admin' | 'public'; narrow: boolean;
+  catsOpen: boolean; onToggleCats: () => void;
+  notes: readonly SettlementRoomNoteRow[];
+  bookCodes: BookCodes;
+  onToggleSide: (side: Side) => void;
+}) {
+  const t = st.totals;
+  const income = kind === 'INCOME';
+  // bảng tách cột chỉ khi gói có phần tách (ảnh chốt cũ / server cũ không có ⇒ danh sách cũ, không cột trống)
+  const table = income && !narrow && st.vouchers.some((v) => v.parts != null);
+  const layoutOf = (v: SettlementVoucher): RowLayout => (table ? 'table' : income && v.parts ? 'stack' : 'list');
+  const rows = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === kind
+    && (filter === 'ALL' || v.side === filter));
+  // Khoản thu xếp theo phòng như Báo cáo LN, xen dòng ghi chú phòng (chủ nhắn 24/10/2026); khoản chi giữ thứ tự.
+  const items: ListItem[] = rows.map((v, i) => ({
+    key: `${v.code ?? 'phieu'}-${i}`, room: v.room_name ?? null, desc: settlementVoucherName(v, mode), v,
+  }));
+  if (income) {
+    for (const n of notes) items.push({ key: `ghi-chu-${n.key}`, room: n.roomName, desc: n.label, note: n });
+    items.sort((a, b) => compareRoomOrNone(a.room, b.room) || a.desc.localeCompare(b.desc, 'vi'));
+  }
+  const total = serverTotal(t, kind, filter);
+  const cats = st.categories ? (income ? st.categories.income : st.categories.expense) : null;
+  const sideText = filter === 'LANDLORD' ? ' ở sổ chủ nhà' : filter === 'MANAGER' ? ' ở sổ quản lý' : '';
+  return (
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card" data-testid={income ? 'settlement-income-card' : 'settlement-expense-card'}>
+      {/* ký hiệu sổ dài 4 ký tự + số khoản lớn ở 390px ⇒ cho xuống dòng thay vì cắt tổng tiền */}
+      <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3.5 py-2.5',
+        income ? 'bg-emerald-50/70 dark:bg-emerald-950/30' : 'bg-orange-50/60 dark:bg-orange-950/20')}>
+        <h3 className="whitespace-nowrap text-[13.5px] font-bold">{income ? 'Khoản thu' : 'Khoản chi'}</h3>
+        <span className={cn('whitespace-nowrap rounded-full px-2 py-px text-[11px] font-semibold',
+          income ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200')}>
+          {rows.length} khoản
+        </span>
+        {/* lọc theo sổ bằng ký hiệu sổ của toà (chủ nhắn 24/10/2026) — bấm lại để bỏ lọc */}
+        <span className="flex items-center gap-1" role="group" aria-label="Lọc theo sổ">
+          {(['LANDLORD', 'MANAGER'] as const).map((s) => {
+            const on = filter === s;
+            return (
+              <button key={s} type="button" aria-pressed={on} onClick={() => onToggleSide(s)}
+                aria-label={`Lọc ${s === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'} (${bookCodes[s]})`}
+                title={on ? 'Bỏ lọc, xem tất cả' : `Chỉ xem khoản của ${s === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'}`}
+                data-testid={`settlement-book-filter-${s}`}
+                className={cn('min-h-6 min-w-[28px] rounded-md border px-1.5 text-[10.5px] font-bold',
+                  on
+                    ? (s === 'LANDLORD' ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-orange-600 bg-orange-600 text-white')
+                    : (s === 'LANDLORD'
+                      ? 'border-emerald-200 bg-card text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950'
+                      : 'border-orange-200 bg-card text-orange-700 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-300 dark:hover:bg-orange-950'))}>
+                {bookCodes[s]}
+              </button>
+            );
+          })}
+        </span>
+        <span className={cn('ml-auto whitespace-nowrap text-[15px] font-extrabold tabular-nums',
+          income ? 'text-emerald-700 dark:text-emerald-400' : 'text-orange-600 dark:text-orange-400')} data-testid="settlement-list-total">
+          {formatVND(total)}
+        </span>
+      </div>
+      {cats && (
+        <CategoryShareBlock cats={cats.map((c) => ({ name: c.name, amount: amountOf(c, filter) }))} total={total}
+          kind={kind} open={catsOpen} onToggle={onToggleCats} testId="settlement-categories" />
+      )}
+      {items.length === 0 ? (
+        <p className="px-4 py-7 text-center text-[12.5px] text-muted-foreground">Không có khoản {income ? 'thu' : 'chi'} nào{sideText} trong tháng.</p>
+      ) : (
+        <>
+          {table ? <IncomePartsHeader /> : (
+            <div className="grid grid-cols-[56px_1fr_auto] gap-2.5 px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>{income ? 'Phòng' : 'Bên chi'}</span><span>Mô tả</span><span className="text-right">Số tiền</span>
+            </div>
+          )}
+          <ul>
+            {items.map((it) => (it.v
+              ? <VoucherRow key={it.key} v={it.v} mode={mode} periodMonth={st.period_month} bookCodes={bookCodes} layout={layoutOf(it.v)} />
+              : <RoomNoteRow key={it.key} note={it.note} table={table} />))}
+          </ul>
+        </>
+      )}
+      <div className="mt-auto flex flex-wrap justify-between gap-x-3 gap-y-1 border-t bg-muted/30 px-3.5 py-2 text-[11.5px] text-muted-foreground">
+        <span>{income ? 'Vào sổ chủ nhà' : 'Chi từ sổ chủ nhà'}{' '}
+          <b className="tabular-nums text-foreground">{formatVND(income ? t.landlord_collected : t.landlord_paid)}</b>
+        </span>
+        <span>{income ? 'Vào sổ quản lý' : 'Chi từ sổ quản lý'}{' '}
+          <b className="tabular-nums text-blue-700 dark:text-blue-300">{formatVND(income ? t.manager_collected : t.manager_paid)}</b>
+        </span>
+      </div>
+    </section>
+  );
+}
+
+/** Tên hạng mục có tiền ở bên sổ đó (tối đa 3); không có gói hạng mục thì null. */
+function categoryNames(cats: readonly SettlementCategory[] | null | undefined, side: Side): string | null {
+  if (!cats) return null;
+  const names = cats.filter((c) => (side === 'LANDLORD' ? c.landlord_amount : c.manager_amount) !== 0).map((c) => c.name);
+  if (names.length === 0) return null;
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')}…` : names.join(', ');
+}
+
+/** Mô tả dưới số của một ô 2×2. */
+function cellSub(st: SettlementStatement, kind: Kind, side: Side, count: number): string | null {
+  const who = side === 'LANDLORD' ? 'chủ nhà' : 'quản lý';
+  if (count === 0) return `Tháng này ${who} không ${kind === 'INCOME' ? 'nhận' : 'chi'} khoản nào`;
+  const names = categoryNames(kind === 'INCOME' ? st.categories?.income : st.categories?.expense, side);
+  const prefix = side === 'MANAGER' ? (kind === 'INCOME' ? 'Thu hộ chủ nhà' : 'Chi hộ chủ nhà') : null;
+  return [prefix, names].filter(Boolean).join(' — ') || null;
+}
+
+export function SettlementCashTab({ st, mode, narrow, roomData = null, bookCodes = DEFAULT_BOOK_CODE, onRevealLists }: {
+  st: SettlementStatement; mode: 'admin' | 'public'; narrow: boolean; roomData?: SettlementRoomData | null;
+  /** Ký hiệu sổ của toà (chưa đặt ⇒ CN / QL). */
+  bookCodes?: BookCodes;
+  /** Đưa đầu tab về dưới thanh tab dính (khung trang cung cấp). */
+  onRevealLists?: () => void;
+}) {
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const [list, setList] = useState<Kind>('INCOME');
+  // "Theo hạng mục" của HAI thẻ mở / đóng cùng nhau (mặc định đóng — hai cột thẳng hàng)
+  const [catsOpen, setCatsOpen] = useState(false);
+  const toggleCats = () => setCatsOpen((v) => !v);
+  const t = st.totals;
+  const pnl = st.vouchers.filter((v) => v.status === 'APPROVED' && v.group === 'PNL');
+  const count = (kind: Kind, side: Side) => pnl.filter((v) => v.type === kind && v.side === side).length;
+  // bảng "Ai thu, ai chi" nằm cuối tab ⇒ bấm ô thì lọc rồi đưa đầu tab (nút chọn danh sách, thanh "Đang xem
+  // khoản của…") về ngay dưới thanh tab dính — khung trang biết chiều cao các thanh dính
+  const pick = (side: Side, kind: Kind) => {
+    setFilter((f) => (f === side ? 'ALL' : side));
+    setList(kind);
+    onRevealLists?.();
+  };
+  // nút lọc theo sổ ở dòng tiêu đề thẻ: chỉ đổi bộ lọc (giữ danh sách đang xem)
+  const toggleSide = (side: Side) => setFilter((f) => (f === side ? 'ALL' : side));
+  // "Khoản khác" (thanh lý, cọc, chờ duyệt, không tính) chỉ ở màn quản trị — link chủ nhà bỏ (chủ nhắn 24/10/2026)
+  const hasOther = mode === 'admin'
+    && st.vouchers.some((v) => v.source !== null || v.group !== 'PNL' || v.status === 'UNAPPROVED');
+  const incCount = pnl.filter((v) => v.type === 'INCOME' && (filter === 'ALL' || v.side === filter)).length;
+  const expCount = pnl.filter((v) => v.type === 'EXPENSE' && (filter === 'ALL' || v.side === filter)).length;
+  // ghi chú phòng không thuộc sổ nào ⇒ chỉ hiện khi xem tất cả
+  const roomNotes = filter === 'ALL'
+    ? settlementRoomNoteRows(roomData, st.period_month, pnl.filter((v) => v.type === 'INCOME'), vnTodayISO())
+    : [];
+
+  const whoGrid = (
+      <SectionCard title="Ai thu, ai chi trong tháng" testId="settlement-who-grid"
+        description="Tiền vào sổ nào thì bên đó đang giữ. Bấm một ô để xem các khoản của ô đó.">
+        <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 px-4 pb-3">
+          <Eyebrow>Sổ chủ nhà</Eyebrow>
+          <Eyebrow className="text-blue-700 dark:text-blue-300">Sổ quản lý</Eyebrow>
+          {([['INCOME', 'LANDLORD'], ['INCOME', 'MANAGER'], ['EXPENSE', 'LANDLORD'], ['EXPENSE', 'MANAGER']] as const).map(([kind, side]) => {
+            const n = count(kind, side);
+            return (
+              <CellButton key={`${kind}-${side}`} kind={kind} count={n}
+                label={`${side === 'LANDLORD' ? 'Chủ nhà' : 'Quản lý'} ${kind === 'INCOME' ? 'nhận' : 'chi'}`}
+                amount={kind === 'INCOME'
+                  ? (side === 'LANDLORD' ? t.landlord_collected : t.manager_collected)
+                  : (side === 'LANDLORD' ? t.landlord_paid : t.manager_paid)}
+                sub={cellSub(st, kind, side, n)}
+                selected={filter === side} onClick={() => pick(side, kind)} />
+            );
+          })}
+        </div>
+        {/* Số "đang giữ" (thu − chi) do server tính; ảnh chốt cũ không có ⇒ hiện thu và chi riêng, không tự trừ. */}
+        <div className="grid grid-cols-2 gap-2.5 border-t bg-muted/30 px-4 py-2.5" data-testid="settlement-net-held">
+          {(['LANDLORD', 'MANAGER'] as const).map((side) => {
+            const held = side === 'LANDLORD' ? t.landlord_net_held : t.manager_net_held;
+            return (
+              <div key={side} className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">{side === 'LANDLORD' ? 'Chủ nhà đang giữ' : 'Quản lý đang giữ'}</p>
+                {held != null ? (
+                  <>
+                    <p className={cn('mt-px whitespace-nowrap text-sm font-extrabold tabular-nums',
+                      held < 0 && 'text-amber-700 dark:text-amber-400')}>{formatVND(held)}</p>
+                    {held < 0 && <p className="mt-px text-[10.5px] text-muted-foreground">đã ứng tiền để chi hộ</p>}
+                  </>
+                ) : (
+                  <p className="mt-px text-[12.5px] tabular-nums">
+                    nhận <b>{formatVND(side === 'LANDLORD' ? t.landlord_collected : t.manager_collected)}</b>
+                    {' '}· chi <b>{formatVND(side === 'LANDLORD' ? t.landlord_paid : t.manager_paid)}</b>
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {narrow && (
+        <div className="flex gap-2" role="group" aria-label="Chọn danh sách">
+          {(['INCOME', 'EXPENSE'] as const).map((k) => {
+            const on = list === k;
+            return (
+              <button key={k} type="button" aria-pressed={on} onClick={() => setList(k)}
+                className={cn('flex-1 rounded-xl border px-2 py-2 text-[13px] font-extrabold',
+                  on ? (k === 'INCOME' ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-orange-700 bg-orange-700 text-white')
+                    : 'bg-card text-foreground/75')}>
+                {k === 'INCOME' ? `Khoản thu · ${incCount}` : `Khoản chi · ${expCount}`}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {filter !== 'ALL' && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/75" data-testid="settlement-filter-bar">
+          <span>Đang xem khoản của <b>{filter === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'}</b></span>
+          <button type="button" onClick={() => setFilter('ALL')}
+            className="inline-flex items-center gap-1 rounded-md border bg-card px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted">
+            Xem tất cả<X className="h-3 w-3" aria-hidden />
+          </button>
+        </div>
+      )}
+
+      {/* bảng Khoản thu 6 cột cần ≥ 480px mỗi thẻ (thiết kế v2 ghi 420 — đo: 420 chỉ còn ~51px mỗi cột tiền,
+          "8.594.067" tràn sang cột bên) — hẹp hơn thì hai thẻ xếp chồng */}
+      <div className="grid items-start gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))]">
+        {(!narrow || list === 'INCOME') && (
+          <ListCard kind="INCOME" st={st} filter={filter} mode={mode} narrow={narrow} catsOpen={catsOpen} onToggleCats={toggleCats}
+            notes={roomNotes} bookCodes={bookCodes} onToggleSide={toggleSide} />
+        )}
+        {(!narrow || list === 'EXPENSE') && (
+          <ListCard kind="EXPENSE" st={st} filter={filter} mode={mode} narrow={narrow} catsOpen={catsOpen} onToggleCats={toggleCats}
+            notes={[]} bookCodes={bookCodes} onToggleSide={toggleSide} />
+        )}
+      </div>
+
+      {hasOther && (
+        <SectionCard title="Khoản khác" testId="settlement-other-vouchers"
+          description="Thanh lý hợp đồng, cọc & tiền khách trả thừa, phiếu chờ duyệt và phiếu không tính vào lợi nhuận — để đối chiếu với sổ.">
+          <div className="space-y-2 px-4 pb-4">
+            {st.excluded.voucher_count > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {st.excluded.voucher_count} phiếu không tính vào lợi nhuận (khoản nội bộ hoặc phiếu tắt tính KQKD): thu {formatVND(st.excluded.income)}
+                {' '}· chi {formatVND(st.excluded.expense)} — xem nhóm "Không tính".
+              </p>
+            )}
+            <VoucherBreakdown vouchers={st.vouchers} totals={t} mode={mode} periodMonth={st.period_month}
+              only={OTHER_GROUPS} depositHolder={st.deposit_holder} title="Phiếu theo nhóm" />
+          </div>
+        </SectionCard>
+      )}
+
+      {/* chủ nhắn 24/10/2026: phần sổ để dưới cùng */}
+      {whoGrid}
+    </div>
+  );
+}

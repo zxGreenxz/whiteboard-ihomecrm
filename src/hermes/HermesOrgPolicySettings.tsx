@@ -98,10 +98,10 @@ export function HermesOrgPolicySettings({ userId, organizationId, currentScope, 
   const removeStored = (kind: 'read' | 'action' | 'scopeIds', key: string) => {
     if (draft && !disabled) setState(previous => ({ ...previous, draft: { ...draft, [kind]: draft[kind].filter(value => value !== key) } }));
   };
-  return <section aria-label="Chính sách Hermes của công ty" className="space-y-4 rounded-xl border bg-card p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Chính sách Hermes của công ty</h2>
+  return <section aria-label="Chính sách Hermes của công ty" className="space-y-3 rounded-lg border p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">Bật Hermes cho công ty</h3>
       <Button variant="outline" disabled={state.busy} onClick={state.opened ? close : reload}>{state.opened ? 'Ẩn chính sách' : 'Cấu hình chính sách công ty'}</Button></div>
-    <p className="text-sm text-muted-foreground">Chính sách công ty là tùy chọn. Hermes dùng quyền CRM hiện tại và quyền đọc, thao tác bạn chọn cho từng kết nối. Người quản lý có thể đặt thêm giới hạn chung.</p>
+    <p className="text-sm text-muted-foreground">Bật hoặc tắt Hermes cho cả công ty, và đặt giới hạn chung nếu cần (không bắt buộc). Mỗi người vẫn chỉ dùng được Hermes trong quyền CRM của mình.</p>
     {state.opened && <>
       <Button variant="outline" disabled={state.busy} onClick={reload}>Tải lại chính sách</Button>
       {state.busy && <p role="status" className="text-sm">Đang kiểm tra chính sách…</p>}

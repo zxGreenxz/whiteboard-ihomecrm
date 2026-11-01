@@ -42,6 +42,7 @@ import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 import InvoiceAdjustmentHistory from './InvoiceAdjustmentHistory';
+import { InvoiceMeterEvidence } from './InvoiceMeterEvidence';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 
 const InvoiceDetailMobile = lazy(() =>
@@ -949,6 +950,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
         </section>
 
         {/* Lịch sử điều chỉnh (bản gốc bất biến + từng phiên bản) */}
+        <InvoiceMeterEvidence invoiceId={invoice.id} />
         <InvoiceAdjustmentHistory invoice={invoice} />
 
         {/* Ghi chú hoá đơn */}

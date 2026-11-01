@@ -211,12 +211,13 @@ describe("network center deterministic model", () => {
     ]);
   });
 
-  it("exposes exactly ten stable URL-backed building tabs", () => {
+  it("exposes stable URL-backed building tabs including camera monitoring", () => {
     expect(NETWORK_CENTER_TABS.map((tab) => tab.value)).toEqual([
       "overview",
       "interfaces",
       "clients",
       "topology",
+      "cameras",
       "incidents",
       "configuration",
       "backups",

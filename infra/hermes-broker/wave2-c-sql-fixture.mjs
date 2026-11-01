@@ -118,9 +118,32 @@ export function rlsPolicies() {
   return out;
 }
 
+// Thân production của hàm đọc gói C (20261019040948, nền của 20261022180402 tasks_board) gọi public.vehicles_list_core_v1(…, p_allow_copied_owner):
+// bản thật cho chép tên chủ xe khi kết nối inherit_crm (cờ allowCopiedCustomerText của cổng 040948). Cổng đợt 2 của fixture (185339) không bao
+// giờ đặt cờ ⇒ bản thật với cờ false = vehicles_list_v1 của gói (tên chủ xe chỉ khi hồ sơ khách hiện). Cổng thế chỗ cùng chữ ký uỷ cho
+// vehicles_list_v1, nên các ca + đột biến xe của gói vẫn đo đúng hàm dùng chung; copied-text-parity-sql.test.mjs đo bản thật.
+const VEHICLES_CORE_PORT = `CREATE OR REPLACE FUNCTION public.vehicles_list_core_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,
+    p_customer_building_ids uuid[] DEFAULT NULL,p_include_unassigned boolean DEFAULT true,p_query text DEFAULT NULL,p_vehicle_type text DEFAULT NULL,
+    p_room_id uuid DEFAULT NULL,p_customer_id uuid DEFAULT NULL,p_limit integer DEFAULT NULL,p_offset integer DEFAULT 0,p_allow_copied_owner boolean DEFAULT true)
+  RETURNS TABLE(id uuid,vehicle_type text,vehicle_name text,license_plate text,color text,owner_name text,ticket_number text,parking_fee numeric,
+    building_id uuid,building_name text,room_id uuid,room_name text,customer_id uuid,customer_name text,customer_phone text,created_at timestamptz,
+    total_count bigint,organization_id uuid)
+  LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $port$
+  BEGIN
+    IF p_allow_copied_owner THEN RAISE EXCEPTION 'fixture_port_copied_owner_not_ported' USING ERRCODE='0A000'; END IF;
+    RETURN QUERY SELECT * FROM public.vehicles_list_v1(p_organization_id,p_building_ids,p_customer_building_ids,p_include_unassigned,p_query,
+      p_vehicle_type,p_room_id,p_customer_id,p_limit,p_offset);
+  END $port$;
+  GRANT EXECUTE ON FUNCTION public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean) TO authenticated;
+  -- Công việc Mốc 4 (tasks_board): loại việc + múi giờ công ty đọc dưới vai authenticated (cột tối thiểu mà jobs_board_v1 đọc; không policy).
+  CREATE TABLE public.job_types(id uuid PRIMARY KEY,organization_id uuid,name text,is_active boolean);
+  CREATE TABLE public.organization_timezones(organization_id uuid PRIMARY KEY,timezone text NOT NULL);
+  GRANT SELECT ON public.job_types,public.organization_timezones TO authenticated;`;
+
 async function before(db) {
   await db.exec(BEFORE);
   for (const name of TABLES) await db.exec(tableDdl(name));
+  await db.exec(VEHICLES_CORE_PORT);
   // 20260829010000:50-54 mở loại ZTE_H196A (baseline chỉ MIKROTIK/ARUBA).
   await db.exec(`ALTER TABLE public.network_devices DROP CONSTRAINT IF EXISTS network_devices_kind_check;
     ALTER TABLE public.network_devices ADD CONSTRAINT network_devices_kind_check CHECK (device_kind = ANY (ARRAY['MIKROTIK'::text,'ARUBA'::text,'ZTE_H196A'::text]));`);

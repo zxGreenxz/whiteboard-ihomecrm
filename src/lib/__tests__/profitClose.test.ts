@@ -2,10 +2,19 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ADJUSTMENT_REASON_SYSTEM_MESSAGE,
+  CLOSE_NOTE_SYSTEM_MESSAGE,
+  RECLOSE_REASON_SYSTEM_MESSAGE,
+  RESET_REASON_SYSTEM_MESSAGE,
+  UNALLOCATED_REASON_SYSTEM_MESSAGE,
+  UNLOCK_REASON_SYSTEM_MESSAGE,
   buildProfitCloseAdjustments,
   hasUnallocatedProfitResidual,
+  isSystemMessageReason,
   mergeProfitCloseDrafts,
+  normalizeReasonText,
   normalizeUnallocatedDisposition,
+  reasonProblem,
   resolveProfitCloseOrganizationId,
   validateProfitCloseDrafts,
   type ProfitCloseDraft,
@@ -223,6 +232,100 @@ describe("profit close organization scope", () => {
   it("preserves a valid explicit selection and clears an invalid one", () => {
     expect(resolveProfitCloseOrganizationId(organizations, "org-b")).toBe("org-b");
     expect(resolveProfitCloseOrganizationId(organizations, "org-missing")).toBe("");
+  });
+});
+
+describe("lý do chép nguyên câu báo lỗi (rà 21/10 F60)", () => {
+  const residual = { b1: 100_000 };
+  const draft = (patch: Partial<ProfitCloseDraft>): ProfitCloseDraftMap => ({
+    b1: {
+      adjustmentAmount: 0,
+      adjustmentReason: "",
+      unallocatedDisposition: "RETAINED_EARNINGS",
+      unallocatedDispositionReason: "Giữ lại để bù chi sửa chữa",
+      ...patch,
+    },
+  });
+
+  it("đúng câu lỗi cũ làm lý do giữ lại (dữ liệu T7) bị từ chối, kể cả khác gạch/hoa/dấu chấm", () => {
+    for (const copied of [
+      "Lý do xử lý phải có 8–500 ký tự",
+      "  lý do xử lý phải có 8 - 500 ký tự.  ",
+      "Lý do xử lý phần chưa phân bổ phải có 8—500 ký tự",
+    ]) {
+      expect(isSystemMessageReason(copied)).toBe(true);
+      const result = validateProfitCloseDrafts(["b1"], draft({ unallocatedDispositionReason: copied }), {
+        reclose: false,
+        overallReason: "",
+        unallocatedProfitByBuilding: residual,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.rowErrors.b1).toBe(UNALLOCATED_REASON_SYSTEM_MESSAGE);
+      // màn chốt định vị ô theo chữ: có "chưa phân bổ", không có "chọn" ⇒ ô lý do
+      expect(result.rowErrors.b1).toContain("chưa phân bổ");
+      expect(result.rowErrors.b1).not.toContain("chọn");
+    }
+  });
+
+  it("lý do thật vẫn qua — kể cả có nhắc số ký tự giữa câu", () => {
+    for (const real of [
+      "Giữ lại để bù chi sửa chữa",
+      "Giữ lại theo biên bản họp, phải có 8 người ký",
+      "Chuyển kỳ sau vì khoá cửa mới phải có 8-500 ký tự mật mã",
+    ]) {
+      expect(isSystemMessageReason(real)).toBe(false);
+    }
+    expect(
+      validateProfitCloseDrafts(["b1"], draft({}), {
+        reclose: false,
+        overallReason: "",
+        unallocatedProfitByBuilding: residual,
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("lý do điều chỉnh, lý do chốt lại và ghi chú lần chốt cũng bị chặn", () => {
+    const adj = validateProfitCloseDrafts(
+      ["b1"],
+      draft({ adjustmentAmount: -5, adjustmentReason: "Lý do điều chỉnh phải có 8–500 ký tự" }),
+      { reclose: false, overallReason: "", unallocatedProfitByBuilding: residual },
+    );
+    expect(adj.rowErrors.b1).toBe(ADJUSTMENT_REASON_SYSTEM_MESSAGE);
+    expect(adj.rowErrors.b1?.startsWith("Số điều chỉnh")).toBe(false);
+
+    const reclose = validateProfitCloseDrafts(["b1"], draft({}), {
+      reclose: true,
+      overallReason: "Lý do chốt lại phải có 8–1000 ký tự",
+      unallocatedProfitByBuilding: residual,
+    });
+    expect(reclose.overallReasonError).toBe(RECLOSE_REASON_SYSTEM_MESSAGE);
+
+    const note = validateProfitCloseDrafts(["b1"], draft({}), {
+      reclose: false,
+      overallReason: "Không bắt buộc cho lần chốt đầu",
+      unallocatedProfitByBuilding: residual,
+    });
+    expect(note.overallReasonError).toBe(CLOSE_NOTE_SYSTEM_MESSAGE);
+    // ghi chú lần đầu để trống vẫn được
+    expect(
+      validateProfitCloseDrafts(["b1"], draft({}), { reclose: false, overallReason: "", unallocatedProfitByBuilding: residual })
+        .overallReasonError,
+    ).toBeNull();
+  });
+
+  it("dán lại chính câu từ chối mới cũng bị chặn; mở khoá / đặt lại dùng chung luật", () => {
+    for (const message of [
+      UNALLOCATED_REASON_SYSTEM_MESSAGE,
+      UNLOCK_REASON_SYSTEM_MESSAGE,
+      RESET_REASON_SYSTEM_MESSAGE,
+      "Nhập lý do mở khoá từ 8 đến 1000 ký tự.",
+      "reason must contain 8..1000 characters",
+    ]) {
+      expect(reasonProblem(message, 8, 1000)).toBe("SYSTEM_MESSAGE");
+    }
+    expect(reasonProblem("   1234567   ", 8, 1000)).toBe("LENGTH");
+    expect(reasonProblem("Sửa phiếu nhập sai số tiền", 8, 1000)).toBeNull();
+    expect(normalizeReasonText("Mở khóa – “Lý do”.")).toBe("mở khoá-“lý do");
   });
 });
 

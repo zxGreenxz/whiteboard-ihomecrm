@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { sharedW2, BUILDING, OTHER_BUILDING, ORG, FOREIGN, USER } from './wave2-sql-fixture.mjs';
 import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 
@@ -16,6 +16,12 @@ import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './fin
 // MỘT PGlite cho cả file test, mỗi ca BEGIN … ROLLBACK (shared.isolated).
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
+// Dòng tiền là công thức dùng chung với web: nạp bản CUỐI, kể cả migration
+// ngoài dải Hermes, để parity không tự xanh trên định nghĩa đã lỗi thời.
+export const cashFlowMigration = readdirSync('supabase/migrations').filter(name => name.endsWith('.sql')).sort().flatMap(name => {
+  const sql = readFileSync(`supabase/migrations/${name}`, 'utf8');
+  return sql.includes('FUNCTION public.cashbook_cash_flow_v1(') ? [{ name, sql }] : [];
+}).at(-1);
 // Bản định nghĩa CUỐI của một hàm trong file (thẻ $…$ bất kỳ).
 export function definitionOf(src, name) {
   const pattern = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION ${name.replaceAll('.', '\\.')}\\(`, 'g');
@@ -40,8 +46,11 @@ const TABLES = `
     ADD COLUMN is_default boolean DEFAULT false,ADD COLUMN updated_at timestamptz,ADD COLUMN bank_account_holder text,ADD COLUMN initial_date date,
     ADD COLUMN lock_date date,ADD COLUMN branch text;
   ALTER TABLE public.cashbook_possession_bindings ADD COLUMN valid_from timestamptz NOT NULL DEFAULT '2020-01-01';
-  CREATE TABLE public.income_expense_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,voucher_id uuid,event_kind text,posted_on date);
-  CREATE TABLE public.income_expense_posting_lines(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,posting_id uuid,account_id uuid,signed_amount numeric(15,2));
+  CREATE TABLE IF NOT EXISTS public.organizations(id uuid PRIMARY KEY,is_demo boolean DEFAULT false);
+  ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS is_demo boolean DEFAULT false;
+  CREATE TABLE public.income_expense_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,voucher_id uuid,event_kind text,posted_on date,
+    reversal_of_id uuid,voucher_amount_snapshot numeric);
+  CREATE TABLE public.income_expense_posting_lines(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,posting_id uuid,account_id uuid,signed_amount numeric(15,2),line_kind text DEFAULT 'MAIN');
   CREATE TABLE app_private.server_feature_flags(feature_key text PRIMARY KEY,mode text,force_freeze boolean NOT NULL DEFAULT false,starts_at timestamptz,ends_at timestamptz);
   CREATE TABLE app_private.server_feature_flag_canary_orgs(feature_key text,organization_id uuid);
   CREATE TABLE app_private.cashbook_closures(id bigserial PRIMARY KEY,organization_id uuid NOT NULL,cashbook_id uuid NOT NULL,closed_through date NOT NULL,
@@ -49,7 +58,10 @@ const TABLES = `
     confirmed_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
   CREATE TABLE app_private.cashbook_closure_requests(id uuid PRIMARY KEY,organization_id uuid,cashbook_id uuid,closed_through date,counted_balance numeric(15,2),
     system_balance numeric(15,2),note text,proposed_by uuid,confirmer_user_id uuid NOT NULL,status text,created_at timestamptz NOT NULL DEFAULT clock_timestamp());
-  ALTER TABLE public.income_expense_types ADD COLUMN merged_into_id uuid;
+  ALTER TABLE public.income_expense_types ADD COLUMN merged_into_id uuid, ADD COLUMN rule_key text;
+  ALTER TABLE public.income_expense_items ADD COLUMN organization_id uuid;
+  ALTER TABLE public.income_expenses ADD COLUMN handover_transfer_id uuid, ADD COLUMN system_source text, ADD COLUMN reversal_of_income_expense_id uuid;
+  ALTER TABLE public.buildings ADD COLUMN user_id uuid;
   -- Thu chi Mốc 3 (expense_vouchers): hai cột production (baseline) mà hàng báo cáo nêu.
   ALTER TABLE public.income_expenses ADD COLUMN IF NOT EXISTS posting_status text,ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT clock_timestamp();
   ALTER TABLE public.contract_extensions ADD COLUMN extension_date date;
@@ -85,6 +97,8 @@ const TABLES = `
 
 // Cổng tổng hợp cùng chữ ký.
 const PORTS = `
+  CREATE OR REPLACE FUNCTION public.demo_user_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$SELECT '{}'::uuid[]$$;
+  CREATE OR REPLACE FUNCTION public.sandbox_org_ids() RETURNS uuid[] LANGUAGE sql STABLE AS $$SELECT '{}'::uuid[]$$;
   CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$SELECT EXISTS(SELECT 1 FROM public.super_admins WHERE user_id=auth.uid())$$;
   CREATE OR REPLACE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT public.is_super_admin() OR EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='income_expenses.restricted_view' AND allowed
@@ -161,6 +175,7 @@ const PORTS = `
 
 // Định nghĩa THẬT (bản cuối) của RPC web và hàm phạm vi mà báo cáo gọi.
 const REAL = [
+  [migration('20260708130100_nrm_vn_resolve_fixed_expense_type'), 'public.nrm_vn'],
   [baseline, 'app_private.my_possessed_cashbook_ids_v1'], [baseline, 'app_private.finance_v2_route_pure_v1'],
   [baseline, 'app_private.finance_v2_can_read_posting_v1'],
   [migration('20260924012853_chu_cong_ty_doc_moi_so_quy'), 'app_private.my_company_owner_org_ids_v1'],
@@ -256,7 +271,10 @@ async function before(db) {
 
 // Dữ liệu tổng hợp nền (mỗi ca thêm/đổi trong BEGIN … ROLLBACK).
 async function seed(db) {
+  await db.exec(cashFlowMigration.sql);
+  await db.exec(cashFlowMigration.sql);
   await db.exec(`
+    INSERT INTO public.organizations(id,is_demo) VALUES('${ORG}',false),('${FOREIGN}',false) ON CONFLICT(id) DO UPDATE SET is_demo=false;
     INSERT INTO public.profiles VALUES('${USER}','Chủ Sổ'),('${FOREIGN}','Người Khác'),('${OTHER_USER}','Kế toán B');
     UPDATE public.accounts SET code='TM01',initial_amount=1000000,description='Quỹ tiền mặt',bank_name='VCB',created_at='2026-01-01' WHERE id='${CASHBOOK}';
     UPDATE public.accounts SET code='TM02',initial_amount=50000,description='Sổ người khác',created_at='2026-01-02' WHERE id='${FOREIGN_CASHBOOK}';

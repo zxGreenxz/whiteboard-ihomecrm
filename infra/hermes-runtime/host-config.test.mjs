@@ -74,6 +74,50 @@ test('action probe catalog requires an explicit boolean opt-in and is absent by 
   }
 });
 
+// Đợt 2: trang có thao tác ghi thật chỉ nạp khi host khai tên trang; vắng = danh mục production rỗng.
+test('action pages require an explicit list of page names and are absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'actionPages'), false); } finally { baseline.dispose(); }
+  for (const actionPages of [[], ['contract']]) {
+    await f.save({ ...f.input, actionPages });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.deepEqual(config.actionPages, actionPages); assert.ok(Object.isFrozen(config.actionPages)); } finally { config.dispose(); }
+  }
+  for (const actionPages of [null, 'contract', [1], ['contract', 'contract'], ['Contract'], ['x'], Array(9).fill(0).map((_, n) => `page${'abcdefghi'[n]}`)]) {
+    await f.save({ ...f.input, actionPages }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
+// Lượt 11 (D-HĐ9): origin web cho link công khai của HĐ; vắng = không link (như trước). Chỉ https, đúng dạng origin.
+test('public web origin is an optional https origin, absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'publicWebOrigin'), false); } finally { baseline.dispose(); }
+  await f.save({ ...f.input, publicWebOrigin: 'https://app.example.vn' });
+  const config = await loadHostConfiguration(f.configPath);
+  try { assert.equal(config.publicWebOrigin, 'https://app.example.vn'); } finally { config.dispose(); }
+  for (const publicWebOrigin of [null, '', 'http://app.example.vn', 'https://app.example.vn/', 'https://app.example.vn/c', 'https://u:p@app.example.vn',
+    'app.example.vn', 1, ['https://app.example.vn']]) {
+    await f.save({ ...f.input, publicWebOrigin }); await assert.rejects(loadHostConfiguration(f.configPath), refused, JSON.stringify(publicWebOrigin));
+  }
+});
+
+// 28/10: hạn nhớ quyền CRM (ms) cho ping/tools/list/gia hạn; vắng = backend dùng mặc định 30 phút, 0 = tắt, còn lại 1–60 phút.
+test('authority cache TTL is an optional integer: 0 disables, 1–60 minutes, absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'authorityCacheTtlMs'), false); } finally { baseline.dispose(); }
+  for (const authorityCacheTtlMs of [0, 60_000, 1_800_000, 3_600_000]) {
+    await f.save({ ...f.input, authorityCacheTtlMs });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.equal(config.authorityCacheTtlMs, authorityCacheTtlMs); } finally { config.dispose(); }
+  }
+  for (const authorityCacheTtlMs of [null, -1, 1, 59_999, 3_600_001, 1.5, '1800000', true, {}]) {
+    await f.save({ ...f.input, authorityCacheTtlMs }); await assert.rejects(loadHostConfiguration(f.configPath), refused, JSON.stringify(authorityCacheTtlMs));
+  }
+});
+
 test('room read source accepts only legacy|page, is absent by default and never coerces', async t => {
   const f = await fixture(t);
   const baseline = await loadHostConfiguration(f.configPath);

@@ -13,3 +13,7 @@ verify_jwt = true
 [functions.door-access]
 # JWT người dùng do gateway kiểm; trong hàm còn kiểm lại phiên (/auth/v1/user), công ty và quyền theo toà.
 verify_jwt = true
+
+[functions.meter-capture-worker]
+# Worker uses a dedicated bearer; user routes forward their JWT to scoped SQL RPCs.
+verify_jwt = false

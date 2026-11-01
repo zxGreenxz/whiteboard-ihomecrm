@@ -13,8 +13,19 @@ import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import { DonutBreakdown, HBars, MiniBars } from "./profitCharts";
 import { currentYear } from "./shareholderUtils";
 import { useShareholders } from "@/hooks/useShareholders";
-import { useProfitManagers } from "@/hooks/useProfitManagers";
+import { useProfitManagers, useRetiredProfitManagers } from "@/hooks/useProfitManagers";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useProfitOverviewCoverage } from "@/hooks/useProfitOverviewCoverage";
+import {
+  lockedSplitTitle,
+  retainedKpiSub,
+  retiredManagerBalances,
+  splitLockedProfit,
+  splitOpenNetByMonthEnd,
+  PROFIT_PAYOUT_OFF_NOTE,
+  RETIRED_MANAGER_NOTE,
+} from "@/lib/profitOverviewCoverage";
+import { ProfitCoverageCard } from "./ProfitCoverageCard";
 import {
   useProfitMonthly,
   useProfitAllocations,
@@ -160,6 +171,20 @@ export default function ProfitOverviewTab() {
     [managers, managerAllocations, managerPayouts, activeMgrIds]
   );
 
+  // ---- Rà 21/10 (F21): LN đã chốt đi về đâu + phần của quản lý đã xoá — CHỈ HIỆN ----
+  // Cơ sở: snapshot profit_monthly LOCKED, luỹ kế, cùng phạm vi với "Tổng LN đã chốt".
+  const lockedSplit = useMemo(() => splitLockedProfit(profitMonthly), [profitMonthly]);
+  const retiredBalances = useMemo(
+    () => retiredManagerBalances(activeMgrIds, managerAllocations, managerPayouts),
+    [activeMgrIds, managerAllocations, managerPayouts]
+  );
+  const retiredManagersQuery = useRetiredProfitManagers(retiredBalances.map((r) => r.managerId));
+  const retiredName = (id: string) =>
+    retiredManagersQuery.data?.find((m) => m.id === id)?.name ?? "Quản lý đã xoá";
+
+  // ---- Rà 21/10 (F18/F20): phủ chốt Tháng × Toà + LN chưa chốt + đối chiếu LN chốt ↔ hiện tại ----
+  const coverageData = useProfitOverviewCoverage(year, month === ALL ? null : Number(month), profitMonthly);
+
   const totals = useMemo(() => {
     // Tổng LN đã chốt = toàn bộ LN doanh nghiệp đã khoá (KHÔNG theo cổ đông — là gốc trước chia).
     // hermes-parity:begin shareholder-profit
@@ -199,10 +224,19 @@ export default function ProfitOverviewTab() {
     <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]} skeleton="table" rows={6}>
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi ph-kpi--flex">
+        <div className="ph-kpi ph-kpi--flex" title={lockedSplitTitle(lockedSplit, formatCurrency)}>
           <div className="ph-kpi__label">Tổng LN đã chốt (luỹ kế)</div>
           <div className="ph-kpi__value">{formatCurrency(totals.lockedProfit)}</div>
-          <div className="ph-kpi__sub">trước chia cổ đông</div>
+          <div className="ph-kpi__sub">trước chia cổ đông · chỉ tháng-toà đã chốt</div>
+          {coverageData.coverage && (
+            <div className="ph-kpi__sub ph-kpi__sub--gold">
+              LN chưa chốt {month === ALL ? `năm ${year}` : `T${month}/${year}`}: ≈
+              {formatCurrency(
+                splitOpenNetByMonthEnd(coverageData.coverage, year, coverageData.today).ended
+              )}{" "}
+              (ước tính, trước chia)
+            </div>
+          )}
         </div>
         <div className="ph-kpi__div" />
         <div className="ph-kpi ph-kpi--flex">
@@ -225,6 +259,15 @@ export default function ProfitOverviewTab() {
           <div className="ph-kpi__label">Còn phải trả</div>
           <div className="ph-kpi__value">{formatCurrency(totals.remaining)}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">{remainingHolders} cổ đông còn số dư</div>
+          <div className="ph-kpi__sub ph-kpi__sub--gold">{PROFIT_PAYOUT_OFF_NOTE}</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi ph-kpi--flex" title={lockedSplitTitle(lockedSplit, formatCurrency)}>
+          <div className="ph-kpi__label">Giữ lại công ty (luỹ kế)</div>
+          <div className="ph-kpi__value">
+            {formatCurrency(lockedSplit.retained + lockedSplit.legacyRetained)}
+          </div>
+          <div className="ph-kpi__sub">{retainedKpiSub(lockedSplit, formatCurrency)}</div>
         </div>
       </ProfitHubSlot>
 
@@ -259,6 +302,10 @@ export default function ProfitOverviewTab() {
             ＋ Chi lợi nhuận
           </Button>
         </div>
+
+        {/* Rà 21/10 F18/F20: tháng-toà nào đã chốt / chưa chốt / chốt nhưng nguồn đã đổi,
+            LN chưa chốt (ước tính) và băng đối chiếu LN chốt ↔ hiện tại. */}
+        <ProfitCoverageCard data={coverageData} year={year} monthFilter={month === ALL ? null : Number(month)} />
 
         {/* Biểu đồ (số ĐƯỢC CHIA cho cổ đông) */}
         <div className="ph-grid-2">
@@ -381,6 +428,7 @@ export default function ProfitOverviewTab() {
                         <td className="num">
                           <Button
                             className="ph-mini-btn"
+                            title={PROFIT_PAYOUT_OFF_NOTE}
                             onClick={() => { setDistShareholder(s.id); setDistOpen(true); }}
                           >
                             Chi
@@ -409,11 +457,12 @@ export default function ProfitOverviewTab() {
             <div className="ph-card__title">Còn lại theo cổ đông</div>
             <HBars data={remainingChart} />
             <div className="ph-hint">Số còn phải trả = được chia luỹ kế − đã ứng/đã chia</div>
+            <div className="ph-hint">{PROFIT_PAYOUT_OFF_NOTE}.</div>
           </div>
         </div>
 
         {/* Lương điều hành (luỹ kế) */}
-        {managers.length > 0 && (
+        {(managers.length > 0 || retiredBalances.length > 0) && (
           <div className="ph-card">
             <div className="ph-card__head">
               <div className="ph-card__title">Lương điều hành (luỹ kế)</div>
@@ -459,9 +508,32 @@ export default function ProfitOverviewTab() {
                       </tr>
                     );
                   })}
+                  {/* Rà 21/10 F21: quản lý đã xoá còn phần — chỉ hiện, không nút Chi. */}
+                  {retiredBalances.map((r) => (
+                    <tr key={r.managerId} title={RETIRED_MANAGER_NOTE}>
+                      <td className="name">
+                        {retiredName(r.managerId)}{" "}
+                        <span
+                          className="ph-state ph-state--muted"
+                          style={{ fontSize: 10.5, padding: "1px 6px" }}
+                        >
+                          đã nghỉ
+                        </span>
+                      </td>
+                      <td className="num exp">{formatCurrency(r.accrued)}</td>
+                      <td className="num neg">{formatCurrency(r.paid)}</td>
+                      <td className={`num strong${r.remaining < 0 ? " bad" : r.remaining === 0 ? " pos" : ""}`}>
+                        {formatCurrency(r.remaining)}
+                      </td>
+                      <td className="num" style={{ color: "var(--ph-ink-4)" }}>—</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            {retiredBalances.length > 0 && (
+              <div className="ph-hint" style={{ padding: "0 18px 12px" }}>{RETIRED_MANAGER_NOTE}</div>
+            )}
           </div>
         )}
       </div>

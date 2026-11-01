@@ -99,6 +99,14 @@ import { todayISO } from '@/lib/collect';
 import { toast } from 'sonner';
 import { isCommissionType } from '@/lib/managerSalary';
 import { isCommissionVoucher } from '@/lib/commissionIntervention';
+import { useProfitLockedMonthsForForm } from '@/hooks/useProfitPostLock';
+import {
+  lockedBuildingNameOf,
+  lockedMonthsOf,
+  postLockFormBlock,
+  postLockFormMonths,
+  type PostLockFormInput,
+} from '@/lib/profitPostLock';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -720,6 +728,8 @@ const IncomeExpenseFormInner = ({
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
     if (detailBlocked || detailConflict || reconcileRequired || cashbookAccessError || sourceUnavailable) return;
+    // F06: tháng đã chốt LN (khối lỗi đỏ đã hiện, nút Lưu đã mờ) — chặn cả Enter.
+    if (postLockBlock.kind === 'BLOCKED') return;
     setSubmitError(null);
     if (!isEditing && manualCommissionCreate) { setSubmitError("Lập hoa hồng từ Hợp đồng để lưu cấu hình tính tiền và lý do nếu có điều chỉnh."); return; }
     if ((revisionNeedsReason && !revisionReasonOk) || (forfeitKqkdMode && forfeitKqkdChanged && !forfeitReasonOk)) {
@@ -867,6 +877,60 @@ const IncomeExpenseFormInner = ({
     0
   );
 
+  // Rà 21/10 F06 (chủ chốt 22/10/2026): tháng đã chốt LN của toà khoá cả phiếu có KỲ trong tháng
+  // đó ⇒ báo đỏ ngay trong form, không cho Lưu. Máy chủ vẫn là hàng rào thật (lỗi máy chủ ra đúng
+  // câu này qua periodBlockMessage). Thu tiền hoá đơn tháng đã chốt không bị chặn.
+  const watchedVoucherDate = form.watch('voucher_date');
+  const postLockCurrent: PostLockFormInput = {
+    voucherDate: watchedVoucherDate,
+    hasInvoice: !!voucher?.invoice_id,
+    businessResultAccounting: forfeitKqkdWatched ?? null,
+    items: itemRows.map((r) => ({
+      startDate: r.keepNullPeriod ? null : r.start_date,
+      endDate: r.keepNullPeriod ? null : r.end_date,
+      countsInPnl: !depositTypeIds.has(r.income_expense_type_id) && !internalTypeIds.has(r.income_expense_type_id),
+    })),
+  };
+  const postLockOriginal: PostLockFormInput | null = voucher
+    ? {
+        voucherDate: voucher.voucher_date,
+        hasInvoice: !!voucher.invoice_id,
+        businessResultAccounting: voucher.business_result_accounting ?? null,
+        items: (voucher.items ?? []).map((it) => ({
+          startDate: it.start_date,
+          endDate: it.end_date,
+          countsInPnl: it.accounting_class != null ? it.accounting_class === 'PNL' : !it.is_deposit,
+        })),
+      }
+    : null;
+  const postLockSaves = canEdit || forfeitKqkdMode;
+  const postLockQuery = useProfitLockedMonthsForForm({
+    buildingIds: [watchedBuildingId, voucher?.building_id],
+    months: postLockFormMonths(postLockCurrent, postLockOriginal),
+    enabled: postLockSaves,
+  });
+  const postLockNameOf = (id: string | null | undefined) =>
+    buildings.find((b) => b.id === id)?.name ?? lockedBuildingNameOf(postLockQuery.data, id);
+  const postLockBlock = postLockSaves
+    ? postLockFormBlock({
+        current: {
+          input: postLockCurrent,
+          lockedMonths: lockedMonthsOf(postLockQuery.data, watchedBuildingId),
+          buildingName: postLockNameOf(watchedBuildingId),
+        },
+        original: voucher
+          ? {
+              input: postLockOriginal!,
+              lockedMonths: lockedMonthsOf(postLockQuery.data, voucher.building_id),
+              buildingName: postLockNameOf(voucher.building_id),
+              // Máy chủ chỉ xét kỳ của bản cũ khi phiếu đang tính LN (đã duyệt).
+              periodCounts: voucher.approval_status === 'APPROVED',
+            }
+          : null,
+        isEdit: !!voucher,
+      })
+    : ({ kind: 'NONE' } as const);
+
   if (sourceId && detail.isFetchedAfterMount && (!detail.isSuccess || !detail.data)) {
     return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent aria-describedby={undefined}><DialogTitle>Chi tiết phiếu</DialogTitle><p role="alert">Không tải được đầy đủ chi tiết phiếu hoặc bạn không còn quyền xem.</p><Button onClick={() => detail.refetch()}>Thử lại</Button></DialogContent></Dialog>;
   }
@@ -957,6 +1021,9 @@ const IncomeExpenseFormInner = ({
             })} className="space-y-4">
               <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
               {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
+              {postLockBlock.kind === 'BLOCKED' && (
+                <p role="alert" className="text-sm text-destructive" data-testid="ie-form-profit-locked">{postLockBlock.message}</p>
+              )}
               {cashbookAccessError && <div role="alert" className="text-sm text-destructive">Chưa kiểm tra được quyền sử dụng sổ quỹ. <Button type="button" variant="outline" onClick={() => retryCashbooks()}>Tải lại sổ quỹ</Button></div>}
               {/* Step 1: Voucher type tab toggle */}
               <Tabs
@@ -1792,6 +1859,7 @@ const IncomeExpenseFormInner = ({
                     disabled={
                       cashbookAccessError || sourceUnavailable || reconcileRequired || isPending ||
                       staleVersion || detailBlocked || detailConflict ||
+                      postLockBlock.kind === 'BLOCKED' ||
                       (forfeitKqkdMode && !forfeitKqkdChanged)
                     }
                     className={isMobile ? "flex-1" : ""}

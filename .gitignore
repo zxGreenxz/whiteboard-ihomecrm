@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+infra/network-center-worker/camera-dist/
 *.local
 
 # Editor directories and files

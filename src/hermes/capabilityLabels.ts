@@ -10,8 +10,12 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'assistant.salary.self': 'Xem lương của tôi (như trang Lương của tôi)',
   'assistant.bank_events.read': 'Xem biến động số dư (chỉ super admin, như trang Biến động số dư)',
   // Đợt 1 nền chung thao tác ghi: hai khoá riêng Hermes (seed TẮT; chỉ hiện ở màn tạo kết nối khi đã bật).
-  'income_expenses.approve_vouchers': 'Duyệt và chi phiếu chi người khác lập tay (Hermes, có xem trước)',
+  'income_expenses.approve_vouchers': 'Duyệt, hoặc duyệt và chi, phiếu CHI lập tay (Hermes, tối đa 10 phiếu, luôn xem trước)',
   'assistant.action_probe': 'Thao tác thử của Hermes (chỉ môi trường TEST, chỉ ghi biên nhận)',
+  // Đợt 3 Hoá đơn: khoá riêng Hermes của thu tiền (seed TẮT); quyền CRM giao vào là Thu tiền.
+  'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
+  // Khoá riêng Hermes của báo cọc / thu thêm có tiền (seed TẮT); cần cùng quyền tạo cọc và tạo thu chi.
+  'deposits.create_receipt': 'Báo cọc / thu thêm cọc có tiền (Hermes, ghi phiếu thu ngay, không có xem trước)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
@@ -20,12 +24,12 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
   // Đợt 2 Thu chi: thang duyệt CRM quyết trạng thái như web; phiếu ra đời đã duyệt thì CRM vào sổ quỹ ngay.
   'income_expenses.create': 'Hermes: lập phiếu CHI lập tay (luôn xem trước, dưới ngưỡng hoặc người lập có quyền duyệt thì vào sổ ngay) và ghi chú phiếu',
-  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt và chi phiếu chi người khác lập tay"',
+  'income_expenses.approve': 'Hermes: không công cụ nào dùng khoá này; duyệt phiếu qua Hermes dùng khoá riêng "Duyệt, hoặc duyệt và chi, phiếu CHI lập tay"',
   'rooms.edit': 'Hermes: sửa thông tin Sale phòng theo phiên bản hiện tại; chữ công khai cần duyệt trước',
   'sale_phong.edit': 'Hermes: cập nhật thông tin Sale và chương trình có thời hạn trực tiếp; xem trước nội dung công khai',
   'sale_phong.manage_images': 'Hermes: thay danh sách ảnh phòng bằng URL HTTPS đã tải lên',
   'sale_phong.lock_room': 'Hermes: lock tạm 6/12/24 giờ và gỡ lock của bạn',
-  'deposits.create': 'Hermes: báo cọc/thu thêm qua phiếu CRM; cần quyền tạo thu chi và phạm vi cùng tòa',
+  'deposits.create': 'Hermes: gỡ lock phòng; báo cọc/thu thêm có tiền cần thêm khoá riêng "Báo cọc / thu thêm cọc có tiền" và quyền tạo thu chi cùng tòa',
   'deposits.edit': 'Hermes: sửa thông tin cọc hoặc gắn khách danh bạ; không hủy/hoàn tiền/ký hợp đồng',
   'income_expenses.view': 'Hermes: tra phiếu thu/chi, không gồm hạng mục hạn chế, lương, cổ đông',
   'meter_readings.view': 'Hermes: tra chỉ số công tơ theo ngày đọc',
@@ -69,9 +73,9 @@ const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'income_expenses.edit': 'Hermes: sửa phiếu chi đang chờ duyệt, có xem trước',
   'income_expenses.cancel': 'Hermes: huỷ phiếu chi lập tay, bắt lý do, có xem trước',
   'meter_readings.create': 'Hermes: ghi chỉ số điện nước, chống trùng tháng, có xem trước',
-  'invoices.edit': 'Hermes: điều chỉnh hoá đơn (dòng không có chỉ số) và xác nhận kiểm tra điều chỉnh, có xem trước',
+  'invoices.edit': 'Hermes: điều chỉnh hoá đơn (dòng không có chỉ số), có xem trước',
   'invoices.cancel': 'Hermes: huỷ hoá đơn chưa thu, có xem trước',
-  'invoices.approve': 'Hermes: duyệt hoá đơn, có xem trước',
+  'invoices.approve': 'Hermes: xác nhận đã kiểm tra điều chỉnh hoá đơn do người khác làm (không phải duyệt hoá đơn), có xem trước',
   'contracts.terminate': 'Hermes: báo trả phòng và ghi nhận trả phòng (quyết toán vẫn trên web), có xem trước',
   'contracts.renew': 'Hermes: gia hạn hợp đồng giữ giá, có xem trước',
   'contracts.edit': 'Hermes: thêm, bớt người ở trong hợp đồng, có xem trước',

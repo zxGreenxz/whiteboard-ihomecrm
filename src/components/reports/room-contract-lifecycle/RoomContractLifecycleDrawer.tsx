@@ -59,6 +59,7 @@ const KPI_COLOR: Record<Kpi['tone'], string> = { white: '#fff', mint: '#7fe0b4',
 const DOT: Record<EventKind, string> = {
   dep: '#0e9f6e', in: '#198653', inv: '#2fbf7f', owe: '#f59e0b', mark: '#6b7a73', out: '#ea580c',
   ref: '#c2410c', now: '#dc2626', future: '#fff', forfeit: '#dc2626', transfer: '#7c3aed',
+  comm: '#fb923c', offset: '#a78bfa',
 };
 
 /** Bề rộng mặc định của mock: tối đa 760px, không quá 96% màn hình. */
@@ -212,6 +213,9 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
                 ))}
               </div>
             )}
+            {/* 3 số tổng tính theo PHÒNG đang xem; HĐ có hoá đơn ở nhiều phòng thì
+                nói thêm tổng cả HĐ ngay dưới (chủ chốt cách 1). */}
+            {inDetail && detail.kpiNote && <div className="rcl-kpis__note">{detail.kpiNote}</div>}
           </div>
 
           <div className="rcl-scroll" ref={scrollRef}>
@@ -388,7 +392,8 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
                             <div className="rcl-ev__date">{e.date.slice(8, 10)}/{e.date.slice(5, 7)}/{e.date.slice(0, 4)}</div>
                             <div className="rcl-ev__rail">
                               <div style={{ height: 12, background: !prev ? 'transparent' : e.kind === 'future' ? '#dce3df' : '#cfe6d9' }} />
-                              <div className="rcl-ev__dot" style={{ background: DOT[e.kind], borderColor: e.kind === 'future' ? '#b9c6bf' : '#fff' }} />
+                              {/* Chấm rỗng: phiếu chưa / không còn hiệu lực (chờ duyệt, đã đảo). */}
+                              <div className="rcl-ev__dot" style={{ background: e.hollow ? '#fff' : DOT[e.kind], borderColor: e.kind === 'future' ? '#b9c6bf' : e.hollow ? DOT[e.kind] : '#fff' }} />
                               <div style={{ flex: 1, background: !next ? 'transparent' : next.kind === 'future' ? '#dce3df' : '#cfe6d9' }} />
                             </div>
                             <div className="rcl-ev__main">
@@ -396,7 +401,7 @@ export default function RoomContractLifecycleDrawer({ roomId, roomName, initialY
                               <div className="rcl-ev__sub">{e.sub}</div>
                             </div>
                             <div className="rcl-ev__amt">
-                              <div style={{ color: TEXT[e.amtTone] }}>{e.amt}</div>
+                              <div style={{ color: TEXT[e.amtTone], textDecoration: e.struck ? 'line-through' : undefined }}>{e.amt}</div>
                               <div className="rcl-ev__note" style={{ color: TEXT[e.noteTone] }}>{e.note}</div>
                             </div>
                           </div>

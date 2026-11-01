@@ -32,6 +32,9 @@
 //  5. Chữ tự do gắn hợp đồng (ghi chú, người nộp, tên phiếu) chỉ khi MỌI khách của HĐ nhìn thấy dưới RLS customers.
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';
 export { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT };
+/** Lượt 12: khoá MỚI thêm vào summary của một báo cáo đã phát hành, trong một bản phát hành (connector lên trước migration). Vắng ⇒ SQL
+ * chưa áp ⇒ broker điền null rồi kiểm như thường; có mặt ⇒ kiểm đúng `check`; khoá lạ vẫn bị từ chối (wave2-registry runResult). */
+export const tolerant = check => Object.assign(value => check(value), { tolerant: true });
 
 const fail = () => { throw new TypeError('invalid_w2_contract'); };
 export const w2Record = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value)) &&
@@ -112,7 +115,10 @@ export const W2_READ_KEYS = Object.freeze({
 // LƯU Ý: báo cáo dùng các khoá này SỐNG NGAY khi phát hành SQL + connector (registry đã bật từ 16/10),
 // không chờ công tắc Gói Z. Cần khoá đợt 1 khác ⇒ yêu cầu Gói Z.
 export const W2_REUSED_KEYS = Object.freeze(['invoices.view', 'deposits.view', 'reports_finance.analysis', 'assets.view', 'services.view',
-  'rooms.view', 'income_expenses.view']);
+  'rooms.view', 'income_expenses.view',
+  // Đợt 2 trang Hợp đồng (20261022043540): báo cáo hợp đồng đọc được bằng quyền xem hợp đồng (Quản lý toà không có báo cáo BĐS).
+  // Công việc Mốc 4 (20261022180359): báo cáo tasks_board đọc bằng đúng khoá đọc của trang /tasks.
+  'contracts.view', 'tasks.view']);
 // Khoá không theo toà (grant buildingIds=[]; khớp app_private.hermes_w2_self_keys_v1).
 export const W2_SELF_KEYS = Object.freeze(Object.keys(W2_READ_KEYS).filter(key => W2_READ_KEYS[key] === 'self'));
 export const W2_PLATFORM_KEYS = Object.freeze(['assistant.bank_events.read']);
@@ -152,6 +158,8 @@ export const W2_PARAMS = Object.freeze({
   lowStock: Object.freeze({ type: 'bool', hint: 'true|false' }),
   // Thu chi Mốc 3 (22/10, 20261022044126_hermes_w2_min_amount_param_v1): ngưỡng tiền của báo cáo phiếu chi.
   minAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0, vd 10000000' }),
+  // Thu chi lượt 14 (20261024120208): trần tiền — chỉ phiếu NHỎ HƠN HẲN số này ("dưới 1 triệu" ⇒ 1000000).
+  maxAmount: Object.freeze({ type: 'money', hint: 'số VND nguyên ≥ 0; chỉ phiếu nhỏ hơn số này, vd dưới 1 triệu ⇒ 1000000' }),
   buildingId: uuidParam('ID toà (không phải ID công ty)'),
   areaId: uuidParam('ID khu'),
   roomId: uuidParam('ID phòng'),

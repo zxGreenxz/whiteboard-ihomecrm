@@ -10,7 +10,8 @@ import {
   type ComposeContext,
 } from "../compose";
 import type { AiResult } from "../aiSchema";
-import { suggestCategory, type CategoryRef } from "../categorySuggest";
+import type { CategoryRef } from "../categorySuggest";
+import { stubSuggest } from "./sqlSuggestStub";
 
 const O = "org";
 const categories: CategoryRef[] = [
@@ -20,7 +21,12 @@ const categories: CategoryRef[] = [
 ];
 
 let seq = 0;
-const ctx = (over: Partial<ComposeContext> = {}): ComposeContext => ({
+// Gợi ý hạng mục = kết quả hàm SQL ie_category_suggest_v1 trên đúng danh sách hạng mục của ngữ cảnh (sqlSuggestStub).
+const ctx = (over: Partial<ComposeContext> = {}): ComposeContext => {
+  const base = ctxBase(over);
+  return { ...base, suggestCategory: over.suggestCategory ?? stubSuggest(base.categories) };
+};
+const ctxBase = (over: Partial<ComposeContext>): Omit<ComposeContext, "suggestCategory"> => ({
   today: "2026-10-01",
   mode: "company",
   refs: {
@@ -219,7 +225,7 @@ describe("luật dòng tiền: khoá cứng chỉ khi có neo chắc chắn", ()
   ];
 
   it("'chi hộ chị Hoa tiền đổ rác' ⇒ gợi ý yếu: KHÔNG điền sẵn, không khoá — AI chọn, AI không chọn thì người dùng chọn", () => {
-    expect(suggestCategory(cats, "chi hộ chị Hoa tiền đổ rác")?.reason).toBe("rule_weak");
+    expect(stubSuggest(cats)("expense", "chi hộ chị Hoa tiền đổ rác", null)?.reason).toBe("rule_weak");
     const [s] = draftsFromText("102LVT chi hộ chị Hoa tiền đổ rác 200k", ctx({ categories: cats }));
     expect(s.draft.lines[0].categoryId).toBeNull();
     expect(s.locked).not.toContain("lines.0.categoryId");

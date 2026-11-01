@@ -34,6 +34,7 @@ import {
   initialsOf,
   shiftYm,
   staffCeilingYm,
+  bankedMilestoneDays,
 } from "@/lib/managerSalary";
 // YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
 import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
@@ -414,7 +415,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       // (migration 20260915074852), nên `v5ByStaff` có thể thiếu khoá. Thiếu khoá
       // = không có số v5 cho người đó, và `mergeV5Bonus` phía dưới giữ nguyên số
       // legacy — đúng thứ ta muốn, không phải số 0 giả.
-      const v5ByStaff = new Map<string, { attend: number; streak: number; ticked: number; nchuan: number; cur: number }>();
+      const v5ByStaff = new Map<string, { attend: number; streak: number; ticked: number; nchuan: number; cur: number; best: number; banked: number[] }>();
       if (engine === "v5") {
         const [v5Bulk, sssRes] = await Promise.all([
           (async () => {
@@ -429,13 +430,17 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             if (!v5BulkRes || typeof v5BulkRes !== "object" || Array.isArray(v5BulkRes)) throw new Error("Chưa tải được số tiền chuyên cần và thưởng chuỗi để tính lương.");
             return v5BulkRes;
           })(),
-          (supabase.from("salary_streak_state").select("user_id, current_streak") as any)
+          (supabase.from("salary_streak_state").select("user_id, current_streak, best_streak, milestones_banked") as any)
             .in("user_id", staffIds).eq("period_month", periodMonth),
         ]);
         if (sssRes.error) throw sssRes.error;
         requireSalaryRows(sssRes.data);
         const curByStaff = new Map<string, number>(
           ((sssRes.data || []) as any[]).map((r) => [r.user_id, num(r.current_streak)])
+        );
+        // Chuỗi dài nhất + mốc đã ghi nhận: chỉ để trang "Lương của tôi" hiện "đạt x/y mốc".
+        const streakByStaff = new Map<string, { best: number; banked: number[] }>(
+          ((sssRes.data || []) as any[]).map((r) => [r.user_id, { best: num(r.best_streak), banked: bankedMilestoneDays(r.milestones_banked) }])
         );
         for (const sid of staffIds) {
           if (!Object.prototype.hasOwnProperty.call(v5Bulk, sid)) continue;
@@ -444,6 +449,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             attend: financialReadNumber(jsonProp(mm, "attend_amount")), streak: financialReadNumber(jsonProp(mm, "streak_amount")),
             ticked: financialReadNumber(jsonProp(mm, "ticked_days")), nchuan: financialReadNumber(jsonProp(mm, "n_chuan")),
             cur: curByStaff.get(sid) || 0,
+            best: streakByStaff.get(sid)?.best || 0,
+            banked: streakByStaff.get(sid)?.banked || [],
           });
         }
       }
@@ -578,6 +585,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             : null,
           // hermes-parity:end w2c-salary-locked
           organizationId: c.organization_id ?? null,
+          v5: (() => {
+            const v = v5ByStaff.get(staff);
+            return v ? { ticked: v.ticked, nchuan: v.nchuan, streakCurrent: v.cur, streakBest: Math.max(v.best, v.cur), banked: v.banked } : null;
+          })(),
         };
         // Gắn khoản định kỳ + số ghi đè TRƯỚC salCalc ⇒ thực nhận, chốt kỳ và phiếu chi
         // đều dùng số đã sửa. Kỳ đã chốt: calc vẫn đọc số đóng băng bên dưới.

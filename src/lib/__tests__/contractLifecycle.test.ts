@@ -777,6 +777,44 @@ describe('buildLifecycleLanes — nhiều lane theo LỊCH SỬ PHÒNG', () => {
     expect(moc.m).toBe('Công nợ đưa vào quyết toán: 120.000 đ');
   });
 
+  it('một nguồn (F7): "Tiền thuê / phí đã đóng" là tiền thật, cấn trừ khi thanh lý là m2 riêng', () => {
+    const v = buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD })],
+      segments: [doan({ contract_id: HD })],
+      invoiceByContract: new Map([[HD, { paid: 900_000, debt: 50_000, offset: 300_000 }]]),
+    });
+    expect(v.lanes[0].steps[2]).toMatchObject({
+      h: 'Tiền thuê / phí đã đóng', v: '900.000 đ', m2: 'Cấn trừ khi thanh lý 300.000 đ',
+    });
+    // Mốc cuối của HĐ đang thuê đọc nợ của cùng nguồn.
+    expect(v.lanes[0].steps[3].m2).toBe('Nợ còn lại: 50.000 đ');
+  });
+
+  it('đường dự phòng (không có offset) và cấn trừ 0 ⇒ không có m2 cấn trừ', () => {
+    for (const hoaDon of [{ paid: 900_000, debt: 0 }, { paid: 900_000, debt: 0, offset: 0 }]) {
+      const v = buildLifecycleLanes({
+        ...nen, targetContractId: HD, subject: { kind: 'movement' },
+        contracts: [hopDong({ id: HD })],
+        segments: [doan({ contract_id: HD })],
+        invoiceByContract: new Map([[HD, hoaDon]]),
+      });
+      expect(v.lanes[0].steps[2].m2).toBeUndefined();
+    }
+  });
+
+  it('A2: "Ký hợp đồng" in hạn gốc khi có gia hạn; không có mục ⇒ dạng cũ', () => {
+    const dung = (originalEndByContract?: Map<string, string | null>) => buildLifecycleLanes({
+      ...nen, targetContractId: HD, subject: { kind: 'movement' },
+      contracts: [hopDong({ id: HD, start_date: '2026-05-01', end_date: '2027-02-28' })],
+      segments: [doan({ contract_id: HD })],
+      originalEndByContract,
+    }).lanes[0].steps[0].m;
+    expect(dung()).toBe('Thời hạn: 01/05/2026 – 28/02/2027');
+    expect(dung(new Map([[HD, null]]))).toBe('Thời hạn: 01/05/2026 – 28/02/2027');
+    expect(dung(new Map([[HD, '2026-08-30']]))).toBe('Thời hạn: 01/05/2026 – 30/08/2026 · gia hạn tới 28/02/2027');
+  });
+
   it.each([
     ['DRAFT', false], ['PENDING_APPROVAL', false], ['APPROVED', true], ['COMPLETED', true], [null, false],
   ] as const)('chỉ bản thanh lý hiệu lực đổi lane/phòng: %s', (status, effective) => {

@@ -6,6 +6,7 @@ export function invoiceFailureMessage(error:unknown,operation:string):string {
   if(voucherOutcomeUnknown(error)) return `Chưa xác nhận được kết quả ${operation}. Tải lại hoá đơn và kiểm tra trạng thái, các khoản thu trước khi thực hiện tiếp.`;
   return friendlyError(error,`Không thể ${operation}`,{operation,financial:true,rules:[
     {code:'23505',message:/idx_invoices_unique_contract_billing/,description:'Hợp đồng đã có hoá đơn cho kỳ đã chọn. Mở hoá đơn đang có hoặc chọn kỳ khác.'},
+    {code:'55000',message:/Meter uses QR capture/,description:'Đồng hồ này chốt số bằng QR/ảnh nên không nhập tay được; chưa tạo hoá đơn. Chốt số tại Ghi chỉ số rồi tải lại.'},
     {message:'Không thể chỉnh sửa hoá đơn ở trạng thái này',description:'Hoá đơn đã thay đổi trạng thái nên chưa thể sửa theo cách này. Tải lại hoá đơn để kiểm tra.'},
     {message:'Không thể huỷ hoá đơn ở trạng thái này (đã thu tiền hoặc đã huỷ)',description:'Hoá đơn đã thu tiền hoặc đã huỷ nên không thể huỷ theo cách này. Kiểm tra trạng thái và các khoản thu trên hoá đơn.'},
   ]}).description;

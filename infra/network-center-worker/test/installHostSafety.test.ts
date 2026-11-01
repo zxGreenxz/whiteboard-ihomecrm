@@ -717,8 +717,8 @@ assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
     // install for at most 15 peers. Every assertion above is unchanged.
   }, 20_000);
 
-  it("refuses an AllowedIPs entry it cannot read as an IP network", () => {
-    for (const allowed of ["10.77.0.999/32", "10.77.0.2/33", "10.77.0.2/-1", "not-an-address", "fd00::/129", "fd00:::1/64", "10.77.0.2/x"]) {
+  // Each case starts a native shell; keep independent failures/time budgets on Windows.
+  it.each(["10.77.0.999/32", "10.77.0.2/33", "10.77.0.2/-1", "not-an-address", "fd00::/129", "fd00:::1/64", "10.77.0.2/x"])("refuses an AllowedIPs entry it cannot read as an IP network: %s", (allowed) => {
       const { result } = runHarness(`${wgFixtures(
         wgConfig([{ identity: "building-02", key: PEER_TWO, allowed }]),
         wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.0.2/32" }]),
@@ -727,7 +727,6 @@ assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
 `);
       expect(result.status, `${allowed} was accepted`).not.toBe(0);
       expect(result.stderr, allowed).toMatch(/AllowedIPs/i);
-    }
   });
 
   it("keeps distinct building ranges and one peer's own overlapping list installable", () => {

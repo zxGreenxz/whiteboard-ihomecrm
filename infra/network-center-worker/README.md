@@ -1,5 +1,62 @@
 # iHomeCRM Network Center worker
 
+## Camera: xem lại và xuất đoạn MP4
+
+Host camera hiện dùng mục **VPS Minh (NAT)** trong vault. Lấy endpoint và mật khẩu
+qua `scripts/lib/vault.mjs`, đối chiếu host key đã ghim; không suy ra host SSH từ
+tên miền `crm-hermes` hoặc alias `hermes-vps` cũ. Không in credential ra log.
+
+Gateway camera có thêm API `/camera-live/v1/recorders/:id/channels/:channel/archive`
+và `/camera-live/v1/archive/:id[/file]`. Dùng cùng JWT, kiểm quyền theo đầu ghi/tòa
+ở mỗi thao tác. Không cần migration hay mở thêm ingress. Client lưu `requestId`
+theo tài khoản/đầu ghi trước POST; GET `/recorders/:id/archive[/requests/:requestId]`
+khôi phục tác vụ, DELETE theo requestId hủy được cả trước khi POST trả về. Retry
+cùng mã/khoảng cắt dùng lại tác vụ; khác chủ không thể tìm hay hủy tác vụ đó.
+Tác vụ mới tồn tại tối đa `2 × thời lượng + 120 giây`, kể cả khi đóng trang; client
+cũ không gửi requestId vẫn dùng lease 75 giây. File sẵn sàng giữ 15 phút để tải lại,
+mỗi lần tải đã bắt đầu có tối đa 120 giây hoàn tất. F5 chỉ tra tác vụ cũ; khi không
+xác minh được hoặc gateway đã khởi động lại, cần người dùng bấm tạo lại. Dừng
+gateway cũng dừng bộ chuyển mã trong cùng systemd control group.
+
+Mặc định xem lại tắt. Trong credential `live-config.json`, chỉ đặt
+`archiveEnabled: true` cùng `archiveOrigin` (HTTP/HTTPS IP private, cổng quản trị
+qua WireGuard) cho đầu ghi Dahua/KBVISION hỗ trợ `loadfile.cgi?action=startLoad`
+và bản ghi DHAV có timestamp theo đồng hồ UTC+7. Giữ nguyên credential và
+`rtspOrigin` của đầu ghi. Video cũ có thể đã bị
+ghi đè; lỗi lấy bản ghi không được diễn giải thành “không có sự việc”.
+
+Release gateway phải chứa binary FFmpeg đã kiểm SHA-256, hỗ trợ DHAV demuxer,
+trim/atrim/setpts/asetpts/showinfo, H.264/libx264 và AAC. Gateway tải bản gốc qua
+HTTP Digest vào file riêng tư có giới hạn dung lượng rồi cắt theo timestamp
+tuyệt đối; lấy thêm 5 giây trước điểm cắt để giải mã đủ khung ở biên tải xuống,
+nhưng không dịch khoảng giờ người dùng chọn. Không dùng RTSP để cắt vì đầu ghi có thể nhảy tới keyframe kế tiếp,
+làm mất phần đầu. Credential không đi vào URL/argv/log của FFmpeg.
+Ghim binary bất biến trong `/opt/ihome-camera-live/releases/<sha>/`, khai báo
+`CAMERA_FFMPEG_BINARY` và `CAMERA_FFMPEG_SHA256` trong runtime.env. Không lấy binary
+latest lúc khởi động. Gateway xác minh digest trước khi mở listener. Unit mới
+cấp `StateDirectory=ihome-camera-live` (0700), giới hạn RAM 768 MiB và CPU 150%.
+Chỉ có một tác vụ chuyển mã cùng lúc, tối đa bốn file kết quả, mỗi file dưới 256 MiB;
+bản DHAV đang xử lý cũng bị giới hạn dưới 256 MiB và xóa khi kết thúc tác vụ;
+dành tối thiểu 2 GiB đĩa cho thư mục state. Không đặt video ở public webroot.
+
+UI cho chọn khoảng tìm tối đa 24 giờ, phát WebRTC, kéo tua có ảnh xem trước và
+tốc độ 1×/2×/4×/6×/8×. Xem lại mặc định SD 480p, tùy chọn HD 720p. Xuất tối đa
+30 phút/file, mặc định SD 480p; có thể chọn HD 720p, Full HD 1080p hoặc kích thước
+hình gốc, luôn giữ tỷ lệ và không phóng lớn nguồn.
+Video chuyển mã H.264/AAC, không phải bản bitstream gốc. File bàn giao chứa độ phân giải, camera,
+khoảng giờ yêu cầu, thời lượng video theo timestamp khung hình và SHA-256; không chứng nhận đồng hồ đầu
+ghi chính xác. Khi bàn giao, đối chiếu dấu giờ trên hình. Gateway kiểm thời lượng
+và timestamp khung hình đầu/cuối, từ chối khoảng rỗng giữa các khung hình lớn hơn
+0,5 giây (hoặc hai chu kỳ khung hình với camera FPS thấp). Vẫn cần kiểm thực tế
+firmware và gián đoạn vì thời lượng không tự chứng minh mọi khung hình nguồn.
+
+Trước bật trên host: giữ bản release/config/unit cũ; kiểm file MP4 có hình, tua,
+thời lượng, dấu giờ và hash trên đầu ghi được cấp quyền; thử hủy, hết hạn và người
+không có quyền. Kiểm các ô live vẫn hoạt động khi xuất. Rollback về đúng artifact,
+config và unit cũ, dừng process group trước đổi release; không ghi/xóa bản gốc
+trên đầu ghi. Dọn file tạm chỉ trong StateDirectory đã xác minh. Chưa có các bằng
+chứng đó thì chưa đánh dấu runtime production đã sẵn sàng.
+
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,
@@ -380,3 +437,113 @@ ký của một fleet khỏe mạnh chưa provision gì. Server chốt thêm l�
 heartbeat đó, hoặc bằng chứng đang lưu của cùng release) có `failedPolls > 0` —
 chỉ hạ, không bao giờ nâng — nên một bản rollback về image cũ vẫn không nói dối
 được.
+
+## Giám sát đầu ghi KBVISION / Dahua
+
+`src/cameraMain.ts` là bộ thu thập riêng, không thay vòng giám sát MikroTik hoặc
+thực thi lệnh. Nó đọc RPC2 (kênh), CGI Digest (ổ cứng) và luồng `VideoLoss`,
+`StorageFailure`, `StorageNotExist`, `StorageLowSpace`. Không thay cấu hình ghi hình.
+Trạng thái khởi tạo/không đọc được là UNKNOWN; sai quyền là AUTH_DENIED; slot
+EMPTY không phải camera mất kết nối. Timestamp sự kiện là lúc bộ thu thập nhận
+bản tin UTC. Chưa lấy bù nhật ký cũ từ đầu ghi, chưa có video gateway/WebRTC.
+
+Tab Camera chỉ đọc qua hai RPC có kiểm quyền theo tòa, phân trang lịch sử theo
+thời gian và ID. Dữ liệu quá hạn được hiển thị chưa xác minh, không suy tất cả
+camera đều offline. Transition từ polling do database sinh, chống lặp qua restart
+và replay. Luồng sự kiện chỉ bao phủ các mã trên; `COVERAGE_GAP` ghi nhận restart
+hoặc mất luồng, không tuyên bố mọi sự kiện trong khoảng gián đoạn đều đã lưu.
+
+Trước phát hành cần migration `network_center_camera_monitoring_v1`, Edge routes
+`camera-connections`/`camera-ingest`, read RPC và kiểm JWT/RLS theo Contract.
+Operator dùng `network_center_admin_enroll_camera_v1` (service_role only) để ghim
+recorder vào đúng organization/building/router connection đã có. Worker không
+được tự gán scope hoặc đổi đầu ghi. Không ghi fixture vào org thật.
+
+Build artifact bằng `node infra/network-center-worker/scripts/build-camera-monitor.mjs`.
+Artifact và SHA256 ở `infra/network-center-worker/camera-dist/` (ignored). Chỉ
+chuyển artifact của SHA đã review/gate đạt; đối chiếu hash sau khi tải lên.
+Runtime yêu cầu Node **22.23.2**, service mẫu `deploy/camera-monitor.service` kiểm
+đúng phiên bản trước khi chạy, không mở listening port.
+
+Layout cho mỗi bản phát hành:
+
+- `/opt/ihome-camera-monitor/releases/<reviewed-sha>/cameraMain.mjs` cùng SHA256SUMS;
+  `current` trỏ bản được duyệt, giữ bản trước để rollback.
+- `/opt/ihome-camera-monitor/config/worker.env` chỉ chứa `NETWORK_CENTER_EDGE_URL`
+  của đúng project; endpoint HTTPS, không userinfo/query.
+- `/opt/ihome-camera-monitor/secrets/worker-secret` là credential worker có scope
+  router phù hợp; `/opt/ihome-camera-monitor/secrets/camera-credentials.json` map
+  credentialRef sang `{origin,username,password}`. Hai file root-only0600, thư mục0700.
+  `origin` phải đúng IP private+port của enrollment, không dùng DDNS/publicIP.
+  systemd LoadCredential cấp bản mount riêng cho DynamicUser; không truyền mật khẩu
+  qua CLI, URL, frontend, Git hoặc log. Vault950NK dùng các tên
+  `NVR_950NK_USERNAME`/`NVR_950NK_PASSWORD`, nạp qua `scripts/lib/vault.mjs`.
+
+Đường HTTP phải chạy qua mạng quản trị riêng đã kiểm chứng. Giữ NAT giới hạn
+nguồn/interface/đích và rollback riêng; không mở WAN để chạy collector.
+Snapshot/luồng sự kiện được xếp hàng trên `/var/lib/ihome-camera-monitor/<recorder-id>`.
+Mỗi batch ghi atomic+fsync; chỉ xóa sau receipt ingest. Giới hạn64MiB/recorder:
+đầy thì báo lỗi và dừng lưu mới, không xóa lịch sử cũ. Khi CRM trở lại, batch giữ
+nguyên eventKey để chống trùng; ingest nhận dữ liệu chậm tối đa30ngày. Theo dõi
+log delivery/capacity và UI freshness, không coi process đang chạy là bằng chứng
+đã thu thập thành công.
+Batch thuộc connection cũ hoặc quá cửa sổ30ngày được chuyển nguyên vẹn vào
+`quarantine/BINDING_CHANGED` hoặc `quarantine/EXPIRED` để operator đối chiếu;
+không gửi lại dưới danh tính connection mới. Có log lỗi và COVERAGE_GAP cho
+khoảng không nhập được này; batch hợp lệ phía sau tiếp tục gửi.
+
+Canary: kiểm snapshot đúng số kênh, heartbeat stream và đọc lại CRM; kiểm ngắt/kết
+nối bằng fixture, không tự tắt camera đang bảo vệ nhà để thử. Sau rollout mới có
+thể xác nhận hoạt động liên tục; không dùng unit test thay bằng chứng live.
+Rollback collector: stop service, chuyển `current` về artifact có hash đã xác
+minh rồi start; giữ nguyên state/outbox và credentials. Không drop schema hoặc
+xóa journal để rollback app. Nếu chưa có bản cũ thì stop service, UI sẽ hết độ mới.
+
+### Phát lại trực tiếp và trích xuất
+
+Xem trực tiếp mặc định dùng luồng phụ SD; SD và gốc đi trực tiếp qua MediaMTX,
+giữ video và âm thanh tương thích WebRTC (đã kiểm G.711/PCMA trên đầu ghi).
+HD 720p và Full HD 1080p dùng encoder chung theo kênh/chất lượng, H.264/Opus.
+Trình duyệt giữ một MediaStream khi track âm thanh đến sau và hiện ngay khung hình
+đầu tiên đã giải mã. Xem lại dùng RTSP `/cam/playback` từ bản ghi
+chính. FFmpeg chuyển mã ngay sang H.264: SD tối đa 854×480, HD 1280×720,
+Full HD 1920×1080 hoặc kích thước gốc (không nâng độ phân giải nguồn). Không tạo
+job MP4 khi xem lại. Lựa chọn trực tiếp/xem lại/xuất được lưu riêng trong
+profiles.ui_preferences theo tài khoản qua RPC set_my_ui_preference; SD cho
+người chưa chọn, bộ nhớ máy hỗ trợ khi mất mạng. Không ghi đè các preference khác.
+Tua/đổi tốc độ dùng lại RTSP, encoder và WHEP; chỉ đổi chất lượng/khoảng/kênh mới
+tạo phiên khác. Dừng, hết lease hoặc hết khoảng xem xóa cả output/input/encoder.
+
+Build media bằng `node infra/network-center-worker/scripts/build-camera-media.mjs`
+(Go bootstrap cần có trong PATH). Script kiểm commit upstream v1.21.2, áp dụng
+`media/playback-control.patch`, dùng Go 1.27.0 và xuất mediamtx, LICENSE cùng
+MEDIA-PROVENANCE.json vào camera-dist. `npm test` của worker kiểm cả patch Go.
+Triển khai cả gateway và binary này vào cùng release; đối chiếu hash provenance,
+ghim CAMERA_MEDIA_SHA256. Không dùng binary upstream chưa vá cho gateway này.
+Rollback chuyển đồng thời gateway, binary và runtime.env về release đã xác minh.
+
+MediaMTX cho encoder đọc/publish qua RTSP TCP chỉ tại `127.0.0.1:18895`; quyền
+publish chỉ nhận tên `playback-<uuid>`. FFmpeg chỉ nhận URL loopback không chứa
+credential, một thread giải mã/mã hóa và không tự khởi động lại. RTCP của đầu ghi
+khi tăng tốc có thể làm timestamp FFmpeg nhảy ngược; luồng chuyển mã dùng đồng hồ
+thực để phát ổn định, UI nhân theo tốc độ để ước tính vị trí. Dấu giờ trên hình
+vẫn là giờ đầu ghi. Luồng client cũ không chuyển mã dùng RTP gốc. Media chờ reader
+PLAY trước khi yêu cầu bản ghi, tránh mất keyframe đầu. Lệnh tua được xác nhận
+sau PLAY thành công, timeout 3 giây; về 1× bỏ hẳn Scale vì firmware đầu ghi trả
+quá ít khung hình nếu gửi Scale: 1. Giới hạn bốn phiên xem lại. Ảnh trước dùng
+một JPEG 320px trong bộ nhớ, tối đa 128KiB/5 giây xử lý, hai yêu cầu toàn gateway
+và một yêu cầu/tài khoản; hủy phải đợi tiến trình thoát trước khi nhả chỗ.
+
+- Gateway kiểm JWT và quyền tòa nhà trước mở; renew/delete giữ ràng buộc chủ phiên.
+- Khoảng xem tối đa 24 giờ, không giờ tương lai; tối đa 4 phiên phát lại toàn gateway.
+- MediaMTX Control API chỉ nghe `127.0.0.1:18897`, chỉ quyền API từ loopback; không
+  reverse proxy hoặc mở firewall cho cổng này. RTSP gốc và mật khẩu chỉ ở máy chủ.
+- Thanh thời gian phát lại là ước tính theo RTSP. Không tự lấy mốc này điền trích xuất;
+  đối chiếu đồng hồ trên hình rồi chọn khoảng xuất. Export vẫn dùng DHAV/kiểm coverage,
+  SD 480p mặc định, tải về máy; file tạm xóa khi hủy/hết hạn, không upload Supabase Storage.
+  Bộ xuất dùng hai thread giải mã, một thread filter/mã hóa; tắt checksum từng frame
+  trong showinfo nhưng vẫn kiểm PTS/coverage/gap và SHA-256 của file hoàn chỉnh.
+  Giới hạn một bộ xuất gồm cả giai đoạn dọn dẹp, ngân sách nguồn + đầu ra 1 GiB và
+  giữ tối thiểu 2 GiB đĩa trống. Tiến độ phân biệt lấy nguồn, mã hóa, kiểm file và tải.
+- Khi rollout gateway, giữ artifact/config trước đó và kiểm stop/rollback; canary
+  cần xác nhận hình giải mã thật, đóng phiên xóa path và export hoạt động độc lập.

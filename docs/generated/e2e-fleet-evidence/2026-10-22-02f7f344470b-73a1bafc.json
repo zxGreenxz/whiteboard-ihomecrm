@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "passed",
+  "commit": "02f7f344470bfe0d31f170cab0e6c911adc4d735",
+  "fleetTree": "6321054eec553ff97f28e56804638a1963eba716",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5181"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": null,
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "codex"
+  },
+  "reportSha256": "e0a9cd3dcad8988447425e057d818f05fb4e14125ebd968199d55100fa8ffbf8",
+  "runner": {
+    "node": "v24.18.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "73a1bafc-083d-46a7-a67f-f1cbb841c238",
+  "startedAt": "2026-10-22T17:28:57.201Z",
+  "completedAt": "2026-10-22T17:30:07.664Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/network-center.spec.ts",
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}

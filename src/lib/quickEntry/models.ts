@@ -23,8 +23,8 @@ export const READ_MODELS: readonly ModelOption[] = [
   { id: "cx/gpt-6-astra", label: "GPT-6 Astra", hint: "~5,5 giây" },
   { id: "cx/gpt-6-sol", label: "GPT-6 Sol", hint: "~4,5 giây" },
   { id: "cx/gpt-6-luna", label: "GPT-6 Luna", hint: "~3,5 giây" },
-  // Đo 02/10/2026, 421 câu chi thật, mức thấp, câu lệnh chỉ hỏi hạng mục: đúng 98,6%, trung vị 2,7 giây.
-  { id: "cx/gpt-5.6-terra", label: "GPT-5.6 Terra", hint: "~3 giây · chọn hạng mục đúng nhất" },
+  // 28/10/2026 thay GPT-5.6 Terra (đo 02/10: 421 câu chi thật, mức thấp, đúng 98,6%, trung vị 2,7 giây); bản 6.1 chưa đo lại (thử 10 câu mẫu 28/10: đúng hạng mục 10/10, trung vị 2,1 giây).
+  { id: "cx/gpt-6.1-terra", label: "GPT-6.1 Terra", hint: "~2 giây · mặc định của máy chủ" },
   { id: "cx/gpt-5.6-luna", label: "GPT-5.6 Luna", hint: "~4,5 giây" },
 ];
 

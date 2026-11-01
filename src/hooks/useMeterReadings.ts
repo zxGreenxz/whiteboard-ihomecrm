@@ -7,9 +7,10 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { withOrg } from "@/lib/orgPayload";
 import { MeterReadingImportUnknownError, parseMeterReadingImportResult } from '@/lib/meterReadingImportResult';
 import { friendlyError } from '@/lib/friendlyError';
+import { recordMeterReadings, type MeterReadingInvoker } from '@/lib/meterReadingRpc';
 
 export class MeterReadingBatchPartialError extends FinancialWorkflowError {
   constructor(readonly confirmedIds: readonly string[], readonly requestedCount: number, action: string) {
@@ -142,6 +143,8 @@ export interface CreateMeterReadingInput {
 }
 
 export interface BulkCreateMeterReadingInput {
+  /** Toà của cả lô: hàm ghi nhận một toà, một ngày chốt mỗi lần. */
+  building_id: string;
   meter_id: string;
   reading_date: string;
   current_reading: number;
@@ -348,8 +351,10 @@ export const useCreateMeterReading = () => {
 };
 
 /**
- * Mutation INSERT nhiều rows vào meter_readings.
- * Invalidate queries, toast thành công.
+ * Ghi nhiều chỉ số MỘT toà, MỘT ngày chốt qua hàm dùng chung `record_meter_readings_v2` (cùng hàm với trợ lý Hermes):
+ * chống trùng (công tơ, tháng) trong database — tháng đã có chỉ số thì cả lô bị từ chối, form nêu từng dòng — thay cho
+ * INSERT thẳng (trước đây ghi được dòng thứ hai cùng tháng). Khoá idempotency = requestKey của workflow: tải lại trang rồi
+ * gửi lại đúng nội dung thì hàm ghi trả lại kết quả cũ, không ghi lần hai.
  * Requirements: 3.4
  */
 export const useBulkCreateMeterReadings = () => {
@@ -360,35 +365,25 @@ export const useBulkCreateMeterReadings = () => {
     mutationFn: async (inputs: BulkCreateMeterReadingInput[]) => {
       if(!inputs.length)throw new FinancialWorkflowError('Chọn ít nhất một chỉ số để ghi.','failure',[]);
       inputs.forEach(input=>validateReadingWrite(input.current_reading,input.reading_date));
-      return persistentFinancialWorkflow('useBulkCreateMeterReadings').run('batch','tạo chỉ số hàng loạt',async()=>{
-      const user = await getSessionUser();
-
-      if (!user) throw new Error("User not authenticated");
-
-      const approvedAt = new Date().toISOString();
-      const readingsToInsert = inputs.map((input) => ({
-        user_id: user.id,
-        meter_id: input.meter_id,
-        reading_date: input.reading_date,
-        current_reading: input.current_reading,
-        notes: input.notes ?? null,
-        meter_image_url: input.meter_image_url ?? null,
-        status: "APPROVED",
-        approved_by: user.id,
-        approved_at: approvedAt,
-      }));
-
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .insert(withOrgAll(readingsToInsert, selectedOrganizationId) as any)
-        .select();
-
-      if (error) throw error;
-      if (!Array.isArray(data)) throw new MeterReadingBatchPartialError([], inputs.length, 'tạo');
-      const confirmedIds = data.map(row => row?.id).filter((id): id is string => typeof id === 'string' && !!id);
-      if (confirmedIds.length !== inputs.length || new Set(confirmedIds).size !== inputs.length) throw new MeterReadingBatchPartialError(confirmedIds, inputs.length, 'tạo');
-      return data;
-      },undefined,selectedOrganizationId);
+      const [{ building_id: buildingId, reading_date: readingDate }] = inputs;
+      if(!buildingId || inputs.some(input=>input.building_id!==buildingId || input.reading_date!==readingDate))
+        throw new FinancialWorkflowError('Mỗi lần ghi một toà và một ngày chốt.','failure',[]);
+      const rows = inputs.map(input => ({ meterId: input.meter_id, value: input.current_reading, notes: input.notes ?? null, imageUrl: input.meter_image_url ?? null }));
+      const invoke: MeterReadingInvoker = (_name, args) => supabase.rpc('record_meter_readings_v2' as never, args as never) as never;
+      const write = async (idempotencyKey: string) => {
+        const result = await recordMeterReadings(invoke, { buildingId, readingDate, rows, idempotencyKey });
+        const confirmedIds = result.created.map(row => row.id);
+        if (result.count !== inputs.length || confirmedIds.length !== inputs.length || new Set(confirmedIds).size !== inputs.length)
+          throw new MeterReadingBatchPartialError(confirmedIds, inputs.length, 'tạo');
+        return result.created;
+      };
+      return persistentFinancialWorkflow('useBulkCreateMeterReadings').run('batch','tạo chỉ số hàng loạt',
+        progress => write(progress.requestKey),
+        // Lần trước chưa rõ kết quả: gửi lại ĐÚNG khoá — hàm ghi idempotent trả kết quả đã chốt (hoặc ghi lần đầu nếu chưa chạy);
+        // nội dung khác khoá cũ (23505) thì không tự gỡ dấu chờ.
+        async pending => { try { return { result: await write(pending.requestKey ?? pending.attemptId) }; }
+          catch (error) { if ((error as { code?: string } | null)?.code === '23505') return null; throw error; } },
+        selectedOrganizationId);
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);

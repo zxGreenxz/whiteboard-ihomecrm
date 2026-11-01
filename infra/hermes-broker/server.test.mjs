@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
+import { createActionCatalog } from './action-catalog.mjs';
+import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
@@ -534,6 +540,113 @@ test('server auth chain consults customer/action/sale capability RPCs; absent RP
   assert(!f.calls.some(call => /hermes_(customer_create_action|expense_action|expense_write|sale_actions|sale_policy_actions)_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
+test('actionPages: host opt-in per page on top of the production Thu chi catalog; absent RPC keeps crm_action_* hidden', async t => {
+  const f = fakeBackend();
+  for (const actionPages of ['contract', ['nope'], ['contract', 'contract'], [1], {}])
+    assert.throws(() => createHermesBackend({ ...f.configuration, actionPages }), error => error.message === 'invalid_backend_config', JSON.stringify(actionPages));
+  // Danh mục production đã có thao tác Thu chi (expense.*, gộp #271) nên cấu hình mặc định cũng hỏi capabilities của thao tác;
+  // không có actionPages thì không nạp thao tác Hợp đồng và không bao giờ gọi RPC trang Hợp đồng.
+  const off = fakeBackend(), plain = await listening(t, off.configuration), offToken = (await plain.connect()).body.token;
+  off.grantRooms();
+  assert(!(await plain.mcp(offToken)).body.result.tools.some(tool => tool.name.startsWith('crm_action_')));
+  assert(off.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1'), 'danh mục Thu chi mặc định hỏi capabilities của thao tác');
+  assert(!off.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+  const on = fakeBackend(), http = await listening(t, { ...on.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  on.grantRooms();
+  const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
+  assert(on.calls.some(call => call.path === '/rest/v1/rpc/hermes_action_capabilities_v1' && call.options.headers.authorization === `Bearer ${assistantJwt}`));
+  assert(!listed.some(name => name.startsWith('crm_action_')), 'RPC vắng ⇒ không khoá nào ⇒ họ thao tác ẩn');
+  assert(!on.calls.some(call => call.path.endsWith('/hermes_contract_action_v1')));
+});
+
+// Chat thật 31/10 (hồ sơ owner, production): crm_action_list page=contract trả 8 thao tác, contract.room_lock / room_unlock nằm ở
+// notPermitted (forbidden); crm_sale_action list có room_release nhưng không có room_lock. Tái hiện bằng đúng chuỗi ghép của server.mjs
+// (lớp thao tác MƯỢN sale_phong.lock_room, lớp Sale cấp) với câu trả lời capability như production: registry bật, chính sách công ty
+// trung tính, kết nối inherit_crm giữ khoá — nhưng quyền CRM của tài khoản chủ (vai "Chủ công ty") THIẾU sale_phong.lock_room, nên
+// hermes_sale_capabilities_v1 trả { allowed: false, companyEnabled: true }. Có quyền CRM ⇒ hai thao tác hiện, tám thao tác kia y nguyên.
+test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp Sale — thiếu quyền CRM ⇒ forbidden, có quyền ⇒ hiện, kết nối không giữ khoá ⇒ ẩn', async t => {
+  const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
+  const CONTRACT_KEYS = ['contracts.create', 'contracts.edit', 'contracts.renew', 'contracts.terminate'];
+  const TC_KEYS = catalog.keys.filter(key => key.startsWith('income_expenses.'));
+  const f = fakeBackend(), baseFetch = f.configuration.fetch;
+  // Quyền CRM của tài khoản chủ: có contracts.*, income_expenses.*, deposits.*, rooms.edit, sale_phong.manage_images; sale_phong.lock_room
+  // tuỳ ca. Trần công ty (companyEnabled) theo chính sách công ty của fixture (joined.policy.action), như SQL: registry ∩ chính sách.
+  const state = { crmLock: false };
+  const crm = key => key === 'sale_phong.lock_room' ? state.crmLock : SALE_ACTIONS.includes(key) || CONTRACT_KEYS.includes(key) || TC_KEYS.includes(key);
+  const capability = key => {
+    const on = f.read().joined?.policy.action.includes(key) === true, allowed = on && crm(key);
+    return { allowed, companyEnabled: on, buildingIds: allowed ? [I.building] : [] };
+  };
+  const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
+  f.configuration.fetch = async (url, options) => {
+    const path = new URL(url).pathname;
+    // SQL trả mọi khoá có dòng chính sách, kể cả sale_phong.lock_room của contract.room_lock; lớp thao tác bỏ qua khoá mượn.
+    if (path === '/rest/v1/rpc/hermes_action_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(catalog.keys.map(key => [key, capability(key)])), actions: Object.fromEntries(catalog.ids.map(action => [action, {}])) });
+    if (path === '/rest/v1/rpc/hermes_sale_capabilities_v1') return Response.json({ ...member(),
+      permissions: Object.fromEntries(SALE_ACTIONS.map(key => [key, capability(key)])) });
+    return baseFetch(url, options);
+  };
+  const http = await listening(t, { ...f.configuration, actionPages: ['contract'] }), token = (await http.connect()).body.token;
+  // inherit_crm: khoá kết nối = mọi khoá registry đang bật; chính sách công ty trung tính (0 dòng hermes_org_policies) = cùng tập.
+  const joined = f.read().joined;
+  const project = keys => { joined.connection.restrictions.action = [...keys]; joined.policy.action = [...keys]; };
+  const beforeTc = [...new Set([...SALE_ACTIONS, 'sale_phong.edit', ...catalog.keys.filter(key => !TC_KEYS.includes(key))])].sort();
+  const call = async (name, args) => {
+    const response = await http.mcp(token, 'tools/call', { name, arguments: args });
+    assert.equal(response.body.result.isError, false, response.text);
+    return JSON.parse(response.body.result.content[0].text);
+  };
+  const contract = () => call('crm_action_list', { page: 'contract' });
+  const saleOperations = async () => (await call('crm_sale_action', { operation: 'list' })).operations.map(entry => entry.operation);
+  const EIGHT = ['contract.notice_set', 'contract.notice_cancel', 'contract.renew', 'contract.return', 'contract.occupant_add',
+    'contract.occupant_remove', 'contract.draft', 'contract.renew_batch'];
+  const LOCKS = ['contract.room_lock', 'contract.room_unlock'];
+
+  // 1. Như production 31/10 08:19–08:21 (Thu chi chưa bật): đúng hai câu trả lời bot đã nhận.
+  project(beforeTc);
+  const observed = await contract();
+  assert.deepEqual(observed.items.map(item => item.action), EIGHT);
+  assert.deepEqual(observed.notPermitted.map(item => [item.action, item.reason]), LOCKS.map(action => [action, 'forbidden']));
+  const sale = await saleOperations();
+  assert(sale.includes('room_release') && sale.includes('reservation_update') && !sale.includes('room_lock'), sale.join());
+
+  // 2. Bật Thu chi (income_expenses.* vào registry ⇒ vào kết nối + chính sách) không đụng khoá tạm: vẫn thiếu quyền CRM ⇒ vẫn forbidden.
+  project([...beforeTc, ...TC_KEYS]);
+  const withTc = await contract();
+  assert.deepEqual(withTc.items.map(item => item.action), EIGHT);
+  assert.deepEqual(withTc.notPermitted.map(item => item.action), LOCKS);
+
+  // 3. Có quyền CRM sale_phong.lock_room: hai thao tác hiện đúng chỗ, hết notPermitted, tám thao tác kia giữ nguyên từng mục.
+  state.crmLock = true;
+  const granted = await contract();
+  assert.deepEqual(granted.items.map(item => item.action), ['contract.notice_set', 'contract.notice_cancel', ...LOCKS, ...EIGHT.slice(2)]);
+  assert.equal(granted.notPermitted, undefined);
+  assert.deepEqual(granted.items.filter(item => !LOCKS.includes(item.action)), withTc.items);
+  assert((await saleOperations()).includes('room_lock'));
+
+  // 4. Kết nối loại trừ khoá (chính sách công ty tường minh vẫn có khoá) HOẶC chính sách công ty tắt khoá (SQL trả companyEnabled
+  // false): ẩn mà không báo thiếu quyền, dù người dùng có quyền CRM.
+  const all = [...beforeTc, ...TC_KEYS], without = all.filter(key => key !== 'sale_phong.lock_room');
+  for (const [restrictions, policy] of [[without, all], [all, without]]) {
+    joined.connection.restrictions.action = [...restrictions]; joined.policy.action = [...policy];
+    const hidden = await contract();
+    assert.deepEqual(hidden.items.map(item => item.action), EIGHT);
+    assert.equal(hidden.notPermitted, undefined);
+    assert(!(await saleOperations()).includes('room_lock'));
+  }
+  assert(!f.calls.some(call => /hermes_(contract_action|sale_actions)_v1$/.test(call.path)), 'chỉ liệt kê, không gọi RPC ghi');
+});
+
+// Lượt 11 (D-HĐ9): origin web để ghép link công khai của HĐ (crm_read_contract_detail publicLink); chỉ https, đúng dạng origin.
+test('publicWebOrigin: optional https origin for the contract public link; anything else is refused', async t => {
+  const f = fakeBackend();
+  for (const publicWebOrigin of ['http://app.example.vn', 'https://app.example.vn/', 'app.example.vn', '', null, 1])
+    assert.throws(() => createHermesBackend({ ...f.configuration, publicWebOrigin }), error => error.message === 'invalid_backend_config', JSON.stringify(publicWebOrigin));
+  const http = await listening(t, { ...f.configuration, publicWebOrigin: 'https://app.example.vn' });
+  assert.equal(typeof (await http.connect()).body.token, 'string');
+});
+
 test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {
   const f = fakeBackend(), original = f.configuration.fetch; let maps = 0;
   f.configuration.audit = async event => { f.audits.push(event); if (event.outcome === 'prepared' && maps === 1) f.read().joined.connection.state = 'revoked'; };
@@ -966,4 +1079,61 @@ test('options disconnect cannot release the global sixteen-request budget before
     const rejected=await http.browser('options');assert.equal(rejected.status,429);
     assert.equal(calls,16);assert.equal(active,16);assert.equal(peak,16);
   }finally{hold.resolve();await http.close();}
+});
+
+// Nhớ quyền 30 phút (28/10, authority-context-cache.mjs). Production đo 28/10: keepalive `ping` 180 s của Hermes (2 lần dựng authority
+// mỗi ping) + làn gia hạn ~10 phút (9–11 lần) = ~100 lần dựng/giờ, mỗi lần 15 RPC quyền CRM + /auth/v1/user.
+const PERMISSION_READ = path => /^\/rest\/v1\/rpc\/(?:get_authorization_context_v1|get_my_organizations|hermes_scope_buildings_v1|hermes_group_action_context_v1|hermes_[a-z0-9_]*capabilities(?:_v[0-9]+)?)$/.test(path);
+const INITIALIZE = { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'hermes-fixture', version: '1' } };
+
+test('nhớ quyền: ping/initialize/tools/list qua MCP không đọc lại RPC quyền CRM, tools/call vẫn đọc thật, authorityCacheTtlMs 0 giữ hành vi cũ', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true }), token = (await http.connect()).body.token;
+  const count = since => ({ permission: f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length,
+    user: f.calls.slice(since).filter(call => call.path === '/auth/v1/user').length });
+  let at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200);
+  const build = count(at).permission;
+  assert.ok(build >= 3, `one cold build reads context, directory, scope and capabilities (${build})`);
+  at = f.calls.length;
+  for (let n = 0; n < 5; n++) assert.equal((await http.mcp(token, 'ping')).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools.map(tool => tool.name), ['crm_auth_context']);
+  assert.equal((await http.mcp(token, 'initialize', INITIALIZE)).status, 200);
+  assert.deepEqual(count(at), { permission: 0, user: 14 }, 'seven warm calls: no CRM permission RPC, the Auth session still verified twice each');
+  at = f.calls.length;
+  const called = await http.mcp(token, 'tools/call', { name: 'crm_auth_context', arguments: {} });
+  assert.equal(called.body.result.isError, false);
+  assert.ok(count(at).permission >= 2 * build, 'tools/call builds the full authority at admission and after the audit');
+  // Thu hẹp kết nối (epoch mới) có hiệu lực ngay ở tools/list, không chờ hết hạn nhớ.
+  assert.equal((await http.browser('restrict', { connectionId: I.connection, expectedEpoch: 2, restrictions: { read: [], action: [] }, scopeIds: [] })).status, 200);
+  assert.deepEqual((await http.mcp(token, 'tools/list')).body.result.tools, []);
+  // Tắt bằng cấu hình: mỗi ping dựng authority đầy đủ hai lần như trước 28/10.
+  const g = fakeBackend(), legacy = await listening(t, { ...g.configuration, connectorOnly: true, authorityCacheTtlMs: 0 });
+  const legacyToken = (await legacy.connect()).body.token, legacyAt = g.calls.length;
+  for (let n = 0; n < 3; n++) assert.equal((await legacy.mcp(legacyToken, 'ping')).status, 200);
+  assert.equal(g.calls.slice(legacyAt).filter(call => PERMISSION_READ(call.path)).length, 3 * 2 * build);
+  t.diagnostic(`permission RPC per authority build=${build}; warm ping/tools/list/initialize=0; ttl 0: ${2 * build} per ping`);
+});
+
+test('nhớ quyền: làn gia hạn/refresh của host dùng lại quyền đã nhớ; revision phiên mới đọc lại đúng một lần', async t => {
+  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
+  const reads = since => f.calls.slice(since).filter(call => PERMISSION_READ(call.path)).length, signal = () => new AbortController().signal;
+  let at = f.calls.length; assert.equal((await http.mcp(token, 'ping')).status, 200); const build = reads(at);
+  at = f.calls.length;
+  assert.equal((await http.resolveConnection(token, { signal: signal() })).connectionId, I.connection);
+  assert.equal((await http.renewConnection(token, { signal: signal() })).status, 'renewed');
+  const plain = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await plain.result).status, 'renewed'); await plain.drained;
+  assert.equal(reads(at), 0, 'discovery, renewal and maintenance (12 authority builds) reuse the remembered CRM read');
+  f.nearSessionExpiry(); const refresh = arrangeRefresh(f);
+  at = f.calls.length;
+  assert.equal((await http.mcp(token, 'ping')).status, 200); // 57 min later: the 30-min entry has expired ⇒ one cold build
+  assert.equal(reads(at), build);
+  const operation = http.beginConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await operation.result).status, 'renewed'); await operation.drained;
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal(reads(at), 2 * build, 'the refreshed provider session (new revision) is read once, then reused by the rest of the lane');
+  assert(f.calls.filter(call => call.path === '/auth/v1/user' && call.options.headers.authorization === `Bearer ${refresh.nextJwt}`).length >= 2);
+  for (const authorityCacheTtlMs of [-1, 1, 59_999, 3_600_001, '1800000', null, 1.5]) {
+    assert.throws(() => createHermesBackend({ ...f.configuration, authorityCacheTtlMs }), /invalid_backend_config/, JSON.stringify(authorityCacheTtlMs));
+  }
 });

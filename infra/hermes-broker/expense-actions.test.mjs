@@ -8,7 +8,7 @@ import { createActionCatalog, validateActionParams } from './action-catalog.mjs'
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
-import { EXPENSE_ACTIONS, EXPENSE_CREATE, EXPENSE_CREATE_KEY, EXPENSE_NOTE, EXPENSE_RPC, expenseCatalog } from './expense-actions-contract.mjs';
+import { EXPENSE_ACTIONS, EXPENSE_APPROVE, EXPENSE_APPROVE_MAX, EXPENSE_CANCEL, EXPENSE_CREATE, EXPENSE_CREATE_KEY, EXPENSE_EDIT, EXPENSE_NOTE, EXPENSE_RPC, expenseCatalog } from './expense-actions-contract.mjs';
 
 // Danh mục trang THU CHI (Đợt 2, THU-CHI-THAO-TAC-GHI.md mục 2) qua broker + lõi chạy thật, cổng dịch vụ giả: khuôn tham số
 // (lô ≤ 5 khoản), sàn xác nhận (create luôn xem trước dù SQL nói không cần; note ghi thẳng), một token cho cả lô, lượt 2 gửi
@@ -44,15 +44,17 @@ const RESOLVED = { items: [{ buildingId: id('f'), roomId: id('1'), typeId: id('2
 const preview = (confirm = 'required') => ({ kind: 'preview', preview: { summary: 'Ghi 1 phiếu chi, tổng 350.000đ.' }, basis: 'b'.repeat(32),
   resolved: RESOLVED, confirm, warnings: ['Khoản 1: tiền không tròn nghìn'] });
 
-test('danh mục Thu chi: hai thao tác, một RPC, khoá trong hợp đồng; lô 1–5 khoản với khuôn từng trường', () => {
+test('danh mục Thu chi: năm thao tác, một RPC, khoá trong hợp đồng; lô 1–5 khoản với khuôn từng trường', () => {
   assert.deepEqual(EXPENSE_ACTIONS.map(action => [action.id, action.key, action.class, action.rpc]),
-    [['expense.create', 'income_expenses.create', 'money', EXPENSE_RPC], ['expense.note', 'income_expenses.create', 'reversible', EXPENSE_RPC]]);
-  assert.ok(HERMES_ACTION_CAPABILITIES.includes(EXPENSE_CREATE_KEY));
+    [['expense.create', 'income_expenses.create', 'money', EXPENSE_RPC], ['expense.note', 'income_expenses.create', 'reversible', EXPENSE_RPC],
+      ['expense.edit', 'income_expenses.edit', 'money', EXPENSE_RPC], ['expense.cancel', 'income_expenses.cancel', 'irreversible', EXPENSE_RPC],
+      ['expense.approve', 'income_expenses.approve_vouchers', 'money', EXPENSE_RPC]]);
+  for (const action of EXPENSE_ACTIONS) assert.ok(HERMES_ACTION_CAPABILITIES.includes(action.key), action.key);
   const catalog = expenseCatalog();
-  assert.deepEqual([...catalog.keys], [EXPENSE_CREATE_KEY]);
+  assert.deepEqual([...catalog.keys], ['income_expenses.approve_vouchers', 'income_expenses.cancel', EXPENSE_CREATE_KEY, 'income_expenses.edit']);
   const [create, note] = catalog.listing({ action: [EXPENSE_CREATE_KEY] });
   assert.deepEqual([create.confirm, note.confirm], ['always', 'if_required']);
-  assert.deepEqual(Object.keys(create.params.items.item.fields), ['buildingName', 'roomName', 'amount', 'content', 'category', 'payee', 'voucherDate', 'period', 'cashbook']);
+  assert.deepEqual(Object.keys(create.params.items.item.fields), ['buildingName', 'roomName', 'amount', 'content', 'category', 'payee', 'voucherDate', 'voucherDatePhrase', 'period', 'cashbook']);
   assert.deepEqual(Object.entries(create.params.items.item.fields).filter(([, spec]) => spec.required).map(([name]) => name), ['buildingName', 'amount', 'content']);
   assert.equal(create.params.items.max, 5);
   assert.deepEqual(validateActionParams(EXPENSE_CREATE, { items: [{ ...ITEM, amount: '350000', voucher_date: '2026-10-21', period: '2026-10' }] }),
@@ -63,6 +65,96 @@ test('danh mục Thu chi: hai thao tác, một RPC, khoá trong hợp đồng; l
   assert.equal(validateActionParams(EXPENSE_NOTE, { voucherCode: 'PC2610001', note: 'đã lấy hoá đơn đỏ' }).ok, true);
   assert.equal(validateActionParams(EXPENSE_NOTE, { voucherCode: 'PC2610001', note: 'x'.repeat(1001) }).ok, false);
   assert.throws(() => createActionCatalog(EXPENSE_ACTIONS, { keys: ['income_expenses.edit'] }), /invalid_action_catalog/, 'khoá phải nằm trong tập được nhận');
+});
+
+test('Mốc 4: expense.edit / expense.cancel chỉ dùng khuôn đã có; mỗi khoá chỉ hiện thao tác của nó; huỷ bắt lý do 8–1000', () => {
+  const catalog = expenseCatalog();
+  const kindsOf = spec => spec.kind === 'list' ? [spec.kind, ...kindsOf(spec.item)] : spec.kind === 'record' ? [spec.kind, ...Object.values(spec.fields).flatMap(kindsOf)] : [spec.kind];
+  const used = new Set([EXPENSE_CREATE, EXPENSE_NOTE].flatMap(action => Object.values(action.params).flatMap(kindsOf)));
+  for (const action of [EXPENSE_EDIT, EXPENSE_CANCEL])
+    for (const [name, spec] of Object.entries(action.params)) assert.ok(used.has(spec.kind), `${action.id}.${name}: khuôn ${spec.kind} mới`);
+  assert.deepEqual(catalog.listing({ action: ['income_expenses.cancel'] }).map(item => [item.action, item.confirm]), [['expense.cancel', 'always']]);
+  const [edit] = catalog.listing({ action: ['income_expenses.edit'] });
+  assert.deepEqual([edit.action, edit.confirm, Object.entries(edit.params).filter(([, spec]) => spec.required).map(([name]) => name)],
+    ['expense.edit', 'always', ['voucherCode']]);
+  assert.deepEqual(validateActionParams(EXPENSE_EDIT, { voucher_code: 'PC2610001', amount: '450000', reason: 'ghi nhầm số tiền' }),
+    { ok: true, value: { voucherCode: 'PC2610001', amount: 450_000, reason: 'ghi nhầm số tiền' } });
+  for (const params of [{}, { voucherCode: 'PC2610001', reason: 'ngắn' }, { voucherCode: 'PC2610001', amount: 0 }, { voucherCode: 'PC2610001', period: '2026-10' },
+    { voucherCode: 'PC2610001', voucherDate: '22/10/2026' }])
+    assert.equal(validateActionParams(EXPENSE_EDIT, params).ok, false, JSON.stringify(params));
+  assert.equal(validateActionParams(EXPENSE_CANCEL, { voucherCode: 'PC2610001', reason: 'lập trùng phiếu' }).ok, true);
+  for (const params of [{ voucherCode: 'PC2610001' }, { voucherCode: 'PC2610001', reason: 'trùng' }, { voucherCode: 'PC2610001', reason: 'x'.repeat(1001) }])
+    assert.equal(validateActionParams(EXPENSE_CANCEL, params).ok, false, JSON.stringify(params).slice(0, 60));
+});
+
+test('Mốc 5: expense.approve — khoá riêng approve_vouchers, lô 1–10 mã, post tuỳ chọn; luôn xem trước, lượt 2 gửi đúng bản đã giải', async t => {
+  const catalog = expenseCatalog();
+  const [approve] = catalog.listing({ action: ['income_expenses.approve_vouchers'] });
+  assert.deepEqual([approve.action, approve.confirm, approve.params.voucherCodes.max, Object.entries(approve.params).filter(([, spec]) => spec.required).map(([name]) => name)],
+    ['expense.approve', 'always', EXPENSE_APPROVE_MAX, ['voucherCodes']]);
+  assert.deepEqual(catalog.listing({ action: ['income_expenses.approve'] }), [], 'quyền CRM income_expenses.approve không phải khoá Hermes');
+  assert.deepEqual(validateActionParams(EXPENSE_APPROVE, { voucher_codes: ['PC2610001', 'PC2610002'], post: 'false' }),
+    { ok: true, value: { voucherCodes: ['PC2610001', 'PC2610002'], post: false } });
+  for (const params of [{}, { voucherCodes: [] }, { voucherCodes: Array.from({ length: 11 }, (_, i) => `PC26100${10 + i}`) }, { voucherCodes: ['PC2610001'], post: 'có' },
+    { voucherCodes: 'PC2610001' }, { voucherCodes: ['A\nB'] }])
+    assert.equal(validateActionParams(EXPENSE_APPROVE, params).ok, false, JSON.stringify(params).slice(0, 60));
+  const resolved = { vouchers: [{ voucherId: id('7'), voucherCode: 'PC2610001', buildingId: id('f'), approvalVersion: 0, postingVersion: 0, plan: 'approve_post', note: null, skip: null }] };
+  const env = setup(t, { action: ['income_expenses.approve_vouchers'], respond: request => request.phase === 'apply'
+    ? { kind: 'applied', result: { items: [{ code: 'PC2610001', outcome: 'approved_posted', reason: null, statusText: 'Đã duyệt và CHI khỏi sổ' }], totalPosted: 350_000, totalPostedText: '350.000đ' },
+      link: `/income-expense/voucher/${id('7')}` }
+    : { kind: 'preview', preview: { summary: 'Duyệt 1 phiếu: duyệt + CHI 1 phiếu, tổng 350.000đ.' }, basis: 'd'.repeat(32), resolved, confirm: 'not_required' } });
+  const params = { voucherCodes: ['PC2610001'] };
+  const first = await env.call({ action: 'expense.approve', params });
+  assert.deepEqual([first.outcome, env.requests.at(-1).phase], ['confirmation_required', 'preview']);
+  const applied = await env.call({ action: 'expense.approve', params, requestId: first.requestId, confirmToken: first.confirmToken });
+  assert.equal(applied.outcome, 'applied');
+  assert.deepEqual(env.requests.at(-1), { op: 'run', action: 'expense.approve', phase: 'apply', requestId: first.requestId, params, resolved, basis: 'd'.repeat(32) });
+  // Phiếu thứ hai trong lô bị từ chối ⇒ "Khoản 2: …".
+  const batch = setup(t, { action: ['income_expenses.approve_vouchers'], respond: () => ({ kind: 'rejected', reason: 'not_pending', item: 2 }) });
+  await assert.rejects(batch.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.approve', params: { voucherCodes: ['PC2610001', 'PC2610002'] } }),
+    error => error.code === 'action_rejected' && error.reason === 'not_pending' && error.detail === `Khoản 2: ${ACTION_REASONS.not_pending.text}`);
+  // Kết nối chỉ giữ khoá lập phiếu ⇒ không chạy được duyệt.
+  const createOnly = setup(t, { respond: () => preview() });
+  await assert.rejects(createOnly.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.approve', params }),
+    error => error.code === 'action_rejected' && error.reason === 'action_disabled');
+});
+
+test('Mốc 4: sửa/huỷ luôn xem trước (money/irreversible) kể cả khi SQL nói không cần; lượt 2 gửi đúng bản đã giải', async t => {
+  const resolved = { voucherId: id('7'), voucherCode: 'PC2610001', buildingId: id('f') };
+  const env = setup(t, { action: ['income_expenses.edit', 'income_expenses.cancel'], respond: request => request.phase === 'apply'
+    ? { kind: 'applied', result: { code: 'PC2610001', cancellationKind: 'CANCELLED_AFTER_POSTING', statusText: 'Đã huỷ' }, link: `/income-expense/voucher/${id('7')}` }
+    : { kind: 'preview', preview: { summary: 'Huỷ phiếu PC2610001', willBe: 'ĐÃ VÀO SỔ … KHÔNG khôi phục được' }, basis: 'c'.repeat(32), resolved, confirm: 'not_required' } });
+  for (const [action, params] of [['expense.edit', { voucherCode: 'PC2610001', amount: 450_000, reason: 'ghi nhầm số tiền' }],
+    ['expense.cancel', { voucherCode: 'PC2610001', reason: 'lập trùng phiếu' }]]) {
+    const first = await env.call({ action, params });
+    assert.deepEqual([first.outcome, env.requests.at(-1).phase], ['confirmation_required', 'preview'], action);
+    // expense.cancel không lùi được ⇒ lượt xác nhận kèm consentText (lượt 12 Hợp đồng, rào đồng ý); expense.edit (money) không cần.
+    const applied = await env.call({ action, params, requestId: first.requestId, confirmToken: first.confirmToken, ...(action === 'expense.cancel' ? { consentText: 'ok huỷ đi' } : {}) });
+    assert.equal(applied.outcome, 'applied');
+    assert.deepEqual(env.requests.at(-1), { op: 'run', action, phase: 'apply', requestId: first.requestId, params, resolved, basis: 'c'.repeat(32) });
+  }
+  // Kết nối chỉ giữ khoá huỷ ⇒ không chạy được sửa.
+  const cancelOnly = setup(t, { action: ['income_expenses.cancel'], respond: () => preview() });
+  await assert.rejects(cancelOnly.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.edit', params: { voucherCode: 'PC2610001', amount: 1000 } }),
+    error => error.code === 'action_rejected' && error.reason === 'action_disabled');
+});
+
+test('Mốc 4 (review): lô bị từ chối nói khoản số mấy — lỗi kèm item + "Khoản N: …", lý do dạng hỏi lại cũng vậy; item sai khuôn ⇒ backend_unavailable', async t => {
+  let outcome;
+  const env = setup(t, { respond: () => outcome });
+  const params = { items: [ITEM, { ...ITEM, content: 'khoản hai' }] };
+  outcome = { kind: 'rejected', reason: 'period_locked', item: 2 };
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.create', params }), error => error.code === 'action_rejected' &&
+    error.reason === 'period_locked' && error.item === 2 && error.detail === `Khoản 2: ${ACTION_REASONS.period_locked.text}`);
+  outcome = { kind: 'rejected', reason: 'date_out_of_range', item: 2 };
+  const asked = await env.call({ action: 'expense.create', params });
+  assert.deepEqual([asked.outcome, asked.reason, asked.detail], ['needs_input', 'date_out_of_range', `Khoản 2: ${ACTION_REASONS.date_out_of_range.text}`]);
+  for (const item of [0, 21, '2', 1.5, null]) {
+    outcome = { kind: 'rejected', reason: 'period_locked', item };
+    await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.create', params }), error => error.code === 'backend_unavailable', String(item));
+  }
+  outcome = { kind: 'rejected', reason: 'period_locked', item: 2, detail: 'chuỗi tự do' };
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.create', params }), error => error.code === 'backend_unavailable');
 });
 
 test('expense.create: luôn xem trước (sàn money) kể cả khi SQL nói không cần; một token cho cả lô; lượt 2 gửi đúng bản đã giải', async t => {
@@ -108,9 +200,78 @@ test('needs_input từ SQL: hạng mục / sổ / mã phiếu không giải đư
   assert.match((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, /^Không thấy sổ quỹ 'quỹ lạ' trong phạm vi quyền/);
   outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609001', why: 'ambiguous',
     candidates: [{ name: 'PC2609001 · 03/09 · 1392QT · 350.000đ' }, { name: 'PC2609001 · 12/09 · 44TL · 1.200.000đ' }] };
-  assert.match((await env.call({ action: 'expense.note', params: { voucherCode: 'PC2609001', note: 'x' } })).detail, /^Phiếu 'PC2609001' khớp nhiều/);
+  // Lượt 11 (nghiệm thu): mã dùng lại giữa các toà ⇒ hướng dẫn gọi lại kèm ngày / toà hoặc chép nhãn ứng viên.
+  assert.equal((await env.call({ action: 'expense.note', params: { voucherCode: 'PC2609001', note: 'x' } })).detail,
+    "Phiếu 'PC2609001' khớp nhiều: PC2609001 · 03/09 · 1392QT · 350.000đ, PC2609001 · 12/09 · 44TL · 1.200.000đ — hỏi người dùng chọn một, rồi gọi lại với " +
+    "voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.");
+  // Hạng mục: danh mục của cả công ty ⇒ không nói "trong phạm vi quyền"; chưa nêu hạng mục ⇒ gợi ý đúng nghĩa, mục số mấy của lô.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: 'bảo hiểm lạ', why: 'not_visible', candidates: [], more: false };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
+    "Không có hạng mục 'bảo hiểm lạ' trong danh mục chi dùng được qua bot (hạng mục hệ thống, hạn chế, cọc, chuyển nội bộ chỉ lập trên web); hỏi người dùng nêu hạng mục khác.");
+  // Lượt 20 (A04): NHIỀU gợi ý hạng mục ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất (trước: "hỏi người dùng chọn một, không tự chọn").
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified',
+    candidates: [{ name: 'Sửa chữa' }, { name: 'Sửa điện' }], more: false, item: 2 };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM, ITEM] } })).detail, `Mục #2: ${severalCategories('Sửa chữa, Sửa điện')}`);
+  // C3n (TC A14): đúng MỘT gợi ý ⇒ xem trước ngay với gợi ý đó, hỏi đồng ý một lần; còn gợi ý khác (`more`) ⇒ câu nhiều gợi ý của lượt 20.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified', candidates: [{ name: 'Khoá cơ, chìa khoá' }], more: false };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail,
+    'Chưa nêu hạng mục; gợi ý duy nhất: Khoá cơ, chìa khoá — gọi lại NGAY với category = gợi ý này để lấy bản xem trước rồi hỏi người dùng đồng ý một lần ' +
+    '(nêu rõ hạng mục); họ muốn hạng mục khác thì xem trước lại.');
+  outcome = { ...outcome, more: true };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, severalCategories('Khoá cơ, chìa khoá, …'));
   outcome = { kind: 'rejected', reason: 'not_found' };
   assert.deepEqual((await env.call({ action: 'expense.note', params: { voucherCode: 'PC0000000', note: 'x' } })).reason, 'not_found');
+});
+
+// Lượt 20 (A04): câu của hạng mục chưa nêu có NHIỀU gợi ý (xếp theo độ khớp).
+const severalCategories = list => `Chưa nêu hạng mục; gợi ý: ${list} (gợi ý đầu khớp nhất) — gọi lại NGAY với category = gợi ý hợp nội dung nhất để lấy bản ` +
+  'xem trước, nêu rõ hạng mục đã chọn và gợi ý còn lại; người dùng muốn hạng mục khác thì xem trước lại.';
+
+test('Lượt 20 (A04): hạng mục chưa nêu có NHIỀU gợi ý ⇒ gọi lại NGAY với gợi ý hợp nội dung nhất, bản xem trước nêu hạng mục đã chọn + gợi ý còn lại; không gợi ý ⇒ hỏi', async t => {
+  let outcome;
+  const env = setup(t, { respond: () => outcome });
+  // Ca nghiệm thu c3q (TEST): "Thứ hai tuần trước anh có chi 2 củ sơn lại tường phòng 302 toà 65, ghi bù giúp anh" ⇒ SQL trả hai gợi ý; câu cũ
+  // "hỏi người dùng chọn một, không tự chọn" ⇒ người dùng đáp "ok" (không chọn), bot hỏi mãi. Người dùng vẫn quyết trên bản xem trước.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'category', wanted: '', why: 'unspecified',
+    candidates: [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }], more: false };
+  const a04 = await env.call({ action: 'expense.create', params: { items: [{ ...ITEM, buildingName: '65NTG', roomName: '302', amount: 2_000_000, content: 'sơn lại tường phòng 302' }] } });
+  assert.deepEqual([a04.outcome, a04.reason, a04.detail, a04.candidates], ['needs_input', 'name_unresolved', severalCategories('Sửa chữa xây dựng, Mua đồ điện máy'),
+    [{ name: 'Sửa chữa xây dựng' }, { name: 'Mua đồ điện máy' }]]);
+  // Không gợi ý nào ⇒ hỏi người dùng (không đổi).
+  outcome = { ...outcome, candidates: [] };
+  assert.equal((await env.call({ action: 'expense.create', params: { items: [ITEM] } })).detail, 'Chưa nêu hạng mục; hỏi người dùng.');
+});
+
+test('Lượt 20 (G02): mã mơ hồ của expense.approve (lô, luôn xem trước) ⇒ một câu cho mọi mã: gọi lại voucherCodes "MÃ dd/mm/yyyy", chọn theo bộ lọc vừa đọc; sửa / huỷ / ghi chú giữ câu cũ', async t => {
+  let outcome;
+  const env = setup(t, { action: ['income_expenses.approve_vouchers', 'income_expenses.edit', 'income_expenses.cancel', EXPENSE_CREATE_KEY], respond: () => outcome });
+  const lot = (wanted, list, more = false) => `Mã phiếu '${wanted}' khớp nhiều phiếu: ${list} — mỗi mã trên chọn MỘT phiếu rồi gọi lại voucherCodes (mã khác ` +
+    "giữ nguyên), ghi mã đó dạng 'MÃ dd/mm/yyyy' (vd 'PC2610777 05/10/2026') hoặc chép nguyên nhãn ứng viên. Nếu vừa đọc danh sách theo bộ lọc người dùng " +
+    'nêu (vd "dưới 1 triệu", toà, ngày) thì chọn phiếu khớp bộ lọc và gọi lại NGAY — bản xem trước nêu từng phiếu để người dùng đồng ý một lần; chỉ hỏi ' +
+    'người dùng chọn khi không suy ra được.' + (more ? ' Còn ứng viên chưa nêu: mã chưa có ứng viên ở trên sẽ được nêu ở lượt gọi sau; phiếu cần chọn không ' +
+    'có trong danh sách thì ghi kèm ngày / toà.' : '');
+  const names = ['PC2609064 · 13/09/2026 · 331PHI · 45.000đ', 'PC2609064 · 01/09/2026 · 331PHI · 4.410.400đ', 'PC2609077 · 20/09/2026 · 331PHI · 600.000đ',
+    'PC2609077 · 10/09/2026 · 331PHI · 300.000đ'];
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609064', why: 'ambiguous', candidates: names.slice(0, 2).map(name => ({ name })), more: false };
+  const one = await env.call({ action: 'expense.approve', params: { voucherCodes: ['PC2609052', 'PC2609112', 'PC2609022', 'PC2609064'] } });
+  assert.deepEqual([one.outcome, one.reason, one.detail, one.candidates], ['needs_input', 'name_unresolved', lot('PC2609064', names.slice(0, 2).join(', ')),
+    names.slice(0, 2).map(name => ({ name }))]);
+  // Nhiều mã mơ hồ trong MỘT kết quả (SQL 20261027140949): wanted nối các mã, ứng viên theo từng mã; còn ứng viên chưa nêu ⇒ nói lượt sau nêu tiếp.
+  outcome = { ...outcome, wanted: 'PC2609064, PC2609077', candidates: names.map(name => ({ name })), more: true };
+  assert.equal((await env.call({ action: 'expense.approve', params: { voucherCodes: ['PC2609064', 'PC2609077', 'PC2609090'] } })).detail,
+    lot('PC2609064, PC2609077', `${names.join(', ')}, …`, true));
+  // Trần 8 ứng viên của connector giữ nguyên (khuôn đóng): 9 ứng viên ⇒ khuôn lệch.
+  outcome = { ...outcome, candidates: Array.from({ length: 9 }, (_, i) => ({ name: `PC2609090 · 0${i + 1}/09/2026 · 331PHI · 100.000đ` })) };
+  await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'expense.approve', params: { voucherCodes: ['PC2609090'] } }),
+    error => error.code === 'backend_unavailable');
+  // Sửa / huỷ / ghi chú (một mã; ghi chú ghi thẳng không xem trước) ⇒ câu cũ: hỏi người dùng chọn một.
+  outcome = { kind: 'needs_input', reason: 'name_unresolved', field: 'voucher', wanted: 'PC2609052', why: 'ambiguous',
+    candidates: [{ name: 'PC2609052 · 29/09/2026 · 331PHI · 800.000đ' }, { name: 'PC2609052 · 01/09/2026 · 331PHI · 1.500.000đ' }], more: false };
+  const old = "Phiếu 'PC2609052' khớp nhiều: PC2609052 · 29/09/2026 · 331PHI · 800.000đ, PC2609052 · 01/09/2026 · 331PHI · 1.500.000đ — hỏi người dùng chọn " +
+    "một, rồi gọi lại với voucherCode kèm ngày hoặc toà của phiếu (vd 'PC2610777 05/10') hoặc chép nguyên nhãn ứng viên.";
+  for (const [action, params] of [['expense.note', { voucherCode: 'PC2609052', note: 'đã lấy hoá đơn' }], ['expense.edit', { voucherCode: 'PC2609052', amount: 1000 }],
+    ['expense.cancel', { voucherCode: 'PC2609052', reason: 'lập trùng phiếu' }]])
+    assert.equal((await env.call({ action, params })).detail, old, action);
 });
 
 test('lý do riêng Thu chi tới mô hình đúng câu tĩnh; lý do lạ ⇒ crm_refused', async t => {

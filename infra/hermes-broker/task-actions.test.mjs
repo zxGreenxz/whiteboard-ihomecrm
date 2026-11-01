@@ -5,7 +5,8 @@ import { createActionCatalog, validateActionParams } from './action-catalog.mjs'
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { nameUnresolvedDetail } from './action-contract.mjs';
-import { TASK_ACTIONS, TASK_CREATE, TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
+import { TASK_ACTIONS, TASK_CREATE, TASK_CREATE_BATCH, TASK_BATCH_MAX, TASK_UPDATE, TASK_CANCEL, TASK_RETIRED_OPERATIONS, TASK_RETIRED_BY,
+  TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE } from './task-actions-contract.mjs';
 import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS } from './task-input-contract.mjs';
 import { TASK_FOLLOW_TOOLS } from './task-follow-contract.mjs';
@@ -33,7 +34,37 @@ test('catalog: task.create under tasks.create, reversible (server decides confir
   assert.deepEqual(Object.entries(listed.params).filter(([, spec]) => spec.required).map(([name]) => name), ['content']);
   assert.deepEqual([listed.params.deadlineTime.type, listed.params.jobType.type, listed.params.priority.values], ['time', 'name', ['NORMAL', 'URGENT', 'LOW']]);
   assert.deepEqual(catalog.listing({ read: [], action: [] }), []);
-  assert.deepEqual([...TASK_RETIRED_OPERATIONS], ['create', 'status', 'options']);
+  assert.deepEqual([...TASK_RETIRED_OPERATIONS], ['create', 'status', 'options', 'progress', 'cancel']);
+  // Mốc 3: sửa dưới tasks.edit (reversible, máy chủ quyết xem trước), huỷ dưới tasks.delete (irreversible ⇒ luôn xem trước).
+  assert.deepEqual([TASK_UPDATE.key, TASK_UPDATE.class, TASK_CANCEL.key, TASK_CANCEL.class], ['tasks.edit', 'reversible', 'tasks.delete', 'irreversible']);
+  assert.deepEqual(TASK_RETIRED_BY, { create: 'task.create', status: 'task.create', options: 'task.create', progress: 'task.update', cancel: 'task.cancel' });
+  const all = catalog.listing({ read: [], action: [TASK_KEY, 'tasks.edit', 'tasks.delete'] });
+  assert.deepEqual(all.map(item => [item.action, item.confirm]), [['task.create', 'if_required'], ['task.create_batch', 'if_required'], ['task.update', 'if_required'],
+    ['task.cancel', 'always'], ['task.recurring_create', 'if_required'], ['task.recurring_update', 'if_required'], ['task.recurring_pause', 'if_required'],
+    ['task.recurring_delete', 'if_required']]);
+  assert.deepEqual(all.slice(2, 4).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)), [['job'], ['job']]);
+  // Mốc 5: việc định kỳ — tạo dưới tasks.create, sửa / tạm dừng dưới tasks.edit, xoá (mềm) dưới tasks.delete; reversible + chính sách DB
+  // always (máy chủ luôn xem trước). Quy tắc là tên kiểu recurrence (mã DK-… hoặc nội dung); thứ trong tuần là danh sách oneOf.
+  assert.deepEqual([TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE].map(action => [action.key, action.class, action.reasons]),
+    [['tasks.create', 'reversible', ['recurrence_quota']], ['tasks.edit', 'reversible', ['recurrence_unchanged']],
+      ['tasks.edit', 'reversible', ['recurrence_unchanged']], ['tasks.delete', 'reversible', []]]);
+  assert.deepEqual(all.slice(4).map(item => Object.entries(item.params).filter(([, spec]) => spec.required).map(([name]) => name)),
+    [['content', 'frequency'], ['rule'], ['rule'], ['rule']]);
+  assert.equal(all[5].params.rule.hint, 'mã việc định kỳ (DK-…) hoặc nội dung như người dùng nói');
+  assert.deepEqual([all[4].params.weekdays.type, all[4].params.weekdays.max, all[4].params.weekdays.item.values, all[4].params.monthDay.hint],
+    ['list', 7, ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], 'số nguyên -1–31']);
+  for (const action of [TASK_RECURRING_CREATE, TASK_RECURRING_UPDATE, TASK_RECURRING_PAUSE, TASK_RECURRING_DELETE])
+    assert.ok(action.title.length <= 120 && Object.keys(action.params).length <= 16, action.id);
+  assert.equal(all[2].params.job.hint, 'mã việc (JOB-…, 4 số cuối) hoặc tiêu đề như người dùng nói');
+  // Mốc 4: lô dưới CÙNG khoá tasks.create (chính sách DB always ⇒ máy chủ luôn xem trước); items ≤ 20 mục, mỗi mục là record có giờ hạn;
+  // không tham số bắt buộc ở connector (SQL đòi đúng một trong items / buildingsManagedBy).
+  assert.deepEqual([TASK_CREATE_BATCH.key, TASK_CREATE_BATCH.class, TASK_CREATE_BATCH.reasons], ['tasks.create', 'reversible', ['task_quota_user', 'task_quota_pair', 'batch_too_large']]);
+  const batch = all[1].params;
+  assert.deepEqual(Object.entries(batch).filter(([, spec]) => spec.required), []);
+  assert.deepEqual([batch.items.type, batch.items.min, batch.items.max, batch.items.item.type, batch.items.item.fields.deadlineTime.type, batch.buildingsManagedBy.type],
+    ['list', 1, TASK_BATCH_MAX, 'record', 'time', 'name']);
+  assert.ok(TASK_CREATE_BATCH.title.length <= 120 && Object.keys(TASK_CREATE_BATCH.params).length <= 16);
+  for (const action of [TASK_UPDATE, TASK_CANCEL]) assert.ok(action.title.length <= 120 && Object.keys(action.params).length <= 16);
 });
 
 test('params: time HH:MM only; snake_case accepted; content required; static hint never echoes values', () => {
@@ -46,6 +77,21 @@ test('params: time HH:MM only; snake_case accepted; content required; static hin
     assert.ok(!refused.detail.includes(bad), 'không nhắc lại giá trị đã gửi');
   }
   assert.equal(validateActionParams(TASK_CREATE, { buildingName: 'Toà A' }).ok, false, 'thiếu content');
+});
+
+test('batch over 20 items (lượt 13): batch_too_large with the count instead of the generic invalid_params; SQL is never called', async () => {
+  const item = { roomName: '101', content: 'sửa vòi' };
+  const items = n => Array.from({ length: n }, () => item);
+  assert.deepEqual(validateActionParams(TASK_CREATE_BATCH, { buildingName: 'Toà A', items: items(40) }),
+    { ok: false, overflow: { reason: 'batch_too_large', path: 'items', count: 40, max: TASK_BATCH_MAX } });
+  assert.equal(validateActionParams(TASK_CREATE_BATCH, { buildingName: 'Toà A', items: items(TASK_BATCH_MAX) }).ok, true);
+  const service = { async prepareAction() { throw new Error('không được gọi SQL'); }, async finalizeAction() { throw new Error('không được gọi SQL'); } };
+  const runtime = createActionRuntime({ catalog: createActionCatalog(TASK_ACTIONS), service });
+  const identity = { row: { id: '00000000-0000-4000-8000-000000000001', organizationId: '00000000-0000-4000-8000-000000000002' }, effective };
+  const plan = runtime.begin(runtime.route('crm_action_run'), { action: 'task.create_batch', params: { buildingName: 'Toà A', items: items(40) } });
+  const out = content(await runtime.finish(plan, 'token', await runtime.handle(plan, 'token', identity), identity));
+  assert.deepEqual([out.outcome, out.reason], ['needs_input', 'batch_too_large']);
+  assert.equal(out.detail, `${ACTION_REASONS.batch_too_large.text} Đã gửi 40 mục ở items (tối đa 20).`);
 });
 
 test('quota reasons: static texts carry the seeded limits of hermes_task_limits (change seed ⇒ change text)', () => {
@@ -61,6 +107,12 @@ test('why unspecified (Q31): detail lists suggestions or asks plainly; non-empty
   assert.equal(nameUnresolvedDetail({ field: 'person', wanted: '', why: 'unspecified', candidates: [{ name: 'Nathan' }, { name: 'Joey' }] }),
     'Chưa nêu người; gợi ý: Nathan, Joey — hỏi người dùng chọn một, không tự chọn.');
   assert.equal(nameUnresolvedDetail({ field: 'jobType', wanted: '', why: 'unspecified' }), 'Chưa nêu loại việc; hỏi người dùng.');
+  // Nghiệm thu c3s CV-B01: loại việc có gợi ý ⇒ xem trước ngay với loại hợp nhất (như hạng mục); người vẫn hỏi chọn, không tự chọn.
+  const jobDetail = nameUnresolvedDetail({ field: 'jobType', wanted: '', why: 'unspecified', candidates: [{ name: 'check' }, { name: 'decor' }] });
+  assert.equal(jobDetail, 'Chưa nêu loại việc; gợi ý: check, decor — gọi lại NGAY với jobType = gợi ý hợp nội dung việc nhất để lấy bản xem trước, '
+    + 'nêu rõ loại việc đã chọn; người dùng muốn loại khác thì xem trước lại.');
+  assert.doesNotMatch(jobDetail, /không tự chọn|gợi ý đầu/);
+  assert.match(nameUnresolvedDetail({ field: 'person', wanted: '', why: 'unspecified', candidates: [{ name: 'Nathan' }] }), /hỏi người dùng chọn một, không tự chọn\.$/);
   const outcomes = [];
   const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return outcomes.shift(); } };
   const runtime = createActionRuntime({ catalog: createActionCatalog(TASK_ACTIONS), service });
@@ -78,10 +130,10 @@ test('why unspecified (Q31): detail lists suggestions or asks plainly; non-empty
   outcomes.push({ kind: 'needs_input', reason: 'name_unresolved', field: 'person', wanted: 'Nathan', why: 'unspecified', candidates: [], more: false });
   await assert.rejects(run({ buildingName: 'Toà B', content: 'khoá cửa' }), error => error.code === 'backend_unavailable');
   outcomes.push({ kind: 'applied', result: { text: 'Đã tạo việc' }, link: '/tasks?job=00000000-0000-4000-8000-000000000009' });
-  assert.equal(content(await run({ buildingName: 'Toà A', content: 'sửa vòi', assigneeName: 'tôi' })).outcome, 'applied', 'reversible tự giao: một lượt');
+  assert.equal(content(await run({ buildingName: 'Toà A', content: 'sửa vòi', assigneeName: 'tôi' })).outcome, 'applied', 'connector chuyển nguyên kết quả applied của máy chủ (xem trước do máy chủ quyết: lượt 13 tự giao luôn xem trước)');
 });
 
-test('broker: task.create in the catalog retires crm_task_create/status/input_options (hidden and refused); follow tools stay', async t => {
+test('broker: live task.create retires crm_task_create/status/input_options; live task.update / task.cancel retire crm_task_progress / crm_task_cancel; follow tools stay', async t => {
   const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
   const legacy = [...TASK_TOOLS, ...TASK_INPUT_TOOLS].map(tool => tool.name).filter(name => ['crm_task_create', 'crm_task_status', 'crm_task_input_options'].includes(name));
   assert.equal(legacy.length, 3);
@@ -92,7 +144,9 @@ test('broker: task.create in the catalog retires crm_task_create/status/input_op
   const listed = (await after.broker.listTools(after.token)).tools, names = listed.map(tool => tool.name);
   assert.deepEqual(names.filter(name => legacy.includes(name)), []);
   for (const name of ['crm_action_list', 'crm_action_run', 'crm_action_status']) assert.ok(names.includes(name), name);
-  for (const tool of TASK_FOLLOW_TOOLS) assert.ok(names.includes(tool.name), `${tool.name} còn hiện`);
+  // Mốc 3: runtime không có danh mục sống ⇒ mọi thao tác của danh mục coi là sống ⇒ tiến độ / huỷ cũ cũng nghỉ; theo dõi còn.
+  for (const tool of TASK_FOLLOW_TOOLS) assert.equal(names.includes(tool.name), !['crm_task_progress', 'crm_task_cancel'].includes(tool.name), tool.name);
+  for (const name of ['crm_task_progress', 'crm_task_cancel']) await assert.rejects(after.broker.callTool(after.token, name, {}), error => error.code === 'tool_not_available', name);
   for (const name of legacy) await assert.rejects(after.broker.callTool(after.token, name, {}), error => error.code === 'tool_not_available', name);
   const bytes = bytesOf(listed), beforeBytes = bytesOf((await before.broker.listTools(before.token)).tools);
   t.diagnostic(`tools/list đủ quyền: trước ${beforeBytes} B, sau ${bytes} B`);
@@ -176,4 +230,43 @@ test('tổ hợp connector mới + DB cũ: lớp khung chung ghi danh mục số
   live.observe({ 'task.create': {} });
   const fresh = (await old.broker.listTools(old.token)).tools.map(tool => tool.name);
   assert.ok(fresh.includes('crm_action_run') && legacy.every(name => !fresh.includes(name)), 'DB mới (cùng connector): đổi ngay ở lời gọi kế');
+});
+
+test('Mốc 3: live task.update / task.cancel retire crm_task_progress / crm_task_cancel one by one; follow layer drops tasks.edit / tasks.delete only when the replacing action is live', async t => {
+  const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
+  const catalog = createActionCatalog(TASK_ACTIONS);
+  const live = createActionLiveCatalog();
+  const env = fullGrantBroker(t, undefined, { actions: createActionRuntime({ catalog, service, live }), actionKeys: [TASK_KEY, 'tasks.edit', 'tasks.delete'] });
+  const visible = async () => { const listed = (await env.broker.listTools(env.token)).tools.map(tool => tool.name);
+    return ['crm_task_progress', 'crm_task_cancel'].map(name => listed.includes(name)); };
+  live.observe({ 'task.create': {} });
+  assert.deepEqual(await visible(), [true, true], 'DB chưa có Mốc 3: tiến độ / huỷ cũ còn');
+  live.observe({ 'task.create': {}, 'task.update': {} });
+  assert.deepEqual(await visible(), [false, true]);
+  await assert.rejects(env.broker.callTool(env.token, 'crm_task_progress', {}), error => error.code === 'tool_not_available');
+  live.observe({ 'task.create': {}, 'task.update': {}, 'task.cancel': {} });
+  assert.deepEqual(await visible(), [false, false]);
+  await assert.rejects(env.broker.callTool(env.token, 'crm_task_cancel', {}), error => error.code === 'tool_not_available');
+
+  // Lớp quyền: tasks.edit / tasks.delete chỉ một nguồn mỗi lời gọi.
+  const input = { accessToken: 'x', organizationId: '00000000-0000-4000-8000-000000000002', userId: '00000000-0000-4000-8000-000000000003', signal: undefined };
+  const allowed = { allowed: true, companyEnabled: true, buildingIds: [B] };
+  const follow = { organizationId: input.organizationId, userId: input.userId, membershipId: 'm', authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
+    permissions: { 'tasks.edit': allowed, 'tasks.delete': allowed, 'assistant.memory.supervise': { allowed: false, companyEnabled: false, buildingIds: [] } } };
+  const reads = { capabilities: async () => null, followCapabilities: async () => follow };
+  const base = keys => ({ permissions: { read: [], action: keys }, companyCeilings: { read: [], action: keys },
+    scopesByPermission: Object.fromEntries(keys.map(key => [key, { buildingIds: [B], cashbookIds: [] }])),
+    membership: { membershipId: 'm', authorizationVersion: 1 }, isSuperadmin: false, epoch: 'e' });
+  const auth = keys => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base(keys) }, reads,
+    createFromActions: true, actionIds: catalog.ids, live });
+  // DB mới: khung chung cấp cả ba khoá; lớp theo dõi không cấp lại, không context_changed.
+  assert.deepEqual((await auth([TASK_KEY, 'tasks.edit', 'tasks.delete']).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  // Chỉ task.update sống: tasks.delete vẫn do lớp theo dõi cấp.
+  live.observe({ 'task.create': {}, 'task.update': {} });
+  assert.deepEqual((await auth([TASK_KEY, 'tasks.edit']).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  // DB cũ (chỉ task.create): lớp theo dõi cấp tasks.edit / tasks.delete như trước; khung chung mà cũng cấp ⇒ context_changed.
+  live.observe({ 'task.create': {} });
+  assert.deepEqual((await auth([TASK_KEY]).readAuthorization(input)).permissions.action, [TASK_KEY, 'tasks.edit', 'tasks.delete']);
+  await assert.rejects(auth([TASK_KEY, 'tasks.edit']).readAuthorization(input), error => error.code === 'context_changed');
+  assert.throws(() => createTaskAuth({ baseAuth: { verifySession: async () => ({}), readAuthorization: async () => base([]) }, reads, actionIds: 'task.update' }), /invalid_task_auth/);
 });

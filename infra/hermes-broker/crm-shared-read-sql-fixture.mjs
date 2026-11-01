@@ -134,8 +134,11 @@ async function localCluster(t, { initdbArgs = [] } = {}) {
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
+    // jit=off: các fixture nhỏ này kiểm khoá/MVCC/kết quả, không kiểm biên dịch LLVM — trên runner Linux CI tải nặng, chi phí JIT ăn vào
+    // trần 10 s ⇒ 57014 đỏ giả (write-name-resolve-sql "every shared vector", CI main #2149/#2161 27/10). Giữ NGUYÊN trần 10 s như
+    // task-nghiem-thu-race-pg.test.mjs (ở đó SET jit = off từng kết nối).
     const pool = new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
-      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' });
+      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000 -c jit=off' });
     return { pool, cleanup };
   } catch (error) { cleanup(); throw error; }
 }

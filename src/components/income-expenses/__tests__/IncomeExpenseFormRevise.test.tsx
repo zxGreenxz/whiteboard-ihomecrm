@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 
-const h = vi.hoisted(() => ({ revise: vi.fn(), create: vi.fn(), detail: null as unknown, fetching: false, error: false,contractError:false, slots:{} as Record<string,unknown>, retrySlots:vi.fn() }));
+const h = vi.hoisted(() => ({ revise: vi.fn(), create: vi.fn(), detail: null as unknown, fetching: false, error: false,contractError:false, slots:{} as Record<string,unknown>, retrySlots:vi.fn(), postLock:{ data: undefined } as { data: unknown }, postLockArgs:null as unknown }));
 
 vi.mock("@/hooks/income-expenses/detailRead", () => ({ useIncomeExpenseDetail: () => ({data:h.detail,isFetching:h.fetching,isError:h.error,isSuccess:!h.error,isFetchedAfterMount:true,refetch:vi.fn()}) }));
 vi.mock('@/integrations/supabase/client', () => ({
@@ -43,6 +43,8 @@ vi.mock('@/hooks/useAccounts', () => ({
 vi.mock('@/hooks/useContracts', () => ({ useContractsLegacy: () => ({ data: h.contractError?undefined:[],isError:h.contractError,refetch:vi.fn() }) }));
 vi.mock('@/hooks/useIncomeExpenseTypes', () => ({ useIncomeExpenseTypes: () => ({ data: [] }) }));
 vi.mock('@/hooks/useVoucherSlotWarning', () => ({ useVoucherSlotWarning: () => h.slots }));
+// F06: tháng đã chốt LN của toà (RPC profit_post_lock_vouchers_v1) — mặc định chưa chốt tháng nào.
+vi.mock('@/hooks/useProfitPostLock', () => ({ useProfitLockedMonthsForForm: (o: unknown) => { h.postLockArgs = o; return h.postLock; } }));
 vi.mock('../IncomeExpenseItemSelector', () => ({ default: () => null }));
 vi.mock('../AttachmentUpload', () => ({ default: () => null }));
 
@@ -82,7 +84,7 @@ const nutLuu = () => screen.getByTestId('ie-form-save') as HTMLButtonElement;
 
 beforeEach(() => {
   h.retrySlots.mockReset();h.slots={data:[],status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:h.retrySlots};
-  h.fetching=false; h.error=false;h.contractError=false; h.create.mockReset();
+  h.fetching=false; h.error=false;h.contractError=false; h.create.mockReset(); h.postLock={ data: undefined }; h.postLockArgs=null;
   h.revise.mockReset().mockResolvedValue({ id: 'v1', changed: true, approval_version: 6, changed_fields: [] });
 });
 afterEach(cleanup);
@@ -214,6 +216,45 @@ it('slot read failure stays beside items, has retry and does not block saving an
  fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'),{target:{value:'Chi sửa mới'}});
  fireEvent.click(nutLuu());await waitFor(()=>expect(h.revise).toHaveBeenCalledOnce());
 });
+describe('F06 — tháng đã chốt LN khoá phiếu có kỳ trong tháng đó', () => {
+  const CAU = 'Tháng 08/2026 của toà Toà A đã chốt lợi nhuận — không ghi được phiếu có kỳ trong tháng này. Muốn ghi: mở khoá tháng ở tab Chốt LN.';
+  const chotT8 = { data: { from: '2026-08-01', to: '2026-09-01', after_lock: [],
+    locked: [{ building_id: 'b1', building_name: 'Toà A', month: '2026-08-01', locked_at: '2026-09-03T03:00:00+00:00' }] } };
+
+  it('kỳ hạng mục rơi vào tháng đã chốt ⇒ báo đỏ đúng câu, nút Lưu mờ, không gọi máy chủ', async () => {
+    h.postLock = chotT8;
+    const v = phieu();
+    v.items = [{ ...v.items[0], start_date: '2026-08-01', end_date: '2026-08-31' }];
+    moForm(v);
+    expect(screen.getByTestId('ie-form-profit-locked').textContent).toBe(CAU);
+    expect(nutLuu().disabled).toBe(true);
+    // form hỏi đúng toà + tháng phiếu chạm tới (kỳ 08 + ngày phiếu 09)
+    expect(h.postLockArgs).toMatchObject({ buildingIds: ['b1', 'b1'], months: ['2026-08-01', '2026-09-01'], enabled: true });
+    fireEvent.submit(nutLuu().closest('form')!);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.revise).not.toHaveBeenCalled();
+  });
+
+  it('kỳ tháng mở ⇒ không báo, lưu được', async () => {
+    h.postLock = chotT8;
+    const v = phieu();
+    v.items = [{ ...v.items[0], start_date: '2026-09-01', end_date: '2026-09-30' }];
+    moForm(v);
+    expect(screen.queryByTestId('ie-form-profit-locked')).toBeNull();
+    fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'), { target: { value: 'Chi thay vòi nước' } });
+    fireEvent.click(nutLuu());
+    await waitFor(() => expect(h.revise).toHaveBeenCalledOnce());
+  });
+
+  it('máy chủ chặn (form chưa biết tháng đã chốt) ⇒ hiện đúng câu, bỏ tiền tố máy-đọc', async () => {
+    h.revise.mockRejectedValueOnce({ code: 'P0001', message: `[PROFIT_LOCKED] ${CAU}` });
+    moForm(phieu());
+    fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'), { target: { value: 'Chi thay vòi nước' } });
+    fireEvent.click(nutLuu());
+    await waitFor(() => expect(screen.getAllByRole('alert').map((a) => a.textContent)).toContain(CAU));
+  });
+});
+
 it('a slot query not enabled before choosing a building and period does not show a false source error',()=>{
  h.slots={data:undefined,status:'pending',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:h.retrySlots};
  render(<IncomeExpenseForm open onOpenChange={()=>{}}/>);expect(screen.queryByText(/Chưa tải được các phiếu cùng hạng mục/)).toBeNull();

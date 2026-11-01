@@ -197,7 +197,7 @@ defineAction({
 ### 6.1 Danh sách đóng dùng chung
 
 Lý do nằm trong `infra/hermes-broker/action-reasons.mjs`. Mỗi mã có một câu tĩnh, một chỉ dẫn thử lại (`retry`) và một **dạng**:
-- dạng `needs_input` (7 mã: `unknown_action`, `invalid_params`, `name_unresolved`, `reason_required`, `amount_out_of_range`, `date_out_of_range`, `not_found`): trả về như *kết quả thường* `outcome:'needs_input'`, không phải lỗi MCP. Đây đều là chỗ người dùng phải nói thêm hoặc sửa lại (thiếu lý do, số tiền hay ngày sai, không tìm thấy trong phạm vi), nên không được dính rào "3 lời gọi bị từ chối" của Hermes;
+- dạng `needs_input` (8 mã: `unknown_action`, `invalid_params`, `name_unresolved`, `reason_required`, `amount_out_of_range`, `date_out_of_range`, `not_found`, `consent_unclear` — lượt 12 Hợp đồng, rào đồng ý cho thao tác `irreversible`, xem `consent-guard.mjs`): trả về như *kết quả thường* `outcome:'needs_input'`, không phải lỗi MCP. Đây đều là chỗ người dùng phải nói thêm hoặc sửa lại (thiếu lý do, số tiền hay ngày sai, không tìm thấy trong phạm vi), nên không được dính rào "3 lời gọi bị từ chối" của Hermes;
 - dạng `rejected` (13 mã còn lại): lỗi `action_rejected` kèm `reason` + `detail`.
 
 Câu chữ chốt nằm trong `action-reasons.mjs`; bảng dưới là tóm tắt.
@@ -469,6 +469,7 @@ Thứ tự theo bài học R2a/B5c: connector chịu được cả bản cũ l�
 3. **Migration M2** (seed khoá TẮT + hook options) **cùng một lần promote web** có khoá trong `capability-contract.mjs` và nhãn. Chủ tạo lại kết nối một lần nếu đang là `legacy_allowlist` (mục 8.3).
 4. **Trên TEST:** bật `assistant.action_probe` bằng script TEST (không phải migration bật trên production), rồi chạy bộ ca bot (mục 12.5).
 5. **Từng trang về sau:** SQL của trang → connector khai thao tác → migration bật khoá → SOUL bản 5 nêu luật hai lượt → canary có chủ duyệt.
+   - Migration bật theo trang, file lùi và runbook production: [BAT-KHOA-GHI-4-TRANG.md](BAT-KHOA-GHI-4-TRANG.md). CV, HĐn, HĐ đã áp production 29–30/10; TC sang PR riêng, lên sau split báo cọc Sale.
 
 ## 12. Kế hoạch test
 

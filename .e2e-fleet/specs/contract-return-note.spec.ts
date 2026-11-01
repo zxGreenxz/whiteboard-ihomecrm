@@ -16,6 +16,7 @@ const ROOM_ID = 'e2e00000-0000-4000-8000-000000000002';
 const BUILDING_ID = 'e2e00000-0000-4000-8000-000000000003';
 const CASE_ID = 'e2e00000-0000-4000-8000-000000000004';
 const UPDATED_AT = '2026-09-29T03:00:00.000Z';
+const STAFF_ID = 'e2e00000-0000-4000-8000-000000000005';
 const KINDS = [
   { value: 'NATURAL_EXPIRY', label: 'Hết hạn hợp đồng', sample: 'Khách trả phòng do hết hạn hợp đồng.' },
   { value: 'EARLY_RETURN', label: 'Trả phòng trước hạn', sample: 'Khách trả phòng trước thời hạn hợp đồng.' },
@@ -121,14 +122,17 @@ interface Audit {
   errors: string[];
   blocked: string[];
   writes: Record<string, unknown>[];
+  drafts: Record<string, unknown>[];
   reads: number;
 }
 const audits = new Map<Page, Audit>();
 
 test.beforeEach(async ({ page }) => {
-  const audit: Audit = { errors: [], blocked: [], writes: [], reads: 0 };
+  const audit: Audit = { errors: [], blocked: [], writes: [], drafts: [], reads: 0 };
   audits.set(page, audit);
   let saved: Record<string, unknown> | null = null;
+  // Nháp bước quyết toán (20261030104546): lưu/đọc/bỏ trên bộ nhớ của route, version tăng như sequence máy chủ.
+  let draft: Record<string, unknown> | null = null;
   page.on('pageerror', error => audit.errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') audit.errors.push(message.text()); });
   await page.route('**/*', async route => {
@@ -158,6 +162,29 @@ test.beforeEach(async ({ page }) => {
         return route.fulfill({ json: { items: saved ? [saved] : [], total: saved ? 1 : 0, limit: 1, offset: 0 } });
       }
       if (rpc === 'read_contract_transfer_links_v1') return route.fulfill({ json: [] });
+      if (rpc === 'list_contract_exit_settlement_drafts_v1') {
+        expect(body.p_case_ids).toEqual([CASE_ID]);
+        return route.fulfill({ json: draft ? [{ case_id: CASE_ID, version: draft.version, updated_at: draft.updated_at,
+          updated_by: STAFF_ID, updated_by_name: draft.updated_by_name }] : [] });
+      }
+      if (rpc === 'get_contract_exit_settlement_draft_v1') {
+        expect(body.p_case_id).toBe(CASE_ID);
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify(draft) });
+      }
+      if (rpc === 'save_contract_exit_settlement_draft_v1') {
+        expect(body.p_case_id).toBe(CASE_ID);
+        expect(body.p_expected_version).toBe(draft ? draft.version : null);
+        audit.drafts.push(body);
+        draft = { case_id: CASE_ID, case_version: 1, version: Number(draft?.version ?? 40) + 1, payload: body.p_payload,
+          created_at: UPDATED_AT, created_by: STAFF_ID, updated_at: UPDATED_AT, updated_by: STAFF_ID, updated_by_name: 'Nhân viên thử UI' };
+        return route.fulfill({ json: draft });
+      }
+    }
+    // Nguồn chỉ số lúc trả phòng đi qua edge function chụp đồng hồ (từ 23/10/2026): phòng thử không có đồng hồ.
+    if (url.origin === base && url.pathname === '/functions/v1/meter-capture-worker' && request.method() === 'POST') {
+      expect(request.postDataJSON()).toMatchObject({ action: 'rpc', organizationId: ORG_ID, rpcAction: 'resolveBilling',
+        payload: { contractId: CONTRACT_ID, purpose: 'MOVE_OUT' } });
+      return route.fulfill({ json: { meters: [] } });
     }
     if (url.origin === base && url.pathname === '/rest/v1/meters' && request.method() === 'GET') {
       return route.fulfill({ json: [] });
@@ -278,6 +305,44 @@ test('mobile 390px: nhập và dùng mẫu không tràn ngang, cuộn tới hai 
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
   await dialog.screenshot({ path: test.info().outputPath('return-note-mobile.png'), animations: 'disabled' });
+});
+
+test('lưu nháp ở bước quyết toán: hồ sơ vẫn chờ, "Mở bản nháp" điền lại đúng số, không quyết toán', async ({ page }) => {
+  const dialog = await openReturn(page);
+  await dialog.getByRole('radio', { name: 'Trả phòng trước hạn', exact: true }).check();
+  await dialog.getByRole('textbox', { name: /Nội dung thanh lý/ }).fill('Khách trả sớm, hẹn đối chiếu sau.');
+  await dialog.getByRole('button', { name: 'Trả phòng, quyết toán sau', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const panel = page.getByRole('region', { name: 'Hồ sơ trả phòng', exact: true });
+  await expect(panel.getByRole('button', { name: 'Mở bản nháp', exact: true })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Quyết toán hồ sơ này', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Quyết toán hồ sơ đã trả phòng', exact: true })
+    .getByRole('button', { name: 'Tiếp tục quyết toán', exact: true }).click();
+  const settlement = page.getByRole('dialog', { name: 'Quyết toán — Khách rời phòng', exact: true });
+  const notes = settlement.getByPlaceholder('Ghi chú thanh lý...');
+  await notes.fill('Nháp: chờ khách xác nhận số điện');
+  // Xoá ngày "không ở" = không hoàn tiền ngày không ở; mở lại nháp phải giữ đúng như vậy, không tự gợi ý lại.
+  const refund = settlement.locator('div.rounded-xl', { hasText: 'Thêm khoản hoàn khác' }).first();
+  await refund.getByPlaceholder('dd/mm/yyyy').first().fill('');
+  await settlement.getByRole('button', { name: 'Lưu nháp', exact: true }).click();
+  await expect(settlement).not.toBeVisible();
+  const audit = audits.get(page)!;
+  expect(audit.writes, 'Lưu nháp không quyết toán').toHaveLength(1);
+  expect(audit.drafts).toHaveLength(1);
+  expect(audit.drafts[0]).toMatchObject({ p_case_id: CASE_ID, p_expected_version: null, p_payload: {
+    schema: 1, kind: 'EARLY_RETURN', changeReason: '',
+    moveOut: { depositRefund: 4_000_000, excessRent: 0, notes: 'Nháp: chờ khách xác nhận số điện', shortfallMode: 'PAID' } } });
+  await panel.getByRole('button', { name: 'Mở bản nháp', exact: true }).click();
+  const resumed = page.getByRole('dialog', { name: 'Quyết toán — Khách rời phòng', exact: true });
+  await expect(resumed.getByText(/Đang mở bản nháp lưu lúc .* bởi Nhân viên thử UI/)).toBeVisible();
+  await expect(resumed.getByPlaceholder('Ghi chú thanh lý...')).toHaveValue('Nháp: chờ khách xác nhận số điện');
+  const savedRefund = (audit.drafts[0].p_payload as { refund: { fromDate: string; toDate: string } }).refund;
+  await resumed.getByRole('button', { name: 'Lưu nháp', exact: true }).click();
+  await expect(resumed).not.toBeVisible();
+  expect(audit.drafts).toHaveLength(2);
+  expect(audit.drafts[1]).toMatchObject({ p_expected_version: 41, p_payload: { refund: savedRefund } });
+  expect(audit.writes).toHaveLength(1);
+  await page.screenshot({ path: test.info().outputPath('return-note-draft.png'), animations: 'disabled' });
 });
 
 for (const kind of KINDS) {

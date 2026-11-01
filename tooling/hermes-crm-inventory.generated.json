@@ -28,7 +28,7 @@
     },
     {
       "path": "src/app/capabilities/registry.ts",
-      "sha256": "02375c213d0b3ad842f3b9305f82623d8b9de7579028ab9e2509dac89e41d875"
+      "sha256": "78564cf858744d654c9c1d3c58f2069298b2341aefd119b2998fee7b4a4a200d"
     },
     {
       "path": "src/components/customers/CustomerListToolbar.tsx",
@@ -15860,7 +15860,7 @@
       "id": "assets",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 425
+        "line": 427
       },
       "route": "/assets",
       "permission": "assets.view",
@@ -15913,7 +15913,7 @@
       "id": "bank-events",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 192
+        "line": 194
       },
       "route": "/bien-dong-so-du",
       "permission": null,
@@ -15964,7 +15964,7 @@
       "id": "buildings",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 395
+        "line": 397
       },
       "route": "/buildings",
       "permission": "buildings.view",
@@ -16018,7 +16018,7 @@
       "id": "cashbook",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 294
+        "line": 296
       },
       "route": "/income-expense",
       "permission": "income_expenses.view",
@@ -16071,7 +16071,7 @@
       "id": "chat-zalo",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 546
+        "line": 548
       },
       "route": "/chat-zalo",
       "permission": "chat_zalo.view",
@@ -16124,7 +16124,7 @@
       "id": "chi-tieu",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 309
+        "line": 311
       },
       "route": "/chi-tieu",
       "permission": "income_expenses.create",
@@ -16175,7 +16175,7 @@
       "id": "contracts",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 470
+        "line": 472
       },
       "route": "/contracts",
       "permission": "contracts.view",
@@ -16229,7 +16229,7 @@
       "id": "customers",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 485
+        "line": 487
       },
       "route": "/customers",
       "permission": "customers.view",
@@ -16283,7 +16283,7 @@
       "id": "deposits",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 455
+        "line": 457
       },
       "route": "/deposits",
       "permission": "deposits.view",
@@ -16336,7 +16336,7 @@
       "id": "door-access",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 233
+        "line": 235
       },
       "route": "/cua-van-tay",
       "permission": "door_access.view",
@@ -16387,7 +16387,7 @@
       "id": "funds",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 351
+        "line": 353
       },
       "route": "/finance/cashbooks",
       "permission": "cashbooks.view",
@@ -16440,7 +16440,7 @@
       "id": "invoices",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 278
+        "line": 280
       },
       "route": "/invoices",
       "permission": "invoices.view",
@@ -16495,7 +16495,7 @@
       "id": "leads",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 440
+        "line": 442
       },
       "route": "/leads",
       "permission": "leads.view",
@@ -16548,7 +16548,7 @@
       "id": "map",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 696
+        "line": 698
       },
       "route": "/building-map",
       "permission": "buildings.view",
@@ -16599,7 +16599,7 @@
       "id": "materials",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 608
+        "line": 610
       },
       "route": "/materials",
       "permission": "materials.view",
@@ -16655,7 +16655,7 @@
       "id": "meters",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 516
+        "line": 518
       },
       "route": "/meter-readings",
       "permission": "meter_readings.view",
@@ -16708,7 +16708,7 @@
       "id": "network-center",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 209
+        "line": 211
       },
       "route": "/network-center",
       "permission": "network_center.view",
@@ -16759,7 +16759,7 @@
       "id": "notifications",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 561
+        "line": 563
       },
       "route": "/notifications",
       "permission": "notifications.view",
@@ -16810,7 +16810,7 @@
       "id": "overpayment",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 721
+        "line": 723
       },
       "route": "/reports/finance/overpayment",
       "permission": "reports_finance.overpayment",
@@ -16863,7 +16863,7 @@
       "id": "personal-wallet",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 336
+        "line": 338
       },
       "route": "/finance/personal-wallet",
       "permission": "personal_finance.view",
@@ -16914,7 +16914,7 @@
       "id": "reports",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 658
+        "line": 660
       },
       "route": "/reports/real-estate",
       "permission": "reports_real_estate.view",
@@ -16977,7 +16977,7 @@
       "id": "rooms",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 592
+        "line": 594
       },
       "route": "/apartments",
       "permission": "rooms.view",
@@ -17031,7 +17031,7 @@
       "id": "salary",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 366
+        "line": 368
       },
       "route": "/finance/salary",
       "permission": "salary.view",
@@ -17082,7 +17082,7 @@
       "id": "sale-phong",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 639
+        "line": 641
       },
       "route": "/sale-phong",
       "permission": "sale_phong.view",
@@ -17133,7 +17133,7 @@
       "id": "services",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 410
+        "line": 412
       },
       "route": "/services",
       "permission": "services.view",
@@ -17186,7 +17186,7 @@
       "id": "settings",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 677
+        "line": 679
       },
       "route": "/settings/general",
       "permission": "settings.view",
@@ -17237,7 +17237,7 @@
       "id": "tasks",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 531
+        "line": 533
       },
       "route": "/tasks",
       "permission": "tasks.view",
@@ -17290,7 +17290,7 @@
       "id": "templates",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 576
+        "line": 578
       },
       "route": "/settings/templates",
       "permission": "templates.view",
@@ -17341,7 +17341,7 @@
       "id": "thu-tien",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 623
+        "line": 625
       },
       "route": "/thu-tien",
       "permission": "thu_tien.view",
@@ -17394,7 +17394,7 @@
       "id": "vehicles",
       "source": {
         "path": "src/app/capabilities/registry.ts",
-        "line": 501
+        "line": 503
       },
       "route": "/vehicles",
       "permission": "vehicles.view",

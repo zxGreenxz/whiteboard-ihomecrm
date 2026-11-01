@@ -67,6 +67,7 @@ const baseRefs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
   cashbooks: [{ id: "acc1", label: "Quỹ 102" }],
   resolveRefs: { buildings: [{ id: "b102", name: "Toà 102", code: "102LVT" }], rooms: [], feeAccounts: [] },
   defaultAccountFor: (b) => (b ? "acc1" : null),
+  suggestCategories: async () => new Map(),
   ...over,
 });
 

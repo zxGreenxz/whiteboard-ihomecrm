@@ -2,6 +2,8 @@
 *.service text eol=lf
 *.ps1 text eol=lf
 infra/network-center-worker/deploy/*.conf text eol=lf
+# Unified patch context must keep LF bytes when Windows enables autocrlf.
+infra/network-center-worker/media/*.patch text eol=lf
 *.sql text eol=lf
 # This frozen migration contains mixed line endings in Git; preserve its exact
 # historical bytes so a fresh Windows worktree does not report a false edit.

@@ -143,6 +143,18 @@ export interface SalManager {
   organizationId?: string | null;
   /** Số ghi đè đang áp, theo khoá dòng (base, streak, job:…, rec:…, sale:…, dh:…). */
   overrides?: Record<string, SalAppliedOverride>;
+  /** Ngày công và chuỗi theo engine v5 của kỳ; null khi kỳ tính theo luật cũ. Chỉ để hiển thị. */
+  v5?: SalV5Info | null;
+}
+
+export interface SalV5Info {
+  /** Ngày đã tick chuyên cần / số ngày công chuẩn của tháng. */
+  ticked: number;
+  nchuan: number;
+  streakCurrent: number;
+  streakBest: number;
+  /** Mốc chuỗi máy đã ghi nhận trong kỳ (số ngày của mốc). */
+  banked: number[];
 }
 
 export interface SalCalcResult {
@@ -488,6 +500,21 @@ export function zeroBonusReason(r: SalLedgerRow, requirePhoto = false): string |
 // việc ký HĐ (checkin) hoàn thành TRONG GIỜ — quy tắc chỉ thưởng khi sau
 // afterHourMark hoặc CN/Lễ. Hiện ra chỉ gây nhiễu nên ẩn khỏi bảng kê.
 // KHÔNG ẩn dòng chủ tự tay loại (excluded) — phải thấy mới bấm "Tính lại" được.
+/**
+ * salary_streak_state.milestones_banked → số ngày của từng mốc máy đã ghi nhận.
+ * Dạng lưu: [{ milestone: 4, delta, top, banked_at }, …]; phần tử sai dạng bị bỏ.
+ */
+export function bankedMilestoneDays(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const e of raw) {
+    const v = e && typeof e === "object" ? (e as { milestone?: unknown }).milestone : undefined;
+    const n = typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : NaN;
+    if (Number.isFinite(n) && n > 0) out.push(n);
+  }
+  return out;
+}
+
 export function isUnqualifiedContractRow(r: SalLedgerRow): boolean {
   return (
     r.item_type === "JOB" &&

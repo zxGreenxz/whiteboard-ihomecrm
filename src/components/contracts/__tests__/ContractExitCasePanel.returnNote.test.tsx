@@ -13,6 +13,7 @@ vi.mock('@/hooks/useContractExitCases', () => ({ useContractExitCases: () => ({
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: {} }) }));
 vi.mock('../ContractReturnStep', () => ({ EXIT_KIND_LABELS: { EARLY_RETURN: 'Trả sớm' } }));
 vi.mock('../TerminateDialog', () => ({ TerminateDialog: () => null }));
+vi.mock('@/hooks/useContractExitSettlementDrafts', () => ({ useContractExitSettlementDrafts: () => ({ data: [] }) }));
 vi.mock('../ContractTransferLinkPanel', () => ({ ContractTransferLinkPanel: () => null }));
 vi.mock('../ContractMeterBoundaryPanel', () => ({ ContractMeterBoundaryPanel: () => null }));
 

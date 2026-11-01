@@ -6,7 +6,7 @@
 // lại"; chỉ khi hỏng mới có nút Thử lại/Đóng rõ ràng. Ràng buộc đợt 28/09 giữ
 // nguyên: chưa có bản đọc đầy đủ vừa tải thì không hiện dữ liệu phiếu.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -105,6 +105,10 @@ afterEach(() => {
 describe("chi tiết phiếu hiện ngay từ dòng danh sách", () => {
   const open = (onApprove = vi.fn()) =>
     wrap(<IncomeExpenseDetailMobile voucherId="v" onClose={() => {}} onApprove={onApprove} />);
+  // Từ 28/10/2026 nút Duyệt xét quyền duyệt ở toà của phiếu như máy chủ (voucherActionRules); phiếu thử
+  // không gắn toà ⇒ cần quyền cấp công ty. Khối này kiểm KHOÁ nút, không kiểm quyền — cấp sẵn quyền duyệt.
+  beforeEach(() => { quyen.data = { income_expenses: { approve: { org_wide: true, building_ids: [] } } }; });
+  afterEach(() => { quyen.data = {}; });
 
   it("có bản xem trước: nội dung hiện ngay, nút thao tác khoá, báo đang cập nhật", () => {
     setState({ data: listRow, isPlaceholderData: true, isSuccess: true, isFetching: true, isFetchedAfterMount: false });

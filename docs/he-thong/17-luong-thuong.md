@@ -300,11 +300,11 @@ Con số "chuyên cần 6tr + streak 3tr banked" xuất phát từ thiết kế 
 
 **Mobile** (nhánh `usePhoneViewport`): shell web-app trọn màn [SalaryAdminMobile](src/components/salary/SalaryAdminMobile.tsx) — 4 tab đáy (Lương / Cá nhân / Bảng kê / Cấu hình), thao tác chốt/trả/adjustment đầy đủ.
 
-**Vai nhân viên** (không phải admin): trang tự rơi về self-view — desktop [SalarySelf](src/components/salary/SalarySelf.tsx) trong MainLayout, phone [SalarySelfMobile](src/components/salary/SalarySelfMobile.tsx) (theme QUEST tối, gaming — tạo động lực); tháng hiển thị theo chính sách lùi-tháng (mục 4.6). Chưa được cấu hình hưởng lương → thông điệp hướng dẫn.
+**Vai nhân viên** (không phải admin): trang tự rơi về self-view [SalarySelfView](src/components/salary/SalarySelfView.tsx) — desktop trong MainLayout, phone trọn màn có thanh tab; tháng hiển thị theo chính sách lùi-tháng (mục 4.6). Chưa được cấu hình hưởng lương → thông điệp hướng dẫn.
 
 ### 5.2. `/finance/my-salary` — "Lương của tôi" trọn màn ([MySalaryPage](src/pages/finance/MySalaryPage.tsx), commit `8300610`)
 
-Sidebar mục "Bảng lương" với **nhân viên** mở trang này ở **TAB MỚI** (`selfHref` trong [Sidebar](src/components/layout/Sidebar.tsx)); admin vẫn vào `/finance/salary` in-app. Desktop = [SalarySelfDesktop](src/components/salary/SalarySelfDesktop.tsx) (QUEST full-screen, tự dựng chrome, điều hướng lùi lịch sử tháng nhưng **chặn vượt mốc được phép xem**); phone = SalarySelfMobile. Dữ liệu dùng chung `useManagerSalary` — số nhân viên thấy luôn = số admin thấy.
+Sidebar mục "Bảng lương" với **nhân viên** mở trang này ở **TAB MỚI** (`selfHref` trong [Sidebar](src/components/layout/Sidebar.tsx)); admin vẫn vào `/finance/salary` in-app. Cả desktop lẫn phone dùng [SalarySelfView](src/components/salary/SalarySelfView.tsx) (trọn màn, tự dựng thanh đầu trang, điều hướng lùi lịch sử tháng nhưng **chặn vượt mốc được phép xem**): Tổng thu nhập − Trừ khi trả = Còn nhận ghi chi tiết dưới từng cột, hàng hoạt động tháng (ngày công, mốc chuỗi v5 đạt x/y, việc có thưởng, ngày CN/lễ) kèm tiền, rồi từng khoản theo nhóm — bấm một khoản mở căn cứ hoặc đủ danh sách việc/ngày. Từng khoản lấy từ [salaryIncomeItems](src/components/salary/salaryIncomeItems.ts), cùng hàm với tab "Thu nhập & thanh toán" của quản trị; dữ liệu dùng chung `useManagerSalary` — số nhân viên thấy luôn = số admin thấy.
 
 ### 5.3. `/my-day` — "Ngày hôm nay của tôi" ([MyDayPage](src/pages/my-day/MyDayPage.tsx), V5 S3)
 

@@ -3,7 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { getRepresentativeCustomer } from "@/lib/contractCustomerHelpers";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
-import { resolveVacancyInfo, type VacancyEvent } from "@/lib/vacancyReason";
+import {
+  buildVacantRoomNotes,
+  roomNoteLookups,
+  type RoomNoteContractRow,
+  type RoomNoteInvoiceRow,
+  type RoomNoteRoomRow,
+  type RoomNoteTerminationRow,
+  type RoomNoteTransferRow,
+} from "@/lib/vacantRoomNotes";
 import { addDaysISO, vnTodayISO } from "@/lib/vnDate";
 import {
   differenceInDays,
@@ -122,19 +130,40 @@ export function useVacantRoomsReport(
 const embeddedName = (b: any): string =>
   (Array.isArray(b) ? b[0]?.name : b?.name) ?? "";
 
+/** Dòng `rooms` mà bộ dò phòng trống đọc. */
+interface NoteRoomRow {
+  id: string;
+  name: string | null;
+  status: string | null;
+  building_id: string;
+  buildings: unknown;
+}
+
+export interface VacantRoomNotesOptions {
+  /**
+   * F46: thêm ghi chú 'ended_unsettled' (khoá Map `ended:<contractId>`) cho HĐ kết
+   * thúc GIỮA tháng mà chưa thanh lý. Mặc định TẮT: nơi gọi cũ coi mọi kind khác
+   * 'active' là phòng trống — bật khi nơi gọi đã xử lý kind mới.
+   */
+  includeEndedContracts?: boolean;
+}
+
+/** Danh sách id dài chia nhỏ cho `.in(...)` — URL GET quá dài thì PostgREST trả 400. */
+const chunkIds = (ids: readonly string[], size = 100): string[][] => {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+};
+
 /**
  * Danh sách phòng TRỐNG (theo ảnh chụp CUỐI tháng) của các toà đã chọn, kèm lý do
  * — dùng tô màu + ghi chú "Trống phòng — <lý do>" ở đầu cột Khoản thu trang
  * Phân bổ lợi nhuận.
  *
- * "Đang ở tại cuối tháng" = có HĐ `ACTIVE` phủ ngày cuối tháng. Phòng gắn cờ =
- * không ở + status không thuộc {RESERVED, MAINTENANCE, UNAVAILABLE}. Lý do suy từ
- * contract_terminations (FORFEIT→Bỏ cọc, còn lại→Thanh lý HĐ), contract_transfers
- * theo `old_room_id` (ROOM_CHANGE→Chuyển phòng, TENANT/BOTH→Sang nhượng) và HĐ
- * EXPIRED (→Hết hạn HĐ). HĐ đã kết thúc mà KHÔNG có bản ghi thanh lý/chuyển
- * (đóng tay chỉ đổi status) → fallback suy từ chính HĐ: kết thúc sớm hơn hạn →
- * Thanh lý HĐ, đủ hạn → Hết hạn HĐ. Kèm `vacantSince` = ngày sự kiện mới nhất
- * (ngày khách rời) để UI ghi "Trống N ngày từ dd/mm". Chỉ chạy khi đã chọn ≥1 toà.
+ * LUẬT nằm ở hàm thuần buildVacantRoomNotes (src/lib/vacantRoomNotes.ts) — dùng chung với Quyết toán vận
+ * hành (link chủ nhà lấy dữ liệu thô qua RPC). Hook này chỉ ĐỌC BẢNG: phòng, HĐ, rồi đúng phần cần (hoá đơn
+ * kỳ, thanh lý của các HĐ cần, chuyển phòng của các phòng trống) theo roomNoteLookups. Đọc rooms/contracts/
+ * invoices bằng fetchAllRows + order('id') — không cắt ngầm ở trần 1000 dòng của PostgREST (F57).
  *
  * @param monthEndDate ngày cuối tháng 'YYYY-MM-DD'.
  */
@@ -142,199 +171,90 @@ export function useVacantRoomNotes(
   buildingIds: string[],
   monthEndDate: string,
   enabled: boolean,
+  opts?: VacantRoomNotesOptions,
 ) {
   const sortedIds = [...buildingIds].sort();
+  const includeEnded = opts?.includeEndedContracts ?? false;
   return useQuery({
-    queryKey: ["reports", "vacant-room-notes", sortedIds, monthEndDate],
+    queryKey: ["reports", "vacant-room-notes", sortedIds, monthEndDate, includeEnded],
     // B5: [] = quét MỌI toà trong scope RLS (bar Phân bổ LN bật mặc định).
     enabled: enabled && !!monthEndDate,
     queryFn: async (): Promise<Map<string, VacantRoomNote>> => {
-      // 1) Phòng trong các toà đã chọn (bỏ phòng đã xoá).
-      let roomsQ = supabase
-        .from("rooms")
-        .select("id, name, status, building_id, buildings(id, name)")
-        .is("deleted_at", null)
-        .range(0, 4999);
-      if (buildingIds.length) roomsQ = roomsQ.in("building_id", buildingIds);
-      const { data: rooms, error: roomsErr } = await roomsQ;
-      if (roomsErr) throw roomsErr;
-      const roomList = (rooms ?? []) as any[];
+      const ym = monthEndDate.slice(0, 7);
+
+      // 1) Phòng trong các toà đã chọn (bỏ phòng đã xoá). Phân trang + order ổn định.
+      const roomList = await fetchAllRows<NoteRoomRow>((from, to) => {
+        let q = supabase
+          .from("rooms")
+          .select("id, name, status, building_id, buildings(id, name)")
+          .is("deleted_at", null);
+        if (buildingIds.length) q = q.in("building_id", buildingIds);
+        return q.order("id", { ascending: true }).range(from, to);
+      }, { label: "vacant-room-notes:rooms" });
+      if (!roomList) throw new Error("Không tải đủ danh sách phòng.");
       if (roomList.length === 0) return new Map();
-      const roomIds = roomList.map((r) => r.id);
+      const rooms: RoomNoteRoomRow[] = roomList.map((r) => ({
+        id: r.id, name: r.name, status: r.status, building_id: r.building_id, building_name: embeddedName(r.buildings),
+      }));
+      const roomIds = rooms.map((r) => r.id);
 
-      // 2) HĐ của các phòng (mọi status): ACTIVE để xác định "đang ở tại cuối
-      //    tháng", TERMINATED/EXPIRED/TRANSFERRED để suy lý do.
-      // ALL toà: KHÔNG .in(room_id, [hàng trăm id]) — URL quá dài sẽ 400; lấy
-      // toàn bộ HĐ trong scope RLS rồi các set bên dưới tự khớp theo roomList.
-      let contractsQ = supabase
-        .from("contracts")
-        .select("id, room_id, status, start_date, start_billing_date, end_date, actual_end_date")
-        .is("deleted_at", null)
-        .range(0, 4999);
-      if (buildingIds.length) contractsQ = contractsQ.in("room_id", roomIds);
-      const { data: contracts, error: cErr } = await contractsQ;
-      if (cErr) throw cErr;
-      const contractList = (contracts ?? []) as any[];
+      // 2) HĐ của các phòng (mọi status). ALL toà: KHÔNG .in(room_id, [hàng trăm id]) — URL quá dài sẽ 400;
+      // lấy toàn bộ HĐ trong scope RLS rồi hàm thuần tự khớp theo phòng.
+      const contractList = await fetchAllRows<RoomNoteContractRow>((from, to) => {
+        let q = supabase
+          .from("contracts")
+          .select("id, room_id, status, start_date, start_billing_date, end_date, actual_end_date, contract_number")
+          .is("deleted_at", null);
+        if (buildingIds.length) q = q.in("room_id", roomIds);
+        return q.order("id", { ascending: true }).range(from, to);
+      }, { label: "vacant-room-notes:contracts" });
+      if (!contractList) throw new Error("Không tải đủ danh sách hợp đồng.");
 
-      // Phòng có HĐ đã tới kỳ phải xuất hoá đơn (billing bắt đầu ≤ cuối tháng) VÀ
-      // còn hiệu lực tới cuối tháng → kỳ vọng có hoá đơn tháng này. Thiếu hoá đơn
-      // ⇒ cảnh báo (kind 'active'). Dùng start_billing_date nếu có (loại HĐ
-      // billing tháng sau). KHÔNG chỉ xét status='ACTIVE' hiện tại: HĐ thanh lý
-      // đầu tháng SAU (vd kết thúc 05/06) vẫn phủ tháng 05 → phải cảnh báo, dù
-      // giờ đã TERMINATED (cùng tinh thần "còn hiệu lực" với set occupied dưới).
-      const activeRooms = new Set<string>();
-      for (const c of contractList) {
-        const billStart: string = c.start_billing_date || c.start_date || "";
-        if (!billStart || billStart > monthEndDate) continue; // chưa tới kỳ tính tiền
-        if (c.status === "ACTIVE") {
-          activeRooms.add(c.room_id);
-          continue;
-        }
-        // HĐ đã kết thúc nhưng còn hiệu lực tới cuối tháng báo cáo → vẫn thuộc kỳ
-        // này (kết thúc giữa tháng → cuối tháng đã trống, để set vacant xử lý).
-        const end: string = c.actual_end_date || c.end_date || "";
-        if (end && end >= monthEndDate) activeRooms.add(c.room_id);
+      const can = roomNoteLookups(rooms, contractList, monthEndDate, includeEnded);
+
+      // 3) Hoá đơn kỳ này (chưa huỷ, chưa xoá) — khớp theo contract_id. Không lọc theo toà: một trang/tháng là
+      //    đủ và tránh lệch toà khi HĐ đổi phòng.
+      let invoices: RoomNoteInvoiceRow[] = [];
+      if (can.needInvoices) {
+        const invoiceList = await fetchAllRows<RoomNoteInvoiceRow>((from, to) =>
+          supabase
+            .from("invoices")
+            .select("id, contract_id, status, kind, total_amount, paid_amount, remaining_amount, is_overdue")
+            .eq("billing_month", ym)
+            .is("deleted_at", null)
+            .neq("status", "CANCELLED")
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "vacant-room-notes:invoices" });
+        if (!invoiceList) throw new Error("Không tải đủ hoá đơn kỳ này.");
+        invoices = invoiceList;
       }
 
-      // Phòng "đang ở tại CUỐI tháng":
-      //  - HĐ ACTIVE đã bắt đầu trước cuối tháng → đang ở (month-to-month: end_date
-      //    có thể đã qua nhưng khách vẫn ở, HĐ vẫn ACTIVE → KHÔNG coi là trống).
-      //  - HĐ đã kết thúc (TERMINATED/EXPIRED/…) chỉ tính nếu còn hiệu lực tới cuối
-      //    tháng (kết thúc giữa tháng → cuối tháng đã trống).
-      const occupied = new Set<string>();
-      for (const c of contractList) {
-        const start: string = c.start_date ?? "";
-        if (!start || start > monthEndDate) continue;
-        if (c.status === "ACTIVE") {
-          occupied.add(c.room_id);
-          continue;
-        }
-        const end: string = c.actual_end_date || c.end_date || "";
-        if (end && end >= monthEndDate) occupied.add(c.room_id);
+      // 4) Bản ghi thanh lý của các HĐ cần (lý do trống + F46).
+      const terminations: RoomNoteTerminationRow[] = [];
+      for (const ids of chunkIds(can.terminationContractIds)) {
+        const { data, error: termError } = await supabase
+          .from("contract_terminations")
+          .select("contract_id, termination_type, termination_date, actual_move_out_date, status")
+          .in("contract_id", ids);
+        if (termError) throw termError;
+        if (!Array.isArray(data)) throw new Error("Không tải đủ bản ghi thanh lý.");
+        terminations.push(...(data as RoomNoteTerminationRow[]));
       }
 
-      // Phòng gắn cờ = không ở + không phải giữ chỗ/bảo trì/ngưng cho thuê.
-      const SKIP_STATUS = new Set(["RESERVED", "MAINTENANCE", "UNAVAILABLE"]);
-      const flagged = roomList.filter(
-        (r) => !occupied.has(r.id) && !SKIP_STATUS.has(r.status),
-      );
-      const flaggedIds = new Set<string>(flagged.map((r) => r.id));
-
-      const out = new Map<string, VacantRoomNote>();
-      // Phòng CÒN HĐ (kind 'active') → component cảnh báo nếu thiếu hoá đơn.
-      for (const r of roomList) {
-        if (!activeRooms.has(r.id)) continue;
-        out.set(r.id, {
-          roomId: r.id,
-          roomName: r.name ?? "",
-          buildingId: r.building_id,
-          buildingName: embeddedName(r.buildings),
-          kind: "active",
-        });
-      }
-
-      // Phòng TRỐNG (kind 'vacant' + lý do) — chỉ truy vấn lý do khi CÓ phòng trống.
-      if (flagged.length > 0) {
-        // HĐ đã kết thúc (≤ cuối tháng) của các phòng gắn cờ → tra termination & EXPIRED.
-        const endedByContract = new Map<
-          string,
-          { roomId: string; date: string | null; plannedEnd: string | null; status: string }
-        >();
-        for (const c of contractList) {
-          if (!flaggedIds.has(c.room_id) || c.status === "ACTIVE") continue;
-          const end: string | null = c.actual_end_date || c.end_date || null;
-          if (end && end > monthEndDate) continue; // kết thúc sau tháng → bỏ
-          endedByContract.set(c.id, {
-            roomId: c.room_id,
-            date: end,
-            plannedEnd: c.end_date ?? null,
-            status: c.status,
-          });
-        }
-        const endedContractIds = [...endedByContract.keys()];
-
-        let terminations: any[] = [];
-        if (endedContractIds.length) {
-          const { data, error: termError } = await supabase
-            .from("contract_terminations")
-            .select("contract_id, termination_type, termination_date, actual_move_out_date")
-            .in("contract_id", endedContractIds);
-          if (termError) throw termError;
-          terminations = data ?? [];
-        }
-
-        // Transfers có old_room_id = phòng gắn cờ (đã duyệt) — bắt được chuyển phòng
-        // dù room_id của HĐ đã đổi tại chỗ sang phòng mới.
+      // 5) Chuyển phòng có old_room_id = phòng trống (đã duyệt) — chỉ khi CÓ phòng trống.
+      let transfers: RoomNoteTransferRow[] = [];
+      if (can.transferRoomIds.length > 0) {
         const { data: transfersData, error: transfersError } = await supabase
           .from("contract_transfers")
           .select("old_room_id, transfer_type, transfer_date, status")
-          .in("old_room_id", [...flaggedIds])
+          .in("old_room_id", can.transferRoomIds)
           .in("status", ["APPROVED", "COMPLETED"]);
         if (transfersError) throw transfersError;
-        const transfers = (transfersData ?? []).filter(
-          (t: any) => !t.transfer_date || t.transfer_date <= monthEndDate,
-        );
-
-        const eventsByRoom = new Map<string, VacancyEvent[]>();
-        // `roomId` nhận null vì `transfers.old_room_id` nullable trong DB — chuyển
-        // phòng có thể không có phòng CŨ (lần đầu gán phòng). Sự kiện đó không
-        // thuộc phòng nào nên bỏ qua, thay vì ép người gọi lọc trước mỗi lần.
-        const pushEv = (roomId: string | null | undefined, ev: VacancyEvent) => {
-          if (!roomId) return;
-          const arr = eventsByRoom.get(roomId);
-          if (arr) arr.push(ev);
-          else eventsByRoom.set(roomId, [ev]);
-        };
-        const hasTerminationRow = new Set<string>();
-        for (const t of terminations) {
-          const ended = endedByContract.get(t.contract_id);
-          if (!ended) continue;
-          hasTerminationRow.add(t.contract_id);
-          pushEv(ended.roomId, {
-            kind: "termination",
-            type: t.termination_type ?? null,
-            date: t.actual_move_out_date || t.termination_date || ended.date,
-          });
-        }
-        for (const [cid, c] of endedByContract) {
-          if (hasTerminationRow.has(cid)) continue;
-          if (c.status === "EXPIRED") {
-            pushEv(c.roomId, { kind: "expired", date: c.date });
-            continue;
-          }
-          // HĐ đóng tay không có bản ghi thanh lý (cleanup/đổi status tay):
-          // kết thúc SỚM hơn hạn → Thanh lý HĐ, đủ/quá hạn → Hết hạn HĐ.
-          const early = !!c.date && !!c.plannedEnd && c.date < c.plannedEnd;
-          pushEv(
-            c.roomId,
-            early
-              ? { kind: "termination", type: null, date: c.date }
-              : { kind: "expired", date: c.date },
-          );
-        }
-        for (const t of transfers) {
-          pushEv(t.old_room_id, {
-            kind: "transfer",
-            type: t.transfer_type ?? null,
-            date: t.transfer_date ?? null,
-          });
-        }
-
-        for (const r of flagged) {
-          const info = resolveVacancyInfo(eventsByRoom.get(r.id) ?? []);
-          out.set(r.id, {
-            roomId: r.id,
-            roomName: r.name ?? "",
-            buildingId: r.building_id,
-            buildingName: embeddedName(r.buildings),
-            kind: "vacant",
-            reason: info.reason,
-            vacantSince: info.since,
-          });
-        }
+        transfers = (transfersData ?? []) as RoomNoteTransferRow[];
       }
 
-      return out;
+      return buildVacantRoomNotes({ rooms, contracts: contractList, invoices, terminations, transfers }, monthEndDate, includeEnded);
     },
   });
 }

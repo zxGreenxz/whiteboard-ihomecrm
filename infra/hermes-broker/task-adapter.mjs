@@ -6,8 +6,10 @@ import { BrokerError } from './broker.mjs';
 import { createHash } from 'node:crypto';
 import { TASK_ACTION, taskInput, taskResult, mayUseTask } from './task-contract.mjs';
 import { createTaskFollowReads, extendTaskFollowAuthorization } from './task-follow-adapter.mjs';
+import { TASK_PROGRESS_ACTION, TASK_CANCEL_ACTION } from './task-follow-contract.mjs';
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const TASK_CREATE_ACTION_ID='task.create';
+const FOLLOW_KEY_ACTIONS=Object.freeze([[TASK_PROGRESS_ACTION,'task.update'],[TASK_CANCEL_ACTION,'task.cancel']]);
 const keys=['connectionId','tokenDigest','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision'];
 export function createTaskReads(options){
   const rpc=createBoundUserRpcTransport({...options,allowedNames:['hermes_task_create_action_v1','hermes_task_create_capabilities_v1']});
@@ -30,10 +32,13 @@ export function createTaskReads(options){
 // dưới) khi task.create chưa sống theo lần đọc quyền trước: DB mới không tốn thêm lời gọi; lần đầu sau khởi động (danh mục sống còn
 // trống) đọc cả hai; DB vừa mất dòng task.create giữa hai lời gọi thì đọc bù tuần tự. live được lớp khung chung (baseAuth) ghi trong
 // chính lời gọi này, trước khi quyết định bên dưới.
-export function createTaskAuth({baseAuth,reads,createFromActions=false,live}){
+// actionIds (Mốc 3): mã các thao tác trong danh mục của connector. task.update / task.cancel có mặt VÀ sống ⇒ lớp khung chung là nguồn
+// của tasks.edit / tasks.delete; lớp theo dõi thôi cấp hai khoá đó (skip), như tasks.create ở trên.
+export function createTaskAuth({baseAuth,reads,createFromActions=false,actionIds=[],live}){
   if([baseAuth?.verifySession,baseAuth?.readAuthorization,reads?.capabilities].some(fn=>typeof fn!=='function')||typeof createFromActions!=='boolean'||
-    (live!==undefined&&typeof live?.has!=='function'))throw new TypeError('invalid_task_auth');
+    !Array.isArray(actionIds)||actionIds.some(id=>typeof id!=='string')||(live!==undefined&&typeof live?.has!=='function'))throw new TypeError('invalid_task_auth');
   const fromActions=()=>createFromActions&&(live===undefined||live.has(TASK_CREATE_ACTION_ID));
+  const skip=()=>FOLLOW_KEY_ACTIONS.filter(([,id])=>actionIds.includes(id)&&(live===undefined||live.has(id))).map(([key])=>key);
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
     // Task and follow capability RPCs start in the same wave as the base chain.
     // The follow observation is still consulted (and its failure surfaced) only
@@ -51,7 +56,7 @@ export function createTaskAuth({baseAuth,reads,createFromActions=false,live}){
     if(fromActions()){
       if(!follows)return current;
       if(follow.status==='rejected')throw follow.reason;
-      return extendTaskFollowAuthorization(current,follow.value,input);
+      return extendTaskFollowAuthorization(current,follow.value,input,{skip:skip()});
     }
     if(current.permissions.action.includes(TASK_ACTION)||current.companyCeilings.action.includes(TASK_ACTION))throw new BrokerError('context_changed');
     if(!legacy)[task]=await Promise.allSettled([reads.capabilities(capabilityInput,{signal:input.signal})]);
@@ -70,7 +75,7 @@ export function createTaskAuth({baseAuth,reads,createFromActions=false,live}){
     // the task RPC above is absent, their optional RPC is never consulted.
     if(!follows)return extended;
     if(follow.status==='rejected')throw follow.reason;
-    return extendTaskFollowAuthorization(extended,follow.value,input);
+    return extendTaskFollowAuthorization(extended,follow.value,input,{skip:skip()});
   }});
 }
 export function createTaskService({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch,clock=Date.now}={}){

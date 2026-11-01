@@ -1,20 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2665,
-    "catalogFunctions": 1527,
+    "sourceCallSites": 2862,
+    "catalogFunctions": 1602,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 382,
+    "calledRpcs": 394,
     "byRisk": {
-      "normal": 280,
-      "financial": 102
+      "normal": 287,
+      "financial": 106,
+      "infrastructure": 1
     },
-    "securityDefiner": 362
+    "securityDefiner": 369
   },
   "missingOnServer": [],
   "rpcs": {
@@ -811,6 +812,25 @@
       ],
       "risk": "financial"
     },
+    "cashbook_cash_flow_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_year integer, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(organization_id uuid, building_id uuid, period text, income numeric, expense numeric, net numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashFlowReport.ts"
+      ],
+      "risk": "normal"
+    },
     "cashbook_close_confirmers_v1": {
       "definitions": [
         {
@@ -905,6 +925,25 @@
       ],
       "callers": [
         "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_reopening_state_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },
@@ -1987,6 +2026,25 @@
       ],
       "risk": "normal"
     },
+    "discard_contract_exit_settlement_draft_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
+      ],
+      "risk": "normal"
+    },
     "distribute_shareholder_profit_v1": {
       "definitions": [
         {
@@ -2571,6 +2629,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_contract_exit_settlement_draft_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
     },
@@ -3264,10 +3341,9 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public, app_private",
+          "searchPath": "search_path=pg_catalog, public, app_private",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -3434,6 +3510,26 @@
       ],
       "risk": "financial"
     },
+    "ie_category_suggest_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_items jsonb, p_type text DEFAULT 'expense'::text, p_include_restricted boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
+    },
     "ie_compat_update_pending_v2": {
       "definitions": [
         {
@@ -3452,6 +3548,26 @@
         "src/hooks/useUploadPaymentReceipt.ts"
       ],
       "risk": "financial"
+    },
+    "ie_default_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_last_used uuid DEFAULT NULL::uuid",
+          "returns": "uuid",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/quick-entry/useQuickEntryRefs.ts"
+      ],
+      "risk": "normal"
     },
     "ie_form_buildings": {
       "definitions": [
@@ -3550,6 +3666,44 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "invoice_adjustment_build_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_ops jsonb DEFAULT '{}'::jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_amount_parts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_rows jsonb",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoiceAmountParts.ts"
+      ],
+      "risk": "financial"
     },
     "invoice_list_v1": {
       "definitions": [
@@ -3784,6 +3938,25 @@
       ],
       "callers": [
         "src/hooks/useContractExitCases.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_contract_exit_settlement_drafts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
     },
@@ -5321,6 +5494,25 @@
       ],
       "risk": "financial"
     },
+    "record_meter_readings_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_reading_date date, p_rows jsonb, p_replace boolean DEFAULT false, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
     "record_payment_gps": {
       "definitions": [
         {
@@ -5492,6 +5684,25 @@
       ],
       "callers": [
         "src/lib/rentSupportSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "reopen_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid, p_reason text, p_expected_lock_date date, p_idempotency_key uuid, p_expected_revision text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/cashbookReopening.ts"
       ],
       "risk": "financial"
     },
@@ -5984,6 +6195,25 @@
       ],
       "risk": "normal"
     },
+    "save_contract_exit_settlement_draft_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_case_id uuid, p_expected_version bigint, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractExitSettlementDrafts.ts"
+      ],
+      "risk": "normal"
+    },
     "save_room_turnover_v1": {
       "definitions": [
         {
@@ -6193,10 +6423,11 @@
         }
       ],
       "callers": [
+        "src/hooks/network-center/useCameraQuality.ts",
         "src/hooks/useUiPreferences.ts",
         "src/lib/companyPreferenceRemote.ts"
       ],
-      "risk": "normal"
+      "risk": "infrastructure"
     },
     "set_notification_org_config_v1": {
       "definitions": [

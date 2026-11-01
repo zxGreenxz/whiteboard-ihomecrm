@@ -36,8 +36,8 @@ import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
 import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
 import SalaryLeaveRequests from "@/components/salary/SalaryLeaveRequests";
-import SalarySelf from "@/components/salary/SalarySelf";
-import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
+import SalarySelfView from "@/components/salary/SalarySelfView";
+import { parseV5Plan } from "@/lib/salarySelfSummary";
 import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -49,7 +49,7 @@ import { resolveSalaryEngine, isUnqualifiedContractRow } from "@/lib/managerSala
 // sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
 const today = todayISO;
 
-// Màn chờ / rỗng MOBILE (shell tối khớp SalaryAdminMobile/SalarySelfMobile).
+// Màn chờ / rỗng MOBILE (shell tối khớp SalaryAdminMobile).
 // Dùng trong lúc chưa biết quyền để KHÔNG nháy khung MainLayout desktop.
 function MobileSalaryShell({ children }: { children: ReactNode }) {
   return (
@@ -156,6 +156,8 @@ export default function ManagerSalaryPage() {
   const rulesQuery = useBonusRules();
   const { data: rulesData } = rulesQuery;
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
+  // Mốc chuỗi / ngân sách v5 cho trang "Lương của tôi" (chỉ khi kỳ đang xem tính theo v5).
+  const selfPlan = salaryEngine === "v5" ? parseV5Plan(v5cfg) : null;
 
   const accountsQuery = useQuery<SalaryAccount[]>({
     queryKey: ["salary-accounts"],
@@ -279,6 +281,8 @@ export default function ManagerSalaryPage() {
           onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))}
           onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))}
           onRecompute={() => refetch()}
+          selfPlan={selfPlan}
+          requirePhoto={requirePhoto}
         />
       );
     }
@@ -289,14 +293,19 @@ export default function ManagerSalaryPage() {
     const [syNum, smNum] = effPeriod.split("-").map((x) => parseInt(x, 10));
     const selfCanNext = effPeriod < selfCeiling;
     return (
-      <SalarySelfMobile
-        m={meMobile}
-        period={{ label: `Tháng ${smNum}`, year: syNum }}
-        canPrev
-        canNext={selfCanNext}
-        onPrevMonth={() => setSelfOverride(shiftMonth(effPeriod, -1))}
-        onNextMonth={() => { if (selfCanNext) setSelfOverride(shiftMonth(effPeriod, 1)); }}
-      />
+      <div className="fixed inset-0 z-[60] overflow-y-auto bg-background">
+        <SalarySelfView
+          m={meMobile}
+          period={{ label: `Tháng ${smNum}`, year: syNum }}
+          v5Plan={selfPlan}
+          phone
+          canPrev
+          canNext={selfCanNext}
+          requirePhoto={requirePhoto}
+          onPrevMonth={() => setSelfOverride(shiftMonth(effPeriod, -1))}
+          onNextMonth={() => { if (selfCanNext) setSelfOverride(shiftMonth(effPeriod, 1)); }}
+        />
+      </div>
     );
   }
 
@@ -312,11 +321,19 @@ export default function ManagerSalaryPage() {
       </MainLayout>;
     }
     const me = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
+    const selfCanNext = effPeriod < selfCeiling;
     return (
       <MainLayout title="Lương của tôi" subtitle="Tài chính → Lương" icon={Wallet}>
-        <div className="sal-root">
-          <SalarySelf m={me} period={period} />
-        </div>
+        <SalarySelfView
+          m={me}
+          period={period}
+          v5Plan={selfPlan}
+          canPrev
+          canNext={selfCanNext}
+          requirePhoto={requirePhoto}
+          onPrevMonth={() => setSelfOverride(shiftMonth(effPeriod, -1))}
+          onNextMonth={() => { if (selfCanNext) setSelfOverride(shiftMonth(effPeriod, 1)); }}
+        />
       </MainLayout>
     );
   }
@@ -350,7 +367,8 @@ export default function ManagerSalaryPage() {
         )}
 
         {view === "self" && previewMgr ? (
-          <SalarySelf m={previewMgr} period={period} onOpenLedger={() => { setView("admin"); openLedger({ who: previewMgr.id }); }} />
+          <SalarySelfView m={previewMgr} period={period} v5Plan={selfPlan} requirePhoto={requirePhoto} canPrev canNext
+            onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))} onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))} />
         ) : (
           <>
             <div className="sal-card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>

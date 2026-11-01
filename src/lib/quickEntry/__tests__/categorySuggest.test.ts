@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   searchCategories,
-  suggestCategory,
   usableExpenseCategories,
   type CategoryRef,
 } from "../categorySuggest";
@@ -66,64 +65,5 @@ describe("searchCategories — ô chọn hạng mục", () => {
 
   it("ô tìm rỗng ⇒ tối đa `limit` hạng mục đầu", () => {
     expect(ids(searchCategories(usable, "", 2))).toEqual(["t3", "t1"]);
-  });
-});
-
-describe("suggestCategory — đoán từ mô tả", () => {
-  it("cụm phí cố định ⇒ hạng mục mang fee_category đó", () => {
-    expect(suggestCategory(usable, "tiền điện tháng 9 1tr2")).toEqual({ id: "t1", reason: "fee_phrase" });
-    expect(suggestCategory(usable, "hoá đơn nước 450k")).toEqual({ id: "t2", reason: "fee_phrase" });
-  });
-
-  it("hạng mục cố định chưa gắn fee_category vẫn khớp theo tên (như báo cáo lợi nhuận)", () => {
-    expect(suggestCategory(usable, "tiền rác 300k")).toEqual({ id: "t9", reason: "fee_phrase" });
-  });
-
-  it("'sửa điện' là sửa chữa, KHÔNG phải tiền điện", () => {
-    expect(suggestCategory(usable, "sửa điện phòng 301")).toEqual({ id: "t3", reason: "name_overlap" });
-  });
-
-  it("mã khách hàng đã ra hạng mục phí ⇒ dùng luôn", () => {
-    expect(suggestCategory(usable, "EVN 1tr2", { feeCategory: "nuoc" })).toEqual({ id: "t2", reason: "provider_code" });
-  });
-
-  it("không chắc (không trùng từ hoặc hoà điểm) ⇒ null, để AI/người dùng chọn", () => {
-    expect(suggestCategory(usable, "ăn trưa với khách")).toBeNull();
-    expect(suggestCategory(usable, "điện")).toBeNull();
-  });
-
-  it("chữ 'tiền' quá chung không dùng để đoán: 'tiền phạt' không thành 'Tiền điện'", () => {
-    const list = usable.filter((c) => c.id === "t1" || c.id === "t4");
-    expect(suggestCategory(list, "tiền phạt")).toBeNull();
-  });
-
-  it("luật theo rule_key đứng trước cụm phí: 'chuyển tiền nhà dùm' là nội bộ, không phải Tiền nhà", () => {
-    const list: CategoryRef[] = [
-      { id: "nha", name: "Tiền nhà", category: null, type: "expense", organization_id: O, rule_key: "tien_nha", fee_category: "tien_nha", keywords: ["tiền nhà"] },
-      { id: "nb", name: "Chuyển tiền nội bộ", category: null, type: "expense", organization_id: O, rule_key: "noi_bo" },
-    ];
-    // Nội bộ chỉ khoá cứng khi có neo "kết sổ / bàn giao về sổ" — còn lại là gợi ý yếu (AI được thay).
-    // Mẫu chuẩn chủ hay ghi (cả câu chỉ "chuyển tiền X dùm <người> <tên>") ⇒ khoá; kèm việc khác ⇒ gợi ý yếu.
-    expect(suggestCategory(list, "chuyển tiền nhà dùm a Huy")).toEqual({ id: "nb", reason: "rule" });
-    expect(suggestCategory(list, "chi hộ chị Hoa tiền đổ rác 417")).toEqual({ id: "nb", reason: "rule_weak" });
-    // Người ngoài (nhà thầu) ⇒ loại hẳn, không gợi ý nội bộ.
-    expect(suggestCategory(list, "bàn giao tiền cho anh Hùng nhà thầu")?.id ?? null).not.toBe("nb");
-    expect(suggestCategory(list, "kết sổ quỹ tháng 9")).toEqual({ id: "nb", reason: "rule" });
-    expect(suggestCategory(list, "tiền nhà tháng 10")).toEqual({ id: "nha", reason: "rule" });
-  });
-
-  it("'trả cọc thuê nhà mới' không phải Tiền nhà tháng (cả đường cụm phí)", () => {
-    const list: CategoryRef[] = [
-      { id: "nha", name: "Tiền nhà", category: null, type: "expense", organization_id: O, rule_key: "tien_nha", fee_category: "tien_nha", keywords: ["tiền nhà", "thuê nhà"] },
-    ];
-    expect(suggestCategory(list, "trả cọc thuê nhà mới")?.id ?? null).not.toBe("nha");
-  });
-
-  it("'tiền điện lạnh' không phải tiền điện", () => {
-    expect(suggestCategory(usable, "tiền điện lạnh 3 phòng")?.reason).not.toBe("fee_phrase");
-  });
-
-  it("không bao giờ gợi ý hạng mục ngoài danh sách được dùng", () => {
-    expect(suggestCategory(usable, "hoa hồng sale tháng 9")).toBeNull();
   });
 });

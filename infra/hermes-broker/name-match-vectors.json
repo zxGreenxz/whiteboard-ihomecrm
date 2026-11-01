@@ -1,5 +1,5 @@
 {
-  "$comment": "Bộ vector giải tên cho thao tác ghi, dùng chung (D7, NEN-CHUNG-THAO-TAC-GHI.md mục 7). Hàm SQL public.hermes_write_name_resolve_v1 phải thoả MỌI ca (write-name-resolve-sql.test.mjs). Ca có web=true thì bộ nhập nhanh của web (src/lib/jobQuickInput.ts) cũng phải cho cùng kết quả (src/lib/__tests__/hermesNameMatchParity.test.ts); web=false là chỗ web còn hẹp hơn (giữ dấu, khớp bằng một token, không tên thường gọi) — web chuyển sang gọi hàm SQL là việc sau. Người, phòng, loại việc là giả; tên/mã toà (1392QT, 158PVC, 15KV, 44TL…) trùng mã toà thật đã có sẵn ở nhiều file khác trong repo — không phải dữ liệu khách. outside_scope không bao giờ kèm tên ứng viên (review #253).",
+  "$comment": "Bộ vector giải tên cho thao tác ghi, dùng chung (D7, NEN-CHUNG-THAO-TAC-GHI.md mục 7). Hàm SQL public.hermes_write_name_resolve_v1 phải thoả MỌI ca (write-name-resolve-sql.test.mjs). Ca có web=true thì bộ nhập nhanh của web (src/lib/jobQuickInput.ts) cũng phải cho cùng kết quả (src/lib/__tests__/hermesNameMatchParity.test.ts); web=false là chỗ web còn hẹp hơn (giữ dấu, khớp bằng một token, không tên thường gọi) — web chuyển sang gọi hàm SQL là việc sau. Người, phòng, loại việc là giả; tên/mã toà (1392QT, 158PVC, 15KV, 44TL…) trùng mã toà thật đã có sẵn ở nhiều file khác trong repo — không phải dữ liệu khách. outside_scope không bao giờ kèm tên ứng viên (review #253). Ca tokens=true (lượt 11, 20261024040001: khớp token số nhà + tên đường, '/' là khoảng trắng mềm) chỉ đúng sau migration đó — lõi cũ ra not_visible; ca read=true: matchBuildings của connector (đọc, danh bạ chỉ gồm toà trong phạm vi) cũng phải cho cùng kết quả (read-name-resolution.test.mjs; ngoài phạm vi ⇒ không khớp). Địa chỉ 45/3 Hoa Mai, 12/5 Hoa Sứ… là giả.",
   "buildings": [
     { "key": "b1", "name": "1392QT", "code": "1392QT, 1392, QT", "inScope": true },
     { "key": "b2", "name": "Lê Văn Thọ 102", "code": "102LVT", "commonNames": ["Một lẻ hai"], "inScope": true },
@@ -10,7 +10,11 @@
     { "key": "b7", "name": "London Park", "code": null, "inScope": true },
     { "key": "b8", "name": "44TL", "code": "44TL", "inScope": false },
     { "key": "bv", "name": "Kho Ảo", "code": "KHO", "inScope": true, "virtual": true },
-    { "key": "bx", "name": "Toà Đã Xoá", "code": "XOA", "inScope": true, "deleted": true }
+    { "key": "bx", "name": "Toà Đã Xoá", "code": "XOA", "inScope": true, "deleted": true },
+    { "key": "b9", "name": "45/3 Hoa Mai", "code": null, "inScope": true },
+    { "key": "b10", "name": "12/5 Hoa Sứ", "code": null, "inScope": true },
+    { "key": "b11", "name": "12/7 Hoa Sứ", "code": null, "inScope": true },
+    { "key": "b12", "name": "77/1 Cây Gòn", "code": null, "inScope": false }
   ],
   "rooms": [
     { "key": "r11", "building": "b1", "name": "201", "code": null },
@@ -56,6 +60,15 @@
     { "field": "building", "wanted": "Kho Ảo", "why": "not_visible", "web": false },
     { "field": "building", "wanted": "XOA", "why": "not_visible", "web": false },
     { "field": "building", "wanted": "Không Tồn Tại", "why": "not_visible", "web": true },
+    { "field": "building", "wanted": "45/3 Hoa Mai", "expect": "b9", "web": false, "read": true },
+    { "field": "building", "wanted": "Hoa Sứ", "why": "ambiguous", "candidates": ["12/5 Hoa Sứ", "12/7 Hoa Sứ"], "web": false, "read": true },
+    { "field": "building", "wanted": "45 Hoa Mai", "expect": "b9", "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "45 3 hoa mai", "expect": "b9", "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "Toà 45 Hoa Mai", "expect": "b9", "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "Hoa Mai 45", "expect": "b9", "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "12 Hoa Sứ", "why": "ambiguous", "candidates": ["12/5 Hoa Sứ", "12/7 Hoa Sứ"], "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "77 Cây Gòn", "why": "outside_scope", "candidates": [], "web": false, "tokens": true, "read": true },
+    { "field": "building", "wanted": "46 Hoa Mai", "why": "not_visible", "web": false, "read": true },
     { "field": "room", "building": "b1", "wanted": "201", "expect": "r11", "web": true },
     { "field": "room", "building": "b1", "wanted": "phòng 202", "expect": "r12", "web": false },
     { "field": "room", "building": "b1", "wanted": "P.202", "expect": "r12", "web": false },

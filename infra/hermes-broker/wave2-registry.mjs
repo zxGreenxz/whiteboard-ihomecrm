@@ -40,7 +40,9 @@ const FENCE = Object.freeze({ buildings: uuids, cashbooks: uuids, orgWide: value
 // top_expenses) nằm ngay trong mô tả crm_read_report, trong câu đầu (danh sách tool_search chỉ hiện ≤ 60 ký tự đầu) kèm chữ
 // tiếng Việt khi mã không tự nói (xe). wave2-registry.test.mjs khoá mọi mã ở W2_DISCOVERY_REPORTS có trong sổ và trong mô tả;
 // hai tool meta vẫn trong trần riêng 1 600 B (đổi lại bỏ câu "gọi trước crm_read_report": mô tả RUN đã chỉ về mục lục).
-const DISCOVERY = Object.freeze([['xe', 'vehicles'], [null, 'hotlines'], [null, 'cashbooks'], [null, 're_vacant_rooms'], [null, 'top_expenses']]);
+// Mốc 3b Công việc (ma trận 22/10, CV-R11 "có những loại việc nào": bot tra danh mục thao tác, nói không có danh sách):
+// task_types (danh mục loại việc, wave2-d) — 12 B, vừa trần 1 600 B; không kèm nhãn tiếng Việt (vượt trần).
+const DISCOVERY = Object.freeze([['xe', 'vehicles'], [null, 'hotlines'], [null, 'cashbooks'], [null, 're_vacant_rooms'], [null, 'top_expenses'], [null, 'task_types']]);
 export const W2_DISCOVERY_REPORTS = Object.freeze(DISCOVERY.map(([, report]) => report));
 const LIST_DESCRIPTION = 'Mục lục báo cáo kết nối được xem: report, mô tả, params, private. ' +
   'topic: thu_tien=thu tiền/công nợ/cọc; tai_chinh=sổ quỹ/KQKD/lợi nhuận/ví; van_hanh=xe/kho/lương/thông báo/mạng; danh_muc=tài sản/danh mục/hotline/toà phòng/BĐS.';
@@ -132,7 +134,10 @@ export function createW2Registry(packages) {
           value.items.length || value.summary !== null || value.nextOffset !== null) fail();
       return { report: value.report, source: value.source, unavailable: value.unavailable, summary: null, items: [], offset: value.offset, nextOffset: null, sourceCapped: false };
     }
-    if (!(spec.summary === null ? value.summary === null : shaped(value.summary, spec.summary))) fail();
+    // Khoá tolerant (wave2-kit) vắng ⇒ null: connector mới chạy được với SQL cũ một bản phát hành; khoá lạ vẫn hỏng.
+    const summary = spec.summary !== null && w2Record(value.summary) ? { ...Object.fromEntries(Object.entries(spec.summary)
+      .filter(([key, check]) => check.tolerant === true && !Object.hasOwn(value.summary, key)).map(([key]) => [key, null])), ...value.summary } : value.summary;
+    if (!(spec.summary === null ? summary === null : shaped(summary, spec.summary))) fail();
     const inFence = item => id(item) && fence.buildings.includes(item);
     for (const row of value.items) {
       if (!shaped(row, spec.fields)) fail();
@@ -145,7 +150,7 @@ export function createW2Registry(packages) {
           spec.scope === 'cashbooks' && !fence.orgWide && Object.hasOwn(row, 'cashbookId') &&
             !(id(row.cashbookId) && fence.cashbooks.includes(row.cashbookId))) fail();
     }
-    return structuredClone({ report: value.report, source: value.source, unavailable: null, summary: value.summary, items: value.items,
+    return structuredClone({ report: value.report, source: value.source, unavailable: null, summary, items: value.items,
       offset: value.offset, nextOffset: value.nextOffset, sourceCapped: value.sourceCapped });
   }
   const define = (toolName, description, inputSchema, input, resultKeys, outputKeys, result, mayUse) => Object.freeze({ family: 'w2', permission: null,

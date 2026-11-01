@@ -1,25 +1,25 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1606,
-  "soFileDocBangFs": 420,
-  "tongLoiGoi": 1042,
-  "khongPhanLoaiDuoc": 456,
+  "tongSoFileTest": 1749,
+  "soFileDocBangFs": 457,
+  "tongLoiGoi": 1172,
+  "khongPhanLoaiDuoc": 523,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 61,
+      "soFile": 63,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 58,
+      "soFile": 66,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 14,
+      "soFile": 16,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 170,
+      "soFile": 189,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -29,9 +29,12 @@
   },
   "testDocMaNguon": [
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
+    "infra/hermes-broker/action-runtime.test.mjs",
+    "infra/hermes-broker/action-shared-keys.test.mjs",
     "infra/hermes-broker/confirm-guard.test.mjs",
     "infra/hermes-broker/read-catalog-authority.test.mjs",
     "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
+    "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
     "scripts/__tests__/apply-reviewed-migration.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
@@ -85,12 +88,19 @@
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
-    "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
     "src/lib/quickEntry/__tests__/models.test.ts",
     "src/pages/phong-trong/__tests__/exportRoomListImage.test.ts",
     "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx"
   ],
   "chiTiet": [
+    {
+      "file": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
+      "soGoi": 20,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 19
+    },
     {
       "file": "infra/hermes-zalo-native/binding-reconciler.test.mjs",
       "soGoi": 19,
@@ -108,6 +118,21 @@
       "khongPhanLoaiDuoc": 17
     },
     {
+      "file": "infra/hermes-runtime/host-ownership.test.mjs",
+      "soGoi": 17,
+      "loai": {},
+      "khongPhanLoaiDuoc": 17
+    },
+    {
+      "file": "infra/hermes-broker/official-skills-deploy.test.mjs",
+      "soGoi": 16,
+      "loai": {
+        "manifest": 2,
+        "tai-lieu": 5
+      },
+      "khongPhanLoaiDuoc": 9
+    },
+    {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
       "soGoi": 16,
       "loai": {
@@ -115,12 +140,6 @@
         "powershell": 2
       },
       "khongPhanLoaiDuoc": 13
-    },
-    {
-      "file": "infra/hermes-runtime/host-ownership.test.mjs",
-      "soGoi": 14,
-      "loai": {},
-      "khongPhanLoaiDuoc": 14
     },
     {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -166,6 +185,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/domain-composition.test.mjs",
+      "soGoi": 12,
+      "loai": {
+        "sql": 11
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
       "soGoi": 11,
       "loai": {
@@ -178,6 +205,14 @@
       "soGoi": 11,
       "loai": {},
       "khongPhanLoaiDuoc": 11
+    },
+    {
+      "file": "infra/hermes-broker/wave2-b.test.mjs",
+      "soGoi": 10,
+      "loai": {
+        "sql": 9
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
@@ -236,22 +271,6 @@
       "khongPhanLoaiDuoc": 6
     },
     {
-      "file": "infra/hermes-broker/domain-composition.test.mjs",
-      "soGoi": 8,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/wave2-b.test.mjs",
-      "soGoi": 8,
-      "loai": {
-        "sql": 7
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
       "soGoi": 8,
       "loai": {
@@ -267,6 +286,20 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/wave2-a.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "sql": 7
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-d.test.mjs",
+      "soGoi": 7,
+      "loai": {},
+      "khongPhanLoaiDuoc": 7
     },
     {
       "file": "infra/hermes-zalo-native/operator.test.mjs",
@@ -396,6 +429,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/action-activation-sql.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/inherit-crm-sql.test.mjs",
       "soGoi": 5,
       "loai": {
@@ -404,7 +445,7 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/hermes-broker/wave2-a.test.mjs",
+      "file": "infra/hermes-broker/wave2-a-hoa-don.test.mjs",
       "soGoi": 5,
       "loai": {
         "sql": 5
@@ -413,6 +454,12 @@
     },
     {
       "file": "infra/hermes-broker/wave2-foundation.test.mjs",
+      "soGoi": 5,
+      "loai": {},
+      "khongPhanLoaiDuoc": 5
+    },
+    {
+      "file": "infra/hermes-runtime/audit-codes.test.mjs",
       "soGoi": 5,
       "loai": {},
       "khongPhanLoaiDuoc": 5
@@ -468,12 +515,29 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 2,
+        "ma-nguon": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
       "soGoi": 5,
       "loai": {
         "sql": 5
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/khoaKyThangDaChotLnMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/rentSupportDraftMigration.test.ts",
@@ -538,6 +602,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 2,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/name-directory-sql.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -546,10 +619,30 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/hermes-broker/wave2-d.test.mjs",
+      "file": "infra/hermes-broker/official-skills.test.mjs",
       "soGoi": 4,
-      "loai": {},
-      "khongPhanLoaiDuoc": 4
+      "loai": {
+        "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-zalo-native/binding-provisioning.test.mjs",
@@ -627,7 +720,7 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
+      "file": "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
       "soGoi": 4,
       "loai": {
         "sql": 2,
@@ -636,13 +729,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
+      "file": "src/lib/__tests__/boSinhDinhKyChongTrungMigration.test.ts",
       "soGoi": 4,
       "loai": {
-        "sql": 2,
-        "ma-nguon": 2
+        "sql": 2
       },
-      "khongPhanLoaiDuoc": 0
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/contractLifecyclePermissionGuardMigration.test.ts",
@@ -667,6 +759,15 @@
         "sql": 4
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/dauVanTayChotLnMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 1,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/gd3RaoBangAnToanMigration.test.ts",
@@ -717,13 +818,20 @@
       "khongPhanLoaiDuoc": 3
     },
     {
-      "file": "infra/hermes-broker/ie-quick-entry-rules-sql.test.mjs",
+      "file": "infra/hermes-broker/domain-read-nolock-sql.test.mjs",
       "soGoi": 3,
       "loai": {
-        "manifest": 1,
         "sql": 1
       },
-      "khongPhanLoaiDuoc": 1
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/domain-v3.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/org-policy-sql.test.mjs",
@@ -855,6 +963,22 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/meter-capture-invoice-guard.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/room-cash-lifecycle-one-source-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -884,6 +1008,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractExitSettlementDraftMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/contractMeterBoundaryFinalReadingSync.test.ts",
@@ -933,6 +1065,14 @@
     },
     {
       "file": "src/lib/__tests__/invoiceRentSupportMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/khoaCotHoaHongCompatMigration.test.ts",
       "soGoi": 3,
       "loai": {
         "sql": 1
@@ -1000,16 +1140,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/quickEntry/__tests__/categorySuggestGolden.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 1,
-        "ma-nguon": 1,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1022,6 +1152,14 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/action-runtime.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/available-rooms-page-parity.test.mjs",
@@ -1040,6 +1178,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/contract-action-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/domain-receivables-fast-sql.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1054,18 +1200,13 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/hermes-broker/domain-v3.test.mjs",
+      "file": "infra/hermes-broker/invoice-collection-plan-sql.test.mjs",
       "soGoi": 2,
       "loai": {
-        "sql": 2
+        "manifest": 1,
+        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/expense-write-sql.test.mjs",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/jobs-assignee-sql.test.mjs",
@@ -1098,15 +1239,13 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
+      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
       "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/hermes-broker/wave2-a-hoa-don.test.mjs",
+      "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2
@@ -1154,26 +1293,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/hermes-broker/zalo-broadcast-sql.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-runtime/audit-codes.test.mjs",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
@@ -1223,6 +1348,14 @@
     },
     {
       "file": "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/cash-flow-report-sql.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 1
@@ -1349,6 +1482,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/meter-capture-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/migration-target.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1406,6 +1547,14 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/room-cash-lifecycle-module-key-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/super-admin-route-contract.test.mjs",
@@ -1739,6 +1888,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": ".e2e-fleet/specs/meter-capture-live.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": ".e2e-fleet/specs/payment-collection-regression.spec.ts",
       "soGoi": 1,
       "loai": {
@@ -1763,6 +1918,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/action-shared-keys.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/available-rooms-page-sql.test.mjs",
@@ -1839,6 +2002,22 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/invoice-edit-race-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/invoice-write-race-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/optional-org-policy-sql.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1857,6 +2036,14 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/read-name-resolution.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -1917,7 +2104,7 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/task-follow-mutation.test.mjs",
+      "file": "infra/hermes-broker/task-follow-total-sql.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
@@ -1931,7 +2118,37 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/task-luot14-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/task-luot16-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/task-metadata.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-c-task-recurrences.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/wave2-c-tasks-board.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1
@@ -1997,6 +2214,26 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/meter-capture-worker/worker.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/network-center-worker/test/cameraArchive.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/network-center-worker/test/cameraRecordingFetch.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",
       "soGoi": 1,
       "loai": {
@@ -2017,6 +2254,12 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/areas-select-current-scope-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/bank-event-gmail-sql.test.mjs",
@@ -2047,6 +2290,18 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/cashbook-closings-visible-scope-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/cashbook-reopening-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/check-copilot-page-contracts.test.mjs",
@@ -2141,6 +2396,12 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/nc-clients-customer-scope-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/network-center-admin-control-plane.test.mjs",
@@ -2663,6 +2924,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/custodianRestrictedVisibilityMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/customerCreditApplyGateMigration.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3025,6 +3294,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/quanLyToaLockRoomMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/rentSupportContractVouchersMigration.test.ts",
       "soGoi": 1,
       "loai": {
@@ -3040,6 +3317,20 @@
     },
     {
       "file": "src/lib/__tests__/reverseCollectionOrgToday.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/roomLifecycle.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
@@ -3171,14 +3462,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/quickEntry/__tests__/categoryRules.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/quickEntry/__tests__/models.test.ts",
