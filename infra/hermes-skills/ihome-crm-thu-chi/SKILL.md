@@ -51,8 +51,9 @@ KHÔNG chặn:
 
 - `expense.note` {`voucherCode`, `note`, `buildingName` khi mã trùng giữa các toà}: phiếu chi hoặc phiếu thu; ghi thẳng.
 - `expense.edit` {`voucherCode`, trường đổi, `reason` khi đổi tiền / hạng mục / sổ / toà}: chỉ phiếu chi chờ duyệt.
-- `expense.cancel` {`voucherCode`, `reason` 8–1000 ký tự — luôn hỏi lý do}: phiếu đã vào sổ ⇒ bút toán đảo, không khôi phục được;
-  lượt xác nhận kèm `consentText`.
+- `expense.cancel` {`voucherCode`, `reason` 8–1000 ký tự — luôn cần: đã nêu vì sao ⇒ truyền nguyên văn; chưa nêu hoặc ngắn hơn khuôn
+  ⇒ hỏi; không ghép "huỷ phiếu", câu yêu cầu hay từ đệm cho đủ ký tự}: phiếu đã vào sổ ⇒ bút toán đảo, không khôi phục được; lượt
+  xác nhận kèm `consentText`.
 - `expense.approve` {`voucherCodes` ≤ 10, mỗi mã kèm ngày phiếu dạng "MÃ dd/mm/yyyy", `post` = false nếu chỉ duyệt chưa chi,
   `buildingName`}: duyệt lô theo danh sách vừa đọc ⇒ gửi mã kèm ngày ngay lần đầu, không gửi voucherId / UUID; nhiều hơn 10 ⇒
   làm 10 phiếu đầu, nói số còn lại. Đọc `plan` từng phiếu.

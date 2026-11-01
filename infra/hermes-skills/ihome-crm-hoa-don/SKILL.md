@@ -49,8 +49,8 @@ hiện tại. Sửa số đã ghi ⇒ `replace` = true. Cảnh báo nhỏ hơn s
 ## Điều chỉnh, kiểm, huỷ, khôi phục
 
 - `invoice.adjust` {toà, phòng, `month` / `invoiceNumber`, `discount` (giảm thêm) | `addItems` | `setItems`, `reason`}: gọi ngay
-  để lấy bản xem trước (tổng cũ → mới); lời người dùng đã nói là lý do; chưa có thì hỏi sau khi máy chủ đòi. Dòng điện nước có chỉ
-  số, cọc ⇒ web.
+  để lấy bản xem trước (tổng cũ → mới); lời người dùng nêu VÌ SAO ("anh tính nhầm", "khách xin giảm") là lý do ⇒ `reason` nguyên
+  văn, không ghép câu yêu cầu hay tên thao tác cho đủ ký tự; chưa có thì hỏi sau khi máy chủ đòi. Dòng điện nước có chỉ số, cọc ⇒ web.
 - `invoice.adjustment_check`: xác nhận ĐÃ KIỂM TRA điều chỉnh do người khác làm (không phải duyệt hoá đơn); không bỏ được — lượt
   xác nhận kèm `consentText`. Điều chỉnh do chính người hỏi làm ⇒ web.
 - `invoice.cancel` (hoá đơn chưa thu đồng nào) / `invoice.restore`: gọi ngay, lý do chỉ hỏi khi máy chủ trả `reason_required`;

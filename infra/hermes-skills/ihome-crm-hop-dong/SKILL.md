@@ -22,21 +22,22 @@ soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") k
 ## Báo trả, giữ phòng
 
 - `contract.notice_set` {`date`, `datePhrase`, `note`}: báo trả hoặc dời ngày dọn đi (ngày dự kiến, khác ngày hết hạn HĐ); ghi
-  thẳng. Người dùng nói "báo trả <ngày>" ⇒ gọi ngay, đọc lại `result.text`. Chỉ khi nói "trả phòng" kèm ngày dọn đi TƯƠNG LAI (vd
-  "trả phòng ngày mai" — đó là báo trả, chưa phải trả phòng) ⇒ hỏi MỘT câu "Em ghi BÁO TRẢ phòng … ngày … (thứ …) nhé?" rồi mới
-  gọi. `notice_date_past` ⇒ hỏi khách đã dọn chưa (rồi ⇒ `contract.return`).
-- `contract.notice_cancel` {`reason`}: lý do phải do người dùng nói; chưa nêu ⇒ hỏi "Khách huỷ báo trả vì sao ạ?". Ghi thẳng nên
-  tuyệt đối không tự đặt lý do.
+  thẳng. Người dùng nói "báo trả <ngày>" ⇒ gọi ngay, đọc lại `result.text`; không nói ngày ⇒ hỏi, không tự lấy hôm nay. Chỉ khi
+  nói "trả phòng" kèm ngày dọn đi TƯƠNG LAI (vd "trả phòng ngày mai" — đó là báo trả, chưa phải trả phòng) ⇒ hỏi MỘT câu "Em ghi
+  BÁO TRẢ phòng … ngày … (thứ …) nhé?" rồi mới gọi. `notice_date_past` ⇒ hỏi khách đã dọn chưa (rồi ⇒ `contract.return`).
+- `contract.notice_cancel` {`reason`}: lý do = VÌ SAO khách huỷ, do người dùng nói; chưa nêu, hoặc chỉ nêu cụm ngắn hơn khuôn
+  (vd "đổi ý") ⇒ hỏi "Khách huỷ báo trả vì sao ạ?". Ghi thẳng nên tuyệt đối không tự đặt lý do: KHÔNG dùng "theo yêu cầu", "huỷ
+  báo trả", "khách yêu cầu"; không ghép câu yêu cầu ("302 toà 80 huỷ báo trả"), tên thao tác hay từ đệm cho đủ ký tự.
 - `contract.room_lock` {`hours` 6 / 12 / 24, `note`}: giữ / khoá tạm phòng trống cho khách xem (ẩn khỏi danh sách bán, hết giờ tự
-  mở); N giờ khác ⇒ hỏi chọn mức gần nhất. `contract.room_unlock`: bỏ giữ. Giữ / bỏ giữ phòng CHỈ qua `crm_action_run` theo tên
-  toà + phòng; không dùng `crm_sale_action` cho việc này. Giữ phòng không phải đã nhận cọc.
+  mở); N giờ khác ⇒ hỏi chọn mức gần nhất, không tự đổi. `contract.room_unlock`: bỏ giữ. Giữ / bỏ giữ phòng CHỈ qua
+  `crm_action_run` theo tên toà + phòng; không dùng `crm_sale_action` cho việc này. Giữ phòng không phải đã nhận cọc.
 
 ## Gia hạn
 
 - `contract.renew` {`months` hoặc `newEndDate`, `reason`, `noReason`, `keepMoveOutNotice`}: giữ nguyên giá và cọc. Người dùng đã
   nêu lý do trong tin ("khách ở tiếp", "khách xin ở thêm", "khách ở lâu dài") ⇒ truyền NGUYÊN VĂN làm `reason`, KHÔNG hỏi lại,
-  không tự đếm ký tự (máy chủ kiểm); chưa nêu ⇒ hỏi trước, chỉ gửi `noReason` = true khi người dùng nói không có. Người dùng nêu giá /
-  cọc mới ⇒ nói ngay "đổi giá khi gia hạn làm trên web; em chỉ gia hạn giữ giá được", không gọi với giá mới. HĐ đang có báo trả ⇒
+  không tự đếm ký tự (máy chủ kiểm), không ghép "gia hạn" hay câu yêu cầu cho đủ ký tự; chưa nêu ⇒ hỏi trước, chỉ gửi `noReason` =
+  true khi người dùng nói không có. Người dùng nêu giá / cọc mới ⇒ nói ngay "đổi giá khi gia hạn làm trên web; em chỉ gia hạn giữ giá được", không gọi với giá mới. HĐ đang có báo trả ⇒
   hỏi giữ hay huỷ (`keepMoveOutNotice`). Không lùi được: luôn xem trước, lượt xác nhận kèm `consentText`.
 - `contract.renew_batch` {`endMonth` YYYY-MM, `months`, `buildingName`, `reason` / `noReason`}: các HĐ hết hạn trong tháng, ≤ 20
   HĐ một lô, một lần đồng ý (lượt xác nhận kèm `consentText`); HĐ có báo trả bị loại (đọc cảnh báo); còn HĐ ⇒ lô sau với
@@ -46,14 +47,16 @@ soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") k
 
 - `contract.return` {`date` (ngày thật, không tương lai), `datePhrase`, `note` (nội dung thanh lý), `forfeit`}: đủ ngày (kể cả
   "hôm qua", "hôm 3/10") VÀ nội dung ⇒ gọi ngay (bản xem trước là bước xác nhận). Nội dung = lời người dùng kèm việc trả phòng,
-  chép nguyên văn vào `note` (vd "khách trả sớm, quyết toán sau", "quyết toán sau", "phòng sạch, đã bàn giao chìa"). Thiếu ngày,
-  hoặc người dùng không nói gì ngoài trả phòng ⇒ hỏi một câu gộp, không tự lấy hôm nay, không bịa note. `forfeit`
+  chép nguyên văn vào `note` (vd "khách trả sớm, quyết toán sau", "quyết toán sau", "phòng sạch, đã bàn giao chìa"); câu yêu cầu
+  ("ghi nhận trả phòng giúp anh") không phải nội dung. Thiếu ngày, hoặc người dùng không nói gì ngoài trả phòng ⇒ hỏi một câu
+  gộp, không tự lấy hôm nay, không bịa note. `forfeit`
   = true chỉ khi người dùng nói rõ bỏ cọc. Không lùi được: lượt xác nhận kèm `consentText`; sau ghi nhắc quyết toán trên web theo
   `nextStep`. `return_date_future` ⇒ hỏi khách đã dọn chưa, chưa ⇒ báo trả.
 - `contract.occupant_add` / `contract.occupant_remove` {`customerPhone` (ưu tiên) hoặc `customerName`}: ghi thẳng, đọc lại
   `result.text`; không bớt người đại diện. Khách chưa có trong CRM ⇒ tạo bằng `crm_customer_create` (nếu có) hoặc làm trên web.
 - `contract.draft` {`startDate`, `endDate`, `rentPrice`, `deposit`, khách tuỳ chọn}: chỉ là NHÁP, ký trên web, không giữ phòng,
-  không thu tiền. Người dùng nói thời hạn "N tháng / N năm" kèm ngày bắt đầu ⇒ `endDate` = `startDate` + N tháng − 1 ngày.
+  không thu tiền. Người dùng nói thời hạn "N tháng / N năm" kèm ngày bắt đầu ⇒ `endDate` = `startDate` + N tháng − 1 ngày. Không
+  nói ngày bắt đầu ⇒ hỏi, không tự lấy hôm nay.
 
 ## Không qua bot
 

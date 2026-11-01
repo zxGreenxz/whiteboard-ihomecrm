@@ -12,7 +12,7 @@ import { CONFIRM_INVALID_DETAILS, isRequestIdShapeDetail, requestIdShapeDetail }
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
 import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
-import { CONTRACT_NOTICE_CANCEL } from './contract-action-contract.mjs';
+import { CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK } from './contract-action-contract.mjs';
 
 // Vòng đời một lệnh ghi qua broker thật (NEN-CHUNG-THAO-TAC-GHI.md mục 3): needs_input là kết quả thường, sàn xác nhận
 // cho money, requestId do connector cấp, token một lần gắn nội dung, lượt 2 gửi bản đã giải + basis của lượt 1,
@@ -87,10 +87,21 @@ test('invalid_params do GIÁ TRỊ người dùng nói (lý do "đổi ý" < 8 k
   const short = await env.call('crm_action_run', { action: 'contract.notice_cancel', params: { buildingName: 'Toà A', roomName: '101', reason: 'đổi ý' } });
   assert.deepEqual([short.outcome, short.reason, short.applied], ['needs_input', 'invalid_params', false]);
   assert.match(short.detail, /^Thiếu hoặc sai: reason \(/);
-  // Lời người dùng chỉ có "đổi ý" (không đủ 8 ký tự) ⇒ hỏi lại; câu cho phép ghép chỉ dùng chữ người dùng đã nói, không bịa thêm.
-  assert.match(short.huongDan, /Chỉ hỏi lại khi người dùng chưa nói giá trị cần có hoặc lời họ không đủ \(vd lý do chỉ "đổi ý"\); không bịa, không tự viết thêm/);
-  assert.match(short.huongDan, /phần do bot chọn/);
+  // Lời người dùng chỉ có "đổi ý" (không đủ 8 ký tự) ⇒ hỏi lại; ghép chỉ dùng cụm người dùng nói VỀ lý do, không ghép câu yêu cầu
+  // ("302 toà 80 huỷ báo trả, đổi ý" ⇏ lý do "huỷ báo trả, đổi ý") hay tên thao tác (review #377).
+  assert.match(short.huongDan, /Giá trị người dùng nói mà ngắn \/ sai khuôn \(vd lý do chỉ "đổi ý", giữ phòng 8 giờ\) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
+  assert.match(short.huongDan, /KHÔNG ghép câu yêu cầu, tên thao tác, chủ ngữ hay từ đệm cho đủ khuôn/);
   assert.deepEqual(env.requests, [], 'không gửi gì xuống CRM');
+});
+
+test('giữ phòng 8 giờ: SQL trả invalid_params (chỉ 6 / 12 / 24) ⇒ hướng dẫn hỏi lại, không tự đổi; connector không tự gọi lại', async t => {
+  // Review #377: room_lock ghi thẳng (chính sách never) ⇒ bot tự đổi 8 thành 6 / 12 là khoá phòng sai thời gian người dùng nói.
+  const env = setup(t, { action: ['sale_phong.lock_room'], respond: () => ({ kind: 'needs_input', reason: 'invalid_params' }),
+    catalog: createActionCatalog([CONTRACT_ROOM_LOCK], { keys: ['sale_phong.lock_room'] }) });
+  const locked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { buildingName: 'Toà A', roomName: '302', hours: 8 } });
+  assert.deepEqual([locked.outcome, locked.reason, locked.applied], ['needs_input', 'invalid_params', false]);
+  assert.match(locked.huongDan, /giữ phòng 8 giờ\) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
+  assert.equal(env.requests.length, 1, 'chỉ một lần gửi SQL');
 });
 
 test('money: lượt 1 luôn xem trước (requestId do connector cấp) ⇒ lượt 2 gửi đúng bản đã giải + basis của lượt 1; token một lần', async t => {

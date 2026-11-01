@@ -139,8 +139,8 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
   // Skill nói đúng huongDan invalid_params của máy chủ: sửa phần mình chọn; giá trị có trong lời người dùng ⇒ dùng / ghép nguyên văn;
   // lời không đủ (lý do chỉ "đổi ý") ⇒ hỏi lại, không bịa.
   assert.match(core, /sửa phần MÌNH chọn \(tên \/ kiểu tham số, định dạng ngày,\s+tham số thừa\)/);
-  assert.match(core, /giá trị có trong lời người dùng ⇒ dùng \/ ghép nguyên văn rồi gọi lại/);
-  assert.match(core, /Chỉ hỏi lại khi\s+người dùng chưa nói giá trị cần có hoặc lời họ không đủ \(vd lý do chỉ "đổi ý"\); không bịa, không tự viết thêm/);
+  assert.match(core, /cụm người dùng nói về chính giá trị đó ⇒ dùng \/ ghép nguyên văn rồi gọi lại \(không\s+thêm câu yêu cầu, tên thao tác, từ đệm\)/);
+  assert.match(core, /Giá trị người dùng nói mà ngắn \/ sai khuôn \(vd lý do chỉ "đổi ý", giữ phòng 8 giờ\) hoặc\s+họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
   // confirm if_required + chính sách DB never ⇒ ghi ngay ở pha auto (action-runtime.mjs).
   assert.match(core, /`confirm: if_required`: máy chủ có thể GHI NGAY/);
   assert.match(core, /`confirm: always`[^\n]*luôn trả bản xem trước/);
@@ -148,23 +148,52 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
 
 test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người dùng đã nói; gọi skill_view bằng tên trần', () => {
   const core = skillText(CORE_SKILL), contracts = skillText(PAGE_SKILLS.contract), invoices = skillText(PAGE_SKILLS.invoice);
-  // HĐn C06 / HD-M02: luật "mơ hồ ⇒ hỏi một câu" CHỈ cho báo trả (SOUL dòng 22), không còn áp chung cho mọi if_required.
+  // HĐn C06 / HD-M02: luật "mơ hồ ⇒ hỏi một câu" CHỈ cho báo trả (SOUL dòng 22), không còn áp chung cho mọi if_required — nhưng KHÔNG
+  // đè các ca hỏi riêng của từng trang (review #377: "giữ 302 tám tiếng" ⇒ hỏi chọn 6 / 12 / 24; người nhận "anh/chị" trơn ⇒ hỏi).
+  const tasks = skillText(PAGE_SKILLS.task);
   assert.doesNotMatch(core, /ý còn mơ hồ thì hỏi/);
-  assert.match(core, /Hỏi trước khi gọi CHỈ khi: nói "trả phòng" kèm ngày dọn đi\s+TƯƠNG LAI/);
-  assert.match(core, /Không hỏi lại điều họ đã nói/);
-  // Lý do / nội dung lấy nguyên văn lời người dùng, không tự đếm ký tự; "trước" sau số tiền không phải ngày; không nói ngày ⇒ hôm nay.
-  assert.match(core, /dùng NGUYÊN VĂN lời người dùng trong tin \(ghép các ý họ đã nói được, vd lý do "khách ở tiếp"/);
-  assert.match(core, /không tự đếm ký tự trước khi gọi — máy chủ kiểm khuôn/);
-  assert.match(core, /không nói ngày ⇒ bỏ \(ngày thu mặc định hôm nay\)/);
-  assert.match(core, /"trước" \/ "sau" đứng sau số tiền\s+\("ck 2 củ trước"\) là trả trước \/ trả sau, không phải ngày/);
+  assert.match(core, /Hỏi trước khi gọi khi: nói "trả phòng" kèm ngày dọn đi\s+TƯƠNG LAI/);
+  assert.match(core, /giá trị họ nói không hợp khuôn;\s+và các ca hỏi riêng của từng trang \(giờ giữ phòng khác 6 \/ 12 \/ 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh\/chị" trơn ⇒ hỏi\s+giao cho ai…\)/);
+  assert.match(core, /Ngoài các ca đó, không hỏi lại điều người dùng đã nói/);
+  assert.match(contracts, /N giờ khác ⇒ hỏi chọn mức gần nhất, không tự đổi/);
+  assert.match(tasks, /"anh\/chị" đứng một mình là\s+mơ hồ ⇒ hỏi/);
+  // Lý do / nội dung: chỉ cụm người dùng nói VỀ chính giá trị đó (lý do = vì sao); không ghép câu yêu cầu, tên thao tác, chủ ngữ, từ đệm.
+  assert.match(core, /dùng NGUYÊN VĂN cụm người dùng nói VỀ chính giá trị đó \(lý do = vì sao, vd "khách ở tiếp"/);
+  assert.match(core, /KHÔNG ghép câu yêu cầu, tên thao tác \("huỷ báo trả", "gia hạn"\),\s+chủ ngữ hay từ đệm cho đủ ký tự/);
+  assert.match(core, /Không tự đếm ký tự trước khi gọi — máy chủ kiểm khuôn/);
+  // Ngày mặc định hôm nay CHỈ cho ngày thu của invoice.collect; ngày bắt buộc khác (trả phòng, báo trả, nháp HĐ) ⇒ hỏi.
+  assert.doesNotMatch(core, /không nói ngày ⇒ bỏ/);
+  assert.match(core, /Ngày thu của `invoice\.collect` không nói ⇒ bỏ \(máy chủ lấy hôm nay\)/);
+  assert.match(core, /ngày bắt\s+buộc khác \(trả phòng, báo trả, nháp HĐ\) không nói ⇒ hỏi, không tự lấy hôm nay/);
+  assert.match(core, /"trước" \/ "sau" đứng sau số tiền \("ck 2 củ\s+trước"\) là trả trước \/ trả sau, không phải ngày/);
   // HD-M21 / HD-M02: hai việc trong một tin ⇒ làm NGAY trong lượt đó (việc ghi thẳng gọi luôn, việc cần xem trước đưa bản xem trước);
-  // lời đồng ý chỉ xác nhận bản xem trước người dùng đã thấy (SOUL dòng 18).
+  // lời đồng ý chỉ xác nhận bản xem trước người dùng đã thấy (SOUL dòng 18). Bỏ giữa chừng ⇒ nói rõ việc nào đã ghi, việc nào chưa.
   assert.match(core, /làm lần lượt NGAY trong lượt đó: việc ghi thẳng mà lời đã đủ thì gọi luôn/);
   assert.match(core, /lời đồng ý chỉ xác nhận bản xem trước người\s+dùng đã thấy/);
+  assert.match(core, /nói rõ việc nào ĐÃ ghi \(vd báo trả đã ghi thẳng trong cùng tin\) và việc nào CHƯA ghi — chỉ nói "em chưa ghi gì" khi\s+chưa ghi việc nào/);
+  // notice_cancel (SOUL dòng 22, review #377): ba lý do cấm + không ghép câu yêu cầu / tên thao tác; "đổi ý" quá ngắn ⇒ hỏi.
+  assert.match(contracts, /KHÔNG dùng "theo yêu cầu", "huỷ\s+báo trả", "khách yêu cầu"; không ghép câu yêu cầu \("302 toà 80 huỷ báo trả"\), tên thao tác hay từ đệm cho đủ ký tự/);
+  assert.match(contracts, /chỉ nêu cụm ngắn hơn khuôn\s+\(vd "đổi ý"\) ⇒ hỏi "Khách huỷ báo trả vì sao ạ\?"/);
+  // Cùng luật ở các chỗ khác có lý do / nội dung: gia hạn, trả phòng, điều chỉnh hoá đơn, huỷ phiếu chi.
+  assert.match(contracts, /không ghép "gia hạn" hay câu yêu cầu cho đủ ký tự/);
+  assert.match(contracts, /câu yêu cầu\s+\("ghi nhận trả phòng giúp anh"\) không phải nội dung/);
+  assert.match(invoices, /lời người dùng nêu VÌ SAO \("anh tính nhầm", "khách xin giảm"\) là lý do ⇒ `reason` nguyên\s+văn, không ghép câu yêu cầu hay tên thao tác cho đủ ký tự/);
+  assert.doesNotMatch(invoices, /lời người dùng đã nói là lý do/);
+  const expenses = skillText(PAGE_SKILLS.expense);
+  assert.doesNotMatch(expenses, /luôn hỏi lý do/);
+  assert.match(expenses, /đã nêu vì sao ⇒ truyền nguyên văn; chưa nêu hoặc ngắn hơn khuôn\s+⇒ hỏi; không ghép "huỷ phiếu", câu yêu cầu hay từ đệm cho đủ ký tự/);
+  // Ngày bắt buộc từng trang: không tự lấy hôm nay (báo trả, trả phòng, nháp HĐ). "Hôm nay" chỉ có ở ngày thu của invoice.collect.
+  assert.match(contracts, /không nói ngày ⇒ hỏi, không tự lấy hôm nay/);
+  assert.match(contracts, /hỏi một câu\s+gộp, không tự lấy hôm nay, không bịa note/);
+  assert.match(contracts, /Không\s+nói ngày bắt đầu ⇒ hỏi, không tự lấy hôm nay/);
+  assert.match(invoices, /ngày thu mặc định hôm nay/);
+  // Bỏ giữa chừng khi cùng tin đã ghi việc khác: không nói chung "chưa tạo việc nào".
+  assert.match(tasks, /trong cùng tin đã tạo việc khác ⇒ nói rõ việc nào đã tạo, việc nào chưa/);
+  assert.match(tasks, /`task_quota_\*` ⇒ chạm hạn mức giao việc qua bot trong một giờ, lệnh này\s+chưa tạo việc nào/);
   // HD-M02: "báo trả <ngày>" gọi ngay; chỉ "trả phòng" + ngày tương lai mới hỏi. Lý do gia hạn "khách ở tiếp" truyền nguyên văn.
   assert.doesNotMatch(contracts, /Ý còn mơ hồ \(ngày dọn đi ở tương lai\)/);
   assert.match(contracts, /Người dùng nói "báo trả <ngày>" ⇒ gọi ngay/);
-  assert.match(contracts, /Chỉ khi nói "trả phòng" kèm ngày dọn đi TƯƠNG LAI/);
+  assert.match(contracts, /Chỉ khi\s+nói "trả phòng" kèm ngày dọn đi TƯƠNG LAI/);
   assert.match(contracts, /"khách ở tiếp", "khách xin ở thêm", "khách ở lâu dài"\) ⇒ truyền NGUYÊN VĂN làm `reason`, KHÔNG hỏi lại,\s+không tự đếm ký tự/);
   // HD-X11: "trả phòng hôm 3/10, quyết toán sau" ⇒ note = lời người dùng (ví dụ của SOUL dòng 22), gọi ngay.
   assert.match(contracts, /chép nguyên văn vào `note` \(vd "khách trả sớm, quyết toán sau", "quyết toán sau"/);
@@ -221,9 +250,12 @@ test('mô tả crm_action_*: nêu đủ tên tool cũ được thay + từ khoá
   // askUser (lưới chặn thu tiền) ⇒ câu hỏi lại, không bao giờ câu "sửa … gọi lại" / "ghép". Lý do khác vẫn hỏi người dùng.
   const fix = needsInput({ action: 'contract.notice_cancel', reason: 'invalid_params', detail: 'Thiếu hoặc sai: reason (8–500 ký tự).' }).huongDan;
   assert.match(fix, /Sửa theo detail rồi gọi lại crm_action_run: phần do bot chọn \(tên \/ kiểu tham số, định dạng ngày, tham số thừa\)/);
-  assert.match(fix, /giá trị có trong chính lời người dùng \(dùng hoặc ghép nguyên văn các ý họ đã nói, vd lý do "khách ở tiếp"\)/);
-  assert.match(fix, /tham số tuỳ chọn họ không nói thì bỏ \(vd ngày thu ⇒ hôm nay\)/);
-  assert.match(fix, /Chỉ hỏi lại khi người dùng chưa nói giá trị cần có hoặc lời họ không đủ \(vd lý do chỉ "đổi ý"\); không bịa, không tự viết thêm/);
+  // Review #377: chỉ cụm nói VỀ chính tham số đó — "302 toà 80 huỷ báo trả, đổi ý" không được thành lý do "huỷ báo trả, đổi ý".
+  assert.match(fix, /cụm người dùng nói VỀ chính tham số đó \(lý do = vì sao, vd "khách ở tiếp"\) thì dùng hoặc ghép nguyên văn/);
+  assert.match(fix, /KHÔNG ghép câu yêu cầu, tên thao tác, chủ ngữ hay từ đệm cho đủ khuôn/);
+  assert.match(fix, /tham số tuỳ chọn họ không nói thì bỏ \(vd ngày thu của invoice\.collect ⇒ hôm nay\)/);
+  // Giá trị người dùng nói mà ngắn / sai khuôn ("đổi ý"; giữ phòng 8 giờ khi chỉ có 6 / 12 / 24) ⇒ hỏi lại, không tự đổi.
+  assert.match(fix, /Giá trị người dùng nói mà ngắn \/ sai khuôn \(vd lý do chỉ "đổi ý", giữ phòng 8 giờ\) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
   const ask = needsInput({ action: 'invoice.collect', reason: 'invalid_params', detail: 'Ghi chú nói CHƯA trả', askUser: true }).huongDan;
   assert.match(ask, /^CHƯA ghi\. Hỏi lại người dùng theo detail \(không đoán, không tự điền\)/);
   assert.doesNotMatch(ask, /tự sửa|Sửa theo detail|ghép/);

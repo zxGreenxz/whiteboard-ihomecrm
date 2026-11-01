@@ -158,13 +158,16 @@ function paramsOf(value) {
 
 const INPUT_GUIDANCE = 'CHƯA ghi. Hỏi lại người dùng theo detail (không đoán, không tự điền) rồi gọi lại crm_action_run.';
 // 31/10 (SOUL dòng 15 + 22, review #369) + 01/11 (ma trận d31: bot hỏi lại lý do "khách ở tiếp", note "quyết toán sau" dù người dùng đã
-// nói): invalid_params ⇒ sửa theo detail rồi gọi lại — phần BOT chọn (tên / kiểu tham số, định dạng ngày, tham số thừa), giá trị CÓ TRONG
-// lời người dùng (dùng / ghép nguyên văn các ý họ đã nói), tham số tuỳ chọn họ không nói thì bỏ (ngày thu ⇒ hôm nay). Chỉ hỏi lại khi người
-// dùng chưa nói giá trị cần có hoặc lời họ không đủ (vd lý do chỉ "đổi ý" < 8 ký tự của contract.notice_cancel — ghi thẳng, chữ bot viết
-// thêm vào thẳng CRM). Lưới chặn thu tiền (collect-guard) gọi needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "sửa … gọi lại".
+// nói; review #377): invalid_params ⇒ sửa theo detail rồi gọi lại — phần BOT chọn (tên / kiểu tham số, định dạng ngày, tham số thừa); cụm
+// người dùng nói VỀ chính tham số đó (lý do = vì sao) thì dùng / ghép nguyên văn, KHÔNG ghép câu yêu cầu, tên thao tác, chủ ngữ hay từ đệm
+// cho đủ khuôn ("302 toà 80 huỷ báo trả, đổi ý" ⇒ không thành lý do "huỷ báo trả, đổi ý" — SOUL dòng 22 cấm "huỷ báo trả", "theo yêu cầu");
+// tham số tuỳ chọn họ không nói thì bỏ (ngày thu của invoice.collect ⇒ hôm nay). Giá trị người dùng nói mà ngắn / sai khuôn (lý do chỉ
+// "đổi ý", giữ phòng 8 giờ khi chỉ có 6 / 12 / 24) hoặc chưa nói ⇒ hỏi lại, không tự đổi: thao tác ghi thẳng ⇒ chữ / số bot tự đặt vào thẳng
+// CRM. Lưới chặn thu tiền (collect-guard) gọi needsInput với askUser ⇒ INPUT_GUIDANCE, không bao giờ câu "sửa … gọi lại".
 const PARAMS_GUIDANCE = 'CHƯA ghi. Sửa theo detail rồi gọi lại crm_action_run: phần do bot chọn (tên / kiểu tham số, định dạng ngày, tham số thừa); ' +
-  'giá trị có trong chính lời người dùng (dùng hoặc ghép nguyên văn các ý họ đã nói, vd lý do "khách ở tiếp"); tham số tuỳ chọn họ không nói thì bỏ ' +
-  '(vd ngày thu ⇒ hôm nay). Chỉ hỏi lại khi người dùng chưa nói giá trị cần có hoặc lời họ không đủ (vd lý do chỉ "đổi ý"); không bịa, không tự viết thêm.';
+  'cụm người dùng nói VỀ chính tham số đó (lý do = vì sao, vd "khách ở tiếp") thì dùng hoặc ghép nguyên văn, KHÔNG ghép câu yêu cầu, tên thao tác, ' +
+  'chủ ngữ hay từ đệm cho đủ khuôn; tham số tuỳ chọn họ không nói thì bỏ (vd ngày thu của invoice.collect ⇒ hôm nay). Giá trị người dùng nói mà ' +
+  'ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa.';
 const UNKNOWN_GUIDANCE = 'CHƯA ghi. Gọi crm_action_list để lấy đúng mã thao tác và khuôn tham số.';
 const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn thì dùng lại được. Hỏi người dùng có đồng ý ghi không; họ đồng ý rõ thì gọi lại y nguyên action, ' +
   'params, requestId, confirmToken kèm consentText = nguyên văn câu trả lời đó. Họ chỉ nói thêm chi tiết hay đổi nội dung thì không gửi xác nhận.';
