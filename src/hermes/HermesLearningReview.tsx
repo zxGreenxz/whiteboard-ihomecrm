@@ -21,7 +21,9 @@ interface State {
 }
 const initial = (): State => ({ busy: false, loaded: false, message: null, pendingCount: 0, pending: [], pendingAfter: null, history: [],
   cursor: null, audits: [], selected: null, unknown: null });
-const kinds: Record<HermesLearningProposal['kind'], string> = { skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ' };
+const kinds: Record<HermesLearningProposal['kind'], string> = { skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ', audit_warning: 'Cảnh báo kiểm học' };
+const actions: Record<string, string> = { create: 'tạo', edit: 'sửa', patch: 'sửa', write_file: 'ghi file', remove_file: 'xoá file', delete: 'xoá',
+  archive: 'lưu trữ', rollback: 'khôi phục' };
 const verbs: Record<Decision, string> = { approve: 'Duyệt', reject: 'Bỏ' };
 // Cùng ngưỡng "outbox quá cũ" của job nạp trên máy chủ Hermes (staleAfterHours mặc định 36).
 const STALE_AFTER_MS = 36 * 3_600_000;
@@ -36,11 +38,28 @@ function sourceLine(item: HermesLearningProposal) {
   if (source.type === 'curator_ledger') {
     const skill = text(source.skill), session = text(source.sessionId, 64);
     const who = source.actor === 'curator' ? 'curator (tự học sau phiên)' : source.actor === 'agent' ? 'trợ lý trong phiên' : text(source.actor);
-    parts.push(`Skill ${skill ?? '(không rõ)'}${who ? ` · ${who} ${source.action === 'create' ? 'tạo' : 'sửa'}` : ''}`);
+    const action = typeof source.action === 'string' ? actions[source.action] ?? text(source.action, 40) : null;
+    parts.push(`Skill ${skill ?? '(không rõ)'}${who ? ` · ${who} ${action ?? 'đổi'}` : ''}`);
     if (session) parts.push(`phiên …${session.slice(-8)}`);
     if (source.diffUnavailable === true) parts.push('không dựng lại được bản trước — nội dung là cả file');
+    // Mã đầy đủ: người vận hành cần đúng mã này để gỡ bài học khỏi trợ lý sau khi Bỏ.
+    const ledgerId = text(source.ledgerId);
+    if (ledgerId) parts.push(`mã sổ curator (dùng khi gỡ): ${ledgerId}`);
   } else if (source.type === 'memory') {
     parts.push(`Bộ nhớ ${text(source.file) ?? ''}`.trim());
+    const entry = text(source.entrySha256, 64);
+    if (entry) parts.push(`mã mục bộ nhớ (dùng khi gỡ): ${entry.slice(0, 12)}`);
+  } else if (source.type === 'skill_unledgered') {
+    parts.push(`File ${text(source.file, 160) ?? '(không rõ)'} đổi ngoài sổ curator — nội dung là cả file hiện tại`);
+  } else if (source.type === 'audit_finding') {
+    const where = text(source.file, 160) ?? text(source.skill);
+    if (where) parts.push(where);
+    const ledgerId = text(source.ledgerId);
+    if (ledgerId) parts.push(`mã sổ curator: ${ledgerId}`);
+  }
+  if (typeof source.part === 'number' && typeof source.parts === 'number') parts.push(`phần ${source.part}/${source.parts} của cùng bài học (xem đủ các phần)`);
+  if (source.contentTruncated === true) {
+    parts.push(`BỊ CẮT: còn ${typeof source.omittedChars === 'number' ? source.omittedChars : 'nhiều'} ký tự chưa hiện, nhờ người vận hành xem tại hồ sơ trợ lý`);
   }
   const reasons = Array.isArray(source.reasons) ? source.reasons.map(reason => text(reason, 120)).filter(Boolean).slice(0, 3) : [];
   if (reasons.length) parts.push(`dấu hiệu: ${reasons.join('; ')}`);
@@ -170,6 +189,8 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
       và không vào danh sách này. Bài học về cách <strong>ghi dữ liệu CRM</strong> được đưa vào đây để chủ/quản trị viên xem lại.
       Lưu ý: bài học <strong>đã có hiệu lực</strong> từ lúc trợ lý tự ghi — trợ lý không chờ duyệt. <strong>Duyệt</strong> ghi nhận bài học đúng;
       {' '}<strong>Bỏ</strong> chỉ ghi nhận bài học sai — việc gỡ bài học khỏi trợ lý hiện do người vận hành làm tay.
+      Mục <strong>Cảnh báo kiểm học</strong> là điều job kiểm thấy bất thường (tên công cụ đã nghỉ, skill đổi ngoài sổ, thao tác lạ):
+      Duyệt nghĩa là đã xem và xử lý, Bỏ nghĩa là không cần xử lý.
       Số # cũng dùng cho tin nhắn Zalo tổng hợp buổi tối khi tính năng đó được bật.</p>
     {state.loaded && <AuditStatus audits={state.audits} />}
     {state.busy && <p role="status" className="text-sm">Đang làm việc với máy chủ…</p>}
@@ -207,10 +228,16 @@ export function HermesLearningReview({ userId, organizationId, currentScope }: P
       Xem thêm đề xuất{remaining ? ` (còn ${remaining})` : ''}</Button>}
     {state.history.length > 0 && <div aria-label="Lịch sử duyệt" className="space-y-2 text-sm">
       <h3 className="font-medium">Lịch sử</h3>
-      {state.history.map(item => <p key={item.id} className="break-words text-muted-foreground">
-        #{item.seq} · {item.status === 'approved' ? 'Đã duyệt' : 'Đã bỏ'} · {item.decidedByName ?? 'người duyệt'} · {time(item.decidedAt)}
-        {item.via === 'hermes_connector' ? ' · qua Zalo' : ''} — {item.title}
-        {item.note ? ` — ghi chú: ${item.note}` : ''}</p>)}
+      {state.history.map(item => <details key={item.id} className="rounded-lg border p-2">
+        <summary className="cursor-pointer break-words text-muted-foreground">
+          #{item.seq} · {item.status === 'approved' ? 'Đã duyệt' : 'Đã bỏ'} · {item.decidedByName ?? 'người duyệt'} · {time(item.decidedAt)}
+          {item.via === 'hermes_connector' ? ' · qua Zalo' : ''} — {item.title}
+          {item.note ? ` — ghi chú: ${item.note}` : ''}</summary>
+        <div className="mt-2 space-y-2">
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-sans text-sm">{item.content}</pre>
+          {sourceLine(item) && <p className="break-words text-xs text-muted-foreground">{sourceLine(item)}</p>}
+        </div>
+      </details>)}
       {state.cursor && <Button variant="outline" size="sm" disabled={state.busy} onClick={moreHistory}>Xem thêm lịch sử</Button>}
     </div>}
   </section>;

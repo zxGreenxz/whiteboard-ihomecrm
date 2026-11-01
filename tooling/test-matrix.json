@@ -1341,7 +1341,9 @@
     {
       "id": "hermes-learning-audit",
       "sourcePaths": [
-        "infra/hermes-learning-audit/**"
+        "infra/hermes-learning-audit/**",
+        "scripts/hermes-learning-login.mjs",
+        "supabase/migrations/*_hermes_store_learning_role.sql"
       ],
       "suiteId": "node-native",
       "testPatterns": [

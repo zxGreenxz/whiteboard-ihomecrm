@@ -1,6 +1,7 @@
 -- Hermes học có kiểm duyệt (31/10/2026, đợt 2 kế hoạch trị tận gốc; chủ duyệt 31/10).
 -- Hermes tự học (curator sửa skill, cộng bộ nhớ). Chủ chốt "tuỳ loại": sở thích, cách nói chuyện, việc ngoài CRM tự áp dụng;
--- bài học về cách GHI dữ liệu CRM là ĐỀ XUẤT để chủ/admin xem và quyết định — duyệt SAU (chủ chốt 31/10): bài học có hiệu lực
+-- bài học về cách GHI dữ liệu CRM là ĐỀ XUẤT để chủ/admin xem và quyết định (loại audit_warning: điều job kiểm thấy bất thường, đi
+-- cùng hàng duyệt thay vì nằm im trong báo cáo trên máy chủ) — duyệt SAU (chủ chốt 31/10): bài học có hiệu lực
 -- ngay, job kiểm học tập trên host VPS (infra/hermes-learning-audit) gom mỗi tối rồi nạp vào kho này; duyệt hoặc bỏ ở
 -- Cài đặt › Hermes › "Bài học chờ duyệt". Nội dung giữ nguyên văn (chỉ bí mật kỹ thuật bị che từ phía job), không che sau quyết định.
 --  1. Bảng app_private.hermes_learning_proposals: một dòng một đề xuất của một trợ lý (công ty, người dùng, trợ lý, hồ sơ Hermes),
@@ -8,9 +9,10 @@
 --     một lần (pending → approved | rejected) rồi bất biến làm lịch sử; không xoá. Không cấp bảng cho vai nào.
 --  2. Đọc + duyệt cho người (JWT): giữ khoá users.edit — cùng quyền quản trị chính sách Hermes của công ty — qua require_perm_v1;
 --     lặp lại cùng requestId của cùng người trả lại kết quả cũ, khác nội dung ⇒ PT409. Đọc phân trang (20 đề xuất chờ, 20 dòng
---     lịch sử rút gọn) để phản hồi luôn dưới 1 MiB; kèm "lần kiểm cuối" của từng hồ sơ.
---  3. Nạp cho job host (không JWT, không service_role): vai NOLOGIN riêng hermes_learning_ingest chỉ được gọi đúng hàm nạp
---     (login riêng của job do vận hành tạo ngoài repo, thuộc vai này và KHÔNG thuộc hermes_store_executor). Người dùng phải là
+--     lịch sử, đều đủ nội dung và nguồn) để phản hồi luôn dưới 1 MiB; kèm "lần kiểm cuối" của từng hồ sơ.
+--  3. Nạp cho job host (không JWT, không service_role): vai NOLOGIN riêng hermes_learning_ingest được cấp riêng đúng hàm nạp và không
+--     có quyền bảng nào; như mọi vai, nó vẫn thừa hưởng EXECUTE của PUBLIC trên các hàm chưa thu quyền đó (thu riêng là việc sau).
+--     Login của job do migration riêng tạo (NOLOGIN, thuộc vai này và KHÔNG thuộc hermes_store_executor), bật bằng verifier ngoài repo. Người dùng phải là
 --     thành viên đang hoạt động và có trợ lý ACTIVE. Mỗi lần nạp ghi "lần kiểm cuối" (kể cả không có đề xuất). Trùng khoá ⇒ bỏ qua,
 --     trả riêng các khoá trùng với đề xuất ĐÃ BỎ (bài học bị bỏ mà trợ lý học lại).
 -- Chưa áp TEST/production. Không DROP. Idempotent (chạy lại an toàn).
@@ -32,7 +34,7 @@ BEGIN
     RAISE EXCEPTION 'hermes_learning_dependency_missing'; END IF;
 END $requires$;
 
--- Vai riêng cho job nạp: không đăng nhập, không kế thừa, không đặc quyền; chỉ được gọi hàm nạp (cấp ở cuối file).
+-- Vai riêng cho job nạp: không đăng nhập, không kế thừa, không đặc quyền; quyền riêng duy nhất là gọi hàm nạp (cấp ở cuối file).
 DO $role$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='hermes_learning_ingest') THEN
@@ -51,7 +53,7 @@ CREATE TABLE IF NOT EXISTS app_private.hermes_learning_proposals (
   assistant_id uuid NOT NULL,
   profile text NOT NULL CHECK (profile ~ '^[a-z0-9][a-z0-9_-]{0,63}$'),
   seq bigint NOT NULL CHECK (seq BETWEEN 1 AND 9007199254740990),
-  kind text NOT NULL CHECK (kind IN ('skill_crm_write','memory_crm_write')),
+  kind text NOT NULL CHECK (kind IN ('skill_crm_write','memory_crm_write','audit_warning')),
   -- Phải có ít nhất một ký tự không phải khoảng trắng (btrim chỉ cắt dấu cách: "\n\n" sẽ lọt).
   title text NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200 AND title ~ '[^[:space:]]' AND title !~ '[\x01-\x1F\x7F]'),
   content text NOT NULL CHECK (char_length(content) BETWEEN 1 AND 4000 AND content ~ '[^[:space:]]'
@@ -113,15 +115,14 @@ END $fn$;
 CREATE OR REPLACE TRIGGER hermes_learning_proposals_guard BEFORE UPDATE OR DELETE ON app_private.hermes_learning_proposals
   FOR EACH ROW EXECUTE FUNCTION app_private.hermes_learning_guard_v1();
 
--- p_full=false (lịch sử): nội dung rút còn 300 ký tự, bỏ nguồn — trang đọc luôn dưới trần phản hồi.
-CREATE OR REPLACE FUNCTION app_private.hermes_learning_proposal_json_v1(r app_private.hermes_learning_proposals,p_full boolean)
+-- Đủ nội dung và nguồn cho cả đề xuất chờ lẫn lịch sử (chủ chốt nguyên văn): trang 20 + 20 dòng dài tối đa vẫn dưới trần phản hồi.
+CREATE OR REPLACE FUNCTION app_private.hermes_learning_proposal_json_v1(r app_private.hermes_learning_proposals)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
   SELECT jsonb_build_object('id',r.id,'seq',r.seq,'kind',r.kind,'profile',r.profile,'userId',r.user_id,
     'userName',(SELECT left(p.full_name,120) FROM public.profiles p WHERE p.id=r.user_id),
-    'title',r.title,'content',CASE WHEN p_full THEN r.content ELSE left(r.content,300) END,
-    'contentTruncated',NOT p_full AND char_length(r.content)>300,
-    'source',CASE WHEN p_full THEN r.source ELSE '{}'::jsonb END,
+    'title',r.title,'content',r.content,
+    'source',r.source,
     'detectedAt',to_char(r.detected_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
     'status',r.status,'decidedBy',r.decided_by,
     'decidedByName',(SELECT left(p.full_name,120) FROM public.profiles p WHERE p.id=r.decided_by),
@@ -149,7 +150,7 @@ CREATE OR REPLACE FUNCTION app_private.hermes_learning_result_v1(p_org uuid,p_id
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
   SELECT jsonb_build_object('organizationId',p_org,'decision',p_decision,'replayed',p_replayed,
-    'proposals',COALESCE((SELECT jsonb_agg(app_private.hermes_learning_proposal_json_v1(r,true) ORDER BY r.seq)
+    'proposals',COALESCE((SELECT jsonb_agg(app_private.hermes_learning_proposal_json_v1(r) ORDER BY r.seq)
       FROM app_private.hermes_learning_proposals r WHERE r.organization_id=p_org AND r.id=ANY(p_ids)),'[]'::jsonb))
 $fn$;
 
@@ -193,7 +194,7 @@ BEGIN
 END $fn$;
 
 -- Trang web: đề xuất đang chờ (20 một trang, theo số; trang sau bằng pendingAfterSeq) + lịch sử đã quyết định (20 dòng một trang,
--- mới nhất trước, nội dung rút gọn) + lần kiểm cuối của từng hồ sơ.
+-- mới nhất trước, đủ nội dung) + lần kiểm cuối của từng hồ sơ.
 CREATE OR REPLACE FUNCTION public.hermes_learning_review_v1(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private AS $fn$
@@ -215,11 +216,11 @@ BEGIN
   -- Cùng khoá với nạp/duyệt: số đếm và danh sách đọc trên cùng một trạng thái (không lẫn lô đang nạp dở).
   PERFORM pg_advisory_xact_lock(hashtextextended('hermes-learning:'||v_org::text,0));
   SELECT count(*) INTO v_count FROM app_private.hermes_learning_proposals WHERE organization_id=v_org AND status='pending';
-  SELECT COALESCE(jsonb_agg(app_private.hermes_learning_proposal_json_v1(r,true) ORDER BY r.seq),'[]'::jsonb),count(*) INTO v_pending,v_prows
+  SELECT COALESCE(jsonb_agg(app_private.hermes_learning_proposal_json_v1(r) ORDER BY r.seq),'[]'::jsonb),count(*) INTO v_pending,v_prows
     FROM (SELECT * FROM app_private.hermes_learning_proposals WHERE organization_id=v_org AND status='pending'
       AND (v_after IS NULL OR seq>v_after) ORDER BY seq LIMIT 21) r;
   IF v_prows>20 THEN v_pending:=v_pending-20; END IF;
-  SELECT COALESCE(jsonb_agg(app_private.hermes_learning_proposal_json_v1(r,false) ORDER BY r.decided_at DESC,r.id DESC),'[]'::jsonb),count(*)
+  SELECT COALESCE(jsonb_agg(app_private.hermes_learning_proposal_json_v1(r) ORDER BY r.decided_at DESC,r.id DESC),'[]'::jsonb),count(*)
     INTO v_history,v_rows
     FROM (SELECT * FROM app_private.hermes_learning_proposals WHERE organization_id=v_org AND status<>'pending'
       AND (v_at IS NULL OR (decided_at,id)<(v_at,v_id)) ORDER BY decided_at DESC,id DESC LIMIT 21) r;
@@ -288,7 +289,7 @@ BEGIN
     IF jsonb_typeof(v_item) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(v_item))<>6
       OR NOT (v_item ?& ARRAY['dedupeKey','kind','title','content','source','detectedAt'])
       OR jsonb_typeof(v_item->'dedupeKey') IS DISTINCT FROM 'string' OR (v_item->>'dedupeKey') !~ '^[0-9a-f]{64}$'
-      OR jsonb_typeof(v_item->'kind') IS DISTINCT FROM 'string' OR (v_item->>'kind') NOT IN ('skill_crm_write','memory_crm_write')
+      OR jsonb_typeof(v_item->'kind') IS DISTINCT FROM 'string' OR (v_item->>'kind') NOT IN ('skill_crm_write','memory_crm_write','audit_warning')
       OR jsonb_typeof(v_item->'title') IS DISTINCT FROM 'string' OR jsonb_typeof(v_item->'content') IS DISTINCT FROM 'string'
       OR jsonb_typeof(v_item->'source') IS DISTINCT FROM 'object' OR jsonb_typeof(v_item->'detectedAt') IS DISTINCT FROM 'string'
       OR (v_item->>'detectedAt') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
@@ -315,7 +316,7 @@ BEGIN
 END $fn$;
 
 ALTER FUNCTION app_private.hermes_learning_guard_v1() OWNER TO postgres;
-ALTER FUNCTION app_private.hermes_learning_proposal_json_v1(app_private.hermes_learning_proposals,boolean) OWNER TO postgres;
+ALTER FUNCTION app_private.hermes_learning_proposal_json_v1(app_private.hermes_learning_proposals) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_learning_admin_v1(uuid) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_learning_result_v1(uuid,uuid[],text,boolean) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_learning_apply_v1(uuid,uuid,uuid[],text,text,uuid,text) OWNER TO postgres;
@@ -323,7 +324,7 @@ ALTER FUNCTION public.hermes_learning_review_v1(jsonb) OWNER TO postgres;
 ALTER FUNCTION public.hermes_learning_decide_v1(jsonb) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_store_learning_ingest_v1(jsonb) OWNER TO postgres;
 REVOKE ALL ON FUNCTION app_private.hermes_learning_guard_v1() FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
-REVOKE ALL ON FUNCTION app_private.hermes_learning_proposal_json_v1(app_private.hermes_learning_proposals,boolean) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
+REVOKE ALL ON FUNCTION app_private.hermes_learning_proposal_json_v1(app_private.hermes_learning_proposals) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_learning_admin_v1(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_learning_result_v1(uuid,uuid[],text,boolean) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_learning_apply_v1(uuid,uuid,uuid[],text,text,uuid,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import nodePath from 'node:path';
 import test from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { IngestError, parseJobConfig, pgJsonText, planBatches, proposalProblem, readPrivateFile, runIngest, sendBatches } from './ingest.mjs';
 
@@ -238,10 +242,83 @@ test('chạy trọn: đọc cấu hình + outbox (cả outbox cũ) + bí mật, 
   assert.equal(lines.length, 1);
   const summary = JSON.parse(lines[0]);
   assert.deepEqual([summary.event, summary.inserted, summary.duplicates, summary.outboxFiles], ['learning_ingest', 2, 1, 2]);
-  assert.deepEqual([summary.rejectedDuplicates, summary.rejectedDuplicateKeys], [1, [key(2)]]);
+  assert.deepEqual([summary.relearned, summary.relearnedKeys, summary.replayedRejected], [1, [key(2)], 0]);
   assert.deepEqual(summary.skipped, [{ profile: 'tkt', reason: 'no_mapping', proposals: 1 }]);
   assert.ok(!lines[0].includes(password));
   assert.ok(!lines[0].includes('crm_action_run'), 'tóm tắt không chép nội dung đề xuất');
+});
+
+test('đề xuất vừa Bỏ được gửi lại từ outbox cũ là nạp lại, chỉ khoá trong lần kiểm mới nhất mới là học lại', async () => {
+  const older = outbox([proposal(7)], { generatedAt: '2026-10-29T13:40:00Z' });
+  const warning = proposal(3, { kind: 'audit_warning' });
+  const fake = fakeTransport({ rejected: new Set([key(2), key(3), key(7)]) });
+  const { status, lines } = await run(scenario([outbox([proposal(2), warning]), older]).io, fake.transport);
+  assert.equal(status, 0);
+  const summary = JSON.parse(lines[0]);
+  // key(7): chỉ ở outbox cũ ⇒ nạp lại. key(3): cảnh báo lần nào cũng thấy lại ⇒ không gọi là học lại. key(2): bài học mới thấy lại.
+  assert.deepEqual([summary.relearned, summary.relearnedKeys, summary.replayedRejected], [1, [key(2)], 2]);
+});
+
+test('cảnh báo của job kiểm (audit_warning) đi cùng đường đề xuất', () => {
+  assert.equal(proposalProblem(proposal(1, { kind: 'audit_warning' }), NOW), null);
+  assert.equal(proposalProblem(proposal(1, { kind: 'khac' }), NOW), 'kind');
+});
+
+const here = nodePath.dirname(fileURLToPath(import.meta.url));
+/** Thư mục liên kết như `current/` của bản phát hành; Windows không có quyền symlink thì dùng junction. */
+function linkedDirectory(t, target) {
+  const root = mkdtempSync(nodePath.join(tmpdir(), 'learning-ingest-link-')), link = nodePath.join(root, 'current');
+  let kind = null;
+  for (const type of ['dir', 'junction']) {
+    try { symlinkSync(target, link, type); kind = type; break; } catch { /* thử kiểu sau */ }
+  }
+  t.after(() => {
+    try { unlinkSync(link); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    rmdirSync(root);
+  });
+  return kind && link;
+}
+const runThrough = link => spawnSync(process.execPath, [nodePath.join(link, 'ingest.mjs'), '--config', '/khong/co/file-nay.json'],
+  { encoding: 'utf8', timeout: 20_000 });
+const ranIngest = result => result.status === 2 && JSON.parse(result.stderr.trim()).event === 'learning_ingest_failed';
+
+test('job nạp chạy thật khi khởi động qua thư mục symlink như /opt/ihome-hermes/current', t => {
+  const link = linkedDirectory(t, here);
+  if (!link) { t.skip('máy không tạo được symlink/junction'); return; }
+  assert.notEqual(nodePath.join(link, 'ingest.mjs'), realpathSync(nodePath.join(link, 'ingest.mjs')));
+  const result = runThrough(link);
+  assert.equal(ranIngest(result), true, `job không chạy qua liên kết: status=${result.status} stderr=${result.stderr}`);
+});
+
+test('đột biến: so đường bằng chữ như bản cũ thì job thoát 0 mà không chạy gì', t => {
+  const stage = mkdtempSync(nodePath.join(tmpdir(), 'learning-ingest-mutant-'));
+  t.after(() => rmSync(stage, { recursive: true, force: true }));
+  const source = readFileSync(nodePath.join(here, 'ingest.mjs'), 'utf8')
+    .replace(/(from |import\()'(\.\.?\/[^']+)'/g, (_, prefix, name) => `${prefix}'${pathToFileURL(nodePath.join(here, name)).href}'`);
+  const anchor = 'if (isMainModule(process.argv[1], import.meta.url)) {';
+  assert.equal(source.split(anchor).length, 2, 'điểm đột biến phải xuất hiện đúng một lần');
+  const mutated = source.replace(anchor, "if (import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1] ?? '').href) {");
+  for (const [name, text] of [['fixed', source], ['mutant', mutated]]) {
+    mkdirSync(nodePath.join(stage, name)); writeFileSync(nodePath.join(stage, name, 'ingest.mjs'), text);
+  }
+  const fixed = linkedDirectory(t, nodePath.join(stage, 'fixed')), mutant = linkedDirectory(t, nodePath.join(stage, 'mutant'));
+  if (!fixed || !mutant) { t.skip('máy không tạo được symlink/junction'); return; }
+  assert.equal(ranIngest(runThrough(fixed)), true, 'bản sửa chạy qua liên kết');
+  const result = runThrough(mutant);
+  assert.deepEqual([result.status, result.stdout, result.stderr], [0, '', ''], 'bản cũ thoát 0 im lặng');
+});
+
+test('unit nạp: không thấy bí mật và dữ liệu của connector, vẫn đọc được đúng ba file của mình', () => {
+  const unit = readFileSync(nodePath.join(here, 'systemd', 'ihome-hermes-learning-ingest.service'), 'utf8');
+  const hidden = unit.split(/\r?\n/).filter(line => line.startsWith('InaccessiblePaths=')).flatMap(line => line.slice(18).split(/\s+/));
+  for (const path of ['/etc/ihome-hermes/store-password', '/etc/ihome-hermes/keys', '/etc/ihome-hermes/connector.json',
+    '/var/lib/ihome-hermes-connector', '/var/lib/ihome-hermes-profiles', '/var/lib/ihome-hermes-learning-audit/private']) {
+    assert.ok(hidden.includes(`-${path}`), path);
+  }
+  const example = JSON.parse(readFileSync(nodePath.join(here, 'learning-audit.example.json'), 'utf8'));
+  for (const needed of ['/etc/ihome-hermes/learning-audit.json', example.store.passwordFile, example.store.caFile, example.outboxDir]) {
+    assert.ok(!hidden.some(entry => needed === entry.slice(1) || needed.startsWith(`${entry.slice(1)}/`)), needed);
+  }
 });
 
 test('chạy trọn: nhịp kiểm không có đề xuất vẫn gọi CRM; outbox quá cũ ⇒ mã 3 (job kiểm đã ngừng)', async () => {

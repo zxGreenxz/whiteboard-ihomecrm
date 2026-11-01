@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql": {
-      "sha256": "8cb3f5c85dd428c9b94b82321de8536b57282e7ec140eb0ae52b051076b5fb34",
+      "sha256": "a5e067843e3d805b182700f5a0542674fa3b8dab1ab23079c70001920231f673",
       "missingObjects": [
         "table:app_private.hermes_learning_proposals",
         "table:app_private.hermes_learning_audit_runs",

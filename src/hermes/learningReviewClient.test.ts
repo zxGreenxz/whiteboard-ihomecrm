@@ -7,7 +7,7 @@ const URL = 'https://abcdefghijklmnopqrst.supabase.co';
 const scope = { userId: USER, organizationId: ORG, generation: 0 };
 const getSession = async () => ({ data: { session: { access_token: 'header.payload.signature', user: { id: USER } } }, error: null });
 const item = (id = P1, extra: Record<string, unknown> = {}) => ({ id, seq: 3, kind: 'skill_crm_write', profile: 'owner', userId: USER, userName: 'Chủ',
-  title: 'Skill crm-task-management: curator sửa', content: 'Dùng crm_action_run task.create', contentTruncated: false,
+  title: 'Skill crm-task-management: curator sửa', content: 'Dùng crm_action_run task.create',
   source: { type: 'curator_ledger', skill: 'crm-task-management' }, detectedAt: '2026-10-31T01:30:00.123456Z', status: 'pending',
   decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null, ...extra });
 const decidedItem = (id = P1, status = 'approved', note: string | null = null) => item(id, { status, decidedBy: USER, decidedByName: 'Chủ',

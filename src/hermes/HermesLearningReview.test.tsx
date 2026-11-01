@@ -14,8 +14,8 @@ const scope = { userId: USER, organizationId: ORG, generation: 0 }, currentScope
 type Item = Record<string, unknown> & { id: string; status: string; seq: number };
 const proposal = (id: string, seq: number, extra: Record<string, unknown> = {}): Item => ({ id, seq, kind: 'skill_crm_write', profile: 'owner', userId: USER,
   userName: 'Nguyễn Chủ', title: `Skill crm-task-management: curator sửa lúc 31/10 08:30 — bài học ghi CRM #${seq}`,
-  content: 'For task creation, rediscover crm_task_create before creating a task.', contentTruncated: false,
-  source: { type: 'curator_ledger', skill: 'crm-task-management', actor: 'curator', action: 'patch', sessionId: '20261017_064219_e91586aa',
+  content: 'For task creation, rediscover crm_task_create before creating a task.',
+  source: { type: 'curator_ledger', ledgerId: 'abc123def456', skill: 'crm-task-management', actor: 'curator', action: 'patch', sessionId: '20261017_064219_e91586aa',
     reasons: ['tool ghi crm_task_create'] },
   detectedAt: '2026-10-31T01:30:00.000000Z', status: 'pending', decidedBy: null, decidedByName: null, decidedAt: null, note: null, via: null,
   ...extra });
@@ -66,6 +66,7 @@ describe('Cài đặt › Hermes › Bài học chờ duyệt', () => {
     const article = await screen.findByRole('article', { name: 'Đề xuất #3' });
     expect(within(article).getByText('For task creation, rediscover crm_task_create before creating a task.')).toBeTruthy();
     expect(within(article).getByText(/Skill crm-task-management · curator \(tự học sau phiên\) sửa · phiên …e91586aa/)).toBeTruthy();
+    expect(within(article).getByText(/mã sổ curator \(dùng khi gỡ\): abc123def456/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Bài học chờ duyệt (1)' })).toBeTruthy();
     fireEvent.click(within(article).getByRole('button', { name: 'Duyệt' }));
     fireEvent.change(within(article).getByLabelText('Ghi chú (không bắt buộc)'), { target: { value: '  Đúng, tạo việc qua task.create  ' } });
@@ -77,6 +78,9 @@ describe('Cài đặt › Hermes › Bài học chờ duyệt', () => {
     expect(writes[0]!.p.requestId).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     const historyBlock = screen.getByLabelText('Lịch sử duyệt');
     expect(within(historyBlock).getByText(/#3 · Đã duyệt · Quản trị/)).toBeTruthy();
+    // Lịch sử xem được đủ nội dung và mã sổ curator để gỡ sau khi Bỏ.
+    expect(within(historyBlock).getByText('For task creation, rediscover crm_task_create before creating a task.')).toBeTruthy();
+    expect(within(historyBlock).getByText(/mã sổ curator \(dùng khi gỡ\): abc123def456/)).toBeTruthy();
     expect(fetchMock.mock.calls.every(([path]) => /hermes_learning_(review|decide)_v1$/.test(String(path)))).toBe(true);
   });
 
@@ -99,6 +103,24 @@ describe('Cài đặt › Hermes › Bài học chờ duyệt', () => {
     await screen.findByText('Đã bỏ đề xuất #2. Bài học vẫn còn ở trợ lý cho tới khi người vận hành gỡ.');
     expect(writes[0]!.p).toMatchObject({ proposalIds: [P2], decision: 'reject', note: null });
     expect(await screen.findByRole('article', { name: 'Đề xuất #1' })).toBeTruthy();
+  });
+
+  it('hiện cảnh báo kiểm học, số phần và báo rõ khi nội dung bị cắt', async () => {
+    pending = [
+      proposal(P1, 1, { kind: 'audit_warning', title: 'Cảnh báo kiểm học: tên tool không còn trong danh mục CRM — skills/x/SKILL.md',
+        source: { type: 'audit_finding', finding: 'dead_tool_name', file: 'skills/x/SKILL.md', severity: 'high' } }),
+      proposal(P2, 2, { source: { type: 'curator_ledger', ledgerId: 'def456', skill: 'x', actor: 'agent', action: 'write_file', part: 12, parts: 12,
+        contentTruncated: true, omittedChars: 4200 } }),
+      proposal(P3, 3, { source: { type: 'skill_unledgered', file: 'skills/y/SKILL.md', diffUnavailable: true } }),
+    ];
+    render(view());
+    const warning = await screen.findByRole('article', { name: 'Đề xuất #1' });
+    expect(within(warning).getByText(/Cảnh báo kiểm học · hồ sơ owner/)).toBeTruthy();
+    expect(within(warning).getByText('skills/x/SKILL.md')).toBeTruthy();
+    const cut = screen.getByRole('article', { name: 'Đề xuất #2' });
+    expect(within(cut).getByText(/trợ lý trong phiên ghi file/)).toBeTruthy();
+    expect(within(cut).getByText(/phần 12\/12 của cùng bài học/).textContent).toMatch(/BỊ CẮT: còn 4200 ký tự chưa hiện/);
+    expect(within(screen.getByRole('article', { name: 'Đề xuất #3' })).getByText(/File skills\/y\/SKILL.md đổi ngoài sổ curator/)).toBeTruthy();
   });
 
   it('hiện lần kiểm cuối của từng hồ sơ; quá 36 giờ hoặc chưa có lần kiểm nào thì cảnh báo', async () => {

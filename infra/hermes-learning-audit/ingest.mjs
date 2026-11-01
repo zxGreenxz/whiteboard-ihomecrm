@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 // Nạp đề xuất bài học vào CRM. Đọc outbox của learning_audit.py (CHỈ đề xuất, đã che; không đọc báo cáo đủ ở private/, không
 // đọc hồ sơ Hermes) rồi gọi app_private.hermes_store_learning_ingest_v1 qua store-transport phạm vi 'learning': login riêng
-// thuộc vai NOLOGIN hermes_learning_ingest (chỉ được gọi đúng hàm này, KHÔNG thuộc hermes_store_executor của connector),
+// thuộc vai NOLOGIN hermes_learning_ingest (được cấp riêng đúng hàm này, KHÔNG thuộc hermes_store_executor của connector),
 // TLS xác minh, không service_role, không JWT người dùng.
 //   - Mỗi hồ sơ có ánh xạ: ít nhất một lời gọi mỗi lần chạy — nhịp "lần kiểm cuối" (auditGeneratedAt) kể cả khi không có đề
 //     xuất, để trang CRM báo khi job kiểm ngừng chạy.
 //   - Gửi lại đề xuất của các outbox trong `replayDays` ngày (SQL bỏ trùng theo công ty + dedupeKey): một lần nạp hỏng không
-//     làm mất đề xuất.
+//     làm mất đề xuất. Đề xuất vừa Bỏ được gửi lại kiểu này là NẠP LẠI (`replayedRejected`), không phải trợ lý HỌC LẠI: chỉ khoá có
+//     trong lần kiểm mới nhất mới là học lại (`relearned`).
 //   - Kiểm khuôn ĐÚNG như SQL trước khi gửi (mục lệch bị bỏ và báo dedupeKey); lô bị SQL từ chối (store_rejected) thì thử nhịp
 //     riêng rồi gửi lại TỪNG đề xuất, chỉ bỏ đúng mục hỏng và báo dedupeKey của nó.
 // Log chỉ có số đếm + dedupeKey (băm), không nội dung đề xuất, không mật khẩu/chuỗi kết nối.
 import { constants } from 'node:fs';
 import { lstat as fsLstat, open as fsOpen, readdir as fsReaddir } from 'node:fs/promises';
 import nodePath from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMainModule } from '../hermes-runtime/host-cli.mjs';
 
 // Job chỉ chạy trên Linux: đường dẫn cấu hình là POSIX tuyệt đối (giữ nguyên khi chạy test trên Windows).
 const path = nodePath.posix;
@@ -29,7 +30,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const ISO = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z$/;
 const OUTBOX_FILE = /^learning-outbox-(\d{8}T\d{6}Z)\.json$/;
-const KINDS = new Set(['skill_crm_write', 'memory_crm_write']);
+const KINDS = new Set(['skill_crm_write', 'memory_crm_write', 'audit_warning']);
 const RETRYABLE = new Set(['store_outcome_unknown', 'store_unavailable', 'store_conflict', 'store_timeout', 'store_cancelled']);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -206,10 +207,13 @@ export function planBatches(outboxes, config, now = Date.now()) {
     if (current.length || items.length === 0) batches.push({ ...header, proposals: current });
   }
   const ageHours = newest ? Math.round(((now - generatedAt) / HOUR) * 10) / 10 : null;
+  // Bài học thấy trong lần kiểm mới nhất (trợ lý học/ghi lại lần này). Cảnh báo thì lần kiểm nào cũng thấy lại nếu chưa sửa, không tính.
+  const latestLessons = new Set((newest?.profiles ?? []).flatMap(profile => profile.proposals)
+    .filter(item => record(item) && item.kind !== 'audit_warning').map(item => item.dedupeKey));
   // Hồ sơ có ánh xạ mà lần kiểm MỚI NHẤT không có (job kiểm không kiểm được hồ sơ đó): báo; đề xuất cũ của nó vẫn được gửi bù
   // với mốc kiểm cũ của chính nó (SQL giữ mốc lớn nhất ⇒ trang CRM vẫn thấy hồ sơ này đã lâu không được kiểm).
   const inNewest = new Set(newest ? newest.profiles.map(profile => profile.profile) : []);
-  return { batches, skipped: [...skipped.values()], dropped, invalidFiles: list.length - valid.length,
+  return { batches, latestLessons, skipped: [...skipped.values()], dropped, invalidFiles: list.length - valid.length,
     missingProfiles: Object.keys(config.profiles).filter(name => !inNewest.has(name)).sort(),
     generatedAt: newest?.generatedAt ?? null, ageHours, stale: ageHours === null || ageHours > config.staleAfterHours };
 }
@@ -312,12 +316,15 @@ export async function runIngest({ configPath, io = defaultIo(), now = Date.now()
     const { transport, close } = await createTransport(credentials);
     try { outcome = await sendBatches(transport, plan.batches); } finally { await close(); }
   }
+  const relearned = outcome.rejectedDuplicates.filter(key => plan.latestLessons?.has(key));
   log(JSON.stringify({ event: 'learning_ingest', generatedAt: plan.generatedAt, ageHours: plan.ageHours, stale: plan.stale,
     outboxFiles: outboxes.length, invalidFiles: plan.invalidFiles, missingProfiles: plan.missingProfiles, skipped: plan.skipped,
     batches: outcome.batches, calls: outcome.calls, sent: outcome.sent, inserted: outcome.inserted, duplicates: outcome.duplicates,
     seqs: outcome.seqs,
-    // Trùng với đề xuất ĐÃ BỎ: trợ lý học lại đúng bài học chủ đã bỏ — báo riêng để gỡ tay (SQL không đưa lại vào hàng chờ).
-    rejectedDuplicates: outcome.rejectedDuplicates.length, rejectedDuplicateKeys: firstKeys(outcome.rejectedDuplicates),
+    // Trùng với đề xuất ĐÃ BỎ (SQL không đưa lại vào hàng chờ). Học lại: lần kiểm mới nhất lại thấy bài học chủ đã bỏ — báo khoá để
+    // gỡ tay. Nạp lại: gửi bù outbox cũ trong replayDays — chuyện thường, chỉ đếm.
+    relearned: relearned.length, relearnedKeys: firstKeys(relearned),
+    replayedRejected: outcome.rejectedDuplicates.length - relearned.length,
     droppedInvalid: plan.dropped.length, droppedInvalidKeys: firstKeys(plan.dropped),
     droppedRejected: outcome.rejected.length, droppedRejectedKeys: firstKeys(outcome.rejected), failures: outcome.failures }));
   // Mục bị bỏ, lô lỗi, outbox hỏng hay hồ sơ thiếu là lỗi phải thấy (mã ≠ 0 ⇒ OnFailure), không âm thầm; outbox quá cũ ⇒ 3.
@@ -335,7 +342,8 @@ async function defaultTransport(credentials) {
   return { transport, close: () => pool.end() };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+// /opt/ihome-hermes/current là symlink: so đường thật, so chữ thì job thoát 0 mà không chạy gì.
+if (isMainModule(process.argv[1], import.meta.url)) {
   const args = process.argv.slice(2);
   const configPath = args[0] === '--config' && args[1] ? args[1] : '/etc/ihome-hermes/learning-audit.json';
   runIngest({ configPath, createTransport: defaultTransport })

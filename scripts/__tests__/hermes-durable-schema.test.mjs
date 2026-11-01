@@ -141,7 +141,9 @@ const ZALO_ONESHOT_CALLER = ['public.zalo_hen_gui_phong_trong_v1(uuid[],text,tim
   'public.zalo_huy_hen_gui_phong_trong_v1(uuid)', 'public.zalo_ds_hen_gui_phong_trong_v1(uuid,integer)', 'public.zalo_dung_khan_cap(uuid)'];
 // The only reviewed table grant in a scanned file: the worker reads the one-shot
 // queue (RPC-only for callers). Exact statement; any other table grant still fails.
-const REVIEWED_TABLE_GRANTS = new Set(['GRANT SELECT ON public.zalo_automation_oneshots TO service_role']);
+const REVIEWED_TABLE_GRANTS = new Set(['GRANT SELECT ON public.zalo_automation_oneshots TO service_role',
+  // Login job nạp đề xuất (20261101064441): vai NOLOGIN, đúng một nhóm, không phải quyền bảng.
+  'GRANT hermes_learning_ingest TO hermes_store_learning']);
 const ZALO_ONESHOT_WORKER = ['public.zalo_worker_claim_oneshot_v1(uuid,uuid[])', 'public.zalo_worker_finish_oneshot_v1(uuid,uuid,boolean,jsonb)',
   'public.zalo_enqueue_broadcast_oneshot_v1(uuid,uuid,uuid,text,timestamptz,text,jsonb)'];
 // The package D SQL-standard invoker wrapper reaches exactly these three

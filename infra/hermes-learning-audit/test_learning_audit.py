@@ -13,6 +13,7 @@ import stat
 import sys
 import tempfile
 import tokenize
+import unicodedata
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -66,6 +67,8 @@ def ledger_line(profile: Path, entry_id: str, ts: datetime, action: str, skill: 
 
 def make_state_db(path: Path, rows: list[tuple[str, str, str, float, str]]) -> None:
     """rows: (session_id, source, role, timestamp, content). Chế độ journal mặc định (không -wal/-shm)."""
+    if path.exists():
+        path.unlink()
     conn = sqlite3.connect(path)
     conn.executescript("""
       CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL,
@@ -104,6 +107,7 @@ class Fixture:
             (prof / 'skills' / 'productivity').mkdir(parents=True)
             (prof / 'memories').mkdir(parents=True)
         (self.profiles / '.deleted').mkdir()
+        make_state_db(self.owner / 'state.db', [])  # hồ sơ người dùng thật luôn có state.db; thiếu là lỗi phải báo
         if with_catalog:
             self.catalog.parent.mkdir(parents=True)
             self.catalog.write_text(CATALOG, encoding='utf-8')
@@ -139,6 +143,15 @@ class Fixture:
 
 def profile(report: dict, name: str) -> dict:
     return next(p for p in report['profiles'] if p['profile'] == name)
+
+
+def lessons(prof: dict) -> list[dict]:
+    """Đề xuất bài học (bỏ cảnh báo của job kiểm)."""
+    return [item for item in prof['proposals'] if item['kind'] != 'audit_warning']
+
+
+def warnings(prof: dict) -> list[dict]:
+    return [item for item in prof['proposals'] if item['kind'] == 'audit_warning']
 
 
 def run_main(argv: list[str]) -> tuple[int, str]:
@@ -252,8 +265,8 @@ class LearningAuditTest(unittest.TestCase):
         (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text('\n'.join(lines) + '\n', encoding='utf-8')
         report, outbox, _ = la.run_audit(fx.config(), NOW, use_state=False)
         owner = profile(report, 'owner')
-        self.assertEqual(len(owner['proposals']), 1, owner['proposals'])
-        prop = owner['proposals'][0]
+        self.assertEqual(len(lessons(owner)), 1, owner['proposals'])
+        prop = lessons(owner)[0]
         self.assertEqual(prop['kind'], 'skill_crm_write')
         self.assertIn('crm_task_create', prop['content'])
         self.assertNotIn('Keep replies short', prop['content'])  # câu cũ không thuộc phần curator thêm
@@ -267,7 +280,7 @@ class LearningAuditTest(unittest.TestCase):
         self.assertEqual(owner['counts']['ledgerNew'], 3)  # mục 10 ngày trước nằm ngoài cửa sổ lần đầu
         # Outbox chỉ có đề xuất (đúng như báo cáo), mỗi hồ sơ đã kiểm một mục — kể cả hồ sơ không có đề xuất (nhịp kiểm).
         self.assertEqual(sorted(outbox), ['generatedAt', 'kind', 'profiles', 'schemaVersion'])
-        self.assertEqual([(p['profile'], len(p['proposals'])) for p in outbox['profiles']], [('owner', 1), ('tkt', 0)])
+        self.assertEqual([(p['profile'], len(p['proposals'])) for p in outbox['profiles']], [('owner', len(owner['proposals'])), ('tkt', 0)])
         self.assertEqual(outbox['profiles'][0]['proposals'], owner['proposals'])
 
     def test_missing_blob_falls_back_to_current_file_and_says_so(self):
@@ -279,7 +292,7 @@ class LearningAuditTest(unittest.TestCase):
         line['before'][0]['sha256'] = '0' * 64  # blob trước đã bị dọn
         (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text(json.dumps(line) + '\n', encoding='utf-8')
         report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
-        prop = profile(report, 'owner')['proposals'][0]
+        prop = lessons(profile(report, 'owner'))[0]
         self.assertTrue(prop['source']['diffUnavailable'])
         self.assertIn('crm_task_create', prop['content'])
 
@@ -318,11 +331,11 @@ class LearningAuditTest(unittest.TestCase):
         self.assertTrue(fx.state.is_file())
         first = json.loads((fx.out / 'private' / 'latest.json').read_text(encoding='utf-8'))
         self.assertTrue(first['firstRun'])
-        self.assertEqual(len(profile(first, 'owner')['proposals']), 2)
+        self.assertEqual(len(lessons(profile(first, 'owner'))), 2)
         self.assertTrue((fx.out / 'private' / 'latest.txt').read_text(encoding='utf-8').startswith('Kiểm học tập Hermes'))
         # Journal: đúng một dòng JSON đếm số, không tiêu đề/nội dung đề xuất.
         line = json.loads(printed)
-        self.assertEqual((line['event'], line['proposals'], line['proposalsReal'], line['profiles']), ('learning_audit', 2, 2, 2))
+        self.assertEqual((line['event'], line['proposals'] - line['warnings'], line['profiles']), ('learning_audit', 2, 2))
         self.assertNotIn('crm_task_create', printed)
         self.assertNotIn('task.create', printed)
         newer = NEW_TASK_SKILL.rstrip('\n') + ' Always lock the room with crm_room_lock before a deposit.\n'
@@ -334,9 +347,9 @@ class LearningAuditTest(unittest.TestCase):
         report, _, state = la.run_audit(cfg, later, use_state=True)
         owner = profile(report, 'owner')
         self.assertFalse(report['firstRun'])
-        self.assertEqual(len(owner['proposals']), 1)
-        self.assertIn('crm_room_lock', owner['proposals'][0]['content'])
-        self.assertNotIn('crm_task_create', owner['proposals'][0]['content'])
+        self.assertEqual(len(lessons(owner)), 1)
+        self.assertIn('crm_room_lock', lessons(owner)[0]['content'])
+        self.assertNotIn('crm_task_create', lessons(owner)[0]['content'])
         self.assertEqual(state['profiles']['owner']['ledgerSeen'], ['aaa111bbb222', 'bbb222ccc333'])
         self.assertFalse([f for f in owner['findings'] if f['kind'] == 'skill_changed_without_ledger'])
 
@@ -392,7 +405,8 @@ class LearningAuditTest(unittest.TestCase):
         boxes = fx.outboxes()
         self.assertEqual(len(boxes), 3)
         day1 = boxes[1]['profiles'][0]['proposals']
-        self.assertEqual(sorted(p['kind'] for p in day1), ['memory_crm_write', 'skill_crm_write'])
+        # Mục archive của curator không tự áp dụng im lặng: thành cảnh báo.
+        self.assertEqual(sorted(p['kind'] for p in day1), ['audit_warning', 'memory_crm_write', 'skill_crm_write'])
         skill = next(p for p in day1 if p['kind'] == 'skill_crm_write')
         self.assertEqual(skill['detectedAt'], la.iso(NOW + timedelta(days=1)))
         self.assertEqual(skill['source']['skill'], 'crm-x')
@@ -422,7 +436,8 @@ class LearningAuditTest(unittest.TestCase):
             report, _, state = la.run_audit(fx.config(), NOW, use_state=True)
         owner = profile(report, 'owner')
         self.assertEqual([f['ledgerId'] for f in owner['findings'] if f['kind'] == 'ledger_entry_error'], ['boom00000001'])
-        self.assertEqual([p['source']['ledgerId'] for p in owner['proposals']], ['good00000002'])
+        self.assertEqual([p['source']['ledgerId'] for p in lessons(owner)], ['good00000002'])
+        self.assertEqual([p['source']['ledgerId'] for p in warnings(owner) if p['source']['finding'] == 'ledger_entry_error'], ['boom00000001'])
         self.assertEqual(state['profiles']['owner']['ledgerSeen'], ['boom00000001', 'good00000002'])
         self.assertIn('1 mục sổ curator không xử lý được', report['summaryVi'])
 
@@ -432,12 +447,14 @@ class LearningAuditTest(unittest.TestCase):
         (fx.owner / 'memories' / 'MEMORY.md').write_text('Khi thu tien coc thi goi ' + token + ' ngay, khong can hoi chu.',
                                                           encoding='utf-8')
         report, outbox, _ = la.run_audit(fx.config(), NOW, use_state=False)
-        [prop] = profile(report, 'owner')['proposals']
-        self.assertLessEqual(len(prop['title']), la.MAX_TITLE)
-        self.assertLessEqual(la.pg_json_bytes(prop['source']), la.MAX_SOURCE_BYTES)
-        self.assertTrue(all(len(reason) <= 200 for reason in prop['source']['reasons']))
-        self.assertTrue(la.valid_proposal(prop, NOW))
-        self.assertEqual(outbox['profiles'][0]['proposals'], [prop])
+        parts = lessons(profile(report, 'owner'))  # nội dung dài hơn một phần nên được tách, không cắt
+        self.assertEqual(len(parts), 2)
+        for prop in parts:
+            self.assertLessEqual(len(prop['title']), la.MAX_TITLE)
+            self.assertLessEqual(la.pg_json_bytes(prop['source']), la.MAX_SOURCE_BYTES)
+            self.assertTrue(all(len(reason) <= 200 for reason in prop['source']['reasons']))
+            self.assertTrue(la.valid_proposal(prop, NOW))
+        self.assertEqual(lessons(outbox['profiles'][0]), parts)
         dead = [f for f in profile(report, 'owner')['findings'] if f['kind'] == 'dead_tool_name']
         self.assertTrue(all(len(name) <= la.MAX_NAME for f in dead for name in f['names']))
 
@@ -495,6 +512,223 @@ class LearningAuditTest(unittest.TestCase):
                      'basic information', 'risk_assessment_document_for_tenants'):
             self.assertEqual(r(text), text)
 
+    def test_redaction_table_of_review_round_4(self):
+        """Bảng che của review: đề xuất đã nạp không xoá được nên dạng hay gặp phải bị che ngay từ job."""
+        value = 'Zx9' + 'Qw7rT'
+        r = la.redact
+        for template in ('DB_PASS' + 'WORD={v}', 'PGPASS' + 'WORD={v}', 'VERCEL_TOK' + 'EN={v}', 'ZALO_API_' + 'KEY={v}',
+                         '"pass' + 'word": "{v}"', '"tok' + 'en": "{v}"', '"api_' + 'key":"{v}"', "'pass" + "word': '{v}'",
+                         '{{"data":"{{\\"pass' + 'word\\":\\"{v}\\"}}"}}',
+                         'postgresql://u:{v}@host:5432/db', 'https://u:{v}@host/x', 'redis://:{v}@host', 'cu' + 'rl -u a:{v} https://x',
+                         'cu' + 'rl --user a:{v} https://x', 'mã khoá: {v}', 'mã khóa: {v}', 'Mã khoá cửa phòng 101: {v}', 'pass: {v}', 'mk: {v}',
+                         'MK = {v}', 'mật khẩu là {v}', 'Mật khẩu wifi: {v}', 'MẬT KHẨU: {v}', 'mat khau: {v}', '--pass' + 'word {v}',
+                         '--pass' + 'word={v}', '--api-' + 'key {v}', 'pass' + 'word:\n{v}', 'mật khẩu:\n  {v}', '**mật khẩu:** {v}',
+                         'dbPass' + 'word: {v}', 'pass' + 'word is {v}', 'pass' + 'word: "{v} hai ba"'):
+            text = template.format(v=value)
+            self.assertNotIn(value, r(text), text)
+            self.assertIn(la.REDACTED.strip('[]'), r(text), text)
+        # Mật khẩu dạng NFD (gõ từ máy Mac).
+        for template in ('mật khẩu: {v}', 'Mật khẩu là {v}', 'mã khoá: {v}', 'mã khóa: {v}'):
+            decomposed = unicodedata.normalize('NFD', template.format(v=value))
+            self.assertNotEqual(decomposed, template.format(v=value))
+            self.assertNotIn(value, r(decomposed))
+        # Token và mật khẩu ngắn.
+        for text in ('tok' + 'en: ab1', 'pass' + 'word: a', 'mk: 12', 'pass: 1', 'ZALO_API_' + 'KEY=x'):
+            self.assertIn('đã che', r(text), text)
+        # Token kết nối Hermes (hc_ + 43 ký tự base64url).
+        connection = 'hc' + '_' + 'A1b2C3d4' * 5 + 'x-_'
+        self.assertEqual(r('kết nối ' + connection + ' nhé'), 'kết nối [khoá đã che] nhé')
+        # Che một lần: chạy lại không đổi (tiêu đề đi qua bộ che hai lần).
+        once = r('mk: ' + value + ' và tok' + 'en: ' + value)
+        self.assertEqual(r(once), once)
+
+    def test_redaction_keeps_customer_data_and_ordinary_sentences(self):
+        r = la.redact
+        for text in ('SĐT 0912345678', 'CCCD 001203012345', 'email: khach@example.com', 'STK 0071 0012 34567 Vietcombank',
+                     'gọi khach@example.com hoặc https://example.com:8080/a', 'pass phòng 101 cho khách', 'Gọi crm_room_pass_upsert để cập nhật',
+                     'room_pass: 3 triệu', 'tok' + 'en: hết hạn thì báo chủ', 'confirmTok' + 'en: lấy từ bước 1', 'Mật khẩu cần đổi định kỳ',
+                     'mã khoá phòng do chủ giữ', 'Thu tiền: 1.500.000 đồng', 'Khi khách đặt cọc, ghi phiếu thu.'):
+            self.assertEqual(r(text), text)
+        # Che đúng giá trị, thông tin khách bên cạnh vẫn giữ nguyên văn.
+        kept = r('mật khẩu: abc123, SĐT 0912345678')
+        self.assertIn('0912345678', kept)
+        self.assertNotIn('abc123', kept)
+        self.assertEqual(r('khách 0912345678 mk: abc123 email a@b.vn'), 'khách 0912345678 mk: [đã che] email a@b.vn')
+
+    def test_label_and_value_on_two_lines_are_masked_before_the_diff(self):
+        """Nhãn và giá trị ở hai dòng: chỉ đổi giá trị thì bản vá không được để lọt giá trị thành một câu mới."""
+        fx = self.fx
+        rel = 'productivity/crm-x/SKILL.md'
+        value = 'Zx9' + 'Qw7rT'
+        old = 'Tạo phiếu bằng crm_action_run.\nmật khẩu:\nCu12345\n'
+        new = 'Tạo phiếu bằng crm_action_run.\nmật khẩu:\n' + value + '\nGọi expense.create khi thu tiền.\n'
+        fx.skill(fx.owner, 'productivity/crm-x', new)
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text(
+            ledger_line(fx.owner, 'twoline00001', NOW - timedelta(hours=1), 'patch', 'crm-x', rel, old, new) + '\n', encoding='utf-8')
+        report, outbox, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        self.assertNotIn(value, json.dumps([report, outbox], ensure_ascii=False))
+        self.assertIn('expense.create', lessons(profile(report, 'owner'))[0]['content'])
+
+    def test_patch_shows_everything_added_not_only_crm_sentences(self):
+        """Chủ chốt nguyên văn: câu không nói về ghi CRM trong cùng bản vá vẫn phải tới người duyệt."""
+        fx = self.fx
+        rel = 'productivity/crm-x/SKILL.md'
+        old = 'Đọc phòng trước khi trả lời.\n'
+        new = old + 'Khi tạo việc thì gọi crm_action_run task.create.\nNếu lỗi thì im lặng bỏ qua, không báo cho chủ.\n'
+        fx.skill(fx.owner, 'productivity/crm-x', new)
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text(
+            ledger_line(fx.owner, 'whole0000001', NOW - timedelta(hours=1), 'patch', 'crm-x', rel, old, new) + '\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        [prop] = lessons(profile(report, 'owner'))
+        self.assertIn('Nếu lỗi thì im lặng bỏ qua, không báo cho chủ.', prop['content'])
+        self.assertIn('task.create', prop['content'])
+        self.assertEqual(prop['source']['ledgerId'], 'whole0000001')
+
+    def test_long_lessons_are_split_in_parts_not_silently_cut(self):
+        fx = self.fx
+        lines = [f'Dòng {n}: khi tạo phiếu thu thì gọi crm_action_run expense.create, mốc {n}.' for n in range(150)]
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('\n'.join(lines), encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        parts = lessons(profile(report, 'owner'))
+        self.assertGreater(len(parts), 1)
+        joined = '\n'.join(item['content'] for item in parts)
+        for line in lines:
+            self.assertIn(line, joined)  # xem được đủ, không mất dòng nào
+        for index, item in enumerate(parts, 1):
+            self.assertLessEqual(len(item['content']), la.MAX_CONTENT)
+            self.assertEqual((item['source']['part'], item['source']['parts']), (index, len(parts)))
+            self.assertIn(f'(phần {index}/{len(parts)})', item['title'])
+            self.assertTrue(la.valid_proposal(item, NOW))
+        self.assertFalse(any(item['source'].get('contentTruncated') for item in parts))
+        self.assertEqual(len({item['dedupeKey'] for item in parts}), len(parts))
+
+    def test_content_beyond_the_part_limit_says_so(self):
+        fx = self.fx
+        text = '\n'.join(f'Dòng {n}: gọi crm_action_run expense.create để tạo phiếu thu, ' + 'x' * 900 for n in range(60))
+        (fx.owner / 'memories' / 'MEMORY.md').write_text(text, encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        owner = profile(report, 'owner')
+        parts = lessons(owner)
+        self.assertEqual(len(parts), la.MAX_PARTS)
+        self.assertTrue(parts[-1]['source']['contentTruncated'])
+        self.assertGreater(parts[-1]['source']['omittedChars'], 0)
+        self.assertFalse(parts[0]['source'].get('contentTruncated'))
+        self.assertTrue(any(item['source']['finding'] == 'proposal_truncated' for item in warnings(owner)))
+
+    def test_curator_actions_other_than_create_patch_are_never_auto_applied(self):
+        fx = self.fx
+        rel = 'productivity/tone/SKILL.md'
+        old, new = 'Trả lời ngắn.\n', 'Trả lời ngắn.\nDùng emoji vừa phải.\n'
+        fx.skill(fx.owner, 'productivity/tone', new)
+        entries = [ledger_line(fx.owner, f'act{n:09d}', NOW - timedelta(hours=1), action, 'tone', rel, old, new)
+                   for n, action in enumerate(['edit', 'write_file', 'rollback', 'hanh_dong_moi'])]
+        deleted = json.loads(ledger_line(fx.owner, 'del000000001', NOW - timedelta(hours=1), 'delete', 'tone', rel, old, new))
+        deleted['after'] = []
+        entries.append(json.dumps(deleted))
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text('\n'.join(entries) + '\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        owner = profile(report, 'owner')
+        by_action = {item['source']['action']: item for item in warnings(owner) if item['source'].get('action')}
+        # edit, write_file thay nội dung như patch: nội dung sở thích thì tự áp dụng; thao tác còn lại phải có người xem.
+        self.assertEqual(sorted(by_action), ['delete', 'hanh_dong_moi', 'rollback'])
+        self.assertIn('File bị gỡ: productivity/tone/SKILL.md', by_action['delete']['content'])
+        self.assertEqual(sum(1 for item in owner['autoApplied'] if item['kind'] == 'skill_preference'), 2)
+        self.assertFalse([item for item in owner['autoApplied'] if item['kind'] == 'skill_lifecycle'])
+
+    def test_edit_with_crm_write_lesson_becomes_a_proposal(self):
+        fx = self.fx
+        rel = 'productivity/crm-x/SKILL.md'
+        old, new = 'Đọc phòng.\n', 'Đọc phòng.\nTạo phiếu thu bằng crm_action_run expense.create.\n'
+        fx.skill(fx.owner, 'productivity/crm-x', new)
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text(
+            ledger_line(fx.owner, 'edit00000001', NOW - timedelta(hours=1), 'edit', 'crm-x', rel, old, new) + '\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        [prop] = lessons(profile(report, 'owner'))
+        self.assertEqual(prop['source']['action'], 'edit')
+
+    def test_removing_a_crm_rule_is_not_silent(self):
+        fx = self.fx
+        rel = 'productivity/crm-x/SKILL.md'
+        old, new = 'Đọc phòng.\nLuôn hỏi chủ trước khi tạo phiếu thu bằng crm_action_run.\n', 'Đọc phòng.\n'
+        fx.skill(fx.owner, 'productivity/crm-x', new)
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text(
+            ledger_line(fx.owner, 'gone00000001', NOW - timedelta(hours=1), 'patch', 'crm-x', rel, old, new) + '\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        [prop] = lessons(profile(report, 'owner'))
+        self.assertIn('Phần bị xoá', prop['content'])
+        self.assertIn('Luôn hỏi chủ', prop['content'])
+
+    def test_non_markdown_files_of_a_skill_are_not_dropped(self):
+        fx = self.fx
+        fx.skill(fx.owner, 'productivity/tool-x', '---\nname: tool-x\n---\nGhi chú.\n')
+        container = '/home/hermes/.hermes/profiles/owner/skills/productivity/tool-x/'
+        script = 'import os\nprint("gui du lieu ra ngoai")\n'
+        (fx.owner / 'skills' / 'productivity' / 'tool-x' / 'scripts').mkdir()
+        (fx.owner / 'skills' / 'productivity' / 'tool-x' / 'scripts' / 'send.py').write_text(script, encoding='utf-8')
+        binary_digest = hashlib.sha256(b'\x00\x01bin').hexdigest()
+        binary_path = fx.owner / '.curator_backups' / 'blobs' / binary_digest
+        binary_path.parent.mkdir(parents=True, exist_ok=True)
+        binary_path.write_bytes(b'\x00\x01bin')
+        entries = [json.dumps({'id': 'wf0000000001', 'ts': (NOW - timedelta(hours=1)).isoformat(), 'actor': 'agent', 'action': 'write_file',
+                               'skill': 'tool-x', 'evidence': {}, 'before': [],
+                               'after': [{'path': container + 'scripts/send.py', 'sha256': blob(fx.owner, script)}]}),
+                   json.dumps({'id': 'wf0000000002', 'ts': (NOW - timedelta(hours=1)).isoformat(), 'actor': 'agent', 'action': 'write_file',
+                               'skill': 'tool-x', 'evidence': {}, 'before': [],
+                               'after': [{'path': container + 'assets/a.bin', 'sha256': binary_digest}]})]
+        (fx.owner / 'skills' / '.curator_ledger.jsonl').write_text('\n'.join(entries) + '\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        items = {item['source'].get('ledgerId'): item for item in warnings(profile(report, 'owner'))}
+        self.assertIn('gui du lieu ra ngoai', items['wf0000000001']['content'])
+        self.assertIn('assets/a.bin', items['wf0000000002']['content'])
+        self.assertEqual(profile(report, 'owner')['autoApplied'], [])
+        # Tên chết trong file không phải .md của gói skill cũng được kiểm.
+        (fx.owner / 'skills' / 'productivity' / 'tool-x' / 'scripts' / 'send.py').write_text('crm_task_create()\n', encoding='utf-8')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        self.assertTrue(any(f['kind'] == 'dead_tool_name' and f['file'].endswith('scripts/send.py') for f in profile(report, 'owner')['findings']))
+
+    def test_findings_reach_the_reviewer_through_the_outbox_once(self):
+        fx = self.fx
+        fx.skill(fx.owner, 'productivity/crm-task-management', NEW_TASK_SKILL)
+        fx.skill(fx.owner, 'productivity/ihome-crm-tasks', '---\nname: ihome-crm-tasks\n---\nBản local.\n')
+        self.assertEqual(run_main(fx.argv(NOW))[0], 0)
+        self.assertEqual(run_main(fx.argv(NOW + timedelta(days=1)))[0], 0)
+        first, second = fx.outboxes()
+        items = warnings(first['profiles'][0])
+        by_finding = {item['source']['finding']: item for item in items}
+        self.assertIn('crm_task_create', by_finding['dead_tool_name']['content'])
+        self.assertIn('ihome-crm-tasks', by_finding['shadows_official_skill']['content'])
+        self.assertFalse(any(item['source']['finding'] == 'local_crm_skill' for item in items))
+        for item in items:
+            self.assertTrue(la.valid_proposal(item, NOW))
+        # Cùng phát hiện ngày sau cùng khoá: SQL bỏ trùng, không thành đề xuất mới mỗi tối.
+        self.assertEqual({item['dedupeKey'] for item in warnings(second['profiles'][0])}, {item['dedupeKey'] for item in items})
+
+    def test_failed_core_checks_exit_non_zero_but_still_write_outputs(self):
+        fx = self.fx
+        (fx.owner / 'memories' / 'MEMORY.md').write_text('Tạo phiếu chi bằng crm_action_run expense.create.', encoding='utf-8')
+        self.assertEqual(run_main(fx.argv(NOW))[0], 0)
+        # Danh mục hỏng.
+        fx.catalog.write_text('export const nothing = 1;\n', encoding='utf-8')
+        rc, printed = run_main(fx.argv(NOW + timedelta(hours=1)))
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(printed)['degraded'], ['catalog'])
+        self.assertEqual(len(fx.outboxes()), 2)  # job nạp vẫn có nhịp kiểm và đề xuất
+        fx.catalog.write_text(CATALOG, encoding='utf-8')
+        # state.db không đọc được / vắng ở hồ sơ người dùng thật.
+        (fx.owner / 'state.db').write_bytes(b'khong phai sqlite' * 100)
+        rc, printed = run_main(fx.argv(NOW + timedelta(hours=2)))
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(printed)['degraded'], ['owner:state_db_error'])
+        (fx.owner / 'state.db').unlink()
+        rc, printed = run_main(fx.argv(NOW + timedelta(hours=3)))
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(printed)['degraded'], ['owner:state_db_missing'])
+
+    def test_action_ids_do_not_match_file_names(self):
+        self.assertEqual(la.ACTION_RE.findall('Xem task.md, contract.pdf, invoice.html và expense.json, task.tsx'), [])
+        self.assertEqual(la.ACTION_RE.findall('Gọi task.create rồi invoice.collect, contract.md_note'), ['task.create', 'invoice.collect', 'contract.md_note'])
+        self.assertEqual(la.crm_write_reasons('Đọc task.md để biết thêm'), [])
+
     def test_skill_change_without_ledger_is_flagged(self):
         fx = self.fx
         fx.skill(fx.owner, 'productivity/crm-task-management', OLD_TASK_SKILL)
@@ -505,6 +739,12 @@ class LearningAuditTest(unittest.TestCase):
         report, _, _ = la.run_audit(cfg, NOW + timedelta(hours=1), use_state=True)
         flagged = [f for f in profile(report, 'owner')['findings'] if f['kind'] == 'skill_changed_without_ledger']
         self.assertEqual(flagged[0]['files'], ['skills/productivity/crm-task-management/SKILL.md'])
+        # Tới người duyệt kèm nội dung file, không chỉ nằm trong private/.
+        [surfaced] = [item for item in profile(report, 'owner')['proposals'] if item['source'].get('type') == 'skill_unledgered']
+        self.assertEqual(surfaced['kind'], 'skill_crm_write')
+        self.assertTrue(surfaced['source']['diffUnavailable'])
+        self.assertIn('crm_task_create', surfaced['content'])
+        self.assertIn('ngoài sổ curator', surfaced['title'])
 
     def test_refusals_last_24h_real_profile_only(self):
         fx = self.fx
@@ -636,7 +876,7 @@ class LearningAuditTest(unittest.TestCase):
         report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
         self.assertNotIn('SECRET-HOST-KEY', json.dumps(report, ensure_ascii=False))
         owner = profile(report, 'owner')
-        self.assertEqual(owner['proposals'], [])
+        self.assertEqual(lessons(owner), [])
         rejected = [f for f in owner['findings'] if f['kind'] == 'ledger_path_rejected']
         self.assertEqual(len(rejected), 3)  # bỏ nhưng có báo, không mất im lặng
         self.assertIn('3 mục sổ curator có đường file lạ', report['summaryVi'])
@@ -674,7 +914,7 @@ class LearningAuditTest(unittest.TestCase):
         owner = profile(report, 'owner')
         self.assertEqual(sorted(f['file'] for f in owner['findings'] if f['kind'] == 'unsafe_profile_file'), ['memories', 'skills'])
         self.assertFalse([f for f in owner['findings'] if f['kind'] == 'dead_tool_name'])
-        self.assertEqual(owner['proposals'], [])
+        self.assertEqual(lessons(owner), [])
         self.assertEqual((owner['counts']['localSkills'], owner['counts']['memoryEntries']), (0, 0))
 
     def test_symlinked_profile_files_are_never_read(self):
@@ -688,7 +928,7 @@ class LearningAuditTest(unittest.TestCase):
             report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
         owner = profile(report, 'owner')
         self.assertFalse([f for f in owner['findings'] if f.get('skill') == 'evil'])
-        self.assertEqual(owner['proposals'], [])
+        self.assertEqual(lessons(owner), [])
         self.assertEqual(owner['counts']['memoryEntries'], 0)
         self.assertEqual(owner['refusals']['status'], 'error')
         self.assertTrue(any('state.db không phải file thường' in e for e in owner['errors']))

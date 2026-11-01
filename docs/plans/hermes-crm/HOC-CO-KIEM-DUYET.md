@@ -48,14 +48,14 @@ phiên). Bài học sai vẫn được phát hiện trong ≤ 24 giờ, đi duy�
 
 | Thành phần | Ghi chú |
 |---|---|
-| `app_private.hermes_learning_proposals` | công ty, người dùng, trợ lý (FK `hermes_assistants`), hồ sơ, `seq` theo công ty, loại (`skill_crm_write`/`memory_crm_write`), tiêu đề ≤ 200, nội dung ≤ 4000 (có chữ, không ký tự điều khiển), nguồn (jsonb ≤ 4096 B **dạng chữ**), lúc phát hiện, lúc nạp, khoá chống trùng `UNIQUE(công ty, dedupe_key)`, trạng thái pending/approved/rejected, người/lúc/ghi chú/kênh duyệt, `decision_request_id`. RLS bật, không cấp bảng cho vai nào; trigger: quyết định một lần rồi **bất biến làm lịch sử** — không sửa nội dung, không quyết định lại, không xoá (chủ chốt 31/10: không che sau quyết định) |
+| `app_private.hermes_learning_proposals` | công ty, người dùng, trợ lý (FK `hermes_assistants`), hồ sơ, `seq` theo công ty, loại (`skill_crm_write`/`memory_crm_write`/`audit_warning`: cảnh báo của job kiểm), tiêu đề ≤ 200, nội dung ≤ 4000 (có chữ, không ký tự điều khiển), nguồn (jsonb ≤ 4096 B **dạng chữ**), lúc phát hiện, lúc nạp, khoá chống trùng `UNIQUE(công ty, dedupe_key)`, trạng thái pending/approved/rejected, người/lúc/ghi chú/kênh duyệt, `decision_request_id`. RLS bật, không cấp bảng cho vai nào; trigger: quyết định một lần rồi **bất biến làm lịch sử** — không sửa nội dung, không quyết định lại, không xoá (chủ chốt 31/10: không che sau quyết định) |
 | `app_private.hermes_learning_audit_runs` | "lần kiểm cuối" theo (công ty, người dùng, hồ sơ): mốc job kiểm (giữ mốc lớn nhất) + lúc nhận; job nạp ghi mỗi lần chạy, kể cả không có đề xuất |
-| `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ 20/trang theo số (`pendingAfterSeq` → `nextPendingAfterSeq`), lịch sử 20 dòng/trang (nội dung rút còn 300 ký tự, không kèm nguồn), con trỏ `(decidedAt µs, id)`, `audits` ≤ 20. Trang luôn dưới 1 MiB (đo bằng 20 đề xuất dài tối đa) |
+| `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ 20/trang theo số (`pendingAfterSeq` → `nextPendingAfterSeq`), lịch sử 20 dòng/trang (đủ nội dung và nguồn, để xem lại và lấy mã gỡ), con trỏ `(decidedAt µs, id)`, `audits` ≤ 20. Trang luôn dưới 1 MiB (đo bằng 20 đề xuất dài tối đa) |
 | `public.hermes_learning_decide_v1(p)` | ≤ 20 đề xuất/lần, `approve`/`reject`, ghi chú tuỳ chọn ≤ 500; cùng `requestId` của cùng người ⇒ trả lại kết quả cũ (`replayed`), khác nội dung ⇒ PT409; đã quyết định ⇒ PT409; ngoài công ty ⇒ 22023 |
 | `app_private.hermes_learning_apply_v1(…, p_via)` | lõi dùng chung trang web (`crm_ui`) và thao tác connector (`hermes_connector`, mục 4) |
 | `app_private.hermes_store_learning_ingest_v1(p)` | **chỉ** vai NOLOGIN riêng `hermes_learning_ingest` (không còn cấp cho `hermes_store_executor`); 0..25 đề xuất/lô + `auditGeneratedAt`; kiểm thành viên + trợ lý ACTIVE; trùng khoá bỏ qua, trả riêng `rejectedDuplicates` (trùng đề xuất đã bỏ) |
 
-Xác thực của job nạp: login riêng `hermes_store_learning` (vận hành tạo ngoài repo) chỉ thuộc `hermes_learning_ingest`;
+Xác thực của job nạp: login riêng `hermes_store_learning` (migration `20261101064441` tạo NOLOGIN, `scripts/hermes-learning-login.mjs` bật bằng verifier) chỉ thuộc `hermes_learning_ingest`;
 `store-transport.mjs` phạm vi `learning` kiểm vai trước lệnh đầu và chỉ gọi được hàm nạp (lý do ở README). Không `service_role`,
 không khoá tĩnh mới, không dùng lại login kho bền của connector.
 
@@ -135,8 +135,8 @@ nhờ ngữ cảnh cron.
 1. Review chéo PR (tier authorization + migration): base/head + kết luận ghi vào PR.
 2. Áp `20261031041523` qua lane trên TEST rồi production (dry-run → `--apply`, biên nhận); làm tươi provenance/surfaces.
    Migration tạo vai NOLOGIN `hermes_learning_ingest`.
-3. Tạo login `hermes_store_learning` như mẫu `hermes_store_host` (`LOGIN INHERIT`, không đặc quyền, timeout ngắn), **chỉ**
-   `GRANT hermes_learning_ingest TO hermes_store_learning`, qua đường admin đã duyệt, ngoài repo; mật khẩu chỉ ở VPS
+3. Áp `20261101064441` qua lane (vai `hermes_store_learning` NOLOGIN, đúng một nhóm `hermes_learning_ingest`, không mật khẩu), rồi bật đăng nhập trên
+   production bằng `scripts/hermes-learning-login.mjs` (một câu `ALTER ROLE … LOGIN PASSWORD`, verifier đọc từ file); mật khẩu chỉ ở VPS
    `/etc/ihome-hermes/learning-store-password`.
    `scripts/test-env/owners.mjs` đã khai sẵn login này (TEST dựng lại NOLOGIN).
 4. Promote web (tab "Bài học chờ duyệt"); trước khi áp, trang báo "Máy chủ chưa có chức năng duyệt bài học".

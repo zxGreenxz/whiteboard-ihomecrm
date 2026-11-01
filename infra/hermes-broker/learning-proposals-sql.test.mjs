@@ -232,7 +232,7 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
     await assert.rejects(as('authenticated', ADMIN, 'DELETE FROM app_private.hermes_learning_proposals RETURNING 1 AS result', []), code('42501'));
   });
 
-  await t.test('đề xuất chờ phân trang 20; lịch sử phân trang 20 theo lúc quyết định, nội dung rút gọn', async () => {
+  await t.test('đề xuất chờ phân trang 20; lịch sử phân trang 20 theo lúc quyết định, xem được đủ nội dung và nguồn', async () => {
     const more = await ingest(batch(Array.from({ length: 25 }, (_, n) => proposal(200 + n, { content: `${'ệ'.repeat(400)} ${n}` }))));
     const ids = more.inserted.map(item => item.id);
     const firstPage = await review(ADMIN);
@@ -250,9 +250,9 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
     assert.equal(page.history.length, 20);
     assert.ok(page.nextHistoryCursor);
     assert.deepEqual(page.history.slice(0, 2).map(item => item.status), ['rejected', 'rejected']);
-    assert.equal(page.history[0].contentTruncated, true);
-    assert.equal([...page.history[0].content].length, 300);
-    assert.deepEqual(page.history[0].source, {});
+    assert.equal(Object.hasOwn(page.history[0], 'contentTruncated'), false);
+    assert.equal([...page.history[0].content].length, 403);
+    assert.match(page.history[0].source.ledgerId, /^ledger2\d\d$/);
     const rest = await review(ADMIN, page.nextHistoryCursor);
     assert.equal(rest.history.length, 4);
     assert.equal(rest.nextHistoryCursor, null);
@@ -260,7 +260,14 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
     assert.equal(seen.size, 24);
   });
 
-  await t.test('nguồn đo theo dạng chữ đúng 4096 byte; trang 20 đề xuất dài tối đa vẫn dưới trần 1 MiB', async () => {
+  await t.test('cảnh báo của job kiểm đi cùng cổng nạp và đọc được như đề xuất', async () => {
+    const warned = await ingest(batch([proposal(180, { kind: 'audit_warning', title: 'Cảnh báo kiểm học: tên tool chết' })]));
+    assert.equal(warned.inserted.length, 1);
+    await assert.rejects(ingest(batch([proposal(181, { kind: 'khac' })])), code('22023'));
+    await decide(ADMIN, { requestId: id('7'), proposalIds: [warned.inserted[0].id], decision: 'approve' });
+  });
+
+  await t.test('nguồn đo theo dạng chữ đúng 4096 byte; trang 20 chờ + 20 lịch sử dài tối đa vẫn dưới trần 1 MiB', async () => {
     // {"note": "x…x"} = 12 byte khung + N.
     await assert.rejects(ingest(batch([proposal(300, { source: { note: 'x'.repeat(4085) } })])), code('23514'));
     const wide = '\u{1D54F}'; // 4 byte UTF-8, một ký tự với PostgreSQL
@@ -276,5 +283,15 @@ test('Kho đề xuất bài học Hermes: nạp từ job host, chủ/admin đọ
     assert.equal([...view.pending[0].content].length, 4000);
     const bytes = Buffer.byteLength(JSON.stringify(view));
     assert.ok(bytes > 400_000 && bytes < 1_048_576, String(bytes));
+    // Lịch sử trả đủ nội dung: quyết định 20 đề xuất tối đa, nạp thêm 20, đo cả trang 20 + 20 (kèm lần kiểm cuối).
+    await decide(ADMIN, { requestId: id('8'), proposalIds: inserted.map(item => item.id), decision: 'reject', note: 'n'.repeat(500) });
+    const next = Array.from({ length: 20 }, (_, n) => proposal(500 + n, { title: wide.repeat(199) + n % 10,
+      content: wide.repeat(4000), source: { note: 'x'.repeat(4084) } }));
+    const fresh = [];
+    for (let at = 0; at < next.length; at += 5) fresh.push(...(await ingest(batch(next.slice(at, at + 5)))).inserted);
+    const full = await review(ADMIN, null, ORG, Math.min(...fresh.map(item => item.seq)) - 1);
+    assert.deepEqual([full.pending.length, full.history.length, [...full.history[0].content].length], [20, 20, 4000]);
+    const fullBytes = Buffer.byteLength(JSON.stringify(full));
+    assert.ok(fullBytes > 800_000 && fullBytes < 1_048_576, String(fullBytes));
   });
 });

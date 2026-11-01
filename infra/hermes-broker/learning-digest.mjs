@@ -5,7 +5,7 @@
 export const LEARNING_REVIEW_PATH = '/settings/hermes?tab=bai-hoc';
 const MAX_ITEMS = 10;
 const MAX_MESSAGE = 1800;
-const KIND_LABELS = Object.freeze({ skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ' });
+const KIND_LABELS = Object.freeze({ skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ', audit_warning: 'Cảnh báo kiểm học' });
 
 const oneLine = (value, max) => {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim();

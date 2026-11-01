@@ -6,7 +6,8 @@ Quét mọi hồ sơ Hermes (skill local, bộ nhớ MEMORY.md/USER.md, sổ cur
   a. tên tool CRM chết (không thuộc danh mục connector — lấy bằng cách `node` import catalog-names.mjs; thiếu
      module thì báo "không kiểm được tên", không đoán), skill local trùng tên skill chuẩn (đè bản chuẩn), và
      bài học về GHI dữ liệu CRM ⇒ ĐỀ XUẤT chờ duyệt (sở thích/cách nói chuyện/việc ngoài CRM thì tự áp dụng — chỉ đếm,
-     không chép nội dung);
+     không chép nội dung). Thứ không phân loại chắc được (thao tác khác của curator, file không phải .md, skill đổi ngoài sổ, tên
+     chết…) ⇒ CẢNH BÁO `audit_warning` tới cùng trang duyệt, không tự áp dụng im lặng;
   b. số lần "bó tay" 24 giờ qua trên hồ sơ người dùng thật (kèm phiên, giờ, câu người dùng ngay trước — cắt ngắn).
 
 Đầu ra trong `outDir`:
@@ -68,7 +69,8 @@ CONFIG_TYPES: dict[str, Any] = {
 }
 
 MAX_TITLE = 200
-MAX_CONTENT = 3500          # SQL nhận tới 4000 ký tự
+MAX_CONTENT = 3500          # một phần của đề xuất; SQL nhận tới 4000 ký tự. Dài hơn ⇒ tách phần, không cắt im lặng
+MAX_PARTS = 12              # quá số phần này mới cắt, và nguồn ghi rõ contentTruncated + omittedChars
 MAX_SNIPPET = 220
 MAX_USER_SNIPPET = 160
 MAX_REFUSAL_ITEMS = 50
@@ -79,14 +81,32 @@ MAX_NAME = 64               # một tên tool/mã thao tác trong lý do, phát 
 MAX_NAMES = 10
 MAX_DETECTED_AGE = timedelta(days=365)  # SQL nhận detectedAt trong [−400 ngày, +1 ngày]
 MAX_DIFF_CELLS = 25_000_000
-KINDS = ('skill_crm_write', 'memory_crm_write')
+KINDS = ('skill_crm_write', 'memory_crm_write', 'audit_warning')
+# Phát hiện phải tới người duyệt (không chỉ nằm trong private/). local_crm_skill chỉ là gợi ý nên ở lại báo cáo; skill đổi ngoài sổ
+# được đưa lên riêng kèm nội dung file.
+SURFACED_FINDINGS = {
+    'dead_tool_name': 'tên tool không còn trong danh mục CRM', 'dead_action_id': 'mã thao tác không còn trong danh mục',
+    'shadows_official_skill': 'skill local đè skill chuẩn', 'unsafe_profile_file': 'file hồ sơ không đọc an toàn',
+    'ledger_path_rejected': 'sổ curator có đường file lạ', 'ledger_entry_error': 'mục sổ curator không xử lý được',
+    'skill_scan_error': 'skill không kiểm được', 'memory_entry_error': 'mục bộ nhớ không kiểm được',
+    'proposal_dropped': 'đề xuất lệch khuôn bị giữ lại', 'proposal_truncated': 'đề xuất quá dài bị cắt',
+}
+# Thao tác curator là thay nội dung skill (tools/skill_manager_tool.py của Hermes: create, edit, patch, write_file). Mọi thao tác khác
+# (delete, remove_file, archive, rollback…, kể cả tên chưa biết) không bao giờ tự áp dụng.
+CONTENT_ACTIONS = ('create', 'edit', 'patch', 'write_file')
+ACTION_VERBS = {'create': 'tạo', 'edit': 'sửa', 'patch': 'sửa', 'write_file': 'ghi file', 'remove_file': 'xoá file', 'delete': 'xoá',
+                'archive': 'lưu trữ', 'rollback': 'khôi phục', 'pre-rollback': 'chuẩn bị khôi phục'}
 SKIP_SKILL_DIRS = {'.archive', '.hub', '.curator_backups', '.locks', 'node_modules', '__pycache__', '.git'}
 
 # Tên tool CRM xuất hiện dạng trần `crm_task_create` hoặc dạng MCP `mcp__ihomecrm__crm_task_create`.
 TOOL_RE = re.compile(r'(?<![A-Za-z0-9_])(?:mcp__[a-z0-9-]+__)?(crm_[a-z0-9]+(?:_[a-z0-9]+)*)(?![A-Za-z0-9_])')
 # Mã thao tác của khung crm_action_* (trang.thao_tác), vd. `task.create`, `invoice.collect`.
 ACTION_PAGES = ('expense', 'invoice', 'contract', 'task', 'probe', 'learning')
-ACTION_RE = re.compile(r'(?<![A-Za-z0-9_.])((?:' + '|'.join(ACTION_PAGES) + r')\.[a-z][a-z0-9_]*)(?![A-Za-z0-9_])')
+# Không nhầm tên file: task.md, contract.pdf, invoice.html không phải mã thao tác.
+FILE_EXTENSIONS = ('md|markdown|pdf|html?|txt|json|ya?ml|csv|tsv|xlsx?|docx?|pptx?|png|jpe?g|gif|webp|svg|py|m?js|cjs|tsx?|sh|zip|sql|log|'
+                   'css|bin')
+ACTION_RE = re.compile(r'(?<![A-Za-z0-9_.])((?:' + '|'.join(ACTION_PAGES) + r')\.(?!(?:' + FILE_EXTENSIONS
+                       + r')(?![a-z0-9_]))[a-z][a-z0-9_]*)(?![A-Za-z0-9_])')
 
 # Dấu hiệu bài học về GHI dữ liệu CRM (so trên chữ đã bỏ dấu, chữ thường).
 # Tool ghi: một khúc của tên tool (crm_task_create, crm_room_pass_upsert) là động từ ghi — tách theo "_", không dùng regex lồng
@@ -123,8 +143,34 @@ REDACTED = '[đã che]'
 
 # Chỉ che BÍ MẬT KỸ THUẬT (an ninh hệ thống: ai cầm được là vào được hệ thống). KHÔNG che thông tin khách — SĐT, CCCD, email,
 # STK giữ nguyên văn theo quyết định của chủ 31/10 (công ty nhỏ, nhân viên nội bộ dùng chung; quyền xem = users.edit).
-# Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài bất thường).
-REDACTIONS: list[tuple[re.Pattern[str], str]] = [
+# Mọi lượng từ đều có trần (không chạy bậc hai trên chuỗi dài bất thường). Đề xuất đã nạp bất biến nên thà che dư một từ hơn lọt.
+_NOT_MASKED_YET = r'(?!\[[^\]\n]{0,40}đã che\])'
+_NOT_LIST_ITEM = r'(?![-*•][ \t])'
+_QUOTED_VALUE = r'(?P<q>\\?["' + "'" + r'`])(?P<inner>(?:(?!(?P=q))(?:\\.|[^\n])){1,512})(?P=q)'
+# Giá trị một từ. Mật khẩu có thể có chữ có dấu; token luôn là ASCII nên "token: hết hạn" là câu thường, không phải bí mật.
+_ANY_VALUE = r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[^\s"' + "'" + r'`<>]{1,512}'
+_ASCII_VALUE = (r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[^\s"' + "'" + r'`<>\u0080-\U0010ffff]{1,512}(?=[\s"' + "'" + r'`<>]|$)')
+# Sau nhãn: dấu định dạng tuỳ chọn, ":" hoặc "=", rồi giá trị (có thể ở dòng ngay dưới).
+_SEP = r'[ \t]*[\\"' + "'" + r'`*_]{0,3}[ \t]*[:=][*_`]{0,2}[ \t]*(?:\r?\n[ \t]*){0,2}'
+_PASSWORD_WORD = r'password|passwd|pwd|passphrase'
+_TOKEN_WORD = r'api[_-]?key|client[_-]?secret|secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|access[_-]?key|private[_-]?key'
+_LABEL_START = r'(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,40}[_-]){0,4}'   # DB_PASSWORD, ZALO_API_KEY, x-api-key
+_LABEL_END = r'(?:[_-][A-Za-z0-9]{1,40}){0,2}'
+_VI_LABEL = (r'(?<!\w)(?:mật[ _-]?khẩu|mat[ _-]?khau|mã[ _-]?kho[áa]|mã[ _-]?khóa|ma[ _-]?khoa)'
+             r'(?:[ \t]+[^\s:=,.;]{1,30}){0,3}')       # "Mật khẩu wifi tầng 3: …"
+
+
+def _mask_value(match: re.Match[str]) -> str:
+    quote = match.groupdict().get('q') or ''
+    return match.group('label') + quote + REDACTED + quote
+
+
+def _labelled(label: str, value: str) -> re.Pattern[str]:
+    """Nhãn + giá trị: giá trị trong nháy (có thể có dấu cách) hoặc một từ."""
+    return re.compile(r'(?i)(?P<label>' + label + r')' + _NOT_MASKED_YET + _NOT_LIST_ITEM + r'(?:' + _QUOTED_VALUE + '|' + value + ')')
+
+
+REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
     (re.compile(r'-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]{0,8000}?-----END [A-Z ]{0,40}PRIVATE KEY-----'
                 r'|[A-Za-z0-9+/=\s]{0,8000})'), '[khoá riêng đã che]'),
     (re.compile(r'(?i)\b((?:proxy-)?authorization)([ \t]*[:=][ \t]*)[^\n]{1,4096}'), r'\1\2' + REDACTED),
@@ -133,14 +179,34 @@ REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r'(?<![A-Za-z0-9])(?:sk|rk|pk)[-_][A-Za-z0-9_-]{16,512}'), '[khoá đã che]'),
     (re.compile(r'(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|sbp_[A-Za-z0-9]{20,255}|'
                 r'sb_(?:secret|publishable)_[A-Za-z0-9_-]{10,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|'
-                r'AIza[0-9A-Za-z_-]{30,255})'), '[khoá đã che]'),
-    (re.compile(r'(?i)\b(api[_-]?key|client[_-]?secret|secret|password|passwd|pwd|mat[ _-]?khau|mật[ _-]?khẩu|'
-                r'access[_-]?token|refresh[_-]?token|token|access[_-]?key|private[_-]?key)'
-                r'([ \t]*[:=][ \t]*)(["\']?)(?!\[)[^\s"\'<>]{4,512}'), r'\1\2\3' + REDACTED),
+                r'AIza[0-9A-Za-z_-]{30,255}|hc_[A-Za-z0-9_-]{43,512})'), '[khoá đã che]'),
+    # Chuỗi kết nối: postgresql://u:PASS@host, https://u:PASS@host, redis://:PASS@host.
+    (re.compile(r'(?i)\b([a-z][a-z0-9+.-]{1,30}://[^\s/:@]{0,128}:)' + _NOT_MASKED_YET + r'[^\s/@]{1,512}(@)'), r'\1' + REDACTED + r'\2'),
+    # Tham số -u / --user của curl, dạng tên:mật khẩu.
+    (re.compile(r'(?<!\S)((?:-u|--user)(?:[ \t]+|=)["' + "'" + r']?[^\s:"' + "'" + r']{1,128}:)' + _NOT_MASKED_YET + r'[^\s"' + "'" + r']{1,512}'),
+     r'\1' + REDACTED),
+    # Tham số dòng lệnh: --password X, --api-key=X.
+    (_labelled(r'(?<!\S)--?[a-z0-9-]{0,30}(?:password|passwd|secret|token|api-?key)(?:[ \t]+|=)', _ANY_VALUE), _mask_value),
+    # Nhãn tiếng Anh, cả khoá JSON có nháy: "password": "x", DB_PASSWORD=x, PGPASSWORD=x, dbPassword: x.
+    (_labelled(r'(?:' + _LABEL_START + r'(?:' + _PASSWORD_WORD + r')' + _LABEL_END
+               + r'|(?-i:(?<![A-Za-z0-9])[A-Z0-9]{1,40}(?:PASSWORD|PASSWD|PWD))'
+               + r'|(?-i:(?<![A-Za-z0-9_])[A-Z0-9_]{1,40}_PASS)'
+               + r'|(?-i:(?<![A-Za-z0-9_])[a-z][a-zA-Z0-9]{0,40}(?:Password|Passwd|Pwd|Passphrase)))' + _SEP, _ANY_VALUE), _mask_value),
+    (_labelled(r'(?:' + _LABEL_START + r'(?:' + _TOKEN_WORD + r')' + _LABEL_END
+               + r'|(?-i:(?<![A-Za-z0-9])[A-Z0-9]{1,40}(?:SECRET|TOKEN))'
+               + r'|(?-i:(?<![A-Za-z0-9_])[a-z][a-zA-Z0-9]{0,40}(?:Secret|ApiKey|Token)))' + _SEP, _ASCII_VALUE), _mask_value),
+    # "password is X".
+    (_labelled(r'(?<![A-Za-z0-9])(?:' + _PASSWORD_WORD + r')[ \t]+is[ \t]+', _ANY_VALUE), _mask_value),
+    # Nhãn ngắn: chỉ đứng riêng ("pass phòng", crm_room_pass_upsert không phải mật khẩu).
+    (_labelled(r'(?<![\w-])(?:pass|mk)(?:' + _SEP + r'|[ \t]+là[ \t]+)', _ANY_VALUE), _mask_value),
+    # Nhãn tiếng Việt: mật khẩu: X, Mật khẩu wifi: X, mật khẩu là X, mã khoá/mã khóa: X.
+    (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|[ \t]+là[ \t]+)', _ANY_VALUE), _mask_value),
 ]
 
 
 def redact(text: str) -> str:
+    # Dạng dựng sẵn trước: "mật khẩu" gõ từ máy Mac (NFD) không được né nhãn tiếng Việt.
+    text = unicodedata.normalize('NFC', text)
     for pattern, replacement in REDACTIONS:
         text = pattern.sub(replacement, text)
     return text
@@ -195,7 +261,8 @@ def bounded_source(source: dict[str, Any]) -> dict[str, Any]:
     """Nguồn của đề xuất: chuỗi một dòng (đã che bí mật kỹ thuật) ≤ 200 ký tự, ≤ 2 KiB dạng chữ jsonb; vượt ⇒ chỉ giữ khoá nhận diện."""
     out = _clean_json(source)
     if pg_json_bytes(out) > MAX_SOURCE_BYTES:
-        keep = ('type', 'profile', 'ledgerId', 'file', 'entrySha256', 'at')
+        keep = ('type', 'profile', 'ledgerId', 'file', 'entrySha256', 'at', 'action', 'skill', 'finding', 'part', 'parts',
+                'contentTruncated', 'omittedChars')
         out = {key: out[key] for key in keep if key in out}
         out['truncated'] = True
     return out
@@ -445,15 +512,15 @@ def iter_skill_files(root: Path) -> Iterable[Path]:
 
 
 def skill_package_texts(skill_md: Path, read: Callable[[Path], Optional[str]]) -> list[tuple[Path, str]]:
-    """SKILL.md + các .md đi kèm trong cùng gói skill (references/…), đọc qua `read` (đọc an toàn, tự ghi nhận file bị từ chối)."""
+    """SKILL.md + MỌI file đi kèm trong cùng gói skill (references/ templates/ scripts/ assets/ — Hermes cho ghi bằng write_file, không
+    riêng .md), đọc qua `read` (đọc an toàn, tự ghi nhận file bị từ chối)."""
     out: list[tuple[Path, str]] = []
     for current, dirs, files in os.walk(skill_md.parent, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_SKILL_DIRS and not d.startswith('.'))
         for name in sorted(files):
-            if name.endswith('.md'):
-                text = read(Path(current) / name)
-                if text is not None:
-                    out.append((Path(current) / name, text))
+            text = read(Path(current) / name)
+            if text is not None:
+                out.append((Path(current) / name, text))
     return out
 
 
@@ -522,6 +589,26 @@ def dead_names(text: str, catalog: dict[str, Any]) -> tuple[list[str], list[str]
 
 
 SEGMENT_SPLIT = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"“(`*\-])|\n+')
+
+
+def split_parts(text: str, size: int = MAX_CONTENT) -> list[str]:
+    """Chia nội dung dài thành các phần ≤ `size` ký tự, ưu tiên cắt ở cuối dòng. Bí mật đã che trước khi chia."""
+    parts: list[str] = []
+    rest = text
+    while len(rest) > size:
+        cut = rest.rfind('\n', size // 2, size)
+        cut = cut if cut > 0 else size
+        piece, rest = rest[:cut].rstrip(), rest[cut:].lstrip('\n')
+        if piece.strip():
+            parts.append(piece)
+    if rest.strip():
+        parts.append(rest.strip())
+    return parts
+
+
+def looks_binary(text: str) -> bool:
+    """File trong gói skill không phải văn bản (đọc UTF-8 thay lỗi bằng U+FFFD): chỉ báo tên, không đưa nội dung lên trang duyệt."""
+    return '\x00' in text or text.count('\ufffd') > max(8, len(text) // 50)
 
 
 def segments(text: str) -> list[str]:
@@ -623,6 +710,7 @@ class ProfileAudit:
         self.proposals: list[dict[str, Any]] = []
         self.auto_applied: list[dict[str, Any]] = []
         self.errors: list[str] = []
+        self.degraded: list[str] = []   # không kiểm được phần việc chính ⇒ mã thoát khác 0 để OnFailure báo
         self.next_state: dict[str, Any] = {}
         self.counts: dict[str, int] = {}
         self._changed_files: set[str] = set()
@@ -672,23 +760,50 @@ class ProfileAudit:
 
     def proposal(self, kind: str, title: str, content: str, source: dict[str, Any], detected_at: datetime,
                  source_ref: str) -> None:
-        content = clip(content, MAX_CONTENT)
-        normalized = ' '.join(content.split())
-        if not normalized:
+        """Một đề xuất, hoặc nhiều phần nếu dài: người duyệt xem được đủ nguyên văn. Quá MAX_PARTS mới cắt và nguồn ghi rõ."""
+        pieces = split_parts(clean_text(content, 10 ** 9))
+        if not pieces:
             return
-        key = sha256_hex(f'{self.name}|{kind}|{source_ref}|{normalized}')
-        if any(p['dedupeKey'] == key for p in self.proposals):
-            return
-        # Tiêu đề một dòng (nội dung bộ nhớ/skill có thể nhiều dòng): CHECK của SQL và bộ nạp từ chối ký tự xuống dòng.
-        heading = one_line(title, MAX_TITLE) or one_line(normalized, MAX_TITLE)
-        # Mốc phát hiện trong cửa sổ SQL nhận: không ở tương lai, không quá cũ.
-        detected = clamp(detected_at, self.now - MAX_DETECTED_AGE, self.now)
-        item = {'dedupeKey': key, 'kind': kind, 'title': heading, 'content': content,
-                'source': bounded_source({'profile': self.name, **source}), 'detectedAt': iso(detected)}
-        if not valid_proposal(item, self.now):
-            self.finding('proposal_dropped', 'high', 'đề xuất lệch khuôn kho CRM — không gửi, cần xem tay', dedupeKey=key)
-            return
-        self.proposals.append(item)
+        kept = pieces[:MAX_PARTS]
+        omitted = sum(len(piece) for piece in pieces[MAX_PARTS:])
+        for index, piece in enumerate(kept, 1):
+            normalized = ' '.join(piece.split())
+            # Đề xuất một phần giữ khoá như cũ; khi tách thì khoá theo cả số phần.
+            part_ref = source_ref if len(pieces) == 1 else f'{source_ref}|{index}'
+            key = sha256_hex(f'{self.name}|{kind}|{part_ref}|{normalized}')
+            if any(p['dedupeKey'] == key for p in self.proposals):
+                continue
+            extra: dict[str, Any] = {'part': index, 'parts': len(kept)} if len(kept) > 1 else {}
+            if omitted and index == len(kept):
+                extra.update(contentTruncated=True, omittedChars=omitted)
+            suffix = f' (phần {index}/{len(kept)})' if len(kept) > 1 else ''
+            # Tiêu đề một dòng (nội dung bộ nhớ/skill có thể nhiều dòng): CHECK của SQL và bộ nạp từ chối ký tự xuống dòng.
+            heading = (one_line(title, MAX_TITLE - len(suffix)) or one_line(normalized, MAX_TITLE - len(suffix))) + suffix
+            # Mốc phát hiện trong cửa sổ SQL nhận: không ở tương lai, không quá cũ.
+            detected = clamp(detected_at, self.now - MAX_DETECTED_AGE, self.now)
+            item = {'dedupeKey': key, 'kind': kind, 'title': heading, 'content': piece,
+                    'source': bounded_source({'profile': self.name, **source, **extra}), 'detectedAt': iso(detected)}
+            if not valid_proposal(item, self.now):
+                self.finding('proposal_dropped', 'high', 'đề xuất lệch khuôn kho CRM — không gửi, cần xem tay', dedupeKey=key)
+                continue
+            self.proposals.append(item)
+        if omitted:
+            self.finding('proposal_truncated', 'high',
+                         f'nội dung quá {MAX_PARTS} phần: {omitted} ký tự cuối không gửi lên trang duyệt, xem tại hồ sơ', ref=source_ref)
+
+    def surface_findings(self) -> None:
+        """Phát hiện phải tới người duyệt thành cảnh báo trên trang duyệt (không chỉ nằm trong private/). Khoá theo nội dung phát
+        hiện: cùng tên chết của cùng file không hiện lại mỗi tối; đổi tên chết thì là cảnh báo mới."""
+        for item in list(self.findings):
+            label = SURFACED_FINDINGS.get(item['kind'])
+            if label is None:
+                continue
+            where = item.get('file') or item.get('skill') or item.get('ledgerId') or item.get('ref') or ''
+            lines = [item['detail'], *(f'- {name}' for name in item.get('names') or item.get('paths') or [])]
+            self.proposal('audit_warning', f'Cảnh báo kiểm học: {label}' + (f' — {where}' if where else ''), '\n'.join(lines),
+                          {'type': 'audit_finding', 'finding': item['kind'], 'severity': item['severity'], 'file': item.get('file'),
+                           'skill': item.get('skill'), 'ledgerId': item.get('ledgerId')}, self.now,
+                          f'finding:{item["kind"]}:{where}')
 
     def rel(self, path: Path) -> str:
         try:
@@ -833,9 +948,24 @@ class ProfileAudit:
         if uncovered:
             self.finding('skill_changed_without_ledger', 'medium',
                          'skill đổi từ lần chạy trước mà sổ curator không ghi nhận', files=uncovered)
+            self._surface_unledgered(uncovered)
         self.counts['ledgerEntries'] = len(lines)
         self.counts['ledgerNew'] = fresh
         self.next_state['ledgerSeen'] = order[-MAX_SEEN_LEDGER:]
+
+    def _surface_unledgered(self, files: list[str]) -> None:
+        """Skill đổi ngoài sổ curator: không có bản trước để so nên đưa nguyên file hiện tại lên trang duyệt, không tự áp dụng."""
+        for rel in files[:MAX_NAMES]:
+            path = safe_path(self.root, rel)
+            text = self.read(path) if path is not None else None
+            if text is None or looks_binary(text):
+                text = '(không đọc được nội dung dạng chữ: xem tay trên hồ sơ)'
+            source = {'type': 'skill_unledgered', 'file': rel, 'diffUnavailable': True, 'reasons': crm_write_reasons(text)}
+            self.proposal('skill_crm_write' if source['reasons'] else 'audit_warning', f'Skill đổi ngoài sổ curator: {rel}', text, source, self.now,
+                          f'unledgered:{rel}:{sha256_hex(text)}')
+        if len(files) > MAX_NAMES:
+            self.proposal('audit_warning', 'Skill đổi ngoài sổ curator: còn nhiều file nữa', '\n'.join(files[MAX_NAMES:MAX_NAMES + 200]),
+                          {'type': 'skill_unledgered', 'diffUnavailable': True}, self.now, f'unledgered:more:{len(files)}')
 
     def _blob(self, digest: Any) -> Optional[str]:
         if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
@@ -849,23 +979,23 @@ class ProfileAudit:
         skill = one_line(entry.get('skill'), 120)
         evidence = entry.get('evidence') if isinstance(entry.get('evidence'), dict) else {}
         session_id = one_line(evidence.get('session_id'), 120, hide=False) or None
-        source = {'type': 'curator_ledger', 'ledgerId': entry_id, 'actor': actor, 'action': action, 'skill': skill,
-                  'sessionId': session_id, 'at': iso(ts)}
+        source: dict[str, Any] = {'type': 'curator_ledger', 'ledgerId': entry_id, 'actor': actor, 'action': action, 'skill': skill,
+                                  'sessionId': session_id, 'at': iso(ts)}
         if actor == 'user':
             return  # người dùng tự sửa skill: không phải "học".
-        if action not in ('create', 'patch'):
-            self.auto_applied.append({'kind': 'skill_lifecycle', 'source': bounded_source(source)})
-            return
 
+        verb = ACTION_VERBS.get(action, action or 'đổi')
         skills_root = self.subdir('skills')
         if skills_root is None:
+            self.proposal('audit_warning', f'Skill {skill}: {actor} {verb} lúc {vn(ts)} — cần xem',
+                          'Thư mục skills/ của hồ sơ không kiểm được.', source, ts, f'ledger:{entry_id}')
             return
         rejected: list[str] = []
 
         def by_file(items: Any) -> dict[str, Any]:
             out: dict[str, Any] = {}
             for item in items if isinstance(items, list) else []:
-                if not (isinstance(item, dict) and isinstance(item.get('path'), str) and item['path'].endswith('.md')):
+                if not (isinstance(item, dict) and isinstance(item.get('path'), str)):
                     continue
                 # Đường lấy từ sổ (Hermes ghi được): phải nằm dưới skills/, không `..`, không tuyệt đối, không ký tự lạ —
                 # mục lạ bị bỏ thay vì đọc ngoài hồ sơ, và được báo (không mất im lặng).
@@ -882,39 +1012,58 @@ class ProfileAudit:
                          f'sổ curator mục {entry_id}: {len(rejected)} đường file không nằm dưới skills/ hoặc có `..` — bỏ qua, cần xem tay',
                          ledgerId=entry_id, paths=sorted(set(rejected))[:10])
         added: list[str] = []
+        removed: list[str] = []
+        attachments: list[str] = []
+        binaries: list[str] = []
         diff_missing = False
+        covered.update(f'skills/{rel}' for rel in (*before, *after))
         for rel, digest in sorted(after.items()):
-            covered.add(f'skills/{rel}')
+            if rel in before and before[rel] == digest:
+                continue
             new_text = self._blob(digest)
             if new_text is None:
                 # Blob đã bị dọn: so bằng nội dung hiện tại (có thể gồm cả thay đổi sau đó) — ghi rõ trong nguồn.
                 diff_missing = True
                 current = safe_path(skills_root, rel)
                 new_text = self.read(current) if current is not None else None
-            if rel in before:
-                old_text = self._blob(before[rel])
-                if old_text is None:
-                    # Không dựng được bản trước: coi cả file là "thêm" (thận trọng — để chủ xem).
-                    diff_missing = True
-                    added.extend(segments(new_text or ''))
-                    continue
-                added.extend(added_segments(old_text, new_text))
-            else:
-                added.extend(added_segments(None, new_text))
+            if new_text is not None and looks_binary(new_text):
+                binaries.append(rel)
+                continue
+            if not rel.endswith('.md'):
+                attachments.append(rel)
+            # Che TRƯỚC khi tách câu: nhãn và giá trị ở hai dòng không bị tách rời thành mẩu không còn nhận ra được.
+            new_clean = redact(new_text) if new_text is not None else None
+            old_text = self._blob(before[rel]) if rel in before else None
+            if rel in before and old_text is None:
+                # Không dựng được bản trước: coi cả file là "thêm" (thận trọng — để chủ xem).
+                diff_missing = True
+                added.extend(segments(new_clean or ''))
+                continue
+            old_clean = redact(old_text) if old_text is not None else None
+            added.extend(added_segments(old_clean, new_clean))
+            if old_clean is not None and new_clean is not None:
+                removed.extend(added_segments(new_clean, old_clean))
+        removed_files = sorted(rel for rel in before if rel not in after)
+        attachments.extend(rel for rel in removed_files if not rel.endswith('.md'))
         text = '\n'.join(dict.fromkeys(s for s in added if s))
-        if not text:
-            return
+        removed_text = '\n'.join(dict.fromkeys(s for s in removed if s))
         source['diffUnavailable'] = diff_missing
-        reasons = crm_write_reasons(text)
-        crm_skill = 'crm' in fold(skill) or bool(TOOL_RE.search(text))
-        verb = 'tạo' if action == 'create' else 'sửa'
+        source['files'] = sorted({*after, *before})[:MAX_NAMES]
+        reasons = crm_write_reasons('\n'.join(part for part in (text, removed_text) if part))
+        notes = ([f'File không phải văn bản (chỉ báo tên): {", ".join(binaries)}'] if binaries else []) \
+            + ([f'File bị gỡ: {", ".join(removed_files)}'] if removed_files else [])
+        # Hiện TOÀN BỘ phần đổi (chủ chốt nguyên văn): câu không nói về ghi CRM cũng có thể là chỉ dẫn nguy hiểm.
+        body = '\n\n'.join(part for part in ('\n'.join(notes), text, ('--- Phần bị xoá ---\n' + removed_text) if removed_text else '') if part)
         if reasons:
-            # Chỉ lấy các câu thật sự nói về ghi CRM để chủ đọc nhanh; thiếu thì giữ cả đoạn thêm.
-            focused = [s for s in added if crm_write_reasons(s)] or added
-            self.proposal('skill_crm_write', f'Skill {skill}: {actor} {verb} lúc {vn(ts)} — bài học ghi CRM',
-                          '\n'.join(dict.fromkeys(focused)), {**source, 'reasons': reasons, 'crmSkill': crm_skill},
+            self.proposal('skill_crm_write', f'Skill {skill}: {actor} {verb} lúc {vn(ts)} — bài học ghi CRM', body,
+                          {**source, 'reasons': reasons, 'crmSkill': 'crm' in fold(skill) or bool(TOOL_RE.search(text))},
                           ts, f'ledger:{entry_id}')
-        else:
+        elif action not in CONTENT_ACTIONS or attachments or binaries or removed_files or (removed_text and not text):
+            # Thao tác lạ, script/tệp đính kèm, xoá nội dung: không phân loại chắc được thì để người xem, không tự áp dụng im lặng.
+            self.proposal('audit_warning', f'Skill {skill}: {actor} {verb} lúc {vn(ts)} — cần xem',
+                          body or f'{actor} {verb} skill {skill}: không có nội dung thêm để hiện (mã sổ {entry_id}).',
+                          source, ts, f'ledger:{entry_id}')
+        elif text:
             self.auto_applied.append({'kind': 'skill_preference', 'source': bounded_source(source)})
 
     # -- b. "bó tay"
@@ -967,13 +1116,20 @@ class ProfileAudit:
                 step()
             except Exception as error:  # noqa: BLE001 — một bước hỏng không làm hỏng các bước còn lại
                 self.error(f'{step.__name__}: {type(error).__name__}')
+                self.degraded.append(step.__name__)
         refusals = None
         try:
             refusals = self.scan_refusals()
         except Exception as error:  # noqa: BLE001
             self.error(f'scan_refusals: {type(error).__name__}')
+            self.degraded.append('scan_refusals')
+        # Hồ sơ người dùng thật mà không đọc được state.db: đếm "bó tay" = 0 là sai, phải báo.
+        if refusals is not None and refusals['status'] in ('error', 'missing'):
+            self.degraded.append(f'state_db_{refusals["status"]}')
+        self.surface_findings()
         return {'profile': self.name, 'real': self.real, 'counts': self.counts, 'findings': self.findings,
-                'proposals': self.proposals, 'autoApplied': self.auto_applied, 'refusals': refusals, 'errors': self.errors}
+                'proposals': self.proposals, 'autoApplied': self.auto_applied, 'refusals': refusals, 'errors': self.errors,
+                'degraded': self.degraded}
 
 
 def snippet(content: str, hits: list[str]) -> str:
@@ -1133,12 +1289,17 @@ def summarize(report: dict[str, Any]) -> str:
                             ('ledger_entry_error', 'mục sổ curator không xử lý được'),
                             ('memory_entry_error', 'mục bộ nhớ không kiểm được'),
                             ('skill_scan_error', 'skill không kiểm được'),
-                            ('proposal_dropped', 'đề xuất lệch khuôn bị giữ lại')):
+                            ('proposal_dropped', 'đề xuất lệch khuôn bị giữ lại'),
+                            ('proposal_truncated', 'đề xuất quá dài bị cắt')):
             if kinds.get(kind):
                 lines.append(f'  - Cảnh báo: {len(kinds[kind])} {label}')
-        lines.append(f'  - Đề xuất mới về ghi CRM (chờ duyệt): {len(prof["proposals"])}')
-        for idx, p in enumerate(prof['proposals'][:10], 1):
+        lessons = [p for p in prof['proposals'] if p['kind'] != 'audit_warning']
+        lines.append(f'  - Đề xuất mới về ghi CRM (chờ duyệt): {len(lessons)}')
+        for idx, p in enumerate(lessons[:10], 1):
             lines.append(f'      {idx}. {p["title"]}')
+        warnings = len(prof['proposals']) - len(lessons)
+        if warnings:
+            lines.append(f'  - Cảnh báo gửi lên trang duyệt: {warnings}')
         lines.append(f'  - Tự áp dụng (sở thích/ngoài CRM, chỉ đếm): {len(prof["autoApplied"])}')
         ref = prof.get('refusals')
         if ref is not None:
@@ -1188,7 +1349,8 @@ def error_profile(name: str, cfg: dict[str, Any], why: str) -> dict[str, Any]:
     return {'profile': one_line(name, 80, hide=False), 'real': name in cfg['realProfiles'], 'counts': {},
             'findings': [{'kind': 'unsafe_profile_file', 'severity': 'high', 'file': '.',
                           'detail': f'thư mục hồ sơ không kiểm được an toàn ({why})'}],
-            'proposals': [], 'autoApplied': [], 'refusals': None, 'errors': ['thư mục hồ sơ không kiểm được an toàn']}
+            'proposals': [], 'autoApplied': [], 'refusals': None, 'errors': ['thư mục hồ sơ không kiểm được an toàn'],
+            'degraded': ['profile']}
 
 
 def run_audit(cfg: dict[str, Any], now: datetime,
@@ -1234,6 +1396,7 @@ def run_audit(cfg: dict[str, Any], now: datetime,
         'totals': {
             'proposals': sum(len(p['proposals']) for p in profiles_out),
             'proposalsReal': sum(len(p['proposals']) for p in profiles_out if p['real']),
+            'warnings': sum(1 for p in profiles_out for item in p['proposals'] if item['kind'] == 'audit_warning'),
             'findingsHigh': sum(1 for p in profiles_out for f in p['findings'] if f['severity'] == 'high'),
             'refusalsReal': sum((p['refusals'] or {}).get('count', 0) for p in profiles_out if p['real']),
         },
@@ -1242,6 +1405,7 @@ def run_audit(cfg: dict[str, Any], now: datetime,
         report['profilesRootError'] = root_error
     if catalog['status'] != 'ok':
         report['notice'] = 'không kiểm được tên tool: ' + catalog['reason']
+    report['degraded'] = degraded_reasons(report)
     report['summaryVi'] = summarize(report)
     outbox = {'schemaVersion': SCHEMA_VERSION, 'kind': 'hermes-learning-outbox', 'generatedAt': iso(now),
               'profiles': outbox_profiles}
@@ -1276,11 +1440,24 @@ def write_outputs(cfg: dict[str, Any], report: dict[str, Any], outbox: dict[str,
                 pass
 
 
+def degraded_reasons(report: dict[str, Any]) -> list[str]:
+    """Phần việc chính không kiểm được: báo cáo và outbox vẫn được ghi, nhưng mã thoát khác 0 để OnFailure báo cho người vận hành."""
+    out = [f'profiles_root:{report["profilesRootError"]}'] if report.get('profilesRootError') else []
+    if report['catalog']['status'] != 'ok':
+        out.append('catalog')
+    if report['official']['status'] == 'error':
+        out.append('official_skills')
+    for prof in report['profiles']:
+        out.extend(f'{prof["profile"]}:{reason}' for reason in prof.get('degraded', []))
+    return out
+
+
 def counts_line(report: dict[str, Any]) -> dict[str, Any]:
     """Một dòng cho journal: chỉ đếm số, không nội dung đề xuất/bộ nhớ/tin nhắn."""
     return {'event': 'learning_audit', 'generatedAt': report['generatedAt'], 'catalog': report['catalog']['status'],
             'official': report['official']['status'], 'profiles': len(report['profiles']), **report['totals'],
-            'errors': sum(len(p['errors']) for p in report['profiles']), 'profilesRootError': report.get('profilesRootError')}
+            'errors': sum(len(p['errors']) for p in report['profiles']), 'profilesRootError': report.get('profilesRootError'),
+            'degraded': report['degraded']}
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1312,13 +1489,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         report, outbox, next_state = run_audit(cfg, now, use_state=not args.no_state and not args.stdout)
         if args.stdout:
             sys.stdout.write(json_bytes(report, indent=1).decode('ascii'))
-            return 0
+            return 1 if report['degraded'] else 0
         write_outputs(cfg, report, outbox, None if args.no_state else next_state, now)
     except Exception as error:  # noqa: BLE001 — lỗi hệ thống: mã ≠ 0 để systemd báo (OnFailure), không in nội dung
         print(json.dumps({'event': 'learning_audit_failed', 'code': type(error).__name__}, ensure_ascii=True), file=sys.stderr)
         return 1
     print(json.dumps(counts_line(report), ensure_ascii=True))
-    return 1 if report.get('profilesRootError') else 0
+    return 1 if report['degraded'] else 0
 
 
 if __name__ == '__main__':

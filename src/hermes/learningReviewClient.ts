@@ -10,7 +10,7 @@ const controls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 // Giới hạn SQL (char_length) đếm theo code point; `.length` UTF-16 đếm emoji hai lần.
 const codePoints = (value: string) => Array.from(value).length;
 const bounded = (max: number) => z.string().refine(value => codePoints(value) <= max);
-const kind = z.enum(['skill_crm_write', 'memory_crm_write']);
+const kind = z.enum(['skill_crm_write', 'memory_crm_write', 'audit_warning']);
 const status = z.enum(['pending', 'approved', 'rejected']);
 const decisionValue = z.enum(['approve', 'reject']);
 const seqNumber = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER - 1);
@@ -18,8 +18,8 @@ const profileName = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 const proposal = z.object({
   id: uuid, seq: seqNumber, kind, profile: profileName, userId: uuid, userName: bounded(120).nullable(),
   // Không đặt thêm luật nội dung chặt hơn CHECK của SQL: dòng đề xuất bất biến, một dòng "lạ" không được làm hỏng cả danh sách.
-  // Lịch sử trả nội dung rút gọn (≤ 300 ký tự, `contentTruncated`) và không kèm nguồn — trang đọc luôn dưới trần 1 MiB.
-  title: bounded(200), content: bounded(4000), contentTruncated: z.boolean(),
+  // Đề xuất chờ và lịch sử đều trả đủ nội dung + nguồn; trang 20 + 20 dòng dài tối đa vẫn dưới trần 1 MiB (test SQL đo).
+  title: bounded(200), content: bounded(4000),
   source: z.record(z.string(), z.unknown()), detectedAt: isoMicro, status,
   decidedBy: uuid.nullable(), decidedByName: bounded(120).nullable(), decidedAt: isoMicro.nullable(), note: bounded(500).nullable(),
   via: z.enum(['crm_ui', 'hermes_connector']).nullable(),
@@ -32,7 +32,7 @@ const snapshot = z.object({
   organizationId: uuid, canDecide: z.literal(true), pendingCount: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   pending: z.array(proposal).max(20), nextPendingAfterSeq: seqNumber.nullable(),
   history: z.array(proposal).max(20), nextHistoryCursor: cursor.nullable(), audits: z.array(audit).max(20),
-}).strict().refine(value => value.pending.every(item => item.status === 'pending' && !item.contentTruncated)
+}).strict().refine(value => value.pending.every(item => item.status === 'pending')
   && value.history.every(item => item.status !== 'pending')
   && value.pending.every((item, index) => index === 0 || item.seq > value.pending[index - 1].seq)
   && (value.nextPendingAfterSeq === null || value.nextPendingAfterSeq === value.pending[value.pending.length - 1]?.seq)
