@@ -43,7 +43,8 @@ function fixture(t, changes = {}) {
   };
   const service = createConnectorMaintenance({ handoff: { async list() { return changes.rows ?? [row]; } }, backend,
     clock: () => time, log: changes.log ?? (record => events.push(record)), timers,
-    ...(changes.renewBeforeMs ? { renewBeforeMs: changes.renewBeforeMs } : {}) });
+    ...(changes.renewBeforeMs ? { renewBeforeMs: changes.renewBeforeMs } : {}),
+    ...(changes.healthyIds ? { healthyIds: changes.healthyIds } : {}), ...(changes.onHealthyChange ? { onHealthyChange: changes.onHealthyChange } : {}) });
   t.after(() => service.close().catch(() => {}));
   return { service, ack, events, counts: () => ({ calls, reads }), advance(ms) { time += ms; }, now: () => time,
     nearExpiry() { expiry = time + 120000; }, renewInDatabase() { expiry = time + 900000; }, setExpiry(value) { expiry = value; },
@@ -631,4 +632,138 @@ test('renewal_at_risk covers failing database reads and a busy admission, and is
   busy.setExpiry(NOW + 300000); await busy.cycle();
   for (let i = 0; i < 6; i++) { busy.advance(30000); await busy.cycle(); }
   assert.deepEqual(atRisk(busy.events).map(event => event.code), ['busy']);
+});
+
+test('renewal_at_risk is silent for an expiry that already passed before the loop looked again (clock jump or long stall)', async t => {
+  let down = false;
+  const f = fixture(t, { resolve() { if (down) throw coded('backend_unavailable'); return owner(row, NOW + 600000); } });
+  await f.cycle(); down = true;
+  f.advance(700000); await f.cycle(); // 100 s past the expiry in one step: never "under 3 minutes left"
+  assert.deepEqual(atRisk(f.events), []); assert.deepEqual(lost(f.events), []);
+});
+
+test('renewal_at_risk never carries the code of an earlier, recovered failure', async t => {
+  let failures = 1;
+  const f = fixture(t, { begin(ack) {
+    if (failures-- > 0) return settle(Promise.reject(coded('timeout')));
+    f.renewInDatabase(); return settle(Promise.resolve({ ...ack, expiresAt: f.now() + 900000 }));
+  } });
+  f.setExpiry(NOW + 300000);
+  await f.cycle(); f.advance(30000); await f.cycle(); // fails once with 'timeout', then renews
+  assert.equal(actions(f.events).at(-1).action, 'renewal_recovered'); assert.deepEqual(atRisk(f.events), []);
+  f.advance(750000); await f.cycle(); // the loop was away: 150 s left when it looks again, no failure behind it
+  assert.equal(atRisk(f.events).length, 1);
+  assert.equal('code' in atRisk(f.events)[0], false); assert.equal('attempt' in atRisk(f.events)[0], false);
+});
+
+test('a restart longer than the token life: a connection the previous process saw healthy is reported lost, any other is only counted at start', async t => {
+  const carried = fixture(t, { healthyIds: [row.operationId] }); carried.setExpiry(NOW - 1); // the database refuses the dead token
+  await carried.cycle();
+  for (let guard = 0; guard < 40 && !carried.service.status().requiresReconnect; guard++) { carried.advance(30000); await carried.cycle(); }
+  assert.deepEqual(carried.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.deepEqual(lost(carried.events).map(event => [event.connectionId, event.code]), [[row.connectionId.slice(-8), 'unauthorized']]);
+  // Mutation: carrying every ID, or the wrong one, must not turn a dead row into a loss.
+  const other = fixture(t, { healthyIds: [id(99)] }); other.setExpiry(NOW - 1);
+  await other.cycle();
+  for (let guard = 0; guard < 40 && !other.service.status().staleAtStart; guard++) { other.advance(30000); await other.cycle(); }
+  assert.deepEqual(other.service.status(), status('ready', { staleAtStart: 1 })); assert.deepEqual(lost(other.events), []);
+});
+
+test('healthy IDs are reported on change only: the operation IDs that are healthy now, never a token, and a failing sink changes nothing', async t => {
+  const saved = [];
+  const rows = [{ ...row }];
+  const f = fixture(t, { rows, healthyIds: [id(99)], onHealthyChange(ids) { saved.push([...ids]); if (saved.length === 1) throw Error('PRIVATE sink'); return Promise.reject(Error('PRIVATE async sink')); } });
+  await f.cycle(); await f.cycle(); f.advance(30000); await f.cycle();
+  assert.deepEqual(saved, [[row.operationId]]); // the carried ID that is not in the WAL is dropped; unchanged polls write nothing
+  assert.equal(f.service.status().state, 'ready'); assert(!JSON.stringify(saved).includes(row.token));
+  rows.length = 0; await f.cycle();
+  assert.deepEqual(saved, [[row.operationId], []]); // it left the WAL
+  rows.push({ ...row }); await f.cycle();
+  assert.deepEqual(saved.at(-1), [row.operationId]); // back in the WAL and served again: healthy again, as a new enrollment
+});
+
+test('a lost connection is removed from the healthy IDs so the next restart does not report it again', async t => {
+  const saved = [];
+  const f = fixture(t, { onHealthyChange: ids => { saved.push([...ids]); }, begin() { return settle(Promise.reject(coded('maintenance_rejected'))); } });
+  f.setExpiry(NOW + 300000); await f.cycle();
+  for (let guard = 0; guard < 20 && !f.service.status().requiresReconnect; guard++) { f.advance(30000); await f.cycle(); }
+  assert.deepEqual(saved, [[row.operationId], []]); assert.equal(lost(f.events).length, 1);
+});
+
+test('healthyIds and onHealthyChange are validated at construction', () => {
+  const parts = { handoff: { list() {} }, backend: { resolveConnection() {}, beginExternalConnectionMaintenance() {} } };
+  for (const bad of [{ healthyIds: 'x' }, { healthyIds: ['hc_' + 'a'.repeat(43)] }, { healthyIds: ['nope'] }, { healthyIds: Array.from({ length: 65 }, (_, n) => id(n + 1)) }, { onHealthyChange: 'x' }]) {
+    assert.throws(() => createConnectorMaintenance({ ...parts, ...bad }), { message: 'invalid_connector_maintenance_config' });
+  }
+  assert.doesNotThrow(() => createConnectorMaintenance({ ...parts, healthyIds: [id(1)], onHealthyChange() {} }));
+});
+
+// A model of the two clocks the loop meets: the token lease (15 min, renewed to LEAST(now + 15 min, session expiry), refused when the
+// target is not past the current token expiry: SQL hermes_store_renew_connection_v1) and the provider session (1 h, refreshed inside the
+// maintenance step when it has refreshBefore or less left: connection-maintenance.mjs). The host passes the same lead to both.
+function lease(t, { lead, refreshBefore, down = () => false, healthyIds, onHealthyChange }) {
+  const MIN = 60000;
+  let time = NOW, sessionExpiry = NOW + 60 * MIN, tokenExpiry = NOW + 15 * MIN;
+  const counts = { refreshed: 0, refused: 0, renewed: 0 }, timers = fakeTimers(), events = [];
+  const backend = {
+    async resolveConnection() {
+      if (down(time)) throw coded('backend_unavailable');
+      if (tokenExpiry <= time || sessionExpiry <= time) throw coded('unauthorized');
+      return owner(row, tokenExpiry);
+    },
+    beginExternalConnectionMaintenance() {
+      const work = (async () => {
+        if (down(time) || sessionExpiry <= time || tokenExpiry <= time) throw coded('maintenance_rejected');
+        if (sessionExpiry - time <= refreshBefore) { sessionExpiry = time + 60 * MIN; counts.refreshed++; }
+        const target = Math.min(time + 15 * MIN, sessionExpiry);
+        if (target <= tokenExpiry) { counts.refused++; throw coded('maintenance_outcome_unknown'); }
+        tokenExpiry = target; counts.renewed++;
+        return { ok: true, status: 'renewed', connectionId: row.connectionId, expiresAt: target, reconciled: false };
+      })();
+      void work.catch(() => {}); return settle(work);
+    },
+  };
+  const service = createConnectorMaintenance({ handoff: { async list() { return [row]; } }, backend, clock: () => time, timers, renewBeforeMs: lead,
+    log: record => events.push(record), ...(healthyIds ? { healthyIds } : {}), ...(onHealthyChange ? { onHealthyChange } : {}) });
+  t.after(() => service.close().catch(() => {}));
+  return { service, events, counts, async cycle() { const poll = timers.take(30000); if (!poll) service.start(); else poll(); await tick(); },
+    advance(ms) { time += ms; }, now: () => time };
+}
+async function runLease(t, options, minutes) {
+  const f = lease(t, options); await f.cycle();
+  for (let i = 0; i < minutes * 2 && !f.service.status().requiresReconnect; i++) { f.advance(30000); await f.cycle(); }
+  return f;
+}
+
+test('with matching 10-minute leads a healthy network shows no failed renewal and no risk report across six session cycles', async t => {
+  const f = await runLease(t, { lead: 600000, refreshBefore: 600000 }, 360);
+  assert.deepEqual(f.counts.refused, 0); assert(f.counts.refreshed >= 5);
+  assert.deepEqual(actions(f.events).filter(event => event.action !== 'renewal_recovered'), []);
+  assert.deepEqual(atRisk(f.events), []); assert.deepEqual(lost(f.events), []);
+  assert.deepEqual(f.service.status(), status('ready'));
+});
+
+test('mutation: a 10-minute renewal lead with the old 5-minute session lead is refused by SQL every session cycle', async t => {
+  const f = await runLease(t, { lead: 600000, refreshBefore: 300000 }, 360);
+  assert(f.counts.refused >= 5, `refused ${f.counts.refused}`); // about once per session cycle, each with retries and a false risk report
+  assert(actions(f.events).some(event => event.action === 'renewal_failed')); assert(atRisk(f.events).length >= 1);
+});
+
+// Outage that begins at every minute of one session cycle and lasts `minutes`: how many starts end with the connection lost.
+async function deadStarts(t, lead, refreshBefore, minutes) {
+  let dead = 0;
+  for (let start = 25; start < 85; start++) {
+    const from = NOW + start * 60000, f = await runLease(t, { lead, refreshBefore, down: time => time >= from && time < from + minutes * 60000 }, 130);
+    if (f.service.status().requiresReconnect) dead++;
+  }
+  return dead;
+}
+
+test('outage sweep: matching 10-minute leads survive what the 5-minute schedule loses, and the mismatch is worse than the old schedule', async t => {
+  // [old schedule 5/5, PR as first pushed 10/5, matching 10/10] = starts, out of 60, that end with the connection lost.
+  const dead = {};
+  for (const minutes of [4, 5, 8]) dead[minutes] = [await deadStarts(t, 300000, 300000, minutes), await deadStarts(t, 600000, 300000, minutes), await deadStarts(t, 600000, 600000, minutes)];
+  for (const minutes of [4, 5, 8]) assert.equal(dead[minutes][2], 0, `matching leads lost the connection to a ${minutes}-minute outage`);
+  assert(dead[5][0] > 0 && dead[8][0] > 0, 'the old 5-minute schedule loses 5- and 8-minute outages');
+  assert(dead[4][1] > dead[4][0], 'a 10-minute renewal lead with a 5-minute session lead is worse than the old schedule for a 4-minute outage');
 });

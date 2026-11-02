@@ -1,4 +1,4 @@
-import { lstat, mkdir, realpath } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createNativeBindingReconciler } from '../hermes-zalo-native/binding-reconciler.mjs';
 import { createStoreTransport } from '../hermes-broker/store-transport.mjs';
@@ -26,9 +26,33 @@ async function prepareState(paths) {
   }
   return auditDirectory;
 }
+// Operation IDs (never tokens) of the connections the previous process saw healthy, so a stop longer than the token
+// life still reports each of them as lost. A hint for log lines only, never authority: an unreadable, tampered or
+// missing file means [], i.e. the behaviour without it. Written atomically, owner-only; failures are swallowed.
+const OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export function createHealthyRecord({ directory }) {
+  const file = path.join(directory, 'connector-healthy.json'); let chain = Promise.resolve();
+  return Object.freeze({
+    async load() {
+      try {
+        const info = await lstat(file);
+        if (!info.isFile() || info.size > 8192) return [];
+        const value = JSON.parse(await readFile(file, 'utf8'));
+        return value?.v === 1 && Array.isArray(value.ids) ? value.ids.filter(id => typeof id === 'string' && OPERATION_ID.test(id)).slice(0, 64) : [];
+      } catch { return []; }
+    },
+    save(ids) {
+      const next = chain.then(async () => {
+        const temporary = `${file}.tmp`;
+        await writeFile(temporary, JSON.stringify({ v: 1, ids }), { mode: 0o600 }); await chmod(temporary, 0o600); await rename(temporary, file);
+      });
+      chain = next.catch(() => {}); return next;
+    },
+  });
+}
 const DEFAULTS = Object.freeze({
   acquireHostOwnership, prepareState, createHostAudit, createStorePool, createConnectionHandoff, createHermesBackend,
-  createConnectorMaintenance, createNativeBindingReconciler,
+  createConnectorMaintenance, createNativeBindingReconciler, createHealthyRecord,
 });
 
 /** Connector host lifecycle (`mode: "connector"` only). Factories are a trusted
@@ -121,7 +145,10 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       // cùng kênh stdout; không token/digest/thông điệp lỗi, chỉ khi có thay đổi. HERMES_CALL_LOG không tắt nó.
       // renewBeforeMs 600000 = tối đa cho phép: token 15 phút, vòng bắt đầu gia hạn khi còn 10 phút, để lịch thử lại 30/60/120/240 s
       // (+ trần hạn - 30 s) có ~9 phút thay vì ~4 phút khi mạng chập chờn (sự cố 31/10: lỡ cửa sổ 5 phút, token chết 10:19 UTC).
-      maintenance = factories.createConnectorMaintenance({ handoff, backend, renewBeforeMs: 600000, log: record => console.info(JSON.stringify(record)) });
+      const healthyRecord = factories.createHealthyRecord({ directory: configuration.paths.stateRoot });
+      const healthyIds = await healthyRecord.load(); live();
+      maintenance = factories.createConnectorMaintenance({ handoff, backend, renewBeforeMs: 600000, healthyIds,
+        onHealthyChange: ids => healthyRecord.save(ids), log: record => console.info(JSON.stringify(record)) });
       if(configuration.zaloProvisioning) zaloReconciler=factories.createNativeBindingReconciler({
         configuration:configuration.zaloProvisioning,handoff,backend,
         transport:createStoreTransport({pool,expectedRole:configuration.store.role})});

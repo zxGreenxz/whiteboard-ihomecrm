@@ -220,7 +220,11 @@ export function createHermesBackend(configuration = {}) {
     const refreshProvider = createSupabaseRefreshProvider({ ...supabase, fetch: request, clock, dependencyScope });
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
       provider: refreshProvider, crypto, clock, dependencyScope });
-    const maintenance = createConnectionMaintenance({ authority: contextAuthority, connectionStore, refreshManager, renewal, clock, dependencyScope });
+    // refreshBeforeMs must be >= the host's renewBeforeMs (host-service.mjs, 600000). The token target is capped at the
+    // session expiry (SQL LEAST), and SQL refuses a renewal whose target is not past the token expiry (40001). With a
+    // shorter session lead the renewal due at T-10 min finds target = T = token expiry and fails every session cycle.
+    const maintenance = createConnectionMaintenance({ authority: contextAuthority, connectionStore, refreshManager, renewal, clock, dependencyScope,
+      refreshBeforeMs: 600000 });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group

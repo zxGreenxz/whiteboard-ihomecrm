@@ -67,16 +67,19 @@ const codeOf = error => {
  * Two further records do not depend on the overall state changing, because that
  * state can already be needs_attention when a new loss happens:
  * - connector_connection_lost: a connection this process saw healthy (the
- *   database served it with a live expiry, or it renewed) turned expired. A
+ *   database served it with a live expiry, or it renewed) or that the previous
+ *   process left in healthyIds turned expired. A
  *   token already dead when the process started never was healthy, so it
  *   produces no such record; it is counted as staleAtStart, not requiresReconnect.
  * - connector_renewal_at_risk: less than AT_RISK_MS left and still not renewed;
  *   once per connection and confirmed expiry.
  */
 export function createConnectorMaintenance({ handoff, backend, clock = Date.now, pollIntervalMs = 30000,
-  renewBeforeMs = 300000, stallAfterMs = 120000, log, timers = { setTimeout, clearTimeout } } = {}) {
+  renewBeforeMs = 300000, stallAfterMs = 120000, log, healthyIds, onHealthyChange, timers = { setTimeout, clearTimeout } } = {}) {
   if ([handoff?.list, backend?.resolveConnection, backend?.beginExternalConnectionMaintenance, clock,
     timers?.setTimeout, timers?.clearTimeout].some(fn => typeof fn !== 'function') || (log !== undefined && typeof log !== 'function') ||
+    (onHealthyChange !== undefined && typeof onHealthyChange !== 'function') ||
+    (healthyIds !== undefined && (!Array.isArray(healthyIds) || healthyIds.length > 64 || healthyIds.some(value => typeof value !== 'string' || !UUID.test(value)))) ||
     !positive(pollIntervalMs) || pollIntervalMs > 60000 || !positive(renewBeforeMs) || renewBeforeMs > 600000 ||
     !positive(stallAfterMs) || stallAfterMs > 600000) {
     throw new TypeError('invalid_connector_maintenance_config');
@@ -86,6 +89,19 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
   // 'expired' for a connection never healthy in this process (a dead WAL row at startup): kept, never deleted.
   // risked: operationId -> the confirmed expiry already reported as at risk.
   const controller = new AbortController(), tracked = new Map(), stopped = new Map(), risked = new Map();
+  // healthyIds: operation IDs an earlier process saw healthy (a restart longer than the token life would otherwise
+  // turn every live connection into 'stale' and hide its loss). Only a log/count hint, never authority: a wrong or
+  // missing list changes which record is written, nothing else. Consumed once per ID, when its first item is created.
+  // onHealthyChange(ids) receives the current healthy IDs whenever they change; its failure never changes maintenance.
+  const carried = new Set(healthyIds ?? []);
+  let persisted = [...carried].sort().join();
+  const persist = () => {
+    if (!onHealthyChange) return;
+    const ids = [...new Set([...carried, ...[...tracked].filter(([, item]) => item.healthy).map(([key]) => key)])].sort();
+    if (ids.join() === persisted) return;
+    persisted = ids.join();
+    try { void Promise.resolve(onHealthyChange(Object.freeze(ids))).catch(() => {}); } catch { /* A persistence failure never changes maintenance. */ }
+  };
   let running, timer, closing = false, started = false, closed, halted = false, state = 'idle', reported = 'idle';
   const checkTime = () => { const time = clock(); if (!positive(time)) throw fault('connector_clock_invalid'); return time; };
   const emit = (event, fields) => {
@@ -202,7 +218,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     const fingerprint = createHash('sha256').update(JSON.stringify([...OWNER.map(key => row[key]), row.token])).digest('hex');
     let item = tracked.get(row.operationId);
     if (item?.fingerprint !== fingerprint) {
-      item = { fingerprint, nextDue: 0, expiresAt: undefined, retry: undefined, deniedSince: undefined, condition: 'ok', lastCode: undefined, healthy: false };
+      item = { fingerprint, nextDue: 0, expiresAt: undefined, retry: undefined, deniedSince: undefined, condition: 'ok', lastCode: undefined, healthy: carried.delete(row.operationId) };
       tracked.set(row.operationId, item); risked.delete(row.operationId);
     }
     watchRisk(row, item);
@@ -260,10 +276,12 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
         seen.add(row.operationId);
       }
       for (const key of tracked.keys()) if (!seen.has(key)) { tracked.delete(key); risked.delete(key); }
+      for (const key of carried) if (!seen.has(key)) carried.delete(key); // left the WAL: nothing to carry
       for (const row of rows) {
         if (closing || halted) break;
         if (!stopped.has(row.operationId) && !await visit(row)) unavailable = true;
       }
+      persist();
       report(settled(unavailable));
     } catch (error) { report(halted || counts().retained ? 'retained' : 'unavailable', { code: codeOf(error) }); }
   };
