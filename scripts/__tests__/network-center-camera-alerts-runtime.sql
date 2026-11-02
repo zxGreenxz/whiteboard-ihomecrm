@@ -65,6 +65,24 @@ VALUES ('lifecycle_reminders_service_jwt',
   || '.' || translate(encode(convert_to(json_build_object('role', 'service_role', 'ref', 'tryymsxyyckgbrmmvozx')::text, 'UTF8'), 'base64'), E'+/=\n', '-_')
   || '.camera-alert-proof');
 
+-- Super admin cũng là thành viên có quyền xem ở org thật (ca dương) và ở org sandbox (phải bị loại).
+INSERT INTO public.organizations (id, slug, name, status, is_demo, created_by)
+VALUES ('cccc0000-0000-4000-8000-000000000001', 'camera-sandbox', 'Sandbox', 'ACTIVE', false, '90450d5f-29b6-4897-bdef-cdb5fb53f339');
+INSERT INTO public.buildings (id, user_id, organization_id, name, code, province, district, ward, total_floors, total_rooms, is_virtual)
+VALUES ('cccc1000-0000-4000-8000-000000000001', '90450d5f-29b6-4897-bdef-cdb5fb53f339', 'cccc0000-0000-4000-8000-000000000001', 'SANDBOX-A', 'SB-A', 'Local', 'Local', 'Local', 1, 1, false);
+INSERT INTO public.authorization_scopes (organization_id, scope_type) VALUES ('cccc0000-0000-4000-8000-000000000001', 'ORGANIZATION');
+INSERT INTO public.organization_memberships (id, organization_id, user_id, member_type, status, activated_at) VALUES
+  ('aaaa5000-0000-4000-8000-0000000000a2', 'aaaa0000-0000-4000-8000-000000000001', 'dddd2000-0000-4000-8000-0000000000a2', 'STAFF', 'ACTIVE', clock_timestamp()),
+  ('cccc5000-0000-4000-8000-0000000000a2', 'cccc0000-0000-4000-8000-000000000001', 'dddd2000-0000-4000-8000-0000000000a2', 'STAFF', 'ACTIVE', clock_timestamp());
+INSERT INTO public.member_permission_overrides (id, organization_id, membership_id, permission_key, effect, scope_mode) VALUES
+  ('aaaa6000-0000-4000-8000-0000000000b2', 'aaaa0000-0000-4000-8000-000000000001', 'aaaa5000-0000-4000-8000-0000000000a2', 'network_center.view', 'ALLOW', 'ORGANIZATION'),
+  ('cccc6000-0000-4000-8000-0000000000b2', 'cccc0000-0000-4000-8000-000000000001', 'cccc5000-0000-4000-8000-0000000000a2', 'network_center.view', 'ALLOW', 'ORGANIZATION');
+INSERT INTO public.member_override_scopes (organization_id, override_id, scope_id)
+SELECT s.organization_id, o.override_id, s.id
+  FROM (VALUES ('aaaa6000-0000-4000-8000-0000000000b2'::uuid, 'aaaa0000-0000-4000-8000-000000000001'::uuid),
+               ('cccc6000-0000-4000-8000-0000000000b2'::uuid, 'cccc0000-0000-4000-8000-000000000001'::uuid)) o(override_id, org_id)
+  JOIN public.authorization_scopes s ON s.organization_id = o.org_id AND s.scope_type = 'ORGANIZATION';
+
 INSERT INTO app_private.camera_alert_settings (organization_id, enabled, mode)
 VALUES ('dddd0000-0000-4000-8000-000000000001', true, 'LIVE');
 
@@ -151,6 +169,13 @@ BEGIN
     'fixture: owner must lack network_center.view, so only the company-owner branch includes them');
   PERFORM pg_temp.expect(cardinality(app_private.network_center_alert_recipient_ids_v1('dddd0000-0000-4000-8000-000000000001', 'aaaa1000-0000-4000-8000-000000000001')) = 0,
     'a building of another organization must have no recipients');
+  -- Super admin có quyền ở toà thật (không demo, không sandbox) vẫn nhận; ở org sandbox thì không.
+  PERFORM pg_temp.expect(app_private.network_center_alert_recipient_ids_v1('aaaa0000-0000-4000-8000-000000000001', 'aaaa1000-0000-4000-8000-000000000001')
+    = ARRAY['dddd2000-0000-4000-8000-0000000000a2']::uuid[], 'a super admin with view on a real organization building must be a recipient');
+  PERFORM pg_temp.expect((SELECT allowed FROM app_private.authorize_tenant_action_v3('dddd2000-0000-4000-8000-0000000000a2', 'cccc0000-0000-4000-8000-000000000001', 'network_center.view', 'cccc1000-0000-4000-8000-000000000001', NULL)),
+    'fixture: super admin must hold view in the sandbox organization');
+  PERFORM pg_temp.expect(cardinality(app_private.network_center_alert_recipient_ids_v1('cccc0000-0000-4000-8000-000000000001', 'cccc1000-0000-4000-8000-000000000001')) = 0,
+    'a super admin must not receive sandbox organization alerts');
 END $c7$;
 ROLLBACK;
 
@@ -311,6 +336,48 @@ BEGIN
 END $c3b$;
 ROLLBACK;
 
+-- Ca 3c — kể cả snapshot chưa được server chuẩn hoá (OFFLINE mà kênh/ổ vẫn
+-- mang trạng thái cũ), kênh/ổ của đầu ghi không ONLINE không được tính là lỗi.
+BEGIN;
+DO $c3c$
+DECLARE t timestamptz := pg_temp.at(0, '11:00'); i integer; s timestamptz;
+BEGIN
+  FOR i IN 0..6 LOOP
+    s := t + i * interval '2 minutes';
+    PERFORM pg_temp.snap(3, s - interval '30 seconds', 'OFFLINE', pg_temp.ch(ARRAY[2]), pg_temp.disk('ERROR'));
+    PERFORM pg_temp.tick(s);
+    PERFORM pg_temp.expect(NOT EXISTS (SELECT 1 FROM app_private.camera_alert_conditions WHERE subject <> 'recorder:offline'),
+      'disk/channel states of a non-ONLINE recorder must not be tracked');
+  END LOOP;
+  PERFORM pg_temp.expect(pg_temp.n_inc() = 1 AND pg_temp.n_inc('CAMERA_RECORDER_OFFLINE') = 1, 'only C2 for an OFFLINE recorder');
+END $c3c$;
+ROLLBACK;
+
+-- Ca 3d — OFFLINE rồi kết nối lại nhưng trả UNKNOWN: C2 đóng (đã kết nối lại),
+-- rồi C6 mở sau 30 phút, không bị C2 che mãi.
+BEGIN;
+DO $c3d$
+DECLARE t timestamptz := pg_temp.at(0, '11:00'); i integer; s timestamptz;
+  unknown_ch jsonb := (SELECT jsonb_agg(jsonb_build_object('channel', g, 'state', 'UNKNOWN')) FROM generate_series(1, 8) g);
+BEGIN
+  FOR i IN 0..3 LOOP
+    s := t + i * interval '2 minutes';
+    PERFORM pg_temp.snap(2, s - interval '30 seconds', 'OFFLINE', unknown_ch, pg_temp.disk('UNKNOWN'));
+    PERFORM pg_temp.tick(s);
+  END LOOP;
+  PERFORM pg_temp.expect(pg_temp.n_inc('CAMERA_RECORDER_OFFLINE') = 1, 'fixture: C2 open');
+  FOR i IN 4..20 LOOP
+    s := t + i * interval '2 minutes';
+    PERFORM pg_temp.snap(2, s - interval '30 seconds', 'UNKNOWN', unknown_ch, pg_temp.disk('UNKNOWN'));
+    PERFORM pg_temp.tick(s);
+  END LOOP;
+  PERFORM pg_temp.expect((SELECT status FROM public.network_incidents WHERE incident_type = 'CAMERA_RECORDER_OFFLINE') = 'RESOLVED',
+    'a reconnected recorder that answers UNKNOWN must close C2');
+  PERFORM pg_temp.expect((SELECT count(*) FROM public.network_incidents WHERE incident_type = 'CAMERA_RECORDER_UNKNOWN' AND status = 'OPEN' AND severity = 'WARNING') = 1,
+    'C6 must open after 30 minutes of UNKNOWN instead of being hidden by C2');
+END $c3d$;
+ROLLBACK;
+
 -- ---------------------------------------------------------------------------
 -- Ca 4 — dữ liệu giám sát cũ ≥ 5 phút: C4; ba đầu ghi cùng cũ ⇒ tin ghi lỗi chung.
 -- ---------------------------------------------------------------------------
@@ -322,6 +389,8 @@ BEGIN
     PERFORM pg_temp.snap(n, t - interval '6 minutes', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
   END LOOP;
   PERFORM pg_temp.tick(t);
+  PERFORM pg_temp.expect(pg_temp.n_inc() = 0, 'C4 waits one grace interval after it is first seen');
+  PERFORM pg_temp.tick(t + interval '2 minutes');
   PERFORM pg_temp.expect(pg_temp.n_inc('CAMERA_MONITOR_STALE') = 3 AND pg_temp.n_inc() = 3, 'three stale recorders must open three C4');
   PERFORM pg_temp.expect(pg_temp.n_notif() = 2 AND (SELECT bool_and(content LIKE '%có thể do VPS hoặc bộ thu thập%') FROM public.notifications),
     'grouped message must say VPS/collector');
@@ -336,11 +405,10 @@ BEGIN
   PERFORM pg_temp.snap(1, t - interval '4 minutes', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
   PERFORM pg_temp.tick(t);
   PERFORM pg_temp.expect(pg_temp.n_inc() = 0, 'four minutes old is not stale yet');
-  PERFORM pg_temp.snap(1, t - interval '4 minutes', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
   UPDATE public.camera_recorders SET created_at = t - interval '11 minutes' WHERE id = pg_temp.rec(2);
   PERFORM pg_temp.tick(t + interval '2 minutes');
+  PERFORM pg_temp.tick(t + interval '4 minutes');
   PERFORM pg_temp.expect(pg_temp.n_inc('CAMERA_MONITOR_STALE') = 2, 'stale R1 and never-reported R2 must both open C4');
-  UPDATE public.camera_recorders SET created_at = t WHERE id = pg_temp.rec(2);
 END $c4b$;
 ROLLBACK;
 BEGIN;
@@ -349,9 +417,28 @@ DECLARE t timestamptz := pg_temp.at(0, '12:00');
 BEGIN
   PERFORM pg_temp.snap(1, t - interval '6 minutes', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
   PERFORM pg_temp.tick(t);
+  PERFORM pg_temp.tick(t + interval '2 minutes');
   PERFORM pg_temp.expect(pg_temp.n_inc('CAMERA_MONITOR_STALE') = 1 AND pg_temp.n_notif() = 2, 'a single stale recorder opens C4');
   PERFORM pg_temp.expect(NOT EXISTS (SELECT 1 FROM public.notifications WHERE content LIKE '%VPS%'), 'a single stale recorder is not a collector-wide message');
 END $c4c$;
+ROLLBACK;
+
+-- Ca 4d — bật lại theo dõi một đầu ghi có snapshot cũ: collector gửi snapshot
+-- mới trong khoảng chờ ⇒ không có C4 giả, không có tin.
+BEGIN;
+DO $c4d$
+DECLARE t timestamptz := pg_temp.at(0, '12:00');
+BEGIN
+  UPDATE public.camera_recorders SET enabled = false WHERE id = pg_temp.rec(1);
+  PERFORM pg_temp.snap(1, t - interval '3 days', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
+  PERFORM pg_temp.tick(t - interval '2 minutes');
+  UPDATE public.camera_recorders SET enabled = true WHERE id = pg_temp.rec(1);
+  PERFORM pg_temp.tick(t);
+  PERFORM pg_temp.snap(1, t + interval '90 seconds', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
+  PERFORM pg_temp.tick(t + interval '2 minutes');
+  PERFORM pg_temp.expect(pg_temp.n_inc() = 0 AND pg_temp.n_notif() = 0 AND NOT EXISTS (SELECT 1 FROM app_private.camera_alert_conditions),
+    're-enabling a recorder must not raise a false C4');
+END $c4d$;
 ROLLBACK;
 
 -- ---------------------------------------------------------------------------
@@ -377,6 +464,25 @@ BEGIN
     AND NOT EXISTS (SELECT 1 FROM app_private.camera_alert_conditions) AND pg_temp.n_notif() = 2,
     'a disabled recorder must be closed as DISABLED without a recovery message');
 END $c5$;
+ROLLBACK;
+
+-- Ca 5b — router của đầu ghi bị ngừng: bỏ qua đầu ghi, đóng lặng sự cố cũ, lượt không ném lỗi.
+BEGIN;
+DO $c5b$
+DECLARE t timestamptz := pg_temp.at(0, '14:00'); r jsonb;
+BEGIN
+  PERFORM pg_temp.snap(1, t - interval '30 seconds', 'ONLINE', pg_temp.ch(), pg_temp.disk('ERROR'));
+  PERFORM pg_temp.tick(t);
+  PERFORM pg_temp.expect(pg_temp.n_inc() = 1 AND pg_temp.n_notif() = 2, 'fixture: C1 open');
+  UPDATE public.network_devices SET is_active = false
+   WHERE building_id = 'dddd1000-0000-4000-8000-000000000001' AND device_kind = 'MIKROTIK';
+  r := pg_temp.tick(t + interval '2 minutes');
+  PERFORM pg_temp.expect((SELECT status FROM public.network_incidents) = 'RESOLVED'
+    AND EXISTS (SELECT 1 FROM public.network_incident_events WHERE event_kind = 'RESOLVED' AND details ->> 'reason' = 'ROUTER_UNAVAILABLE')
+    AND NOT EXISTS (SELECT 1 FROM app_private.camera_alert_conditions) AND pg_temp.n_notif() = 2,
+    'a recorder whose router is gone must be closed quietly, not left open forever');
+  PERFORM pg_temp.expect(r #>> '{organizations,0,skippedRecorders,0,reason}' = 'ROUTER_UNAVAILABLE', 'the skip must be reported');
+END $c5b$;
 ROLLBACK;
 
 -- ---------------------------------------------------------------------------

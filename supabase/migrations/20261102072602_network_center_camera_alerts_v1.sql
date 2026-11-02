@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS app_private.camera_alert_settings (
     'recorderOfflineSeconds', 300,
     'authDeniedSeconds', 300,
     'monitorStaleSeconds', 300,
+    'monitorGraceSeconds', 120,
     'neverReportedSeconds', 600,
     'channelLostSeconds', 600,
     'recorderUnknownSeconds', 1800,
@@ -164,8 +165,11 @@ BEGIN
     WHEN 'CAMERA_STORAGE_ERROR' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'storageErrorSeconds', 0)
     WHEN 'CAMERA_RECORDER_OFFLINE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'recorderOfflineSeconds', 300)
     WHEN 'CAMERA_RECORDER_AUTH_DENIED' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'authDeniedSeconds', 300)
-    -- Điều kiện C4 đã gồm sẵn khoảng chờ (độ cũ ≥ 5 phút) nên mở ngay.
-    WHEN 'CAMERA_MONITOR_STALE' THEN 0
+    -- Điều kiện C4 đã gồm độ cũ ≥ 5 phút; thêm một khoảng chờ ngắn tính từ lượt
+    -- đầu thấy cũ, để bật lại theo dõi một đầu ghi (snapshot cũ còn nằm đó tới
+    -- khi collector nạp lại danh sách và poll, ~90 s) không thành CRITICAL giả.
+    -- Collector chết vẫn lộ trong ≤ 10 phút: 5 phút cũ + ≤ 2 phút cron + 2 phút.
+    WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 120)
     WHEN 'CAMERA_CHANNEL_LOST' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'channelLostSeconds', 600)
     WHEN 'CAMERA_RECORDER_UNKNOWN' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'recorderUnknownSeconds', 1800)
     ELSE 0
@@ -782,7 +786,7 @@ BEGIN
       (d.id IS NOT NULL AND d.is_active AND d.device_kind = 'MIKROTIK'
         AND d.organization_id = r.organization_id AND d.building_id = r.building_id) AS device_ok,
       n.device_id, conn.poll_interval_seconds,
-      cur.status, cur.checked_at, cur.channels, cur.storage
+      cur.status, cur.checked_at, cur.received_at, cur.channels, cur.storage
     FROM public.camera_recorders r
     JOIN public.buildings bl ON bl.id = r.building_id
     LEFT JOIN app_private.camera_recorder_connections conn ON conn.recorder_id = r.id
@@ -806,17 +810,27 @@ BEGIN
     END IF;
 
     -- Router của connection đã gỡ: network_incidents.device_id NOT NULL nên không
-    -- mở được sự cố. Bỏ qua đầu ghi này, ghi log, không ném lỗi cả lượt.
+    -- mở được sự cố, và collector cũng thôi poll đầu ghi này. Bỏ qua, không ném
+    -- lỗi cả lượt; sự cố cũ đóng lặng như đầu ghi bị tắt theo dõi (không thì
+    -- nó mở mãi và bản tin 08:00 nhắc hằng ngày). Log một lần lúc đóng.
     IF NOT rec.device_ok THEN
       v_skipped := v_skipped || jsonb_build_array(jsonb_build_object('recorderId', rec.id, 'reason', 'ROUTER_UNAVAILABLE'));
-      RAISE WARNING 'camera alert: recorder % skipped, router connection device is unavailable', rec.id;
+      FOR cond IN SELECT * FROM app_private.camera_alert_conditions c WHERE c.recorder_id = rec.id FOR UPDATE LOOP
+        RAISE WARNING 'camera alert: recorder % has no usable router device; closing %', rec.id, cond.subject;
+        PERFORM app_private.camera_alert_retire_v1(cond, 'ROUTER_UNAVAILABLE', p_now);
+        v_n_retired := v_n_retired + 1;
+      END LOOP;
       CONTINUE;
     END IF;
 
     -- Độ cũ tối thiểu 5 phút, và không nhỏ hơn hai chu kỳ poll của chính đầu ghi
     -- (poll dài hơn thì một snapshot đúng hạn không bị coi là mất dữ liệu).
+    -- Mốc là lần muộn hơn giữa giờ đo (đồng hồ collector) và giờ CRM nhận:
+    -- đồng hồ VPS chậm vài phút không được biến mọi đầu ghi thành C4 giả;
+    -- collector chết thì cả hai cùng cũ.
     v_stale_limit := greatest(rec.stale_after_seconds, v_stale_min, 2 * coalesce(rec.poll_interval_seconds, 60));
-    v_fresh := rec.checked_at IS NOT NULL AND p_now - rec.checked_at < make_interval(secs => v_stale_limit);
+    v_fresh := rec.checked_at IS NOT NULL
+      AND p_now - greatest(rec.checked_at, rec.received_at) < make_interval(secs => v_stale_limit);
     v_maint := EXISTS (
       SELECT 1 FROM public.network_maintenance_windows w
        WHERE w.organization_id = rec.organization_id AND w.building_id = rec.building_id
@@ -831,14 +845,17 @@ BEGIN
                WHEN v_fresh THEN 'GOOD' ELSE 'BAD' END AS verdict,
           jsonb_build_object('checkedAt', rec.checked_at, 'staleAfterSeconds', v_stale_limit) AS detail
         UNION ALL
+        -- C2 hết khi đầu ghi đã kết nối lại được, kể cả khi trả UNKNOWN hay
+        -- AUTH_DENIED: giữ C2 lúc đó vừa sai nguyên nhân vừa che mất C3/C6 (B2).
         SELECT 2, 'recorder:offline', 'CAMERA_RECORDER_OFFLINE',
           CASE WHEN NOT v_fresh THEN 'HOLD' WHEN rec.status = 'OFFLINE' THEN 'BAD'
-               WHEN rec.status = 'ONLINE' THEN 'GOOD' ELSE 'HOLD' END,
+               WHEN rec.status IN ('ONLINE', 'UNKNOWN', 'AUTH_DENIED') THEN 'GOOD' ELSE 'HOLD' END,
           jsonb_build_object('status', rec.status)
         UNION ALL
+        -- C3 hết khi đầu ghi nhận tài khoản; OFFLINE thì chưa biết ⇒ HOLD.
         SELECT 3, 'recorder:auth', 'CAMERA_RECORDER_AUTH_DENIED',
           CASE WHEN NOT v_fresh THEN 'HOLD' WHEN rec.status = 'AUTH_DENIED' THEN 'BAD'
-               WHEN rec.status = 'ONLINE' THEN 'GOOD' ELSE 'HOLD' END,
+               WHEN rec.status IN ('ONLINE', 'UNKNOWN') THEN 'GOOD' ELSE 'HOLD' END,
           jsonb_build_object('status', rec.status)
         UNION ALL
         SELECT 4, 'recorder:unknown', 'CAMERA_RECORDER_UNKNOWN',
@@ -1024,9 +1041,12 @@ BEGIN
       SELECT count(*) INTO v_configured
         FROM jsonb_array_elements(coalesce(rec.channels, '[]'::jsonb)) ch
        WHERE ch.value ->> 'state' IN ('CONNECTED', 'DISCONNECTED');
+      -- Chỉ đếm kênh đang mất ở CHÍNH lượt này (kênh đang hồi phục hay HOLD
+      -- không làm vượt ngưỡng 50 %).
       SELECT count(*) INTO v_lost
         FROM app_private.camera_alert_conditions c
        WHERE c.recorder_id = rec.id AND c.condition_code = 'CAMERA_CHANNEL_LOST'
+         AND c.last_seen_at = p_now AND c.clear_streak = 0
          AND (c.opened_at IS NOT NULL OR c.subject = ANY(v_due_subjects));
       v_severity := CASE WHEN v_configured > 0 AND v_lost * 2 >= v_configured THEN 'CRITICAL' ELSE 'WARNING' END;
 
@@ -1147,8 +1167,12 @@ BEGIN
     v_dispatch := v_dispatch || jsonb_build_array(v_result || jsonb_build_object('kind', 'IMMEDIATE'));
   END IF;
 
-  -- Hết khung đêm: gửi gộp những gì đã hoãn.
+  -- Hết khung đêm: gửi gộp những gì đã hoãn. Dòng hoãn quá 24 giờ (org bị tắt
+  -- hoặc chuyển SHADOW qua đêm) chỉ đóng sổ, không gửi một bản tin đã cũ.
   IF NOT v_in_night THEN
+    UPDATE app_private.camera_alert_deliveries d
+       SET status = 'DONE', sent_at = p_now, result = d.result || jsonb_build_object('skipped', 'EXPIRED')
+     WHERE d.organization_id = v_org AND d.status = 'DEFERRED' AND d.created_at < p_now - interval '24 hours';
     SELECT coalesce(jsonb_agg(jsonb_build_object(
         'kind', 'NIGHT_DIGEST',
         'dedup', 'NIGHT_DIGEST:' || (d.result ->> 'kind') || ':' || (d.result ->> 'incidentId') || ':' || v_local_date::text,
@@ -1324,7 +1348,11 @@ BEGIN
     'app_private.camera_alert_label_v1(text,text,jsonb)',
     'app_private.network_center_alert_recipient_ids_v1(uuid,uuid)',
     'app_private.camera_alert_transition_v1(uuid,text,timestamptz,jsonb)',
+    'app_private.camera_alert_event_v1(text,app_private.camera_alert_conditions,uuid,text,text,boolean,text,timestamptz)',
+    'app_private.camera_alert_open_v1(app_private.camera_alert_conditions,text,boolean,uuid,text,text,boolean,text,integer,timestamptz)',
+    'app_private.camera_alert_retire_v1(app_private.camera_alert_conditions,text,timestamptz)',
     'app_private.camera_alert_dispatch_v1(uuid,text,jsonb,text,timestamptz)',
+    'app_private.camera_alert_evaluate_org_v1(app_private.camera_alert_settings,timestamptz)',
     'app_private.camera_alert_evaluate_v1(timestamptz)'
   ] LOOP
     IF to_regprocedure(v_fn) IS NULL THEN

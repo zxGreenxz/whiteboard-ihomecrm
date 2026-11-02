@@ -50,9 +50,10 @@ export async function loadRealAlertHelpers(repoRoot = root) {
 }
 
 /**
- * Camera alert proof (plan 2026-11-01 §6.1): camera monitoring, then the alert
- * migration applied twice (no pg_cron here, so its schedule block must be a
- * no-op), then every scenario in one rolled-back transaction per case.
+ * Camera alert proof (plan 2026-11-01 §6.1): camera monitoring, the platform
+ * surface (incl. pg_cron/pg_net/Vault stand-ins), the real helpers, then the
+ * alert migration applied twice, then every scenario in one rolled-back
+ * transaction per case.
  */
 export async function runCameraAlertsProof({ repoRoot = root, environment = process.env, mutation } = {}) {
   const camera = await readFile(resolve(repoRoot, migrationPath), 'utf8');

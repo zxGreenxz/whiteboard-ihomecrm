@@ -141,7 +141,7 @@ export function CamerasTab({ site, controller }: {
       {keepSnapshot && <div className="space-y-2"><CameraError error={snapshotQuery.error} retry={() => void snapshotQuery.refetch()} /><p className="text-sm">Đang giữ trạng thái ghi nhận trước đó. Đoạn đang xem và video đã cắt vẫn được giữ trong trang này.</p></div>}
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
-        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); void incidentsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
+        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching || incidentsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); void incidentsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
       </div>
       {incidentsQuery.isError && !cameras.blockingError ? <CameraError error={incidentsQuery.error} retry={() => void incidentsQuery.refetch()} /> : null}
       <CameraIncidentList incidents={unattachedIncidents} label="Sự cố camera đang mở của tòa nhà" />

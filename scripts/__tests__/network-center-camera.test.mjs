@@ -56,6 +56,32 @@ test('camera alert proof detects the company-owner branch being dropped', async 
   ) }), /building A recipients must be exactly manager \+ owner/);
 });
 
+test('camera alert proof detects a monitor-stale alert raised without its grace interval', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 120)",
+    "WHEN 'CAMERA_MONITOR_STALE' THEN 0",
+  ) }), /C4 waits one grace interval/);
+});
+
+test('camera alert proof detects an OFFLINE incident kept open after the recorder reconnects as UNKNOWN', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "WHEN rec.status IN ('ONLINE', 'UNKNOWN', 'AUTH_DENIED') THEN 'GOOD'", "WHEN rec.status = 'ONLINE' THEN 'GOOD'",
+  ) }), /a reconnected recorder that answers UNKNOWN must close C2/);
+});
+
+test('camera alert proof detects incidents left open when the recorder router is gone', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "PERFORM app_private.camera_alert_retire_v1(cond, 'ROUTER_UNAVAILABLE', p_now);", 'NULL;',
+  ) }), /a recorder whose router is gone must be closed quietly/);
+});
+
+test('camera alert proof detects disk states of a non-ONLINE recorder being trusted', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "CASE WHEN NOT v_fresh OR rec.status IS DISTINCT FROM 'ONLINE' THEN 'HOLD'\n               WHEN disk.value",
+    "CASE WHEN NOT v_fresh THEN 'HOLD'\n               WHEN disk.value",
+  ) }), /disk\/channel states of a non-ONLINE recorder must not be tracked/);
+});
+
 test('camera alert proof detects bell delivery being skipped when push credentials are refused', async () => {
   await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
     "v_jwt_error := left(SQLSTATE || ': ' || SQLERRM, 300);",
