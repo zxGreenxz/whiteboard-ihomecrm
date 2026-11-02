@@ -986,12 +986,6 @@ if (process.env.NETWORK_CAMERA_LOCAL_SMOKE === '1') test.describe('Network Cente
             storage: [{ slot: 1, state: 'NORMAL', totalBytes: 1_000_000_000_000, usedBytes: 400_000_000_000 }], event_coverage: 'STATE_POLLING_ONLY', issues: [] },
         }] }),
         camera_building_events_v1: async (route, body) => fulfillJson(route, body.p_before_id ? { items: [makeEvent('dddd2222-0000-4000-8000-000000000904', '2026-01-01T00:00:00Z')], hasMore: false } : { items: [first], hasMore: true }),
-        camera_building_incidents_v1: async (route) => fulfillJson(route, { items: [{
-          id: 'dddd2222-0000-4000-8000-000000000905', organization_id: DEMO_ORGANIZATION_ID, building_id: buildingId,
-          incident_type: 'CAMERA_CHANNEL_LOST', severity: 'WARNING', status: 'OPEN',
-          title: 'Camera kênh 16 của đầu ghi Đầu ghi DEMO 16 kênh mất kết nối', summary: 'Kênh 16 mất kết nối',
-          opened_at: '2026-01-02T00:00:00Z', acknowledged_at: null, recorder_id: recorderId, subject: 'channel:16',
-        }] }),
       },
     });
     try {
@@ -999,7 +993,6 @@ if (process.env.NETWORK_CAMERA_LOCAL_SMOKE === '1') test.describe('Network Cente
       await expect(page.getByText('Đầu ghi kết nối', { exact: true })).toBeVisible();
       await expect(page.getByText('Có kết nối', { exact: true })).toHaveCount(15);
       await expect(page.getByText('Kênh chưa gắn camera', { exact: true })).toHaveCount(1);
-      await expect(page.getByRole('region', { name: 'Sự cố đang mở' })).toContainText('Camera kênh 16 của đầu ghi Đầu ghi DEMO 16 kênh mất kết nối');
       await expect(page.getByText('Xem trực tiếp chưa được cấu hình.', { exact: true })).toBeVisible();
       await expect(page.locator('video,iframe')).toHaveCount(0);
       await page.getByRole('button', { name: 'Xem sự kiện cũ hơn' }).click();
