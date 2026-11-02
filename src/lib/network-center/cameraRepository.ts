@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
-  cameraBuildingSchema, cameraEventsSchema,
+  cameraBuildingSchema, cameraEventsSchema, cameraIncidentsSchema,
   type CameraEventCursor, type CameraRecorder, type CameraRepository, type CameraScope,
 } from "./cameraContracts";
 import { NetworkCenterRepositoryError, type NetworkCenterRpcCall } from "./supabaseRepository";
@@ -52,6 +52,23 @@ export class SupabaseCameraRepository implements CameraRepository {
     if (!parsed.success || (parsed.data.hasMore && parsed.data.items.length === 0)) {
       throw new NetworkCenterRepositoryError("Dữ liệu lịch sử camera chưa hợp lệ.", { code: "CAMERA_INVALID_DATA" });
     }
+    checkScope(scope, parsed.data.items);
+    return parsed.data;
+  }
+
+  async listIncidents(scope: CameraScope) {
+    let data: unknown;
+    try {
+      data = await this.read("camera_building_incidents_v1", { p_building_id: scope.buildingId });
+    } catch (error) {
+      // Trạng thái camera vẫn đọc được; chỉ phần sự cố chưa có trên database này.
+      if (error instanceof NetworkCenterRepositoryError && (error.code === "PGRST202" || error.code === "42883")) {
+        throw new NetworkCenterRepositoryError("Chưa đọc được sự cố camera: bộ cảnh báo chưa được triển khai.", { code: error.code, rpcName: "camera_building_incidents_v1" });
+      }
+      throw error;
+    }
+    const parsed = cameraIncidentsSchema.safeParse(data);
+    if (!parsed.success) throw new NetworkCenterRepositoryError("Dữ liệu sự cố camera chưa hợp lệ.", { code: "CAMERA_INVALID_DATA" });
     checkScope(scope, parsed.data.items);
     return parsed.data;
   }

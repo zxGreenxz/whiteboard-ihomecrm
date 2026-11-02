@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isTemporaryCameraError, useBuildingCameras } from "@/hooks/network-center/useBuildingCameras";
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
-import { cameraRecorderStatus, type CameraEvent, type CameraRecorder } from "@/lib/network-center/cameraContracts";
+import { cameraRecorderStatus, type CameraEvent, type CameraIncident, type CameraRecorder } from "@/lib/network-center/cameraContracts";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 import { NetworkCenterRepositoryError } from "@/lib/network-center/supabaseRepository";
 
@@ -40,11 +40,34 @@ function CameraError({ error, retry }: { error: unknown; retry: () => void }) {
   );
 }
 
-function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number }) {
+const incidentSeverityLabels: Record<CameraIncident["severity"], string> = { CRITICAL: "Nghiêm trọng", WARNING: "Cảnh báo", INFO: "Thông tin" };
+const incidentStatusLabels: Record<CameraIncident["status"], string> = { OPEN: "Đang mở", ACKNOWLEDGED: "Đã ghi nhận", RECOVERING: "Đang hồi phục" };
+
+function CameraIncidentList({ incidents, label }: { incidents: CameraIncident[]; label: string }) {
+  if (incidents.length === 0) return null;
+  return (
+    <section className="border-l-4 border-red-600 bg-red-50 p-3 text-sm text-red-950" aria-label={label}>
+      <h4 className="mb-2 flex items-center gap-2 font-bold"><AlertTriangle className="h-4 w-4" aria-hidden="true" />{label} ({incidents.length})</h4>
+      <ul className="space-y-2">
+        {incidents.map((incident) => (
+          <li key={incident.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className={`nc-status nc-status-${incident.severity === "CRITICAL" ? "bad" : "warn"}`}>{incidentSeverityLabels[incident.severity]}</span>
+            <strong className="min-w-0 break-words">{incident.title}</strong>
+            <span>{incidentStatusLabels[incident.status]} · từ {timeLabel(incident.opened_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RecorderCard({ recorder, now, incidents }: { recorder: CameraRecorder; now: number; incidents: CameraIncident[] }) {
   const snapshot = recorder.snapshot;
   const status = cameraRecorderStatus(recorder, now);
   const historical = status !== "ONLINE";
   const channels = new Map(snapshot?.channels.map((channel) => [channel.channel, channel]));
+  // B1: ổ lỗi thì đầu ghi VẪN ONLINE — một badge nhỏ trong danh sách ổ là quá dễ bỏ sót.
+  const failedDisks = status === "ONLINE" ? (snapshot?.storage ?? []).filter((disk) => disk.state === "ERROR") : [];
   return (
     <section className="nc-panel" aria-label={recorder.display_name}>
       <div className="nc-panel-heading">
@@ -52,6 +75,13 @@ function RecorderCard({ recorder, now }: { recorder: CameraRecorder; now: number
         <StateBadge state={status} />
       </div>
       <div className="space-y-4 p-4">
+        {failedDisks.length > 0 && (
+          <div role="alert" className="flex items-start gap-2 border-2 border-red-700 bg-red-100 p-3 font-bold text-red-950">
+            <HardDrive className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>Ổ cứng {failedDisks.map((disk) => disk.slot).join(", ")} báo lỗi — đầu ghi có thể không lưu được video. Cần kiểm tra hoặc thay ổ.</p>
+          </div>
+        )}
+        <CameraIncidentList incidents={incidents} label="Sự cố đang mở" />
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <p><Clock3 className="mr-1 inline h-4 w-4" aria-hidden="true" />Lần kiểm tra: {snapshot ? timeLabel(snapshot.checked_at) : "Chưa có dữ liệu"}</p>
           <p><Radio className="mr-1 inline h-4 w-4" aria-hidden="true" />{snapshot?.event_coverage === "EVENT_STREAM" ? "Luồng sự kiện" : "Theo lần kiểm tra"}</p>
@@ -96,24 +126,28 @@ export function CamerasTab({ site, controller }: {
     actorId: controller.actor.id, organizationId, buildingId: site.buildingId,
     canView: controller.canView, mode: controller.mode,
   });
-  const { snapshotQuery, eventsQuery } = cameras;
+  const { snapshotQuery, eventsQuery, incidentsQuery } = cameras;
   const [refreshKey, setRefreshKey] = useState(0);
   if (!controller.canView) return <p role="alert" className="nc-empty-copy">Bạn không có quyền xem camera của tòa nhà này.</p>;
   if (!cameras.enabled) return <p role="alert" className="nc-empty-copy">Chưa xác định được phạm vi camera của tòa nhà.</p>;
   const keepSnapshot = snapshotQuery.isError && snapshotQuery.data !== undefined && isTemporaryCameraError(snapshotQuery.error);
-  if (cameras.blockingError || (snapshotQuery.isError && !keepSnapshot)) return <CameraError error={cameras.blockingError ?? snapshotQuery.error} retry={() => { void snapshotQuery.refetch(); void eventsQuery.refetch(); }} />;
+  if (cameras.blockingError || (snapshotQuery.isError && !keepSnapshot)) return <CameraError error={cameras.blockingError ?? snapshotQuery.error} retry={() => { void snapshotQuery.refetch(); void eventsQuery.refetch(); void incidentsQuery.refetch(); }} />;
   if (snapshotQuery.isPending) return <LoadingState label="trạng thái camera" variant="cards" rows={4} />;
+  const recorderIds = new Set(cameras.recorders.map((recorder) => recorder.id));
+  const unattachedIncidents = cameras.incidents.filter((incident) => !incident.recorder_id || !recorderIds.has(incident.recorder_id));
 
   return (
     <div className="nc-tab-stack">
       {keepSnapshot && <div className="space-y-2"><CameraError error={snapshotQuery.error} retry={() => void snapshotQuery.refetch()} /><p className="text-sm">Đang giữ trạng thái ghi nhận trước đó. Đoạn đang xem và video đã cắt vẫn được giữ trong trang này.</p></div>}
       <div className="nc-panel-heading">
         <div><p className="nc-eyebrow">{controller.isDemo ? "Dữ liệu DEMO · mô phỏng" : "Theo dõi camera theo tòa nhà"}</p><h3>Camera · {site.buildingName}</h3></div>
-        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
+        <Button variant="outline" disabled={snapshotQuery.isFetching || eventsQuery.isFetching} onClick={() => { setRefreshKey((value) => value + 1); void snapshotQuery.refetch(); void eventsQuery.refetch(); void incidentsQuery.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />Làm mới camera</Button>
       </div>
+      {incidentsQuery.isError && !cameras.blockingError ? <CameraError error={incidentsQuery.error} retry={() => void incidentsQuery.refetch()} /> : null}
+      <CameraIncidentList incidents={unattachedIncidents} label="Sự cố camera đang mở của tòa nhà" />
       {controller.isDemo ? <p className="nc-empty-copy">DEMO chỉ mô phỏng trạng thái; không kết nối video thật.</p> : cameras.recorders.map((recorder) => <Suspense key={`${controller.actor.id}:${organizationId}:${recorder.id}`} fallback={<LoadingState label="trình xem camera" variant="cards" rows={1} />}><CameraLiveWall recorder={recorder} refreshKey={refreshKey} /><CameraArchivePanel recorder={recorder} buildingName={site.buildingName} /></Suspense>)}
       {cameras.recorders.length === 0 ? <section className="nc-panel p-6"><h3>Chưa cấu hình đầu ghi</h3><p>Tòa nhà chưa có đầu ghi được đăng ký theo dõi.</p></section>
-        : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} />)}
+        : cameras.recorders.map((recorder) => <RecorderCard key={recorder.id} recorder={recorder} now={cameras.now} incidents={cameras.incidents.filter((incident) => incident.recorder_id === recorder.id)} />)}
       <section className="nc-panel" aria-labelledby="camera-events-title">
         <div className="nc-panel-heading"><div><p className="nc-eyebrow">Lịch sử đã nhận</p><h3 id="camera-events-title">Sự kiện camera</h3></div></div>
         <p className="p-4 text-sm">Theo lần kiểm tra chỉ ghi nhận thay đổi đã quan sát. Luồng sự kiện ghi nhận thông báo đầu ghi gửi đến; không đảm bảo lấy lại mọi sự kiện trong thời gian mất kết nối.</p>

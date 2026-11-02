@@ -24,6 +24,8 @@ export function createDemoCameraRecorder(scope: CameraScope, now = Date.now()): 
 
 export const demoCameraRepository: CameraRepository = {
   async getBuilding(scope) { return { recorders: [createDemoCameraRecorder(scope)] }; },
+  // DEMO không chạy bộ cảnh báo; không giả lập sự cố.
+  async listIncidents() { return { items: [] }; },
   async listEvents(scope) {
     return {
       hasMore: false,
