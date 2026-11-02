@@ -9,6 +9,7 @@ import pg from 'pg';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 import { splitHermesFunctionStatements } from '../../scripts/hermes-task-function-contract.mjs';
 import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from '../../scripts/network-center-disposable-db.mjs';
+import { drainOnEnd } from './pg-pool-drain.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 import { mapRoomBuildingScope } from './room-read-service.mjs';
@@ -104,8 +105,9 @@ async function localCluster(t) {
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
-    const pool = new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
-      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' });
+    // drainOnEnd: pool.end() resolves only when every socket is closed, so cleanup() never stops a cluster with live backends (57P01).
+    const pool = drainOnEnd(new pg.Pool({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 6,
+      connectionTimeoutMillis: 5000, options: '-c statement_timeout=10000' }));
     return { pool, cleanup };
   } catch (error) { cleanup(); throw error; }
 }
