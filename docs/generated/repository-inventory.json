@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1762,
-  "soFileDocBangFs": 460,
-  "tongLoiGoi": 1178,
+  "tongSoFileTest": 1763,
+  "soFileDocBangFs": 461,
+  "tongLoiGoi": 1181,
   "khongPhanLoaiDuoc": 526,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 64,
+      "soFile": 65,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 67,
+      "soFile": 68,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -37,6 +37,7 @@
     "infra/hermes-broker/sale-deposit-receipt-key.test.mjs",
     "infra/hermes-learning-audit/ingest.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
+    "infra/hermes-runtime/host-service.test.mjs",
     "scripts/__tests__/apply-reviewed-migration.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
@@ -872,6 +873,15 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-runtime/host-service.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1,
+        "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
     },
