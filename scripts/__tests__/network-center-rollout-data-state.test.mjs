@@ -73,6 +73,10 @@ const STAGE_28 =
   "supabase/migrations/20260829010000_network_center_h196a_downstream.sql";
 const STAGE_29 =
   "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql";
+// Stage 30 (02/11/2026): cảnh báo ổ cứng/kênh camera. Sinh sau phép đo 03/08
+// nên toàn bộ descriptor của nó vắng mặt, cùng khuôn stage 29.
+const STAGE_30 =
+  "supabase/migrations/20261102072602_network_center_camera_alerts_v1.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -145,6 +149,36 @@ const MEASURED_ABSENT_STAGE_29 = [
   "table:public.camera_recorders",
 ];
 
+// Camera alerts (stage 30) came after the measurement too. Pinned one by one
+// for the same reason as stage 29.
+const MEASURED_ABSENT_STAGE_30 = [
+  "function:app_private.camera_alert_code_threshold_v1(jsonb,text)",
+  "function:app_private.camera_alert_dispatch_v1(uuid,text,jsonb,text,timestamp with time zone)",
+  "function:app_private.camera_alert_evaluate_org_v1(app_private.camera_alert_settings,timestamp with time zone)",
+  "function:app_private.camera_alert_evaluate_v1(timestamp with time zone)",
+  "function:app_private.camera_alert_event_v1(text,app_private.camera_alert_conditions,uuid,text,text,boolean,text,timestamp with time zone)",
+  "function:app_private.camera_alert_label_v1(text,text,jsonb)",
+  "function:app_private.camera_alert_open_v1(app_private.camera_alert_conditions,text,boolean,uuid,text,text,boolean,text,integer,timestamp with time zone)",
+  "function:app_private.camera_alert_retire_v1(app_private.camera_alert_conditions,text,timestamp with time zone)",
+  "function:app_private.camera_alert_threshold_v1(jsonb,text,integer)",
+  "function:app_private.camera_alert_transition_v1(uuid,text,timestamp with time zone,jsonb)",
+  "function:app_private.network_center_alert_recipient_ids_v1(uuid,uuid)",
+  "function:public.camera_building_incidents_v1(uuid)",
+  "index:app_private:camera_alert_conditions_org_idx",
+  "index:app_private:camera_alert_conditions_pkey",
+  "index:app_private:camera_alert_deliveries_dedup_key_key",
+  "index:app_private:camera_alert_deliveries_deferred_idx",
+  "index:app_private:camera_alert_deliveries_incident_idx",
+  "index:app_private:camera_alert_deliveries_pkey",
+  "index:app_private:camera_alert_settings_pkey",
+  "rls:app_private.camera_alert_conditions",
+  "rls:app_private.camera_alert_deliveries",
+  "rls:app_private.camera_alert_settings",
+  "table:app_private.camera_alert_conditions",
+  "table:app_private.camera_alert_deliveries",
+  "table:app_private.camera_alert_settings",
+];
+
 const MEASURED_STALE_BODIES = [
   "app_private.network_center_bind_managed_interface_v1",
   "app_private.network_center_worker_inventory_legacy_impl_v1",
@@ -152,6 +186,18 @@ const MEASURED_STALE_BODIES = [
   "public.network_center_watchdog_liveness_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
+  "app_private.camera_alert_code_threshold_v1",
+  "app_private.camera_alert_dispatch_v1",
+  "app_private.camera_alert_evaluate_org_v1",
+  "app_private.camera_alert_evaluate_v1",
+  "app_private.camera_alert_event_v1",
+  "app_private.camera_alert_label_v1",
+  "app_private.camera_alert_open_v1",
+  "app_private.camera_alert_retire_v1",
+  "app_private.camera_alert_threshold_v1",
+  "app_private.camera_alert_transition_v1",
+  "app_private.network_center_alert_recipient_ids_v1",
+  "public.camera_building_incidents_v1",
   "public.camera_building_events_v1",
   "public.camera_building_snapshot_v1",
   "public.network_center_admin_enroll_camera_v1",
@@ -190,6 +236,7 @@ async function productionFixture() {
     ...MEASURED_ABSENT,
     ...MEASURED_ABSENT_STAGE_28,
     ...MEASURED_ABSENT_STAGE_29,
+    ...MEASURED_ABSENT_STAGE_30,
   ]);
   const present = every.filter((descriptor) => !absent.has(descriptor));
 
@@ -211,18 +258,19 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 485);
+  assert.equal(every.length, 510);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 29);
+  assert.equal(manifest.migrations.length, 30);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   assert.equal(manifest.migrations[28].path, STAGE_29);
+  assert.equal(manifest.migrations[29].path, STAGE_30);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 18);
+  assert.equal(classification.bodyMismatches.length, 30);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });
