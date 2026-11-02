@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "reviewedGitSha": "dcabe779796781e4ea9845492fcb90017812d442",
+  "reviewedGitSha": "ed843d0495ef2a0758f69dfe13957548ebb9611e",
   "lockName": "ihomecrm:network-center-rollout:v1",
   "preflight": {
     "required": [
@@ -11139,7 +11139,7 @@
     {
       "ordinal": 30,
       "path": "supabase/migrations/20261102072602_network_center_camera_alerts_v1.sql",
-      "sha256": "600201a251335614f064c70394b2c7c0f6d7e7c6e743ecde7840c4e23be39131",
+      "sha256": "75436cbafa56d7105959376aa13700eb12801eeec04cdc8ac13ebc6515ebb2c1",
       "postApply": {
         "required": [
           "column:public.network_audit_events:request_hash",
