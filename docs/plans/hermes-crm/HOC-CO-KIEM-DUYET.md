@@ -1,7 +1,7 @@
 # Học có kiểm duyệt cho Hermes (đợt 2 kế hoạch trị tận gốc — chủ duyệt 31/10/2026)
 
 **Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
-REQUEST CHANGES 31/10) — **chưa áp migration, chưa cài trên VPS**. (3) tin Zalo 21:00 + duyệt qua Zalo: **thiết kế + khung**
+REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; vai `hermes_store_learning` còn NOLOGIN, chưa bật login, chưa cài trên VPS** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **thiết kế + khung**
 (mục 4), chưa nối connector, khoá chưa seed. Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
