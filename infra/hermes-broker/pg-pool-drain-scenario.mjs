@@ -4,7 +4,7 @@ import pg from 'pg';
 import { localCluster } from './crm-shared-read-sql-fixture.mjs';
 
 const mode = process.argv[2];
-const SCENARIOS = ['drained', 'undrained', 'shutdown-notice'];
+const SCENARIOS = ['drained', 'undrained'];
 if (!SCENARIOS.includes(mode)) throw new Error(`mode must be one of ${SCENARIOS.join(', ')}`);
 
 // The backend has not consumed Terminate yet when pg_ctl stop signals it: model the lost race by writing
@@ -20,17 +20,8 @@ clients.forEach(client => client.release());
 if (mode === 'undrained') {
   await pg.Pool.prototype.end.call(pool); // what pool.end() was before drainOnEnd: resolves with sockets still open
   cleanup();
-} else if (mode === 'drained') {
-  await pool.end();
-  cleanup();
 } else {
-  // The server announces its own shutdown (57P01) to idle clients while the pool is ending.
-  const admin = new pg.Client({ host: pool.options.host, port: pool.options.port, user: 'postgres', database: 'postgres' });
-  await admin.connect();
-  const ending = pool.end();
-  await admin.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = $1', ['client backend']);
-  await ending;
-  await admin.end();
+  await pool.end();
   cleanup();
 }
 // Let any late socket event surface before the process decides its exit code.

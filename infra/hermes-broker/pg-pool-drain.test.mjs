@@ -53,24 +53,28 @@ test('a failing end() still removes the drain listener and surfaces the failure'
 
 const scenario = fileURLToPath(new URL('./pg-pool-drain-scenario.mjs', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+const SCENARIO_DEADLINE_MS = 150000; // below the test timeout, so a hung child is killed and cannot hold its pipes open
 function runScenario(mode) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scenario, mode], { cwd: repoRoot, windowsHide: true });
     let stdout = '', stderr = '';
+    const deadline = setTimeout(() => { stderr += `
+scenario ${mode} killed after ${SCENARIO_DEADLINE_MS} ms`; child.kill(); }, SCENARIO_DEADLINE_MS);
     child.stdout.on('data', chunk => { stdout += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
-    child.once('error', reject);
-    child.once('close', status => resolve({ status, stdout, stderr }));
+    child.once('error', error => { clearTimeout(deadline); reject(error); });
+    child.once('close', status => { clearTimeout(deadline); resolve({ status, stdout, stderr }); });
   });
 }
 
+// The 57P01 tolerance is covered by the fake-pool test above: against a real cluster a delivered
+// shutdown notice races with ECONNRESET (which must stay red), so it cannot be asserted deterministically.
 test('real cluster: stopping PostgreSQL after pool.end() leaves no uncaughtException', { timeout: 180000 }, async () => {
-  const [drained, undrained, notice] = await Promise.all(['drained', 'undrained', 'shutdown-notice'].map(runScenario));
-  // Control: without the drain the same teardown does crash the process with a late connection error, so the green runs are not vacuous.
-  assert.notEqual(undrained.status, 0, `undrained control must fail:\n${undrained.stdout}${undrained.stderr}`);
+  const [drained, undrained] = await Promise.all(['drained', 'undrained'].map(runScenario));
+  // Control: without the drain the same teardown does crash the process with a late connection error, so the green run is not vacuous.
+  assert.notEqual(undrained.status, 0, `undrained control must fail:
+${undrained.stdout}${undrained.stderr}`);
   assert.match(undrained.stderr, /57P01|terminating connection|ECONNRESET|Connection terminated/);
   assert.equal(drained.status, 0, `${drained.stdout}${drained.stderr}`);
   assert.match(drained.stdout, /scenario drained: no uncaught exception/);
-  assert.equal(notice.status, 0, `${notice.stdout}${notice.stderr}`);
-  assert.match(notice.stdout, /scenario shutdown-notice: no uncaught exception/);
 });
