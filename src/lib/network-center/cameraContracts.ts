@@ -55,17 +55,36 @@ export const cameraEventSchema = z.object({
   received_at: timestamp,
 });
 export const cameraEventsSchema = z.object({ items: z.array(cameraEventSchema), hasMore: z.boolean() });
+/** Sự cố CAMERA_* chưa đóng của toà, do bộ cảnh báo camera mở (camera_building_incidents_v1). */
+export const cameraIncidentSchema = z.object({
+  id: identifier,
+  organization_id: identifier,
+  building_id: identifier,
+  incident_type: z.string().regex(/^CAMERA_[A-Z0-9_]+$/),
+  severity: z.enum(["INFO", "WARNING", "CRITICAL"]),
+  status: z.enum(["OPEN", "ACKNOWLEDGED", "RECOVERING"]),
+  title: z.string(),
+  summary: z.string(),
+  opened_at: timestamp,
+  acknowledged_at: timestamp.nullable(),
+  recorder_id: identifier.nullable(),
+  subject: z.string().nullable(),
+});
+export const cameraIncidentsSchema = z.object({ items: z.array(cameraIncidentSchema) });
 
 export type CameraRecorder = z.infer<typeof cameraRecorderSchema>;
 export type CameraBuilding = z.infer<typeof cameraBuildingSchema>;
 export type CameraSnapshot = z.infer<typeof cameraSnapshotSchema>;
 export type CameraEvent = z.infer<typeof cameraEventSchema>;
 export type CameraEventPage = z.infer<typeof cameraEventsSchema>;
+export type CameraIncident = z.infer<typeof cameraIncidentSchema>;
+export type CameraIncidentList = z.infer<typeof cameraIncidentsSchema>;
 export interface CameraScope { organizationId: string; buildingId: string }
 export interface CameraEventCursor { observedAt: string; id: string }
 export interface CameraRepository {
   getBuilding(scope: CameraScope): Promise<CameraBuilding>;
   listEvents(scope: CameraScope, cursor?: CameraEventCursor): Promise<CameraEventPage>;
+  listIncidents(scope: CameraScope): Promise<CameraIncidentList>;
 }
 
 export function cameraRecorderStatus(recorder: CameraRecorder, now = Date.now()) {

@@ -97,3 +97,21 @@ describe("resolveNotificationUrl — cảnh báo Zalo mất kết nối", () => 
     expect(resolveNotificationUrl(`/chat-zalo/${REQ}`, ALL)).toBeNull();
   });
 });
+
+describe("resolveNotificationUrl — cảnh báo camera", () => {
+  it("mở đúng tab Camera của toà; giữ đúng một param tab=cameras", () => {
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=cameras`, ALL)).toBe(
+      `/network-center/buildings/${REQ}?tab=cameras`,
+    );
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=settings&x=1`, ALL)).toBe(
+      `/network-center/buildings/${REQ}`,
+    );
+  });
+
+  it("thiếu quyền network_center về đích dự phòng; đường lạ bị chặn", () => {
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}?tab=cameras`, NONE)).toBe(NOTIFICATION_FALLBACK_URL);
+    expect(resolveNotificationUrl("/network-center/buildings/not-a-uuid?tab=cameras", ALL)).toBeNull();
+    expect(resolveNotificationUrl(`/network-center/buildings/${REQ}/../../x`, ALL)).toBeNull();
+    expect(resolveNotificationUrl("/network-center/buildings", ALL)).toBeNull();
+  });
+});

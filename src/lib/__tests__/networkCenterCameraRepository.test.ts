@@ -79,4 +79,27 @@ describe("camera repository and freshness", () => {
     call.mockResolvedValue({ data: { items: [], hasMore: true }, error: null });
     await expect(new SupabaseCameraRepository(call).listEvents(scope)).rejects.toMatchObject({ code: "CAMERA_INVALID_DATA" });
   });
+
+  it("reads open camera incidents of the requested building only, and names a missing alert service", async () => {
+    const item = {
+      id: "e0000000-0000-4000-8000-000000000001", organization_id: scope.organizationId, building_id: scope.buildingId,
+      incident_type: "CAMERA_STORAGE_ERROR", severity: "CRITICAL", status: "OPEN", title: "Ổ cứng báo lỗi", summary: "Ổ 1",
+      opened_at: "2026-01-01T08:12:00+00:00", acknowledged_at: null, recorder_id: "d0000000-0000-4000-8000-000000000001", subject: "storage:1",
+    };
+    const call = vi.fn<NetworkCenterRpcCall>().mockResolvedValue({ data: { items: [item] }, error: null });
+    expect((await new SupabaseCameraRepository(call).listIncidents(scope)).items).toEqual([item]);
+    expect(call).toHaveBeenCalledWith("camera_building_incidents_v1", { p_building_id: scope.buildingId });
+    for (const wrong of [{ ...item, building_id: "b0000000-0000-4000-8000-000000000002" }, { ...item, organization_id: "c0000000-0000-4000-8000-000000000002" }]) {
+      call.mockResolvedValue({ data: { items: [wrong] }, error: null });
+      await expect(new SupabaseCameraRepository(call).listIncidents(scope)).rejects.toMatchObject({ code: "CAMERA_SCOPE_MISMATCH" });
+    }
+    for (const invalid of [{ ...item, incident_type: "WORKER_HEARTBEAT_STALE" }, { ...item, status: "RESOLVED" }]) {
+      call.mockResolvedValue({ data: { items: [invalid] }, error: null });
+      await expect(new SupabaseCameraRepository(call).listIncidents(scope)).rejects.toMatchObject({ code: "CAMERA_INVALID_DATA" });
+    }
+    const missing = new SupabaseCameraRepository(async () => ({ data: null, error: { code: "PGRST202", message: "private internal error" } }));
+    await expect(missing.listIncidents(scope)).rejects.toMatchObject({ code: "PGRST202", message: "Chưa đọc được sự cố camera: bộ cảnh báo chưa được triển khai." });
+    const denied = new SupabaseCameraRepository(async () => ({ data: null, error: { code: "42501", message: "private internal error" } }));
+    await expect(denied.listIncidents(scope)).rejects.toMatchObject({ code: "42501", message: "Bạn không có quyền xem camera của tòa nhà này." });
+  });
 });

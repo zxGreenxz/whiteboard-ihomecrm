@@ -5,7 +5,7 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CamerasTab } from "@/components/network-center/tabs/CamerasTab";
 import { cameraQueryKey, useBuildingCameras, type BuildingCameraScope } from "@/hooks/network-center/useBuildingCameras";
-import type { CameraEventPage, CameraRecorder, CameraScope } from "@/lib/network-center/cameraContracts";
+import type { CameraEventPage, CameraIncident, CameraIncidentList, CameraRecorder, CameraScope } from "@/lib/network-center/cameraContracts";
 import { createDemoCameraRecorder, demoCameraRepository } from "@/lib/network-center/cameraDemo";
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
 import { NetworkCenterRepositoryError } from "@/lib/network-center/supabaseRepository";
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   liveStart: vi.fn(async () => {}), liveStop: vi.fn(async () => {}),
   getBuilding: vi.fn<(scope: CameraScope) => Promise<{ recorders: CameraRecorder[] }>>(),
   listEvents: vi.fn<() => Promise<CameraEventPage>>(),
+  listIncidents: vi.fn<() => Promise<CameraIncidentList>>(),
 }));
 vi.mock("@/lib/network-center/cameraRepository", () => ({ supabaseCameraRepository: mocks }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
@@ -41,7 +42,21 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
   mocks.getBuilding.mockImplementation(async (target) => ({ recorders: [createDemoCameraRecorder(target)] }));
   mocks.listEvents.mockResolvedValue({ items: [], hasMore: false });
+  mocks.listIncidents.mockResolvedValue({ items: [] });
 });
+const recorderId = "d0000000-0000-4000-8000-000000000001";
+function incident(overrides: Partial<CameraIncident> = {}): CameraIncident {
+  return {
+    id: "e0000000-0000-4000-8000-000000000001", organization_id: scope.organizationId, building_id: scope.buildingId,
+    incident_type: "CAMERA_STORAGE_ERROR", severity: "CRITICAL", status: "OPEN",
+    title: "Ổ cứng đầu ghi Đầu ghi DEMO báo lỗi", summary: "Ổ 1 báo lỗi", opened_at: "2026-01-01T08:12:00Z",
+    acknowledged_at: null, recorder_id: recorderId, subject: "storage:1", ...overrides,
+  };
+}
+function withDisk(state: "NORMAL" | "ERROR", checkedAt = Date.now()): CameraRecorder {
+  const recorder = createDemoCameraRecorder(scope, checkedAt);
+  return { ...recorder, snapshot: { ...recorder.snapshot!, storage: [{ slot: 1, state, totalBytes: 1_000, usedBytes: 10 }, { slot: 2, state: "NORMAL" }] } };
+}
 afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); });
 
 describe("camera tab", () => {
@@ -223,6 +238,61 @@ describe("camera tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Làm mới camera" }));
     await screen.findByText("Phiên hoặc quyền camera không còn hợp lệ");
     expect(screen.queryByLabelText("Từ ngày giờ")).toBeNull();
+    expect(screen.queryByText("Đầu ghi kết nối")).toBeNull();
+  });
+
+  it("raises a red storage banner on an ONLINE recorder whose disk failed (B1), not only a badge", async () => {
+    mocks.getBuilding.mockResolvedValue({ recorders: [withDisk("ERROR")] });
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    await screen.findByText("Đầu ghi kết nối");
+    const banner = screen.getByText(/^Ổ cứng 1 báo lỗi/).closest('[role="alert"]');
+    expect(banner?.textContent).toBe("Ổ cứng 1 báo lỗi — đầu ghi có thể không lưu được video. Cần kiểm tra hoặc thay ổ.");
+    expect(screen.getByText("Có lỗi").className).toContain("nc-status-bad");
+  });
+
+  it("does not claim a disk failure from a stale snapshot or a healthy disk", async () => {
+    mocks.getBuilding.mockResolvedValue({ recorders: [withDisk("ERROR", Date.now() - 300_000)] });
+    const view = render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    await screen.findByText("Dữ liệu đã cũ");
+    expect(screen.queryByText(/đầu ghi có thể không lưu được video/)).toBeNull();
+    view.unmount(); client.clear();
+    mocks.getBuilding.mockResolvedValue({ recorders: [withDisk("NORMAL")] });
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    await screen.findByText("Đầu ghi kết nối");
+    expect(screen.queryByText(/đầu ghi có thể không lưu được video/)).toBeNull();
+  });
+
+  it("lists open camera incidents under their recorder and keeps unattached ones visible", async () => {
+    mocks.listIncidents.mockResolvedValue({ items: [
+      incident(),
+      incident({ id: "e0000000-0000-4000-8000-000000000002", incident_type: "CAMERA_CHANNEL_LOST", severity: "WARNING", status: "RECOVERING",
+        title: "Camera Hành lang DEMO của đầu ghi Đầu ghi DEMO mất kết nối", subject: "channel:2" }),
+      incident({ id: "e0000000-0000-4000-8000-000000000003", recorder_id: null, title: "Mất dữ liệu giám sát đầu ghi đã gỡ", subject: "monitor" }),
+    ] });
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    const recorderStrip = await screen.findByRole("region", { name: "Sự cố đang mở" });
+    expect(recorderStrip.textContent).toContain("Sự cố đang mở (2)");
+    expect(recorderStrip.textContent).toContain("Ổ cứng đầu ghi Đầu ghi DEMO báo lỗi");
+    expect(recorderStrip.textContent).toContain("Đang hồi phục");
+    expect(recorderStrip.querySelector(".nc-status-bad")?.textContent).toBe("Nghiêm trọng");
+    expect(recorderStrip.querySelector(".nc-status-warn")?.textContent).toBe("Cảnh báo");
+    const buildingStrip = screen.getByRole("region", { name: "Sự cố camera đang mở của tòa nhà" });
+    expect(buildingStrip.textContent).toContain("Mất dữ liệu giám sát đầu ghi đã gỡ");
+    expect(mocks.listIncidents).toHaveBeenCalledWith(expect.objectContaining({ buildingId: scope.buildingId }));
+  });
+
+  it("shows an incident read failure in place without hiding measured camera state", async () => {
+    mocks.listIncidents.mockRejectedValue(new NetworkCenterRepositoryError("Chưa đọc được sự cố camera: bộ cảnh báo chưa được triển khai.", { code: "PGRST202" }));
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    await screen.findByText("Chưa đọc được sự cố camera: bộ cảnh báo chưa được triển khai.");
+    expect(screen.getByText("Đầu ghi kết nối")).toBeTruthy();
+    expect(screen.getByText("Có kết nối")).toBeTruthy();
+  });
+
+  it("locks the tab when the incident read is denied", async () => {
+    mocks.listIncidents.mockRejectedValue(new NetworkCenterRepositoryError("Bạn không có quyền xem camera của tòa nhà này.", { code: "42501" }));
+    render(<CamerasTab site={site} controller={controller} />, { wrapper: Wrapper });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("không có quyền"));
     expect(screen.queryByText("Đầu ghi kết nối")).toBeNull();
   });
 

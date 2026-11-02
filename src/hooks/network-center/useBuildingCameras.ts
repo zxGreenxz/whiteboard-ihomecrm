@@ -75,10 +75,22 @@ export function useBuildingCameras(scope: BuildingCameraScope, repository?: Came
     // to cached data; status changes must still update a currently locked view.
     notifyOnChangeProps: "all",
   });
+  // Sự cố camera đang mở (bộ cảnh báo). Cùng quyền với snapshot nên từ chối
+  // quyền ở đây cũng khoá tab; lỗi khác (kể cả RPC chưa triển khai) chỉ hiện
+  // tại chỗ, không che trạng thái camera đã đo được.
+  const incidentsQuery = useQuery({
+    queryKey: [...key, "incidents"],
+    queryFn: ({ queryKey, signal }) => readCameraQuery(queryClient, queryKey, signal, () => service.listIncidents(scope), (error) => error instanceof NetworkCenterRepositoryError && cameraAccessErrors.has(error.code ?? "")),
+    enabled: enabled && snapshotQuery.isSuccess,
+    refetchInterval: 30_000, retry: shouldRetryNetworkCenterQuery, retryOnMount: false,
+    notifyOnChangeProps: "all",
+  });
   return {
-    now, enabled, snapshotQuery, eventsQuery,
-    blockingError: cameraQueryBlock(queryClient, [...key, "snapshot"]) ?? cameraQueryBlock(queryClient, [...key, "events"]),
+    now, enabled, snapshotQuery, eventsQuery, incidentsQuery,
+    blockingError: cameraQueryBlock(queryClient, [...key, "snapshot"]) ?? cameraQueryBlock(queryClient, [...key, "events"])
+      ?? cameraQueryBlock(queryClient, [...key, "incidents"]),
     recorders: snapshotQuery.data?.recorders ?? [],
+    incidents: incidentsQuery.data?.items ?? [],
     events: [...new Map(eventsQuery.data?.pages.flatMap((page) => page.items).map((event) => [event.id, event])).values()],
   };
 }
