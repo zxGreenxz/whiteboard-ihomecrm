@@ -191,13 +191,13 @@ Rớt chập chờn ở 15KV (8–20 s) không vượt ngưỡng 10 phút, nên 
 C5 phụ thuộc collector đọc đúng chuỗi trạng thái kênh của từng firmware (bẫy B7). Với 15KV, C5 chỉ có tác dụng sau khi bản collector có `"Unconnect"` được phát hành.
 
 **Điều chỉnh lúc triển khai Đợt 1 (02/11, sau review chéo):**
-- C4 chờ thêm 2 phút kể từ lượt đầu thấy dữ liệu cũ (`monitorGraceSeconds`). Lý do: bật lại theo dõi một đầu ghi còn snapshot cũ sẽ báo CRITICAL giả trước khi collector kịp poll (~90 s). Collector chết vẫn lộ trong ≤ 10 phút.
+- C4 chờ thêm 90 giây kể từ lượt đầu thấy dữ liệu cũ (`monitorGraceSeconds`). Lý do: bật lại theo dõi một đầu ghi còn snapshot cũ sẽ báo CRITICAL giả trước khi collector kịp poll. 90 giây nhỏ hơn nhịp cron, nên C4 luôn mở ở lượt kế tiếp; collector chết vẫn lộ trong ≤ 10 phút.
 - Độ mới tính theo lần muộn hơn giữa `checked_at` và `received_at`, để đồng hồ VPS chậm không biến mọi đầu ghi thành C4. Ngưỡng cũ cũng không nhỏ hơn 2 chu kỳ poll của đầu ghi.
-- C2 đóng khi đầu ghi kết nối lại được (`ONLINE`, `UNKNOWN` hoặc `AUTH_DENIED`). C3 đóng khi `ONLINE` hoặc `UNKNOWN`. Nếu chỉ đóng khi `ONLINE`, C2 sẽ kẹt mở và che mất C6 khi đầu ghi trả `UNKNOWN`. C6 vẫn chỉ đóng khi `ONLINE`.
+- C2 **đã mở** thì đóng khi đầu ghi kết nối lại được (`ONLINE`, `UNKNOWN` hoặc `AUTH_DENIED`); C3 đã mở thì đóng khi `ONLINE` hoặc `UNKNOWN`. Nếu chỉ đóng khi `ONLINE`, C2 sẽ kẹt mở và che mất C6 khi đầu ghi trả `UNKNOWN`. Khi C2/C3 **chưa mở**, chỉ `ONLINE` mới xoá bộ đếm; `UNKNOWN` giữ nguyên bộ đếm, để đường truyền chập chờn OFFLINE ↔ UNKNOWN vẫn mở C2 sau 5 phút. C6 vẫn chỉ đóng khi `ONLINE`.
 - C1/C5/C6 bị C2/C3/C4 che thì đóng lặng với lý do `SUPERSEDED`, không gửi tin "đã khôi phục".
 - Router của connection bị gỡ: đóng lặng sự cố với lý do `ROUTER_UNAVAILABLE`, giống trường hợp `DISABLED`.
-- Tỷ lệ ≥ 50 % chỉ đếm kênh đang mất ở chính lượt đánh giá đó.
-- Tin hoãn ban đêm quá 24 giờ thì đóng sổ, không gửi.
+- Tỷ lệ ≥ 50 % và việc nâng mức chỉ tính kênh đang mất ở chính lượt đánh giá đó; kênh đang hồi phục không bị nâng.
+- Tin hoãn ban đêm quá 24 giờ thì đóng sổ là `SUPPRESSED`, không gửi, và không tính là "đã báo mở".
 - Hết cửa sổ bảo trì mà lỗi vẫn còn thì báo một lần.
 - Lịch cron (T4) nằm cùng file migration, không tách riêng. Lý do: cửa idempotent dán từng file lên production, nên một file lịch đòi hàm của file chưa áp sẽ ngã ở đó. Không có schema `cron` thì bỏ qua, theo khuôn `zalo_canh_gac`.
 

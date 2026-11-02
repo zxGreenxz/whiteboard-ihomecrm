@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS app_private.camera_alert_settings (
     'recorderOfflineSeconds', 300,
     'authDeniedSeconds', 300,
     'monitorStaleSeconds', 300,
-    'monitorGraceSeconds', 120,
+    'monitorGraceSeconds', 90,
     'neverReportedSeconds', 600,
     'channelLostSeconds', 600,
     'recorderUnknownSeconds', 1800,
@@ -168,8 +168,9 @@ BEGIN
     -- Điều kiện C4 đã gồm độ cũ ≥ 5 phút; thêm một khoảng chờ ngắn tính từ lượt
     -- đầu thấy cũ, để bật lại theo dõi một đầu ghi (snapshot cũ còn nằm đó tới
     -- khi collector nạp lại danh sách và poll, ~90 s) không thành CRITICAL giả.
-    -- Collector chết vẫn lộ trong ≤ 10 phút: 5 phút cũ + ≤ 2 phút cron + 2 phút.
-    WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 120)
+    -- Nhỏ hơn nhịp cron 2 phút để luôn mở ở đúng lượt kế tiếp (lượt cron đến
+    -- sớm vài ms không đẩy sang lượt thứ ba): collector chết lộ trong ≤ 10 phút.
+    WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 90)
     WHEN 'CAMERA_CHANNEL_LOST' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'channelLostSeconds', 600)
     WHEN 'CAMERA_RECORDER_UNKNOWN' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'recorderUnknownSeconds', 1800)
     ELSE 0
@@ -742,6 +743,7 @@ DECLARE
   cond app_private.camera_alert_conditions;
   inc public.network_incidents%ROWTYPE;
   v_found boolean;
+  v_verdict text;
   v_fresh boolean;
   v_stale_limit integer;
   v_maint boolean;
@@ -845,17 +847,22 @@ BEGIN
                WHEN v_fresh THEN 'GOOD' ELSE 'BAD' END AS verdict,
           jsonb_build_object('checkedAt', rec.checked_at, 'staleAfterSeconds', v_stale_limit) AS detail
         UNION ALL
-        -- C2 hết khi đầu ghi đã kết nối lại được, kể cả khi trả UNKNOWN hay
-        -- AUTH_DENIED: giữ C2 lúc đó vừa sai nguyên nhân vừa che mất C3/C6 (B2).
+        -- C2 đang MỞ thì hết khi đầu ghi kết nối lại được, kể cả khi trả UNKNOWN
+        -- hay AUTH_DENIED: giữ nó lúc đó vừa sai nguyên nhân vừa che mất C3/C6
+        -- (B2). Chưa mở thì chỉ ONLINE mới xoá bộ đếm; UNKNOWN/AUTH_DENIED giữ
+        -- nguyên (GOOD_IF_OPEN), để đường truyền chập chờn OFFLINE ↔ UNKNOWN
+        -- không đếm lại 5 phút mãi mà không bao giờ báo.
         SELECT 2, 'recorder:offline', 'CAMERA_RECORDER_OFFLINE',
           CASE WHEN NOT v_fresh THEN 'HOLD' WHEN rec.status = 'OFFLINE' THEN 'BAD'
-               WHEN rec.status IN ('ONLINE', 'UNKNOWN', 'AUTH_DENIED') THEN 'GOOD' ELSE 'HOLD' END,
+               WHEN rec.status = 'ONLINE' THEN 'GOOD'
+               WHEN rec.status IN ('UNKNOWN', 'AUTH_DENIED') THEN 'GOOD_IF_OPEN' ELSE 'HOLD' END,
           jsonb_build_object('status', rec.status)
         UNION ALL
         -- C3 hết khi đầu ghi nhận tài khoản; OFFLINE thì chưa biết ⇒ HOLD.
         SELECT 3, 'recorder:auth', 'CAMERA_RECORDER_AUTH_DENIED',
           CASE WHEN NOT v_fresh THEN 'HOLD' WHEN rec.status = 'AUTH_DENIED' THEN 'BAD'
-               WHEN rec.status IN ('ONLINE', 'UNKNOWN') THEN 'GOOD' ELSE 'HOLD' END,
+               WHEN rec.status = 'ONLINE' THEN 'GOOD'
+               WHEN rec.status = 'UNKNOWN' THEN 'GOOD_IF_OPEN' ELSE 'HOLD' END,
           jsonb_build_object('status', rec.status)
         UNION ALL
         SELECT 4, 'recorder:unknown', 'CAMERA_RECORDER_UNKNOWN',
@@ -913,8 +920,11 @@ BEGIN
       SELECT * INTO cond FROM app_private.camera_alert_conditions c
        WHERE c.recorder_id = rec.id AND c.subject = obs.subject FOR UPDATE;
       v_found := FOUND;
+      v_verdict := CASE WHEN obs.verdict = 'GOOD_IF_OPEN'
+        THEN CASE WHEN v_found AND cond.opened_at IS NOT NULL THEN 'GOOD' ELSE 'HOLD' END
+        ELSE obs.verdict END;
 
-      IF obs.verdict = 'BAD' THEN
+      IF v_verdict = 'BAD' THEN
         IF NOT v_found THEN
           INSERT INTO app_private.camera_alert_conditions (
             recorder_id, subject, organization_id, building_id, condition_code, severity,
@@ -979,7 +989,7 @@ BEGIN
           END IF;
         END IF;
 
-      ELSIF obs.verdict = 'GOOD' THEN
+      ELSIF v_verdict = 'GOOD' THEN
         IF v_found THEN
           IF cond.opened_at IS NULL THEN
             -- Chưa vượt ngưỡng (rớt chập chờn vài giây): bỏ, không báo gì.
@@ -1068,6 +1078,8 @@ BEGIN
           SELECT * FROM app_private.camera_alert_conditions c
            WHERE c.recorder_id = rec.id AND c.condition_code = 'CAMERA_CHANNEL_LOST'
              AND c.opened_at IS NOT NULL AND c.severity = 'WARNING'
+             -- Chỉ kênh còn mất ở lượt này; kênh đang hồi phục không bị nâng mức.
+             AND c.last_seen_at = p_now AND c.clear_streak = 0
              AND NOT (c.subject = ANY(v_due_subjects))
            ORDER BY c.subject FOR UPDATE
         LOOP
@@ -1168,10 +1180,11 @@ BEGIN
   END IF;
 
   -- Hết khung đêm: gửi gộp những gì đã hoãn. Dòng hoãn quá 24 giờ (org bị tắt
-  -- hoặc chuyển SHADOW qua đêm) chỉ đóng sổ, không gửi một bản tin đã cũ.
+  -- hoặc chuyển SHADOW qua đêm) chỉ đóng sổ là SUPPRESSED — không gửi một bản
+  -- tin đã cũ, và không được tính là "đã báo mở" khi sự cố khôi phục sau đó.
   IF NOT v_in_night THEN
     UPDATE app_private.camera_alert_deliveries d
-       SET status = 'DONE', sent_at = p_now, result = d.result || jsonb_build_object('skipped', 'EXPIRED')
+       SET status = 'SUPPRESSED', result = d.result || jsonb_build_object('skipped', 'EXPIRED')
      WHERE d.organization_id = v_org AND d.status = 'DEFERRED' AND d.created_at < p_now - interval '24 hours';
     SELECT coalesce(jsonb_agg(jsonb_build_object(
         'kind', 'NIGHT_DIGEST',

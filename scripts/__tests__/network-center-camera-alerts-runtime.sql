@@ -378,6 +378,22 @@ BEGIN
 END $c3d$;
 ROLLBACK;
 
+-- Ca 3e — đường truyền chập chờn OFFLINE ↔ UNKNOWN xen kẽ: C2 vẫn mở sau ~5
+-- phút, lượt UNKNOWN không xoá bộ đếm của một C2 chưa mở.
+BEGIN;
+DO $c3e$
+DECLARE t timestamptz := pg_temp.at(0, '11:00'); i integer; s timestamptz;
+  unknown_ch jsonb := (SELECT jsonb_agg(jsonb_build_object('channel', g, 'state', 'UNKNOWN')) FROM generate_series(1, 8) g);
+BEGIN
+  FOR i IN 0..6 LOOP
+    s := t + i * interval '2 minutes';
+    PERFORM pg_temp.snap(2, s - interval '30 seconds', CASE WHEN i % 2 = 0 THEN 'OFFLINE' ELSE 'UNKNOWN' END, unknown_ch, pg_temp.disk('UNKNOWN'));
+    PERFORM pg_temp.tick(s);
+  END LOOP;
+  PERFORM pg_temp.expect(pg_temp.n_inc('CAMERA_RECORDER_OFFLINE') = 1, 'a link flapping OFFLINE/UNKNOWN must still open C2');
+END $c3e$;
+ROLLBACK;
+
 -- ---------------------------------------------------------------------------
 -- Ca 4 — dữ liệu giám sát cũ ≥ 5 phút: C4; ba đầu ghi cùng cũ ⇒ tin ghi lỗi chung.
 -- ---------------------------------------------------------------------------
@@ -545,6 +561,33 @@ BEGIN
     'the night digest must list the deferred channel');
   PERFORM pg_temp.expect(NOT EXISTS (SELECT 1 FROM app_private.camera_alert_deliveries WHERE status = 'DEFERRED'), 'deferred rows must be drained');
 END $c8$;
+ROLLBACK;
+
+-- Ca 8b — tin hoãn quá 24 giờ (không có lượt nào chạy lúc 07:00 hôm sau):
+-- không gửi bản tin cũ, và khi khôi phục cũng không báo "đã khôi phục" cho
+-- một sự cố người nhận chưa từng được báo mở.
+BEGIN;
+DO $c8b$
+DECLARE t timestamptz := pg_temp.at(0, '22:56'); i integer; s timestamptz; later timestamptz := pg_temp.at(2, '07:00');
+BEGIN
+  FOR i IN 0..5 LOOP
+    s := t + i * interval '2 minutes';
+    PERFORM pg_temp.snap(1, s - interval '30 seconds', 'ONLINE', pg_temp.ch(ARRAY[3]), pg_temp.disk('NORMAL'));
+    PERFORM pg_temp.tick(s);
+  END LOOP;
+  PERFORM pg_temp.expect((SELECT count(*) FROM app_private.camera_alert_deliveries WHERE status = 'DEFERRED') = 1, 'fixture: WARNING deferred');
+  PERFORM pg_temp.snap(1, later - interval '30 seconds', 'ONLINE', pg_temp.ch(ARRAY[3]), pg_temp.disk('NORMAL'));
+  PERFORM pg_temp.tick(later);
+  PERFORM pg_temp.expect(pg_temp.n_notif() = 0 AND (SELECT count(*) FROM app_private.camera_alert_deliveries WHERE status = 'SUPPRESSED' AND result ->> 'skipped' = 'EXPIRED') = 1,
+    'a deferred notice older than 24 hours must be closed, not sent');
+  FOR i IN 1..2 LOOP
+    s := later + i * interval '2 minutes';
+    PERFORM pg_temp.snap(1, s - interval '30 seconds', 'ONLINE', pg_temp.ch(), pg_temp.disk('NORMAL'));
+    PERFORM pg_temp.tick(s);
+  END LOOP;
+  PERFORM pg_temp.expect((SELECT status FROM public.network_incidents) = 'RESOLVED' AND pg_temp.n_notif() = 0,
+    'no recovery message for an incident whose opening was never delivered');
+END $c8b$;
 ROLLBACK;
 
 -- ---------------------------------------------------------------------------

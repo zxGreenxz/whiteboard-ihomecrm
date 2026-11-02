@@ -58,15 +58,28 @@ test('camera alert proof detects the company-owner branch being dropped', async 
 
 test('camera alert proof detects a monitor-stale alert raised without its grace interval', async () => {
   await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
-    "WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 120)",
+    "WHEN 'CAMERA_MONITOR_STALE' THEN app_private.camera_alert_threshold_v1(p_thresholds, 'monitorGraceSeconds', 90)",
     "WHEN 'CAMERA_MONITOR_STALE' THEN 0",
   ) }), /C4 waits one grace interval/);
 });
 
 test('camera alert proof detects an OFFLINE incident kept open after the recorder reconnects as UNKNOWN', async () => {
   await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
-    "WHEN rec.status IN ('ONLINE', 'UNKNOWN', 'AUTH_DENIED') THEN 'GOOD'", "WHEN rec.status = 'ONLINE' THEN 'GOOD'",
+    "WHEN rec.status IN ('UNKNOWN', 'AUTH_DENIED') THEN 'GOOD_IF_OPEN'", "WHEN rec.status IN ('UNKNOWN', 'AUTH_DENIED') THEN 'HOLD'",
   ) }), /a reconnected recorder that answers UNKNOWN must close C2/);
+});
+
+test('camera alert proof detects a flapping OFFLINE/UNKNOWN link that never opens C2', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "WHEN rec.status IN ('UNKNOWN', 'AUTH_DENIED') THEN 'GOOD_IF_OPEN'", "WHEN rec.status IN ('UNKNOWN', 'AUTH_DENIED') THEN 'GOOD'",
+  ) }), /a link flapping OFFLINE\/UNKNOWN must still open C2/);
+});
+
+test('camera alert proof detects an expired night notice counted as delivered', async () => {
+  await assert.rejects(runCameraAlertsProof({ mutation: (sql) => sql.replace(
+    "SET status = 'SUPPRESSED', result = d.result || jsonb_build_object('skipped', 'EXPIRED')",
+    "SET status = 'DONE', result = d.result || jsonb_build_object('skipped', 'EXPIRED')",
+  ) }), /a deferred notice older than 24 hours must be closed, not sent/);
 });
 
 test('camera alert proof detects incidents left open when the recorder router is gone', async () => {
