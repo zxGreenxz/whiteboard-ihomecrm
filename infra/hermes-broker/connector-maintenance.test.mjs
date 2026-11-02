@@ -690,6 +690,45 @@ test('a lost connection is removed from the healthy IDs so the next restart does
   assert.deepEqual(saved, [[row.operationId], []]); assert.equal(lost(f.events).length, 1);
 });
 
+test('mutation: a dead WAL row never enters the healthy IDs, so after a restart it is still not reported as lost', async t => {
+  const saved = [];
+  const dead = fixture(t, { onHealthyChange: ids => { saved.push([...ids]); } }); dead.setExpiry(NOW - 1); // refused for its whole 930 s
+  await dead.cycle();
+  for (let guard = 0; guard < 40 && !dead.service.status().staleAtStart; guard++) { dead.advance(30000); await dead.cycle(); }
+  assert.deepEqual(dead.service.status(), status('ready', { staleAtStart: 1 }));
+  assert.deepEqual(saved, []); // never written: the set stayed empty from start to finish
+  const restarted = fixture(t, { healthyIds: saved.at(-1) ?? [] }); restarted.setExpiry(NOW - 1);
+  await restarted.cycle();
+  for (let guard = 0; guard < 40 && !restarted.service.status().staleAtStart; guard++) { restarted.advance(30000); await restarted.cycle(); }
+  assert.deepEqual(restarted.service.status(), status('ready', { staleAtStart: 1 })); assert.deepEqual(lost(restarted.events), []);
+});
+
+test('a carried connection that is lost in this process is reported once and dropped from the healthy IDs, so the next restart is quiet', async t => {
+  const saved = [];
+  const f = fixture(t, { healthyIds: [row.operationId], onHealthyChange: ids => { saved.push([...ids]); }, begin() { return settle(Promise.reject(coded('maintenance_rejected'))); } });
+  f.setExpiry(NOW + 300000); await f.cycle();
+  for (let guard = 0; guard < 20 && !f.service.status().requiresReconnect; guard++) { f.advance(30000); await f.cycle(); }
+  assert.equal(lost(f.events).length, 1);
+  assert.deepEqual(saved, [[]]); // the carried ID was consumed by its item and left the set when the item stopped
+  const restarted = fixture(t, { healthyIds: saved.at(-1) }); restarted.setExpiry(NOW - 1);
+  await restarted.cycle();
+  for (let guard = 0; guard < 40 && !restarted.service.status().staleAtStart; guard++) { restarted.advance(30000); await restarted.cycle(); }
+  assert.deepEqual(lost(restarted.events), []); assert.deepEqual(restarted.service.status(), status('ready', { staleAtStart: 1 }));
+});
+
+test('a healthy connection that becomes retained stays in the healthy IDs, so it is still reported lost if its token dies while the host is down', async t => {
+  const saved = [];
+  const f = fixture(t, { onHealthyChange: ids => { saved.push([...ids]); }, begin(ack) { return settle(Promise.resolve(ack), Promise.reject(Error('PRIVATE drain'))); } });
+  await f.cycle(); await f.cycle();
+  assert.deepEqual(f.service.status(), status('retained', { retained: 1 }));
+  assert.deepEqual(saved.at(-1), [row.operationId]);
+  const restarted = fixture(t, { healthyIds: saved.at(-1) }); restarted.setExpiry(NOW - 1); // the token died during the stop
+  await restarted.cycle();
+  for (let guard = 0; guard < 40 && !restarted.service.status().requiresReconnect; guard++) { restarted.advance(30000); await restarted.cycle(); }
+  assert.deepEqual(lost(restarted.events).map(event => event.connectionId), [row.connectionId.slice(-8)]);
+  await assert.rejects(f.service.close(), { message: 'connector_maintenance_retained' });
+});
+
 test('healthyIds and onHealthyChange are validated at construction', () => {
   const parts = { handoff: { list() {} }, backend: { resolveConnection() {}, beginExternalConnectionMaintenance() {} } };
   for (const bad of [{ healthyIds: 'x' }, { healthyIds: ['hc_' + 'a'.repeat(43)] }, { healthyIds: ['nope'] }, { healthyIds: Array.from({ length: 65 }, (_, n) => id(n + 1)) }, { onHealthyChange: 'x' }]) {

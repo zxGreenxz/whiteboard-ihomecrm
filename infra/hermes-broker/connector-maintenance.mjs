@@ -93,11 +93,13 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
   // turn every live connection into 'stale' and hide its loss). Only a log/count hint, never authority: a wrong or
   // missing list changes which record is written, nothing else. Consumed once per ID, when its first item is created.
   // onHealthyChange(ids) receives the current healthy IDs whenever they change; its failure never changes maintenance.
-  const carried = new Set(healthyIds ?? []);
+  // kept: healthy connections that turned 'retained' (never visited again in this process). They are still alive in the
+  // database, so a restart must still be able to report them lost if their token dies while the process is down.
+  const carried = new Set(healthyIds ?? []), kept = new Set();
   let persisted = [...carried].sort().join();
   const persist = () => {
     if (!onHealthyChange) return;
-    const ids = [...new Set([...carried, ...[...tracked].filter(([, item]) => item.healthy).map(([key]) => key)])].sort();
+    const ids = [...new Set([...carried, ...kept, ...[...tracked].filter(([, item]) => item.healthy).map(([key]) => key)])].sort();
     if (ids.join() === persisted) return;
     persisted = ids.join();
     try { void Promise.resolve(onHealthyChange(Object.freeze(ids))).catch(() => {}); } catch { /* A persistence failure never changes maintenance. */ }
@@ -131,6 +133,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
   const stop = (row, reason, code, fields = {}) => {
     const healthy = tracked.get(row.operationId)?.healthy === true;
     tracked.delete(row.operationId); risked.delete(row.operationId);
+    if (reason === 'retained' && healthy) kept.add(row.operationId);
     stopped.set(row.operationId, reason === 'expired' && !healthy ? 'stale' : reason); note(row, reason, { code, ...fields });
     if (reason === 'expired' && healthy) emit('connector_connection_lost', { connectionId: row.connectionId.slice(-8), code });
   };
@@ -276,7 +279,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
         seen.add(row.operationId);
       }
       for (const key of tracked.keys()) if (!seen.has(key)) { tracked.delete(key); risked.delete(key); }
-      for (const key of carried) if (!seen.has(key)) carried.delete(key); // left the WAL: nothing to carry
+      for (const key of [...carried, ...kept]) if (!seen.has(key)) { carried.delete(key); kept.delete(key); } // left the WAL: nothing to carry
       for (const row of rows) {
         if (closing || halted) break;
         if (!stopped.has(row.operationId) && !await visit(row)) unavailable = true;
