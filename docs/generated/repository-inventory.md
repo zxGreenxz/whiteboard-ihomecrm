@@ -15,7 +15,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **1762** file test, **460** file đọc file bằng fs (1178 lời gọi)
+- **1762** file test, **461** file đọc file bằng fs (1181 lời gọi)
 - **526** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
@@ -25,12 +25,12 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
 | sql | 189 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| manifest | 67 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
-| ma-nguon | 64 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| manifest | 68 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
+| ma-nguon | 65 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | tai-lieu | 16 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 64 file đọc MÃ NGUỒN
+## 65 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -43,6 +43,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `infra/hermes-broker/sale-deposit-receipt-key.test.mjs`
 - `infra/hermes-learning-audit/ingest.test.mjs`
 - `infra/hermes-runtime/host-cli.test.mjs`
+- `infra/hermes-runtime/host-service.test.mjs`
 - `scripts/__tests__/apply-reviewed-migration.test.mjs`
 - `scripts/__tests__/business-performance-gated-data-rollout.test.mjs`
 - `scripts/__tests__/check-copilot-docs-manifest.test.mjs`

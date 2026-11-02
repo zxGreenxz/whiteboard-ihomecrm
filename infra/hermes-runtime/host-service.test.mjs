@@ -10,7 +10,7 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage, callLog, maintenanceLog;
+  let closes = 0, stage, callLog, maintenanceLog; const saved = [];
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
@@ -46,14 +46,20 @@ function fixture(t, changes = {}) {
         status(){return{state:'pending',pending:1};},
         async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
     },
+    createHealthyRecord(options) { assert.deepEqual(options, { directory: '/state' }); events.push('healthy-record');
+      return { async load() { return changes.healthyIds ?? []; }, async save(ids) { saved.push(ids); } }; },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
-      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'log']); assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
+      // 10 minutes is the maximum the loop accepts: it leaves ~9 minutes of retries before the 15-minute token expires.
+      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'renewBeforeMs', 'healthyIds', 'onHealthyChange', 'log']);
+      assert.equal(options.renewBeforeMs, 600000); assert.deepEqual(options.healthyIds, changes.healthyIds ?? []);
+      options.onHealthyChange(['10000000-0000-4000-8000-000000000001']);
+      assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
+  return { host, events, server, key, handoff, saved, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -183,6 +189,7 @@ test('actual backend and connector maintenance compose behind the real loopback 
   const host = createHermesHost(configuration, { factories: {
     async acquireHostOwnership() { return { async release() { events.push('release'); } }; },
     async prepareState() { return '/state/audit'; },
+    createHealthyRecord() { return { async load() { return []; }, async save() {} }; },
     createHostAudit() { return { async write() {}, async close() { events.push('audit-close'); } }; },
     createConnectionHandoff() { return { async list() { lists++; return []; }, async stage() {}, async close() { events.push('wal-close'); } }; },
     createStorePool() { return { async connect() { throw Error('unexpected external SQL'); }, async end() { events.push('pool-close'); } }; },
@@ -242,4 +249,44 @@ test('connector maintenance sink: one stdout JSON line per record, and HERMES_CA
   f.maintenanceLog(record);
   assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
   info.mock.restore(); await f.host.close();
+});
+
+test('the healthy-connection record is loaded before maintenance starts and saved through onHealthyChange', async t => {
+  const ids = ['10000000-0000-4000-8000-000000000009'];
+  const f = fixture(t, { healthyIds: ids }); await f.host.start();
+  assert(f.events.indexOf('healthy-record') < f.events.indexOf('connector-maintenance-start'));
+  assert.deepEqual(f.saved, [['10000000-0000-4000-8000-000000000001']]);
+  await f.host.close();
+});
+
+test('the real healthy record is atomic and owner-only, and a missing, tampered, oversized or symlinked file reads as empty', async t => {
+  const { mkdtemp, writeFile, readFile, rm, stat, symlink, readdir } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { createHealthyRecord } = await import('./host-service.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'healthy-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const a = '10000000-0000-4000-8000-00000000000a', b = '10000000-0000-4000-8000-00000000000b';
+  const record = createHealthyRecord({ directory });
+  assert.deepEqual(await record.load(), []);
+  await Promise.all([record.save([a]), record.save([a, b])]); // serialised: the last call wins, no temporary file is left
+  assert.deepEqual(await record.load(), [a, b]);
+  assert.deepEqual(await readdir(directory), ['connector-healthy.json']);
+  if (process.platform !== 'win32') assert.equal((await stat(join(directory, 'connector-healthy.json'))).mode & 0o777, 0o600);
+  assert.doesNotMatch(await readFile(join(directory, 'connector-healthy.json'), 'utf8'), /hc_/);
+  const file = join(directory, 'connector-healthy.json');
+  await writeFile(file, JSON.stringify({ v: 1, ids: [a, 'not-a-uuid', 7, 'hc_' + 'a'.repeat(43)] })); assert.deepEqual(await record.load(), [a]);
+  await writeFile(file, '{broken'); assert.deepEqual(await record.load(), []);
+  await writeFile(file, JSON.stringify({ v: 2, ids: [a] })); assert.deepEqual(await record.load(), []);
+  await writeFile(file, 'x'.repeat(9000)); assert.deepEqual(await record.load(), []);
+  await rm(file); await writeFile(join(directory, 'other.json'), JSON.stringify({ v: 1, ids: [b] }));
+  try { await symlink(join(directory, 'other.json'), file); assert.deepEqual(await record.load(), []); } catch (error) { if (error.code !== 'EPERM') throw error; }
+});
+
+test('the session refresh lead in server.mjs is at least the renewal lead the host passes (a shorter one fails every session cycle)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const server = await readFile(new URL('../hermes-broker/server.mjs', import.meta.url), 'utf8');
+  const host = await readFile(new URL('./host-service.mjs', import.meta.url), 'utf8');
+  const refresh = Number(/createConnectionMaintenance\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  const renew = Number(/createConnectorMaintenance\(\{[^}]*?renewBeforeMs:\s*(\d+)/s.exec(host)?.[1]);
+  assert(Number.isSafeInteger(refresh) && Number.isSafeInteger(renew), 'both leads are literal numbers');
+  assert(refresh >= renew, `refreshBeforeMs ${refresh} < renewBeforeMs ${renew}`);
 });
