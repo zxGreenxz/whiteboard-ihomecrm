@@ -14,13 +14,18 @@ const skip = process.platform !== 'linux' ? 'cần bash + GNU find/gzip/sed (ch�
 
 // journalctl giả, mô phỏng v249: --cursor-file=<f> chứa số dòng đã xuất; KHÔNG có dòng nào để hiện (unit lạ / hết dòng mới) ⇒ thoát 1,
 // stderr rỗng (như journalctl thật khi không lấy được con trỏ). FAKE_FAIL_UNIT=<unit> ⇒ lỗi thật: in 1 dòng, "Failed …" ra stderr, thoát 1.
+// Không có -u (bước dò của script) ⇒ in một dòng, trừ khi FAKE_NO_JOURNAL=1 (không đọc được journal: thoát 1 im lặng).
+// FAKE_ERR_UNIT ⇒ lỗi có stderr mà stdout rỗng; FAKE_KILL_UNIT ⇒ chết như SIGKILL (137), không in gì.
 const FAKE = `#!/usr/bin/env bash
 unit=""; cur=""
 for a in "$@"; do case "$a" in --cursor-file=*) cur="\${a#--cursor-file=}";; esac; done
 while [ $# -gt 0 ]; do [ "$1" = "-u" ] && { unit="$2"; shift; }; shift; done
+if [ -z "$unit" ]; then [ "\${FAKE_NO_JOURNAL:-}" = 1 ] && exit 1; echo "probe"; exit 0; fi
 src="$FAKE_JOURNAL_DIR/$unit"
 [ -f "$src" ] || exit 1
 if [ "\${FAKE_FAIL_UNIT:-}" = "$unit" ]; then echo "partial"; echo "Failed to read journal: Permission denied" >&2; exit 1; fi
+if [ "\${FAKE_ERR_UNIT:-}" = "$unit" ]; then echo "Failed to seek to cursor: Invalid argument" >&2; exit 1; fi
+if [ "\${FAKE_KILL_UNIT:-}" = "$unit" ]; then exit 137; fi
 n=0; [ -f "$cur" ] && n=$(cat "$cur")
 total=$(wc -l < "$src" | tr -d ' ')
 [ "$total" -gt "$n" ] || exit 1
@@ -92,6 +97,33 @@ test('unit không có journal ⇒ không tạo file rỗng; journalctl lỗi ⇒
   assert.ok(!existsSync(join(env.STATE_DIR, 'a.service.fails')), 'thành công ⇒ xoá đếm lỗi');
   for (let i = 1; i <= 3; i++) exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_FAIL_UNIT: 'a.service' });
   assert.ok(!existsSync(join(env.STATE_DIR, 'a.service.cursor')), 'lỗi 3 lần liền ⇒ bỏ con trỏ');
+});
+
+test('ghi đĩa lỗi ⇒ thoát 1, con trỏ KHÔNG tiến; gỡ lỗi rồi chạy lại ⇒ xuất bù đủ dòng', { skip }, () => {
+  const { journal, env, run, exec } = setup();
+  writeFileSync(join(journal, 'a.service'), 'w1\nw2\n');
+  run({ TODAY: '2026-11-05', UNITS: 'a.service' });
+  appendFileSync(join(journal, 'a.service'), 'w3\n');
+  const block = join(env.LOG_DIR, 'a', '2026-11-06.log');
+  mkdirSync(block);                                   // file hôm nay là THƯ MỤC ⇒ ghi lỗi (cả khi chạy bằng root)
+  const r = exec({ TODAY: '2026-11-06', UNITS: 'a.service' });
+  assert.equal(r.status, 1, 'ghi lỗi ⇒ thoát 1');
+  assert.equal(readFileSync(join(env.STATE_DIR, 'a.service.cursor'), 'utf8').trim(), '2', 'con trỏ đứng yên khi ghi lỗi');
+  rmSync(block, { recursive: true });
+  run({ TODAY: '2026-11-06', UNITS: 'a.service' });
+  assert.deepEqual(lines(join(env.LOG_DIR, 'a', '2026-11-06.log')), ['w3'], 'lượt sau xuất bù dòng chưa ghi được');
+});
+
+test('lỗi có stderr mà không có dòng, chết vì tín hiệu, journal không đọc được ⇒ đều là lỗi (thoát 1)', { skip }, () => {
+  const { journal, env, exec } = setup();
+  writeFileSync(join(journal, 'a.service'), 'x1\n');
+  const e = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_ERR_UNIT: 'a.service' });
+  assert.equal(e.status, 1); assert.match(e.stderr, /journalctl: Failed to seek/);
+  assert.ok(!existsSync(join(env.STATE_DIR, 'a.service.cursor')), 'lỗi ⇒ không tạo con trỏ');
+  const k = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_KILL_UNIT: 'a.service' });
+  assert.equal(k.status, 1, 'mã 137 không được coi là "không có gì mới"'); assert.match(k.stderr, /journalctl=137/);
+  const n = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_NO_JOURNAL: '1' });
+  assert.equal(n.status, 1); assert.match(n.stderr, /không đọc được journal/);
 });
 
 test('sang ngày mới thì nén ngày cũ (đã có .gz ⇒ nối, không ghi đè); quá hạn thì xoá', { skip }, () => {

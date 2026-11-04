@@ -28,7 +28,8 @@ Hành vi cần biết:
 
 ```bash
 R=/opt/ihome-hermes/current/infra/hermes-log-keeper
-install -D -m 0755 "$R/log-keeper.sh" /usr/local/libexec/ihome-hermes/log-keeper.sh   # đường cố định: lùi bản connector không làm hỏng unit
+install -d -m 0755 /usr/local/libexec/ihome-hermes                                   # tường minh 0755: umask 077 của root làm user động không vào được
+install -m 0755 "$R/log-keeper.sh" /usr/local/libexec/ihome-hermes/log-keeper.sh     # đường cố định: lùi bản connector không làm hỏng unit
 install -m 0644 "$R/systemd/ihome-hermes-log-keeper.service" "$R/systemd/ihome-hermes-log-keeper.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl start ihome-hermes-log-keeper.service          # chạy ngay một lượt

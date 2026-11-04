@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1763,
   "soFileDocBangFs": 462,
-  "tongLoiGoi": 1188,
-  "khongPhanLoaiDuoc": 533,
+  "tongLoiGoi": 1189,
+  "khongPhanLoaiDuoc": 534,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 65,
@@ -273,6 +273,12 @@
       "khongPhanLoaiDuoc": 6
     },
     {
+      "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
+      "soGoi": 8,
+      "loai": {},
+      "khongPhanLoaiDuoc": 8
+    },
+    {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
       "soGoi": 8,
       "loai": {
@@ -299,12 +305,6 @@
     },
     {
       "file": "infra/hermes-broker/wave2-d.test.mjs",
-      "soGoi": 7,
-      "loai": {},
-      "khongPhanLoaiDuoc": 7
-    },
-    {
-      "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
       "soGoi": 7,
       "loai": {},
       "khongPhanLoaiDuoc": 7

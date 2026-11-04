@@ -22,6 +22,11 @@ mkdir -p "$LOG_DIR" "$STATE_DIR"
 # ⇒ phải giải ra thư mục thật, nếu không phần xoá theo tuổi / trần dung lượng không chạy (review #388).
 LOG_DIR="$(readlink -f -- "$LOG_DIR")"; STATE_DIR="$(readlink -f -- "$STATE_DIR")"
 
+# Dò một lần: journal hệ thống luôn có dòng. Không ra dòng nào ⇒ không có quyền đọc / không có file journal (journalctl -q nuốt cả
+# "No journal files were found" và thoát 1 im lặng) ⇒ dừng mã 1, KHÔNG để các unit bên dưới bị coi là "không có gì mới" mãi.
+probe="$("$JOURNALCTL" -q -n 1 -o cat --no-pager 2>/dev/null || true)"
+[ -n "$probe" ] || { echo "không đọc được journal (dò không ra dòng nào)" >&2; exit 1; }
+
 mask() {
   sed -E 's/hc_[A-Za-z0-9_-]{16,}/hc_***/g; s/(bearer[[:space:]]+)[A-Za-z0-9._~+\/=-]{8,}/\1***/gI;
           s/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/eyJ***/g'
@@ -50,7 +55,8 @@ for unit in $UNITS; do
   st=("${PIPESTATUS[@]}")
   set -e
   mid=0; [ -f "$out" ] && mid=$(wc -c < "$out")
-  if [ "${st[0]}" != 0 ] && [ "${st[1]}" = 0 ] && [ ! -s "$errf" ] && [ "$mid" = "$before" ]; then st[0]=0; fi
+  # Chỉ mã ĐÚNG 1 (chết vì tín hiệu 137/143… vẫn là lỗi) và file stderr PHẢI có mà rỗng (chuyển hướng 2> hỏng thì không che được).
+  if [ "${st[0]}" = 1 ] && [ "${st[1]}" = 0 ] && [ -f "$errf" ] && [ ! -s "$errf" ] && [ "$mid" = "$before" ]; then st[0]=0; fi
   [ -s "$errf" ] && sed 's/^/journalctl: /' "$errf" >&2
   rm -f -- "$errf"
   if [ "${st[0]}" = 0 ] && [ "${st[1]}" = 0 ]; then
@@ -63,7 +69,7 @@ for unit in $UNITS; do
     if [ "$n" -ge "$FAIL_RESET" ]; then rm -f -- "$cur" "$fails"; echo "bỏ con trỏ $unit sau $n lần lỗi" >&2; fi
   fi
   after=0; [ -f "$out" ] && after=$(wc -c < "$out")
-  [ "$after" -gt 0 ] || rm -f -- "$out"
+  if [ -f "$out" ] && [ "$after" = 0 ]; then rm -f -- "$out"; fi
   exported=$((exported + after - before))
   # Ngày cũ (file .log khác hôm nay) ⇒ nén. Đã có .gz của ngày đó (đồng hồ lùi qua nửa đêm, chạy tay với TODAY khác) ⇒ NỐI thêm một
   # member gzip (zcat đọc đủ), không ghi đè. gzip giữ mtime của file gốc nên phép xoá theo tuổi vẫn đúng.
