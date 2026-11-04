@@ -27,6 +27,9 @@
 // baseline (chỉ denylist — allowlist không áp được ở đó, lý do ghi trong file
 // ấy). Đổi cấu trúc file baseline này thì sửa cả bên đó.
 //
+// Từ 04/11/2026 gate còn hỏi thêm ba câu về PUBLIC EXECUTE và vai bị chặn —
+// xem khối "PUBLIC EXECUTE" bên dưới (cấu hình: publicExecute trong baseline).
+//
 // Dùng: node scripts/check-definer-acl.mjs   → exit 1 nếu drift.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +48,69 @@ const baselinePath = new URL('./definer-acl-baseline.json', import.meta.url);
 // Hiện `api` có 0 hàm — cửa mở nhưng chưa ai bước vào. Đó đúng là lúc nên bịt:
 // một SECURITY DEFINER thêm vào đó ngày mai sẽ có zero bằng chứng nào chặn.
 const SCHEMA_PHOI_RA = ['public', 'api', 'graphql_public'];
+
+// ── PUBLIC EXECUTE và vai bị chặn (migration 20261104173640, hậu kiểm PR #371) ─────────────
+// Allowlist/denylist ở trên chỉ hỏi về anon. Lỗ đo được 01/11/2026 nằm ở tầng khác: quyền cấp cho
+// PUBLIC là quyền của MỌI vai, kể cả login không qua PostgREST — hermes_store_learning đăng nhập
+// qua pooler gọi được 67 hàm DEFINER rồi tự đặt request.jwt.claim.sub là giả danh người dùng. Ba
+// câu hỏi thêm, cùng đọc catalog production:
+//   1. Còn hàm ứng dụng (SCHEMA_UNG_DUNG, không thuộc extension) cấp EXECUTE cho PUBLIC không?
+//      proacl NULL là mặc định PUBLIC, cũng tính.
+//   2. Vai bị chặn (publicExecute.blockedRoles trong baseline) gọi được hàm SECURITY DEFINER nào
+//      ngoài danh sách riêng của nó không? Tính qua MỌI nhóm nó là thành viên (pg_has_role MEMBER,
+//      gồm cả nhóm chỉ SET ROLE được mà không thừa hưởng).
+//   3. Mặc định hàm của postgres (toàn cục, hoặc theo schema) còn cấp PUBLIC không? Còn thì hàm tạo
+//      sau lại cấp PUBLIC.
+// Danh sách của vai bị chặn sửa TAY trong PR có review; --update không đụng tới nó.
+export const SCHEMA_UNG_DUNG = ['public', 'app_private', 'api'];
+const TEN_VAI = /^[a-z_][a-z0-9_]{0,62}$/;
+
+export function sqlPublicExecute(blockedRoles) {
+  const vai = Object.keys(blockedRoles ?? {});
+  if (vai.length === 0 || vai.some((r) => !TEN_VAI.test(r))) throw new Error('publicExecute.blockedRoles rỗng hoặc có tên vai không hợp lệ');
+  const mang = (xs) => `ARRAY[${xs.map((x) => `'${x}'`).join(',')}]::text[]`;
+  return `WITH app AS (
+  SELECT p.oid, p.oid::regprocedure::text AS sig, p.prosecdef, p.proacl, p.proowner,
+    p.prorettype IN ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype) AS trig
+  FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = ANY(${mang(SCHEMA_UNG_DUNG)})
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+      WHERE d.classid = 'pg_catalog.pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
+)
+SELECT 'public' AS kind, NULL::text AS role, a.sig FROM app a
+ WHERE EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
+   WHERE x.grantee = 0 AND x.privilege_type = 'EXECUTE')
+UNION ALL
+SELECT 'reach', r.rolname::text, a.sig FROM pg_catalog.pg_roles r CROSS JOIN app a
+ WHERE r.rolname = ANY(${mang(vai)}) AND a.prosecdef AND NOT a.trig
+   AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles g
+     WHERE pg_catalog.pg_has_role(r.oid, g.oid, 'MEMBER') AND pg_catalog.has_function_privilege(g.oid, a.oid, 'EXECUTE'))
+UNION ALL
+SELECT 'default', 'postgres', '(toàn cục)'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl da
+   WHERE da.defaclrole = 'postgres'::regrole AND da.defaclnamespace = 0 AND da.defaclobjtype = 'f'
+     AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(da.defaclacl) x WHERE x.grantee = 0))
+UNION ALL
+SELECT 'default', pg_catalog.pg_get_userbyid(da.defaclrole)::text, da.defaclnamespace::regnamespace::text
+  FROM pg_catalog.pg_default_acl da CROSS JOIN LATERAL pg_catalog.aclexplode(da.defaclacl) x
+ WHERE da.defaclobjtype = 'f' AND x.grantee = 0
+   AND (da.defaclrole = 'postgres'::regrole OR da.defaclnamespace::regnamespace::text = ANY(${mang(SCHEMA_UNG_DUNG)}))
+ORDER BY 1, 2, 3`;
+}
+
+/**
+ * Phân tích kết quả sqlPublicExecute. Thuần tuý, không I/O. `thua`: dòng trong danh sách vai bị chặn
+ * mà vai đó không còn gọi được (hàm đã bỏ/thu) — chỉ báo, không đỏ.
+ */
+export function phanTichPublicExecute({ rows = [], blockedRoles = {} } = {}) {
+  const hamPublic = rows.filter((r) => r.kind === 'public').map((r) => r.sig);
+  const reach = rows.filter((r) => r.kind === 'reach');
+  const vuotQuyen = reach.filter((r) => !(blockedRoles[r.role] ?? []).includes(r.sig)).map((r) => `${r.role} → ${r.sig}`);
+  const macDinh = rows.filter((r) => r.kind === 'default').map((r) => `${r.role}: ${r.sig}`);
+  const conGoi = new Set(reach.map((r) => `${r.role} → ${r.sig}`));
+  const thua = Object.entries(blockedRoles).flatMap(([role, sigs]) => sigs.map((s) => `${role} → ${s}`)).filter((x) => !conGoi.has(x));
+  return { hamPublic, vuotQuyen, macDinh, thua, dat: hamPublic.length === 0 && vuotQuyen.length === 0 && macDinh.length === 0 };
+}
 
 /**
  * So trạng thái thật với hai danh sách. Thuần tuý, không I/O — để test được
@@ -75,12 +141,7 @@ export function phanTichAcl({ live = [], baseline = [], denylist = [] } = {}) {
   };
 }
 
-async function docTrangThaiSong(pat, ref) {
-  const sql = `SELECT p.oid::regprocedure::text AS sig
-  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-  WHERE n.nspname = ANY(ARRAY[${SCHEMA_PHOI_RA.map((s) => `'${s}'`).join(',')}])
-    AND p.prosecdef AND has_function_privilege('anon', p.oid, 'EXECUTE')
-  ORDER BY sig`;
+async function truyVan(pat, ref, sql) {
   const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
@@ -89,7 +150,32 @@ async function docTrangThaiSong(pat, ref) {
   if (!res.ok) {
     throw new Error(`Query FAILED ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
-  return (await res.json()).map((r) => r.sig);
+  return res.json();
+}
+
+async function docTrangThaiSong(pat, ref) {
+  const sql = `SELECT p.oid::regprocedure::text AS sig
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname = ANY(ARRAY[${SCHEMA_PHOI_RA.map((s) => `'${s}'`).join(',')}])
+    AND p.prosecdef AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  ORDER BY sig`;
+  return (await truyVan(pat, ref, sql)).map((r) => r.sig);
+}
+
+function baoPublicExecute(kq) {
+  if (kq.hamPublic.length) {
+    console.error(`❌ ${kq.hamPublic.length} hàm ứng dụng còn cấp EXECUTE cho PUBLIC (mọi vai, kể cả login không qua API, gọi được):`);
+    for (const s of kq.hamPublic.slice(0, 30)) console.error('   + ' + s);
+    if (kq.hamPublic.length > 30) console.error(`   … còn ${kq.hamPublic.length - 30}`);
+    console.error('   REVOKE EXECUTE ... FROM PUBLIC rồi GRANT tường minh cho vai thật sự gọi (xem 20261104173640).');
+  }
+  if (kq.vuotQuyen.length) {
+    console.error(`❌ ${kq.vuotQuyen.length} hàm SECURITY DEFINER vai bị chặn gọi được ngoài danh sách riêng (publicExecute.blockedRoles):`);
+    for (const s of kq.vuotQuyen.slice(0, 30)) console.error('   ! ' + s);
+  }
+  if (kq.macDinh.length) {
+    console.error(`❌ Mặc định quyền hàm còn cấp PUBLIC — hàm tạo sau sẽ lại mở cho mọi vai: ${kq.macDinh.join(', ')}`);
+  }
 }
 
 async function main(argv) {
@@ -100,8 +186,18 @@ async function main(argv) {
   const live = await docTrangThaiSong(pat, ref);
   const doc = JSON.parse(readFileSync(baselinePath, 'utf8'));
   const denylist = doc.denylist ?? [];
+  const blockedRoles = doc.publicExecute?.blockedRoles;
+  if (!blockedRoles || typeof blockedRoles !== 'object' || Object.values(blockedRoles).some((v) => !Array.isArray(v))) {
+    console.error('❌ definer-acl-baseline.json thiếu publicExecute.blockedRoles (đối tượng vai → mảng chữ ký) — không kiểm được.');
+    return 1;
+  }
+  const kqPublic = phanTichPublicExecute({ rows: await truyVan(pat, ref, sqlPublicExecute(blockedRoles)), blockedRoles });
 
   if (argv.includes('--update')) {
+    if (kqPublic.hamPublic.length) {
+      console.error(`❌ Từ chối --update: ${kqPublic.hamPublic.length} hàm còn cấp PUBLIC — anon gọi được chúng nhờ PUBLIC, ghi vào allowlist lúc này là ban phước cho lỗ.`);
+      return 1;
+    }
     // Không cho phép --update nuốt ngược một hàm đang bị cấm vào allowlist.
     const nuot = denylist.filter((s) => live.includes(s));
     if (nuot.length) {
@@ -117,6 +213,7 @@ async function main(argv) {
       generated: new Date().toISOString().slice(0, 10),
       count: live.length,
       denylist,
+      publicExecute: doc.publicExecute,
       signatures: live,
     }, null, 2)}\n`);
     console.log(`✅ Baseline updated: ${live.length} anon-executable SECURITY DEFINER functions, ${denylist.length} hàm trong denylist.`);
@@ -140,12 +237,17 @@ async function main(argv) {
     for (const s of kq.themMoi) console.error('   + ' + s);
     console.error('Nếu là public endpoint có chủ đích: node scripts/check-definer-acl.mjs --update. Nếu không: REVOKE anon.');
   }
-  if (!kq.dat) return 1;
+  baoPublicExecute(kqPublic);
+  if (!kq.dat || !kqPublic.dat) return 1;
 
   if (kq.daBo.length) {
     console.log(`ℹ️  ${kq.daBo.length} function trong baseline không còn anon-executable (siết chặt — tốt). Chạy --update để dọn baseline.`);
   }
+  if (kqPublic.thua.length) {
+    console.log(`ℹ️  ${kqPublic.thua.length} dòng trong publicExecute.blockedRoles vai đó không còn gọi được (hàm đã bỏ/thu) — sửa tay để dọn: ${kqPublic.thua.slice(0, 5).join(', ')}`);
+  }
   console.log(`✅ Không có SECURITY DEFINER anon-executable mới ngoài allowlist (${live.length} khớp baseline, ${denylist.length} hàm bị cấm vĩnh viễn).`);
+  console.log(`✅ Không hàm ứng dụng nào cấp EXECUTE cho PUBLIC; ${Object.keys(blockedRoles).length} vai bị chặn chỉ gọi được hàm DEFINER riêng của mình; mặc định hàm của postgres không cấp PUBLIC.`);
   return 0;
 }
 

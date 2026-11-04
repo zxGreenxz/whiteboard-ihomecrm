@@ -13,6 +13,71 @@
     "salary_work_ledger(date,uuid)",
     "monthly_building_profit(date,date,uuid)"
   ],
+  "publicExecute": {
+    "note": "Hàm ứng dụng (public/app_private/api, không thuộc extension) KHÔNG được cấp EXECUTE cho PUBLIC, và mặc định hàm của postgres không cấp PUBLIC (migration 20261104173640, hậu kiểm PR #371). blockedRoles: login/nhóm không phải API, mỗi vai chỉ gọi được đúng các hàm SECURITY DEFINER ghi ở đây — tính qua mọi nhóm vai đó là thành viên. Đo production 04/11/2026. Sửa TAY trong PR có review khi thêm hàm cho vai bị chặn; --update không đụng mục này.",
+    "blockedRoles": {
+      "hermes_store_learning": [
+        "app_private.hermes_store_learning_ingest_v1(jsonb)"
+      ],
+      "hermes_learning_ingest": [
+        "app_private.hermes_store_learning_ingest_v1(jsonb)"
+      ],
+      "hermes_store_host": [
+        "app_private.hermes_store_acquire_refresh_v1(jsonb)",
+        "app_private.hermes_store_activate_v1(jsonb)",
+        "app_private.hermes_store_claim_private_command_v1(jsonb)",
+        "app_private.hermes_store_connection_settings_v1(jsonb)",
+        "app_private.hermes_store_dispatch_private_command_v1(jsonb)",
+        "app_private.hermes_store_dispatch_refresh_v1(jsonb)",
+        "app_private.hermes_store_fail_private_command_v1(jsonb)",
+        "app_private.hermes_store_finish_private_command_v1(jsonb)",
+        "app_private.hermes_store_prune_private_commands_v1(jsonb)",
+        "app_private.hermes_store_prune_work_memories_v1(jsonb)",
+        "app_private.hermes_store_publish_refresh_v1(jsonb)",
+        "app_private.hermes_store_read_connection_v1(jsonb)",
+        "app_private.hermes_store_reconnect_session_v1(jsonb)",
+        "app_private.hermes_store_release_refresh_v1(jsonb)",
+        "app_private.hermes_store_renew_connection_v1(jsonb)",
+        "app_private.hermes_store_restrict_connection_v1(jsonb)",
+        "app_private.hermes_store_revoke_connection_v1(jsonb)",
+        "app_private.hermes_store_revoke_session_v1(jsonb)",
+        "app_private.hermes_store_stage_refresh_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_ack_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_work_v1(jsonb)"
+      ],
+      "hermes_store_executor": [
+        "app_private.hermes_store_acquire_refresh_v1(jsonb)",
+        "app_private.hermes_store_activate_v1(jsonb)",
+        "app_private.hermes_store_claim_private_command_v1(jsonb)",
+        "app_private.hermes_store_connection_settings_v1(jsonb)",
+        "app_private.hermes_store_dispatch_private_command_v1(jsonb)",
+        "app_private.hermes_store_dispatch_refresh_v1(jsonb)",
+        "app_private.hermes_store_fail_private_command_v1(jsonb)",
+        "app_private.hermes_store_finish_private_command_v1(jsonb)",
+        "app_private.hermes_store_prune_private_commands_v1(jsonb)",
+        "app_private.hermes_store_prune_work_memories_v1(jsonb)",
+        "app_private.hermes_store_publish_refresh_v1(jsonb)",
+        "app_private.hermes_store_read_connection_v1(jsonb)",
+        "app_private.hermes_store_reconnect_session_v1(jsonb)",
+        "app_private.hermes_store_release_refresh_v1(jsonb)",
+        "app_private.hermes_store_renew_connection_v1(jsonb)",
+        "app_private.hermes_store_restrict_connection_v1(jsonb)",
+        "app_private.hermes_store_revoke_connection_v1(jsonb)",
+        "app_private.hermes_store_revoke_session_v1(jsonb)",
+        "app_private.hermes_store_stage_refresh_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_ack_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_v1(jsonb)",
+        "app_private.hermes_zalo_provisioning_work_v1(jsonb)"
+      ],
+      "pgbouncer": [],
+      "supabase_auth_admin": [],
+      "supabase_etl_admin": [],
+      "supabase_functions_admin": [],
+      "supabase_read_only_user": [],
+      "supabase_replication_admin": []
+    }
+  },
   "signatures": [
     "_collector_thu_account(uuid)",
     "_termination_pick_account(uuid,uuid)",
