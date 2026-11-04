@@ -57,9 +57,13 @@ KHÔNG chặn:
 - `expense.approve` {`voucherCodes` ≤ 10, mỗi mã kèm ngày phiếu dạng "MÃ dd/mm/yyyy", `post` = false nếu chỉ duyệt chưa chi,
   `buildingName`}: duyệt lô theo danh sách vừa đọc ⇒ gửi mã kèm ngày ngay lần đầu, không gửi voucherId / UUID; nhiều hơn 10 ⇒
   làm 10 phiếu đầu, nói số còn lại. Đọc `plan` từng phiếu.
+  - Trước khi gửi lô, bỏ phiếu luồng hệ thống (tên / hạng mục có thanh lý, hoàn cọc, cọc, hoa hồng, thưởng, lương, bàn giao, thu
+    tiền hoá đơn): chỉ duyệt được ở màn gốc trên web. Máy chủ vẫn trả `system_voucher` ở khoản N ⇒ bỏ đúng mã khoản đó, gọi lại
+    ngay với phần còn lại (tối đa 2 lần). Báo: số phiếu đưa vào lô, số phiếu tay còn chờ, số phiếu hệ thống phải duyệt trên web.
 
 ## Đọc thu chi
 
+Hỏi THU ⇒ chỉ nêu thu; hỏi CHI ⇒ chỉ nêu chi; không kèm tổng phía kia khi không được hỏi.
 `crm_read_income_expenses` (không có tham số type; thu / chi xem `summary.byType`). Phiếu chi theo điều kiện (lớn nhất, trên /
 dưới X, chờ duyệt quá N ngày, theo toà): `crm_read_report` report=expense_vouchers. Theo hạng mục: report=expense_categories.
 Tab Chi phí của Phân tích tài chính: report=top_expenses. Danh sách sổ quỹ: report=cashbooks.
