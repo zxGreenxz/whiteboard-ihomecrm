@@ -645,9 +645,11 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
         r.effective_outstanding,r.carried_out_amount,r.carried_in_amount,r.is_overdue,r.overdue_days
       FROM public.invoice_room_invoices_real_v1(p_organization_id,p_room_id,p_billing_month,p_building_ids,p_as_of) r $f$;
     GRANT EXECUTE ON FUNCTION public.invoice_room_invoices_v1(uuid,uuid,text,uuid[],date) TO authenticated;`;
+  // Đầu vào của ca rào; ca đối chứng bên dưới đòi đủ chuỗi '1150000' và số 0 ở đây.
+  const AMOUNT_GUARD_INPUTS = Object.freeze([0, -640500, '1150000', 'một triệu', null]);
   await t.test('số tiền ≤ 0 hoặc không phải số JSON ⇒ không tự chọn (hỏi lại như cũ), kể cả dữ liệu lệch "còn nợ thực mà cột còn nợ = 0"', async () => {
     await f.rollbackCase(async () => {
-      for (const amount of [0, -640500, '1150000', 'một triệu', null]) {
+      for (const amount of AMOUNT_GUARD_INPUTS) {
         const out = await run('preview', rid(110), { ...params, amount });
         assert.deepEqual([out.kind, out.field, out.why], ['needs_input', 'invoice', 'ambiguous'], JSON.stringify(amount));
       }
@@ -705,6 +707,7 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     const jsonNumber = "v_amount:=CASE WHEN jsonb_typeof(v_e->'amount')='number' THEN (v_e->>'amount')::numeric END;";
     const positive = 'AND v_amount>0 THEN';
     for (const guard of [jsonNumber, positive]) assert.equal(lookup.split(guard).length, 2, `rào nằm đúng một chỗ: ${guard}`);
+    assert.ok(AMOUNT_GUARD_INPUTS.includes('1150000') && AMOUNT_GUARD_INPUTS.includes(0), 'ca rào số tiền còn hai đầu vào phân biệt được hai rào');
     await f.rollbackCase(async () => {
       await db.exec(lookup.replace(jsonNumber, () => "v_amount:=CASE WHEN (v_e->>'amount') ~ '^[0-9]+$' THEN (v_e->>'amount')::numeric END;"));
       const text = await run('preview', rid(114), { ...params, amount: '1150000' });
@@ -721,6 +724,8 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     });
     const live = (await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure")).rows[0].prosrc;
     assert.ok(live.includes(jsonNumber) && live.includes(positive), 'đột biến đã lùi: thân sống giữ hai rào số tiền');
+    assert.equal((await db.query("SELECT to_regproc('public.invoice_room_invoices_real_v1') IS NULL gone")).rows[0].gone, true,
+      'bọc hàm đọc (cột còn nợ 0) đã lùi cùng ca');
   });
 
   // TC-J06 qua connector: broker + runtime THẬT, cổng dịch vụ gọi đúng RPC trang trên fixture (thay adapter PostgREST). confirmToken gắn [kết nối,
