@@ -9,6 +9,8 @@ import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
 import { SALE_ACTIONS } from './sale-action-contract.mjs';
+import { SALE_RETIRED_OPERATIONS } from './sale-tool-contract.mjs';
+import { ACTION_REASONS } from './action-reasons.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
@@ -564,6 +566,8 @@ test('actionPages: host opt-in per page on top of the production Thu chi catalog
 // (lớp thao tác MƯỢN sale_phong.lock_room, lớp Sale cấp) với câu trả lời capability như production: registry bật, chính sách công ty
 // trung tính, kết nối inherit_crm giữ khoá — nhưng quyền CRM của tài khoản chủ (vai "Chủ công ty") THIẾU sale_phong.lock_room, nên
 // hermes_sale_capabilities_v1 trả { allowed: false, companyEnabled: true }. Có quyền CRM ⇒ hai thao tác hiện, tám thao tác kia y nguyên.
+// Từ 05/11 crm_sale_action không còn room_lock / room_release / reservation_* ở mọi ca (rời cầu Sale): giữ phòng chỉ còn contract.room_lock;
+// gọi thẳng qua HTTP nhận action_rejected + lý do + câu tĩnh, không RPC ghi nào.
 test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp Sale — thiếu quyền CRM ⇒ forbidden, có quyền ⇒ hiện, kết nối không giữ khoá ⇒ ẩn', async t => {
   const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
   const CONTRACT_KEYS = ['contracts.create', 'contracts.edit', 'contracts.renew', 'contracts.terminate'];
@@ -609,7 +613,8 @@ test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp
   assert.deepEqual(observed.items.map(item => item.action), EIGHT);
   assert.deepEqual(observed.notPermitted.map(item => [item.action, item.reason]), LOCKS.map(action => [action, 'forbidden']));
   const sale = await saleOperations();
-  assert(sale.includes('room_release') && sale.includes('reservation_update') && !sale.includes('room_lock'), sale.join());
+  assert(sale.includes('room_patch'), sale.join());
+  assert.deepEqual(sale.filter(operation => Object.hasOwn(SALE_RETIRED_OPERATIONS, operation)), [], sale.join());
 
   // 2. Bật Thu chi (income_expenses.* vào registry ⇒ vào kết nối + chính sách) không đụng khoá tạm: vẫn thiếu quyền CRM ⇒ vẫn forbidden.
   project([...beforeTc, ...TC_KEYS]);
@@ -623,7 +628,13 @@ test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp
   assert.deepEqual(granted.items.map(item => item.action), ['contract.notice_set', 'contract.notice_cancel', ...LOCKS, ...EIGHT.slice(2)]);
   assert.equal(granted.notPermitted, undefined);
   assert.deepEqual(granted.items.filter(item => !LOCKS.includes(item.action)), withTc.items);
-  assert((await saleOperations()).includes('room_lock'));
+  // Có quyền CRM giữ phòng mà Sale vẫn không quảng bá; gọi thẳng ⇒ lỗi rõ chỉ sang contract.room_lock / cọc trên web (qua mcp-http).
+  assert.deepEqual((await saleOperations()).filter(operation => Object.hasOwn(SALE_RETIRED_OPERATIONS, operation)), []);
+  for (const [operation, reason] of Object.entries(SALE_RETIRED_OPERATIONS)) {
+    const refused = await http.mcp(token, 'tools/call', { name: 'crm_sale_action', arguments: { operation, input: {} } });
+    assert.equal(refused.body.result.isError, true, operation);
+    assert.deepEqual(JSON.parse(refused.body.result.content[0].text), { error: 'action_rejected', reason, detail: ACTION_REASONS[reason].text }, operation);
+  }
 
   // 4. Kết nối loại trừ khoá (chính sách công ty tường minh vẫn có khoá) HOẶC chính sách công ty tắt khoá (SQL trả companyEnabled
   // false): ẩn mà không báo thiếu quyền, dù người dùng có quyền CRM.
