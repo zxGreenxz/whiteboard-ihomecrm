@@ -8,6 +8,8 @@ import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { LEARNING_ACTIONS, LEARNING_REVIEW_KEY } from './learning-action-contract.mjs';
+import { formatLearningDigest } from './learning-digest.mjs';
 import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
@@ -636,6 +638,91 @@ test('Hợp đồng: khoá tạm phòng mượn sale_phong.lock_room của lớp
     assert(!(await saleOperations()).includes('room_lock'));
   }
   assert(!f.calls.some(call => /hermes_(contract_action|sale_actions)_v1$/.test(call.path)), 'chỉ liệt kê, không gọi RPC ghi');
+});
+
+// Đợt 3 học có kiểm duyệt (HOC-CO-KIEM-DUYET.md mục 4): host bật actionPages ["learning"] ⇒ learning.digest / learning.decide qua đúng
+// RPC trang hermes_learning_action_v1; kết quả learning.digest mang message dựng TẤT ĐỊNH bằng formatLearningDigest (link theo
+// publicWebOrigin, ngày theo announcedAt của SQL), không chuyển nội dung đề xuất; crm_action_status (cùng biên nhận) cho cùng tin;
+// learning.decide xem trước rồi lượt 2 gửi đúng bản đã giải + basis. Không bật trang ⇒ không thao tác learning.*, không gọi RPC trang;
+// tools/list y hệt nhau dù bật hay không (thêm trang không tốn byte tools/list).
+test('actionPages learning: tin tối tất định từ kết quả SQL, duyệt qua xem trước; không bật trang ⇒ danh mục như cũ', async t => {
+  const ORIGIN_WEB = 'https://app.example.vn', RID = id(91);
+  const SQL_DIGEST = { announcedAt: '2026-11-04T14:00:00.123456Z', pendingTotal: 3, items: [
+    { seq: 7, kind: 'skill_crm_write', title: 'Skill crm-task-management: tạo việc', content: 'Gọi crm_action_run task.create.' },
+    { seq: 5, kind: 'memory_crm_write', title: 'Bộ nhớ: phiếu thu', content: 'Dùng expense.create cho phiếu chi.' }] };
+  const expected = formatLearningDigest({ proposals: SQL_DIGEST.items, pendingTotal: 3, webOrigin: ORIGIN_WEB, date: new Date(SQL_DIGEST.announcedAt) });
+  const run = async actionPages => {
+    const f = fakeBackend(), baseFetch = f.configuration.fetch, rpcs = [];
+    const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS, ...LEARNING_ACTIONS]);
+    const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
+    // SQL đã bật trang (dòng chính sách + khoá): khoá Bài học + một khoá production (phiếu chi) được cấp, khoá khác tắt ở công ty — để
+    // so tools/list khi ba tool chung cùng hiện.
+    const GRANTED = [LEARNING_REVIEW_KEY, 'income_expenses.create'];
+    f.configuration.fetch = async (url, options) => {
+      const path = new URL(url).pathname;
+      if (path === '/rest/v1/rpc/hermes_action_capabilities_v1') return Response.json({ ...member(),
+        permissions: Object.fromEntries(catalog.keys.map(key => [key, GRANTED.includes(key) ? { allowed: true, companyEnabled: true, buildingIds: key === LEARNING_REVIEW_KEY ? [] : [I.building] }
+          : { allowed: false, companyEnabled: false, buildingIds: [] }])), actions: Object.fromEntries(catalog.ids.map(action => [action, {}])) });
+      if (path === '/rest/v1/rpc/hermes_learning_action_v1') {
+        const args = JSON.parse(options.body); rpcs.push(args);
+        assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        if (args.p_action === 'learning.digest') return Response.json({ kind: 'applied', link: '/settings/hermes?tab=bai-hoc', result: SQL_DIGEST });
+        if (args.p_phase !== 'apply') return Response.json({ kind: 'preview', basis: 'b'.repeat(32), confirm: 'required', warnings: ['Không có đề xuất số: #9.'],
+          resolved: { proposalIds: [id(70), id(71)], numbers: [1, 3] }, preview: { action: 'learning.decide', decision: 'DUYỆT', items: [{ number: 1 }, { number: 3 }] } });
+        return Response.json({ kind: 'applied', link: '/settings/hermes?tab=bai-hoc', result: { decision: 'approve', numbers: [1, 3], count: 2 } });
+      }
+      if (path === '/rest/v1/rpc/hermes_action_status_v1') return Response.json({ kind: 'status', outcome: 'applied', action: 'learning.digest', result: SQL_DIGEST });
+      return baseFetch(url, options);
+    };
+    const http = await listening(t, { ...f.configuration, publicWebOrigin: ORIGIN_WEB, ...(actionPages ? { actionPages } : {}) });
+    const token = (await http.connect()).body.token;
+    const joined = f.read().joined;
+    joined.connection.restrictions.action = [...GRANTED]; joined.policy.action = [...GRANTED];
+    const call = async (name, args) => {
+      const response = await http.mcp(token, 'tools/call', { name, arguments: args });
+      assert.equal(response.body.result.isError, false, response.text);
+      return JSON.parse(response.body.result.content[0].text);
+    };
+    return { call, rpcs, tools: (await http.mcp(token)).body.result.tools };
+  };
+
+  const on = await run(['contract', 'learning']);
+  assert.deepEqual((await on.call('crm_action_list', {})).items.filter(item => item.page === 'learning').map(item => [item.action, item.confirm]),
+    [['learning.digest', 'if_required'], ['learning.decide', 'if_required']]);
+  assert.deepEqual((await on.call('crm_action_list', { page: 'learning' })).items.map(item => item.action), ['learning.digest', 'learning.decide']);
+  const digest = await on.call('crm_action_run', { action: 'learning.digest', requestId: RID });
+  assert.deepEqual(digest, { outcome: 'applied', applied: true, action: 'learning.digest', requestId: RID, link: '/settings/hermes?tab=bai-hoc',
+    result: { message: expected, newCount: 2, numbers: [7, 5], pendingTotal: 3 } });
+  assert.match(digest.result.message, /^Bài học Hermes chờ duyệt \(04\/11\): 2 đề xuất mới/);
+  assert.match(digest.result.message, /Xem kỹ: https:\/\/app\.example\.vn\/settings\/hermes\?tab=bai-hoc$/);
+  assert.deepEqual([on.rpcs[0].p_action, on.rpcs[0].p_phase, on.rpcs[0].p_params, on.rpcs[0].p_resolved, on.rpcs[0].p_expected_basis],
+    ['learning.digest', 'auto', {}, null, null]);
+  assert.deepEqual((await on.call('crm_action_status', { requestId: RID })).result, digest.result, 'tra trạng thái cho đúng tin cũ');
+  const preview = await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' } });
+  assert.deepEqual([preview.outcome, preview.preview.decision, preview.warnings], ['confirmation_required', 'DUYỆT', ['Không có đề xuất số: #9.']]);
+  const applied = await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' },
+    requestId: preview.requestId, confirmToken: preview.confirmToken });
+  assert.deepEqual(applied.result, { decision: 'approve', numbers: [1, 3], count: 2 });
+  assert.deepEqual([on.rpcs.at(-1).p_phase, on.rpcs.at(-1).p_resolved, on.rpcs.at(-1).p_expected_basis, on.rpcs.at(-1).p_params],
+    ['apply', { proposalIds: [id(70), id(71)], numbers: [1, 3] }, 'b'.repeat(32), { numbers: [3, 1], decision: 'approve' }]);
+  // Khuôn tham số sai ⇒ needs_input, không gọi SQL.
+  const before = on.rpcs.length;
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [], decision: 'approve' } })).reason, 'invalid_params');
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [1], decision: 'maybe' } })).reason, 'invalid_params');
+  assert.equal(on.rpcs.length, before);
+
+  // Không bật trang (cấu hình như production): cùng SQL đã bật vẫn không có thao tác learning.*, gọi thẳng ⇒ unknown_action, không gọi
+  // RPC trang; tools/list y hệt bản bật trang (ba tool chung tĩnh, enum page không có learning).
+  for (const actionPages of [undefined, ['contract']]) {
+    const off = await run(actionPages);
+    assert.deepEqual(off.tools, on.tools, JSON.stringify(actionPages));
+    assert.ok(off.tools.some(tool => tool.name === 'crm_action_run'));
+    const listed = (await off.call('crm_action_list', {})).items.map(item => item.action);
+    assert.ok(listed.includes('expense.create') && !listed.some(action => action.startsWith('learning.')), listed.join());
+    for (const action of ['learning.digest', 'learning.decide'])
+      assert.equal((await off.call('crm_action_run', { action, params: action === 'learning.decide' ? { numbers: [1], decision: 'approve' } : {} })).reason, 'unknown_action');
+    assert.equal(off.rpcs.length, 0);
+  }
 });
 
 // Lượt 11 (D-HĐ9): origin web để ghép link công khai của HĐ (crm_read_contract_detail publicLink); chỉ https, đúng dạng origin.

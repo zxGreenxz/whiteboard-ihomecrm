@@ -8,7 +8,8 @@ import { ACTION_INPUT_REASONS, ACTION_REASON_CODES } from './action-reasons.mjs'
 import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { CONSENT_HINT, consentRequired } from './consent-guard.mjs';
 
-export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'probe']);
+// learning (đợt 3 học có kiểm duyệt, learning-action-contract.mjs): trang chỉ nạp khi host bật actionPages ["learning"].
+export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'learning', 'probe']);
 // money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB.
 export const ACTION_CLASSES = Object.freeze(['money', 'irreversible', 'reversible']);
 export const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;

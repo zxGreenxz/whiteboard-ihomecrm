@@ -9,7 +9,8 @@ const base = { id: 'probe.sample', page: 'probe', key: PROBE_KEY, class: 'money'
 
 test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, khuôn, lý do ngoài danh sách đóng, tham số ảnh khi chưa có luồng ảnh', () => {
   assert.ok(Object.isFrozen(defineAction(base)));
-  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'probe']);
+  // learning: đợt 3 học có kiểm duyệt (learning-action-contract.mjs), chỉ nạp khi host bật actionPages ["learning"].
+  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'learning', 'probe']);
   for (const bad of [{ id: 'Probe.x' }, { id: 'probe' }, { id: 'probe.x' }, { id: 'contract.sample' }, { page: 'payroll', id: 'payroll.sample' }, { class: 'cheap' }, { key: 'Bad Key' },
     { title: '' }, { title: 'a\nb' }, { params: { 'bad-name': param.bool() } }, { params: { ok: { kind: 'text' } } }, { reasons: ['nope'] },
     { reasons: ['state_changed', 'state_changed'] }, { extra: true }])

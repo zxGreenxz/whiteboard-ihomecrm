@@ -960,6 +960,26 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261104170824_hermes_learning_action_v1.sql": {
+      "sha256": "ce4dd944bef41696a995243e6b12868fce1922236267e411c8055176c0b7e391",
+      "missingObjects": [
+        "function:app_private.hermes_learning_action_step_v1",
+        "function:public.hermes_learning_action_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration đợt 3 học có kiểm duyệt cho Hermes (cột announced_at, guard bất biến dựng lại, khoá assistant.learning_review seed TẮT, bước DEFINER + vỏ INVOKER của trang learning.digest / learning.decide) chưa áp dụng TEST/production. Object vắng trong catalog là trạng thái triển khai đang chờ, không phải object bị DROP. Chạy sau 20261031041523 và 20261101064441 (đã áp production 01/11). Kiểm logic bằng PGlite; hồ sơ này chỉ giải thích object chưa triển khai, không thay review chéo, dry-run lane, backup hay nghiệm thu JWT/RLS thật trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261104170824_hermes_learning_action_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_learning_action_step_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,"
+        },
+        {
+          "duong_dan": "infra/hermes-broker/learning-action-sql.test.mjs",
+          "trich_doan": "Đợt 3 học có kiểm duyệt (docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4) trên PGlite"
+        }
+      ],
+      "raSoatBoi": "claude-code (phiên đợt 3 học có kiểm duyệt 04/11/2026)"
     }
   }
 }

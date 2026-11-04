@@ -45,6 +45,8 @@ export const ACTION_REASONS = Object.freeze({
   ...taskReasons(),
   // Trang Hoá đơn (Đợt 3 Mốc 3 thu tiền + Mốc 4 ghi chỉ số, HOA-DON-THAO-TAC-GHI.md mục 5). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...invoiceReasons(),
+  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): một mã needs_input, không vào sổ audit host.
+  ...learningReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 // Mã riêng từng trang, theo khối (test khoá: danh sách chung 20 mã + đúng các khối này, mỗi khối một trang).
@@ -53,6 +55,7 @@ export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({
   contract: Object.freeze(Object.keys(contractReasons())),
   task: Object.freeze(Object.keys(taskReasons())),
   invoice: Object.freeze(Object.keys(invoiceReasons())),
+  learning: Object.freeze(Object.keys(learningReasons())),
 });
 function expenseReasons() {
   return {
@@ -134,6 +137,12 @@ function invoiceReasons() {
     restore_conflict: reason('rejected', 'never', 'Kỳ này đã có hoá đơn tháng khác đang hiệu lực cùng hợp đồng; không khôi phục được.'),
     invoice_already_cancelled: reason('rejected', 'never', 'Hoá đơn này đã huỷ; muốn dùng lại thì khôi phục trước.'),
     invoice_not_cancelled: reason('rejected', 'never', 'Hoá đơn này đang hiệu lực (chưa huỷ); không có gì để khôi phục.'),
+  };
+}
+// Trang Bài học: mọi số người dùng nêu đều không còn chờ (đã quyết định, kể cả trên web) hoặc không có ⇒ hỏi lại, không đoán số khác.
+function learningReasons() {
+  return {
+    learning_not_pending: reason('needs_input', 'fix', 'Các số này không còn đề xuất nào chờ duyệt (đã quyết định trước đó hoặc không có số đó); báo người dùng, hỏi lại số.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

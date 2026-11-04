@@ -23,7 +23,8 @@ const SKILLS_DIR = fileURLToPath(new URL('../hermes-skills/', import.meta.url));
 // tả dài hơn), tools/skill_linter.py (name = tên thư mục, mục "When to Use", thân ≤ 24 000 ký tự, không gọi tên lệnh shell).
 const DESC_LIMIT = 60, BODY_LIMIT = 24_000;
 const SKILL_NAME = /^ihome-crm-[a-z0-9][a-z0-9-]*$/;
-const PAGE_SKILLS = Object.freeze({ task: 'ihome-crm-cong-viec', contract: 'ihome-crm-hop-dong', invoice: 'ihome-crm-hoa-don', expense: 'ihome-crm-thu-chi' });
+const PAGE_SKILLS = Object.freeze({ task: 'ihome-crm-cong-viec', contract: 'ihome-crm-hop-dong', invoice: 'ihome-crm-hoa-don', expense: 'ihome-crm-thu-chi',
+  learning: 'ihome-crm-bai-hoc' });
 const CORE_SKILL = 'ihome-crm-ghi-chung';
 const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
 

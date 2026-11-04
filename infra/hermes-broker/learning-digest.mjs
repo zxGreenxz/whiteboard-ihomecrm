@@ -1,6 +1,7 @@
-// Khung tin Zalo buổi tối "Bài học chờ duyệt" (đợt 3 của học có kiểm duyệt — CHƯA nối vào danh mục thao tác).
-// Hàm thuần, không I/O: bộ dựng tin tất định (số = seq theo công ty, dùng chung với trang web) và bộ đọc câu trả lời
-// "duyệt 1,3" / "bỏ 2 vì …" thành tham số của thao tác learning.decide. Thiết kế: docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md.
+// Tin Zalo buổi tối "Bài học chờ duyệt" (đợt 3 của học có kiểm duyệt; trang thao tác learning-action-contract.mjs dựng `message` của
+// learning.digest bằng formatLearningDigest). Hàm thuần, không I/O: bộ dựng tin tất định (số = seq theo công ty, dùng chung với trang
+// web) và bộ đọc tham chiếu câu trả lời "duyệt 1,3" / "bỏ 2 vì …" thành tham số của learning.decide (skill chuẩn ihome-crm-bai-hoc mô tả
+// cùng luật cho mô hình). Thiết kế: docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4.
 
 export const LEARNING_REVIEW_PATH = '/settings/hermes?tab=bai-hoc';
 const MAX_ITEMS = 10;

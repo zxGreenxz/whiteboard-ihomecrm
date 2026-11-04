@@ -5,6 +5,8 @@ import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
+import { LEARNING_ACTIONS } from './learning-action-contract.mjs';
 
 export const PRODUCTION_ACTIONS = Object.freeze([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS]);
-export const ACTION_PAGE_CATALOGS = Object.freeze({ contract: CONTRACT_ACTIONS });
+// learning (đợt 3 học có kiểm duyệt): tin tối 21:00 + duyệt qua Zalo; host bật khi migration của trang đã áp.
+export const ACTION_PAGE_CATALOGS = Object.freeze({ contract: CONTRACT_ACTIONS, learning: LEARNING_ACTIONS });

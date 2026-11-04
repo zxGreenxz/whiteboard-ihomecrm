@@ -8,7 +8,11 @@ import { ACTION_INPUT_REASONS, ACTION_REASONS } from './action-reasons.mjs';
 
 export const ACTION_TOOL_SHAPES = Object.freeze(['shared', 'page']);
 export const ACTION_TOOL_SHAPE = 'shared';
-const LISTED_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task']);
+// Trang crm_action_list lọc được. Đợt 3 học có kiểm duyệt: learning nhận lọc (như probe) nhưng KHÔNG vào enum `page` của tools/list —
+// ba tool đang ở 1 999 / 2 000 B, và host không bật trang thì tools/list phải giữ nguyên từng byte (mô hình gọi learning.* theo skill
+// chuẩn ihome-crm-bai-hoc / job cron, không cần lọc).
+const LISTED_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'learning']);
+const ADVERTISED_PAGES = Object.freeze(LISTED_PAGES.filter(page => page !== 'learning'));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const freeze = value => {
   if (value && typeof value === 'object') { for (const item of Object.values(value)) freeze(item); Object.freeze(value); }
@@ -35,7 +39,7 @@ export const ACTION_LIST_TOOL = freeze({
   description: 'List CRM write actions: expense, invoice, contract, task. ' +
     'Gọi trước khi từ chối: tạo/giao/huỷ việc (tao giao huy viec), giữ/khoá phòng (giu khoa phong), ' +
     'gia hạn/báo trả HĐ (gia han bao tra hop dong), phiếu chi (phieu chi), thu tiền hoá đơn (thu tien hoa don).',
-  inputSchema: { type: 'object', additionalProperties: false, properties: { page: { enum: [null, ...LISTED_PAGES] } } },
+  inputSchema: { type: 'object', additionalProperties: false, properties: { page: { enum: [null, ...ADVERTISED_PAGES] } } },
   annotations: annotations(false),
 });
 export const ACTION_RUN_TOOL = freeze({
@@ -60,6 +64,7 @@ const PAGE_LABELS = Object.freeze({
   invoice: 'Invoice payment action: adjust, cancel, meter reading',
   contract: 'Contract lease action: renew, notice, move-out, room lock',
   task: 'Task action: create, update, cancel, follow',
+  learning: 'Learning review action: evening digest, approve, reject',
   probe: 'Probe write action for connector tests',
 });
 /** Khuôn B: một tool cho mỗi trang, operation = phần sau dấu chấm của mã thao tác. */
