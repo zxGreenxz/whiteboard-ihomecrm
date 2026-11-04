@@ -2,7 +2,7 @@
 # Chỉ ĐỌC journal (nhóm systemd-journal), chỉ GHI thư mục log + con trỏ riêng; không mạng, không đổi cấu hình journald.
 [Unit]
 Description=iHome Hermes - giu log dich vu (journald RAM chi giu ~2 gio)
-Documentation=file:///opt/ihome-hermes/current/infra/hermes-log-keeper/README.md
+Documentation=https://github.com/zxGreenxz/whiteboard-ihomecrm/tree/main/infra/hermes-log-keeper
 After=local-fs.target
 
 [Service]
@@ -15,7 +15,8 @@ LogsDirectoryMode=0750
 StateDirectory=ihome-hermes-log-keeper
 StateDirectoryMode=0750
 Environment=LOG_DIR=/var/log/ihome-hermes STATE_DIR=/var/lib/ihome-hermes-log-keeper RETENTION_DAYS=14 MAX_TOTAL_MB=300
-ExecStart=/usr/bin/bash /opt/ihome-hermes/current/infra/hermes-log-keeper/log-keeper.sh
+# Script chép ra đường cố định lúc cài (README): lùi /opt/ihome-hermes/current về bản cũ không làm unit lỗi 127 đúng lúc có sự cố.
+ExecStart=/usr/bin/bash /usr/local/libexec/ihome-hermes/log-keeper.sh
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
