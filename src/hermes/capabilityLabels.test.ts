@@ -3,6 +3,10 @@ import { HERMES_ACTION_CAPABILITIES, HERMES_ACTION_FOUNDATION_KEYS, HERMES_INVOI
 import { W2_HERMES_ONLY_KEYS, W2_READ_KEY_LIST } from '../../infra/hermes-broker/wave2-registry.mjs';
 import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
 import { hermesCapabilityHint, hermesCapabilityLabel } from './capabilityLabels';
+import { SALE_ACTION_TOOLS, SALE_DEPOSIT_RECEIPT_KEY, mayUseSaleAction, saleActionOperation } from '../../infra/hermes-broker/sale-action-contract.mjs';
+import { SALE_BULK_TOOLS, mayUseSaleBulk, saleBulkOperation } from '../../infra/hermes-broker/sale-bulk-contract.mjs';
+import { SALE_POLICY_TOOLS, mayUseSalePolicy } from '../../infra/hermes-broker/sale-policy-contract.mjs';
+import { saleToolOperation, saleToolPublic } from '../../infra/hermes-broker/sale-tool-contract.mjs';
 
 const catalog = new Set(VISIBLE_PAGE_GROUPS.flatMap(group => group.pages.flatMap(page => page.features.map(featureKey))));
 
@@ -60,6 +64,27 @@ describe('Hermes capability labels', () => {
         expect(catalog.has(key), key).toBe(true);
         expect(hermesCapabilityHint(key), key).toMatch(/^Hermes: /);
       }
+    }
+  });
+  it('05/11 cọc làm trên web: các khoá cọc của Hermes chỉ mở tra phòng và tra yêu cầu cũ; nhãn nói đúng như vậy', () => {
+    // Công cụ crm_sale_action mà broker quảng bá cho một bộ khoá: lọc như broker.mjs (công khai, rồi quyền của từng nhóm công cụ).
+    const listed = (action: string[]) => [
+      ...SALE_ACTION_TOOLS.filter(tool => saleToolPublic(tool) && mayUseSaleAction({ action }, saleActionOperation(tool.name))),
+      ...SALE_POLICY_TOOLS.filter(tool => saleToolPublic(tool) && mayUseSalePolicy({ action })),
+      ...SALE_BULK_TOOLS.filter(tool => saleToolPublic(tool) && mayUseSaleBulk({ action }, saleBulkOperation(tool.name))),
+    ].map(tool => saleToolOperation(tool)).sort();
+    const lookups = ['action_status', 'room_options'];
+    expect(listed(['deposits.create'])).toEqual(lookups);
+    expect(listed(['deposits.edit'])).toEqual(lookups);
+    expect(listed([SALE_DEPOSIT_RECEIPT_KEY])).toEqual([]);
+    // Đủ mọi khoá phụ mà sáu thao tác đã gỡ từng đòi (thu chi, khoá riêng báo cọc, giữ phòng): vẫn chỉ hai thao tác tra cứu.
+    expect(listed(['deposits.create', 'deposits.edit', SALE_DEPOSIT_RECEIPT_KEY, 'income_expenses.create', 'income_expenses.approve', 'sale_phong.lock_room'])).toEqual(lookups);
+    // Nhãn nói đúng điều đó và chỉ đường tới trang Quản lý cọc như câu lỗi sale_deposit_web_only của broker.
+    expect(hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY)).toMatch(/^Đã gỡ: /);
+    expect(hermesCapabilityHint('deposits.create')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; báo cọc, thu thêm cọc làm trên web/);
+    expect(hermesCapabilityHint('deposits.edit')).toMatch(/^Hermes: chỉ tra danh sách phòng và yêu cầu cũ; sửa cọc, gắn khách vào cọc làm trên web/);
+    for (const text of [hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY), hermesCapabilityHint('deposits.create'), hermesCapabilityHint('deposits.edit')]) {
+      expect(text).toContain('trang Quản lý cọc (/deposits)');
     }
   });
 });
