@@ -13,15 +13,24 @@
 //     - nhãn đơn, mảng nhãn, `{ group, labels }`;
 //     - nhãn nằm trong biểu thức: `${{ cond && 'ubuntu-latest' || 'ubuntu-24.04' }}`;
 //     - `${{ matrix.os }}` / `matrix['os']`: đọc đúng khoá đó trong `strategy.matrix` của job, kể cả `include`.
-//   Nhãn không nằm trong file thì KHÔNG chứng minh được đã ghim, và gate coi đó là lỗi chứ không lặng im:
-//   `vars` / `needs` / `inputs` / `secrets` / `fromJSON(<không phải chuỗi cố định>)`, hoặc matrix động hay thiếu khoá.
-//   Muốn chọn runner theo điều kiện thì viết cả hai nhãn cụ thể ngay trong biểu thức.
-//   Giới hạn đã biết: nhãn ghép lúc chạy từ nhiều mảnh (`ubuntu-${{ 'latest' }}`) không được dựng lại — viết nhãn nguyên vẹn.
+//   GitHub không phân biệt hoa thường với tên context, tên hàm và tên khoá matrix (`Matrix.os`, `Vars.X`, `FromJson(…)` chạy
+//   y như viết thường), nên gate đọc chúng cũng không phân biệt.
+//   Nhãn không nằm NGUYÊN VẸN trong file thì KHÔNG chứng minh được đã ghim, và gate coi đó là lỗi (mã 1) chứ không lặng im:
+//     - đến từ ngoài file: `vars` / `needs` / `inputs` / `secrets` / `github.event.client_payload` /
+//       `fromJSON(<không phải chuỗi cố định>)`, hoặc matrix động hay thiếu khoá;
+//     - ghép lúc chạy từ nhiều mảnh: `format(…)`, `join(…)`, chữ dính liền trước/sau `${{ }}` (`ubuntu-${{ 'latest' }}`),
+//       hay nhiều `${{ }}` trong một nhãn;
+//     - nằm trong workflow dùng chung ở repo khác (`jobs.<id>.uses: owner/repo/….yml@ref`): bên kia chọn runner.
+//   Muốn chọn runner theo điều kiện thì viết cả hai nhãn cụ thể ngay trong biểu thức; muốn dùng workflow dùng chung thì
+//   đặt nó cùng repo (`uses: ./.github/workflows/…`), gate quét cả file đó.
+//   Chưa bắt được: gate nhận nguồn ngoài theo tên, không phân tích dòng dữ liệu của biểu thức — trường chữ tự do của
+//   `github.*` (head_ref, event.*.title…) đặt thẳng làm nhãn vẫn lọt; `github.*` chỉ nên làm điều kiện.
 //
 //   node scripts/check-workflow-runner-pins.mjs [--root <thư mục gốc repo>]
 //
 // Mã thoát: 0 = mọi runs-on đã ghim; 1 = có runs-on trôi hoặc không chứng minh được; 3 = không đo được
-// (không parse được file, không thấy workflow hay runs-on nào — xanh rỗng là gate nói dối).
+// (không parse được file, không thấy workflow nào, hoặc không thấy runs-on nào mà cũng không có gì để báo —
+// xanh rỗng là gate nói dối).
 // Không cần credential, không đọc database.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -39,13 +48,20 @@ export const laNhanTroi = (nhan) => /-latest(?:-|$)/i.test(nhan);
 /** Mọi nhãn trôi trong một chuỗi, kể cả khi chuỗi là biểu thức `${{ c && 'ubuntu-latest' || 'ubuntu-24.04' }}`. */
 export const timNhanTroi = (chuoi) => (String(chuoi).match(/[\w.-]+/g) ?? []).filter(laNhanTroi);
 
+// Biểu thức `${{ … }}`. Cắt ở `}}` đầu tiên, kể cả `}}` nằm trong chuỗi cố định (`'{"a":{"b":1}}'`): phần còn lại bị tính là chữ
+// dính liền và báo đỏ (an toàn). Không đọc theo nháy đơn vì regex lồng nháy backtrack theo cấp số nhân.
 const BIEU_THUC = /\$\{\{([\s\S]*?)\}\}/g;
 // Chuỗi cố định trong biểu thức dùng nháy đơn; nháy đơn bên trong viết đôi `''`.
 const CHUOI_CO_DINH = /'(?:[^']|'')*'/g;
-// Nhãn đến từ NGOÀI file: biến repo, output job khác, input gọi vào, secret, JSON dựng lúc chạy.
+// Khoá viết trong ngoặc vuông (`github.event['client_payload']`) giấu tên khoá trong chuỗi cố định: đọc như `.khoá` trước khi che chuỗi.
+const KHOA_NGOAC = /\[\s*'((?:[^']|'')*)'\s*\]/g;
+// Các regex đọc tên context / tên hàm dưới đây (và `\bmatrix\b` trong danhGiaRunsOn) đều có cờ `i`: GitHub không phân biệt hoa thường.
+// Nhãn đến từ NGOÀI file: biến repo, output job khác, input gọi vào, secret, payload của repository_dispatch, JSON dựng lúc chạy.
 // `fromJSON('[…]')` với chuỗi cố định thì nhãn vẫn nằm trong file nên không bị loại.
-const NGUON_NGOAI = /\b(?:vars|needs|inputs|secrets)\b|\bfromJSON\s*\(\s*(?!')/;
-const THAM_CHIEU_MATRIX = /\bmatrix\s*(?:\.\s*([A-Za-z_][\w-]*)|\[\s*'([^']+)'\s*\])/g;
+const NGUON_NGOAI = /\b(?:vars|needs|inputs|secrets|client_payload)\b|\bfromJSON\s*\(\s*(?!')/i;
+// Nhãn ghép lúc chạy từ nhiều mảnh: `format('ubuntu-{0}', 'latest')`, `join(fromJSON('["ubuntu","latest"]'), '-')`.
+const GHEP_CHUOI = /\b(?:format|join)\s*\(/i;
+const THAM_CHIEU_MATRIX = /\bmatrix\s*(?:\.\s*([A-Za-z_][\w-]*)|\[\s*'([^']+)'\s*\])/gi;
 
 /** Mọi chuỗi lá trong một giá trị YAML (chuỗi, mảng, mapping lồng nhau). */
 function gomChuoi(nut, ra = []) {
@@ -54,6 +70,11 @@ function gomChuoi(nut, ra = []) {
   else if (nut && typeof nut === 'object') for (const v of Object.values(nut)) gomChuoi(v, ra);
   return ra;
 }
+
+/** Mọi giá trị của khoá `khoa` trong một mapping, không phân biệt hoa thường: context `matrix` của GitHub tra khoá không phân biệt hoa thường. */
+const giaTriKhoa = (muc, khoa) => (muc && typeof muc === 'object' && !Array.isArray(muc)
+  ? Object.entries(muc).filter(([k]) => k.toLowerCase() === khoa.toLowerCase()).map(([, v]) => v)
+  : []);
 
 /**
  * Chuỗi mà `matrix.<khoa>` có thể nhận trong một job; `khoa = null` = cả matrix.
@@ -64,29 +85,36 @@ function giaiMatrix(matrix, khoa) {
   const include = matrix.include;
   const nguon = khoa === null
     ? [matrix]
-    : [matrix[khoa], ...(Array.isArray(include) ? include.map((muc) => muc?.[khoa]) : [])];
+    : [...giaTriKhoa(matrix, khoa), ...(Array.isArray(include) ? include.flatMap((muc) => giaTriKhoa(muc, khoa)) : [])];
   const chuoi = gomChuoi(nguon);
   const dong = typeof include === 'string' || chuoi.some((c) => c.includes('${{'))
-    || (khoa !== null && nguon.every((n) => n === undefined));
+    || (khoa !== null && nguon.length === 0);
   return { chuoi, dong };
 }
 
 /**
  * Đánh giá MỘT giá trị `runs-on`.
  * `job` là mapping chứa nó — nơi tìm `strategy.matrix`.
- * Trả mảng lỗi: `{ loai: 'troi', nhan, nguon? }` hoặc `{ loai: 'ngoai', chiTiet }`; rỗng = đã ghim.
+ * Trả mảng lỗi: `{ loai: 'troi', nhan, nguon? }` hoặc `{ loai: 'ngoai', chiTiet }` (nguồn ngoài file, ghép lúc chạy,
+ * matrix không xác định được); rỗng = đã ghim.
  */
 export function danhGiaRunsOn(runsOn, job = {}) {
   const loi = [];
   for (const chuoi of gomChuoi(runsOn)) {
     for (const nhan of timNhanTroi(chuoi)) loi.push({ loai: 'troi', nhan });
-    for (const [, bieuThuc] of chuoi.matchAll(BIEU_THUC)) {
-      if (NGUON_NGOAI.test(bieuThuc.replace(CHUOI_CO_DINH, "''"))) {
-        loi.push({ loai: 'ngoai', chiTiet: '${{ ' + bieuThuc.trim() + ' }}' });
-      }
+    const doan = [...chuoi.matchAll(BIEU_THUC)];
+    // Chữ dính liền trước/sau `${{ }}` hoặc nhiều `${{ }}` trong một nhãn ⇒ nhãn được ghép lúc chạy, không còn nguyên vẹn trong file.
+    if (doan.length > 1 || (doan.length === 1 && chuoi.replace(BIEU_THUC, '').trim() !== '')) {
+      loi.push({ loai: 'ngoai', chiTiet: `nhãn ghép lúc chạy từ nhiều mảnh: ${chuoi.trim()}` });
+    }
+    for (const [, bieuThuc] of doan) {
+      const nguyen = '${{ ' + bieuThuc.trim() + ' }}';
+      const daChe = bieuThuc.replace(KHOA_NGOAC, '.$1').replace(CHUOI_CO_DINH, "''");
+      if (NGUON_NGOAI.test(daChe)) loi.push({ loai: 'ngoai', chiTiet: nguyen });
+      if (GHEP_CHUOI.test(daChe)) loi.push({ loai: 'ngoai', chiTiet: `ghép nhãn lúc chạy bằng format/join: ${nguyen}` });
       const khoa = [...bieuThuc.matchAll(THAM_CHIEU_MATRIX)].map((m) => m[1] ?? m[2]);
-      // `matrix` đứng riêng hoặc tra khoá tính lúc chạy (`matrix[format(…)]`, `toJSON(matrix)`) ⇒ xét cả matrix.
-      if (/\bmatrix\b/.test(bieuThuc.replace(THAM_CHIEU_MATRIX, ' ').replace(CHUOI_CO_DINH, "''"))) khoa.push(null);
+      // `matrix` đứng riêng hoặc tra khoá tính lúc chạy (`matrix[github.event_name]`, `toJSON(matrix)`) ⇒ xét cả matrix.
+      if (/\bmatrix\b/i.test(bieuThuc.replace(THAM_CHIEU_MATRIX, ' ').replace(CHUOI_CO_DINH, "''"))) khoa.push(null);
       for (const k of new Set(khoa)) {
         const { chuoi: giaTri, dong } = giaiMatrix(job?.strategy?.matrix, k);
         for (const nhan of giaTri.flatMap(timNhanTroi)) {
@@ -114,6 +142,20 @@ export function* duyetRunsOn(nut, duong = []) {
   }
 }
 
+/**
+ * Job gọi workflow dùng chung ở repo khác (`jobs.<id>.uses: owner/repo/.github/workflows/x.yml@ref`): runner do workflow
+ * đó chọn nên file này không chứng minh được gì. `uses: ./.github/workflows/x.yml` (cùng repo) không tính vì file đó
+ * nằm trong cây được quét; `uses` của bước (`steps[*].uses`, một action) không chọn runner nên cũng không tính.
+ */
+export function* duyetUsesNgoai(doc) {
+  const jobs = doc && typeof doc === 'object' ? doc.jobs : null;
+  if (!jobs || typeof jobs !== 'object' || Array.isArray(jobs)) return;
+  for (const [id, job] of Object.entries(jobs)) {
+    const uses = job && typeof job === 'object' ? job.uses : null;
+    if (typeof uses === 'string' && !uses.trim().startsWith('./')) yield { duong: ['jobs', id, 'uses'], uses: uses.trim() };
+  }
+}
+
 function* fileYaml(thuMuc) {
   const muc = readdirSync(thuMuc, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
   for (const m of muc) {
@@ -125,7 +167,8 @@ function* fileYaml(thuMuc) {
 
 /**
  * Quét `.github/workflows` và `.github/actions` (nếu có) dưới `goc`.
- * Trả `{ soFile, soRunsOn, loi, khongDo }`: `loi` là runs-on trôi / không chứng minh được, `khongDo` là việc đo hỏng.
+ * Trả `{ soFile, soRunsOn, loi, khongDo }`: `loi` là runs-on trôi / không chứng minh được (kể cả job gọi workflow ở repo
+ * khác), `khongDo` là việc đo hỏng.
  */
 export function quetThuMuc(goc = repoRoot) {
   const ketQua = { soFile: 0, soRunsOn: 0, loi: [], khongDo: [] };
@@ -148,6 +191,14 @@ export function quetThuMuc(goc = repoRoot) {
         for (const { duong, runsOn, job } of duyetRunsOn(doc)) {
           ketQua.soRunsOn += 1;
           for (const l of danhGiaRunsOn(runsOn, job)) ketQua.loi.push({ file: ten, viTri: duong.join('.'), ...l });
+        }
+        for (const { duong, uses } of duyetUsesNgoai(doc)) {
+          ketQua.loi.push({
+            file: ten,
+            viTri: duong.join('.'),
+            loai: 'ngoai',
+            chiTiet: `job gọi workflow ở repo khác, runner do bên kia chọn (dùng \`./.github/workflows/…\` cùng repo): ${uses}`,
+          });
         }
       }
     }
@@ -175,7 +226,8 @@ function main() {
     for (const k of khongDo) console.error(`❌ KHÔNG ĐO ĐƯỢC: ${k}`);
     process.exit(3);
   }
-  if (soFile === 0 || soRunsOn === 0) {
+  // Có gì bị báo (vd job gọi workflow ở repo khác, vốn không có runs-on) thì phép đo vẫn chạy: báo lỗi, không phải "không đo được".
+  if (soFile === 0 || (soRunsOn === 0 && loi.length === 0)) {
     console.error(`❌ KHÔNG ĐO ĐƯỢC: đọc ${soFile} file YAML nhưng thấy ${soRunsOn} runs-on — phép đo hỏng, không phải "không có gì để kiểm".`);
     process.exit(3);
   }
