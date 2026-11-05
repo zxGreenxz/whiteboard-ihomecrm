@@ -78,6 +78,16 @@ describe('Hermes learning review client', () => {
   it('phân biệt thiếu quyền, máy chủ chưa hỗ trợ và cần đăng nhập lại', async () => {
     fetchMock.mockResolvedValueOnce(json({ code: '42501', message: 'x', details: null, hint: null }, 403));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'forbidden', outcomeUnknown: false });
+    // Cùng 42501 nhưng là lỗi thành viên (hermes_member_v1 / người đã nghỉ việc): không được báo thành "thiếu quyền".
+    for (const message of ['hermes_membership_required', 'hermes_learning_denied']) {
+      fetchMock.mockResolvedValueOnce(json({ code: '42501', message, details: null, hint: null }, 403));
+      await expect(client().review(null)).rejects.toMatchObject({ code: 'not_member', outcomeUnknown: false });
+      fetchMock.mockResolvedValueOnce(json({ code: '42501', message, details: null, hint: null }, 403));
+      await expect(client().decide({ requestId: REQ, proposalIds: [P1], decision: 'approve', note: null }))
+        .rejects.toMatchObject({ code: 'not_member', outcomeUnknown: false });
+    }
+    fetchMock.mockResolvedValueOnce(json({ code: '42501', message: 'Bạn không có quyền duyệt bài học của trợ lý Hermes.', details: null, hint: null }, 403));
+    await expect(client().review(null)).rejects.toMatchObject({ code: 'forbidden' });
     fetchMock.mockResolvedValueOnce(json({ code: 'PGRST202', message: 'x', details: null, hint: null }, 404));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'not_supported' });
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } }));

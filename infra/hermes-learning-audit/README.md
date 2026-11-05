@@ -211,7 +211,7 @@ Lệnh từng bước, điểm dừng lần chạy đầu và thứ tự rollbac
   học. Skill chuẩn ở `external_dirs` thì curator không sửa được.
 - Phân loại "ghi CRM" là heuristic thận trọng (nghi thì đưa đi duyệt); mẫu "bó tay" có thể sót câu diễn đạt lạ. Che bí mật kỹ thuật
   là theo mẫu (có thể sót dạng lạ); vì đề xuất đã nạp bất biến, lần chạy đầu có điểm dừng quét outbox tại chỗ trong runbook.
-- `hermes_member_v1` từ chối người thường thuộc từ 2 công ty trở lên (`hermes_ordinary_org_ambiguous`); super admin không bị chặn. An toàn theo mặc định, chưa sửa vì phải đổi logic quyền (đo production 01/11: 0 người thường bị chặn; xem việc sau trong PR).
+- Từ `20261104231450`, `hermes_member_v1` nhận người thường thuộc nhiều công ty nếu họ là thành viên ACTIVE của đúng công ty đang thao tác (trước đó họ bị chặn bằng `hermes_ordinary_org_ambiguous`, trang báo nhầm "chỉ chủ hoặc quản trị viên"). Trang duyệt báo riêng lỗi thành viên (`not_member`) và lỗi thiếu quyền. Các bản chép luật cũ ở `hermes_metadata_member_v1`, `hermes_room_scope_map_v1` và `hermes_zalo_private_reply_v1` vẫn chặn người nhiều công ty (đóng an toàn); đó là việc sau.
 - Tên chết lấy từ `catalog-names.mjs` của bản phát hành (PR #369); thiếu module ⇒ "KHÔNG KIỂM ĐƯỢC TÊN".
 - Sandbox systemd và phần đọc `state.db` trong sandbox **chưa chạy thử trên VPS** (PR chỉ viết, không cài); bước 6–7 là lần kiểm đầu.
 - Gỡ lịch: `systemctl disable --now ihome-hermes-learning-audit.timer ihome-hermes-learning-ingest.timer`; dữ liệu đề xuất ở CRM

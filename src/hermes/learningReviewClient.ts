@@ -50,7 +50,10 @@ export type HermesLearningSnapshot = z.infer<typeof snapshot>;
 export type HermesLearningCursor = z.infer<typeof cursor>;
 export type HermesLearningDecision = z.infer<typeof decided>;
 export type HermesLearningDecideInput = z.infer<typeof decideInput>;
-export type HermesLearningErrorCode = 'invalid_request' | 'forbidden' | 'conflict' | 'not_supported' | 'reauthentication_required'
+// Lỗi thành viên (không còn ACTIVE ở công ty đang chọn, hoặc đã nghỉ việc) khác lỗi thiếu quyền users.edit: trang phải nói đúng ngữ
+// cảnh. Máy chủ phân biệt bằng câu báo của hermes_member_v1 / hermes_learning_admin_v1 (cùng mã 42501).
+const MEMBERSHIP_DENIALS = new Set(['hermes_membership_required', 'hermes_learning_denied']);
+export type HermesLearningErrorCode = 'invalid_request' | 'forbidden' | 'not_member' | 'conflict' | 'not_supported' | 'reauthentication_required'
   | 'context_changed' | 'cancelled' | 'timeout' | 'invalid_response' | 'backend_unavailable' | 'decision_outcome_unknown';
 export class HermesLearningError extends Error {
   /** `outcomeUnknown`: thao tác ghi đã có thể tới máy chủ; chỉ được gửi lại với CÙNG requestId. */
@@ -134,11 +137,13 @@ export function createHermesLearningClient({ userId, organizationId, currentScop
       if (response.status === 401) { void response.body?.cancel().catch(() => { /* Phản hồi bị từ chối. */ }); throw failure('reauthentication_required', false); }
       const raw = await readJson(response, controller.signal); check();
       if (response.status !== 200) {
-        const error = z.object({ code: z.string() }).passthrough().safeParse(raw);
+        const error = z.object({ code: z.string(), message: z.string().optional() }).passthrough().safeParse(raw);
         // Lỗi xác định: máy chủ đã lùi giao dịch, quyết định chưa được ghi.
         if (error.success) {
-          const { code } = error.data;
-          if (code === '42501' && response.status === 403) throw failure('forbidden', false);
+          const { code, message } = error.data;
+          if (code === '42501' && response.status === 403) {
+            throw failure(message !== undefined && MEMBERSHIP_DENIALS.has(message) ? 'not_member' : 'forbidden', false);
+          }
           if (code === 'PT409' && response.status === 409) throw failure('conflict', false);
           if (code === '22023' && response.status === 400) throw failure('invalid_request', false);
           if (code === 'PGRST202' && response.status === 404) throw failure('not_supported', false);
