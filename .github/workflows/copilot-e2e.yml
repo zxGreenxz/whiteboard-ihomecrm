@@ -139,7 +139,7 @@ concurrency:
 jobs:
   copilot-e2e:
     if: ${{ false }} # DEFERRED, not pass evidence
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       COPILOT_G3_JOURNAL_DIR: ${{ runner.temp }}/copilot-e2e/g3
