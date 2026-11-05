@@ -6,7 +6,7 @@ author: iHome CRM
 metadata:
   hermes:
     tags: [crm, ihome, official]
-    related_skills: [ihome-crm-cong-viec, ihome-crm-hop-dong, ihome-crm-hoa-don, ihome-crm-thu-chi, ihome-crm-phong-sale-nhom]
+    related_skills: [ihome-crm-cong-viec, ihome-crm-hop-dong, ihome-crm-hoa-don, ihome-crm-thu-chi, ihome-crm-phong-sale-nhom, ihome-crm-bai-hoc]
 ---
 
 # Ghi CRM iHome — quy trình chuẩn
@@ -15,12 +15,13 @@ metadata:
 hội thoại cũ có thể lỗi thời: chỗ nào khác nhóm này thì theo nhóm này. Tên tool và mã thao tác chỉ lấy từ kết quả
 `crm_action_list` và nhóm `ihome-crm-*`; không lấy từ trí nhớ, không tự ghép tên. Mở skill: `skill_view` với `name` là ĐÚNG MỘT
 tên trần, vd `ihome-crm-hop-dong` — không thêm dấu nháy, ngoặc, tên nhóm (`ihome-crm:`), đường dẫn hay chữ khác; mỗi lệnh một tên.
+Không tự sửa skill / bộ nhớ về cách GHI dữ liệu CRM: bài học loại này phải qua duyệt (`ihome-crm-bai-hoc`).
 
 ## When to Use
 
 Người dùng muốn tạo, giao, sửa, huỷ, ghi nhận, thu, chi, duyệt, gia hạn, giữ phòng… — mọi việc làm đổi dữ liệu CRM. Chi tiết
 từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, `ihome-crm-thu-chi`; phòng, Sale, gửi nhóm:
-`ihome-crm-phong-sale-nhom`.
+`ihome-crm-phong-sale-nhom`; chủ trả lời tin "Bài học Hermes chờ duyệt" ("duyệt 1,3", "bỏ 2 vì …"): `ihome-crm-bai-hoc`.
 
 ## Không kết luận "không làm được" khi chưa hỏi máy chủ
 

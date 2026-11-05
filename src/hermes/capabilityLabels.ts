@@ -16,6 +16,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'thu_tien.collect_transfer': 'Ghi khách đã chuyển khoản / thanh toán POS (Hermes, không tiền mặt, có xem trước)',
   // Khoá riêng Hermes của báo cọc / thu thêm có tiền (seed TẮT); cần cùng quyền tạo cọc và tạo thu chi.
   'deposits.create_receipt': 'Báo cọc / thu thêm cọc có tiền (Hermes, ghi phiếu thu ngay, không có xem trước)',
+  // Đợt 3 học có kiểm duyệt: khoá riêng Hermes (seed TẮT); quyền CRM giao vào là users.edit, như trang Bài học chờ duyệt.
+  'assistant.learning_review': 'Tin tối "Bài học Hermes chờ duyệt" và duyệt / bỏ bài học qua Zalo (Hermes, luôn xem trước)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
   'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
