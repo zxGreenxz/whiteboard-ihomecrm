@@ -446,6 +446,11 @@ const L14 = file('hermes_invoice_period_closed_reason_order_v1');
 // C07 (chạy cùng l14 — đúng chuỗi production sau khi áp): bước ghi thu tiền v3 thay thân, ép kiểm hoãn (constraint trigger DEFERRED) chạy trong
 // khối con ở chạy thử và ở lượt ghi (sau khi chốt biên nhận).
 const C07 = file('hermes_invoice_collect_commit_checks_v1');
+// J06 (chạy cùng l14 — đúng chuỗi production sau khi áp): tra cứu thu tiền v3 tự chọn hoá đơn khi người dùng chưa nêu kỳ / số hoá đơn và số tiền
+// khớp ĐÚNG số còn nợ của MỘT hoá đơn mở; bước ghi v3 nói rõ ở bản xem trước. Thân TRƯỚC J06 (tra cứu 181440, bước ghi C07) để đối chiếu "không đổi".
+export const J06_SQL = file('hermes_invoice_collect_amount_pick_v1');
+export const COLLECT_BEFORE_J06 = Object.freeze([statement(L14, 'app_private.hermes_invoice_lookup_core_v3'),
+  statement(C07, 'app_private.hermes_invoice_action_step_v3')]);
 const PROFIT_LOCK = (() => { const sql = file('khoa_thang_loi_nhuan_tuyet_doi');
   const match = sql.match(/CREATE OR REPLACE FUNCTION app_private\.profit_month_locked_v1\([\s\S]*?\$function\$;/); assert.ok(match, 'profit_month_locked_v1');
   return match[0]; })();
@@ -497,7 +502,8 @@ export async function invoiceSetup(t, { database, meter = false, edit = false, l
     }
   }
   if (l8) for (const [label, sql] of [['plan l8', PLAN8], ['plan l8#2', PLAN8], ['collect v2', COLLECT8], ['collect v2#2', COLLECT8]]) await exec(label, sql);
-  if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14], ['c07', C07], ['c07#2', C07]]) await exec(label, sql);
+  if (l14) for (const [label, sql] of [['l14 support', L14_SUPPORT], ['l14', L14], ['l14#2', L14], ['c07', C07], ['c07#2', C07], ['j06', J06_SQL], ['j06#2', J06_SQL]])
+    await exec(label, sql);
   if (e03) for (const [label, sql] of [['e03', E03_SQL], ['e03#2', E03_SQL]]) await exec(label, sql); // Idempotent.
   const run = (phase, requestId, params, extra = {}) => call(
     'SELECT public.hermes_invoice_action_v1($1::jsonb,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,$7) result',
