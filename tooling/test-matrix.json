@@ -1724,6 +1724,35 @@
       "jobs": [
         "cpu-runtime"
       ]
+    },
+    {
+      "id": "public-execute-revoke-native",
+      "$comment": "Thu EXECUTE của PUBLIC (20261104173640): PostgreSQL thật chạy migration và SQL của gate check-definer-acl (cũng là phép của kiem-bao-mat-sau-khoi-phuc).",
+      "sourcePaths": [
+        "supabase/migrations/20261104173640_thu_public_execute_ham_ung_dung.sql",
+        "scripts/check-definer-acl.mjs",
+        "scripts/definer-acl-baseline.json",
+        "scripts/kiem-bao-mat-sau-khoi-phuc.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
+      ]
+    },
+    {
+      "id": "public-execute-revoke-analysis",
+      "sourcePaths": [
+        "supabase/migrations/20261104173640_thu_public_execute_ham_ung_dung.sql",
+        "scripts/check-definer-acl.mjs",
+        "scripts/definer-acl-baseline.json",
+        "scripts/kiem-bao-mat-sau-khoi-phuc.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/check-definer-acl-public-execute.test.mjs",
+        "scripts/__tests__/check-definer-acl-denylist.test.mjs",
+        "scripts/__tests__/kiem-bao-mat-sau-khoi-phuc.test.mjs"
+      ]
     }
   ],
   "notes": [
@@ -1877,7 +1906,8 @@
         "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
         "scripts/__tests__/hermes-private-flow.test.mjs",
         "scripts/__tests__/hermes-cde-live.test.mjs",
-        "infra/hermes-zalo-router/**/*.test.mjs"
+        "infra/hermes-zalo-router/**/*.test.mjs",
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
       ],
       "ciJobs": [
         {
@@ -2226,7 +2256,8 @@
         "infra/hermes-learning-audit/**/*.test.mjs",
         "infra/hermes-log-keeper/**/*.test.mjs",
         "infra/hermes-session-reset/**/*.test.mjs",
-        "worker/deploy/**/*.test.mjs"
+        "worker/deploy/**/*.test.mjs",
+        "scripts/__tests__/thu-public-execute-sql.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

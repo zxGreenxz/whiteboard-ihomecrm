@@ -8,8 +8,9 @@ const uuid=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+
 const USER=uuid('1'), ORG=uuid('2'), OTHER=uuid('3'), MEMBER=uuid('4'), BUILDING=uuid('5'), HIDDEN=uuid('6'), AREA=uuid('7');
 const ROOM_SCOPE=uuid('8'), AREA_SCOPE=uuid('9'), ORG_SCOPE=uuid('a'), HIDDEN_SCOPE=uuid('b'), FOREIGN_SCOPE=uuid('c'), CASH_SCOPE=uuid('d');
 const migration=readFileSync(new URL('../../supabase/migrations/20261013183000_hermes_connection_options_v1.sql',import.meta.url),'utf8');
-const foundation=readFileSync(new URL('../../supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql',import.meta.url),'utf8');
-const member=splitSqlStatements(foundation).map(s=>s.replace(/--[^\n]*/g,'').trim()).find(s=>/^CREATE OR REPLACE FUNCTION app_private.hermes_member_v1\(/i.test(s));
+// Thân sống của hermes_member_v1: 20261104231450 thay thân 20261012061447 (người nhiều công ty được nhận ở công ty mình là thành viên ACTIVE).
+const memberSource=readFileSync(new URL('../../supabase/migrations/20261104231450_hermes_member_nhieu_cong_ty_v1.sql',import.meta.url),'utf8');
+const member=splitSqlStatements(memberSource).map(s=>s.replace(/--[^\n]*/g,'').trim()).find(s=>/^CREATE OR REPLACE FUNCTION app_private.hermes_member_v1\(/i.test(s));
 const code=n=>error=>error.code===n;
 
 test('actual candidate self-options SQL and existing membership helper on synthetic CRM scope tables', async t=>{
@@ -88,9 +89,15 @@ test('actual candidate self-options SQL and existing membership helper on synthe
     ['expired membership',"UPDATE organization_memberships SET valid_to=clock_timestamp()-interval '1 second'"],
     ['future membership',"UPDATE organization_memberships SET valid_from=clock_timestamp()+interval '1 hour'"],
     ['inactive organization',"UPDATE organizations SET status='INACTIVE'"],
-    ['offboarded actor',"UPDATE app_private.fixture SET offboarded=true"],
-    ['ordinary multi company',`INSERT INTO organization_memberships(id,user_id,organization_id,status) VALUES('${OTHER}','${USER}','${OTHER}','ACTIVE')`]
+    ['offboarded actor',"UPDATE app_private.fixture SET offboarded=true"]
   ]) await scenario(name+' denied',async()=>{await db.exec(sql);await assert.rejects(call(),code('42501'));});
+  await scenario('ordinary multi company is admitted for the selected company only, with no foreign scope',async()=>{
+    await db.exec(`INSERT INTO organization_memberships(id,user_id,organization_id,status) VALUES('${OTHER}','${USER}','${OTHER}','ACTIVE')`);
+    const own=await call();assert.equal(own.organizationId,ORG);assert.equal(own.membershipId,MEMBER);assert.equal(own.isSuperadmin,false);
+    assert.deepEqual(own.scopes.map(s=>s.scopeId),[ROOM_SCOPE,AREA_SCOPE,ORG_SCOPE].sort());
+    const other=await call({org:OTHER});assert.equal(other.organizationId,OTHER);assert.equal(other.membershipId,OTHER);
+    assert.equal(other.enabled,false);assert.deepEqual(other.scopes,[]);
+  });
   await scenario('foreign requested company and missing authenticated actor denied',async()=>{
     await assert.rejects(call({org:OTHER}),code('42501')); await assert.rejects(call({actor:''}),code('42501'));
   });
