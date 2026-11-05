@@ -2583,7 +2583,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -2776,7 +2775,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
