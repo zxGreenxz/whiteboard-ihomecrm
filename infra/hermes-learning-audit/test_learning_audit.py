@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import random
 import shutil
 import sqlite3
 import stat
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import time
 import tokenize
+import types
 import unicodedata
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -160,6 +162,72 @@ def run_main(argv: list[str]) -> tuple[int, str]:
     with contextlib.redirect_stdout(printed):
         rc = la.main(argv)
     return rc, printed.getvalue()
+
+
+def generated_tokens(seed: int, sizes: range, per_size: int) -> list[str]:
+    """Đúng thuật toán của secrets.token_urlsafe(n) — base64url của n byte, bỏ '=' — nhưng từ Random cố định để test không chập chờn. Chuỗi dạng bí
+    mật sinh lúc chạy, không nằm nguyên văn trong mã (cửa quét secret quét mọi nhánh)."""
+    rng = random.Random(seed)
+    return [base64.urlsafe_b64encode(rng.randbytes(nbytes)).rstrip(b'=').decode('ascii') for nbytes in sizes for _ in range(per_size)]
+
+
+# Mật khẩu runbook C1 sinh bằng secrets.token_urlsafe(48) (64 ký tự). Lưới cuối xét chuỗi từ 32 ký tự = token_urlsafe(24) trở lên.
+BLOB_TOKENS = generated_tokens(48, range(24, 65), 120)
+EMAIL_LOCAL = generated_tokens(7, range(30, 31), 1)[0]
+# Bộ ca của bộ che (review #371). Phải giữ NGUYÊN VĂN: thông tin khách, câu thường, mã HĐ, số tiền, đường dẫn, tên skill/tool, UUID, mã băm, email.
+REDACTION_KEEPS = [
+    'Khi khách đặt cọc thì ghi phiếu thu, gửi biên nhận qua Zalo cho khách trước 21:00.',
+    'Hợp đồng HD-2026-00281 phòng 301 toà 224VL hết hạn 31/12/2026, tiền cọc 7.400.000 đồng.',
+    'HD-2026-00281-HD-2026-00282-HD-2026-00283-HD-2026-00284', 'Thu 1.500.000đ, còn nợ 15000000000 đồng',
+    'skills/productivity/crm-task-management/references/Quy-Trinh-2026-Thu-Tien-Chi-Tiet/SKILL.md',
+    '/var/lib/ihome-hermes-profiles/owner/.hermes/profiles/owner/skills/.curator_ledger.jsonl',
+    'docs/plans/PLAN-TACH-DU-LIEU-DA-CONG-TY/README.md', 'src/components/customers/CustomerDetailPage.tsx',
+    'css/imageCompress/r2Client/uploadDeadline', 'ihome-crm-tasks', 'mcp__ihomecrm__crm_read_receivables_with_cursor_and_limit',
+    'crm_action_run_with_a_very_long_tool_name_for_tasks_2026', 'f47ac10b-58cc-4372-a567-0e02b2c3d479', 'F47AC10B-58CC-4372-A567-0E02B2C3D479',
+    hashlib.sha256(b'x').hexdigest(), 'HopDongThueNhaNguyenThiMinhAnhPhong101.docx', 'BienNhanCocNguyenVanAnToa224VLThang10',
+    'CCCD_NguyenVanAn_079123456789_MatTruoc.jpg', 'NguyenVanAn_0901234567_Phong101Toa224VL', 'CMND079123456789NguyenThiMinhAnhP101T224',
+    'Email khách: NguyenThiMinhAnh1990x7Kq2Lm9ZpQ3@example.com', 'Email khách: ' + EMAIL_LOCAL + '@gmail.com',
+    'Email: khach.' + EMAIL_LOCAL + '@example.com.vn', 'gửi ' + EMAIL_LOCAL + '.backup@example.com nhé', 'mk: 0901234567,CCCD 079203001234',
+    'mật khẩu:, CCCD 079203001234', 'Email: khach@' + EMAIL_LOCAL + '.com',
+]
+# Che đúng giá trị, giữ dấu phẩy/chấm phẩy cùng phần sau nguyên văn.
+REDACTION_EXACT = {
+    'mật khẩu: abc12345, CCCD 079203001234': 'mật khẩu: [đã che], CCCD 079203001234',
+    'mật khẩu: abc12345,CCCD:079203001234': 'mật khẩu: [đã che],CCCD:079203001234',
+    'Mật khẩu wifi: abc12345; SĐT 0901234567': 'Mật khẩu wifi: [đã che]; SĐT 0901234567',
+    'pass' + 'word: abc12345, email khach@example.com': 'password: [đã che], email khach@example.com',
+    'tok' + 'en: abc12345,Mã khách 079203001234': 'token: [đã che],Mã khách 079203001234',
+    'mật khẩu: Ab,12#xY nhé': 'mật khẩu: [đã che] nhé',
+    # Review #389: dấu phẩy/chấm phẩy đứng trước chữ thường không phải hết mệnh đề — cả từ là giá trị, che hết (bản trước để lọt nguyên văn hoặc nửa sau).
+    'mk: khong,' + 'Abc' + '12345': 'mk: [đã che]', 'mật khẩu: mới,' + 'Xyz' + '789': 'mật khẩu: [đã che]',
+    'Mật khẩu wifi: Nhà,' + 'Tôi' + '123': 'Mật khẩu wifi: [đã che]', 'pass: cu;' + 'Pq' + '7781': 'pass: [đã che]',
+    'mật khẩu: ,' + 'abc' + '12345': 'mật khẩu: [đã che]', 'mật khẩu:,' + 'Abc' + '12345': 'mật khẩu:[đã che]', 'mk: ;' + 'xyz' + '98765': 'mk: [đã che]',
+    'pass' + 'word=Abc,' + 'def' + '123': 'password=[đã che]', 'DB_PASS' + 'WORD=Xk9;' + 'mQ2' + 'zz': 'DB_PASSWORD=[đã che]',
+    'API_' + 'KEY=Zq8,' + 'Wm3,' + 'Rt7': 'API_KEY=[đã che]', 'mật khẩu admin: P@ss,' + 'word' + '1': 'mật khẩu admin: [đã che]',
+    'mật khẩu: Hà,' + 'Nội' + '2026': 'mật khẩu: [đã che]',
+    # Re-review #389: nhãn khách phải đứng hết từ; nhãn ngắn dính ký hiệu/"_"/"." là mật khẩu.
+    'mk: abc,' + 'tk#' + '123': 'mk: [đã che]', 'pass: Xy9,' + 'ma!' + '9z': 'pass: [đã che]', 'pass' + 'word=abc9,' + 'dt_' + '123': 'password=[đã che]',
+    'mật khẩu: Pq7,' + 'Mã#' + '88': 'mật khẩu: [đã che]', 'mk: Zx8,' + 'cmt.' + '77': 'mk: [đã che]',
+}
+# Ca biên, mỗi ca chỉ một tiêu chí của lưới cuối giữ được (mật khẩu máy sinh dạng "đọc được"), ghép lúc chạy: đủ mảnh đọc được nhưng toàn chữ
+# hiếm; đủ mảnh đọc được nhưng chữ hiếm vừa quá trần (5/32); đủ mảnh đọc được nhưng số chen giữa từng mảnh; chỉ 3/8 mảnh có nguyên âm; không mảnh
+# nào có nguyên âm.
+REDACTION_EDGE_BLOBS = [''.join(parts) for parts in (
+    ('Zaxo', 'Quwi', 'Jefo', 'Xazu', 'Woji', 'Fexa', 'Qizo', 'Juwa'),
+    ('Bavo', 'Kemi', 'Zalu', 'Jopi', 'Xeda', 'Ruwo', 'Fila', 'Maso'),
+    ('Ba7', 'Le3', 'Mo9', 'Ti2', 'Nu5', 'Ka8', 'So4', 'Di6', 'Ra1', 'Pe0', 'Hu'),
+    ('Brd', 'Ktchn', 'Home', 'Trnk', 'Plnt', 'Sofa', 'Lmps', 'Desk'),
+    ('Brd', 'Krtn', 'Trnk', 'Plnt', 'Lmps', 'Chrs', 'Stls', 'Bnch', 'Grds'))]
+
+
+def redaction_oracle(module, tokens: list[str]) -> list[str]:
+    """Các ca bộ che `module.redact` làm sai (rỗng = đạt)."""
+    wrong = [f'giữ: {text}' for text in REDACTION_KEEPS if module.redact(text) != text]
+    wrong += [f'chính xác: {text}' for text, expected in REDACTION_EXACT.items() if module.redact(text) != expected]
+    wrong += [f'lọt: {token}' for token in tokens + REDACTION_EDGE_BLOBS if token in module.redact('dùng ' + token + ' nhé')]
+    userinfo = 'git clone https://' + EMAIL_LOCAL + '@github.com/x/y.git'
+    wrong += ['lọt userinfo URL'] if EMAIL_LOCAL in module.redact(userinfo) else []
+    return wrong
 
 
 def fake_symlinks(targets: set[str]):
@@ -599,9 +667,9 @@ class LearningAuditTest(unittest.TestCase):
             self.assertNotIn('123456789', r(text), text)
             self.assertNotIn('0901234567', r(text), text)
             self.assertNotIn('079203001234', r(text), text)
-        # Không có bí mật trong câu nhưng có bí mật ngắn thì vẫn che đúng phần đó.
+        # Không có bí mật trong câu nhưng có bí mật ngắn thì vẫn che đúng phần đó; dấu phẩy sau giá trị là dấu câu, giữ lại.
         self.assertEqual(r('mã khoá: 123456'), 'mã khoá: [đã che]')
-        self.assertEqual(r('mk: abc, SĐT 0901234567'), 'mk: [đã che] SĐT 0901234567')
+        self.assertEqual(r('mk: abc, SĐT 0901234567'), 'mk: [đã che], SĐT 0901234567')
 
     def test_short_label_flood_stays_linear(self):
         """Bản cũ cắt cả phần còn lại của chuỗi cho từng lần khớp nên chạy bậc hai. Ngưỡng rộng để không chập chờn: bậc hai cần cỡ hàng giờ."""
@@ -622,6 +690,65 @@ class LearningAuditTest(unittest.TestCase):
         self.assertIn('0912345678', kept)
         self.assertNotIn('abc123', kept)
         self.assertEqual(r('khách 0912345678 mk: abc123 email a@b.vn'), 'khách 0912345678 mk: [đã che] email a@b.vn')
+
+    def test_generated_passwords_are_masked_at_every_length(self):
+        """Review #371: luật cũ đếm dấu ngăn TUYỆT ĐỐI (< 4) nên token càng dài càng lọt — token_urlsafe(48), loại mật khẩu runbook C1 sinh, chỉ được
+        che ~86 %, token_urlsafe(64) ~73 %. Nay mọi ngưỡng là tỉ lệ: mọi cỡ từ 24 byte (32 ký tự, ngưỡng của lưới cuối) tới 64 byte đều che."""
+        self.assertEqual(len(BLOB_TOKENS), 41 * 120)
+        missed = [token for token in BLOB_TOKENS if token in la.redact('dùng ' + token + ' nhé')]
+        self.assertEqual(missed, [])
+        # Lưới cuối che cả chuỗi (hoặc luật tiền tố sk-/rk-/pk- che trước); câu xung quanh giữ nguyên.
+        for token in BLOB_TOKENS[::97]:
+            self.assertRegex(la.redact('dùng ' + token + ' nhé'), r'^dùng .*\[(chuỗi lạ|khoá) đã che\] nhé$')
+
+    def test_blob_net_keeps_ordinary_text_customer_data_and_emails(self):
+        """Không che: câu tiếng Việt thường, mã HĐ, số tiền, đường dẫn, tên skill/tool, UUID, mã băm, tên khách viết liền, email (kể cả phần trước @
+        dài lẫn hoa/thường/số — chủ cho hiện nguyên văn); userinfo của URL (https://X@host) không phải email nên vẫn che."""
+        for text in REDACTION_KEEPS:
+            self.assertEqual(la.redact(text), text)
+        self.assertNotIn(EMAIL_LOCAL, la.redact('git clone https://' + EMAIL_LOCAL + '@github.com/x/y.git'))
+
+    def test_masked_value_keeps_the_comma_and_what_follows(self):
+        """"mật khẩu: abc12345, CCCD …" từng nuốt dấu phẩy, và không có dấu cách thì ăn luôn phần sau (mất số CCCD của khách)."""
+        for text, expected in REDACTION_EXACT.items():
+            self.assertEqual(la.redact(text), expected)
+        self.assertEqual(la.redact(la.redact('mật khẩu: abc12345,CCCD:079203001234')), 'mật khẩu: [đã che],CCCD:079203001234')
+
+    def test_mutants_of_the_redaction_rules_are_caught(self):
+        """Mỗi đột biến bỏ hoặc nới đúng một quy tắc của bộ che (đọc mã nguồn, thay đúng một chỗ, nạp bản đột biến) phải làm bộ ca đỏ. Một phần tư
+        mẫu token là đủ (test riêng ở trên chạy đủ mẫu trên mã thật); tiêu chí nào token ngẫu nhiên hiếm khi chạm tới thì có ca biên riêng."""
+        tokens = BLOB_TOKENS[::4]
+        self.assertEqual(redaction_oracle(la, tokens), [])
+        source = Path(la.__file__).read_text(encoding='utf-8')
+        mutations = {
+            'luật cũ: từ 4 dấu ngăn trở lên thì giữ': ('return text if _composed_of_words(text) else',
+                                                     "return text if _composed_of_words(text) or sum(map(text.count, '-_/')) >= 4 else"),
+            'bỏ trần chữ hiếm': ('rare <= 0.1 * letters', 'True'),
+            'nới trần chữ hiếm lên 20 %': ('rare <= 0.1 * letters', 'rare <= 0.2 * letters'),
+            'bỏ giữ tên miền sau @': ("(start > 0 and match.string[start - 1] == '@') or ", ''),
+            'cắt giá trị trước mọi chữ cái (bản trước review #389)': (
+                "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=[^\\W\\d_]|\\s|$)')"),
+            'ranh giới nhãn khách cho qua ký hiệu (bản 8a8855581)': ("|ma)(?=[\\s:=]|$)'", "|ma)(?![^\\W_])'"),
+            'chỉ cắt trước khoảng trắng (bỏ nhãn khách)': (
+                "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=\\s|$)')"),
+            'bỏ trần mảnh vụn': ('scraps <= 0.15 * len(text)', 'True'),
+            'nới độ phủ từ': ('words >= 0.75 * letters', 'words >= 0.25 * letters'),
+            'từ không cần nguyên âm': (' and any(ch in _VOWELS for ch in piece)', ''),
+            'bỏ giữ email': ('_LONG_DIGIT_RUN.search(text) or _in_email(match)', '_LONG_DIGIT_RUN.search(text)'),
+            'userinfo URL coi là email': ("if match.group(0).startswith('/'):", 'if False:'),
+            'bỏ giữ số khách trong chuỗi liền': ('if _LONG_DIGIT_RUN.search(text) or _in_email(match):', 'if _in_email(match):'),
+            'bỏ điều kiện lẫn hoa và thường': ('if not (any(ch.isupper() for ch in text) and any(ch.islower() for ch in text)):', 'if False:'),
+            'nuốt dấu phẩy sau giá trị': ('cut = _CLAUSE_END.search(bare)', 'cut = None'),
+            'giá trị rỗng vẫn che': ('if not value:\n        return match.group(0)', 'if False:\n        return match.group(0)'),
+            'số khách sau dấu phẩy': ('_customer_number(plain, rest + match.string', '_customer_number(plain, match.string'),
+            'token đứng trước dấu phẩy không che': ("'`<>,;]|$)')", "'`<>]|$)')"),
+        }
+        for name, (anchor, replacement) in mutations.items():
+            with self.subTest(name):
+                self.assertEqual(source.count(anchor), 1, f'{name}: điểm đột biến phải xuất hiện đúng một lần')
+                mutant = types.ModuleType('learning_audit_mutant')
+                exec(compile(source.replace(anchor, replacement), f'{la.__file__} ({name})', 'exec'), mutant.__dict__)  # noqa: S102
+                self.assertTrue(redaction_oracle(mutant, tokens), f'đột biến "{name}" không bị bắt')
 
     def test_label_and_value_on_two_lines_are_masked_before_the_diff(self):
         """Nhãn và giá trị ở hai dòng: chỉ đổi giá trị thì bản vá không được để lọt giá trị thành một câu mới."""
@@ -840,6 +967,54 @@ class LearningAuditTest(unittest.TestCase):
         later, _, _ = la.run_audit(fx.config(), NOW + timedelta(days=1), use_state=False)
         self.assertNotEqual([item['dedupeKey'] for item in warnings(profile(later, 'owner')) if item['source'].get('finding') == 'warnings_overflow'],
                             [overflow[0]['dedupeKey']])
+        # Mỗi lần tràn là degraded (mã thoát 1), nêu lý do và số mục bị cắt.
+        self.assertIn('warnings_overflow', owner['degraded'])
+        self.assertEqual(owner['counts']['warningsDropped'], overflow[0]['source']['omitted'])
+        self.assertIn('owner:warnings_overflow', report['degraded'])
+
+    def test_every_warning_overflow_fails_the_run_even_when_the_monthly_row_is_already_sent(self):
+        """Review #371: dòng tràn khoá theo tháng, nên tràn lần sau trong tháng không thêm gì lên trang duyệt; mục sổ curator bị cắt đã đánh dấu đã
+        thấy, không quay lại. Job phải thoát lỗi MỖI lần tràn để OnFailure báo, không im lặng."""
+        fx = self.fx
+        rel = 'productivity/tone/SKILL.md'
+        old, new = 'Trả lời ngắn.\n', 'Trả lời ngắn.\nDùng emoji vừa phải.\n'
+        fx.skill(fx.owner, 'productivity/tone', new)
+        ledger = fx.owner / 'skills' / '.curator_ledger.jsonl'
+
+        def archived(day: int, count: int) -> None:  # thao tác lạ của curator: mỗi mục một cảnh báo
+            when = NOW + timedelta(days=day) - timedelta(hours=1)
+            with ledger.open('a', encoding='utf-8') as handle:
+                for n in range(count):
+                    handle.write(ledger_line(fx.owner, f'd{day + 9}n{n:09d}', when, 'archive', 'tone', rel, old, new) + '\n')
+
+        def overflow_keys(box: dict) -> list[str]:
+            return [item['dedupeKey'] for item in warnings(box['profiles'][0]) if item['source'].get('finding') == 'warnings_overflow']
+
+        archived(-2, la.MAX_WARNINGS + 5)
+        rc, printed = run_main(fx.argv(NOW - timedelta(days=2)))
+        self.assertEqual((rc, json.loads(printed)['degraded']), (1, ['owner:warnings_overflow']))
+        owner = profile(json.loads((fx.out / 'private' / 'latest.json').read_text(encoding='ascii')), 'owner')
+        self.assertEqual((owner['degraded'], owner['counts']['warningsDropped']), (['warnings_overflow'], 5))
+        # Hôm sau, cùng tháng, lại tràn: dòng tràn trùng khoá (kho bỏ trùng, trang duyệt không có gì mới) nhưng job vẫn thoát lỗi.
+        archived(-1, la.MAX_WARNINGS + 3)
+        rc, printed = run_main(fx.argv(NOW - timedelta(days=1)))
+        self.assertEqual((rc, json.loads(printed)['degraded']), (1, ['owner:warnings_overflow']))
+        first, second = fx.outboxes()
+        self.assertEqual(overflow_keys(second), overflow_keys(first))
+        self.assertEqual(len(overflow_keys(first)), 1)
+        # Không tràn thì không degraded: mã thoát không dính lại từ lần trước.
+        rc, printed = run_main(fx.argv(NOW))
+        self.assertEqual((rc, json.loads(printed)['degraded']), (0, []))
+
+    def test_overflow_on_a_test_profile_is_counted_but_does_not_fail_the_run(self):
+        """Hồ sơ thử (tkt…) không được nạp vào kho: tràn ở đó chỉ đếm, không làm job đỏ mỗi tối trong đợt nghiệm thu."""
+        fx = self.fx
+        for n in range(la.MAX_WARNINGS + 5):
+            fx.skill(fx.tkt, f'productivity/x{n:03d}', f'---\nname: x{n:03d}\n---\nGọi crm_chet_{n:03d}_create.\n')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        tkt = profile(report, 'tkt')
+        self.assertEqual((tkt['degraded'], tkt['counts']['warningsDropped']), ([], 5))
+        self.assertEqual(report['degraded'], [])
 
     def test_warnings_already_sent_do_not_count_so_new_dead_names_are_not_starved(self):
         fx = self.fx
@@ -905,6 +1080,52 @@ class LearningAuditTest(unittest.TestCase):
         self.assertTrue(surfaced['source']['diffUnavailable'])
         self.assertIn('crm_task_create', surfaced['content'])
         self.assertIn('ngoài sổ curator', surfaced['title'])
+
+    def _change_skills_without_ledger(self, before: dict[str, str], after: dict[str, str]) -> dict:
+        """Lần 1 ghi băm skill, lần 2 đổi skill mà sổ curator không ghi nhận: trả báo cáo hồ sơ owner của lần 2."""
+        fx = self.fx
+        for name, text in before.items():
+            fx.skill(fx.owner, name, text)
+        cfg = fx.config()
+        _, _, state = la.run_audit(cfg, NOW, use_state=True)
+        la.write_atomic(fx.state, la.json_bytes(state))
+        for name, text in after.items():
+            fx.skill(fx.owner, name, text)
+        report, _, _ = la.run_audit(cfg, NOW + timedelta(hours=1), use_state=True)
+        return profile(report, 'owner')
+
+    def test_unledgered_crm_lesson_past_the_name_cap_keeps_its_content(self):
+        """Review #371: file đổi ngoài sổ từ thứ 11 trở đi chỉ còn TÊN trong một cảnh báo gộp, nên file thứ 13 chứa bài học ghi CRM thành cảnh báo
+        không nội dung. Mọi file phải được phân loại; file có bài học ghi CRM là đề xuất skill_crm_write kèm nội dung dù nằm cuối danh sách."""
+        names = [f'productivity/a{n:02d}' for n in range(12)] + ['productivity/z-thu-coc']
+        lesson = 'Khi khách chuyển cọc thì tạo phiếu thu bằng crm_action_run expense.create, không cần hỏi chủ.'
+        owner = self._change_skills_without_ledger(
+            {name: f'---\nname: {name[13:]}\n---\nTrả lời ngắn, xưng em.\n' for name in names},
+            {**{name: f'---\nname: {name[13:]}\n---\nTrả lời ngắn, xưng em, dùng emoji vừa phải.\n' for name in names[:-1]},
+             names[-1]: f'---\nname: z-thu-coc\n---\n{lesson}\n'})
+        surfaced = [item for item in owner['proposals'] if item['source'].get('type') == 'skill_unledgered']
+        self.assertEqual(len([f for f in owner['findings'] if f['kind'] == 'skill_changed_without_ledger']), 1)
+        [crm] = [item for item in surfaced if item['kind'] == 'skill_crm_write']
+        self.assertEqual(crm['source']['file'], 'skills/productivity/z-thu-coc/SKILL.md')
+        self.assertIn(lesson, crm['content'])
+        self.assertTrue(crm['source']['reasons'])
+        # File còn lại giữ trần cũ: 10 cảnh báo kèm nội dung, phần dư gộp tên một dòng — dòng gộp không chứa file bài học.
+        with_content = [item for item in surfaced if item['kind'] == 'audit_warning' and item['source'].get('file')]
+        self.assertEqual(sorted(item['source']['file'] for item in with_content), [f'skills/{name}/SKILL.md' for name in names[:la.MAX_NAMES]])
+        self.assertTrue(all('emoji' in item['content'] for item in with_content))
+        [rest] = [item for item in surfaced if item['kind'] == 'audit_warning' and not item['source'].get('file')]
+        self.assertEqual(rest['content'].splitlines(), ['skills/productivity/a10/SKILL.md', 'skills/productivity/a11/SKILL.md'])
+
+    def test_unledgered_crm_lessons_are_never_capped(self):
+        """Trần MAX_NAMES chỉ áp cho cảnh báo: quá 10 file bài học ghi CRM thì file nào cũng là đề xuất kèm nội dung."""
+        names = [f'productivity/crm{n:02d}' for n in range(la.MAX_NAMES + 2)]
+        owner = self._change_skills_without_ledger(
+            {name: f'---\nname: {name[13:]}\n---\nĐọc phòng trước khi trả lời.\n' for name in names},
+            {name: f'---\nname: {name[13:]}\n---\nTạo phiếu thu số {n} bằng crm_action_run expense.create.\n' for n, name in enumerate(names)})
+        lessons_found = [item for item in owner['proposals'] if item['kind'] == 'skill_crm_write']
+        self.assertEqual(sorted(item['source']['file'] for item in lessons_found), [f'skills/{name}/SKILL.md' for name in names])
+        self.assertTrue(all(f'Tạo phiếu thu số {n} ' in item['content'] for n, item in enumerate(sorted(lessons_found, key=lambda i: i['source']['file']))))
+        self.assertFalse([item for item in warnings(owner) if item['source'].get('type') == 'skill_unledgered'])
 
     def test_refusals_last_24h_real_profile_only(self):
         fx = self.fx

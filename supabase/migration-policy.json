@@ -795,6 +795,21 @@
       "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/375",
       "lop": "phép đo replay đơn lẻ gặp định nghĩa đã được migration sau thay thế",
       "why": "File 20261018044046 ghim chữ policy income_expenses_restricted_select (hai bản trước và sau bọc InitPlan) mà 20261031120230 (người giữ tiền thấy phiếu hạng mục hạn chế trong sổ mình, #375) thay bằng bản có thêm nhánh my_custodian_cashbook_ids_v1. Chạy lại file gốc trên production đã áp 120230 thì khối $chot$ ném đúng câu này. Đo 31/10 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
+    },
+    {
+      "file": "20261026234255_hermes_invoice_collect_commit_checks_v1.sql",
+      "sha256": "af8049e12e84d8515cd9ee50a1f2b20de7a3634e40fe4a0987db0c48514296c7",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "hermes_invoice_c07_dependency_invalid",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261026234255_hermes_invoice_collect_commit_checks_v1.json",
+      "supersededBy": {
+        "file": "20261104165619_hermes_invoice_collect_amount_pick_v1.sql",
+        "sha256": "c73b7fbdf1ebd22e092dc17aecc0d5f8756da959cec1cc26e563637b33c31457",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261104165619_hermes_invoice_collect_amount_pick_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/387",
+      "lop": "phép đo replay đơn lẻ gặp thân hàm đã được migration sau thay (ghim md5 chéo)",
+      "why": "File 20261026234255 (C07) có khối $requires$ ghim md5 thân app_private.hermes_invoice_action_step_v3 (5569ec5b) mà 20261104165619 (Hoá đơn J06 — thu tiền không nói kỳ thì tự chọn hoá đơn khớp đúng số còn nợ, #387) thay bằng thân md5 c1067869. Chạy lại file gốc trên production đã áp 165619 thì khối kiểm ném đúng câu này. Đo 05/11 bằng check-forward-migration-idempotent.mjs --file (ROLLBACK)."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",

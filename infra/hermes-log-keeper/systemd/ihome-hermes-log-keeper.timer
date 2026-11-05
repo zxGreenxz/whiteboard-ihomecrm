@@ -1,0 +1,12 @@
+# Mỗi 15 phút: journald RAM giữ ~2 giờ nên 15 phút còn dư nhiều lần; lỡ vài lượt vẫn không mất dòng nào (con trỏ nối tiếp).
+[Unit]
+Description=iHome Hermes - giu log moi 15 phut
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Unit=ihome-hermes-log-keeper.service
+
+[Install]
+WantedBy=timers.target
