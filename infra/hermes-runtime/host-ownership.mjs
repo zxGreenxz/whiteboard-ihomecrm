@@ -47,7 +47,9 @@ const REASONS = new Set(['action_disabled', 'forbidden', 'not_allowed', 'private
   'meter_used_by_invoice', 'meter_has_later_reading',
   // Hoá đơn (Mốc 5, điều chỉnh / xác nhận kiểm tra / huỷ / khôi phục).
   'adjust_meter_line_web_only', 'adjust_has_rounding_or_credit', 'adjust_debt_carried', 'adjust_below_collected', 'adjustment_self_check_web_only',
-  'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict', 'invoice_already_cancelled', 'invoice_not_cancelled']);
+  'cancel_has_payment', 'cancel_overdue_web_only', 'restore_conflict', 'invoice_already_cancelled', 'invoice_not_cancelled',
+  // Trang Sale (crm_sale_action: cọc, giữ / bỏ giữ phòng đã rời cầu Sale, 05/11).
+  'sale_deposit_web_only', 'sale_lock_via_contract']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
