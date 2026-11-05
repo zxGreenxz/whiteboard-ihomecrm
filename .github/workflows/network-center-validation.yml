@@ -186,7 +186,9 @@ jobs:
   # Run both installed PowerShell editions; absence cannot silently skip tests.
   worker-powershell-windows:
     name: Worker PowerShell suites (Windows)
-    runs-on: windows-latest
+    # Ghim ảnh cụ thể, không dùng `windows-latest` (gate check-workflow-runner-pins). Log run 02/11/2026 của chính job này:
+    # "Image: windows-2025-vs2026", Windows Server 2025 10.0.26100 — README actions/runner-images xếp nhãn này cùng ảnh với windows-latest.
+    runs-on: windows-2025-vs2026
     timeout-minutes: 25
     steps:
       - name: Check out the reviewed revision
