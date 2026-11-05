@@ -14,6 +14,8 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL, needsInput } from './action-contract.mjs';
 import { SALE_ACTION_TOOLS } from './sale-action-contract.mjs';
+import { SALE_RETIRED_OPERATIONS } from './sale-tool-contract.mjs';
+import { ACTION_REASONS } from './action-reasons.mjs';
 import { ACTION_PAGE_CATALOGS, PRODUCTION_ACTIONS } from './action-page-catalogs.mjs';
 import { W2 } from './wave2-registry.mjs';
 
@@ -122,6 +124,14 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
   assert.ok(forbidden.length >= 6, forbidden.join(','));
   for (const operation of forbidden) assert.ok(sale.split('\n').some(line => line.includes(operation) && /KHÔNG/.test(line)), `${operation} chưa bị cấm`);
   assert.match(sale, /Quản lý cọc/);
+  // 05/11: rào cứng = rào mềm. Đúng tập skill cấm là tập connector gỡ khỏi crm_sale_action (ẩn + từ chối, sale-tool-contract.mjs); câu lỗi
+  // của từng lý do chỉ nhắc tool / mã thao tác có thật và chỉ đúng chỗ làm (trang Quản lý cọc; contract.room_lock / contract.room_unlock).
+  assert.deepEqual([...forbidden].sort(), Object.keys(SALE_RETIRED_OPERATIONS).sort(), 'skill cấm đúng tập connector chặn');
+  for (const reason of new Set(Object.values(SALE_RETIRED_OPERATIONS))) assert.deepEqual(checkCatalogMentions(ACTION_REASONS[reason].text), [], reason);
+  assert.match(ACTION_REASONS.sale_deposit_web_only.text, /trang Quản lý cọc \(\/deposits\)/);
+  assert.deepEqual(findCatalogMentions(ACTION_REASONS.sale_lock_via_contract.text).actions, ['contract.room_lock', 'contract.room_unlock']);
+  assert.deepEqual(new Set(Object.entries(SALE_RETIRED_OPERATIONS).filter(([, reason]) => reason === 'sale_lock_via_contract').map(([op]) => op)),
+    new Set(['room_lock', 'room_release']));
   // SOUL dòng 15/20: hoa hồng, cọc, phiếu THU, lương… chặn trước — không gọi tool nào, kể cả crm_action_list.
   const core = skillText(CORE_SKILL);
   assert.match(core, /CHẶN TRƯỚC — chỉ khi việc được nhờ chính là LẬP \/ GHI[\s\S]{0,120}không gọi tool nào, kể cả\s+`crm_action_list`/);
