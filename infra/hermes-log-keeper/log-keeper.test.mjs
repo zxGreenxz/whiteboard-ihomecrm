@@ -16,11 +16,21 @@ const skip = process.platform !== 'linux' ? 'cần bash + GNU find/gzip/sed (ch�
 // stderr rỗng (như journalctl thật khi không lấy được con trỏ). FAKE_FAIL_UNIT=<unit> ⇒ lỗi thật: in 1 dòng, "Failed …" ra stderr, thoát 1.
 // Không có -u (bước dò của script) ⇒ in một dòng, trừ khi FAKE_NO_JOURNAL=1 (không đọc được journal: thoát 1 im lặng).
 // FAKE_ERR_UNIT ⇒ lỗi có stderr mà stdout rỗng; FAKE_KILL_UNIT ⇒ chết như SIGKILL (137), không in gì.
+// FAKE_PROBE_NUL=1 ⇒ bước dò với -o export in một mục có field nhị phân như journalctl thật: tên field, xuống dòng, độ dài 8 byte
+// little-endian (đầy byte NUL), dữ liệu, xuống dòng. FAKE_PROBE_NUL=only ⇒ đầu ra chỉ toàn byte NUL (không có dòng nào để đọc).
+// Chỉ định dạng export mới có NUL; định dạng khác vẫn in "probe".
 const FAKE = `#!/usr/bin/env bash
-unit=""; cur=""
+unit=""; cur=""; fmt=""
 for a in "$@"; do case "$a" in --cursor-file=*) cur="\${a#--cursor-file=}";; esac; done
-while [ $# -gt 0 ]; do [ "$1" = "-u" ] && { unit="$2"; shift; }; shift; done
-if [ -z "$unit" ]; then [ "\${FAKE_NO_JOURNAL:-}" = 1 ] && exit 1; echo "probe"; exit 0; fi
+while [ $# -gt 0 ]; do [ "$1" = "-u" ] && { unit="$2"; shift; }; [ "$1" = "-o" ] && { fmt="$2"; shift; }; shift; done
+if [ -z "$unit" ]; then
+  [ "\${FAKE_NO_JOURNAL:-}" = 1 ] && exit 1
+  if [ "$fmt" = export ]; then
+    [ "\${FAKE_PROBE_NUL:-}" = 1 ] && { printf '__CURSOR=s=fake;i=1\\n__REALTIME_TIMESTAMP=1\\nMESSAGE\\n\\003\\000\\000\\000\\000\\000\\000\\000a\\nb\\n\\n'; exit 0; }
+    [ "\${FAKE_PROBE_NUL:-}" = only ] && { printf '\\000\\000\\000'; exit 0; }
+  fi
+  echo "probe"; exit 0
+fi
 src="$FAKE_JOURNAL_DIR/$unit"
 [ -f "$src" ] || exit 1
 if [ "\${FAKE_FAIL_UNIT:-}" = "$unit" ]; then echo "partial"; echo "Failed to read journal: Permission denied" >&2; exit 1; fi
@@ -124,6 +134,20 @@ test('lỗi có stderr mà không có dòng, chết vì tín hiệu, journal kh�
   assert.equal(k.status, 1, 'mã 137 không được coi là "không có gì mới"'); assert.match(k.stderr, /journalctl=137/);
   const n = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_NO_JOURNAL: '1' });
   assert.equal(n.status, 1); assert.match(n.stderr, /không đọc được journal/);
+});
+
+test('dòng dò có byte NUL (định dạng export) ⇒ bash không cảnh báo "ignored null byte", dò vẫn đạt và xuất bình thường', { skip }, () => {
+  const { journal, env, exec } = setup();
+  writeFileSync(join(journal, 'a.service'), 'n1\nn2\n');
+  const r = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_PROBE_NUL: '1' });
+  assert.equal(r.status, 0, `dò phải đạt dù có NUL: ${r.stderr}`);
+  assert.doesNotMatch(r.stderr, /ignored null byte|command substitution/, 'mỗi lượt không được in cảnh báo NUL của bash');
+  assert.equal(JSON.parse(r.stdout.trim().split('\n').pop()).failedUnits, 0);
+  assert.deepEqual(lines(join(env.LOG_DIR, 'a', '2026-11-05.log')).map((l) => l.split(' ')[0]), ['n1', 'n2'], 'dò đạt ⇒ vẫn xuất journal của unit');
+  // Ranh giới: đầu ra dò chỉ toàn byte NUL = không có dòng nào ⇒ vẫn là "không đọc được journal"; bộ lọc không làm bước dò dễ dãi.
+  const rong = exec({ TODAY: '2026-11-05', UNITS: 'a.service', FAKE_PROBE_NUL: 'only' });
+  assert.equal(rong.status, 1); assert.match(rong.stderr, /không đọc được journal/);
+  assert.doesNotMatch(rong.stderr, /ignored null byte|command substitution/);
 });
 
 test('sang ngày mới thì nén ngày cũ (đã có .gz ⇒ nối, không ghi đè); quá hạn thì xoá', { skip }, () => {

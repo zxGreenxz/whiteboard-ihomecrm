@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { SCHEMA_UNG_DUNG, docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "../check-definer-acl.mjs";
+import { DUONG_THIEU, SCHEMA_UNG_DUNG, docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "../check-definer-acl.mjs";
 
 // VÌ SAO CÓ FILE NÀY — đo 01/11/2026 (review PR #371), xác nhận lại 04/11 trên production:
 // 119 hàm ứng dụng cấp EXECUTE cho PUBLIC. PUBLIC là MỌI vai, nên login hermes_store_learning
@@ -54,34 +54,51 @@ describe("phanTichPublicExecute", () => {
     expect(kq.macDinh).toEqual(["postgres: (toàn cục)"]);
   });
 
-  it("hàm trong policy/view/default mà vai gọi thiếu EXECUTE → đỏ (helper app_private mới quên GRANT)", () => {
-    const kq = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "authenticated", sig: "app_private.buildings_i_can_see()" }], blockedRoles: {} });
+  it("hàm trong policy/view/default mà vai gọi thiếu EXECUTE → đỏ (helper app_private mới quên GRANT), kèm đường", () => {
+    const kq = phanTichPublicExecute({
+      rows: [{ kind: "thieu", role: "authenticated", sig: "app_private.buildings_i_can_see()", duong: "pg_policy" }], blockedRoles: {},
+    });
     expect(kq.dat).toBe(false);
-    expect(kq.thieuQuyen).toEqual(["authenticated → app_private.buildings_i_can_see()"]);
+    expect(kq.thieuQuyen).toEqual(["authenticated → app_private.buildings_i_can_see() @ pg_policy"]);
   });
 
-  it("miễn trừ tường minh: cặp đã xét cho qua, cặp MỚI vẫn đỏ; so khớp bỏ tiền tố public.", () => {
-    const thieuMienTru = { anon: ["public.phone_digits(text)"] };
-    const daXet = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)" }], blockedRoles: {}, thieuMienTru });
-    expect(daXet).toMatchObject({ dat: true, thieuQuyen: [], mienThua: [] });
+  it("miễn trừ tường minh: mục đã xét cho qua, mục MỚI vẫn đỏ; so khớp bỏ tiền tố public.", () => {
+    const thieuMienTru = { anon: ["public.phone_digits(text) @ pg_class"] };
+    const chiMuc = { kind: "thieu", role: "anon", sig: "phone_digits(text)", duong: "pg_class" };
+    expect(phanTichPublicExecute({ rows: [chiMuc], blockedRoles: {}, thieuMienTru })).toMatchObject({ dat: true, thieuQuyen: [], mienThua: [] });
     const moi = phanTichPublicExecute({
-      rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)" }, { kind: "thieu", role: "anon", sig: "app_private.ma_moi()" }],
-      blockedRoles: {}, thieuMienTru,
+      rows: [chiMuc, { kind: "thieu", role: "anon", sig: "app_private.ma_moi()", duong: "pg_attrdef" }], blockedRoles: {}, thieuMienTru,
     });
     expect(moi.dat).toBe(false);
-    expect(moi.thieuQuyen).toEqual(["anon → app_private.ma_moi()"]);
+    expect(moi.thieuQuyen).toEqual(["anon → app_private.ma_moi() @ pg_attrdef"]);
     // Cùng hàm nhưng vai khác không được miễn theo.
-    const vaiKhac = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "authenticated", sig: "phone_digits(text)" }], blockedRoles: {},
-      thieuMienTru: { anon: ["phone_digits(text)", "x()"] }, kiemMienThua: false });
-    expect(vaiKhac.thieuQuyen).toEqual(["authenticated → phone_digits(text)"]);
+    const vaiKhac = phanTichPublicExecute({ rows: [{ ...chiMuc, role: "authenticated" }], blockedRoles: {},
+      thieuMienTru: { anon: ["phone_digits(text) @ pg_class"] }, kiemMienThua: false });
+    expect(vaiKhac.thieuQuyen).toEqual(["authenticated → phone_digits(text) @ pg_class"]);
+  });
+
+  it("miễn khoá theo ĐƯỜNG: cùng vai, cùng hàm nhưng đường mới (view anon đọc được) vẫn đỏ", () => {
+    // Re-review #392: miễn khoá theo cặp (vai, hàm) thì thêm một view gọi hàm vốn chỉ miễn ở chỉ mục, gate vẫn xanh.
+    const kq = phanTichPublicExecute({
+      rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)", duong: "pg_class" },
+        { kind: "thieu", role: "anon", sig: "phone_digits(text)", duong: "pg_rewrite" }],
+      blockedRoles: {}, thieuMienTru: { anon: ["phone_digits(text) @ pg_class"] },
+    });
+    expect(kq.dat).toBe(false);
+    expect(kq.thieuQuyen).toEqual(["anon → phone_digits(text) @ pg_rewrite"]);
+    expect(kq.mienThua).toEqual([]);
   });
 
   it("mục miễn không còn cần → đỏ (danh sách chỉ teo đi); tắt được cho đích không phải production", () => {
-    const kq = phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru: { anon: ["phone_digits(text)"] } });
+    const thieuMienTru = { anon: ["phone_digits(text) @ pg_class"] };
+    const kq = phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru });
     expect(kq.dat).toBe(false);
-    expect(kq.mienThua).toEqual(["anon → phone_digits(text)"]);
-    expect(phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru: { anon: ["phone_digits(text)"] }, kiemMienThua: false }))
-      .toMatchObject({ dat: true, mienThua: [] });
+    expect(kq.mienThua).toEqual(["anon → phone_digits(text) @ pg_class"]);
+    // Hàm còn thiếu nhưng ở đường KHÁC thì mục miễn của đường cũ vẫn là thừa.
+    const doiDuong = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)", duong: "pg_rewrite" }],
+      blockedRoles: {}, thieuMienTru });
+    expect(doiDuong.mienThua).toEqual(["anon → phone_digits(text) @ pg_class"]);
+    expect(phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru, kiemMienThua: false })).toMatchObject({ dat: true, mienThua: [] });
   });
 });
 
@@ -89,9 +106,17 @@ describe("docThieuMienTru", () => {
   it("thiếu mục → rỗng; sai dạng → ném (cấu hình đi vào phép so, không được im lặng hỏng)", () => {
     expect(docThieuMienTru({})).toEqual({});
     expect(docThieuMienTru(undefined)).toEqual({});
-    expect(() => docThieuMienTru({ thieuMienTru: ["anon → f()"] })).toThrow(/vai → mảng/);
-    expect(() => docThieuMienTru({ thieuMienTru: { anon: "f()" } })).toThrow(/vai → mảng/);
-    expect(() => docThieuMienTru({ thieuMienTru: { "x'; --": ["f()"] } })).toThrow(/vai → mảng/);
+    expect(docThieuMienTru({ thieuMienTru: { anon: ["f() @ pg_class"] } })).toEqual({ anon: ["f() @ pg_class"] });
+    expect(() => docThieuMienTru({ thieuMienTru: ["anon → f() @ pg_class"] })).toThrow(/vai → mảng/);
+    expect(() => docThieuMienTru({ thieuMienTru: { anon: "f() @ pg_class" } })).toThrow(/vai → mảng/);
+    expect(() => docThieuMienTru({ thieuMienTru: { "x'; --": ["f() @ pg_class"] } })).toThrow(/vai → mảng/);
+  });
+
+  it("mục kiểu cũ không ghi đường, hoặc đường lạ → ném (miễn phải khoá theo đường)", () => {
+    expect(() => docThieuMienTru({ thieuMienTru: { anon: ["phone_digits(text)"] } })).toThrow(/chữ ký @ đường/);
+    expect(() => docThieuMienTru({ thieuMienTru: { anon: ["phone_digits(text) @ chi_muc"] } })).toThrow(/chữ ký @ đường/);
+    expect(() => docThieuMienTru({ thieuMienTru: { anon: [" @ pg_class"] } })).toThrow(/chữ ký @ đường/);
+    expect(DUONG_THIEU).toEqual(["pg_policy", "pg_rewrite", "pg_attrdef", "pg_constraint", "pg_class", "pg_trigger", "pg_proc", "pg_type"]);
   });
 });
 
@@ -112,20 +137,31 @@ describe("sqlPublicExecute", () => {
 
   it("kiểm thiếu quyền theo pg_depend: policy, MỌI view (trừ materialized), default/CHECK/chỉ mục/WHEN, domain, hàm khác", () => {
     const sql = sqlPublicExecute(blockedRoles);
-    const thieu = sql.slice(sql.indexOf("SELECT 'thieu'"), sql.indexOf("SELECT 'default'"));
-    for (const nguon of ["pg_policy", "pg_rewrite", "pg_attrdef", "pg_constraint", "pg_class", "pg_trigger", "pg_proc", "pg_type"]) {
-      expect(thieu).toContain(`d.classid = 'pg_catalog.${nguon}'::regclass`);
-    }
+    const thieu = sql.slice(sql.indexOf("'thieu'"), sql.indexOf("SELECT 'default'"));
+    for (const nguon of DUONG_THIEU) expect(thieu).toContain(`d.classid = 'pg_catalog.${nguon}'::regclass`);
     // PostgreSQL kiểm EXECUTE của hàm trong view theo vai đang truy vấn, kể cả view không security_invoker.
     expect(thieu).not.toContain("security_invoker");
     expect(thieu).toContain("c.relkind <> 'm'");
     // DEFAULT của tham số luôn tính theo người gọi; thân BEGIN ATOMIC chỉ tính khi hàm là INVOKER.
     expect(thieu).toContain("NOT x.prosecdef OR x.proargdefaults::text ~ (':funcid ' || a.oid::text");
+    // Aggregate không tính: PostgreSQL kiểm EXECUTE của sfunc/finalfunc theo chủ aggregate.
+    expect(thieu).toContain("x.prokind <> 'a'");
+    // DEFAULT của domain chạy cả ở UPDATE … SET col = DEFAULT.
+    const nhanDomain = thieu.slice(thieu.indexOf("d.classid = 'pg_catalog.pg_type'"));
+    expect(nhanDomain).toContain("has_table_privilege(r.oid, c.oid, 'INSERT,UPDATE')");
+  });
+
+  it("mỗi dòng 'thieu' mang đường phụ thuộc (một dòng cho mỗi vai, hàm, đường)", () => {
+    const sql = sqlPublicExecute(blockedRoles);
+    expect(sql).toContain("SELECT DISTINCT 'thieu', r.rolname::text, a.sig,");
+    expect(sql).toContain("(SELECT k.relname::text FROM pg_catalog.pg_class k WHERE k.oid = d.classid)");
+    expect(sql).toContain("JOIN pg_catalog.pg_depend d ON d.refclassid = 'pg_catalog.pg_proc'::regclass AND d.refobjid = a.oid");
+    expect(sql).toContain("NULL::text AS duong");
   });
 
   it("miễn anon trên cửa đã cố ý đóng CHỈ nằm trong nhánh policy", () => {
     const sql = sqlPublicExecute(blockedRoles);
-    const thieu = sql.slice(sql.indexOf("SELECT 'thieu'"), sql.indexOf("SELECT 'default'"));
+    const thieu = sql.slice(sql.indexOf("'thieu'"), sql.indexOf("SELECT 'default'"));
     const nhanPolicy = thieu.slice(thieu.indexOf("d.classid = 'pg_catalog.pg_policy'"), thieu.indexOf("d.classid = 'pg_catalog.pg_rewrite'"));
     expect(nhanPolicy).toContain("r.rolname = 'anon'");
     expect(nhanPolicy).toContain("x.grantee = 'authenticated'::regrole");
@@ -143,12 +179,13 @@ describe("allowlist anon trong definer-acl-baseline.json", () => {
 });
 
 describe("cấu hình publicExecute trong definer-acl-baseline.json", () => {
-  it("miễn trừ câu 'thieu' đúng 2 cặp anon đã xét 05/11 (chỉ mục biểu thức, anon bị RLS chặn ghi), có ghi lý do", () => {
+  it("miễn trừ câu 'thieu' đúng 2 mục anon đã xét 05/11, khoá ở đường chỉ mục biểu thức (pg_class), có ghi lý do", () => {
     expect(docThieuMienTru(baseline.publicExecute)).toEqual({
-      anon: ["normalize_income_expense_type_name(text)", "phone_digits(text)"],
+      anon: ["normalize_income_expense_type_name(text) @ pg_class", "phone_digits(text) @ pg_class"],
     });
     expect(baseline.publicExecute.thieuMienTruNote).toMatch(/chỉ mục biểu thức/);
     expect(baseline.publicExecute.thieuMienTruNote).toMatch(/WITH CHECK/);
+    expect(baseline.publicExecute.thieuMienTruNote).toMatch(/ĐƯỜNG/);
   });
 
   it("đủ các vai đã chứng minh không cần hàm ứng dụng, mỗi vai một mảng", () => {
