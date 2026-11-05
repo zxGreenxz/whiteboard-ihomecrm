@@ -12,7 +12,7 @@ import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, ma
 import { SALE_ACTION_TOOLS, saleActionOperation, saleActionInput, saleActionIsMutation, mayUseSaleAction } from './sale-action-contract.mjs';
 import { SALE_POLICY_TOOLS, salePolicyOperation, salePolicyInput, mayUseSalePolicy } from './sale-policy-contract.mjs';
 import { SALE_BULK_TOOLS, saleBulkOperation, saleBulkInput, mayUseSaleBulk } from './sale-bulk-contract.mjs';
-import { SALE_TOOL, saleToolInput, saleToolDefinition, saleToolListing, saleToolResult, isInternalSaleTool } from './sale-tool-contract.mjs';
+import { SALE_TOOL, saleToolInput, saleToolDefinition, saleToolListing, saleToolPublic, saleToolResult, saleToolRetired, isInternalSaleTool } from './sale-tool-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -543,10 +543,12 @@ export function createBroker({
   // (review Mốc 2 mục 6): connector mới + DB cũ ⇒ thao tác chưa sống ⇒ tool cũ còn nguyên. Theo dõi (follow_*) không có thao tác thay.
   const taskRetired = operation => Object.hasOwn(TASK_RETIRED_BY, operation) && typeof action?.knows === 'function' && action.knows(TASK_RETIRED_BY[operation]);
   const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) && !taskRetired(operation);
-  // Shared definitions (not copies) of every tool this identity may call now.
+  // Shared definitions (not copies) of every tool this identity may call now. Thao tác đã rời cầu crm_sale_action (cọc, giữ / bỏ
+  // giữ phòng: SALE_RETIRED_OPERATIONS) không bao giờ vào danh sách, dù khoá CRM / Hermes nào đang bật.
   const grantedSaleTools = identity => [
-    ...(sale ? SALE_ACTION_TOOLS.filter(tool => mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
-    ...extraSale.flatMap(extension => extension.tools.filter(tool => extension.mayUse(identity.effective, extension.operation(tool.name)))),
+    ...(sale ? SALE_ACTION_TOOLS.filter(tool => saleToolPublic(tool) && mayUseSaleAction(identity.effective, saleActionOperation(tool.name))) : []),
+    ...extraSale.flatMap(extension => extension.tools.filter(tool => saleToolPublic(tool) &&
+      extension.mayUse(identity.effective, extension.operation(tool.name)))),
   ];
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
@@ -1002,6 +1004,13 @@ export function createBroker({
           const granted = grantedSaleTools(identity);
           if (!granted.length) fail('tool_not_available');
           return { content: [{ type: 'text', text: JSON.stringify(saleToolListing(granted)) }], isError: false };
+        });
+        // Cọc, giữ / bỏ giữ phòng đã rời cầu Sale (SALE_RETIRED_OPERATIONS): lỗi rõ chỉ chỗ làm đúng, bất kể khoá; input không được
+        // đọc, không tới validator, dịch vụ hay RPC (không có định nghĩa để chuyển).
+        const retired = saleToolRetired(request.operation);
+        if (retired) return call(identity => {
+          if (!grantedSaleTools(identity).length) fail('tool_not_available');
+          throw actionRejected(retired);
         });
         const definition = saleToolDefinition(request.operation);
         saleBridgeOperation = request.operation;
