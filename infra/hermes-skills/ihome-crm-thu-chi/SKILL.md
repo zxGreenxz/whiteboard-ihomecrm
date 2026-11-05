@@ -57,9 +57,18 @@ KHÔNG chặn:
 - `expense.approve` {`voucherCodes` ≤ 10, mỗi mã kèm ngày phiếu dạng "MÃ dd/mm/yyyy", `post` = false nếu chỉ duyệt chưa chi,
   `buildingName`}: duyệt lô theo danh sách vừa đọc ⇒ gửi mã kèm ngày ngay lần đầu, không gửi voucherId / UUID; nhiều hơn 10 ⇒
   làm 10 phiếu đầu, nói số còn lại. Đọc `plan` từng phiếu.
+  - Phiếu luồng hệ thống (thanh lý, hoàn cọc, hoa hồng, thưởng, lương, bàn giao, thu tiền hoá đơn, phiếu con định kỳ) trong lô:
+    máy chủ tự ghi "không làm" ở `plan` của phiếu đó và vẫn duyệt các phiếu khác — không tự lọc theo tên trước khi gửi. Báo: số
+    phiếu duyệt được, và từng phiếu "không làm" kèm đúng lý do ở `plan` (phiếu hệ thống ⇒ màn gốc trên web; không còn chờ duyệt;
+    không có quyền / không được tự duyệt…).
+  - Bị từ chối cả lô (`system_voucher`, Khoản 1) ⇒ KHÔNG phiếu nào trong lô duyệt được qua bot; máy chủ chỉ nêu lý do của phiếu
+    đầu (phiếu hệ thống), phiếu khác có thể vướng lý do khác. Không gửi lại đúng lô đó. Danh sách còn phiếu chưa gửi ⇒ gửi lô kế
+    (≤ 10); hết ⇒ nói chưa duyệt phiếu nào qua bot, phiếu đầu là phiếu hệ thống (duyệt ở màn gốc trên web), không gộp mọi phiếu
+    thành "phiếu hệ thống".
 
 ## Đọc thu chi
 
+Hỏi THU ⇒ chỉ nêu thu; hỏi CHI ⇒ chỉ nêu chi; không kèm tổng phía kia khi không được hỏi.
 `crm_read_income_expenses` (không có tham số type; thu / chi xem `summary.byType`). Phiếu chi theo điều kiện (lớn nhất, trên /
 dưới X, chờ duyệt quá N ngày, theo toà): `crm_read_report` report=expense_vouchers. Theo hạng mục: report=expense_categories.
 Tab Chi phí của Phân tích tài chính: report=top_expenses. Danh sách sổ quỹ: report=cashbooks.
