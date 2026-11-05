@@ -201,6 +201,13 @@ describe('Cài đặt › Hermes › Bài học chờ duyệt', () => {
     expect(screen.queryByText('PRIVATE')).toBeNull();
     expect(screen.queryByText(/Chưa có lần kiểm học tập nào/)).toBeNull();
     cleanup();
+    // Lỗi thành viên ở công ty đang chọn (không phải thiếu quyền): câu báo nói đúng ngữ cảnh, không bảo người dùng "chỉ chủ hoặc quản trị viên".
+    reviewReply = () => json({ code: '42501', message: 'hermes_membership_required', details: null, hint: null }, 403);
+    render(view());
+    await screen.findByText(/không còn là thành viên đang hoạt động của công ty này nên không xem được/);
+    expect(screen.queryByText(/Chỉ chủ hoặc quản trị viên công ty/)).toBeNull();
+    expect(screen.queryByText('hermes_membership_required')).toBeNull();
+    cleanup();
     reviewReply = () => json({ code: 'PGRST202', message: 'x', details: null, hint: null }, 404);
     render(view());
     await screen.findByText('Máy chủ chưa có chức năng duyệt bài học (cơ sở dữ liệu chưa được cập nhật).');
