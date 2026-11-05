@@ -1001,7 +1001,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all sixty-eight reviewed forward migrations and their 138 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all seventy reviewed forward migrations and their 146 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -1038,7 +1038,9 @@ test('all sixty-eight reviewed forward migrations and their 138 latest definitio
   // superseded).
   // Thu chi lượt 20 (G02): lõi giải dựng lại ở 20261027140949 (+1 file, cùng tên; thân 074419 thành ghim superseded).
   // Học có kiểm duyệt (31/10): kho đề xuất bài học 20261031041523 (+1 file, +8 tên mới).
-  assert.equal(paths.length, 69);
+  // Hoá đơn J06 (HĐn TC-J06): tra cứu + bước ghi thu tiền _v3 dựng lại ở 20261104165619 (tự chọn hoá đơn khi số tiền khớp đúng số còn nợ của
+  // một hoá đơn mở; +1 file, cùng tên; tra cứu 181440 / bước ghi 234255 thành ghim superseded).
+  assert.equal(paths.length, 70);
   assert.equal(FORWARD_FUNCTIONS.length, 146);
   assert.equal(FORWARD_BY_NAME.size, 146, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);

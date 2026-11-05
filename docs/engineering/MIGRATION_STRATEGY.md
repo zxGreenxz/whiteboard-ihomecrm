@@ -41,6 +41,7 @@ Sau apply, làm tươi provenance, catalog/surfaces liên quan và types; gọi 
 | Edge deploy | Project ref/org, cây sạch, SHA đã review và digest bundle trước deploy |
 
 Hàm lấy khoá dòng phải `VOLATILE`: STABLE/IMMUTABLE có thể lỗi `25006` qua PostgREST dù SQL trực tiếp đạt.
+Từ `20261104173640` hàm do `postgres` tạo không tự cấp PUBLIC; hàm `app_private` dùng trong policy, view hay hàm INVOKER phải `GRANT EXECUTE` tường minh cho vai gọi. `check-definer-acl` đỏ nếu còn hàm cấp PUBLIC.
 Reconcile v1 kiểm đường đọc JWT/RLS; v2 kiểm số dư posting. Giữ cả hai, bắt cap-1000; không tổng hợp chỉ trang đầu.
 Đột biến invariant tiền/quyền/org/migration theo [hướng dẫn kiểm](../CODEBASE_STRUCTURE.md#kiểm-thử); không gọi thiếu runner là pass.
 

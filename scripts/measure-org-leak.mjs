@@ -222,7 +222,7 @@ function chiaLo(mang, n) {
 }
 
 /** Một chuyến đo cho một nhân vật, MỘT LÔ bảng, trong một transaction. */
-function sqlDoMotVai(uid, org, loBang, tongHop = false) {
+export function sqlDoMotVai(uid, org, loBang, tongHop = false) {
   // Quét 304 bảng bằng vai người dùng thật mất vài phút, vì RLS được đánh giá
   // cho từng bảng. Riêng invoice_payment_allocations và _collections mất 14–18
   // GIÂY MỖI BẢNG — đo được đó là vấn đề CÓ SẴN của chuỗi can_access_building /
@@ -264,6 +264,9 @@ BEGIN
     END;
   END LOOP;
 END $quet$;
+-- Từ 20261104173640, hàm do postgres tạo (kể cả hàm tạm) không còn EXECUTE cho PUBLIC:
+-- cấp đúng vai sẽ gọi, trước khi hạ vai (sau khi hạ vai thì không còn quyền cấp).
+GRANT EXECUTE ON FUNCTION pg_temp._quet(uuid) TO authenticated;
 
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"${uid}","role":"authenticated"}';
@@ -298,7 +301,7 @@ ROLLBACK;`;
  * không cấp SELECT cho authenticated nên báo thẳng permission denied. Sạch, thật,
  * nhưng trước hôm nay là sạch KHÔNG AI CANH.
  */
-function sqlDoBangKhongCotOrg(loBang) {
+export function sqlDoBangKhongCotOrg(loBang) {
   return `BEGIN;
 SET LOCAL statement_timeout = '900s';
 INSERT INTO auth.users (id) VALUES ('${UID_TONG_HOP}');
@@ -325,6 +328,8 @@ BEGIN
     END;
   END LOOP;
 END $quet$;
+-- Như _quet: hàm tạm của postgres không còn PUBLIC (20261104173640) — cấp tường minh trước khi hạ vai.
+GRANT EXECUTE ON FUNCTION pg_temp._quet0() TO authenticated;
 
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"${UID_TONG_HOP}","role":"authenticated"}';
