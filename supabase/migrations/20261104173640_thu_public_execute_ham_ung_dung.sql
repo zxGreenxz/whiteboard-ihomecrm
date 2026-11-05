@@ -8,20 +8,24 @@
 -- dùng (vd public.bulk_create_meter_readings). Login kho bền của connector và các login nền tảng không qua API cũng vậy.
 -- Quyền của PUBLIC không thu riêng cho một vai được, nên phải thu ở PUBLIC cho cả hệ thống.
 --
--- CÁCH LÀM. Hành vi của vai đang dùng giữ nguyên:
---  1. Với mỗi hàm như trên: cấp tường minh trước, rồi REVOKE ... FROM PUBLIC.
---     · anon, authenticated, service_role giữ ĐÚNG quyền đang có trên mọi hàm không phải trigger: chỉ cấp khi vai đó đang
---       có quyền NHỜ PUBLIC. Thế là phủ cả đường gián tiếp: policy RLS (3 hàm app_private trong policy TO authenticated,
---       hàng trăm policy TO public), view security_invoker, default cột, hàm INVOKER gọi lồng, hàm DEFINER do
---       ie_detail_reader sở hữu (vai này thuộc authenticated nên thừa hưởng). Gồm cả 2 hàm DEFINER mà anon gọi được chỉ
---       nhờ PUBLIC dù 20260621000001 đã REVOKE anon (get_change_breakdown_v2, get_deposit_breakdown_v2: đã nằm trong
---       allowlist của check-definer-acl, trả rỗng khi không đăng nhập). Thu tiếp chúng là việc riêng.
---     · supabase_read_only_user (vai đọc của dashboard/Management API read-only) giữ quyền trên hàm INVOKER (không leo
---       quyền được): câu đọc chẩn đoán và view gọi hàm vẫn chạy. Không giữ hàm DEFINER.
---     · Hàm trigger và event trigger: không cấp cho ai. PostgreSQL không kiểm EXECUTE lúc bắn trigger hay event trigger,
---       chỉ lúc CREATE TRIGGER (do chủ hàm chạy migration). Test PG cục bộ chứng minh trigger DEFINER, trigger INVOKER và
---       event trigger vẫn chạy khi người gây ra không còn EXECUTE.
---  2. Không cấp (đã chứng minh không cần): hermes_store_learning và hermes_learning_ingest chỉ gọi
+-- CÁCH LÀM. Với mỗi hàm như trên: cấp tường minh cho đúng vai THẬT SỰ dùng, rồi REVOKE ... FROM PUBLIC.
+--  1. Vai thật sự dùng (anon, authenticated, service_role, supabase_read_only_user) suy từ pg_depend — đúng những đường mà
+--     vai đó tự chạy hàm mà KHÔNG gọi tên nó (vai API không có USAGE app_private nên không gọi tên được):
+--       · policy RLS: vai chịu policy (thuộc vai của policy hoặc policy TO public, không BYPASSRLS) và có quyền trên bảng;
+--       · view security_invoker: vai đọc được view;
+--       · default/generated, CHECK, chỉ mục biểu thức, WHEN của trigger: vai ghi được bảng.
+--     Chỉ cấp khi vai đó đang có quyền NHỜ PUBLIC (đã có quyền riêng thì để nguyên ACL). Hàm public vốn đã cấp riêng cho ba
+--     vai API (mặc định Supabase) nên không đổi. Đo prod/TEST: cấp đúng 4 dòng — authenticated trên 3 helper app_private
+--     trong policy TO authenticated (buildings_i_can_see, invoice_of_payment_collection, user_of_invoice) và
+--     supabase_read_only_user trên vn_local_date (view building_coverage). Mọi hàm app_private khác (vd
+--     ensure_org_boundary_v1 chạy DDL) chỉ còn chủ gọi được. supabase_read_only_user (BYPASSRLS, không ghi) chỉ nhận hàm
+--     INVOKER mà view nó đọc dùng tới; gọi thẳng hàm ứng dụng qua endpoint read-only không còn (đọc chẩn đoán đi pooler).
+--  2. Cửa đã cố ý đóng với anon giữ đóng: hàm mà ACL cấp authenticated nhưng KHÔNG cấp anon thì không cấp anon. Đo prod:
+--     đúng get_change_breakdown_v2 và get_deposit_breakdown_v2 (20260621000001 đã REVOKE anon; anon gọi được chỉ nhờ PUBLIC).
+--     Nếu một đường pg_depend đòi anon chạy hàm đã đóng thì dừng (cần người quyết định), không tự mở lại.
+--  3. Hàm trigger và event trigger: không cấp cho ai. PostgreSQL không kiểm EXECUTE lúc bắn trigger hay event trigger, chỉ
+--     lúc CREATE TRIGGER (do chủ hàm chạy migration). Test PG cục bộ chứng minh chúng vẫn chạy.
+--  4. Không cấp (đã chứng minh không cần): hermes_store_learning và hermes_learning_ingest chỉ gọi
 --     app_private.hermes_store_learning_ingest_v1; hermes_store_host và hermes_store_executor chỉ gọi 22 hàm
 --     hermes_store_* / hermes_zalo_provisioning_* cấp riêng, đều DEFINER (store-transport chỉ gửi câu kiểm vai trên
 --     pg_catalog và đúng các hàm đó); authenticator, supabase_storage_admin gọi hàm ứng dụng sau khi SET ROLE sang vai API;
@@ -29,14 +33,14 @@
 --     cli_login_postgres làm việc sau SET ROLE postgres; supabase_etl_admin, supabase_replication_admin,
 --     supabase_functions_admin không gọi hàm ứng dụng; dashboard_user, supabase_privileged_role, supabase_realtime_admin,
 --     ie_canonical_writer là NOLOGIN và không đường chạy nào biến chúng thành current_user. pg_cron: 11 job đều chạy
---     bằng postgres, là chủ mọi hàm này.
---  3. ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC: hàm postgres tạo sau này không
+--     bằng postgres, là chủ mọi hàm này. ie_detail_reader thuộc authenticated nên thừa hưởng quyền của authenticated.
+--  5. ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC: hàm postgres tạo sau này không
 --     tự cấp PUBLIC. Mặc định Supabase theo schema (public, storage: anon/authenticated/service_role) giữ nguyên. Hàm mới
---     ở app_private chỉ chủ gọi được, nên hàm app_private dùng trong policy, view hay hàm INVOKER phải GRANT EXECUTE
---     tường minh cho vai gọi. PostgreSQL không cho thu PUBLIC theo từng schema, nên lệnh này áp cho mọi schema mà postgres
---     tạo hàm (ngoài public/app_private, postgres chỉ sở hữu hàm extension trong extensions).
---  4. Tự kiểm sau áp, đỏ là cuộn cả file: còn hàm cấp PUBLIC; vai API (hoặc read-only trên INVOKER) mất quyền; vai bị chặn
---     gọi được hàm DEFINER ngoài hàm riêng của nó; mặc định hàm của postgres còn cấp PUBLIC.
+--     ở app_private chỉ chủ gọi được, nên hàm app_private dùng trong policy, view hay default phải GRANT EXECUTE tường
+--     minh cho vai gọi — gate check-definer-acl đỏ nếu thiếu. PostgreSQL không cho thu PUBLIC theo từng schema, nên lệnh
+--     này áp cho mọi schema mà postgres tạo hàm (ngoài public/app_private, postgres chỉ sở hữu hàm extension).
+--  6. Tự kiểm sau áp, đỏ là cuộn cả file: còn hàm cấp PUBLIC; vai thật sự dùng thiếu quyền; anon mở lại cửa đã đóng; vai
+--     bị chặn gọi được hàm DEFINER ngoài hàm riêng của nó; mặc định hàm của postgres còn cấp PUBLIC.
 -- Idempotent: lượt hai không còn hàm cấp PUBLIC nên không GRANT/REVOKE gì, tự kiểm vẫn chạy. Không đổi thân hàm, không DROP.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -46,11 +50,12 @@ DO $thu$
 DECLARE
   f record;
   v_role text;
-  v_roles text[];
-  v_api CONSTANT text[] := ARRAY['anon','authenticated','service_role'];
-  v_giu oid[] := '{}';
-  v_giu_invoker oid[] := '{}';
+  v_can text[];
+  v_giu_vai text[] := '{}';
+  v_giu_ham oid[] := '{}';
+  v_dong_anon oid[] := '{}';
   v_thu integer := 0;
+  v_cap integer := 0;
 BEGIN
   FOR f IN
     SELECT p.oid, p.oid::regprocedure::text AS sig, p.prosecdef,
@@ -65,29 +70,58 @@ BEGIN
     ORDER BY n.nspname,p.proname,p.oid
   LOOP
     IF NOT f.trig THEN
-      v_roles:=v_api;
-      IF NOT f.prosecdef THEN v_roles:=v_roles||'supabase_read_only_user'::text; END IF;
-      FOREACH v_role IN ARRAY v_roles LOOP
-        CONTINUE WHEN pg_catalog.to_regrole(v_role) IS NULL;
+      -- Vai tự chạy hàm qua đối tượng phụ thuộc (pg_depend), không gọi tên nó.
+      SELECT COALESCE(array_agg(r.rolname::text ORDER BY r.rolname),'{}') INTO v_can
+      FROM pg_catalog.pg_roles r
+      WHERE r.rolname IN ('anon','authenticated','service_role','supabase_read_only_user')
+        AND (r.rolname<>'supabase_read_only_user' OR NOT f.prosecdef)
+        AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+          WHERE d.refclassid='pg_catalog.pg_proc'::regclass AND d.refobjid=f.oid AND (
+            (d.classid='pg_catalog.pg_policy'::regclass AND NOT r.rolbypassrls AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy x
+              WHERE x.oid=d.objid AND (0=ANY(x.polroles) OR EXISTS (SELECT 1 FROM unnest(x.polroles) g(oid)
+                WHERE g.oid<>0 AND pg_catalog.pg_has_role(r.oid,g.oid,'USAGE')))
+                AND pg_catalog.has_table_privilege(r.oid,x.polrelid,'SELECT,INSERT,UPDATE,DELETE')))
+            OR (d.classid='pg_catalog.pg_rewrite'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite x
+              JOIN pg_catalog.pg_class c ON c.oid=x.ev_class WHERE x.oid=d.objid
+                AND lower(COALESCE((SELECT o.option_value FROM pg_catalog.pg_options_to_table(c.reloptions) o
+                  WHERE o.option_name='security_invoker'),'false')) IN ('true','on','1')
+                AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT')))
+            OR (d.classid='pg_catalog.pg_attrdef'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef x
+              WHERE x.oid=d.objid AND pg_catalog.has_table_privilege(r.oid,x.adrelid,'INSERT,UPDATE')))
+            OR (d.classid='pg_catalog.pg_constraint'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint x
+              WHERE x.oid=d.objid AND (x.conrelid=0 OR pg_catalog.has_table_privilege(r.oid,x.conrelid,'INSERT,UPDATE'))))
+            OR (d.classid='pg_catalog.pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_index x
+              WHERE x.indexrelid=d.objid AND pg_catalog.has_table_privilege(r.oid,x.indrelid,'INSERT,UPDATE')))
+            OR (d.classid='pg_catalog.pg_trigger'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger x
+              WHERE x.oid=d.objid AND pg_catalog.has_table_privilege(r.oid,x.tgrelid,'INSERT,UPDATE,DELETE')))));
+      -- Cửa đã cố ý đóng với anon (cấp authenticated, không cấp anon) giữ đóng; đường phụ thuộc đòi mở thì dừng.
+      IF EXISTS (SELECT 1 FROM pg_catalog.aclexplode(f.acl) a WHERE a.grantee='authenticated'::regrole AND a.privilege_type='EXECUTE')
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(f.acl) a WHERE a.grantee='anon'::regrole AND a.privilege_type='EXECUTE') THEN
+        IF 'anon'=ANY(v_can) THEN RAISE EXCEPTION 'public_execute_anon_da_dong_nhung_can: %',f.sig; END IF;
+        v_dong_anon:=v_dong_anon||f.oid;
+      END IF;
+      FOREACH v_role IN ARRAY v_can LOOP
+        v_giu_vai:=v_giu_vai||v_role; v_giu_ham:=v_giu_ham||f.oid;
         -- Đã có quyền không qua PUBLIC (cấp thẳng hoặc thừa hưởng) thì để nguyên ACL.
         CONTINUE WHEN EXISTS (SELECT 1 FROM pg_catalog.aclexplode(f.acl) a
           WHERE a.grantee<>0 AND a.privilege_type='EXECUTE' AND pg_catalog.pg_has_role(v_role,a.grantee,'USAGE'));
         EXECUTE format('GRANT EXECUTE ON ROUTINE %s TO %I',f.sig,v_role);
+        v_cap:=v_cap+1;
       END LOOP;
-      v_giu:=v_giu||f.oid;
-      IF NOT f.prosecdef THEN v_giu_invoker:=v_giu_invoker||f.oid; END IF;
     END IF;
     EXECUTE format('REVOKE EXECUTE ON ROUTINE %s FROM PUBLIC',f.sig);
     v_thu:=v_thu+1;
   END LOOP;
-  -- Danh sách vai ghi lại ở đây, không dùng v_api: sửa nhầm một chỗ thì chỗ kia vẫn bắt.
-  IF EXISTS (SELECT 1 FROM unnest(v_giu) k(fn) CROSS JOIN (VALUES ('anon'),('authenticated'),('service_role')) r(rolname)
-      WHERE pg_catalog.to_regrole(r.rolname) IS NOT NULL AND NOT pg_catalog.has_function_privilege(r.rolname,k.fn,'EXECUTE'))
-    OR (pg_catalog.to_regrole('supabase_read_only_user') IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(v_giu_invoker) k(fn)
-      WHERE NOT pg_catalog.has_function_privilege('supabase_read_only_user',k.fn,'EXECUTE'))) THEN
+  IF EXISTS (SELECT 1 FROM unnest(v_giu_vai,v_giu_ham) k(rolname,fn)
+      WHERE NOT pg_catalog.has_function_privilege(k.rolname,k.fn,'EXECUTE')) THEN
     RAISE EXCEPTION 'public_execute_vai_dang_dung_mat_quyen';
   END IF;
-  RAISE NOTICE 'public_execute: thu PUBLIC trên % hàm, giữ quyền vai đang dùng trên % hàm không phải trigger',v_thu,cardinality(v_giu);
+  IF pg_catalog.to_regrole('anon') IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(v_dong_anon) k(fn)
+      WHERE pg_catalog.has_function_privilege('anon',k.fn,'EXECUTE')) THEN
+    RAISE EXCEPTION 'public_execute_mo_lai_anon_da_dong';
+  END IF;
+  RAISE NOTICE 'public_execute: thu PUBLIC trên % hàm, cấp % dòng cho vai thật sự dùng, giữ đóng anon trên % hàm',
+    v_thu,v_cap,cardinality(v_dong_anon);
 END $thu$;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;

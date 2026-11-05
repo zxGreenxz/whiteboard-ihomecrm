@@ -53,6 +53,12 @@ describe("phanTichPublicExecute", () => {
     expect(kq.dat).toBe(false);
     expect(kq.macDinh).toEqual(["postgres: (toàn cục)"]);
   });
+
+  it("hàm trong policy/view/default mà vai gọi thiếu EXECUTE → đỏ (helper app_private mới quên GRANT)", () => {
+    const kq = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "authenticated", sig: "app_private.buildings_i_can_see()" }], blockedRoles: {} });
+    expect(kq.dat).toBe(false);
+    expect(kq.thieuQuyen).toEqual(["authenticated → app_private.buildings_i_can_see()"]);
+  });
 });
 
 describe("sqlPublicExecute", () => {
@@ -68,6 +74,22 @@ describe("sqlPublicExecute", () => {
     expect(sql).toContain("pg_has_role(r.oid, g.oid, 'MEMBER')");
     expect(sql).toContain("acldefault('f', a.proowner)");
     expect(sql).toContain("d.deptype = 'e'");
+  });
+
+  it("kiểm thiếu quyền theo pg_depend (policy/view/default/CHECK/chỉ mục/WHEN), miễn anon trên cửa đã cố ý đóng", () => {
+    const sql = sqlPublicExecute(blockedRoles);
+    expect(sql).toContain("SELECT 'thieu'");
+    for (const nguon of ["pg_policy", "pg_rewrite", "pg_attrdef", "pg_constraint", "pg_index", "pg_trigger"]) expect(sql).toContain(nguon);
+    expect(sql).toContain("x.grantee = 'authenticated'::regrole");
+    expect(sql).toContain("x.grantee = 'anon'::regrole");
+  });
+});
+
+describe("allowlist anon trong definer-acl-baseline.json", () => {
+  it("không còn hai hàm báo cáo tiền mà 20260621000001 đã cố ý thu khỏi anon", () => {
+    for (const sig of ["get_change_breakdown_v2(uuid,uuid,invoice_status,date,date,text,text,uuid[])",
+      "get_deposit_breakdown_v2(uuid,uuid,date,date,text,uuid[])"]) expect(baseline.signatures).not.toContain(sig);
+    expect(baseline.count).toBe(baseline.signatures.length);
   });
 });
 

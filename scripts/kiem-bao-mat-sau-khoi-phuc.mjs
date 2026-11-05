@@ -153,7 +153,7 @@ const SQL_ANON_DEFINER = `
  * Trả { dat, viPham: [{ phep, danhSach }] }.
  */
 export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, stableLocks, anonDefiner, denylist,
-  publicExecute = { hamPublic: [], vuotQuyen: [], macDinh: [] } }) {
+  publicExecute = { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [] } }) {
   const viPham = [];
   if (bangThieuRls.length > 0) {
     viPham.push({ phep: "bảng public thiếu RLS", danhSach: bangThieuRls });
@@ -193,6 +193,9 @@ export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, st
   }
   if (publicExecute.macDinh.length > 0) {
     viPham.push({ phep: "mặc định quyền hàm còn cấp PUBLIC (hàm tạo sau lại mở cho mọi vai)", danhSach: publicExecute.macDinh });
+  }
+  if ((publicExecute.thieuQuyen ?? []).length > 0) {
+    viPham.push({ phep: "hàm trong policy/view/default thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)", danhSach: publicExecute.thieuQuyen });
   }
   return { dat: viPham.length === 0, viPham };
 }

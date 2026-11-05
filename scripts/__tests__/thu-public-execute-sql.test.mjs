@@ -94,7 +94,9 @@ CREATE SCHEMA auth AUTHORIZATION supabase_auth_admin;
 GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role, postgres;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 ALTER FUNCTION auth.uid() OWNER TO supabase_auth_admin;
-CREATE EXTENSION pgcrypto SCHEMA public;
+-- Extension do CHÍNH postgres sở hữu (như pgcrypto/uuid-ossp trên production): migration là chủ nên THU ĐƯỢC PUBLIC của
+-- chúng nếu bỏ lọc extension — phép khẳng định "hàm extension giữ PUBLIC" vì thế có nghĩa (không như extension của superuser).
+ALTER ROLE postgres SUPERUSER; SET ROLE postgres; CREATE EXTENSION pgcrypto SCHEMA public; RESET ROLE; ALTER ROLE postgres NOSUPERUSER;
 CREATE SCHEMA app_private AUTHORIZATION postgres;
 `;
 
@@ -106,8 +108,16 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authen
 GRANT USAGE ON SCHEMA app_private TO hermes_store_executor, hermes_learning_ingest, ie_detail_reader;
 CREATE FUNCTION public.f_sort_key(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT lower(p) $$;
 CREATE FUNCTION app_private.inv_helper(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT upper(p) $$;
+CREATE FUNCTION app_private.default_code() RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'MA-001' $$;
+CREATE FUNCTION public.f_util(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT p || '!' $$;
 CREATE TABLE public.readings(id bigserial PRIMARY KEY, owner_id uuid NOT NULL DEFAULT auth.uid(), label text NOT NULL,
-  sort_key text DEFAULT public.f_sort_key('A-1'), audit text[] NOT NULL DEFAULT '{}');
+  sort_key text DEFAULT public.f_sort_key('A-1'), code text DEFAULT app_private.default_code(), audit text[] NOT NULL DEFAULT '{}');
+CREATE FUNCTION app_private.public_helper(p boolean) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+  AS $$ SELECT p $$;
+CREATE TABLE public.notices(id int PRIMARY KEY, visible boolean NOT NULL);
+ALTER TABLE public.notices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY notices_public ON public.notices FOR SELECT TO public USING (app_private.public_helper(visible));
+INSERT INTO public.notices VALUES (1, true), (2, false);
 ALTER TABLE public.readings ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION app_private.can_see(p uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path=pg_catalog,public AS $$ SELECT p = auth.uid() $$;
@@ -157,21 +167,27 @@ const PUBLIC_EXEC = `EXISTS (SELECT 1 FROM aclexplode(COALESCE(p.proacl, acldefa
 const NOT_TRIGGER = `p.prorettype NOT IN ('trigger'::regtype, 'event_trigger'::regtype)`;
 
 // Mỗi thăm dò: vai, cách vào (qua authenticator + SET ROLE như PostgREST, hoặc login thẳng), câu SQL. `after` = SQLSTATE
-// bắt buộc sau migration (vai bị chặn); không có `after` thì kết quả sau phải Y HỆT trước.
+// bắt buộc sau migration (vai bị chặn, cửa anon đã cố ý đóng, read-only gọi thẳng hàm không view nào dùng); không có `after`
+// thì kết quả sau phải Y HỆT trước — gồm mọi đường policy/view/default/trigger mà vai API tự chạy hàm.
 const PROBES = [
   { id: 'authenticated gọi DEFINER ghi dưới auth.uid()', role: 'authenticated', sql: "SELECT public.f_impersonate('x')::text AS v" },
   { id: 'authenticated chèn dòng: default + trigger DEFINER/INVOKER', role: 'authenticated',
-    sql: "INSERT INTO public.readings(label) VALUES ('y') RETURNING (audit::text || '|' || sort_key) AS v" },
+    sql: "INSERT INTO public.readings(label) VALUES ('y') RETURNING (audit::text || '|' || sort_key || '|' || code) AS v" },
+  { id: 'anon đọc bảng có policy TO public gọi helper app_private', role: 'anon',
+    sql: "SELECT string_agg(id::text, ',' ORDER BY id) AS v FROM public.notices" },
   { id: 'authenticated đọc qua RLS gọi helper app_private', role: 'authenticated', sql: 'SELECT count(*)::text AS v FROM public.readings' },
   { id: 'authenticated đọc view security_invoker gọi hàm app_private', role: 'authenticated',
     sql: "SELECT string_agg(label_up || k, ',' ORDER BY id) AS v FROM public.v_readings" },
   { id: 'authenticated gọi DEFINER do ie_detail_reader sở hữu', role: 'authenticated', sql: 'SELECT public.read_details()::text AS v' },
   { id: 'authenticated gọi DEFINER báo cáo', role: 'authenticated', sql: 'SELECT public.f_breakdown()::text AS v' },
-  { id: 'anon gọi DEFINER chỉ nhờ PUBLIC', role: 'anon', sql: 'SELECT public.f_breakdown()::text AS v' },
+  // Cửa đã cố ý đóng với anon (REVOKE anon, còn authenticated) — trước gọi được chỉ nhờ PUBLIC, sau phải 42501.
+  { id: 'anon gọi DEFINER đã cố ý đóng, chỉ còn nhờ PUBLIC', role: 'anon', after: '42501', sql: 'SELECT public.f_breakdown()::text AS v' },
   { id: 'anon gọi DEFINER ghi', role: 'anon', sql: "SELECT public.f_impersonate('x')::text AS v" },
   { id: 'service_role gọi DEFINER báo cáo', role: 'service_role', sql: 'SELECT public.f_breakdown()::text AS v' },
   { id: 'service_role đọc view', role: 'service_role', sql: 'SELECT count(*)::text AS v FROM public.v_readings' },
-  { id: 'read-only gọi hàm INVOKER', login: 'supabase_read_only_user', sql: "SELECT public.f_sort_key('AB') AS v" },
+  { id: 'read-only gọi hàm INVOKER mà view dùng', login: 'supabase_read_only_user', sql: "SELECT public.f_sort_key('AB') AS v" },
+  { id: 'read-only gọi thẳng hàm INVOKER không view nào dùng', login: 'supabase_read_only_user', after: '42501',
+    sql: "SELECT public.f_util('AB') AS v" },
   { id: 'read-only đọc view gọi hàm', login: 'supabase_read_only_user', sql: 'SELECT count(*)::text AS v FROM public.v_readings' },
   { id: 'login học gọi đúng hàm nạp', login: 'hermes_store_learning', sql: "SELECT app_private.hermes_store_learning_ingest_v1('{}')::text AS v" },
   { id: 'login học giả danh người dùng qua DEFINER', login: 'hermes_store_learning', claim: USER, after: '42501',
@@ -228,12 +244,11 @@ async function catalog(pool) {
     acl: await q(`SELECT p.oid::regprocedure::text AS sig, COALESCE(p.proacl::text, 'NULL') AS acl ${APP_FUNCTIONS} ORDER BY 1`),
     defaults: await q(`SELECT pg_get_userbyid(defaclrole) AS r, defaclnamespace::regnamespace::text AS s, defaclobjtype::text AS t, defaclacl::text AS acl
       FROM pg_default_acl ORDER BY 1, 2, 3`),
-    apiExec: await q(`SELECT p.oid::regprocedure::text AS sig, r.rolname, has_function_privilege(r.oid, p.oid, 'EXECUTE') AS co
-      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace CROSS JOIN pg_roles r
-      WHERE n.nspname IN ('public', 'app_private') AND ${NOT_TRIGGER}
-        AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
-        AND (r.rolname IN ('anon', 'authenticated', 'service_role') OR (r.rolname = 'supabase_read_only_user' AND NOT p.prosecdef))
-      ORDER BY 1, 2`),
+    // Hàm extension trong public: chủ và ACL — để chứng minh migration KHÔNG đụng (chúng do postgres sở hữu, thu được nếu lọc hỏng).
+    extension: await q(`SELECT pg_get_userbyid(p.proowner) AS owner, count(*)::int AS n,
+        count(*) FILTER (WHERE ${PUBLIC_EXEC})::int AS cap_public
+      FROM pg_proc p JOIN pg_depend d ON d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+      WHERE p.pronamespace = 'public'::regnamespace GROUP BY 1`),
   };
 }
 
@@ -251,23 +266,30 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   assert.deepEqual(before['login kho bền giả danh qua DEFINER'], { ok: true, v: USER });
   assert.equal(before['login học gọi DEFINER app_private'].ok, true);
   assert.equal(before['read-only gọi DEFINER (ghi được nhờ PUBLIC)'].ok, true);
-  assert.equal(before['anon gọi DEFINER chỉ nhờ PUBLIC'].ok, true);
-  assert.equal(before['authenticated chèn dòng: default + trigger DEFINER/INVOKER'].v, '{definer,invoker:authenticated,public_invoker}|a-1');
+  assert.equal(before['anon gọi DEFINER đã cố ý đóng, chỉ còn nhờ PUBLIC'].ok, true);
+  assert.equal(before['read-only gọi thẳng hàm INVOKER không view nào dùng'].ok, true);
+  assert.equal(before['authenticated chèn dòng: default + trigger DEFINER/INVOKER'].v, '{definer,invoker:authenticated,public_invoker}|a-1|MA-001');
   assert.equal(before['authenticated đọc qua RLS gọi helper app_private'].v, '1');
+  assert.equal(before['anon đọc bảng có policy TO public gọi helper app_private'].v, '1');
   assert.deepEqual(await ddlByAuthAdmin(pool, 'truoc'), ['supabase_auth_admin']);
   const catalogBefore = await catalog(pool);
+  assert.equal(catalogBefore.extension.length, 1);
+  assert.equal(catalogBefore.extension[0].owner, 'postgres', 'extension do chính postgres sở hữu ⇒ migration thu được nếu không lọc');
+  assert(catalogBefore.extension[0].cap_public > 10 && catalogBefore.extension[0].cap_public === catalogBefore.extension[0].n);
   const publicBefore = (await pool('supabase_admin').query(`SELECT count(*)::int AS n ${APP_FUNCTIONS} AND ${PUBLIC_EXEC}`)).rows[0].n;
-  assert.equal(publicBefore, 11, 'fixture có đủ 11 hàm ứng dụng cấp PUBLIC (5 proacl NULL ở app_private, 1 do vai khác sở hữu)');
+  assert.equal(publicBefore, 14, 'fixture có đủ 14 hàm ứng dụng cấp PUBLIC (7 proacl NULL ở app_private, 1 do vai khác sở hữu)');
   const gateBefore = await gate(pool);
   assert.equal(gateBefore.dat, false);
-  assert.equal(gateBefore.hamPublic.length, 11);
+  assert.equal(gateBefore.hamPublic.length, 14);
+  assert.deepEqual(gateBefore.thieuQuyen, [], 'còn PUBLIC thì chưa vai nào thiếu quyền');
   assert(gateBefore.vuotQuyen.includes('hermes_store_learning → f_impersonate(text)'), 'gate thấy login học gọi được DEFINER');
   assert(gateBefore.vuotQuyen.includes('pgbouncer → app_private.can_see(uuid)'), 'gate tính EXECUTE cả khi vai chưa có USAGE schema (chặt hơn)');
   assert.deepEqual(gateBefore.macDinh, ['postgres: (toàn cục)']);
 
   await pool('postgres').query(MIGRATION);
   const gateAfter = await gate(pool);
-  assert.deepEqual({ ...gateAfter, thua: [] }, { hamPublic: [], vuotQuyen: [], macDinh: [], thua: [], dat: true }, 'gate xanh sau migration');
+  assert.deepEqual({ ...gateAfter, thua: [] }, { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], thua: [], dat: true },
+    'gate xanh sau migration');
   const after = await battery(pool);
   for (const p of PROBES) {
     if (p.after) assert.deepEqual(after[p.id], { ok: false, code: p.after }, p.id);
@@ -282,13 +304,27 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   assert.deepEqual(await ddlByAuthAdmin(pool, 'sau'), ['supabase_auth_admin', 'supabase_auth_admin']);
 
   const catalogAfter = await catalog(pool);
-  assert.deepEqual(catalogAfter.apiExec, catalogBefore.apiExec, 'vai API (và read-only trên INVOKER) giữ đúng quyền EXECUTE');
+  // Cấp ĐÚNG vai thật sự dùng (pg_depend), không cấp đại trà: ACL từng hàm sau migration.
+  const acl = Object.fromEntries(catalogAfter.acl.map((r) => [r.sig, r.acl]));
+  const ALL = 'postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres';
+  assert.deepEqual({
+    can_see: acl['app_private.can_see(uuid)'], public_helper: acl['app_private.public_helper(boolean)'],
+    inv_helper: acl['app_private.inv_helper(text)'], default_code: acl['app_private.default_code()'],
+    scope_label: acl['app_private.scope_label(uuid)'], trg_definer: acl['app_private.trg_definer()'], evt: acl['app_private.evt_log_fn()'],
+    f_sort_key: acl['f_sort_key(text)'], f_util: acl['f_util(text)'], f_breakdown: acl['f_breakdown()'],
+  }, {
+    can_see: '{postgres=X/postgres,authenticated=X/postgres}', // policy TO authenticated
+    public_helper: '{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres}', // policy TO public; service_role BYPASSRLS
+    inv_helper: `{${ALL},supabase_read_only_user=X/postgres}`, // view security_invoker: mọi vai đọc được view
+    default_code: `{${ALL}}`, // default cột: vai ghi được bảng (read-only không ghi)
+    scope_label: '{postgres=X/postgres}', trg_definer: '{postgres=X/postgres}', evt: '{postgres=X/postgres}', // không ai tự chạy qua đối tượng nào
+    f_sort_key: `{${ALL},supabase_read_only_user=X/postgres}`, // public: vai API vốn có; read-only vì view dùng
+    f_util: `{${ALL}}`, // không view nào dùng ⇒ read-only không nhận
+    f_breakdown: '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}', // anon đã cố ý đóng: giữ đóng
+  });
   const publicAfter = await pool('supabase_admin').query(`SELECT p.oid::regprocedure::text AS sig ${APP_FUNCTIONS} AND ${PUBLIC_EXEC}`);
   assert.deepEqual(publicAfter.rows, []);
-  const extension = await pool('supabase_admin').query(`SELECT count(*)::int AS n FROM pg_proc p
-    JOIN pg_depend d ON d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
-    WHERE p.pronamespace = 'public'::regnamespace AND ${PUBLIC_EXEC}`);
-  assert(extension.rows[0].n > 10, 'hàm extension (pgcrypto trong public) không bị đụng');
+  assert.deepEqual(catalogAfter.extension, catalogBefore.extension, 'hàm extension do postgres sở hữu giữ nguyên PUBLIC');
   const untouched = (rows) => rows.filter((r) => /hermes_store_/.test(r.sig));
   assert.equal(untouched(catalogBefore.acl).length, 2);
   assert.deepEqual(untouched(catalogAfter.acl), untouched(catalogBefore.acl), 'hàm vốn không cấp PUBLIC giữ nguyên ACL');
@@ -319,11 +355,13 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   ]);
   await pool('postgres').query('DROP FUNCTION public.f_moi(); DROP FUNCTION app_private.f_moi();');
 
-  // Thăm dò không mù: thiếu đúng GRANT cho authenticated trên helper của policy thì đường đọc RLS đỏ 42501.
+  // Thăm dò không mù: thiếu đúng GRANT cho authenticated trên helper của policy thì đường đọc RLS đỏ 42501 — và gate thấy trước.
+  const rlsProbe = PROBES.find((p) => p.id === 'authenticated đọc qua RLS gọi helper app_private');
   await pool('postgres').query('REVOKE EXECUTE ON FUNCTION app_private.can_see(uuid) FROM authenticated');
-  assert.deepEqual(await probe(pool, PROBES[2]), { ok: false, code: '42501' });
+  assert.deepEqual(await probe(pool, rlsProbe), { ok: false, code: '42501' });
+  assert.deepEqual((await gate(pool)).thieuQuyen, ['authenticated → app_private.can_see(uuid)'], 'gate báo helper policy thiếu GRANT');
   await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.can_see(uuid) TO authenticated');
-  assert.deepEqual(await probe(pool, PROBES[2]), before[PROBES[2].id]);
+  assert.deepEqual(await probe(pool, rlsProbe), before[rlsProbe.id]);
 
   await t.test('tự kiểm đỏ khi còn một hàm cấp PUBLIC', async () => {
     await pool('postgres').query('GRANT EXECUTE ON FUNCTION public.f_sort_key(text) TO PUBLIC');
@@ -337,12 +375,31 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   await t.test('tự kiểm đỏ khi bỏ GRANT cần thiết cho vai đang dùng', async () => {
     await pool('postgres').query(`CREATE FUNCTION app_private.can_see_v2(p uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
       SET search_path=pg_catalog,public AS $$ SELECT p = auth.uid() $$;
-      GRANT EXECUTE ON FUNCTION app_private.can_see_v2(uuid) TO PUBLIC;`);
+      GRANT EXECUTE ON FUNCTION app_private.can_see_v2(uuid) TO PUBLIC;
+      CREATE POLICY readings_v2 ON public.readings FOR SELECT TO authenticated USING (app_private.can_see_v2(owner_id));`);
     await assert.rejects(pool('postgres').query(MIGRATION.replace(GRANT_STEP, 'NULL;')), /public_execute_vai_dang_dung_mat_quyen/);
     await pool('postgres').query(MIGRATION);
     const kept = await pool('supabase_admin').query(`SELECT has_function_privilege('authenticated', 'app_private.can_see_v2(uuid)', 'EXECUTE') AS a,
+      has_function_privilege('anon', 'app_private.can_see_v2(uuid)', 'EXECUTE') AS anon,
       has_function_privilege('hermes_store_learning', 'app_private.can_see_v2(uuid)', 'EXECUTE') AS h`);
-    assert.deepEqual(kept.rows[0], { a: true, h: false });
+    assert.deepEqual(kept.rows[0], { a: true, anon: false, h: false });
+    await pool('postgres').query('DROP POLICY readings_v2 ON public.readings; DROP FUNCTION app_private.can_see_v2(uuid);');
+  });
+
+  await t.test('cửa đã cố ý đóng với anon: không tự mở lại; đường phụ thuộc đòi anon thì dừng chờ người quyết', async () => {
+    // Giống get_*_breakdown_v2: REVOKE anon, còn authenticated, PUBLIC còn — nhưng lần này một policy TO public lại dùng nó.
+    await pool('postgres').query(`CREATE FUNCTION public.f_closed(p boolean) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+      SET search_path=pg_catalog AS $$ SELECT p $$;
+      REVOKE ALL ON FUNCTION public.f_closed(boolean) FROM anon; GRANT EXECUTE ON FUNCTION public.f_closed(boolean) TO PUBLIC;
+      CREATE POLICY notices_closed ON public.notices FOR SELECT TO public USING (public.f_closed(visible));`);
+    await assert.rejects(pool('postgres').query(MIGRATION), /public_execute_anon_da_dong_nhung_can: f_closed\(boolean\)/);
+    // Không ai dùng thì thu PUBLIC bình thường, anon vẫn đóng.
+    await pool('postgres').query('DROP POLICY notices_closed ON public.notices');
+    await pool('postgres').query(MIGRATION);
+    const closed = await pool('supabase_admin').query(`SELECT has_function_privilege('anon', 'public.f_closed(boolean)', 'EXECUTE') AS anon,
+      has_function_privilege('authenticated', 'public.f_closed(boolean)', 'EXECUTE') AS a`);
+    assert.deepEqual(closed.rows[0], { anon: false, a: true });
+    await pool('postgres').query('DROP FUNCTION public.f_closed(boolean)');
   });
 
   await t.test('tự kiểm đỏ khi vai bị chặn gọi được hàm DEFINER (cấp thẳng hoặc qua nhóm chỉ SET ROLE)', async () => {

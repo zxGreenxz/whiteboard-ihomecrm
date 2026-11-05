@@ -61,6 +61,11 @@ const SCHEMA_PHOI_RA = ['public', 'api', 'graphql_public'];
 //      gồm cả nhóm chỉ SET ROLE được mà không thừa hưởng).
 //   3. Mặc định hàm của postgres (toàn cục, hoặc theo schema) còn cấp PUBLIC không? Còn thì hàm tạo
 //      sau lại cấp PUBLIC.
+//   4. Hàm mà vai tự chạy qua đối tượng phụ thuộc (pg_depend: policy RLS, view security_invoker,
+//      default/CHECK/chỉ mục/WHEN) có thiếu EXECUTE cho vai đó không? Hết PUBLIC thì một helper
+//      app_private mới trong policy mà quên GRANT sẽ làm truy vấn của vai đó lỗi 42501 — chỉ phép
+//      này thấy trước. Miễn anon trên hàm đã cố ý đóng (ACL cấp authenticated, không cấp anon): đo
+//      prod 05/11 có 15 hàm như vậy trong policy TO public, đúng ý người đã thu.
 // Danh sách của vai bị chặn sửa TAY trong PR có review; --update không đụng tới nó.
 export const SCHEMA_UNG_DUNG = ['public', 'app_private', 'api'];
 const TEN_VAI = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -86,6 +91,35 @@ SELECT 'reach', r.rolname::text, a.sig FROM pg_catalog.pg_roles r CROSS JOIN app
    AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles g
      WHERE pg_catalog.pg_has_role(r.oid, g.oid, 'MEMBER') AND pg_catalog.has_function_privilege(g.oid, a.oid, 'EXECUTE'))
 UNION ALL
+SELECT 'thieu', r.rolname::text, a.sig FROM pg_catalog.pg_roles r CROSS JOIN app a
+ WHERE r.rolname IN ('anon','authenticated','service_role','supabase_read_only_user') AND NOT a.trig
+   AND (r.rolname <> 'supabase_read_only_user' OR NOT a.prosecdef)
+   AND NOT pg_catalog.has_function_privilege(r.oid, a.oid, 'EXECUTE')
+   AND NOT (r.rolname = 'anon'
+     AND EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
+       WHERE x.grantee = 'authenticated'::regrole AND x.privilege_type = 'EXECUTE')
+     AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
+       WHERE x.grantee = 'anon'::regrole AND x.privilege_type = 'EXECUTE'))
+   AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+     WHERE d.refclassid = 'pg_catalog.pg_proc'::regclass AND d.refobjid = a.oid AND (
+       (d.classid = 'pg_catalog.pg_policy'::regclass AND NOT r.rolbypassrls AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy x
+         WHERE x.oid = d.objid AND (0 = ANY (x.polroles) OR EXISTS (SELECT 1 FROM unnest(x.polroles) g(oid)
+           WHERE g.oid <> 0 AND pg_catalog.pg_has_role(r.oid, g.oid, 'USAGE')))
+           AND pg_catalog.has_table_privilege(r.oid, x.polrelid, 'SELECT,INSERT,UPDATE,DELETE')))
+       OR (d.classid = 'pg_catalog.pg_rewrite'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite x
+         JOIN pg_catalog.pg_class c ON c.oid = x.ev_class WHERE x.oid = d.objid
+           AND lower(COALESCE((SELECT o.option_value FROM pg_catalog.pg_options_to_table(c.reloptions) o
+             WHERE o.option_name = 'security_invoker'), 'false')) IN ('true', 'on', '1')
+           AND pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')))
+       OR (d.classid = 'pg_catalog.pg_attrdef'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef x
+         WHERE x.oid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.adrelid, 'INSERT,UPDATE')))
+       OR (d.classid = 'pg_catalog.pg_constraint'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint x
+         WHERE x.oid = d.objid AND (x.conrelid = 0 OR pg_catalog.has_table_privilege(r.oid, x.conrelid, 'INSERT,UPDATE'))))
+       OR (d.classid = 'pg_catalog.pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_index x
+         WHERE x.indexrelid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.indrelid, 'INSERT,UPDATE')))
+       OR (d.classid = 'pg_catalog.pg_trigger'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger x
+         WHERE x.oid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.tgrelid, 'INSERT,UPDATE,DELETE')))))
+UNION ALL
 SELECT 'default', 'postgres', '(toàn cục)'
  WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl da
    WHERE da.defaclrole = 'postgres'::regrole AND da.defaclnamespace = 0 AND da.defaclobjtype = 'f'
@@ -107,9 +141,11 @@ export function phanTichPublicExecute({ rows = [], blockedRoles = {} } = {}) {
   const reach = rows.filter((r) => r.kind === 'reach');
   const vuotQuyen = reach.filter((r) => !(blockedRoles[r.role] ?? []).includes(r.sig)).map((r) => `${r.role} → ${r.sig}`);
   const macDinh = rows.filter((r) => r.kind === 'default').map((r) => `${r.role}: ${r.sig}`);
+  const thieuQuyen = rows.filter((r) => r.kind === 'thieu').map((r) => `${r.role} → ${r.sig}`);
   const conGoi = new Set(reach.map((r) => `${r.role} → ${r.sig}`));
   const thua = Object.entries(blockedRoles).flatMap(([role, sigs]) => sigs.map((s) => `${role} → ${s}`)).filter((x) => !conGoi.has(x));
-  return { hamPublic, vuotQuyen, macDinh, thua, dat: hamPublic.length === 0 && vuotQuyen.length === 0 && macDinh.length === 0 };
+  return { hamPublic, vuotQuyen, macDinh, thieuQuyen, thua,
+    dat: hamPublic.length === 0 && vuotQuyen.length === 0 && macDinh.length === 0 && thieuQuyen.length === 0 };
 }
 
 /**
@@ -175,6 +211,11 @@ function baoPublicExecute(kq) {
   }
   if (kq.macDinh.length) {
     console.error(`❌ Mặc định quyền hàm còn cấp PUBLIC — hàm tạo sau sẽ lại mở cho mọi vai: ${kq.macDinh.join(', ')}`);
+  }
+  if (kq.thieuQuyen.length) {
+    console.error(`❌ ${kq.thieuQuyen.length} hàm mà vai tự chạy qua policy/view/default nhưng thiếu EXECUTE (truy vấn của vai đó sẽ lỗi 42501):`);
+    for (const s of kq.thieuQuyen.slice(0, 30)) console.error('   ! ' + s);
+    console.error('   GRANT EXECUTE tường minh cho đúng vai đó (hàm mới không còn tự cấp PUBLIC từ 20261104173640).');
   }
 }
 
@@ -247,7 +288,7 @@ async function main(argv) {
     console.log(`ℹ️  ${kqPublic.thua.length} dòng trong publicExecute.blockedRoles vai đó không còn gọi được (hàm đã bỏ/thu) — sửa tay để dọn: ${kqPublic.thua.slice(0, 5).join(', ')}`);
   }
   console.log(`✅ Không có SECURITY DEFINER anon-executable mới ngoài allowlist (${live.length} khớp baseline, ${denylist.length} hàm bị cấm vĩnh viễn).`);
-  console.log(`✅ Không hàm ứng dụng nào cấp EXECUTE cho PUBLIC; ${Object.keys(blockedRoles).length} vai bị chặn chỉ gọi được hàm DEFINER riêng của mình; mặc định hàm của postgres không cấp PUBLIC.`);
+  console.log(`✅ Không hàm ứng dụng nào cấp EXECUTE cho PUBLIC; ${Object.keys(blockedRoles).length} vai bị chặn chỉ gọi được hàm DEFINER riêng của mình; mặc định hàm của postgres không cấp PUBLIC; hàm trong policy/view/default đủ EXECUTE cho vai gọi.`);
   return 0;
 }
 
