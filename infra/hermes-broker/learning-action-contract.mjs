@@ -1,6 +1,6 @@
 // Thao tác ghi của trang BÀI HỌC — đợt 3 học có kiểm duyệt (docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4): tin Zalo 21:00 "Bài học
 // Hermes chờ duyệt" và duyệt qua Zalo. Cắm vào khung chung crm_action_* (0 byte tools/list: khuôn tham số nằm trong kết quả
-// crm_action_list). Một RPC trang public.hermes_learning_action_v1 (20261104170824): vỏ INVOKER → bước DEFINER (guard chung → cổng
+// crm_action_list). Một RPC trang public.hermes_learning_action_v1 (20261105025453): vỏ INVOKER → bước DEFINER (guard chung → cổng
 // users.edit như trang web → basis → ghi qua lõi dùng chung với web → biên nhận). Khoá riêng Hermes assistant.learning_review (seed TẮT,
 // quyền CRM giao vào users.edit). Trang chỉ nạp khi cấu hình host bật actionPages ["learning"]; vắng ⇒ danh mục như cũ.
 import { defineAction, param } from './action-catalog.mjs';

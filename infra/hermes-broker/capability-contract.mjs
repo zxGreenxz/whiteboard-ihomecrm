@@ -22,7 +22,7 @@ export const HERMES_ACTION_FOUNDATION_KEYS = Object.freeze(['income_expenses.edi
 // Đợt 3 Hoá đơn (20261022075230, HDN1): khoá riêng Hermes của invoice.collect, seed TẮT; quyền CRM giao vào = thu_tien.collect (đúng quyền
 // record_invoice_collection_v5 kiểm). Khối riêng: không chạm HERMES_ACTION_FOUNDATION_KEYS (test khoá chéo với seed M2, không có thu_tien.collect).
 export const HERMES_INVOICE_ACTION_KEYS = Object.freeze(['thu_tien.collect_transfer']);
-// Đợt 3 học có kiểm duyệt (20261104170824): khoá riêng Hermes của trang Bài học (learning.digest / learning.decide, learning-action-contract.mjs),
+// Đợt 3 học có kiểm duyệt (20261105025453): khoá riêng Hermes của trang Bài học (learning.digest / learning.decide, learning-action-contract.mjs),
 // seed TẮT; quyền CRM giao vào = users.edit (cùng quyền trang web "Bài học chờ duyệt"). Khối riêng: không nối vào HERMES_ACTION_FOUNDATION_KEYS
 // (test khoá 14 khoá của seed M2). Phạm vi 'organization': đề xuất của cả công ty, không gắn toà, không cần chọn phạm vi toà.
 export const HERMES_LEARNING_ACTION_KEYS = Object.freeze(['assistant.learning_review']);

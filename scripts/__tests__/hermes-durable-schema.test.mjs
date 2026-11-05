@@ -503,7 +503,7 @@ const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uu
   'public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)',
   // Mốc 6 (20261023030305): tra lô INVOKER + bước ghi lô DEFINER mà vỏ gắn OID.
   'public.hermes_contract_batch_lookup_v1(uuid,uuid[],uuid,date)', 'app_private.hermes_contract_batch_step_v1(jsonb,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'];
-// Học có kiểm duyệt đợt 3 (20261104170824): the caller executes the learning page's SQL-standard wrapper and the one DEFINER step it binds;
+// Học có kiểm duyệt đợt 3 (20261105025453): the caller executes the learning page's SQL-standard wrapper and the one DEFINER step it binds;
 // the shared guard, receipts, the decision core and the reason map are reached only from that step (owner).
 const LEARNING_ACTION_CALLER = ['app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
   'public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
@@ -1042,7 +1042,7 @@ test('all sixty-eight reviewed forward migrations and their 138 latest definitio
   // superseded).
   // Thu chi lượt 20 (G02): lõi giải dựng lại ở 20261027140949 (+1 file, cùng tên; thân 074419 thành ghim superseded).
   // Học có kiểm duyệt (31/10): kho đề xuất bài học 20261031041523 (+1 file, +8 tên mới).
-  // Học có kiểm duyệt đợt 3 (04/11): trang Bài học 20261104170824 (+1 file, +2 tên mới: bước DEFINER + vỏ INVOKER; guard bất biến dựng lại,
+  // Học có kiểm duyệt đợt 3 (04/11): trang Bài học 20261105025453 (+1 file, +2 tên mới: bước DEFINER + vỏ INVOKER; guard bất biến dựng lại,
   // thân 041523 thành ghim superseded).
   assert.equal(paths.length, 70);
   assert.equal(FORWARD_FUNCTIONS.length, 148);

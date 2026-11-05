@@ -37,6 +37,10 @@ const MUTATIONS = {
   'guard-decided-announce': ['    OR (NEW.status<>\'pending\' AND NEW.announced_at IS DISTINCT FROM OLD.announced_at)\n', ''],
   'grant-anon': ['GRANT EXECUTE ON FUNCTION public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated;',
     'GRANT EXECUTE ON FUNCTION public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated,anon;'],
+  // Sau C1 hàm mới không còn EXECUTE của PUBLIC: thiếu GRANT tường minh cho vai gọi ⇒ vỏ INVOKER không tới được bước DEFINER.
+  'step-no-grant': ['GRANT EXECUTE ON FUNCTION app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated;', ''],
+  'step-grant-public': ['GRANT EXECUTE ON FUNCTION app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated;',
+    'GRANT EXECUTE ON FUNCTION app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated,PUBLIC;'],
   'seed-enabled': ['VALUES(\'assistant.learning_review\',\'action\',false)', 'VALUES(\'assistant.learning_review\',\'action\',true)'],
 };
 const mutationName = process.env.HERMES_LEARNING_ACTION_SQL_MUTATION;
@@ -93,6 +97,9 @@ async function learningSetup(t) {
   const { db, call } = f;
   await db.exec(FOUNDATION);
   await db.exec(STORE);
+  // Như production sau C1 (20261104173640, PR #392): hàm postgres tạo SAU đó không tự cấp EXECUTE cho PUBLIC — mọi vai gọi phải được
+  // GRANT tường minh. File của đợt này tạo hàm sau mốc đó.
+  await db.exec('ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC');
   // File của đợt này chạy hai lần: phải idempotent.
   await db.exec(ACTION); await db.exec(ACTION);
   await db.exec(`INSERT INTO auth.users VALUES('${OUTSIDER}');
@@ -156,6 +163,13 @@ test('đợt 3 học có kiểm duyệt: learning.digest / learning.decide trên
       (SELECT atttypid='timestamptz'::regtype FROM pg_attribute WHERE attrelid='app_private.hermes_learning_proposals'::regclass AND attname='announced_at') column_type`)).rows[0];
     assert.deepEqual(catalog, { shell_definer: false, shell_bound: true, step_definer: true, a_shell: true, a_step: true, anon_shell: false, anon_step: false,
       ingest_shell: false, store_step: false, a_apply: false, a_update: false, usage: false, column_type: true });
+    // C1: không hàm nào của file cấp EXECUTE cho PUBLIC; EXECUTE chỉ tới đúng vai gọi (authenticated) + chủ hàm.
+    const grantees = (await db.query(`SELECT p.pronamespace::regnamespace::text||'.'||p.proname fn, COALESCE(string_agg(g.role, ',' ORDER BY g.role),'') roles FROM pg_proc p
+      LEFT JOIN LATERAL (SELECT CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END role FROM aclexplode(p.proacl) a
+        WHERE a.privilege_type='EXECUTE') g ON true
+      WHERE p.oid IN ('${SHELL}'::regprocedure,'${STEP}'::regprocedure,'app_private.hermes_learning_guard_v1()'::regprocedure) GROUP BY 1 ORDER BY 1`)).rows;
+    assert.deepEqual(grantees, [{ fn: 'app_private.hermes_learning_action_step_v1', roles: 'authenticated,postgres' },
+      { fn: 'app_private.hermes_learning_guard_v1', roles: 'postgres' }, { fn: 'public.hermes_learning_action_v1', roles: 'authenticated,postgres' }]);
     // Client không gọi thẳng được bước DEFINER bằng tên (không USAGE app_private).
     await assert.rejects(call(`SELECT app_private.hermes_learning_action_step_v1($1::jsonb,'learning.digest','auto',$2::uuid,'{}'::jsonb,NULL,NULL) result`,
       [JSON.stringify(binding), rid(3)]), error => error.code === '42501' && /schema app_private/.test(error.message));

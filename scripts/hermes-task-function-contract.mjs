@@ -110,7 +110,7 @@ for(const spec of [
  // Học có kiểm duyệt đợt 3: vỏ INVOKER trang Bài học (learning.digest / learning.decide) gắn OID bước DEFINER lúc tạo.
  {
   name:'public.hermes_learning_action_v1',
-  sourcePath:'supabase/migrations/20261104170824_hermes_learning_action_v1.sql',
+  sourcePath:'supabase/migrations/20261105025453_hermes_learning_action_v1.sql',
   statementSha256:'82f10a2289d6b92dfdbde89e6286aef65228d64d0405b9fa886794afae200c7a',
  },
 ])addExternal(spec);

@@ -2,7 +2,7 @@
 
 **Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
 REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; vai `hermes_store_learning` còn NOLOGIN, chưa bật login, chưa cài trên VPS** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã viết, CHƯA phát hành** (mục 4) — migration
-`20261104170824` chưa áp, trang connector `learning` chỉ nạp khi host bật, migration bật ở PR riêng, job cron do điều phối viên tạo (4.6).
+`20261105025453` chưa áp, trang connector `learning` chỉ nạp khi host bật, migration bật ở PR riêng, job cron do điều phối viên tạo (4.6).
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -54,7 +54,7 @@ phiên). Bài học sai vẫn được phát hiện trong ≤ 24 giờ, đi duy�
 | `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ 20/trang theo số (`pendingAfterSeq` → `nextPendingAfterSeq`), lịch sử 20 dòng/trang (đủ nội dung và nguồn, để xem lại và lấy mã gỡ), con trỏ `(decidedAt µs, id)`, `audits` ≤ 20. Trang luôn dưới 1 MiB (đo bằng 20 đề xuất dài tối đa) |
 | `public.hermes_learning_decide_v1(p)` | ≤ 20 đề xuất/lần, `approve`/`reject`, ghi chú tuỳ chọn ≤ 500; cùng `requestId` của cùng người ⇒ trả lại kết quả cũ (`replayed`), khác nội dung ⇒ PT409; đã quyết định ⇒ PT409; ngoài công ty ⇒ 22023 |
 | `app_private.hermes_learning_apply_v1(…, p_via)` | lõi dùng chung trang web (`crm_ui`) và thao tác connector (`hermes_connector`, mục 4) |
-| Đợt 3 (`20261104170824`, **chưa áp**) | cột `announced_at` (mốc "đã báo" của tin 21:00, đặt một lần khi còn chờ — guard bất biến dựng lại cho đúng bước này); `public.hermes_learning_action_v1` (vỏ INVOKER) → `app_private.hermes_learning_action_step_v1` (DEFINER) cho `learning.digest` / `learning.decide`; khoá `assistant.learning_review` seed TẮT (mục 4) |
+| Đợt 3 (`20261105025453`, **chưa áp**) | cột `announced_at` (mốc "đã báo" của tin 21:00, đặt một lần khi còn chờ — guard bất biến dựng lại cho đúng bước này); `public.hermes_learning_action_v1` (vỏ INVOKER) → `app_private.hermes_learning_action_step_v1` (DEFINER) cho `learning.digest` / `learning.decide`; khoá `assistant.learning_review` seed TẮT (mục 4) |
 | `app_private.hermes_store_learning_ingest_v1(p)` | **chỉ** vai NOLOGIN riêng `hermes_learning_ingest` (không còn cấp cho `hermes_store_executor`); 0..25 đề xuất/lô + `auditGeneratedAt`; kiểm thành viên + trợ lý ACTIVE; trùng khoá bỏ qua, trả riêng `rejectedDuplicates` (trùng đề xuất đã bỏ) |
 
 Xác thực của job nạp: login riêng `hermes_store_learning` (migration `20261101064441` tạo NOLOGIN, `scripts/hermes-learning-login.mjs` bật bằng verifier) chỉ thuộc `hermes_learning_ingest`;
@@ -69,7 +69,7 @@ không chép nội dung bộ nhớ.
 
 ## 4. Tin Zalo 21:00 + duyệt qua Zalo (đợt 3 — đã viết, CHƯA phát hành)
 
-**Trạng thái (04/11/2026):** PR đợt 3 (nhánh `claude/hermes-learning-zalo-2100`): migration `20261104170824_hermes_learning_action_v1`
+**Trạng thái (04/11/2026):** PR đợt 3 (nhánh `claude/hermes-learning-zalo-2100`): migration `20261105025453_hermes_learning_action_v1`
 (**CHƯA áp** TEST/production), trang connector `learning` (chỉ nạp khi host bật `actionPages: ["learning"]`), nhãn khoá web, skill chuẩn
 `ihome-crm-bai-hoc`. Migration **bật** (`…_hermes_learning_actions_activation_v1` + file lùi) ở PR thứ hai, nhánh
 `claude/hermes-learning-zalo-2100-bat` dựng trên nhánh đợt 3. Job cron 21:00: điều phối viên tạo theo 4.6 sau khi kiểm cú pháp Hermes trên
@@ -144,7 +144,7 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 
 ### 4.6 Job cron 21:00 VN cho hồ sơ owner (điều phối viên tạo — PR KHÔNG tạo job)
 
-Điều kiện: đã áp `20261104170824` + migration bật trên production; connector production chạy bản có trang `learning` với cấu hình host
+Điều kiện: đã áp `20261105025453` + migration bật trên production; connector production chạy bản có trang `learning` với cấu hình host
 `"actionPages": ["contract", "learning"]` và `"publicWebOrigin"`; skill chuẩn đã triển khai (`deploy.sh`). Kênh Zalo của owner không còn
 `outcome_unknown` chưa đối soát (xem 4.7).
 
@@ -197,7 +197,7 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 
 | Phía | Tệp |
 |---|---|
-| SQL | `20261104170824_hermes_learning_action_v1.sql`: cột `announced_at`; guard bất biến dựng lại; vỏ INVOKER `public.hermes_learning_action_v1` (`scripts/hermes-task-function-contract.mjs` externalStandard) + bước DEFINER `app_private.hermes_learning_action_step_v1`; seed khoá TẮT; ghim băm `scripts/__tests__/hermes-durable-forward-fixture.mjs` (thân guard 041523 thành ghim superseded) + `hermes-durable-schema.test.mjs`; provenance + hồ sơ `chua-ap-dung-cho-y` |
+| SQL | `20261105025453_hermes_learning_action_v1.sql`: cột `announced_at`; guard bất biến dựng lại; vỏ INVOKER `public.hermes_learning_action_v1` (`scripts/hermes-task-function-contract.mjs` externalStandard) + bước DEFINER `app_private.hermes_learning_action_step_v1`; seed khoá TẮT; ghim băm `scripts/__tests__/hermes-durable-forward-fixture.mjs` (thân guard 041523 thành ghim superseded) + `hermes-durable-schema.test.mjs`; provenance + hồ sơ `chua-ap-dung-cho-y` |
 | Connector | `learning-action-contract.mjs` (`defineAction` ×2, bộ dựng tin), `action-catalog.mjs` / `action-contract.mjs` / `action-page-catalogs.mjs` (trang `learning`), `action-runtime.mjs` (`presenters`), `action-reasons.mjs` (`learning_not_pending`), `server.mjs`, `capability-contract.mjs` (+ `.d.mts`), `CONNECTOR.md` |
 | Web | `src/hermes/capabilityLabels.ts` (+ test) |
 | Skill | `infra/hermes-skills/ihome-crm-bai-hoc/SKILL.md`, `ihome-crm-ghi-chung` |
@@ -208,7 +208,9 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 
 1. Review chéo PR đợt 3 (tier authorization + migration): base/head + kết luận ghi vào PR.
 2. **Promote web** (nhãn `assistant.learning_review`) TRƯỚC hoặc CÙNG lúc bước 3.
-3. Lane `20261104170824` TEST rồi production (dry-run → `--apply`, biên nhận); sinh lại provenance, `types.ts` (RPC public mới), surfaces từ
+3. Lane `20261105025453` TEST rồi production (dry-run → `--apply`, biên nhận) — mốc file đặt SAU chuỗi đang chờ áp J06 `20261104165619`
+   → C1 `20261104173640` → C2 `20261104231450` (áp sau chúng; sau C1 hàm mới không tự có EXECUTE của PUBLIC — file này GRANT tường minh
+   cho `authenticated` và REVOKE PUBLIC trên cả hai hàm mới); sinh lại provenance, `types.ts` (RPC public mới), surfaces từ
    production; gỡ hồ sơ `chua-ap-dung-cho-y`; merge PR ngay sau (bài học 22/10: áp xong phải merge ngay). Tới bước 5 mọi lời gọi bị guard
    từ chối (chưa có dòng chính sách).
 4. Phát hành connector (đổi symlink `current`) có trang `learning`; cấu hình host thêm `"learning"` vào `actionPages` và có
