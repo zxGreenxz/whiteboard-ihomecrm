@@ -57,9 +57,11 @@ KHÔNG chặn:
 - `expense.approve` {`voucherCodes` ≤ 10, mỗi mã kèm ngày phiếu dạng "MÃ dd/mm/yyyy", `post` = false nếu chỉ duyệt chưa chi,
   `buildingName`}: duyệt lô theo danh sách vừa đọc ⇒ gửi mã kèm ngày ngay lần đầu, không gửi voucherId / UUID; nhiều hơn 10 ⇒
   làm 10 phiếu đầu, nói số còn lại. Đọc `plan` từng phiếu.
-  - Trước khi gửi lô, bỏ phiếu luồng hệ thống (tên / hạng mục có thanh lý, hoàn cọc, cọc, hoa hồng, thưởng, lương, bàn giao, thu
-    tiền hoá đơn): chỉ duyệt được ở màn gốc trên web. Máy chủ vẫn trả `system_voucher` ở khoản N ⇒ bỏ đúng mã khoản đó, gọi lại
-    ngay với phần còn lại (tối đa 2 lần). Báo: số phiếu đưa vào lô, số phiếu tay còn chờ, số phiếu hệ thống phải duyệt trên web.
+  - Phiếu luồng hệ thống (thanh lý, hoàn cọc, hoa hồng, thưởng, lương, bàn giao, thu tiền hoá đơn, phiếu con định kỳ) trong lô:
+    máy chủ tự ghi "không làm" ở `plan` của phiếu đó và vẫn duyệt các phiếu khác — không tự lọc theo tên trước khi gửi. Báo: số
+    phiếu duyệt được, số phiếu "không làm" phải duyệt ở màn gốc trên web.
+  - Bị từ chối cả lô `system_voucher` ⇒ MỌI phiếu trong lô đều thuộc luồng hệ thống (không thử lại đúng lô đó). Danh sách còn phiếu
+    chưa gửi ⇒ gửi lô kế (≤ 10); hết ⇒ nói các phiếu chờ của toà đều phải duyệt trên web, chưa duyệt phiếu nào.
 
 ## Đọc thu chi
 

@@ -65,8 +65,9 @@ report=invoice_room_debts. Nhắc nợ: report=invoice_reminders (chép nguyên 
 `crm_read_invoice_report` status=unpaid chỉ là hoá đơn chưa thu đồng nào; trả một phần (partial) vẫn là chưa đóng đủ.
 
 - Link tra cho khách (`/c/…`) là link của HỢP ĐỒNG, không theo kỳ: lấy trong invoice_room_detail; không có (kỳ này chưa có hoá
-  đơn…) ⇒ `crm_read_contract_detail` (toà + phòng) lấy `publicLink` của HĐ đang hiệu lực. Chỉ nói không có link khi phòng không
-  có HĐ hiệu lực. Đưa nguyên link.
+  đơn…) ⇒ `crm_read_contract_search` (toà + phòng như người dùng nói, status ACTIVE) lấy `contractId` của HĐ đang hiệu lực ⇒
+  `crm_read_contract_detail` {contractId} lấy `publicLink`. Đưa nguyên link; `publicLink` null ⇒ nói chưa lấy được link, không tự
+  ghép `/c/…`. Phòng không có HĐ hiệu lực ⇒ mới nói không có link.
 - "Phòng X đóng tiền kỳ này chưa?" mà kỳ này chưa có hoá đơn ⇒ nói rõ chưa lập hoá đơn kỳ này, kèm nợ cũ theo
   report=invoice_room_debts (còn nợ bao nhiêu, hoặc không còn nợ).
 - invoice_missing ⇒ kể ĐỦ từng toà kèm số phòng (tối đa 20 toà; quá 20 ⇒ 20 toà nhiều nhất + số toà còn lại), không chỉ vài toà đầu.
