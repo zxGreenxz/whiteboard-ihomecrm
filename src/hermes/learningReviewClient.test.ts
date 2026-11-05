@@ -88,6 +88,11 @@ describe('Hermes learning review client', () => {
     }
     fetchMock.mockResolvedValueOnce(json({ code: '42501', message: 'Bạn không có quyền duyệt bài học của trợ lý Hermes.', details: null, hint: null }, 403));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'forbidden' });
+    // Câu báo lạ kiểu (null/số) vẫn là thiếu quyền như trước, không rơi thành "máy chủ không sẵn sàng".
+    for (const message of [null, 42]) {
+      fetchMock.mockResolvedValueOnce(json({ code: '42501', message, details: null, hint: null }, 403));
+      await expect(client().review(null)).rejects.toMatchObject({ code: 'forbidden' });
+    }
     fetchMock.mockResolvedValueOnce(json({ code: 'PGRST202', message: 'x', details: null, hint: null }, 404));
     await expect(client().review(null)).rejects.toMatchObject({ code: 'not_supported' });
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } }));

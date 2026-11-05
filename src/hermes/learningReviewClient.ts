@@ -137,12 +137,13 @@ export function createHermesLearningClient({ userId, organizationId, currentScop
       if (response.status === 401) { void response.body?.cancel().catch(() => { /* Phản hồi bị từ chối. */ }); throw failure('reauthentication_required', false); }
       const raw = await readJson(response, controller.signal); check();
       if (response.status !== 200) {
-        const error = z.object({ code: z.string(), message: z.string().optional() }).passthrough().safeParse(raw);
+        // message để unknown: câu báo lạ kiểu không được làm hỏng phân loại lỗi (vẫn là thiếu quyền như trước).
+        const error = z.object({ code: z.string(), message: z.unknown().optional() }).passthrough().safeParse(raw);
         // Lỗi xác định: máy chủ đã lùi giao dịch, quyết định chưa được ghi.
         if (error.success) {
           const { code, message } = error.data;
           if (code === '42501' && response.status === 403) {
-            throw failure(message !== undefined && MEMBERSHIP_DENIALS.has(message) ? 'not_member' : 'forbidden', false);
+            throw failure(typeof message === 'string' && MEMBERSHIP_DENIALS.has(message) ? 'not_member' : 'forbidden', false);
           }
           if (code === 'PT409' && response.status === 409) throw failure('conflict', false);
           if (code === '22023' && response.status === 400) throw failure('invalid_request', false);
