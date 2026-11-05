@@ -24,7 +24,7 @@ LOG_DIR="$(readlink -f -- "$LOG_DIR")"; STATE_DIR="$(readlink -f -- "$STATE_DIR"
 
 # Dò một lần: journal hệ thống luôn có dòng. Không ra dòng nào ⇒ không có quyền đọc / không có file journal (journalctl -q nuốt cả
 # "No journal files were found" và thoát 1 im lặng) ⇒ dừng mã 1, KHÔNG để các unit bên dưới bị coi là "không có gì mới" mãi.
-probe="$("$JOURNALCTL" -q -n 1 -o cat --no-pager 2>/dev/null || true)"
+probe="$("$JOURNALCTL" -q -n 1 -o export --no-pager 2>/dev/null || true)"   # export luôn có __CURSOR=…, kể cả khi MESSAGE rỗng
 [ -n "$probe" ] || { echo "không đọc được journal (dò không ra dòng nào)" >&2; exit 1; }
 
 mask() {
