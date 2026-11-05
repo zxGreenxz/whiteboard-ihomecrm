@@ -44,7 +44,7 @@ export default function PromotionsReport() {
 
   const exportData = promotions?.map(promo => ({
     "Mã HĐ": promo.contract_number || promo.id.slice(0, 8),
-    "Khách hàng": promo.tenants?.full_name || "N/A",
+    "Khách hàng": promo.customer?.full_name || "N/A",
     "Căn hộ": `${promo.rooms?.buildings?.name} - ${promo.rooms?.room_number}`,
     "Giá gốc": promo.monthly_rent,
     "Giảm giá": promo.savings,
@@ -103,7 +103,7 @@ export default function PromotionsReport() {
                     {promotions.map((promo) => (
                       <TableRow key={promo.id}>
                         <TableCell className="font-medium">{promo.contract_number || promo.id.slice(0, 8)}</TableCell>
-                        <TableCell>{promo.tenants?.full_name || "N/A"}</TableCell>
+                        <TableCell>{promo.customer?.full_name || "N/A"}</TableCell>
                         <TableCell>
                           <div className="text-sm">
                             <div className="font-medium">{promo.rooms?.buildings?.name}</div>

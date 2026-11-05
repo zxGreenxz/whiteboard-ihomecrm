@@ -75,8 +75,8 @@ export default function ExpiringContractsReport() {
 
   const exportData = contracts?.map(contract => ({
     "Mã HĐ": contract.contract_number,
-    "Khách hàng": contract.tenants?.full_name || "N/A",
-    "Điện thoại": contract.tenants?.phone || "N/A",
+    "Khách hàng": contract.customer?.full_name || "N/A",
+    "Điện thoại": contract.customer?.phone || "N/A",
     "Tòa nhà": contract.rooms?.buildings?.name || "N/A",
     "Căn hộ": contract.rooms?.name || "N/A",
     "Tầng": contract.rooms?.floor ?? "N/A",
@@ -192,12 +192,12 @@ export default function ExpiringContractsReport() {
                         <TableCell className="font-medium">
                           {contract.contract_number}
                         </TableCell>
-                        <TableCell>{contract.tenants?.full_name || "N/A"}</TableCell>
+                        <TableCell>{contract.customer?.full_name || "N/A"}</TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            <div>{contract.tenants?.phone || "-"}</div>
+                            <div>{contract.customer?.phone || "-"}</div>
                             <div className="text-muted-foreground">
-                              {contract.tenants?.email || "-"}
+                              {contract.customer?.email || "-"}
                             </div>
                           </div>
                         </TableCell>
