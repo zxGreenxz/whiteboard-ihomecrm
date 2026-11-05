@@ -71,7 +71,8 @@ không chép nội dung bộ nhớ.
 
 **Trạng thái (04/11/2026):** PR đợt 3 (nhánh `claude/hermes-learning-zalo-2100`): migration `20261105025453_hermes_learning_action_v1`
 (**CHƯA áp** TEST/production), trang connector `learning` (chỉ nạp khi host bật `actionPages: ["learning"]`), nhãn khoá web, skill chuẩn
-`ihome-crm-bai-hoc`. Migration **bật** (`…_hermes_learning_actions_activation_v1` + file lùi) ở PR thứ hai, nhánh
+`ihome-crm-bai-hoc`. Migration **bật** `20261105030528_hermes_learning_actions_activation_v1` (**chưa áp**; + file lùi
+`docs/plans/hermes-crm/revert/hermes_learning_actions_activation_revert_v1.sql`, khuôn `action-activation-sql.test.mjs`) ở PR thứ hai, nhánh
 `claude/hermes-learning-zalo-2100-bat` dựng trên nhánh đợt 3. Job cron 21:00: điều phối viên tạo theo 4.6 sau khi kiểm cú pháp Hermes trên
 VPS — PR không tạo job.
 
