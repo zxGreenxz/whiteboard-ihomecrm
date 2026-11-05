@@ -201,9 +201,11 @@ def _is_ordinary_word(value: str) -> bool:
     return value.isalpha() and not value.isascii()
 
 
-# Dấu phẩy, chấm phẩy đứng trước chữ cái, khoảng trắng hoặc hết chuỗi là dấu ngăn mệnh đề, không thuộc giá trị: "mật khẩu: X, CCCD …" và
-# "mật khẩu: X,CCCD:…" giữ dấu phẩy cùng phần sau nguyên văn. Đứng trước số hay ký hiệu ("Ab,12#") thì vẫn là một phần của mật khẩu.
-_CLAUSE_END = re.compile(r'[,;](?=[^\W\d_]|\s|$)')
+# Dấu phẩy, chấm phẩy chỉ kết thúc giá trị khi đứng trước khoảng trắng, hết chuỗi, hoặc nhãn thông tin khách liền sau ("mật khẩu: X, CCCD …",
+# "mật khẩu: X,CCCD:…"): giữ dấu cùng phần sau nguyên văn. Đứng trước chữ/số khác ("Abc,def123", "khong,Abc12345", ",abc12345") thì vẫn là một
+# phần của giá trị: cắt ở đó là để lọt nửa sau của mật khẩu.
+_CUSTOMER_LABEL = r'(?:cccd|cmnd|cmt|sđt|sdt|đt|dt|stk|tk|e-?mail|mail|mã|ma)(?![^\W_])'
+_CLAUSE_END = re.compile(r'(?i)[,;](?=\s|$|' + _CUSTOMER_LABEL + r')')
 
 
 def _value_parts(match: re.Match[str]) -> tuple[str, str]:
@@ -256,14 +258,13 @@ _PLAIN_SEGMENT = re.compile(r'[a-z]{2,}|[A-Z]{2,}|\d+')         # cả khúc m�
 _BLOB_PIECE = re.compile(r'[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+')   # mảnh CamelCase: Nguyen, Van, An, HTTP, 101
 _VOWELS = frozenset('aeiouyAEIOUY')
 _RARE_LETTERS = frozenset('fjqwxzFJQWXZ')                      # tiếng Việt không dùng f j w z, tiếng Anh ít dùng
-_CONSONANT_RUN = re.compile(r'(?i)[b-df-hj-np-tv-xz]{5}')
 # Email là thông tin khách: giữ nguyên văn khúc trước @ (cả khúc ngăn bằng dấu chấm) và tên miền ngay sau @.
 _EMAIL_REST = re.compile(r'[A-Za-z0-9._%+-]{0,64}@[A-Za-z0-9-]')
 
 
 def _word_like(piece: str) -> bool:
-    """Từ đọc được: ≥ 2 chữ, chỉ chữ đầu được hoa, có nguyên âm, không 5 phụ âm liền ("Nguyen", "task", "Deadline")."""
-    return len(piece) > 1 and piece[1:].islower() and any(ch in _VOWELS for ch in piece) and not _CONSONANT_RUN.search(piece)
+    """Từ đọc được: ≥ 2 chữ, chỉ chữ đầu được hoa, có nguyên âm ("Nguyen", "task", "Deadline")."""
+    return len(piece) > 1 and piece[1:].islower() and any(ch in _VOWELS for ch in piece)
 
 
 def _composed_of_words(text: str) -> bool:
@@ -300,8 +301,8 @@ def _mask_random_blob(match: re.Match[str]) -> str:
     """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi ≥ 32 ký tự lẫn hoa và thường mà không ghép từ từ thật thì che. Giữ nguyên: mã băm
     hex, UUID, mã toàn hoa (thiếu một kiểu chữ); đường dẫn, tên skill/tool, định danh, tên khách viết liền (ghép từ); email (thông tin khách); chuỗi
     có từ 9 chữ số liền nhau trở lên — dấu hiệu SĐT, CCCD, STK trong tên file ("CCCD_NguyenVanAn_079123456789_MatTruoc"), khoá ngẫu nhiên gần như
-    không có dãy như vậy. Đo trên secrets.token_urlsafe: lọt 16/200 000 ở 32–38 ký tự, 2/144 000 ở 39–86 ký tự, 0/40 000 với token_urlsafe(48)
-    và (64). Luật cũ (đếm dấu ngăn tuyệt đối, < 4) lọt 2,5 % ở 32–38 ký tự, 14 % với token_urlsafe(48), 28 % với (64)."""
+    không có dãy như vậy. Hai lần đo trên secrets.token_urlsafe: lọt 9–16/200 000 ở 32–38 ký tự, 0–2/144 000 ở 39–86 ký tự, 0/40 000 với
+    token_urlsafe(48) và (64). Luật cũ (đếm dấu ngăn tuyệt đối, < 4) lọt 2,5 % ở 32–38 ký tự, 14 % với token_urlsafe(48), 28 % với (64)."""
     text = match.group(0)
     if _LONG_DIGIT_RUN.search(text) or _in_email(match):
         return text
@@ -1001,12 +1002,14 @@ class ProfileAudit:
 
     def surface_overflow(self) -> None:
         """Vượt trần cảnh báo: một dòng cố định thay cho phần dư. Số lượng để ở nguồn, không vào khoá; khoá theo tháng nên không thành dòng mới mỗi
-        tối, nhưng tháng sau còn hỏng thì hiện lại. Vì dòng đó chỉ hiện một lần mỗi tháng, mỗi lần tràn còn tính là degraded (mã thoát 1 ⇒ OnFailure
-        báo): mục sổ curator bị cắt đã đánh dấu đã thấy, không quay lại trang duyệt."""
+        tối, nhưng tháng sau còn hỏng thì hiện lại. Vì dòng đó chỉ hiện một lần mỗi tháng, mỗi lần tràn ở hồ sơ người dùng thật còn tính là degraded
+        (mã thoát 1 ⇒ OnFailure báo): mục sổ curator bị cắt đã đánh dấu đã thấy, không quay lại trang duyệt. Hồ sơ thử không được nạp vào kho nên tràn
+        ở đó chỉ đếm, không làm job đỏ mỗi tối trong đợt nghiệm thu."""
         over = self._warnings_over
         if over:
-            self.degraded.append('warnings_overflow')
             self.counts['warningsDropped'] = over
+            if self.real:
+                self.degraded.append('warnings_overflow')
             self.proposal('audit_warning', 'Cảnh báo kiểm học: quá nhiều cảnh báo trong một lần kiểm',
                           f'Vượt trần {MAX_WARNINGS} cảnh báo mới một lần kiểm: phần dư có phát hiện warning_dropped trong báo cáo trên máy chủ (private/latest.json). Có thể sandbox gắn sai hoặc hồ sơ hỏng hàng loạt, cần xem tay.',
                           {'type': 'audit_finding', 'finding': 'warnings_overflow', 'severity': 'high', 'omitted': over}, self.now,

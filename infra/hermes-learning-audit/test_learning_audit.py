@@ -188,7 +188,7 @@ REDACTION_KEEPS = [
     'CCCD_NguyenVanAn_079123456789_MatTruoc.jpg', 'NguyenVanAn_0901234567_Phong101Toa224VL', 'CMND079123456789NguyenThiMinhAnhP101T224',
     'Email khách: NguyenThiMinhAnh1990x7Kq2Lm9ZpQ3@example.com', 'Email khách: ' + EMAIL_LOCAL + '@gmail.com',
     'Email: khach.' + EMAIL_LOCAL + '@example.com.vn', 'gửi ' + EMAIL_LOCAL + '.backup@example.com nhé', 'mk: 0901234567,CCCD 079203001234',
-    'mật khẩu:, CCCD 079203001234',
+    'mật khẩu:, CCCD 079203001234', 'Email: khach@' + EMAIL_LOCAL + '.com',
 ]
 # Che đúng giá trị, giữ dấu phẩy/chấm phẩy cùng phần sau nguyên văn.
 REDACTION_EXACT = {
@@ -198,11 +198,20 @@ REDACTION_EXACT = {
     'pass' + 'word: abc12345, email khach@example.com': 'password: [đã che], email khach@example.com',
     'tok' + 'en: abc12345,Mã khách 079203001234': 'token: [đã che],Mã khách 079203001234',
     'mật khẩu: Ab,12#xY nhé': 'mật khẩu: [đã che] nhé',
+    # Review #389: dấu phẩy/chấm phẩy đứng trước chữ thường không phải hết mệnh đề — cả từ là giá trị, che hết (bản trước để lọt nguyên văn hoặc nửa sau).
+    'mk: khong,' + 'Abc' + '12345': 'mk: [đã che]', 'mật khẩu: mới,' + 'Xyz' + '789': 'mật khẩu: [đã che]',
+    'Mật khẩu wifi: Nhà,' + 'Tôi' + '123': 'Mật khẩu wifi: [đã che]', 'pass: cu;' + 'Pq' + '7781': 'pass: [đã che]',
+    'mật khẩu: ,' + 'abc' + '12345': 'mật khẩu: [đã che]', 'mật khẩu:,' + 'Abc' + '12345': 'mật khẩu:[đã che]', 'mk: ;' + 'xyz' + '98765': 'mk: [đã che]',
+    'pass' + 'word=Abc,' + 'def' + '123': 'password=[đã che]', 'DB_PASS' + 'WORD=Xk9;' + 'mQ2' + 'zz': 'DB_PASSWORD=[đã che]',
+    'API_' + 'KEY=Zq8,' + 'Wm3,' + 'Rt7': 'API_KEY=[đã che]', 'mật khẩu admin: P@ss,' + 'word' + '1': 'mật khẩu admin: [đã che]',
+    'mật khẩu: Hà,' + 'Nội' + '2026': 'mật khẩu: [đã che]',
 }
 # Ca biên, mỗi ca chỉ một tiêu chí của lưới cuối giữ được (mật khẩu máy sinh dạng "đọc được"), ghép lúc chạy: đủ mảnh đọc được nhưng toàn chữ
-# hiếm; đủ mảnh đọc được nhưng số chen giữa từng mảnh; chỉ 3/8 mảnh có nguyên âm; không mảnh nào có nguyên âm.
+# hiếm; đủ mảnh đọc được nhưng chữ hiếm vừa quá trần (5/32); đủ mảnh đọc được nhưng số chen giữa từng mảnh; chỉ 3/8 mảnh có nguyên âm; không mảnh
+# nào có nguyên âm.
 REDACTION_EDGE_BLOBS = [''.join(parts) for parts in (
     ('Zaxo', 'Quwi', 'Jefo', 'Xazu', 'Woji', 'Fexa', 'Qizo', 'Juwa'),
+    ('Bavo', 'Kemi', 'Zalu', 'Jopi', 'Xeda', 'Ruwo', 'Fila', 'Maso'),
     ('Ba7', 'Le3', 'Mo9', 'Ti2', 'Nu5', 'Ka8', 'So4', 'Di6', 'Ra1', 'Pe0', 'Hu'),
     ('Brd', 'Ktchn', 'Home', 'Trnk', 'Plnt', 'Sofa', 'Lmps', 'Desk'),
     ('Brd', 'Krtn', 'Trnk', 'Plnt', 'Lmps', 'Chrs', 'Stls', 'Bnch', 'Grds'))]
@@ -712,6 +721,12 @@ class LearningAuditTest(unittest.TestCase):
             'luật cũ: từ 4 dấu ngăn trở lên thì giữ': ('return text if _composed_of_words(text) else',
                                                      "return text if _composed_of_words(text) or sum(map(text.count, '-_/')) >= 4 else"),
             'bỏ trần chữ hiếm': ('rare <= 0.1 * letters', 'True'),
+            'nới trần chữ hiếm lên 20 %': ('rare <= 0.1 * letters', 'rare <= 0.2 * letters'),
+            'bỏ giữ tên miền sau @': ("(start > 0 and match.string[start - 1] == '@') or ", ''),
+            'cắt giá trị trước mọi chữ cái (bản trước review #389)': (
+                "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=[^\\W\\d_]|\\s|$)')"),
+            'chỉ cắt trước khoảng trắng (bỏ nhãn khách)': (
+                "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=\\s|$)')"),
             'bỏ trần mảnh vụn': ('scraps <= 0.15 * len(text)', 'True'),
             'nới độ phủ từ': ('words >= 0.75 * letters', 'words >= 0.25 * letters'),
             'từ không cần nguyên âm': (' and any(ch in _VOWELS for ch in piece)', ''),
@@ -986,6 +1001,16 @@ class LearningAuditTest(unittest.TestCase):
         # Không tràn thì không degraded: mã thoát không dính lại từ lần trước.
         rc, printed = run_main(fx.argv(NOW))
         self.assertEqual((rc, json.loads(printed)['degraded']), (0, []))
+
+    def test_overflow_on_a_test_profile_is_counted_but_does_not_fail_the_run(self):
+        """Hồ sơ thử (tkt…) không được nạp vào kho: tràn ở đó chỉ đếm, không làm job đỏ mỗi tối trong đợt nghiệm thu."""
+        fx = self.fx
+        for n in range(la.MAX_WARNINGS + 5):
+            fx.skill(fx.tkt, f'productivity/x{n:03d}', f'---\nname: x{n:03d}\n---\nGọi crm_chet_{n:03d}_create.\n')
+        report, _, _ = la.run_audit(fx.config(), NOW, use_state=False)
+        tkt = profile(report, 'tkt')
+        self.assertEqual((tkt['degraded'], tkt['counts']['warningsDropped']), ([], 5))
+        self.assertEqual(report['degraded'], [])
 
     def test_warnings_already_sent_do_not_count_so_new_dead_names_are_not_starved(self):
         fx = self.fx
