@@ -52,6 +52,7 @@ import { TASK_ACTION } from './task-contract.mjs';
 // Danh mục production + thao tác của từng trang mà cấu hình host bật bằng actionPages (mỗi trang một dòng); dùng chung với
 // catalog-names.mjs (kiểm hướng dẫn chuẩn infra/hermes-skills).
 import { ACTION_PAGE_CATALOGS, PRODUCTION_ACTIONS } from './action-page-catalogs.mjs';
+import { LEARNING_DIGEST, learningPresenters } from './learning-action-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -139,8 +140,8 @@ export function createHermesBackend(configuration = {}) {
       // Đợt 1 nền chung: true chỉ trên connector TEST (danh mục thử probe.*, D6). Vắng/false = danh mục rỗng: ba tool
       // crm_action_* không hiện, không gọi RPC nào của họ này.
       (Object.hasOwn(configuration, 'actionProbe') && typeof configuration.actionProbe !== 'boolean') ||
-      // Đợt 2: trang có thao tác ghi thật được nạp thêm vào danh mục (vd ['contract']). Vắng/[] = chỉ danh mục production
-      // (thao tác Thu chi expense.*), không nạp thao tác của trang nào khác. Phiên chính bật sau khi migration của trang đã áp.
+      // Đợt 2: trang có thao tác ghi thật được nạp thêm vào danh mục (vd ['contract'], đợt 3 học có kiểm duyệt: ['learning']). Vắng/[] = chỉ
+      // danh mục production (thao tác Thu chi expense.*), không nạp thao tác của trang nào khác. Phiên chính bật sau khi migration của trang đã áp.
       (Object.hasOwn(configuration, 'actionPages') && (!Array.isArray(configuration.actionPages) ||
         configuration.actionPages.some(page => typeof page !== 'string' || !Object.hasOwn(ACTION_PAGE_CATALOGS, page)) ||
         new Set(configuration.actionPages).size !== configuration.actionPages.length)) ||
@@ -243,7 +244,10 @@ export function createHermesBackend(configuration = {}) {
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     // applyBudgetMs: lượt đồng ý chỉ gửi lệnh ghi khi trần cả lời gọi còn đủ (action-runtime.mjs APPLY_MIN_REMAINING_SHARE).
+    // presenters (đợt 3 học có kiểm duyệt): host bật actionPages ["learning"] ⇒ kết quả learning.digest kèm message tất định (link theo
+    // publicWebOrigin; origin tin tối không nhận ⇒ không khởi động). Không bật trang ⇒ không bộ dựng nào, kết quả như cũ.
     const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive, permissionGaps, applyBudgetMs: limits.callTimeoutMs,
+      presenters: actionCatalog.get(LEARNING_DIGEST.id) === null ? {} : learningPresenters({ webOrigin: configuration.publicWebOrigin ?? null }),
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });

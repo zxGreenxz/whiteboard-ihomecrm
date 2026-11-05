@@ -9,7 +9,8 @@ const base = { id: 'probe.sample', page: 'probe', key: PROBE_KEY, class: 'money'
 
 test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, khuôn, lý do ngoài danh sách đóng, tham số ảnh khi chưa có luồng ảnh', () => {
   assert.ok(Object.isFrozen(defineAction(base)));
-  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'probe']);
+  // learning: đợt 3 học có kiểm duyệt (learning-action-contract.mjs), chỉ nạp khi host bật actionPages ["learning"].
+  assert.deepEqual([...ACTION_PAGES], ['expense', 'invoice', 'contract', 'task', 'learning', 'probe']);
   for (const bad of [{ id: 'Probe.x' }, { id: 'probe' }, { id: 'probe.x' }, { id: 'contract.sample' }, { page: 'payroll', id: 'payroll.sample' }, { class: 'cheap' }, { key: 'Bad Key' },
     { title: '' }, { title: 'a\nb' }, { params: { 'bad-name': param.bool() } }, { params: { ok: { kind: 'text' } } }, { reasons: ['nope'] },
     { reasons: ['state_changed', 'state_changed'] }, { extra: true }])
@@ -88,6 +89,22 @@ test('list overflow (Công việc lượt 13): a declared needs_input reason rep
   // Khai sai: lý do lạ, lý do loại rejected, thao tác không khai lý do đó trong reasons.
   for (const bad of [() => param.list(item, { max: 2, overflow: 'nope' }), () => param.list(item, { max: 2, overflow: 'crm_refused' }),
     () => defineAction({ ...base, id: 'probe.over2', params: { items: param.list(item, { max: 2, overflow: 'batch_too_large' }) } })])
+    assert.throws(bad, /invalid_action_catalog/);
+});
+
+test('list unique (review #391, learning.decide "duyệt 1-3, 2"): phần tử vô hướng trùng bị khử, giữ thứ tự lần đầu; mặc định giữ nguyên', () => {
+  const unique = defineAction({ ...base, id: 'probe.unique', params: { numbers: param.list(param.int(1, 99), { max: 6, unique: true }),
+    codes: param.list(param.name('voucher'), { max: 4, optional: true, unique: true }) } });
+  assert.deepEqual(validateActionParams(unique, { numbers: [3, 1, 3, '2', 1, 2], codes: [' PC1 ', 'PC1', 'PC2'] }),
+    { ok: true, value: { numbers: [3, 1, 2], codes: ['PC1', 'PC2'] } }, 'khử SAU chuẩn hoá: "2" = 2, " PC1 " = "PC1"');
+  // Kiểm từng phần tử và độ dài trước khi khử (giữ đúng câu báo cũ).
+  assert.match(validateActionParams(unique, { numbers: [1, 0, 1] }).detail, /numbers#2 \(số nguyên 1–99\)/);
+  assert.match(validateActionParams(unique, { numbers: [1, 1, 1, 1, 1, 1, 1] }).detail, /numbers \(danh sách 1–6 mục\)/);
+  const plain = defineAction({ ...base, id: 'probe.plain', params: { numbers: param.list(param.int(1, 99), { max: 6 }) } });
+  assert.deepEqual(validateActionParams(plain, { numbers: [3, 1, 3] }), { ok: true, value: { numbers: [3, 1, 3] } }, 'không khai unique ⇒ như cũ');
+  assert.equal(Object.hasOwn(plain.params.numbers, 'unique'), false, 'khuôn cũ không đổi');
+  for (const bad of [() => param.list(param.record({ buildingName: param.name('building') }), { max: 2, unique: true }),
+    () => param.list(param.int(1, 9), { max: 2, unique: 'yes' })])
     assert.throws(bad, /invalid_action_catalog/);
 });
 

@@ -47,6 +47,8 @@ export const ACTION_REASONS = Object.freeze({
   ...invoiceReasons(),
   // Trang Sale (crm_sale_action, 05/11): thao tác đã rời cầu Sale. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...saleReasons(),
+  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): một mã needs_input, không vào sổ audit host.
+  ...learningReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 // Mã riêng từng trang, theo khối (test khoá: danh sách chung 20 mã + đúng các khối này, mỗi khối một trang).
@@ -56,6 +58,7 @@ export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({
   task: Object.freeze(Object.keys(taskReasons())),
   invoice: Object.freeze(Object.keys(invoiceReasons())),
   sale: Object.freeze(Object.keys(saleReasons())),
+  learning: Object.freeze(Object.keys(learningReasons())),
 });
 function expenseReasons() {
   return {
@@ -145,6 +148,12 @@ function saleReasons() {
   return {
     sale_deposit_web_only: reason('rejected', 'never', 'Báo cọc, thu thêm, sửa hay gán khách vào cọc làm trên web, trang Quản lý cọc (/deposits); crm_sale_action không ghi cọc.'),
     sale_lock_via_contract: reason('rejected', 'never', 'Giữ / bỏ giữ phòng dùng crm_action_run action contract.room_lock / contract.room_unlock (tên toà + phòng), không qua crm_sale_action.'),
+  };
+}
+// Trang Bài học: mọi số người dùng nêu đều không còn chờ (đã quyết định, kể cả trên web) hoặc không có ⇒ hỏi lại, không đoán số khác.
+function learningReasons() {
+  return {
+    learning_not_pending: reason('needs_input', 'fix', 'Các số này không còn đề xuất nào chờ duyệt (đã quyết định trước đó hoặc không có số đó); báo người dùng, hỏi lại số.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));
