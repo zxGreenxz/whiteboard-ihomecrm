@@ -15,6 +15,13 @@
   ],
   "publicExecute": {
     "note": "Hàm ứng dụng (public/app_private/api, không thuộc extension) KHÔNG được cấp EXECUTE cho PUBLIC, và mặc định hàm của postgres không cấp PUBLIC (migration 20261104173640, hậu kiểm PR #371). blockedRoles: login/nhóm không phải API, mỗi vai chỉ gọi được đúng các hàm SECURITY DEFINER ghi ở đây — tính qua mọi nhóm vai đó là thành viên. Đo production 04/11/2026. Sửa TAY trong PR có review khi thêm hàm cho vai bị chặn; --update không đụng mục này.",
+    "thieuMienTruNote": "Cặp vai → hàm mà câu 4 của gate (thiếu EXECUTE qua đối tượng phụ thuộc) cho qua ở đường KHÔNG phải policy. Sửa TAY trong PR có review. Gate đỏ khi có cặp mới ngoài danh sách VÀ khi một mục không còn cần, nên danh sách chỉ teo đi. Hai cặp anon (đo prod/TEST 05/11/2026): hàm INVOKER đã cố ý đóng với anon từ trước 20261104173640 (ACL chỉ authenticated, service_role); đường phụ thuộc duy nhất là chỉ mục biểu thức (phone_digits: customers, leads, tenants, zalo_conversations; normalize_income_expense_type_name: income_expense_types); anon ghi các bảng đó bị RLS WITH CHECK chặn trước khi tới chỉ mục (42501), nên hành vi không đổi.",
+    "thieuMienTru": {
+      "anon": [
+        "normalize_income_expense_type_name(text)",
+        "phone_digits(text)"
+      ]
+    },
     "blockedRoles": {
       "hermes_store_learning": [
         "app_private.hermes_store_learning_ingest_v1(jsonb)"

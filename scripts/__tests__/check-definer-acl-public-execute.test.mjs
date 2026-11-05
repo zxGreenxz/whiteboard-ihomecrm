@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { SCHEMA_UNG_DUNG, phanTichPublicExecute, sqlPublicExecute } from "../check-definer-acl.mjs";
+import { SCHEMA_UNG_DUNG, docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "../check-definer-acl.mjs";
 
 // VÌ SAO CÓ FILE NÀY — đo 01/11/2026 (review PR #371), xác nhận lại 04/11 trên production:
 // 119 hàm ứng dụng cấp EXECUTE cho PUBLIC. PUBLIC là MỌI vai, nên login hermes_store_learning
@@ -59,6 +59,40 @@ describe("phanTichPublicExecute", () => {
     expect(kq.dat).toBe(false);
     expect(kq.thieuQuyen).toEqual(["authenticated → app_private.buildings_i_can_see()"]);
   });
+
+  it("miễn trừ tường minh: cặp đã xét cho qua, cặp MỚI vẫn đỏ; so khớp bỏ tiền tố public.", () => {
+    const thieuMienTru = { anon: ["public.phone_digits(text)"] };
+    const daXet = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)" }], blockedRoles: {}, thieuMienTru });
+    expect(daXet).toMatchObject({ dat: true, thieuQuyen: [], mienThua: [] });
+    const moi = phanTichPublicExecute({
+      rows: [{ kind: "thieu", role: "anon", sig: "phone_digits(text)" }, { kind: "thieu", role: "anon", sig: "app_private.ma_moi()" }],
+      blockedRoles: {}, thieuMienTru,
+    });
+    expect(moi.dat).toBe(false);
+    expect(moi.thieuQuyen).toEqual(["anon → app_private.ma_moi()"]);
+    // Cùng hàm nhưng vai khác không được miễn theo.
+    const vaiKhac = phanTichPublicExecute({ rows: [{ kind: "thieu", role: "authenticated", sig: "phone_digits(text)" }], blockedRoles: {},
+      thieuMienTru: { anon: ["phone_digits(text)", "x()"] }, kiemMienThua: false });
+    expect(vaiKhac.thieuQuyen).toEqual(["authenticated → phone_digits(text)"]);
+  });
+
+  it("mục miễn không còn cần → đỏ (danh sách chỉ teo đi); tắt được cho đích không phải production", () => {
+    const kq = phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru: { anon: ["phone_digits(text)"] } });
+    expect(kq.dat).toBe(false);
+    expect(kq.mienThua).toEqual(["anon → phone_digits(text)"]);
+    expect(phanTichPublicExecute({ rows: [], blockedRoles: {}, thieuMienTru: { anon: ["phone_digits(text)"] }, kiemMienThua: false }))
+      .toMatchObject({ dat: true, mienThua: [] });
+  });
+});
+
+describe("docThieuMienTru", () => {
+  it("thiếu mục → rỗng; sai dạng → ném (cấu hình đi vào phép so, không được im lặng hỏng)", () => {
+    expect(docThieuMienTru({})).toEqual({});
+    expect(docThieuMienTru(undefined)).toEqual({});
+    expect(() => docThieuMienTru({ thieuMienTru: ["anon → f()"] })).toThrow(/vai → mảng/);
+    expect(() => docThieuMienTru({ thieuMienTru: { anon: "f()" } })).toThrow(/vai → mảng/);
+    expect(() => docThieuMienTru({ thieuMienTru: { "x'; --": ["f()"] } })).toThrow(/vai → mảng/);
+  });
 });
 
 describe("sqlPublicExecute", () => {
@@ -76,12 +110,27 @@ describe("sqlPublicExecute", () => {
     expect(sql).toContain("d.deptype = 'e'");
   });
 
-  it("kiểm thiếu quyền theo pg_depend (policy/view/default/CHECK/chỉ mục/WHEN), miễn anon trên cửa đã cố ý đóng", () => {
+  it("kiểm thiếu quyền theo pg_depend: policy, MỌI view (trừ materialized), default/CHECK/chỉ mục/WHEN, domain, hàm khác", () => {
     const sql = sqlPublicExecute(blockedRoles);
-    expect(sql).toContain("SELECT 'thieu'");
-    for (const nguon of ["pg_policy", "pg_rewrite", "pg_attrdef", "pg_constraint", "pg_index", "pg_trigger"]) expect(sql).toContain(nguon);
-    expect(sql).toContain("x.grantee = 'authenticated'::regrole");
-    expect(sql).toContain("x.grantee = 'anon'::regrole");
+    const thieu = sql.slice(sql.indexOf("SELECT 'thieu'"), sql.indexOf("SELECT 'default'"));
+    for (const nguon of ["pg_policy", "pg_rewrite", "pg_attrdef", "pg_constraint", "pg_class", "pg_trigger", "pg_proc", "pg_type"]) {
+      expect(thieu).toContain(`d.classid = 'pg_catalog.${nguon}'::regclass`);
+    }
+    // PostgreSQL kiểm EXECUTE của hàm trong view theo vai đang truy vấn, kể cả view không security_invoker.
+    expect(thieu).not.toContain("security_invoker");
+    expect(thieu).toContain("c.relkind <> 'm'");
+    // DEFAULT của tham số luôn tính theo người gọi; thân BEGIN ATOMIC chỉ tính khi hàm là INVOKER.
+    expect(thieu).toContain("NOT x.prosecdef OR x.proargdefaults::text ~ (':funcid ' || a.oid::text");
+  });
+
+  it("miễn anon trên cửa đã cố ý đóng CHỈ nằm trong nhánh policy", () => {
+    const sql = sqlPublicExecute(blockedRoles);
+    const thieu = sql.slice(sql.indexOf("SELECT 'thieu'"), sql.indexOf("SELECT 'default'"));
+    const nhanPolicy = thieu.slice(thieu.indexOf("d.classid = 'pg_catalog.pg_policy'"), thieu.indexOf("d.classid = 'pg_catalog.pg_rewrite'"));
+    expect(nhanPolicy).toContain("r.rolname = 'anon'");
+    expect(nhanPolicy).toContain("x.grantee = 'authenticated'::regrole");
+    expect(nhanPolicy).toContain("x.grantee = 'anon'::regrole");
+    expect(thieu.split("r.rolname = 'anon'")).toHaveLength(2);
   });
 });
 
@@ -94,6 +143,14 @@ describe("allowlist anon trong definer-acl-baseline.json", () => {
 });
 
 describe("cấu hình publicExecute trong definer-acl-baseline.json", () => {
+  it("miễn trừ câu 'thieu' đúng 2 cặp anon đã xét 05/11 (chỉ mục biểu thức, anon bị RLS chặn ghi), có ghi lý do", () => {
+    expect(docThieuMienTru(baseline.publicExecute)).toEqual({
+      anon: ["normalize_income_expense_type_name(text)", "phone_digits(text)"],
+    });
+    expect(baseline.publicExecute.thieuMienTruNote).toMatch(/chỉ mục biểu thức/);
+    expect(baseline.publicExecute.thieuMienTruNote).toMatch(/WITH CHECK/);
+  });
+
   it("đủ các vai đã chứng minh không cần hàm ứng dụng, mỗi vai một mảng", () => {
     expect(Object.keys(blockedRoles).sort()).toEqual([
       "hermes_learning_ingest", "hermes_store_executor", "hermes_store_host", "hermes_store_learning", "pgbouncer",

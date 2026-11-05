@@ -184,11 +184,13 @@ const PROBES = [
   { id: 'anon gọi DEFINER đã cố ý đóng, chỉ còn nhờ PUBLIC', role: 'anon', after: '42501', sql: 'SELECT public.f_breakdown()::text AS v' },
   { id: 'anon gọi DEFINER ghi', role: 'anon', sql: "SELECT public.f_impersonate('x')::text AS v" },
   { id: 'service_role gọi DEFINER báo cáo', role: 'service_role', sql: 'SELECT public.f_breakdown()::text AS v' },
-  { id: 'service_role đọc view', role: 'service_role', sql: 'SELECT count(*)::text AS v FROM public.v_readings' },
+  // Chọn đúng cột gọi hàm: count(*) cho planner bỏ cột không dùng, hàm trong view không chạy — thăm dò mù.
+  { id: 'service_role đọc view', role: 'service_role', sql: "SELECT string_agg(label_up || k, ',' ORDER BY id) AS v FROM public.v_readings" },
   { id: 'read-only gọi hàm INVOKER mà view dùng', login: 'supabase_read_only_user', sql: "SELECT public.f_sort_key('AB') AS v" },
   { id: 'read-only gọi thẳng hàm INVOKER không view nào dùng', login: 'supabase_read_only_user', after: '42501',
     sql: "SELECT public.f_util('AB') AS v" },
-  { id: 'read-only đọc view gọi hàm', login: 'supabase_read_only_user', sql: 'SELECT count(*)::text AS v FROM public.v_readings' },
+  { id: 'read-only đọc view gọi hàm', login: 'supabase_read_only_user',
+    sql: "SELECT string_agg(label_up || k, ',' ORDER BY id) AS v FROM public.v_readings" },
   { id: 'login học gọi đúng hàm nạp', login: 'hermes_store_learning', sql: "SELECT app_private.hermes_store_learning_ingest_v1('{}')::text AS v" },
   { id: 'login học giả danh người dùng qua DEFINER', login: 'hermes_store_learning', claim: USER, after: '42501',
     sql: "SELECT public.f_impersonate('gia-danh')::text AS v" },
@@ -213,7 +215,7 @@ async function probe(pool, p) {
     const { rows } = await client.query(p.sql);
     return { ok: true, v: rows[0]?.v ?? null };
   } catch (error) {
-    return { ok: false, code: error.code };
+    return p.msg ? { ok: false, code: error.code, message: error.message } : { ok: false, code: error.code };
   } finally {
     await client.query('ROLLBACK').catch(() => {});
     client.release();
@@ -233,9 +235,9 @@ async function ddlByAuthAdmin(pool, name) {
 }
 
 // Đúng SQL và luật của gate check-definer-acl (cùng chạy trong kiem-bao-mat-sau-khoi-phuc), trên cụm này.
-async function gate(pool) {
+async function gate(pool, thieuMienTru = {}) {
   const { rows } = await pool('postgres').query(sqlPublicExecute(BLOCKED));
-  return phanTichPublicExecute({ rows, blockedRoles: BLOCKED });
+  return phanTichPublicExecute({ rows, blockedRoles: BLOCKED, thieuMienTru });
 }
 
 async function catalog(pool) {
@@ -288,7 +290,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
 
   await pool('postgres').query(MIGRATION);
   const gateAfter = await gate(pool);
-  assert.deepEqual({ ...gateAfter, thua: [] }, { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], thua: [], dat: true },
+  assert.deepEqual({ ...gateAfter, thua: [] }, { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], mienThua: [], thua: [], dat: true },
     'gate xanh sau migration');
   const after = await battery(pool);
   for (const p of PROBES) {
@@ -363,6 +365,18 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.can_see(uuid) TO authenticated');
   assert.deepEqual(await probe(pool, rlsProbe), before[rlsProbe.id]);
 
+  // Thăm dò view cũng không mù: chọn cột gọi hàm thật, nên thiếu GRANT trên helper của view thì service_role và read-only
+  // nhận 42501 — và gate thấy trước.
+  const viewProbes = PROBES.filter((p) => ['service_role đọc view', 'read-only đọc view gọi hàm'].includes(p.id));
+  assert.equal(viewProbes.length, 2);
+  for (const p of viewProbes) assert.equal(before[p.id].v, 'CUA-TOIcua-toi,CUA-NGUOI-KHACcua-nguoi-khac', p.id);
+  await pool('postgres').query('REVOKE EXECUTE ON FUNCTION app_private.inv_helper(text) FROM service_role, supabase_read_only_user');
+  for (const p of viewProbes) assert.deepEqual(await probe(pool, p), { ok: false, code: '42501' }, p.id);
+  assert.deepEqual((await gate(pool)).thieuQuyen,
+    ['service_role → app_private.inv_helper(text)', 'supabase_read_only_user → app_private.inv_helper(text)']);
+  await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.inv_helper(text) TO service_role, supabase_read_only_user');
+  for (const p of viewProbes) assert.deepEqual(await probe(pool, p), before[p.id], p.id);
+
   await t.test('tự kiểm đỏ khi còn một hàm cấp PUBLIC', async () => {
     await pool('postgres').query('GRANT EXECUTE ON FUNCTION public.f_sort_key(text) TO PUBLIC');
     await assert.rejects(pool('postgres').query(SELF_CHECK), /public_execute_con_ham_cap_public: 1 \(f_sort_key\(text\)\)/);
@@ -422,5 +436,120 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     await assert.rejects(pool('postgres').query(SELF_CHECK), /public_execute_mac_dinh_postgres_con_cap_public/);
     await pool('postgres').query('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC');
     await pool('postgres').query(MIGRATION);
+  });
+
+  // Từ đây: các đường mà câu 4 của gate ('thieu') phải thấy dù migration không cần (đo prod/TEST 05/11: không hàm cấp PUBLIC
+  // nào dùng qua các đường này). Hàm tạo SAU migration: app_private chỉ chủ gọi được, public theo mặc định Supabase.
+  await t.test('gate thấy hàm trong DEFAULT của tham số (kể cả hàm DEFINER) và thân BEGIN ATOMIC của hàm INVOKER', async () => {
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.today_c() RETURNS date LANGUAGE sql STABLE AS $$ SELECT DATE '2026-01-01' $$;
+      CREATE FUNCTION public.rpc_default(p date DEFAULT app_private.today_c()) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path=pg_catalog AS $$ SELECT p::text $$;
+      CREATE FUNCTION app_private.atomic_inv() RETURNS int LANGUAGE sql STABLE AS $$ SELECT 7 $$;
+      CREATE FUNCTION public.rpc_atomic() RETURNS int LANGUAGE sql STABLE BEGIN ATOMIC SELECT app_private.atomic_inv(); END;
+      CREATE FUNCTION app_private.atomic_def() RETURNS int LANGUAGE sql STABLE AS $$ SELECT 8 $$;
+      CREATE FUNCTION public.rpc_atomic_def() RETURNS int LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog
+        BEGIN ATOMIC SELECT app_private.atomic_def(); END;`);
+    const goi = (sql) => probe(pool, { role: 'authenticated', sql });
+    // DEFAULT của tham số chạy bằng NGƯỜI GỌI, kể cả khi hàm là DEFINER; truyền tham số thì default không chạy.
+    assert.deepEqual(await goi('SELECT public.rpc_default() AS v'), { ok: false, code: '42501' });
+    assert.deepEqual(await goi("SELECT public.rpc_default(DATE '2026-02-02') AS v"), { ok: true, v: '2026-02-02' });
+    // Thân BEGIN ATOMIC của hàm INVOKER chạy bằng người gọi; của hàm DEFINER chạy bằng chủ.
+    assert.deepEqual(await goi('SELECT public.rpc_atomic()::text AS v'), { ok: false, code: '42501' });
+    assert.deepEqual(await goi('SELECT public.rpc_atomic_def()::text AS v'), { ok: true, v: '8' });
+    const kq = await gate(pool);
+    assert.equal(kq.dat, false);
+    assert.deepEqual(kq.thieuQuyen, ['anon', 'authenticated', 'service_role']
+      .flatMap((r) => [`${r} → app_private.atomic_inv()`, `${r} → app_private.today_c()`]), 'đủ hai đường, không tính thân DEFINER');
+    await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.today_c(), app_private.atomic_inv() TO anon, authenticated, service_role');
+    assert.equal((await gate(pool)).dat, true);
+    assert.deepEqual(await goi('SELECT public.rpc_default() AS v'), { ok: true, v: '2026-01-01' });
+    assert.deepEqual(await goi('SELECT public.rpc_atomic()::text AS v'), { ok: true, v: '7' });
+    await pool('postgres').query(`DROP FUNCTION public.rpc_default(date), public.rpc_atomic(), public.rpc_atomic_def();
+      DROP FUNCTION app_private.today_c(), app_private.atomic_inv(), app_private.atomic_def();`);
+  });
+
+  await t.test('gate thấy DEFAULT và CHECK của domain', async () => {
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.dom_default() RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'D-1' $$;
+      CREATE FUNCTION app_private.dom_check(p text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT p <> '' $$;
+      CREATE DOMAIN public.ma_dom AS text DEFAULT app_private.dom_default() CHECK (app_private.dom_check(VALUE));
+      CREATE TABLE public.dom_rows(id int PRIMARY KEY, v public.ma_dom);`);
+    const chen = { role: 'authenticated', sql: 'INSERT INTO public.dom_rows(id) VALUES (1) RETURNING v' };
+    assert.deepEqual(await probe(pool, chen), { ok: false, code: '42501' });
+    assert.deepEqual((await gate(pool)).thieuQuyen, [
+      'anon → app_private.dom_check(text)', 'anon → app_private.dom_default()',
+      'authenticated → app_private.dom_check(text)', 'authenticated → app_private.dom_default()',
+      'service_role → app_private.dom_check(text)', 'service_role → app_private.dom_default()',
+      // read-only không INSERT được nên không cần DEFAULT; vẫn cần CHECK (ép kiểu sang domain trong truy vấn đọc cũng chạy CHECK).
+      'supabase_read_only_user → app_private.dom_check(text)',
+    ]);
+    await pool('postgres').query(`GRANT EXECUTE ON FUNCTION app_private.dom_default(), app_private.dom_check(text) TO anon, authenticated, service_role;
+      GRANT EXECUTE ON FUNCTION app_private.dom_check(text) TO supabase_read_only_user;`);
+    assert.equal((await gate(pool)).dat, true);
+    assert.deepEqual(await probe(pool, chen), { ok: true, v: 'D-1' });
+    await pool('postgres').query(`DROP TABLE public.dom_rows; DROP DOMAIN public.ma_dom;
+      DROP FUNCTION app_private.dom_default(), app_private.dom_check(text);`);
+  });
+
+  await t.test('gate thấy hàm trong view THƯỜNG (không security_invoker), bỏ qua materialized view', async () => {
+    // PostgreSQL kiểm EXECUTE của hàm trong MỌI view theo vai đang truy vấn; security_invoker chỉ đổi cách kiểm quyền bảng.
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.view_helper(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT p || '?' $$;
+      CREATE VIEW public.v_thuong AS SELECT id, app_private.view_helper(label) AS nhan FROM public.readings;
+      CREATE FUNCTION app_private.mv_helper(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT p || '#' $$;
+      CREATE MATERIALIZED VIEW public.mv_readings AS SELECT id, app_private.mv_helper(label) AS nhan FROM public.readings;`);
+    const doc = (rel) => ({ role: 'authenticated', sql: `SELECT string_agg(nhan, ',' ORDER BY id) AS v FROM public.${rel}` });
+    assert.deepEqual(await probe(pool, doc('v_thuong')), { ok: false, code: '42501' });
+    assert.deepEqual(await probe(pool, doc('mv_readings')), { ok: true, v: 'cua-toi#,cua-nguoi-khac#' }, 'materialized view không chạy hàm khi đọc');
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon', 'authenticated', 'service_role', 'supabase_read_only_user']
+      .map((r) => `${r} → app_private.view_helper(text)`));
+    await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.view_helper(text) TO anon, authenticated, service_role, supabase_read_only_user');
+    assert.equal((await gate(pool)).dat, true);
+    assert.deepEqual(await probe(pool, doc('v_thuong')), { ok: true, v: 'cua-toi?,cua-nguoi-khac?' });
+    await pool('postgres').query(`DROP VIEW public.v_thuong; DROP MATERIALIZED VIEW public.mv_readings;
+      DROP FUNCTION app_private.view_helper(text), app_private.mv_helper(text);`);
+  });
+
+  await t.test('miễn anon chỉ ở đường policy: DEFAULT của bảng anon ghi được vẫn đỏ; miễn tường minh khi RLS chặn anon trước chỉ mục', async () => {
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.chi_auth(p boolean) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT p $$;
+      GRANT EXECUTE ON FUNCTION app_private.chi_auth(boolean) TO authenticated, service_role;
+      CREATE POLICY notices_chi_auth ON public.notices FOR SELECT TO public USING (app_private.chi_auth(visible));`);
+    // Policy TO public dùng hàm đã cố ý đóng với anon: anon nhận 42501, đúng ý người đóng — gate miễn.
+    assert.deepEqual(await probe(pool, { role: 'anon', sql: 'SELECT count(*)::text AS v FROM public.notices' }), { ok: false, code: '42501' });
+    assert.equal((await gate(pool)).dat, true);
+    // Kịch bản của reviewer: cùng hàm làm DEFAULT của bảng anon INSERT được (không RLS) — anon chèn lỗi 42501, gate phải đỏ.
+    await pool('postgres').query('CREATE TABLE public.mo_cho_anon(id int, ma boolean DEFAULT app_private.chi_auth(true))');
+    assert.deepEqual(await probe(pool, { role: 'anon', sql: 'INSERT INTO public.mo_cho_anon(id) VALUES (1) RETURNING ma::text AS v' }),
+      { ok: false, code: '42501' });
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chi_auth(boolean)'], 'đường DEFAULT không được miễn');
+    await pool('postgres').query('DROP TABLE public.mo_cho_anon; DROP POLICY notices_chi_auth ON public.notices; DROP FUNCTION app_private.chi_auth(boolean);');
+
+    // Như hai cặp miễn trên production: hàm đã đóng với anon chỉ nằm trong chỉ mục biểu thức của bảng mà RLS WITH CHECK chặn anon
+    // ghi. Anon chèn nhận 42501 từ RLS TRƯỚC khi chỉ mục chạy hàm (hành vi không đổi); người được phép chèn bình thường.
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.chuan_so(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT regexp_replace(p, '[^0-9]', '', 'g') $$;
+      GRANT EXECUTE ON FUNCTION app_private.chuan_so(text) TO authenticated, service_role;
+      CREATE TABLE public.khach(id int PRIMARY KEY, owner_id uuid DEFAULT auth.uid(), phone text);
+      ALTER TABLE public.khach ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY khach_ghi ON public.khach FOR INSERT TO public WITH CHECK (owner_id = auth.uid());
+      CREATE INDEX khach_phone_idx ON public.khach (app_private.chuan_so(phone));`);
+    const chen = (role) => probe(pool, { role, msg: true, sql: "WITH x AS (INSERT INTO public.khach(id, phone) VALUES (1, '090-1')) SELECT 'ok' AS v" });
+    const anon = await chen('anon');
+    assert.equal(anon.code, '42501');
+    assert.match(anon.message, /row-level security/, 'RLS chặn anon trước khi chỉ mục chạy hàm');
+    assert.deepEqual(await chen('authenticated'), { ok: true, v: 'ok' });
+    const MIEN = { anon: ['app_private.chuan_so(text)'] };
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chuan_so(text)'], 'chưa miễn thì đỏ');
+    assert.deepEqual({ ...(await gate(pool, MIEN)), thua: [] },
+      { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], mienThua: [], thua: [], dat: true }, 'miễn tường minh thì xanh');
+    // Mục miễn không còn cần (chỉ mục đã bỏ) phải đỏ — danh sách chỉ teo đi.
+    await pool('postgres').query('DROP INDEX public.khach_phone_idx');
+    const thua = await gate(pool, MIEN);
+    assert.equal(thua.dat, false, 'mục miễn thừa thì đỏ (dat)');
+    assert.deepEqual(thua.mienThua, ['anon → app_private.chuan_so(text)'], 'mục miễn thừa thì đỏ');
+    await pool('postgres').query('DROP TABLE public.khach; DROP FUNCTION app_private.chuan_so(text);');
+    assert.equal((await gate(pool)).dat, true);
   });
 });

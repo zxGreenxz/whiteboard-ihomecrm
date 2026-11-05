@@ -92,7 +92,7 @@ describe("phanTichBaoMat", () => {
       "hàm ứng dụng còn cấp EXECUTE cho PUBLIC (mọi vai gọi được)",
       "vai bị chặn gọi được hàm SECURITY DEFINER ngoài danh sách riêng",
       "mặc định quyền hàm còn cấp PUBLIC (hàm tạo sau lại mở cho mọi vai)",
-      "hàm trong policy/view/default thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)",
+      "hàm trong policy/view/default/domain/hàm khác thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)",
     ]);
   });
 

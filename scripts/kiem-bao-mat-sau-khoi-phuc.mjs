@@ -29,7 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { phanTichPublicExecute, sqlPublicExecute } from "./check-definer-acl.mjs";
+import { docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "./check-definer-acl.mjs";
 import { chanProduction, coPsql, hoiJson } from "./lib/goi-psql-dich.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -195,7 +195,7 @@ export function phanTichBaoMat({ bangThieuRls, views, definerThieuSearchPath, st
     viPham.push({ phep: "mặc định quyền hàm còn cấp PUBLIC (hàm tạo sau lại mở cho mọi vai)", danhSach: publicExecute.macDinh });
   }
   if ((publicExecute.thieuQuyen ?? []).length > 0) {
-    viPham.push({ phep: "hàm trong policy/view/default thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)", danhSach: publicExecute.thieuQuyen });
+    viPham.push({ phep: "hàm trong policy/view/default/domain/hàm khác thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)", danhSach: publicExecute.thieuQuyen });
   }
   return { dat: viPham.length === 0, viPham };
 }
@@ -250,7 +250,10 @@ function main(argv) {
       stableLocks: hoiJson(dich, SQL_STABLE_FN_LOCKS),
       anonDefiner: hoiJson(dich, SQL_ANON_DEFINER).map((r) => r.sig),
       denylist,
-      publicExecute: phanTichPublicExecute({ rows: hoiJson(dich, sqlPublicExecute(blockedRoles)), blockedRoles }),
+      // Miễn trừ đã xét áp như gate production; phép "mục miễn thừa" thì tắt: ACL bản dựng lại đến từ shim
+      // (baseline --no-acl), cửa đã đóng ở production có thể không tái hiện ở đây.
+      publicExecute: phanTichPublicExecute({ rows: hoiJson(dich, sqlPublicExecute(blockedRoles)), blockedRoles,
+        thieuMienTru: docThieuMienTru(aclDoc.publicExecute), kiemMienThua: false }),
     };
   } catch (e) {
     console.error(`❌ Không kiểm được: ${e.message}`);

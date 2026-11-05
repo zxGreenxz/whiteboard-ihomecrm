@@ -61,11 +61,22 @@ const SCHEMA_PHOI_RA = ['public', 'api', 'graphql_public'];
 //      gồm cả nhóm chỉ SET ROLE được mà không thừa hưởng).
 //   3. Mặc định hàm của postgres (toàn cục, hoặc theo schema) còn cấp PUBLIC không? Còn thì hàm tạo
 //      sau lại cấp PUBLIC.
-//   4. Hàm mà vai tự chạy qua đối tượng phụ thuộc (pg_depend: policy RLS, view security_invoker,
-//      default/CHECK/chỉ mục/WHEN) có thiếu EXECUTE cho vai đó không? Hết PUBLIC thì một helper
-//      app_private mới trong policy mà quên GRANT sẽ làm truy vấn của vai đó lỗi 42501 — chỉ phép
-//      này thấy trước. Miễn anon trên hàm đã cố ý đóng (ACL cấp authenticated, không cấp anon): đo
-//      prod 05/11 có 15 hàm như vậy trong policy TO public, đúng ý người đã thu.
+//   4. Hàm mà vai tự chạy qua đối tượng phụ thuộc (pg_depend) có thiếu EXECUTE cho vai đó không? Hết
+//      PUBLIC thì một helper app_private mới mà quên GRANT sẽ làm truy vấn của vai đó lỗi 42501 — chỉ
+//      phép này thấy trước. PostgreSQL kiểm EXECUTE theo vai ĐANG truy vấn ở mọi đường sau:
+//        · policy RLS mà vai chịu;
+//        · view/rule mà vai đọc/ghi — MỌI view, không chỉ security_invoker (security_invoker chỉ đổi
+//          cách kiểm quyền BẢNG; hàm trong view luôn kiểm theo vai đang truy vấn). Trừ materialized
+//          view: truy vấn của nó chỉ chạy lúc REFRESH, bằng chủ;
+//        · default/generated, CHECK, chỉ mục biểu thức, WHEN của trigger trên bảng vai ghi được;
+//        · domain: CHECK (mọi vai — ép kiểu ở bất kỳ truy vấn nào cũng chạy CHECK) và DEFAULT (vai INSERT được
+//          vào bảng/view có cột mang kiểu domain đó);
+//        · hàm khác mà vai gọi được: DEFAULT của tham số (luôn tính theo người gọi, kể cả hàm DEFINER)
+//          và thân BEGIN ATOMIC của hàm INVOKER. Thân BEGIN ATOMIC của hàm DEFINER chạy bằng chủ, không tính.
+//      Thân hàm dạng chuỗi ($$ … $$) không có trong pg_depend: hàm gọi lồng trong đó phép này không thấy.
+//      Miễn anon trên hàm đã cố ý đóng (ACL cấp authenticated, không cấp anon) CHỈ ở đường policy: đo
+//      prod 05/11 có 15 hàm như vậy trong policy TO public, đúng ý người đã thu (anon nhận 42501). Đường
+//      khác, vd bảng cho anon INSERT có DEFAULT gọi hàm đã đóng, vẫn đỏ.
 // Danh sách của vai bị chặn sửa TAY trong PR có review; --update không đụng tới nó.
 export const SCHEMA_UNG_DUNG = ['public', 'app_private', 'api'];
 const TEN_VAI = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -95,22 +106,22 @@ SELECT 'thieu', r.rolname::text, a.sig FROM pg_catalog.pg_roles r CROSS JOIN app
  WHERE r.rolname IN ('anon','authenticated','service_role','supabase_read_only_user') AND NOT a.trig
    AND (r.rolname <> 'supabase_read_only_user' OR NOT a.prosecdef)
    AND NOT pg_catalog.has_function_privilege(r.oid, a.oid, 'EXECUTE')
-   AND NOT (r.rolname = 'anon'
-     AND EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
-       WHERE x.grantee = 'authenticated'::regrole AND x.privilege_type = 'EXECUTE')
-     AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
-       WHERE x.grantee = 'anon'::regrole AND x.privilege_type = 'EXECUTE'))
    AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
      WHERE d.refclassid = 'pg_catalog.pg_proc'::regclass AND d.refobjid = a.oid AND (
-       (d.classid = 'pg_catalog.pg_policy'::regclass AND NOT r.rolbypassrls AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy x
+       (d.classid = 'pg_catalog.pg_policy'::regclass AND NOT r.rolbypassrls
+         AND NOT (r.rolname = 'anon'
+           AND EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
+             WHERE x.grantee = 'authenticated'::regrole AND x.privilege_type = 'EXECUTE')
+           AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(a.proacl, pg_catalog.acldefault('f', a.proowner))) x
+             WHERE x.grantee = 'anon'::regrole AND x.privilege_type = 'EXECUTE'))
+         AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy x
          WHERE x.oid = d.objid AND (0 = ANY (x.polroles) OR EXISTS (SELECT 1 FROM unnest(x.polroles) g(oid)
            WHERE g.oid <> 0 AND pg_catalog.pg_has_role(r.oid, g.oid, 'USAGE')))
            AND pg_catalog.has_table_privilege(r.oid, x.polrelid, 'SELECT,INSERT,UPDATE,DELETE')))
        OR (d.classid = 'pg_catalog.pg_rewrite'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite x
-         JOIN pg_catalog.pg_class c ON c.oid = x.ev_class WHERE x.oid = d.objid
-           AND lower(COALESCE((SELECT o.option_value FROM pg_catalog.pg_options_to_table(c.reloptions) o
-             WHERE o.option_name = 'security_invoker'), 'false')) IN ('true', 'on', '1')
-           AND pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')))
+         JOIN pg_catalog.pg_class c ON c.oid = x.ev_class WHERE x.oid = d.objid AND c.relkind <> 'm'
+           AND pg_catalog.has_table_privilege(r.oid, c.oid,
+             CASE x.ev_type WHEN '2' THEN 'UPDATE' WHEN '3' THEN 'INSERT' WHEN '4' THEN 'DELETE' ELSE 'SELECT' END)))
        OR (d.classid = 'pg_catalog.pg_attrdef'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_attrdef x
          WHERE x.oid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.adrelid, 'INSERT,UPDATE')))
        OR (d.classid = 'pg_catalog.pg_constraint'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint x
@@ -118,7 +129,14 @@ SELECT 'thieu', r.rolname::text, a.sig FROM pg_catalog.pg_roles r CROSS JOIN app
        OR (d.classid = 'pg_catalog.pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_index x
          WHERE x.indexrelid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.indrelid, 'INSERT,UPDATE')))
        OR (d.classid = 'pg_catalog.pg_trigger'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger x
-         WHERE x.oid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.tgrelid, 'INSERT,UPDATE,DELETE')))))
+         WHERE x.oid = d.objid AND pg_catalog.has_table_privilege(r.oid, x.tgrelid, 'INSERT,UPDATE,DELETE')))
+       OR (d.classid = 'pg_catalog.pg_proc'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc x
+         WHERE x.oid = d.objid AND pg_catalog.has_function_privilege(r.oid, x.oid, 'EXECUTE')
+           AND (NOT x.prosecdef OR x.proargdefaults::text ~ (':funcid ' || a.oid::text || '([^0-9]|$)'))))
+       OR (d.classid = 'pg_catalog.pg_type'::regclass AND EXISTS (SELECT 1 FROM pg_catalog.pg_type x
+         JOIN pg_catalog.pg_attribute t ON t.atttypid = x.oid AND t.attnum > 0 AND NOT t.attisdropped
+         JOIN pg_catalog.pg_class c ON c.oid = t.attrelid AND c.relkind IN ('r', 'p', 'v', 'f')
+         WHERE x.oid = d.objid AND x.typtype = 'd' AND pg_catalog.has_table_privilege(r.oid, c.oid, 'INSERT')))))
 UNION ALL
 SELECT 'default', 'postgres', '(toàn cục)'
  WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl da
@@ -132,20 +150,40 @@ SELECT 'default', pg_catalog.pg_get_userbyid(da.defaclrole)::text, da.defaclname
 ORDER BY 1, 2, 3`;
 }
 
+// Chữ ký regprocedure bỏ tên schema khi schema nằm trong search_path (public), nên so khớp bỏ tiền tố `public.`.
+const chuanSig = (s) => String(s).replace(/^public\./, '');
+
 /**
  * Phân tích kết quả sqlPublicExecute. Thuần tuý, không I/O. `thua`: dòng trong danh sách vai bị chặn
  * mà vai đó không còn gọi được (hàm đã bỏ/thu) — chỉ báo, không đỏ.
+ * `thieuMienTru` (publicExecute.thieuMienTru, vai → chữ ký): cặp 'thieu' đã xét và cho qua. `mienThua`: mục miễn
+ * mà catalog không còn sinh ra — ĐỎ khi kiemMienThua (gate production), để danh sách chỉ teo đi. Đích không phải
+ * production (bản dựng lại từ baseline --no-acl) có ACL khác nên tắt phép này ở đó.
  */
-export function phanTichPublicExecute({ rows = [], blockedRoles = {} } = {}) {
+export function phanTichPublicExecute({ rows = [], blockedRoles = {}, thieuMienTru = {}, kiemMienThua = true } = {}) {
   const hamPublic = rows.filter((r) => r.kind === 'public').map((r) => r.sig);
   const reach = rows.filter((r) => r.kind === 'reach');
   const vuotQuyen = reach.filter((r) => !(blockedRoles[r.role] ?? []).includes(r.sig)).map((r) => `${r.role} → ${r.sig}`);
   const macDinh = rows.filter((r) => r.kind === 'default').map((r) => `${r.role}: ${r.sig}`);
-  const thieuQuyen = rows.filter((r) => r.kind === 'thieu').map((r) => `${r.role} → ${r.sig}`);
+  const mien = new Set(Object.entries(thieuMienTru).flatMap(([role, sigs]) => sigs.map((s) => `${role} → ${chuanSig(s)}`)));
+  const thieuTatCa = rows.filter((r) => r.kind === 'thieu').map((r) => `${r.role} → ${chuanSig(r.sig)}`);
+  const thieuQuyen = thieuTatCa.filter((x) => !mien.has(x));
+  const conThieu = new Set(thieuTatCa);
+  const mienThua = kiemMienThua ? [...mien].filter((x) => !conThieu.has(x)) : [];
   const conGoi = new Set(reach.map((r) => `${r.role} → ${r.sig}`));
   const thua = Object.entries(blockedRoles).flatMap(([role, sigs]) => sigs.map((s) => `${role} → ${s}`)).filter((x) => !conGoi.has(x));
-  return { hamPublic, vuotQuyen, macDinh, thieuQuyen, thua,
-    dat: hamPublic.length === 0 && vuotQuyen.length === 0 && macDinh.length === 0 && thieuQuyen.length === 0 };
+  return { hamPublic, vuotQuyen, macDinh, thieuQuyen, mienThua, thua,
+    dat: hamPublic.length === 0 && vuotQuyen.length === 0 && macDinh.length === 0 && thieuQuyen.length === 0 && mienThua.length === 0 };
+}
+
+/** Đọc publicExecute.thieuMienTru: đối tượng vai → mảng chữ ký; thiếu thì rỗng; sai dạng thì ném. */
+export function docThieuMienTru(publicExecute) {
+  const m = publicExecute?.thieuMienTru ?? {};
+  if (typeof m !== 'object' || Array.isArray(m)
+    || Object.entries(m).some(([vai, sigs]) => !TEN_VAI.test(vai) || !Array.isArray(sigs) || sigs.some((s) => typeof s !== 'string'))) {
+    throw new Error('publicExecute.thieuMienTru phải là đối tượng vai → mảng chữ ký');
+  }
+  return m;
 }
 
 /**
@@ -213,9 +251,14 @@ function baoPublicExecute(kq) {
     console.error(`❌ Mặc định quyền hàm còn cấp PUBLIC — hàm tạo sau sẽ lại mở cho mọi vai: ${kq.macDinh.join(', ')}`);
   }
   if (kq.thieuQuyen.length) {
-    console.error(`❌ ${kq.thieuQuyen.length} hàm mà vai tự chạy qua policy/view/default nhưng thiếu EXECUTE (truy vấn của vai đó sẽ lỗi 42501):`);
+    console.error(`❌ ${kq.thieuQuyen.length} hàm mà vai tự chạy qua policy/view/default/domain/hàm khác nhưng thiếu EXECUTE (truy vấn của vai đó sẽ lỗi 42501):`);
     for (const s of kq.thieuQuyen.slice(0, 30)) console.error('   ! ' + s);
     console.error('   GRANT EXECUTE tường minh cho đúng vai đó (hàm mới không còn tự cấp PUBLIC từ 20261104173640).');
+  }
+  if (kq.mienThua.length) {
+    console.error(`❌ ${kq.mienThua.length} mục trong publicExecute.thieuMienTru không còn cần (catalog không còn sinh ra cặp này):`);
+    for (const s of kq.mienThua) console.error('   - ' + s);
+    console.error('   Gỡ khỏi danh sách — danh sách miễn chỉ được teo đi.');
   }
 }
 
@@ -232,7 +275,8 @@ async function main(argv) {
     console.error('❌ definer-acl-baseline.json thiếu publicExecute.blockedRoles (đối tượng vai → mảng chữ ký) — không kiểm được.');
     return 1;
   }
-  const kqPublic = phanTichPublicExecute({ rows: await truyVan(pat, ref, sqlPublicExecute(blockedRoles)), blockedRoles });
+  const thieuMienTru = docThieuMienTru(doc.publicExecute);
+  const kqPublic = phanTichPublicExecute({ rows: await truyVan(pat, ref, sqlPublicExecute(blockedRoles)), blockedRoles, thieuMienTru });
 
   if (argv.includes('--update')) {
     if (kqPublic.hamPublic.length) {
