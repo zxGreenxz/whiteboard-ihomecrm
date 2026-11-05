@@ -45,6 +45,8 @@ on:
       - 'scripts/network-center-function-bodies.mjs'
       - 'scripts/__tests__/restore-hermes-drill.test.mjs'
       - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
+      # kiem-bao-mat-sau-khoi-phuc.mjs import luật PUBLIC EXECUTE (sqlPublicExecute/phanTichPublicExecute) từ file này.
+      - 'scripts/check-definer-acl.mjs'
       - 'scripts/lib/goi-psql-dich.mjs'
       - 'scripts/test-platform-storage-shim.mjs'
       - 'scripts/definer-acl-baseline.json'
@@ -63,6 +65,8 @@ on:
       - 'scripts/network-center-function-bodies.mjs'
       - 'scripts/__tests__/restore-hermes-drill.test.mjs'
       - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
+      # kiem-bao-mat-sau-khoi-phuc.mjs import luật PUBLIC EXECUTE (sqlPublicExecute/phanTichPublicExecute) từ file này.
+      - 'scripts/check-definer-acl.mjs'
       - 'scripts/lib/goi-psql-dich.mjs'
       - 'scripts/test-platform-storage-shim.mjs'
       - 'scripts/definer-acl-baseline.json'
