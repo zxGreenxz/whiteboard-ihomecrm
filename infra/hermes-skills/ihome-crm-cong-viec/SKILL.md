@@ -40,6 +40,7 @@ Giao / tạo việc, giao nhiều việc, sửa hạn hay người nhận, ghi t
 
 ## Giao nhiều việc — `task.create_batch`
 
+Thao tác này nằm trong `crm_action_list` page=task (lọc đúng trang mới thấy đủ). Không chia lô thành nhiều `task.create` lẻ.
 Tối đa 20 việc, một lần đồng ý cho cả lô: `items` [{buildingName, roomName, content, …}]; hoặc `buildingsManagedBy` = tên người
 (mỗi toà người đó quản lý một việc); hoặc `perRoom` = true + `buildingName` (mỗi phòng một việc, không cần xin danh sách phòng).
 `batch_too_large` ⇒ nói số phòng/việc, đề nghị chia lô. `task_quota_*` ⇒ chạm hạn mức giao việc qua bot trong một giờ, lệnh này
