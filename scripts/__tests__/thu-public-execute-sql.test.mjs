@@ -361,7 +361,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   const rlsProbe = PROBES.find((p) => p.id === 'authenticated đọc qua RLS gọi helper app_private');
   await pool('postgres').query('REVOKE EXECUTE ON FUNCTION app_private.can_see(uuid) FROM authenticated');
   assert.deepEqual(await probe(pool, rlsProbe), { ok: false, code: '42501' });
-  assert.deepEqual((await gate(pool)).thieuQuyen, ['authenticated → app_private.can_see(uuid)'], 'gate báo helper policy thiếu GRANT');
+  assert.deepEqual((await gate(pool)).thieuQuyen, ['authenticated → app_private.can_see(uuid) @ pg_policy'], 'gate báo helper policy thiếu GRANT');
   await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.can_see(uuid) TO authenticated');
   assert.deepEqual(await probe(pool, rlsProbe), before[rlsProbe.id]);
 
@@ -373,7 +373,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
   await pool('postgres').query('REVOKE EXECUTE ON FUNCTION app_private.inv_helper(text) FROM service_role, supabase_read_only_user');
   for (const p of viewProbes) assert.deepEqual(await probe(pool, p), { ok: false, code: '42501' }, p.id);
   assert.deepEqual((await gate(pool)).thieuQuyen,
-    ['service_role → app_private.inv_helper(text)', 'supabase_read_only_user → app_private.inv_helper(text)']);
+    ['service_role → app_private.inv_helper(text) @ pg_rewrite', 'supabase_read_only_user → app_private.inv_helper(text) @ pg_rewrite']);
   await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.inv_helper(text) TO service_role, supabase_read_only_user');
   for (const p of viewProbes) assert.deepEqual(await probe(pool, p), before[p.id], p.id);
 
@@ -460,7 +460,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     const kq = await gate(pool);
     assert.equal(kq.dat, false);
     assert.deepEqual(kq.thieuQuyen, ['anon', 'authenticated', 'service_role']
-      .flatMap((r) => [`${r} → app_private.atomic_inv()`, `${r} → app_private.today_c()`]), 'đủ hai đường, không tính thân DEFINER');
+      .flatMap((r) => [`${r} → app_private.atomic_inv() @ pg_proc`, `${r} → app_private.today_c() @ pg_proc`]), 'đủ hai đường, không tính thân DEFINER');
     await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.today_c(), app_private.atomic_inv() TO anon, authenticated, service_role');
     assert.equal((await gate(pool)).dat, true);
     assert.deepEqual(await goi('SELECT public.rpc_default() AS v'), { ok: true, v: '2026-01-01' });
@@ -478,11 +478,11 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     const chen = { role: 'authenticated', sql: 'INSERT INTO public.dom_rows(id) VALUES (1) RETURNING v' };
     assert.deepEqual(await probe(pool, chen), { ok: false, code: '42501' });
     assert.deepEqual((await gate(pool)).thieuQuyen, [
-      'anon → app_private.dom_check(text)', 'anon → app_private.dom_default()',
-      'authenticated → app_private.dom_check(text)', 'authenticated → app_private.dom_default()',
-      'service_role → app_private.dom_check(text)', 'service_role → app_private.dom_default()',
+      'anon → app_private.dom_check(text) @ pg_constraint', 'anon → app_private.dom_default() @ pg_type',
+      'authenticated → app_private.dom_check(text) @ pg_constraint', 'authenticated → app_private.dom_default() @ pg_type',
+      'service_role → app_private.dom_check(text) @ pg_constraint', 'service_role → app_private.dom_default() @ pg_type',
       // read-only không INSERT được nên không cần DEFAULT; vẫn cần CHECK (ép kiểu sang domain trong truy vấn đọc cũng chạy CHECK).
-      'supabase_read_only_user → app_private.dom_check(text)',
+      'supabase_read_only_user → app_private.dom_check(text) @ pg_constraint',
     ]);
     await pool('postgres').query(`GRANT EXECUTE ON FUNCTION app_private.dom_default(), app_private.dom_check(text) TO anon, authenticated, service_role;
       GRANT EXECUTE ON FUNCTION app_private.dom_check(text) TO supabase_read_only_user;`);
@@ -503,7 +503,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     assert.deepEqual(await probe(pool, doc('v_thuong')), { ok: false, code: '42501' });
     assert.deepEqual(await probe(pool, doc('mv_readings')), { ok: true, v: 'cua-toi#,cua-nguoi-khac#' }, 'materialized view không chạy hàm khi đọc');
     assert.deepEqual((await gate(pool)).thieuQuyen, ['anon', 'authenticated', 'service_role', 'supabase_read_only_user']
-      .map((r) => `${r} → app_private.view_helper(text)`));
+      .map((r) => `${r} → app_private.view_helper(text) @ pg_rewrite`));
     await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.view_helper(text) TO anon, authenticated, service_role, supabase_read_only_user');
     assert.equal((await gate(pool)).dat, true);
     assert.deepEqual(await probe(pool, doc('v_thuong')), { ok: true, v: 'cua-toi?,cua-nguoi-khac?' });
@@ -523,7 +523,7 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     await pool('postgres').query('CREATE TABLE public.mo_cho_anon(id int, ma boolean DEFAULT app_private.chi_auth(true))');
     assert.deepEqual(await probe(pool, { role: 'anon', sql: 'INSERT INTO public.mo_cho_anon(id) VALUES (1) RETURNING ma::text AS v' }),
       { ok: false, code: '42501' });
-    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chi_auth(boolean)'], 'đường DEFAULT không được miễn');
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chi_auth(boolean) @ pg_attrdef'], 'đường DEFAULT không được miễn');
     await pool('postgres').query('DROP TABLE public.mo_cho_anon; DROP POLICY notices_chi_auth ON public.notices; DROP FUNCTION app_private.chi_auth(boolean);');
 
     // Như hai cặp miễn trên production: hàm đã đóng với anon chỉ nằm trong chỉ mục biểu thức của bảng mà RLS WITH CHECK chặn anon
@@ -540,16 +540,57 @@ test('thu EXECUTE của PUBLIC: lỗ có thật trước, bịt đúng chỗ sau
     assert.equal(anon.code, '42501');
     assert.match(anon.message, /row-level security/, 'RLS chặn anon trước khi chỉ mục chạy hàm');
     assert.deepEqual(await chen('authenticated'), { ok: true, v: 'ok' });
-    const MIEN = { anon: ['app_private.chuan_so(text)'] };
-    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chuan_so(text)'], 'chưa miễn thì đỏ');
+    const MIEN = { anon: ['app_private.chuan_so(text) @ pg_class'] };
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon → app_private.chuan_so(text) @ pg_class'], 'chưa miễn thì đỏ');
     assert.deepEqual({ ...(await gate(pool, MIEN)), thua: [] },
       { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], mienThua: [], thua: [], dat: true }, 'miễn tường minh thì xanh');
+    // Miễn khoá theo ĐƯỜNG (re-review #392): thêm một view anon đọc được, gọi đúng hàm đã miễn ở chỉ mục — anon đọc view
+    // nhận 42501 thật, nên đường mới phải đỏ dù mục miễn của đường chỉ mục vẫn đứng.
+    await pool('postgres').query('CREATE VIEW public.v_khach AS SELECT id, app_private.chuan_so(phone) AS so FROM public.khach');
+    assert.deepEqual(await probe(pool, { role: 'anon', sql: "SELECT string_agg(so, ',') AS v FROM public.v_khach" }), { ok: false, code: '42501' });
+    const duongMoi = await gate(pool, MIEN);
+    assert.deepEqual(duongMoi.thieuQuyen,
+      ['anon → app_private.chuan_so(text) @ pg_rewrite', 'supabase_read_only_user → app_private.chuan_so(text) @ pg_rewrite'],
+      'miễn theo đường: view mới vẫn đỏ');
+    assert.deepEqual(duongMoi.mienThua, [], 'đường chỉ mục vẫn còn nên mục miễn không thừa');
+    await pool('postgres').query('DROP VIEW public.v_khach');
     // Mục miễn không còn cần (chỉ mục đã bỏ) phải đỏ — danh sách chỉ teo đi.
     await pool('postgres').query('DROP INDEX public.khach_phone_idx');
     const thua = await gate(pool, MIEN);
     assert.equal(thua.dat, false, 'mục miễn thừa thì đỏ (dat)');
-    assert.deepEqual(thua.mienThua, ['anon → app_private.chuan_so(text)'], 'mục miễn thừa thì đỏ');
+    assert.deepEqual(thua.mienThua, ['anon → app_private.chuan_so(text) @ pg_class'], 'mục miễn thừa thì đỏ');
     await pool('postgres').query('DROP TABLE public.khach; DROP FUNCTION app_private.chuan_so(text);');
     assert.equal((await gate(pool)).dat, true);
+  });
+
+  await t.test('aggregate không gây đỏ giả: EXECUTE của sfunc kiểm theo CHỦ aggregate, không theo người gọi', async () => {
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.agg_cong(s integer, v integer) RETURNS integer LANGUAGE sql IMMUTABLE AS $$ SELECT s + v $$;
+      CREATE AGGREGATE public.tong_rieng(integer) (SFUNC = app_private.agg_cong, STYPE = integer, INITCOND = '0');`);
+    // authenticated chỉ có EXECUTE trên aggregate (mặc định public), không có trên sfunc — aggregate vẫn chạy.
+    const quyen = await pool('supabase_admin').query(`SELECT has_function_privilege('authenticated', 'app_private.agg_cong(integer,integer)', 'EXECUTE') AS sfunc,
+      has_function_privilege('authenticated', 'public.tong_rieng(integer)', 'EXECUTE') AS agg`);
+    assert.deepEqual(quyen.rows[0], { sfunc: false, agg: true });
+    assert.deepEqual(await probe(pool, { role: 'authenticated', sql: 'SELECT public.tong_rieng(x)::text AS v FROM generate_series(1, 3) x' }),
+      { ok: true, v: '6' });
+    assert.deepEqual((await gate(pool)).thieuQuyen, [], 'aggregate không đòi GRANT sfunc cho người gọi');
+    await pool('postgres').query('DROP AGGREGATE public.tong_rieng(integer); DROP FUNCTION app_private.agg_cong(integer, integer);');
+  });
+
+  await t.test('DEFAULT của domain chạy cả ở UPDATE … SET col = DEFAULT: vai chỉ có UPDATE vẫn cần', async () => {
+    await pool('postgres').query(`
+      CREATE FUNCTION app_private.dom_default_sua() RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'S-1' $$;
+      CREATE DOMAIN public.ma_dom_sua AS text DEFAULT app_private.dom_default_sua();
+      CREATE TABLE public.dom_sua(id int PRIMARY KEY, v public.ma_dom_sua);
+      INSERT INTO public.dom_sua(id, v) VALUES (1, 'cu');
+      REVOKE INSERT ON public.dom_sua FROM anon, authenticated, service_role;`);
+    const sua = { role: 'authenticated', sql: 'UPDATE public.dom_sua SET v = DEFAULT WHERE id = 1 RETURNING v' };
+    assert.deepEqual(await probe(pool, sua), { ok: false, code: '42501' });
+    assert.deepEqual((await gate(pool)).thieuQuyen, ['anon', 'authenticated', 'service_role']
+      .map((r) => `${r} → app_private.dom_default_sua() @ pg_type`), 'vai chỉ có UPDATE cũng cần DEFAULT của domain');
+    await pool('postgres').query('GRANT EXECUTE ON FUNCTION app_private.dom_default_sua() TO anon, authenticated, service_role');
+    assert.equal((await gate(pool)).dat, true);
+    assert.deepEqual(await probe(pool, sua), { ok: true, v: 'S-1' });
+    await pool('postgres').query('DROP TABLE public.dom_sua; DROP DOMAIN public.ma_dom_sua; DROP FUNCTION app_private.dom_default_sua();');
   });
 });
