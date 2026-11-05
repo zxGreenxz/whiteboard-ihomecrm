@@ -20,7 +20,8 @@ import { extract } from './room-pass-sql-fixture.mjs';
 // Review chéo PR #349 (phương án b): migration bật trang Thu chi bật income_expenses.create, mà khoá đó từng là điều kiện CUỐI CÙNG
 // còn đóng hai tool báo cọc Sale ghi tiền một bước (crm_sale_reservation_create / _topup: không xem trước, không confirmToken, có
 // thể tự duyệt lúc sinh). Từ migration hermes_sale_deposit_receipt_key_v1 + connector cùng đợt, hai thao tác đó đòi THÊM khoá riêng
-// deposits.create_receipt (seed TẮT; registry ∩ chính sách công ty ∩ kết nối ở SQL; effective.action ở connector).
+// deposits.create_receipt (seed TẮT; registry ∩ chính sách công ty ∩ kết nối ở SQL; effective.action ở connector). Từ 05/11 cầu
+// crm_sale_action còn gỡ hẳn hai thao tác (sale-tool-contract.mjs SALE_RETIRED_OPERATIONS); phép kiểm khoá riêng dưới đây là lớp trong.
 // Chứng minh, cả connector lẫn SQL: income_expenses.create bật (như sau file bật Thu chi hermes_expense_actions_activation_v1) mà
 // thiếu khoá riêng ⇒ chặn trước khi ghi; có khoá riêng ⇒ mở; khoá riêng không thay deposits.create hay income_expenses.create (chỉ
 // siết); thao tác Sale khác không đổi; không lớp quyền nào của connector cấp khoá riêng. Khoá cả SỰ THẬT về mức bảo vệ: production
@@ -156,7 +157,10 @@ test('connector: khoá riêng có trong hợp đồng web + connector (bật nh�
   assert.deepEqual(users.sort(), ['hermes-broker/capability-contract.mjs', 'hermes-broker/sale-action-contract.mjs']);
 });
 
-test('connector broker: crm_sale_action ẩn báo cọc / thu thêm khi chỉ có khoá Thu chi, gọi ⇒ tool_not_available, không tới dịch vụ', async t => {
+// 05/11: cầu crm_sale_action gỡ hẳn báo cọc / thu thêm (cùng sửa / gán cọc, giữ / bỏ giữ phòng — sale-tool-contract.mjs
+// SALE_RETIRED_OPERATIONS): khoá riêng chỉ còn là lớp trong (mayUseSaleAction ở test trên) + lớp SQL; ở broker, thiếu hay đủ khoá riêng
+// đều không quảng bá, gọi ⇒ action_rejected sale_deposit_web_only, không tới dịch vụ. Trước 05/11 đủ khoá riêng thì hai thao tác mở.
+test('connector broker: crm_sale_action không bao giờ mở báo cọc / thu thêm — thiếu hay đủ khoá riêng; gọi ⇒ sale_deposit_web_only, không tới dịch vụ', async t => {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const building = randomUUID(), connection = randomUUID(), seen = [], prepared = new WeakMap(), state = { grants: TC_ON };
   const who = () => ({ row: { id: connection, assistantId: randomUUID(), organizationId: randomUUID(), userId: randomUUID(), state: 'active', epoch: 1,
@@ -172,19 +176,18 @@ test('connector broker: crm_sale_action ẩn báo cọc / thu thêm khi chỉ c�
   const token = 'hc_' + 'A'.repeat(43);
   const call = async (operation, input) => JSON.parse((await broker.callTool(token, SALE_TOOL.name, { operation, ...(input ? { input } : {}) })).content[0].text);
   const listed = async () => (await call('list')).operations.map(item => item.operation);
+  const refused = error => error.code === 'action_rejected' && error.reason === 'sale_deposit_web_only';
   const off = await listed();
-  for (const operation of DEPOSIT_OPS) assert.equal(off.includes(operation), false, operation);
-  for (const operation of ['room_patch', 'room_lock', 'room_release', 'reservation_update', 'reservation_assign']) assert.ok(off.includes(operation), operation);
-  for (const operation of DEPOSIT_OPS)
-    await assert.rejects(() => call(operation, INPUT[operation](randomUUID())), error => error.code === 'tool_not_available', operation);
+  assert.ok(off.includes('room_patch'));
+  for (const operation of [...DEPOSIT_OPS, 'room_lock', 'room_release', 'reservation_update', 'reservation_assign']) assert.equal(off.includes(operation), false, operation);
+  for (const operation of DEPOSIT_OPS) await assert.rejects(() => call(operation, INPUT[operation](randomUUID())), refused, operation);
   assert.deepEqual(seen, []);
   state.grants = [...TC_ON, KEY];
-  const on = await listed();
-  for (const operation of DEPOSIT_OPS) {
-    assert.ok(on.includes(operation), operation);
-    assert.equal((await call(operation, INPUT[operation](randomUUID()))).outcome, 'applied', operation);
-  }
-  assert.deepEqual(seen, DEPOSIT_OPS);
+  assert.deepEqual(await listed(), off, 'khoá riêng không thêm thao tác nào vào danh sách');
+  for (const operation of DEPOSIT_OPS) await assert.rejects(() => call(operation, INPUT[operation](randomUUID())), refused, `${operation}: đủ khoá riêng`);
+  assert.deepEqual(seen, []);
+  assert.equal((await call('room_patch', { requestId: randomUUID(), roomId: ROOM, expectedRevision: 'a'.repeat(32), rent_price: 3100000 })).outcome, 'applied');
+  assert.deepEqual(seen, ['patch'], 'thao tác Sale còn lại vẫn tới dịch vụ');
 });
 
 test('migration: đúng thân production 20261021064112 + một khối chèn trong nhánh báo cọc; md5 ghim khớp hai thân', () => {
