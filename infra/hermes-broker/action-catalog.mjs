@@ -97,11 +97,14 @@ export const param = Object.freeze({
   },
   // overflow (Công việc lượt 13): lý do needs_input riêng khi danh sách DÀI HƠN max (vd batch_too_large "chia lô"), thay cho
   // invalid_params chung; thao tác phải khai lý do đó trong reasons. Không đổi khuôn liệt kê ở crm_action_list.
-  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false, overflow } = {}) => {
+  // unique (đợt 3 học có kiểm duyệt, review #391): phần tử vô hướng trùng bị khử, giữ thứ tự lần đầu ("duyệt 1-3, 2" ⇒ [1, 2, 3]) — SQL
+  // nhận danh sách đã khử, token xác nhận gắn danh sách đã khử. Không nhận cho record.
+  list: (item, { min = 1, max, ceiling = MAX_LIST, optional = false, overflow, unique = false } = {}) => {
     if (!plain(item) || !Object.isFrozen(item) || ![...SCALARS, 'record'].includes(item.kind) || item.optional ||
         !Number.isSafeInteger(min) || !Number.isSafeInteger(max) || !Number.isSafeInteger(ceiling) || ceiling < MAX_LIST || ceiling > MAX_LIST_CEILING ||
-        min < 1 || max < min || max > ceiling || !(overflow === undefined || ACTION_INPUT_REASONS.includes(overflow))) fail();
-    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max, ...(overflow ? { overflow } : {}) });
+        min < 1 || max < min || max > ceiling || !(overflow === undefined || ACTION_INPUT_REASONS.includes(overflow)) ||
+        typeof unique !== 'boolean' || (unique && item.kind === 'record')) fail();
+    return spec('list', optional, `danh sách ${min}–${max} mục, mỗi mục ${item.hint}`, { item, min, max, ...(overflow ? { overflow } : {}), ...(unique ? { unique } : {}) });
   },
 });
 const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
@@ -264,7 +267,7 @@ function checkList(spec, raw, path) {
     wrong.push(...checked.wrong);
     value.push(checked.value);
   });
-  return { value, wrong };
+  return { value: spec.unique ? [...new Set(value)] : value, wrong };
 }
 
 /** JSON chuẩn hoá (khoá sắp xếp) — dùng cho khoá binding xác nhận: cùng nội dung ⇒ cùng chuỗi. */

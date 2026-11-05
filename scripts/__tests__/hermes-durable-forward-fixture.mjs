@@ -259,7 +259,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_learning_review_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"bdcc8c3f54f8e3c211a135736bbebd2674d95fdfbec5322aff0ea07a1db84223","args":"p jsonb"},
   {"name":"public.hermes_learning_decide_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"3ed78862d7f5aef6a9bf2ff355eb1bab04348bc01751b11973c3bace719fd8f2","args":"p jsonb"},
   {"name":"app_private.hermes_store_learning_ingest_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"7a4b99b98dc443715583a8dd9e51c1113ae80a7a608e150208349e8039b1c575","args":"p jsonb"},
-  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"b0404d36faab0fc4f00f609ececee3d8182ea27756753e6202e36c39dfd56569","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"},
+  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"ec118241c78f720e1afe2193ab2fb0deb5841b1dc029a9054603a94278f44103","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"},
   {"name":"public.hermes_learning_action_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"a333e54c9a42083f2d678bdab1be5d2c8661179f292802987aff16cfde77a6f1","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 

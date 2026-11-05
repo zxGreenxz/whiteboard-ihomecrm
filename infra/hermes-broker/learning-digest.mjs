@@ -4,8 +4,13 @@
 // cùng luật cho mô hình). Thiết kế: docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4.
 
 export const LEARNING_REVIEW_PATH = '/settings/hermes?tab=bai-hoc';
-const MAX_ITEMS = 10;
+/** Số đề xuất tối đa của một tin tối = trần SQL của learning.digest (LIMIT 10 ở 20261105025453; learning-action-sql.test.mjs giữ hai số
+ * bằng nhau). SQL đánh dấu "đã báo" đúng các mục trả về và mục đã đánh dấu không bao giờ hiện lại ở tin sau, nên tin phải có số của
+ * MỌI mục nhận được — không bao giờ bỏ dòng; phần vượt trần nằm lại để tối sau báo. */
+export const LEARNING_DIGEST_MAX_ITEMS = 10;
 const MAX_MESSAGE = 1800;
+// Tin dài quá một tin: rút trích nội dung trước (140 → 100 → 60 ký tự), rồi bỏ hẳn trích (giữ tiêu đề); vẫn dài ⇒ chỉ còn danh sách số.
+const EXCERPTS = Object.freeze([140, 100, 60, 0]);
 const KIND_LABELS = Object.freeze({ skill_crm_write: 'Skill', memory_crm_write: 'Bộ nhớ', audit_warning: 'Cảnh báo kiểm học' });
 
 const oneLine = (value, max) => {
@@ -14,11 +19,12 @@ const oneLine = (value, max) => {
   return chars.length <= max ? text : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 };
 
-/** Tin tổng hợp: đề xuất mới (≤ 10 dòng, theo số), số đề xuất cũ còn chờ, cách trả lời, link trang duyệt.
+/** Tin tổng hợp: đề xuất mới (≤ 10, mỗi đề xuất một dòng theo số — đủ mọi số), số đề xuất khác còn chờ, cách trả lời, link trang duyệt.
  * `webOrigin` là origin https của web CRM (cấu hình host `publicWebOrigin`); thiếu thì chỉ ghi đường dẫn.
- * Không có đề xuất mới ⇒ null (cron không gửi gì). */
+ * Không có đề xuất mới ⇒ null (cron không gửi gì). Quá LEARNING_DIGEST_MAX_ITEMS đề xuất ⇒ TypeError (SQL không bao giờ trả quá). */
 export function formatLearningDigest({ proposals, pendingTotal, webOrigin = null, date = null }) {
-  if (!Array.isArray(proposals) || !Number.isSafeInteger(pendingTotal) || pendingTotal < proposals.length) throw new TypeError('invalid_learning_digest');
+  if (!Array.isArray(proposals) || proposals.length > LEARNING_DIGEST_MAX_ITEMS || !Number.isSafeInteger(pendingTotal) ||
+      pendingTotal < proposals.length) throw new TypeError('invalid_learning_digest');
   if (webOrigin !== null && (typeof webOrigin !== 'string' || !/^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(webOrigin))) throw new TypeError('invalid_learning_digest');
   for (const item of proposals) {
     if (!Number.isSafeInteger(item?.seq) || item.seq < 1 || !Object.hasOwn(KIND_LABELS, item.kind)) throw new TypeError('invalid_learning_digest');
@@ -29,21 +35,22 @@ export function formatLearningDigest({ proposals, pendingTotal, webOrigin = null
   const vn = date instanceof Date && Number.isFinite(date.getTime()) ? new Date(date.getTime() + 7 * 3_600_000) : null;
   const day = vn ? `${String(vn.getUTCDate()).padStart(2, '0')}/${String(vn.getUTCMonth() + 1).padStart(2, '0')}` : null;
   const head = `Bài học Hermes chờ duyệt${day ? ` (${day})` : ''}: ${items.length} đề xuất mới về cách ghi dữ liệu CRM.`;
-  const rows = items.map(item => `#${item.seq} ${KIND_LABELS[item.kind]} — ${oneLine(item.title, 90)}: «${oneLine(item.content, 140)}»`);
-  const older = pendingTotal - items.length;
+  // Còn chờ ngoài tin này: đề xuất đã báo các tối trước chưa ai quyết định, và đề xuất mới vượt trần (tối sau báo) — không gọi là "cũ".
+  const others = pendingTotal - items.length;
   const first = items[0].seq;
   const tail = [
-    ...(older > 0 ? [`Còn ${older} đề xuất cũ đang chờ.`] : []),
+    ...(others > 0 ? [`Còn ${others} đề xuất khác đang chờ duyệt (xem trên web).`] : []),
     `Trả lời "duyệt ${first}" hoặc "bỏ ${first}" (nhiều số cách nhau dấu phẩy, có thể kèm lý do sau chữ "vì").`,
     `Xem kỹ: ${webOrigin ? webOrigin + LEARNING_REVIEW_PATH : LEARNING_REVIEW_PATH}`,
   ];
-  // Bớt dòng đề xuất (giữ tiêu đề, phần hướng dẫn + link) tới khi vừa giới hạn độ dài của một tin.
-  for (let shown = Math.min(MAX_ITEMS, rows.length); shown >= 1; shown--) {
-    const more = rows.length > shown ? [`… và ${rows.length - shown} đề xuất mới khác (xem trên web).`] : [];
-    const message = [head, ...rows.slice(0, shown), ...more, ...tail].join('\n');
+  // Mọi mục ở đây đã được đánh dấu "đã báo": KHÔNG bỏ dòng nào. Rút / bỏ trích nội dung tới khi vừa giới hạn độ dài của một tin.
+  for (const excerpt of EXCERPTS) {
+    const rows = items.map(item => `#${item.seq} ${KIND_LABELS[item.kind]} — ${oneLine(item.title, 90)}${excerpt ? `: «${oneLine(item.content, excerpt)}»` : ''}`);
+    const message = [head, ...rows, ...tail].join('\n');
     if (Array.from(message).length <= MAX_MESSAGE) return message;
   }
-  return [head, `… ${rows.length} đề xuất mới (xem trên web).`, ...tail].join('\n');
+  // Vẫn dài (origin rất dài): chỉ còn số trần — vẫn đủ mọi số đã báo, nội dung xem trên web.
+  return [head, `${items.map(item => `#${item.seq}`).join(', ')} — nội dung xem trên web.`, ...tail].join('\n');
 }
 
 const fold = value => value.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();

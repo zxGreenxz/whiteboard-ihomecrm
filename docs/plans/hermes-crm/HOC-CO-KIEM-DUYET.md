@@ -88,23 +88,29 @@ cảnh cron.
 
 ### 4.2 Thao tác `learning.digest`
 
-- Không tham số. Bước SQL lấy tối đa **20** đề xuất `pending` của CẢ công ty mà `announced_at IS NULL` (theo số), đặt `announced_at` (cột
+- Không tham số. Bước SQL lấy tối đa **10** đề xuất `pending` của CẢ công ty mà `announced_at IS NULL` (theo số), đặt `announced_at` (cột
   mới; guard bất biến cho đúng bước này: một lần, khi còn chờ — quyết định sau đó giữ nguyên mốc), trả `{announcedAt, pendingTotal,
-  items:[{seq,kind,title,content ≤ 300 ký tự}]}`. Phần trên 20 sang tối sau (vẫn tính trong `pendingTotal`).
+  items:[{seq,kind,title,content ≤ 300 ký tự}]}`. Trần 10 = đúng số dòng tin tối liệt kê (`LEARNING_DIGEST_MAX_ITEMS` của
+  `learning-digest.mjs`; test ghép giữ hai số bằng nhau): mục đã đánh dấu không bao giờ hiện lại ở tin sau, nên mục nào được đánh dấu
+  cũng phải có số trong tin (review #391: trần 20 đánh dấu 20 mà tin chỉ liệt kê được 6). Phần vượt trần **sang tối sau** (vẫn tính
+  trong `pendingTotal`). Đề xuất đã quyết định trên web trước khi được báo không bao giờ được chọn (guard cấm đánh dấu nó).
 - Connector (`learning-action-contract.mjs` `presentLearningDigest`, nối qua `createActionRuntime({ presenters })` chỉ khi trang được
-  nạp) trả cho mô hình `{message, newCount, numbers, pendingTotal}`: `message` = `formatLearningDigest` (≤ 10 dòng, ≤ 1 800 ký tự, link
-  `publicWebOrigin` + `/settings/hermes?tab=bai-hoc`, ngày theo `announcedAt` của SQL nên phát lại / `crm_action_status` cho đúng tin cũ);
-  không có mục mới ⇒ `message: null`. Nội dung đề xuất không tới mô hình. Origin mà tin tối không nhận ⇒ connector không khởi động.
+  nạp) trả cho mô hình `{message, newCount, numbers, pendingTotal}`: `message` = `formatLearningDigest` (mỗi đề xuất một dòng, đủ mọi
+  số, ≤ 1 800 ký tự: dài thì rút trích nội dung 140 → 100 → 60 ký tự rồi bỏ trích, vẫn dài ⇒ chỉ còn danh sách số trần; không bao giờ
+  bỏ dòng; dòng "Còn N đề xuất khác đang chờ duyệt"; link `publicWebOrigin` + `/settings/hermes?tab=bai-hoc`; ngày theo `announcedAt`
+  của SQL nên phát lại / `crm_action_status` cho đúng tin cũ); không có mục mới ⇒ `message: null`. Nội dung đề xuất không tới mô hình.
+  Origin mà tin tối không nhận ⇒ connector không khởi động.
 - Lớp `reversible`, chính sách `never` (dòng ở migration bật): ghi thẳng ở lượt `auto`; siết thành `always` ⇒ xem trước, không đánh dấu.
   Cùng requestId ⇒ phát lại (sổ biên nhận chung).
 - **Chỉ job cron gọi.** Gọi trong chat (bot tự gọi, hay kết nối của người giữ `users.edit` khác) đánh dấu các mục ⇒ tin tối hôm đó
-  thiếu chúng (vẫn ở web và trong dòng "Còn N đề xuất cũ đang chờ"). Giảm bằng tiêu đề thao tác + skill chuẩn; không có rào SQL phân
-  biệt cron với chat (cùng kết nối).
+  thiếu chúng (vẫn ở web và trong dòng "Còn N đề xuất khác đang chờ duyệt"). Giảm bằng tiêu đề thao tác + skill chuẩn; không có rào
+  SQL phân biệt cron với chat (cùng kết nối).
 
 ### 4.3 Thao tác `learning.decide`
 
 - Tham số `{numbers: int[1..20] (mỗi số 1–9 999 999), decision: 'approve'|'reject', note?: string ≤ 500}`; số = `seq` của công ty (trùng
-  số trên web, ổn định giữa các tối — trả lời tin cũ vẫn đúng mục). `parseLearningReply` là bộ đọc tham chiếu cho câu "duyệt 1,3" /
+  số trên web, ổn định giữa các tối — trả lời tin cũ vẫn đúng mục). Số trùng ("duyệt 1-3, 2") connector khử trước khi gửi (`param.list`
+  `unique`, giữ thứ tự lần đầu; token xác nhận gắn danh sách đã khử); SQL vẫn tự từ chối số trùng (22023) khi bị gọi thẳng. `parseLearningReply` là bộ đọc tham chiếu cho câu "duyệt 1,3" /
   "bỏ 2 vì …" (skill chuẩn mô tả cùng luật cho mô hình).
 - SQL **luôn xem trước** — sàn trong SQL, kể cả khi dòng chính sách bị đổi thành `never` (quyết định một lần, bất biến): `preview`
   {`decision` DUYỆT/BỎ, `items` [{`number`, `kind`, `title` ≤ 120}], `note`, `effect`}; số đã duyệt / đã bỏ / không có ⇒ `warnings`;
@@ -138,8 +144,10 @@ cảnh cron.
 
 `infra/hermes-skills/ihome-crm-bai-hoc/SKILL.md` (trang `learning` trong `PAGE_SKILLS` của `official-skills.test.mjs`): "duyệt N[,M]" /
 "duyệt 4-6" / "bỏ N vì …" ⇒ `crm_action_run` `learning.decide` (numbers = các số N, decision theo động từ, note = phần sau "vì"); không
-đoán số, câu mơ hồ thì hỏi lại; đọc bản xem trước rồi mới xác nhận; `learning.digest` chỉ job cron gọi; không tự sửa skill / bộ nhớ về
-cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + câu "Không tự sửa…").
+đoán số, câu mơ hồ thì hỏi lại; phiên vừa đưa ra danh sách đánh số khác (phiếu thu chi, việc, hoá đơn, hợp đồng) thì "duyệt N" không
+kèm chữ "bài học" là mơ hồ ⇒ hỏi lại bài học hay phiếu / việc (va chạm với "duyệt lô theo danh sách vừa đọc" của `ihome-crm-thu-chi`);
+đọc bản xem trước rồi mới xác nhận; `learning.digest` chỉ job cron gọi; không tự sửa skill / bộ nhớ về cách ghi CRM — bài học loại này
+phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + câu "Không tự sửa…").
 Điều phối viên thêm `ihome-crm-bai-hoc` vào dòng "Skill có sẵn" của SOUL owner (ngoài PR).
 
 ### 4.6 Job cron 21:00 VN cho hồ sơ owner (điều phối viên tạo — PR KHÔNG tạo job)
@@ -174,12 +182,19 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 
    ```text
    Gọi đúng một lần tool crm_action_run của connector ihomecrm (tên đầy đủ mcp__ihomecrm__crm_action_run) với {"action": "learning.digest"}:
-   không params, không confirmToken, không gọi tool nào khác.
+   không params, không confirmToken, không requestId.
    Nếu kết quả có outcome = "applied" và result.message là một chuỗi: trả lời ĐÚNG NGUYÊN VĂN chuỗi result.message — không thêm, bớt,
    sửa, dịch hay định dạng lại chữ nào, không chào, không giải thích.
-   Mọi trường hợp khác (result.message là null, lỗi, action_outcome_unknown, needs_input, không có tool): trả lời đúng một từ [SILENT]
-   và không gọi lại, không thử lại.
+   Nếu kết quả là lỗi action_outcome_unknown kèm requestId: gọi tool crm_action_status (tên đầy đủ mcp__ihomecrm__crm_action_status)
+   ĐÚNG MỘT lần với {"requestId": "<requestId của lỗi đó, chép nguyên văn>"}. Kết quả có outcome = "applied" và result.message là một
+   chuỗi ⇒ trả lời ĐÚNG NGUYÊN VĂN chuỗi đó như trên.
+   Mọi trường hợp khác (result.message là null, lỗi khác, needs_input, tra trạng thái không ra applied hoặc không có message, không có
+   tool): trả lời đúng một từ [SILENT]. Không gọi crm_action_run lần thứ hai, không gọi tool nào khác, không thử lại.
    ```
+
+   Vì sao tra trạng thái: `action_outcome_unknown` nghĩa là lệnh đã gửi mà mất phản hồi — SQL có thể ĐÃ đánh dấu các mục (khi đó chúng
+   không bao giờ vào tin sau). `crm_action_status` cùng requestId trả đúng kết quả đã ghi kèm `message` dựng lại tất định (presenter chạy
+   cả ở nhánh tra trạng thái), nên tin hôm đó vẫn tới chủ. Gọi lại `crm_action_run` thì không được: requestId mới ⇒ một lượt đánh dấu mới.
 
 4. Thử: chạy tay job một lần lúc chủ đồng ý (`cron run <id>` nếu bản Hermes có), kiểm tin tới đúng DM chủ và dòng audit
    `HERMES_ACTION_APPLIED` `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không thử bằng cách gọi `learning.digest` trong
@@ -188,8 +203,10 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 ### 4.7 Rủi ro
 
 - Cron chạy lúc bot đang trả lời chủ ⇒ hai luồng cùng DM; tin ngắn, không hỏi lại trong tin cron.
-- Kênh `outcome_unknown` đóng băng tới khi đối soát (trang "Đối soát tin chưa rõ kết quả"). Tin tối mất phản hồi sau khi SQL đã đánh dấu
-  ⇒ các mục đó không xuất hiện ở tin sau (chỉ còn trong số "còn chờ" và trên web) — web là nguồn đúng, tin Zalo là tiện ích.
+- Kênh `outcome_unknown` đóng băng tới khi đối soát (trang "Đối soát tin chưa rõ kết quả"). Lệnh digest mất phản hồi: prompt cron tra
+  `crm_action_status` đúng một lần (4.6) để vẫn gửi được tin; tra cũng hỏng ⇒ các mục đã đánh dấu không xuất hiện ở tin sau (chỉ còn
+  trong số "còn chờ" và trên web) — web là nguồn đúng, tin Zalo là tiện ích.
+- Hơn 10 đề xuất mới trong một tối ⇒ phần dư sang tối sau (mỗi tối tối đa 10 số, mục nào đã báo đều có số trong tin).
 - `learning.digest` gọi ngoài cron làm tin tối thiếu mục (4.2).
 - Số `seq` lộ ra Zalo chỉ là số thứ tự, không phải id.
 
@@ -197,11 +214,11 @@ cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chun
 
 | Phía | Tệp |
 |---|---|
-| SQL | `20261105025453_hermes_learning_action_v1.sql`: cột `announced_at`; guard bất biến dựng lại; vỏ INVOKER `public.hermes_learning_action_v1` (`scripts/hermes-task-function-contract.mjs` externalStandard) + bước DEFINER `app_private.hermes_learning_action_step_v1`; seed khoá TẮT; ghim băm `scripts/__tests__/hermes-durable-forward-fixture.mjs` (thân guard 041523 thành ghim superseded) + `hermes-durable-schema.test.mjs`; provenance + hồ sơ `chua-ap-dung-cho-y` |
-| Connector | `learning-action-contract.mjs` (`defineAction` ×2, bộ dựng tin), `action-catalog.mjs` / `action-contract.mjs` / `action-page-catalogs.mjs` (trang `learning`), `action-runtime.mjs` (`presenters`), `action-reasons.mjs` (`learning_not_pending`), `server.mjs`, `capability-contract.mjs` (+ `.d.mts`), `CONNECTOR.md` |
+| SQL | `20261105025453_hermes_learning_action_v1.sql`: cột `announced_at`; guard bất biến dựng lại (khối `$requires$` ghim md5 thân guard đang chạy `54e4b8fc…` hoặc thân mới `e55ad2c8…`, khuôn C2); digest trần 10 = số dòng tin; vỏ INVOKER `public.hermes_learning_action_v1` (`scripts/hermes-task-function-contract.mjs` externalStandard) + bước DEFINER `app_private.hermes_learning_action_step_v1`; seed khoá TẮT; ghim băm `scripts/__tests__/hermes-durable-forward-fixture.mjs` (thân guard 041523 thành ghim superseded) + `hermes-durable-schema.test.mjs`; provenance + hồ sơ `chua-ap-dung-cho-y` |
+| Connector | `learning-action-contract.mjs` (`defineAction` ×2, bộ dựng tin), `learning-digest.mjs` (`LEARNING_DIGEST_MAX_ITEMS`, rút trích thay vì bỏ dòng), `action-catalog.mjs` (`param.list` `unique`) / `action-contract.mjs` / `action-page-catalogs.mjs` (trang `learning`), `action-runtime.mjs` (`presenters`), `action-reasons.mjs` (`learning_not_pending`), `server.mjs`, `capability-contract.mjs` (+ `.d.mts`), `CONNECTOR.md` |
 | Web | `src/hermes/capabilityLabels.ts` (+ test) |
 | Skill | `infra/hermes-skills/ihome-crm-bai-hoc/SKILL.md`, `ihome-crm-ghi-chung` |
-| Test | `learning-action-sql.test.mjs` (PGlite, 17 đột biến), `server.test.mjs` (ghép thật), `action-tools-budget.test.mjs` (so main), `action-catalog` / `action-reasons` / `official-skills`, `capabilityLabels.test.ts`; PR bật: `action-activation-sql.test.mjs` + file lùi |
+| Test | `learning-action-sql.test.mjs` (PGlite, 23 đột biến; tin dựng bằng presenter thật cho 25 đề xuất dài: mọi mục đã đánh dấu có số), `learning-digest.test.mjs` / `learning-action.test.mjs`, `server.test.mjs` (ghép thật), `action-tools-budget.test.mjs` (so main), `action-catalog` (`unique`) / `action-reasons` / `official-skills`, `capabilityLabels.test.ts`; PR bật: `action-activation-sql.test.mjs` + file lùi |
 | Hồ sơ owner | job cron 21:00 VN (4.6) — điều phối viên tạo |
 
 ### 4.9 Thứ tự phát hành đợt 3
