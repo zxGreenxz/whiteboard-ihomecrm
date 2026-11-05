@@ -678,6 +678,25 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
       });
     }
   });
+  // Re-review #387: điều kiện "cùng một hợp đồng" chỉ xét hoá đơn CÒN NỢ (tập ứng viên), không xét mọi hoá đơn của phòng — hoá đơn đã thu /
+  // nháp của khách cũ còn nằm trong phòng không được làm J06 im lặng tắt.
+  await t.test('hoá đơn ĐÃ THU / NHÁP của hợp đồng cũ không tính vào điều kiện cùng hợp đồng ⇒ hai hoá đơn còn nợ cùng hợp đồng vẫn tự chọn', async () => {
+    const K08 = uid(1205);
+    for (const status of ['PAID', 'DRAFT']) {
+      await f.rollbackCase(async () => {
+        await seedTwoContracts(CONTRACT, CONTRACT);
+        await addInvoice(K08, 'INV-2026-K08', status, '2026-08', '2026-08-31', 2900000, 'MONTHLY', OLD_CONTRACT, ROOM_K);
+        if (status === 'PAID') await db.query('UPDATE public.invoices SET paid_amount=total_amount WHERE id=$1', [K08]);
+        // Hàm đọc dùng chung vẫn trả hoá đơn này (chỉ bỏ hoá đơn huỷ / xoá) ⇒ tính trên mọi hoá đơn của phòng là thấy hai hợp đồng.
+        const rows = await f.call('SELECT jsonb_agg(to_jsonb(r)) result FROM public.invoice_room_invoices_v1($1,$2,NULL,ARRAY[$3]::uuid[]) r', [ORG, ROOM_K, BUILDING]);
+        assert.deepEqual(rows.filter(r => r.contract_id === OLD_CONTRACT).map(r => [r.invoice_number, r.status]), [['INV-2026-K08', status]]);
+        const out = await run('preview', rid(136), P303);
+        assert.equal(out.kind, 'preview', `${status}: ${JSON.stringify(out)}`);
+        assert.deepEqual([out.resolved.items[0].invoiceId, out.resolved.items[0].pickedBy, out.resolved.items[0].otherOpen, out.resolved.items[0].otherOpenCount],
+          [K09, 'amount', ['kỳ 10/2026 · INV-2026-K10 (còn 4.200.000đ)'], 1], status);
+      });
+    }
+  });
 
   await t.test('lô: mục không nêu kỳ, số tiền khớp đúng một ⇒ tự chọn theo mục; tóm tắt nêu phòng + kỳ; mục khác như cũ', async () => {
     const batch = await run('preview', rid(93), { buildingName: 'toa a', method: 'TK', items: [{ roomName: 'P302', amount: 1150000 }, { roomName: 'P102', amount: 100000 }] });
