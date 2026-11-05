@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1766,
-  "soFileDocBangFs": 465,
-  "tongLoiGoi": 1193,
-  "khongPhanLoaiDuoc": 535,
+  "tongSoFileTest": 1769,
+  "soFileDocBangFs": 467,
+  "tongLoiGoi": 1199,
+  "khongPhanLoaiDuoc": 538,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 65,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 190,
+      "soFile": 192,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -372,6 +372,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/wave2-foundation.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",
       "soGoi": 6,
       "loai": {},
@@ -459,12 +467,6 @@
         "sql": 5
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/wave2-foundation.test.mjs",
-      "soGoi": 5,
-      "loai": {},
-      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "infra/hermes-runtime/audit-codes.test.mjs",
@@ -631,6 +633,14 @@
       "soGoi": 4,
       "loai": {
         "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/org-policy-sql.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 4
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -851,12 +861,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/org-policy-sql.test.mjs",
+      "file": "infra/hermes-broker/hermes-member-multi-org-sql.test.mjs",
       "soGoi": 3,
       "loai": {
-        "sql": 3
+        "sql": 1
       },
-      "khongPhanLoaiDuoc": 0
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/task-composition.test.mjs",
@@ -2051,6 +2061,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/learning-action-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/learning-proposals-sql.test.mjs",

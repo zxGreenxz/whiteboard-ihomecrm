@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HERMES_ACTION_CAPABILITIES, HERMES_ACTION_FOUNDATION_KEYS, HERMES_INVOICE_ACTION_KEYS, HERMES_READ_CAPABILITIES } from '../../infra/hermes-broker/capability-contract.mjs';
+import { HERMES_ACTION_CAPABILITIES, HERMES_ACTION_FOUNDATION_KEYS, HERMES_CAPABILITIES, HERMES_INVOICE_ACTION_KEYS, HERMES_LEARNING_ACTION_KEYS,
+  HERMES_READ_CAPABILITIES } from '../../infra/hermes-broker/capability-contract.mjs';
 import { W2_HERMES_ONLY_KEYS, W2_READ_KEY_LIST } from '../../infra/hermes-broker/wave2-registry.mjs';
 import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
 import { hermesCapabilityHint, hermesCapabilityLabel } from './capabilityLabels';
@@ -49,6 +50,17 @@ describe('Hermes capability labels', () => {
     expect(HERMES_ACTION_CAPABILITIES).not.toContain('thu_tien.collect');
     expect(hermesCapabilityHint('invoices.edit')).not.toContain('xác nhận kiểm tra');
     expect(hermesCapabilityHint('invoices.approve')).toContain('không phải duyệt hoá đơn');
+  });
+  it('đợt 3 học có kiểm duyệt: khoá Bài học là khoá riêng Hermes có nhãn, mode action phạm vi công ty, không nối vào khối nền chung', () => {
+    expect(HERMES_LEARNING_ACTION_KEYS).toEqual(['assistant.learning_review']);
+    for (const key of HERMES_LEARNING_ACTION_KEYS) {
+      expect(HERMES_ACTION_CAPABILITIES.includes(key), key).toBe(true);
+      expect(HERMES_READ_CAPABILITIES.includes(key), key).toBe(false);
+      expect(HERMES_ACTION_FOUNDATION_KEYS.includes(key), key).toBe(false);
+      expect(HERMES_CAPABILITIES[key]).toEqual({ mode: 'action', resource: 'organization' });
+      expect(catalog.has(key), key).toBe(false);
+      expect(hermesCapabilityLabel(key)).toMatch(/Bài học Hermes chờ duyệt.*luôn xem trước/);
+    }
   });
   it('wave 2: every new read key is a CRM catalog key with a Hermes hint, or a labelled Hermes-only key', () => {
     for (const key of W2_READ_KEY_LIST) {

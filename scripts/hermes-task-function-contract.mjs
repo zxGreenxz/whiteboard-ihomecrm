@@ -107,6 +107,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261024181440_hermes_invoice_period_closed_reason_order_v1.sql',
   statementSha256:'3623819da96f61c281236c52c4dfaa594ce7ad73db00c031737c4e64f0f903ae',
  },
+ // Học có kiểm duyệt đợt 3: vỏ INVOKER trang Bài học (learning.digest / learning.decide) gắn OID bước DEFINER lúc tạo.
+ {
+  name:'public.hermes_learning_action_v1',
+  sourcePath:'supabase/migrations/20261105025453_hermes_learning_action_v1.sql',
+  statementSha256:'82f10a2289d6b92dfdbde89e6286aef65228d64d0405b9fa886794afae200c7a',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
