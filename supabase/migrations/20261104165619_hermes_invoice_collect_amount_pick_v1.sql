@@ -3,13 +3,14 @@
 -- kỳ mới> rồi nha", rồi "ok ghi đi". Bot gọi invoice.collect không month / invoiceNumber ⇒ tra cứu trả name_unresolved (hoá đơn mơ hồ) ⇒
 -- bot hỏi lại kỳ; lượt "ok" mới chọn kỳ và lại ra bản xem trước ⇒ hai lượt không ghi được. SOUL đã có luật "số tiền bằng đúng số còn nợ của
 -- một hoá đơn thì chọn hoá đơn đó" nhưng mô hình không theo ⇒ máy chủ chọn, ngay chỗ đang sinh câu hỏi "nhiều hoá đơn".
--- (1) app_private.hermes_invoice_lookup_core_v3: THAY thân 20261024181440 (đang chạy ở TEST và production, md5 2203bcfca0c71ea443459e8ecb488d97) bằng
---     đúng thân đó + tự chọn theo số tiền khi đủ cả bốn: không month / invoiceNumber; phòng còn từ hai hoá đơn mở (đúng tập ứng viên của
---     câu hỏi lại: thu được, còn nợ thực, nợ chưa kéo sang kỳ sau); số tiền bằng ĐÚNG remaining_amount của một hoá đơn mở; không hoá đơn
---     mở nào khác cũng khớp. Mục đã giải mang pickedBy = amount, otherOpen (tối đa 3 nhãn hoá đơn mở còn lại, khuôn như ứng viên) và
---     otherOpenCount. Không khớp / khớp từ hai ⇒ hỏi lại như cũ; đã nêu kỳ (kể cả hai hoá đơn còn nợ cùng kỳ) hay số hoá đơn ⇒ không đổi.
---     Lô: theo amount của từng mục; danh sách mục giữ đúng thứ tự (WITH ORDINALITY).
--- (2) app_private.hermes_invoice_action_step_v3: THAY thân 20261026234255 (C07, đang chạy ở TEST và production, md5 5569ec5b424476d960bc83a412a4e34a)
+-- (1) app_private.hermes_invoice_lookup_core_v3: THAY thân 20261024181440 (đang chạy ở production, md5 2203bcfca0c71ea443459e8ecb488d97) bằng
+--     đúng thân đó + tự chọn theo số tiền khi đủ cả năm: không month / invoiceNumber; phòng còn từ hai hoá đơn mở (đúng tập ứng viên của
+--     câu hỏi lại: thu được, còn nợ thực, nợ chưa kéo sang kỳ sau); mọi hoá đơn mở cùng MỘT hợp đồng (khác / thiếu hợp đồng ⇒ hỏi lại);
+--     số tiền bằng ĐÚNG remaining_amount làm tròn đồng (đúng số in ở nhãn ứng viên) của một hoá đơn mở; không hoá đơn mở nào khác cũng
+--     khớp. Mục đã giải mang pickedBy = amount, otherOpen (tối đa 3 nhãn hoá đơn mở còn lại, khuôn như ứng viên) và otherOpenCount. Không
+--     khớp / khớp từ hai ⇒ hỏi lại như cũ; đã nêu kỳ (kể cả hai hoá đơn còn nợ cùng kỳ) hay số hoá đơn ⇒ không đổi. Lô: theo amount của từng
+--     mục; danh sách mục giữ đúng thứ tự (WITH ORDINALITY).
+-- (2) app_private.hermes_invoice_action_step_v3: THAY thân 20261026234255 (C07, đang chạy ở production, md5 5569ec5b424476d960bc83a412a4e34a)
 --     bằng đúng thân đó, chỉ đổi khối bản xem trước: mục tự chọn ⇒ nhãn dòng "— tự chọn vì số tiền khớp đúng số còn nợ", items[].pickedBy /
 --     otherOpen / otherOpenCount, câu tóm tắt "Tự chọn hoá đơn kỳ MM/YYYY vì số tiền khớp đúng số còn nợ; phòng còn N hoá đơn chưa trả khác: …"
 --     (lô: phòng + kỳ từng mục) và MỘT cảnh báo cỡ cố định (chọn lại bằng month / invoiceNumber) nối sau cảnh báo của kế hoạch. Lượt ghi không
@@ -19,9 +20,10 @@
 -- mới (preview là dữ liệu tự do, cảnh báo ≤ 300 ký tự) ⇒ áp độc lập với connector. Không ghi dữ liệu nghiệp vụ. Idempotent ($requires$ nhận
 -- thân cũ hoặc thân mới của từng hàm; CREATE OR REPLACE); khối kiểm cuối chỉ đọc catalog. Áp SAU 20261026234255.
 -- Đổi mốc 04/11/2026: bản đầu 20261030045928 (PR #363, không merge) đứng trước 20261031041523 / 20261101064441 đã áp production ⇒
--- đổi sang mốc hiện tại để thứ tự tên file = thứ tự áp production. Chỉ đổi tên file và chú thích này; thân hai hàm, khối kiểm và md5
--- ghim giữ nguyên từng byte. Đo 04/11 (chỉ SELECT): production còn đúng hai thân gốc ghim dưới; TEST đã chạy thân của file này từ 30/10
--- (bản 045928) ⇒ áp lên TEST là thay bằng chính thân đó.
+-- đổi sang mốc hiện tại để thứ tự tên file = thứ tự áp production. Review chéo #387 (05/11) thêm hai điều kiện vào tra cứu (cùng một hợp
+-- đồng; khớp số còn nợ làm tròn đồng); bước ghi giữ nguyên từng byte như bản 045928. Đo 05/11 (chỉ SELECT): production còn đúng hai thân
+-- gốc ghim dưới; TEST chạy hai thân của bản 045928 từ 30/10 (bước ghi = thân của file này, tra cứu = bản trước review) ⇒ khối kiểm đầu
+-- nhận cả thân tra cứu đó; áp lên TEST là thay tra cứu sang thân mới.
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
@@ -33,9 +35,10 @@ BEGIN
     OR to_regprocedure('public.hermes_invoice_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)') IS NULL
     OR to_regprocedure('public.invoice_room_invoices_v1(uuid,uuid,text,uuid[],date)') IS NULL
     OR to_regprocedure('app_private.hermes_vnd_text_v1(numeric)') IS NULL
-    -- Tra cứu lượt 14 (20261024181440) và bước ghi C07 (20261026234255) đang chạy, hoặc chính thân của file này (chạy lại); md5 bỏ CR.
+    -- Tra cứu lượt 14 (20261024181440) và bước ghi C07 (20261026234255) đang chạy (production), tra cứu J06 bản 20261030045928 trước review
+    -- (TEST, áp 30/10; bước ghi của bản đó = thân của file này), hoặc chính thân của file này (chạy lại); md5 bỏ CR.
     OR (SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure)
-      NOT IN ('2203bcfca0c71ea443459e8ecb488d97','e4aa9f984d19c0f97ef9ebfef08baaa5')
+      NOT IN ('2203bcfca0c71ea443459e8ecb488d97','e4aa9f984d19c0f97ef9ebfef08baaa5','7831dd0097d06df712157e8373715ada')
     OR (SELECT md5(replace(p.prosrc,chr(13),'')) FROM pg_proc p WHERE p.oid='app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure)
       NOT IN ('5569ec5b424476d960bc83a412a4e34a','c106786943309e524b6038d6be09c6e6') THEN
     RAISE EXCEPTION 'hermes_invoice_j06_dependency_invalid'; END IF;
@@ -48,6 +51,7 @@ DECLARE
   v_method text; v_entries jsonb; v_e jsonb; v_name jsonb; v_building uuid; v_building_name text; v_room uuid; v_room_name text; v_rows jsonb;
   v_pick jsonb; v_open jsonb; v_out jsonb:='[]'::jsonb; v_receiving jsonb; v_list jsonb; v_hits jsonb; v_account uuid; v_wanted text;
   v_number text; v_label text; v_key text; v_book_method text; v_amount numeric; v_match jsonb; v_auto boolean; v_others jsonb; v_others_n int;
+  v_one_contract boolean;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'hermes_invoice_lookup_denied' USING ERRCODE='42501'; END IF;
   IF p_organization_id IS NULL OR p_building_ids IS NULL OR p_action IS DISTINCT FROM 'invoice.collect' OR p_params IS NULL OR jsonb_typeof(p_params)<>'object' THEN
@@ -101,12 +105,17 @@ BEGIN
           (SELECT r FROM jsonb_array_elements(v_rows) r WHERE r->>'status' IN ('APPROVED','PARTIAL_PAID','OVERDUE')
             AND (r->>'remaining_amount')::numeric>0 ORDER BY (r->>'row_no')::int LIMIT 1),v_rows->0) END;
       -- J06 (nghiệm thu HĐn TC-J06): còn ≥ 2 hoá đơn mở (v_pick trống — đúng tập ứng viên của câu hỏi lại), người dùng chưa nêu kỳ / số hoá
-      -- đơn, số tiền khớp ĐÚNG số còn nợ (remaining_amount) của MỘT hoá đơn mở và không hoá đơn mở nào khác cũng khớp ⇒ chọn hoá đơn đó
-      -- (pickedBy amount; bản xem trước nói rõ). Không khớp / khớp từ hai ⇒ hỏi lại như cũ.
+      -- đơn, mọi hoá đơn mở cùng MỘT hợp đồng, số tiền khớp ĐÚNG số còn nợ của MỘT hoá đơn mở và không hoá đơn mở nào khác cũng khớp ⇒ chọn
+      -- hoá đơn đó (pickedBy amount; bản xem trước nói rõ). Không khớp / khớp từ hai ⇒ hỏi lại như cũ.
+      -- Review #387: (a) hoá đơn mở thuộc từ hai hợp đồng (vd nợ của khách cũ đã trả phòng còn treo cùng hoá đơn của khách mới — cùng phòng
+      -- thường cùng giá nên số tiền của khách mới có thể trùng số còn nợ của khách cũ) hoặc thiếu hợp đồng ⇒ không tự chọn, hỏi lại như cũ;
+      -- (b) khớp trên số còn nợ làm tròn đồng — đúng số in ở nhãn ứng viên (connector gửi amount là số nguyên).
       v_amount:=CASE WHEN jsonb_typeof(v_e->'amount')='number' THEN (v_e->>'amount')::numeric END;
-      IF v_pick IS NULL AND NULLIF(v_e->>'month','') IS NULL AND v_amount>0 THEN
+      v_one_contract:=(SELECT count(DISTINCT r->>'contract_id')=1 AND bool_and(r->>'contract_id' IS NOT NULL)
+        FROM jsonb_array_elements(COALESCE(v_open,'[]'::jsonb)) r);
+      IF v_pick IS NULL AND NULLIF(v_e->>'month','') IS NULL AND v_amount>0 AND v_one_contract THEN
         SELECT jsonb_agg(r ORDER BY (r->>'row_no')::int) INTO v_match FROM jsonb_array_elements(COALESCE(v_open,'[]'::jsonb)) r
-          WHERE (r->>'remaining_amount')::numeric=v_amount;
+          WHERE round((r->>'remaining_amount')::numeric)=v_amount;
         IF jsonb_array_length(COALESCE(v_match,'[]'::jsonb))=1 THEN
           v_pick:=v_match->0; v_auto:=true;
           -- Hoá đơn mở còn lại: tối đa 3 nhãn (khuôn như ứng viên của câu hỏi lại) + tổng số.
@@ -514,7 +523,7 @@ BEGIN
   SELECT * INTO l FROM pg_catalog.pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure;
   SELECT * INTO s FROM pg_catalog.pg_proc WHERE oid='app_private.hermes_invoice_action_step_v3(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure;
   IF l.prosecdef OR l.provolatile<>'s' OR pg_get_userbyid(l.proowner)<>'postgres'
-    OR replace(COALESCE(array_to_string(l.proconfig,','),''),'"','')<>'search_path=' OR md5(replace(l.prosrc,chr(13),''))<>'e4aa9f984d19c0f97ef9ebfef08baaa5'
+    OR replace(COALESCE(array_to_string(l.proconfig,','),''),'"','')<>'search_path=' OR md5(replace(l.prosrc,chr(13),''))<>'7831dd0097d06df712157e8373715ada'
     OR NOT s.prosecdef OR pg_get_userbyid(s.proowner)<>'postgres' OR md5(replace(s.prosrc,chr(13),''))<>'c106786943309e524b6038d6be09c6e6'
     OR position('ORDER BY i.id FOR UPDATE NOWAIT' IN s.prosrc)=0
     OR has_function_privilege('anon','app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)','EXECUTE') OR NOT has_function_privilege('authenticated','app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)','EXECUTE')

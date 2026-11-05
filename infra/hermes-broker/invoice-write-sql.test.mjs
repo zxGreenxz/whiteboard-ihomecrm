@@ -497,9 +497,9 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
   const { db, run, applyWith, trace } = f;
   const ROOM_J = uid(890), [J10, J06, J11, J08, J10B, J09, J08X, J07, D08] = [891, 892, 893, 894, 895, 896, 897, 898, 899].map(uid);
   await db.query("INSERT INTO public.rooms VALUES($1,$2,$3,'P302','OCCUPIED',null)", [ROOM_J, ORG, BUILDING]);
-  const addInvoice = (id, number, status, month, due, total, kind = 'MONTHLY') => db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,
-      building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,created_at,kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12)`,
-    [id, ORG, number, status, BUILDING, ROOM_J, month, due, total, CONTRACT, `${month}-01`, kind]);
+  const addInvoice = (id, number, status, month, due, total, kind = 'MONTHLY', contract = CONTRACT, room = ROOM_J) => db.query(`INSERT INTO public.invoices(id,
+      organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,contract_id,created_at,kind)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12)`, [id, ORG, number, status, BUILDING, room, month, due, total, contract, `${month}-01`, kind]);
   await addInvoice(J10, 'INV-2026-J10', 'APPROVED', '2026-10', '2026-10-30', 1150000);
   await addInvoice(J06, 'INV-2026-J06', 'OVERDUE', '2026-06', '2026-06-30', 640500);
   // Kỳ 11 NHÁP cùng số tiền kỳ 10: không thu được ⇒ không phải ứng viên của câu hỏi lại, không tính là "khớp".
@@ -513,6 +513,21 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
   const AUTO_BATCH_1 = 'Người dùng chưa nêu kỳ nên TỰ CHỌN hoá đơn theo số tiền khớp đúng số còn nợ cho 1 mục (xem tóm tắt). Nếu người dùng nói kỳ / hoá đơn '
     + 'khác: gọi lại kèm month hoặc invoiceNumber trong mục đó để xem trước lại.';
   const OTHERS_J10 = ['kỳ 06/2026 · INV-2026-J06 (còn 640.500đ)'];
+  // P104 (#267): kỳ 09 (INV-D-09, 1.000.000) đã kéo sang kỳ 10 (INV-D-10, còn nợ 2.500.000 gồm 1.000.000 kéo vào); thêm kỳ 08 còn nợ đúng 1.000.000.
+  const addD08 = () => db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,
+    paid_amount,contract_id,created_at) VALUES($1,$2,'INV-D-08','OVERDUE',$3,$4,'2026-08','2026-08-31',1000000,0,$5,'2026-08-01')`, [D08, ORG, BUILDING, ROOM4, CONTRACT]);
+  const p104 = (requestId, amount) => run('preview', requestId, { buildingName: 'toa a', roomName: 'p104', method: 'TK', amount });
+  // Review #387: phòng P303 — khách cũ (OLD_CONTRACT, đã trả phòng) còn nợ kỳ 09 đúng 3.500.000; khách mới (CONTRACT) có hoá đơn kỳ 10.
+  const ROOM_K = uid(1201), [OLD_CONTRACT, K09, K10] = [1202, 1203, 1204].map(uid);
+  const seedTwoContracts = async (oldContract = OLD_CONTRACT, newContract = CONTRACT) => {
+    await db.query("INSERT INTO public.rooms VALUES($1,$2,$3,'P303','OCCUPIED',null)", [ROOM_K, ORG, BUILDING]);
+    await addInvoice(K09, 'INV-2026-K09', 'OVERDUE', '2026-09', '2026-09-30', 3500000, 'MONTHLY', oldContract, ROOM_K);
+    await addInvoice(K10, 'INV-2026-K10', 'APPROVED', '2026-10', '2026-10-30', 4200000, 'MONTHLY', newContract, ROOM_K);
+  };
+  const P303 = { buildingName: 'toa a', roomName: 'p303', method: 'TK', amount: 3500000 };
+  const lookupOf = sql => sql.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_lookup_core_v3\([\s\S]*?\$fn\$;/)[0];
+  const liveLookup = async () => (await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_invoice_lookup_core_v3(uuid,uuid[],text,jsonb)'::regprocedure"))
+    .rows[0].prosrc;
   const before = await trace();
 
   await t.test('khớp đúng một (kỳ 10; kỳ 11 nháp cùng số không tính): bản xem trước tự chọn, nói rõ vì sao và hoá đơn mở còn lại; chạy thử không để lại dấu vết', async () => {
@@ -560,13 +575,36 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
 
   await t.test('hoá đơn có nợ đã kéo sang kỳ sau cùng số tiền KHÔNG tính khớp (chỉ hoá đơn còn nợ thực) ⇒ tự chọn hoá đơn mở duy nhất khớp', async () => {
     await f.rollbackCase(async () => {
-      // P104: kỳ 09 (INV-D-09, 1.000.000) đã kéo sang kỳ 10 (INV-D-10, 2.500.000) — #267; thêm kỳ 08 còn nợ đúng 1.000.000.
-      await db.query(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,
-        contract_id,created_at) VALUES($1,$2,'INV-D-08','OVERDUE',$3,$4,'2026-08','2026-08-31',1000000,0,$5,'2026-08-01')`, [D08, ORG, BUILDING, ROOM4, CONTRACT]);
-      const carried = await run('preview', rid(95), { buildingName: 'toa a', roomName: 'p104', method: 'TK', amount: 1000000 });
+      await addD08();
+      const carried = await p104(rid(95), 1000000);
       assert.equal(carried.kind, 'preview', JSON.stringify(carried));
       assert.deepEqual([carried.resolved.items[0].invoiceId, carried.resolved.items[0].pickedBy, carried.resolved.items[0].otherOpen, carried.resolved.items[0].otherOpenCount],
         [D08, 'amount', ['kỳ 10/2026 · INV-D-10 (còn 2.500.000đ)'], 1]);
+    });
+  });
+
+  // Review #387: khớp trên số còn nợ của HOÁ ĐƠN (remaining_amount, đúng số in ở nhãn ứng viên), không trên nợ riêng của kỳ (effective_outstanding).
+  await t.test('hoá đơn gánh nợ: 2.500.000 (còn nợ của INV-D-10, gồm nợ kéo vào) ⇒ tự chọn INV-D-10; 1.500.000 (nợ riêng của kỳ 10) ⇒ hỏi lại', async () => {
+    await f.rollbackCase(async () => {
+      await addD08();
+      const rows = await f.call('SELECT jsonb_agg(to_jsonb(r)) result FROM public.invoice_room_invoices_v1($1,$2,NULL,ARRAY[$3]::uuid[]) r', [ORG, ROOM4, BUILDING]);
+      const d10 = rows.find(r => r.invoice_id === INV_D10);
+      assert.deepEqual([d10.remaining_amount, d10.effective_outstanding], [2500000, 1500000], 'dữ liệu phân biệt được hai cột');
+      const whole = await p104(rid(134), 2500000);
+      assert.equal(whole.kind, 'preview', JSON.stringify(whole));
+      assert.deepEqual([whole.resolved.items[0].invoiceId, whole.resolved.items[0].pickedBy, whole.resolved.items[0].otherOpen],
+        [INV_D10, 'amount', ['kỳ 08/2026 · INV-D-08 (còn 1.000.000đ)']]);
+      const own = await p104(rid(135), 1500000);
+      assert.deepEqual([own.kind, own.field, own.why, own.candidates?.length], ['needs_input', 'invoice', 'ambiguous', 2]);
+    });
+  });
+
+  await t.test('khớp trên số còn nợ làm tròn đồng (đúng số in ở nhãn): kỳ 10 còn 1.150.000,4đ, khách chuyển 1.150.000 ⇒ tự chọn kỳ 10', async () => {
+    await f.rollbackCase(async () => {
+      await db.query('UPDATE public.invoices SET total_amount=1150000.4 WHERE id=$1', [J10]);
+      const out = await run('preview', rid(133), params);
+      assert.equal(out.kind, 'preview', JSON.stringify(out));
+      assert.deepEqual([out.resolved.items[0].invoiceId, out.resolved.items[0].pickedBy, out.resolved.items[0].otherOpen], [J10, 'amount', OTHERS_J10]);
     });
   });
 
@@ -619,6 +657,26 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
       assert.deepEqual([same.kind, same.why, same.candidates.map(c => c.name)], ['needs_input', 'ambiguous',
         ['kỳ 10/2026 · INV-2026-J10 (còn 1.150.000đ)', 'kỳ 10/2026 · INV-2026-J10B (còn 300.000đ, extra)']]);
     });
+  });
+
+  // Review #387: cùng phòng thường cùng giá ⇒ số khách mới chuyển có thể trùng đúng số còn nợ của khách cũ đã trả phòng. Hoá đơn mở thuộc từ hai
+  // hợp đồng (hoặc thiếu hợp đồng) ⇒ không tự chọn, hỏi lại y như thân trước J06.
+  await t.test('hoá đơn mở thuộc HAI hợp đồng (khách cũ còn nợ đúng số khách mới chuyển) ⇒ hỏi lại, không tự chọn — y hệt thân trước J06', async () => {
+    await f.rollbackCase(async () => {
+      await seedTwoContracts();
+      const [mixed] = await sameAsBefore([['hai hợp đồng', P303]]);
+      assert.deepEqual([mixed.kind, mixed.field, mixed.why, mixed.candidates?.map(c => c.name)], ['needs_input', 'invoice', 'ambiguous',
+        ['kỳ 10/2026 · INV-2026-K10 (còn 4.200.000đ)', 'kỳ 09/2026 · INV-2026-K09 (còn 3.500.000đ)']]);
+    });
+  });
+  await t.test('hoá đơn mở thiếu hợp đồng (một hoặc cả hai hoá đơn) ⇒ hỏi lại, không tự chọn', async () => {
+    for (const contracts of [[null, CONTRACT], [null, null]]) {
+      await f.rollbackCase(async () => {
+        await seedTwoContracts(...contracts);
+        const out = await run('preview', rid(131), P303);
+        assert.deepEqual([out.kind, out.field, out.why], ['needs_input', 'invoice', 'ambiguous'], JSON.stringify(contracts));
+      });
+    }
   });
 
   await t.test('lô: mục không nêu kỳ, số tiền khớp đúng một ⇒ tự chọn theo mục; tóm tắt nêu phòng + kỳ; mục khác như cũ', async () => {
@@ -705,7 +763,7 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
   await t.test('đối chứng đột biến: bỏ rào "số JSON" / "> 0" ⇒ chuỗi số / số tiền 0 không còn bị hỏi lại — ca rào số tiền ở trên bắt được', async () => {
     const lookup = J06_SQL.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_lookup_core_v3\([\s\S]*?\$fn\$;/)[0];
     const jsonNumber = "v_amount:=CASE WHEN jsonb_typeof(v_e->'amount')='number' THEN (v_e->>'amount')::numeric END;";
-    const positive = 'AND v_amount>0 THEN';
+    const positive = 'AND v_amount>0 AND';
     for (const guard of [jsonNumber, positive]) assert.equal(lookup.split(guard).length, 2, `rào nằm đúng một chỗ: ${guard}`);
     assert.ok(AMOUNT_GUARD_INPUTS.includes('1150000') && AMOUNT_GUARD_INPUTS.includes(0), 'ca rào số tiền còn hai đầu vào phân biệt được hai rào');
     await f.rollbackCase(async () => {
@@ -717,7 +775,7 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     });
     await f.rollbackCase(async () => {
       await db.exec(ZERO_REMAINING_J06);
-      await db.exec(lookup.replace(positive, () => 'AND v_amount IS NOT NULL THEN'));
+      await db.exec(lookup.replace(positive, () => 'AND v_amount IS NOT NULL AND'));
       // Tra cứu tự chọn kỳ 06 (cột còn nợ 0 = số tiền 0); chỉ rào số tiền của kế hoạch còn chặn ⇒ từ chối thay vì hỏi lại.
       assert.deepEqual(await run('preview', rid(115), { ...params, amount: 0 }), { kind: 'rejected', reason: 'amount_out_of_range' },
         'đột biến bỏ rào "> 0" không còn hỏi lại ⇒ ca rào số tiền đỏ');
@@ -726,6 +784,41 @@ test('J06: số tiền khớp đúng số còn nợ của MỘT hoá đơn mở 
     assert.ok(live.includes(jsonNumber) && live.includes(positive), 'đột biến đã lùi: thân sống giữ hai rào số tiền');
     assert.equal((await db.query("SELECT to_regproc('public.invoice_room_invoices_real_v1') IS NULL gone")).rows[0].gone, true,
       'bọc hàm đọc (cột còn nợ 0) đã lùi cùng ca');
+  });
+
+  await t.test('đối chứng đột biến: bỏ điều kiện "cùng một hợp đồng" ⇒ tự chọn hoá đơn của khách cũ — ca hai hợp đồng ở trên bắt được', async () => {
+    const lookup = lookupOf(J06_SQL), oneContract = ' AND v_one_contract THEN';
+    assert.equal(lookup.split(oneContract).length, 2, 'điều kiện "cùng một hợp đồng" nằm đúng một chỗ');
+    await f.rollbackCase(async () => {
+      await seedTwoContracts();
+      await db.exec(lookup.replace(oneContract, () => ' THEN'));
+      const mutant = await run('preview', rid(132), P303);
+      assert.deepEqual([mutant.kind, mutant.resolved?.items[0].invoiceId, mutant.resolved?.items[0].pickedBy], ['preview', K09, 'amount'],
+        'đột biến tự chọn hoá đơn của hợp đồng cũ ⇒ ca hai hợp đồng đỏ');
+    });
+    assert.ok((await liveLookup()).includes(oneContract), 'đột biến đã lùi: thân sống giữ điều kiện "cùng một hợp đồng"');
+  });
+
+  // Khối kiểm đầu file ($requires$): chỉ nhận thân production (tra cứu 181440 + bước ghi C07), thân TEST (tra cứu J06 bản 045928 trước review;
+  // bước ghi của bản đó = thân của file này) hoặc chính thân của file (chạy lại). Thân lạ ⇒ dừng trước mọi CREATE OR REPLACE.
+  await t.test('$requires$ nhận thân production / TEST / chính file; thân lạ ở tra cứu hay bước ghi ⇒ hermes_invoice_j06_dependency_invalid', async () => {
+    const requires = J06_SQL.match(/DO \$requires\$[\s\S]*?END \$requires\$;/)[0];
+    assert.ok(requires.includes("'e4aa9f984d19c0f97ef9ebfef08baaa5'"), 'nhận tra cứu J06 bản 045928 đang chạy trên TEST');
+    const step = J06_SQL.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_invoice_action_step_v3\([\s\S]*?\$fn\$;/)[0];
+    // Một dòng chú thích trong thân ⇒ prosrc (và md5) khác, hành vi y nguyên.
+    const strange = sql => { const out = sql.replace('\nBEGIN\n', () => '\nBEGIN\n  -- thân lạ\n'); assert.notEqual(out, sql); return out; };
+    await f.rollbackCase(async () => {
+      await db.exec(requires); // chạy lại trên chính thân của file
+      for (const sql of COLLECT_BEFORE_J06) await db.exec(sql);
+      await db.exec(requires); // thân production
+      await db.exec(strange(lookupOf(J06_SQL)));
+      await assert.rejects(db.exec(requires), /hermes_invoice_j06_dependency_invalid/);
+    });
+    await f.rollbackCase(async () => {
+      await db.exec(strange(step));
+      await assert.rejects(db.exec(requires), /hermes_invoice_j06_dependency_invalid/);
+    });
+    assert.equal(await liveLookup(), lookupOf(J06_SQL).match(/AS \$fn\$([\s\S]*?)\$fn\$;$/)[1], 'thân sống là thân của file (ca đã lùi)');
   });
 
   // TC-J06 qua connector: broker + runtime THẬT, cổng dịch vụ gọi đúng RPC trang trên fixture (thay adapter PostgREST). confirmToken gắn [kết nối,

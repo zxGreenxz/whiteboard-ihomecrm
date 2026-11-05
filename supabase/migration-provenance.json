@@ -14037,7 +14037,7 @@
       "version": "20261104165619",
       "name": "hermes_invoice_collect_amount_pick_v1",
       "scheme": "timestamp14",
-      "sha256": "a3261e4b5f4fd521cd9552011cc16bb28cd134be3e618ac7fadd02b61475d836",
+      "sha256": "c73b7fbdf1ebd22e092dc17aecc0d5f8756da959cec1cc26e563637b33c31457",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.hermes_invoice_lookup_core_v3",
