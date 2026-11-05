@@ -59,7 +59,17 @@ hiện tại. Sửa số đã ghi ⇒ `replace` = true. Cảnh báo nhỏ hơn s
 
 ## Đọc hoá đơn, nợ
 
-Chi tiết / link tra hoá đơn một phòng: `crm_read_report` report=invoice_room_detail (đưa nguyên link `/c/…`). Nợ theo phòng:
+Chi tiết hoá đơn một phòng: `crm_read_report` report=invoice_room_detail. Nợ theo phòng:
 report=invoice_room_debts. Nhắc nợ: report=invoice_reminders (chép nguyên `messageText`). Phòng chưa có hoá đơn: report=invoice_missing.
 Điều chỉnh chờ kiểm: report=invoice_adjustments. Thu theo hình thức: report=collection_by_method. Công nợ tổng: `crm_read_receivables`.
 `crm_read_invoice_report` status=unpaid chỉ là hoá đơn chưa thu đồng nào; trả một phần (partial) vẫn là chưa đóng đủ.
+
+- Link tra cho khách (`/c/…`) là link của HỢP ĐỒNG, không theo kỳ: lấy trong invoice_room_detail; không có (kỳ này chưa có hoá
+  đơn…) ⇒ `crm_read_contract_search` (toà + phòng như người dùng nói, status ACTIVE) lấy `contractId` của HĐ đang hiệu lực ⇒
+  `crm_read_contract_detail` {contractId} lấy `publicLink`. Đưa nguyên link; `publicLink` null ⇒ nói chưa lấy được link, không tự
+  ghép `/c/…`. Phòng không có HĐ hiệu lực ⇒ mới nói không có link.
+- "Phòng X đóng tiền kỳ này chưa?" mà kỳ này chưa có hoá đơn ⇒ nói rõ chưa lập hoá đơn kỳ này, kèm nợ cũ theo
+  report=invoice_room_debts (còn nợ bao nhiêu, hoặc không còn nợ).
+- invoice_missing ⇒ kể ĐỦ từng toà kèm số phòng (tối đa 20 toà; quá 20 ⇒ 20 toà nhiều nhất + số toà còn lại), không chỉ vài toà đầu.
+- Hỏi số THU (thu được bao nhiêu, CK / tiền mặt bao nhiêu) ⇒ chỉ nêu khoản thu theo câu hỏi; không kèm tổng phiếu CHI hay số khác
+  không được hỏi.

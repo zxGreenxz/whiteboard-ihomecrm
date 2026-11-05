@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createActionCatalog, validateActionParams } from './action-catalog.mjs';
 import { HERMES_CAPABILITIES, HERMES_LEARNING_ACTION_KEYS } from './capability-contract.mjs';
 import { LEARNING_ACTIONS, LEARNING_DECIDE, LEARNING_DIGEST, LEARNING_REVIEW_KEY, learningPresenters, presentLearningDigest } from './learning-action-contract.mjs';
-import { formatLearningDigest, parseLearningReply } from './learning-digest.mjs';
+import { formatLearningDigest, LEARNING_DIGEST_MAX_ITEMS, parseLearningReply } from './learning-digest.mjs';
 
 // Trang Bài học (đợt 3 học có kiểm duyệt, docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4): khai thao tác, khuôn tham số khớp bộ đọc câu
 // trả lời "duyệt 1,3", và bộ dựng tin tối tất định từ kết quả SQL.
@@ -34,6 +34,12 @@ test('khuôn learning.decide nhận đúng đầu ra của bộ đọc "duyệt 
     assert.deepEqual(checked, { ok: true, value }, reply);
   }
   for (const reply of ['duyệt hết', 'duyệt 1 bỏ 2', 'xem 1']) assert.equal(parseLearningReply(reply), null, reply);
+  // Số trùng (review #391: "duyệt 1-3, 2" mà mô hình gửi [1,2,3,2]) ⇒ connector khử, giữ thứ tự lần đầu — SQL không còn trả 22023
+  // thành invalid_request không lời giải thích. Token xác nhận gắn danh sách đã khử nên gửi lại bản trùng hay bản đã khử đều khớp.
+  assert.deepEqual(validateActionParams(LEARNING_DECIDE, { numbers: [1, 2, 3, 2], decision: 'approve' }),
+    { ok: true, value: { numbers: [1, 2, 3], decision: 'approve' } });
+  assert.deepEqual(validateActionParams(LEARNING_DECIDE, { numbers: [5, '3', 5, 3, 5], decision: 'reject', note: 'trùng' }),
+    { ok: true, value: { numbers: [5, 3], decision: 'reject', note: 'trùng' } });
   // Ngoài khuôn ⇒ needs_input (không gọi SQL): số 0 / quá 20 số / quá 7 chữ số / quyết định lạ / ghi chú xuống dòng hay quá 500 ký tự.
   for (const params of [{ numbers: [], decision: 'approve' }, { numbers: [0], decision: 'approve' }, { numbers: Array.from({ length: 21 }, (_, n) => n + 1), decision: 'approve' },
     { numbers: [10_000_000], decision: 'approve' }, { numbers: [1], decision: 'maybe' }, { numbers: [1] },
@@ -48,12 +54,14 @@ test('tin tối: message tất định từ kết quả SQL (ngày = announcedAt
   assert.deepEqual(shown, { message: formatLearningDigest({ proposals: SQL.items, pendingTotal: 4, webOrigin: 'https://app.example.vn', date: new Date(SQL.announcedAt) }),
     newCount: 2, numbers: [9, 3], pendingTotal: 4 });
   assert.match(shown.message, /^Bài học Hermes chờ duyệt \(04\/11\): 2 đề xuất mới về cách ghi dữ liệu CRM\.\n#3 Skill/);
-  assert.match(shown.message, /Còn 2 đề xuất cũ đang chờ\./);
+  assert.match(shown.message, /Còn 2 đề xuất khác đang chờ duyệt \(xem trên web\)\./);
   assert.deepEqual(presentLearningDigest(structuredClone(SQL), { webOrigin: 'https://app.example.vn' }), shown, 'cùng kết quả SQL ⇒ cùng tin');
   assert.match(presentLearningDigest(SQL).message, /Xem kỹ: \/settings\/hermes\?tab=bai-hoc$/, 'không có origin ⇒ chỉ đường dẫn');
   assert.deepEqual(presentLearningDigest({ ...SQL, items: [] }), { message: null, newCount: 0, numbers: [], pendingTotal: 4 }, 'không mục mới ⇒ null');
   for (const bad of [{ ...SQL, extra: 1 }, { ...SQL, announcedAt: '2026-11-04T14:00:00Z' }, { ...SQL, pendingTotal: 1 }, { ...SQL, pendingTotal: '4' },
-    { ...SQL, items: Array.from({ length: 21 }, (_, n) => ({ ...SQL.items[0], seq: n + 1 })) }, { ...SQL, items: [{ ...SQL.items[0], kind: 'preference' }] },
+    // Nhiều mục hơn tin liệt kê được (SQL trần 10 = LEARNING_DIGEST_MAX_ITEMS) ⇒ khuôn lệch, không dựng tin thiếu số.
+    { ...SQL, pendingTotal: 30, items: Array.from({ length: LEARNING_DIGEST_MAX_ITEMS + 1 }, (_, n) => ({ ...SQL.items[0], seq: n + 1 })) },
+    { ...SQL, items: [{ ...SQL.items[0], kind: 'preference' }] },
     { ...SQL, items: [{ ...SQL.items[0], extra: 1 }] }, { ...SQL, items: [{ ...SQL.items[0], seq: 0 }] }, { announcedAt: SQL.announcedAt, pendingTotal: 4 }, null, []])
     assert.throws(() => presentLearningDigest(bad), TypeError, JSON.stringify(bad)?.slice(0, 80));
 });

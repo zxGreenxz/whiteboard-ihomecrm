@@ -1,9 +1,10 @@
 -- Hermes học có kiểm duyệt — đợt 3 (docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4): tin Zalo 21:00 "Bài học Hermes chờ duyệt" và
 -- duyệt qua Zalo, cắm vào khung thao tác ghi chung crm_action_* (20261021133823). Trang `learning`, hai thao tác:
---  - learning.digest (reversible; chính sách dự kiến never): tối đa 20 đề xuất CHỜ của công ty chưa báo (announced_at trống), theo số,
---    đánh dấu đã báo và trả {announcedAt, pendingTotal, items:[{seq,kind,title,content ≤ 300 ký tự}]}; connector dựng tin tất định
---    (infra/hermes-broker/learning-digest.mjs). Không có mục mới ⇒ items rỗng (tin null, cron không gửi). Cùng requestId ⇒ phát lại
---    đúng kết quả cũ (sổ biên nhận chung).
+--  - learning.digest (reversible; chính sách dự kiến never): tối đa 10 đề xuất CHỜ của công ty chưa báo (announced_at trống), theo số
+--    — đúng số dòng tin tối liệt kê được (LEARNING_DIGEST_MAX_ITEMS của infra/hermes-broker/learning-digest.mjs; mục đã đánh dấu không
+--    bao giờ hiện lại ở tin sau nên mục nào đánh dấu cũng phải có số trong tin), đánh dấu đã báo và trả {announcedAt, pendingTotal,
+--    items:[{seq,kind,title,content ≤ 300 ký tự}]}; connector dựng tin tất định. Phần vượt trần sang tối sau. Không có mục mới ⇒ items
+--    rỗng (tin null, cron không gửi). Cùng requestId ⇒ phát lại đúng kết quả cũ (sổ biên nhận chung).
 --  - learning.decide (reversible; chính sách dự kiến always): {numbers 1–20 = số seq của công ty, decision approve|reject, note ≤ 500}.
 --    LUÔN xem trước, kể cả khi chính sách là never (quyết định là một lần và bất biến): từng số → DUYỆT/BỎ, số không còn chờ vào cảnh
 --    báo; lượt 2 gửi đúng bản đã giải + basis (băm trạng thái các đề xuất đã chọn) — lệch ⇒ state_changed; ghi qua lõi dùng chung
@@ -22,6 +23,7 @@ SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
 DO $requires$
+DECLARE v_guard text;
 BEGIN
   IF to_regclass('app_private.hermes_learning_proposals') IS NULL OR to_regclass('app_private.hermes_capabilities') IS NULL
     OR to_regclass('app_private.hermes_action_policies') IS NULL OR to_regclass('app_private.hermes_action_receipts') IS NULL
@@ -34,6 +36,12 @@ BEGIN
     OR to_regprocedure('app_private.hermes_learning_apply_v1(uuid,uuid,uuid[],text,text,uuid,text)') IS NULL
     OR to_regprocedure('app_private.hermes_learning_guard_v1()') IS NULL THEN
     RAISE EXCEPTION 'hermes_learning_action_dependency_missing'; END IF;
+  -- Ghim md5 thân guard trước khi CREATE OR REPLACE (khuôn C2 20261104231450): thân 20261031041523 đang chạy (đo trên production và
+  -- TEST 05/11) hoặc thân mới của file này (lượt hai chạy lại). Thân khác ⇒ guard đã bị sửa ngoài migration — dừng, không đè.
+  SELECT md5(replace(p.prosrc,chr(13),'')) INTO v_guard FROM pg_catalog.pg_proc p
+    WHERE p.oid=to_regprocedure('app_private.hermes_learning_guard_v1()');
+  IF v_guard IS NULL OR v_guard NOT IN ('54e4b8fc6831348bd4e2df411bde6fdb','e55ad2c8914b850b1c335fdd7ed224f3') THEN
+    RAISE EXCEPTION 'hermes_learning_guard_body_drift: %',COALESCE(v_guard,'missing'); END IF;
 END $requires$;
 
 ALTER TABLE app_private.hermes_learning_proposals ADD COLUMN IF NOT EXISTS announced_at timestamptz;
@@ -110,8 +118,10 @@ BEGIN
   END IF;
 
   IF p_action='learning.digest' THEN
+    -- Trần 10 = số dòng tin tối liệt kê được (LEARNING_DIGEST_MAX_ITEMS): mục được đánh dấu không bao giờ hiện lại ở tin sau. Chỉ đề xuất
+    -- còn chờ: đề xuất đã quyết định trên web trước khi được báo thì guard cấm đánh dấu — chọn nó sẽ làm hỏng mọi tin tối sau.
     SELECT COALESCE(array_agg(c.id ORDER BY c.seq),'{}'::uuid[]) INTO v_ids FROM (SELECT r.id,r.seq FROM app_private.hermes_learning_proposals r
-      WHERE r.organization_id=v_org AND r.status='pending' AND r.announced_at IS NULL ORDER BY r.seq LIMIT 20) c;
+      WHERE r.organization_id=v_org AND r.status='pending' AND r.announced_at IS NULL ORDER BY r.seq LIMIT 10) c;
     v_basis:=md5(jsonb_build_array(p_action,to_jsonb(v_ids))::text);
     IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
     IF NOT v_write THEN

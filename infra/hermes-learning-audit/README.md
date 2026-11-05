@@ -63,8 +63,9 @@ Quét mọi hồ sơ dưới `/var/lib/ihome-hermes-profiles/owner/.hermes/profi
    - mục bộ nhớ mới (lần đầu: mọi mục) nhắc thao tác ghi, `crm_action_run`/`confirmToken`, mã thao tác, tool ghi
      (`crm_*_create|update|upsert|send…`) hoặc ý định ghi trong ngữ cảnh CRM.
    Còn lại (sở thích, đọc dữ liệu, việc ngoài CRM) ⇒ `autoApplied` (chỉ loại + băm/tên skill, không nội dung).
-   Skill đổi mà sổ curator không ghi nhận ⇒ phát hiện `skill_changed_without_ledger` và đưa nguyên file hiện tại lên trang duyệt
-   (có dấu hiệu ghi CRM thì là đề xuất, không thì cảnh báo). Tên chết, skill đè bản chuẩn, file không đọc an toàn, mục sổ lạ/hỏng cũng
+   Skill đổi mà sổ curator không ghi nhận ⇒ phát hiện `skill_changed_without_ledger`; MỌI file được phân loại và đưa nguyên file hiện tại lên
+   trang duyệt: có dấu hiệu ghi CRM thì là đề xuất kèm nội dung (không giới hạn số file), không thì cảnh báo kèm nội dung cho 10 file đầu, phần
+   dư gộp tên vào một cảnh báo. Tên chết, skill đè bản chuẩn, file không đọc an toàn, mục sổ lạ/hỏng cũng
    thành cảnh báo trên trang duyệt, khoá theo nội dung nên cùng phát hiện không hiện lại mỗi tối.
 4. **"Bó tay" 24 giờ** trên hồ sơ người dùng thật (mặc định `owner`) và kênh thật (`zalo_personal`…; phiên CLI thử như
    `full50`, `verify-*` bị loại): câu trả lời của trợ lý khớp mẫu từ chối/không làm được, kèm phiên, giờ, câu người dùng ngay
@@ -79,12 +80,21 @@ sơ**: surrogate lẻ ⇒ U+FFFD, bỏ NUL và ký tự điều khiển, **che b
 `pk-…`, header `Authorization`, `Cookie:`, khối PEM, token GitHub/Supabase/Slack/AWS/Google/Contentful/Vercel/bot, token kết nối `hc_…`; nhãn + giá trị có hậu tố hoặc nháy
 (`DB_PASSWORD=`, `PGPASSWORD=`, `VERCEL_TOKEN=`, `ZALO_API_KEY=`, `SUPABASE_KEY=`, `"service_role_key": "x"`, `"password": "x"`, `"api_key":"x"`, `API key: x`, `Secret key: x`, `token là x`, `Token của Vercel: x`), chuỗi kết nối
 (`postgresql://u:PASS@host`, `https://u:PASS@host`), tham số `-u`/`--user` của curl dạng tên:mật khẩu, `-p` của mysql và sshpass, `--password X`; tiếng Việt (`mật khẩu:`, `mật khẩu là X`, `Mật khẩu
-wifi: X`, `mã khoá`/`mã khóa`, `pass:`, `mk:`), giá trị ngắn, giá trị ở dòng ngay dưới nhãn, chữ dạng NFD. Lưới cuối đo độ ngẫu nhiên: chuỗi ≥ 32 ký tự lẫn hoa, thường, số thì che dù không có nhãn hay tiền tố
-(bắt khoá của nhà cung cấp chưa biết; mã băm hex, UUID, đường dẫn, tên định danh không rơi vào).
+wifi: X`, `mã khoá`/`mã khóa`, `pass:`, `mk:`), giá trị ngắn, giá trị ở dòng ngay dưới nhãn, chữ dạng NFD. Dấu phẩy/chấm phẩy chỉ kết thúc giá trị khi đứng trước khoảng
+trắng, hết chuỗi hoặc nhãn thông tin khách (`CCCD`, `CMND`, `SĐT`, `STK`, `email`, `Mã`…): giữ dấu cùng phần sau nguyên văn (`mật khẩu: abc12345,CCCD:0792…` ⇒
+`mật khẩu: [đã che],CCCD:0792…`). Đứng trước chữ/số khác thì vẫn thuộc giá trị và bị che cả từ (`mk: khong,Abc…`, `password=Abc,def…`, `mật khẩu: ,abc…`).
+Lưới cuối (không cần nhãn hay tiền tố, bắt khoá của nhà cung cấp chưa biết): chuỗi ≥ 32 ký tự lẫn hoa và thường mà **không ghép từ từ thật** thì che.
+"Ghép từ" đo bằng **tỉ lệ** trên số chữ/độ dài, không đếm tuyệt đối: ≥ 3/4 số chữ thuộc mảnh đọc được (có nguyên âm, chỉ chữ đầu được hoa) hoặc
+khúc một kiểu chữ giữa hai dấu ngăn (`skills`, `SKILL`, `2026`), chữ hiếm `f j q w x z` ≤ 10 % số chữ, cụm số và chữ cái lẻ ≤ 15 % độ dài
+(token base64url: ít mảnh đọc được, chữ hiếm ≈ 1/4, số rải từng cụm). Hai lần đo trên `secrets.token_urlsafe`: lọt 9–16/200 000 ở 32–38 ký tự, 0–2/144 000 ở
+39–86 ký tự, 0/40 000 với `token_urlsafe(48)` (loại mật khẩu runbook C1 sinh) và `(64)` — luật cũ (lẫn hoa/thường/số, < 4 dấu ngăn, entropy ≥ 4)
+lọt 2,5 % ở 32–38 ký tự, 14 % với `token_urlsafe(48)`, 28 % với `(64)`. Không bị che: mã băm hex, UUID, mã toàn hoa (thiếu một kiểu chữ); đường dẫn,
+tên skill/tool, định danh, tên khách viết liền (tên tiếng Việt viết liền ≥ 32 ký tự bị che nhầm 0,3 %, luật cũ 11 %); email.
 
 **Đây là lớp giảm rủi ro, không đảm bảo tuyệt đối.** Lớp bảo vệ thật là chỉ người giữ `users.edit` đọc được đề xuất, kèm thủ tục gỡ ở mục I runbook PR #371. Cố ý KHÔNG che, để không nhầm thông tin khách:
 văn tự do không nhãn (`mật khẩu X`, `tk admin mk X`, `admin/X`, `mã OTP:`, `mã PIN:`); giá trị 9–19 chữ số sau nhãn dễ nhầm `pass:`, `mk:`, `token của …:` (có thể là SĐT, CCCD, STK nên giữ, kể cả khi đó thật ra là mật khẩu; riêng `mật khẩu:` và `mã khoá:` đứng ngay trước số thì che);
-chuỗi liền có từ 9 chữ số liền nhau trở lên không bị lưới độ ngẫu nhiên che (`CCCD_NguyenVanAn_079123456789_MatTruoc.jpg`); chữ có dấu thuần chữ cái (`mật khẩu: không đổi`). Từ giữa nhãn và dấu `:` chỉ nhận danh sách đóng (wifi, admin, cửa, phòng…), nên `Mật khẩu gửi khách SĐT: 0901…` giữ nguyên. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu.
+chuỗi liền có từ 9 chữ số liền nhau trở lên không bị lưới cuối che (`CCCD_NguyenVanAn_079123456789_MatTruoc.jpg`); email nguyên văn, kể cả phần trước `@` dài lẫn hoa/thường/số (riêng `https://X@host` là userinfo của URL, vẫn xét); chữ có dấu thuần chữ cái (`mật khẩu: không đổi`). Từ giữa nhãn và dấu `:` chỉ nhận danh sách đóng (wifi, admin, cửa, phòng…), nên `Mật khẩu gửi khách SĐT: 0901…` giữ nguyên. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu; mật khẩu tận cùng bằng `,`/`;` + nhãn khách đứng hết từ (`…;mail`, `…,CCCD`) chỉ che được phần trước dấu. Nhãn khách dính liền số (`,CCCD0792…`) không được nhận là nhãn nên bị che cùng giá trị.
+Chuỗi dưới 32 ký tự không qua lưới cuối, nên `token_urlsafe(16..23)` (22–31 ký tự) chỉ bị che khi có nhãn hay tiền tố: ở độ dài này token ngẫu nhiên và tên khách viết liền chồng lấn (đo: hạ ngưỡng xuống 22 ký tự thì `token_urlsafe(16)` vẫn lọt 33/50 000 mà tên tiếng Việt viết liền 22–31 ký tự bị che nhầm 3,5 %). Chuỗi tiếng Anh nhiều chữ hiếm (`persistentFinancialWorkflow`, tên GitHub `zxGreenxz` trong link) có thể bị che — không phải thông tin khách.
 **Thông tin khách (SĐT, CCCD/CMND, email, STK…) giữ nguyên văn** theo quyết định của chủ (xem đầu file). Lý do vẫn che bí mật kỹ
 thuật: đó là an ninh hệ thống — một token/mật khẩu lọt vào báo cáo hay hàng duyệt là ai đọc được cũng dùng được để vào hệ thống,
 trong khi nội dung bài học không cần chúng. Nội dung dài hơn 3500 ký tự được **tách phần** (`phần i/n`, nguồn có `part`/`parts`), người duyệt
@@ -100,6 +110,9 @@ hỏng lần chạy; mục sổ được ghi "đã thấy" trước khi xử lý
 người dùng thật không đọc được hoặc vắng, một bước quét chết, bộ skill chuẩn lỗi) ⇒ báo cáo và outbox vẫn ghi, trường `degraded` nêu lý do, mã 1, và mỗi lý do thành một cảnh báo trên trang duyệt
 (khoá theo lý do + tháng: không thêm dòng mỗi tối, tháng sau còn hỏng thì hiện lại). Mỗi hồ sơ tối đa 20 cảnh báo **mới** một lần kiểm, xếp tên chết và skill đè chuẩn trước, thao tác lạ tiếp theo, file không đọc an toàn sau cùng; cảnh báo đã gửi lần trước không tính trần.
 Phần dư gộp một dòng `warnings_overflow` và mỗi mục bị cắt có phát hiện `warning_dropped` trong báo cáo trên máy chủ: sandbox gắn sai không đổ hàng loạt dòng vào kho bất biến.
+Dòng tràn khoá theo tháng nên chỉ hiện một lần mỗi tháng; vì vậy MỖI lần tràn ở hồ sơ người dùng thật còn là `degraded` (`<hồ sơ>:warnings_overflow`, mã 1 ⇒ `OnFailure=`):
+mục sổ curator bị cắt đã đánh dấu đã thấy, không quay lại trang duyệt, nên người vận hành phải xem `private/latest.json`. `counts.warningsDropped` = số mục bị cắt, ở mọi hồ sơ;
+hồ sơ thử không được nạp vào kho nên tràn ở đó chỉ đếm, không làm job đỏ.
 
 ### Đầu ra
 
@@ -128,7 +141,9 @@ sổ curator — lớp chặn thứ hai. File CÓ mà bị từ chối ⇒ phát
 
 **Thêm hồ sơ**: thêm một dòng `BindReadOnlyPaths=` như các hồ sơ có sẵn (drop-in
 `systemctl edit ihome-hermes-learning-audit.service`), `daemon-reload`. Hồ sơ không được gắn thì job kiểm không thấy; nếu hồ sơ
-đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo).
+đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo). Hồ sơ người dùng thật mới (có ánh xạ nạp) còn phải thêm vào
+`realProfiles` của job kiểm (`--real-profiles owner,<hồ sơ>` trong `ExecStart` qua drop-in, mặc định chỉ `owner`): chỉ hồ sơ trong danh sách này mới
+được đếm "bó tay", nhận cảnh báo của cả lần kiểm và làm job đỏ khi tràn cảnh báo.
 
 Thử tay (sau khi cài): `systemctl start ihome-hermes-learning-audit.service` (ghi đúng vào thư mục của job, không ghi hồ sơ),
 rồi `journalctl -u ihome-hermes-learning-audit -n 20` và `cat /var/lib/ihome-hermes-learning-audit/private/latest.txt`. Bản in

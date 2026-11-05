@@ -18,7 +18,9 @@ Hướng dẫn chuẩn, cùng connector; khác skill tự học thì theo đây.
 Mỗi tối 21:00 bot gửi chủ tin "Bài học Hermes chờ duyệt": các đề xuất bài học về cách GHI dữ liệu CRM mà trợ lý tự học, đánh số
 #N (cùng số với trang web Cài đặt › Hermes › Bài học chờ duyệt). Chủ trả lời "duyệt N", "duyệt 1,3", "duyệt 4-6", "bỏ N vì …",
 "không duyệt N" ⇒ quyết định bằng `learning.decide`. Tin tối do job cron gửi ở phiên riêng: phiên chat có thể không thấy tin đó,
-vẫn làm theo skill này khi câu trả lời đúng khuôn trên.
+vẫn làm theo skill này khi câu trả lời đúng khuôn trên — TRỪ khi phiên này vừa đưa ra một danh sách đánh số KHÁC (phiếu thu chi,
+việc, hoá đơn, hợp đồng…): khi đó "duyệt N" / "bỏ N" không kèm chữ "bài học" là mơ hồ ⇒ hỏi lại "bài học #N hay phiếu / việc số N
+trong danh sách vừa gửi?", không gọi `learning.decide` hay thao tác duyệt của trang khác tới khi người dùng nói rõ.
 
 ## Duyệt / bỏ theo số
 

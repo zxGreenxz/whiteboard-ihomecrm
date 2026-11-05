@@ -1,14 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { setup, binding, id, ORG, USER, FOREIGN } from './finance-fixture.mjs';
+import { presentLearningDigest } from './learning-action-contract.mjs';
+import { LEARNING_DIGEST_MAX_ITEMS } from './learning-digest.mjs';
 
 // Đợt 3 học có kiểm duyệt (docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4) trên PGlite: nền binding / phiên / chính sách công ty thật
 // của Hermes (finance-fixture), khung thao tác ghi chung THẬT (20261021133823), kho đề xuất THẬT (20261031041523) và file của đợt này.
 // Quyền CRM giả qua fixture_acl (ảnh chụp quyền của guard) + require_perm_v1 giả (cổng người của web, đọc thêm fixture_perm_denied).
 // Kiểm: khoá seed TẮT + chưa có dòng chính sách ⇒ đóng; learning.digest (đề xuất chờ chưa báo của đúng công ty, đánh dấu một lần,
-// tối đa 20, phát lại theo requestId); learning.decide (luôn xem trước, basis lệch ⇒ state_changed, ghi qua lõi dùng chung với
-// via hermes_connector); guard bất biến cho đúng bước "đã báo". Không chứng minh RLS production, MVCC đồng thời hay PostgREST.
+// tối đa LEARNING_DIGEST_MAX_ITEMS = số dòng tin tối — mục nào đánh dấu cũng có số trong tin dựng bằng presenter THẬT của connector,
+// bỏ qua đề xuất đã quyết định trước khi được báo, phát lại theo requestId); learning.decide (luôn xem trước, basis lệch ⇒ state_changed,
+// ghi qua lõi dùng chung với via hermes_connector); guard bất biến cho đúng bước "đã báo"; khối $requires$ ghim md5 thân guard (thân
+// 20261031041523 đang chạy hoặc thân mới; thân khác ⇒ dừng). Không chứng minh RLS production, MVCC đồng thời hay PostgREST.
 // Kiểm đột biến: HERMES_LEARNING_ACTION_SQL_MUTATION=<tên trong MUTATIONS> sửa SQL CHỈ trong bộ nhớ của lần chạy này ⇒ test phải đỏ.
 const migration = slug => {
   const found = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
@@ -29,9 +34,17 @@ const MUTATIONS = {
   'decide-any-status': ['r.seq=ANY(v_numbers) AND r.status=\'pending\';', 'r.seq=ANY(v_numbers);'],
   'decide-any-org': ['WHERE r.organization_id=v_org AND r.seq=ANY(v_numbers) AND r.status=\'pending\';', 'WHERE r.seq=ANY(v_numbers) AND r.status=\'pending\';'],
   'digest-any-org': ['WHERE r.organization_id=v_org AND r.status=\'pending\' AND r.announced_at IS NULL', 'WHERE r.status=\'pending\' AND r.announced_at IS NULL'],
-  'digest-again': [' AND r.announced_at IS NULL ORDER BY r.seq LIMIT 20', ' ORDER BY r.seq LIMIT 20'],
+  // Review #391: chọn cả đề xuất đã quyết định trên web trước khi được báo ⇒ guard cấm đánh dấu nó ⇒ digest hỏng (mọi tối sau).
+  'digest-any-status': [' AND r.status=\'pending\' AND r.announced_at IS NULL ORDER BY r.seq', ' AND r.announced_at IS NULL ORDER BY r.seq'],
+  'digest-again': [' AND r.announced_at IS NULL ORDER BY r.seq LIMIT 10', ' ORDER BY r.seq LIMIT 10'],
   'digest-no-mark': ['UPDATE app_private.hermes_learning_proposals SET announced_at=v_now WHERE organization_id=v_org AND id=ANY(v_ids);', ''],
-  'digest-no-cap': ['ORDER BY r.seq LIMIT 20) c;', 'ORDER BY r.seq) c;'],
+  'digest-no-cap': ['ORDER BY r.seq LIMIT 10) c;', 'ORDER BY r.seq) c;'],
+  // Review #391: trần cũ 20 đánh dấu nhiều hơn số dòng tin liệt kê được ⇒ mục đã đánh dấu mà không có số trong tin.
+  'digest-cap-20': ['ORDER BY r.seq LIMIT 10) c;', 'ORDER BY r.seq LIMIT 20) c;'],
+  // Review #391: không ghim md5 thân guard ⇒ guard bị sửa ngoài migration vẫn bị đè im lặng.
+  'guard-no-pin': [' OR v_guard NOT IN (\'54e4b8fc6831348bd4e2df411bde6fdb\',\'e55ad2c8914b850b1c335fdd7ed224f3\')', ''],
+  // Chỉ nhận thân đang chạy ⇒ lượt hai (thân mới) bị chặn: file không còn chạy lại được.
+  'guard-pin-only-running': ['\'54e4b8fc6831348bd4e2df411bde6fdb\',\'e55ad2c8914b850b1c335fdd7ed224f3\')', '\'54e4b8fc6831348bd4e2df411bde6fdb\')'],
   'digest-ignores-policy': ['\n    AND COALESCE(ctx->>\'actionClass\'=\'reversible\' AND ctx->>\'confirm\'=\'never\',false));', ');'],
   'guard-reannounce': ['(OLD.announced_at IS NOT NULL OR NEW.announced_at IS NULL)', '(NEW.announced_at IS NULL)'],
   'guard-decided-announce': ['    OR (NEW.status<>\'pending\' AND NEW.announced_at IS DISTINCT FROM OLD.announced_at)\n', ''],
@@ -45,11 +58,20 @@ const MUTATIONS = {
 };
 const mutationName = process.env.HERMES_LEARNING_ACTION_SQL_MUTATION;
 assert(!mutationName || Object.hasOwn(MUTATIONS, mutationName), `unknown mutation ${mutationName}`);
+// Thân guard (prosrc, bỏ CR) và md5 của nó — khối $requires$ ghim md5 thân đang chạy (041523) và thân mới của file này.
+const guardBody = sql => /CREATE OR REPLACE FUNCTION app_private\.hermes_learning_guard_v1\(\)[\s\S]*?AS \$fn\$([\s\S]*?)\$fn\$;/.exec(sql)[1];
+const md5 = text => createHash('md5').update(text.replaceAll('\r', '')).digest('hex');
+// Đo trên production và TEST 05/11 (review #391): md5 thân guard đang chạy = thân của 20261031041523.
+const RUNNING_GUARD = '54e4b8fc6831348bd4e2df411bde6fdb';
 const mutate = sql => {
   if (!mutationName) return sql;
   const [from, to] = MUTATIONS[mutationName];
   assert.equal(sql.split(from).length, 2, `${mutationName}: chuỗi gốc phải xuất hiện đúng một lần`);
-  return sql.replace(from, () => to);
+  const mutated = sql.replace(from, () => to);
+  // Đột biến thân guard (guard-*) mô phỏng người sửa guard CÓ cập nhật ghim "thân mới" ở $requires$: phải đỏ ở test hành vi của guard,
+  // không phải ở ghim md5 (ghim có test và đột biến riêng: guard-no-pin, guard-pin-only-running).
+  const before = md5(guardBody(sql)), after = md5(guardBody(mutated));
+  return before === after ? mutated : mutated.replace(`'${before}')`, () => `'${after}')`);
 };
 const RESOLVE = migration('hermes_write_name_resolve_v1'), FOUNDATION = migration('hermes_action_foundation_v1');
 const STORE = migration('hermes_learning_proposals_v1'), ACTION = mutate(migration('hermes_learning_action_v1'));
@@ -175,6 +197,29 @@ test('đợt 3 học có kiểm duyệt: learning.digest / learning.decide trên
       [JSON.stringify(binding), rid(3)]), error => error.code === '42501' && /schema app_private/.test(error.message));
   });
 
+  await t.test('$requires$ ghim md5 thân guard trước khi đè (khuôn C2): thân 041523 đang chạy hoặc thân mới (chạy lại) qua; thân khác ⇒ dừng', async () => {
+    const requires = /DO \$requires\$[\s\S]*?END \$requires\$;/.exec(ACTION)[0];
+    const guardOf = sql => /CREATE OR REPLACE FUNCTION app_private\.hermes_learning_guard_v1\(\)[\s\S]*?\$fn\$;/.exec(sql)[0];
+    const guardMd5 = async () => (await db.query(
+      "SELECT md5(replace(prosrc,chr(13),'')) md5 FROM pg_proc WHERE oid='app_private.hermes_learning_guard_v1()'::regprocedure")).rows[0].md5;
+    assert.equal(md5(guardBody(STORE)), RUNNING_GUARD, 'thân guard của 20261031041523 = thân đo trên production và TEST');
+    await f.rollbackCase(async () => {
+      // Setup đã chạy file hai lần: lượt hai thấy thân mới của chính file và qua.
+      assert.equal(await guardMd5(), md5(guardBody(ACTION)), 'thân mới của file này');
+      await db.exec(requires);
+      // Lượt đầu trên production / TEST: thân 041523 đang chạy.
+      await db.exec(guardOf(STORE));
+      assert.equal(await guardMd5(), RUNNING_GUARD);
+      await db.exec(requires);
+      // Có người sửa guard ngoài migration (ở đây chỉ thêm một chú thích) ⇒ dừng trước khi đè, nêu md5 lạ.
+      await db.exec(guardOf(STORE).replace('RETURN NEW;', 'RETURN NEW; -- sửa tay'));
+      await db.exec('SAVEPOINT drift');
+      await assert.rejects(db.exec(requires), /hermes_learning_guard_body_drift: [0-9a-f]{32}/);
+      await db.exec('ROLLBACK TO SAVEPOINT drift');
+    });
+    assert.equal(await guardMd5(), md5(guardBody(ACTION)));
+  });
+
   await f.activate();
 
   await t.test('digest: đề xuất chờ chưa báo của đúng công ty theo số, đánh dấu một lần, phát lại theo requestId, tra trạng thái', async () => {
@@ -200,26 +245,62 @@ test('đợt 3 học có kiểm duyệt: learning.digest / learning.decide trên
     await webDecide(rid(12), [await idOf(1)], 'approve');
     const next = await digest(rid(13));
     assert.deepEqual([next.result.items.map(item => item.seq), next.result.pendingTotal], [[4, 5], 4]);
+    await f.rollbackCase(async () => {
+      // Review #391: đề xuất được quyết định trên web TRƯỚC khi được báo (chưa có announced_at) ⇒ digest không chọn nó (guard cấm đánh dấu
+      // đề xuất đã quyết định — chọn nó làm digest hỏng mọi tối sau), vẫn báo đề xuất còn chờ khác; tối sau digest vẫn chạy.
+      const [early, later] = (await ingest([proposal(40), proposal(41)])).inserted;
+      await webDecide(rid(14), [early.id], 'reject', 'sai từ đầu');
+      const after = await digest(rid(16));
+      assert.equal(after.kind, 'applied', JSON.stringify(after));
+      assert.deepEqual([after.result.items.map(item => item.seq), after.result.pendingTotal], [[later.seq], 5]);
+      assert.deepEqual((await rows()).filter(row => row.seq >= early.seq).map(row => [row.seq, row.status, row.announced]),
+        [[early.seq, 'rejected', false], [later.seq, 'pending', true]]);
+      const quiet = await digest(rid(17));
+      assert.deepEqual([quiet.kind, quiet.result.items], ['applied', []]);
+    });
     assert.deepEqual((await receipts()).map(row => [row.action, row.state]), [['learning.digest', 'applied'], ['learning.digest', 'applied'], ['learning.digest', 'applied']]);
     await assert.rejects(f.learning('learning.digest', 'auto', rid(15), { force: true }), code('22023'), 'digest không nhận tham số');
   });
 
-  await t.test('digest: tối đa 20 mục một lần theo số, phần còn lại sang lần sau; chính sách siết always ⇒ xem trước, không đánh dấu', async () => {
-    await ingest(Array.from({ length: 25 }, (_, n) => proposal(100 + n)));
-    const page = await digest(rid(20));
-    assert.deepEqual(page.result.items.map(item => item.seq), Array.from({ length: 20 }, (_, n) => 6 + n));
+  await t.test('digest: tối đa LEARNING_DIGEST_MAX_ITEMS mục theo số = số dòng tin; đề xuất dài vẫn có đủ số trong tin; phần còn lại sang tối sau; chính sách siết always ⇒ xem trước, không đánh dấu', async () => {
+    // Review #391: 25 đề xuất dài như production (tiêu đề 136, nội dung 867 ký tự). Trần cũ 20 đánh dấu 20 mà tin chỉ liệt kê 6 số ⇒ 14 số
+    // không bao giờ hiện lại theo số. Nay: mục nào vừa được đánh dấu đều có số trong tin dựng bằng presenter THẬT của connector.
+    const long = n => proposal(100 + n, { kind: ['skill_crm_write', 'memory_crm_write', 'audit_warning'][n % 3],
+      title: `Skill crm-task-management: curator sửa cách ghi phiếu ${n} — ${'tiêu đề rất dài '.repeat(9)}`.slice(0, 136),
+      content: `${'Gọi crm_action_run expense.create với đủ tham số rồi xác nhận theo bản xem trước. '.repeat(12)}`.slice(0, 867) });
+    await ingest(Array.from({ length: 25 }, (_, n) => long(n)));
+    const announced = async () => (await rows()).filter(row => row.announced).map(row => row.seq);
+    const evening = async (requestId, phase, extra) => {
+      const before = new Set(await announced());
+      const outcome = await digest(requestId, phase, extra);
+      assert.equal(outcome.kind, 'applied', JSON.stringify(outcome).slice(0, 200));
+      const marked = (await announced()).filter(seq => !before.has(seq));
+      assert.ok(outcome.result.items.length <= LEARNING_DIGEST_MAX_ITEMS,
+        `SQL đánh dấu ${outcome.result.items.length} mục, tin chỉ liệt kê được ${LEARNING_DIGEST_MAX_ITEMS}`);
+      const shown = presentLearningDigest(outcome.result, { webOrigin: 'https://crm.example.vn' });
+      assert.deepEqual(shown.numbers, marked, 'số trong kết quả = đúng các mục vừa đánh dấu');
+      if (marked.length === 0) { assert.equal(shown.message, null, 'không mục mới ⇒ không tin'); return outcome; }
+      assert.ok([...shown.message].length <= 1800);
+      for (const seq of marked) assert.match(shown.message, new RegExp(`^#${seq} `, 'm'), `#${seq} đã đánh dấu phải có dòng trong tin`);
+      return outcome;
+    };
+    const page = await evening(rid(20));
+    assert.deepEqual(page.result.items.map(item => item.seq), Array.from({ length: LEARNING_DIGEST_MAX_ITEMS }, (_, n) => 6 + n));
     assert.equal(page.result.pendingTotal, 29);
+    assert.equal([...page.result.items[0].content].length, 300, 'SQL cắt nội dung 300 ký tự');
     await f.rollbackCase(async () => {
       await db.query("UPDATE app_private.hermes_action_policies SET confirm='always' WHERE action='learning.digest'");
       const preview = await digest(rid(21));
-      assert.deepEqual([preview.kind, preview.confirm, preview.preview], ['preview', 'required', { action: 'learning.digest', newCount: 5 }]);
-      assert.equal((await rows()).filter(row => !row.announced).length, 5, 'xem trước không đánh dấu');
+      assert.deepEqual([preview.kind, preview.confirm, preview.preview], ['preview', 'required', { action: 'learning.digest', newCount: 10 }]);
+      assert.equal((await rows()).filter(row => !row.announced).length, 15, 'xem trước không đánh dấu');
       assert.deepEqual(await digest(rid(21), 'apply', { resolved: {}, basis: 'khác' }), { kind: 'rejected', reason: 'state_changed' });
-      const applied = await digest(rid(21), 'apply', { resolved: preview.resolved, basis: preview.basis });
-      assert.deepEqual(applied.result.items.map(item => item.seq), [26, 27, 28, 29, 30]);
+      const applied = await evening(rid(21), 'apply', { resolved: preview.resolved, basis: preview.basis });
+      assert.deepEqual(applied.result.items.map(item => item.seq), Array.from({ length: 10 }, (_, n) => 16 + n));
     });
-    const rest = await digest(rid(22));
-    assert.deepEqual(rest.result.items.map(item => item.seq), [26, 27, 28, 29, 30]);
+    // Tối sau: 10 mục tiếp theo; tối sau nữa: phần cuối.
+    assert.deepEqual((await evening(rid(22))).result.items.map(item => item.seq), Array.from({ length: 10 }, (_, n) => 16 + n));
+    assert.deepEqual((await evening(rid(23))).result.items.map(item => item.seq), [26, 27, 28, 29, 30]);
+    assert.deepEqual((await evening(rid(24))).result.items, []);
   });
 
   await t.test('decide: luôn xem trước (cả khi chính sách never), số không còn chờ vào cảnh báo; lượt 2 ghi qua lõi chung, via hermes_connector', async () => {

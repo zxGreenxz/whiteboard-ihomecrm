@@ -70,4 +70,6 @@ Thu / hoàn / bổ sung cọc, bỏ cọc không kèm trả phòng, quyết toá
 
 Báo trả: `crm_read_report` report=re_move_out_notices. HĐ hết hạn trong tháng: report=re_contracts_ending. Hồ sơ chờ quyết toán:
 report=re_exit_cases_pending. Trả phòng theo kỳ: report=re_terminations. Thiếu cọc: report=held_deposits. Nháp chờ ký:
-report=contract_drafts. Một HĐ / phòng: `crm_read_contract_search`, `crm_read_contract_detail`.
+report=contract_drafts. Một HĐ / phòng: `crm_read_contract_search`, `crm_read_contract_detail`. Link tra cứu cho khách (`/c/…`,
+khách xem HĐ và hoá đơn): `crm_read_contract_search` (toà + phòng, status ACTIVE) lấy `contractId` ⇒ `crm_read_contract_detail`
+{contractId} ⇒ `publicLink` — có cả khi kỳ này chưa có hoá đơn; đưa nguyên link, null ⇒ nói chưa lấy được, không tự ghép.
