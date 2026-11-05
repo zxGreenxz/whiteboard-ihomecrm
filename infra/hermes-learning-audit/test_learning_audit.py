@@ -205,6 +205,9 @@ REDACTION_EXACT = {
     'pass' + 'word=Abc,' + 'def' + '123': 'password=[đã che]', 'DB_PASS' + 'WORD=Xk9;' + 'mQ2' + 'zz': 'DB_PASSWORD=[đã che]',
     'API_' + 'KEY=Zq8,' + 'Wm3,' + 'Rt7': 'API_KEY=[đã che]', 'mật khẩu admin: P@ss,' + 'word' + '1': 'mật khẩu admin: [đã che]',
     'mật khẩu: Hà,' + 'Nội' + '2026': 'mật khẩu: [đã che]',
+    # Re-review #389: nhãn khách phải đứng hết từ; nhãn ngắn dính ký hiệu/"_"/"." là mật khẩu.
+    'mk: abc,' + 'tk#' + '123': 'mk: [đã che]', 'pass: Xy9,' + 'ma!' + '9z': 'pass: [đã che]', 'pass' + 'word=abc9,' + 'dt_' + '123': 'password=[đã che]',
+    'mật khẩu: Pq7,' + 'Mã#' + '88': 'mật khẩu: [đã che]', 'mk: Zx8,' + 'cmt.' + '77': 'mk: [đã che]',
 }
 # Ca biên, mỗi ca chỉ một tiêu chí của lưới cuối giữ được (mật khẩu máy sinh dạng "đọc được"), ghép lúc chạy: đủ mảnh đọc được nhưng toàn chữ
 # hiếm; đủ mảnh đọc được nhưng chữ hiếm vừa quá trần (5/32); đủ mảnh đọc được nhưng số chen giữa từng mảnh; chỉ 3/8 mảnh có nguyên âm; không mảnh
@@ -725,6 +728,7 @@ class LearningAuditTest(unittest.TestCase):
             'bỏ giữ tên miền sau @': ("(start > 0 and match.string[start - 1] == '@') or ", ''),
             'cắt giá trị trước mọi chữ cái (bản trước review #389)': (
                 "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=[^\\W\\d_]|\\s|$)')"),
+            'ranh giới nhãn khách cho qua ký hiệu (bản 8a8855581)': ("|ma)(?=[\\s:=]|$)'", "|ma)(?![^\\W_])'"),
             'chỉ cắt trước khoảng trắng (bỏ nhãn khách)': (
                 "_CLAUSE_END = re.compile(r'(?i)[,;](?=\\s|$|' + _CUSTOMER_LABEL + r')')", "_CLAUSE_END = re.compile(r'[,;](?=\\s|$)')"),
             'bỏ trần mảnh vụn': ('scraps <= 0.15 * len(text)', 'True'),

@@ -93,7 +93,7 @@ tên skill/tool, định danh, tên khách viết liền (tên tiếng Việt vi
 
 **Đây là lớp giảm rủi ro, không đảm bảo tuyệt đối.** Lớp bảo vệ thật là chỉ người giữ `users.edit` đọc được đề xuất, kèm thủ tục gỡ ở mục I runbook PR #371. Cố ý KHÔNG che, để không nhầm thông tin khách:
 văn tự do không nhãn (`mật khẩu X`, `tk admin mk X`, `admin/X`, `mã OTP:`, `mã PIN:`); giá trị 9–19 chữ số sau nhãn dễ nhầm `pass:`, `mk:`, `token của …:` (có thể là SĐT, CCCD, STK nên giữ, kể cả khi đó thật ra là mật khẩu; riêng `mật khẩu:` và `mã khoá:` đứng ngay trước số thì che);
-chuỗi liền có từ 9 chữ số liền nhau trở lên không bị lưới cuối che (`CCCD_NguyenVanAn_079123456789_MatTruoc.jpg`); email nguyên văn, kể cả phần trước `@` dài lẫn hoa/thường/số (riêng `https://X@host` là userinfo của URL, vẫn xét); chữ có dấu thuần chữ cái (`mật khẩu: không đổi`). Từ giữa nhãn và dấu `:` chỉ nhận danh sách đóng (wifi, admin, cửa, phòng…), nên `Mật khẩu gửi khách SĐT: 0901…` giữ nguyên. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu; mật khẩu chứa `,` + nhãn khách (`…,mail`, `…;CCCD`) chỉ che được phần trước dấu.
+chuỗi liền có từ 9 chữ số liền nhau trở lên không bị lưới cuối che (`CCCD_NguyenVanAn_079123456789_MatTruoc.jpg`); email nguyên văn, kể cả phần trước `@` dài lẫn hoa/thường/số (riêng `https://X@host` là userinfo của URL, vẫn xét); chữ có dấu thuần chữ cái (`mật khẩu: không đổi`). Từ giữa nhãn và dấu `:` chỉ nhận danh sách đóng (wifi, admin, cửa, phòng…), nên `Mật khẩu gửi khách SĐT: 0901…` giữ nguyên. Mật khẩu có dấu cách mà không để trong nháy chỉ che được từ đầu; mật khẩu tận cùng bằng `,`/`;` + nhãn khách đứng hết từ (`…;mail`, `…,CCCD`) chỉ che được phần trước dấu. Nhãn khách dính liền số (`,CCCD0792…`) không được nhận là nhãn nên bị che cùng giá trị.
 Chuỗi dưới 32 ký tự không qua lưới cuối, nên `token_urlsafe(16..23)` (22–31 ký tự) chỉ bị che khi có nhãn hay tiền tố: ở độ dài này token ngẫu nhiên và tên khách viết liền chồng lấn (đo: hạ ngưỡng xuống 22 ký tự thì `token_urlsafe(16)` vẫn lọt 33/50 000 mà tên tiếng Việt viết liền 22–31 ký tự bị che nhầm 3,5 %). Chuỗi tiếng Anh nhiều chữ hiếm (`persistentFinancialWorkflow`, tên GitHub `zxGreenxz` trong link) có thể bị che — không phải thông tin khách.
 **Thông tin khách (SĐT, CCCD/CMND, email, STK…) giữ nguyên văn** theo quyết định của chủ (xem đầu file). Lý do vẫn che bí mật kỹ
 thuật: đó là an ninh hệ thống — một token/mật khẩu lọt vào báo cáo hay hàng duyệt là ai đọc được cũng dùng được để vào hệ thống,
@@ -141,7 +141,9 @@ sổ curator — lớp chặn thứ hai. File CÓ mà bị từ chối ⇒ phát
 
 **Thêm hồ sơ**: thêm một dòng `BindReadOnlyPaths=` như các hồ sơ có sẵn (drop-in
 `systemctl edit ihome-hermes-learning-audit.service`), `daemon-reload`. Hồ sơ không được gắn thì job kiểm không thấy; nếu hồ sơ
-đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo).
+đó có ánh xạ trong cấu hình nạp, job nạp báo `missingProfiles` (mã 1 ⇒ cảnh báo). Hồ sơ người dùng thật mới (có ánh xạ nạp) còn phải thêm vào
+`realProfiles` của job kiểm (`--real-profiles owner,<hồ sơ>` trong `ExecStart` qua drop-in, mặc định chỉ `owner`): chỉ hồ sơ trong danh sách này mới
+được đếm "bó tay", nhận cảnh báo của cả lần kiểm và làm job đỏ khi tràn cảnh báo.
 
 Thử tay (sau khi cài): `systemctl start ihome-hermes-learning-audit.service` (ghi đúng vào thư mục của job, không ghi hồ sơ),
 rồi `journalctl -u ihome-hermes-learning-audit -n 20` và `cat /var/lib/ihome-hermes-learning-audit/private/latest.txt`. Bản in

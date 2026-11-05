@@ -203,8 +203,9 @@ def _is_ordinary_word(value: str) -> bool:
 
 # Dấu phẩy, chấm phẩy chỉ kết thúc giá trị khi đứng trước khoảng trắng, hết chuỗi, hoặc nhãn thông tin khách liền sau ("mật khẩu: X, CCCD …",
 # "mật khẩu: X,CCCD:…"): giữ dấu cùng phần sau nguyên văn. Đứng trước chữ/số khác ("Abc,def123", "khong,Abc12345", ",abc12345") thì vẫn là một
-# phần của giá trị: cắt ở đó là để lọt nửa sau của mật khẩu.
-_CUSTOMER_LABEL = r'(?:cccd|cmnd|cmt|sđt|sdt|đt|dt|stk|tk|e-?mail|mail|mã|ma)(?![^\W_])'
+# phần của giá trị: cắt ở đó là để lọt nửa sau của mật khẩu. Nhãn phải đứng hết từ (trước khoảng trắng, ":", "=" hoặc hết giá trị): ",tk#123",
+# ",Mã#88", ",dt_123" là mật khẩu, không phải nhãn.
+_CUSTOMER_LABEL = r'(?:cccd|cmnd|cmt|sđt|sdt|đt|dt|stk|tk|e-?mail|mail|mã|ma)(?=[\s:=]|$)'
 _CLAUSE_END = re.compile(r'(?i)[,;](?=\s|$|' + _CUSTOMER_LABEL + r')')
 
 
