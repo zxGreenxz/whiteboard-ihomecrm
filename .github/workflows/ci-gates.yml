@@ -19,7 +19,7 @@ concurrency:
 jobs:
   preflight:
     if: github.ref != 'refs/heads/production'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
           retention-days: 2
 
   quality-gates:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -102,7 +102,7 @@ jobs:
           retention-days: 2
 
   vitest-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -136,7 +136,7 @@ jobs:
           retention-days: 2
 
   strict-islands-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -170,7 +170,7 @@ jobs:
           retention-days: 2
 
   timezone-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -204,7 +204,7 @@ jobs:
           retention-days: 2
 
   security-gates:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -240,7 +240,7 @@ jobs:
           retention-days: 2
 
   generated-types-drift:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -276,7 +276,7 @@ jobs:
           retention-days: 2
 
   reconcile-money:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -314,7 +314,7 @@ jobs:
           retention-days: 2
 
   cross-tenant-isolation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -350,7 +350,7 @@ jobs:
           retention-days: 2
 
   secret-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -391,7 +391,7 @@ jobs:
           retention-days: 2
 
   realtime-gates:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: preflight
     if: >-
       !cancelled() && github.ref != 'refs/heads/production' &&
@@ -429,7 +429,7 @@ jobs:
   gate-aggregate:
     if: always() && github.ref != 'refs/heads/production'
     needs: [preflight, quality-gates, vitest-tests, strict-islands-gate, timezone-gate, security-gates, generated-types-drift, reconcile-money, cross-tenant-isolation, secret-scan, realtime-gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -465,7 +465,7 @@ jobs:
           retention-days: 14
   production-promotion:
     if: github.ref == 'refs/heads/production'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
