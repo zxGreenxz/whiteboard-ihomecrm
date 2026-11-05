@@ -91,6 +91,7 @@ Câu xem trước và câu kết quả do SQL dựng bằng tiếng Việt ở `
    - Hoá đơn được chọn có `carried_out_amount > 0` (nợ đã kéo vào hoá đơn kỳ sau chưa thu xong) ⇒ `needs_input debt_carried`: "nợ kỳ này đã cộng vào hoá đơn kỳ sau; thu ở hoá đơn kỳ sau". Đây là chỗ #267 chặn thu trùng.
    - Hoá đơn `PAID` / không còn số thu ⇒ `needs_input nothing_to_collect` (thường là nhầm phòng/kỳ). `DRAFT/CANCELLED` ⇒ `invoice_not_collectible`.
    - ≥ 2 hoá đơn còn nợ khớp (kể cả hai hoá đơn CÙNG kỳ, vd hoá đơn tháng + hoá đơn phát sinh) ⇒ hỏi lại; mỗi ứng viên mang **số hoá đơn** ("kỳ 10/2026 · INV-… (còn …đ, extra)") và mô hình chọn lại bằng `invoiceNumber` (một phòng: tham số chung; lô: trong từng mục). Không phân biệt hoa thường; số không khớp ⇒ hỏi lại với các hoá đơn còn nợ (Mốc 3b).
+   - **J06 (30/10, review #387 05/11):** chưa nêu kỳ / số hoá đơn, phòng còn ≥ 2 hoá đơn còn nợ (đúng tập ứng viên trên), mọi hoá đơn còn nợ cùng MỘT `contract_id` (khác hợp đồng — vd nợ của khách cũ đã trả phòng treo cùng hoá đơn của khách mới — hay thiếu hợp đồng ⇒ hỏi lại), số tiền khớp ĐÚNG `remaining_amount` làm tròn đồng (đúng số in ở nhãn ứng viên) của MỘT hoá đơn và không hoá đơn còn nợ nào khác khớp ⇒ chọn hoá đơn đó (`pickedBy = amount`); bản xem trước nói "tự chọn … vì số tiền khớp đúng số còn nợ", kèm hoá đơn còn nợ khác (`otherOpen` ≤ 3 nhãn + `otherOpenCount`). Không khớp / khớp từ hai / đã nêu kỳ hay số hoá đơn ⇒ hỏi lại như trên. Lô: theo `amount` của từng mục.
 3. Kế hoạch: `invoice_collection_plan_v1` (mục 6.1) với một dòng `{method, amount}` (trống = số còn nợ), `overpay`, ngày thu.
 4. Chạy thử `record_invoice_collection_v5(…, p_expected_paid_amount := paid_amount vừa đọc, p_idempotency_key := 'hermes-dry:'||rid)` trong khối con. Câu lỗi ⇒ lý do (mục 5) trả ngay ở lượt 1. Riêng `22023 Không được làm tròn bỏ qua cọc…` ⇒ chạy thử lại với `p_allow_rounding=false`, bản xem trước nói "không làm tròn được vì phần thiếu là cọc; hoá đơn còn nợ X".
 5. Lượt 2: gọi thật với khoá `hermes-inv:`; hậu điều kiện: `collection_id` có, `applied_amount` = bản xem trước, không có dòng `TM`, hoá đơn `paid_amount` tăng đúng `applied_amount`.
@@ -406,6 +407,7 @@ Tên lấy bằng `scripts/tao-ten-migration.mjs` ở mốc tương ứng; chỉ
 | lượt 14 | `20261024181440_hermes_invoice_period_closed_reason_order_v1` | tra cứu + bước ghi thu tiền `_v3` (bản chép `041712`, md5 ghim: tháng đã chốt LN ⇒ `period_closed`, sổ nhận ở cả TK + TT, hình thức theo sổ, câu đầu "Sổ nhận", hỏi toà khi không thấy phòng), bước ghi sửa/huỷ/khôi phục `_v2` (bản chép `042723`: lý do đòi sau kiểm cứng, `facts` số đã thu), THAY vỏ RPC trang | `041712`; connector lượt 14 (mã `period_closed`, `facts`, `reason` / `buildingName` tuỳ chọn, tên phụ `cashbook`) |
 | lượt 14 | `20261024185815_hermes_w2a_invoice_collection_retained_v1` | THAY thân hàm đọc dùng chung `invoice_collection_by_method_v1` (dải gói A; thân production `7a752b9f…` ghim): số giữ lại `active_payment_receipts.collected_amount` | — (khuôn báo cáo không đổi; áp trước hay sau connector đều được) |
 | C07 | `20261026234255_hermes_invoice_collect_commit_checks_v1` | THAY thân bước ghi thu tiền `_v3` (thân `181440` md5 `79e1bc11…` ghim): ép kiểm hoãn (constraint trigger DEFERRED) chạy trong khối con — cuối chạy thử và tập dượt tự lùi sau khi chốt biên nhận | `181440`; không mã mới (connector nào cũng được). Hàm đã có trên production ⇒ provenance catalog-proven giả, áp đích danh |
+| J06 | `20261104165619_hermes_invoice_collect_amount_pick_v1` (đổi mốc 04/11 từ `20261030045928`, PR #363 không merge) | THAY thân tra cứu thu tiền `_v3` (thân `181440` md5 `2203bcfc…` ghim; nhận cả tra cứu bản `045928` đang chạy trên TEST) và bước ghi `_v3` (thân C07 md5 `5569ec5b…` ghim): không kỳ / số hoá đơn, các hoá đơn còn nợ cùng một hợp đồng, số tiền khớp đúng số còn nợ (làm tròn đồng) của MỘT hoá đơn còn nợ ⇒ tự chọn; bản xem trước nói rõ | `234255`; không mã mới (connector nào cũng được). Hàm đã có trên production ⇒ provenance catalog-proven giả, áp đích danh |
 | 6 | `invoice_month_quote_v1` | nếu P7 được duyệt | — |
 
 **Thứ tự áp (cửa idempotent của CI main chạy từng migration trên trạng thái production):** #267 → M1/M2/M5 (đã áp) → migration Mốc 2 → Mốc 3 → Mốc 4 → Mốc 5; mỗi cái áp TEST rồi production **trước khi gộp** PR. Khoá `thu_tien.collect_transfer` seed TẮT cùng lần promote web có khoá trong `capability-contract.mjs` + nhãn (bài học 19/10). Bật khoá bằng migration riêng sau nghiệm thu. Không migration nào được seed `thu_tien.collect`: khối kiểm của M2 `20261021134531` đòi khoá đó vắng.
@@ -734,3 +736,53 @@ WHERE c.public_code='f5gNqF' ORDER BY i.billing_month;
 **Trạng thái (27/10):** connector production `3bd1313b` (23:13) rồi `20261027131639` áp production 23:16 qua lane (dry-run xanh, backup, biên nhận `37acf9d09aeace6e`; md5 thân sau áp khớp thân của chính file). Ngoại lệ pinned đã thêm: `20261024160002` ⇐ `20261027131639` (`hermes_w2a_room_detail_link_dependency_invalid`), đo production bằng `check-forward-migration-idempotent.mjs --file` (ROLLBACK). TEST: connector `3bd1313b` đã lên; migration CHƯA áp — DB TEST quá tải (pooler ECHECKOUTTIMEOUT, pg_dump backup lỗi) 22:25–23:00, áp lại khi TEST hồi.
 
 **Test:** `wave2-a-hoa-don.test.mjs` 5 ca mới đỏ trước (5/5) — xanh sau: `month` chọn phòng (kỳ 10 ⇒ P101/P103/P104; P102 có hoá đơn kỳ 10 đã trả, chỉ nợ kỳ 09 ⇒ không vào), tin vẫn đủ ba kỳ, kết hợp `days` / `roomId`; qua cổng thật `hermes_w2_read_v1` + connector kiểm `month`, params thiếu tên `month` ⇒ 22023; `oldestPending` của ca nghiệm thu (17:48 trước 17:50 và 24/09; cùng lúc ⇒ id nhỏ), theo phòng / khoảng ngày / CHECKED ⇒ null, không phụ thuộc `customers.view`; chữ lồng làm sạch; rào broker nhận SQL cũ, từ chối khuôn lạ; `$requires$` từ chối thân lạ, chỉ hai dòng của thân `160002` đổi. Sáu đột biến SQL (bỏ lọc `month`, lọc hoá đơn thay phòng, mới nhất thay cũ nhất, tính bản không hiện hành, đảo thứ tự id, bỏ làm sạch) đều bị bắt; đột biến tay ở connector (bỏ `tolerant`, nới khuôn lồng, bỏ `month`) ⇒ đỏ.
+
+## Lượt J06 — tự chọn hoá đơn khi số tiền khớp đúng số còn nợ (30/10)
+
+**Vì sao:** nghiệm thu bot HĐn TC-J06 trên TEST (SOUL v4.40, trượt 3/3 vòng): phòng còn hai hoá đơn còn nợ (kỳ 10 và một kỳ cũ); người dùng nhắn "khách phòng … ck <đúng số còn nợ kỳ 10> rồi nha", rồi "ok ghi đi". Bot gọi `invoice.collect` (xem trước) không `month` / `invoiceNumber` ⇒ tra cứu trả `name_unresolved` (hoá đơn mơ hồ) ⇒ bot hỏi lại kỳ; lượt "ok" mới chọn kỳ 10 và lại ra bản xem trước ⇒ hai lượt không ghi. SOUL đã có luật "số tiền bằng đúng số còn nợ của một hoá đơn thì chọn hoá đơn đó" nhưng mô hình không theo ⇒ sửa phía máy chủ.
+
+**Chỗ sửa: SQL, không phải connector.** Câu hỏi "nhiều hoá đơn" sinh ở `app_private.hermes_invoice_lookup_core_v3` (`v_pick` trống ⇒ `unresolved ambiguous`). Vỏ chỉ gọi tra cứu ở lượt xem trước; lượt ghi dùng `p_resolved` mà connector giữ theo `confirmToken` (mô hình không thấy, không gửi lại), và `basis` băm cả `invoiceId`. Vì vậy chọn ở tra cứu thì lượt ghi dùng lại đúng lựa chọn của bản xem trước, không trôi sang hoá đơn khác được (lệch ⇒ `state_changed`). Connector chỉ thấy câu ứng viên dạng chữ — chọn ở đó phải đọc ngược chữ và gọi SQL hai lần; quyết định dính tiền ⇒ đặt trong database (luật 17/10).
+
+| Đổi | Chi tiết |
+| --- | --- |
+| `20261104165619_hermes_invoice_collect_amount_pick_v1` | Tra cứu `_v3` dựng từ thân `181440` (md5 `2203bcfc…`): đủ cả năm — không `month` / `invoiceNumber`; phòng còn ≥ 2 hoá đơn còn nợ (thu được, nợ thực > 0, nợ chưa kéo sang kỳ sau); mọi hoá đơn còn nợ cùng MỘT `contract_id` khác null (review #387); `amount` bằng ĐÚNG `remaining_amount` làm tròn đồng của một hoá đơn còn nợ; không hoá đơn còn nợ nào khác cũng khớp ⇒ chọn; mục đã giải mang `pickedBy = amount`, `otherOpen` (≤ 3 nhãn hoá đơn còn nợ khác, khuôn như ứng viên — có "hoá đơn thanh lý" / loại) và `otherOpenCount`. Hoá đơn nháp / đã thu / nợ đã kéo cùng số tiền không tính. Mục của lô giữ đúng thứ tự (`WITH ORDINALITY`). Bước ghi `_v3` dựng từ thân C07 (md5 `5569ec5b…`), chỉ đổi khối bản xem trước: nhãn dòng "— tự chọn vì số tiền khớp đúng số còn nợ", `items[].pickedBy / otherOpen / otherOpenCount`, câu tóm tắt "Tự chọn hoá đơn kỳ MM/YYYY vì số tiền khớp đúng số còn nợ; phòng còn N hoá đơn chưa trả khác: …" (lô: "…: phòng X kỳ MM/YYYY, …") và MỘT cảnh báo cỡ cố định (chọn lại bằng `month` / `invoiceNumber`) nối SAU cảnh báo của kế hoạch — trần 10 cảnh báo không đẩy mất cảnh báo thu trùng, danh sách dài không bị cắt ở 300 ký tự. Chữ ký, kiểu trả về, ACL, NOWAIT, basis, vỏ không đổi. |
+| `invoice-write-fixture.mjs` | chuỗi `l14` nạp thêm file J06 (hai lượt); xuất thân trước J06 (`COLLECT_BEFORE_J06`) để đối chiếu "không đổi" |
+
+**Đổi mốc (04/11):** bản đầu `20261030045928` (PR #363, không merge) đứng trước `20261031041523` / `20261101064441` đã áp production ⇒ đổi sang `20261104165619` để thứ tự tên file = thứ tự áp production. Đo 04–05/11 (chỉ SELECT): production còn đúng hai thân gốc `2203bcfc…` / `5569ec5b…`; TEST chạy hai thân của bản `045928` từ 30/10 (tra cứu `e4aa9f98…`, bước ghi `c1067869…`).
+
+**Review chéo #387 (05/11):** tra cứu thêm hai điều kiện:
+- **(a) cùng một hợp đồng.** Phòng còn hoá đơn mở của khách cũ đã trả phòng thì số tiền khách mới chuyển có thể trùng đúng số còn nợ của khách cũ (cùng phòng thường cùng giá). Vì vậy hoá đơn mở thuộc từ hai `contract_id`, hay có hoá đơn thiếu hợp đồng, thì hỏi lại như trước J06. Hiện chưa so theo khách (vd hợp đồng gia hạn của cùng khách); muốn nới thì để chủ quyết.
+- **(b) làm tròn.** Khớp trên `round(remaining_amount)` = đúng số in ở nhãn ứng viên; connector gửi `amount` số nguyên.
+
+Hệ quả về md5:
+- thân tra cứu mới: md5 `7831dd00…`;
+- `$requires$` của tra cứu nhận ba md5: production `2203bcfc…`, TEST `e4aa9f98…`, thân mới;
+- bước ghi giữ nguyên từng byte (`c1067869…`) ⇒ áp lên TEST chỉ thay tra cứu.
+
+**Phát hành:** chỉ migration (không mã / khuôn mới ⇒ connector nào cũng được), áp đích danh qua lane sau `20261026234255`, TEST rồi production. Sau khi áp production: thêm ngoại lệ pinned `20261026234255` ⇐ `20261104165619` (`hermes_invoice_c07_dependency_invalid` — `$requires$` của C07 ghim md5 thân bước ghi mà J06 thay), đo bằng `check-forward-migration-idempotent.mjs --file` (ROLLBACK).
+
+**Test:** `invoice-write-sql.test.mjs` ca J06, 21 ca con.
+- Mười ca của bản đầu: 7/10 đỏ trên thân trước J06 — đúng lỗi TC-J06 (`needs_input` hoá đơn mơ hồ thay vì bản xem trước); 3 ca "như cũ" xanh như mong đợi.
+- Ba ca thêm theo review #363: số tiền ≤ 0 / không phải số JSON; hoá đơn thanh lý; web thu hết giữa hai bước ⇒ `nothing_to_collect`.
+- Một ca đối chứng rào số tiền, thêm 04/11.
+- Sáu ca thêm theo review #387:
+  - hai hợp đồng (khách cũ còn nợ đúng số khách mới chuyển) ⇒ hỏi lại, y hệt thân trước J06;
+  - thiếu hợp đồng (một / cả hai hoá đơn) ⇒ hỏi lại;
+  - hoá đơn gánh nợ: 2.500.000 = còn nợ của INV-D-10 ⇒ tự chọn; 1.500.000 = nợ riêng của kỳ ⇒ hỏi lại;
+  - còn nợ số lẻ 1.150.000,4 khớp 1.150.000;
+  - đối chứng đột biến "cùng một hợp đồng";
+  - `$requires$` nhận thân production / chính file, từ chối thân lạ ở tra cứu hay bước ghi (`hermes_invoice_j06_dependency_invalid`).
+- Một ca thêm theo re-review #387: hoá đơn đã thu / nháp của hợp đồng cũ không tính vào điều kiện cùng hợp đồng (chỉ xét hoá đơn còn nợ) ⇒ hai hoá đơn còn nợ cùng hợp đồng vẫn tự chọn.
+
+Nội dung: khớp đúng một ⇒ tự chọn + câu nói rõ; token gắn đúng hoá đơn (resolved đổi hoá đơn mà giữ basis ⇒ `state_changed`, không ghi); khớp hai ⇒ vẫn hỏi; nợ đã kéo cùng số tiền không tính; phòng 5 hoá đơn mở (≤ 3 nhãn + tổng, "…", cảnh báo ≤ 300); không khớp / không số tiền / có kỳ / có số hoá đơn / số hoá đơn lạ / một hoá đơn còn nợ / lô có kỳ / cùng kỳ hai hoá đơn ⇒ y hệt thân trước (đối chiếu từng kết quả); lô theo mục; đối chứng đột biến bỏ "đúng một"; vòng đời qua broker + runtime thật (lượt "ok" kèm `confirmToken` ghi đúng hoá đơn của bản xem trước; xác nhận lệch params ⇒ `confirmation_invalid`, không ghi). Mười hai đột biến SQL (bỏ "đúng một", bỏ "không kỳ", bỏ "≥ 2 hoá đơn còn nợ", khớp lỏng ≤, tính cả hoá đơn không còn nợ, khớp trên tập lọc trạng thái bỏ lọc nợ kéo, bỏ `pickedBy`, bỏ câu tóm tắt, bỏ cảnh báo, bỏ nhãn dòng, nhãn bỏ loại hoá đơn, bỏ giới hạn 3 nhãn) đều bị bắt. Bản đổi mốc (04/11) thêm ca đối chứng tự động cho hai rào số tiền (bỏ rào "số JSON" ⇒ chuỗi `'1150000'` ra bản xem trước tự chọn; bỏ rào "> 0" ⇒ số tiền 0 trên dữ liệu lệch bị từ chối thay vì hỏi lại), cùng khuôn ca đối chứng "đúng một".
+
+Đo lại sau review #387 trên file mới: chín đột biến, file đột biến tự nhất quán md5, đều đỏ đúng ca hành vi:
+- bỏ "đúng một";
+- bỏ rào số JSON;
+- bỏ rào > 0;
+- bỏ "chưa nêu kỳ";
+- bỏ "cùng một hợp đồng";
+- nhận hợp đồng null;
+- khớp không làm tròn;
+- khớp trên `effective_outstanding`;
+- tính điều kiện cùng hợp đồng trên mọi hoá đơn của phòng thay vì hoá đơn còn nợ (re-review).

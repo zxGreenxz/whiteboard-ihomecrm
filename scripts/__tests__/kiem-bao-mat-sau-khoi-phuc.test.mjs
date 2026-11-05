@@ -77,6 +77,25 @@ describe("phanTichBaoMat", () => {
     expect(hong.viPham[0].phep).toContain("DENYLIST");
   });
 
+  it("PUBLIC EXECUTE (20261104173640): hàm cấp PUBLIC, vai bị chặn vượt quyền, mặc định cấp PUBLIC — mỗi thứ một vi phạm riêng", () => {
+    // Baseline --no-acl làm mọi hàm khôi phục ra đời với PUBLIC: nếu forward lane không thu thì bản
+    // dựng lại mở cho mọi vai. Khác allowlist anon, đây là luật thật trên đích diễn tập.
+    const sachPublic = { hamPublic: [], vuotQuyen: [], macDinh: [], thieuQuyen: [], thua: ["x → y"], dat: true };
+    expect(phanTichBaoMat({ ...SACH, publicExecute: sachPublic }).dat).toBe(true);
+    const r = phanTichBaoMat({
+      ...SACH,
+      publicExecute: { hamPublic: ["f(uuid)"], vuotQuyen: ["hermes_store_learning → g()"], macDinh: ["postgres: (toàn cục)"],
+        thieuQuyen: ["authenticated → app_private.h()"], thua: [], dat: false },
+    });
+    expect(r.dat).toBe(false);
+    expect(r.viPham.map((v) => v.phep)).toEqual([
+      "hàm ứng dụng còn cấp EXECUTE cho PUBLIC (mọi vai gọi được)",
+      "vai bị chặn gọi được hàm SECURITY DEFINER ngoài danh sách riêng",
+      "mặc định quyền hàm còn cấp PUBLIC (hàm tạo sau lại mở cho mọi vai)",
+      "hàm trong policy/view/default/domain/hàm khác thiếu EXECUTE cho vai gọi (truy vấn của vai đó lỗi 42501)",
+    ]);
+  });
+
   it("nhiều phép hỏng cùng lúc → liệt kê ĐỦ, không dừng ở phép đầu", () => {
     const r = phanTichBaoMat({
       ...SACH,

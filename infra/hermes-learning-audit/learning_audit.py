@@ -27,7 +27,6 @@ import argparse
 import difflib
 import hashlib
 import json
-import math
 import os
 import re
 import shutil
@@ -168,7 +167,7 @@ _QUOTED_VALUE = r'(?P<q>\\?["' + "'" + r'`])(?P<inner>(?:(?!(?P=q))(?:\\.|[^\n])
 # Giá trị một từ. Mật khẩu có thể có chữ có dấu; token luôn là ASCII nên "token: hết hạn" là câu thường, không phải bí mật.
 _ANY_VALUE = r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[^\s"' + "'" + r'`<>]{1,512}'
 # Class dương theo bảng ASCII (bỏ " ' ` < >): dưới (?i), class phủ định chứa dải non-ASCII làm Python loại luôn k, s, i (U+212A, U+017F, U+0130/1).
-_ASCII_VALUE = (r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[!#-&(-;=?-_a-~]{1,512}(?=[\s"' + "'" + r'`<>]|$)')
+_ASCII_VALUE = (r'["' + "'" + r'`]?' + _NOT_MASKED_YET + r'[!#-&(-;=?-_a-~]{1,512}(?=[\s"' + "'" + r'`<>,;]|$)')
 # Sau nhãn: dấu định dạng tuỳ chọn, ":" hoặc "=", rồi giá trị (có thể ở dòng ngay dưới).
 _SEP = r'[ \t]*[\\"' + "'" + r'`*_]{0,3}[ \t]*[:=][*_`]{0,2}[ \t]*(?:\r?\n[ \t]*){0,2}'
 _PASSWORD_WORD = r'password|passwd|pwd|passphrase'
@@ -202,27 +201,51 @@ def _is_ordinary_word(value: str) -> bool:
     return value.isalpha() and not value.isascii()
 
 
-def _mask_value(match: re.Match[str]) -> str:
+# Dấu phẩy, chấm phẩy chỉ kết thúc giá trị khi đứng trước khoảng trắng, hết chuỗi, hoặc nhãn thông tin khách liền sau ("mật khẩu: X, CCCD …",
+# "mật khẩu: X,CCCD:…"): giữ dấu cùng phần sau nguyên văn. Đứng trước chữ/số khác ("Abc,def123", "khong,Abc12345", ",abc12345") thì vẫn là một
+# phần của giá trị: cắt ở đó là để lọt nửa sau của mật khẩu. Nhãn phải đứng hết từ (trước khoảng trắng, ":", "=" hoặc hết giá trị): ",tk#123",
+# ",Mã#88", ",dt_123" là mật khẩu, không phải nhãn.
+_CUSTOMER_LABEL = r'(?:cccd|cmnd|cmt|sđt|sdt|đt|dt|stk|tk|e-?mail|mail|mã|ma)(?=[\s:=]|$)'
+_CLAUSE_END = re.compile(r'(?i)[,;](?=\s|$|' + _CUSTOMER_LABEL + r')')
+
+
+def _value_parts(match: re.Match[str]) -> tuple[str, str]:
+    """(giá trị cần xét, phần trả lại nguyên văn ngay sau giá trị). Giá trị trong nháy lấy nguyên."""
+    bare = match.groupdict().get('bare')
+    if not bare:
+        return match.group('inner') or '', ''
+    cut = _CLAUSE_END.search(bare)
+    return (bare, '') if cut is None else (bare[:cut.start()], bare[cut.start():])
+
+
+def _masked(match: re.Match[str], value: str, rest: str) -> str:
+    if not value:
+        return match.group(0)  # sau nhãn chỉ có dấu câu ("mật khẩu:, CCCD …"): không có gì để che
     quote = match.groupdict().get('q') or ''
-    return match.group('label') + quote + REDACTED + quote
+    return match.group('label') + quote + REDACTED + quote + rest
 
 
-def _natural_value(match: re.Match[str]) -> str:
-    return (match.group('inner') or match.group('bare') or '').strip('"' + "'" + '`').rstrip(_TRAILING_PUNCT)
+def _mask_value(match: re.Match[str]) -> str:
+    return _masked(match, *_value_parts(match))
+
+
+def _plain_value(value: str) -> str:
+    return value.strip('"' + "'" + '`').rstrip(_TRAILING_PUNCT)
 
 
 def _mask_vi_label(match: re.Match[str]) -> str:
     """Nhãn "mật khẩu", "mã khoá" đứng ngay trước giá trị (từ giữa đã là danh sách đóng): giá trị số là mật khẩu, che; chỉ giữ chữ thường trong câu."""
-    return match.group(0) if _is_ordinary_word(_natural_value(match)) else _mask_value(match)
+    value, rest = _value_parts(match)
+    return match.group(0) if _is_ordinary_word(_plain_value(value)) else _masked(match, value, rest)
 
 
 def _mask_short_label(match: re.Match[str]) -> str:
     """Nhãn ngắn, dễ nhầm ("pass", "mk", "token của khách"): nghi ngờ thì giữ nguyên số của khách và chữ thường, che phần còn lại."""
-    value = _natural_value(match)
-    rest = match.string[match.end():match.end() + _NUMBER_LOOKAHEAD]
-    if _customer_number(value, rest) or _is_ordinary_word(value):
+    value, rest = _value_parts(match)
+    plain = _plain_value(value)
+    if _customer_number(plain, rest + match.string[match.end():match.end() + _NUMBER_LOOKAHEAD]) or _is_ordinary_word(plain):
         return match.group(0)
-    return _mask_value(match)
+    return _masked(match, value, rest)
 
 
 def _labelled(label: str, value: str) -> re.Pattern[str]:
@@ -231,23 +254,62 @@ def _labelled(label: str, value: str) -> re.Pattern[str]:
 
 
 _LONG_DIGIT_RUN = re.compile(r'\d{9}')
+_BLOB_SEGMENT = re.compile(r'[^-_/+=]+')                        # khúc giữa các dấu ngăn
+_PLAIN_SEGMENT = re.compile(r'[a-z]{2,}|[A-Z]{2,}|\d+')         # cả khúc một kiểu: skills, SKILL, CCCD, 2026
+_BLOB_PIECE = re.compile(r'[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+')   # mảnh CamelCase: Nguyen, Van, An, HTTP, 101
+_VOWELS = frozenset('aeiouyAEIOUY')
+_RARE_LETTERS = frozenset('fjqwxzFJQWXZ')                      # tiếng Việt không dùng f j w z, tiếng Anh ít dùng
+# Email là thông tin khách: giữ nguyên văn khúc trước @ (cả khúc ngăn bằng dấu chấm) và tên miền ngay sau @.
+_EMAIL_REST = re.compile(r'[A-Za-z0-9._%+-]{0,64}@[A-Za-z0-9-]')
 
 
-def _shannon(text: str) -> float:
-    total = len(text)
-    return -sum(n / total * math.log2(n / total) for n in (text.count(ch) for ch in set(text)))
+def _word_like(piece: str) -> bool:
+    """Từ đọc được: ≥ 2 chữ, chỉ chữ đầu được hoa, có nguyên âm ("Nguyen", "task", "Deadline")."""
+    return len(piece) > 1 and piece[1:].islower() and any(ch in _VOWELS for ch in piece)
+
+
+def _composed_of_words(text: str) -> bool:
+    """Chuỗi ghép từ từ thật: đường dẫn, tên skill/tool, định danh CamelCase, tên khách viết liền. Mọi ngưỡng là TỈ LỆ trên số chữ hay độ dài,
+    không đếm tuyệt đối, nên token ngẫu nhiên càng dài càng chắc bị che. Token ngẫu nhiên (base64url) ít mảnh đọc được, chữ hiếm f j q w x z
+    ≈ 1/4 số chữ (tên ghép vài %), số rải từng cụm cùng chữ cái lẻ."""
+    letters = words = rare = scraps = 0
+    for segment in _BLOB_SEGMENT.findall(text):
+        if _PLAIN_SEGMENT.fullmatch(segment):
+            count = sum(ch.isalpha() for ch in segment)
+            letters += count
+            words += count
+            continue
+        for piece in _BLOB_PIECE.findall(segment):
+            if piece.isdigit() or len(piece) == 1:
+                scraps += 1
+            if piece.isalpha():
+                letters += len(piece)
+                rare += sum(ch in _RARE_LETTERS for ch in piece)
+                if _word_like(piece):
+                    words += len(piece)
+    return letters > 0 and words >= 0.75 * letters and rare <= 0.1 * letters and scraps <= 0.15 * len(text)
+
+
+def _in_email(match: re.Match[str]) -> bool:
+    """Khúc trước @ hoặc tên miền ngay sau @ của email. Userinfo của URL (https://X@host) khớp từ dấu "/" nên không tính là email."""
+    if match.group(0).startswith('/'):
+        return False
+    start = match.start()
+    return (start > 0 and match.string[start - 1] == '@') or _EMAIL_REST.match(match.string, match.end()) is not None
 
 
 def _mask_random_blob(match: re.Match[str]) -> str:
-    """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi dài lẫn hoa, thường, số và ngẫu nhiên. Mã băm hex, UUID, đường dẫn, tên định danh
-    không rơi vào đây (thiếu một loại ký tự, hoặc nhiều dấu ngăn). Có từ 9 chữ số liền nhau trở lên thì giữ: đó là dấu hiệu SĐT, CCCD, STK nằm trong
-    tên file hay chuỗi liền ("CCCD_NguyenVanAn_079123456789_MatTruoc"); khoá ngẫu nhiên gần như không có dãy như vậy."""
+    """Lưới cuối cho khoá lạ không nhãn, không tiền tố: chuỗi ≥ 32 ký tự lẫn hoa và thường mà không ghép từ từ thật thì che. Giữ nguyên: mã băm
+    hex, UUID, mã toàn hoa (thiếu một kiểu chữ); đường dẫn, tên skill/tool, định danh, tên khách viết liền (ghép từ); email (thông tin khách); chuỗi
+    có từ 9 chữ số liền nhau trở lên — dấu hiệu SĐT, CCCD, STK trong tên file ("CCCD_NguyenVanAn_079123456789_MatTruoc"), khoá ngẫu nhiên gần như
+    không có dãy như vậy. Hai lần đo trên secrets.token_urlsafe: lọt 9–16/200 000 ở 32–38 ký tự, 0–2/144 000 ở 39–86 ký tự, 0/40 000 với
+    token_urlsafe(48) và (64). Luật cũ (đếm dấu ngăn tuyệt đối, < 4) lọt 2,5 % ở 32–38 ký tự, 14 % với token_urlsafe(48), 28 % với (64)."""
     text = match.group(0)
-    if _LONG_DIGIT_RUN.search(text):
+    if _LONG_DIGIT_RUN.search(text) or _in_email(match):
         return text
-    mixed = any(c.isupper() for c in text) and any(c.islower() for c in text) and any(c.isdigit() for c in text)
-    separators = text.count('/') + text.count('-') + text.count('_')
-    return '[chuỗi lạ đã che]' if mixed and separators < 4 and _shannon(text) >= 4.0 else text
+    if not (any(ch.isupper() for ch in text) and any(ch.islower() for ch in text)):
+        return text
+    return text if _composed_of_words(text) else '[chuỗi lạ đã che]'
 
 
 REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
@@ -287,7 +349,7 @@ REDACTIONS: list[tuple[re.Pattern[str], Any]] = [
     (_labelled(r'(?<![\w-])(?:pass|mk)' + _SEP, _ANY_VALUE), _mask_short_label),
     # Nhãn tiếng Việt: mật khẩu: X, Mật khẩu wifi: X, mật khẩu là X, mã khoá/mã khóa: X.
     (_labelled(_VI_LABEL + r'(?:' + _SEP + r'|' + _VI_IS + r')', _ANY_VALUE), _mask_vi_label),
-    # Lưới cuối, đo độ ngẫu nhiên thay vì thêm mẫu cho từng nhà cung cấp.
+    # Lưới cuối: chuỗi dài không ghép từ từ thật, thay vì thêm mẫu cho từng nhà cung cấp.
     (re.compile(r'(?<![A-Za-z0-9+/_=-])[A-Za-z0-9+/_=-]{32,4096}(?![A-Za-z0-9+/_=-])'), _mask_random_blob),
 ]
 
@@ -941,9 +1003,14 @@ class ProfileAudit:
 
     def surface_overflow(self) -> None:
         """Vượt trần cảnh báo: một dòng cố định thay cho phần dư. Số lượng để ở nguồn, không vào khoá; khoá theo tháng nên không thành dòng mới mỗi
-        tối, nhưng tháng sau còn hỏng thì hiện lại."""
+        tối, nhưng tháng sau còn hỏng thì hiện lại. Vì dòng đó chỉ hiện một lần mỗi tháng, mỗi lần tràn ở hồ sơ người dùng thật còn tính là degraded
+        (mã thoát 1 ⇒ OnFailure báo): mục sổ curator bị cắt đã đánh dấu đã thấy, không quay lại trang duyệt. Hồ sơ thử không được nạp vào kho nên tràn
+        ở đó chỉ đếm, không làm job đỏ mỗi tối trong đợt nghiệm thu."""
         over = self._warnings_over
         if over:
+            self.counts['warningsDropped'] = over
+            if self.real:
+                self.degraded.append('warnings_overflow')
             self.proposal('audit_warning', 'Cảnh báo kiểm học: quá nhiều cảnh báo trong một lần kiểm',
                           f'Vượt trần {MAX_WARNINGS} cảnh báo mới một lần kiểm: phần dư có phát hiện warning_dropped trong báo cáo trên máy chủ (private/latest.json). Có thể sandbox gắn sai hoặc hồ sơ hỏng hàng loạt, cần xem tay.',
                           {'type': 'audit_finding', 'finding': 'warnings_overflow', 'severity': 'high', 'omitted': over}, self.now,
@@ -1115,17 +1182,27 @@ class ProfileAudit:
         self.next_state['ledgerSeen'] = order[-MAX_SEEN_LEDGER:]
 
     def _surface_unledgered(self, files: list[str]) -> None:
-        """Skill đổi ngoài sổ curator: không có bản trước để so nên đưa nguyên file hiện tại lên trang duyệt, không tự áp dụng."""
-        for rel in files[:MAX_NAMES]:
+        """Skill đổi ngoài sổ curator: không có bản trước để so nên đưa nguyên file hiện tại lên trang duyệt, không tự áp dụng.
+        Phân loại MỌI file: file có bài học ghi CRM luôn thành đề xuất kèm nội dung, không bao giờ chỉ còn tên trong dòng gộp. Trần MAX_NAMES chỉ
+        áp cho file còn lại (cảnh báo kèm nội dung); quá trần thì gộp tên vào một cảnh báo."""
+        warned = 0
+        names_only: list[str] = []
+        for rel in files:
             path = safe_path(self.root, rel)
             text = self.read(path) if path is not None else None
             if text is None or looks_binary(text):
                 text = '(không đọc được nội dung dạng chữ: xem tay trên hồ sơ)'
-            source = {'type': 'skill_unledgered', 'file': rel, 'diffUnavailable': True, 'reasons': crm_write_reasons(text)}
-            self.proposal('skill_crm_write' if source['reasons'] else 'audit_warning', f'Skill đổi ngoài sổ curator: {rel}', text, source, self.now,
+            reasons = crm_write_reasons(text)
+            if not reasons:
+                warned += 1
+                if warned > MAX_NAMES:
+                    names_only.append(rel)
+                    continue
+            source = {'type': 'skill_unledgered', 'file': rel, 'diffUnavailable': True, 'reasons': reasons}
+            self.proposal('skill_crm_write' if reasons else 'audit_warning', f'Skill đổi ngoài sổ curator: {rel}', text, source, self.now,
                           f'unledgered:{rel}:{sha256_hex(text)}')
-        if len(files) > MAX_NAMES:
-            self.proposal('audit_warning', 'Skill đổi ngoài sổ curator: còn nhiều file nữa', '\n'.join(files[MAX_NAMES:MAX_NAMES + 200]),
+        if names_only:
+            self.proposal('audit_warning', 'Skill đổi ngoài sổ curator: còn nhiều file nữa', '\n'.join(names_only[:200]),
                           {'type': 'skill_unledgered', 'diffUnavailable': True}, self.now, f'unledgered:more:{len(files)}')
 
     def _blob(self, digest: Any) -> Optional[str]:

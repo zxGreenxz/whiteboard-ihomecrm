@@ -641,6 +641,11 @@ for (const spec of [
   { name: 'app_private.hermes_expense_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261027140949_hermes_expense_approve_code_pick_v1.sql',
     statementSha256: 'd342828136144aa3422ba49c46e857f676ae1a112b118226632dac89dc17bd7a' },
+  // Hoá đơn J06 (20261104165619, HĐn TC-J06): tra cứu thu tiền v3 dựng lại từ thân 181440 (tự chọn hoá đơn khi số tiền khớp đúng số còn nợ của
+  // một hoá đơn mở) — chỉ tên public đủ schema.
+  { name: 'app_private.hermes_invoice_lookup_core_v3',
+    sourcePath: 'supabase/migrations/20261104165619_hermes_invoice_collect_amount_pick_v1.sql',
+    statementSha256: 'd45262699528db4f3b9797b1aa7b290df52116882431ca79165ed4cf504608fb' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
