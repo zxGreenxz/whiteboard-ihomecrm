@@ -503,6 +503,10 @@ const CONTRACT_ACTION_CALLER = ['public.hermes_contract_action_lookup_v1(uuid,uu
   'public.hermes_contract_party_lookup_v1(uuid,uuid,uuid[],text,jsonb)',
   // Mốc 6 (20261023030305): tra lô INVOKER + bước ghi lô DEFINER mà vỏ gắn OID.
   'public.hermes_contract_batch_lookup_v1(uuid,uuid[],uuid,date)', 'app_private.hermes_contract_batch_step_v1(jsonb,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'];
+// Học có kiểm duyệt đợt 3 (20261105025453): the caller executes the learning page's SQL-standard wrapper and the one DEFINER step it binds;
+// the shared guard, receipts, the decision core and the reason map are reached only from that step (owner).
+const LEARNING_ACTION_CALLER = ['app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  'public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
 // Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
 // wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
 // building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
@@ -835,7 +839,7 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER])],
+      ...WRITE_FOUNDATION_CALLER, ...CONTRACT_ACTION_CALLER, ...TASK_ACTION_CALLER, ...LEARNING_ACTION_CALLER])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
@@ -886,15 +890,19 @@ function securityContract(sql = all, registry = functions) {
   assert.doesNotMatch(sql, /ALTER TABLE app_private\.hermes_\w+ DISABLE ROW LEVEL SECURITY|DROP (?:TABLE|FUNCTION).*hermes_/i);
 }
 
+// Từ 20261104231450: đúng một membership ACTIVE của CHÍNH p_org là đủ — người thường ở nhiều công ty dùng được công ty mình là
+// thành viên (bên gọi luôn lọc theo p_org / công ty của kết nối); luật "một công ty" đã bỏ khỏi hàm này.
 function membershipContract(registry = functions) {
   const body = fn('hermes_member_v1', registry);
   for (const pattern of [/m\.revoked_at IS NULL/g, /m\.status='ACTIVE'/g, /o\.status='ACTIVE'/g,
     /m\.valid_to>v_now/g, /COALESCE\(m\.valid_from,'-infinity'::timestamptz\)<=v_now/g]) {
-    assert.equal([...body.matchAll(pattern)].length, 2, `selected and ordinary memberships require ${pattern}`);
+    assert.equal([...body.matchAll(pattern)].length, 1, `selected membership requires ${pattern}`);
   }
-  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION/);
+  assert.match(body, /WHERE m\.user_id=p_user AND m\.organization_id=p_org AND o\.status='ACTIVE'/);
+  assert.match(body, /IF p_user IS NULL OR p_org IS NULL THEN RAISE EXCEPTION 'hermes_membership_required'/);
+  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION 'hermes_membership_required'/);
   assert.match(body, /FROM public\.super_admins WHERE user_id=p_user/);
-  assert.match(body, /IF NOT v_super THEN .*count\(DISTINCT m\.organization_id\).*IF v_org_count<>1 THEN RAISE EXCEPTION/);
+  assert.doesNotMatch(body, /count\(DISTINCT m\.organization_id\)|hermes_ordinary_org_ambiguous/, 'không còn luật một công ty');
   assert.doesNotMatch(body, /auth\.uid\(\)|request\.jwt/, 'private principal must use bound identity, not forged GUC claims');
 }
 
@@ -1001,7 +1009,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all seventy reviewed forward migrations and their 146 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all seventy-one reviewed forward migrations and their 148 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -1040,9 +1048,11 @@ test('all seventy reviewed forward migrations and their 146 latest definitions r
   // Học có kiểm duyệt (31/10): kho đề xuất bài học 20261031041523 (+1 file, +8 tên mới).
   // Hoá đơn J06 (HĐn TC-J06): tra cứu + bước ghi thu tiền _v3 dựng lại ở 20261104165619 (tự chọn hoá đơn khi số tiền khớp đúng số còn nợ của
   // một hoá đơn mở; +1 file, cùng tên; tra cứu 181440 / bước ghi 234255 thành ghim superseded).
-  assert.equal(paths.length, 70);
-  assert.equal(FORWARD_FUNCTIONS.length, 146);
-  assert.equal(FORWARD_BY_NAME.size, 146, 'one live definition per reviewed name');
+  // Học có kiểm duyệt đợt 3 (04/11): trang Bài học 20261105025453 (+1 file, +2 tên mới: bước DEFINER + vỏ INVOKER; guard bất biến dựng lại,
+  // thân 041523 thành ghim superseded).
+  assert.equal(paths.length, 71);
+  assert.equal(FORWARD_FUNCTIONS.length, 148);
+  assert.equal(FORWARD_BY_NAME.size, 148, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -1393,7 +1403,7 @@ test('private ledger consumer remains executor-only, with no helper or table acc
   }
   assert.throws(() => securityContract(all + '; GRANT SELECT ON app_private.hermes_zalo_private_commands TO hermes_store_executor;'), /Unexpected grant/);
 });
-test('current membership is bounded by revocation/time and ordinary one-company rule', () => membershipContract());
+test('current membership is bounded by revocation/time and the selected company', () => membershipContract());
 test('stable assistant and session ownership are enforced by composite identity constraints', () => {
   assert.match(all, /UNIQUE\(organization_id,user_id\), UNIQUE\(id,organization_id,user_id\)/);
   assert.match(all, /provider_session_id uuid NOT NULL UNIQUE/);
@@ -1454,7 +1464,8 @@ test('every Hermes source fits the reviewed rollback wrapper, including double-r
 // They are deliberately not a simulated database/state machine.
 for (const [label, name, before, after, check] of [
   ['revoked membership', 'hermes_member_v1', 'm.revoked_at IS NULL', 'true', membershipContract],
-  ['ordinary multi-company', 'hermes_member_v1', 'v_org_count<>1', 'v_org_count<1', membershipContract],
+  ['membership of any company', 'hermes_member_v1', 'm.organization_id=p_org AND ', '', membershipContract],
+  ['membership status ignored', 'hermes_member_v1', "AND m.status='ACTIVE' ", 'AND ', membershipContract],
   ['activation payload mismatch', 'hermes_store_activate_v1', 'c.activation_hash<>v_hash', 'false', activationContract],
   ['ciphertext loses size bound', 'hermes_envelope_v1', "OR char_length(p->>'ciphertext') NOT BETWEEN 1 AND 87382", '', envelopeContract],
   ['staged session disclosure', 'hermes_store_read_connection_v1', "id=c.credential_ref AND state='ACTIVE'", "id=c.credential_ref AND state IN ('ACTIVE','STAGED')", readContract],

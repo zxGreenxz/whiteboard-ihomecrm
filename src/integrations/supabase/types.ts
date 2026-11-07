@@ -25731,6 +25731,18 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_learning_action_v1: {
+        Args: {
+          p_action: string
+          p_binding: Json
+          p_expected_basis?: string
+          p_params: Json
+          p_phase: string
+          p_request_id: string
+          p_resolved?: Json
+        }
+        Returns: Json
+      }
       hermes_learning_decide_v1: { Args: { p: Json }; Returns: Json }
       hermes_learning_review_v1: { Args: { p: Json }; Returns: Json }
       hermes_my_connections_v1: { Args: { p_org: string }; Returns: Json }

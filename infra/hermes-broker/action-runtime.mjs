@@ -52,11 +52,22 @@ const fitsApplied = result => Buffer.byteLength(JSON.stringify(result)) <= APPLI
 export const APPLY_MIN_REMAINING_SHARE = 0.75;
 
 export function createActionRuntime({ catalog, service, clock = Date.now, shape = ACTION_TOOL_SHAPE, mintRequestId = randomUUID, live, permissionGaps,
-  applyBudgetMs } = {}) {
+  applyBudgetMs, presenters = {} } = {}) {
   if (!catalog || typeof catalog.get !== 'function' || ['prepareAction', 'finalizeAction'].some(key => typeof service?.[key] !== 'function') ||
       typeof clock !== 'function' || typeof mintRequestId !== 'function' || (live !== undefined && typeof live?.has !== 'function') ||
       (permissionGaps !== undefined && typeof permissionGaps?.lacks !== 'function') ||
-      !(applyBudgetMs === undefined || (Number.isSafeInteger(applyBudgetMs) && applyBudgetMs >= 1000 && applyBudgetMs <= 30_000))) throw new TypeError('invalid_action_runtime');
+      !(applyBudgetMs === undefined || (Number.isSafeInteger(applyBudgetMs) && applyBudgetMs >= 1000 && applyBudgetMs <= 30_000)) ||
+      !data(presenters) || Object.entries(presenters).some(([id, fn]) => catalog.get(id) === null || typeof fn !== 'function')) throw new TypeError('invalid_action_runtime');
+  // presenters (đợt 3 học có kiểm duyệt): { [mã thao tác của danh mục]: kết quả SQL đã ghi ⇒ kết quả cho mô hình } — dựng trường TẤT ĐỊNH từ
+  // kết quả SQL (learning.digest ⇒ message bằng formatLearningDigest, link theo publicWebOrigin của host). Chạy cho applied và cho
+  // crm_action_status applied (cùng biên nhận ⇒ cùng kết quả). Ném / khuôn lệch ⇒ như kết quả lệch khuôn: lượt ghi giữ cờ "chưa rõ"
+  // (action_outcome_unknown + requestId), lượt tra ⇒ backend_unavailable.
+  const present = (id, result) => {
+    if (typeof id !== 'string' || !Object.hasOwn(presenters, id)) return result;
+    const shown = presenters[id](result);
+    if (!data(shown)) fail('backend_unavailable');
+    return shown;
+  };
   // applyBudgetMs (lượt 14): trần cả lời gọi của broker; không truyền ⇒ không chặn theo thời gian (như cũ).
   const applyTooLate = plan => applyBudgetMs !== undefined && clock() - plan.startedAt > applyBudgetMs * (1 - APPLY_MIN_REMAINING_SHARE);
   // live (Đợt 2b): danh mục thao tác SỐNG phía SQL (createActionLiveCatalog). Có thì thao tác chỉ được quảng bá / chạy khi SQL đã có
@@ -229,8 +240,9 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         if (outcome.kind !== 'status' || !exact(outcome, ['kind', 'outcome'], ['action', 'result', 'reason']) ||
             !['applied', 'rejected', 'not_found', 'unknown'].includes(outcome.outcome)) fail('backend_unavailable');
         const reason = outcome.outcome === 'rejected' ? (ACTION_REJECT_REASONS.includes(outcome.reason) || ACTION_INPUT_REASONS.includes(outcome.reason) ? outcome.reason : 'crm_refused') : null;
+        const shown = outcome.outcome === 'applied' && data(outcome.result) ? present(outcome.action, outcome.result) : undefined;
         return known(content({ requestId: plan.requestId, outcome: outcome.outcome, ...(typeof outcome.action === 'string' ? { action: outcome.action } : {}),
-          ...(outcome.outcome === 'applied' && data(outcome.result) ? fitsApplied(outcome.result) ? { result: outcome.result } : { resultOmitted: true } : {}),
+          ...(shown !== undefined ? fitsApplied(shown) ? { result: shown } : { resultOmitted: true } : {}),
           ...(reason ? { reason, detail: ACTION_REASONS[reason].text } : {}) }));
       }
       if (outcome.kind === 'needs_input') return known(content(needsFromOutcome(plan, outcome)));
@@ -270,8 +282,8 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
         // SQL ĐÃ GHI: KHÔNG tắt cờ "chưa rõ" (khác mọi nhánh trên) — broker còn có thể hỏng SAU finalize (quá cỡ, hết giờ đúng
         // lúc trả); khi đó vẫn phải là action_outcome_unknown + requestId để mô hình tra crm_action_status thay vì gọi lại với
         // requestId mới ⇒ ghi trùng (như họ phiếu chi cũ, broker.mjs). Kết quả quá cỡ ⇒ applied gọn.
-        const fits = fitsApplied(outcome.result);
-        return content({ outcome: 'applied', applied: true, action: plan.action, requestId: plan.requestId, result: fits ? outcome.result : null,
+        const result = present(plan.action, outcome.result), fits = fitsApplied(result);
+        return content({ outcome: 'applied', applied: true, action: plan.action, requestId: plan.requestId, result: fits ? result : null,
           ...(fits ? {} : { resultOmitted: true }), link: outcome.link ?? null, ...(plan.dateNotes?.length ? { notes: plan.dateNotes } : {}) });
       }
       fail('backend_unavailable');

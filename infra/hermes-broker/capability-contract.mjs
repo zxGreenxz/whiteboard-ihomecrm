@@ -22,6 +22,10 @@ export const HERMES_ACTION_FOUNDATION_KEYS = Object.freeze(['income_expenses.edi
 // Đợt 3 Hoá đơn (20261022075230, HDN1): khoá riêng Hermes của invoice.collect, seed TẮT; quyền CRM giao vào = thu_tien.collect (đúng quyền
 // record_invoice_collection_v5 kiểm). Khối riêng: không chạm HERMES_ACTION_FOUNDATION_KEYS (test khoá chéo với seed M2, không có thu_tien.collect).
 export const HERMES_INVOICE_ACTION_KEYS = Object.freeze(['thu_tien.collect_transfer']);
+// Đợt 3 học có kiểm duyệt (20261105025453): khoá riêng Hermes của trang Bài học (learning.digest / learning.decide, learning-action-contract.mjs),
+// seed TẮT; quyền CRM giao vào = users.edit (cùng quyền trang web "Bài học chờ duyệt"). Khối riêng: không nối vào HERMES_ACTION_FOUNDATION_KEYS
+// (test khoá 14 khoá của seed M2). Phạm vi 'organization': đề xuất của cả công ty, không gắn toà, không cần chọn phạm vi toà.
+export const HERMES_LEARNING_ACTION_KEYS = Object.freeze(['assistant.learning_review']);
 const BEFORE_W2 = Object.freeze({
   [TASK_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   [ROOM_PASS_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
@@ -54,6 +58,7 @@ const BEFORE_W2 = Object.freeze({
   // Đợt 1 nền chung: mọi khoá ghi dùng chung giao theo phạm vi toà (khoá thử dùng phạm vi toà của buildings.view).
   ...Object.fromEntries(HERMES_ACTION_FOUNDATION_KEYS.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
   ...Object.fromEntries(HERMES_INVOICE_ACTION_KEYS.map(key => [key, Object.freeze({ mode: 'action', resource: 'building' })])),
+  ...Object.fromEntries(HERMES_LEARNING_ACTION_KEYS.map(key => [key, Object.freeze({ mode: 'action', resource: 'organization' })])),
 });
 // Đợt 2 đọc đầy đủ (20261018000000): mọi khoá đọc mới, seed MỘT lần ở trạng thái tắt; 'self' =
 // dữ liệu của chính người hỏi, không cần chọn phạm vi toà (wave2-registry.mjs giải thích từng khoá).

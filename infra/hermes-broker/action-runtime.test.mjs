@@ -463,6 +463,37 @@ test('re-review #253: SQL đã ghi mà broker hỏng SAU finalize ⇒ action_out
   assert.deepEqual(await status.call('crm_action_status', { requestId: id('7') }), { requestId: id('7'), outcome: 'applied', action: 'probe.note', resultOmitted: true });
 });
 
+// Đợt 3 học có kiểm duyệt: presenters dựng kết quả TẤT ĐỊNH cho mô hình từ kết quả SQL đã ghi (learning.digest ⇒ message), cho cả lượt ghi
+// lẫn crm_action_status (cùng biên nhận ⇒ cùng kết quả); thao tác khác không đổi; bộ dựng ném / trả thứ không phải object sau khi đã ghi ⇒
+// action_outcome_unknown + requestId (không bao giờ lỗi chung để mô hình gọi lại với requestId mới); khai cho mã ngoài danh mục ⇒ lỗi dựng.
+test('đợt 3: presenters dựng kết quả cho lượt ghi và tra trạng thái; hỏng sau khi ghi ⇒ action_outcome_unknown; chỉ mã của danh mục', async t => {
+  let mode = 'ok';
+  const presenters = Object.freeze({ 'probe.note': result => mode === 'throw' ? (() => { throw new TypeError('shape'); })() : mode === 'scalar' ? 'x'
+    : { shown: `#${result.code}` } });
+  const factory = options => createActionRuntime({ ...options, presenters });
+  const env = setup(t, { factory, respond: (request, hooks) => {
+    if (request.op === 'status') return { kind: 'status', outcome: 'applied', action: 'probe.note', result: { code: 'PT-7' } };
+    if (request.phase !== 'preview') hooks.onDispatch();
+    return request.action === 'probe.confirm' && request.phase !== 'apply' ? PREVIEW(request) : APPLIED(request);
+  } });
+  assert.deepEqual((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).result, { shown: '#PT-1' });
+  assert.deepEqual(await env.call('crm_action_status', { requestId: id('7') }), { requestId: id('7'), outcome: 'applied', action: 'probe.note', result: { shown: '#PT-7' } });
+  // Thao tác không khai bộ dựng giữ nguyên kết quả SQL.
+  const first = await env.call('crm_action_run', { action: 'probe.confirm', params: { amount: 1000, buildingName: 'A' } });
+  const confirmed = await env.call('crm_action_run', { action: 'probe.confirm', params: { amount: 1000, buildingName: 'A' }, requestId: first.requestId, confirmToken: first.confirmToken });
+  assert.deepEqual(confirmed.result, { code: 'PT-1', phase: 'apply' });
+  for (const broken of ['throw', 'scalar']) {
+    mode = broken;
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: broken } }),
+      error => error.code === 'action_outcome_unknown' && error.requestId === env.requests.at(-1)[1].requestId, broken);
+    await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_status', { requestId: id('7') }), error => error.code === 'backend_unavailable', `${broken}: tra trạng thái`);
+  }
+  const catalog = createActionCatalog([PROBE_NOTE, PROBE_CONFIRM], { keys: [PROBE_KEY] });
+  const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
+  for (const bad of [{ 'learning.digest': () => ({}) }, { 'probe.note': 'x' }, [() => ({})], null])
+    assert.throws(() => createActionRuntime({ catalog, service, presenters: bad }), /invalid_action_runtime/, JSON.stringify(bad));
+});
+
 // CV12 (Công việc Mốc 3): từ chối kèm link web tới đúng đối tượng; link sai khuôn ⇒ khuôn lệch sau khi đã gửi lệnh ghi ⇒ kết cục chưa
 // rõ (action_outcome_unknown), không bao giờ chuyển chuỗi lạ tới mô hình.
 test('CV12: rejected may carry a relative web link; a malformed link is a shape mismatch, never forwarded', async t => {

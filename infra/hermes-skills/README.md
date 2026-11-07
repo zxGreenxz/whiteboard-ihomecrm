@@ -25,6 +25,7 @@ tự viết, không gắn phiên bản với connector.
 | `ihome-crm-hoa-don` | Trang Hoá đơn: `invoice.*` (thu tiền, chỉ số, điều chỉnh, huỷ / khôi phục). |
 | `ihome-crm-thu-chi` | Trang Thu chi: `expense.*` và các khoản phải chặn sang web. |
 | `ihome-crm-phong-sale-nhom` | Phòng trống, trang Sale, tin pass, `crm_sale_action`, gửi nhóm, gửi ảnh phòng trống. |
+| `ihome-crm-bai-hoc` | Trang Bài học (đợt 3 học có kiểm duyệt): chủ trả lời tin "Bài học Hermes chờ duyệt" bằng `learning.decide`; `learning.digest` chỉ job cron 21:00 gọi; không tự sửa cách ghi CRM. |
 
 `DESCRIPTION.md` là mô tả nhóm `ihome-crm` (Hermes hiện ở đầu nhóm trong chỉ mục skill). Luật Hermes cho `SKILL.md` (đọc trong
 container 31/10): frontmatter YAML có `name` (= tên thư mục) và `description`; chỉ mục skill cắt mô tả dài hơn 60 ký tự ⇒ mô tả
