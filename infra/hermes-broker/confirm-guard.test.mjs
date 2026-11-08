@@ -79,6 +79,8 @@ test('khoá binding: NFC khác NFD, {} khác [], ranh giới giữa các phần 
   assert.notEqual(nfc, nfd, 'hai dạng phải khác byte thật');
   assert.notEqual(confirmBinding(['a', nfc]), confirmBinding(['a', nfd]), 'giá trị NFC / NFD');
   assert.notEqual(confirmBinding([{ [nfc]: 1 }]), confirmBinding([{ [nfd]: 1 }]), 'khoá NFC / NFD');
+  assert.notEqual(confirmBinding([{ sale_note: 'Ghi chú' }]), confirmBinding([{ sale_note: ' Ghi chú ' }]), 'khoảng trắng đầu / cuối của chuỗi');
+  assert.notEqual(confirmBinding([{ sale_note: 'Ghi chú' }]), confirmBinding([{ sale_note: 'ghi chú' }]), 'hoa / thường của chuỗi');
   assert.notEqual(confirmBinding(['a', {}]), confirmBinding(['a', []]), '{} với []');
   assert.notEqual(confirmBinding([{ x: {} }]), confirmBinding([{ x: [] }]), '{} với [] lồng');
   for (const [left, right] of [[['ab', 'c'], ['a', 'bc']], [['a', 'b'], ['a,b']], [['a', ['b']], [['a'], 'b']], [['a', 'b'], ['a', 'b', null]], [['a', null], ['a']]])

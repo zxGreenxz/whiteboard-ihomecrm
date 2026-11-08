@@ -45,8 +45,9 @@ operation trạng thái tương ứng, không tạo mã mới).
 
 - Bốn thứ khác nhau, không dùng lẫn:
   - `sale_note`: "ghi chú sale" (kể cả "ghi chú sale cho phòng …"), chữ gửi khách, CÔNG KHAI (room_patch; nhiều phòng: bulk_patch).
-  - `sale_bonus_note`: thưởng sale, ghi chú nội bộ cho sale; CHỈ NỘI BỘ, không phải chi tiền. Nội dung nói về thưởng ⇒ trường này,
-    KHÔNG gửi `sale_note`.
+  - `sale_bonus_note`: thưởng sale, ghi chú nội bộ cho sale; CHỈ NỘI BỘ, không phải chi tiền. Nội dung là thưởng / hoa hồng CHO SALE
+    (kể cả khi gọi là "ghi chú sale") ⇒ trường này, KHÔNG gửi `sale_note`; chữ gửi khách ("ký 1 năm thưởng 1 tháng gửi xe") vẫn là
+    `sale_note`.
   - `description`: "mô tả phòng" (người dùng nói ghi chú sale ⇒ KHÔNG dùng `description`).
   - Tin pass công khai (`crm_room_pass_upsert`, `salePolicy`): chỉ khi người dùng nói về pass phòng / sang phòng / khách nhờ sale;
     tuyệt đối KHÔNG dùng để ghi "ghi chú sale".

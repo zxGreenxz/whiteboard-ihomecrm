@@ -38,7 +38,8 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
   kèm trả phòng; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; lập / sửa / huỷ phiếu THU; phiếu hệ thống,
   phiếu con định kỳ (trang web từng loại: `ihome-crm-thu-chi`). KHÔNG chặn: khách trả phòng kèm bỏ cọc ⇒ `contract.return`
   `forfeit` = true (`ihome-crm-hop-dong`); ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note`; khách trả tiền HOÁ ĐƠN (kể
-  cả hoá đơn thanh lý) ⇒ `ihome-crm-hoa-don`.
+  cả hoá đơn thanh lý) ⇒ `ihome-crm-hoa-don`; ghi chú thưởng / hoa hồng cho sale của một phòng (`sale_bonus_note`, chỉ là chữ trên
+  phòng, không tạo phiếu) ⇒ `ihome-crm-phong-sale-nhom`.
 - Kết quả đọc rỗng chỉ là "không có" khi đã lọc đúng tham số (toà `buildingName`, phòng `roomName`, kỳ, trạng thái). Tên không
   giải được (`not_visible`, "không thấy …") là không thấy trong phạm vi quyền, không phải "không tồn tại".
 
