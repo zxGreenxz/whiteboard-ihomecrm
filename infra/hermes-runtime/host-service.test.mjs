@@ -258,7 +258,7 @@ test('stale lock recovery sink: one stdout JSON line like the host_* events, and
   process.env.HERMES_CALL_LOG = '0';
   const f = fixture(t, { callLogOff: true }); await f.host.start();
   const info = t.mock.method(console, 'info', () => {});
-  const record = { event: 'host_stale_lock_recovered', basis: 'boot_id' };
+  const record = { event: 'host_stale_lock_refused', reason: 'same_boot' };
   f.ownershipLog(record);
   assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
   info.mock.restore(); await f.host.close();

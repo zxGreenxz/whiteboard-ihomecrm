@@ -123,7 +123,7 @@ async function lockedHost(t, lockBootId) {
   const configuration = { mode: 'connector', listenPort: 0, paths: { stateRoot: root, handoffDirectory: path.join(root, 'handoff') },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: {}, http: {}, dispose() {} };
   const factories = {
-    acquireHostOwnership: (options, ports) => acquireHostOwnership(options, { ...ports, readBoot: async () => ({ bootId: BOOT, bootTime: null }) }),
+    acquireHostOwnership: (options, ports) => acquireHostOwnership(options, { ...ports, readBootId: async () => BOOT }),
     prepareState: async () => path.join(root, 'audit'), createHostAudit: () => ({ write: async () => {}, close: async () => {} }),
     createConnectionHandoff: () => ({ stage: async () => {}, list: async () => [], close: async () => {} }),
     createStorePool: () => ({ connect: async () => { throw Error('unexpected SQL'); }, end: async () => {} }),
@@ -149,7 +149,7 @@ test('after a reboot the real lock is recovered between host_starting and host_r
 
 test('a crash lock of this boot keeps the host_failed, host_stopped, exit 1 contract and stays in place for the runbook', { timeout: 30_000 }, async t => {
   const f = await lockedHost(t, BOOT); assert.equal(await f.run, 1); assert.deepEqual(f.codes, [1]);
-  assert.deepEqual(f.events, ['host_starting', 'host_failed', 'host_stopped']);
+  assert.deepEqual(f.events, ['host_starting', 'host_stale_lock_refused', 'host_failed', 'host_stopped']);
   assert.equal(fs.readFileSync(f.lock, 'utf8'), f.text); assert.deepEqual(fs.readdirSync(f.root), ['.hermes-host.lock']);
 });
 

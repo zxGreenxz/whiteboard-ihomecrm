@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1769,
   "soFileDocBangFs": 467,
-  "tongLoiGoi": 1223,
-  "khongPhanLoaiDuoc": 562,
+  "tongLoiGoi": 1228,
+  "khongPhanLoaiDuoc": 567,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 65,
@@ -97,9 +97,9 @@
   "chiTiet": [
     {
       "file": "infra/hermes-runtime/host-ownership.test.mjs",
-      "soGoi": 38,
+      "soGoi": 43,
       "loai": {},
-      "khongPhanLoaiDuoc": 38
+      "khongPhanLoaiDuoc": 43
     },
     {
       "file": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
