@@ -35,6 +35,8 @@ KHÔNG chặn:
 - Ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note` (mục dưới).
 - Khách trả phòng kèm bỏ cọc ⇒ `contract.return` `forfeit` = true (`ihome-crm-hop-dong`).
 - Khách (kể cả khách cũ) trả tiền HOÁ ĐƠN, kể cả hoá đơn thanh lý / "ck tiền quyết toán" ⇒ `ihome-crm-hoa-don`.
+- Ghi chú thưởng / hoa hồng cho sale của một phòng (`sale_bonus_note`, chỉ là chữ trên phòng, không tạo phiếu) ⇒
+  `ihome-crm-phong-sale-nhom`.
 
 ## Lập phiếu chi — `expense.create`
 

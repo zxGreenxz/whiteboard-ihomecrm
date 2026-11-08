@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CONFIRM_MAX_PENDING, CONFIRM_TOKEN, CONFIRM_TOKEN_NEAR, CONFIRM_TTL_MS, confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
@@ -24,6 +25,66 @@ test('hằng số và khoá binding: 10 phút, 1 024 token chờ, token cf_ + 43
     assert.throws(() => createConfirmStore({ clock: Date.now, ...limits }), /invalid_confirm_limits/, JSON.stringify(limits));
   const { guard } = store();
   for (const binding of ['', 'a'.repeat(63), 'A'.repeat(64), null]) assert.throws(() => guard.issue(binding), /invalid_confirm_binding/);
+});
+
+// Nghiệm thu Sale phòng 08/11: bulk_patch bị confirmation_invalid vì khoá trong từng phần tử items[] được băm theo thứ tự mô hình gửi.
+const nested = () => ({ requestId: 'r', items: [
+  { roomId: 'r1', sale_note: 'A', amenities: ['Wifi', 'Máy lạnh'], meta: { a: 1, b: [{ x: 1, y: null }] } },
+  { roomId: 'r2', rent_price: 1000 },
+] });
+const reverseKeys = value => Array.isArray(value) ? value.map(reverseKeys) : value !== null && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).reverse().map(key => [key, reverseKeys(value[key])])) : value;
+const bindNested = value => confirmBinding(['conn', 'crm_sale_bulk_patch', 'r', value]);
+
+test('khoá binding chuẩn hoá khoá ĐỆ QUY: đảo khoá ở mọi cấp ⇒ cùng khoá, thứ tự phần tử mảng giữ nguyên, không đụng đầu vào', () => {
+  const input = nested(), reversed = reverseKeys(input), snapshot = JSON.stringify(input);
+  assert.notEqual(JSON.stringify(reversed), snapshot, 'phép đảo phải đổi thứ tự khoá thật');
+  assert.deepEqual(reversed, input, 'phép đảo không đổi nội dung');
+  assert.equal(bindNested(reversed), bindNested(input));
+  assert.equal(bindNested({ items: input.items, requestId: 'r' }), bindNested(input), 'đảo khoá ngoài');
+  assert.equal(bindNested({ ...input, items: [{ ...reverseKeys(input.items[0]) }, input.items[1]] }), bindNested(input), 'đảo khoá của một phần tử');
+  assert.equal(JSON.stringify(input), snapshot, 'băm không sửa đầu vào');
+  assert.notEqual(confirmBinding(['a', 'b']), confirmBinding(['b', 'a']), 'thứ tự các phần giữ nguyên');
+  // crm_action_run băm [kết nối, thao tác, canonicalJson(params), requestId]: phần toàn chuỗi ra đúng khoá như cũ.
+  const strings = ['conn', 'expense.create', '{"amount":1}', 'req-1'];
+  assert.equal(confirmBinding(strings), createHash('sha256').update(JSON.stringify(strings)).digest('hex'));
+});
+
+test('khoá binding: đổi giá trị / kiểu lồng, thêm / bớt / dời khoá lồng, đảo phần tử mảng ⇒ khác khoá', () => {
+  const original = bindNested(nested());
+  for (const [label, mutate] of [
+    ['đổi chuỗi lồng', x => { x.items[0].sale_note = 'B'; }],
+    ['đổi số ở cấp sâu', x => { x.items[0].meta.b[0].x = 2; }],
+    ['đổi kiểu: số thành chuỗi', x => { x.items[1].rent_price = '1000'; }],
+    ['đổi kiểu: số thành boolean', x => { x.items[0].meta.a = true; }],
+    ['null thành chuỗi rỗng', x => { x.items[0].meta.b[0].y = ''; }],
+    ['null thành vắng', x => { delete x.items[0].meta.b[0].y; }],
+    ['thêm khoá lồng', x => { x.items[1].description = 'C'; }],
+    ['thêm khoá lồng giá trị null', x => { x.items[1].area = null; }],
+    ['bớt khoá lồng', x => { delete x.items[1].rent_price; }],
+    ['dời khoá sang phần tử khác', x => { x.items[1].sale_note = x.items[0].sale_note; delete x.items[0].sale_note; }],
+    ['đảo phần tử mảng object', x => { x.items.reverse(); }],
+    ['đảo phần tử mảng chuỗi', x => { x.items[0].amenities.reverse(); }],
+    ['thêm khoá __proto__ từ JSON', x => { x.items[1] = JSON.parse('{"roomId":"r2","rent_price":1000,"__proto__":{"a":1}}'); }],
+  ]) {
+    const changed = nested();
+    mutate(changed);
+    assert.notEqual(bindNested(changed), original, label);
+    assert.notEqual(bindNested(reverseKeys(changed)), original, `${label} (kèm đảo khoá)`);
+  }
+});
+
+test('khoá binding: NFC khác NFD, {} khác [], ranh giới giữa các phần không mờ', () => {
+  const [nfc, nfd] = ['Phòng'.normalize('NFC'), 'Phòng'.normalize('NFD')];
+  assert.notEqual(nfc, nfd, 'hai dạng phải khác byte thật');
+  assert.notEqual(confirmBinding(['a', nfc]), confirmBinding(['a', nfd]), 'giá trị NFC / NFD');
+  assert.notEqual(confirmBinding([{ [nfc]: 1 }]), confirmBinding([{ [nfd]: 1 }]), 'khoá NFC / NFD');
+  assert.notEqual(confirmBinding([{ sale_note: 'Ghi chú' }]), confirmBinding([{ sale_note: ' Ghi chú ' }]), 'khoảng trắng đầu / cuối của chuỗi');
+  assert.notEqual(confirmBinding([{ sale_note: 'Ghi chú' }]), confirmBinding([{ sale_note: 'ghi chú' }]), 'hoa / thường của chuỗi');
+  assert.notEqual(confirmBinding(['a', {}]), confirmBinding(['a', []]), '{} với []');
+  assert.notEqual(confirmBinding([{ x: {} }]), confirmBinding([{ x: [] }]), '{} với [] lồng');
+  for (const [left, right] of [[['ab', 'c'], ['a', 'bc']], [['a', 'b'], ['a,b']], [['a', ['b']], [['a'], 'b']], [['a', 'b'], ['a', 'b', null]], [['a', null], ['a']]])
+    assert.notEqual(confirmBinding(left), confirmBinding(right), JSON.stringify([left, right]));
 });
 
 test('token dùng một lần: khớp thì trả payload một lần; trình lại, sai khoá hay sai dạng đều từ chối và token mất', () => {
