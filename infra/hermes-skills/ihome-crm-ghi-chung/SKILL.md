@@ -65,9 +65,10 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
    - `confirmation_required` = CHƯA ghi. Đọc nguyên văn `preview` và `warnings` (kể cả câu "Hiểu '…' là …"), chờ người dùng
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +
      `params` kèm `requestId` và `confirmToken` chép đủ từng ký tự; `huongDan` đòi `consentText` ⇒ thêm `consentText` = nguyên
-     văn tin người dùng. Người dùng ĐỔI hoặc BỔ SUNG nội dung (thêm / sửa ghi chú, lý do, loại, ngày, người…) ⇒ gọi lại NGAY
-     trong lượt đó, KHÔNG kèm `confirmToken`, đưa bản xem trước mới — không hỏi xác nhận bản cũ bằng chữ; đồng ý ở tin sau mới gọi
-     lượt ghi.
+     văn tin người dùng. Người dùng ĐỔI hoặc BỔ SUNG nội dung (thêm / sửa ghi chú, lý do, loại, ngày, người, sổ / tài khoản nhận,
+     số tiền, phương thức…) ⇒ gọi lại NGAY trong lượt đó, KHÔNG kèm `confirmToken`, đưa bản xem trước mới — không hỏi xác nhận bản
+     cũ bằng chữ; đồng ý ở tin sau mới gọi lượt ghi. Tin sau bản xem trước mà nêu giá trị mới (vd "ck vào TK Hiệp") là SỬA dù không
+     có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới.
    - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: sửa phần MÌNH chọn (tên / kiểu tham số, định dạng ngày,
      tham số thừa) theo khuôn trong `detail`; cụm người dùng nói về chính giá trị đó ⇒ dùng / ghép nguyên văn rồi gọi lại (không
      tự thêm câu yêu cầu, tên thao tác, từ đệm). Máy chủ báo giá trị người dùng nói còn ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ), hoặc

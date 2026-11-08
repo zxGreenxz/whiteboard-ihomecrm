@@ -228,6 +228,18 @@ test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người 
   for (const name of skillDirs()) assert.ok(description.includes(name) || core.includes(`\`${name}\``), `${name}: tên skill phải xuất hiện đúng chữ`);
 });
 
+test('ma trận Sale phòng 08/11: ghi chú sale ≠ mô tả phòng ≠ tin pass; tin sau bản xem trước nêu giá trị mới là SỬA, không gửi confirmToken', () => {
+  const sale = skillText('ihome-crm-phong-sale-nhom'), core = skillText(CORE_SKILL), invoices = skillText(PAGE_SKILLS.invoice);
+  // Ca thật: yêu cầu ghi chú sale cho 2 phòng thành một tin pass công khai.
+  assert.match(sale, /"ghi chú sale" \/ "ghi chú cho sale" = trường `sale_note`/);
+  assert.match(sale, /"mô tả phòng" = `description` \(người dùng nói ghi chú sale ⇒ KHÔNG dùng `description`\)/);
+  assert.match(sale, /tin pass công khai \(`crm_room_pass_upsert`,\s+`salePolicy`\) chỉ khi người dùng nói rõ đăng \/ sửa tin pass, tuyệt đối KHÔNG dùng để ghi "ghi chú sale"/);
+  // Ca thật TC-B03: bản xem trước ghi sổ mặc định, người dùng nói "ck vào TK Hiệp", bot gửi confirmToken nên ghi sai sổ.
+  assert.match(core, /ĐỔI hoặc BỔ SUNG nội dung \(thêm \/ sửa ghi chú, lý do, loại, ngày, người, sổ \/ tài khoản nhận,\s+số tiền, phương thức…\)/);
+  assert.match(core, /nêu giá trị mới \(vd "ck vào TK Hiệp"\) là SỬA dù không\s+có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới/);
+  assert.match(invoices, /Sau bản xem trước dùng sổ mặc định mà người dùng mới nêu sổ \/ TK \(kể\s+cả tên gần giống sổ mặc định\) ⇒ gửi lại không `confirmToken`, kèm `cashbookName` chép nguyên cụm họ nói; không tự coi là cùng sổ/);
+});
+
 test('bộ kiểm bắt được tên sai (tên đoán, tên nghỉ hưu trơn, mã thao tác / báo cáo lạ, frontmatter hỏng)', () => {
   const kinds = text => checkCatalogMentions(text).map(problem => `${problem.kind}:${problem.name}`);
   assert.deepEqual(kinds('Tạo việc bằng crm_task_create'), ['retired_without_replacement:crm_task_create']);

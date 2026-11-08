@@ -35,7 +35,8 @@ Khách (kể cả khách cũ đã trả phòng) trả tiền phòng / điện n�
   `datePhrase`, phần còn lại không ghi, không hỏi ngày.
 - `cashbookName` chỉ khi người dùng nêu sổ / tài khoản nhận: chép NGUYÊN tên họ nói ("vào HKD Tâm" ⇒ "HKD Tâm", "vào TK Hiệp" ⇒
   "TK Hiệp"); "sổ HKD của anh" (không tên riêng) ⇒ "HKD". Không ghi tên sổ vào `note`. Không nêu sổ ⇒ không gửi, bản xem trước
-  dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ).
+  dùng sổ mặc định (đọc như thông tin, không hỏi lại chọn sổ). Sau bản xem trước dùng sổ mặc định mà người dùng mới nêu sổ / TK (kể
+  cả tên gần giống sổ mặc định) ⇒ gửi lại không `confirmToken`, kèm `cashbookName` chép nguyên cụm họ nói; không tự coi là cùng sổ.
 - Phòng người dùng nói CHƯA trả ⇒ không gọi cho phòng đó. Máy chủ báo ghi chú nói khoản CHƯA trả ⇒ hỏi lại người dùng phòng đó
   đã trả chưa; không tự bỏ câu "chưa…" rồi gọi lại. Sửa / đổi hình thức lần thu ĐÃ ghi ⇒ web (Hoá đơn › Lịch sử thanh
   toán), không gọi `invoice.collect` lần nữa (thành thu trùng). `period_closed` ⇒ tháng đó toà đã chốt lợi nhuận.

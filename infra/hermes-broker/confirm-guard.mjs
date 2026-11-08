@@ -17,8 +17,14 @@ export const CONFIRM_TOKEN_NEAR = /^cf_[A-Za-z0-9_-]{8,64}$/;
 const NEAR_HEAD = 8;
 const headOf = token => token.slice(3, 3 + NEAR_HEAD).toLowerCase();
 const digest = value => createHash('sha256').update(value).digest('hex');
-/** Khoá binding: sha256 của JSON các phần (thứ tự do người gọi cố định). */
-export const confirmBinding = parts => digest(JSON.stringify(parts));
+// Nghiệm thu Sale phòng 08/11: bulk_patch bị confirmation_invalid dù nội dung y hệt, vì mỗi phần tử items[] giữ thứ tự khoá mô hình gửi.
+// JSON.stringify gọi hàm này ở MỌI cấp: khoá object sắp theo mã UTF-16 (không theo locale); mảng giữ nguyên thứ tự (thứ tự phần tử có nghĩa);
+// giá trị và kiểu không đụng tới ⇒ đổi giá trị, thêm / bớt khoá, đảo phần tử mảng vẫn ra khoá khác. fromEntries tạo thuộc tính riêng nên
+// khoá "__proto__" (JSON.parse sinh được) vẫn vào băm, không bị nuốt thành prototype.
+const sortKeys = (_key, value) => value === null || typeof value !== 'object' || Array.isArray(value) ? value
+  : Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
+/** Khoá binding: sha256 của JSON các phần (thứ tự các phần do người gọi cố định; khoá object mọi cấp được chuẩn hoá). */
+export const confirmBinding = parts => digest(JSON.stringify(parts, sortKeys));
 
 // Tách confirmToken khỏi đối số TRƯỚC validator: SQL không nhận khoá lạ. Giữ nguyên descriptor của mọi khoá
 // còn lại (accessor vẫn tới validator và bị từ chối ở đó). null/chuỗi trống = không gửi.

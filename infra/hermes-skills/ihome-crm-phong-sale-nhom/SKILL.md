@@ -43,6 +43,9 @@ operation=list trước để xem operation và khuôn input được cấp, r�
 `crm_new_request_id`; `confirmation_required` ⇒ chỉ gửi lại kèm `confirmToken` khi người dùng đồng ý; kết quả chưa rõ ⇒ tra
 operation trạng thái tương ứng, không tạo mã mới).
 
+- Ba thứ khác nhau, không dùng lẫn: "ghi chú sale" / "ghi chú cho sale" = trường `sale_note` (room_patch; nhiều phòng: bulk_patch);
+  "mô tả phòng" = `description` (người dùng nói ghi chú sale ⇒ KHÔNG dùng `description`); tin pass công khai (`crm_room_pass_upsert`,
+  `salePolicy`) chỉ khi người dùng nói rõ đăng / sửa tin pass, tuyệt đối KHÔNG dùng để ghi "ghi chú sale".
 - KHÔNG gọi reservation_create, reservation_update, reservation_topup, reservation_assign (báo cọc, sửa / thu thêm / gán cọc).
   Cọc có tiền và ghi thẳng: cọc, thu thêm cọc, hoàn / bỏ cọc làm trên web, trang Quản lý cọc (hoặc thanh lý HĐ). List không có
   các operation này; gọi thẳng thì máy chủ từ chối (`sale_deposit_web_only`).

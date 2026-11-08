@@ -25,20 +25,22 @@ const action = ['sale_phong.manage_pass_listings'];
 const upsert = (extra = {}) => ({ requestId: id('1'), roomId: ROOM, salePolicy: '  Điện 3.5k/số; nước 100k/người  ', ...extra });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t) {
+function setup(t, extraAction = []) {
   const scope = createDependencyScope(); t.after(() => scope.close());
-  const clock = { now: START }, writes = [], reads = [];
+  const clock = { now: START }, writes = [], reads = [], granted = [...action, ...extraAction];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000 * 30,
-    epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
+    epoch: 1, state: 'active', restrictions: { read, action: granted } }, effective: { read, action: granted }, isSuperadmin: false,
   policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [id('e')],
-  scopesByPermission: Object.fromEntries([...read, ...action].map(key => [key, { buildingIds: [id('f')], cashbookIds: [] }])) });
+  scopesByPermission: Object.fromEntries([...read, ...granted].map(key => [key, { buildingIds: [id('f')], cashbookIds: [] }])) });
   const authority = { identifyConnection: async token => ({ connectionId: CONNECTIONS[token] }), resolve: async token => identity(token), checkUnchanged: async () => {} };
   const audits = [];
   const broker = createBroker({ authority, dependencyScope: scope, audit: async event => { audits.push(event); }, clock: () => clock.now,
     domains: { async prepareDomain(_token, operation, input) { reads.push([operation, input]); return Object.freeze({}); },
       async finalizeDomain() { return { items: [] }; } },
     roomPass: { async prepareRoomPass(_token, operation, input) { writes.push([operation, input]); return Object.freeze({}); },
-      async finalizeRoomPass(_token, _receipt, { onDispatch }) { onDispatch(); return { outcome: 'applied' }; } } });
+      async finalizeRoomPass(_token, _receipt, { onDispatch }) { onDispatch(); return { outcome: 'applied' }; } },
+    saleBulk: { async prepareSaleBulk(_token, operation, input) { writes.push([`bulk_${operation}`, input]); return Object.freeze({}); },
+      async finalizeSaleBulk(_token, _receipt, { onDispatch }) { onDispatch(); return { outcome: 'applied' }; } } });
   const call = async (token, name, args) => {
     const result = await broker.callTool(token, name, args);
     return JSON.parse(result.content[0].text);
@@ -170,4 +172,56 @@ test('token sai, dùng lại, hết hạn, đổi nội dung, đổi phòng, kh�
   assert.equal(env.writes.length, 1, 'chỉ một lần ghi với token đúng');
   // Sổ audit ghi đúng mã từ chối (host-ownership.mjs nhận mã này).
   assert.ok(env.audits.some(event => event.outcome === 'denied' && event.code === 'confirmation_invalid'));
+});
+
+// Nghiệm thu ma trận Sale phòng 08/11: bulk_patch bị confirmation_invalid dù nội dung y hệt, vì khoá trong từng phần tử items[] được băm theo
+// thứ tự mô hình gửi (đảo khoá ngoài thì qua). Đi đúng đường thật: crm_sale_action → saleBulkInput → rào chữ công khai → cổng ghi.
+const bulkArgs = () => ({ requestId: id('1'), items: [
+  { requestId: id('2'), roomId: ROOM, expectedRevision: 'a'.repeat(32), sale_note: 'Ghi chú phòng 1', amenities: ['Wifi', 'Máy lạnh'] },
+  { requestId: id('3'), roomId: ROOM2, expectedRevision: 'b'.repeat(32), sale_note: 'Ghi chú phòng 2', rent_price: 3_500_000 },
+] });
+const reversed = value => Object.fromEntries(Object.entries(value).reverse());
+const reversedItems = args => ({ ...args, items: args.items.map(reversed) });
+const saleCaller = env => input => env.call(TOKEN_A, 'crm_sale_action', { operation: 'bulk_patch', input });
+
+test('bulk_patch: đảo khoá ngoài, khoá trong items[] hay cả hai vẫn khớp token — ghi đúng nội dung, đúng một lần', async t => {
+  const env = setup(t, ['sale_phong.edit']);
+  const sale = saleCaller(env);
+  for (const [label, reorder] of [['khoá ngoài', reversed], ['khoá trong items', reversedItems], ['cả hai', args => reversed(reversedItems(args))]]) {
+    const first = await sale(bulkArgs());
+    assert.equal(first.outcome, 'confirmation_required', label);
+    assert.match(first.confirmToken, CF, label);
+    const sent = reorder(bulkArgs()), before = env.writes.length;
+    assert.notEqual(JSON.stringify(sent), JSON.stringify(bulkArgs()), `${label}: phép đảo phải đổi thứ tự khoá thật`);
+    assert.deepEqual(await sale({ ...sent, confirmToken: first.confirmToken }), { outcome: 'applied' }, label);
+    assert.equal(env.writes.length, before + 1, `${label}: một lần ghi`);
+    assert.deepEqual(env.writes.at(-1), ['bulk_patch', bulkArgs()], label);
+    // Token dùng một lần: trình lại cùng cách đảo vẫn bị từ chối.
+    await assert.rejects(sale({ ...sent, confirmToken: first.confirmToken }), error => error.code === 'confirmation_invalid', `${label}: dùng lại`);
+    assert.equal(env.writes.length, before + 1, `${label}: dùng lại không ghi`);
+  }
+});
+
+test('bulk_patch: đổi giá trị, thêm / bớt khoá lồng, đảo phần tử mảng ⇒ confirmation_invalid, không ghi (kể cả khi đảo thêm khoá)', async t => {
+  const env = setup(t, ['sale_phong.edit']);
+  const sale = saleCaller(env);
+  for (const [label, mutate] of [
+    ['đổi chữ lồng', x => { x.items[0].sale_note = 'Ghi chú khác'; }],
+    ['đổi giá lồng', x => { x.items[1].rent_price = 3_500_001; }],
+    ['đổi phiên bản lồng', x => { x.items[1].expectedRevision = 'c'.repeat(32); }],
+    ['chữ thành null (xoá)', x => { x.items[1].sale_note = null; }],
+    ['thêm khoá lồng', x => { x.items[1].description = 'Mô tả mới'; }],
+    ['thêm khoá lồng giá trị null', x => { x.items[1].area = null; }],
+    ['bớt khoá lồng', x => { delete x.items[1].rent_price; }],
+    ['bớt chữ lồng', x => { delete x.items[1].sale_note; }],
+    ['đảo phần tử items', x => { x.items.reverse(); }],
+    ['đảo phần tử amenities', x => { x.items[0].amenities.reverse(); }],
+  ]) for (const shape of [value => value, reversedItems]) {
+    const { outcome, confirmToken } = await sale(bulkArgs());
+    assert.equal(outcome, 'confirmation_required', label);
+    const changed = bulkArgs();
+    mutate(changed);
+    await assert.rejects(sale({ ...shape(changed), confirmToken }), error => error.code === 'confirmation_invalid', label);
+  }
+  assert.deepEqual(env.writes, []);
 });
