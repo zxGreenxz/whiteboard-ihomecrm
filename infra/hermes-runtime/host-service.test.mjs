@@ -10,7 +10,7 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage, callLog, maintenanceLog; const saved = [];
+  let closes = 0, stage, callLog, maintenanceLog, ownershipLog; const saved = [];
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
@@ -25,7 +25,8 @@ function fixture(t, changes = {}) {
     startWorkMemoryRetention() { assert(server.listening); events.push('retention-start'); },
     async close() { if (closes++) return; events.push('backend-close'); await changes.backendClose?.(); } };
   const factories = {
-    async acquireHostOwnership(options) { assert.deepEqual(options, { stateRoot: '/state' }); events.push('lock'); await changes.lock?.();
+    async acquireHostOwnership(options, ports) { assert.deepEqual(options, { stateRoot: '/state' }); assert.deepEqual(Object.keys(ports), ['log']);
+      ownershipLog = ports.log; events.push('lock'); await changes.lock?.();
       return { async release() { events.push('release'); await changes.release?.(); } }; },
     async prepareState(paths) { assert.equal(paths, configuration.paths); events.push('state'); return '/state/audit'; },
     createHostAudit() { return { write: async () => {}, async close() { events.push('audit-close'); await changes.auditClose?.(); } }; },
@@ -59,7 +60,7 @@ function fixture(t, changes = {}) {
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, saved, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
+  return { host, events, server, key, handoff, saved, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; }, get ownershipLog() { return ownershipLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -247,6 +248,18 @@ test('connector maintenance sink: one stdout JSON line per record, and HERMES_CA
   const record = { event: 'connector_maintenance_connection', ts: '2026-10-21T08:46:00.000Z', connectionId: '1a2b3c4d', action: 'renewal_failed',
     code: 'maintenance_outcome_unknown', attempt: 1, retryInMs: 30000, expiresInMs: 270000 };
   f.maintenanceLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await f.host.close();
+});
+
+test('stale lock recovery sink: one stdout JSON line like the host_* events, and HERMES_CALL_LOG=0 does not silence it', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  process.env.HERMES_CALL_LOG = '0';
+  const f = fixture(t, { callLogOff: true }); await f.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'host_stale_lock_recovered', basis: 'boot_id' };
+  f.ownershipLog(record);
   assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
   info.mock.restore(); await f.host.close();
 });

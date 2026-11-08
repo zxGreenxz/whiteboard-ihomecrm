@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1769,
   "soFileDocBangFs": 467,
-  "tongLoiGoi": 1199,
-  "khongPhanLoaiDuoc": 538,
+  "tongLoiGoi": 1223,
+  "khongPhanLoaiDuoc": 562,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 65,
@@ -96,6 +96,12 @@
   ],
   "chiTiet": [
     {
+      "file": "infra/hermes-runtime/host-ownership.test.mjs",
+      "soGoi": 38,
+      "loai": {},
+      "khongPhanLoaiDuoc": 38
+    },
+    {
       "file": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
       "soGoi": 20,
       "loai": {
@@ -117,12 +123,6 @@
       "loai": {
         "manifest": 2
       },
-      "khongPhanLoaiDuoc": 17
-    },
-    {
-      "file": "infra/hermes-runtime/host-ownership.test.mjs",
-      "soGoi": 17,
-      "loai": {},
       "khongPhanLoaiDuoc": 17
     },
     {
@@ -670,6 +670,14 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-runtime/host-cli.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-zalo-native/binding-provisioning.test.mjs",
@@ -2253,14 +2261,6 @@
       "soGoi": 1,
       "loai": {
         "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-runtime/host-cli.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },
