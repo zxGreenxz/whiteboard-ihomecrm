@@ -13,6 +13,7 @@ import { catalogActionIds, catalogReportIds, catalogToolNames, checkCatalogMenti
 import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL, needsInput } from './action-contract.mjs';
+import { PUBLIC_TEXT_TOOLS } from './public-text-guard.mjs';
 import { SALE_ACTION_TOOLS } from './sale-action-contract.mjs';
 import { SALE_RETIRED_OPERATIONS } from './sale-tool-contract.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
@@ -220,7 +221,7 @@ test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người 
   assert.match(contracts, /không bịa note/);
   // HĐn C06 (SOUL dòng 24): "ck X trước, còn lại …" = thu một phần hôm nay, không gửi datePhrase. B03: tên sổ chép nguyên văn.
   assert.match(invoices, /"ck X trước, còn lại <cuối tuần \/ sau>" = thu MỘT PHẦN X hôm nay \("trước" = trả trước một phần, KHÔNG phải ngày\): không gửi\s+`datePhrase`/);
-  assert.match(invoices, /"vào TK Hiệp" ⇒\s+"TK Hiệp"/);
+  assert.match(invoices, /"vào TK An" ⇒\s+"TK An"/);
   // Tên skill: bot hay gọi skill_view với tên dính ký tự lạ ("ihome-crm-hop-dong“}") ⇒ nhắc tên trần ở chỉ mục (DESCRIPTION) và ghi-chung.
   const description = yaml.load(/^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(SKILLS_DIR, 'DESCRIPTION.md'), 'utf8'))[1]).description;
   assert.match(description, /skill_view name = đúng một tên trần \(vd ihome-crm-ghi-chung\), không thêm ký tự/);
@@ -228,16 +229,25 @@ test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người 
   for (const name of skillDirs()) assert.ok(description.includes(name) || core.includes(`\`${name}\``), `${name}: tên skill phải xuất hiện đúng chữ`);
 });
 
-test('ma trận Sale phòng 08/11: ghi chú sale ≠ mô tả phòng ≠ tin pass; tin sau bản xem trước nêu giá trị mới là SỬA, không gửi confirmToken', () => {
+test('ma trận Sale phòng 08/11: sale_note công khai ≠ thưởng nội bộ ≠ mô tả ≠ tin pass; tin sau bản xem trước nêu giá trị mới là SỬA, không gửi confirmToken', () => {
   const sale = skillText('ihome-crm-phong-sale-nhom'), core = skillText(CORE_SKILL), invoices = skillText(PAGE_SKILLS.invoice);
-  // Ca thật: yêu cầu ghi chú sale cho 2 phòng thành một tin pass công khai.
-  assert.match(sale, /"ghi chú sale" \/ "ghi chú cho sale" = trường `sale_note`/);
-  assert.match(sale, /"mô tả phòng" = `description` \(người dùng nói ghi chú sale ⇒ KHÔNG dùng `description`\)/);
-  assert.match(sale, /tin pass công khai \(`crm_room_pass_upsert`,\s+`salePolicy`\) chỉ khi người dùng nói rõ đăng \/ sửa tin pass, tuyệt đối KHÔNG dùng để ghi "ghi chú sale"/);
-  // Ca thật TC-B03: bản xem trước ghi sổ mặc định, người dùng nói "ck vào TK Hiệp", bot gửi confirmToken nên ghi sai sổ.
+  // Ca thật: yêu cầu ghi chú sale cho 2 phòng thành một tin pass công khai. "Ghi chú sale cho phòng …" (PS-L02, PS-L04) vẫn là sale_note, không hỏi lại.
+  assert.match(sale, /`sale_note`: "ghi chú sale" \(kể cả "ghi chú sale cho phòng …"\), chữ gửi khách, CÔNG KHAI/);
+  // Review #400: "ghi chú cho sale: thưởng thêm 500k" không được lên trang công khai. Skill khớp rào của connector: sale_note bị rào, sale_bonus_note thì không.
+  assert.match(sale, /`sale_bonus_note`: thưởng sale, ghi chú nội bộ cho sale; CHỈ NỘI BỘ, không phải chi tiền\. Nội dung nói về thưởng ⇒ trường này,\s+KHÔNG gửi `sale_note`/);
+  assert.doesNotMatch(sale, /"ghi chú cho sale" = trường `sale_note`/, 'không gộp ghi chú cho sale vào trường công khai');
+  assert.match(sale, /"Ghi chú cho sale" chưa rõ công khai hay nội bộ ⇒ hỏi một câu, chưa gọi lệnh ghi/);
+  assert.ok(PUBLIC_TEXT_TOOLS.crm_sale_room_patch.fields.includes('sale_note') && PUBLIC_TEXT_TOOLS.crm_sale_bulk_patch.fields.includes('sale_note'));
+  assert.ok(!PUBLIC_TEXT_TOOLS.crm_sale_room_patch.fields.includes('sale_bonus_note') && !PUBLIC_TEXT_TOOLS.crm_sale_bulk_patch.fields.includes('sale_bonus_note'));
+  assert.match(sale, /`description`: "mô tả phòng" \(người dùng nói ghi chú sale ⇒ KHÔNG dùng `description`\)/);
+  assert.match(sale, /Tin pass công khai \(`crm_room_pass_upsert`, `salePolicy`\): chỉ khi người dùng nói về pass phòng \/ sang phòng \/ khách nhờ sale;\s+tuyệt đối KHÔNG dùng để ghi "ghi chú sale"/);
+  // Ca thật TC-B03: bản xem trước ghi sổ mặc định, người dùng nêu sổ khác (ví dụ tên giả "ck vào TK An"), bot gửi confirmToken nên ghi sai sổ.
   assert.match(core, /ĐỔI hoặc BỔ SUNG nội dung \(thêm \/ sửa ghi chú, lý do, loại, ngày, người, sổ \/ tài khoản nhận,\s+số tiền, phương thức…\)/);
-  assert.match(core, /nêu giá trị mới \(vd "ck vào TK Hiệp"\) là SỬA dù không\s+có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới/);
-  assert.match(invoices, /Sau bản xem trước dùng sổ mặc định mà người dùng mới nêu sổ \/ TK \(kể\s+cả tên gần giống sổ mặc định\) ⇒ gửi lại không `confirmToken`, kèm `cashbookName` chép nguyên cụm họ nói; không tự coi là cùng sổ/);
+  assert.match(core, /nêu giá trị mới \(vd "ck vào TK An"\) là SỬA dù không\s+có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới/);
+  assert.match(invoices, /Sau bản xem trước dùng sổ mặc định mà người dùng mới nêu sổ \/ TK \(kể\s+cả tên gần giống sổ mặc định\) ⇒ gửi lại không `confirmToken`, kèm `cashbookName` theo quy tắc trên; không tự coi là cùng sổ/);
+  assert.doesNotMatch(invoices, /`cashbookName` chép nguyên cụm/, 'không chép cả chữ "vào" vào tên sổ');
+  // Lời đồng ý đứng riêng vẫn là đồng ý: luật SỬA ở trên không biến "ok" thành lượt xem trước lại.
+  assert.match(core, /\("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ\)/);
 });
 
 test('bộ kiểm bắt được tên sai (tên đoán, tên nghỉ hưu trơn, mã thao tác / báo cáo lạ, frontmatter hỏng)', () => {

@@ -20,7 +20,8 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 // Nghiệm thu Sale phòng 08/11: bulk_patch bị confirmation_invalid dù nội dung y hệt, vì mỗi phần tử items[] giữ thứ tự khoá mô hình gửi.
 // JSON.stringify gọi hàm này ở MỌI cấp: khoá object sắp theo mã UTF-16 (không theo locale); mảng giữ nguyên thứ tự (thứ tự phần tử có nghĩa);
 // giá trị và kiểu không đụng tới ⇒ đổi giá trị, thêm / bớt khoá, đảo phần tử mảng vẫn ra khoá khác. fromEntries tạo thuộc tính riêng nên
-// khoá "__proto__" (JSON.parse sinh được) vẫn vào băm, không bị nuốt thành prototype.
+// khoá "__proto__" (JSON.parse sinh được) vẫn vào băm, không bị nuốt thành prototype. Tiền điều kiện: chỉ truyền đầu vào ĐÃ qua validator (giá trị
+// JSON, object thuần); object đặc biệt (Map, Number bọc…) sẽ băm thành {} và mất giá trị.
 const sortKeys = (_key, value) => value === null || typeof value !== 'object' || Array.isArray(value) ? value
   : Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
 /** Khoá binding: sha256 của JSON các phần (thứ tự các phần do người gọi cố định; khoá object mọi cấp được chuẩn hoá). */

@@ -67,7 +67,7 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
      `params` kèm `requestId` và `confirmToken` chép đủ từng ký tự; `huongDan` đòi `consentText` ⇒ thêm `consentText` = nguyên
      văn tin người dùng. Người dùng ĐỔI hoặc BỔ SUNG nội dung (thêm / sửa ghi chú, lý do, loại, ngày, người, sổ / tài khoản nhận,
      số tiền, phương thức…) ⇒ gọi lại NGAY trong lượt đó, KHÔNG kèm `confirmToken`, đưa bản xem trước mới — không hỏi xác nhận bản
-     cũ bằng chữ; đồng ý ở tin sau mới gọi lượt ghi. Tin sau bản xem trước mà nêu giá trị mới (vd "ck vào TK Hiệp") là SỬA dù không
+     cũ bằng chữ; đồng ý ở tin sau mới gọi lượt ghi. Tin sau bản xem trước mà nêu giá trị mới (vd "ck vào TK An") là SỬA dù không
      có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới.
    - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: sửa phần MÌNH chọn (tên / kiểu tham số, định dạng ngày,
      tham số thừa) theo khuôn trong `detail`; cụm người dùng nói về chính giá trị đó ⇒ dùng / ghép nguyên văn rồi gọi lại (không

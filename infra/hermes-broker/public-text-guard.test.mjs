@@ -216,7 +216,15 @@ test('bulk_patch: đổi giá trị, thêm / bớt khoá lồng, đảo phần t
     ['bớt chữ lồng', x => { delete x.items[1].sale_note; }],
     ['đảo phần tử items', x => { x.items.reverse(); }],
     ['đảo phần tử amenities', x => { x.items[0].amenities.reverse(); }],
+    // Review #400: token phải gắn đúng phòng, đúng mã của từng mục và đúng cả danh sách.
+    ['đổi roomId mục', x => { x.items[0].roomId = id('8'); }],
+    ['hoán roomId giữa hai mục', x => { [x.items[0].roomId, x.items[1].roomId] = [x.items[1].roomId, x.items[0].roomId]; }],
+    ['đổi requestId mục', x => { x.items[1].requestId = id('4'); }],
+    ['đổi requestId lô', x => { x.requestId = id('5'); }],
+    ['thêm mục', x => { x.items.push({ requestId: id('4'), roomId: id('8'), expectedRevision: 'c'.repeat(32), sale_note: 'Ghi chú phòng 3' }); }],
+    ['bớt mục', x => { x.items.pop(); }],
   ]) for (const shape of [value => value, reversedItems]) {
+    env.clock.now += 60_000; // Trần 60 lệnh / phút / kết nối: mỗi lượt sang cửa sổ mới; token cấp và trình cùng một thời điểm nên vẫn còn hạn.
     const { outcome, confirmToken } = await sale(bulkArgs());
     assert.equal(outcome, 'confirmation_required', label);
     const changed = bulkArgs();

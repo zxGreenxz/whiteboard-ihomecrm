@@ -74,6 +74,17 @@ test('khoá binding: đổi giá trị / kiểu lồng, thêm / bớt / dời kh
   }
 });
 
+test('khoá binding: NFC khác NFD, {} khác [], ranh giới giữa các phần không mờ', () => {
+  const [nfc, nfd] = ['Phòng'.normalize('NFC'), 'Phòng'.normalize('NFD')];
+  assert.notEqual(nfc, nfd, 'hai dạng phải khác byte thật');
+  assert.notEqual(confirmBinding(['a', nfc]), confirmBinding(['a', nfd]), 'giá trị NFC / NFD');
+  assert.notEqual(confirmBinding([{ [nfc]: 1 }]), confirmBinding([{ [nfd]: 1 }]), 'khoá NFC / NFD');
+  assert.notEqual(confirmBinding(['a', {}]), confirmBinding(['a', []]), '{} với []');
+  assert.notEqual(confirmBinding([{ x: {} }]), confirmBinding([{ x: [] }]), '{} với [] lồng');
+  for (const [left, right] of [[['ab', 'c'], ['a', 'bc']], [['a', 'b'], ['a,b']], [['a', ['b']], [['a'], 'b']], [['a', 'b'], ['a', 'b', null]], [['a', null], ['a']]])
+    assert.notEqual(confirmBinding(left), confirmBinding(right), JSON.stringify([left, right]));
+});
+
 test('token dùng một lần: khớp thì trả payload một lần; trình lại, sai khoá hay sai dạng đều từ chối và token mất', () => {
   const { guard } = store();
   const issued = guard.issue(A, { resolved: { roomId: 'r1' }, basis: 'b1' });
