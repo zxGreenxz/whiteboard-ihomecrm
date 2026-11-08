@@ -153,7 +153,7 @@ async function judgeLock(filename, bootId) {
   if (observed.refused) return observed;
   const record = parseLock(observed.bytes);
   if (!record) return { refused: 'unrecognized_content' };
-  // A version 1 lock exists only across the upgrade (a clean stop of the old release removes it) and records no boot.
+  // A version 1 lock records no boot: written by a release before this design or by a start that could not read the boot ID.
   if (!record.bootId) return { refused: 'legacy_format' };
   if (record.bootId === bootId) return { refused: 'same_boot' };
   return { ...observed, lockId: record.lockId };

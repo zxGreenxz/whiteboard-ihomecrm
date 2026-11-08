@@ -118,14 +118,14 @@ Later work (Việc sau), not in this change: a database alert through `pg_cron` 
 
 The unit uses `Restart=no` on purpose: a failed start is never retried automatically. Exit 0 is a clean stop, exit 1 a failed start/run with cleanup complete, exit 2 a retained shutdown. After exit 2, a crash, a kill or a reboot, `.hermes-host.lock` stays in the state root.
 
-**After a reboot the host replaces the lock by itself.** On 06/11/2026 a VPS reset left the lock of 02/11 in place and the enabled unit stayed down for about 24 hours with `host_already_owned`. The lock now records the kernel boot ID (`{"version":2,"lockId":…,"bootId":…}`, from `/proc/sys/kernel/random/boot_id`, redrawn at every boot), and every process of an earlier boot died with its kernel. The next start replaces a lock whose `bootId` differs from the current one and writes `{"event":"host_stale_lock_recovered"}` once the new lock is durable, between `host_starting` and `host_ready`. Only that boot ID decides. File times are never consulted, because a wall-clock correction could make a lock of the current boot look old. After an automatic recovery check the journal for `host_ready`; if the connector was down longer than the token life, see [Connection token expired](#connection-token-expired).
+**After a reboot the host replaces the lock by itself.** On 06/11/2026 a VPS reset left the lock of 02/11 in place and the enabled unit stayed down for about 24 hours with `host_already_owned`. The lock now records the kernel boot ID (`{"version":2,"lockId":…,"bootId":…}`, from `/proc/sys/kernel/random/boot_id`, redrawn at every boot), and every process of an earlier boot died with its kernel. The next start replaces a lock whose `bootId` differs from the current one and writes `{"event":"host_stale_lock_recovered"}` once the new lock is durable, between `host_starting` and `host_ready`. Only that boot ID decides. File times never decide staleness, because a wall-clock correction could make a lock of the current boot look old. After an automatic recovery check the journal for `host_ready`; if the connector was down longer than the token life, see [Connection token expired](#connection-token-expired).
 
 This only helps a unit that systemd starts at boot. `hermes-connector-test.service` (TEST) is not enabled at boot, so after a reboot nothing starts it and the change does not bring TEST back by itself; the first manual `systemctl start` then replaces the stale lock.
 
 **Every other existing lock refuses the start.** After exit 2, a crash or a kill while the machine kept running the lock carries the current boot ID, and the next start fails with `host_already_owned` (journal: `host_starting`, `host_stale_lock_refused`, `host_failed`, `host_stopped`, exit 1). The line `{"event":"host_stale_lock_refused","reason":…}` names the cause from a fixed list and never carries a path or an ID:
 
 - `same_boot`: written during this boot, by a crash without a reboot or by an owner that is still alive.
-- `legacy_format`: `"version":1` without `bootId`, from a release before this design. A clean stop of that release removes it. One left behind by a crash is never replaced automatically, however old it is.
+- `legacy_format`: `"version":1` without `bootId`, from a release before this design or from a start that could not read the boot ID. A clean stop removes it. One left behind by a crash is never replaced automatically, however old it is.
 - `boot_identity_unavailable`: the boot ID could not be read.
 - `unrecognized_content`: empty, partial or foreign content.
 - `unsafe_file`: a symlink, a hard link, another owner or another mode.
@@ -133,7 +133,7 @@ This only helps a unit that systemd starts at boot. `hermes-connector-test.servi
 - `lock_changed`: the file changed while it was being checked.
 - `claim_exists`: see the claim below.
 
-`{"event":"host_boot_identity_unavailable"}` at start means automatic recovery is off for that start: the host is not Linux, or `/proc/sys/kernel/random/boot_id` is hidden from the unit (for example by `ProcSubset=pid`).
+`{"event":"host_boot_identity_unavailable"}` at start means automatic recovery is off for that start: the host is not Linux, or `/proc/sys/kernel/random/boot_id` is hidden from the unit (for example by `ProcSubset=pid`). The lock of such a start is `version:1`, so one left behind by a crash needs manual recovery even after the boot ID is readable again.
 
 Do not script removal of the lock (no `ExecStartPre`, no restart loop): only the start itself may replace it, and only with that proof. Recover manually: confirm no connector process is running (`systemctl status hermes-connector`, `pgrep -u ihome-hermes -f host-cli.mjs`), read the last journal events, confirm the handoff directory is intact (startup validates and decrypts it before serving), then remove only the lock file as `ihome-hermes` and start the unit.
 
