@@ -890,15 +890,19 @@ function securityContract(sql = all, registry = functions) {
   assert.doesNotMatch(sql, /ALTER TABLE app_private\.hermes_\w+ DISABLE ROW LEVEL SECURITY|DROP (?:TABLE|FUNCTION).*hermes_/i);
 }
 
+// Từ 20261104231450: đúng một membership ACTIVE của CHÍNH p_org là đủ — người thường ở nhiều công ty dùng được công ty mình là
+// thành viên (bên gọi luôn lọc theo p_org / công ty của kết nối); luật "một công ty" đã bỏ khỏi hàm này.
 function membershipContract(registry = functions) {
   const body = fn('hermes_member_v1', registry);
   for (const pattern of [/m\.revoked_at IS NULL/g, /m\.status='ACTIVE'/g, /o\.status='ACTIVE'/g,
     /m\.valid_to>v_now/g, /COALESCE\(m\.valid_from,'-infinity'::timestamptz\)<=v_now/g]) {
-    assert.equal([...body.matchAll(pattern)].length, 2, `selected and ordinary memberships require ${pattern}`);
+    assert.equal([...body.matchAll(pattern)].length, 1, `selected membership requires ${pattern}`);
   }
-  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION/);
+  assert.match(body, /WHERE m\.user_id=p_user AND m\.organization_id=p_org AND o\.status='ACTIVE'/);
+  assert.match(body, /IF p_user IS NULL OR p_org IS NULL THEN RAISE EXCEPTION 'hermes_membership_required'/);
+  assert.match(body, /IF v_count<>1 THEN RAISE EXCEPTION 'hermes_membership_required'/);
   assert.match(body, /FROM public\.super_admins WHERE user_id=p_user/);
-  assert.match(body, /IF NOT v_super THEN .*count\(DISTINCT m\.organization_id\).*IF v_org_count<>1 THEN RAISE EXCEPTION/);
+  assert.doesNotMatch(body, /count\(DISTINCT m\.organization_id\)|hermes_ordinary_org_ambiguous/, 'không còn luật một công ty');
   assert.doesNotMatch(body, /auth\.uid\(\)|request\.jwt/, 'private principal must use bound identity, not forged GUC claims');
 }
 
@@ -1399,7 +1403,7 @@ test('private ledger consumer remains executor-only, with no helper or table acc
   }
   assert.throws(() => securityContract(all + '; GRANT SELECT ON app_private.hermes_zalo_private_commands TO hermes_store_executor;'), /Unexpected grant/);
 });
-test('current membership is bounded by revocation/time and ordinary one-company rule', () => membershipContract());
+test('current membership is bounded by revocation/time and the selected company', () => membershipContract());
 test('stable assistant and session ownership are enforced by composite identity constraints', () => {
   assert.match(all, /UNIQUE\(organization_id,user_id\), UNIQUE\(id,organization_id,user_id\)/);
   assert.match(all, /provider_session_id uuid NOT NULL UNIQUE/);
@@ -1460,7 +1464,8 @@ test('every Hermes source fits the reviewed rollback wrapper, including double-r
 // They are deliberately not a simulated database/state machine.
 for (const [label, name, before, after, check] of [
   ['revoked membership', 'hermes_member_v1', 'm.revoked_at IS NULL', 'true', membershipContract],
-  ['ordinary multi-company', 'hermes_member_v1', 'v_org_count<>1', 'v_org_count<1', membershipContract],
+  ['membership of any company', 'hermes_member_v1', 'm.organization_id=p_org AND ', '', membershipContract],
+  ['membership status ignored', 'hermes_member_v1', "AND m.status='ACTIVE' ", 'AND ', membershipContract],
   ['activation payload mismatch', 'hermes_store_activate_v1', 'c.activation_hash<>v_hash', 'false', activationContract],
   ['ciphertext loses size bound', 'hermes_envelope_v1', "OR char_length(p->>'ciphertext') NOT BETWEEN 1 AND 87382", '', envelopeContract],
   ['staged session disclosure', 'hermes_store_read_connection_v1', "id=c.credential_ref AND state='ACTIVE'", "id=c.credential_ref AND state IN ('ACTIVE','STAGED')", readContract],

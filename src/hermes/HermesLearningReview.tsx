@@ -68,6 +68,7 @@ function sourceLine(item: HermesLearningProposal) {
 function readMessage(error: unknown) {
   if (error instanceof HermesLearningError) {
     if (error.code === 'forbidden') return 'Chỉ chủ hoặc quản trị viên công ty (quyền quản lý người dùng) mới xem và duyệt được bài học của trợ lý.';
+    if (error.code === 'not_member') return 'Tài khoản của bạn không còn là thành viên đang hoạt động của công ty này nên không xem được bài học của trợ lý. Chọn lại công ty đang làm việc hoặc nhờ chủ công ty kiểm tra tư cách thành viên.';
     if (error.code === 'not_supported') return 'Máy chủ chưa có chức năng duyệt bài học (cơ sở dữ liệu chưa được cập nhật).';
     if (error.code === 'reauthentication_required') return 'Phiên CRM cần được xác minh lại. Hãy đăng nhập lại.';
     if (error.code === 'context_changed') return 'Tài khoản hoặc công ty đã thay đổi. Tải lại trang trước khi tiếp tục.';
@@ -78,6 +79,7 @@ function writeMessage(error: unknown) {
   if (error instanceof HermesLearningError) {
     if (error.outcomeUnknown) return 'Chưa rõ máy chủ đã ghi quyết định này chưa. Gửi lại với cùng mã hoặc tải lại danh sách để đối chiếu.';
     if (error.code === 'forbidden') return 'Bạn không còn quyền duyệt bài học của trợ lý trong công ty này.';
+    if (error.code === 'not_member') return 'Tài khoản của bạn không còn là thành viên đang hoạt động của công ty này nên không duyệt được bài học của trợ lý.';
     if (error.code === 'conflict') return 'Đề xuất này đã được quyết định trước đó. Danh sách đã được tải lại.';
     if (error.code === 'invalid_request') return 'Quyết định chưa hợp lệ. Ghi chú tối đa 500 ký tự; đề xuất có thể không còn trong công ty này.';
     if (error.code === 'not_supported') return 'Máy chủ chưa có chức năng duyệt bài học (cơ sở dữ liệu chưa được cập nhật).';

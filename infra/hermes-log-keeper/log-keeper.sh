@@ -24,7 +24,10 @@ LOG_DIR="$(readlink -f -- "$LOG_DIR")"; STATE_DIR="$(readlink -f -- "$STATE_DIR"
 
 # Dò một lần: journal hệ thống luôn có dòng. Không ra dòng nào ⇒ không có quyền đọc / không có file journal (journalctl -q nuốt cả
 # "No journal files were found" và thoát 1 im lặng) ⇒ dừng mã 1, KHÔNG để các unit bên dưới bị coi là "không có gì mới" mãi.
-probe="$("$JOURNALCTL" -q -n 1 -o export --no-pager 2>/dev/null || true)"   # export luôn có __CURSOR=…, kể cả khi MESSAGE rỗng
+# Giữ -o export vì luôn có __CURSOR=…, kể cả khi MESSAGE rỗng. Nhưng field nhị phân / nhiều dòng được export ghi kèm độ dài 8 byte (đầy byte
+# NUL) mà bash không giữ được trong biến ⇒ mỗi lượt in "warning: command substitution: ignored null byte in input" (thấy trên VPS 05/11).
+# Lọc NUL ngay trong đường ống: phần chữ (__CURSOR=…) còn nguyên nên dò vẫn khác rỗng khi journal có ít nhất một dòng.
+probe="$("$JOURNALCTL" -q -n 1 -o export --no-pager 2>/dev/null | tr -d '\000' || true)"
 [ -n "$probe" ] || { echo "không đọc được journal (dò không ra dòng nào)" >&2; exit 1; }
 
 mask() {
