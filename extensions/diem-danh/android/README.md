@@ -58,7 +58,7 @@ Workflow `android-diem-danh.yml` chạy `ci-build.sh` (unit test, lint, APK, đ�
 **CI chứng minh được:**
 
 - Tính mốc đúng ở biên khung giờ, ngày nghỉ, giờ Việt Nam; `id` ổn định; gói gửi đúng khóa như máy chủ; biên nhận sai không được tính là đã gửi (JUnit).
-- Hàng đợi mã hóa còn nguyên sau khi tắt hẳn tiến trình và mở lại; 401 dừng mọi thứ; báo thức chỉ đặt cho mốc trong khung, không đặt cho ngày nghỉ, được đặt lại sau khởi động giả lập; dịch vụ tạo đúng gói từ vị trí giả lập, gói `paused` và `location_off`; ảnh màn hình (emulator).
+- Hàng đợi mã hóa còn nguyên sau khi tắt hẳn tiến trình và mở lại; 401 dừng mọi thứ; báo thức chỉ đặt cho mốc trong khung, không đặt cho ngày nghỉ, được đặt lại sau khởi động giả lập; dịch vụ tạo đúng gói từ vị trí giả lập, gói `paused` và `location_off`; bản cài mới chưa có quyền thì hiện đúng bước đầu của luồng cấp quyền; ảnh màn hình ghép nối, cấp quyền, trạng thái (emulator).
 
 **CI không chứng minh được:**
 

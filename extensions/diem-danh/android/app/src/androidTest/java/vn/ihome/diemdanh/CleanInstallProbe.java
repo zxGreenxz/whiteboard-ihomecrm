@@ -1,9 +1,12 @@
 package vn.ihome.diemdanh;
 
 import android.content.Context;
+import android.view.View;
 
+import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.json.JSONObject;
 import org.junit.Test;
@@ -14,11 +17,12 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 /**
- * Two halves of one check, run by ci-device.sh as separate instrumentation processes with a
- * force-stop in between, so the record really comes back from disk and the AndroidKeyStore.
+ * Steps of one check on a freshly installed app, run by ci-device.sh as separate instrumentation
+ * processes with a force-stop in between, so the record really comes back from disk and the
+ * AndroidKeyStore. Nothing has been granted on this install, which the last step relies on.
  */
 @RunWith(AndroidJUnit4.class)
-public final class QueueRestartProbe {
+public final class CleanInstallProbe {
     private static final long SLOT_MS = 1_767_576_600_000L;
 
     @Test public void seed() throws Exception {
@@ -49,5 +53,21 @@ public final class QueueRestartProbe {
         JSONObject payload = new JSONObject(row.payload());
         assertEquals(CheckinPolicy.EVENT_PING, payload.getString("event"));
         assertEquals(CheckinPolicy.FIX_FRESH, payload.getJSONObject("fix").getString("status"));
+    }
+
+    @Test public void permissionSteps() throws Exception {
+        // MainActivity schedules delivery on open; this keeps the fixture away from the network.
+        DeliveryWork.transport = (endpoint, token, id, payload) -> new DeliveryWork.HttpResult(503, "", "application/json");
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            Fixtures.waitForText(scenario, "Cho phép thông báo");
+            scenario.onActivity(activity -> {
+                View root = activity.getWindow().getDecorView();
+                assertTrue(Fixtures.containsText(root, "Cần thiết lập · còn"));
+                assertTrue("A phone without permissions must not claim to be recording",
+                        Fixtures.containsText(root, "Cần thiết lập thêm"));
+                assertTrue(Fixtures.containsText(root, "Mở cài đặt ứng dụng"));
+            });
+            Fixtures.screenshot(InstrumentationRegistry.getInstrumentation().getUiAutomation(), "steps");
+        }
     }
 }

@@ -64,9 +64,9 @@ adb shell cmd location set-location-enabled true
 cp "$image/source.properties" build/ci-evidence/android-system-image.properties
 adb shell getprop ro.build.fingerprint > build/ci-evidence/android-fingerprint.txt
 
-# QueueRestartProbe needs two processes, so it runs by itself below.
+# CleanInstallProbe needs separate processes on a fresh install, so it runs by itself below.
 bash ./gradlew --no-daemon --console=plain -Pandroid.builder.sdkDownload=false \
-  -Pandroid.testInstrumentationRunnerArguments.notClass=vn.ihome.diemdanh.QueueRestartProbe \
+  -Pandroid.testInstrumentationRunnerArguments.notClass=vn.ihome.diemdanh.CleanInstallProbe \
   :app:connectedDebugAndroidTest
 
 # Every declared test must have run; a skip is not a pass.
@@ -78,26 +78,27 @@ if [[ "${#reports[@]}" != 1 ]] \
   exit 1
 fi
 
-# AGP uninstalls the app after the run, so the tests leave these with the shell user.
-for shot in setup status; do
-  adb pull "/data/local/tmp/diemdanh-$shot.png" "build/ci-evidence/$shot.png"
-  if [[ "$(head -c 8 "build/ci-evidence/$shot.png" | od -An -tx1 | tr -d ' \n')" != '89504e470d0a1a0a' ]]; then
-    printf 'Screenshot %s is not a PNG.\n' "$shot" >&2
-    exit 1
-  fi
-done
-
+# AGP uninstalled the app, so these steps start from a clean install with nothing granted.
 # Encrypted queue across a real process restart: seed, force-stop, read back in a new process.
 adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 runner="$(adb shell pm list instrumentation | tr -d '\r' | sed -n 's#^instrumentation:\(vn\.ihome\.diemdanh[^ ]*\) .*#\1#p' | head -n 1)"
 test -n "$runner"
-for step in seed verify; do
+for step in seed verify permissionSteps; do
   adb shell am force-stop vn.ihome.diemdanh.thu
-  adb shell am instrument -w -r -e class "vn.ihome.diemdanh.QueueRestartProbe#$step" "$runner" \
-    | tee "build/ci-evidence/queue-restart-$step.txt"
-  if ! grep -q 'OK (1 test)' "build/ci-evidence/queue-restart-$step.txt"; then
-    printf 'Queue restart step failed: %s\n' "$step" >&2
+  adb shell am instrument -w -r -e class "vn.ihome.diemdanh.CleanInstallProbe#$step" "$runner" \
+    | tee "build/ci-evidence/clean-install-$step.txt"
+  if ! grep -q 'OK (1 test)' "build/ci-evidence/clean-install-$step.txt"; then
+    printf 'Clean install step failed: %s\n' "$step" >&2
+    exit 1
+  fi
+done
+
+# The tests leave these with the shell user because the app's own files go with the app.
+for shot in setup status steps; do
+  adb pull "/data/local/tmp/diemdanh-$shot.png" "build/ci-evidence/$shot.png"
+  if [[ "$(head -c 8 "build/ci-evidence/$shot.png" | od -An -tx1 | tr -d ' \n')" != '89504e470d0a1a0a' ]]; then
+    printf 'Screenshot %s is not a PNG.\n' "$shot" >&2
     exit 1
   fi
 done

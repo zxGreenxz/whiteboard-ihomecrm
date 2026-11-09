@@ -10,13 +10,11 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
-import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.TextView;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
@@ -31,10 +29,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -206,9 +201,13 @@ public final class DiemDanhDeviceTest {
 
     private boolean armedInDumpsys() throws IOException {
         String dump = shell("dumpsys alarm");
-        boolean found = dump.contains(context.getPackageName()) && dump.contains(SlotAlarmReceiver.ACTION_SLOT);
-        if (!found) Log.w(TAG, "alarm not found in dumpsys");
-        return found;
+        int at = dump.indexOf(SlotAlarmReceiver.ACTION_SLOT);
+        if (at < 0) {
+            Log.w(TAG, "alarm not found in dumpsys");
+            return false;
+        }
+        Log.i(TAG, "dumpsys: " + dump.substring(Math.max(0, at - 400), Math.min(dump.length(), at + 500)));
+        return dump.contains(context.getPackageName());
     }
 
     @Test public void theAlarmIsOnlyEverForASlotInsideTheWindow() throws Exception {
@@ -368,13 +367,17 @@ public final class DiemDanhDeviceTest {
         grantLocation();
         CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
         settings.setPaused(true);
-        long slotMs = Instant.now().plusSeconds(120L).toEpochMilli();
-        fireSlot(slotMs);
+        SlotScheduler.ensureArmed(context);
+        long slotMs = settings.load().armedSlotMs;
+        assertTrue(slotMs > 0L);
+        // Sends the real alarm PendingIntent, so the manifest receiver and the slot extra are exercised.
+        SlotScheduler.existingAlarm(context).send();
         JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
         assertEquals(1, ping.getJSONObject("fix").length());
         assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
         assertEquals(CheckinPolicy.REASON_PAUSED, ping.getString("reason"));
         assertTrue(ping.getJSONObject("device").getBoolean("paused"));
+        assertTrue("Each firing arms the following slot", settings.load().armedSlotMs > slotMs);
     }
 
     @Test public void aSlotWithLocationSwitchedOffReportsLocationOff() throws Exception {
@@ -401,16 +404,16 @@ public final class DiemDanhDeviceTest {
         Intent link = new Intent(context, PairActivity.class).setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("ihomediemdanh://pair?c=" + Fixtures.PAIR_CODE));
         try (ActivityScenario<PairActivity> scenario = ActivityScenario.launch(link)) {
-            waitForText(scenario, "Đã nhận mã từ liên kết");
+            Fixtures.waitForText(scenario, "Đã nhận mã từ liên kết");
             scenario.onActivity(activity -> {
                 View root = activity.getWindow().getDecorView();
-                assertTrue(containsText(root, "Ghép máy với"));
+                assertTrue(Fixtures.containsText(root, "Ghép máy với"));
                 assertEquals(Fixtures.PAIR_CODE, findEditText(root).getText().toString());
             });
             assertTrue("A link alone must not pair the phone", transport.ids.isEmpty());
             assertFalse(settings.load().isActive());
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-            screenshot("setup");
+            Fixtures.screenshot(automation, "setup");
         }
     }
 
@@ -421,56 +424,23 @@ public final class DiemDanhDeviceTest {
         enqueuePing(state, slotMs);
         SlotScheduler.ensureArmed(context);
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            waitForText(scenario, "Máy đang tự ghi vị trí");
+            Fixtures.waitForText(scenario, "Máy đang tự ghi vị trí");
             scenario.onActivity(activity -> {
                 View root = activity.getWindow().getDecorView();
                 for (String label : new String[]{"Máy của bạn", "App điểm danh", "Quyền vị trí", "Chạy nền", "Pin",
                         "Dấu gần nhất", "Mốc kế tiếp", "Các mốc gần đây", "Tạm dừng"}) {
-                    assertTrue(label, containsText(root, label));
+                    assertTrue(label, Fixtures.containsText(root, label));
                 }
             });
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-            screenshot("status");
+            Fixtures.screenshot(automation, "status");
         }
     }
 
     // ---- Helpers ---------------------------------------------------------------------------
 
     private String shell(String command) throws IOException {
-        ParcelFileDescriptor descriptor = automation.executeShellCommand(command);
-        StringBuilder out = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                new ParcelFileDescriptor.AutoCloseInputStream(descriptor), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) out.append(line).append('\n');
-        }
-        return out.toString();
-    }
-
-    /** Written by the shell user: the app's own files are gone once AGP uninstalls it after the run. */
-    private void screenshot(String name) throws IOException {
-        shell("screencap -p /data/local/tmp/diemdanh-" + name + ".png");
-    }
-
-    private <A extends android.app.Activity> void waitForText(ActivityScenario<A> scenario, String text) throws Exception {
-        long deadline = SystemClock.uptimeMillis() + 10_000L;
-        AtomicBoolean ready = new AtomicBoolean();
-        while (!ready.get() && SystemClock.uptimeMillis() < deadline) {
-            scenario.onActivity(activity -> ready.set(containsText(activity.getWindow().getDecorView(), text)));
-            if (!ready.get()) SystemClock.sleep(50L);
-        }
-        assertTrue("Expected on screen: " + text, ready.get());
-    }
-
-    private static boolean containsText(View view, String text) {
-        if (view instanceof TextView && ((TextView) view).getText().toString().contains(text)) return true;
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int index = 0; index < group.getChildCount(); index++) {
-                if (containsText(group.getChildAt(index), text)) return true;
-            }
-        }
-        return false;
+        return Fixtures.shell(automation, command);
     }
 
     private static EditText findEditText(View view) {
