@@ -26,12 +26,18 @@ export const reservationRefundAttachmentsSchema = z.array(z.string().url().max(2
 
 export const reservationSettlementFormSchema = z.object({
   depositAmount: z.number().int().safe().positive(),
-  refundAmount: z.number({ invalid_type_error: "Nhập số tiền hoàn hợp lệ" }).int("Tiền hoàn phải là số nguyên").safe("Số tiền hoàn vượt giới hạn cho phép").nonnegative("Tiền hoàn không được âm"),
+  // `.int()` của zod 4 đã gồm kiểm số nguyên an toàn; giữ đúng chữ báo khi số vượt giới hạn
+  // bằng `.min/.max` đặt TRƯỚC `.int` (vượt giới hạn là lỗi phát hiện đầu tiên, như `.safe()` cũ).
+  refundAmount: z.number({ error: (issue) => (issue.input === undefined ? undefined : "Nhập số tiền hoàn hợp lệ") })
+    .min(Number.MIN_SAFE_INTEGER, "Số tiền hoàn vượt giới hạn cho phép")
+    .max(Number.MAX_SAFE_INTEGER, "Số tiền hoàn vượt giới hạn cho phép")
+    .int("Tiền hoàn phải là số nguyên")
+    .nonnegative("Tiền hoàn không được âm"),
   refundMode: z.enum(["NONE", "NOW", "LATER"]),
   settlementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Chọn ngày xử lý"),
   reasonCode: z.enum(["CHANGED_MIND", "NO_SHOW", "OTHER"]),
   reasonText: z.string(),
-  refundAccountId: z.string().uuid("Chọn sổ quỹ đã chi").nullable(),
+  refundAccountId: z.string().guid("Chọn sổ quỹ đã chi").nullable(),
   refundAttachments: reservationRefundAttachmentsSchema,
 }).superRefine((value, ctx) => {
   if (value.refundAmount > value.depositAmount) {
@@ -52,7 +58,7 @@ export const reservationSettlementFormSchema = z.object({
 });
 
 export const reservationRefundPaymentSchema = z.object({
-  accountId: z.string().uuid("Chọn sổ quỹ đã chi"),
+  accountId: z.string().guid("Chọn sổ quỹ đã chi"),
   paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Chọn ngày chi"),
   refundAttachments: reservationRefundAttachmentsSchema,
 });

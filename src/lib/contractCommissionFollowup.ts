@@ -14,19 +14,19 @@ const eventSchema = z.object({
   actor_name: z.string().nullable(), created_at: z.string(),
 });
 export const commissionPreparationSchema = z.object({
-  request_id: z.string().uuid(), reason: z.string().max(2000).nullable(),
+  request_id: z.string().guid(), reason: z.string().max(2000).nullable(),
   actor_name: z.string().nullable(), created_at: z.string().datetime({ offset: true }),
   stage: z.enum(['PREPARE', 'REPREPARE']),
 });
 export const commissionFollowupSchema = z.object({
-  contract_id: z.string().uuid(), contract_number: z.string().nullable(),
-  building_id: z.string().uuid(), building_name: z.string(), room_name: z.string(), kind: kindSchema,
+  contract_id: z.string().guid(), contract_number: z.string().nullable(),
+  building_id: z.string().guid(), building_name: z.string(), room_name: z.string(), kind: kindSchema,
   state: z.enum(['PENDING', 'UNKNOWN', 'FAILED', 'NOT_APPLICABLE', 'VOUCHER_CREATED', 'PROCESSING', 'SETTLED_BY_SUPPORT']),
   last_reason: z.string().nullable(), last_at: z.string().nullable(), last_actor: z.string().nullable(),
   attempted_amount: z.number().finite().nonnegative().nullable(), can_manage: z.boolean(),
-  voucher_id: z.string().uuid().nullable(), voucher_code: z.string().nullable(), voucher_status: z.string().nullable(),
+  voucher_id: z.string().guid().nullable(), voucher_code: z.string().nullable(), voucher_status: z.string().nullable(),
   events: z.array(eventSchema),
-  request_id: z.string().uuid().nullable().optional(), attempted_at: z.string().nullable().optional(), can_retry: z.boolean().optional(),
+  request_id: z.string().guid().nullable().optional(), attempted_at: z.string().nullable().optional(), can_retry: z.boolean().optional(),
   preparation: commissionPreparationSchema.nullable().optional(),
 }).refine(row => !row.preparation || row.preparation.request_id === row.request_id,
   'Lịch sử lập yêu cầu không khớp yêu cầu đang theo dõi.');
@@ -56,9 +56,9 @@ export interface CommissionFollowupFilter {
 export const COMMISSION_FOLLOWUP_PAGE_SIZE = 20;
 
 export async function readContractCommissionFollowups(organizationId: string, filter: CommissionFollowupFilter) {
-  z.string().uuid().parse(organizationId);
-  if (filter.contractId) z.string().uuid().parse(filter.contractId);
-  if (filter.buildingIds) z.array(z.string().uuid()).parse(filter.buildingIds);
+  z.string().guid().parse(organizationId);
+  if (filter.contractId) z.string().guid().parse(filter.contractId);
+  if (filter.buildingIds) z.array(z.string().guid()).parse(filter.buildingIds);
   const page = z.number().int().min(0).parse(filter.page ?? 0);
   const { data, error } = await supabase.rpc('list_contract_commission_followups_v2', {
     p_organization_id: organizationId, p_contract_ids: filter.contractId ? [filter.contractId] : undefined,
@@ -71,7 +71,7 @@ export async function readContractCommissionFollowups(organizationId: string, fi
   return commissionFollowupPageSchema.parse(data);
 }
 export async function recordContractCommissionEvent(organizationId: string, input: CommissionEventInput) {
-  z.string().uuid().parse(organizationId); z.string().uuid().parse(input.contractId); z.string().uuid().parse(input.requestId);
+  z.string().guid().parse(organizationId); z.string().guid().parse(input.contractId); z.string().guid().parse(input.requestId);
   kindSchema.parse(input.kind); eventSchema.shape.action.parse(input.action);
   if (input.amount !== undefined) z.number().finite().nonnegative().parse(input.amount);
   if ((input.action === 'FAILED' || input.action === 'NOT_APPLICABLE') && !input.reason?.trim()) throw new Error('Vui lòng nhập lý do.');
@@ -83,7 +83,7 @@ export async function recordContractCommissionEvent(organizationId: string, inpu
     p_reason: input.reason?.trim().slice(0, 2000),
   });
   if (error) throw error;
-  const receipt = z.object({ id: z.string().uuid(), contract_id: z.literal(input.contractId),
+  const receipt = z.object({ id: z.string().guid(), contract_id: z.literal(input.contractId),
     kind: z.literal(input.kind), action: z.literal(input.action), request_id: z.literal(input.requestId) }).parse(data);
   return receipt;
 }
@@ -111,17 +111,17 @@ export async function runTrackedCommissionCreation<T>(input: { contractId: strin
 }
 
 const creationPayloadSchema = z.object({
-  contract_id: z.string().uuid(), kind: kindSchema, amount: z.number().finite().positive(),
-  voucher_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), account_id: z.string().uuid().nullable().optional(),
-  manager_id: z.string().uuid().nullable().optional(),
+  contract_id: z.string().guid(), kind: kindSchema, amount: z.number().finite().positive(),
+  voucher_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), account_id: z.string().guid().nullable().optional(),
+  manager_id: z.string().guid().nullable().optional(),
   payer_name: z.string().nullable().optional(), recipient_name: z.string().nullable().optional(),
   recipient_bank: z.string().nullable().optional(), recipient_account: z.string().nullable().optional(),
   item_description: z.string().nullable().optional(), attachments: z.array(z.string()).optional(),
   commission_reason: commissionReasonSchema,
 }).strict();
-const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() }).strict();
+const preparedRequestSchema = z.object({ contract_id: z.string().guid(), kind: kindSchema, request_id: z.string().guid() }).strict();
 // Exact-request execute authenticates creation and may redact both voucher fields after COMPLETED.
-const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().uuid().nullable(), code: z.string().nullable() }).strict()
+const creationResultSchema = z.object({ status: z.enum(['COMPLETED', 'ALREADY_EXISTS', 'FAILED']), id: z.string().guid().nullable(), code: z.string().nullable() }).strict()
   .refine(result => result.status !== 'COMPLETED' || result.id !== null || result.code === null, 'Kết quả hoàn tất có thông tin phiếu không đầy đủ.');
 export type CommissionCreationPayload = z.infer<typeof creationPayloadSchema>;
 export type PreparedCommissionRequest = z.infer<typeof preparedRequestSchema>;
@@ -129,7 +129,7 @@ export interface CommissionCreationResult { status: 'COMPLETED' | 'ALREADY_EXIST
 
 /** Save ALL selected positive intents atomically, before executing the first kind. */
 export async function prepareCommissionCreations(organizationId: string, inputs: CommissionCreationPayload[]): Promise<PreparedCommissionRequest[]> {
-  z.string().uuid().parse(organizationId);
+  z.string().guid().parse(organizationId);
   const intents = z.array(creationPayloadSchema).min(1).max(100).parse(inputs).map(input => ({ ...input, request_id: crypto.randomUUID() }));
   const { data, error } = await supabase.rpc('prepare_commission_requests_v1', { p_organization_id: organizationId, p_intents: intents });
   if (error) throw error;
@@ -143,7 +143,7 @@ export async function prepareCommissionCreations(organizationId: string, inputs:
 
 /** Explicit execute/reconcile only. No automatic retry and no reconstructed payload. */
 export async function executeCommissionCreation(organizationId: string, input: PreparedCommissionRequest): Promise<CommissionCreationResult> {
-  z.string().uuid().parse(organizationId); const request = preparedRequestSchema.parse(input);
+  z.string().guid().parse(organizationId); const request = preparedRequestSchema.parse(input);
   const { data, error } = await supabase.rpc('execute_commission_request_v1', {
     p_organization_id: organizationId, p_contract_id: request.contract_id, p_kind: request.kind, p_request_id: request.request_id,
   });

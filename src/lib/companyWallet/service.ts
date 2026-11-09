@@ -44,7 +44,7 @@ export function companyVoucherPayload(input: CreateIncomeExpenseInput): Json {
  };
 }
 export function createCompanyWalletService(client: CompanyWalletRpcClient, ownerId: string, organizationId: string) {
- const owner = z.string().uuid().parse(ownerId), organization = z.string().uuid().parse(organizationId);
+ const owner = z.string().guid().parse(ownerId), organization = z.string().guid().parse(organizationId);
  return {
   async snapshot(): Promise<CompanyWalletSnapshot> {
    try {
@@ -72,7 +72,7 @@ export function createCompanyWalletService(client: CompanyWalletRpcClient, owner
   },
   async createVoucher(request: CreateCompanyWalletVoucherInput): Promise<CompanyWalletVoucherReceipt> {
    try {
-    z.string().uuid().parse(request.walletId); z.string().trim().min(1).max(200).parse(request.idempotencyKey);
+    z.string().guid().parse(request.walletId); z.string().trim().min(1).max(200).parse(request.idempotencyKey);
     const response = await client.rpc('create_company_wallet_voucher', { p_organization_id: organization, p_wallet_id: request.walletId,
      p_idempotency_key: request.idempotencyKey, p_input: companyVoucherPayload(request.input),
     });

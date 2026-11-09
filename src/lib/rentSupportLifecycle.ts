@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid=z.string().uuid();
+const uuid=z.string().guid();
 const money=z.string().max(100).regex(/^\d+(?:\.\d+)?$/);
 const state=z.enum(['READY','NEEDS_REVIEW']);
 const reason=z.string().trim().min(8).max(2000);

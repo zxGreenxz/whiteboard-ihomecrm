@@ -25,16 +25,16 @@ export function bindReservationSettlementLegTable(client: { from: (table: string
 }
 const settlementLegTable = bindReservationSettlementLegTable(supabase as unknown as { from: (table: string) => unknown });
 const settlementLegSchema = z.object({
-  settlement: z.object({ sourceVoucherId: z.string().uuid() }),
+  settlement: z.object({ sourceVoucherId: z.string().guid() }),
 }).nullable();
 const settlementAuditSchema = z.object({
-  created_by: z.string().uuid(),
+  created_by: z.string().guid(),
   reason_code: z.string(),
   reason_text: z.string(),
-  source_voucher_id: z.string().uuid(),
-  revenue_voucher_id: z.string().uuid().nullable(),
-  offset_voucher_id: z.string().uuid().nullable(),
-  refund_voucher_id: z.string().uuid().nullable(),
+  source_voucher_id: z.string().guid(),
+  revenue_voucher_id: z.string().guid().nullable(),
+  offset_voucher_id: z.string().guid().nullable(),
+  refund_voucher_id: z.string().guid().nullable(),
   settlement_date: z.string(),
 });
 

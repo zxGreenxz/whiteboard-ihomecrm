@@ -38,7 +38,7 @@ export const portalPayloadSchema = z.object({
 export type PortalPayload = z.infer<typeof portalPayloadSchema>;
 
 export const portalViewerSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   label: z.string(),
   created_at: z.string(),
   last_login_at: z.string().nullable(),
@@ -49,7 +49,7 @@ export type PortalViewer = z.infer<typeof portalViewerSchema>;
 export const portalsSchema = z.object({
   portals: z.array(z.object({
     slug: z.string(),
-    building_ids: z.array(z.string().uuid()),
+    building_ids: z.array(z.string().guid()),
     updated_at: z.string(),
     /** Lần nhập PIN sai trong 24 giờ và link có đang tạm khoá (10 lần / 15 phút hoặc 30 lần / 24 giờ). */
     failures_24h: z.number().int().nonnegative(),
@@ -59,9 +59,9 @@ export const portalsSchema = z.object({
 });
 export type LandlordPortals = z.infer<typeof portalsSchema>;
 
-export const portalSaveReceiptSchema = z.object({ slug: z.string(), building_ids: z.array(z.string().uuid()) });
+export const portalSaveReceiptSchema = z.object({ slug: z.string(), building_ids: z.array(z.string().guid()) });
 /** PIN trả về đúng MỘT lần lúc thêm người xem. */
-export const portalViewerAddReceiptSchema = z.object({ id: z.string().uuid(), label: z.string(), pin: z.string().regex(PORTAL_PIN) });
+export const portalViewerAddReceiptSchema = z.object({ id: z.string().guid(), label: z.string(), pin: z.string().regex(PORTAL_PIN) });
 export const portalViewerRevokeReceiptSchema = z.object({ status: z.enum(['REVOKED', 'ALREADY_REVOKED']) });
 export const portalUnlockReceiptSchema = z.object({ status: z.literal('UNLOCKED'), cleared: z.number().int().nonnegative() });
 

@@ -1736,6 +1736,7 @@
     "src/components/chat-zalo/forwardMediaState.ts",
     "src/hooks/chat-zalo/useForwardZaloMedia.ts",
     "src/lib/zaloForwardMedia.ts",
+    "src/lib/zodConfig.ts",
     "src/components/chat-zalo/MessageSender.tsx",
     "src/components/chat-zalo/messageSenders.ts",
     "src/hermes/connectionClient.ts",

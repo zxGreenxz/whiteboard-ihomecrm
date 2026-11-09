@@ -92,7 +92,7 @@ export const ACTION_LOG_PAGE_SIZE = 50;
 
 async function call<T>(
   request: () => PromiseLike<DoorRpcResult>,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T, unknown>,
   context: { operation: string; mutation: boolean },
 ): Promise<T> {
   let response: DoorRpcResult;

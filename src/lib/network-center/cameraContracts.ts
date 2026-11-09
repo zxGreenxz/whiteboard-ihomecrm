@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const timestamp = z.string().datetime({ offset: true });
-const identifier = z.string().uuid();
+const identifier = z.string().guid();
 export const cameraChannelSchema = z.object({
   channel: z.number().int().positive(),
   name: z.string().optional(),

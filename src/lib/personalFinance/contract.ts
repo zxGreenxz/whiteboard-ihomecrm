@@ -1,9 +1,12 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const version = z.number().int().positive();
-const name = z.string().trim().min(1).max(80);
-const icon = z.string().trim().min(1).max(32);
+// Giới hạn input mới đo theo đơn vị UTF-16 như trước; `.max()` của zod 4 đếm code point nên
+// chuỗi toàn emoji sẽ lọt giới hạn. Không dùng cho output (nhãn cũ theo quy tắc PostgreSQL).
+const trongGioiHanUtf16 = (limit: number) => [(value: string) => value.length <= limit, { message: `String must contain at most ${limit} character(s)` }] as const;
+const name = z.string().trim().min(1).refine(...trongGioiHanUtf16(80));
+const icon = z.string().trim().min(1).refine(...trongGioiHanUtf16(32));
 const amount = z.number().int().positive().max(1e12);
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(s => s >= '1900-01-01' && s <= '9999-12-31' && Number.isFinite(Date.parse(`${s}T12:00:00Z`)) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s, 'Ngày không hợp lệ');
 const type = z.enum(['INCOME', 'EXPENSE']);
@@ -12,8 +15,8 @@ const walletData = z.object({ name, kind: walletKind.optional(), icon: icon.opti
 const categoryData = z.object({ type, name, icon: icon.optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), hidden: z.boolean().optional() }).strict();
 const budgetData = z.object({ category_id: uuid.nullable().optional(), amount }).strict();
 const goalData = z.object({ name, icon: icon.optional(), target: amount, target_date: dateSchema.nullable().optional(), wallet_id: uuid }).strict();
-const transferData = z.object({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().trim().max(500).nullable().optional(), goal_id: uuid.nullable().optional() }).strict();
-export const transactionDataSchema = z.object({ type, amount, txn_date: dateSchema, description: z.string().trim().max(500).nullable().optional(), wallet_id: uuid, category_id: uuid }).strict();
+const transferData = z.object({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().trim().refine(...trongGioiHanUtf16(500)).nullable().optional(), goal_id: uuid.nullable().optional() }).strict();
+export const transactionDataSchema = z.object({ type, amount, txn_date: dateSchema, description: z.string().trim().refine(...trongGioiHanUtf16(500)).nullable().optional(), wallet_id: uuid, category_id: uuid }).strict();
 const definitions = { wallet: walletData, category: categoryData, budget: budgetData, goal: goalData, transfer: transferData, transaction: transactionDataSchema };
 export type Entity = keyof typeof definitions;
 export type Mutation = {
@@ -22,7 +25,7 @@ export type Mutation = {
 };
 // A concrete common shape keeps caller construction ergonomic; superRefine dispatches to strict entity schemas.
 export const mutationSchema = z.object({
- action: z.string(), id: uuid.optional(), expected_version: version.optional(), data: z.record(z.unknown()).optional(), rows: z.array(transactionDataSchema).min(1).max(200).optional(),
+ action: z.string(), id: uuid.optional(), expected_version: version.optional(), data: z.record(z.string(), z.unknown()).optional(), rows: z.array(transactionDataSchema).min(1).max(200).optional(),
 }).strict().superRefine((input, ctx) => {
  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
  if (input.action === 'transaction.batch') {
