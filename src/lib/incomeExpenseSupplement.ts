@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 export const incomeExpenseSupplementSchema = z.object({
-  id: z.string().uuid(), organization_id: z.string().uuid(), income_expense_id: z.string().uuid(),
+  id: z.string().guid(), organization_id: z.string().guid(), income_expense_id: z.string().guid(),
   note: z.string().nullable(), attachments: z.array(z.string()),
-  actor_id: z.string().uuid(), actor_name: z.string(), created_at: z.string().datetime({ offset: true }),
+  actor_id: z.string().guid(), actor_name: z.string(), created_at: z.string().datetime({ offset: true }),
 });
 export interface IncomeExpenseSupplement {
   id: string; organization_id: string; income_expense_id: string;
@@ -23,7 +23,7 @@ export const supplementFormSchema = z.object({
 });
 export interface SupplementFormValues { note: string; attachments: string[]; }
 export const appendSupplementInputSchema = supplementFormSchema.and(z.object({
-  voucherId: z.string().uuid(), idempotencyKey: z.string().trim().min(1).max(200),
+  voucherId: z.string().guid(), idempotencyKey: z.string().trim().min(1).max(200),
 }));
 
 /** Presentation only: never send this union back through a financial writer. */
@@ -50,5 +50,5 @@ export function supplementErrorMessage(error: unknown): string {
 }
 
 export const appendSupplementResultSchema = z.object({
-  id: z.string().uuid(), income_expense_id: z.string().uuid(), changed: z.boolean(), replayed: z.boolean().optional(),
+  id: z.string().guid(), income_expense_id: z.string().guid(), changed: z.boolean(), replayed: z.boolean().optional(),
 });

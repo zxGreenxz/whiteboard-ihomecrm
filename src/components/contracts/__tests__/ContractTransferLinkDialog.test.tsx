@@ -8,7 +8,7 @@ const actions=vi.hoisted(()=>({save:vi.fn(),reset:vi.fn()}));
 const id=(n:number)=>`00000000-0000-4000-8000-${n.toString().padStart(12,'0')}`;
 const draft:ContractDraft={id:id(8),organization_id:id(1),building_id:id(3),room_id:id(4),revision:2,status:'EDITABLE',created_by:id(2),created_at:'2026-09-28',updated_at:'2026-09-28',documents:[],template_id:null,
   payload:{...emptyContractDraftPayload(),form:{...emptyContractDraftPayload().form,room_id:id(4),start_date:'2026-10-01',end_date:'2026-12-31',total_deposit:4000000}}};
-const exit:ContractExitCase={id:id(7),organization_id:id(1),building_id:id(3),contract_id:id(5),room_at_handover_id:id(4),actual_move_out_on:'2026-09-28',initial_kind:'EARLY_RETURN',current_kind:'EARLY_RETURN',settlement_mode:'DEFERRED',state:'PENDING',version:3,created_at:'2026-09-28',updated_at:'2026-09-28',kind_history:[],settlement_result:null};
+const exit:ContractExitCase={id:id(7),organization_id:id(1),building_id:id(3),contract_id:id(5),room_at_handover_id:id(4),actual_move_out_on:'2026-09-28',return_note:null,initial_kind:'EARLY_RETURN',current_kind:'EARLY_RETURN',settlement_mode:'DEFERRED',state:'PENDING',version:3,created_at:'2026-09-28',updated_at:'2026-09-28',kind_history:[],settlement_result:null};
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'00000000-0000-4000-8000-000000000001'})}));
 vi.mock('@/hooks/useContractDrafts',()=>({useContractDrafts:()=>({data:[],isLoading:false,isError:false})}));
 vi.mock('@/hooks/useContractExitCases',()=>({useContractExitCases:()=>({data:{items:[]},isLoading:false,isError:false})}));

@@ -8,7 +8,7 @@ import { z } from "zod";
  * trả dữ liệu chưa hợp lệ"), không bao giờ đọc thành danh sách rỗng.
  */
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const timestamp = z.string().datetime({ offset: true });
 const nullableText = z.string().nullable();
 
@@ -112,7 +112,7 @@ export const logSchema = z.object({
   actor_name: nullableText,
   action: z.enum(ACTIONS),
   status: z.enum(ACTION_STATUSES),
-  detail: z.record(z.unknown()).nullable(),
+  detail: z.record(z.string(), z.unknown()).nullable(),
   tuya_password_id: tuyaPasswordId,
   error_code: nullableText,
   error_message: nullableText,

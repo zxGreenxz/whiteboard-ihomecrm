@@ -3,8 +3,8 @@ import {matchesContractMoneyReceipt} from './contractMoneyReceipt';
 import {z} from 'zod';
 import type {RenewNoticeInput,TransferRoomNoticeInput} from './contract-lifecycle/noticeTransitions';
 const isoDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const coreSchema=z.object({id:z.string().uuid(),organization_id:z.string().uuid(),contract_number:z.string().nullable(),status:z.enum(['ACTIVE','EXTENDED']),end_date:isoDate,room_id:z.string().uuid(),room:z.object({id:z.string().uuid(),name:z.string()}),expected_move_out_date:isoDate.nullable(),rent_price:z.unknown(),total_deposit:z.unknown()});
-const eventSchema=z.object({id:z.string().uuid(),organization_id:z.string().uuid(),contract_id:z.string().uuid(),result_contract_id:z.string().uuid(),request_id:z.string().uuid(),operation:z.enum(['RENEW','TRANSFER_ROOM']),notice_choice:z.enum(['KEEP','CANCEL']),previous_notice_date:isoDate.nullable(),expected_updated_at:z.string().datetime({offset:true})});
+const coreSchema=z.object({id:z.string().guid(),organization_id:z.string().guid(),contract_number:z.string().nullable(),status:z.enum(['ACTIVE','EXTENDED']),end_date:isoDate,room_id:z.string().guid(),room:z.object({id:z.string().guid(),name:z.string()}),expected_move_out_date:isoDate.nullable(),rent_price:z.unknown().optional(),total_deposit:z.unknown().optional()});
+const eventSchema=z.object({id:z.string().guid(),organization_id:z.string().guid(),contract_id:z.string().guid(),result_contract_id:z.string().guid(),request_id:z.string().guid(),operation:z.enum(['RENEW','TRANSFER_ROOM']),notice_choice:z.enum(['KEEP','CANCEL']),previous_notice_date:isoDate.nullable(),expected_updated_at:z.string().datetime({offset:true})});
 export interface ContractNoticeOperationReceipt {contractId:string;contractNumber:string;endDate:string;roomId:string;roomName:string;eventId:string;operation:'RENEW'|'TRANSFER_ROOM'}
 export async function readContractNoticeOperationReceipt(organizationId:string,requestId:string,input:RenewNoticeInput|TransferRoomNoticeInput,operation:'RENEW'|'TRANSFER_ROOM'):Promise<ContractNoticeOperationReceipt>{
  const [coreResult,eventResult]=await Promise.all([

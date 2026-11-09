@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 export const METER_TEST_REF = 'hzulujxgonszuleqticb';
 export const METER_TEST_URL = `https://${METER_TEST_REF}.supabase.co`;
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const value = z.string().regex(/^\d{1,7}\.\d{2}$/);
 const manifestSchema = z.object({
   version: z.literal(1), projectRef: z.literal(METER_TEST_REF), environment: z.literal('TEST'), disposable: z.literal(true),

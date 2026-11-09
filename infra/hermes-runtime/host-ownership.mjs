@@ -99,31 +99,133 @@ async function privateDirectory(root) {
   } catch (error) { await handle.close(); throw error; }
 }
 
+// Kernel boot identity (Linux procfs). boot_id is a random UUID the kernel draws at every boot: a lock recorded under
+// another boot ID has no living owner on this machine, because every process of that boot died with its kernel (sự cố
+// 06/11/2026: VPS reset, the lock of 02/11 kept the unit down ~24 h on host_already_owned). The decision uses this ID
+// only and never a file time: a wall-clock correction must not be able to make a lock of this boot look stale.
+const BOOT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const LOCK_MAX_BYTES = 512;
+const CREATE = constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
+
+/** Current kernel boot ID from procfs, or null when that source is missing, unreadable or malformed.
+ * `procRoot` is a test seam, never configuration. */
+export async function readBootId({ procRoot = '/proc' } = {}) {
+  const text = await fs.readFile(path.join(procRoot, 'sys', 'kernel', 'random', 'boot_id'), 'latin1').catch(() => '');
+  const id = /^([0-9a-f-]{36})\n?$/.exec(text)?.[1];
+  return id && BOOT_ID.test(id) ? id : null;
+}
+const procBootId = () => process.platform === 'linux' ? readBootId() : null;
+async function currentBootId(read) {
+  try { const value = await read(); return typeof value === 'string' && BOOT_ID.test(value) ? value : null; } catch { return null; }
+}
+const lockBytes = (lockId, bootId) => Buffer.from(JSON.stringify(bootId ? { version: 2, lockId, bootId } : { version: 1, lockId }) + '\n');
+// Only the exact bytes this module writes are recognised: empty, partial, reordered or extended content never is.
+function parseLock(bytes) {
+  let value;
+  try { value = JSON.parse(bytes.toString('utf8')); } catch { return null; }
+  if (!value || typeof value !== 'object' || typeof value.lockId !== 'string' || !UUID.test(value.lockId)) return null;
+  const bootId = value.version === 2 && typeof value.bootId === 'string' && BOOT_ID.test(value.bootId) ? value.bootId : null;
+  if (value.version !== 1 && !bootId) return null;
+  return lockBytes(value.lockId, bootId).equals(bytes) ? { lockId: value.lockId, bootId } : null;
+}
+const isPrivateFile = info => { try { privateInfo(info, false); return true; } catch { return false; } };
+async function readLock(filename) {
+  let handle;
+  try {
+    const named = await fs.lstat(filename, { bigint: true });
+    if (!isPrivateFile(named)) return { refused: 'unsafe_file' };
+    if (named.size > BigInt(LOCK_MAX_BYTES)) return { refused: 'unrecognized_content' };
+    handle = await fs.open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const info = await handle.stat({ bigint: true }), bytes = Buffer.alloc(LOCK_MAX_BYTES + 1);
+    if (!isPrivateFile(info)) return { refused: 'unsafe_file' };
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (!sameFile(named, info) || info.size !== named.size || BigInt(bytesRead) !== info.size) return { refused: 'lock_changed' };
+    return { info, bytes: bytes.subarray(0, bytesRead) };
+  } catch { return { refused: 'unreadable' }; }
+  finally { await handle?.close().catch(() => {}); }
+}
+/** Replaceable only when it is provably a version 2 lock of another boot; otherwise `refused` is one of the closed set
+ * reported by host_stale_lock_refused (same_boot, legacy_format, boot_identity_unavailable, unrecognized_content,
+ * unsafe_file, unreadable, lock_changed, claim_exists) and the lock stays owned. Never a path, ID or error text. */
+async function judgeLock(filename, bootId) {
+  if (!bootId) return { refused: 'boot_identity_unavailable' };
+  const observed = await readLock(filename);
+  if (observed.refused) return observed;
+  const record = parseLock(observed.bytes);
+  if (!record) return { refused: 'unrecognized_content' };
+  // A version 1 lock records no boot: written by a release before this design or by a start that could not read the boot ID.
+  if (!record.bootId) return { refused: 'legacy_format' };
+  if (record.bootId === bootId) return { refused: 'same_boot' };
+  return { ...observed, lockId: record.lockId };
+}
+async function unchangedLock(filename, stale) {
+  const current = await readLock(filename);
+  return !current.refused && sameFile(stale.info, current.info) && current.info.mtimeNs === stale.info.mtimeNs &&
+    current.info.ctimeNs === stale.info.ctimeNs && current.bytes.equals(stale.bytes);
+}
+async function withdrawClaim(claim, held) {
+  try { if (sameFile(held, await fs.lstat(claim, { bigint: true }))) await fs.unlink(claim); } catch { /* Left for the operator; inert after a reboot. */ }
+}
+function hostPorts(raw) {
+  const ports = data(raw, [], ['readBootId', 'log']);
+  if (Object.values(ports).some(port => typeof port !== 'function')) fail('host_invalid_config');
+  return ports;
+}
+const printEvent = record => console.info(JSON.stringify(record));
+const emit = (log, record) => { try { void Promise.resolve(log(record)).catch(() => {}); } catch { /* Output never decides ownership. */ } };
+
 /** One writer per canonical, private host state root. Successful acquisition is
- * durable before startup. Existing/crash locks never expire or follow a PID.
+ * durable before startup. Existing/crash locks never expire or follow a PID. The one
+ * exception needs proof from the kernel: a version 2 lock recording another boot ID is
+ * replaced at the next start (judgeLock); every other existing lock refuses the start.
+ * Ports (readBootId, log) are a trusted in-process seam, never configuration data.
  * Host must call release only after every runtime/dependency and audit has drained.
  * Same-UID malicious filesystem mutation is outside the trusted-host boundary;
  * observed replacement/tampering is nevertheless denied, never overwritten.
  */
-export async function acquireHostOwnership(options) {
+export async function acquireHostOwnership(options, ports = {}) {
   const root = rootOption(options, 'stateRoot'), filename = path.join(root, LOCK);
-  const content = Buffer.from(JSON.stringify({ version: 1, lockId: randomUUID() }) + '\n');
-  let directory, handle, held, created = false;
+  const { readBootId: readBoot = procBootId, log = printEvent } = hostPorts(ports), bootId = await currentBootId(readBoot);
+  if (!bootId) emit(log, { event: 'host_boot_identity_unavailable' });
+  const refuse = reason => { emit(log, { event: 'host_stale_lock_refused', reason }); fail('host_already_owned'); };
+  const content = lockBytes(randomUUID(), bootId);
+  let directory, handle, held, stale, claim, created = false, published = false;
   try {
     directory = await privateDirectory(root);
-    try { handle = await fs.open(filename, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600); }
-    catch (error) { if (error.code === 'EEXIST') fail('host_already_owned'); throw error; }
-    created = true; held = await handle.stat({ bigint: true }); privateInfo(held, false);
-    await handle.writeFile(content); await handle.datasync(); await directory.check(); await directory.handle.sync();
+    try { handle = await fs.open(filename, CREATE, 0o600); created = true; }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const verdict = await judgeLock(filename, bootId);
+      if (verdict.refused) refuse(verdict.refused);
+      stale = verdict;
+      // Starts of this boot meet at one exclusive claim per stale lock; a claim cut short in an earlier boot is inert.
+      claim = path.join(root, `${LOCK}.reclaim-${stale.lockId}-${bootId}`);
+      try { handle = await fs.open(claim, CREATE, 0o600); }
+      catch (claimError) { if (claimError.code === 'EEXIST') refuse('claim_exists'); throw claimError; }
+    }
+    held = await handle.stat({ bigint: true }); privateInfo(held, false);
+    await handle.writeFile(content); await handle.datasync();
+    if (stale) {
+      // Only the claim holder may replace that stale inode, and only while it is unchanged: a lock that changed
+      // since inspection (for instance one recovered by an earlier claim holder) is never overwritten.
+      await directory.check();
+      if (!await unchangedLock(filename, stale)) refuse('lock_changed');
+      published = true; await fs.rename(claim, filename);
+    }
+    await directory.check(); await directory.handle.sync();
     const named = await fs.lstat(filename, { bigint: true }), opened = await handle.stat({ bigint: true });
     privateInfo(named, false); privateInfo(opened, false);
     if (!sameFile(held, named) || !sameFile(held, opened) || named.size !== BigInt(content.length) || opened.size !== BigInt(content.length)) fail('host_lock_changed');
     await directory.check();
+    // Reported only now: the journal line promises a durable replacement, not an attempted one.
+    if (stale) emit(log, { event: 'host_stale_lock_recovered' });
   } catch (error) {
     await Promise.allSettled([handle?.close(), directory?.handle.close()]);
     // An unknown acquire leaves its marker in place. Never remove a possibly
     // durable lock merely because the caller did not receive an acknowledgment.
-    if (created) fail('host_ownership_unknown');
+    if (created || published) fail('host_ownership_unknown');
+    // An unpublished claim never conferred ownership: withdraw it while it is still this attempt's own file.
+    if (stale && held) await withdrawClaim(claim, held);
     if (error instanceof HostOwnershipError) throw error;
     fail('host_ownership_unavailable');
   }

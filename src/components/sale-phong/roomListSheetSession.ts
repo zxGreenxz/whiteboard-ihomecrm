@@ -14,7 +14,7 @@ export interface SheetSession {
   hotline?: string;
 }
 export const newSheetSession = (): SheetSession => ({ edits: EMPTY_SHEET_EDITS, bases: {}, phoneBases: {}, requests: {} });
-const textMap = z.record(z.string());
+const textMap = z.record(z.string(), z.string());
 const roomSchema = z.object({
   id: z.string(), buildingId: z.string(), code: z.string(), price: z.number(), area: z.number(),
   type: z.string(), amenities: z.array(z.string()), status: z.enum(['free', 'soon', 'rented', 'pass', 'locked']),
@@ -23,9 +23,9 @@ const roomSchema = z.object({
 const settingsSchema = z.object({ soon_days: z.number(), show_rented: z.boolean(), hotline_id: z.string().nullable(), sale_policy: z.string().nullable() });
 const sessionSchema = z.object({
   edits: z.object({ phones: textMap, policies: textMap, prices: textMap, types: textMap, amenities: textMap, statuses: textMap }),
-  bases: z.record(z.object({ room: roomSchema, revision: z.string().regex(/^[a-f0-9]{32}$/) })),
-  phoneBases: z.record(z.string().nullable()),
-  requests: z.record(z.object({ input: z.object({ roomId: z.string().uuid(), requestId: z.string().uuid(), expectedRevision: z.string().regex(/^[a-f0-9]{32}$/), patch: saleRoomPatchSchema }),
+  bases: z.record(z.string(), z.object({ room: roomSchema, revision: z.string().regex(/^[a-f0-9]{32}$/) })),
+  phoneBases: z.record(z.string(), z.string().nullable()),
+  requests: z.record(z.string(), z.object({ input: z.object({ roomId: z.string().guid(), requestId: z.string().guid(), expectedRevision: z.string().regex(/^[a-f0-9]{32}$/), patch: saleRoomPatchSchema }),
     keys: z.array(z.string()), outcome: z.enum(['unknown', 'conflict', 'rejected']).optional() })),
   account: z.object({ form: settingsSchema, days: z.string(), original: settingsSchema }).optional(),
   hotline: z.string().optional(),

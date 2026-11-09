@@ -42,7 +42,7 @@ export function customerListArgs(request: CustomerListRequest): CustomerListArgs
 
 const count = z.number().int().nonnegative().safe();
 const statsSchema = z.object({ total: count, individual: count, organization: count, foreign: count });
-const rowSchema = z.object({ id: z.string().uuid(), created_at: z.string().min(1) }).passthrough();
+const rowSchema = z.object({ id: z.string().guid(), created_at: z.string().min(1) }).passthrough();
 const listSchema = z.object({ total: count, stats: statsSchema, rows: z.array(rowSchema) });
 
 export interface CustomerListResult {

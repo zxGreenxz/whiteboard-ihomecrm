@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { readRpcAllowlist, uiPreferenceFakeBody } from './read-rpc-allowlist';
 import { METER_TEST_URL, type MeterLiveFixture } from './meter-capture-live-fixture';
 
-const startedSchema=z.object({capture:z.object({id:z.string().uuid(),clientId:z.string().uuid(),orgId:z.string().uuid(),meterId:z.string().uuid(),sha256:z.string()}),uploadPath:z.string()});
+const startedSchema=z.object({capture:z.object({id:z.string().guid(),clientId:z.string().guid(),orgId:z.string().guid(),meterId:z.string().guid(),sha256:z.string()}),uploadPath:z.string()});
 type Started=z.infer<typeof startedSchema>;
 type Evidence={id:string;previousValue:string|null;evidenceFrames:Array<{timestampSeconds:number;imageUrl:string}>};
 
@@ -29,7 +29,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
   const rpcName=url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
   if(rpcName&&readers.has(rpcName))return route.continue();
   if(url.pathname==='/functions/v1/meter-capture-worker'&&method==='POST'){
-   const body=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.unknown()).optional(),captureId:z.string().optional()}).parse(request.postDataJSON());
+   const body=z.object({action:z.string(),organizationId:z.string(),rpcAction:z.string().optional(),payload:z.record(z.string(), z.unknown()).optional(),captureId:z.string().optional()}).parse(request.postDataJSON());
    if(body.organizationId!==fixture.organizationId)return block();
    if(body.action==='finalize'&&created.captureIds.includes(body.captureId??'')){writes.push('finalize');return route.continue();}
    if(body.action!=='rpc')return block();
@@ -38,7 +38,7 @@ export async function installMeterLiveBrowser(page:Page,fixture:MeterLiveFixture
    if(body.rpcAction==='resolveQr'&&payload.qrText===fixture.qrText)return route.continue();
    if(body.rpcAction==='getCapture'){
     if(typeof payload.captureId==='string'&&created.captureIds.includes(payload.captureId))return route.continue();
-    if(state.sha&&z.string().uuid().safeParse(payload.clientId).success){
+    if(state.sha&&z.string().guid().safeParse(payload.clientId).success){
      const clientId=String(payload.clientId);
      if(!created.clientIds.length)created.clientIds.push(clientId);
      if(created.clientIds.includes(clientId))return route.continue();

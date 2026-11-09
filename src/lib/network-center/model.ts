@@ -274,7 +274,7 @@ export const NETWORK_ACTION_DEFINITIONS: NetworkActionDefinition[] = [
 const requestSchema = z.object({
   type: z.enum(["flush_dns_cache", "renew_dhcp_lease", "cycle_access_port", "reboot_router"]),
   reason: z.string().trim().min(8, "Lý do phải có ít nhất 8 ký tự"),
-  fields: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   confirmation: z.string().optional(),
 });
 

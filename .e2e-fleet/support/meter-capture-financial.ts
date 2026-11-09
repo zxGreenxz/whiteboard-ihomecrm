@@ -7,7 +7,7 @@ import type { MeterLiveFixture } from './meter-capture-live-fixture';
 
 type Fixture = Pick<MeterLiveFixture, 'fixtureId' | 'organizationId' | 'contractId' | 'buildingId' | 'roomId' | 'meterId' | 'serviceId' | 'marker' | 'readingDate' | 'previousValue' | 'currentValue'>;
 const number = z.union([z.number(), z.string()]).transform(Number).refine(Number.isFinite);
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 
 /** Preserve the actual resolver's CAS versions; never reconstruct them from a capture. */
 export function financialSource(fixture: Fixture, meter: MeterBillingSource, purpose: 'MONTHLY' | 'MOVE_OUT'): MeterSourceReference {

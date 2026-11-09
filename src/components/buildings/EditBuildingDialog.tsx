@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
@@ -101,7 +101,7 @@ export function EditBuildingDialog({
   useEffect(() => { setCoreSaved(false); setPartialMessage(null); }, [building.id]);
 
   const form = useForm<BuildingFormValues>({
-    resolver: zodResolver(buildingSchema),
+    resolver: zodResolver(buildingSchema) as Resolver<BuildingFormValues>,
     defaultValues: {
       name: building.name,
       code: building.code || "",

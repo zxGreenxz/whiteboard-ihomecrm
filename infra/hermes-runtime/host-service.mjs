@@ -60,7 +60,8 @@ const DEFAULTS = Object.freeze({
  * are the real adapters. Owns one host lock, listener, WAL, backend, pool and the
  * connection maintenance and optional allowlisted Zalo provisioning. It never
  * starts a model, container or profile; configuration changes await controlled restart.
- * Unknown shutdown retains that lock; no process/PID/age-based recovery occurs.
+ * Unknown shutdown retains that lock. The only automatic replacement is a lock whose
+ * recorded kernel boot ID is not the current one, at the next start (host-ownership.mjs).
  * Config must come from loadHostConfiguration; key buffers are disposed after
  * the backend and WAL have copied them, including partial startup failures.
  */
@@ -117,7 +118,10 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
   const boot = async () => {
     try {
       live(); state = 'starting';
-      ownership = await factories.acquireHostOwnership({ stateRoot: configuration.paths.stateRoot }); live();
+      // Fixed stdout JSON lines, same channel as the host_* lifecycle events and never a path or ID:
+      // host_stale_lock_recovered, host_stale_lock_refused {reason} and host_boot_identity_unavailable.
+      ownership = await factories.acquireHostOwnership({ stateRoot: configuration.paths.stateRoot },
+        { log: record => console.info(JSON.stringify(record)) }); live();
       const auditDirectory = await factories.prepareState(configuration.paths); live();
       audit = factories.createHostAudit({ directory: auditDirectory });
       handoff = factories.createConnectionHandoff({ directory: configuration.paths.handoffDirectory, ...configuration.encryption });

@@ -8,7 +8,7 @@ export const EXIT_SETTLEMENT_DRAFT_SCHEMA = 1;
 const money = z.number().finite().nonnegative().max(1e12);
 const isoDate = z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]);
 const customRows = z.array(z.object({ name: z.string().max(200), amount: money }).strict()).max(30);
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 
 export const extraChargesDraftSchema = z.object({
   fromDate: isoDate, toDate: isoDate, proratedAmount: money, proratedTouched: z.boolean(), cleaningAmount: money, customRows,
@@ -33,7 +33,7 @@ export type ExitSettlementDraftPayload = z.infer<typeof exitSettlementDraftPaylo
 export type ExitSettlementDraftSections = Pick<ExitSettlementDraftPayload, 'extra' | 'refund' | 'moveOut'>;
 
 const responseSchema = z.object({
-  case_id: uuid, case_version: z.number().int().positive(), version: z.number().int().positive(), payload: z.unknown(),
+  case_id: uuid, case_version: z.number().int().positive(), version: z.number().int().positive(), payload: z.unknown().optional(),
   created_at: z.string(), created_by: uuid, updated_at: z.string(), updated_by: uuid, updated_by_name: z.string().nullable(),
 });
 const listSchema = z.array(z.object({

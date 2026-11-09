@@ -9,7 +9,7 @@ export type MaterialCategoryFormValues = z.infer<typeof materialCategoryFormSche
 export const materialFormSchema = z.object({
   code: z.string().optional().nullable(),
   name: z.string().trim().min(1, 'Nhập tên vật tư'),
-  category_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().guid().optional().nullable(),
   unit: z.string().trim().min(1, 'Nhập đơn vị (cái, m, kg…)'),
   image_url: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
