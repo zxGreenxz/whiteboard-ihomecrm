@@ -1,12 +1,13 @@
 {
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
-    "source": 13,
+    "source": 14,
     "deployed": 12,
     "invoked": 3,
     "publiclyCallable": 5
   },
   "sourceWithoutDeployment": [
+    "gps-checkin-ingest",
     "network-watchdog"
   ],
   "deploymentWithoutSource": [],
@@ -52,6 +53,14 @@
       "status": "ACTIVE",
       "version": 4,
       "verifyJwt": true,
+      "callers": []
+    },
+    "gps-checkin-ingest": {
+      "hasSource": true,
+      "deployed": false,
+      "status": null,
+      "version": null,
+      "verifyJwt": null,
       "callers": []
     },
     "lifecycle-reminders": {

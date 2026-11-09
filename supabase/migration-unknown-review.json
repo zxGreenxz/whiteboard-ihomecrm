@@ -960,6 +960,71 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261109042309_gps_checkin_v1.sql": {
+      "sha256": "c17da8e017fa0ac1198275f92af6cb512300b3aa66ae991852fafcf8fceddced",
+      "missingObjects": [
+        "table:app_private.gps_checkin_settings",
+        "table:app_private.gps_checkin_members",
+        "table:app_private.gps_checkin_devices",
+        "table:app_private.gps_checkin_pair_codes",
+        "table:app_private.gps_checkin_pings"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 09/11/2026, chưa qua lane apply. Bảng và hàm điểm danh GPS vắng trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sau migrate:forward provenance chuyển catalog-proven và hồ sơ này phải gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261109042309_gps_checkin_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.gps_checkin_settings"
+        },
+        {
+          "duong_dan": "docs/superpowers/plans/2026-11-09-viec-cua-quan-ly-va-diem-danh-gps.md",
+          "trich_doan": "Lên production theo từng người: áp migration, deploy edge, phát hành APK"
+        }
+      ]
+    },
+    "supabase/migrations/20261109042700_staff_day_xem_theo_nguoi_v1.sql": {
+      "sha256": "6f30754d6d0ff28a94148672ac7c99e0fbd52f5f1337299969fb6a7fb51d3146",
+      "missingObjects": [
+        "function:app_private.staff_day_tick_info_v1",
+        "function:app_private.staff_day_kinds_v1",
+        "function:app_private.staff_day_events_v1",
+        "function:app_private.staff_day_now_v1",
+        "function:app_private.staff_day_route_items_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 09/11/2026, chưa qua lane apply. Hàm đọc «xem theo người» vắng trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sau migrate:forward provenance chuyển catalog-proven và hồ sơ này phải gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261109042700_staff_day_xem_theo_nguoi_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.staff_day_events_v1"
+        },
+        {
+          "duong_dan": "docs/superpowers/plans/2026-11-09-viec-cua-quan-ly-va-diem-danh-gps.md",
+          "trich_doan": "Lên production theo từng người: áp migration, deploy edge, phát hành APK"
+        }
+      ]
+    },
+    "supabase/migrations/20261109042943_staff_period_report_v1.sql": {
+      "sha256": "b556c7986dd3234353f1a59cf66734cd7baa55fa6a5e3cbf065dea25ced780f3",
+      "missingObjects": [
+        "table:app_private.staff_period_reviews",
+        "function:app_private.staff_period_overdue_v1",
+        "function:public.staff_period_report_v1",
+        "function:public.staff_period_review_set_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 09/11/2026, chưa qua lane apply. Báo cáo kỳ và bảng nhận xét vắng trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sau migrate:forward provenance chuyển catalog-proven và hồ sơ này phải gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261109042943_staff_period_report_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.staff_period_report_v1"
+        },
+        {
+          "duong_dan": "docs/superpowers/plans/2026-11-09-viec-cua-quan-ly-va-diem-danh-gps.md",
+          "trich_doan": "Lên production theo từng người: áp migration, deploy edge, phát hành APK"
+        }
+      ]
     }
   }
 }

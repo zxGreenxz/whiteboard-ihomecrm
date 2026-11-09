@@ -7,6 +7,10 @@ verify_jwt = false
 [functions.bank-event-admin]
 verify_jwt = true
 
+[functions.gps-checkin-ingest]
+# Device bearer credentials are verified inside the handler and database.
+verify_jwt = false
+
 [functions.lifecycle-reminders]
 verify_jwt = true
 
