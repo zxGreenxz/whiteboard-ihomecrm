@@ -95,7 +95,7 @@ export function runtimeRpc(deps:Dependencies){
     if(!url||!apiKey)throw new RequestError(503,'service_unavailable');
     const response=await fetch(`${url}/rest/v1/rpc/${name}`,{
       method:'POST',
-      headers:{apikey:apiKey,authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
+      headers:{apikey:apiKey,authorization:`Bearer ${apiKey}`,'content-type':'application/json','content-profile':'public','accept-profile':'public'},
       body:JSON.stringify(args),
       signal:AbortSignal.timeout(10000),
     });

@@ -83,6 +83,24 @@ Deno.test('ánh xạ lỗi SQL sang mã HTTP',async()=>{
   }
 });
 
+Deno.test('gọi RPC thật đúng schema public: PostgREST mặc định profile khác nên thiếu header là 503',async()=>{
+  const realFetch=globalThis.fetch;
+  let url='';let headers=new Headers();
+  globalThis.fetch=(async(input:Request|URL|string,init?:RequestInit)=>{
+    url=String(input);headers=new Headers(init?.headers);
+    return new Response(JSON.stringify(receipt()),{status:200,headers:{'content-type':'application/json'}});
+  }) as typeof fetch;
+  try{
+    const env:Record<string,string>={SUPABASE_URL:'https://x.supabase.test',SUPABASE_SERVICE_ROLE_KEY:'khoa-thu'};
+    const response=await createHandler({env:(name)=>env[name]})(request(ping()));
+    assert.equal(response.status,201);
+    assert.equal(url,'https://x.supabase.test/rest/v1/rpc/gps_checkin_ingest_v1');
+    assert.equal(headers.get('content-profile'),'public');
+    assert.equal(headers.get('accept-profile'),'public');
+    assert.equal(headers.get('authorization'),'Bearer khoa-thu');
+  }finally{globalThis.fetch=realFetch;}
+});
+
 Deno.test('biên nhận DB sai dạng trả 502, không báo thành công giả',async()=>{
   for(const data of [null,{status:'accepted'},{...receipt(),externalId:'x'},{...receipt(),status:'weird'},{...receipt(),settings:null}]){
     const handler=createHandler({rpc:async()=>({data,error:null})});
