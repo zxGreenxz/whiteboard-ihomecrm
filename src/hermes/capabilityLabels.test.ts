@@ -98,5 +98,11 @@ describe('Hermes capability labels', () => {
     for (const text of [hermesCapabilityLabel(SALE_DEPOSIT_RECEIPT_KEY), hermesCapabilityHint('deposits.create'), hermesCapabilityHint('deposits.edit')]) {
       expect(text).toContain('trang Quản lý cọc (/deposits)');
     }
+    for (const key of ['deposits.create', 'deposits.edit']) expect(hermesCapabilityHint(key)).not.toMatch(/ghi được/);
+    // Review 05/11: nhãn giữ phòng phải nói đúng ai gỡ được lock (SQL release_room_sale_lock_v1).
+    const lockHint = hermesCapabilityHint('sale_phong.lock_room');
+    expect(lockHint).toContain('trang Hợp đồng');
+    expect(lockHint).toContain('lock do bạn tạo');
+    expect(lockHint).toContain('người có quyền Tạo phiếu cọc');
   });
 });
