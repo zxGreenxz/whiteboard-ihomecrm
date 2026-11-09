@@ -1,6 +1,6 @@
 # Plan — Chủ xem «Hôm nay» của từng quản lý và điểm danh GPS tự động
 
-> **Trạng thái:** plan, CHƯA thi hành (lập 09/11/2026). Thiết kế 8 màn đang chờ chủ duyệt: [bảng vẽ riêng tư](https://claude.ai/artifact/8YKt1tGucf8PckRLU3MNsq). Sự thật kỹ thuật đo trên `origin/main` `056571087` và production (chỉ đọc) ngày 09/11/2026. Luật thi hành: [Project Contract](../../engineering/PROJECT_CONTRACT.md) — plan này không thay Contract; chỗ nào lệch thì Contract thắng.
+> **Trạng thái:** đã thi hành và lên production ngày 09/11/2026 (PR #403, #402); điểm danh GPS còn tắt tới khi chủ bật. Các điểm khác plan và số đo ở Phụ lục D. Bản vẽ: [bảng vẽ riêng tư](https://claude.ai/artifact/8YKt1tGucf8PckRLU3MNsq). Sự thật kỹ thuật đo trên `origin/main` `056571087` và production (chỉ đọc) ngày 09/11/2026. Luật thi hành: [Project Contract](../../engineering/PROJECT_CONTRACT.md) — plan này không thay Contract; chỗ nào lệch thì Contract thắng.
 
 ## Tóm tắt
 
