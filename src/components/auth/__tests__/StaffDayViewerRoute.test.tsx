@@ -10,7 +10,7 @@ const viewer = vi.hoisted(() => ({
   isError: false,
   refetch: vi.fn(),
 }));
-vi.mock("@/hooks/staff-day/useStaffDay", () => ({ useStaffViewer: () => viewer }));
+vi.mock("@/hooks/staff-day/useStaffViewer", () => ({ useStaffViewer: () => viewer }));
 
 import { StaffDayViewerRoute } from "../StaffDayViewerRoute";
 

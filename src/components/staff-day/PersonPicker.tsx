@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useStaffDayTeam, useStaffViewer } from "@/hooks/staff-day/useStaffDay";
+import { useStaffDayTeam } from "@/hooks/staff-day/useStaffDay";
+import { useStaffViewer } from "@/hooks/staff-day/useStaffViewer";
 
 const chip = "flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium";
 const chipOn = "border-primary bg-primary font-semibold text-primary-foreground";

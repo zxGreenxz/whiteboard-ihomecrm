@@ -3,7 +3,7 @@
 import { Navigate } from "react-router-dom";
 import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
-import { useStaffViewer } from "@/hooks/staff-day/useStaffDay";
+import { useStaffViewer } from "@/hooks/staff-day/useStaffViewer";
 
 export function StaffDayViewerRoute({ children }: { children: React.ReactNode }) {
   const viewer = useStaffViewer();

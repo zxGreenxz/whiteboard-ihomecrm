@@ -1,10 +1,7 @@
-// Dữ liệu các màn «xem theo người». Mọi lời gọi đi qua hàm có cổng quyền ở máy chủ;
-// cờ useStaffViewer chỉ để ẩn/hiện giao diện.
+// Dữ liệu các màn «xem theo người». Mọi lời gọi đi qua hàm có cổng quyền ở máy chủ.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { useIsCompanyOwner } from "@/hooks/useIsCompanyOwner";
-import { useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import {
   calendarSchema, journeySchema, reportSchema, routeSchema, summarySchema, teamSchema,
 } from "@/lib/staffDay";
@@ -25,19 +22,6 @@ const omitEmpty = (args: Record<string, unknown>) =>
 /** Màn đang diễn ra làm mới 30 giây/lần khi tab đang mở; lịch sử thì không cần. */
 const LIVE = { staleTime: 20_000, refetchInterval: 30_000, refetchOnWindowFocus: true } as const;
 const HISTORY = { staleTime: 60_000 } as const;
-
-export function useStaffViewer() {
-  const owner = useIsCompanyOwner();
-  const admin = useIsSuperAdmin();
-  const canView = owner.data === true || admin.data === true;
-  return {
-    canView,
-    isOwner: owner.data === true,
-    isLoading: !canView && (owner.isLoading || admin.isLoading),
-    isError: !canView && (owner.isError || admin.isError),
-    refetch: () => Promise.allSettled([owner.refetch(), admin.refetch()]),
-  };
-}
 
 /** `background`: bộ chọn người ở đầu màn; lỗi ở đây không được bật thông báo chung. */
 export function useStaffDayTeam(date?: string, enabled = true, background = false) {
