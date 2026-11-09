@@ -46,9 +46,11 @@ function serialize(value: Decimal): Money {
   return normalizeMoney(value.scale ? `${digits.slice(0, -value.scale)}.${digits.slice(-value.scale)}` : digits);
 }
 
-const moneySchema = z.string().regex(/^\d+(?:\.\d+)?$/, 'Số tiền phải là chuỗi thập phân hữu hạn không âm.').transform(normalizeMoney);
+// `abort`: zod 3 bỏ qua superRefine cấp object khi một field `.regex().transform()` đã lỗi, zod 4 thì
+// vẫn chạy với giá trị thô ⇒ chuỗi sai định dạng tới BigInt trong superRefine và NÉM thay vì báo lỗi.
+const moneySchema = z.string().regex(/^\d+(?:\.\d+)?$/, { error: 'Số tiền phải là chuỗi thập phân hữu hạn không âm.', abort: true }).transform(normalizeMoney);
 const monthSchema = z.string().regex(/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/, 'Tháng phải theo YYYY-MM, từ 0001-01 đến 9999-12.');
-const uuidSchema = z.string().guid().transform((value) => value.toLowerCase());
+const uuidSchema = z.string().guid({ abort: true }).transform((value) => value.toLowerCase());
 const payerSchema = z.enum(['BUILDING', 'SALE']);
 const policySchema = z.enum(['COMMISSION_ONLY', 'BONUS_THEN_COMMISSION']);
 

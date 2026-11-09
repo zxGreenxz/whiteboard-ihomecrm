@@ -1,13 +1,14 @@
 // Ghim hành vi các schema nghiệp vụ đã được rà khi nâng zod 3 → 4: dữ liệu thật phải
 // parse y như cũ. Mỗi ca tương ứng một khác biệt v3/v4 đã xác minh bằng so sánh hai bản.
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import { incomeExpenseBatchFormSchema, incomeExpenseFormSchema, incomeExpenseTypeFormSchema } from '../incomeExpenseValidation';
 import { buildIncomeExpensePostingSchema } from '../incomeExpensePostingValidation';
 import { reservationRefundPaymentSchema, reservationSettlementFormSchema } from '../reservationSettlementForm';
-import { supportCustomerScheduleSchema, supportPlanInputSchema } from '../rentSupport';
+import { allocateSupportQuote, supportCustomerScheduleSchema, supportPlanInputSchema, type SupportFundingContext } from '../rentSupport';
 import { payoutContextSchema } from '../rentSupportFunding';
 import { supportReadSchema } from '../rentSupportApi';
 import { buildingLegalOwnerSchema, emptyBuildingLegalOwner } from '../buildingLegalOwner';
@@ -93,6 +94,38 @@ describe('.pick/.extend trên schema đã refine', () => {
     expect(firstMessage(supportPlanInputSchema.safeParse(plan))).toBeNull();
     expect(firstMessage(supportPlanInputSchema.safeParse({ ...plan, start_billing_month: '9999-12', segments: [{ month_count: 2, monthly_amount: '1000' }] }))).toBe('Lịch hỗ trợ vượt năm 9999.');
     expect(supportPlanInputSchema.safeParse({ ...plan, extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('field sai định dạng có transform không được tới superRefine cấp object', () => {
+  const plan = { version: 2, start_billing_month: '2026-01', payer: 'BUILDING', sale_party_id: NON_RFC_UUID, deduction_policy: 'COMMISSION_ONLY', collection_mode: 'UPFRONT_COMMITTED', segments: [{ month_count: 1, monthly_amount: '1000' }] };
+  const source = { source_id: NON_RFC_UUID, sale_party_id: NON_RFC_UUID, kind: 'COMMISSION', gross_original: '1000', already_paid: '0', prior_withheld: '0', available_to_withhold: '0', route: 'CASHBOOK' };
+  const loiKhiChia = (override: Record<string, unknown>) => {
+    try {
+      allocateSupportQuote(plan, { sources: [{ ...source, ...override }] } as unknown as SupportFundingContext);
+      return null;
+    } catch (error) {
+      return error;
+    }
+  };
+
+  it('nguồn hợp lệ vẫn chia được', () => {
+    expect(loiKhiChia({})).toBeNull();
+  });
+
+  it.each(['gross_original', 'already_paid', 'prior_withheld', 'available_to_withhold'])('%s sai định dạng trả lỗi validation, không ném SyntaxError từ BigInt', (field) => {
+    for (const value of ['abc', '1,5', '1e3', '', ' 1', '-1', '12.', '0x10']) {
+      const error = loiKhiChia({ [field]: value });
+      expect(error, `${field}=${JSON.stringify(value)}`).toBeInstanceOf(z.ZodError);
+      expect((error as z.ZodError).issues.map((issue) => issue.message)).toEqual(['Số tiền phải là chuỗi thập phân hữu hạn không âm.']);
+    }
+  });
+
+  it('id sai định dạng cũng dừng trước luật cộng trừ, như zod 3', () => {
+    const error = loiKhiChia({ source_id: 'khong-phai-uuid', already_paid: '2000' });
+    expect(error).toBeInstanceOf(z.ZodError);
+    expect((error as z.ZodError).issues).toHaveLength(1);
+    expect((error as z.ZodError).issues[0]?.path).toEqual(['sources', 0, 'source_id']);
   });
 });
 

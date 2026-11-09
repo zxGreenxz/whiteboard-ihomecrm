@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 const uuid = z.string().guid();
 const version = z.number().int().positive();
-// Giới hạn input mới đo theo đơn vị UTF-16 như trước; `.max()` của zod 4 đếm code point nên
-// chuỗi toàn emoji sẽ lọt giới hạn. Không dùng cho output (nhãn cũ theo quy tắc PostgreSQL).
+// Giới hạn đo theo đơn vị UTF-16 như zod 3; `.max()` của zod 4 đếm code point nên chuỗi toàn emoji
+// sẽ lọt. `name`/`icon` dùng chung cho input lẫn output (ví, mục tiêu; `icon` của cả danh mục); riêng
+// `name` danh mục ở output đi qua `categorySchema` riêng theo quy tắc PostgreSQL, không giới hạn này.
 const trongGioiHanUtf16 = (limit: number) => [(value: string) => value.length <= limit, { message: `String must contain at most ${limit} character(s)` }] as const;
 const name = z.string().trim().min(1).refine(...trongGioiHanUtf16(80));
 const icon = z.string().trim().min(1).refine(...trongGioiHanUtf16(32));
