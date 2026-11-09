@@ -21,6 +21,12 @@ java -version 2> build/ci-evidence/java-version.txt
 git rev-parse HEAD > build/ci-evidence/commit.txt
 cp "$ANDROID_HOME/platforms/android-35/source.properties" build/ci-evidence/android-platform.properties
 cp "$ANDROID_HOME/build-tools/35.0.0/source.properties" build/ci-evidence/android-build-tools.properties
+# Fetching the checksum-pinned distribution is safe to repeat; a build failure is never retried here.
+for attempt in 1 2 3; do
+  if bash ./gradlew --no-daemon --version > /dev/null; then break; fi
+  if (( attempt == 3 )); then printf 'Gradle distribution could not be downloaded.\n' >&2; exit 1; fi
+  sleep 20
+done
 bash ./gradlew --no-daemon --console=plain -Pandroid.builder.sdkDownload=false \
   :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
 apk='app/build/outputs/apk/debug/app-debug.apk'
