@@ -1,0 +1,487 @@
+package vn.ihome.diemdanh;
+
+import android.Manifest;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.app.UiAutomation;
+import android.content.Context;
+import android.content.Intent;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
+import android.util.Log;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.TextView;
+
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.core.app.ApplicationProvider;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.work.WorkManager;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.Assert.*;
+
+/** Runs only on the disposable CI emulator; a fake transport keeps every test off the network. */
+@RunWith(AndroidJUnit4.class)
+public final class DiemDanhDeviceTest {
+    private static final String TAG = "DiemDanhDeviceTest";
+    private static final String JSON = "application/json; charset=utf-8";
+
+    private Context context;
+    private UiAutomation automation;
+    private CheckinSettings settings;
+    private QueueStore queue;
+    private FakeTransport transport;
+
+    private interface Responder {
+        DeliveryWork.HttpResult respond(String id, String payload) throws IOException;
+    }
+
+    private static final class FakeTransport implements DeliveryWork.Transport {
+        final List<String> ids = Collections.synchronizedList(new ArrayList<>());
+        final List<String> tokens = Collections.synchronizedList(new ArrayList<>());
+        volatile Responder responder = (id, payload) -> new DeliveryWork.HttpResult(503, "", JSON);
+
+        @Override public DeliveryWork.HttpResult post(String endpoint, String token, String id, String payload) throws IOException {
+            ids.add(id);
+            tokens.add(token);
+            return responder.respond(id, payload);
+        }
+    }
+
+    @Before public void isolate() throws Exception {
+        context = ApplicationProvider.getApplicationContext();
+        automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        transport = new FakeTransport();
+        DeliveryWork.transport = transport;
+        WorkManager.getInstance(context).cancelAllWork().getResult().get();
+        settings = new CheckinSettings(context);
+        queue = new QueueStore(context);
+        SlotScheduler.cancel(context);
+        settings.clearForTest();
+        queue.clearAll();
+    }
+
+    @After public void removeFixture() throws Exception {
+        WorkManager.getInstance(context).cancelAllWork().getResult().get();
+        SlotScheduler.cancel(context);
+        settings.clearForTest();
+        queue.clearAll();
+    }
+
+    // ---- Storage ---------------------------------------------------------------------------
+
+    @Test public void credentialAndOutboxAreEncryptedAndASlotIsStoredOnce() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        assertTrue(CheckinPolicy.validToken(state.token));
+        String stored = context.getSharedPreferences("checkin_private", Context.MODE_PRIVATE).getString("state", "");
+        assertFalse(stored.isEmpty());
+        assertFalse(stored.contains(state.token));
+        assertFalse(stored.contains(state.deviceId));
+        long slotMs = Instant.parse("2026-01-05T01:30:00Z").toEpochMilli();
+        JSONObject first = Fixtures.ping(state, slotMs, Fixtures.freshFix());
+        queue.enqueuePing(state, first.getString("id"), first.toString(), slotMs, CheckinPolicy.FIX_FRESH, null);
+        JSONObject second = Fixtures.ping(state, slotMs, CheckinPolicy.Fix.none(CheckinPolicy.REASON_TIMEOUT));
+        queue.enqueuePing(state, second.getString("id"), second.toString(), slotMs, CheckinPolicy.FIX_NONE, CheckinPolicy.REASON_TIMEOUT);
+        List<QueueStore.Pending> rows = queue.pending(10);
+        assertEquals(1, rows.size());
+        assertFalse(rows.get(0).encryptedPayload.contains("location.ping"));
+        assertEquals("The first stored payload is the one that is sent, so a retry cannot hit 409.",
+                CheckinPolicy.FIX_FRESH, new JSONObject(rows.get(0).payload()).getJSONObject("fix").getString("status"));
+    }
+
+    @Test public void aNewCodeNeverReusesTheCredentialOfAnEarlierCode() {
+        String first = settings.beginPairing("ABCDEFGH23");
+        assertEquals("A lost receipt replays the same credential", first, settings.beginPairing("ABCDEFGH23"));
+        assertNotEquals(first, settings.beginPairing("HGFEDCBA23"));
+    }
+
+    // ---- Delivery --------------------------------------------------------------------------
+
+    private String enqueuePing(CheckinSettings.State state, long slotMs) throws Exception {
+        JSONObject event = Fixtures.ping(state, slotMs, Fixtures.freshFix());
+        queue.enqueuePing(state, event.getString("id"), event.toString(), slotMs, CheckinPolicy.FIX_FRESH, null);
+        return event.getString("id");
+    }
+
+    private DeliveryWork.Outcome drain() {
+        return DeliveryWork.drain(context, () -> false);
+    }
+
+    @Test public void onlyAPinnedReceiptMarksARecordSentAndNewSettingsReschedule() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        String id = enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        JSONObject next = Fixtures.settings(9, true, true, Fixtures.windows("00:00", "23:55"), new JSONArray());
+        String valid = Fixtures.receipt(id, "accepted", next);
+
+        transport.responder = (requestId, payload) -> { throw new IOException("offline"); };
+        assertEquals(DeliveryWork.Outcome.RETRY, drain());
+        assertEquals("Offline records stay queued", 1, queue.stats().pending);
+
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(503, "", JSON);
+        assertEquals(DeliveryWork.Outcome.RETRY, drain());
+        assertEquals(1, queue.stats().pending);
+
+        String[] notProof = {
+                Fixtures.receipt("d".repeat(64), "accepted", next), Fixtures.receipt(id, "weird", next), "<html>OK</html>", ""};
+        for (String body : notProof) {
+            transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(200, body, JSON);
+            assertEquals(DeliveryWork.Outcome.DONE, drain());
+            assertEquals(body, 0, queue.stats().sent);
+            assertEquals(body, 1, queue.stats().failed);
+            queue.retryFailed();
+        }
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(200, valid, "text/html");
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertEquals("A receipt must be JSON", 0, queue.stats().sent);
+        queue.retryFailed();
+
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(201, valid, JSON);
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertEquals(1, queue.stats().sent);
+        assertEquals(0, queue.stats().pending);
+        assertEquals(state.token, transport.tokens.get(transport.tokens.size() - 1));
+        assertEquals(id, transport.ids.get(transport.ids.size() - 1));
+        assertEquals("Receipt settings are stored", 9, settings.load().schedule.version);
+        assertTrue("Changed settings arm the schedule", SlotScheduler.isArmed(context));
+    }
+
+    @Test public void aRevokedDeviceStopsAndKeepsItsRecords() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        SlotScheduler.ensureArmed(context);
+        enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(401, "", JSON);
+        assertEquals(DeliveryWork.Outcome.REVOKED, drain());
+        CheckinSettings.State after = settings.load();
+        assertTrue(after.revoked);
+        assertFalse(after.isActive());
+        assertEquals(0L, after.armedSlotMs);
+        assertFalse(SlotScheduler.isArmed(context));
+        assertEquals(1, queue.stats().pending);
+        int calls = transport.ids.size();
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertEquals("Nothing is sent after revocation", calls, transport.ids.size());
+    }
+
+    @Test public void recordsOfAnEarlierPairingAreNeverSentWithANewCredential() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        long now = System.currentTimeMillis();
+        settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.allDaySettings(4), now, now, "Người khác");
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertTrue(transport.ids.isEmpty());
+        assertEquals(1, queue.stats().failed);
+    }
+
+    // ---- Alarms ----------------------------------------------------------------------------
+
+    private LocalDate vietnamToday() {
+        return Instant.now().atZone(CheckinPolicy.VIETNAM).toLocalDate();
+    }
+
+    private boolean armedInDumpsys() throws IOException {
+        String dump = shell("dumpsys alarm");
+        boolean found = dump.contains(context.getPackageName()) && dump.contains(SlotAlarmReceiver.ACTION_SLOT);
+        if (!found) Log.w(TAG, "alarm not found in dumpsys");
+        return found;
+    }
+
+    @Test public void theAlarmIsOnlyEverForASlotInsideTheWindow() throws Exception {
+        ZonedDateTime now = Instant.now().atZone(CheckinPolicy.VIETNAM);
+        boolean morning = now.getHour() < 12;
+        int from = morning ? 13 * 60 : 8 * 60;
+        int to = from + 30;
+        String[] window = morning ? new String[]{"13:00", "13:30"} : new String[]{"08:00", "08:30"};
+        Fixtures.pair(settings, Fixtures.settings(5, true, true, Fixtures.windows(window[0], window[1]), new JSONArray()));
+        SlotScheduler.ensureArmed(context);
+        CheckinSettings.State state = settings.load();
+        assertTrue(SlotScheduler.isArmed(context));
+        assertTrue(state.armedSlotMs > System.currentTimeMillis());
+        ZonedDateTime armed = Instant.ofEpochMilli(state.armedSlotMs).atZone(CheckinPolicy.VIETNAM);
+        int minute = armed.getHour() * 60 + armed.getMinute();
+        assertTrue(armed.toString(), minute >= from && minute <= to);
+        assertTrue("The alarm exists in AlarmManager", armedInDumpsys());
+    }
+
+    @Test public void noAlarmIsSetForAnOffDay() throws Exception {
+        LocalDate today = vietnamToday();
+        JSONArray twoWeeksOff = new JSONArray();
+        for (int day = 0; day < 14; day++) twoWeeksOff.put(today.plusDays(day).toString());
+        Fixtures.pair(settings, Fixtures.settings(5, true, true, Fixtures.windows("00:00", "23:55"), twoWeeksOff));
+        SlotScheduler.ensureArmed(context);
+        LocalDate armed = Instant.ofEpochMilli(settings.load().armedSlotMs).atZone(CheckinPolicy.VIETNAM).toLocalDate();
+        assertFalse(armed.toString(), armed.isBefore(today.plusDays(14)));
+
+        JSONArray everyDay = new JSONArray();
+        for (int day = 0; day < 40; day++) everyDay.put(today.plusDays(day).toString());
+        settings.applyServerSettings(Fixtures.settings(6, true, true, Fixtures.windows("00:00", "23:55"), everyDay),
+                System.currentTimeMillis(), System.currentTimeMillis());
+        SlotScheduler.ensureArmed(context);
+        assertEquals("With no working day ahead there is no alarm", 0L, settings.load().armedSlotMs);
+        assertFalse(SlotScheduler.isArmed(context));
+    }
+
+    @Test public void aDisabledOrUnappliedScheduleHasNoAlarm() throws Exception {
+        Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        SlotScheduler.ensureArmed(context);
+        assertTrue(SlotScheduler.isArmed(context));
+        settings.applyServerSettings(Fixtures.settings(4, false, true, Fixtures.windows("00:00", "23:55"), new JSONArray()),
+                System.currentTimeMillis(), System.currentTimeMillis());
+        SlotScheduler.ensureArmed(context);
+        assertFalse(SlotScheduler.isArmed(context));
+        settings.applyServerSettings(Fixtures.settings(5, true, false, Fixtures.windows("00:00", "23:55"), new JSONArray()),
+                System.currentTimeMillis(), System.currentTimeMillis());
+        SlotScheduler.ensureArmed(context);
+        assertFalse(SlotScheduler.isArmed(context));
+    }
+
+    @Test public void bootRearmsALostAlarmButNotForAnUnpairedPhone() throws Exception {
+        new BootReceiver().onReceive(context, new Intent(Intent.ACTION_BOOT_COMPLETED));
+        assertFalse("An unpaired phone arms nothing", SlotScheduler.isArmed(context));
+
+        Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        SlotScheduler.ensureArmed(context);
+        long armed = settings.load().armedSlotMs;
+        PendingIntent lost = SlotScheduler.existingAlarm(context);
+        context.getSystemService(AlarmManager.class).cancel(lost);
+        lost.cancel();
+        assertFalse(SlotScheduler.isArmed(context));
+
+        new BootReceiver().onReceive(context, new Intent(Intent.ACTION_BOOT_COMPLETED));
+        assertTrue(SlotScheduler.isArmed(context));
+        assertEquals(armed, settings.load().armedSlotMs);
+        assertTrue(armedInDumpsys());
+    }
+
+    // ---- Capture ---------------------------------------------------------------------------
+
+    private void grantLocation() throws IOException {
+        String app = context.getPackageName();
+        automation.grantRuntimePermission(app, Manifest.permission.ACCESS_FINE_LOCATION);
+        automation.grantRuntimePermission(app, Manifest.permission.ACCESS_COARSE_LOCATION);
+        automation.grantRuntimePermission(app, Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        automation.grantRuntimePermission(app, Manifest.permission.POST_NOTIFICATIONS);
+        shell("dumpsys deviceidle whitelist +" + app);
+        shell("cmd location set-location-enabled true");
+    }
+
+    private void fireSlot(long slotMs) {
+        new SlotAlarmReceiver().onReceive(context,
+                new Intent(SlotAlarmReceiver.ACTION_SLOT).putExtra(SlotAlarmReceiver.EXTRA_SLOT_MS, slotMs));
+    }
+
+    private JSONObject awaitPing(String id, long timeoutMs) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + timeoutMs;
+        while (SystemClock.uptimeMillis() < deadline) {
+            for (QueueStore.Pending row : queue.pending(50)) {
+                if (id.equals(row.id)) return new JSONObject(row.payload());
+            }
+            SystemClock.sleep(100L);
+        }
+        throw new AssertionError("No ping was queued for the slot");
+    }
+
+    private Location mockLocation(String provider) {
+        Location location = new Location(provider);
+        location.setLatitude(10d);
+        location.setLongitude(106d);
+        location.setAccuracy(5f);
+        location.setTime(System.currentTimeMillis());
+        location.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+        return location;
+    }
+
+    @Test public void aFiredSlotQueuesAPingFromAMockLocationAndReportsTheMock() throws Exception {
+        grantLocation();
+        shell("appops set " + context.getPackageName() + " android:mock_location allow");
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(7));
+        LocationManager manager = context.getSystemService(LocationManager.class);
+        String[] providers = {"fused", LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER};
+        for (String provider : providers) {
+            manager.addTestProvider(provider, false, false, false, false, true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
+            manager.setTestProviderEnabled(provider, true);
+        }
+        AtomicBoolean feeding = new AtomicBoolean(true);
+        AtomicReference<Throwable> feedError = new AtomicReference<>();
+        Thread feeder = new Thread(() -> {
+            try {
+                while (feeding.get()) {
+                    for (String provider : providers) manager.setTestProviderLocation(provider, mockLocation(provider));
+                    SystemClock.sleep(200L);
+                }
+            } catch (RuntimeException error) {
+                feedError.set(error);
+            }
+        });
+        feeder.start();
+        try {
+            long slotMs = Instant.now().plusSeconds(60L).toEpochMilli();
+            fireSlot(slotMs);
+            JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 40_000L);
+            assertNull(feedError.get());
+            assertEquals(CheckinPolicy.EVENT_PING, ping.getString("event"));
+            JSONObject fix = ping.getJSONObject("fix");
+            assertEquals(CheckinPolicy.FIX_FRESH, fix.getString("status"));
+            assertEquals(10d, fix.getDouble("lat"), 0.0001d);
+            assertEquals(106d, fix.getDouble("lng"), 0.0001d);
+            assertTrue(fix.getBoolean("mock"));
+            assertEquals(JSONObject.NULL, ping.get("reason"));
+            assertEquals(7, ping.getInt("settingsVersion"));
+            JSONObject device = ping.getJSONObject("device");
+            assertEquals(CheckinPolicy.LOCATION_ALWAYS, device.getString("locationPermission"));
+            assertTrue(device.getBoolean("locationEnabled"));
+            assertFalse(device.getBoolean("paused"));
+            CheckinPolicy.validateEvent(ping);
+        } finally {
+            feeding.set(false);
+            feeder.join(2_000L);
+            for (String provider : providers) manager.removeTestProvider(provider);
+        }
+    }
+
+    @Test public void aPausedSlotIsReportedAndTakesNoLocation() throws Exception {
+        grantLocation();
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        settings.setPaused(true);
+        long slotMs = Instant.now().plusSeconds(120L).toEpochMilli();
+        fireSlot(slotMs);
+        JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
+        assertEquals(1, ping.getJSONObject("fix").length());
+        assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
+        assertEquals(CheckinPolicy.REASON_PAUSED, ping.getString("reason"));
+        assertTrue(ping.getJSONObject("device").getBoolean("paused"));
+    }
+
+    @Test public void aSlotWithLocationSwitchedOffReportsLocationOff() throws Exception {
+        grantLocation();
+        shell("cmd location set-location-enabled false");
+        try {
+            long waitUntil = SystemClock.uptimeMillis() + 5_000L;
+            while (DeviceHealth.locationEnabled(context) && SystemClock.uptimeMillis() < waitUntil) SystemClock.sleep(50L);
+            assertFalse(DeviceHealth.locationEnabled(context));
+            CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+            long slotMs = Instant.now().plusSeconds(180L).toEpochMilli();
+            fireSlot(slotMs);
+            JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
+            assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
+            assertEquals(CheckinPolicy.REASON_LOCATION_OFF, ping.getString("reason"));
+        } finally {
+            shell("cmd location set-location-enabled true");
+        }
+    }
+
+    // ---- Screens ---------------------------------------------------------------------------
+
+    @Test public void aPairLinkFillsTheCodeButTheManagerMustConfirm() throws Exception {
+        Intent link = new Intent(context, PairActivity.class).setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("ihomediemdanh://pair?c=" + Fixtures.PAIR_CODE));
+        try (ActivityScenario<PairActivity> scenario = ActivityScenario.launch(link)) {
+            waitForText(scenario, "Đã nhận mã từ liên kết");
+            scenario.onActivity(activity -> {
+                View root = activity.getWindow().getDecorView();
+                assertTrue(containsText(root, "Ghép máy với"));
+                assertEquals(Fixtures.PAIR_CODE, findEditText(root).getText().toString());
+            });
+            assertTrue("A link alone must not pair the phone", transport.ids.isEmpty());
+            assertFalse(settings.load().isActive());
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            screenshot("setup");
+        }
+    }
+
+    @Test public void theStatusScreenShowsTheDeviceRowsAndThePauseButton() throws Exception {
+        grantLocation();
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        long slotMs = Instant.parse("2026-01-05T01:30:00Z").toEpochMilli();
+        enqueuePing(state, slotMs);
+        SlotScheduler.ensureArmed(context);
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            waitForText(scenario, "Máy đang tự ghi vị trí");
+            scenario.onActivity(activity -> {
+                View root = activity.getWindow().getDecorView();
+                for (String label : new String[]{"Máy của bạn", "App điểm danh", "Quyền vị trí", "Chạy nền", "Pin",
+                        "Dấu gần nhất", "Mốc kế tiếp", "Các mốc gần đây", "Tạm dừng"}) {
+                    assertTrue(label, containsText(root, label));
+                }
+            });
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            screenshot("status");
+        }
+    }
+
+    // ---- Helpers ---------------------------------------------------------------------------
+
+    private String shell(String command) throws IOException {
+        ParcelFileDescriptor descriptor = automation.executeShellCommand(command);
+        StringBuilder out = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new ParcelFileDescriptor.AutoCloseInputStream(descriptor), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) out.append(line).append('\n');
+        }
+        return out.toString();
+    }
+
+    /** Written by the shell user: the app's own files are gone once AGP uninstalls it after the run. */
+    private void screenshot(String name) throws IOException {
+        shell("screencap -p /data/local/tmp/diemdanh-" + name + ".png");
+    }
+
+    private <A extends android.app.Activity> void waitForText(ActivityScenario<A> scenario, String text) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 10_000L;
+        AtomicBoolean ready = new AtomicBoolean();
+        while (!ready.get() && SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity(activity -> ready.set(containsText(activity.getWindow().getDecorView(), text)));
+            if (!ready.get()) SystemClock.sleep(50L);
+        }
+        assertTrue("Expected on screen: " + text, ready.get());
+    }
+
+    private static boolean containsText(View view, String text) {
+        if (view instanceof TextView && ((TextView) view).getText().toString().contains(text)) return true;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                if (containsText(group.getChildAt(index), text)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static EditText findEditText(View view) {
+        if (view instanceof EditText) return (EditText) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                EditText found = findEditText(group.getChildAt(index));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+}

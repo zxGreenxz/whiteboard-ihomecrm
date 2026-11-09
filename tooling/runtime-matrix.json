@@ -91,6 +91,12 @@
       "note": "Uses preinstalled JDK17/Android35; Gradle8.11.1 distribution checksum is pinned in the wrapper. No Node or Deno setup."
     },
     {
+      "path": ".github/workflows/android-diem-danh.yml",
+      "node": null,
+      "deno": null,
+      "note": "Same toolchain as android-gateway: preinstalled JDK17/Android35, Gradle8.11.1 checksum pinned in the wrapper. No Node or Deno setup."
+    },
+    {
       "path": ".github/workflows/meter-capture-runtime.yml",
       "node": "24.18.0",
       "deno": null,
