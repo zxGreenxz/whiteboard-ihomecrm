@@ -82,7 +82,9 @@ public final class SlotScheduler {
                 PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    /** Foreground queue: a slot must not wait behind other apps' background broadcasts. */
     private static Intent alarmIntent(Context app) {
-        return new Intent(app, SlotAlarmReceiver.class).setAction(SlotAlarmReceiver.ACTION_SLOT);
+        return new Intent(app, SlotAlarmReceiver.class).setAction(SlotAlarmReceiver.ACTION_SLOT)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
     }
 }

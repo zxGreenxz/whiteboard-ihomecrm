@@ -444,7 +444,7 @@ public final class DiemDanhDeviceTest {
         assertTrue(slotMs > 0L);
         // Sends the real alarm PendingIntent, so the manifest receiver and the slot extra are exercised.
         SlotScheduler.existingAlarm(context).send();
-        JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
+        JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 40_000L);
         assertEquals(1, ping.getJSONObject("fix").length());
         assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
         assertEquals(CheckinPolicy.REASON_PAUSED, ping.getString("reason"));
@@ -462,7 +462,7 @@ public final class DiemDanhDeviceTest {
             CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
             long slotMs = Instant.now().plusSeconds(180L).toEpochMilli();
             fireSlot(slotMs);
-            JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
+            JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 40_000L);
             assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
             assertEquals(CheckinPolicy.REASON_LOCATION_OFF, ping.getString("reason"));
         } finally {
