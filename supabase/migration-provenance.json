@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-09T06:20:26.202Z",
+  "generatedAt": "2026-11-09T07:13:57.328Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 927,
-    "unknown": 83,
+    "ledger-applied": 930,
+    "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14082,14 +14082,9 @@
       "name": "gps_checkin_v1",
       "scheme": "timestamp14",
       "sha256": "c17da8e017fa0ac1198275f92af6cb512300b3aa66ae991852fafcf8fceddced",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.gps_checkin_settings",
-        "table:app_private.gps_checkin_members",
-        "table:app_private.gps_checkin_devices",
-        "table:app_private.gps_checkin_pair_codes",
-        "table:app_private.gps_checkin_pings"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:08:04.009Z|bien-nhan-backup"
       ]
     },
     {
@@ -14098,14 +14093,9 @@
       "name": "staff_day_xem_theo_nguoi_v1",
       "scheme": "timestamp14",
       "sha256": "6f30754d6d0ff28a94148672ac7c99e0fbd52f5f1337299969fb6a7fb51d3146",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.staff_day_tick_info_v1",
-        "function:app_private.staff_day_kinds_v1",
-        "function:app_private.staff_day_events_v1",
-        "function:app_private.staff_day_now_v1",
-        "function:app_private.staff_day_route_items_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:10:37.824Z|bien-nhan-backup"
       ]
     },
     {
@@ -14114,13 +14104,9 @@
       "name": "staff_period_report_v1",
       "scheme": "timestamp14",
       "sha256": "b556c7986dd3234353f1a59cf66734cd7baa55fa6a5e3cbf065dea25ced780f3",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.staff_period_reviews",
-        "function:app_private.staff_period_overdue_v1",
-        "function:public.staff_period_report_v1",
-        "function:public.staff_period_review_set_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:13:46.963Z|bien-nhan-backup"
       ]
     },
     {
