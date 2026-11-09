@@ -76,7 +76,7 @@ const customerSchema = z.object({
   status: z.enum(["PROSPECT", "ACTIVE", "INACTIVE", "BLACKLIST"]),
   notes: z.string().optional(),
   avatar_url: z.string().optional(),
-  id_images: z.record(z.string()).optional(),
+  id_images: z.record(z.string(), z.string()).optional(),
   vehicles: z
     .array(
       z.object({

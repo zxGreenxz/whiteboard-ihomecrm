@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
@@ -16,8 +16,8 @@ import { LoadingState } from '@/components/loading/LoadingState';
 
 const filtersSchema = z.object({
   billingMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-  collectorId: z.union([z.literal(''), z.string().uuid()]),
-  buildingId: z.union([z.literal(''), z.string().uuid()]),
+  collectorId: z.union([z.literal(''), z.string().guid()]),
+  buildingId: z.union([z.literal(''), z.string().guid()]),
 });
 interface FilterValues { billingMonth: string; collectorId: string; buildingId: string }
 const PAGE_SIZE = 50;
@@ -38,7 +38,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
   const allowed = canUse(permissions, 'thu_tien', 'report');
   const { data: buildings = [], isError: buildingsError } = useBuildings({ enabled: open && allowed });
   const { control, watch } = useForm<FilterValues>({
-    resolver: zodResolver(filtersSchema),
+    resolver: zodResolver(filtersSchema) as Resolver<FilterValues>,
     defaultValues: { billingMonth: billingMonth?.slice(0, 7) || currentMonthVN(), collectorId: '', buildingId: buildingId || '' },
   });
   const filters = watch();

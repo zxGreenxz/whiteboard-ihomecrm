@@ -38,7 +38,8 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
   kèm trả phòng; lập thanh lý / quyết toán HĐ, trả tiền thừa cho khách; lương, thưởng; lập / sửa / huỷ phiếu THU; phiếu hệ thống,
   phiếu con định kỳ (trang web từng loại: `ihome-crm-thu-chi`). KHÔNG chặn: khách trả phòng kèm bỏ cọc ⇒ `contract.return`
   `forfeit` = true (`ihome-crm-hop-dong`); ghi chú vào phiếu đã có, kể cả phiếu thu ⇒ `expense.note`; khách trả tiền HOÁ ĐƠN (kể
-  cả hoá đơn thanh lý) ⇒ `ihome-crm-hoa-don`.
+  cả hoá đơn thanh lý) ⇒ `ihome-crm-hoa-don`; ghi chú thưởng / hoa hồng cho sale của một phòng (`sale_bonus_note`, chỉ là chữ trên
+  phòng, không tạo phiếu) ⇒ `ihome-crm-phong-sale-nhom`.
 - Kết quả đọc rỗng chỉ là "không có" khi đã lọc đúng tham số (toà `buildingName`, phòng `roomName`, kỳ, trạng thái). Tên không
   giải được (`not_visible`, "không thấy …") là không thấy trong phạm vi quyền, không phải "không tồn tại".
 
@@ -65,9 +66,10 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
    - `confirmation_required` = CHƯA ghi. Đọc nguyên văn `preview` và `warnings` (kể cả câu "Hiểu '…' là …"), chờ người dùng
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +
      `params` kèm `requestId` và `confirmToken` chép đủ từng ký tự; `huongDan` đòi `consentText` ⇒ thêm `consentText` = nguyên
-     văn tin người dùng. Người dùng ĐỔI hoặc BỔ SUNG nội dung (thêm / sửa ghi chú, lý do, loại, ngày, người…) ⇒ gọi lại NGAY
-     trong lượt đó, KHÔNG kèm `confirmToken`, đưa bản xem trước mới — không hỏi xác nhận bản cũ bằng chữ; đồng ý ở tin sau mới gọi
-     lượt ghi.
+     văn tin người dùng. Người dùng ĐỔI hoặc BỔ SUNG nội dung (thêm / sửa ghi chú, lý do, loại, ngày, người, sổ / tài khoản nhận,
+     số tiền, phương thức…) ⇒ gọi lại NGAY trong lượt đó, KHÔNG kèm `confirmToken`, đưa bản xem trước mới — không hỏi xác nhận bản
+     cũ bằng chữ; đồng ý ở tin sau mới gọi lượt ghi. Tin sau bản xem trước mà nêu giá trị mới (vd "ck vào TK An") là SỬA dù không
+     có chữ "đổi" ⇒ lượt đó không gửi `confirmToken`, gọi lại xem trước với giá trị mới.
    - `needs_input` = CHƯA ghi; làm theo `huongDan`. `invalid_params`: sửa phần MÌNH chọn (tên / kiểu tham số, định dạng ngày,
      tham số thừa) theo khuôn trong `detail`; cụm người dùng nói về chính giá trị đó ⇒ dùng / ghép nguyên văn rồi gọi lại (không
      tự thêm câu yêu cầu, tên thao tác, từ đệm). Máy chủ báo giá trị người dùng nói còn ngắn / sai khuôn (vd lý do chỉ "đổi ý", giữ phòng 8 giờ), hoặc

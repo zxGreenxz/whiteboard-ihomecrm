@@ -12,7 +12,7 @@ export type AdjustmentBuildRpcName = 'invoice_adjustment_build_v1';
 export interface AdjustmentBuildRpcError { code?: string; message?: string }
 export type AdjustmentBuildInvoker = (name: AdjustmentBuildRpcName, args: Record<string, Json>) => PromiseLike<{ data: unknown; error: AdjustmentBuildRpcError | null }>;
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 // Cùng khuôn dòng gửi lên adjust_invoice_v2 (id bắt buộc: đây là dòng đang có của hoá đơn).
 const itemSchema = adjustmentItemSchema.extend({ id: uuid });
 const buildSchema = z.object({

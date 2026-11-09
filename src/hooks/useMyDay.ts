@@ -27,7 +27,7 @@ const inspectionStartReceipt = z.object({
   session_id:z.string().min(1),type:z.enum(['FULL','QUICK']),status:z.string().min(1),session_date:dayDate,
   checklist:z.array(z.object({key:z.string().min(1),label:z.string(),required:z.boolean(),done:z.boolean(),floor:z.number().optional(),random:z.boolean().optional()})),
   reqs:z.object({rooms:dayCount,size_idx:dayCount,photos_min:dayCount,dwell_min_seconds:dayCount}),
-  photos_count:dayCount,dwell_seconds:dayCount,started_at:dayTime.optional(),slot_counts:z.record(dayCount).optional(),
+  photos_count:dayCount,dwell_seconds:dayCount,started_at:dayTime.optional(),slot_counts:z.record(z.string(), dayCount).optional(),
 });
 const inspectionPhotoReceipt = z.union([
   z.object({accepted:z.literal(false),reason:z.string().min(1),message:z.string().optional()}),

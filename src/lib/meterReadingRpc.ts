@@ -31,7 +31,7 @@ export const METER_ROW_STATUS_TEXT: Record<MeterRowStatus, string> = {
   building_not_found: 'không tìm thấy toà nhà',
 };
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const rejectedRowSchema = z.object({
   n: z.number().int().positive().optional(), status: z.string(), roomName: z.string().optional(), meterCode: z.string().optional(),

@@ -4,13 +4,13 @@ const money = z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER)
   .refine((value) => Math.round(value * 100) / 100 === value, 'Money must have at most two decimals');
 const count = z.number().finite().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const nullableId = z.string().uuid().nullable();
+const nullableId = z.string().guid().nullable();
 const roundingRow = z.object({
   payment_id: nullableId,
   collection_id: nullableId,
-  invoice_id: z.string().uuid(),
+  invoice_id: z.string().guid(),
   invoice_number: z.string().nullable(),
-  building_id: z.string().uuid(),
+  building_id: z.string().guid(),
   building_name: z.string().nullable(),
   room_name: z.string().nullable(),
   billing_month: month,

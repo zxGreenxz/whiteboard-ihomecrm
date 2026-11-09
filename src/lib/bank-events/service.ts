@@ -55,7 +55,7 @@ export class BankEventError extends Error {
 }
 
 /** Never expose server exception text: it may include raw messages or credentials. */
-export async function invokeBankAdmin<T>(actorId: string, body: Record<string, unknown>, schema: z.ZodType<T, z.ZodTypeDef, unknown>, mutation = false): Promise<T> {
+export async function invokeBankAdmin<T>(actorId: string, body: Record<string, unknown>, schema: z.ZodType<T, unknown>, mutation = false): Promise<T> {
   try {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError || !session || session.user.id !== actorId) throw new BankEventError('Phiên đăng nhập đã thay đổi. Vui lòng mở lại trang.');
@@ -67,7 +67,7 @@ export async function invokeBankAdmin<T>(actorId: string, body: Record<string, u
   if (error) throw new BankEventError(mutation
     ? 'Chưa xác định thao tác đã hoàn tất. Hãy tải lại danh sách trước khi thử lại; nếu chưa lưu khóa mới, hãy cấp lại khóa.'
     : 'Không tải được dữ liệu. Kiểm tra phiên đăng nhập, quyền super admin và kết nối rồi thử lại.', mutation);
-  const envelope = z.object({ ok: z.literal(true), data: z.unknown() }).safeParse(data);
+  const envelope = z.object({ ok: z.literal(true), data: z.unknown().optional() }).safeParse(data);
   const result = schema.safeParse(envelope.success ? envelope.data.data : undefined);
   if (!envelope.success || !result.success) throw new BankEventError(mutation
     ? 'Chưa xác nhận được kết quả thao tác. Tải lại danh sách trước khi thử lại.'
@@ -87,7 +87,7 @@ export function bankEventService(actorId: string) {
     // hermes-parity:begin bank-events
     events: (filters: EventFilters) => invokeBankAdmin(actorId, { action: 'list_events', ...filters }, z.object({ events: z.array(eventSchema), nextCursor: z.string().nullable() })),
     // hermes-parity:end bank-events
-    detail: (eventId: string) => invokeBankAdmin(actorId, { action: 'get_event', eventId }, z.object({ event: eventSchema, payload: z.record(z.unknown()) })),
+    detail: (eventId: string) => invokeBankAdmin(actorId, { action: 'get_event', eventId }, z.object({ event: eventSchema, payload: z.record(z.string(), z.unknown()) })),
     // hermes-parity:begin bank-events
     status: () => invokeBankAdmin(actorId, { action: 'status' }, statusSchema),
     // hermes-parity:end bank-events

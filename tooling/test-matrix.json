@@ -349,6 +349,17 @@
       ]
     },
     {
+      "id": "android-diem-danh",
+      "sourcePaths": [
+        "extensions/diem-danh/android/**",
+        ".github/workflows/android-diem-danh.yml"
+      ],
+      "suiteId": "android-diem-danh",
+      "testPatterns": [
+        "extensions/diem-danh/android/app/src/test/**/*.java"
+      ]
+    },
+    {
       "id": "bank-event-offline-browser",
       "sourcePaths": [
         "src/pages/bank-events/**",
@@ -376,6 +387,17 @@
       "suiteId": "android-device",
       "testPatterns": [
         "extensions/sms-webhook/android/app/src/androidTest/**/*.java"
+      ]
+    },
+    {
+      "id": "android-diem-danh-device",
+      "sourcePaths": [
+        "extensions/diem-danh/android/**",
+        ".github/workflows/android-diem-danh.yml"
+      ],
+      "suiteId": "android-diem-danh-device",
+      "testPatterns": [
+        "extensions/diem-danh/android/app/src/androidTest/**/*.java"
       ]
     },
     {
@@ -2342,6 +2364,28 @@
       "note": "Builds APK and test APK, runs every unit test and Android lint. Native execution has a separate mandatory suite below."
     },
     {
+      "id": "android-diem-danh",
+      "workflowOwner": ".github/workflows/android-diem-danh.yml",
+      "runner": "gradle",
+      "ciJob": "Android APK and native tests",
+      "command": "bash extensions/diem-danh/android/ci-build.sh",
+      "ciCommandStep": "Build APK and run Android unit and lint checks",
+      "runtime": "JDK 17 / Android SDK 35 / Gradle 8.11.1",
+      "risk": "authorization",
+      "includes": [
+        "extensions/diem-danh/android/app/src/test/**/*.java"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/android-diem-danh.yml",
+          "job": "build"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 35,
+      "note": "Builds APK and test APK, runs every unit test and Android lint, and compares the APK permissions with the approved list. Native execution has a separate mandatory suite below."
+    },
+    {
       "id": "e2e-bank-events",
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
@@ -2383,6 +2427,28 @@
       "environment": "ci",
       "timeoutMinutes": 35,
       "note": "Every connected Android instrumentation test must run, and setup/status screenshots must exist. Compiling test APK is not accepted as execution."
+    },
+    {
+      "id": "android-diem-danh-device",
+      "workflowOwner": ".github/workflows/android-diem-danh.yml",
+      "runner": "gradle",
+      "ciJob": "Android APK and native tests",
+      "command": "bash extensions/diem-danh/android/ci-device.sh",
+      "ciCommandStep": "Verify encrypted queue, alarms and capture on device",
+      "runtime": "JDK 17 / Android SDK 35 / Gradle 8.11.1",
+      "risk": "authorization",
+      "includes": [
+        "extensions/diem-danh/android/app/src/androidTest/**/*.java"
+      ],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/android-diem-danh.yml",
+          "job": "build"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 35,
+      "note": "Runs on Android 15 and Android 10 emulators. Every declared instrumentation test must pass with none skipped, the screenshots must be real PNG files, and the encrypted queue is read back from a separate process after a force-stop. An emulator cannot prove real-phone sleep or vendor battery behaviour."
     },
     {
       "id": "meter-capture-python",

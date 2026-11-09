@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const cameraVideoEndpoint = "https://crm-hermes.chillhome.io.vn/camera-live/v1";
 const endpoint = cameraVideoEndpoint;
-const sessionSchema = z.object({ id: z.string().uuid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
+const sessionSchema = z.object({ id: z.string().guid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
 export type CameraPlaybackQuality = "sd" | "hd" | "fullhd" | "original";
 export type CameraLiveQuality = CameraPlaybackQuality;
 const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]) });
@@ -75,7 +75,7 @@ function claimLiveView(id: string): Promise<boolean> {
   return claimed;
 }
 export async function prepareCameraLiveView(recorderId: string) {
-  z.string().uuid().parse(recorderId);
+  z.string().guid().parse(recorderId);
   let view = liveViews.get(recorderId);
   if (!view) {
     let previous: string | undefined;
@@ -84,7 +84,7 @@ export async function prepareCameraLiveView(recorderId: string) {
       // A duplicated/new tab can inherit sessionStorage; it must not close its opener's video.
       const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
       if (navigation?.type === "reload" || navigation?.type === "back_forward") {
-        const stored = z.string().uuid().safeParse(sessionStorage.getItem(key));
+        const stored = z.string().guid().safeParse(sessionStorage.getItem(key));
         if (stored.success) previous = stored.data;
       }
     } catch { /* Storage can be unavailable; the server still enforces short leases. */ }
@@ -106,7 +106,7 @@ export async function prepareCameraLiveView(recorderId: string) {
   return current.id;
 }
 export async function cameraLiveCapabilities(recorderId: string, signal: AbortSignal) {
-  z.string().uuid().parse(recorderId);
+  z.string().guid().parse(recorderId);
   return capabilitiesSchema.parse(await liveRequest(`/recorders/${recorderId}`, "GET", undefined, signal));
 }
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
@@ -134,7 +134,7 @@ export class CameraLiveConnection {
   private async connect() {
     if (this.stopped) return;
     try {
-      z.string().uuid().parse(this.options.recorderId);
+      z.string().guid().parse(this.options.recorderId);
       z.number().int().min(1).max(64).parse(this.options.channel);
       this.options.onState("connecting");
       const peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });

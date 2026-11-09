@@ -2,7 +2,7 @@
   "version": "5",
   "specifiers": {
     "npm:@supabase/supabase-js@2.81.1": "2.81.1",
-    "npm:zod@3.25.76": "3.25.76"
+    "npm:zod@4.6.7": "4.6.7"
   },
   "npm": {
     "@supabase/auth-js@2.81.1": {
@@ -72,8 +72,8 @@
     "ws@8.21.1": {
       "integrity": "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw=="
     },
-    "zod@3.25.76": {
-      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
+    "zod@4.6.7": {
+      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="
     }
   }
 }

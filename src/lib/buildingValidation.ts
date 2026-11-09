@@ -24,15 +24,15 @@ export const buildingSchema = z.object({
   longitude: z.number().min(-180).max(180).nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
   has_elevator: z.boolean().default(false),
-  contract_template_id: z.string().uuid().nullable().optional(),
-  invoice_template_id: z.string().uuid().nullable().optional(),
+  contract_template_id: z.string().guid().nullable().optional(),
+  invoice_template_id: z.string().guid().nullable().optional(),
   // default_account_id_tk/_tt cố ý KHÔNG có ở đây: sổ nhận tiền của toà chỉ cài ở
   // màn "Sổ nhận tiền" (set_building_receiving_cashbooks_v1), form toà không ghi.
   commission_tiers: z.array(commissionTierSchema).default(DEFAULT_COMMISSION_TIERS_DATA),
 });
 
 export const buildingServiceSchema = z.object({
-  service_id: z.string().uuid(),
+  service_id: z.string().guid(),
   is_active: z.boolean(),
   unit_price_override: z.number().min(0, 'Đơn giá không được âm').nullable(),
 });

@@ -21,7 +21,7 @@ export function mapFinanceError(error: unknown): PersonalFinanceError {
  return new PersonalFinanceError('internal', 'Không thể xử lý dữ liệu ví cá nhân.', error);
 }
 export function createPersonalFinanceService(client: PersonalFinanceRpcClient, ownerId: string) {
- const owner = z.string().uuid().parse(ownerId);
+ const owner = z.string().guid().parse(ownerId);
  return {
   async snapshot(): Promise<Snapshot> {
    try {
@@ -34,7 +34,7 @@ export function createPersonalFinanceService(client: PersonalFinanceRpcClient, o
   },
   async mutate(requestKey: string, input: unknown): Promise<Receipt> {
    try {
-    const key = z.string().uuid().parse(requestKey), payload = normalizeMutation(input);
+    const key = z.string().guid().parse(requestKey), payload = normalizeMutation(input);
     const response = await client.rpc('personal_finance_mutate', { p_request_key: key, p_payload: payload }); if (response.error) throw response.error;
     try {
      const receipt = parseReceipt(response.data, owner, key, payload.action);

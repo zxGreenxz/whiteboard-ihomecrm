@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { commissionReasonSchema } from '@/lib/commissionCreationPolicy';
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
 export const fundingSourceQuoteSchema = z.object({
  source_id: uuid, kind: z.enum(['COMMISSION', 'BONUS']), gross_original: money,
@@ -24,17 +24,18 @@ export function parseSaleBonusStatus(value: unknown) {
   status: row.status ?? null, via: row.via ?? null, capAmount: row.capAmount ?? null, note: row.note ?? '' };
 }
 
-export const payoutPreviewIntentSchema = z.object({
+const payoutPreviewIntentBaseSchema = z.object({
  intent_id: uuid, kind: z.enum(['COMMISSION','BONUS']), party_id: uuid,
  gross_amount: money.refine(value => /[1-9]/.test(value), 'Số tiền phải lớn hơn 0'),
  route: z.enum(['CASHBOOK','MANAGER_PAYROLL']), manager_id: uuid.nullable(), account_id: uuid.nullable(),
  voucher_date: z.string().date(),
-}).strict().refine(value => (value.route === 'MANAGER_PAYROLL') === (value.manager_id !== null), 'Quản lý không khớp luồng chi');
+}).strict();
+export const payoutPreviewIntentSchema = payoutPreviewIntentBaseSchema.refine(value => (value.route === 'MANAGER_PAYROLL') === (value.manager_id !== null), 'Quản lý không khớp luồng chi');
 export const payoutPreviewContextSchema = z.object({version:z.literal(1),intents:z.array(payoutPreviewIntentSchema).max(2)}).strict()
  .refine(value => new Set((value.intents??[]).map(x=>x.kind)).size === (value.intents??[]).length && new Set((value.intents??[]).map(x=>x.intent_id)).size === (value.intents??[]).length,'Trùng ý định chi');
 /** Funding preview only. The actionable Task6 quote must also hash the full canonical payout payload. */
 export type PayoutPreviewContext = z.infer<typeof payoutPreviewContextSchema>;
-const payoutIntentFieldsSchema = payoutPreviewIntentSchema.innerType().extend({
+const payoutIntentFieldsSchema = payoutPreviewIntentBaseSchema.extend({
  source_id:uuid.nullable(),payer_name:z.string().nullable(),recipient_name:z.string().nullable(),
  recipient_bank:z.string().nullable(),recipient_account:z.string().nullable(),item_description:z.string().nullable(),attachments:z.array(z.string()),
  commission_reason:commissionReasonSchema,

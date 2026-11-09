@@ -4,8 +4,8 @@ import { roundInvoiceTotal } from './invoiceUtils';
 
 const nonNegative = z.number().finite().min(0, 'Giá trị phải từ 0 trở lên');
 export const adjustmentItemSchema = z.object({
-  id: z.string().uuid().nullable(),
-  service_id: z.string().uuid().nullable(),
+  id: z.string().guid().nullable(),
+  service_id: z.string().guid().nullable(),
   type: z.enum(['RENT', 'SERVICE', 'PENALTY', 'DISCOUNT', 'OTHER']),
   accounting_class: z.enum(['REVENUE', 'DEPOSIT', 'NON_PNL']),
   description: z.string().refine(value => value.trim().length > 0, 'Nhập mô tả hạng mục'),
