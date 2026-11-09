@@ -217,6 +217,8 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Tài khoản theo ngày', href: '/reports/finance/daily-cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
           { title: 'Dòng tiền', href: '/reports/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
           { title: 'Báo cáo Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, module: 'reports_finance', action: 'profit_distribution' },
+          // Chủ xem việc từng quản lý: cờ hiển thị; hàm staff_day_* mới là hàng rào.
+          { title: 'Việc của quản lý', href: '/my-day/team', icon: Users, requiresCompanyOwnerOrSuperAdmin: true },
           { title: 'Quyết toán vận hành', href: '/reports/finance/quyet-toan-van-hanh', icon: Handshake, requiresCompanyOwnerOrSuperAdmin: true },
           { title: 'Lịch thanh toán', href: '/reports/finance/payment-schedule', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
           ...navFieldsFor('overpayment').map((x) => ({ ...x, icon: Coins }) satisfies NavItem),

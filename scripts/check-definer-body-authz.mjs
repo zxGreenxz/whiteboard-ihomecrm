@@ -99,6 +99,9 @@ export const DANH_SACH_NHAY_CAM = [
   'contract_tenants',
   'contract_customers',
   'leads',
+  // — vị trí nhân viên —
+  'gps_checkin_pings',
+  'gps_checkin_devices',
 ];
 
 /** Primitive nói rằng thân hàm CÓ tự hỏi "người này được đụng cái gì". */

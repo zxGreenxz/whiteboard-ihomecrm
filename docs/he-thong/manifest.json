@@ -212,6 +212,12 @@
       "why": "Bề mặt superadmin chứa nghiệp vụ SMS/OTP nhạy cảm; cần ánh xạ và kiểm quyền superadmin trước khi cho AI đọc. Chỉ phân loại tài liệu, chưa đưa vào corpus."
     },
     {
+      "file": "27-viec-cua-quan-ly-va-diem-danh-gps.md",
+      "copilotIngest": false,
+      "reviewed": null,
+      "why": "Hợp đồng RPC/Edge và cách tính mốc điểm danh GPS cho người phát triển; dữ liệu vị trí nhân viên, không đưa vào tri thức Copilot."
+    },
+    {
       "file": "26-cua-van-tay.md",
       "copilotIngest": false,
       "reviewed": null,

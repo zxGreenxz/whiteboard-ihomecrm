@@ -12,10 +12,12 @@ import { dayAttendanceView } from '@/lib/taskFeedback';
 import { Link } from "react-router-dom";
 import {
   ArrowLeft, Banknote, Building2, CalendarClock, CheckCircle2, ChevronRight,
-  ClipboardList, Flame, Route, Shield, Sun,
+  ClipboardList, Crosshair, Flame, Route, Shield, Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RoutePlannerSheet from "@/components/my-day/RoutePlannerSheet";
+import { PersonPicker } from "@/components/staff-day/PersonPicker";
+import { useGpsMyStatus } from "@/hooks/gps-checkin/useGpsCheckin";
 import { toast } from "sonner";
 import { useJobs } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
@@ -63,6 +65,8 @@ export default function MyDayPage() {
   const requestLeave = useRequestLeave();
   const preferencesQuery = useUiPreferences();
   const { data: uiPreferences } = preferencesQuery;
+  const gpsStatus = useGpsMyStatus(false).data;
+  const gpsActive = !!gpsStatus?.eligible && !!gpsStatus.settings?.enabled && !!gpsStatus.settings.applies;
 
   const [runner, setRunner] = useState<{
     buildingId: string; buildingName: string; type: "FULL" | "QUICK";
@@ -192,6 +196,18 @@ export default function MyDayPage() {
           >
             Xin phép {s ? `(còn ${s.leave.left})` : ""}
           </button>
+        </div>
+
+        <div className="mb-3 space-y-2">
+          <PersonPicker active="me" />
+          {gpsActive && (
+            <Link to="/my-day/diem-danh" className="flex items-center gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm">
+              <Crosshair className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              Điểm danh tự động
+              <span className="ml-auto text-xs text-slate-500">{gpsStatus?.device ? "đang bật trên máy" : "chưa cài app"}</span>
+              <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+            </Link>
+          )}
         </div>
 
         <QueryRegion label="Ngày công, công việc và phiên kiểm tra" skeleton="list" rows={4} queries={[summaryQ,missionsQ,preferencesQuery,jobsQ,...(s?.today.date && authUser?.id ? [openSessQ] : []),...(coordIds.length ? [coordsQ] : [])]}>

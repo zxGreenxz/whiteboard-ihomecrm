@@ -25490,6 +25490,35 @@ export type Database = {
           voucher_name: string
         }[]
       }
+      gps_checkin_device_revoke_v1: {
+        Args: { p_device: string }
+        Returns: Json
+      }
+      gps_checkin_ingest_v1: {
+        Args: { p_digest: string; p_event: Json; p_payload_hash: string }
+        Returns: Json
+      }
+      gps_checkin_member_set_v1: {
+        Args: { p_applies: boolean; p_user: string }
+        Returns: Json
+      }
+      gps_checkin_my_status_v1: { Args: never; Returns: Json }
+      gps_checkin_pair_start_v1: { Args: never; Returns: Json }
+      gps_checkin_pair_v1: {
+        Args: {
+          p_code_digest: string
+          p_credential_digest: string
+          p_event: Json
+          p_fingerprint: string
+        }
+        Returns: Json
+      }
+      gps_checkin_settings_get_v1: { Args: { p_org?: string }; Returns: Json }
+      gps_checkin_settings_set_v1: { Args: { p_patch: Json }; Returns: Json }
+      gps_checkin_slots_v1: {
+        Args: { p_date?: string; p_user: string }
+        Returns: Json
+      }
       has_contract_termination_write_v1: {
         Args: { p_termination: string }
         Returns: boolean
@@ -30014,9 +30043,40 @@ export type Database = {
         Args: { _action: string; _owner: string; _table: string }
         Returns: boolean
       }
+      staff_day_calendar_v1: {
+        Args: { p_month?: string; p_user: string }
+        Returns: Json
+      }
+      staff_day_journey_v1: {
+        Args: { p_date?: string; p_user: string }
+        Returns: Json
+      }
+      staff_day_route_v1: { Args: { p_user: string }; Returns: Json }
+      staff_day_summary_v1: {
+        Args: { p_date?: string; p_user: string }
+        Returns: Json
+      }
+      staff_day_team_v1: {
+        Args: { p_date?: string; p_org?: string }
+        Returns: Json
+      }
       staff_in_building: {
         Args: { _building_id: string; _owner: string }
         Returns: boolean
+      }
+      staff_period_report_v1: {
+        Args: { p_from: string; p_org?: string; p_to: string }
+        Returns: Json
+      }
+      staff_period_review_set_v1: {
+        Args: {
+          p_from: string
+          p_note: string
+          p_rating: string
+          p_to: string
+          p_user: string
+        }
+        Returns: Json
       }
       start_inspection: {
         Args: {

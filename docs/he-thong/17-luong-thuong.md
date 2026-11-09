@@ -282,6 +282,7 @@ flowchart LR
 - Bảng v3: owner/admin full; **quản lý SELECT được dòng CỦA MÌNH** (`msc_self_select`, `sm_self_select`, `sa_self_select` qua salary_monthly, `sws_self_select`) — nền cho self-view realtime. Riêng `salary_bonus_rules`/`salary_holidays` owner-only (staff đọc phần cần thiết qua RPC SECDEF). Policy `income_expenses_select_salary_staff` cho quản lý thấy phiếu HH/ứng gắn mình.
 - Bảng V5: `inspection_sessions` staff CRUD phiên của mình; `inspection_photos` **không có policy INSERT** (ghi qua RPC); **SAD/SSS chỉ SELECT self/admin — mọi ghi qua RPC SECDEF**; `cron_runs`/`salary_award_errors` admin-only. Toàn bộ RPC ghi V5 theo chuẩn: SECURITY DEFINER + `search_path` + advisory lock + idempotent + log `salary_award_errors` (cùng bài học class-bug generator ở [01](01-phan-quyen-nhan-su.md)/doc nội bộ).
 - Route: `/reports/coverage` bọc `AdminOnlyRoute`; `/my-day` + `/finance/my-salary` mọi user đăng nhập ([App.tsx](src/App.tsx)).
+- Xem việc theo người (`/my-day/team`, `/my-day/bao-cao`, `/my-day/nguoi/*`): chỉ chủ công ty và super admin; cổng nằm trong thân hàm `app_private.staff_day_can_view_v1`. Xem [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).
 
 ### 4.13. ⚠️ Ranh giới ĐÃ CODE vs THIẾT KẾ (V5)
 
@@ -316,6 +317,8 @@ Màn trung tâm vòng lặp V5 phía nhân viên, mobile-first (desktop bó 480p
 5. **Khối F** — 2 thanh tiến trình: chuyên cần `ticked/N_chuẩn` + tiền tạm tính/budget; chuỗi hiện mốc kế, khiên `free+reserve`, chip mốc 🔒 banked.
 6. **Xin phép 1-chạm** (hiện quota còn lại) + **onboarding "Tôi đã hiểu"** bắt buộc từ chặng `shadow_money` (lưu `ui_preferences.v5_onboarding_ack`).
 Phiên kiểm tra chạy trong dialog [InspectionRunner](src/components/inspections/InspectionRunner.tsx) (mục 4.8). Copy động viên tập trung ở [v5Copy.ts](src/lib/v5Copy.ts).
+
+Chủ công ty và super admin còn thấy bộ chọn người ở đầu màn này để xem từng quản lý: xem [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).
 
 ### 5.4. `/reports/coverage` — dashboard chủ V5 ([OwnerDashboardV5](src/pages/reports/OwnerDashboardV5.tsx), S4+S5, AdminOnly)
 
