@@ -21,7 +21,7 @@ const schema = z.object({
     .string()
     .refine((value) => Boolean(validOcrDate(value)), "Nhập ngày sinh hợp lệ."),
   gender: z.enum(["Nam", "Nữ"], {
-    errorMap: () => ({ message: "Chọn giới tính theo thẻ." }),
+    error: () => "Chọn giới tính theo thẻ.",
   }),
   permanentAddress: z
     .string()

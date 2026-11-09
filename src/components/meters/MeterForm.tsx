@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -67,7 +67,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
   const sourceBlocked=sources.some(query=>query.isError||query.isLoading);
 
   const form = useForm<MeterFormValues>({
-    resolver: zodResolver(meterFormSchema),
+    resolver: zodResolver(meterFormSchema) as Resolver<MeterFormValues>,
     defaultValues: {
       building_id: '',
       room_id: '',

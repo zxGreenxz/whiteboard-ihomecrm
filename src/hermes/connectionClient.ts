@@ -50,8 +50,8 @@ const legacyConnectInput = z.object({
 const inheritedSettings = z.object({ permissionMode: z.literal('inherit_crm'), exclusions: restrictions,
   scopeMode: z.enum(['restricted', 'unrestricted']), scopeIds: ids }).strict();
 const validScopeMode = (value: z.infer<typeof inheritedSettings>) => value.scopeMode !== 'unrestricted' || value.scopeIds.length === 0;
-const inheritedConnectInput = inheritedSettings.extend({ email: legacyConnectInput.innerType().shape.email,
-  password: legacyConnectInput.innerType().shape.password }).strict().refine(validScopeMode);
+const inheritedConnectInput = inheritedSettings.extend({ email: legacyConnectInput.shape.email,
+  password: legacyConnectInput.shape.password }).strict().refine(validScopeMode);
 const settingsInput = inheritedSettings.extend({ connectionId: uuid, expectedEpoch: positive }).strict().refine(validScopeMode);
 const connectInput = z.union([legacyConnectInput, inheritedConnectInput]);
 const isInheritedConnect = (value: z.infer<typeof connectInput>): value is z.infer<typeof inheritedConnectInput> =>
@@ -208,7 +208,7 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
     (value.permissionMode !== 'inherit_crm' || Boolean(value.exclusions && value.scopeMode));
 
   async function invoke<Input, Result>(operation: Operation, input: Input, inputSchema: z.ZodType<Input>,
-    resultSchema: z.ZodType<Result, z.ZodTypeDef, unknown>, matches: (result: Result, request: Input) => boolean,
+    resultSchema: z.ZodType<Result, unknown>, matches: (result: Result, request: Input) => boolean,
     { signal }: HermesRequestOptions = {}): Promise<Result> {
     let dispatched = false;
     const write = writeOperation(operation);
@@ -216,7 +216,7 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
     const failure = (code: HermesConnectionErrorCode, outcome?: Outcome) => new HermesConnectionClientError(code,
       outcome ?? (dispatched ? write ? 'unknown' : 'rejected' : 'not_dispatched'), receipt);
     if (signal?.aborted) throw failure('cancelled');
-    let parsed: z.SafeParseReturnType<Input, Input>;
+    let parsed: z.ZodSafeParseResult<Input>;
     try { parsed = inputSchema.safeParse(input); } catch { throw failure('invalid_request'); }
     if (!parsed.success) throw failure('invalid_request');
     const request = parsed.data; // Zod gives a detached snapshot before any await.

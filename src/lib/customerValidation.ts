@@ -40,7 +40,7 @@ export const customerIndividualSchema = z.object({
   customer_group: z.string().optional(),
   notes: z.string().optional(),
   avatar_url: z.string().optional(),
-  id_images: z.record(z.string()).optional(),
+  id_images: z.record(z.string(), z.string()).optional(),
   vehicles: z
     .array(
       z.object({
@@ -83,7 +83,7 @@ export const customerOrganizationSchema = z.object({
   customer_group: z.string().optional(),
   notes: z.string().optional(),
   avatar_url: z.string().optional(),
-  id_images: z.record(z.string()).optional(),
+  id_images: z.record(z.string(), z.string()).optional(),
   vehicles: z
     .array(
       z.object({

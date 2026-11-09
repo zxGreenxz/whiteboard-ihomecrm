@@ -6,7 +6,7 @@ import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedb
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
 import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
@@ -348,7 +348,7 @@ const IncomeExpenseFormInner = ({
     shouldFocusError: false,
     // Phiếu có hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
     resolver: withDepositRoomRule(
-      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema),
+      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema) as Resolver<IncomeExpenseFormValues>,
       (values) =>
         needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
           ? ['room_id']

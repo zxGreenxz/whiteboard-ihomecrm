@@ -2,7 +2,7 @@ import { focusFirstError } from "@/lib/formErrors";
 import { reservationSettlementErrorMessage } from "@/lib/reservationSettlementRpc";
 import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useRef, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function ReservationSettlementDialog({ voucherId, open, onOpenChange }: {
   const realAccounts = accountsQuery.data ?? [];
   const { data: perms } = useMyPermissions();
   const hasSettlementPermission = can(perms, "deposits", "refund") && can(perms, "income_expenses", "approve");
-  const form = useForm<ReservationSettlementFormValues>({ shouldFocusError: false, resolver: zodResolver(reservationSettlementFormSchema), defaultValues: { depositAmount: 1, refundAmount: 0, refundMode: "NONE", refundAccountId: null, reasonCode: "CHANGED_MIND", reasonText: "", settlementDate: vnTodayISO() } });
+  const form = useForm<ReservationSettlementFormValues>({ shouldFocusError: false, resolver: zodResolver(reservationSettlementFormSchema) as Resolver<ReservationSettlementFormValues>, defaultValues: { depositAmount: 1, refundAmount: 0, refundMode: "NONE", refundAccountId: null, reasonCode: "CHANGED_MIND", reasonText: "", settlementDate: vnTodayISO() } });
   const refundAmount = form.watch("refundAmount");
   const refundMode = form.watch("refundMode");
   const accountId = form.watch("refundAccountId");

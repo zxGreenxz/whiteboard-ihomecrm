@@ -11,7 +11,7 @@ export const saleRoomPolicyInputSchema = z.object({
 });
 export type SaleRoomPolicyInput = z.infer<typeof saleRoomPolicyInputSchema>;
 export const saleRoomPolicySchema = z.object({
-  id: z.string().uuid(), version: z.number().int().positive(),
+  id: z.string().guid(), version: z.number().int().positive(),
   title: z.string(), content: z.string(), starts_at: instant, ends_at: instant,
   status: z.enum(['SCHEDULED', 'ACTIVE', 'EXPIRED', 'CANCELLED']),
 });

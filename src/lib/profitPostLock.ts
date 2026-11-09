@@ -21,8 +21,8 @@ const money = z.number().finite();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}/);
 
 export const postLockVoucherSchema = z.object({
-  voucher_id: z.string().uuid(),
-  building_id: z.string().uuid(),
+  voucher_id: z.string().guid(),
+  building_id: z.string().guid(),
   building_name: z.string().nullable(),
   /** Tháng đã chốt mà phiếu đóng góp ('YYYY-MM-01'). */
   month: isoDate,
@@ -53,7 +53,7 @@ export const profitPostLockSchema = z.object({
   /** Toà×tháng ĐÃ CHỐT trong khoảng (chỉ toà người xem được phép). */
   locked: z.array(
     z.object({
-      building_id: z.string().uuid(),
+      building_id: z.string().guid(),
       building_name: z.string().nullable(),
       month: isoDate,
       locked_at: z.string(),

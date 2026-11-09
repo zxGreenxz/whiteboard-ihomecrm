@@ -6,7 +6,7 @@ import { meterBillingSourceSchema, meterCaptureMeterSchema, meterCaptureSchema, 
   type MeterCapture, type MeterSourceReference } from './types';
 export type { MeterCapture, MeterCaptureMeter, MeterCaptureProfile, EngineResult, MeterBillingSource, MeterSourceReference, MeterEvidence } from './types';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 async function gateway(body: Record<string, unknown>): Promise<unknown> {
   const { data, error } = await supabase.functions.invoke('meter-capture-worker', { body });
   if (error) {
@@ -144,7 +144,7 @@ export async function meterInvoiceRequestId(orgId: string, intent: unknown): Pro
   return 'meter-invoice-' + Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
 }
 export async function readSavedMeterInvoiceRequest(orgId: string, idempotencyKey: string) {
-  const result = z.object({ receipt: z.unknown().nullable() }).parse(await call(orgId, 'documentReceipt', { kind: 'invoice', idempotencyKey }));
+  const result = z.object({ receipt: z.unknown().nullable().optional() }).parse(await call(orgId, 'documentReceipt', { kind: 'invoice', idempotencyKey }));
   return result.receipt == null ? null : confirmedInvoiceReceipt(result.receipt);
 }
 export async function exitWithMeterSources(orgId: string, rpcName: string, args: Record<string, unknown>, sources: MeterSourceReference[]) {

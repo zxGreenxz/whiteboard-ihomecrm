@@ -235,14 +235,14 @@ export interface IncomeExpensePostingSchemaOptions {
  */
 export function buildIncomeExpensePostingSchema(
   opts: IncomeExpensePostingSchemaOptions,
-): z.ZodType<IncomeExpensePostingFormValues> {
+): z.ZodType<IncomeExpensePostingFormValues, IncomeExpensePostingFormValues> {
   const postedOn = z
-    .string({ required_error: 'Vui lòng chọn ngày' })
+    .string({ error: (issue) => (issue.input === undefined ? 'Vui lòng chọn ngày' : undefined) })
     .min(1, 'Vui lòng chọn ngày')
     .refine(isValidIsoDate, 'Ngày thu/chi không hợp lệ. Vui lòng chọn lại ngày.');
 
   const cashbookId = z
-    .string({ required_error: 'Vui lòng chọn sổ quỹ' })
+    .string({ error: (issue) => (issue.input === undefined ? 'Vui lòng chọn sổ quỹ' : undefined) })
     .min(1, 'Vui lòng chọn sổ quỹ')
     .refine(isUuid, 'Sổ quỹ không hợp lệ');
 
@@ -256,8 +256,7 @@ export function buildIncomeExpensePostingSchema(
     const remaining = opts.remainingAmount;
     const amount = z
       .number({
-        required_error: 'Vui lòng nhập số tiền đợt chi',
-        invalid_type_error: 'Số tiền không hợp lệ',
+        error: (issue) => (issue.input === undefined ? 'Vui lòng nhập số tiền đợt chi' : 'Số tiền không hợp lệ'),
       })
       .positive('Số tiền phải lớn hơn 0')
       .refine(
@@ -271,7 +270,7 @@ export function buildIncomeExpensePostingSchema(
       cashbookId,
       evidenceIds,
       amount,
-    }) as z.ZodType<IncomeExpensePostingFormValues>;
+    }) as z.ZodType<IncomeExpensePostingFormValues, IncomeExpensePostingFormValues>;
   }
 
   return z.object({
@@ -280,5 +279,5 @@ export function buildIncomeExpensePostingSchema(
     evidenceIds,
     // VOUCHER: không có ô số tiền; giữ optional/undefined để form đồng nhất.
     amount: z.undefined().optional(),
-  }) as z.ZodType<IncomeExpensePostingFormValues>;
+  }) as z.ZodType<IncomeExpensePostingFormValues, IncomeExpensePostingFormValues>;
 }

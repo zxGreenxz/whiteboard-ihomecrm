@@ -10,7 +10,7 @@ export const SALE_LOCK_HOURS = [6, 12, 24] as const;
 export type SaleLockHours = (typeof SALE_LOCK_HOURS)[number];
 export const SALE_LOCK_NOTE_MAX = 300;
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 export const roomSaleLockSchema = z.object({
   id: uuid, organization_id: uuid, building_id: uuid, building_name: z.string(),
   room_id: uuid, room_name: z.string(), room_code: z.string().nullable(),

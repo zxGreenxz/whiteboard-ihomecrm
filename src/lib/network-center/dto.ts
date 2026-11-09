@@ -29,12 +29,12 @@ export const NETWORK_CENTER_H196A_MAX_PAGE_SIZE = 250;
 export const NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE = 250;
 export const NETWORK_CENTER_MAX_FLEET_SIZE = 500;
 
-const uuidSchema = z.string().uuid();
+const uuidSchema = z.string().guid();
 const timestampSchema = z.string().datetime({ offset: true });
 const nullableTimestampSchema = timestampSchema.nullable();
 const nullableNumberSchema = z.number().finite().nullable();
 const nullableStringSchema = z.string().nullable();
-const jsonObjectSchema = z.record(z.unknown());
+const jsonObjectSchema = z.record(z.string(), z.unknown());
 const rolloutStateSchema = z.enum(["OFF", "READ_ONLY", "EXECUTE"]).catch("OFF");
 
 const fleetItemSchema = z.object({

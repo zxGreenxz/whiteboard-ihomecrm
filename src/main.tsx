@@ -1,3 +1,4 @@
+import "./lib/zodConfig"; // PHẢI đứng đầu: đặt cấu hình zod 4 trước khi bất kỳ schema nào được dựng
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

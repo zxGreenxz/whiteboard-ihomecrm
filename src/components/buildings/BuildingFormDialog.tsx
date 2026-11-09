@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { recordWriteBlocked, recordWriteMessage } from '@/lib/recordWriteOutcome';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -110,7 +110,7 @@ export default function BuildingFormDialog({
 
   // Form
   const form = useForm<BuildingFormData>({
-    resolver: zodResolver(buildingSchema),
+    resolver: zodResolver(buildingSchema) as Resolver<BuildingFormData>,
     defaultValues: {
       name: '',
       code: '',
