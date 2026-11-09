@@ -28,6 +28,8 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_PERMISSION = 201;
     private static final int RECENT_ROWS = 8;
     private static final long REFRESH_MS = 8_000L;
+    private static final String UI_PREFERENCES = "checkin_ui";
+    private static final String KEY_NOTIFICATIONS_ASKED = "notifications_asked";
 
     private enum Step { NOTIFICATIONS, LOCATION, BACKGROUND, LOCATION_ON, BATTERY, EXACT_ALARM }
 
@@ -155,7 +157,7 @@ public final class MainActivity extends Activity {
         failedCard.setVisibility(View.GONE);
 
         pauseButton = Ui.button(root, "Tạm dừng", false, this::togglePause);
-        Ui.text(root, "Ngoài khung giờ chủ công ty đặt, app không lấy vị trí và không gửi gì. Khi tạm dừng, các mốc được ghi là «đã tắt» và chủ công ty nhìn thấy.", 14, Ui.MUTED, false);
+        Ui.text(root, "Ngoài khung giờ chủ công ty đặt, app không lấy vị trí, chỉ báo tình trạng máy (pin, quyền) để chủ công ty biết máy còn hoạt động. Khi tạm dừng, các mốc được ghi là «đã tắt» và chủ công ty nhìn thấy.", 14, Ui.MUTED, false);
     }
 
     private HealthRow healthRow(LinearLayout parent, String title) {
@@ -210,7 +212,8 @@ public final class MainActivity extends Activity {
     private List<Step> pendingSteps(Snapshot snapshot) {
         List<Step> steps = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                && !DeviceHealth.granted(this, Manifest.permission.POST_NOTIFICATIONS)) {
+                && !DeviceHealth.granted(this, Manifest.permission.POST_NOTIFICATIONS)
+                && !getSharedPreferences(UI_PREFERENCES, MODE_PRIVATE).getBoolean(KEY_NOTIFICATIONS_ASKED, false)) {
             steps.add(Step.NOTIFICATIONS);
         }
         boolean fine = DeviceHealth.granted(this, Manifest.permission.ACCESS_FINE_LOCATION);
@@ -368,6 +371,8 @@ public final class MainActivity extends Activity {
         if (currentStep == null) return;
         switch (currentStep) {
             case NOTIFICATIONS:
+                // Asked once: capture works without notifications, so a refusal must not block the next steps.
+                getSharedPreferences(UI_PREFERENCES, MODE_PRIVATE).edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply();
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_PERMISSION);
                 break;
             case LOCATION:

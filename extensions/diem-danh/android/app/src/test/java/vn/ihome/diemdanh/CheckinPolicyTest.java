@@ -236,19 +236,62 @@ public final class CheckinPolicyTest {
         assertSame(coarse, CheckinPolicy.better(coarse, null));
     }
 
+    @Test public void aFreshFixBeatsACachedOneEvenIfLessPrecise() {
+        CheckinPolicy.Fix cached = CheckinPolicy.Fix.located("stale", 10d, 106d, 5d, "fused", 600_000L, false);
+        CheckinPolicy.Fix fresh = CheckinPolicy.Fix.located("fresh", 10.1d, 106.1d, 40d, "fused", 500L, false);
+        assertSame(fresh, CheckinPolicy.better(cached, fresh));
+        assertSame(fresh, CheckinPolicy.better(fresh, cached));
+    }
+
+    @Test public void onlyAFreshPreciseFixEndsTheCaptureEarly() {
+        assertTrue(CheckinPolicy.goodEnough(CheckinPolicy.Fix.located("fresh", 10d, 106d, 25d, "gps", 1L, false)));
+        assertFalse("fairly coarse", CheckinPolicy.goodEnough(CheckinPolicy.Fix.located("fresh", 10d, 106d, 26d, "gps", 1L, false)));
+        assertFalse("cached", CheckinPolicy.goodEnough(CheckinPolicy.Fix.located("stale", 10d, 106d, 5d, "gps", 1L, false)));
+        assertTrue(CheckinPolicy.acceptable(CheckinPolicy.Fix.located("fresh", 10d, 106d, 100d, "network", 1L, false)));
+        assertFalse("A 900 m network fix keeps waiting for GPS",
+                CheckinPolicy.acceptable(CheckinPolicy.Fix.located("fresh", 10d, 106d, 900d, "network", 1L, false)));
+        assertFalse("unknown accuracy", CheckinPolicy.acceptable(CheckinPolicy.Fix.located("fresh", 10d, 106d, null, "gps", 1L, false)));
+        assertFalse(CheckinPolicy.acceptable(null));
+    }
+
     @Test public void freshnessFollowsTheAgeOfTheLocation() {
         assertEquals("fresh", CheckinPolicy.statusForAge(CheckinPolicy.FRESH_MAX_AGE_MS));
         assertEquals("stale", CheckinPolicy.statusForAge(CheckinPolicy.FRESH_MAX_AGE_MS + 1));
     }
 
+    @Test public void cachedLocationsOlderThanAnHourStayOnThePhone() {
+        assertTrue(CheckinPolicy.usableLastKnown(60L * 60L * 1000L));
+        assertFalse(CheckinPolicy.usableLastKnown(60L * 60L * 1000L + 1L));
+    }
+
     @Test public void aFiringAlarmIsNotReplacedButALostOneIs() {
         long now = 10_000_000L;
-        assertTrue(CheckinPolicy.keepArmed(now + 60_000L, true, now + 60_000L, now));
-        assertTrue("just came due", CheckinPolicy.keepArmed(now - 1_000L, true, now + 900_000L, now));
-        assertFalse("long past due", CheckinPolicy.keepArmed(now - CheckinPolicy.ALARM_IN_FLIGHT_MS, true, now + 900_000L, now));
-        assertFalse("settings moved the slot", CheckinPolicy.keepArmed(now + 60_000L, true, now + 120_000L, now));
-        assertFalse("alarm gone", CheckinPolicy.keepArmed(now + 60_000L, false, now + 60_000L, now));
-        assertFalse("nothing armed", CheckinPolicy.keepArmed(0L, true, now + 60_000L, now));
+        assertTrue(CheckinPolicy.keepArmed(now + 60_000L, true, now + 60_000L, now, 0L, 0L));
+        assertTrue("just came due", CheckinPolicy.keepArmed(now - 1_000L, true, now + 900_000L, now, 0L, 0L));
+        assertFalse("long past due", CheckinPolicy.keepArmed(now - CheckinPolicy.ALARM_IN_FLIGHT_MS, true, now + 900_000L, now, 0L, 0L));
+        assertFalse("settings moved the slot", CheckinPolicy.keepArmed(now + 60_000L, true, now + 120_000L, now, 0L, 0L));
+        assertFalse("alarm gone", CheckinPolicy.keepArmed(now + 60_000L, false, now + 60_000L, now, 0L, 0L));
+        assertFalse("nothing armed", CheckinPolicy.keepArmed(0L, true, now + 60_000L, now, 0L, 0L));
+    }
+
+    @Test public void aCorrectedPhoneClockMovesAnAlarmForTheSameSlot() {
+        long now = 10_000_000L;
+        long next = now + 60_000L;
+        assertTrue(CheckinPolicy.keepArmed(next, true, next, now, 1_000L, 1_000L + CheckinPolicy.OFFSET_RESCHEDULE_MS));
+        assertFalse(CheckinPolicy.keepArmed(next, true, next, now, 1_000L, 1_000L + CheckinPolicy.OFFSET_RESCHEDULE_MS + 1L));
+        assertFalse("An alarm computed on the old clock is not about to fire",
+                CheckinPolicy.keepArmed(now - 1_000L, true, next, now, 0L, CheckinPolicy.OFFSET_RESCHEDULE_MS + 1L));
+    }
+
+    @Test public void onlyTheIngestFunctionsOwnRefusalStopsTheApp() {
+        assertTrue(CheckinPolicy.deviceRefused(401, "{\"error\":\"unauthorized\"}"));
+        assertTrue(CheckinPolicy.deviceRefused(403, "{\"error\":\"forbidden\"}"));
+        assertFalse("Supabase gateway", CheckinPolicy.deviceRefused(401, "{\"code\":401,\"message\":\"Invalid JWT\"}"));
+        assertFalse("proxy page", CheckinPolicy.deviceRefused(403, "<html>Forbidden</html>"));
+        assertFalse("empty", CheckinPolicy.deviceRefused(401, ""));
+        assertFalse("mixed up", CheckinPolicy.deviceRefused(401, "{\"error\":\"forbidden\"}"));
+        assertFalse("other status", CheckinPolicy.deviceRefused(400, "{\"error\":\"unauthorized\"}"));
+        assertFalse(CheckinPolicy.deviceRefused(401, null));
     }
 
     @Test public void retriesOnlyTransientHttpStatuses() {

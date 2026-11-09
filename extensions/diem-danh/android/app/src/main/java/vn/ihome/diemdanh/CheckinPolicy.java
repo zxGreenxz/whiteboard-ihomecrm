@@ -52,8 +52,12 @@ public final class CheckinPolicy {
     public static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
     /** A location delivered during a capture but older than this is reported as stale. */
     public static final long FRESH_MAX_AGE_MS = 120_000L;
-    /** A cached location older than this says nothing useful about the slot. */
-    public static final long LAST_KNOWN_MAX_AGE_MS = 24L * 60L * 60L * 1000L;
+    /** The server counts an older cached fix as missing, so it stays on the phone. */
+    public static final long LAST_KNOWN_MAX_AGE_MS = 60L * 60L * 1000L;
+    /** A fresh fix this precise ends the capture at once. */
+    public static final double GOOD_ACCURACY_M = 25d;
+    /** A fresh fix this precise ends the capture soon; a coarser one keeps waiting for GPS. */
+    public static final double ACCEPTABLE_ACCURACY_M = 100d;
     /** A correction of the server clock bigger than this moves the alarm. */
     public static final long OFFSET_RESCHEDULE_MS = 30_000L;
     /** An alarm past due by less than this is treated as still being delivered. */
@@ -209,11 +213,14 @@ public final class CheckinPolicy {
         return schedule.offDates.contains(date) || (schedule.skipSunday && date.getDayOfWeek() == DayOfWeek.SUNDAY);
     }
 
-    /** Whether a live alarm should be left alone instead of being replaced. */
-    public static boolean keepArmed(long armedSlotMs, boolean alarmExists, long nextSlotMs, long nowMs) {
-        if (!alarmExists || armedSlotMs <= 0L) return false;
-        if (armedSlotMs == nextSlotMs) return true;
-        return armedSlotMs <= nowMs && nowMs - armedSlotMs < ALARM_IN_FLIGHT_MS;
+    /**
+     * Whether a live alarm should be left alone instead of being replaced. The trigger time was
+     * computed with the offset known when it was armed, so a corrected clock needs a new alarm.
+     */
+    public static boolean keepArmed(long armedSlotMs, boolean alarmExists, long nextSlotMs, long nowMs,
+                                    long armedOffsetMs, long offsetMs) {
+        if (!alarmExists || armedSlotMs <= 0L || Math.abs(armedOffsetMs - offsetMs) > OFFSET_RESCHEDULE_MS) return false;
+        return armedSlotMs == nextSlotMs || (armedSlotMs <= nowMs && nowMs - armedSlotMs < ALARM_IN_FLIGHT_MS);
     }
 
     /** The reason this slot cannot take a location, or null when a capture should run. */
@@ -227,6 +234,22 @@ public final class CheckinPolicy {
 
     public static String statusForAge(long ageMs) {
         return ageMs <= FRESH_MAX_AGE_MS ? FIX_FRESH : FIX_STALE;
+    }
+
+    public static boolean usableLastKnown(long ageMs) {
+        return ageMs <= LAST_KNOWN_MAX_AGE_MS;
+    }
+
+    public static boolean goodEnough(Fix fix) {
+        return isFreshWithin(fix, GOOD_ACCURACY_M);
+    }
+
+    public static boolean acceptable(Fix fix) {
+        return isFreshWithin(fix, ACCEPTABLE_ACCURACY_M);
+    }
+
+    private static boolean isFreshWithin(Fix fix, double accuracyM) {
+        return fix != null && FIX_FRESH.equals(fix.status) && fix.accuracyM != null && fix.accuracyM <= accuracyM;
     }
 
     // ---- Identifiers and credentials -------------------------------------------------------
@@ -350,10 +373,15 @@ public final class CheckinPolicy {
         }
     }
 
-    /** Best accuracy wins; an unknown accuracy only beats another unknown when it is newer. */
+    /**
+     * A fresh fix beats a cached one; then best accuracy wins, and an unknown accuracy only
+     * beats another unknown when it is newer.
+     */
     public static Fix better(Fix current, Fix candidate) {
         if (candidate == null) return current;
         if (current == null) return candidate;
+        boolean currentStale = FIX_STALE.equals(current.status);
+        if (currentStale != FIX_STALE.equals(candidate.status)) return currentStale ? candidate : current;
         if (candidate.accuracyM == null) {
             return current.accuracyM == null && candidate.ageMs < current.ageMs ? candidate : current;
         }
@@ -619,6 +647,21 @@ public final class CheckinPolicy {
 
     public static boolean shouldRetry(int status) {
         return status == 408 || status == 429 || (status >= 500 && status <= 599);
+    }
+
+    /**
+     * True only for the ingest function's own refusal of this device: 401 "unauthorized" (revoked)
+     * or 403 "forbidden" (the account is no longer active). The same codes from a gateway or proxy
+     * must not switch the app off.
+     */
+    public static boolean deviceRefused(int status, String body) {
+        String expected = status == 401 ? "unauthorized" : status == 403 ? "forbidden" : null;
+        if (expected == null || body == null) return false;
+        try {
+            return expected.equals(new JSONObject(body).opt("error"));
+        } catch (JSONException error) {
+            return false;
+        }
     }
 
     // ---- Text for the status screen --------------------------------------------------------

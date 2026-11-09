@@ -1,6 +1,7 @@
 package vn.ihome.diemdanh;
 
 import android.content.Context;
+import android.os.Build;
 import android.view.View;
 
 import androidx.test.core.app.ActivityScenario;
@@ -59,7 +60,7 @@ public final class CleanInstallProbe {
         // MainActivity schedules delivery on open; this keeps the fixture away from the network.
         DeliveryWork.transport = (endpoint, token, id, payload) -> new DeliveryWork.HttpResult(503, "", "application/json");
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            Fixtures.waitForText(scenario, "Cho phép thông báo");
+            Fixtures.waitForText(scenario, Build.VERSION.SDK_INT >= 33 ? "Cho phép thông báo" : "Cho phép lấy vị trí");
             scenario.onActivity(activity -> {
                 View root = activity.getWindow().getDecorView();
                 assertTrue(Fixtures.containsText(root, "Cần thiết lập · còn"));

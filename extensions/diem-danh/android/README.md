@@ -1,6 +1,6 @@
 # iHome Điểm danh cho Android
 
-App cài trên điện thoại Android của quản lý (Android 8 trở lên). App tự ghi vị trí GPS theo các mốc 15/30/60 phút trong khung giờ chủ công ty đặt, kể cả khi khóa màn hình, rồi gửi về CRM. Không phải bấm mỗi lần. Ngoài khung giờ app không lấy vị trí và không gửi gì.
+App cài trên điện thoại Android của quản lý (Android 8 trở lên). App tự ghi vị trí GPS theo các mốc 15/30/60 phút trong khung giờ chủ công ty đặt, kể cả khi khóa màn hình, rồi gửi về CRM. Không phải bấm mỗi lần. Ngoài khung giờ app không lấy vị trí, chỉ gửi tình trạng máy (pin, quyền, không có toạ độ) khoảng mỗi 15 phút.
 
 Bản build quyết định máy chủ, người dùng không nhập địa chỉ. Bản thử (`debug`) có hậu tố `.thu`, tên «iHome Điểm danh (thử)», trỏ project TEST, nên cài song song được với bản thật.
 
@@ -39,10 +39,10 @@ Android gốc chưa đủ: nhiều hãng tự tắt app chạy nền. Ngoài bư
 ## Cách hoạt động
 
 - `SlotScheduler` chỉ giữ một báo thức cho mốc kế tiếp (`setExactAndAllowWhileIdle`). Không có mốc thì không có báo thức. Mốc tính theo giờ Việt Nam và giờ máy đã chỉnh theo giờ máy chủ.
-- `CaptureService` là dịch vụ nền trước loại `location`, sống tối đa 45 giây. Nếu máy có nguồn `fused` thì dùng nguồn đó, không thì GPS và mạng song song, lấy kết quả chính xác nhất. Hết giờ thì dùng vị trí gần nhất trong máy, báo là `stale` kèm tuổi.
+- `CaptureService` là dịch vụ nền trước loại `location`, sống tối đa 45 giây. Nếu máy có nguồn `fused` thì dùng nguồn đó, không thì GPS và mạng song song, lấy kết quả chính xác nhất. Hết giờ thì dùng vị trí gần nhất trong máy nếu chưa quá 60 phút, báo là `stale` kèm tuổi; cũ hơn thì không gửi toạ độ.
 - Không lấy được thì ghi `none` với lý do `permission_denied`, `location_off`, `timeout`, `paused`. Khi tạm dừng, app không lấy vị trí.
 - Mỗi mốc được lưu mã hóa (AES-GCM, khóa AndroidKeyStore) trước khi gửi. Mất mạng thì giữ lại, tối đa 15 ngày vì máy chủ không nhận bản ghi quá 14 ngày.
-- `DeliveryWork` chỉ coi là đã gửi khi biên nhận JSON đúng `schemaVersion:1`, `ok:true`, `externalId` trùng `id`, trạng thái hợp lệ, có `acceptedAt` và `settings`. HTTP 401 nghĩa là máy đã bị gỡ: app dừng hẳn và báo trên màn hình.
+- `DeliveryWork` chỉ coi là đã gửi khi biên nhận JSON đúng `schemaVersion:1`, `ok:true`, `externalId` trùng `id`, trạng thái hợp lệ, có `acceptedAt` và `settings`. Khi chính cổng nhận trả 401 (máy đã bị gỡ) hoặc 403 (tài khoản không còn hoạt động), app dừng hẳn và báo trên màn hình; 401/403 từ lớp trung gian thì chỉ thử lại.
 - `SafetyNetWork` chạy khoảng mỗi 15 phút, đặt lại báo thức nếu mất và gửi `device.state`. Android có thể hoãn việc này khi máy ngủ.
 
 ## Build và kiểm chứng
@@ -53,7 +53,7 @@ Công cụ ghim giống iHome Gateway: JDK 17, Gradle 8.11.1, AGP 8.9.2, Android
 .\build.ps1 -JavaHome "<JDK17>" -AndroidSdk "<SDK>"
 ```
 
-Workflow `android-diem-danh.yml` chạy `ci-build.sh` (unit test, lint, APK, đối chiếu quyền trong APK) và `ci-device.sh` (emulator Android 15). Artifact `ihome-diem-danh-<sha>` chứa APK bản thử và bằng chứng. Chỉ nhánh `main` mới ký APK phát hành bằng khóa của Gateway (alias `ihome-gateway`).
+Workflow `android-diem-danh.yml` chạy `ci-build.sh` (unit test, lint, APK, đối chiếu quyền trong APK) và `ci-device.sh` (emulator Android 15 và Android 10). Artifact `ihome-diem-danh-<sha>` chứa APK bản thử và bằng chứng. Chỉ nhánh `main` mới ký APK phát hành bằng khóa của Gateway (alias `ihome-gateway`).
 
 **CI chứng minh được:**
 

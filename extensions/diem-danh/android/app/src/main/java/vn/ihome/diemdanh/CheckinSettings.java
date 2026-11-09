@@ -31,6 +31,7 @@ public final class CheckinSettings {
         public final CheckinPolicy.Schedule schedule;
         public final long clockOffsetMs;
         public final long armedSlotMs;
+        public final long armedOffsetMs;
         public final boolean exactAllowed;
         public final long lastReceiptMs;
         public final String userName;
@@ -43,6 +44,7 @@ public final class CheckinSettings {
             paused = json.optBoolean("paused", false);
             clockOffsetMs = json.optLong("clockOffsetMs", 0L);
             armedSlotMs = json.optLong("armedSlotMs", 0L);
+            armedOffsetMs = json.optLong("armedOffsetMs", 0L);
             exactAllowed = json.optBoolean("exactAllowed", true);
             lastReceiptMs = json.optLong("lastReceiptMs", 0L);
             userName = json.optString("userName", "");
@@ -140,15 +142,18 @@ public final class CheckinSettings {
         return change(json -> json.put("paused", paused));
     }
 
-    State setArmed(long slotMs, boolean exactAllowed) {
+    State setArmed(long slotMs, boolean exactAllowed, long offsetMs) {
         return change(json -> {
             json.put("armedSlotMs", slotMs);
+            json.put("armedOffsetMs", offsetMs);
             json.put("exactAllowed", exactAllowed);
         });
     }
 
-    State markRevoked() {
+    /** Only for the credential the server refused: a pairing completed meanwhile stays valid. */
+    State markRevoked(String refusedToken) {
         return change(json -> {
+            if (!refusedToken.equals(json.optString("token", ""))) return;
             json.put("revoked", true);
             json.put("armedSlotMs", 0L);
         });

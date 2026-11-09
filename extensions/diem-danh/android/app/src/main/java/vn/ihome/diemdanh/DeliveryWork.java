@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
@@ -60,11 +61,12 @@ public final class DeliveryWork extends Worker {
         }
     }
 
-    enum Outcome { DONE, MORE, RETRY, REVOKED }
+    enum Outcome { DONE, RETRY, REVOKED }
 
+    /** REPLACE, not APPEND: a new record must not sit behind a retry that is backing off for hours. */
     public static void schedule(Context context) {
         WorkManager.getInstance(context.getApplicationContext()).enqueueUniqueWork(UNIQUE_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ExistingWorkPolicy.REPLACE,
                 new OneTimeWorkRequest.Builder(DeliveryWork.class)
                         .setConstraints(new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
@@ -74,17 +76,7 @@ public final class DeliveryWork extends Worker {
     @NonNull @Override public Result doWork() {
         if (!SENDING.tryLock()) return Result.retry();
         try {
-            Context context = getApplicationContext();
-            switch (drain(context, this::isStopped)) {
-                case RETRY:
-                    return Result.retry();
-                case MORE:
-                    // A healthy backlog continues in a fresh request instead of accruing backoff.
-                    schedule(context);
-                    return Result.success();
-                default:
-                    return Result.success();
-            }
+            return drain(getApplicationContext(), this::isStopped) == Outcome.RETRY ? Result.retry() : Result.success();
         } catch (Exception error) {
             // WorkManager persists retries; no exception text or payload goes into its data or logs.
             Log.w(TAG, "delivery failed: " + error.getClass().getSimpleName());
@@ -97,52 +89,56 @@ public final class DeliveryWork extends Worker {
     static Outcome drain(Context context, BooleanSupplier stopped) {
         CheckinSettings configuration = new CheckinSettings(context);
         QueueStore store = new QueueStore(context);
-        for (QueueStore.Pending item : store.pending(BATCH)) {
-            if (stopped.getAsBoolean()) return Outcome.RETRY;
-            CheckinSettings.State state = configuration.load();
-            if (!state.isActive()) return Outcome.DONE;
-            if (!CheckinPolicy.destinationBinding(BuildConfig.INGEST_ENDPOINT, state.token).equals(item.destinationHash)) {
-                store.markFailed(item.id, "Bản ghi của lần ghép nối trước; không gửi sang tài khoản mới.");
-                continue;
-            }
-            String payload;
-            try {
-                payload = item.payload();
-            } catch (Exception error) {
-                store.markFailed(item.id, "Không giải mã được bản ghi.");
-                continue;
-            }
-            if (!store.isPending(item.id)) continue;
-            long startedMs = System.currentTimeMillis();
-            HttpResult response;
-            try {
-                response = transport.post(BuildConfig.INGEST_ENDPOINT, state.token, item.id, payload);
-            } catch (IOException error) {
-                store.noteRetry(item.id, "Mạng chưa sẵn sàng; sẽ tự thử lại.");
-                return Outcome.RETRY;
-            }
-            long finishedMs = System.currentTimeMillis();
-            int status = response.status;
-            if (status == 401) {
-                revoke(context, configuration);
-                return Outcome.REVOKED;
-            }
-            if (status >= 200 && status <= 299) {
-                try {
-                    CheckinPolicy.Receipt receipt = requireReceipt(response, item);
-                    store.markSent(item.id, receipt.status);
-                    applySettings(context, configuration, receipt, startedMs, finishedMs);
-                } catch (CheckinPolicy.InvalidReceiptException error) {
-                    store.markFailed(item.id, "CRM chưa trả biên nhận hợp lệ cho bản ghi này.");
+        while (true) {
+            List<QueueStore.Pending> batch = store.pending(BATCH);
+            if (batch.isEmpty()) return Outcome.DONE;
+            for (QueueStore.Pending item : batch) {
+                if (stopped.getAsBoolean()) return Outcome.RETRY;
+                CheckinSettings.State state = configuration.load();
+                if (!state.isActive()) return Outcome.DONE;
+                if (!CheckinPolicy.destinationBinding(BuildConfig.INGEST_ENDPOINT, state.token).equals(item.destinationHash)) {
+                    store.markFailed(item.id, "Bản ghi của lần ghép nối trước; không gửi sang tài khoản mới.");
+                    continue;
                 }
-            } else if (CheckinPolicy.shouldRetry(status)) {
-                store.noteRetry(item.id, "Máy chủ báo lỗi " + status + "; sẽ tự thử lại.");
-                return Outcome.RETRY;
-            } else {
-                store.markFailed(item.id, "Máy chủ từ chối (" + status + ").");
+                String payload;
+                try {
+                    payload = item.payload();
+                } catch (Exception error) {
+                    store.markFailed(item.id, "Không giải mã được bản ghi.");
+                    continue;
+                }
+                if (!store.isPending(item.id)) continue;
+                long startedMs = System.currentTimeMillis();
+                HttpResult response;
+                try {
+                    response = transport.post(BuildConfig.INGEST_ENDPOINT, state.token, item.id, payload);
+                } catch (IOException error) {
+                    store.noteRetry(item.id, "Mạng chưa sẵn sàng; sẽ tự thử lại.");
+                    return Outcome.RETRY;
+                }
+                long finishedMs = System.currentTimeMillis();
+                int status = response.status;
+                if (CheckinPolicy.deviceRefused(status, response.body)) {
+                    if (revoke(context, configuration, state.token)) return Outcome.REVOKED;
+                    continue;
+                }
+                if (status >= 200 && status <= 299) {
+                    try {
+                        CheckinPolicy.Receipt receipt = requireReceipt(response, item);
+                        store.markSent(item.id, receipt.status);
+                        applySettings(context, configuration, receipt, startedMs, finishedMs);
+                    } catch (CheckinPolicy.InvalidReceiptException error) {
+                        store.markFailed(item.id, "CRM chưa trả biên nhận hợp lệ cho bản ghi này.");
+                    }
+                } else if (status == 401 || status == 403 || CheckinPolicy.shouldRetry(status)) {
+                    // A 401/403 that is not the function's own answer says nothing about this device.
+                    store.noteRetry(item.id, "Máy chủ báo lỗi " + status + "; sẽ tự thử lại.");
+                    return Outcome.RETRY;
+                } else {
+                    store.markFailed(item.id, "Máy chủ từ chối (" + status + ").");
+                }
             }
         }
-        return store.hasPending() ? Outcome.MORE : Outcome.DONE;
     }
 
     private static CheckinPolicy.Receipt requireReceipt(HttpResult response, QueueStore.Pending item)
@@ -163,11 +159,12 @@ public final class DeliveryWork extends Worker {
         }
     }
 
-    /** The credential is dead: stop every background activity until the user pairs again. */
-    private static void revoke(Context context, CheckinSettings configuration) {
-        configuration.markRevoked();
+    /** The credential is dead: stop all background activity until the person pairs again. */
+    private static boolean revoke(Context context, CheckinSettings configuration, String refusedToken) {
+        if (!configuration.markRevoked(refusedToken).revoked) return false;
         SlotScheduler.cancel(context);
         SafetyNetWork.cancel(context);
+        return true;
     }
 
     private static final class HttpsTransport implements Transport {
@@ -191,16 +188,16 @@ public final class DeliveryWork extends Worker {
                 }
                 int status = connection.getResponseCode();
                 String contentType = connection.getContentType();
-                if (status < 200 || status > 299) return new HttpResult(status, "", contentType);
-                return new HttpResult(status, readBounded(connection), contentType);
+                InputStream body = status >= 200 && status <= 299 ? connection.getInputStream() : connection.getErrorStream();
+                return new HttpResult(status, body == null ? "" : readBounded(body), contentType);
             } finally {
                 connection.disconnect();
             }
         }
 
         /** An oversized body comes back empty, which the receipt check then rejects. */
-        private static String readBounded(HttpsURLConnection connection) throws IOException {
-            try (InputStream input = connection.getInputStream();
+        private static String readBounded(InputStream stream) throws IOException {
+            try (InputStream input = stream;
                  ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                 byte[] buffer = new byte[1024];
                 int count;

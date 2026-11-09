@@ -37,7 +37,8 @@ public final class SlotScheduler {
             return;
         }
         long nextMs = next.toEpochMilli();
-        if (firedSlotMs == 0L && CheckinPolicy.keepArmed(state.armedSlotMs, existingAlarm(app) != null, nextMs, nowMs)) {
+        if (firedSlotMs == 0L && CheckinPolicy.keepArmed(state.armedSlotMs, existingAlarm(app) != null, nextMs, nowMs,
+                state.armedOffsetMs, state.clockOffsetMs)) {
             return;
         }
         PendingIntent operation = PendingIntent.getBroadcast(app, REQUEST_CODE,
@@ -45,7 +46,7 @@ public final class SlotScheduler {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         AlarmManager alarms = app.getSystemService(AlarmManager.class);
         boolean exact = setAlarm(alarms, nextMs - state.clockOffsetMs, operation);
-        settings.setArmed(nextMs, exact);
+        settings.setArmed(nextMs, exact, state.clockOffsetMs);
     }
 
     private static boolean setAlarm(AlarmManager alarms, long triggerAtMs, PendingIntent operation) {
@@ -69,7 +70,7 @@ public final class SlotScheduler {
             app.getSystemService(AlarmManager.class).cancel(operation);
             operation.cancel();
         }
-        new CheckinSettings(app).setArmed(0L, DeviceHealth.exactAlarmAllowed(app));
+        new CheckinSettings(app).setArmed(0L, DeviceHealth.exactAlarmAllowed(app), 0L);
     }
 
     static boolean isArmed(Context context) {

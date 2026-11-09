@@ -40,7 +40,7 @@ final class SlotRecorder {
             }
             if (newest != null) {
                 CheckinPolicy.Fix fix = toFix(newest, true);
-                if (fix.ageMs <= CheckinPolicy.LAST_KNOWN_MAX_AGE_MS) return fix;
+                if (CheckinPolicy.usableLastKnown(fix.ageMs)) return fix;
             }
         } catch (SecurityException | IllegalArgumentException error) {
             Log.w(TAG, "last known unavailable: " + error.getClass().getSimpleName());

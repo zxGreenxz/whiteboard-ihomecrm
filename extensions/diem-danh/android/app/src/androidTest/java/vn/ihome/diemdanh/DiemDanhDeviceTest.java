@@ -10,8 +10,8 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -44,7 +44,6 @@ import static org.junit.Assert.*;
 /** Runs only on the disposable CI emulator; a fake transport keeps every test off the network. */
 @RunWith(AndroidJUnit4.class)
 public final class DiemDanhDeviceTest {
-    private static final String TAG = "DiemDanhDeviceTest";
     private static final String JSON = "application/json; charset=utf-8";
 
     private Context context;
@@ -166,21 +165,59 @@ public final class DiemDanhDeviceTest {
         assertTrue("Changed settings arm the schedule", SlotScheduler.isArmed(context));
     }
 
-    @Test public void aRevokedDeviceStopsAndKeepsItsRecords() throws Exception {
+    private void assertTheFunctionsRefusalStopsEverything(int status, String body) throws Exception {
         CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
         SlotScheduler.ensureArmed(context);
         enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
-        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(401, "", JSON);
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(status, body, JSON);
         assertEquals(DeliveryWork.Outcome.REVOKED, drain());
         CheckinSettings.State after = settings.load();
         assertTrue(after.revoked);
         assertFalse(after.isActive());
         assertEquals(0L, after.armedSlotMs);
         assertFalse(SlotScheduler.isArmed(context));
+        assertFalse("The alarm is gone from AlarmManager", armedInDumpsys());
         assertEquals(1, queue.stats().pending);
         int calls = transport.ids.size();
         assertEquals(DeliveryWork.Outcome.DONE, drain());
         assertEquals("Nothing is sent after revocation", calls, transport.ids.size());
+    }
+
+    @Test public void aRevokedDeviceStopsAndKeepsItsRecords() throws Exception {
+        assertTheFunctionsRefusalStopsEverything(401, "{\"error\":\"unauthorized\"}");
+    }
+
+    @Test public void anAccountNoLongerActiveStopsLikeARevokedDevice() throws Exception {
+        assertTheFunctionsRefusalStopsEverything(403, "{\"error\":\"forbidden\"}");
+    }
+
+    @Test public void aRefusalFromAGatewayOnlyRetries() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        SlotScheduler.ensureArmed(context);
+        enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(401, "{\"code\":401,\"message\":\"Invalid JWT\"}", JSON);
+        assertEquals(DeliveryWork.Outcome.RETRY, drain());
+        assertFalse(settings.load().revoked);
+        assertTrue(SlotScheduler.isArmed(context));
+        assertEquals(1, queue.stats().pending);
+    }
+
+    @Test public void aRefusalOfTheOldCredentialDoesNotUndoANewPairing() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        transport.responder = (requestId, payload) -> {
+            // The person pairs again while the old credential's request is on its way.
+            long now = System.currentTimeMillis();
+            try {
+                settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.allDaySettings(4), now, now, "Người khác");
+            } catch (Exception error) {
+                throw new IOException(error);
+            }
+            return new DeliveryWork.HttpResult(401, "{\"error\":\"unauthorized\"}", JSON);
+        };
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertFalse(settings.load().revoked);
+        assertEquals("The old record stays with the old pairing", 1, queue.stats().failed);
     }
 
     @Test public void recordsOfAnEarlierPairingAreNeverSentWithANewCredential() throws Exception {
@@ -199,15 +236,12 @@ public final class DiemDanhDeviceTest {
         return Instant.now().atZone(CheckinPolicy.VIETNAM).toLocalDate();
     }
 
+    /** Reads only the live part of the dump: removed alarms stay listed in its history. */
     private boolean armedInDumpsys() throws IOException {
         String dump = shell("dumpsys alarm");
-        int at = dump.indexOf(SlotAlarmReceiver.ACTION_SLOT);
-        if (at < 0) {
-            Log.w(TAG, "alarm not found in dumpsys");
-            return false;
-        }
-        Log.i(TAG, "dumpsys: " + dump.substring(Math.max(0, at - 400), Math.min(dump.length(), at + 500)));
-        return dump.contains(context.getPackageName());
+        int history = dump.indexOf("Removal history");
+        String live = history >= 0 ? dump.substring(0, history) : dump;
+        return live.contains(context.getPackageName()) && live.contains(SlotAlarmReceiver.ACTION_SLOT);
     }
 
     @Test public void theAlarmIsOnlyEverForASlotInsideTheWindow() throws Exception {
@@ -249,14 +283,31 @@ public final class DiemDanhDeviceTest {
         Fixtures.pair(settings, Fixtures.allDaySettings(3));
         SlotScheduler.ensureArmed(context);
         assertTrue(SlotScheduler.isArmed(context));
+        assertTrue(armedInDumpsys());
         settings.applyServerSettings(Fixtures.settings(4, false, true, Fixtures.windows("00:00", "23:55"), new JSONArray()),
                 System.currentTimeMillis(), System.currentTimeMillis());
         SlotScheduler.ensureArmed(context);
         assertFalse(SlotScheduler.isArmed(context));
+        assertFalse(armedInDumpsys());
         settings.applyServerSettings(Fixtures.settings(5, true, false, Fixtures.windows("00:00", "23:55"), new JSONArray()),
                 System.currentTimeMillis(), System.currentTimeMillis());
         SlotScheduler.ensureArmed(context);
         assertFalse(SlotScheduler.isArmed(context));
+    }
+
+    @Test public void aCorrectedPhoneClockRearmsTheSameSlot() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        SlotScheduler.ensureArmed(context);
+        long armed = settings.load().armedSlotMs;
+        assertEquals(state.clockOffsetMs, settings.load().armedOffsetMs);
+        long startedMs = System.currentTimeMillis() - 720_000L;
+        // serverNow is "now" while the phone believed it to be 12 minutes earlier.
+        assertTrue(settings.applyServerSettings(Fixtures.allDaySettings(3), startedMs, startedMs));
+        SlotScheduler.ensureArmed(context);
+        CheckinSettings.State after = settings.load();
+        assertEquals(after.clockOffsetMs, after.armedOffsetMs);
+        assertTrue("The offset moved by about 12 minutes", Math.abs(after.armedOffsetMs - state.clockOffsetMs) > 700_000L);
+        assertTrue(armed > 0L && after.armedSlotMs > 0L);
     }
 
     @Test public void bootRearmsALostAlarmButNotForAnUnpairedPhone() throws Exception {
@@ -284,9 +335,14 @@ public final class DiemDanhDeviceTest {
         automation.grantRuntimePermission(app, Manifest.permission.ACCESS_FINE_LOCATION);
         automation.grantRuntimePermission(app, Manifest.permission.ACCESS_COARSE_LOCATION);
         automation.grantRuntimePermission(app, Manifest.permission.ACCESS_BACKGROUND_LOCATION);
-        automation.grantRuntimePermission(app, Manifest.permission.POST_NOTIFICATIONS);
+        if (Build.VERSION.SDK_INT >= 33) automation.grantRuntimePermission(app, Manifest.permission.POST_NOTIFICATIONS);
         shell("dumpsys deviceidle whitelist +" + app);
-        shell("cmd location set-location-enabled true");
+        setLocationEnabled(true);
+    }
+
+    private void setLocationEnabled(boolean enabled) throws IOException {
+        if (Build.VERSION.SDK_INT >= 31) shell("cmd location set-location-enabled " + enabled);
+        else shell("settings put secure location_mode " + (enabled ? "3" : "0"));
     }
 
     private void fireSlot(long slotMs) {
@@ -382,7 +438,7 @@ public final class DiemDanhDeviceTest {
 
     @Test public void aSlotWithLocationSwitchedOffReportsLocationOff() throws Exception {
         grantLocation();
-        shell("cmd location set-location-enabled false");
+        setLocationEnabled(false);
         try {
             long waitUntil = SystemClock.uptimeMillis() + 5_000L;
             while (DeviceHealth.locationEnabled(context) && SystemClock.uptimeMillis() < waitUntil) SystemClock.sleep(50L);
@@ -394,7 +450,7 @@ public final class DiemDanhDeviceTest {
             assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
             assertEquals(CheckinPolicy.REASON_LOCATION_OFF, ping.getString("reason"));
         } finally {
-            shell("cmd location set-location-enabled true");
+            setLocationEnabled(true);
         }
     }
 

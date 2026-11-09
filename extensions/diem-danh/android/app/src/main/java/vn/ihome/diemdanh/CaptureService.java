@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.location.LocationRequest;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -34,7 +35,6 @@ public final class CaptureService extends Service {
     private static final long HARD_STOP_MS = 45_000L;
     private static final long SETTLE_MS = 6_000L;
     private static final long FALLBACK_PROVIDERS_AFTER_MS = 15_000L;
-    private static final double GOOD_ACCURACY_M = 25d;
     private static final long WAKE_LOCK_MS = 60_000L;
 
     private static final Object WAKE_GUARD = new Object();
@@ -169,7 +169,7 @@ public final class CaptureService extends Service {
     }
 
     private void startFallbackProviders() {
-        if (concluded || best != null) return;
+        if (concluded || CheckinPolicy.acceptable(best)) return;
         startProvider(LocationManager.GPS_PROVIDER);
         startProvider(LocationManager.NETWORK_PROVIDER);
     }
@@ -179,21 +179,27 @@ public final class CaptureService extends Service {
         try {
             if (!locationManager.getProviders(true).contains(provider)) return;
             Listener listener = new Listener();
-            locationManager.requestLocationUpdates(provider, 0L, 0f, listener, worker.getLooper());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // The older overload asks the fused provider for balanced power instead of precision.
+                LocationRequest request = new LocationRequest.Builder(0L)
+                        .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY).build();
+                locationManager.requestLocationUpdates(provider, request, worker::post, listener);
+            } else {
+                locationManager.requestLocationUpdates(provider, 0L, 0f, listener, worker.getLooper());
+            }
             listeners.add(listener);
         } catch (SecurityException | IllegalArgumentException error) {
             Log.w(TAG, "provider unavailable: " + error.getClass().getSimpleName());
         }
     }
 
+    /** A quick coarse fix must not end the capture before GPS had its chance. */
     private void onFix(Location location) {
         if (concluded || location == null) return;
         best = CheckinPolicy.better(best, SlotRecorder.toFix(location, false));
-        if (best.accuracyM != null && best.accuracyM <= GOOD_ACCURACY_M) {
+        if (CheckinPolicy.goodEnough(best)) {
             conclude(best);
-            return;
-        }
-        if (!settling) {
+        } else if (CheckinPolicy.acceptable(best) && !settling) {
             settling = true;
             worker.postDelayed(() -> conclude(best), SETTLE_MS);
         }
