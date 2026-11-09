@@ -283,15 +283,18 @@ public final class CheckinPolicyTest {
                 CheckinPolicy.keepArmed(now - 1_000L, true, next, now, 0L, CheckinPolicy.OFFSET_RESCHEDULE_MS + 1L));
     }
 
-    @Test public void onlyTheIngestFunctionsOwnRefusalStopsTheApp() {
-        assertTrue(CheckinPolicy.deviceRefused(401, "{\"error\":\"unauthorized\"}"));
-        assertTrue(CheckinPolicy.deviceRefused(403, "{\"error\":\"forbidden\"}"));
-        assertFalse("Supabase gateway", CheckinPolicy.deviceRefused(401, "{\"code\":401,\"message\":\"Invalid JWT\"}"));
-        assertFalse("proxy page", CheckinPolicy.deviceRefused(403, "<html>Forbidden</html>"));
-        assertFalse("empty", CheckinPolicy.deviceRefused(401, ""));
-        assertFalse("mixed up", CheckinPolicy.deviceRefused(401, "{\"error\":\"forbidden\"}"));
-        assertFalse("other status", CheckinPolicy.deviceRefused(400, "{\"error\":\"unauthorized\"}"));
-        assertFalse(CheckinPolicy.deviceRefused(401, null));
+    @Test public void onlyTheIngestFunctionsOwnRefusalChangesTheAppsState() {
+        assertTrue(CheckinPolicy.deviceRevoked(401, "{\"error\":\"unauthorized\"}"));
+        assertTrue(CheckinPolicy.accountRefused(403, "{\"error\":\"forbidden\"}"));
+        assertFalse("Supabase gateway", CheckinPolicy.deviceRevoked(401, "{\"code\":401,\"message\":\"Invalid JWT\"}"));
+        assertFalse("proxy page", CheckinPolicy.accountRefused(403, "<html>Forbidden</html>"));
+        assertFalse("empty", CheckinPolicy.deviceRevoked(401, ""));
+        assertFalse("mixed up", CheckinPolicy.deviceRevoked(401, "{\"error\":\"forbidden\"}"));
+        assertFalse("mixed up", CheckinPolicy.accountRefused(403, "{\"error\":\"unauthorized\"}"));
+        assertFalse("A 403 never revokes", CheckinPolicy.deviceRevoked(403, "{\"error\":\"unauthorized\"}"));
+        assertFalse("other status", CheckinPolicy.deviceRevoked(400, "{\"error\":\"unauthorized\"}"));
+        assertFalse(CheckinPolicy.deviceRevoked(401, null));
+        assertFalse(CheckinPolicy.accountRefused(403, null));
     }
 
     @Test public void retriesOnlyTransientHttpStatuses() {

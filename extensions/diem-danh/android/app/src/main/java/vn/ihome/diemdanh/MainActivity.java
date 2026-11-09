@@ -242,6 +242,9 @@ public final class MainActivity extends Activity {
         if (state.revoked) {
             headline.setText("Đã dừng ghi vị trí");
             subline.setText("Máy không còn được ghép với tài khoản CRM.");
+        } else if (state.suspended) {
+            headline.setText("Tài khoản chưa được phép điểm danh");
+            subline.setText("App đã ngừng ghi vị trí và sẽ tự chạy lại khi máy chủ cho phép.");
         } else if (state.paused) {
             headline.setText("Đang tạm dừng");
             subline.setText("Các mốc đến giờ được ghi là «đã tắt», không lấy vị trí.");
@@ -271,7 +274,7 @@ public final class MainActivity extends Activity {
         failedCard.setVisibility(snapshot.stats.failed > 0 ? View.VISIBLE : View.GONE);
         failedText.setText(snapshot.stats.failed + " mốc gửi lỗi. Máy chủ từ chối hoặc chưa xác nhận các mốc này.");
         pauseButton.setText(state.paused ? "Tiếp tục ghi vị trí" : "Tạm dừng");
-        pauseButton.setVisibility(state.revoked ? View.GONE : View.VISIBLE);
+        pauseButton.setVisibility(state.canCapture() ? View.VISIBLE : View.GONE);
     }
 
     /** Notifications are the one step a capture can do without. */
@@ -283,9 +286,8 @@ public final class MainActivity extends Activity {
     }
 
     private void renderHealth(Snapshot snapshot, CheckinSettings.State state) {
-        appRow.set(state.isActive(), state.isActive()
-                ? (state.userName.isEmpty() ? "đã ghép với tài khoản của bạn" : "đã ghép · " + state.userName)
-                : "đã bị gỡ");
+        String pairedText = state.userName.isEmpty() ? "đã ghép với tài khoản của bạn" : "đã ghép · " + state.userName;
+        appRow.set(state.canCapture(), state.revoked ? "đã bị gỡ" : state.suspended ? "chưa được phép" : pairedText);
         boolean always = CheckinPolicy.LOCATION_ALWAYS.equals(snapshot.locationPermission);
         String permissionText = always ? "Luôn cho phép"
                 : CheckinPolicy.LOCATION_WHILE_IN_USE.equals(snapshot.locationPermission) ? "Chỉ khi dùng app" : "Chưa cấp";

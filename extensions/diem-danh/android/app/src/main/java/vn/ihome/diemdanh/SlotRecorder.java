@@ -62,7 +62,7 @@ final class SlotRecorder {
     static void recordWithoutForeground(Context context, long slotMs) {
         try {
             CheckinSettings.State state = new CheckinSettings(context).load();
-            if (!state.isActive()) return;
+            if (!state.canCapture()) return;
             String reason = CheckinPolicy.preCaptureReason(state.paused, DeviceHealth.locationPermission(context),
                     Build.VERSION.SDK_INT, DeviceHealth.locationEnabled(context));
             record(context, slotMs, state, reason != null ? CheckinPolicy.Fix.none(reason) : lastKnownOrTimeout(context));

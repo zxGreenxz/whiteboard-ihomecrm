@@ -42,7 +42,7 @@ Android gốc chưa đủ: nhiều hãng tự tắt app chạy nền. Ngoài bư
 - `CaptureService` là dịch vụ nền trước loại `location`, sống tối đa 45 giây. Nếu máy có nguồn `fused` thì dùng nguồn đó, không thì GPS và mạng song song, lấy kết quả chính xác nhất. Hết giờ thì dùng vị trí gần nhất trong máy nếu chưa quá 60 phút, báo là `stale` kèm tuổi; cũ hơn thì không gửi toạ độ.
 - Không lấy được thì ghi `none` với lý do `permission_denied`, `location_off`, `timeout`, `paused`. Khi tạm dừng, app không lấy vị trí.
 - Mỗi mốc được lưu mã hóa (AES-GCM, khóa AndroidKeyStore) trước khi gửi. Mất mạng thì giữ lại, tối đa 15 ngày vì máy chủ không nhận bản ghi quá 14 ngày.
-- `DeliveryWork` chỉ coi là đã gửi khi biên nhận JSON đúng `schemaVersion:1`, `ok:true`, `externalId` trùng `id`, trạng thái hợp lệ, có `acceptedAt` và `settings`. Khi chính cổng nhận trả 401 (máy đã bị gỡ) hoặc 403 (tài khoản không còn hoạt động), app dừng hẳn và báo trên màn hình; 401/403 từ lớp trung gian thì chỉ thử lại.
+- `DeliveryWork` chỉ coi là đã gửi khi biên nhận JSON đúng `schemaVersion:1`, `ok:true`, `externalId` trùng `id`, trạng thái hợp lệ, có `acceptedAt` và `settings`. Khi chính cổng nhận trả 401, máy đã bị gỡ: app dừng hẳn và báo trên màn hình. Khi cổng nhận trả 403 (tài khoản không còn hoạt động, hoặc máy chủ mất quyền), app ngừng lấy vị trí nhưng vẫn báo tình trạng máy và tự chạy lại khi có biên nhận hợp lệ. 401/403 từ lớp trung gian thì chỉ thử lại.
 - `SafetyNetWork` chạy khoảng mỗi 15 phút, đặt lại báo thức nếu mất và gửi `device.state`. Android có thể hoãn việc này khi máy ngủ.
 
 ## Build và kiểm chứng
@@ -58,7 +58,7 @@ Workflow `android-diem-danh.yml` chạy `ci-build.sh` (unit test, lint, APK, đ�
 **CI chứng minh được:**
 
 - Tính mốc đúng ở biên khung giờ, ngày nghỉ, giờ Việt Nam; `id` ổn định; gói gửi đúng khóa như máy chủ; biên nhận sai không được tính là đã gửi (JUnit).
-- Hàng đợi mã hóa còn nguyên sau khi tắt hẳn tiến trình và mở lại; 401 dừng mọi thứ; báo thức chỉ đặt cho mốc trong khung, không đặt cho ngày nghỉ, được đặt lại sau khởi động giả lập; dịch vụ tạo đúng gói từ vị trí giả lập, gói `paused` và `location_off`; bản cài mới chưa có quyền thì hiện đúng bước đầu của luồng cấp quyền; ảnh màn hình ghép nối, cấp quyền, trạng thái (emulator).
+- Hàng đợi mã hóa còn nguyên sau khi tắt hẳn tiến trình và mở lại; 401 dừng mọi thứ; 403 ngừng lấy vị trí rồi tự chạy lại khi có biên nhận; báo thức chỉ đặt cho mốc trong khung, không đặt cho ngày nghỉ, được đặt lại sau khởi động giả lập; dịch vụ tạo đúng gói từ vị trí giả lập, gói `paused` và `location_off`; bản cài mới chưa có quyền thì hiện đúng bước đầu của luồng cấp quyền; ảnh màn hình ghép nối, cấp quyền, trạng thái (emulator).
 
 **CI không chứng minh được:**
 

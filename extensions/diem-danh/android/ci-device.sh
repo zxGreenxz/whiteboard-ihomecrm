@@ -77,6 +77,8 @@ run_on_api() {
   adb shell settings put global window_animation_scale 0
   adb shell settings put global transition_animation_scale 0
   adb shell settings put global animator_duration_scale 0
+  # A busy emulator shows "isn't responding" prompts for its own launcher over the screenshots.
+  adb shell settings put global hide_error_dialogs 1
   if (( api >= 31 )); then
     adb shell cmd location set-location-enabled true
   else

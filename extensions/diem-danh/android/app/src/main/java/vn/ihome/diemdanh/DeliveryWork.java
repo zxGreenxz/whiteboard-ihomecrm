@@ -61,7 +61,7 @@ public final class DeliveryWork extends Worker {
         }
     }
 
-    enum Outcome { DONE, RETRY, REVOKED }
+    enum Outcome { DONE, RETRY, REVOKED, SUSPENDED }
 
     /** REPLACE, not APPEND: a new record must not sit behind a retry that is backing off for hours. */
     public static void schedule(Context context) {
@@ -118,8 +118,12 @@ public final class DeliveryWork extends Worker {
                 }
                 long finishedMs = System.currentTimeMillis();
                 int status = response.status;
-                if (CheckinPolicy.deviceRefused(status, response.body)) {
+                if (CheckinPolicy.deviceRevoked(status, response.body)) {
                     if (revoke(context, configuration, state.token)) return Outcome.REVOKED;
+                    continue;
+                }
+                if (CheckinPolicy.accountRefused(status, response.body)) {
+                    if (suspend(context, configuration, state.token)) return Outcome.SUSPENDED;
                     continue;
                 }
                 if (status >= 200 && status <= 299) {
@@ -164,6 +168,13 @@ public final class DeliveryWork extends Worker {
         if (!configuration.markRevoked(refusedToken).revoked) return false;
         SlotScheduler.cancel(context);
         SafetyNetWork.cancel(context);
+        return true;
+    }
+
+    /** No more captures, but SafetyNetWork keeps asking so a valid receipt can bring them back. */
+    private static boolean suspend(Context context, CheckinSettings configuration, String refusedToken) {
+        if (!configuration.markSuspended(refusedToken).suspended) return false;
+        SlotScheduler.cancel(context);
         return true;
     }
 

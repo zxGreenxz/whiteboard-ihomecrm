@@ -91,7 +91,7 @@ public final class DiemDanhDeviceTest {
     // ---- Storage ---------------------------------------------------------------------------
 
     @Test public void credentialAndOutboxAreEncryptedAndASlotIsStoredOnce() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         assertTrue(CheckinPolicy.validToken(state.token));
         String stored = context.getSharedPreferences("checkin_private", Context.MODE_PRIVATE).getString("state", "");
         assertFalse(stored.isEmpty());
@@ -128,7 +128,7 @@ public final class DiemDanhDeviceTest {
     }
 
     @Test public void onlyAPinnedReceiptMarksARecordSentAndNewSettingsReschedule() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         String id = enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
         JSONObject next = Fixtures.settings(9, true, true, Fixtures.windows("00:00", "23:55"), new JSONArray());
         String valid = Fixtures.receipt(id, "accepted", next);
@@ -165,11 +165,11 @@ public final class DiemDanhDeviceTest {
         assertTrue("Changed settings arm the schedule", SlotScheduler.isArmed(context));
     }
 
-    private void assertTheFunctionsRefusalStopsEverything(int status, String body) throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+    @Test public void aRevokedDeviceStopsAndKeepsItsRecords() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         SlotScheduler.ensureArmed(context);
         enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
-        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(status, body, JSON);
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(401, "{\"error\":\"unauthorized\"}", JSON);
         assertEquals(DeliveryWork.Outcome.REVOKED, drain());
         CheckinSettings.State after = settings.load();
         assertTrue(after.revoked);
@@ -183,16 +183,30 @@ public final class DiemDanhDeviceTest {
         assertEquals("Nothing is sent after revocation", calls, transport.ids.size());
     }
 
-    @Test public void aRevokedDeviceStopsAndKeepsItsRecords() throws Exception {
-        assertTheFunctionsRefusalStopsEverything(401, "{\"error\":\"unauthorized\"}");
-    }
+    @Test public void aRefusedAccountStopsCapturingAndRecoversOnItsOwn() throws Exception {
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
+        SlotScheduler.ensureArmed(context);
+        String id = enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(403, "{\"error\":\"forbidden\"}", JSON);
+        assertEquals(DeliveryWork.Outcome.SUSPENDED, drain());
+        CheckinSettings.State after = settings.load();
+        assertTrue(after.suspended);
+        assertFalse("A 403 never needs a new pairing", after.revoked);
+        assertFalse("No capture while refused", after.canCapture());
+        assertFalse(SlotScheduler.isArmed(context));
+        assertFalse(armedInDumpsys());
+        assertEquals("Records wait for the account", 1, queue.stats().pending);
 
-    @Test public void anAccountNoLongerActiveStopsLikeARevokedDevice() throws Exception {
-        assertTheFunctionsRefusalStopsEverything(403, "{\"error\":\"forbidden\"}");
+        String accepted = Fixtures.receipt(id, "accepted", Fixtures.quietSettings(3));
+        transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(201, accepted, JSON);
+        assertEquals(DeliveryWork.Outcome.DONE, drain());
+        assertTrue(settings.load().canCapture());
+        assertEquals(1, queue.stats().sent);
+        assertTrue("A valid receipt brings the alarm back", SlotScheduler.isArmed(context));
     }
 
     @Test public void aRefusalFromAGatewayOnlyRetries() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         SlotScheduler.ensureArmed(context);
         enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
         transport.responder = (requestId, payload) -> new DeliveryWork.HttpResult(401, "{\"code\":401,\"message\":\"Invalid JWT\"}", JSON);
@@ -203,13 +217,13 @@ public final class DiemDanhDeviceTest {
     }
 
     @Test public void aRefusalOfTheOldCredentialDoesNotUndoANewPairing() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
         transport.responder = (requestId, payload) -> {
             // The person pairs again while the old credential's request is on its way.
             long now = System.currentTimeMillis();
             try {
-                settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.allDaySettings(4), now, now, "Người khác");
+                settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.quietSettings(4), now, now, "Người khác");
             } catch (Exception error) {
                 throw new IOException(error);
             }
@@ -221,10 +235,10 @@ public final class DiemDanhDeviceTest {
     }
 
     @Test public void recordsOfAnEarlierPairingAreNeverSentWithANewCredential() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         enqueuePing(state, Instant.parse("2026-01-05T01:30:00Z").toEpochMilli());
         long now = System.currentTimeMillis();
-        settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.allDaySettings(4), now, now, "Người khác");
+        settings.completePairing(settings.beginPairing("HGFEDCBA23"), Fixtures.quietSettings(4), now, now, "Người khác");
         assertEquals(DeliveryWork.Outcome.DONE, drain());
         assertTrue(transport.ids.isEmpty());
         assertEquals(1, queue.stats().failed);
@@ -236,12 +250,13 @@ public final class DiemDanhDeviceTest {
         return Instant.now().atZone(CheckinPolicy.VIETNAM).toLocalDate();
     }
 
-    /** Reads only the live part of the dump: removed alarms stay listed in its history. */
+    /** Reads only the live part of the dump, since removed alarms stay in its history; window=0 is exact. */
     private boolean armedInDumpsys() throws IOException {
         String dump = shell("dumpsys alarm");
         int history = dump.indexOf("Removal history");
         String live = history >= 0 ? dump.substring(0, history) : dump;
-        return live.contains(context.getPackageName()) && live.contains(SlotAlarmReceiver.ACTION_SLOT);
+        int tag = live.indexOf("tag=*walarm*:" + SlotAlarmReceiver.ACTION_SLOT);
+        return tag >= 0 && live.substring(tag, Math.min(live.length(), tag + 400)).contains("window=0");
     }
 
     @Test public void theAlarmIsOnlyEverForASlotInsideTheWindow() throws Exception {
@@ -280,7 +295,7 @@ public final class DiemDanhDeviceTest {
     }
 
     @Test public void aDisabledOrUnappliedScheduleHasNoAlarm() throws Exception {
-        Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        Fixtures.pair(settings, Fixtures.quietSettings(3));
         SlotScheduler.ensureArmed(context);
         assertTrue(SlotScheduler.isArmed(context));
         assertTrue(armedInDumpsys());
@@ -296,25 +311,26 @@ public final class DiemDanhDeviceTest {
     }
 
     @Test public void aCorrectedPhoneClockRearmsTheSameSlot() throws Exception {
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        JSONObject quiet = Fixtures.quietSettings(3);
+        CheckinSettings.State state = Fixtures.pair(settings, quiet);
         SlotScheduler.ensureArmed(context);
         long armed = settings.load().armedSlotMs;
         assertEquals(state.clockOffsetMs, settings.load().armedOffsetMs);
         long startedMs = System.currentTimeMillis() - 720_000L;
         // serverNow is "now" while the phone believed it to be 12 minutes earlier.
-        assertTrue(settings.applyServerSettings(Fixtures.allDaySettings(3), startedMs, startedMs));
+        assertTrue(settings.applyServerSettings(quiet, startedMs, startedMs));
         SlotScheduler.ensureArmed(context);
         CheckinSettings.State after = settings.load();
+        assertEquals("Still the same slot, so only the corrected clock can have moved the alarm", armed, after.armedSlotMs);
         assertEquals(after.clockOffsetMs, after.armedOffsetMs);
         assertTrue("The offset moved by about 12 minutes", Math.abs(after.armedOffsetMs - state.clockOffsetMs) > 700_000L);
-        assertTrue(armed > 0L && after.armedSlotMs > 0L);
     }
 
     @Test public void bootRearmsALostAlarmButNotForAnUnpairedPhone() throws Exception {
         new BootReceiver().onReceive(context, new Intent(Intent.ACTION_BOOT_COMPLETED));
         assertFalse("An unpaired phone arms nothing", SlotScheduler.isArmed(context));
 
-        Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        Fixtures.pair(settings, Fixtures.quietSettings(3));
         SlotScheduler.ensureArmed(context);
         long armed = settings.load().armedSlotMs;
         PendingIntent lost = SlotScheduler.existingAlarm(context);
@@ -374,7 +390,7 @@ public final class DiemDanhDeviceTest {
     @Test public void aFiredSlotQueuesAPingFromAMockLocationAndReportsTheMock() throws Exception {
         grantLocation();
         shell("appops set " + context.getPackageName() + " android:mock_location allow");
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(7));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(7));
         LocationManager manager = context.getSystemService(LocationManager.class);
         String[] providers = {"fused", LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER};
         for (String provider : providers) {
@@ -421,7 +437,7 @@ public final class DiemDanhDeviceTest {
 
     @Test public void aPausedSlotIsReportedAndTakesNoLocation() throws Exception {
         grantLocation();
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         settings.setPaused(true);
         SlotScheduler.ensureArmed(context);
         long slotMs = settings.load().armedSlotMs;
@@ -443,7 +459,7 @@ public final class DiemDanhDeviceTest {
             long waitUntil = SystemClock.uptimeMillis() + 5_000L;
             while (DeviceHealth.locationEnabled(context) && SystemClock.uptimeMillis() < waitUntil) SystemClock.sleep(50L);
             assertFalse(DeviceHealth.locationEnabled(context));
-            CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+            CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
             long slotMs = Instant.now().plusSeconds(180L).toEpochMilli();
             fireSlot(slotMs);
             JSONObject ping = awaitPing(CheckinPolicy.slotId(state.deviceId, CheckinPolicy.formatInstant(slotMs)), 15_000L);
@@ -475,7 +491,7 @@ public final class DiemDanhDeviceTest {
 
     @Test public void theStatusScreenShowsTheDeviceRowsAndThePauseButton() throws Exception {
         grantLocation();
-        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(settings, Fixtures.quietSettings(3));
         long slotMs = Instant.parse("2026-01-05T01:30:00Z").toEpochMilli();
         enqueuePing(state, slotMs);
         SlotScheduler.ensureArmed(context);

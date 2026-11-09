@@ -649,18 +649,26 @@ public final class CheckinPolicy {
         return status == 408 || status == 429 || (status >= 500 && status <= 599);
     }
 
+    /** The ingest function's own answer that this credential is dead; a gateway's 401 says nothing. */
+    public static boolean deviceRevoked(int status, String body) {
+        return status == 401 && errorCode(body).equals("unauthorized");
+    }
+
     /**
-     * True only for the ingest function's own refusal of this device: 401 "unauthorized" (revoked)
-     * or 403 "forbidden" (the account is no longer active). The same codes from a gateway or proxy
-     * must not switch the app off.
+     * The ingest function's 403. It means the account is not active, but also any lost database
+     * permission on the server, so the app only stops capturing and recovers on its own.
      */
-    public static boolean deviceRefused(int status, String body) {
-        String expected = status == 401 ? "unauthorized" : status == 403 ? "forbidden" : null;
-        if (expected == null || body == null) return false;
+    public static boolean accountRefused(int status, String body) {
+        return status == 403 && errorCode(body).equals("forbidden");
+    }
+
+    private static String errorCode(String body) {
+        if (body == null) return "";
         try {
-            return expected.equals(new JSONObject(body).opt("error"));
+            Object code = new JSONObject(body).opt("error");
+            return code instanceof String ? (String) code : "";
         } catch (JSONException error) {
-            return false;
+            return "";
         }
     }
 

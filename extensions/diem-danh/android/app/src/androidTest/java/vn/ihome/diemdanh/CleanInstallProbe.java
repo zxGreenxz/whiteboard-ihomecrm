@@ -30,7 +30,7 @@ public final class CleanInstallProbe {
         Context context = ApplicationProvider.getApplicationContext();
         CheckinSettings store = new CheckinSettings(context);
         store.clearForTest();
-        CheckinSettings.State state = Fixtures.pair(store, Fixtures.allDaySettings(3));
+        CheckinSettings.State state = Fixtures.pair(store, Fixtures.quietSettings(3));
         QueueStore queue = new QueueStore(context);
         queue.clearAll();
         JSONObject event = Fixtures.ping(state, SLOT_MS, Fixtures.freshFix());

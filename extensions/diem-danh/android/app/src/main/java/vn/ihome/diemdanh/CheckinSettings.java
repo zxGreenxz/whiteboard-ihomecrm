@@ -27,6 +27,7 @@ public final class CheckinSettings {
         public final String token;
         public final boolean paired;
         public final boolean revoked;
+        public final boolean suspended;
         public final boolean paused;
         public final CheckinPolicy.Schedule schedule;
         public final long clockOffsetMs;
@@ -41,6 +42,7 @@ public final class CheckinSettings {
             token = json.optString("token", "");
             paired = json.optBoolean("paired", false);
             revoked = json.optBoolean("revoked", false);
+            suspended = json.optBoolean("suspended", false);
             paused = json.optBoolean("paused", false);
             clockOffsetMs = json.optLong("clockOffsetMs", 0L);
             armedSlotMs = json.optLong("armedSlotMs", 0L);
@@ -53,6 +55,11 @@ public final class CheckinSettings {
 
         public boolean isActive() {
             return paired && !revoked;
+        }
+
+        /** While the server refuses the account the phone only reports its health, no location. */
+        public boolean canCapture() {
+            return isActive() && !suspended;
         }
 
         /** Phone clock corrected by the last known server offset. */
@@ -110,6 +117,7 @@ public final class CheckinSettings {
             json.put("token", token);
             json.put("paired", true);
             json.put("revoked", false);
+            json.put("suspended", false);
             json.put("paused", false);
             json.put("settings", settings);
             json.put("clockOffsetMs", offset);
@@ -128,12 +136,13 @@ public final class CheckinSettings {
         boolean[] changed = new boolean[1];
         change(json -> {
             State previous = new State(json);
-            changed[0] = previous.schedule == null
+            changed[0] = previous.suspended || previous.schedule == null
                     || !previous.schedule.fingerprint().equals(next.fingerprint())
                     || Math.abs(previous.clockOffsetMs - offset) > CheckinPolicy.OFFSET_RESCHEDULE_MS;
             json.put("settings", settings);
             json.put("clockOffsetMs", offset);
             json.put("lastReceiptMs", finishedMs);
+            json.put("suspended", false);
         });
         return changed[0];
     }
@@ -152,9 +161,18 @@ public final class CheckinSettings {
 
     /** Only for the credential the server refused: a pairing completed meanwhile stays valid. */
     State markRevoked(String refusedToken) {
+        return refuse(refusedToken, "revoked");
+    }
+
+    /** Cleared by the next valid receipt, so a server-side problem heals without pairing again. */
+    State markSuspended(String refusedToken) {
+        return refuse(refusedToken, "suspended");
+    }
+
+    private State refuse(String refusedToken, String flag) {
         return change(json -> {
             if (!refusedToken.equals(json.optString("token", ""))) return;
-            json.put("revoked", true);
+            json.put(flag, true);
             json.put("armedSlotMs", 0L);
         });
     }

@@ -136,7 +136,7 @@ public final class CaptureService extends Service {
     private void begin() {
         try {
             state = new CheckinSettings(this).load();
-            if (!state.isActive()) {
+            if (!state.canCapture()) {
                 finish();
                 return;
             }
@@ -196,7 +196,9 @@ public final class CaptureService extends Service {
     /** A quick coarse fix must not end the capture before GPS had its chance. */
     private void onFix(Location location) {
         if (concluded || location == null) return;
-        best = CheckinPolicy.better(best, SlotRecorder.toFix(location, false));
+        CheckinPolicy.Fix fix = SlotRecorder.toFix(location, false);
+        if (!CheckinPolicy.usableLastKnown(fix.ageMs)) return;
+        best = CheckinPolicy.better(best, fix);
         if (CheckinPolicy.goodEnough(best)) {
             conclude(best);
         } else if (CheckinPolicy.acceptable(best) && !settling) {

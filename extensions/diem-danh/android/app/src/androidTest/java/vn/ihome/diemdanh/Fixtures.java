@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertTrue;
@@ -44,8 +45,11 @@ final class Fixtures {
                 .put("tz", "Asia/Ho_Chi_Minh").put("serverNow", Instant.now().toString());
     }
 
-    static JSONObject allDaySettings(int version) throws Exception {
-        return settings(version, true, true, windows("00:00", "23:55"), new JSONArray());
+    /** A window over an hour away, so no real alarm fires and no slot boundary passes during a test. */
+    static JSONObject quietSettings(int version) throws Exception {
+        int hour = Instant.now().atZone(CheckinPolicy.VIETNAM).getHour();
+        String prefix = hour <= 21 ? String.format(Locale.ROOT, "%02d", hour + 2) : "08";
+        return settings(version, true, true, windows(prefix + ":00", prefix + ":30"), new JSONArray());
     }
 
     static CheckinSettings.State pair(CheckinSettings store, JSONObject settings) {

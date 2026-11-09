@@ -29,7 +29,7 @@ public final class SlotScheduler {
         CheckinSettings settings = new CheckinSettings(app);
         CheckinSettings.State state = settings.load();
         long nowMs = state.correctedNow();
-        Instant next = state.isActive()
+        Instant next = state.canCapture()
                 ? CheckinPolicy.nextSlot(state.schedule, Instant.ofEpochMilli(Math.max(nowMs, firedSlotMs)))
                 : null;
         if (next == null) {
