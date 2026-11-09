@@ -7,16 +7,16 @@ import type { OperationErrorRule } from '@/lib/friendlyError';
 const dateOnly = z.string().refine(value => normalizeDateOnly(value) === value, 'Ngày không hợp lệ');
 const revision = z.string().min(1);
 const historyEntry = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   reopened_at: z.string().datetime({ offset: true }),
   reopened_by_name: z.string().nullable(),
   reason: z.string().min(10).max(1000),
   previous_lock_date: dateOnly,
-  idempotency_key: z.string().uuid(),
+  idempotency_key: z.string().guid(),
   previous_revision: revision,
 });
 const stateSchema = z.object({
-  cashbook_id: z.string().uuid(),
+  cashbook_id: z.string().guid(),
   can_reopen: z.boolean(),
   blocked_reason: z.enum(['PENDING_CLOSURE']).nullable(),
   lock_date: dateOnly.nullable(),
@@ -24,15 +24,15 @@ const stateSchema = z.object({
   history: z.array(historyEntry),
 }).refine(value => !value.can_reopen || value.lock_date !== null);
 const receiptSchema = z.object({
-  cashbook_id: z.string().uuid(),
-  reopening_id: z.string().uuid(),
+  cashbook_id: z.string().guid(),
+  reopening_id: z.string().guid(),
   status: z.literal('REOPENED'),
   lock_date: z.null(),
-  idempotency_key: z.string().uuid(),
+  idempotency_key: z.string().guid(),
   previous_revision: revision,
 });
 const inputSchema = z.object({
-  cashbookId: z.string().uuid(),
+  cashbookId: z.string().guid(),
   cashbookName: z.string().nullish(),
   reason: z.string().trim().min(10).max(1000),
   expectedLockDate: dateOnly,

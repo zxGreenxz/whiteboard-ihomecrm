@@ -3,7 +3,7 @@ import type { Database, Json } from '@/integrations/supabase/types';
 import { rpcNullable } from './rpcNullable';
 import { depositAdoptionCandidateSchema, depositPayeeVerificationSchema, type DepositAdoptionCandidate, fundingSourceQuoteSchema, payoutPreviewContextSchema, payoutContextSchema, payoutOperationSchema, payoutPreparationSchema, supportPartyListSchema, supportPartySchema, type PayoutPreviewContext, type PayoutContext, type PayoutOperation, type PayoutPreparation } from './rentSupportFunding';
 import { supportPlanInputSchema, type SupportPlanInput } from './rentSupport';
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
 const month = z.string().regex(/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/);
 const schedule = z.object({ version: z.literal(2), start_billing_month: month,
@@ -21,7 +21,7 @@ export const supportQuoteSchema = z.object({ quote_hash: z.string().min(1), payl
 export type SupportQuote = z.infer<typeof supportQuoteSchema>;
 export const supportReadSchema = z.object({ total: z.number().int().nonnegative(), rows: z.array(z.object({
   contract_id: uuid, kind: z.enum(['LEGACY', 'V2']), revision: z.number().int().positive().nullable(), customer_hash: z.string().nullable(),
-  schedule: schedule.nullable(), legacy: z.unknown(), months: z.array(z.object({ billing_month: month, agreed_amount: money }).strict()),
+  schedule: schedule.nullable(), legacy: z.unknown().optional(), months: z.array(z.object({ billing_month: month, agreed_amount: money }).strict()),
   financial: z.object({ payload: supportPlanInputSchema, committed_total: money, reason: z.string().nullable(),
     review: z.object({ revision: z.number().int().positive(), reason: z.string().nullable(), payload: supportPlanInputSchema }).strict().nullable(),
   }).strict().nullable().optional(),

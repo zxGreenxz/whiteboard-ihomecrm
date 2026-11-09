@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { sameContractCustomers, type ContractRelationSnapshot } from './contractRelationReconcile';
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const d = new Date(`${value}T00:00:00Z`);
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 export const meterValueSchema = z.string().regex(/^\d+(?:\.\d{1,6})?$/);
 export const meterCaptureProfileSchema = z.object({
   serial: z.string(), displayKind: z.enum(['DIGITAL', 'MECHANICAL']),

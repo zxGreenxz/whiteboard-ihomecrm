@@ -5,8 +5,8 @@ import { cancelCameraArchive, findCameraArchive, prepareCameraArchive, type Came
 import { CameraLiveError } from "@/lib/network-center/cameraLive";
 
 const pendingSchema = z.object({
-  input: z.object({ recorderId: z.string().uuid(), channel: z.number().int().positive(), start: z.string().datetime(), end: z.string().datetime(), purpose: z.literal("export"), resolution: z.enum(["480p", "720p", "1080p", "original"]), requestId: z.string().uuid().optional() }),
-  jobId: z.string().uuid().optional(), cancelling: z.boolean().optional(), createdAt: z.number().finite().positive(),
+  input: z.object({ recorderId: z.string().guid(), channel: z.number().int().positive(), start: z.string().datetime(), end: z.string().datetime(), purpose: z.literal("export"), resolution: z.enum(["480p", "720p", "1080p", "original"]), requestId: z.string().guid().optional() }),
+  jobId: z.string().guid().optional(), cancelling: z.boolean().optional(), createdAt: z.number().finite().positive(),
 }).refine((value) => Boolean(value.jobId || value.input.requestId));
 interface Pending { input: CameraArchiveRequest; jobId?: string; cancelling?: boolean; createdAt: number }
 const requestDeadline = (value: Pending) => value.createdAt + 2 * (Date.parse(value.input.end) - Date.parse(value.input.start)) + 120000;

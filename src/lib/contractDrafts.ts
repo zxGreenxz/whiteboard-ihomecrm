@@ -4,11 +4,11 @@ import { supportCustomerScheduleSchema, supportPlanInputSchema } from './rentSup
 import { todayISO } from '@/lib/collect';
 
 const customerSchema = z.object({
-  id: z.string().uuid(), full_name: z.string(), phone: z.string(), id_number: z.string().nullable(),
+  id: z.string().guid(), full_name: z.string(), phone: z.string(), id_number: z.string().nullable(),
   is_representative: z.boolean(), notes: z.string().nullable(),
 }).strict();
 const serviceSchema = z.object({
-  id: z.string().uuid(), name: z.string(), unit_price: z.number().finite().nonnegative(),
+  id: z.string().guid(), name: z.string(), unit_price: z.number().finite().nonnegative(),
   unit: z.string().nullable(), type: z.string(), pricing_type: z.string().nullable(),
   initial_reading: z.number().finite().nonnegative(), quantity: z.number().finite().nonnegative(),
 }).strict();
@@ -21,7 +21,7 @@ export const contractDraftEditorStateSchema = z.object({
     deposit_debt_mode: z.enum(['DEBT', 'FIRST_INVOICE']).optional(),
     deposit_debt_reason: z.string(),
     deposit_topup_due_date: z.string(),
-    invoice_template_id: z.string().uuid().nullable(),
+    invoice_template_id: z.string().guid().nullable(),
   }).strict(),
   deposit_rows: z.array(z.object({
     uid: z.string(), amount: z.number().finite().nonnegative(), account_id: z.string(),
@@ -64,9 +64,9 @@ export const contractDraftPayloadSchema = z.object({
 export type ContractDraftPayload = z.infer<typeof contractDraftPayloadSchema>;
 
 export const contractDraftDocumentSchema = z.object({
-  id: z.string().uuid(), draft_id: z.string().uuid(), revision: z.number().int().positive(),
+  id: z.string().guid(), draft_id: z.string().guid(), revision: z.number().int().positive(),
   document_path: z.string(), template_path: z.string(), document_sha256: z.string(), template_sha256: z.string(),
-  template_snapshot: z.object({ id: z.string().uuid(), name: z.string(), updated_at: z.string() }),
+  template_snapshot: z.object({ id: z.string().guid(), name: z.string(), updated_at: z.string() }),
   created_at: z.string(),
 });
 export type ContractDraftDocument = z.infer<typeof contractDraftDocumentSchema>;
@@ -76,14 +76,14 @@ export function compatibleDraftDocument(draft: Pick<ContractDraft, 'documents' |
   return draft.documents?.find(document => typeof document.revision === 'number' && document.revision >= (draft.customer_revision ?? revision) && document.revision <= revision);
 }
 export const contractDraftSchema = z.object({
-  id: z.string().uuid(), organization_id: z.string().uuid(), building_id: z.string().uuid(),
-  room_id: z.string().uuid().nullable(), payload: contractDraftPayloadSchema,
-  template_id: z.string().uuid().nullable(), revision: z.number().int().positive(),
+  id: z.string().guid(), organization_id: z.string().guid(), building_id: z.string().guid(),
+  room_id: z.string().guid().nullable(), payload: contractDraftPayloadSchema,
+  template_id: z.string().guid().nullable(), revision: z.number().int().positive(),
   customer_revision: z.number().int().positive().nullish(),
-  created_by: z.string().uuid(), created_at: z.string(), updated_at: z.string(),
+  created_by: z.string().guid(), created_at: z.string(), updated_at: z.string(),
   documents: z.array(contractDraftDocumentSchema).default([]),
   status: z.enum(['EDITABLE', 'SIGNED']).optional(),
-  converted_contract_id: z.string().uuid().nullable().optional(),
+  converted_contract_id: z.string().guid().nullable().optional(),
 });
 export type ContractDraft = z.infer<typeof contractDraftSchema>;
 
@@ -109,7 +109,7 @@ function isDateOnly(value: string): boolean {
 }
 export function validateDraftForExport(payload: ContractDraftPayload): DraftFieldError[] {
   const errors: DraftFieldError[] = [];
-  if (!z.string().uuid().safeParse(payload.form.room_id).success) errors.push({ field: 'room_id', label: 'Phòng', message: 'Vui lòng chọn phòng' });
+  if (!z.string().guid().safeParse(payload.form.room_id).success) errors.push({ field: 'room_id', label: 'Phòng', message: 'Vui lòng chọn phòng' });
   for (const [field, label] of [['signed_date', 'Ngày ký dự kiến'], ['start_date', 'Ngày bắt đầu'], ['end_date', 'Hạn hợp đồng']] as const) {
     if (!isDateOnly(payload.form[field])) errors.push({ field, label, message: 'Vui lòng nhập ngày hợp lệ' });
   }

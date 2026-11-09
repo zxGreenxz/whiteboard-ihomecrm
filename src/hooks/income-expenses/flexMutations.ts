@@ -262,7 +262,7 @@ export const useVoucherChangeLog = (voucherId: string | null | undefined) =>
       if (error) throw error;
       return z.array(z.object({
         at:z.string(),actor_id:z.string().nullable(),actor_name:z.string().nullable(),scope:z.string(),op:z.string(),cols:z.array(z.string()).nullable(),
-        before:z.record(z.unknown()).nullable(),after:z.record(z.unknown()).nullable(),
+        before:z.record(z.string(), z.unknown()).nullable(),after:z.record(z.string(), z.unknown()).nullable(),
       })).parse(data) as VoucherChangeLogEntry[];
     },
   });

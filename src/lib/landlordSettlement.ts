@@ -43,7 +43,7 @@ export const settlementVoucherInvoiceSchema = z.object({
 });
 
 export const settlementVoucherSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().guid().optional(),
   code: z.string().nullable(),
   voucher_date: isoDate,
   type: z.enum(['INCOME', 'EXPENSE']),
@@ -357,7 +357,7 @@ export const PAYMENT_DIRECTIONS = ['LANDLORD_TO_MANAGER', 'MANAGER_TO_LANDLORD']
 export type PaymentDirection = typeof PAYMENT_DIRECTIONS[number];
 
 export const settlementPaymentSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().guid().optional(),
   paid_on: isoDate,
   direction: z.enum(PAYMENT_DIRECTIONS),
   amount: money,
@@ -437,9 +437,9 @@ export type SettlementPublic = z.infer<typeof settlementPublicSchema>;
 export const landlordOperationsListSchema = z.object({
   can_manage: z.boolean(),
   operations: z.array(z.object({
-    building_id: z.string().uuid(),
+    building_id: z.string().guid(),
     building_name: z.string(),
-    organization_id: z.string().uuid(),
+    organization_id: z.string().guid(),
     landlord_name: z.string(),
     manager_percent: money,
     manager_fixed_amount: money.optional().default(0),
@@ -447,9 +447,9 @@ export const landlordOperationsListSchema = z.object({
     is_active: z.boolean(),
   })),
   candidate_buildings: z.array(z.object({
-    building_id: z.string().uuid(),
+    building_id: z.string().guid(),
     building_name: z.string(),
-    organization_id: z.string().uuid(),
+    organization_id: z.string().guid(),
     configured: z.boolean(),
   })),
 });
@@ -462,7 +462,7 @@ export const landlordOperationOptionsSchema = z.object({
     /** %, tiền cố định và sổ chủ nhà của điều khoản MỚI NHẤT (từ terms_from). */
     manager_percent: money,
     manager_fixed_amount: money.optional().default(0),
-    landlord_account_ids: z.array(z.string().uuid()),
+    landlord_account_ids: z.array(z.string().guid()),
     /**
      * v3: người giữ cọc của TOÀ (áp mọi tháng từ tháng bắt đầu; chỉ đổi được khi chưa chốt tháng nào —
      * chủ chốt 23/10/2026); thiếu ⇒ "MANAGER".
@@ -494,12 +494,12 @@ export const landlordOperationOptionsSchema = z.object({
       valid_from: isoDate,
       manager_percent: money,
       manager_fixed_amount: money.optional().default(0),
-      landlord_account_ids: z.array(z.string().uuid()),
+      landlord_account_ids: z.array(z.string().guid()),
     })),
     updated_at: z.string(),
   }).nullable(),
   accounts: z.array(z.object({
-    id: z.string().uuid(),
+    id: z.string().guid(),
     name: z.string(),
     code: z.string().nullable(),
     is_virtual: z.boolean(),
@@ -512,8 +512,8 @@ export const landlordOperationOptionsSchema = z.object({
   history: z.array(z.object({
     created_at: z.string(),
     actor_name: z.string().nullable(),
-    before: z.record(z.unknown()).nullable(),
-    after: z.record(z.unknown()),
+    before: z.record(z.string(), z.unknown()).nullable(),
+    after: z.record(z.string(), z.unknown()),
   })),
 });
 export type LandlordOperationOptions = z.infer<typeof landlordOperationOptionsSchema>;
@@ -528,7 +528,7 @@ export type ShareLink = z.infer<typeof shareLinksSchema>[number];
 
 // Biên nhận của các RPC ghi — thiếu trường là coi như CHƯA XÁC NHẬN, không báo thành công.
 export const upsertReceiptSchema = z.object({
-  building_id: z.string().uuid(),
+  building_id: z.string().guid(),
   created: z.boolean(),
   /** Tháng bắt đầu của điều khoản mới (null: % và sổ không đổi). */
   terms_from: isoDate.nullable(),
@@ -545,8 +545,8 @@ export const reopenReceiptSchema = z.object({
   status: z.enum(['REOPENED', 'ALREADY_OPEN']),
   revision: z.number().int().positive().optional(),
 });
-export const paymentReceiptSchema = z.object({ id: z.string().uuid(), status: z.enum(['CREATED', 'REPLAYED']) });
-export const voidReceiptSchema = z.object({ id: z.string().uuid(), status: z.enum(['VOIDED', 'ALREADY_VOIDED']) });
+export const paymentReceiptSchema = z.object({ id: z.string().guid(), status: z.enum(['CREATED', 'REPLAYED']) });
+export const voidReceiptSchema = z.object({ id: z.string().guid(), status: z.enum(['VOIDED', 'ALREADY_VOIDED']) });
 export const linkCreateReceiptSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{32,64}$/) });
 export const linkRevokeReceiptSchema = z.object({ status: z.enum(['REVOKED', 'ALREADY_REVOKED']) });
 /** landlord_settlement_note_update_v1 — sửa ghi chú bàn giao của lần chốt `revision`. */
@@ -740,7 +740,7 @@ export const BRIDGE_REASON_LABEL: Record<typeof BRIDGE_REASONS[number], string> 
 
 /** Phần chủ nhà theo toà × tháng cho dòng "Lợi nhuận của iHome" trên Báo cáo LN (chủ chốt 22/10). */
 export const landlordIhomeProfitSchema = z.array(z.object({
-  building_id: z.string().uuid(),
+  building_id: z.string().guid(),
   period_month: isoDate,
   /** CLOSED: số đã chốt · OPEN: số tạm tính (theo kỳ, phiếu đã duyệt). */
   status: z.enum(['OPEN', 'CLOSED']),

@@ -5,14 +5,14 @@ import { validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
 import { contractBillingBoundMessages } from '@/lib/contractBillingBounds';
 
 export const contractFormSchema = z.object({
-  room_id: z.string().uuid('Vui lòng chọn phòng'),
+  room_id: z.string().guid('Vui lòng chọn phòng'),
   signed_date: z.string().min(1, 'Ngày ký không được để trống'),
   start_date: z.string().min(1, 'Ngày bắt đầu không được để trống'),
   end_date: z.string().min(1, 'Ngày kết thúc không được để trống'),
   rent_price: z.number().min(0, 'Tiền thuê không được âm'),
   total_deposit: z.number().min(0, 'Tiền cọc không được âm'),
   deposit_paid: z.number().min(0).optional(),
-  deposit_account_id: z.string().uuid().nullable().optional(),
+  deposit_account_id: z.string().guid().nullable().optional(),
   // Xử lý thiếu cọc khi ký (chặn ở form + hook nếu chưa chọn cách xử lý).
   // mode: 'DEBT' = nợ cọc (có lý do/hẹn) | 'FIRST_INVOICE' = thu đủ ở hoá đơn đầu.
   deposit_debt_acknowledged: z.boolean().optional(),
@@ -22,8 +22,8 @@ export const contractFormSchema = z.object({
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   start_billing_date: z.string().optional(),
   end_billing_date: z.string().optional(),
-  contract_template_id: z.string().uuid().nullable().optional(),
-  invoice_template_id: z.string().uuid().nullable().optional(),
+  contract_template_id: z.string().guid().nullable().optional(),
+  invoice_template_id: z.string().guid().nullable().optional(),
   notes: z.string().optional(),
   rent_support: supportPlanInputSchema.optional(),
   discount_months: z.number().int().min(0).optional(),
@@ -65,7 +65,7 @@ export const renewFormSchema = z.object({
 });
 
 export const transferRoomFormSchema = z.object({
-  new_room_id: z.string().uuid('Vui lòng chọn phòng mới'),
+  new_room_id: z.string().guid('Vui lòng chọn phòng mới'),
   new_rent_price: z.number().min(0).optional(),
   transfer_date: z.string().min(1, 'Ngày chuyển không được để trống'),
   notes: z.string().optional(),
@@ -77,7 +77,7 @@ export const moveOutFormSchema = z.object({
 });
 
 export const transferContractFormSchema = z.object({
-  new_customer_id: z.string().uuid('Vui lòng chọn khách hàng mới'),
+  new_customer_id: z.string().guid('Vui lòng chọn khách hàng mới'),
   new_rent_price: z.number().min(0).optional(),
   new_deposit: z.number().min(0).optional(),
   transfer_date: z.string().min(1, 'Ngày nhượng không được để trống'),
@@ -99,7 +99,7 @@ export const extraChargeItemSchema = z.object({
   previous_reading: z.number().min(0).optional(),
   current_reading: z.number().min(0).optional(),
   unit_price: z.number().min(0).optional(),
-  meter_id: z.string().uuid().nullable().optional(),
+  meter_id: z.string().guid().nullable().optional(),
 });
 export type ExtraChargeItem = z.infer<typeof extraChargeItemSchema>;
 

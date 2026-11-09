@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useForm, type FieldErrors } from 'react-hook-form';
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -285,7 +285,7 @@ const IncomeExpenseBatchForm = ({
   const form = useForm<IncomeExpenseBatchFormValues>({
     shouldFocusError: false,
     // Dòng hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
-    resolver: withDepositRoomRule(zodResolver(incomeExpenseBatchFormSchema), (values) =>
+    resolver: withDepositRoomRule(zodResolver(incomeExpenseBatchFormSchema) as Resolver<IncomeExpenseBatchFormValues>, (values) =>
       values.items.flatMap((it, i) =>
         needsDepositRoom([it.income_expense_type_id], it.room_id, depositTypeIds) ? [`items.${i}.room_id`] : [],
       ),

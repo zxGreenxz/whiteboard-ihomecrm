@@ -46,9 +46,11 @@ function serialize(value: Decimal): Money {
   return normalizeMoney(value.scale ? `${digits.slice(0, -value.scale)}.${digits.slice(-value.scale)}` : digits);
 }
 
-const moneySchema = z.string().regex(/^\d+(?:\.\d+)?$/, 'Số tiền phải là chuỗi thập phân hữu hạn không âm.').transform(normalizeMoney);
+// `abort`: zod 3 bỏ qua superRefine cấp object khi một field `.regex().transform()` đã lỗi, zod 4 thì
+// vẫn chạy với giá trị thô ⇒ chuỗi sai định dạng tới BigInt trong superRefine và NÉM thay vì báo lỗi.
+const moneySchema = z.string().regex(/^\d+(?:\.\d+)?$/, { error: 'Số tiền phải là chuỗi thập phân hữu hạn không âm.', abort: true }).transform(normalizeMoney);
 const monthSchema = z.string().regex(/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/, 'Tháng phải theo YYYY-MM, từ 0001-01 đến 9999-12.');
-const uuidSchema = z.string().uuid().transform((value) => value.toLowerCase());
+const uuidSchema = z.string().guid({ abort: true }).transform((value) => value.toLowerCase());
 const payerSchema = z.enum(['BUILDING', 'SALE']);
 const policySchema = z.enum(['COMMISSION_ONLY', 'BONUS_THEN_COMMISSION']);
 
@@ -64,7 +66,7 @@ function monthLabel(month: BillingMonth): string {
   return `${month.slice(5, 7)}/${month.slice(0, 4)}`;
 }
 
-export const supportPlanInputSchema = z.object({
+const supportPlanInputBaseSchema = z.object({
   version: z.literal(2),
   start_billing_month: monthSchema,
   payer: payerSchema,
@@ -76,7 +78,9 @@ export const supportPlanInputSchema = z.object({
     month_count: z.number().finite().int().min(1).max(119988),
     monthly_amount: moneySchema,
   }).strict()).min(1),
-}).strict().superRefine((plan, ctx) => {
+}).strict();
+
+export const supportPlanInputSchema = supportPlanInputBaseSchema.superRefine((plan, ctx) => {
   const count = plan.segments.reduce((total, segment) => total + segment.month_count, 0);
   if (monthIndex(plan.start_billing_month) + count - 1 > monthIndex('9999-12')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['segments'], message: 'Lịch hỗ trợ vượt năm 9999.' });
@@ -84,7 +88,7 @@ export const supportPlanInputSchema = z.object({
 });
 
 /** Public customer agreement. Funding identity is loaded only through a financial read. */
-export const supportCustomerScheduleSchema = supportPlanInputSchema.innerType().pick({
+export const supportCustomerScheduleSchema = supportPlanInputBaseSchema.pick({
   version: true, start_billing_month: true, segments: true,
 }).strict().superRefine((schedule, ctx) => {
   const count = schedule.segments.reduce((total, segment) => total + segment.month_count, 0);

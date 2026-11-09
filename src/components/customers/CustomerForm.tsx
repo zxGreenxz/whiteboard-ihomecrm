@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
   const [blocked, setBlocked] = useState(false);
   const submitting = useRef(false);
   const form = useForm<CustomerFormData>({
-    resolver: zodResolver(customerSchema),
+    resolver: zodResolver(customerSchema) as Resolver<CustomerFormData>,
     defaultValues: {
       customer_type: 'INDIVIDUAL',
       full_name: '',
