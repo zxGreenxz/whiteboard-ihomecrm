@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-10T09:00:32.400Z",
+  "generatedAt": "2026-11-10T10:10:22.535Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 931,
+    "ledger-applied": 933,
     "unknown": 80,
-    "catalog-proven": 207,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14121,14 +14121,25 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261110070438_network_center_camera_share_v1.sql",
+      "version": "20261110070438",
+      "name": "network_center_camera_share_v1",
+      "scheme": "timestamp14",
+      "sha256": "b1ba81cf9902d8850e70b45ee18566ec2126304f8abc9723f68778d02197598d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-10T09:08:32.560Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261110072604_hermes_zalo_confirm_reselect_unbound_v1.sql",
       "version": "20261110072604",
       "name": "hermes_zalo_confirm_reselect_unbound_v1",
       "scheme": "timestamp14",
       "sha256": "fa9d240353210cbf1a02b605f7cf0fcf72b10339cc7473ab9e57e51404803b1a",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_zalo_binding_v1"
+        "receipt:2026-11-10T10:06:44.430Z|bien-nhan-backup"
       ]
     },
     {

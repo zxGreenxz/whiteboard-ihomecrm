@@ -57,6 +57,30 @@ config và unit cũ, dừng process group trước đổi release; không ghi/x�
 trên đầu ghi. Dọn file tạm chỉ trong StateDirectory đã xác minh. Chưa có các bằng
 chứng đó thì chưa đánh dấu runtime production đã sẵn sàng.
 
+## Camera: chia sẻ một kênh cho khách xem lại
+
+Khách thuê không nhận tài khoản đầu ghi (đo 10/11/2026 trên KBVision 4.005: tài khoản
+chỉ có `Replay_NN` vẫn tải được bản ghi kênh khác qua `loadfile.cgi`). Người xem
+được Trung tâm mạng của toà tạo "lượt chia sẻ" (migration
+`network_center_camera_share_v1`): một kênh, một khung giờ tối đa 24 giờ, hiệu lực
+1 giờ đến 7 ngày. Khách mở `/xem-camera/<ID>`, nhập mật khẩu và nhận chuỗi phiên
+`cs_…`; trình duyệt gửi chuỗi đó làm Bearer tới gateway thay cho JWT.
+
+Gateway hỏi RPC `camera_share_authorize_v1` bằng publishable key ở mỗi lần phát, tua
+và gia hạn (25 giây một lần), nên hết hạn hoặc thu hồi cắt hình trong tối đa một kỳ
+lease (75 giây). Chuỗi phiên chỉ dùng được cho `GET /recorders/:id`, `/playback` và
+`/sessions/:id[/renew|/playback]`; live, live-view, archive và ảnh thu nhỏ `/preview`
+trả 403 `SHARE_SCOPE_DENIED` (ảnh thu nhỏ dùng chung hai chỗ toàn gateway với nhân viên).
+Khung giờ của lượt chia sẻ luôn nằm trong quá khứ lúc tạo, nên khách không theo dõi
+được gần như trực tiếp. Khách luôn xem bản chuyển mã SD/HD (H.264), mỗi lượt một người
+xem, toàn gateway tối đa 2 luồng khách cùng lúc để còn chỗ cho xem lại của nhân viên.
+Không cần đổi `live-config.json`, ingress hay unit; chỉ cần release gateway mới sau
+khi migration đã áp. Gateway cũ nhận chuỗi `cs_…` sẽ trả 401 như JWT sai.
+
+Trước bật: tạo một lượt trên đầu ghi được cấp quyền, kiểm khách chỉ xem được đúng
+kênh và khung giờ, thử thu hồi lúc đang phát, thử hết hạn, và kiểm xem lại của nhân
+viên vẫn chạy khi có khách đang xem.
+
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,
