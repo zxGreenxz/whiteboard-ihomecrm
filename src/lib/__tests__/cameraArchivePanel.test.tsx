@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CameraArchivePanel from "@/components/network-center/tabs/CameraArchivePanel";
 import { createDemoCameraRecorder } from "@/lib/network-center/cameraDemo";
-import type { CameraLiveOptions } from "@/lib/network-center/cameraLive";
+import { CameraLiveError, type CameraLiveOptions } from "@/lib/network-center/cameraLive";
 vi.mock("@/hooks/network-center/useCameraQuality", async () => { const { useState } = await import("react"); return { useCameraQuality: (kind: string) => [...useState(kind === "export" ? "480p" : "sd"), ""] }; });
 const mocks = vi.hoisted(() => ({ capabilities: vi.fn(), prepare: vi.fn(), find: vi.fn(), cancel: vi.fn(), start: vi.fn(), stop: vi.fn(), seek: vi.fn(), frame: vi.fn(), connections: [] as CameraLiveOptions[] }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: "40000000-0000-4000-8000-000000000001" } }) }));
@@ -58,10 +58,98 @@ describe("separate playback and export", () => {
     expect(mocks.connections).toHaveLength(1); expect(screen.getByLabelText(/^Video xem lại/)).toBe(video);
     fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "fullhd" } });
     await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2));
-    expect(mocks.connections[1]?.playback).toMatchObject({ start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z", position: "2026-10-20T01:00:10.000Z", quality: "fullhd", speed: 8 });
+    expect(mocks.connections[1]?.playback).toMatchObject({ start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z", position: "2026-10-20T01:00:10.000Z", quality: "fullhd" });
+    // Luồng chuyển mã mới mở ở 1× rồi mới xin lại 8× bằng lệnh tua (cổng không mở thẳng được ở tốc độ cao).
+    expect(mocks.connections[1]?.playback).not.toHaveProperty("speed");
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledTimes(3));
+    expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T01:00:10Z"), 8);
     fireEvent.click(screen.getByRole("button", { name: "Lùi 10 giây" }));
     await waitFor(() => expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T01:00:00Z"), 8));
     expect(mocks.connections).toHaveLength(2);
+  });
+  it("mở luồng SD/HD mới ở 1× rồi xin tốc độ đã chọn bằng lệnh tua; chất lượng gốc vẫn mở thẳng ở tốc độ đó", async () => {
+    mocks.seek.mockResolvedValue(undefined);
+    mocks.capabilities.mockResolvedValue({ channels: [1], archive: true, playback: true, playbackControl: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: ["sd", "hd", "original"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "8" } });
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledWith(Date.parse("2026-10-20T01:00:00Z"), 8));
+    // Đang 8× đổi SD → HD: đúng thao tác báo "Mất kết nối tới máy chủ video" trên production trước khi sửa.
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "hd" } });
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2));
+    expect(mocks.connections[1]?.playback).toMatchObject({ quality: "hd" }); expect(mocks.connections[1]?.playback).not.toHaveProperty("speed");
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledTimes(2));
+    expect(mocks.seek).toHaveBeenLastCalledWith(Date.parse("2026-10-20T01:00:00Z"), 8);
+    expect((screen.getByLabelText("Tốc độ xem lại") as HTMLSelectElement).value).toBe("8");
+    // Tạm dừng rồi xem tiếp lúc đang 8× cũng là một luồng mới.
+    fireEvent.click(screen.getByRole("button", { name: "Tạm dừng" })); fireEvent.click(screen.getByRole("button", { name: "Tiếp tục xem" }));
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledTimes(3));
+    expect(mocks.connections[2]?.playback).toMatchObject({ quality: "hd" }); expect(mocks.connections[2]?.playback).not.toHaveProperty("speed");
+    // Chất lượng gốc không qua bộ chuyển mã: mở thẳng 8×, không cần lệnh tua kèm theo.
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "original" } });
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(4));
+    expect(mocks.connections[3]?.playback).toMatchObject({ quality: "original", speed: 8 });
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.seek).toHaveBeenCalledTimes(3);
+  });
+  it("giữ câu báo lỗi mở luồng, không đè bằng lỗi của lệnh lên tốc độ đi kèm và không tự nối lại vô ích", async () => {
+    mocks.seek.mockResolvedValue(undefined);
+    mocks.capabilities.mockResolvedValue({ channels: [1], archive: true, playback: true, playbackControl: true, playbackSpeeds: [1, 8], playbackQualities: ["sd", "hd"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "8" } });
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledOnce());
+    // Luồng mới không mở được (kết nối tự đóng rồi báo lỗi); lệnh lên tốc độ xếp sau đó thất bại vì phiên đã đóng.
+    let rejectSeek!: (error: unknown) => void;
+    mocks.seek.mockImplementationOnce(() => new Promise((_, reject) => { rejectSeek = reject; }));
+    fireEvent.change(screen.getByLabelText("Chất lượng xem lại"), { target: { value: "hd" } });
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledTimes(2));
+    act(() => mocks.connections[1]!.onState("error", "Mất kết nối tới máy chủ video."));
+    await act(async () => { rejectSeek(new CameraLiveError("SESSION_EXPIRED")); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByRole("alert").textContent).toBe("Mất kết nối tới máy chủ video.");
+    expect(mocks.connections).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Thử lại" })).toBeTruthy();
+  });
+  it("trình duyệt không báo từng khung hình (iPhone): timeupdate gỡ ảnh giữ tạm sau khi lệnh tua được nhận", async () => {
+    mocks.seek.mockResolvedValue(undefined);
+    mocks.capabilities.mockResolvedValue({ channels: [1], archive: true, playback: true, playbackControl: true, playbackQualities: ["sd", "hd"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    const video = screen.getByLabelText(/^Video xem lại/);
+    Object.defineProperties(video, { currentTime: { value: 5, writable: true }, readyState: { value: 4 } });
+    fireEvent.playing(video);
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledOnce());
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(mocks.connections).toHaveLength(1); expect(screen.getByLabelText(/^Video xem lại/)).toBe(video);
+    // Vừa nhận lệnh tua: hình tại mốc mới chưa chắc đã về, còn giữ ảnh cũ.
+    fireEvent.timeUpdate(video);
+    expect(screen.getByAltText("Khung hình trước khi chuyển mốc")).toBeTruthy(); expect(screen.getByText(/Đang chuyển mốc/)).toBeTruthy();
+    const acknowledged = Date.now(); vi.spyOn(Date, "now").mockReturnValue(acknowledged + 1500);
+    (video as HTMLVideoElement).currentTime = 7; fireEvent.timeUpdate(video);
+    expect(screen.queryByAltText("Khung hình trước khi chuyển mốc")).toBeNull(); expect(screen.queryByText(/Đang chuyển mốc/)).toBeNull();
+  });
+  it("hình ngừng khi mốc ước tính đã sát cuối khoảng xem ⇒ báo đã hết khoảng, không treo chờ lỗi mất hình", async () => {
+    const frames: VideoFrameRequestCallback[] = [];
+    const prototype = HTMLVideoElement.prototype as unknown as { requestVideoFrameCallback?: unknown; cancelVideoFrameCallback?: unknown };
+    prototype.requestVideoFrameCallback = (callback: VideoFrameRequestCallback) => frames.push(callback); prototype.cancelVideoFrameCallback = () => {};
+    try {
+      render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();
+      fireEvent.change(screen.getByLabelText("Đến ngày giờ"), { target: { value: "2026-10-20T08:00:10" } });
+      fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" }));
+      // Mốc cách cuối khoảng 2 giây; đầu ghi gửi một khung hình rồi ngừng vì đã hết bản ghi của khoảng.
+      fireEvent.change(screen.getByLabelText("Thanh thời gian xem lại"), { target: { value: "8" } }); fireEvent.pointerUp(screen.getByLabelText("Thanh thời gian xem lại"));
+      await waitFor(() => expect(mocks.connections).toHaveLength(2));
+      act(() => frames.at(-1)!(1000, { mediaTime: 0 } as VideoFrameCallbackMetadata));
+      expect(screen.getByText(/Vị trí ước tính: 08:00:08/)).toBeTruthy();
+      expect(screen.queryByText("Đã hết khoảng thời gian đã chọn.")).toBeNull();
+      const seen = Date.now(); vi.spyOn(Date, "now").mockReturnValue(seen + 3000);
+      await waitFor(() => expect(screen.getByText("Đã hết khoảng thời gian đã chọn.")).toBeTruthy(), { timeout: 3000 });
+      expect(screen.getByRole("button", { name: "Tiếp tục xem" })).toBeTruthy();
+    } finally { delete prototype.requestVideoFrameCallback; delete prototype.cancelVideoFrameCallback; }
   });
   it("defaults playback to SD, switches quality at the current time and preserves the selected speed", async () => {
     render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow();

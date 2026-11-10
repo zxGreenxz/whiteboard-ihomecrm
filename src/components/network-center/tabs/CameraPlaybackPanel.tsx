@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { CameraLiveConnection, CameraLiveError, type CameraLiveState, type CameraPlaybackQuality } from "@/lib/network-center/cameraLive";
 import { cameraTimeLabel, validateCameraWindow, vietnamCameraInput } from "@/lib/network-center/cameraArchive";
 import type { CameraRecorder } from "@/lib/network-center/cameraContracts";
-import { cameraFrame, PlaybackClock, PlaybackControls } from "@/lib/network-center/cameraPlayback";
+import { cameraFrame, PLAYBACK_POSTER_FALLBACK_MS, PlaybackClock, PlaybackControls, playbackOpensAtNormalSpeed, playbackReachedEnd } from "@/lib/network-center/cameraPlayback";
 import { useCameraQuality } from "@/hooks/network-center/useCameraQuality";
 import CameraAudioButton from "./CameraAudioButton";
 
@@ -25,15 +25,25 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
   const clock = useRef(new PlaybackClock(1));
   const position = useRef<Window>(); const controls = useRef<PlaybackControls>(); const switching = useRef(false);
   const released = useRef(Promise.resolve()); const recoveries = useRef(0);
+  /** Mốc đang xem mới nhất cho bộ canh cuối khoảng xem (state `cursor` chỉ có ở lần render sau). */
+  const cursorRef = useRef(0);
+  /** Lúc luồng mới mở / lệnh tua gần nhất được đầu ghi nhận — mốc để gỡ ảnh giữ tạm khi trình duyệt không báo từng khung hình. */
+  const seekAckAt = useRef(0);
   const [state, setState] = useState<CameraLiveState>("stopped"); const [message, setMessage] = useState("");
   useEffect(() => {
     if (!selection) return;
     let active = true; const element = video.current; setHasAudio(false);
+    // Luồng SD/HD/Full HD mới không mở thẳng được ở tốc độ khác 1× (xem playbackOpensAtNormalSpeed): mở ở 1× rồi xin
+    // tốc độ đã chọn bằng lệnh tua; trong lúc đó giao diện vẫn ở trạng thái "đang mở".
+    const openAtNormalSpeed = playbackOpensAtNormalSpeed({ controlAvailable, speed: selection.speed, quality: selection.quality });
+    const openSpeed = openAtNormalSpeed ? 1 : selection.speed;
     // Controlled playback has realtime RTP timestamps; the recorder still supplies accelerated content.
-    clock.current = new PlaybackClock(selection.speed, selection.quality ? selection.speed : 1); position.current = selection; switching.current = false;
-    let callback: number | undefined; let lastUpdate = 0;
+    clock.current = new PlaybackClock(openSpeed, selection.quality ? openSpeed : 1); position.current = selection; switching.current = false;
+    seekAckAt.current = Date.now();
+    let callback: number | undefined; let lastUpdate = 0; let connectionFailed = false; let lastFrameAt = 0; let liveSpeed = openSpeed;
     const frame: VideoFrameRequestCallback = (now, metadata) => {
       if (!active || !element || element !== video.current) return;
+      lastFrameAt = Date.now();
       const current = position.current;
       if (current && !switching.current) {
         const seconds = clock.current.frame(metadata.rtpTimestamp, metadata.mediaTime);
@@ -43,24 +53,38 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
       callback = element.requestVideoFrameCallback(frame);
     };
     if (element?.requestVideoFrameCallback) callback = element.requestVideoFrameCallback(frame);
-    const connection = new CameraLiveConnection({ recorderId: recorder.id, channel, playback: { start: new Date(controlAvailable && window ? window.from : selection.from).toISOString(), end: new Date(selection.to).toISOString(), ...(controlAvailable && window && selection.from !== window.from ? { position: new Date(selection.from).toISOString() } : {}), ...(selection.speed === 1 ? {} : { speed: selection.speed }), ...(selection.quality ? { quality: selection.quality } : {}) },
+    // Hình đã ngừng trong lúc mốc ước tính đang sát cuối khoảng xem ⇒ đã xem hết (xem playbackReachedEnd).
+    const endWatch = setInterval(() => {
+      const current = position.current;
+      if (!active || switching.current || !current) return;
+      if (playbackReachedEnd({ cursor: cursorRef.current, to: current.to, speed: liveSpeed, lastFrameAt, now: Date.now() })) updatePosition((current.to - current.from) / 1000, current);
+    }, 500);
+    const connection = new CameraLiveConnection({ recorderId: recorder.id, channel, playback: { start: new Date(controlAvailable && window ? window.from : selection.from).toISOString(), end: new Date(selection.to).toISOString(), ...(controlAvailable && window && selection.from !== window.from ? { position: new Date(selection.from).toISOString() } : {}), ...(openSpeed === 1 ? {} : { speed: openSpeed }), ...(selection.quality ? { quality: selection.quality } : {}) },
       onStream(stream) { if (active && element) element.srcObject = stream; },
       onAudio(available) { if (active) setHasAudio(available); },
-      onState(next, detail) { if (active && (next !== "playing" || !switching.current)) { setState(next); setMessage(detail ?? ""); } },
+      onState(next, detail) {
+        if (!active) return;
+        if (next === "error") connectionFailed = true;
+        if (next !== "playing" || !switching.current) { setState(next); setMessage(detail ?? ""); }
+      },
     });
     const started = released.current.then(() => { if (active) return connection.start(); });
     const queue = new PlaybackControls((time, nextSpeed) => started.then(() => connection.seek(time, nextSpeed)), (time, nextSpeed) => {
       if (!active) return;
       clock.current = new PlaybackClock(nextSpeed, nextSpeed, element?.currentTime ?? 0); position.current = { from: time, to: selection.to }; switching.current = false;
+      liveSpeed = nextSpeed; lastFrameAt = Date.now(); seekAckAt.current = Date.now();
     }, (error, time, nextSpeed) => {
       if (!active) return;
       switching.current = false;
+      // Luồng đã báo lỗi (mạng, đầu ghi…) thì giữ nguyên câu báo đó, không đè bằng lỗi của lệnh tua đi kèm.
+      if (connectionFailed) return;
       if (recoveries.current < 2 && (!(error instanceof CameraLiveError) || ["CAMERA_UNAVAILABLE", "PLAYBACK_CONTROL_FAILED", "PLAYBACK_CONTROL_UNAVAILABLE", "SESSION_NOT_FOUND"].includes(error.code))) {
         recoveries.current++; setSelection({ ...selection, from: time, speed: nextSpeed, generation: ++generation.current }); setMessage("Đang nối lại bản ghi tại mốc đã chọn…");
       } else { void connection.stop(); setState("error"); setMessage(error instanceof Error ? error.message : "Không chuyển được mốc xem."); }
     });
     controls.current = queue;
-    return () => { active = false; queue.cancel(); if (controls.current === queue) controls.current = undefined; if (element && callback !== undefined) element.cancelVideoFrameCallback(callback); released.current = Promise.all([released.current, connection.stop()]).then(() => undefined); if (element) element.srcObject = null; };
+    if (openAtNormalSpeed) { switching.current = true; queue.request(selection.from, selection.speed); }
+    return () => { active = false; clearInterval(endWatch); queue.cancel(); if (controls.current === queue) controls.current = undefined; if (element && callback !== undefined) element.cancelVideoFrameCallback(callback); released.current = Promise.all([released.current, connection.stop()]).then(() => undefined); if (element) element.srcObject = null; };
     // updatePosition uses the window paired with this selection; a new window always replaces the selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorder.id, channel, selection, controlAvailable]);
@@ -71,7 +95,7 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
     if (!selected) return;
     holdFrame(); finishScrub();
     const time = Math.max(selected.from, Math.min(selected.to - 1000, Math.floor(value / 1000) * 1000));
-    setCursor(time); setSlider((time - selected.from) / 1000); setState("connecting"); setMessage("");
+    cursorRef.current = time; setCursor(time); setSlider((time - selected.from) / 1000); setState("connecting"); setMessage("");
     if (controlAvailable && selection && selected === window && selection.quality === nextQuality && state !== "error" && controls.current) {
       switching.current = true; controls.current.request(time, nextSpeed);
     } else setSelection({ from: time, to: selected.to, generation: ++generation.current, speed: nextSpeed, ...(nextQuality && qualities.includes(nextQuality) ? { quality: nextQuality } : {}) });
@@ -83,11 +107,16 @@ export default function CameraPlaybackPanel({ recorder, channels, available, spe
   const updatePosition = (seconds: number, current: Window) => {
     if (!window) return;
     const time = Math.min(current.to, current.from + seconds * 1000);
-    setCursor(time); if (!dragging.current) setSlider((time - window.from) / 1000);
+    cursorRef.current = time; setCursor(time); if (!dragging.current) setSlider((time - window.from) / 1000);
     if (time >= current.to) { holdFrame(); finishScrub(); setSelection(undefined); setState("stopped"); setMessage("Đã hết khoảng thời gian đã chọn."); }
   };
   const updateTime = (element: HTMLVideoElement) => {
     if (element !== video.current || !selection || !position.current || switching.current || element.readyState < 2) return;
+    // Trình duyệt không báo từng khung hình (iPhone) thì `timeupdate` gỡ ảnh giữ tạm — xem PLAYBACK_POSTER_FALLBACK_MS.
+    if (seekAckAt.current && Date.now() - seekAckAt.current >= PLAYBACK_POSTER_FALLBACK_MS) {
+      if (poster) setPoster(undefined);
+      if (state === "connecting") setState("playing");
+    }
     updatePosition(clock.current.seconds(element.currentTime), position.current);
   };
   const scrub = (value: number) => {
