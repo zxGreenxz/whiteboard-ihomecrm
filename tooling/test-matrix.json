@@ -106,6 +106,16 @@
       ]
     },
     {
+      "id": "gps-checkin-edge",
+      "sourcePaths": [
+        "supabase/functions/gps-checkin-ingest/**"
+      ],
+      "suiteId": "edge-deno-gps-checkin",
+      "testPatterns": [
+        "supabase/functions/gps-checkin-ingest/*.test.ts"
+      ]
+    },
+    {
       "id": "network-edge",
       "sourcePaths": [
         "supabase/functions/network-center-worker/**",
@@ -2007,6 +2017,28 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 60
+    },
+    {
+      "id": "edge-deno-gps-checkin",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/gps-checkin-ingest/deno.json supabase/functions/gps-checkin-ingest/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/gps-checkin-ingest/*.test.ts"
+      ],
+      "note": "Cổng nhận của app iHome Điểm danh: chỉ gửi SHA-256 của bearer và mã ghép nối xuống SQL, từ chối sai hợp đồng trước khi chạm DB, ánh xạ lỗi SQL sang HTTP, biên nhận DB sai dạng trả 502.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5
     },
     {
       "id": "edge-deno-door-access",

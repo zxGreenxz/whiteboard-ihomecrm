@@ -7,6 +7,7 @@
 // Gate scripts/check-route-guards.mjs quét cả thư mục này, nên guard của các
 // route ở đây vẫn được kiểm như khi chúng còn nằm trong App.tsx.
 import { Route, Navigate } from "react-router-dom";
+import { StaffDayViewerRoute } from "../../components/auth/StaffDayViewerRoute";
 import {
   ApprovalsPage,
   BankEventsPage,
@@ -17,6 +18,13 @@ import {
   InvoicesPage,
   MeterReadingsPage,
   MyDayPage,
+  TeamDayPage,
+  StaffDayPage,
+  StaffJourneyPage,
+  StaffCalendarPage,
+  StaffReportPage,
+  GpsCheckinPage,
+  GpsCheckinSettingsPage,
   PersonalTasksPage,
   OwnerDashboardV5,
   QuickEntryPage,
@@ -67,6 +75,15 @@ export const financeWorkRoutes = (
     {/* === CÔNG VIỆC === */}
     <Route path="/tasks" element={<ProtectedRoute><RequirePermission module="tasks"><TaskManagementPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
+    {/* Điểm danh tự động của chính quản lý; máy chủ tự trả "không áp dụng" cho người khác. */}
+    <Route path="/my-day/diem-danh" element={<ProtectedRoute><GpsCheckinPage /></ProtectedRoute>} />
+    {/* Chủ công ty/super admin xem theo từng quản lý. Hàng rào thật ở các hàm staff_day_* và gps_checkin_*. */}
+    <Route path="/my-day/diem-danh/cai-dat" element={<ProtectedRoute><StaffDayViewerRoute><GpsCheckinSettingsPage /></StaffDayViewerRoute></ProtectedRoute>} />
+    <Route path="/my-day/team" element={<ProtectedRoute><StaffDayViewerRoute><TeamDayPage /></StaffDayViewerRoute></ProtectedRoute>} />
+    <Route path="/my-day/bao-cao" element={<ProtectedRoute><StaffDayViewerRoute><StaffReportPage /></StaffDayViewerRoute></ProtectedRoute>} />
+    <Route path="/my-day/nguoi/:userId" element={<ProtectedRoute><StaffDayViewerRoute><StaffDayPage /></StaffDayViewerRoute></ProtectedRoute>} />
+    <Route path="/my-day/nguoi/:userId/hanh-trinh" element={<ProtectedRoute><StaffDayViewerRoute><StaffJourneyPage /></StaffDayViewerRoute></ProtectedRoute>} />
+    <Route path="/my-day/nguoi/:userId/lich" element={<ProtectedRoute><StaffDayViewerRoute><StaffCalendarPage /></StaffDayViewerRoute></ProtectedRoute>} />
     <Route path="/viec-cua-toi" element={<ProtectedRoute><PersonalTasksPage /></ProtectedRoute>} />
     <Route path="/reports/coverage" element={<ProtectedRoute><AdminOnlyRoute><OwnerDashboardV5 /></AdminOnlyRoute></ProtectedRoute>} />
 

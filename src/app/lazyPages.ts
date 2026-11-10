@@ -123,6 +123,13 @@ export const FloorsPage = lazy(() => import("../pages/settings/categories/Floors
 export const TaskTypesPage = lazy(() => import("../pages/settings/categories/TaskTypesPage"));
 export const TaskManagementPage = lazy(() => import("../pages/TaskManagementPage"));
 export const MyDayPage = lazy(() => import("../pages/my-day/MyDayPage"));
+export const TeamDayPage = lazy(() => import("../pages/my-day/TeamDayPage"));
+export const StaffDayPage = lazy(() => import("../pages/my-day/StaffDayPage"));
+export const StaffJourneyPage = lazy(() => import("../pages/my-day/StaffJourneyPage"));
+export const StaffCalendarPage = lazy(() => import("../pages/my-day/StaffCalendarPage"));
+export const StaffReportPage = lazy(() => import("../pages/my-day/StaffReportPage"));
+export const GpsCheckinPage = lazy(() => import("../pages/my-day/GpsCheckinPage"));
+export const GpsCheckinSettingsPage = lazy(() => import("../pages/my-day/GpsCheckinSettingsPage"));
 export const OwnerDashboardV5 = lazy(() => import("../pages/reports/OwnerDashboardV5"));
 
 // Tài khoản + Info + Public

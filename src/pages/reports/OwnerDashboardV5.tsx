@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { InlineSkeleton, SkeletonBar } from "@/components/loading/LoadingState";
 import { salarySettingsErrorMessage, SALARY_JOB_LABELS } from "@/lib/salarySettingsFeedback";
@@ -66,7 +67,7 @@ export function InspPhoto({ p }: { p: InspectionPhotoRow }) {
   const retry=()=>{setFailedUrl(null);setAttempt(previous=>previous+1);void source.refetch();};
   const geo = p.geofence_status as string | null;
   const geoColor =
-    geo === "inside" ? "text-emerald-600" : geo === "outside" ? "text-red-600" : "text-muted-foreground";
+    geo === "ok" ? "text-emerald-600" : geo === "out_of_range" ? "text-red-600" : "text-muted-foreground";
   return (
     <QueryRegion label={`ảnh kiểm tra ${p.slot}`} queries={[source]} loading={
       <div role="status">
@@ -226,6 +227,10 @@ export default function OwnerDashboardV5() {
 
   return (
     <MainLayout title="Vận hành lương v5" >
+      <div className="mb-3 flex flex-wrap gap-2">
+        <Link to="/my-day/team" className="inline-flex h-9 items-center rounded-md border bg-white px-3 text-sm font-medium">Việc của quản lý</Link>
+        <Link to="/my-day/bao-cao" className="inline-flex h-9 items-center rounded-md border bg-white px-3 text-sm font-medium">Báo cáo đánh giá</Link>
+      </div>
       <Tabs defaultValue="coverage" className="w-full">
         <TabsList className="flex-wrap">
           <TabsTrigger value="coverage">Coverage</TabsTrigger>

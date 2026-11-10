@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-09T08:54:48.612Z",
+  "generatedAt": "2026-11-10T07:10:03.315Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 927,
+    "ledger-applied": 930,
     "unknown": 81,
     "catalog-proven": 206,
     "superseded": 15
@@ -14086,6 +14086,39 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261109042309_gps_checkin_v1.sql",
+      "version": "20261109042309",
+      "name": "gps_checkin_v1",
+      "scheme": "timestamp14",
+      "sha256": "c17da8e017fa0ac1198275f92af6cb512300b3aa66ae991852fafcf8fceddced",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:08:04.009Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261109042700_staff_day_xem_theo_nguoi_v1.sql",
+      "version": "20261109042700",
+      "name": "staff_day_xem_theo_nguoi_v1",
+      "scheme": "timestamp14",
+      "sha256": "6f30754d6d0ff28a94148672ac7c99e0fbd52f5f1337299969fb6a7fb51d3146",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:10:37.824Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261109042943_staff_period_report_v1.sql",
+      "version": "20261109042943",
+      "name": "staff_period_report_v1",
+      "scheme": "timestamp14",
+      "sha256": "b556c7986dd3234353f1a59cf66734cd7baa55fa6a5e3cbf065dea25ced780f3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-09T07:13:46.963Z|bien-nhan-backup"
       ]
     },
     {

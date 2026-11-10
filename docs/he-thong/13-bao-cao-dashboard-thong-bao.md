@@ -553,6 +553,8 @@ Cập nhật sau 2026-06-10:
     tôi" (44a27d4, salary v5 S3): màn trung tâm phía **nhân viên** — trạng thái
     ngày, tuyến việc gợi ý, việc đến hạn, tiến trình tiền "TẠM TÍNH"
     (gain-framing, không màu đỏ/chữ trừ); hook `useMyDaySummary`/`useMyMissions`.
+    Chủ công ty và super admin xem được từng quản lý và báo cáo theo kỳ: xem
+    [27-viec-cua-quan-ly-va-diem-danh-gps](27-viec-cua-quan-ly-va-diem-danh-gps.md).
   - `/reports/coverage` — [OwnerDashboardV5](src/pages/reports/OwnerDashboardV5.tsx)
     (e20af21, salary v5 S4+S5): dashboard **chủ** bọc `AdminOnlyRoute` — tab
     coverage/nghi án (máy flag, chủ kết án) + **kill-switch feature flags**

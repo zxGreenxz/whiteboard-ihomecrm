@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 
 import { PROD_REF, credential, docVault, ghiLog, mgmt, repoRoot } from "./lib.mjs";
 
-export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry", "door-access", "meter-capture-worker"];
+export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry", "door-access", "meter-capture-worker", "gps-checkin-ingest"];
 
 // Hàm MỚI chưa từng lên production thì chưa có cờ verify_jwt để chép ⇒ khai sẵn ở đây. Lên production
 // rồi thì cờ production thắng (vòng dưới đọc production trước) — hai bên vẫn phải khớp.
