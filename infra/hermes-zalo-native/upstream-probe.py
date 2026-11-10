@@ -136,6 +136,36 @@ async def delivery_probe(mode):
             result = await adapter._send_with_retry('300', 'wrong destination')
             assert not result.success and len(requests) == 2
             print(json.dumps({'retryAndFallbackSuppressed': True, 'responseLossTerminal': True}))
+        elif mode == 'cron-preflight':
+            from unittest.mock import patch
+            from cron import scheduler_delivery, scheduler_preflight
+            from gateway.config import GatewayConfig
+
+            config = GatewayConfig(platforms={adapter.platform: PlatformConfig(enabled=True)})
+            job = {'id': 'native-cron-fixture', 'deliver': 'zalo_personal:200'}
+            assert 'HERMES_ZALO_HOME_CHANNEL' not in os.environ
+            # Replace only the config lookup: the known-platform rule, the connected check through the
+            # plugin registry and target resolution are upstream code. Preflight runs before the agent.
+            with patch('gateway.config.load_gateway_config', return_value=config):
+                # Preflight fails open when the config lookup raises, so prove the connected reading itself.
+                assert 'zalo_personal' in {platform.value for platform in config.get_connected_platforms()}
+                assert scheduler_preflight._preflight_check_delivery(job) is None, 'Cron preflight blocked the paired Zalo target'
+                registered = platform_registry.get('zalo_personal')  # the entry upstream reads after discovery
+                declared = registered.cron_deliver_env_var
+                assert declared == 'HERMES_ZALO_HOME_CHANNEL'
+                object.__setattr__(registered, 'cron_deliver_env_var', '')
+                try:
+                    blocked = scheduler_preflight._preflight_check_delivery(job)
+                finally:
+                    object.__setattr__(registered, 'cron_deliver_env_var', declared)
+                assert blocked and 'not a known cron delivery target' in blocked, 'Upstream no longer needs the declaration'
+                targets = scheduler_delivery._resolve_delivery_targets(job)
+                assert [(target['platform'], str(target['chat_id'])) for target in targets] == [('zalo_personal', '200')]
+                # No home channel is configured, so nothing reaches Zalo without the explicit target.
+                for deliver in ('zalo_personal', 'origin', 'all'):
+                    assert scheduler_delivery._resolve_delivery_targets({'id': 'native-cron-fixture', 'deliver': deliver}) == []
+            assert not requests, 'Preflight and target resolution must not send'
+            print(json.dumps({'preflightAccepted': True, 'undeclaredBlocked': True, 'explicitTargetOnly': True}))
         elif mode in ('cron', 'cron-long', 'cron-http-loss', 'cron-late-ack', 'cron-success', 'generic'):
             from types import SimpleNamespace
             from unittest.mock import patch

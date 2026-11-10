@@ -371,6 +371,9 @@ def register(ctx):
         is_connected=lambda config: check_requirements(), required_env=list(_ENV),
         env_enablement_fn=lambda: {} if check_requirements() else None,
         allowed_users_env="HERMES_ZALO_PAIRED_UID", max_message_length=4000,
+        # Hermes cron preflight blocks a plugin platform that names no home-channel variable. The
+        # variable stays unset: cron reaches Zalo only through an explicit zalo_personal:<paired uid>.
+        cron_deliver_env_var="HERMES_ZALO_HOME_CHANNEL",
         send_message_handler=reject_uncorrelated_send,
         platform_hint="This is a private Zalo DM with the paired user. Group actions use the CRM connector. "
                       "Zalo sends use gateway replies or live cron; generic send_message and standalone delivery are unsupported.")

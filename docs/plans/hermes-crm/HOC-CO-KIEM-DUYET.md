@@ -3,7 +3,8 @@
 **Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
 REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; trên production vai `hermes_store_learning` đã bật login, hai timer trên VPS (kiểm 20:40, nạp 20:55 giờ VN) đang chạy — đọc lại 10/11/2026, lượt 09/11 đều `success`; trên TEST vai này còn NOLOGIN** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã phát hành production 10/11/2026** (mục 4) — migration
 `20261105025453` áp 05/11, migration bật `20261105030528` áp 10/11 qua lane, connector production khai `actionPages: ["contract", "learning"]`,
-job cron `ihome-learning-digest-2100` tạo 10/11 (4.6).
+job cron `ihome-learning-digest-2100` tạo 10/11 (4.6). Lượt 21:00 đầu (10/11) bị cron chặn trước khi chạy (`blocked_config`): không
+tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1.
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -157,7 +158,8 @@ phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + 
 
 Điều kiện: đã áp `20261105025453` + migration bật trên production; connector production chạy bản có trang `learning` với cấu hình host
 `"actionPages": ["contract", "learning"]` và `"publicWebOrigin"`; skill chuẩn đã triển khai (`deploy.sh`). Kênh Zalo của owner không còn
-`outcome_unknown` chưa đối soát (xem 4.7).
+`outcome_unknown` chưa đối soát (xem 4.7). Plugin `ihome-zalo-native` của hồ sơ là bản có khai `cron_deliver_env_var` (4.6.1) — thiếu thì job
+vẫn tạo được nhưng mọi lượt chạy đều bị chặn.
 
 1. Kiểm cú pháp và hành vi của bản Hermes đang chạy (chỉ đọc; cờ dưới đây là MINH HOẠ, dùng đúng tên cờ `--help` in ra):
 
@@ -205,6 +207,28 @@ phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + 
 4. Thử: chạy tay job một lần lúc chủ đồng ý (`cron run <id>` nếu bản Hermes có), kiểm tin tới đúng DM chủ và dòng audit
    `HERMES_ACTION_APPLIED` `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không thử bằng cách gọi `learning.digest` trong
    chat (đánh dấu thật trên production).
+
+5. Sau lượt chạy đầu (và sau mỗi lần đổi plugin hay nâng bản Hermes), đọc `Last run` của job:
+
+   ```bash
+   docker exec -u 10003:10003 hermes-owner hermes --profile owner cron list
+   ```
+
+   `cron create` không kiểm tên nền tảng trong `--deliver`: job vẫn `[active]` và `Next run` vẫn đúng kể cả khi cron sẽ chặn nó.
+   Chỉ `Last run` của lượt chạy thật mới cho biết (`ok`, hay `blocked_config` kèm lý do).
+
+#### 4.6.1 Sự cố lượt đầu 10/11/2026 và bản sửa plugin
+
+Lượt 21:00 VN ngày 10/11 nổ đúng giờ nhưng `Last run = blocked_config`: `delivery platform 'zalo_personal' is not a known cron
+delivery target`. Bước preflight của cron Hermes (`cron/scheduler_preflight.py` → `scheduler_delivery._is_known_delivery_platform`)
+chỉ nhận nền tảng dựng sẵn hoặc plugin khai `cron_deliver_env_var` lúc `register_platform`; plugin `ihome-zalo-native` chưa khai, nên
+job bị chặn TRƯỚC khi agent chạy: `learning.digest` không được gọi, không đề xuất nào bị đánh dấu `announced_at` (đọc lại production
+21:15: 3 chờ duyệt + 1 đã duyệt, `announced_at` trống hết, 0 biên nhận `learning.*` trong ngày).
+
+Bản sửa: `infra/hermes-zalo-native/adapter.py` khai `cron_deliver_env_var="HERMES_ZALO_HOME_CHANNEL"`. Biến này cố ý không đặt
+trong `.env` của hồ sơ, nên cron chỉ tới Zalo qua đích ghi rõ `zalo_personal:<uid đã ghép>` như job ở bước 2 (chi tiết:
+[README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron"). Kiểm: probe `cron-preflight` trong
+`infra/hermes-zalo-native/upstream.test.mjs` chạy preflight thật của bản Hermes đã ghim ở CI `hermes-runtime`.
 
 ### 4.7 Rủi ro
 
