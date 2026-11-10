@@ -7,10 +7,11 @@ import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { INVOICE_ACTIONS } from './invoice-actions-contract.mjs';
+import { LEARNING_ACTIONS } from './learning-action-contract.mjs';
 import { SALE_ACTIONS } from './sale-action-contract.mjs';
 import { TASK_ACTIONS } from './task-actions-contract.mjs';
 
-// Bốn migration bật thao tác ghi theo trang (HĐ / TC / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md) và bốn file lùi
+// Năm migration bật thao tác ghi theo trang (HĐ / TC / HĐn / CV, docs/plans/hermes-crm/BAT-KHOA-GHI-4-TRANG.md; Bài học bên dưới) và năm file lùi
 // (docs/plans/hermes-crm/revert/*_actions_activation_revert_v1.sql) trên PGlite. HĐ / HĐn / CV đã áp production (PR #349); TC
 // (20261030065028, PR riêng) chạy sau split báo cọc Sale 20261030050424; fixture giữ khoá / chính sách Thu chi như production 28/10. Fixture: bảng registry /
 // chính sách / biên nhận THẬT (câu CREATE của 20261012061447 và 20261021133823), hai hàm + hai trigger chiếu lại inherit_crm THẬT (20261019034754, md5 thân
@@ -23,6 +24,9 @@ import { TASK_ACTIONS } from './task-actions-contract.mjs';
 // registry deposits.create_receipt hoặc thân public.hermes_sale_actions_v1 không chứa chuỗi đó ⇒ dừng, vì bật income_expenses.create
 // khi đó mở luôn hai tool báo cọc Sale ghi tiền một bước. Fixture vì vậy dựng production SAU khi áp split: dòng khoá riêng TẮT + vỏ Sale
 // (stub) mang chuỗi đó; ca riêng chứng minh thiếu split ⇒ dừng, ba trang kia không phụ thuộc rào này.
+// Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.4): file bật CHÈN đúng hai dòng chính sách đã duyệt (LEARNING_POLICIES)
+// rồi bật khoá assistant.learning_review; file lùi tắt khoá + xoá hai dòng. Fixture dựng production SAU khi áp 20261105025453 (khoá seed
+// TẮT, chưa có dòng learning.*, bảng đề xuất có cột announced_at).
 // Kiểm đột biến: HERMES_ACTIVATION_SQL_MUTATION=<tên trong MUTATIONS> đổi SQL CHỈ trong bộ nhớ của lần chạy này ⇒ test phải đỏ.
 const lf = text => text.replaceAll('\r\n', '\n');
 const migration = slug => {
@@ -46,8 +50,11 @@ const PAGES = Object.freeze({
   contract: { slug: 'hermes_contract_actions_activation_v1', prefix: 'contract.', actions: CONTRACT_ACTIONS },
   expense: { slug: 'hermes_expense_actions_activation_v1', prefix: 'expense.', actions: EXPENSE_ACTIONS },
   invoice:{ slug: 'hermes_invoice_actions_activation_v1', prefix: 'invoice.', actions: INVOICE_ACTIONS },
-  task: { slug: 'hermes_task_actions_activation_v1', prefix: 'task.', actions: TASK_ACTIONS },
+  // inserted: tiền tố các dòng chính sách mà CHÍNH file bật chèn (file lùi xoá lại); trang khác chỉ bật khoá.
+  task: { slug: 'hermes_task_actions_activation_v1', prefix: 'task.', actions: TASK_ACTIONS, inserted: 'task.recurring_' },
+  learning: { slug: 'hermes_learning_actions_activation_v1', prefix: 'learning.', actions: LEARNING_ACTIONS, inserted: 'learning.' },
 });
+const insertedByActivation = row => Object.values(PAGES).some(spec => spec.inserted && row[0].startsWith(spec.inserted));
 // Bước ghi chính của mỗi trang + khung chung mà khối kiểm phụ thuộc BẮT BUỘC phải hỏi (bỏ khỏi danh sách ⇒ đỏ).
 const SHARED_REQUIRED = ['public.hermes_action_capabilities_v1(uuid)', 'app_private.hermes_action_guard_v1(jsonb,text)',
   'app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)', 'app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)',
@@ -67,7 +74,15 @@ const PAGE_REQUIRED = {
     'app_private.hermes_task_action_write_v1(jsonb)', 'app_private.hermes_task_action_finish_v1(jsonb,text,jsonb)',
     'app_private.hermes_task_recurring_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)',
     'app_private.hermes_task_recurring_finish_v1(jsonb,text,jsonb)'],
+  learning: ['public.hermes_learning_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+    'app_private.hermes_learning_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+    'app_private.hermes_learning_admin_v1(uuid)', 'app_private.hermes_learning_apply_v1(uuid,uuid,uuid[],text,text,uuid,text)'],
 };
+// HOC-CO-KIEM-DUYET.md mục 4.4 (bản chủ duyệt): digest chỉ ghi sổ "đã báo" ⇒ never; decide là bản ghi quyết định một lần ⇒ always.
+const LEARNING_POLICIES = [
+  ['learning.decide', 'assistant.learning_review', 'users.edit', 'reversible', 'always', true],
+  ['learning.digest', 'assistant.learning_review', 'users.edit', 'reversible', 'never', true],
+];
 // CONG-VIEC-THAO-TAC-GHI.md mục 22 (bản chủ duyệt): bốn dòng chính sách việc định kỳ.
 const RECURRING_POLICIES = [
   ['task.recurring_create', 'tasks.create', 'tasks.create', 'reversible', 'always', true],
@@ -82,6 +97,8 @@ const PROD_REGISTRY = {
   'income_expenses.cancel': false, 'income_expenses.create': false, 'income_expenses.edit': false, 'invoices.approve': false,
   'invoices.cancel': false, 'invoices.edit': false, 'meter_readings.create': false, 'rooms.edit': true, 'sale_phong.lock_room': true,
   'tasks.create': true, 'tasks.delete': false, 'tasks.edit': true, 'thu_tien.collect_transfer': false,
+  // Sau khi áp 20261105025453 (đợt 3 học có kiểm duyệt, tiền điều kiện của file bật trang Bài học): khoá seed TẮT.
+  'assistant.learning_review': false,
 };
 const PROD_READ = ['contracts.view', 'tasks.view'];
 // Trạng thái sau khi áp 20261030050424 (tiền điều kiện của file TC): dòng khoá riêng TẮT và vỏ Sale có cổng báo cọc. Vỏ là stub; rào
@@ -131,6 +148,14 @@ const MUTATIONS = {
   'revert-touches-lock': ['revert:contract', ["ARRAY['contracts.create','contracts.edit'", "ARRAY['sale_phong.lock_room','contracts.create','contracts.edit'"], ['<>4 THEN', '<>5 THEN']],
   'revert-drops-create': ['revert:task', ["WHERE capability='tasks.delete' AND mode='action' AND enabled;", "WHERE capability IN ('tasks.delete','tasks.create') AND mode='action' AND enabled;"]],
   'forward-skip-sale-deposit-guard': ['forward:expense', ["RAISE EXCEPTION 'hermes_expense_activation_sale_deposit_gate_missing", "RAISE NOTICE 'hermes_expense_activation_sale_deposit_gate_missing"]],
+  'forward-learning-decide-never': ['forward:learning', ["('learning.decide','assistant.learning_review','users.edit','reversible','always',true)",
+    "('learning.decide','assistant.learning_review','users.edit','reversible','never',true)"]],
+  'forward-skip-learning-policy-check': ['forward:learning', ["THEN\n    RAISE EXCEPTION 'hermes_learning_activation_policy_invalid'",
+    "AND false THEN\n    RAISE EXCEPTION 'hermes_learning_activation_policy_invalid'"]],
+  'forward-learning-skip-column-check': ['forward:learning', ["    OR NOT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('app_private.hermes_learning_proposals') AND attname='announced_at'\n      AND NOT attisdropped) THEN",
+    ' THEN']],
+  'revert-learning-keeps-policies': ['revert:learning', ['DELETE FROM app_private.hermes_action_policies WHERE action=ANY(learning_actions);', ''],
+    ["\n    OR EXISTS(SELECT 1 FROM app_private.hermes_action_policies WHERE action=ANY(learning_actions)) THEN", ' THEN']],
 };
 const mutationName = process.env.HERMES_ACTIVATION_SQL_MUTATION;
 assert(!mutationName || Object.hasOwn(MUTATIONS, mutationName), `unknown mutation ${mutationName}`);
@@ -166,6 +191,7 @@ async function fixture(t) {
     CREATE TABLE public.authorization_scopes(id uuid PRIMARY KEY,organization_id uuid,scope_type text,building_id uuid,area_id uuid,cashbook_id uuid);
     CREATE TABLE public.job_recurrence_rules(id uuid PRIMARY KEY);
     CREATE TABLE public.job_recurrence_occurrences(rule_id uuid);
+    CREATE TABLE app_private.hermes_learning_proposals(id uuid PRIMARY KEY,announced_at timestamptz);
     ${statement(FOUNDATION, 'CREATE TABLE IF NOT EXISTS app_private.hermes_action_policies(', ';\n')}
     ${statement(FOUNDATION, 'CREATE TABLE IF NOT EXISTS app_private.hermes_action_receipts(', ';\n')}
     ${fnStatement(INHERIT, 'app_private.hermes_project_connection_limits_v2')}
@@ -269,7 +295,8 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
         }
       }
       assert.deepEqual(rows.filter(row => row[0].startsWith('task.recurring_')), RECURRING_POLICIES);
-      assert.deepEqual(rows.filter(row => !row[0].startsWith('task.recurring_')), BASE.policies, 'dòng cũ không đổi');
+      assert.deepEqual(rows.filter(row => row[0].startsWith('learning.')), LEARNING_POLICIES, 'Bài học: đúng hai dòng mục 4.4');
+      assert.deepEqual(rows.filter(row => !insertedByActivation(row)), BASE.policies, 'dòng cũ không đổi');
     });
   });
 
@@ -309,8 +336,15 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
           ['DROP TABLE app_private.hermes_action_receipts', `hermes_${name}_activation_dependencies_missing`],
           ['DROP TRIGGER hermes_registry_projection_v2 ON app_private.hermes_capabilities', `hermes_${name}_activation_projection_missing`],
           ['ALTER TABLE app_private.hermes_connections DISABLE TRIGGER hermes_connection_limits_projection_v2', `hermes_${name}_activation_projection_missing`],
-          [`UPDATE app_private.hermes_action_policies SET capability='rooms.edit' WHERE action='${spec.actions[0].id}'`,
-            `hermes_${name}_activation_policy_missing: ${spec.actions[0].id}`],
+          // Bài học: file bật tự chèn hai dòng ⇒ dòng có sẵn khác bản đã duyệt, hay thao tác khác dùng khoá, hay thiếu cột announced_at ⇒ dừng.
+          ...(page === 'learning' ? [
+            [`INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,action_class,confirm,private_only)
+              VALUES('learning.digest','assistant.learning_review','users.edit','reversible','always',true)`, 'hermes_learning_activation_policy_invalid'],
+            [`INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,action_class,confirm,private_only)
+              VALUES('learning.extra','assistant.learning_review','users.edit','reversible','never',true)`, 'hermes_learning_activation_policy_invalid'],
+            ['ALTER TABLE app_private.hermes_learning_proposals DROP COLUMN announced_at', 'hermes_learning_activation_dependencies_missing'],
+          ] : [[`UPDATE app_private.hermes_action_policies SET capability='rooms.edit' WHERE action='${spec.actions[0].id}'`,
+            `hermes_${name}_activation_policy_missing: ${spec.actions[0].id}`]]),
           [`DELETE FROM app_private.hermes_capabilities WHERE capability='${pageKeys(page)[0]}'`, `hermes_${name}_activation_registry_invalid`],
           [`UPDATE app_private.hermes_capabilities SET mode='read' WHERE capability='${pageKeys(page).at(-1)}'`, `hermes_${name}_activation_registry_invalid`],
         ]) {
@@ -335,7 +369,7 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
       await db.exec(setup);
       await refused(plain(FORWARD.expense), 'hermes_expense_activation_sale_deposit_gate_missing');
       assert.deepEqual(await enabledActionKeys(), Object.keys(PROD_REGISTRY).filter(key => PROD_REGISTRY[key]).sort(), `${label}: không khoá nào bật`);
-      for (const page of ['contract', 'invoice', 'task']) {
+      for (const page of ['contract', 'invoice', 'task', 'learning']) {
         await db.exec('SAVEPOINT other_page');
         await db.exec(plain(FORWARD[page]));
         await db.exec('ROLLBACK TO SAVEPOINT other_page');
@@ -367,7 +401,8 @@ test('bật / lùi thao tác ghi theo trang: đúng khoá, độc lập, idempot
       const after = await registry(), rows = await policies();
       const off = page === 'task' ? ['tasks.delete'] : pageKeys(page);
       for (const [key, on] of Object.entries(after)) assert.equal(on, off.includes(key) ? false : all.registry[key], `${page}: ${key}`);
-      assert.deepEqual(rows, page === 'task' ? all.policies.filter(row => !row[0].startsWith('task.recurring_')) : all.policies, `${page}: chính sách`);
+      const inserted = PAGES[page].inserted;
+      assert.deepEqual(rows, inserted ? all.policies.filter(row => !row[0].startsWith(inserted)) : all.policies, `${page}: chính sách`);
       const projected = (await connections())[INHERIT_ALL].action;
       for (const key of off) assert.equal(projected.includes(key), false, `${page}: ${key} rời kết nối inherit_crm`);
       assert.deepEqual((await connections())[LEGACY], BASE.connections[LEGACY]);
