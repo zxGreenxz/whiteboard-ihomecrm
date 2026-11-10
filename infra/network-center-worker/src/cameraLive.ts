@@ -370,6 +370,9 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (range.quality || range.speed || range.position || Date.parse(range.end) - Date.parse(range.start) > 20_000) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
         const actor = await dependencies.authorize(token, recorder);
         if (actor.expiresAt <= Date.now()) throw new LiveError(401, "SESSION_EXPIRED");
+        // Guests cannot reach this route today (allow-list above); kept so a later change to that
+        // list can never expose thumbnails of another channel or time.
+        assertShareScope(actor, channel, range);
         if (previews.size >= 2 || previews.has(actor.id)) throw new LiveError(429, "PLAYBACK_BUSY");
         previews.add(actor.id); const abort = new AbortController(); const disconnected = () => abort.abort();
         response.once("close", disconnected);

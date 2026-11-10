@@ -153,7 +153,8 @@ function ShareView({ urlCode }: { urlCode: string }) {
   const recheckExpiry = useCallback(() => {
     expiring.current = true;
     // Máy chủ nói còn hạn (đồng hồ máy khách nhanh, hoặc phiên chỉ bị máy khác thay chỗ) ⇒ bỏ cờ, lần NULL sau là mất phiên thường.
-    void refetchSession().then((result) => { if (result.data) expiring.current = false; });
+    // Chỉ tin câu trả lời THẬT của máy chủ: refetch lỗi mạng vẫn giữ `data` cũ, không được coi là "còn hạn".
+    void refetchSession().then((result) => { if (result.isSuccess && result.data) expiring.current = false; });
   }, [refetchSession]);
 
   const loggedIn = (nextCode: string, nextSession: string, nextShare: CameraShare) => {
