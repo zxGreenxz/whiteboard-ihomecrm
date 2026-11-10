@@ -197,9 +197,13 @@ async function activeBindingAndOtherConnection(t,prepare=async()=>{}) {
   return {f,confirmation:await observedChallenge(f,NEXT,{account:ACCOUNT_B,conversation:CONVERSATION_B,generation:GENERATION_B,ownUid:'124'})};
 }
 
+// Replaces the fixture audit sink with one that keeps every reason in order.
+const CAPTURE_AUDIT="CREATE TABLE app_private.fixture_audit(seq integer GENERATED ALWAYS AS IDENTITY,reason text); CREATE OR REPLACE FUNCTION app_private.append_authz_audit_v1(o uuid,event text,kind text,entity uuid,prev jsonb,next jsonb,reason text) RETURNS void LANGUAGE sql AS $$INSERT INTO app_private.fixture_audit(reason) VALUES($7)$$";
+const auditReasons=async f=>(await f.db.query('SELECT reason FROM app_private.fixture_audit ORDER BY seq')).rows.map(row=>row.reason);
+
 test('confirm re-selects the credential when the assistant has no ACTIVE binding and the earlier selected connection was revoked',async t=>{
   const f=await setup(t);
-  await f.db.exec("CREATE TABLE app_private.fixture_audit(seq integer GENERATED ALWAYS AS IDENTITY,reason text); CREATE OR REPLACE FUNCTION app_private.append_authz_audit_v1(o uuid,event text,kind text,entity uuid,prev jsonb,next jsonb,reason text) RETURNS void LANGUAGE sql AS $$INSERT INTO app_private.fixture_audit(reason) VALUES($7)$$");
+  await f.db.exec(CAPTURE_AUDIT);
   const linked=await f.browser('confirm',await unlinkedWithNewConnection(f,{revokeEarlier:true}));
   // binding-service.mjs and zaloBindingClient.ts validate this shape strictly: no field was added.
   assert.deepEqual(Object.keys(linked).sort(),['accountId','bindingId','connectionId','epoch','organizationId','provisioningState','senderUid','status','userId']);
@@ -211,7 +215,7 @@ test('confirm re-selects the credential when the assistant has no ACTIVE binding
   assert.equal(earlier.state,'REVOKED');assert.equal(earlier.connection_id,CONNECTION,'the unlinked binding keeps its history');
   const snapshot=await f.rpc('app_private.hermes_zalo_provisioning_v1',{bindingId:linked.bindingId});
   assert.equal(snapshot.status,'active');assert.equal(snapshot.connectionId,NEXT);
-  assert.deepEqual((await f.db.query('SELECT reason FROM app_private.fixture_audit ORDER BY seq')).rows.map(row=>row.reason),
+  assert.deepEqual(await auditReasons(f),
     ['Explicit CRM user action: unlink','Explicit CRM user action: begin',`Explicit CRM user action: confirm (credential reselected from ${CONNECTION})`]);
 });
 test('confirm re-selects the credential when the assistant has no ACTIVE binding and the earlier selected connection is still ACTIVE',async t=>{
@@ -229,7 +233,7 @@ test('confirm re-selects the credential when the assistant has no ACTIVE binding
   assert.equal((await f.db.query('SELECT connection_id FROM app_private.hermes_zalo_bindings WHERE id=$1',[linked.bindingId])).rows[0].connection_id,CONNECTION);
 });
 test('confirm still refuses with PT409 and keeps the selection when the assistant has an ACTIVE binding on another connection',async t=>{
-  const {f,confirmation}=await activeBindingAndOtherConnection(t);
+  const {f,confirmation}=await activeBindingAndOtherConnection(t,f=>f.db.exec(CAPTURE_AUDIT));
   await assert.rejects(f.browser('confirm',confirmation),e=>e.code==='PT409'&&/hermes_zalo_context_changed/.test(e.message));
   assert.deepEqual(await selection(f),{connection_id:CONNECTION,revision:1,selected_by:USER});
   const kept=await f.binding();
@@ -241,6 +245,10 @@ test('confirm still refuses with PT409 and keeps the selection when the assistan
   const linked=await f.browser('confirm',confirmation);
   assert.equal(linked.accountId,ACCOUNT_B);assert.equal(linked.connectionId,NEXT);
   assert.deepEqual(await selection(f),{connection_id:NEXT,revision:2,selected_by:USER},'confirm on the already selected connection does not bump the revision');
+  // Nothing was re-selected here: the refused confirm left no audit row and the later confirm found its own connection selected.
+  // A confirm that changes no selection must not carry the ' (credential reselected from …)' suffix.
+  assert.deepEqual(await auditReasons(f),
+    ['Explicit CRM user action: begin','Explicit CRM user action: selectCredential','Explicit CRM user action: confirm']);
 });
 test('mutation: without the no-ACTIVE-binding condition the same confirm silently re-points a live binding to another credential',async t=>{
   const guard="AND NOT EXISTS(SELECT 1 FROM app_private.hermes_zalo_bindings z WHERE z.assistant_id=c.assistant_id AND z.state='ACTIVE')";
@@ -253,6 +261,20 @@ test('mutation: without the no-ACTIVE-binding condition the same confirm silentl
   assert.equal(linked.connectionId,NEXT,'the mutant accepts what the reviewed body refuses');
   assert.equal((await selection(f)).connection_id,NEXT);
   assert.equal((await f.binding()).connection_id,NEXT,'the live binding of the first bot account moved without selectCredential');
+});
+test('mutation: without the v_prior reset a confirm that changed no selection claims a re-selection in the audit',async t=>{
+  const reset='IF NOT FOUND THEN v_prior:=NULL; END IF;';
+  const {f,confirmation}=await activeBindingAndOtherConnection(t,async f=>{
+    await f.db.exec(CAPTURE_AUDIT);
+    const source=(await f.db.query("SELECT pg_get_functiondef('public.hermes_zalo_binding_v1(jsonb)'::regprocedure) AS source")).rows[0].source;
+    assert.equal(source.split(reset).length,2,'the reset is one exact statement of the confirm branch');
+    await f.db.exec(source.replace(reset,''));
+  });
+  await f.browser('selectCredential',{connectionId:NEXT,expectedConnectionEpoch:1,expectedActiveConnectionId:CONNECTION});
+  await f.browser('confirm',confirmation);
+  assert.deepEqual(await selection(f),{connection_id:NEXT,revision:2,selected_by:USER},'the confirm itself replaced nothing');
+  assert.equal((await auditReasons(f)).at(-1),`Explicit CRM user action: confirm (credential reselected from ${NEXT})`,
+    'the mutant names a connection that was never replaced; the reviewed body writes the plain reason (asserted above)');
 });
 test('the confirm re-selection migration is idempotent, keeps the caller ACL, and both files refuse an unreviewed body',async t=>{
   const f=await setup(t);
