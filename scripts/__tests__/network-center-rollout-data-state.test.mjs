@@ -73,6 +73,8 @@ const STAGE_28 =
   "supabase/migrations/20260829010000_network_center_h196a_downstream.sql";
 const STAGE_29 =
   "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql";
+const STAGE_30 =
+  "supabase/migrations/20261110070438_network_center_camera_share_v1.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -145,6 +147,32 @@ const MEASURED_ABSENT_STAGE_29 = [
   "table:public.camera_recorders",
 ];
 
+// Camera share (10/11/2026) cũng ra đời sau phép đo 03/08/2026: toàn bộ hai mươi
+// descriptor của nó vắng mặt. Ghi tường minh như stage 28/29 để bề mặt chia sẻ
+// camera đổi thì fixture này đỏ.
+const MEASURED_ABSENT_STAGE_30 = [
+  "function:app_private.camera_share_actor_can_v1(uuid,uuid)",
+  "function:app_private.camera_share_cleanup_v1()",
+  "function:app_private.camera_share_of_session_v1(text)",
+  "function:app_private.camera_share_payload_v1(uuid)",
+  "function:public.camera_share_authorize_v1(text)",
+  "function:public.camera_share_create_v1(uuid,integer,timestamp with time zone,timestamp with time zone,integer,text)",
+  "function:public.camera_share_login_v1(text,text)",
+  "function:public.camera_share_logout_v1(text)",
+  "function:public.camera_share_revoke_v1(uuid)",
+  "function:public.camera_shares_v1(uuid)",
+  "index:app_private:camera_share_login_failures_ma",
+  "index:app_private:camera_share_login_failures_pkey",
+  "index:app_private:camera_share_sessions_luot",
+  "index:app_private:camera_share_sessions_pkey",
+  "index:app_private:camera_shares_code_key",
+  "index:app_private:camera_shares_pkey",
+  "index:app_private:camera_shares_toa",
+  "table:app_private.camera_share_login_failures",
+  "table:app_private.camera_share_sessions",
+  "table:app_private.camera_shares",
+];
+
 const MEASURED_STALE_BODIES = [
   "app_private.network_center_bind_managed_interface_v1",
   "app_private.network_center_worker_inventory_legacy_impl_v1",
@@ -152,6 +180,16 @@ const MEASURED_STALE_BODIES = [
   "public.network_center_watchdog_liveness_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
+  "app_private.camera_share_actor_can_v1",
+  "app_private.camera_share_cleanup_v1",
+  "app_private.camera_share_of_session_v1",
+  "app_private.camera_share_payload_v1",
+  "public.camera_share_authorize_v1",
+  "public.camera_share_create_v1",
+  "public.camera_share_login_v1",
+  "public.camera_share_logout_v1",
+  "public.camera_share_revoke_v1",
+  "public.camera_shares_v1",
   "public.camera_building_events_v1",
   "public.camera_building_snapshot_v1",
   "public.network_center_admin_enroll_camera_v1",
@@ -190,6 +228,7 @@ async function productionFixture() {
     ...MEASURED_ABSENT,
     ...MEASURED_ABSENT_STAGE_28,
     ...MEASURED_ABSENT_STAGE_29,
+    ...MEASURED_ABSENT_STAGE_30,
   ]);
   const present = every.filter((descriptor) => !absent.has(descriptor));
 
@@ -211,18 +250,19 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 485);
+  assert.equal(every.length, 505);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 29);
+  assert.equal(manifest.migrations.length, 30);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   assert.equal(manifest.migrations[28].path, STAGE_29);
+  assert.equal(manifest.migrations[29].path, STAGE_30);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 18);
+  assert.equal(classification.bodyMismatches.length, 28);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });

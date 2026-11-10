@@ -22423,6 +22423,25 @@ export type Database = {
         Args: { p_building_id: string }
         Returns: Json
       }
+      camera_share_authorize_v1: { Args: { p_token: string }; Returns: Json }
+      camera_share_create_v1: {
+        Args: {
+          p_channel: number
+          p_expires_hours?: number
+          p_note?: string
+          p_recorder_id: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: Json
+      }
+      camera_share_login_v1: {
+        Args: { p_code: string; p_password: string }
+        Returns: Json
+      }
+      camera_share_logout_v1: { Args: { p_token: string }; Returns: Json }
+      camera_share_revoke_v1: { Args: { p_share_id: string }; Returns: Json }
+      camera_shares_v1: { Args: { p_building_id: string }; Returns: Json }
       can_access_building: { Args: { _building_id: string }; Returns: boolean }
       can_access_org_entity: {
         Args: { _action: string; _resource: string }

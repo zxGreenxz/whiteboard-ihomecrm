@@ -146,6 +146,7 @@ export const PUBLIC_ROUTES = new Map([
   ["/phongtrong", "alias thương hiệu của /r/:token"],
   ["/qt/:token", "quyết toán vận hành chỉ đọc cho chủ nhà (token thu hồi được)"],
   ["/cn/:slug", "link tên miền cho chủ nhà — vào bằng PIN, server chống dò, phiên thu hồi được"],
+  ["/xem-camera/:code?", "khách xem lại một kênh camera được chia sẻ — vào bằng ID + mật khẩu, server chống dò, lượt tự hết hạn và thu hồi được"],
   ["/quayso", "sự kiện quay số cho sale, không đăng nhập"],
   ["/quayso/:slug", "sự kiện quay số theo slug"],
   ["/quayso/:slug/quay", "màn quay của sự kiện"],

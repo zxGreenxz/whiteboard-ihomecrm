@@ -40,12 +40,26 @@ const mediaOrigin = "http://127.0.0.1:18889";
 const LEASE_MS = 75_000;
 const MAX_SESSIONS = 24;
 const MAX_USER_SESSIONS = 16;
+// Guests re-encode recordings on the camera host; staff playback must keep room.
+const MAX_SHARE_SESSIONS = 2;
 const BODY_MAX = 65_536;
+const shareToken = /^cs_[A-Za-z0-9_-]{43}$/u;
+const shareQualities: PlaybackQuality[] = ["sd", "hd"];
+const shareSchema = z.object({
+  share_id: uuid, recorder_id: uuid, organization_id: uuid, building_id: uuid, channel: z.number().int().min(1).max(64),
+  window_start: z.string().datetime({ offset: true }), window_end: z.string().datetime({ offset: true }), expires_at: z.string().datetime({ offset: true }),
+}).nullable();
 
 export class LiveError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
 }
-export interface LiveActor { id: string; expiresAt: number }
+/** A guest share is one recorded channel inside one window; `start`/`end` are epoch milliseconds. */
+export interface LiveShareScope { channel: number; start: number; end: number }
+export interface LiveActor { id: string; expiresAt: number; share?: LiveShareScope }
+function assertShareScope(actor: LiveActor, channel: number, range: PlaybackRange) {
+  if (!actor.share) return;
+  if (channel !== actor.share.channel || Date.parse(range.start) < actor.share.start || Date.parse(range.end) > actor.share.end) throw new LiveError(403, "SHARE_SCOPE_DENIED");
+}
 export interface LiveMediaSession { location: string; answer: string }
 export interface LiveDependencies {
   liveQualities?: PlaybackQuality[];
@@ -106,6 +120,25 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
       return playbackThumbnail(sources, encoder, recorder, channel, start, end, signal);
     },
     async authorize(token, recorder) {
+      if (token.startsWith("cs_")) {
+        // Guest share session: an opaque string, not a JWT. The database maps it to exactly one
+        // recorder/channel/window and answers null once the share expired or was revoked.
+        if (!shareToken.test(token)) throw new LiveError(401, "SHARE_ENDED");
+        let lookup: Response;
+        try {
+          lookup = await request(`${config.supabaseUrl}/rest/v1/rpc/camera_share_authorize_v1`, {
+            method: "POST", headers: { apikey: config.publishableKey, Authorization: `Bearer ${config.publishableKey}`, "Content-Type": "application/json", "Content-Profile": "public", "Accept-Profile": "public" },
+            body: JSON.stringify({ p_token: token }), redirect: "error", signal: AbortSignal.timeout(5000),
+          });
+        } catch { throw new LiveError(503, "AUTH_UNAVAILABLE"); }
+        if (!lookup.ok) { await lookup.body?.cancel(); throw new LiveError(503, "AUTH_UNAVAILABLE"); }
+        const share = shareSchema.parse(JSON.parse(await boundedText(lookup)));
+        if (!share) throw new LiveError(401, "SHARE_ENDED");
+        if (share.recorder_id !== recorder.id || share.organization_id !== recorder.organizationId || share.building_id !== recorder.buildingId || !recorder.channels.includes(share.channel)) throw new LiveError(403, "CAMERA_ACCESS_DENIED");
+        const expiresAt = Date.parse(share.expires_at); const start = Date.parse(share.window_start); const end = Date.parse(share.window_end);
+        if (!(expiresAt > Date.now()) || !(end > start)) throw new LiveError(401, "SHARE_ENDED");
+        return { id: `share:${share.share_id}`, expiresAt, share: { channel: share.channel, start, end } };
+      }
       const headers = { apikey: config.publishableKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const user = await request(`${config.supabaseUrl}/auth/v1/user`, { headers, redirect: "error", signal: AbortSignal.timeout(5000) });
       if (!user.ok) { await user.body?.cancel(); throw new LiveError(user.status === 401 || user.status === 403 ? 401 : 503, "AUTH_UNAVAILABLE"); }
@@ -152,7 +185,7 @@ export function validateOffer(offer: string) {
 
 interface Session {
   id: string; actorId: string; recorder: LiveRecorder; expiresAt: number; location?: string; closed: boolean; playbackUntil?: number | undefined;
-  encodedLiveKey?: string;
+  encodedLiveKey?: string; share?: boolean;
   viewId?: string; pending?: Promise<void>; closing?: Promise<void>;
   playback?: PlaybackRange; controlling?: boolean; abort: AbortController;
 }
@@ -172,6 +205,16 @@ export class LiveSessions {
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
     if (viewId !== undefined && (!uuid.safeParse(viewId).success || playback)) throw new LiveError(400, "INVALID_LIVE_VIEW");
     if (viewId && this.cancelledViews.has(`${actor.id}/${recorder.id}/${viewId}`)) throw new LiveError(409, "LIVE_VIEW_CLOSED");
+    if (actor.share) {
+      // Never live, never another channel or time, and always a re-encoded profile every phone can decode.
+      if (!playback || liveQuality !== undefined || viewId !== undefined || !playback.quality || !shareQualities.includes(playback.quality)) throw new LiveError(403, "SHARE_SCOPE_DENIED");
+      assertShareScope(actor, channel, playback);
+      // One viewer per share: a reload or a second device replaces the previous stream.
+      await Promise.all([...this.sessions.values()].filter((s) => s.actorId === actor.id).map(async (s) => { await this.close(s); await s.pending; }));
+      // Checked after the await and before the synchronous reservation below, so two racing starts cannot both pass.
+      if ([...this.sessions.values()].some((s) => s.actorId === actor.id)) throw new LiveError(429, "CAMERA_LIMIT");
+      if ([...this.sessions.values()].filter((s) => s.share).length >= MAX_SHARE_SESSIONS) throw new LiveError(429, "PLAYBACK_BUSY");
+    }
     if (this.sessions.size >= MAX_SESSIONS || [...this.sessions.values()].filter((s) => s.actorId === actor.id).length >= MAX_USER_SESSIONS) throw new LiveError(429, "CAMERA_LIMIT");
     const encodedLiveKey = !playback && (liveQuality === "hd" || liveQuality === "fullhd") ? `${recorder.id}/${channel}/${liveQuality}` : undefined;
     const encoders = new Set([...this.sessions.values()].flatMap((s) => s.encodedLiveKey ? [s.encodedLiveKey] : []));
@@ -181,7 +224,7 @@ export class LiveSessions {
     if (playback && [...this.sessions.values()].filter((s) => s.playbackUntil).length >= 4) throw new LiveError(429, "PLAYBACK_BUSY");
     // Reserve before awaiting upstream: simultaneous requests cannot bypass the session limit.
     const playbackUntil = playback ? this.now() + (Date.parse(playback.end) - Date.parse(playback.position ?? playback.start)) / (playback.speed ?? 1) + 30_000 : undefined;
-    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(viewId ? { viewId } : {}), ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
+    const session: Session = { id: randomUUID(), actorId: actor.id, recorder, expiresAt: Math.min(this.now() + LEASE_MS, actor.expiresAt, playbackUntil ?? Infinity), closed: false, playbackUntil, ...(actor.share ? { share: true } : {}), ...(viewId ? { viewId } : {}), ...(encodedLiveKey ? { encodedLiveKey } : {}), ...(playback ? { playback } : {}), abort: new AbortController() };
     this.sessions.set(session.id, session);
     let settled!: () => void;
     session.pending = new Promise<void>((resolve) => { settled = resolve; });
@@ -302,6 +345,10 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       const playbackCreate = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/playback$/u.exec(path);
       const playbackControl = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})\/playback$/u.exec(path);
       const previewRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/preview$/u.exec(path);
+      // A guest share reaches recorded playback of its own channel only: no live video, live-view
+      // cleanup, archive export or thumbnail preview (previews share two gateway-wide slots with
+      // staff, so a guest must not be able to occupy them). Scope is checked again where the actor is known.
+      if (token.startsWith("cs_") && !(playbackCreate || playbackControl || sessionRoute || (recorderRoute && !recorderRoute[2]))) throw new LiveError(403, "SHARE_SCOPE_DENIED");
       if (liveView && request.method === "DELETE") {
         const recorder = config.recorders.find((candidate) => candidate.id === liveView[1]);
         if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
@@ -323,6 +370,9 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (range.quality || range.speed || range.position || Date.parse(range.end) - Date.parse(range.start) > 20_000) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
         const actor = await dependencies.authorize(token, recorder);
         if (actor.expiresAt <= Date.now()) throw new LiveError(401, "SESSION_EXPIRED");
+        // Guests cannot reach this route today (allow-list above); kept so a later change to that
+        // list can never expose thumbnails of another channel or time.
+        assertShareScope(actor, channel, range);
         if (previews.size >= 2 || previews.has(actor.id)) throw new LiveError(429, "PLAYBACK_BUSY");
         previews.add(actor.id); const abort = new AbortController(); const disconnected = () => abort.abort();
         response.once("close", disconnected);
@@ -344,6 +394,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const { offer, ...requestedRange } = input;
         const range = playbackRange(requestedRange); validateOffer(offer);
         const actor = await dependencies.authorize(token, recorder);
+        assertShareScope(actor, Number(playbackCreate[2]), range);
         const result = await sessions.start(actor, recorder, Number(playbackCreate[2]), input.offer, range);
         if (response.destroyed) { await sessions.stop(result.id, token); return; }
         reply(response, 201, result); return;
@@ -399,7 +450,10 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
-          await dependencies.authorize(token, recorder);
+          const actor = await dependencies.authorize(token, recorder);
+          if (actor.share) {
+            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: false, playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
+          }
           reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? dependencies.playbackQualities ?? [] : [] }); return;
         }
         if (channel && request.method === "POST") {
