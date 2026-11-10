@@ -4,10 +4,12 @@ import { childText, childrenNamed, parseXml, type XmlElement } from "./isapiXml.
 import { PinnedHttpClient, ReusedSocketClosedError, type PinnedHttpReply } from "./pinnedHttp.js";
 import type { CameraChannelObservation, CameraChannelState, CameraDiskObservation, CameraIssue, CameraPollingClient, CameraSnapshot } from "./types.js";
 
-// Every element name, value vocabulary and status code below follows the
-// published ISAPI schema. None of it has been checked against a reply captured
-// from a real recorder yet; each parser is a pure export so a captured fixture
-// can replace the documented one without touching the transport.
+// Element names, value vocabularies and status codes below follow the published
+// ISAPI schema. The channel, IP-status and storage replies were checked on
+// 2026-11-10 against two real recorders (README, and the "measured" tests); what
+// is still documentation-only is said where it is used. Each parser is a pure
+// export so a captured fixture can replace a documented one without touching
+// the transport.
 
 export const HIKVISION_ANALOG_CHANNELS_PATH = "/ISAPI/System/Video/inputs/channels";
 export const HIKVISION_PROXY_CHANNELS_PATH = "/ISAPI/ContentMgmt/InputProxy/channels";
@@ -300,8 +302,9 @@ export class HikvisionClient implements CameraPollingClient {
           throw new CameraClientError("AUTH_DENIED");
         }
         const reply = await http.get(path, { Authorization: authorization }, signal);
-        // One authenticated attempt per request. A refusal is final: these
-        // recorders lock the account and the client address after a few.
+        // A refusal is final and is never retried: these recorders lock the
+        // account and the client address after a few. The only resend is below,
+        // when a reused socket died before the recorder answered at all.
         if (reply.status === 401) throw new CameraClientError("AUTH_DENIED");
         return reply;
       } catch (error) {

@@ -503,7 +503,10 @@ Vendor đi từ database (`camera_recorders.vendor`, ra khoá `vendor` của
 thiếu khoá dùng client Dahua; `HIKVISION` dùng client ISAPI; giá trị khác thì bỏ
 qua đầu ghi đó, ghi log và không mở kết nối nào. Sau AUTH_DENIED bộ thu thập chờ
 300 s với Dahua và 1800 s với Hikvision, vì đầu ghi Hikvision khoá tài khoản và
-IP nguồn sau vài lần đăng nhập sai; mỗi yêu cầu chỉ gửi đúng một lần có xác thực.
+IP nguồn sau vài lần đăng nhập sai. Bị từ chối (401) là chung cuộc, không gửi
+lại. Ngoại lệ duy nhất: socket tái dùng bị đầu ghi đóng trước khi trả lời thì
+yêu cầu đó được gửi lại đúng một lần trên kết nối mới, và từ đó client thôi tái
+dùng socket với đầu ghi này.
 Thời gian chờ Hikvision được giữ khi collector dựng lại trong cùng tiến trình,
 còn restart service là một lần thử mới: sửa mật khẩu trong file rồi mới restart.
 
