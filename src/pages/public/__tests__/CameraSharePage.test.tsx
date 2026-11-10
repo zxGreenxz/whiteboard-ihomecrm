@@ -243,6 +243,99 @@ describe("trang khách xem lại camera", () => {
     expect(mocks.seek).not.toHaveBeenCalled();
   });
 
+  // Đầu ghi Hikvision có thể phát sớm tới 11 giây so với mốc được xin, nên cổng xin đầu ghi trễ hơn 15 giây và báo con số đó
+  // cho trình xem của khách: thanh thời gian bắt đầu ở đầu khung giờ + 15 giây, mốc gửi cổng = mốc trên thanh − 15 giây.
+  const HIKVISION = { channels: [3], maxView: 1, leaseSeconds: 75, archive: false, liveQualities: [], playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"], playbackStartLeadSeconds: 15 };
+  const bar = () => screen.getByLabelText("Thanh thời gian xem lại") as HTMLInputElement;
+  const barTime = () => screen.getByText("Thanh thời gian").nextElementSibling?.textContent;
+
+  it("đầu ghi có lead (Hikvision): thanh chạy từ đầu khung giờ + 15 giây tới cuối khung giờ, mốc gửi cổng lùi 15 giây, hai đầu thanh và đổi tốc độ đều đúng", async () => {
+    sessionStorage.setItem(KEY, SESSION);
+    mocks.rpc.mockResolvedValue({ data: share, error: null });
+    mocks.capabilities.mockResolvedValue(HIKVISION);
+    open();
+    // Thanh: 08:00:15 → 10:00:00 (7185 giây), mốc đầu tiên xem được là 08:00:15.
+    await waitFor(() => expect(bar().max).toBe("7184"));
+    expect(bar().parentElement?.textContent).toContain("08:00:15 10/11/202610:00:00 10/11/2026");
+    expect(screen.getByText("Bấm để xem từ 08:00:15 10/11/2026")).toBeTruthy();
+    expect(screen.getByText(/Đầu ghi này cho xem từ 08:00:15 10\/11\/2026, sau đầu khung giờ 15 giây\./u)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(1));
+    // Gửi cổng đúng đầu khung giờ; cổng cộng 15 giây nên đầu ghi được xin 08:00:15, đúng mốc trên thanh.
+    expect(mocks.connections[0]?.playback).toMatchObject({ start: "2026-11-10T01:00:00.000Z", end: "2026-11-10T03:00:00.000Z", quality: "sd" });
+    expect(barTime()).toBe("08:00:15 10/11/2026");
+    // Đầu thanh: lùi 10 giây không ra trước mốc đầu tiên xem được; tới 10 giây thì đúng 10 giây.
+    fireEvent.click(screen.getByRole("button", { name: "Lùi 10 giây" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(2));
+    expect(mocks.connections[1]?.playback?.start).toBe("2026-11-10T01:00:00.000Z"); expect(barTime()).toBe("08:00:15 10/11/2026");
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(3));
+    expect(mocks.connections[2]?.playback?.start).toBe("2026-11-10T01:00:10.000Z"); expect(barTime()).toBe("08:00:25 10/11/2026");
+    // Đổi tốc độ: luồng mới tại mốc đang xem, tốc độ đi cùng lúc mở.
+    fireEvent.click(screen.getByRole("radio", { name: "4×" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(4));
+    expect(mocks.connections[3]?.playback).toMatchObject({ start: "2026-11-10T01:00:10.000Z", speed: 4 }); expect(barTime()).toBe("08:00:25 10/11/2026");
+    // Cuối thanh: mốc xa nhất là cuối khung giờ − 1 giây (đầu ghi được xin 09:59:59, cổng không từ chối); tới 10 giây không vượt qua.
+    fireEvent.change(bar(), { target: { value: "7184" } }); fireEvent.pointerUp(bar());
+    await waitFor(() => expect(mocks.connections).toHaveLength(5));
+    expect(mocks.connections[4]?.playback).toMatchObject({ start: "2026-11-10T02:59:44.000Z", end: "2026-11-10T03:00:00.000Z", speed: 4 }); expect(barTime()).toBe("09:59:59 10/11/2026");
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(6));
+    expect(mocks.connections[5]?.playback?.start).toBe("2026-11-10T02:59:44.000Z");
+    fireEvent.click(screen.getByRole("button", { name: "Lùi 10 giây" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(7));
+    expect(mocks.connections[6]?.playback?.start).toBe("2026-11-10T02:59:34.000Z"); expect(barTime()).toBe("09:59:49 10/11/2026");
+    for (const connection of mocks.connections) expect(connection.playback).not.toHaveProperty("position");
+    expect(mocks.seek).not.toHaveBeenCalled();
+  });
+
+  it.each([[1, 20], [4, 80]])("đầu ghi có lead (Hikvision): hình tới cuối khung giờ ở %i× ⇒ báo đã xem hết, không treo chờ lỗi mất hình", async (speed, remaining) => {
+    const frames: VideoFrameRequestCallback[] = [];
+    const prototype = HTMLVideoElement.prototype as unknown as { requestVideoFrameCallback?: unknown; cancelVideoFrameCallback?: unknown };
+    prototype.requestVideoFrameCallback = (callback: VideoFrameRequestCallback) => frames.push(callback); prototype.cancelVideoFrameCallback = () => {};
+    try {
+      sessionStorage.setItem(KEY, SESSION);
+      mocks.rpc.mockResolvedValue({ data: share, error: null });
+      mocks.capabilities.mockResolvedValue(HIKVISION);
+      open();
+      await waitFor(() => expect(bar().max).toBe("7184"));
+      if (speed !== 1) fireEvent.click(screen.getByRole("radio", { name: `${speed}×` }));
+      // Mở tại mốc cách cuối khung giờ `remaining` giây: gửi cổng mốc đó − 15 giây, đầu ghi được xin đúng mốc đó.
+      fireEvent.change(bar(), { target: { value: String(7185 - remaining) } }); fireEvent.pointerUp(bar());
+      await waitFor(() => expect(mocks.connections).toHaveLength(1));
+      const end = Date.parse("2026-11-10T03:00:00Z");
+      expect(mocks.connections[0]?.playback).toMatchObject({ start: new Date(end - (remaining + 15) * 1000).toISOString(), end: "2026-11-10T03:00:00.000Z", ...(speed === 1 ? {} : { speed }) });
+      // Đầu ghi phát tới cuối khung giờ rồi tự dừng; khung hình cuối cùng tới khi thanh còn cách cuối 2 giây (đầu ghi vào hình trễ tới 2 giây).
+      act(() => frames.at(-1)!(1000, { mediaTime: 0, rtpTimestamp: 0 } as VideoFrameCallbackMetadata));
+      act(() => frames.at(-1)!(2000, { mediaTime: (remaining - 2) / speed, rtpTimestamp: 90_000 * (remaining - 2) / speed } as VideoFrameCallbackMetadata));
+      expect(barTime()).toBe("09:59:58 10/11/2026");
+      expect(screen.queryByText("Đã xem hết khung giờ được chia sẻ.")).toBeNull();
+      vi.setSystemTime(new Date(Date.now() + 3000));
+      await waitFor(() => expect(screen.getByText("Đã xem hết khung giờ được chia sẻ.")).toBeTruthy(), { timeout: 3000 });
+      expect(barTime()).toBe("10:00:00 10/11/2026"); expect(mocks.stop).toHaveBeenCalledOnce();
+      expect(screen.queryByRole("alert")).toBeNull(); expect(screen.getByRole("button", { name: "Xem" })).toBeTruthy();
+    } finally { delete prototype.requestVideoFrameCallback; delete prototype.cancelVideoFrameCallback; }
+  });
+
+  it("đầu ghi không có lead (Dahua/KBVision): thanh, mốc gửi cổng và chú thích giữ nguyên như trước", async () => {
+    sessionStorage.setItem(KEY, SESSION);
+    mocks.rpc.mockResolvedValue({ data: share, error: null });
+    open();
+    await waitFor(() => expect(bar().max).toBe("7199"));
+    expect(bar().parentElement?.textContent).toContain("08:00:00 10/11/202610:00:00 10/11/2026");
+    expect(screen.getByText("Bấm để xem từ 08:00:00 10/11/2026")).toBeTruthy();
+    expect(screen.getByText(/Mỗi lúc chỉ một máy xem được; mở ở máy khác thì máy này dừng\.$/u)).toBeTruthy();
+    expect(screen.queryByText(/Đầu ghi này cho xem từ/u)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(1));
+    expect(mocks.connections[0]?.playback).toMatchObject({ start: "2026-11-10T01:00:00.000Z", end: "2026-11-10T03:00:00.000Z", quality: "sd" });
+    expect(barTime()).toBe("08:00:00 10/11/2026");
+    fireEvent.change(bar(), { target: { value: "7190" } }); fireEvent.pointerUp(bar());
+    // Có lệnh tua (playbackControl) nên vẫn là một luồng: mốc gửi là mốc trên thanh, không trừ gì.
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledWith(Date.parse("2026-11-10T02:59:50Z"), 1));
+    expect(mocks.connections).toHaveLength(1); expect(barTime()).toBe("09:59:50 10/11/2026");
+  });
+
   it("cổng video từ chối ngay khi kiểm tra dịch vụ (SHARE_ENDED) ⇒ màn đã kết thúc", async () => {
     sessionStorage.setItem(KEY, SESSION);
     mocks.rpc.mockResolvedValue({ data: share, error: null });

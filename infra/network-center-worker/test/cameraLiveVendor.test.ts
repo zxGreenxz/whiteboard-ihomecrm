@@ -47,7 +47,11 @@ describe("recorder vendor profiles", () => {
     for (const vendor of ["DAHUA", "KBVISION"] as const) {
       expect(liveVendor(vendor).capabilities).toEqual({ archiveExport: true, playbackControl: true, liveDecodeCheck: false, transcodedAudio: true });
       expect(liveVendor(vendor).playbackSpeeds).toEqual([1, 2, 4, 6, 8]);
+      expect(liveVendor(vendor).playbackStartLead).toBe(0);
     }
+    // Measured 11/11/2026: firmware V3.4 began playback 1 to 11 s before the requested start; 15 s keeps a margin for guest shares.
+    expect(liveVendor("HIKVISION").playbackStartLead).toBe(15);
+    for (const seek of ["clock", "npt", "reopen"] as const) expect(hikvisionVendor({ ...hikvisionDefaults, seek }).playbackStartLead).toBe(15);
     // Measured 11/11/2026: both recorders ignore Range on a running session, and the older one tops out near 4x.
     expect(hikvisionDefaults).toEqual({ seek: "reopen", playbackSpeeds: [1, 2, 4] });
     // Measured 11/11/2026: the older recorder advertises an audio track and never sends a packet on it, so no re-encoded output carries audio.

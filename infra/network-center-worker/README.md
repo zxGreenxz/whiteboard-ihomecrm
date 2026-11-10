@@ -135,9 +135,21 @@ chạy thử trên host ở `deploy/camera-live.md`.
   thời gian là đồng hồ của trình xem nhân tốc độ đã chọn, nên với đầu ghi chạy chậm
   hơn tốc độ xin thì thanh chạy trước hình và trình xem dừng trước khi hình tới cuối
   khoảng.
-- Hình đầu tiên lệch mốc yêu cầu: trễ khoảng 2 giây (V4.70), sớm 5–11 giây (V3.4,
-  lùi về khung hình chính trước đó), kể cả với lượt chia sẻ; dấu giờ trên hình là
-  căn cứ.
+- Hình đầu tiên lệch mốc yêu cầu: đúng giờ hoặc trễ tới 2 giây (V4.70), sớm 1–11
+  giây (V3.4, lùi về khung hình chính trước đó); cả hai tự dừng đúng `endtime`. Phiên
+  của nhân viên xin đúng mốc đã chọn; dấu giờ trên hình là căn cứ.
+- Lượt chia sẻ cho khách không bao giờ lộ hình trước khung giờ: phiên của khách xin
+  đầu ghi trễ hơn 15 giây so với mốc khách chọn (`playbackStartLead`), nên dù đầu
+  ghi lùi hết cỡ vẫn nằm trong khung; mốc sau khi dời mà chạm cuối khung thì bị từ
+  chối (`SHARE_SCOPE_DENIED`). Gateway tự áp dụng, không phụ thuộc trình xem, và báo
+  con số đó cho trình xem của khách (`playbackStartLeadSeconds`, chỉ có trong trả lời
+  cho phiên khách, không có khi bằng 0): thanh thời gian của khách chạy từ đầu khung
+  + 15 giây tới cuối khung và mốc gửi gateway là mốc trên thanh − 15 giây, nên thanh
+  khớp mốc đầu ghi được xin và cuối khung được nhận ra như thường. Khách không xem
+  được 15 giây đầu khung giờ. Dahua/KBVision không đổi.
+- Lùi release: trước khi trỏ `current` về bản cũ hơn thay đổi này phải gỡ các đầu ghi
+  có `vendor`/`playbackEnabled` khỏi `live-config.json`, nếu không schema cũ từ chối
+  cả file và mọi đầu ghi mất hình (chi tiết ở `deploy/camera-live.md`).
 
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 

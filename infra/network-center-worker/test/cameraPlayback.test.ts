@@ -244,4 +244,69 @@ describe("Hikvision recording playback", () => {
     await expect(sessions.start(guest, hikvision, 9, offer)).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
     await sessions.closeAll();
   });
+
+  // The recorder may begin up to 11 s before the time it is asked for (measured on firmware V3.4). A guest must not see
+  // anything before the shared window, so what a guest session asks the recorder for is 15 s later than requested.
+  const clock = Date.parse("2026-10-20T03:00:00.000Z");
+  const share = { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end) };
+  const guest = { id: "share:60000000-0000-4000-8000-000000000001", expiresAt: clock + 3600_000, share };
+  const staff = { ...actor, expiresAt: clock + 3600_000 };
+  const uuids = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu;
+  /** Real gateway dependencies on a fixed clock, recording every source the media API is asked to pull. */
+  function gateway(configuration: typeof config) {
+    const sources: string[] = [];
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/add/playback-source-")) sources.push(String(init?.body).replace(uuids, "UUID"));
+      if (init?.method === "POST" && url.endsWith("/whep")) return new Response(offer, { status: 201, headers: { Location: `${new URL(url).pathname}/50000000-0000-4000-8000-000000000001` } });
+      return Response.json({});
+    });
+    const real = createLiveDependencies(configuration, vi.fn(), request, `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`);
+    const stop = vi.fn(real.stop);
+    const sessions = new LiveSessions({ ...real, stop, authorize: vi.fn(async () => guest), now: () => clock });
+    const asked = (index: number) => { const url = new URL(JSON.parse(sources[index]!).source as string); return [url.searchParams.get("starttime"), url.searchParams.get("endtime")]; };
+    return { sessions, sources, stop, asked };
+  }
+  it("asks the recorder for a guest's start 15 s later, keeps the lease on what was really asked, and leaves staff alone", async () => {
+    const { sessions, sources, asked } = gateway(hikvisionConfig);
+    // Open at the very start of the shared window: even an 11 s rewind from 08:00:15 stays at or after 08:00:00.
+    await sessions.start(guest, hikvision, 9, offer, { ...range, quality: "sd" });
+    expect(asked(0)).toEqual(["20261020T080015Z", "20261020T090000Z"]);
+    // A client that sends `position` (or a speed) is moved the same way.
+    await sessions.start(guest, hikvision, 9, offer, { ...range, position: "2026-10-20T01:30:00.000Z", speed: 4, quality: "hd" });
+    expect(asked(1)).toEqual(["20261020T083015Z", "20261020T090000Z"]); expect(JSON.parse(sources[1]!)).toMatchObject({ rtspScale: "4" });
+    // 40 s before the end: the recorder is asked for 25 s, so the session may live 25 s + 30 s, not 40 s + 30 s.
+    const late = await sessions.start(guest, hikvision, 9, offer, { start: "2026-10-20T01:59:20.000Z", end: range.end, quality: "sd" });
+    expect(asked(2)).toEqual(["20261020T085935Z", "20261020T090000Z"]); expect(late.expiresAt).toBe(clock + 55_000);
+    // Staff on the same recorder: exactly the requested time, and the lease of the requested 40 s.
+    const employee = await sessions.start(staff, hikvision, 9, offer, { start: "2026-10-20T01:59:20.000Z", end: range.end, quality: "sd" });
+    expect(asked(3)).toEqual(["20261020T085920Z", "20261020T090000Z"]); expect(employee.expiresAt).toBe(clock + 70_000);
+    await sessions.start(staff, hikvision, 9, offer, { ...range, quality: "sd" }); expect(asked(4)).toEqual(["20261020T080000Z", "20261020T090000Z"]);
+    await sessions.closeAll();
+  });
+  it("refuses a guest start whose moved time would reach the end of the window, without touching the stream that is playing", async () => {
+    const { sessions, sources, stop } = gateway(hikvisionConfig);
+    await sessions.start(guest, hikvision, 9, offer, { ...range, quality: "sd" });
+    for (const start of ["2026-10-20T01:59:50.000Z", "2026-10-20T01:59:45.000Z"]) await expect(sessions.start(guest, hikvision, 9, offer, { start, end: range.end, quality: "sd" })).rejects.toMatchObject({ status: 403, code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, hikvision, 9, offer, { ...range, position: "2026-10-20T01:59:50.000Z", quality: "sd" })).rejects.toMatchObject({ status: 403, code: "SHARE_SCOPE_DENIED" });
+    // A short window that the lead would empty is refused too, rather than opened before or after its bounds.
+    await expect(sessions.start(guest, hikvision, 9, offer, { start: range.start, end: "2026-10-20T01:00:15.000Z", quality: "sd" })).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    expect(sources).toHaveLength(1); expect(stop).not.toHaveBeenCalled(); expect(sessions.size).toBe(1);
+    // One second earlier there is one second left to show.
+    const last = await sessions.start(guest, hikvision, 9, offer, { start: "2026-10-20T01:59:44.000Z", end: range.end, quality: "sd" });
+    expect(new URL(JSON.parse(sources[1]!).source as string).searchParams.get("starttime")).toBe("20261020T085959Z"); expect(last.expiresAt).toBe(clock + 31_000);
+    expect(stop).toHaveBeenCalledOnce(); // One viewer per share: the new stream replaced the first.
+    await sessions.closeAll();
+  });
+  it("sends a Dahua recorder byte for byte the same request for a guest as for staff", async () => {
+    const dahuaGuest = { ...guest, share: { ...share, channel: 1 } };
+    const { sessions, sources } = gateway(config);
+    const asGuest = await sessions.start(dahuaGuest, recorder, 1, offer, { start: "2026-10-20T01:59:20.000Z", end: range.end, quality: "sd", speed: 2 });
+    const asStaff = await sessions.start(staff, recorder, 1, offer, { start: "2026-10-20T01:59:20.000Z", end: range.end, quality: "sd", speed: 2 });
+    const expected = `{"source":"rtsp://fixture:fixture-password@10.0.0.1:18554/cam/playback?channel=1&subtype=0&starttime=2026_10_20_08_59_20&endtime=2026_10_20_09_00_00","sourceOnDemand":true,"sourceOnDemandStartTimeout":"8s","sourceOnDemandCloseAfter":"1s","rtspTransport":"tcp","rtspPlaybackRevision":"UUID","rtspScale":"2","record":false,"maxReaders":1}`;
+    expect(sources).toEqual([expected, expected]); expect(asGuest.expiresAt).toBe(clock + 50_000); expect(asStaff.expiresAt).toBe(asGuest.expiresAt);
+    await sessions.start(dahuaGuest, recorder, 1, offer, { ...range, position: "2026-10-20T01:59:50.000Z", quality: "hd" });
+    expect(JSON.parse(sources[2]!)).toMatchObject({ rtspRangeType: "npt", rtspRangeStart: "3590s" }); expect(new URL(JSON.parse(sources[2]!).source as string).searchParams.get("starttime")).toBe("2026_10_20_08_00_00");
+    await sessions.closeAll();
+  });
 });

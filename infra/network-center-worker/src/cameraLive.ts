@@ -76,6 +76,19 @@ function assertShareScope(actor: LiveActor, channel: number, range: PlaybackRang
   if (!actor.share) return;
   if (channel !== actor.share.channel || Date.parse(range.start) < actor.share.start || Date.parse(range.end) > actor.share.end) throw new LiveError(403, "SHARE_SCOPE_DENIED");
 }
+/**
+ * What a guest session asks the recorder for. A recorder may begin a recording up to `lead` seconds BEFORE the
+ * requested time (it rewinds to an earlier key frame), which would show a guest footage from before the shared
+ * window. So every time sent to the recorder is moved later by that lead: the longest rewind then lands on the
+ * time the guest asked for, never before it. Nothing is left to play once the moved start reaches the end.
+ */
+function guestRecorderRange(range: PlaybackRange, lead: number): PlaybackRange {
+  if (!lead) return range;
+  const later = (time: string) => new Date(Date.parse(time) + lead * 1000).toISOString();
+  const moved = { ...range, start: later(range.start), ...(range.position ? { position: later(range.position) } : {}) };
+  if (Date.parse(moved.position ?? moved.start) >= Date.parse(range.end)) throw new LiveError(403, "SHARE_SCOPE_DENIED");
+  return moved;
+}
 export interface LiveMediaSession { location: string; answer: string }
 export interface LiveDependencies {
   liveQualities?: PlaybackQuality[];
@@ -220,7 +233,7 @@ export class LiveSessions {
     validateOffer(offer);
     if (liveQuality !== undefined && !playbackQualitySchema.safeParse(liveQuality).success) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
     if (liveQuality && this.dependencies.liveQualities && !this.dependencies.liveQualities.includes(liveQuality)) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
-    const playback = range ? playbackRange(range, this.now()) : undefined;
+    let playback = range ? playbackRange(range, this.now()) : undefined;
     if (playback && !recordedPlayback(recorder)) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
     if (!recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
@@ -230,6 +243,8 @@ export class LiveSessions {
       // Never live, never another channel or time, and always a re-encoded profile every phone can decode.
       if (!playback || liveQuality !== undefined || viewId !== undefined || !playback.quality || !shareQualities.includes(playback.quality)) throw new LiveError(403, "SHARE_SCOPE_DENIED");
       assertShareScope(actor, channel, playback);
+      // From here on the session, its lease and the recorder all use the moved range (the same object when the lead is 0).
+      playback = guestRecorderRange(playback, liveVendor(recorder.vendor).playbackStartLead);
       // One viewer per share: a reload or a second device replaces the previous stream.
       await Promise.all([...this.sessions.values()].filter((s) => s.actorId === actor.id).map(async (s) => { await this.close(s); await s.pending; }));
       // Checked after the await and before the synchronous reservation below, so two racing starts cannot both pass.
@@ -484,7 +499,10 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
           const profile = liveVendor(recorder.vendor); const playback = recordedPlayback(recorder);
           const control = Boolean(playback && dependencies.control && profile.capabilities.playbackControl);
           if (actor.share) {
-            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback, playbackControl: control, playbackPreview: false, playbackSpeeds: playback ? profile.playbackSpeeds : [], playbackQualities: playback ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
+            // The lead is told to the guest player only so its time bar matches what the recorder is asked for; the
+            // gateway applies it regardless (guestRecorderRange). Absent when 0, so other vendors' answers are unchanged.
+            const lead = playback && profile.playbackStartLead ? { playbackStartLeadSeconds: profile.playbackStartLead } : {};
+            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback, playbackControl: control, playbackPreview: false, playbackSpeeds: playback ? profile.playbackSpeeds : [], playbackQualities: playback ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [], ...lead }); return;
           }
           reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback, playbackControl: control, playbackPreview: Boolean(playback && dependencies.preview), playbackSpeeds: playback ? profile.playbackSpeeds : [], playbackQualities: playback ? dependencies.playbackQualities ?? [] : [] }); return;
         }

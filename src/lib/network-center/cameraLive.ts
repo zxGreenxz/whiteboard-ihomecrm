@@ -6,7 +6,9 @@ const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().guid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
 export type CameraPlaybackQuality = "sd" | "hd" | "fullhd" | "original";
 export type CameraLiveQuality = CameraPlaybackQuality;
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]) });
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]),
+  // Chỉ có trong phiên khách của đầu ghi có thể phát sớm hơn mốc được xin: cổng xin đầu ghi trễ hơn chừng này giây.
+  playbackStartLeadSeconds: z.number().int().min(0).max(300).optional() });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",

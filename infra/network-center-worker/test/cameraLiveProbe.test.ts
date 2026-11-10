@@ -39,11 +39,26 @@ describe("live decode check", () => {
     await vi.advanceTimersByTimeAsync(1); expect(children[0]!.kill).toHaveBeenCalledWith("SIGKILL");
     await refused; expect(mocks.spawn).toHaveBeenCalledOnce();
     expect(String(request.mock.calls[0]?.[0])).toBe(`http://127.0.0.1:18897/v3/paths/get/${name}`);
-    // The same stream is refused at once for a short while: no decoder is started per retry.
-    await expect(check(recorderId, name)).rejects.toMatchObject({ code: "LIVE_STREAM_UNDECODABLE" }); expect(mocks.spawn).toHaveBeenCalledOnce();
-    now += 31_000; const retry = check(recorderId, name); expect(mocks.spawn).toHaveBeenCalledTimes(2);
-    children[1]!.emit("close", 0); await retry; // Encryption switched off: live again, without a restart.
-    await check(recorderId, `camera-${recorderId}-2`); expect(mocks.spawn).toHaveBeenCalledTimes(2);
+    // The verdict is the recorder's (encryption is recorder-wide): for 30 s every channel is refused at once, so a
+    // 16-tile wall and its retries cost the one decoder above, not one each.
+    for (let channel = 1; channel <= 16; channel++) await expect(check(recorderId, `camera-${recorderId}-${channel}`)).rejects.toMatchObject({ status: 502, code: "LIVE_STREAM_UNDECODABLE" });
+    now += 29_000; await expect(check(recorderId, `camera-${recorderId}-9`)).rejects.toMatchObject({ code: "LIVE_STREAM_UNDECODABLE" });
+    expect(mocks.spawn).toHaveBeenCalledOnce(); expect(request).toHaveBeenCalledOnce();
+    // Another recorder is not judged by this one.
+    const other = check("10000000-0000-4000-8000-000000000003", "camera-10000000-0000-4000-8000-000000000003-1"); expect(mocks.spawn).toHaveBeenCalledTimes(2);
+    children[1]!.emit("close", 0); await other;
+    now += 2_000; const retry = check(recorderId, `camera-${recorderId}-2`); expect(mocks.spawn).toHaveBeenCalledTimes(3);
+    children[2]!.emit("close", 0); await retry; // Encryption switched off: live again, without a restart.
+    await check(recorderId, name); await check(recorderId, `camera-${recorderId}-16`); expect(mocks.spawn).toHaveBeenCalledTimes(3);
+  });
+  it("starts one decoder for a whole wall opening at once on an encrypted recorder", async () => {
+    const check = liveDecodeCheck(encoder, mediaApi(900_000), () => 1_000_000);
+    const wall = Array.from({ length: 16 }, (_, index) => expect(check(recorderId, `camera-${recorderId}-${index + 1}`)).rejects.toMatchObject({ code: "LIVE_STREAM_UNDECODABLE" }));
+    expect(mocks.spawn).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(LIVE_DECODE_WAIT_MS); await Promise.all(wall);
+    // Every tile's "Kết nối lại" within the 30 s is answered from the verdict.
+    await Promise.all(Array.from({ length: 16 }, (_, index) => expect(check(recorderId, `camera-${recorderId}-${index + 1}`)).rejects.toMatchObject({ code: "LIVE_STREAM_UNDECODABLE" })));
+    expect(mocks.spawn).toHaveBeenCalledOnce();
   });
   it("judges one recorder at a time", async () => {
     const check = liveDecodeCheck(encoder, mediaApi(900_000), () => 1_000_000);

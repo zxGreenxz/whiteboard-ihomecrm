@@ -459,9 +459,13 @@ describe("camera live recorder vendor", () => {
       expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/channels/1/archive`, { method: "POST", headers: json, body: clip }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
       expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/archive`, { headers }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
       expect(encode).not.toHaveBeenCalled();
-      // A guest share of a Hikvision channel gets the same narrowed playback capabilities as any other share.
+      // A guest share of a Hikvision channel gets the same narrowed playback capabilities as any other share, plus the
+      // start lead its player needs to draw the time bar. Staff are never told a lead: their sessions are not moved.
       vi.mocked(dependencies.authorize).mockResolvedValue({ id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 60_000, share: { channel: 9, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
-      expect(await (await fetch(`${only}/recorders/${hikvision.id}`, { headers: { ...headers, Authorization: `Bearer cs_${"A".repeat(43)}` } })).json()).toEqual({ channels: [9], maxView: 1, leaseSeconds: 75, liveQualities: [], archive: false, playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"] });
+      const asGuest = { ...headers, Authorization: `Bearer cs_${"A".repeat(43)}` };
+      expect(await (await fetch(`${only}/recorders/${hikvision.id}`, { headers: asGuest })).json()).toEqual({ channels: [9], maxView: 1, leaseSeconds: 75, liveQualities: [], archive: false, playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"], playbackStartLeadSeconds: 15 });
+      // A Dahua/KBVision guest gets exactly the object it got before the lead existed: no new key at all.
+      expect(await (await fetch(`${base}/recorders/${exporting.id}`, { headers: asGuest })).text()).toBe(`{"channels":[9],"maxView":1,"leaseSeconds":75,"liveQualities":[],"archive":false,"playback":true,"playbackControl":true,"playbackPreview":false,"playbackSpeeds":[1,2,4,6,8],"playbackQualities":["sd","hd"]}`);
     } finally { for (const { server } of [mixed, alone]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } }
   });
   it("builds no Dahua URL for a Hikvision recorder and keeps both vendors side by side in one media configuration", () => {

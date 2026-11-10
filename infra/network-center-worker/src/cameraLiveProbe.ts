@@ -13,8 +13,9 @@ const MEDIA_BYTES = 16_384;
 /**
  * A recorder with stream encryption switched on answers RTSP normally and then sends video nobody can decode:
  * MediaMTX reports the source as ready, WHEP answers 201 and the viewer waits on a black tile. Decoding one frame
- * here is the only proof. Encryption is recorder-wide, so one decoded frame clears every channel of that recorder
- * for a while and concurrent starts share one decoder process; a refusal is remembered per stream only.
+ * here is the only proof. Encryption is recorder-wide, so both verdicts are kept per recorder: one decoded frame
+ * clears every channel for a while, one refusal answers every channel for a short while, and concurrent starts
+ * share one decoder process. A 16-tile wall on an encrypted recorder therefore costs one decoder, not sixteen.
  * The decoder reads a loopback URL: no credential reaches its arguments.
  */
 export function liveDecodeCheck(encoder: string, request: typeof fetch, now: () => number = Date.now) {
@@ -38,15 +39,14 @@ export function liveDecodeCheck(encoder: string, request: typeof fetch, now: () 
   /** Resolves when the stream may be offered; throws LIVE_STREAM_UNDECODABLE when video arrives but no frame decodes. */
   return async function assertDecodable(recorderId: string, name: string): Promise<void> {
     if ((decodable.get(recorderId) ?? 0) > now()) return;
-    if ((undecodable.get(name) ?? 0) > now()) throw new LiveError(502, "LIVE_STREAM_UNDECODABLE");
+    if ((undecodable.get(recorderId) ?? 0) > now()) throw new LiveError(502, "LIVE_STREAM_UNDECODABLE");
     let probe = running.get(recorderId);
     if (!probe) {
       probe = (async () => {
-        if (await decodes(name)) { decodable.set(recorderId, now() + DECODABLE_MS); return true; }
+        if (await decodes(name)) { decodable.set(recorderId, now() + DECODABLE_MS); undecodable.delete(recorderId); return true; }
         // No decoded frame from a recorder that is not sending video is the ordinary CAMERA_UNAVAILABLE path.
         if (!await receiving(name)) return undefined;
-        for (const [key, until] of undecodable) if (until <= now()) undecodable.delete(key);
-        undecodable.set(name, now() + UNDECODABLE_MS); return false;
+        undecodable.set(recorderId, now() + UNDECODABLE_MS); return false;
       })().finally(() => running.delete(recorderId));
       running.set(recorderId, probe);
     }

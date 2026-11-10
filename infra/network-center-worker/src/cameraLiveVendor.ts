@@ -1,7 +1,8 @@
 /**
  * Every recorder-vendor decision of the live/playback gateway, as pure functions: RTSP source paths, the
  * recorder's time format, what a seek or speed change sends upstream, and what a vendor cannot do.
- * The server asks a profile; it never branches on the vendor name. No credentials pass through here.
+ * The server asks a profile; it never branches on the vendor name. The profiles never see credentials; the one
+ * function in this file that does is `recorderSource()`, the single place they are attached to a source URL.
  */
 export const liveVendors = ["DAHUA", "KBVISION", "HIKVISION"] as const;
 export type LiveVendor = (typeof liveVendors)[number];
@@ -37,6 +38,12 @@ export interface LiveVendorProfile {
   readonly capabilities: Readonly<LiveVendorCapabilities>;
   /** Speeds offered to viewers for recorded playback. */
   readonly playbackSpeeds: readonly number[];
+  /**
+   * Seconds: the furthest a recording may begin BEFORE the start time it was asked for (the recorder rewinds to an
+   * earlier key frame). A guest share asks the recorder for a start this much later, so that even the longest
+   * rewind stays inside the shared window. 0: the recorder never starts early.
+   */
+  readonly playbackStartLead: number;
   /** A UTC instant in the format the recorder expects in its playback URL. */
   deviceTime(iso: string): string;
   /** RTSP path and query of a live stream. */
@@ -62,6 +69,7 @@ function dahuaVendor(vendor: "DAHUA" | "KBVISION"): LiveVendorProfile {
     vendor,
     capabilities: { archiveExport: true, playbackControl: true, liveDecodeCheck: false, transcodedAudio: true },
     playbackSpeeds: [1, 2, 4, 6, 8],
+    playbackStartLead: 0,
     deviceTime: dahuaTime,
     liveSource: (channel, stream) => `/cam/realmonitor?channel=${channel}&subtype=${stream === "sub" ? 1 : 0}`,
     playbackOpen(channel, range) {
@@ -86,7 +94,8 @@ export interface HikvisionOptions { seek: HikvisionSeek; playbackSpeeds: readonl
  * Measured on 10/11/2026 with FFmpeg and on 11/11/2026 through this gateway's MediaMTX, on two firmware
  * generations: a hybrid DVR on V4.70 (H.265) and a 16-input DVR on V3.4 from 2017 (H.264).
  * - Stream ids and the playback URL are as built below; `starttime` is the recorder's wall clock despite the `Z`.
- *   The first picture is near, not at, `starttime`: about 2 s after it on V4.70, 5 to 11 s before it on V3.4.
+ *   The first picture is near, not at, `starttime`: up to 2 s after it on V4.70, 1 to 11 s before it on V3.4
+ *   (see `HIKVISION_START_LEAD_SECONDS`).
  * - Range on a running session is acknowledged and then IGNORED by both, as `clock=` and as `npt=`: the position
  *   does not move, and V3.4 also freezes the picture for about 3 s. `clock` and `npt` are kept only as switchable
  *   strategies for a recorder that honours them; neither measured recorder does.
@@ -97,6 +106,12 @@ export interface HikvisionOptions { seek: HikvisionSeek; playbackSpeeds: readonl
  *   no more than that when asked for 6x or 8x, so only speeds both generations can follow are offered.
  */
 export const hikvisionDefaults: HikvisionOptions = { seek: "reopen", playbackSpeeds: [1, 2, 4] };
+/**
+ * Measured on 11/11/2026: firmware V3.4 began playback 1, 5, 8 and 11 s before the requested `starttime` on
+ * different opens (it rewinds to an earlier key frame); V4.70 began on time or up to 2 s late. 15 s is the largest
+ * measured rewind plus a margin of 4 s. Both stop by themselves at `endtime`.
+ */
+const HIKVISION_START_LEAD_SECONDS = 15;
 
 /** `20261110T120000Z`: recorder wall clock; Hikvision writes the `Z` but does not mean UTC. */
 const hikvisionTime = (iso: string) => `${wallClock(iso).replace(/[-:]/gu, "")}Z`;
@@ -114,6 +129,7 @@ export function hikvisionVendor(options: HikvisionOptions = hikvisionDefaults): 
       transcodedAudio: false,
     },
     playbackSpeeds: options.playbackSpeeds,
+    playbackStartLead: HIKVISION_START_LEAD_SECONDS,
     deviceTime: hikvisionTime,
     liveSource: (channel, stream) => `/Streaming/Channels/${hikvisionStreamId(channel, stream)}`,
     playbackOpen(channel, range) {
