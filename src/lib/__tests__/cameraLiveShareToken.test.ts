@@ -2,7 +2,7 @@
 // Phiên chia sẻ camera (`cs_…`) thay đăng nhập CRM cho MỌI lời gọi cổng video của một kết nối: không hỏi phiên
 // Supabase, gửi đúng Bearer; cổng báo SHARE_ENDED thì kết nối dừng và báo mã cho trang khách.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CameraLiveConnection, CameraLiveError, cameraLiveCapabilities } from "@/lib/network-center/cameraLive";
+import { boundedSignal, CameraLiveConnection, CameraLiveError, cameraLiveCapabilities } from "@/lib/network-center/cameraLive";
 
 const sessionId = "10000000-0000-4000-8000-000000000001";
 const recorderId = "20000000-0000-4000-8000-000000000001";
@@ -101,5 +101,36 @@ describe("camera gateway with a share session", () => {
     await cameraLiveCapabilities(recorderId, new AbortController().signal);
     expect(auth.getSession).toHaveBeenCalledOnce();
     expect(authorization(0)).toBe("Bearer staff-session");
+  });
+});
+
+describe("tín hiệu huỷ có giới hạn thời gian trên trình duyệt cũ", () => {
+  const native = { any: AbortSignal.any, timeout: AbortSignal.timeout };
+  afterEach(() => { AbortSignal.any = native.any; AbortSignal.timeout = native.timeout; vi.useRealTimers(); });
+
+  it("iPhone cũ không có AbortSignal.any / AbortSignal.timeout: vẫn huỷ theo tín hiệu gốc và theo hạn giờ, không ném lỗi", () => {
+    // Safari < 16 không có cả hai; Safari 16–17.3 chỉ thiếu `any`.
+    for (const missing of [["any", "timeout"], ["any"]] as const) {
+      AbortSignal.any = native.any; AbortSignal.timeout = native.timeout;
+      for (const name of missing) (AbortSignal as unknown as Record<string, unknown>)[name] = undefined;
+      vi.useFakeTimers();
+      const parent = new AbortController();
+      const followsParent = boundedSignal(25_000, parent.signal);
+      expect(followsParent.aborted).toBe(false);
+      parent.abort();
+      expect(followsParent.aborted).toBe(true);
+      const timesOut = boundedSignal(25_000, new AbortController().signal);
+      vi.advanceTimersByTime(24_999); expect(timesOut.aborted).toBe(false);
+      vi.advanceTimersByTime(2); expect(timesOut.aborted).toBe(true);
+      const alreadyAborted = new AbortController(); alreadyAborted.abort();
+      expect(boundedSignal(25_000, alreadyAborted.signal).aborted).toBe(true);
+      vi.useRealTimers();
+    }
+  });
+  it("trình duyệt mới giữ nguyên cách cũ: gộp tín hiệu gốc với hạn giờ", () => {
+    const parent = new AbortController();
+    const signal = boundedSignal(25_000, parent.signal);
+    parent.abort();
+    expect(signal.aborted).toBe(true);
   });
 });

@@ -190,6 +190,26 @@ describe("trang khách xem lại camera", () => {
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 
+  it("tốc độ khác 1×: mở luồng ở 1× rồi mới xin tốc độ bằng lệnh tua, kể cả khi đổi SD sang HD (cổng không mở được luồng mới thẳng ở tốc độ cao)", async () => {
+    sessionStorage.setItem(KEY, SESSION);
+    mocks.rpc.mockResolvedValue({ data: share, error: null });
+    mocks.seek.mockImplementation(async (time: number, speed: number) => ({ time: new Date(time).toISOString(), speed, expiresAt: Date.now() + 75_000 }));
+    open();
+    fireEvent.click(await screen.findByRole("radio", { name: "4×" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(1));
+    expect(mocks.connections[0]?.playback).toMatchObject({ start: "2026-11-10T01:00:00.000Z", quality: "sd" });
+    expect(mocks.connections[0]?.playback).not.toHaveProperty("speed");
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledWith(Date.parse("2026-11-10T01:00:00Z"), 4));
+    // Đổi chất lượng lúc đang 4× (đúng thao tác gây lỗi trên điện thoại): luồng HD mới cũng mở ở 1× rồi mới lên 4×.
+    fireEvent.click(screen.getByRole("radio", { name: "HD" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(2));
+    expect(mocks.connections[1]?.playback).toMatchObject({ quality: "hd" });
+    expect(mocks.connections[1]?.playback).not.toHaveProperty("speed");
+    await waitFor(() => expect(mocks.seek).toHaveBeenCalledTimes(2));
+    expect(mocks.seek.mock.calls[1]?.[1]).toBe(4);
+  });
+
   it("cổng video từ chối ngay khi kiểm tra dịch vụ (SHARE_ENDED) ⇒ màn đã kết thúc", async () => {
     sessionStorage.setItem(KEY, SESSION);
     mocks.rpc.mockResolvedValue({ data: share, error: null });

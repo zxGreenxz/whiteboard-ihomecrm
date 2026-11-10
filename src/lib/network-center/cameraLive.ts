@@ -36,7 +36,25 @@ const messages: Record<string, string> = {
   PLAYBACK_QUALITY_UNAVAILABLE: "Dịch vụ chưa hỗ trợ chất lượng đã chọn. Hãy tải lại trang để cập nhật.",
   SHARE_ENDED: "Lượt chia sẻ đã hết hạn hoặc đã bị thu hồi.",
   SHARE_SCOPE_DENIED: "Lượt chia sẻ không cho phép thao tác này.",
+  VIDEO_NETWORK_ERROR: "Mất kết nối tới máy chủ video. Kiểm tra mạng rồi bấm thử lại.",
+  PLAYBACK_CONTROL_FAILED: "Đầu ghi chưa chuyển được tới mốc đã chọn. Bấm thử lại hoặc chọn mốc khác.",
+  PLAYBACK_CONTROL_UNAVAILABLE: "Đầu ghi chưa chuyển được tới mốc đã chọn. Bấm thử lại hoặc chọn mốc khác.",
+  SESSION_NOT_FOUND: "Phiên xem đã đóng. Bấm xem lại để kết nối.",
 };
+/**
+ * Tín hiệu huỷ có giới hạn thời gian. `AbortSignal.any` chỉ có từ Safari 17.4 và `AbortSignal.timeout` từ Safari 16:
+ * điện thoại cũ của khách thuê không có, gọi thẳng sẽ ném TypeError và mọi lệnh tới cổng video báo lỗi mạng giả.
+ */
+export function boundedSignal(ms: number, signal?: AbortSignal): AbortSignal {
+  const timeout = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(ms) : undefined;
+  if (timeout && !signal) return timeout;
+  if (timeout && signal && typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const stop = () => { clearTimeout(timer); controller.abort(); };
+  if (signal?.aborted) stop(); else signal?.addEventListener("abort", stop, { once: true });
+  return controller.signal;
+}
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
 }
@@ -56,7 +74,7 @@ async function liveRequest(path: string, method: string, body?: string, signal?:
   try {
     response = await fetch(endpoint + path, {
       method, headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": contentType } : {}), ...(viewId ? { "X-Camera-View-Id": viewId } : {}) },
-      ...(body ? { body } : {}), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000),
+      ...(body ? { body } : {}), signal: boundedSignal(25_000, signal),
       credentials: "omit", redirect: "error", cache: "no-store",
     });
   } catch { throw new CameraLiveError("VIDEO_NETWORK_ERROR"); }

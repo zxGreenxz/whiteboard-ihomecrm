@@ -11,7 +11,7 @@ import CameraAudioButton from "@/components/network-center/tabs/CameraAudioButto
 import { cameraInputTime, cameraTimeLabel, vietnamCameraInput } from "@/lib/network-center/cameraArchive";
 import { CameraLiveConnection, CameraLiveError, cameraLiveCapabilities, type CameraLiveCapabilities, type CameraLiveState } from "@/lib/network-center/cameraLive";
 import { cameraFrame, PlaybackClock, PlaybackControls } from "@/lib/network-center/cameraPlayback";
-import { cameraSharePlayableSpan, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
+import { cameraSharePlayableSpan, cameraShareReachedEnd, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
 import { cn } from "@/lib/utils";
 
 type ShareQuality = "sd" | "hd";
@@ -21,6 +21,7 @@ const RECOVERABLE = ["CAMERA_UNAVAILABLE", "PLAYBACK_CONTROL_FAILED", "PLAYBACK_
 /** Mỗi lượt chia sẻ chỉ một người xem: mở ở máy/tab khác thì cổng đóng phiên ở đây, gia hạn nhận SESSION_NOT_FOUND. */
 const DISPLACED = "Lượt chia sẻ đang được mở ở máy hoặc tab khác nên máy này đã dừng. Bấm Thử lại để xem tiếp tại đây.";
 const EXPIRY_RECHECK_MARGIN_MS = 3000;
+const POSTER_FALLBACK_MS = 1200;
 const qualityLabel: Record<ShareQuality, string> = { sd: "SD", hd: "HD" };
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -56,6 +57,10 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   const clock = useRef(new PlaybackClock(1)); const position = useRef<CameraShareSpan>();
   const controls = useRef<PlaybackControls>(); const switching = useRef(false); const dragging = useRef(false);
   const released = useRef(Promise.resolve()); const recoveries = useRef(0); const generation = useRef(0);
+  /** Mốc đang xem mới nhất cho bộ canh cuối khung giờ (state `cursor` chỉ có ở lần render sau). */
+  const cursorRef = useRef(span.from);
+  /** Lúc luồng mới mở / lệnh tua gần nhất được đầu ghi nhận — mốc để gỡ ảnh giữ tạm khi trình duyệt không báo từng khung hình. */
+  const seekAckAt = useRef(0);
 
   // Khung giờ kéo tới tương lai thì phần xem được dài thêm theo thời gian.
   useEffect(() => {
@@ -81,23 +86,32 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   }, [share.recorder_id, token, capabilityAttempt]);
 
   const holdFrame = () => { const image = cameraFrame(video.current); if (image) setPoster(image); };
+  const finish = (current: CameraShareSpan) => {
+    holdFrame(); dragging.current = false; setSelection(undefined); setState("stopped"); setNow(Date.now());
+    setMessage(current.to < Date.parse(share.window_end) - 1000 ? "Đã xem tới thời điểm gần nhất có bản ghi. Bấm Xem để xem tiếp phần mới." : "Đã xem hết khung giờ được chia sẻ.");
+  };
   const advance = (seconds: number, current: CameraShareSpan) => {
     const time = Math.min(current.to, current.from + seconds * 1000);
-    setCursor(time); if (!dragging.current) setSlider((time - span.from) / 1000);
-    if (time >= current.to) {
-      holdFrame(); dragging.current = false; setSelection(undefined); setState("stopped"); setNow(Date.now());
-      setMessage(current.to < Date.parse(share.window_end) - 1000 ? "Đã xem tới thời điểm gần nhất có bản ghi. Bấm Xem để xem tiếp phần mới." : "Đã xem hết khung giờ được chia sẻ.");
-    }
+    cursorRef.current = time; setCursor(time); if (!dragging.current) setSlider((time - span.from) / 1000);
+    if (time >= current.to) finish(current);
   };
 
   useEffect(() => {
     if (!selection) return;
     let active = true; const element = video.current; setHasAudio(false);
+    // Cổng không mở được luồng MỚI thẳng ở tốc độ khác 1× (đo trên production 10/11/2026: chờ ~10 giây rồi rớt kết nối,
+    // nên đổi SD/HD lúc đang 8× báo lỗi), còn đổi tốc độ trên luồng ĐANG chạy thì xong trong nửa giây. Vì vậy luôn
+    // mở ở 1× rồi xin tốc độ mong muốn bằng lệnh tua; trong lúc đó giao diện vẫn ở trạng thái "đang mở".
+    const openAtNormalSpeed = controlAvailable && selection.speed !== 1;
+    const openSpeed = openAtNormalSpeed ? 1 : selection.speed;
     // Chất lượng SD/HD luôn chuyển mã ở máy chủ: dấu thời gian RTP chạy theo thời gian thực, nội dung theo tốc độ.
-    clock.current = new PlaybackClock(selection.speed, selection.speed); position.current = { from: selection.from, to: selection.to }; switching.current = false;
-    let callback: number | undefined; let lastUpdate = 0; let errorCode: string | undefined;
+    clock.current = new PlaybackClock(openSpeed, openSpeed); position.current = { from: selection.from, to: selection.to }; switching.current = false;
+    seekAckAt.current = Date.now();
+    let callback: number | undefined; let lastUpdate = 0; let errorCode: string | undefined; let connectionFailed = false;
+    let lastFrameAt = 0; let liveSpeed = openSpeed;
     const frame: VideoFrameRequestCallback = (stamp, metadata) => {
       if (!active || !element || element !== video.current) return;
+      lastFrameAt = Date.now();
       const current = position.current;
       if (current && !switching.current) {
         const seconds = clock.current.frame(metadata.rtpTimestamp, metadata.mediaTime);
@@ -107,12 +121,20 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
       callback = element.requestVideoFrameCallback(frame);
     };
     if (element?.requestVideoFrameCallback) callback = element.requestVideoFrameCallback(frame);
+    // Hình đã ngừng trong lúc mốc ước tính đang sát cuối khung giờ ⇒ đã xem hết (xem cameraShareReachedEnd).
+    const endWatch = setInterval(() => {
+      const current = position.current;
+      if (!active || switching.current || !current) return;
+      if (!cameraShareReachedEnd({ cursor: cursorRef.current, to: current.to, speed: liveSpeed, lastFrameAt, now: Date.now() })) return;
+      cursorRef.current = current.to; setCursor(current.to); if (!dragging.current) setSlider((current.to - span.from) / 1000);
+      finish(current);
+    }, 500);
     const connection = new CameraLiveConnection({
       recorderId: share.recorder_id, channel: share.channel, accessToken: token,
       playback: {
         start: iso(controlAvailable ? selection.base : selection.from), end: iso(selection.to),
         ...(controlAvailable && selection.from !== selection.base ? { position: iso(selection.from) } : {}),
-        ...(selection.speed === 1 ? {} : { speed: selection.speed }), quality: selection.quality,
+        ...(openSpeed === 1 ? {} : { speed: openSpeed }), quality: selection.quality,
       },
       onStream(stream) { if (active && element) element.srcObject = stream; },
       onAudio(available) { if (active) setHasAudio(available); },
@@ -124,23 +146,31 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
         // hết hạn thì trang chuyển sang màn "đã kết thúc", còn hạn thì giữ câu "đang mở ở máy khác" bên dưới.
         else if (code === "SESSION_NOT_FOUND") callbacks.current.onExpired();
       },
-      onState(next, detail) { if (active && (next !== "playing" || !switching.current)) { setState(next); setMessage(next === "error" && errorCode === "SESSION_NOT_FOUND" ? DISPLACED : detail ?? ""); } },
+      onState(next, detail) {
+        if (!active) return;
+        if (next === "error") connectionFailed = true;
+        if (next !== "playing" || !switching.current) { setState(next); setMessage(next === "error" && errorCode === "SESSION_NOT_FOUND" ? DISPLACED : detail ?? ""); }
+      },
     });
     const started = released.current.then(() => { if (active) return connection.start(); });
     const queue = new PlaybackControls((time, nextSpeed) => started.then(() => connection.seek(time, nextSpeed)), (time, nextSpeed) => {
       if (!active) return;
       clock.current = new PlaybackClock(nextSpeed, nextSpeed, element?.currentTime ?? 0); position.current = { from: time, to: selection.to }; switching.current = false;
+      liveSpeed = nextSpeed; lastFrameAt = Date.now(); seekAckAt.current = Date.now();
     }, (error, time, nextSpeed) => {
       if (!active) return;
       switching.current = false;
+      // Luồng đã báo lỗi mở (mạng, đầu ghi…) thì giữ nguyên câu báo đó, không đè bằng lỗi của lệnh tua đi kèm.
+      if (connectionFailed) return;
       if (error instanceof CameraLiveError && error.code === "SHARE_ENDED") { void connection.stop(); callbacks.current.onEnded(); return; }
       if (recoveries.current < 2 && (!(error instanceof CameraLiveError) || RECOVERABLE.includes(error.code))) {
         recoveries.current++; setSelection({ ...selection, from: time, speed: nextSpeed, generation: ++generation.current }); setMessage("Đang nối lại bản ghi tại mốc đã chọn…");
       } else { void connection.stop(); setState("error"); setMessage(error instanceof Error ? error.message : "Không chuyển được mốc xem."); }
     });
     controls.current = queue;
+    if (openAtNormalSpeed) { switching.current = true; queue.request(selection.from, selection.speed); }
     return () => {
-      active = false; queue.cancel(); if (controls.current === queue) controls.current = undefined;
+      active = false; clearInterval(endWatch); queue.cancel(); if (controls.current === queue) controls.current = undefined;
       if (element && callback !== undefined) element.cancelVideoFrameCallback(callback);
       released.current = Promise.all([released.current, connection.stop()]).then(() => undefined);
       if (element) element.srcObject = null;
@@ -153,7 +183,7 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
     if (!playable) return;
     holdFrame(); dragging.current = false; setJumpError("");
     const time = Math.max(span.from, Math.min(span.to - 1000, Math.floor(value / 1000) * 1000));
-    setCursor(time); setSlider((time - span.from) / 1000); setState("connecting"); setMessage("");
+    cursorRef.current = time; setCursor(time); setSlider((time - span.from) / 1000); setState("connecting"); setMessage("");
     if (controlAvailable && selection && selection.quality === nextQuality && time < selection.to - 1000 && state !== "error" && controls.current) {
       switching.current = true; controls.current.request(time, nextSpeed);
     } else {
@@ -165,6 +195,13 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   const pause = () => { holdFrame(); dragging.current = false; setSelection(undefined); setState("stopped"); setMessage(""); };
   const updateTime = (element: HTMLVideoElement) => {
     if (element !== video.current || !selection || !position.current || switching.current || element.readyState < 2) return;
+    // Ảnh giữ tạm lúc chuyển mốc vốn được gỡ khi requestVideoFrameCallback báo khung hình mới. Trên trình duyệt không
+    // báo (đã gặp trên iPhone: ảnh cũ che mãi video thật sau khi kéo thanh thời gian), dùng chính `timeupdate`: video
+    // đang chạy tiếp sau khi lệnh tua được nhận một lúc thì gỡ ảnh và coi là đang phát.
+    if (seekAckAt.current && Date.now() - seekAckAt.current >= POSTER_FALLBACK_MS) {
+      if (poster) setPoster(undefined);
+      if (state === "connecting") setState("playing");
+    }
     advance(clock.current.seconds(element.currentTime), position.current);
   };
   const fullscreen = () => {
