@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-10T09:01:22.084Z",
+  "generatedAt": "2026-11-10T09:08:49.813Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 931,
-    "unknown": 81,
+    "ledger-applied": 932,
+    "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14126,14 +14126,9 @@
       "name": "network_center_camera_share_v1",
       "scheme": "timestamp14",
       "sha256": "b1ba81cf9902d8850e70b45ee18566ec2126304f8abc9723f68778d02197598d",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.camera_shares",
-        "table:app_private.camera_share_sessions",
-        "table:app_private.camera_share_login_failures",
-        "function:app_private.camera_share_actor_can_v1",
-        "function:app_private.camera_share_of_session_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-10T09:08:32.560Z|bien-nhan-backup"
       ]
     },
     {
