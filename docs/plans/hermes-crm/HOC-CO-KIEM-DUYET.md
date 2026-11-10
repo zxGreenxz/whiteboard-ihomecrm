@@ -214,7 +214,7 @@ vẫn tạo được nhưng mọi lượt chạy đều bị chặn.
    docker exec -u 10003:10003 hermes-owner hermes --profile owner cron list
    ```
 
-   `cron create` không kiểm tên nền tảng trong `--deliver`: job vẫn `[active]` và `Next run` vẫn đúng kể cả khi cron sẽ chặn nó.
+   Trên production 10/11, job tạo với `--deliver zalo_personal:<uid>` vẫn `[active]` và `Next run` vẫn đúng dù cron sẽ chặn nó.
    Chỉ `Last run` của lượt chạy thật mới cho biết (`ok`, hay `blocked_config` kèm lý do).
 
 #### 4.6.1 Sự cố lượt đầu 10/11/2026 và bản sửa plugin
@@ -225,10 +225,16 @@ chỉ nhận nền tảng dựng sẵn hoặc plugin khai `cron_deliver_env_var`
 job bị chặn TRƯỚC khi agent chạy: `learning.digest` không được gọi, không đề xuất nào bị đánh dấu `announced_at` (đọc lại production
 21:15: 3 chờ duyệt + 1 đã duyệt, `announced_at` trống hết, 0 biên nhận `learning.*` trong ngày).
 
-Bản sửa: `infra/hermes-zalo-native/adapter.py` khai `cron_deliver_env_var="HERMES_ZALO_HOME_CHANNEL"`. Biến này cố ý không đặt
-trong `.env` của hồ sơ, nên cron chỉ tới Zalo qua đích ghi rõ `zalo_personal:<uid đã ghép>` như job ở bước 2 (chi tiết:
-[README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron"). Kiểm: probe `cron-preflight` trong
-`infra/hermes-zalo-native/upstream.test.mjs` chạy preflight thật của bản Hermes đã ghim ở CI `hermes-runtime`.
+Bản sửa: `infra/hermes-zalo-native/adapter.py` khai `cron_deliver_env_var="ZALO_PERSONAL_HOME_CHANNEL"`. Đây là tên gateway tự suy
+ra cho nền tảng này, và `.env` của hồ sơ owner đã đặt nó bằng UID đã ghép từ 15/10 (để gateway không nhắc "chưa có home channel"
+ở lượt đầu mỗi phiên), nên không phải đổi `.env`. Bản nháp đầu của PR khai một tên khác và để trống; đo chỉ đọc trên Hermes
+production (v0.22.2, đổi khai báo trong bộ nhớ của một tiến trình riêng) cho thấy tên khác làm tin nhắc đó quay lại, nên đã bỏ.
+
+Hệ quả phải biết: home channel của cron nay là DM đã ghép. Ngoài đích ghi rõ ở bước 2, job của hồ sơ owner còn tới DM của chủ qua
+`deliver=zalo_personal` trần, `deliver=origin` khi job không có nguồn và `deliver=all`. Lúc sửa, hồ sơ chỉ có một job (bước 2, đích
+ghi rõ), nên không job nào đổi đích. Chi tiết và lưu ý `/sethome`: [README plugin](../../../infra/hermes-zalo-native/README.md),
+mục hành vi "Cron". Kiểm: probe `cron-preflight` trong `infra/hermes-zalo-native/upstream.test.mjs` chạy preflight và bộ phân giải
+đích thật của bản Hermes đã ghim ở CI `hermes-runtime`.
 
 ### 4.7 Rủi ro
 
