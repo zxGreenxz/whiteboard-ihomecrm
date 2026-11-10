@@ -4,8 +4,8 @@ import { gpsDaySchema } from "@/lib/staffDay";
 
 /** Bản app Android đang phát hành. Đăng GitHub Release từ artifact CI rồi sửa hằng số này. */
 export const GPS_CHECKIN_APK = {
-  version: "1.0.0",
-  url: "https://github.com/zxGreenxz/whiteboard-ihomecrm/releases/download/diem-danh-v1.0.0/ihome-diem-danh.apk",
+  version: "1.0.1",
+  url: "https://github.com/zxGreenxz/whiteboard-ihomecrm/releases/download/diem-danh-v1.0.1/ihome-diem-danh.apk",
 };
 
 export const pairDeepLink = (code: string) => `ihomediemdanh://pair?c=${encodeURIComponent(code)}`;
