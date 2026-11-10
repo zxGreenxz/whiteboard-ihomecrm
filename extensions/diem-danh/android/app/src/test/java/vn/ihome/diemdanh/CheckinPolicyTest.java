@@ -254,9 +254,48 @@ public final class CheckinPolicyTest {
         assertFalse(CheckinPolicy.acceptable(null));
     }
 
-    @Test public void freshnessFollowsTheAgeOfTheLocation() {
-        assertEquals("fresh", CheckinPolicy.statusForAge(CheckinPolicy.FRESH_MAX_AGE_MS));
-        assertEquals("stale", CheckinPolicy.statusForAge(CheckinPolicy.FRESH_MAX_AGE_MS + 1));
+    @Test public void onlyALocationObtainedDuringTheCaptureIsLive() {
+        long start = 1_000_000L;
+        assertTrue(CheckinPolicy.obtainedDuringCapture(start + 20_000L, start));
+        assertTrue(CheckinPolicy.obtainedDuringCapture(start, start));
+        assertTrue("just before listening began",
+                CheckinPolicy.obtainedDuringCapture(start - CheckinPolicy.LIVE_SLACK_MS, start));
+        assertFalse("replayed from a cache",
+                CheckinPolicy.obtainedDuringCapture(start - CheckinPolicy.LIVE_SLACK_MS - 1L, start));
+        assertFalse(CheckinPolicy.obtainedDuringCapture(start - 282_000L, start));
+    }
+
+    @Test public void gpsAndNetworkStartAtOnceBeforeAndroid12OrWithoutFused() {
+        assertTrue(CheckinPolicy.fallbackSourcesAtOnce(29, true));
+        assertTrue(CheckinPolicy.fallbackSourcesAtOnce(30, true));
+        assertTrue(CheckinPolicy.fallbackSourcesAtOnce(30, false));
+        assertFalse("Android 12 asks fused for high accuracy first", CheckinPolicy.fallbackSourcesAtOnce(31, true));
+        assertFalse(CheckinPolicy.fallbackSourcesAtOnce(35, true));
+        assertTrue("no fused provider to wait for", CheckinPolicy.fallbackSourcesAtOnce(35, false));
+    }
+
+    @Test public void onlyALateTimeUpWaitsForFixesQueuedBehindIt() {
+        assertFalse("on time, a capture without a fix records at once", CheckinPolicy.graceForQueuedFixes(false, 0L));
+        assertFalse(CheckinPolicy.graceForQueuedFixes(false, CheckinPolicy.TIME_UP_OVERDUE_MS));
+        assertTrue(CheckinPolicy.graceForQueuedFixes(false, CheckinPolicy.TIME_UP_OVERDUE_MS + 1L));
+        assertTrue("thawed after minutes of freeze", CheckinPolicy.graceForQueuedFixes(false, 185_000L));
+        assertFalse("a live fix is already there", CheckinPolicy.graceForQueuedFixes(true, 185_000L));
+        assertFalse("the hard stop of a capture that only just began",
+                CheckinPolicy.graceForQueuedFixes(false, -30_000L));
+    }
+
+    @Test public void theEndLabelSaysHowTheCaptureFinished() {
+        CheckinPolicy.Fix precise = CheckinPolicy.Fix.located("fresh", 10d, 106d, 12d, "gps", 1L, false);
+        CheckinPolicy.Fix fair = CheckinPolicy.Fix.located("fresh", 10d, 106d, 60d, "network", 1L, false);
+        CheckinPolicy.Fix coarse = CheckinPolicy.Fix.located("fresh", 10d, 106d, 900d, "network", 1L, false);
+        CheckinPolicy.Fix cached = CheckinPolicy.Fix.located("stale", 10d, 106d, 5d, "fused", 282_000L, false);
+        assertEquals("good", CheckinPolicy.captureEnd(precise, false));
+        assertEquals("settled", CheckinPolicy.captureEnd(fair, false));
+        assertEquals("best", CheckinPolicy.captureEnd(coarse, true));
+        assertEquals("still settling when the time ran out", "best", CheckinPolicy.captureEnd(fair, true));
+        assertEquals("last_known", CheckinPolicy.captureEnd(cached, true));
+        assertEquals("none", CheckinPolicy.captureEnd(CheckinPolicy.Fix.none("timeout"), true));
+        assertEquals("none", CheckinPolicy.captureEnd(null, true));
     }
 
     @Test public void cachedLocationsOlderThanAnHourStayOnThePhone() {
@@ -392,6 +431,322 @@ public final class CheckinPolicyTest {
         textLongitude.getJSONObject("fix").put("lng", "106");
         assertThrows(IllegalArgumentException.class, () -> CheckinPolicy.validateEvent(textLongitude));
         assertThrows(IllegalArgumentException.class, () -> CheckinPolicy.pairEvent(DEVICE, "abc", "2026-01-05T01:00:00Z", new JSONObject()));
+    }
+
+    // Capture diagnostics: the optional "diag" block of a ping, checked as strictly as the server does.
+
+    // Copied verbatim from DIAG_SAMPLE in supabase/functions/gps-checkin-ingest/index.test.ts: one
+    // vector for both sides, in the key order the app writes.
+    private static final String DIAG_SAMPLE = "{\"v\":1,\"path\":\"service\",\"end\":\"settled\",\"alarmLateMs\":1250,\"startMs\":310,\"captureMs\":8420,\"awakeMs\":9100,\"procAgeMs\":5400000,\"screenOn\":false,\"bucket\":10,\"foreground\":true,\"lastKnownAgeMs\":282000,\"sources\":{\"fused\":{\"on\":true,\"n\":3,\"firstMs\":2100,\"bestM\":18.5},\"gps\":{\"on\":true,\"n\":0,\"firstMs\":null,\"bestM\":null},\"network\":{\"on\":false,\"n\":0,\"firstMs\":null,\"bestM\":null}}}";
+
+    private static List<CheckinPolicy.DiagSource> sampleSources() {
+        return Arrays.asList(
+                new CheckinPolicy.DiagSource("fused", true, 3L, 2_100L, 18.5d),
+                new CheckinPolicy.DiagSource("gps", true, 0L, -1L, Double.NaN),
+                new CheckinPolicy.DiagSource("network", false, 0L, -1L, Double.NaN));
+    }
+
+    /** The capture that DIAG_SAMPLE describes. */
+    private static JSONObject sampleDiag() {
+        return CheckinPolicy.captureDiag("service", "settled", 1_250L, 310L, 8_420L, 9_100L, 5_400_000L, false, 10,
+                true, 282_000L, sampleSources());
+    }
+
+    private static JSONObject diagWith(long alarmLateMs, long startMs, long captureMs, long awakeMs, long procAgeMs,
+                                       int bucket, long lastKnownAgeMs, CheckinPolicy.DiagSource... sources) {
+        return CheckinPolicy.captureDiag("service", "best", alarmLateMs, startMs, captureMs, awakeMs, procAgeMs, true,
+                bucket, true, lastKnownAgeMs, Arrays.asList(sources));
+    }
+
+    private static JSONObject pingWith(JSONObject diag) throws Exception {
+        return CheckinPolicy.pingEvent(DEVICE, "2026-01-05T01:30:00Z", "2026-01-05T01:30:07Z", 1, freshFix(), device(), diag);
+    }
+
+    private static JSONObject sampleWith(String key, Object value) throws Exception {
+        return sampleDiag().put(key, value);
+    }
+
+    private static JSONObject sampleWithFused(String key, Object value) throws Exception {
+        JSONObject diag = sampleDiag();
+        diag.getJSONObject("sources").getJSONObject("fused").put(key, value);
+        return diag;
+    }
+
+    private static boolean wholeNumber(Object value) {
+        return value instanceof Integer || value instanceof Long;
+    }
+
+    private static double bestM(double heard) throws Exception {
+        return diagWith(0L, 0L, 0L, 0L, 0L, 0, 0L, new CheckinPolicy.DiagSource("gps", true, 1L, 0L, heard))
+                .getJSONObject("sources").getJSONObject("gps").getDouble("bestM");
+    }
+
+    /** Deep equality that depends neither on key order nor on how a JSON library types its numbers. */
+    private static void assertSameJson(String at, Object expected, Object actual) throws Exception {
+        if (expected instanceof JSONObject) {
+            assertTrue(at, actual instanceof JSONObject);
+            JSONObject want = (JSONObject) expected;
+            JSONObject got = (JSONObject) actual;
+            assertEquals(at, keysOf(want), keysOf(got));
+            for (String key : keysOf(want)) assertSameJson(at + "." + key, want.get(key), got.get(key));
+        } else if (expected instanceof Number) {
+            assertTrue(at, actual instanceof Number);
+            assertEquals(at, ((Number) expected).doubleValue(), ((Number) actual).doubleValue(), 0d);
+        } else {
+            assertEquals(at, expected, actual);
+        }
+    }
+
+    @Test public void diagCarriesExactlyTheServerKeys() throws Exception {
+        JSONObject diag = sampleDiag();
+        assertEquals(setOf("v", "path", "end", "alarmLateMs", "startMs", "captureMs", "awakeMs", "procAgeMs", "screenOn",
+                "bucket", "foreground", "lastKnownAgeMs", "sources"), keysOf(diag));
+        assertEquals(13, diag.length());
+        JSONObject sources = diag.getJSONObject("sources");
+        assertEquals(setOf("fused", "gps", "network"), keysOf(sources));
+        for (String name : keysOf(sources)) {
+            assertEquals(name, setOf("on", "n", "firstMs", "bestM"), keysOf(sources.getJSONObject(name)));
+        }
+        JSONObject all = diagWith(0L, 0L, 0L, 0L, 0L, 0, 0L,
+                new CheckinPolicy.DiagSource("passive", true, 1L, 0L, 5d),
+                new CheckinPolicy.DiagSource("network", true, 1L, 0L, 5d),
+                new CheckinPolicy.DiagSource("gps", true, 1L, 0L, 5d),
+                new CheckinPolicy.DiagSource("fused", true, 1L, 0L, 5d));
+        assertEquals(setOf("fused", "gps", "network", "passive"), keysOf(all.getJSONObject("sources")));
+        assertTrue(pingWith(all).has("diag"));
+    }
+
+    @Test public void theBuilderProducesTheVectorSharedWithTheServerTest() throws Exception {
+        JSONObject shared = new JSONObject(DIAG_SAMPLE);
+        assertSameJson("diag", shared, sampleDiag());
+        assertSameJson("wire", shared, new JSONObject(sampleDiag().toString()));
+        // The app's own copy of the server rules accepts the very text the server test accepts.
+        assertTrue(pingWith(shared).has("diag"));
+    }
+
+    @Test public void diagIntegersAreNeverWrittenAsDecimals() throws Exception {
+        JSONObject diag = sampleDiag();
+        for (String key : new String[]{"v", "alarmLateMs", "startMs", "captureMs", "awakeMs", "procAgeMs", "bucket", "lastKnownAgeMs"}) {
+            assertTrue(key, wholeNumber(diag.get(key)));
+        }
+        JSONObject fused = diag.getJSONObject("sources").getJSONObject("fused");
+        assertTrue(wholeNumber(fused.get("n")));
+        assertTrue(wholeNumber(fused.get("firstMs")));
+        String wire = diag.toString();
+        assertTrue(wire, wire.contains("\"bestM\":18.5"));
+        assertFalse("bestM is the only decimal: " + wire, wire.replace("\"bestM\":18.5", "").contains("."));
+    }
+
+    @Test public void everyDiagNumberIsForcedIntoTheRangeTheServerAccepts() throws Exception {
+        JSONObject low = diagWith(Long.MIN_VALUE, -1L, Long.MIN_VALUE, -5L, 0L, 0, 0L,
+                new CheckinPolicy.DiagSource("fused", true, -7L, 0L, -3d));
+        assertEquals(-86_400_000L, low.getLong("alarmLateMs"));
+        assertEquals(0L, low.getLong("startMs"));
+        assertEquals(0L, low.getLong("captureMs"));
+        assertEquals(0L, low.getLong("awakeMs"));
+        assertEquals("zero is a value, not unknown", 0L, low.getLong("procAgeMs"));
+        assertEquals(0L, low.getLong("bucket"));
+        assertEquals(0L, low.getLong("lastKnownAgeMs"));
+        JSONObject lowSource = low.getJSONObject("sources").getJSONObject("fused");
+        assertEquals(0L, lowSource.getLong("n"));
+        assertEquals(0L, lowSource.getLong("firstMs"));
+        assertEquals(0d, lowSource.getDouble("bestM"), 0d);
+        assertTrue(pingWith(low).has("diag"));
+
+        JSONObject high = diagWith(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
+                Integer.MAX_VALUE, Long.MAX_VALUE,
+                new CheckinPolicy.DiagSource("gps", false, Long.MAX_VALUE, Long.MAX_VALUE, Double.MAX_VALUE));
+        assertEquals(86_400_000L, high.getLong("alarmLateMs"));
+        assertEquals(86_400_000L, high.getLong("startMs"));
+        assertEquals(86_400_000L, high.getLong("captureMs"));
+        assertEquals(86_400_000L, high.getLong("awakeMs"));
+        assertEquals(86_400_000_000L, high.getLong("procAgeMs"));
+        assertEquals(100L, high.getLong("bucket"));
+        assertEquals(86_400_000_000L, high.getLong("lastKnownAgeMs"));
+        JSONObject highSource = high.getJSONObject("sources").getJSONObject("gps");
+        assertEquals(100_000L, highSource.getLong("n"));
+        assertEquals(86_400_000L, highSource.getLong("firstMs"));
+        assertEquals(10_000_000d, highSource.getDouble("bestM"), 0d);
+        assertTrue(pingWith(high).has("diag"));
+        assertTrue("still valid after the wire", pingWith(new JSONObject(high.toString())).has("diag"));
+    }
+
+    @Test public void unknownDiagValuesAreExplicitNullsNotMissingKeys() throws Exception {
+        JSONObject built = CheckinPolicy.captureDiag("direct", "none", 0L, 0L, 0L, 0L, -1L, false, -1, false, -1L,
+                Arrays.asList(
+                        new CheckinPolicy.DiagSource("passive", true, 0L, -1L, Double.NaN),
+                        new CheckinPolicy.DiagSource("gps", false, 0L, -1L, Double.POSITIVE_INFINITY),
+                        new CheckinPolicy.DiagSource("network", false, 0L, Long.MIN_VALUE, Double.NEGATIVE_INFINITY)));
+        // Once as built and once as the text that is sent: unknown must stay a key that holds null.
+        for (JSONObject diag : Arrays.asList(built, new JSONObject(built.toString()))) {
+            assertEquals(13, diag.length());
+            for (String key : new String[]{"procAgeMs", "bucket", "lastKnownAgeMs"}) {
+                assertTrue(key, diag.has(key));
+                assertTrue(key, diag.isNull(key));
+                assertEquals(key, JSONObject.NULL, diag.get(key));
+            }
+            JSONObject sources = diag.getJSONObject("sources");
+            assertEquals(setOf("gps", "network", "passive"), keysOf(sources));
+            for (String name : keysOf(sources)) {
+                JSONObject source = sources.getJSONObject(name);
+                for (String key : new String[]{"firstMs", "bestM"}) {
+                    assertTrue(name + "." + key, source.has(key));
+                    assertTrue(name + "." + key, source.isNull(key));
+                }
+            }
+            assertTrue(pingWith(diag).has("diag"));
+        }
+    }
+
+    @Test public void bestAccuracyIsRoundedToOneDecimal() throws Exception {
+        assertEquals(18.5d, bestM(18.46d), 0d);
+        assertEquals(18.4d, bestM(18.44d), 0d);
+        // Location accuracy is a float: widened, 3.9f is 3.9000000953..., and it goes out as 3.9.
+        assertEquals(3.9d, bestM(3.9f), 0d);
+        assertEquals(18d, bestM(18.04d), 0d);
+        // A whole number of metres is written without a fraction and still passes when read back.
+        JSONObject whole = diagWith(0L, 0L, 0L, 0L, 0L, 0, 0L, new CheckinPolicy.DiagSource("gps", true, 1L, 0L, 18.04d));
+        assertTrue(pingWith(new JSONObject(whole.toString())).has("diag"));
+    }
+
+    @Test public void anUnknownLabelGivesNoDiagAtAll() throws Exception {
+        assertNull(CheckinPolicy.captureDiag("worker", "good", 0L, 0L, 0L, 0L, 0L, true, 10, true, 0L, sampleSources()));
+        assertNull(CheckinPolicy.captureDiag("service", "fine", 0L, 0L, 0L, 0L, 0L, true, 10, true, 0L, sampleSources()));
+        assertNull(CheckinPolicy.captureDiag(null, "good", 0L, 0L, 0L, 0L, 0L, true, 10, true, 0L, sampleSources()));
+        assertNull(CheckinPolicy.captureDiag("service", null, 0L, 0L, 0L, 0L, 0L, true, 10, true, 0L, sampleSources()));
+        // The labels are wire values the server lists one by one, so their spelling is pinned here.
+        String[] paths = {CheckinPolicy.DIAG_PATH_SERVICE, CheckinPolicy.DIAG_PATH_DIRECT};
+        String[] ends = {CheckinPolicy.END_GOOD, CheckinPolicy.END_SETTLED, CheckinPolicy.END_BEST,
+                CheckinPolicy.END_LAST_KNOWN, CheckinPolicy.END_NONE, CheckinPolicy.END_PRE};
+        assertEquals(Arrays.asList("service", "direct"), Arrays.asList(paths));
+        assertEquals(Arrays.asList("good", "settled", "best", "last_known", "none", "pre"), Arrays.asList(ends));
+        for (String path : paths) {
+            for (String end : ends) {
+                JSONObject diag = CheckinPolicy.captureDiag(path, end, 0L, 0L, 0L, 0L, 0L, true, 10, true, 0L, sampleSources());
+                assertNotNull(path + "/" + end, diag);
+                assertEquals(path, diag.getString("path"));
+                assertEquals(end, diag.getString("end"));
+                assertTrue(pingWith(diag).has("diag"));
+            }
+        }
+    }
+
+    @Test public void onlyKnownSourcesAreReportedAndAFailedOneIsShownOff() throws Exception {
+        JSONObject none = CheckinPolicy.captureDiag("direct", "last_known", 0L, 0L, 0L, 0L, 0L, true, 10, false, 0L, null);
+        assertEquals(0, none.getJSONObject("sources").length());
+        assertTrue(pingWith(none).has("diag"));
+
+        JSONObject diag = diagWith(0L, 0L, 0L, 0L, 0L, 0, 0L,
+                new CheckinPolicy.DiagSource("oem_special", true, 4L, 10L, 3d),
+                null,
+                new CheckinPolicy.DiagSource(null, true, 4L, 10L, 3d),
+                new CheckinPolicy.DiagSource("network", false, 0L, -1L, Double.NaN),
+                new CheckinPolicy.DiagSource("network", true, 9L, 1L, 1d));
+        JSONObject sources = diag.getJSONObject("sources");
+        assertEquals(setOf("network"), keysOf(sources));
+        // The first entry of a name wins: a source that could not be registered stays visible as off.
+        assertFalse(sources.getJSONObject("network").getBoolean("on"));
+        assertEquals(0L, sources.getJSONObject("network").getLong("n"));
+        assertTrue(pingWith(diag).has("diag"));
+    }
+
+    @Test public void aPingCarriesDiagOnlyWhenItIsGiven() throws Exception {
+        JSONObject plain = ping(freshFix());
+        assertFalse(plain.has("diag"));
+        assertFalse(pingWith(null).has("diag"));
+        assertSameJson("no diag", plain, pingWith(null));
+
+        JSONObject withDiag = pingWith(sampleDiag());
+        Set<String> keys = keysOf(plain);
+        keys.add("diag");
+        assertEquals(keys, keysOf(withDiag));
+        assertSameJson("diag", new JSONObject(DIAG_SAMPLE), withDiag.getJSONObject("diag"));
+        CheckinPolicy.validateEvent(withDiag);
+        // The queue keeps the text, so the text read back must pass as well.
+        CheckinPolicy.validateEvent(new JSONObject(withDiag.toString()));
+        // Apart from the new key, the ping is the one 1.0.0 sends.
+        withDiag.remove("diag");
+        assertSameJson("ping", plain, withDiag);
+    }
+
+    @Test public void aSlotWithoutLocationStillCarriesItsDiag() throws Exception {
+        JSONObject missed = CheckinPolicy.pingEvent(DEVICE, "2026-01-05T01:30:00Z", "2026-01-05T01:30:07Z", 1,
+                CheckinPolicy.Fix.none("timeout"), device(), sampleDiag());
+        assertEquals(setOf("status"), keysOf(missed.getJSONObject("fix")));
+        assertTrue(missed.has("diag"));
+    }
+
+    @Test public void aDiagThatBreaksTheContractIsLeftOutAndThePingStillGoes() throws Exception {
+        JSONObject missingKey = sampleDiag();
+        missingKey.remove("bucket");
+        JSONObject unknownSource = sampleDiag();
+        unknownSource.getJSONObject("sources").put("wifi", new JSONObject().put("on", true).put("n", 0)
+                .put("firstMs", JSONObject.NULL).put("bestM", JSONObject.NULL));
+        List<JSONObject> bad = Arrays.asList(
+                new JSONObject(),
+                missingKey,
+                unknownSource,
+                sampleWith("extra", 1),
+                sampleWith("v", 2),
+                sampleWith("v", "1"),
+                sampleWith("path", "worker"),
+                sampleWith("end", "fine"),
+                sampleWith("alarmLateMs", "1250"),
+                sampleWith("alarmLateMs", -86_400_001L),
+                sampleWith("startMs", -1),
+                sampleWith("captureMs", 86_400_001L),
+                sampleWith("awakeMs", 12.5d),
+                sampleWith("procAgeMs", -1),
+                sampleWith("screenOn", "no"),
+                sampleWith("bucket", 101),
+                sampleWith("foreground", JSONObject.NULL),
+                sampleWith("lastKnownAgeMs", 1.5d),
+                sampleWith("sources", "none"),
+                sampleWithFused("on", "yes"),
+                sampleWithFused("n", 100_001),
+                sampleWithFused("n", 2.5d),
+                sampleWithFused("firstMs", -1),
+                sampleWithFused("bestM", -1d),
+                sampleWithFused("bestM", "18.5"),
+                sampleWithFused("extra", true));
+        for (JSONObject diag : bad) {
+            JSONObject sent = pingWith(diag);
+            assertFalse(diag.toString(), sent.has("diag"));
+            CheckinPolicy.validateEvent(sent);
+            // Put in by force, it is refused before queueing, as the server would refuse it.
+            JSONObject forced = ping(freshFix()).put("diag", diag);
+            assertThrows(diag.toString(), IllegalArgumentException.class, () -> CheckinPolicy.validateEvent(forced));
+        }
+    }
+
+    @Test public void onlyAPingMayCarryDiag() throws Exception {
+        JSONObject state = CheckinPolicy.stateEvent(DEVICE, "2026-01-05T01:00:00Z", device());
+        JSONObject pair = CheckinPolicy.pairEvent(DEVICE, "ABCDEFGH23", "2026-01-05T01:00:00Z",
+                new JSONObject().put("model", "Thu").put("sdkInt", 34).put("appVersion", "1.0.0"));
+        for (JSONObject event : Arrays.asList(state, pair)) {
+            assertFalse(event.has("diag"));
+            event.put("diag", sampleDiag());
+            assertThrows(event.toString(), IllegalArgumentException.class, () -> CheckinPolicy.validateEvent(event));
+        }
+    }
+
+    @Test public void aLiveFixProcessedMinutesLateIsStillAValidFreshFix() throws Exception {
+        // A callback that waited out a frozen process is still this capture's own fix. The server puts
+        // no limit on the age of a fresh fix, and neither does the local copy of its rules.
+        JSONObject fix = ping(CheckinPolicy.Fix.located("fresh", 10d, 106d, 12d, "fused", 240_000L, false)).getJSONObject("fix");
+        assertEquals("fresh", fix.getString("status"));
+        assertEquals(240_000L, fix.getLong("ageMs"));
+    }
+
+    @Test public void aProviderNameOfAnyKindNeverCostsThePing() throws Exception {
+        // The server takes any text of at most 32 bytes, so a name the app does not know is kept and
+        // a long one is cut, not dropped.
+        String oem = "oem.location.provider.with.a.very.long.name.v2";
+        assertTrue(oem.length() > 32);
+        JSONObject cut = ping(CheckinPolicy.Fix.located("fresh", 10d, 106d, 12d, oem, 800L, false)).getJSONObject("fix");
+        assertEquals(oem.substring(0, 32), cut.getString("provider"));
+        JSONObject empty = ping(CheckinPolicy.Fix.located("fresh", 10d, 106d, 12d, "", 800L, false)).getJSONObject("fix");
+        assertEquals("", empty.getString("provider"));
     }
 
     // Receipts: a record is delivered only when the server names exactly that record.

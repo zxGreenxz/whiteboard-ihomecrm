@@ -50,8 +50,10 @@ public final class CheckinPolicy {
     public static final String LOCATION_DENIED = "denied";
 
     public static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
-    /** A location delivered during a capture but older than this is reported as stale. */
-    public static final long FRESH_MAX_AGE_MS = 120_000L;
+    /** A location reported at most this long before listening began still counts as obtained by the capture. */
+    public static final long LIVE_SLACK_MS = 5_000L;
+    /** A time-up check that runs this much after it was due may have fixes queued behind it. */
+    public static final long TIME_UP_OVERDUE_MS = 500L;
     /** The server counts an older cached fix as missing, so it stays on the phone. */
     public static final long LAST_KNOWN_MAX_AGE_MS = 60L * 60L * 1000L;
     /** A fresh fix this precise ends the capture at once. */
@@ -63,6 +65,37 @@ public final class CheckinPolicy {
     /** An alarm past due by less than this is treated as still being delivered. */
     public static final long ALARM_IN_FLIGHT_MS = 120_000L;
     public static final int MAX_WIRE_BYTES = 16 * 1024;
+
+    /** Location sources a capture listens to; the names are the platform's provider names. */
+    public static final String SOURCE_FUSED = "fused";
+    public static final String SOURCE_GPS = "gps";
+    public static final String SOURCE_NETWORK = "network";
+    public static final String SOURCE_PASSIVE = "passive";
+
+    public static final String DIAG_PATH_SERVICE = "service";
+    public static final String DIAG_PATH_DIRECT = "direct";
+    public static final String END_GOOD = "good";
+    public static final String END_SETTLED = "settled";
+    public static final String END_BEST = "best";
+    public static final String END_LAST_KNOWN = "last_known";
+    public static final String END_NONE = "none";
+    public static final String END_PRE = "pre";
+
+    private static final List<String> DIAG_KEYS = Arrays.asList("v", "path", "end", "alarmLateMs", "startMs",
+            "captureMs", "awakeMs", "procAgeMs", "screenOn", "bucket", "foreground", "lastKnownAgeMs", "sources");
+    private static final List<String> DIAG_PATHS = Arrays.asList(DIAG_PATH_SERVICE, DIAG_PATH_DIRECT);
+    private static final List<String> DIAG_ENDS = Arrays.asList(
+            END_GOOD, END_SETTLED, END_BEST, END_LAST_KNOWN, END_NONE, END_PRE);
+    /** Also the order in which the sources are written. */
+    private static final List<String> DIAG_SOURCES = Arrays.asList(
+            SOURCE_FUSED, SOURCE_GPS, SOURCE_NETWORK, SOURCE_PASSIVE);
+    private static final List<String> DIAG_SOURCE_KEYS = Arrays.asList("on", "n", "firstMs", "bestM");
+    private static final long DIAG_DAY_MS = 86_400_000L;
+    /** 1000 days: far below 2^53-1, the largest integer the server takes. */
+    private static final long DIAG_MAX_AGE_MS = 86_400_000_000L;
+    private static final long DIAG_MAX_COUNT = 100_000L;
+    private static final double DIAG_MAX_ACCURACY_M = 10_000_000d;
+    private static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
 
     private static final int HORIZON_DAYS = 31;
     private static final String TOKEN_REGEX = "[a-f0-9]{64}";
@@ -232,8 +265,40 @@ public final class CheckinPolicy {
         return locationEnabled ? null : REASON_LOCATION_OFF;
     }
 
-    public static String statusForAge(long ageMs) {
-        return ageMs <= FRESH_MAX_AGE_MS ? FIX_FRESH : FIX_STALE;
+    /**
+     * Whether a location was obtained during this capture, on the elapsed-realtime clock. A source may
+     * replay a location it cached earlier as its first callback: that one is not this slot's position,
+     * while one obtained in time stays the slot's position however late it is processed.
+     */
+    public static boolean obtainedDuringCapture(long fixElapsedMs, long captureStartElapsedMs) {
+        return fixElapsedMs >= captureStartElapsedMs - LIVE_SLACK_MS;
+    }
+
+    /**
+     * Whether gps and network start together with fused instead of after a delay. Before Android 12
+     * fused can only be asked for low-power quality, so GPS must not wait for it; and when fused
+     * could not be registered there is nothing to wait for.
+     */
+    public static boolean fallbackSourcesAtOnce(int sdkInt, boolean fusedRegistered) {
+        return sdkInt < 31 || !fusedRegistered;
+    }
+
+    /**
+     * Whether the time-up check waits a moment before concluding without a live fix. Only a check that
+     * ran late, behind a frozen process or a blocked thread, can have fixes queued behind it; on time,
+     * everything that arrived was already handled and waiting would only make the record later.
+     * {@code lateMs} is measured on the uptime clock the check was scheduled on.
+     */
+    public static boolean graceForQueuedFixes(boolean liveFix, long lateMs) {
+        return !liveFix && lateMs > TIME_UP_OVERDUE_MS;
+    }
+
+    /** How a capture that listened ended; {@code atTimeLimit} = stopped by the clock, not by a fix. */
+    public static String captureEnd(Fix fix, boolean atTimeLimit) {
+        if (fix == null || FIX_NONE.equals(fix.status)) return END_NONE;
+        if (FIX_STALE.equals(fix.status)) return END_LAST_KNOWN;
+        if (atTimeLimit) return END_BEST;
+        return goodEnough(fix) ? END_GOOD : END_SETTLED;
     }
 
     public static boolean usableLastKnown(long ageMs) {
@@ -389,6 +454,93 @@ public final class CheckinPolicy {
         return candidate.accuracyM < current.accuracyM ? candidate : current;
     }
 
+    // ---- Capture diagnostics: the optional "diag" block of a ping --------------------------
+
+    /** What one location source did during a capture. */
+    public static final class DiagSource {
+        final String name;
+        final boolean on;
+        final long count;
+        final long firstMs;
+        final double bestM;
+
+        /** A negative {@code firstMs} and a non-finite {@code bestM} mean that nothing was heard. */
+        public DiagSource(String name, boolean on, long count, long firstMs, double bestM) {
+            this.name = name;
+            this.on = on;
+            this.count = count;
+            this.firstMs = firstMs;
+            this.bestM = bestM;
+        }
+    }
+
+    /**
+     * Builds the block with every value forced into the range the server accepts, because a single
+     * value out of range would cost the whole ping. Never throws: null means the ping goes without
+     * it. A negative {@code procAgeMs}, {@code bucket} or {@code lastKnownAgeMs} stands for unknown.
+     */
+    public static JSONObject captureDiag(String path, String end, long alarmLateMs, long startMs, long captureMs,
+                                         long awakeMs, long procAgeMs, boolean screenOn, int bucket,
+                                         boolean foreground, long lastKnownAgeMs, List<DiagSource> sources) {
+        if (!DIAG_PATHS.contains(path) || !DIAG_ENDS.contains(end)) return null;
+        try {
+            JSONObject diag = new JSONObject();
+            diag.put("v", 1);
+            diag.put("path", path);
+            diag.put("end", end);
+            diag.put("alarmLateMs", clamp(alarmLateMs, -DIAG_DAY_MS, DIAG_DAY_MS));
+            diag.put("startMs", clamp(startMs, 0L, DIAG_DAY_MS));
+            diag.put("captureMs", clamp(captureMs, 0L, DIAG_DAY_MS));
+            diag.put("awakeMs", clamp(awakeMs, 0L, DIAG_DAY_MS));
+            putKnown(diag, "procAgeMs", procAgeMs, DIAG_MAX_AGE_MS);
+            diag.put("screenOn", screenOn);
+            putKnown(diag, "bucket", bucket, 100L);
+            diag.put("foreground", foreground);
+            putKnown(diag, "lastKnownAgeMs", lastKnownAgeMs, DIAG_MAX_AGE_MS);
+            JSONObject bySource = new JSONObject();
+            for (String name : DIAG_SOURCES) {
+                DiagSource source = sourceNamed(sources, name);
+                if (source == null) continue;
+                JSONObject item = new JSONObject();
+                item.put("on", source.on);
+                item.put("n", clamp(source.count, 0L, DIAG_MAX_COUNT));
+                putKnown(item, "firstMs", source.firstMs, DIAG_DAY_MS);
+                if (Double.isNaN(source.bestM) || Double.isInfinite(source.bestM)) {
+                    item.put("bestM", JSONObject.NULL);
+                } else {
+                    double bounded = Math.max(0d, Math.min(source.bestM, DIAG_MAX_ACCURACY_M));
+                    item.put("bestM", Math.round(bounded * 10d) / 10d);
+                }
+                bySource.put(name, item);
+            }
+            diag.put("sources", bySource);
+            validateDiag(diag);
+            return diag;
+        } catch (JSONException error) {
+            return null;
+        } catch (RuntimeException error) {
+            return null;
+        }
+    }
+
+    private static DiagSource sourceNamed(List<DiagSource> sources, String name) {
+        if (sources == null) return null;
+        for (DiagSource source : sources) {
+            if (source != null && name.equals(source.name)) return source;
+        }
+        return null;
+    }
+
+    private static long clamp(long value, long min, long max) {
+        return Math.max(min, Math.min(value, max));
+    }
+
+    /** Integers only, so the value is never written as a decimal; negative = an explicit null. */
+    private static void putKnown(JSONObject json, String key, long value, long max) throws JSONException {
+        if (value < 0L) json.put(key, JSONObject.NULL);
+        else json.put(key, Math.min(value, max));
+    }
+
     // ---- Events sent to the server ---------------------------------------------------------
 
     public static JSONObject pairEvent(String deviceId, String code, String recordedAt, JSONObject device)
@@ -402,12 +554,19 @@ public final class CheckinPolicy {
 
     public static JSONObject pingEvent(String deviceId, String slotAt, String recordedAt, int settingsVersion,
                                        Fix fix, JSONObject device) throws JSONException {
+        return pingEvent(deviceId, slotAt, recordedAt, settingsVersion, fix, device, null);
+    }
+
+    /** {@code diag} is optional and goes last; a block that breaks its contract is left out, never sent. */
+    public static JSONObject pingEvent(String deviceId, String slotAt, String recordedAt, int settingsVersion,
+                                       Fix fix, JSONObject device, JSONObject diag) throws JSONException {
         JSONObject event = envelope(EVENT_PING, slotId(deviceId, slotAt), deviceId, recordedAt);
         event.put("slotAt", slotAt);
         event.put("settingsVersion", settingsVersion);
         event.put("fix", fixJson(fix));
         event.put("reason", fix.reason == null ? JSONObject.NULL : fix.reason);
         event.put("device", device);
+        if (diag != null && validDiag(diag)) event.put("diag", diag);
         validateEvent(event);
         return event;
     }
@@ -447,8 +606,11 @@ public final class CheckinPolicy {
         List<String> keys = new ArrayList<>(COMMON_KEYS);
         Object type = event.opt("event");
         if (EVENT_PAIR.equals(type)) keys.addAll(Arrays.asList("pairCode", "device"));
-        else if (EVENT_PING.equals(type)) keys.addAll(Arrays.asList("slotAt", "settingsVersion", "fix", "reason", "device"));
-        else if (EVENT_STATE.equals(type)) keys.add("device");
+        else if (EVENT_PING.equals(type)) {
+            keys.addAll(Arrays.asList("slotAt", "settingsVersion", "fix", "reason", "device"));
+            // Optional, and only a ping may carry it: on the other events it is an unknown key.
+            if (event.has("diag")) keys.add("diag");
+        } else if (EVENT_STATE.equals(type)) keys.add("device");
         else throw invalid("event");
         if (!exactKeys(event, keys)
                 || !Integer.valueOf(1).equals(event.opt("schemaVersion"))
@@ -466,9 +628,62 @@ public final class CheckinPolicy {
                 throw invalid("ping");
             }
             validateFix(event.opt("fix"), event.opt("reason"));
+            if (event.has("diag")) validateDiag(event.opt("diag"));
         }
         byte[] wire = event.toString().getBytes(StandardCharsets.UTF_8);
         if (wire.length > MAX_WIRE_BYTES) throw invalid("size");
+    }
+
+    private static boolean validDiag(JSONObject diag) {
+        try {
+            validateDiag(diag);
+            return true;
+        } catch (IllegalArgumentException malformed) {
+            return false;
+        }
+    }
+
+    /** Same rules as {@code diag()} on the server: exactly these keys, fixed labels, bounded integers. */
+    private static void validateDiag(Object value) {
+        if (!(value instanceof JSONObject)) throw invalid("diag");
+        JSONObject diag = (JSONObject) value;
+        Object procAge = diag.opt("procAgeMs");
+        Object lastKnownAge = diag.opt("lastKnownAgeMs");
+        Object bucket = diag.opt("bucket");
+        Object sources = diag.opt("sources");
+        if (!exactKeys(diag, DIAG_KEYS)
+                || !Integer.valueOf(1).equals(diag.opt("v"))
+                || !DIAG_PATHS.contains(diag.opt("path"))
+                || !DIAG_ENDS.contains(diag.opt("end"))
+                || !integerBetween(diag.opt("alarmLateMs"), -DIAG_DAY_MS, DIAG_DAY_MS)
+                || !integerBetween(diag.opt("startMs"), 0L, DIAG_DAY_MS)
+                || !integerBetween(diag.opt("captureMs"), 0L, DIAG_DAY_MS)
+                || !integerBetween(diag.opt("awakeMs"), 0L, DIAG_DAY_MS)
+                || !(procAge == JSONObject.NULL || integerBetween(procAge, 0L, MAX_SAFE_INTEGER))
+                || !(lastKnownAge == JSONObject.NULL || integerBetween(lastKnownAge, 0L, MAX_SAFE_INTEGER))
+                || !(bucket == JSONObject.NULL || integerBetween(bucket, 0L, 100L))
+                || !(diag.opt("screenOn") instanceof Boolean)
+                || !(diag.opt("foreground") instanceof Boolean)
+                || !(sources instanceof JSONObject)) {
+            throw invalid("diag");
+        }
+        JSONObject bySource = (JSONObject) sources;
+        Iterator<String> names = bySource.keys();
+        while (names.hasNext()) {
+            String name = names.next();
+            Object item = bySource.opt(name);
+            if (!DIAG_SOURCES.contains(name) || !(item instanceof JSONObject)) throw invalid("diag.sources");
+            JSONObject source = (JSONObject) item;
+            Object firstMs = source.opt("firstMs");
+            Object bestM = source.opt("bestM");
+            if (!exactKeys(source, DIAG_SOURCE_KEYS)
+                    || !(source.opt("on") instanceof Boolean)
+                    || !integerBetween(source.opt("n"), 0L, DIAG_MAX_COUNT)
+                    || !(firstMs == JSONObject.NULL || integerBetween(firstMs, 0L, DIAG_DAY_MS))
+                    || !(bestM == JSONObject.NULL || finiteBetween(bestM, 0d, DIAG_MAX_ACCURACY_M))) {
+                throw invalid("diag.sources");
+            }
+        }
     }
 
     private static void validateFix(Object value, Object reason) {
@@ -562,6 +777,10 @@ public final class CheckinPolicy {
 
     private static boolean integerAtLeast(Object value, long min) {
         return (value instanceof Integer || value instanceof Long) && ((Number) value).longValue() >= min;
+    }
+
+    private static boolean integerBetween(Object value, long min, long max) {
+        return integerAtLeast(value, min) && ((Number) value).longValue() <= max;
     }
 
     // ---- Receipts --------------------------------------------------------------------------

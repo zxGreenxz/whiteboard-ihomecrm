@@ -20,7 +20,10 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.util.Log;
+
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,26 +38,40 @@ public final class CaptureService extends Service {
     private static final long HARD_STOP_MS = 45_000L;
     private static final long SETTLE_MS = 6_000L;
     private static final long FALLBACK_PROVIDERS_AFTER_MS = 15_000L;
+    /** For fixes that queued up behind an overdue timer to be heard before the capture gives up. */
+    private static final long GRACE_MS = 1_500L;
+    /** After the hard stop the worker gets this long to conclude; then the service stops regardless. */
+    private static final long LAST_RESORT_MS = 5_000L;
     private static final long WAKE_LOCK_MS = 60_000L;
 
     private static final Object WAKE_GUARD = new Object();
     private static PowerManager.WakeLock wakeLock;
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final Runnable hardStop = this::stopNow;
+    private final Runnable hardStop = this::onHardStop;
+    private final Runnable lastResort = this::stopNow;
     private final List<Listener> listeners = new ArrayList<>();
     private Handler worker;
     private LocationManager locationManager;
     private CheckinSettings.State state;
+    private SlotRecorder.Trigger trigger;
     private CheckinPolicy.Fix best;
+    /** Newest location a source replayed from before this capture: only ever the fallback. */
+    private Location cached;
     private long slotMs;
+    private long captureStartElapsedMs;
+    private long captureStartUptimeMs;
+    /** On the uptime clock, like every timer of the worker. */
+    private long timeUpDueMs;
     private boolean foregroundOk;
     private boolean started;
+    private boolean listening;
     private boolean settling;
+    private boolean graceGiven;
     private boolean concluded;
 
-    static Intent intent(Context context, long slotMs) {
-        return new Intent(context, CaptureService.class).putExtra(EXTRA_SLOT_MS, slotMs);
+    static Intent intent(Context context, long slotMs, SlotRecorder.Trigger trigger) {
+        return trigger.putInto(new Intent(context, CaptureService.class).putExtra(EXTRA_SLOT_MS, slotMs));
     }
 
     /** Alarm delivery only keeps the CPU awake during onReceive; this bridges to the service. */
@@ -97,6 +114,7 @@ public final class CaptureService extends Service {
         }
         started = true;
         slotMs = slot;
+        trigger = SlotRecorder.Trigger.from(this, intent);
         main.postDelayed(hardStop, HARD_STOP_MS);
         worker.post(this::begin);
         return START_NOT_STICKY;
@@ -140,12 +158,14 @@ public final class CaptureService extends Service {
                 finish();
                 return;
             }
+            captureStartElapsedMs = SystemClock.elapsedRealtime();
+            captureStartUptimeMs = SystemClock.uptimeMillis();
             String reason = CheckinPolicy.preCaptureReason(state.paused, DeviceHealth.locationPermission(this),
                     Build.VERSION.SDK_INT, DeviceHealth.locationEnabled(this));
             // A background-started location service is refused without "Luôn cho phép".
             if (reason == null && !foregroundOk) reason = CheckinPolicy.REASON_PERMISSION_DENIED;
             if (reason != null) {
-                conclude(CheckinPolicy.Fix.none(reason));
+                conclude(CheckinPolicy.Fix.none(reason), CheckinPolicy.END_PRE, -1L);
                 return;
             }
             listen();
@@ -156,30 +176,44 @@ public final class CaptureService extends Service {
     }
 
     private void listen() {
+        listening = true;
         locationManager = getSystemService(LocationManager.class);
-        startProvider("fused");
-        if (listeners.isEmpty()) {
-            startFallbackProviders();
+        // First, so that it also hears what the requests below produce. Alone it is no reason to wait.
+        startProvider(LocationManager.PASSIVE_PROVIDER, false);
+        // By name: before Android 12 the provider list hides fused although it answers.
+        boolean active = startProvider(CheckinPolicy.SOURCE_FUSED, false);
+        if (CheckinPolicy.fallbackSourcesAtOnce(Build.VERSION.SDK_INT, active)) {
+            active |= startFallbackProviders();
         } else {
             // Some phones expose a fused provider that never answers without Google services.
             worker.postDelayed(this::startFallbackProviders, FALLBACK_PROVIDERS_AFTER_MS);
         }
-        worker.postDelayed(this::timeUp, WAIT_MS);
-        if (listeners.isEmpty()) timeUp();
+        if (active) {
+            timeUpDueMs = SystemClock.uptimeMillis() + WAIT_MS;
+            worker.postAtTime(this::timeUp, timeUpDueMs);
+        } else {
+            finishCapture(true);
+        }
     }
 
-    private void startFallbackProviders() {
-        if (concluded || CheckinPolicy.acceptable(best)) return;
-        startProvider(LocationManager.GPS_PROVIDER);
-        startProvider(LocationManager.NETWORK_PROVIDER);
+    private boolean startFallbackProviders() {
+        if (concluded || CheckinPolicy.acceptable(best)) return false;
+        boolean gps = startProvider(LocationManager.GPS_PROVIDER, true);
+        boolean network = startProvider(LocationManager.NETWORK_PROVIDER, true);
+        return gps || network;
     }
 
+    /**
+     * Every attempt is kept, a failed one too: the diagnostics report what this phone offered.
+     * {@code enabledOnly} because a switched-off provider registers and then never answers.
+     */
     @SuppressLint("MissingPermission")
-    private void startProvider(String provider) {
+    private boolean startProvider(String provider, boolean enabledOnly) {
+        Listener listener = new Listener(provider);
+        listeners.add(listener);
         try {
-            if (!locationManager.getProviders(true).contains(provider)) return;
-            Listener listener = new Listener();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (enabledOnly && !locationManager.getProviders(true).contains(provider)) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !LocationManager.PASSIVE_PROVIDER.equals(provider)) {
                 // The older overload asks the fused provider for balanced power instead of precision.
                 LocationRequest request = new LocationRequest.Builder(0L)
                         .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY).build();
@@ -187,46 +221,86 @@ public final class CaptureService extends Service {
             } else {
                 locationManager.requestLocationUpdates(provider, 0L, 0f, listener, worker.getLooper());
             }
-            listeners.add(listener);
-        } catch (SecurityException | IllegalArgumentException error) {
+            listener.on = true;
+        } catch (RuntimeException error) {
+            // A source this phone does not have (fused, on some) must not cost the slot its other sources.
             Log.w(TAG, "provider unavailable: " + error.getClass().getSimpleName());
         }
+        return listener.on;
     }
 
     /** A quick coarse fix must not end the capture before GPS had its chance. */
-    private void onFix(Location location) {
+    private void onFix(Listener source, Location location) {
         if (concluded || location == null) return;
-        CheckinPolicy.Fix fix = SlotRecorder.toFix(location, false);
-        if (!CheckinPolicy.usableLastKnown(fix.ageMs)) return;
-        best = CheckinPolicy.better(best, fix);
+        source.heard(location);
+        if (!CheckinPolicy.obtainedDuringCapture(location.getElapsedRealtimeNanos() / 1_000_000L,
+                captureStartElapsedMs)) {
+            // Replayed from before this capture: not this slot's position, at most the fallback.
+            if (cached == null || location.getElapsedRealtimeNanos() > cached.getElapsedRealtimeNanos()) {
+                cached = location;
+            }
+            return;
+        }
+        best = CheckinPolicy.better(best, SlotRecorder.toFix(location, false));
         if (CheckinPolicy.goodEnough(best)) {
-            conclude(best);
+            finishCapture(false);
         } else if (CheckinPolicy.acceptable(best) && !settling) {
             settling = true;
-            worker.postDelayed(() -> conclude(best), SETTLE_MS);
+            worker.postDelayed(() -> finishCapture(false), SETTLE_MS);
         }
     }
 
     private void timeUp() {
-        if (concluded) return;
-        conclude(best != null ? best : SlotRecorder.lastKnownOrTimeout(this));
+        if (concluded || !listening || graceGiven) return;
+        if (CheckinPolicy.graceForQueuedFixes(best != null, SystemClock.uptimeMillis() - timeUpDueMs)) {
+            // Overdue after a freeze or a blocked thread, this check runs ahead of the fixes that queued
+            // up meanwhile: they get one short chance to be heard, and the CPU is kept awake for it.
+            // On time it concludes at once, so a capture without a live fix records no later than before.
+            graceGiven = true;
+            holdWake(this);
+            // Not queued only when the service is already being destroyed: then conclude now.
+            if (worker.postDelayed(() -> finishCapture(true), GRACE_MS)) return;
+        }
+        finishCapture(true);
     }
 
-    private void conclude(CheckinPolicy.Fix fix) {
+    /** Ends with the best live fix, else the newest location the phone already had, else none. */
+    private void finishCapture(boolean atTimeLimit) {
+        if (concluded) return;
+        Location newest = SlotRecorder.newestCached(this, cached);
+        CheckinPolicy.Fix fix = best != null ? best : SlotRecorder.cachedOrTimeout(newest);
+        conclude(fix, CheckinPolicy.captureEnd(fix, atTimeLimit), newest == null ? -1L : SlotRecorder.ageMs(newest));
+    }
+
+    private void conclude(CheckinPolicy.Fix fix, String end, long lastKnownAgeMs) {
         if (concluded) return;
         concluded = true;
+        // Read before the listeners are dropped: they hold what each source did.
+        JSONObject diag = SlotRecorder.diag(trigger, state, slotMs, CheckinPolicy.DIAG_PATH_SERVICE, end,
+                foregroundOk, captureStartElapsedMs, captureStartUptimeMs, lastKnownAgeMs, sources());
         removeListeners();
         try {
-            SlotRecorder.record(this, slotMs, state, fix);
+            SlotRecorder.record(this, slotMs, state, fix, diag);
         } catch (Exception error) {
             Log.w(TAG, "slot not recorded: " + error.getClass().getSimpleName());
         }
         finish();
     }
 
+    private List<CheckinPolicy.DiagSource> sources() {
+        List<CheckinPolicy.DiagSource> sources = new ArrayList<>();
+        for (Listener listener : listeners) {
+            sources.add(new CheckinPolicy.DiagSource(listener.source, listener.on, listener.count,
+                    listener.firstMs, listener.bestM));
+        }
+        return sources;
+    }
+
     private void removeListeners() {
         if (locationManager == null) return;
-        for (Listener listener : listeners) locationManager.removeUpdates(listener);
+        for (Listener listener : listeners) {
+            if (listener.on) locationManager.removeUpdates(listener);
+        }
         listeners.clear();
     }
 
@@ -234,8 +308,19 @@ public final class CaptureService extends Service {
         main.post(this::stopNow);
     }
 
+    /**
+     * The service has run long enough, but the slot is not dropped: the worker concludes it the
+     * normal way, and nothing waits here for that. Should the worker be stuck, the service still stops.
+     */
+    private void onHardStop() {
+        holdWake(this);
+        worker.post(this::timeUp);
+        main.postDelayed(lastResort, LAST_RESORT_MS);
+    }
+
     private void stopNow() {
         main.removeCallbacks(hardStop);
+        main.removeCallbacks(lastResort);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
         releaseWake();
@@ -251,8 +336,27 @@ public final class CaptureService extends Service {
 
     /** Every callback is implemented: the defaults only exist on Android 11 and newer. */
     private final class Listener implements LocationListener {
+        final String source;
+        boolean on;
+        long count;
+        long firstMs = -1L;
+        double bestM = Double.NaN;
+
+        Listener(String source) {
+            this.source = source;
+        }
+
+        /** Counts every callback, a replayed location too: the diagnostics show what the source did. */
+        void heard(Location location) {
+            count++;
+            if (firstMs < 0L) firstMs = Math.max(0L, SystemClock.elapsedRealtime() - captureStartElapsedMs);
+            if (location.hasAccuracy() && (Double.isNaN(bestM) || location.getAccuracy() < bestM)) {
+                bestM = location.getAccuracy();
+            }
+        }
+
         @Override public void onLocationChanged(Location location) {
-            onFix(location);
+            onFix(this, location);
         }
 
         @Override public void onStatusChanged(String provider, int status, Bundle extras) {}

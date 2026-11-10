@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
@@ -158,6 +159,17 @@ public final class MainActivity extends Activity {
 
         pauseButton = Ui.button(root, "Tạm dừng", false, this::togglePause);
         Ui.text(root, "Ngoài khung giờ chủ công ty đặt, app không lấy vị trí, chỉ báo tình trạng máy (pin, quyền) để chủ công ty biết máy còn hoạt động. Khi tạm dừng, các mốc được ghi là «đã tắt» và chủ công ty nhìn thấy.", 14, Ui.MUTED, false);
+        // Read from the installed package, so the line names the build that is really on the phone.
+        String version = installedVersion();
+        if (version != null) Ui.text(root, "Phiên bản " + version, 12, Ui.MUTED, false);
+    }
+
+    private String installedVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+            return null;
+        }
     }
 
     private HealthRow healthRow(LinearLayout parent, String title) {
