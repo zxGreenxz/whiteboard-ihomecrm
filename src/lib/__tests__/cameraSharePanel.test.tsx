@@ -137,7 +137,7 @@ describe("chia sẻ camera cho khách", () => {
     shares = [row({ status: "REVOKED", revoked_at: "2026-11-10T05:35:00+00:00" })];
     mocks.rpc.mockImplementationOnce(async () => ({ data: { status: "REVOKED" }, error: null }));
     fireEvent.click(within(confirm).getByRole("button", { name: "Thu hồi ngay" }));
-    await screen.findByText("Đã thu hồi lượt chia sẻ ABCD2345. Khách đang xem sẽ bị ngắt trong giây lát.");
+    await screen.findByText("Đã thu hồi lượt chia sẻ ABCD2345. Khách đang xem sẽ bị ngắt trong khoảng một phút.");
     expect(calls("camera_share_revoke_v1")).toEqual([["camera_share_revoke_v1", { p_share_id: SHARE }]]);
     await waitFor(() => expect(calls("camera_shares_v1").length).toBeGreaterThan(before));
     await waitFor(() => expect(screen.getByRole("listitem", { name: "Lượt chia sẻ ABCD2345" }).textContent).toContain("Đã thu hồi"));

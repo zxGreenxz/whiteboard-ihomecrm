@@ -12,7 +12,11 @@
 --   · Tạo / xem danh sách / thu hồi: người đang xem được Trung tâm mạng của toà (network_center.view),
 --     cùng hàng rào với bảng camera_recorders (kể cả ẩn org sandbox với super admin).
 --   · Đăng nhập / kiểm phiên / thoát: anon (khách không có tài khoản CRM). Hàng rào là mật khẩu băm bcrypt,
---     khoá dò theo ID (5 lần sai / 15 phút, 20 lần / 24 giờ) và chuỗi phiên 32 byte chỉ lưu sha256.
+--     khoá dò theo ID (5 lần sai / 15 phút) và chuỗi phiên 32 byte chỉ lưu sha256.
+--
+-- CHỈ XEM LẠI
+--   Khung giờ chia sẻ phải nằm hẳn trong quá khứ lúc tạo (tối đa 24 giờ): khung giờ kéo sang tương lai sẽ cho
+--   khách theo dõi gần như trực tiếp, trái với điều chủ đã chốt.
 --
 -- HẾT HẠN / THU HỒI
 --   Hiệu lực tính ngay trong câu đọc (expires_at, revoked_at): hết hạn là mất quyền, không chờ job.
@@ -235,10 +239,16 @@ BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Cần đăng nhập để chia sẻ camera' USING ERRCODE = '42501';
   END IF;
+  -- Chỉ XEM LẠI: khung giờ phải nằm hẳn trong quá khứ, nếu không khách bấm xem liên tục là theo dõi được gần như
+  -- trực tiếp. Đồng hồ máy người tạo có thể nhanh vài phút, nên giờ kết thúc vượt "bây giờ" không quá 5 phút được
+  -- kéo về "bây giờ"; xa hơn thì từ chối (không âm thầm cắt khung giờ người tạo đã chọn).
+  IF v_end > v_now AND v_end <= v_now + interval '5 minutes' THEN
+    v_end := date_trunc('second', v_now);
+  END IF;
   IF p_recorder_id IS NULL OR p_channel IS NULL OR v_start IS NULL OR v_end IS NULL
      OR p_expires_hours IS NULL OR p_expires_hours NOT BETWEEN 1 AND 168
      OR v_end <= v_start OR v_end - v_start > interval '24 hours'
-     OR v_start >= v_now OR v_start < v_now - interval '60 days'
+     OR v_end > v_now OR v_start < v_now - interval '60 days'
      OR length(v_note) > 120 THEN
     RAISE EXCEPTION 'Thông tin chia sẻ camera không hợp lệ' USING ERRCODE = '22023';
   END IF;
@@ -369,8 +379,10 @@ $fn$;
 -- 4. RPC cho khách (không đăng nhập CRM).
 
 -- Đăng nhập bằng ID + mật khẩu. KHÔNG RAISE khi sai: ghi lần sai rồi RETURN (RAISE rollback luôn bản ghi ⇒ hết
--- chống dò). Khoá theo ID: 5 lần sai / 15 phút VÀ 20 lần sai / 24 giờ. Chỉ ghi lần sai cho ID có thật và còn
--- hiệu lực: ID bịa không tạo được dòng nào (không phình bảng), và cũng không có gì để dò.
+-- chống dò). Khoá theo ID: 5 lần sai / 15 phút. KHÔNG có trần theo ngày: mật khẩu 40 bit nên ~480 lần thử/ngày
+-- không dò nổi, còn trần theo ngày chỉ giúp người thấy link (ID nằm trong link) khoá khách cả ngày.
+-- Chỉ ghi lần sai cho ID có thật và còn hiệu lực: ID bịa không tạo được dòng nào (không phình bảng), và cũng
+-- không có gì để dò.
 CREATE OR REPLACE FUNCTION public.camera_share_login_v1(p_code text, p_password text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -384,9 +396,6 @@ DECLARE
   s       app_private.camera_shares%ROWTYPE;
   v_fail  integer;
   v_first timestamptz;
-  v_ngay  integer;
-  v_dau   timestamptz;
-  v_mo    timestamptz;
   v_ok    boolean := false;
   v_token text;
 BEGIN
@@ -406,17 +415,13 @@ BEGIN
     RETURN jsonb_build_object('status', 'ENDED');
   END IF;
 
-  SELECT count(*) FILTER (WHERE f.failed_at > clock_timestamp() - interval '15 minutes')::integer,
-         min(f.failed_at) FILTER (WHERE f.failed_at > clock_timestamp() - interval '15 minutes'),
-         count(*)::integer, min(f.failed_at)
-    INTO v_fail, v_first, v_ngay, v_dau
+  SELECT count(*)::integer, min(f.failed_at)
+    INTO v_fail, v_first
     FROM app_private.camera_share_login_failures f
-   WHERE f.code = v_code AND f.failed_at > clock_timestamp() - interval '24 hours';
-  IF v_fail >= 5 OR v_ngay >= 20 THEN
-    v_mo := GREATEST(CASE WHEN v_fail >= 5 THEN v_first + interval '15 minutes' END,
-                     CASE WHEN v_ngay >= 20 THEN v_dau + interval '24 hours' END);
+   WHERE f.code = v_code AND f.failed_at > clock_timestamp() - interval '15 minutes';
+  IF v_fail >= 5 THEN
     RETURN jsonb_build_object('status', 'LOCKED',
-      'retry_after_seconds', GREATEST(1, ceil(extract(epoch FROM (v_mo - clock_timestamp())))::integer));
+      'retry_after_seconds', GREATEST(1, ceil(extract(epoch FROM (v_first + interval '15 minutes' - clock_timestamp())))::integer));
   END IF;
 
   IF s.password_hash IS NOT NULL AND v_pass ~ '^[a-z0-9]{8}$' THEN
@@ -424,7 +429,7 @@ BEGIN
   END IF;
   IF NOT v_ok THEN
     INSERT INTO app_private.camera_share_login_failures (code) VALUES (v_code);
-    RETURN jsonb_build_object('status', 'INVALID', 'attempts_left', GREATEST(0, LEAST(4 - v_fail, 19 - v_ngay)));
+    RETURN jsonb_build_object('status', 'INVALID', 'attempts_left', GREATEST(0, 4 - v_fail));
   END IF;
 
   v_token := 'cs_' || rtrim(translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/', '-_'), '=');

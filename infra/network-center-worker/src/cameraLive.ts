@@ -346,8 +346,9 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
       const playbackControl = /^\/camera-live\/v1\/sessions\/([a-f0-9-]{36})\/playback$/u.exec(path);
       const previewRoute = /^\/camera-live\/v1\/recorders\/([a-f0-9-]{36})\/channels\/(\d+)\/preview$/u.exec(path);
       // A guest share reaches recorded playback of its own channel only: no live video, live-view
-      // cleanup or archive export. Scope is checked again where the actor is known.
-      if (token.startsWith("cs_") && !(playbackCreate || playbackControl || previewRoute || sessionRoute || (recorderRoute && !recorderRoute[2]))) throw new LiveError(403, "SHARE_SCOPE_DENIED");
+      // cleanup, archive export or thumbnail preview (previews share two gateway-wide slots with
+      // staff, so a guest must not be able to occupy them). Scope is checked again where the actor is known.
+      if (token.startsWith("cs_") && !(playbackCreate || playbackControl || sessionRoute || (recorderRoute && !recorderRoute[2]))) throw new LiveError(403, "SHARE_SCOPE_DENIED");
       if (liveView && request.method === "DELETE") {
         const recorder = config.recorders.find((candidate) => candidate.id === liveView[1]);
         if (!recorder) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
@@ -369,7 +370,6 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (range.quality || range.speed || range.position || Date.parse(range.end) - Date.parse(range.start) > 20_000) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
         const actor = await dependencies.authorize(token, recorder);
         if (actor.expiresAt <= Date.now()) throw new LiveError(401, "SESSION_EXPIRED");
-        assertShareScope(actor, channel, range);
         if (previews.size >= 2 || previews.has(actor.id)) throw new LiveError(429, "PLAYBACK_BUSY");
         previews.add(actor.id); const abort = new AbortController(); const disconnected = () => abort.abort();
         response.once("close", disconnected);
@@ -449,7 +449,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (!channel && request.method === "GET") {
           const actor = await dependencies.authorize(token, recorder);
           if (actor.share) {
-            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
+            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: false, playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
           }
           reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? dependencies.playbackQualities ?? [] : [] }); return;
         }

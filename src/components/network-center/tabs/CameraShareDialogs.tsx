@@ -101,12 +101,11 @@ export function CreateCameraShareDialog({ open, onOpenChange, recorder, scope, o
                   <FormMessage />
                 </FormItem>
               )} />
-              <p className="text-xs text-muted-foreground sm:col-span-2">Giờ Việt Nam (UTC+7). Tối đa 24 giờ, giờ bắt đầu phải ở quá khứ.</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2">Giờ Việt Nam (UTC+7). Tối đa 24 giờ, cả khung giờ phải ở quá khứ (khách chỉ xem lại).</p>
             </div>
-            {preview.ok && <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-              Khách xem lại được: {cameraShareWindowLabel(preview.start, preview.end)}
-              {preview.end > Date.now() && <span className="block text-xs text-muted-foreground">Giờ kết thúc ở tương lai — khách chỉ xem được tới thời điểm đang mở trang.</span>}
-            </p>}
+            {preview.ok
+              ? <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">Khách xem lại được: {cameraShareWindowLabel(preview.start, preview.end)}</p>
+              : <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">Khung giờ chưa hợp lệ: {preview.message}</p>}
             <FormField control={form.control} name="expiry" render={({ field }) => (
               <FormItem>
                 <FormLabel>Hiệu lực của link</FormLabel>
@@ -182,7 +181,7 @@ export function CameraShareResultDialog({ result, recorder, buildingName, onClos
               <dt className="text-xs font-medium text-muted-foreground">{row.label}</dt>
               <dd className="flex items-center gap-2">
                 <span aria-label={row.label} className={cn("min-w-0 flex-1 select-all break-all rounded-md border bg-muted/40 px-3 py-2", row.mono ? "font-mono text-xl font-bold tracking-[0.2em]" : "text-sm")}>{row.value}</span>
-                <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label={`Sao chép ${row.label.toLowerCase()}`} onClick={() => void copy(row.key, row.value)}>
+                <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label={`Sao chép ${row.label === "ID" ? "ID" : row.label.toLowerCase()}`} onClick={() => void copy(row.key, row.value)}>
                   <Copy className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </dd>

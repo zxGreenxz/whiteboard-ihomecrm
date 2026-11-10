@@ -89,7 +89,11 @@ describe("trang khách xem lại camera", () => {
     submit(PASSWORD);
     expect((await screen.findByTestId("camera-share-ended")).textContent).toContain("đã hết hạn hoặc đã bị thu hồi");
     fireEvent.click(screen.getByRole("button", { name: "Nhập ID khác" }));
+    // Nút nói "ID khác": ID đã kết thúc phải rời khỏi đường dẫn và ô ID trống, sẵn con trỏ.
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe("/xem-camera"));
     expect(screen.getByTestId("camera-share-login")).toBeTruthy();
+    expect((screen.getByLabelText("ID") as HTMLInputElement).value).toBe("");
+    expect(document.activeElement).toBe(screen.getByLabelText("ID"));
   });
 
   it("đăng nhập đúng: nhớ phiên trong tab, mở trình xem với đúng kênh, khung giờ, SD và phiên chia sẻ làm Bearer", async () => {
@@ -165,10 +169,25 @@ describe("trang khách xem lại camera", () => {
     await waitFor(() => expect(mocks.connections).toHaveLength(1));
     act(() => { mocks.connections[0]?.onErrorCode?.("SESSION_NOT_FOUND"); mocks.connections[0]?.onState("error", "Không thể kết nối video. Vui lòng thử lại."); });
     expect((await screen.findByRole("alert")).textContent).toContain("đang được mở ở máy hoặc tab khác");
+    // Trang hỏi lại máy chủ để phân biệt với hết hạn; máy chủ nói còn hạn ⇒ giữ phiên và câu báo này.
+    await waitFor(() => expect(rpcCalls("camera_share_authorize_v1")).toHaveLength(2));
+    expect(screen.queryByTestId("camera-share-ended")).toBeNull();
     expect(sessionStorage.getItem(KEY)).toBe(SESSION);
     fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
     await waitFor(() => expect(mocks.connections).toHaveLength(2));
     expect(mocks.connections[1]).toMatchObject({ accessToken: SESSION, playback: { start: "2026-11-10T01:00:00.000Z", quality: "sd" } });
+  });
+
+  it("lượt chia sẻ hết hạn giữa lúc đang xem (cổng đóng phiên, gia hạn nhận SESSION_NOT_FOUND) ⇒ hỏi lại máy chủ rồi ra màn đã kết thúc", async () => {
+    sessionStorage.setItem(KEY, SESSION);
+    mocks.rpc.mockResolvedValue({ data: share, error: null });
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Xem" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(1));
+    mocks.rpc.mockResolvedValue({ data: null, error: null });
+    act(() => { mocks.connections[0]?.onErrorCode?.("SESSION_NOT_FOUND"); mocks.connections[0]?.onState("error", "Không thể kết nối video. Vui lòng thử lại."); });
+    expect(await screen.findByTestId("camera-share-ended")).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 
   it("cổng video từ chối ngay khi kiểm tra dịch vụ (SHARE_ENDED) ⇒ màn đã kết thúc", async () => {

@@ -273,8 +273,9 @@ describe("camera guest share boundary", () => {
   const from = T - 7200_000; const to = T - 3600_000;
   const guest = { id: `share:${shareId}`, expiresAt: T + 3600_000, share: { channel: 2, start: from, end: to } };
   function guestSetup() {
-    const dependencies: LiveDependencies = { authorize: vi.fn(async () => guest), start: vi.fn(async () => ({ location: "http://127.0.0.1:18889/fixed/whep/session", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn(), now: () => T };
-    return { dependencies, sessions: new LiveSessions(dependencies) };
+    let now = T;
+    const dependencies: LiveDependencies = { authorize: vi.fn(async () => guest), start: vi.fn(async () => ({ location: "http://127.0.0.1:18889/fixed/whep/session", answer: offer })), stop: vi.fn(async () => {}), fatal: vi.fn(), now: () => now };
+    return { dependencies, sessions: new LiveSessions(dependencies), advance: (ms: number) => { now += ms; } };
   }
   const range = (start: number, end: number, quality?: "sd" | "hd" | "fullhd" | "original") => ({ start: new Date(start).toISOString(), end: new Date(end).toISOString(), ...(quality ? { quality } : {}) });
   const archived = { ...recorder, archiveEnabled: true, archiveOrigin: "http://10.0.0.1:18080" };
@@ -320,15 +321,34 @@ describe("camera guest share boundary", () => {
     await expect(sessions.start({ ...actor, expiresAt: T + 60_000 }, archived, 1, offer, range(from - 3600_000, to + 1800_000))).resolves.toHaveProperty("id");
   });
   it("caps concurrent guest streams and cuts a guest off when the share stops authorizing", async () => {
-    const { sessions, dependencies } = guestSetup();
+    const { sessions, dependencies, advance } = guestSetup();
     const other = (n: number) => ({ ...guest, id: `share:60000000-0000-4000-8000-00000000000${n}` });
     await sessions.start(other(2), archived, 2, offer, range(from, to, "sd"));
     const mine = await sessions.start(other(3), archived, 2, offer, range(from, to, "sd"));
     await expect(sessions.start(other(4), archived, 2, offer, range(from, to, "sd"))).rejects.toMatchObject({ status: 429, code: "PLAYBACK_BUSY" });
-    vi.mocked(dependencies.authorize).mockRejectedValueOnce(new LiveError(401, "SHARE_ENDED"));
-    await expect(sessions.renew(mine.id, guestToken)).rejects.toMatchObject({ code: "SHARE_ENDED" });
     vi.mocked(dependencies.authorize).mockResolvedValueOnce(other(2));
     await expect(sessions.renew(mine.id, guestToken)).rejects.toMatchObject({ code: "SESSION_OWNER_MISMATCH" });
+    // Revoked or expired: the lease can no longer be renewed, so the stream is cut when the current lease runs out.
+    vi.mocked(dependencies.authorize).mockRejectedValue(new LiveError(401, "SHARE_ENDED"));
+    await expect(sessions.renew(mine.id, guestToken)).rejects.toMatchObject({ code: "SHARE_ENDED" });
+    expect(sessions.find(mine.id)).toBeTruthy();
+    advance(75_001); await sessions.expire();
+    expect(() => sessions.find(mine.id)).toThrow(); expect(sessions.size).toBe(0); expect(dependencies.stop).toHaveBeenCalledTimes(2);
+  });
+  it("lets only one of two racing starts of the same share through", async () => {
+    const { sessions } = guestSetup();
+    const results = await Promise.allSettled([sessions.start(guest, archived, 2, offer, range(from, to, "sd")), sessions.start(guest, archived, 2, offer, range(from, to, "hd"))]);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { status: 429, code: "CAMERA_LIMIT" } });
+    expect(sessions.size).toBe(1);
+  });
+  it("keeps a guest's seeks inside the range the session started with", async () => {
+    const { sessions, dependencies } = guestSetup(); dependencies.control = vi.fn(async () => {});
+    const session = await sessions.start(guest, archived, 2, offer, range(from + 60_000, to - 60_000, "sd"));
+    await expect(sessions.control(session.id, guestToken, { time: new Date(from + 120_000).toISOString(), speed: 2 })).resolves.toMatchObject({ speed: 2 });
+    expect(dependencies.control).toHaveBeenCalledOnce();
+    for (const outside of [from, to - 60_000, to]) await expect(sessions.control(session.id, guestToken, { time: new Date(outside).toISOString(), speed: 1 })).rejects.toMatchObject({ code: "INVALID_PLAYBACK_RANGE" });
+    expect(dependencies.control).toHaveBeenCalledOnce();
   });
   it("answers a share token only on playback routes and with capabilities narrowed to its channel", async () => {
     const guestConfig = { ...config, recorders: [archived] };
@@ -350,13 +370,14 @@ describe("camera guest share boundary", () => {
       await denied(await fetch(`${base}/archive/50000000-0000-4000-8000-000000000001/file`, { headers }));
       expect(dependencies.authorize).not.toHaveBeenCalled(); expect(dependencies.start).not.toHaveBeenCalled();
       const capabilities = await (await fetch(`${base}/recorders/${recorder.id}`, { headers })).json();
-      expect(capabilities).toMatchObject({ channels: [2], maxView: 1, liveQualities: [], archive: false, playback: true, playbackQualities: ["sd", "hd"] });
+      expect(capabilities).toMatchObject({ channels: [2], maxView: 1, liveQualities: [], archive: false, playback: true, playbackPreview: false, playbackQualities: ["sd", "hd"] });
       const second = (ms: number) => new Date(Math.floor(ms / 1000) * 1000).toISOString();
       const inside = { offer, start: second(Date.now() - 7000_000), end: second(Date.now() - 6900_000), quality: "sd" };
       await denied(await fetch(`${base}/recorders/${recorder.id}/channels/1/playback`, { method: "POST", headers: json, body: JSON.stringify(inside) }));
       await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/playback`, { method: "POST", headers: json, body: JSON.stringify({ ...inside, end: second(Date.now() - 1800_000) }) }));
-      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/preview`, { method: "POST", headers: json, body: JSON.stringify({ start: second(Date.now() - 1800_000), end: second(Date.now() - 1790_000) }) }));
-      expect(dependencies.start).not.toHaveBeenCalled();
+      // Thumbnails are staff-only even inside the shared window: they would compete for the two gateway-wide preview slots.
+      await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/preview`, { method: "POST", headers: json, body: JSON.stringify({ start: inside.start, end: second(Date.parse(inside.start) + 10_000) }) }));
+      expect(dependencies.start).not.toHaveBeenCalled(); expect(dependencies.preview).not.toHaveBeenCalled();
     } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
   });
 });

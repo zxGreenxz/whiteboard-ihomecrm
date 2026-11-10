@@ -65,14 +65,17 @@ describe("khung giờ và form", () => {
     expect(defaultCameraShareValues(now + 400, 3)).toEqual({ channel: 3, from: "2026-11-10T00:00:00", to: "2026-11-10T12:30:15", expiry: "24h", note: "" });
     expect(defaultCameraShareValues(Date.parse("2026-11-09T17:00:30Z"), 1)).toMatchObject({ from: "2026-11-09T23:00:30", to: "2026-11-10T00:00:30" });
   });
-  it("bắt đầu phải ở quá khứ, kết thúc sau bắt đầu, tối đa 24 giờ; kết thúc ở tương lai vẫn hợp lệ", () => {
+  it("bắt đầu phải ở quá khứ, kết thúc sau bắt đầu, tối đa 24 giờ; kết thúc ở tương lai bị chặn (chỉ xem lại)", () => {
     expect(cameraShareWindow("2026-11-10T12:30:16", "2026-11-10T13:00:00", now)).toMatchObject({ ok: false, field: "from" });
     expect(cameraShareWindow("2026-11-10T10:00:00", "2026-11-10T10:00:00", now)).toMatchObject({ ok: false, field: "to" });
     expect(cameraShareWindow("2026-11-09T10:00:00", "2026-11-10T10:00:01", now)).toMatchObject({ ok: false, field: "to", message: "Khung giờ xem lại tối đa 24 giờ." });
     expect(cameraShareWindow("", "2026-11-10T10:00:00", now)).toMatchObject({ ok: false, field: "from" });
     expect(cameraShareWindow("2026-09-10T10:00:00", "2026-09-10T11:00:00", now)).toMatchObject({ ok: false, field: "from", message: "Chỉ chia sẻ được bản ghi trong 60 ngày gần nhất." });
     expect(cameraShareWindow("2026-11-09T12:30:00", "2026-11-10T12:30:00", now)).toEqual({ ok: true, start: Date.parse("2026-11-09T05:30:00Z"), end: Date.parse("2026-11-10T05:30:00Z") });
-    expect(cameraShareWindow("2026-11-10T08:00:00", "2026-11-10T20:00:00", now).ok).toBe(true);
+    // Khung giờ kéo sang tương lai = khách theo dõi gần như trực tiếp ⇒ chặn; lề một phút cho "đến bây giờ" của form.
+    expect(cameraShareWindow("2026-11-10T08:00:00", "2026-11-10T20:00:00", now)).toMatchObject({ ok: false, field: "to", message: "Giờ kết thúc không được ở tương lai: khách chỉ xem lại, không xem trực tiếp." });
+    expect(cameraShareWindow("2026-11-10T08:00:00", "2026-11-10T12:31:16", now)).toMatchObject({ ok: false, field: "to" });
+    expect(cameraShareWindow("2026-11-10T08:00:00", "2026-11-10T12:31:15", now).ok).toBe(true);
   });
   it("đổi form sang tham số RPC: giờ ISO tròn giây, số giờ hiệu lực, ghi chú cắt khoảng trắng hoặc null", () => {
     expect(cameraShareCreateInput(RECORDER, { channel: 2, from: "2026-11-10T00:00:00", to: "2026-11-10T12:30:15", expiry: "7d", note: "  Chị Lan P302 " }, now)).toEqual({

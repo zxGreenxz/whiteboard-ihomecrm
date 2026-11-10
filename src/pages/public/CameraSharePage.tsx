@@ -72,7 +72,7 @@ function ShareLogin({ initialCode, notice, onLoggedIn, onEnded }: {
           {notice && <p role="status" className="mt-3 rounded-md bg-muted p-2 text-sm">{notice}</p>}
           <div className="mt-5 space-y-1.5">
             <Label htmlFor="camera-share-code">ID</Label>
-            <Input id="camera-share-code" value={code} autoComplete="username" autoCapitalize="characters" spellCheck={false} inputMode="text"
+            <Input id="camera-share-code" value={code} autoComplete="username" autoCapitalize="characters" spellCheck={false} inputMode="text" autoFocus={!initialCode}
               onChange={(event) => setCode(normalizeShareCode(event.target.value).slice(0, 8))}
               className="h-12 text-center font-mono text-2xl uppercase tracking-[0.3em]" />
           </div>
@@ -150,7 +150,11 @@ function ShareView({ urlCode }: { urlCode: string }) {
     setNotice("Phiên xem đã kết thúc. Nhập lại mật khẩu nếu lượt chia sẻ còn hiệu lực.");
   }, [sessionDead, dropSession]);
   const { refetch: refetchSession } = sessionQuery;
-  const recheckExpiry = useCallback(() => { expiring.current = true; void refetchSession(); }, [refetchSession]);
+  const recheckExpiry = useCallback(() => {
+    expiring.current = true;
+    // Máy chủ nói còn hạn (đồng hồ máy khách nhanh, hoặc phiên chỉ bị máy khác thay chỗ) ⇒ bỏ cờ, lần NULL sau là mất phiên thường.
+    void refetchSession().then((result) => { if (result.data) expiring.current = false; });
+  }, [refetchSession]);
 
   const loggedIn = (nextCode: string, nextSession: string, nextShare: CameraShare) => {
     writeCameraShareSession(nextCode, nextSession);
@@ -166,7 +170,8 @@ function ShareView({ urlCode }: { urlCode: string }) {
     if (token) logout.mutate(token);
   };
 
-  if (ended) return <ShareEnded onBack={() => { setEnded(false); setNotice(""); }} />;
+  // "Nhập ID khác": bỏ ID đã kết thúc khỏi đường dẫn để ô ID trống thật; không có ID trên đường dẫn thì chỉ quay lại ô nhập.
+  if (ended) return <ShareEnded onBack={() => { setEnded(false); setNotice(""); if (urlCode) navigate(CAMERA_SHARE_PATH); }} />;
   if (!session) return <ShareLogin initialCode={urlCode.slice(0, 8)} notice={notice} onLoggedIn={loggedIn} onEnded={end} />;
 
   return (

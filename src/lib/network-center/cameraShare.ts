@@ -15,6 +15,8 @@ export const CAMERA_SHARE_SESSION = /^cs_[A-Za-z0-9_-]{43}$/u;
 export const CAMERA_SHARE_MAX_WINDOW_MS = 24 * 3600_000;
 /** Server chỉ nhận khung giờ bắt đầu trong 60 ngày gần nhất. */
 export const CAMERA_SHARE_MAX_AGE_MS = 60 * 24 * 3600_000;
+/** Giờ kết thúc được phép vượt "bây giờ" tối đa chừng này (đồng hồ máy lệch, thời gian điền form). */
+export const CAMERA_SHARE_END_SKEW_MS = 60_000;
 export const CAMERA_SHARE_NOTE_MAX = 120;
 export const CAMERA_SHARE_PATH = "/xem-camera";
 
@@ -108,7 +110,7 @@ export function cameraShareRpcError(error: RpcError, audience: Audience): Camera
   }
   if (code === "22023") {
     return new CameraShareError(audience === "staff"
-      ? "Thông tin chia sẻ chưa hợp lệ. Kiểm tra kênh, khung giờ (tối đa 24 giờ, bắt đầu trong quá khứ và trong 60 ngày gần nhất), hiệu lực và ghi chú."
+      ? "Thông tin chia sẻ chưa hợp lệ. Kiểm tra kênh, khung giờ (tối đa 24 giờ, nằm hẳn trong quá khứ và trong 60 ngày gần nhất), hiệu lực và ghi chú."
       : "ID hoặc mật khẩu chưa đúng định dạng.", "validation", code);
   }
   // Luật nghiệp vụ: server trả câu tiếng Việt, hiện nguyên văn.
@@ -247,6 +249,9 @@ export function cameraShareWindow(from: string, to: string, now: number): Camera
   if (start >= now) return { ok: false, field: "from", message: "Giờ bắt đầu phải ở quá khứ." };
   if (start < now - CAMERA_SHARE_MAX_AGE_MS) return { ok: false, field: "from", message: "Chỉ chia sẻ được bản ghi trong 60 ngày gần nhất." };
   if (end <= start) return { ok: false, field: "to", message: "Giờ kết thúc phải sau giờ bắt đầu." };
+  // Chỉ xem lại: khung giờ kéo sang tương lai sẽ cho khách theo dõi gần như trực tiếp. Server từ chối cùng luật;
+  // lề một phút để "đến bây giờ" trong form không bị chặn vì vài giây gõ phím (server kéo giờ kết thúc về hiện tại).
+  if (end > now + CAMERA_SHARE_END_SKEW_MS) return { ok: false, field: "to", message: "Giờ kết thúc không được ở tương lai: khách chỉ xem lại, không xem trực tiếp." };
   if (end - start > CAMERA_SHARE_MAX_WINDOW_MS) return { ok: false, field: "to", message: "Khung giờ xem lại tối đa 24 giờ." };
   return { ok: true, start, end };
 }

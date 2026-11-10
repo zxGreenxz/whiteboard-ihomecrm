@@ -20,6 +20,7 @@ interface Selection extends CameraShareSpan { base: number; speed: number; quali
 const RECOVERABLE = ["CAMERA_UNAVAILABLE", "PLAYBACK_CONTROL_FAILED", "PLAYBACK_CONTROL_UNAVAILABLE", "SESSION_NOT_FOUND"];
 /** Mỗi lượt chia sẻ chỉ một người xem: mở ở máy/tab khác thì cổng đóng phiên ở đây, gia hạn nhận SESSION_NOT_FOUND. */
 const DISPLACED = "Lượt chia sẻ đang được mở ở máy hoặc tab khác nên máy này đã dừng. Bấm Thử lại để xem tiếp tại đây.";
+const EXPIRY_RECHECK_MARGIN_MS = 3000;
 const qualityLabel: Record<ShareQuality, string> = { sd: "SD", hd: "HD" };
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -62,7 +63,9 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    const delay = Date.parse(share.expires_at) - Date.now();
+    // Hỏi lại máy chủ SAU giờ hết hạn vài giây: đồng hồ máy khách nhanh hơn máy chủ thì hỏi đúng giờ vẫn nhận "còn hạn".
+    // Trường hợp lệch nhiều hơn được bắt ở onErrorCode: cổng đóng phiên khi hết hạn thật ⇒ SESSION_NOT_FOUND ⇒ hỏi lại.
+    const delay = Date.parse(share.expires_at) + EXPIRY_RECHECK_MARGIN_MS - Date.now();
     const timer = setTimeout(() => callbacks.current.onExpired(), Math.max(0, Math.min(delay, 2_000_000_000)));
     return () => clearTimeout(timer);
   }, [share.expires_at]);
@@ -113,7 +116,14 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
       },
       onStream(stream) { if (active && element) element.srcObject = stream; },
       onAudio(available) { if (active) setHasAudio(available); },
-      onErrorCode(code) { if (!active) return; errorCode = code; if (code === "SHARE_ENDED") callbacks.current.onEnded(); },
+      onErrorCode(code) {
+        if (!active) return;
+        errorCode = code;
+        if (code === "SHARE_ENDED") callbacks.current.onEnded();
+        // Phiên biến mất ở cổng có hai nguyên do: máy khác mở cùng lượt, hoặc lượt vừa hết hạn. Hỏi máy chủ để phân biệt:
+        // hết hạn thì trang chuyển sang màn "đã kết thúc", còn hạn thì giữ câu "đang mở ở máy khác" bên dưới.
+        else if (code === "SESSION_NOT_FOUND") callbacks.current.onExpired();
+      },
       onState(next, detail) { if (active && (next !== "playing" || !switching.current)) { setState(next); setMessage(next === "error" && errorCode === "SESSION_NOT_FOUND" ? DISPLACED : detail ?? ""); } },
     });
     const started = released.current.then(() => { if (active) return connection.start(); });

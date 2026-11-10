@@ -68,9 +68,11 @@ chỉ có `Replay_NN` vẫn tải được bản ghi kênh khác qua `loadfile.c
 
 Gateway hỏi RPC `camera_share_authorize_v1` bằng publishable key ở mỗi lần phát, tua
 và gia hạn (25 giây một lần), nên hết hạn hoặc thu hồi cắt hình trong tối đa một kỳ
-lease. Chuỗi phiên chỉ dùng được cho `GET /recorders/:id`, `/playback`, `/preview` và
-`/sessions/:id[/renew|/playback]`; live, live-view và archive trả 403
-`SHARE_SCOPE_DENIED`. Khách luôn xem bản chuyển mã SD/HD (H.264), mỗi lượt một người
+lease (75 giây). Chuỗi phiên chỉ dùng được cho `GET /recorders/:id`, `/playback` và
+`/sessions/:id[/renew|/playback]`; live, live-view, archive và ảnh thu nhỏ `/preview`
+trả 403 `SHARE_SCOPE_DENIED` (ảnh thu nhỏ dùng chung hai chỗ toàn gateway với nhân viên).
+Khung giờ của lượt chia sẻ luôn nằm trong quá khứ lúc tạo, nên khách không theo dõi
+được gần như trực tiếp. Khách luôn xem bản chuyển mã SD/HD (H.264), mỗi lượt một người
 xem, toàn gateway tối đa 2 luồng khách cùng lúc để còn chỗ cho xem lại của nhân viên.
 Không cần đổi `live-config.json`, ingress hay unit; chỉ cần release gateway mới sau
 khi migration đã áp. Gateway cũ nhận chuỗi `cs_…` sẽ trả 401 như JWT sai.

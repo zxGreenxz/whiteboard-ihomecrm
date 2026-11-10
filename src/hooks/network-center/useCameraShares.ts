@@ -22,6 +22,8 @@ export function useCameraShares(scope: CameraShareScope, enabled = true) {
     enabled: enabled && Boolean(scope.actorId && scope.organizationId && scope.buildingId),
     // Trạng thái hết hạn và lần khách vào thay đổi theo thời gian.
     refetchInterval: 60_000,
+    // Panel tự hiện lỗi tại chỗ (phân biệt lỗi quyền / mạng); không để toast chung báo trùng.
+    meta: { errorDisplay: "inline" },
     retry: shouldRetryCameraShare, retryOnMount: false,
   });
 }
@@ -47,7 +49,13 @@ export function useRevokeCameraShare(scope: CameraShareScope) {
 
 // ─────────────────────────────── trang khách ───────────────────────────────
 
-export const cameraShareSessionQueryKey = (token: string | null) => ["camera-share", "session", token] as const;
+/** Dấu vân tay ngắn (FNV-1a) của chuỗi phiên: khoá truy vấn có thể đi vào nhật ký lỗi, nên không mang chuỗi phiên thô. */
+function sessionFingerprint(token: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < token.length; index++) { hash ^= token.charCodeAt(index); hash = Math.imul(hash, 0x01000193); }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+export const cameraShareSessionQueryKey = (token: string | null) => ["camera-share", "session", token ? sessionFingerprint(token) : null] as const;
 
 export const useCameraShareLogin = () =>
   useMutation({
@@ -61,6 +69,8 @@ export function useCameraShareSession(token: string | null) {
     queryKey: cameraShareSessionQueryKey(token),
     queryFn: () => authorizeCameraShare(token ?? ""),
     enabled: Boolean(token),
+    // Trang khách tự hiện lỗi tại chỗ; không để toast chung báo trùng.
+    meta: { errorDisplay: "inline" },
     retry: shouldRetryCameraShare, retryOnMount: false,
     staleTime: 60_000, refetchOnWindowFocus: true,
   });

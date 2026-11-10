@@ -67,7 +67,7 @@ export default function CameraSharePanel({ recorder, buildingName, scope }: { re
     setRevokeError("");
     try {
       const result = await revoke.mutateAsync(revoking.id);
-      setNotice(result.status === "REVOKED" ? `Đã thu hồi lượt chia sẻ ${revoking.code}. Khách đang xem sẽ bị ngắt trong giây lát.` : `Lượt chia sẻ ${revoking.code} đã kết thúc trước đó.`);
+      setNotice(result.status === "REVOKED" ? `Đã thu hồi lượt chia sẻ ${revoking.code}. Khách đang xem sẽ bị ngắt trong khoảng một phút.` : `Lượt chia sẻ ${revoking.code} đã kết thúc trước đó.`);
       setRevoking(null);
     } catch (error) {
       setRevokeError(error instanceof CameraShareError ? error.message : "Chưa thu hồi được. Vui lòng thử lại.");
@@ -107,7 +107,7 @@ export default function CameraSharePanel({ recorder, buildingName, scope }: { re
             <AlertDialogTitle>Thu hồi lượt chia sẻ?</AlertDialogTitle>
             <AlertDialogDescription>
               {revoking ? `ID ${revoking.code} · ${cameraShareChannelLabel(revoking.channel, revoking.channel_name ?? recorderChannelName(recorder, revoking.channel))}. ` : ""}
-              Khách không mở lại được link; người đang xem bị ngắt trong khoảng 30 giây. Không hoàn tác được — muốn cho xem tiếp phải tạo lượt mới.
+              Khách không mở lại được link; người đang xem bị ngắt trong khoảng một phút. Không hoàn tác được — muốn cho xem tiếp phải tạo lượt mới.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {revokeError && <p role="alert" className="text-sm text-destructive">{revokeError}</p>}

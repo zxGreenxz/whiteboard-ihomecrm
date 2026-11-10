@@ -21,7 +21,7 @@ GRANT ALL ON share_proof TO authenticated, anon;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','de6f33f3-349f-4bec-bd3d-106192f6715e',true);
 DO $owner$
-DECLARE a jsonb; b jsonb; l jsonb; t0 timestamptz := date_trunc('second', now()) - interval '3 hours';
+DECLARE a jsonb; b jsonb; c jsonb; l jsonb; t0 timestamptz := date_trunc('second', now()) - interval '25 hours';
 BEGIN
   a := public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',1,t0,t0+interval '1 hour',24,'  Khách phòng 301  ');
   IF a->>'code' !~ '^[A-HJ-NP-Z2-9]{8}$' OR a->>'password' !~ '^[a-z0-9]{8}$' THEN RAISE EXCEPTION 'credential format wrong'; END IF;
@@ -38,6 +38,12 @@ BEGIN
   BEGIN PERFORM public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',3,t0,t0+interval '1 hour',24,NULL); RAISE EXCEPTION 'unknown channel accepted'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
   BEGIN PERFORM public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',1,t0,t0+interval '1 hour',169,NULL); RAISE EXCEPTION 'expiry over 7 days accepted'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
   BEGIN PERFORM public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',1,now()+interval '1 hour',now()+interval '2 hours',24,NULL); RAISE EXCEPTION 'future window accepted'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+  -- chỉ xem lại: giờ kết thúc ở tương lai (quá lề lệch đồng hồ 5 phút) bị từ chối, trong lề thì kéo về "bây giờ"
+  BEGIN PERFORM public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',1,now()-interval '1 hour',now()+interval '1 hour',24,NULL); RAISE EXCEPTION 'future end accepted'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+  c := public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000c5',1,now()-interval '1 hour',now()+interval '2 minutes',1,NULL);
+  IF (c->>'window_end')::timestamptz > clock_timestamp() OR (c->>'window_end')::timestamptz < now() - interval '1 second' THEN RAISE EXCEPTION 'near-future end not clamped to now'; END IF;
+  IF public.camera_share_revoke_v1((c->>'id')::uuid)->>'status' <> 'REVOKED' THEN RAISE EXCEPTION 'clamp fixture not revoked'; END IF;
+  BEGIN PERFORM public.camera_shares_v1('aaaa1000-0000-4000-8000-000000000001'); RAISE EXCEPTION 'cross-org list accepted'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN PERFORM public.camera_share_create_v1('dddd8000-0000-4000-8000-0000000000ff',1,t0,t0+interval '1 hour',24,NULL); RAISE EXCEPTION 'unknown recorder accepted'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN PERFORM public.camera_shares_v1('dddd1000-0000-4000-8000-000000000002'); RAISE EXCEPTION 'cross-building list accepted'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN PERFORM 1 FROM app_private.camera_shares; RAISE EXCEPTION 'browser reads share table'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
@@ -90,6 +96,14 @@ BEGIN
   PERFORM public.camera_share_logout_v1(r->>'session');
   IF public.camera_share_authorize_v1(r->>'session') IS NOT NULL THEN RAISE EXCEPTION 'logged-out session authorized'; END IF;
   IF public.camera_share_authorize_v1(s) IS NULL THEN RAISE EXCEPTION 'logout killed another session'; END IF;
+  -- giữ 5 phiên mới nhất của một lượt: thêm 5 lần đăng nhập thì phiên đầu bị loại, phiên mới nhất còn dùng được
+  FOR i IN 1..5 LOOP
+    r := public.camera_share_login_v1(a->>'code', a->>'password');
+    IF r->>'status' <> 'OK' THEN RAISE EXCEPTION 'repeat login % rejected', i; END IF;
+  END LOOP;
+  IF public.camera_share_authorize_v1(s) IS NOT NULL THEN RAISE EXCEPTION 'session cap not enforced'; END IF;
+  IF public.camera_share_authorize_v1(r->>'session') IS NULL THEN RAISE EXCEPTION 'newest session evicted'; END IF;
+  UPDATE share_proof SET v = to_jsonb(r->>'session') WHERE k = 'a_session';
   BEGIN PERFORM 1 FROM app_private.camera_share_sessions; RAISE EXCEPTION 'anon reads session table'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $guest$;
 
@@ -97,7 +111,8 @@ END $guest$;
 RESET ROLE;
 DO $internal$ BEGIN
   IF (SELECT count(*) FROM app_private.camera_share_login_failures WHERE code='ZZZZ2222') <> 0 THEN RAISE EXCEPTION 'unknown code recorded failures'; END IF;
-  IF EXISTS(SELECT FROM app_private.camera_shares WHERE password_hash IS NULL OR password_hash NOT LIKE '$2%') THEN RAISE EXCEPTION 'password not bcrypt'; END IF;
+  IF EXISTS(SELECT FROM app_private.camera_shares WHERE revoked_at IS NULL AND (password_hash IS NULL OR password_hash NOT LIKE '$2%')) THEN RAISE EXCEPTION 'password not bcrypt'; END IF;
+  IF EXISTS(SELECT FROM app_private.camera_shares WHERE revoked_at IS NOT NULL AND password_hash IS NOT NULL) THEN RAISE EXCEPTION 'revoked share kept its password hash'; END IF;
   IF EXISTS(SELECT FROM app_private.camera_share_sessions x WHERE x.token_hash = (SELECT v#>>'{}' FROM share_proof WHERE k='a_session')) THEN RAISE EXCEPTION 'raw session stored'; END IF;
 END $internal$;
 SET LOCAL ROLE authenticated;
@@ -110,7 +125,7 @@ BEGIN
   IF public.camera_share_authorize_v1(s) IS NOT NULL THEN RAISE EXCEPTION 'revoked share still authorized'; END IF;
   IF public.camera_share_login_v1(a->>'code', a->>'password')->>'status' <> 'ENDED' THEN RAISE EXCEPTION 'revoked share still logs in'; END IF;
   IF public.camera_share_revoke_v1((a->>'id')::uuid)->>'status' <> 'ALREADY_ENDED' THEN RAISE EXCEPTION 'second revoke not idempotent'; END IF;
-  IF NOT EXISTS(SELECT FROM jsonb_array_elements(public.camera_shares_v1('dddd1000-0000-4000-8000-000000000001')->'shares') x WHERE x->>'id' = a->>'id' AND x->>'status' = 'REVOKED' AND (x->>'login_count')::int = 2) THEN RAISE EXCEPTION 'revoked status or login count wrong'; END IF;
+  IF NOT EXISTS(SELECT FROM jsonb_array_elements(public.camera_shares_v1('dddd1000-0000-4000-8000-000000000001')->'shares') x WHERE x->>'id' = a->>'id' AND x->>'status' = 'REVOKED' AND (x->>'login_count')::int = 7) THEN RAISE EXCEPTION 'revoked status or login count wrong'; END IF;
 END $revoke$;
 
 -- 5. Hết hạn tự mất quyền (không cần job), job dọn xoá mật khẩu băm và xoá dòng sau 30 ngày; đầu ghi tắt là mất quyền.

@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261110070438_network_center_camera_share_v1.sql": {
-      "sha256": "087a24a1eb78b0fb65ee16ccc154adae194baf0ab7bffefd70ab9f1aa226eb8f",
+      "sha256": "b1ba81cf9902d8850e70b45ee18566ec2126304f8abc9723f68778d02197598d",
       "missingObjects": [
         "table:app_private.camera_shares",
         "table:app_private.camera_share_sessions",
