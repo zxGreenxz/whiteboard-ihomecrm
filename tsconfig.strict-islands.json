@@ -1875,7 +1875,17 @@
     "src/hooks/__tests__/useCameraExport.test.tsx",
     "src/components/thu-tien/room-lifecycle/__tests__/LifecycleTimeline.test.tsx",
     "src/hooks/__tests__/useRoomContractExtras.test.ts",
-    "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts"
+    "src/lib/__tests__/roomCashLifecyclePayloadContract.test.ts",
+    "src/lib/network-center/cameraShare.ts",
+    "src/lib/__tests__/cameraShare.test.ts",
+    "src/lib/__tests__/cameraLiveShareToken.test.ts",
+    "src/lib/__tests__/cameraSharePanel.test.tsx",
+    "src/hooks/network-center/useCameraShares.ts",
+    "src/components/network-center/tabs/CameraSharePanel.tsx",
+    "src/components/network-center/tabs/CameraShareDialogs.tsx",
+    "src/components/network-center/share/SharedCameraPlayer.tsx",
+    "src/pages/public/CameraSharePage.tsx",
+    "src/pages/public/__tests__/CameraSharePage.test.tsx"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

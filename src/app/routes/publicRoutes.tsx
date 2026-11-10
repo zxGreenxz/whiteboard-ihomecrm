@@ -27,6 +27,7 @@ import {
   PublicContractInvoicePage,
   LandlordSettlementPublicPage,
   LandlordPortalPage,
+  CameraSharePage,
   PhongTrongPage,
   QuaySoPage,
   QuaySoScreenPage,
@@ -93,6 +94,18 @@ export const publicRoutes = (
       element={
         <Suspense fallback={null}>
           <LandlordPortalPage />
+        </Suspense>
+      }
+    />
+
+    {/* Khách xem lại camera được chia sẻ (10/11/2026): /xem-camera/<ID>, vào bằng ID + mật khẩu nhân viên tạo ở
+        Trung tâm mạng → Camera. Server chống dò mật khẩu, lượt chia sẻ tự hết hạn và thu hồi được; phiên chỉ xem lại
+        một kênh trong khung giờ đã chia sẻ. Không có ID trên đường dẫn thì khách tự nhập. KHÔNG bọc ProtectedRoute. */}
+    <Route
+      path="/xem-camera/:code?"
+      element={
+        <Suspense fallback={null}>
+          <CameraSharePage />
         </Suspense>
       }
     />

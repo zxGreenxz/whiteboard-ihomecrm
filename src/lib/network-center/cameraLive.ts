@@ -34,17 +34,28 @@ const messages: Record<string, string> = {
   INVALID_PLAYBACK_RANGE: "Chọn khoảng xem lại tối đa 24 giờ, không chọn giờ tương lai.",
   PLAYBACK_BUSY: "Đang có nhiều phiên xem lại. Hãy dừng bớt cửa sổ hoặc thử lại sau.",
   PLAYBACK_QUALITY_UNAVAILABLE: "Dịch vụ chưa hỗ trợ chất lượng đã chọn. Hãy tải lại trang để cập nhật.",
+  SHARE_ENDED: "Lượt chia sẻ đã hết hạn hoặc đã bị thu hồi.",
+  SHARE_SCOPE_DENIED: "Lượt chia sẻ không cho phép thao tác này.",
 };
 export class CameraLiveError extends Error {
   constructor(readonly code: string) { super(messages[code] ?? "Không thể kết nối video. Vui lòng thử lại."); }
 }
-async function liveRequest(path: string, method: string, body?: string, signal?: AbortSignal, contentType = "application/sdp", viewId?: string) {
+/** A share session (`cs_…`) replaces the CRM login for every call of that viewer; staff calls keep the Supabase session. */
+async function bearerToken(accessToken?: string) {
+  if (accessToken !== undefined) {
+    if (!accessToken) throw new CameraLiveError("SHARE_ENDED");
+    return accessToken;
+  }
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) throw new CameraLiveError("LOGIN_REQUIRED");
+  return data.session.access_token;
+}
+async function liveRequest(path: string, method: string, body?: string, signal?: AbortSignal, contentType = "application/sdp", viewId?: string, accessToken?: string) {
+  const token = await bearerToken(accessToken);
   let response: Response;
   try {
     response = await fetch(endpoint + path, {
-      method, headers: { Authorization: `Bearer ${data.session.access_token}`, ...(body ? { "Content-Type": contentType } : {}), ...(viewId ? { "X-Camera-View-Id": viewId } : {}) },
+      method, headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": contentType } : {}), ...(viewId ? { "X-Camera-View-Id": viewId } : {}) },
       ...(body ? { body } : {}), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000),
       credentials: "omit", redirect: "error", cache: "no-store",
     });
@@ -105,17 +116,22 @@ export async function prepareCameraLiveView(recorderId: string) {
   }
   return current.id;
 }
-export async function cameraLiveCapabilities(recorderId: string, signal: AbortSignal) {
+export async function cameraLiveCapabilities(recorderId: string, signal: AbortSignal, accessToken?: string) {
   z.string().guid().parse(recorderId);
-  return capabilitiesSchema.parse(await liveRequest(`/recorders/${recorderId}`, "GET", undefined, signal));
+  return capabilitiesSchema.parse(await liveRequest(`/recorders/${recorderId}`, "GET", undefined, signal, undefined, undefined, accessToken));
 }
+export type CameraLiveCapabilities = z.infer<typeof capabilitiesSchema>;
 export type CameraLiveState = "connecting" | "playing" | "stalled" | "stopped" | "error";
 export interface CameraLiveOptions {
   recorderId: string; channel: number; liveQuality?: CameraLiveQuality; audio?: boolean; viewId?: string;
   playback?: { start: string; end: string; position?: string; speed?: number; quality?: CameraPlaybackQuality };
+  /** Share session string sent as the Bearer token instead of the CRM login (tenant replay links). */
+  accessToken?: string;
   onStream(stream: MediaStream | null): void;
   onAudio?(available: boolean): void;
   onState(state: CameraLiveState, message?: string): void;
+  /** Gateway error code behind an "error" state, e.g. SHARE_ENDED; called just before onState("error"). */
+  onErrorCode?(code: string): void;
 }
 export class CameraLiveConnection {
   private peer: RTCPeerConnection | undefined;
@@ -171,7 +187,7 @@ export class CameraLiveConnection {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (this.stopped) return;
         try {
-          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality && this.options.liveQuality !== "sd" ? `?quality=${this.options.liveQuality}` : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp", playback ? undefined : this.options.viewId));
+          session = sessionSchema.parse(await liveRequest(`/recorders/${this.options.recorderId}/channels/${this.options.channel}/${playback ? "playback" : `sessions${this.options.liveQuality && this.options.liveQuality !== "sd" ? `?quality=${this.options.liveQuality}` : ""}`}`, "POST", playback ? JSON.stringify({ ...playback, offer }) : offer, undefined, playback ? "application/json" : "application/sdp", playback ? undefined : this.options.viewId, this.options.accessToken));
           break;
         } catch (error) {
           if (!playback || attempt === 2 || !(error instanceof CameraLiveError) || !["CAMERA_UNAVAILABLE", "RECORDING_UNAVAILABLE"].includes(error.code)) throw error;
@@ -200,28 +216,28 @@ export class CameraLiveConnection {
         }).catch(() => { if (!this.stopped) this.fail("Không đọc được trạng thái video."); }).finally(() => { this.checking = false; });
       }, 2000);
     } catch (error) {
-      if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Không thể phát video trên trình duyệt này.");
+      if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Không thể phát video trên trình duyệt này.", error instanceof CameraLiveError ? error.code : undefined);
     }
   }
   async seek(time: number, speed: number) {
     await this.starting;
     if (this.stopped || !this.sessionId) throw new CameraLiveError("SESSION_EXPIRED");
     const iso = new Date(time).toISOString();
-    const result = z.object({ time: z.literal(iso), speed: z.literal(speed), expiresAt: z.number() }).parse(await liveRequest(`/sessions/${this.sessionId}/playback`, "POST", JSON.stringify({ time: iso, speed }), this.abort.signal, "application/json"));
+    const result = z.object({ time: z.literal(iso), speed: z.literal(speed), expiresAt: z.number() }).parse(await liveRequest(`/sessions/${this.sessionId}/playback`, "POST", JSON.stringify({ time: iso, speed }), this.abort.signal, "application/json", undefined, this.options.accessToken));
     if (this.stopped) throw new CameraLiveError("SESSION_EXPIRED");
     return result;
   }
   private async renew() {
     if (this.renewing || !this.sessionId || this.stopped) return;
     this.renewing = true;
-    try { await liveRequest(`/sessions/${this.sessionId}/renew`, "POST", undefined, this.abort.signal); }
-    catch (error) { if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Phiên xem bị ngắt."); }
+    try { await liveRequest(`/sessions/${this.sessionId}/renew`, "POST", undefined, this.abort.signal, undefined, undefined, this.options.accessToken); }
+    catch (error) { if (!this.stopped) this.fail(error instanceof CameraLiveError ? error.message : "Phiên xem bị ngắt.", error instanceof CameraLiveError ? error.code : undefined); }
     finally { this.renewing = false; }
   }
-  private fail(message: string) { this.stop(); this.options.onState("error", message); }
+  private fail(message: string, code?: string) { this.stop(); if (code) this.options.onErrorCode?.(code); this.options.onState("error", message); }
   private releaseSession(): Promise<void> {
     const id = this.sessionId; this.sessionId = undefined;
-    if (id) this.releasing = liveRequest(`/sessions/${id}`, "DELETE").then(() => {}).catch(() => { /* The server independently expires the lease within 75 seconds. */ });
+    if (id) this.releasing = liveRequest(`/sessions/${id}`, "DELETE", undefined, undefined, undefined, undefined, this.options.accessToken).then(() => {}).catch(() => { /* The server independently expires the lease within 75 seconds. */ });
     return this.releasing ?? Promise.resolve();
   }
   stop() {
