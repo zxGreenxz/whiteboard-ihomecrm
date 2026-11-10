@@ -8,7 +8,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: mocks.rpc } 
 
 import {
   CameraShareError, authorizeCameraShare, cameraShareCreateInput, cameraShareCreatedSchema, cameraShareLink,
-  cameraShareLoginSchema, cameraShareMessage, cameraSharePlayableSpan, cameraShareReachedEnd, cameraShareStatusLabel, cameraShareWaitLabel,
+  cameraShareLoginSchema, cameraShareMessage, cameraSharePlayableSpan, cameraShareStatusLabel, cameraShareWaitLabel,
   cameraShareWindow, createCameraShare, defaultCameraShareValues, listCameraShares, loginCameraShare, normalizeShareCode,
   normalizeSharePassword, readCameraShareSession, revokeCameraShare, shouldRetryCameraShare, writeCameraShareSession,
 } from "@/lib/network-center/cameraShare";
@@ -87,25 +87,6 @@ describe("khung giờ và form", () => {
   it("khoảng khách xem được dừng ở bây giờ trừ lề lệch đồng hồ", () => {
     expect(cameraSharePlayableSpan({ window_start: "2026-11-10T01:00:00Z", window_end: "2026-11-10T02:00:00Z" }, now)).toEqual({ from: Date.parse("2026-11-10T01:00:00Z"), to: Date.parse("2026-11-10T02:00:00Z") });
     expect(cameraSharePlayableSpan({ window_start: "2026-11-10T05:00:00Z", window_end: "2026-11-10T08:00:00Z" }, now)).toEqual({ from: Date.parse("2026-11-10T05:00:00Z"), to: Date.parse("2026-11-10T05:30:10Z") });
-  });
-  it("hình đã ngừng khi mốc ước tính sát cuối khung giờ ⇒ coi là xem hết; sai số cho phép tăng theo tốc độ", () => {
-    const to = Date.parse("2026-11-10T02:00:00Z");
-    const at = (secondsBeforeEnd: number, speed: number, stalledMs: number, lastFrameAt = now - stalledMs) =>
-      cameraShareReachedEnd({ cursor: to - secondsBeforeEnd * 1000, to, speed, lastFrameAt, now });
-    // Đo thật trên production: 8× dừng ở −4 giây rồi không còn khung hình nào.
-    expect(at(4, 8, 3000)).toBe(true);
-    expect(at(13, 8, 3000)).toBe(true);
-    expect(at(14, 8, 3000)).toBe(false);
-    // Hình vẫn đang về, hoặc mới ngừng chưa đủ lâu ⇒ chưa kết luận.
-    expect(at(4, 8, 0)).toBe(false);
-    expect(at(4, 8, 2400)).toBe(false);
-    // Ngừng giữa khung giờ là mất mạng / đầu ghi lỗi, không phải xem hết.
-    expect(at(600, 8, 30_000)).toBe(false);
-    // Tốc độ thường: chỉ 3 giây cuối.
-    expect(at(3, 1, 3000)).toBe(true);
-    expect(at(4, 1, 3000)).toBe(false);
-    // Chưa có khung hình nào (đang kết nối) thì không bao giờ là "xem hết".
-    expect(at(1, 1, 60_000, 0)).toBe(false);
   });
 });
 

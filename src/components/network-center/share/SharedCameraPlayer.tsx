@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import CameraAudioButton from "@/components/network-center/tabs/CameraAudioButton";
 import { cameraInputTime, cameraTimeLabel, vietnamCameraInput } from "@/lib/network-center/cameraArchive";
 import { CameraLiveConnection, CameraLiveError, cameraLiveCapabilities, type CameraLiveCapabilities, type CameraLiveState } from "@/lib/network-center/cameraLive";
-import { cameraFrame, PlaybackClock, PlaybackControls } from "@/lib/network-center/cameraPlayback";
-import { cameraSharePlayableSpan, cameraShareReachedEnd, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
+import { cameraFrame, PLAYBACK_POSTER_FALLBACK_MS, PlaybackClock, PlaybackControls, playbackOpensAtNormalSpeed, playbackReachedEnd } from "@/lib/network-center/cameraPlayback";
+import { cameraSharePlayableSpan, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
 import { cn } from "@/lib/utils";
 
 type ShareQuality = "sd" | "hd";
@@ -21,7 +21,6 @@ const RECOVERABLE = ["CAMERA_UNAVAILABLE", "PLAYBACK_CONTROL_FAILED", "PLAYBACK_
 /** Mỗi lượt chia sẻ chỉ một người xem: mở ở máy/tab khác thì cổng đóng phiên ở đây, gia hạn nhận SESSION_NOT_FOUND. */
 const DISPLACED = "Lượt chia sẻ đang được mở ở máy hoặc tab khác nên máy này đã dừng. Bấm Thử lại để xem tiếp tại đây.";
 const EXPIRY_RECHECK_MARGIN_MS = 3000;
-const POSTER_FALLBACK_MS = 1200;
 const qualityLabel: Record<ShareQuality, string> = { sd: "SD", hd: "HD" };
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -99,10 +98,9 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   useEffect(() => {
     if (!selection) return;
     let active = true; const element = video.current; setHasAudio(false);
-    // Cổng không mở được luồng MỚI thẳng ở tốc độ khác 1× (đo trên production 10/11/2026: chờ ~10 giây rồi rớt kết nối,
-    // nên đổi SD/HD lúc đang 8× báo lỗi), còn đổi tốc độ trên luồng ĐANG chạy thì xong trong nửa giây. Vì vậy luôn
-    // mở ở 1× rồi xin tốc độ mong muốn bằng lệnh tua; trong lúc đó giao diện vẫn ở trạng thái "đang mở".
-    const openAtNormalSpeed = controlAvailable && selection.speed !== 1;
+    // Luồng SD/HD mới không mở thẳng được ở tốc độ khác 1× (xem playbackOpensAtNormalSpeed): mở ở 1× rồi xin tốc độ
+    // mong muốn bằng lệnh tua; trong lúc đó giao diện vẫn ở trạng thái "đang mở".
+    const openAtNormalSpeed = playbackOpensAtNormalSpeed({ controlAvailable, speed: selection.speed, quality: selection.quality });
     const openSpeed = openAtNormalSpeed ? 1 : selection.speed;
     // Chất lượng SD/HD luôn chuyển mã ở máy chủ: dấu thời gian RTP chạy theo thời gian thực, nội dung theo tốc độ.
     clock.current = new PlaybackClock(openSpeed, openSpeed); position.current = { from: selection.from, to: selection.to }; switching.current = false;
@@ -121,11 +119,11 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
       callback = element.requestVideoFrameCallback(frame);
     };
     if (element?.requestVideoFrameCallback) callback = element.requestVideoFrameCallback(frame);
-    // Hình đã ngừng trong lúc mốc ước tính đang sát cuối khung giờ ⇒ đã xem hết (xem cameraShareReachedEnd).
+    // Hình đã ngừng trong lúc mốc ước tính đang sát cuối khung giờ ⇒ đã xem hết (xem playbackReachedEnd).
     const endWatch = setInterval(() => {
       const current = position.current;
       if (!active || switching.current || !current) return;
-      if (!cameraShareReachedEnd({ cursor: cursorRef.current, to: current.to, speed: liveSpeed, lastFrameAt, now: Date.now() })) return;
+      if (!playbackReachedEnd({ cursor: cursorRef.current, to: current.to, speed: liveSpeed, lastFrameAt, now: Date.now() })) return;
       cursorRef.current = current.to; setCursor(current.to); if (!dragging.current) setSlider((current.to - span.from) / 1000);
       finish(current);
     }, 500);
@@ -195,10 +193,8 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   const pause = () => { holdFrame(); dragging.current = false; setSelection(undefined); setState("stopped"); setMessage(""); };
   const updateTime = (element: HTMLVideoElement) => {
     if (element !== video.current || !selection || !position.current || switching.current || element.readyState < 2) return;
-    // Ảnh giữ tạm lúc chuyển mốc vốn được gỡ khi requestVideoFrameCallback báo khung hình mới. Trên trình duyệt không
-    // báo (đã gặp trên iPhone: ảnh cũ che mãi video thật sau khi kéo thanh thời gian), dùng chính `timeupdate`: video
-    // đang chạy tiếp sau khi lệnh tua được nhận một lúc thì gỡ ảnh và coi là đang phát.
-    if (seekAckAt.current && Date.now() - seekAckAt.current >= POSTER_FALLBACK_MS) {
+    // Trình duyệt không báo từng khung hình (iPhone) thì `timeupdate` gỡ ảnh giữ tạm — xem PLAYBACK_POSTER_FALLBACK_MS.
+    if (seekAckAt.current && Date.now() - seekAckAt.current >= PLAYBACK_POSTER_FALLBACK_MS) {
       if (poster) setPoster(undefined);
       if (state === "connecting") setState("playing");
     }

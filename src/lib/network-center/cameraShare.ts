@@ -218,19 +218,6 @@ export function cameraSharePlayableSpan(share: Pick<CameraShare, "window_start" 
   return { from, to: Math.min(end, Math.floor((now - CAMERA_SHARE_CLOCK_MARGIN_MS) / 1000) * 1000) };
 }
 
-/** Hình ngừng lâu chừng này (đồng hồ thật) mới xét là luồng đã kết thúc. */
-export const CAMERA_SHARE_END_STALL_MS = 2500;
-/**
- * Đầu ghi dừng phát đúng giờ kết thúc của khung giờ, nhưng vị trí trên thanh thời gian chỉ là ƯỚC TÍNH: ở tốc độ cao
- * nó có thể dừng sớm vài giây so với cuối khung giờ (đo trên production 10/11/2026: 8× dừng ở −4 giây), nên phép so
- * "đã tới cuối" không bao giờ đúng và trình xem treo chờ lỗi của cổng. Hình đã ngừng mà mốc đang sát cuối ⇒ coi là xem hết.
- * Sai số cho phép tăng theo tốc độ: 1× là 3 giây nội dung, 8× là 13,5 giây.
- */
-export function cameraShareReachedEnd(input: { cursor: number; to: number; speed: number; lastFrameAt: number; now: number }): boolean {
-  if (!(input.lastFrameAt > 0) || input.now - input.lastFrameAt < CAMERA_SHARE_END_STALL_MS) return false;
-  return input.cursor >= input.to - (Math.max(1, input.speed) * 1500 + 1500);
-}
-
 export interface CameraShareMessageInput {
   link: string; code: string; password: string; cameraLabel: string; buildingName?: string | null;
   windowStart: string; windowEnd: string; expiresAt: string;

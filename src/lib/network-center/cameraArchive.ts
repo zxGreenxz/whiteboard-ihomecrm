@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { CameraLiveError, cameraVideoEndpoint } from "./cameraLive";
+import { boundedSignal, CameraLiveError, cameraVideoEndpoint } from "./cameraLive";
 
 const resolutionSchema = z.enum(["480p", "720p", "1080p", "original"]);
 export type CameraArchiveResolution = z.infer<typeof resolutionSchema>;
@@ -36,7 +36,7 @@ async function request(path: string, method: string, signal: AbortSignal, body?:
   signal.throwIfAborted();
   const response = await fetch(cameraVideoEndpoint + path, {
     method, headers: { Authorization: `Bearer ${data.session.access_token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.any([signal, AbortSignal.timeout(path.endsWith("/file") ? 120_000 : 25_000)]),
+    ...(body ? { body: JSON.stringify(body) } : {}), signal: boundedSignal(path.endsWith("/file") ? 120_000 : 25_000, signal),
     credentials: "omit", redirect: "error", cache: "no-store",
   });
   if (!response.ok) {
