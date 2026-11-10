@@ -15,6 +15,8 @@ public final class SlotAlarmReceiver extends BroadcastReceiver {
         if (slotMs <= 0L) return;
         Context app = context.getApplicationContext();
         CaptureService.holdWake(app);
+        // Before anything else takes time: the diagnostics tell a late alarm from a late capture.
+        SlotRecorder.Trigger trigger = SlotRecorder.Trigger.measure(app);
         try {
             SlotScheduler.armAfterFiring(app, slotMs);
         } catch (RuntimeException error) {
@@ -22,10 +24,10 @@ public final class SlotAlarmReceiver extends BroadcastReceiver {
             android.util.Log.w("DiemDanhAlarm", "re-arm failed: " + error.getClass().getSimpleName());
         }
         try {
-            app.startForegroundService(CaptureService.intent(app, slotMs));
+            app.startForegroundService(CaptureService.intent(app, slotMs, trigger));
         } catch (IllegalStateException | SecurityException denied) {
             // An inexact alarm without battery exemption may not start a foreground service.
-            SlotRecorder.recordWithoutForeground(app, slotMs);
+            SlotRecorder.recordWithoutForeground(app, slotMs, trigger);
             CaptureService.releaseWake();
         }
     }

@@ -342,6 +342,15 @@ public final class DiemDanhDeviceTest {
         assertTrue(SlotScheduler.isArmed(context));
         assertEquals(armed, settings.load().armedSlotMs);
         assertTrue(armedInDumpsys());
+
+        // Installing a new version over the old one is handled like a reboot.
+        PendingIntent lostToUpdate = SlotScheduler.existingAlarm(context);
+        context.getSystemService(AlarmManager.class).cancel(lostToUpdate);
+        lostToUpdate.cancel();
+        assertFalse(SlotScheduler.isArmed(context));
+        new BootReceiver().onReceive(context, new Intent(Intent.ACTION_MY_PACKAGE_REPLACED));
+        assertTrue(SlotScheduler.isArmed(context));
+        assertEquals(armed, settings.load().armedSlotMs);
     }
 
     // ---- Capture ---------------------------------------------------------------------------
@@ -428,6 +437,23 @@ public final class DiemDanhDeviceTest {
             assertTrue(device.getBoolean("locationEnabled"));
             assertFalse(device.getBoolean("paused"));
             CheckinPolicy.validateEvent(ping);
+            // The ping also tells how the capture went: through the service, ended by this precise fix.
+            JSONObject diag = ping.getJSONObject("diag");
+            assertEquals(CheckinPolicy.DIAG_PATH_SERVICE, diag.getString("path"));
+            assertEquals(CheckinPolicy.END_GOOD, diag.getString("end"));
+            assertTrue(diag.getBoolean("foreground"));
+            JSONArray keys = ping.names();
+            assertEquals("diag is written last", "diag", keys.getString(keys.length() - 1));
+            JSONObject sources = diag.getJSONObject("sources");
+            assertTrue(sources.has(CheckinPolicy.SOURCE_PASSIVE));
+            assertTrue(sources.has(CheckinPolicy.SOURCE_FUSED));
+            int heard = 0;
+            for (String name : new String[]{CheckinPolicy.SOURCE_FUSED, CheckinPolicy.SOURCE_GPS,
+                    CheckinPolicy.SOURCE_NETWORK, CheckinPolicy.SOURCE_PASSIVE}) {
+                JSONObject source = sources.optJSONObject(name);
+                if (source != null) heard += source.getInt("n");
+            }
+            assertTrue("The fix came from one of the reported sources", heard >= 1);
         } finally {
             feeding.set(false);
             feeder.join(2_000L);
@@ -449,6 +475,9 @@ public final class DiemDanhDeviceTest {
         assertEquals(CheckinPolicy.FIX_NONE, ping.getJSONObject("fix").getString("status"));
         assertEquals(CheckinPolicy.REASON_PAUSED, ping.getString("reason"));
         assertTrue(ping.getJSONObject("device").getBoolean("paused"));
+        JSONObject diag = ping.getJSONObject("diag");
+        assertEquals(CheckinPolicy.END_PRE, diag.getString("end"));
+        assertEquals("No source is even asked while paused", 0, diag.getJSONObject("sources").length());
         assertTrue("Each firing arms the following slot", settings.load().armedSlotMs > slotMs);
     }
 
@@ -500,7 +529,8 @@ public final class DiemDanhDeviceTest {
             scenario.onActivity(activity -> {
                 View root = activity.getWindow().getDecorView();
                 for (String label : new String[]{"Máy của bạn", "App điểm danh", "Quyền vị trí", "Chạy nền", "Pin",
-                        "Dấu gần nhất", "Mốc kế tiếp", "Các mốc gần đây", "Tạm dừng"}) {
+                        "Dấu gần nhất", "Mốc kế tiếp", "Các mốc gần đây", "Tạm dừng",
+                        "Phiên bản " + BuildConfig.VERSION_NAME}) {
                     assertTrue(label, Fixtures.containsText(root, label));
                 }
             });
