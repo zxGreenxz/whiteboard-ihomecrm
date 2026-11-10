@@ -95,6 +95,50 @@ Trước bật: tạo một lượt trên đầu ghi được cấp quyền, ki�
 kênh và khung giờ, thử thu hồi lúc đang phát, thử hết hạn, và kiểm xem lại của nhân
 viên vẫn chạy khi có khách đang xem.
 
+## Camera: đầu ghi Hikvision ở cổng xem trực tiếp và xem lại
+
+Mỗi đầu ghi trong `live-config.json` có thêm khoá tuỳ chọn `vendor`: `DAHUA`,
+`KBVISION` hoặc `HIKVISION`. Không khai thì là Dahua/KBVision, URL và lệnh FFmpeg
+giữ nguyên từng byte; giá trị lạ làm gateway từ chối cả file lúc khởi động. Mọi
+quyết định theo hãng nằm trong `src/cameraLiveVendor.ts`; bảng URL và quy trình
+chạy thử trên host ở `deploy/camera-live.md`.
+
+- Xem trực tiếp: `/Streaming/Channels/<kênh×100+1>` (luồng chính) và `+2` (luồng
+  phụ, dùng cho SD). Kênh 1 là 101/102, kênh IP 9 là 901/902.
+- Xem lại: `/Streaming/tracks/<kênh×100+1>?starttime=YYYYMMDDTHHMMSSZ&endtime=…`,
+  giờ là giờ trên đầu ghi (UTC+7) dù có chữ `Z`. Bật bằng `playbackEnabled: true`;
+  cần `CAMERA_FFMPEG_BINARY`/`CAMERA_FFMPEG_SHA256`, không cần StateDirectory. Lượt
+  chia sẻ cho khách dùng chung đường này.
+- Không xuất được đoạn MP4: `archiveEnabled: true` hoặc `archiveOrigin` trên đầu ghi
+  `HIKVISION` bị từ chối lúc khởi động. API báo `archive: false`, giao diện khoá
+  phần trích xuất như với đầu ghi chưa bật xuất.
+- Mã hoá luồng (Hik-Connect) đang bật thì hình trực tiếp không giải mã được, xem
+  lại vẫn được. Gateway thử giải mã một khung hình luồng phụ trước khi mở trực
+  tiếp và trả `LIVE_STREAM_UNDECODABLE` (HTTP 503) thay vì để ô hình đen; tắt mã
+  hoá trên đầu ghi là xem được sau tối đa 30 giây, không cần khởi động lại.
+- Tua và đổi tốc độ là mở luồng mới. Đo 11/11/2026 trên hai đời firmware (V4.70 và
+  V3.4 năm 2017): cả hai nhận lệnh `Range` (`clock=` lẫn `npt=`) trên luồng đang
+  chạy rồi bỏ qua, mốc xem không đổi. Vì vậy gateway không gửi Range cho Hikvision:
+  API báo `playbackControl: false`, giao diện mở phiên mới bắt đầu tại mốc đã chọn,
+  tốc độ đi theo `Scale` ngay ở lần PLAY đầu. `clock`/`npt` chỉ còn là lựa chọn dự
+  phòng trong `hikvisionDefaults`.
+- Luồng chuyển mã không có tiếng. Đo trên firmware V3.4: đầu ghi khai một track âm
+  thanh ở cả trực tiếp lẫn xem lại nhưng không gửi gói âm thanh nào, mà FFmpeg chỉ
+  ghi header đầu ra khi mọi luồng được map đã có khung đầu tiên, nên bộ chuyển mã có
+  map track đó không bao giờ phát. Vì vậy mọi bộ chuyển mã của Hikvision (trực tiếp
+  HD/Full HD, xem lại SD/HD/Full HD) chỉ có hình (`-an`); V4.70 có gửi tiếng nhưng
+  xử lý giống nhau cho cả hãng. Luồng gốc (SD trực tiếp, "Gốc") vẫn chuyển nguyên
+  những gì đầu ghi gửi.
+- Tốc độ `[1, 2, 4]`: 2× đúng trên cả hai; V4.70 chạy đúng 4×/6×/8×; V3.4 chỉ đạt
+  khoảng 3,6× khi xin 4× và không nhanh hơn khi xin 6×/8×. Luồng SD chuyển mã mở
+  thẳng ở 4× đã đo chạy được trên cả hai (V3.4 chỉ khi bỏ tiếng). Vị trí trên thanh
+  thời gian là đồng hồ của trình xem nhân tốc độ đã chọn, nên với đầu ghi chạy chậm
+  hơn tốc độ xin thì thanh chạy trước hình và trình xem dừng trước khi hình tới cuối
+  khoảng.
+- Hình đầu tiên lệch mốc yêu cầu: trễ khoảng 2 giây (V4.70), sớm 5–11 giây (V3.4,
+  lùi về khung hình chính trước đó), kể cả với lượt chia sẻ; dấu giờ trên hình là
+  căn cứ.
+
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,

@@ -19,6 +19,7 @@ const messages: Record<string, string> = {
   CAMERA_QUALITY_LIMIT: "Đang có luồng chất lượng cao khác. Hãy chọn SD, độ phân giải gốc hoặc dừng bớt luồng HD/Full HD.",
   CODEC_UNSUPPORTED: "Trình duyệt chưa hỗ trợ định dạng của camera. Hãy thử Chrome hoặc Edge mới trên máy có hỗ trợ H.265.",
   CAMERA_UNAVAILABLE: "Chưa nhận được video từ đầu ghi. Vui lòng thử lại.",
+  LIVE_STREAM_UNDECODABLE: "Đầu ghi có gửi hình nhưng không giải mã được, thường do đầu ghi đang bật mã hoá luồng (Hik-Connect). Cần tắt mã hoá luồng trên đầu ghi để xem trực tiếp.",
   ARCHIVE_NOT_CONFIGURED: "Đầu ghi chưa được bật dịch vụ xem lại và xuất video. Cần cấu hình dịch vụ camera trên máy chủ.",
   INVALID_ARCHIVE_RANGE: "Khoảng thời gian chưa hợp lệ. Xem mỗi đoạn tối đa 10 phút; xuất mỗi file tối đa 30 phút và không chọn giờ tương lai.",
   ARCHIVE_BUSY: "Đang có tác vụ xử lý video. Hãy chờ hoàn tất hoặc hủy tác vụ đang chạy rồi thử lại.",

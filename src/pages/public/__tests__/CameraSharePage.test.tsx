@@ -210,6 +210,39 @@ describe("trang khách xem lại camera", () => {
     expect(mocks.seek.mock.calls[1]?.[1]).toBe(4);
   });
 
+  it("đầu ghi không tua được trên luồng đang chạy (Hikvision): mở thẳng ở tốc độ đã chọn, tua và đổi tốc độ là mở luồng mới, lỗi thì chờ khách bấm Thử lại", async () => {
+    sessionStorage.setItem(KEY, SESSION);
+    mocks.rpc.mockResolvedValue({ data: share, error: null });
+    mocks.capabilities.mockResolvedValue({ channels: [3], maxView: 1, leaseSeconds: 75, archive: false, liveQualities: [], playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"] });
+    open();
+    fireEvent.click(await screen.findByRole("radio", { name: "4×" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(1));
+    // Không có lệnh tua để xin tốc độ sau khi mở, nên luồng mở thẳng ở 4×.
+    expect(mocks.connections[0]?.playback).toMatchObject({ start: "2026-11-10T01:00:00.000Z", end: "2026-11-10T03:00:00.000Z", quality: "sd", speed: 4 });
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(2));
+    expect(mocks.connections[1]?.playback).toMatchObject({ start: "2026-11-10T01:00:10.000Z", end: "2026-11-10T03:00:00.000Z", quality: "sd", speed: 4 });
+    fireEvent.click(screen.getByRole("radio", { name: "2×" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(3));
+    expect(mocks.connections[2]?.playback).toMatchObject({ start: "2026-11-10T01:00:10.000Z", quality: "sd", speed: 2 });
+    fireEvent.click(screen.getByRole("radio", { name: "HD" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(4));
+    expect(mocks.connections[3]?.playback).toMatchObject({ start: "2026-11-10T01:00:10.000Z", quality: "hd", speed: 2 });
+    for (const connection of mocks.connections) expect(connection.playback).not.toHaveProperty("position");
+    // Luồng mới không lên hình: báo lỗi rồi dừng, không tự mở lại mãi.
+    act(() => { mocks.connections[3]?.onErrorCode?.("CAMERA_UNAVAILABLE"); mocks.connections[3]?.onState("error", "Chưa nhận được video từ đầu ghi. Vui lòng thử lại."); });
+    expect((await screen.findByRole("alert")).textContent).toBe("Chưa nhận được video từ đầu ghi. Vui lòng thử lại.");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(mocks.connections).toHaveLength(4);
+    // Khách hạ về 1× là xem tiếp được ngay tại mốc đó.
+    fireEvent.click(screen.getByRole("radio", { name: "1×" }));
+    await waitFor(() => expect(mocks.connections).toHaveLength(5));
+    expect(mocks.connections[4]?.playback).toMatchObject({ start: "2026-11-10T01:00:10.000Z", quality: "hd" });
+    expect(mocks.connections[4]?.playback).not.toHaveProperty("speed");
+    expect(mocks.seek).not.toHaveBeenCalled();
+  });
+
   it("cổng video từ chối ngay khi kiểm tra dịch vụ (SHARE_ENDED) ⇒ màn đã kết thúc", async () => {
     sessionStorage.setItem(KEY, SESSION);
     mocks.rpc.mockResolvedValue({ data: share, error: null });

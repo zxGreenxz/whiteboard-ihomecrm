@@ -5,7 +5,10 @@ import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { ArchiveJobs } from "./cameraArchive.js";
 import { validateCameraOrigin } from "./cameraConfig.js";
-import { playbackRange, playbackSources, playbackSpeeds, playbackSpeedSchema, playbackQualitySchema, type PlaybackRange, type PlaybackQuality } from "./cameraPlayback.js";
+import { playbackRange, playbackSources, playbackSpeedSchema, playbackQualitySchema, type PlaybackRange, type PlaybackQuality } from "./cameraPlayback.js";
+import { ports } from "./cameraLivePorts.js";
+import { liveDecodeCheck } from "./cameraLiveProbe.js";
+import { liveVendor, liveVendors } from "./cameraLiveVendor.js";
 import { playbackThumbnail } from "./cameraPreview.js";
 
 const uuid = z.string().uuid();
@@ -15,15 +18,26 @@ export const liveConfigSchema = z.object({
   origins: z.array(z.string().url()).min(1).max(4),
   recorders: z.array(z.object({
     id: uuid, organizationId: uuid, buildingId: uuid,
+    // Absent means Dahua/KBVision: every recorder provisioned before this field existed.
+    vendor: z.enum(liveVendors).optional(),
     channels: z.array(z.number().int().min(1).max(64)).min(1).max(64),
     rtspOrigin: z.string().regex(/^rtsp:\/\/(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}):\d{1,5}$/u),
     username: z.string().min(1).max(128), password: z.string().min(1).max(512),
     archiveEnabled: z.boolean().optional(),
     archiveOrigin: z.string().optional(),
+    // Recorded playback without clip export, only for a vendor whose export this gateway cannot do.
+    playbackEnabled: z.boolean().optional(),
   }).strict()).min(1).max(32),
 }).strict().superRefine((config, ctx) => {
   if (new Set(config.recorders.map((r) => r.id)).size !== config.recorders.length) ctx.addIssue({ code: "custom", message: "Duplicate recorder" });
   for (const recorder of config.recorders) {
+    const profile = liveVendor(recorder.vendor);
+    if (!profile.capabilities.archiveExport) {
+      // `archiveEnabled` promises clip export; accepting it here would advertise a download that cannot work.
+      if (recorder.archiveEnabled || recorder.archiveOrigin !== undefined) ctx.addIssue({ code: "custom", message: `Archive export is not supported for ${profile.vendor} recorders` });
+      continue;
+    }
+    if (recorder.playbackEnabled !== undefined) ctx.addIssue({ code: "custom", message: `playbackEnabled is not used for ${profile.vendor} recorders; set archiveEnabled` });
     try {
       if (recorder.archiveEnabled || recorder.archiveOrigin !== undefined) validateCameraOrigin(recorder.archiveOrigin ?? "");
     } catch { ctx.addIssue({ code: "custom", message: "Private archive origin required" }); }
@@ -36,7 +50,9 @@ export const liveConfigSchema = z.object({
 export type LiveConfig = z.infer<typeof liveConfigSchema>;
 export type LiveRecorder = LiveConfig["recorders"][number];
 export const streamName = (recorder: LiveRecorder, channel: number, quality: PlaybackQuality = "sd") => `camera-${recorder.id}-${channel}${quality === "sd" ? "" : `-${quality}`}`;
-const mediaOrigin = "http://127.0.0.1:18889";
+/** Recorded playback and its thumbnails are on. Clip export additionally needs `archiveEnabled`, which only an export-capable vendor may set. */
+export const recordedPlayback = (recorder: LiveRecorder) => Boolean(recorder.archiveEnabled || recorder.playbackEnabled);
+const mediaOrigin = `http://127.0.0.1:${ports.webrtc}`;
 const LEASE_MS = 75_000;
 const MAX_SESSIONS = 24;
 const MAX_USER_SESSIONS = 16;
@@ -90,6 +106,7 @@ async function boundedText(response: Response, max = BODY_MAX): Promise<string> 
 
 export function createLiveDependencies(config: LiveConfig, fatal: () => void, request: typeof fetch = fetch, encoder?: string): LiveDependencies {
   const sources = playbackSources(request, fatal, encoder);
+  const decodable = encoder ? liveDecodeCheck(encoder, request) : undefined;
   const playbackPaths = new Map<string, string>();
   const startMedia = async (name: string, offer: string) => {
     const path = `/${name}/whep`;
@@ -156,7 +173,11 @@ export function createLiveDependencies(config: LiveConfig, fatal: () => void, re
       return { id: actor.id, expiresAt: claims.exp * 1000 };
     },
     async start(recorder, channel, offer, playback, liveQuality) {
-      if (!playback) return startMedia(streamName(recorder, channel, liveQuality), offer);
+      if (!playback) {
+        // Without the decoder binary the check cannot run; the viewer then only sees its own "no picture" timeout.
+        if (decodable && liveVendor(recorder.vendor).capabilities.liveDecodeCheck) await decodable(recorder.id, streamName(recorder, channel));
+        return startMedia(streamName(recorder, channel, liveQuality), offer);
+      }
       const name = await sources.add(recorder, channel, playback);
       try {
         const media = await startMedia(name, offer); playbackPaths.set(media.location, name); return media;
@@ -200,7 +221,7 @@ export class LiveSessions {
     if (liveQuality !== undefined && !playbackQualitySchema.safeParse(liveQuality).success) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
     if (liveQuality && this.dependencies.liveQualities && !this.dependencies.liveQualities.includes(liveQuality)) throw new LiveError(400, "INVALID_VIDEO_QUALITY");
     const playback = range ? playbackRange(range, this.now()) : undefined;
-    if (playback && !recorder.archiveEnabled) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
+    if (playback && !recordedPlayback(recorder)) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
     if (!recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
     if (actor.expiresAt <= this.now()) throw new LiveError(401, "SESSION_EXPIRED");
     if (viewId !== undefined && (!uuid.safeParse(viewId).success || playback)) throw new LiveError(400, "INVALID_LIVE_VIEW");
@@ -373,7 +394,7 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         if (request.headers["content-type"] !== "application/json") throw new LiveError(415, "JSON_REQUIRED");
         const recorder = config.recorders.find((r) => r.id === previewRoute[1]); const channel = Number(previewRoute[2]);
         if (!recorder || !recorder.channels.includes(channel)) throw new LiveError(404, "CAMERA_NOT_CONFIGURED");
-        if (!recorder.archiveEnabled || !dependencies.preview) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
+        if (!recordedPlayback(recorder) || !dependencies.preview) throw new LiveError(503, "ARCHIVE_NOT_CONFIGURED");
         let range: PlaybackRange; try { range = playbackRange(JSON.parse(await requestBody(request))); } catch { throw new LiveError(400, "INVALID_PLAYBACK_RANGE"); }
         if (range.quality || range.speed || range.position || Date.parse(range.end) - Date.parse(range.start) > 20_000) throw new LiveError(400, "INVALID_PLAYBACK_RANGE");
         const actor = await dependencies.authorize(token, recorder);
@@ -459,10 +480,13 @@ export function createLiveServer(config: LiveConfig, dependencies: LiveDependenc
         const channel = recorderRoute[2];
         if (!channel && request.method === "GET") {
           const actor = await dependencies.authorize(token, recorder);
+          // `archive` (clip export) follows archiveEnabled alone, so it is false for a vendor without export while playback stays on.
+          const profile = liveVendor(recorder.vendor); const playback = recordedPlayback(recorder);
+          const control = Boolean(playback && dependencies.control && profile.capabilities.playbackControl);
           if (actor.share) {
-            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: false, playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
+            reply(response, 200, { channels: [actor.share.channel], maxView: 1, leaseSeconds: LEASE_MS / 1000, liveQualities: [], archive: false, playback, playbackControl: control, playbackPreview: false, playbackSpeeds: playback ? profile.playbackSpeeds : [], playbackQualities: playback ? (dependencies.playbackQualities ?? []).filter((quality) => shareQualities.includes(quality)) : [] }); return;
           }
-          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback: Boolean(recorder.archiveEnabled), playbackControl: Boolean(recorder.archiveEnabled && dependencies.control), playbackPreview: Boolean(recorder.archiveEnabled && dependencies.preview), playbackSpeeds: recorder.archiveEnabled ? playbackSpeeds : [], playbackQualities: recorder.archiveEnabled ? dependencies.playbackQualities ?? [] : [] }); return;
+          reply(response, 200, { channels: recorder.channels, maxView: MAX_USER_SESSIONS, leaseSeconds: LEASE_MS / 1000, liveQualities: dependencies.liveQualities ?? ["sd", "hd"], archive: Boolean(archive && recorder.archiveEnabled), playback, playbackControl: control, playbackPreview: Boolean(playback && dependencies.preview), playbackSpeeds: playback ? profile.playbackSpeeds : [], playbackQualities: playback ? dependencies.playbackQualities ?? [] : [] }); return;
         }
         if (channel && request.method === "POST") {
           if (request.headers["content-type"] !== "application/sdp") throw new LiveError(415, "SDP_REQUIRED");

@@ -180,3 +180,68 @@ describe("direct recording playback", () => {
     } finally { await sessions.closeAll(); await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 });
+
+describe("Hikvision recording playback", () => {
+  const hikvisionConfig = liveConfigSchema.parse({ supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey, origins: config.origins, recorders: [{ id: "10000000-0000-4000-8000-000000000002", organizationId: recorder.organizationId, buildingId: recorder.buildingId, vendor: "HIKVISION", channels: [1, 9], rtspOrigin: "rtsp://192.168.1.10:554", username: "fixture", password: "fixture-password", playbackEnabled: true }] });
+  const hikvision = hikvisionConfig.recorders[0]!;
+  it("follows the same session rules, switched on by playbackEnabled because archiveEnabled is refused for this vendor", async () => {
+    const deps = fixture(); const sessions = new LiveSessions(deps);
+    await sessions.start(actor, hikvision, 9, offer, { ...range, quality: "sd" });
+    expect(deps.start).toHaveBeenCalledWith(hikvision, 9, offer, { ...range, quality: "sd" });
+    await expect(sessions.start(actor, hikvision, 2, offer, range)).rejects.toMatchObject({ code: "CAMERA_NOT_CONFIGURED" });
+    const { playbackEnabled: _enabled, ...liveOnly } = hikvision;
+    for (const off of [liveOnly, { ...hikvision, playbackEnabled: false }]) await expect(sessions.start(actor, off, 9, offer, range)).rejects.toMatchObject({ status: 503, code: "ARCHIVE_NOT_CONFIGURED" });
+    await sessions.closeAll();
+  });
+  it("uses a private per-session RTSP path on the recorder's main track with Vietnam time, and removes it on stop", async () => {
+    let name = "";
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/add/")) { name = url.split("/").at(-1)!; return Response.json({ status: "ok" }); }
+      if (init?.method === "POST") return new Response(offer, { status: 201, headers: { Location: `/${name}/whep/50000000-0000-4000-8000-000000000001` } });
+      return Response.json({ status: "ok" });
+    });
+    const deps = createLiveDependencies(hikvisionConfig, vi.fn(), request); const media = await deps.start(hikvision, 9, offer, { ...range, speed: 4 });
+    const path = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+    expect(path).toMatchObject({ record: false, sourceOnDemand: true, maxReaders: 1, rtspTransport: "tcp", rtspScale: "4" }); expect(path.rtspRangeType).toBeUndefined();
+    const source = new URL(path.source); expect(source.hostname).toBe("192.168.1.10"); expect(source.pathname).toBe("/Streaming/tracks/901");
+    expect([...source.searchParams]).toEqual([["starttime", "20261020T080000Z"], ["endtime", "20261020T090000Z"]]);
+    expect(JSON.stringify(media)).not.toContain(hikvision.password);
+    await deps.stop(media.location); expect(request.mock.calls.at(-1)?.[0]).toBe(`http://127.0.0.1:18897/v3/config/paths/delete/${name}`);
+  });
+  it("starts a seek or speed change as a new stream at that position, and leaves a running session untouched when asked to move it", async () => {
+    const added: Record<string, unknown>[] = [];
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/add/")) { added.push(JSON.parse(String(init?.body))); return Response.json({}); }
+      if (init?.method === "POST" && url.endsWith("/whep")) return new Response(offer, { status: 201, headers: { Location: `${new URL(url).pathname}/50000000-0000-4000-8000-000000000001` } });
+      return Response.json({});
+    });
+    const deps = { ...createLiveDependencies(hikvisionConfig, vi.fn(), request, `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`), authorize: vi.fn(async () => actor) };
+    const sessions = new LiveSessions(deps);
+    const starttime = (index: number) => new URL(String(added[index]!.source)).searchParams.get("starttime");
+    // What both viewers send without playback control: the new window starts at the position, the speed rides on the open.
+    const session = await sessions.start(actor, hikvision, 9, offer, { start: "2026-10-20T01:20:00.000Z", end: range.end, quality: "sd", speed: 4 });
+    expect(starttime(0)).toBe("20261020T082000Z"); expect(added[0]).toMatchObject({ rtspScale: "4", rtspPlaybackRevision: expect.any(String) }); expect(added[0]).not.toHaveProperty("rtspRangeType");
+    // A client that still sends `position` gets the same thing: the position becomes the URL start, never a Range.
+    const positioned = await sessions.start(actor, hikvision, 9, offer, { ...range, quality: "hd", position: "2026-10-20T01:45:00.000Z" });
+    expect(starttime(2)).toBe("20261020T084500Z"); expect(added[2]).not.toHaveProperty("rtspRangeType"); expect(added[2]).not.toHaveProperty("rtspScale");
+    await expect(sessions.control(session.id, "token", { time: "2026-10-20T01:30:00Z", speed: 2 })).rejects.toMatchObject({ status: 409, code: "PLAYBACK_CONTROL_UNAVAILABLE" });
+    expect(request.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+    expect(sessions.size).toBe(2); expect(await sessions.renew(session.id, "token")).toBeGreaterThanOrEqual(session.expiresAt);
+    // The refused request did not leave the session locked: a second one gets the same answer, not PLAYBACK_BUSY.
+    await expect(sessions.control(session.id, "token", { time: "2026-10-20T01:30:00Z", speed: 2 })).rejects.toMatchObject({ code: "PLAYBACK_CONTROL_UNAVAILABLE" });
+    await sessions.stop(session.id, "token"); await sessions.stop(positioned.id, "token"); expect(sessions.size).toBe(0);
+    expect(request.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(6);
+  });
+  it("lets a guest replay only the shared Hikvision channel inside the window, re-encoded", async () => {
+    const guest = { id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 3600_000, share: { channel: 9, start: Date.parse(range.start), end: Date.parse(range.end) } };
+    const deps = fixture(); vi.mocked(deps.authorize).mockResolvedValue(guest); const sessions = new LiveSessions(deps);
+    await sessions.start(guest, hikvision, 9, offer, { ...range, quality: "sd" }); expect(deps.start).toHaveBeenCalledOnce();
+    await expect(sessions.start(guest, hikvision, 1, offer, { ...range, quality: "sd" })).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, hikvision, 9, offer, { ...range, quality: "original" })).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, hikvision, 9, offer, { ...range, end: "2026-10-20T02:00:01.000Z", quality: "sd" })).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await expect(sessions.start(guest, hikvision, 9, offer)).rejects.toMatchObject({ code: "SHARE_SCOPE_DENIED" });
+    await sessions.closeAll();
+  });
+});
