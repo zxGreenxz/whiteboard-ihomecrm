@@ -57,6 +57,20 @@ config và unit cũ, dừng process group trước đổi release; không ghi/x�
 trên đầu ghi. Dọn file tạm chỉ trong StateDirectory đã xác minh. Chưa có các bằng
 chứng đó thì chưa đánh dấu runtime production đã sẵn sàng.
 
+## Camera: mã lỗi trả ra ngoài
+
+Gateway camera nằm sau Cloudflare. Phản hồi HTTP 502/504 của origin không tới được
+trình duyệt nguyên vẹn (mất thân JSON `{code}` và header CORS), nên `fetch` chỉ ném
+"Failed to fetch" và giao diện báo "Mất kết nối tới máy chủ video" thay cho mã lỗi
+thật (đo 10/11/2026: gateway trả 502 `CAMERA_UNAVAILABLE` đúng giây trình duyệt báo
+lỗi mạng). Vì vậy `reply()` gửi mọi 502/504 ra ngoài bằng 503 (`publicStatus`);
+client chỉ đọc `code` trong thân nên không phụ thuộc con số. Không thêm đường trả
+phản hồi lỗi nào bỏ qua `reply()`. Tra lại mã trạng thái thật trên host (chỉ đọc):
+
+```bash
+timeout 75 tcpdump -i lo -l -n -A -s 160 'tcp port 18751' 2>/dev/null | grep --line-buffered -a -o -E 'HTTP/1\.1 [0-9]{3}[ A-Za-z]*'
+```
+
 ## Camera: chia sẻ một kênh cho khách xem lại
 
 Khách thuê không nhận tài khoản đầu ghi (đo 10/11/2026 trên KBVision 4.005: tài khoản
