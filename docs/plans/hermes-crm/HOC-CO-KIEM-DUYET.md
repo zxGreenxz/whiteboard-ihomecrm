@@ -1,7 +1,7 @@
 # Học có kiểm duyệt cho Hermes (đợt 2 kế hoạch trị tận gốc — chủ duyệt 31/10/2026)
 
 **Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
-REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; vai `hermes_store_learning` còn NOLOGIN, chưa bật login, chưa cài trên VPS** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã phát hành production 10/11/2026** (mục 4) — migration
+REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; trên production vai `hermes_store_learning` đã bật login, hai timer trên VPS (kiểm 20:40, nạp 20:55 giờ VN) đang chạy — đọc lại 10/11/2026, lượt 09/11 đều `success`; trên TEST vai này còn NOLOGIN** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã phát hành production 10/11/2026** (mục 4) — migration
 `20261105025453` áp 05/11, migration bật `20261105030528` áp 10/11 qua lane, connector production khai `actionPages: ["contract", "learning"]`,
 job cron `ihome-learning-digest-2100` tạo 10/11 (4.6).
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
@@ -173,13 +173,12 @@ phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + 
    ```bash
    docker exec -u 10003:10003 hermes-owner hermes --profile owner cron create \
      --name ihome-learning-digest-2100 \
-     --schedule "0 21 * * *" --timezone Asia/Ho_Chi_Minh \
      --deliver "zalo_personal:<uid Zalo của chủ>" \
-     --prompt "$(cat /root/ihome-hermes-cron/learning-digest-prompt.txt)"
+     "0 21 * * *" "$(cat /root/ihome-hermes-cron/learning-digest-prompt.txt)"
    ```
 
-   Bản Hermes chạy ngày 10/11/2026 KHÔNG có cờ múi giờ, lịch và prompt là tham số vị trí:
-   `cron create --name ihome-learning-digest-2100 --deliver "zalo_personal:<uid>" "0 21 * * *" "$(cat …prompt.txt)"`.
+   Bản Hermes chạy ngày 10/11/2026 không có cờ `--schedule`, `--timezone`, `--prompt`: lịch và prompt là hai tham số vị trí như khối
+   lệnh trên (bản thiết kế đầu viết ba cờ đó; chạy `cron create --help` ở bước 1 để đối chiếu khi Hermes đổi bản).
    Lịch tính theo múi giờ của `hermes_time` (biến `HERMES_TIMEZONE` → `timezone` trong `config.yaml` của hồ sơ → giờ máy), KHÔNG theo
    đồng hồ container: hồ sơ owner khai `timezone: Asia/Ho_Chi_Minh` ⇒ `0 21 * * *`. Tạo xong đọc dòng `Next run` — phải ra
    `…T21:00:00+07:00`; viết `0 14 * * *` vì thấy container chạy UTC thì job chạy 14:00 VN (đã gặp 10/11, sửa bằng `cron edit --schedule`).
@@ -242,6 +241,8 @@ phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + 
    động lại Hermes); SOUL owner thêm `ihome-crm-bai-hoc`.
 5. Review PR bật; lane migration bật TEST rồi production ⇒ khoá bật, kết nối `inherit_crm` nhận khoá. Kiểm trên hồ sơ TEST (connector
    8741, DB TEST) trước: `learning.decide` xem trước + xác nhận, `learning.digest` một lần.
+   *(10/11/2026: TEST đã có khoá bật và hai dòng chính sách — đọc lại cùng ngày; nghiệm thu trang Bài học 09/11 chạy trên hồ sơ TEST
+   này. Production áp 10/11, xem mục 4.)*
 6. Tạo job cron 21:00 cho owner (4.6).
 
 Lùi: file lùi của migration bật (tắt khoá, xoá hai dòng chính sách); gỡ `"learning"` khỏi `actionPages`; xoá job cron. Cột `announced_at`
