@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1778,
   "soFileDocBangFs": 469,
-  "tongLoiGoi": 1230,
+  "tongLoiGoi": 1233,
   "khongPhanLoaiDuoc": 567,
   "theoLoai": {
     "ma-nguon": {
@@ -204,6 +204,15 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-zalo-router/stable-binding-sql.test.mjs",
+      "soGoi": 11,
+      "loai": {
+        "sql": 4,
+        "manifest": 6
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",
       "soGoi": 11,
       "loai": {},
@@ -249,15 +258,6 @@
         "manifest": 6
       },
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/hermes-zalo-router/stable-binding-sql.test.mjs",
-      "soGoi": 9,
-      "loai": {
-        "sql": 2,
-        "manifest": 6
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
@@ -476,6 +476,14 @@
       "khongPhanLoaiDuoc": 5
     },
     {
+      "file": "infra/hermes-zalo-router/stable-binding-postgres.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentAssets.test.ts",
       "soGoi": 5,
       "loai": {},
@@ -685,14 +693,6 @@
       "soGoi": 4,
       "loai": {},
       "khongPhanLoaiDuoc": 4
-    },
-    {
-      "file": "infra/hermes-zalo-router/stable-binding-postgres.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
