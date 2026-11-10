@@ -63,8 +63,8 @@ Hợp đồng đầy đủ ở Phụ lục A và B của plan. Tóm tắt:
 
 | Trạng thái | Điều kiện |
 |---|---|
-| Có dấu | Dấu `fresh` |
-| Có dấu — đứng yên | Dấu `stale`, máy báo đang ngủ, vị trí không quá 60 phút tuổi |
+| Có dấu | Dấu `fresh`, hoặc dấu `stale` mà vị trí không quá 2 phút tuổi |
+| Có dấu — đứng yên | Dấu `stale`, máy báo đang ngủ, vị trí quá 2 phút nhưng không quá 60 phút tuổi |
 | Mất tín hiệu | Hết hạn trễ mà không có dấu hợp lệ, kèm lý do máy báo |
 | Đã tắt | Quản lý bấm tạm dừng trong app |
 | Chờ máy gửi | Mốc đã qua, còn trong hạn trễ cộng 5 phút |
@@ -76,6 +76,7 @@ Ngoài khung giờ máy không lấy vị trí, chỉ báo tình trạng máy; m
 
 - App: `extensions/diem-danh/android/`, `applicationId vn.ihome.diemdanh`. CI: `.github/workflows/android-diem-danh.yml`. Bản phát hành do GitHub Release giữ; hằng số `GPS_CHECKIN_APK` ở `src/lib/gpsCheckin.ts` trỏ tới bản hiện hành.
 - Cổng nhận: edge function `gps-checkin-ingest`, `verify_jwt = false`. Máy gửi bearer do app tự sinh; máy chủ chỉ giữ SHA-256. Ba sự kiện: `device.pair`, `location.ping`, `device.state`. Quá 120 dấu một phút trên một máy thì trả `429`.
+- Số đo lúc lấy vị trí: từ app 1.0.1 mỗi `location.ping` kèm khoá tuỳ chọn `diag` (báo thức trễ bao lâu, lấy vị trí mất bao lâu, nguồn định vị nào trả lời; không có toạ độ), lưu ở `gps_checkin_pings.capture_diag`. Cổng nhận từ chối khoá lạ bằng `400` và máy coi dấu đó hỏng hẳn, nên thêm khoá mới thì máy chủ phải lên production trước bản app gửi nó.
 - Ghép máy: quản lý tạo mã một lần ở `/my-day/diem-danh` (hạn 10 phút), mở app bằng link `ihomediemdanh://pair?c=<mã>` hoặc gõ mã. Mỗi người một máy; ghép máy mới thì máy cũ bị thu hồi.
 
 ## Bản đồ

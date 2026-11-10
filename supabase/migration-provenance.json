@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-10T10:10:22.535Z",
+  "generatedAt": "2026-11-10T12:28:34.832Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 933,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14140,6 +14140,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-10T10:06:44.430Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261110115408_gps_checkin_capture_diag_v1.sql",
+      "version": "20261110115408",
+      "name": "gps_checkin_capture_diag_v1",
+      "scheme": "timestamp14",
+      "sha256": "5b3df60dd54fcddaacfa038ab1f5ec53a672e62197ccaaf7dea8b6d4e299c368",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.gps_checkin_day_v1",
+        "catalog:function:public.gps_checkin_ingest_v1"
       ]
     },
     {

@@ -13,6 +13,11 @@ const pair=(overrides:JsonObject={}):JsonObject=>({schemaVersion:1,event:'device
 const state=(overrides:JsonObject={}):JsonObject=>({schemaVersion:1,event:'device.state',id,deviceId,recordedAt:'2026-01-05T01:00:00Z',device,...overrides});
 const request=(payload:unknown,authorization=`Bearer ${token}`,key=id)=>new Request('https://example.test/ingest',{method:'POST',headers:{authorization,'content-type':'application/json','x-idempotency-key':key},body:JSON.stringify(payload)});
 const receipt=(status='accepted')=>({status,externalId:id,acceptedAt:'2026-01-05T01:30:09.000+00:00',settings});
+// Vector chung với test của app Android: một khối `diag` hợp lệ, JSON một dòng, đúng thứ tự khoá app ghi.
+const DIAG_SAMPLE='{"v":1,"path":"service","end":"settled","alarmLateMs":1250,"startMs":310,"captureMs":8420,"awakeMs":9100,"procAgeMs":5400000,"screenOn":false,"bucket":10,"foreground":true,"lastKnownAgeMs":282000,"sources":{"fused":{"on":true,"n":3,"firstMs":2100,"bestM":18.5},"gps":{"on":true,"n":0,"firstMs":null,"bestM":null},"network":{"on":false,"n":0,"firstMs":null,"bestM":null}}}';
+const diag=(overrides:JsonObject={}):JsonObject=>({...JSON.parse(DIAG_SAMPLE),...overrides});
+const source=(overrides:JsonObject={}):JsonObject=>({on:true,n:3,firstMs:2100,bestM:18.5,...overrides});
+const without=(input:JsonObject,key:string):JsonObject=>Object.fromEntries(Object.entries(input).filter(([k])=>k!==key));
 
 Deno.test('dấu vị trí: chỉ gửi SHA-256 của bearer xuống SQL, trả biên nhận giờ Z',async()=>{
   let name='';let saved:JsonObject={};
@@ -112,4 +117,89 @@ Deno.test('chỉ nhận POST',async()=>{
   const handler=createHandler({rpc:async()=>({data:receipt(),error:null})});
   assert.equal((await handler(new Request('https://example.test/ingest',{method:'GET'}))).status,405);
   assert.equal((await handler(new Request('https://example.test/ingest',{method:'OPTIONS'}))).status,200);
+});
+
+Deno.test('dấu kèm chẩn đoán: `diag` xuống SQL nguyên vẹn, đứng cuối sự kiện và nằm trong chuỗi băm',async()=>{
+  let saved:JsonObject={};
+  const handler=createHandler({rpc:async(_name,args)=>{saved=args;return {data:receipt(),error:null};}});
+  assert.equal(JSON.stringify(JSON.parse(DIAG_SAMPLE)),DIAG_SAMPLE);
+  const response=await handler(request(ping({diag:diag()})));
+  assert.equal(response.status,201);
+  const event=saved.p_event as JsonObject;
+  assert.deepEqual(event.diag,JSON.parse(DIAG_SAMPLE));
+  assert.deepEqual(Object.keys(event),[...Object.keys(ping()),'diag']);
+  assert.equal(saved.p_payload_hash,await sha256(JSON.stringify(ping({diag:diag()}))));
+
+  // Dấu của app 1.0.0: sự kiện xuống SQL không mọc thêm khoá `diag`, chuỗi băm vẫn là chuỗi cũ.
+  assert.equal((await handler(request(ping()))).status,201);
+  assert.equal(Object.hasOwn(saved.p_event as JsonObject,'diag'),false);
+  assert.equal(JSON.stringify(saved.p_event),JSON.stringify(ping()));
+  assert.equal(saved.p_payload_hash,await sha256(JSON.stringify(ping())));
+});
+
+Deno.test('chẩn đoán ở biên hợp lệ: trống được thì nhận null, nguồn nào không có thì khỏi gửi',async()=>{
+  let calls=0;
+  const handler=createHandler({rpc:async()=>{calls++;return {data:receipt(),error:null};}});
+  const valid:JsonObject[]=[
+    diag({procAgeMs:null,lastKnownAgeMs:null,bucket:null,sources:{}}),
+    diag({path:'direct',alarmLateMs:-86_400_000,startMs:0,captureMs:86_400_000,awakeMs:86_400_000,bucket:0}),
+    diag({alarmLateMs:86_400_000,bucket:100,procAgeMs:0,lastKnownAgeMs:Number.MAX_SAFE_INTEGER}),
+    diag({sources:{fused:source(),gps:source({n:0,firstMs:null,bestM:null}),network:source({on:false,n:100_000,firstMs:86_400_000,bestM:10_000_000}),passive:source({firstMs:0,bestM:0})}}),
+    ...['good','settled','best','last_known','none','pre'].map(end=>diag({end})),
+  ];
+  for(const item of valid)assert.equal((await handler(request(ping({diag:item})))).status,201,JSON.stringify(item));
+  assert.equal(calls,valid.length);
+});
+
+Deno.test('chẩn đoán sai hợp đồng bị từ chối trước khi chạm DB',async()=>{
+  let calls=0;
+  const handler=createHandler({rpc:async()=>{calls++;return {data:receipt(),error:null};}});
+  const sources=(fused:unknown)=>diag({sources:{fused}});
+  const invalid:unknown[]=[
+    null,[],'x',1,{},
+    without(diag(),'awakeMs'),
+    without(diag(),'sources'),
+    diag({note:'x'}),
+    // Đủ 13 khoá nhưng một khoá bị thay bằng toạ độ.
+    {...without(diag(),'bucket'),lat:10},
+    diag({v:2}),diag({v:'1'}),
+    diag({path:'worker'}),diag({path:null}),
+    diag({end:'timeout'}),diag({end:1}),
+    diag({alarmLateMs:86_400_001}),diag({alarmLateMs:-86_400_001}),diag({alarmLateMs:null}),
+    diag({startMs:310.5}),diag({startMs:'310'}),
+    diag({captureMs:-1}),
+    diag({awakeMs:86_400_001}),
+    diag({procAgeMs:-1}),diag({procAgeMs:1.5}),
+    diag({lastKnownAgeMs:'282000'}),diag({lastKnownAgeMs:-1}),
+    diag({bucket:101}),diag({bucket:-1}),diag({bucket:'active'}),
+    diag({screenOn:'false'}),diag({screenOn:null}),
+    diag({foreground:0}),
+    diag({sources:null}),diag({sources:[]}),diag({sources:'fused'}),
+    diag({sources:{wifi:source()}}),
+    diag({sources:JSON.parse('{"__proto__":{"on":true,"n":0,"firstMs":null,"bestM":null}}')}),
+    sources(null),sources([true,3,2100,18.5]),
+    sources(without(source(),'bestM')),
+    sources(source({lat:10})),
+    sources(source({on:'true'})),
+    sources(source({n:-1})),sources(source({n:100_001})),sources(source({n:1.5})),sources(source({n:null})),
+    sources(source({firstMs:-1})),sources(source({firstMs:86_400_001})),sources(source({firstMs:'2100'})),
+    sources(source({bestM:-0.1})),sources(source({bestM:10_000_000.5})),sources(source({bestM:'18.5'})),
+  ];
+  for(const item of invalid){
+    const response=await handler(request(ping({diag:item})));
+    assert.equal(response.status,400,JSON.stringify(item));
+    assert.deepEqual(await response.json(),{error:'invalid_payload'});
+  }
+  assert.equal(calls,0);
+});
+
+Deno.test('chẩn đoán chỉ đi kèm dấu vị trí: ở ghép nối và báo tình trạng nó là khoá lạ',async()=>{
+  let calls=0;
+  const handler=createHandler({rpc:async()=>{calls++;return {data:receipt('state'),error:null};}});
+  for(const payload of [state({diag:diag()}),pair({diag:diag()})]){
+    const response=await handler(request(payload));
+    assert.equal(response.status,400);
+    assert.deepEqual(await response.json(),{error:'invalid_payload'});
+  }
+  assert.equal(calls,0);
 });

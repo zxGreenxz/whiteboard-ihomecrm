@@ -9,9 +9,16 @@ const COMMON=['schemaVersion','event','id','deviceId','recordedAt'];
 const REASONS=['permission_denied','location_off','timeout','paused'];
 const STATUSES=['paired','accepted','duplicate','state','ignored_out_of_window','ignored_off_day'];
 const LOCATION_PERMISSIONS=['always','while_in_use','denied'];
+const DIAG_KEYS=['v','path','end','alarmLateMs','startMs','captureMs','awakeMs','procAgeMs','screenOn','bucket','foreground','lastKnownAgeMs','sources'];
+const DIAG_PATHS=['service','direct'];
+const DIAG_ENDS=['good','settled','best','last_known','none','pre'];
+const DIAG_SOURCES=['fused','gps','network','passive'];
+const SOURCE_KEYS=['on','n','firstMs','bestM'];
+const DAY_MS=86_400_000;
 
 const finite=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value);
 const intBetween=(value:unknown,min:number,max:number)=>Number.isSafeInteger(value)&&(value as number)>=min&&(value as number)<=max;
+const exactly=(input:JsonObject,keys:string[])=>Object.keys(input).length===keys.length&&keys.every(k=>Object.hasOwn(input,k));
 const invalid=():never=>{throw new RequestError(400,'invalid_payload');};
 
 /** Tình trạng máy: chỉ nhận đúng các khoá đã khai, đúng kiểu; không khoá nào bắt buộc. */
@@ -56,15 +63,41 @@ function fix(value:unknown):JsonObject{
   return input;
 }
 
+/**
+ * Chẩn đoán một lượt lấy vị trí (app từ 1.0.1): báo thức trễ bao lâu, lượt chạy đường nào, từng nguồn
+ * trả mấy điểm. Đúng 13 khoá, chỉ số đo và nhãn cố định — không toạ độ, không chữ tự do.
+ */
+function diag(value:unknown):JsonObject{
+  if(!object(value))invalid();
+  const input=value as JsonObject;
+  if(!exactly(input,DIAG_KEYS)
+    ||input.v!==1||!DIAG_PATHS.includes(input.path as string)||!DIAG_ENDS.includes(input.end as string)
+    ||!intBetween(input.alarmLateMs,-DAY_MS,DAY_MS)
+    ||!intBetween(input.startMs,0,DAY_MS)||!intBetween(input.captureMs,0,DAY_MS)||!intBetween(input.awakeMs,0,DAY_MS)
+    ||!(input.procAgeMs===null||intBetween(input.procAgeMs,0,Number.MAX_SAFE_INTEGER))
+    ||!(input.lastKnownAgeMs===null||intBetween(input.lastKnownAgeMs,0,Number.MAX_SAFE_INTEGER))
+    ||!(input.bucket===null||intBetween(input.bucket,0,100))
+    ||typeof input.screenOn!=='boolean'||typeof input.foreground!=='boolean'
+    ||!object(input.sources))invalid();
+  for(const [name,source] of Object.entries(input.sources as JsonObject)){
+    if(!DIAG_SOURCES.includes(name)||!object(source)||!exactly(source,SOURCE_KEYS)
+      ||typeof source.on!=='boolean'||!intBetween(source.n,0,100_000)
+      ||!(source.firstMs===null||intBetween(source.firstMs,0,DAY_MS))
+      ||!(source.bestM===null||(finite(source.bestM)&&source.bestM>=0&&source.bestM<=10_000_000)))invalid();
+  }
+  return input;
+}
+
 export function validateEvent(value:unknown,key:string):JsonObject{
   if(!object(value))invalid();
   const input=value as JsonObject;
   let keys:string[];
   if(input.event==='device.pair')keys=[...COMMON,'pairCode','device'];
-  else if(input.event==='location.ping')keys=[...COMMON,'slotAt','settingsVersion','fix','reason','device'];
+  // `diag` tuỳ chọn và đứng cuối: dấu của app 1.0.0 không có khoá này nên vẫn băm ra đúng chuỗi cũ.
+  else if(input.event==='location.ping')keys=[...COMMON,'slotAt','settingsVersion','fix','reason','device',...(Object.hasOwn(input,'diag')?['diag']:[])];
   else if(input.event==='device.state')keys=[...COMMON,'device'];
   else throw new RequestError(400,'invalid_event_type');
-  if(Object.keys(input).length!==keys.length||!keys.every(k=>Object.hasOwn(input,k))
+  if(!exactly(input,keys)
     ||input.schemaVersion!==1||typeof input.id!=='string'||!HASH.test(input.id)||input.id!==key
     ||typeof input.deviceId!=='string'||!UUID.test(input.deviceId)||!validTimestamp(input.recordedAt))invalid();
   const out:JsonObject={...input,deviceId:(input.deviceId as string).toLowerCase(),device:device(input.device)};
@@ -78,6 +111,7 @@ export function validateEvent(value:unknown,key:string):JsonObject{
     const none=(out.fix as JsonObject).status==='none';
     if(none&&input.reason===null)invalid();
     if(!none&&input.reason!==null)invalid();
+    if(Object.hasOwn(input,'diag'))out.diag=diag(input.diag);
   }
   return Object.fromEntries(keys.map(k=>[k,out[k]]));
 }

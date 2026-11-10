@@ -4,6 +4,8 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 
 const migration = readFileSync(new URL('../../supabase/migrations/20261109042309_gps_checkin_v1.sql', import.meta.url), 'utf8');
+// Bản sửa sau buổi chạy thật đầu tiên, áp đè lên bản đầu theo đúng thứ tự database nhận.
+const migrationDiag = readFileSync(new URL('../../supabase/migrations/20261110115408_gps_checkin_capture_diag_v1.sql', import.meta.url), 'utf8');
 
 const org = 'a0000000-0000-4000-8000-000000000001';
 const owner = 'c0000000-0000-4000-8000-000000000001';
@@ -98,6 +100,7 @@ beforeAll(async () => {
       END $$;
   `);
   await db.exec(migration);
+  await db.exec(migrationDiag);
   await db.query(`INSERT INTO public.organizations VALUES ($1)`, [org]);
   for (const id of [owner, staff, other]) {
     await db.query(`INSERT INTO auth.users VALUES ($1)`, [id]);
@@ -449,4 +452,176 @@ test('quyền: chỉ chủ đổi được cài đặt; người ngoài không x
   const doc = await json(`SELECT public.gps_checkin_settings_get_v1()`);
   expect(doc.configured).toBe(true);
   expect(doc.members.map((m) => m.user.name)).toEqual(['QUẢN LÝ A']);
+});
+
+// --- Bản sửa 20261110115408: luật chấm vị trí có sẵn, khối chẩn đoán, báo cáo tình trạng đầu tiên. ---
+
+const staleFix = (ageMs) => ({ status: 'stale', lat: 10.001, lng: 106.001, accuracyM: 30, provider: 'network', ageMs, mock: false });
+
+test('vị trí có sẵn chưa quá 2 phút là dấu thật dù máy đang đi; quá 2 phút thì vẫn theo luật cũ', async () => {
+  await setSettings({ windows: [{ from: '08:00', to: '10:00' }] });
+  await pairDevice();
+  const d = recentMonday;
+  await ingestRaw(hex('b'), vn(d, '08:00'), vn(d, '08:00'), staleFix(120_000), null, false);
+  await ingestRaw(hex('c'), vn(d, '08:30'), vn(d, '08:30'), staleFix(120_001), null, false);
+  await ingestRaw(hex('d'), vn(d, '09:00'), vn(d, '09:00'), staleFix(120_001), null, true);
+  await ingestRaw(hex('e'), vn(d, '09:30'), vn(d, '09:30'), staleFix(60_000), null, true);
+  // Máy không báo tuổi vị trí: không có căn cứ để coi là mới.
+  await ingestRaw(hex('f'), vn(d, '10:00'), vn(d, '10:00'), { status: 'stale', lat: 10.001, lng: 106.001 }, null, false);
+
+  const result = await day(d);
+  expect(result.slots.map((s) => s.status)).toEqual(['ok', 'missing', 'ok_stationary', 'ok', 'missing']);
+  expect(result.slots.map((s) => s.reason)).toEqual([null, 'timeout', null, null, 'timeout']);
+  expect(result.counts).toEqual({ ok: 2, stationary: 1, missing: 2, paused: 0, pending: 0, future: 0, mock: 0 });
+  // Mốc được chấm thì có chỗ trên bản đồ như dấu vừa đo; mốc thiếu thì không.
+  expect(result.slots[0]).toMatchObject({ lat: 10.001, lng: 106.001, nearest_building_name: 'Toà A', nearest_distance_m: 50 });
+  expect(result.slots[1]).toMatchObject({ lat: null, lng: null, nearest_building_id: null });
+});
+
+test('hết hạn lưu xoá toạ độ không lật mốc đã chấm bằng vị trí có sẵn còn mới', async () => {
+  await setSettings({ from: '2025-01-01T00:00:00+07:00', windows: [{ from: '08:00', to: '09:00' }], retention: 30 });
+  await pairDevice({ paired: '2025-01-01T00:00:00+07:00' });
+  const at = '2025-06-02T08:00:00+07:00';
+  await ingestRaw(hex('b'), at, at, staleFix(90_000));
+  expect((await day('2025-06-02')).slots.map((s) => s.status)).toEqual(['ok', 'missing', 'missing']);
+
+  expect(await json(`SELECT app_private.gps_checkin_purge_v1($1)`, [org])).toBe(1);
+  const row = await one(`SELECT lat, lng, fix_status, fix_age_ms::int AS age, coords_purged_at FROM app_private.gps_checkin_pings`);
+  expect(row).toMatchObject({ lat: null, lng: null, fix_status: 'stale', age: 90_000 });
+  expect(row.coords_purged_at).not.toBeNull();
+
+  const after = await day('2025-06-02');
+  expect(after.slots.map((s) => s.status)).toEqual(['ok', 'missing', 'missing']);
+  expect(after.slots[0]).toMatchObject({ reason: null, lat: null, lng: null });
+  expect(after.counts).toMatchObject({ ok: 1, stationary: 0, missing: 2 });
+});
+
+test('khối chẩn đoán: lưu khi là object vừa cỡ; thiếu, sai dạng hoặc quá cỡ thì bỏ khối chứ không bỏ dấu', async () => {
+  await setSettings({ windows: [{ from: '00:00', to: '23:55' }], interval: 15, skipSunday: false });
+  await pairDevice();
+  const base = Math.floor(Date.now() / 900_000) * 900_000;
+  const valid = {
+    v: 1, path: 'service', end: 'settled', alarmLateMs: 1250, startMs: 310, captureMs: 8420, awakeMs: 9100, procAgeMs: 5_400_000,
+    screenOn: false, bucket: 10, foreground: true, lastKnownAgeMs: 282_000,
+    sources: { fused: { on: true, n: 3, firstMs: 2100, bestM: 18.5 }, gps: { on: true, n: 0, firstMs: null, bestM: null } },
+  };
+  // jsonb in `{"pad": "…"}`: 11 byte khung cộng độ dài chuỗi, nên 4085 ký tự là vừa đúng trần 4096 byte.
+  const cases = [
+    ['hợp lệ', { diag: valid }, valid],
+    ['không gửi', {}, null],
+    ['mảng', { diag: [valid] }, null],
+    ['chuỗi', { diag: 'service' }, null],
+    ['số', { diag: 1 }, null],
+    ['null', { diag: null }, null],
+    ['đúng trần', { diag: { pad: 'x'.repeat(4085) } }, { pad: 'x'.repeat(4085) }],
+    ['quá trần một byte', { diag: { pad: 'x'.repeat(4086) } }, null],
+  ];
+  for (const [index, [name, extra, stored]] of cases.entries()) {
+    const slot = new Date(base - index * 900_000).toISOString();
+    const id = hex(String(index + 1));
+    expect((await ingest({ ...ping(id, slot, slot), ...extra })).status, name).toBe('accepted');
+    const row = await one(`SELECT capture_diag, octet_length(capture_diag::text)::int AS size FROM app_private.gps_checkin_pings WHERE external_id = $1`, [id]);
+    expect(row.capture_diag, name).toEqual(stored);
+    if (name === 'đúng trần') expect(row.size).toBe(4096);
+  }
+  expect((await one(`SELECT count(*)::int AS n FROM app_private.gps_checkin_pings`)).n).toBe(cases.length);
+
+  // Ràng buộc của cột chắn cả đường ghi không qua cổng nhận.
+  const update = `UPDATE app_private.gps_checkin_pings SET capture_diag = $1::jsonb WHERE external_id = $2`;
+  await fails(update, [JSON.stringify([1]), hex('1')], '23514');
+  await fails(update, [JSON.stringify({ pad: 'x'.repeat(4086) }), hex('1')], '23514');
+});
+
+test('báo cáo tình trạng đầy đủ đầu tiên ngay sau khi ghép được lưu; báo cáo kế trong 60 giây vẫn bị hãm', async () => {
+  await setSettings();
+  await as(staff);
+  const start = await json(`SELECT public.gps_checkin_pair_start_v1()`);
+  const digest = (await one(`SELECT encode(sha256(convert_to($1,'UTF8')),'hex') AS d`, [start.code])).d;
+  await as(null);
+  const pairBlock = { manufacturer: 'Hang', model: 'Thu', sdkInt: 34, appVersion: '1.0.1' };
+  const paired = await json(`SELECT public.gps_checkin_pair_v1($1,$2,'fp',$3::jsonb)`,
+    [digest, hex('a'), JSON.stringify({ id: hex('c'), deviceId: device, device: pairBlock })]);
+  expect(paired.status).toBe('paired');
+  const stored = () => one(`SELECT state, last_state_at::text AS at, (last_state_at > now() - interval '60 seconds') AS recent FROM app_private.gps_checkin_devices`);
+  // Đúng tình huống gây lỗi: vừa ghép xong, `last_state_at` còn mới mà `state` chưa có tình trạng nào.
+  const before = await stored();
+  expect(before.state).toEqual(pairBlock);
+  expect(before.recent).toBe(true);
+
+  const full = { batteryPct: 80, charging: false, idle: false, powerSave: false, locationEnabled: true, locationPermission: 'always',
+    batteryOptimizationIgnored: true, exactAlarmAllowed: true, paused: false };
+  const report = (id, block) => ingest({ schemaVersion: 1, event: 'device.state', id, deviceId: device, recordedAt: new Date().toISOString(), device: block });
+  expect((await report(hex('d'), full)).status).toBe('state');
+  const first = await stored();
+  expect(first.state).toEqual({ ...pairBlock, ...full });
+
+  // Đã có báo cáo đầy đủ: bộ hãm 60 giây giữ nguyên tác dụng.
+  expect((await report(hex('e'), { ...full, batteryPct: 79, powerSave: true })).status).toBe('state');
+  expect(await stored()).toEqual(first);
+
+  await db.exec(`UPDATE app_private.gps_checkin_devices SET last_state_at = now() - interval '61 seconds'`);
+  expect((await report(hex('f'), { ...full, batteryPct: 78, powerSave: true })).status).toBe('state');
+  expect((await stored()).state).toEqual({ ...pairBlock, ...full, batteryPct: 78, powerSave: true });
+});
+
+test('bản sửa chạy lại không lỗi, không nhân đôi ràng buộc, không đụng dữ liệu; khối tự kiểm bắt được ACL lệch', async () => {
+  await setSettings({ windows: [{ from: '08:00', to: '09:00' }] });
+  await pairDevice();
+  const d = recentMonday;
+  await ingestRaw(hex('b'), vn(d, '08:00'), vn(d, '08:00'), staleFix(90_000));
+  await db.query(`UPDATE app_private.gps_checkin_pings SET capture_diag = $1::jsonb`, [JSON.stringify({ v: 1, path: 'direct' })]);
+
+  const state = () => one(`SELECT
+    (SELECT count(*)::int FROM pg_constraint WHERE conrelid = 'app_private.gps_checkin_pings'::regclass AND conname = 'gps_checkin_pings_capture_diag_check') AS constraints,
+    (SELECT count(*)::int FROM pg_attribute WHERE attrelid = 'app_private.gps_checkin_pings'::regclass AND attname = 'capture_diag' AND NOT attisdropped) AS columns,
+    has_function_privilege('anon','app_private.gps_checkin_day_v1(uuid,uuid,date)','EXECUTE') AS day_anon,
+    has_function_privilege('authenticated','app_private.gps_checkin_day_v1(uuid,uuid,date)','EXECUTE') AS day_authenticated,
+    has_function_privilege('service_role','app_private.gps_checkin_day_v1(uuid,uuid,date)','EXECUTE') AS day_service,
+    has_function_privilege('anon','public.gps_checkin_ingest_v1(text,jsonb,text)','EXECUTE') AS ingest_anon,
+    has_function_privilege('authenticated','public.gps_checkin_ingest_v1(text,jsonb,text)','EXECUTE') AS ingest_authenticated,
+    has_function_privilege('service_role','public.gps_checkin_ingest_v1(text,jsonb,text)','EXECUTE') AS ingest_service,
+    has_column_privilege('authenticated','app_private.gps_checkin_pings','capture_diag','SELECT') AS column_authenticated,
+    has_column_privilege('service_role','app_private.gps_checkin_pings','capture_diag','SELECT') AS column_service,
+    (SELECT capture_diag FROM app_private.gps_checkin_pings) AS diag`);
+  const intact = {
+    constraints: 1, columns: 1, day_anon: false, day_authenticated: false, day_service: false,
+    ingest_anon: false, ingest_authenticated: false, ingest_service: true, column_authenticated: false, column_service: false,
+    diag: { v: 1, path: 'direct' },
+  };
+
+  await db.exec(migrationDiag);
+  await db.exec(migrationDiag);
+  // Lane áp migration bỏ cặp BEGIN/COMMIT của file rồi chạy thân hai lượt trong cùng một giao dịch.
+  const body = migrationDiag.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, '');
+  expect(body).not.toMatch(/^(BEGIN|COMMIT);$/m);
+  try {
+    await db.exec(`BEGIN;\n${body}\n${body}`);
+  } finally {
+    await db.exec('ROLLBACK;');
+  }
+  expect(await state()).toEqual(intact);
+  expect((await day(d)).slots[0].status).toBe('ok');
+
+  // Khối tự kiểm phải có răng: làm lệch từng thứ thì nó báo, chạy lại cả bản sửa thì lành.
+  const selfCheck = migrationDiag.match(/^DO \$check\$$[\s\S]*?^END \$check\$;$/m)?.[0];
+  expect(selfCheck).toBeDefined();
+  await db.exec(selfCheck);
+  try {
+    for (const [tamper, failure] of [
+      [`GRANT EXECUTE ON FUNCTION app_private.gps_checkin_day_v1(uuid,uuid,date) TO authenticated`, 'acl_day_failed'],
+      [`GRANT EXECUTE ON FUNCTION public.gps_checkin_ingest_v1(text,jsonb,text) TO PUBLIC`, 'acl_public_failed'],
+      [`GRANT EXECUTE ON FUNCTION public.gps_checkin_ingest_v1(text,jsonb,text) TO authenticated`, 'acl_ingest_failed'],
+      [`GRANT SELECT (capture_diag) ON TABLE app_private.gps_checkin_pings TO service_role`, 'acl_table_failed'],
+      [`ALTER FUNCTION public.gps_checkin_ingest_v1(text,jsonb,text) SECURITY INVOKER`, 'function_failed'],
+      [`ALTER FUNCTION app_private.gps_checkin_day_v1(uuid,uuid,date) VOLATILE`, 'volatility_failed'],
+      [`ALTER TABLE app_private.gps_checkin_pings DROP CONSTRAINT gps_checkin_pings_capture_diag_check`, 'column_failed'],
+    ]) {
+      await db.exec(tamper);
+      await expect(db.exec(selfCheck), tamper).rejects.toThrow(`gps_checkin_capture_diag_${failure}`);
+      await db.exec(migrationDiag);
+      expect(await state(), tamper).toEqual(intact);
+    }
+  } finally {
+    await db.exec(migrationDiag);
+  }
 });
