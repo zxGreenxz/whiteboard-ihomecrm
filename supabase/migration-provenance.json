@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-10T14:02:34.850Z",
+  "generatedAt": "2026-11-10T16:41:39.797Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 934,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -14151,6 +14151,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-10T14:01:26.724Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261110160847_network_center_camera_vendor_hikvision_v1.sql",
+      "version": "20261110160847",
+      "name": "network_center_camera_vendor_hikvision_v1",
+      "scheme": "timestamp14",
+      "sha256": "8e5934396553095dfa8894bde932b2f878a1641bdb080d00f143dad862148751",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.network_center_worker_camera_connections_v1"
       ]
     },
     {

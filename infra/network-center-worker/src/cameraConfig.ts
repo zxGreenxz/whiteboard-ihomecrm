@@ -4,8 +4,17 @@ import { z } from "zod";
 
 const credentialSchema = z.object({
   origin: z.string().url(), username: z.string().min(1).max(128), password: z.string().min(1).max(512),
+  // SHA-256 of the recorder's DER certificate: 64 hex digits, bare or colon-separated, either case.
+  tlsFingerprint256: z.string().regex(/^(?:[0-9a-f]{64}|(?:[0-9a-f]{2}:){31}[0-9a-f]{2})$/iu).optional(),
 }).strict();
 export type CameraCredential = z.infer<typeof credentialSchema>;
+
+/** Lower-case hex without separators, the form the pin is compared in. */
+export function normalizeTlsFingerprint256(value: string): string {
+  const hex = value.replace(/:/gu, "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/u.test(hex)) throw new Error("CAMERA_TLS_PIN_INVALID");
+  return hex;
+}
 
 export function validateCameraOrigin(value: string): string {
   const url = new URL(value);
@@ -44,7 +53,14 @@ export function loadCameraConfig(env: NodeJS.ProcessEnv = process.env) {
   );
   if (!parsed.success) throw new Error("CAMERA_CREDENTIALS_INVALID");
   const credentials = new Map<string, CameraCredential>();
-  for (const [key, value] of Object.entries(parsed.data)) credentials.set(key, { ...value, origin: validateCameraOrigin(value.origin) });
+  for (const [key, value] of Object.entries(parsed.data)) {
+    const origin = validateCameraOrigin(value.origin);
+    const { tlsFingerprint256, ...rest } = value;
+    if (tlsFingerprint256 === undefined) { credentials.set(key, { ...rest, origin }); continue; }
+    // A pin beside a plain-HTTP origin protects nothing; refuse it rather than let it look enforced.
+    if (!origin.startsWith("https://")) throw new Error("CAMERA_TLS_PIN_REQUIRES_HTTPS");
+    credentials.set(key, { ...rest, origin, tlsFingerprint256: normalizeTlsFingerprint256(tlsFingerprint256) });
+  }
   const stateDirectory = setting("CAMERA_STATE_DIRECTORY");
   if (!isAbsolute(stateDirectory)) throw new Error("CAMERA_STATE_DIRECTORY_NOT_ABSOLUTE");
   return { edgeUrl, workerSecret, credentials, stateDirectory };
