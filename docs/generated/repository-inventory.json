@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1784,
   "soFileDocBangFs": 469,
-  "tongLoiGoi": 1233,
+  "tongLoiGoi": 1234,
   "khongPhanLoaiDuoc": 567,
   "theoLoai": {
     "ma-nguon": {
@@ -1504,6 +1504,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/gps-checkin-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -2444,14 +2452,6 @@
       "soGoi": 1,
       "loai": {
         "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gps-checkin-sql.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },
