@@ -138,9 +138,11 @@ chạy thử trên host ở `deploy/camera-live.md`.
 - Hình đầu tiên lệch mốc yêu cầu: đúng giờ hoặc trễ tới 2 giây (V4.70), sớm 1–11
   giây (V3.4, lùi về khung hình chính trước đó); cả hai tự dừng đúng `endtime`. Phiên
   của nhân viên xin đúng mốc đã chọn; dấu giờ trên hình là căn cứ.
-- Lượt chia sẻ cho khách không bao giờ lộ hình trước khung giờ: phiên của khách xin
-  đầu ghi trễ hơn 15 giây so với mốc khách chọn (`playbackStartLead`), nên dù đầu
-  ghi lùi hết cỡ vẫn nằm trong khung; mốc sau khi dời mà chạm cuối khung thì bị từ
+- Lượt chia sẻ cho khách được chặn không lộ hình trước khung giờ theo số đo: phiên
+  của khách xin đầu ghi trễ hơn 15 giây so với mốc khách chọn (`playbackStartLead`).
+  Đo 17 lần mở trên firmware V3.4, đầu ghi bắt đầu sớm 0–11 giây, nên còn dư 4 giây;
+  đây là biên thực nghiệm, không phải bảo đảm tuyệt đối, vì đầu ghi không cho đọc
+  khoảng khung hình chính. Mốc sau khi dời mà chạm cuối khung thì bị từ
   chối (`SHARE_SCOPE_DENIED`). Gateway tự áp dụng, không phụ thuộc trình xem, và báo
   con số đó cho trình xem của khách (`playbackStartLeadSeconds`, chỉ có trong trả lời
   cho phiên khách, không có khi bằng 0): thanh thời gian của khách chạy từ đầu khung

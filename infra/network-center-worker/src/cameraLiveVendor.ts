@@ -107,9 +107,11 @@ export interface HikvisionOptions { seek: HikvisionSeek; playbackSpeeds: readonl
  */
 export const hikvisionDefaults: HikvisionOptions = { seek: "reopen", playbackSpeeds: [1, 2, 4] };
 /**
- * Measured on 11/11/2026: firmware V3.4 began playback 1, 5, 8 and 11 s before the requested `starttime` on
- * different opens (it rewinds to an earlier key frame); V4.70 began on time or up to 2 s late. 15 s is the largest
- * measured rewind plus a margin of 4 s. Both stop by themselves at `endtime`.
+ * Measured on 11/11/2026: over 17 opens at different positions, firmware V3.4 began playback 0 to 11 s before the
+ * requested `starttime` (mostly under 9 s); V4.70 began on time or up to 2 s late. 15 s is the largest measured
+ * rewind plus a margin of 4 s. It is an empirical bound, not a guarantee: the recorder does not expose its key-frame
+ * spacing over ISAPI, so a channel that rewinds further than anything measured would still show before the window.
+ * Both stop by themselves at `endtime`.
  */
 const HIKVISION_START_LEAD_SECONDS = 15;
 
