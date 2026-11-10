@@ -307,7 +307,10 @@ public final class CheckinPolicyTest {
         long now = 10_000_000L;
         assertTrue(CheckinPolicy.keepArmed(now + 60_000L, true, now + 60_000L, now, 0L, 0L));
         assertTrue("just came due", CheckinPolicy.keepArmed(now - 1_000L, true, now + 900_000L, now, 0L, 0L));
+        assertTrue("held back by a sleeping phone", CheckinPolicy.keepArmed(now - 240_000L, true, now + 660_000L, now, 0L, 0L));
         assertFalse("long past due", CheckinPolicy.keepArmed(now - CheckinPolicy.ALARM_IN_FLIGHT_MS, true, now + 900_000L, now, 0L, 0L));
+        assertTrue("a lost alarm must leave time to arm the following slot",
+                CheckinPolicy.ALARM_IN_FLIGHT_MS < 15L * 60L * 1000L);
         assertFalse("settings moved the slot", CheckinPolicy.keepArmed(now + 60_000L, true, now + 120_000L, now, 0L, 0L));
         assertFalse("alarm gone", CheckinPolicy.keepArmed(now + 60_000L, false, now + 60_000L, now, 0L, 0L));
         assertFalse("nothing armed", CheckinPolicy.keepArmed(0L, true, now + 60_000L, now, 0L, 0L));

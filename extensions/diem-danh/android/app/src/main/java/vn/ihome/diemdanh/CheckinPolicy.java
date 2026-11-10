@@ -62,8 +62,12 @@ public final class CheckinPolicy {
     public static final double ACCEPTABLE_ACCURACY_M = 100d;
     /** A correction of the server clock bigger than this moves the alarm. */
     public static final long OFFSET_RESCHEDULE_MS = 30_000L;
-    /** An alarm past due by less than this is treated as still being delivered. */
-    public static final long ALARM_IN_FLIGHT_MS = 120_000L;
+    /**
+     * An alarm past due by less than this may still be on its way: a sleeping phone holds alarms back
+     * for minutes, and replacing a held alarm drops its slot without a record. Shorter than the
+     * smallest slot interval (15 minutes), so a truly lost alarm still gets the following slot armed.
+     */
+    public static final long ALARM_IN_FLIGHT_MS = 9L * 60L * 1000L;
     public static final int MAX_WIRE_BYTES = 16 * 1024;
 
     /** Location sources a capture listens to; the names are the platform's provider names. */
