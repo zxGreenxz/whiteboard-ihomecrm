@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLiveDependencies, createLiveServer, LiveSessions, LiveError, liveConfigSchema, validateOffer, type LiveDependencies } from "../src/cameraLive.js";
+import { createLiveDependencies, createLiveServer, LiveSessions, LiveError, liveConfigSchema, publicStatus, validateOffer, type LiveDependencies } from "../src/cameraLive.js";
 import { mediaConfiguration } from "../src/cameraLiveMain.js";
 
 const config = liveConfigSchema.parse({
@@ -247,6 +247,28 @@ describe("camera live HTTP boundary", () => {
       }
       expect((await fetch(base + "?quality=outside", { method: "POST", headers, body: offer })).status).toBe(404);
       expect((await fetch(base.replace("channels/1/", "channels/99/") + "?quality=hd", { method: "POST", headers, body: offer })).status).toBe(404);
+    } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+  it("gửi lỗi thượng nguồn 502/504 ra ngoài bằng 503 kèm mã lỗi và CORS, để Cloudflare không thay mất phản hồi", async () => {
+    expect([502, 504, 500, 503, 429, 409, 404, 403, 401, 400, 201, 200].map(publicStatus)).toEqual([503, 503, 500, 503, 429, 409, 404, 403, 401, 400, 201, 200]);
+    const { dependencies } = setup(); const { server, sessions } = createLiveServer(config, dependencies);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("address");
+    const base = `http://127.0.0.1:${address.port}/camera-live/v1/recorders/${recorder.id}/channels/1/sessions`;
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation", "Content-Type": "application/sdp" };
+    try {
+      // Đúng ca đo trên production: bộ chuyển mã không lên hình ⇒ CAMERA_UNAVAILABLE với status nội bộ 502.
+      for (const [status, code] of [[502, "CAMERA_UNAVAILABLE"], [502, "CODEC_UNSUPPORTED"], [504, "RECORDING_UNAVAILABLE"]] as const) {
+        vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(status, code));
+        const response = await fetch(base, { method: "POST", headers, body: offer });
+        expect(response.status).toBe(503); expect(await response.json()).toEqual({ code });
+        expect(response.headers.get("access-control-allow-origin")).toBe(config.origins[0]);
+        expect(sessions.size).toBe(0);
+      }
+      // Mã không bị Cloudflare thay thì giữ nguyên.
+      vi.mocked(dependencies.start).mockRejectedValueOnce(new LiveError(429, "CAMERA_LIMIT"));
+      const limited = await fetch(base, { method: "POST", headers, body: offer });
+      expect(limited.status).toBe(429); expect(await limited.json()).toEqual({ code: "CAMERA_LIMIT" });
     } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
   });
   it("requires allowed origin and bearer token and does not expose upstream configuration", async () => {

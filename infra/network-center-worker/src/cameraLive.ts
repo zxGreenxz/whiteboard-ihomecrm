@@ -313,8 +313,16 @@ async function requestBody(request: IncomingMessage) {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
+/**
+ * Mã trạng thái thật sự gửi ra ngoài. Cổng nằm sau Cloudflare, và phản hồi 502/504 của origin không tới được trình
+ * duyệt nguyên vẹn: mất thân JSON `{code}` lẫn header CORS, `fetch` chỉ ném "Failed to fetch". Đo trên production
+ * 10/11/2026: cổng trả 502 CAMERA_UNAVAILABLE, giao diện báo "Mất kết nối tới máy chủ video" và mọi nhánh xử lý theo
+ * mã lỗi (tự thử lại, báo H.265, tự nối lại khi lệnh tua hỏng) không chạy. Lỗi thượng nguồn vì vậy ra ngoài bằng 503;
+ * `LiveError.status` bên trong vẫn giữ nghĩa 502/504.
+ */
+export function publicStatus(status: number): number { return status === 502 || status === 504 ? 503 : status; }
 function reply(response: ServerResponse, status: number, data: unknown) {
-  response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  response.writeHead(publicStatus(status), { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
   response.end(JSON.stringify(data));
 }
 
