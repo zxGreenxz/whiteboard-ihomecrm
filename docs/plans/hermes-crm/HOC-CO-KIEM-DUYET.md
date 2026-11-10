@@ -1,8 +1,9 @@
 # Học có kiểm duyệt cho Hermes (đợt 2 kế hoạch trị tận gốc — chủ duyệt 31/10/2026)
 
 **Trạng thái:** (1) job kiểm học tập, (2) kho đề xuất + trang duyệt, (4) timer: đã viết trong cùng PR (đã sửa theo review chéo
-REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; vai `hermes_store_learning` còn NOLOGIN, chưa bật login, chưa cài trên VPS** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã viết, CHƯA phát hành** (mục 4) — migration
-`20261105025453` chưa áp, trang connector `learning` chỉ nạp khi host bật, migration bật ở PR riêng, job cron do điều phối viên tạo (4.6).
+REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; vai `hermes_store_learning` còn NOLOGIN, chưa bật login, chưa cài trên VPS** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã phát hành production 10/11/2026** (mục 4) — migration
+`20261105025453` áp 05/11, migration bật `20261105030528` áp 10/11 qua lane, connector production khai `actionPages: ["contract", "learning"]`,
+job cron `ihome-learning-digest-2100` tạo 10/11 (4.6).
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -54,7 +55,7 @@ phiên). Bài học sai vẫn được phát hiện trong ≤ 24 giờ, đi duy�
 | `public.hermes_learning_review_v1(p)` | người giữ `users.edit` (qua `require_perm_v1`, thành viên đang hoạt động, chưa nghỉ việc): đang chờ 20/trang theo số (`pendingAfterSeq` → `nextPendingAfterSeq`), lịch sử 20 dòng/trang (đủ nội dung và nguồn, để xem lại và lấy mã gỡ), con trỏ `(decidedAt µs, id)`, `audits` ≤ 20. Trang luôn dưới 1 MiB (đo bằng 20 đề xuất dài tối đa) |
 | `public.hermes_learning_decide_v1(p)` | ≤ 20 đề xuất/lần, `approve`/`reject`, ghi chú tuỳ chọn ≤ 500; cùng `requestId` của cùng người ⇒ trả lại kết quả cũ (`replayed`), khác nội dung ⇒ PT409; đã quyết định ⇒ PT409; ngoài công ty ⇒ 22023 |
 | `app_private.hermes_learning_apply_v1(…, p_via)` | lõi dùng chung trang web (`crm_ui`) và thao tác connector (`hermes_connector`, mục 4) |
-| Đợt 3 (`20261105025453`, **chưa áp**) | cột `announced_at` (mốc "đã báo" của tin 21:00, đặt một lần khi còn chờ — guard bất biến dựng lại cho đúng bước này); `public.hermes_learning_action_v1` (vỏ INVOKER) → `app_private.hermes_learning_action_step_v1` (DEFINER) cho `learning.digest` / `learning.decide`; khoá `assistant.learning_review` seed TẮT (mục 4) |
+| Đợt 3 (`20261105025453`, **đã áp production 05/11/2026**) | cột `announced_at` (mốc "đã báo" của tin 21:00, đặt một lần khi còn chờ — guard bất biến dựng lại cho đúng bước này); `public.hermes_learning_action_v1` (vỏ INVOKER) → `app_private.hermes_learning_action_step_v1` (DEFINER) cho `learning.digest` / `learning.decide`; khoá `assistant.learning_review` seed TẮT (mục 4) |
 | `app_private.hermes_store_learning_ingest_v1(p)` | **chỉ** vai NOLOGIN riêng `hermes_learning_ingest` (không còn cấp cho `hermes_store_executor`); 0..25 đề xuất/lô + `auditGeneratedAt`; kiểm thành viên + trợ lý ACTIVE; trùng khoá bỏ qua, trả riêng `rejectedDuplicates` (trùng đề xuất đã bỏ) |
 
 Xác thực của job nạp: login riêng `hermes_store_learning` (migration `20261101064441` tạo NOLOGIN, `scripts/hermes-learning-login.mjs` bật bằng verifier) chỉ thuộc `hermes_learning_ingest`;
@@ -67,14 +68,15 @@ khách (SĐT, CCCD/CMND, email, STK) giữ nguyên văn theo quyết định c�
 chạy]. Báo cáo đủ (cả câu "bó tay") chỉ ở `private/` 0700; job nạp đọc `outbox/` chỉ có đề xuất; "tự áp dụng" chỉ còn đếm (băm),
 không chép nội dung bộ nhớ.
 
-## 4. Tin Zalo 21:00 + duyệt qua Zalo (đợt 3 — đã viết, CHƯA phát hành)
+## 4. Tin Zalo 21:00 + duyệt qua Zalo (đợt 3 — đã phát hành production 10/11/2026)
 
-**Trạng thái (04/11/2026):** PR đợt 3 (nhánh `claude/hermes-learning-zalo-2100`): migration `20261105025453_hermes_learning_action_v1`
-(**CHƯA áp** TEST/production), trang connector `learning` (chỉ nạp khi host bật `actionPages: ["learning"]`), nhãn khoá web, skill chuẩn
-`ihome-crm-bai-hoc`. Migration **bật** `20261105030528_hermes_learning_actions_activation_v1` (**chưa áp**; + file lùi
+**Trạng thái (10/11/2026):** PR đợt 3 (nhánh `claude/hermes-learning-zalo-2100`): migration `20261105025453_hermes_learning_action_v1`
+(**đã áp**; production 05/11), trang connector `learning` (chỉ nạp khi host bật `actionPages: ["learning"]`), nhãn khoá web, skill chuẩn
+`ihome-crm-bai-hoc`. Migration **bật** `20261105030528_hermes_learning_actions_activation_v1` (**đã áp production 10/11 qua lane**; + file lùi
 `docs/plans/hermes-crm/revert/hermes_learning_actions_activation_revert_v1.sql`, khuôn `action-activation-sql.test.mjs`) ở PR thứ hai, nhánh
-`claude/hermes-learning-zalo-2100-bat` dựng trên nhánh đợt 3. Job cron 21:00: điều phối viên tạo theo 4.6 sau khi kiểm cú pháp Hermes trên
-VPS — PR không tạo job.
+`claude/hermes-learning-zalo-2100-bat` dựng trên nhánh đợt 3. Job cron 21:00: điều phối viên đã tạo 10/11 theo 4.6 (job
+`ihome-learning-digest-2100`, lịch `0 21 * * *` theo múi giờ hồ sơ) — PR không tạo job. Canary chỉ đọc sau áp: `crm_action_list` của owner
+liệt kê `learning.digest` và `learning.decide` trong `items`.
 
 ### 4.1 Đường gửi: cron "live" của Hermes trên hồ sơ owner
 
@@ -176,8 +178,12 @@ phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + 
      --prompt "$(cat /root/ihome-hermes-cron/learning-digest-prompt.txt)"
    ```
 
-   Không có cờ múi giờ ⇒ lịch theo giờ của container (thường UTC): 21:00 VN = `0 14 * * *`. `deliver` phải là đúng uid đã ghép của chủ
-   (`HERMES_ZALO_PAIRED_UID` của hồ sơ owner) — adapter từ chối đích khác.
+   Bản Hermes chạy ngày 10/11/2026 KHÔNG có cờ múi giờ, lịch và prompt là tham số vị trí:
+   `cron create --name ihome-learning-digest-2100 --deliver "zalo_personal:<uid>" "0 21 * * *" "$(cat …prompt.txt)"`.
+   Lịch tính theo múi giờ của `hermes_time` (biến `HERMES_TIMEZONE` → `timezone` trong `config.yaml` của hồ sơ → giờ máy), KHÔNG theo
+   đồng hồ container: hồ sơ owner khai `timezone: Asia/Ho_Chi_Minh` ⇒ `0 21 * * *`. Tạo xong đọc dòng `Next run` — phải ra
+   `…T21:00:00+07:00`; viết `0 14 * * *` vì thấy container chạy UTC thì job chạy 14:00 VN (đã gặp 10/11, sửa bằng `cron edit --schedule`).
+   `deliver` phải là đúng uid đã ghép của chủ (`HERMES_ZALO_PAIRED_UID` của hồ sơ owner) — adapter từ chối đích khác.
 
 3. Prompt (lưu nguyên văn vào file trên host, không sửa chữ):
 
