@@ -13,8 +13,10 @@ import { createStoreTransport } from '../hermes-broker/store-transport.mjs';
 import { provisionNativeBinding } from '../hermes-zalo-native/binding-provisioning.mjs';
 import { readNativeConfig } from '../../worker/lib/hermes-native-config.js';
 import { mkdirSync } from 'node:fs';
-import { fixture,id,ORG,USER,ASSISTANT,SESSION,CONNECTION,BINDING,ACCOUNT,INSTANCE,GENERATION } from './private-command-fixture.mjs';
+import { fixture,id,ORG,USER,ASSISTANT,SESSION,CONNECTION,BINDING,ACCOUNT,INSTANCE,GENERATION,CONVERSATION } from './private-command-fixture.mjs';
 const sql=readFileSync(new URL('../../supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql',import.meta.url),'utf8');
+// 20261110072604 replaces the body of public.hermes_zalo_binding_v1 only; every subtest below runs on that live body.
+const reselect=readFileSync(new URL('../../supabase/migrations/20261110072604_hermes_zalo_confirm_reselect_unbound_v1.sql',import.meta.url),'utf8');
 function trackPoolDrain(pool) {
   // pg-pool resolves end() after removing clients from its list, before their
   // sockets necessarily close. Stopping the cluster then can emit a late 57P01.
@@ -100,6 +102,7 @@ test('TG4 stable binding uses real PostgreSQL role fences and serializes setting
     const start=optional.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_effective_org_policy_v1');
     await db.exec(optional.slice(start,optional.indexOf('END $fn$;',start)+'END $fn$;'.length));
     await db.exec(sql);await db.exec(sql);
+    await db.exec(reselect);await db.exec(reselect);
     const next=id('e');
     await db.query("INSERT INTO app_private.hermes_connections(id,assistant_id,organization_id,user_id,state,credential_ref,intent_digest,intent_expires_at,activation_operation_id) VALUES($1,$2,$3,$4,'ACTIVE',$5,repeat('d',64),clock_timestamp()+interval '1 hour',$1)",[next,ASSISTANT,ORG,USER,SESSION]);
     await db.query("INSERT INTO app_private.hermes_connection_tokens(token_digest,connection_id,expires_at) VALUES(repeat('e',64),$1,clock_timestamp()+interval '10 minutes')",[next]);
@@ -307,6 +310,69 @@ test('TG4 stable binding uses real PostgreSQL role fences and serializes setting
         await b.query('ROLLBACK; BEGIN; SET LOCAL ROLE authenticated');
         await assert.rejects(b.query('SELECT app_private.hermes_zalo_provisioning_v1($1::jsonb)',[JSON.stringify({bindingId:BINDING})]),e=>e.code==='42501');
         await b.query('ROLLBACK');
+      });
+      await t.test('confirm re-selection waits for a concurrent unlink on the organization lock and decides on the committed binding state',async()=>{
+        // 20261110072604 reads "the assistant has no ACTIVE binding" after lock_org_for_decision_v1 and the audit-chain advisory lock;
+        // unlink, the writer of that fact, holds both until its transaction ends.
+        const third=id('0');
+        await client.query("INSERT INTO app_private.hermes_connections(id,assistant_id,organization_id,user_id,state,credential_ref,intent_digest,intent_expires_at,activation_operation_id) VALUES($1,$2,$3,$4,'ACTIVE',$5,repeat('0',64),clock_timestamp()+interval '1 hour',$1)",[third,ASSISTANT,ORG,USER,SESSION]);
+        await client.query("INSERT INTO app_private.hermes_connection_tokens(token_digest,connection_id,expires_at) VALUES(repeat('0',64),$1,clock_timestamp()+interval '10 minutes')",[third]);
+        const selected=async()=>({...(await client.query('SELECT connection_id,revision::int AS revision FROM app_private.hermes_zalo_active_credentials WHERE assistant_id=$1',[ASSISTANT])).rows[0]});
+        const bindingRow=async binding=>({...(await client.query('SELECT state,connection_id,epoch::int AS epoch FROM app_private.hermes_zalo_bindings WHERE id=$1',[binding])).rows[0]});
+        const before=await selected(),live=await bindingRow(BINDING);
+        assert.equal(before.connection_id,next);assert.equal(live.state,'ACTIVE');assert.equal(live.connection_id,next);
+        // confirm re-checks the worker lease heartbeat (30 s); earlier subtests may have used that time.
+        const heartbeat=()=>client.query('UPDATE public.zalo_worker_lease SET heartbeat_at=clock_timestamp()');
+        await heartbeat();
+        const code=await invoke(a,{operation:'begin',organizationId:ORG,connectionId:third,expectedConnectionEpoch:1,accountId:ACCOUNT});
+        await client.query("INSERT INTO public.zalo_messages(id,account_id,organization_id,conversation_id,direction,msg_type,body,zalo_msg_id,zalo_raw,created_at) VALUES($1,$2,$3,$4,'in','text','[Hermes link - hidden]','observed-reselect',$5::jsonb,clock_timestamp())",
+          [id('0'),ACCOUNT,ORG,CONVERSATION,JSON.stringify({uidFrom:'456',idTo:'123',msgType:'webchat'})]);
+        const digest=(await client.query('SELECT challenge_digest FROM app_private.hermes_zalo_link_challenges WHERE id=$1',[code.challengeId])).rows[0].challenge_digest;
+        await f.rpc('public.hermes_zalo_ingress_v1',{operation:'observe',accountId:ACCOUNT,organizationId:ORG,instanceId:INSTANCE,generation:GENERATION,
+          senderUid:'456',providerMessageId:'observed-reselect',challengeDigest:digest},'service_role');
+        const confirmation={operation:'confirm',organizationId:ORG,challengeId:code.challengeId,expectedCandidateVersion:1,expectedSenderUid:'456'};
+        const refused=error=>error.code==='PT409'&&/hermes_zalo_context_changed/.test(error.message);
+        // No concurrent writer: the assistant has an ACTIVE binding on another connection, so the selection stays.
+        await assert.rejects(invoke(b,confirmation),refused);
+        assert.deepEqual(await selected(),before);
+        const holdUnlink=async()=>{
+          await heartbeat();
+          await a.query('BEGIN');
+          await a.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[USER]);
+          await a.query('SET LOCAL ROLE authenticated');
+          const held=await a.query('SELECT public.hermes_zalo_binding_v1($1::jsonb) value',[JSON.stringify({operation:'unlink',organizationId:ORG,bindingId:BINDING,expectedEpoch:live.epoch})]);
+          assert.equal(held.rows[0].value.status,'revoked');
+        };
+        const waitsBeforeDeciding=async()=>{
+          let waiting=false;
+          for(let attempt=0;attempt<200&&!waiting;attempt++){
+            waiting=(await client.query("SELECT wait_event_type='Lock' waiting FROM pg_stat_activity WHERE pid=$1",[b.processID])).rows[0]?.waiting;
+            if(!waiting)await new Promise(resolve=>setTimeout(resolve,5));
+          }
+          assert.equal(waiting,true,'confirm must wait for the uncommitted unlink');
+          assert.equal((await client.query("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND granted) held",[b.processID])).rows[0].held,false,
+            'confirm waits on the organization row before the audit-chain advisory lock');
+          assert.deepEqual(await selected(),before);
+        };
+        // The unlink rolls back: the binding stayed ACTIVE, so the waiting confirm is still refused.
+        await holdUnlink();
+        let pending=invoke(b,confirmation);void pending.catch(()=>{});
+        try{await waitsBeforeDeciding();await a.query('ROLLBACK');await assert.rejects(pending,refused);}
+        finally{await a.query('ROLLBACK');await pending.catch(()=>{});}
+        assert.deepEqual(await selected(),before);assert.deepEqual(await bindingRow(BINDING),live);
+        // The unlink commits: the same waiting confirm now finds no ACTIVE binding and re-selects its own connection.
+        await holdUnlink();
+        pending=invoke(b,confirmation);void pending.catch(()=>{});
+        let linked;
+        try{await waitsBeforeDeciding();await a.query('COMMIT');linked=await pending;}
+        finally{await a.query('ROLLBACK');await pending.catch(()=>{});}
+        assert.equal(linked.status,'active');assert.equal(linked.connectionId,third);
+        assert.deepEqual(await selected(),{connection_id:third,revision:before.revision+1});
+        assert.deepEqual(await bindingRow(BINDING),{state:'REVOKED',connection_id:next,epoch:live.epoch+1});
+        assert.deepEqual(await bindingRow(linked.bindingId),{state:'ACTIVE',connection_id:third,epoch:1});
+        // The real hash-chain audit helper records which connection the confirmation replaced.
+        const audited=await client.query("SELECT reason FROM public.authorization_audit_events WHERE event_type='HERMES_ZALO_BINDING_CHANGED' AND resource_id=$1",[linked.bindingId]);
+        assert.deepEqual(audited.rows.map(row=>row.reason),[`Explicit CRM user action: confirm (credential reselected from ${next})`]);
       });
     } finally {await a.query('ROLLBACK');await b.query('ROLLBACK');a.release();b.release();}
   } finally {client.release();await drain();cleanup();}

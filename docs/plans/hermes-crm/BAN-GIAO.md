@@ -118,15 +118,16 @@ Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đ
 - Đã xong sáng 19/10: liên kết Zalo với kết nối mới. Bot Ihome ghi nhận đúng nick chính và web báo "Đã liên kết nick Zalo của bạn với kết nối Hermes".
 - Còn lại của chủ: thử vài câu qua Zalo trên kết nối mới, rồi thu hồi kết nối cũ `…624ef30e` (**chưa thu hồi**).
 
-**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 5 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web. Bài học 19/10:
+**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 15 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web. Bài học 19/10:
 - Phải **ngắt liên kết cũ trước** (một nick chính + một bot chỉ có một liên kết đang hoạt động).
-- Mã `/hermes-link` hạn 5 phút: gửi ngay sau khi tạo.
+- Mã `/hermes-link` có hạn 15 phút (ràng buộc `expires_at` trong `20261019034850`): gửi ngay sau khi tạo.
 - Kiểm bot đã nhận mã qua log worker (container `ihome-zalo-worker`): dòng `hermes link <status>`.
+- Từ 10/11/2026 (`20261110072604`, PR #405, đã áp TEST và production): khi trợ lý **không có liên kết Zalo nào đang hoạt động**, bước xác nhận tự chuyển lựa chọn của trợ lý sang kết nối của mã vừa tạo và ghi kết nối cũ vào nhật ký quyền. Trước đó, lựa chọn còn trỏ kết nối đã thu hồi thì xác nhận luôn báo `hermes_zalo_context_changed`, trong khi nút "Dùng kết nối này cho trợ lý" chỉ hiện khi đã có liên kết, nên không có lối ra. Khi trợ lý đang có liên kết hoạt động thì vẫn như cũ: đổi kết nối chỉ qua nút đó. Ràng buộc "một nick chính + một bot chỉ một liên kết đang hoạt động" không đổi: tài khoản CRM khác muốn dùng cùng nick trên cùng bot phải ngắt liên kết kia trước. Lùi: đưa `revert/hermes_zalo_confirm_reselect_unbound_revert_v1.sql` thành một migration forward mới.
 
 **Lỗi đã biết trên `/settings/hermes`, CHƯA sửa (19/10):**
 - Trang báo nhầm "Chưa đọc được danh sách quyền…" trong lúc đang tải; chờ tải xong rồi xem lại.
 - Mỗi lời gọi `/api/hermes/connections/*` mất 7–9 s.
-- Quy trình liên kết Zalo khó dùng (mã 5 phút, theo tài khoản, phải bấm kiểm tra trên web).
+- Quy trình liên kết Zalo khó dùng (mã có hạn 15 phút, theo tài khoản, phải bấm kiểm tra trên web). Riêng vòng kẹt khi lựa chọn của trợ lý trỏ kết nối đã thu hồi đã sửa 10/11/2026 (xem mục Liên kết Zalo).
 
 **Bot của công ty:** chỉ người có quyền quản trị phù hợp bật/tắt; tắt bot thu hồi mọi liên kết qua bot đó.
 

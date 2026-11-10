@@ -1,4 +1,4 @@
-// Frozen contracts for seventy-one forward migrations (eight of 20261019, the B2
+// Frozen contracts for seventy-two forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -98,6 +98,9 @@
 // the 041523 body (one extra step: announced_at set once while pending, kept by the decision), a new DEFINER step (shared guard → the web
 // page's users.edit gate → company lock → replay by requestId → basis → write through the shared decision core → receipt) and its
 // SQL-standard INVOKER wrapper.
+// Zalo liên kết lại (10/11): the Zalo binding RPC rebuilt from the 20261019034850 body — confirm re-selects the assistant credential to the
+// challenge's connection while the assistant has no ACTIVE binding (with an ACTIVE binding a differing selection is still PT409 and only
+// selectCredential changes it); the audit reason names the replaced connection; result shape unchanged — 20261110072604.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -149,7 +152,7 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_store_revoke_connection_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"dc89fa2ad79c0d991349805d867702a83297b0b90e0b91bddfca5d7d58f125be","args":"p jsonb"},
   {"name":"app_private.hermes_zalo_project_credential_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"941696a2bab3763f642691bd6bac2dcd88a955917c69f7773fefdc18f5a24a48","args":""},
   {"name":"app_private.hermes_zalo_context_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"924d3c9934aa22faf1c2dbde9a69bf9431747a10a6aa59de693a7dc901a2695f","args":"p_connection uuid,p_user uuid,p_org uuid,p_epoch bigint"},
-  {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"892bfb86084d8285c497a56a0be88810ec5ebf6dd7a8cc203c184137d6b55106","args":"p jsonb"},
+  {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261110072604_hermes_zalo_confirm_reselect_unbound_v1.sql","sha256":"7480f734b753d1bde17bc66af661b8839c08076ad060ddb698a57b1e564bdab9","args":"p jsonb"},
   {"name":"app_private.hermes_private_command_connection_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"6f0527629ff198d87f636473a5e81a58626fc9da0fd3a546a5c4b0a089b503ae","args":"p_digest text"},
   {"name":"public.hermes_zalo_private_reply_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"4e7a5da70f1bf4a669b31f7833e19ee09828adf5322d89f9971da5855e02c770","args":"p jsonb"},
   {"name":"app_private.hermes_zalo_enqueue_provisioning_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"306588ac70cbfaaaba29feeaf7c0f4b9eddb7cba04fc7dac48eee5f15d3c82de","args":""},
@@ -363,7 +366,8 @@ export const FORWARD_SUPERSEDED = [
   {"name":"public.hermes_expense_system_flow_v1","sourcePath":"supabase/migrations/20261024094809_hermes_expense_system_flow_block_v1.sql","sha256":"d658c547184ade36c7e23099eaacd1226a559c674ce30aa496577fa59e97200a"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"29d989d8b140a9e791a5e3bb57906e8b722fb22c73b3a30d48dabf17cc87b446"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql","sha256":"a648f8c81b793b5feea4ce9677189cf8cbc685abb41fc6fecf617bdf8e311ac5"},
-  {"name":"app_private.hermes_learning_guard_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"8d2f4cdfb3e403973455c8df49d0bce08d9d1163eef418975b1ce5242d835faf"}
+  {"name":"app_private.hermes_learning_guard_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"8d2f4cdfb3e403973455c8df49d0bce08d9d1163eef418975b1ce5242d835faf"},
+  {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"892bfb86084d8285c497a56a0be88810ec5ebf6dd7a8cc203c184137d6b55106"}
 ];
 
 export const INHERITED_CRM_ACL = [
