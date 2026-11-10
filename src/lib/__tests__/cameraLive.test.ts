@@ -61,6 +61,13 @@ describe("live camera browser lifecycle", () => {
     expect(request).toHaveBeenCalledTimes(2); expect(Peer.instances).toHaveLength(1); expect(Peer.instances[0]!.setRemoteDescription).toHaveBeenCalledOnce();
     expect(callbacks.onState.mock.calls.some(([state]) => state === "error")).toBe(false); await connection.stop();
   });
+  it("đầu ghi gửi hình không giải mã được (mã hoá luồng): báo đúng mã lỗi và câu hướng dẫn, không thử lại", async () => {
+    request.mockImplementation(async () => Response.json({ code: "LIVE_STREAM_UNDECODABLE" }, { status: 503 }));
+    const callbacks = { ...options(), onErrorCode: vi.fn() }; await new CameraLiveConnection(callbacks).start();
+    expect(request).toHaveBeenCalledOnce(); expect(callbacks.onErrorCode).toHaveBeenCalledWith("LIVE_STREAM_UNDECODABLE");
+    expect(callbacks.onState).toHaveBeenLastCalledWith("error", expect.stringContaining("mã hoá luồng"));
+    expect(Peer.instances[0]!.setRemoteDescription).not.toHaveBeenCalled();
+  });
   it("bounds retries, cancels retry on stop, and never retries permission or uncertain network failures", async () => {
     const playback = { start: "2026-10-20T01:00:00Z", end: "2026-10-20T02:00:00Z", speed: 8 };
     request.mockImplementation(async () => Response.json({ code: "CAMERA_UNAVAILABLE" }, { status: 502 }));

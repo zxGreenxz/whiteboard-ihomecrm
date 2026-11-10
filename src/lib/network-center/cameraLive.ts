@@ -6,7 +6,9 @@ const endpoint = cameraVideoEndpoint;
 const sessionSchema = z.object({ id: z.string().guid(), answer: z.string().min(1).max(65_536), expiresAt: z.number() });
 export type CameraPlaybackQuality = "sd" | "hd" | "fullhd" | "original";
 export type CameraLiveQuality = CameraPlaybackQuality;
-const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]) });
+const capabilitiesSchema = z.object({ channels: z.array(z.number().int().positive()), maxView: z.number().int().positive(), leaseSeconds: z.number().positive(), archive: z.boolean().optional().default(false), playback: z.boolean().optional().default(false), playbackControl: z.boolean().optional().default(false), playbackPreview: z.boolean().optional().default(false), playbackSpeeds: z.array(z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(6), z.literal(8)])).optional().default([1]), playbackQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default([]), liveQualities: z.array(z.enum(["sd", "hd", "fullhd", "original"])).optional().default(["sd"]),
+  // Chỉ có trong phiên khách của đầu ghi có thể phát sớm hơn mốc được xin: cổng xin đầu ghi trễ hơn chừng này giây.
+  playbackStartLeadSeconds: z.number().int().min(0).max(300).optional() });
 const messages: Record<string, string> = {
   LOGIN_REQUIRED: "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.",
   SESSION_EXPIRED: "Phiên xem đã hết hạn. Bấm xem lại để kết nối.",
@@ -19,6 +21,7 @@ const messages: Record<string, string> = {
   CAMERA_QUALITY_LIMIT: "Đang có luồng chất lượng cao khác. Hãy chọn SD, độ phân giải gốc hoặc dừng bớt luồng HD/Full HD.",
   CODEC_UNSUPPORTED: "Trình duyệt chưa hỗ trợ định dạng của camera. Hãy thử Chrome hoặc Edge mới trên máy có hỗ trợ H.265.",
   CAMERA_UNAVAILABLE: "Chưa nhận được video từ đầu ghi. Vui lòng thử lại.",
+  LIVE_STREAM_UNDECODABLE: "Đầu ghi có gửi hình nhưng không giải mã được, thường do đầu ghi đang bật mã hoá luồng (Hik-Connect). Cần tắt mã hoá luồng trên đầu ghi để xem trực tiếp.",
   ARCHIVE_NOT_CONFIGURED: "Đầu ghi chưa được bật dịch vụ xem lại và xuất video. Cần cấu hình dịch vụ camera trên máy chủ.",
   INVALID_ARCHIVE_RANGE: "Khoảng thời gian chưa hợp lệ. Xem mỗi đoạn tối đa 10 phút; xuất mỗi file tối đa 30 phút và không chọn giờ tương lai.",
   ARCHIVE_BUSY: "Đang có tác vụ xử lý video. Hãy chờ hoàn tất hoặc hủy tác vụ đang chạy rồi thử lại.",

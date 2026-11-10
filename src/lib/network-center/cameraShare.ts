@@ -217,6 +217,17 @@ export function cameraSharePlayableSpan(share: Pick<CameraShare, "window_start" 
   const end = Math.floor(Date.parse(share.window_end) / 1000) * 1000;
   return { from, to: Math.min(end, Math.floor((now - CAMERA_SHARE_CLOCK_MARGIN_MS) / 1000) * 1000) };
 }
+/**
+ * Khoảng hiện trên thanh thời gian của khách khi đầu ghi có thể phát SỚM hơn mốc được xin (`leadMs` > 0, cổng video báo
+ * qua `playbackStartLeadSeconds`). Để hình không bao giờ lùi ra trước khung giờ, cổng luôn xin đầu ghi trễ hơn mốc khách
+ * gửi đúng `leadMs`; vì vậy mốc sớm nhất khách xem được là đầu khung + lead, và mốc gửi cổng là mốc trên thanh − lead
+ * (xem `cameraShareRequestTime`). `leadMs` = 0 ⇒ trả nguyên khoảng cũ.
+ */
+export function cameraShareViewSpan(span: CameraShareSpan, leadMs: number): CameraShareSpan {
+  return leadMs > 0 ? { from: Math.min(span.from + leadMs, span.to), to: span.to } : span;
+}
+/** Mốc gửi cổng video để đầu ghi được xin đúng mốc `time` trên thanh thời gian (cổng tự cộng lại `leadMs`). */
+export const cameraShareRequestTime = (time: number, leadMs: number) => time - Math.max(0, leadMs);
 
 export interface CameraShareMessageInput {
   link: string; code: string; password: string; cameraLabel: string; buildingName?: string | null;

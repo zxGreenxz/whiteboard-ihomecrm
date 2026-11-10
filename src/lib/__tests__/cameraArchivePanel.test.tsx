@@ -255,4 +255,32 @@ describe("separate playback and export", () => {
     fireEvent.change(screen.getByLabelText("Kết thúc đoạn cắt"), { target: { value: "2026-10-20T09:00:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" })); expect(screen.getByText(/Chọn khoảng tối đa 30 phút/)).toBeTruthy(); expect(mocks.prepare).not.toHaveBeenCalled();
   });
+  it("đầu ghi Hikvision (xem lại được, không trích xuất, không tua trên luồng đang chạy): tua và đổi tốc độ đều mở luồng mới tại mốc đó, phần xuất MP4 bị khoá", async () => {
+    mocks.capabilities.mockResolvedValue({ channels: [1, 9], archive: false, playback: true, playbackControl: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"] });
+    render(<CameraArchivePanel recorder={recorder} buildingName="Tòa mẫu" />); await ready(); setWindow(); setClip();
+    expect(screen.getByText("Đầu ghi chưa được bật dịch vụ trích xuất video.")).toBeTruthy(); expect(screen.queryByText("Đầu ghi chưa được bật dịch vụ phát lại trực tiếp.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Tạo đoạn MP4" }).hasAttribute("disabled")).toBe(true); expect((screen.getByLabelText("Camera trích xuất") as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo đoạn MP4" }));
+    fireEvent.change(screen.getByLabelText("Camera cần tìm"), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xem khoảng thời gian" })); await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce());
+    expect(mocks.connections[0]).toMatchObject({ channel: 9, playback: { start: "2026-10-20T01:00:00.000Z", end: "2026-10-20T02:00:00.000Z", quality: "sd" } });
+    expect(mocks.connections[0]?.playback).not.toHaveProperty("speed");
+    expect([...(screen.getByLabelText("Tốc độ xem lại") as HTMLSelectElement).options].map((option) => option.value)).toEqual(["1", "2", "4"]);
+    // Đổi tốc độ: luồng mới mở thẳng ở tốc độ đó (không có lệnh tua để xin sau), bắt đầu tại mốc đang xem.
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "4" } });
+    expect(mocks.connections).toHaveLength(2); expect(mocks.connections[1]?.playback).toMatchObject({ start: "2026-10-20T01:00:00.000Z", quality: "sd", speed: 4 });
+    // Tua: lại một luồng mới bắt đầu tại mốc tua, giữ tốc độ; không bao giờ gửi `position`.
+    fireEvent.click(screen.getByRole("button", { name: "Tới 10 giây" }));
+    expect(mocks.connections).toHaveLength(3); expect(mocks.connections[2]?.playback).toMatchObject({ start: "2026-10-20T01:00:10.000Z", end: "2026-10-20T02:00:00.000Z", speed: 4 });
+    for (const connection of mocks.connections) expect(connection.playback).not.toHaveProperty("position");
+    // Luồng mới hỏng: báo lỗi và chờ người dùng, không tự mở thêm luồng nào.
+    act(() => mocks.connections[2]!.onState("error", "Chưa nhận được video từ đầu ghi. Vui lòng thử lại."));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(screen.getByText("Chưa nhận được video từ đầu ghi. Vui lòng thử lại.")).toBeTruthy(); expect(mocks.connections).toHaveLength(3);
+    // Người dùng hạ về 1× rồi xem tiếp được ngay tại mốc đó.
+    fireEvent.change(screen.getByLabelText("Tốc độ xem lại"), { target: { value: "1" } });
+    expect(mocks.connections).toHaveLength(4); expect(mocks.connections[3]?.playback).toMatchObject({ start: "2026-10-20T01:00:10.000Z", quality: "sd" });
+    expect(mocks.connections[3]?.playback).not.toHaveProperty("speed");
+    expect(mocks.seek).not.toHaveBeenCalled(); expect(mocks.prepare).not.toHaveBeenCalled(); expect(mocks.find).not.toHaveBeenCalled();
+  });
 });
