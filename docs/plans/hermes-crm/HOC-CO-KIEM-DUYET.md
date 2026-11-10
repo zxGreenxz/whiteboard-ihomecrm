@@ -4,7 +4,9 @@
 REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã áp TEST và production 01/11 qua lane; trên production vai `hermes_store_learning` đã bật login, hai timer trên VPS (kiểm 20:40, nạp 20:55 giờ VN) đang chạy — đọc lại 10/11/2026, lượt 09/11 đều `success`; trên TEST vai này còn NOLOGIN** (runbook C→G trong PR #371). (3) tin Zalo 21:00 + duyệt qua Zalo: **đã phát hành production 10/11/2026** (mục 4) — migration
 `20261105025453` áp 05/11, migration bật `20261105030528` áp 10/11 qua lane, connector production khai `actionPages: ["contract", "learning"]`,
 job cron `ihome-learning-digest-2100` tạo 10/11 (4.6). Lượt 21:00 đầu (10/11) bị cron chặn trước khi chạy (`blocked_config`): không
-tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1.
+tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1. Bản sửa đã cài lên
+hồ sơ owner trên VPS lúc 00:37 ngày 11/11 (giờ VN). Lượt 21:00 ngày 11/11 là lượt đầu chứng minh được tin tới Zalo; khi viết
+dòng này lượt đó chưa tới.
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -226,15 +228,38 @@ job bị chặn TRƯỚC khi agent chạy: `learning.digest` không được g�
 21:15: 3 chờ duyệt + 1 đã duyệt, `announced_at` trống hết, 0 biên nhận `learning.*` trong ngày).
 
 Bản sửa: `infra/hermes-zalo-native/adapter.py` khai `cron_deliver_env_var="ZALO_PERSONAL_HOME_CHANNEL"`. Đây là tên gateway tự suy
-ra cho nền tảng này, và `.env` của hồ sơ owner đã đặt nó bằng UID đã ghép từ 15/10 (để gateway không nhắc "chưa có home channel"
+ra cho nền tảng này, và `.env` của hồ sơ owner đã đặt nó bằng UID đã ghép từ 15/10 (bàn giao 15/10 trong [STATUS.md](STATUS.md); để gateway không nhắc "chưa có home channel"
 ở lượt đầu mỗi phiên), nên không phải đổi `.env`. Bản nháp đầu của PR khai một tên khác và để trống; đo chỉ đọc trên Hermes
-production (v0.22.2, đổi khai báo trong bộ nhớ của một tiến trình riêng) cho thấy tên khác làm tin nhắc đó quay lại, nên đã bỏ.
+production (v0.22.2, đổi khai báo trong bộ nhớ của một tiến trình riêng) cho thấy với tên khác gateway hỏi theo tên mới và
+thấy biến đó trống. Theo mã gateway, đó là điều kiện để tin nhắc quay lại; phần này suy từ mã, chưa ai thấy tin nhắc thật. Vì
+vậy bản sửa dùng đúng tên gateway suy ra.
 
 Hệ quả phải biết: home channel của cron nay là DM đã ghép. Ngoài đích ghi rõ ở bước 2, job của hồ sơ owner còn tới DM của chủ qua
 `deliver=zalo_personal` trần, `deliver=origin` khi job không có nguồn và `deliver=all`. Lúc sửa, hồ sơ chỉ có một job (bước 2, đích
 ghi rõ), nên không job nào đổi đích. Chi tiết và lưu ý `/sethome`: [README plugin](../../../infra/hermes-zalo-native/README.md),
 mục hành vi "Cron". Kiểm: probe `cron-preflight` trong `infra/hermes-zalo-native/upstream.test.mjs` chạy preflight và bộ phân giải
 đích thật của bản Hermes đã ghim ở CI `hermes-runtime`.
+
+Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên VPS):
+
+- File cài KHÔNG phải `adapter.py` của `main`. `main` còn mang tính năng nhận ảnh Zalo (#268) chưa phát hành, nên file cài là bản
+  plugin đang chạy từ 16/10 (commit `986c280d8`, sha256 `cc1770e8c3f3…`) cộng đúng 4 dòng của bản sửa: 11 978 byte, sha256
+  `23cd9ff0be0d6b4bcbfcb16bf3f1a9d5c2ce384a0db21644443a9132d0d882c7`. Khi phát hành tính năng nhận ảnh, bản của `main` thay nó.
+- Trình tự: xác nhận bot rảnh (0 `tools/call` trong 10 phút, `state.db` không đổi gần 3 giờ, 0 agent đang chạy) → sao lưu → đặt
+  file → kiểm trong một tiến trình riêng của container → `docker restart hermes-owner` (17:37:15Z) → kiểm lại. Gateway chạy lại
+  sau 20 giây: `gateway_state=running`, Zalo `connected`, `MCP: registered 61 tool(s)`, hook `ihome-session-reset` đăng ký ở
+  tiến trình gateway, 0 dòng ERROR. Hai dòng sau cùng nằm ở `logs/agent.log`, không phải `logs/gateway.log`.
+- Phép kiểm trên đúng file đã cài (chỉ đọc, Hermes v0.22.2), trước và sau khi khởi động lại: `_preflight_check_delivery` của job
+  trả không lỗi (bản cũ trả đúng câu `not a known cron delivery target`); đích của job là DM đã ghép qua đích ghi rõ; gateway
+  vẫn hỏi đúng biến `ZALO_PERSONAL_HOME_CHANNEL`; `config.yaml` không có `home_channel` nên không có thông báo khởi động vào DM
+  (log sau khởi động lại: 0 dòng `startup notification`).
+- `cron list` sau khi cài vẫn hiện `Last run … blocked_config` của lượt 10/11 vì cron không chạy bù; `Next run` là 21:00 ngày
+  11/11. **Tin thật tới Zalo chỉ lượt đó chứng minh**: phép kiểm trên dừng ở preflight và phân giải đích, chưa chạy agent và chưa
+  gửi tin. Sau 21:00 đọc lại `Last run` bằng lệnh ở 4.6 bước 5.
+- Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
+  plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
+- Production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản ghim, production
+  kiểm bằng phép chạy trên.
 
 ### 4.7 Rủi ro
 
