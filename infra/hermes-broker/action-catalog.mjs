@@ -10,7 +10,8 @@ import { CONSENT_HINT, consentRequired } from './consent-guard.mjs';
 
 // learning (đợt 3 học có kiểm duyệt, learning-action-contract.mjs): trang chỉ nạp khi host bật actionPages ["learning"].
 export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'learning', 'probe']);
-// money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB.
+// money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB, TRỪ thao tác
+// khai `confirm: 'always'` (sàn xem trước + lời đồng ý trong mã cho riêng thao tác đó — vd contract.room_lock; chính sách DB không nới được).
 export const ACTION_CLASSES = Object.freeze(['money', 'irreversible', 'reversible']);
 export const ACTION_ID = /^[a-z][a-z0-9_]{1,31}\.[a-z][a-z0-9_]{1,31}$/;
 // Câu 11: đường nhận ảnh bill qua Zalo làm ở đợt Thu chi. Tới khi có luồng ảnh, thao tác nào khai attachments bị
@@ -109,8 +110,11 @@ export const param = Object.freeze({
 });
 const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments', 'list']);
 
-/** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs). */
-export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], ...rest } = {}) {
+/** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs).
+ * confirm: 'always' (chỉ nhận cho class reversible) = sàn xác nhận trong mã: lượt gọi không token luôn chạy phase preview, không bao
+ * giờ 'auto' ⇒ một lượt gọi không thể ghi, dù chính sách DB là never; lượt xác nhận đòi consentText là lời đồng ý rõ như thao tác không
+ * lùi được (consent-guard.mjs consentRequired). Không khai = theo class như cũ. */
+export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], confirm, ...rest } = {}) {
   // rpc: RPC của trang (INVOKER) nhận (p_binding, p_action, p_phase, p_request_id, p_params, p_resolved, p_expected_basis), khuôn
   // public.hermes_action_probe_v1 (20261021133823); adapter chỉ gọi đúng các tên đã khai ở đây.
   if (Object.keys(rest).length || typeof rpc !== 'string' || !/^hermes_[a-z0-9_]+_v[1-9][0-9]*$/.test(rpc) || typeof id !== 'string' || !ACTION_ID.test(id) || !ACTION_PAGES.includes(page) || !id.startsWith(`${page}.`) ||
@@ -118,6 +122,7 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
       typeof title !== 'string' || !title.trim() || title.length > 120 || CONTROL.test(title) ||
       !plain(params) || Object.keys(params).length > MAX_PARAMS || !Array.isArray(reasons) ||
       reasons.some(code => !ACTION_REASON_CODES.includes(code)) || new Set(reasons).size !== reasons.length) fail();
+  if (!(confirm === undefined || (confirm === 'always' && kind === 'reversible'))) fail();
   for (const [name, value] of Object.entries(params)) {
     if (!PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !KINDS.includes(value.kind)) fail();
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
@@ -125,10 +130,15 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
   }
   const aliases = Object.values(params).map(value => value.alias).filter(alias => alias !== undefined);
   if (aliases.some(alias => Object.hasOwn(params, alias)) || new Set(aliases).size !== aliases.length) fail();
-  const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
+  const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]),
+    ...(confirm === undefined ? {} : { confirm }) });
   DEFINED.add(action);
   return action;
 }
+
+/** Thao tác luôn qua bản xem trước (lượt gọi không token không bao giờ ghi): money / irreversible theo class, reversible khi khai
+ * confirm: 'always'. Một nguồn cho mục lục (crm_action_list) và runtime (phase) — hai nơi không lệch nhau được. */
+export const previewFirst = action => action.class !== 'reversible' || action.confirm === 'always';
 
 // Khuôn một tham số trong mục lục crm_action_list (list ⇒ khuôn phần tử; record ⇒ khuôn từng trường).
 function listedParam(value) {
@@ -164,7 +174,7 @@ export function createActionCatalog(actions, { keys = HERMES_ACTION_CAPABILITIES
     listing(effective, page = null) {
       return ids.map(id => byId[id]).filter(action => granted(effective, action) && (page === null || action.page === page)).map(action => ({
         action: action.id, page: action.page, title: action.title,
-        confirm: action.class === 'reversible' ? 'if_required' : 'always',
+        confirm: previewFirst(action) ? 'always' : 'if_required',
         // Lượt 12 Hợp đồng (rào đồng ý): thao tác không lùi được nói rõ lượt xác nhận phải kèm consentText (ngoài params).
         ...(consentRequired(action) ? { consentText: CONSENT_HINT } : {}),
         params: Object.fromEntries(Object.entries(action.params).map(([name, value]) => [name, listedParam(value)])),

@@ -49,7 +49,8 @@ test('danh mục: bốn thao tác Mốc 2 + gia hạn Mốc 3 + trả phòng M�
   assert.deepEqual(catalog.keys, [...KEYS].sort());
   assert.ok(catalog.keys.every(key => HERMES_ACTION_CAPABILITIES.includes(key)));
   for (const action of CONTRACT_ACTIONS) {
-    // Q2 = a: báo trả / khoá tạm ghi thẳng; gia hạn (lẻ và lô) / trả phòng không lùi được ⇒ luôn xem trước (sàn trong mã).
+    // Q2 = a: báo trả ghi thẳng; gia hạn (lẻ và lô) / trả phòng không lùi được ⇒ luôn xem trước (sàn trong mã). Khoá tạm vẫn lớp reversible
+    // nhưng từ 11/11 (PS-K03) mang sàn confirm: 'always' ⇒ cũng luôn xem trước (kiểm ở bài vòng đời bên dưới).
     assert.equal(action.class, ['contract.renew', 'contract.return', 'contract.renew_batch'].includes(action.id) ? 'irreversible' : 'reversible', action.id);
     assert.ok(action.reasons.every(code => ACTION_PAGE_REASON_BLOCKS.contract.includes(code)), action.id);
     if (action.id === 'contract.renew_batch') continue;
@@ -71,7 +72,12 @@ test('kiểm tham số: ngày YYYY-MM-DD, lý do huỷ ≥ 8 ký tự, giờ kho
   assert.equal(badDate.ok, false); assert.match(badDate.detail, /date \(ngày YYYY-MM-DD/); assert.doesNotMatch(badDate.detail, /31\/10/);
   assert.equal(validateActionParams(CONTRACT_NOTICE_CANCEL, { buildingName: 'Toà A', roomName: '302', reason: 'ở tiếp' }).ok, false);
   assert.deepEqual(validateActionParams(CONTRACT_ROOM_LOCK, { buildingName: 'Toà A', roomName: '205', hours: '12' }).value.hours, 12);
-  assert.equal(validateActionParams(CONTRACT_ROOM_LOCK, { buildingName: 'Toà A', roomName: '205', hours: 48 }).ok, false);
+  // PS-K03: khuôn nhận mọi số giờ nguyên 1–720 để connector HỎI LẠI khi ngoài 6 / 12 / 24 (room-lock-guard.mjs, kiểm ở action-runtime),
+  // thay vì "Thiếu hoặc sai: hours" khiến mô hình tự đổi mức. Số không phải số giờ (0, âm, lẻ, quá 720) vẫn dừng ở khuôn.
+  assert.equal(validateActionParams(CONTRACT_ROOM_LOCK, { buildingName: 'Toà A', roomName: '205', hours: 48 }).ok, true);
+  for (const hours of [0, -6, 721, 6.5, '8 tiếng'])
+    assert.equal(validateActionParams(CONTRACT_ROOM_LOCK, { buildingName: 'Toà A', roomName: '205', hours }).ok, false, String(hours));
+  assert.match(CONTRACT_ROOM_LOCK.params.hours.hint, /6, 12 hoặc 24 \(giờ\); người dùng nói số khác ⇒ hỏi họ chọn mức, không tự đổi/);
   assert.equal(validateActionParams(CONTRACT_ROOM_UNLOCK, { buildingName: 'Toà A' }).ok, false, 'thiếu phòng');
   assert.equal(validateActionParams(CONTRACT_NOTICE_SET, { buildingName: 'Toà A', roomName: '302', date: '2026-10-31', contractId: id('1') }).ok, false,
     'không nhận id HĐ từ mô hình');
@@ -125,9 +131,36 @@ test('vòng đời: ghi thẳng ở lượt 1 (auto, không confirmToken); mã t
   }
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { action: 'contract.notice_set', params: { ...place, date: '2026-12-31' } }),
     error => error.code === 'action_rejected' && error.reason === 'already_returned');
+  // PS-K03: khoá tạm vẫn là reversible nhưng khai confirm: 'always' ⇒ mục lục báo 'always' (và đòi consentText, bài rào đồng ý bên dưới) như
+  // thao tác không lùi được.
+  assert.deepEqual(CONTRACT_ACTIONS.filter(action => action.confirm !== undefined).map(action => [action.id, action.class, action.confirm]),
+    [['contract.room_lock', 'reversible', 'always']]);
   const listing = await env.call('crm_action_list', { page: 'contract' });
   assert.deepEqual(listing.items.map(item => [item.action, item.confirm]),
-    CONTRACT_ACTIONS.map(action => [action.id, action.class === 'reversible' ? 'if_required' : 'always']));
+    CONTRACT_ACTIONS.map(action => [action.id, action.class === 'reversible' && action.id !== 'contract.room_lock' ? 'if_required' : 'always']));
+});
+
+test('PS-K03 khoá tạm qua danh mục thật: 8 giờ ⇒ hỏi chọn mức, không gửi SQL; 12 giờ ⇒ xem trước, lời đồng ý rõ mới khoá; bỏ khoá vẫn ghi thẳng', async t => {
+  const env = setup(t, { action: ['sale_phong.lock_room'], respond: request => request.phase === 'preview'
+    ? { kind: 'preview', preview: { text: 'Sẽ khoá tạm phòng 303 toà 44TL 12 giờ' }, basis: 'f'.repeat(32), resolved: { roomId: id('6') }, confirm: 'required' }
+    : { kind: 'applied', result: { text: request.action === 'contract.room_unlock' ? 'Đã bỏ khoá tạm' : 'Đã khoá tạm' }, link: '/sale-phong' } });
+  const place = { buildingName: '44TL', roomName: '303' };
+  const asked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...place, hours: 8 } });
+  assert.deepEqual([asked.outcome, asked.reason, asked.applied], ['needs_input', 'invalid_params', false]);
+  assert.match(asked.detail, /^Không giữ phòng được 8 giờ: chỉ có mức 6, 12 hoặc 24 giờ\./);
+  assert.deepEqual(env.requests, []);
+  const first = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...place, hours: 12 } });
+  assert.deepEqual([first.outcome, first.applied, env.requests.at(-1).phase], ['confirmation_required', false, 'preview']);
+  const confirm = consentText => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...place, hours: 12 }, requestId: first.requestId,
+    confirmToken: first.confirmToken, consentText });
+  // Tự xác nhận trong cùng lượt bằng câu yêu cầu của người dùng ⇒ chưa khoá, token còn.
+  const held = await confirm('Giữ phòng 303 toà 44TL 8 tiếng cho khách xem nha em');
+  assert.deepEqual([held.outcome, held.reason, env.requests.at(-1).phase], ['needs_input', 'consent_unclear', 'preview']);
+  const done = await confirm('ok');
+  assert.deepEqual([done.outcome, env.requests.at(-1).phase, env.requests.at(-1).resolved, env.requests.at(-1).basis], ['applied', 'apply', { roomId: id('6') }, 'f'.repeat(32)]);
+  // Sàn chỉ áp cho khoá tạm: bỏ khoá (cùng khoá quyền, cùng lớp reversible) vẫn auto như Q2 = a.
+  const unlocked = await env.call('crm_action_run', { action: 'contract.room_unlock', params: place });
+  assert.deepEqual([unlocked.outcome, env.requests.at(-1).phase], ['applied', 'auto']);
 });
 
 test('gia hạn: lượt 1 luôn xem trước (phase preview) dù không có confirmToken; đồng ý ⇒ apply mang resolved + basis của bản xem trước', async t => {
@@ -244,9 +277,10 @@ test('rào đồng ý: trả phòng chỉ ghi khi consentText là lời đồng 
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { ...confirm, consentText: 42 }), error => error.code === 'invalid_request', 'consentText phải là chuỗi');
 });
 
-test('rào đồng ý chỉ áp thao tác không lùi được: thao tác thường xác nhận không cần consentText; mục lục nói rõ thao tác nào cần', async t => {
+test('rào đồng ý chỉ áp thao tác không lùi được + khoá tạm (sàn xác nhận PS-K03): thao tác thường xác nhận không cần consentText; mục lục nói rõ thao tác nào cần', async t => {
   const listing = createActionCatalog([...CONTRACT_ACTIONS]).listing({ action: KEYS });
-  assert.deepEqual(listing.filter(item => Object.hasOwn(item, 'consentText')).map(item => item.action), ['contract.renew', 'contract.return', 'contract.renew_batch']);
+  assert.deepEqual(listing.filter(item => Object.hasOwn(item, 'consentText')).map(item => item.action),
+    ['contract.room_lock', 'contract.renew', 'contract.return', 'contract.renew_batch']);
   assert.ok(listing.filter(item => Object.hasOwn(item, 'consentText')).every(item => item.consentText === CONSENT_HINT && item.confirm === 'always'));
   // contract.notice_set (reversible) mà SQL đòi xác nhận ở lượt auto: lượt xác nhận không kèm consentText vẫn ghi.
   const env = setup(t, { respond: request => request.phase === 'auto' ? { kind: 'preview', preview: { text: 'Sẽ báo trả …' }, basis: 'e'.repeat(32),

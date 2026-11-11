@@ -56,14 +56,21 @@ test('đột biến của luật rào chữ đều bị bộ câu bắt', () => 
   assert.deepEqual(['khách có trả chìa', 'được hoàn cọc rồi', 'chốt quyết toán sau'].map(mutants.anywhere), [true, true, true]);
 });
 
-test('thao tác bị áp rào = đúng lớp irreversible của danh mục chạy thật (server.mjs)', () => {
+test('thao tác bị áp rào = lớp irreversible + thao tác reversible khai confirm: always của danh mục chạy thật (server.mjs)', () => {
   assert.deepEqual([...CONSENT_CLASSES], ['irreversible']);
   const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS]);
+  // PS-K03 (lô ps08 10/11): khoá tạm phòng lùi được nhưng có sàn xác nhận trong mã ⇒ lượt xác nhận cũng đòi lời đồng ý rõ.
   assert.deepEqual(catalog.ids.filter(id => consentRequired(catalog.get(id))).sort(),
-    ['contract.renew', 'contract.renew_batch', 'contract.return', 'expense.cancel', 'invoice.adjustment_check', 'task.cancel']);
-  // Huỷ hoá đơn (money) khôi phục được bằng invoice.restore ⇒ không thuộc rào.
+    ['contract.renew', 'contract.renew_batch', 'contract.return', 'contract.room_lock', 'expense.cancel', 'invoice.adjustment_check', 'task.cancel']);
+  // Huỷ hoá đơn (money) khôi phục được bằng invoice.restore ⇒ không thuộc rào; bỏ khoá tạm (reversible, không sàn) cũng không.
   assert.equal(consentRequired(catalog.get('invoice.cancel')), false);
+  assert.equal(consentRequired(catalog.get('contract.room_unlock')), false);
   assert.equal(consentRequired(null), false);
+  // confirm: 'always' chỉ tính cho lớp reversible (defineAction không nhận cho lớp khác); money có khai cũng không vào rào.
+  assert.equal(consentRequired({ class: 'money', confirm: 'always' }), false);
+  // Câu yêu cầu ban đầu của hai bản ghi sai (PS-K03, PS-D05) không phải lời đồng ý ⇒ trích đúng lời người dùng thì không tự xác nhận được.
+  for (const text of ['Giữ phòng 303 toà 44TL 8 tiếng cho khách xem nha em', 'Ngưng chương trình ưu đãi phòng 105 toà 1392QT giúp anh',
+    '12 tiếng đi em', 'khách chê giá cao, anh đổi chương trình khác']) assert.equal(consentClear(text), false, text);
 });
 
 test('bản ghi sổ audit: một dòng, không ký tự điều khiển, ≤ 300 ký tự', () => {

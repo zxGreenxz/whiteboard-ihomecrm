@@ -15,6 +15,11 @@ const keys = ['rooms.edit','sale_phong.edit','sale_phong.manage_images','sale_ph
 // 05/11: cọc và giữ / bỏ giữ phòng rời cầu crm_sale_action (SALE_RETIRED_OPERATIONS). BEFORE = operation=list của kết nối giữ mọi khoá trên
 // (cả khoá riêng) ở origin/main f2473ba4a: 16 thao tác. KEPT_SHA = sha256 JSON của 10 mục còn lại trong chính danh sách đó (đo ở f2473ba4a):
 // mục còn lại phải y nguyên từng byte. Sửa mô tả / khuôn một thao tác còn lại có chủ ý thì đo lại và ghi lý do.
+// 11/11 (PS-D05): policy_cancel đổi CÓ CHỦ Ý bốn chỗ — mô tả thêm câu CANCEL_ADDED, khuôn thêm confirmToken và consentText (tuỳ chọn),
+// reason thêm description (policy-cancel-guard.mjs: reason là lời người dùng, luôn xem trước, xác nhận bằng lời đồng ý rõ). KEPT_SHA_NOW =
+// danh mục hiện tại; KEPT_SHA (đo ở f2473ba4a) vẫn phải khớp sau khi gỡ đúng bốn chỗ đó khỏi mục policy_cancel ⇒ chín mục kia y nguyên.
+const KEPT_SHA_NOW='1dd5baa192cb684f3e98fb5c5010b92faa84c600aca88044dd01ae4f8635027f';
+const CANCEL_ADDED=' reason = lời người dùng nói VÌ SAO dừng; họ chưa nói ⇒ hỏi trước, không tự đặt. Luôn xem trước: người dùng đồng ý rõ ở tin sau mới gửi lại y nguyên kèm confirmToken và consentText.';
 const BEFORE=['room_options','room_observe','room_patch','room_lock','room_release','reservation_create','reservation_update','reservation_topup',
  'reservation_assign','action_status','policy_observe','policy_save','policy_cancel','policy_status','bulk_patch','bulk_status'];
 const RETIRED={room_lock:'sale_lock_via_contract',room_release:'sale_lock_via_contract',reservation_create:'sale_deposit_web_only',
@@ -31,7 +36,7 @@ const inputs={
  reservation_topup:{requestId,reservationId,expectedRevision:1,receipt},reservation_assign:{requestId,reservationId,expectedRevision:1,customerId:randomUUID()},
  action_status:{requestId},policy_observe:{roomId:room},
  policy_save:{requestId,roomId:room,expectedRevision:revision,title:'Ưu đãi',content:'Miễn phí gửi xe',startsAt:'2026-11-01T00:00:00+07:00',endsAt:'2026-12-01T00:00:00+07:00'},
- policy_cancel:{requestId,policyId,expectedVersion:1,reason:'Kết thúc'},policy_status:{requestId},
+ policy_cancel:{requestId,policyId,expectedVersion:1,reason:'Khách chê giá cao'},policy_status:{requestId},
  bulk_patch:{requestId,items:[{requestId:randomUUID(),roomId:room,expectedRevision:revision,rent_price:3000000}]},
  bulk_status:{requestId,items:[{requestId:randomUUID(),roomId:room}]},
 };
@@ -60,7 +65,13 @@ test('compact catalogue lists the 10 kept operations byte-for-byte as before and
  assert.deepEqual(listed.sort(),['crm_new_request_id','crm_sale_action']);
  const discovery=await f.call('list');
  assert.deepEqual(discovery.operations.map(x=>x.operation),KEPT);
- assert.equal(createHash('sha256').update(JSON.stringify(discovery.operations)).digest('hex'),KEPT_SHA,'10 mục còn lại y nguyên origin/main');
+ const sha=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ assert.equal(sha(discovery.operations),KEPT_SHA_NOW,'danh mục hiện tại: chỉ policy_cancel đổi (11/11)');
+ const undone=structuredClone(discovery.operations),cancelEntry=undone.find(x=>x.operation==='policy_cancel');
+ assert(cancelEntry.description.includes(CANCEL_ADDED));cancelEntry.description=cancelEntry.description.replace(CANCEL_ADDED,'');
+ assert.equal(delete cancelEntry.inputSchema.properties.confirmToken&&delete cancelEntry.inputSchema.properties.consentText&&
+  delete cancelEntry.inputSchema.properties.reason.description,true);
+ assert.equal(sha(undone),KEPT_SHA,'gỡ bốn chỗ đổi của policy_cancel ⇒ cả 10 mục y nguyên origin/main');
  for(const tool of all.filter(item=>KEPT.includes(saleToolOperation(item)))){const operation=discovery.operations.find(x=>x.operation===saleToolOperation(tool));assert(operation);
   assert.deepEqual(operation.inputSchema,tool.inputSchema);assert.deepEqual(operation.annotations,tool.annotations);}
  assert.equal(f.seen.length,0);assert(f.events.includes('audit:prepared'));
@@ -75,15 +86,73 @@ for(const operation of KEPT)test(`compact route ${operation} keeps its validator
  const f=fixture(t);let result=await f.call(operation,inputs[operation]);
  if(result.outcome==='confirmation_required'){
   assert.equal(f.seen.length,0);assert.equal(result.tool,SALE_TOOL.name);assert.equal(result.operation,operation);
-  result=await f.call(operation,{...inputs[operation],confirmToken:result.confirmToken});
+  // Theo đúng huongDan: bản xem trước nào đòi consentText (dừng chương trình) thì lượt xác nhận kèm lời đồng ý của người dùng.
+  result=await f.call(operation,{...inputs[operation],confirmToken:result.confirmToken,...(/consentText/.test(result.huongDan)?{consentText:'ok'}:{})});
  }
  assert.equal(result.outcome,'applied');assert.equal(f.seen.length,1);
  const expectedFamily=operation.startsWith('policy_')?'policy':operation.startsWith('bulk_')?'bulk':'sale';
  assert.equal(f.seen[0].family,expectedFamily);
  assert.equal(f.seen[0].operation,operation.startsWith('room_')?operation.slice(5):operation==='action_status'?'status':expectedFamily==='sale'?operation:operation.slice(expectedFamily.length+1));
- assert(!Object.hasOwn(f.seen[0].input,'confirmToken'));
+ assert(!Object.hasOwn(f.seen[0].input,'confirmToken'));assert(!Object.hasOwn(f.seen[0].input,'consentText'));
  assert(f.events.indexOf('audit:prepared')<f.events.indexOf('write'));
  assert(f.logs.some(event=>event.tool===SALE_TOOL.name&&event.outcome==='ok'));
+});
+
+// PS-D05 (ma trận Phòng sale lô ps08 10/11/2026 — ghi sai thật): "Ngưng chương trình ưu đãi phòng 105 toà 1392QT giúp anh" (không nêu lý do)
+// ⇒ mô hình gọi policy_cancel MỘT lượt với reason tự đặt và chương trình dừng ngay, lý do bịa nằm lại trong lịch sử. Rào ở broker
+// (policy-cancel-guard.mjs): reason chỉ nhắc lại lệnh ⇒ needs_input hỏi vì sao; mọi lượt không token ⇒ bản xem trước kèm nguyên văn reason;
+// lượt kèm token phải kèm consentText là lời đồng ý rõ (câu yêu cầu ban đầu, hay câu chỉ nêu lý do, không phải) mới tới dịch vụ, câu đó vào
+// dòng audit prepared. Đột biến bỏ policyCancel.review ở broker ⇒ ca đầu ra applied, f.seen có mục ⇒ đỏ.
+test('PS-D05 policy_cancel: reason chỉ nhắc lại lệnh ⇒ hỏi vì sao; một lượt gọi, hay tự xác nhận bằng câu yêu cầu, không dừng được; lý do tới dịch vụ là lý do đã xem trước',async t=>{
+ const f=fixture(t,['sale_phong.edit']),cancel=reason=>({requestId,policyId,expectedVersion:1,reason}),CF=/^cf_[A-Za-z0-9_-]{43}$/;
+ const REQUEST='Ngưng chương trình ưu đãi phòng 105 toà 1392QT giúp anh';
+ // Đúng hai reason bot đã gửi ở lượt 1 của PS-D05 (bản ghi r3b1, r2b1).
+ for(const reason of ['Ngưng chương trình ưu đãi','Ngưng chương trình ưu đãi theo yêu cầu']){
+  const asked=await f.call('policy_cancel',cancel(reason));
+  assert.deepEqual([asked.outcome,asked.applied,asked.reason,asked.tool,asked.operation,asked.policyId],
+   ['needs_input',false,'reason_required',SALE_TOOL.name,'policy_cancel',policyId],reason);
+  assert(!Object.hasOwn(asked,'confirmToken'));assert.match(asked.huongDan,/^CHƯA dừng\. Hỏi người dùng vì sao dừng chương trình/);
+ }
+ // Lý do bịa mà "có nghĩa" qua được lớp chữ nhưng vẫn không dừng trong một lượt gọi: chỉ ra bản xem trước kèm nguyên văn lý do.
+ const made='Hết thời gian áp dụng ưu đãi',invented=await f.call('policy_cancel',cancel(made));
+ assert.deepEqual([invented.outcome,invented.applied,invented.tool,invented.operation,invented.policyId,invented.preview],
+  ['confirmation_required',false,SALE_TOOL.name,'policy_cancel',policyId,{reason:made}]);
+ assert.match(invented.confirmToken,CF);
+ assert.match(invented.huongDan,/phải là lời NGƯỜI DÙNG đã nói; họ chưa nói vì sao dừng ⇒ hỏi họ, không dùng token này/);
+ assert.match(invented.huongDan,/kèm confirmToken và consentText = NGUYÊN VĂN câu đồng ý đó \(câu yêu cầu ban đầu không phải lời đồng ý\)/);
+ // Tự xác nhận NGAY trong lượt ra lệnh: trích đúng câu yêu cầu của người dùng, hay không trích ⇒ consent_unclear, token chưa tiêu, không tới dịch vụ.
+ for(const consentText of [REQUEST,undefined]){
+  const held=await f.call('policy_cancel',{...cancel(made),confirmToken:invented.confirmToken,...(consentText===undefined?{}:{consentText})});
+  assert.deepEqual([held.outcome,held.applied,held.reason,held.tool,held.operation,held.policyId],
+   ['needs_input',false,'consent_unclear',SALE_TOOL.name,'policy_cancel',policyId],String(consentText));
+  assert(!Object.hasOwn(held,'confirmToken'));
+ }
+ assert.equal(f.seen.length,0);assert(!f.events.includes('write'));
+ // Token của lý do bịa không dừng được bằng lý do người dùng nói sau đó (lệch nội dung), và trình ra là tiêu: lý do bịa cũng hết đường.
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel('khách chê giá cao'),confirmToken:invented.confirmToken,consentText:'ok'}),e=>e.code==='confirmation_invalid');
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel(made),confirmToken:invented.confirmToken,consentText:'ok'}),e=>e.code==='confirmation_invalid');
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel(made),confirmToken:'cf_'+'x'.repeat(43),consentText:'ok'}),e=>e.code==='confirmation_invalid');
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel(made),confirmToken:42}),e=>e.code==='invalid_request');
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel(made),consentText:42}),e=>e.code==='invalid_request');
+ assert.equal(f.seen.length,0);
+ // Đường đúng — lượt 2 người dùng đáp "khách chê giá cao, anh đổi chương trình khác": xem trước; tự xác nhận bằng chính câu nêu lý do đó ⇒
+ // consent_unclear; lượt 3 "ok" ⇒ gửi lại y nguyên kèm token + consentText.
+ const said='khách chê giá cao, anh đổi chương trình khác',preview=await f.call('policy_cancel',cancel(said));
+ assert.deepEqual([preview.outcome,preview.applied,preview.preview],['confirmation_required',false,{reason:said}]);
+ assert.equal(new Date(preview.expiresAt).getTime()>Date.now(),true);assert.equal(f.seen.length,0);
+ const early=await f.call('policy_cancel',{...cancel(said),confirmToken:preview.confirmToken,consentText:said});
+ assert.deepEqual([early.outcome,early.reason,f.seen.length],['needs_input','consent_unclear',0]);
+ // Token hợp lệ kèm reason nhắc lại lệnh vẫn là câu hỏi vì sao, và không làm mất token của lý do thật.
+ const swapped=await f.call('policy_cancel',{...cancel('Ngưng chương trình ưu đãi'),confirmToken:preview.confirmToken,consentText:'ok'});
+ assert.deepEqual([swapped.outcome,swapped.reason,f.seen.length],['needs_input','reason_required',0]);
+ const done=await f.call('policy_cancel',{...cancel(said),confirmToken:preview.confirmToken,consentText:'ok'});
+ assert.equal(done.outcome,'applied');
+ assert.deepEqual(f.seen,[{family:'policy',operation:'cancel',input:cancel(said)}]);
+ assert(f.events.indexOf('audit:prepared')<f.events.indexOf('write'));
+ // Câu đồng ý chỉ nằm ở dòng prepared của lượt ghi (khuôn consent của sổ audit host: trang.thao_tác + requestId + câu).
+ assert.deepEqual(f.audits.filter(event=>event.consent).map(event=>[event.outcome,event.consent]),[['prepared',{action:'sale.policy_cancel',requestId,text:'ok'}]]);
+ await assert.rejects(()=>f.call('policy_cancel',{...cancel(said),confirmToken:preview.confirmToken,consentText:'ok'}),e=>e.code==='confirmation_invalid');
+ assert.equal(f.seen.length,1);assert.equal(f.events.filter(event=>event==='write').length,1);
 });
 
 // Gọi thẳng operation đã rời cầu (mô hình theo skill tự học cũ): lỗi rõ có lý do + câu tĩnh chỉ chỗ làm đúng, ghi sổ audit denied kèm

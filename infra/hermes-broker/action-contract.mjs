@@ -179,6 +179,9 @@ const CONSENT_GUIDANCE = 'CHƯA ghi; token xác nhận chưa dùng, còn hạn t
 // Bản xem trước của thao tác không lùi được (lượt 12 Hợp đồng): nói trước rằng lượt xác nhận phải kèm consentText.
 const CONSENT_CONFIRM_NOTE = ' Thao tác KHÔNG lùi được: lượt xác nhận phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp; họ chỉ bổ sung chi tiết (chưa nói ' +
   'đồng ý) thì hỏi lại "anh/chị đồng ý ghi không?", không gửi xác nhận.';
+// PS-K03 (consent-guard.mjs): thao tác reversible có sàn xác nhận (contract.room_lock) cũng đòi consentText, nhưng không nói "không lùi được".
+const CONSENT_CONFIRM_NOTE_REVERSIBLE = ' Lượt xác nhận phải kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp SAU khi xem bản này; câu yêu cầu ban đầu, ' +
+  'hay câu chỉ chọn / bổ sung giá trị (vd "12 tiếng đi em"), chưa phải đồng ý ⇒ hỏi lại "anh/chị đồng ý không?", không gửi xác nhận.';
 const CONFIRM_GUIDANCE = 'CHƯA ghi. Đọc preview cho người dùng (toà, phòng, số tiền, ngày…); chỉ khi họ đồng ý rõ ràng SAU khi xem mới gọi lại crm_action_run ' +
   'y nguyên action, params, requestId kèm confirmToken. Token dùng một lần, hết hạn sau 10 phút; người dùng đổi nội dung thì gọi lại không kèm confirmToken để xem trước lại. ' +
   'Lỗi confirmation_invalid: gọi lại không kèm confirmToken để lấy bản xem trước mới.';
@@ -200,9 +203,10 @@ export function needsInput({ action, reason, detail, candidates, askUser = false
     ...(Array.isArray(candidates) && candidates.length ? { candidates } : {}), huongDan: askUser === true ? INPUT_GUIDANCE : reason === 'unknown_action' ? UNKNOWN_GUIDANCE
       : reason === 'consent_unclear' ? CONSENT_GUIDANCE : reason === 'invalid_params' ? PARAMS_GUIDANCE : INPUT_GUIDANCE };
 }
+/** consent: false | true (thao tác không lùi được) | 'reversible' (thao tác lùi được có sàn xác nhận — consent-guard.mjs consentRequired). */
 export function confirmationRequired({ action, requestId, preview, warnings, confirmToken, expiresAt, consent = false }) {
   return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt,
-    huongDan: consent ? `${CONFIRM_GUIDANCE}${CONSENT_CONFIRM_NOTE}` : CONFIRM_GUIDANCE };
+    huongDan: consent === 'reversible' ? `${CONFIRM_GUIDANCE}${CONSENT_CONFIRM_NOTE_REVERSIBLE}` : consent ? `${CONFIRM_GUIDANCE}${CONSENT_CONFIRM_NOTE}` : CONFIRM_GUIDANCE };
 }
 
 export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice', 'category', 'cashbook', 'job',

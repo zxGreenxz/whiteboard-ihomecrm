@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTION_PAGES, ATTACHMENTS_READY, canonicalJson, createActionCatalog, defineAction, param, validateActionParams } from './action-catalog.mjs';
+import { ACTION_PAGES, ATTACHMENTS_READY, canonicalJson, createActionCatalog, defineAction, param, previewFirst, validateActionParams } from './action-catalog.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE, probeCatalog } from './action-probe-contract.mjs';
+import { consentRequired } from './consent-guard.mjs';
 
 // Sổ danh mục thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 5): kiểm khi nạp, kiểm params ở connector với gợi ý
 // TĨNH dựng từ khuôn (không nhắc lại giá trị mô hình gửi), JSON chuẩn hoá cho khoá binding xác nhận.
@@ -19,6 +20,24 @@ test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, 
   assert.throws(() => defineAction({ ...base, params: { photos: param.attachments() } }), /invalid_action_catalog/, 'câu 11: luồng ảnh làm ở đợt Thu chi');
   for (const bad of [() => param.text(0, 5), () => param.text(5, 4), () => param.int(3, 1), () => param.vnd({ min: -1 }), () => param.oneOf([]),
     () => param.oneOf(['a', 'a']), () => param.name('planet'), () => param.attachments({ max: 11 })]) assert.throws(bad, /invalid_action_catalog/);
+});
+
+test("confirm: 'always' là sàn xác nhận trong mã cho thao tác reversible: chỉ nhận đúng giá trị đó, chỉ cho reversible; mục lục, previewFirst và rào đồng ý cùng một nguồn", () => {
+  // PS-K03: contract.room_lock (reversible, chính sách DB never) từng ghi ngay lượt 1. Khai confirm: 'always' ⇒ luôn phase preview, lượt
+  // xác nhận kèm consentText (consent-guard.mjs) — mục lục nói cả hai.
+  const floored = defineAction({ ...base, id: 'probe.floored', class: 'reversible', confirm: 'always' });
+  const plain = defineAction({ ...base, id: 'probe.plain', class: 'reversible' });
+  assert.equal(floored.confirm, 'always'); assert.ok(Object.isFrozen(floored));
+  assert.equal(Object.hasOwn(plain, 'confirm'), false, 'không khai ⇒ không có trường (khuôn thao tác cũ không đổi)');
+  assert.deepEqual([floored, plain, defineAction(base), defineAction({ ...base, class: 'irreversible' })].map(previewFirst), [true, false, true, true]);
+  // Không có giá trị nào NỚI được sàn: 'never' / 'if_required' / true / null bị từ chối; money / irreversible đã có sàn theo class, khai thêm là sai.
+  for (const bad of [{ class: 'reversible', confirm: 'never' }, { class: 'reversible', confirm: 'if_required' }, { class: 'reversible', confirm: true },
+    { class: 'reversible', confirm: null }, { class: 'money', confirm: 'always' }, { class: 'irreversible', confirm: 'always' }])
+    assert.throws(() => defineAction({ ...base, ...bad }), /invalid_action_catalog/, JSON.stringify(bad));
+  const listing = createActionCatalog([floored, plain], { keys: [PROBE_KEY] }).listing({ action: [PROBE_KEY] });
+  assert.deepEqual(listing.map(item => [item.action, item.confirm, Object.hasOwn(item, 'consentText')]),
+    [['probe.floored', 'always', true], ['probe.plain', 'if_required', false]]);
+  assert.deepEqual([floored, plain].map(consentRequired), [true, false]);
 });
 
 test('createActionCatalog: mã trùng hay khoá ngoài tập cho phép ⇒ lỗi nạp; mục lục chỉ thao tác kết nối giữ khoá', () => {

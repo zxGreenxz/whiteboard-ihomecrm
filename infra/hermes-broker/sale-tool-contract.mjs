@@ -62,8 +62,10 @@ export const saleToolListing = granted => ({ operations: granted.map(tool => ({
   operation: saleToolOperation(tool), description: bridgeNames(tool.description),
   inputSchema: structuredClone(tool.inputSchema), annotations: { ...tool.annotations },
 })) });
+// Kết quả CHƯA ghi do rào của broker dựng (bản xem trước của rào chữ công khai; needs_input / bản xem trước của rào dừng chương trình,
+// policy-cancel-guard.mjs) mang tên tool nội bộ ⇒ đổi sang tên cầu + operation để mô hình gọi lại đúng chỗ.
 export function saleToolResult(result, operation) {
-  return result?.outcome === 'confirmation_required'
+  return ['confirmation_required', 'needs_input'].includes(result?.outcome) && result.applied === false
     ? { ...result, tool: SALE_TOOL.name, operation }
     : result;
 }

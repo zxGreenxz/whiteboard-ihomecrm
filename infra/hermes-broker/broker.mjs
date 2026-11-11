@@ -24,6 +24,7 @@ import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { readMisuseHint } from './read-misuse-hints.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
+import { POLICY_CANCEL_AUDIT_ACTION, createPolicyCancelGuard, splitPolicyCancelFields } from './policy-cancel-guard.mjs';
 import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -582,6 +583,9 @@ export function createBroker({
   const usage = new Map();
   // Rào chữ công khai: chữ tự do mới ra bề mặt công khai luôn qua xác nhận hai bước (public-text-guard.mjs).
   const publicText = createPublicTextGuard({ clock });
+  // Rào lý do dừng chương trình sale (PS-D05, policy-cancel-guard.mjs): lý do chỉ nhắc lại lệnh ⇒ hỏi lại; còn lại luôn xem trước, lượt
+  // xác nhận kèm lời đồng ý rõ (consentText).
+  const policyCancel = createPolicyCancelGuard({ clock });
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
     receipts.push(structuredClone(event));
@@ -1073,13 +1077,19 @@ export function createBroker({
       }
       const saleExtension = extraSale.find(extension => extension.operation(name));
       if (saleExtension) {
-        const operation = saleExtension.operation(name), split = splitConfirmToken(name, args);
-        let input, invalid = split.invalid, uncertain = false, confirmation;
+        const operation = saleExtension.operation(name), split = splitPolicyCancelFields(name, args) ?? splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation, consent = null;
         try { input = saleExtension.input(operation, split.args); } catch { invalid = true; }
         return call(async (identity, signal) => {
           if (!saleExtension.mayUse(identity.effective, operation, input)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
-          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          // Trước mọi I/O ghi. Dừng chương trình sale (PS-D05): lý do chỉ nhắc lại lệnh ⇒ needs_input; còn lại luôn qua bản xem trước lý
+          // do + token, lượt xác nhận kèm consentText là lời đồng ý rõ (câu đó vào dòng audit prepared như thao tác không lùi được). Tool
+          // khác ⇒ policyCancel cho qua, tới rào chữ công khai như cũ.
+          const held = policyCancel.review(identity.row.id, name, input, split.confirmToken, split.consentText);
+          if (held.allow && held.consent !== undefined)
+            consent = Object.freeze({ action: POLICY_CANCEL_AUDIT_ACTION, requestId: input.requestId, text: held.consent });
+          const reviewed = held.allow ? publicText.review(identity.row.id, name, input, split.confirmToken) : held;
           if (reviewed.refused) fail('confirmation_invalid');
           if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
           const receipt = await saleExtension.prepare(presentedToken, operation, input, { signal });
@@ -1090,7 +1100,8 @@ export function createBroker({
           const result = await saleExtension.finalize(presentedToken, receipt, { signal,
             onDispatch() { uncertain = saleExtension.mutation(operation); }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId });
+        }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId,
+          auditConsent: () => consent });
       }
       const saleOperation = saleActionOperation(name);
       if (sale && saleOperation) {

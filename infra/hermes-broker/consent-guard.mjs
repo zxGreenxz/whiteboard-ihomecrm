@@ -12,10 +12,18 @@
 //     ý trả sớm" hay "khách có trả chìa" là chi tiết, không phải đồng ý. Từ yếu (có, được, chốt, ừ, ờ, vâng…) còn phải hết vế (chỉ còn
 //     trợ từ "đi", "nhé", "rồi"…): "chốt quyết toán sau", "được hoàn cọc" không tính.
 //   Chưa đồng ý: ở bất kỳ đâu (kể cả "ok nhưng khoan đã"); có dấu hỏi "?" cũng coi là chưa đồng ý (người dùng đang hỏi lại).
+// PS-K03 / PS-D05 (ma trận Phòng sale lô ps08 10/11/2026 — ghi sai thật: mô hình tự đổi giờ giữ phòng / tự đặt lý do dừng chương trình
+// rồi ghi ngay trong lượt người dùng ra lệnh): thao tác reversible khai confirm: 'always' (sàn xem trước trong mã — contract.room_lock)
+// cũng thuộc rào; dừng chương trình sale dùng cùng consentClear ở policy-cancel-guard.mjs. Câu yêu cầu ban đầu ("Giữ phòng 303 … 8
+// tiếng…") không phải lời đồng ý, nên mô hình trích đúng lời người dùng thì không tự xác nhận được bản xem trước trong chính lượt đó.
 export const CONSENT_TEXT_MAX = 300;
 export const CONSENT_CLASSES = Object.freeze(['irreversible']);
-/** Thao tác của danh mục phải kèm consentText ở lượt xác nhận. */
-export const consentRequired = action => CONSENT_CLASSES.includes(action?.class);
+/** Thao tác của danh mục phải kèm consentText ở lượt xác nhận: lớp irreversible, và thao tác reversible khai confirm: 'always'. */
+export const consentRequired = action => CONSENT_CLASSES.includes(action?.class) || (action?.class === 'reversible' && action?.confirm === 'always');
+// consent_unclear của thao tác LÙI ĐƯỢC có sàn xác nhận (khoá tạm phòng, dừng chương trình sale): câu tĩnh không nói "không lùi được" như
+// ACTION_REASONS.consent_unclear.
+export const CONSENT_UNCLEAR_PREVIEW_DETAIL = 'Chưa thấy lời đồng ý rõ của người dùng cho bản xem trước này (câu yêu cầu ban đầu, hay câu chỉ nêu / ' +
+  'chọn giá trị, chưa phải đồng ý); hỏi lại người dùng có đồng ý không.';
 // Câu tĩnh cho mục lục crm_action_list (khoá consentText của thao tác cần lời đồng ý).
 export const CONSENT_HINT = 'trường cạnh confirmToken (không trong params), bắt buộc ở lượt xác nhận: NGUYÊN VĂN tin mới nhất của người dùng (≤ 300 ký tự), ' +
   'phải là lời đồng ý rõ';
