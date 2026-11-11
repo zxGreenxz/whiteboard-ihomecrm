@@ -6,8 +6,8 @@ REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã 
 job cron `ihome-learning-digest-2100` tạo 10/11 (4.6). Lượt 21:00 đầu (10/11) bị cron chặn trước khi chạy (`blocked_config`): không
 tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1. Bản sửa đã cài lên
 hồ sơ owner trên VPS lúc 00:37 ngày 11/11 (giờ VN) và đã có tác dụng. Lượt `cron run` chạy tay sáng 11/11 đánh dấu 3 đề xuất mà
-không gửi được tin (nội dung chỉ tới chủ nhờ gửi lại bằng tay, 4.6.1), nên `learning.digest` có thêm **rào khung giờ trong SQL** (4.2): migration `20261111015658` — **CHƯA áp
-TEST / production** khi viết dòng này.
+không gửi được tin (nội dung chỉ tới chủ nhờ gửi lại bằng tay, 4.6.1), nên `learning.digest` có thêm **rào khung giờ trong SQL** (4.2): migration `20261111015658` — **đã áp
+TEST 13:58 VN và production 14:41 VN ngày 11/11/2026** qua lane (sao lưu đầy đủ trước mỗi lần áp).
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -110,7 +110,7 @@ cảnh cron.
 - Lớp `reversible`, chính sách `never` (dòng ở migration bật): ghi thẳng ở lượt `auto`; siết thành `always` ⇒ xem trước, không đánh dấu.
   Cùng requestId ⇒ phát lại (sổ biên nhận chung).
 - **Chỉ job cron gọi — có rào khung giờ trong SQL** (11/11/2026, migration `20261111015658_hermes_learning_digest_window_v1`;
-  CHƯA áp TEST / production khi viết dòng này). Trước đó chỉ có tiêu đề thao tác + skill chuẩn ngăn; sáng 11/11 một lượt chạy tay đã
+  áp TEST 13:58 VN, production 14:41 VN cùng ngày). Trước đó chỉ có tiêu đề thao tác + skill chuẩn ngăn; sáng 11/11 một lượt chạy tay đã
   đánh dấu 3 đề xuất mà không gửi được tin (4.6.1). Bất biến mới: `announced_at` chỉ được `learning.digest` đặt khi **đồng hồ database** nằm
   trong khung **[20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh** — đầu khung CÓ tính, cuối khung KHÔNG tính (20:54:59 ngoài; 20:55:00 và
   21:09:59 trong; 21:10:00 và 21:10:01 ngoài). Job nổ 21:00:00 và agent cần 1–2 phút trước khi gọi; 5 phút trước 21:00 là phần dư cho
@@ -319,8 +319,8 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
     trong CLI, 08:29 không gọi agent). Phải chờ lượt theo lịch đầu tiên có đề xuất mới chưa báo — tối không có thì không có tin —
     rồi đọc `Last run` bằng lệnh ở 4.6 bước 5.
   - Hệ quả vận hành: không dùng `cron run` cho job này; gửi lại một tin đã soạn bằng job một lần không qua agent theo 4.6 bước 4.
-    Lời gọi `learning.digest` ngoài lượt theo lịch nay bị rào khung giờ trong SQL chặn (4.2; migration `20261111015658` chưa áp
-    production khi viết dòng này).
+    Lời gọi `learning.digest` ngoài lượt theo lịch nay bị rào khung giờ trong SQL chặn (4.2; migration `20261111015658` đã áp
+    production 14:41 VN ngày 11/11/2026).
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
 - Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
