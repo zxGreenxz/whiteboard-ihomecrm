@@ -5,8 +5,9 @@ REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã 
 `20261105025453` áp 05/11, migration bật `20261105030528` áp 10/11 qua lane, connector production khai `actionPages: ["contract", "learning"]`,
 job cron `ihome-learning-digest-2100` tạo 10/11 (4.6). Lượt 21:00 đầu (10/11) bị cron chặn trước khi chạy (`blocked_config`): không
 tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1. Bản sửa đã cài lên
-hồ sơ owner trên VPS lúc 00:37 ngày 11/11 (giờ VN). Lượt 21:00 ngày 11/11 là lượt đầu chứng minh được tin tới Zalo; khi viết
-dòng này lượt đó chưa tới.
+hồ sơ owner trên VPS lúc 00:37 ngày 11/11 (giờ VN) và đã có tác dụng. Lượt `cron run` chạy tay sáng 11/11 đánh dấu 3 đề xuất mà
+không gửi được tin (nội dung chỉ tới chủ nhờ gửi lại bằng tay, 4.6.1), nên `learning.digest` có thêm **rào khung giờ trong SQL** (4.2): migration `20261111015658` — **đã áp
+TEST 13:58 VN và production 14:41 VN ngày 11/11/2026** qua lane (sao lưu đầy đủ trước mỗi lần áp).
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
 **Chủ đã chốt (31/10, ~18:30):**
@@ -108,9 +109,38 @@ cảnh cron.
   Origin mà tin tối không nhận ⇒ connector không khởi động.
 - Lớp `reversible`, chính sách `never` (dòng ở migration bật): ghi thẳng ở lượt `auto`; siết thành `always` ⇒ xem trước, không đánh dấu.
   Cùng requestId ⇒ phát lại (sổ biên nhận chung).
-- **Chỉ job cron gọi.** Gọi trong chat (bot tự gọi, hay kết nối của người giữ `users.edit` khác) đánh dấu các mục ⇒ tin tối hôm đó
-  thiếu chúng (vẫn ở web và trong dòng "Còn N đề xuất khác đang chờ duyệt"). Giảm bằng tiêu đề thao tác + skill chuẩn; không có rào
-  SQL phân biệt cron với chat (cùng kết nối).
+- **Chỉ job cron gọi — có rào khung giờ trong SQL** (11/11/2026, migration `20261111015658_hermes_learning_digest_window_v1`;
+  áp TEST 13:58 VN, production 14:41 VN cùng ngày). Trước đó chỉ có tiêu đề thao tác + skill chuẩn ngăn; sáng 11/11 một lượt chạy tay đã
+  đánh dấu 3 đề xuất mà không gửi được tin (4.6.1). Bất biến mới: `announced_at` chỉ được `learning.digest` đặt khi **đồng hồ database** nằm
+  trong khung **[20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh** — đầu khung CÓ tính, cuối khung KHÔNG tính (20:54:59 ngoài; 20:55:00 và
+  21:09:59 trong; 21:10:00 và 21:10:01 ngoài). Job nổ 21:00:00 và agent cần 1–2 phút trước khi gọi; 5 phút trước 21:00 là phần dư cho
+  lệch đồng hồ giữa VPS và database.
+  - Hàm thuần `app_private.hermes_learning_digest_window_v1(timestamptz)` (IMMUTABLE; NULL ⇒ false) tự đổi mốc sang giờ Việt Nam bằng
+    `AT TIME ZONE 'Asia/Ho_Chi_Minh'`, nên kết quả không phụ thuộc `TimeZone` của phiên (PostgREST cho bên gọi đặt múi giờ phiên qua
+    header `Prefer: timezone=`). `app_private.hermes_learning_digest_window_open_v1()` gọi hàm đó với `clock_timestamp()`. Hai hàm
+    không cấp EXECUTE cho vai nào: chỉ chủ hàm `postgres` — tức bước DEFINER — gọi được.
+  - Bước `app_private.hermes_learning_action_step_v1` = thân `20261105025453` giữ nguyên từng ký tự cộng ĐÚNG một khối, đặt sau khoá
+    công ty và sau khối phát lại theo requestId, trước mọi lệnh ghi. Lượt GHI của `learning.digest` (pha `auto` khi chính sách `never`,
+    hoặc pha `apply`) ngoài khung ⇒ `{kind:'rejected', reason:'learning_digest_outside_window'}` — cùng khuôn với `state_changed` /
+    `request_conflict`. Không biên nhận, không dòng audit, không đề xuất nào đổi; requestId đó chưa bị dùng.
+  - Không có đường mở khung từ bên gọi: không tham số mới, không GUC / thiết lập phiên, không header; chữ ký và kiểu trả về của bước và
+    của vỏ `public.hermes_learning_action_v1` giữ nguyên. Bộ test chạy được ở giờ bất kỳ vì fixture (superuser PGlite) thay thân hàm
+    không tham số: bản luôn mở cho các bài digest cũ, mốc cố định đi qua phép so thuần THẬT cho các bài khung giờ, và bản thật của
+    migration cho bài đọc đồng hồ. Trên production chỉ chủ hàm (đường migration qua lane) thay được thân hàm.
+  - Không bị rào: bản xem trước (pha `preview`, hoặc `auto` khi chính sách bị siết thành `always` — chỉ đọc); phát lại cùng requestId và
+    `crm_action_status` (đọc biên nhận đã có, nên tin của lượt đã ghi vẫn dựng lại được ngoài khung); `learning.decide`.
+  - Mốc `announced_at` vẫn là đồng hồ lúc VÀO hàm như trước; phép so khung dùng đồng hồ SAU khi đã giữ khoá công ty. Mốc ghi vì thế có
+    thể sớm hơn mốc so đúng bằng quãng chờ khoá.
+  - Connector: mã `learning_digest_outside_window` (`action-reasons.mjs`, lớp `rejected`, không thử lại; khai trong `REASONS` của
+    `hermes-runtime/host-ownership.mjs` và trong `reasons` của thao tác) ⇒ tool trả lỗi `action_rejected` kèm câu chỉ dẫn: không gọi
+    lại, không tự soạn tin; trong job tối trả đúng `[SILENT]`; trong chat báo tin tự gửi lúc 21:00. Connector bản cũ chưa biết mã này
+    quy về `crm_refused` — vẫn là từ chối, không ghi.
+  - Còn hở, chấp nhận: lời gọi trong chat (bot tự gọi, hay kết nối của người giữ `users.edit` khác) rơi ĐÚNG vào khung 15 phút vẫn
+    đánh dấu như job ⇒ tin tối hôm đó thiếu các mục ấy (vẫn ở web và trong dòng "Còn N đề xuất khác đang chờ duyệt"). SQL không phân
+    biệt được cron với chat vì cùng kết nối. Job chạy trễ quá 21:10 (gateway treo, VPS khởi động lại) ⇒ tối đó không có tin, đề xuất
+    giữ nguyên chờ tối sau.
+  - Lùi: `docs/plans/hermes-crm/revert/hermes_learning_digest_window_revert_v1.sql` trả đúng thân `20261105025453`; hai hàm khung giờ
+    để lại (không còn ai gọi).
 
 ### 4.3 Thao tác `learning.decide`
 
@@ -152,8 +182,10 @@ cảnh cron.
 "duyệt 4-6" / "bỏ N vì …" ⇒ `crm_action_run` `learning.decide` (numbers = các số N, decision theo động từ, note = phần sau "vì"); không
 đoán số, câu mơ hồ thì hỏi lại; phiên vừa đưa ra danh sách đánh số khác (phiếu thu chi, việc, hoá đơn, hợp đồng) thì "duyệt N" không
 kèm chữ "bài học" là mơ hồ ⇒ hỏi lại bài học hay phiếu / việc (va chạm với "duyệt lô theo danh sách vừa đọc" của `ihome-crm-thu-chi`);
-đọc bản xem trước rồi mới xác nhận; `learning.digest` chỉ job cron gọi; không tự sửa skill / bộ nhớ về cách ghi CRM — bài học loại này
-phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + câu "Không tự sửa…").
+đọc bản xem trước rồi mới xác nhận; `learning.digest` chỉ job cron gọi — ngoài khung 20:55–21:10 CRM trả `action_rejected` lý do
+`learning_digest_outside_window`: không gọi lại, không tự soạn tin, job tối trả đúng `[SILENT]`, trong chat nói tin tự gửi lúc 21:00
+và chỉ trang web; hỏi "có bài học nào chờ duyệt không?" / "gửi lại tin bài học" cũng chỉ trang web; không tự sửa skill / bộ nhớ về
+cách ghi CRM — bài học loại này phải qua duyệt. `ihome-crm-ghi-chung` trỏ tới skill này (When to Use + câu "Không tự sửa…").
 Điều phối viên thêm `ihome-crm-bai-hoc` vào dòng "Skill có sẵn" của SOUL owner (ngoài PR).
 
 ### 4.6 Job cron 21:00 VN cho hồ sơ owner (điều phối viên tạo — PR KHÔNG tạo job)
@@ -198,19 +230,34 @@ vẫn tạo được nhưng mọi lượt chạy đều bị chặn.
    Nếu kết quả là lỗi action_outcome_unknown kèm requestId: gọi tool crm_action_status (tên đầy đủ mcp__ihomecrm__crm_action_status)
    ĐÚNG MỘT lần với {"requestId": "<requestId của lỗi đó, chép nguyên văn>"}. Kết quả có outcome = "applied" và result.message là một
    chuỗi ⇒ trả lời ĐÚNG NGUYÊN VĂN chuỗi đó như trên.
+   Nếu kết quả là lỗi action_rejected (kể cả lý do learning_digest_outside_window — CRM chỉ nhận lượt này trong khung 20:55–21:10 giờ
+   Việt Nam): trả lời đúng một từ [SILENT]. Không gọi lại, không đổi tham số, không tự soạn tin thay.
    Mọi trường hợp khác (result.message là null, lỗi khác, needs_input, tra trạng thái không ra applied hoặc không có message, không có
    tool): trả lời đúng một từ [SILENT]. Không gọi crm_action_run lần thứ hai, không gọi tool nào khác, không thử lại.
    ```
+
+   Khối trên là **nguồn duy nhất của prompt trong repo**; bản job đang dùng nằm trên host
+   (`/root/ihome-hermes-cron/learning-digest-prompt.txt`) và trong chính job cron. Dòng `action_rejected` thêm ngày 11/11/2026 cùng rào
+   khung giờ (4.2): bản trên host và prompt của job **chưa được thay** khi viết dòng này — điều phối viên chép lại khối này vào file
+   trên host rồi sửa prompt của job (đọc `cron edit --help` của bản Hermes đang chạy để lấy đúng tên cờ; chưa thử trong phiên soạn).
+   Prompt cũ vẫn đúng với rào mới: `action_rejected` rơi vào nhánh "lỗi khác" ⇒ `[SILENT]`; dòng mới chỉ nói rõ để mô hình không thử
+   lại hay tự soạn tin.
 
    Vì sao tra trạng thái: `action_outcome_unknown` nghĩa là lệnh đã gửi mà mất phản hồi — SQL có thể ĐÃ đánh dấu các mục (khi đó chúng
    không bao giờ vào tin sau). `crm_action_status` cùng requestId trả đúng kết quả đã ghi kèm `message` dựng lại tất định (presenter chạy
    cả ở nhánh tra trạng thái), nên tin hôm đó vẫn tới chủ. Gọi lại `crm_action_run` thì không được: requestId mới ⇒ một lượt đánh dấu mới.
 
-4. Thử: kiểm ở lượt chạy theo lịch, lúc chủ đồng ý: tin tới đúng DM chủ và có dòng audit `HERMES_ACTION_APPLIED`
-   `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không chạy tay `cron run <id>`: trên Hermes v0.22.2 (thấy trên
-   production 11/11/2026) lệnh này chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên tin không giao
-   được qua plugin Zalo trong khi job vẫn gọi `learning.digest` và đánh dấu thật. Cũng không thử bằng cách gọi `learning.digest`
-   trong chat (đánh dấu thật trên production).
+4. Thử: kiểm ở lượt chạy theo lịch, lúc chủ đồng ý: đọc `Last run` (bước 5), tin trong DM chủ và dòng audit
+   `HERMES_ACTION_APPLIED` `learning.digest`; tối không có đề xuất mới ⇒ không có tin. **Không chạy tay `cron run <id>` cho job
+   này**: lệnh đó không gửi được tin mà `learning.digest` vẫn đánh dấu thật (cơ chế và lần đã xảy ra: 4.6.1). Từ khi có rào khung
+   giờ (4.2), lượt chạy tay ngoài 20:55–21:10 bị CRM từ chối và job trả `[SILENT]`; chạy tay TRONG khung vẫn đánh dấu mà không gửi
+   được. Cũng không thử bằng cách gọi `learning.digest` trong chat (đánh dấu thật trên production).
+
+   Gửi lại một tin ĐÃ soạn (lượt đã đánh dấu nhưng tin không tới), lúc chủ đồng ý: không gọi lại CRM. Nội dung của lượt chạy cũ nằm
+   trong `<hồ sơ>/cron/output/<job>/<ngày_giờ>.md`, sau dòng `## Response`. Đặt một script in đúng nội dung đó vào `<hồ sơ>/scripts/`,
+   rồi tạo job MỘT LẦN không qua agent để ticker của gateway gửi: `cron create … --no-agent --script <file> "in 2m"` (cùng `--deliver`
+   như bước 2; đối chiếu tên cờ với `cron create --help`). Tin đã tới khi `logs/agent.log` của hồ sơ có dòng giao `via live adapter`
+   kèm `message_id` (mẫu ở 4.6.1); xong thì xoá job tạm và script. Job không qua agent không gọi CRM nên không đánh dấu thêm gì.
 
 5. Sau lượt chạy đầu (và sau mỗi lần đổi plugin hay nâng bản Hermes), đọc `Last run` của job:
 
@@ -255,15 +302,25 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
   trả không lỗi (bản cũ trả đúng câu `not a known cron delivery target`); đích của job là DM đã ghép qua đích ghi rõ; gateway
   vẫn hỏi đúng biến `ZALO_PERSONAL_HOME_CHANNEL`; `config.yaml` không có `home_channel` nên không có thông báo khởi động vào DM
   (log sau khởi động lại: 0 dòng `startup notification`).
-- `cron list` sau khi cài vẫn hiện `Last run … blocked_config` của lượt 10/11 vì cron không chạy bù; `Next run` là 21:00 ngày
-  11/11. **Tin thật tới Zalo chỉ lượt đó chứng minh**: phép kiểm trên dừng ở preflight và phân giải đích, chưa chạy agent và chưa
-  gửi tin. Sau 21:00 đọc lại `Last run` bằng lệnh ở 4.6 bước 5.
-- Cập nhật 11/11/2026, trước lượt 21:00: theo lệnh chủ, 08:18 VN chạy tay `cron run` cho job này. Job qua preflight và gọi
-  `learning.digest` (ba đề xuất chờ được đánh dấu đã báo) nhưng không giao được tin, đúng như cảnh báo ở 4.6 bước 4. Lúc 08:29
-  VN đúng nội dung tin đã soạn được giao lại bằng một job một-lần không gọi agent, do ticker trong gateway chạy và giao qua
-  adapter đang sống; tin tới DM của chủ. Vậy đường giao của lượt theo lịch đã được chứng minh từ lúc đó, không phải chờ lượt
-  21:00. Phần còn chưa chứng minh: một lượt theo lịch mà ticker vừa chạy agent vừa giao tin trong cùng lượt (08:18 agent chạy
-  trong CLI, 08:29 không gọi agent); phải chờ lượt theo lịch đầu tiên có đề xuất mới chưa báo, tối nào không có thì không có tin.
+- Ngay sau khi cài, `cron list` vẫn hiện `Last run … blocked_config` của lượt 10/11 vì cron không chạy bù; phép kiểm trên dừng ở
+  preflight và phân giải đích, chưa chạy agent và chưa gửi tin.
+- Cập nhật 11/11/2026, trước lượt 21:00 (kiểm trên production):
+  - **Bản sửa preflight (#410) có tác dụng**: job không còn kết thúc `blocked_config`.
+  - **`cron run <id>` chạy tay không gửi được Zalo mà vẫn đánh dấu.** Theo lệnh chủ, 08:18 giờ VN job được chạy tay. Trên Hermes
+    v0.22.2 lệnh này chạy job đồng bộ ngay trong tiến trình CLI, không có adapter đang sống (`cron runs` ghi `source=direct`). Job
+    qua preflight và gọi `learning.digest`: 3 đề xuất đang chờ nhận `announced_at` lúc 08:18; plugin Zalo cố ý từ chối đường gửi
+    đó (`native_zalo_generic_send_unsupported`) nên không tin nào tới chủ. `announced_at` bất biến khi đề xuất còn chờ nên 3 mục
+    này không vào tin tối nào nữa (vẫn ở trang web).
+  - **Lượt theo lịch giao qua adapter đang sống.** Lượt theo lịch do ticker bên trong gateway chạy (`source=builtin`). Chứng minh
+    lúc 08:29 giờ VN: đúng nội dung tin đã soạn của lượt 08:18 (913 ký tự) tới DM của chủ bằng một job một lần không gọi agent
+    (`cron create … --no-agent --script <file> "in 2m"`); `logs/agent.log` có dòng `delivered to zalo_personal:… via live adapter …
+    message_id=…`. Job tạm và script đã xoá sau khi gửi.
+  - Còn chưa chứng minh: một lượt theo lịch mà ticker vừa chạy agent (gọi CRM) vừa giao tin trong cùng lượt (08:18 agent chạy
+    trong CLI, 08:29 không gọi agent). Phải chờ lượt theo lịch đầu tiên có đề xuất mới chưa báo — tối không có thì không có tin —
+    rồi đọc `Last run` bằng lệnh ở 4.6 bước 5.
+  - Hệ quả vận hành: không dùng `cron run` cho job này; gửi lại một tin đã soạn bằng job một lần không qua agent theo 4.6 bước 4.
+    Lời gọi `learning.digest` ngoài lượt theo lịch nay bị rào khung giờ trong SQL chặn (4.2; migration `20261111015658` đã áp
+    production 14:41 VN ngày 11/11/2026).
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
 - Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
@@ -312,7 +369,10 @@ Chưa làm: viết lại các mục bộ nhớ tiếng Anh có sẵn của hồ 
   `crm_action_status` đúng một lần (4.6) để vẫn gửi được tin; tra cũng hỏng ⇒ các mục đã đánh dấu không xuất hiện ở tin sau (chỉ còn
   trong số "còn chờ" và trên web) — web là nguồn đúng, tin Zalo là tiện ích.
 - Hơn 10 đề xuất mới trong một tối ⇒ phần dư sang tối sau (mỗi tối tối đa 10 số, mục nào đã báo đều có số trong tin).
-- `learning.digest` gọi ngoài cron làm tin tối thiếu mục (4.2).
+- `learning.digest` gọi ngoài khung 20:55–21:10 bị SQL từ chối, không đánh dấu gì (4.2). Còn lại: lời gọi trong chat rơi đúng vào
+  khung vẫn làm tin tối thiếu mục; job chạy trễ quá 21:10 thì tối đó không có tin (đề xuất chờ tối sau); đồng hồ database lệch
+  nhiều phút so với giờ thật thì khung lệch theo.
+- `cron run` chạy tay không gửi được Zalo (4.6.1). Chạy tay trong khung vẫn đánh dấu mà không có tin ⇒ không dùng lệnh này cho job.
 - Số `seq` lộ ra Zalo chỉ là số thứ tự, không phải id.
 
 ### 4.8 Tệp đã đổi (đợt 3)
@@ -325,6 +385,16 @@ Chưa làm: viết lại các mục bộ nhớ tiếng Anh có sẵn của hồ 
 | Skill | `infra/hermes-skills/ihome-crm-bai-hoc/SKILL.md`, `ihome-crm-ghi-chung` |
 | Test | `learning-action-sql.test.mjs` (PGlite, 23 đột biến; tin dựng bằng presenter thật cho 25 đề xuất dài: mọi mục đã đánh dấu có số), `learning-digest.test.mjs` / `learning-action.test.mjs`, `server.test.mjs` (ghép thật), `action-tools-budget.test.mjs` (so main), `action-catalog` (`unique`) / `action-reasons` / `official-skills`, `capabilityLabels.test.ts`; PR bật: `action-activation-sql.test.mjs` + file lùi |
 | Hồ sơ owner | job cron 21:00 VN (4.6) — điều phối viên tạo |
+
+Rào khung giờ tin tối (11/11/2026, PR riêng):
+
+| Phía | Tệp |
+|---|---|
+| SQL | `20261111015658_hermes_learning_digest_window_v1.sql`: hai hàm khung giờ (thuần + đọc `clock_timestamp()`), bước `hermes_learning_action_step_v1` dựng lại từ thân `20261105025453` cộng một khối (khối `$requires$` ghim md5 thân bước đang chạy `64102acc…` hoặc thân mới `eaa04e7f…`; md5 cũ tính từ file đã phát hành, chưa đo lại trên production); OWNER / REVOKE / GRANT nhắc lại như `20261105025453`, hai hàm mới không cấp EXECUTE; file lùi `revert/hermes_learning_digest_window_revert_v1.sql`; ghim băm `hermes-durable-forward-fixture.mjs` (thân bước 025453 thành ghim superseded, 73 file / 150 định nghĩa) + `hermes-durable-schema.test.mjs`; provenance viết tay theo luật của bộ sinh (bộ sinh đọc production nên không chạy trong phiên soạn) + hồ sơ `chua-ap-dung-cho-y` |
+| Connector | `action-reasons.mjs` (`learning_digest_outside_window`), `learning-action-contract.mjs` (tiêu đề + `reasons` của `learning.digest`), `hermes-runtime/host-ownership.mjs` (`REASONS`), `CONNECTOR.md` |
+| Skill | `infra/hermes-skills/ihome-crm-bai-hoc/SKILL.md` (mục "Tin tối 21:00") |
+| Test | `learning-action-sql.test.mjs`: 7 bài mới (biên 20:54:59 / 20:55:00 / 21:09:59 / 21:10:00 / 21:10:01 dưới nhiều `TimeZone` phiên kể cả UTC; từ chối không đổi dòng nào; trong khung y như trước; quyền; ghim; file lùi) + 14 đột biến khung giờ (tổng 37); các bài digest cũ thay hàm không tham số trong fixture nên chạy được ở mọi giờ; `learning-action.test.mjs`, `action-reasons.test.mjs`, `server.test.mjs`; `tooling/test-matrix.json` |
+| Hồ sơ owner | prompt của job (4.6 bước 3) — điều phối viên thay trên host |
 
 ### 4.9 Thứ tự phát hành đợt 3
 
@@ -346,6 +416,22 @@ Chưa làm: viết lại các mục bộ nhớ tiếng Anh có sẵn của hồ 
 
 Lùi: file lùi của migration bật (tắt khoá, xoá hai dòng chính sách); gỡ `"learning"` khỏi `actionPages`; xoá job cron. Cột `announced_at`
 và hai hàm của đợt 3 để lại (vô hại khi không có dòng chính sách).
+
+**Phát hành rào khung giờ (11/11/2026 — chưa làm bước nào khi viết dòng này):**
+
+1. Review chéo PR (tier authorization + migration).
+2. Lane `20261111015658_hermes_learning_digest_window_v1.sql` TEST rồi production (dry-run → `--apply`, biên nhận). Khối `$requires$`
+   dừng nếu md5 thân bước đang chạy khác thân `20261105025453` (nêu md5 lạ, không đè). Sau khi áp: sinh lại provenance từ production,
+   gỡ hồ sơ `chua-ap-dung-cho-y`, merge PR ngay. Áp database TRƯỚC connector là an toàn: connector cũ quy mã lạ về `crm_refused`.
+   Không áp trong khung 20:55–21:10 (tránh đổi thân hàm đúng lúc job tối gọi). Sau khi áp TEST, ca nghiệm thu nào gọi
+   `learning.digest` ngoài khung (hồ sơ thử, bộ ca ngoài repo) nhận `learning_digest_outside_window` đúng thiết kế: sửa kỳ vọng của
+   ca đó, không nới khung.
+3. Phát hành connector **toàn cây** (broker + `hermes-runtime` phải cùng bản: mã lý do mới khai ở cả hai) rồi khởi động lại
+   connector; triển khai skill chuẩn (`deploy.sh`).
+4. Thay prompt của job trên host bằng khối ở 4.6 bước 3 (file `/root/ihome-hermes-cron/learning-digest-prompt.txt` + prompt của job).
+5. Kiểm: `Last run` của lượt 21:00 kế tiếp (4.6 bước 5). Không kiểm bằng `cron run` hay gọi `learning.digest` trong chat.
+
+Lùi rào khung giờ: `revert/hermes_learning_digest_window_revert_v1.sql` qua lane; connector và skill không phải lùi (mã lý do thừa vô hại).
 
 ## 5. Thứ tự phát hành (đợt 2 — PR #371)
 

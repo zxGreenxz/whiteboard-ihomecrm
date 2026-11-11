@@ -359,17 +359,6 @@
       ]
     },
     {
-      "id": "android-diem-danh",
-      "sourcePaths": [
-        "extensions/diem-danh/android/**",
-        ".github/workflows/android-diem-danh.yml"
-      ],
-      "suiteId": "android-diem-danh",
-      "testPatterns": [
-        "extensions/diem-danh/android/app/src/test/**/*.java"
-      ]
-    },
-    {
       "id": "bank-event-offline-browser",
       "sourcePaths": [
         "src/pages/bank-events/**",
@@ -397,17 +386,6 @@
       "suiteId": "android-device",
       "testPatterns": [
         "extensions/sms-webhook/android/app/src/androidTest/**/*.java"
-      ]
-    },
-    {
-      "id": "android-diem-danh-device",
-      "sourcePaths": [
-        "extensions/diem-danh/android/**",
-        ".github/workflows/android-diem-danh.yml"
-      ],
-      "suiteId": "android-diem-danh-device",
-      "testPatterns": [
-        "extensions/diem-danh/android/app/src/androidTest/**/*.java"
       ]
     },
     {
@@ -1372,9 +1350,11 @@
     },
     {
       "id": "hermes-learning-action-sql",
-      "$comment": "Đợt 3 học có kiểm duyệt: trang thao tác learning.digest / learning.decide (vỏ INVOKER + bước DEFINER, cột announced_at, khoá seed TẮT) và danh mục connector của trang.",
+      "$comment": "Đợt 3 học có kiểm duyệt: trang thao tác learning.digest / learning.decide (vỏ INVOKER + bước DEFINER, cột announced_at, khoá seed TẮT) và danh mục connector của trang. Khung giờ tin tối 20261111015658 (lượt ghi của learning.digest chỉ nhận trong 20:55–21:10 giờ Việt Nam theo đồng hồ database) và file lùi của nó.",
       "sourcePaths": [
         "supabase/migrations/*_hermes_learning_action_v1.sql",
+        "supabase/migrations/*_hermes_learning_digest_window_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_learning_digest_window_revert_v1.sql",
         "infra/hermes-broker/learning-action-contract.mjs",
         "infra/hermes-broker/learning-digest.mjs",
         "infra/hermes-broker/learning-action-sql.test.mjs"
@@ -2030,7 +2010,7 @@
       "includes": [
         "supabase/functions/gps-checkin-ingest/*.test.ts"
       ],
-      "note": "Cổng nhận của app iHome Điểm danh: chỉ gửi SHA-256 của bearer và mã ghép nối xuống SQL, từ chối sai hợp đồng trước khi chạm DB, ánh xạ lỗi SQL sang HTTP, biên nhận DB sai dạng trả 502.",
+      "note": "Cổng nhận điểm danh GPS của app iHome Gateway: chỉ gửi SHA-256 của bearer và mã ghép nối xuống SQL, từ chối sai hợp đồng trước khi chạm DB, ánh xạ lỗi SQL sang HTTP, biên nhận DB sai dạng trả 502.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
@@ -2393,29 +2373,7 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 35,
-      "note": "Builds APK and test APK, runs every unit test and Android lint. Native execution has a separate mandatory suite below."
-    },
-    {
-      "id": "android-diem-danh",
-      "workflowOwner": ".github/workflows/android-diem-danh.yml",
-      "runner": "gradle",
-      "ciJob": "Android APK and native tests",
-      "command": "bash extensions/diem-danh/android/ci-build.sh",
-      "ciCommandStep": "Build APK and run Android unit and lint checks",
-      "runtime": "JDK 17 / Android SDK 35 / Gradle 8.11.1",
-      "risk": "authorization",
-      "includes": [
-        "extensions/diem-danh/android/app/src/test/**/*.java"
-      ],
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/android-diem-danh.yml",
-          "job": "build"
-        }
-      ],
-      "environment": "ci",
-      "timeoutMinutes": 35,
-      "note": "Builds APK and test APK, runs every unit test and Android lint, and compares the APK permissions with the approved list. Native execution has a separate mandatory suite below."
+      "note": "One app with two features (bank messages and GPS check-in). Builds APK and test APK, runs every unit test of both features and Android lint, and compares the APK permissions with the approved list. Native execution has a separate mandatory suite below."
     },
     {
       "id": "e2e-bank-events",
@@ -2458,29 +2416,7 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 35,
-      "note": "Every connected Android instrumentation test must run, and setup/status screenshots must exist. Compiling test APK is not accepted as execution."
-    },
-    {
-      "id": "android-diem-danh-device",
-      "workflowOwner": ".github/workflows/android-diem-danh.yml",
-      "runner": "gradle",
-      "ciJob": "Android APK and native tests",
-      "command": "bash extensions/diem-danh/android/ci-device.sh",
-      "ciCommandStep": "Verify encrypted queue, alarms and capture on device",
-      "runtime": "JDK 17 / Android SDK 35 / Gradle 8.11.1",
-      "risk": "authorization",
-      "includes": [
-        "extensions/diem-danh/android/app/src/androidTest/**/*.java"
-      ],
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/android-diem-danh.yml",
-          "job": "build"
-        }
-      ],
-      "environment": "ci",
-      "timeoutMinutes": 35,
-      "note": "Runs on Android 15 and Android 10 emulators. Every declared instrumentation test must pass with none skipped, the screenshots must be real PNG files, and the encrypted queue is read back from a separate process after a force-stop. An emulator cannot prove real-phone sleep or vendor battery behaviour."
+      "note": "Runs on Android 15 (bank-message, check-in and Home suites) and Android 10 (check-in and Home suites) emulators. Every declared instrumentation test must pass with none skipped, the screenshots must be real PNG files, a fresh install opened to Home must ask for nothing and arm nothing, and the encrypted check-in queue is read back from a separate process after a force-stop. Compiling test APK is not accepted as execution. An emulator cannot prove real-phone sleep or vendor battery behaviour."
     },
     {
       "id": "meter-capture-python",

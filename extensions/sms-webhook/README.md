@@ -2,6 +2,8 @@
 
 App Android riêng chuyển SMS và thông báo ngân hàng vào trang tổng **Biến động số dư** của CRM. Chỉ super admin xem và quản lý nguồn. Chưa tự nhận diện thanh toán, ghi sổ hoặc đọc email.
 
+Từ bản 2.0.0, cùng app này còn chứa phần **Điểm danh** (tự ghi vị trí GPS của quản lý), trước đây là app «iHome Điểm danh» riêng. Mở app thấy màn hình đầu với hai thẻ; tài liệu này nói về phần Biến động số dư. Phần Điểm danh xem [hướng dẫn Android](android/README.md) và [Việc của quản lý và điểm danh GPS](../../docs/he-thong/27-viec-cua-quan-ly-va-diem-danh-gps.md).
+
 ## Phạm vi
 
 - Chuyển **mọi SMS mới nhận**, kể cả OTP và SMS cá nhân, theo lựa chọn của chủ điện thoại. Không đọc lại hộp thư cũ.
@@ -16,8 +18,8 @@ App Android riêng chuyển SMS và thông báo ngân hàng vào trang tổng **
 
 | Thư mục | Nội dung |
 | --- | --- |
-| `android/` | App Java, Android 8.0/API26 trở lên; target/compile API35 |
-| `receiver/` | Mẫu receiver độc lập ban đầu, chỉ để tham khảo; không dùng cho app CRM 0.2.0 |
+| `android/` | App Java, Android 8.0/API26 trở lên; target/compile API35. Gồm cả phần Điểm danh (gói `vn.ihome.diemdanh`) |
+| `receiver/` | Mẫu receiver độc lập ban đầu, chỉ để tham khảo; không dùng cho app iHome Gateway từ bản 0.2.0 |
 | `../../supabase/functions/bank-event-ingest/` | Webhook CRM, xác thực mỗi điện thoại và chỉ xác nhận sau khi lưu database |
 | `../../infra/bank-event-gateway/` | Cổng trung gian VPS tùy chọn; chuyển tiếp HTTPS, không lưu nội dung tại VPS |
 
@@ -42,7 +44,7 @@ Script chạy build APK debug, unit tests và Android lint. File cài thử nằ
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-APK debug dùng để cài thử. Khóa ký phát hành ổn định đã được lưu riêng; CI trên `main` dùng `android/ci-release.sh` để tạo và xác minh APK release. Lấy APK cùng bằng chứng chữ ký từ artifact của đúng commit sau khi bước phát hành đạt. Bản dùng thật được đăng lên GitHub Release (`v<versionName>`, file `app-release.apk`, SHA-256 trùng `apk-sha256.txt` của artifact); nút **Tải app Android** trên trang Biến động số dư trỏ tới bản đó qua hằng `gatewayApk` trong `src/pages/bank-events/BankEventsPage.tsx`, nên đăng bản mới phải đổi hằng này. Chưa phân phối qua Google Play. Không đưa token, khóa ký riêng hoặc mật khẩu vào mã nguồn, APK hay kho Git.
+APK debug dùng để cài thử. Khóa ký phát hành ổn định đã được lưu riêng; CI trên `main` dùng `android/ci-release.sh` để tạo và xác minh APK release. Lấy APK cùng bằng chứng chữ ký từ artifact của đúng commit sau khi bước phát hành đạt. Bản dùng thật được đăng lên GitHub Release (thẻ `v<versionName>`, ví dụ `v2.0.0`; file `app-release.apk`, SHA-256 trùng `apk-sha256.txt` của artifact). Hai chỗ trên CRM trỏ tới bản đó và phải đổi khi đăng bản mới: nút **Tải app Android** trên trang Biến động số dư (hằng `gatewayApk` trong `src/pages/bank-events/labels.ts`) và liên kết tải app ở trang Điểm danh (hằng `GPS_CHECKIN_APK` trong `src/lib/gpsCheckin.ts`). Chưa phân phối qua Google Play. Không đưa token, khóa ký riêng hoặc mật khẩu vào mã nguồn, APK hay kho Git.
 
 Có thể kiểm riêng logic Java không cần SDK:
 
@@ -55,14 +57,14 @@ Kiểm logic Java **không thay thế** compile Android, kiểm quyền hệ th�
 ## Cài và kết nối điện thoại
 
 1. Trong CRM, mở **Biến động số dư → Nguồn kết nối → Thêm nguồn**. Tạo nguồn riêng cho điện thoại và sao chép địa chỉ webhook cùng khóa chỉ hiện một lần.
-2. Bấm **Tải app Android** ở đầu trang Biến động số dư (hoặc dùng APK đã build), cài trên điện thoại Android của bạn; mở **iHome Gateway**.
+2. Bấm **Tải app Android** ở đầu trang Biến động số dư (hoặc dùng APK đã build), cài trên điện thoại Android của bạn; mở **iHome Gateway** rồi vào thẻ **Biến động số dư**.
 3. Dán URL đầy đủ và khóa do CRM vừa cấp vào app. Không dùng khóa dịch vụ Supabase hoặc mật khẩu tài khoản CRM.
 4. Bật nguồn SMS nếu cần. Khi bật chuyển tiếp, chấp nhận quyền nhận SMS.
 5. Bật nguồn thông báo nếu cần; chọn chính xác app ngân hàng và mở **Cấp quyền truy cập thông báo** để cấp quyền cho iHome Gateway trong Android Settings.
 6. Bấm **Bật chuyển tiếp**, kiểm tra kết nối và gửi tin thử. Kiểm tra trạng thái điện thoại trong CRM rồi mở nội dung tin thử.
 7. Thử một SMS không nhạy cảm và một thông báo ngân hàng thực tế. Thử tắt mạng rồi bật lại để xác nhận gửi bù/chống trùng.
 
-Trên một số máy, Android có thể hạn chế cấp quyền nhạy cảm cho ứng dụng cài ngoài; việc cấp quyền phải do chủ điện thoại thực hiện trong cài đặt hệ thống. Không dùng Accessibility hoặc cách vượt bảo vệ Android.
+Google Play Protect chặn cài APK này khi mở file từ trình duyệt hoặc trình quản lý tệp, vì app khai báo quyền `RECEIVE_SMS` và dịch vụ đọc thông báo; từ bản 2.0.0 điều này áp dụng cả cho máy chỉ dùng phần Điểm danh (xem [hướng dẫn Android](android/README.md#cài-app)). Trên một số máy, Android còn có thể hạn chế cấp quyền nhạy cảm cho ứng dụng cài ngoài; việc cấp quyền phải do chủ điện thoại thực hiện trong cài đặt hệ thống. Không dùng Accessibility hoặc cách vượt bảo vệ Android.
 
 ## Giới hạn cần biết
 
@@ -73,7 +75,7 @@ Trên một số máy, Android có thể hạn chế cấp quyền nhạy cảm 
 - Sau khởi động lại, mở khóa điện thoại trước khi dùng; chưa xử lý nhận dữ liệu trước lần mở khóa đầu tiên. Không đọc bù hộp thư SMS cũ.
 - Giới hạn mỗi nội dung là 8192 byte UTF-8; nội dung vượt mức bị báo lỗi, không cắt ngầm. Hết bộ nhớ hoặc lỗi Keystore cần xử lý tại điện thoại; không thể bảo đảm giữ tin nếu thiết bị không ghi được dữ liệu.
 - Tạm dừng/xóa hàng chờ không thu hồi HTTP request đã gửi ra hoặc dữ liệu đã tới VPS.
-- Mẫu receiver SQLite cũ không phải đường triển khai CRM. App 0.2.0 yêu cầu biên nhận mới từ backend CRM; không ghép app mới với mẫu cũ.
+- Mẫu receiver SQLite cũ không phải đường triển khai CRM. App từ bản 0.2.0 yêu cầu biên nhận mới từ backend CRM; không ghép app mới với mẫu cũ.
 
 ## Tình trạng kiểm chứng
 

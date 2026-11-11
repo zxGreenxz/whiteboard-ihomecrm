@@ -2,6 +2,7 @@ package vn.ihome.smsgateway;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -21,6 +22,7 @@ import org.junit.runner.RunWith;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -171,6 +173,14 @@ public final class GatewayDeviceTest {
             assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output));
         }
         screenshot.recycle();
+        // AGP uninstalls the app after the run, so CI collects this second copy, written as the shell user.
+        try (InputStream done = new ParcelFileDescriptor.AutoCloseInputStream(
+                InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                        .executeShellCommand("screencap -p /data/local/tmp/gateway-" + filename))) {
+            while (done.read() != -1) {
+                // Reading to the end waits until screencap has written the file.
+            }
+        }
     }
 
     private static boolean containsText(View view, String text) {

@@ -36,9 +36,15 @@ trong danh sách vừa gửi?", không gọi `learning.decide` hay thao tác duy
 
 ## Tin tối 21:00
 
-`learning.digest` CHỈ do job cron 21:00 của hồ sơ chủ gọi: nó đánh dấu "đã báo" các đề xuất mới của cả công ty, nên gọi trong chat
-làm tin tối hôm đó thiếu các mục vừa đánh dấu. Job gửi NGUYÊN VĂN `result.message`; `message` null (không có đề xuất mới) ⇒ không
-gửi gì. Người dùng hỏi "có bài học nào chờ duyệt không?" ⇒ chỉ trang web, không gọi `learning.digest`.
+`learning.digest` CHỈ do job cron 21:00 của hồ sơ chủ gọi: nó đánh dấu "đã báo" các đề xuất mới của cả công ty. Job gửi NGUYÊN VĂN
+`result.message`; `message` null (không có đề xuất mới) ⇒ không gửi gì.
+
+- CRM chỉ nhận lượt này trong khung 20:55–21:10 giờ Việt Nam (theo đồng hồ máy chủ CRM; không tham số nào mở được khung). Ngoài
+  khung ⇒ lỗi `action_rejected` lý do `learning_digest_outside_window`: CRM KHÔNG đánh dấu gì. Không gọi lại, không đổi tham số,
+  không tự soạn tin thay.
+- Gặp lỗi đó trong job tối ⇒ trả đúng `[SILENT]`. Gặp trong chat ⇒ nói: tin Bài học Hermes tự gửi lúc 21:00 mỗi tối; muốn xem ngay
+  thì mở trang web /settings/hermes?tab=bai-hoc.
+- Người dùng hỏi "có bài học nào chờ duyệt không?" hay bảo "gửi lại tin bài học" ⇒ chỉ trang web, không gọi `learning.digest`.
 
 ## Không tự sửa cách ghi CRM
 
