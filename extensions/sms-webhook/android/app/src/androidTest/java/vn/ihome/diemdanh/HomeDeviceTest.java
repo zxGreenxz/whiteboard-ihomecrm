@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.UiAutomation;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
@@ -23,6 +24,7 @@ import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.work.WorkInfo;
 import androidx.work.WorkManager;
 
 import org.junit.After;
@@ -35,12 +37,18 @@ import java.util.Collections;
 import java.util.List;
 
 import vn.ihome.smsgateway.BuildConfig;
+import vn.ihome.smsgateway.GatewayFixtures;
 import vn.ihome.smsgateway.GatewaySettings;
+import vn.ihome.smsgateway.GatewayWork;
+import vn.ihome.smsgateway.HeartbeatWork;
 import vn.ihome.smsgateway.HomeActivity;
 
 import static org.junit.Assert.*;
 
-/** The first screen of the merged app, on the disposable CI emulator; a stub transport keeps every test off the network. */
+/**
+ * The first screen of the merged app, on the disposable CI emulator. A stub transport keeps check-in
+ * off the network; the one test that enables the gateway points it at the reserved example.test.
+ */
 @RunWith(AndroidJUnit4.class)
 public final class HomeDeviceTest {
     static final String NOT_PAIRED = "Chưa ghép máy. Mở trang Điểm danh trên CRM rồi bấm “Mở app để ghép”.";
@@ -48,9 +56,17 @@ public final class HomeDeviceTest {
     static final String NEEDS_SETUP = "Đã ghép máy — còn thiếu quyền, bấm để xử lý.";
     static final String GATEWAY_NOT_CONFIGURED = "Chưa cấu hình.";
     static final String GATEWAY_PAUSED = "Đang tạm dừng.";
+    static final String GATEWAY_ON = "Đã bật chuyển tiếp.";
     private static final String CHECKIN_CARD = "Điểm danh";
     private static final String GATEWAY_CARD = "Biến động số dư";
+    /** Passes the gateway's own validation; .test is reserved, so no server can ever answer it. */
+    private static final String ENDPOINT = "https://example.test/webhook";
     private static final String TOKEN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private static final String SOURCE = "00000000-0000-4000-8000-000000000001";
+    private static final String BANK_APP = "fixture.bank";
+    private static final String[] GATEWAY_WORK = {"sms-outbox-recovery", "sms-outbox"};
+    private static final String[] HEARTBEAT_WORK = {"gateway-heartbeat-periodic", "gateway-heartbeat-immediate"};
+    private static final String[] CHECKIN_WORK = {"diemdanh-outbox", "diemdanh-safety-net"};
 
     private Instrumentation instrumentation;
     private Context context;
@@ -71,7 +87,8 @@ public final class HomeDeviceTest {
         settings.clearForTest();
         queue.clearAll();
         gateway = new GatewaySettings(context);
-        // Never enabled here: an enabled gateway schedules real deliveries.
+        // Never enabled here: an enabled gateway schedules real deliveries. The one test that enables it
+        // uses a host that cannot resolve and pauses it again before it ends.
         gateway.saveAll("", "", false, true, false, Collections.emptySet());
     }
 
@@ -138,7 +155,7 @@ public final class HomeDeviceTest {
     }
 
     @Test public void aConfiguredButPausedGatewayIsShownAsPaused() throws Exception {
-        gateway.saveAll("https://example.test/webhook", TOKEN, false, true, false, Collections.emptySet());
+        gateway.saveAll(ENDPOINT, TOKEN, false, true, false, Collections.emptySet());
         try (ActivityScenario<HomeActivity> scenario = ActivityScenario.launch(HomeActivity.class)) {
             Fixtures.waitForText(scenario, GATEWAY_PAUSED);
             scenario.onActivity(activity -> {
@@ -146,6 +163,75 @@ public final class HomeDeviceTest {
                 assertNotNull(findExact(root, GATEWAY_PAUSED));
                 assertNotNull(findExact(root, NOT_PAIRED));
             });
+        }
+    }
+
+    /** The phone that already forwards bank messages when the update arrives: Home is the first screen it opens. */
+    @Test public void anEnabledGatewayIsShownAsOnKeepsItsConfigurationAndIsScheduledAgain() throws Exception {
+        WorkManager works = WorkManager.getInstance(context);
+        // Drops the cancelled records of earlier tests, so every record found below was enqueued by this visit.
+        works.pruneWork().getResult().get();
+        for (String[] names : new String[][]{GATEWAY_WORK, HEARTBEAT_WORK, CHECKIN_WORK, {"gateway-heartbeat-delivery"}}) {
+            for (String name : names) assertTrue(name, works.getWorkInfosForUniqueWork(name).get().isEmpty());
+        }
+
+        gateway.saveAll(ENDPOINT, TOKEN, true, true, true, Collections.singleton(BANK_APP));
+        GatewayFixtures.pinSource(gateway, ENDPOINT, TOKEN, SOURCE);
+        GatewaySettings.Settings saved = gateway.load();
+        assertEquals(ENDPOINT, saved.endpoint);
+        assertEquals(TOKEN, saved.token);
+        assertTrue(saved.enabled);
+        assertFalse(saved.deviceId.isEmpty());
+        assertTrue(saved.smsEnabled);
+        assertTrue(saved.notificationsEnabled);
+        assertEquals(Collections.singleton(BANK_APP), saved.notificationPackages);
+        assertEquals(SOURCE, saved.pairedSourceId);
+        String stored = storedGatewaySettings();
+        assertFalse(stored.isEmpty());
+
+        // Counts every permission request of this process, also one the system would answer without a dialog.
+        Instrumentation.ActivityMonitor permissionRequests = instrumentation.addMonitor(
+                new IntentFilter("android.content.pm.action.REQUEST_PERMISSIONS"), null, false);
+        try (ActivityScenario<HomeActivity> scenario = ActivityScenario.launch(HomeActivity.class)) {
+            // Home sets both lines in one step, after its scheduling and the check-in repair have returned.
+            Fixtures.waitForText(scenario, GATEWAY_ON);
+            scenario.onActivity(activity -> {
+                View root = activity.getWindow().getDecorView();
+                assertNotNull(findExact(root, GATEWAY_ON));
+                assertNotNull(findExact(root, NOT_PAIRED));
+            });
+
+            // The unique works the gateway screen schedules when it starts, under the same names.
+            for (String name : GATEWAY_WORK) assertScheduled(name, GatewayWork.class);
+            for (String name : HEARTBEAT_WORK) assertScheduled(name, HeartbeatWork.class);
+
+            assertFalse("An unpaired phone arms nothing", SlotScheduler.isArmed(context));
+            assertFalse(slotAlarmPending(automation));
+            for (String name : CHECKIN_WORK) assertTrue(name, works.getWorkInfosForUniqueWork(name).get().isEmpty());
+
+            instrumentation.waitForIdleSync();
+            // A permission prompt is a separate screen on top; leave it time to arrive before looking.
+            SystemClock.sleep(1_500L);
+            assertTrue("Home asks for nothing, so nothing may cover it", inFront(scenario));
+            assertEquals("Home must not request a permission", 0, permissionRequests.getHits());
+
+            GatewaySettings.Settings reloaded = new GatewaySettings(context).load();
+            assertEquals(saved.endpoint, reloaded.endpoint);
+            assertEquals(saved.token, reloaded.token);
+            assertEquals(saved.enabled, reloaded.enabled);
+            assertEquals(saved.deviceId, reloaded.deviceId);
+            assertEquals(saved.smsEnabled, reloaded.smsEnabled);
+            assertEquals(saved.notificationsEnabled, reloaded.notificationsEnabled);
+            assertEquals(saved.notificationPackages, reloaded.notificationPackages);
+            assertEquals(saved.pairedSourceId, reloaded.pairedSourceId);
+            // Every write encrypts under a fresh IV, so the same stored text means nothing was written at all.
+            assertEquals("Home must not write the gateway configuration", stored, storedGatewaySettings());
+        } finally {
+            instrumentation.removeMonitor(permissionRequests);
+            // Paused first, so a worker that is still running neither sends nor schedules more.
+            gateway.saveAll("", "", false, true, false, Collections.emptySet());
+            works.cancelAllWork().getResult().get();
+            new vn.ihome.smsgateway.QueueStore(context).clearAll();
         }
     }
 
@@ -242,6 +328,28 @@ public final class HomeDeviceTest {
         } catch (RuntimeException betweenStates) {
             return false;
         }
+    }
+
+    /** The gateway configuration exactly as it lies on disk, encrypted. */
+    private String storedGatewaySettings() {
+        return context.getSharedPreferences("gateway_private", Context.MODE_PRIVATE).getString("settings", "");
+    }
+
+    /** Waits for a record of this unique work that was not cancelled; the enqueue runs on WorkManager's own thread. */
+    private void assertScheduled(String name, Class<?> worker) throws Exception {
+        WorkManager works = WorkManager.getInstance(context);
+        long deadline = SystemClock.uptimeMillis() + 10_000L;
+        WorkInfo found = null;
+        while (found == null) {
+            for (WorkInfo info : works.getWorkInfosForUniqueWork(name).get()) {
+                if (info.getState() != WorkInfo.State.CANCELLED) found = info;
+            }
+            if (found == null) {
+                assertTrue(name + " must be enqueued", SystemClock.uptimeMillis() < deadline);
+                SystemClock.sleep(100L);
+            }
+        }
+        assertTrue(name + " must run " + worker.getSimpleName(), found.getTags().contains(worker.getName()));
     }
 
     /** Everything the check-in screen counts as set up, as the check-in device tests grant it. */

@@ -48,35 +48,24 @@ done
 apk='app/build/outputs/apk/debug/app-debug.apk'
 sha256sum "$apk" > build/ci-evidence/apk-sha256.txt
 "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk" > build/ci-evidence/apk-signature.txt
-# Package, version, label and launcher of the APK that the device step installs.
-"$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$apk" > build/ci-evidence/apk-badging.txt
+# Package, version, label, launcher and permissions of the APK that the device step installs. The
+# checks and the approved permission list live in ci-verify-apk.sh; ci-release.sh runs the same file
+# on the signed release APK.
+bash ./ci-verify-apk.sh "$apk" 'vn.ihome.smsgateway.thu' 'iHome Gateway (thử)' build/ci-evidence
 
-# The merged manifest may only hold the approved list (RECEIVE_SMS for bank messages, plan 4.6 for
-# check-in) plus what androidx.work and androidx.core add.
-"$ANDROID_HOME/build-tools/35.0.0/aapt2" dump permissions "$apk" > build/ci-evidence/apk-permissions.txt
-sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" build/ci-evidence/apk-permissions.txt \
-  | grep -v '\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$' | LC_ALL=C sort -u > build/ci-evidence/apk-permissions-actual.txt
-LC_ALL=C sort -u > build/ci-evidence/apk-permissions-expected.txt <<'EOF'
-android.permission.ACCESS_BACKGROUND_LOCATION
-android.permission.ACCESS_COARSE_LOCATION
-android.permission.ACCESS_FINE_LOCATION
-android.permission.ACCESS_NETWORK_STATE
-android.permission.FOREGROUND_SERVICE
-android.permission.FOREGROUND_SERVICE_LOCATION
-android.permission.INTERNET
-android.permission.POST_NOTIFICATIONS
-android.permission.RECEIVE_BOOT_COMPLETED
-android.permission.RECEIVE_SMS
-android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-android.permission.SCHEDULE_EXACT_ALARM
-android.permission.USE_EXACT_ALARM
-android.permission.WAKE_LOCK
-EOF
-if ! diff build/ci-evidence/apk-permissions-expected.txt build/ci-evidence/apk-permissions-actual.txt; then
-  printf 'APK permissions differ from the approved list.\n' >&2
-  exit 1
-fi
-if ! grep -q "SCHEDULE_EXACT_ALARM' maxSdkVersion='32'" build/ci-evidence/apk-permissions.txt; then
-  printf 'SCHEDULE_EXACT_ALARM must stop at Android 12L.\n' >&2
-  exit 1
-fi
+# ci-release.sh runs on main only. A pull request therefore proves here that the verifier holds its
+# arguments to the APK: this debug APK must be refused as the release package and under the release label.
+mkdir -p build/ci-verify-refused
+must_refuse() {
+  local status=0
+  bash ./ci-verify-apk.sh "$apk" "$2" "$3" build/ci-verify-refused \
+    > /dev/null 2> build/ci-verify-refused/stderr.txt || status=$?
+  if [[ "$status" != '1' ]] || ! grep -q "^$1" build/ci-verify-refused/stderr.txt; then
+    printf 'ci-verify-apk.sh must refuse the debug APK as package %s with label %s.\n' "$2" "$3" >&2
+    exit 1
+  fi
+  cat build/ci-verify-refused/stderr.txt >> build/ci-evidence/apk-verify-refusals.txt
+}
+must_refuse 'APK identity differs' 'vn.ihome.smsgateway' 'iHome Gateway (thử)'
+must_refuse 'APK label differs' 'vn.ihome.smsgateway.thu' 'iHome Gateway'
+printf 'ci-verify-apk.sh refused the debug APK as the release package and under the release label.\n'
