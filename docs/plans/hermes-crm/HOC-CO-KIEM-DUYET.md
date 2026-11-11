@@ -258,6 +258,11 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
 - `cron list` sau khi cài vẫn hiện `Last run … blocked_config` của lượt 10/11 vì cron không chạy bù; `Next run` là 21:00 ngày
   11/11. **Tin thật tới Zalo chỉ lượt đó chứng minh**: phép kiểm trên dừng ở preflight và phân giải đích, chưa chạy agent và chưa
   gửi tin. Sau 21:00 đọc lại `Last run` bằng lệnh ở 4.6 bước 5.
+- Cập nhật 11/11/2026, trước lượt 21:00: theo lệnh chủ, 08:18 VN chạy tay `cron run` cho job này. Job qua preflight và gọi
+  `learning.digest` (ba đề xuất chờ được đánh dấu đã báo) nhưng không giao được tin, đúng như cảnh báo ở 4.6 bước 4. Lúc 08:29
+  VN đúng nội dung tin đã soạn được giao lại bằng một job một-lần không gọi agent, do ticker trong gateway chạy và giao qua
+  adapter đang sống; tin tới DM của chủ. Vậy đường giao của lượt theo lịch đã được chứng minh từ lúc đó, không phải chờ lượt
+  21:00. Lượt 21:00 ngày 11/11 chỉ có tin khi có đề xuất mới chưa báo.
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
 - Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
@@ -267,7 +272,7 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
 
 #### 4.6.2 Tin và nội dung tự học bằng tiếng Việt (chủ dặn 11/11/2026)
 
-Tin thật đầu tiên (08:29 VN 11/11) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
+Tin thật đầu tiên (08:29 VN 11/11, xem dòng cập nhật cuối 4.6.1) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
 `config.yaml` của hồ sơ không nằm trong repo):
 
 - **Đầu / cuối tin cron** ("Cronjob Response: …", "To stop or manage this job…") là vỏ bọc của Hermes
@@ -287,9 +292,9 @@ Tin thật đầu tiên (08:29 VN 11/11) tới Zalo kèm ba đoạn tiếng Anh.
   - một câu có cả sở thích lẫn cách ghi CRM ⇒ lượt đó không gọi `memory`. Bản nháp cho lưu riêng phần sở thích đã lưu lẫn cả quy
     tắc chọn sổ trong một lượt thử, nên bỏ.
 
-Kiểm trên hồ sơ thử `tkt` (CLI qua `hermes_conv.py`, không qua Zalo), 15/15 ca: 11 ca ghi CRM hoặc câu trộn không gọi `memory`,
+Kiểm trên hồ sơ thử `tkt` (CLI qua công cụ hội thoại thử `hermes_conv.py` trên máy chủ, ngoài repo; không qua Zalo), 15/15 ca: 11 ca ghi CRM hoặc câu trộn không gọi `memory`,
 3 ca sở thích lưu bằng tiếng Việt, 1 ca hỏi bài học không gọi công cụ. Mốc so sánh v4.58 lưu sở thích bằng tiếng Anh. Chưa chạy
-lại ma trận 78 ca của đợt 09/11.
+lại ma trận nghiệm thu 78 ca của trang Bài học (đợt 09/11; bộ ca nằm trên máy chủ thử, ngoài repo).
 
 SOUL v4.59 dài 59.328 ký tự; trần nạp của hồ sơ là 65.280 ký tự (`model.context_length` 272000 × 4 × 0,06). Vượt trần thì Hermes
 cắt giữa file, nên mỗi lần thêm luật phải đếm lại. Lùi: chép

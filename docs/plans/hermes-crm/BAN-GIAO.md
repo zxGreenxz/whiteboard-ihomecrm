@@ -199,7 +199,7 @@ Phiên cập nhật tài liệu 19/10 không có quyền VPS/DB: release VPS và
 
 - Đọc trên máy production ngày 11/11/2026: container `hermes-owner` chạy `nousresearch/hermes-agent@sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05`; `hermes --version` báo `Hermes Agent v0.22.2 (2026.9.24)`, upstream `d923a5eb`, Python 3.14.7. Image dựng ngày 15/10/2026, container đang chạy được tạo ngày 23/10/2026.
 - Production lên v0.22.2 trước, repo đồng bộ bản ghim sau: repo ghim v0.21.6 tới ngày 11/11/2026 rồi mới chuyển sang v0.22.2 (commit `d923a5eb487a17c0a68801bba9ef0f56c81040a8`). Không có biên nhận nào ghi đúng lúc nâng; ghi chú dọn đĩa 19/10 ở mục 4 đã nhắc runtime v0.22.2.
-- Khác biệt hành vi đã thấy trên v0.22.2: chạy tay `hermes cron run <id>` chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên không giao được tin qua plugin Zalo. Lượt cron theo lịch vẫn giao được. Chi tiết ở [README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron".
+- Hành vi ghi nhận trên v0.22.2 (không phải thay đổi do bản nâng): chạy tay `hermes cron run <id>` chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên không giao được tin qua plugin Zalo. Lượt cron theo lịch vẫn giao được. Chi tiết ở [README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron".
 - Plugin Zalo trên production là bản phát hành 16/10 cộng khai báo `cron_deliver_env_var`, không phải `adapter.py` của `main` (xem [HOC-CO-KIEM-DUYET 4.6.1](HOC-CO-KIEM-DUYET.md)).
 - Bản ghim, cách kiểm provenance và phần bằng chứng còn thiếu: [infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md).
 

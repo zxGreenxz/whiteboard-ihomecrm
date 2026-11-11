@@ -64,7 +64,7 @@ Kênh nhắn riêng dùng [plugin Zalo native](../hermes-zalo-native/README.md) 
 
 Lệnh ghi chỉ trong chat riêng (K1, [NEN-CHUNG-THAO-TAC-GHI.md §8.2](../../docs/plans/hermes-crm/NEN-CHUNG-THAO-TAC-GHI.md#82-câu-3-chỉ-nhận-lệnh-ghi-trong-chat-riêng)): connector **không** biết tin đến từ DM hay nhóm. Rào nằm ở profile: `profile-provisioning.mjs` từ chối (`native_profile_shared_platform`, không sửa file nào) khi profile sẽ mang token CRM mà bật một nền tảng khác `zalo_personal`, theo một trong hai đường:
 - `platforms` trong `config.yaml` còn mục chưa ghi đúng `enabled: false`;
-- biến trong `.env` bật nền tảng theo đúng Hermes v0.22.2 (`gateway/config_env.py`, commit `d923a5eb`; file này không đổi so với v0.21.6), vd `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `WHATSAPP_ENABLED`, `SIGNAL_HTTP_URL`, `MATRIX_*`, `EMAIL_*`, `API_SERVER_KEY`, `WEBHOOK_ENABLED`, `GATEWAY_RELAY_URL`. YAML ghi `enabled: false` thì thắng biến môi trường, như upstream.
+- biến trong `.env` bật nền tảng theo đúng Hermes v0.22.2 (`gateway/config_env.py`, commit `d923a5eb`; so với v0.21.6 file này chỉ khác chú thích kiểu), vd `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `WHATSAPP_ENABLED`, `SIGNAL_HTTP_URL`, `MATRIX_*`, `EMAIL_*`, `API_SERVER_KEY`, `WEBHOOK_ENABLED`, `GATEWAY_RELAY_URL`. YAML ghi `enabled: false` thì thắng biến môi trường, như upstream.
 
 `platforms` vắng hoặc `null` được coi như rỗng; thu hồi hay chờ credential vẫn gỡ được token. Bộ đồng bộ liên kết (`binding-reconciler.mjs`) kiểm K1 **trước** khi ghi liên kết native hay xác nhận `restart_pending`, rồi báo `status().blocked = [{profile, code}]`, không nuốt thành "pending" trơn. Coi mọi token CRM là có thể có khoá ghi (kết nối `inherit_crm` tự nhận khoá registry vừa bật).
 
