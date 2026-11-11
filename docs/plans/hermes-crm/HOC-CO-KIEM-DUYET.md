@@ -206,9 +206,11 @@ vẫn tạo được nhưng mọi lượt chạy đều bị chặn.
    không bao giờ vào tin sau). `crm_action_status` cùng requestId trả đúng kết quả đã ghi kèm `message` dựng lại tất định (presenter chạy
    cả ở nhánh tra trạng thái), nên tin hôm đó vẫn tới chủ. Gọi lại `crm_action_run` thì không được: requestId mới ⇒ một lượt đánh dấu mới.
 
-4. Thử: chạy tay job một lần lúc chủ đồng ý (`cron run <id>` nếu bản Hermes có), kiểm tin tới đúng DM chủ và dòng audit
-   `HERMES_ACTION_APPLIED` `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không thử bằng cách gọi `learning.digest` trong
-   chat (đánh dấu thật trên production).
+4. Thử: kiểm ở lượt chạy theo lịch, lúc chủ đồng ý: tin tới đúng DM chủ và có dòng audit `HERMES_ACTION_APPLIED`
+   `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không chạy tay `cron run <id>`: trên Hermes v0.22.2 (thấy trên
+   production 11/11/2026) lệnh này chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên tin không giao
+   được qua plugin Zalo trong khi job vẫn gọi `learning.digest` và đánh dấu thật. Cũng không thử bằng cách gọi `learning.digest`
+   trong chat (đánh dấu thật trên production).
 
 5. Sau lượt chạy đầu (và sau mỗi lần đổi plugin hay nâng bản Hermes), đọc `Last run` của job:
 
@@ -256,10 +258,52 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
 - `cron list` sau khi cài vẫn hiện `Last run … blocked_config` của lượt 10/11 vì cron không chạy bù; `Next run` là 21:00 ngày
   11/11. **Tin thật tới Zalo chỉ lượt đó chứng minh**: phép kiểm trên dừng ở preflight và phân giải đích, chưa chạy agent và chưa
   gửi tin. Sau 21:00 đọc lại `Last run` bằng lệnh ở 4.6 bước 5.
+- Cập nhật 11/11/2026, trước lượt 21:00: theo lệnh chủ, 08:18 VN chạy tay `cron run` cho job này. Job qua preflight và gọi
+  `learning.digest` (ba đề xuất chờ được đánh dấu đã báo) nhưng không giao được tin, đúng như cảnh báo ở 4.6 bước 4. Lúc 08:29
+  VN đúng nội dung tin đã soạn được giao lại bằng một job một-lần không gọi agent, do ticker trong gateway chạy và giao qua
+  adapter đang sống; tin tới DM của chủ. Vậy đường giao của lượt theo lịch đã được chứng minh từ lúc đó, không phải chờ lượt
+  21:00. Phần còn chưa chứng minh: một lượt theo lịch mà ticker vừa chạy agent vừa giao tin trong cùng lượt (08:18 agent chạy
+  trong CLI, 08:29 không gọi agent); phải chờ lượt theo lịch đầu tiên có đề xuất mới chưa báo, tối nào không có thì không có tin.
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
-- Production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản ghim, production
-  kiểm bằng phép chạy trên.
+- Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
+  ghim, production kiểm bằng phép chạy trên. Cùng ngày 11/11/2026 repo đã đồng bộ bản ghim lên v0.22.2
+  ([infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md)); từ đó CI kiểm trên đúng phiên bản Hermes production
+  đang chạy, còn plugin production vẫn là bản cài nêu ở đầu mục này.
+
+#### 4.6.2 Tin và nội dung tự học bằng tiếng Việt (chủ dặn 11/11/2026)
+
+Tin thật đầu tiên (08:29 VN 11/11, xem dòng cập nhật 11/11 ở 4.6.1) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
+`config.yaml` của hồ sơ không nằm trong repo):
+
+- **Đầu / cuối tin cron** ("Cronjob Response: …", "To stop or manage this job…") là vỏ bọc của Hermes
+  (`cron/scheduler_delivery.py`), không phải của CRM. Tắt bằng `cron.wrap_response: false` trong `config.yaml` của hồ sơ owner
+  (đặt 09:00 VN 11/11; sao lưu `/root/ihome-owner-install/backup/config.yaml-20261111T015909Z`). Cron đọc config lúc giao tin
+  (`load_config` nhớ theo chữ ký file) nên không khởi động lại gateway. `[SILENT]` xử lý riêng ở `cron/scheduler.py`, không phụ
+  thuộc vỏ bọc; các probe cron của plugin Zalo (`upstream-probe.py`) vốn chạy với `wrap_response: False`. Chưa có lượt giao thật
+  nào sau khi tắt để chứng minh trên production.
+- **Nội dung bài học** tiếng Anh là nguyên văn skill curator viết ngày 31/10 (tin gửi nguyên văn theo quyết định 31/10, không
+  dịch). Curator nay không còn viết skill (`curator.consolidate: false` ⇒ chỉ dọn tất định) và nhánh curator không nạp SOUL. Chỗ
+  còn tự ghi là công cụ `memory` / `skill_manage` của phiên chính và lượt tự xét sau hội thoại (`agent/background_review.py`
+  dùng lại system prompt của phiên, tức có SOUL). SOUL v4.59 (cài 09:35 VN 11/11 cho owner và ba hồ sơ thử) thêm:
+  - luật ngôn ngữ: câu trả lời, thông báo, tin tự gửi và mọi nội dung lưu bằng `memory` / `skill_manage` đều tiếng Việt có dấu;
+    giữ nguyên định danh kỹ thuật; văn bản công cụ trả để chuyển nguyên văn (`result.message` của tin 21:00) không dịch;
+  - sở thích không đụng dữ liệu CRM (ngôn ngữ, xưng hô, độ dài, cách trình bày) được lưu `memory` khi chủ bảo nhớ. Trước đó bot
+    từ chối nhầm câu "thông báo, skill, nội dung phải bằng tiếng Việt" như một bài học ghi CRM;
+  - một câu có cả sở thích lẫn cách ghi CRM ⇒ lượt đó không gọi `memory`. Bản nháp cho lưu riêng phần sở thích đã lưu lẫn cả quy
+    tắc chọn sổ trong một lượt thử, nên bỏ.
+
+Kiểm trên hồ sơ thử `tkt` (CLI qua công cụ hội thoại thử `hermes_conv.py` trên máy chủ, ngoài repo; không qua Zalo), 15/15 ca: 11 ca ghi CRM hoặc câu trộn không gọi `memory`,
+3 ca sở thích lưu bằng tiếng Việt, 1 ca hỏi bài học không gọi công cụ. Mốc so sánh v4.58 lưu sở thích bằng tiếng Anh. Chưa chạy
+lại ma trận nghiệm thu 78 ca của trang Bài học (đợt 09/11; bộ ca nằm trên máy chủ thử, ngoài repo).
+
+SOUL v4.59 dài 59.328 ký tự; trần nạp của hồ sơ là 65.280 ký tự (`model.context_length` 272000 × 4 × 0,06). Vượt trần thì Hermes
+cắt giữa file, nên mỗi lần thêm luật phải đếm lại. Lùi: chép
+`/root/ihome-owner-install/backup/soul-owner-c69f56263290-20261111T023552Z.md` về `SOUL.md` của hồ sơ owner (chủ `10003:10003`,
+quyền `644`). SOUL mới chỉ vào phiên mới (`/new` rồi `/approve`) hoặc khi phiên được nén.
+
+Chưa làm: viết lại các mục bộ nhớ tiếng Anh có sẵn của hồ sơ owner; gói chữ tiếng Việt cho thông báo hệ thống của chính Hermes
+(`display.language` đang `en`, Hermes chưa có `vi`; hồ sơ có thể thêm `locales/vi.yaml`); ba đề xuất tiếng Anh đang chờ chủ quyết.
 
 ### 4.7 Rủi ro
 

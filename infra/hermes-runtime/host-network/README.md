@@ -31,7 +31,7 @@ ss -ltnp | grep -E '172.17.0.1%docker0:(20128|8740)'
 
 ## llm-stream-guard (cửa 9router)
 
-**Vì sao.** Model đôi khi thoái hoá và stream `arguments` của một tool call mãi không dứt (đo: 0,5–1,7 MB, 10–35 nghìn chunk SSE, 3–5 phút, không bao giờ có `finish_reason`). Hermes v0.21.6 không bắt được: bộ phát hiện stale chỉ bắn khi luồng im lặng, runaway watch chỉ xem content/reasoning chứ không xem `arguments`, còn 9router bỏ qua `max_tokens`/`max_completion_tokens`/`max_output_tokens` với backend này. Arguments bình thường chỉ ≈50–200 ký tự.
+**Vì sao.** Model đôi khi thoái hoá và stream `arguments` của một tool call mãi không dứt (đo: 0,5–1,7 MB, 10–35 nghìn chunk SSE, 3–5 phút, không bao giờ có `finish_reason`). Hermes không bắt được (đo ở v0.21.6; nguồn v0.22.2 đang ghim vẫn vậy): bộ phát hiện stale chỉ bắn khi luồng im lặng, runaway watch chỉ xem content/reasoning chứ không xem `arguments`, còn 9router bỏ qua `max_tokens`/`max_completion_tokens`/`max_output_tokens` với backend này. Arguments bình thường chỉ ≈50–200 ký tự.
 
 **Chuyển tiếp.** Guard chuyển nguyên method, path, query, header (gồm `Authorization`, `Host`) và body theo luồng, không đệm request hay response; chỉ header hop-by-hop (`Connection`, `Transfer-Encoding`…) do Node tự quản ở mỗi chặng. Riêng `POST /v1/chat/completions` bỏ `Accept-Encoding` để SSE không bị nén (chặng loopback không cần nén); nếu upstream vẫn nén, luồng đi qua không kiểm và ghi `llm_stream_guard_skip`. Client bỏ ngang thì request upstream bị huỷ; upstream trả lỗi thì status/header/body đi nguyên; upstream đứt giữa chừng thì client cũng thấy đứt; không kết nối được upstream thì trả 502 JSON (`type: upstream_unavailable`) và ghi `llm_stream_guard_upstream_error`.
 
@@ -64,7 +64,7 @@ Unit trong repo (bản chạy trên VPS) hạ `GUARD_LARGE_ARGS_MAX=32768` và `
 
 ## Cấu hình Hermes đi kèm
 
-Trong `config.yaml` của profile (Hermes v0.21.6):
+Trong `config.yaml` của profile (ghi ở Hermes v0.21.6; các khoá này vẫn có trong nguồn v0.22.2 đang ghim, file trên VPS chưa đọc lại):
 
 ```yaml
 model:
