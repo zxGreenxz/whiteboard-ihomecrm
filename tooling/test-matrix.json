@@ -1350,9 +1350,11 @@
     },
     {
       "id": "hermes-learning-action-sql",
-      "$comment": "Đợt 3 học có kiểm duyệt: trang thao tác learning.digest / learning.decide (vỏ INVOKER + bước DEFINER, cột announced_at, khoá seed TẮT) và danh mục connector của trang.",
+      "$comment": "Đợt 3 học có kiểm duyệt: trang thao tác learning.digest / learning.decide (vỏ INVOKER + bước DEFINER, cột announced_at, khoá seed TẮT) và danh mục connector của trang. Khung giờ tin tối 20261111015658 (lượt ghi của learning.digest chỉ nhận trong 20:55–21:10 giờ Việt Nam theo đồng hồ database) và file lùi của nó.",
       "sourcePaths": [
         "supabase/migrations/*_hermes_learning_action_v1.sql",
+        "supabase/migrations/*_hermes_learning_digest_window_v1.sql",
+        "docs/plans/hermes-crm/revert/hermes_learning_digest_window_revert_v1.sql",
         "infra/hermes-broker/learning-action-contract.mjs",
         "infra/hermes-broker/learning-digest.mjs",
         "infra/hermes-broker/learning-action-sql.test.mjs"

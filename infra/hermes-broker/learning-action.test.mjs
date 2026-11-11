@@ -21,6 +21,8 @@ test('khai: hai thao tác trang learning, cùng khoá riêng Hermes, một RPC t
   assert.deepEqual([catalog.keys, catalog.rpcs, catalog.pages], [['assistant.learning_review'], ['hermes_learning_action_v1'], ['learning']]);
   assert.deepEqual(LEARNING_DIGEST.params, {});
   assert.match(LEARNING_DIGEST.title, /^Chỉ job tin tối 21:00 gọi/);
+  // Khung giờ tin tối (20261111015658): mã từ chối của SQL khi gọi ngoài 20:55–21:10 thuộc danh sách của đúng thao tác này.
+  assert.deepEqual([...LEARNING_DIGEST.reasons], ['learning_digest_outside_window']);
   assert.deepEqual([...LEARNING_DECIDE.reasons], ['learning_not_pending']);
   const listed = catalog.listing({ read: [], action: ['assistant.learning_review'] }).find(item => item.action === 'learning.decide');
   assert.deepEqual(Object.keys(listed.params), ['numbers', 'decision', 'note']);

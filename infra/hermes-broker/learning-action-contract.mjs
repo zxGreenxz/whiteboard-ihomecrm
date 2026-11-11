@@ -11,9 +11,13 @@ export const LEARNING_REVIEW_KEY = HERMES_LEARNING_ACTION_KEYS[0];
 const RPC = 'hermes_learning_action_v1';
 
 // Chỉ job cron 21:00 của hồ sơ chủ gọi: SQL đánh dấu "đã báo" các đề xuất chờ chưa báo của CẢ công ty (một lần), connector dựng
-// result.message tất định. Gọi trong chat sẽ làm tin tối hôm đó thiếu các mục vừa đánh dấu (vẫn còn ở trang web và trong số "còn chờ").
+// result.message tất định. Database tự giữ luật này (20261111015658): lượt ghi chỉ được nhận khi đồng hồ database nằm trong khung
+// [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh; ngoài khung ⇒ action_rejected learning_digest_outside_window, không dòng nào đổi (trước đó
+// một lời gọi trong chat hay một lượt chạy tay làm đề xuất rời khỏi mọi tin tối dù tin chưa tới chủ — sáng 11/11 chạy tay đánh dấu 3
+// đề xuất mà không gửi được, nội dung chỉ tới nhờ gửi lại bằng tay).
 export const LEARNING_DIGEST = defineAction({ id: 'learning.digest', page: 'learning', key: LEARNING_REVIEW_KEY, class: 'reversible', rpc: RPC,
-  title: 'Chỉ job tin tối 21:00 gọi: đánh dấu đã báo, trả result.message để gửi nguyên văn (null ⇒ không gửi)' });
+  title: 'Chỉ job tin tối 21:00 gọi: đánh dấu đã báo, trả result.message để gửi nguyên văn (null ⇒ không gửi)',
+  reasons: ['learning_digest_outside_window'] });
 // numbers = số #N của tin tối / trang web (seq theo công ty, ổn định giữa các tối); note = phần sau "vì". SQL luôn xem trước.
 // Số trùng ("duyệt 1-3, 2") khử ở connector, giữ thứ tự lần đầu — SQL vẫn tự từ chối số trùng (22023) nếu có ai gọi thẳng.
 export const LEARNING_DECIDE = defineAction({ id: 'learning.decide', page: 'learning', key: LEARNING_REVIEW_KEY, class: 'reversible', rpc: RPC,

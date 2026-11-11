@@ -47,7 +47,8 @@ export const ACTION_REASONS = Object.freeze({
   ...invoiceReasons(),
   // Trang Sale (crm_sale_action, 05/11): thao tác đã rời cầu Sale. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...saleReasons(),
-  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): một mã needs_input, không vào sổ audit host.
+  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): mã needs_input không vào sổ audit host; mã rejected
+  // learning_digest_outside_window (khung giờ tin tối, 11/11) vào cả REASONS của host-ownership.mjs.
   ...learningReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
@@ -151,9 +152,13 @@ function saleReasons() {
   };
 }
 // Trang Bài học: mọi số người dùng nêu đều không còn chờ (đã quyết định, kể cả trên web) hoặc không có ⇒ hỏi lại, không đoán số khác.
+// learning_digest_outside_window (20261111015658): database chỉ nhận lượt GHI của learning.digest khi đồng hồ của nó nằm trong khung
+// [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh; ngoài khung SQL từ chối trước khi ghi bất cứ dòng nào. Lỗi thật (rejected), không gọi lại:
+// job tối kết thúc bằng [SILENT], trong chat nói tin tự gửi 21:00 — câu tĩnh nêu cả hai để mô hình không tự soạn tin thay.
 function learningReasons() {
   return {
     learning_not_pending: reason('needs_input', 'fix', 'Các số này không còn đề xuất nào chờ duyệt (đã quyết định trước đó hoặc không có số đó); báo người dùng, hỏi lại số.'),
+    learning_digest_outside_window: reason('rejected', 'never', 'Ngoài khung 20:55–21:10 CRM không nhận learning.digest. Không gọi lại, không tự soạn tin. Job tối: trả đúng [SILENT]. Trong chat: báo tin tự gửi 21:00 mỗi tối.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

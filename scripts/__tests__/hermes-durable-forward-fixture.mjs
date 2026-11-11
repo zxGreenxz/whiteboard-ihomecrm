@@ -1,4 +1,4 @@
-// Frozen contracts for seventy-two forward migrations (eight of 20261019, the B2
+// Frozen contracts for seventy-three forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -101,6 +101,11 @@
 // Zalo liên kết lại (10/11): the Zalo binding RPC rebuilt from the 20261019034850 body — confirm re-selects the assistant credential to the
 // challenge's connection while the assistant has no ACTIVE binding (with an ACTIVE binding a differing selection is still PT409 and only
 // selectCredential changes it); the audit reason names the replaced connection; result shape unchanged — 20261110072604.
+// Khung giờ tin tối (11/11): the learning step rebuilt from the 025453 body with ONE extra block right after the replay-by-requestId block —
+// a WRITING learning.digest call is refused (kind rejected, reason learning_digest_outside_window, before any receipt or row change) unless
+// the database clock is inside [20:55:00, 21:10:00) Asia/Ho_Chi_Minh; two new private INVOKER helpers nobody but the owner may execute:
+// the pure comparison on a timestamptz (explicit AT TIME ZONE, so the session TimeZone cannot move it) and the no-argument reader of
+// clock_timestamp() — no parameter, GUC or header reaches either; signature, return shape and grants of the step unchanged — 20261111015658.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -266,7 +271,9 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_learning_review_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"bdcc8c3f54f8e3c211a135736bbebd2674d95fdfbec5322aff0ea07a1db84223","args":"p jsonb"},
   {"name":"public.hermes_learning_decide_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"3ed78862d7f5aef6a9bf2ff355eb1bab04348bc01751b11973c3bace719fd8f2","args":"p jsonb"},
   {"name":"app_private.hermes_store_learning_ingest_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"7a4b99b98dc443715583a8dd9e51c1113ae80a7a608e150208349e8039b1c575","args":"p jsonb"},
-  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"ec118241c78f720e1afe2193ab2fb0deb5841b1dc029a9054603a94278f44103","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"},
+  {"name":"app_private.hermes_learning_digest_window_v1","sourcePath":"supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql","sha256":"b6c10aa8fc3dc79935ee99ecf24d44db524e7e16b9c153d9fea532db5d7215a6","args":"p_at timestamptz"},
+  {"name":"app_private.hermes_learning_digest_window_open_v1","sourcePath":"supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql","sha256":"37ae7d47dd52059472655b9d22233c4a4a973a2f12bd2f2071017d4a78e16be5","args":""},
+  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql","sha256":"d068f08a2099e50216edd7900095586dfd58138408266c8a6338f7118b8cd425","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"},
   {"name":"public.hermes_learning_action_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"a333e54c9a42083f2d678bdab1be5d2c8661179f292802987aff16cfde77a6f1","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 
@@ -367,7 +374,8 @@ export const FORWARD_SUPERSEDED = [
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024120211_hermes_expense_acceptance_round1_v1.sql","sha256":"29d989d8b140a9e791a5e3bb57906e8b722fb22c73b3a30d48dabf17cc87b446"},
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql","sha256":"a648f8c81b793b5feea4ce9677189cf8cbc685abb41fc6fecf617bdf8e311ac5"},
   {"name":"app_private.hermes_learning_guard_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"8d2f4cdfb3e403973455c8df49d0bce08d9d1163eef418975b1ce5242d835faf"},
-  {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"892bfb86084d8285c497a56a0be88810ec5ebf6dd7a8cc203c184137d6b55106"}
+  {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"892bfb86084d8285c497a56a0be88810ec5ebf6dd7a8cc203c184137d6b55106"},
+  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"ec118241c78f720e1afe2193ab2fb0deb5841b1dc029a9054603a94278f44103","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"}
 ];
 
 export const INHERITED_CRM_ACL = [

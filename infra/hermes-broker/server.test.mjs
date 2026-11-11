@@ -663,7 +663,7 @@ test('actionPages learning: tin tối tất định từ kết quả SQL, duyệ
     { seq: 5, kind: 'memory_crm_write', title: 'Bộ nhớ: phiếu thu', content: 'Dùng expense.create cho phiếu chi.' }] };
   const expected = formatLearningDigest({ proposals: SQL_DIGEST.items, pendingTotal: 3, webOrigin: ORIGIN_WEB, date: new Date(SQL_DIGEST.announcedAt) });
   const run = async actionPages => {
-    const f = fakeBackend(), baseFetch = f.configuration.fetch, rpcs = [];
+    const f = fakeBackend(), baseFetch = f.configuration.fetch, rpcs = [], state = { outsideWindow: false };
     const catalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...INVOICE_ACTIONS, ...CONTRACT_ACTIONS, ...LEARNING_ACTIONS]);
     const member = () => ({ organizationId: I.org, userId: I.user, membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1 });
     // SQL đã bật trang (dòng chính sách + khoá): khoá Bài học + một khoá production (phiếu chi) được cấp, khoá khác tắt ở công ty — để
@@ -677,6 +677,8 @@ test('actionPages learning: tin tối tất định từ kết quả SQL, duyệ
       if (path === '/rest/v1/rpc/hermes_learning_action_v1') {
         const args = JSON.parse(options.body); rpcs.push(args);
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        // Khung giờ tin tối (20261111015658): ngoài 20:55–21:10 SQL trả đúng khuôn này, không ghi gì.
+        if (args.p_action === 'learning.digest' && state.outsideWindow) return Response.json({ kind: 'rejected', reason: 'learning_digest_outside_window' });
         if (args.p_action === 'learning.digest') return Response.json({ kind: 'applied', link: '/settings/hermes?tab=bai-hoc', result: SQL_DIGEST });
         if (args.p_phase !== 'apply') return Response.json({ kind: 'preview', basis: 'b'.repeat(32), confirm: 'required', warnings: ['Không có đề xuất số: #9.'],
           resolved: { proposalIds: [id(70), id(71)], numbers: [1, 3] }, preview: { action: 'learning.decide', decision: 'DUYỆT', items: [{ number: 1 }, { number: 3 }] } });
@@ -694,7 +696,8 @@ test('actionPages learning: tin tối tất định từ kết quả SQL, duyệ
       assert.equal(response.body.result.isError, false, response.text);
       return JSON.parse(response.body.result.content[0].text);
     };
-    return { call, rpcs, tools: (await http.mcp(token)).body.result.tools };
+    const raw = (name, args) => http.mcp(token, 'tools/call', { name, arguments: args });
+    return { call, raw, rpcs, state, tools: (await http.mcp(token)).body.result.tools };
   };
 
   const on = await run(['contract', 'learning']);
@@ -721,6 +724,18 @@ test('actionPages learning: tin tối tất định từ kết quả SQL, duyệ
   assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [], decision: 'approve' } })).reason, 'invalid_params');
   assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [1], decision: 'maybe' } })).reason, 'invalid_params');
   assert.equal(on.rpcs.length, before);
+  // Khung giờ tin tối: SQL từ chối learning.digest gọi ngoài 20:55–21:10 ⇒ mô hình nhận LỖI rõ (isError) với đúng mã + câu tĩnh của danh
+  // sách đóng — không tin, không nội dung đề xuất, không khuôn "applied" nào để nhầm là đã gửi; connector gọi SQL đúng một lần, không
+  // tự gọi lại. learning.decide không dính khung giờ.
+  on.state.outsideWindow = true;
+  const refused = await on.raw('crm_action_run', { action: 'learning.digest', requestId: id(92) });
+  assert.equal(refused.body.result.isError, true, refused.text);
+  assert.deepEqual(JSON.parse(refused.body.result.content[0].text), { error: 'action_rejected', reason: 'learning_digest_outside_window',
+    detail: ACTION_REASONS.learning_digest_outside_window.text });
+  assert.equal(on.rpcs.length, before + 1, 'bị từ chối ⇒ connector không tự gọi lại');
+  assert.deepEqual([on.rpcs.at(-1).p_action, on.rpcs.at(-1).p_phase], ['learning.digest', 'auto']);
+  assert.equal((await on.call('crm_action_run', { action: 'learning.decide', params: { numbers: [3, 1], decision: 'approve' } })).outcome, 'confirmation_required');
+  on.state.outsideWindow = false;
 
   // Không bật trang (cấu hình như production): cùng SQL đã bật vẫn không có thao tác learning.*, gọi thẳng ⇒ unknown_action, không gọi
   // RPC trang; tools/list y hệt bản bật trang (ba tool chung tĩnh, enum page không có learning).
