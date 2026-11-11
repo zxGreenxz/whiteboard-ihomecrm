@@ -112,8 +112,8 @@ const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'tim
 
 /** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs).
  * confirm: 'always' (chỉ nhận cho class reversible) = sàn xác nhận trong mã: lượt gọi không token luôn chạy phase preview, không bao
- * giờ 'auto' ⇒ một lượt gọi không thể ghi, dù chính sách DB là never; lượt xác nhận đòi consentText là lời đồng ý rõ như thao tác không
- * lùi được (consent-guard.mjs consentRequired). Không khai = theo class như cũ. */
+ * giờ 'auto' ⇒ một lượt gọi không thể ghi, dù chính sách DB là never; lượt xác nhận đòi consentText (consent-guard.mjs consentRequired)
+ * là câu đáp đồng ý thuần — luật chặt hơn thao tác không lùi được (replyConsent, action-runtime.mjs). Không khai = theo class như cũ. */
 export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], confirm, ...rest } = {}) {
   // rpc: RPC của trang (INVOKER) nhận (p_binding, p_action, p_phase, p_request_id, p_params, p_resolved, p_expected_basis), khuôn
   // public.hermes_action_probe_v1 (20261021133823); adapter chỉ gọi đúng các tên đã khai ở đây.

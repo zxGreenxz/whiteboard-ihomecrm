@@ -30,10 +30,12 @@ soạn nháp HĐ, gia hạn hàng loạt. Câu hỏi ("302 báo trả chưa?") k
   ("Khách đổi ý vì sao ạ?"). Ghi thẳng nên tuyệt đối không tự đặt lý do: KHÔNG dùng "theo yêu cầu", "huỷ báo trả", "khách yêu
   cầu"; bot không tự ghép câu yêu cầu ("302 toà 80 huỷ báo trả"), tên thao tác hay từ đệm cho đủ ký tự.
 - `contract.room_lock` {`hours` 6 / 12 / 24, `note`}: giữ / khoá tạm phòng trống cho khách xem (ẩn khỏi danh sách bán, hết giờ tự
-  mở); luôn qua bản xem trước, người dùng đồng ý rõ ở tin sau mới khoá — lượt xác nhận kèm `consentText` (câu yêu cầu hay câu chỉ
-  chọn mức chưa phải đồng ý). N giờ khác ⇒ hỏi chọn mức gần nhất, không tự đổi: nói mức đó không có, hỏi họ chọn 6, 12 hay 24 giờ
-  rồi mới gọi. `contract.room_unlock`: bỏ giữ. Giữ / bỏ giữ phòng CHỈ qua `crm_action_run` theo tên toà + phòng; không dùng
-  `crm_sale_action` cho việc này. Giữ phòng không phải đã nhận cọc.
+  mở); luôn qua bản xem trước, người dùng đồng ý rõ ở tin sau mới khoá — lượt xác nhận kèm `consentText` = nguyên văn lời đáp. Máy
+  chủ chỉ nhận lời đáp thuần ("ok", "đồng ý", "ừ giữ đi", "giữ đi em", "đc"); câu có phòng / toà / số giờ (kể cả câu yêu cầu mở đầu
+  bằng "ok") hay câu chỉ chọn mức chưa phải đồng ý ⇒ hỏi "anh/chị đồng ý giữ không?".
+  N giờ khác ⇒ hỏi chọn mức gần nhất, không tự đổi: nói mức đó không có, hỏi họ chọn 6, 12 hay 24 giờ rồi mới gọi.
+  `contract.room_unlock`: bỏ giữ. Giữ / bỏ giữ phòng CHỈ qua `crm_action_run` theo tên toà + phòng; không dùng `crm_sale_action`
+  cho việc này. Giữ phòng không phải đã nhận cọc.
 
 ## Gia hạn
 

@@ -22,15 +22,18 @@ import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './a
 import { ACTION_TOOL_SHAPE, CONFIRM_INVALID_DETAILS, NAME_FIELDS, NAME_WHYS, RequestIdShapeError, actionEnvelope, actionToolRoute, actionTools,
   confirmationRequired, listedActionTools, nameUnresolvedDetail, needsInput, requestIdShapeDetail } from './action-contract.mjs';
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
-import { CONSENT_UNCLEAR_PREVIEW_DETAIL, consentAuditText, consentClear, consentRequired } from './consent-guard.mjs';
+import { PLAIN_REPLY_CONSENT, consentAuditText, consentClear, consentRequired } from './consent-guard.mjs';
 import { applyDatePhrases } from './vn-relative-date.mjs';
 import { collectGuard, unpaidNoteDetail } from './collect-guard.mjs';
-import { roomLockGuard, roomLockHoursDetail } from './room-lock-guard.mjs';
+import { ROOM_LOCK_ACTION, ROOM_LOCK_CONSENT, roomLockGuard, roomLockHoursDetail } from './room-lock-guard.mjs';
 
 const fail = code => { throw new BrokerError(code); };
 // Ghi chú consentText trong bản xem trước (action-contract.mjs confirmationRequired): không lùi được ⇒ true; lùi được có sàn xác nhận
 // (PS-K03, contract.room_lock) ⇒ 'reversible'; còn lại không đòi.
 const consentNote = action => !consentRequired(action) ? false : action.class === 'reversible' ? 'reversible' : true;
+// Rào lời đồng ý của thao tác lùi được có sàn xác nhận: câu đáp thuần với động từ của chính thao tác (consent-guard.mjs replyConsent);
+// thao tác không lùi được giữ luật consentClear như cũ.
+const replyRule = action => action.id === ROOM_LOCK_ACTION ? ROOM_LOCK_CONSENT : PLAIN_REPLY_CONSENT;
 // confirmation_invalid kèm câu tĩnh nói phần nào lệch (Thu chi lượt 14; action-contract.mjs CONFIRM_INVALID_DETAILS).
 const invalidConfirm = why => { const error = new BrokerError('confirmation_invalid'); error.detail = CONFIRM_INVALID_DETAILS[why]; throw error; };
 // invalid_request kèm câu tĩnh khi biết đúng phần sai (lượt 16: requestId sai khuôn — requestIdShapeDetail); không thì lỗi chung như cũ.
@@ -202,11 +205,12 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
       if (plan.confirmToken !== undefined) {
         // Lượt 12 Hợp đồng (rào đồng ý, consent-guard.mjs): thao tác không lùi được chỉ đổi token khi consentText là lời đồng ý rõ của người
         // dùng; không thì needs_input consent_unclear TRƯỚC khi đổi token (người dùng đáp "ok" thì token còn hạn vẫn dùng được). Câu đã qua
-        // rào vào sổ audit của host cùng dòng prepared của lượt ghi. PS-K03: cả thao tác reversible khai confirm: 'always' (khoá tạm phòng) —
-        // trích câu yêu cầu ban đầu ("… 8 tiếng …") hay câu chỉ chọn mức thì không đổi được token tự xin trong cùng lượt.
-        const consenting = consentRequired(action);
-        if (consenting && !consentClear(plan.consentText)) {
-          plan.immediate = needsInput({ action: action.id, reason: 'consent_unclear', ...(action.class === 'reversible' ? { detail: CONSENT_UNCLEAR_PREVIEW_DETAIL } : {}) });
+        // rào vào sổ audit của host cùng dòng prepared của lượt ghi (dãy số dài bị che). PS-K03: cả thao tác reversible khai confirm: 'always'
+        // (khoá tạm phòng), với luật chặt hơn — câu đáp thuần (replyRule): câu nêu phòng / toà / số giờ (câu ra lệnh, kể cả mở đầu bằng "ok")
+        // hay câu chỉ chọn mức không đổi được token tự xin trong cùng lượt; câu lệnh trống đối tượng ("giữ đi em") và câu bịa thì không chặn được.
+        const consenting = consentRequired(action), floored = consenting && action.class === 'reversible';
+        if (consenting && !(floored ? replyRule(action).clear(plan.consentText) : consentClear(plan.consentText))) {
+          plan.immediate = needsInput({ action: action.id, reason: 'consent_unclear', ...(floored ? { detail: replyRule(action).detail } : {}) });
           return Object.freeze({});
         }
         if (applyTooLate(plan)) fail('timeout');

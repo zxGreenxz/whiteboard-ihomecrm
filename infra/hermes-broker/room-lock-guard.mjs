@@ -5,11 +5,19 @@
 //   1. (ở đây) số giờ ngoài 6 / 12 / 24 ⇒ needs_input "hỏi lại người dùng" (askUser), nêu đúng ba mức; KHÔNG gửi gì xuống SQL.
 //   2. (contract-action-contract.mjs) contract.room_lock khai confirm: 'always' ⇒ lượt gọi không token luôn là phase preview: một lượt
 //      gọi không bao giờ khoá phòng, và token chỉ đổi được với ĐÚNG params của bản xem trước (số giờ khác ⇒ confirmation_invalid).
-//   3. (consent-guard.mjs) lượt đổi token phải kèm consentText là lời đồng ý rõ: câu yêu cầu ban đầu hay "12 tiếng đi em" không phải.
-// Connector không thấy lượt người dùng: mô hình bịa consentText ("ok") vẫn qua lớp 3 — câu đó vào sổ audit của host để lần lại.
+//   3. (ROOM_LOCK_CONSENT dưới đây, consent-guard.mjs replyConsent) lượt đổi token phải kèm consentText là CÂU ĐÁP THUẦN: chỉ lời đồng ý /
+//      xưng hô / trợ từ / "giữ", "khoá" ("ok", "ừ giữ đi", "giữ đi em", "đc"). Câu có số, "phòng", tên phòng / toà hay chữ khác — câu ra lệnh
+//      ("Giữ phòng 303 toà 44TL 8 tiếng…", kể cả "Ok em, giữ phòng 303 … 8 tiếng nhé"), câu chọn mức ("12 tiếng đi em", "ok 12 tiếng") —
+//      không phải lời đồng ý, nên mô hình trích đúng câu đó cũng không tự xác nhận được.
+// Không chặn được (connector không thấy lượt người dùng): consentText bịa ("ok"), và câu ra lệnh không nêu phòng / số giờ ("giữ đi em" khi
+// phòng vừa được nói tới ở tin trước, số giờ do mô hình tự chọn) — chữ y hệt lời đồng ý. Câu đã qua rào vào sổ audit của host để lần lại.
 // Thuần (không I/O).
+import { replyConsent } from './consent-guard.mjs';
+
 export const ROOM_LOCK_ACTION = 'contract.room_lock';
 export const ROOM_LOCK_HOURS = Object.freeze([6, 12, 24]);
+/** Lời đồng ý của lượt xác nhận khoá tạm phòng: câu đáp thuần, động từ "giữ (lại)", "khoá (lại)". */
+export const ROOM_LOCK_CONSENT = replyConsent({ verbs: ['giữ', 'giữ lại', 'khoá', 'khoá lại'], examples: ['ok', 'đồng ý', 'ừ giữ đi'] });
 
 /** Câu hỏi lại khi số giờ không có (một câu tĩnh, kèm số giờ đã qua khuôn số nguyên của danh mục). */
 export const roomLockHoursDetail = hours => `Không giữ phòng được ${hours} giờ: chỉ có mức ${ROOM_LOCK_HOURS.slice(0, -1).join(', ')} hoặc ${ROOM_LOCK_HOURS.at(-1)} giờ. `

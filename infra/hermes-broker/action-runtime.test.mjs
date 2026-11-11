@@ -10,7 +10,7 @@ import { ACTION_REASONS } from './action-reasons.mjs';
 import { readFileSync } from 'node:fs';
 import { CONFIRM_INVALID_DETAILS, isRequestIdShapeDetail, requestIdShapeDetail } from './action-contract.mjs';
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
-import { CONSENT_UNCLEAR_PREVIEW_DETAIL } from './consent-guard.mjs';
+import { ROOM_LOCK_CONSENT } from './room-lock-guard.mjs';
 import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
 import { CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK } from './contract-action-contract.mjs';
@@ -99,8 +99,8 @@ test('invalid_params do GIÁ TRỊ người dùng nói (lý do "đổi ý" < 8 k
 // gọi lại hours: 12 trong CÙNG lượt người dùng và phòng bị khoá 12 giờ (reversible + chính sách never ⇒ phase auto, ghi thẳng). Lời dặn
 // "không tự đổi" (review #377) không giữ được. Ba rào trong mã: giờ ngoài 6 / 12 / 24 dừng ở connector với câu hỏi chọn mức
 // (room-lock-guard.mjs); contract.room_lock khai confirm: 'always' ⇒ lượt không token luôn là phase preview; lượt đổi token đòi consentText
-// là lời đồng ý rõ (consent-guard.mjs) ⇒ trích câu yêu cầu ("… 8 tiếng …") hay câu chỉ chọn mức không tự xác nhận được. Đột biến bỏ một
-// rào ⇒ các khẳng định dưới đỏ.
+// là câu đáp đồng ý thuần (room-lock-guard.mjs ROOM_LOCK_CONSENT) ⇒ trích câu yêu cầu ("… 8 tiếng …", kể cả mở đầu bằng "Ok em,") hay câu
+// chỉ chọn mức không tự xác nhận được. Đột biến bỏ một rào ⇒ các khẳng định dưới đỏ.
 const LOCK_PLACE = { buildingName: '44TL', roomName: '303' };
 const lockEnv = (t, respond) => setup(t, { action: ['sale_phong.lock_room'], respond,
   catalog: createActionCatalog([CONTRACT_ROOM_LOCK], { keys: ['sale_phong.lock_room'] }) });
@@ -132,7 +132,7 @@ test('PS-K03 giữ phòng 8 giờ: hỏi chọn 6 / 12 / 24, không gửi SQL; m
   for (const consentText of ['Giữ phòng 303 toà 44TL 8 tiếng cho khách xem nha em', undefined, '12 tiếng đi em']) {
     const held = await confirm(consentText);
     assert.deepEqual([held.outcome, held.reason, held.applied], ['needs_input', 'consent_unclear', false], String(consentText));
-    assert.equal(held.detail, CONSENT_UNCLEAR_PREVIEW_DETAIL);
+    assert.equal(held.detail, ROOM_LOCK_CONSENT.detail);
     assert.match(held.huongDan, /^CHƯA ghi; token xác nhận chưa dùng/);
   }
   assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'vẫn chưa có lệnh khoá');
@@ -153,6 +153,47 @@ test('giữ phòng: token của 12 giờ không khoá được giờ khác — 8
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 },
     requestId: preview.requestId, confirmToken: preview.confirmToken, consentText: 'ok' }), error => error.code === 'confirmation_invalid' && error.detail === CONFIRM_INVALID_DETAILS.params);
   assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'vẫn chưa có lệnh khoá');
+});
+
+// Note 1 (review #416, kịch bản người review chạy trên broker thật): câu ra lệnh MỞ ĐẦU bằng lời đồng ý. Trước: 8 giờ ⇒ hỏi lại, 12 giờ ⇒
+// bản xem trước, xác nhận bằng chính câu đó ⇒ applied, khoá 12 giờ, sổ audit giữ câu nói "8 tiếng". Nay: câu có "phòng", số, tên toà
+// không phải câu đáp đồng ý ⇒ consent_unclear, token còn; người dùng đáp sau đó mới khoá.
+test('Note 1: "Ok em, giữ phòng 303 toà 44TL 8 tiếng nhé" ⇒ 8 giờ hỏi lại, 12 giờ xem trước, tự xác nhận bằng chính câu đó ⇒ KHÔNG khoá', async t => {
+  const env = lockEnv(t, LOCK_SQL), said = 'Ok em, giữ phòng 303 toà 44TL 8 tiếng nhé';
+  const asked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 8 } });
+  assert.deepEqual([asked.outcome, asked.reason], ['needs_input', 'invalid_params']);
+  const swapped = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 } });
+  assert.equal(swapped.outcome, 'confirmation_required');
+  const confirm = consentText => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 },
+    requestId: swapped.requestId, confirmToken: swapped.confirmToken, consentText });
+  for (const consentText of [said, 'Ok em, giữ phòng 303 toà 44TL 12 tiếng nhé', 'ok 12 tiếng', 'ok giữ phòng 303']) {
+    const held = await confirm(consentText);
+    assert.deepEqual([held.outcome, held.reason, held.applied, held.detail], ['needs_input', 'consent_unclear', false, ROOM_LOCK_CONSENT.detail], consentText);
+  }
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'không có lệnh khoá');
+  assert.ok(env.audits.every(event => !Object.hasOwn(event, 'consent')), 'câu ra lệnh không vào sổ audit như lời đồng ý');
+  // Token chưa tiêu: lời đáp tự nhiên ở tin sau khoá đúng 12 giờ đã xem.
+  const done = await confirm('ừ giữ đi em');
+  assert.deepEqual([done.outcome, done.applied, env.requests.at(-1)[1].phase, env.requests.at(-1)[1].params.hours], ['applied', true, 'apply', 12]);
+  assert.deepEqual(env.audits.filter(event => event.consent).map(event => event.consent.text), ['ừ giữ đi em']);
+});
+
+// B1 (review #416): lời đáp tự nhiên cho "anh đồng ý giữ không?" từng bị consent_unclear (chỉ "đồng ý" qua) ⇒ bot hỏi vòng / tự viết "ok".
+test('B1: lời đáp tự nhiên ("ừ giữ đi", "giữ đi em", "đc", "dc em", "ok giữ luôn nha") khoá được; "không giữ", "khoan đã", "giữ à" thì không', async t => {
+  const env = lockEnv(t, LOCK_SQL);
+  const preview = () => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 } });
+  const confirm = (first, consentText) => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 },
+    requestId: first.requestId, confirmToken: first.confirmToken, consentText });
+  for (const consentText of ['ừ giữ đi', 'giữ đi em', 'đc', 'dc em', 'ok giữ luôn nha']) {
+    const done = await confirm(await preview(), consentText);
+    assert.deepEqual([done.outcome, done.applied], ['applied', true], consentText);
+  }
+  const first = await preview();
+  for (const consentText of ['không giữ', 'khoan đã', 'giữ à', 'thôi khỏi giữ', 'dừng luôn']) {
+    const held = await confirm(first, consentText);
+    assert.deepEqual([held.outcome, held.reason], ['needs_input', 'consent_unclear'], consentText);
+  }
+  assert.deepEqual(env.audits.filter(event => event.consent).map(event => event.consent.text), ['ừ giữ đi', 'giữ đi em', 'đc', 'dc em', 'ok giữ luôn nha']);
 });
 
 test('giữ phòng mức hợp lệ (6 / 12 / 24): lượt 1 luôn xem trước dù chính sách DB là never; người dùng đáp "ok" ⇒ gửi lại y nguyên kèm token + consentText ⇒ khoá đúng số giờ đã xem', async t => {

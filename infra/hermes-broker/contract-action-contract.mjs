@@ -9,7 +9,7 @@
 // dù chính sách DB vẫn là never — người dùng nói 8 giờ, SQL trả invalid_params chung, mô hình tự đổi thành 12 và phòng bị khoá ngay trong
 // cùng lượt. Nay: số giờ ngoài 6 / 12 / 24 ⇒ hỏi lại, không tới SQL (room-lock-guard.mjs; khuôn hours nhận 1–720 để mọi số giờ người dùng
 // nói tới được câu hỏi chọn mức thay vì invalid_params chung); lượt gọi đầu luôn trả bản xem trước ("khoá tạm … trong N giờ"); chỉ lượt kèm
-// confirmToken với ĐÚNG params đó VÀ consentText là lời đồng ý rõ (consent-guard.mjs) mới khoá.
+// confirmToken với ĐÚNG params đó VÀ consentText là câu đáp đồng ý thuần (room-lock-guard.mjs ROOM_LOCK_CONSENT) mới khoá.
 import { defineAction, param } from './action-catalog.mjs';
 
 const RPC = 'hermes_contract_action_v1';

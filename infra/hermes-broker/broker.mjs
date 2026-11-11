@@ -583,8 +583,8 @@ export function createBroker({
   const usage = new Map();
   // Rào chữ công khai: chữ tự do mới ra bề mặt công khai luôn qua xác nhận hai bước (public-text-guard.mjs).
   const publicText = createPublicTextGuard({ clock });
-  // Rào lý do dừng chương trình sale (PS-D05, policy-cancel-guard.mjs): lý do chỉ nhắc lại lệnh ⇒ hỏi lại; còn lại luôn xem trước, lượt
-  // xác nhận kèm lời đồng ý rõ (consentText).
+  // Rào dừng chương trình sale (PS-D05, policy-cancel-guard.mjs): lý do chỉ nhắc lại lệnh ⇒ hỏi lại; chương trình chưa đọc ⇒ đọc trước;
+  // còn lại luôn xem trước (tên chương trình + lý do), lượt xác nhận kèm câu đáp đồng ý thuần (consentText).
   const policyCancel = createPolicyCancelGuard({ clock });
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
@@ -1083,9 +1083,10 @@ export function createBroker({
         return call(async (identity, signal) => {
           if (!saleExtension.mayUse(identity.effective, operation, input)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
-          // Trước mọi I/O ghi. Dừng chương trình sale (PS-D05): lý do chỉ nhắc lại lệnh ⇒ needs_input; còn lại luôn qua bản xem trước lý
-          // do + token, lượt xác nhận kèm consentText là lời đồng ý rõ (câu đó vào dòng audit prepared như thao tác không lùi được). Tool
-          // khác ⇒ policyCancel cho qua, tới rào chữ công khai như cũ.
+          // Trước mọi I/O ghi. Dừng chương trình sale (PS-D05): lý do chỉ nhắc lại lệnh ⇒ needs_input; chương trình kết nối chưa đọc ⇒
+          // needs_input observe_required; còn lại luôn qua bản xem trước (chương trình + lý do) + token, lượt xác nhận kèm consentText là câu
+          // đáp đồng ý thuần (câu đó vào dòng audit prepared như thao tác không lùi được). Tool khác ⇒ policyCancel cho qua, tới rào chữ
+          // công khai như cũ.
           const held = policyCancel.review(identity.row.id, name, input, split.confirmToken, split.consentText);
           if (held.allow && held.consent !== undefined)
             consent = Object.freeze({ action: POLICY_CANCEL_AUDIT_ACTION, requestId: input.requestId, text: held.consent });
@@ -1095,10 +1096,13 @@ export function createBroker({
           const receipt = await saleExtension.prepare(presentedToken, operation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
-        }, async (receipt, _identity, signal) => {
+        }, async (receipt, identity, signal) => {
           if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(saleToolResult(confirmation, saleBridgeOperation)) }], isError: false };
           const result = await saleExtension.finalize(presentedToken, receipt, { signal,
             onDispatch() { uncertain = saleExtension.mutation(operation); }, onRejected() { uncertain = false; } });
+          // PS-D05: chương trình kết nối vừa đọc / lưu / dừng (kết quả đã qua validator của adapter) ⇒ bản xem trước dừng chương trình nêu đúng
+          // tên, trạng thái, thời hạn của nó. Tool khác ⇒ bỏ qua.
+          policyCancel.remember(identity.row.id, name, result);
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'sale_outcome_unknown', mutationRequestId: () => input?.requestId,
           auditConsent: () => consent });

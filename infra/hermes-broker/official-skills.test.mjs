@@ -163,11 +163,18 @@ test('skill chuẩn giữ luật chặn của SOUL: Sale cấm reservation_* và
 test('ma trận d31 (01/11): skill không làm bot hỏi lại điều người dùng đã nói; gọi skill_view bằng tên trần', () => {
   const core = skillText(CORE_SKILL), contracts = skillText(PAGE_SKILLS.contract), invoices = skillText(PAGE_SKILLS.invoice);
   // HĐn C06 / HD-M02: luật "mơ hồ ⇒ hỏi một câu" CHỈ cho báo trả (SOUL dòng 22), không còn áp chung cho mọi if_required — nhưng KHÔNG
-  // đè các ca hỏi riêng của từng trang (review #377: "giữ 302 tám tiếng" ⇒ hỏi chọn 6 / 12 / 24; người nhận "anh/chị" trơn ⇒ hỏi).
+  // đè các ca hỏi riêng của từng trang (người nhận "anh/chị" trơn ⇒ hỏi; review #377: "giữ 302 tám tiếng" ⇒ hỏi chọn 6 / 12 / 24 — nay ở mục
+  // confirm: always, xem dưới).
   const tasks = skillText(PAGE_SKILLS.task);
   assert.doesNotMatch(core, /ý còn mơ hồ thì hỏi/);
   assert.match(core, /Hỏi trước khi gọi khi: nói "trả phòng" kèm ngày dọn đi\s+TƯƠNG LAI/);
-  assert.match(core, /và các ca hỏi riêng của từng\s+trang \(giá trị có khuôn đóng: giờ giữ phòng khác 6 \/ 12 \/ 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh\/chị" trơn ⇒ hỏi giao cho\s+ai…\)/);
+  assert.match(core, /và các ca hỏi riêng của từng\s+trang \(người nhận "anh\/chị" trơn ⇒ hỏi giao cho ai…\)/);
+  // Note 6 (review #416): giữ phòng từ 11/11 (PS-K03) là confirm: always ⇒ ca "giờ ngoài 6 / 12 / 24 ⇒ hỏi chọn mức" nằm ở mục always,
+  // không còn ở mục if_required (mục đó chỉ gồm thao tác có thể ghi ngay).
+  const bullet = kind => core.match(new RegExp(`- \`confirm: ${kind}\`[\\s\\S]*?(?=\\n {3}- |\\n3\\. )`))?.[0] ?? '';
+  assert.match(bullet('always'), /\(tiền, không lùi được, giữ phòng\)[\s\S]*Giá trị có khuôn đóng mà người dùng nói ngoài khuôn \(giờ giữ phòng khác 6 \/ 12\s+\/ 24\) ⇒ hỏi chọn mức gần nhất trước khi gọi, không tự đổi/);
+  assert.match(bullet('if_required'), /^- `confirm: if_required`: máy chủ có thể GHI NGAY/);
+  assert.doesNotMatch(bullet('if_required'), /giờ giữ phòng|6 \/ 12/);
   // Gốc HD-M02: bot tự đếm rồi hỏi. Lý do / nội dung / ghi chú không nằm trong nhóm "hỏi trước"; validator chặn trước SQL nên gọi vẫn an toàn.
   assert.doesNotMatch(core, /giá trị họ nói không hợp khuôn/);
   assert.match(core, /Lý do, nội dung, ghi chú đã nói thì gửi nguyên cụm, không hỏi trước/);

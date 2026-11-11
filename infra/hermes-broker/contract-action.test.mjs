@@ -277,6 +277,22 @@ test('rào đồng ý: trả phòng chỉ ghi khi consentText là lời đồng 
   await assert.rejects(env.broker.callTool(TOKEN, 'crm_action_run', { ...confirm, consentText: 42 }), error => error.code === 'invalid_request', 'consentText phải là chuỗi');
 });
 
+test('Note 5 (review #416): câu đồng ý kèm SĐT / CCCD khách vào sổ audit đã che dãy số dài (giữ 4 số cuối); lệnh ghi không mang câu đó', async t => {
+  const audits = [];
+  const env = setup(t, { audits, respond: request => request.phase === 'preview' ? { kind: 'preview', preview: { text: 'Sẽ ghi nhận khách TRẢ PHÒNG …' },
+    basis: 'c'.repeat(32), resolved: { contractId: id('8') }, confirm: 'required', warnings: [] }
+    : { kind: 'applied', result: { text: 'Đã ghi nhận khách trả phòng …' }, link: '/contracts/x' } });
+  const params = { buildingName: '950', roomName: 'LONDON 4', date: '2026-10-12', note: 'Trả sớm, quyết toán sau' };
+  const first = await env.call('crm_action_run', { action: 'contract.return', params });
+  assert.equal(first.outcome, 'confirmation_required');
+  const done = await env.call('crm_action_run', { action: 'contract.return', params, requestId: first.requestId, confirmToken: first.confirmToken,
+    consentText: 'Ok ghi đi, chị Lan 0901 234 567 trả chìa rồi, CCCD 001234567890' });
+  assert.equal(done.outcome, 'applied');
+  assert.deepEqual(audits.filter(event => Object.hasOwn(event, 'consent')).map(event => event.consent.text),
+    ['Ok ghi đi, chị Lan ***4567 trả chìa rồi, CCCD ***7890']);
+  assert.doesNotMatch(JSON.stringify(env.requests), /0901|001234567890|consent/i);
+});
+
 test('rào đồng ý chỉ áp thao tác không lùi được + khoá tạm (sàn xác nhận PS-K03): thao tác thường xác nhận không cần consentText; mục lục nói rõ thao tác nào cần', async t => {
   const listing = createActionCatalog([...CONTRACT_ACTIONS]).listing({ action: KEYS });
   assert.deepEqual(listing.filter(item => Object.hasOwn(item, 'consentText')).map(item => item.action),

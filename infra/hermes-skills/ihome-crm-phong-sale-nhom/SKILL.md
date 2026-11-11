@@ -53,9 +53,11 @@ operation trạng thái tương ứng, không tạo mã mới).
     tuyệt đối KHÔNG dùng để ghi "ghi chú sale".
 - "Ghi chú cho sale" chưa rõ công khai hay nội bộ ⇒ hỏi một câu, chưa gọi lệnh ghi.
 - Dừng chương trình ưu đãi (policy_cancel): `reason` = lời người dùng nói VÌ SAO dừng. Họ chưa nói ⇒ hỏi "Dừng chương trình vì sao
-  ạ?" trước, chưa gọi; không tự đặt lý do, không nhắc lại câu lệnh ("ngưng chương trình", "theo yêu cầu"). Lần gọi đầu luôn trả
-  `confirmation_required` kèm lý do sẽ lưu: đọc lại cho người dùng, họ đồng ý rõ ở tin sau mới gọi lại kèm `confirmToken` và
-  `consentText` = nguyên văn lời đồng ý (câu nêu lý do chưa phải đồng ý).
+  ạ?" trước, chưa gọi; không tự đặt lý do, không nhắc lại câu lệnh ("ngưng chương trình", "theo yêu cầu"). Đọc chương trình
+  (policy_observe) trước rồi dừng đúng `policyId` + version vừa đọc (chưa đọc ⇒ máy chủ trả `observe_required`). Lần gọi đầu luôn
+  trả `confirmation_required` kèm chương trình (tên, trạng thái, thời hạn) và lý do sẽ lưu: đọc lại cho người dùng, họ đồng ý rõ ở
+  tin sau mới gọi lại kèm `confirmToken` và `consentText` = nguyên văn lời đáp. Máy chủ chỉ nhận lời đáp thuần ("ok", "đồng ý
+  dừng", "ừ dừng đi", "dừng luôn"); câu nêu lý do, chương trình hay phòng (kể cả câu yêu cầu mở đầu bằng "vâng") chưa phải đồng ý.
 - KHÔNG gọi reservation_create, reservation_update, reservation_topup, reservation_assign (báo cọc, sửa / thu thêm / gán cọc).
   Cọc có tiền và ghi thẳng: cọc, thu thêm cọc, hoàn / bỏ cọc làm trên web, trang Quản lý cọc (hoặc thanh lý HĐ). List không có
   các operation này; gọi thẳng thì máy chủ từ chối (`sale_deposit_web_only`).
