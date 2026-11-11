@@ -262,7 +262,8 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
   `learning.digest` (ba đề xuất chờ được đánh dấu đã báo) nhưng không giao được tin, đúng như cảnh báo ở 4.6 bước 4. Lúc 08:29
   VN đúng nội dung tin đã soạn được giao lại bằng một job một-lần không gọi agent, do ticker trong gateway chạy và giao qua
   adapter đang sống; tin tới DM của chủ. Vậy đường giao của lượt theo lịch đã được chứng minh từ lúc đó, không phải chờ lượt
-  21:00. Lượt 21:00 ngày 11/11 chỉ có tin khi có đề xuất mới chưa báo.
+  21:00. Phần còn chưa chứng minh: một lượt theo lịch mà ticker vừa chạy agent vừa giao tin trong cùng lượt (08:18 agent chạy
+  trong CLI, 08:29 không gọi agent); phải chờ lượt theo lịch đầu tiên có đề xuất mới chưa báo, tối nào không có thì không có tin.
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
 - Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
@@ -272,7 +273,7 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
 
 #### 4.6.2 Tin và nội dung tự học bằng tiếng Việt (chủ dặn 11/11/2026)
 
-Tin thật đầu tiên (08:29 VN 11/11, xem dòng cập nhật cuối 4.6.1) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
+Tin thật đầu tiên (08:29 VN 11/11, xem dòng cập nhật 11/11 ở 4.6.1) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
 `config.yaml` của hồ sơ không nằm trong repo):
 
 - **Đầu / cuối tin cron** ("Cronjob Response: …", "To stop or manage this job…") là vỏ bọc của Hermes
