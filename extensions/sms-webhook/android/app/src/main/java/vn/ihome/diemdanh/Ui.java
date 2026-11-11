@@ -13,24 +13,24 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** The small set of views every screen is assembled from. */
-final class Ui {
-    static final int INK = Color.rgb(22, 41, 57);
-    static final int MUTED = Color.rgb(91, 110, 121);
-    static final int GREEN = Color.rgb(15, 118, 110);
-    static final int WARN = Color.rgb(180, 83, 9);
-    static final int ERROR = Color.rgb(185, 28, 28);
+public final class Ui {
+    public static final int INK = Color.rgb(22, 41, 57);
+    public static final int MUTED = Color.rgb(91, 110, 121);
+    public static final int GREEN = Color.rgb(15, 118, 110);
+    public static final int WARN = Color.rgb(180, 83, 9);
+    public static final int ERROR = Color.rgb(185, 28, 28);
     private static final int PAGE = Color.rgb(244, 248, 247);
     private static final int BORDER = Color.rgb(223, 234, 230);
 
     private Ui() {}
 
-    static int dp(android.content.Context context, int value) {
+    public static int dp(android.content.Context context, int value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
                 context.getResources().getDisplayMetrics()));
     }
 
     /** Root column inside a scroll view; pads for the system bars since Android 15 draws under them. */
-    static LinearLayout screen(Activity activity) {
+    public static LinearLayout screen(Activity activity) {
         activity.getWindow().setStatusBarColor(PAGE);
         activity.getWindow().setNavigationBarColor(Color.WHITE);
         activity.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
@@ -51,7 +51,7 @@ final class Ui {
         return root;
     }
 
-    static LinearLayout card(LinearLayout parent) {
+    public static LinearLayout card(LinearLayout parent) {
         android.content.Context context = parent.getContext();
         LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -67,7 +67,7 @@ final class Ui {
         return box;
     }
 
-    static TextView text(LinearLayout parent, String value, int size, int color, boolean bold) {
+    public static TextView text(LinearLayout parent, String value, int size, int color, boolean bold) {
         TextView view = new TextView(parent.getContext());
         view.setText(value);
         view.setTextSize(size);

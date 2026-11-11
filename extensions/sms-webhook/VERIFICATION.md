@@ -17,12 +17,16 @@ Review độc lập phần Android, backend, quyền super admin và giao diện
 
 ## Bằng chứng cần lấy từ CI trước khi giao APK
 
-- Android build, lint và 5 instrumentation tests đang chờ bằng chứng từ workflow **Android Gateway**; xem kết quả và artifact của đúng commit. Các kiểm Java thuần không chứng minh các lớp Android đã compile hoặc chạy được.
+- Từ bản 2.0.0 app gồm cả phần Điểm danh. Android build, lint, unit test và instrumentation test của cả hai phần chỉ có bằng chứng từ workflow **Android Gateway**; xem kết quả và artifact `ihome-bank-gateway-<sha>` của đúng commit. Các kiểm Java thuần ở bảng trên không chứng minh các lớp Android đã compile hoặc chạy được.
+  - `build/ci-evidence/jvm-suites.txt`: hai bộ JUnit `GatewayPolicyTest` (12) và `CheckinPolicyTest` (57) chạy đủ, không bỏ qua. `apk-badging.txt`, `apk-permissions*.txt`: gói, phiên bản và danh sách quyền của APK.
+  - `build/ci-evidence/android-35/`: 30 instrumentation test trên Android 15 (5 của Biến động số dư, 18 của Điểm danh, 7 của màn hình đầu). `build/ci-evidence/android-29/`: 25 test trên Android 10 (Điểm danh và màn hình đầu; bộ Biến động số dư chỉ chạy trên Android 15).
+  - Mỗi thư mục còn có 4 bước trên bản cài sạch (`clean-install-*.txt`: màn hình đầu không xin quyền, không đặt báo thức hay việc nền; hàng đợi mã hóa qua một lần tắt hẳn tiến trình; các bước cấp quyền của máy chưa cấp gì), ảnh `diemdanh-*.png`, `gateway-setup.png`, `gateway-status.png` và `alarm-dump.txt`.
 - APK release đã ký cùng checksum/chứng chỉ phải được tạo và xác minh thành công trong CI trên `main`. Fixture ký chỉ kiểm luồng script bằng công cụ giả lập, chưa tạo APK Android thật.
 - Giữ khóa ký ổn định cho các bản cập nhật; không cài đè APK release lên bản debug có chữ ký khác.
 
 ## Chưa kiểm trên thiết bị / chưa triển khai
 
 - Chưa thử SIM thật, SMS nhiều phần/hai SIM, quyền hệ thống, thông báo app ngân hàng thật, Doze, reboot hoặc force-stop.
+- Bản 2.0.0 (gộp Điểm danh): chưa cài đè lên Gateway 0.2.0 trên máy thật, chưa chạy phần Điểm danh của app gộp trên máy thật, chưa kiểm Play Protect xử lý file cài ra sao. Trạng thái «Đã bật chuyển tiếp» trên màn hình đầu và việc màn hình đầu lên lịch lại hàng đợi/heartbeat khi đang bật chưa có test trên thiết bị.
 - Chưa triển khai cổng VPS/nginx hoặc kiểm điện thoại → VPS. Đường nhận hiện tại dùng trực tiếp Supabase Edge.
 - Phép kiểm mutation xác thực cũ trên bản sao tạm chưa chạy vì automatic approval review đã từ chối (`blocked by policy`); không tính phép kiểm này là đạt.

@@ -21,8 +21,62 @@ java -version 2> build/ci-evidence/java-version.txt
 git rev-parse HEAD > build/ci-evidence/commit.txt
 cp "$ANDROID_HOME/platforms/android-35/source.properties" build/ci-evidence/android-platform.properties
 cp "$ANDROID_HOME/build-tools/35.0.0/source.properties" build/ci-evidence/android-build-tools.properties
+# Fetching the checksum-pinned distribution is safe to repeat; a build failure is never retried here.
+for attempt in 1 2 3; do
+  if bash ./gradlew --no-daemon --version > /dev/null; then break; fi
+  if (( attempt == 3 )); then printf 'Gradle distribution could not be downloaded.\n' >&2; exit 1; fi
+  sleep 20
+done
 bash ./gradlew --no-daemon --console=plain -Pandroid.builder.sdkDownload=false \
   :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
-sha256sum app/build/outputs/apk/debug/app-debug.apk > build/ci-evidence/apk-sha256.txt
-"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose \
-  app/build/outputs/apk/debug/app-debug.apk > build/ci-evidence/apk-signature.txt
+
+# One app, two features, each with its own JVM suite. Every declared test of both must have run.
+for suite in vn/ihome/smsgateway/GatewayPolicyTest vn/ihome/diemdanh/CheckinPolicyTest; do
+  declared="$(grep -c '@Test' "app/src/test/java/$suite.java")"
+  report="app/build/test-results/testDebugUnitTest/TEST-${suite//\//.}.xml"
+  summary=''
+  if [[ -f "$report" ]]; then summary="$(grep -m 1 -o '<testsuite [^>]*>' "$report" || true)"; fi
+  for expected in "tests=\"$declared\"" 'skipped="0"' 'failures="0"' 'errors="0"'; do
+    if [[ "$summary" != *" $expected"* ]]; then
+      printf 'Expected all %s JVM tests of %s to pass with none skipped.\n' "$declared" "${suite##*/}" >&2
+      exit 1
+    fi
+  done
+  printf '%s\n' "$summary" >> build/ci-evidence/jvm-suites.txt
+done
+
+apk='app/build/outputs/apk/debug/app-debug.apk'
+sha256sum "$apk" > build/ci-evidence/apk-sha256.txt
+"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk" > build/ci-evidence/apk-signature.txt
+# Package, version, label and launcher of the APK that the device step installs.
+"$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$apk" > build/ci-evidence/apk-badging.txt
+
+# The merged manifest may only hold the approved list (RECEIVE_SMS for bank messages, plan 4.6 for
+# check-in) plus what androidx.work and androidx.core add.
+"$ANDROID_HOME/build-tools/35.0.0/aapt2" dump permissions "$apk" > build/ci-evidence/apk-permissions.txt
+sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" build/ci-evidence/apk-permissions.txt \
+  | grep -v '\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$' | LC_ALL=C sort -u > build/ci-evidence/apk-permissions-actual.txt
+LC_ALL=C sort -u > build/ci-evidence/apk-permissions-expected.txt <<'EOF'
+android.permission.ACCESS_BACKGROUND_LOCATION
+android.permission.ACCESS_COARSE_LOCATION
+android.permission.ACCESS_FINE_LOCATION
+android.permission.ACCESS_NETWORK_STATE
+android.permission.FOREGROUND_SERVICE
+android.permission.FOREGROUND_SERVICE_LOCATION
+android.permission.INTERNET
+android.permission.POST_NOTIFICATIONS
+android.permission.RECEIVE_BOOT_COMPLETED
+android.permission.RECEIVE_SMS
+android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+android.permission.SCHEDULE_EXACT_ALARM
+android.permission.USE_EXACT_ALARM
+android.permission.WAKE_LOCK
+EOF
+if ! diff build/ci-evidence/apk-permissions-expected.txt build/ci-evidence/apk-permissions-actual.txt; then
+  printf 'APK permissions differ from the approved list.\n' >&2
+  exit 1
+fi
+if ! grep -q "SCHEDULE_EXACT_ALARM' maxSdkVersion='32'" build/ci-evidence/apk-permissions.txt; then
+  printf 'SCHEDULE_EXACT_ALARM must stop at Android 12L.\n' >&2
+  exit 1
+fi

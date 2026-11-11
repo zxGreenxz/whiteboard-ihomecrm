@@ -26,6 +26,8 @@ import java.util.function.BooleanSupplier;
 
 import javax.net.ssl.HttpsURLConnection;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 /** Sends the outbox; a record is done only after a receipt pinned to its id. */
 public final class DeliveryWork extends Worker {
     private static final String TAG = "DiemDanhDelivery";

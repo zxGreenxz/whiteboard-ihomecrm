@@ -21,9 +21,13 @@ android {
         applicationId 'vn.ihome.smsgateway'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '0.2.0'
+        versionCode 3
+        versionName '2.0.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {
@@ -41,8 +45,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs next to the release app; its check-in feature talks to the TEST project only.
+            applicationIdSuffix '.thu'
+            resValue 'string', 'app_name', 'iHome Gateway (thử)'
+            buildConfigField 'String', 'INGEST_ENDPOINT', '"https://hzulujxgonszuleqticb.supabase.co/functions/v1/gps-checkin-ingest"'
+        }
         release {
             signingConfig signingConfigs.release
+            resValue 'string', 'app_name', 'iHome Gateway'
+            buildConfigField 'String', 'INGEST_ENDPOINT', '"https://tryymsxyyckgbrmmvozx.supabase.co/functions/v1/gps-checkin-ingest"'
         }
     }
 }
@@ -54,6 +66,8 @@ tasks.configureEach {
 dependencies {
     implementation 'androidx.work:work-runtime:2.10.5'
     testImplementation 'junit:junit:4.13.2'
+    // android.jar only ships throwing stubs of org.json; the JVM tests need the real classes.
+    testImplementation 'org.json:json:20250517'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
