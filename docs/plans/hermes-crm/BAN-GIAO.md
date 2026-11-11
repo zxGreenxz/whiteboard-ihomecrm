@@ -187,13 +187,21 @@ WHERE n.nspname IN ('public','app_private')
 
 | Thành phần | Phiên bản |
 | --- | --- |
-| Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 (ghi 16/10, không đổi trong các PR 17–18/10) |
+| Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 (ghi 16/10, không đổi trong các PR 17–18/10). Bản đọc lại 11/11/2026 là v0.22.2: xem ghi chú dưới bảng |
 | Connector | release main `b023563a` (sáng 19/10), 65 tool khi kết nối đủ quyền; bản lùi `14c6588a` |
 | Model | 9router `cx/gpt-6-luna` (từ 16/10 05:57) |
 | CRM | production `ptcrm.vercel.app` phục vụ `81c49363` (promote 19/10 sáng); trước đó `d001edac` (18/10, dựng qua API vì Vercel chặn hạn mức dựng do push git). Khách hàng (#196), Hợp đồng (#197), Hoá đơn (#201) và sửa trang tài chính (#209) đã ở production |
 | Schema production 16–19/10 | #185 (2 migration), #187 (5), #190 (4), #189 `20261017023242`, #196 `20261017115708`, #206 `20261018044046_toi_uu_ham_quyen_rls_v1` (18/10), đợt 2 25 migration `20261018000000…20261018090000` (19/10), #217 ba migration `20261018182656`, `20261018185339`, `20261018185413` (19/10); mỗi lượt có commit biên nhận lane. Registry năng lực: 32 khoá đọc mới bật 19/10, 3 khoá tắt |
 
 Phiên cập nhật tài liệu 19/10 không có quyền VPS/DB: release VPS và app ghi theo báo cáo vận hành; migration lấy từ các commit biên nhận trên main. Dòng Hermes ở bảng trên là ghi từ 16/10, chưa kiểm lại sau lần dọn đĩa 19/10 (đã xoá image hermes-agent cũ).
+
+**Cập nhật 11/11/2026, riêng dòng Hermes (các dòng khác vẫn là ảnh chụp 19/10):**
+
+- Đọc trên máy production ngày 11/11/2026: container `hermes-owner` chạy `nousresearch/hermes-agent@sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05`; `hermes --version` báo `Hermes Agent v0.22.2 (2026.9.24)`, upstream `d923a5eb`, Python 3.14.7. Image dựng ngày 15/10/2026, container đang chạy được tạo ngày 23/10/2026.
+- Production lên v0.22.2 trước, repo đồng bộ bản ghim sau: repo ghim v0.21.6 tới ngày 11/11/2026 rồi mới chuyển sang v0.22.2 (commit `d923a5eb487a17c0a68801bba9ef0f56c81040a8`). Không có biên nhận nào ghi đúng lúc nâng; ghi chú dọn đĩa 19/10 ở mục 4 đã nhắc runtime v0.22.2.
+- Khác biệt hành vi đã thấy trên v0.22.2: chạy tay `hermes cron run <id>` chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên không giao được tin qua plugin Zalo. Lượt cron theo lịch vẫn giao được. Chi tiết ở [README plugin](../../../infra/hermes-zalo-native/README.md), mục hành vi "Cron".
+- Plugin Zalo trên production là bản phát hành 16/10 cộng khai báo `cron_deliver_env_var`, không phải `adapter.py` của `main` (xem [HOC-CO-KIEM-DUYET 4.6.1](HOC-CO-KIEM-DUYET.md)).
+- Bản ghim, cách kiểm provenance và phần bằng chứng còn thiếu: [infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md).
 
 ## 6. Lưu ý về model
 

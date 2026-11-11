@@ -65,12 +65,12 @@ test('provenance mutations cannot substitute source, release, manifest bytes, co
     v => { v.repositoryUrl = 'https://untrusted.invalid/repository'; }, v => { v.releaseUrl += '-other'; },
     v => { v.tag.commit = '0'.repeat(40); },
     v => { v.releaseReceipt.commit = '0'.repeat(40); v.tag.receiptMessage = JSON.stringify(v.releaseReceipt); },
-    v => { v.releaseReceipt.version = '0.21.5'; v.tag.receiptMessage = JSON.stringify(v.releaseReceipt); },
-    v => { v.releaseReceipt.version = '0.21.5'; }, v => { v.tag.receiptMessage = '{}'; },
+    v => { v.releaseReceipt.version = '0.22.1'; v.tag.receiptMessage = JSON.stringify(v.releaseReceipt); },
+    v => { v.releaseReceipt.version = '0.22.1'; }, v => { v.tag.receiptMessage = '{}'; },
     v => { v.index.raw += ' '; }, v => { v.index.raw = '{}'; },
-    v => { v.index.digest = `sha256:${'0'.repeat(64)}`; }, v => { v.index.url += '?tag=v0.21.6'; },
+    v => { v.index.digest = `sha256:${'0'.repeat(64)}`; }, v => { v.index.url += '?tag=v0.22.2'; },
     v => { v.platformManifest.raw += ' '; }, v => { v.platformManifest.raw = '{}'; },
-    v => { v.platformManifest.digest = `sha256:${'0'.repeat(64)}`; }, v => { v.platformManifest.url += '?tag=v0.21.6'; },
+    v => { v.platformManifest.digest = `sha256:${'0'.repeat(64)}`; }, v => { v.platformManifest.url += '?tag=v0.22.2'; },
     v => { v.expectedConfigDigest = `sha256:${'0'.repeat(64)}`; },
   ]) {
     const changed = structuredClone(imageProvenance); mutate(changed);
@@ -105,7 +105,7 @@ test('live image inspection must match both the receipt config ID and pinned Rep
   assert.equal(result.revisionLabelVerified, false);
   assert.equal(assertPinnedImageInspection({ ...inspected, Config: { Labels: { 'org.opencontainers.image.revision': HERMES_COMMIT } } }, imageProvenance).revisionLabelVerified, true);
   for (const mutate of [v => { v.Id = `sha256:${'0'.repeat(64)}`; }, v => { v.RepoDigests = []; },
-    v => { v.RepoDigests = ['nousresearch/hermes-agent:v0.21.6']; }, v => { v.Os = 'windows'; },
+    v => { v.RepoDigests = ['nousresearch/hermes-agent:v0.22.2']; }, v => { v.Os = 'windows'; },
     v => { v.Architecture = 'arm64'; }, v => { v.Config.Labels = { 'org.opencontainers.image.revision': '' }; },
     v => { v.Config.Labels = { 'org.opencontainers.image.revision': '0'.repeat(40) }; }]) {
     const changed = structuredClone(inspected); mutate(changed);

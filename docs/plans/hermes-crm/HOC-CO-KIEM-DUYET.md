@@ -206,9 +206,11 @@ vẫn tạo được nhưng mọi lượt chạy đều bị chặn.
    không bao giờ vào tin sau). `crm_action_status` cùng requestId trả đúng kết quả đã ghi kèm `message` dựng lại tất định (presenter chạy
    cả ở nhánh tra trạng thái), nên tin hôm đó vẫn tới chủ. Gọi lại `crm_action_run` thì không được: requestId mới ⇒ một lượt đánh dấu mới.
 
-4. Thử: chạy tay job một lần lúc chủ đồng ý (`cron run <id>` nếu bản Hermes có), kiểm tin tới đúng DM chủ và dòng audit
-   `HERMES_ACTION_APPLIED` `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không thử bằng cách gọi `learning.digest` trong
-   chat (đánh dấu thật trên production).
+4. Thử: kiểm ở lượt chạy theo lịch, lúc chủ đồng ý: tin tới đúng DM chủ và có dòng audit `HERMES_ACTION_APPLIED`
+   `learning.digest`; tối không có đề xuất mới ⇒ không có tin. Không chạy tay `cron run <id>`: trên Hermes v0.22.2 (thấy trên
+   production 11/11/2026) lệnh này chạy job ngay trong tiến trình CLI, không có adapter đang sống của gateway, nên tin không giao
+   được qua plugin Zalo trong khi job vẫn gọi `learning.digest` và đánh dấu thật. Cũng không thử bằng cách gọi `learning.digest`
+   trong chat (đánh dấu thật trên production).
 
 5. Sau lượt chạy đầu (và sau mỗi lần đổi plugin hay nâng bản Hermes), đọc `Last run` của job:
 
@@ -258,8 +260,10 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
   gửi tin. Sau 21:00 đọc lại `Last run` bằng lệnh ở 4.6 bước 5.
 - Lùi: chép `/root/ihome-owner-install/backup/adapter-owner-cc1770e8c3f3-20261110T173652Z.py` về `adapter.py` trong thư mục
   plugin của hồ sơ owner (chủ `10003:10003`, quyền `644`), rồi `docker restart hermes-owner`. Lùi xong cron lại chặn job.
-- Production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản ghim, production
-  kiểm bằng phép chạy trên.
+- Lúc phát hành, production chạy Hermes v0.22.2 còn repo ghim v0.21.6 (lệch có sẵn, ngoài phạm vi bản sửa): CI kiểm trên bản
+  ghim, production kiểm bằng phép chạy trên. Cùng ngày 11/11/2026 repo đã đồng bộ bản ghim lên v0.22.2
+  ([infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md)); từ đó CI kiểm trên đúng phiên bản Hermes production
+  đang chạy, còn plugin production vẫn là bản cài nêu ở đầu mục này.
 
 ### 4.7 Rủi ro
 
