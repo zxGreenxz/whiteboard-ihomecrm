@@ -35,8 +35,11 @@ export function parseCameraStates(value: unknown): CameraChannelObservation[] {
     const channel = Number(row.channel) + 1;
     if (seen.has(channel)) throw new CameraClientError("INVALID_RESPONSE");
     seen.add(channel);
+    // "Unconnect" is what DHI-NVR1108HS-S3/H-VN firmware 4.001.100Zb02.0.R
+    // returns for a lost camera (measured 02/11/2026). Read as UNKNOWN it made
+    // the whole recorder UNKNOWN and hid exactly which channel had dropped.
     const state = row.connectionState === "Connected" ? "CONNECTED"
-      : row.connectionState === "Unconnected" || row.connectionState === "Disconnected" ? "DISCONNECTED"
+      : row.connectionState === "Unconnected" || row.connectionState === "Unconnect" || row.connectionState === "Disconnected" ? "DISCONNECTED"
       : row.connectionState === "Empty" ? "EMPTY" : "UNKNOWN";
     return { channel, state };
   });
