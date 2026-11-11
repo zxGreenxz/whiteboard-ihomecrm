@@ -12,6 +12,8 @@ import android.os.PowerManager;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 /** Reads the device conditions that decide whether a slot can be captured. */
 final class DeviceHealth {
     private DeviceHealth() {}

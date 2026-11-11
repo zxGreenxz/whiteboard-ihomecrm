@@ -9,6 +9,8 @@ import android.database.sqlite.SQLiteOpenHelper;
 import java.util.ArrayList;
 import java.util.List;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 /** Encrypted outbox: a record is written here before any attempt to send it. */
 public final class QueueStore {
     private static final Object LOCK = new Object();

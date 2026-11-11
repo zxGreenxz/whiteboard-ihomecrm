@@ -28,6 +28,8 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
+import vn.ihome.smsgateway.R;
+
 /** Short-lived foreground service: takes one location for one slot, queues it and stops. */
 public final class CaptureService extends Service {
     private static final String TAG = "DiemDanhCapture";

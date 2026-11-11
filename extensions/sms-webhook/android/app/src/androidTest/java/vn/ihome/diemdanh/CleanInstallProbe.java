@@ -15,6 +15,8 @@ import org.junit.runner.RunWith;
 
 import java.util.List;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 import static org.junit.Assert.*;
 
 /**

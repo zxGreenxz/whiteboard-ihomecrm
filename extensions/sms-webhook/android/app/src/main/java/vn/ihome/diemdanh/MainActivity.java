@@ -103,11 +103,7 @@ public final class MainActivity extends Activity {
     /** Opening the app repairs anything a vendor battery manager may have cleared. */
     private void heal() {
         try {
-            if (new CheckinSettings(this).load().isActive()) {
-                SlotScheduler.ensureArmed(this);
-                SafetyNetWork.schedule(this);
-                DeliveryWork.schedule(this);
-            }
+            CheckinFeature.heal(this);
         } catch (RuntimeException error) {
             runOnUiThread(() -> toast("Không đọc được cấu hình của app."));
         }

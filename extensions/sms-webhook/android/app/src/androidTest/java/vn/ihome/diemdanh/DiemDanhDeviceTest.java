@@ -39,6 +39,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 import static org.junit.Assert.*;
 
 /** Runs only on the disposable CI emulator; a fake transport keeps every test off the network. */

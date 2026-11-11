@@ -8,6 +8,8 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 
+import vn.ihome.smsgateway.BuildConfig;
+
 /** Trades a one-time code for this phone's credential; the code never leaves this exchange. */
 final class Pairing {
     private static final String TAG = "DiemDanhPairing";
