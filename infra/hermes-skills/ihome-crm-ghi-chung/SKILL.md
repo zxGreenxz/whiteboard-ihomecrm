@@ -1,7 +1,7 @@
 ---
 name: ihome-crm-ghi-chung
 description: "Khi ghi CRM: crm_action_list trước, rồi crm_action_run."
-version: 1.0.0
+version: 1.0.1
 author: iHome CRM
 metadata:
   hermes:
@@ -55,13 +55,14 @@ từng trang: `ihome-crm-cong-viec`, `ihome-crm-hop-dong`, `ihome-crm-hoa-don`, 
    buộc khác (trả phòng, báo trả, nháp HĐ) không nói ⇒ hỏi, không tự lấy hôm nay. "trước" / "sau" đứng sau số tiền ("ck 2 củ
    trước") là trả trước / trả sau, không phải ngày. Tham số không có giá trị thì bỏ hẳn, không gửi chuỗi rỗng.
 2. Gọi `crm_action_run` {action, params}. Không cần `crm_new_request_id`: connector tự cấp `requestId`.
-   - `confirm: always` (tiền, không lùi được): máy chủ luôn trả bản xem trước ⇒ gọi ngay khi đủ ý, không hỏi xác nhận bằng chữ
-     trước; bản xem trước là bước xác nhận.
-   - `confirm: if_required`: máy chủ có thể GHI NGAY, không qua xem trước (vd báo trả, giữ / bỏ giữ phòng, thêm / bớt người ở, nháp
+   - `confirm: always` (tiền, không lùi được, giữ phòng): máy chủ luôn trả bản xem trước ⇒ gọi ngay khi đủ ý, không hỏi xác nhận
+     bằng chữ trước; bản xem trước là bước xác nhận. Giá trị có khuôn đóng mà người dùng nói ngoài khuôn (giờ giữ phòng khác 6 / 12
+     / 24) ⇒ hỏi chọn mức gần nhất trước khi gọi, không tự đổi.
+   - `confirm: if_required`: máy chủ có thể GHI NGAY, không qua xem trước (vd báo trả, bỏ giữ phòng, thêm / bớt người ở, nháp
      HĐ, ghi chú phiếu, sửa việc) ⇒ lời người dùng đã đủ thì gọi luôn. Hỏi trước khi gọi khi: nói "trả phòng" kèm ngày dọn đi
      TƯƠNG LAI (đó là báo trả — `ihome-crm-hop-dong`); thiếu giá trị bắt buộc người dùng chưa nói; và các ca hỏi riêng của từng
-     trang (giá trị có khuôn đóng: giờ giữ phòng khác 6 / 12 / 24 ⇒ hỏi chọn mức gần nhất; người nhận "anh/chị" trơn ⇒ hỏi giao cho
-     ai…). Lý do, nội dung, ghi chú đã nói thì gửi nguyên cụm, không hỏi trước. Ngoài các ca đó, không hỏi lại điều người dùng đã nói.
+     trang (người nhận "anh/chị" trơn ⇒ hỏi giao cho ai…). Lý do, nội dung, ghi chú đã nói thì gửi nguyên cụm, không hỏi trước.
+     Ngoài các ca đó, không hỏi lại điều người dùng đã nói.
 3. Đọc kết quả:
    - `confirmation_required` = CHƯA ghi. Đọc nguyên văn `preview` và `warnings` (kể cả câu "Hiểu '…' là …"), chờ người dùng
      đồng ý rõ ở tin SAU ("ok", "được", "chốt", "ghi đi"… đứng riêng là đồng ý rõ). Đồng ý ⇒ gọi lại Y NGUYÊN `action` +

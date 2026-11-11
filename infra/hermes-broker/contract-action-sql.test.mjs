@@ -1314,6 +1314,30 @@ test('trang Hợp đồng — lượt 12: trả phòng lần hai trên phòng đ
     });
   });
 
+  // 11/11 (PS-K03): connector nay LUÔN gửi phase 'preview' trước cho contract.room_lock (sàn confirm: 'always' trong danh mục mã) dù chính sách DB
+  // vẫn reversible + never — không migration nào đổi. Chứng minh trên thân hàm mới nhất (đủ chuỗi migration): lượt preview không khoá, không mở
+  // biên nhận; chỉ lượt apply đúng basis mới khoá, đúng số giờ đã xem trước.
+  await t.test('khoá tạm theo đường connector mới (PS-K03): preview ⇒ bản xem trước, CHƯA khoá, không biên nhận; apply ⇒ khoá đúng giờ đã xem; 8 giờ ⇒ needs_input', async () => {
+    await f.rollbackCase(async () => {
+      const place = { buildingName: 'Toà A', roomName: 'P102' };
+      const open = async () => (await db.query('SELECT count(*)::int n FROM public.room_sale_locks WHERE room_id=$1 AND released_at IS NULL', [EMPTY_ROOM])).rows[0].n;
+      const opened = async ids => (await receipts()).filter(row => ids.includes(row.request_id)).map(row => row.state);
+      assert.deepEqual(await run('contract.room_lock', 'preview', rid(620), { ...place, hours: 8 }), { kind: 'needs_input', reason: 'invalid_params' });
+      const preview = await run('contract.room_lock', 'preview', rid(621), { ...place, hours: 12 });
+      assert.deepEqual([preview.kind, preview.confirm, preview.resolved.roomId], ['preview', 'required', EMPTY_ROOM]);
+      assert.match(preview.preview.text, /^Sẽ khoá tạm phòng P102 toà Toà A trong 12 giờ /);
+      assert.equal(await open(), 0, 'xem trước không khoá');
+      assert.deepEqual(await opened([rid(620), rid(621)]), [], 'xem trước không mở biên nhận');
+      const locked = await run('contract.room_lock', 'apply', rid(621), { ...place, hours: 12 }, preview);
+      assert.deepEqual([locked.kind, locked.result.hours], ['applied', 12]);
+      assert.equal(await open(), 1);
+      assert.deepEqual(await opened([rid(621)]), ['applied']);
+      // Bản xem trước cũ không khoá thêm được lần nữa: phòng đã có khoá mở ⇒ basis lệch ⇒ state_changed, vẫn một khoá.
+      assert.deepEqual(await run('contract.room_lock', 'apply', rid(622), { ...place, hours: 6 }, preview), { kind: 'rejected', reason: 'state_changed' });
+      assert.equal(await open(), 1);
+    });
+  });
+
   await t.test('$requires$: nhận thân production 074815 và thân 040002 (C2), từ chối thân lạ; md5 ghim khớp Postgres', async () => {
     const pin = /md5\(p\.prosrc\)<>'([0-9a-f]{32})'/.exec(TWICE_SQL)[1];
     assert.equal((await db.query("SELECT md5(prosrc) m FROM pg_proc WHERE oid='app_private.hermes_contract_action_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)'::regprocedure")).rows[0].m, pin);

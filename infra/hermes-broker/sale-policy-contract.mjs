@@ -57,10 +57,19 @@ export function salePolicyResult(operation, value, identity, input) {
   return structuredClone(value);
 }
 const uuid = { type: 'string', format: 'uuid' };
+// Tool ghi qua bản xem trước của broker (save: rào chữ công khai; cancel: rào lý do dừng, policy-cancel-guard.mjs) nhận thêm trường xác
+// nhận TUỲ CHỌN (ngoài required): confirmToken, và với cancel cả consentText (lời đồng ý trích nguyên văn). Broker tách chúng trước
+// validator (salePolicyInput không bao giờ thấy).
+const CONFIRM_FIELDS = Object.freeze({
+  crm_sale_policy_save: Object.freeze({ confirmToken: 'Token xem trước sau khi người dùng đồng ý nguyên văn nội dung, phòng và thời hạn.' }),
+  crm_sale_policy_cancel: Object.freeze({ confirmToken: 'Token xem trước sau khi người dùng đồng ý dừng với đúng lý do trong preview.',
+    consentText: 'Chỉ ở lượt kèm confirmToken: NGUYÊN VĂN câu người dùng vừa đáp đồng ý (câu yêu cầu ban đầu không phải lời đồng ý).' }),
+});
 const tool = (name, description, properties, mutation = false) => ({ name,
   description: `${description} ${mutation ? REQUEST_ID_GUIDANCE + ' Mất phản hồi: crm_sale_policy_status, không đổi mã. Chỉ ghi khi người dùng đã yêu cầu rõ ràng.' : ''}`,
   inputSchema: { type: 'object', additionalProperties: false, required: Object.keys(properties), properties: {
-    ...properties, ...(name === 'crm_sale_policy_save' ? { confirmToken: { type: 'string', description: 'Token xem trước sau khi người dùng đồng ý nguyên văn nội dung, phòng và thời hạn.' } } : {}),
+    ...properties, ...(Object.hasOwn(CONFIRM_FIELDS, name)
+      ? Object.fromEntries(Object.entries(CONFIRM_FIELDS[name]).map(([field, hint]) => [field, { type: 'string', description: hint }])) : {}),
   } }, annotations: { readOnlyHint: !mutation, destructiveHint: false, idempotentHint: true, openWorldHint: false } });
 export const SALE_POLICY_TOOLS = Object.freeze([
   tool('crm_sale_policy_observe', 'Lấy revision phòng và chương trình chính sách hiện tại/sắp tới để thao tác. Cần quyền CRM xem phòng và quyền sửa phòng theo tòa.', { roomId: uuid }),
@@ -69,8 +78,11 @@ export const SALE_POLICY_TOOLS = Object.freeze([
     title: { type: 'string', minLength: 1, maxLength: 120 }, content: { type: 'string', minLength: 1, maxLength: 2000 },
     startsAt: { type: 'string', format: 'date-time' }, endsAt: { type: 'string', format: 'date-time' },
   }, true),
-  tool('crm_sale_policy_cancel', 'Dừng chương trình theo ID và version vừa đọc, giữ lịch sử và lý do; không hoàn tiền hay sửa giá hợp đồng.', {
-    requestId: REQUEST_ID_PROPERTY, policyId: uuid, expectedVersion: { type: 'integer', minimum: 1 }, reason: { type: 'string', minLength: 1, maxLength: 500 },
+  // PS-D05 (policy-cancel-guard.mjs): reason là lời người dùng; lượt đầu luôn trả bản xem trước, chỉ lượt kèm confirmToken + consentText là
+  // lời đồng ý rõ mới dừng.
+  tool('crm_sale_policy_cancel', 'Dừng chương trình theo ID và version vừa đọc, giữ lịch sử và lý do; không hoàn tiền hay sửa giá hợp đồng. reason = lời người dùng nói VÌ SAO dừng; họ chưa nói ⇒ hỏi trước, không tự đặt. Luôn xem trước: người dùng đồng ý rõ ở tin sau mới gửi lại y nguyên kèm confirmToken và consentText.', {
+    requestId: REQUEST_ID_PROPERTY, policyId: uuid, expectedVersion: { type: 'integer', minimum: 1 },
+    reason: { type: 'string', minLength: 1, maxLength: 500, description: 'Nguyên văn lý do người dùng nói; không phải câu lệnh dừng nhắc lại.' },
   }, true),
   tool('crm_sale_policy_status', `Đối soát lệnh lưu/dừng chính sách. not_found/unknown không chứng minh thất bại. ${REQUEST_ID_STATUS_GUIDANCE}`, { requestId: REQUEST_ID_PROPERTY }),
 ]);

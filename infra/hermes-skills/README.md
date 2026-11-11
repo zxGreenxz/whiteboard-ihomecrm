@@ -88,10 +88,11 @@ nền tảng, ghi thật trên Linux/CI), chưa chạy trên VPS.
 4. **Mở phiên mới cho `owner`** (`/new` trong Zalo, cần `/approve`): phiên `owner` chạy từ 17/10 còn giữ system prompt với SOUL cũ
    (gọi `skill_view crm-task-management`). Smoke ngay trên `owner` nhưng **CHỈ ĐỌC** (Contract §2: org thật chỉ đọc): hỏi "em giao
    việc được không? giữ phòng được không?" ⇒ bot gọi `crm_action_list`, trả lời theo `items` / `notPermitted` (thấy `task.create`,
-   `contract.room_lock`), **không gọi `crm_action_run`**. `task.create` và `contract.room_lock` là `confirm: if_required` với chính
-   sách DB `never` ⇒ gọi là ghi thật ngay (giao việc thật, khoá phòng thật), không có bản xem trước để dừng. Thao tác `confirm:
-   always` (vd phiếu chi) trên `owner` chỉ tới bản xem trước, **không xác nhận** (đáp "thôi"). Smoke ghi thật (giao việc, giữ / bỏ
-   giữ phòng) làm trên hồ sơ TEST `tkt` / `tkh` / `tkj` (connector 8741, DB TEST).
+   `contract.room_lock`), **không gọi `crm_action_run`**. `task.create` là `confirm: if_required` với chính sách DB `never` ⇒ gọi
+   là ghi thật ngay (giao việc thật), không có bản xem trước để dừng. Thao tác `confirm: always` (vd phiếu chi; từ 11/11 cả
+   `contract.room_lock` — sàn xem trước trong connector, chính sách DB không đổi) trên `owner` chỉ tới bản xem trước, **không xác
+   nhận** (đáp "thôi"). Smoke ghi thật (giao việc, giữ / bỏ giữ phòng) làm trên hồ sơ TEST `tkt` / `tkh` / `tkj` (connector 8741,
+   DB TEST).
 5. Cất hai skill tự học cũ (sau bước 2–4):
 
    ```bash

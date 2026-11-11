@@ -10,6 +10,7 @@ import { ACTION_REASONS } from './action-reasons.mjs';
 import { readFileSync } from 'node:fs';
 import { CONFIRM_INVALID_DETAILS, isRequestIdShapeDetail, requestIdShapeDetail } from './action-contract.mjs';
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
+import { ROOM_LOCK_CONSENT } from './room-lock-guard.mjs';
 import { createCrmPermissionGaps } from './crm-permission-gaps.mjs';
 import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
 import { CONTRACT_NOTICE_CANCEL, CONTRACT_ROOM_LOCK } from './contract-action-contract.mjs';
@@ -94,14 +95,126 @@ test('invalid_params do GIÁ TRỊ người dùng nói (lý do "đổi ý" < 8 k
   assert.deepEqual(env.requests, [], 'không gửi gì xuống CRM');
 });
 
-test('giữ phòng 8 giờ: SQL trả invalid_params (chỉ 6 / 12 / 24) ⇒ hướng dẫn hỏi lại, không tự đổi; connector không tự gọi lại', async t => {
-  // Review #377: room_lock ghi thẳng (chính sách never) ⇒ bot tự đổi 8 thành 6 / 12 là khoá phòng sai thời gian người dùng nói.
-  const env = setup(t, { action: ['sale_phong.lock_room'], respond: () => ({ kind: 'needs_input', reason: 'invalid_params' }),
-    catalog: createActionCatalog([CONTRACT_ROOM_LOCK], { keys: ['sale_phong.lock_room'] }) });
-  const locked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { buildingName: 'Toà A', roomName: '302', hours: 8 } });
-  assert.deepEqual([locked.outcome, locked.reason, locked.applied], ['needs_input', 'invalid_params', false]);
-  assert.match(locked.huongDan, /giữ phòng 8 giờ\) hoặc họ chưa nói ⇒ hỏi lại, không tự đổi, không bịa/);
-  assert.equal(env.requests.length, 1, 'chỉ một lần gửi SQL');
+// PS-K03 (ma trận Phòng sale lô ps08 10/11/2026 — ghi sai thật): "Giữ phòng 303 toà 44TL 8 tiếng" ⇒ SQL trả invalid_params chung, mô hình
+// gọi lại hours: 12 trong CÙNG lượt người dùng và phòng bị khoá 12 giờ (reversible + chính sách never ⇒ phase auto, ghi thẳng). Lời dặn
+// "không tự đổi" (review #377) không giữ được. Ba rào trong mã: giờ ngoài 6 / 12 / 24 dừng ở connector với câu hỏi chọn mức
+// (room-lock-guard.mjs); contract.room_lock khai confirm: 'always' ⇒ lượt không token luôn là phase preview; lượt đổi token đòi consentText
+// là câu đáp đồng ý thuần (room-lock-guard.mjs ROOM_LOCK_CONSENT) ⇒ trích câu yêu cầu ("… 8 tiếng …", kể cả mở đầu bằng "Ok em,") hay câu
+// chỉ chọn mức không tự xác nhận được. Đột biến bỏ một rào ⇒ các khẳng định dưới đỏ.
+const LOCK_PLACE = { buildingName: '44TL', roomName: '303' };
+const lockEnv = (t, respond) => setup(t, { action: ['sale_phong.lock_room'], respond,
+  catalog: createActionCatalog([CONTRACT_ROOM_LOCK], { keys: ['sale_phong.lock_room'] }) });
+const LOCK_SQL = request => request.phase === 'preview'
+  ? { kind: 'preview', preview: { text: `Sẽ giữ phòng 303 toà 44TL ${request.params.hours} giờ` }, basis: `b-${request.params.hours}`,
+    resolved: { roomId: id('f') }, confirm: 'required' }
+  : { kind: 'applied', result: { text: `Đã giữ phòng 303 toà 44TL ${request.params.hours} giờ`, phase: request.phase }, link: '/sale' };
+
+test('PS-K03 giữ phòng 8 giờ: hỏi chọn 6 / 12 / 24, không gửi SQL; mô hình tự đổi sang 12 rồi tự xác nhận NGAY trong lượt đó ⇒ không khoá', async t => {
+  const env = lockEnv(t, LOCK_SQL);
+  const asked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 8 } });
+  assert.deepEqual([asked.outcome, asked.reason, asked.applied], ['needs_input', 'invalid_params', false]);
+  assert.match(asked.detail, /^Không giữ phòng được 8 giờ: chỉ có mức 6, 12 hoặc 24 giờ\./);
+  assert.match(asked.detail, /hỏi họ chọn mức nào — KHÔNG tự đổi sang mức khác rồi gọi lại/);
+  assert.match(asked.huongDan, /^CHƯA ghi\. Hỏi lại người dùng theo detail \(không đoán, không tự điền\)/);
+  assert.deepEqual(env.requests, [], 'giờ ngoài khuôn không xuống SQL');
+  // Đúng chuỗi của bản ghi sai (r3b1 lượt 1): mô hình bỏ qua lời dặn, gọi lại 12 giờ ngay. Trước đây: applied. Nay: bản xem trước, chưa khoá.
+  const swapped = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 } });
+  assert.deepEqual([swapped.outcome, swapped.applied], ['confirmation_required', false]);
+  assert.match(swapped.confirmToken, CF);
+  assert.deepEqual(swapped.preview, { text: 'Sẽ giữ phòng 303 toà 44TL 12 giờ' });
+  assert.match(swapped.huongDan, /kèm consentText = NGUYÊN VĂN câu người dùng vừa đáp SAU khi xem bản này; câu yêu cầu ban đầu/);
+  assert.doesNotMatch(swapped.huongDan, /KHÔNG lùi được/, 'khoá tạm lùi được');
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'không có lượt auto / apply nào');
+  // Bước còn lại để ghi sai: tự xác nhận trong chính lượt đó. Trích đúng tin người dùng (câu yêu cầu 8 tiếng), không trích, hay (lượt 2) chỉ
+  // trích câu chọn mức ⇒ consent_unclear, token CHƯA tiêu, không có lệnh apply.
+  const confirm = consentText => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 },
+    requestId: swapped.requestId, confirmToken: swapped.confirmToken, ...(consentText === undefined ? {} : { consentText }) });
+  for (const consentText of ['Giữ phòng 303 toà 44TL 8 tiếng cho khách xem nha em', undefined, '12 tiếng đi em']) {
+    const held = await confirm(consentText);
+    assert.deepEqual([held.outcome, held.reason, held.applied], ['needs_input', 'consent_unclear', false], String(consentText));
+    assert.equal(held.detail, ROOM_LOCK_CONSENT.detail);
+    assert.match(held.huongDan, /^CHƯA ghi; token xác nhận chưa dùng/);
+  }
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'vẫn chưa có lệnh khoá');
+  // Lượt sau người dùng đáp "ok" ⇒ đúng token đó khoá đúng 12 giờ đã xem; dòng audit prepared mang câu đồng ý để lần lại.
+  const done = await confirm('ok');
+  assert.deepEqual([done.outcome, done.applied, done.result.phase], ['applied', true, 'apply']);
+  assert.deepEqual(env.requests.at(-1)[1], { op: 'run', action: 'contract.room_lock', phase: 'apply', requestId: swapped.requestId,
+    params: { ...LOCK_PLACE, hours: 12 }, resolved: { roomId: id('f') }, basis: 'b-12' });
+  assert.deepEqual(env.audits.filter(event => event.consent).map(event => event.consent), [{ action: 'contract.room_lock', requestId: swapped.requestId, text: 'ok' }]);
+});
+
+test('giữ phòng: token của 12 giờ không khoá được giờ khác — 8 giờ vẫn là câu hỏi chọn mức, 6 giờ ⇒ confirmation_invalid (params)', async t => {
+  const env = lockEnv(t, LOCK_SQL);
+  const preview = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 } });
+  const off = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 8 }, requestId: preview.requestId,
+    confirmToken: preview.confirmToken, consentText: 'ok' });
+  assert.deepEqual([off.outcome, off.reason], ['needs_input', 'invalid_params']);
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 },
+    requestId: preview.requestId, confirmToken: preview.confirmToken, consentText: 'ok' }), error => error.code === 'confirmation_invalid' && error.detail === CONFIRM_INVALID_DETAILS.params);
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'vẫn chưa có lệnh khoá');
+});
+
+// Note 1 (review #416, kịch bản người review chạy trên broker thật): câu ra lệnh MỞ ĐẦU bằng lời đồng ý. Trước: 8 giờ ⇒ hỏi lại, 12 giờ ⇒
+// bản xem trước, xác nhận bằng chính câu đó ⇒ applied, khoá 12 giờ, sổ audit giữ câu nói "8 tiếng". Nay: câu có "phòng", số, tên toà
+// không phải câu đáp đồng ý ⇒ consent_unclear, token còn; người dùng đáp sau đó mới khoá.
+test('Note 1: "Ok em, giữ phòng 303 toà 44TL 8 tiếng nhé" ⇒ 8 giờ hỏi lại, 12 giờ xem trước, tự xác nhận bằng chính câu đó ⇒ KHÔNG khoá', async t => {
+  const env = lockEnv(t, LOCK_SQL), said = 'Ok em, giữ phòng 303 toà 44TL 8 tiếng nhé';
+  const asked = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 8 } });
+  assert.deepEqual([asked.outcome, asked.reason], ['needs_input', 'invalid_params']);
+  const swapped = await env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 } });
+  assert.equal(swapped.outcome, 'confirmation_required');
+  const confirm = consentText => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 },
+    requestId: swapped.requestId, confirmToken: swapped.confirmToken, consentText });
+  for (const consentText of [said, 'Ok em, giữ phòng 303 toà 44TL 12 tiếng nhé', 'ok 12 tiếng', 'ok giữ phòng 303']) {
+    const held = await confirm(consentText);
+    assert.deepEqual([held.outcome, held.reason, held.applied, held.detail], ['needs_input', 'consent_unclear', false, ROOM_LOCK_CONSENT.detail], consentText);
+  }
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview'], 'không có lệnh khoá');
+  assert.ok(env.audits.every(event => !Object.hasOwn(event, 'consent')), 'câu ra lệnh không vào sổ audit như lời đồng ý');
+  // Token chưa tiêu: lời đáp tự nhiên ở tin sau khoá đúng 12 giờ đã xem.
+  const done = await confirm('ừ giữ đi em');
+  assert.deepEqual([done.outcome, done.applied, env.requests.at(-1)[1].phase, env.requests.at(-1)[1].params.hours], ['applied', true, 'apply', 12]);
+  assert.deepEqual(env.audits.filter(event => event.consent).map(event => event.consent.text), ['ừ giữ đi em']);
+});
+
+// B1 (review #416): lời đáp tự nhiên cho "anh đồng ý giữ không?" từng bị consent_unclear (chỉ "đồng ý" qua) ⇒ bot hỏi vòng / tự viết "ok".
+test('B1: lời đáp tự nhiên ("ừ giữ đi", "giữ đi em", "đc", "dc em", "ok giữ luôn nha") khoá được; "không giữ", "khoan đã", "giữ à" thì không', async t => {
+  const env = lockEnv(t, LOCK_SQL);
+  const preview = () => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 } });
+  const confirm = (first, consentText) => env.call('crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 6 },
+    requestId: first.requestId, confirmToken: first.confirmToken, consentText });
+  for (const consentText of ['ừ giữ đi', 'giữ đi em', 'đc', 'dc em', 'ok giữ luôn nha']) {
+    const done = await confirm(await preview(), consentText);
+    assert.deepEqual([done.outcome, done.applied], ['applied', true], consentText);
+  }
+  const first = await preview();
+  for (const consentText of ['không giữ', 'khoan đã', 'giữ à', 'thôi khỏi giữ', 'dừng luôn']) {
+    const held = await confirm(first, consentText);
+    assert.deepEqual([held.outcome, held.reason], ['needs_input', 'consent_unclear'], consentText);
+  }
+  assert.deepEqual(env.audits.filter(event => event.consent).map(event => event.consent.text), ['ừ giữ đi', 'giữ đi em', 'đc', 'dc em', 'ok giữ luôn nha']);
+});
+
+test('giữ phòng mức hợp lệ (6 / 12 / 24): lượt 1 luôn xem trước dù chính sách DB là never; người dùng đáp "ok" ⇒ gửi lại y nguyên kèm token + consentText ⇒ khoá đúng số giờ đã xem', async t => {
+  const env = lockEnv(t, LOCK_SQL);
+  for (const hours of [6, 12, 24]) {
+    const args = { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours } };
+    const first = await env.call('crm_action_run', args);
+    assert.deepEqual([first.outcome, first.applied, env.requests.at(-1)[1].phase], ['confirmation_required', false, 'preview'], String(hours));
+    const done = await env.call('crm_action_run', { ...args, requestId: first.requestId, confirmToken: first.confirmToken, consentText: 'ok em' });
+    assert.deepEqual([done.outcome, done.applied, done.result.phase], ['applied', true, 'apply'], String(hours));
+    assert.deepEqual(env.requests.at(-1)[1], { op: 'run', action: 'contract.room_lock', phase: 'apply', requestId: first.requestId,
+      params: { ...LOCK_PLACE, hours }, resolved: { roomId: id('f') }, basis: `b-${hours}` });
+  }
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview', 'apply', 'preview', 'apply', 'preview', 'apply']);
+});
+
+test('giữ phòng: SQL lỡ trả applied cho lượt xem trước ⇒ khuôn lệch, không báo "đã ghi" cho mô hình', async t => {
+  const env = lockEnv(t, () => ({ kind: 'applied', result: { text: 'ghi thẳng' } }));
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'contract.room_lock', params: { ...LOCK_PLACE, hours: 12 } }),
+    error => error.code === 'backend_unavailable');
+  assert.deepEqual(env.requests.map(([, request]) => request.phase), ['preview']);
 });
 
 test('money: lượt 1 luôn xem trước (requestId do connector cấp) ⇒ lượt 2 gửi đúng bản đã giải + basis của lượt 1; token một lần', async t => {

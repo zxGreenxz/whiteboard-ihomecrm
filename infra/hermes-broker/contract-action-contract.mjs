@@ -5,6 +5,11 @@
 // Mốc 2: báo trả / dời ngày / huỷ báo trả + khoá tạm / gỡ khoá tạm — đều reversible, ghi thẳng theo Q2 = a (D-HĐ1).
 // Khoá contracts.terminate mở cả báo trả lẫn ghi nhận trả phòng (Mốc 4): bản connector nào chưa khai contract.return thì
 // bật khoá chỉ mở báo trả.
+// Ngoại lệ (PS-K03, lô ps08 10/11/2026 — ghi sai thật): khoá tạm phòng (contract.room_lock) có sàn xác nhận trong mã (confirm: 'always')
+// dù chính sách DB vẫn là never — người dùng nói 8 giờ, SQL trả invalid_params chung, mô hình tự đổi thành 12 và phòng bị khoá ngay trong
+// cùng lượt. Nay: số giờ ngoài 6 / 12 / 24 ⇒ hỏi lại, không tới SQL (room-lock-guard.mjs; khuôn hours nhận 1–720 để mọi số giờ người dùng
+// nói tới được câu hỏi chọn mức thay vì invalid_params chung); lượt gọi đầu luôn trả bản xem trước ("khoá tạm … trong N giờ"); chỉ lượt kèm
+// confirmToken với ĐÚNG params đó VÀ consentText là câu đáp đồng ý thuần (room-lock-guard.mjs ROOM_LOCK_CONSENT) mới khoá.
 import { defineAction, param } from './action-catalog.mjs';
 
 const RPC = 'hermes_contract_action_v1';
@@ -19,8 +24,10 @@ export const CONTRACT_NOTICE_CANCEL = defineAction({ id: 'contract.notice_cancel
   params: { ...place(), reason: param.text(8, 500) },
   reasons: ['room_has_no_active_contract', 'already_returned', 'no_notice'] });
 export const CONTRACT_ROOM_LOCK = defineAction({ id: 'contract.room_lock', page: 'contract', key: 'sale_phong.lock_room', class: 'reversible', rpc: RPC,
-  title: 'Khoá tạm (giữ) phòng trống 6, 12 hoặc 24 giờ: ẩn khỏi danh sách bán, hết giờ tự mở; ghi thẳng',
-  params: { ...place(), hours: param.int(6, 24), note: param.text(1, 300, { optional: true }) },
+  confirm: 'always',
+  title: 'Khoá tạm (giữ) phòng trống 6, 12 hoặc 24 giờ: ẩn khỏi danh sách bán, hết giờ tự mở; luôn xem trước rồi mới khoá',
+  params: { ...place(), hours: param.int(1, 720, { hint: '6, 12 hoặc 24 (giờ); người dùng nói số khác ⇒ hỏi họ chọn mức, không tự đổi' }),
+    note: param.text(1, 300, { optional: true }) },
   reasons: ['room_not_lockable', 'room_already_locked'] });
 export const CONTRACT_ROOM_UNLOCK = defineAction({ id: 'contract.room_unlock', page: 'contract', key: 'sale_phong.lock_room', class: 'reversible', rpc: RPC,
   title: 'Gỡ khoá tạm (bỏ giữ) phòng; ghi thẳng',
