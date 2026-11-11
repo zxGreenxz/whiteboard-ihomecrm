@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { LiveError, type LiveRecorder } from "./cameraLive.js";
+import { ports } from "./cameraLivePorts.js";
 import { playbackRange, type playbackSources } from "./cameraPlayback.js";
 
 /** One decoded JPEG, in memory only. Recorder credentials never enter process arguments. */
@@ -11,7 +12,7 @@ export async function playbackThumbnail(sources: ReturnType<typeof playbackSourc
   try {
     signal.throwIfAborted();
     return await new Promise<string>((resolve, reject) => {
-      const child = spawn(encoder, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-filter_threads", "1", "-rtsp_transport", "tcp", "-timeout", "3000000", "-probesize", "32768", "-analyzeduration", "1", "-i", `rtsp://127.0.0.1:18895/${name}`, "-an", "-frames:v", "1", "-vf", "scale=320:-2", "-c:v", "mjpeg", "-threads", "1", "-q:v", "5", "-f", "image2pipe", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
+      const child = spawn(encoder, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-filter_threads", "1", "-rtsp_transport", "tcp", "-timeout", "3000000", "-probesize", "32768", "-analyzeduration", "1", "-i", `rtsp://127.0.0.1:${ports.rtsp}/${name}`, "-an", "-frames:v", "1", "-vf", "scale=320:-2", "-c:v", "mjpeg", "-threads", "1", "-q:v", "5", "-f", "image2pipe", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
       const chunks: Buffer[] = []; let size = 0; let cancelled = false;
       const stop = () => { cancelled = true; child.kill("SIGKILL"); };
       const timer = setTimeout(stop, 5000);

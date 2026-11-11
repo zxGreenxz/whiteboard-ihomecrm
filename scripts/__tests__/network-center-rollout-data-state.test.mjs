@@ -75,6 +75,13 @@ const STAGE_29 =
   "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql";
 const STAGE_30 =
   "supabase/migrations/20261110070438_network_center_camera_share_v1.sql";
+// Stage 31 (10/11/2026): vendor thứ ba HIKVISION. Không tạo object nào — nới CHECK
+// vendor và thay thân public.network_center_worker_camera_connections_v1 (thêm khoá
+// vendor), nên nó không có MEASURED_ABSENT_STAGE_31. Hàm đó vốn đã nằm trong
+// MEASURED_ABSENT_BODIES từ stage 29 (phép đo 03/08/2026 có trước cả hai); thân vắng
+// mặt giờ thuộc về stage định nghĩa nó sau cùng, tức stage 31.
+const STAGE_31 =
+  "supabase/migrations/20261110160847_network_center_camera_vendor_hikvision_v1.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -252,17 +259,18 @@ test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
   assert.equal(every.length, 505);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 30);
+  assert.equal(manifest.migrations.length, 31);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   assert.equal(manifest.migrations[28].path, STAGE_29);
   assert.equal(manifest.migrations[29].path, STAGE_30);
+  assert.equal(manifest.migrations[30].path, STAGE_31);
   const classification = classifyCatalog(manifest, present, { expectations, live });
   assert.equal(classification.bodyMismatches.length, 28);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28, STAGE_29, STAGE_30, STAGE_31].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });

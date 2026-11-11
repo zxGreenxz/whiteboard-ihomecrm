@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { playbackThumbnail } from "../src/cameraPreview.js";
-import type { playbackSources } from "../src/cameraPlayback.js";
+import { playbackSources as createPlaybackSources, type playbackSources } from "../src/cameraPlayback.js";
 import type { LiveRecorder } from "../src/cameraLive.js";
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
@@ -35,4 +35,18 @@ it.each(["abort", "timeout", "oversize", "invalid", "spawn-error"])("releases th
   if (["abort", "timeout", "oversize"].includes(reason)) expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   child.emit("close", reason === "invalid" ? 0 : 1); await rejected;
   expect(remove).toHaveBeenCalledOnce();
+});
+it("takes a Hikvision thumbnail from the recorder's track URL, still without credentials in process arguments", async () => {
+  const request = vi.fn<typeof fetch>(async () => Response.json({}));
+  const hikvision = { id: "10000000-0000-4000-8000-000000000002", vendor: "HIKVISION", channels: [9], rtspOrigin: "rtsp://192.168.1.10:554", username: "private", password: "secret", playbackEnabled: true } as LiveRecorder;
+  const pending = playbackThumbnail(createPlaybackSources(request, vi.fn(), `/opt/ihome-camera-live/releases/${"a".repeat(40)}/ffmpeg`), "/opt/ffmpeg", hikvision, 9, start, end, new AbortController().signal);
+  await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+  child.stdout.write(Buffer.from([255, 216, 1, 2, 255, 217])); child.emit("close", 0);
+  expect(await pending).toBe("/9gBAv/Z");
+  const added = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+  expect(added.source).toBe("rtsp://private:secret@192.168.1.10:554/Streaming/tracks/901?starttime=20261020T080000Z&endtime=20261020T080020Z");
+  expect(added).toMatchObject({ rtspPlaybackRevision: expect.any(String), rtspTransport: "tcp", maxReaders: 1 }); expect(added.rtspRangeType).toBeUndefined();
+  const args = JSON.stringify(mocks.spawn.mock.calls[0]); expect(args).not.toContain("secret"); expect(args).not.toContain("192.168.1.10");
+  expect(args).toMatch(/rtsp:\/\/127\.0\.0\.1:18895\/playback-[a-f0-9-]{36}"/u);
+  expect(request.mock.calls.at(-1)?.[1]?.method).toBe("DELETE");
 });

@@ -95,6 +95,64 @@ Trước bật: tạo một lượt trên đầu ghi được cấp quyền, ki�
 kênh và khung giờ, thử thu hồi lúc đang phát, thử hết hạn, và kiểm xem lại của nhân
 viên vẫn chạy khi có khách đang xem.
 
+## Camera: đầu ghi Hikvision ở cổng xem trực tiếp và xem lại
+
+Mỗi đầu ghi trong `live-config.json` có thêm khoá tuỳ chọn `vendor`: `DAHUA`,
+`KBVISION` hoặc `HIKVISION`. Không khai thì là Dahua/KBVision, URL và lệnh FFmpeg
+giữ nguyên từng byte; giá trị lạ làm gateway từ chối cả file lúc khởi động. Mọi
+quyết định theo hãng nằm trong `src/cameraLiveVendor.ts`; bảng URL và quy trình
+chạy thử trên host ở `deploy/camera-live.md`.
+
+- Xem trực tiếp: `/Streaming/Channels/<kênh×100+1>` (luồng chính) và `+2` (luồng
+  phụ, dùng cho SD). Kênh 1 là 101/102, kênh IP 9 là 901/902.
+- Xem lại: `/Streaming/tracks/<kênh×100+1>?starttime=YYYYMMDDTHHMMSSZ&endtime=…`,
+  giờ là giờ trên đầu ghi (UTC+7) dù có chữ `Z`. Bật bằng `playbackEnabled: true`;
+  cần `CAMERA_FFMPEG_BINARY`/`CAMERA_FFMPEG_SHA256`, không cần StateDirectory. Lượt
+  chia sẻ cho khách dùng chung đường này.
+- Không xuất được đoạn MP4: `archiveEnabled: true` hoặc `archiveOrigin` trên đầu ghi
+  `HIKVISION` bị từ chối lúc khởi động. API báo `archive: false`, giao diện khoá
+  phần trích xuất như với đầu ghi chưa bật xuất.
+- Mã hoá luồng (Hik-Connect) đang bật thì hình trực tiếp không giải mã được, xem
+  lại vẫn được. Gateway thử giải mã một khung hình luồng phụ trước khi mở trực
+  tiếp và trả `LIVE_STREAM_UNDECODABLE` (HTTP 503) thay vì để ô hình đen; tắt mã
+  hoá trên đầu ghi là xem được sau tối đa 30 giây, không cần khởi động lại.
+- Tua và đổi tốc độ là mở luồng mới. Đo 11/11/2026 trên hai đời firmware (V4.70 và
+  V3.4 năm 2017): cả hai nhận lệnh `Range` (`clock=` lẫn `npt=`) trên luồng đang
+  chạy rồi bỏ qua, mốc xem không đổi. Vì vậy gateway không gửi Range cho Hikvision:
+  API báo `playbackControl: false`, giao diện mở phiên mới bắt đầu tại mốc đã chọn,
+  tốc độ đi theo `Scale` ngay ở lần PLAY đầu. `clock`/`npt` chỉ còn là lựa chọn dự
+  phòng trong `hikvisionDefaults`.
+- Luồng chuyển mã không có tiếng. Đo trên firmware V3.4: đầu ghi khai một track âm
+  thanh ở cả trực tiếp lẫn xem lại nhưng không gửi gói âm thanh nào, mà FFmpeg chỉ
+  ghi header đầu ra khi mọi luồng được map đã có khung đầu tiên, nên bộ chuyển mã có
+  map track đó không bao giờ phát. Vì vậy mọi bộ chuyển mã của Hikvision (trực tiếp
+  HD/Full HD, xem lại SD/HD/Full HD) chỉ có hình (`-an`); V4.70 có gửi tiếng nhưng
+  xử lý giống nhau cho cả hãng. Luồng gốc (SD trực tiếp, "Gốc") vẫn chuyển nguyên
+  những gì đầu ghi gửi.
+- Tốc độ `[1, 2, 4]`: 2× đúng trên cả hai; V4.70 chạy đúng 4×/6×/8×; V3.4 chỉ đạt
+  khoảng 3,6× khi xin 4× và không nhanh hơn khi xin 6×/8×. Luồng SD chuyển mã mở
+  thẳng ở 4× đã đo chạy được trên cả hai (V3.4 chỉ khi bỏ tiếng). Vị trí trên thanh
+  thời gian là đồng hồ của trình xem nhân tốc độ đã chọn, nên với đầu ghi chạy chậm
+  hơn tốc độ xin thì thanh chạy trước hình và trình xem dừng trước khi hình tới cuối
+  khoảng.
+- Hình đầu tiên lệch mốc yêu cầu: đúng giờ hoặc trễ tới 2 giây (V4.70), sớm 1–11
+  giây (V3.4, lùi về khung hình chính trước đó); cả hai tự dừng đúng `endtime`. Phiên
+  của nhân viên xin đúng mốc đã chọn; dấu giờ trên hình là căn cứ.
+- Lượt chia sẻ cho khách được chặn không lộ hình trước khung giờ theo số đo: phiên
+  của khách xin đầu ghi trễ hơn 15 giây so với mốc khách chọn (`playbackStartLead`).
+  Đo 17 lần mở trên firmware V3.4, đầu ghi bắt đầu sớm 0–11 giây, nên còn dư 4 giây;
+  đây là biên thực nghiệm, không phải bảo đảm tuyệt đối, vì đầu ghi không cho đọc
+  khoảng khung hình chính. Mốc sau khi dời mà chạm cuối khung thì bị từ
+  chối (`SHARE_SCOPE_DENIED`). Gateway tự áp dụng, không phụ thuộc trình xem, và báo
+  con số đó cho trình xem của khách (`playbackStartLeadSeconds`, chỉ có trong trả lời
+  cho phiên khách, không có khi bằng 0): thanh thời gian của khách chạy từ đầu khung
+  + 15 giây tới cuối khung và mốc gửi gateway là mốc trên thanh − 15 giây, nên thanh
+  khớp mốc đầu ghi được xin và cuối khung được nhận ra như thường. Khách không xem
+  được 15 giây đầu khung giờ. Dahua/KBVision không đổi.
+- Lùi release: trước khi trỏ `current` về bản cũ hơn thay đổi này phải gỡ các đầu ghi
+  có `vendor`/`playbackEnabled` khỏi `live-config.json`, nếu không schema cũ từ chối
+  cả file và mọi đầu ghi mất hình (chi tiết ở `deploy/camera-live.md`).
+
 > Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
 
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,
@@ -476,7 +534,7 @@ heartbeat đó, hoặc bằng chứng đang lưu của cùng release) có `faile
 chỉ hạ, không bao giờ nâng — nên một bản rollback về image cũ vẫn không nói dối
 được.
 
-## Giám sát đầu ghi KBVISION / Dahua
+## Giám sát đầu ghi KBVISION / Dahua / Hikvision
 
 `src/cameraMain.ts` là bộ thu thập riêng, không thay vòng giám sát MikroTik hoặc
 thực thi lệnh. Nó đọc RPC2 (kênh), CGI Digest (ổ cứng) và luồng `VideoLoss`,
@@ -484,6 +542,31 @@ thực thi lệnh. Nó đọc RPC2 (kênh), CGI Digest (ổ cứng) và luồng 
 Trạng thái khởi tạo/không đọc được là UNKNOWN; sai quyền là AUTH_DENIED; slot
 EMPTY không phải camera mất kết nối. Timestamp sự kiện là lúc bộ thu thập nhận
 bản tin UTC. Chưa lấy bù nhật ký cũ từ đầu ghi, chưa có video gateway/WebRTC.
+
+Đầu ghi Hikvision (vendor `HIKVISION`) được đọc bằng ISAPI trong
+`src/camera/hikvisionClient.ts`: kênh analog, kênh IP kèm cờ online và ổ cứng,
+chỉ bằng HTTP Digest, không bao giờ Basic. Bản này chưa có luồng sự kiện: độ phủ
+luôn là theo lần kiểm tra, không sinh `COVERAGE_GAP` hay
+`EVENT_STREAM_UNAVAILABLE`. Một kênh/ổ không xác định được thì riêng nó là
+UNKNOWN, đầu ghi vẫn ONLINE kèm cờ thiếu dữ liệu. Tên phần tử XML, cách đọc
+`resDesc`, cờ online và cách đánh số kênh IP đã đối chiếu ngày 10/11/2026 trên
+hai đầu ghi thật: một DVR lai 8 kênh analog (firmware V4.70, kênh IP mang id 9
+và 10) và một DVR 16 kênh (firmware V3.4, chỉ có HTTPS với chứng thư tự ký đã
+hết hạn). Vẫn chỉ theo tài liệu ISAPI: nhánh "id IP đếm lại từ 1 thì cộng số
+kênh analog", các từ trạng thái ổ cứng ngoài `ok`, và thân phản hồi lúc bị khoá
+đăng nhập. Chưa có xem trực tiếp hay xem lại cho vendor này.
+
+Vendor đi từ database (`camera_recorders.vendor`, ra khoá `vendor` của
+`camera-connections`), không khai trong file credential. `KBVISION`, `DAHUA` hoặc
+thiếu khoá dùng client Dahua; `HIKVISION` dùng client ISAPI; giá trị khác thì bỏ
+qua đầu ghi đó, ghi log và không mở kết nối nào. Sau AUTH_DENIED bộ thu thập chờ
+300 s với Dahua và 1800 s với Hikvision, vì đầu ghi Hikvision khoá tài khoản và
+IP nguồn sau vài lần đăng nhập sai. Bị từ chối (401) là chung cuộc, không gửi
+lại. Ngoại lệ duy nhất: socket tái dùng bị đầu ghi đóng trước khi trả lời thì
+yêu cầu đó được gửi lại đúng một lần trên kết nối mới, và từ đó client thôi tái
+dùng socket với đầu ghi này.
+Thời gian chờ Hikvision được giữ khi collector dựng lại trong cùng tiến trình,
+còn restart service là một lần thử mới: sửa mật khẩu trong file rồi mới restart.
 
 Tab Camera chỉ đọc qua hai RPC có kiểm quyền theo tòa, phân trang lịch sử theo
 thời gian và ID. Dữ liệu quá hạn được hiển thị chưa xác minh, không suy tất cả
@@ -496,6 +579,9 @@ Trước phát hành cần migration `network_center_camera_monitoring_v1`, Edge
 Operator dùng `network_center_admin_enroll_camera_v1` (service_role only) để ghim
 recorder vào đúng organization/building/router connection đã có. Worker không
 được tự gán scope hoặc đổi đầu ghi. Không ghi fixture vào org thật.
+Vendor `HIKVISION` cần thêm migration `network_center_camera_vendor_hikvision_v1`
+và collector bản mới chạy TRƯỚC khi đăng ký đầu ghi: bản cũ bỏ qua khoá `vendor`
+và sẽ nói giao thức Dahua với đầu ghi đó.
 
 Build artifact bằng `node infra/network-center-worker/scripts/build-camera-monitor.mjs`.
 Artifact và SHA256 ở `infra/network-center-worker/camera-dist/` (ignored). Chỉ
@@ -516,6 +602,17 @@ Layout cho mỗi bản phát hành:
   systemd LoadCredential cấp bản mount riêng cho DynamicUser; không truyền mật khẩu
   qua CLI, URL, frontend, Git hoặc log. Vault950NK dùng các tên
   `NVR_950NK_USERNAME`/`NVR_950NK_PASSWORD`, nạp qua `scripts/lib/vault.mjs`.
+- Đầu ghi `HIKVISION` có origin `https://` bắt buộc thêm khoá `tlsFingerprint256`
+  trong mục của nó: SHA-256 của chứng chỉ DER, 64 ký tự hex, hoa hay thường, có
+  hoặc không dấu `:`. Lấy từ trong mạng quản trị bằng
+  `openssl s_client -connect <ip>:<port> </dev/null | openssl x509 -noout -fingerprint -sha256`.
+  Chứng chỉ tự ký hoặc hết hạn vẫn dùng được vì collector chỉ tin đúng dấu vân
+  tay này và so nó trước khi gửi bất kỳ byte HTTP nào; lệch thì đóng kết nối, log
+  `TLS_PIN_MISMATCH` và đầu ghi hiện UNKNOWN. Đầu ghi đổi chứng chỉ (reset, nâng
+  firmware) thì phải cập nhật khoá. Khoá đặt cạnh origin `http://` làm cả file bị
+  từ chối; đặt cho đầu ghi Dahua thì đầu ghi đó không được thu thập. Collector
+  bản cũ từ chối cả file khi gặp khoá này: thêm khoá SAU khi lên bản mới, gỡ khoá
+  TRƯỚC khi lùi về bản cũ.
 
 Đường HTTP phải chạy qua mạng quản trị riêng đã kiểm chứng. Giữ NAT giới hạn
 nguồn/interface/đích và rollback riêng; không mở WAN để chạy collector.

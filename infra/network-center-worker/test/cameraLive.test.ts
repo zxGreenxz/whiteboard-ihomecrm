@@ -1,4 +1,6 @@
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ArchiveJobs } from "../src/cameraArchive.js";
 import { createLiveDependencies, createLiveServer, LiveSessions, LiveError, liveConfigSchema, publicStatus, validateOffer, type LiveDependencies } from "../src/cameraLive.js";
 import { mediaConfiguration } from "../src/cameraLiveMain.js";
 
@@ -401,5 +403,77 @@ describe("camera guest share boundary", () => {
       await denied(await fetch(`${base}/recorders/${recorder.id}/channels/2/preview`, { method: "POST", headers: json, body: JSON.stringify({ start: inside.start, end: second(Date.parse(inside.start) + 10_000) }) }));
       expect(dependencies.start).not.toHaveBeenCalled(); expect(dependencies.preview).not.toHaveBeenCalled();
     } finally { await sessions.closeAll(); await new Promise<void>((done) => server.close(() => done())); }
+  });
+});
+
+describe("camera live recorder vendor", () => {
+  const entry = { id: "10000000-0000-4000-8000-000000000009", organizationId: recorder.organizationId, buildingId: recorder.buildingId, channels: [1, 9], rtspOrigin: "rtsp://192.168.1.10:554", username: "fixture", password: "fixture-password" };
+  const load = (...recorders: unknown[]) => liveConfigSchema.safeParse({ supabaseUrl: config.supabaseUrl, publishableKey: config.publishableKey, origins: config.origins, recorders });
+  const issues = (value: unknown) => { const result = load(value); return result.success ? [] : result.error.issues.map((issue) => issue.message); };
+  const unsupported = "Archive export is not supported for HIKVISION recorders";
+  it("accepts the known vendors, leaves a recorder without one untouched and rejects anything else at load", () => {
+    const plain = load(entry); expect(plain.success && plain.data.recorders[0]).toEqual(entry);
+    for (const vendor of ["DAHUA", "KBVISION", "HIKVISION"]) expect(issues({ ...entry, vendor })).toEqual([]);
+    for (const vendor of ["hikvision", "Hikvision", "UNIVIEW", "", null, 1]) expect(load({ ...entry, vendor }).success).toBe(false);
+    expect(load({ ...entry, vendor: "HIKVISION", streamKey: "fixture" }).success).toBe(false);
+  });
+  it("rejects clip export on a Hikvision recorder with its own error, and playbackEnabled where archiveEnabled already decides", () => {
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveOrigin: "http://192.168.1.10:80" })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: true, playbackEnabled: true })).toEqual([unsupported]);
+    expect(issues({ ...entry, vendor: "HIKVISION", archiveEnabled: false, playbackEnabled: true })).toEqual([]);
+    expect(issues({ ...entry, vendor: "HIKVISION", playbackEnabled: false })).toEqual([]);
+    // Dahua/KBVision validation is what it was: export needs a private origin, and there is no second playback switch.
+    expect(issues({ ...entry, archiveEnabled: true })).toEqual(["Private archive origin required"]);
+    expect(issues({ ...entry, vendor: "DAHUA", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" })).toEqual([]);
+    expect(issues({ ...entry, playbackEnabled: true })).toEqual(["playbackEnabled is not used for DAHUA recorders; set archiveEnabled"]);
+    expect(issues({ ...entry, vendor: "KBVISION", playbackEnabled: false })).toEqual(["playbackEnabled is not used for KBVISION recorders; set archiveEnabled"]);
+  });
+  it("offers a Hikvision recorder live and playback without export, and answers export requests like any recorder without it", async () => {
+    const loaded = load({ ...entry, vendor: "HIKVISION", playbackEnabled: true }, { ...entry, id: "10000000-0000-4000-8000-000000000008" }, { ...entry, id: "10000000-0000-4000-8000-000000000007", vendor: "KBVISION", archiveEnabled: true, archiveOrigin: "http://192.168.1.10:80" });
+    if (!loaded.success) throw new Error("fixture");
+    const [hikvision, withoutExport, exporting] = loaded.data.recorders as [typeof recorder, typeof recorder, typeof recorder];
+    const { dependencies } = setup(); const encode = vi.fn();
+    Object.assign(dependencies, { control: vi.fn(), preview: vi.fn(), liveQualities: ["sd", "hd", "fullhd", "original"], playbackQualities: ["sd", "hd", "fullhd", "original"] });
+    const jobs = new ArchiveJobs({ authorize: dependencies.authorize, encode, remove: vi.fn(), audit: vi.fn(), fatal: vi.fn() });
+    // Two gateways: one where another recorder exports (archive service present), one serving Hikvision only.
+    const mixed = createLiveServer(loaded.data, dependencies, { jobs, open: () => Readable.from([]) });
+    const alone = createLiveServer({ ...loaded.data, recorders: [hikvision] }, dependencies);
+    const listen = async (server: typeof mixed.server) => { await new Promise<void>((done) => server.listen(0, "127.0.0.1", done)); const address = server.address(); if (!address || typeof address === "string") throw new Error("address"); return `http://127.0.0.1:${address.port}/camera-live/v1`; };
+    const headers = { Origin: config.origins[0]!, Authorization: "Bearer a-token-long-enough-for-validation" }; const json = { ...headers, "Content-Type": "application/json" };
+    const clip = JSON.stringify({ start: "2026-10-20T08:00:00+07:00", end: "2026-10-20T08:01:00+07:00", purpose: "export" });
+    const answer = async (response: Response) => [response.status, await response.json()];
+    try {
+      const base = await listen(mixed.server); const only = await listen(alone.server);
+      const qualities = ["sd", "hd", "fullhd", "original"];
+      // Hikvision: a seek or speed change is a new stream (no control on a running one), at speeds both measured firmware generations reach.
+      const hikvisionPlayback = { playback: true, playbackControl: false, playbackPreview: true, playbackSpeeds: [1, 2, 4], playbackQualities: qualities };
+      for (const root of [base, only]) expect(await (await fetch(`${root}/recorders/${hikvision.id}`, { headers })).json()).toEqual({ channels: [1, 9], maxView: 16, leaseSeconds: 75, liveQualities: qualities, archive: false, ...hikvisionPlayback });
+      expect(await (await fetch(`${base}/recorders/${exporting.id}`, { headers })).json()).toMatchObject({ archive: true, playback: true, playbackControl: true, playbackPreview: true, playbackSpeeds: [1, 2, 4, 6, 8], playbackQualities: qualities });
+      expect(await (await fetch(`${base}/recorders/${withoutExport.id}`, { headers })).json()).toMatchObject({ archive: false, playback: false, playbackControl: false, playbackPreview: false, playbackSpeeds: [], playbackQualities: [] });
+      for (const id of [hikvision.id, withoutExport.id]) {
+        expect(await answer(await fetch(`${base}/recorders/${id}/channels/1/archive`, { method: "POST", headers: json, body: clip }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+        expect(await answer(await fetch(`${base}/recorders/${id}/archive`, { headers }))).toEqual([404, { code: "CAMERA_NOT_CONFIGURED" }]);
+      }
+      expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/channels/1/archive`, { method: "POST", headers: json, body: clip }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+      expect(await answer(await fetch(`${only}/recorders/${hikvision.id}/archive`, { headers }))).toEqual([503, { code: "ARCHIVE_NOT_CONFIGURED" }]);
+      expect(encode).not.toHaveBeenCalled();
+      // A guest share of a Hikvision channel gets the same narrowed playback capabilities as any other share, plus the
+      // start lead its player needs to draw the time bar. Staff are never told a lead: their sessions are not moved.
+      vi.mocked(dependencies.authorize).mockResolvedValue({ id: "share:60000000-0000-4000-8000-000000000001", expiresAt: Date.now() + 60_000, share: { channel: 9, start: Date.now() - 7200_000, end: Date.now() - 3600_000 } });
+      const asGuest = { ...headers, Authorization: `Bearer cs_${"A".repeat(43)}` };
+      expect(await (await fetch(`${only}/recorders/${hikvision.id}`, { headers: asGuest })).json()).toEqual({ channels: [9], maxView: 1, leaseSeconds: 75, liveQualities: [], archive: false, playback: true, playbackControl: false, playbackPreview: false, playbackSpeeds: [1, 2, 4], playbackQualities: ["sd", "hd"], playbackStartLeadSeconds: 15 });
+      // A Dahua/KBVision guest gets exactly the object it got before the lead existed: no new key at all.
+      expect(await (await fetch(`${base}/recorders/${exporting.id}`, { headers: asGuest })).text()).toBe(`{"channels":[9],"maxView":1,"leaseSeconds":75,"liveQualities":[],"archive":false,"playback":true,"playbackControl":true,"playbackPreview":false,"playbackSpeeds":[1,2,4,6,8],"playbackQualities":["sd","hd"]}`);
+    } finally { for (const { server } of [mixed, alone]) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } }
+  });
+  it("builds no Dahua URL for a Hikvision recorder and keeps both vendors side by side in one media configuration", () => {
+    const loaded = load(recorder, { ...entry, vendor: "HIKVISION" }); if (!loaded.success) throw new Error("fixture");
+    const paths = mediaConfiguration(loaded.data).paths;
+    expect(new URL(paths[`camera-${recorder.id}-2`]!.source).pathname).toBe("/cam/realmonitor");
+    expect(new URL(paths[`camera-${entry.id}-9`]!.source).pathname).toBe("/Streaming/Channels/902");
+    expect(new URL(paths[`camera-${entry.id}-9-hd`]!.source).pathname).toBe("/Streaming/Channels/901");
+    expect(Object.entries(paths).filter(([name]) => name.includes(entry.id)).every(([, path]) => !path.source.includes("/cam/") && new URL(path.source).search === "")).toBe(true);
   });
 });

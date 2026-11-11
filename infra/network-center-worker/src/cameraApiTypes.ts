@@ -7,6 +7,9 @@ export const cameraConnectionSchema = z.object({
   credentialRef: z.string().min(1).max(255), channelCount: z.number().int().min(1).max(256),
   pollIntervalSeconds: z.number().int().min(30).max(3600),
   connectTimeoutMs: z.number().int().min(1000).max(30000),
+  // Absent from a database older than the vendor field. Kept as free text so one
+  // recorder with a vendor this build does not know cannot reject the whole list.
+  vendor: z.string().min(1).max(64).optional(),
 });
 export type CameraConnection = z.infer<typeof cameraConnectionSchema>;
 export interface CameraDeviceEvent {

@@ -14,6 +14,33 @@ INSERT INTO public.network_device_connections(id,organization_id,building_id,dev
 SELECT 'dddd9000-0000-4000-8000-0000000000c0',organization_id,building_id,id,'ROUTEROS_SSH','10.90.0.1',22,'router/camera-proof','SHA256:ccccccccccccccccccccccccccccccccccccccccccc',true
 FROM public.network_devices WHERE building_id='dddd1000-0000-4000-8000-000000000001' AND device_kind='MIKROTIK';
 SELECT public.network_center_admin_enroll_camera_v1('dddd8000-0000-4000-8000-0000000000c0','dddd0000-0000-4000-8000-000000000001','dddd1000-0000-4000-8000-000000000001','dddd9000-0000-4000-8000-0000000000c0','Demo recorder','KBVISION',null,2,'http://10.90.0.1:18080','camera/proof',true);
+-- Third vendor (20261110160847): a HIKVISION enrollment is accepted, any other value is still refused by
+-- the CHECK, and the worker reads each recorder's vendor. The extra recorder is removed again so the rest
+-- of this proof keeps observing exactly one recorder.
+DO $vendor$
+DECLARE result jsonb;
+BEGIN
+  BEGIN
+    PERFORM public.network_center_admin_enroll_camera_v1('dddd8000-0000-4000-8000-0000000000c1','dddd0000-0000-4000-8000-000000000001','dddd1000-0000-4000-8000-000000000001','dddd9000-0000-4000-8000-0000000000c0','Demo ISAPI recorder','HIKVISION',null,4,'https://10.90.0.2','camera/proof-isapi',true);
+  EXCEPTION WHEN check_violation THEN RAISE EXCEPTION 'HIKVISION enrollment rejected'; END;
+  result:=public.network_center_worker_camera_connections_v1(repeat('c',64),100);
+  IF jsonb_array_length(result->'items')<>2
+     OR result#>>'{items,0,recorderId}'<>'dddd8000-0000-4000-8000-0000000000c0' OR result#>>'{items,0,vendor}' IS DISTINCT FROM 'KBVISION'
+     OR result#>>'{items,1,recorderId}'<>'dddd8000-0000-4000-8000-0000000000c1' OR result#>>'{items,1,vendor}' IS DISTINCT FROM 'HIKVISION' THEN
+    RAISE EXCEPTION 'worker connections payload missing vendor';
+  END IF;
+  -- Exactly one key was added; every key the deployed worker already reads is still there.
+  IF (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(result#>'{items,1}') k) IS DISTINCT FROM
+     ARRAY['buildingId','channelCount','connectTimeoutMs','connectionId','credentialRef','displayName','endpoint','organizationId','pollIntervalSeconds','recorderId','vendor'] THEN
+    RAISE EXCEPTION 'worker connections payload shape changed';
+  END IF;
+  BEGIN
+    PERFORM public.network_center_admin_enroll_camera_v1('dddd8000-0000-4000-8000-0000000000c2','dddd0000-0000-4000-8000-000000000001','dddd1000-0000-4000-8000-000000000001','dddd9000-0000-4000-8000-0000000000c0','Unknown vendor','UNIVIEW',null,4,'http://10.90.0.3','camera/proof-unknown',false);
+    RAISE EXCEPTION 'unknown vendor accepted';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  DELETE FROM app_private.camera_recorder_connections WHERE recorder_id='dddd8000-0000-4000-8000-0000000000c1';
+  DELETE FROM public.camera_recorders WHERE id='dddd8000-0000-4000-8000-0000000000c1';
+END $vendor$;
 INSERT INTO camera_proof_payload SELECT jsonb_build_object('recorderId','dddd8000-0000-4000-8000-0000000000c0','connectionId','dddd9000-0000-4000-8000-0000000000c0','observedAt',now()-interval '1 minute','status','ONLINE','channels','[{"channel":1,"state":"CONNECTED"},{"channel":2,"state":"EMPTY"}]'::jsonb,'storage','[{"slot":1,"state":"NORMAL","totalBytes":100,"usedBytes":100}]'::jsonb,'eventCoverage','EVENT_STREAM','issues','[]'::jsonb,'events','[]'::jsonb);
 DO $proof$
 DECLARE p jsonb; result jsonb; initial_events bigint; later_events bigint;

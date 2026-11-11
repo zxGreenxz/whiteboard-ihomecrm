@@ -1,18 +1,15 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 
+import { digestAuthorization } from "./digestAuth.js";
+import { CameraClientError } from "./errors.js";
 import { CameraMultipartParser, type CameraStreamMessage } from "./eventParser.js";
 import type { CameraChannelObservation, CameraDiskObservation, CameraIssue, CameraSnapshot } from "./types.js";
+
+export { CameraClientError } from "./errors.js";
 
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): value is ObjectValue => value !== null && typeof value === "object" && !Array.isArray(value);
 const md5 = (value: string) => createHash("md5").update(value, "utf8").digest("hex");
-
-export class CameraClientError extends Error {
-  constructor(readonly code: "AUTH_DENIED" | "UNREACHABLE" | "INVALID_RESPONSE" | "RESPONSE_TOO_LARGE" | "UNSUPPORTED" | "STREAM_ENDED" | "STREAM_TIMEOUT") {
-    super(code);
-    this.name = "CameraClientError";
-  }
-}
 
 export interface DahuaClientOptions {
   /** Private routed address; never embed credentials in this URL. */
@@ -216,38 +213,14 @@ export class DahuaClient {
     return result.session;
   }
 
-  private digestAuthorization(challenge: string, path: string): string {
-    if (!/^Digest\s/iu.test(challenge)) throw new CameraClientError("UNSUPPORTED");
-    const values = new Map<string, string>();
-    for (const match of challenge.slice(7).matchAll(/([a-zA-Z]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^,\s]+))/gu)) {
-      values.set(match[1]!.toLowerCase(), (match[2] ?? match[3] ?? "").replace(/\\(.)/gu, "$1"));
-    }
-    const realm = values.get("realm");
-    const nonce = values.get("nonce");
-    const algorithm = (values.get("algorithm") ?? "MD5").toUpperCase();
-    const qop = values.get("qop");
-    if (realm === undefined || !nonce || (algorithm !== "MD5" && algorithm !== "SHA-256") || (qop !== undefined && !qop.split(",").map((value) => value.trim()).includes("auth"))) {
-      throw new CameraClientError("UNSUPPORTED");
-    }
-    const hash = (value: string) => createHash(algorithm === "MD5" ? "md5" : "sha256").update(value, "utf8").digest("hex");
-    const cnonce = randomBytes(16).toString("hex");
-    const ha1 = hash(`${this.options.username}:${realm}:${this.options.password}`);
-    const ha2 = hash(`GET:${path}`);
-    const digest = qop ? hash(`${ha1}:${nonce}:00000001:${cnonce}:auth:${ha2}`) : hash(`${ha1}:${nonce}:${ha2}`);
-    const quote = (value: string) => `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"')}"`;
-    const parts = [`username=${quote(this.options.username)}`, `realm=${quote(realm)}`, `nonce=${quote(nonce)}`, `uri=${quote(path)}`, `response=${quote(digest)}`, `algorithm=${algorithm}`];
-    if (qop) parts.push("qop=auth", "nc=00000001", `cnonce=${quote(cnonce)}`);
-    if (values.has("opaque")) parts.push(`opaque=${quote(values.get("opaque")!)}`);
-    return `Digest ${parts.join(", ")}`;
-  }
-
   private async digestGet(path: string, signal: AbortSignal): Promise<Response> {
     let response = await this.request(path, { method: "GET" }, signal);
     if (response.status === 401) {
       const challenge = response.headers.get("www-authenticate") ?? "";
       await response.body?.cancel().catch(() => undefined);
       if (!/^Digest\s/iu.test(challenge)) throw new CameraClientError("AUTH_DENIED");
-      response = await this.request(path, { method: "GET", headers: { Authorization: this.digestAuthorization(challenge, path) } }, signal);
+      const authorization = digestAuthorization({ challenge, method: "GET", uri: path, username: this.options.username, password: this.options.password });
+      response = await this.request(path, { method: "GET", headers: { Authorization: authorization } }, signal);
     }
     try { this.checkStatus(response); } catch (error) {
       await response.body?.cancel().catch(() => undefined);

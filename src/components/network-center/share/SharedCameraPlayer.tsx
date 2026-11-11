@@ -11,7 +11,7 @@ import CameraAudioButton from "@/components/network-center/tabs/CameraAudioButto
 import { cameraInputTime, cameraTimeLabel, vietnamCameraInput } from "@/lib/network-center/cameraArchive";
 import { CameraLiveConnection, CameraLiveError, cameraLiveCapabilities, type CameraLiveCapabilities, type CameraLiveState } from "@/lib/network-center/cameraLive";
 import { cameraFrame, PLAYBACK_POSTER_FALLBACK_MS, PlaybackClock, PlaybackControls, playbackOpensAtNormalSpeed, playbackReachedEnd } from "@/lib/network-center/cameraPlayback";
-import { cameraSharePlayableSpan, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
+import { cameraSharePlayableSpan, cameraShareRequestTime, cameraShareViewSpan, type CameraShare, type CameraShareSpan } from "@/lib/network-center/cameraShare";
 import { cn } from "@/lib/utils";
 
 type ShareQuality = "sd" | "hd";
@@ -38,7 +38,10 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   const [capabilityError, setCapabilityError] = useState("");
   const [capabilityAttempt, setCapabilityAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const span = cameraSharePlayableSpan(share, now);
+  // Đầu ghi có thể phát sớm hơn mốc được xin (Hikvision): cổng xin trễ hơn `lead`, nên thanh thời gian bắt đầu ở đầu khung
+  // giờ + lead và mốc gửi cổng là mốc trên thanh − lead. Đầu ghi khác: lead = 0, mọi thứ như cũ.
+  const lead = (capabilities?.playbackStartLeadSeconds ?? 0) * 1000;
+  const span = cameraShareViewSpan(cameraSharePlayableSpan(share, now), lead);
   const playable = span.to - span.from >= 2000;
   const qualities: ShareQuality[] = (capabilities?.playbackQualities ?? []).filter((value): value is ShareQuality => value === "sd" || value === "hd");
   const [quality, setQuality] = useState<ShareQuality>("sd");
@@ -60,6 +63,11 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
   const cursorRef = useRef(span.from);
   /** Lúc luồng mới mở / lệnh tua gần nhất được đầu ghi nhận — mốc để gỡ ảnh giữ tạm khi trình duyệt không báo từng khung hình. */
   const seekAckAt = useRef(0);
+  // `lead` chỉ biết sau khi cổng trả lời, lúc mốc đang xem đã được đặt ở đầu khung giờ: kéo nó về đầu thanh thật.
+  useEffect(() => {
+    if (!lead || cursorRef.current >= span.from) return;
+    cursorRef.current = span.from; setCursor(span.from); setJump(vietnamCameraInput(span.from));
+  }, [lead, span.from]);
 
   // Khung giờ kéo tới tương lai thì phần xem được dài thêm theo thời gian.
   useEffect(() => {
@@ -130,8 +138,8 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
     const connection = new CameraLiveConnection({
       recorderId: share.recorder_id, channel: share.channel, accessToken: token,
       playback: {
-        start: iso(controlAvailable ? selection.base : selection.from), end: iso(selection.to),
-        ...(controlAvailable && selection.from !== selection.base ? { position: iso(selection.from) } : {}),
+        start: iso(cameraShareRequestTime(controlAvailable ? selection.base : selection.from, lead)), end: iso(selection.to),
+        ...(controlAvailable && selection.from !== selection.base ? { position: iso(cameraShareRequestTime(selection.from, lead)) } : {}),
         ...(openSpeed === 1 ? {} : { speed: openSpeed }), quality: selection.quality,
       },
       onStream(stream) { if (active && element) element.srcObject = stream; },
@@ -175,7 +183,7 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
     };
     // advance chỉ đọc khung giờ cố định của lượt chia sẻ; mỗi lựa chọn mới luôn dựng lại kết nối.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, share.recorder_id, share.channel, token, controlAvailable]);
+  }, [selection, share.recorder_id, share.channel, token, controlAvailable, lead]);
 
   const seek = (value: number, nextSpeed = speed, nextQuality = activeQuality) => {
     if (!playable) return;
@@ -277,6 +285,6 @@ export default function SharedCameraPlayer({ share, token, onEnded, onExpired }:
       <Button type="submit" variant="outline" className="min-h-11">Đi tới</Button>
     </form>
     {jumpError && <p role="alert" className="text-sm text-destructive">{jumpError}</p>}
-    <p className="text-xs text-muted-foreground">Giờ Việt Nam (UTC+7). Vị trí trên thanh là ước tính — đối chiếu ngày giờ in trên hình. Mỗi lúc chỉ một máy xem được; mở ở máy khác thì máy này dừng.</p>
+    <p className="text-xs text-muted-foreground">Giờ Việt Nam (UTC+7). Vị trí trên thanh là ước tính — đối chiếu ngày giờ in trên hình. Mỗi lúc chỉ một máy xem được; mở ở máy khác thì máy này dừng.{lead > 0 && ` Đầu ghi này cho xem từ ${cameraTimeLabel(span.from)}, sau đầu khung giờ ${lead / 1000} giây.`}</p>
   </div>;
 }

@@ -8,7 +8,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: mocks.rpc } 
 
 import {
   CameraShareError, authorizeCameraShare, cameraShareCreateInput, cameraShareCreatedSchema, cameraShareLink,
-  cameraShareLoginSchema, cameraShareMessage, cameraSharePlayableSpan, cameraShareStatusLabel, cameraShareWaitLabel,
+  cameraShareLoginSchema, cameraShareMessage, cameraSharePlayableSpan, cameraShareRequestTime, cameraShareStatusLabel, cameraShareViewSpan, cameraShareWaitLabel,
   cameraShareWindow, createCameraShare, defaultCameraShareValues, listCameraShares, loginCameraShare, normalizeShareCode,
   normalizeSharePassword, readCameraShareSession, revokeCameraShare, shouldRetryCameraShare, writeCameraShareSession,
 } from "@/lib/network-center/cameraShare";
@@ -87,6 +87,17 @@ describe("khung giờ và form", () => {
   it("khoảng khách xem được dừng ở bây giờ trừ lề lệch đồng hồ", () => {
     expect(cameraSharePlayableSpan({ window_start: "2026-11-10T01:00:00Z", window_end: "2026-11-10T02:00:00Z" }, now)).toEqual({ from: Date.parse("2026-11-10T01:00:00Z"), to: Date.parse("2026-11-10T02:00:00Z") });
     expect(cameraSharePlayableSpan({ window_start: "2026-11-10T05:00:00Z", window_end: "2026-11-10T08:00:00Z" }, now)).toEqual({ from: Date.parse("2026-11-10T05:00:00Z"), to: Date.parse("2026-11-10T05:30:10Z") });
+  });
+  it("đầu ghi có thể phát sớm hơn mốc được xin: thanh của khách bắt đầu sau đầu khung giờ đúng lead, mốc gửi cổng lùi lại đúng lead; lead = 0 thì không đổi gì", () => {
+    const span = { from: Date.parse("2026-11-10T01:00:00Z"), to: Date.parse("2026-11-10T02:00:00Z") };
+    expect(cameraShareViewSpan(span, 15_000)).toEqual({ from: Date.parse("2026-11-10T01:00:15Z"), to: span.to });
+    // Mốc đầu thanh gửi cổng đúng đầu khung giờ; cổng cộng lại lead nên đầu ghi được xin đúng mốc trên thanh.
+    expect(cameraShareRequestTime(cameraShareViewSpan(span, 15_000).from, 15_000)).toBe(span.from);
+    expect(cameraShareRequestTime(span.to - 1000, 15_000)).toBe(Date.parse("2026-11-10T01:59:44Z"));
+    // Khung giờ ngắn hơn lead: không còn gì để xem, thanh co về 0 chứ không lùi ra ngoài khung.
+    expect(cameraShareViewSpan({ from: span.from, to: span.from + 10_000 }, 15_000)).toEqual({ from: span.from + 10_000, to: span.from + 10_000 });
+    expect(cameraShareViewSpan(span, 0)).toBe(span); expect(cameraShareRequestTime(span.from, 0)).toBe(span.from);
+    expect(cameraShareRequestTime(span.from, -5)).toBe(span.from);
   });
 });
 

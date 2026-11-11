@@ -1,0 +1,40 @@
+{
+  "file": "supabase/migrations/20261110160847_network_center_camera_vendor_hikvision_v1.sql",
+  "sha256": "8e5934396553095dfa8894bde932b2f878a1641bdb080d00f143dad862148751",
+  "appliedAt": "2026-11-10T17:31:23.217Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "environment": "prod",
+  "evidenceComplete": true,
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "c366ad0c541b1288",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-11-10T17-29-03-356Z.dump",
+    "backupSha256": "06bbcec0c7052e39ce81183ed0b44d8b88198791e01783b3d82cbae1777323e0",
+    "backupCreatedAt": "2026-11-10T17:31:19.174Z",
+    "backupTablesWithData": 714,
+    "backupProjectRef": "tryymsxyyckgbrmmvozx",
+    "backupEnvironment": "prod"
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "5b4f2f5453075aded4cb1f8d0f502d1fe6cc04a3",
+  "reviewedBlob": "7f74a419ab21c335dc51d38d890efe2e517bc5f1",
+  "statementBytes": 8112,
+  "normalizedDigest": "04adc97a1b3e7a88abcdfa1b5024c6d432e9a092dbb08f9d46701215e745c3c6",
+  "catalog": {
+    "before": "928e5505e19144daee067fd006cd86b86667525bf78f2ad127b3c1b77443482e",
+    "after": "928e5505e19144daee067fd006cd86b86667525bf78f2ad127b3c1b77443482e",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 292,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 2695,
+      "securityDefinerFunctions": 1953,
+      "enums": 30,
+      "realtimeTables": 29
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}
