@@ -48,6 +48,16 @@ describe("camera boundary parsers", () => {
     expect(parseCameraStates([{ channel: 0, connectionState: "Unexpected" }])[0]?.state).toBe("UNKNOWN");
   });
 
+  it("reads every measured lost-camera spelling as DISCONNECTED, case-sensitive like the rest", () => {
+    // "Unconnect": DHI-NVR1108HS-S3/H-VN, firmware 4.001.100Zb02.0.R (15KV, 02/11/2026).
+    expect(parseCameraStates([
+      { channel: 0, connectionState: "Unconnected" },
+      { channel: 1, connectionState: "Unconnect" },
+      { channel: 2, connectionState: "Disconnected" },
+    ]).map((row) => row.state)).toEqual(["DISCONNECTED", "DISCONNECTED", "DISCONNECTED"]);
+    expect(parseCameraStates([{ channel: 0, connectionState: "unconnect" }])[0]?.state).toBe("UNKNOWN");
+  });
+
   it.each([null, [], {}, [{ channel: 0, Address: "192.0.2.1" }], [{ channel: -1, connectionState: "Connected" }], [{ channel: 0, connectionState: "Connected" }, { channel: 0, connectionState: "Connected" }]])("rejects malformed states rather than claiming healthy: %j", (value) => {
     expect(() => parseCameraStates(value)).toThrow("INVALID_RESPONSE");
   });
@@ -124,6 +134,23 @@ describe("Dahua authenticated read-only polling", () => {
     expect(new Headers(calls[4]?.init?.headers).get("Authorization")).toContain("Digest ");
     expect(calls.every((call) => call.init?.redirect === "error" && !call.url.includes("fixture-secret"))).toBe(true);
     expect(JSON.stringify(snapshot)).not.toContain("fixture-secret");
+  });
+
+  // 15KV (DHI-NVR1108HS-S3/H-VN, 4.001.100Zb02.0.R) has a camera on each of its 8 channels and
+  // answered 5 "Connected" + 3 "Unconnect" on 11/11/2026. Read as UNKNOWN, any one of those
+  // channels turned the whole recorder UNKNOWN and hid which cameras were down.
+  it.each([
+    { layout: "one lost camera between working ones", lost: [3] },
+    { layout: "three lost cameras out of eight", lost: [4, 5, 6] },
+  ])("keeps a recorder that reports \"Unconnect\" ONLINE and names only the lost channels: $layout", async ({ lost }) => {
+    const reply = () => rpc({ result: true, params: { states: Array.from({ length: 8 }, (_, index) => (
+      { channel: index, connectionState: lost.includes(index + 1) ? "Unconnect" : "Connected" })) } });
+    const { client } = fixture([challenge, session, reply, () => new Response(disk), titles, success], { expectedChannelCount: 8 });
+    const snapshot = await client.poll();
+    expect(snapshot.status).toBe("ONLINE");
+    expect(snapshot.issues).toEqual([]);
+    expect(snapshot.channels.filter((row) => row.state === "DISCONNECTED").map((row) => row.channel)).toEqual(lost);
+    expect(snapshot.channels.filter((row) => row.state === "CONNECTED")).toHaveLength(8 - lost.length);
   });
 
   it("authenticates the title read and never shifts missing names onto another camera", async () => {
