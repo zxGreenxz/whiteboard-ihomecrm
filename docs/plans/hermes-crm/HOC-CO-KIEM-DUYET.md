@@ -265,6 +265,40 @@ Phát hành production 11/11/2026 (00:36–00:38 giờ VN, hồ sơ owner trên 
   ([infra/hermes-runtime/README.md](../../../infra/hermes-runtime/README.md)); từ đó CI kiểm trên đúng phiên bản Hermes production
   đang chạy, còn plugin production vẫn là bản cài nêu ở đầu mục này.
 
+#### 4.6.2 Tin và nội dung tự học bằng tiếng Việt (chủ dặn 11/11/2026)
+
+Tin thật đầu tiên (08:29 VN 11/11) tới Zalo kèm ba đoạn tiếng Anh. Hai nguồn, hai cách sửa, đều làm trên máy chủ (SOUL và
+`config.yaml` của hồ sơ không nằm trong repo):
+
+- **Đầu / cuối tin cron** ("Cronjob Response: …", "To stop or manage this job…") là vỏ bọc của Hermes
+  (`cron/scheduler_delivery.py`), không phải của CRM. Tắt bằng `cron.wrap_response: false` trong `config.yaml` của hồ sơ owner
+  (đặt 09:00 VN 11/11; sao lưu `/root/ihome-owner-install/backup/config.yaml-20261111T015909Z`). Cron đọc config lúc giao tin
+  (`load_config` nhớ theo chữ ký file) nên không khởi động lại gateway. `[SILENT]` xử lý riêng ở `cron/scheduler.py`, không phụ
+  thuộc vỏ bọc; các probe cron của plugin Zalo (`upstream-probe.py`) vốn chạy với `wrap_response: False`. Chưa có lượt giao thật
+  nào sau khi tắt để chứng minh trên production.
+- **Nội dung bài học** tiếng Anh là nguyên văn skill curator viết ngày 31/10 (tin gửi nguyên văn theo quyết định 31/10, không
+  dịch). Curator nay không còn viết skill (`curator.consolidate: false` ⇒ chỉ dọn tất định) và nhánh curator không nạp SOUL. Chỗ
+  còn tự ghi là công cụ `memory` / `skill_manage` của phiên chính và lượt tự xét sau hội thoại (`agent/background_review.py`
+  dùng lại system prompt của phiên, tức có SOUL). SOUL v4.59 (cài 09:35 VN 11/11 cho owner và ba hồ sơ thử) thêm:
+  - luật ngôn ngữ: câu trả lời, thông báo, tin tự gửi và mọi nội dung lưu bằng `memory` / `skill_manage` đều tiếng Việt có dấu;
+    giữ nguyên định danh kỹ thuật; văn bản công cụ trả để chuyển nguyên văn (`result.message` của tin 21:00) không dịch;
+  - sở thích không đụng dữ liệu CRM (ngôn ngữ, xưng hô, độ dài, cách trình bày) được lưu `memory` khi chủ bảo nhớ. Trước đó bot
+    từ chối nhầm câu "thông báo, skill, nội dung phải bằng tiếng Việt" như một bài học ghi CRM;
+  - một câu có cả sở thích lẫn cách ghi CRM ⇒ lượt đó không gọi `memory`. Bản nháp cho lưu riêng phần sở thích đã lưu lẫn cả quy
+    tắc chọn sổ trong một lượt thử, nên bỏ.
+
+Kiểm trên hồ sơ thử `tkt` (CLI qua `hermes_conv.py`, không qua Zalo), 15/15 ca: 11 ca ghi CRM hoặc câu trộn không gọi `memory`,
+3 ca sở thích lưu bằng tiếng Việt, 1 ca hỏi bài học không gọi công cụ. Mốc so sánh v4.58 lưu sở thích bằng tiếng Anh. Chưa chạy
+lại ma trận 78 ca của đợt 09/11.
+
+SOUL v4.59 dài 59.328 ký tự; trần nạp của hồ sơ là 65.280 ký tự (`model.context_length` 272000 × 4 × 0,06). Vượt trần thì Hermes
+cắt giữa file, nên mỗi lần thêm luật phải đếm lại. Lùi: chép
+`/root/ihome-owner-install/backup/soul-owner-c69f56263290-20261111T023552Z.md` về `SOUL.md` của hồ sơ owner (chủ `10003:10003`,
+quyền `644`). SOUL mới chỉ vào phiên mới (`/new` rồi `/approve`) hoặc khi phiên được nén.
+
+Chưa làm: viết lại các mục bộ nhớ tiếng Anh có sẵn của hồ sơ owner; gói chữ tiếng Việt cho thông báo hệ thống của chính Hermes
+(`display.language` đang `en`, Hermes chưa có `vi`; hồ sơ có thể thêm `locales/vi.yaml`); ba đề xuất tiếng Anh đang chờ chủ quyết.
+
 ### 4.7 Rủi ro
 
 - Cron chạy lúc bot đang trả lời chủ ⇒ hai luồng cùng DM; tin ngắn, không hỏi lại trong tin cron.
