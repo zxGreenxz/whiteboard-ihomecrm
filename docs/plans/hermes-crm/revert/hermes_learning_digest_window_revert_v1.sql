@@ -2,7 +2,8 @@
 -- NOT a migration (it lives outside supabase/migrations on purpose and is applied only by an explicit owner decision).
 -- Restores app_private.hermes_learning_action_step_v1 to the exact body of 20261105025453 (learning.digest marks announced_at at any
 -- hour again). The two window helpers stay in place, unused and without any grantee: nothing is dropped and no data is written.
--- Pins the body it replaces: the forward body (md5 eaa04e7f508280eeaf11d386ce2a8309) is restored; the old body (md5 64102acc22a0369df53745da554d8247)
+-- Pins the body it replaces: the forward body (md5 eaa04e7f508280eeaf11d386ce2a8309) is replaced by the old body (md5 64102acc22a0369df53745da554d8247);
+-- finding the old body already in place
 -- means the revert already ran ⇒ no change; any other body stops (the step was edited outside these files).
 -- TO APPLY: copy into supabase/migrations under the name `node scripts/tao-ten-migration.mjs hermes_learning_digest_window_revert_v1`
 -- gives; add its provenance entry and doc counts like the forward file; move the step pin of

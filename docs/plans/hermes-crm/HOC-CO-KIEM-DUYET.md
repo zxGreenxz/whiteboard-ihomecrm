@@ -6,7 +6,7 @@ REQUEST CHANGES 31/10) — **migration `20261031041523` + `20261101064441` đã 
 job cron `ihome-learning-digest-2100` tạo 10/11 (4.6). Lượt 21:00 đầu (10/11) bị cron chặn trước khi chạy (`blocked_config`): không
 tin nào tới Zalo, không đề xuất nào bị đánh dấu; nguyên nhân và bản sửa plugin ở 4.6.1. Bản sửa đã cài lên
 hồ sơ owner trên VPS lúc 00:37 ngày 11/11 (giờ VN) và đã có tác dụng. Lượt `cron run` chạy tay sáng 11/11 đánh dấu 3 đề xuất mà
-không có tin (4.6.1), nên `learning.digest` có thêm **rào khung giờ trong SQL** (4.2): migration `20261111015658` — **CHƯA áp
+không gửi được tin (nội dung chỉ tới chủ nhờ gửi lại bằng tay, 4.6.1), nên `learning.digest` có thêm **rào khung giờ trong SQL** (4.2): migration `20261111015658` — **CHƯA áp
 TEST / production** khi viết dòng này.
 Cài đặt/vận hành: [infra/hermes-learning-audit/README.md](../../../infra/hermes-learning-audit/README.md).
 
@@ -111,7 +111,7 @@ cảnh cron.
   Cùng requestId ⇒ phát lại (sổ biên nhận chung).
 - **Chỉ job cron gọi — có rào khung giờ trong SQL** (11/11/2026, migration `20261111015658_hermes_learning_digest_window_v1`;
   CHƯA áp TEST / production khi viết dòng này). Trước đó chỉ có tiêu đề thao tác + skill chuẩn ngăn; sáng 11/11 một lượt chạy tay đã
-  đánh dấu 3 đề xuất mà không có tin (4.6.1). Bất biến mới: `announced_at` chỉ được `learning.digest` đặt khi **đồng hồ database** nằm
+  đánh dấu 3 đề xuất mà không gửi được tin (4.6.1). Bất biến mới: `announced_at` chỉ được `learning.digest` đặt khi **đồng hồ database** nằm
   trong khung **[20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh** — đầu khung CÓ tính, cuối khung KHÔNG tính (20:54:59 ngoài; 20:55:00 và
   21:09:59 trong; 21:10:00 và 21:10:01 ngoài). Job nổ 21:00:00 và agent cần 1–2 phút trước khi gọi; 5 phút trước 21:00 là phần dư cho
   lệch đồng hồ giữa VPS và database.

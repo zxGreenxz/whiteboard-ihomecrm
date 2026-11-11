@@ -1,7 +1,8 @@
 -- Hermes học có kiểm duyệt — KHUNG GIỜ TIN TỐI của learning.digest (docs/plans/hermes-crm/HOC-CO-KIEM-DUYET.md mục 4.2, 4.6, 4.6.1).
 -- VẤN ĐỀ. learning.digest (chính sách reversible + never) đánh dấu announced_at ngay ở lượt auto rồi trả tin cho job cron 21:00 gửi Zalo.
 --   Lời gọi NGOÀI lượt chạy theo lịch — mô hình tự gọi trong hội thoại, hoặc chạy tay job khi không có adapter gửi tin — vẫn đánh dấu:
---   đề xuất rời khỏi mọi tin tối sau mà chủ không nhận được tin nào (đã xảy ra sáng 11/11/2026). announced_at bất biến khi đề xuất còn
+--   đề xuất rời khỏi mọi tin tối sau dù tin chưa tới chủ (sáng 11/11/2026: chạy tay 08:18 đánh dấu 3 đề xuất mà không gửi được tin;
+--   nội dung chỉ tới chủ lúc 08:29 nhờ gửi lại bằng tay). announced_at bất biến khi đề xuất còn
 --   chờ nên không tự sửa lại được. Tới nay chỉ có lời dặn trong prompt / skill ngăn việc này.
 -- LUẬT MỚI. announced_at chỉ được learning.digest đặt khi đồng hồ database nằm trong khung [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh:
 --   đầu khung CÓ tính, cuối khung KHÔNG tính (20:54:59 ngoài; 20:55:00 trong; 21:09:59 trong; 21:10:00 và 21:10:01 ngoài). Ngoài khung,

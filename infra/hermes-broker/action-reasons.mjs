@@ -47,7 +47,8 @@ export const ACTION_REASONS = Object.freeze({
   ...invoiceReasons(),
   // Trang Sale (crm_sale_action, 05/11): thao tác đã rời cầu Sale. Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...saleReasons(),
-  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): một mã needs_input, không vào sổ audit host.
+  // Trang Bài học (đợt 3 học có kiểm duyệt, HOC-CO-KIEM-DUYET.md mục 4.3): mã needs_input không vào sổ audit host; mã rejected
+  // learning_digest_outside_window (khung giờ tin tối, 11/11) vào cả REASONS của host-ownership.mjs.
   ...learningReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));

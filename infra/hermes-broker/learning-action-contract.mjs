@@ -13,7 +13,8 @@ const RPC = 'hermes_learning_action_v1';
 // Chỉ job cron 21:00 của hồ sơ chủ gọi: SQL đánh dấu "đã báo" các đề xuất chờ chưa báo của CẢ công ty (một lần), connector dựng
 // result.message tất định. Database tự giữ luật này (20261111015658): lượt ghi chỉ được nhận khi đồng hồ database nằm trong khung
 // [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh; ngoài khung ⇒ action_rejected learning_digest_outside_window, không dòng nào đổi (trước đó
-// một lời gọi trong chat hay một lượt chạy tay làm đề xuất rời khỏi mọi tin tối mà chủ không nhận được tin nào — sáng 11/11).
+// một lời gọi trong chat hay một lượt chạy tay làm đề xuất rời khỏi mọi tin tối dù tin chưa tới chủ — sáng 11/11 chạy tay đánh dấu 3
+// đề xuất mà không gửi được, nội dung chỉ tới nhờ gửi lại bằng tay).
 export const LEARNING_DIGEST = defineAction({ id: 'learning.digest', page: 'learning', key: LEARNING_REVIEW_KEY, class: 'reversible', rpc: RPC,
   title: 'Chỉ job tin tối 21:00 gọi: đánh dấu đã báo, trả result.message để gửi nguyên văn (null ⇒ không gửi)',
   reasons: ['learning_digest_outside_window'] });

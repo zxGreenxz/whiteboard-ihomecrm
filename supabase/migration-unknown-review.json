@@ -962,7 +962,7 @@
       ]
     },
     "supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql": {
-      "sha256": "fcf9bc15705689d3b6bfcf4ad22a15db1b984cacb7d552b947272d200ef20459",
+      "sha256": "f825adf53305ac313458df30b27f25a8fd95437f73b8c272c77d2398e1f54ca3",
       "missingObjects": [
         "function:app_private.hermes_learning_digest_window_v1",
         "function:app_private.hermes_learning_digest_window_open_v1"
