@@ -32,8 +32,9 @@ export const POLICY_CANCEL_AUDIT_ACTION = 'sale.policy_cancel';
 // Trần phong bì của consentText (bằng crm_action_run, action-contract.mjs); dài hơn trần 300 của lời đồng ý ⇒ consent_unclear, không phải lỗi.
 const CONSENT_ENVELOPE_MAX = 4000;
 /** Lời đồng ý của lượt xác nhận dừng chương trình: câu đáp thuần; "dừng" ở đây là động từ của thao tác (không còn là chưa đồng ý), "đừng"
- * vẫn là; "huỷ" phải gõ đúng dấu (gõ không dấu "huy" trùng tên người). */
-export const POLICY_CANCEL_CONSENT = replyConsent({ verbs: ['dừng', 'ngưng', 'ngừng', 'tắt', '!huỷ', 'kết thúc'],
+ * vẫn là; "ghi" nhận theo câu hỏi chung "có đồng ý ghi không". KHÔNG nhận "huỷ": "Huỷ" là nhãn nút bỏ lệnh quen thuộc, người muốn bỏ
+ * lệnh mà thành dừng chương trình (review #416) — từ chối oan chỉ tốn thêm một câu hỏi. */
+export const POLICY_CANCEL_CONSENT = replyConsent({ verbs: ['dừng', 'ngưng', 'ngừng', 'tắt', 'kết thúc', 'ghi'],
   examples: ['ok', 'đồng ý dừng', 'ừ dừng đi'] });
 // Kết quả của bốn tool chính sách (đã qua salePolicyResult ở adapter) mang chương trình: observe ⇒ room.policy; lưu / dừng / trạng thái
 // applied ⇒ receipt.policy. Nhớ theo kết nối, 30 phút, tối đa 16 chương trình / kết nối và 256 kết nối (bỏ cái cũ nhất).

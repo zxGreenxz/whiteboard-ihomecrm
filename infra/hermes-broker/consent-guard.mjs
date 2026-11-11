@@ -128,10 +128,10 @@ export function replyConsent({ verbs = [], examples = ['ok', 'đồng ý'] } = {
 /** Câu đáp thuần không kèm động từ riêng: thao tác reversible khai confirm: 'always' chưa khai động từ của mình. */
 export const PLAIN_REPLY_CONSENT = replyConsent();
 
-// Bản ghi audit che dãy số dài (≥ 9 chữ số, cho phép một dấu cách / chấm / gạch giữa hai chữ số: SĐT, CCCD, số tài khoản), giữ 4 số cuối
+// Bản ghi audit che dãy số dài (≥ 9 chữ số, cho phép tới 3 dấu cách / chấm / gạch giữa hai chữ số (không tính dấu phẩy: hai số tiền liệt kê): SĐT, CCCD, số tài khoản), giữ 4 số cuối
 // như SĐT che của connector (room-pass-contract.mjs phoneMasked "***1234"); tên và chữ còn lại giữ nguyên để lần lại lời đồng ý. Che TRƯỚC
 // khi cắt ở 300 ký tự (không để sót nửa dãy số ở cuối).
-const LONG_DIGITS = /\+?\d(?:[ .-]?\d){8,}/g;
+const LONG_DIGITS = /\+?\d(?:[ .-]{0,3}\d){8,}/g;
 /** Bản ghi vào sổ audit của host: một dòng, ký tự điều khiển thành khoảng trắng, dãy số dài bị che, ≤ 300 ký tự. */
 export const consentAuditText = text => [...text.replace(/[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]+/gu, ' ').trim()
   .replace(LONG_DIGITS, run => `***${run.replace(/\D/g, '').slice(-4)}`)].slice(0, CONSENT_TEXT_MAX).join('');

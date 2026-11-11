@@ -105,7 +105,7 @@ const LOCK_NO = Object.freeze(['', ' ', '...', 'ok?', 'giữ hả?',
   'cảm ơn em', 'đi', 'luôn', 'anh ơi', 'rồi',
   'ok '.repeat(101)]);
 const STOP_YES = Object.freeze(['ok', 'Ok em', 'đồng ý', 'đồng ý dừng', 'Đồng ý dừng nhé', 'ok dừng đi', 'ok, dừng giúp anh', 'ừ dừng đi em', 'dừng luôn',
-  'dừng đi', 'Dừng luôn đi em', 'ừ ngưng đi', 'ngưng luôn nha', 'ngừng đi', 'vâng, dừng giúp anh', 'tắt đi em', 'tat di', 'huỷ luôn', 'hủy đi', 'kết thúc đi',
+  'dừng đi', 'Dừng luôn đi em', 'ừ ngưng đi', 'ngưng luôn nha', 'ngừng đi', 'vâng, dừng giúp anh', 'tắt đi em', 'tat di', 'kết thúc đi', 'ok ghi', 'đồng ý ghi',
   'đc', 'dc em', 'được rồi', 'dạ, ok em', 'ok cảm ơn em', '👍', 'Ok em,\nngưng đi']);
 const STOP_NO = Object.freeze(['', 'dừng hả?', 'ok?',
   // Câu ra lệnh (PS-D05 và Note 1): có "chương trình", "ưu đãi", "phòng", số, tên toà; câu nêu lý do.
@@ -113,7 +113,7 @@ const STOP_NO = Object.freeze(['', 'dừng hả?', 'ok?',
   'ok dừng chương trình đó đi', 'dừng ưu đãi đi', 'khách chê giá cao, anh đổi chương trình khác', 'khách chê giá cao', 'ok, khách chê giá cao',
   // Chưa đồng ý / hỏi lại / mơ hồ.
   'không dừng nữa', 'thôi đừng dừng', 'đừng dừng', 'khoan đã', 'chưa dừng', 'thôi', 'thôi dừng đi', 'không', 'ko dừng', 'k',
-  'dừng lại', 'dừng rồi', 'dừng hả', 'dừng à', 'dung di', 'dung luon', 'huy luon', 'để anh xem lại', 'ok để mai',
+  'dừng lại', 'dừng rồi', 'dừng hả', 'dừng à', 'dung di', 'dung luon', 'huy luon', 'huỷ luôn', 'hủy đi', 'Huỷ', 'để anh xem lại', 'ok để mai',
   // Động từ của thao tác KHÁC.
   'giữ đi', 'ừ giữ đi', 'khoá đi', 'trả phòng đi']);
 
@@ -163,12 +163,14 @@ test('câu đáp thuần không động từ riêng (thao tác reversible confir
 
 test('bản ghi sổ audit: một dòng, không ký tự điều khiển, dãy số dài (SĐT, CCCD, số TK) bị che giữ 4 số cuối, ≤ 300 ký tự', () => {
   assert.equal(consentAuditText('Ok em,\nghi đi\t'), 'Ok em, ghi đi');
-  assert.equal(consentAuditText('ok ghi'), 'ok ghi');
+  assert.equal(consentAuditText('ok\u2028ghi'), 'ok ghi');
+  assert.equal(consentAuditText('ok\u2029ghi'), 'ok ghi');
   assert.equal([...consentAuditText('đ'.repeat(400))].length, CONSENT_TEXT_MAX);
   // Note 5: câu đồng ý của thao tác không lùi được có thể kèm chi tiết khách — che dãy ≥ 9 chữ số (cho phép một dấu cách / chấm / gạch xen).
   for (const [text, audited] of [['Ok ghi đi, khách Lan 0901234567', 'Ok ghi đi, khách Lan ***4567'], ['ok, sđt 090 123 4567 nhé', 'ok, sđt ***4567 nhé'],
     ['ok +84 90.123.4567', 'ok ***4567'], ['ok, CCCD 001234567890', 'ok, CCCD ***7890'], ['ok stk 0123-456-789', 'ok stk ***6789'],
-    ['ok 0901234567 và 0912345678', 'ok ***4567 và ***5678'], ['ok 150000000', 'ok ***0000'], ['ok\n0901\n234\n567', 'ok ***4567']])
+    ['ok 0901234567 và 0912345678', 'ok ***4567 và ***5678'], ['ok 150000000', 'ok ***0000'], ['ok\n0901\n234\n567', 'ok ***4567'],
+    ['ok 0912  345  678', 'ok ***5678'], ['ok 0912 - 345 - 678', 'ok ***5678']])
     assert.equal(consentAuditText(text), audited, text);
   // Số ngắn (phòng, giờ, tiền ≤ 8 chữ số, hai số cách nhau bởi dấu phẩy) giữ nguyên để lần lại.
   for (const text of ['ok phòng 303 toà 1392QT 12 tiếng', 'ok 3500000', 'ok 15000000', 'ok 3500000, 15000000', 'ok 12/11/2026']) assert.equal(consentAuditText(text), text);

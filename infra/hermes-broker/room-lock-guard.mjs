@@ -16,8 +16,8 @@ import { replyConsent } from './consent-guard.mjs';
 
 export const ROOM_LOCK_ACTION = 'contract.room_lock';
 export const ROOM_LOCK_HOURS = Object.freeze([6, 12, 24]);
-/** Lời đồng ý của lượt xác nhận khoá tạm phòng: câu đáp thuần, động từ "giữ (lại)", "khoá (lại)". */
-export const ROOM_LOCK_CONSENT = replyConsent({ verbs: ['giữ', 'giữ lại', 'khoá', 'khoá lại'], examples: ['ok', 'đồng ý', 'ừ giữ đi'] });
+/** Lời đồng ý của lượt xác nhận khoá tạm phòng: câu đáp thuần, động từ "giữ (lại)", "khoá (lại)", "ghi" (câu hỏi chung "đồng ý ghi không"). */
+export const ROOM_LOCK_CONSENT = replyConsent({ verbs: ['giữ', 'giữ lại', 'khoá', 'khoá lại', 'ghi'], examples: ['ok', 'đồng ý', 'ừ giữ đi'] });
 
 /** Câu hỏi lại khi số giờ không có (một câu tĩnh, kèm số giờ đã qua khuôn số nguyên của danh mục). */
 export const roomLockHoursDetail = hours => `Không giữ phòng được ${hours} giờ: chỉ có mức ${ROOM_LOCK_HOURS.slice(0, -1).join(', ')} hoặc ${ROOM_LOCK_HOURS.at(-1)} giờ. `
