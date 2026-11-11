@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 935,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14162,6 +14162,19 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-10T17:31:23.217Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql",
+      "version": "20261111015658",
+      "name": "hermes_learning_digest_window_v1",
+      "scheme": "timestamp14",
+      "sha256": "fcf9bc15705689d3b6bfcf4ad22a15db1b984cacb7d552b947272d200ef20459",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_learning_digest_window_v1",
+        "function:app_private.hermes_learning_digest_window_open_v1"
       ]
     },
     {

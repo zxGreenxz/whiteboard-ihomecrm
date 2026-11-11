@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1788,
   "soFileDocBangFs": 469,
-  "tongLoiGoi": 1234,
+  "tongLoiGoi": 1235,
   "khongPhanLoaiDuoc": 567,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 193,
+      "soFile": 194,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1262,6 +1262,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/learning-action-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/metadata-read-sql.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -2078,12 +2086,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/learning-action-sql.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/learning-proposals-sql.test.mjs",

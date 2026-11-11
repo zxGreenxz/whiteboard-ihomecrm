@@ -960,6 +960,30 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql": {
+      "sha256": "fcf9bc15705689d3b6bfcf4ad22a15db1b984cacb7d552b947272d200ef20459",
+      "missingObjects": [
+        "function:app_private.hermes_learning_digest_window_v1",
+        "function:app_private.hermes_learning_digest_window_open_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 11/11/2026 (khung giờ tin tối của learning.digest), chưa đi qua lane apply — hai hàm khung giờ vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Hàm thứ ba của file (app_private.hermes_learning_action_step_v1) đã có trên production từ 20261105025453 và được file này dựng lại bằng CREATE OR REPLACE sau khi ghim md5 thân đang chạy. Mục provenance của file này ghi TAY theo đúng luật phân loại của bộ sinh (hàm tạo mới chưa có trong catalog ⇒ unknown), KHÔNG chạy bộ sinh vì nó đọc production; sau khi áp qua npm run migrate:forward phải chạy lại npm run provenance:generate, khi đó hồ sơ này thành thừa — gate tự nhắc gỡ. Kiểm logic bằng PGlite (infra/hermes-broker/learning-action-sql.test.mjs: áp hai lượt, biên khung giờ, từ chối không ghi gì, quyền, ghim md5, file lùi); CHƯA áp trên TEST hay production — hồ sơ này chỉ giải thích object chưa triển khai, không thay review độc lập, dry-run, backup trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_learning_digest_window_v1(p_at timestamptz)"
+        },
+        {
+          "duong_dan": "supabase/migrations/20261111015658_hermes_learning_digest_window_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_learning_digest_window_open_v1()"
+        },
+        {
+          "duong_dan": "infra/hermes-broker/learning-action-sql.test.mjs",
+          "trich_doan": "await db.exec(WINDOW); await db.exec(WINDOW);"
+        }
+      ],
+      "raSoatBoi": "Claude Code — khung giờ tin tối Hermes 11/11/2026"
     }
   }
 }
