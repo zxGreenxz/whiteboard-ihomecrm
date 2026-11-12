@@ -47,6 +47,20 @@ it('keeps invoice debt and money to refund in separate visible rows', () => {
 it('shows no hanging item only when loaded settlement and readers agree', () => {
   expect(show().getByText('Không còn khoản nào treo')).toBeTruthy();
 });
+it('shows the same duplicate-refund warning as desktop even when the refunded total matches', () => {
+  const status = show({ terminationInfo: { ...termination, posted_refund_count: 2,
+    posted_refund_codes: ['DEMO-PC-01', 'DEMO-PC-02'] } });
+  expect(status.getByRole('alert').textContent).toContain('Có 2 phiếu hoàn đã vào sổ');
+  expect(status.getByRole('alert').textContent).toContain('DEMO-PC-01, DEMO-PC-02');
+  expect(status.queryByText('Không còn khoản nào treo')).toBeNull();
+});
+it('does not label customer debt from a negative settlement as a missing refund voucher', () => {
+  const status = show({ invoices: [invoice], terminationInfo: { ...termination, refund_amount: -1000,
+    posted_refund: 0, posted_refund_count: 0, posted_refund_codes: [] } });
+  expect(status.getByText(/Nợ hoá đơn.*1\.000/)).toBeTruthy();
+  expect(status.queryByText(/Chưa có phiếu hoàn/)).toBeNull();
+  expect(status.queryByText('Không còn khoản nào treo')).toBeNull();
+});
 it('never claims completion while settlement sources are loading, even with cached data', () => {
   const status = show({ statusLoading: true });
   expect(status.getByRole('status').textContent).toContain('Đang tải trạng thái thanh lý');

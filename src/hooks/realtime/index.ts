@@ -22,18 +22,18 @@ export type { BusinessPerformanceInvalidationRule, BusinessPerformanceSubtype, S
  */
 /** Dependencies of the settlement read models; independent of the fee grids. */
 export const CONTRACT_SETTLEMENT_INVALIDATION_RULES: Partial<Record<SyncTable, readonly string[]>> = {
-  income_expenses: ['vouchers', 'lifecycle'],
-  income_expense_items: ['vouchers', 'lifecycle'],
+  income_expenses: ['vouchers', 'lifecycle', 'profit-commission-checks'],
+  income_expense_items: ['vouchers', 'lifecycle', 'profit-commission-checks'],
   income_expense_supplements: ['supplements'],
-  invoices: ['lifecycle'],
+  invoices: ['lifecycle', 'profit-commission-checks'],
   payments: ['lifecycle'],
   accounts: ['vouchers', 'lifecycle'],
-  contracts: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  contracts: ['vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
   contract_terminations: ['vouchers', 'movements', 'lifecycle'],
   contract_transfers: ['vouchers', 'movements', 'lifecycle'],
   reservation_deposit_settlements: ['vouchers', 'movements', 'lifecycle'],
-  rooms: ['vouchers', 'movements', 'lifecycle', 'commission-basis'],
-  buildings: ['org-of-buildings', 'vouchers', 'movements', 'lifecycle', 'commission-basis'],
+  rooms: ['vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
+  buildings: ['org-of-buildings', 'vouchers', 'movements', 'lifecycle', 'commission-basis', 'profit-commission-checks'],
   customers: ['vouchers', 'movements', 'lifecycle'],
 };
 
