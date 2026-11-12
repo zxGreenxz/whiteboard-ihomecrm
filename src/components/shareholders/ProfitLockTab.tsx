@@ -99,6 +99,12 @@ interface ProfitLockTabProps {
   organizations: ProfitCloseOrganizationScope[];
 }
 
+// Preview hiện tại luôn đủ số; bản chốt cũ có thể chưa lưu chi tiết nguồn.
+type ProfitLockDisplayRow = Omit<ProfitClosePreviewRow, "revenue" | "expense"> & {
+  revenue: number | null;
+  expense: number | null;
+};
+
 interface FormState {
   scopeKey: string;
   drafts: ProfitCloseDraftMap;
@@ -295,8 +301,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const state = stateQuery.data;
   const preview = previewQuery.data;
   const previewRows = useMemo(() => preview?.rows ?? [], [preview]);
-  const stateRows = useMemo<ProfitClosePreviewRow[]>(
-    () => (state?.rows ?? []).map((row): ProfitClosePreviewRow => ({
+  const stateRows = useMemo<ProfitLockDisplayRow[]>(
+    () => (state?.rows ?? []).map((row): ProfitLockDisplayRow => ({
       building_id: row.building_id,
       building_name: row.building_name,
       revenue: row.source_revenue,
@@ -1416,10 +1422,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                         </p>
                       </TableCell>
                       <TableCell className="align-top text-right tabular-nums text-emerald-600">
-                        {formatCurrency(row.revenue)}
+                        {row.revenue === null ? <span title="Bản chốt cũ chưa lưu doanh thu nguồn">Chưa lưu</span> : formatCurrency(row.revenue)}
                       </TableCell>
                       <TableCell className="align-top text-right tabular-nums text-red-600">
-                        {formatCurrency(row.expense)}
+                        {row.expense === null ? <span title="Bản chốt cũ chưa lưu chi phí nguồn">Chưa lưu</span> : formatCurrency(row.expense)}
                       </TableCell>
                       <TableCell className="align-top text-right tabular-nums">
                         {formatCurrency(row.computed_profit)}

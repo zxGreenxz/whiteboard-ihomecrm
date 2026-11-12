@@ -390,8 +390,9 @@ export interface ProfitCloseStateRow {
   unallocated_profit: number;
   unallocated_disposition: ProfitStoredUnallocatedDisposition | null;
   unallocated_disposition_reason: string | null;
-  source_revenue: number;
-  source_expense: number;
+  // Bản chốt trước V2 không lưu riêng doanh thu/chi phí nguồn.
+  source_revenue: number | null;
+  source_expense: number | null;
   source_hash: string;
   is_stale: boolean;
   stale_reason: string | null;

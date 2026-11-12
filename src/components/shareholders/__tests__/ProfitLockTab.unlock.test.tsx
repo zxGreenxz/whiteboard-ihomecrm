@@ -17,6 +17,7 @@ import {
   type ProfitReportChecksResult,
 } from "@/lib/profitReportChecks";
 import { UNALLOCATED_REASON_SYSTEM_MESSAGE, UNLOCK_REASON_SYSTEM_MESSAGE } from "@/lib/profitClose";
+import { readProfitState } from "@/lib/profitReadModels";
 
 const state = vi.hoisted(() => ({
   unlockCalls: [] as unknown[],
@@ -273,6 +274,22 @@ describe("ProfitLockTab — lỗi chốt tháng", () => {
 });
 
 describe("ProfitLockTab — tháng chốt kiểu cũ (N-A3-01)", () => {
+  it("đọc bản chốt thiếu chi tiết nguồn, hiện Chưa lưu thay vì số 0", async () => {
+    state.profitState = readProfitState({
+      ...TRANG_THAI,
+      rows: TRANG_THAI.rows.map(row => ({ ...row, source_revenue: null, source_expense: null, is_stale: true })),
+    }, ORG, KY);
+    render(<ProfitLockTab organizations={ORGS} />);
+    const checkbox = await screen.findByRole('checkbox', { name: 'Chọn 15KV' });
+    const cells = within(checkbox.closest('tr')!).getAllByRole('cell');
+    expect(cells[2].textContent).toBe('Chưa lưu');
+    expect(cells[3].textContent).toBe('Chưa lưu');
+    expect(cells[4].textContent).toContain('1.000.000');
+    expect(screen.queryByText('Chưa tải được số liệu chốt lợi nhuận.')).toBeNull();
+    expect(state.closeCalls).toHaveLength(0);
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
   it("lúc xem hiện 'Giữ lại (chốt kiểu cũ)', không gắn đỏ 'Chưa chọn'", async () => {
     const cu = {
       ...dong(B1, "15KV"),
