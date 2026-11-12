@@ -46,7 +46,6 @@ import {
   CONTRACT_STATUS_CONFIG,
   isContractInEffect,
 } from '@/types/contract';
-import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { copyContractQrToClipboard } from '@/lib/contractQrImage';
@@ -195,7 +194,6 @@ export default function ContractListTable({
   onPageSizeChange,
 }: ContractListTableProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const { canManageBuilding } = useMyBuildingScope();
   const [copyingId, setCopyingId] = useState<string | null>(null);
 
   // Click ô "Vị trí" → copy ảnh QR (QR + phòng/toà) vào clipboard.
@@ -384,9 +382,6 @@ export default function ContractListTable({
                       <ActionButtons
                         contract={contract}
                         actions={actions}
-                        canManage={canManageBuilding(
-                          contract.room?.building_id ?? contract.room?.building?.id
-                        )}
                         onView={onView}
                         onEdit={onEdit}
                         onRenew={onRenew}
@@ -462,8 +457,6 @@ export default function ContractListTable({
 interface ActionButtonsProps {
   contract: ContractWithRelations;
   actions: ReturnType<typeof getActionButtonStates>;
-  /** false → ẩn các nút sửa/xoá/gia hạn/chuyển/thanh lý. Vẫn giữ xem/in/QR. */
-  canManage: boolean;
   onView: (contract: ContractWithRelations) => void;
   onEdit: (contract: ContractWithRelations) => void;
   onRenew: (contract: ContractWithRelations) => void;
@@ -479,7 +472,6 @@ interface ActionButtonsProps {
 function ActionButtons({
   contract,
   actions,
-  canManage,
   onView,
   onEdit,
   onRenew,
@@ -491,10 +483,9 @@ function ActionButtons({
   onPrint,
   onShowQR,
 }: ActionButtonsProps) {
-  // Gate theo quyền chi tiết từng chức năng (catalog permissionPages) — kết
-  // hợp với scope toà (canManage). JSONB cũ chưa có key chi tiết sẽ fallback
-  // về contracts.edit.
+  // Mỗi thao tác kiểm tra phạm vi riêng; xem/sửa xuyên tòa không mở quyền xóa.
   const { data: perms } = useMyPermissions();
+  const buildingId = contract.room?.building_id ?? contract.room?.building?.id;
   const buttons = [
     {
       label: 'Xem chi tiết',
@@ -509,7 +500,7 @@ function ActionButtons({
       icon: Pencil,
       onClick: () => onEdit(contract),
       disabled: actions.editDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'edit'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'edit', buildingId),
       bg: 'bg-green-500 hover:bg-green-600',
     },
     {
@@ -517,7 +508,7 @@ function ActionButtons({
       icon: Printer,
       onClick: () => onPrint(contract),
       disabled: false,
-      hidden: !canUse(perms, 'contracts', 'print'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'print', buildingId),
       bg: 'bg-sky-500 hover:bg-sky-600',
     },
     {
@@ -525,7 +516,7 @@ function ActionButtons({
       icon: CalendarPlus,
       onClick: () => onRenew(contract),
       disabled: actions.renewDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'renew'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'renew', buildingId),
       bg: 'bg-green-500 hover:bg-green-600',
     },
     {
@@ -533,7 +524,7 @@ function ActionButtons({
       icon: ArrowRightLeft,
       onClick: () => onTransferRoom(contract),
       disabled: actions.transferRoomDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'transfer'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'transfer', buildingId),
       bg: 'bg-orange-500 hover:bg-orange-600',
     },
     {
@@ -541,7 +532,7 @@ function ActionButtons({
       icon: LogOut,
       onClick: () => onMoveOut(contract),
       disabled: actions.moveOutDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'terminate'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'terminate', buildingId),
       bg: 'bg-blue-500 hover:bg-blue-600',
     },
     {
@@ -549,7 +540,7 @@ function ActionButtons({
       icon: UserPlus,
       onClick: () => onTransferContract(contract),
       disabled: actions.transferContractDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'transfer'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'transfer', buildingId),
       bg: 'bg-yellow-500 hover:bg-yellow-600',
     },
     {
@@ -557,7 +548,7 @@ function ActionButtons({
       icon: FileX,
       onClick: () => onTerminate(contract),
       disabled: actions.terminateDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'terminate'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'terminate', buildingId),
       bg: 'bg-red-500 hover:bg-red-600',
     },
     {
@@ -565,7 +556,7 @@ function ActionButtons({
       icon: Trash2,
       onClick: () => onDelete(contract),
       disabled: actions.deleteDisabled,
-      hidden: !canManage || !canUse(perms, 'contracts', 'delete'),
+      hidden: !buildingId || !canUse(perms, 'contracts', 'delete', buildingId),
       bg: 'bg-red-700 hover:bg-red-800',
     },
     {

@@ -22,7 +22,7 @@ export default function VehicleListToolbar({
   viewMode,
   onViewModeChange,
 }: VehicleListToolbarProps) {
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('vehicles', 'create');
   return (
     <div className="flex items-center gap-2">
       {hasAnyScope && (

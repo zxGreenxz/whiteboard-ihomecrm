@@ -138,7 +138,7 @@ export function voucherActionAvailability(
       isUnapproved,
       isAdmin: viewer.isAdmin,
       isCreator,
-      canEdit: canUse(viewer.perms, "income_expenses", "edit"),
+      canEdit: canUse(viewer.perms, "income_expenses", "edit", building),
     }),
     approve: state.monetaryActionsAllowed && isUnapproved && canUse(viewer.perms, "income_expenses", "approve", building),
     postApproved: state.monetaryActionsAllowed && !isCancelled && v.approval_status === "APPROVED" &&

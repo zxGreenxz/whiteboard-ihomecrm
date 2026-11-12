@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, HandCoins, History, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
-import { useBuildings } from '@/hooks/useBuildings';
+import { useThuTienBuildings } from '@/hooks/useThuTienBuildings';
 import { useThuTienInvoices } from '@/hooks/useCollectionReport';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -44,7 +44,7 @@ const currentMonth = currentMonthVN;
 const ThuTien = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const buildingsQuery = useBuildings();
+  const buildingsQuery = useThuTienBuildings();
   const { data: buildings = [] } = buildingsQuery;
   const { data: perms } = useMyPermissions();
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
@@ -75,16 +75,19 @@ const ThuTien = () => {
   const { actionCount: handoverActionCount } = useCashHandoverList();
 
   useEffect(() => {
-    if (!buildingId && buildings.length) setBuildingId(buildings[0].id);
-  }, [buildings, buildingId]);
+    if (buildingsQuery.data && !buildings.some(building => building.id === buildingId)) {
+      setBuildingId(buildings[0]?.id ?? '');
+    }
+  }, [buildings, buildingId, buildingsQuery.data]);
 
   // 1 query cả kỳ (mọi toà) dùng chung với ManagePanel/CollectionReport;
   // slice theo toà đang chọn ở client → đổi tab toà không refetch.
   const invoicesQuery = useThuTienInvoices(billingMonth);
   const { data: monthInvoices, isLoading } = invoicesQuery;
   const allRooms = useMemo(
-    () => (monthInvoices ?? []).filter((i) => !buildingId || i.building_id === buildingId),
-    [monthInvoices, buildingId],
+    () => buildingId && buildings.some(building => building.id === buildingId)
+      ? (monthInvoices ?? []).filter((i) => i.building_id === buildingId) : [],
+    [monthInvoices, buildingId, buildings],
   );
 
   // Ai thu bao nhiêu (creator_name phiếu thu theo payment) cho ô phòng + drawer.

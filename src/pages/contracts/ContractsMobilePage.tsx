@@ -147,7 +147,7 @@ export default function ContractsMobilePage() {
   const renewedQuery = useRenewedContractIds(rows.map((r) => r.id));
   const { data: renewedSet } = renewedQuery;
 
-  const { hasAnyScope: hasBuildingScope } = useMyBuildingScope();
+  const { hasAnyScope: hasBuildingScope } = useMyBuildingScope('contracts', 'create');
   const { data: perms } = useMyPermissions();
   const canCreate = hasBuildingScope && canUse(perms, 'contracts', 'create');
 

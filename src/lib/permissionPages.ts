@@ -324,6 +324,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/income-expense",
         features: [
           ...crud("income_expenses", "phiếu thu chi"),
+          f("income_expenses", "edit_draft", "Sửa phiếu nháp chưa duyệt, chưa ghi sổ", "manage"),
           f("income_expenses", "approve", "Duyệt phiếu thu chi", "elevated"),
           f("income_expenses", "cancel", "Huỷ phiếu thu chi", "manage"),
           f("income_expenses", "print", "In phiếu thu chi", "manage"),

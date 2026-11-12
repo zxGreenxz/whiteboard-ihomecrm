@@ -3,11 +3,13 @@ import type { InvoiceWithRelations } from '@/types/invoice';
 
 const h = vi.hoisted(() => ({ rows: [] as unknown[] }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (o: unknown) => o }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
+vi.mock('@/hooks/useThuTienBuildings', () => ({ useThuTienBuildings: () => ({ data: [{ id: 'b1' }], isError: false }) }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { from: () => {
     let offset = 0;
     const b: Record<string, unknown> = {};
-    for (const method of ['select', 'is', 'neq', 'eq', 'order']) b[method] = () => b;
+    for (const method of ['select', 'is', 'neq', 'eq', 'in', 'order']) b[method] = () => b;
     b.range = (from: number) => { offset = from; return b; };
     b.then = (done: (value: unknown) => unknown) => Promise.resolve({ data: offset ? [] : h.rows, error: null }).then(done);
     return b;

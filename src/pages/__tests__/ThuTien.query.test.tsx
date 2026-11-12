@@ -4,7 +4,7 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 type QueryFixture = { data: unknown; status: string; fetchStatus: string; isLoading: boolean; isError: boolean; error: unknown; refetch: ReturnType<typeof vi.fn> };
 const h=vi.hoisted(()=>({invoices:{} as QueryFixture,buildings:{} as QueryFixture,collectors:{} as QueryFixture}));
 vi.mock('react-router-dom',()=>({useNavigate:()=>vi.fn(),useSearchParams:()=>[new URLSearchParams(),vi.fn()]}));
-vi.mock('@/hooks/useBuildings',()=>({useBuildings:()=>h.buildings}));
+vi.mock('@/hooks/useThuTienBuildings',()=>({useThuTienBuildings:()=>h.buildings}));
 vi.mock('@/hooks/useCollectionReport',()=>({useThuTienInvoices:()=>h.invoices}));
 vi.mock('@/hooks/useInvoiceCollectors',()=>({useInvoiceCollectors:()=>h.collectors}));
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));

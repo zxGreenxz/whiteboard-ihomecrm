@@ -32,7 +32,7 @@
     },
     {
       "path": "src/components/customers/CustomerListToolbar.tsx",
-      "sha256": "c834c3f2b3cf5becee10763e5f7b5eb0cdf43ae142dae9f382c1499db785a73b"
+      "sha256": "ff167c49d3369ac792da216835018a06b67c6dc47e472b5518eed5f99ea64bba"
     },
     {
       "path": "src/components/invoices/InvoiceListFilters.tsx",
@@ -132,7 +132,7 @@
     },
     {
       "path": "src/pages/customers/CustomersMobilePage.tsx",
-      "sha256": "ecdc736fcad32733a7a8d5966f4afd42f837e38b166eaeeb7a0005101973ca40"
+      "sha256": "c4e405a23392f12e5cab81418942b12759d45b5b33649ffab7ebe6ef1ff4dc19"
     },
     {
       "path": "src/pages/invoices/InvoicesMobilePage.tsx",

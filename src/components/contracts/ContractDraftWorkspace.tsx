@@ -21,7 +21,7 @@ export function ContractDraftWorkspace({ buildingId, buildingIds, alwaysExpanded
 }) {
   const { selectedOrganizationId } = useOrganization();
   const { data: permissions } = useMyPermissions();
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('contracts', 'create');
   const [expanded, setExpanded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);

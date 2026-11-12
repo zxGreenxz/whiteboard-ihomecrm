@@ -43,7 +43,7 @@ export default function InvoiceAdjustmentHistory({ invoice }: { invoice: Invoice
   const original = history[0];
   if (!original) return null;
   const review = async (adjustment: InvoiceAdjustment) => {
-    if (inFlight.current || stale || adjustment.revision !== invoice.adjustment_revision || !canUse(permissions, 'invoices', 'approve')) return;
+    if (inFlight.current || stale || adjustment.revision !== invoice.adjustment_revision || !canUse(permissions, 'invoices', 'approve', invoice.building_id)) return;
     inFlight.current = true; setBusy(true); setError(null);
     try { await mutation.mutateAsync({ adjustmentId: adjustment.id, expectedRevision: adjustment.revision }); }
     catch (cause) {
@@ -75,7 +75,7 @@ export default function InvoiceAdjustmentHistory({ invoice }: { invoice: Invoice
         <p>{money(adjustment.before_total)} → {money(adjustment.after_total)} · Chênh lệch {money(adjustment.delta)}</p>
         <div className="grid gap-2 sm:grid-cols-2"><Snapshot label="Trước điều chỉnh" data={adjustment.before_snapshot} total={adjustment.before_total} /><Snapshot label="Sau điều chỉnh" data={adjustment.after_snapshot} total={adjustment.after_total} /></div>
         <p className="text-xs text-muted-foreground">Điều chỉnh lúc {new Date(adjustment.adjusted_at).toLocaleString('vi-VN')}{adjustment.checked_at ? ` · Kiểm tra lúc ${new Date(adjustment.checked_at).toLocaleString('vi-VN')}` : ''}</p>
-        {adjustment.review_status === 'PENDING' && adjustment.revision === invoice.adjustment_revision && invoice.adjustment_review_status === 'PENDING' && canUse(permissions, 'invoices', 'approve') && <Button size="sm" disabled={busy || mutation.isPending || stale} onClick={() => review(adjustment)}>Xác nhận kiểm tra</Button>}
+        {adjustment.review_status === 'PENDING' && adjustment.revision === invoice.adjustment_revision && invoice.adjustment_review_status === 'PENDING' && canUse(permissions, 'invoices', 'approve', invoice.building_id) && <Button size="sm" disabled={busy || mutation.isPending || stale} onClick={() => review(adjustment)}>Xác nhận kiểm tra</Button>}
       </section>)}
       {error && <div role="alert" className="rounded border border-destructive p-3 text-sm"><p>{error.message}</p><Button variant="outline" disabled={busy} onClick={reload}>Tải lại lịch sử</Button></div>}
     </CardContent>

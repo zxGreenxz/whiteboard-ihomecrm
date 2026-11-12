@@ -52,7 +52,7 @@ function VehiclesDesktopPage() {
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope } = useMyBuildingScope('vehicles', 'create');
 
   // Build filters
   const filters = useMemo<VehicleFilters>(

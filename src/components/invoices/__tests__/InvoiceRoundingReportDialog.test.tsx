@@ -7,7 +7,7 @@ import { RoundingReportError } from '@/lib/invoiceRoundingReport';
 
 const fixture = vi.hoisted(() => ({ allowed: true, fail: false, empty: false, filters: [] as unknown[] }));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: { thu_tien: { report: fixture.allowed } } }) }));
-vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [{ id: 'dddd0000-0000-4000-8000-000000000003', name: 'DEMO' }] }) }));
+vi.mock('@/hooks/useThuTienBuildings', () => ({ useThuTienBuildings: () => ({ data: [{ id: 'dddd0000-0000-4000-8000-000000000003', name: 'DEMO' }] }) }));
 vi.mock('@/lib/invoiceRoundingReportRepository', () => ({
   getInvoiceRoundingReport: async (filters: { offset?: number; collectorId?: string | null }) => {
     fixture.filters.push(filters);

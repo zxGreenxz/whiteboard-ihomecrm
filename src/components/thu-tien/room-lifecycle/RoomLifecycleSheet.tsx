@@ -26,7 +26,9 @@ interface Props {
 export function RoomLifecycleSheet({ show, onClose, buildingId, buildings }: Props) {
   // Toà xem trong sheet: mặc định theo toà đang lọc ngoài trang, đổi được.
   const [localBuilding, setLocalBuilding] = useState<string>('');
-  const effBuilding = localBuilding || buildingId || buildings[0]?.id || '';
+  const candidateBuilding = localBuilding || buildingId;
+  const effBuilding = buildings.some(building => building.id === candidateBuilding)
+    ? candidateBuilding : buildings[0]?.id || '';
 
   const { data: rooms = [], isLoading: roomsLoading } = useRooms(effBuilding || undefined, {
     enabled: show && !!effBuilding,

@@ -960,6 +960,32 @@
           "trich_doan": "Sau migration/Edge đã phát hành đúng lane của Project Contract và đã nghiệm thu môi trường thử"
         }
       ]
+    },
+    "supabase/migrations/20261112093443_manager_collaboration_scopes_v1.sql": {
+      "sha256": "c4ba047a2ed12c2fcacc80f59c6ce9bd93552fa8c4b63cb41f8d046b0be4f905",
+      "missingObjects": [
+        "table:app_private.manager_collaboration_roles",
+        "table:app_private.manager_collaboration_bindings",
+        "function:app_private.manager_collaboration_catalog_v1",
+        "function:app_private.sync_manager_collaboration_v1",
+        "function:app_private.validate_manager_collaboration_binding_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward migration quyền cộng tác quản lý chưa áp dụng production. Kiểm trên TEST trong giao dịch ROLLBACK đã qua: quyền được chọn, giữ nguyên quyền chưa chọn và DENY, lưu phân quyền rồi thu hồi vai trò/sổ, tạo/sửa phiếu bằng RPC với role authenticated, idempotency và mutation chặn mở rộng thu_tien. Hồ sơ này giải thích object vắng có chủ ý; không thay review độc lập, forward lane, backup và JWT/UI Preview.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261112093443_manager_collaboration_scopes_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.manager_collaboration_roles ("
+        },
+        {
+          "duong_dan": "supabase/tests/manager_collaboration_v1.sql",
+          "trich_doan": "THEN RAISE EXCEPTION 'Catalog differs from approved decisions'; END IF;"
+        },
+        {
+          "duong_dan": "scripts/test-manager-collaboration.mjs",
+          "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
+        }
+      ]
     }
   }
 }

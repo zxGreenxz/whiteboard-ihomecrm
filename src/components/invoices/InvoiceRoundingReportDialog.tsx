@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useBuildings } from '@/hooks/useBuildings';
+import { useThuTienBuildings } from '@/hooks/useThuTienBuildings';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useInvoiceRoundingReport } from '@/hooks/useInvoiceRoundingReport';
 import { canUse } from '@/lib/permissionPages';
@@ -36,7 +36,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
   const id = useId();
   const { data: permissions } = useMyPermissions();
   const allowed = canUse(permissions, 'thu_tien', 'report');
-  const { data: buildings = [], isError: buildingsError } = useBuildings({ enabled: open && allowed });
+  const { data: buildings = [], isError: buildingsError } = useThuTienBuildings();
   const { control, watch } = useForm<FilterValues>({
     resolver: zodResolver(filtersSchema) as Resolver<FilterValues>,
     defaultValues: { billingMonth: billingMonth?.slice(0, 7) || currentMonthVN(), collectorId: '', buildingId: buildingId || '' },
@@ -64,7 +64,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
             </label>
             <label htmlFor={`${id}-building`} className="grid gap-1 text-sm font-medium">Tòa
               <Controller name="buildingId" control={control} render={({ field }) => <select {...field} id={`${id}-building`} className="h-10 min-w-0 rounded-md border bg-background px-3" onChange={(event) => { field.onChange(event); setPage(0); }}>
-                <option value="">Tất cả tòa</option>
+                <option value="">Tất cả tòa được giao</option>
                 {buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
               </select>} />
             </label>

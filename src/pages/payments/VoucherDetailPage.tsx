@@ -368,7 +368,7 @@ export default function VoucherDetailPage() {
   const [supplementOpen, setSupplementOpen] = useState(false);
   const canSupplement = !!voucher && canShowAnnotateAction({ hasHandler: true,
     isUnapproved: voucher.approval_status === 'UNAPPROVED', isAdmin,
-    isCreator: !!user?.id && voucher.user_id === user.id, canEdit: canUse(permissions, 'income_expenses', 'edit') });
+    isCreator: !!user?.id && voucher.user_id === user.id, canEdit: canUse(permissions, 'income_expenses', 'edit', voucher.building_id ?? '__no_building__') });
 
   // Lightbox dùng chung cho cả 2 khung — set danh sách + index khi click.
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number | null }>({

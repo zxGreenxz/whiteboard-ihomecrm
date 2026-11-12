@@ -18,6 +18,7 @@ export type ActionKey =
   | "view"
   | "create"
   | "edit"
+  | "edit_draft"
   | "delete"
   // action chung cũ
   | "record_payment"
@@ -207,7 +208,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
       { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
-      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings", "restricted_create", "restricted_view", "reverse", "self_approve_within_limit"] },
+      { key: "income_expenses", label: "Thu chi",    extra: ["edit_draft", "approve", "cancel", "print", "export", "all_buildings", "restricted_create", "restricted_view", "reverse", "self_approve_within_limit"] },
       { key: "approvals",       label: "Duyệt khẩn cấp", core: [], extra: ["emergency_override"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
     ],
@@ -304,6 +305,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   view:           "Xem",
   create:         "Tạo",
   edit:           "Sửa",
+  edit_draft:     "Sửa phiếu chờ duyệt",
   delete:         "Xoá",
   record_payment: "Thu tiền",
   approve:        "Duyệt",
