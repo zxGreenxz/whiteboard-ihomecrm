@@ -279,11 +279,15 @@ function nhomQuyetToan(qt: QuyetToanChoBang): NhomTien {
   // chiều. Nói thẳng con số lệch, và nói rõ là phải rà tay — tuyệt đối không
   // tự sửa số cho khớp.
   let canhBao: string | null = null;
-  if (!boCoc && net !== 0 && lech !== 0) {
+  if (!boCoc && lech !== 0 && (net > 0 || qt.posted_refund_count > 0)) {
     canhBao =
       qt.posted_refund_count > 0
         ? `Phiếu hoàn đã vào sổ: ${qt.posted_refund_codes.join(", ")} — lệch ${formatAmount(Math.abs(lech))} so với hồ sơ, cần rà tay.`
         : `Chưa có phiếu hoàn nào vào sổ — hồ sơ ghi ${formatAmount(net)}, cần rà tay.`;
+  }
+  if (qt.posted_refund_count > 1) {
+    canhBao = [`Có ${qt.posted_refund_count} phiếu hoàn đã vào sổ cho hợp đồng này — cần rà soát trùng trước khi chi thêm: ${qt.posted_refund_codes.join(", ")}.`, canhBao]
+      .filter(Boolean).join(" ");
   }
 
   const ngay = ngayVn(qt.actual_move_out_date);

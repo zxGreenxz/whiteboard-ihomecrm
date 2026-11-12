@@ -16,6 +16,9 @@
   },
   "include": [],
   "files": [
+    "src/lib/profitCommissionChecks.ts",
+    "src/hooks/useProfitCommissionChecks.ts",
+    "src/components/reports/ProfitCommissionChecks.tsx",
     "src/lib/staffDay.ts",
     "src/lib/staffReportMetrics.ts",
     "src/lib/gpsCheckin.ts",

@@ -50,6 +50,7 @@ import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hook
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import ProfitCommissionChecks from "@/components/reports/ProfitCommissionChecks";
 import ProfitPostLockNotice from "@/components/reports/ProfitPostLockNotice";
 import { useProfitPostLockReport } from "@/hooks/useProfitPostLock";
 import {
@@ -956,6 +957,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             roomSummary={roomSummary}
             onCreateExpense={canCreate ? openCreateFixedFee : undefined}
           />
+          <ProfitCommissionChecks key={`${selectedOrganizationId}:${ymStr}:${scopeIds.join(',')}`}
+            organizationId={selectedOrganizationId} buildingIds={scopeIds} month={ymStr} enabled={scopeReady} />
           <ProfitPostLockNotice
             variant="mobile"
             entries={postLock.entries}
