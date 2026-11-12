@@ -72,8 +72,12 @@ describe("business-performance cohort, cash and category migration", () => {
         `REVOKE ALL ON TABLE public.${table} FROM PUBLIC, anon, authenticated`,
       );
     }
-    const currentSchema = liveDefinitionOf("app_private.sync_finance_invoice_components_v1").migrationSql;
-    expect(currentSchema).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS finance_component_manifest_revision_uq[\s\S]*?\(invoice_id,\s*adjustment_revision\)/);
+    // Function replacements do not need to repeat index DDL. Follow the last
+    // change to the index itself, so a later DROP/ALTER cannot borrow its CREATE.
+    const indexChanges = migrations.flatMap(({ sql }) => sql.match(
+      /\b(?:CREATE\s+(?:UNIQUE\s+)?|DROP\s+|ALTER\s+)INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:public\.)?finance_component_manifest_revision_uq\b[^;]*;/gi,
+    ) ?? []);
+    expect(indexChanges.at(-1)).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS finance_component_manifest_revision_uq[\s\S]*?\(invoice_id,\s*adjustment_revision\)/);
     expect(sql).toContain("finance_invoice_components_manifest_kind_uq");
     expect(sql).toContain("finance_invoice_component_allocations_collection_component_uq");
     expect(sql).toContain("finance_invoice_component_allocations_component_idx");
@@ -81,13 +85,16 @@ describe("business-performance cohort, cash and category migration", () => {
 
   it("syncs invoice components and records only prospective deterministic allocations", () => {
     const sync = liveDefinitionOf("app_private.sync_finance_invoice_components_v1").sql;
+    const basis = liveDefinitionOf("app_private.invoice_component_basis_v1").sql;
     const allocation = liveDefinitionOf("app_private.allocate_finance_collection_components_v1").sql;
 
     expect(sync).toContain("manifest.adjustment_revision = v_invoice.adjustment_revision");
     expect(sync).toMatch(/IF v_manifest_finalized_at IS NOT NULL THEN\s+RETURN v_manifest_id/);
     expect(sync).toContain("previous_debt_sources");
-    expect(sync).toContain("accounting_class = 'DEPOSIT'");
-    expect(sync).toContain("accounting_class = 'NON_PNL'");
+    expect(sync).toContain("v_basis := app_private.invoice_component_basis_v1(p_invoice_id)");
+    expect(basis).toContain("previous_debt_sources");
+    expect(basis).toContain("accounting_class = 'DEPOSIT'");
+    expect(basis).toContain("accounting_class = 'NON_PNL'");
     expect(sync).toMatch(/'CARRIED_INVOICE_DEBT'::text, v_previous_invoice, 10/);
     expect(sync).toMatch(/'CURRENT_CHARGE'::text, v_current_charge, 20/);
     expect(allocation).toMatch(/ORDER BY c\.component_order,\s*c\.id/);
