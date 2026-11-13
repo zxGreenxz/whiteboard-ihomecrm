@@ -4,6 +4,20 @@
   "deferredModules": "tooling/deferred-modules.json",
   "sourceSelectionRules": [
     {
+      "id": "invoice-component-revision",
+      "sourcePaths": [
+        "supabase/migrations/*_invoice_component_revision_consistency.sql",
+        "src/lib/__tests__/fixtures/invoice-component-revision-before.sql",
+        "src/lib/__tests__/invoiceComponentRevision.test.ts"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/lib/__tests__/invoiceComponentRevision.test.ts",
+        "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
+        "src/hooks/__tests__/useInvoiceAdjustments.test.tsx"
+      ]
+    },
+    {
       "id": "navigation",
       "sourcePaths": [
         "src/components/layout/**",

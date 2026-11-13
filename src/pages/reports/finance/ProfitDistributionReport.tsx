@@ -29,6 +29,7 @@ import { ihomeLineTitle, pendingBuildingIdsOf, useIhomeProfitLine } from "@/hook
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { orgBuildingsOf, profitScopeIds } from "@/lib/profitReportScope";
 import ProfitReportChecks from "@/components/reports/ProfitReportChecks";
+import ProfitCommissionChecks from "@/components/reports/ProfitCommissionChecks";
 import ProfitPostLockNotice from "@/components/reports/ProfitPostLockNotice";
 import { useProfitPostLockReport } from "@/hooks/useProfitPostLock";
 import {
@@ -1768,6 +1769,10 @@ function ProfitDistributionDesktop() {
         </div>
 
         {/* Sổ 2 cột: Thu | Chi */}
+        <ProfitCommissionChecks key={`${selectedOrganizationId}:${ym}:${scopeIds.join(',')}:${roomId}`}
+          organizationId={selectedOrganizationId} buildingIds={scopeIds} month={ym}
+          roomId={roomId === 'all' ? null : roomId} enabled={scopeReady} />
+
         <div className={showThu && showChi ? "ph-grid-2" : undefined}>
           {showThu && renderPanel("income", "Khoản thu", displayIncome, shownIncomeRows, incomeView)}
           {showChi &&
