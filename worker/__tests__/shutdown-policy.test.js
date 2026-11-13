@@ -73,8 +73,22 @@ describe('signals stop the worker cleanly and can never be swallowed', () => {
     expect(h.exit.mock.calls).toEqual([[1]]);
     expect(h.logs.join('\n')).toContain('buộc thoát');
   });
-  it('exits promptly on a repeated signal instead of returning silently', () => {
+  it('keeps waiting when the signal is repeated during the provider drain', async () => {
+    // Deadline not armed yet = cleanup is still draining with the lease held.
     const h = harness();
+    const done = h.policy.onSignal('SIGTERM');
+    h.clock.now += 60 * SIGNAL_REPEAT_MS; // an operator re-running `stop` a minute later
+    h.policy.onSignal('SIGTERM');
+    h.policy.onSignal('SIGINT');
+    expect(h.exit).not.toHaveBeenCalled();
+    expect(h.armed).toEqual([]);
+    expect(h.logs.join('\n')).toContain('vẫn chờ');
+    h.work.resolve(); await done;
+    expect(h.exit.mock.calls).toEqual([[0]]);
+    expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+  it('exits at once on a repeated signal after the deadline was armed', () => {
+    const h = harness(({ armDeadline }) => { armDeadline(); return new Promise(() => {}); });
     h.policy.onSignal('SIGTERM');
     h.clock.now += SIGNAL_REPEAT_MS;
     h.policy.onSignal('SIGTERM');
@@ -82,14 +96,37 @@ describe('signals stop the worker cleanly and can never be swallowed', () => {
     expect(h.cleanup).toHaveBeenCalledOnce();
   });
   it('treats the double delivery of one Ctrl-C as a single request', async () => {
-    const h = harness();
+    const gate = Promise.withResolvers();
+    const h = harness(({ armDeadline }) => { armDeadline(); return gate.promise; });
     const done = h.policy.onSignal('SIGINT');
     h.clock.now += SIGNAL_REPEAT_MS - 1;
     h.policy.onSignal('SIGINT');
     expect(h.exit).not.toHaveBeenCalled();
-    h.work.resolve(); await done;
+    gate.resolve(); await done;
     expect(h.exit.mock.calls).toEqual([[0]]);
     expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+  it('does not let a clock stepping backwards swallow a signal once the deadline is armed', () => {
+    const h = harness(({ armDeadline }) => { armDeadline(); return new Promise(() => {}); });
+    h.policy.onSignal('SIGTERM');
+    h.clock.now -= 3_600_000;
+    h.policy.onSignal('SIGTERM');
+    expect(h.exit.mock.calls).toEqual([[1]]);
+  });
+  it('measures the duplicate window on the monotonic clock by default', () => {
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(5_000);
+    const wall = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    try {
+      const exit = vi.fn();
+      const policy = createShutdownPolicy({
+        cleanup: ({ armDeadline }) => { armDeadline(); return new Promise(() => {}); },
+        exit, setExitCode: () => {}, timers: { setTimeout: () => ({}), clearTimeout: () => {} },
+      });
+      policy.onSignal('SIGTERM');
+      monotonic.mockReturnValue(5_000 + SIGNAL_REPEAT_MS); // the wall clock did not move
+      policy.onSignal('SIGTERM');
+      expect(exit.mock.calls).toEqual([[1]]);
+    } finally { monotonic.mockRestore(); wall.mockRestore(); }
   });
   it('exits at once when the signal arrives during a lease-loss shutdown', () => {
     const h = harness();
@@ -107,5 +144,21 @@ describe('signals stop the worker cleanly and can never be swallowed', () => {
     expect(h.armed.map(timer => timer.ms)).toEqual([SHUTDOWN_DEADLINE_MS]);
     h.work.resolve(); await done;
     expect(h.exit.mock.calls).toEqual([[1]]);
+  });
+  it('cuts a signal-held drain at the deadline, and on any further signal, once the lease is lost', () => {
+    const hung = harness();
+    hung.policy.onSignal('SIGTERM');
+    hung.policy.onLeaseLost();
+    expect(hung.exit).not.toHaveBeenCalled();
+    hung.fireDeadline();
+    expect(hung.exit.mock.calls).toEqual([[1]]);
+
+    const stopped = harness();
+    stopped.policy.onSignal('SIGTERM');
+    stopped.clock.now += SIGNAL_REPEAT_MS;
+    stopped.policy.onLeaseLost();
+    expect(stopped.exit).not.toHaveBeenCalled();
+    stopped.policy.onSignal('SIGTERM');
+    expect(stopped.exit.mock.calls).toEqual([[1]]);
   });
 });

@@ -61,6 +61,9 @@ async function tick() {
       .eq('kind', 'personal');
     if (ORG_FILTER.length) accQ = accQ.in('organization_id', ORG_FILTER);
     const { data: accounts, error: accountsError } = await accQ;
+    // Dừng theo tín hiệu thì lease vẫn còn hiệu lực: không chặn ở đây là lượt tick
+    // đang chờ query sẽ đăng nhập lại đúng các phiên shutdown vừa đóng.
+    if (shuttingDown) return;
     if (accountsError) throw new Error(`Không đọc được tài khoản: ${accountsError.message}`);
     reconcileAccountSessions(accounts || [], sessions);
     for (const a of accounts || []) orgCache.set(a.id, a.organization_id);
@@ -118,6 +121,9 @@ async function main() {
   await recoverInterruptedJobs();
 
   await tick();
+  // Mất lease/nhận tín hiệu ngay trong lúc khởi động: shutdown đã clearInterval khi
+  // ba nhịp dưới đây chưa tồn tại — dựng chúng lúc này là để lại handle không ai gỡ.
+  if (shuttingDown) return;
   tickTimer = setInterval(() => { tick().catch((e) => log('tick error', e.message)); }, POLL_MS);
   watchdogTimer = setInterval(() => {
     sb.from('zalo_accounts').select('id, user_id, organization_id, name, status, meta, zalo_uid, login_requested_at').eq('kind', 'personal')

@@ -8,7 +8,10 @@
 //                            tiến trình mới (tiến trình mới tự giành lại lease);
 //   · tín hiệu             → dọn xong thoát mã 0, như cũ;
 //   · dọn quá hạn chót     → buộc thoát mã ≠ 0, không bao giờ treo;
-//   · tín hiệu khi đang dừng → thoát ngay, không lặng lẽ bỏ qua.
+//   · tín hiệu khi đang dừng → thoát ngay, không lặng lẽ bỏ qua. Ngoại lệ duy
+//                            nhất: đang dừng THEO TÍN HIỆU mà hạn chót chưa bật
+//                            (còn drain provider native, còn giữ lease) thì vẫn
+//                            chờ — runbook native cấm cắt bước đó.
 // exit/timers/log được tiêm vào để test không phải giết tiến trình thật.
 // =============================================================
 
@@ -23,7 +26,8 @@ export function createShutdownPolicy({
   exit = (code) => process.exit(code),
   setExitCode = (code) => { process.exitCode = code; },
   timers = { setTimeout, clearTimeout },
-  now = Date.now,
+  // Đồng hồ đơn điệu: giờ hệ thống bị chỉnh lùi không được nuốt tín hiệu lặp.
+  now = () => performance.now(),
   log = () => {},
   deadlineMs = SHUTDOWN_DEADLINE_MS,
   signalRepeatMs = SIGNAL_REPEAT_MS,
@@ -67,7 +71,17 @@ export function createShutdownPolicy({
     // native xong — runbook native cho phép bước đó chờ không hạn).
     onSignal(signal) {
       if (!started) return run('signal');
-      if (started.reason === 'signal' && now() - started.at < signalRepeatMs) return undefined;
+      if (started.reason === 'signal') {
+        const elapsed = now() - started.at;
+        const duplicate = elapsed >= 0 && elapsed < signalRepeatMs;
+        // Chưa bật hạn chót = còn drain provider native và còn giữ lease: chạy
+        // lại `stop` lúc này không được cắt drain (kênh native sẽ bị quarantine).
+        if (deadline === null) {
+          if (!duplicate) log(`nhận ${signal} khi đang chờ provider kết thúc — vẫn chờ, không ép thoát.`);
+          return undefined;
+        }
+        if (duplicate) return undefined;
+      }
       log(`nhận ${signal} khi đang dừng — thoát ngay.`);
       return finish(1);
     },
