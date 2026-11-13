@@ -279,8 +279,8 @@ test('default verifier reuses Auth validation through the fixed, bounded user en
   assert.equal(calls[1].options.method, 'GET'); assert.equal(calls[1].options.redirect, 'error');
 });
 
-test('probe: only 2xx is reachable; a refused key (401/403), a missing path, 429 or 5xx is not; one request, body never read', async () => {
-  for (const status of [401, 403, 404, 429, 500, 502, 503]) {
+test('probe: only 2xx is reachable; a 3xx answer, a refused key (401/403), a missing path, 429 or 5xx is not; one request, body never read', async () => {
+  for (const status of [300, 401, 403, 404, 429, 500, 502, 503]) {
     let requests = 0, cancelled = false, pulled = 0;
     const f = setup({ fetch: async () => {
       requests++;
