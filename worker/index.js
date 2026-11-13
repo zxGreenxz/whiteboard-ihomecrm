@@ -33,6 +33,7 @@ import { processJob, recoverInterruptedJobs } from './lib/queue.js';
 import { tickTuDongHoa, AUTOMATION_MS } from './lib/automation.js';
 import { reconcileAccountSessions, stopAccountSession } from './lib/session-lifecycle.js';
 import { startNativeBridge } from './lib/hermes-native-bridge.js';
+import { createShutdownPolicy } from './lib/shutdown-policy.js';
 
 // ── Fail-closed từ boot: thiếu credential/khoá là DỪNG, không chạy nửa vời ──
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -109,9 +110,9 @@ async function main() {
   }
   log('đã giữ lease đơn-instance.');
 
-  stopHeartbeat = startLeaseHeartbeat({ onLost: async () => {
-    log('không còn lease hợp lệ — dừng phiên.');
-    await shutdown(false);
+  stopHeartbeat = startLeaseHeartbeat({ onLost: () => {
+    log('không còn lease hợp lệ — dừng phiên rồi thoát để được dựng lại.');
+    return shutdownPolicy.onLeaseLost();
   } });
   nativeBridge = await startNativeBridge({ onFault: code => log('native hermes', code) });
   await recoverInterruptedJobs();
@@ -135,8 +136,8 @@ async function main() {
 
 // Graceful shutdown (bài học WEB2 §13.22): đóng listener + nhả lease TRƯỚC khi
 // thoát, để instance mới không phải "đấu" phiên với xác chết (kick 3000/3003).
-async function shutdown(fromSignal = true) {
-  if (shuttingDown) return;
+// Hàm này chỉ DỌN; thoát lúc nào, mã nào do shutdownPolicy quyết (gọi đúng một lần).
+async function shutdown({ armDeadline }) {
   shuttingDown = true;
   log('shutting down…');
   clearInterval(tickTimer);
@@ -149,15 +150,19 @@ async function shutdown(fromSignal = true) {
     log('stopped', id);
   }
   await nativeBridge?.close();
+  // Đường tín hiệu: bước drain provider native ở trên được chờ không hạn (runbook
+  // native); từ đây mọi bước phải xong trước hạn chót. Mất lease thì hạn chót đã
+  // chạy từ đầu.
+  armDeadline();
   // đợi job đang processing xong (tối đa 10s)
   for (let i = 0; i < 20 && ticking; i++) await sleep(500);
   // Keep renewing ownership while native sends drain, even after their HTTP
   // observation timed out. Stop renewing only immediately before release.
   stopHeartbeat?.();
   await releaseLease();
-  if (fromSignal) process.exit(0);
 }
-process.on('SIGTERM', () => shutdown(true));
-process.on('SIGINT', () => shutdown(true));
+const shutdownPolicy = createShutdownPolicy({ cleanup: shutdown, log });
+process.on('SIGTERM', () => shutdownPolicy.onSignal('SIGTERM'));
+process.on('SIGINT', () => shutdownPolicy.onSignal('SIGINT'));
 
 main().catch((e) => { console.error('boot error', e); process.exit(1); });
