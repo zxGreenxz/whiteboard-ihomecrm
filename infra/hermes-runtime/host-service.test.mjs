@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createHermesHost } from './host-service.mjs';
 import { createHermesBackend } from '../hermes-broker/server.mjs';
+import { createConnectorMaintenance } from '../hermes-broker/connector-maintenance.mjs';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -292,6 +293,49 @@ test('the real healthy record is atomic and owner-only, and a missing, tampered,
   await writeFile(file, 'x'.repeat(9000)); assert.deepEqual(await record.load(), []);
   await rm(file); await writeFile(join(directory, 'other.json'), JSON.stringify({ v: 1, ids: [b] }));
   try { await symlink(join(directory, 'other.json'), file); assert.deepEqual(await record.load(), []); } catch (error) { if (error.code !== 'EPERM') throw error; }
+});
+
+test('the real backend reaches the maintenance loop whole, so its recovery lane is used; a recovered connection is one stdout JSON line', async t => {
+  const key = Buffer.alloc(32, 23); let received, sink;
+  const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
+    supabase: { url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture' },
+    store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
+    http: { allowedHosts: ['broker.example:8443'], allowedOrigins: ['https://crm.example'] },
+    mode: 'connector', limits: connectorLimits, listenPort: 0, dispose() { key.fill(0); } };
+  const host = createHermesHost(configuration, { factories: {
+    async acquireHostOwnership() { return { async release() {} }; },
+    async prepareState() { return '/state/audit'; },
+    createHealthyRecord() { return { async load() { return []; }, async save() {} }; },
+    createHostAudit() { return { async write() {}, async close() {} }; },
+    createConnectionHandoff() { return { async list() { return []; }, async stage() {}, async close() {} }; },
+    createStorePool() { return { async connect() { throw Error('unexpected external SQL'); }, async end() {} }; },
+    createHermesBackend(config) { return createHermesBackend({ ...config, fetch: async () => { throw Error('unexpected external HTTP'); } }); },
+    // The real loop validates the lane at construction; the host passes the backend object itself, not a projection of it.
+    createConnectorMaintenance(options) { received = options.backend; sink = options.log; return createConnectorMaintenance(options); },
+  } });
+  try {
+    await host.start();
+    for (const method of ['resolveConnection', 'beginExternalConnectionMaintenance', 'beginExternalConnectionRecovery']) assert.equal(typeof received[method], 'function', method);
+    const info = t.mock.method(console, 'info', () => {});
+    const record = { event: 'connector_connection_recovered', ts: '2026-11-13T15:00:00.000Z', connectionId: '1a2b3c4d', status: 'recovered', refreshed: true };
+    sink(record);
+    assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+    info.mock.restore();
+  } finally { await host.close(); }
+  assert.equal(host.status().state, 'closed');
+});
+
+test('the recovery lane refreshes the provider session with at least the maintenance lead, so a session inside that lead is refreshed under the window SQL has just guaranteed', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const server = await readFile(new URL('../hermes-broker/server.mjs', import.meta.url), 'utf8');
+  const refresh = Number(/createConnectionMaintenance\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  const recovery = Number(/createConnectionRecovery\(\{[^}]*?refreshBeforeMs:\s*(\d+)/s.exec(server)?.[1]);
+  assert(Number.isSafeInteger(refresh) && Number.isSafeInteger(recovery), 'both leads are literal numbers');
+  assert(recovery >= refresh, `recovery refreshBeforeMs ${recovery} < maintenance refreshBeforeMs ${refresh}`);
+  assert.match(server, /createConnectionRecovery\(\{[^}]*\brefreshManager\b[^}]*\bdependencyScope\b/s, 'same refresh manager and scope as maintenance');
+  // The lane refuses to be built without a probe; the real composition gives it the provider the refresh manager itself uses.
+  assert.match(server, /createRefreshManager\(\{[^;]*?\bprovider: refreshProvider\b/s);
+  assert.match(server, /createConnectionRecovery\(\{[^}]*\bproviderProbe: refreshProvider\b/s);
 });
 
 test('the session refresh lead in server.mjs is at least the renewal lead the host passes (a shorter one fails every session cycle)', async () => {

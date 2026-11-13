@@ -986,6 +986,29 @@
           "trich_doan": "console.log('PASS: manager collaboration transaction rolled back; production untouched.');"
         }
       ]
+    },
+    "supabase/migrations/20261113131751_hermes_connection_recovery_v1.sql": {
+      "sha256": "fb864509f1640e0737e0a5957ea766bd2f0ee13944d87ecec8d6ef764ee6d618",
+      "missingObjects": [
+        "function:app_private.hermes_store_recover_connection_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 13/11/2026 (kết nối Hermes tự hồi sau mất mạng), chưa đi qua lane apply — hàm hồi vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Hàm còn lại của file (app_private.hermes_store_renew_connection_v1) đã có trên production và được file này dựng lại bằng CREATE OR REPLACE sau khi ghim md5 thân đang chạy, nên không nằm trong danh sách thiếu. Mục provenance của file này do bộ sinh ghi (npm run provenance:generate, 13/11/2026); sau khi áp qua npm run migrate:forward phải chạy lại bộ sinh, khi đó hồ sơ này thành thừa — gate tự nhắc gỡ. Kiểm tĩnh trên nguồn: scripts/__tests__/hermes-connection-renewal-schema.test.mjs (hợp đồng thân gia hạn / hồi, quyền chỉ vai kho, đột biến) và scripts/__tests__/hermes-durable-schema.test.mjs (ghim sha256 hai thân, phát lại ACL). Theo phiên viết migration: đã áp hai lượt trong giao dịch ROLLBACK trên TEST; CHƯA áp thật trên TEST hay production — hồ sơ này chỉ giải thích object chưa triển khai, không thay review độc lập, dry-run, backup trước phát hành.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261113131751_hermes_connection_recovery_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_store_recover_connection_v1(p jsonb)"
+        },
+        {
+          "duong_dan": "supabase/migrations/20261113131751_hermes_connection_recovery_v1.sql",
+          "trich_doan": "GRANT EXECUTE ON FUNCTION app_private.hermes_store_recover_connection_v1(jsonb) TO hermes_store_executor;"
+        },
+        {
+          "duong_dan": "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+          "trich_doan": "const recoveryName = 'app_private.hermes_store_recover_connection_v1';"
+        }
+      ],
+      "raSoatBoi": "Claude Code — kết nối Hermes tự hồi 13/11/2026"
     }
   }
 }

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { snapshotConnectionAuthority, snapshotConnectionState } from './connection-renewal.mjs';
 import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
+import { MIN_REFRESH_WINDOW_MS } from './refresh-window.mjs';
 
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -45,7 +46,11 @@ const pair = value => {
  * exact session revision readback -> stable opaque renewal -> final authority.
  * No credential/actor is caller-selectable, no provider retry or timeout replay,
  * and no token/session material leaves this lane. It must run before old expiry;
- * expired sessions require reconnect. A changed policy also stops this caller.
+ * a lapsed token or session is the recovery lane's work (connection-recovery.mjs),
+ * never this one's. A refresh that is due is not started with less than
+ * MIN_REFRESH_WINDOW_MS of token lease left (refresh-window.mjs): the attempt is
+ * rejected before any dispatch, the lease may lapse, and recovery then refreshes
+ * inside a fresh window. A changed policy also stops this caller.
  *
  * Inject the backend's SAME scope for actual SQL/Auth/provider work. Timeout is
  * an observer outcome; per-token/global admission and close wait for real drain.
@@ -96,6 +101,10 @@ export function createConnectionMaintenance({ authority, connectionStore, refres
       const before = await read(beforeReceipt); await unchanged(beforeReceipt);
       let expected = before;
       if (before.state.stable.session.expiresAt - now() <= refreshBeforeMs) {
+        // The refresh fence quarantines the session when the token lapses mid-refresh, while a lapsed lease alone is
+        // recoverable (connection-recovery.mjs). With too little lease left nothing is dispatched: not the refresh,
+        // and not a renewal that could only reach the old session expiry.
+        if (before.context.expiresAt - now() < MIN_REFRESH_WINDOW_MS) fail('maintenance_rejected');
         const old = before.state.stable.session; check(); entry.dispatched = true;
         let refresh;
         try { refresh = pair(refreshManager.beginRefresh(old.credentialRef, old.binding, options)); }

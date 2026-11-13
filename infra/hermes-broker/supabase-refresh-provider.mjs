@@ -66,9 +66,19 @@ async function readJson(response, maxBytes, signal) {
  * and waits for actual drain without closing a shared dependencyScope. A trusted
  * verifier with hidden deadline races must track its inner work in that same
  * scope. The wrapper cannot infer or cancel invisible injected dependencies.
+ *
+ * beginProbe/probe only answer whether this Auth origin can be reached right now,
+ * for a caller about to start a refresh it cannot take back (the manager
+ * quarantines the session on any provider failure after dispatch). One GET of the
+ * fixed health path with the publishable key the other calls already send: no
+ * bearer, refresh token or body goes out, the response body is never read, and
+ * any HTTP answer below 500 other than 429 is { reachable: true }. A network
+ * error, redirect, 5xx, 429 or the short probeTimeoutMs is
+ * refresh_provider_unavailable/_timeout.
+ * It proves nothing about a session and is no permission to retry a refresh.
  */
 export function createSupabaseRefreshProvider({ url, publishableKey, verifySession: trustedVerify,
-  fetch: request = globalThis.fetch, clock = Date.now, timeoutMs = 10_000,
+  fetch: request = globalThis.fetch, clock = Date.now, timeoutMs = 10_000, probeTimeoutMs = 3_000,
   maxRequestBytes = 32_800, maxResponseBytes = 131_072, dependencyScope = createDependencyScope() } = {}) {
   let origin;
   try { origin = new URL(url); } catch { throw new TypeError('invalid_refresh_provider_config'); }
@@ -76,11 +86,13 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) ||
       (trustedVerify !== undefined && typeof trustedVerify !== 'function') || typeof request !== 'function' || typeof clock !== 'function' ||
       typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function' ||
-      !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxRequestBytes) || maxRequestBytes > 65_536 ||
+      !positive(timeoutMs) || timeoutMs > 30_000 || !positive(probeTimeoutMs) || probeTimeoutMs > 10_000 ||
+      !positive(maxRequestBytes) || maxRequestBytes > 65_536 ||
       !positive(maxResponseBytes) || maxResponseBytes > 131_072) throw new TypeError('invalid_refresh_provider_config');
   // Capture an immutable string; no supplied request can replace this endpoint.
   const endpoint = new URL('/auth/v1/token?grant_type=refresh_token', origin).href;
   const userEndpoint = new URL('/auth/v1/user', origin).href;
+  const healthEndpoint = new URL('/auth/v1/health', origin).href;
   const active = new Set(); let closed = false, closePromise, drainFailed = false;
   const verify = trustedVerify ?? createSupabaseAuthAdapter({ url: origin.href, publishableKey, clock,
     fetch: async (target, options) => {
@@ -98,13 +110,13 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
     },
   }).verifySession;
 
-  async function bounded(signal, operation, fallback) {
+  async function bounded(signal, operation, fallback, limitMs = timeoutMs) {
     if (signal !== undefined && !(signal instanceof AbortSignal)) fail('refresh_invalid_request');
     if (signal?.aborted) fail('refresh_cancelled');
     const controller = new AbortController();
     const onAbort = () => controller.abort(new SupabaseRefreshError('refresh_cancelled'));
     signal?.addEventListener('abort', onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(new SupabaseRefreshError('refresh_timeout')), timeoutMs);
+    const timer = setTimeout(() => controller.abort(new SupabaseRefreshError('refresh_timeout')), limitMs);
     let abortListener;
     const aborted = new Promise((_, reject) => {
       abortListener = () => reject(controller.signal.reason);
@@ -128,7 +140,7 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
     }
   }
 
-  function begin(signal, operation, fallback) {
+  function begin(signal, operation, fallback, limitMs) {
     if (closed || drainFailed) fail('refresh_closed');
     if (signal !== undefined && !(signal instanceof AbortSignal)) fail('refresh_invalid_request');
     if (signal?.aborted) fail('refresh_cancelled');
@@ -136,7 +148,7 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
     const onAbort = () => controller.abort(); signal?.addEventListener('abort', onAbort, { once: true });
     active.add(entry);
     let task;
-    try { task = dependencyScope.begin(() => bounded(controller.signal, operation, fallback)); }
+    try { task = dependencyScope.begin(() => bounded(controller.signal, operation, fallback, limitMs)); }
     catch { active.delete(entry); signal?.removeEventListener('abort', onAbort); fail('refresh_closed'); }
     const result = task.result.finally(() => { signal?.removeEventListener('abort', onAbort); controller.abort(); });
     const drained = task.drained.then(() => { active.delete(entry); }, () => {
@@ -181,9 +193,23 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
         return { userId: result.userId, sessionId: result.sessionId, expiresAt: result.expiresAt };
       }, 'refresh_verification_failed');
   }
-  return Object.freeze({ beginRefresh, beginVerifySession,
+  function beginProbe(input = {}) {
+      if (!exact(input, ['signal'])) fail('refresh_invalid_request');
+      return begin(input.signal, async signal => {
+        const response = await request(healthEndpoint, { method: 'GET', redirect: 'error', signal,
+          headers: { apikey: publishableKey, accept: 'application/json' } });
+        // Reachability is the arrival of an answer from a provider that is serving; its body means nothing here.
+        // 5xx or 429 says the origin answers but Auth is not serving: a refresh sent now would likely fail after dispatch.
+        await cancelBody(response);
+        if (signal.aborted) throw signal.reason;
+        if (response.status >= 500 || response.status === 429) fail('refresh_provider_unavailable');
+        return Object.freeze({ reachable: true });
+      }, 'refresh_provider_unavailable', probeTimeoutMs);
+  }
+  return Object.freeze({ beginRefresh, beginVerifySession, beginProbe,
     async refresh(input) { return beginRefresh(input).result; },
     async verifySession(input) { return beginVerifySession(input).result; },
+    async probe(input) { return beginProbe(input).result; },
     close() {
       if (!closePromise) {
         closed = true;

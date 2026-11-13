@@ -935,11 +935,13 @@ export async function runHarness({ expectedProjectRef, backupManifestPath, verif
       // authority must reject its mismatch with sealed/verified session expiry.
       await expectRejection(() => authority.resolve(item.token, { signal: lease.signal }), ['unauthorized']);
     });
-    await check('renewal.hard_age_cap_and_expired_token_denied', async () => {
+    await check('renewal.age_window_reanchored_and_expired_token_denied', async () => {
       const item = await issue(), initial = await renewalInput(item), limited = await boundary(item, 'hard_age_cap');
       const input = { ...initial, expectedExpiresAt: limited.expiresAt };
       const renewed = await connectionCall('renewConnection', input);
-      demand(renewed.expiresAt === limited.cap, 'renewal_exceeded_hard_age'); await contextOf(item);
+      // 20261113131751: no hard-age cap. A token two minutes short of thirty days renews past that
+      // old ceiling because renewal re-anchors its age window; every other reader still accepts it.
+      demand(renewed.expiresAt > limited.cap, 'renewal_still_capped_by_hard_age'); await contextOf(item);
       const expired = await boundary(item, 'expired');
       await expectRejection(() => connectionCall('renewConnection', { ...input, expectedExpiresAt: expired.expiresAt }), ['store_conflict']);
       demand((await read(item)).status === 'unavailable', 'expired_opaque_readmitted');

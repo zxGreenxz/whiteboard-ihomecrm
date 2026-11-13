@@ -60,7 +60,7 @@ const fn = (name, registry = functions) => {
   return value;
 };
 const all = statements.join(';\n');
-const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
+const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'recover_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
   'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands',
   'prune_work_memories', 'connection_settings'];
@@ -1009,7 +1009,7 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all seventy-three reviewed forward migrations and their 150 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all seventy-four reviewed forward migrations and their 151 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
@@ -1055,9 +1055,11 @@ test('all seventy-three reviewed forward migrations and their 150 latest definit
   // Khung giờ tin tối (11/11): bước của trang Bài học dựng lại ở 20261111015658 (lượt ghi của learning.digest chỉ nhận trong khung
   // [20:55:00, 21:10:00) giờ Asia/Ho_Chi_Minh theo đồng hồ database; +1 file, +2 tên mới: phép so thuần + hàm đọc đồng hồ, chỉ chủ hàm
   // chạy được; thân bước 025453 thành ghim superseded).
-  assert.equal(paths.length, 73);
-  assert.equal(FORWARD_FUNCTIONS.length, 150);
-  assert.equal(FORWARD_BY_NAME.size, 150, 'one live definition per reviewed name');
+  // Kết nối tự hồi (13/11): hàm gia hạn của kho dựng lại ở 20261113131751 (bỏ trần created_at + 30 ngày, dời mốc created_at của token; +1
+  // file, +1 tên mới: hàm hồi token hết hạn chưa quá 7 ngày, chỉ vai kho chạy được; thân gia hạn 20261019034754 thành ghim superseded).
+  assert.equal(paths.length, 74);
+  assert.equal(FORWARD_FUNCTIONS.length, 151);
+  assert.equal(FORWARD_BY_NAME.size, 151, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

@@ -1,4 +1,4 @@
-// Frozen contracts for seventy-three forward migrations (eight of 20261019, the B2
+// Frozen contracts for seventy-four forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
@@ -106,6 +106,12 @@
 // the database clock is inside [20:55:00, 21:10:00) Asia/Ho_Chi_Minh; two new private INVOKER helpers nobody but the owner may execute:
 // the pure comparison on a timestamptz (explicit AT TIME ZONE, so the session TimeZone cannot move it) and the no-argument reader of
 // clock_timestamp() — no parameter, GUC or header reaches either; signature, return shape and grants of the step unchanged — 20261111015658.
+// Kết nối tự hồi (13/11): the store renewal rebuilt from the 20261019034754 body — the created_at + 30 days cap is gone (a connection lives
+// until it is revoked) and a token older than one day has its created_at re-anchored to one hour ago, because other functions still test
+// created_at + 30 days; signature, DEFINER, VOLATILE, path, owner and executor-only grant unchanged. One new store port for the executor
+// alone: the recovery of a token that expired at most seven days ago while the connection is unrevoked and the session intact (ACTIVE or
+// RESERVED, not quarantined, itself expired at most seven days ago) — the same lock order and live membership / policy / limit checks as a renewal, five minutes of life, no
+// envelope returned — 20261113131751.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -151,7 +157,8 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_prepare_connection_v2","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"d6c7ceac3458b6dbb9705402d4cd85b53c7efad39557d5706b64347fdebac60a","args":"p_org uuid,p_excluded_read text[],p_excluded_action text[],p_scope_mode text,p_scope_ids uuid[]"},
   {"name":"app_private.hermes_store_connection_settings_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"fd990c122c5660e5e5d27ce93cc7c8eeb2c1d6aa789852e379605bffee47084f","args":"p jsonb"},
   {"name":"app_private.hermes_store_activate_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"3fa855e6de5ccc968f0e6edfdac936f3f5b99d9c9c25f2dff2f7f5a0c8dc3428","args":"p jsonb"},
-  {"name":"app_private.hermes_store_renew_connection_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"f64f2e2f868860307c5ee5f294afaf2e9d057f113fb93b57fd70c54b1b1000a6","args":"p jsonb"},
+  {"name":"app_private.hermes_store_renew_connection_v1","sourcePath":"supabase/migrations/20261113131751_hermes_connection_recovery_v1.sql","sha256":"dcaaae95b265bc4eefdba951099bef8aa906887d882c50873c0ef4cc0ebab192","args":"p jsonb"},
+  {"name":"app_private.hermes_store_recover_connection_v1","sourcePath":"supabase/migrations/20261113131751_hermes_connection_recovery_v1.sql","sha256":"8d325da4fff3fc2272ec80fea515f5a078e35c25afbe584d270712905778ebc7","args":"p jsonb"},
   {"name":"app_private.hermes_schedule_diagnose_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"f3a183e4cabb988f8cd51f0c027d005aadd3c2e5e6c1c6b6e0618cc7d7292099","args":"p_schedule uuid"},
   {"name":"app_private.hermes_store_restrict_connection_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"1f3ed74a2b19399ef1e831d77cde2b2016c25205561c63095fcfeae741b36563","args":"p jsonb"},
   {"name":"app_private.hermes_store_revoke_connection_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"dc89fa2ad79c0d991349805d867702a83297b0b90e0b91bddfca5d7d58f125be","args":"p jsonb"},
@@ -375,7 +382,8 @@ export const FORWARD_SUPERSEDED = [
   {"name":"app_private.hermes_expense_resolve_core_v1","sourcePath":"supabase/migrations/20261024210500_hermes_expense_voucher_building_v1.sql","sha256":"a648f8c81b793b5feea4ce9677189cf8cbc685abb41fc6fecf617bdf8e311ac5"},
   {"name":"app_private.hermes_learning_guard_v1","sourcePath":"supabase/migrations/20261031041523_hermes_learning_proposals_v1.sql","sha256":"8d2f4cdfb3e403973455c8df49d0bce08d9d1163eef418975b1ce5242d835faf"},
   {"name":"public.hermes_zalo_binding_v1","sourcePath":"supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql","sha256":"892bfb86084d8285c497a56a0be88810ec5ebf6dd7a8cc203c184137d6b55106"},
-  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"ec118241c78f720e1afe2193ab2fb0deb5841b1dc029a9054603a94278f44103","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"}
+  {"name":"app_private.hermes_learning_action_step_v1","sourcePath":"supabase/migrations/20261105025453_hermes_learning_action_v1.sql","sha256":"ec118241c78f720e1afe2193ab2fb0deb5841b1dc029a9054603a94278f44103","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid, p_params jsonb,p_resolved jsonb,p_expected_basis text"},
+  {"name":"app_private.hermes_store_renew_connection_v1","sourcePath":"supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql","sha256":"f64f2e2f868860307c5ee5f294afaf2e9d057f113fb93b57fd70c54b1b1000a6","args":"p jsonb"}
 ];
 
 export const INHERITED_CRM_ACL = [

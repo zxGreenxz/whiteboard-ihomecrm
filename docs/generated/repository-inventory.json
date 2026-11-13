@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1796,
-  "soFileDocBangFs": 470,
-  "tongLoiGoi": 1237,
-  "khongPhanLoaiDuoc": 568,
+  "tongSoFileTest": 1798,
+  "soFileDocBangFs": 471,
+  "tongLoiGoi": 1239,
+  "khongPhanLoaiDuoc": 569,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 66,
@@ -689,6 +689,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-runtime/host-service.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 1,
+        "ma-nguon": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-zalo-native/binding-provisioning.test.mjs",
       "soGoi": 4,
       "loai": {},
@@ -898,15 +907,6 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-runtime/host-service.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 1,
-        "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -2021,6 +2021,12 @@
     },
     {
       "file": "infra/hermes-broker/connection-control-plane.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/connection-recovery-sql.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

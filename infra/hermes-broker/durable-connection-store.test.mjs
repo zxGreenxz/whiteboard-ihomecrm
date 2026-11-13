@@ -41,9 +41,9 @@ function fixture(handler, clock = () => now) {
   return { store, calls, controller, options: { signal: controller.signal } };
 }
 
-test('only six fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
+test('only seven fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
   const f = fixture(), input = activation();
-  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'renewConnection', 'restrictConnection', 'revokeConnection', 'updateConnectionSettings']);
+  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'recoverConnection', 'renewConnection', 'restrictConnection', 'revokeConnection', 'updateConnectionSettings']);
   assert.deepEqual(await f.store.activate(input, f.options), activationReply());
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0], { operation: 'activate', signal: f.controller.signal, payload: {
@@ -297,6 +297,70 @@ test('renewal snapshots its scalar CAS tuple and does not accept success after c
     if (cancel) await assert.rejects(pending, code('store_outcome_unknown'));
     else assert.deepEqual(await pending, renewalReply());
     assert.deepEqual(f.calls[0].payload, renewal()); assert.equal(f.calls.length, 1);
+  }
+});
+
+const recoveryReply = (changes = {}) => ({ status: 'recovered', connectionId: ids.connection, credentialRef: ids.credential, binding: binding(),
+  sessionReady: false, sessionExpiresAt: now - 60_000, expiresAt: now + 300_000, ...changes });
+test('recovery sends the token digest alone and returns a frozen copy of the exact SQL answer; unavailable is the only refusal', async () => {
+  for (const reply of [recoveryReply(), recoveryReply({ status: 'live', sessionReady: true, sessionExpiresAt: now + 3_600_000, expiresAt: now + 1 })]) {
+    const f = fixture(() => structuredClone(reply)), result = await f.store.recoverConnection({ tokenDigest }, f.options);
+    assert.deepEqual(result, reply); assert(Object.isFrozen(result)); assert(Object.isFrozen(result.binding));
+    assert.deepEqual(f.calls, [{ operation: 'recoverConnection', payload: { tokenDigest }, signal: f.controller.signal }]);
+    assert(!JSON.stringify(result).includes(tokenDigest));
+  }
+  const dead = fixture(() => ({ status: 'unavailable' })), result = await dead.store.recoverConnection({ tokenDigest }, dead.options);
+  assert.deepEqual(result, { status: 'unavailable' }); assert(Object.isFrozen(result)); assert.equal(dead.calls.length, 1);
+});
+test('the recovery answer is on the database clock: an already expired session or any host clock changes nothing here', async () => {
+  for (const hostNow of [now - 86_400_000, now + 86_400_000, NaN]) {
+    let clockReads = 0;
+    const f = fixture(() => recoveryReply(), () => { clockReads++; return hostNow; });
+    assert.deepEqual(await f.store.recoverConnection({ tokenDigest }, f.options), recoveryReply());
+    assert.equal(clockReads, 0); assert.equal(f.calls.length, 1);
+  }
+});
+test('recovery accepts no identity, expiry, duration or raw token: anything but one digest dispatches nothing', async () => {
+  const f = fixture();
+  for (const input of [undefined, {}, { tokenDigest: 'hc_' + 'a'.repeat(43) }, { tokenDigest: tokenDigest.toUpperCase() }, { tokenDigest, connectionId: ids.connection },
+    { tokenDigest, requestedTtlMs: 900_000 }, { tokenDigest, expiresAt: now + 900_000 }, { tokenDigest, credentialRef: ids.credential }, { tokenDigest, binding: binding() }]) {
+    await assert.rejects(f.store.recoverConnection(input, f.options), code('connection_store_request_invalid'));
+  }
+  await assert.rejects(f.store.recoverConnection({ tokenDigest }), code('connection_store_request_invalid'));
+  f.controller.abort();
+  await assert.rejects(f.store.recoverConnection({ tokenDigest }, f.options), code('connection_store_cancelled'));
+  assert.equal(f.calls.length, 0);
+});
+test('a malformed, partial or secret-bearing recovery answer stays unknown and is never read as dead or alive', async () => {
+  for (const result of [undefined, false, {}, { status: 'unavailable', reason: 'revoked' }, { ok: false, status: 'unavailable' }, { status: 'expired' },
+    recoveryReply({ status: 'renewed' }), recoveryReply({ status: 'active' }), recoveryReply({ connectionId: ids.assistant.toUpperCase() }),
+    recoveryReply({ credentialRef: 'other' }), recoveryReply({ sessionReady: 'true' }), recoveryReply({ sessionReady: null }),
+    recoveryReply({ sessionExpiresAt: 0 }), recoveryReply({ sessionExpiresAt: '1800000000000' }), recoveryReply({ expiresAt: now + 0.5 }), recoveryReply({ expiresAt: Infinity }),
+    recoveryReply({ binding: { ...binding(), sessionId: 'named-session' } }), recoveryReply({ binding: { ...binding(), accessToken: 'private' } }),
+    recoveryReply({ binding: undefined }), { ...recoveryReply(), tokenDigest }, { ...recoveryReply(), envelope: envelope() },
+    (({ sessionReady, ...rest }) => rest)(recoveryReply())]) {
+    const f = fixture(() => result);
+    await assert.rejects(f.store.recoverConnection({ tokenDigest }, f.options), code('store_outcome_unknown'));
+    assert.equal(f.calls.length, 1);
+  }
+});
+test('recovery never retries a lost ACK, SQL denial or safe-redacted backend failure, and accepts no success after cancellation', async () => {
+  for (const expected of ['store_outcome_unknown', 'store_conflict', 'store_denied', 'store_rejected']) {
+    const f = fixture(() => { throw new StoreTransportError(expected); });
+    await assert.rejects(f.store.recoverConnection({ tokenDigest }, f.options), code(expected)); assert.equal(f.calls.length, 1);
+  }
+  const f = fixture(() => { throw new Error('private credential'); });
+  await assert.rejects(f.store.recoverConnection({ tokenDigest }, f.options), code('connection_store_unavailable'));
+  assert.equal(f.calls.length, 1);
+  for (const cancel of [false, true]) {
+    let settle;
+    const g = fixture(() => new Promise(done => { settle = done; })), input = { tokenDigest };
+    const pending = g.store.recoverConnection(input, g.options);
+    input.tokenDigest = 'b'.repeat(64);
+    if (cancel) g.controller.abort(); settle(recoveryReply());
+    if (cancel) await assert.rejects(pending, code('store_outcome_unknown'));
+    else assert.deepEqual(await pending, recoveryReply());
+    assert.deepEqual(g.calls[0].payload, { tokenDigest }); assert.equal(g.calls.length, 1);
   }
 });
 
