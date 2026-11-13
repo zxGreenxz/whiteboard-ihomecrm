@@ -279,8 +279,8 @@ test('default verifier reuses Auth validation through the fixed, bounded user en
   assert.equal(calls[1].options.method, 'GET'); assert.equal(calls[1].options.redirect, 'error');
 });
 
-test('probe: a provider that answers 5xx or 429 is not serving, so it is not reachable; one request, body never read', async () => {
-  for (const status of [429, 500, 502, 503]) {
+test('probe: only 2xx is reachable; a refused key (401/403), a missing path, 429 or 5xx is not; one request, body never read', async () => {
+  for (const status of [401, 403, 404, 429, 500, 502, 503]) {
     let requests = 0, cancelled = false, pulled = 0;
     const f = setup({ fetch: async () => {
       requests++;
@@ -292,8 +292,8 @@ test('probe: a provider that answers 5xx or 429 is not serving, so it is not rea
   }
 });
 
-test('probe: one GET of the fixed Auth health path with the publishable key only; any answer below 500 except 429 is reachable and its body is never read', async () => {
-  for (const status of [200, 204, 401, 404]) {
+test('probe: one GET of the fixed Auth health path with the publishable key only; a 2xx answer is reachable and its body is never read', async () => {
+  for (const status of [200, 204]) {
     const requests = []; let cancelled = false, pulled = 0;
     const f = setup({ fetch: async (url, options) => {
       requests.push({ url, options });

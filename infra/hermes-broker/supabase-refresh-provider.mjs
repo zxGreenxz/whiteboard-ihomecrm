@@ -72,9 +72,9 @@ async function readJson(response, maxBytes, signal) {
  * quarantines the session on any provider failure after dispatch). One GET of the
  * fixed health path with the publishable key the other calls already send: no
  * bearer, refresh token or body goes out, the response body is never read, and
- * any HTTP answer below 500 other than 429 is { reachable: true }. A network
- * error, redirect, 5xx, 429 or the short probeTimeoutMs is
- * refresh_provider_unavailable/_timeout.
+ * only a 2xx answer is { reachable: true }. A network error, redirect, any
+ * other status (401/403 for a refused key, 429, 5xx) or the short
+ * probeTimeoutMs is refresh_provider_unavailable/_timeout.
  * It proves nothing about a session and is no permission to retry a refresh.
  */
 export function createSupabaseRefreshProvider({ url, publishableKey, verifySession: trustedVerify,
@@ -198,11 +198,12 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
       return begin(input.signal, async signal => {
         const response = await request(healthEndpoint, { method: 'GET', redirect: 'error', signal,
           headers: { apikey: publishableKey, accept: 'application/json' } });
-        // Reachability is the arrival of an answer from a provider that is serving; its body means nothing here.
-        // 5xx or 429 says the origin answers but Auth is not serving: a refresh sent now would likely fail after dispatch.
+        // Reachable means Auth is serving THIS key: with a valid publishable key the health path answers 200, and
+        // 401 without one (measured on production and TEST, 13/11/2026). Anything but 2xx (a rotated or refused key,
+        // 429, 5xx) says a refresh sent now would likely fail after dispatch. The body means nothing here.
         await cancelBody(response);
         if (signal.aborted) throw signal.reason;
-        if (response.status >= 500 || response.status === 429) fail('refresh_provider_unavailable');
+        if (!response.ok) fail('refresh_provider_unavailable');
         return Object.freeze({ reachable: true });
       }, 'refresh_provider_unavailable', probeTimeoutMs);
   }

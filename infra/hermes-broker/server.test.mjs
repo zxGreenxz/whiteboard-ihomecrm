@@ -85,6 +85,11 @@ function fakeBackend() {
       assert.equal(endpoint.search, '?grant_type=password'); assert.equal(args.password, 'synthetic-password'); signInCount++;
       return Response.json({ token_type: 'bearer', access_token: assistantJwt, refresh_token: 'SYNTHETIC-REFRESH-SECRET', user: { id: I.user } });
     }
+    // As the real Auth health path answers (measured 13/11/2026): 200 with a publishable key, 401 without one; it takes no bearer.
+    if (endpoint.pathname === '/auth/v1/health') {
+      assert.equal(bearer, undefined, 'the reachability probe never carries a bearer');
+      return options.headers.apikey ? Response.json({ name: 'GoTrue' }) : Response.json({ message: 'No API key found in request' }, { status: 401 });
+    }
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
     // B5d: the crm_auth_context directory (hermes_organization_name_v1, hermes_building_directory_v1) is optional too — absent ⇒ null, never a failed call.
