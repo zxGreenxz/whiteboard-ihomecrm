@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createConnectorMaintenance } from './connector-maintenance.mjs';
+import { MIN_REFRESH_WINDOW_MS } from './refresh-window.mjs';
 
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = 1800000000000;
@@ -25,7 +26,7 @@ function fakeTimers() {
     take(ms) { const handle = [...pending].find(item => item.ms === ms); pending.delete(handle); return handle?.fn; } };
 }
 function fixture(t, changes = {}) {
-  let time = NOW, expiry = NOW + 120000, calls = 0, reads = 0;
+  let time = NOW, expiry = NOW + 120000, calls = 0, reads = 0, recoveries = 0;
   const timers = fakeTimers(), events = [];
   const ack = () => ({ ok: true, status: 'renewed', connectionId: row.connectionId, expiresAt: time + 900000, reconciled: false });
   const backend = {
@@ -40,13 +41,18 @@ function fixture(t, changes = {}) {
       if (changes.begin) return changes.begin(ack());
       expiry = time + 900000; return settle(Promise.resolve(ack()));
     },
+    // Only a test that passes `recover` gets a backend with a recovery lane; every other test runs without one.
+    ...(changes.recover ? { beginExternalConnectionRecovery(token, options) {
+      recoveries++; assert.equal(token, row.token); assert(options.signal instanceof AbortSignal);
+      return changes.recover();
+    } } : {}),
   };
   const service = createConnectorMaintenance({ handoff: { async list() { return changes.rows ?? [row]; } }, backend,
     clock: () => time, log: changes.log ?? (record => events.push(record)), timers,
     ...(changes.renewBeforeMs ? { renewBeforeMs: changes.renewBeforeMs } : {}),
     ...(changes.healthyIds ? { healthyIds: changes.healthyIds } : {}), ...(changes.onHealthyChange ? { onHealthyChange: changes.onHealthyChange } : {}) });
   t.after(() => service.close().catch(() => {}));
-  return { service, ack, events, counts: () => ({ calls, reads }), advance(ms) { time += ms; }, now: () => time,
+  return { service, ack, events, counts: () => ({ calls, reads }), recoveries: () => recoveries, expiry: () => expiry, advance(ms) { time += ms; }, now: () => time,
     nearExpiry() { expiry = time + 120000; }, renewInDatabase() { expiry = time + 900000; }, setExpiry(value) { expiry = value; },
     alarm() { timers.take(120000)(); },
     async cycle() { const poll = timers.take(30000); if (!poll) service.start(); else poll(); await tick(); } };
@@ -740,10 +746,10 @@ test('healthyIds and onHealthyChange are validated at construction', () => {
 // A model of the two clocks the loop meets: the token lease (15 min, renewed to LEAST(now + 15 min, session expiry), refused when the
 // target is not past the current token expiry: SQL hermes_store_renew_connection_v1) and the provider session (1 h, refreshed inside the
 // maintenance step when it has refreshBefore or less left: connection-maintenance.mjs). The host passes the same lead to both.
-function lease(t, { lead, refreshBefore, down = () => false, healthyIds, onHealthyChange }) {
+function lease(t, { lead, refreshBefore, down = () => false, healthyIds, onHealthyChange, recovery = false }) {
   const MIN = 60000;
   let time = NOW, sessionExpiry = NOW + 60 * MIN, tokenExpiry = NOW + 15 * MIN;
-  const counts = { refreshed: 0, refused: 0, renewed: 0 }, timers = fakeTimers(), events = [];
+  const counts = { refreshed: 0, refused: 0, renewed: 0, recovered: 0, guarded: 0, shortLeaseRefreshes: 0 }, timers = fakeTimers(), events = [];
   const backend = {
     async resolveConnection() {
       if (down(time)) throw coded('backend_unavailable');
@@ -753,6 +759,12 @@ function lease(t, { lead, refreshBefore, down = () => false, healthyIds, onHealt
     beginExternalConnectionMaintenance() {
       const work = (async () => {
         if (down(time) || sessionExpiry <= time || tokenExpiry <= time) throw coded('maintenance_rejected');
+        // The system with a recovery lane also has the lease guard of connection-maintenance.mjs (refresh-window.mjs): a due
+        // refresh is not started with less than the minimum lease left. The models without the lane keep the earlier behaviour.
+        if (sessionExpiry - time <= refreshBefore && tokenExpiry - time < MIN_REFRESH_WINDOW_MS) {
+          if (recovery) { counts.guarded++; throw coded('maintenance_rejected'); }
+          counts.shortLeaseRefreshes++;
+        }
         if (sessionExpiry - time <= refreshBefore) { sessionExpiry = time + 60 * MIN; counts.refreshed++; }
         const target = Math.min(time + 15 * MIN, sessionExpiry);
         if (target <= tokenExpiry) { counts.refused++; throw coded('maintenance_outcome_unknown'); }
@@ -761,6 +773,21 @@ function lease(t, { lead, refreshBefore, down = () => false, healthyIds, onHealt
       })();
       void work.catch(() => {}); return settle(work);
     },
+    // The recovery lane as SQL and connection-recovery.mjs behave: a lapsed lease gets a 5-minute window, and a
+    // session that is expired or inside the refresh lead is refreshed under it. Absent unless the test asks for it.
+    ...(recovery ? { beginExternalConnectionRecovery() {
+      const work = (async () => {
+        if (down(time)) throw coded('recovery_provider_unreachable');
+        const status = tokenExpiry <= time ? 'recovered' : 'live'; let refreshed = false;
+        if (status === 'recovered') { tokenExpiry = time + 5 * MIN; counts.recovered++; }
+        if (sessionExpiry - time <= refreshBefore) {
+          if (tokenExpiry - time < MIN_REFRESH_WINDOW_MS) throw coded('recovery_window_short');
+          sessionExpiry = time + 60 * MIN; counts.refreshed++; refreshed = true;
+        }
+        return { ok: true, status, connectionId: row.connectionId, refreshed };
+      })();
+      void work.catch(() => {}); return settle(work);
+    } } : {}),
   };
   const service = createConnectorMaintenance({ handoff: { async list() { return [row]; } }, backend, clock: () => time, timers, renewBeforeMs: lead,
     log: record => events.push(record), ...(healthyIds ? { healthyIds } : {}), ...(onHealthyChange ? { onHealthyChange } : {}) });
@@ -805,4 +832,431 @@ test('outage sweep: matching 10-minute leads survive what the 5-minute schedule 
   for (const minutes of [4, 5, 8]) assert.equal(dead[minutes][2], 0, `matching leads lost the connection to a ${minutes}-minute outage`);
   assert(dead[5][0] > 0 && dead[8][0] > 0, 'the old 5-minute schedule loses 5- and 8-minute outages');
   assert(dead[4][1] > dead[4][0], 'a 10-minute renewal lead with a 5-minute session lead is worse than the old schedule for a 4-minute outage');
+});
+
+// ---- Recovery lane (backend.beginExternalConnectionRecovery). Every test above runs without it. ----
+const recovered = (status = 'recovered', refreshed = false) => ({ ok: true, status, connectionId: row.connectionId, refreshed });
+const unavailable = () => ({ ok: true, status: 'unavailable', refreshed: false });
+const revivals = events => events.filter(event => event.event === 'connector_connection_recovered');
+const brief = events => actions(events).map(event => [event.action, event.code ?? event.status]);
+const suffix = row.connectionId.slice(-8);
+
+test('recovery lane: a healthy connection whose lease lapsed during a three-hour outage is recovered, not expired, and the normal lane renews it at the next poll', async t => {
+  let down = false; const saved = [];
+  const f = fixture(t, { onHealthyChange: ids => { saved.push([...ids]); },
+    resolve() { if (down) throw coded('backend_unavailable'); if (f.expiry() <= f.now()) throw coded('unauthorized'); return owner(row, f.expiry()); },
+    begin(ack) { if (down) return settle(Promise.reject(coded('backend_unavailable'))); f.renewInDatabase(); return settle(Promise.resolve(ack)); },
+    recover() { f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered('recovered', true))); } });
+  await f.cycle(); assert.deepEqual(f.service.status(), status('ready')); // renewed once: healthy
+  down = true;
+  for (let i = 0; i < 360; i++) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.recoveries(), 0); assert.equal(f.service.status().requiresReconnect, 0); // the outage itself decides nothing
+  down = false; f.advance(30000); await f.cycle(); // the database answers again: the lease is long gone
+  assert.equal(f.recoveries(), 1); assert.deepEqual(f.service.status(), status('ready'));
+  assert.deepEqual(revivals(f.events), [{ event: 'connector_connection_recovered', ts: new Date(f.now()).toISOString(), connectionId: suffix, status: 'recovered', refreshed: true }]);
+  assert.deepEqual(brief(f.events), [['resolve_failed', 'backend_unavailable'], ['recovered', 'recovered']]);
+  const before = f.counts();
+  await f.cycle(); // due at once: the very next poll reads it and the normal lane extends the 5-minute window
+  assert.deepEqual(f.counts(), { calls: before.calls + 1, reads: before.reads + 1 }); assert.equal(f.expiry(), f.now() + 900000);
+  assert.deepEqual(f.service.status(), status('ready')); assert.deepEqual(lost(f.events), []); assert.equal(f.recoveries(), 1);
+  assert.deepEqual(saved.at(-1), [row.operationId]); // still healthy for the next restart
+  f.advance(599999); await f.cycle(); assert.equal(f.counts().calls, before.calls + 1); // back on the normal schedule
+  f.advance(1); await f.cycle(); assert.equal(f.counts().calls, before.calls + 2);
+  assert.deepEqual(states(f.events), ['ready', 'unavailable', 'ready']);
+});
+
+test('mutation: the same three-hour outage without a recovery lane still ends as expired and lost', async t => {
+  let down = false;
+  const f = fixture(t, { resolve() { if (down) throw coded('backend_unavailable'); if (f.expiry() <= f.now()) throw coded('unauthorized'); return owner(row, f.expiry()); } });
+  await f.cycle(); down = true;
+  for (let i = 0; i < 360; i++) { f.advance(30000); await f.cycle(); }
+  down = false; f.advance(30000); await f.cycle();
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 })); assert.equal(lost(f.events).length, 1);
+  assert.deepEqual(revivals(f.events), []);
+});
+
+test('recovery lane: a token that died while the process was down is recovered at its first refusal instead of waiting TTL plus tolerance', async t => {
+  const saved = [];
+  const f = fixture(t, { onHealthyChange: ids => { saved.push([...ids]); }, recover() { f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered())); } });
+  f.setExpiry(NOW - 3600000);
+  await f.cycle();
+  assert.deepEqual([f.counts().reads, f.recoveries(), f.counts().calls], [1, 1, 0]);
+  assert.deepEqual(f.service.status(), status('ready')); // neither stale nor retrying
+  assert.deepEqual(revivals(f.events).map(({ connectionId, status: answer, refreshed }) => [connectionId, answer, refreshed]), [[suffix, 'recovered', false]]);
+  assert.deepEqual(saved, []); // not healthy before the database serves it
+  await f.cycle(); // same instant: read, then renewed by the normal lane
+  assert.deepEqual([f.counts().reads, f.recoveries(), f.counts().calls], [2, 1, 1]); assert.equal(f.now(), NOW);
+  assert.deepEqual(f.service.status(), status('ready')); assert.deepEqual(saved, [[row.operationId]]);
+  assert.deepEqual(brief(f.events), [['recovered', 'recovered']]); assert.deepEqual(lost(f.events), []);
+});
+
+test('recovery lane: live with a refreshed session counts as recovered too (the lease was fine, the session was not)', async t => {
+  let sessionDead = true;
+  const f = fixture(t, { resolve() { if (sessionDead) throw coded('unauthorized'); return owner(row, f.expiry()); },
+    recover() { sessionDead = false; return settle(Promise.resolve(recovered('live', true))); } });
+  f.setExpiry(NOW + 600000);
+  await f.cycle(); await f.cycle();
+  assert.deepEqual(revivals(f.events).map(({ status: answer, refreshed }) => [answer, refreshed]), [['live', true]]);
+  assert.deepEqual(brief(f.events), [['recovered', 'live']]); assert.deepEqual(f.service.status(), status('ready'));
+  assert.deepEqual([f.counts().reads, f.recoveries()], [2, 1]);
+});
+
+test('recovery lane: unavailable is the only final answer and ends exactly as before (lost when it was healthy, stale when it never was)', async t => {
+  // Healthy here, then revoked in the database: asked only where the stop rule would stop, i.e. at the confirmed expiry.
+  const healthy = fixture(t, { recover: () => settle(Promise.resolve(unavailable())) });
+  await healthy.cycle(); healthy.setExpiry(healthy.now() - 1);
+  for (let guard = 0; guard < 40 && !healthy.service.status().requiresReconnect; guard++) { healthy.advance(30000); await healthy.cycle(); }
+  assert.equal(healthy.now() - NOW, 900000); assert.equal(healthy.recoveries(), 1);
+  assert.deepEqual(healthy.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.deepEqual(brief(healthy.events), [['resolve_failed', 'unauthorized'], ['expired', 'unauthorized']]);
+  assert.equal(actions(healthy.events).at(-1).deniedForMs, 300000);
+  assert.deepEqual(lost(healthy.events).map(event => [event.connectionId, event.code]), [[suffix, 'unauthorized']]);
+  const reads = healthy.counts().reads;
+  healthy.advance(600000); await healthy.cycle(); healthy.advance(600000); await healthy.cycle();
+  assert.deepEqual([healthy.counts().reads, healthy.recoveries()], [reads, 1]); // final: neither read nor asked again
+  // Dead at startup and beyond recovery: settled at the first poll, counted apart, no loss.
+  const stale = fixture(t, { recover: () => settle(Promise.resolve(unavailable())) }); stale.setExpiry(NOW - 1);
+  await stale.cycle();
+  assert.deepEqual(stale.service.status(), status('ready', { staleAtStart: 1 })); assert.deepEqual(lost(stale.events), []);
+  assert.deepEqual(actions(stale.events).map(({ action, code, deniedForMs }) => [action, code, deniedForMs]), [['expired', 'unauthorized', 0]]);
+  // The previous process saw it healthy: a real loss, reported once.
+  const carried = fixture(t, { healthyIds: [row.operationId], recover: () => settle(Promise.resolve(unavailable())) }); carried.setExpiry(NOW - 1);
+  await carried.cycle();
+  assert.deepEqual(carried.service.status(), status('needs_attention', { requiresReconnect: 1 })); assert.equal(lost(carried.events).length, 1);
+  for (const f of [healthy, stale, carried]) assert.deepEqual(revivals(f.events), []);
+});
+
+test('recovery lane: a failed attempt is never final; it is retried on the 30/60/120/240 s backoff, then every 240 s, each time after a database read', async t => {
+  const failures = [() => settle(Promise.reject(coded('timeout'))), () => { throw coded('busy'); }, () => settle(Promise.reject(coded('recovery_refresh_refused')))];
+  let healed = false;
+  const f = fixture(t, { recover() {
+    if (!healed) return failures[(f.recoveries() - 1) % failures.length]();
+    f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered('recovered', true)));
+  } });
+  f.setExpiry(NOW - 1); // dead when the process starts
+  await f.cycle();
+  assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 }));
+  await f.cycle(); f.advance(29999); await f.cycle();
+  assert.deepEqual([f.counts().reads, f.recoveries()], [1, 1]); // polls inside the backoff touch nothing
+  f.advance(1); await f.cycle(); assert.deepEqual([f.counts().reads, f.recoveries()], [2, 2]); // read first, then the lane again
+  while (f.now() - NOW < 3600000) { f.advance(30000); await f.cycle(); } // an hour of failures: four times TTL + tolerance
+  assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 }));
+  assert.equal(f.counts().reads, f.recoveries()); assert.equal(f.counts().calls, 0);
+  const attempts = actions(f.events);
+  assert.deepEqual(attempts.slice(0, 6).map(({ action, code, attempt, retryInMs }) => [action, code, attempt, retryInMs]), [
+    ['recovery_failed', 'timeout', 1, 30000], ['recovery_not_dispatched', 'busy', 2, 60000], ['recovery_failed', 'recovery_refresh_refused', 3, 120000],
+    ['recovery_failed', 'timeout', 4, 240000], ['recovery_not_dispatched', 'busy', 5, 240000], ['recovery_failed', 'recovery_refresh_refused', 6, 240000]]);
+  assert(attempts.every(event => ['recovery_failed', 'recovery_not_dispatched'].includes(event.action) && event.retryInMs <= 240000));
+  assert.equal(attempts.length, f.recoveries()); assert(attempts.length >= 15 && attempts.length <= 18, `attempts ${attempts.length}`);
+  healed = true;
+  for (let guard = 0; guard < 9 && !revivals(f.events).length; guard++) { f.advance(30000); await f.cycle(); }
+  assert.equal(revivals(f.events).length, 1); assert.equal(actions(f.events).at(-1).attempt, attempts.length + 1);
+  assert.deepEqual(f.service.status(), status('ready'));
+  await f.cycle(); assert.equal(f.counts().calls, 1); assert.deepEqual(f.service.status(), status('ready'));
+  assert.deepEqual(lost(f.events), []); assert.deepEqual(states(f.events), ['retrying', 'ready']);
+  assert(!actions(f.events).some(event => event.action === 'expired'));
+});
+
+test('recovery lane: an attempt whose answer was lost is confirmed by the database read; it is not asked twice', async t => {
+  const f = fixture(t, { recover() { f.setExpiry(f.now() + 300000); return settle(Promise.reject(coded('recovery_outcome_unknown'))); } });
+  f.setExpiry(NOW - 1);
+  await f.cycle(); assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 }));
+  f.advance(30000); await f.cycle();
+  assert.deepEqual([f.counts().reads, f.recoveries(), f.counts().calls], [2, 1, 1]); // served, then renewed by the normal lane
+  assert.deepEqual(actions(f.events).map(({ action, code, source, attempt }) => [action, code ?? source, attempt]),
+    [['recovery_failed', 'recovery_outcome_unknown', 1], ['recovery_confirmed', 'database', 1]]);
+  assert.deepEqual(f.service.status(), status('ready')); assert.deepEqual(revivals(f.events), []);
+});
+
+test('recovery lane: an answer that is not the exact receipt is never acted on; the attempt is repeated later', async t => {
+  let getterReads = 0;
+  for (const [answer, code] of [[{ ...recovered(), connectionId: id(99) }, 'ack_connection_mismatch'], [{ ...recovered(), token: row.token }, 'ack_malformed'],
+    [{ ok: true, status: 'unavailable' }, 'ack_malformed'], [{ ok: true, status: 'unavailable', refreshed: true }, 'ack_malformed'],
+    [{ ok: false, status: 'unavailable', refreshed: false }, 'ack_malformed'], [{ ...unavailable(), connectionId: row.connectionId }, 'ack_malformed'],
+    [recovered('renewed'), 'ack_malformed'], [{ ...recovered(), refreshed: 'yes' }, 'ack_malformed'], [{ ...recovered(), ok: 1 }, 'ack_malformed'],
+    [null, 'ack_malformed'], ['recovered', 'ack_malformed'],
+    [Object.defineProperty({ ok: true, connectionId: row.connectionId, refreshed: false }, 'status', { get() { getterReads++; return 'unavailable'; }, enumerable: true }), 'ack_malformed']]) {
+    const f = fixture(t, { recover: () => settle(Promise.resolve(answer)) }); f.setExpiry(NOW - 1);
+    await f.cycle();
+    assert.deepEqual(actions(f.events).map(({ action, code: logged, attempt, retryInMs }) => [action, logged, attempt, retryInMs]), [['recovery_unconfirmed', code, 1, 30000]]);
+    assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 })); assert.deepEqual(revivals(f.events), []);
+    f.advance(30000); await f.cycle(); assert.equal(f.recoveries(), 2);
+  }
+  assert.equal(getterReads, 0);
+});
+
+test('recovery lane: live with nothing refreshed means the lease is sound, so the stop rule applies unchanged', async t => {
+  // Refused from the first read although SQL finds lease and session live: asked once, then the usual TTL + tolerance.
+  const never = fixture(t, { resolve() { throw coded('unauthorized'); }, recover: () => settle(Promise.resolve(recovered('live', false))) });
+  await never.cycle();
+  assert.deepEqual(never.service.status(), status('unavailable'));
+  while (never.now() - NOW < 900000) { never.advance(30000); await never.cycle(); }
+  assert.equal(never.service.status().staleAtStart, 0);
+  never.advance(30000); await never.cycle();
+  assert.deepEqual(never.service.status(), status('ready', { staleAtStart: 1 })); assert.equal(never.recoveries(), 1);
+  assert.deepEqual(actions(never.events).map(({ action, code, deniedForMs }) => [action, code, deniedForMs]),
+    [['recovery_not_needed', 'lease_live', undefined], ['resolve_failed', 'unauthorized', undefined], ['expired', 'unauthorized', 930000]]);
+  assert.deepEqual(never.counts(), { calls: 0, reads: 32 }); // the same 32 reads as without a lane
+  // Healthy, then refused past its confirmed expiry while SQL still finds the lease live: stopped at once, as before.
+  let refusing = false;
+  const healthy = fixture(t, { resolve() { if (refusing) throw coded('unauthorized'); return owner(row, healthy.expiry()); },
+    recover: () => settle(Promise.resolve(recovered('live', false))) });
+  await healthy.cycle(); refusing = true;
+  for (let guard = 0; guard < 40 && !healthy.service.status().requiresReconnect; guard++) { healthy.advance(30000); await healthy.cycle(); }
+  assert.equal(healthy.now() - NOW, 900000); assert.equal(healthy.recoveries(), 1); assert.equal(lost(healthy.events).length, 1);
+  assert.deepEqual(brief(healthy.events), [['resolve_failed', 'unauthorized'], ['recovery_not_needed', 'lease_live'], ['expired', 'unauthorized']]);
+  for (const f of [never, healthy]) assert.deepEqual(revivals(f.events), []);
+});
+
+test('recovery lane: a connection Auth/CRM keeps refusing is not revived in a loop: refused right after a recovery, it is not asked again and ends by the stop rule', async t => {
+  let refusing = false;
+  const f = fixture(t, { resolve() { if (refusing) throw coded('unauthorized'); return owner(row, f.expiry()); },
+    recover() { f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered())); } }); // SQL would revive the lease every time it is asked
+  await f.cycle(); refusing = true;
+  for (let guard = 0; guard < 80 && !f.service.status().requiresReconnect; guard++) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.recoveries(), 1); assert.equal(revivals(f.events).length, 1);
+  assert.deepEqual(actions(f.events).map(({ action, code, deniedForMs }) => [action, code, deniedForMs]), [
+    ['resolve_failed', 'unauthorized', undefined], ['recovered', undefined, undefined], ['recovery_not_needed', 'refused_after_recovery', undefined],
+    ['resolve_failed', 'unauthorized', undefined], ['expired', 'unauthorized', 930000]]);
+  assert.equal(f.now() - NOW, 900000 + 30000 + 930000); // confirmed expiry, one poll, then TTL + tolerance of refusals
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 })); assert.equal(lost(f.events).length, 1);
+  const reads = f.counts().reads; f.advance(600000); await f.cycle();
+  assert.deepEqual([f.counts().reads, f.recoveries()], [reads, 1]);
+});
+
+test('recovery lane: after a refreshed live lease (no 5-minute guarantee) a new refusal asks SQL again, and its "nothing to recover" ends the loop', async t => {
+  const answers = [recovered('live', true), recovered('live', false)];
+  const f = fixture(t, { resolve() { throw coded('unauthorized'); }, recover: () => settle(Promise.resolve(answers[Math.min(f.recoveries(), answers.length) - 1])) });
+  await f.cycle(); assert.equal(revivals(f.events).length, 1);
+  for (let guard = 0; guard < 40 && !f.service.status().staleAtStart; guard++) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.recoveries(), 2); assert.equal(revivals(f.events).length, 1);
+  assert.deepEqual(brief(f.events), [['recovered', 'live'], ['recovery_not_needed', 'lease_live'], ['resolve_failed', 'unauthorized'], ['expired', 'unauthorized']]);
+  assert.equal(actions(f.events).at(-1).deniedForMs, 930000); assert.equal(f.now() - NOW, 960000); // counted from the refusal after the recovery
+});
+
+test('recovery lane: a recovery lost to a second outage is asked for again once the database refuses the token anew', async t => {
+  let down = false;
+  const f = fixture(t, { resolve() { if (down) throw coded('backend_unavailable'); if (f.expiry() <= f.now()) throw coded('unauthorized'); return owner(row, f.expiry()); },
+    recover() { f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered())); } });
+  f.setExpiry(NOW - 1);
+  await f.cycle(); assert.equal(f.recoveries(), 1); // revived, due at once
+  down = true; // ... but the network drops again before the next poll, for longer than the 5-minute window
+  for (let i = 0; i < 12; i++) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.recoveries(), 1); assert.equal(f.service.status().requiresReconnect + f.service.status().staleAtStart, 0);
+  down = false; f.advance(30000); await f.cycle();
+  assert.equal(f.recoveries(), 2); // first refusal with no confirmed expiry: asked at once, not after TTL + tolerance
+  await f.cycle(); assert.equal(f.counts().calls, 1); assert.deepEqual(f.service.status(), status('ready'));
+  assert.deepEqual(brief(f.events), [['recovered', 'recovered'], ['resolve_failed', 'backend_unavailable'], ['recovered', 'recovered']]);
+});
+
+test('recovery lane: a database outage in the middle of a recovery retry keeps the backoff and the retry state', async t => {
+  let down = false, healed = false;
+  const f = fixture(t, { resolve() { if (down) throw coded('backend_unavailable'); if (f.expiry() <= f.now()) throw coded('unauthorized'); return owner(row, f.expiry()); },
+    recover() { if (!healed) return settle(Promise.reject(coded('timeout'))); f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered())); } });
+  f.setExpiry(NOW - 1);
+  await f.cycle(); down = true; f.advance(30000); await f.cycle(); // attempt 1 failed; its re-read at 30 s fails too
+  assert.deepEqual(actions(f.events).map(({ action, code, attempt, retryInMs }) => [action, code, attempt, retryInMs]),
+    [['recovery_failed', 'timeout', 1, 30000], ['resolve_failed', 'backend_unavailable', 2, 60000]]);
+  f.advance(30000); await f.cycle(); assert.equal(f.counts().reads, 2); // inside the 60 s backoff
+  down = false; healed = true; f.advance(30000); await f.cycle();
+  assert.deepEqual([f.counts().reads, f.recoveries()], [3, 2]); assert.equal(revivals(f.events).length, 1);
+  assert.deepEqual(f.service.status(), status('ready'));
+});
+
+test('recovery lane: an owner served with an expiry already past is recovered once; a second such read ends as before', async t => {
+  let stuck = true;
+  const f = fixture(t, { resolve: () => owner(row, stuck ? NOW : f.expiry()), recover() { f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered())); } });
+  await f.cycle(); assert.equal(f.recoveries(), 1); assert.deepEqual(f.service.status(), status('ready'));
+  await f.cycle(); // still served as expired right after the recovery: not asked again
+  assert.equal(f.recoveries(), 1); assert.deepEqual(f.service.status(), status('ready', { staleAtStart: 1 }));
+  assert.deepEqual(brief(f.events), [['recovered', 'recovered'], ['expired', 'token_expired']]);
+  const live = fixture(t, { resolve: () => owner(row, stuck ? NOW : live.expiry()), recover() { stuck = false; live.setExpiry(live.now() + 300000); return settle(Promise.resolve(recovered())); } });
+  stuck = true; await live.cycle(); await live.cycle();
+  assert.deepEqual([live.recoveries(), live.counts().calls], [1, 1]); assert.deepEqual(live.service.status(), status('ready'));
+  const dead = fixture(t, { resolve: () => owner(row, NOW), recover: () => settle(Promise.resolve(unavailable())) });
+  await dead.cycle(); assert.deepEqual(brief(dead.events), [['expired', 'token_expired']]);
+});
+
+test('recovery lane: an unknown drain retains the connection and fails close; a malformed handle halts the loop; shutdown waits for the actual drain', async t => {
+  const uncertain = fixture(t, { recover: () => settle(Promise.resolve(recovered()), Promise.reject(Error('PRIVATE drain'))) }); uncertain.setExpiry(NOW - 1);
+  await uncertain.cycle();
+  assert.deepEqual(uncertain.service.status(), status('retained', { retained: 1 }));
+  assert.deepEqual(brief(uncertain.events), [['retained', 'drain_unknown']]); assert.deepEqual(revivals(uncertain.events), []);
+  uncertain.advance(600000); await uncertain.cycle(); assert.equal(uncertain.recoveries(), 1); // never re-admitted here
+  await assert.rejects(uncertain.service.close(), { message: 'connector_maintenance_retained' });
+  let getterReads = 0;
+  const malformed = fixture(t, { recover: () => ({ result: Promise.resolve(recovered()), get drained() { getterReads++; return Promise.resolve(); } }) }); malformed.setExpiry(NOW - 1);
+  await malformed.cycle();
+  assert.deepEqual(brief(malformed.events), [['retained', 'invalid_handle']]); assert.equal(getterReads, 0);
+  assert.equal(malformed.events.find(event => event.event === 'connector_maintenance_state').halted, true);
+  await assert.rejects(malformed.service.close(), { message: 'connector_maintenance_retained' });
+  const result = deferred(), drain = deferred();
+  const closing = fixture(t, { recover: () => settle(result.promise, drain.promise) }); closing.setExpiry(NOW - 1);
+  await closing.cycle(); let closed = false; const close = closing.service.close().then(() => { closed = true; });
+  result.reject(coded('backend_closed')); await tick(); assert.equal(closed, false);
+  drain.resolve(); await close; assert.equal(closed, true);
+  assert.deepEqual(actions(closing.events), []); // a shutdown-cancelled attempt is neither retried nor logged as a failure
+});
+
+test('recovery lane: a recovery step that outlives 120 s is logged as stalled with its phase', async t => {
+  const result = deferred();
+  t.after(() => result.resolve(recovered()));
+  const f = fixture(t, { recover: () => settle(result.promise) }); f.setExpiry(NOW - 1);
+  await f.cycle(); f.alarm();
+  assert.deepEqual(actions(f.events).map(event => [event.action, event.phase]), [['stalled', 'recovery']]);
+  f.setExpiry(f.now() + 300000); result.resolve(recovered()); await tick();
+  assert.equal(revivals(f.events).length, 1);
+});
+
+test('recovery lane: its log lines carry fixed fields only: no token, digest, operation ID, full connection ID or error text', async t => {
+  const tokenCode = 'hc_' + 'b'.repeat(43);
+  const scripts = [
+    () => settle(Promise.reject(Object.assign(Error(`PRIVATE ${row.token}`), { code: tokenCode }))),
+    () => { throw Object.assign(Error('PRIVATE refusal'), { code: 'PRIVATE free text' }); },
+    () => settle(Promise.resolve({ ...recovered(), status: 'PRIVATE free text' })),
+    () => settle(Promise.resolve(recovered('live', false))),
+    () => settle(Promise.resolve(recovered('recovered', true))),
+    () => settle(Promise.resolve(unavailable())),
+  ];
+  const text = [];
+  for (const script of scripts) {
+    const f = fixture(t, { healthyIds: [row.operationId], recover: script }); f.setExpiry(NOW - 1);
+    await f.cycle(); f.advance(30000); await f.cycle();
+    text.push(JSON.stringify(f.events));
+    const allowed = new Set(['event', 'ts', 'state', 'previous', 'requiresReconnect', 'retrying', 'retained', 'staleAtStart', 'halted', 'code', 'phase',
+      'connectionId', 'action', 'attempt', 'retryInMs', 'expiresInMs', 'deniedForMs', 'source', 'status', 'reconciled', 'refreshed']);
+    for (const event of f.events) {
+      assert(Object.keys(event).every(key => allowed.has(key)), Object.keys(event).join());
+      assert(['connector_maintenance_state', 'connector_maintenance_connection', 'connector_renewal_at_risk', 'connector_connection_lost',
+        'connector_connection_recovered'].includes(event.event));
+      if (event.connectionId !== undefined) assert.equal(event.connectionId, suffix);
+      if (event.status !== undefined) assert(['recovered', 'live'].includes(event.status));
+    }
+  }
+  const all = text.join();
+  const fingerprint = createHash('sha256').update(JSON.stringify([...OWNER.map(key => row[key]), row.token])).digest('hex');
+  for (const secret of [row.token, tokenCode, createHash('sha256').update(row.token).digest('hex'), fingerprint, row.operationId, row.connectionId, 'PRIVATE']) {
+    assert(!all.includes(secret), 'a log line leaked a secret or full identifier');
+  }
+  for (const action of ['recovery_failed', 'recovery_not_dispatched', 'recovery_unconfirmed', 'recovery_not_needed', 'recovered', 'expired']) assert(all.includes(`"action":"${action}"`), action);
+});
+
+test('the recovery lane is optional but, when given, must be a function', () => {
+  const backend = { resolveConnection() {}, beginExternalConnectionMaintenance() {} };
+  assert.doesNotThrow(() => createConnectorMaintenance({ handoff: { list() {} }, backend }));
+  assert.doesNotThrow(() => createConnectorMaintenance({ handoff: { list() {} }, backend: { ...backend, beginExternalConnectionRecovery() {} } }));
+  for (const bad of ['x', null, {}, 1]) {
+    assert.throws(() => createConnectorMaintenance({ handoff: { list() {} }, backend: { ...backend, beginExternalConnectionRecovery: bad } }), { message: 'invalid_connector_maintenance_config' });
+  }
+});
+
+const recoveryStalls = events => events.filter(event => event.event === 'connector_recovery_stalled');
+// Polls every 30 s until the lane has been asked `count` times; bounded, so a regression fails instead of hanging.
+async function askedTimes(f, count) {
+  for (let guard = 0; guard < 600 && f.recoveries() < count; guard++) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.recoveries(), count);
+}
+
+test('recovery lane: ten failed or unconfirmed attempts in a row raise one connector_recovery_stalled record per run; it changes nothing, and a recovery ends the run', async t => {
+  const failures = [() => settle(Promise.reject(coded('recovery_provider_unreachable'))), () => { throw coded('busy'); },
+    () => settle(Promise.resolve({ ...recovered(), connectionId: id(99) }))];
+  let healed = false;
+  const f = fixture(t, { recover() {
+    if (!healed) return failures[(f.recoveries() - 1) % failures.length]();
+    f.setExpiry(f.now() + 300000); return settle(Promise.resolve(recovered()));
+  } });
+  f.setExpiry(NOW - 1);
+  await f.cycle();
+  await askedTimes(f, 9);
+  assert.deepEqual(recoveryStalls(f.events), []); // nine failures: not yet
+  await askedTimes(f, 10);
+  const [first] = recoveryStalls(f.events); assert.equal(recoveryStalls(f.events).length, 1);
+  assert.deepEqual(first, { event: 'connector_recovery_stalled', ts: new Date(f.now()).toISOString(), connectionId: suffix, attempts: 10, code: 'recovery_provider_unreachable' });
+  assert.doesNotMatch(JSON.stringify(first), /hc_|PRIVATE|[0-9a-f]{8}-[0-9a-f]{4}/);
+  await askedTimes(f, 25);
+  assert.equal(recoveryStalls(f.events).length, 1); // once per run, however long it lasts
+  assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 })); // behaviour unchanged: still retried, never final
+  assert.equal(actions(f.events).filter(event => /^recovery_(failed|not_dispatched|unconfirmed)$/.test(event.action)).length, 25);
+  assert.equal(actions(f.events).at(-1).retryInMs, 240000);
+  healed = true;
+  for (let guard = 0; guard < 9 && !revivals(f.events).length; guard++) { f.advance(30000); await f.cycle(); }
+  await f.cycle(); assert.deepEqual(f.service.status(), status('ready')); assert.equal(revivals(f.events).length, 1);
+  // A later run of failures on the same connection is a new episode with its own record, counted from one again.
+  healed = false; f.setExpiry(f.now() - 1);
+  for (let guard = 0; guard < 400 && recoveryStalls(f.events).length < 2; guard++) { f.advance(30000); await f.cycle(); }
+  assert.deepEqual(recoveryStalls(f.events).map(event => event.attempts), [10, 10]);
+  assert.equal(f.recoveries(), 26 + 10); assert.deepEqual(lost(f.events), []);
+});
+
+test('recovery lane: an attempt confirmed by the database, or SQL finding nothing to recover, ends the run of failures before it is reported', async t => {
+  let mode = 'fail';
+  const f = fixture(t, { resolve() { if (mode === 'served') return owner(row, f.now() + 900000); throw coded(mode === 'outage' ? 'backend_unavailable' : 'unauthorized'); },
+    recover: () => mode === 'sound' ? settle(Promise.resolve(recovered('live', false))) : settle(Promise.reject(coded('timeout'))) });
+  await f.cycle();
+  await askedTimes(f, 9);
+  mode = 'served'; f.advance(240000); await f.cycle(); // the re-read serves the token: nine failures are forgotten
+  assert.equal(actions(f.events).at(-1).action, 'recovery_confirmed');
+  mode = 'fail'; f.advance(900000); await askedTimes(f, 18);
+  assert.deepEqual(recoveryStalls(f.events), []); // nine more, eighteen in all, but never ten in a row
+  // SQL finding nothing to recover (asked before the stop rule applies) ends a run as well: five failures before it,
+  // another answer so that the lane is asked again, five failures after it, and still no run of ten.
+  mode = 'fail';
+  const g = fixture(t, { resolve() { throw coded(mode === 'outage' ? 'backend_unavailable' : 'unauthorized'); },
+    recover: () => mode === 'sound' ? settle(Promise.resolve(recovered('live', false))) : settle(Promise.reject(coded('timeout'))) });
+  await g.cycle(); await askedTimes(g, 5);
+  mode = 'sound'; await askedTimes(g, 6);
+  assert.equal(actions(g.events).filter(event => event.action === 'recovery_not_needed').length, 1);
+  assert.deepEqual(g.service.status(), status('unavailable')); // refused for 690 s only: not yet at the stop rule
+  mode = 'outage'; g.advance(30000); await g.cycle();
+  mode = 'fail'; await askedTimes(g, 11);
+  assert.equal(actions(g.events).at(-1).action, 'recovery_failed'); assert.equal(actions(g.events).at(-1).attempt, 5);
+  assert.deepEqual(recoveryStalls(g.events), []);
+});
+
+test('lease guard in the loop: a refresh due with too little lease left is a retried renewal, the lease lapses, and the recovery lane refreshes under a fresh window', async t => {
+  // Session cycle of the model: token renewed to minute 60 (the session expiry) at minute 45, refresh due at minute 50.
+  // The database is away from 49:30 to 58:00, so when it answers again a refresh is due with 2 minutes of lease left.
+  const MIN = 60000, down = time => time >= NOW + 49.5 * MIN && time < NOW + 58 * MIN;
+  const f = lease(t, { lead: 600000, refreshBefore: 600000, recovery: true, down });
+  const until = async minute => { while (f.now() < NOW + minute * MIN) { f.advance(30000); await f.cycle(); } };
+  await f.cycle(); await until(59.5);
+  assert.deepEqual([f.counts.guarded, f.counts.refreshed, f.counts.recovered], [3, 0, 0]); // 58:00, 58:30 and 59:30: refused before any refresh
+  assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 }));
+  assert.deepEqual(actions(f.events).map(({ action, code, attempt, retryInMs, expiresInMs }) => [action, code, attempt, retryInMs, expiresInMs]), [
+    ['resolve_failed', 'backend_unavailable', undefined, undefined, undefined], ['resolve_recovered', undefined, undefined, undefined, undefined],
+    ['renewal_failed', 'maintenance_rejected', 1, 30000, 120000], ['renewal_failed', 'maintenance_rejected', 2, 60000, 90000],
+    ['renewal_failed', 'maintenance_rejected', 3, 0, 30000]]);
+  await until(60); // the lease has lapsed: the recovery lane is asked, SQL grants 5 minutes and the session is refreshed under them
+  assert.deepEqual([f.counts.guarded, f.counts.refreshed, f.counts.recovered], [3, 1, 1]);
+  assert.deepEqual(revivals(f.events).map(({ status: answer, refreshed }) => [answer, refreshed]), [['recovered', true]]);
+  const renewed = f.counts.renewed;
+  await until(60.5); // the normal lane extends the recovered lease; no second refresh
+  assert.deepEqual([f.counts.renewed, f.counts.refreshed, f.counts.guarded], [renewed + 1, 1, 3]);
+  assert.deepEqual(f.service.status(), status('ready')); assert.deepEqual(lost(f.events), []);
+  assert(!actions(f.events).some(event => event.action === 'expired'));
+  await until(180); // two more session cycles on the normal schedule
+  assert.deepEqual([f.counts.guarded, f.counts.recovered, f.counts.refused], [3, 1, 0]); assert.deepEqual(f.service.status(), status('ready'));
+  // Mutation: the system without guard and lane refreshes across that 2-minute lease, the case the fence punishes for good.
+  const plain = lease(t, { lead: 600000, refreshBefore: 600000, down });
+  await plain.cycle(); while (plain.now() < NOW + 58 * MIN) { plain.advance(30000); await plain.cycle(); }
+  assert.deepEqual([plain.counts.shortLeaseRefreshes, plain.counts.refreshed], [1, 1]);
+});
+
+test('outage sweep with the recovery lane: outages far longer than the token and the session never lose the connection; without it every one does', async t => {
+  const MIN = 60000;
+  for (const minutes of [20, 90, 300]) {
+    let dead = 0, deadWithout = 0;
+    for (let start = 25; start < 85; start += 5) { // twelve outage starts across one session cycle
+      const from = NOW + start * MIN, down = time => time >= from && time < from + minutes * MIN;
+      const f = await runLease(t, { lead: 600000, refreshBefore: 600000, down, recovery: true }, start + minutes + 45);
+      if (f.service.status().requiresReconnect || f.service.status().state !== 'ready') dead++;
+      assert.equal(f.counts.recovered, 1, `outage of ${minutes} min from minute ${start}: one recovery`);
+      assert.deepEqual(lost(f.events), []); assert.equal(revivals(f.events).length, 1);
+      assert.equal(actions(f.events).at(-1).action === 'expired', false);
+      const plain = await runLease(t, { lead: 600000, refreshBefore: 600000, down }, start + minutes + 45);
+      if (plain.service.status().requiresReconnect) deadWithout++;
+    }
+    assert.equal(dead, 0, `the recovery lane lost the connection to a ${minutes}-minute outage`);
+    assert.equal(deadWithout, 12, `without the lane a ${minutes}-minute outage is always final`);
+  }
 });

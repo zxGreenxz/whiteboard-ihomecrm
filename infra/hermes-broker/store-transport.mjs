@@ -10,6 +10,8 @@ const FUNCTIONS = Object.freeze({
   restrictConnection: 'app_private.hermes_store_restrict_connection_v1',
   updateConnectionSettings: 'app_private.hermes_store_connection_settings_v1',
   renewConnection: 'app_private.hermes_store_renew_connection_v1',
+  // Tự hồi sau mất mạng (13/11): SQL tự quyết token còn hồi được không; không hàm nào khác nhận token đã hết hạn.
+  recoverConnection: 'app_private.hermes_store_recover_connection_v1',
   revokeConnection: 'app_private.hermes_store_revoke_connection_v1',
   acquireRefresh: 'app_private.hermes_store_acquire_refresh_v1',
   dispatchRefresh: 'app_private.hermes_store_dispatch_refresh_v1',

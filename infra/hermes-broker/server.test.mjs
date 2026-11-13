@@ -85,6 +85,11 @@ function fakeBackend() {
       assert.equal(endpoint.search, '?grant_type=password'); assert.equal(args.password, 'synthetic-password'); signInCount++;
       return Response.json({ token_type: 'bearer', access_token: assistantJwt, refresh_token: 'SYNTHETIC-REFRESH-SECRET', user: { id: I.user } });
     }
+    // As the real Auth health path answers (measured 13/11/2026): 200 with a publishable key, 401 without one; it takes no bearer.
+    if (endpoint.pathname === '/auth/v1/health') {
+      assert.equal(bearer, undefined, 'the reachability probe never carries a bearer');
+      return options.headers.apikey ? Response.json({ name: 'GoTrue' }) : Response.json({ message: 'No API key found in request' }, { status: 401 });
+    }
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
     // B5d: the crm_auth_context directory (hermes_organization_name_v1, hermes_building_directory_v1) is optional too — absent ⇒ null, never a failed call.
@@ -147,7 +152,10 @@ function fakeBackend() {
     http: { allowedHosts: [HOST], allowedOrigins: [ORIGIN] }, fetch, clock: () => clock, audit: async event => { audits.push(structuredClone(event)); } };
   return { configuration, calls, sql, audits, releases, key, principal, pool, privateOperations, providerOperations, acceptedAssistantTokens,
     read: () => ({ joined, poolEnds, prepareCount, signInCount, clock }),
-    nearSessionExpiry() { clock = NOW + 57 * 60000; joined.connection.expiresAt = clock + 120000; },
+    // Three minutes of session and of token lease left: a refresh is due and the lease is still above the minimum a
+    // refresh may start under (refresh-window.mjs, 150 s; the lease was 120 s here before that minimum existed).
+    nearSessionExpiry() { clock = NOW + 57 * 60000; joined.connection.expiresAt = clock + 180000; },
+    advance(ms) { clock += ms; }, // the stored lease and session keep their instants: an outage of that length
     grantRooms() { // A trusted fixture models an already-granted connection; browser connect remains default-off.
       joined.connection.restrictions.read.push('rooms.view'); joined.connection.scopeIds = [I.scope];
       joined.policy.read.push('rooms.view'); joined.policy.scopeIds = [I.scope]; joined.policy.version++;
@@ -274,7 +282,7 @@ test('construction does no I/O, requires explicit audit/config, exposes no priva
     assert.throws(() => createHermesBackend({ ...f.configuration, ...delta }), error => error.message === 'invalid_backend_config' && error.cause === undefined);
   }
   const backend = createHermesBackend(f.configuration);
-  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
+  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'beginExternalConnectionRecovery', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
   assert.equal(f.calls.length, 0); assert.equal(f.sql.length, 0); assert.equal(f.audits.length, 0);
   assert.equal(backend.server.requestTimeout, 15000); assert.equal(backend.server.headersTimeout, 10000); assert.equal(backend.server.maxHeadersCount, 32);
   const first = backend.close(); assert.equal(backend.close(), first); await first;
@@ -1027,6 +1035,168 @@ test('maintenance wait is bounded: a request still parked after the wait gets 50
   await longer.close();
   refreshHeld.resolve(); await operation.result; await operation.drained;
   assert.equal((await http.mcp(token)).status, 200);
+});
+
+// The SQL side of recovery as its contract states it: only the digest goes in; a lapsed lease gets a short window.
+const probes = f => f.calls.filter(call => call.path === '/auth/v1/health');
+function arrangeRecovery(f, { sessionReady = true, status = 'recovered' } = {}) {
+  const inputs = [], joined = f.read().joined;
+  inputs.probesBefore = []; // how many reachability probes had gone out when SQL was asked
+  f.privateOperations.set('recover_connection', input => {
+    inputs.push(structuredClone(input)); inputs.probesBefore.push(probes(f).length);
+    if (joined.connection.state !== 'active') return { status: 'unavailable' };
+    if (status === 'recovered') joined.connection.expiresAt = f.read().clock + 300_000;
+    return { status, connectionId: joined.connection.id, credentialRef: joined.connection.credentialRef, binding: structuredClone(joined.session.binding),
+      sessionReady, sessionExpiresAt: joined.session.expiresAt, expiresAt: joined.connection.expiresAt };
+  });
+  return inputs;
+}
+const RECOVER_SQL = 'SELECT app_private.hermes_store_recover_connection_v1($1::jsonb) AS result';
+
+test('external recovery asks only the fixed store function with the token digest, parks its token and leaves admission to the normal authority path', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal, joined = f.read().joined;
+  f.advance(20 * 60000); // the host lost the database for longer than the 15-minute lease; the session is still good
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  assert.equal((await http.mcp(token)).status, 401);
+  const inputs = arrangeRecovery(f), respond = f.privateOperations.get('recover_connection'), entered = deferred(), held = deferred();
+  f.privateOperations.set('recover_connection', async input => { entered.resolve(); await held.promise; return respond(input); });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() }); assert(Object.isFrozen(operation));
+  assert.throws(() => http.beginExternalConnectionRecovery(token, { signal: signal() }), { code: 'busy' });
+  assert.throws(() => http.beginExternalConnectionMaintenance(token, { signal: signal() }), { code: 'busy' }); // one lane per token at a time
+  await entered.promise;
+  assert.equal((await http.mcp(token)).body.error, 'connection_maintenance'); // parked like maintenance
+  assert.equal((await http.mcp('hc_' + 'z'.repeat(43))).status, 401); // only this token is parked
+  held.resolve();
+  const result = await operation.result; await operation.drained;
+  assert.deepEqual(result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: false }); assert(Object.isFrozen(result));
+  assert.deepEqual([...inputs], [{ tokenDigest: joined.connection.tokenDigest }]);
+  assert.equal(f.sql.filter(query => query.text === RECOVER_SQL).length, 1);
+  // The Auth provider was probed once, before SQL was asked, with the publishable key only: no bearer, no body.
+  assert.deepEqual(inputs.probesBefore, [1]); assert.equal(probes(f).length, 1);
+  const probe = probes(f)[0].options;
+  assert.equal(probe.method, 'GET'); assert.equal(probe.body, undefined);
+  assert.deepEqual(probe.headers, { apikey: 'sb_publishable_fixture', accept: 'application/json' });
+  for (const secret of [token, joined.connection.tokenDigest, joined.connection.credentialRef, I.assistantSession, assistantJwt, 'binding', 'credentialRef']) {
+    assert(!JSON.stringify(result).includes(secret), secret);
+  }
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); // the login only: a good session is not refreshed
+  // Recovery admitted nothing by itself: the same live authority path serves the token again and the normal lane extends the window.
+  const owner = await http.resolveConnection(token, { signal: signal() });
+  assert.equal(owner.expiresAt, f.read().clock + 300_000); assert.equal((await http.mcp(token)).status, 200);
+  const renewal = http.beginExternalConnectionMaintenance(token, { signal: signal() });
+  assert.equal((await renewal.result).status, 'renewed'); await renewal.drained;
+  for (const route of ['/api/hermes/connections/recover', '/internal/hermes/connection/recover']) assert.equal((await http.send(route, {})).status, 404);
+  assert(!(await http.mcp(token)).body.result.tools.some(tool => /recover/i.test(tool.name)));
+});
+
+test('external recovery refreshes an expired provider session under the revived lease, through the same composed refresh manager', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000); // an outage longer than the provider session as well
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  const result = await operation.result; await operation.drained;
+  assert.deepEqual(result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true });
+  assert.equal(inputs.length, 1);
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  const order = f.sql.map(query => /hermes_store_(\w+)_v1/.exec(query.text ?? '')?.[1]).filter(name => /recover|refresh/.test(name ?? ''));
+  assert.deepEqual(order, ['recover_connection', 'acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']); // revive first, refresh second
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2); // one login, one refresh
+  assert.equal(f.read().joined.session.revision, 2);
+  for (const secret of [token, assistantJwt, refresh.nextJwt, 'SYNTHETIC-REFRESH', 'credentialRef', 'sessionId']) assert(!JSON.stringify(result).includes(secret));
+  assert.equal((await http.resolveConnection(token, { signal: signal() })).expiresAt, f.read().clock + 300_000);
+  assert.equal((await http.mcp(token)).status, 200);
+  assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text))); // recovery renews nothing: that stays the normal lane
+});
+
+test('external recovery: a refused provider refresh is a transient rejection; only the next SQL answer can end the connection', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000);
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  f.providerOperations.refresh = () => Response.json({ error: 'invalid_grant' }, { status: 400 });
+  const failed = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  await assert.rejects(failed.result, error => error.code === 'recovery_refresh_refused' && error.message === 'recovery_refresh_refused'); await failed.drained;
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'reconnect_session']); // quarantined by the refresh fence, not by this lane
+  assert.equal((await http.mcp(token)).status, 401); // the fence is open again; the token is simply still refused
+  f.read().joined.connection.state = 'revoked'; // SQL now knows the session is beyond recovery
+  const final = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await final.result, { ok: true, status: 'unavailable', refreshed: false }); await final.drained;
+  assert.equal(inputs.length, 2); assert.equal(refresh.operations.length, 3); // no second refresh
+});
+
+test('external recovery: an unreachable Auth provider is a transient rejection before SQL is asked; the lease is not moved and no refresh is dispatched', async t => {
+  const f = fakeBackend(), fetch = f.configuration.fetch, refusedProbes = []; let reachable = false;
+  // Only the fixed health path of the Auth origin is cut off: the same network state in which a dispatched refresh would be lost.
+  f.configuration.fetch = (url, options) => {
+    if (new URL(url).pathname !== '/auth/v1/health' || reachable) return fetch(url, options);
+    refusedProbes.push({ ...options }); return Promise.reject(new Error('PRIVATE network down'));
+  };
+  const http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.advance(61 * 60000); // lease and provider session both lapsed during the outage
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false }), lapsed = f.read().joined.connection.expiresAt;
+  const blocked = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  await assert.rejects(blocked.result, error => error.code === 'recovery_provider_unreachable' && error.message === 'recovery_provider_unreachable' && error.cause === undefined);
+  await blocked.drained;
+  assert.equal(refusedProbes.length, 1); assert.equal(inputs.length, 0); assert.equal(refresh.operations.length, 0);
+  assert(refusedProbes[0].signal instanceof AbortSignal); assert.equal(refusedProbes[0].signal.aborted, true); // given up and cancelled
+  assert.deepEqual(refusedProbes[0].headers, { apikey: 'sb_publishable_fixture', accept: 'application/json' });
+  assert(!f.sql.some(query => query.text === RECOVER_SQL)); assert.equal(f.read().joined.connection.expiresAt, lapsed); // no SQL window was spent
+  assert.equal(f.read().joined.session.revision, 1); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); // the login only
+  assert.equal((await http.mcp(token)).status, 401); // the fence is open again; the token is simply still refused
+  reachable = true; // the provider answers: the very next attempt revives the lease and refreshes under it
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await operation.result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true }); await operation.drained;
+  assert.deepEqual(inputs.probesBefore, [1]); assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal((await http.mcp(token)).status, 200);
+});
+
+test('a session refresh due under a lease below the minimum is refused by maintenance before any dispatch; once the lease has lapsed, recovery refreshes under a fresh window', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, signal = () => new AbortController().signal;
+  f.nearSessionExpiry(); f.read().joined.connection.expiresAt = f.read().clock + 120000; // refresh due with two minutes of lease left
+  const refresh = arrangeRefresh(f), inputs = arrangeRecovery(f, { sessionReady: false });
+  const refused = http.beginExternalConnectionMaintenance(token, { signal: signal() });
+  await assert.rejects(refused.result, error => error.code === 'maintenance_rejected' && error.outcomeUnknown === false); await refused.drained;
+  assert.equal(refresh.operations.length, 0); assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 1); assert.equal(f.read().joined.session.revision, 1);
+  assert.equal((await http.mcp(token)).status, 200); // nothing was dispatched: the fence is open and the token still serves
+  f.advance(4 * 60000); // the lease (and the session) lapse instead of being refreshed across
+  await assert.rejects(http.resolveConnection(token, { signal: signal() }), { code: 'unauthorized' });
+  const operation = http.beginExternalConnectionRecovery(token, { signal: signal() });
+  assert.deepEqual(await operation.result, { ok: true, status: 'recovered', connectionId: I.connection, refreshed: true }); await operation.drained;
+  assert.equal(inputs.length, 1); assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  const renewal = http.beginExternalConnectionMaintenance(token, { signal: signal() }); // five minutes of lease, fresh session: plain renewal
+  assert.equal((await renewal.result).status, 'renewed'); await renewal.drained;
+  assert.equal(refresh.operations.length, 4); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2); // one login, one refresh
+  assert.equal((await http.mcp(token)).status, 200);
+});
+
+test('external recovery exists only on the connector, validates its caller and stops with the backend', async t => {
+  const entered = deferred(), held = deferred();
+  t.after(() => held.resolve()); // Before backend close: a held store call must not deadlock cleanup.
+  const f = fakeBackend(), plain = await listening(t, f.configuration), token = (await plain.connect()).body.token, signal = () => new AbortController().signal;
+  assert.throws(() => plain.beginExternalConnectionRecovery(token, { signal: signal() }), { code: 'invalid_request' });
+  const g = fakeBackend(), http = await listening(t, { ...g.configuration, connectorOnly: true }), own = (await http.connect()).body.token;
+  for (const bad of [[browserJwt, { signal: signal() }], [own], [own, { signal: {} }], ['hc_short', { signal: signal() }]]) {
+    assert.throws(() => http.beginExternalConnectionRecovery(...bad), { code: 'invalid_request' });
+  }
+  const aborted = new AbortController(); aborted.abort();
+  assert.throws(() => http.beginExternalConnectionRecovery(own, { signal: aborted.signal }), { code: 'backend_unavailable' });
+  assert.equal(g.sql.filter(query => query.text === RECOVER_SQL).length, 0);
+  // Close holds the pool-backed drain of an attempt in flight and refuses new ones.
+  g.advance(20 * 60000); arrangeRecovery(g);
+  const respond = g.privateOperations.get('recover_connection');
+  g.privateOperations.set('recover_connection', async input => { entered.resolve(); await held.promise; return respond(input); });
+  const operation = http.beginExternalConnectionRecovery(own, { signal: signal() }), rejected = assert.rejects(operation.result);
+  await entered.promise;
+  let closed = false, drained = false; const closing = http.close().then(() => { closed = true; }); void operation.drained.then(() => { drained = true; });
+  await tick(); assert.equal(closed, false); assert.equal(drained, false); // the fence result follows the actual drain, like maintenance
+  assert.throws(() => http.beginExternalConnectionRecovery(own, { signal: signal() }), { code: 'backend_unavailable' });
+  held.resolve(); await rejected; await operation.drained; await closing; assert.equal(closed, true); assert.equal(g.read().poolEnds, 0);
 });
 
 test('connector status shows only the caller\'s own connections with last MCP activity and a fixed error code', async t => {

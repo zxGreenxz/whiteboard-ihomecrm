@@ -200,7 +200,7 @@ describe("cấu hình publicExecute trong definer-acl-baseline.json", () => {
     expect(blockedRoles.hermes_store_learning).toEqual([INGEST]);
     expect(blockedRoles.hermes_learning_ingest).toEqual([INGEST]);
     expect(blockedRoles.hermes_store_host).toEqual(blockedRoles.hermes_store_executor);
-    expect(blockedRoles.hermes_store_executor).toHaveLength(22);
+    expect(blockedRoles.hermes_store_executor).toHaveLength(23);
     expect(blockedRoles.hermes_store_executor).not.toContain(INGEST);
     for (const sig of blockedRoles.hermes_store_executor) {
       expect(sig).toMatch(/^app_private\.hermes_(store|zalo_provisioning)[a-z_]*_v1\(jsonb\)$/);

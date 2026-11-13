@@ -149,6 +149,8 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       // cùng kênh stdout; không token/digest/thông điệp lỗi, chỉ khi có thay đổi. HERMES_CALL_LOG không tắt nó.
       // renewBeforeMs 600000 = tối đa cho phép: token 15 phút, vòng bắt đầu gia hạn khi còn 10 phút, để lịch thử lại 30/60/120/240 s
       // (+ trần hạn - 30 s) có ~9 phút thay vì ~4 phút khi mạng chập chờn (sự cố 31/10: lỡ cửa sổ 5 phút, token chết 10:19 UTC).
+      // Tự hồi (13/11): vòng nhận nguyên `backend`, nên có backend.beginExternalConnectionRecovery là token hết hạn sau mất mạng
+      // được hỏi SQL để hồi thay vì chốt `expired`; dòng `recovered`/connector_connection_recovered ra cùng kênh stdout này.
       const healthyRecord = factories.createHealthyRecord({ directory: configuration.paths.stateRoot });
       const healthyIds = await healthyRecord.load(); live();
       maintenance = factories.createConnectorMaintenance({ handoff, backend, renewBeforeMs: 600000, healthyIds,

@@ -6,6 +6,7 @@ import { createConnectionRenewal } from './connection-renewal.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
+import { MIN_REFRESH_WINDOW_MS } from './refresh-window.mjs';
 
 const NOW = 1800000000000, token = `hc_${'a'.repeat(43)}`, digest = createHash('sha256').update(token).digest('hex');
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -17,7 +18,7 @@ function fixture(t, hooks = {}) {
   const scope = createDependencyScope(), binding = { assistantId: id(2), userId: id(3), organizationId: id(4), sessionId: id(5) };
   const expiry = NOW + (hooks.fresh ? 3600000 : 240000), sessions = new Map([['PRIVATE-OLD', expiry], ['PRIVATE-NEW', NOW + 3600000]]);
   const row = { status: 'active', connection: { id: id(1), assistantId: id(2), userId: id(3), organizationId: id(4), state: 'active', epoch: 2,
-    expiresAt: NOW + 180000, restrictions: grants(), scopeIds: [id(8)], tokenDigest: digest, credentialRef: id(6) },
+    expiresAt: NOW + (hooks.lease ?? 180000), restrictions: grants(), scopeIds: [id(8)], tokenDigest: digest, credentialRef: id(6) },
     session: { credentialRef: id(6), revision: 1, expiresAt: expiry, binding,
       envelope: crypto.seal({ accessToken: 'PRIVATE-OLD', refreshToken: 'PRIVATE-REFRESH', expiresAt: expiry }, binding) },
     membership: { membershipId: id(7), authorizationVersion: 1, isSuperadmin: false }, policy: { version: 1, ...grants(), scopeIds: [id(8)] } };
@@ -141,6 +142,26 @@ test('actual hidden authority work retains close and admission after the public 
   let drained = false; void operation.drained.then(() => { drained = true; });
   try { await tick(); assert.equal(drained, false); assert.throws(() => f.begin(), /busy/); assert.deepEqual(f.calls, []); }
   finally { held.resolve(); await operation.drained; }
+});
+// The refresh fence quarantines the session when the token lapses mid-refresh; a lapsed lease alone is recoverable.
+test('a due session refresh is not started under less than the shared minimum lease: rejected before any dispatch, token free again', async t => {
+  assert.equal(MIN_REFRESH_WINDOW_MS, 150000);
+  const short = fixture(t, { lease: MIN_REFRESH_WINDOW_MS - 1 }), operation = short.begin();
+  await assert.rejects(operation.result, error => error.code === 'maintenance_rejected' && error.outcomeUnknown === false);
+  await operation.drained;
+  assert(!short.calls.includes('refresh')); assert(!short.calls.includes('renew')); // neither the refresh nor a renewal up to the old session expiry
+  assert.equal(short.row.session.revision, 1); assert.equal(short.row.connection.expiresAt, NOW + MIN_REFRESH_WINDOW_MS - 1);
+  const again = short.begin(); await assert.rejects(again.result, { code: 'maintenance_rejected' }); await again.drained; // not retained: simply tried again later
+  await short.maintenance.close();
+  // Exactly the minimum is enough, and the default 180 s lease of every test above is comfortably past it.
+  const enough = fixture(t, { lease: MIN_REFRESH_WINDOW_MS }), second = enough.begin();
+  assert.equal((await second.result).status, 'renewed'); await second.drained;
+  assert.equal(enough.calls.filter(x => x === 'refresh').length, 1); assert.equal(enough.calls.filter(x => x === 'renew').length, 1);
+});
+test('the minimum lease guards the refresh only: a fresh session is renewed however little lease is left', async t => {
+  const f = fixture(t, { fresh: true, lease: 1000 }), operation = f.begin();
+  assert.deepEqual(await operation.result, { ok: true, status: 'renewed', connectionId: id(1), expiresAt: NOW + 900000, reconciled: false });
+  await operation.drained; assert(!f.calls.includes('refresh')); assert.equal(f.calls.filter(x => x === 'renew').length, 1);
 });
 test('post-renewal authority change cannot report ready', async t => {
   const f = fixture(t, { renew: row => { row.policy.version++; } }), operation = f.begin();

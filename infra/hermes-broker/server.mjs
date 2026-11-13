@@ -34,6 +34,7 @@ import { createConnectionManagement, createSupabaseConnectionManagementReads } f
 import { createConnectionHttpHandler } from './connection-http.mjs';
 import { createConnectionRenewal } from './connection-renewal.mjs';
 import { createConnectionMaintenance } from './connection-maintenance.mjs';
+import { createConnectionRecovery } from './connection-recovery.mjs';
 import { createRefreshManager } from './refresh-manager.mjs';
 import { createDurableRefreshStore } from './durable-refresh-store.mjs';
 import { createSupabaseRefreshProvider } from './supabase-refresh-provider.mjs';
@@ -88,6 +89,12 @@ function reply(response, status, error) {
  * and renewal. It is not automatically scheduled and never accepts caller
  * credential refs; the connector reaches it through
  * beginExternalConnectionMaintenance(), which parks that token's MCP admission.
+ * beginExternalConnectionRecovery() parks the same admission for the recovery
+ * lane (connection-recovery.mjs): once the Auth provider answers a reachability
+ * probe, SQL alone decides whether a lapsed token lease is revived, then an
+ * unready provider session is refreshed through the SAME refresh manager and
+ * provider. It grants nothing by itself: the token is served again only
+ * once resolveConnection()/maintenance admit it with live Auth/CRM authority.
  * close() blocks admission, aborts renewals, destroys sockets, awaits handlers
  * and direct renewal/maintenance dependency promises, then destroys its
  * keyring. Socket loss/unknown write ACK is NOT rollback or a retry guarantee;
@@ -226,6 +233,12 @@ export function createHermesBackend(configuration = {}) {
     // shorter session lead the renewal due at T-10 min finds target = T = token expiry and fails every session cycle.
     const maintenance = createConnectionMaintenance({ authority: contextAuthority, connectionStore, refreshManager, renewal, clock, dependencyScope,
       refreshBeforeMs: 600000 });
+    // Làn tự hồi (13/11): cùng scope, cùng refresh manager và cùng mốc refresh phiên 10 phút với làn bảo trì. Phiên còn trong mốc đó
+    // được refresh ngay trong cửa sổ SQL vừa bảo đảm cho token, thay vì để làn bảo trì refresh sau, khi cửa sổ đã ngắn đi.
+    // providerProbe bắt buộc: làn hồi chạy đúng lúc mạng vừa về, phải thấy Auth trả lời trước khi hỏi SQL và trước mọi refresh
+    // (refresh lỗi sau bước dispatch là cách ly phiên vĩnh viễn). Chính provider của refresh manager làm việc dò đó.
+    const recovery = createConnectionRecovery({ connectionStore, refreshManager, providerProbe: refreshProvider, clock, dependencyScope,
+      refreshBeforeMs: 600000 });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group
@@ -288,7 +301,8 @@ export function createHermesBackend(configuration = {}) {
     // The connector has no command pump or runtime supervisor. Park
     // admission for this token, drain actual HTTP dependencies, then reuse the
     // existing refresh/renew lane. Socket close alone never frees this fence.
-    const beginExternalConnectionMaintenance = (token, { signal } = {}) => {
+    // Maintenance and recovery share the fence: one lane per token at a time.
+    const parkedLane = lane => (token, { signal } = {}) => {
       const key = tokenKey(token);
       if (!configuration.connectorOnly || !key || !(signal instanceof AbortSignal)) throw new BrokerError('invalid_request');
       if (closing || signal.aborted) throw new BrokerError('backend_unavailable');
@@ -301,7 +315,7 @@ export function createHermesBackend(configuration = {}) {
       const work = (async () => {
         await Promise.allSettled([...entry.active]);
         if (closing || combined.aborted) throw new BrokerError('backend_unavailable');
-        const operation = maintenance.begin(token, { signal: combined });
+        const operation = lane.begin(token, { signal: combined });
         try { return await operation.result; }
         finally { try { await operation.drained; } catch (error) { uncertainDrain = true; throw error; } }
       })();
@@ -317,6 +331,7 @@ export function createHermesBackend(configuration = {}) {
       void work.catch(() => {}); void drained.catch(() => {});
       return Object.freeze({ result: work, drained });
     };
+    const beginExternalConnectionMaintenance = parkedLane(maintenance), beginExternalConnectionRecovery = parkedLane(recovery);
     const resolveConnection = (token, { signal } = {}) => {
       if (!(signal instanceof AbortSignal)) return Promise.reject(new BrokerError('invalid_request'));
       if (closing || signal.aborted) return Promise.reject(new BrokerError('backend_unavailable'));
@@ -418,7 +433,7 @@ export function createHermesBackend(configuration = {}) {
       closeAbort.abort();
       const retentionStopped = retention.close();
       const renewalsStopped = renewal.close();
-      const refreshStopped = Promise.all([maintenance.close(), refreshManager.close(), refreshProvider.close()]);
+      const refreshStopped = Promise.all([maintenance.close(), recovery.close(), refreshManager.close(), refreshProvider.close()]);
       void refreshStopped.catch(() => {});
       const bindingsStopped = binding.close();
       closePromise = (async () => {
@@ -436,7 +451,7 @@ export function createHermesBackend(configuration = {}) {
       return closePromise;
     };
     return Object.freeze({ server, close, resolveConnection, renewConnection: renewal.renew,
-      beginConnectionMaintenance: maintenance.begin, beginExternalConnectionMaintenance,
+      beginConnectionMaintenance: maintenance.begin, beginExternalConnectionMaintenance, beginExternalConnectionRecovery,
       startWorkMemoryRetention() { if (closing) throw new BrokerError('backend_unavailable'); retention.start(); },
       workMemoryRetentionStatus: retention.status });
   } catch {
