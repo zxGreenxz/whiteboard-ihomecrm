@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-13T04:40:26.099Z",
+  "generatedAt": "2026-11-13T05:20:24.702Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 937,
-    "unknown": 81,
+    "ledger-applied": 938,
+    "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
   },
@@ -14181,14 +14181,9 @@
       "name": "manager_collaboration_scopes_v1",
       "scheme": "timestamp14",
       "sha256": "c4ba047a2ed12c2fcacc80f59c6ce9bd93552fa8c4b63cb41f8d046b0be4f905",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.manager_collaboration_roles",
-        "table:app_private.manager_collaboration_bindings",
-        "function:app_private.manager_collaboration_catalog_v1",
-        "function:app_private.sync_manager_collaboration_v1",
-        "function:app_private.validate_manager_collaboration_binding_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-13T05:18:41.935Z|bien-nhan-backup"
       ]
     },
     {

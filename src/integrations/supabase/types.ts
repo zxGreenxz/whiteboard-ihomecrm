@@ -17039,6 +17039,7 @@ export type Database = {
       role_bindings: {
         Row: {
           id: string
+          inherited_from_binding_id: string | null
           legacy_assignment_id: string | null
           membership_id: string
           organization_id: string
@@ -17049,6 +17050,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          inherited_from_binding_id?: string | null
           legacy_assignment_id?: string | null
           membership_id: string
           organization_id: string
@@ -17059,6 +17061,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          inherited_from_binding_id?: string | null
           legacy_assignment_id?: string | null
           membership_id?: string
           organization_id?: string
@@ -17068,6 +17071,13 @@ export type Database = {
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "role_bindings_inherited_parent_fk"
+            columns: ["organization_id", "inherited_from_binding_id"]
+            isOneToOne: false
+            referencedRelation: "role_bindings"
+            referencedColumns: ["organization_id", "id"]
+          },
           {
             foreignKeyName: "role_bindings_organization_id_membership_id_fkey"
             columns: ["organization_id", "membership_id"]
@@ -22864,6 +22874,10 @@ export type Database = {
       compute_first_billing_month_v2: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: string
+      }
+      configure_manager_collaboration_v1: {
+        Args: { p_organization_id: string; p_source_role_id: string }
+        Returns: Json
       }
       confirm_cancel_handover: {
         Args: { p_handover_id: string }
