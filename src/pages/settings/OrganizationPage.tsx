@@ -40,6 +40,7 @@ import {
   type AuthorizationAuditEvent,
 } from '@/hooks/useOrganizationAuthorization';
 import { LOAI_TV } from '@/components/authorization/MemberAuthorizationDialog';
+import { docSuKienDatLaiMatKhau, laSuKienDatLaiMatKhau } from '@/lib/resetUserPassword';
 
 const NHAN_SU_KIEN: Record<string, string> = {
   MEMBER_AUTHORIZATION_UPDATED: 'Sửa phân quyền thành viên',
@@ -49,6 +50,8 @@ const NHAN_SU_KIEN: Record<string, string> = {
   INVITATION_ACCEPTED: 'Chấp nhận lời mời',
   INVITATION_REVOKED: 'Thu hồi lời mời',
   ORGANIZATION_UPDATED: 'Sửa thông tin tổ chức',
+  USER_PASSWORD_RESET: 'Đặt lại mật khẩu',
+  USER_PASSWORD_RESET_FAILED: 'Đặt lại mật khẩu không thành',
 };
 
 export default function OrganizationPage() {
@@ -297,10 +300,14 @@ function TrangThaiLoiMoi({ status, isExpired }: { status: string; isExpired: boo
 function DongNhatKy({ e }: { e: AuthorizationAuditEvent }) {
   const nguoi = e.actorName || e.actorEmail || 'hệ thống';
   const st = e.newState as { permissions?: number; gained?: string[]; lost?: string[] } | null;
+  const datLaiMatKhau = laSuKienDatLaiMatKhau(e.eventType) ? docSuKienDatLaiMatKhau(e.newState) : null;
   return (
     <div className="rounded-md border p-2.5 text-sm">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-medium">{NHAN_SU_KIEN[e.eventType] ?? e.eventType}</span>
+        <span className={cn('font-medium', e.eventType === 'USER_PASSWORD_RESET_FAILED' && 'text-destructive')}>
+          {NHAN_SU_KIEN[e.eventType] ?? e.eventType}
+          {datLaiMatKhau?.tenNguoiNhan && ` cho ${datLaiMatKhau.tenNguoiNhan}`}
+        </span>
         <span className="text-xs text-muted-foreground">
           {nguoi} · {new Date(e.occurredAt).toLocaleString('vi-VN')}
         </span>
