@@ -22,6 +22,7 @@ import { HermesDeliveryReconcile } from '@/hermes/HermesDeliveryReconcile';
 import { HermesSectionDivider, HermesSetupProgress, HermesStep, hermesConnectionNames, shortConnectionId,
   type HermesStepState } from '@/hermes/HermesSetupGuide';
 import { HermesLearningReview } from '@/hermes/HermesLearningReview';
+import { hermesActivation } from '@/hermes/activation';
 import type { HermesCallerScope, HermesConnectionContext, HermesConnectionMetadata, HermesConnectionRestrictions, HermesConnectionStatus,
   HermesConnectorStatus, HermesGrantOptions, HermesSettingsInput } from '@/hermes/connectionClient';
 
@@ -150,13 +151,8 @@ function ConnectionRow({ connection, name, status, disabled, onPermissions, onRe
   </article>;
 }
 
-const provisioningText: Record<NonNullable<HermesZaloSummary['provisioningState']>, string> = {
-  pending: 'Đang đồng bộ với trợ lý…',
-  pending_credential: 'Trợ lý chưa nhận được kết nối CRM. Kiểm tra bước 2, rồi bấm “Dùng kết nối này cho trợ lý” ở bước 3 nếu có.',
-  restart_pending: 'Đang chờ quản trị viên kích hoạt trợ lý.',
-  unavailable: 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ tự thử lại.',
-  synchronized: 'Trợ lý đã sẵn sàng.',
-};
+// Bước 6 chờ bằng chứng trợ lý dùng CRM: trang tự đọc lại số liệu của dịch vụ kết nối, có giới hạn để tab bỏ quên không gọi mãi.
+const ACTIVATION_CHECK_MS = 30_000, ACTIVATION_CHECKS = 20;
 
 function Workspace({ userId, organizationId, email, currentScope }: { userId: string; organizationId: string;
   email: string; currentScope: () => HermesCallerScope }) {
@@ -174,7 +170,8 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   const [botGeneration, setBotGeneration] = useState(0);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [limits, setLimits] = useState<Limits>(freshLimits);
-  const [zalo, setZalo] = useState<HermesZaloSummary>({ bots: null, stage: 'none', provisioningState: null });
+  const [zalo, setZalo] = useState<HermesZaloSummary>({ bots: null, stage: 'none', provisioningState: null, connectionId: null });
+  const [activationChecks, setActivationChecks] = useState(0);
   const botConfigurationChanged = useCallback(() => setBotGeneration(value => value + 1), []);
   const lifetime = useRef({ alive: true, generation: 0 });
   const handoffId = useRef<string | null>(null);
@@ -231,8 +228,20 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   // "Đã bật" chỉ khi vừa đọc được chính sách bật; có kết nối cũ không chứng minh công ty còn bật Hermes.
   const companyReady = model.options?.enabled === true && (zalo.bots ?? 0) > 0;
   const linked = zalo.stage === 'linked';
-  const done = [companyReady, active.length > 0, zalo.stage !== 'none', zalo.stage === 'observed' || linked, linked,
-    linked && zalo.provisioningState === 'synchronized', false];
+  // Bước 6 theo bằng chứng dịch vụ kết nối đã thấy (trợ lý gọi được CRM bằng kết nối đang ghép), không theo hàng chờ đồng bộ.
+  const activation = hermesActivation({ linkedConnectionId: linked ? zalo.connectionId : null, provisioningState: zalo.provisioningState,
+    connections, status: model.connectorStatus, name: names, shortId: shortConnectionId, time: when });
+  const activationWaiting = activation.waiting && !model.needsReload;
+  const refreshStatus = model.refreshStatus;
+  useEffect(() => {
+    if (!activationWaiting || activationChecks >= ACTIVATION_CHECKS) return;
+    const timer = setTimeout(() => {
+      if (document.visibilityState !== 'hidden') void refreshStatus();
+      setActivationChecks(value => value + 1);
+    }, ACTIVATION_CHECK_MS);
+    return () => clearTimeout(timer);
+  }, [activationWaiting, activationChecks, refreshStatus]);
+  const done = [companyReady, active.length > 0, zalo.stage !== 'none', zalo.stage === 'observed' || linked, linked, activation.done, false];
   // Thiếu bot hay công ty tắt thì người dùng không tự đi tiếp được: đưa về bước 1 (việc của quản trị).
   const current = companyOff || noBot ? 0 : [1, 2, 3, 4, 5].find(index => !done[index]) ?? null;
   const stateOf = (index: number, isDone: boolean): HermesStepState => isDone ? 'done' : index === current ? 'current' : 'todo';
@@ -243,16 +252,14 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
       : companyReady ? `Đã bật, có ${zalo.bots} bot Zalo sẵn sàng.`
         : zalo.bots ? `Có ${zalo.bots} bot Zalo sẵn sàng. Bật Hermes là việc của quản trị, làm một lần cho cả công ty.`
           : 'Việc của quản trị, làm một lần cho cả công ty.';
-  // Trạng thái kích hoạt chỉ đọc khi tải danh sách liên kết, nên nói rõ cách xem trạng thái mới.
-  const refreshHint = 'Bấm “Tải lại liên kết” ở bước 3 để xem trạng thái mới nhất.';
-  const activationSummary = !linked ? 'Tự chạy sau khi bạn liên kết Zalo.'
-    : !zalo.provisioningState ? `Chưa đọc được trạng thái kích hoạt. ${refreshHint}`
-      : zalo.provisioningState === 'synchronized' ? provisioningText.synchronized : `${provisioningText[zalo.provisioningState]} ${refreshHint}`;
+  // Khi còn chờ: nói rõ trang tự kiểm lại; hết lượt tự kiểm thì chỉ đúng nút đọc lại số liệu (nút đầu trang, không phải "Tải lại liên kết").
+  const activationSummary = !activation.waiting ? activation.summary
+    : `${activation.summary} ${activationChecks < ACTIVATION_CHECKS && !model.needsReload ? 'Trang tự kiểm lại sau mỗi 30 giây.' : 'Bấm “Tải lại danh sách” ở đầu trang để kiểm lại.'}`;
 
   return <div className="max-w-3xl space-y-4">
     <HermesSetupProgress key={model.connections === null ? 'loading' : 'ready'} done={done} current={current}
       initiallyOpen={model.connections !== null && active.length === 0}
-      action={<Button variant="outline" size="sm" disabled={policyBusy || Boolean(model.busy)} onClick={() => { setCopied(null); void model.reload(); }}><RefreshCw className="h-4 w-4" />Tải lại danh sách</Button>} />
+      action={<Button variant="outline" size="sm" disabled={policyBusy || Boolean(model.busy)} onClick={() => { setCopied(null); setActivationChecks(0); void model.reload(); }}><RefreshCw className="h-4 w-4" />Tải lại danh sách</Button>} />
     {model.message && <p role="status" className="rounded-lg border bg-muted/50 p-3 text-sm">{model.message}</p>}
     {model.needsReload && <p className="text-sm font-medium">Các thao tác đang tạm dừng đến khi bạn tải lại danh sách thành công.</p>}
     {model.busy && <p role="status" className="text-sm text-muted-foreground">{model.busy === 'list' || model.busy === 'context' ? 'Đang đọc thông tin kết nối…' : 'Đang chờ máy chủ xác nhận…'}</p>}
@@ -339,7 +346,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     <HermesStep label="3–5" state={zaloState} title="Liên kết Zalo để nhắn Hermes" who="Bạn · Zalo"
       summary={linked ? 'Đã liên kết nick Zalo của bạn.' : 'Làm lần lượt 3 việc nhỏ dưới đây.'}>
       {model.connections && <HermesZaloBindings key={botGeneration} userId={userId} organizationId={organizationId} currentScope={currentScope}
-        connections={model.connections} disabled={disabled} onSummary={setZalo} />}
+        connections={model.connections} disabled={disabled} onSummary={setZalo} activationNote={activation.note} />}
     </HermesStep>
 
     <HermesStep label="6" state={stateOf(5, done[5])} title="Trợ lý được kích hoạt" who="Tự động" summary={activationSummary} />

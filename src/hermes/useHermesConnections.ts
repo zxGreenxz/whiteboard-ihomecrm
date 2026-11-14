@@ -44,10 +44,12 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   const [state, setState] = useState<State>(initial);
   const lifecycle = useRef({ alive: false, generation: 0, controller: null as AbortController | null, ready: false, needsReload: false });
   const optionsRequest = useRef<AbortController | null>(null);
+  const statusRequest = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
     const life = lifecycle.current;
     life.alive = true; life.generation++;
-    return () => { life.alive = false; life.generation++; life.controller?.abort(); life.controller = null; optionsRequest.current?.abort(); };
+    return () => { life.alive = false; life.generation++; life.controller?.abort(); life.controller = null; optionsRequest.current?.abort();
+      statusRequest.current?.abort(); statusRequest.current = null; };
   }, []);
 
   const run = useCallback(async <T,>(operation: Operation, work: (signal: AbortSignal) => Promise<T>,
@@ -63,6 +65,8 @@ export function useHermesConnections(userId: string, organizationId: string, cur
         current.userId === scope.userId && current.organizationId === scope.organizationId && current.generation === scope.generation;
     };
     const write = !['list', 'context'].includes(operation);
+    // Một lượt đọc trạng thái nền đang bay không được ghi đè kết quả của thao tác mới hơn.
+    statusRequest.current?.abort(); statusRequest.current = null;
     if (operation === 'list') {
       life.ready = false; optionsRequest.current?.abort(); optionsRequest.current = null;
     }
@@ -110,6 +114,25 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     }
   }, [client, currentScope, userId, organizationId]);
   useEffect(() => { void reload(); }, [reload]);
+  /** Đọc lại riêng số liệu "trợ lý dùng CRM lần cuối" của dịch vụ kết nối, lặng lẽ: không đổi `busy`, không chặn thao tác,
+   * lỗi thì giữ số đang hiện. Bỏ qua khi danh sách chưa sẵn sàng hoặc đang có thao tác khác. */
+  const refreshStatus = useCallback(async () => {
+    const life = lifecycle.current, scope = { ...currentScope() };
+    if (!life.alive || !life.ready || life.needsReload || life.controller || statusRequest.current ||
+        scope.userId !== userId || scope.organizationId !== organizationId) return;
+    const generation = life.generation, controller = new AbortController();
+    statusRequest.current = controller;
+    const valid = () => {
+      const current = currentScope();
+      return life.alive && life.generation === generation && !controller.signal.aborted &&
+        current.userId === scope.userId && current.organizationId === scope.organizationId && current.generation === scope.generation;
+    };
+    try {
+      const result = await client.status({ signal: controller.signal });
+      if (valid()) setState(previous => ({ ...previous, connectorStatus: result, connectorStatusError: false }));
+    } catch { /* Giữ số liệu đang hiện; lượt kiểm sau thử lại. */ }
+    finally { if (statusRequest.current === controller) statusRequest.current = null; }
+  }, [client, currentScope, userId, organizationId]);
 
   const invalidatePolicy = useCallback(() => {
     const life = lifecycle.current;
@@ -118,6 +141,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     // authority before aborting; an abort-ignorant late result must stay stale.
     life.generation++;
     optionsRequest.current?.abort(); optionsRequest.current = null;
+    statusRequest.current?.abort(); statusRequest.current = null;
     life.controller?.abort(); life.controller = null;
     life.ready = false; life.needsReload = true;
     setState({ ...initial(), needsReload: true });
@@ -138,7 +162,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   }, [state.handoff]);
 
   return {
-    ...state, reload, ensureOptions, invalidatePolicy, policyChanged,
+    ...state, reload, refreshStatus, ensureOptions, invalidatePolicy, policyChanged,
     clearHandoff: () => setState(previous => ({ ...previous, handoff: null })),
     contextFor: (connection: HermesConnectionMetadata) => {
       if (state.optionsState === 'idle' || state.optionsState === 'error') void ensureOptions();

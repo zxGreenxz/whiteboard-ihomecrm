@@ -14,11 +14,15 @@ export interface HermesZaloSummary {
   bots: number | null;
   stage: 'none' | 'code' | 'observed' | 'linked';
   provisioningState: HermesZaloBinding['provisioningState'] | null;
+  /** Kết nối đang ghép với nick đã liên kết (mã trang đã có sẵn trong danh sách kết nối); null khi chưa liên kết. */
+  connectionId: string | null;
 }
 interface Props {
   userId: string; organizationId: string; currentScope: () => HermesCallerScope;
   connections: HermesConnectionMetadata[]; disabled: boolean;
   onSummary?: (summary: HermesZaloSummary) => void;
+  /** Câu trạng thái trợ lý do trang tính từ bằng chứng (bước 6); có thì thay cho trạng thái hàng chờ dưới dòng nick. */
+  activationNote?: string | null;
 }
 interface State {
   bots: HermesZaloBot[] | null; bindings: HermesZaloBinding[] | null;
@@ -52,7 +56,7 @@ function messageFor(error: unknown, write: boolean) {
 
 /** Parent keys this workspace by user/company generation. Challenges stay in
  * component memory only and are cleared on expiry, scope change or unmount. */
-export function HermesZaloBindings({ userId, organizationId, currentScope, connections, disabled, onSummary }: Props) {
+export function HermesZaloBindings({ userId, organizationId, currentScope, connections, disabled, onSummary, activationNote }: Props) {
   const client = useMemo(() => createHermesZaloClient({ userId, organizationId, currentScope }), [userId, organizationId, currentScope]);
   const [state, setState] = useState<State>(initial);
   const [accountId, setAccountId] = useState(''), [connectionId, setConnectionId] = useState('');
@@ -177,15 +181,19 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
   const switchCredential = Boolean(linked && selectedConnectionId && selectedConnectionId !== linked.connectionId);
   const showLinkSteps = !linked || linkAnother || Boolean(state.challenge);
   const botCount = state.bots?.length ?? null, provisioningState = linked?.provisioningState ?? null;
-  useEffect(() => { onSummary?.({ bots: botCount, stage, provisioningState }); }, [onSummary, botCount, stage, provisioningState]);
+  const linkedConnectionId = linked?.connectionId ?? null;
+  useEffect(() => { onSummary?.({ bots: botCount, stage, provisioningState, connectionId: linkedConnectionId }); },
+    [onSummary, botCount, stage, provisioningState, linkedConnectionId]);
+  // `pending` không có câu riêng: nơi không chạy bộ đồng bộ thì hàng chờ đứng mãi ở đó, câu "đang đồng bộ" sẽ sai vô thời hạn.
+  const queueNote = (value: HermesZaloBinding) => value.provisioningState === 'pending_credential' ? 'Đang chờ kết nối CRM của trợ lý.'
+    : value.provisioningState === 'restart_pending' ? 'Đang chờ quản trị viên kích hoạt trợ lý.'
+      : value.provisioningState === 'unavailable' ? 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.'
+        : value.provisioningState === 'synchronized' ? 'Đã đồng bộ với trợ lý.' : null;
+  const bindingNote = (value: HermesZaloBinding) => value.state !== 'active' ? null : activationNote ?? queueNote(value);
   const bindingRow = (value: HermesZaloBinding) => <div key={value.bindingId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
     <div className="min-w-0 text-sm"><p className="break-all font-medium">Nick của bạn: {value.senderUid}</p>
       <p className="text-muted-foreground">{botName(value.accountId)} · {value.state === 'active' ? 'Đã liên kết' : 'Đã ngắt liên kết'}</p>
-      {value.state === 'active' && value.provisioningState && <p role="status" className="text-muted-foreground">{
-        value.provisioningState === 'pending_credential' ? 'Đang chờ kết nối CRM của trợ lý.' :
-        value.provisioningState === 'restart_pending' ? 'Đang chờ quản trị viên kích hoạt trợ lý.' :
-        value.provisioningState === 'unavailable' ? 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.' :
-        value.provisioningState === 'synchronized' ? 'Đã đồng bộ với trợ lý.' : 'Đang đồng bộ với trợ lý…'}</p>}</div>
+      {bindingNote(value) && <p role="status" className="text-muted-foreground">{bindingNote(value)}</p>}</div>
     {value.state === 'active' && <Button variant="outline" size="sm" disabled={blocked} onClick={() => void run(true,
       signal => client.unlink({ bindingId: value.bindingId, expectedEpoch: value.epoch }, { signal }),
       (result, previous) => ({ ...previous, bindings: (previous.bindings ?? []).map(row => row.bindingId === result.bindingId ? { ...row, state: 'revoked', epoch: result.epoch } : row),
@@ -205,7 +213,7 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
       </select></div>}
     {activeBindings.length > 0 && <div aria-label="Nick Zalo đã liên kết" className="space-y-2">{activeBindings.map(bindingRow)}</div>}
     {linked && switchCredential && <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm">
-      <p>{linkedConnectionActive ? `Trợ lý đang dùng ${names(linked.connectionId)}.` : 'Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn.'} Chuyển sang <strong>{names(selectedConnectionId)}</strong> (mã …{shortConnectionId(selectedConnectionId)}), nick Zalo vẫn giữ nguyên, không cần ghép lại.</p>
+      <p>{linkedConnectionActive ? `Nick Zalo đang ghép với ${names(linked.connectionId)}.` : 'Nick Zalo đang ghép với một kết nối đã ngắt hoặc hết hạn.'} Chuyển sang <strong>{names(selectedConnectionId)}</strong> (mã …{shortConnectionId(selectedConnectionId)}), nick Zalo vẫn giữ nguyên, không cần ghép lại.</p>
       <Button disabled={blocked} onClick={() => {
         const connection = activeConnections.find(value => value.id === selectedConnectionId);
         const existing = state.bindings?.find(value => value.state === 'active');
