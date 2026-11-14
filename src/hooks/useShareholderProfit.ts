@@ -478,6 +478,23 @@ export const useProfitClosePreview = (
       previewAdjustments,
     ],
     meta:{label:"dữ liệu lợi nhuận",errorDisplay:"inline"},
+    // Đổi số điều chỉnh ⇒ khoá mới. Giữ preview trước trong lúc tính lại (vạch mảnh
+    // RefreshBar, chủ chốt 02/10/2026) thay vì về `pending` làm cả vùng thành khung xương,
+    // gỡ ô đang gõ khỏi DOM. CHỈ giữ khi cùng tổ chức + tháng + tập toà: số của công ty/tháng
+    // khác không bao giờ được hiện dưới lựa chọn mới. Nút chốt vẫn chặn khi isFetching.
+    placeholderData: (previousData, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      if (
+        !previousData ||
+        !previousKey ||
+        previousKey[1] !== organizationId ||
+        previousKey[2] !== periodMonth ||
+        JSON.stringify(previousKey[3] ?? null) !== JSON.stringify(buildingIds)
+      ) {
+        return undefined;
+      }
+      return previousData;
+    },
     enabled:
       enabled &&
       !!organizationId &&

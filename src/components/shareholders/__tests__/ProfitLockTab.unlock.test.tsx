@@ -37,6 +37,9 @@ const state = vi.hoisted(() => ({
   // F06: gói RPC phát sinh sau chốt (undefined = chưa có / lỗi).
   postLock: undefined as unknown,
   postLockArgs: null as unknown,
+  // Đối số adjustments mỗi lần render gọi useProfitClosePreview (JSON) + preview đang tải lần đầu.
+  previewArgs: [] as string[],
+  previewPending: false,
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -63,14 +66,19 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
       return { run_id: "run-1", affected_buildings: 2, idempotent_replay: false };
     },
   }),
-  useProfitClosePreview: () => ({
-    data: state.preview,
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  useProfitClosePreview: (_organizationId?: string, _periodMonth?: string, adjustments: unknown[] = []) => {
+    state.previewArgs.push(JSON.stringify(adjustments));
+    return state.previewPending
+      ? { data: undefined, status: "pending", fetchStatus: "fetching", isLoading: true, isFetching: true, isError: false, error: null, refetch: vi.fn() }
+      : {
+          data: state.preview,
+          isLoading: false,
+          isFetching: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+  },
   useProfitCloseState: (organizationId?: string) => ({
     data: organizationId ? state.profitState : undefined,
     isLoading: false,
@@ -180,6 +188,8 @@ beforeEach(() => {
   state.closeCalls = [];
   state.postLock = undefined;
   state.postLockArgs = null;
+  state.previewArgs = [];
+  state.previewPending = false;
   // Mặc định: đã dò, không có khoản thiếu/trùng nào.
   state.lockChecks = {
     checks: computeProfitReportChecks({ rows: [], buildings: [], today: "2026-10-22" }),
@@ -325,9 +335,9 @@ async function mountClose(rowPatch: Partial<ProfitClosePreview['rows'][number]> 
 it('vùng chọn trống hiện đỏ/focus checkbox, không disable toast-only', async () => {
  await mountClose(); const all = screen.getByRole('checkbox', { name: 'Chọn tất cả nhà' }); fireEvent.click(all);
  const button = screen.getByRole('button', { name: 'Chốt 0 nhà đã chọn' }) as HTMLButtonElement; expect(button.disabled).toBe(false); fireEvent.click(button);
- await waitFor(() => expect(document.activeElement).toBe(all)); expect(all.getAttribute('aria-invalid')).toBe('true'); expect(screen.getByRole('alert').textContent).toMatch(/Chọn ít nhất một nhà/); expect(state.closeCalls).toHaveLength(0);
+ await waitFor(() => expect(document.activeElement).toBe(all)); expect(all.getAttribute('aria-invalid')).toBe('true'); expect(document.getElementById('profitBuildings-error')?.textContent).toMatch(/Chọn ít nhất một nhà/); expect(state.closeCalls).toHaveLength(0);
 });
-it.each(['abc', '-', '1.234'])('điều chỉnh draft %s giữ raw/đỏ/focus và không ghi giá trị cũ', async raw => {
+it.each(['abc', '-', '1,234'])('điều chỉnh draft %s giữ raw/đỏ/focus và không ghi giá trị cũ', async raw => {
  const button = await mountClose(); const amount = screen.getByLabelText('Điều chỉnh lợi nhuận 15KV') as HTMLInputElement;
  fireEvent.focus(amount); fireEvent.change(amount, { target: { value: raw } }); fireEvent.blur(amount); fireEvent.click(button);
  await waitFor(() => expect(document.activeElement).toBe(amount)); expect(amount.value).toBe(raw); expect(amount.getAttribute('aria-invalid')).toBe('true'); expect(state.closeCalls).toHaveLength(0); expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -475,3 +485,64 @@ describe("ProfitLockTab — rà 21/10 (F20 dò chi cố định, F07 nhãn, F60 
 });
 
 it('preview thiếu source hash hiện inline reload, giữ điều chỉnh và không mở xác nhận',async()=>{const button=await mountClose({},'');fireEvent.click(button);const alert=(await screen.findByText('Chưa xác nhận được dữ liệu nguồn. Tải lại số liệu trước khi chốt.')).closest('[role="alert"]') as HTMLElement;expect(alert).toBeTruthy();expect(within(alert).getByRole('button',{name:'Tải lại số liệu'})).toBeTruthy();expect(screen.queryByRole('alertdialog')).toBeNull();expect(state.closeCalls).toHaveLength(0);});
+
+// Chủ báo 29/10 + 14/11: mỗi lần chọn cách xử lý / gõ lý do là "trang giựt một cái load màn
+// hình" — khoá preview đổi theo từng phím ⇒ cả tab thành khung xương, ô đang gõ bị gỡ khỏi DOM.
+describe("ProfitLockTab — không tải lại preview khi gõ lý do / chọn cách xử lý", () => {
+  const residual = { unallocated_profit: 100000, shareholder_percent_total: 90, shareholder_allocated_amount: 900000 };
+  const lastArgs = () => state.previewArgs[state.previewArgs.length - 1];
+
+  it("gõ lý do (phần chưa phân bổ + điều chỉnh) không đổi đối số preview; ô gõ vẫn giữ focus và đủ chữ", async () => {
+    await mountClose(residual);
+    const before = lastArgs();
+    expect(JSON.parse(before)).toEqual([]);
+
+    const reason = screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV") as HTMLInputElement;
+    reason.focus();
+    for (const value of ["g", "gi", "giu lai de chi sau"]) {
+      fireEvent.change(reason, { target: { value } });
+    }
+    const adjReason = screen.getByLabelText("Lý do điều chỉnh 15KV") as HTMLInputElement;
+    fireEvent.change(adjReason, { target: { value: "lý do điều chỉnh dài" } });
+    reason.focus();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+    expect(lastArgs()).toBe(before);
+    expect(document.activeElement).toBe(reason);
+    expect(reason.value).toBe("giu lai de chi sau");
+    // Chọn Giữ lại/Chuyển kỳ sau: payload preview không chứa cách xử lý (xem
+    // buildProfitPreviewAdjustments + profitClose.test); đo trên trình duyệt thật 14/11: 0 lượt preview.
+  });
+
+  it("đổi số điều chỉnh mới gửi preview — chỉ số tiền, sau debounce", async () => {
+    await mountClose(residual);
+    const amount = screen.getByLabelText("Điều chỉnh lợi nhuận 15KV") as HTMLInputElement;
+    amount.focus();
+    fireEvent.change(amount, { target: { value: "150000" } });
+    expect(JSON.parse(lastArgs())).toEqual([]);
+    await waitFor(() => expect(JSON.parse(lastArgs())).toEqual([
+      { building_id: B1, adjustment_amount: 150000, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+    ]));
+    expect(document.activeElement).toBe(amount);
+  });
+
+  it("chốt vẫn gửi đủ lý do và cách xử lý dù preview chỉ nhận số tiền", async () => {
+    const button = await mountClose({ ...residual, unallocated_disposition: "CARRY_FORWARD" });
+    fireEvent.change(screen.getByLabelText("Lý do xử lý phần chưa phân bổ 15KV"), { target: { value: "chuyen sang ky sau de chia" } });
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    fireEvent.click(within(hop).getByText("Chốt 1 nhà"));
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+    expect((state.closeCalls[0] as { adjustments: unknown[] }).adjustments).toEqual([
+      { building_id: B1, adjustment_amount: 0, adjustment_reason: null, unallocated_disposition: "CARRY_FORWARD", unallocated_disposition_reason: "chuyen sang ky sau de chia" },
+    ]);
+  });
+
+  it("đang tải số liệu thì thanh chọn tổ chức/tháng vẫn hiện, chỉ vùng số liệu chờ", async () => {
+    state.previewPending = true;
+    state.profitState = { ...TRANG_THAI, rows: [], snapshot_ids: [], snapshot_count: 0, locked_count: 0, can_lock: true };
+    render(<ProfitLockTab organizations={CLOSE_ORGS} />);
+    expect(await screen.findByRole("combobox", { name: "Chọn tổ chức" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Chọn tháng" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Chọn tất cả nhà" })).toBeNull();
+  });
+});

@@ -95,3 +95,7 @@ a13fb3c132d01e91b59167f5b9a1800e06cf7061:infra/hermes-broker/action-catalog.test
 # (header {"alg":"HS256"}, payload {"sub":"1234567890"}, chữ ký 26 ký tự) để kiểm bộ lọc bí mật — chuỗi giả trong test, không phải khoá thật (đã giải mã header/payload).
 # CI quét --all nên finding ở nhánh draft làm đỏ cả main và mọi PR (như 21/10); miễn trừ đúng một dòng của commit gốc.
 60ed0bc0e2e0d27eb01558f0222e4b2ebdae2f61:infra/hermes-learning-audit/test_learning_audit.py:jwt:434
+# 14/11/2026: src/lib/resetUserPassword.ts (nhánh claude/dat-lai-mat-khau-user, PR #426) từng để nguyên văn bảng chữ
+# của mật khẩu ngẫu nhiên (57 ký tự A–Z/a–z/2–9 bỏ 0/O/1/l/I) gán cho RANDOM_PASSWORD_ALPHABET ⇒ generic-api-key báo nhầm.
+# Không phải bí mật; commit sau đã dựng chuỗi lúc chạy. CI quét --all nên miễn trừ đúng dòng của commit cũ.
+1ca882916bafe5e40fb1f1fc0b76be76304c292c:src/lib/resetUserPassword.ts:generic-api-key:12

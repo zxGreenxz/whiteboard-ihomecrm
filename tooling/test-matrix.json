@@ -120,6 +120,16 @@
       ]
     },
     {
+      "id": "admin-reset-user-password-edge",
+      "sourcePaths": [
+        "supabase/functions/admin-reset-user-password/**"
+      ],
+      "suiteId": "edge-deno-admin-reset-password",
+      "testPatterns": [
+        "supabase/functions/admin-reset-user-password/*.test.ts"
+      ]
+    },
+    {
       "id": "gps-checkin-edge",
       "sourcePaths": [
         "supabase/functions/gps-checkin-ingest/**"
@@ -2025,6 +2035,28 @@
         "supabase/functions/gps-checkin-ingest/*.test.ts"
       ],
       "note": "Cổng nhận điểm danh GPS của app iHome Gateway: chỉ gửi SHA-256 của bearer và mã ghép nối xuống SQL, từ chối sai hợp đồng trước khi chạm DB, ánh xạ lỗi SQL sang HTTP, biên nhận DB sai dạng trả 502.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 5
+    },
+    {
+      "id": "edge-deno-admin-reset-password",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "deno",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/admin-reset-user-password/deno.json supabase/functions/admin-reset-user-password/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
+      "runtime": "deno 2.9.4",
+      "risk": "authorization",
+      "includes": [
+        "supabase/functions/admin-reset-user-password/*.test.ts"
+      ],
+      "note": "Đặt lại mật khẩu cho user khác: kiểm quyền ở SQL bằng JWT người bấm TRƯỚC khi chạm Auth, khoá service chỉ ở lời gọi Auth, mật khẩu chỉ ở thân lời gọi Auth, header Content-Profile trên đường fetch thật, chốt đúng SUCCEEDED/FAILED/UNKNOWN và ánh xạ lỗi sang HTTP.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
