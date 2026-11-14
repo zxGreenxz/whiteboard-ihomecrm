@@ -2,12 +2,11 @@
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
     "source": 15,
-    "deployed": 13,
+    "deployed": 14,
     "invoked": 3,
     "publiclyCallable": 6
   },
   "sourceWithoutDeployment": [
-    "admin-reset-user-password",
     "network-watchdog"
   ],
   "deploymentWithoutSource": [],
@@ -23,10 +22,10 @@
     },
     "admin-reset-user-password": {
       "hasSource": true,
-      "deployed": false,
-      "status": null,
-      "version": null,
-      "verifyJwt": null,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 1,
+      "verifyJwt": true,
       "callers": []
     },
     "bank-event-admin": {
