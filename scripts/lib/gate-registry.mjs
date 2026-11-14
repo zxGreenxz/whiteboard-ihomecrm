@@ -69,6 +69,7 @@ for (const [id, job, command, args] of [
   ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
   ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
   ['edge-deno-gps-checkin', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/gps-checkin-ingest/deno.json']],
+  ['edge-deno-admin-reset-password', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/admin-reset-user-password/deno.json']],
   ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['edge-deno-door-access', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/door-access/deno.json']],

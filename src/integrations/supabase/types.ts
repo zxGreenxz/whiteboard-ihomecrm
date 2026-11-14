@@ -30690,6 +30690,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      user_password_reset_begin_v1: {
+        Args: { p_target_user_id: string }
+        Returns: Json
+      }
+      user_password_reset_finish_v1: {
+        Args: {
+          p_error_code?: string
+          p_finish_token: string
+          p_outcome: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       utc_instant_v1: { Args: { p_at: string }; Returns: string }
       v5_appeal: { Args: { p_date: string; p_text: string }; Returns: Json }
       v5_apply_lock_adjustments: { Args: { p_month: string }; Returns: Json }

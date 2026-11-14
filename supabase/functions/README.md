@@ -7,6 +7,7 @@
 | Function | Vai trò | Auth chính |
 |---|---|---|
 | `admin-create-user` | **Tạo** user mới qua Supabase Admin API; không phải endpoint update | JWT hợp lệ + caller là `super_admin` |
+| `admin-reset-user-password` | Đặt mật khẩu mới cho user **khác** (nút "Đặt lại mật khẩu" ở `/settings/members` và `/admin/users`) | JWT người bấm; quyền quyết ở SQL `user_password_reset_begin_v1` (superadmin: mọi user; chủ công ty: thành viên mà mọi tổ chức đều do mình làm chủ và không phải công ty demo, trừ chủ/cổ đông/superadmin); khoá service chỉ dùng cho Auth Admin API |
 | `demo-reset` | Reset dữ liệu demo có cooldown/tripwire | POST + header `x-demo-secret` (không dùng admin JWT) |
 | `llm-proxy` | Proxy model cho AI Copilot, quota/reservation/usage | JWT + entitlement + cấu hình provider |
 | `quick-entry` | AI của trang Báo chi nhanh `/chi-tieu`: chép giọng (OpenRouter) + đọc chữ/ảnh bill (9router) | JWT + quyền ghi chi + công tắc `QUICK_ENTRY_MODE` |

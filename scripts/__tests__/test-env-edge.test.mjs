@@ -52,6 +52,11 @@ describe('test-env edge: secret cấm trên TEST', () => {
     expect(CHUA_CO_O_PRODUCTION['door-access']).toEqual({ verify_jwt: true });
   });
 
+  it('admin-reset-user-password lên TEST với cổng JWT bật', () => {
+    expect(DANH_SACH).toContain('admin-reset-user-password');
+    expect(CHUA_CO_O_PRODUCTION['admin-reset-user-password']).toEqual({ verify_jwt: true });
+  });
+
   it('meter worker deploys the exact locked bundle with handler authentication and no copied worker/AI credential', async () => {
     expect(DANH_SACH).toContain('meter-capture-worker');
     expect(CHUA_CO_O_PRODUCTION['meter-capture-worker']).toEqual({ verify_jwt: false });
