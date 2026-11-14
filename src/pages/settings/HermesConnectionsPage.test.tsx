@@ -111,7 +111,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_fixture');
   writeClipboard = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: writeClipboard } });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Hermes self-connection page with the real typed client and fake HTTP', () => {
   it('renders overview before opening grants and distinguishes slow options from failure', async () => {
@@ -691,7 +691,8 @@ describe('one-column setup guide', () => {
     const second = render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
     expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toBeTruthy();
-    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý. Bấm “Tải lại liên kết” ở bước 3 để xem trạng thái mới nhất.')).toBeTruthy();
+    expect(screen.getByText('Đang chờ quản trị viên kích hoạt trợ lý. Trang tự kiểm lại sau mỗi 30 giây.')).toBeTruthy();
+    expect(screen.queryByText(/Tải lại liên kết”/)).toBeNull();
     second.unmount();
     fetchMock.mockImplementation(zalo(linked('synchronized')));
     render(<HermesConnectionsPage />);
@@ -699,6 +700,127 @@ describe('one-column setup guide', () => {
     expect(screen.getByText('Trợ lý đã sẵn sàng.')).toBeTruthy();
     expect(screen.getByText(/còn phòng nào trống/)).toBeTruthy();
     expect(fetchMock.mock.calls.some(([path]) => /\/zalo\/(begin|confirm|selectCredential|unlink)$/.test(String(path)))).toBe(false);
+  });
+  // Production không chạy bộ đồng bộ hồ sơ trợ lý: hàng chờ đứng mãi ở `pending`. Bước 6 phải theo bằng chứng trợ lý đã gọi CRM.
+  const quiet = { lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null };
+  it('finishes step 6 from connector evidence while the queue row stays pending, without claiming "syncing"', async () => {
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    expect(screen.getByText(`Trợ lý đang dùng kết nối này. Lần gần nhất gọi CRM: ${at(SUCCESS)}.`)).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Liên kết Zalo của tôi' })).getByText('Trợ lý đang dùng kết nối này.')).toBeTruthy();
+    expect(screen.queryByText(/[Đđ]ang đồng bộ/)).toBeNull();
+    expect(screen.getByText(/còn phòng nào trống/)).toBeTruthy();
+    expect(calls('status')).toHaveLength(0);
+  });
+  it('waits at step 6 with the truth when no evidence exists, re-reads connector activity by itself and then finishes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    expect(screen.getByText(`Chưa thấy trợ lý dùng kết nối này kể từ khi dịch vụ kết nối CRM chạy lại lúc ${at(STARTED)}. Nếu bạn vừa liên kết, nhờ quản trị viên kích hoạt trợ lý; nếu trợ lý đã chạy, nhắn thử bot trên Zalo. Trang tự kiểm lại sau mỗi 30 giây.`)).toBeTruthy();
+    expect(screen.queryByText(/[Đđ]ang đồng bộ/)).toBeNull(); expect(screen.queryByText(/Tải lại liên kết”/)).toBeNull();
+    expect(calls('status')).toHaveLength(0);
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    expect(calls('status')).toHaveLength(1); expect(calls('overview')).toHaveLength(1);
+    expect(JSON.parse(calls('status')[0][1]!.body as string)).toEqual({ organizationId: ORG });
+    // Đã xong thì thôi tự kiểm: không gọi thêm lượt nào.
+    await act(async () => { await vi.advanceTimersByTimeAsync(90_000); });
+    expect(calls('status')).toHaveLength(1);
+    expect(fetchMock.mock.calls.some(([path]) => /\/zalo\/(begin|confirm|selectCredential|unlink)$/.test(String(path)))).toBe(false);
+  });
+  it('stops re-reading after its budget and then points at the reload button that really refreshes the evidence', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    for (let round = 0; round < 22; round++) await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(calls('status')).toHaveLength(20);
+    expect(screen.getByText(/nhắn thử bot trên Zalo\. Bấm “Tải lại danh sách” ở đầu trang để kiểm lại\.$/)).toBeTruthy();
+    // Bấm tải lại mà vẫn chưa có bằng chứng: trang tự kiểm lại từ đầu, không đứng im ở câu "bấm tải lại".
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại danh sách' }));
+    await screen.findByText(/nhắn thử bot trên Zalo\. Trang tự kiểm lại sau mỗi 30 giây\.$/);
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    expect(calls('status')).toHaveLength(21); expect(calls('overview')).toHaveLength(2);
+  });
+  it('does not re-read while the tab is hidden, and resumes when it is visible again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    for (let round = 0; round < 3; round++) await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(calls('status')).toHaveLength(0);
+    visibility.mockReturnValue('visible');
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(calls('status')).toHaveLength(1);
+  });
+  it('never lets a slow background re-read overwrite a newer reload', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }]);
+    const slow = pending<Response>(), handler = zalo(linked('pending'));
+    fetchMock.mockImplementation((path, init) => String(path).endsWith('/connections/status') ? slow.promise : handler(path, init));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(calls('status')).toHaveLength(1);
+    // Lượt đọc nền còn đang bay thì người dùng bấm tải lại và nhận số liệu mới (đã có bằng chứng).
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại danh sách' }));
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    // Lượt đọc nền cũ (chưa có bằng chứng) về muộn: không được kéo trang lùi lại bước 6.
+    await act(async () => { slow.resolve(json(statusFixture([{ id: CONNECTION, ...quiet }]))); await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.')).toBeTruthy();
+    expect(screen.queryByText(/Chưa thấy trợ lý dùng kết nối này/)).toBeNull();
+  });
+  it('takes step 6 back as soon as the paired connection is disconnected, even though its last success is still on record', async () => {
+    // Dịch vụ kết nối không ghi lỗi cho token đã thu hồi: "lần cuối thành công" cũ còn nguyên sau khi ngắt.
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    fireEvent.click(screen.getByRole('button', { name: 'Ngắt kết nối' }));
+    fireEvent.click(await screen.findByRole('alertdialog').then(dialog => within(dialog).getByRole('button', { name: 'Ngắt kết nối' })));
+    await screen.findByText('Bạn đang ở bước 2: Tạo kết nối.');
+    expect(screen.queryByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.')).toBeNull();
+    expect(screen.queryByText(/Trợ lý đang dùng kết nối này/)).toBeNull();
+    expect(screen.getByText('Kết nối đang ghép với nick Zalo đã ngắt hoặc chưa hoàn tất nên trợ lý không dùng được CRM. Tạo kết nối mới ở bước 2 nếu chưa có, rồi bấm “Dùng kết nối này cho trợ lý” ở bước 3.')).toBeTruthy();
+    expect(screen.getByText('Kết nối đang ghép không còn dùng được. Xem bước 6.')).toBeTruthy();
+  });
+  it('does not finish on a disconnected paired connection while another active connection exists', async () => {
+    rows = [{ ...row(), state: 'revoked' }, row(OTHER)];
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }, { id: OTHER, ...quiet }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    expect(screen.queryByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.')).toBeNull();
+    expect(screen.getByText(/^Kết nối đang ghép với nick Zalo đã ngắt hoặc chưa hoàn tất nên trợ lý không dùng được CRM\./)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' })).toBeTruthy();
+  });
+  it('names the connection the assistant really runs on when it differs from the one paired with Zalo', async () => {
+    rows = [row(), row(OTHER)];
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet }, { id: OTHER, ...quiet, lastSuccessAt: SUCCESS }]);
+    fetchMock.mockImplementation(zalo(linked('pending')));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
+    expect(screen.getByText('Trợ lý đang chạy bằng Kết nối 2 (mã …66666666), không phải kết nối đang ghép với nick Zalo. Ở bước 3, chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.')).toBeTruthy();
+    expect(screen.getByText('Trợ lý đang chạy bằng kết nối khác. Xem bước 6.')).toBeTruthy();
+    expect(screen.getByLabelText('Kết nối Hermes dùng cho Zalo')).toBeTruthy();
+  });
+  it('tells an unlinked user that the assistant already reaches the CRM and sends them to the Zalo step', async () => {
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);
+    fetchMock.mockImplementation(zalo([]));
+    render(<HermesConnectionsPage />);
+    await screen.findByText('Bạn đang ở bước 3: Tạo mã Zalo.');
+    expect(screen.getByText(`Trợ lý đã gọi được CRM bằng Hermes của tôi lúc ${at(SUCCESS)}. Liên kết Zalo ở bước 3 để nhắn trợ lý qua bot của công ty.`)).toBeTruthy();
   });
   it('sends a company-off user back to step 1 without writing anything', async () => {
     companyPolicy.policy.enabled = false;

@@ -178,6 +178,36 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     expect(await screen.findByText('Đang chờ kết nối CRM của trợ lý.')).toBeTruthy();
     expect(screen.getByText('Nick của bạn: 98765')).toBeTruthy();
   });
+  it('never claims "syncing" for a queue row left at pending, and lets the page state what the assistant really does', async () => {
+    const summaries: HermesZaloSummary[] = [];
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ?
+      Response.json({ ...base, status: 'listed', nextCursor: null, bindings: [{ bindingId: BINDING, epoch: 1,
+        state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '98765', provisioningState: 'pending' }] }) : respond(path, init));
+    const page = render(<HermesZaloBindings userId={USER} organizationId={ORG} currentScope={currentScope} connections={[row()]} disabled={false}
+      onSummary={value => summaries.push(value)} />);
+    await ready(); await screen.findByText('Nick của bạn: 98765');
+    // Hàng chờ đứng ở pending ở nơi không chạy bộ đồng bộ: dòng nick không được hiện câu chờ vô thời hạn.
+    expect(screen.queryByText(/đồng bộ/i)).toBe(null);
+    expect(screen.getByText('Bot công ty · Đã liên kết')).toBeTruthy();
+    expect(summaries.at(-1)).toEqual({ bots: 1, stage: 'linked', provisioningState: 'pending', connectionId: CONNECTION });
+    page.rerender(<HermesZaloBindings userId={USER} organizationId={ORG} currentScope={currentScope} connections={[row()]} disabled={false}
+      onSummary={value => summaries.push(value)} activationNote="Trợ lý đang dùng kết nối này." />);
+    expect(screen.getByText('Trợ lý đang dùng kết nối này.')).toBeTruthy();
+  });
+  it('shows the page evidence note instead of the queue state on active rows only, never on an unlinked row', async () => {
+    const OLD = '88888888-8888-4888-8888-888888888888';
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ?
+      Response.json({ ...base, status: 'listed', nextCursor: null, bindings: [
+        { bindingId: BINDING, epoch: 1, state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '98765', provisioningState: 'restart_pending' },
+        { bindingId: OLD, epoch: 2, state: 'revoked', accountId: BOT, connectionId: CONNECTION, senderUid: '55555' }] }) : respond(path, init));
+    render(<HermesZaloBindings userId={USER} organizationId={ORG} currentScope={currentScope} connections={[row()]} disabled={false}
+      activationNote="Trợ lý đang dùng kết nối này." />);
+    await ready(); await screen.findByText('Nick của bạn: 98765');
+    // Hàng chờ còn restart_pending (bộ đồng bộ không tự xoá được) nhưng trang đã có bằng chứng: câu của trang thắng.
+    expect(screen.getAllByText('Trợ lý đang dùng kết nối này.')).toHaveLength(1);
+    expect(screen.queryByText('Đang chờ quản trị viên kích hoạt trợ lý.')).toBe(null);
+    expect(screen.getByText('Nick của bạn: 55555').parentElement!.textContent).toBe('Nick của bạn: 55555Bot công ty · Đã ngắt liên kết');
+  });
 
   it('uses the only connection and bot without a picker and reports progress without codes or UIDs', async () => {
     const summaries: HermesZaloSummary[] = [];
@@ -190,7 +220,7 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
     expect(JSON.parse(calls('begin')[0][1]!.body as string)).toMatchObject({ accountId: BOT, connectionId: CONNECTION, expectedConnectionEpoch: 2 });
     expect(summaries.map(value => value.stage)).toEqual(expect.arrayContaining(['none', 'code', 'observed', 'linked']));
-    expect(summaries.at(-1)).toEqual({ bots: 1, stage: 'linked', provisioningState: null });
+    expect(summaries.at(-1)).toEqual({ bots: 1, stage: 'linked', provisioningState: null, connectionId: CONNECTION });
     expect(JSON.stringify(summaries)).not.toContain('98765');
   });
   it('offers the switch on its own when the linked connection was revoked and one active connection is left', async () => {
@@ -200,7 +230,7 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
       : respond(path, init));
     render(view('initial', [{ ...row(), state: 'revoked', epoch: 3 }, { ...row(), id: next }])); await ready();
     expect(screen.queryByLabelText('Kết nối Hermes dùng cho Zalo')).toBe(null);
-    expect(screen.getByText(/Trợ lý đang dùng một kết nối đã ngắt hoặc hết hạn/).textContent).toContain('…77777777');
+    expect(screen.getByText(/Nick Zalo đang ghép với một kết nối đã ngắt hoặc hết hạn/).textContent).toContain('…77777777');
     expect(screen.queryByRole('button', { name: 'Tạo mã liên kết Zalo' })).toBe(null);
     fireEvent.click(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' }));
     await screen.findByText('Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.');
