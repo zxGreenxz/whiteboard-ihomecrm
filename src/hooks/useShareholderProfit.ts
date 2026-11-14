@@ -543,18 +543,9 @@ function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["profit-post-lock"] });
 }
 
-/**
- * Tab Chốt LN có ô "Chọn tổ chức" riêng và gửi rõ organizationId cho RPC (máy chủ gác quyền
- * theo tổ chức đó). Phạm vi 'selected' mặc định so với công ty đang chọn toàn app ⇒ chọn
- * công ty khác trong tab là mọi lượt Chốt/Mở khoá/Đặt lại bị từ chối "Biểu mẫu thuộc tổ chức
- * khác…". 'target' = khoá chống bấm trùng theo đúng tổ chức đích (thiết kế sẵn cho thao tác
- * có tổ chức đích rõ); ở trường hợp thường (hai bên trùng) khoá y như cũ.
- */
-const PROFIT_WORKFLOW_SCOPE = { scope: 'target' } as const;
-
 export const useCloseProfitPeriod = () => {
   const qc = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('profit-close', PROFIT_WORKFLOW_SCOPE));
+  const workflow = useRef(persistentFinancialWorkflow('profit-close'));
   return useMutation({
     mutationFn: async (input: CloseProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
@@ -689,7 +680,7 @@ export function unlockProfitMonthErrorMessage(message: string | null | undefined
  */
 export const useUnlockProfitMonth = () => {
   const qc = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('profit-unlock', PROFIT_WORKFLOW_SCOPE));
+  const workflow = useRef(persistentFinancialWorkflow('profit-unlock'));
   return useMutation({
     mutationFn: async (input: UnlockProfitMonthInput): Promise<UnlockProfitMonthResult> => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
@@ -732,7 +723,7 @@ export const useUnlockProfitMonth = () => {
 
 export const useResetProfitPeriod = () => {
   const qc = useQueryClient();
-  const workflow = useRef(persistentFinancialWorkflow('profit-reset', PROFIT_WORKFLOW_SCOPE));
+  const workflow = useRef(persistentFinancialWorkflow('profit-reset'));
   return useMutation({
     mutationFn: async (input: ResetProfitPeriodInput) => {
       if (!input.organizationId) throw new FinancialWorkflowError("Không xác định được tổ chức", 'failure', []);
