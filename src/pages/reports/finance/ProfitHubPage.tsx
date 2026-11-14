@@ -60,7 +60,7 @@ export default function ProfitHubPage() {
 
   // Q9 (chủ chốt 11/10/2026): "Chốt LN tháng", "Cổ đông & tỷ lệ" hiện THEO QUYỀN,
   // "Lương của tôi" luôn hiện với quản lý điều hành — bỏ cơ chế nhấp 3 lần vào logo.
-  const tabs: { value: string; label: string; node: ReactNode }[] = [];
+  const tabs: { value: string; label: string; node: ReactNode; keepMounted?: boolean }[] = [];
   // Tab tự-xem của cổ đông-partner ĐỨNG ĐẦU (mặc định) — xem [[canSeeOwnShare]].
   if (canSeeOwnShare && me) tabs.push({ value: "my-overview", label: "Tổng quan", node: <ShareholderSelfView me={me} /> });
   if (canReport) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
@@ -70,6 +70,8 @@ export default function ProfitHubPage() {
       value: "lock",
       label: "Chốt LN tháng",
       node: <ProfitLockTab organizations={profitCloseOrganizations} />,
+      // Nháp chốt (điều chỉnh, lý do, vùng chọn) không được mất khi ghé tab khác.
+      keepMounted: true,
     });
     if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab /> });
   }
@@ -123,7 +125,7 @@ export default function ProfitHubPage() {
           <LoadingState label="báo cáo lợi nhuận" variant="table" rows={6} />
         ) : visibleTabs.length > 0 ? (
           visibleTabs.map((t) => (
-            <ProfitHubTabPanel key={t.value} value={t.value}>
+            <ProfitHubTabPanel key={t.value} value={t.value} keepMounted={t.keepMounted}>
               {t.node}
             </ProfitHubTabPanel>
           ))

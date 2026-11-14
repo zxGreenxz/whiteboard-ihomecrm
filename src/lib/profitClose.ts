@@ -125,6 +125,61 @@ export function mergeProfitCloseDrafts(
   return next;
 }
 
+/**
+ * Đọc số điều chỉnh người dùng gõ. Nhận "1.000.000" (chấm ngăn nghìn kiểu Việt, có thể kèm
+ * ",5" phần lẻ), "1000000", "-250000", "12.5" / "12,5" (tối đa 2 chữ số lẻ). Ô rỗng = 0.
+ * Không đọc được ⇒ NaN (validateProfitCloseDrafts báo lỗi tại ô khi bấm chốt).
+ */
+export function parseSignedAdjustment(raw: string): number {
+  const text = raw.trim().replace(/\s+/g, "");
+  if (text === "" ) return 0;
+  // Nhóm nghìn phải bắt đầu bằng chữ số khác 0: "0.500" là số lẻ (quá 2 chữ số ⇒ NaN), không phải 500.
+  if (/^-?[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?$/.test(text)) {
+    return Number(text.replace(/\./g, "").replace(",", "."));
+  }
+  if (/^-?\d+(?:[.,]\d{0,2})?$/.test(text)) return Number(text.replace(",", "."));
+  return NaN;
+}
+
+/**
+ * Điều chỉnh gửi cho PREVIEW — chỉ phần làm đổi số: toà có số điều chỉnh khác 0.
+ *
+ * SQL (`_profit_close_preview_core_v2` + `_profit_enrich_unallocated_v3`): số preview chỉ
+ * phụ thuộc `adjustment_amount` từng toà (toà vắng mặt = 0); lý do điều chỉnh và cách xử lý
+ * phần chưa phân bổ chỉ được ĐỌC LẠI rồi trả về, còn source_hash (CAS khi chốt) không chứa
+ * điều chỉnh. Gửi cả lý do/cách xử lý làm khoá preview đổi theo TỪNG PHÍM gõ và mỗi lần chọn
+ * "Giữ lại/Chuyển kỳ sau" ⇒ preview tải lại vô ích (chủ báo 29/10 và 14/11: "giựt load màn
+ * hình"). Bỏ toà = 0 để lúc mở tab nạp nháp toàn 0 không sinh lượt preview thứ hai.
+ * Lượt CHỐT vẫn gửi đủ trường qua `buildProfitCloseAdjustments`.
+ */
+export function buildProfitPreviewAdjustments(
+  drafts: ProfitCloseDraftMap,
+): ProfitCloseAdjustmentPayload[] {
+  return Object.keys(drafts)
+    .sort()
+    .map((buildingId) => ({
+      building_id: buildingId,
+      adjustment_amount: finiteMoney(drafts[buildingId]?.adjustmentAmount),
+      adjustment_reason: null,
+      unallocated_disposition: null,
+      unallocated_disposition_reason: null,
+    }))
+    // Số chưa hợp lệ (vượt numeric(15,2) hoặc quá 2 chữ số lẻ) mà gửi đi thì SQL ném lỗi và
+    // cả vùng số liệu thành báo lỗi; bỏ khỏi preview, ô đó báo lỗi tại chỗ khi bấm chốt.
+    .filter(
+      (adjustment) =>
+        adjustment.adjustment_amount !== 0 &&
+        isStorableAdjustmentAmount(adjustment.adjustment_amount),
+    );
+}
+
+function isStorableAdjustmentAmount(value: number): boolean {
+  return (
+    Math.abs(value) <= 9_999_999_999_999.99 &&
+    Math.abs(Math.round(value * 100) - value * 100) <= 1e-8
+  );
+}
+
 export function buildProfitCloseAdjustments(
   buildingIds: string[],
   drafts: ProfitCloseDraftMap,
@@ -287,12 +342,7 @@ export function validateProfitCloseDrafts(
       rowErrors[buildingId] = "Số điều chỉnh không hợp lệ";
       continue;
     }
-    if (
-      Math.abs(draft.adjustmentAmount) > 9_999_999_999_999.99 ||
-      Math.abs(
-        Math.round(draft.adjustmentAmount * 100) - draft.adjustmentAmount * 100,
-      ) > 1e-8
-    ) {
+    if (!isStorableAdjustmentAmount(draft.adjustmentAmount)) {
       rowErrors[buildingId] = "Số điều chỉnh tối đa 2 chữ số thập phân";
       continue;
     }
