@@ -109,6 +109,15 @@ describe('quyenDaXacNhan — chỉ `true` đã tải xong, không lỗi', () => 
 describe('taoMatKhauNgauNhien', () => {
   const KHOP = new RegExp(`^[${RANDOM_PASSWORD_ALPHABET}]{${RANDOM_PASSWORD_LENGTH}}$`);
 
+  it('bảng chữ dựng lúc chạy = A–Z bỏ I/O, a–z bỏ l, 2–9; không trùng ký tự', () => {
+    const bang = RANDOM_PASSWORD_ALPHABET;
+    expect(bang).toHaveLength(24 + 25 + 8);
+    expect(new Set(bang).size).toBe(bang.length);
+    expect(bang).toMatch(/^[A-Za-z2-9]+$/);
+    expect(bang).not.toMatch(/[0O1lI]/);
+    for (const c of ['A', 'H', 'J', 'N', 'P', 'Z', 'a', 'k', 'm', 'z', '2', '9']) expect(bang).toContain(c);
+  });
+
   it('12 ký tự từ bảng chữ không dễ nhầm, đủ chữ thường + chữ hoa + chữ số', () => {
     expect(RANDOM_PASSWORD_ALPHABET).not.toMatch(/[0O1lI]/);
     for (let i = 0; i < 200; i += 1) {
