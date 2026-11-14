@@ -19,6 +19,8 @@ import {
   validateProfitCloseDrafts,
   type ProfitCloseDraft,
   type ProfitCloseDraftMap,
+  buildProfitPreviewAdjustments as previewAdjustmentsOf,
+  parseSignedAdjustment as parseAdjustmentInput,
 } from "@/lib/profitClose";
 
 describe("profit close draft initialization", () => {
@@ -447,5 +449,56 @@ describe("profit close V2 boundaries", () => {
     expect(guardMigrationSource).toMatch(
       /REVOKE ALL ON FUNCTION public\.profit_reset_v2[\s\S]*authenticated/,
     );
+  });
+});
+
+describe("buildProfitPreviewAdjustments — preview chỉ nhận số tiền (chống giật 14/11)", () => {
+  const draft = (amount: number, extra: Partial<{ adjustmentReason: string; unallocatedDisposition: "RETAINED_EARNINGS" | "CARRY_FORWARD" | null; unallocatedDispositionReason: string }> = {}) => ({
+    adjustmentAmount: amount,
+    adjustmentReason: extra.adjustmentReason ?? "",
+    unallocatedDisposition: extra.unallocatedDisposition ?? null,
+    unallocatedDispositionReason: extra.unallocatedDispositionReason ?? "",
+  });
+
+  it("bỏ toà = 0, bỏ lý do và cách xử lý, sắp theo building_id", () => {
+    expect(previewAdjustmentsOf({
+      b2: draft(-50, { adjustmentReason: "giảm do hoàn cọc", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "chuyển sang kỳ sau" }),
+      b1: draft(0, { unallocatedDisposition: "RETAINED_EARNINGS", unallocatedDispositionReason: "giữ lại lợi nhuận" }),
+      b3: draft(1200.5),
+    })).toEqual([
+      { building_id: "b2", adjustment_amount: -50, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+      { building_id: "b3", adjustment_amount: 1200.5, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null },
+    ]);
+  });
+
+  it("đổi lý do / cách xử lý không đổi payload; đổi số thì đổi", () => {
+    const a = JSON.stringify(previewAdjustmentsOf({ b1: draft(10) }));
+    const b = JSON.stringify(previewAdjustmentsOf({ b1: draft(10, { adjustmentReason: "lý do mới dài", unallocatedDisposition: "CARRY_FORWARD", unallocatedDispositionReason: "x".repeat(20) }) }));
+    expect(b).toBe(a);
+    expect(JSON.stringify(previewAdjustmentsOf({ b1: draft(11) }))).not.toBe(a);
+  });
+
+  it("số chưa hợp lệ (NaN, quá 2 chữ số lẻ, vượt numeric(15,2)) không gửi preview — SQL sẽ ném lỗi", () => {
+    expect(previewAdjustmentsOf({ b1: draft(Number.NaN), b2: draft(1.234), b3: draft(10_000_000_000_000), b4: draft(5) }))
+      .toEqual([{ building_id: "b4", adjustment_amount: 5, adjustment_reason: null, unallocated_disposition: null, unallocated_disposition_reason: null }]);
+  });
+});
+
+describe("parseSignedAdjustment — ô điều chỉnh có dấu", () => {
+  it.each([
+    ["", 0],
+    ["1000000", 1_000_000],
+    ["1.000.000", 1_000_000],
+    ["-1.250.000", -1_250_000],
+    ["1.000.000,5", 1_000_000.5],
+    ["12,5", 12.5],
+    ["12.5", 12.5],
+    ["-250000", -250_000],
+    [" 1 000 ", 1000],
+  ])("%j ⇒ %d", (raw, expected) => {
+    expect(parseAdjustmentInput(raw)).toBe(expected);
+  });
+  it.each(["abc", "-", "1,234", "1.2.3", "1.00.000", "12.345,678", "0.500", "-0.250"])("%j ⇒ NaN", (raw) => {
+    expect(Number.isNaN(parseAdjustmentInput(raw))).toBe(true);
   });
 });
