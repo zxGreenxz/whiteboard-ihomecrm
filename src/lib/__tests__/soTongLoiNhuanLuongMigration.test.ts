@@ -551,6 +551,12 @@ describe("dòng 'Lợi nhuận đầu tư' của lương tháng (salary_investme
     await trongGiaoDich(async () => {
       await chotBang(NV_CD, P10, { y: 777, adv: 0, take: 5000 });
       await ghiDe(NV_CD, P10, "44TL", 1);
+      // Hai lần clock_timestamp() liền nhau trong PGlite (WASM) có thể trùng giá trị trên máy CI,
+      // khiến ghi đè bị coi là "tạo lúc chốt" (luật `<=`) — ca này đã đỏ ngẫu nhiên trên CI.
+      // Đặt tường minh giờ tạo SAU giờ chốt 1 giây để đo đúng ý ca kiểm.
+      await db.query(`UPDATE app_private.salary_line_overrides o SET created_at = sm.locked_at + interval '1 second'
+        FROM public.salary_monthly sm WHERE sm.staff_id = $1 AND sm.period_month = $2
+          AND o.staff_id = sm.staff_id AND o.period_month = sm.period_month AND o.line_key = 'dh:44TL' AND o.amount = 1`, [NV_CD, P10]);
       const r = await dauTu(NV_CD);
       expect(r).toMatchObject({ sheet_status: "LOCKED", investment: 777, investment_live: 600, allocated_total: 600 });
     });
