@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { FLEET_LABELS, FleetError, allocateUid, assistantName, auditDropIn, auditScanConfig, channelProjection, connectionDigest, lockViolations, listRows,
-  mcpRoute, memoryGate, planAdd, planPrune, planRecreate, planRemove, profileCreateArgs, profileEnv, pruneRevision, recreateArgs, redactArgs,
+  mcpRoute, memoryGate, planAdd, routeEndpoint, planPrune, planRecreate, planRemove, profileCreateArgs, profileEnv, pruneRevision, recreateArgs, redactArgs,
   renderProfileConfig, retiredContainer, sharedEnvFrom, sidecarArgs, sidecarView, trialIdentity, validateFleetConfig } from './fleet-plan.mjs';
 import { ACCOUNT_ID, BINDING_ID, CHANNEL_TOKEN, CONNECTION_ID, IMAGE, IMAGE_CONFIG, NEW_WORKER_ID, PERSON, WORKER_ID, addFacts, config, exampleConfig, id,
   realRequest, sidecarInspect, trialRequest } from './fixtures.mjs';
@@ -44,6 +44,8 @@ test('mcpUrl: https/loopback đi đường thường, IP nội bộ đi đườn
   assert.equal(mcpRoute('https://crm-hermes.example.test/mcp').preserveOrigin, null);
   assert.equal(mcpRoute('http://127.0.0.1:8740/mcp').preserveOrigin, null);
   assert.equal(mcpRoute('http://172.17.0.1:8740/mcp').preserveOrigin, 'http://172.17.0.1:8740');
+  assert.deepEqual(routeEndpoint(mcpRoute('http://172.17.0.1:8741/mcp')), { host: '172.17.0.1', port: 8741 });
+  assert.deepEqual(routeEndpoint(mcpRoute('https://crm-hermes.example.test/mcp')), { host: 'crm-hermes.example.test', port: 443 });
   for (const url of ['http://8.8.8.8:8740/mcp', 'http://example.test/mcp', 'https://x.test/other', 'https://u:p@x.test/mcp', 'https://x.test/mcp?k=1', 'ftp://x/mcp', 'x'])
     assert.equal(code(() => mcpRoute(url)), 'cau_hinh_sai', url);
 });
@@ -192,6 +194,9 @@ test('them-nguoi: từng điều kiện kiểm trước chặn đúng mã', () =
   expect(addFacts({ imagePresent: false }), 'anh_chua_co');
   expect(addFacts({ worker: { running: false, id: null } }), 'worker_khong_chay');
   expect(addFacts({ worker: { ...addFacts().worker, native: false } }), 'worker_khong_native');
+  expect(addFacts({ route: { reachable: false } }), 'khong_toi_duoc_connector');                           // cửa nội bộ của connector chưa bật
+  expect(addFacts({ route: { reachable: null } }), 'khong_kiem_duoc_duong_toi_connector');
+  expect(addFacts({ route: undefined }), 'khong_kiem_duoc_duong_toi_connector');                           // thiếu dữ kiện ⇒ chặn, không coi là tới được
   expect(addFacts({ template: { soul: false, envKeys: ['NINEROUTER_API_KEY'] } }), 'khuon_thieu_soul');
   expect(addFacts({ template: { soul: true, envKeys: [] } }), 'khuon_thieu_khoa');
   expect(addFacts({ binding: null }), 'khong_doc_duoc_lien_ket');

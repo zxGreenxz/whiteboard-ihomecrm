@@ -83,7 +83,7 @@ Quản trị:
      --assistant-id <uuid> --user-id <uuid> --organization-id <uuid> --binding-id <uuid> [--ram-mb 700]
    ```
 
-   Đọc `blocksText` nếu bị chặn. Các lý do thường gặp: liên kết Zalo chưa hoạt động; connector không giữ mã của kết nối đang chọn (người dùng tạo kết nối mới rồi bấm lại "Dùng kết nối này"); connector từ chối mã (hết hạn/thu hồi); nick Zalo đã có kênh ở hồ sơ khác; RAM không đủ.
+   Đọc `blocksText` nếu bị chặn. Các lý do thường gặp: từ network namespace của worker không mở được cổng của connector (cửa nội bộ Docker của connector đó chưa bật); liên kết Zalo chưa hoạt động; connector không giữ mã của kết nối đang chọn (người dùng tạo kết nối mới rồi bấm lại "Dùng kết nối này"); connector từ chối mã (hết hạn/thu hồi); nick Zalo đã có kênh ở hồ sơ khác; RAM không đủ.
 4. Chọn lúc vắng rồi chạy lại kèm `--apply --expect <mã>`. Bước khởi động lại worker **ngắt tạm mọi trợ lý và mọi nick Zalo của worker**; launcher chờ worker drain xong mới thay, có thể lâu, không được ngắt giữa chừng. Sau đó mọi sidecar được tạo lại theo worker mới (bản cũ còn dưới tên `<container>-old-<giờ>`).
 5. Đọc kết quả: `runtimeStatus: "verified"` nghĩa là container chạy, gateway `running`, Zalo `connected`, **và** nhật ký connector có lời gọi thành công của đúng kết nối đó sau lúc container khởi động (`crmEvidence`). `unverified` (mã thoát 4) thì chưa coi là xong: xem `docker logs hermes-<tên>` và chạy lại lệnh xem kế hoạch.
 6. Kỹ năng chuẩn đã được `them-nguoi` cài vào home mới từ chính bản phát hành đang chạy công cụ. Sau mỗi bản phát hành kỹ năng về sau, chạy lại cho **từng** home (`liet-ke` cho biết các home đang có):

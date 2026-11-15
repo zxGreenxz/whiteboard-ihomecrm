@@ -27,7 +27,7 @@ export function sidecarInspect({ name = 'hermes-owner', profile = 'owner', home 
       Binds: null, PortBindings: {}, Privileged: false, PidMode: '', IpcMode: 'private', Devices: [] } };
 }
 export const workerInspect = (workerId = WORKER_ID) => ({ Id: workerId, Name: '/ihome-zalo-worker', Image: `sha256:${'9'.repeat(64)}`,
-  State: { Running: true, StartedAt: '2026-01-02T02:00:00.000Z' }, Config: { Env: ['HERMES_ZALO_NATIVE_CONFIG=/opt/ihome-zalo-worker/native-config/config.json'], Labels: {} },
+  State: { Running: true, StartedAt: '2026-01-02T02:00:00.000Z', Pid: 4321 }, Config: { Env: ['HERMES_ZALO_NATIVE_CONFIG=/opt/ihome-zalo-worker/native-config/config.json'], Labels: {} },
   HostConfig: { NetworkMode: 'bridge' }, Mounts: [] });
 export const IMAGE_CONFIG = Object.freeze({ Env: ['PATH=/opt/hermes/bin:/usr/bin'], Labels: {}, WorkingDir: '/opt/hermes' });
 
@@ -39,7 +39,8 @@ export function addFacts(change = {}) {
     native: { ok: true, listenPort: 8991, revision: 'r1', newerThanWorker: false,
       channels: [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }] },
     binding: { bindingId: BINDING_ID, bindingEpoch: 1, ...PERSON, accountId: ACCOUNT_ID, ownUid: '100', senderUid: '300', connectionId: CONNECTION_ID, status: 'active' },
-    handoff: { ok: true, records: [{ connectionId: CONNECTION_ID, ...PERSON }] }, connectionAlive: true, audit: { registered: false }, ...change };
+    handoff: { ok: true, records: [{ connectionId: CONNECTION_ID, ...PERSON }] }, connectionAlive: true, audit: { registered: false },
+    route: { reachable: true }, ...change };
 }
 export const realRequest = (change = {}) => ({ name: 'lan', connector: 'prod', ...PERSON, bindingId: BINDING_ID, ...change });
 export const trialRequest = (change = {}) => ({ name: 'thu1', connector: 'test', ...PERSON, trial: true, connectionId: CONNECTION_ID, ...change });

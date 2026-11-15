@@ -47,6 +47,11 @@ export const containerName = name => `hermes-${name}`;
 /** Container đã bị thay hoặc đã gỡ: giữ lại để lùi, không còn là trợ lý. */
 export const retiredContainer = name => /-(?:old|da-go)-\d{8}T\d{6}Z$/.test(name);
 
+/** Máy và cổng TCP mà trợ lý phải mở được để tới connector. */
+export function routeEndpoint(route) {
+  const url = new URL(route.url);
+  return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) };
+}
 /** `mcpUrl` của connector: https hoặc loopback đi đường thường; IP nội bộ (cửa Docker 172.17.0.1) đi đường
  * `--preserve-existing-http-origin` của profile-provisioning-cli (chỉ thay mã trên server đã có đúng origin đó). */
 export function mcpRoute(value) {
@@ -350,6 +355,9 @@ export function planAdd(facts, rawRequest, config) {
   if (!facts.template.soul) block('khuon_thieu_soul');
   if (config.template.sharedEnvKeys.some(key => !facts.template.envKeys.includes(key))) block('khuon_thieu_khoa');
   if (!facts.worker.running) block('worker_khong_chay');
+  // Sidecar dùng chung network namespace của worker: từ đó mà không mở được cổng của connector thì trợ lý dựng xong cũng không gọi được CRM.
+  else if (facts.route?.reachable === false) block('khong_toi_duoc_connector');
+  else if (facts.route?.reachable !== true) block('khong_kiem_duoc_duong_toi_connector');
 
   // Danh tính kênh.
   let identity = null, connectionId = request.connectionId ?? null, channelState = 'skipped';
@@ -518,6 +526,8 @@ export const BLOCK_TEXT = Object.freeze({
   anh_chua_co: 'Máy chủ chưa có image Hermes ghim trong cấu hình.', khuon_thieu_soul: 'Hồ sơ khuôn không có SOUL.md.', khuon_thieu_khoa: 'Hồ sơ khuôn thiếu khoá dùng chung trong .env.',
   worker_khong_chay: 'Worker Zalo không chạy.', cong_thu_trung_cau_that: 'Cổng kênh thử trùng cổng cầu Zalo thật.',
   worker_khong_native: 'Worker Zalo đang chạy không bật cầu Hermes (--native).',
+  khong_toi_duoc_connector: 'Từ network namespace của worker không mở được cổng của connector (mcpUrl): kiểm cửa nội bộ Docker của connector đó đã bật chưa.',
+  khong_kiem_duoc_duong_toi_connector: 'Không kiểm được đường từ network namespace của worker tới connector (thiếu nsenter hoặc không đọc được PID của worker).',
   khong_doc_duoc_lien_ket: 'Không đọc được liên kết Zalo từ SQL.', lien_ket_lech_danh_tinh: 'Liên kết Zalo không thuộc đúng trợ lý / người dùng / công ty đã nêu.',
   lien_ket_khong_hoat_dong: 'Liên kết Zalo không ở trạng thái hoạt động (người dùng chưa liên kết hoặc đã ngắt).',
   khong_doc_duoc_cau_hinh_kenh: 'Không đọc được cấu hình kênh của worker.', kenh_lech_danh_tinh: 'Đã có kênh cùng tên nhưng khác nick Zalo.',

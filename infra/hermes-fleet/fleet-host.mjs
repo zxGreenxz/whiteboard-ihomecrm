@@ -10,7 +10,7 @@ import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FleetError, SEED_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
   containerName, envSourceOf, homeOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
-  recreateArgs, redactArgs, renderProfileConfig, retiredContainer, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
+  recreateArgs, redactArgs, renderProfileConfig, retiredContainer, routeEndpoint, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
 
 const HERE = nodePath.dirname(fileURLToPath(import.meta.url));
 const posix = nodePath.posix;
@@ -33,7 +33,8 @@ export function realSystem({ log = line => process.stderr.write(line + '\n') } =
     exec(command, args, { input, timeoutMs } = {}) {
       const result = spawnSync(command, args, { input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1048576, ...(timeoutMs ? { timeout: timeoutMs } : {}),
         env: { PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', LANG: 'C.UTF-8', HOME: '/nonexistent' } });
-      return { status: result.status ?? 1, stdout: result.stdout ?? Buffer.alloc(0), stderr: result.stderr ?? Buffer.alloc(0), failed: result.error !== undefined };
+      return { status: result.status ?? 1, stdout: result.stdout ?? Buffer.alloc(0), stderr: result.stderr ?? Buffer.alloc(0), failed: result.error !== undefined,
+        timedOut: result.error?.code === 'ETIMEDOUT' };
     },
     read: file => { try { return fs.readFileSync(file, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } },
     readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } },
@@ -72,7 +73,16 @@ function workerFacts(config, raw) {
   const worker = raw.get(config.worker.container);
   if (!worker) return { running: false, id: null };
   const native = (worker.Config?.Env ?? []).some(entry => /^HERMES_ZALO_NATIVE_CONFIG=.+/.test(entry));
-  return { running: worker.State?.Running === true, id: worker.Id, image: worker.Image, startedAt: worker.State?.StartedAt ?? null, native };
+  return { running: worker.State?.Running === true, id: worker.Id, image: worker.Image, startedAt: worker.State?.StartedAt ?? null, native,
+    pid: Number.isInteger(worker.State?.Pid) && worker.State.Pid > 0 ? worker.State.Pid : null };
+}
+/** Mở thử một kết nối TCP tới connector TỪ network namespace của worker (nơi mọi sidecar chạy), không chạy gì trong container:
+ * true = mở được, false = không, null = không kiểm được. Máy và cổng đi qua tham số vị trí, không nối vào chuỗi lệnh. */
+function routeReachable(sys, worker, route) {
+  if (!worker.running || !worker.pid) return null;
+  const { host, port } = routeEndpoint(route);
+  const probe = sys.exec('nsenter', ['-t', String(worker.pid), '-n', '--', 'bash', '-c', 'exec 3<>"/dev/tcp/$0/$1"', host, String(port)], { timeoutMs: 8000 });
+  return probe.failed && probe.status !== 0 && !probe.stderr.length && !probe.timedOut ? null : probe.status === 0;
 }
 function nativeFacts(sys, config, worker) {
   const result = asUser(sys, config.worker.uid, SCRIPTS.channel, ['list', '--config', config.worker.nativeConfig]);
@@ -132,6 +142,7 @@ export function gatherAddFacts(sys, config, rawRequest) {
   facts.template = { soul: sys.stat(soulSourceOf(config)) !== null,
     envKeys: (envSource ?? '').split(/\r?\n/).map(line => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*\S/.exec(line)?.[1]).filter(Boolean) };
   facts.native = nativeFacts(sys, config, facts.worker);
+  facts.route = { reachable: routeReachable(sys, facts.worker, connector.route) };
   facts.audit = { registered: sys.stat(auditDropInFile(config, request.name)) !== null };
   let connectionId = request.connectionId ?? null;
   if (!request.trial) {

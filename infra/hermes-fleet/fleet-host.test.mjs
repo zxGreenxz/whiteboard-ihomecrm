@@ -13,7 +13,7 @@ const ROOT = '/var/lib/ihome-hermes-profiles', OWNER = `${ROOT}/owner/.hermes/pr
 const base = file => path.basename(file);
 
 /** Máy chủ giả: docker, setpriv + helper, journalctl, systemctl và vài lệnh file, đủ để chạy trọn một lượt điều phối. */
-function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = true, connectorActive = true, failRun = null, gatewayState } = {}) {
+function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = true, connectorActive = true, failRun = null, gatewayState, routeUp = true } = {}) {
   const calls = [], logs = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
     channels: channels ?? [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }], nativeMtime: Date.parse('2026-01-02T01:00:00Z'),
     files: new Map([[ROOT, { dir: true, uid: 0, mode: 0o711 }], [`${ROOT}/owner`, { dir: true, uid: 10003, mode: 0o700 }],
@@ -97,11 +97,12 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
       if (command === 'bash') { const old = state.containers.get('ihome-zalo-worker'); state.containers.set('ihome-zalo-worker', { ...workerInspect(NEW_WORKER_ID), Image: old.Image, State: { Running: true, StartedAt: new Date(clock).toISOString() } }); return ok(); }
       if (command === 'journalctl') return ok(evidence ? JSON.stringify({ event: 'tool_call_timing', ts: new Date(clock).toISOString(), operation: 'tools/list', outcome: 'ok', connection: connectionDigest(CONNECTION_ID) }) + '\n' : '');
       if (command === 'systemctl') return args[0] === 'is-active' ? (connectorActive ? ok() : bad()) : ok();
+      if (command === 'nsenter') return routeUp ? ok() : bad('Connection refused');
       return bad(`${command}?`);
     } };
   const step = call => call.command === 'setpriv' ? `${call.args[1]}:${base(call.args[7])}:${call.args[8]}${call.args.includes('--apply') ? ':apply' : ''}` :
     call.command === 'docker' ? `docker:${call.args[0]}${call.args.includes('--rm') ? ':rm' : ''}` : call.command === 'bash' ? `bash:${base(call.args[0])}` : call.command;
-  return { sys, calls, logs, state, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$/.test(entry)) };
+  return { sys, calls, logs, state, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$|^nsenter$/.test(entry)) };
 }
 const noSecretOutsideStdin = server => {
   for (const call of server.calls) for (const secret of SECRETS) assert(!call.args.join(' ').includes(secret), `bí mật trong đối số: ${call.command} ${call.args[0]}`);
@@ -179,6 +180,12 @@ test('ghi bị từ chối khi kế hoạch bị chặn, mã lệch, hoặc khô
   const dead = fakeServer({ alive: false });
   assert.equal(code(() => applyAdd(dead.sys, cfg, realRequest(), 'x'.repeat(64))), 'ke_hoach_bi_chan');
   assert.deepEqual(dead.writes(), []);
+  // Cửa nội bộ của connector không nghe (đúng tình huống gặp trên máy thật): chặn TRƯỚC khi dựng gì, phép dò đi từ netns của worker.
+  const noRoute = fakeServer({ routeUp: false }), routePlan = planFor(noRoute.sys, cfg, 'them-nguoi', trialRequest());
+  assert.deepEqual(routePlan.blocks, ['khong_toi_duoc_connector']);
+  assert.deepEqual(noRoute.calls.find(call => call.command === 'nsenter').args, ['-t', '4321', '-n', '--', 'bash', '-c', 'exec 3<>"/dev/tcp/$0/$1"', '172.17.0.1', '8741']);
+  assert.equal(code(() => applyAdd(noRoute.sys, cfg, trialRequest(), routePlan.expectedRevision)), 'ke_hoach_bi_chan');
+  assert.deepEqual(noRoute.writes(), []);
   const drift = fakeServer(), plan = planFor(drift.sys, cfg, 'them-nguoi', realRequest());
   drift.state.containers.set('hermes-moi', sidecarInspect({ name: 'hermes-moi', profile: 'moi', home: `${ROOT}/moi`, containerId: '7'.repeat(64) }));   // máy chủ đổi sau khi xem
   assert.equal(code(() => applyAdd(drift.sys, cfg, realRequest(), plan.expectedRevision)), 'ke_hoach_da_doi');
