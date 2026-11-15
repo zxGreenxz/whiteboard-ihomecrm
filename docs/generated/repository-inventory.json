@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1820,
   "soFileDocBangFs": 482,
-  "tongLoiGoi": 1282,
-  "khongPhanLoaiDuoc": 585,
+  "tongLoiGoi": 1281,
+  "khongPhanLoaiDuoc": 584,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 66,
@@ -145,15 +145,6 @@
       "khongPhanLoaiDuoc": 13
     },
     {
-      "file": "infra/hermes-fleet/fleet-helpers.test.mjs",
-      "soGoi": 14,
-      "loai": {
-        "manifest": 6,
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 7
-    },
-    {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
       "soGoi": 14,
       "loai": {
@@ -163,6 +154,15 @@
         "powershell": 1
       },
       "khongPhanLoaiDuoc": 4
+    },
+    {
+      "file": "infra/hermes-fleet/fleet-helpers.test.mjs",
+      "soGoi": 13,
+      "loai": {
+        "manifest": 6,
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 6
     },
     {
       "file": "scripts/__tests__/check-external-controls.test.mjs",
