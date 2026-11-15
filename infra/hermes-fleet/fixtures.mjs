@@ -35,7 +35,7 @@ export const IMAGE_CONFIG = Object.freeze({ Env: ['PATH=/opt/hermes/bin:/usr/bin
 export function addFacts(change = {}) {
   return { memAvailableMb: 800, passwdUids: [0, 1000, 10004], homeUids: [10003], home: { exists: false }, imagePresent: true,
     containers: [sidecarView(sidecarInspect())], worker: { running: true, id: WORKER_ID, image: `sha256:${'9'.repeat(64)}`, startedAt: '2026-01-02T02:00:00.000Z', native: true },
-    template: { soul: true, plugins: true, envKeys: ['NINEROUTER_API_KEY'] },
+    template: { soul: true, plugins: true, pluginsMatch: true, pluginDigest: 'p1', envKeys: ['NINEROUTER_API_KEY'] },
     native: { ok: true, listenPort: 8991, revision: 'r1', newerThanWorker: false,
       channels: [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }] },
     binding: { bindingId: BINDING_ID, bindingEpoch: 1, ...PERSON, accountId: ACCOUNT_ID, ownUid: '100', senderUid: '300', connectionId: CONNECTION_ID, status: 'active' },

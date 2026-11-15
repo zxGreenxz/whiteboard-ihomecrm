@@ -20,7 +20,7 @@ $FLEET liet-ke --config /etc/ihome-hermes-fleet/fleet.json
 
 Mọi lệnh mặc định **chỉ in kế hoạch** (JSON) và một mã `expectedRevision`. Ghi thật: chạy lại đúng lệnh đó kèm `--apply --expect <expectedRevision>`. Máy chủ đổi giữa lúc xem và lúc ghi (worker khác, kênh khác, container khác) thì mã lệch và lệnh dừng trước khi ghi. Hai lệnh ghi không chạy song song (khoá `/run/ihome-hermes-fleet.lock`; khoá còn lại sau một lần chết giữa chừng không tự phá, xem xét rồi `rmdir` tay).
 
-Đầu ra không bao giờ có mã kết nối (`hc_…`), token kênh (`hzn_…`) hay khoá nhà cung cấp model. Mã thoát: `0` xong, `3` kế hoạch bị chặn (có `blocksText` giải thích), `4` đã dựng nhưng chưa có bằng chứng trợ lý gọi được CRM, `1` lỗi khác.
+Đầu ra không bao giờ có mã kết nối (`hc_…`), token kênh (`hzn_…`) hay khoá nhà cung cấp model. Mã thoát: `0` xong, `3` kế hoạch bị chặn (có `blocksText` giải thích), `4` đã ghi nhưng chưa xác minh trọn vẹn (thêm người: chưa thấy bằng chứng trợ lý gọi được CRM, hoặc có sidecar không nối lại được; tạo lại sidecar: còn sidecar bị bỏ sót vì thiếu RAM/lệch khoá hoặc có cái không chạy sau khi dựng), `1` lỗi khác.
 
 | Lệnh | Việc |
 | --- | --- |
@@ -49,7 +49,7 @@ Root chỉ điều phối. Bước nào chạm file riêng tư của một UID t
 
 Bí mật chỉ đi từ stdout của helper này vào stdin của helper kia qua bộ nhớ tiến trình root: không qua đối số, biến môi trường, file tạm, log hay màn hình. Hai helper xuất bí mật từ chối chạy khi stdout là terminal.
 
-Hồ sơ mới nhận: `config.yaml` từ khuôn [`khuon/config.yaml`](khuon/config.yaml) (không có bí mật); `SOUL.md` và hai plugin (`ihome-zalo-native`, `ihome-session-reset`) chép từ hồ sơ khuôn **đang cài trên máy chủ**, không lấy từ repo: bản trong repo có thể đi trước bản đang chạy, và mọi trợ lý phải chạy cùng một bản. Muốn nâng plugin cho mọi người thì nâng ở hồ sơ khuôn trước (hồ sơ mới theo đó), rồi chép sang từng home đã có (chưa có lệnh riêng). Trong `.env` chỉ có khoá dùng chung nêu ở `template.sharedEnvKeys` (khoá nhà cung cấp model) và năm biến kênh của chính người đó. Mã CRM và token kênh của hồ sơ khuôn không bao giờ được chép sang.
+Hồ sơ mới nhận: `config.yaml` từ khuôn [`khuon/config.yaml`](khuon/config.yaml) (không có bí mật); `SOUL.md` chép từ hồ sơ khuôn **đang cài trên máy chủ**. Hai plugin (`ihome-zalo-native`, `ihome-session-reset`) lấy từ **bản phát hành đang chạy công cụ** (thư mục của root, không trợ lý nào ghi được), nhưng chỉ khi trùng từng byte với bản đang cài ở hồ sơ khuôn; lệch thì `them-nguoi` dừng với `plugin_lech_khuon`. Như vậy mọi trợ lý chạy cùng một bản với trợ lý của chủ, và mã chép sang người khác không bao giờ lấy từ thư mục mà một trợ lý ghi được. Muốn nâng plugin: chép bản của bản phát hành vào hồ sơ khuôn trước (rồi tạo lại container của chủ), sau đó mới thêm người; các home đã có phải chép tay (chưa có lệnh riêng). Trong `.env` chỉ có khoá dùng chung nêu ở `template.sharedEnvKeys` (khoá nhà cung cấp model) và năm biến kênh của chính người đó. Mã CRM và token kênh của hồ sơ khuôn không bao giờ được chép sang.
 
 ## Chuẩn bị một lần trên máy chủ
 
@@ -88,7 +88,7 @@ Quản trị:
      --assistant-id <uuid> --user-id <uuid> --organization-id <uuid> --binding-id <uuid> [--ram-mb 700]
    ```
 
-   Đọc `blocksText` nếu bị chặn. Các lý do thường gặp: từ network namespace của worker không mở được cổng của connector (cửa nội bộ Docker của connector đó chưa bật); liên kết Zalo chưa hoạt động; connector không giữ mã của kết nối đang chọn (người dùng tạo kết nối mới rồi bấm lại "Dùng kết nối này"); connector từ chối mã (hết hạn/thu hồi); nick Zalo đã có kênh ở hồ sơ khác; RAM không đủ.
+   Đọc `blocksText` nếu bị chặn. Các lý do thường gặp: plugin của bản phát hành khác plugin đang cài ở trợ lý của chủ; có trợ lý khác đang chết (dựng lại bằng `tao-lai-sidecar` hoặc tạm dừng hẳn trước); từ network namespace của worker không mở được cổng của connector (cửa nội bộ Docker của connector đó chưa bật); liên kết Zalo chưa hoạt động; connector không giữ mã của kết nối đang chọn (người dùng tạo kết nối mới rồi bấm lại "Dùng kết nối này"); connector từ chối mã (hết hạn/thu hồi); nick Zalo đã có kênh ở hồ sơ khác; RAM không đủ.
 4. Chọn lúc vắng rồi chạy lại kèm `--apply --expect <mã>`. Bước khởi động lại worker **ngắt tạm mọi trợ lý và mọi nick Zalo của worker**; launcher chờ worker drain xong mới thay, có thể lâu, không được ngắt giữa chừng. Sau đó mọi sidecar **đang chạy** được tạo lại theo worker mới (bản cũ còn dưới tên `<container>-old-<giờ>`). Sidecar không chạy thì để yên và được nêu trong `notes`; dựng lại nó là việc của `tao-lai-sidecar`, có cửa RAM.
 5. Đọc kết quả: `runtimeStatus: "verified"` nghĩa là container chạy, gateway `running`, Zalo `connected`, **và** nhật ký connector có lời gọi thành công của đúng kết nối đó sau lúc container khởi động (`crmEvidence`). Bằng chứng chỉ tính `tools/list` / `tools/call` của trợ lý, không tính lời hỏi dò của chính công cụ. `unverified` (mã thoát 4) thì chưa coi là xong: xem `docker logs hermes-<tên>` và chạy lại lệnh xem kế hoạch.
 6. Kỹ năng chuẩn đã được `them-nguoi` cài vào home mới từ chính bản phát hành đang chạy công cụ. Sau mỗi bản phát hành kỹ năng về sau, chạy lại cho **từng** home (`liet-ke` cho biết các home đang có):

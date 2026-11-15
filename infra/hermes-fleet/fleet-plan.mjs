@@ -13,8 +13,10 @@ export const FLEET_LABELS = Object.freeze({ name: 'com.ihomecrm.fleet.name', con
 export const SEED_MARKER = '.ihome-fleet-seeded';
 /** Có trong lúc đang gieo; còn lại sau một lần chết giữa chừng ⇒ được gieo lại (container của người này chưa từng chạy). */
 export const SEEDING_MARKER = '.ihome-fleet-seeding';
-/** Plugin của hồ sơ mới được CHÉP từ hồ sơ khuôn đang cài trên máy chủ (cùng bản với trợ lý của chủ), không lấy từ repo: bản trong repo có
- * thể đi trước bản đang chạy (vd nhận ảnh Zalo), và mọi trợ lý phải chạy cùng một bản. */
+/** Plugin của hồ sơ mới: MÃ lấy từ bản phát hành đang chạy công cụ (thuộc root, trợ lý không ghi được), nhưng chỉ khi trùng từng byte với
+ * bản ĐANG CÀI ở hồ sơ khuôn (trợ lý của chủ). Lệch thì dừng: mọi trợ lý phải chạy cùng một bản, và mã chép sang người khác không bao giờ
+ * lấy từ thư mục mà một trợ lý ghi được. Muốn nâng plugin: nâng ở hồ sơ khuôn bằng bản của bản phát hành trước. */
+export const PLUGIN_SOURCES = Object.freeze({ 'ihome-zalo-native': 'hermes-zalo-native', 'ihome-session-reset': 'hermes-session-reset' });
 export const PLUGIN_FILES = Object.freeze({ 'ihome-zalo-native': Object.freeze(['plugin.yaml', '__init__.py', 'adapter.py']),
   'ihome-session-reset': Object.freeze(['plugin.yaml', '__init__.py', 'policy.py', 'hook.py']) });
 export const PLUGIN_FILE_MAX_BYTES = 262144;
@@ -205,13 +207,14 @@ export function lockViolations(view, { profilesRoot }) {
 
 /** Tạo lại ĐÚNG cấu hình đang chạy, chỉ đổi `--network` sang ID worker mới (`docker restart` không đổi network namespace).
  * Chuyển từ script ngoài repo `w3-recreate-sidecar.py`; env/label chỉ truyền lại phần khác image. */
-export function recreateArgs(inspect, imageConfig, workerId) {
+export function recreateArgs(inspect, imageConfig, workerId, { restart } = {}) {
   if (typeof workerId !== 'string' || !CONTAINER_ID.test(workerId)) fail('tham_so_sai', 'worker');
   const host = inspect.HostConfig ?? {}, config = inspect.Config ?? {}, name = String(inspect.Name ?? '').replace(/^\//, '');
   const args = ['run', '-d', '--name', name, '--network', `container:${workerId}`];
   if (config.User) args.push('--user', config.User);
   if (host.Init) args.push('--init');
-  if (host.RestartPolicy?.Name) args.push('--restart', host.RestartPolicy.Name);
+  // Sidecar luôn có chính sách tự khởi động: thiếu thì dùng unless-stopped (mặc định của Docker là no ⇒ thành "tạm dừng" vĩnh viễn).
+  args.push('--restart', restart ?? (host.RestartPolicy?.Name || 'unless-stopped'));
   if (host.ReadonlyRootfs) args.push('--read-only');
   for (const cap of host.CapDrop ?? []) args.push('--cap-drop', cap);
   for (const opt of host.SecurityOpt ?? []) args.push('--security-opt', opt);
@@ -389,6 +392,7 @@ export function planAdd(facts, rawRequest, config) {
   if (!facts.imagePresent) block('anh_chua_co');
   if (!facts.template.soul) block('khuon_thieu_soul');
   if (!facts.template.plugins) block('khuon_thieu_plugin');
+  else if (!facts.template.pluginsMatch) block('plugin_lech_khuon');
   if (config.template.sharedEnvKeys.some(key => !facts.template.envKeys.includes(key))) block('khuon_thieu_khoa');
   if (!facts.worker.running) block('worker_khong_chay');
   // Sidecar dùng chung network namespace của worker: từ đó mà không mở được cổng của connector thì trợ lý dựng xong cũng không gọi được CRM.
@@ -459,8 +463,11 @@ export function planAdd(facts, rawRequest, config) {
   // Container trợ lý không mang nhãn sidecar sẽ bị bỏ lại ở namespace chết khi worker được thay.
   if (!trial && unlabelledSidecars(facts, config, workerId).length) block('sidecar_khong_nhan');
   const dead = idle.filter(view => !parked(view)), resting = idle.filter(parked);
+  // Có trợ lý đang chết (không chạy mà vẫn mang chính sách tự khởi động): dựng lại nó (tao-lai-sidecar) hoặc tạm dừng hẳn trước. Thêm người
+  // mới lúc đó sẽ lấy mất RAM mà trợ lý kia cần khi được dựng lại.
+  if (!trial && dead.length) block('co_sidecar_chet');
   if (resting.length) notes.push(`Sidecar đang tạm dừng (restart=no), không đụng tới: ${resting.map(view => view.name).join(', ')}.`);
-  if (dead.length) notes.push(`Sidecar không chạy, không đụng tới: ${dead.map(view => view.name).join(', ')}. Muốn dựng lại thì chạy tao-lai-sidecar (có cửa RAM).`);
+  if (dead.length) notes.push(`Sidecar không chạy, không đụng tới: ${dead.map(view => view.name).join(', ')}. Dựng lại bằng tao-lai-sidecar (có cửa RAM), hoặc tạm dừng hẳn (restart=no).`);
   let containerState = 'pending';
   if (existing) {
     const matches = existing.labels[FLEET_LABELS.name] === name && existing.home === home;
@@ -497,7 +504,7 @@ export function planAdd(facts, rawRequest, config) {
     connectionId, connectionTail: connectionId ? connectionTail(connectionId) : null, identity, channelAction };
   const status = blocks.length ? 'blocked' : 'ready';
   // Mã ghi ràng cả cấu hình môi trường: đổi image, mcpUrl, hồ sơ khuôn hay UID worker giữa lúc xem và lúc ghi thì mã lệch.
-  const expectedRevision = digest(['add', 1, config, request, assistant, steps.map(entry => [entry.id, entry.state]), blocks, workerId,
+  const expectedRevision = digest(['add', 1, config, request, assistant, steps.map(entry => [entry.id, entry.state]), blocks, workerId, facts.template?.pluginDigest ?? null,
     facts.native?.revision ?? null, others.map(view => [view.name, view.id]).sort()]);
   return { version: 1, action: 'them-nguoi', status, blocks, notes, assistant, steps, pendingSteps: pending, others: others.map(view => view.name),
     expectedRevision, runtimeStatus: 'unverified' };
@@ -552,16 +559,22 @@ export function planRecreate(facts, { only = [] } = {}, config) {
     else if (parked(view) && !only.includes(view.name)) state = 'parked';          // tạm dừng: chỉ dựng lại khi nêu đích danh
     else if (violations.length) state = 'blocked';                                   // không nhân bản cấu hình lỏng
     else state = view.running ? 'recreate' : 'revive';                               // đang chạy ở namespace cũ / không chạy
-    return { container: view.name, id: view.id, state, running: view.running, violations };
+    // Nêu đích danh một container tạm dừng = quản trị muốn nó chạy lại: dựng lại với chính sách tự khởi động.
+    return { container: view.name, id: view.id, state, running: view.running, violations, unpark: parked(view) && only.includes(view.name) };
   }).sort((a, b) => a.container.localeCompare(b.container));
   // Nối lại sidecar ĐANG CHẠY không tốn thêm RAM. Dựng lại sidecar KHÔNG chạy là thêm một container chạy: qua cửa RAM, tính lần lượt từng
   // cái; cái nào không đủ RAM thì để yên (`no_ram`) chứ không chặn việc nối lại các sidecar đang chạy.
   let budget = Number.isFinite(facts.memAvailableMb) ? facts.memAvailableMb - config.ram.keepFreeMb : -Infinity;
-  for (const row of rows) if (row.state === 'revive') { if (budget >= config.ram.expectedMb) budget -= config.ram.expectedMb; else row.state = 'no_ram'; }
+  // Trợ lý của chủ (hồ sơ khuôn) được chia RAM trước, rồi mới tới người khác theo tên.
+  const isTemplate = row => { const view = all.find(entry => entry.name === row.container); return view?.home === config.template.sourceHome; };
+  for (const row of [...rows.filter(isTemplate), ...rows.filter(row => !isTemplate(row))]) if (row.state === 'revive') {
+    if (budget >= config.ram.expectedMb) budget -= config.ram.expectedMb; else row.state = 'no_ram';
+  }
   // Sidecar ĐANG CHẠY ở namespace cũ mà lệch bộ cờ khoá: phải sửa tay trước, chặn cả lượt (để yên thì nó mất mạng mà không ai biết).
   if (rows.some(row => row.state === 'blocked' && row.running)) blocks.push('sidecar_lech_khoa');
   const skipped = rows.filter(row => row.state === 'no_ram' || (row.state === 'blocked' && !row.running));
-  const notes = skipped.map(row => `${row.container}: ${row.state === 'no_ram' ? 'không đủ RAM để dựng lại' : 'lệch bộ cờ khoá, không dựng lại'}`);
+  const ramReason = Number.isFinite(facts.memAvailableMb) ? 'không đủ RAM để dựng lại' : 'không đo được RAM, không dựng lại';
+  const notes = skipped.map(row => `${row.container}: ${row.state === 'no_ram' ? ramReason : 'lệch bộ cờ khoá, không dựng lại'}`);
   const actionable = rows.some(row => row.state === 'recreate' || row.state === 'revive');
   // Không còn gì làm được mà vẫn có sidecar cần dựng lại ⇒ bị chặn (nêu lý do), không báo "xong".
   if (!blocks.length && !actionable) for (const row of skipped) {
@@ -627,9 +640,11 @@ export const BLOCK_TEXT = Object.freeze({
   ten_trung_ho_so_khac: 'Tên này trùng một hồ sơ Hermes đang có ở home khác; chọn tên khác.',
   ten_trung_kenh_that: 'Tên người thử trùng một kênh Zalo thật trong cấu hình worker; chọn tên khác.',
   home_cua_nguoi_thu: 'Home cùng tên đã được gieo mà chưa có kênh Zalo (home của một người thử): gỡ nó trước bằng go-nguoi.',
-  kenh_da_thu_hoi_con_home: 'Kênh của tên này đã bị thu hồi mà home cũ vẫn còn: chạy go-nguoi để cất home, rồi thêm lại.',
+  kenh_da_thu_hoi_con_home: 'Kênh của tên này đã bị thu hồi mà home cũ ĐÃ GIEO vẫn còn: chạy go-nguoi để cất home, rồi thêm lại.',
+  plugin_lech_khuon: 'Plugin của bản phát hành đang chạy công cụ khác plugin đang cài ở trợ lý của chủ: nâng (hoặc lùi) plugin ở hồ sơ khuôn cho trùng trước.',
+  co_sidecar_chet: 'Có trợ lý không chạy mà vẫn mang chính sách tự khởi động: dựng lại bằng tao-lai-sidecar, hoặc tạm dừng hẳn (docker update --restart no), rồi mới thêm người.',
   container_khac_che_do: 'Container cùng tên thuộc chế độ khác (người thử / người thật): gỡ nó trước bằng go-nguoi.',
-  sidecar_khong_nhan: 'Có container chung network namespace với worker mà không mang nhãn com.ihomecrm.component=hermes-sidecar: công cụ sẽ bỏ sót nó khi worker được thay. Gắn nhãn (tạo lại container đó) hoặc gỡ nó trước.',
+  sidecar_khong_nhan: 'Có container trợ lý (bind một home dưới profilesRoot) không mang nhãn com.ihomecrm.component=hermes-sidecar, chung network namespace với worker hoặc đang chạy ở namespace mồ côi: công cụ sẽ bỏ sót nó khi thay worker. Gắn nhãn (tạo lại container đó) hoặc gỡ nó trước.',
   khong_doc_duoc_handoff: 'Không đọc được kho mã kết nối của connector.',
   audit_cau_hinh_hong: 'File danh sách gốc của job kiểm học tập (audit.scanConfig) không phải JSON hợp lệ: sửa trước khi thêm người.',
   chua_co_ma_ket_noi: 'Connector không giữ mã của kết nối đang chọn: người dùng tạo kết nối mới rồi bấm "Dùng kết nối này cho trợ lý".',

@@ -271,14 +271,17 @@ test('thêm lại người đã gỡ: đúng tên cũ thì cấp token mới cho
   // Sidecar không chạy mà bám worker CŨ là chết vì worker đã bị thay (không phải dừng tay): vẫn nằm trong danh sách tạo lại.
   // them-nguoi chỉ nối lại sidecar ĐANG CHẠY; sidecar không chạy (chết hay tạm dừng) để yên, kèm ghi chú: dựng lại nó là việc của
   // tao-lai-sidecar, có cửa RAM từng cái. Nhờ vậy cửa RAM của them-nguoi chỉ cần tính container của người mới.
-  const dead = planAdd(addFacts({ memAvailableMb: 620, containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, workerId: NEW_WORKER_ID }))] }), realRequest(), cfg);
-  assert.deepEqual(dead.others, ['hermes-owner']); assert.equal(dead.status, 'ready');
-  assert.match(dead.notes.join(' '), /Sidecar không chạy, không đụng tới: hermes-thu1\. Muốn dựng lại thì chạy tao-lai-sidecar/);
-  // Sidecar đã dừng tay không bị dựng lại và không tính vào số sidecar tạo lại.
-  const stopped = planAdd(addFacts({ containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false }))] }), realRequest(), cfg);
-  assert.deepEqual(stopped.others, ['hermes-owner']); assert.match(stopped.notes.join(' '), /Sidecar không chạy, không đụng tới: hermes-thu1/);
+  // Có trợ lý CHẾT (không chạy mà vẫn mang chính sách tự khởi động): chặn thêm người mới, để RAM dành cho việc dựng lại nó.
+  const dead = planAdd(addFacts({ memAvailableMb: 1077, containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, workerId: NEW_WORKER_ID }))] }), realRequest(), cfg);
+  assert.deepEqual(dead.others, ['hermes-owner']); assert(dead.blocks.includes('co_sidecar_chet'));
+  assert.match(dead.notes.join(' '), /Sidecar không chạy, không đụng tới: hermes-thu1\. Dựng lại bằng tao-lai-sidecar/);
+  // Trợ lý TẠM DỪNG (restart=no) không chặn, chỉ được ghi chú; them-nguoi không bao giờ bật lại nó.
   const resting = planAdd(addFacts({ containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, restart: 'no' }))] }), realRequest(), cfg);
+  assert.equal(resting.status, 'ready'); assert.deepEqual(resting.others, ['hermes-owner']);
   assert.match(resting.notes.join(' '), /đang tạm dừng \(restart=no\), không đụng tới: hermes-thu1/);
+  // Plugin của bản phát hành khác bản đang cài ở trợ lý của chủ ⇒ chặn; mã ghi ràng nội dung plugin sẽ chép.
+  assert(planAdd(addFacts({ template: { ...addFacts().template, pluginsMatch: false } }), realRequest(), cfg).blocks.includes('plugin_lech_khuon'));
+  assert.notEqual(planAdd(addFacts({ template: { ...addFacts().template, pluginDigest: 'p2' } }), realRequest(), cfg).expectedRevision, planAdd(addFacts(), realRequest(), cfg).expectedRevision);
   // Đổi cấu hình môi trường giữa lúc xem và lúc ghi ⇒ mã lệch.
   const base = planAdd(addFacts(), realRequest(), cfg).expectedRevision;
   assert.notEqual(planAdd(addFacts(), realRequest(), config({ image: `sha256:${'d'.repeat(64)}` })).expectedRevision, base);
@@ -390,6 +393,16 @@ test('tao-lai-sidecar: nối lại sidecar đang chạy; dựng lại sidecar ch
   assert.deepEqual(planRecreate({ containers: [containers[1], dead], worker, memAvailableMb: 300 }, {}, cfg).blocks, ['ram_khong_du']);
   assert.deepEqual(planRecreate({ containers: [containers[1], dead], worker }, {}, cfg).blocks, ['ram_khong_do_duoc']);
   // Thiếu RAM để dựng lại sidecar chết KHÔNG chặn việc nối lại sidecar đang chạy (trợ lý của chủ không bị bỏ ở namespace chết).
+  // RAM chỉ đủ dựng lại MỘT trợ lý chết: trợ lý của chủ được trước, dù tên người khác xếp trước theo chữ cái.
+  const ownerDead = sidecarView(sidecarInspect({ running: false })), minhDead = sidecarView(fleetSidecar('minh', { running: false }));
+  assert.deepEqual(planRecreate({ containers: [minhDead, ownerDead], worker, memAvailableMb: 677 }, {}, cfg).sidecars.map(row => [row.container, row.state]),
+    [['hermes-minh', 'no_ram'], ['hermes-owner', 'revive']]);
+  // Không đo được RAM mà vẫn có sidecar đang chạy cần nối lại: ghi chú nói đúng lý do.
+  assert.deepEqual(planRecreate({ containers: [containers[0], dead], worker }, {}, cfg).notes, ['hermes-ha: không đo được RAM, không dựng lại']);
+  // Đang chạy mà mang restart=no (vd quản trị đặt rồi để chạy tiếp) ở namespace cũ: vẫn là sidecar cần NỐI LẠI, không phải tạm dừng.
+  assert.equal(planRecreate({ containers: [sidecarView(fleetSidecar('hd', { restart: 'no' }))], worker }, {}, cfg).sidecars[0].state, 'recreate');
+  // Nêu đích danh một trợ lý tạm dừng: dựng lại và bỏ tạm dừng.
+  assert.equal(planRecreate({ containers, worker, ...mem }, { only: ['hermes-thu1'] }, cfg).sidecars[0].unpark, true);
   const partial = planRecreate({ containers: [containers[0], dead], worker, memAvailableMb: 300 }, {}, cfg);
   assert.equal(partial.status, 'ready'); assert.deepEqual(partial.blocks, []);
   assert.deepEqual(partial.sidecars.map(row => [row.container, row.state]), [['hermes-ha', 'no_ram'], ['hermes-owner', 'recreate']]);
@@ -413,7 +426,8 @@ test('tao-lai-sidecar: nối lại sidecar đang chạy; dựng lại sidecar ch
   const attached = sidecarView(sidecarInspect({ name: 'bam-sidecar', workerId: containers[1].id, labels: { 'com.ihomecrm.component': 'khac' } }));
   const vpn = sidecarInspect({ name: 'wireguard', workerId: 'e'.repeat(64), labels: { 'com.ihomecrm.component': 'khac' } }); vpn.Mounts = [];
   const vpnHere = sidecarInspect({ name: 'vpn-chung-worker', workerId: NEW_WORKER_ID, labels: {} }); vpnHere.Mounts = [{ Type: 'bind', Source: '/etc/wireguard', Destination: '/etc/wireguard', RW: false }];
-  assert.equal(planRecreate({ containers: [containers[1], stoppedOrphan, attached, sidecarView(vpn), sidecarView(vpnHere)], worker }, {}, cfg).status, 'done');
+  const elsewhere = sidecarInspect({ name: 'tro-ly-noi-khac', workerId: NEW_WORKER_ID, home: '/srv/khac/lan', labels: { 'com.ihomecrm.component': 'khac' } });
+  assert.equal(planRecreate({ containers: [containers[1], stoppedOrphan, attached, sidecarView(vpn), sidecarView(vpnHere), sidecarView(elsewhere)], worker }, {}, cfg).status, 'done');
   assert.notEqual(planRecreate({ containers, worker }, {}, config({ image: `sha256:${'d'.repeat(64)}` })).expectedRevision, plan.expectedRevision);
   const only = planRecreate({ containers, worker, ...mem }, { only: ['hermes-thu1'] }, cfg);
   assert.deepEqual(only.sidecars.map(row => [row.container, row.state]), [['hermes-thu1', 'revive']]);  // nêu đích danh: dựng lại cả sidecar tạm dừng
@@ -440,6 +454,7 @@ test('liet-ke: mỗi trợ lý một dòng; container dựng tay hiện là "kh�
   assert.deepEqual(rows.map(row => row.container), ['hermes-lan', 'hermes-owner']);
   assert.deepEqual(rows[0], { name: 'lan', container: 'hermes-lan', managed: true, trial: false, running: true, currentNetwork: true, ramMb: 412, ramLimitMb: 900, parked: false,
     channel: 'đã thu hồi', gateway: 'running', zalo: 'connected', connection: `…${CONNECTION_ID.slice(-8)}`, lastCrmCall: { any: '2026-01-02T03:04:05.000Z', tool: null } });
+  assert.equal(listRows({ containers: [sidecarView(fleetSidecar('lan', { running: false, restart: 'no' }))], worker: { id: WORKER_ID }, native: { ok: false } })[0].parked, true);
   assert.equal(rows[1].managed, false); assert.equal(rows[1].name, 'owner'); assert.equal(rows[1].channel, 'có'); assert.equal(rows[1].lastCrmCall, null);
 });
 
@@ -472,4 +487,15 @@ test('đăng ký kiểm học tập: drop-in gắn đúng sáu đường chỉ �
   assert.deepEqual(auditScanConfig(added, cfg, 'lan'), added);                         // chạy lại không nhân đôi
   assert.deepEqual(auditScanConfig({ ...added, windowHours: 24 }, cfg, 'lan', { remove: true }),
     { profilesRoots: ['/var/lib/ihome-hermes-profiles/owner/.hermes/profiles'], realProfiles: ['owner'], windowHours: 24 });
+});
+
+test('tạo lại sidecar luôn mang chính sách tự khởi động: thiếu thì unless-stopped, bỏ tạm dừng thì unless-stopped', () => {
+  const raw = sidecarInspect(); raw.HostConfig.RestartPolicy = undefined;
+  const args = recreateArgs(raw, IMAGE_CONFIG, NEW_WORKER_ID);
+  assert.equal(args[args.indexOf('--restart') + 1], 'unless-stopped');
+  const parkedRaw = sidecarInspect({ restart: 'no', running: false });
+  assert.equal(recreateArgs(parkedRaw, IMAGE_CONFIG, NEW_WORKER_ID)[recreateArgs(parkedRaw, IMAGE_CONFIG, NEW_WORKER_ID).indexOf('--restart') + 1], 'no');
+  const unparked = recreateArgs(parkedRaw, IMAGE_CONFIG, NEW_WORKER_ID, { restart: 'unless-stopped' });
+  assert.equal(unparked[unparked.indexOf('--restart') + 1], 'unless-stopped');
+  assert.equal(unparked.filter(arg => arg === '--restart').length, 1);
 });

@@ -94,7 +94,8 @@ export function runFleet(argv, { sys = realSystem(), loadConfig = loadFleetConfi
     else if (action === 'go-nguoi') result = applyRemove(sys, config, input.name, expect);
     else result = applyRecreate(sys, config, input, expect);
     write(JSON.stringify(explain(result), null, 2) + '\n');
-    return result.status === 'blocked' ? 3 : result.runtimeStatus === 'unverified' && apply && action === 'them-nguoi' ? 4 : 0;
+    // 4 = đã ghi nhưng chưa xác minh được trọn vẹn (thêm người chưa thấy bằng chứng CRM; tạo lại sidecar còn bỏ sót hoặc có cái không chạy).
+    return result.status === 'blocked' ? 3 : apply && ['them-nguoi', 'tao-lai-sidecar'].includes(action) && result.runtimeStatus === 'unverified' ? 4 : 0;
   } catch (cause) {
     const known = cause instanceof FleetError;
     // Lỗi hệ thống (ENOENT, EXDEV…) chỉ mang mã, lời gọi và đường dẫn trên máy chủ: đủ để biết bước nào hỏng, không có bí mật.

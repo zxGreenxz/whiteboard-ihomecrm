@@ -8,7 +8,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FleetError, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
+import { FleetError, PLUGIN_SOURCES, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, parked, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
   containerName, envSourceOf, homeOf, PLUGIN_FILES, PLUGIN_FILE_MAX_BYTES, pluginSourceOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
   recreateArgs, redactArgs, renderProfileConfig, retiredContainer, routeEndpoint, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
 
@@ -129,6 +129,20 @@ function homeFacts(sys, config, name, { light = false } = {}) {
     hasEnv: env !== null && env.split(/\r?\n/).some(line => /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line)) };
 }
 /** Đăng ký kiểm học tập gồm HAI nửa: drop-in của unit và mục trong danh sách gốc. Thiếu một nửa là dở dang, phải làm tiếp/gỡ nốt. */
+/** Plugin của chính bản phát hành đang chạy công cụ (thư mục của root): { tên: { file: nội dung } }. */
+function releasePlugins(sys) {
+  const out = {};
+  for (const [plugin, files] of Object.entries(PLUGIN_FILES)) {
+    out[plugin] = {};
+    for (const file of files) {
+      const text = sys.read(nodePath.join(SCRIPTS.release, 'infra', PLUGIN_SOURCES[plugin], file), PLUGIN_FILE_MAX_BYTES);
+      if (typeof text !== 'string' || !text.length) fail('ban_phat_hanh_thieu_plugin', `${plugin}/${file}`);
+      out[plugin][file] = text;
+    }
+  }
+  return out;
+}
+const samePlugins = (a, b) => a !== null && b !== null && Object.entries(PLUGIN_FILES).every(([plugin, files]) => files.every(file => a[plugin][file] === b[plugin][file]));
 /** Plugin đang cài ở hồ sơ khuôn: { tên: { file: nội dung } }, hoặc null nếu thiếu file nào. Đọc bằng root, đúng các file cố định. */
 function templatePlugins(sys, config) {
   const out = {};
@@ -197,10 +211,13 @@ export function gatherAddFacts(sys, config, rawRequest) {
   facts.imagePresent = sys.exec('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]).status === 0;
   // Hồ sơ khuôn: đọc THẬT ngay lúc lập kế hoạch bằng đúng hàm mà bước gieo dùng; SOUL/.env là symlink hay quá lớn thì kế hoạch bị chặn,
   // không để lệnh hỏng sau khi đã tạo kênh.
-  const safe = read => { try { return read(); } catch (error) { if (error instanceof FleetError) return null; throw error; } };
+  // Lúc xem: file nào của hồ sơ khuôn không đọc an toàn được (symlink, FIFO, thư mục, quá lớn, không có quyền…) thì coi như thiếu.
+  const safe = read => { try { return read(); } catch { return null; } };
   const envSource = safe(() => sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome)),
     soulSource = safe(() => sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome));
-  facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0, plugins: safe(() => templatePlugins(sys, config)) !== null,
+  const installed = safe(() => templatePlugins(sys, config)), shipped = releasePlugins(sys);
+  facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0, plugins: installed !== null, pluginsMatch: samePlugins(installed, shipped),
+    pluginDigest: createHash('sha256').update(JSON.stringify(shipped)).digest('hex'),
     envKeys: (envSource ?? '').split(/\r?\n/).map(line => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*\S/.exec(line)?.[1]).filter(Boolean) };
   facts.native = nativeFacts(sys, config, facts.worker);
   facts.route = { reachable: routeReachable(sys, facts.worker, connector.route) };
@@ -274,9 +291,9 @@ function replaceSidecar(sys, view, args) {
   sys.exec('docker', ['update', '--restart', 'no', old]);
   return { container: view.name, replaced: old, id: out(created).trim().slice(0, 12) };
 }
-function recreateFromInspect(sys, raw, name, workerId) {
+function recreateFromInspect(sys, raw, name, workerId, options = {}) {
   const inspect = raw.get(name), imageConfig = JSON.parse(docker(sys, ['image', 'inspect', inspect.Image]))[0]?.Config ?? {};
-  return replaceSidecar(sys, sidecarView(inspect), recreateArgs(inspect, imageConfig, workerId));
+  return replaceSidecar(sys, sidecarView(inspect), recreateArgs(inspect, imageConfig, workerId, options));
 }
 function currentWorker(sys, config) {
   const worker = workerFacts(config, inspectAll(sys));
@@ -360,8 +377,9 @@ export function applyAdd(sys, config, rawRequest, expect) {
       if (channel.profile !== assistant.name || channel.accountId !== identity.accountId || channel.ownUid !== identity.ownUid || channel.pairedUid !== identity.pairedUid) fail('kenh_lech_danh_tinh');
     }
     const soul = sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
-    const plugins = templatePlugins(sys, config);
-    if (!plugins) fail('khuon_thieu_plugin');
+    // Mã chép sang người mới lấy từ bản phát hành (root), sau khi đối chiếu lại lúc ghi với bản đang cài ở trợ lý của chủ.
+    const plugins = releasePlugins(sys);
+    if (!samePlugins(templatePlugins(sys, config), plugins)) fail('plugin_lech_khuon');
     if (!soul || !templateText) fail('khuon_thieu_soul');
     const input = Buffer.from(JSON.stringify({ version: 1, configYaml: renderProfileConfig(templateText, { route: connector.route }), soul, plugins,
       env: profileEnv({ shared: sharedEnvFrom(sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome) ?? '', config.template.sharedEnvKeys), channel }) }));
@@ -394,13 +412,17 @@ export function applyAdd(sys, config, rawRequest, expect) {
     if (launched.status !== 0) fail('worker_khoi_dong_lai_loi', { loi: launched.stderr.toString('utf8').trim().slice(-300) });
     mark('worker-restart');
   }
-  const worker = currentWorker(sys, config), replaced = [];
+  const worker = currentWorker(sys, config), replaced = [], sidecarProblems = [];
   if (state.sidecars === 'pending') {
-    const raw = inspectAll(sys);
-    for (const name of plan.others) {
+    const raw = inspectAll(sys), template = name => raw.get(name) && sidecarView(raw.get(name)).home === config.template.sourceHome;
+    // Trợ lý của chủ được nối lại trước; mỗi sidecar một lần thử riêng: một cái hỏng không bỏ các cái sau ở namespace chết.
+    for (const name of [...plan.others.filter(template), ...plan.others.filter(name => !template(name))]) {
+      if (!raw.get(name)) { sidecarProblems.push(`${name}: không còn tồn tại`); continue; }
       const view = sidecarView(raw.get(name));
       if (view.running && view.networkMode === `container:${worker.id}`) continue;
-      replaced.push(recreateFromInspect(sys, raw, name, worker.id));
+      if (parked(view)) { sidecarProblems.push(`${name}: bị tạm dừng trong lúc chạy, để yên`); continue; }
+      try { replaced.push(recreateFromInspect(sys, raw, name, worker.id)); }
+      catch (error) { sidecarProblems.push(`${name}: ${error instanceof FleetError ? error.code : 'loi_khong_ro'}`); }
     }
     mark('sidecars');
   }
@@ -412,8 +434,8 @@ export function applyAdd(sys, config, rawRequest, expect) {
     mark('container');
   }
   const verification = verify(sys, config, assistant, connector);
-  return { version: 1, action: 'them-nguoi', status: 'applied', assistant: { ...assistant, identity: undefined }, done, replaced, verification,
-    runtimeStatus: verification.runtimeStatus };
+  return { version: 1, action: 'them-nguoi', status: 'applied', assistant: { ...assistant, identity: undefined }, done, replaced, sidecarProblems, verification,
+    runtimeStatus: sidecarProblems.length ? 'unverified' : verification.runtimeStatus };
 }
 
 export function applyRemove(sys, config, name, expect) {
@@ -450,12 +472,15 @@ export function applyRecreate(sys, config, { only = [] }, expect) {
   if (plan.status !== 'ready') fail(plan.status === 'done' ? 'khong_can_tao_lai' : 'ke_hoach_bi_chan', plan.blocks);
   if (plan.expectedRevision !== expect) fail('ke_hoach_da_doi');
   const replaced = [];
-  for (const row of plan.sidecars) if (row.state === 'recreate' || row.state === 'revive') replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId));
+  for (const row of plan.sidecars) if (row.state === 'recreate' || row.state === 'revive')
+    replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId, row.unpark ? { restart: 'unless-stopped' } : {}));
   sys.sleep(8000);
   const after = inspectAll(sys);
   return { version: 1, action: 'tao-lai-sidecar', status: 'applied', replaced,
     sidecars: replaced.map(entry => { const view = sidecarView(after.get(entry.container)); return { container: entry.container, running: view.running, currentNetwork: view.networkMode === `container:${plan.workerId}` }; }),
-    skipped: plan.notes, rollback: 'Bản cũ còn dưới tên <container>-old-<giờ>; chỉ dùng lại được khi worker cũ còn.', runtimeStatus: 'unverified' };
+    skipped: plan.notes, rollback: 'Bản cũ còn dưới tên <container>-old-<giờ>; chỉ dùng lại được khi worker cũ còn.',
+    // Đã kiểm = mọi sidecar vừa dựng đang chạy ở đúng namespace VÀ không bỏ sót cái nào.
+    runtimeStatus: !plan.notes.length && replaced.every(entry => { const view = sidecarView(after.get(entry.container)); return view.running && view.networkMode === `container:${plan.workerId}`; }) ? 'verified' : 'unverified' };
 }
 
 export function planFor(sys, config, action, input) {
