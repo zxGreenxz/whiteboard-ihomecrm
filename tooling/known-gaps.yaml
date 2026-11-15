@@ -387,3 +387,29 @@ gaps:
       Chạy lại script trên database dùng một lần (hoặc TEST) sau khi 20261115113530 đã áp, ra đủ xanh;
       hoặc thay kịch bản giữ chỗ cũ bằng kịch bản chi theo sổ tổng (shareholder_profit_ledger_payout_v1 +
       duyệt + huỷ) rồi gỡ nhánh cũ; hoặc chủ dự án quyết định bỏ script này khỏi bộ kiểm.
+  - id: hermes-profit-my-share-rong-khi-thieu-view-percent
+    where: >
+      public.profit_my_share_v1 (SECURITY INVOKER, supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql)
+      đọc profit_allocations / building_shareholders qua policy tự xem đã siết ở X5
+      (supabase/migrations/20261115113532_so_tong_loi_nhuan_bat.sql)
+    expires_at: 2026-12-31
+    why: >
+      Sau X5, cổ đông có reports_finance.profit_distribution nhưng không có shareholder_profit.view_percent
+      đọc 0 dòng phân bổ, nên profit_my_share_v1 trả danh sách rỗng mà không báo lỗi; Hermes sẽ trả lời như
+      thể cổ đông không có phân bổ (sai về tiền). Đo 16/11/2026: không người nào là cổ đông có kết nối Hermes
+      (app_private.hermes_connections = 0), và chủ dự án chốt Hermes không đổi hành vi trong đợt này.
+    exit_condition: >
+      profit_my_share_v1 ném 42501 hoặc đọc số dư sổ tổng (shareholder_profit_my_ledger_v1) khi người gọi thiếu
+      view_percent; hoặc chủ dự án quyết định chấp nhận. Phải xử lý TRƯỚC khi nối Hermes cho bất kỳ cổ đông nào.
+  - id: copilot-shareholder-profit-doc-so-toa-ngoai-x5
+    where: >
+      public.copilot_shareholder_profit_v1 (SECURITY DEFINER, supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql)
+    expires_at: 2026-12-31
+    why: >
+      X5 (supabase/migrations/20261115113532_so_tong_loi_nhuan_bat.sql) chỉ siết ba policy tự xem. Hàm copilot
+      này là DEFINER và tự mô phỏng điều kiện của policy CŨ, nên vẫn trả % và số liệu theo toà cho cổ đông thiếu
+      shareholder_profit.view_percent / view_building_totals. Cờ copilot đang tắt nên chưa có đường gọi.
+      Policy profit_monthly_self_manager (người quản lý xem toà mình quản lý) giữ nguyên theo thiết kế.
+    exit_condition: >
+      Thêm kiểm app_private.profit_viewer_can_v1 (view_percent / view_building_totals) vào
+      copilot_shareholder_profit_v1 trước khi bật lại cờ copilot; hoặc chủ dự án quyết định chấp nhận.

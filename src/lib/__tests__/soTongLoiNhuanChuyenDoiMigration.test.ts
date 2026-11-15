@@ -1026,3 +1026,46 @@ describe("D3b — siết đọc thẳng (X5) và bật (X6)", () => {
     }
   }, 120000);
 });
+
+describe("Dọn hàm ghi bù một lần (20261115213226) — D3a chạy lại dừng ở câu cố định đã ghim", () => {
+  const FILE_DON = `${DIR}/20261115213226_so_tong_loi_nhuan_don_ham_ghi_bu.sql`;
+  const DON = boGiaoDich(readFileSync(FILE_DON, "utf8"));
+  const HAM_GHI_BU = "app_private.profit_ledger_luong_backfill_v1(uuid,numeric,numeric,text,uuid,date)";
+  it("D3a → D3b → dọn (hai lượt): hàm ghi bù mất; chạy lại D3a ⇒ đúng SQLSTATE + câu của ngoại lệ pinned, không ghi gì", async () => {
+    const pin = (JSON.parse(readFileSync("supabase/migration-policy.json", "utf8")).idempotencyExceptions as
+      { file: string; expectedSqlState: string; expectedMessage: string; supersededBy?: { file: string } }[])
+      .find((x) => x.file === "20261115113530_so_tong_loi_nhuan_chuyen_doi.sql");
+    const r = await trongGiaoDich(async () => {
+      await db.exec(D3A());
+      await db.exec(D3B());
+      await db.exec(DON);
+      await db.exec(DON);
+      const truoc = await demTatCa();
+      const e = await loi(D3A());
+      return { con: await mot<boolean>(`SELECT to_regprocedure('${HAM_GHI_BU}') IS NOT NULL AS v`), e, truoc, sau: await demTatCa(),
+        route: await route() };
+    });
+    expect(r.con).toBe(false);
+    expect(pin?.supersededBy?.file).toBe("20261115213226_so_tong_loi_nhuan_don_ham_ghi_bu.sql");
+    expect(r.e?.code).toBe(pin?.expectedSqlState);
+    expect(r.e?.message).toBe(pin?.expectedMessage);
+    expect(r.e?.message).toBe(`D3A_NEN: thiếu nền Đợt 1 — áp đủ năm migration Đợt 1 trước: ${HAM_GHI_BU}`);
+    expect(r.sau).toEqual(r.truoc);
+    expect(r.route).toBe("CANONICAL");
+  });
+  it("database dùng một lần (không công ty thật): D3a, D3b rồi dọn chạy được", async () => {
+    const trong = new PGlite();
+    try {
+      await dungCoSo(trong, false);
+      await trong.exec("BEGIN");
+      await trong.exec(D3A());
+      await trong.exec(D3B());
+      await trong.exec(DON);
+      const v = (await trong.query<{ c: boolean }>(`SELECT to_regprocedure('${HAM_GHI_BU}') IS NOT NULL AS c`)).rows[0];
+      await trong.exec("ROLLBACK");
+      expect(v).toEqual({ c: false });
+    } finally {
+      await trong.close();
+    }
+  }, 120000);
+});
