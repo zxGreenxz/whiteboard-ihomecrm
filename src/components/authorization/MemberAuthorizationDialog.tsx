@@ -55,6 +55,11 @@ import { cn } from '@/lib/utils';
 import { findFeature, featureKey } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
 import {
+  isOwnerRoleName,
+  isProfitLedgerOrgScopedKey,
+  profitPermissionHints,
+} from '@/lib/profitLedger/permissionHints';
+import {
   useAuthorizationCatalog,
   useMemberAuthorization,
   useOrganizationRoles,
@@ -142,9 +147,22 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
         return !!s && (!kinds?.length || kinds.includes(s.scopeType));
       });
       const org = hop.find((id) => scopeById.get(id)?.scopeType === 'ORGANIZATION');
-      return org ? [org] : hop;
+      if (org) return [org];
+      // Ba khoá sổ tổng lợi nhuận chỉ nhận phạm vi CÔNG TY: người được cấp thường chỉ phụ trách
+      // vài toà (không có cạnh công ty) ⇒ mặc định thẳng phạm vi công ty thay vì để trống.
+      if (!hop.length && isProfitLedgerOrgScopedKey(key)) {
+        const toanCongTy = scopes.find((s) => s.scopeType === 'ORGANIZATION');
+        if (toanCongTy) return [toanCongTy.scopeId];
+      }
+      return hop;
     },
-    [phamViPhuTrach, permByKey, scopeById],
+    [phamViPhuTrach, permByKey, scopeById, scopes],
+  );
+
+  /** Người này có vai "chủ" (theo bản nháp vai trò đang sửa) — để nhắc khi cấp quyền chi lợi nhuận. */
+  const laChu = useMemo(
+    () => rows.some((r) => r.scopeIds.length > 0 && isOwnerRoleName(roleById.get(r.roleId)?.name)),
+    [rows, roleById],
   );
 
   /** Mọi toà nhà trong tổ chức — nút tắt "tất cả toà nhà". */
@@ -543,6 +561,33 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
+
+                        {/* Lời nhắc của sổ tổng lợi nhuận — chỉ nhắc, không chặn lưu. */}
+                        {profitPermissionHints({
+                          permissionKey: o.permissionKey,
+                          effect: o.effect,
+                          cashbooksHeld: mem.cashbooksHeld,
+                          memberIsOwner: laChu,
+                        }).map((hint) => (
+                          <p
+                            key={hint.text}
+                            data-testid="profit-permission-hint"
+                            data-tone={hint.tone}
+                            className={cn(
+                              'flex gap-1.5 px-3 pb-2 text-xs',
+                              hint.tone === 'warning'
+                                ? 'text-amber-700 dark:text-amber-400'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {hint.tone === 'warning' ? (
+                              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            )}
+                            {hint.text}
+                          </p>
+                        ))}
 
                         {dangMo && (
                           <div className="border-t px-3 pb-3 pt-2">

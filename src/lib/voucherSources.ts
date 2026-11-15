@@ -45,8 +45,13 @@ export const VOUCHER_SOURCES: Record<string, VoucherSourceMeta> = {
   "backfill.initial_deposit": { label: "Ghi nhận cọc ban đầu (bút toán)", group: "Cọc", internal: true },
 
   "profit.distribution": { label: "Chia lợi nhuận cổ đông", group: "Chia lợi nhuận" },
+  // Sổ tổng lợi nhuận (Đợt 1, 11/2026): phiếu lập bằng shareholder_profit_ledger_payout_v1 /
+  // manager_salary_payout_v1 khi sổ tổng chạy thật. Tiền THẬT rời sổ quỹ ⇒ KHÔNG internal; thiếu
+  // dòng ở đây thì Thu chi gọi nhầm là "Nhập tay" và lọc nhóm không thấy.
+  "profit.ledger_payout": { label: "Chia lợi nhuận cổ đông", group: "Chia lợi nhuận" },
   "salary.staff": { label: "Lương nhân viên", group: "Lương" },
   "salary.manager": { label: "Lương điều hành", group: "Lương" },
+  "profit.manager_salary": { label: "Lương điều hành", group: "Lương" },
   "utility.bill": { label: "Đóng điện/nước NCC", group: "Vận hành" },
 
   "adjustment.opening_balance": { label: "Điều chỉnh số dư đầu kỳ", group: "Điều chỉnh", internal: true },

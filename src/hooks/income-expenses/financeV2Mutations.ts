@@ -398,9 +398,10 @@ async function prepareQuickExpenseBatchEvidenceWithCache(
 }
 
 /** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */
-export function useMyCashbookAccessV2() {
+export function useMyCashbookAccessV2(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["my-cashbook-access-v2"],
+    enabled: options.enabled ?? true,
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
