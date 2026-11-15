@@ -164,6 +164,8 @@ export const batchItemSchema = z
     room_id: z.string().nullable().optional(),
     income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),
     type_name: z.string().optional(),
+    // "Tên phiếu lẻ" riêng của dòng — xem batchChildVoucherName.
+    voucher_name: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
     quantity: z.number().int().min(1).default(1),
     unit_price: z.number().min(0, 'Số tiền phải >= 0'),
@@ -191,3 +193,20 @@ export const incomeExpenseBatchFormSchema = z.object({
 });
 
 export type IncomeExpenseBatchFormValues = z.infer<typeof incomeExpenseBatchFormSchema>;
+
+/**
+ * Tên phiếu lẻ sinh ra từ một dòng của phiếu tổng.
+ * Dòng có "Tên phiếu lẻ" ⇒ "<tên phiếu lẻ> - <tên phiếu tổng>" (vd "VSML 101 (3/7) - Chốt ML đợt 1"),
+ * để mỗi phiếu lẻ mang đúng nội dung của nó. Để trống ⇒ giữ cách cũ "<tên phiếu tổng> - <loại hạng mục>".
+ */
+export const batchChildVoucherName = (
+  sharedName: string,
+  item: { voucher_name?: string | null; type_name?: string | null },
+): string => {
+  const tenLe = item.voucher_name?.trim();
+  if (tenLe) {
+    const tenTong = sharedName.trim();
+    return tenTong ? `${tenLe} - ${tenTong}` : tenLe;
+  }
+  return `${sharedName} - ${item.type_name ?? ''}`.trim();
+};
