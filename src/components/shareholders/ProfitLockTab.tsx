@@ -96,7 +96,10 @@ import {
 } from "@/lib/profitLockPrecheck";
 import { FixedFeeIssueList } from "@/components/reports/ProfitReportChecks";
 import { formatCurrency } from "@/lib/utils";
+import { useProfitUnlockSalaryImpact } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { unlockImpactNeedsAcknowledge } from "@/lib/profitLedger/salaryReaders";
 import { currentYear, periodOf, periodToLabel } from "./shareholderUtils";
+import { ProfitSalaryImpactNotice, type SalaryImpactMode } from "./ProfitSalaryImpactNotice";
 
 interface ProfitLockTabProps {
   organizations: ProfitCloseOrganizationScope[];
@@ -503,6 +506,56 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const closeMutation = useCloseProfitPeriod();
   const resetMutation = useResetProfitPeriod();
   const unlockMutation = useUnlockProfitMonth();
+  // D2.11: trước khi Mở khoá / Đặt lại / Chốt lại tháng đã chốt — ai đã nhận phần lợi nhuận này qua
+  // lương, sổ tổng của ai đổi (E14). Đang tải / lỗi ⇒ khoá nút (đóng an toàn); có mục ⇒ phải tick.
+  const impactScope = useMemo((): {
+    mode: SalaryImpactMode;
+    organizationId: string;
+    periodMonth: string;
+    /** null = mọi toà của kỳ. */
+    buildingIds: string[] | null;
+  } | null => {
+    if (unlockOpen && unlockGuard) {
+      return { mode: "UNLOCK", organizationId: unlockGuard.organizationId, periodMonth: unlockGuard.period, buildingIds: unlockGuard.buildingIds };
+    }
+    if (resetOpen && resetGuard) {
+      return { mode: "RESET", organizationId: resetGuard.organizationId, periodMonth: resetGuard.period, buildingIds: resetGuard.targetBuildingIds };
+    }
+    // Chốt lại thay phân bổ của tháng ĐÃ chốt (cùng rủi ro với mở khoá — audit Đợt 2 D2.11).
+    if (confirmOpen && recloseMode && organizationId) {
+      return { mode: "RECLOSE", organizationId, periodMonth: period, buildingIds: targetBuildingIds };
+    }
+    return null;
+  }, [unlockOpen, unlockGuard, resetOpen, resetGuard, confirmOpen, recloseMode, organizationId, period, targetBuildingIds]);
+  const impactQuery = useProfitUnlockSalaryImpact({
+    organizationId: impactScope?.organizationId ?? null,
+    periodMonth: impactScope?.periodMonth ?? null,
+    buildingIds: impactScope?.buildingIds ?? null,
+    enabled: !!impactScope,
+  });
+  const impact = impactScope ? impactQuery.data : undefined;
+  // Chốt lại: chỉ bắt tick khi đã có người nhận phần này qua lương (phân bổ được ghi lại, không mất).
+  const impactNeedsAck = !!impact && (impactScope?.mode === "RECLOSE"
+    ? impact.paid_via_salary.length > 0
+    : unlockImpactNeedsAcknowledge(impact));
+  const impactSignature = impact && impactScope
+    ? `${impactScope.mode}:${JSON.stringify([impact.paid_via_salary, impact.ledger_effects])}`
+    : null;
+  const [impactAck, setImpactAck] = useState<string | null>(null);
+  // Mỗi lần mở hộp phải tick lại (không nhớ từ lượt trước); số đổi ⇒ chữ ký đổi ⇒ tick lại.
+  useEffect(() => { setImpactAck(null); }, [unlockOpen, resetOpen, confirmOpen]);
+  const impactAcked = !impactNeedsAck || (impactSignature !== null && impactAck === impactSignature);
+  const impactBlocks = !!impactScope && (!impact || impactQuery.isError || impactQuery.isFetching || !impactAcked);
+  const impactNotice = impactScope ? (
+    <ProfitSalaryImpactNotice
+      mode={impactScope.mode}
+      query={impactQuery}
+      needsAck={impactNeedsAck}
+      acked={impactAcked && impactNeedsAck}
+      onAckChange={(acked) => setImpactAck(acked ? impactSignature : null)}
+      disabled={closeMutation.isPending || resetMutation.isPending || unlockMutation.isPending}
+    />
+  ) : null;
   const querySources = [stateQuery,peersQuery,...(canLock ? [previewQuery] : [])];
   // Vùng số liệu chờ luôn cả lượt tải ĐẦU của trạng thái sổ quỹ: cảnh báo vàng "còn N sổ
   // quỹ chưa chốt" nằm trên bảng, về sau bảng thì chèn vào và đẩy cả bảng xuống. Chỉ mượn
@@ -790,6 +843,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     if (!preview || sourceUnavailable || actionBlocked) return;
     // Lưới mềm F20: đang dò thì chờ; còn cảnh báo thì phải tick "đã xem" (không chặn cứng).
     if (precheck.blocksConfirm || !precheckAcked) return;
+    // D2.11: chốt lại tháng đã trả qua lương — chờ kiểm xong + tick "tôi hiểu".
+    if (impactBlocks) return;
     setActionError('');
     if (hasInvalidResidualDisposition) {
       setConfirmOpen(false);
@@ -827,7 +882,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmReset = async () => {
-    if (!resetGuard || sourceUnavailable || actionBlocked) return;
+    if (!resetGuard || sourceUnavailable || actionBlocked || impactBlocks) return;
     if(!resetReasonValid){setReasonErrors({resetReason:resetReasonProblem==='SYSTEM_MESSAGE'?RESET_REASON_SYSTEM_MESSAGE:'Nhập lý do đặt lại từ 8 đến 1000 ký tự.'});await focusFirstError({resetReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
@@ -871,7 +926,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   };
 
   const confirmUnlock = async () => {
-    if (!unlockGuard || sourceUnavailable || actionBlocked) return;
+    if (!unlockGuard || sourceUnavailable || actionBlocked || impactBlocks) return;
     if(!unlockReasonValid){setReasonErrors({unlockReason:unlockReasonProblem==='SYSTEM_MESSAGE'?UNLOCK_REASON_SYSTEM_MESSAGE:'Nhập lý do mở khóa từ 8 đến 1000 ký tự.'});await focusFirstError({unlockReason:'invalid'});return;}
     setReasonErrors({}); setActionError('');
     try {
@@ -1920,6 +1975,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               </label>
             )}
           </div>
+          {recloseMode && impactNotice}
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
@@ -1933,7 +1989,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 previewStale ||
                 hasInvalidResidualDisposition ||
                 precheck.blocksConfirm ||
-                !precheckAcked
+                !precheckAcked ||
+                impactBlocks
               }
             >
               {closeMutation.isPending
@@ -1985,13 +2042,14 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               </p>
             )}
           </div>
+          {impactNotice}
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={resetMutation.isPending}>Huỷ</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event)=>{event.preventDefault();void confirmReset();}}
-              disabled={resetMutation.isPending || actionBlocked || sourceUnavailable}
+              disabled={resetMutation.isPending || actionBlocked || sourceUnavailable || impactBlocks}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {resetMutation.isPending
@@ -2059,6 +2117,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   : " — lý do cần có 8–1000 ký tự."}
             </p>
           </div>
+          {impactNotice}
           {(closingStatusQuery.isError || closingStatusQuery.isLoading) && <p className="text-sm text-amber-700">Chưa xác nhận được trạng thái chốt sổ quỹ. Kiểm tra sổ quỹ trước khi xác nhận thao tác lợi nhuận.</p>}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
@@ -2069,7 +2128,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 event.preventDefault();
                 void confirmUnlock();
               }}
-              disabled={unlockMutation.isPending || actionBlocked || sourceUnavailable}
+              disabled={unlockMutation.isPending || actionBlocked || sourceUnavailable || impactBlocks}
             >
               {unlockMutation.isPending
                 ? "Đang mở khoá…"

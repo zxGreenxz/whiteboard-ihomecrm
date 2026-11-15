@@ -1,7 +1,8 @@
 import { CommissionReasonField } from './CommissionReasonField';
 import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_EVIDENCE_ADD_REASON } from '@/lib/commissionAudit';
 import { focusFirstError } from "@/lib/formErrors";
-import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { ledgerAwareVoucherFailure } from "@/lib/profitLedger/voucherFailure";
 import { FinancialWorkflowError } from "@/lib/financialWorkflowError";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -87,6 +88,11 @@ export interface PostingVoucherSummary {
    * thì ô để trống — chọn sẵn một sổ không được phép chỉ dẫn tới 42501.
    */
   defaultCashbookId?: string | null;
+  /**
+   * Phiếu chi theo sổ tổng lợi nhuận: chỉ chi được từ ĐÚNG sổ ghi trên phiếu (máy chủ chặn sổ khác —
+   * PROFIT_LEDGER_ACCOUNT_LOCKED). Màn gọi chỉ truyền sổ đó trong `cashbookOptions`; cờ này đổi câu gợi ý.
+   */
+  cashbookLocked?: boolean;
   /**
    * Ảnh đính kèm của phiếu (`income_expenses.attachments`) — TỪ 27/08/2026 đây
    * CHÍNH LÀ danh sách chứng từ của hộp thoại này.
@@ -1315,7 +1321,8 @@ export default function IncomeExpensePostingDialog({
     };
     await onSubmit(input);
     } catch (error) {
-      setSubmitError(voucherFailureMessage(error, "ghi nhận thu/chi"));
+      // Lỗi chốt sổ tổng (mã PROFIT_LEDGER_…, phần lớn là 55000 ⇒ HTTP 500) ra câu riêng; lỗi khác như cũ.
+      setSubmitError(ledgerAwareVoucherFailure(error, "ghi nhận thu/chi"));
       if (voucherOutcomeUnknown(error)) setReconcileRequired(true);
     } finally {
       if (submitLockRef.current === session) submitLockRef.current = null;
@@ -1393,13 +1400,19 @@ export default function IncomeExpensePostingDialog({
                       }))}
                     />
                   </FormControl>
-                  {defaultCashbookId && !cashbookOnVoucherAllowed && (
+                  {voucher.cashbookLocked ? (
+                    <p className="text-xs text-amber-700" data-testid="posting-cashbook-locked">
+                      {cashbookOnVoucherAllowed
+                        ? `Phiếu chi theo sổ tổng chỉ ${baseWord.toLowerCase()} được từ sổ quỹ đã chọn lúc lập.`
+                        : `Phiếu chi theo sổ tổng chỉ ${baseWord.toLowerCase()} được từ sổ quỹ đã chọn lúc lập — bạn không giữ sổ đó, nhờ người giữ sổ ${baseWord.toLowerCase()}.`}
+                    </p>
+                  ) : defaultCashbookId && !cashbookOnVoucherAllowed && (
                     <p className="text-xs text-amber-700">
                       Sổ quỹ ghi trên phiếu không nằm trong các sổ bạn đang giữ —
                       hãy chọn đúng sổ bạn thực {baseWord.toLowerCase()}.
                     </p>
                   )}
-                  {cashbookOnVoucherAllowed && (
+                  {cashbookOnVoucherAllowed && !voucher.cashbookLocked && (
                     <p className="text-xs text-muted-foreground">
                       Đang chọn sẵn sổ ghi trên phiếu. Đổi sổ khác cũng được —
                       tiền đi theo sổ tại thời điểm bấm “{title}”.

@@ -77,6 +77,18 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "contract-deposit-vouchers",
       "shareholder-distributions",
       "manager-salary-payouts",
+      // --- 11/2026 sổ tổng lợi nhuận: số dư cổ đông / lương điều hành trừ phiếu chi còn sống, nên
+      // máy khác lập / duyệt / huỷ phiếu là số trên các màn này đổi. (Chốt LN, lương: không có
+      // realtime riêng — chỉ làm mới qua mutation cùng phiên.)
+      "profit-ledger",
+      "profit-ledger-entries",
+      "profit-ledger-payout",
+      "profit-ledger-marker-preview",
+      "profit-payout-preview",
+      "my-profit-ledger",
+      "profit-manager-ledger",
+      "manager-ledger-payouts",
+      "profit-unlock-salary-impact",
       "change-breakdown", // sổ thối
       // GỠ 15/09/2026 — ở đây từng có key prefill của modal hoa hồng. Nó KHÔNG
       // đọc income_expenses (chỉ contracts/rooms/buildings/customers), nên gắn

@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1816,
-  "soFileDocBangFs": 478,
-  "tongLoiGoi": 1263,
+  "tongSoFileTest": 1848,
+  "soFileDocBangFs": 479,
+  "tongLoiGoi": 1265,
   "khongPhanLoaiDuoc": 575,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 66,
+      "soFile": 67,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -70,6 +70,7 @@
     "src/hooks/__tests__/accountsWithBalanceMasking.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
     "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
+    "src/hooks/__tests__/salaryProfitSettlement.test.ts",
     "src/hooks/__tests__/useCustomers.deleteActiveContractGuard.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
     "src/hooks/__tests__/useManagerSalaryV5Bulk.test.ts",
@@ -414,6 +415,15 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 2,
+        "ma-nguon": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
       "soGoi": 6,
       "loai": {
@@ -532,15 +542,6 @@
         "manifest": 3
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
-      "soGoi": 5,
-      "loai": {
-        "sql": 2,
-        "ma-nguon": 3
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
@@ -2723,6 +2724,14 @@
     },
     {
       "file": "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/salaryProfitSettlement.test.ts",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1

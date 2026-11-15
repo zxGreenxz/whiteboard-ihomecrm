@@ -7,7 +7,8 @@ import { useSalaryFormFeedback } from "./useSalaryFormFeedback";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { todayISO } from "@/lib/collect";
-import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
+import type { SalAdjustment, SalAdvanceItem, SalManager } from "@/lib/managerSalary";
+import { profitDeductionsOf, profitOffsetFor, salaryProfitPayoutBlock, type SalaryPayoutChoice } from "@/lib/salaryProfit";
 import type { EditableLine } from "./SalaryAmountEditDialog";
 import { INCOME_GROUP as GROUP, incomeItemsOf as itemsOf, type IncomeGroupKey as GroupKey, type IncomeItem as Item } from "./salaryIncomeItems";
 import type { PendingPayout } from "@/hooks/useSalaryFund";
@@ -23,7 +24,8 @@ interface Props {
   pending: PendingPayout[];
   accounts: SalaryAccount[];
   canPay: boolean;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  /** `choice` (cổ đông, kỳ chưa chốt): phần lợi nhuận đầu tư được chọn trả — luỹ kế của tháng. */
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string, choice?: SalaryPayoutChoice) => Promise<unknown> | void;
   /** Mutation trả lương đang chạy — khoá nút để không lập phiếu hai lần. */
   payBusy: boolean;
   onOpenLedger: (f: { who: string }) => void;
@@ -113,17 +115,29 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
   // chốt (phiếu HH duyệt ở nơi khác, ứng huỷ…), nên không cho chọn từng khoản.
   const fz = m.status === "LOCKED" ? m.frozen ?? null : null;
   const lockedPay = m.status === "LOCKED";
-  const blocked = hasPending || !canPay || payBusy;
-  // Khoản âm và hoa hồng đã chi từ sổ thật luôn đi kèm (bỏ chọn cái sau không đổi tiền
-  // chuyển, chỉ làm lệch thu nhập); trạng thái bỏ chọn cũ không áp cho khoản đã thành âm.
-  const forced = (i: Item) => (i.amount ?? 0) < 0 || (i.paidElsewhere ?? 0) > 0;
+  // Cổ đông: bảng chốt trước mốc "đã trả đủ" / chưa gồm phần trừ đã trừ ⇒ chặn trả, phải chốt lại.
+  const profitBlock = salaryProfitPayoutBlock(m);
+  const blocked = hasPending || !canPay || payBusy || !!profitBlock;
+  // Khoản âm, hoa hồng đã chi từ sổ thật và đầu tư đã trả theo mốc luôn đi kèm (bỏ chọn hai cái
+  // sau không đổi tiền chuyển, chỉ làm lệch thu nhập); bỏ chọn cũ không áp cho khoản đã thành âm.
+  const forced = (i: Item) => (i.amount ?? 0) < 0 || (i.paidElsewhere ?? 0) > 0 || !!i.markerPaid;
   const chosen = items.filter((i) => i.payable && (lockedPay || forced(i) || !off[i.id]));
   const bySrc = (g: GroupKey) => chosen.filter((i) => i.g === g).reduce((s, i) => s + (i.amount ?? 0), 0);
   const vS = fz && m.calc ? m.calc.gross - fz.investment - fz.commission : bySrc("vh");
   const sS = fz ? fz.commission : bySrc("sale");
   const dS = fz ? fz.investment : bySrc("dh");
   const totalOb = vS + sS + dS;
-  const advance = fz ? fz.advance : m.advance;
+  // Sổ tổng (chỉ cổ đông; nhân viên thường đều bằng 0): "ứng" của bảng đã gồm phần trừ tạm ứng lợi
+  // nhuận và phần đã trả theo mốc. Kỳ chưa chốt: trừ tạm ứng chỉ trong phần đầu tư đang chọn trả.
+  const { offset: profitOffset, marker: markerPaid } = profitDeductionsOf(m);
+  const investmentSelected = chosen.filter((i) => i.g === "dh" && !i.markerPaid).reduce((s, i) => s + (i.amount ?? 0), 0);
+  const offsetApplied = lockedPay ? profitOffset : profitOffsetFor(m, investmentSelected);
+  const advance = fz ? fz.advance : m.advance - profitOffset + offsetApplied;
+  const salaryAdvance = advance - offsetApplied - markerPaid;
+  // Số đầu tư bảng lương tính khác số máy chủ (vừa có ghi đè / chốt lợi nhuận) ⇒ chốt và trả sẽ bị từ chối.
+  const serverInvestment = m.profit?.investmentMonth ?? null;
+  const investmentDrift = !lockedPay && m.investmentLocked && serverInvestment !== null && Math.abs(m.investment - serverInvestment) >= 0.005
+    ? serverInvestment : null;
   // Hoa hồng đã/sẽ chi từ sổ thật. Kỳ chốt: suy từ số đóng băng (gross − ứng − phòng −
   // thực nhận) để các dòng luôn cộng khớp, kể cả kỳ chốt trước khi có tách này (= 0).
   const paidOut = lockedPay && m.calc
@@ -141,8 +155,21 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
     </div>
   );
 
+  const advanceLine = (a: SalAdvanceItem) => {
+    if (a.kind === "PROFIT_ADVANCE") return {
+      label: a.label, chip: "Tạm ứng LN", tone: "warning" as ChipTone, amount: lockedPay ? a.amount : offsetApplied,
+      sub: lockedPay || offsetApplied >= a.amount
+        ? "Đang tạm ứng lợi nhuận — trừ trong phần lợi nhuận đầu tư tháng này, phần còn lại chuyển tháng sau"
+        : `Chỉ trừ trong phần lợi nhuận đầu tư đang chọn trả (cả tháng: ${salFmt(a.amount)})`,
+    };
+    if (a.kind === "PROFIT_MARKER") return {
+      label: a.label, chip: "Đã trả theo mốc", tone: "neutral" as ChipTone, amount: a.amount,
+      sub: "Phần đầu tư tháng này đã trả trước mốc \"đã trả đủ\" — tính vào thu nhập, không chuyển lại",
+    };
+    return { label: a.label, sub: `Ứng ngày ${a.date} · đã chi, trừ vào lương kỳ`, chip: "Đã ứng", tone: "neutral" as ChipTone, amount: a.amount };
+  };
   const ded = [
-    ...m.advanceItems.map((a) => ({ label: a.label, sub: `Ứng ngày ${a.date} · đã chi, trừ vào lương kỳ`, chip: "Đã ứng", tone: "neutral" as ChipTone, amount: a.amount })),
+    ...m.advanceItems.map(advanceLine),
     ...m.roomRentItems.map((r) => ({ label: "Tiền phòng", sub: r.label + " · cấn trừ khi thanh toán", chip: "Cấn trừ", tone: "danger" as ChipTone, amount: r.amount })),
   ];
 
@@ -209,7 +236,9 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <Row k="Chi phí tòa · khoản Sale nguồn" v={salFmt(sS)} dot={GROUP.sale.color} />
           <Row k="Phân bổ lợi nhuận" v={salFmt(dS)} dot={GROUP.dh.color} />
           <Row k={lockedPay ? "Tổng thu nhập đã chốt" : "Tổng thu nhập được chọn"} v={salFmt(totalOb)} strong />
-          {advance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(advance)} fg="hsl(var(--status-danger-fg))" />}
+          {salaryAdvance > 0 && <Row k="Đã ứng (trừ lúc ứng)" v={"−" + salFmt(salaryAdvance)} fg="hsl(var(--status-danger-fg))" />}
+          {offsetApplied > 0 && <Row k="Trừ tạm ứng lợi nhuận" v={"−" + salFmt(offsetApplied)} fg="hsl(var(--status-danger-fg))" />}
+          {markerPaid > 0 && <Row k="Lợi nhuận đã trả theo mốc (không chuyển lại)" v={"−" + salFmt(markerPaid)} fg="hsl(var(--status-danger-fg))" />}
           {paidOut > 0 && <Row k="Hoa hồng chi từ sổ thật (không chuyển lại)" v={"−" + salFmt(paidOut)} fg="hsl(var(--status-danger-fg))" />}
           {m.paid > 0 && <Row k="Đã trả trước đó" v={"−" + salFmt(m.paid)} fg="hsl(var(--status-danger-fg))" />}
         </div>
@@ -231,10 +260,13 @@ function PersonDetail({ m, period, accounts, canPay, onPayout, payBusy, justPaid
           <input type="date" className="sal-input mono" {...feedback.field("date")} value={date} onChange={(e) => setDate(e.target.value)} disabled={blocked} />{feedback.issue("date")}</div>
         <div className="sal-field"><label>Ghi chú</label>
           <input className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} disabled={blocked} /></div>
+        {profitBlock && <div role="alert" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))" }}>{profitBlock}</div>}
+        {investmentDrift !== null && <div role="note" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}>Phần lợi nhuận đầu tư trên bảng ({salFmt(m.investment)}) khác số đã chốt hiện tại ({salFmt(investmentDrift)}) — bấm Tính lại trước khi trả hoặc chốt lương.</div>}
+        {(m.profit?.needsReviewCount ?? 0) > 0 && <div role="note" style={{ fontSize: 12, borderRadius: 8, padding: "10px 12px", background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}>Còn {m.profit?.needsReviewCount} phiếu lương cần chủ xem lại phần lợi nhuận — chi lợi nhuận cho {m.short} tạm khoá tới khi chủ xác nhận. Lương vẫn trả được.</div>}
         <button className="sal-btn sal-btn--primary" style={{ justifyContent: "center" }}
           disabled={blocked || feedback.saving || feedback.blocked}
-          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
-          {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
+          onClick={() => void feedback.run(() => onPayout(m.id, m.name, cash, acc, date, note, m.profit && !lockedPay ? { investmentSelected } : undefined), () => {}, {amount: cash <= 0 ? "Không còn tiền phải chuyển." : undefined, account: !acc ? "Chọn sổ quỹ chi lương." : undefined, date: !date ? "Chọn ngày chi lương." : undefined})}>
+          {!canPay ? "Không có quyền trả lương" : payBusy ? "Đang lập phiếu…" : profitBlock ? "Chưa trả được — cần chốt lại" : hasPending ? "Đang có phiếu chờ duyệt" : cash <= 0 ? "Không còn tiền phải chuyển" : "Lập yêu cầu thanh toán"}
         </button>{feedback.notice}{feedback.issue("amount")}
         {lockedPay && <span style={{ fontSize: 11.5, color: "hsl(var(--status-warning-fg))" }}>Kỳ đã chốt — trả theo số đã chốt, không chọn từng khoản.</span>}
         <span style={{ fontSize: 11.5, color: MUTED }}>Tạo một phiếu chi lương chờ duyệt (không tính KQKD). Khi đã có phiếu chờ duyệt, người này bị khóa để không lập trùng. Bấm tên khoản để xem căn cứ.</span>

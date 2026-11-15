@@ -28,10 +28,11 @@ import { REVISION_REASON_MIN } from "@/lib/incomeExpenseRevision";
 import { isNonCashVoucher } from "@/lib/financeV2VoucherState";
 import { adoptVoucherAttachmentsAsEvidence, uploadFinanceEvidence } from "@/hooks/income-expenses/financeV2Mutations";
 import type { VoucherActions } from "@/hooks/income-expenses/useVoucherActions";
+import { ProfitPayoutCancelDialog } from "@/components/shareholders/ProfitPayoutCancelDialog";
 
 export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
   const d = actions.dialogs;
-  const { cancel, restore, unapprove, approve, approveAndPost, postApproved, reverse, cancelBatch, posting } = d;
+  const { cancel, profitCancel, restore, unapprove, approve, approveAndPost, postApproved, reverse, cancelBatch, posting } = d;
   const approveTarget = approve.target;
   const postApprovedTarget = postApproved.target;
   const reverseTarget = reverse.target;
@@ -157,6 +158,15 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Phiếu chi theo sổ tổng (chi lợi nhuận cổ đông / lương điều hành): MỘT hộp huỷ có lý do cho cả
+          Thu chi hai khổ và Báo cáo LN — đã chi thì đảo bút toán về đúng sổ của phiếu. */}
+      <ProfitPayoutCancelDialog
+        open={!!profitCancel.target}
+        onOpenChange={(o) => { if (!o) profitCancel.close(); }}
+        target={profitCancel.target}
+        onCancelled={profitCancel.onCancelled}
+      />
 
       <AlertDialog open={!!restore.target} onOpenChange={(o) => { if (!o) restore.close(); }}>
         <AlertDialogContent>
@@ -400,11 +410,12 @@ export function VoucherActionDialogs({ actions }: { actions: VoucherActions }) {
             approvedTotal: postApprovedTarget.total_amount ?? 0,
             name: postApprovedTarget.name ?? undefined,
             defaultCashbookId: postApprovedTarget.account_id ?? null,
+            cashbookLocked: postApproved.cashbookLocked,
             attachments: postApprovedTarget.attachments ?? null,
             isCommission: isCommissionVoucher(postApprovedTarget),
           }}
-          capability={{ isCustodian: posting.custodianBooks.length > 0, canApprove: false }}
-          cashbookOptions={posting.custodianBooks}
+          capability={{ isCustodian: postApproved.cashbookOptions.length > 0, canApprove: false }}
+          cashbookOptions={postApproved.cashbookOptions}
           cashbookError={posting.cashbookError}
           onRetryCashbooks={posting.retryCashbooks}
           expectedExecutionRevision={0}

@@ -130,7 +130,7 @@ describe("hộp chi tiết máy tính — chỗ cắm mới", () => {
     const khoa = screen.getByTitle(/^Huỷ phiếu — Tháng đã chốt lợi nhuận/);
     expect(khoa.matches(":disabled")).toBe(false);
     fireEvent.click(khoa);
-    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE");
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v" }));
     cleanup();
     env.perms = {};
     render(desktop(handlers(), { cancelEligibility: { v: { id: "v", eligible: true, reason_code: null } } }));
@@ -188,7 +188,7 @@ describe("tấm chi tiết điện thoại — đủ nút như máy tính", () =
     const huy = screen.getByRole("button", { name: "Huỷ" });
     expect(huy.matches(":disabled")).toBe(false);
     fireEvent.click(huy);
-    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE");
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v" }));
   });
 
   it("Duyệt / Huỷ cùng luật với máy tính", () => {
@@ -200,6 +200,66 @@ describe("tấm chi tiết điện thoại — đủ nút như máy tính", () =
     env.perms = scoped("approve", "cancel");
     render(mobile(handlers()));
     expect(screen.getByRole("button", { name: "Duyệt" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Huỷ" })).toBeTruthy();
+  });
+});
+
+// Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành (nguồn profit.ledger_payout | profit.manager_salary).
+// Máy chủ (chốt F1) chặn sửa, huỷ duyệt, hoàn tác, khôi phục, đổi sổ; duyệt đi màn Chờ duyệt; huỷ bằng hộp riêng.
+describe("phiếu chi theo sổ tổng — hai khổ cùng luật", () => {
+  const soTong = (p: Record<string, unknown> = {}) => phieu({ system_source: "profit.ledger_payout", account_name: "Quỹ", ...p });
+  const owner = { shareholder_profit: { distribute: { org_wide: true, building_ids: [] } }, income_expenses: { approve: { org_wide: true, building_ids: [] }, cancel: { org_wide: true, building_ids: [] }, reverse: { org_wide: true, building_ids: [] }, edit: { org_wide: true, building_ids: [] } } };
+
+  it("máy tính: chờ duyệt ⇒ không nút Duyệt thường, có lối sang Chờ duyệt; Huỷ gửi kèm phiếu", () => {
+    detail.data = soTong();
+    env.perms = owner;
+    const h = handlers();
+    render(desktop(h));
+    expect(screen.queryByTitle("Duyệt phiếu")).toBeNull();
+    expect(screen.getByRole("link", { name: "Duyệt ở màn Chờ duyệt" }).getAttribute("href")).toBe("/approvals");
+    fireEvent.click(screen.getByTitle("Huỷ phiếu chi theo sổ tổng (ghi lý do)"));
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v", system_source: "profit.ledger_payout" }));
+  });
+
+  it("máy tính: đã chi ⇒ không Mở lại / Huỷ duyệt; đã huỷ ⇒ không Khôi phục / Tạo bản sao; Đánh dấu đã kiểm vẫn còn", () => {
+    detail.data = soTong({ approval_status: "APPROVED", posting_status: "POSTED" });
+    env.perms = owner;
+    env.isAdmin = true;
+    render(desktop(handlers(), { onRestore: vi.fn(), onCopy: vi.fn(), onEdit: vi.fn() }));
+    for (const title of [/^Mở lại/, /^Huỷ duyệt/, /^Chi tiền từ sổ/, /^Sửa/]) expect(screen.queryByTitle(title)).toBeNull();
+    expect(screen.getByTitle("Huỷ phiếu chi theo sổ tổng (ghi lý do)")).toBeTruthy();
+    expect(screen.getByTitle("Đánh dấu đã kiểm tra")).toBeTruthy();
+    cleanup();
+    detail.data = soTong({ approval_status: "CANCELLED", posting_status: "REVERSED" });
+    render(desktop(handlers(), { onRestore: vi.fn(), onCopy: vi.fn() }));
+    for (const title of [/^Khôi phục/, /^Tạo bản sao/, /^Huỷ phiếu/]) expect(screen.queryByTitle(title)).toBeNull();
+  });
+
+  it("máy tính: không có quyền chi lợi nhuận ⇒ không lối duyệt, không Huỷ (kể cả có quyền huỷ thu chi)", () => {
+    detail.data = soTong();
+    env.perms = { income_expenses: owner.income_expenses };
+    render(desktop(handlers()));
+    expect(screen.queryByRole("link", { name: "Duyệt ở màn Chờ duyệt" })).toBeNull();
+    expect(screen.queryByTitle(/^Huỷ phiếu/)).toBeNull();
+    expect(screen.queryByTitle("Duyệt phiếu")).toBeNull();
+  });
+
+  it("điện thoại: lối sang Chờ duyệt thay nút Duyệt; Huỷ gửi kèm phiếu; phiếu lương điều hành cần quyền trả lương điều hành", () => {
+    detail.data = soTong();
+    env.perms = owner;
+    const h = handlers();
+    render(mobile(h));
+    expect(screen.queryByRole("button", { name: "Duyệt" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Duyệt ở màn Chờ duyệt" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Huỷ" }));
+    expect(h.onCancel).toHaveBeenCalledWith("v", "EXPENSE", expect.objectContaining({ id: "v" }));
+    cleanup();
+    detail.data = soTong({ system_source: "profit.manager_salary" });
+    render(mobile(handlers()));
+    expect(screen.queryByRole("button", { name: "Huỷ" })).toBeNull();
+    cleanup();
+    env.perms = { shareholder_profit: { pay_manager: { org_wide: true, building_ids: [] } } };
+    render(mobile(handlers()));
     expect(screen.getByRole("button", { name: "Huỷ" })).toBeTruthy();
   });
 });

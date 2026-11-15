@@ -77,27 +77,8 @@ export const useProfitManagers = () => {
   });
 };
 
-// Quản lý ĐÃ XOÁ mà vẫn còn phân bổ/phiếu chi lương điều hành (rà 21/10, F21): Tổng quan
-// hiện họ với nhãn "đã nghỉ" thay vì để số biến mất. Chỉ đọc tên — app không chi được cho
-// quản lý đã xoá; đã trả ngoài app hay huỷ là việc chủ quyết. RLS: chủ/admin thấy cả dòng
-// đã xoá; người khác bị chặn thì màn rơi về tên chung (lỗi hiện tại chỗ, không toast).
-export const useRetiredProfitManagers = (managerIds: readonly string[]) => {
-  const ids = [...new Set(managerIds)].sort();
-  return useQuery({
-    queryKey: ["profit-managers", "retired", ids],
-    meta: { label: "quản lý đã nghỉ", errorDisplay: "inline" },
-    enabled: ids.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profit_managers")
-        .select("*")
-        .in("id", ids)
-        .not("deleted_at", "is", null);
-      if (error) throw error;
-      return requireReadRows<ProfitManager>(data, profitPersonRow);
-    },
-  });
-};
+// Quản lý ĐÃ XOÁ còn số (rà 21/10, F21): từ Đợt 2 Tổng quan đọc thẳng sổ lương điều hành (E10 giữ
+// người đã xoá còn số dư / phiếu chờ duyệt, kèm tên) — không còn đọc riêng tên người đã nghỉ ở đây.
 
 // Quản lý điều hành tương ứng tài khoản đang đăng nhập (null nếu không phải).
 export const useMyProfitManager = () => {

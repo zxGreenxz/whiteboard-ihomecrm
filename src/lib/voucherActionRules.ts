@@ -20,12 +20,24 @@
 //    có quyền duyệt ở toà, nhưng đó là chính sách chủ chưa mở — giữ như trước.
 //  - Khôi phục (restore_income_expense): chỉ super admin.
 // Chân xử lý cọc giữ chỗ (reservation.*) không thao tác tiền ở đây — xử lý ở luồng Đặt cọc.
+//
+// Phiếu chi theo SỔ TỔNG lợi nhuận (nguồn profit.ledger_payout / profit.manager_salary) đi luật riêng,
+// xét TRƯỚC mọi luật trên (can_flex_cancel_v1 trả NOT_MANUAL cho phiếu hệ thống). Chốt F1/F1b/F2/F5 của
+// máy chủ (Đợt 1, d1_chan_interface §2) chặn: sửa (LOCKED), huỷ duyệt / hoàn tác / khôi phục / rút /
+// từ chối vì sai (CANCEL_ONLY), đổi hạng mục (ITEMS_LOCKED), đổi sổ quỹ (ACCOUNT_LOCKED); cho: ghi chú /
+// ảnh, đánh dấu đã kiểm, chi phiếu đã duyệt từ ĐÚNG sổ lúc lập. Duyệt đi màn Chờ duyệt (thấy số dư sổ
+// tổng); bỏ phiếu chỉ bằng hộp huỷ có lý do (profit_ledger_payout_cancel_v1). Phiếu nguồn cũ
+// (profit.distribution / salary.manager) giữ luật thường.
 import type { IncomeExpenseWithRelations } from "@/hooks/income-expenses/types";
 import { flexCancelGate, type FlexCancelBlockCode, type FlexCancelEligibility } from "@/hooks/income-expenses/flexMutations";
 import { voucherCancelDecision, type IncomeCancelEligibility } from "@/hooks/income-expenses/incomeVoucherCancel";
 import { canUse, type PermsLike } from "@/lib/permissionCheck";
 import { voucherEditAction } from "@/lib/incomeExpenseRevision";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import {
+  expectedCancelState, isProfitLedgerVoucher,
+  type ProfitLedgerSource, type ProfitPayoutCancelTarget,
+} from "@/lib/profitLedger/vouchers";
 
 /** Phiếu không gắn toà: chỉ quyền cấp công ty mới tính (như Chi nhanh, src/lib/quickExpense.ts). */
 export const NO_BUILDING = "__no_building__";
@@ -57,12 +69,16 @@ export interface CancelAvailability {
   disabled: boolean;
   /** Lý do mờ nút / lưu ý của máy chủ; null = không có gì phải nói. */
   reason: string | null;
+  /** Phiếu chi theo sổ tổng: huỷ bằng hộp huỷ có lý do (E6), không qua đường huỷ thường. Vắng = đường thường. */
+  via?: "PROFIT_LEDGER";
 }
 
 export interface VoucherActionAvailability {
   edit: { show: boolean; title: string };
   annotate: boolean;
   approve: boolean;
+  /** Phiếu chi theo sổ tổng duyệt ở màn Chờ duyệt (thấy số dư sổ tổng) ⇒ hiện lối sang đó thay nút Duyệt. */
+  approveVia: "INBOX" | null;
   /** Thu / Chi phiếu đã duyệt (kể cả thu / chi lại sau hoàn tác). */
   postApproved: boolean;
   /** Hoàn tác / Mở lại phiếu đã ghi sổ. */
@@ -120,11 +136,79 @@ function cancelAvailability(
   return { show: true, disabled: false, reason: decision.reason };
 }
 
+/** Khoá quyền của sổ tổng theo nguồn phiếu — đúng khoá máy chủ đòi ở E6 (huỷ) và F1 (duyệt). */
+export function profitLedgerPermissionFor(source: ProfitLedgerSource): "distribute" | "pay_manager" {
+  return source === "profit.manager_salary" ? "pay_manager" : "distribute";
+}
+
+function ledgerVoucherAvailability(
+  v: ActionVoucher,
+  source: ProfitLedgerSource,
+  viewer: VoucherActionViewer,
+  state: VoucherActionState,
+): VoucherActionAvailability {
+  const isCancelled = v.approval_status === "CANCELLED";
+  const isUnapproved = v.approval_status === "UNAPPROVED";
+  const posting = v.posting_status ?? null;
+  // Chỉ là lớp hiển thị (máy chủ còn đòi khác người lập / người nhận, giữ đúng sổ khi phiếu đã chi…).
+  // Người lập không có quyền này vẫn tự huỷ được phiếu CHỜ của mình ở màn "Tạm ứng LN" — danh sách
+  // Thu chi không có người lập sổ tổng (maker_user_id) ở mọi đường đọc nên không xét vế đó.
+  const canLedger = canUse(viewer.perms, "shareholder_profit", profitLedgerPermissionFor(source));
+  return {
+    edit: { show: false, title: "" },
+    annotate: canShowAnnotateAction({
+      hasHandler: true,
+      isUnapproved,
+      isAdmin: viewer.isAdmin,
+      isCreator: !!viewer.currentUserId && v.user_id === viewer.currentUserId,
+      canEdit: canUse(viewer.perms, "income_expenses", "edit", v.building_id ?? NO_BUILDING),
+    }),
+    approve: false,
+    approveVia: isUnapproved && canLedger ? "INBOX" : null,
+    // Hộp Thu/Chi khoá đúng sổ quỹ lúc lập (ACCOUNT_LOCKED); phiếu từng bị đảo không chi lại (REPOST).
+    postApproved: state.canonicalRead && v.approval_status === "APPROVED" && (posting === null || posting === "UNPOSTED"),
+    reverse: false,
+    unapprove: false,
+    cancel: canLedger && expectedCancelState(v.approval_status, posting)
+      ? { show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" }
+      : HIDDEN,
+    restore: false,
+    copy: false,
+    verify: !isCancelled,
+    stopRecurring: false,
+  };
+}
+
+/**
+ * Đầu vào hộp huỷ sổ tổng từ một dòng Thu chi (đã có trạng thái, sổ, số tiền). Phiếu khác nguồn, thiếu
+ * công ty, trạng thái không huỷ được (đã huỷ, đã đảo…) ⇒ null.
+ */
+export function profitCancelTargetFromVoucher(
+  v: Pick<IncomeExpenseWithRelations,
+    "id" | "organization_id" | "system_source" | "code" | "name" | "total_amount" | "approval_status" | "posting_status" | "account_name">,
+): ProfitPayoutCancelTarget | null {
+  if (!isProfitLedgerVoucher(v.system_source) || !v.organization_id) return null;
+  if (!expectedCancelState(v.approval_status, v.posting_status)) return null;
+  if (!Number.isFinite(v.total_amount) || v.total_amount <= 0) return null;
+  return {
+    voucherId: v.id,
+    organizationId: v.organization_id,
+    kind: v.system_source === "profit.manager_salary" ? "MANAGER" : "SHAREHOLDER",
+    code: v.code || null,
+    amount: v.total_amount,
+    approvalStatus: v.approval_status,
+    postingStatus: v.posting_status ?? null,
+    subjectName: v.name || null,
+    accountName: v.account_name ?? null,
+  };
+}
+
 export function voucherActionAvailability(
   v: ActionVoucher,
   viewer: VoucherActionViewer,
   state: VoucherActionState,
 ): VoucherActionAvailability {
+  if (isProfitLedgerVoucher(v.system_source)) return ledgerVoucherAvailability(v, v.system_source, viewer, state);
   const isCancelled = v.approval_status === "CANCELLED";
   const isUnapproved = v.approval_status === "UNAPPROVED";
   const isCreator = !!viewer.currentUserId && v.user_id === viewer.currentUserId;
@@ -141,6 +225,7 @@ export function voucherActionAvailability(
       canEdit: canUse(viewer.perms, "income_expenses", "edit", building),
     }),
     approve: state.monetaryActionsAllowed && isUnapproved && canUse(viewer.perms, "income_expenses", "approve", building),
+    approveVia: null,
     postApproved: state.monetaryActionsAllowed && !isCancelled && v.approval_status === "APPROVED" &&
       posting !== "POSTED" && posting !== "NOT_APPLICABLE" && state.canonicalRead,
     reverse: (state.monetaryActionsAllowed || state.canReverseSettlementRefund) && !isCancelled &&

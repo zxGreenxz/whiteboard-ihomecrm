@@ -13,10 +13,47 @@ import {
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
 import { useMyShareBuildings, type Shareholder } from "@/hooks/useShareholders";
+import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { shareholderOrganizationId } from "@/lib/profitLedger/selfView";
+import { MyProfitLedgerGate } from "./MyProfitLedgerGate";
+import ShareholderLedgerSelfView, { type ShareholderSelfAccess } from "./ShareholderLedgerSelfView";
 
 const ALL = "all";
 
-export default function ShareholderSelfView({ me }: { me: Shareholder }) {
+/**
+ * Tab "Tổng quan" của cổ đông tự xem (máy tính) — BỘ ĐỊNH TUYẾN theo sổ tổng (Đợt 2):
+ *   hỏi E3 trước; sổ tổng đã chạy (`ready`) ⇒ màn sổ tổng (tiền của chính mình);
+ *   công tắc còn tắt (`ready = false`) ⇒ THÂN CŨ bên dưới, không hiện số sổ tổng như số chính thức;
+ *   máy chủ nói không xem được (42501) ⇒ không hiện số nào.
+ * Thân cũ chỉ mount khi đã biết `ready = false` ⇒ ở chế độ sổ tổng không đọc bảng phân bổ.
+ */
+export default function ShareholderSelfView({
+  me,
+  canViewPercent,
+  canViewBuildingTotals,
+  canAdvanceOwn,
+}: { me: Shareholder } & ShareholderSelfAccess) {
+  const organizationId = shareholderOrganizationId(me);
+  const ledgerQuery = useMyProfitLedger(organizationId);
+  return (
+    <MyProfitLedgerGate
+      organizationId={organizationId}
+      query={ledgerQuery}
+      hiddenText="Bạn chưa xem được phần lợi nhuận của mình ở công ty này — liên hệ chủ công ty."
+    >
+      {(ledger) =>
+        ledger.ready ? (
+          <ShareholderLedgerSelfView ledger={ledger} access={{ canViewPercent, canViewBuildingTotals, canAdvanceOwn }} />
+        ) : (
+          <LegacyShareholderSelfView me={me} />
+        )
+      }
+    </MyProfitLedgerGate>
+  );
+}
+
+/** Thân CŨ (công tắc sổ tổng còn tắt): giữ nguyên cách tính cũ tới Đợt 3 (D3.14 xoá). Không có tỷ lệ %. */
+function LegacyShareholderSelfView({ me }: { me: Shareholder }) {
   const [year, setYear] = useState(currentYear());
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const allocationsQuery = useProfitAllocations();

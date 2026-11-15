@@ -1,6 +1,6 @@
 {
   "$comment": "Ratchet: hàm export trong *Helpers/*Utils mà CHỈ test dùng. Danh sách CHỈ ĐƯỢC NGẮN LẠI. Cách xử: hoặc nối code sản xuất vào dùng nó, hoặc xoá cả hàm lẫn test — một test xanh trên code chết trông y hệt test xanh trên code sống. Sinh bởi scripts/check-test-only-exports.mjs.",
-  "total": 46,
+  "total": 38,
   "exports": [
     "src/components/shareholders/shareholderUtils.ts#monthsOfYear",
     "src/components/shareholders/shareholderUtils.ts#monthDateRange",
@@ -39,9 +39,6 @@
     "src/lib/invoiceUtils.ts#getInvoiceShortTitle",
     "src/lib/leadHelpers.ts#calculateLeadScore",
     "src/lib/leadHelpers.ts#getLeadScoreColor",
-    "src/lib/leadHelpers.ts#getLeadScoreLabel",
-    "src/lib/vehicleExcelHelpers.ts#exportVehicles",
-    "src/lib/vehicleExcelHelpers.ts#downloadVehicleImportTemplate",
-    "src/lib/vehicleExcelHelpers.ts#parseVehicleExcel"
+    "src/lib/leadHelpers.ts#getLeadScoreLabel"
   ]
 }

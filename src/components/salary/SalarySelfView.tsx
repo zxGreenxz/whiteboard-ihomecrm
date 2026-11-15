@@ -8,6 +8,7 @@ import {
   House, Info, ListChecks, Percent, Star, Trophy, Wallet, X,
 } from "lucide-react";
 import type { SalManager } from "@/lib/managerSalary";
+import { isProfitDeduction } from "@/lib/salaryProfit";
 import {
   bonusDaysOf, contractRowsOf, earnedJobRowsOf, selfSummaryOf, streakViewOf, type SelfSummary, type StreakView, type V5Plan,
 } from "@/lib/salarySelfSummary";
@@ -31,6 +32,8 @@ interface Props {
   onPrevMonth?: () => void;
   onNextMonth?: () => void;
   requirePhoto?: boolean;
+  /** Lối tắt "Tạm ứng lợi nhuận" — CHỈ trang Lương của tôi truyền (màn quản trị xem lương người khác thì không). */
+  profitAdvance?: ReactNode;
 }
 
 const tone = (t: ChipTone) => ({ color: `hsl(var(--status-${t}-fg))` });
@@ -67,6 +70,7 @@ function Summary({ m, s, phone }: { m: SalManager; s: SelfSummary; phone?: boole
   const roomNote = s.roomRent > 0
     ? (m.roomRentInvoice ? "Tiền phòng trừ thẳng vào hoá đơn phòng — không chuyển khoản phần này." : "Chưa có hoá đơn phòng tháng kế — tiền phòng trừ theo mức cố định.")
     : null;
+  const salaryAdvanceCount = m.advanceItems.filter((a) => !isProfitDeduction(a)).length;
   const op = (c: string) => !phone && <div aria-hidden="true" className="flex items-start pt-7 text-[26px] font-light text-muted-foreground">{c}</div>;
   const v5 = m.v5;
   return (
@@ -115,7 +119,9 @@ function Summary({ m, s, phone }: { m: SalManager; s: SelfSummary; phone?: boole
           <BreakRow t="danger" icon={<House size={18} />} name="Tiền phòng" value={-s.roomRent} muted={s.roomRent === 0}
             sub={s.roomRent > 0 ? m.roomRentItems.map((r) => r.label).join(" · ") : "Không trừ tiền phòng"} />
           <BreakRow t="neutral" icon={<Wallet size={18} />} name="Đã ứng trong kỳ" value={-s.advance} muted={s.advance === 0}
-            sub={m.advanceItems.length ? `${m.advanceItems.length} lần ứng` : "Không có khoản ứng"} />
+            sub={salaryAdvanceCount ? `${salaryAdvanceCount} lần ứng` : "Không có khoản ứng"} />
+          {s.profitOffset !== 0 && <BreakRow t="warning" icon={<Building2 size={18} />} name="Trừ tạm ứng lợi nhuận" value={-s.profitOffset} sub="Trừ trong phần lợi nhuận đầu tư tháng này — phần còn lại chuyển tháng sau" />}
+          {s.markerPaid !== 0 && <BreakRow t="neutral" icon={<Building2 size={18} />} name="Lợi nhuận đã trả theo mốc" value={-s.markerPaid} sub={'Đã trả trước mốc "đã trả đủ" — không chuyển lại'} />}
           {s.paidOut > 0 && <BreakRow t="neutral" icon={<Percent size={18} />} name="Hoa hồng đã chi từ sổ quỹ" value={-s.paidOut} sub="Đã nhận khi duyệt phiếu — không chuyển lại" />}
         </div>
         {roomNote && <p className="m-0 text-[12.5px] leading-snug text-muted-foreground">{roomNote}</p>}
@@ -213,7 +219,7 @@ function Fold({ icon, title, sub, children }: { icon: ReactNode; title: string; 
 
 type Tab = "income" | "ledger" | "history";
 
-export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit, canPrev, canNext, onPrevMonth, onNextMonth, requirePhoto }: Props) {
+export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit, canPrev, canNext, onPrevMonth, onNextMonth, requirePhoto, profitAdvance }: Props) {
   const s = useMemo(() => selfSummaryOf(m), [m]);
   const streak = useMemo(() => {
     if (!v5Plan || !m.v5 || m.v5.nchuan <= 0) return null;
@@ -283,6 +289,7 @@ export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit
       <div className="sal-root flex min-h-full flex-col bg-background">
         {header}
         <main className="flex flex-1 flex-col gap-3 px-3.5 pb-6 pt-3.5">
+          {tab === "income" && profitAdvance}
           {tab === "income" && income}
           {tab === "ledger" && <section aria-label="Bảng kê công việc" className="overflow-hidden rounded-[14px] border bg-card"><SelfLedger m={m} requirePhoto={requirePhoto} compact /></section>}
           {tab === "history" && <section aria-label="Thành tích và hành trình" className="overflow-hidden rounded-[14px] border bg-card"><SelfJourney m={m} /></section>}
@@ -304,6 +311,7 @@ export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit
     <div className="sal-root min-h-full bg-background">
       {header}
       <main className="mx-auto flex max-w-[1200px] flex-col gap-4 px-4 pb-12 pt-5 md:px-6">
+        {profitAdvance}
         {income}
         <Fold icon={<ListChecks size={18} />} title="Bảng kê đầy đủ" sub="Cả việc không được thưởng (thiếu ảnh, ký HĐ trong giờ) và các dòng thu tiền.">
           <SelfLedger m={m} requirePhoto={requirePhoto} />

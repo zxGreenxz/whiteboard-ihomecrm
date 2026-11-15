@@ -29,6 +29,7 @@ const manager: ProfitManager = {
 };
 
 const harness = vi.hoisted(() => ({
+  search: "",
   phone: false,
   permissionHook: vi.fn(),
   shareholderHook: vi.fn(),
@@ -37,12 +38,18 @@ const harness = vi.hoisted(() => ({
   reportRender: vi.fn(),
   overviewRender: vi.fn(),
   shareholderRender: vi.fn(),
+  advanceRender: vi.fn(),
   managerRender: vi.fn(),
   mobileRender: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-mobile", () => ({
   usePhoneViewport: () => harness.phone,
+}));
+
+// `?tab=` của trang: chỉ cần useSearchParams (render tĩnh, không dựng Router).
+vi.mock("react-router-dom", () => ({
+  useSearchParams: () => [new URLSearchParams(harness.search), vi.fn()],
 }));
 
 vi.mock("@/hooks/useMyPermissions", () => ({
@@ -72,14 +79,17 @@ vi.mock("@/components/layout/MainLayout", () => ({
 vi.mock("@/pages/reports/finance/ProfitHubShell", () => ({
   default: ({
     tabs,
+    value,
     children,
   }: {
     tabs?: { value: string; label: string }[];
+    value?: string;
     children?: ReactNode;
   }) =>
     createElement(
       Fragment,
       null,
+      createElement("i", { "data-active": value ?? "" }),
       (tabs ?? []).map((t) =>
         createElement("span", { key: t.value, "data-tab": t.value }, t.label),
       ),
@@ -114,9 +124,16 @@ vi.mock("@/components/shareholders/ShareConfigTab", () => ({
 }));
 
 vi.mock("@/components/shareholders/ShareholderSelfView", () => ({
-  default: ({ me }: { me: Shareholder }) => {
-    harness.shareholderRender(me);
+  default: ({ me, ...access }: { me: Shareholder }) => {
+    harness.shareholderRender(me, access);
     return createElement("div", { "data-probe": "shareholder-self" });
+  },
+}));
+
+vi.mock("@/components/shareholders/ShareholderAdvanceTab", () => ({
+  default: (props: { me: Shareholder; phone?: boolean }) => {
+    harness.advanceRender(props);
+    return createElement("div", { "data-probe": "advance" });
   },
 }));
 
@@ -137,7 +154,8 @@ vi.mock("@/pages/reports/finance/ProfitHubMobile", () => ({
 
 import ProfitHubPage from "../ProfitHubPage";
 
-function renderPage() {
+function renderPage(url = "/reports/finance/profit-distribution") {
+  harness.search = url.includes("?") ? url.slice(url.indexOf("?")) : "";
   return renderToStaticMarkup(createElement(ProfitHubPage));
 }
 
@@ -163,6 +181,7 @@ describe("ProfitHubPage legacy permission behavior", () => {
     harness.reportRender.mockReset();
     harness.overviewRender.mockReset();
     harness.shareholderRender.mockReset();
+    harness.advanceRender.mockReset();
     harness.managerRender.mockReset();
     harness.mobileRender.mockReset();
   });
@@ -176,7 +195,7 @@ describe("ProfitHubPage legacy permission behavior", () => {
     expect(harness.overviewRender).not.toHaveBeenCalled();
   });
 
-  it("keeps the report-authorized shareholder own-share tab without shareholder_profit.view", () => {
+  it("Đợt 2: report-authorized shareholder WITHOUT view_building_totals keeps the own-share tab but loses the BC tab", () => {
     harness.permissionHook.mockReturnValue({
       data: {
         reports_finance: { profit_distribution: true },
@@ -191,10 +210,96 @@ describe("ProfitHubPage legacy permission behavior", () => {
 
     const html = renderPage();
 
-    expect(html).toContain('data-probe="report"');
+    expect(html).not.toContain('data-tab="report"');
+    expect(html).not.toContain('data-probe="report"');
+    expect(html).toContain('data-tab="my-overview"');
     expect(html).toContain('data-probe="shareholder-self"');
-    expect(harness.shareholderRender).toHaveBeenCalledWith(shareholder);
+    expect(html).not.toContain('data-tab="my-advance"');
+    expect(harness.shareholderRender).toHaveBeenCalledWith(shareholder, {
+      canViewPercent: false,
+      canViewBuildingTotals: false,
+      canAdvanceOwn: false,
+    });
     expect(harness.overviewRender).not.toHaveBeenCalled();
+  });
+
+  it("Đợt 2: the same shareholder granted view_building_totals gets the BC tab back; view flags reach the own view", () => {
+    harness.permissionHook.mockReturnValue({
+      data: {
+        reports_finance: { profit_distribution: true },
+        shareholder_profit: { view_building_totals: true, view_percent: true, advance_own_cashbook: true },
+      },
+      isLoading: false,
+    });
+    harness.shareholderHook.mockReturnValue({ data: shareholder, isLoading: false });
+
+    const html = renderPage();
+
+    expect(html).toContain('data-tab="report"');
+    expect(html).toContain('data-tab="my-overview"');
+    // Có tab tự xem ⇒ nút tạm ứng nằm trong đó, không thêm tab "Tạm ứng LN".
+    expect(html).not.toContain('data-tab="my-advance"');
+    expect(harness.shareholderRender).toHaveBeenCalledWith(shareholder, {
+      canViewPercent: true,
+      canViewBuildingTotals: true,
+      canAdvanceOwn: true,
+    });
+  });
+
+  it("Đợt 2: advance-only shareholder (no report page) sees ONLY the Tạm ứng LN tab and is not a manager", () => {
+    harness.permissionHook.mockReturnValue({
+      data: { shareholder_profit: { advance_own_cashbook: { org_wide: true, building_ids: [] } } },
+      isLoading: false,
+    });
+    harness.shareholderHook.mockReturnValue({ data: shareholder, isLoading: false });
+
+    const html = renderPage();
+
+    expect(html.match(/data-tab="/g)).toHaveLength(1);
+    expect(html).toContain('data-tab="my-advance"');
+    expect(html).toContain("Tạm ứng LN");
+    expect(harness.advanceRender).toHaveBeenCalledWith({ me: shareholder });
+    expect(harness.shareholderRender).not.toHaveBeenCalled();
+    expect(harness.overviewRender).not.toHaveBeenCalled();
+    expect(harness.reportRender).not.toHaveBeenCalled();
+  });
+
+  it("Đợt 2: without any profit permission the page stays closed (advance permission alone needs a shareholder row)", () => {
+    harness.permissionHook.mockReturnValue({
+      data: { shareholder_profit: { advance_own_cashbook: true } },
+      isLoading: false,
+    });
+    const html = renderPage();
+    expect(html).toContain("Bạn không có quyền xem báo cáo này");
+    expect(harness.advanceRender).not.toHaveBeenCalled();
+  });
+
+  it("Đợt 2: an owner gets every tab and no self tabs", () => {
+    harness.permissionHook.mockReturnValue({ data: { __superadmin: true }, isLoading: false });
+    harness.shareholderHook.mockReturnValue({ data: shareholder, isLoading: false });
+    harness.profitCloseHook.mockReturnValue({
+      data: [{ organization_id: "org-a", organization_name: "Org A", organization_slug: "org-a", can_lock: true, can_unlock: true }],
+      isLoading: false,
+    });
+
+    const html = renderPage();
+
+    for (const tab of ["report", "overview", "lock", "config"]) expect(html).toContain(`data-tab="${tab}"`);
+    expect(html).not.toContain('data-tab="my-overview"');
+    expect(html).not.toContain('data-tab="my-advance"');
+  });
+
+  it("Đợt 2: ?tab=my-advance opens that tab; an unknown ?tab falls back to the first tab", () => {
+    harness.permissionHook.mockReturnValue({
+      data: { shareholder_profit: { advance_own_cashbook: true } },
+      isLoading: false,
+    });
+    harness.shareholderHook.mockReturnValue({ data: shareholder, isLoading: false });
+    harness.managerHook.mockReturnValue({ data: manager, isLoading: false });
+
+    expect(renderPage("/reports/finance/profit-distribution?tab=my-advance")).toContain('data-active="my-advance"');
+    expect(renderPage("/reports/finance/profit-distribution?tab=my-salary")).toContain('data-active="my-salary"');
+    expect(renderPage("/reports/finance/profit-distribution?tab=report")).toContain('data-active="my-advance"');
   });
 
   it("keeps the manager-only salary fallback when no report tabs are allowed", () => {
@@ -236,10 +341,10 @@ describe("ProfitHubPage legacy permission behavior", () => {
     expect(html).not.toContain('data-tab="my-salary"');
   });
 
-  it("passes the legacy permission results to the mobile hub", () => {
+  it("passes the permission results (incl. the three Đợt 2 view flags and ?tab) to the mobile hub", () => {
     harness.phone = true;
     harness.permissionHook.mockReturnValue({
-      data: { reports_finance: { profit_distribution: true } },
+      data: { reports_finance: { profit_distribution: true }, shareholder_profit: { view_percent: true } },
       isLoading: false,
     });
     harness.shareholderHook.mockReturnValue({
@@ -248,13 +353,17 @@ describe("ProfitHubPage legacy permission behavior", () => {
     });
     harness.managerHook.mockReturnValue({ data: manager, isLoading: false });
 
-    renderPage();
+    renderPage("/reports/finance/profit-distribution?tab=my-advance");
 
     expect(harness.mobileRender).toHaveBeenCalledWith({
       canReport: true,
       isManager: false,
       me: shareholder,
       myManager: manager,
+      canViewBuildingTotals: false,
+      canViewPercent: true,
+      canAdvanceOwn: false,
+      requestedTab: "my-advance",
     });
   });
 });

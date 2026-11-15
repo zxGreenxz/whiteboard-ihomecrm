@@ -23,6 +23,7 @@ import {
   Undo2,
   BadgeCheck,
   CalendarX,
+  ClipboardCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -74,7 +75,8 @@ interface Props {
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   quickExpense?: QuickExpenseActions;
-  onCancel?: (id: string, type?: string | null) => void;
+  /** Kèm phiếu: phiếu chi theo sổ tổng mở hộp huỷ có lý do riêng. */
+  onCancel?: (id: string, type?: string | null, voucher?: IncomeExpenseWithRelations) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
@@ -333,6 +335,21 @@ function IncomeExpenseDetailMobileContent({
                 <CheckCircle2 size={15} />
               </button>
             )}
+            {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
+            {can.approveVia === "INBOX" && (
+              <button
+                className="vd-act"
+                style={{ background: "#16a34a" }}
+                aria-label="Duyệt ở màn Chờ duyệt"
+                title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
+                onClick={() => {
+                  onClose();
+                  navigate("/approvals");
+                }}
+              >
+                <ClipboardCheck size={15} />
+              </button>
+            )}
             {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={v} quick={quickExpense} />}
             {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (CUSTODIAN, không
                 cần quyền duyệt); phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
@@ -385,9 +402,10 @@ function IncomeExpenseDetailMobileContent({
                 className="vd-act"
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ"
-                title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}` : undefined}
+                title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}`
+                  : can.cancel.via === "PROFIT_LEDGER" ? "Huỷ phiếu chi theo sổ tổng (ghi lý do)" : undefined}
                 onClick={() => {
-                  onCancel(v.id, v.type);
+                  onCancel(v.id, v.type, v);
                   onClose();
                 }}
               >

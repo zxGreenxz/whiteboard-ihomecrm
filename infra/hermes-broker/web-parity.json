@@ -1404,7 +1404,7 @@
           "contains": "crm.salary_locked_month_v1"
         }
       ],
-      "notes": "Hermes CHỈ đọc tháng đã chốt; tháng chưa chốt web tính ở trình duyệt (useManagerSalary.ts) nên Hermes trả \"không có số\", không đoán. Khác web: trang hiện lương cứng/đầu tư/ứng SỐNG kể cả tháng đã chốt, Hermes dùng số đã chốt (base_salary, investment_profit, advances_total); \"Đã trả\" là cột sống. Trần tháng (isStaffMonthVisible/latestVisibleStaffYm/staffCeilingYm) được chép sang SQL trong hermes_w2c_read_v1."
+      "notes": "Hermes CHỈ đọc tháng đã chốt; tháng chưa chốt web tính ở trình duyệt (useManagerSalary.ts) nên Hermes trả \"không có số\", không đoán. Khác web: trang hiện lương cứng/đầu tư/ứng SỐNG kể cả tháng đã chốt, Hermes dùng số đã chốt (base_salary, investment_profit, advances_total); \"Đã trả\" là cột sống. Trần tháng (isStaffMonthVisible/latestVisibleStaffYm/staffCeilingYm) được chép sang SQL trong hermes_w2c_read_v1. KHÁC WEB CÓ CHỦ Ý (Đợt 2 sổ tổng, 15/11/2026): với nhân viên là cổ đông, web tách dòng \"Trừ tạm ứng lợi nhuận\" và \"Lợi nhuận đã trả theo mốc\" (chỉ có khi đã đặt mốc, từ SHADOW) nhưng cộng cả hai vào advances_total lúc chốt (lib/salaryProfit.ts); Hermes đọc advances_total đã chốt nên gộp chúng vào \"ứng\" — chủ quyết định Hermes không đổi."
     },
     {
       "id": "w2c-salary-staff-months",
@@ -1574,7 +1574,7 @@
           "contains": "crm.cashbook_cash_flow_v1"
         }
       ],
-      "notes": "RPC trả 12 tháng và 4 quý cho từng phạm vi toà. Web chỉ cộng dòng tháng; quý/năm được cộng từ tháng, tránh đếm lại quý. Các cặp ghi nhận–hoàn tác bị loại trên toàn lịch sử, kể cả khác kỳ."
+      "notes": "RPC trả 12 tháng và 4 quý cho từng phạm vi toà. Web chỉ cộng dòng tháng; quý/năm được cộng từ tháng, tránh đếm lại quý. Các cặp ghi nhận–hoàn tác bị loại trên toàn lịch sử, kể cả khác kỳ. KHÁC WEB CÓ CHỦ Ý (Đợt 2, 15/11/2026): web thêm cột \"Trong đó: chi chia lợi nhuận\" (cổ đông + lương điều hành) đọc cashbook_cash_flow_profit_payout_v1, chỉ hiện với người có quyền xem phần chi lợi nhuận, tính ngoài vùng parity; Hermes không trả cột này, tổng dòng tiền vẫn khớp cashbook_cash_flow_v1."
     },
     {
       "id": "cashbook-list",
@@ -1956,7 +1956,7 @@
           "contains": "crm.profit_shareholder_summary_v1"
         }
       ],
-      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy."
+      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy. KHÁC WEB CÓ CHỦ Ý (Đợt 2 sổ tổng, 15/11/2026): khi công tắc shareholder_profit.ledger_payout.v1 ở SHADOW/CANONICAL/FROZEN, web hiện số SỔ TỔNG — Tổng quan quản lý (ProfitOverviewTab, cả bản điện thoại ProfitOverviewMobile: ba ô Được chia (sau mốc) / Đã chi / Còn phải trả và bảng sổ tổng) đọc shareholder_profit_ledger_v1, tab tự xem (ShareholderSelfView/Mobile) đọc shareholder_profit_my_ledger_v1: được chia chỉ tính các tháng đã chốt SAU mốc \"đã trả đủ\", phiếu chờ duyệt trừ vào số dư, trừ phần lợi nhuận đã trả qua phiếu lương (sau phần lương bù tạm ứng), số âm là đang tạm ứng. Các vùng parity ở trên giữ nguyên chữ và chỉ còn là số web hiển thị khi LEGACY. Hermes (profit_my_share_v1, profit_shareholder_summary_v1) vẫn tính theo cách cũ — chủ quyết định Hermes không đổi — nên từ SHADOW trở đi số Hermes trả (được chia luỹ kế, đã ứng, còn lại) có thể khác số web."
     },
     {
       "id": "personal-finance",
