@@ -1,7 +1,10 @@
 // Dịch lỗi sổ tổng: rẽ theo SQLSTATE + mã máy đầu MESSAGE + DETAIL JSON — KHÔNG theo HTTP.
 import { describe, expect, it } from 'vitest';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
-import { isProfitLedgerForbidden, profitLedgerErrorMessage, type ProfitLedgerOperation } from '../errors';
+import {
+  isLedgerIdempotencyConflict, isProfitLedgerForbidden, profitLedgerErrorMessage, ProfitLedgerPriorWrittenError,
+  type ProfitLedgerOperation,
+} from '../errors';
 import { ProfitLedgerPayloadError } from '../readPrimitives';
 
 const err = (code: string, message: string, details: unknown = null) => ({ code, message, details, hint: null });
@@ -60,6 +63,11 @@ describe('profitLedgerErrorMessage', () => {
     expect(profitLedgerErrorMessage(err('23505', 'idempotency_key đã dùng với nội dung khác'), 'payout').kind).toBe('KEY_REUSED');
     expect(profitLedgerErrorMessage(err('23505', 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung'), 'cancel').kind).toBe('KEY_REUSED');
   });
+  it('lượt đối chiếu chứng minh lần trước đã ghi ⇒ PRIOR_WRITTEN, không khoá', () => {
+    const info = profitLedgerErrorMessage(new ProfitLedgerPriorWrittenError('payout'), 'payout');
+    expect(info).toMatchObject({ kind: 'PRIOR_WRITTEN', reload: true });
+    expect(info.message).toMatch(/^Yêu cầu trước đó đã được ghi; tải lại để xem\./);
+  });
   it('mất mạng: ghi ⇒ chưa rõ kết quả; đọc ⇒ báo mất kết nối', () => {
     const net = { code: '', message: 'FetchError: Failed to fetch', details: '', hint: '' };
     expect(profitLedgerErrorMessage(net, 'payout').kind).toBe('UNKNOWN_OUTCOME');
@@ -91,5 +99,28 @@ describe('profitLedgerErrorMessage', () => {
     expect(isProfitLedgerForbidden(err('42501', 'PROFIT_LEDGER_FORBIDDEN: bạn chưa xem được lợi nhuận của mình'))).toBe(true);
     expect(isProfitLedgerForbidden(err('42501', 'permission denied for function x'))).toBe(false);
     expect(isProfitLedgerForbidden(err('55000', 'PROFIT_LEDGER_SHAREHOLDER_AMBIGUOUS: x'))).toBe(false);
+  });
+});
+
+describe('isLedgerIdempotencyConflict — đúng câu 23505 "khoá đã dùng" của từng lệnh', () => {
+  const E5_E9 = 'idempotency_key đã dùng với nội dung khác';
+  const E6 = 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung';
+  const E16 = 'SALARY_PROFIT_IDEMPOTENCY_CONFLICT: khoá idempotency đã dùng với nội dung khác';
+  it.each([
+    ['payout', E5_E9], ['marker', E5_E9], ['cancel', E6], ['resolve', E16],
+  ] as const)('%s nhận câu của chính nó', (op, message) => {
+    expect(isLedgerIdempotencyConflict(err('23505', message), op)).toBe(true);
+  });
+  it.each([
+    ['payout', E6], ['payout', E16], ['marker', E6], ['cancel', E5_E9], ['cancel', E16], ['resolve', E5_E9], ['resolve', E6],
+  ] as const)('%s không nhận câu của lệnh khác (%s)', (op, message) => {
+    expect(isLedgerIdempotencyConflict(err('23505', message), op)).toBe(false);
+  });
+  it('23505 khác, hay đúng câu mà khác SQLSTATE ⇒ không phải', () => {
+    expect(isLedgerIdempotencyConflict(err('23505', 'duplicate key value violates unique constraint "income_expenses_code_key"'), 'payout')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('23505', `${E5_E9} (x)`), 'payout')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('P0001', E5_E9), 'payout')).toBe(false);
+    expect(isLedgerIdempotencyConflict(err('22023', 'idempotency_key phải dài 8-200 ký tự ASCII an toàn'), 'payout')).toBe(false);
+    expect(isLedgerIdempotencyConflict(new Error(E5_E9), 'payout')).toBe(false);
   });
 });
