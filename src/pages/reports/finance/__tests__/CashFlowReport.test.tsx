@@ -190,7 +190,9 @@ describe("cột Trong đó: chi chia lợi nhuận", () => {
     // Cột đứng NGAY SAU "Chi ra" (quý và tháng), số Chi ra / Chênh lệch không đổi.
     const year = screen.getByText("Cả năm").closest("tr");
     expect(within(year!).getAllByRole("cell").slice(1, 5).map((cell) => cell.textContent)).toEqual([600, 420, 280, 180].map(money));
-    expect(screen.getByText(/là phần của "Chi ra"/)).toBeTruthy();
+    // Chú thích nói đúng phạm vi: phần lợi nhuận trả trong phiếu lương KHÔNG nằm trong cột.
+    expect(screen.getByText(/là phần của "Chi ra"/).textContent)
+      .toContain("chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)");
   });
 
   it("máy chủ từ chối quyền (42501) ⇒ ẩn cột, không báo lỗi", () => {

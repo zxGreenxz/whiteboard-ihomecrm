@@ -1,7 +1,8 @@
 // Cột "Trong đó: chi chia lợi nhuận" của báo cáo dòng tiền (D2.12) — đọc
 // public.cashbook_cash_flow_profit_payout_v1 (migration 20261115145954): cùng năm, cùng phạm vi toà, cùng
 // 12 tháng + 4 quý với useCashFlowReport. Số là PHẦN của "Chi ra" (chi lợi nhuận cổ đông + lương điều hành
-// đã rời sổ thật), không cộng thêm.
+// đã rời sổ thật), không cộng thêm. KHÔNG gồm phần lợi nhuận đầu tư trả trong phiếu lương của cổ đông kiêm
+// nhân viên (phiếu nguồn salary.*): máy chủ phân loại theo phiếu, phiếu lương không vào cột.
 //
 // Hook riêng vì useCashFlowReport nằm trọn trong vùng Hermes parity (cash-flow-external-report) — Hermes không
 // đọc cột này. Máy chủ đòi quyền dòng tiền + một trong distribute / lock / view_building_totals TOÀN công ty;

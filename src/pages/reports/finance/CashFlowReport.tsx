@@ -93,7 +93,8 @@ export default function CashFlowReport() {
   }, [monthly]);
   // hermes-parity:end cash-flow-external-report
 
-  // "Trong đó: chi chia lợi nhuận" (cổ đông + lương điều hành) — NGOÀI vùng parity: Hermes không có cột
+  // "Trong đó: chi chia lợi nhuận" (cổ đông + lương điều hành; KHÔNG gồm phần lợi nhuận đầu tư trả trong
+  // phiếu lương của cổ đông kiêm nhân viên — nguồn salary.*) — NGOÀI vùng parity: Hermes không có cột
   // này, số đã nằm trong "Chi ra". Chỉ hỏi máy chủ khi có quyền chi / chốt LN hoặc xem số toà; máy chủ đòi
   // quyền đó TOÀN công ty, thiếu ⇒ 42501 ⇒ ẩn cột (không báo lỗi).
   const { data: permissions } = useMyPermissions();
@@ -216,7 +217,7 @@ export default function CashFlowReport() {
             <h3 className="text-base font-semibold">Bảng thu chi theo tháng và quý</h3>
             {showProfitPayout && (
               <p className="mt-1 text-xs text-muted-foreground">
-                "Trong đó: chi chia lợi nhuận" là phần của "Chi ra" (chi lợi nhuận cổ đông và lương điều hành), không cộng thêm.
+                "Trong đó: chi chia LN" là phần của "Chi ra", không cộng thêm: chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương).
               </p>
             )}
             {profitPayoutFailed && (
@@ -235,14 +236,14 @@ export default function CashFlowReport() {
                 <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
                 <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
                 {showProfitPayout && (
-                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra">Trong đó: chi chia LN</TableHead>
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra — chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)">Trong đó: chi chia LN</TableHead>
                 )}
                 <TableHead className="border-r-2 text-right font-semibold">Chênh lệch</TableHead>
                 <TableHead className="border-r font-semibold text-center w-16">Tháng</TableHead>
                 <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
                 <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
                 {showProfitPayout && (
-                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra">Trong đó: chi chia LN</TableHead>
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra — chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)">Trong đó: chi chia LN</TableHead>
                 )}
                 <TableHead className="text-right font-semibold">Chênh lệch</TableHead>
               </TableRow>
