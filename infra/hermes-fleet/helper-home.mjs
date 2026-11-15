@@ -1,21 +1,17 @@
 #!/usr/bin/env node
 // Helper chạy bằng ĐÚNG UID của trợ lý mới (chủ home riêng), do fleet.mjs (root) gọi sau khi Hermes đã tự tạo khung hồ sơ:
 //   seed --profile-dir <…/.hermes/profiles/<tên>>
-// stdin (JSON ≤ 1 MiB, từ root): {"version":1,"configYaml":…,"env":…,"soul":…}. `env` mang khoá nhà cung cấp và token kênh
-// ⇒ chỉ đi qua stdin, không bao giờ qua đối số hay log. Plugin lấy từ chính bản phát hành chứa file này.
+// stdin (JSON ≤ 1 MiB, từ root): {"version":1,"configYaml":…,"env":…,"soul":…,"plugins":{tên:{file:nội dung}}}. `env` mang khoá nhà
+// cung cấp và token kênh ⇒ chỉ đi qua stdin, không bao giờ qua đối số hay log. Plugin do root chép từ hồ sơ khuôn đang cài trên máy chủ.
 // Chỉ gieo MỘT lần: đã có dấu `.ihome-fleet-seeded` thì không ghi gì (hồ sơ sống đang giữ mã CRM trong config.yaml).
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { SEED_MARKER, SEEDING_MARKER } from './fleet-plan.mjs';
+import { PLUGIN_FILES, PLUGIN_FILE_MAX_BYTES, SEED_MARKER, SEEDING_MARKER } from './fleet-plan.mjs';
 
 export const SEED_INPUT_MAX_BYTES = 1048576;
-const RELEASE_INFRA = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const PLUGINS = Object.freeze({
-  'ihome-zalo-native': { from: 'hermes-zalo-native', files: ['plugin.yaml', '__init__.py', 'adapter.py'] },
-  'ihome-session-reset': { from: 'hermes-session-reset', files: ['plugin.yaml', '__init__.py', 'policy.py', 'hook.py'] },
-});
+export const PLUGINS = PLUGIN_FILES;
 const fail = code => { throw new Error(code); };
 const text = (value, max) => typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= max && !value.includes('\0');
 
@@ -34,10 +30,16 @@ function ownDirectory(directory) {
 }
 const assignments = raw => raw.split(/\r?\n/).some(line => /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line));
 
-export function seedProfile({ profileDir, request, pluginRoot = RELEASE_INFRA, now = () => new Date() }) {
+function validPlugins(value) {
+  const plain = item => item !== null && typeof item === 'object' && !Array.isArray(item);
+  return plain(value) && Object.keys(value).sort().join() === Object.keys(PLUGIN_FILES).sort().join() &&
+    Object.entries(PLUGIN_FILES).every(([plugin, files]) => plain(value[plugin]) && Object.keys(value[plugin]).sort().join() === [...files].sort().join() &&
+      files.every(file => text(value[plugin][file], PLUGIN_FILE_MAX_BYTES)));
+}
+export function seedProfile({ profileDir, request, now = () => new Date() }) {
   if (typeof profileDir !== 'string' || !path.isAbsolute(profileDir) || path.resolve(profileDir) !== profileDir) fail('fleet_arguments');
-  if (!request || Object.keys(request).sort().join() !== 'configYaml,env,soul,version' || request.version !== 1 ||
-      !text(request.configYaml, 65536) || !text(request.env, 8192) || !text(request.soul, 524288)) fail('fleet_seed_input');
+  if (!request || Object.keys(request).sort().join() !== 'configYaml,env,plugins,soul,version' || request.version !== 1 ||
+      !text(request.configYaml, 65536) || !text(request.env, 8192) || !text(request.soul, 524288) || !validPlugins(request.plugins)) fail('fleet_seed_input');
   const info = ownDirectory(profileDir), marker = path.join(profileDir, SEED_MARKER);
   if (fs.existsSync(marker)) return { version: 1, status: 'already_seeded', changed: false };
   const envFile = path.join(profileDir, '.env'), configFile = path.join(profileDir, 'config.yaml'), seeding = path.join(profileDir, SEEDING_MARKER);
@@ -57,14 +59,14 @@ export function seedProfile({ profileDir, request, pluginRoot = RELEASE_INFRA, n
   writeAtomic(path.join(profileDir, 'SOUL.md'), request.soul, 0o644);
   const pluginsDir = path.join(profileDir, 'plugins');
   fs.mkdirSync(pluginsDir, { recursive: true, mode: 0o755 });
-  for (const [name, source] of Object.entries(PLUGINS)) {
+  for (const [name, files] of Object.entries(PLUGIN_FILES)) {
     const target = path.join(pluginsDir, name);
     fs.mkdirSync(target, { recursive: true, mode: 0o755 });
-    for (const file of source.files) writeAtomic(path.join(target, file), fs.readFileSync(path.join(pluginRoot, source.from, file)), 0o644);
+    for (const file of files) writeAtomic(path.join(target, file), request.plugins[name][file], 0o644);
   }
   writeAtomic(marker, JSON.stringify({ version: 1, seededAt: now().toISOString() }) + '\n', 0o600);
   fs.unlinkSync(seeding);
-  return { version: 1, status: 'seeded', changed: true, plugins: Object.keys(PLUGINS) };
+  return { version: 1, status: 'seeded', changed: true, plugins: Object.keys(PLUGIN_FILES) };
 }
 
 async function readInput(input) {

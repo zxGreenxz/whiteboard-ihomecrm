@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { FLEET_LABELS, FleetError, connectionDigest, trialIdentity } from './fleet-plan.mjs';
+import { FLEET_LABELS, FleetError, PLUGIN_FILES, connectionDigest, trialIdentity } from './fleet-plan.mjs';
 import { SCRIPTS, applyAdd, applyRecreate, applyRemove, planFor, pruneHandoff } from './fleet-host.mjs';
 import { loadFleetConfig, parseArguments, runFleet } from './fleet.mjs';
 import { ACCOUNT_ID, BINDING_ID, CHANNEL_TOKEN, CONNECTION_ID, CREDENTIAL, IMAGE, IMAGE_CONFIG, NEW_WORKER_ID, PERSON, PROVIDER_KEY, config, id,
-  realRequest, sidecarInspect, trialRequest, workerInspect } from './fixtures.mjs';
+  realRequest, sidecarInspect, trialRequest, workerInspect, WORKER_ID } from './fixtures.mjs';
 
 const SECRETS = [CREDENTIAL, CHANNEL_TOKEN, PROVIDER_KEY];
 const ROOT = '/var/lib/ihome-hermes-profiles', OWNER = `${ROOT}/owner/.hermes/profiles/owner`;
@@ -14,13 +14,14 @@ const base = file => path.basename(file);
 
 /** Máy chủ giả: docker, setpriv + helper, journalctl, systemctl và vài lệnh file, đủ để chạy trọn một lượt điều phối. */
 function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = 'tools/list', connectorActive = true, failRun = null, gatewayState, routeUp = true } = {}) {
-  const calls = [], logs = [], ensured = [], fileOps = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
+  const calls = [], logs = [], ensured = [], fileOps = [], readOwnedCalls = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
     channels: channels ?? [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }], nativeMtime: Date.parse('2026-01-02T01:00:00Z'),
     files: new Map([[ROOT, { dir: true, uid: 0, mode: 0o711 }], [`${ROOT}/owner`, { dir: true, uid: 10003, mode: 0o700 }],
       [`${OWNER}/SOUL.md`, { text: '# SOUL giả\n', uid: 10003, mode: 0o644 }], [`${OWNER}/.env`, { text: `NINEROUTER_API_KEY=${PROVIDER_KEY}\nMCP_IHOMECRM_API_KEY=hc_khac\n`, uid: 10003, mode: 0o600 }],
       ['/etc/passwd', { text: 'root:x:0:0::/root:/bin/bash\nihome-hermes:x:10004:10004::/nonexistent:/usr/sbin/nologin\n', uid: 0, mode: 0o644 }],
       ['/proc/meminfo', { text: 'MemTotal: 2048000 kB\nMemAvailable:   819200 kB\n', uid: 0, mode: 0o444 }],
-      [SCRIPTS.template, { text: readFileSync(SCRIPTS.template, 'utf8'), uid: 0, mode: 0o644 }]]) };
+      [SCRIPTS.template, { text: readFileSync(SCRIPTS.template, 'utf8'), uid: 0, mode: 0o644 }],
+      ...Object.entries(PLUGIN_FILES).flatMap(([plugin, files]) => files.map(file => [`${OWNER}/plugins/${plugin}/${file}`, { text: `# ${plugin}/${file} đang cài ở hồ sơ khuôn\n`, uid: 10003, mode: 0o644 }]))]) };
   const ok = (stdout = '') => ({ status: 0, stdout: Buffer.from(stdout), stderr: Buffer.alloc(0) });
   const bad = (stderr = 'lỗi giả') => ({ status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from(stderr) });
   const flag = (args, name) => args[args.indexOf(name) + 1];
@@ -84,8 +85,9 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
   }
   const sys = { node: '/opt/node', log: line => logs.push(line), now: () => new Date(clock), sleep: ms => { clock += ms; },
     stat: file => { const entry = state.files.get(file); return entry ? { uid: entry.uid, gid: entry.uid, mode: entry.mode, dir: entry.dir === true, link: false, mtimeMs: 0 } : null; },
+    // read() thường không biết gì về symlink (bản thật chỉ chặn ở thành phần cuối); readOwned() chặn mục đánh dấu `unsafe` (đường dẫn có symlink).
     read: file => state.files.get(file)?.text ?? null,
-    readOwned: file => { const entry = state.files.get(file); if (entry?.unsafe) throw new FleetError('tep_khong_an_toan', file); return entry?.text ?? null; },
+    readOwned: (file, max, base) => { readOwnedCalls.push([file, base]); const entry = state.files.get(file); if (entry?.unsafe) throw new FleetError('tep_khong_an_toan', file); return entry?.text ?? null; },
     readdir: directory => [...state.files.keys()].filter(file => path.posix.dirname(file) === directory).map(file => path.posix.basename(file)),
     mkdir: (directory, mode, uid) => { state.files.set(directory, { dir: true, uid, mode }); },
     ensureDir: (directory, mode) => { ensured.push(directory); if (!state.files.has(directory)) state.files.set(directory, { dir: true, uid: 0, mode }); },
@@ -116,7 +118,7 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
     } };
   const step = call => call.command === 'setpriv' ? `${call.args[1]}:${base(call.args[7])}:${call.args[8]}${call.args.includes('--apply') ? ':apply' : ''}` :
     call.command === 'docker' ? `docker:${call.args[0]}${call.args.includes('--rm') ? ':rm' : ''}` : call.command === 'bash' ? `bash:${base(call.args[0])}` : call.command;
-  return { sys, calls, logs, state, ensured, fileOps, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$|^nsenter$/.test(entry)) };
+  return { sys, calls, logs, state, ensured, fileOps, readOwnedCalls, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$|^nsenter$/.test(entry)) };
 }
 const noSecretOutsideStdin = server => {
   for (const call of server.calls) for (const secret of SECRETS) assert(!call.args.join(' ').includes(secret), `bí mật trong đối số: ${call.command} ${call.args[0]}`);
@@ -144,7 +146,11 @@ test('thêm người thật: đúng thứ tự, đúng UID từng bước, bí m
   const input = name => server.calls.filter(call => call.command === 'setpriv' && base(call.args[7]) === name).map(call => call.input);
   assert.deepEqual(input('profile-provisioning-cli.mjs'), [JSON.stringify({ version: 1, credential: CREDENTIAL }), JSON.stringify({ version: 1, credential: CREDENTIAL })]);
   const seed = JSON.parse(input('helper-home.mjs')[0]);
-  assert.deepEqual(Object.keys(seed), ['version', 'configYaml', 'soul', 'env']);
+  assert.deepEqual(Object.keys(seed), ['version', 'configYaml', 'soul', 'plugins', 'env']);
+  // Plugin là bản ĐANG CÀI ở hồ sơ khuôn (không phải bản trong repo), đọc dưới home của khuôn.
+  assert.equal(seed.plugins['ihome-zalo-native']['adapter.py'], '# ihome-zalo-native/adapter.py đang cài ở hồ sơ khuôn\n');
+  assert(server.readOwnedCalls.some(([file, base]) => file === `${OWNER}/plugins/ihome-zalo-native/adapter.py` && base === `${ROOT}/owner`));
+  assert(server.readOwnedCalls.some(([file, base]) => file === `${OWNER}/SOUL.md` && base === `${ROOT}/owner`));
   assert(seed.env.includes(`HERMES_ZALO_BRIDGE_TOKEN=${CHANNEL_TOKEN}`) && seed.env.includes(`NINEROUTER_API_KEY=${PROVIDER_KEY}`));
   assert(!seed.env.includes('MCP_IHOMECRM_API_KEY') && !seed.configYaml.includes('hc_'));  // không kéo mã CRM của hồ sơ khuôn sang người khác
   const provision = server.calls.find(call => call.command === 'setpriv' && base(call.args[7]) === 'profile-provisioning-cli.mjs').args;
@@ -361,6 +367,16 @@ test('đọc file bằng root: không theo symlink, không nhận FIFO/thư mụ
   assert.equal(code(() => sys.read(file('lien-ket'))), 'tep_khong_an_toan');      // SOUL.md / gateway_state.json là symlink tới file của root
   assert.equal(code(() => sys.read(file('thu-muc'))), 'tep_khong_an_toan');
   assert.equal(code(() => sys.read(file('thuong'), 4)), 'tep_qua_lon');
+  // readOwned: phần đường dẫn DƯỚI base phải là đường thật; base (thuộc root) được phép là symlink.
+  fs.mkdirSync(file('home/ho-so'), { recursive: true }); fs.writeFileSync(file('home/ho-so/.env'), 'A=1\n');
+  fs.mkdirSync(file('noi-khac')); fs.writeFileSync(file('noi-khac/.env'), 'BI_MAT=1\n'); fs.symlinkSync(file('noi-khac'), file('home/lien-ket'));
+  fs.symlinkSync(file('home'), file('home-qua-link'));
+  assert.equal(sys.readOwned(file('home/ho-so/.env'), 1024, file('home')), 'A=1\n');
+  assert.equal(sys.readOwned(file('home-qua-link/ho-so/.env'), 1024, file('home-qua-link')), 'A=1\n');
+  assert.equal(code(() => sys.readOwned(file('home/lien-ket/.env'), 1024, file('home'))), 'tep_khong_an_toan');   // thư mục cha là symlink
+  assert.equal(sys.readOwned(file('home/ho-so/khong-co'), 1024, file('home')), null);
+  fs.symlinkSync(file('vong-a'), file('home/vong-b')); fs.symlinkSync(file('home/vong-b'), file('vong-a'));
+  assert.deepEqual(sys.readdir(file('home/vong-b')), []);                                            // symlink vòng không làm hỏng lệnh
   const { execFileSync } = await import('node:child_process');
   execFileSync('mkfifo', [file('ong')]);
   assert.equal(code(() => sys.read(file('ong'))), 'tep_khong_an_toan');           // FIFO không làm lệnh treo
@@ -396,11 +412,36 @@ test('thêm lại người đã gỡ gọi operator rotate (không kèm danh tí
   half.state.files.set(`${profile}/.ihome-fleet-seeding`, { text: '{}', uid: 10100, mode: 0o600 });
   assert(!planFor(half.sys, cfg, 'them-nguoi', realRequest()).blocks.includes('ho_so_la'));
   // SOUL của hồ sơ khuôn không đọc an toàn được (symlink…): kế hoạch bị chặn NGAY, không hỏng sau khi đã tạo kênh.
-  const soul = fakeServer(); soul.state.files.set(`${OWNER}/SOUL.md`, { unsafe: true, uid: 10003, mode: 0o644 });
+  const soul = fakeServer(); soul.state.files.set(`${OWNER}/SOUL.md`, { text: '# SOUL qua symlink', unsafe: true, uid: 10003, mode: 0o644 });
   assert.deepEqual(planFor(soul.sys, cfg, 'them-nguoi', realRequest()).blocks, ['khuon_thieu_soul']);
+  const noPlugin = fakeServer(); noPlugin.state.files.delete(`${OWNER}/plugins/ihome-session-reset/hook.py`);
+  assert.deepEqual(planFor(noPlugin.sys, cfg, 'them-nguoi', realRequest()).blocks, ['khuon_thieu_plugin']);
+  const linkedPlugin = fakeServer(); linkedPlugin.state.files.set(`${OWNER}/plugins/ihome-zalo-native/adapter.py`, { text: 'x', unsafe: true, uid: 10003, mode: 0o644 });
+  assert.deepEqual(planFor(linkedPlugin.sys, cfg, 'them-nguoi', realRequest()).blocks, ['khuon_thieu_plugin']);
   // Gỡ người không đọc file nào trong home sắp gỡ: trợ lý không chặn được việc gỡ bằng cách biến .env thành symlink/FIFO.
   const stuck = fakeServer();
   for (const [file, entry] of [[home, { dir: true, uid: 10100, mode: 0o700 }], [`${profile}/.env`, { unsafe: true, uid: 10100, mode: 0o600 }], [`${profile}/config.yaml`, { unsafe: true, uid: 10100, mode: 0o600 }]]) stuck.state.files.set(file, entry);
   assert.equal(planFor(stuck.sys, cfg, 'go-nguoi', { name: 'lan' }).status, 'ready');
   assert.equal(code(() => planFor(stuck.sys, cfg, 'them-nguoi', realRequest())), 'tep_khong_an_toan');
+});
+
+test('tạo lại sidecar trên máy chủ: nối lại cái đang chạy, dựng lại cái chết theo RAM đo thật, cái thiếu RAM được báo chứ không chặn', () => {
+  const cfg = config(), old = 'e'.repeat(64);
+  const make = () => fakeServer({ containers: [sidecarInspect({ workerId: old }),
+    sidecarInspect({ name: 'hermes-ha', profile: 'ha', home: `${ROOT}/ha`, uid: 10101, workerId: old, running: false, containerId: '4'.repeat(64),
+      labels: { [FLEET_LABELS.name]: 'ha', [FLEET_LABELS.trial]: 'false' } })] });
+  const server = make(), plan = planFor(server.sys, cfg, 'tao-lai-sidecar', { only: [] });
+  assert.deepEqual(plan.sidecars.map(row => [row.container, row.state]), [['hermes-ha', 'revive'], ['hermes-owner', 'recreate']]);
+  const result = applyRecreate(server.sys, cfg, { only: [] }, plan.expectedRevision);
+  assert.deepEqual(result.replaced.map(row => row.container), ['hermes-ha', 'hermes-owner']);
+  for (const name of ['hermes-ha', 'hermes-owner']) assert.equal(server.state.containers.get(name).HostConfig.NetworkMode, `container:${WORKER_ID}`);
+  assert.deepEqual(result.skipped, []);
+  // RAM đo thật trên máy (meminfo) chỉ còn 300 MB: trợ lý của chủ vẫn được nối lại, sidecar chết được để yên và được nêu tên.
+  const tight = make(); tight.state.files.set('/proc/meminfo', { text: 'MemTotal: 2048000 kB\nMemAvailable:   307200 kB\n', uid: 0, mode: 0o444 });
+  const tightPlan = planFor(tight.sys, cfg, 'tao-lai-sidecar', { only: [] });
+  assert.equal(tightPlan.status, 'ready');
+  const tightResult = applyRecreate(tight.sys, cfg, { only: [] }, tightPlan.expectedRevision);
+  assert.deepEqual(tightResult.replaced.map(row => row.container), ['hermes-owner']);
+  assert.deepEqual(tightResult.skipped, ['hermes-ha: không đủ RAM để dựng lại']);
+  assert.equal(tight.state.containers.get('hermes-ha').State.Running, false);
 });

@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { applyNativeProfileUpdate, planNativeProfileUpdate } from '../hermes-zalo-native/profile-provisioning.mjs';
-import { SEED_MARKER, SEEDING_MARKER, mcpRoute, profileEnv, pruneRevision, renderProfileConfig, trialIdentity } from './fleet-plan.mjs';
+import { PLUGIN_FILES, SEED_MARKER, SEEDING_MARKER, mcpRoute, profileEnv, pruneRevision, renderProfileConfig, trialIdentity } from './fleet-plan.mjs';
 import { PLUGINS, SEED_INPUT_MAX_BYTES, runHomeHelper, seedProfile } from './helper-home.mjs';
 import { listChannels, runChannelHelper } from './helper-channel.mjs';
 import { pingConnector, runConnectorHelper } from './helper-connector.mjs';
@@ -18,7 +18,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const temp = t => { const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-helper-'))); t.after(() => fs.rmSync(root, { recursive: true, force: true })); return root; };
 const template = () => fs.readFileSync(path.join(HERE, 'khuon', 'config.yaml'), 'utf8');
 const channel = (change = {}) => ({ accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '300', mainUid: '300', profile: 'lan', generation: id('7'), token: CHANNEL_TOKEN, listenPort: 8991, ...change });
-const seedRequest = (route, projection = channel()) => ({ version: 1, configYaml: renderProfileConfig(template(), { route }), soul: '# SOUL giả cho test\n',
+// Plugin giả mang dấu của hồ sơ khuôn: helper phải ghi ĐÚNG nội dung được đưa, không lấy bản trong repo.
+const templatePlugins = () => Object.fromEntries(Object.entries(PLUGIN_FILES).map(([plugin, files]) => [plugin, Object.fromEntries(files.map(file => [file, `# ${plugin}/${file} của hồ sơ khuôn\n`]))]));
+const seedRequest = (route, projection = channel()) => ({ version: 1, configYaml: renderProfileConfig(template(), { route }), soul: '# SOUL giả cho test\n', plugins: templatePlugins(),
   env: profileEnv({ shared: { NINEROUTER_API_KEY: PROVIDER_KEY }, channel: projection }) });
 function capture() { let stdout = '', stderr = ''; return { io: { write: text => { stdout += text; }, error: text => { stderr += text; } }, out: () => stdout, err: () => stderr }; }
 
@@ -32,8 +34,8 @@ test('gieo hồ sơ từ khuôn: ghi config/.env/SOUL/plugin một lần, không
   assert(!fs.existsSync(path.join(profileDir, SEEDING_MARKER)));                 // dấu "đang gieo" chỉ tồn tại trong lúc gieo
   assert.equal(fs.readFileSync(path.join(profileDir, 'config.yaml.upstream-default'), 'utf8'), 'model: {}\n');
   assert.equal(fs.readFileSync(path.join(profileDir, 'SOUL.md'), 'utf8'), '# SOUL giả cho test\n');
-  for (const [name, source] of Object.entries(PLUGINS)) for (const file of source.files)
-    assert.deepEqual(fs.readFileSync(path.join(profileDir, 'plugins', name, file)), fs.readFileSync(path.join(HERE, '..', source.from, file)));
+  for (const [name, files] of Object.entries(PLUGINS)) for (const file of files)
+    assert.equal(fs.readFileSync(path.join(profileDir, 'plugins', name, file), 'utf8'), `# ${name}/${file} của hồ sơ khuôn\n`);
   assert(fs.existsSync(path.join(profileDir, SEED_MARKER)));
   if (process.platform !== 'win32') {
     assert.equal(fs.statSync(profileDir).mode & 0o777, 0o700);
@@ -52,7 +54,12 @@ test('gieo hồ sơ từ khuôn: ghi config/.env/SOUL/plugin một lần, không
   fs.writeFileSync(path.join(crashed, SEEDING_MARKER), '{}'); fs.writeFileSync(path.join(crashed, '.env'), 'HERMES_ZALO_PROFILE=cu\n'); fs.writeFileSync(path.join(crashed, 'config.yaml'), 'cu: true\n');
   assert.equal(seedProfile({ profileDir: crashed, request: seedRequest(route) }).status, 'seeded');
   assert(fs.readFileSync(path.join(crashed, '.env'), 'utf8').includes('HERMES_ZALO_PROFILE=lan\n') && !fs.existsSync(path.join(crashed, SEEDING_MARKER)));
-  for (const request of [{ ...seedRequest(route), extra: 1 }, { ...seedRequest(route), version: 2 }, { ...seedRequest(route), env: '' }, null])
+  const missingFile = templatePlugins(); delete missingFile['ihome-zalo-native']['adapter.py'];
+  const extraPlugin = { ...templatePlugins(), khac: { 'a.py': 'x' } };
+  const extraFile = templatePlugins(); extraFile['ihome-session-reset']['../../.env'] = 'x';
+  for (const request of [{ ...seedRequest(route), extra: 1 }, { ...seedRequest(route), version: 2 }, { ...seedRequest(route), env: '' }, null,
+    { ...seedRequest(route), plugins: undefined }, { ...seedRequest(route), plugins: missingFile }, { ...seedRequest(route), plugins: extraPlugin },
+    { ...seedRequest(route), plugins: extraFile }, { ...seedRequest(route), plugins: { ...templatePlugins(), 'ihome-zalo-native': { ...templatePlugins()['ihome-zalo-native'], 'adapter.py': '' } } }])
     assert.throws(() => seedProfile({ profileDir: path.join(temp(t)), request }), /fleet_seed_input/);
   assert.throws(() => seedProfile({ profileDir: 'tuong/doi', request: seedRequest(route) }), /fleet_arguments/);
 });

@@ -12,7 +12,7 @@ export const BINDING_ID = id('4'), CONNECTION_ID = id('5'), ACCOUNT_ID = id('6')
 export const CREDENTIAL = `hc_${'S'.repeat(43)}`, CHANNEL_TOKEN = `hzn_${'e'.repeat(64)}`, PROVIDER_KEY = 'provider-key-SECRET-0001';
 
 /** `docker inspect` của một sidecar đúng bộ cờ khoá (dạng của container dựng tay hiện có: volume /opt/data cũ, không nhãn fleet). */
-export function sidecarInspect({ name = 'hermes-owner', profile = 'owner', home = '/var/lib/ihome-hermes-profiles/owner', uid = 10003,
+export function sidecarInspect({ name = 'hermes-owner', profile = 'owner', home = '/var/lib/ihome-hermes-profiles/owner', uid = 10003, restart = 'unless-stopped',
   workerId = WORKER_ID, running = true, labels = {}, containerId = 'd'.repeat(64) } = {}) {
   return { Id: containerId, Name: `/${name}`, Image: IMAGE, RestartCount: 0,
     State: { Running: running, StartedAt: '2026-01-02T03:00:00.000Z' },
@@ -22,7 +22,7 @@ export function sidecarInspect({ name = 'hermes-owner', profile = 'owner', home 
     Mounts: [{ Type: 'bind', Source: home, Destination: '/home/hermes', RW: true },
       { Type: 'volume', Name: 'f'.repeat(64), Source: '/var/lib/docker/volumes/x/_data', Destination: '/opt/data', RW: true }],
     HostConfig: { NetworkMode: `container:${workerId}`, Memory: 943718400, MemorySwap: 1887436800, NanoCpus: 1e9, PidsLimit: 256, ReadonlyRootfs: true,
-      CapDrop: ['ALL'], CapAdd: null, SecurityOpt: ['no-new-privileges:true'], Init: true, RestartPolicy: { Name: 'unless-stopped' },
+      CapDrop: ['ALL'], CapAdd: null, SecurityOpt: ['no-new-privileges:true'], Init: true, RestartPolicy: { Name: restart },
       Tmpfs: { '/tmp': 'rw,nosuid,nodev,size=64m,uid=10003,gid=10003,mode=0700' }, LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
       Binds: null, PortBindings: {}, Privileged: false, PidMode: '', IpcMode: 'private', Devices: [] } };
 }
@@ -35,7 +35,7 @@ export const IMAGE_CONFIG = Object.freeze({ Env: ['PATH=/opt/hermes/bin:/usr/bin
 export function addFacts(change = {}) {
   return { memAvailableMb: 800, passwdUids: [0, 1000, 10004], homeUids: [10003], home: { exists: false }, imagePresent: true,
     containers: [sidecarView(sidecarInspect())], worker: { running: true, id: WORKER_ID, image: `sha256:${'9'.repeat(64)}`, startedAt: '2026-01-02T02:00:00.000Z', native: true },
-    template: { soul: true, envKeys: ['NINEROUTER_API_KEY'] },
+    template: { soul: true, plugins: true, envKeys: ['NINEROUTER_API_KEY'] },
     native: { ok: true, listenPort: 8991, revision: 'r1', newerThanWorker: false,
       channels: [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }] },
     binding: { bindingId: BINDING_ID, bindingEpoch: 1, ...PERSON, accountId: ACCOUNT_ID, ownUid: '100', senderUid: '300', connectionId: CONNECTION_ID, status: 'active' },

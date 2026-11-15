@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FleetError, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
-  containerName, envSourceOf, homeOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
+  containerName, envSourceOf, homeOf, PLUGIN_FILES, PLUGIN_FILE_MAX_BYTES, pluginSourceOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
   recreateArgs, redactArgs, renderProfileConfig, retiredContainer, routeEndpoint, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
 
 const HERE = nodePath.dirname(fileURLToPath(import.meta.url));
@@ -51,11 +51,13 @@ export function realSystem({ log = line => process.stderr.write(line + '\n') } =
       } finally { fs.closeSync(fd); }
     },
     ensureDir: (directory, mode) => { fs.mkdirSync(directory, { recursive: true, mode }); },
-    readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) return []; throw error; } },
-    // File trong home của trợ lý: ngoài các rào của read(), cả đường dẫn phải là đường thật (không thành phần nào là symlink).
-    readOwned(file, max) {
-      let real; try { real = fs.realpathSync(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-      if (real !== file) fail('tep_khong_an_toan', file);
+    readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return []; throw error; } },
+    // File nằm dưới một thư mục do UID khác sở hữu (`base`, vd home của trợ lý): ngoài các rào của read(), phần đường dẫn DƯỚI `base` phải là
+    // đường thật (không thành phần nào là symlink). Phần phía trên `base` thuộc root nên được phép là symlink.
+    readOwned(file, max, base) {
+      let real, realBase;
+      try { real = fs.realpathSync(file); realBase = fs.realpathSync(base); } catch (error) { if (error.code === 'ENOENT') return null; if (error.code === 'ELOOP') fail('tep_khong_an_toan', file); throw error; }
+      if (real !== nodePath.join(realBase, nodePath.relative(base, file))) fail('tep_khong_an_toan', file);
       return this.read(file, max);
     },
     mkdir(directory, mode, uid) { fs.mkdirSync(directory, { mode }); fs.chownSync(directory, uid, uid); fs.chmodSync(directory, mode); },
@@ -118,7 +120,7 @@ function homeFacts(sys, config, name, { light = false } = {}) {
   if (!info) return { exists: false };
   // Gỡ người không cần nội dung file nào trong home: không đọc, để trợ lý không chặn được việc gỡ bằng cách biến .env thành symlink/FIFO.
   if (light) return { exists: true, uid: info.uid, private: info.dir && !info.link && info.mode === 0o700 && info.uid === info.gid && info.uid !== 0 };
-  const env = sys.readOwned(posix.join(profileDir, '.env'), 131072), profileConfig = sys.readOwned(posix.join(profileDir, 'config.yaml'), 262144);
+  const env = sys.readOwned(posix.join(profileDir, '.env'), 131072, home), profileConfig = sys.readOwned(posix.join(profileDir, 'config.yaml'), 262144, home);
   return { exists: true, uid: info.uid, private: info.dir && !info.link && info.mode === 0o700 && info.uid === info.gid && info.uid !== 0,
     profileDir: sys.stat(profileDir)?.dir === true, seeded: sys.stat(posix.join(profileDir, SEED_MARKER)) !== null,
     seeding: sys.stat(posix.join(profileDir, SEEDING_MARKER)) !== null,
@@ -127,6 +129,19 @@ function homeFacts(sys, config, name, { light = false } = {}) {
     hasEnv: env !== null && env.split(/\r?\n/).some(line => /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=/.test(line)) };
 }
 /** Đăng ký kiểm học tập gồm HAI nửa: drop-in của unit và mục trong danh sách gốc. Thiếu một nửa là dở dang, phải làm tiếp/gỡ nốt. */
+/** Plugin đang cài ở hồ sơ khuôn: { tên: { file: nội dung } }, hoặc null nếu thiếu file nào. Đọc bằng root, đúng các file cố định. */
+function templatePlugins(sys, config) {
+  const out = {};
+  for (const [plugin, files] of Object.entries(PLUGIN_FILES)) {
+    out[plugin] = {};
+    for (const file of files) {
+      const text = sys.readOwned(pluginSourceOf(config, plugin, file), PLUGIN_FILE_MAX_BYTES, config.template.sourceHome);
+      if (typeof text !== 'string' || !text.length) return null;
+      out[plugin][file] = text;
+    }
+  }
+  return out;
+}
 function auditFacts(sys, config, name) {
   const dropIn = sys.stat(auditDropInFile(config, name)) !== null;
   let listed, broken = false;
@@ -146,7 +161,7 @@ function memAvailableMb(sys) {
 function gatewayState(sys, view) {
   if (!view.home || !view.profile) return null;
   try {
-    const state = JSON.parse(sys.readOwned(posix.join(view.home, '.hermes', 'profiles', view.profile, 'gateway_state.json'), 262144) ?? 'null');
+    const state = JSON.parse(sys.readOwned(posix.join(view.home, '.hermes', 'profiles', view.profile, 'gateway_state.json'), 262144, view.home) ?? 'null');
     if (!state) return null;
     return { state: state.gateway_state ?? null, activeAgents: state.active_agents ?? null, updatedAt: state.updated_at ?? null,
       zalo: state.platforms?.zalo_personal?.state ?? null };
@@ -175,15 +190,17 @@ export function gatherAddFacts(sys, config, rawRequest) {
   const facts = { ...baseFacts(sys, config), memAvailableMb: memAvailableMb(sys) };
   facts.passwdUids = (sys.read('/etc/passwd') ?? '').split('\n').map(line => Number(line.split(':')[2])).filter(Number.isInteger);
   facts.homeUids = [config.profilesRoot, config.archiveRoot].flatMap(root => sys.readdir(root).map(entry => sys.stat(posix.join(root, entry))?.uid)).filter(Number.isInteger);
+  // Gợi ý chống trùng tên, không phải rào an ninh: thư mục nào đọc không được thì bỏ qua.
   facts.profileNames = sys.readdir(config.profilesRoot).filter(entry => entry !== request.name)
-    .flatMap(entry => sys.readdir(posix.join(config.profilesRoot, entry, '.hermes', 'profiles')));
+    .flatMap(entry => { try { return sys.readdir(posix.join(config.profilesRoot, entry, '.hermes', 'profiles')); } catch { return []; } });
   facts.home = homeFacts(sys, config, request.name);
   facts.imagePresent = sys.exec('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]).status === 0;
   // Hồ sơ khuôn: đọc THẬT ngay lúc lập kế hoạch bằng đúng hàm mà bước gieo dùng; SOUL/.env là symlink hay quá lớn thì kế hoạch bị chặn,
   // không để lệnh hỏng sau khi đã tạo kênh.
   const safe = read => { try { return read(); } catch (error) { if (error instanceof FleetError) return null; throw error; } };
-  const envSource = safe(() => sys.readOwned(envSourceOf(config), 131072)), soulSource = safe(() => sys.readOwned(soulSourceOf(config), 524288));
-  facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0,
+  const envSource = safe(() => sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome)),
+    soulSource = safe(() => sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome));
+  facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0, plugins: safe(() => templatePlugins(sys, config)) !== null,
     envKeys: (envSource ?? '').split(/\r?\n/).map(line => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*\S/.exec(line)?.[1]).filter(Boolean) };
   facts.native = nativeFacts(sys, config, facts.worker);
   facts.route = { reachable: routeReachable(sys, facts.worker, connector.route) };
@@ -342,10 +359,12 @@ export function applyAdd(sys, config, rawRequest, expect) {
       try { channel = channelProjection(JSON.parse(out(exported))); } finally { exported.stdout.fill(0); }
       if (channel.profile !== assistant.name || channel.accountId !== identity.accountId || channel.ownUid !== identity.ownUid || channel.pairedUid !== identity.pairedUid) fail('kenh_lech_danh_tinh');
     }
-    const soul = sys.readOwned(soulSourceOf(config), 524288), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
+    const soul = sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
+    const plugins = templatePlugins(sys, config);
+    if (!plugins) fail('khuon_thieu_plugin');
     if (!soul || !templateText) fail('khuon_thieu_soul');
-    const input = Buffer.from(JSON.stringify({ version: 1, configYaml: renderProfileConfig(templateText, { route: connector.route }), soul,
-      env: profileEnv({ shared: sharedEnvFrom(sys.readOwned(envSourceOf(config), 131072) ?? '', config.template.sharedEnvKeys), channel }) }));
+    const input = Buffer.from(JSON.stringify({ version: 1, configYaml: renderProfileConfig(templateText, { route: connector.route }), soul, plugins,
+      env: profileEnv({ shared: sharedEnvFrom(sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome) ?? '', config.template.sharedEnvKeys), channel }) }));
     try { helperJson(asUser(sys, assistant.uid, SCRIPTS.home, ['seed', '--profile-dir', assistant.profileDir], { input }), 'home seed'); } finally { input.fill(0); }
     mark('seed');
   }
@@ -431,12 +450,12 @@ export function applyRecreate(sys, config, { only = [] }, expect) {
   if (plan.status !== 'ready') fail(plan.status === 'done' ? 'khong_can_tao_lai' : 'ke_hoach_bi_chan', plan.blocks);
   if (plan.expectedRevision !== expect) fail('ke_hoach_da_doi');
   const replaced = [];
-  for (const row of plan.sidecars) if (row.state === 'recreate') replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId));
+  for (const row of plan.sidecars) if (row.state === 'recreate' || row.state === 'revive') replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId));
   sys.sleep(8000);
   const after = inspectAll(sys);
   return { version: 1, action: 'tao-lai-sidecar', status: 'applied', replaced,
     sidecars: replaced.map(entry => { const view = sidecarView(after.get(entry.container)); return { container: entry.container, running: view.running, currentNetwork: view.networkMode === `container:${plan.workerId}` }; }),
-    rollback: 'Bản cũ còn dưới tên <container>-old-<giờ>; chỉ dùng lại được khi worker cũ còn.', runtimeStatus: 'unverified' };
+    skipped: plan.notes, rollback: 'Bản cũ còn dưới tên <container>-old-<giờ>; chỉ dùng lại được khi worker cũ còn.', runtimeStatus: 'unverified' };
 }
 
 export function planFor(sys, config, action, input) {

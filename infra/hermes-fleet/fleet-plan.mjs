@@ -13,6 +13,11 @@ export const FLEET_LABELS = Object.freeze({ name: 'com.ihomecrm.fleet.name', con
 export const SEED_MARKER = '.ihome-fleet-seeded';
 /** Có trong lúc đang gieo; còn lại sau một lần chết giữa chừng ⇒ được gieo lại (container của người này chưa từng chạy). */
 export const SEEDING_MARKER = '.ihome-fleet-seeding';
+/** Plugin của hồ sơ mới được CHÉP từ hồ sơ khuôn đang cài trên máy chủ (cùng bản với trợ lý của chủ), không lấy từ repo: bản trong repo có
+ * thể đi trước bản đang chạy (vd nhận ảnh Zalo), và mọi trợ lý phải chạy cùng một bản. */
+export const PLUGIN_FILES = Object.freeze({ 'ihome-zalo-native': Object.freeze(['plugin.yaml', '__init__.py', 'adapter.py']),
+  'ihome-session-reset': Object.freeze(['plugin.yaml', '__init__.py', 'policy.py', 'hook.py']) });
+export const PLUGIN_FILE_MAX_BYTES = 262144;
 export const CONTAINER_HOME = '/home/hermes';
 export const CONTAINER_HERMES_HOME = '/home/hermes/.hermes';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -120,6 +125,7 @@ export const homeOf = (config, name) => path.join(config.profilesRoot, name);
 export const profileDirOf = (config, name) => path.join(config.profilesRoot, name, '.hermes', 'profiles', name);
 export const soulSourceOf = config => path.join(config.template.sourceHome, '.hermes', 'profiles', config.template.sourceProfile, 'SOUL.md');
 export const envSourceOf = config => path.join(config.template.sourceHome, '.hermes', 'profiles', config.template.sourceProfile, '.env');
+export const pluginSourceOf = (config, plugin, file) => path.join(config.template.sourceHome, '.hermes', 'profiles', config.template.sourceProfile, 'plugins', plugin, file);
 
 // ---------------------------------------------------------------------------------------------------------- container
 
@@ -168,6 +174,7 @@ export function sidecarView(inspect) {
     startedAt: inspect?.State?.StartedAt ?? null, image: inspect?.Image ?? '', user: config.User ?? '', labels: { ...(config.Labels ?? {}) },
     networkMode: host.NetworkMode ?? '', memoryMb: host.Memory ? Math.round(host.Memory / 1048576) : 0,
     profile: at >= 0 && typeof cmd[at + 1] === 'string' ? cmd[at + 1] : null, home: homeMount?.source ?? null, mounts,
+    restartPolicy: host.RestartPolicy?.Name ?? '',
     readOnly: host.ReadonlyRootfs === true, capDrop: host.CapDrop ?? [], capAdd: host.CapAdd ?? [], securityOpt: host.SecurityOpt ?? [],
     privileged: host.Privileged === true, published: Object.keys(host.PortBindings ?? {}).length > 0,
     pidMode: host.PidMode ?? '', ipcMode: host.IpcMode ?? '', devices: (host.Devices ?? []).length, extraBinds: (host.Binds ?? []).length,
@@ -316,8 +323,18 @@ export function auditScanConfig(current, config, name, { remove = false } = {}) 
 
 // ----------------------------------------------------------------------------------------------------------- kế hoạch
 
-/** Sidecar quản trị đã dừng tay: không chạy nhưng vẫn bám đúng worker hiện tại. */
-const adminStopped = (view, workerId) => !view.running && view.networkMode === `container:${workerId}`;
+/** Trợ lý TẠM DỪNG: quản trị tắt tự khởi động (`docker update --restart no`) rồi dừng. Công cụ không bao giờ tự bật lại nó (trừ khi nêu
+ * đích danh bằng --chi). Chỉ `docker stop` thì không đủ: container vẫn mang chính sách tự khởi động nên bị coi là chết cần dựng lại. */
+export const parked = view => !view.running && view.restartPolicy === 'no';
+/** Container không mang nhãn sidecar mà trông như một trợ lý Hermes (bind một home ngay dưới profilesRoot) và chung network namespace
+ * với worker hiện tại, hoặc đang chạy ở namespace mồ côi (bám một container không còn tồn tại): công cụ sẽ bỏ sót nó khi thay worker. */
+export function unlabelledSidecars(facts, config, workerId) {
+  const ids = new Set(facts.containers.map(view => view.id));
+  const orphan = view => view.running && /^container:[a-f0-9]{64}$/.test(view.networkMode) && !ids.has(view.networkMode.slice('container:'.length));
+  return facts.containers.filter(view => view.labels[SIDECAR_LABEL] !== SIDECAR_VALUE && !retiredContainer(view.name) && view.id !== workerId &&
+    typeof view.home === 'string' && path.dirname(view.home) === config.profilesRoot &&
+    (view.networkMode === `container:${workerId}` || orphan(view)));
+}
 export function memoryGate({ memAvailableMb, expectedMb, keepFreeMb }) {
   if (!Number.isFinite(memAvailableMb)) return { ok: false, code: 'ram_khong_do_duoc' };
   const afterMb = Math.floor(memAvailableMb - expectedMb);
@@ -371,6 +388,7 @@ export function planAdd(facts, rawRequest, config) {
   else if (used.includes(uid)) block('uid_da_dung');
   if (!facts.imagePresent) block('anh_chua_co');
   if (!facts.template.soul) block('khuon_thieu_soul');
+  if (!facts.template.plugins) block('khuon_thieu_plugin');
   if (config.template.sharedEnvKeys.some(key => !facts.template.envKeys.includes(key))) block('khuon_thieu_khoa');
   if (!facts.worker.running) block('worker_khong_chay');
   // Sidecar dùng chung network namespace của worker: từ đó mà không mở được cổng của connector thì trợ lý dựng xong cũng không gọi được CRM.
@@ -424,24 +442,25 @@ export function planAdd(facts, rawRequest, config) {
   if (facts.home.profileDir && !facts.home.seeded && !facts.home.seeding && facts.home.hasEnv) block('ho_so_la');
   // Người thật: hồ sơ chỉ được gieo SAU khi đã có kênh. Đã gieo mà chưa có kênh ⇒ đây là home của một người thử trùng tên.
   if (!trial && facts.home.seeded && channelAction === 'create') block('home_cua_nguoi_thu');
-  // Kênh đã thu hồi mà home cũ còn (go-nguoi hỏng sau bước thu hồi, hoặc thu hồi tay): cấp token mới thì .env đã gieo vẫn giữ token
-  // cũ và không bước nào sửa. Phải gỡ nốt (cất home) rồi mới thêm lại trên home mới.
-  if (channelAction === 'rotate' && facts.home.exists) block('kenh_da_thu_hoi_con_home');
+  // Kênh đã thu hồi mà home cũ ĐÃ GIEO còn đó (go-nguoi hỏng sau bước thu hồi, hoặc thu hồi tay): cấp token mới thì .env đã gieo vẫn giữ
+  // token cũ và bước gieo không chạy lại. Phải gỡ nốt (cất home) rồi mới thêm lại. Home chưa gieo (lượt thêm lại này dừng giữa chừng) thì
+  // được chạy tiếp: bước gieo sẽ ghi .env với token mới.
+  if (channelAction === 'rotate' && facts.home.seeded) block('kenh_da_thu_hoi_con_home');
   const workerId = facts.worker.id ?? '';
   // Worker đọc cấu hình kênh một lần lúc khởi động ⇒ kênh mới (hoặc cấu hình mới hơn worker) cần khởi động lại có drain.
   const restartState = trial ? 'skipped' : channelState === 'pending' || facts.native?.newerThanWorker ? 'pending' : 'done';
   const labelled = facts.containers.filter(view => view.labels[SIDECAR_LABEL] === SIDECAR_VALUE && !retiredContainer(view.name) && view.name !== container);
-  // Chỉ sidecar ĐANG CHẠY mới được tạo lại; sidecar quản trị đã dừng tay thì để yên (tạo lại sẽ làm nó chạy lại, ăn RAM ngoài cửa RAM).
-  // "Dừng tay" = không chạy mà vẫn bám đúng worker hiện tại: để yên. Không chạy mà bám worker CŨ là sidecar chết vì worker đã bị thay
-  // (Docker không khởi động lại được nó): phải tạo lại như sidecar đang chạy.
-  const stopped = labelled.filter(view => adminStopped(view, workerId)), others = labelled.filter(view => !adminStopped(view, workerId));
+  // them-nguoi chỉ NỐI LẠI các sidecar ĐANG CHẠY (chúng đã giữ RAM sẵn). Sidecar không chạy (tạm dừng, hoặc chết vì worker đã bị thay) thì
+  // để yên: dựng lại nó là thêm một container chạy, việc đó thuộc tao-lai-sidecar, có cửa RAM cho từng cái.
+  const others = labelled.filter(view => view.running), idle = labelled.filter(view => !view.running);
   const stale = others.filter(view => view.networkMode !== `container:${workerId}`);
   const sidecarState = trial ? 'skipped' : restartState === 'pending' || stale.length ? 'pending' : 'done';
   if (sidecarState === 'pending') for (const view of others) if (lockViolations(view, config).length) block('sidecar_lech_khoa');
-  // Container chung network namespace với worker mà không mang nhãn sidecar sẽ bị bỏ lại ở namespace chết khi worker được thay.
-  if (!trial && facts.containers.some(view => view.networkMode === `container:${workerId}` && view.labels[SIDECAR_LABEL] !== SIDECAR_VALUE &&
-      !retiredContainer(view.name))) block('sidecar_khong_nhan');
-  if (stopped.length) notes.push(`Sidecar đang dừng, không đụng tới: ${stopped.map(view => view.name).join(', ')}.`);
+  // Container trợ lý không mang nhãn sidecar sẽ bị bỏ lại ở namespace chết khi worker được thay.
+  if (!trial && unlabelledSidecars(facts, config, workerId).length) block('sidecar_khong_nhan');
+  const dead = idle.filter(view => !parked(view)), resting = idle.filter(parked);
+  if (resting.length) notes.push(`Sidecar đang tạm dừng (restart=no), không đụng tới: ${resting.map(view => view.name).join(', ')}.`);
+  if (dead.length) notes.push(`Sidecar không chạy, không đụng tới: ${dead.map(view => view.name).join(', ')}. Muốn dựng lại thì chạy tao-lai-sidecar (có cửa RAM).`);
   let containerState = 'pending';
   if (existing) {
     const matches = existing.labels[FLEET_LABELS.name] === name && existing.home === home;
@@ -489,11 +508,14 @@ export function planRemove(facts, rawRequest, config) {
   if (!exact(rawRequest, ['name'])) fail('tham_so_sai', 'khoa');
   const name = assistantName(rawRequest.name), container = containerName(name), blocks = [];
   const existing = facts.containers.find(view => view.name === container) ?? null;
+  // Hồ sơ khuôn (trợ lý của chủ) không bao giờ bị công cụ gỡ, dù container của nó vắng mặt hay khoảng UID cấu hình bao cả UID của nó.
+  const template = name === config.template.sourceProfile || homeOf(config, name) === config.template.sourceHome;
   // Dấu "do công cụ dựng" phải là thứ root đặt, không phải file trong home của trợ lý: nhãn container, hoặc (khi chưa có container, vd
   // lượt thêm dở) home thuộc một UID trong khoảng công cụ cấp. hermes-owner dựng tay (UID ngoài khoảng, không nhãn) không bao giờ khớp.
   const uidInRange = facts.home.exists && int(facts.home.uid, config.uidRange[0], config.uidRange[1]);
   const fleetOwned = existing ? existing.labels[FLEET_LABELS.name] === name : uidInRange;
-  if (!existing && !facts.home.exists) blocks.push('khong_tim_thay');
+  if (template) blocks.push('khong_phai_cua_cong_cu');
+  else if (!existing && !facts.home.exists) blocks.push('khong_tim_thay');
   else if (!fleetOwned) blocks.push('khong_phai_cua_cong_cu');
   const trial = existing?.labels[FLEET_LABELS.trial] === 'true';
   const channel = facts.native?.ok ? facts.native.channels.find(entry => entry.profile === name) : null;
@@ -521,29 +543,34 @@ export function planRecreate(facts, { only = [] } = {}, config) {
   if (!facts.worker.running) blocks.push('worker_khong_chay');
   const all = facts.containers.filter(view => view.labels[SIDECAR_LABEL] === SIDECAR_VALUE && !retiredContainer(view.name));
   for (const wanted of only) if (!all.some(view => view.name === wanted)) blocks.push('khong_tim_thay');
-  // Chạy cho MỌI sidecar mà có container chung network namespace với worker không mang nhãn: nó sẽ bị bỏ sót ⇒ dừng, không báo "xong".
-  // Kể cả container không nhãn ĐANG CHẠY mà bám một container không còn tồn tại (worker đã bị thay): nó nằm ở namespace mồ côi.
-  const ids = new Set(facts.containers.map(view => view.id));
-  const orphan = view => view.running && /^container:[a-f0-9]{64}$/.test(view.networkMode) && !ids.has(view.networkMode.slice('container:'.length));
-  if (!only.length && facts.containers.some(view => (view.networkMode === `container:${workerId}` || orphan(view)) && view.labels[SIDECAR_LABEL] !== SIDECAR_VALUE &&
-      !retiredContainer(view.name) && view.id !== workerId)) blocks.push('sidecar_khong_nhan');
+  // Chạy cho MỌI sidecar mà có container trợ lý không mang nhãn: nó sẽ bị bỏ sót ⇒ dừng, không báo "xong".
+  if (!only.length && unlabelledSidecars(facts, config, workerId).length) blocks.push('sidecar_khong_nhan');
   const rows = all.filter(view => !only.length || only.includes(view.name)).map(view => {
     const violations = lockViolations(view, config);
-    const current = view.running && view.networkMode === `container:${workerId}`;
-    // Sidecar đang dừng chỉ được dựng lại khi quản trị nêu đích danh (--chi): tạo lại là làm nó chạy lại.
-    const state = current ? 'ok' : adminStopped(view, workerId) && !only.includes(view.name) ? 'stopped' : violations.length ? 'blocked' : 'recreate';
-    if (state === 'blocked' && !blocks.includes('sidecar_lech_khoa')) blocks.push('sidecar_lech_khoa');
+    let state;
+    if (view.running && view.networkMode === `container:${workerId}`) state = 'ok';
+    else if (parked(view) && !only.includes(view.name)) state = 'parked';          // tạm dừng: chỉ dựng lại khi nêu đích danh
+    else if (violations.length) state = 'blocked';                                   // không nhân bản cấu hình lỏng
+    else state = view.running ? 'recreate' : 'revive';                               // đang chạy ở namespace cũ / không chạy
     return { container: view.name, id: view.id, state, running: view.running, violations };
   }).sort((a, b) => a.container.localeCompare(b.container));
-  // Dựng lại một sidecar đang KHÔNG chạy là thêm một container chạy: qua cửa RAM, tính cho từng cái.
-  const revived = rows.filter(row => row.state === 'recreate' && !row.running).length;
-  if (revived) {
-    const gate = memoryGate({ memAvailableMb: facts.memAvailableMb, expectedMb: config.ram.expectedMb * revived, keepFreeMb: config.ram.keepFreeMb });
-    if (!gate.ok) blocks.push(gate.code);
+  // Nối lại sidecar ĐANG CHẠY không tốn thêm RAM. Dựng lại sidecar KHÔNG chạy là thêm một container chạy: qua cửa RAM, tính lần lượt từng
+  // cái; cái nào không đủ RAM thì để yên (`no_ram`) chứ không chặn việc nối lại các sidecar đang chạy.
+  let budget = Number.isFinite(facts.memAvailableMb) ? facts.memAvailableMb - config.ram.keepFreeMb : -Infinity;
+  for (const row of rows) if (row.state === 'revive') { if (budget >= config.ram.expectedMb) budget -= config.ram.expectedMb; else row.state = 'no_ram'; }
+  // Sidecar ĐANG CHẠY ở namespace cũ mà lệch bộ cờ khoá: phải sửa tay trước, chặn cả lượt (để yên thì nó mất mạng mà không ai biết).
+  if (rows.some(row => row.state === 'blocked' && row.running)) blocks.push('sidecar_lech_khoa');
+  const skipped = rows.filter(row => row.state === 'no_ram' || (row.state === 'blocked' && !row.running));
+  const notes = skipped.map(row => `${row.container}: ${row.state === 'no_ram' ? 'không đủ RAM để dựng lại' : 'lệch bộ cờ khoá, không dựng lại'}`);
+  const actionable = rows.some(row => row.state === 'recreate' || row.state === 'revive');
+  // Không còn gì làm được mà vẫn có sidecar cần dựng lại ⇒ bị chặn (nêu lý do), không báo "xong".
+  if (!blocks.length && !actionable) for (const row of skipped) {
+    const reason = row.state === 'no_ram' ? (Number.isFinite(facts.memAvailableMb) ? 'ram_khong_du' : 'ram_khong_do_duoc') : 'sidecar_lech_khoa';
+    if (!blocks.includes(reason)) blocks.push(reason);
   }
   const expectedRevision = digest(['recreate', 1, config, workerId, rows.map(row => [row.container, row.id, row.state]), blocks]);
-  return { version: 1, action: 'tao-lai-sidecar', status: blocks.length ? 'blocked' : rows.some(row => row.state === 'recreate') ? 'ready' : 'done',
-    blocks, workerId, sidecars: rows, expectedRevision, runtimeStatus: 'unverified' };
+  return { version: 1, action: 'tao-lai-sidecar', status: blocks.length ? 'blocked' : actionable ? 'ready' : 'done',
+    blocks, notes, workerId, sidecars: rows, expectedRevision, runtimeStatus: 'unverified' };
 }
 
 /** Mỗi trợ lý một dòng: container, RAM, kênh, lần gọi CRM cuối (theo nhật ký connector còn giữ). */
@@ -556,7 +583,7 @@ export function listRows(facts) {
       running: view.running, currentNetwork: view.networkMode === `container:${facts.worker.id ?? ''}`,
       ramMb: usage?.usedMb ?? null, ramLimitMb: view.memoryMb || null,
       channel: view.labels[FLEET_LABELS.trial] === 'true' ? 'thử (không có kênh)' : channel ? (channel.unissued ? 'đã thu hồi' : 'có') : 'không thấy',
-      gateway: gateway?.state ?? null, zalo: gateway?.zalo ?? null,
+      parked: parked(view), gateway: gateway?.state ?? null, zalo: gateway?.zalo ?? null,
       connection: connectionId ? `…${connectionTail(connectionId)}` : null,
       lastCrmCall: connectionId ? facts.lastCalls?.[connectionDigest(connectionId)] ?? null : null };
   }).sort((a, b) => a.container.localeCompare(b.container));
@@ -596,6 +623,7 @@ export const BLOCK_TEXT = Object.freeze({
   khong_doc_duoc_cau_hinh_kenh: 'Không đọc được cấu hình kênh của worker.', kenh_lech_danh_tinh: 'Đã có kênh cùng tên nhưng khác nick Zalo.',
   kenh_day: 'Worker đã đủ 100 kênh.',
   nick_zalo_da_co_kenh: 'Nick Zalo này đã có kênh ở hồ sơ khác trên cùng nick bot. Nếu là người đã gỡ trước đây: thêm lại bằng ĐÚNG tên cũ (kênh đã thu hồi được cấp token mới).',
+  khuon_thieu_plugin: 'Hồ sơ khuôn thiếu một file plugin (ihome-zalo-native / ihome-session-reset) hoặc file không đọc an toàn được.',
   ten_trung_ho_so_khac: 'Tên này trùng một hồ sơ Hermes đang có ở home khác; chọn tên khác.',
   ten_trung_kenh_that: 'Tên người thử trùng một kênh Zalo thật trong cấu hình worker; chọn tên khác.',
   home_cua_nguoi_thu: 'Home cùng tên đã được gieo mà chưa có kênh Zalo (home của một người thử): gỡ nó trước bằng go-nguoi.',
