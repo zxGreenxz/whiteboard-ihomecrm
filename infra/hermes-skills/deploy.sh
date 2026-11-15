@@ -5,12 +5,17 @@
 #   bash deploy.sh --profiles "owner" [--release /opt/ihome-hermes/current] [--dry-run]                 # production: link current
 #   bash deploy.sh --profiles "tkt tkh tkj" --link test --release /opt/ihome-hermes-test/current        # hồ sơ TEST: link riêng
 #   bash deploy.sh --profiles "tkt" --link test --remove [--dry-run]                                    # gỡ khối skills đã nối
+#   bash deploy.sh --root /var/lib/ihome-hermes-profiles/<tên>/.hermes --profiles "<tên>"               # home riêng của trợ lý <tên>
 #
 # Mỗi nhóm hồ sơ dùng một symlink riêng (--link): owner (connector production) = current, hồ sơ TEST (connector 8741) = test.
+# Mỗi home (--root, mặc định home của owner) có cây ihome-official-skills riêng; trợ lý có home riêng thì chạy riêng một lượt với
+# --root của home đó. uid của Hermes lấy từ chủ của thư mục <root> (.hermes thuộc uid Hermes: owner 10003, trợ lý khác uid khác);
+# --hermes-uid <uid> để chỉ định tay.
 # Kiểm HẾT trước (bản phát hành, cây sha đã có, symlink, hồ sơ ngoài --profiles đang dùng link, config từng hồ sơ, YAML ứng viên — cả
 # khi chạy khô), có lỗi thì dừng khi chưa đổi gì; rồi:
 #  1. Chép <release>/infra/hermes-skills/{DESCRIPTION.md,ihome-crm-*/SKILL.md} vào <root>/ihome-official-skills/<sha>/ihome-crm/
-#     (chủ --owner, mặc định root:root; thư mục 0755, file 0644 — tiến trình Hermes uid 10003 không ghi được, đó là lớp bảo vệ thật).
+#     (chủ --owner, mặc định root:root; thư mục 0755, file 0644 — tiến trình Hermes (uid = chủ của <root>) không ghi được, đó là lớp
+#     bảo vệ thật; --owner trùng uid đó thì ghi thật bị từ chối).
 #     <sha> lấy từ <release>/RELEASE_SHA (thiếu thì tên thư mục). Đã có <sha> giống hệt ⇒ giữ nguyên; có mà khác ⇒ DỪNG.
 #  2. Đổi symlink <root>/ihome-official-skills/<link> → <sha> nguyên tử (symlink tạm + mv -T), đích TƯƠNG ĐỐI (host <root> =
 #     container <container-root>). Có hồ sơ NGOÀI --profiles đang trỏ tới <link> ⇒ DỪNG (đổi link sẽ đổi skill của hồ sơ đó).
@@ -23,9 +28,10 @@
 # Hermes / yaml.dump ghi lại, mất dòng chú thích), không đụng symlink / thư mục sha. Lùi bằng --remove, KHÔNG chép đè config.yaml từ
 # sao lưu: config có header Authorization có thể đã được xoay sau đó, chép đè ⇒ MCP 401, bot mất CRM.
 #
-# KHÔNG cần khởi động lại gateway hay container hermes-owner (khởi động lại làm gián đoạn Zalo): đổi / chạm config làm Hermes quét
-# lại skill ở lượt sau, phiên đang chạy nhận danh sách skill mới qua ghi chú "skills changed" (agent/skills_index_delta.py). SOUL.md
-# thì khác: phiên đang chạy giữ system prompt đã lưu; SOUL mới chỉ vào phiên mới (/new) hoặc khi phiên được nén.
+# KHÔNG cần khởi động lại gateway hay container Hermes (hermes-owner / hermes-<tên>; khởi động lại làm gián đoạn Zalo): đổi / chạm
+# config làm Hermes quét lại skill ở lượt sau, phiên đang chạy nhận danh sách skill mới qua ghi chú "skills changed"
+# (agent/skills_index_delta.py). SOUL.md thì khác: phiên đang chạy giữ system prompt đã lưu; SOUL mới chỉ vào phiên mới (/new) hoặc
+# khi phiên được nén.
 set -euo pipefail
 umask 022
 
@@ -34,7 +40,7 @@ ROOT=/var/lib/ihome-hermes-profiles/owner/.hermes
 CROOT=/home/hermes/.hermes
 LINK_NAME=current
 OWNER=0:0
-HERMES_UID=10003
+HERMES_UID=''   # rỗng ⇒ lấy uid chủ của $ROOT sau khi đọc tham số (home owner: 10003; home của trợ lý khác: uid của trợ lý đó)
 BACKUP_DIR=/root/ihome-hermes-skills-backups
 PROFILES=''
 DRY=0
@@ -42,7 +48,7 @@ REMOVE=0
 COMMENT='# Skill CRM chuẩn phát hành cùng connector (infra/hermes-skills/deploy.sh); Hermes chỉ đọc thư mục này.'
 
 die() { echo "LỖI: $*" >&2; exit 1; }
-usage() { sed -n '2,8p' "$0"; exit 2; }
+usage() { sed -n '2,9p' "$0"; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --release) RELEASE="${2:?}"; shift 2 ;;
@@ -62,11 +68,22 @@ done
 
 [[ "$LINK_NAME" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || die "--link phải là chữ thường/số/-/_ (vd current, test)"
 [[ "$OWNER" =~ ^[0-9]+:[0-9]+$ ]] || die "--owner phải dạng UID:GID số"
-[[ "$HERMES_UID" =~ ^[0-9]+$ ]] || die "--hermes-uid phải là số"
+# uid của Hermes: --hermes-uid nếu có; không thì là chủ (uid số) của thư mục $ROOT — .hermes do chính tiến trình Hermes của home đó
+# sở hữu, nên mỗi home tự cho ra đúng uid của nó. Không đọc được thì DỪNG: đoán sai uid là mất phép chặn ngay dưới.
+HERMES_UID_FROM='--hermes-uid'; HERMES_UID_HINT=''
+if [ -z "$HERMES_UID" ]; then
+  HERMES_UID="$(stat -L -c %u -- "$ROOT" 2>/dev/null)" && [ -d "$ROOT" ] \
+    || die "không đọc được chủ của thư mục --root $ROOT để biết uid của Hermes — kiểm --root, hoặc truyền --hermes-uid <uid>"
+  HERMES_UID_FROM="chủ của $ROOT"; HERMES_UID_HINT=' (thư mục đó không thuộc uid của Hermes thì truyền --hermes-uid <uid>)'
+fi
+[[ "$HERMES_UID" =~ ^[0-9]+$ ]] || die "uid của Hermes phải là số (lấy từ $HERMES_UID_FROM): '$HERMES_UID'"
 OWNER_UID="${OWNER%%:*}"; OWNER_GID="${OWNER##*:}"
 if [ "$DRY" = 0 ] && [ "$OWNER_UID" = 0 ] && [ "$(id -u)" != 0 ]; then die "ghi thật với chủ root:root phải chạy bằng root"; fi
 # Skill chuẩn thuộc root để tiến trình Hermes (uid $HERMES_UID) KHÔNG ghi được; chủ trùng uid Hermes thì mất lớp bảo vệ đó.
-if [ "$DRY" = 0 ] && [ "$OWNER_UID" = "$HERMES_UID" ]; then die "--owner trùng uid của Hermes ($HERMES_UID): Hermes sẽ sửa được skill chuẩn"; fi
+if [ "$DRY" = 0 ] && [ "$OWNER_UID" = "$HERMES_UID" ]; then
+  die "--owner trùng uid của Hermes ($HERMES_UID, lấy từ $HERMES_UID_FROM): Hermes sẽ sửa được skill chuẩn$HERMES_UID_HINT"
+fi
+echo "uid của Hermes: $HERMES_UID (lấy từ $HERMES_UID_FROM)"
 read -r -a REQUESTED <<< "$PROFILES"
 PROFILE_LIST=()
 in_list() { local item; for item in "${PROFILE_LIST[@]}"; do [ "$item" = "$1" ] && return 0; done; return 1; }
@@ -168,7 +185,7 @@ replace_config() { # replace_config <hồ sơ> <nhãn thay đổi>
 summary() {
   if [ "${#CHANGES[@]}" -eq 0 ]; then echo "KHÔNG ĐỔI GÌ$1."; else
     echo "ĐÃ ĐỔI:"; printf '  - %s\n' "${CHANGES[@]}"
-    echo "Không cần khởi động lại hermes-owner: phiên đang chạy nhận danh sách skill mới ở lượt kế tiếp."
+    echo "Không cần khởi động lại container Hermes (hermes-owner / hermes-<tên>): phiên đang chạy nhận danh sách skill mới ở lượt kế tiếp."
   fi
 }
 
