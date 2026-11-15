@@ -28547,6 +28547,55 @@ export type Database = {
         }
         Returns: Json
       }
+      profit_ledger_marker_preview_v1: {
+        Args: {
+          p_organization_id: string
+          p_settled_through_month: string
+          p_subject_id: string
+          p_subject_kind: string
+        }
+        Returns: Json
+      }
+      profit_ledger_payout_cancel_v1: {
+        Args: {
+          p_expected_state?: string
+          p_idempotency_key: string
+          p_reason: string
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
+      profit_ledger_payout_detail_v1: {
+        Args: { p_voucher_id: string }
+        Returns: Json
+      }
+      profit_ledger_salary_resolve_v1: {
+        Args: {
+          p_advance_offset_amount: number
+          p_idempotency_key: string
+          p_investment_amount: number
+          p_line_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      profit_ledger_set_marker_v1: {
+        Args: {
+          p_acknowledge_advance_erase: boolean
+          p_expected_marker_id: string
+          p_idempotency_key: string
+          p_organization_id: string
+          p_reason: string
+          p_settled_through_month: string
+          p_subject_id: string
+          p_subject_kind: string
+        }
+        Returns: Json
+      }
+      profit_manager_ledger_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       profit_my_share_v1: {
         Args: { p_building_ids?: string[]; p_organization_id: string }
         Returns: Json
@@ -28596,6 +28645,14 @@ export type Database = {
       }
       profit_total_group_peers_v2: {
         Args: { p_organization_id: string }
+        Returns: Json
+      }
+      profit_unlock_salary_impact_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_period_month: string
+        }
         Returns: Json
       }
       profit_unlock_v2: {
@@ -29570,6 +29627,33 @@ export type Database = {
         }
         Returns: Json
       }
+      salary_profit_inputs_v1: {
+        Args: { p_period_month: string; p_staff_ids: string[] }
+        Returns: Json
+      }
+      salary_profit_payout_quote_v1: {
+        Args: {
+          p_expected_voucher_amount: number
+          p_idempotency_key: string
+          p_investment_selected: number
+          p_offset_selected: number
+          p_payout_idempotency_key: string
+          p_period_month: string
+          p_staff_id: string
+        }
+        Returns: Json
+      }
+      salary_profit_settlement_freeze_v1: {
+        Args: {
+          p_expected_investment: number
+          p_expected_take_home: number
+          p_idempotency_key: string
+          p_max_offset: number
+          p_period_month: string
+          p_staff_id: string
+        }
+        Returns: Json
+      }
       salary_recurring_create_v1: {
         Args: {
           p_amount: number
@@ -30000,6 +30084,38 @@ export type Database = {
       }
       settle_reservation_deposit_v1: { Args: { p_input: Json }; Returns: Json }
       shared_account_ids: { Args: never; Returns: string[] }
+      shareholder_profit_ledger_entries_v1: {
+        Args: { p_organization_id: string; p_shareholder_id: string }
+        Returns: Json
+      }
+      shareholder_profit_ledger_payout_v1: {
+        Args: {
+          p_account_id: string
+          p_allow_advance: boolean
+          p_amount: number
+          p_idempotency_key: string
+          p_note: string
+          p_shareholder_id: string
+          p_voucher_date: string
+        }
+        Returns: Json
+      }
+      shareholder_profit_ledger_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_profit_my_ledger_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      shareholder_profit_payout_preview_v1: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_shareholder_id: string
+        }
+        Returns: Json
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sign_and_checkin_contract_draft_v1: {
