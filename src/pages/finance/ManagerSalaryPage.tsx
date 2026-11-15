@@ -44,6 +44,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine, isUnqualifiedContractRow } from "@/lib/managerSalary";
+import { salaryProfitQuoteFor, type SalaryPayoutChoice } from "@/lib/salaryProfit";
 
 // Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
 // sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
@@ -220,15 +221,21 @@ export default function ManagerSalaryPage() {
   const onSaveAdjustment = (staffId: string, p: SalAdjustPayload) =>
     saveAdj.mutateAsync({ ownerId, staffId, periodMonth, id: p.id, kind: p.kind, label: p.label, amount: p.amount, note: p.note });
   const onRemoveAdjustment = (id: string) => delAdj.mutate(id);
-  // Hoá đơn tiền phòng của quản lý (để trả lương tự gạch nợ / cấn trừ vào lương).
-  const rentInvoiceOf = (staffId: string) =>
-    managers.find((m) => m.id === staffId)?.roomRentInvoice ?? null;
-  const onPayout = async (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => {
-    const result = await payout.mutateAsync({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note, rentInvoice: rentInvoiceOf(staffId) });
+  // Dòng lương đang hiện của một người: hoá đơn tiền phòng (trả lương tự gạch nợ / cấn trừ) và phần
+  // lợi nhuận của cổ đông (báo giá sổ tổng trước khi lập phiếu). Không thấy dòng ⇒ dừng, không đoán.
+  const salaryRowOf = (staffId: string): SalManager => {
+    const m = managers.find((x) => x.id === staffId);
+    if (!m) throw new FinancialWorkflowError("Không thấy dòng lương của người nhận — tải lại bảng lương rồi lập lại phiếu.", "failure", []);
+    return m;
+  };
+  const onPayout = async (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string, choice?: SalaryPayoutChoice) => {
+    const m = salaryRowOf(staffId);
+    const result = await payout.mutateAsync({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note, rentInvoice: m.roomRentInvoice, profitQuote: salaryProfitQuoteFor(m, choice) });
     const feedback = createdVoucherFeedback(result);
     toast[feedback.kind](`${feedback.message} Người nhận: ${staffName}.`);
     return result;
   };
+  // Trả hàng loạt: từng người báo giá rồi lập phiếu tuần tự (phần đầu tư = trả hết phần chưa trả).
   const onBulkPayout = async (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => {
     const completed: {id: string; label: string}[] = [];
     const failures: string[] = [];
@@ -237,7 +244,8 @@ export default function ManagerSalaryPage() {
     let uncertain = false;
     for (const row of rows) {
       try {
-        const result = await payout.mutateAsync({ownerId, staffId:row.staffId, staffName:row.staffName, periodMonth, amount:row.amount, account_id:accountId, voucher_date:today(), note:`Lương ${period.label}/${period.year}`, rentInvoice:rentInvoiceOf(row.staffId)});
+        const m = salaryRowOf(row.staffId);
+        const result = await payout.mutateAsync({ownerId, staffId:row.staffId, staffName:row.staffName, periodMonth, amount:row.amount, account_id:accountId, voucher_date:today(), note:`Lương ${period.label}/${period.year}`, rentInvoice:m.roomRentInvoice, profitQuote:salaryProfitQuoteFor(m)});
         if (result.approval_status === 'UNAPPROVED') pending++;
         createdCount++;
         completed.push({id:result.id,label:`${row.staffName}: ${createdVoucherFeedback(result).message}`});

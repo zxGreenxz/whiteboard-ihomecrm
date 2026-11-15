@@ -87,7 +87,54 @@ export interface SalCommissionItem {
   /** Chỉ có ở commissionFlagged: phần của kỳ này đã tính vào lương người khác. */
   includedElsewhere?: { staffId: string; period: string } | null;
 }
-export interface SalAdvanceItem { date: string; label: string; amount: number; }
+/**
+ * Loại khoản trừ trong nhóm "ứng": ứng lương (mặc định khi thiếu), trừ tạm ứng lợi nhuận (D của
+ * sổ tổng — chỉ trong phần lợi nhuận đầu tư của tháng), hoặc phần đầu tư của tháng nằm trong mốc
+ * "đã trả đủ" (đã trả ngoài lương, không chuyển lại). Cả ba cùng vào `advance` ⇒ `advances_total`
+ * lúc chốt: máy chủ đòi take_home = gross − advances_total − room_rent − HH sổ thật.
+ */
+export type SalAdvanceKind = "SALARY_ADVANCE" | "PROFIT_ADVANCE" | "PROFIT_MARKER";
+export interface SalAdvanceItem { date: string; label: string; amount: number; kind?: SalAdvanceKind; }
+/** Một phiếu lương đã gắn (hoặc đang chờ chủ xem lại) phần lợi nhuận của tháng — E12 paid_lines. */
+export interface SalProfitLine {
+  lineId: string;
+  voucherId: string | null;
+  voucherCode: string | null;
+  voucherLive: boolean;
+  investment: number;
+  advanceOffset: number;
+  state: "LINKED" | "NEEDS_REVIEW";
+}
+/**
+ * Phần lợi nhuận của lương do máy chủ tính (E12 salary_profit_inputs_v1). Chỉ có khi nhân viên là
+ * cổ đông; nhân viên thường mang `profit: null` và bảng lương chạy y như trước.
+ */
+export interface SalProfitInfo {
+  sheetStatus: "LOCKED" | "DRAFT" | "NONE";
+  /** Y_m: dòng "Lợi nhuận đầu tư" máy chủ tính (bảng đã chốt = số đã chốt). */
+  investmentMonth: number;
+  /** Tháng nằm trong mốc "đã trả đủ": phần đầu tư không trả lại qua lương. */
+  settledByMarker: boolean;
+  markerThrough: string | null;
+  /** ΣY / ΣD của các phiếu lương còn sống đã gắn. */
+  paidInvestment: number;
+  paidOffset: number;
+  /** D_m của tháng theo máy chủ. */
+  advanceOffsetMonth: number;
+  /** Bảng đã chốt không gồm phần trừ đã trừ ở phiếu trước — phiếu sau sẽ "cần chủ xem lại". */
+  offsetConflict: boolean;
+  /** Bản đóng băng (chốt qua màn mới) khớp bảng lương đã chốt. */
+  settlementMatches: boolean;
+  /** Dòng phiếu lương cần chủ xem lại — mọi kỳ của cổ đông (chặn chi lợi nhuận, không chặn lương). */
+  needsReviewCount: number;
+  paidLines: SalProfitLine[];
+  /** D đang trừ trong bảng lương này (đã cộng vào `advance`). */
+  advanceOffset: number;
+  /** Phần đầu tư đã trả theo mốc đang trừ (đã cộng vào `advance`). */
+  markerPaid: number;
+  /** Bảng chốt trước mốc: thực nhận đã chốt còn gồm phần đầu tư — phải mở chốt rồi chốt lại mới trả. */
+  relockForMarker: boolean;
+}
 export interface SalStats { jobs: number; repairs: number; afterHour: number; workdays: number; streak: number; }
 export interface SalTrendPoint { label: string; gross: number; takehome: number; paidOn?: string; current?: boolean; }
 
@@ -145,6 +192,8 @@ export interface SalManager {
   overrides?: Record<string, SalAppliedOverride>;
   /** Ngày công và chuỗi theo engine v5 của kỳ; null khi kỳ tính theo luật cũ. Chỉ để hiển thị. */
   v5?: SalV5Info | null;
+  /** Phần lợi nhuận theo sổ tổng (E12); null/thiếu = không phải cổ đông. */
+  profit?: SalProfitInfo | null;
 }
 
 export interface SalV5Info {
@@ -309,6 +358,8 @@ export function salCalc(
   // Hoa hồng đã/sẽ chi từ sổ thật: là thu nhập (có trong gross) nhưng tiền đã ra từ
   // sổ đó — trừ như tiền ứng, kẻo chuyển lần hai qua lương.
   const paidElsewhere = commissionPaidElsewhere(m.commissionItems);
+  // `advance` của cổ đông đã gồm phần trừ tạm ứng lợi nhuận (D) và phần đầu tư đã trả theo mốc
+  // (withSalaryProfit, lib/salaryProfit.ts): thực nhận trừ cả hai, tổng lương (gross) giữ nguyên.
   const takehome = gross - m.advance - m.roomRent - paidElsewhere;
   return { autoSum, adjSum, bonus, gross, takehome };
 }

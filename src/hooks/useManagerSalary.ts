@@ -5,7 +5,7 @@ import { FinancialWorkflowError, workflowErrorMessage, type FinancialWorkflowPro
 import { readCreatedVoucherReceipt } from "@/lib/createdVoucherReceipt";
 import { createdVoucherFeedback } from "@/lib/voucherFeedback";
 import { readSalarySourceParts, salaryBridgeRequired } from '@/lib/rentSupportSalary';
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -42,6 +42,14 @@ import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
 import { withOrgAll } from "@/lib/orgPayload";
 import { applySalaryExtras } from "@/lib/salaryOverrides";
 import { EMPTY_SALARY_EXTRAS, fetchSalaryExtras, type SalaryExtras } from "@/hooks/useSalaryExtras";
+import {
+  fetchSalaryProfitInputs, freezeSalaryProfitSettlement, quoteSalaryProfitPayout, salaryFreezeKey, salaryQuoteKey,
+} from "@/lib/profitLedger/salaryProfitApi";
+import type { SalaryFreezeResult, SalaryProfitStaff, SalaryQuoteResult } from "@/lib/profitLedger/salaryReaders";
+import {
+  SalaryProfitStopError, investmentByFromProfit, salaryFreezePlanFor, salaryFreezeProblem, salaryProfitFailure,
+  salaryQuoteProblem, salaryVoucherTotal, withSalaryProfit, type SalaryProfitQuoteSelection,
+} from "@/lib/salaryProfit";
 
 export interface SalPeriod {
   periodMonth: string; // YYYY-MM-01
@@ -192,10 +200,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         profilesRes,
         ledgerRes,
         monthlyRes,
-        shRes,
-        pmRes,
+        profitInputs,
         ieRes,
-        buildingsRes,
         trendRes,
         extras,
       ] = await Promise.all([
@@ -204,8 +210,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: đọc salary_monthly của kỳ)
         (supabase.from("salary_monthly").select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
         // hermes-parity:end w2c-salary-locked
-        (supabase.from("shareholders").select("id, auth_user_id") as any).in("auth_user_id", staffIds),
-        (supabase.from("profit_monthly").select("status, period_month") as any).eq("period_month", periodMonth),
+        // Phần lợi nhuận đầu tư do máy chủ đưa (E12): cổ đông, phân bổ toà đã chốt, mốc "đã trả đủ",
+        // tạm ứng cần trừ, phiếu lương đã gắn. Không đọc thẳng bảng cổ đông / lợi nhuận nữa.
+        fetchSalaryProfitInputs(periodMonth, staffIds),
         (supabase
           .from("income_expenses")
           .select("id, salary_staff_id, salary_role, name, total_amount, approval_status, voucher_date") as any)
@@ -214,7 +221,6 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           .is("deleted_at", null)
           .gte("voucher_date", start)
           .lte("voucher_date", end),
-        (supabase.from("buildings").select("id, name, code") as any),
         (supabase
           .from("salary_monthly")
           .select("staff_id, period_month, gross_total, take_home, status, locked_at") as any)
@@ -224,7 +230,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         // Khoản định kỳ + số ghi đè (super admin / chủ công ty). Server đã lọc mốc chốt kỳ.
         fetchSalaryExtras(configs.map((c) => c.organization_id), periodMonth),
       ]);
-      for (const result of [profilesRes, ledgerRes, monthlyRes, shRes, pmRes, ieRes, buildingsRes, trendRes]) {
+      for (const result of [profilesRes, ledgerRes, monthlyRes, ieRes, trendRes]) {
         if (result.error) throw result.error;
         requireSalaryRows(result.data);
       }
@@ -232,14 +238,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const nameById = new Map<string, string>(
         ((profilesRes.data || []) as any[]).map((p) => [p.id, p.full_name])
       );
-      const shByStaff = new Map<string, string>(
-        ((shRes.data || []) as any[]).map((s) => [s.auth_user_id, s.id])
-      );
-      const shIds = [...shByStaff.values()];
-      const anyProfitDraft = ((pmRes.data || []) as any[]).some((r) => r.status === "DRAFT");
-      const bldName = new Map<string, string>(
-        ((buildingsRes.data || []) as any[]).map((b) => [b.id, b.code || b.name])
-      );
+      // Bộ đọc E12 đã kiểm: đúng mỗi nhân viên được hỏi một dòng, số tiền đọc chặt.
+      const profitByStaff = new Map<string, SalaryProfitStaff>(profitInputs.staff.map((s) => [s.staff_id, s]));
 
       // HH Sale: phiếu chi hoa hồng (loại "Hoa hồng môi giới"/"HHMG"/category HOA HỒNG)
       // kỳ phân bổ (item.start_date) trong tháng, của quản lý nào thì xác định bằng ô QL
@@ -296,20 +296,6 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             [...voucherMap.values()], meta, aliasToStaff, new Set(staffIds), periodMonth,
           )) commByStaff.set(staff, entry);
         }
-      }
-
-      // allocations (đầu tư) cho tháng — chỉ khi có cổ đông
-      let allocs: any[] = [];
-      if (shIds.length) {
-        const { data: aRaw , error: sourceError3 } = await (supabase
-          .from("profit_allocations")
-          .select("shareholder_id, amount, pm:profit_monthly_id(period_month, building_id, status)") as any)
-          .in("shareholder_id", shIds);
-        if (sourceError3) throw sourceError3;
-      requireSalaryRows(aRaw);
-        allocs = ((aRaw || []) as any[]).filter(
-          (a) => a.pm?.period_month === periodMonth && a.pm?.status === "LOCKED"
-        );
       }
 
       const ledgerAll: SalLedgerRow[] = ((ledgerRes.data || []) as any[]).map((r) => ({
@@ -474,12 +460,13 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         let bonusAuto = buildBonusAuto(ledger);
         const adjustments = mRow ? adjByMonthly.get(mRow.id) || [] : [];
 
-        // đầu tư
-        const myAllocs = allocs.filter((a) => a.shareholder_id === shByStaff.get(staff));
-        const investment = myAllocs.reduce((s, a) => s + num(a.amount), 0);
-        const investmentBy = myAllocs.map((a) => ({ b: bldName.get(a.pm?.building_id) || "—", amount: num(a.amount) }));
-        const hasSh = shByStaff.has(staff);
-        const pending = hasSh && investment === 0 && anyProfitDraft;
+        // đầu tư: phân bổ các toà ĐÃ CHỐT lợi nhuận kỳ này (E12); "chưa chốt" khi công ty của
+        // người này còn toà chưa chốt và chưa có phần nào.
+        const staffProfit = profitByStaff.get(staff) ?? null;
+        const investmentBy = investmentByFromProfit(staffProfit);
+        const investment = investmentBy.reduce((s, a) => s + a.amount, 0);
+        const hasSh = staffProfit?.shareholder_id != null;
+        const pending = hasSh && investment === 0 && staffProfit?.profit_draft === true;
 
         // HH Sale (commByStaff): cả phiếu đã duyệt lẫn chờ duyệt; phiếu đã tính ở kỳ/người
         // khác nằm ở flagged (gạch, không cộng). Tháng ĐÃ CHỐT: dùng số đã đóng băng.
@@ -593,7 +580,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         };
         // Gắn khoản định kỳ + số ghi đè TRƯỚC salCalc ⇒ thực nhận, chốt kỳ và phiếu chi
         // đều dùng số đã sửa. Kỳ đã chốt: calc vẫn đọc số đóng băng bên dưới.
-        const m = applySalaryExtras(m0, extras.recurring, extras.overrides);
+        // Rồi phần sổ tổng của cổ đông (sau ghi đè, trước salCalc): trừ tạm ứng lợi nhuận và phần
+        // đầu tư đã trả theo mốc vào `advance`. Nhân viên thường: chỉ thêm `profit: null`.
+        const m = withSalaryProfit(applySalaryExtras(m0, extras.recurring, extras.overrides), staffProfit);
 
         // calc: chốt → số đã đóng băng; nháp → tính live
         // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: gross/thực nhận đã chốt)
@@ -843,6 +832,35 @@ export const useToggleJobExcluded = () => {
   });
 };
 
+/**
+ * E13 cho từng cổ đông có dòng lương CHƯA chốt, NGAY TRƯỚC mọi nhánh chốt (canonical lẫn lùi legacy):
+ * máy chủ đóng băng Y_m + D_m + thực nhận sẽ chốt. Số trả về lệch số đang chốt ⇒ dừng, KHÔNG chốt.
+ * Không ghi vào progress.completed: bản đóng băng chưa kèm chốt lương là vô hại (lần chốt sau huỷ
+ * và đóng băng lại), nên lỗi ở bước này là từ chối chắc chắn, lần bấm sau dùng khoá mới.
+ */
+async function freezeShareholderSalaries(managers: SalManager[], periodMonth: string, progress: FinancialWorkflowProgress): Promise<void> {
+  for (const m of managers) {
+    const plan = salaryFreezePlanFor(m);
+    if (!plan) continue;
+    progress.stage = `chốt phần lợi nhuận trong lương của ${m.name}`;
+    let result: SalaryFreezeResult;
+    try {
+      result = await freezeSalaryProfitSettlement({
+        staffId: m.id, periodMonth, ...plan, idempotencyKey: salaryFreezeKey(progress.requestKey, m.id),
+      });
+    } catch (error) {
+      throw salaryProfitFailure(error, "salary_freeze", m.name);
+    }
+    const problem = salaryFreezeProblem(m, plan, result);
+    if (problem) throw problem;
+  }
+}
+
+/** Số lợi nhuận vừa đổi dưới tay ⇒ tải lại bảng lương để người dùng thấy số mới trước khi bấm lại. */
+const reloadSalaryOnProfitChange = (qc: QueryClient, error: unknown) => {
+  if (error instanceof SalaryProfitStopError && error.reload) qc.invalidateQueries({ queryKey: ["manager-salary"] });
+};
+
 // Chốt tháng: upsert salary_monthly LOCKED (đóng băng số) + snapshot bảng kê.
 export const useLockSalaryMonth = () => {
   const qc = useQueryClient();
@@ -853,6 +871,9 @@ export const useLockSalaryMonth = () => {
       const user = await getSessionUser();
       if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       const nowIso = new Date().toISOString();
+
+      // Sổ tổng: đóng băng phần lợi nhuận của cổ đông TRƯỚC cả hai nhánh chốt bên dưới.
+      await freezeShareholderSalaries(managers, periodMonth, progress);
 
       // Canonical lock_salary_month_v1: server ATOMIC + 2 guard (D2b) — chặn khi
       // lợi nhuận tháng chưa chốt (phần đầu tư), và liệt kê phiếu HH thiếu sổ quỹ.
@@ -1001,6 +1022,7 @@ export const useLockSalaryMonth = () => {
       }
       return {count:managers.length};
     }),
+    onError: (error: unknown) => reloadSalaryOnProfitChange(qc, error),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       invalidateProfitLedgerQueries(qc);
@@ -1084,7 +1106,40 @@ export interface SalaryPayoutInput {
     buildingId: string | null;
     contractId: string | null;
     amount: number; // tiền phòng khấu trừ (total_amount hoá đơn)
+    /** Nợ còn của hoá đơn lúc tải bảng lương — máy chủ kẹp tiền phòng theo số này. */
+    remaining?: number | null;
   } | null;
+  /**
+   * Phần lợi nhuận của phiếu (LUỸ KẾ của tháng) khi người nhận là cổ đông — dựng bằng
+   * salaryProfitQuoteFor. Có ⇒ báo giá E15 với ĐÚNG khoá của salary_payout_v1 ngay trước khi lập
+   * phiếu. null/thiếu = nhân viên thường: trả như cũ, không báo giá.
+   */
+  profitQuote?: SalaryProfitQuoteSelection | null;
+}
+
+/**
+ * E15 ngay trước MỌI nhánh lập phiếu lương (canonical lẫn lùi legacy), cùng người gọi, khoá trả
+ * lương = `progress.requestKey` (đúng p_idempotency_key gửi salary_payout_v1), khoá báo giá MỚI mỗi
+ * lần. Lỗi / báo trước "cần xem lại" ⇒ dừng, CHƯA lập phiếu. Báo giá mồ côi vô hại (lần sau huỷ).
+ */
+async function quoteShareholderPayout(input: SalaryPayoutInput, selection: SalaryProfitQuoteSelection, progress: FinancialWorkflowProgress): Promise<void> {
+  progress.stage = `ghi trước phần lợi nhuận trong phiếu lương của ${input.staffName}`;
+  let quote: SalaryQuoteResult;
+  try {
+    quote = await quoteSalaryProfitPayout({
+      staffId: input.staffId,
+      periodMonth: input.periodMonth,
+      investmentSelected: selection.investmentSelected,
+      offsetSelected: selection.offsetSelected,
+      expectedVoucherAmount: salaryVoucherTotal(input.amount, input.rentInvoice),
+      payoutKey: progress.requestKey,
+      idempotencyKey: salaryQuoteKey(progress.requestKey),
+    });
+  } catch (error) {
+    throw salaryProfitFailure(error, "salary_quote", input.staffName);
+  }
+  const problem = salaryQuoteProblem(quote, input.staffName);
+  if (problem) throw problem;
 }
 
 function requireSalaryVoucherState(receipt:{approval_status:string|null;posting_status:string|null}):void {
@@ -1101,6 +1156,9 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       if (!user) throw {code:"PGRST301",message:"Not authenticated"};
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string = meta.full_name || meta.name || user.email || "Người dùng";
+
+      // Sổ tổng: cổ đông ⇒ báo giá phần lợi nhuận của phiếu TRƯỚC cả hai nhánh lập phiếu bên dưới.
+      if (input.profitQuote) await quoteShareholderPayout(input, input.profitQuote, progress);
 
       // Canonical salary_payout_v1 (t5_12): ATOMIC toàn chuỗi — phiếu chi (tách
       // 2 dòng khi gạch nợ) + payment CT + phiếu thu đối ứng + stamp payout_voucher,
@@ -1366,6 +1424,7 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       requireSalaryVoucherState(receipt);
       return receipt;
     }),
+    onError: (error: unknown) => reloadSalaryOnProfitChange(qc, error),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       qc.invalidateQueries({ queryKey: ["salary-pending-payouts"] });

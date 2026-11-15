@@ -23,6 +23,7 @@ import type { V5Plan } from "@/lib/salarySelfSummary";
 import { leaveActionErrorMessage, usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
 import { isUnqualifiedContractRow, type SalManager, type SalAdjustment, type SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
+import { profitDeductionsOf, salaryProfitPayoutBlock, type SalaryPayoutChoice } from "@/lib/salaryProfit";
 
 // Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
 // sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
@@ -40,7 +41,8 @@ interface AdminMobileProps {
   canManageSalary: boolean;
   onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => Promise<unknown> | void;
   onRemoveAdjustment: (adjId: string) => void;
-  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => Promise<unknown> | void;
+  /** Điện thoại không có ô chọn từng khoản ⇒ không gửi `choice`: phần lợi nhuận trả hết phần chưa trả. */
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string, choice?: SalaryPayoutChoice) => Promise<unknown> | void;
   onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => Promise<unknown> | void;
   onLock: () => Promise<unknown> | void;
   onUnlock: () => Promise<unknown> | void;
@@ -494,6 +496,9 @@ function BreakdownSheet({ m, canPay, locked, onClose, onPayout, onAdjust, onGoLo
   const c = m.calc!;
   const t = avaTone(m);
   const remain = remainOf(m);
+  // Cổ đông: "ứng" của bảng đã gồm trừ tạm ứng lợi nhuận và phần đầu tư đã trả theo mốc — tách dòng.
+  const { offset: profitOffset, marker: markerPaid } = profitDeductionsOf(m);
+  const profitBlock = salaryProfitPayoutBlock(m);
   return (
     <Sheet onClose={onClose}>
       <div className="flex items-center gap-2.5 mb-3.5">
@@ -509,7 +514,9 @@ function BreakdownSheet({ m, canPay, locked, onClose, onPayout, onAdjust, onGoLo
       <DRow label="Thưởng việc" amount={c.bonus} color="#FFD23F" />
       <DRow label="Lợi nhuận đầu tư" amount={m.investment} color="#34D399" />
       <DRow label="Hoa hồng Sale" amount={m.commission} color="#C4B5FD" />
-      <DRow label="Đã ứng" amount={m.advance} neg />
+      <DRow label="Đã ứng" amount={m.advance - profitOffset - markerPaid} neg />
+      {profitOffset !== 0 && <DRow label="Trừ tạm ứng lợi nhuận" amount={profitOffset} neg />}
+      {markerPaid !== 0 && <DRow label="Lợi nhuận đã trả theo mốc" amount={markerPaid} neg />}
       <DRow label="Tiền phòng" amount={m.roomRent} neg />
       <div className="flex items-center justify-between mt-3 px-4 py-3.5 rounded-[16px]" style={{ background: "rgba(255,210,63,.1)", border: "1px solid rgba(255,210,63,.25)" }}>
         <span className="text-[13px] font-bold text-[#EDEAF7]">Thực nhận{remain !== c.takehome ? ` · còn ${salShort(remain)}` : ""}</span>
@@ -523,7 +530,12 @@ function BreakdownSheet({ m, canPay, locked, onClose, onPayout, onAdjust, onGoLo
             style={{ background: "#17132A", border: "1px solid #322A55", color: "#EDEAF7" }}><Gift size={14} />Thưởng / trừ</button>
         )}
       </div>
-      {canPay && remain > 0 && (
+      {profitBlock && (
+        <div role="alert" className="mt-2.5 flex items-start gap-2 rounded-[13px] px-3 py-2.5 text-[12px]" style={{ background: "rgba(255,122,160,.12)", color: "#FFB3C6" }}>
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />{profitBlock}
+        </div>
+      )}
+      {canPay && remain > 0 && !profitBlock && (
         <button onClick={onPayout} className="w-full mt-2.5 inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[13px] py-3.5"
           style={{ color: "#17132A", background: "#FFD23F", border: "none" }}><HandCoins size={16} />Trả lương</button>
       )}

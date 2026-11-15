@@ -43,6 +43,7 @@
         "src/hooks/useReconciliations.ts",
         "src/hooks/useShareholderProfit.ts",
         "src/hooks/useManagerSalary.ts",
+        "src/lib/salaryProfit.ts",
         "src/hooks/salary-v5/**",
         "src/hooks/profit-ledger/**",
         "src/hooks/useCashFlowProfitPayouts.ts",
