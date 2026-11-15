@@ -28,6 +28,14 @@ describe("quyền sổ tổng lợi nhuận cổ đông", () => {
     expect(trang.features.filter((ft) => ft.tier === "view").map((ft) => ft.action)).toEqual(["view"]);
   });
 
+  it("mô tả xem số toà nói rõ: kèm quyền dòng tiền thì thấy cột TỔNG chi chia lợi nhuận (mọi cổ đông + lương điều hành)", () => {
+    // cashbook_cash_flow_profit_payout_v1 nhận view_building_totals toàn công ty — số là tổng của cả công ty,
+    // không chỉ phần của người được cấp; người cấp quyền phải đọc được điều đó ở màn phân quyền.
+    const desc = trang.features.find((ft) => ft.action === "view_building_totals")?.desc ?? "";
+    expect(desc).toContain("Kèm quyền xem báo cáo dòng tiền");
+    expect(desc).toContain("cột tổng chi chia lợi nhuận theo tháng / toà (cộng của mọi cổ đông và lương điều hành)");
+  });
+
   it("nút 'Chỉ xem' của trang và preset 'chỉ xem' / 'quản lý' KHÔNG bật ba khoá", () => {
     const chiXem = setPageViewOnly(setPageAll(buildEmptyPermissions(), trang, true), trang);
     for (const ft of trang.features) expect(featureValue(chiXem, ft), ft.action).toBe(ft.action === "view");

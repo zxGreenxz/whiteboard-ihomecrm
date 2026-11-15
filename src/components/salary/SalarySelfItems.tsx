@@ -258,11 +258,20 @@ export default function SalarySelfItems({ m, summary, streak, compact, initialOp
       chip: { t: "Cấn trừ", tone: "danger" },
       trace: [["Hoá đơn", r.label], ["Cách trừ", m.roomRentInvoice ? "Trừ thẳng vào hoá đơn phòng, không chuyển khoản phần này" : "Trừ theo mức cố định trong cấu hình lương"], ["Ảnh hưởng", "Giảm tiền nhận — không giảm tổng thu nhập"]],
     }));
-    m.advanceItems.forEach((a, i) => out.push({
-      id: "ded:adv:" + i, g: "ded", label: a.label, why: `Ứng ngày ${a.date} · đã nhận, trừ vào lương kỳ`, amount: -a.amount, kind: "trace",
-      chip: { t: "Đã ứng", tone: "neutral" },
-      trace: [["Ngày ứng", a.date], ["Ảnh hưởng", "Đã nhận trước — trừ khỏi tiền nhận kỳ này"]],
-    }));
+    m.advanceItems.forEach((a, i) => out.push(
+      a.kind === "PROFIT_ADVANCE" ? {
+        id: "ded:adv:" + i, g: "ded", label: a.label, why: "Đang tạm ứng lợi nhuận — trừ trong phần lợi nhuận đầu tư tháng này", amount: -a.amount, kind: "trace",
+        chip: { t: "Tạm ứng LN", tone: "warning" },
+        trace: [["Cách trừ", "Chỉ trừ trong phần lợi nhuận đầu tư của tháng — lương cơ bản không bị trừ"], ["Phần còn lại", "Tạm ứng chưa trừ hết tự chuyển sang tháng sau"]],
+      } : a.kind === "PROFIT_MARKER" ? {
+        id: "ded:adv:" + i, g: "ded", label: a.label, why: "Phần đầu tư tháng này đã trả trước mốc \"đã trả đủ\" — không chuyển lại", amount: -a.amount, kind: "trace",
+        chip: { t: "Đã trả theo mốc", tone: "neutral" },
+        trace: [["Ảnh hưởng", "Vẫn tính vào tổng thu nhập — chỉ tiền nhận giảm phần đã trả"]],
+      } : {
+        id: "ded:adv:" + i, g: "ded", label: a.label, why: `Ứng ngày ${a.date} · đã nhận, trừ vào lương kỳ`, amount: -a.amount, kind: "trace",
+        chip: { t: "Đã ứng", tone: "neutral" },
+        trace: [["Ngày ứng", a.date], ["Ảnh hưởng", "Đã nhận trước — trừ khỏi tiền nhận kỳ này"]],
+      }));
     if (summary.paidOut > 0) out.push({
       id: "ded:book", g: "ded", label: "Hoa hồng đã chi từ sổ quỹ", why: "Đã nhận khi duyệt phiếu hoa hồng — không chuyển lại qua lương", amount: -summary.paidOut, kind: "trace",
       chip: { t: "Đã chi từ sổ", tone: "neutral" },

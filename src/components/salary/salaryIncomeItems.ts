@@ -5,6 +5,7 @@
 import { fundLinesOf, isSupplementaryLabel } from "@/lib/salaryFundReport";
 import type { SalAdjustment, SalAppliedOverride, SalManager } from "@/lib/managerSalary";
 import { RECURRING_CATEGORY_LABEL, RECURRING_SOURCE_LABEL } from "@/lib/salaryRecurring";
+import { investmentPayState, salaryMonthLabel } from "@/lib/salaryProfit";
 import type { ChipTone } from "./salaryFundUi";
 import { salFmt } from "./salaryFormat";
 
@@ -37,6 +38,35 @@ export interface IncomeItem {
   /** Phiếu HH chờ duyệt ở sổ thật — có thể gán quản lý để chuyển sang trả qua lương. */
   assignVoucherId?: string;
   assignVersion?: number;
+  /**
+   * Dòng đầu tư của tháng nằm trong mốc "đã trả đủ": luôn đi kèm (không bỏ chọn được) vì phần trừ
+   * tương ứng ("Lợi nhuận đã trả theo mốc") đã nằm trong khoản trừ — bỏ chọn sẽ trừ hai lần.
+   */
+  markerPaid?: boolean;
+}
+
+/** Nhãn trạng thái trả phần đầu tư của tháng (cổ đông, theo sổ tổng). null = không phải cổ đông. */
+function investmentStatus(m: SalManager): { chip: IncomeItem["chip"] | null; text: string } | null {
+  const st = investmentPayState(m);
+  if (!st) return null;
+  switch (st.kind) {
+    case "MARKER": {
+      const through = salaryMonthLabel(st.through);
+      const inMarker = `Tháng nằm trong mốc "đã trả đủ${through ? ` đến hết ${through}` : ""}"`;
+      // Chỉ phần đầu tư DƯƠNG mới "đã trả" ngoài lương; tháng âm/bằng 0 vẫn tính vào lương như cũ.
+      return (m.profit?.markerPaid ?? 0) !== 0 || m.profit?.relockForMarker
+        ? { chip: { t: "Đã trả theo mốc", tone: "neutral" }, text: `${inMarker} — không trả lại qua lương` }
+        : { chip: null, text: inMarker };
+    }
+    case "REVIEW":
+      return { chip: { t: "Cần chủ xem lại", tone: "warning" }, text: `Cần chủ xem lại phần lợi nhuận ở phiếu ${st.codes.join(", ")}` };
+    case "PAID":
+      return { chip: { t: "Đã trả qua lương", tone: "success" }, text: `Đã trả qua phiếu ${st.codes.join(", ")}` };
+    case "PARTIAL":
+      return { chip: null, text: `Đã trả ${salFmt(st.paid)} qua phiếu ${st.codes.join(", ")}` };
+    default:
+      return { chip: null, text: "Chưa trả qua phiếu lương nào" };
+  }
 }
 
 // Dòng đã sửa tay: chip, dòng mô tả và các bước căn cứ hiện số máy tính + lý do.
@@ -160,14 +190,27 @@ export function incomeItemsOf(m: SalManager): IncomeItem[] {
       trace: [["Trạng thái", "Lợi nhuận tòa chưa chốt"], ["Nguồn chịu tiền", INCOME_GROUP.dh.src]],
     });
   } else {
+    // Cổ đông: trạng thái trả phần đầu tư của tháng (sổ tổng). Tháng trong mốc mà phần đầu tư đã
+    // vào khoản trừ ("đã trả theo mốc") ⇒ dòng luôn đi kèm, không chọn trả được.
+    const status = investmentStatus(m);
+    const markerPaid = (m.profit?.markerPaid ?? 0) !== 0;
+    const relock = m.profit?.relockForMarker === true;
     m.investmentBy.forEach((a, i) => {
       const key = "dh:" + a.b;
-      out.push(withOverride({
+      const base: IncomeItem = withOverride({
         id: "dh:" + a.b + i, g: "dh", label: `${a.b} · lợi nhuận kỳ`, amount: a.amount, payable: a.amount !== 0, key,
         why: a.amount > 0 ? "Đã chốt · phân bổ theo thỏa thuận hiện hành" : "Đã chốt · phần phân bổ bằng 0",
         chip: a.amount > 0 ? { t: "Đã xác nhận", tone: "success" } : { t: "Đã chốt · bằng 0", tone: "neutral" },
         trace: [["Tòa", a.b], ["Lợi nhuận tòa", "Đã chốt"], ["Thỏa thuận", "Tỷ lệ đọc từ thỏa thuận tòa"], ["Nguồn chịu tiền", INCOME_GROUP.dh.src]],
-      }, m.overrides?.[key]));
+      }, m.overrides?.[key]);
+      if (!status) { out.push(base); return; }
+      out.push({
+        ...base,
+        why: `${base.why} · ${status.text}`,
+        chip: relock ? { t: "Cần chốt lại", tone: "warning" } : status.chip && !base.ovr ? status.chip : base.chip,
+        trace: [...base.trace, ["Trả phần đầu tư", status.text]],
+        markerPaid: markerPaid || undefined,
+      });
     });
   }
   return out;

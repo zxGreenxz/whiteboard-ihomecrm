@@ -8,6 +8,8 @@ import {
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
 import { useMyShareBuildings, type Shareholder } from "@/hooks/useShareholders";
+import { useMyProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { shareholderOrganizationId } from "@/lib/profitLedger/selfView";
 import {
   CARD,
   fmtShort,
@@ -16,20 +18,65 @@ import {
   YearMonthRow,
   uniformPercent,
 } from "./profitMobileShared";
+import { MyProfitLedgerGate } from "./MyProfitLedgerGate";
+import ShareholderLedgerSelfMobile from "./ShareholderLedgerSelfMobile";
+import type { ShareholderSelfAccess } from "./ShareholderLedgerSelfView";
 
 const ALL = "all";
 
 // Tab "Của tôi" MOBILE — cổ đông-partner tự xem phần lợi nhuận của mình.
-// Bản thu gọn của ShareholderSelfView (desktop), CÙNG hook/dữ liệu (RLS tự lọc
-// về đúng cổ đông đang đăng nhập) — thiết kế ProfitMobileC · "C · Của tôi".
+// Bộ định tuyến Đợt 2 (cùng luật bản máy tính ShareholderSelfView): hỏi sổ tổng (E3) trước;
+// `ready` ⇒ màn sổ tổng; công tắc còn tắt ⇒ THÂN CŨ bên dưới (chỉ mount khi đã biết, giữ tới Đợt 3);
+// máy chủ nói không xem được ⇒ không hiện số nào.
 export default function ShareholderSelfMobile({
   me,
   year,
   onYearChange,
+  canViewPercent,
+  canViewBuildingTotals,
+  canAdvanceOwn,
 }: {
   me: Shareholder;
   year: number;
   onYearChange: (y: number) => void;
+} & ShareholderSelfAccess) {
+  const organizationId = shareholderOrganizationId(me);
+  const ledgerQuery = useMyProfitLedger(organizationId);
+  return (
+    <MyProfitLedgerGate
+      organizationId={organizationId}
+      query={ledgerQuery}
+      hiddenText="Bạn chưa xem được phần lợi nhuận của mình ở công ty này — liên hệ chủ công ty."
+    >
+      {(ledger) =>
+        ledger.ready ? (
+          <ShareholderLedgerSelfMobile
+            ledger={ledger}
+            access={{ canViewPercent, canViewBuildingTotals, canAdvanceOwn }}
+            year={year}
+            onYearChange={onYearChange}
+          />
+        ) : (
+          <LegacyShareholderSelfMobile me={me} year={year} onYearChange={onYearChange} canViewPercent={canViewPercent} />
+        )
+      }
+    </MyProfitLedgerGate>
+  );
+}
+
+// THÂN CŨ (công tắc sổ tổng còn tắt) — bản thu gọn của thân cũ ShareholderSelfView, CÙNG hook/dữ liệu
+// (RLS tự lọc về đúng cổ đông đang đăng nhập) — thiết kế ProfitMobileC · "C · Của tôi". Đợt 2: dòng
+// "tỷ lệ X%" chỉ khi chủ cấp quyền xem tỷ lệ. Đợt 3 (D3.14) xoá.
+function LegacyShareholderSelfMobile({
+  me,
+  year,
+  onYearChange,
+  canViewPercent,
+}: {
+  me: Shareholder;
+  year: number;
+  onYearChange: (y: number) => void;
+  canViewPercent: boolean;
 }) {
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const allocationsQuery = useProfitAllocations();
@@ -120,7 +167,8 @@ export default function ShareholderSelfMobile({
   );
 
   const scopeMonthLabel = month === ALL ? `năm ${year}` : `T${month}/${year}`;
-  const pct = uniformPercent(allocations);
+  // Tỷ lệ % cổ phần chỉ khi được cấp quyền xem tỷ lệ (bảng phân bổ vẫn mang % — Đợt 3 chặn ở máy chủ).
+  const pct = canViewPercent ? uniformPercent(allocations) : null;
   const initial = (me.name || "?").trim().charAt(0).toUpperCase();
 
   const kpiVal = "font-mono font-bold text-[17px] tracking-[-0.4px] mt-1 whitespace-nowrap leading-none";

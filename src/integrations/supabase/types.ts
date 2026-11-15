@@ -22625,6 +22625,20 @@ export type Database = {
         Args: { p_as_of?: string; p_cashbook: string }
         Returns: number
       }
+      cashbook_cash_flow_profit_payout_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_year: number
+        }
+        Returns: {
+          building_id: string
+          manager_payout: number
+          organization_id: string
+          period: string
+          shareholder_payout: number
+        }[]
+      }
       cashbook_cash_flow_v1: {
         Args: {
           p_building_ids?: string[]

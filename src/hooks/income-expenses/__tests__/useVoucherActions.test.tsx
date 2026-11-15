@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   flexRows: {} as Record<string, unknown>,
   incomeRows: {} as Record<string, unknown>,
   accounts: [] as Array<{ id: string; name: string; is_virtual: boolean }> | undefined,
+  books: [] as Array<{ id: string; name: string }>,
 }));
 const mutation = (fn: ReturnType<typeof vi.fn>) => ({ mutateAsync: fn, mutate: fn, isPending: false });
 
@@ -46,7 +47,7 @@ vi.mock('@/hooks/income-expenses/financeV2Mutations', () => ({
   useApproveAndPostIncomeExpenseV2: () => mutation(m.approveAndPost),
   usePostApprovedIncomeExpenseV2: () => mutation(m.postApproved),
   useReversePostingV2: () => mutation(m.reverse),
-  useCustodianCashbooksV2: () => ({ data: [], isError: false, refetch: vi.fn() }),
+  useCustodianCashbooksV2: () => ({ data: m.books, isError: false, refetch: vi.fn() }),
   useAttachPostingEvidence: () => vi.fn(),
   useRemovePostingAttachment: () => vi.fn(),
 }));
@@ -90,6 +91,7 @@ beforeEach(() => {
   m.flexRows = {};
   m.incomeRows = {};
   m.accounts = [];
+  m.books = [];
 });
 
 const LY_DO = 'ghi nhầm số tiền';
@@ -306,5 +308,67 @@ describe('Hoàn tác / Duyệt và Chi / Chi phiếu đã duyệt / Huỷ cả �
     expect(result.current.dialogs.actionError).toMatch(/Đã huỷ 2 phiếu; 1 phiếu chưa hoàn tất/);
     expect(result.current.dialogs.blockedVoucherId).toBe('b-1');
     expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý do (E6)
+// và chỉ chi từ đúng sổ quỹ lúc lập (chốt F1 ACCOUNT_LOCKED).
+describe('Phiếu chi theo sổ tổng', () => {
+  const soTong = (p: Partial<IncomeExpenseWithRelations> = {}) => phieu({
+    system_source: 'profit.ledger_payout', code: 'PC-9', name: 'Chia lợi nhuận: Cổ đông 1', total_amount: 300,
+    account_name: 'Quỹ tiền mặt', ...p,
+  });
+
+  it('Huỷ ⇒ mở hộp sổ tổng với đúng trạng thái đang thấy; KHÔNG đi thang huỷ thường; hộp tính vào anyOpen', () => {
+    const v = soTong({ approval_status: 'APPROVED', posting_status: 'POSTED' });
+    const { result } = setup([]);
+    // Phiếu mở từ màn khác (không nằm trong `vouchers`): vẫn nhận ra nhờ phiếu đi kèm lời gọi.
+    act(() => result.current.cancel('v-1', 'EXPENSE', v));
+    expect(result.current.dialogs.cancel.target).toBeNull();
+    expect(result.current.dialogs.profitCancel.target).toEqual({
+      voucherId: 'v-1', organizationId: 'org-1', kind: 'SHAREHOLDER', code: 'PC-9', amount: 300,
+      approvalStatus: 'APPROVED', postingStatus: 'POSTED', subjectName: 'Chia lợi nhuận: Cổ đông 1', accountName: 'Quỹ tiền mặt',
+    });
+    expect(result.current.anyOpen).toBe(true);
+    act(() => result.current.dialogs.profitCancel.close());
+    expect(result.current.anyOpen).toBe(false);
+    expect(m.cancelFlex).not.toHaveBeenCalled();
+    expect(m.cancelLegacy).not.toHaveBeenCalled();
+  });
+
+  it('chỉ có mã phiếu (danh sách cũ gọi hai tham số) ⇒ tra trong trang; lương điều hành ⇒ MANAGER', () => {
+    const { result } = setup([soTong({ system_source: 'profit.manager_salary' })]);
+    act(() => result.current.cancel('v-1', 'EXPENSE'));
+    expect(result.current.dialogs.profitCancel.target?.kind).toBe('MANAGER');
+    expect(result.current.dialogs.cancel.target).toBeNull();
+  });
+
+  it('phiếu nguồn cũ (profit.distribution) vẫn đi thang huỷ thường', () => {
+    const { result } = setup([]);
+    act(() => result.current.cancel('v-1', 'EXPENSE', soTong({ system_source: 'profit.distribution' })));
+    expect(result.current.dialogs.cancel.target).toBe('v-1');
+    expect(result.current.dialogs.profitCancel.target).toBeNull();
+  });
+
+  it('huỷ xong (hộp báo onCancelled) ⇒ báo làm mới màn gọi', () => {
+    const { result, onChanged } = setup([]);
+    act(() => result.current.dialogs.profitCancel.onCancelled());
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('Chi phiếu đã duyệt: hộp Thu/Chi chỉ chào ĐÚNG sổ lúc lập; không giữ sổ đó ⇒ rỗng; phiếu thường chào mọi sổ đang giữ', () => {
+    m.books = [{ id: 'acc-1', name: 'Quỹ tiền mặt' }, { id: 'acc-2', name: 'Ngân hàng' }];
+    const daDuyet = soTong({ approval_status: 'APPROVED', posting_status: 'UNPOSTED' });
+    const { result } = setup([daDuyet]);
+    act(() => result.current.postApproved(daDuyet));
+    expect(result.current.dialogs.postApproved.cashbookLocked).toBe(true);
+    expect(result.current.dialogs.postApproved.cashbookOptions.map((b) => b.id)).toEqual(['acc-1']);
+    act(() => result.current.dialogs.postApproved.close());
+    act(() => result.current.postApproved({ ...daDuyet, account_id: 'acc-khac' }));
+    expect(result.current.dialogs.postApproved.cashbookOptions).toEqual([]);
+    act(() => result.current.dialogs.postApproved.close());
+    act(() => result.current.postApproved(phieu({ approval_status: 'APPROVED' })));
+    expect(result.current.dialogs.postApproved.cashbookLocked).toBe(false);
+    expect(result.current.dialogs.postApproved.cashbookOptions.map((b) => b.id)).toEqual(['acc-1', 'acc-2']);
   });
 });

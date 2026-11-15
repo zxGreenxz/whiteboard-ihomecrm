@@ -29,6 +29,7 @@ import {
   CopyPlus,
   BadgeCheck,
   CalendarX,
+  ClipboardCheck,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -75,7 +76,8 @@ interface Props {
   organizationIdHint?: string | null;
   /** Dòng danh sách vừa bấm: hiện ngay làm bản xem trước, nút khoá tới khi bản đọc mới về. */
   previewVoucher?: IncomeExpenseWithRelations | null;
-  onCancel?: (id: string, type?: string | null) => void;
+  /** Kèm phiếu: phiếu chi theo sổ tổng mở hộp huỷ có lý do riêng. */
+  onCancel?: (id: string, type?: string | null, voucher?: IncomeExpenseWithRelations) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Append-only narrative/evidence, independent of the financial edit form. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
@@ -352,6 +354,19 @@ function IncomeExpenseDetailDialogContent({
                   <CheckCircle2 className="h-4 w-4 text-white" />
                 </Button>
               )}
+              {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
+              {can.approveVia === "INBOX" && (
+                <Button asChild size="icon" variant="default" className="h-8 w-8 bg-green-600 hover:bg-green-700">
+                  <Link
+                    to="/approvals"
+                    title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
+                    aria-label="Duyệt ở màn Chờ duyệt"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <ClipboardCheck className="h-4 w-4 text-white" />
+                  </Link>
+                </Button>
+              )}
               {monetaryActionsAllowed && !locked && <QuickExpenseButton voucher={voucher} quick={quickExpense} />}
               {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (giữ sổ, không cần quyền duyệt);
                   phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
@@ -415,9 +430,10 @@ function IncomeExpenseDetailDialogContent({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-orange-500 hover:bg-orange-600"
-                  title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}` : "Huỷ phiếu"}
+                  title={can.cancel.reason ? `Huỷ phiếu — ${can.cancel.reason}`
+                    : can.cancel.via === "PROFIT_LEDGER" ? "Huỷ phiếu chi theo sổ tổng (ghi lý do)" : "Huỷ phiếu"}
                   onClick={() => {
-                    onCancel(voucher.id, voucher.type);
+                    onCancel(voucher.id, voucher.type, voucher);
                     onOpenChange(false);
                   }}
                 >
