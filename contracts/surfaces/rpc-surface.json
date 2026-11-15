@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2984,
-    "catalogFunctions": 1645,
+    "sourceCallSites": 3027,
+    "catalogFunctions": 1646,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 421,
+    "calledRpcs": 422,
     "byRisk": {
-      "normal": 310,
+      "normal": 311,
       "financial": 110,
       "infrastructure": 1
     },
-    "securityDefiner": 396
+    "securityDefiner": 397
   },
   "missingOnServer": [],
   "rpcs": {
@@ -832,6 +832,25 @@
         "src/hooks/useCashbookClosing.ts"
       ],
       "risk": "financial"
+    },
+    "cashbook_cash_flow_profit_payout_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_year integer, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(organization_id uuid, building_id uuid, period text, shareholder_payout numeric, manager_payout numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashFlowProfitPayouts.ts"
+      ],
+      "risk": "normal"
     },
     "cashbook_cash_flow_v1": {
       "definitions": [

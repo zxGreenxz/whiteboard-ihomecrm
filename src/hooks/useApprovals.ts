@@ -120,23 +120,25 @@ export async function readPendingVoucherSources(
   };
   const batches = await Promise.allSettled(groups.map(([org, ids]) => read(org, [...ids])));
   const singles: Promise<void>[] = [];
-  batches.forEach((batch, index) => {
-    const [org, ids] = groups[index];
-    if (batch.status === "fulfilled") {
+  groups.forEach(([org, ids], index) => {
+    const batch = batches[index];
+    if (batch?.status === "fulfilled") {
       take(org, ids, batch.value);
       return;
     }
+    // allSettled trả đúng một kết quả cho mỗi lô; thiếu (không thể xảy ra) thì coi như lô lỗi.
+    const reason: unknown = batch ? batch.reason : new Error("Thiếu kết quả đọc lô phiếu chờ duyệt");
     // Lô một phiếu: lỗi của lô chính là lỗi của phiếu đó, không đọc lại.
     if (ids.length <= 1) {
-      failures.push(batch.reason);
+      failures.push(reason);
       return;
     }
     singles.push(
-      Promise.allSettled(ids.map((id) => read(org, [id]))).then((outcomes) => {
-        outcomes.forEach((outcome, at) => {
-          if (outcome.status === "fulfilled") take(org, [ids[at]], outcome.value);
+      Promise.allSettled(ids.map(async (id) => ({ id, details: await read(org, [id]) }))).then((outcomes) => {
+        for (const outcome of outcomes) {
+          if (outcome.status === "fulfilled") take(org, [outcome.value.id], outcome.value.details);
           else failures.push(outcome.reason);
-        });
+        }
       }),
     );
   });
