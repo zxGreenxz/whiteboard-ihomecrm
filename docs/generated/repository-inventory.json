@@ -1,21 +1,21 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1807,
-  "soFileDocBangFs": 472,
-  "tongLoiGoi": 1240,
-  "khongPhanLoaiDuoc": 569,
+  "tongSoFileTest": 1811,
+  "soFileDocBangFs": 476,
+  "tongLoiGoi": 1259,
+  "khongPhanLoaiDuoc": 579,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 66,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 70,
+      "soFile": 73,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 16,
+      "soFile": 17,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
@@ -128,12 +128,12 @@
     },
     {
       "file": "infra/hermes-broker/official-skills-deploy.test.mjs",
-      "soGoi": 16,
+      "soGoi": 17,
       "loai": {
         "manifest": 2,
         "tai-lieu": 5
       },
-      "khongPhanLoaiDuoc": 9
+      "khongPhanLoaiDuoc": 10
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -143,6 +143,15 @@
         "powershell": 2
       },
       "khongPhanLoaiDuoc": 13
+    },
+    {
+      "file": "infra/hermes-fleet/fleet-helpers.test.mjs",
+      "soGoi": 14,
+      "loai": {
+        "manifest": 6,
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 7
     },
     {
       "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -1354,6 +1363,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-fleet/fleet-host.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-zalo-native/bridge-media.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -2274,6 +2291,20 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-fleet/fleet-plan.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-fleet/netwatch.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-learning-audit/hermes-learning-login.test.mjs",
