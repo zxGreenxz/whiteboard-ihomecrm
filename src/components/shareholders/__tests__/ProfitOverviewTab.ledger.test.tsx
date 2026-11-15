@@ -80,9 +80,11 @@ describe('Tổng quan chủ — sổ tổng (E1)', () => {
     expect(screen.getByTestId('profit-ledger-route-banner').textContent).toBe('Sổ tổng đang xem thử — chưa chi lợi nhuận cổ đông được');
     expect(within(screen.getByTestId('shareholder-ledger-card')).getByText('xem thử')).toBeTruthy();
     expect(within(rowOf('s1')).getByText(/500\.000/)).toBeTruthy();
-    // KPI: cách tính cũ (đã ứng 3.000, còn 4.000), không phải số sổ tổng.
+    // KPI: cả ba ô theo cách tính cũ (được chia 7.000, đã ứng 3.000, còn 4.000), không phải số sổ tổng.
     const kpis = screen.getByTestId('kpis');
     expect(within(kpis).getByText('Đã ứng / đã chia')).toBeTruthy();
+    expect(within(screen.getByTestId('kpi-allocated')).getByText('Tổng được chia cổ đông')).toBeTruthy();
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/7\.000/);
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/4\.000/);
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/cách tính cũ/);
     expect(chiOf('s1')!.disabled).toBe(true);
@@ -100,6 +102,10 @@ describe('Tổng quan chủ — sổ tổng (E1)', () => {
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/550\.000/);
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/đang tạm ứng 200\.000/);
     expect(screen.getByTestId('kpi-paid').textContent).toMatch(/qua lương 100\.000/);
+    // Ô "được chia" cùng gốc E1: Σ allocated sau mốc gồm cả cổ đông đã xoá còn số (1.000.000 + 100.000 + 50.000),
+    // KHÔNG phải tổng phân bổ cộng dồn của cách cũ (7.000).
+    expect(within(screen.getByTestId('kpi-allocated')).getByText('Được chia (sau mốc)')).toBeTruthy();
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/1\.150\.000/);
     expect(chiOf('s1')!.disabled).toBe(false);
     fireEvent.click(chiOf('s1')!);
     expect(screen.getByTestId('dist-dialog').textContent).toBe('s1');
@@ -137,6 +143,16 @@ describe('Tổng quan chủ — sổ tổng (E1)', () => {
     }
   });
 
+  it('sổ tổng chạy + lọc một cổ đông: ba ô số đầu trang cùng lọc trên E1', () => {
+    m.route = 'SHADOW';
+    render(<ProfitOverviewTab />);
+    fireEvent.click(within(rowOf('s1')).getByRole('button', { name: 'An' }));
+    expect(within(screen.getByTestId('kpi-allocated')).getByText('Được chia (sau mốc) · An')).toBeTruthy();
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/1\.000\.000/);
+    expect(screen.getByTestId('kpi-paid').textContent).toMatch(/300\.000/);
+    expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/500\.000/);
+  });
+
   it('nút Sổ mở sổ chi tiết của đúng cổ đông', () => {
     render(<ProfitOverviewTab />);
     fireEvent.click(within(rowOf('s2')).getByRole('button', { name: 'Sổ' }));
@@ -165,6 +181,7 @@ describe('Tổng quan chủ — sổ tổng (E1)', () => {
     m.ledgerError = { code: 'XX000', message: 'PROFIT_LEDGER_ENTRIES_DRIFT: lệch' };
     render(<ProfitOverviewTab />);
     expect(screen.getByTestId('kpi-remaining').textContent).toMatch(/—/);
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/—/);
     expect(within(screen.getByTestId('shareholder-ledger-card')).getByRole('button', { name: /Tải lại/ })).toBeTruthy();
   });
 });

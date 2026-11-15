@@ -194,6 +194,7 @@ export function ShareholderLedgerSheet({
           open={!!resolveEntry}
           onOpenChange={(next) => { if (!next) setResolveEntry(null); }}
           organizationId={organizationId}
+          shareholderId={shareholder?.id ?? null}
           entry={resolveEntry}
           shareholderName={name}
         />

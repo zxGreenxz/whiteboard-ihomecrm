@@ -1930,6 +1930,7 @@
     "src/components/shareholders/ManagerLedgerSection.tsx",
     "src/components/shareholders/ManagerPayoutsSheet.tsx",
     "src/components/shareholders/ProfitSalaryImpactNotice.tsx",
+    "src/hooks/profit-ledger/useSalaryProfitStaffInputs.ts",
     "src/lib/profitLedger/voucherFailure.ts",
     "src/lib/profitLedger/approvalGate.ts",
     "src/components/approvals/ProfitLedgerApprovalNote.tsx",

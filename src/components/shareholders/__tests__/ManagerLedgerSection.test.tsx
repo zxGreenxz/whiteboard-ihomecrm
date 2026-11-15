@@ -100,10 +100,24 @@ describe('Lương điều hành theo sổ (máy tính)', () => {
     }
   });
 
-  it('hết số còn lại ⇒ Chi khoá', () => {
+  it('hết số còn lại: sổ tổng chạy ⇒ Chi khoá; còn xem thử (LEGACY) ⇒ vẫn chi được (hộp chỉ cảnh báo)', () => {
     m.managers = [manager({ balance: 0, status: 'SETTLED' })];
-    render(<ManagerLedgerSection organizationId="org-a" canPayManager variant="desktop" />);
+    m.route = 'SHADOW';
+    const view = render(<ManagerLedgerSection organizationId="org-a" canPayManager variant="desktop" />);
     expect((within(rowOf('m1')).getByRole('button', { name: 'Chi' }) as HTMLButtonElement).disabled).toBe(true);
+    m.route = 'LEGACY';
+    view.rerender(<ManagerLedgerSection organizationId="org-a" canPayManager variant="desktop" />);
+    expect((within(rowOf('m1')).getByRole('button', { name: 'Chi' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('nhãn "xem thử" chỉ khi sổ tổng còn xem thử (máy tính + điện thoại)', () => {
+    const view = render(<ManagerLedgerSection organizationId="org-a" canPayManager variant="desktop" />);
+    expect(within(screen.getByTestId('manager-ledger-section')).getByText('xem thử')).toBeTruthy();
+    view.rerender(<ManagerLedgerSection organizationId="org-a" canPayManager variant="mobile" />);
+    expect(within(screen.getByTestId('manager-ledger-section')).getByText('xem thử')).toBeTruthy();
+    m.route = 'CANONICAL';
+    view.rerender(<ManagerLedgerSection organizationId="org-a" canPayManager variant="desktop" />);
+    expect(within(screen.getByTestId('manager-ledger-section')).queryByText('xem thử')).toBeNull();
   });
 
   it('không được xem sổ lương điều hành / chưa có người nhận ⇒ ẩn khối', () => {

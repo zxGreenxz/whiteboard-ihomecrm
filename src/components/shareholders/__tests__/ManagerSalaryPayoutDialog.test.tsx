@@ -50,16 +50,37 @@ describe('chi lương điều hành theo sổ', () => {
     render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('LEGACY')} defaultManagerId="m1" />);
     expect(options('managerId')).toEqual(['m1']);
     expect(options('accountId')).toEqual(['a1']);
-    expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/Còn lại: 1\.000 đ/);
+    expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/Còn lại \(xem thử\): 1\.000 đ/);
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
-  it('vượt số còn lại ⇒ KHÔNG gọi ghi (cả khi sổ tổng chưa chạy thật), báo số còn lại', async () => {
-    render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('LEGACY')} defaultManagerId="m1" />);
+  it.each(['SHADOW', 'CANONICAL'])('sổ tổng chạy (%s): vượt số còn lại ⇒ KHÔNG gọi ghi, báo số còn lại', async (route) => {
+    render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf(route)} defaultManagerId="m1" />);
     fill('1500');
     fireEvent.click(submit());
     expect(await screen.findByText('Vượt lương điều hành còn lại 1.000 đ. Không chi quá số còn lại.')).toBeTruthy();
     expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('sổ tổng còn xem thử (LEGACY): vượt chỉ CẢNH BÁO, vẫn lập phiếu như trước Đợt 2', async () => {
+    const onOpenChange = vi.fn();
+    render(<ManagerSalaryPayoutDialog open onOpenChange={onOpenChange} organizationId="org-a" ledger={ledgerOf('LEGACY')} defaultManagerId="m1" />);
+    expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/Còn lại \(xem thử\): 1\.000 đ/);
+    fill('1500');
+    expect((await screen.findByTestId('manager-payout-over-warning')).textContent).toMatch(/Vượt số còn lại 1\.000 đ theo sổ đang xem thử/);
+    fireEvent.click(submit());
+    await waitFor(() => expect(m.create).toHaveBeenCalledTimes(1));
+    expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ manager_id: 'm1', amount: 1_500 }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('LEGACY, người nhận đã chi vượt: vẫn lập được; sổ tổng chạy thì báo "không chi thêm được"', () => {
+    const over = [row({ balance: -200, status: 'ADVANCE' as const })];
+    const view = render(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('LEGACY', over)} defaultManagerId="m1" />);
+    expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/Đã chi vượt \(xem thử\): 200 đ/);
+    expect(screen.getByTestId('manager-payout-balance').textContent).not.toMatch(/không chi thêm được/);
+    view.rerender(<ManagerSalaryPayoutDialog open onOpenChange={vi.fn()} organizationId="org-a" ledger={ledgerOf('SHADOW', over)} defaultManagerId="m1" />);
+    expect(screen.getByTestId('manager-payout-balance').textContent).toMatch(/không chi thêm được/);
   });
 
   it('trong số còn lại ⇒ gửi đúng người nhận, số tiền, sổ quỹ, công ty', async () => {

@@ -246,14 +246,36 @@ export default function ProfitOverviewTab() {
           )}
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi ph-kpi--flex">
-          <div className="ph-kpi__label">
-            {shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}
-          </div>
-          <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(totals.accrued)}</div>
-          <div className="ph-kpi__sub">
-            {payRatio !== null ? `${payRatio}% LN đã chốt` : "theo tỷ lệ từng nhà"}
-          </div>
+        {/* Ba ô Được chia / Đã chi / Còn phải trả luôn CÙNG MỘT GỐC: sổ tổng chạy ⇒ cả ba đọc E1 (sau
+            mốc, gồm cổ đông đã xoá còn số); còn xem thử ⇒ cả ba theo cách tính cũ (vùng parity). */}
+        <div className="ph-kpi ph-kpi--flex" data-testid="kpi-allocated">
+          {kpiMode === "LEDGER" ? (
+            <>
+              <div className="ph-kpi__label">
+                {shName ? `Được chia (sau mốc) · ${shName}` : "Được chia (sau mốc)"}
+              </div>
+              <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(ledgerSum.allocated)}</div>
+              <div className="ph-kpi__sub">các tháng đã chốt sau mốc · theo sổ tổng</div>
+            </>
+          ) : kpiMode === "LEGACY" ? (
+            <>
+              <div className="ph-kpi__label">
+                {shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}
+              </div>
+              <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(totals.accrued)}</div>
+              <div className="ph-kpi__sub">
+                {payRatio !== null ? `${payRatio}% LN đã chốt` : "theo tỷ lệ từng nhà"}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="ph-kpi__label">Được chia</div>
+              <div className="ph-kpi__value">
+                {kpiMode === "PENDING" ? <Skeleton className="h-6 w-24 bg-white/20" aria-label="Đang tải sổ tổng" /> : "—"}
+              </div>
+              {kpiMode === "ERROR" && <div className="ph-kpi__sub">chưa tải được sổ tổng</div>}
+            </>
+          )}
         </div>
         <div className="ph-kpi__div" />
         {kpiMode === "LEDGER" ? (

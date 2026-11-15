@@ -32,7 +32,11 @@ export const PROFIT_FORM_MESSAGES = {
   markerReasonSystem: 'Lý do đặt mốc đang chép câu báo lỗi của hệ thống — ghi lý do thật',
   markerAcknowledge: 'Mốc này xoá dấu phần tạm ứng — tick xác nhận riêng.',
   resolveInvestment: 'Nhập phần đầu tư hợp lệ (tối đa 2 chữ số lẻ).',
+  resolveInvestmentRequired: 'Tự nhập phần đầu tư của phiếu này (không có thì nhập 0).',
+  resolveInvestmentRange: 'Phần đầu tư nằm ngoài phần còn lại của tháng.',
   resolveOffset: 'Phần bù tạm ứng phải ≥ 0 (tối đa 2 chữ số lẻ).',
+  resolveOffsetRequired: 'Tự nhập phần lương bù tạm ứng của phiếu này (không có thì nhập 0).',
+  resolveOffsetOverMonth: 'Phần bù tạm ứng vượt phần còn trừ được của tháng.',
   resolveOverVoucher: 'Phần đầu tư trừ phần bù tạm ứng không được vượt tiền phiếu lương.',
   resolveReasonLength: 'Lý do xác nhận phải từ 8 đến 1000 ký tự',
   resolveReasonSystem: 'Lý do xác nhận đang chép câu báo lỗi của hệ thống — ghi lý do thật',
@@ -135,21 +139,42 @@ export type MarkerFormValues = z.infer<typeof markerFormSchema>;
 /* ───────────────────────────── Hộp xác nhận phần lương (E16) ───────────────────────────── */
 
 /**
- * `voucherAmount`: tiền phiếu lương khi biết — chặn sớm Y − D vượt tiền phiếu. Trần theo tháng
- * (Y giữa 0 và phần còn lại, cùng dấu; tháng lỗ thì Y âm) chỉ máy chủ biết: lỗi
- * PROFIT_LEDGER_SALARY_RESOLVE_RANGE trả DETAIL có trần để hiện lại.
+ * Trần cùng luật E16 (máy chủ vẫn là chốt cuối, lỗi PROFIT_LEDGER_SALARY_RESOLVE_RANGE trả lại trần):
+ *   `voucherAmount`        tiền phiếu lương — Y − D không vượt;
+ *   `maxOffset`            greatest(D_m − ΣD, 0) của tháng (E12 `remaining_offset`) — 0 ≤ D ≤ trần;
+ *   `investmentRemaining`  R = Y_cap − ΣY (E12 `investment_cap − paid_investment`) — Y giữa 0 và R,
+ *                          cùng dấu (tháng lỗ thì âm).
+ * Ô trống (NaN — hộp KHÔNG để sẵn số) ⇒ bắt nhập: để sẵn 0 cho phần bù tạm ứng là trừ đủ Y thay vì
+ * Y − D và dòng thành LINKED không sửa lại được.
  */
-export function makeResolveFormSchema(context: { voucherAmount?: number | null } = {}) {
+export function makeResolveFormSchema(context: {
+  voucherAmount?: number | null;
+  maxOffset?: number | null;
+  investmentRemaining?: number | null;
+} = {}) {
   return z.object({
-    investment: z.number(),
-    offset: z.number(),
+    investment: z.number().or(z.nan()),
+    offset: z.number().or(z.nan()),
     reason: z.string(),
   }).superRefine((values, ctx) => {
-    if (!Number.isFinite(values.investment) || !twoDecimals(values.investment)) {
+    if (Number.isNaN(values.investment)) {
+      ctx.addIssue({ code: 'custom', path: ['investment'], message: PROFIT_FORM_MESSAGES.resolveInvestmentRequired });
+    } else if (!Number.isFinite(values.investment) || !twoDecimals(values.investment)) {
       ctx.addIssue({ code: 'custom', path: ['investment'], message: PROFIT_FORM_MESSAGES.resolveInvestment });
+    } else if (context.investmentRemaining != null) {
+      const r = context.investmentRemaining;
+      const low = Math.min(0, r) - 0.005;
+      const high = Math.max(0, r) + 0.005;
+      if (values.investment < low || values.investment > high) {
+        ctx.addIssue({ code: 'custom', path: ['investment'], message: PROFIT_FORM_MESSAGES.resolveInvestmentRange });
+      }
     }
-    if (!Number.isFinite(values.offset) || values.offset < 0 || !twoDecimals(values.offset)) {
+    if (Number.isNaN(values.offset)) {
+      ctx.addIssue({ code: 'custom', path: ['offset'], message: PROFIT_FORM_MESSAGES.resolveOffsetRequired });
+    } else if (!Number.isFinite(values.offset) || values.offset < 0 || !twoDecimals(values.offset)) {
       ctx.addIssue({ code: 'custom', path: ['offset'], message: PROFIT_FORM_MESSAGES.resolveOffset });
+    } else if (context.maxOffset != null && values.offset > Math.max(context.maxOffset, 0) + 0.005) {
+      ctx.addIssue({ code: 'custom', path: ['offset'], message: PROFIT_FORM_MESSAGES.resolveOffsetOverMonth });
     }
     const voucherAmount = context.voucherAmount;
     if (voucherAmount != null && Number.isFinite(values.investment) && Number.isFinite(values.offset)

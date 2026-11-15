@@ -65,10 +65,13 @@ describe('nút Chi', () => {
     expect(shareholderPayBlock(row({ is_active: false }), canonical)).toMatch(/ngưng/);
     expect(shareholderPayBlock(row({ needs_review_count: 2 }), canonical)).toMatch(/Còn 2 phiếu lương/);
   });
-  it('lương điều hành: đóng băng / hết số còn lại / đã xoá ⇒ khoá; LEGACY vẫn chi', () => {
+  it('lương điều hành: đóng băng / hết số còn lại (khi sổ tổng chạy) / đã xoá ⇒ khoá; LEGACY vẫn chi', () => {
     expect(managerPayBlock(manager(), profitLedgerRouteState('LEGACY'))).toBeNull();
     expect(managerPayBlock(manager(), profitLedgerRouteState('FROZEN'))).toMatch(/đóng băng/);
     expect(managerPayBlock(manager({ balance: 0, status: 'SETTLED' }), profitLedgerRouteState('CANONICAL'))).toMatch(/Không còn/);
+    expect(managerPayBlock(manager({ balance: 0, status: 'SETTLED' }), profitLedgerRouteState('SHADOW'))).toMatch(/Không còn/);
+    // Sổ tổng còn xem thử: số còn lại chưa có mốc ⇒ không chặn (hộp chi chỉ cảnh báo).
+    expect(managerPayBlock(manager({ balance: -50, status: 'ADVANCE' }), profitLedgerRouteState('LEGACY'))).toBeNull();
     expect(managerPayBlock(manager({ is_deleted: true }), profitLedgerRouteState('CANONICAL'))).toMatch(/đã xoá/);
   });
 });
