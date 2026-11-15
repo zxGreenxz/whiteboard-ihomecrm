@@ -293,6 +293,12 @@ describe('điều kiện chọn chi nhanh', () => {
     ctx.permissions = { income_expenses: { approve: true } }; ctx.cashbookIds = new Set(['other']);
     expect(quickExpenseReason(voucher(), ctx)).toMatch(/quyền chi/);
   });
+  it('phiếu chi theo sổ tổng (lợi nhuận cổ đông / lương điều hành) không vào chi nhanh — duyệt ở Chờ duyệt; nguồn cũ giữ luật thường', () => {
+    for (const system_source of ['profit.ledger_payout', 'profit.manager_salary']) {
+      expect(quickExpenseReason(voucher(1, { system_source }), context())).toMatch(/Chờ duyệt/);
+    }
+    expect(quickExpenseReason(voucher(1, { system_source: 'profit.distribution' }), context())).toBeNull();
+  });
   it('không cho ghi khi route bị đóng hoặc chưa đọc đủ quyền', () => {
     expect(quickExpenseReason(voucher(), { ...context(), ready: false })).toBeTruthy();
     expect(quickExpenseReason(voucher(), { ...context(), routes: { ...routes, posting: 'FROZEN' } })).toBeTruthy();

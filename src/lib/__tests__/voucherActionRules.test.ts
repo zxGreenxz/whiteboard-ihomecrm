@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isReservationLeg,
+  profitCancelTargetFromVoucher,
   voucherActionAvailability,
   type VoucherActionState,
   type VoucherActionViewer,
@@ -164,5 +165,90 @@ describe("Huỷ duyệt / Khôi phục / Bản sao / Đã kiểm / Dừng lặp 
     expect(voucherActionAvailability(phieu(), viewer({ currentUserId: "u-lap" }), state()).annotate).toBe(true);
     expect(voucherActionAvailability(phieu(), viewer({ perms: scoped("edit") }), state()).annotate).toBe(true);
     expect(voucherActionAvailability(phieu(), viewer(), state()).annotate).toBe(false);
+  });
+});
+
+// Đợt 2 sổ tổng (d1_chan_interface §2, §5): phiếu nguồn profit.ledger_payout / profit.manager_salary bị chốt F1
+// chặn sửa (LOCKED), huỷ duyệt / hoàn tác / khôi phục (CANCEL_ONLY), đổi sổ (ACCOUNT_LOCKED). Nhánh này đứng
+// TRƯỚC luật huỷ thường: can_flex_cancel_v1 trả NOT_MANUAL cho phiếu hệ thống, không được rơi về đó.
+describe("Phiếu chi theo sổ tổng lợi nhuận", () => {
+  const owner = {
+    shareholder_profit: { distribute: { org_wide: true, building_ids: [] } },
+    income_expenses: Object.fromEntries(["approve", "cancel", "reverse", "edit"].map((a) => [a, { org_wide: true, building_ids: [] }])),
+  };
+  const soTong = (p: Partial<V> = {}) => phieu({ system_source: "profit.ledger_payout", building_id: "toa-ao", ...p });
+
+  it("chờ duyệt: không Duyệt / Sửa ở Thu chi; có lối sang Chờ duyệt; Huỷ đi hộp sổ tổng", () => {
+    const a = voucherActionAvailability(soTong(), viewer({ perms: owner, isAdmin: true, isSuperAdmin: true, isCompanyOwner: true }), state());
+    expect(a.approve).toBe(false);
+    expect(a.approveVia).toBe("INBOX");
+    expect(a.edit.show).toBe(false);
+    expect(a.cancel).toEqual({ show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" });
+  });
+
+  it("đã chi: không Hoàn tác / Huỷ duyệt / Chi lại; Huỷ vẫn qua hộp sổ tổng; Đánh dấu đã kiểm và Bổ sung vẫn có", () => {
+    const a = voucherActionAvailability(soTong({ approval_status: "APPROVED", posting_status: "POSTED" }),
+      viewer({ perms: owner, isAdmin: true, isSuperAdmin: true }), state());
+    expect([a.reverse, a.unapprove, a.postApproved, a.restore, a.copy, a.stopRecurring]).toEqual([false, false, false, false, false, false]);
+    expect(a.cancel.via).toBe("PROFIT_LEDGER");
+    expect(a.verify).toBe(true);
+    expect(a.annotate).toBe(true);
+    expect(a.approveVia).toBeNull();
+  });
+
+  it("đã duyệt chưa chi: Chi từ sổ (hộp khoá đúng sổ lúc lập); phiếu đã đảo hoặc tổ chức chưa ghi sổ kiểu mới ⇒ không", () => {
+    const v = viewer({ perms: owner });
+    expect(voucherActionAvailability(soTong({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), v, state()).postApproved).toBe(true);
+    expect(voucherActionAvailability(soTong({ approval_status: "APPROVED", posting_status: null }), v, state()).postApproved).toBe(true);
+    expect(voucherActionAvailability(soTong({ approval_status: "APPROVED", posting_status: "REVERSED" }), v, state()).postApproved).toBe(false);
+    expect(voucherActionAvailability(soTong({ approval_status: "APPROVED", posting_status: "UNPOSTED" }), v, state({ canonicalRead: false })).postApproved).toBe(false);
+  });
+
+  it("đã huỷ: không Khôi phục, không Tạo bản sao (bản sao sẽ thành phiếu chi ngoài sổ tổng), không Huỷ", () => {
+    const a = voucherActionAvailability(soTong({ approval_status: "CANCELLED", posting_status: "REVERSED" }),
+      viewer({ perms: owner, isAdmin: true, isSuperAdmin: true }), state());
+    expect([a.restore, a.copy, a.cancel.show, a.verify]).toEqual([false, false, false, false]);
+  });
+
+  it("quyền theo loại phiếu: cổ đông ⇒ distribute, lương điều hành ⇒ pay_manager; quyền huỷ thu chi KHÔNG đủ", () => {
+    const thuChiOnly = viewer({ perms: { income_expenses: owner.income_expenses } });
+    const a = voucherActionAvailability(soTong(), thuChiOnly, state({ flexEligibility: flex({ eligible: true }) }));
+    expect([a.cancel.show, a.approveVia, a.approve]).toEqual([false, null, false]);
+    const manager = soTong({ system_source: "profit.manager_salary" });
+    expect(voucherActionAvailability(manager, viewer({ perms: owner }), state()).cancel.show).toBe(false);
+    const payManager = viewer({ perms: { shareholder_profit: { pay_manager: { org_wide: true, building_ids: [] } } } });
+    expect(voucherActionAvailability(manager, payManager, state()).cancel).toEqual({ show: true, disabled: false, reason: null, via: "PROFIT_LEDGER" });
+    expect(voucherActionAvailability(manager, payManager, state()).approveVia).toBe("INBOX");
+  });
+
+  it("nguồn cũ (profit.distribution / salary.manager) giữ luật thường", () => {
+    const a = voucherActionAvailability(soTong({ system_source: "profit.distribution", building_id: "b1" }),
+      viewer({ perms: scoped("approve", "cancel") }), state());
+    expect(a.approve).toBe(true);
+    expect(a.approveVia).toBeNull();
+    expect(a.cancel.via).toBeUndefined();
+  });
+});
+
+describe("profitCancelTargetFromVoucher — đầu vào hộp huỷ sổ tổng từ dòng Thu chi", () => {
+  const dong = {
+    id: "v1", organization_id: "o1" as string | null, system_source: "profit.ledger_payout" as string | null, code: "PC-1",
+    name: "Chia lợi nhuận: Cổ đông 1", total_amount: 500, approval_status: "APPROVED" as const,
+    posting_status: "POSTED" as "POSTED" | "REVERSED", account_name: "Quỹ tiền mặt",
+  };
+  it("dựng đủ trường; lương điều hành ⇒ MANAGER", () => {
+    expect(profitCancelTargetFromVoucher(dong)).toEqual({
+      voucherId: "v1", organizationId: "o1", kind: "SHAREHOLDER", code: "PC-1", amount: 500,
+      approvalStatus: "APPROVED", postingStatus: "POSTED", subjectName: "Chia lợi nhuận: Cổ đông 1", accountName: "Quỹ tiền mặt",
+    });
+    expect(profitCancelTargetFromVoucher({ ...dong, system_source: "profit.manager_salary" })?.kind).toBe("MANAGER");
+  });
+  it("không dựng khi: nguồn khác, thiếu công ty, đã huỷ, đã đảo, số tiền không dương", () => {
+    expect(profitCancelTargetFromVoucher({ ...dong, system_source: "profit.distribution" })).toBeNull();
+    expect(profitCancelTargetFromVoucher({ ...dong, organization_id: null })).toBeNull();
+    expect(profitCancelTargetFromVoucher({ ...dong, approval_status: "CANCELLED" as unknown as "APPROVED" })).toBeNull();
+    expect(profitCancelTargetFromVoucher({ ...dong, posting_status: "REVERSED" })).toBeNull();
+    expect(profitCancelTargetFromVoucher({ ...dong, total_amount: 0 })).toBeNull();
+    expect(profitCancelTargetFromVoucher({ ...dong, total_amount: Number.NaN })).toBeNull();
   });
 });

@@ -1,10 +1,14 @@
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { approvalDecisionFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
+import { loadIncomeExpenseDetails } from "@/lib/incomeExpenseDetailRpc";
+import { withDetailReadDeadline } from "@/hooks/income-expenses/detailRead";
+import { ledgerAwareWorkflowError } from "@/lib/profitLedger/voucherFailure";
 
 // Một yêu cầu duyệt đang chờ CHÍNH TÔI xử lý — khớp cột của
 // public.list_my_pending_approvals_v1() (server đã lọc theo auth.uid(), client
@@ -74,6 +78,50 @@ export const usePendingApprovals = () => {
   });
 };
 
+/** Nguồn + sổ quỹ của phiếu đứng sau một yêu cầu chờ duyệt. */
+export interface PendingVoucherSource {
+  system_source: string | null;
+  account_id: string | null;
+}
+
+/**
+ * Nguồn phiếu của các yêu cầu đang chờ (list_my_pending_approvals_v1 KHÔNG chiếu system_source — cột cùng
+ * tên ở trên luôn null). Đọc qua read_income_expense_details_v1 — cùng đường hộp "Duyệt và Thu/Chi…" đang
+ * dùng, không bị RLS che như đọc thẳng bảng — gom theo công ty. Phiếu không đọc được thì vắng trong kết
+ * quả: màn hình coi là "chưa biết" (không chào "Duyệt và Thu/Chi…" cho dòng đó).
+ * Khoá dưới gốc "pending-approvals" nên mọi lần làm mới hộp thư cũng làm mới phần này.
+ */
+export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
+  const groups = useMemo(() => {
+    const byOrg = new Map<string, Set<string>>();
+    for (const row of rows) {
+      if (!row.organization_id || !row.voucher_id) continue;
+      const ids = byOrg.get(row.organization_id) ?? new Set<string>();
+      ids.add(row.voucher_id);
+      byOrg.set(row.organization_id, ids);
+    }
+    return [...byOrg.entries()]
+      .map(([org, ids]) => [org, [...ids].sort()] as const)
+      .sort(([a], [b]) => a.localeCompare(b));
+  }, [rows]);
+  return useQuery({
+    queryKey: ["pending-approvals", "voucher-sources", groups],
+    enabled: groups.length > 0,
+    meta: { errorDisplay: "inline", label: "loại phiếu chờ duyệt" },
+    queryFn: async (): Promise<Record<string, PendingVoucherSource>> => {
+      const result: Record<string, PendingVoucherSource> = {};
+      for (const [org, ids] of groups) {
+        const details = await withDetailReadDeadline(loadIncomeExpenseDetails(org, [...ids]));
+        for (const detail of details) {
+          if (detail.organization_id !== org || !ids.includes(detail.id)) continue;
+          result[detail.id] = { system_source: detail.system_source ?? null, account_id: detail.account_id ?? null };
+        }
+      }
+      return result;
+    },
+  });
+};
+
 // Duyệt / từ chối một yêu cầu. Engine tự kiểm quyền duyệt, chặn maker tự duyệt,
 // và chuyển phiếu sang POSTED khi qua hết bước — lỗi trả về là câu tiếng Việt
 // từ server nên hiển thị nguyên văn.
@@ -109,7 +157,8 @@ export const useDecideApproval = () => {
     },
     onError: (error) => {
       console.error("Error deciding financial request:", error);
-      toast.error(workflowErrorMessage(error,'xử lý yêu cầu duyệt'));
+      // Phiếu chi theo sổ tổng: chốt F1/F5 trả mã PROFIT_LEDGER_… ⇒ câu riêng; phiếu khác như cũ.
+      toast.error(ledgerAwareWorkflowError(error,'xử lý yêu cầu duyệt'));
     },
   });
 };

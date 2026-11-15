@@ -46,6 +46,10 @@ import {
   useCancelIncomeVoucher,
   voucherCancelDecision,
 } from "@/hooks/income-expenses/incomeVoucherCancel";
+// Đợt 2 sổ tổng: phiếu chi lợi nhuận / lương điều hành lập theo sổ tổng chỉ huỷ bằng hộp riêng có lý
+// do (E6) và chỉ chi từ đúng sổ quỹ lúc lập.
+import { isProfitLedgerVoucher, type ProfitPayoutCancelTarget } from "@/lib/profitLedger/vouchers";
+import { profitCancelTargetFromVoucher } from "@/lib/voucherActionRules";
 
 export interface VoucherActionsOptions {
   /**
@@ -104,6 +108,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   // trong trang danh sách lẻ hiện tại: tra ngược trong `vouchers` sẽ ra null ⇒ type=undefined
   // ⇒ rơi ngược về thang huỷ CŨ.
   const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
+  // Phiếu chi theo sổ tổng: hộp huỷ riêng (ProfitPayoutCancelDialog), không đi thang huỷ thường.
+  const [profitCancelTarget, setProfitCancelTarget] = useState<ProfitPayoutCancelTarget | null>(null);
   // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
   const [cancelReason, setCancelReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -171,6 +177,13 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const { data: custodianBooks = [], isError: cashbookError, refetch: retryCashbooks } = useCustodianCashbooksV2(
     approveAndPostOpen || !!postApprovedTarget,
   );
+  // Phiếu chi theo sổ tổng chỉ chi được từ ĐÚNG sổ quỹ đã chọn lúc lập (chốt F1 ACCOUNT_LOCKED): hộp
+  // Thu/Chi chỉ chào sổ đó, và chỉ khi người bấm đang giữ nó.
+  const postApprovedLedger = !!postApprovedTarget && isProfitLedgerVoucher(postApprovedTarget.system_source);
+  const postApprovedBooks = useMemo(
+    () => (postApprovedLedger ? custodianBooks.filter((book) => book.id === postApprovedTarget?.account_id) : custodianBooks),
+    [postApprovedLedger, custodianBooks, postApprovedTarget?.account_id],
+  );
 
   const { cancelEligibility, incomeCancelEligibility } = useVoucherCancelEligibility(vouchers);
 
@@ -225,10 +238,17 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
     setLifecycleReason(""); setActionError(null);
     setUnapproveTarget(id);
   }, []);
-  const cancel = useCallback((id: string, type?: string | null) => {
+  // `voucher`: phiếu đang bấm (dòng danh sách / hộp chi tiết) — phiếu mở từ hộp đợt hay màn khác có thể
+  // không nằm trong `vouchers`. Phiếu sổ tổng KHÔNG BAO GIỜ rơi về thang huỷ thường.
+  const cancel = useCallback((id: string, type?: string | null, voucher?: IncomeExpenseWithRelations) => {
+    const row = voucher?.id === id ? voucher : vouchers.find((v) => v.id === id);
+    if (row && isProfitLedgerVoucher(row.system_source)) {
+      setProfitCancelTarget(profitCancelTargetFromVoucher(row));
+      return;
+    }
     setCancelTarget(id);
     setCancelTargetType(type ?? null);
-  }, []);
+  }, [vouchers]);
   const restore = useCallback((id: string) => { setRestoreTarget(id); }, []);
   const cancelBatch = useCallback((batchId: string) => { setCancelBatchTarget(batchId); }, []);
   // Ghi ngay (không hộp xác nhận, như danh sách). Chờ promise chứ không dùng onSuccess của lượt gọi:
@@ -416,6 +436,7 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const closeVerify = useCallback(() => { setVerifyVoucher(null); changed(); }, [changed]);
   const closeHistory = useCallback(() => { setHistoryVoucher(null); }, []);
   const closeCancel = useCallback(() => { setCancelTarget(null); setCancelTargetType(null); setCancelReason(""); }, []);
+  const closeProfitCancel = useCallback(() => { setProfitCancelTarget(null); }, []);
   const closeRestore = useCallback(() => { setRestoreTarget(null); }, []);
   const closeApprove = useCallback(() => { setApproveTarget(null); }, []);
   const closeUnapprove = useCallback(() => { setUnapproveTarget(null); }, []);
@@ -423,9 +444,10 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
   const closePostApproved = useCallback(() => { setPostApprovedTarget(null); }, []);
   const closeCancelBatch = useCallback(() => { setCancelBatchTarget(null); }, []);
 
+  // profitCancelTarget phải có mặt: màn Báo cáo LN đóng hẳn khi không còn hộp nào mở (audit_C D2.3).
   const anyOpen = !!(editingVoucher || copyVoucher || quickEditVoucher || verifyVoucher || historyVoucher ||
-    cancelTarget || restoreTarget || approveTarget || unapproveTarget || reverseTarget || postApprovedTarget ||
-    cancelBatchTarget);
+    cancelTarget || profitCancelTarget || restoreTarget || approveTarget || unapproveTarget || reverseTarget ||
+    postApprovedTarget || cancelBatchTarget);
 
   return {
     // Mở hộp — truyền thẳng cho danh sách / hộp chi tiết / hộp đợt.
@@ -450,6 +472,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
         reason: cancelReason, setReason: setCancelReason,
         pending: flexCancelMutation.isPending || cancelIncomeMutation.isPending || cancelMutation.isPending,
       },
+      /** Hộp huỷ phiếu chi theo sổ tổng (E6). Hook ghi đã tự làm mới sổ tổng + Thu chi. */
+      profitCancel: { target: profitCancelTarget, close: closeProfitCancel, onCancelled: changed },
       restore: {
         target: restoreTarget, close: closeRestore, confirm: confirmRestore,
         needsReason: restoreNeedsReason, reason: lifecycleReason, setReason: setLifecycleReason,
@@ -481,6 +505,8 @@ export function useVoucherActions({ vouchers, onChanged }: VoucherActionsOptions
       },
       postApproved: {
         target: postApprovedTarget, close: closePostApproved,
+        /** Sổ chào trong hộp Thu/Chi; phiếu sổ tổng: chỉ sổ lúc lập (rỗng nếu không giữ sổ đó). */
+        cashbookOptions: postApprovedBooks, cashbookLocked: postApprovedLedger,
         submit: async (input: Parameters<typeof postApprovedV2Mutation.mutateAsync>[0]) => {
           await postApprovedV2Mutation.mutateAsync(input);
           setPostApprovedTarget(null);
