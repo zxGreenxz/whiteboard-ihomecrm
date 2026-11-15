@@ -31,6 +31,8 @@ interface Props {
   onPrevMonth?: () => void;
   onNextMonth?: () => void;
   requirePhoto?: boolean;
+  /** Lối tắt "Tạm ứng lợi nhuận" — CHỈ trang Lương của tôi truyền (màn quản trị xem lương người khác thì không). */
+  profitAdvance?: ReactNode;
 }
 
 const tone = (t: ChipTone) => ({ color: `hsl(var(--status-${t}-fg))` });
@@ -213,7 +215,7 @@ function Fold({ icon, title, sub, children }: { icon: ReactNode; title: string; 
 
 type Tab = "income" | "ledger" | "history";
 
-export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit, canPrev, canNext, onPrevMonth, onNextMonth, requirePhoto }: Props) {
+export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit, canPrev, canNext, onPrevMonth, onNextMonth, requirePhoto, profitAdvance }: Props) {
   const s = useMemo(() => selfSummaryOf(m), [m]);
   const streak = useMemo(() => {
     if (!v5Plan || !m.v5 || m.v5.nchuan <= 0) return null;
@@ -283,6 +285,7 @@ export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit
       <div className="sal-root flex min-h-full flex-col bg-background">
         {header}
         <main className="flex flex-1 flex-col gap-3 px-3.5 pb-6 pt-3.5">
+          {tab === "income" && profitAdvance}
           {tab === "income" && income}
           {tab === "ledger" && <section aria-label="Bảng kê công việc" className="overflow-hidden rounded-[14px] border bg-card"><SelfLedger m={m} requirePhoto={requirePhoto} compact /></section>}
           {tab === "history" && <section aria-label="Thành tích và hành trình" className="overflow-hidden rounded-[14px] border bg-card"><SelfJourney m={m} /></section>}
@@ -304,6 +307,7 @@ export default function SalarySelfView({ m, period, v5Plan = null, phone, onExit
     <div className="sal-root min-h-full bg-background">
       {header}
       <main className="mx-auto flex max-w-[1200px] flex-col gap-4 px-4 pb-12 pt-5 md:px-6">
+        {profitAdvance}
         {income}
         <Fold icon={<ListChecks size={18} />} title="Bảng kê đầy đủ" sub="Cả việc không được thưởng (thiếu ảnh, ký HĐ trong giờ) và các dòng thu tiền.">
           <SelfLedger m={m} requirePhoto={requirePhoto} />

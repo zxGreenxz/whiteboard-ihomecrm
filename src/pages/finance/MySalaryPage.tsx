@@ -9,6 +9,7 @@ import { useManagerSalary, useMyManagerConfig, useStaffDisplayMonth } from "@/ho
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
 import SalarySelfView from "@/components/salary/SalarySelfView";
+import SelfAdvanceLink from "@/components/shareholders/SelfAdvanceLink";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine } from "@/lib/managerSalary";
 import { parseV5Plan } from "@/lib/salarySelfSummary";
@@ -101,6 +102,8 @@ export default function MySalaryPage() {
         canPrev
         canNext={canNext}
         requirePhoto={requirePhoto}
+        // Trang này luôn là lương của CHÍNH người đăng nhập ⇒ lối tắt tạm ứng lợi nhuận (tự ẩn khi không có quyền).
+        profitAdvance={<SelfAdvanceLink />}
         onPrevMonth={() => setOverride(shiftMonth(effPeriod, -1))}
         onNextMonth={() => { if (canNext) setOverride(shiftMonth(effPeriod, 1)); }}
       />
