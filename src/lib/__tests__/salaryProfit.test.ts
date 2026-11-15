@@ -174,6 +174,48 @@ describe("tháng nằm trong mốc 'đã trả đủ'", () => {
     const m = locked({}, fz, 6_500_000, staff({ ...settled, sheet_status: "LOCKED", settlement: { id: "c3", investment_month: 3_000_000, advance_offset_month: 0, applied_offset_at_freeze: 0, expected_take_home: 6_500_000, created_at: "2026-10-05T00:00:00Z", matches_sheet: true } }));
     expect(m.profit!.relockForMarker).toBe(true);
   });
+
+  // Review chéo Đợt 2: kết luận chỉ đọc số ĐÓNG BĂNG — ứng lương duyệt SAU giờ chốt không được làm
+  // bảng chốt qua màn mới (đã trừ phần đầu tư) bị chặn nhầm là "chốt trước mốc".
+  describe("chỉ dựa trên số đóng băng, không theo ứng lương sống", () => {
+    const fz = { base: 6_000_000, investment: 4_000_000, commission: 0, advance: 800_000 + 4_000_000 };
+    const c3 = (advanceOffsetMonth: number) => ({
+      id: "c3", investment_month: 4_000_000, advance_offset_month: advanceOffsetMonth, applied_offset_at_freeze: 0,
+      expected_take_home: 1_200_000, created_at: "2026-10-05T00:00:00Z", matches_sheet: true,
+    });
+    const sheet = (liveAdvance: number, settlement: SalaryProfitStaff["settlement"] = c3(0)) => locked(
+      { investment: 4_000_000, investmentBy: [{ b: "T1", amount: 4_000_000 }], advance: liveAdvance, advanceItems: [{ date: "03/10", label: "Ứng lương", amount: liveAdvance }] },
+      fz, 6_000_000 + 4_000_000 - 4_800_000 - 1_000_000,
+      staff({ ...settled, sheet_status: "LOCKED", investment_month: 4_000_000, settlement }),
+    );
+
+    it("ứng sống = ứng đã chốt ⇒ trả được", () => {
+      expect(salaryProfitPayoutBlock(sheet(800_000))).toBeNull();
+    });
+
+    it("ứng sống tăng 300.000 sau giờ chốt ⇒ VẪN trả được, phần đã trả theo mốc giữ nguyên", () => {
+      const m = sheet(1_100_000);
+      expect(m.profit).toMatchObject({ relockForMarker: false, markerPaid: 4_000_000 });
+      expect(salaryProfitPayoutBlock(m)).toBeNull();
+      expect(salaryProfitQuoteFor(m)).toEqual({ investmentSelected: 0, offsetSelected: 0 });
+      expect(selfSummaryOf(m)).toMatchObject({ advance: 800_000, markerPaid: 4_000_000 });
+    });
+
+    it("ứng sống giảm sau giờ chốt ⇒ vẫn trả được (không suy từ ứng sống)", () => {
+      expect(sheet(0).profit!.relockForMarker).toBe(false);
+    });
+
+    it("không có bản đóng băng khớp (chốt bằng đường cũ / trợ lý) ⇒ chặn dù số ứng đã chốt đủ lớn", () => {
+      expect(sheet(800_000, null).profit!.relockForMarker).toBe(true);
+      expect(sheet(800_000, { ...c3(0), matches_sheet: false }).profit!.relockForMarker).toBe(true);
+    });
+
+    it("bản đóng băng có D > 0 ⇒ đóng băng lúc tháng CHƯA vào mốc (E13 ép D = 0 trong mốc) ⇒ chặn, chốt lại", () => {
+      const m = sheet(800_000, c3(500_000));
+      expect(m.profit).toMatchObject({ relockForMarker: true, markerPaid: 0 });
+      expect(salaryProfitPayoutBlock(m)).toMatch(/chốt trước mốc/);
+    });
+  });
 });
 
 describe("bảng lương đã chốt", () => {

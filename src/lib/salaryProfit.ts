@@ -44,9 +44,8 @@ export function investmentByFromProfit(staff: SalaryProfitStaff | null | undefin
  *  - Bảng nháp: D = max(phần đã trừ, D_m) — không bao giờ nhỏ hơn phần đã trừ ở phiếu trước; tháng
  *    trong mốc ⇒ D = 0 và phần đầu tư dương (đã trả theo mốc) cũng thành khoản trừ.
  *  - Bảng đã chốt: thực nhận lấy số đóng băng; chỉ thêm dòng để hiển thị khớp `advances_total`. D =
- *    D của bản đóng băng khớp bảng (máy chủ trả 0 khi không khớp). Tháng trong mốc: phần đầu tư chỉ
- *    coi là đã trừ khi bảng chốt qua màn mới (bản đóng băng khớp) VÀ số ứng đã chốt có chỗ cho nó;
- *    không thì `relockForMarker` — trả lương bị chặn tới khi mở chốt rồi chốt lại.
+ *    D của bản đóng băng khớp bảng (máy chủ trả 0 khi không khớp). Tháng trong mốc: xem
+ *    `frozenWithMarkerPart` — không khớp ⇒ `relockForMarker`, trả lương bị chặn tới khi chốt lại.
  */
 export function withSalaryProfit(m: SalManager, staff: SalaryProfitStaff | null | undefined): SalManager {
   if (!staff || staff.shareholder_id === null) return { ...m, profit: null };
@@ -62,9 +61,7 @@ export function withSalaryProfit(m: SalManager, staff: SalaryProfitStaff | null 
     advanceOffset = settled ? 0 : staff.advance_offset_month;
     const fz = m.frozen;
     if (settled && fz && fz.investment > EPS) {
-      // `m.advance` lúc này chỉ là ứng lương sống; phần còn lại của số ứng đã chốt là khoản trừ khác.
-      const room = fz.advance - advanceOffset - m.advance;
-      if (staff.settlement?.matches_sheet === true && room >= fz.investment - EPS) markerPaid = fz.investment;
+      if (frozenWithMarkerPart(fz, staff.settlement)) markerPaid = fz.investment;
       else relockForMarker = true;
     }
   }
@@ -91,6 +88,25 @@ export function withSalaryProfit(m: SalManager, staff: SalaryProfitStaff | null 
     relockForMarker,
   };
   return { ...m, advance: m.advance + advanceOffset + markerPaid, advanceItems, profit };
+}
+
+/**
+ * Bảng đã chốt của tháng nằm trong mốc có ĐÃ trừ phần đầu tư "đã trả theo mốc" chưa — chỉ đọc số
+ * ĐÓNG BĂNG (bảng lương + bản đóng băng E13 của kỳ), không đọc ứng lương sống (ứng duyệt sau giờ
+ * chốt không được làm đổi kết luận). Cần đủ ba điều:
+ *  1. bản đóng băng khớp bảng — bảng chốt qua màn mới (đường cũ / trợ lý không đóng băng);
+ *  2. D đóng băng = 0 — E13 luôn ép D = 0 khi đóng băng tháng nằm trong mốc, nên D > 0 chứng tỏ
+ *     bảng chốt lúc tháng CHƯA vào mốc (thực nhận khi đó còn gồm phần đầu tư);
+ *  3. số ứng đã chốt chứa được phần đầu tư — màn mới cộng phần đó vào advances_total.
+ * Còn sót (ghi lại): chốt qua màn mới lúc chưa có mốc, D = 0 và ứng lương lúc chốt ≥ phần đầu tư.
+ */
+function frozenWithMarkerPart(
+  frozen: NonNullable<SalManager['frozen']>,
+  settlement: SalaryProfitStaff['settlement'],
+): boolean {
+  return settlement?.matches_sheet === true
+    && same(settlement.advance_offset_month, 0)
+    && frozen.advance >= frozen.investment - EPS;
 }
 
 /** Hai khoản trừ thuộc sổ tổng nằm trong con số "ứng" (m.advance / số ứng đã chốt). */
