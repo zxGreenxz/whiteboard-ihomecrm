@@ -458,43 +458,8 @@ export const retainedKpiSub = (s: LockedProfitSplit, fmt: (v: number) => string)
   return parts.length > 0 ? parts.join(' · ') : 'phần LN đã chốt không chia cổ đông';
 };
 
-/** F21: chia LN qua app đang tắt (route distribute SHADOW) — chỉ ghi chú, KHÔNG đổi cờ. */
-export const PROFIT_PAYOUT_OFF_NOTE = 'Chi LN qua app đang tắt — chi ngoài app thì ghi phiếu như hiện nay';
+// Ghi chú cũ "chi lợi nhuận qua app đang tắt" đã bỏ (Đợt 2): trang lợi nhuận báo theo trạng thái sổ
+// tổng (ProfitLedgerRouteBanner). Quản lý đã xoá còn số: đọc thẳng từ sổ lương điều hành (E10).
 
 export const RETIRED_MANAGER_NOTE =
   'Quản lý đã xoá — app không chi được phần này. Đã trả ngoài app hay huỷ là việc chủ quyết; màn chỉ hiện số.';
-
-// ───────────────────────────── quản lý đã xoá (F21) ─────────────────────────────
-
-export interface RetiredManagerBalance {
-  managerId: string;
-  /** Σ lương điều hành đã phân bổ lúc chốt. */
-  accrued: number;
-  /** Σ phiếu chi lương điều hành đã duyệt. */
-  paid: number;
-  remaining: number;
-}
-
-/**
- * Quản lý KHÔNG còn trong danh sách đang hoạt động mà vẫn có phân bổ/phiếu chi lương điều hành.
- * Chỉ để HIỆN (nhãn "đã nghỉ") — app không chi được cho quản lý đã xoá; đã trả ngoài app hay
- * huỷ là việc chủ quyết.
- */
-export const retiredManagerBalances = (
-  activeManagerIds: ReadonlySet<string>,
-  allocations: readonly { manager_id: string; amount: number }[],
-  payouts: readonly { manager_id: string; total_amount: number }[],
-): RetiredManagerBalance[] => {
-  const by = new Map<string, RetiredManagerBalance>();
-  const get = (id: string): RetiredManagerBalance => {
-    const cur = by.get(id) ?? { managerId: id, accrued: 0, paid: 0, remaining: 0 };
-    by.set(id, cur);
-    return cur;
-  };
-  for (const a of allocations) if (!activeManagerIds.has(a.manager_id)) get(a.manager_id).accrued += a.amount;
-  for (const p of payouts) if (!activeManagerIds.has(p.manager_id)) get(p.manager_id).paid += p.total_amount;
-  return [...by.values()]
-    .map((r) => ({ ...r, remaining: r.accrued - r.paid }))
-    .filter((r) => r.accrued !== 0 || r.paid !== 0)
-    .sort((a, b) => b.remaining - a.remaining || a.managerId.localeCompare(b.managerId));
-};

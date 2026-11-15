@@ -188,7 +188,12 @@ describe('hộp Chi lợi nhuận (SELF_ADVANCE — người chỉ có quyền t
 
 it.each(['manager'] as const)('ngày draft sai ở %s không gửi ngày cũ, giữ text/red/focus', async () => {
   const props = { open: true, onOpenChange: vi.fn() };
-  render(<ManagerSalaryPayoutDialog {...props} managers={[{ id: 'm', name: 'An' }] as never} defaultManagerId="m" />);
+  // Hộp lương điều hành đọc người nhận + số còn lại từ sổ lương điều hành (E10) — D2.5.
+  const ledger = {
+    organization_id: 'org-a', route: 'LEGACY' as const, as_of: '2026-11-15T00:00:00Z',
+    managers: [{ manager_id: 'm', name: 'An', is_active: true, is_deleted: false, has_login: true, marker: null, allocated: 9_000_000, payouts_approved: 0, payouts_pending: 0, balance: 9_000_000, status: 'OWED' as const }],
+  };
+  render(<ManagerSalaryPayoutDialog {...props} organizationId="org-a" ledger={ledger} defaultManagerId="m" />);
   fireEvent.change(document.querySelector('[name="amount"]')!, { target: { value: '500000' } });
   fireEvent.change(document.querySelector('[name="accountId"]')!, { target: { value: 'a1' } });
   const date = document.querySelector('[name="voucherDate"]') as HTMLInputElement;
