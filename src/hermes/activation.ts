@@ -12,8 +12,8 @@ import type { HermesZaloBinding } from './zaloBindingClient';
 export interface HermesActivation {
   /** Bước 6 xong: trợ lý đã dùng kết nối đang ghép, hoặc máy chủ báo đã đồng bộ. */
   done: boolean;
-  /** Đang chờ phía trợ lý (người dùng không có việc gì để làm trên trang): trang nên tự kiểm lại.
-   * false khi đã xong hoặc khi bước tiếp theo là một thao tác của người dùng trên trang. */
+  /** Phía trợ lý còn có thể tự đổi mà người dùng không cần làm gì trên trang: trang nên tự kiểm lại.
+   * false khi đã xong hoặc khi chỉ một thao tác của người dùng trên trang mới đi tiếp được. */
   waiting: boolean;
   /** Câu ở thẻ bước 6. */
   summary: string;
@@ -71,8 +71,9 @@ export function hermesActivation({ linkedConnectionId, provisioningState, connec
   // Máy chủ báo đã đồng bộ thì tin, trừ khi dịch vụ kết nối đã từ chối chính kết nối này.
   if (provisioningState === 'synchronized' && rejectedAt === null) return { done: true, waiting: false, note: 'Đã đồng bộ với trợ lý.', summary: 'Trợ lý đã sẵn sàng.' };
   // Chỉ sang kết nối khác khi đó là dấu vết MỚI NHẤT của trợ lý; nếu sau đó trợ lý đã trình kết nối đang ghép và bị từ chối thì nói việc bị từ chối.
-  if (inUse && (rejectedAt === null || rejectedAt <= inUse.at)) return { done: false, waiting: false, note: 'Trợ lý đang chạy bằng kết nối khác. Xem bước 6.',
-    summary: `Trợ lý đang chạy bằng ${name(inUse.id)} (mã …${shortId(inUse.id)}), không phải kết nối đang ghép với nick Zalo. Ở bước 3, chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.` };
+  // Vẫn tự kiểm lại: người dùng có thể vừa cố ý đổi sang kết nối mới, và trợ lý sẽ chuyển theo khi quản trị viên kích hoạt lại.
+  if (inUse && (rejectedAt === null || rejectedAt <= inUse.at)) return { done: false, waiting: true, note: 'Trợ lý đang chạy bằng kết nối khác. Xem bước 6.',
+    summary: `Trợ lý đang chạy bằng ${name(inUse.id)} (mã …${shortId(inUse.id)}), không phải kết nối đang ghép với nick Zalo. Nếu bạn vừa đổi sang kết nối mới, nhờ quản trị viên kích hoạt lại trợ lý; nếu không, ở bước 3 chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.` };
   if (rejectedAt !== null) return { done: false, waiting: true,
     note: 'Trợ lý bị từ chối khi dùng kết nối này. Xem bước 6.',
     summary: `Trợ lý bị từ chối khi dùng kết nối này lúc ${time(rejectedAt)}: kết nối hết hạn hoặc đã bị thu hồi. Nếu vài phút nữa vẫn vậy, tạo kết nối mới ở bước 2 rồi chọn nó cho trợ lý ở bước 3.` };

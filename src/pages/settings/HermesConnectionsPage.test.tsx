@@ -805,15 +805,23 @@ describe('one-column setup guide', () => {
     expect(screen.getByText(/^Kết nối đang ghép với nick Zalo đã ngắt hoặc chưa hoàn tất nên trợ lý không dùng được CRM\./)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' })).toBeTruthy();
   });
-  it('names the connection the assistant really runs on when it differs from the one paired with Zalo', async () => {
+  it('names the connection the assistant really runs on when it differs from the one paired with Zalo, and keeps checking until the assistant moves over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     rows = [row(), row(OTHER)];
     statusBody = statusFixture([{ id: CONNECTION, ...quiet }, { id: OTHER, ...quiet, lastSuccessAt: SUCCESS }]);
     fetchMock.mockImplementation(zalo(linked('pending')));
     render(<HermesConnectionsPage />);
     await screen.findByText('Bạn đang ở bước 6: Kích hoạt trợ lý.');
-    expect(screen.getByText('Trợ lý đang chạy bằng Kết nối 2 (mã …66666666), không phải kết nối đang ghép với nick Zalo. Ở bước 3, chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.')).toBeTruthy();
+    expect(screen.getByText('Trợ lý đang chạy bằng Kết nối 2 (mã …66666666), không phải kết nối đang ghép với nick Zalo. Nếu bạn vừa đổi sang kết nối mới, nhờ quản trị viên kích hoạt lại trợ lý; nếu không, ở bước 3 chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”. Trang tự kiểm lại sau mỗi 30 giây.')).toBeTruthy();
     expect(screen.getByText('Trợ lý đang chạy bằng kết nối khác. Xem bước 6.')).toBeTruthy();
     expect(screen.getByLabelText('Kết nối Hermes dùng cho Zalo')).toBeTruthy();
+    expect(calls('status')).toHaveLength(0);
+    // Người dùng vừa đổi sang kết nối mới; quản trị viên kích hoạt lại và trợ lý gọi CRM bằng kết nối đang ghép: trang tự nhận ra, không cần bấm tải lại.
+    statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS + 1 }, { id: OTHER, ...quiet, lastSuccessAt: SUCCESS }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await screen.findByText('Đã cài xong. Nhắn bot trên Zalo để dùng Hermes.');
+    expect(calls('status')).toHaveLength(1);
+    expect(screen.queryByText(/Trợ lý đang chạy bằng Kết nối 2/)).toBeNull();
   });
   it('tells an unlinked user that the assistant already reaches the CRM and sends them to the Zalo step', async () => {
     statusBody = statusFixture([{ id: CONNECTION, ...quiet, lastSuccessAt: SUCCESS }]);

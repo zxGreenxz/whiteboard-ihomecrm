@@ -30,10 +30,10 @@ describe('hermesActivation: bước 6 theo bằng chứng trợ lý đã dùng C
       expect(`${result.summary} ${result.note}`).not.toMatch(/[Đđ]ang đồng bộ/);
     }
   });
-  it('trợ lý chạy bằng kết nối KHÁC kết nối đang ghép với Zalo: chưa xong, chỉ rõ kết nối cần chọn, không tự chờ', () => {
+  it('trợ lý chạy bằng kết nối KHÁC kết nối đang ghép với Zalo: chưa xong, chỉ rõ kết nối đó, vẫn tự kiểm lại vì người dùng có thể vừa đổi kết nối', () => {
     const result = linked('pending', status(seen(LINKED), seen(OTHER, { lastSuccessAt: SUCCESS })));
-    expect(result.done).toBe(false); expect(result.waiting).toBe(false);
-    expect(result.summary).toBe('Trợ lý đang chạy bằng Kết nối 2 (mã …66666666), không phải kết nối đang ghép với nick Zalo. Ở bước 3, chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.');
+    expect(result.done).toBe(false); expect(result.waiting).toBe(true);
+    expect(result.summary).toBe('Trợ lý đang chạy bằng Kết nối 2 (mã …66666666), không phải kết nối đang ghép với nick Zalo. Nếu bạn vừa đổi sang kết nối mới, nhờ quản trị viên kích hoạt lại trợ lý; nếu không, ở bước 3 chọn kết nối đó rồi bấm “Dùng kết nối này cho trợ lý”.');
     expect(result.note).toBe('Trợ lý đang chạy bằng kết nối khác. Xem bước 6.');
   });
   it('bằng chứng ở kết nối đã ngắt hoặc ngoài danh sách không được tính là trợ lý đang chạy', () => {
@@ -76,7 +76,7 @@ describe('hermesActivation: bước 6 theo bằng chứng trợ lý đã dùng C
     expect(later.waiting).toBe(true); expect(later.summary).toMatch(/^Trợ lý bị từ chối khi dùng kết nối này lúc t3000/);
     // Ngược lại, kết nối khác gọi được SAU lần từ chối thì nêu kết nối khác.
     const earlier = linked('pending', status(seen(LINKED, { lastErrorCode: 'unauthorized', lastErrorAt: SUCCESS }), seen(OTHER, { lastSuccessAt: FAILED })));
-    expect(earlier.waiting).toBe(false); expect(earlier.summary).toMatch(/^Trợ lý đang chạy bằng Kết nối 2 /);
+    expect(earlier.waiting).toBe(true); expect(earlier.summary).toMatch(/^Trợ lý đang chạy bằng Kết nối 2 /);
   });
   it('giữ nguyên các trạng thái của bộ đồng bộ khi chưa có bằng chứng, và bằng chứng thắng trạng thái hàng chờ', () => {
     const quiet = status(seen(LINKED), seen(OTHER));
