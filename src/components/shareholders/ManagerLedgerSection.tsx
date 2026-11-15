@@ -46,6 +46,9 @@ export function ManagerLedgerSection({ organizationId, canPayManager, variant }:
   const openPay = (managerId: string | null) => { setPayManager(managerId); setPayOpen(true); };
   const rows = ledger?.managers ?? [];
   const hasDeleted = rows.some((row) => row.is_deleted);
+  // Sổ tổng còn xem thử (LEGACY): số "còn lại" chưa có mốc, tính trên toàn lịch sử — chỉ để tham khảo,
+  // hộp chi chỉ cảnh báo khi vượt (như thẻ sổ tổng cổ đông).
+  const previewOnly = !!ledger && !routeState.ledgerReady;
 
   const body = query.isError ? (
     <ProfitLedgerReadError className={mobile ? 'm-3' : 'mx-[18px] my-3'} error={query.error} onRetry={() => { void query.refetch(); }} />
@@ -132,7 +135,11 @@ export function ManagerLedgerSection({ organizationId, canPayManager, variant }:
           <div className="flex items-center gap-2 border-b border-[#efece4] px-3 py-3">
             <Briefcase className="h-3.5 w-3.5 text-[#c2570f]" />
             <span className="text-[12.5px] font-extrabold tracking-[-0.1px] text-[#1b1813]">Lương điều hành</span>
-            <span className="text-[10.5px] font-semibold text-[#8d8678]">còn lại sau mốc</span>
+            {previewOnly ? (
+              <span className="rounded-[5px] border border-[#f1dcb4] bg-[#fdf3e3] px-1.5 py-px text-[10px] font-bold text-[#a35a0c]">xem thử</span>
+            ) : (
+              <span className="text-[10.5px] font-semibold text-[#8d8678]">còn lại sau mốc</span>
+            )}
           </div>
           {body}
           {hasDeleted && <p className="m-0 px-3 py-2 text-[10.5px] font-semibold text-[#8d8678]">{RETIRED_MANAGER_NOTE}</p>}
@@ -140,7 +147,13 @@ export function ManagerLedgerSection({ organizationId, canPayManager, variant }:
       ) : (
         <div className="ph-card" data-testid="manager-ledger-section">
           <div className="ph-card__head">
-            <div className="ph-card__title">Lương điều hành</div>
+            <div className="ph-card__title">
+              Lương điều hành
+              {previewOnly && <span className="ph-state ph-state--warn" style={{ marginLeft: 8 }}>xem thử</span>}
+            </div>
+            {previewOnly && (
+              <div className="ph-card__note">Số còn lại chưa có mốc đã trả đủ — chi vượt chỉ được cảnh báo, chưa bị chặn.</div>
+            )}
             {canPayManager && (
               <div className="ph-card__push">
                 <Button

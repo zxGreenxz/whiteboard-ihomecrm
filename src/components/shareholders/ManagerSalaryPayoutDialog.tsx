@@ -1,7 +1,8 @@
 // Hộp "Chi lương điều hành" theo sổ lương điều hành (E10): được nhận − đã trả − chờ duyệt = còn lại.
-// Không cho chi quá số còn lại ở MỌI trạng thái sổ tổng (khi sổ tổng chưa chạy thật máy chủ chưa chặn,
-// nên chặn ở đây), không có tạm ứng. Sổ tổng đóng băng ⇒ tạm khoá chi. Sổ quỹ: chỉ sổ tiền thật của
-// đúng công ty (máy chủ cũng từ chối sổ ảo / sổ công ty khác).
+// Sổ tổng chạy (SHADOW trở đi): KHÔNG cho chi quá số còn lại (máy chủ CANONICAL cũng chặn), không có
+// tạm ứng. Sổ tổng còn xem thử (LEGACY — chưa có mốc, số còn lại tính trên toàn lịch sử): chỉ CẢNH BÁO
+// khi vượt, vẫn lập được như trước Đợt 2. Đóng băng ⇒ tạm khoá chi. Sổ quỹ: chỉ sổ tiền thật của đúng
+// công ty (máy chủ cũng từ chối sổ ảo / sổ công ty khác).
 import { validateInputDrafts } from "@/lib/inputDraftValidation";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { focusFirstError } from "@/lib/formErrors";
@@ -90,13 +91,16 @@ export default function ManagerSalaryPayoutDialog({
   );
   const frozen = !!ledger && !routeState.canPayManager;
   const locked = !ledger || frozen || !organizationId;
+  // Trần "còn lại" chỉ là chốt cứng khi sổ tổng chạy; LEGACY chỉ cảnh báo (số còn lại đang xem thử).
+  const capEnforced = !!ledger && routeState.ledgerReady;
+  const overRemaining = remaining !== null && Number.isFinite(amount) && amount > remaining + 0.005;
 
   const handleSubmit = async () => {
     if (createMut.isPending || saveBlocked || locked) return;
     const next: Record<string, string> = {};
     if (!managerId || !row) next.managerId = 'Chọn quản lý nhận khoản chi.';
     if (!Number.isFinite(amount) || amount <= 0) next.amount = 'Nhập số tiền lớn hơn 0.';
-    else if (remaining !== null && amount > remaining + 0.005) {
+    else if (capEnforced && overRemaining && remaining !== null) {
       next.amount = `Vượt lương điều hành còn lại ${formatVND(remaining)}. Không chi quá số còn lại.`;
     }
     if (!payoutAccounts.some(a => a.id === accountId)) next.accountId = 'Chọn sổ quỹ chi hợp lệ.';
@@ -158,9 +162,12 @@ export default function ManagerSalaryPayoutDialog({
           {row && (
             <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm" data-testid="manager-payout-balance">
               {row.balance >= 0 ? (
-                <p>Còn lại: <strong>{formatVND(row.balance)}</strong></p>
+                <p>Còn lại{capEnforced ? '' : ' (xem thử)'}: <strong>{formatVND(row.balance)}</strong></p>
               ) : (
-                <p className="text-destructive">Đã chi vượt: <strong>{formatVND(-row.balance)}</strong> — không chi thêm được.</p>
+                <p className="text-destructive">
+                  Đã chi vượt{capEnforced ? '' : ' (xem thử)'}: <strong>{formatVND(-row.balance)}</strong>
+                  {capEnforced ? ' — không chi thêm được.' : ''}
+                </p>
               )}
               <p className="text-muted-foreground">
                 Được nhận {formatVND(row.allocated)} · đã trả {formatVND(row.payouts_approved)} · chờ duyệt {formatVND(row.payouts_pending)}
@@ -170,6 +177,11 @@ export default function ManagerSalaryPayoutDialog({
           <div className="space-y-2">
             <Label>Số tiền <span className="text-red-500">*</span></Label>
             <CurrencyInput name="amount" aria-invalid={!!errors.amount} aria-describedby="error-amount" value={amount} onChange={setAmount} />
+            {!capEnforced && overRemaining && remaining !== null && (
+              <p role="status" className="text-sm text-amber-700" data-testid="manager-payout-over-warning">
+                Vượt số còn lại {formatVND(remaining)} theo sổ đang xem thử (chưa có mốc đã trả đủ) — vẫn lập được; kiểm tra lại số trước khi chi.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Chi từ sổ quỹ <span className="text-red-500">*</span></Label>

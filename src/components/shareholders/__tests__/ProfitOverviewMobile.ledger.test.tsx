@@ -82,6 +82,9 @@ describe('Tổng quan chủ — điện thoại', () => {
     expect(within(screen.getByTestId('shareholder-ledger-card')).getByText('xem thử')).toBeTruthy();
     expect(chiOf('s1')!.disabled).toBe(true);
     expect(screen.getByTestId('kpi-paid').textContent).toMatch(/Đã ứng \/ đã chia/);
+    // Ô "được chia" cùng cách tính cũ (phân bổ cộng dồn 7.000), không lẫn số sổ tổng.
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/Tổng được chia cổ đông/);
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/7k/);
     expect(document.body.textContent).not.toMatch(/qua app đang tắt/);
   });
 
@@ -93,6 +96,9 @@ describe('Tổng quan chủ — điện thoại', () => {
     fireEvent.click(chiOf('s1')!);
     expect(screen.getByTestId('dist-dialog').textContent).toBe('s1');
     expect(screen.getByTestId('kpi-paid').textContent).toMatch(/Đã chi \(đã duyệt\)/);
+    // Sổ tổng chạy: ô "được chia" đọc Σ allocated của E1 (1.000.000 + 100.000), cùng gốc hai ô kia.
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/Được chia \(sau mốc\)/);
+    expect(screen.getByTestId('kpi-allocated').textContent).toMatch(/1,1tr/);
   });
 
   it('bấm thẻ mở sổ chi tiết từ dưới lên (chế độ điện thoại)', () => {

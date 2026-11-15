@@ -150,12 +150,16 @@ export function shareholderPayBlock(row: ShareholderLedgerRow, routeState: Profi
   return null;
 }
 
-/** Lý do KHÔNG cho chi lương điều hành người này (null = chi được). */
+/**
+ * Lý do KHÔNG cho chi lương điều hành người này (null = chi được).
+ * Hết số còn lại chỉ CHẶN khi sổ tổng chạy (SHADOW trở đi — mốc đặt được từ đó). Sổ tổng còn xem thử
+ * (LEGACY): số còn lại tính trên toàn lịch sử, chưa có mốc ⇒ chỉ cảnh báo trong hộp chi, như trước Đợt 2.
+ */
 export function managerPayBlock(row: ManagerLedgerRow, routeState: ProfitLedgerRouteState): string | null {
   if (row.is_deleted) return 'Người nhận đã xoá — không chi được.';
   if (!row.is_active) return 'Người nhận đang ngưng — không chi được.';
   if (!routeState.canPayManager) return 'Sổ tổng đang đóng băng — tạm khoá chi lương điều hành.';
-  if (row.balance <= 0) return 'Không còn lương điều hành để chi.';
+  if (routeState.ledgerReady && row.balance <= 0) return 'Không còn lương điều hành để chi.';
   return null;
 }
 

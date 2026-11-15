@@ -220,10 +220,30 @@ export default function ProfitOverviewMobile({
           <div className={`${kpiVal} text-[#2b5aa0]`}>{fmtShort(totals.lockedProfit)}</div>
           <div className={kpiSub}>Trước chia cổ đông</div>
         </div>
-        <div className={`${CARD} px-3 py-2.5`}>
-          <div className={kpiLabel}>{shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}</div>
-          <div className={`${kpiVal} text-[#0e7a47]`}>{fmtShort(totals.accrued)}</div>
-          <div className={kpiSub}>Luỹ kế đã chốt</div>
+        {/* Được chia / Đã chi / Còn phải trả CÙNG GỐC: sổ tổng chạy ⇒ cả ba đọc E1 (sau mốc);
+            còn xem thử ⇒ cả ba theo cách tính cũ. */}
+        <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-allocated">
+          {kpiMode === "LEDGER" ? (
+            <>
+              <div className={kpiLabel}>{shName ? `Được chia (sau mốc) · ${shName}` : "Được chia (sau mốc)"}</div>
+              <div className={`${kpiVal} text-[#0e7a47]`}>{fmtShort(ledgerSum.allocated)}</div>
+              <div className={kpiSub}>Các tháng đã chốt sau mốc</div>
+            </>
+          ) : kpiMode === "LEGACY" ? (
+            <>
+              <div className={kpiLabel}>{shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}</div>
+              <div className={`${kpiVal} text-[#0e7a47]`}>{fmtShort(totals.accrued)}</div>
+              <div className={kpiSub}>Luỹ kế đã chốt</div>
+            </>
+          ) : (
+            <>
+              <div className={kpiLabel}>Được chia</div>
+              <div className={`${kpiVal} text-[#1b1813]`}>
+                {kpiMode === "PENDING" ? <Skeleton className="h-5 w-16" aria-label="Đang tải sổ tổng" /> : "—"}
+              </div>
+              {kpiMode === "ERROR" && <div className={kpiSub}>Chưa tải được sổ tổng</div>}
+            </>
+          )}
         </div>
         {kpiMode === "LEDGER" ? (
           <>

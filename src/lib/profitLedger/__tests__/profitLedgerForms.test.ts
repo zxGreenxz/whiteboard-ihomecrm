@@ -96,4 +96,22 @@ describe('makeResolveFormSchema', () => {
     expect(issues(makeResolveFormSchema({ voucherAmount: 5 }).safeParse(base))).toEqual([`investment:${PROFIT_FORM_MESSAGES.resolveOverVoucher}`]);
     expect(makeResolveFormSchema({ voucherAmount: 5 }).safeParse({ ...base, offset: 2 }).success).toBe(true);
   });
+  it('ô trống (chưa nhập) ⇒ bắt tự nhập cả Y lẫn D, không tự coi là 0', () => {
+    expect(issues(makeResolveFormSchema().safeParse({ ...base, investment: Number.NaN, offset: Number.NaN }))).toEqual([
+      `investment:${PROFIT_FORM_MESSAGES.resolveInvestmentRequired}`,
+      `offset:${PROFIT_FORM_MESSAGES.resolveOffsetRequired}`,
+    ]);
+  });
+  it('D trong [0, phần còn trừ được của tháng]; Y giữa 0 và phần đầu tư còn lại, cùng dấu', () => {
+    const limits = { maxOffset: 3, investmentRemaining: 10 };
+    expect(makeResolveFormSchema(limits).safeParse({ ...base, offset: 3 }).success).toBe(true);
+    expect(issues(makeResolveFormSchema(limits).safeParse({ ...base, offset: 4 }))).toEqual([`offset:${PROFIT_FORM_MESSAGES.resolveOffsetOverMonth}`]);
+    expect(issues(makeResolveFormSchema(limits).safeParse({ ...base, investment: 11 }))).toEqual([`investment:${PROFIT_FORM_MESSAGES.resolveInvestmentRange}`]);
+    expect(issues(makeResolveFormSchema(limits).safeParse({ ...base, investment: -1 }))).toEqual([`investment:${PROFIT_FORM_MESSAGES.resolveInvestmentRange}`]);
+    // Tháng lỗ: phần còn lại âm ⇒ Y âm trong [R, 0].
+    expect(makeResolveFormSchema({ investmentRemaining: -6 }).safeParse({ ...base, investment: -5 }).success).toBe(true);
+    expect(makeResolveFormSchema({ investmentRemaining: -6 }).safeParse(base).success).toBe(false);
+    // Hết phần trừ được ⇒ chỉ D = 0.
+    expect(makeResolveFormSchema({ maxOffset: 0 }).safeParse({ ...base, offset: 1 }).success).toBe(false);
+  });
 });
