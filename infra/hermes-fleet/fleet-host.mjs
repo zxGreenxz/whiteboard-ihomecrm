@@ -8,7 +8,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FleetError, PLUGIN_SOURCES, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, parked, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
+import { FleetError, PLUGIN_SOURCES, SEED_MARKER, SEEDING_MARKER, SIDECAR_LABEL, SIDECAR_VALUE, auditDropIn, auditDropInFile, auditScanConfig, channelProjection, connectionDigest,
   containerName, envSourceOf, homeOf, PLUGIN_FILES, PLUGIN_FILE_MAX_BYTES, pluginSourceOf, planAdd, planPrune, planRecreate, planRemove, listRows, profileCreateArgs, profileDirOf, profileEnv,
   recreateArgs, redactArgs, renderProfileConfig, retiredContainer, routeEndpoint, sharedEnvFrom, sidecarArgs, sidecarView, soulSourceOf, validateAddRequest } from './fleet-plan.mjs';
 
@@ -73,6 +73,12 @@ function docker(sys, args, options) {
   const result = sys.exec('docker', args, options);
   if (result.status !== 0) fail('docker_loi', { lenh: redactArgs(args).slice(0, 6).join(' '), loi: result.stderr.toString('utf8').trim().slice(0, 300) });
   return out(result);
+}
+/** Một dòng mô tả lỗi cho kết quả/nhật ký: mã lỗi + chi tiết (stderr của docker/helper, vốn không chứa bí mật). */
+function describeError(error) {
+  if (!(error instanceof FleetError)) return `loi_khong_ro${typeof error?.code === 'string' ? ` ${error.code}` : ''}`;
+  const detail = error.detail === undefined ? '' : ` ${typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail)}`;
+  return `${error.code}${detail}`.slice(0, 400);
 }
 /** Chạy một script của bản phát hành dưới UID khác. `setpriv` bỏ nhóm phụ và chặn nâng quyền lại. */
 function asUser(sys, user, script, args, options) {
@@ -213,7 +219,8 @@ export function gatherAddFacts(sys, config, rawRequest) {
   // không để lệnh hỏng sau khi đã tạo kênh.
   // Lúc xem: file nào của hồ sơ khuôn không đọc an toàn được (symlink, FIFO, thư mục, quá lớn, không có quyền…) thì coi như thiếu.
   const safe = read => { try { return read(); } catch { return null; } };
-  const envSource = safe(() => sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome)),
+  // .env của chủ chỉ đọc khi cấu hình có chia sẻ khoá (giống bước gieo).
+  const envSource = config.template.sharedEnvKeys.length ? safe(() => sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome)) : null,
     soulSource = safe(() => sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome));
   const installed = safe(() => templatePlugins(sys, config)), shipped = releasePlugins(sys);
   facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0, plugins: installed !== null, pluginsMatch: samePlugins(installed, shipped),
@@ -378,11 +385,14 @@ export function applyAdd(sys, config, rawRequest, expect) {
     }
     const soul = sys.readOwned(soulSourceOf(config), 524288, config.template.sourceHome), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
     // Mã chép sang người mới lấy từ bản phát hành (root), sau khi đối chiếu lại lúc ghi với bản đang cài ở trợ lý của chủ.
-    const plugins = releasePlugins(sys);
-    if (!samePlugins(templatePlugins(sys, config), plugins)) fail('plugin_lech_khuon');
+    const plugins = releasePlugins(sys), installed = templatePlugins(sys, config);
+    if (!installed) fail('khuon_thieu_plugin');
+    if (!samePlugins(installed, plugins)) fail('plugin_lech_khuon');
     if (!soul || !templateText) fail('khuon_thieu_soul');
+    // .env của chủ chỉ đọc khi cấu hình có chia sẻ khoá nào đó: không có thì không đụng file mà trợ lý của chủ ghi được.
+    const sharedEnv = config.template.sharedEnvKeys.length ? sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome) ?? '' : '';
     const input = Buffer.from(JSON.stringify({ version: 1, configYaml: renderProfileConfig(templateText, { route: connector.route }), soul, plugins,
-      env: profileEnv({ shared: sharedEnvFrom(sys.readOwned(envSourceOf(config), 131072, config.template.sourceHome) ?? '', config.template.sharedEnvKeys), channel }) }));
+      env: profileEnv({ shared: sharedEnvFrom(sharedEnv, config.template.sharedEnvKeys), channel }) }));
     try { helperJson(asUser(sys, assistant.uid, SCRIPTS.home, ['seed', '--profile-dir', assistant.profileDir], { input }), 'home seed'); } finally { input.fill(0); }
     mark('seed');
   }
@@ -413,16 +423,25 @@ export function applyAdd(sys, config, rawRequest, expect) {
     mark('worker-restart');
   }
   const worker = currentWorker(sys, config), replaced = [], sidecarProblems = [];
+  const problem = (name, text) => { sidecarProblems.push(`${name}: ${text}`); sys.log(`${name}: không nối lại được: ${text}`); };
   if (state.sidecars === 'pending') {
-    const raw = inspectAll(sys), template = name => raw.get(name) && sidecarView(raw.get(name)).home === config.template.sourceHome;
-    // Trợ lý của chủ được nối lại trước; mỗi sidecar một lần thử riêng: một cái hỏng không bỏ các cái sau ở namespace chết.
-    for (const name of [...plan.others.filter(template), ...plan.others.filter(name => !template(name))]) {
-      if (!raw.get(name)) { sidecarProblems.push(`${name}: không còn tồn tại`); continue; }
-      const view = sidecarView(raw.get(name));
-      if (view.running && view.networkMode === `container:${worker.id}`) continue;
-      if (parked(view)) { sidecarProblems.push(`${name}: bị tạm dừng trong lúc chạy, để yên`); continue; }
-      try { replaced.push(recreateFromInspect(sys, raw, name, worker.id)); }
-      catch (error) { sidecarProblems.push(`${name}: ${error instanceof FleetError ? error.code : 'loi_khong_ro'}`); }
+    const raw = inspectAll(sys);
+    // Trợ lý của chủ = container dùng home khuôn LÚC LẬP KẾ HOẠCH (không phụ thuộc nó còn hay mất lúc này).
+    const owners = new Set(facts.containers.filter(view => view.home === config.template.sourceHome).map(view => view.name));
+    // Trợ lý của chủ nối lại trước và PHẢI nối được: hỏng thì dừng trước khi dựng người mới (chạy lại lệnh sẽ thử tiếp bước này).
+    // Các sidecar khác mỗi cái một lần thử riêng: một cái hỏng không bỏ các cái sau ở namespace chết. Cái nào đang chạy lúc lập kế hoạch
+    // thì dựng lại, kể cả nếu ai đó vừa tạm dừng nó: worker đã đổi, để yên là nó chết hẳn ở namespace cũ.
+    for (const name of [...plan.others.filter(name => owners.has(name)), ...plan.others.filter(name => !owners.has(name))]) {
+      const owner = owners.has(name);
+      try {
+        if (!raw.get(name)) fail('khong_con_ton_tai');
+        const view = sidecarView(raw.get(name));
+        if (view.running && view.networkMode === `container:${worker.id}`) continue;
+        replaced.push(recreateFromInspect(sys, raw, name, worker.id));
+      } catch (error) {
+        if (owner) fail('noi_lai_tro_ly_chu_loi', { container: name, loi: describeError(error), daDungLai: replaced });
+        problem(name, describeError(error));
+      }
     }
     mark('sidecars');
   }
@@ -471,16 +490,21 @@ export function applyRecreate(sys, config, { only = [] }, expect) {
   const facts = { ...baseFacts(sys, config), memAvailableMb: memAvailableMb(sys) }, plan = planRecreate(facts, { only }, config);
   if (plan.status !== 'ready') fail(plan.status === 'done' ? 'khong_can_tao_lai' : 'ke_hoach_bi_chan', plan.blocks);
   if (plan.expectedRevision !== expect) fail('ke_hoach_da_doi');
-  const replaced = [];
-  for (const row of plan.sidecars) if (row.state === 'recreate' || row.state === 'revive')
-    replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId, row.unpark ? { restart: 'unless-stopped' } : {}));
+  const replaced = [], failed = [];
+  // Trợ lý của chủ dựng lại trước; mỗi sidecar một lần thử riêng, cái hỏng được ghi lại chứ không bỏ các cái sau ở namespace chết.
+  const owner = row => facts.containers.some(view => view.name === row.container && view.home === config.template.sourceHome);
+  const todo = plan.sidecars.filter(row => row.state === 'recreate' || row.state === 'revive');
+  for (const row of [...todo.filter(owner), ...todo.filter(row => !owner(row))]) {
+    try { replaced.push(recreateFromInspect(sys, facts.raw, row.container, plan.workerId, row.unpark ? { restart: 'unless-stopped' } : {})); }
+    catch (error) { const loi = describeError(error); failed.push({ container: row.container, loi }); sys.log(`${row.container}: không dựng lại được: ${loi}`); }
+  }
   sys.sleep(8000);
-  const after = inspectAll(sys);
-  return { version: 1, action: 'tao-lai-sidecar', status: 'applied', replaced,
-    sidecars: replaced.map(entry => { const view = sidecarView(after.get(entry.container)); return { container: entry.container, running: view.running, currentNetwork: view.networkMode === `container:${plan.workerId}` }; }),
+  const after = inspectAll(sys), live = entry => { const view = after.get(entry.container) && sidecarView(after.get(entry.container)); return view ?? { running: false, networkMode: null }; };
+  return { version: 1, action: 'tao-lai-sidecar', status: 'applied', replaced, failed,
+    sidecars: replaced.map(entry => { const view = live(entry); return { container: entry.container, running: view.running, currentNetwork: view.networkMode === `container:${plan.workerId}` }; }),
     skipped: plan.notes, rollback: 'Bản cũ còn dưới tên <container>-old-<giờ>; chỉ dùng lại được khi worker cũ còn.',
-    // Đã kiểm = mọi sidecar vừa dựng đang chạy ở đúng namespace VÀ không bỏ sót cái nào.
-    runtimeStatus: !plan.notes.length && replaced.every(entry => { const view = sidecarView(after.get(entry.container)); return view.running && view.networkMode === `container:${plan.workerId}`; }) ? 'verified' : 'unverified' };
+    // Đã kiểm = mọi sidecar vừa dựng đang chạy ở đúng namespace, không cái nào hỏng VÀ không bỏ sót cái nào.
+    runtimeStatus: !plan.notes.length && !failed.length && replaced.every(entry => { const view = live(entry); return view.running && view.networkMode === `container:${plan.workerId}`; }) ? 'verified' : 'unverified' };
 }
 
 export function planFor(sys, config, action, input) {

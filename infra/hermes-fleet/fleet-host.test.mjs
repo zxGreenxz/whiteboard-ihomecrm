@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { FLEET_LABELS, FleetError, PLUGIN_FILES, PLUGIN_SOURCES, connectionDigest, trialIdentity } from './fleet-plan.mjs';
+import { FLEET_LABELS, FleetError, PLUGIN_FILES, PLUGIN_FILE_MAX_BYTES, PLUGIN_SOURCES, connectionDigest, trialIdentity } from './fleet-plan.mjs';
 import { SCRIPTS, applyAdd, applyRecreate, applyRemove, planFor, pruneHandoff } from './fleet-host.mjs';
 import { loadFleetConfig, parseArguments, runFleet } from './fleet.mjs';
 import { ACCOUNT_ID, BINDING_ID, CHANNEL_TOKEN, CONNECTION_ID, CREDENTIAL, IMAGE, IMAGE_CONFIG, NEW_WORKER_ID, PERSON, PROVIDER_KEY, config, id,
@@ -363,6 +363,13 @@ test('đăng ký kiểm học tập hỏng giữa hai lần ghi: thêm thì làm
   assert.deepEqual(broken.writes(), []);
 });
 
+test('bản phát hành có đủ file plugin ở đúng chỗ công cụ đọc, dưới trần kích thước', async () => {
+  const { realSystem } = await import('./fleet-host.mjs');
+  const sys = realSystem({ log() {} }), files = Object.entries(PLUGIN_FILES).flatMap(([plugin, names]) => names.map(name => path.join(SCRIPTS.release, 'infra', PLUGIN_SOURCES[plugin], name)));
+  assert.equal(files.length, 7);
+  for (const file of files) { const text = sys.read(file, PLUGIN_FILE_MAX_BYTES); assert(typeof text === 'string' && text.length > 0, file); }
+});
+
 test('đọc file bằng root: không theo symlink, không nhận FIFO/thư mục, có trần kích thước', { skip: process.platform === 'win32' ? 'cần symlink + O_NOFOLLOW của Linux (CI chạy)' : false }, async t => {
   const fs = await import('node:fs'), os = await import('node:os');
   const { realSystem } = await import('./fleet-host.mjs');
@@ -436,6 +443,28 @@ test('thêm lại người đã gỡ gọi operator rotate (không kèm danh tí
   assert(!late.calls.some(call => call.command === 'setpriv' && base(call.args[7]) === 'helper-home.mjs'));
   const linkedPlugin = fakeServer(); linkedPlugin.state.files.set(`${OWNER}/plugins/ihome-zalo-native/adapter.py`, { text: 'x', unsafe: true, uid: 10003, mode: 0o644 });
   assert.deepEqual(planFor(linkedPlugin.sys, cfg, 'them-nguoi', realRequest()).blocks, ['khuon_thieu_plugin']);
+  // Plugin của chủ bị XOÁ ngay sau bước tạo khung hồ sơ: bước gieo dừng với đúng mã, không chép gì.
+  const gone = fakeServer(), gonePlan = planFor(gone.sys, cfg, 'them-nguoi', trialRequest()), goneExec = gone.sys.exec;
+  gone.sys.exec = (command, args, options) => { const result = goneExec(command, args, options);
+    if (command === 'docker' && args.includes('--rm')) gone.state.files.delete(`${OWNER}/plugins/ihome-session-reset/hook.py`); return result; };
+  assert.equal(code(() => applyAdd(gone.sys, cfg, trialRequest(), gonePlan.expectedRevision)), 'khuon_thieu_plugin');
+  assert(!gone.calls.some(call => call.command === 'setpriv' && base(call.args[7]) === 'helper-home.mjs'));
+  // Bản phát hành + hồ sơ khuôn cùng đổi plugin (vẫn trùng nhau) giữa lúc xem và lúc ghi ⇒ mã lệch (mã ghi ràng nội dung plugin).
+  const bumped = fakeServer(), bumpedPlan = planFor(bumped.sys, cfg, 'them-nguoi', realRequest());
+  for (const where of [`${OWNER}/plugins/ihome-zalo-native/adapter.py`, path.join(SCRIPTS.release, 'infra', PLUGIN_SOURCES['ihome-zalo-native'], 'adapter.py')])
+    bumped.state.files.set(where, { text: '# bản mới hơn\n', uid: 0, mode: 0o644 });
+  assert.equal(planFor(bumped.sys, cfg, 'them-nguoi', realRequest()).status, 'ready');
+  assert.equal(code(() => applyAdd(bumped.sys, cfg, realRequest(), bumpedPlan.expectedRevision)), 'ke_hoach_da_doi');
+  // Bản phát hành thiếu nội dung plugin ⇒ dừng ngay lúc xem, không lập kế hoạch.
+  const empty = fakeServer(); empty.state.files.set(path.join(SCRIPTS.release, 'infra', PLUGIN_SOURCES['ihome-session-reset'], 'hook.py'), { text: '', uid: 0, mode: 0o644 });
+  assert.equal(code(() => planFor(empty.sys, cfg, 'them-nguoi', realRequest())), 'ban_phat_hanh_thieu_plugin');
+  // Không chia sẻ khoá nào ⇒ không đọc .env của chủ (cả lúc xem lẫn lúc ghi).
+  const noShare = config({ template: { ...cfg.template, sharedEnvKeys: [] } }), quiet = fakeServer();
+  const quietResult = applyAdd(quiet.sys, noShare, trialRequest(), planFor(quiet.sys, noShare, 'them-nguoi', trialRequest()).expectedRevision);
+  assert.equal(quietResult.status, 'applied'); assert(!quiet.readOwnedCalls.some(([file]) => file === `${OWNER}/.env`));
+  assert(!quiet.calls.some(call => call.input?.includes(PROVIDER_KEY)));
+  const shared = fakeServer(); applyAdd(shared.sys, cfg, trialRequest(), planFor(shared.sys, cfg, 'them-nguoi', trialRequest()).expectedRevision);
+  assert(shared.calls.some(call => call.command === 'setpriv' && base(call.args[7]) === 'helper-home.mjs' && call.input.includes(PROVIDER_KEY)));
   // Gỡ người không đọc file nào trong home sắp gỡ: trợ lý không chặn được việc gỡ bằng cách biến .env thành symlink/FIFO.
   const stuck = fakeServer();
   for (const [file, entry] of [[home, { dir: true, uid: 10100, mode: 0o700 }], [`${profile}/.env`, { unsafe: true, uid: 10100, mode: 0o600 }], [`${profile}/config.yaml`, { unsafe: true, uid: 10100, mode: 0o600 }]]) stuck.state.files.set(file, entry);
@@ -451,9 +480,27 @@ test('tạo lại sidecar trên máy chủ: nối lại cái đang chạy, dựn
   const server = make(), plan = planFor(server.sys, cfg, 'tao-lai-sidecar', { only: [] });
   assert.deepEqual(plan.sidecars.map(row => [row.container, row.state]), [['hermes-ha', 'revive'], ['hermes-owner', 'recreate']]);
   const result = applyRecreate(server.sys, cfg, { only: [] }, plan.expectedRevision);
-  assert.deepEqual(result.replaced.map(row => row.container), ['hermes-ha', 'hermes-owner']);
+  assert.deepEqual(result.replaced.map(row => row.container), ['hermes-owner', 'hermes-ha']);                  // trợ lý của chủ trước
   for (const name of ['hermes-ha', 'hermes-owner']) assert.equal(server.state.containers.get(name).HostConfig.NetworkMode, `container:${WORKER_ID}`);
-  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(result.skipped, []); assert.deepEqual(result.failed, []); assert.equal(result.runtimeStatus, 'verified');
+  // Dựng lại trợ lý của chủ hỏng: lỗi được ghi kèm chi tiết docker, các sidecar sau vẫn được dựng, kết quả chưa xác minh.
+  const ownerBroken = make(), brokenPlan = planFor(ownerBroken.sys, cfg, 'tao-lai-sidecar', { only: [] });
+  const brokenExec = ownerBroken.sys.exec;
+  ownerBroken.sys.exec = (command, args, options) => command === 'docker' && args[0] === 'run' && args.includes('hermes-owner')
+    ? { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from('lỗi docker giả') } : brokenExec(command, args, options);
+  const brokenResult = applyRecreate(ownerBroken.sys, cfg, { only: [] }, brokenPlan.expectedRevision);
+  assert.deepEqual(brokenResult.replaced.map(row => row.container), ['hermes-ha']);
+  assert.equal(brokenResult.failed.length, 1); assert.equal(brokenResult.failed[0].container, 'hermes-owner');
+  assert.match(brokenResult.failed[0].loi, /^tao_sidecar_loi .*lỗi docker giả/);
+  assert(ownerBroken.logs.some(line => line.includes('hermes-owner') && line.includes('lỗi docker giả')));
+  assert.equal(brokenResult.runtimeStatus, 'unverified');
+  // Dựng xong mà container không chạy (thoát ngay) ⇒ chưa xác minh.
+  const exits = make(), exitsPlan = planFor(exits.sys, cfg, 'tao-lai-sidecar', { only: [] }), exitsExec = exits.sys.exec;
+  exits.sys.exec = (command, args, options) => { const done = exitsExec(command, args, options);
+    if (command === 'docker' && args[0] === 'run' && args.includes('hermes-ha')) exits.state.containers.get('hermes-ha').State.Running = false; return done; };
+  const exitsResult = applyRecreate(exits.sys, cfg, { only: [] }, exitsPlan.expectedRevision);
+  assert.deepEqual(exitsResult.failed, []); assert.equal(exitsResult.sidecars.find(row => row.container === 'hermes-ha').running, false);
+  assert.equal(exitsResult.runtimeStatus, 'unverified');
   // RAM đo thật trên máy (meminfo) chỉ còn 300 MB: trợ lý của chủ vẫn được nối lại, sidecar chết được để yên và được nêu tên.
   const tight = make(); tight.state.files.set('/proc/meminfo', { text: 'MemTotal: 2048000 kB\nMemAvailable:   307200 kB\n', uid: 0, mode: 0o444 });
   const tightPlan = planFor(tight.sys, cfg, 'tao-lai-sidecar', { only: [] });
@@ -473,9 +520,23 @@ test('thêm người: trợ lý của chủ được nối lại trước; sidec
   const result = applyAdd(server.sys, cfg, realRequest(), plan.expectedRevision);
   assert.deepEqual(result.replaced.map(row => row.container), ['hermes-owner', 'hermes-lan'].slice(0, 1));       // owner đã nối lại
   assert.equal(server.state.containers.get('hermes-owner').HostConfig.NetworkMode, `container:${NEW_WORKER_ID}`);
-  assert.deepEqual(result.sidecarProblems, ['hermes-ha: không còn tồn tại']);
+  assert.deepEqual(result.sidecarProblems, ['hermes-ha: khong_con_ton_tai']);
+  assert(server.logs.some(line => line.startsWith('hermes-ha: không nối lại được')));
   assert(server.state.containers.has('hermes-lan'));                                                          // người mới vẫn được dựng
   assert.equal(result.runtimeStatus, 'unverified');
+  // Sidecar khác dựng lại hỏng: lỗi kèm chi tiết docker, các bước sau vẫn chạy.
+  const aa = () => sidecarInspect({ name: 'hermes-aa', profile: 'aa', home: `${ROOT}/aa`, uid: 10102, containerId: '3'.repeat(64), labels: { [FLEET_LABELS.name]: 'aa' } });
+  const other = fakeServer({ containers: [aa(), sidecarInspect()], failRun: 'hermes-aa' }), otherPlan = planFor(other.sys, cfg, 'them-nguoi', realRequest());
+  const otherResult = applyAdd(other.sys, cfg, realRequest(), otherPlan.expectedRevision);
+  assert.deepEqual(otherResult.replaced.map(row => row.container), ['hermes-owner']);
+  assert.match(otherResult.sidecarProblems.join(' '), /^hermes-aa: tao_sidecar_loi .*không tạo được/);
+  assert(other.state.containers.has('hermes-lan')); assert.equal(otherResult.runtimeStatus, 'unverified');
+  // Trợ lý của CHỦ dựng lại hỏng: dừng TRƯỚC khi dựng người mới, lỗi mang chi tiết; tên cũ được trả lại để chạy lại lệnh.
+  const owner = fakeServer({ containers: [aa(), sidecarInspect()], failRun: 'hermes-owner' }), ownerPlan = planFor(owner.sys, cfg, 'them-nguoi', realRequest());
+  let caught; try { applyAdd(owner.sys, cfg, realRequest(), ownerPlan.expectedRevision); } catch (error) { caught = error; }
+  assert.equal(caught?.code, 'noi_lai_tro_ly_chu_loi'); assert.equal(caught.detail.container, 'hermes-owner'); assert.match(caught.detail.loi, /không tạo được/);
+  assert(!owner.state.containers.has('hermes-lan') && owner.state.containers.has('hermes-owner'));
+  assert(!owner.calls.some(call => call.command === 'docker' && call.args[0] === 'run' && call.args.includes('hermes-aa')));   // dừng trước các sidecar khác
   // Thứ tự: owner được tạo lại TRƯỚC mọi sidecar khác.
   const order = fakeServer({ containers: [sidecarInspect({ name: 'hermes-aa', profile: 'aa', home: `${ROOT}/aa`, uid: 10102, containerId: '3'.repeat(64), labels: { [FLEET_LABELS.name]: 'aa' } }), sidecarInspect()] });
   const orderPlan = planFor(order.sys, cfg, 'them-nguoi', realRequest());

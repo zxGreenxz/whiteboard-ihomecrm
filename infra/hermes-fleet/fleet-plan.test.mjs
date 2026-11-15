@@ -274,6 +274,10 @@ test('thêm lại người đã gỡ: đúng tên cũ thì cấp token mới cho
   // Có trợ lý CHẾT (không chạy mà vẫn mang chính sách tự khởi động): chặn thêm người mới, để RAM dành cho việc dựng lại nó.
   const dead = planAdd(addFacts({ memAvailableMb: 1077, containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, workerId: NEW_WORKER_ID }))] }), realRequest(), cfg);
   assert.deepEqual(dead.others, ['hermes-owner']); assert(dead.blocks.includes('co_sidecar_chet'));
+  // Người THỬ không khởi động lại worker, không đụng sidecar khác: trợ lý chết không chặn.
+  const deadHb = addFacts({ memAvailableMb: 1077, containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('hb', { running: false, workerId: NEW_WORKER_ID }))] });
+  assert(!planAdd(deadHb, trialRequest(), cfg).blocks.includes('co_sidecar_chet'));
+  assert(planAdd(deadHb, realRequest(), cfg).blocks.includes('co_sidecar_chet'));
   assert.match(dead.notes.join(' '), /Sidecar không chạy, không đụng tới: hermes-thu1\. Dựng lại bằng tao-lai-sidecar/);
   // Trợ lý TẠM DỪNG (restart=no) không chặn, chỉ được ghi chú; them-nguoi không bao giờ bật lại nó.
   const resting = planAdd(addFacts({ containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, restart: 'no' }))] }), realRequest(), cfg);
