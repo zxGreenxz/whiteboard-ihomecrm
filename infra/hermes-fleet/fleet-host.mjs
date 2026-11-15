@@ -428,7 +428,8 @@ export function applyAdd(sys, config, rawRequest, expect) {
     const raw = inspectAll(sys);
     // Trợ lý của chủ = container dùng home khuôn LÚC LẬP KẾ HOẠCH (không phụ thuộc nó còn hay mất lúc này).
     const owners = new Set(facts.containers.filter(view => view.home === config.template.sourceHome).map(view => view.name));
-    // Trợ lý của chủ nối lại trước và PHẢI nối được: hỏng thì dừng trước khi dựng người mới (chạy lại lệnh sẽ thử tiếp bước này).
+    // Trợ lý của chủ nối lại trước và PHẢI nối được: hỏng thì dừng trước khi dựng người mới. Container của chủ khi đó đã dừng (bám namespace
+    // của worker cũ, không khởi động lại được) ⇒ lần chạy lại them-nguoi bị chặn `co_sidecar_chet` cho tới khi tao-lai-sidecar dựng lại nó.
     // Các sidecar khác mỗi cái một lần thử riêng: một cái hỏng không bỏ các cái sau ở namespace chết. Cái nào đang chạy lúc lập kế hoạch
     // thì dựng lại, kể cả nếu ai đó vừa tạm dừng nó: worker đã đổi, để yên là nó chết hẳn ở namespace cũ.
     for (const name of [...plan.others.filter(name => owners.has(name)), ...plan.others.filter(name => !owners.has(name))]) {
@@ -439,7 +440,8 @@ export function applyAdd(sys, config, rawRequest, expect) {
         if (view.running && view.networkMode === `container:${worker.id}`) continue;
         replaced.push(recreateFromInspect(sys, raw, name, worker.id));
       } catch (error) {
-        if (owner) fail('noi_lai_tro_ly_chu_loi', { container: name, loi: describeError(error), daDungLai: replaced });
+        if (owner) fail('noi_lai_tro_ly_chu_loi', { container: name, loi: describeError(error), daDungLai: replaced,
+          goiY: 'Sửa nguyên nhân, chạy tao-lai-sidecar để dựng lại trợ lý của chủ, rồi chạy lại them-nguoi (các bước đã xong được nhận ra).' });
         problem(name, describeError(error));
       }
     }

@@ -109,7 +109,8 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
         return ok();
       }
       if (command === 'bash' && vanishOnRestart) state.containers.delete(vanishOnRestart);
-      if (command === 'bash') { const old = state.containers.get('ihome-zalo-worker'); state.containers.set('ihome-zalo-worker', { ...workerInspect(NEW_WORKER_ID), Image: old.Image, State: { Running: true, StartedAt: new Date(clock).toISOString() } }); return ok(); }
+      if (command === 'bash') { const old = state.containers.get('ihome-zalo-worker'); const fresh = workerInspect(NEW_WORKER_ID);
+        state.containers.set('ihome-zalo-worker', { ...fresh, Image: old.Image, State: { ...fresh.State, Running: true, StartedAt: new Date(clock).toISOString() } }); return ok(); }
       if (command === 'journalctl') {
         // Nhật ký giả luôn có: một lời hỏi dò `authenticate` của chính công cụ (ngay lúc này) và một `tools/list` CŨ từ trước khi
         // container khởi động; chỉ thêm dòng của trợ lý khi `evidence` nêu loại lệnh.
@@ -532,11 +533,25 @@ test('thêm người: trợ lý của chủ được nối lại trước; sidec
   assert.match(otherResult.sidecarProblems.join(' '), /^hermes-aa: tao_sidecar_loi .*không tạo được/);
   assert(other.state.containers.has('hermes-lan')); assert.equal(otherResult.runtimeStatus, 'unverified');
   // Trợ lý của CHỦ dựng lại hỏng: dừng TRƯỚC khi dựng người mới, lỗi mang chi tiết; tên cũ được trả lại để chạy lại lệnh.
-  const owner = fakeServer({ containers: [aa(), sidecarInspect()], failRun: 'hermes-owner' }), ownerPlan = planFor(owner.sys, cfg, 'them-nguoi', realRequest());
+  const owner = fakeServer({ containers: [aa(), sidecarInspect()] }), ownerPlan = planFor(owner.sys, cfg, 'them-nguoi', realRequest()), ownerExec = owner.sys.exec;
+  let ownerBroken = true;
+  owner.sys.exec = (command, args, options) => ownerBroken && command === 'docker' && args[0] === 'run' && args.includes('hermes-owner')
+    ? { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from('không tạo được') } : ownerExec(command, args, options);
   let caught; try { applyAdd(owner.sys, cfg, realRequest(), ownerPlan.expectedRevision); } catch (error) { caught = error; }
   assert.equal(caught?.code, 'noi_lai_tro_ly_chu_loi'); assert.equal(caught.detail.container, 'hermes-owner'); assert.match(caught.detail.loi, /không tạo được/);
+  assert.match(caught.detail.goiY, /tao-lai-sidecar/);
   assert(!owner.state.containers.has('hermes-lan') && owner.state.containers.has('hermes-owner'));
   assert(!owner.calls.some(call => call.command === 'docker' && call.args[0] === 'run' && call.args.includes('hermes-aa')));   // dừng trước các sidecar khác
+  // Đường phục hồi đúng như gợi ý: chạy lại them-nguoi bị chặn vì trợ lý của chủ đã dừng; tao-lai-sidecar dựng lại nó; rồi them-nguoi xong.
+  ownerBroken = false;
+  assert(planFor(owner.sys, cfg, 'them-nguoi', realRequest()).blocks.includes('co_sidecar_chet'));
+  const revive = planFor(owner.sys, cfg, 'tao-lai-sidecar', { only: [] });
+  assert.equal(revive.sidecars.find(row => row.container === 'hermes-owner').state, 'revive');
+  assert.equal(applyRecreate(owner.sys, cfg, { only: [] }, revive.expectedRevision).runtimeStatus, 'verified');
+  const again = planFor(owner.sys, cfg, 'them-nguoi', realRequest());
+  assert.equal(again.status, 'ready'); assert.deepEqual(again.steps.filter(step => step.state === 'pending').map(step => step.id), ['credential', 'container', 'verify']);   // không khởi động lại worker lần hai
+  assert.equal(applyAdd(owner.sys, cfg, realRequest(), again.expectedRevision).runtimeStatus, 'verified');
+  assert(owner.state.containers.has('hermes-lan'));
   // Thứ tự: owner được tạo lại TRƯỚC mọi sidecar khác.
   const order = fakeServer({ containers: [sidecarInspect({ name: 'hermes-aa', profile: 'aa', home: `${ROOT}/aa`, uid: 10102, containerId: '3'.repeat(64), labels: { [FLEET_LABELS.name]: 'aa' } }), sidecarInspect()] });
   const orderPlan = planFor(order.sys, cfg, 'them-nguoi', realRequest());
