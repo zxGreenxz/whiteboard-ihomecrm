@@ -1,29 +1,39 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { useMemo, useState } from "react";
-import { Plus, Briefcase } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { colorAt } from "./shareholderUtils";
 import { useShareholders } from "@/hooks/useShareholders";
-import { useProfitManagers, useRetiredProfitManagers } from "@/hooks/useProfitManagers";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useProfitOverviewCoverage } from "@/hooks/useProfitOverviewCoverage";
 import {
   retainedKpiSub,
-  retiredManagerBalances,
   splitLockedProfit,
-  PROFIT_PAYOUT_OFF_NOTE,
-  RETIRED_MANAGER_NOTE,
 } from "@/lib/profitOverviewCoverage";
 import { ProfitCoverageMobile } from "./ProfitCoverageCard";
 import {
   useProfitMonthly,
   useProfitAllocations,
   useShareholderDistributions,
-  useProfitManagerAllocations,
-  useManagerSalaryPayouts,
-  computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
+import { useShareholderProfitLedger } from "@/hooks/profit-ledger/useProfitLedgerQueries";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { isProfitLedgerForbidden } from "@/lib/profitLedger/errors";
+import type { ShareholderLedgerRow } from "@/lib/profitLedger/ledgerReaders";
+import {
+  markerText,
+  ownerLedgerMode,
+  salaryNet,
+  SHAREHOLDER_STATUS_LABEL,
+  shareholderPayBlock,
+  summarizeShareholderLedger,
+} from "@/lib/profitLedger/ownerLedgerView";
+import { profitLedgerRouteState } from "@/lib/profitLedger/route";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
-import ManagerSalaryPayoutDialog from "./ManagerSalaryPayoutDialog";
+import { ManagerLedgerSection } from "./ManagerLedgerSection";
+import { ProfitLedgerReadError, ProfitLedgerRouteBanner } from "./ProfitLedgerRouteBanner";
+import { ShareholderLedgerSheet } from "./ShareholderLedgerSheet";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   CARD,
@@ -47,14 +57,19 @@ export default function ProfitOverviewMobile({
   year: number;
   onYearChange: (y: number) => void;
 }) {
-  // Hộp Chi lợi nhuận (sổ tổng) gắn công ty đang chọn — bước UI của trang chủ sẽ nối thẻ sổ tổng.
+  // Sổ tổng (E1/E10) theo công ty đang chọn; biểu đồ + ma trận vẫn đọc phân bổ như cũ.
   const { selectedOrganizationId } = useOrganization();
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const [shId, setShId] = useState<string>(ALL);
   const [distOpen, setDistOpen] = useState(false);
   const [distShareholder, setDistShareholder] = useState<string | null>(null);
-  const [payoutOpen, setPayoutOpen] = useState(false);
-  const [payoutManager, setPayoutManager] = useState<string | null>(null);
+  const [entriesFor, setEntriesFor] = useState<{ id: string; name: string } | null>(null);
+
+  const { data: perms } = useMyPermissions();
+  const canDistribute = canUse(perms, "shareholder_profit", "distribute");
+  const canPayManager = canUse(perms, "shareholder_profit", "pay_manager");
+  // Tỷ lệ % của cổ đông chỉ hiện khi được cấp quyền xem tỷ lệ.
+  const canViewPercent = canUse(perms, "shareholder_profit", "view_percent");
 
   const shareholdersQuery = useShareholders();
   const { data: shareholders = [] } = shareholdersQuery;
@@ -64,15 +79,26 @@ export default function ProfitOverviewMobile({
   const { data: profitMonthly = [] } = profitMonthlyQuery;
   const allocationsQuery = useProfitAllocations();
   const { data: allocations = [] } = allocationsQuery;
+  // Cách tính cũ (phiếu chi theo cổ đông) — số đầu trang khi sổ tổng còn đang xem thử.
   const distributionsQuery = useShareholderDistributions();
   const { data: distributions = [] } = distributionsQuery;
 
-  const managersQuery = useProfitManagers();
-  const { data: managers = [] } = managersQuery;
-  const managerAllocationsQuery = useProfitManagerAllocations();
-  const { data: managerAllocations = [] } = managerAllocationsQuery;
-  const managerPayoutsQuery = useManagerSalaryPayouts();
-  const { data: managerPayouts = [] } = managerPayoutsQuery;
+  // Sổ tổng lợi nhuận cổ đông (E1) — lỗi hiện tại chỗ trong thẻ sổ tổng, không chặn cả tab.
+  const ledgerQuery = useShareholderProfitLedger(selectedOrganizationId);
+  const ledger = ledgerQuery.data;
+  const ledgerRows = useMemo<readonly ShareholderLedgerRow[]>(() => ledger?.shareholders ?? [], [ledger]);
+  const routeState = profitLedgerRouteState(ledger?.route);
+  const kpiMode = ownerLedgerMode({
+    organizationId: selectedOrganizationId,
+    route: ledger?.route,
+    hasLedger: !!ledger,
+    loading: ledgerQuery.isLoading,
+    forbidden: ledgerQuery.isError && isProfitLedgerForbidden(ledgerQuery.error),
+  });
+  const ledgerSum = useMemo(
+    () => summarizeShareholderLedger(shId === ALL ? ledgerRows : ledgerRows.filter((row) => row.shareholder_id === shId)),
+    [ledgerRows, shId]
+  );
 
   const buildingName = (id: string) => (buildings as any[]).find((b) => b.id === id)?.name ?? "—";
   const monthOf = (period?: string) => Number((period ?? "").slice(5, 7));
@@ -128,35 +154,8 @@ export default function ProfitOverviewMobile({
     [allocYear]
   );
 
-  // KPI settlement luỹ kế (mọi năm), lọc theo cổ đông đang chọn — như desktop.
-  const summary = useMemo(
-    () => computeShareholderSummary(shareholders.map((s) => s.id), allocActive, distActive),
-    [shareholders, allocActive, distActive]
-  );
-  const activeMgrIds = useMemo(() => new Set(managers.map((m) => m.id)), [managers]);
-  const managerSummary = useMemo(
-    () =>
-      computeShareholderSummary(
-        managers.map((m) => m.id),
-        managerAllocations
-          .filter((a) => activeMgrIds.has(a.manager_id))
-          .map((a) => ({ shareholder_id: a.manager_id, amount: a.amount })),
-        managerPayouts
-          .filter((p) => activeMgrIds.has(p.manager_id))
-          .map((p) => ({ shareholder_id: p.manager_id, total_amount: p.total_amount }))
-      ),
-    [managers, managerAllocations, managerPayouts, activeMgrIds]
-  );
-
-  // Rà 21/10 (F21): LN đã chốt đi về đâu + quản lý đã xoá còn phần — CHỈ HIỆN (đồng bộ desktop).
+  // Rà 21/10 (F21): LN đã chốt đi về đâu — CHỈ HIỆN (đồng bộ desktop).
   const lockedSplit = useMemo(() => splitLockedProfit(profitMonthly), [profitMonthly]);
-  const retiredBalances = useMemo(
-    () => retiredManagerBalances(activeMgrIds, managerAllocations, managerPayouts),
-    [activeMgrIds, managerAllocations, managerPayouts]
-  );
-  const retiredManagersQuery = useRetiredProfitManagers(retiredBalances.map((r) => r.managerId));
-  const retiredName = (id: string) =>
-    retiredManagersQuery.data?.find((m) => m.id === id)?.name ?? "Quản lý đã xoá";
   // Rà 21/10 (F18/F20): phủ chốt theo tháng + LN chưa chốt (ước tính) + đối chiếu.
   const coverageData = useProfitOverviewCoverage(year, month === ALL ? null : Number(month), profitMonthly);
 
@@ -212,7 +211,7 @@ export default function ProfitOverviewMobile({
   const kpiSub = "text-[10px] text-[#b6b0a3] font-semibold mt-0.5";
 
   return (
-    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery, managersQuery, managerAllocationsQuery, managerPayoutsQuery]} skeleton="cards" rows={4}>
+    <QueryRegion label="lợi nhuận và cấu hình phân bổ" queries={[shareholdersQuery, buildingsQuery, profitMonthlyQuery, allocationsQuery, distributionsQuery]} skeleton="cards" rows={4}>
     <div className="flex flex-col gap-2.5">
       {/* KPI 2×2 */}
       <div className="grid grid-cols-2 gap-2">
@@ -226,25 +225,61 @@ export default function ProfitOverviewMobile({
           <div className={`${kpiVal} text-[#0e7a47]`}>{fmtShort(totals.accrued)}</div>
           <div className={kpiSub}>Luỹ kế đã chốt</div>
         </div>
-        <div className={`${CARD} px-3 py-2.5`}>
-          <div className={kpiLabel}>Đã ứng / đã chia</div>
-          <div className={`${kpiVal} text-[#c97a10]`}>{fmtShort(totals.paid)}</div>
-          <div className={kpiSub}>{shName ?? "Tất cả cổ đông"}</div>
-        </div>
-        <div className={`${CARD} px-3 py-2.5`}>
-          <div className={kpiLabel}>Còn phải trả</div>
-          <div className={`${kpiVal} ${totals.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
-            {fmtShort(totals.remaining)}
-          </div>
-          <div className={kpiSub}>Được chia − đã ứng</div>
-        </div>
+        {kpiMode === "LEDGER" ? (
+          <>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-paid">
+              <div className={kpiLabel}>Đã chi (đã duyệt)</div>
+              <div className={`${kpiVal} text-[#c97a10]`}>{fmtShort(ledgerSum.approved)}</div>
+              <div className={kpiSub}>chờ duyệt {fmtShort(ledgerSum.pending)} · qua lương {fmtShort(ledgerSum.viaSalary)}</div>
+            </div>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-remaining">
+              <div className={kpiLabel}>Còn phải trả</div>
+              <div className={`${kpiVal} text-[#1b1813]`}>{fmtShort(ledgerSum.owed)}</div>
+              <div className={kpiSub}>
+                {ledgerSum.advance > 0 ? `đang tạm ứng ${fmtShort(ledgerSum.advance)}` : "theo sổ tổng"}
+              </div>
+            </div>
+          </>
+        ) : kpiMode === "LEGACY" ? (
+          <>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-paid">
+              <div className={kpiLabel}>Đã ứng / đã chia</div>
+              <div className={`${kpiVal} text-[#c97a10]`}>{fmtShort(totals.paid)}</div>
+              <div className={kpiSub}>{shName ?? "Tất cả cổ đông"}</div>
+            </div>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-remaining">
+              <div className={kpiLabel}>Còn phải trả</div>
+              <div className={`${kpiVal} ${totals.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
+                {fmtShort(totals.remaining)}
+              </div>
+              <div className={kpiSub}>Cách tính cũ (được chia − đã ứng)</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-paid">
+              <div className={kpiLabel}>Đã chi (đã duyệt)</div>
+              <div className={`${kpiVal} text-[#1b1813]`}>
+                {kpiMode === "PENDING" ? <Skeleton className="h-5 w-16" aria-label="Đang tải sổ tổng" /> : "—"}
+              </div>
+              {kpiMode === "ERROR" && <div className={kpiSub}>Chưa tải được sổ tổng</div>}
+            </div>
+            <div className={`${CARD} px-3 py-2.5`} data-testid="kpi-remaining">
+              <div className={kpiLabel}>Còn phải trả</div>
+              <div className={`${kpiVal} text-[#1b1813]`}>
+                {kpiMode === "PENDING" ? <Skeleton className="h-5 w-16" aria-label="Đang tải sổ tổng" /> : "—"}
+              </div>
+              {kpiMode === "ERROR" && <div className={kpiSub}>Chưa tải được sổ tổng</div>}
+            </div>
+          </>
+        )}
         <div className={`${CARD} px-3 py-2.5 col-span-2`}>
           <div className={kpiLabel}>Giữ lại công ty (luỹ kế)</div>
           <div className={`${kpiVal} text-[#1b1813]`}>{fmtShort(lockedSplit.retained + lockedSplit.legacyRetained)}</div>
           <div className={kpiSub}>{retainedKpiSub(lockedSplit, fmtShort)}</div>
         </div>
       </div>
-      <p className="m-0 -mt-1 px-1 text-[10.5px] font-semibold text-[#a35a0c]">{PROFIT_PAYOUT_OFF_NOTE}.</p>
+      <ProfitLedgerRouteBanner route={ledger?.route} className="-mt-1 text-[11px]" />
 
       {/* Năm + chip tháng */}
       <YearMonthRow year={year} month={month} onYearShift={shiftYear} onMonthChange={setMonth} />
@@ -321,136 +356,128 @@ export default function ProfitOverviewMobile({
         )}
       </div>
 
-      {/* Theo cổ đông */}
-      <div className={`${CARD} overflow-hidden`}>
+      {/* Sổ tổng theo cổ đông (E1): mỗi cổ đông một thẻ; bấm thẻ mở sổ chi tiết từ dưới lên. */}
+      <div className={`${CARD} overflow-hidden`} data-testid="shareholder-ledger-card">
         <div className="flex items-center gap-2 px-3 py-3 border-b border-[#efece4]">
-          <span className="text-[12.5px] font-extrabold tracking-[-0.1px] text-[#1b1813]">Theo cổ đông</span>
-          <span className="text-[10.5px] font-semibold text-[#8d8678]">luỹ kế</span>
-          <button
-            onClick={() => { setDistShareholder(shId === ALL ? null : shId); setDistOpen(true); }}
-            className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-bold text-white bg-[#1f7a52] rounded-[9px] px-2.5 py-1.5 shadow-sm active:scale-95"
-          >
-            <Plus className="h-3 w-3" strokeWidth={2.5} /> Chi lợi nhuận
-          </button>
-        </div>
-        {shareholders.length === 0 && (
-          <p className="m-0 px-3 py-3.5 text-[12px] font-semibold text-[#8d8678]">Chưa có cổ đông.</p>
-        )}
-        {shareholders.map((s) => {
-          const r = summary[s.id] ?? { accrued: 0, paid: 0, remaining: 0 };
-          const active = shId === s.id;
-          const pct = uniformPercent(allocActive.filter((a) => a.shareholder_id === s.id));
-          return (
-            <div
-              key={s.id}
-              className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-[#f4f1ea] last:border-b-0 ${active ? "bg-[#f2f9f4]" : ""}`}
+          <span className="text-[12.5px] font-extrabold tracking-[-0.1px] text-[#1b1813]">Sổ tổng theo cổ đông</span>
+          {ledger && !routeState.ledgerReady ? (
+            <span className="text-[10px] font-bold text-[#a35a0c] bg-[#fdf3e3] border border-[#f1dcb4] rounded-[5px] px-1.5 py-px">xem thử</span>
+          ) : (
+            <span className="text-[10.5px] font-semibold text-[#8d8678]">sau mốc</span>
+          )}
+          {canDistribute && (
+            <button
+              type="button"
+              disabled={!ledger || !routeState.canPayShareholder}
+              title={ledger && !routeState.canPayShareholder ? routeState.banner ?? undefined : undefined}
+              onClick={() => { setDistShareholder(shId === ALL ? null : shId); setDistOpen(true); }}
+              className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-bold text-white bg-[#1f7a52] rounded-[9px] px-2.5 py-1.5 shadow-sm active:scale-95 disabled:opacity-50"
             >
-              <button onClick={() => setShId(active ? ALL : s.id)} className="flex-1 min-w-0 flex flex-col gap-0.5 text-left">
-                <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#1b1813]">
-                  <span className="truncate">{s.name}</span>
-                  {pct && (
-                    <span className="font-mono text-[9.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[5px] px-1 py-px shrink-0">
-                      {pct}
-                    </span>
-                  )}
-                </span>
-                <span className="text-[10.5px] font-semibold text-[#8d8678]">
-                  Được chia <b className="font-mono text-[#0e7a47]">{fmtShort(r.accrued)}</b> · Đã ứng{" "}
-                  <b className="font-mono text-[#c97a10]">{fmtShort(r.paid)}</b>
-                </span>
-              </button>
-              <div className="flex flex-col items-end shrink-0">
-                <span className={`font-mono text-[13.5px] font-bold tracking-[-0.3px] ${r.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
-                  {fmtShort(r.remaining)}
-                </span>
-                <span className="text-[9.5px] font-semibold text-[#b6b0a3]">còn lại</span>
-              </div>
-              <button
-                onClick={() => { setDistShareholder(s.id); setDistOpen(true); }}
-                className="shrink-0 text-[11.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[9px] px-3 py-[7px] active:scale-95"
-              >
-                Chi
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Lương điều hành */}
-      {(managers.length > 0 || retiredBalances.length > 0) && (
-        <div className={`${CARD} overflow-hidden`}>
-          <div className="flex items-center gap-2 px-3 py-3 border-b border-[#efece4]">
-            <Briefcase className="h-3.5 w-3.5 text-[#c2570f]" />
-            <span className="text-[12.5px] font-extrabold tracking-[-0.1px] text-[#1b1813]">Lương điều hành</span>
-            <span className="text-[10.5px] font-semibold text-[#8d8678]">luỹ kế</span>
-          </div>
-          {managers.map((m) => {
-            const r = managerSummary[m.id] ?? { accrued: 0, paid: 0, remaining: 0 };
-            return (
-              <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-[#f4f1ea] last:border-b-0">
-                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <span className="text-[13px] font-extrabold text-[#1b1813] truncate">{m.name}</span>
-                  <span className="text-[10.5px] font-semibold text-[#8d8678]">
-                    Được nhận <b className="font-mono text-[#c2570f]">{fmtShort(r.accrued)}</b> · Đã trả{" "}
-                    <b className="font-mono text-[#c97a10]">{fmtShort(r.paid)}</b>
-                  </span>
-                </div>
-                <div className="flex flex-col items-end shrink-0">
-                  <span className={`font-mono text-[13.5px] font-bold tracking-[-0.3px] ${r.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
-                    {fmtShort(r.remaining)}
-                  </span>
-                  <span className="text-[9.5px] font-semibold text-[#b6b0a3]">còn lại</span>
-                </div>
-                <button
-                  onClick={() => { setPayoutManager(m.id); setPayoutOpen(true); }}
-                  className="shrink-0 text-[11.5px] font-bold text-[#c2570f] bg-[#fdf0e8] border border-[#f3d6c4] rounded-[9px] px-3 py-[7px] active:scale-95"
-                >
-                  Chi
-                </button>
-              </div>
-            );
-          })}
-          {/* Rà 21/10 F21: quản lý đã xoá còn phần — chỉ hiện, không nút Chi. */}
-          {retiredBalances.map((r) => (
-            <div key={r.managerId} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-[#f4f1ea] last:border-b-0 bg-[#faf8f4]">
-              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#514c42]">
-                  <span className="truncate">{retiredName(r.managerId)}</span>
-                  <span className="shrink-0 text-[9.5px] font-bold text-[#8d8678] bg-white border border-[#e7e3da] rounded-[5px] px-1 py-px">
-                    đã nghỉ
-                  </span>
-                </span>
-                <span className="text-[10.5px] font-semibold text-[#8d8678]">
-                  Được nhận <b className="font-mono text-[#c2570f]">{fmtShort(r.accrued)}</b> · Đã trả{" "}
-                  <b className="font-mono text-[#c97a10]">{fmtShort(r.paid)}</b>
-                </span>
-              </div>
-              <div className="flex flex-col items-end shrink-0">
-                <span className={`font-mono text-[13.5px] font-bold tracking-[-0.3px] ${r.remaining < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
-                  {fmtShort(r.remaining)}
-                </span>
-                <span className="text-[9.5px] font-semibold text-[#b6b0a3]">còn lại</span>
-              </div>
-            </div>
-          ))}
-          {retiredBalances.length > 0 && (
-            <p className="m-0 px-3 py-2 text-[10.5px] font-semibold text-[#8d8678]">{RETIRED_MANAGER_NOTE}</p>
+              <Plus className="h-3 w-3" strokeWidth={2.5} /> Chi lợi nhuận
+            </button>
           )}
         </div>
-      )}
+        {!selectedOrganizationId ? (
+          <p className="m-0 px-3 py-3.5 text-[12px] font-semibold text-[#8d8678]">Chọn công ty để xem sổ tổng lợi nhuận.</p>
+        ) : ledgerQuery.isError ? (
+          <ProfitLedgerReadError className="m-3" error={ledgerQuery.error} onRetry={() => { void ledgerQuery.refetch(); }} />
+        ) : !ledger ? (
+          <div className="p-3"><Skeleton className="h-20 w-full" aria-label="Đang tải sổ tổng lợi nhuận" /></div>
+        ) : ledgerRows.length === 0 ? (
+          <p className="m-0 px-3 py-3.5 text-[12px] font-semibold text-[#8d8678]">Chưa có cổ đông.</p>
+        ) : (
+          ledgerRows.map((row) => {
+            const payBlock = shareholderPayBlock(row, routeState);
+            // % chỉ khi được cấp quyền xem tỷ lệ (shareholder_profit.view_percent).
+            const pct = canViewPercent ? uniformPercent(allocActive.filter((a) => a.shareholder_id === row.shareholder_id)) : null;
+            const marker = markerText(row.marker);
+            return (
+              <div
+                key={row.shareholder_id}
+                data-testid={`ledger-card-${row.shareholder_id}`}
+                className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-[#f4f1ea] last:border-b-0 ${shId === row.shareholder_id ? "bg-[#f2f9f4]" : ""} ${row.is_deleted ? "opacity-60" : ""}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setEntriesFor({ id: row.shareholder_id, name: row.name })}
+                  className="flex-1 min-w-0 flex flex-col gap-0.5 text-left"
+                >
+                  <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#1b1813]">
+                    <span className="truncate">{row.name}</span>
+                    {pct && (
+                      <span className="font-mono text-[9.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[5px] px-1 py-px shrink-0">
+                        {pct}
+                      </span>
+                    )}
+                    {row.is_deleted && (
+                      <span className="shrink-0 text-[9.5px] font-bold text-[#8d8678] bg-white border border-[#e7e3da] rounded-[5px] px-1 py-px">đã xoá</span>
+                    )}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1">
+                    <span className={`text-[9.5px] font-bold rounded-[5px] px-1 py-px ${row.status === "ADVANCE" ? "text-[#b42318] bg-[#fdecea]" : row.status === "SETTLED" ? "text-[#514c42] bg-[#efece4]" : "text-[#1a6645] bg-[#e8f3ec]"}`}>
+                      {SHAREHOLDER_STATUS_LABEL[row.status]}
+                    </span>
+                    {row.needs_review_count > 0 && (
+                      <span className="text-[9.5px] font-bold text-[#a35a0c] bg-[#fdf3e3] rounded-[5px] px-1 py-px">
+                        cần xem lại ({row.needs_review_count})
+                      </span>
+                    )}
+                    {marker && <span className="text-[9.5px] font-semibold text-[#8d8678]">mốc {marker}</span>}
+                  </span>
+                  <span className="text-[10.5px] font-semibold text-[#8d8678]">
+                    Chia sau mốc <b className="font-mono text-[#0e7a47]">{fmtShort(row.allocated)}</b> · Đã chi{" "}
+                    <b className="font-mono text-[#c97a10]">{fmtShort(row.payouts_approved)}</b> · Chờ duyệt{" "}
+                    <b className="font-mono">{fmtShort(row.payouts_pending)}</b> · Qua lương{" "}
+                    <b className="font-mono">{fmtShort(salaryNet(row))}</b>
+                  </span>
+                </button>
+                <div className="flex flex-col items-end shrink-0">
+                  <span className={`font-mono text-[13.5px] font-bold tracking-[-0.3px] ${row.balance < 0 ? "text-[#d6453f]" : "text-[#1b1813]"}`}>
+                    {fmtShort(Math.abs(row.balance))}
+                  </span>
+                  <span className="text-[9.5px] font-semibold text-[#b6b0a3]">{row.balance < 0 ? "tạm ứng" : "còn lại"}</span>
+                </div>
+                {canDistribute && !row.is_deleted && (
+                  <button
+                    type="button"
+                    disabled={payBlock !== null}
+                    title={payBlock ?? undefined}
+                    onClick={() => { setDistShareholder(row.shareholder_id); setDistOpen(true); }}
+                    className="shrink-0 text-[11.5px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] rounded-[9px] px-3 py-[7px] active:scale-95 disabled:opacity-50"
+                  >
+                    Chi
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Lương điều hành theo sổ (E10) — điện thoại chỉ chi + xem sổ phiếu; đặt mốc trên máy tính. */}
+      <ManagerLedgerSection organizationId={selectedOrganizationId} canPayManager={canPayManager} variant="mobile" />
 
       <ProfitDistributeDialog
         open={distOpen}
         onOpenChange={setDistOpen}
         organizationId={selectedOrganizationId}
         mode="OWNER"
+        ledgerRows={ledger?.shareholders}
         defaultShareholderId={distShareholder}
+        onReviewSalary={(shareholderId) => {
+          setDistOpen(false);
+          const row = ledgerRows.find((r) => r.shareholder_id === shareholderId);
+          setEntriesFor({ id: shareholderId, name: row?.name ?? "" });
+        }}
       />
-      <ManagerSalaryPayoutDialog
-        open={payoutOpen}
-        onOpenChange={setPayoutOpen}
-        managers={managers}
-        defaultManagerId={payoutManager}
+      <ShareholderLedgerSheet
+        open={!!entriesFor}
+        onOpenChange={(next) => { if (!next) setEntriesFor(null); }}
+        organizationId={selectedOrganizationId}
+        shareholder={entriesFor}
+        route={ledger?.route}
+        canDistribute={canDistribute}
+        compact
       />
     </div>
     </QueryRegion>
