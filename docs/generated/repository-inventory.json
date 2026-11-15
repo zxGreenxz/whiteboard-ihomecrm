@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1849,
   "soFileDocBangFs": 480,
-  "tongLoiGoi": 1272,
+  "tongLoiGoi": 1274,
   "khongPhanLoaiDuoc": 576,
   "theoLoai": {
     "ma-nguon": {
@@ -275,6 +275,15 @@
       "khongPhanLoaiDuoc": 6
     },
     {
+      "file": "src/lib/__tests__/soTongLoiNhuanChuyenDoiMigration.test.ts",
+      "soGoi": 9,
+      "loai": {
+        "sql": 6,
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-log-keeper/log-keeper.test.mjs",
       "soGoi": 8,
       "loai": {},
@@ -356,15 +365,6 @@
       "soGoi": 7,
       "loai": {},
       "khongPhanLoaiDuoc": 7
-    },
-    {
-      "file": "src/lib/__tests__/soTongLoiNhuanChuyenDoiMigration.test.ts",
-      "soGoi": 7,
-      "loai": {
-        "sql": 5,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/specs/ct01-download.spec.ts",
