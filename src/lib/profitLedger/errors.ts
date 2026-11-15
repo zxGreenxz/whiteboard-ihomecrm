@@ -101,12 +101,14 @@ function record(value: unknown): Record<string, unknown> {
 function parseDetail(details: unknown): Record<string, unknown> | undefined {
   if (details && typeof details === 'object' && !Array.isArray(details)) return details as Record<string, unknown>;
   if (typeof details !== 'string' || !details.trim().startsWith('{')) return undefined;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(details);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+    parsed = JSON.parse(details);
   } catch {
-    return undefined;
+    // DETAIL không phải JSON hợp lệ: không có số liệu để ghép vào câu báo; câu báo vẫn dựa trên mã lỗi.
+    parsed = undefined;
   }
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
 }
 
 /** Số trong DETAIL (có thể là chuỗi numeric) — không đọc được thì bỏ khỏi câu, không bịa 0. */

@@ -89,11 +89,12 @@ async function runLedgerWrite<T>(options: {
       progress.completed.push({ id: options.receiptId(result), label: options.receiptLabel });
       return result;
     },
-    // Đối chiếu lần trước chưa rõ kết quả: gửi lại ĐÚNG khoá cũ. Lỗi ⇒ chưa chứng minh được gì,
-    // giữ dấu chờ đối chiếu (null).
+    // Đối chiếu lần trước chưa rõ kết quả: gửi lại ĐÚNG khoá cũ. Lỗi ⇒ chưa chứng minh được gì:
+    // ném lỗi lên FinancialWorkflowGuard — ở lượt đối chiếu nó giữ nguyên dấu chờ đối chiếu
+    // (kết quả "unknown", không xoá dấu) y như khi trả null, nhưng giữ được nguyên nhân thật.
     async (_pending, progress) => {
       const { data, error } = await withBusyRetry(() => call(progress.requestKey));
-      if (error) return null;
+      if (error) throw error;
       return { result: await read(data) };
     },
     options.organizationId,
