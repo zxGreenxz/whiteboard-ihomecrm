@@ -290,14 +290,14 @@ function duLieu(): string {
       ('${CD_NV}','${ORG_A}','${NV_CD}','Cổ đông nhân viên'), ('${CD_LO}','${ORG_A}','${NV_LO}','Cổ đông tháng lỗ'),
       ('${CD_KHAC}','${ORG_A}',NULL,'Cổ đông ngoài'), ('${CD_B}','${ORG_B}','${NV_B}','Cổ đông công ty B');
     INSERT INTO public.profit_monthly(id, organization_id, building_id, period_month, status, is_stale, locked_at) VALUES
-      ('${PM_10_1}','${ORG_A}','${TOA_1}','${P10}','LOCKED',false,'2026-11-03'),
-      ('${PM_10_2}','${ORG_A}','${TOA_2}','${P10}','LOCKED',false,'2026-11-03'),
-      ('${PM_10_3}','${ORG_A}','${TOA_3}','${P10}','LOCKED',true,'2026-11-04'),
+      ('${PM_10_1}','${ORG_A}','${TOA_1}','${P10}','LOCKED',false,'2026-11-03 00:00:00+00'),
+      ('${PM_10_2}','${ORG_A}','${TOA_2}','${P10}','LOCKED',false,'2026-11-03 00:00:00+00'),
+      ('${PM_10_3}','${ORG_A}','${TOA_3}','${P10}','LOCKED',true,'2026-11-04 00:00:00+00'),
       ('${PM_10_4}','${ORG_A}','${TOA_4}','${P10}','DRAFT',false,NULL),
       ('${PM_10_5}','${ORG_A}','${TOA_5}','${P10}','DRAFT',false,NULL),
-      ('${PM_09_1}','${ORG_A}','${TOA_1}','${P9}','LOCKED',false,'2026-10-03'),
-      ('${PM_05_1}','${ORG_A}','${TOA_1}','${P5}','LOCKED',false,'2026-06-03'),
-      ('${PM_B_10}','${ORG_B}','${TOA_B1}','${P10}','LOCKED',false,'2026-11-03');
+      ('${PM_09_1}','${ORG_A}','${TOA_1}','${P9}','LOCKED',false,'2026-10-03 00:00:00+00'),
+      ('${PM_05_1}','${ORG_A}','${TOA_1}','${P5}','LOCKED',false,'2026-06-03 00:00:00+00'),
+      ('${PM_B_10}','${ORG_B}','${TOA_B1}','${P10}','LOCKED',false,'2026-11-03 00:00:00+00');
     INSERT INTO public.profit_allocations(profit_monthly_id, shareholder_id, amount, organization_id) VALUES
       ('${PM_10_1}','${CD_NV}',300,'${ORG_A}'), ('${PM_10_1}','${CD_KHAC}',1000,'${ORG_A}'), ('${PM_10_1}','${CD_LO}',50,'${ORG_A}'),
       ('${PM_10_2}','${CD_NV}',200,'${ORG_A}'), ('${PM_10_2}','${CD_LO}',-300,'${ORG_A}'),
@@ -1366,7 +1366,7 @@ describe("so với client: Y máy chủ = applySalaryExtras/investmentByBuilding
         const b = randomUUID();
         await db.query("INSERT INTO public.buildings(id, organization_id, code, name) VALUES ($1,$2,$3,$4)", [b, ORG_A, chon(nhanCode), chon(nhanTen)]);
         const pm = randomUUID();
-        await db.query("INSERT INTO public.profit_monthly(id, organization_id, building_id, period_month, status, is_stale, locked_at) VALUES ($1,$2,$3,$4,$5,$6,'2027-02-01')",
+        await db.query("INSERT INTO public.profit_monthly(id, organization_id, building_id, period_month, status, is_stale, locked_at) VALUES ($1,$2,$3,$4,$5,$6,'2027-02-01 00:00:00+00')",
           [pm, ORG_A, b, KY, r() < 0.7 ? "LOCKED" : "DRAFT", r() < 0.3]);
         await db.query("INSERT INTO public.profit_allocations(profit_monthly_id, shareholder_id, amount, organization_id) VALUES ($1,$2,$3,$4)",
           [pm, CD_NV, Math.round(r() * 2000) - 500, ORG_A]);
