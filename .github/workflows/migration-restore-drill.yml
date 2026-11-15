@@ -47,6 +47,8 @@ on:
       - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
       # kiem-bao-mat-sau-khoi-phuc.mjs import luật PUBLIC EXECUTE (sqlPublicExecute/phanTichPublicExecute) từ file này.
       - 'scripts/check-definer-acl.mjs'
+      # …và import câu SQL stable-fn chạm khoá dòng (SQL_STABLE_FN_LOCKS) từ file này.
+      - 'scripts/lib/stable-fn-locks-sql.mjs'
       - 'scripts/lib/goi-psql-dich.mjs'
       - 'scripts/test-platform-storage-shim.mjs'
       - 'scripts/definer-acl-baseline.json'
@@ -67,6 +69,8 @@ on:
       - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
       # kiem-bao-mat-sau-khoi-phuc.mjs import luật PUBLIC EXECUTE (sqlPublicExecute/phanTichPublicExecute) từ file này.
       - 'scripts/check-definer-acl.mjs'
+      # …và import câu SQL stable-fn chạm khoá dòng (SQL_STABLE_FN_LOCKS) từ file này.
+      - 'scripts/lib/stable-fn-locks-sql.mjs'
       - 'scripts/lib/goi-psql-dich.mjs'
       - 'scripts/test-platform-storage-shim.mjs'
       - 'scripts/definer-acl-baseline.json'

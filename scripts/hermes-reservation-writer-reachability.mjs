@@ -12,7 +12,10 @@ export const COMPAT_RECEIPT_WRITER = 'public.ie_compat_insert_v2';
 // writes. Any merge/variable payload, new call, renamed guard or changed branch
 // needs review; the proof must not generalize to another caller or future body.
 const CALLER_SHA256 = 'cd1b06e48ddecc45c2af8521ad907dee2f06b2febe7b630e78cd947037ad11ab';
-const WRITER_SHA256 = '72476364bb42483a7c31945ee2ae226b4f5cd85753b2d6dfd1ca6fb5f4d4788a';
+// 15/11/2026 (20261115084108 so_tong_loi_nhuan_tao): thân mới chỉ thêm 'shareholder_id', 'profit_manager_id'
+// vào hai danh sách cột bị lột (nhánh thường và nhánh copilot-draft); lối biên nhận cọc dựng p_row cố định
+// không có hai khoá đó nên không đổi gì. Bản trước: 72476364bb42483a7c31945ee2ae226b4f5cd85753b2d6dfd1ca6fb5f4d4788a.
+const WRITER_SHA256 = 'eabea3072fae51bcd3d52c45ba20fc48c6db20dfea0979917420eabf429e93d8';
 
 // Only used after the exact pins match. Ignore single/double quoted tokens while
 // matching nested PL/pgSQL IF/END IF. Preserve the outer ELSE (ordinary path).

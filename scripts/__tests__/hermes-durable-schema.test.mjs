@@ -13,10 +13,14 @@ import { buildTransaction } from '../apply-reviewed-migration.mjs';
 // Always select the latest definition: a later forward migration must be able
 // to turn these tests red instead of leaving a frozen historical test green.
 const directory = fileURLToPath(new URL('../../supabase/migrations/', import.meta.url));
+const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+// Chọn theo MÃ (đã bỏ chú thích `--`), không theo văn bản thô: một migration chỉ NHẮC
+// "hermes_" trong chú thích thì không định nghĩa/cấp quyền gì cho Hermes, nên không thuộc
+// phạm vi hợp đồng này. Đo 16/11/2026: đúng một file khác nhau giữa hai cách chọn
+// (20261115084108_so_tong_loi_nhuan_tao.sql, chú thích "không đụng hàm hermes_*").
 const sources = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
   .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }))
-  .filter(({ sql }) => /\bhermes_/i.test(sql));
-const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+  .filter(({ sql }) => /\bhermes_/i.test(clean(sql)));
 const digest = sql => createHash('sha256').update(clean(sql)).digest('hex');
 const FORWARD_BY_NAME = new Map(FORWARD_FUNCTIONS.map(spec => [spec.name, spec]));
 const FORWARD_REVOKE_ROLES = new Map([
