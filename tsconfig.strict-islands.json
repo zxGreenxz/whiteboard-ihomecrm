@@ -1792,6 +1792,7 @@
     "src/hermes/HermesWorkAssistant.tsx",
     "src/hermes/learningReviewClient.ts",
     "src/hermes/HermesLearningReview.tsx",
+    "src/hermes/activation.ts",
     "src/lib/landlordSettlement.ts",
     "src/lib/settlementRoomNotes.ts",
     "src/lib/__tests__/settlementRoomNotes.test.ts",
