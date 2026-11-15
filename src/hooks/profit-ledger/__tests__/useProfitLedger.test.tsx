@@ -24,6 +24,7 @@ import {
   useSetProfitLedgerMarker,
 } from '../useProfitLedgerMutations';
 import { fetchSalaryProfitInputs, freezeSalaryProfitSettlement, quoteSalaryProfitPayout, salaryQuoteKey } from '@/lib/profitLedger/salaryProfitApi';
+import { profitLedgerErrorMessage, ProfitLedgerPriorWrittenError } from '@/lib/profitLedger/errors';
 
 const ORG = 'org-a';
 const SH = 'sh-1';
@@ -148,12 +149,39 @@ describe('E5 lập phiếu chi lợi nhuận', () => {
     expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey);
     expect(pendingKeys()).toEqual([]);
   });
-  it('đối chiếu mà máy chủ trả lỗi (khác nội dung) ⇒ vẫn khoá, không lập lại', async () => {
-    m.rpc.mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
-      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } });
+  it('đã ghi nhưng mất phản hồi, tải lại trang rồi gửi KHÁC nội dung ⇒ 23505 ⇒ báo đã ghi, xoá dấu, lần sau khoá mới', async () => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'idempotency_key đã dùng với nội dung khác' } })
+      .mockResolvedValueOnce({ data: e5({ amount: 1, within_amount: 1 }), error: null });
     const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
-    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toBeTruthy(); });
+    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
+    h.unmount(); // tải lại trang: chỉ còn dấu chờ trong localStorage
+    const again = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
+    let failure: unknown;
+    await act(async () => { failure = await again.result.current.mutateAsync({ ...payoutInput, amount: 1 }).catch((e: unknown) => e); });
+    expect(failure).toBeInstanceOf(ProfitLedgerPriorWrittenError);
+    expect(profitLedgerErrorMessage(failure, 'payout')).toMatchObject({ kind: 'PRIOR_WRITTEN', reload: true });
+    expect(profitLedgerErrorMessage(failure, 'payout').message).toMatch(/^Yêu cầu trước đó đã được ghi; tải lại để xem/);
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(firstKey); // đối chiếu bằng ĐÚNG khoá cũ
+    expect(pendingKeys()).toEqual([]);
+    await act(async () => { await expect(again.result.current.mutateAsync({ ...payoutInput, amount: 1 })).resolves.toMatchObject({ voucher_id: 'v9' }); });
+    expect(m.rpc).toHaveBeenCalledTimes(3);
+    expect(m.rpc.mock.calls[2]![1].p_idempotency_key).not.toBe(firstKey); // lệnh mới, khoá mới
+    expect(pendingKeys()).toEqual([]);
+  });
+  it('đối chiếu gặp 23505 KHÁC (trùng khoá bảng / mã của lệnh khác) ⇒ vẫn khoá, vẫn khoá cũ', async () => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "income_expenses_code_key"' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung' } });
+    const h = renderHook(() => useCreateProfitLedgerPayout(), { wrapper });
+    await act(async () => { await expect(h.result.current.mutateAsync(payoutInput)).rejects.toMatchObject({ outcome: 'unknown' }); });
+    const firstKey = m.rpc.mock.calls[0]![1].p_idempotency_key;
     await act(async () => { await expect(h.result.current.mutateAsync({ ...payoutInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
+    await act(async () => { await expect(h.result.current.mutateAsync({ ...payoutInput, amount: 1 })).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(m.rpc.mock.calls.map((c) => c[1].p_idempotency_key)).toEqual([firstKey, firstKey, firstKey]);
     expect(pendingKeys()).toHaveLength(1);
   });
   it('biên nhận lệch hợp đồng (thiếu số) ⇒ chưa rõ kết quả, không coi là thành công', async () => {
@@ -196,6 +224,39 @@ describe('E6 / E9 / E16', () => {
       p_organization_id: ORG, p_subject_kind: 'SHAREHOLDER', p_subject_id: SH, p_settled_through_month: null, p_reason: 'Gỡ mốc đặt nhầm tháng',
       p_expected_marker_id: null, p_acknowledge_advance_erase: false,
     }));
+  });
+  it.each([
+    {
+      name: 'E6 huỷ', message: 'PROFIT_LEDGER_IDEMPOTENCY_REUSED: khoá chống gửi trùng đã dùng cho lệnh huỷ khác nội dung',
+      run: async () => {
+        const h = renderHook(() => useCancelProfitLedgerPayout(), { wrapper });
+        return (reason: string) => h.result.current.mutateAsync({ voucherId: 'v1', organizationId: ORG, reason, expectedState: 'PENDING' });
+      },
+    },
+    {
+      name: 'E9 mốc', message: 'idempotency_key đã dùng với nội dung khác',
+      run: async () => {
+        const h = renderHook(() => useSetProfitLedgerMarker(), { wrapper });
+        return (reason: string) => h.result.current.mutateAsync({ organizationId: ORG, subjectKind: 'SHAREHOLDER', subjectId: SH, settledThroughMonth: '2026-09-01', reason, expectedMarkerId: null, acknowledgeAdvanceErase: false });
+      },
+    },
+    {
+      name: 'E16 xác nhận lương', message: 'SALARY_PROFIT_IDEMPOTENCY_CONFLICT: khoá idempotency đã dùng với nội dung khác',
+      run: async () => {
+        const h = renderHook(() => useResolveSalaryProfitLine(), { wrapper });
+        return (reason: string) => h.result.current.mutateAsync({ organizationId: ORG, lineId: 'l1', investment: 7, offset: 0, reason });
+      },
+    },
+  ])('$name: đối chiếu gặp 23505 khoá-đã-dùng của chính lệnh ⇒ đã ghi, xoá dấu', async ({ run, message }) => {
+    m.rpc
+      .mockResolvedValueOnce({ data: null, error: { code: '', message: 'FetchError: Failed to fetch' } })
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message } });
+    const mutate = await run();
+    await act(async () => { await expect(mutate('Lý do lần thứ nhất')).rejects.toMatchObject({ outcome: 'unknown' }); });
+    expect(pendingKeys()).toHaveLength(1);
+    await act(async () => { await expect(mutate('Lý do khác sau khi tải lại')).rejects.toBeInstanceOf(ProfitLedgerPriorWrittenError); });
+    expect(m.rpc.mock.calls[1]![1].p_idempotency_key).toBe(m.rpc.mock.calls[0]![1].p_idempotency_key);
+    expect(pendingKeys()).toEqual([]);
   });
   it('E16 gửi Y / D / lý do của dòng', async () => {
     m.rpc.mockResolvedValue({ data: { line_id: 'l1', shareholder_id: SH, salary_voucher_id: 'pl', period_month: '2026-09-01', investment_amount: 7, advance_offset_amount: 0, balance_before: 80, balance_after: 73 }, error: null });

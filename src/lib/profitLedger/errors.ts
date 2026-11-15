@@ -20,6 +20,9 @@ export type ProfitLedgerOperation =
   | 'read' | 'preview' | 'payout' | 'cancel' | 'marker' | 'resolve' | 'manager_payout'
   | 'approve' | 'salary_freeze' | 'salary_quote';
 
+/** Bốn lệnh ghi đi qua khoá chống gửi trùng + đối chiếu của lớp dữ liệu: E5 chi · E6 huỷ · E9 mốc · E16 xác nhận lương. */
+export type ProfitLedgerWriteOperation = Extract<ProfitLedgerOperation, 'payout' | 'cancel' | 'marker' | 'resolve'>;
+
 const OPERATION_LABEL: Readonly<Record<ProfitLedgerOperation, string>> = {
   read: 'tải sổ lợi nhuận',
   preview: 'tính số dư lợi nhuận',
@@ -76,6 +79,11 @@ export type ProfitLedgerErrorKind =
   | 'SYSTEM'
   /** Không biết lệnh ghi đã chạy hay chưa (mất mạng, biên nhận hỏng): khoá gửi lại, đối chiếu. */
   | 'UNKNOWN_OUTCOME'
+  /**
+   * Đối chiếu một lần gửi chưa rõ kết quả bằng khoá cũ ⇒ 23505 "khoá đã dùng" của chính lệnh: lần đó ĐÃ ghi.
+   * Dấu chờ đã xoá, nội dung vừa nhập CHƯA gửi; tải lại để xem — bấm lại là một lệnh mới (khoá mới).
+   */
+  | 'PRIOR_WRITTEN'
   | 'OTHER';
 
 export interface ProfitLedgerErrorInfo {
@@ -366,6 +374,40 @@ function classifyBySqlstate(
 }
 
 /**
+ * Câu 23505 "khoá chống gửi trùng đã dùng với nội dung khác" của ĐÚNG từng lệnh (thân hàm Đợt 1):
+ * E5 và E9 (qua `profit_ledger_tao_set_marker_v1`) không có mã máy; E6 `PROFIT_LEDGER_IDEMPOTENCY_REUSED`;
+ * E16 `SALARY_PROFIT_IDEMPOTENCY_CONFLICT`. 23505 khác (trùng khoá duy nhất của một bảng…) không khớp.
+ */
+const IDEMPOTENCY_CONFLICT: Readonly<Record<ProfitLedgerWriteOperation, RegExp>> = {
+  payout: /^idempotency_key đã dùng với nội dung khác$/,
+  marker: /^idempotency_key đã dùng với nội dung khác$/,
+  cancel: /^PROFIT_LEDGER_IDEMPOTENCY_REUSED\s*:/,
+  resolve: /^SALARY_PROFIT_IDEMPOTENCY_CONFLICT\s*:/,
+};
+
+/**
+ * Lỗi máy chủ là "khoá đã dùng với nội dung khác" của CHÍNH lệnh `op`. Dòng chống gửi trùng ghi trong
+ * cùng giao dịch với lệnh (lỗi ⇒ lùi cả dòng) nên chỉ còn khi lần gửi mang khoá đó ĐÃ ghi xong: gửi lại
+ * ĐÚNG khoá của một lần chưa rõ kết quả mà gặp lỗi này ⇒ lần đó đã ghi.
+ */
+export function isLedgerIdempotencyConflict(error: unknown, op: ProfitLedgerWriteOperation): boolean {
+  if (extractCode(error) !== '23505') return false;
+  const message = record(error).message;
+  return typeof message === 'string' && IDEMPOTENCY_CONFLICT[op].test(message.normalize('NFC').trim());
+}
+
+/** Lượt đối chiếu chứng minh lần gửi trước ĐÃ ghi (isLedgerIdempotencyConflict); dấu chờ đã xoá, lần sau khoá mới. */
+export class ProfitLedgerPriorWrittenError extends Error {
+  readonly operation: ProfitLedgerWriteOperation;
+
+  constructor(operation: ProfitLedgerWriteOperation) {
+    super('Yêu cầu trước đó đã được ghi; tải lại để xem. Nội dung vừa nhập chưa được gửi.');
+    this.name = 'ProfitLedgerPriorWrittenError';
+    this.operation = operation;
+  }
+}
+
+/**
  * Phân loại + câu cho người dùng của một lỗi sổ tổng.
  * `op` chỉ đổi câu chữ (vd route tắt ở hộp chi khác ở hộp mốc); cách phân loại không đổi.
  */
@@ -373,6 +415,9 @@ export function profitLedgerErrorMessage(error: unknown, op: ProfitLedgerOperati
   const label = OPERATION_LABEL[op];
   const readOnly = op === 'read' || op === 'preview';
 
+  if (error instanceof ProfitLedgerPriorWrittenError) {
+    return { kind: 'PRIOR_WRITTEN', code: null, sqlstate: '23505', reload: true, message: error.message };
+  }
   if (error instanceof FinancialWorkflowError) {
     if (error.outcome !== 'failure') {
       return { kind: 'UNKNOWN_OUTCOME', code: null, sqlstate: null, reload: true, message: workflowFeedbackDescription(error) };

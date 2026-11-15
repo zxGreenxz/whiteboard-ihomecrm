@@ -13,6 +13,10 @@ const m = vi.hoisted(() => ({
   balance: 100_000,
   previewCalls: [] as PreviewInput[],
   access: [] as { cashbook_id: string; possession_kind: string }[],
+  // Xem trước đang tải lại (vẫn giữ số cũ) / lần tải lại lỗi (vẫn giữ số cũ).
+  fetching: false,
+  previewError: false,
+  refetch: vi.fn(),
 }));
 const ok = (data: unknown) => ({ data, status: 'success', fetchStatus: 'idle', isLoading: false, isError: false, isSuccess: true, isFetching: false, error: null, refetch: vi.fn() });
 // Ô tick của Radix đo kích thước bằng ResizeObserver — jsdom không có.
@@ -44,13 +48,19 @@ vi.mock('@/hooks/profit-ledger/useProfitLedgerQueries', () => ({
     const within = amount === null ? null : Math.min(amount, Math.max(m.balance, 0));
     const advance = amount === null || within === null ? null : amount - within;
     const blocked = m.route !== 'CANONICAL' ? 'ROUTE' : m.blocked;
-    return ok({
-      route: m.route, shareholder_id: input.shareholderId, maker_kind: 'OWNER', payee_is_maker: false, balance_before: m.balance,
-      within_amount: within, advance_amount: advance, open_estimate: 0,
-      warnings: advance ? [{ code: 'ADVANCE', advance_amount: advance }, { code: 'NEEDS_OWNER_APPROVAL' }] : [],
-      requires_owner_approval: true, can_submit: !blocked && amount !== null && !!input.accountId, blocked_reason: blocked,
-      needs_review: { count: m.reviewCount, suggested: 0 },
-    });
+    return {
+      ...ok({
+        route: m.route, shareholder_id: input.shareholderId, maker_kind: 'OWNER', payee_is_maker: false, balance_before: m.balance,
+        within_amount: within, advance_amount: advance, open_estimate: 0,
+        warnings: advance ? [{ code: 'ADVANCE', advance_amount: advance }, { code: 'NEEDS_OWNER_APPROVAL' }] : [],
+        requires_owner_approval: true, can_submit: !blocked && amount !== null && !!input.accountId, blocked_reason: blocked,
+        needs_review: { count: m.reviewCount, suggested: 0 },
+      }),
+      isFetching: m.fetching,
+      isError: m.previewError,
+      error: m.previewError ? { code: '40P01', message: 'deadlock detected' } : null,
+      refetch: m.refetch,
+    };
   },
 }));
 vi.mock('@/components/ui/searchable-select', () => ({
@@ -65,6 +75,7 @@ vi.mock('@/components/ui/searchable-select', () => ({
 import ProfitDistributeDialog from '../ProfitDistributeDialog';
 import ManagerSalaryPayoutDialog from '../ManagerSalaryPayoutDialog';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { ProfitLedgerPriorWrittenError } from '@/lib/profitLedger/errors';
 
 const ownerProps = { onOpenChange: vi.fn(), organizationId: 'org-a', mode: 'OWNER' as const };
 const amountInput = () => document.querySelector('[name="amount"]') as HTMLInputElement;
@@ -77,10 +88,17 @@ const fillAmount = async (value: string, expectSplit = true) => {
   // Đợi lần xem trước khớp số đang nhập (chờ 400 ms).
   if (expectSplit) await screen.findByText(/Lần chi này/, undefined, { timeout: 2000 });
 };
+const noteInput = () => document.querySelector('[name="note"]') as HTMLTextAreaElement;
+const advanceBox = () => screen.getByRole('checkbox');
+const confirmAdvance = () => {
+  fireEvent.click(advanceBox());
+  fireEvent.change(noteInput(), { target: { value: 'Ứng trước lợi nhuận tháng 11' } });
+  expect(advanceBox().getAttribute('aria-checked')).toBe('true');
+};
 
 beforeEach(() => {
   m.route = 'CANONICAL'; m.blocked = null; m.reviewCount = 0; m.balance = 100_000; m.previewCalls = [];
-  m.access = [];
+  m.access = []; m.fetching = false; m.previewError = false;
   m.create.mockResolvedValue({ voucher_id: 'v9', code: 'PC2611999', within_amount: 50_000, advance_amount: 0 });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -148,6 +166,17 @@ describe('hộp Chi lợi nhuận (OWNER)', () => {
     expect(amountInput().value).toContain('50');
     expect(m.create).toHaveBeenCalledTimes(1);
   });
+  it('máy chủ báo lần gửi trước đã ghi ⇒ báo "tải lại để xem", KHÔNG khoá, gửi tiếp được', async () => {
+    m.create.mockRejectedValueOnce(new ProfitLedgerPriorWrittenError('payout'));
+    render(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    await fillAmount('50000');
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Yêu cầu trước đó đã được ghi; tải lại để xem/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Kiểm tra lại kết quả' })).toBeNull();
+    expect(amountInput().closest('fieldset')?.disabled).toBe(false);
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.create).toHaveBeenCalledTimes(2));
+  });
   it.each(['LEGACY', 'SHADOW', 'FROZEN'])('route %s ⇒ khoá nút gửi + câu báo', async (route) => {
     m.route = route;
     render(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
@@ -161,6 +190,90 @@ describe('hộp Chi lợi nhuận (OWNER)', () => {
     await waitFor(() => expect(submitButton().disabled).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: 'Xem lại phần lương' }));
     expect(onReviewSalary).toHaveBeenCalledWith('s');
+  });
+});
+
+describe('hộp Chi lợi nhuận: xác nhận tạm ứng gắn với ĐÚNG phần tạm ứng đang thấy', () => {
+  const dialog = <ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />;
+  it('đổi số tiền ⇒ bỏ tick + lý do; chưa tick lại thì không gửi', async () => {
+    render(dialog);
+    await fillAmount('120000');
+    confirmAdvance();
+    fireEvent.change(amountInput(), { target: { value: '130000' } });
+    expect(await screen.findByText(/phần vượt 30\.000/, undefined, { timeout: 2000 })).toBeTruthy();
+    expect(advanceBox().getAttribute('aria-checked')).toBe('false');
+    expect(noteInput().value).toBe('');
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(advanceBox().getAttribute('aria-invalid')).toBe('true'));
+    expect(m.create).not.toHaveBeenCalled();
+  });
+  it('đổi sổ quỹ ⇒ bỏ tick + lý do', async () => {
+    render(dialog);
+    await fillAmount('120000');
+    confirmAdvance();
+    fireEvent.change(accountSelect(), { target: { value: 'a2' } });
+    await waitFor(() => expect(advanceBox().getAttribute('aria-checked')).toBe('false'));
+    expect(noteInput().value).toBe('');
+  });
+  it('tải lại ra phần tạm ứng KHÁC (cùng số tiền) ⇒ bỏ tick + lý do; lúc đang tải lại thì chưa bỏ', async () => {
+    const view = render(dialog);
+    await fillAmount('120000');
+    confirmAdvance();
+    m.fetching = true;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    expect(advanceBox().getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText(/Đang tính lại số dư/)).toBeTruthy();
+    m.balance = 90_000; m.fetching = false;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    await waitFor(() => expect(advanceBox().getAttribute('aria-checked')).toBe('false'));
+    expect(noteInput().value).toBe('');
+    expect(screen.getByText(/phần vượt 30\.000/)).toBeTruthy();
+  });
+  it('tải lại ra ĐÚNG phần tạm ứng cũ ⇒ giữ tick + lý do, gửi được', async () => {
+    const view = render(dialog);
+    await fillAmount('120000');
+    confirmAdvance();
+    m.fetching = true;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    m.fetching = false;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    expect(advanceBox().getAttribute('aria-checked')).toBe('true');
+    expect(noteInput().value).toBe('Ứng trước lợi nhuận tháng 11');
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 120_000, allowAdvance: true, note: 'Ứng trước lợi nhuận tháng 11' })));
+  });
+  it('không có tạm ứng: đổi số tiền KHÔNG xoá ghi chú', async () => {
+    render(dialog);
+    await fillAmount('50000');
+    fireEvent.change(noteInput(), { target: { value: 'Chi đợt 1 tháng 11' } });
+    fireEvent.change(amountInput(), { target: { value: '60000' } });
+    await waitFor(() => expect(m.previewCalls.some((c) => c.amount === 60_000)).toBe(true), { timeout: 2000 });
+    expect(noteInput().value).toBe('Chi đợt 1 tháng 11');
+  });
+  it('đang tải lại số dư ⇒ không gửi trên số cũ; tải xong thì gửi được', async () => {
+    const view = render(dialog);
+    await fillAmount('50000');
+    m.fetching = true;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Đang tính số dư cho số tiền này/)).toBeTruthy();
+    expect(m.create).not.toHaveBeenCalled();
+    m.fetching = false;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    await waitFor(() => expect(screen.queryByText(/Đang tính số dư cho số tiền này/)).toBeNull());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(m.create).toHaveBeenCalledTimes(1));
+  });
+  it('tải lại lỗi ⇒ không gửi trên số cũ; có nút "Tính lại"', async () => {
+    const view = render(dialog);
+    await fillAmount('50000');
+    m.previewError = true;
+    view.rerender(<ProfitDistributeDialog open {...ownerProps} defaultShareholderId="s" />);
+    fireEvent.click(submitButton());
+    expect(await screen.findByText(/Chưa tính được số dư cho số tiền này/)).toBeTruthy();
+    expect(m.create).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Tính lại' }));
+    expect(m.refetch).toHaveBeenCalled();
   });
 });
 

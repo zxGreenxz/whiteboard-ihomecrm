@@ -6,7 +6,9 @@
 //   - Máy chủ bận ở tầng khoá (40P01/40001/55P03): tự gửi lại CÙNG khoá trong cùng lượt (busyRetry).
 //   - Chưa rõ kết quả (mất mạng, biên nhận hỏng): luồng giữ dấu chờ đối chiếu và KHOÁ gửi lại; lần
 //     bấm sau đi đường đối chiếu: gửi lại ĐÚNG khoá cũ (các lệnh này idempotent: cùng khoá + cùng nội
-//     dung ⇒ máy chủ trả y hệt kết quả cũ). Khác nội dung ⇒ 23505 ⇒ vẫn khoá, người dùng phải đối chiếu.
+//     dung ⇒ máy chủ trả y hệt kết quả cũ). Khác nội dung (vd đã tải lại trang rồi nhập khác) ⇒ 23505
+//     "khoá đã dùng" của CHÍNH lệnh ⇒ lần trước ĐÃ ghi: xoá dấu chờ, ném ProfitLedgerPriorWrittenError
+//     ("đã ghi, tải lại để xem"), lần bấm sau là lệnh mới với khoá mới. Lỗi khác ⇒ vẫn khoá.
 //   - Từ chối chắc chắn (22023, 42501, 55000, PT409…): giao dịch đã lùi, lần bấm sau dùng khoá mới.
 // Hook KHÔNG tự toast: hộp thoại đọc lỗi bằng profitLedgerErrorMessage và tự hiện câu tại chỗ.
 
@@ -22,6 +24,9 @@ import {
   readLedgerCancelResult, readLedgerPayoutResult, readMarkerResult, readSalaryResolveResult,
   type LedgerCancelResult, type LedgerPayoutResult, type MarkerResult, type SalaryResolveResult,
 } from '@/lib/profitLedger/actionReaders';
+import {
+  isLedgerIdempotencyConflict, ProfitLedgerPriorWrittenError, type ProfitLedgerWriteOperation,
+} from '@/lib/profitLedger/errors';
 import type { ProfitLedgerSubjectKind } from '@/lib/profitLedger/sharedReaders';
 import type { ProfitCancelExpectedState } from '@/lib/profitLedger/vouchers';
 
@@ -63,13 +68,17 @@ function requireId(value: string | null | undefined, message: string): string {
   return value;
 }
 
+/** Kết quả nội bộ của lượt đối chiếu: lần gửi trước ĐÃ ghi nhưng không có biên nhận để trả. */
+const PRIOR_WRITTEN: unique symbol = Symbol('profit-ledger-prior-written');
+
 /**
  * Chạy một lệnh ghi idempotent của sổ tổng trong luồng chống gửi trùng.
  * `call(key)` dựng lời gọi RPC với đúng khoá; `read` đọc biên nhận (lệch hợp đồng ⇒ ném TypeError ⇒
- * "chưa rõ kết quả").
+ * "chưa rõ kết quả"); `kind` chọn đúng câu 23505 "khoá đã dùng" của lệnh này.
  */
 async function runLedgerWrite<T>(options: {
   workflow: ReturnType<typeof persistentFinancialWorkflow>;
+  kind: ProfitLedgerWriteOperation;
   businessKey: string;
   operation: string;
   organizationId: string;
@@ -79,7 +88,7 @@ async function runLedgerWrite<T>(options: {
   receiptLabel: string;
 }): Promise<T> {
   const { workflow, call, read } = options;
-  return workflow.run(
+  const outcome = await workflow.run<T | typeof PRIOR_WRITTEN>(
     options.businessKey,
     options.operation,
     async (progress) => {
@@ -89,16 +98,24 @@ async function runLedgerWrite<T>(options: {
       progress.completed.push({ id: options.receiptId(result), label: options.receiptLabel });
       return result;
     },
-    // Đối chiếu lần trước chưa rõ kết quả: gửi lại ĐÚNG khoá cũ. Lỗi ⇒ chưa chứng minh được gì:
-    // ném lỗi lên FinancialWorkflowGuard — ở lượt đối chiếu nó giữ nguyên dấu chờ đối chiếu
-    // (kết quả "unknown", không xoá dấu) y như khi trả null, nhưng giữ được nguyên nhân thật.
+    // Đối chiếu lần trước chưa rõ kết quả: gửi lại ĐÚNG khoá cũ.
     async (_pending, progress) => {
       const { data, error } = await withBusyRetry(() => call(progress.requestKey));
-      if (error) throw error;
+      if (error) {
+        // 23505 "khoá đã dùng với nội dung khác" của CHÍNH lệnh này: dòng chống gửi trùng chỉ còn khi lần
+        // trước ĐÃ ghi xong ⇒ đối chiếu xong. Trả kết quả để FinancialWorkflowGuard xoá dấu chờ (lần sau
+        // khoá mới); bên ngoài đổi thành lỗi "đã ghi, tải lại để xem" — nội dung mới máy chủ đã lùi.
+        if (isLedgerIdempotencyConflict(error, options.kind)) return { result: PRIOR_WRITTEN };
+        // Lỗi khác ⇒ chưa chứng minh được gì: ném lên guard — ở lượt đối chiếu nó giữ nguyên dấu chờ
+        // (kết quả "unknown", không xoá dấu) và giữ được nguyên nhân thật.
+        throw error;
+      }
       return { result: await read(data) };
     },
     options.organizationId,
   );
+  if (outcome === PRIOR_WRITTEN) throw new ProfitLedgerPriorWrittenError(options.kind);
+  return outcome;
 }
 
 /* ───────────────────────────── E5 lập phiếu chi lợi nhuận cổ đông ───────────────────────────── */
@@ -132,6 +149,7 @@ export function useCreateProfitLedgerPayout() {
       const shareholderId = requireId(input.shareholderId, 'Chọn cổ đông nhận khoản chi.');
       return runLedgerWrite({
         workflow: workflow.current,
+        kind: 'payout',
         businessKey: `shareholder:${shareholderId}`,
         operation: 'lập phiếu chi lợi nhuận',
         organizationId,
@@ -185,6 +203,7 @@ export function useCancelProfitLedgerPayout() {
       }
       return runLedgerWrite({
         workflow: workflow.current,
+        kind: 'cancel',
         businessKey: `voucher:${voucherId}`,
         operation: 'huỷ phiếu chi',
         organizationId,
@@ -228,6 +247,7 @@ export function useSetProfitLedgerMarker() {
       const subjectId = requireId(input.subjectId, 'Chưa xác định được người cần đặt mốc.');
       return runLedgerWrite({
         workflow: workflow.current,
+        kind: 'marker',
         businessKey: `${input.subjectKind}:${subjectId}`,
         operation: 'đặt mốc đã trả đủ',
         organizationId,
@@ -274,6 +294,7 @@ export function useResolveSalaryProfitLine() {
       const lineId = requireId(input.lineId, 'Chưa xác định được dòng phiếu lương cần xác nhận.');
       return runLedgerWrite({
         workflow: workflow.current,
+        kind: 'resolve',
         businessKey: `line:${lineId}`,
         operation: 'xác nhận phần lợi nhuận trong phiếu lương',
         organizationId,

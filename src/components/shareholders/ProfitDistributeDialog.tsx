@@ -111,20 +111,48 @@ export default function ProfitDistributeDialog({
     enabled: open && !saveBlocked,
   });
   const preview = previewQuery.data;
-  const previewCurrent = !!preview && debouncedAmount === amount;
+  // Lần xem trước của ĐÚNG số tiền đang nhập (khoá query đã gồm cổ đông + sổ quỹ): đủ để HIỆN số.
+  const previewMatches = !!preview && debouncedAmount === amount;
+  // Đủ để GỬI: còn phải tải xong — đang tải lại (sau khi làm mới / quay lại cửa sổ) hay tải lại lỗi thì
+  // số đang hiện có thể đã cũ.
+  const previewCurrent = previewMatches && !previewQuery.isFetching && !previewQuery.isError;
 
-  // Đổi người nhận ⇒ bỏ tick tạm ứng: xác nhận tạm ứng là cho ĐÚNG một cổ đông, không mang sang người khác.
-  useEffect(() => {
-    if (!saveBlocked && form.getValues('allowAdvance')) form.setValue('allowAdvance', false);
-  }, [shareholderId, saveBlocked, form]);
-
-  // Phần tạm ứng theo lần xem trước khớp số đang nhập: hiện ô tick + bắt lý do.
-  const previewAdvance = previewCurrent ? (preview.advance_amount ?? 0) : 0;
+  // Phần tạm ứng đang hiện (giữ cả lúc tải lại để ô tick không chớp tắt): hiện ô tick + bắt lý do.
+  const previewAdvance = previewMatches ? (preview.advance_amount ?? 0) : 0;
   useEffect(() => {
     if (!saveBlocked && form.getValues('previewAdvance') !== previewAdvance) {
       form.setValue('previewAdvance', previewAdvance, { shouldValidate: form.formState.isSubmitted });
     }
   }, [previewAdvance, saveBlocked, form]);
+
+  // Tick "xác nhận tạm ứng" và lý do chỉ đúng cho PHẦN TẠM ỨNG người dùng đã thấy: đổi cổ đông, số tiền,
+  // sổ quỹ, hoặc lần tính lại (sau khi tải lại) ra phần tạm ứng khác ⇒ bỏ cả hai (máy chủ chỉ nhận cờ
+  // "cho tạm ứng", không biết người dùng đã xác nhận bao nhiêu). Lúc đang tính lại chưa tính là đổi.
+  const advanceShown = previewAdvance > 0 || (values.previewAdvance ?? 0) > 0;
+  const inputsKey = `${shareholderId}|${accountId}|${amount ?? ''}`;
+  const settledAdvance = previewCurrent ? (preview.advance_amount ?? 0) : null;
+  const advanceBasis = useRef({ inputs: inputsKey, advance: settledAdvance, shown: advanceShown });
+  useEffect(() => {
+    if (saveBlocked) return; // đang đối chiếu: giữ nguyên nội dung đã gửi
+    const last = advanceBasis.current;
+    const inputsChanged = last.inputs !== inputsKey;
+    const advanceChanged = settledAdvance !== null && last.advance !== null && settledAdvance !== last.advance;
+    if (inputsChanged || advanceChanged) {
+      if (form.getValues('allowAdvance')) form.setValue('allowAdvance', false);
+      // Đang có phần tạm ứng thì ô ghi chú là "lý do tạm ứng" — viết cho số cũ.
+      if (last.shown && form.getValues('note')) form.setValue('note', '');
+    }
+    advanceBasis.current = {
+      inputs: inputsKey,
+      advance: settledAdvance ?? (inputsChanged ? null : last.advance),
+      shown: advanceShown,
+    };
+  }, [inputsKey, settledAdvance, advanceShown, saveBlocked, form]);
+
+  // Số mới đã tính xong: bỏ câu "đang tính" của lần bấm trước.
+  useEffect(() => {
+    if (previewCurrent) form.clearErrors('root.preview');
+  }, [previewCurrent, form]);
 
   const ledgerData = ledgerQuery.data;
   // Chỉ cổ đông còn hiệu lực mới chi được (đã xoá / ngưng ⇒ máy chủ từ chối).
@@ -157,9 +185,14 @@ export default function ProfitDistributeDialog({
     if (createMut.isPending || !organizationId) return;
     setFailure(null);
     form.clearErrors('root');
-    // Chỉ gửi khi số dư đã tính cho ĐÚNG số tiền + sổ đang nhập (không gửi theo lần xem trước cũ).
+    // Chỉ gửi khi số dư đã tính XONG cho ĐÚNG số tiền + sổ đang nhập (không gửi theo số cũ / đang tải lại).
     if (!saveBlocked && (!previewCurrent || preview?.can_submit !== true)) {
-      form.setError('root.preview', { type: 'preview', message: 'Đang tính số dư cho số tiền này — đợi kết quả rồi bấm lại.' });
+      form.setError('root.preview', {
+        type: 'preview',
+        message: previewQuery.isError
+          ? 'Chưa tính được số dư cho số tiền này — bấm "Tính lại" rồi gửi.'
+          : 'Đang tính số dư cho số tiền này — đợi kết quả rồi bấm lại.',
+      });
       return;
     }
     try {
@@ -197,7 +230,6 @@ export default function ProfitDistributeDialog({
 
   const onInvalid = (errors: unknown) => { void focusFirstError(errors, { root: dialogRef.current }); };
   const title = selfAdvance ? 'Chi tạm ứng lợi nhuận cho tôi' : 'Chi lợi nhuận cổ đông';
-  const advanceShown = previewAdvance > 0 || (values.previewAdvance ?? 0) > 0;
   const rootPreviewError = form.formState.errors.root?.preview?.message;
 
   return (
@@ -247,9 +279,11 @@ export default function ProfitDistributeDialog({
 
                 <BalanceBox
                   loading={!!shareholderId && previewQuery.isFetching && !preview}
+                  refreshing={previewMatches && previewQuery.isFetching}
                   error={previewQuery.isError ? profitLedgerErrorMessage(previewQuery.error, 'preview').message : null}
+                  onRetry={() => { void previewQuery.refetch(); }}
                   preview={preview ?? null}
-                  previewCurrent={previewCurrent}
+                  showSplit={previewMatches}
                   onReviewSalary={onReviewSalary && shareholderId ? () => onReviewSalary(shareholderId) : undefined}
                 />
 
@@ -356,25 +390,39 @@ export default function ProfitDistributeDialog({
   );
 }
 
-function BalanceBox({ loading, error, preview, previewCurrent, onReviewSalary }: {
+function BalanceBox({ loading, refreshing, error, onRetry, preview, showSplit, onReviewSalary }: {
   loading: boolean;
+  /** Đang tính lại (số đang hiện có thể đã cũ — chưa cho gửi). */
+  refreshing: boolean;
   error: string | null;
+  onRetry: () => void;
   preview: PayoutPreview | null;
-  previewCurrent: boolean;
+  /** Lần xem trước khớp số tiền đang nhập: hiện tách "trong số dư / tạm ứng". */
+  showSplit: boolean;
   onReviewSalary?: () => void;
 }) {
-  if (error) return <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{error}</p>;
+  if (error) {
+    return (
+      <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-destructive p-3 text-sm text-destructive">
+        <span>{error}</span>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>Tính lại</Button>
+      </div>
+    );
+  }
   if (loading) return <p className="text-sm text-muted-foreground"><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />Đang tính số dư…</p>;
   if (!preview) return null;
   const owed = preview.balance_before >= 0;
   const exceeds = preview.warnings.find((w) => w.code === 'ADVANCE_EXCEEDS_ESTIMATE');
   return (
     <div className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-sm" data-testid="profit-payout-balance">
+      {refreshing && (
+        <p className="text-muted-foreground"><Loader2 className="mr-1 inline h-4 w-4 animate-spin" />Đang tính lại số dư…</p>
+      )}
       <p>
         {owed ? 'Còn phải trả: ' : 'Đang tạm ứng: '}
         <strong className={owed ? undefined : 'text-destructive'}>{formatVND(Math.abs(preview.balance_before))}</strong>
       </p>
-      {previewCurrent && preview.within_amount !== null && preview.advance_amount !== null && (
+      {showSplit && preview.within_amount !== null && preview.advance_amount !== null && (
         <p>
           Lần chi này: trong số dư <strong>{formatVND(preview.within_amount)}</strong>
           {' · '}tạm ứng <strong className={preview.advance_amount > 0 ? 'text-destructive' : undefined}>{formatVND(preview.advance_amount)}</strong>
