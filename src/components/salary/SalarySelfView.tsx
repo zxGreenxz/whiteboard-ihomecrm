@@ -8,6 +8,7 @@ import {
   House, Info, ListChecks, Percent, Star, Trophy, Wallet, X,
 } from "lucide-react";
 import type { SalManager } from "@/lib/managerSalary";
+import { isProfitDeduction } from "@/lib/salaryProfit";
 import {
   bonusDaysOf, contractRowsOf, earnedJobRowsOf, selfSummaryOf, streakViewOf, type SelfSummary, type StreakView, type V5Plan,
 } from "@/lib/salarySelfSummary";
@@ -67,6 +68,7 @@ function Summary({ m, s, phone }: { m: SalManager; s: SelfSummary; phone?: boole
   const roomNote = s.roomRent > 0
     ? (m.roomRentInvoice ? "Tiền phòng trừ thẳng vào hoá đơn phòng — không chuyển khoản phần này." : "Chưa có hoá đơn phòng tháng kế — tiền phòng trừ theo mức cố định.")
     : null;
+  const salaryAdvanceCount = m.advanceItems.filter((a) => !isProfitDeduction(a)).length;
   const op = (c: string) => !phone && <div aria-hidden="true" className="flex items-start pt-7 text-[26px] font-light text-muted-foreground">{c}</div>;
   const v5 = m.v5;
   return (
@@ -115,7 +117,9 @@ function Summary({ m, s, phone }: { m: SalManager; s: SelfSummary; phone?: boole
           <BreakRow t="danger" icon={<House size={18} />} name="Tiền phòng" value={-s.roomRent} muted={s.roomRent === 0}
             sub={s.roomRent > 0 ? m.roomRentItems.map((r) => r.label).join(" · ") : "Không trừ tiền phòng"} />
           <BreakRow t="neutral" icon={<Wallet size={18} />} name="Đã ứng trong kỳ" value={-s.advance} muted={s.advance === 0}
-            sub={m.advanceItems.length ? `${m.advanceItems.length} lần ứng` : "Không có khoản ứng"} />
+            sub={salaryAdvanceCount ? `${salaryAdvanceCount} lần ứng` : "Không có khoản ứng"} />
+          {s.profitOffset !== 0 && <BreakRow t="warning" icon={<Building2 size={18} />} name="Trừ tạm ứng lợi nhuận" value={-s.profitOffset} sub="Trừ trong phần lợi nhuận đầu tư tháng này — phần còn lại chuyển tháng sau" />}
+          {s.markerPaid !== 0 && <BreakRow t="neutral" icon={<Building2 size={18} />} name="Lợi nhuận đã trả theo mốc" value={-s.markerPaid} sub={'Đã trả trước mốc "đã trả đủ" — không chuyển lại'} />}
           {s.paidOut > 0 && <BreakRow t="neutral" icon={<Percent size={18} />} name="Hoa hồng đã chi từ sổ quỹ" value={-s.paidOut} sub="Đã nhận khi duyệt phiếu — không chuyển lại" />}
         </div>
         {roomNote && <p className="m-0 text-[12.5px] leading-snug text-muted-foreground">{roomNote}</p>}

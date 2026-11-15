@@ -638,6 +638,7 @@
     "src/components/salary/SalarySelfView.tsx",
     "src/components/salary/salaryIncomeItems.ts",
     "src/lib/salarySelfSummary.ts",
+    "src/lib/salaryProfit.ts",
     "src/lib/__tests__/salarySelfSummary.test.ts",
     "src/components/salary/__tests__/SalarySelfView.test.tsx",
     "src/components/salary/salaryChart.tsx",

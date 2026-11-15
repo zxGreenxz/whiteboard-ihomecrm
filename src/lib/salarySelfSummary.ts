@@ -3,6 +3,7 @@
 // công thức với khung thanh toán của tab quản trị (SalaryIncomePay) khi chọn đủ mọi
 // khoản, nên nhân viên và quản trị thấy cùng một con số.
 import { commissionPaidElsewhere, type SalLedgerRow, type SalManager, type SalV5Info } from "@/lib/managerSalary";
+import { profitDeductionsOf } from "@/lib/salaryProfit";
 import { fundLinesOf } from "@/lib/salaryFundReport";
 import { effectiveMilestones } from "@/lib/v5Calendar";
 
@@ -18,7 +19,12 @@ export interface SelfSummary {
   other: number;
   dh: number;
   sale: number;
+  /** Ứng lương (không gồm hai khoản trừ của sổ tổng bên dưới). */
   advance: number;
+  /** Cổ đông: trừ tạm ứng lợi nhuận — chỉ trong phần lợi nhuận đầu tư của tháng. */
+  profitOffset: number;
+  /** Cổ đông: phần đầu tư của tháng đã trả theo mốc "đã trả đủ" — không chuyển lại. */
+  markerPaid: number;
   roomRent: number;
   /** Hoa hồng đã/sẽ chi từ sổ quỹ thật: là thu nhập nhưng không chuyển lại qua lương. */
   paidOut: number;
@@ -47,18 +53,21 @@ export function selfSummaryOf(m: SalManager): SelfSummary {
     else allowance += l.amount;
   }
   const rest = vh - base - work - allowance - manualDeduct;
-  const advance = fz ? fz.advance : m.advance;
+  // Số "ứng" của bảng (kỳ chốt: số đóng băng) đã gồm hai khoản trừ của sổ tổng — tách ra để hiện riêng.
+  const advanceTotal = fz ? fz.advance : m.advance;
+  const { offset: profitOffset, marker: markerPaid } = profitDeductionsOf(m);
+  const advance = advanceTotal - profitOffset - markerPaid;
   const roomRent = m.roomRent;
   const takehome = c?.takehome ?? 0;
   // Kỳ chốt: suy phần chi từ sổ thật từ số đóng băng để các dòng luôn cộng khớp.
   const paidOut = locked && c
-    ? Math.max(0, gross - advance - roomRent - takehome)
+    ? Math.max(0, gross - advanceTotal - roomRent - takehome)
     : commissionPaidElsewhere(m.commissionItems);
   return {
     gross, vh, base, work, allowance, manualDeduct,
     other: Math.round(rest) === 0 ? 0 : rest,
-    dh, sale, advance, roomRent, paidOut,
-    deductTotal: advance + roomRent + paidOut,
+    dh, sale, advance, profitOffset, markerPaid, roomRent, paidOut,
+    deductTotal: advanceTotal + roomRent + paidOut,
     paid: m.paid,
     net: Math.max(0, takehome - m.paid),
   };
