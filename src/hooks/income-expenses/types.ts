@@ -201,21 +201,6 @@ export interface ImportIncomeExpenseRow extends ExcelImportRow {
   income_expense_type_id: string;
 }
 
-// Tạo phiếu CHI chia lợi nhuận cổ đông:
-// - EXPENSE trên sổ quỹ thu nguồn, gắn shareholder_id
-// - business_result_accounting=false (không tính KQKD — là chia lãi, không phải chi phí)
-// - tòa = tòa ảo "Chung" (không thuộc tòa thật)
-// - 1 item type "Chia lợi nhuận cổ đông" → trigger set total_amount = amount
-export interface CreateProfitDistributionInput {
-  organizationId: string;
-  shareholder_id: string;
-  shareholder_name?: string;
-  amount: number;
-  account_id: string;
-  voucher_date: string;
-  note?: string | null;
-}
-
 // Tạo phiếu CHI trả LƯƠNG ĐIỀU HÀNH (giống chia lợi nhuận cổ đông):
 // - EXPENSE trên sổ quỹ nguồn, gắn profit_manager_id
 // - business_result_accounting=false (lương đã trừ ở tầng phân bổ → không trừ kép KQKD)

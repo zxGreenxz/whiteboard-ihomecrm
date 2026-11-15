@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2959,
+    "sourceCallSites": 2984,
     "catalogFunctions": 1645,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 407,
+    "calledRpcs": 421,
     "byRisk": {
-      "normal": 298,
-      "financial": 108,
+      "normal": 310,
+      "financial": 110,
       "infrastructure": 1
     },
-    "securityDefiner": 382
+    "securityDefiner": 396
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2065,25 +2065,6 @@
         "src/hooks/useContractExitSettlementDrafts.ts"
       ],
       "risk": "normal"
-    },
-    "distribute_shareholder_profit_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text",
-          "returns": "json",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/income-expenses/specialized.ts"
-      ],
-      "risk": "financial"
     },
     "door_access_action_logs_v1": {
       "definitions": [
@@ -5186,6 +5167,122 @@
       ],
       "risk": "normal"
     },
+    "profit_ledger_marker_preview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_subject_kind text, p_subject_id uuid, p_settled_through_month date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_payout_cancel_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_reason text, p_idempotency_key text, p_expected_state text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_payout_detail_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_salary_resolve_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_line_id uuid, p_investment_amount numeric, p_advance_offset_amount numeric, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_ledger_set_marker_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_subject_kind text, p_subject_id uuid, p_settled_through_month date, p_reason text, p_expected_marker_id uuid, p_acknowledge_advance_erase boolean, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_manager_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
     "profit_reset_checked_v2": {
       "definitions": [
         {
@@ -5223,6 +5320,26 @@
       ],
       "callers": [
         "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_unlock_salary_impact_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
       ],
       "risk": "normal"
     },
@@ -6132,6 +6249,66 @@
       ],
       "risk": "financial"
     },
+    "salary_profit_inputs_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_staff_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_profit_payout_quote_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_investment_selected numeric, p_offset_selected numeric, p_expected_voucher_amount numeric, p_payout_idempotency_key text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_profit_settlement_freeze_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_expected_investment numeric, p_max_offset numeric, p_expected_take_home numeric, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/profitLedger/salaryProfitApi.ts"
+      ],
+      "risk": "financial"
+    },
     "salary_recurring_create_v1": {
       "definitions": [
         {
@@ -6699,6 +6876,101 @@
       ],
       "callers": [
         "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_ledger_entries_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_shareholder_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_ledger_payout_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_allow_advance boolean, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerMutations.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_my_ledger_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
+      ],
+      "risk": "normal"
+    },
+    "shareholder_profit_payout_preview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/profit-ledger/useProfitLedgerQueries.ts"
       ],
       "risk": "normal"
     },

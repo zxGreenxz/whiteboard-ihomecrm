@@ -36,10 +36,13 @@ import {
 } from "@/hooks/useShareholderProfit";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
 import ManagerSalaryPayoutDialog from "./ManagerSalaryPayoutDialog";
+import { useOrganization } from "@/contexts/OrganizationContext";
 
 const ALL = "all";
 
 export default function ProfitOverviewTab() {
+  // Hộp Chi lợi nhuận (sổ tổng) gắn công ty đang chọn — bước UI của trang chủ sẽ nối bảng sổ tổng.
+  const { selectedOrganizationId } = useOrganization();
   const [year, setYear] = useState(currentYear());
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const [shId, setShId] = useState<string>(ALL); // "all" | shareholder_id
@@ -541,7 +544,8 @@ export default function ProfitOverviewTab() {
       <ProfitDistributeDialog
         open={distOpen}
         onOpenChange={setDistOpen}
-        shareholders={shareholders}
+        organizationId={selectedOrganizationId}
+        mode="OWNER"
         defaultShareholderId={distShareholder}
       />
       <ManagerSalaryPayoutDialog

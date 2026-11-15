@@ -13,6 +13,12 @@ const payoutDialog = readFileSync(
   "src/components/shareholders/ProfitDistributeDialog.tsx",
   "utf8",
 );
+// Đợt 2 (sổ tổng): luật lọc sổ của hộp Chi lợi nhuận tách thành hàm thuần dùng chung cho hai chế độ
+// (chủ / người giữ sổ tự tạm ứng) — có test hành vi ở src/lib/profitLedger/__tests__/profitLedger.test.ts.
+const payoutAccountRule = readFileSync(
+  "src/lib/profitLedger/payoutAccounts.ts",
+  "utf8",
+);
 // Hộp Duyệt đã gom về MỘT nguồn cho Thu chi máy tính/điện thoại và Báo cáo LN:
 // luật lọc sổ nằm ở hook, danh sách sổ được vẽ ở bộ hộp xác nhận dùng chung.
 const approvalActions = readFileSync(
@@ -95,9 +101,10 @@ describe("accounting compatibility migration guards", () => {
   });
 
   it("does not offer virtual accounts in shareholder payout selectors", () => {
-    expect(payoutDialog).toContain(
+    expect(payoutAccountRule).toContain(
       "accounts.filter((account) => !account.is_virtual)",
     );
+    expect(payoutDialog).toContain("profitPayoutAccounts({");
     expect(payoutDialog).toContain("options={payoutAccounts.map");
     expect(approvalActions).toContain("!!approveTarget?.shareholder_id");
     expect(approvalActions).toContain(

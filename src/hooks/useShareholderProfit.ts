@@ -21,6 +21,7 @@ import {
   type ProfitStoredUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLedgerMutations";
 
 export { computeShareholderSummary };
 export type { ShareholderSummaryRow };
@@ -541,6 +542,8 @@ function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
   // F06: chốt / mở khoá / chốt lại đổi tập "phát sinh sau chốt" (profitPostLockKeys.all).
   qc.invalidateQueries({ queryKey: ["profit-post-lock"] });
+  // Sổ tổng (Đợt 2): phân bổ tháng đã chốt là vế "được chia" của số dư cổ đông / lương điều hành.
+  invalidateProfitLedgerQueries(qc);
 }
 
 export const useCloseProfitPeriod = () => {

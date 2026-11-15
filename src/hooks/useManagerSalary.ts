@@ -10,6 +10,7 @@ import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { invalidateProfitLedgerQueries } from "@/hooks/profit-ledger/useProfitLedgerMutations";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { jsonProp } from "@/lib/jsonValue";
 import { nrm } from "@/lib/fixedExpenseCategories";
@@ -1002,6 +1003,7 @@ export const useLockSalaryMonth = () => {
     }),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
+      invalidateProfitLedgerQueries(qc);
       if (result.count === 0) toast.info(`Không có nhân viên nào được chốt lương trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
       else toast.success(`Đã chốt lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} cho ${result.count} nhân viên.`);
     },
@@ -1056,6 +1058,7 @@ export const useUnlockSalaryMonth = () => {
     }),
     onSuccess: (result, input) => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
+      invalidateProfitLedgerQueries(qc);
       if (result.count === 0) toast.info(`Không có bảng lương đang khóa cần mở trong tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)}.`);
       else toast.success(`Đã mở khóa lương tháng ${input.periodMonth.slice(5,7)}/${input.periodMonth.slice(0,4)} cho ${result.count} nhân viên.`);
     },
@@ -1371,6 +1374,8 @@ export const useSalaryPayout = (options?: {silent?: boolean}) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoice-statistics"] });
       qc.invalidateQueries({ queryKey: ["payments"] });
+      // Phiếu lương của cổ đông gắn phần lợi nhuận vào sổ tổng (trigger F3) ⇒ số dư đổi.
+      invalidateProfitLedgerQueries(qc);
       if (!options?.silent) { const feedback = createdVoucherFeedback(result); toast[feedback.kind](`${feedback.message} Người nhận: ${input.staffName}.`); }
     },
   });
