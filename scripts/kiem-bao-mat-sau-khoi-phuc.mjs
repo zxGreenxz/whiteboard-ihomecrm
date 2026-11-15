@@ -10,6 +10,8 @@
 //   thì ngày phải khôi phục thật ta sẽ dựng lại một hệ thống hở. SQL của từng
 //   phép bên dưới chép NGUYÊN VĂN từ gate gốc (ghi nguồn tại chỗ); đổi luật ở
 //   gate gốc thì đổi cả đây — mỗi phép có một dòng trỏ ngược để không quên.
+//   (Hai phép đã thôi chép mà IMPORT thẳng luật của gate gốc: PUBLIC EXECUTE và
+//   stable-fn chạm khoá dòng.)
 //
 // PHẠM VI — và một phép CỐ Ý không mang sang
 //   Allowlist definer-acl KHÔNG áp được trên bản khôi phục: baseline chụp bằng
@@ -31,6 +33,7 @@ import { fileURLToPath } from "node:url";
 
 import { docThieuMienTru, phanTichPublicExecute, sqlPublicExecute } from "./check-definer-acl.mjs";
 import { chanProduction, coPsql, hoiJson } from "./lib/goi-psql-dich.mjs";
+import { SQL_STABLE_FN_LOCKS } from "./lib/stable-fn-locks-sql.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST = join(repoRoot, "supabase", "baseline", "manifest.json");
@@ -95,43 +98,14 @@ const SQL_DEM_SECURITY_DEFINER = `
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname IN ('public','app_private') AND p.prosecdef`;
 
-// Nguồn: check-stable-fn-locks.mjs — nguyên văn CTE, kể cả bước BỎ COMMENT
-// (không bỏ thì gate khớp vào chính câu văn nói rằng hàm không khoá dòng) và
-// LOCK TABLE (cũng ném 25006 y như FOR UPDATE trong transaction read-only).
+// Nguồn: check-stable-fn-locks.mjs → SQL_STABLE_FN_LOCKS ở lib/stable-fn-locks-sql.mjs (IMPORT,
+// không chép: một nguồn duy nhất cho luật) — kể cả bước BỎ COMMENT (không bỏ thì gate khớp vào
+// chính câu văn nói rằng hàm không khoá dòng) và LOCK TABLE (cũng ném 25006 y như FOR UPDATE
+// trong transaction read-only).
 //
-// BẢN GỐC LÀ NGUỒN, bản này là bản chép: từ 26/08/2026 check-stable-fn-locks
-// chạy trong CI (ci-gates.yml, job security-gates) nên nó không còn mồ côi.
-// Sửa CTE thì sửa BÊN ĐÓ trước rồi chép lại sang đây — hai bản trôi khỏi nhau
-// là đúng lớp lỗi khiến câu chú thích này tồn tại.
-const SQL_STABLE_FN_LOCKS = `
-  WITH RECURSIVE fns AS (
-    SELECT p.oid, n.nspname AS ns, p.proname AS nm, p.provolatile AS vol,
-           regexp_replace(
-             regexp_replace(pg_get_functiondef(p.oid), '/\\*.*?\\*/', ' ', 'gs'),
-             '--[^' || chr(10) || ']*', ' ', 'g') AS def,
-           p.proacl
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE p.prokind IN ('f','p') AND n.nspname IN ('public', 'app_private', 'api')
-  ),
-  seed AS (
-    SELECT oid, nm, 0 AS depth, nm AS via FROM fns
-    WHERE def ~* '\\mfor\\s+(share|update|no key update|key share)\\M'
-       OR def ~* '\\mlock\\s+(table\\s+)?[a-z_.]'
-  ),
-  closure AS (
-    SELECT oid, nm, depth, via FROM seed
-    UNION
-    SELECT f.oid, f.nm, c.depth + 1, c.via
-    FROM fns f JOIN closure c
-      ON c.depth < 4 AND f.oid <> c.oid AND f.def ~ ('\\m' || c.nm || '\\s*\\(')
-  )
-  SELECT DISTINCT ON (f.nm)
-         f.nm AS fn_name,
-         CASE f.vol WHEN 's' THEN 'STABLE' ELSE 'IMMUTABLE' END AS volatility,
-         c.via AS lock_from
-  FROM closure c JOIN fns f ON f.oid = c.oid
-  WHERE f.ns IN ('public', 'api') AND f.vol <> 'v'
-  ORDER BY f.nm, c.depth`;
+// Trước 15/11/2026 chỗ này là một bản CHÉP của CTE; hai bản trôi khỏi nhau là lớp lỗi mà cách
+// import này xoá hẳn. Thêm file import mới cho bộ kiểm này thì khai nó vào `paths:` của
+// migration-restore-drill.yml, nếu không sửa luật sẽ không kích hoạt lại bài diễn tập.
 
 // Nguồn: check-definer-acl.mjs → docTrangThaiSong (cùng bộ schema PostgREST
 // expose). Trên đích diễn tập chỉ so với DENYLIST — xem khối đầu file.
