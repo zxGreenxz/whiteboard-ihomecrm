@@ -34,6 +34,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ArrowUp, ArrowDown, Layers } from 'lucide-react';
 import {
+  batchChildVoucherName,
   incomeExpenseBatchFormSchema,
   type IncomeExpenseBatchFormValues,
 } from '@/lib/incomeExpenseValidation';
@@ -66,12 +67,23 @@ interface BatchItemRow {
   room_id: string | null;
   income_expense_type_id: string;
   type_name: string;
+  /** "Tên phiếu lẻ" của dòng; trống ⇒ tên phiếu lẻ theo cách cũ (batchChildVoucherName). */
+  voucher_name: string;
   description: string | null;
   quantity: number;
   unit_price: number;
   start_date: string;
   end_date: string;
 }
+
+const ITEM_FIELD_LABELS: Partial<Record<keyof BatchItemRow, string>> = {
+  voucher_name: 'Tên phiếu lẻ',
+  building_id: 'Tòa nhà',
+  room_id: 'Phòng',
+  unit_price: 'Số tiền',
+  start_date: 'Từ tháng',
+  end_date: 'Đến tháng',
+};
 
 interface IncomeExpenseBatchFormProps {
   open: boolean;
@@ -88,6 +100,7 @@ const ItemRow = ({
   buildings,
   errors,
   isDeposit,
+  sharedName,
 }: {
   index: number;
   item: BatchItemRow;
@@ -97,14 +110,17 @@ const ItemRow = ({
   errors?: FieldErrors<BatchItemRow>;
   /** Hạng mục cọc ⇒ phòng bắt buộc (depositRoomRule.ts). */
   isDeposit: boolean;
+  /** Tên phiếu tổng đang gõ — để xem trước tên phiếu lẻ của dòng. */
+  sharedName: string;
 }) => {
   const fieldProps = (field: keyof BatchItemRow) => ({
     name: `items.${index}.${field}`,
     'data-field-name': `items.${index}.${field}`,
     'aria-invalid': !!errors?.[field],
     'aria-describedby': `batch-item-${index}-${field}-error`,
-    'aria-label': `${field === 'building_id' ? 'Tòa nhà' : field === 'room_id' ? 'Phòng' : field === 'unit_price' ? 'Số tiền' : field === 'start_date' ? 'Từ tháng' : 'Đến tháng'} hạng mục ${index + 1}`,
+    'aria-label': `${ITEM_FIELD_LABELS[field] ?? field} hạng mục ${index + 1}`,
   });
+  const childName = batchChildVoucherName(sharedName, item);
   const fieldError = (field: keyof BatchItemRow) => errors?.[field]?.message && <p id={`batch-item-${index}-${field}-error`} role="alert" className="text-xs text-destructive">{String(errors[field]?.message)}</p>;
   const { data: rooms = [] } = useIncomeExpenseFormRooms(item.building_id || undefined);
 
@@ -131,6 +147,22 @@ const ItemRow = ({
         >
           <Trash2 className="h-4 w-4" />
         </Button>
+      </div>
+
+      <div>
+        <label className="text-[11px] text-muted-foreground font-medium">
+          Tên phiếu lẻ
+        </label>
+        <Input
+          {...fieldProps('voucher_name')}
+          value={item.voucher_name}
+          onChange={(e) => onChange(index, { voucher_name: e.target.value })}
+          className="h-8 text-sm"
+          placeholder="VD: VSML P101 (3/7)"
+        />
+        <p className="text-[11px] text-muted-foreground break-words mt-0.5" data-testid={`batch-item-${index}-child-name`}>
+          Tên phiếu: {childName || '—'}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -304,6 +336,7 @@ const IncomeExpenseBatchForm = ({
   });
 
   const voucherType = form.watch('type');
+  const sharedName = form.watch('shared_name') ?? '';
 
   // Reset khi mở dialog hoặc đổi default type
   useEffect(() => {
@@ -339,6 +372,7 @@ const IncomeExpenseBatchForm = ({
         room_id: r.room_id,
         income_expense_type_id: r.income_expense_type_id,
         type_name: r.type_name,
+        voucher_name: r.voucher_name,
         description: r.description,
         quantity: r.quantity,
         unit_price: r.unit_price,
@@ -360,6 +394,7 @@ const IncomeExpenseBatchForm = ({
       room_id: null,
       income_expense_type_id: t.id,
       type_name: t.name,
+      voucher_name: '',
       description: null,
       quantity: 1,
       unit_price: 0,
@@ -586,7 +621,8 @@ const IncomeExpenseBatchForm = ({
                       />
                     </FormControl>
                     <p className="text-[11px] text-muted-foreground">
-                      Tên phiếu con = tên này + " - " + tên loại hạng mục.
+                      Tên phiếu lẻ = "Tên phiếu lẻ" của từng hạng mục + " - " + tên này.
+                      Hạng mục để trống tên lẻ: tên này + " - " + tên loại hạng mục.
                     </p>
                     <FormMessage />
                   </FormItem>
@@ -643,6 +679,7 @@ const IncomeExpenseBatchForm = ({
                         buildings={buildings}
                         errors={form.formState.errors.items?.[index]}
                         isDeposit={depositTypeIds.has(item.income_expense_type_id)}
+                        sharedName={sharedName}
                       />
                     ))}
 

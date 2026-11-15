@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
-import type { IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
+import { batchChildVoucherName, type IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
 import type { ImportIncomeExpenseRow } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -261,7 +261,7 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
                 user_id: user.id,
                 creator_name: creatorName,
                 type: input.type,
-                name: `${input.shared_name} - ${item.type_name ?? ""}`.trim(),
+                name: batchChildVoucherName(input.shared_name, item),
                 building_id: item.building_id,
                 room_id: item.room_id ?? null,
                 account_id: input.account_id,
