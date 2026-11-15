@@ -50,6 +50,7 @@
     "src/hooks/useCashBook.ts::cashbook_opening_balance",
     "src/hooks/useCashBook.ts::cashbook_period_totals",
     "src/hooks/useCashBook.ts::cashflow_by_day",
+    "src/hooks/useCashFlowProfitPayouts.ts::cashbook_cash_flow_profit_payout_v1",
     "src/hooks/useCashHandovers.ts::confirm_cancel_handover",
     "src/hooks/useCashHandovers.ts::confirm_cash_handover",
     "src/hooks/useCashHandovers.ts::create_cash_handover",

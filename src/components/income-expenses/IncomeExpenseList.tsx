@@ -1,6 +1,7 @@
 import { QuickExpenseButton } from './QuickExpenseActions';
 import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -52,6 +53,7 @@ import {
   ChevronDown,
   ChevronRight,
   CornerDownRight,
+  ClipboardCheck,
 } from 'lucide-react';
 import type { FlexCancelEligibility } from '@/hooks/income-expenses/flexMutations';
 import type { IncomeCancelEligibility } from '@/hooks/income-expenses/incomeVoucherCancel';
@@ -72,8 +74,9 @@ interface IncomeExpenseListProps {
   vouchers: IncomeExpenseWithRelations[];
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
-  /** Kèm `type` để trang cha biết đi cửa THU hay đường CHI mà không phải tra ngược. */
-  onCancel: (id: string, type?: string | null) => void;
+  /** Kèm `type` để trang cha biết đi cửa THU hay đường CHI mà không phải tra ngược; kèm phiếu để phiếu
+   *  chi theo sổ tổng mở đúng hộp huỷ có lý do. */
+  onCancel: (id: string, type?: string | null, voucher?: IncomeExpenseWithRelations) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
@@ -432,6 +435,24 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
+                    {/* Phiếu chi theo sổ tổng: duyệt ở màn Chờ duyệt (thấy số dư sổ tổng trước khi duyệt). */}
+                    {can.approveVia === 'INBOX' && (
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                      >
+                        <Link
+                          to="/approvals"
+                          title="Duyệt ở màn Chờ duyệt (xem số dư sổ tổng trước khi duyệt)"
+                          aria-label="Duyệt ở màn Chờ duyệt"
+                        >
+                          <ClipboardCheck className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    )}
+
                     {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ
                         (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL.
                         Phiếu ĐÃ HOÀN TÁC cũng chi lại được (thế hệ mới, 7x). */}
@@ -514,11 +535,13 @@ const IncomeExpenseList = ({
                             ? 'h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50'
                             : 'h-8 w-8 text-zinc-300'
                         }
-                        onClick={() => onCancel(voucher.id, voucher.type)}
+                        onClick={() => onCancel(voucher.id, voucher.type, voucher)}
                         title={
                           can.cancel.reason
                             ? `Huỷ phiếu — ${can.cancel.reason}`
-                            : 'Huỷ phiếu'
+                            : can.cancel.via === 'PROFIT_LEDGER'
+                              ? 'Huỷ phiếu chi theo sổ tổng (ghi lý do)'
+                              : 'Huỷ phiếu'
                         }
                       >
                         <Ban className="h-4 w-4" />

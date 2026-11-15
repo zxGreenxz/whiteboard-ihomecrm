@@ -4,6 +4,7 @@ import { canUse } from '@/lib/permissionPages';
 import { canWritePosting, canWriteWorkflow, type FinanceV2OrgRoutes } from '@/lib/financeV2Route';
 import { hasCompleteVoucherDetail } from '@/lib/incomeExpenseDetailRead';
 import { isNonCashVoucher } from '@/lib/financeV2VoucherState';
+import { isProfitLedgerVoucher } from '@/lib/profitLedger/vouchers';
 
 export interface QuickExpenseContext {
   organizationId: string | null;
@@ -22,6 +23,9 @@ export function quickExpenseReason(v: IncomeExpenseWithRelations, ctx: QuickExpe
   if (v.approval_status !== 'UNAPPROVED' || v.posting_status !== 'UNPOSTED') return 'Chỉ chọn phiếu chờ duyệt và chưa chi.';
   if (v.review_state !== 'PENDING' && v.review_state !== 'CHANGES_REQUESTED') return 'Trạng thái xử lý của phiếu chưa cho phép duyệt.';
   if (v.posting_mode !== 'CASHBOOK' || isNonCashVoucher(v) || v.system_source?.startsWith('reservation.')) return 'Phiếu này cần xử lý trong nghiệp vụ gốc.';
+  // Phiếu chi theo sổ tổng: người duyệt phải thấy số dư sổ tổng (màn Chờ duyệt), quyền duyệt là quyền
+  // chi lợi nhuận chứ không phải quyền duyệt thu chi — không gom vào duyệt và chi nhanh.
+  if (isProfitLedgerVoucher(v.system_source)) return 'Phiếu chi lợi nhuận / lương điều hành duyệt ở màn Chờ duyệt.';
   if (!canWriteWorkflow(ctx.routes) || !canWritePosting(ctx.routes)) return 'Công ty chưa cho phép duyệt và chi nhanh.';
   // canUse(null) asks whether permission exists anywhere, which is not enough
   // for an organization-wide voucher without a building.

@@ -16,6 +16,8 @@ vi.mock('@/hooks/useApprovals', () => ({
     voucher_type: 'EXPENSE', voucher_name: 'Hoa hồng trong tên tự nhập', voucher_code: 'PC-TEST', amount: 100,
     submitted_at: '2026-10-11T03:00:00Z', step_no: 1, approval_version: 1, posting_version: 1 }],
     isLoading: false, isFetching: false, isError: false, refetch: api.refetch }),
+  // Nguồn phiếu đã biết (phiếu thường) — "Duyệt và Chi…" chỉ chào khi đã biết nguồn phiếu.
+  usePendingApprovalSources: () => ({ data: { 'voucher-target': { system_source: null, account_id: 'cashbook' } }, isError: false, refetch: vi.fn() }),
   useDecideApproval: () => ({ mutate: api.decide, mutateAsync: api.decide, isPending: false }),
 }));
 vi.mock('@/lib/financeV2Route', () => ({ useFinanceV2Routes: () => ({ getOrg: () => ({}) }), canWriteWorkflow: () => true, canWritePosting: () => true }));
@@ -32,6 +34,12 @@ vi.mock('@/components/income-expenses/IncomeExpensePostingDialog', () => ({ defa
   voucher: { subjectId: string; isCommission?: boolean; approvedTotal: number; name?: string };
 }) => <div role="dialog" aria-label="Duyệt và chi">{voucher.subjectId} {voucher.isCommission ? 'Hoa hồng đã xác định' : 'Chi thông thường'} {voucher.approvedTotal} {voucher.name}</div> }));
 import ApprovalsPage from '../ApprovalsPage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// Trang có đọc sổ tổng (thẻ số dư, chỉ bật với phiếu chi theo sổ tổng) ⇒ cần QueryClient; ở đây không có
+// phiếu sổ tổng nên không có lệnh đọc nào chạy.
+const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 
 const detail = (patch: Partial<IncomeExpenseWithRelations> = {}) => ({ id: 'voucher-target', organization_id: 'organization-target',
   type: 'EXPENSE', name: 'Chi phí đã đối chiếu', total_amount: 150, system_source: null, commission_kind: null,
@@ -44,7 +52,7 @@ it.each([false, true])('reads the exact voucher before opening commission postin
   api.mobile = mobile;
   let resolve!: (rows: IncomeExpenseWithRelations[]) => void;
   api.read.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
-  render(<ApprovalsPage />);
+  render(<ApprovalsPage />, { wrapper });
   const open = screen.getByRole('button', { name: 'Duyệt và Chi…' });
   fireEvent.click(open); fireEvent.click(open);
   expect(api.read).toHaveBeenCalledTimes(1);
@@ -57,7 +65,7 @@ it.each([false, true])('reads the exact voucher before opening commission postin
 });
 
 it('does not infer commission from the pending voucher title', async () => {
-  render(<ApprovalsPage />); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
+  render(<ApprovalsPage />, { wrapper }); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
   expect((await screen.findByRole('dialog')).textContent).toContain('Chi thông thường');
   expect(screen.queryByText('Hoa hồng đã xác định')).toBeNull();
 });
@@ -67,13 +75,13 @@ it.each([
   ['incomplete items', detail({ detail_read: { complete: false, expected_item_count: 1 } })], ['already approved', detail({ approval_status: 'APPROVED' })],
 ] as const)('keeps posting closed for %s detail', async (_label, value) => {
   api.read.mockResolvedValueOnce(value ? [value] : []);
-  render(<ApprovalsPage />); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
+  render(<ApprovalsPage />, { wrapper }); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
   await screen.findByRole('alert'); expect(screen.queryByRole('dialog')).toBeNull(); expect(api.post).not.toHaveBeenCalled();
 });
 
 it('shows read failure and allows a fresh exact read without posting', async () => {
   api.read.mockRejectedValueOnce(new Error('Không đọc được chi tiết phiếu'));
-  render(<ApprovalsPage />); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
+  render(<ApprovalsPage />, { wrapper }); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
   await screen.findByRole('alert'); expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
   await screen.findByRole('dialog'); expect(api.read).toHaveBeenCalledTimes(2); expect(api.post).not.toHaveBeenCalled();
@@ -82,7 +90,7 @@ it('shows read failure and allows a fresh exact read without posting', async () 
 it('discards a late detail response after the acting user changes', async () => {
   let resolve!: (rows: IncomeExpenseWithRelations[]) => void;
   api.read.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
-  const view = render(<ApprovalsPage />); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
+  const view = render(<ApprovalsPage />, { wrapper }); fireEvent.click(screen.getByRole('button', { name: 'Duyệt và Chi…' }));
   api.actor = 'other-reviewer'; view.rerender(<ApprovalsPage />);
   resolve([detail({ commission_kind: 'broker' })]);
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull());

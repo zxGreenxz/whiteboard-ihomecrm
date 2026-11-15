@@ -5,6 +5,10 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useCashFlowReport } from "@/hooks/useCashFlowReport";
+import { monthlyProfitPayouts, useCashFlowProfitPayouts } from "@/hooks/useCashFlowProfitPayouts";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionCheck";
+import { extractCode } from "@/lib/contracts/errors";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useBuildings } from "@/hooks/useBuildings";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -88,6 +92,34 @@ export default function CashFlowReport() {
     return { income, expense, net: income - expense };
   }, [monthly]);
   // hermes-parity:end cash-flow-external-report
+
+  // "Trong đó: chi chia lợi nhuận" (cổ đông + lương điều hành) — NGOÀI vùng parity: Hermes không có cột
+  // này, số đã nằm trong "Chi ra". Chỉ hỏi máy chủ khi có quyền chi / chốt LN hoặc xem số toà; máy chủ đòi
+  // quyền đó TOÀN công ty, thiếu ⇒ 42501 ⇒ ẩn cột (không báo lỗi).
+  const { data: permissions } = useMyPermissions();
+  const canSeeProfitPayout = canUse(permissions, "shareholder_profit", "distribute") ||
+    canUse(permissions, "shareholder_profit", "lock") ||
+    canUse(permissions, "shareholder_profit", "view_building_totals");
+  const profitPayoutQuery = useCashFlowProfitPayouts(
+    year,
+    buildingSelectionReady && effectiveBuildingId !== "all" ? effectiveBuildingId : undefined,
+    { enabled: canSeeProfitPayout && (buildingId === "all" || buildingSelectionReady) },
+  );
+  const profitPayoutDenied = profitPayoutQuery.isError && extractCode(profitPayoutQuery.error) === "42501";
+  const showProfitPayout = canSeeProfitPayout && !profitPayoutDenied;
+  const profitPayoutFailed = showProfitPayout && profitPayoutQuery.isError;
+  const profitMonthly = useMemo(
+    () => (profitPayoutQuery.data ? monthlyProfitPayouts(profitPayoutQuery.data) : null),
+    [profitPayoutQuery.data],
+  );
+  // Ô số: chưa có số (đang tải / lỗi) ⇒ "…" / "—", không bao giờ hiện 0 đ thay cho số chưa đọc được.
+  const profitCell = (value: number | null) => (
+    value !== null ? formatCurrency(value) : profitPayoutFailed ? "—" : "…"
+  );
+  const profitOfQuarter = (quarter: number) =>
+    profitMonthly ? profitMonthly.slice((quarter - 1) * 3, quarter * 3).reduce((s, v) => s + v, 0) : null;
+  const profitOfMonth = (month: number) => (profitMonthly ? profitMonthly[month - 1] ?? null : null);
+  const profitOfYear = profitMonthly ? profitMonthly.reduce((s, v) => s + v, 0) : null;
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
@@ -182,6 +214,19 @@ export default function CashFlowReport() {
         <div className="rounded-md border bg-card">
           <div className="border-b p-4">
             <h3 className="text-base font-semibold">Bảng thu chi theo tháng và quý</h3>
+            {showProfitPayout && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                "Trong đó: chi chia lợi nhuận" là phần của "Chi ra" (chi lợi nhuận cổ đông và lương điều hành), không cộng thêm.
+              </p>
+            )}
+            {profitPayoutFailed && (
+              <p role="alert" className="mt-1 text-xs text-destructive">
+                Chưa tải được phần chi chia lợi nhuận.{" "}
+                <Button type="button" variant="link" className="h-auto p-0 text-xs align-baseline" onClick={() => { void profitPayoutQuery.refetch(); }}>
+                  Thử lại
+                </Button>
+              </p>
+            )}
           </div>
           <Table>
             <TableHeader>
@@ -189,10 +234,16 @@ export default function CashFlowReport() {
                 <TableHead className="border-r font-semibold text-center w-16">Quý</TableHead>
                 <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
                 <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                {showProfitPayout && (
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra">Trong đó: chi chia LN</TableHead>
+                )}
                 <TableHead className="border-r-2 text-right font-semibold">Chênh lệch</TableHead>
                 <TableHead className="border-r font-semibold text-center w-16">Tháng</TableHead>
                 <TableHead className="border-r text-right font-semibold">Thu vào</TableHead>
                 <TableHead className="border-r text-right font-semibold">Chi ra</TableHead>
+                {showProfitPayout && (
+                  <TableHead className="border-r text-right font-semibold" title="Đã nằm trong Chi ra">Trong đó: chi chia LN</TableHead>
+                )}
                 <TableHead className="text-right font-semibold">Chênh lệch</TableHead>
               </TableRow>
             </TableHeader>
@@ -206,12 +257,22 @@ export default function CashFlowReport() {
                         <TableCell rowSpan={3} className="border-r text-center align-middle font-semibold">{q.label}</TableCell>
                         <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.income)}</TableCell>
                         <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.expense)}</TableCell>
+                        {showProfitPayout && (
+                          <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums text-muted-foreground" data-testid={`profit-payout-q${q.quarter}`}>
+                            {profitCell(profitOfQuarter(q.quarter))}
+                          </TableCell>
+                        )}
                         <TableCell rowSpan={3} className="border-r-2 text-right align-middle tabular-nums">{formatCurrency(q.net)}</TableCell>
                       </>
                     ) : null}
                     <TableCell className="border-r text-center">{m.month}</TableCell>
                     <TableCell className="border-r text-right tabular-nums text-emerald-700">{formatCurrency(m.income)}</TableCell>
                     <TableCell className="border-r text-right tabular-nums text-red-700">{formatCurrency(m.expense)}</TableCell>
+                    {showProfitPayout && (
+                      <TableCell className="border-r text-right tabular-nums text-muted-foreground" data-testid={`profit-payout-m${m.month}`}>
+                        {profitCell(profitOfMonth(m.month))}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right tabular-nums">{formatCurrency(m.net)}</TableCell>
                   </TableRow>
                 ));
@@ -220,8 +281,11 @@ export default function CashFlowReport() {
                 <TableCell className="border-r font-bold">Cả năm</TableCell>
                 <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.income)}</TableCell>
                 <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.expense)}</TableCell>
+                {showProfitPayout && (
+                  <TableCell className="border-r text-right tabular-nums" data-testid="profit-payout-year">{profitCell(profitOfYear)}</TableCell>
+                )}
                 <TableCell className="border-r-2 text-right tabular-nums">{formatCurrency(yearTotals.net)}</TableCell>
-                <TableCell colSpan={4} />
+                <TableCell colSpan={showProfitPayout ? 5 : 4} />
               </TableRow>
             </TableBody>
           </Table>
