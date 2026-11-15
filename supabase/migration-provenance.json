@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-11-15T04:40:26.891Z",
+  "generatedAt": "2026-11-15T12:41:16.951Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 941,
+    "ledger-applied": 946,
     "unknown": 80,
     "catalog-proven": 206,
     "superseded": 15
@@ -14228,6 +14228,61 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-11-15T04:40:08.597Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261115063149_so_tong_loi_nhuan_nen.sql",
+      "version": "20261115063149",
+      "name": "so_tong_loi_nhuan_nen",
+      "scheme": "timestamp14",
+      "sha256": "5b4b4fecab9e3eaddaaddc598fe5e44de22218a4c14f0074a5d44df7502857fa",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-15T12:30:45.284Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261115083422_so_tong_loi_nhuan_luong.sql",
+      "version": "20261115083422",
+      "name": "so_tong_loi_nhuan_luong",
+      "scheme": "timestamp14",
+      "sha256": "fc013ed9ed1fd07497d86ec84e2e284304bd8f84bf74e0deb952bdc2fa5c5724",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-15T12:32:59.234Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261115083533_so_tong_loi_nhuan_doc.sql",
+      "version": "20261115083533",
+      "name": "so_tong_loi_nhuan_doc",
+      "scheme": "timestamp14",
+      "sha256": "843195d3f19e036bd4af8e0125b4c25f7b16f4e41a4990a1aba0bb8d2325a317",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-15T12:35:21.460Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261115084015_so_tong_loi_nhuan_chan.sql",
+      "version": "20261115084015",
+      "name": "so_tong_loi_nhuan_chan",
+      "scheme": "timestamp14",
+      "sha256": "afa4a1f92811d2bea99c57ce481aeeeed79dbbf283f88aa97027cb0100675ae3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-15T12:38:29.479Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261115084108_so_tong_loi_nhuan_tao.sql",
+      "version": "20261115084108",
+      "name": "so_tong_loi_nhuan_tao",
+      "scheme": "timestamp14",
+      "sha256": "b3bd97e7b47a58eb396bd95a3d5caa447e9fb0f6e8c1a343b5f547d1468b4a67",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-11-15T12:40:43.126Z|bien-nhan-backup"
       ]
     },
     {

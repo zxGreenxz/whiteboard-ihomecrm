@@ -121,6 +121,10 @@ export type ActionKey =
   | "reverse"                     // income_expenses — đảo bút toán
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
   | "pay_manager"                 // shareholder_profit — chi lương quản lý
+  // Sổ tổng lợi nhuận cổ đông: ba khoá cấp riêng, không nằm trong preset "chỉ xem" hay "quản lý".
+  | "advance_own_cashbook"        // shareholder_profit — chi tạm ứng lợi nhuận từ sổ quỹ mình giữ
+  | "view_percent"                // shareholder_profit — xem tỷ lệ % chia lợi nhuận
+  | "view_building_totals"        // shareholder_profit — xem doanh thu / lợi nhuận toà
   // Trung tâm mạng: thao tác allowlist, không fallback từ quyền quản lý chung.
   | "execute"
   // Cửa vân tay (docs/he-thong/26-cua-van-tay.md) — theo tòa của máy.
@@ -221,7 +225,10 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "shareholder_profit",
         label: "Lợi nhuận cổ đông",
         core: ["view"],
-        extra: ["lock", "unlock", "distribute", "manage_shareholders", "pay_manager", "export"],
+        extra: [
+          "lock", "unlock", "distribute", "manage_shareholders", "pay_manager", "export",
+          "advance_own_cashbook", "view_percent", "view_building_totals",
+        ],
       },
       {
         key: "salary",
@@ -376,6 +383,9 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   reverse:        "Đảo bút toán",
   self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",
   pay_manager:    "Chi lương quản lý",
+  advance_own_cashbook: "Chi tạm ứng lợi nhuận từ sổ quỹ mình giữ",
+  view_percent:   "Xem tỷ lệ % chia lợi nhuận",
+  view_building_totals: "Xem doanh thu / lợi nhuận toà",
   ui_control:     "AI điều khiển trang (experimental)",
   execute:        "Thực thi",
   temp_password:  "Mật khẩu tạm",

@@ -381,6 +381,20 @@ export const PAGE_GROUPS: PageGroup[] = [
             desc: "Sinh phiếu chi lương quản lý trong kỳ đã chốt.",
           }),
           f("shareholder_profit", "export", "Xuất dữ liệu lợi nhuận", "manage"),
+          // Ba khoá của sổ tổng lợi nhuận. Hai khoá "xem" CỐ Ý không khai tier "view": nút "Chỉ xem"
+          // của trang (PermissionPicker, setPageViewOnly) bật mọi feature tier view, tức một cú bấm
+          // sẽ cấp luôn quyền xem tỷ lệ % và doanh thu / lợi nhuận toà.
+          // Mô tả ghi rõ "chưa bật": tới khi sổ tổng được bật, tick ba ô này chưa đổi gì trên màn hình —
+          // bỏ cụm đó ở lần phát hành bật sổ tổng.
+          f("shareholder_profit", "advance_own_cashbook", "Chi tạm ứng lợi nhuận từ sổ quỹ mình giữ", "elevated", {
+            desc: "Cấp riêng từng người ở Thành viên → Ngoại lệ. Chỉ chi cho chính mình, từ sổ quỹ đang giữ; phiếu vẫn phải có chủ duyệt. Thuộc sổ tổng lợi nhuận (chưa bật).",
+          }),
+          f("shareholder_profit", "view_percent", "Xem tỷ lệ % chia lợi nhuận", "elevated", {
+            desc: "Cổ đông xem tỷ lệ % của chính mình ở từng toà. Thuộc sổ tổng lợi nhuận (chưa bật).",
+          }),
+          f("shareholder_profit", "view_building_totals", "Xem doanh thu / lợi nhuận toà", "elevated", {
+            desc: "Cổ đông xem doanh thu, chi phí, lợi nhuận của các toà mình có phần. Thuộc sổ tổng lợi nhuận (chưa bật).",
+          }),
         ],
       },
       {
