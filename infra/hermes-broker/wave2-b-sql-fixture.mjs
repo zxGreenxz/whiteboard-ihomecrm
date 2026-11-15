@@ -18,10 +18,18 @@ const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 // Dòng tiền là công thức dùng chung với web: nạp bản CUỐI, kể cả migration
 // ngoài dải Hermes, để parity không tự xanh trên định nghĩa đã lỗi thời.
-export const cashFlowMigration = readdirSync('supabase/migrations').filter(name => name.endsWith('.sql')).sort().flatMap(name => {
-  const sql = readFileSync(`supabase/migrations/${name}`, 'utf8');
-  return sql.includes('FUNCTION public.cashbook_cash_flow_v1(') ? [{ name, sql }] : [];
-}).at(-1);
+const allMigrations = readdirSync('supabase/migrations').filter(name => name.endsWith('.sql')).sort()
+  .map(name => ({ name, sql: readFileSync(`supabase/migrations/${name}`, 'utf8') }));
+export const cashFlowMigration = allMigrations.filter(({ sql }) => sql.includes('FUNCTION public.cashbook_cash_flow_v1(')).at(-1);
+// Hàm con của báo cáo có thể được thay ở migration SAU file đó (20261115145954 biến
+// public.cash_flow_external_rows_v1 thành vỏ mỏng): nạp tiếp, theo thứ tự tên, mọi file định nghĩa
+// lại một hàm của cashFlowMigration — fixture chạy đúng định nghĩa cuối của từng hàm.
+const createdFunctions = sql => [...sql.replace(/--[^\n]*/g, '').matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)\s*\(/gi)]
+  .map(match => match[1].toLowerCase());
+export const cashFlowSuccessors = (() => {
+  const own = new Set(createdFunctions(cashFlowMigration.sql));
+  return allMigrations.filter(({ name, sql }) => name > cashFlowMigration.name && createdFunctions(sql).some(fn => own.has(fn)));
+})();
 // Bản định nghĩa CUỐI của một hàm trong file (thẻ $…$ bất kỳ).
 export function definitionOf(src, name) {
   const pattern = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION ${name.replaceAll('.', '\\.')}\\(`, 'g');
@@ -110,6 +118,8 @@ const PORTS = `
   CREATE OR REPLACE FUNCTION public.current_shareholder_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT id FROM public.shareholders WHERE auth_user_id=auth.uid() AND deleted_at IS NULL ORDER BY id LIMIT 1$$;
   CREATE OR REPLACE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT 'Asia/Ho_Chi_Minh'::text$$;
+  -- Nền mà migration tách cột chi chia lợi nhuận (cashFlowSuccessors) kiểm có mặt; Gói B không đọc cột đó ⇒ luôn false.
+  CREATE OR REPLACE FUNCTION app_private.profit_viewer_can_v1(p_organization_id uuid,p_permission_key text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT false$$;
   -- Quyền chốt/mở chốt LN của web (bản thật: authorize_v2 'shareholder_profit.lock|unlock' phạm vi ORGANIZATION trên MỌI công ty
   -- người gọi là thành viên): bảng fixture_profit_close theo người × công ty.
   CREATE OR REPLACE FUNCTION public.profit_close_scopes_v2() RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER AS $$
@@ -271,8 +281,7 @@ async function before(db) {
 
 // Dữ liệu tổng hợp nền (mỗi ca thêm/đổi trong BEGIN … ROLLBACK).
 async function seed(db) {
-  await db.exec(cashFlowMigration.sql);
-  await db.exec(cashFlowMigration.sql);
+  for (const { sql } of [cashFlowMigration, ...cashFlowSuccessors]) { await db.exec(sql); await db.exec(sql); }
   await db.exec(`
     INSERT INTO public.organizations(id,is_demo) VALUES('${ORG}',false),('${FOREIGN}',false) ON CONFLICT(id) DO UPDATE SET is_demo=false;
     INSERT INTO public.profiles VALUES('${USER}','Chủ Sổ'),('${FOREIGN}','Người Khác'),('${OTHER_USER}','Kế toán B');

@@ -3,6 +3,7 @@
 // không đổi công thức lương. Nguồn lương = phí Quản lý đã công bố giá của các tòa.
 import { useMemo, useState, type CSSProperties } from "react";
 import type { SalManager } from "@/lib/managerSalary";
+import { profitDeductionsOf } from "@/lib/salaryProfit";
 import {
   FUND_GROUPS, SUPPLEMENTARY_COLOR, fmtMillion, fundLinesOf, fundPeopleOf, groupTotals, mergeLines, per100,
   supplementaryTotal, type FundGroupKey, type FundLine,
@@ -64,6 +65,8 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
   const opTotal = people.reduce((s, p) => s + p.total, 0);
   const paid = mgrs.reduce((s, m) => s + m.paid, 0);
   const adv = mgrs.reduce((s, m) => s + m.advance, 0);
+  // Cổ đông: "ứng" đã gồm phần trừ tạm ứng lợi nhuận và phần đầu tư đã trả theo mốc — ghi tách.
+  const profitAdv = mgrs.reduce((s, m) => { const d = profitDeductionsOf(m); return s + d.offset + d.marker; }, 0);
   const pendingBy = new Map<string, number>();
   for (const p of pending) pendingBy.set(p.staffId, (pendingBy.get(p.staffId) || 0) + p.amount);
   const pendingSum = pending.reduce((s, p) => s + p.amount, 0);
@@ -79,7 +82,7 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
       // và bản điện thoại là thực nhận SAU khấu trừ — ghi rõ để hai con số không bị đọc lệch.
       sub: `${mgrs.length} người · trước khấu trừ ứng/tiền phòng · ${cur.locked ? "đã chốt kỳ" : "tạm tính, chưa chốt kỳ"}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
     { label: "Đã trả", val: salFmt(paid + adv), bar: "hsl(var(--status-neutral-strong))", fg: undefined,
-      sub: `Phiếu chi đã duyệt ${salFmt(paid)}${adv ? " · ứng " + salFmt(adv) : ""}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
+      sub: `Phiếu chi đã duyệt ${salFmt(paid)}${adv - profitAdv ? " · ứng " + salFmt(adv - profitAdv) : ""}${profitAdv ? " · trừ lợi nhuận " + salFmt(profitAdv) : ""}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
     { label: "Đang chờ chi", val: salFmt(pendingSum), bar: "hsl(var(--status-info))", fg: "hsl(var(--status-info-fg))",
       sub: `${pending.length} phiếu chi chờ duyệt`, onClick: () => pending[0] && onOpenPerson(pending[0].staffId) },
     { label: "Còn phải trả", val: salFmt(remain), bar: "hsl(var(--primary))", fg: "hsl(var(--primary))",

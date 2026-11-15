@@ -9,7 +9,6 @@ import {
   coverageSummaryLines,
   lockedSplitTitle,
   retainedKpiSub,
-  retiredManagerBalances,
   signedAmount,
   splitLockedProfit,
   splitOpenNetByMonthEnd,
@@ -284,26 +283,5 @@ describe('splitLockedProfit (F21)', () => {
     expect(retainedKpiSub(s, fmt)).toBe('phần LN đã chốt không chia cổ đông');
   });
 });
-
-describe('retiredManagerBalances (F21)', () => {
-  it('chỉ quản lý KHÔNG còn hoạt động, gộp phân bổ và phiếu chi, bỏ người số 0', () => {
-    const out = retiredManagerBalances(
-      new Set(['m-active']),
-      [
-        { manager_id: 'm-active', amount: 999 },
-        { manager_id: 'm-gone', amount: 300 },
-        { manager_id: 'm-gone', amount: 200 },
-        { manager_id: 'm-zero', amount: 0 },
-      ],
-      [
-        { manager_id: 'm-gone', total_amount: 100 },
-        { manager_id: 'm-active', total_amount: 5 },
-        { manager_id: 'm-paid-only', total_amount: 50 },
-      ],
-    );
-    expect(out).toEqual([
-      { managerId: 'm-gone', accrued: 500, paid: 100, remaining: 400 },
-      { managerId: 'm-paid-only', accrued: 0, paid: 50, remaining: -50 },
-    ]);
-  });
-});
+// Quản lý đã xoá còn số: từ Đợt 2 lấy thẳng từ sổ lương điều hành (E10 giữ người đã xoá còn số dư
+// hoặc phiếu chờ duyệt) — xem ManagerLedgerSection.test.tsx; hàm tự cộng phía trình duyệt đã bỏ.

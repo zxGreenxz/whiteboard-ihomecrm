@@ -40,6 +40,11 @@ const state = vi.hoisted(() => ({
   // Đối số adjustments mỗi lần render gọi useProfitClosePreview (JSON) + preview đang tải lần đầu.
   previewArgs: [] as string[],
   previewPending: false,
+  // D2.11: ảnh hưởng tới lương và sổ tổng (E14) khi mở khoá / đặt lại / chốt lại.
+  impact: { data: undefined as unknown, isLoading: false, isFetching: false, isError: false, error: null as unknown },
+  impactArgs: [] as { organizationId: string | null; periodMonth: string | null; buildingIds: readonly string[] | null; enabled?: boolean }[],
+  impactRefetch: (() => undefined) as () => unknown,
+  resetCalls: [] as unknown[],
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -57,7 +62,7 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
     variables: state.closeVariables,
     mutateAsync: async (input: unknown) => { state.closeCalls.push(input); },
   }),
-  useResetProfitPeriod: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useResetProfitPeriod: () => ({ isPending: false, mutateAsync: async (input: unknown) => { state.resetCalls.push(input); } }),
   useUnlockProfitMonth: () => ({
     isPending: false,
     mutateAsync: async (input: unknown) => {
@@ -97,6 +102,13 @@ vi.mock("@/hooks/useProfitPostLock", () => ({
   useProfitPostLock: (o: unknown) => {
     state.postLockArgs = o;
     return { data: state.postLock };
+  },
+}));
+vi.mock("@/hooks/profit-ledger/useProfitLedgerQueries", () => ({
+  useProfitUnlockSalaryImpact: (input: (typeof state.impactArgs)[number]) => {
+    state.impactArgs.push(input);
+    if (!input.enabled) return { data: undefined, isLoading: false, isFetching: false, isError: false, error: null, refetch: vi.fn() };
+    return { ...state.impact, refetch: state.impactRefetch };
   },
 }));
 
@@ -147,6 +159,21 @@ const dong = (buildingId: string, buildingName: string): ProfitCloseStateRow => 
   locked_at: "2026-08-02T00:00:00Z",
 });
 
+// Dữ liệu GIẢ của E14 (không phải số production).
+function impactOf(paid: unknown[], effects: unknown[]) {
+  return { organization_id: ORG, period_month: KY, building_ids: null, paid_via_salary: paid, ledger_effects: effects };
+}
+const DA_TRA_QUA_LUONG = {
+  shareholder_id: "sh-1", name: "Cổ đông A", staff_id: "u-1", investment: 2_000_000, advance_offset: 0,
+  salary_voucher_ids: ["sv-1"], salary_voucher_codes: ["PC0001"],
+  voucher_states: [{ salary_voucher_id: "sv-1", approval_status: "APPROVED", posting_status: "POSTED" }],
+  needs_review_count: 0, offset_conflict: false, paid_offset: 0, advance_offset_month: 0, sheet_status: "LOCKED",
+};
+const SO_TONG_DOI = {
+  shareholder_id: "sh-1", name: "Cổ đông A", staff_id: "u-1", balance_now: 1_000_000, allocations_in_scope: 3_000_000,
+  allocations_removed: 3_000_000, balance_after: -2_000_000, becomes_advance: true, advance_after: true, settled_by_marker: false,
+};
+
 const TRANG_THAI: ProfitCloseState = {
   organization_id: ORG,
   period_month: KY,
@@ -190,6 +217,11 @@ beforeEach(() => {
   state.postLockArgs = null;
   state.previewArgs = [];
   state.previewPending = false;
+  // Mặc định: không ai nhận phần lợi nhuận tháng này qua lương, sổ tổng không đổi ⇒ hộp như cũ.
+  state.impact = { data: impactOf([], []), isLoading: false, isFetching: false, isError: false, error: null };
+  state.impactArgs = [];
+  state.impactRefetch = () => undefined;
+  state.resetCalls = [];
   // Mặc định: đã dò, không có khoản thiếu/trùng nào.
   state.lockChecks = {
     checks: computeProfitReportChecks({ rows: [], buildings: [], today: "2026-10-22" }),
@@ -544,5 +576,119 @@ describe("ProfitLockTab — không tải lại preview khi gõ lý do / chọn c
     expect(await screen.findByRole("combobox", { name: "Chọn tổ chức" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Chọn tháng" })).toBeTruthy();
     expect(screen.queryByRole("checkbox", { name: "Chọn tất cả nhà" })).toBeNull();
+  });
+});
+
+// D2.11: mở khoá / đặt lại / chốt lại tháng lợi nhuận đã trả qua lương ⇒ liệt kê ai, bao nhiêu, phiếu
+// lương nào, sổ tổng thành bao nhiêu; phải tick "tôi hiểu". E14 đang tải / lỗi ⇒ khoá nút (đóng an toàn).
+describe("ProfitLockTab — ảnh hưởng tới lương và sổ tổng (D2.11)", () => {
+  const LY_DO = "Sửa phiếu PC2607001 nhập sai số tiền";
+  const ACK = "Đã hiểu ảnh hưởng tới lương và sổ tổng";
+
+  it("mở khoá: có người nhận qua lương ⇒ liệt kê và khoá nút tới khi tick; gửi đúng phạm vi E14", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    const hop = await moHopMoKhoa();
+    const muc = within(hop).getByTestId("profit-salary-impact");
+    expect(muc.textContent).toMatch(/Cổ đông A đã nhận 2\.000\.000 đ lợi nhuận tháng này qua lương/);
+    expect(muc.textContent).toMatch(/PC0001 \(đã chi\)/);
+    expect(muc.textContent).toMatch(/sổ tổng 1\.000\.000 đ → tạm ứng 2\.000\.000 đ/);
+    expect(within(muc).getByText("thành tạm ứng")).toBeTruthy();
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1, B2], enabled: true });
+
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    fireEvent.click(nut);
+    expect(state.unlockCalls).toHaveLength(0);
+
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(nut.disabled).toBe(false));
+    fireEvent.click(nut);
+    await waitFor(() => expect(state.unlockCalls).toHaveLength(1));
+  });
+
+  it("mở khoá: E14 lỗi ⇒ câu lỗi + Thử lại, nút khoá (không mở khoá mù)", async () => {
+    const refetch = vi.fn();
+    state.impactRefetch = refetch;
+    state.impact = {
+      data: undefined, isLoading: false, isFetching: false, isError: true,
+      error: { code: "42501", message: "SALARY_PROFIT_DENIED: không có quyền" },
+    };
+    const hop = await moHopMoKhoa();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    expect(within(hop).getByText(/tạm khoá nút để an toàn/)).toBeTruthy();
+    fireEvent.click(within(hop).getByRole("button", { name: "Thử lại" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(nut);
+    expect(state.unlockCalls).toHaveLength(0);
+  });
+
+  it("mở khoá: E14 đang tải ⇒ nút khoá", async () => {
+    state.impact = { data: undefined, isLoading: true, isFetching: true, isError: false, error: null };
+    const hop = await moHopMoKhoa();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    expect((within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(hop).getByText(/Đang kiểm ai đã nhận/)).toBeTruthy();
+  });
+
+  it("mở khoá: không ai nhận qua lương ⇒ như cũ, không ô tick", async () => {
+    const hop = await moHopMoKhoa();
+    expect(within(hop).getByTestId("profit-salary-impact-empty")).toBeTruthy();
+    expect(within(hop).queryByRole("checkbox", { name: ACK })).toBeNull();
+    fireEvent.change(within(hop).getByLabelText("Lý do mở khoá"), { target: { value: LY_DO } });
+    fireEvent.click(within(hop).getByRole("button", { name: "Mở khoá 2 nhà" }));
+    await waitFor(() => expect(state.unlockCalls).toHaveLength(1));
+  });
+
+  it("đặt lại: cùng luật — có ảnh hưởng ⇒ khoá tới khi tick, E14 theo đúng nhà đang đặt lại", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    render(<ProfitLockTab organizations={ORGS} />);
+    await chonHetNha();
+    fireEvent.click(screen.getByRole("button", { name: "Đặt lại 2 nhà đã chọn" }));
+    const hop = await screen.findByRole("alertdialog");
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1, B2].sort(), enabled: true });
+    fireEvent.change(within(hop).getByLabelText("Lý do đặt lại"), { target: { value: LY_DO } });
+    const nut = within(hop).getByRole("button", { name: "Đặt lại 2 nhà" }) as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(nut.disabled).toBe(false));
+    fireEvent.click(nut);
+    await waitFor(() => expect(state.resetCalls).toHaveLength(1));
+  });
+
+  it("chốt lại tháng đã chốt: có người nhận qua lương ⇒ hộp chốt lại liệt kê + bắt tick", async () => {
+    state.impact = { ...state.impact, data: impactOf([DA_TRA_QUA_LUONG], [SO_TONG_DOI]) };
+    const daChot = {
+      id: "snap-15KV", status: "LOCKED" as const, computed_profit: 1_000_000, adjustment_amount: 0, adjustment_reason: null,
+      adjusted_profit: 1_000_000, management_salary: 0, distributable_profit: 1_000_000, shareholder_percent_total: 100,
+      shareholder_allocated_amount: 1_000_000, unallocated_profit: 0, unallocated_disposition: null,
+      unallocated_disposition_reason: null, source_hash: "b".repeat(32), locked_at: "2026-08-02T00:00:00Z",
+    };
+    state.preview = { organization_id: ORG, period_month: KY, source_hash: "a".repeat(32), is_locked: true, is_stale: false, rows: [{ ...previewRow(), current_snapshot: daChot }] };
+    state.profitState = { ...TRANG_THAI, rows: [dong(B1, "15KV")], snapshot_ids: ["snap-15KV"], snapshot_count: 1, locked_count: 1, can_lock: true };
+    render(<ProfitLockTab organizations={CLOSE_ORGS} />);
+    const nutChotLai = await screen.findByRole("button", { name: "Chốt lại 1 nhà đã chọn" });
+    fireEvent.change(document.querySelector('[name="overallReason"]')!, { target: { value: "Sửa phiếu thu nhập sai rồi chốt lại" } });
+    await waitFor(() => expect((nutChotLai as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(nutChotLai);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).getByTestId("profit-salary-impact-paid").textContent).toMatch(/Cổ đông A đã nhận 2\.000\.000 đ/);
+    expect(state.impactArgs.at(-1)).toEqual({ organizationId: ORG, periodMonth: KY, buildingIds: [B1], enabled: true });
+    const chot = within(hop).getByRole("button", { name: "Chốt lại 1 nhà" }) as HTMLButtonElement;
+    expect(chot.disabled).toBe(true);
+    fireEvent.click(within(hop).getByRole("checkbox", { name: ACK }));
+    await waitFor(() => expect(chot.disabled).toBe(false));
+    fireEvent.click(chot);
+    await waitFor(() => expect(state.closeCalls).toHaveLength(1));
+  });
+
+  it("chốt lần đầu (chưa chốt) không hỏi E14", async () => {
+    const button = await mountClose();
+    fireEvent.click(button);
+    const hop = await screen.findByRole("alertdialog");
+    expect(within(hop).queryByTestId("profit-salary-impact")).toBeNull();
+    expect(state.impactArgs.every((args) => !args.enabled)).toBe(true);
   });
 });

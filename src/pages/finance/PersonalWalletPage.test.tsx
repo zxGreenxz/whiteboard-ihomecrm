@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -52,13 +52,44 @@ vi.mock("@/components/quick-entry/EmbeddedQuickEntry", () => ({
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+// Dòng "Từ công ty" (D2.18): cổ đông, quyền trang Báo cáo Lợi Nhuận, sổ tổng E3 và nhánh cũ.
+const profit = vi.hoisted(() => ({
+  shareholder: null as Record<string, unknown> | null,
+  perms: {} as Record<string, unknown>,
+  ledger: { data: undefined as unknown, error: null as unknown },
+  ledgerHook: vi.fn(),
+  refetchLedger: vi.fn(),
+  legacyAllocations: vi.fn(),
+  legacyDistributions: vi.fn(),
+  legacySummary: vi.fn(),
+}));
 vi.mock("@/hooks/useShareholders", () => ({
-  useMyShareholder: () => ({ data: null }),
+  useMyShareholder: () => ({ data: profit.shareholder, error: null, refetch: vi.fn() }),
+}));
+vi.mock("@/hooks/useMyPermissions", () => ({
+  useMyPermissions: () => ({ data: profit.perms, error: null, isLoading: false, refetch: vi.fn() }),
+}));
+vi.mock("@/hooks/profit-ledger/useProfitLedgerQueries", () => ({
+  useMyProfitLedger: (organizationId: string | null, options?: { enabled?: boolean }) => {
+    profit.ledgerHook(organizationId, options);
+    return options?.enabled === false
+      ? { data: undefined, error: null, refetch: profit.refetchLedger }
+      : { ...profit.ledger, refetch: profit.refetchLedger };
+  },
 }));
 vi.mock("@/hooks/useShareholderProfit", () => ({
-  useProfitAllocations: () => ({}),
-  useShareholderDistributions: () => ({}),
-  computeShareholderSummary: vi.fn(),
+  useProfitAllocations: () => {
+    profit.legacyAllocations();
+    return { data: [], error: null, isLoading: false, refetch: vi.fn() };
+  },
+  useShareholderDistributions: () => {
+    profit.legacyDistributions();
+    return { data: [], error: null, isLoading: false, refetch: vi.fn() };
+  },
+  computeShareholderSummary: (ids: string[]) => {
+    profit.legacySummary(ids);
+    return { [ids[0]!]: { accrued: 7_000_000, paid: 2_000_000, remaining: 5_000_000 } };
+  },
 }));
 vi.mock("@/components/personal-finance/CompanyFinance", () => ({
   default: ({ view }: { view: string }) => <div data-testid="company-panel">Công ty · {view}</div>,
@@ -85,6 +116,10 @@ afterEach(() => {
   visibility = "visible";
   data.create = false;
   data.controller = null;
+  profit.shareholder = null;
+  profit.perms = {};
+  profit.ledger = { data: undefined, error: null };
+  vi.clearAllMocks();
   data.snapshot = {
     owner_id: "owner",
     schema_version: 1,
@@ -320,4 +355,74 @@ it("keeps personal totals separate and puts the company filter immediately after
   fireEvent.click(screen.getByRole("button", { name: "Công ty" }));
   expect((await screen.findByTestId("company-panel")).textContent).toContain("ledger");
   expect(screen.queryByRole("button", { name: "Chuyển tiền giữa ví" })).toBeNull();
+});
+describe("dòng \"Từ công ty\" đọc sổ tổng (D2.18)", () => {
+  const shareholder = { id: "sh-1", name: "Cổ đông 1", organization_id: "org-a" };
+  const ledger = (over: Record<string, unknown> = {}) => ({
+    organization_id: "org-a", route: "CANONICAL", ready: true, shareholder: { id: "sh-1", name: "Cổ đông 1" },
+    balance: 1_500_000, status: "OWED", allocated: 7_000_000, paid: 2_000_000, paid_pending: 500_000,
+    paid_via_salary: 3_500_000, advance_recovered: 500_000, marker: null, months: [], payouts: [], salary: [], ...over,
+  });
+  const line = () => document.querySelector("aside.pf-card")?.textContent ?? null;
+  const legacyMounted = () => profit.legacyAllocations.mock.calls.length + profit.legacyDistributions.mock.calls.length > 0;
+
+  it("sổ tổng đã chạy ⇒ số E3 (được chia · đã nhận + chờ duyệt · qua lương · còn được nhận), không đọc bảng phân bổ", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { reports_finance: { profit_distribution: true } };
+    profit.ledger = { data: ledger(), error: null };
+    render(<PersonalWalletPage />);
+    expect(profit.ledgerHook).toHaveBeenCalledWith("org-a", { enabled: true });
+    expect(line()).toBe("Từ công ty: Được chia 7.000.000 ₫ · Đã nhận 2.000.000 ₫ (+ chờ duyệt 500.000 ₫) · Qua lương 3.000.000 ₫ · Còn được nhận 1.500.000 ₫");
+    expect(legacyMounted()).toBe(false);
+  });
+
+  it("đang tạm ứng ⇒ \"Đang tạm ứng\" số dương", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { reports_finance: { profit_distribution: true } };
+    profit.ledger = { data: ledger({ balance: -800_000, status: "ADVANCE", paid_pending: 0, salary: [], paid_via_salary: 0, advance_recovered: 0 }), error: null };
+    render(<PersonalWalletPage />);
+    expect(line()).toBe("Từ công ty: Được chia 7.000.000 ₫ · Đã nhận 2.000.000 ₫ · Đang tạm ứng 800.000 ₫");
+  });
+
+  it("máy chủ nói không xem được (42501 ⇒ null) ⇒ ẩn dòng, không báo lỗi trang", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { reports_finance: { profit_distribution: true } };
+    profit.ledger = { data: null, error: null };
+    render(<PersonalWalletPage />);
+    expect(line()).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(legacyMounted()).toBe(false);
+  });
+
+  it("công tắc còn tắt (ready=false) ⇒ dòng CŨ như trước (không có %)", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { reports_finance: { profit_distribution: true } };
+    profit.ledger = { data: ledger({ route: "LEGACY", ready: false }), error: null };
+    render(<PersonalWalletPage />);
+    expect(legacyMounted()).toBe(true);
+    expect(profit.legacySummary).toHaveBeenCalledWith(["sh-1"]);
+    expect(line()).toBe("Từ công ty: Được chia 7.000.000 ₫ · Đã ứng 2.000.000 ₫ · Còn được nhận 5.000.000 ₫");
+  });
+
+  it("không có trang Báo cáo Lợi Nhuận (chỉ quyền tạm ứng) ⇒ không dòng, không gọi sổ tổng", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { shareholder_profit: { advance_own_cashbook: true } };
+    profit.ledger = { data: ledger(), error: null };
+    render(<PersonalWalletPage />);
+    expect(line()).toBeNull();
+    expect(document.body.textContent).not.toContain("phần lợi nhuận cổ đông");
+    expect(profit.ledgerHook).toHaveBeenCalledWith("org-a", { enabled: false });
+    expect(legacyMounted()).toBe(false);
+  });
+
+  it("E3 lỗi ⇒ báo tại chỗ + Thử lại (không im lặng, không hiện 0)", () => {
+    profit.shareholder = shareholder;
+    profit.perms = { reports_finance: { profit_distribution: true } };
+    profit.ledger = { data: undefined, error: { code: "XX000", message: "PROFIT_LEDGER_ENTRIES_DRIFT: lệch" } };
+    render(<PersonalWalletPage />);
+    expect(screen.getByRole("alert").textContent).toContain("Chưa tải được phần lợi nhuận cổ đông");
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Thử lại" }));
+    expect(profit.refetchLedger).toHaveBeenCalled();
+    expect(line()).toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
 type Period = {
@@ -23,6 +23,14 @@ const h = vi.hoisted(() => ({
   persistedBuildingId: "all",
   buildingValue: "all",
   buildingsStatus: "success" as "success" | "error" | "pending",
+  perms: {} as Record<string, unknown>,
+  profit: {} as { data: unknown; isError: boolean; error: unknown; refetch: ReturnType<typeof vi.fn> },
+  useCashFlowProfitPayouts: vi.fn(),
+}));
+vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: h.perms }) }));
+vi.mock("@/hooks/useCashFlowProfitPayouts", async () => ({
+  ...(await vi.importActual<typeof import("@/hooks/useCashFlowProfitPayouts")>("@/hooks/useCashFlowProfitPayouts")),
+  useCashFlowProfitPayouts: h.useCashFlowProfitPayouts,
 }));
 vi.mock("@/components/layout/MainLayout", () => ({ default: ({ children }: { children: ReactNode }) => <main>{children}</main> }));
 vi.mock("react-router-dom", () => ({ Link: ({ children }: { children: ReactNode }) => <span>{children}</span> }));
@@ -73,6 +81,9 @@ beforeEach(() => {
   h.persistedBuildingId = "all";
   h.buildingValue = "all";
   h.buildingsStatus = "success";
+  h.perms = {};
+  h.profit = { data: undefined, isError: false, error: null, refetch: vi.fn() };
+  h.useCashFlowProfitPayouts.mockReset().mockImplementation(() => h.profit);
 });
 afterEach(cleanup);
 
@@ -146,6 +157,70 @@ it("does not send the previous organization's building during an organization sw
   expect(h.buildingValue).toBe("all");
   expect(h.useCashFlowReport.mock.calls.every((call) => call[1] === undefined && call[2].enabled === true)).toBe(true);
   expect(h.buildingOptions).toEqual([{ value: "all", label: "Tất cả tòa nhà" }, { value: "building-b", label: "Tòa B" }]);
+});
+
+// D2.12 — "Trong đó: chi chia lợi nhuận": phần của "Chi ra", chỉ cho người có quyền chi / chốt LN / xem số toà.
+describe("cột Trong đó: chi chia lợi nhuận", () => {
+  const orgWide = (action: string) => ({ shareholder_profit: { [action]: { org_wide: true, building_ids: [] } } });
+  const payout = (period: string, shareholder: number, manager: number, building: string | null = null) => ({
+    organization_id: "org-a", building_id: building, period, shareholder_payout: shareholder, manager_payout: manager,
+  });
+  const header = () => screen.queryAllByRole("columnheader", { name: "Trong đó: chi chia LN" });
+
+  it("không có quyền ⇒ không hỏi máy chủ, không có cột; bảng giữ đủ 8 cột như cũ", () => {
+    render(<CashFlowReport />);
+    expect(h.useCashFlowProfitPayouts).toHaveBeenLastCalledWith(2026, undefined, { enabled: false });
+    expect(header()).toHaveLength(0);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(8);
+  });
+
+  it.each(["distribute", "lock", "view_building_totals"])("quyền %s ⇒ có cột cạnh Chi ra; số gộp theo tháng / quý / năm qua các toà, bỏ dòng quý của máy chủ", (action) => {
+    h.perms = orgWide(action);
+    h.query.data = [fixture("2026-07", 500, 300), fixture("2026-08", 100, 120)];
+    h.profit.data = [payout("2026-07", 200, 50, "building-a"), payout("2026-07", 10, 0, "building-b"), payout("2026-08", 0, 20, "building-a"),
+      payout("2026-Q3", 9999, 9999, "building-a")];
+    render(<CashFlowReport />);
+    expect(h.useCashFlowProfitPayouts).toHaveBeenLastCalledWith(2026, undefined, { enabled: true });
+    expect(header()).toHaveLength(2);
+    expect(screen.getByTestId("profit-payout-m7").textContent).toBe(money(260));
+    expect(screen.getByTestId("profit-payout-m8").textContent).toBe(money(20));
+    expect(screen.getByTestId("profit-payout-m1").textContent).toBe(money(0));
+    expect(screen.getByTestId("profit-payout-q3").textContent).toBe(money(280));
+    expect(screen.getByTestId("profit-payout-year").textContent).toBe(money(280));
+    // Cột đứng NGAY SAU "Chi ra" (quý và tháng), số Chi ra / Chênh lệch không đổi.
+    const year = screen.getByText("Cả năm").closest("tr");
+    expect(within(year!).getAllByRole("cell").slice(1, 5).map((cell) => cell.textContent)).toEqual([600, 420, 280, 180].map(money));
+    // Chú thích nói đúng phạm vi: phần lợi nhuận trả trong phiếu lương KHÔNG nằm trong cột.
+    expect(screen.getByText(/là phần của "Chi ra"/).textContent)
+      .toContain("chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi nhuận trả trong phiếu lương)");
+  });
+
+  it("máy chủ từ chối quyền (42501) ⇒ ẩn cột, không báo lỗi", () => {
+    h.perms = orgWide("lock");
+    h.profit = { data: undefined, isError: true, error: { code: "42501", message: "cash_flow_profit_denied" }, refetch: vi.fn() };
+    render(<CashFlowReport />);
+    expect(header()).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("lỗi khác ⇒ giữ cột với dấu —, báo tại chỗ và cho thử lại (không hiện 0 đ)", () => {
+    h.perms = orgWide("distribute");
+    h.profit = { data: undefined, isError: true, error: new TypeError("Chưa đọc được"), refetch: vi.fn() };
+    render(<CashFlowReport />);
+    expect(header()).toHaveLength(2);
+    expect(screen.getByTestId("profit-payout-m7").textContent).toBe("—");
+    expect(screen.getByRole("alert").textContent).toContain("Chưa tải được phần chi chia lợi nhuận");
+    screen.getByRole("button", { name: "Thử lại" }).click();
+    expect(h.profit.refetch).toHaveBeenCalled();
+  });
+
+  it("đang tải ⇒ dấu …, không phải 0 đ; toà đang chọn đi cùng lời gọi", () => {
+    h.perms = orgWide("distribute");
+    h.persistedBuildingId = "building-a";
+    render(<CashFlowReport />);
+    expect(h.useCashFlowProfitPayouts).toHaveBeenLastCalledWith(2026, "building-a", { enabled: true });
+    expect(screen.getByTestId("profit-payout-year").textContent).toBe("…");
+  });
 });
 
 it.each(["pending", "error"] as const)("preserves the building choice and waits when the building source is %s", (status) => {
