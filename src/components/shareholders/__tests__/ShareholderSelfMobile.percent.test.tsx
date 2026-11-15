@@ -116,6 +116,15 @@ describe('ShareholderSelfMobile — màn sổ tổng (ready)', () => {
     expect(screen.getByTestId('self-building-totals-card').textContent).toMatch(/Thu — · Chi 30tr · LN 60tr/);
   });
 
+  it('ngày phiếu dd/MM/yyyy (định dạng trên chuỗi date, không hiện ISO)', () => {
+    h.ledgerData = ledger({
+      payouts: [{ voucher_id: 'v1', voucher_code: 'PC-1', voucher_date: '2026-11-15', amount: 1_000_000, status: 'APPROVED', posting_status: 'POSTED', is_advance: false, is_mine: false, is_mine_pending: false, excluded_by_marker: false }],
+    });
+    view();
+    expect(document.body.textContent).toContain('15/11/2026');
+    expect(document.body.textContent).not.toContain('2026-11-15');
+  });
+
   it('nút tạm ứng theo quyền: CANONICAL mở hộp cho chính mình; LEGACY không tới đây (thân cũ)', () => {
     h.ledgerData = ledger();
     view({ canAdvanceOwn: true });

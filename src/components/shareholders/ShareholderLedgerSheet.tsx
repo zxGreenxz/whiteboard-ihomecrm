@@ -17,6 +17,7 @@ import {
 import { profitLedgerRouteState, type ProfitLedgerRoute } from '@/lib/profitLedger/route';
 import { cancelTargetFromLedgerEntry, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { cn, formatDate, formatVND } from '@/lib/utils';
+import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import { ProfitLedgerReadError, ProfitLedgerRouteBanner } from './ProfitLedgerRouteBanner';
 import { SalaryProfitResolveDialog } from './SalaryProfitResolveDialog';
@@ -38,7 +39,8 @@ export interface ShareholderLedgerSheetProps {
 const signed = (amount: number): string => (amount > 0 ? `+${formatVND(amount)}` : amount < 0 ? `−${formatVND(-amount)}` : formatVND(0));
 
 function entryWhen(entry: ShareholderLedgerEntry): string {
-  if (entry.kind === 'PAYOUT' && entry.voucher_date) return formatDate(entry.voucher_date);
+  // Ngày phiếu là chuỗi date: định dạng trên chuỗi, không qua new Date() (lệch ngày ở múi giờ UTC−).
+  if (entry.kind === 'PAYOUT' && entry.voucher_date) return formatISODateVN(entry.voucher_date);
   if (entry.period_month) return `kỳ ${ledgerMonthLabel(entry.period_month)}`;
   return formatDate(entry.created_at);
 }

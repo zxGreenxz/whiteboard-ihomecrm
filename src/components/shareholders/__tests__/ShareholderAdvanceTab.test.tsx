@@ -62,6 +62,9 @@ describe.each([false, true])('ShareholderAdvanceTab (điện thoại: %s)', (pho
     expect(screen.getByTestId('advance-balance').textContent).toMatch(/Đang tạm ứng: 500\.000/);
     expect(document.body.textContent).toContain('PC-TU');
     expect(document.body.textContent).not.toContain('PC-CU');
+    // Ngày phiếu dd/MM/yyyy như các màn tiền khác, không hiện chuỗi ISO.
+    expect(document.body.textContent).toContain('10/10/2026');
+    expect(document.body.textContent).not.toContain('2026-10-10');
     fireEvent.click(screen.getByRole('button', { name: /Chi tạm ứng cho tôi/ }));
     expect(screen.getByTestId('advance-dialog')).toBeTruthy();
     expect(h.distribute).toHaveBeenLastCalledWith(expect.objectContaining({

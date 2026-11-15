@@ -234,7 +234,9 @@ export default function ProfitDistributeDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!createMut.isPending) onOpenChange(next); }}>
-      <DialogContent ref={dialogRef} className="sm:max-w-[520px]">
+      {/* Khuôn hộp dài của repo (vd IncomeExpenseQuickEditDialog): giới hạn theo khung nhìn động + cuộn dọc — ở
+          điện thoại, khối tạm ứng (tick + lý do) làm hộp cao hơn màn, không cuộn thì mất tiêu đề / nút X / nút Đóng. */}
+      <DialogContent ref={dialogRef} className="sm:max-w-[520px] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>

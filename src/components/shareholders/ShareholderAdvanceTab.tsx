@@ -14,6 +14,7 @@ import {
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
 import { formatCurrency } from '@/lib/utils';
+import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
 import { MyProfitLedgerGate } from './MyProfitLedgerGate';
 import ProfitDistributeDialog from './ProfitDistributeDialog';
@@ -99,7 +100,7 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
                 <span className="text-[12.5px] font-bold text-[#1b1813] truncate">
                   {p.voucher_code ?? 'Phiếu chi'} · {payoutStatusLabel(p)}{p.is_advance ? ' · Tạm ứng' : ''}
                 </span>
-                <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{p.voucher_date ?? '—'}</span>
+                <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{formatISODateVN(p.voucher_date)}</span>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <span className="font-mono text-[13px] font-bold text-[#c97a10] whitespace-nowrap">{formatCurrency(p.amount)}</span>
@@ -170,7 +171,7 @@ function AdvanceBody({ ledger, phone }: { ledger: MyProfitLedger; phone: boolean
                 )}
                 {rows.map(({ payout: p, target }) => (
                   <tr key={p.voucher_id}>
-                    <td>{p.voucher_date ?? '—'}</td>
+                    <td>{formatISODateVN(p.voucher_date)}</td>
                     <td>
                       {p.voucher_code ?? '—'}
                       {p.is_advance && <span className="ph-inline ph-inline--first">Tạm ứng</span>}

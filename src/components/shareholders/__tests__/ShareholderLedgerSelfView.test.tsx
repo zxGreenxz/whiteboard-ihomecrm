@@ -103,6 +103,12 @@ describe('ShareholderLedgerSelfView — tỷ lệ % và số toà theo quyền',
 });
 
 describe('ShareholderLedgerSelfView — phiếu và tạm ứng', () => {
+  it('ngày phiếu dd/MM/yyyy (định dạng trên chuỗi date, không hiện ISO)', () => {
+    view(ledger());
+    for (const shown of ['01/09/2026', '10/10/2026', '11/10/2026']) expect(screen.getByText(shown)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/2026-(09-01|10-10|10-11)/);
+  });
+
   it('chỉ phiếu TỰ LẬP còn chờ có "Huỷ yêu cầu"; bấm mở hộp huỷ đúng phiếu, đúng công ty', () => {
     view(ledger());
     const buttons = screen.getAllByRole('button', { name: 'Huỷ yêu cầu' });

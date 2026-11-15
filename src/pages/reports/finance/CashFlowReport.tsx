@@ -229,7 +229,9 @@ export default function CashFlowReport() {
               </p>
             )}
           </div>
-          <Table>
+          {/* 10 cột (thêm "Trong đó: chi chia LN") ⇒ thu padding ngang để bảng vừa khung 1440, không phải cuộn ngang
+              mới thấy cột "Chênh lệch" theo tháng (đo 16/11/2026: 1167px trong khung 1126px). Chỉ đổi khoảng cách. */}
+          <Table className={showProfitPayout ? "[&_th]:px-2 [&_td]:px-2" : undefined}>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableHead className="border-r font-semibold text-center w-16">Quý</TableHead>

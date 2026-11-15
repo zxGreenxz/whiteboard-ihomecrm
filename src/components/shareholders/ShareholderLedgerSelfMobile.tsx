@@ -9,6 +9,7 @@ import {
   periodLabel, periodMonthNumber, periodYear, salaryNet, selfAdvanceBlockedNote, selfBalanceView,
 } from '@/lib/profitLedger/selfView';
 import { cancelTargetFromMyPayout, type ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
+import { formatISODateVN } from '@/lib/vnDate';
 import ProfitDistributeDialog from './ProfitDistributeDialog';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import type { ShareholderSelfAccess } from './ShareholderLedgerSelfView';
@@ -195,7 +196,7 @@ export default function ShareholderLedgerSelfMobile({ ledger, access, year, onYe
                 <span className="text-[12.5px] font-bold text-[#1b1813] truncate">
                   {p.voucher_code ?? 'Phiếu chi'} · {payoutStatusLabel(p)}{p.is_advance ? ' · Tạm ứng' : ''}
                 </span>
-                <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{p.voucher_date ?? '—'}{p.excluded_by_marker ? ' · trước mốc' : ''}</span>
+                <span className="font-mono text-[10.5px] font-bold text-[#8d8678]">{formatISODateVN(p.voucher_date)}{p.excluded_by_marker ? ' · trước mốc' : ''}</span>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <span className="font-mono text-[13px] font-bold text-[#c97a10] whitespace-nowrap">{fmtShort(p.amount)}</span>

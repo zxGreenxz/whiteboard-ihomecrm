@@ -131,7 +131,9 @@ export default function ManagerSalaryPayoutDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent ref={dialogRef} className="sm:max-w-[460px]">
+      {/* Cùng khuôn hộp dài với ProfitDistributeDialog: ở CANONICAL câu luật duyệt làm hộp cao hơn khung điện
+          thoại (đo 16/11/2026: 882px trong 844px) ⇒ giới hạn theo khung nhìn động + cuộn dọc. */}
+      <DialogContent ref={dialogRef} className="sm:max-w-[460px] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Chi lương điều hành</DialogTitle>
           <DialogDescription>Không chi quá số còn lại; không có tạm ứng lương điều hành.</DialogDescription>

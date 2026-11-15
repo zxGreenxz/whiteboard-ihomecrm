@@ -84,11 +84,73 @@ export interface PendingVoucherSource {
   account_id: string | null;
 }
 
+/** Chi tiết phiếu tối thiểu mà phần đọc nguồn cần (đường thật: read_income_expense_details_v1). */
+export interface PendingVoucherDetail {
+  id: string;
+  organization_id: string | null;
+  system_source?: string | null;
+  account_id?: string | null;
+}
+
+/** Đọc chi tiết một lô phiếu của MỘT công ty; ném khi lô không đọc trọn (thiếu phiếu, mất mạng, hết giờ). */
+export type PendingVoucherDetailReader = (organizationId: string, voucherIds: string[]) => Promise<readonly PendingVoucherDetail[]>;
+
+const readPendingVoucherDetails: PendingVoucherDetailReader = (organizationId, voucherIds) =>
+  withDetailReadDeadline(loadIncomeExpenseDetails(organizationId, voucherIds));
+
+/**
+ * Nguồn phiếu theo từng công ty, cô lập lỗi: lô của các công ty đọc SONG SONG; lô nào lỗi (một phiếu không
+ * đọc được làm `readIncomeExpenseDetails` ném cả lô — vd phiếu DEMO người duyệt không xem được chi tiết)
+ * thì đọc LẺ từng phiếu của đúng công ty đó, cũng song song (Promise.allSettled — không chờ hết giờ nối
+ * tiếp), để các phiếu khác vẫn rõ loại. Phiếu vẫn không đọc được thì VẮNG trong kết quả — màn hình báo
+ * "chưa rõ loại" đúng dòng đó. Chỉ khi không đọc được phiếu nào (vd mất mạng) mới ném lỗi đầu tiên, để màn
+ * hình giữ câu báo chung + "Thử lại".
+ */
+export async function readPendingVoucherSources(
+  groups: ReadonlyArray<readonly [string, readonly string[]]>,
+  read: PendingVoucherDetailReader = readPendingVoucherDetails,
+): Promise<Record<string, PendingVoucherSource>> {
+  const result: Record<string, PendingVoucherSource> = {};
+  const failures: unknown[] = [];
+  const take = (org: string, ids: readonly string[], details: readonly PendingVoucherDetail[]) => {
+    for (const detail of details) {
+      if (detail.organization_id !== org || !ids.includes(detail.id)) continue;
+      result[detail.id] = { system_source: detail.system_source ?? null, account_id: detail.account_id ?? null };
+    }
+  };
+  const batches = await Promise.allSettled(groups.map(([org, ids]) => read(org, [...ids])));
+  const singles: Promise<void>[] = [];
+  batches.forEach((batch, index) => {
+    const [org, ids] = groups[index];
+    if (batch.status === "fulfilled") {
+      take(org, ids, batch.value);
+      return;
+    }
+    // Lô một phiếu: lỗi của lô chính là lỗi của phiếu đó, không đọc lại.
+    if (ids.length <= 1) {
+      failures.push(batch.reason);
+      return;
+    }
+    singles.push(
+      Promise.allSettled(ids.map((id) => read(org, [id]))).then((outcomes) => {
+        outcomes.forEach((outcome, at) => {
+          if (outcome.status === "fulfilled") take(org, [ids[at]], outcome.value);
+          else failures.push(outcome.reason);
+        });
+      }),
+    );
+  });
+  await Promise.all(singles);
+  if (failures.length > 0 && Object.keys(result).length === 0) throw failures[0];
+  return result;
+}
+
 /**
  * Nguồn phiếu của các yêu cầu đang chờ (list_my_pending_approvals_v1 KHÔNG chiếu system_source — cột cùng
  * tên ở trên luôn null). Đọc qua read_income_expense_details_v1 — cùng đường hộp "Duyệt và Thu/Chi…" đang
- * dùng, không bị RLS che như đọc thẳng bảng — gom theo công ty. Phiếu không đọc được thì vắng trong kết
- * quả: màn hình coi là "chưa rõ loại" (duyệt như phiếu thường, nói rõ máy chủ sẽ chặn phiếu chi lợi nhuận).
+ * dùng, không bị RLS che như đọc thẳng bảng — gom theo công ty, lỗi cô lập theo công ty/phiếu
+ * (readPendingVoucherSources). Phiếu không đọc được thì vắng trong kết quả: màn hình coi là "chưa rõ loại"
+ * (duyệt như phiếu thường, nói rõ máy chủ sẽ chặn phiếu chi lợi nhuận).
  * Khoá dưới gốc "pending-approvals" nên mọi lần làm mới hộp thư cũng làm mới phần này.
  */
 export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
@@ -111,17 +173,7 @@ export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
     // đọc lại (isPlaceholderData), dòng mới coi là "đang kiểm tra".
     placeholderData: keepPreviousData,
     meta: { errorDisplay: "inline", label: "loại phiếu chờ duyệt" },
-    queryFn: async (): Promise<Record<string, PendingVoucherSource>> => {
-      const result: Record<string, PendingVoucherSource> = {};
-      for (const [org, ids] of groups) {
-        const details = await withDetailReadDeadline(loadIncomeExpenseDetails(org, [...ids]));
-        for (const detail of details) {
-          if (detail.organization_id !== org || !ids.includes(detail.id)) continue;
-          result[detail.id] = { system_source: detail.system_source ?? null, account_id: detail.account_id ?? null };
-        }
-      }
-      return result;
-    },
+    queryFn: (): Promise<Record<string, PendingVoucherSource>> => readPendingVoucherSources(groups),
   });
 };
 

@@ -8,6 +8,7 @@ import { HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
+import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitHubSlot } from '@/pages/reports/finance/ProfitHubShell';
 import type { MyProfitLedger } from '@/lib/profitLedger/ledgerReaders';
 import {
@@ -213,7 +214,7 @@ export default function ShareholderLedgerSelfView({ ledger, access }: { ledger: 
                   const target = cancelTargetFromMyPayout(p, { organizationId: ledger.organization_id, subjectName: ledger.shareholder.name });
                   return (
                     <tr key={p.voucher_id} style={p.excluded_by_marker ? { opacity: 0.6 } : undefined}>
-                      <td>{p.voucher_date ?? '—'}</td>
+                      <td>{formatISODateVN(p.voucher_date)}</td>
                       <td>
                         {p.voucher_code ?? '—'}
                         {p.is_advance && <span className="ph-inline ph-inline--first">Tạm ứng</span>}

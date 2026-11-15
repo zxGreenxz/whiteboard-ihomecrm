@@ -11,7 +11,8 @@ import { useManagerLedgerPayouts } from '@/hooks/profit-ledger/useProfitLedgerQu
 import { cancelTargetFromManagerPayout, voucherStateLabel } from '@/lib/profitLedger/ownerLedgerView';
 import { profitLedgerRouteState, type ProfitLedgerRoute } from '@/lib/profitLedger/route';
 import type { ProfitPayoutCancelTarget } from '@/lib/profitLedger/vouchers';
-import { cn, formatDate, formatVND } from '@/lib/utils';
+import { cn, formatVND } from '@/lib/utils';
+import { formatISODateVN } from '@/lib/vnDate';
 import { ProfitPayoutCancelDialog } from './ProfitPayoutCancelDialog';
 import { ProfitLedgerReadError } from './ProfitLedgerRouteBanner';
 
@@ -71,7 +72,7 @@ export function ManagerPayoutsSheet({
                           {!payout.is_ledger_voucher && <Badge variant="outline" className="ml-1 px-1.5 py-0 text-[10px]">phiếu cũ</Badge>}
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
-                          {formatDate(payout.voucher_date)}{payout.account_name ? ` · sổ ${payout.account_name}` : ''}
+                          {formatISODateVN(payout.voucher_date)}{payout.account_name ? ` · sổ ${payout.account_name}` : ''}
                         </p>
                         <p className="text-xs text-muted-foreground">{voucherStateLabel(payout.approval_status, payout.posting_status)}</p>
                       </div>
