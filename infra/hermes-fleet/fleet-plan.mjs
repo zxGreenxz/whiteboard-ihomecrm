@@ -83,6 +83,8 @@ export function validateFleetConfig(input) {
       !int(ram.expectedMb, 64, ram.defaultLimitMb) || !int(ram.keepFreeMb, 0, 65536)) fail('cau_hinh_sai', 'ram');
   if (!exact(worker, ['container', 'uid', 'nativeConfig']) || typeof worker.container !== 'string' ||
       !/^[a-z0-9][a-z0-9_.-]{0,62}$/.test(worker.container) || !int(worker.uid, 1, 60000) || !absolute(worker.nativeConfig)) fail('cau_hinh_sai', 'worker');
+  // Khoảng UID là dấu "do công cụ dựng" của một home: không được chứa UID của worker.
+  if (worker.uid >= uidRange[0] && worker.uid <= uidRange[1]) fail('cau_hinh_sai', 'uidRange_chua_uid_worker');
   // worker/deploy/zalo-worker.sh (launcher mà bước khởi động lại gọi) ghi cứng ba giá trị này; cấu hình khác đi thì launcher sẽ thay MỘT container khác.
   if (Object.entries(WORKER_LAUNCHER).some(([key, value]) => worker[key] !== value)) fail('cau_hinh_sai', 'worker_khac_launcher');
   if (!exact(template, ['sourceHome', 'sourceProfile', 'sharedEnvKeys'], ['configFile']) || !absolute(template.sourceHome) ||
@@ -169,7 +171,8 @@ export function sidecarView(inspect) {
     readOnly: host.ReadonlyRootfs === true, capDrop: host.CapDrop ?? [], capAdd: host.CapAdd ?? [], securityOpt: host.SecurityOpt ?? [],
     privileged: host.Privileged === true, published: Object.keys(host.PortBindings ?? {}).length > 0,
     pidMode: host.PidMode ?? '', ipcMode: host.IpcMode ?? '', devices: (host.Devices ?? []).length, extraBinds: (host.Binds ?? []).length,
-    hostNamespaces: [host.UsernsMode, host.CgroupnsMode, host.UTSMode].includes('host'), groupAdd: (host.GroupAdd ?? []).length > 0 };
+    // Không xét CgroupnsMode: trên host cgroup v1 Docker ghi "host" cho MỌI container, kể cả container do công cụ dựng.
+    hostNamespaces: [host.UsernsMode, host.UTSMode].includes('host'), groupAdd: (host.GroupAdd ?? []).length > 0 };
 }
 
 /** Sidecar lệch bộ cờ khoá thì công cụ KHÔNG tạo lại (tạo lại sẽ nhân bản cấu hình lỏng). Trả danh sách mã lệch. */
@@ -313,6 +316,8 @@ export function auditScanConfig(current, config, name, { remove = false } = {}) 
 
 // ----------------------------------------------------------------------------------------------------------- kế hoạch
 
+/** Sidecar quản trị đã dừng tay: không chạy nhưng vẫn bám đúng worker hiện tại. */
+const adminStopped = (view, workerId) => !view.running && view.networkMode === `container:${workerId}`;
 export function memoryGate({ memAvailableMb, expectedMb, keepFreeMb }) {
   if (!Number.isFinite(memAvailableMb)) return { ok: false, code: 'ram_khong_do_duoc' };
   const afterMb = Math.floor(memAvailableMb - expectedMb);
@@ -419,12 +424,17 @@ export function planAdd(facts, rawRequest, config) {
   if (facts.home.profileDir && !facts.home.seeded && !facts.home.seeding && facts.home.hasEnv) block('ho_so_la');
   // Người thật: hồ sơ chỉ được gieo SAU khi đã có kênh. Đã gieo mà chưa có kênh ⇒ đây là home của một người thử trùng tên.
   if (!trial && facts.home.seeded && channelAction === 'create') block('home_cua_nguoi_thu');
+  // Kênh đã thu hồi mà home cũ còn (go-nguoi hỏng sau bước thu hồi, hoặc thu hồi tay): cấp token mới thì .env đã gieo vẫn giữ token
+  // cũ và không bước nào sửa. Phải gỡ nốt (cất home) rồi mới thêm lại trên home mới.
+  if (channelAction === 'rotate' && facts.home.exists) block('kenh_da_thu_hoi_con_home');
   const workerId = facts.worker.id ?? '';
   // Worker đọc cấu hình kênh một lần lúc khởi động ⇒ kênh mới (hoặc cấu hình mới hơn worker) cần khởi động lại có drain.
   const restartState = trial ? 'skipped' : channelState === 'pending' || facts.native?.newerThanWorker ? 'pending' : 'done';
   const labelled = facts.containers.filter(view => view.labels[SIDECAR_LABEL] === SIDECAR_VALUE && !retiredContainer(view.name) && view.name !== container);
   // Chỉ sidecar ĐANG CHẠY mới được tạo lại; sidecar quản trị đã dừng tay thì để yên (tạo lại sẽ làm nó chạy lại, ăn RAM ngoài cửa RAM).
-  const others = labelled.filter(view => view.running), stopped = labelled.filter(view => !view.running);
+  // "Dừng tay" = không chạy mà vẫn bám đúng worker hiện tại: để yên. Không chạy mà bám worker CŨ là sidecar chết vì worker đã bị thay
+  // (Docker không khởi động lại được nó): phải tạo lại như sidecar đang chạy.
+  const stopped = labelled.filter(view => adminStopped(view, workerId)), others = labelled.filter(view => !adminStopped(view, workerId));
   const stale = others.filter(view => view.networkMode !== `container:${workerId}`);
   const sidecarState = trial ? 'skipped' : restartState === 'pending' || stale.length ? 'pending' : 'done';
   if (sidecarState === 'pending') for (const view of others) if (lockViolations(view, config).length) block('sidecar_lech_khoa');
@@ -488,12 +498,14 @@ export function planRemove(facts, rawRequest, config) {
   const trial = existing?.labels[FLEET_LABELS.trial] === 'true';
   const channel = facts.native?.ok ? facts.native.channels.find(entry => entry.profile === name) : null;
   if (!trial && !facts.native?.ok) blocks.push('khong_doc_duoc_cau_hinh_kenh');
+  // Danh sách gốc hỏng thì bước bỏ đăng ký sẽ hỏng SAU khi container đã bị dừng và đổi tên: chặn từ đầu. Người thử chưa từng đăng ký.
+  if (!trial && facts.audit?.broken) blocks.push('audit_cau_hinh_hong');
   const steps = [
     step('stop', 'root', existing ? 'pending' : 'skipped', `Chờ gateway rảnh rồi dừng ${container}, tắt tự khởi động, đổi tên thành ${container}-da-go-<giờ> (giữ để lùi)`),
     // Người thử không có kênh thật: không bao giờ thu hồi kênh trùng tên của người khác.
     step('revoke-channel', 'worker', !trial && channel && !channel.unissued ? 'pending' : 'skipped', 'Thu hồi kênh Zalo (operator.mjs revoke): token cũ hết hiệu lực ở lần khởi động lại worker kế tiếp'),
     // Đăng ký gồm hai nửa (drop-in + danh sách gốc); còn một nửa nào cũng phải gỡ, nếu không job kiểm học tập đỏ mỗi đêm.
-    step('audit', 'root', facts.audit?.dropIn || facts.audit?.listed ? 'pending' : 'skipped', 'Bỏ đăng ký kiểm học tập'),
+    step('audit', 'root', !trial && (facts.audit?.dropIn || facts.audit?.listed) ? 'pending' : 'skipped', 'Bỏ đăng ký kiểm học tập'),
     step('archive-home', 'root', facts.home.exists ? 'pending' : 'skipped', `Cất home sang ${config.archiveRoot}/${name}-<giờ> (không xoá)`),
   ];
   const expectedRevision = digest(['remove', 1, config, name, steps.map(entry => [entry.id, entry.state]), blocks, existing?.id ?? null, facts.native?.revision ?? null]);
@@ -510,16 +522,25 @@ export function planRecreate(facts, { only = [] } = {}, config) {
   const all = facts.containers.filter(view => view.labels[SIDECAR_LABEL] === SIDECAR_VALUE && !retiredContainer(view.name));
   for (const wanted of only) if (!all.some(view => view.name === wanted)) blocks.push('khong_tim_thay');
   // Chạy cho MỌI sidecar mà có container chung network namespace với worker không mang nhãn: nó sẽ bị bỏ sót ⇒ dừng, không báo "xong".
-  if (!only.length && facts.containers.some(view => view.networkMode === `container:${workerId}` && view.labels[SIDECAR_LABEL] !== SIDECAR_VALUE &&
-      !retiredContainer(view.name))) blocks.push('sidecar_khong_nhan');
+  // Kể cả container không nhãn ĐANG CHẠY mà bám một container không còn tồn tại (worker đã bị thay): nó nằm ở namespace mồ côi.
+  const ids = new Set(facts.containers.map(view => view.id));
+  const orphan = view => view.running && /^container:[a-f0-9]{64}$/.test(view.networkMode) && !ids.has(view.networkMode.slice('container:'.length));
+  if (!only.length && facts.containers.some(view => (view.networkMode === `container:${workerId}` || orphan(view)) && view.labels[SIDECAR_LABEL] !== SIDECAR_VALUE &&
+      !retiredContainer(view.name) && view.id !== workerId)) blocks.push('sidecar_khong_nhan');
   const rows = all.filter(view => !only.length || only.includes(view.name)).map(view => {
     const violations = lockViolations(view, config);
     const current = view.running && view.networkMode === `container:${workerId}`;
     // Sidecar đang dừng chỉ được dựng lại khi quản trị nêu đích danh (--chi): tạo lại là làm nó chạy lại.
-    const state = current ? 'ok' : !view.running && !only.includes(view.name) ? 'stopped' : violations.length ? 'blocked' : 'recreate';
+    const state = current ? 'ok' : adminStopped(view, workerId) && !only.includes(view.name) ? 'stopped' : violations.length ? 'blocked' : 'recreate';
     if (state === 'blocked' && !blocks.includes('sidecar_lech_khoa')) blocks.push('sidecar_lech_khoa');
     return { container: view.name, id: view.id, state, running: view.running, violations };
   }).sort((a, b) => a.container.localeCompare(b.container));
+  // Dựng lại một sidecar đang KHÔNG chạy là thêm một container chạy: qua cửa RAM, tính cho từng cái.
+  const revived = rows.filter(row => row.state === 'recreate' && !row.running).length;
+  if (revived) {
+    const gate = memoryGate({ memAvailableMb: facts.memAvailableMb, expectedMb: config.ram.expectedMb * revived, keepFreeMb: config.ram.keepFreeMb });
+    if (!gate.ok) blocks.push(gate.code);
+  }
   const expectedRevision = digest(['recreate', 1, config, workerId, rows.map(row => [row.container, row.id, row.state]), blocks]);
   return { version: 1, action: 'tao-lai-sidecar', status: blocks.length ? 'blocked' : rows.some(row => row.state === 'recreate') ? 'ready' : 'done',
     blocks, workerId, sidecars: rows, expectedRevision, runtimeStatus: 'unverified' };
@@ -578,6 +599,7 @@ export const BLOCK_TEXT = Object.freeze({
   ten_trung_ho_so_khac: 'Tên này trùng một hồ sơ Hermes đang có ở home khác; chọn tên khác.',
   ten_trung_kenh_that: 'Tên người thử trùng một kênh Zalo thật trong cấu hình worker; chọn tên khác.',
   home_cua_nguoi_thu: 'Home cùng tên đã được gieo mà chưa có kênh Zalo (home của một người thử): gỡ nó trước bằng go-nguoi.',
+  kenh_da_thu_hoi_con_home: 'Kênh của tên này đã bị thu hồi mà home cũ vẫn còn: chạy go-nguoi để cất home, rồi thêm lại.',
   container_khac_che_do: 'Container cùng tên thuộc chế độ khác (người thử / người thật): gỡ nó trước bằng go-nguoi.',
   sidecar_khong_nhan: 'Có container chung network namespace với worker mà không mang nhãn com.ihomecrm.component=hermes-sidecar: công cụ sẽ bỏ sót nó khi worker được thay. Gắn nhãn (tạo lại container đó) hoặc gỡ nó trước.',
   khong_doc_duoc_handoff: 'Không đọc được kho mã kết nối của connector.',

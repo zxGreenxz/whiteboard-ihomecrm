@@ -51,7 +51,13 @@ export function realSystem({ log = line => process.stderr.write(line + '\n') } =
       } finally { fs.closeSync(fd); }
     },
     ensureDir: (directory, mode) => { fs.mkdirSync(directory, { recursive: true, mode }); },
-    readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (error.code === 'ENOENT') return []; throw error; } },
+    readdir: directory => { try { return fs.readdirSync(directory); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) return []; throw error; } },
+    // File trong home của trợ lý: ngoài các rào của read(), cả đường dẫn phải là đường thật (không thành phần nào là symlink).
+    readOwned(file, max) {
+      let real; try { real = fs.realpathSync(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+      if (real !== file) fail('tep_khong_an_toan', file);
+      return this.read(file, max);
+    },
     mkdir(directory, mode, uid) { fs.mkdirSync(directory, { mode }); fs.chownSync(directory, uid, uid); fs.chmodSync(directory, mode); },
     write(file, text, mode) {
       const temp = `${file}.${randomUUID()}.tmp`;
@@ -107,10 +113,12 @@ function nativeFacts(sys, config, worker) {
   return { ok: true, listenPort: listed.listenPort, revision: listed.revision, channels: listed.channels,
     newerThanWorker: Number.isFinite(started) ? listed.configMtimeMs > started : true };
 }
-function homeFacts(sys, config, name) {
+function homeFacts(sys, config, name, { light = false } = {}) {
   const home = homeOf(config, name), profileDir = profileDirOf(config, name), info = sys.stat(home);
   if (!info) return { exists: false };
-  const env = sys.read(posix.join(profileDir, '.env'), 131072), profileConfig = sys.read(posix.join(profileDir, 'config.yaml'), 262144);
+  // Gỡ người không cần nội dung file nào trong home: không đọc, để trợ lý không chặn được việc gỡ bằng cách biến .env thành symlink/FIFO.
+  if (light) return { exists: true, uid: info.uid, private: info.dir && !info.link && info.mode === 0o700 && info.uid === info.gid && info.uid !== 0 };
+  const env = sys.readOwned(posix.join(profileDir, '.env'), 131072), profileConfig = sys.readOwned(posix.join(profileDir, 'config.yaml'), 262144);
   return { exists: true, uid: info.uid, private: info.dir && !info.link && info.mode === 0o700 && info.uid === info.gid && info.uid !== 0,
     profileDir: sys.stat(profileDir)?.dir === true, seeded: sys.stat(posix.join(profileDir, SEED_MARKER)) !== null,
     seeding: sys.stat(posix.join(profileDir, SEEDING_MARKER)) !== null,
@@ -138,7 +146,7 @@ function memAvailableMb(sys) {
 function gatewayState(sys, view) {
   if (!view.home || !view.profile) return null;
   try {
-    const state = JSON.parse(sys.read(posix.join(view.home, '.hermes', 'profiles', view.profile, 'gateway_state.json')) ?? 'null');
+    const state = JSON.parse(sys.readOwned(posix.join(view.home, '.hermes', 'profiles', view.profile, 'gateway_state.json'), 262144) ?? 'null');
     if (!state) return null;
     return { state: state.gateway_state ?? null, activeAgents: state.active_agents ?? null, updatedAt: state.updated_at ?? null,
       zalo: state.platforms?.zalo_personal?.state ?? null };
@@ -171,8 +179,11 @@ export function gatherAddFacts(sys, config, rawRequest) {
     .flatMap(entry => sys.readdir(posix.join(config.profilesRoot, entry, '.hermes', 'profiles')));
   facts.home = homeFacts(sys, config, request.name);
   facts.imagePresent = sys.exec('docker', ['image', 'inspect', '--format', '{{.Id}}', config.image]).status === 0;
-  const envSource = sys.read(envSourceOf(config));
-  facts.template = { soul: sys.stat(soulSourceOf(config)) !== null,
+  // Hồ sơ khuôn: đọc THẬT ngay lúc lập kế hoạch bằng đúng hàm mà bước gieo dùng; SOUL/.env là symlink hay quá lớn thì kế hoạch bị chặn,
+  // không để lệnh hỏng sau khi đã tạo kênh.
+  const safe = read => { try { return read(); } catch (error) { if (error instanceof FleetError) return null; throw error; } };
+  const envSource = safe(() => sys.readOwned(envSourceOf(config), 131072)), soulSource = safe(() => sys.readOwned(soulSourceOf(config), 524288));
+  facts.template = { soul: typeof soulSource === 'string' && soulSource.length > 0,
     envKeys: (envSource ?? '').split(/\r?\n/).map(line => /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*\S/.exec(line)?.[1]).filter(Boolean) };
   facts.native = nativeFacts(sys, config, facts.worker);
   facts.route = { reachable: routeReachable(sys, facts.worker, connector.route) };
@@ -194,7 +205,7 @@ export function gatherAddFacts(sys, config, rawRequest) {
 }
 export function gatherRemoveFacts(sys, config, name) {
   const facts = baseFacts(sys, config);
-  facts.home = homeFacts(sys, config, name);
+  facts.home = homeFacts(sys, config, name, { light: true });
   facts.native = nativeFacts(sys, config, facts.worker);
   facts.audit = auditFacts(sys, config, name);
   return facts;
@@ -331,10 +342,10 @@ export function applyAdd(sys, config, rawRequest, expect) {
       try { channel = channelProjection(JSON.parse(out(exported))); } finally { exported.stdout.fill(0); }
       if (channel.profile !== assistant.name || channel.accountId !== identity.accountId || channel.ownUid !== identity.ownUid || channel.pairedUid !== identity.pairedUid) fail('kenh_lech_danh_tinh');
     }
-    const soul = sys.read(soulSourceOf(config)), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
+    const soul = sys.readOwned(soulSourceOf(config), 524288), templateText = sys.read(config.template.configFile ?? SCRIPTS.template);
     if (!soul || !templateText) fail('khuon_thieu_soul');
     const input = Buffer.from(JSON.stringify({ version: 1, configYaml: renderProfileConfig(templateText, { route: connector.route }), soul,
-      env: profileEnv({ shared: sharedEnvFrom(sys.read(envSourceOf(config)) ?? '', config.template.sharedEnvKeys), channel }) }));
+      env: profileEnv({ shared: sharedEnvFrom(sys.readOwned(envSourceOf(config), 131072) ?? '', config.template.sharedEnvKeys), channel }) }));
     try { helperJson(asUser(sys, assistant.uid, SCRIPTS.home, ['seed', '--profile-dir', assistant.profileDir], { input }), 'home seed'); } finally { input.fill(0); }
     mark('seed');
   }
@@ -416,7 +427,7 @@ export function applyRemove(sys, config, name, expect) {
 }
 
 export function applyRecreate(sys, config, { only = [] }, expect) {
-  const facts = baseFacts(sys, config), plan = planRecreate(facts, { only }, config);
+  const facts = { ...baseFacts(sys, config), memAvailableMb: memAvailableMb(sys) }, plan = planRecreate(facts, { only }, config);
   if (plan.status !== 'ready') fail(plan.status === 'done' ? 'khong_can_tao_lai' : 'ke_hoach_bi_chan', plan.blocks);
   if (plan.expectedRevision !== expect) fail('ke_hoach_da_doi');
   const replaced = [];
@@ -431,7 +442,7 @@ export function applyRecreate(sys, config, { only = [] }, expect) {
 export function planFor(sys, config, action, input) {
   if (action === 'them-nguoi') return planAdd(gatherAddFacts(sys, config, input), input, config);
   if (action === 'go-nguoi') return planRemove(gatherRemoveFacts(sys, config, input.name), input, config);
-  if (action === 'tao-lai-sidecar') return planRecreate(baseFacts(sys, config), input, config);
+  if (action === 'tao-lai-sidecar') return planRecreate({ ...baseFacts(sys, config), memAvailableMb: memAvailableMb(sys) }, input, config);
   if (action === 'liet-ke') return { version: 1, action, assistants: listRows(gatherListFacts(sys, config)), memAvailableMb: Math.floor(memAvailableMb(sys)) };
   return fail('lenh_la');
 }

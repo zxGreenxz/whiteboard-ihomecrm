@@ -41,6 +41,7 @@ test('cấu hình mẫu trong repo hợp lệ; cấu hình lỏng bị từ ch�
   // Launcher worker ghi cứng tên container, UID và file cấu hình kênh: cấu hình khác đi thì bước khởi động lại sẽ thay một container khác.
   for (const change of [{ container: 'worker-khac' }, { uid: 10009 }, { nativeConfig: '/srv/khac/config.json' }])
     assert.equal(bad({ worker: { ...base.worker, ...change } }), 'cau_hinh_sai');
+  assert.equal(bad({ uidRange: [10000, 10199] }), 'cau_hinh_sai');                              // khoảng UID của công cụ không được chứa UID worker
 });
 
 test('mcpUrl: https/loopback đi đường thường, IP nội bộ đi đường giữ origin, còn lại bị từ chối', () => {
@@ -102,7 +103,10 @@ test('sidecar dựng tay đúng khoá thì đạt; mỗi kiểu nới lỏng đ�
   mutate(raw => { raw.HostConfig.SecurityOpt.push('seccomp=unconfined'); }, 'security_opt');
   mutate(raw => { raw.HostConfig.SecurityOpt.push('apparmor=unconfined'); }, 'security_opt');
   mutate(raw => { raw.HostConfig.UsernsMode = 'host'; }, 'host_namespaces');
-  mutate(raw => { raw.HostConfig.CgroupnsMode = 'host'; }, 'host_namespaces');
+  mutate(raw => { raw.HostConfig.UTSMode = 'host'; }, 'host_namespaces');
+  // Host cgroup v1: Docker ghi CgroupnsMode "host" cho mọi container, kể cả container do công cụ dựng ⇒ không phải nới lỏng.
+  const cgroupV1 = clean(); cgroupV1.HostConfig.CgroupnsMode = 'host';
+  assert.deepEqual(lockViolations(sidecarView(cgroupV1), cfg), []);
   mutate(raw => { raw.HostConfig.GroupAdd = ['docker']; }, 'host_namespaces');
 });
 
@@ -256,8 +260,14 @@ test('thêm lại người đã gỡ: đúng tên cũ thì cấp token mới cho
   assert.equal(plan.status, 'ready'); assert.equal(plan.assistant.channelAction, 'rotate');
   assert.equal(states(plan).channel, 'pending'); assert.equal(states(plan)['worker-restart'], 'pending');
   assert.match(plan.steps.find(step => step.id === 'channel').summary, /operator\.mjs rotate/);
+  // Kênh đã thu hồi mà home cũ còn (gỡ dở, hoặc thu hồi tay): cấp token mới thì .env đã gieo vẫn giữ token cũ ⇒ chặn, phải cất home trước.
+  for (const home of [{ exists: true, uid: 10100, private: true, profileDir: true, seeded: true, hasEnv: true }, { exists: true, uid: 10100, private: true, profileDir: false, seeded: false, hasEnv: false }])
+    assert(planAdd(addFacts({ native: revoked, home }), realRequest(), cfg).blocks.includes('kenh_da_thu_hoi_con_home'));
   // Tên khác cho cùng nick Zalo vẫn bị chặn (kênh thu hồi giữ cặp nick bot–nick người dùng).
   assert(planAdd(addFacts({ native: revoked }), realRequest({ name: 'lan-moi' }), cfg).blocks.includes('nick_zalo_da_co_kenh'));
+  // Sidecar không chạy mà bám worker CŨ là chết vì worker đã bị thay (không phải dừng tay): vẫn nằm trong danh sách tạo lại.
+  const dead = planAdd(addFacts({ containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false, workerId: NEW_WORKER_ID }))] }), realRequest(), cfg);
+  assert.deepEqual(dead.others, ['hermes-owner', 'hermes-thu1']); assert.equal(states(dead).sidecars, 'pending');
   // Sidecar đã dừng tay không bị dựng lại và không tính vào số sidecar tạo lại.
   const stopped = planAdd(addFacts({ containers: [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('thu1', { running: false }))] }), realRequest(), cfg);
   assert.deepEqual(stopped.others, ['hermes-owner']); assert.match(stopped.notes.join(' '), /Sidecar đang dừng, không đụng tới: hermes-thu1/);
@@ -288,6 +298,9 @@ test('them-nguoi (người thử): chỉ connector TEST, không tạo kênh, kh�
   // Sidecar lỏng của người khác không chặn người thử (người thử không tạo lại ai).
   const loose = sidecarInspect(); loose.HostConfig.Privileged = true;
   assert.equal(planAdd(addFacts({ containers: [sidecarView(loose)] }), trialRequest(), cfg).status, 'ready');
+  // Người thử cũng không bị chặn bởi container không nhãn hay danh sách kiểm học tập hỏng (nó không tạo lại ai, không đăng ký).
+  assert.equal(planAdd(addFacts({ audit: { broken: true }, containers: [sidecarView(sidecarInspect()), sidecarView(sidecarInspect({ name: 'khong-nhan', labels: { 'com.ihomecrm.component': 'khac' } }))] }), trialRequest(), cfg).status, 'ready');
+  assert(planAdd(addFacts({ audit: { broken: true } }), realRequest(), cfg).blocks.includes('audit_cau_hinh_hong'));
 });
 
 test('them-nguoi chạy lại sau khi hỏng giữa chừng: bước đã xong được nhận ra, UID theo home đã có', () => {
@@ -320,6 +333,9 @@ test('go-nguoi: chỉ gỡ thứ do công cụ dựng; cất home, giữ contain
   assert(plan.steps.find(step => step.id === 'archive-home').summary.includes('/var/lib/ihome-hermes-profiles-archive/lan-'));
   assert(plan.followUp.join(' ').includes('/settings/hermes'));
   // hermes-owner (dựng tay, không nhãn fleet, home không có dấu gieo) không bao giờ bị công cụ gỡ.
+  // Mã ghi của go-nguoi ràng cấu hình môi trường; danh sách kiểm học tập hỏng thì chặn từ đầu (người thử thì không: chưa từng đăng ký).
+  assert.notEqual(planRemove(facts, { name: 'lan' }, config({ archiveRoot: '/var/lib/kho-khac' })).expectedRevision, plan.expectedRevision);
+  assert.deepEqual(planRemove({ ...facts, audit: { dropIn: false, listed: true, registered: false, broken: true } }, { name: 'lan' }, cfg).blocks, ['audit_cau_hinh_hong']);
   // Đăng ký kiểm học tập còn MỘT nửa (hỏng giữa hai lần ghi) vẫn phải gỡ nốt.
   for (const half of [{ dropIn: true, listed: false, registered: false }, { dropIn: false, listed: true, registered: false }])
     assert.equal(states(planRemove({ ...facts, audit: half }, { name: 'lan' }, cfg)).audit, 'pending');
@@ -338,6 +354,9 @@ test('go-nguoi: chỉ gỡ thứ do công cụ dựng; cất home, giữ contain
   const sameName = planRemove({ containers: [sidecarView(fleetSidecar('thu1', { labels: { [FLEET_LABELS.name]: 'thu1', [FLEET_LABELS.trial]: 'true' } }))], home,
     native: { ...native, channels: [{ profile: 'thu1', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '400', unissued: false }] }, audit: {} }, { name: 'thu1' }, cfg);
   assert.equal(states(sameName)['revoke-channel'], 'skipped');
+  const trialBroken = planRemove({ containers: [sidecarView(fleetSidecar('thu1', { labels: { [FLEET_LABELS.name]: 'thu1', [FLEET_LABELS.trial]: 'true' } }))], home, native,
+    audit: { dropIn: false, listed: true, registered: false, broken: true } }, { name: 'thu1' }, cfg);
+  assert.equal(trialBroken.status, 'ready'); assert.equal(states(trialBroken).audit, 'skipped');
   assert.deepEqual(planRemove({ ...facts, native: { ok: false } }, { name: 'lan' }, cfg).blocks, ['khong_doc_duoc_cau_hinh_kenh']);
   // Đã gỡ xong (kênh đã thu hồi, không còn container/home đăng ký) ⇒ done.
   const again = planRemove({ containers: [], home: { exists: true, uid: 10100, private: true, profileDir: true, seeded: true, hasEnv: true },
@@ -349,7 +368,8 @@ test('tao-lai-sidecar: chỉ sidecar bám worker cũ hoặc đã dừng; bỏ qu
   const cfg = config(), worker = { running: true, id: NEW_WORKER_ID };
   const containers = [sidecarView(sidecarInspect()), sidecarView(fleetSidecar('lan', { workerId: NEW_WORKER_ID })),
     sidecarView(sidecarInspect({ name: 'hermes-owner-old-20260102T030405Z', running: false })), sidecarView(fleetSidecar('thu1', { running: false, workerId: NEW_WORKER_ID }))];
-  const plan = planRecreate({ containers, worker }, {}, cfg);
+  const mem = { memAvailableMb: 800 };
+  const plan = planRecreate({ containers, worker, ...mem }, {}, cfg);
   assert.equal(plan.status, 'ready');
   // Sidecar đang dừng không bị làm sống lại trừ khi được nêu đích danh.
   assert.deepEqual(plan.sidecars.map(row => [row.container, row.state]), [['hermes-lan', 'ok'], ['hermes-owner', 'recreate'], ['hermes-thu1', 'stopped']]);
@@ -357,9 +377,23 @@ test('tao-lai-sidecar: chỉ sidecar bám worker cũ hoặc đã dừng; bỏ qu
   // Container chung network namespace với worker mà không mang nhãn: chạy cho mọi sidecar thì dừng, không báo xong mà bỏ sót nó.
   const unlabelled = sidecarView(sidecarInspect({ name: 'tro-ly-dung-tay', workerId: NEW_WORKER_ID, labels: { 'com.ihomecrm.component': 'khac' } }));
   assert.deepEqual(planRecreate({ containers: [containers[1], unlabelled], worker }, {}, cfg).blocks, ['sidecar_khong_nhan']);
-  assert.equal(planRecreate({ containers: [containers[1], containers[3], unlabelled], worker }, { only: ['hermes-thu1'] }, cfg).status, 'ready');
+  assert.equal(planRecreate({ containers: [containers[1], containers[3], unlabelled], worker, ...mem }, { only: ['hermes-thu1'] }, cfg).status, 'ready');
+  // Container không nhãn đang chạy, bám một worker ĐÃ BỊ THAY (ID không còn tồn tại): nằm ở namespace mồ côi ⇒ cũng dừng.
+  const orphan = sidecarView(sidecarInspect({ name: 'tro-ly-mo-coi', workerId: 'e'.repeat(64), labels: { 'com.ihomecrm.component': 'khac' } }));
+  assert.deepEqual(planRecreate({ containers: [containers[1], orphan], worker }, {}, cfg).blocks, ['sidecar_khong_nhan']);
+  // Container không nhãn đã dừng, hoặc bám một container còn tồn tại (vd bảng điều khiển bám sidecar) thì không tính.
+  const stoppedOrphan = sidecarView(sidecarInspect({ name: 'bang-dieu-khien', workerId: 'e'.repeat(64), running: false, labels: { 'com.ihomecrm.component': 'khac' } }));
+  const attached = sidecarView(sidecarInspect({ name: 'bam-sidecar', workerId: containers[1].id, labels: { 'com.ihomecrm.component': 'khac' } }));
+  assert.equal(planRecreate({ containers: [containers[1], stoppedOrphan, attached], worker }, {}, cfg).status, 'done');
   assert.notEqual(planRecreate({ containers, worker }, {}, config({ image: `sha256:${'d'.repeat(64)}` })).expectedRevision, plan.expectedRevision);
-  const only = planRecreate({ containers, worker }, { only: ['hermes-thu1'] }, cfg);
+  const only = planRecreate({ containers, worker, ...mem }, { only: ['hermes-thu1'] }, cfg);
+  // Dựng lại một sidecar đang dừng là thêm một container chạy: RAM thấp thì từ chối, kể cả khi nêu đích danh.
+  assert.deepEqual(planRecreate({ containers, worker, memAvailableMb: 300 }, { only: ['hermes-thu1'] }, cfg).blocks, ['ram_khong_du']);
+  assert.deepEqual(planRecreate({ containers, worker }, { only: ['hermes-thu1'] }, cfg).blocks, ['ram_khong_do_duoc']);
+  // Sidecar KHÔNG chạy mà bám worker cũ = chết vì worker đã bị thay ⇒ được tạo lại dù không nêu tên (không báo "xong" mà bỏ nó nằm chết).
+  const deadStale = sidecarView(fleetSidecar('ha', { running: false }));
+  assert.deepEqual(planRecreate({ containers: [containers[1], deadStale], worker, ...mem }, {}, cfg).sidecars.map(row => [row.container, row.state]), [['hermes-ha', 'recreate'], ['hermes-lan', 'ok']]);
+  assert.deepEqual(planRecreate({ containers: [containers[1], deadStale], worker, memAvailableMb: 300 }, {}, cfg).blocks, ['ram_khong_du']);
   assert.deepEqual(only.sidecars.map(row => row.container), ['hermes-thu1']);       // thử trên VPS mà không đụng hermes-owner
   assert.notEqual(only.expectedRevision, plan.expectedRevision);
   assert.equal(planRecreate({ containers: [containers[1]], worker }, {}, cfg).status, 'done');

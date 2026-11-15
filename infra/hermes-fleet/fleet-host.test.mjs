@@ -14,7 +14,7 @@ const base = file => path.basename(file);
 
 /** Máy chủ giả: docker, setpriv + helper, journalctl, systemctl và vài lệnh file, đủ để chạy trọn một lượt điều phối. */
 function fakeServer({ containers = [sidecarInspect()], channels, alive = true, binding, evidence = 'tools/list', connectorActive = true, failRun = null, gatewayState, routeUp = true } = {}) {
-  const calls = [], logs = [], ensured = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
+  const calls = [], logs = [], ensured = [], fileOps = [], state = { containers: new Map([['ihome-zalo-worker', workerInspect()], ...containers.map(raw => [raw.Name.slice(1), raw])]),
     channels: channels ?? [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }], nativeMtime: Date.parse('2026-01-02T01:00:00Z'),
     files: new Map([[ROOT, { dir: true, uid: 0, mode: 0o711 }], [`${ROOT}/owner`, { dir: true, uid: 10003, mode: 0o700 }],
       [`${OWNER}/SOUL.md`, { text: '# SOUL giả\n', uid: 10003, mode: 0o644 }], [`${OWNER}/.env`, { text: `NINEROUTER_API_KEY=${PROVIDER_KEY}\nMCP_IHOMECRM_API_KEY=hc_khac\n`, uid: 10003, mode: 0o600 }],
@@ -72,7 +72,9 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
       if (!args.includes('--apply')) return ok(JSON.stringify({ expectedRevision: 'a'.repeat(64), diskStatus: 'planned' }));
       const profile = flag(args, '--profile');
       if (command === 'create') state.channels.push({ profile, accountId: flag(args, '--account-id'), ownUid: flag(args, '--own-uid'), pairedUid: flag(args, '--paired-uid'), unissued: false });
-      else state.channels.find(entry => entry.profile === profile).unissued = true;
+      else if (command === 'rotate') { if (args.includes('--account-id') || !args.includes('--token-file')) return bad('rotate không nhận danh tính'); state.channels.find(entry => entry.profile === profile).unissued = false; }
+      else if (command === 'revoke') state.channels.find(entry => entry.profile === profile).unissued = true;
+      else return bad(`operator ${command}?`);
       state.nativeMtime = clock;
       return ok(JSON.stringify({ diskStatus: 'updated' }));
     }
@@ -83,12 +85,13 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
   const sys = { node: '/opt/node', log: line => logs.push(line), now: () => new Date(clock), sleep: ms => { clock += ms; },
     stat: file => { const entry = state.files.get(file); return entry ? { uid: entry.uid, gid: entry.uid, mode: entry.mode, dir: entry.dir === true, link: false, mtimeMs: 0 } : null; },
     read: file => state.files.get(file)?.text ?? null,
+    readOwned: file => { const entry = state.files.get(file); if (entry?.unsafe) throw new FleetError('tep_khong_an_toan', file); return entry?.text ?? null; },
     readdir: directory => [...state.files.keys()].filter(file => path.posix.dirname(file) === directory).map(file => path.posix.basename(file)),
     mkdir: (directory, mode, uid) => { state.files.set(directory, { dir: true, uid, mode }); },
     ensureDir: (directory, mode) => { ensured.push(directory); if (!state.files.has(directory)) state.files.set(directory, { dir: true, uid: 0, mode }); },
-    write: (file, text, mode) => { state.files.set(file, { text, uid: 0, mode }); },
+    write: (file, text, mode) => { fileOps.push(`write:${path.posix.basename(file)}`); state.files.set(file, { text, uid: 0, mode }); },
     rename: (from, to) => { for (const [file, entry] of [...state.files]) if (file === from || file.startsWith(from + '/')) { state.files.delete(file); state.files.set(to + file.slice(from.length), entry); } },
-    unlink: file => { state.files.delete(file); },
+    unlink: file => { fileOps.push(`unlink:${path.posix.basename(file)}`); state.files.delete(file); },
     exec(command, args, { input } = {}) {
       const text = input === undefined ? undefined : Buffer.from(input).toString('utf8');
       calls.push({ command, args: [...args], input: text });
@@ -113,7 +116,7 @@ function fakeServer({ containers = [sidecarInspect()], channels, alive = true, b
     } };
   const step = call => call.command === 'setpriv' ? `${call.args[1]}:${base(call.args[7])}:${call.args[8]}${call.args.includes('--apply') ? ':apply' : ''}` :
     call.command === 'docker' ? `docker:${call.args[0]}${call.args.includes('--rm') ? ':rm' : ''}` : call.command === 'bash' ? `bash:${base(call.args[0])}` : call.command;
-  return { sys, calls, logs, state, ensured, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$|^nsenter$/.test(entry)) };
+  return { sys, calls, logs, state, ensured, fileOps, steps: () => calls.map(step), writes: () => calls.map(step).filter(entry => !/^docker:(ps|inspect|image|stats)$|:(list|binding|check)$|^journalctl$|^nsenter$/.test(entry)) };
 }
 const noSecretOutsideStdin = server => {
   for (const call of server.calls) for (const secret of SECRETS) assert(!call.args.join(' ').includes(secret), `bí mật trong đối số: ${call.command} ${call.args[0]}`);
@@ -160,6 +163,7 @@ test('thêm người thật: đúng thứ tự, đúng UID từng bước, bí m
   assert.equal(result.runtimeStatus, 'verified');
   assert(server.state.files.has('/etc/systemd/system/ihome-hermes-learning-audit.service.d/fleet-lan.conf'));
   assert.deepEqual(server.ensured, ['/etc/ihome-hermes-fleet', '/etc/systemd/system/ihome-hermes-learning-audit.service.d']);   // thư mục drop-in chưa có thì tự tạo
+  assert.deepEqual(server.fileOps, ['write:fleet-lan.conf', 'write:learning-audit.json']);                                        // thêm: drop-in TRƯỚC, danh sách sau
   assert.equal(server.state.containers.get('hermes-owner-old-20260102T030405Z').HostConfig.RestartPolicy.Name, 'no');             // bản cũ không tự chạy lại
   assert.deepEqual(JSON.parse(server.state.files.get('/etc/ihome-hermes-fleet/learning-audit.json').text).realProfiles, ['owner', 'lan']);
   assert(!JSON.stringify(result).match(/hc_|hzn_/) && result.assistant.identity === undefined);
@@ -237,6 +241,7 @@ test('gỡ người: dừng và giữ container, thu hồi kênh bằng UID work
   assert.deepEqual(server.writes(), ['docker:update', 'docker:stop', 'docker:rename', '10002:operator.mjs:revoke', '10002:operator.mjs:revoke:apply', 'systemctl']);
   assert(!server.steps().includes('docker:rm'));                                   // không xoá container
   assert.deepEqual(result.done, ['stop', 'revoke-channel', 'audit', 'archive-home']);
+  assert.deepEqual(server.fileOps, ['write:learning-audit.json', 'unlink:fleet-lan.conf']);                                        // gỡ: danh sách TRƯỚC, drop-in sau
   assert.equal(result.keptContainer, 'hermes-lan-da-go-20260102T030405Z');
   assert.equal(server.state.containers.get(result.keptContainer).HostConfig.RestartPolicy.Name, 'no');
   assert.equal(result.archivedHome, '/var/lib/ihome-hermes-profiles-archive/lan-20260102T030405Z');
@@ -359,4 +364,43 @@ test('đọc file bằng root: không theo symlink, không nhận FIFO/thư mụ
   const { execFileSync } = await import('node:child_process');
   execFileSync('mkfifo', [file('ong')]);
   assert.equal(code(() => sys.read(file('ong'))), 'tep_khong_an_toan');           // FIFO không làm lệnh treo
+});
+
+test('thêm lại người đã gỡ gọi operator rotate (không kèm danh tính); các dữ kiện máy chủ mà kế hoạch dựa vào được thu đúng', () => {
+  const cfg = config(), revoked = [{ profile: 'owner', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '200', unissued: false }, { profile: 'lan', accountId: ACCOUNT_ID, ownUid: '100', pairedUid: '300', unissued: true }];
+  const server = fakeServer({ channels: revoked });
+  server.state.files.set('/var/lib/ihome-hermes-profiles-archive/lan-20260101T000000Z', { dir: true, uid: 10100, mode: 0o700 });   // home cũ đã cất giữ UID 10100
+  const plan = planFor(server.sys, cfg, 'them-nguoi', realRequest());
+  assert.equal(plan.status, 'ready'); assert.equal(plan.assistant.channelAction, 'rotate'); assert.equal(plan.assistant.uid, 10101);
+  const result = applyAdd(server.sys, cfg, realRequest(), plan.expectedRevision);
+  assert.equal(result.runtimeStatus, 'verified');
+  const rotate = server.calls.filter(call => call.command === 'setpriv' && base(call.args[7]) === 'operator.mjs').map(call => call.args.slice(8));
+  assert.deepEqual(rotate.map(args => args[0]), ['rotate', 'rotate']);
+  assert.deepEqual(rotate[1].slice(0, 5), ['rotate', '--config', '/opt/ihome-zalo-worker/native-config/config.json', '--profile', 'lan']);
+  assert(rotate.every(args => !args.includes('--account-id') && !args.includes('--own-uid')));
+  assert.equal(server.state.channels.find(entry => entry.profile === 'lan').unissued, false);
+
+  // Tên trùng một hồ sơ ở home khác (hồ sơ thử nằm chung home dựng tay).
+  const clash = fakeServer(); clash.state.files.set(`${OWNER.replace(/owner$/, 'tkt')}/config.yaml`, { text: 'x', uid: 10003, mode: 0o600 });
+  clash.state.files.set(OWNER.replace(/owner$/, 'tkt'), { dir: true, uid: 10003, mode: 0o700 });
+  assert(planFor(clash.sys, cfg, 'them-nguoi', realRequest({ name: 'tkt' })).blocks.includes('ten_trung_ho_so_khac'));
+  // Symlink `current` đã đổi nhưng config của hồ sơ chưa trỏ tới cây kỹ năng ⇒ bước skills CHƯA xong.
+  const home = `${ROOT}/lan`, profile = `${home}/.hermes/profiles/lan`, half = fakeServer();
+  for (const [file, entry] of [[home, { dir: true, uid: 10100, mode: 0o700 }], [profile, { dir: true, uid: 10100, mode: 0o700 }],
+    [`${home}/.hermes/ihome-official-skills/current`, { dir: true, uid: 0, mode: 0o755 }], [`${profile}/config.yaml`, { text: 'model: {}\n', uid: 10100, mode: 0o600 }]]) half.state.files.set(file, entry);
+  const state = (server, id) => planFor(server.sys, cfg, 'them-nguoi', realRequest()).steps.find(step => step.id === id).state;
+  assert.equal(state(half, 'skills'), 'pending');
+  // Lần gieo trước chết giữa chừng (còn dấu "đang gieo", .env đã có biến): root thấy dấu đó và không coi là hồ sơ lạ.
+  half.state.files.set(`${profile}/.env`, { text: 'HERMES_ZALO_PROFILE=lan\n', uid: 10100, mode: 0o600 });
+  assert(planFor(half.sys, cfg, 'them-nguoi', realRequest()).blocks.includes('ho_so_la'));
+  half.state.files.set(`${profile}/.ihome-fleet-seeding`, { text: '{}', uid: 10100, mode: 0o600 });
+  assert(!planFor(half.sys, cfg, 'them-nguoi', realRequest()).blocks.includes('ho_so_la'));
+  // SOUL của hồ sơ khuôn không đọc an toàn được (symlink…): kế hoạch bị chặn NGAY, không hỏng sau khi đã tạo kênh.
+  const soul = fakeServer(); soul.state.files.set(`${OWNER}/SOUL.md`, { unsafe: true, uid: 10003, mode: 0o644 });
+  assert.deepEqual(planFor(soul.sys, cfg, 'them-nguoi', realRequest()).blocks, ['khuon_thieu_soul']);
+  // Gỡ người không đọc file nào trong home sắp gỡ: trợ lý không chặn được việc gỡ bằng cách biến .env thành symlink/FIFO.
+  const stuck = fakeServer();
+  for (const [file, entry] of [[home, { dir: true, uid: 10100, mode: 0o700 }], [`${profile}/.env`, { unsafe: true, uid: 10100, mode: 0o600 }], [`${profile}/config.yaml`, { unsafe: true, uid: 10100, mode: 0o600 }]]) stuck.state.files.set(file, entry);
+  assert.equal(planFor(stuck.sys, cfg, 'go-nguoi', { name: 'lan' }).status, 'ready');
+  assert.equal(code(() => planFor(stuck.sys, cfg, 'them-nguoi', realRequest())), 'tep_khong_an_toan');
 });
