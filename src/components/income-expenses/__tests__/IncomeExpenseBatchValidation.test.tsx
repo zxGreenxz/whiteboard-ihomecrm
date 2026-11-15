@@ -28,4 +28,14 @@ describe('C03/C04 phiếu tổng', () => {
     await waitFor(()=>expect(document.activeElement).toBe(so));
     expect(h.create).not.toHaveBeenCalled();
   });
+  it('ô Tên phiếu lẻ của từng dòng: xem trước tên phiếu lẻ = tên lẻ + tên phiếu tổng', async () => {
+    render(<IncomeExpenseBatchForm open onOpenChange={()=>{}} />);
+    fireEvent.change(screen.getByPlaceholderText('VD: Vệ sinh máy lạnh + sửa máy giặt T5/2026'),{target:{value:'Chốt ML đợt 1'}});
+    fireEvent.click(screen.getByRole('button',{name:'Thêm hạng mục'}));
+    fireEvent.click(screen.getByText('Chọn sửa chữa'));
+    const preview = screen.getByTestId('batch-item-0-child-name');
+    expect(preview.textContent).toBe('Tên phiếu: Chốt ML đợt 1 - Sửa chữa');
+    fireEvent.change(screen.getByRole('textbox',{name:'Tên phiếu lẻ hạng mục 1'}),{target:{value:'VSML 101 (3/7)'}});
+    await waitFor(()=>expect(preview.textContent).toBe('Tên phiếu: VSML 101 (3/7) - Chốt ML đợt 1'));
+  });
 });
