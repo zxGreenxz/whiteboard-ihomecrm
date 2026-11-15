@@ -6,14 +6,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
-  rpc: vi.fn(), calls: [] as [string, Record<string, unknown>][], responses: [] as { data: unknown; error: unknown }[],
+  rpcMock: vi.fn(), calls: [] as [string, Record<string, unknown>][], responses: [] as { data: unknown; error: unknown }[],
   qc: { invalidateQueries: vi.fn() },
 }));
 vi.mock('react', async (original) => ({ ...await original<typeof import('react')>(), useRef: (current: unknown) => ({ current }) }));
 vi.mock('@tanstack/react-query', () => ({ useMutation: (options: unknown) => options, useQueryClient: () => h.qc }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor', email: 'demo' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {
-  rpc: (name: string, args: Record<string, unknown>) => { h.calls.push([name, args]); return h.rpc(name, args); },
+  rpc: (name: string, args: Record<string, unknown>) => { h.calls.push([name, args]); return h.rpcMock(name, args); },
   from: () => {
     const builder: Record<string, unknown> = {};
     for (const method of ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'neq', 'in', 'is', 'not', 'order', 'limit', 'single', 'maybeSingle']) builder[method] = () => builder;
@@ -82,11 +82,11 @@ const payout = (over: Partial<SalaryPayoutInput> = {}): SalaryPayoutInput => ({
 });
 const payoutScope = { namespace: 'salary-payout', userId: 'actor', organizationId: 'actor-scope', businessKey: `${STAFF}-${PERIOD}` };
 
-beforeEach(() => { localStorage.clear(); h.rpc.mockReset(); h.calls = []; h.responses = []; h.qc.invalidateQueries.mockReset(); });
+beforeEach(() => { localStorage.clear(); h.rpcMock.mockReset(); h.calls = []; h.responses = []; h.qc.invalidateQueries.mockReset(); });
 
 describe('trả lương — báo giá phần lợi nhuận (E15) trước khi lập phiếu', () => {
   it('cổ đông: E15 NGAY TRƯỚC salary_payout_v1, cùng khoá trả lương, số luỹ kế và tổng phiếu gồm tiền phòng kẹp theo nợ còn', async () => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_payout_quote_v1') return { data: quoteReceipt(args), error: null };
       if (name === 'salary_payout_v1') return { data: { salary_voucher_id: 'voucher' }, error: null };
       throw new Error('unexpected ' + name);
@@ -105,7 +105,7 @@ describe('trả lương — báo giá phần lợi nhuận (E15) trước khi l�
 
   it('E15 từ chối (số vừa đổi) ⇒ KHÔNG lập phiếu, báo tải lại; lần sau dùng khoá trả lương MỚI và khoá báo giá mới', async () => {
     let quotes = 0;
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_payout_quote_v1') {
         quotes += 1;
         return quotes === 1 ? { data: null, error: { code: 'PT409', message: 'SALARY_PROFIT_QUOTE_CHANGED: changed', details: null } } : { data: quoteReceipt(args), error: null };
@@ -133,7 +133,7 @@ describe('trả lương — báo giá phần lợi nhuận (E15) trước khi l�
   });
 
   it.each(['OFFSET_CONFLICT', 'MIXED_SIGN_SELECTION'])('E15 báo trước "%s" ⇒ dừng, không lập phiếu', async (reason) => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_payout_quote_v1') return { data: quoteReceipt(args, { needs_review_reason: reason }), error: null };
       throw new Error('unexpected ' + name);
     });
@@ -142,7 +142,7 @@ describe('trả lương — báo giá phần lợi nhuận (E15) trước khi l�
   });
 
   it('báo giá gắn khoá khác khoá trả lương ⇒ không lập phiếu', async () => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_payout_quote_v1') return { data: quoteReceipt(args, { payout_request_key: 'khoa-khac-hoan-toan' }), error: null };
       throw new Error('unexpected ' + name);
     });
@@ -151,7 +151,7 @@ describe('trả lương — báo giá phần lợi nhuận (E15) trước khi l�
   });
 
   it('nhánh lùi legacy cũng đi SAU báo giá', async () => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_payout_quote_v1') return { data: quoteReceipt(args), error: null };
       if (name === 'salary_payout_v1') return { data: null, error: { code: '55000', message: 'Writer chưa bật' } };
       if (name === 'rent_support_salary_bridge_required_v1') return { data: false, error: null };
@@ -163,7 +163,7 @@ describe('trả lương — báo giá phần lợi nhuận (E15) trước khi l�
   });
 
   it.each([undefined, null])('hồi quy — nhân viên thường (profitQuote %s): không báo giá, gọi salary_payout_v1 như cũ', async (profitQuote) => {
-    h.rpc.mockImplementation(async (name: string) => {
+    h.rpcMock.mockImplementation(async (name: string) => {
       if (name === 'salary_payout_v1') return { data: { salary_voucher_id: 'voucher' }, error: null };
       throw new Error('unexpected ' + name);
     });
@@ -180,7 +180,7 @@ describe('chốt lương — đóng băng phần lợi nhuận (E13) trước kh
   const lockArgs = { ownerId: 'owner', periodMonth: PERIOD, managers: [shareholder, employee, lockedShareholder] };
 
   it('cổ đông bảng nháp: E13 TRƯỚC lock_salary_month_v2; thực nhận / đầu tư / ứng gửi chốt khớp đúng số đóng băng', async () => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_settlement_freeze_v1') return { data: freezeReceipt(args), error: null };
       if (name === 'lock_salary_month_v2') return { data: { state: 'LOCKED', period_month: PERIOD, locked_count: 2 }, error: null };
       throw new Error('unexpected ' + name);
@@ -201,7 +201,7 @@ describe('chốt lương — đóng băng phần lợi nhuận (E13) trước kh
   });
 
   it('E13 từ chối ⇒ KHÔNG chốt, từ chối chắc chắn, tải lại bảng lương', async () => {
-    h.rpc.mockImplementation(async (name: string) => {
+    h.rpcMock.mockImplementation(async (name: string) => {
       if (name === 'salary_profit_settlement_freeze_v1') return { data: null, error: { code: 'PT409', message: 'SALARY_PROFIT_QUOTE_CHANGED: changed', details: null } };
       throw new Error('unexpected ' + name);
     });
@@ -218,7 +218,7 @@ describe('chốt lương — đóng băng phần lợi nhuận (E13) trước kh
     ['vừa vào mốc đã trả đủ', { settled_by_marker: true }],
     ['đã chốt ở nơi khác', { already_locked: true, offset_conflict: false }],
   ])('đóng băng lệch số đang chốt (%s) ⇒ KHÔNG chốt', async (_label, over) => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_settlement_freeze_v1') return { data: freezeReceipt(args, over), error: null };
       throw new Error('unexpected ' + name);
     });
@@ -227,7 +227,7 @@ describe('chốt lương — đóng băng phần lợi nhuận (E13) trước kh
   });
 
   it('nhánh lùi legacy cũng đi SAU đóng băng', async () => {
-    h.rpc.mockImplementation(async (name: string, args: Args) => {
+    h.rpcMock.mockImplementation(async (name: string, args: Args) => {
       if (name === 'salary_profit_settlement_freeze_v1') return { data: freezeReceipt(args), error: null };
       if (name === 'lock_salary_month_v2') return { data: null, error: { code: '55000', message: 'Writer chưa bật' } };
       if (name === 'rent_support_salary_bridge_required_v1') return { data: true, error: null };
@@ -238,7 +238,7 @@ describe('chốt lương — đóng băng phần lợi nhuận (E13) trước kh
   });
 
   it('hồi quy — chỉ nhân viên thường: không đóng băng, chốt như cũ', async () => {
-    h.rpc.mockImplementation(async (name: string) => {
+    h.rpcMock.mockImplementation(async (name: string) => {
       if (name === 'lock_salary_month_v2') return { data: { state: 'LOCKED', period_month: PERIOD, locked_count: 1 }, error: null };
       throw new Error('unexpected ' + name);
     });
