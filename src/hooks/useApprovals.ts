@@ -2,7 +2,7 @@ import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { approvalDecisionFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
@@ -88,7 +88,7 @@ export interface PendingVoucherSource {
  * Nguồn phiếu của các yêu cầu đang chờ (list_my_pending_approvals_v1 KHÔNG chiếu system_source — cột cùng
  * tên ở trên luôn null). Đọc qua read_income_expense_details_v1 — cùng đường hộp "Duyệt và Thu/Chi…" đang
  * dùng, không bị RLS che như đọc thẳng bảng — gom theo công ty. Phiếu không đọc được thì vắng trong kết
- * quả: màn hình coi là "chưa biết" (không chào "Duyệt và Thu/Chi…" cho dòng đó).
+ * quả: màn hình coi là "chưa rõ loại" (duyệt như phiếu thường, nói rõ máy chủ sẽ chặn phiếu chi lợi nhuận).
  * Khoá dưới gốc "pending-approvals" nên mọi lần làm mới hộp thư cũng làm mới phần này.
  */
 export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
@@ -107,6 +107,9 @@ export const usePendingApprovalSources = (rows: readonly PendingApproval[]) => {
   return useQuery({
     queryKey: ["pending-approvals", "voucher-sources", groups],
     enabled: groups.length > 0,
+    // Danh sách chờ đổi (duyệt xong một dòng) ⇒ khoá mới: giữ câu trả lời cũ cho các dòng đã biết trong lúc
+    // đọc lại (isPlaceholderData), dòng mới coi là "đang kiểm tra".
+    placeholderData: keepPreviousData,
     meta: { errorDisplay: "inline", label: "loại phiếu chờ duyệt" },
     queryFn: async (): Promise<Record<string, PendingVoucherSource>> => {
       const result: Record<string, PendingVoucherSource> = {};

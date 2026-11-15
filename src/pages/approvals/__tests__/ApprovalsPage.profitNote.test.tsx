@@ -17,7 +17,15 @@ const api = vi.hoisted(() => ({
   details: {} as Record<string, DetailState>,
   e7Calls: [] as Array<string | null>,
   postingProps: null as null | { cashbookOptions: Array<{ id: string }>; voucher: { defaultCashbookId?: string | null; cashbookLocked?: boolean } },
+  sourcesRefetch: vi.fn(),
+  /** Câu trả lời của usePendingApprovalSources (nguồn phiếu) — mỗi ca tự đặt. */
+  sources: {} as { data?: Record<string, { system_source: string | null; account_id: string | null }>; isPending: boolean;
+    isError: boolean; isPlaceholderData: boolean; refetch: () => unknown },
 }));
+const KNOWN_SOURCES = {
+  'phieu-ln': { system_source: 'profit.ledger_payout', account_id: 'so-a' },
+  'phieu-thuong': { system_source: null, account_id: 'so-b' },
+};
 
 const ROWS = [
   { request_id: 'req-ln', voucher_id: 'phieu-ln', organization_id: 'org-1', voucher_type: 'EXPENSE', voucher_name: 'Chia lợi nhuận: Cổ đông 1',
@@ -36,10 +44,7 @@ vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => api.mobile }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'chu-b' } }) }));
 vi.mock('@/hooks/useApprovals', () => ({
   usePendingApprovals: () => ({ data: ROWS, isLoading: false, isFetching: false, isError: false, refetch: api.refetch }),
-  usePendingApprovalSources: () => ({
-    data: { 'phieu-ln': { system_source: 'profit.ledger_payout', account_id: 'so-a' }, 'phieu-thuong': { system_source: null, account_id: 'so-b' } },
-    isError: false, refetch: vi.fn(),
-  }),
+  usePendingApprovalSources: () => api.sources,
   useDecideApproval: () => ({ mutate: api.decide, mutateAsync: api.decide, isPending: false }),
 }));
 vi.mock('@/lib/financeV2Route', () => ({ useFinanceV2Routes: () => ({ getOrg: () => ({}) }), canWriteWorkflow: () => true, canWritePosting: () => true }));
@@ -98,6 +103,7 @@ beforeEach(() => {
   api.details = { 'phieu-ln': { data: e7() } };
   api.e7Calls = [];
   api.postingProps = null;
+  api.sources = { data: KNOWN_SOURCES, isPending: false, isError: false, isPlaceholderData: false, refetch: api.sourcesRefetch };
 });
 afterEach(cleanup);
 
@@ -217,5 +223,66 @@ describe('Chờ duyệt — câu báo lỗi và làm mới sổ tổng', () => {
     render(<ApprovalsPage />, { wrapper: wrap() });
     fireEvent.click(screen.getAllByRole('button', { name: 'Từ chối' })[0]!);
     expect(screen.getByText(/từ chối xong số dư sổ tổng trả lại ngay/)).toBeTruthy();
+  });
+});
+
+// Review chéo: dòng CHƯA RÕ loại phiếu (đang đọc nguồn, đọc lỗi, người duyệt không đọc được chi tiết phiếu)
+// không được coi như phiếu thường một cách im lặng, và phiếu thường không được mất "Duyệt và Thu/Chi…".
+describe.each([false, true])('Chờ duyệt — dòng chưa rõ loại phiếu (điện thoại=%s)', (mobile) => {
+  beforeEach(() => { api.mobile = mobile; });
+  const ledgerDetail = { id: 'phieu-ln', organization_id: 'org-1', type: 'EXPENSE', name: 'Chia lợi nhuận: Cổ đông 1', total_amount: 300,
+    system_source: 'profit.ledger_payout', account_id: 'so-a', commission_kind: null, approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED',
+    approval_version: 1, posting_version: 1, items: [], detail_read: { complete: true, expected_item_count: 0 } };
+
+  it('đang đọc nguồn ⇒ Duyệt khoá kèm "đang kiểm tra loại phiếu"; "Duyệt và Chi…" GIỮ như trước; chưa đọc E7', () => {
+    api.sources = { data: undefined, isPending: true, isError: false, isPlaceholderData: false, refetch: api.sourcesRefetch };
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    for (const button of approveButtons()) {
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('title')).toBe('Đang kiểm tra loại phiếu…');
+    }
+    expect(screen.getAllByRole('button', { name: 'Duyệt và Chi…' })).toHaveLength(2);
+    expect(api.e7Calls.filter(Boolean)).toEqual([]);
+    expect(screen.queryByTestId('ledger-approval-note')).toBeNull();
+  });
+
+  it('danh sách vừa đổi (câu trả lời cũ còn giữ) ⇒ dòng đã biết giữ nguyên, dòng mới "đang kiểm tra"', () => {
+    api.sources = { data: { 'phieu-thuong': KNOWN_SOURCES['phieu-thuong'] }, isPending: false, isError: false, isPlaceholderData: true, refetch: api.sourcesRefetch };
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    const [ledgerApprove, normalApprove] = approveButtons();
+    expect(ledgerApprove!.disabled).toBe(true);
+    expect(ledgerApprove!.getAttribute('title')).toBe('Đang kiểm tra loại phiếu…');
+    expect(normalApprove!.disabled).toBe(false);
+  });
+
+  it('đọc nguồn lỗi ⇒ cho duyệt như phiếu thường, câu chung nói rõ máy chủ sẽ chặn phiếu chi lợi nhuận, Thử lại đọc lại', () => {
+    api.sources = { data: undefined, isPending: false, isError: true, isPlaceholderData: false, refetch: api.sourcesRefetch };
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    expect(approveButtons().every((b) => !b.disabled)).toBe(true);
+    expect(approveButtons()[0]!.getAttribute('title')).toMatch(/máy chủ sẽ chặn/);
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toMatch(/Vẫn duyệt được như phiếu thường; nếu là phiếu chi lợi nhuận \/ lương điều hành, máy chủ sẽ chặn/);
+    expect(screen.queryByTestId('approval-source-unknown')).toBeNull();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Thử lại' }));
+    expect(api.sourcesRefetch).toHaveBeenCalled();
+    expect(screen.getAllByRole('button', { name: 'Duyệt và Chi…' })).toHaveLength(2);
+  });
+
+  it('không đọc được riêng một phiếu ⇒ dòng đó có câu nhắc máy chủ sẽ chặn, vẫn duyệt được; dòng khác bình thường', () => {
+    api.sources = { data: { 'phieu-thuong': KNOWN_SOURCES['phieu-thuong'] }, isPending: false, isError: false, isPlaceholderData: false, refetch: api.sourcesRefetch };
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    expect(screen.getAllByTestId('approval-source-unknown')).toHaveLength(1);
+    expect(screen.getByTestId('approval-source-unknown').textContent).toMatch(/máy chủ sẽ chặn khi chưa đủ điều kiện duyệt/);
+    expect(approveButtons().every((b) => !b.disabled)).toBe(true);
+    expect(screen.queryByTestId('ledger-approval-note')).toBeNull();
+  });
+
+  it('chưa rõ loại mà thực ra là phiếu sổ tổng ⇒ "Duyệt và Chi…" đọc lại phiếu và CHẶN, không mở hộp chọn sổ', async () => {
+    api.sources = { data: undefined, isPending: false, isError: true, isPlaceholderData: false, refetch: api.sourcesRefetch };
+    api.read.mockResolvedValue([ledgerDetail]);
+    render(<ApprovalsPage />, { wrapper: wrap() });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Duyệt và Chi…' })[0]!);
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => /sổ quỹ đã chọn lúc lập/.test(a.textContent ?? ''))).toBe(true));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
