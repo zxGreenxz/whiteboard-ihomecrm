@@ -370,3 +370,20 @@ gaps:
       Mỗi đường (1)–(4) giao thêm hermes_web_building_ids_v1, hoặc test PostgreSQL 17 chứng minh không vượt RLS web, kèm phép đo
       trên TEST như PR #261; với (3) kiểm buildings.view trong hermes_task_follow_grant_v1 (đóng lượt theo dõi khi mất toà);
       hoặc chủ dự án quyết định chấp nhận từng đường kèm lý do.
+  - id: test-accounting-chain-kich-ban-chi-loi-nhuan-cu
+    where: >
+      scripts/test-accounting-chain.mjs (khối $test$ quanh lời gọi distribute_shareholder_profit_v1,
+      $payout_stale_approval$, phần payout của $canary_ledger$)
+    expires_at: 2026-12-31
+    why: >
+      Đợt 3 sổ tổng lợi nhuận (supabase/migrations/20261115113530_so_tong_loi_nhuan_chuyen_doi.sql, bước X4)
+      thu EXECUTE của public.distribute_shareholder_profit_v1 khỏi authenticated. Script này chạy các
+      kịch bản trong `SET LOCAL ROLE authenticated`, nên kịch bản giữ chỗ chi lợi nhuận kiểu cũ
+      (profit_payout_reservations) không còn dựng được. Đã sửa để: hàm còn mở ⇒ chạy như cũ; hàm đã thu
+      quyền ⇒ chỉ kiểm cửa trả 42501 và bỏ qua hai khối dùng phiếu giữ chỗ. Chưa CHẠY lại script sau sửa
+      (nó ghi vào catalog sống qua Management API trong giao dịch ROLLBACK; không nằm trong package.json
+      hay CI); chỉ kiểm cú pháp plpgsql ba khối đã sửa bằng PGlite và `node --check`.
+    exit_condition: >
+      Chạy lại script trên database dùng một lần (hoặc TEST) sau khi 20261115113530 đã áp, ra đủ xanh;
+      hoặc thay kịch bản giữ chỗ cũ bằng kịch bản chi theo sổ tổng (shareholder_profit_ledger_payout_v1 +
+      duyệt + huỷ) rồi gỡ nhánh cũ; hoặc chủ dự án quyết định bỏ script này khỏi bộ kiểm.
