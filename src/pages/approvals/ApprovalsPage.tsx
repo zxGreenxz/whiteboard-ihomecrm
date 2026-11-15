@@ -79,11 +79,21 @@ const typeLabel = (type: string | null) => {
   return { text: type ?? "—", className: "bg-muted text-muted-foreground" };
 };
 
+/**
+ * Loại phiếu của một yêu cầu (RPC hộp thư không có nguồn phiếu, phải đọc riêng):
+ * LEDGER = phiếu chi theo sổ tổng; NORMAL = phiếu thường; LOADING = đang đọc; UNKNOWN = đọc lỗi hoặc người
+ * duyệt không đọc được chi tiết phiếu đó.
+ */
+type VoucherSourceState = "LEDGER" | "NORMAL" | "LOADING" | "UNKNOWN";
+
+/** Dòng chưa rõ loại: duyệt như phiếu thường — máy chủ vẫn là chốt cuối với phiếu chi lợi nhuận. */
+const UNKNOWN_SOURCE_HINT =
+  "Chưa xác định được loại phiếu — nếu là phiếu chi lợi nhuận / lương điều hành, máy chủ sẽ chặn khi chưa đủ điều kiện duyệt.";
+
 interface ApprovalActionsProps {
   row: PendingApproval;
-  /** Phiếu chi theo sổ tổng (đã đọc được nguồn phiếu). */
-  ledger: boolean;
-  /** Luật chung cho "Duyệt và Thu/Chi…": tổ chức ghi sổ kiểu mới, đang giữ sổ, đã biết nguồn phiếu. */
+  sourceState: VoucherSourceState;
+  /** Luật chung cho "Duyệt và Thu/Chi…": tổ chức ghi sổ kiểu mới, đang giữ sổ. */
   postOption: boolean;
   custodianBookIds: ReadonlySet<string>;
   approveBusy: boolean;
@@ -100,15 +110,20 @@ interface ApprovalActionsProps {
  * Ba nút của một yêu cầu. Phiếu thường: y như trước. Phiếu chi theo sổ tổng: đọc E7 (cùng cache với thẻ số
  * dư) — chưa thấy số dư hoặc máy chủ chắc chắn từ chối (sổ tổng chưa bật / đóng băng, phiếu chết, người
  * nhận đã xoá, lương điều hành vượt) ⇒ khoá Duyệt; "Duyệt và Chi…" chỉ khi người duyệt giữ ĐÚNG sổ lúc lập.
- * Từ chối luôn được (chốt F5 cho qua, số dư hồi).
+ * Dòng chưa rõ loại: đang đọc ⇒ khoá Duyệt; đọc không được ⇒ duyệt như phiếu thường, nêu rõ máy chủ sẽ
+ * chặn phiếu chi lợi nhuận. "Duyệt và Thu/Chi…" giữ như trước (openPosting đọc lại phiếu và tự chặn phiếu
+ * sổ tổng không đi qua đường khoá sổ). Từ chối luôn được (chốt F5 cho qua, số dư hồi).
  */
 function ApprovalActions({
-  row, ledger, postOption, custodianBookIds, approveBusy, postBusy, rejectBusy, mobile, onApprove, onPost, onReject,
+  row, sourceState, postOption, custodianBookIds, approveBusy, postBusy, rejectBusy, mobile, onApprove, onPost, onReject,
 }: ApprovalActionsProps) {
+  const ledger = sourceState === "LEDGER";
   const detail = useProfitLedgerPayoutDetail(ledger ? row.voucher_id : null);
   const gate = ledger && detail.data ? ledgerApprovalGate(detail.data) : null;
   const ledgerBlocked = ledger && (!gate || !!gate.blockReason);
-  const ledgerTitle = !ledger ? undefined
+  const approveTitle = sourceState === "LOADING" ? "Đang kiểm tra loại phiếu…"
+    : sourceState === "UNKNOWN" ? UNKNOWN_SOURCE_HINT
+    : !ledger ? undefined
     : gate?.blockReason ?? (gate ? undefined : detail.isError ? "Chưa tải được số dư sổ tổng" : "Đang tải số dư sổ tổng");
   const lockedCashbookId = ledger ? gate?.accountId ?? null : null;
   const showPost = postOption && (!ledger || (!ledgerBlocked && !!lockedCashbookId && custodianBookIds.has(lockedCashbookId)));
@@ -117,8 +132,8 @@ function ApprovalActions({
       <Button
         size="sm"
         className={mobile ? "flex-1 bg-emerald-600 hover:bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-700"}
-        disabled={approveBusy || ledgerBlocked}
-        title={ledgerTitle}
+        disabled={approveBusy || ledgerBlocked || sourceState === "LOADING"}
+        title={approveTitle}
         onClick={onApprove}
       >
         <Check className="h-4 w-4 mr-1" />
@@ -179,6 +194,16 @@ const ApprovalsPage = () => {
   const sourcesQuery = usePendingApprovalSources(rows);
   const sourceOf = (row: PendingApproval) => sourcesQuery.data?.[row.voucher_id] ?? null;
   const isLedgerRow = (row: PendingApproval) => isProfitLedgerVoucher(sourceOf(row)?.system_source);
+  const sourceStateOf = (row: PendingApproval): VoucherSourceState => {
+    const source = sourceOf(row);
+    if (source) return isProfitLedgerVoucher(source.system_source) ? "LEDGER" : "NORMAL";
+    if (!row.organization_id || !row.voucher_id || sourcesQuery.isError) return "UNKNOWN";
+    // Chưa có câu trả lời cho đúng tập phiếu đang hiện (lần đầu, hoặc danh sách vừa đổi).
+    if (sourcesQuery.isPending || sourcesQuery.isPlaceholderData) return "LOADING";
+    return "UNKNOWN"; // đã đọc xong mà không có phiếu này: người duyệt không đọc được chi tiết phiếu.
+  };
+  // Gợi ý từng dòng chỉ khi riêng phiếu đó không đọc được; đọc lỗi cả lượt thì một câu báo chung ở trên.
+  const unknownSourceHint = (row: PendingApproval) => sourceStateOf(row) === "UNKNOWN" && !sourcesQuery.isError;
   // Duyệt / từ chối / chi phiếu sổ tổng đổi số dư sổ tổng: làm mới cả các màn sổ tổng.
   const refreshLedger = (row: PendingApproval) => { if (isLedgerRow(row)) invalidateProfitLedgerQueries(queryClient); };
 
@@ -206,13 +231,13 @@ const ApprovalsPage = () => {
   // V2 duyệt-only áp cho request có phiếu subject (INCOME_EXPENSE) và org workflow-CANONICAL.
   const v2WorkflowFor = (row: PendingApproval) =>
     !!row.voucher_id && canWriteWorkflow(v2Routes.getOrg(row.organization_id));
-  // Option "Duyệt và Thu/Chi…" cần thêm posting-CANONICAL, actor đang giữ sổ, và đã biết nguồn phiếu
-  // (phiếu chi theo sổ tổng chỉ chi từ sổ lúc lập — ApprovalActions xét thêm cho loại phiếu đó).
+  // Option "Duyệt và Thu/Chi…" cần thêm posting-CANONICAL và actor đang giữ sổ — như trước, kể cả khi chưa
+  // rõ loại phiếu: openPosting đọc lại phiếu lúc bấm và tự chặn phiếu chi theo sổ tổng không đi qua đường
+  // khoá sổ; ApprovalActions xét thêm cho dòng đã biết là phiếu sổ tổng.
   const v2PostOptionFor = (row: PendingApproval) =>
     v2WorkflowFor(row) &&
     canWritePosting(v2Routes.getOrg(row.organization_id)) &&
-    custodianBooks.length > 0 &&
-    !!sourceOf(row);
+    custodianBooks.length > 0;
   const custodianBookIds = new Set(custodianBooks.map((book) => book.id));
 
   const openPosting = async (row: PendingApproval, lockedCashbookId: string | null = null) => {
@@ -289,7 +314,7 @@ const ApprovalsPage = () => {
   const rowActions = (r: PendingApproval, mobile: boolean) => (
     <ApprovalActions
       row={r}
-      ledger={isLedgerRow(r)}
+      sourceState={sourceStateOf(r)}
       postOption={v2PostOptionFor(r)}
       custodianBookIds={custodianBookIds}
       approveBusy={decide.isPending || approveV2.isPending}
@@ -331,7 +356,8 @@ const ApprovalsPage = () => {
         {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
         {sourcesQuery.isError && (
           <p role="alert" className="text-sm text-destructive">
-            Chưa xác định được loại phiếu chờ duyệt — tạm ẩn "Duyệt và Thu/Chi…" và số dư sổ tổng.{" "}
+            Chưa xác định được loại phiếu chờ duyệt — chưa hiện được số dư sổ tổng. Vẫn duyệt được như phiếu thường;
+            nếu là phiếu chi lợi nhuận / lương điều hành, máy chủ sẽ chặn khi chưa đủ điều kiện duyệt.{" "}
             <Button type="button" variant="link" className="h-auto p-0 align-baseline" onClick={() => { void sourcesQuery.refetch(); }}>
               Thử lại
             </Button>
@@ -380,6 +406,9 @@ const ApprovalsPage = () => {
                     {r.maker_name ?? "—"} • {format(new Date(r.submitted_at), "dd/MM/yyyy HH:mm")}
                   </div>
                   {isLedgerRow(r) && <ProfitLedgerApprovalNote voucherId={r.voucher_id} className="mt-2" />}
+                  {unknownSourceHint(r) && (
+                    <p className="mt-2 text-xs text-amber-700" data-testid="approval-source-unknown">{UNKNOWN_SOURCE_HINT}</p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-3">
                     {rowActions(r, true)}
                   </div>
@@ -406,9 +435,10 @@ const ApprovalsPage = () => {
                 {rows.map((r) => {
                   const t = typeLabel(r.voucher_type);
                   const ledger = isLedgerRow(r);
+                  const unknownHint = unknownSourceHint(r);
                   return (
                     <Fragment key={r.request_id}>
-                    <TableRow className={ledger ? "border-b-0" : undefined}>
+                    <TableRow className={ledger || unknownHint ? "border-b-0" : undefined}>
                       <TableCell className="font-medium">
                         <button
                           className="text-blue-600 hover:underline"
@@ -443,6 +473,13 @@ const ApprovalsPage = () => {
                       <TableRow className="hover:bg-transparent">
                         <TableCell colSpan={8} className="pt-0">
                           <ProfitLedgerApprovalNote voucherId={r.voucher_id} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {unknownHint && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={8} className="pt-0 text-xs text-amber-700" data-testid="approval-source-unknown">
+                          {UNKNOWN_SOURCE_HINT}
                         </TableCell>
                       </TableRow>
                     )}

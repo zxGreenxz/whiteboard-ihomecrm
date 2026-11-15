@@ -394,7 +394,7 @@ export const PAGE_GROUPS: PageGroup[] = [
             desc: "Cổ đông thấy tỷ lệ % cổ phần của chính mình ở từng toà.",
           }),
           f("shareholder_profit", "view_building_totals", "Xem doanh thu / lợi nhuận toà", "elevated", {
-            desc: "Mở tab BC Doanh Thu Chi Phí; cổ đông xem doanh thu, chi phí, lợi nhuận các toà mình có phần.",
+            desc: "Mở tab BC Doanh Thu Chi Phí; cổ đông xem doanh thu, chi phí, lợi nhuận các toà mình có phần. Kèm quyền xem báo cáo dòng tiền: thấy cột tổng chi chia lợi nhuận theo tháng / toà (cộng của mọi cổ đông và lương điều hành).",
           }),
         ],
       },

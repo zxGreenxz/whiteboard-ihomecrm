@@ -52,6 +52,9 @@
 --     ba chỉ qua hạng mục chia_loi_nhuan; chưa phiếu nào khớp nhánh lương điều hành.
 --   - Phiếu THU có shareholder_id hoặc hạng mục lợi nhuận không vào cột (chỉ
 --     dòng âm được cộng).
+--   - Cột là chi chia lợi nhuận cổ đông và lương điều hành (không gồm phần lợi
+--     nhuận trả trong phiếu lương): phần lợi nhuận đầu tư trả trong phiếu lương
+--     của cổ đông kiêm nhân viên (nguồn salary.staff) không vào cột.
 --
 -- AN TOÀN CHẠY LẠI: khối ghim md5 chỉ nhận thân production đã rà hoặc thân do
 --   chính migration này ghi (lượt hai); cashbook_cash_flow_v1 phải đúng thân
