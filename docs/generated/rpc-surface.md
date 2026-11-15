@@ -17,21 +17,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 407 |
+| RPC được gọi từ mã nguồn | 421 |
 | Hàm trong catalog (public + api) | 1645 |
-| File mã nguồn đã quét | 2959 |
-| SECURITY DEFINER | 382 |
+| File mã nguồn đã quét | 2984 |
+| SECURITY DEFINER | 396 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 298 | còn lại |
-| tiền | 108 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 310 | còn lại |
+| tiền | 110 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | hạ tầng | 1 | nơi gọi thuộc Network Center |
 
-## 108 RPC chạm TIỀN
+## 110 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -67,7 +67,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `create_income_expense_v1` | ✔ | hooks/income-expenses/mutations.ts |
 | `create_invoice_refund_obligation_v2` | ✔ | hooks/useInvoicePayments.ts |
 | `decide_owned_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
-| `distribute_shareholder_profit_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `execute_commission_request_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `generate_recurring_vouchers_v2` | ✔ | hooks/income-expenses/recurring.ts |
 | `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucherFacts.ts |
@@ -121,6 +120,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `salary_line_override_list_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_line_override_set_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_payout_v1` | ✔ | hooks/useManagerSalary.ts |
+| `salary_profit_inputs_v1` | ✔ | lib/profitLedger/salaryProfitApi.ts |
+| `salary_profit_payout_quote_v1` | ✔ | lib/profitLedger/salaryProfitApi.ts |
+| `salary_profit_settlement_freeze_v1` | ✔ | lib/profitLedger/salaryProfitApi.ts |
 | `salary_recurring_create_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_recurring_delete_v1` | ✔ | hooks/useSalaryExtras.ts |
 | `salary_recurring_list_v1` | ✔ | hooks/useSalaryExtras.ts |
